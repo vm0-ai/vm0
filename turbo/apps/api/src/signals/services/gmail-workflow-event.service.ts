@@ -36,9 +36,9 @@ import {
   refreshConnectorCredentialAccess,
 } from "./connector-credential-runtime.service";
 import {
-  WorkflowEventSourceTiming,
-  type WorkflowEventRunTiming,
-} from "./workflow-event-source-timing.service";
+  AutomationEventSourceTiming,
+  type AutomationEventRunTiming,
+} from "./automation-event-source-timing.service";
 import { runWorkflowAutomationNow$ } from "./zero-workflow-automation-run.service";
 import type { AutomationRow } from "./zero-workflow-automation-launch.service";
 import type { WorkflowAutomationContext } from "./workflow-automation-context.service";
@@ -1614,7 +1614,7 @@ type GmailRunStarter = (args: {
   readonly automation: GmailEventAutomationRow;
   readonly decoded: DecodedGmailPubSubPush;
   readonly message: GmailMessageContext;
-  readonly timing: WorkflowEventRunTiming;
+  readonly timing: AutomationEventRunTiming;
 }) => Promise<"ok" | "error">;
 
 interface GmailWorkflowRunStartTestInput {
@@ -1891,7 +1891,7 @@ async function dispatchGmailAutomationEvent(
     readonly decoded: DecodedGmailPubSubPush;
     readonly event: GmailHistoryMessageAdded;
     readonly message: GmailMessageContext;
-    readonly timing: WorkflowEventRunTiming;
+    readonly timing: AutomationEventRunTiming;
     readonly startRun: GmailRunStarter;
   },
   signal: AbortSignal,
@@ -2032,7 +2032,7 @@ async function dispatchGmailNewMessageHistoryEvent(
     readonly automations: readonly GmailEventAutomationRow[];
     readonly event: GmailHistoryMessageAdded;
     readonly messageCache: Map<string, GmailMessageContext | null>;
-    readonly sourceTiming: WorkflowEventSourceTiming;
+    readonly sourceTiming: AutomationEventSourceTiming;
     readonly startRun: GmailRunStarter;
   },
   signal: AbortSignal,
@@ -2107,7 +2107,7 @@ async function dispatchGmailLabelAppliedHistoryEvent(
     readonly event: GmailHistoryLabelAdded;
     readonly messageCache: Map<string, GmailMessageContext | null>;
     readonly labelCache: Map<string, GmailLabelResolveResult>;
-    readonly sourceTiming: WorkflowEventSourceTiming;
+    readonly sourceTiming: AutomationEventSourceTiming;
     readonly startRun: GmailRunStarter;
   },
   signal: AbortSignal,
@@ -2121,7 +2121,7 @@ async function dispatchGmailLabelAppliedHistoryEvent(
 
   const matchingAutomations: {
     readonly automation: (typeof labelAutomations)[number];
-    readonly timing: WorkflowEventRunTiming;
+    readonly timing: AutomationEventRunTiming;
   }[] = [];
   for (const automation of labelAutomations) {
     const runTiming = args.sourceTiming.createRunTiming();
@@ -2210,7 +2210,7 @@ async function dispatchGmailHistoryEvents(
       }
     >;
     readonly automations: readonly GmailEventAutomationRow[];
-    readonly sourceTiming: WorkflowEventSourceTiming;
+    readonly sourceTiming: AutomationEventSourceTiming;
     readonly startRun: GmailRunStarter;
   },
   signal: AbortSignal,
@@ -2273,7 +2273,7 @@ async function dispatchGmailWatchState(
     readonly db: Db;
     readonly state: GmailWatchStateRow;
     readonly decoded: DecodedGmailPubSubPush;
-    readonly sourceTiming: WorkflowEventSourceTiming;
+    readonly sourceTiming: AutomationEventSourceTiming;
     readonly startRun: GmailRunStarter;
   },
   signal: AbortSignal,
@@ -2399,7 +2399,7 @@ const startGmailWorkflowRun$ = command(
       readonly automation: GmailEventAutomationRow;
       readonly decoded: DecodedGmailPubSubPush;
       readonly message: GmailMessageContext;
-      readonly timing: WorkflowEventRunTiming;
+      readonly timing: AutomationEventRunTiming;
       readonly apiStartTime: number;
     },
     signal: AbortSignal,
@@ -2434,7 +2434,7 @@ const startGmailWorkflowRun$ = command(
         },
         automationContext: runInput.context,
         apiStartTime: args.apiStartTime,
-        triggerSource: "workflow-event",
+        triggerSource: "automation-event",
         triggerBrief: runInput.triggerBrief,
         dispatchFailedCallbacks: dispatchFailedRunCallbacks,
         timing: args.timing.collectorForRunStart(),
@@ -2480,7 +2480,7 @@ export const dispatchGmailPubSubPush$ = command(
       };
     }
 
-    const sourceTiming = new WorkflowEventSourceTiming(
+    const sourceTiming = new AutomationEventSourceTiming(
       "gmail",
       args.apiStartTime,
     );

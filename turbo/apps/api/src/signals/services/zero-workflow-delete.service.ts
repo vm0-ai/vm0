@@ -13,7 +13,7 @@ import { and, eq } from "drizzle-orm";
 import { env } from "../../lib/env";
 import { writeDb$ } from "../external/db";
 import { deleteS3Objects, listS3ObjectsUnderPrefix } from "../external/s3";
-import { reconcileWorkflowEventWatches } from "./workflow-event-watch-lifecycle.service";
+import { reconcileAutomationEventWatches } from "./automation-event-watch-lifecycle.service";
 
 interface DeleteZeroWorkflowInput {
   readonly orgId: string;
@@ -85,7 +85,7 @@ export const deleteZeroWorkflow$ = command(
       return false;
     }
 
-    await reconcileWorkflowEventWatches(
+    await reconcileAutomationEventWatches(
       {
         db: writeDb,
         automations: result.automations,

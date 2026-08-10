@@ -19,6 +19,7 @@ import {
 import { logger } from "../../lib/log";
 import { nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
+import { clerk$ } from "../external/clerk";
 import { getStripeClient } from "../external/stripe-client";
 import {
   CONCURRENCY_SUBSCRIPTION_PAYMENT_FAILED_STATUSES,
@@ -33,6 +34,7 @@ import {
   tierFromPriceId,
 } from "./zero-billing-checkout.service";
 import { reconcileUsagePackSubscriptions } from "./usage-pack-subscription.service";
+import { reconcileUsagePackInvitationPurchases } from "./usage-pack-invitation-purchase.service";
 import { disableIneligibleWorkflowWebhookAutomationsForOrg } from "./workflow-webhook-automation-entitlement.service";
 import type { Tx } from "../../lib/db-types";
 
@@ -984,7 +986,7 @@ async function loadReconcileCandidateRows(
 
 export const reconcileBillingEntitlements$ = command(
   async (
-    { set },
+    { get, set },
     signal: AbortSignal,
   ): Promise<{ readonly downgraded: number }> => {
     const db = set(writeDb$);
@@ -998,6 +1000,9 @@ export const reconcileBillingEntitlements$ = command(
       db,
       signal,
     );
+    signal.throwIfAborted();
+    const invitationPurchasesReconciled =
+      await reconcileUsagePackInvitationPurchases(db, get(clerk$), signal);
     signal.throwIfAborted();
 
     const {
@@ -1100,6 +1105,11 @@ export const reconcileBillingEntitlements$ = command(
       L.warn("usage pack subscriptions reconciled from Stripe", {
         count: usagePackReconciliation.reconciled,
         orgIds: usagePackReconciliation.orgIds.slice(0, 10),
+      });
+    }
+    if (invitationPurchasesReconciled > 0) {
+      L.warn("usage pack invitation purchases reconciled", {
+        count: invitationPurchasesReconciled,
       });
     }
 

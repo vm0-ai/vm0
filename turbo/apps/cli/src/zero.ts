@@ -69,6 +69,7 @@ const COMMAND_CAPABILITY_MAP: Record<
   recognize: "image-recognition:write",
   translate: "translation:write",
   finance: "finance:read",
+  seo: "seo:read",
   banking: "banking:read",
 };
 
@@ -352,6 +353,13 @@ const ZERO_COMMAND_DEFINITIONS: readonly ZeroCommandDefinition[] = [
     },
   },
   {
+    name: "seo",
+    description: "Query managed SEO data through DataForSEO and SerpAPI",
+    load: async () => {
+      return (await import("./commands/zero/seo")).zeroSeoCommand;
+    },
+  },
+  {
     name: "banking",
     description: "Use managed zero banking services",
     load: async () => {
@@ -542,6 +550,11 @@ export function buildZeroHelpText(
     ...commandExampleIfVisible(
       "finance",
       "  Get a market quote?   zero finance quote AAPL --json",
+      payload,
+    ),
+    ...commandExampleIfVisible(
+      "seo",
+      '  Research SEO data?    zero seo serp "technical seo" --json',
       payload,
     ),
     ...commandExampleIfVisible(

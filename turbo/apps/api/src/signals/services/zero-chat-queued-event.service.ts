@@ -69,7 +69,7 @@ export type QueuedUserMessageTriggerSource =
   | "telegram"
   | "agentphone"
   | "github"
-  | "workflow-schedule";
+  | "automation-schedule";
 
 function unreachableQueuedContextType(contextType: never): never {
   throw new Error(`Unsupported queued context type: ${String(contextType)}`);
@@ -101,7 +101,7 @@ export function queuedUserMessageTriggerSource(
       return "agent";
     }
     case "morning_brief": {
-      return "workflow-schedule";
+      return "automation-schedule";
     }
     case "automation":
     case "goal": {
@@ -393,7 +393,7 @@ async function resolveUserQueueFirstClaimSnapshot(
   };
 }
 
-async function resolveWorkflowQueueFirstClaimSnapshot(
+async function resolveAutomationEventQueueFirstClaimSnapshot(
   db: DbTransaction,
   args: Extract<QueueFirstClaimArgs, { readonly kind: "automation_event" }>,
 ): Promise<QueueFirstClaimSnapshot | null> {
@@ -532,7 +532,7 @@ async function resolveQueueFirstClaimSnapshot(
     return await resolveUserQueueFirstClaimSnapshot(db, args);
   }
   if (args.kind === "automation_event") {
-    return await resolveWorkflowQueueFirstClaimSnapshot(db, args);
+    return await resolveAutomationEventQueueFirstClaimSnapshot(db, args);
   }
   return await resolveGoalQueueFirstClaimSnapshot(db, args);
 }

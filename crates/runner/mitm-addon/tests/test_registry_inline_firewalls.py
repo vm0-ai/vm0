@@ -114,3 +114,30 @@ class TestRegistryInlineFirewalls:
             "custom-api-id",
             "run-inline:1",
         ]
+
+    def test_malformed_custom_connector_apis_reject_only_affected_vm(self, tmp_path, mitm_ctx):
+        path = tmp_path / "registry.json"
+        malformed_vm = inline_vm("run-malformed")
+        malformed_entry = malformed_vm["firewalls"][0]
+        malformed_entry["customConnectorId"] = "550e8400-e29b-41d4-a716-446655440000"
+        malformed_entry["firewall"]["apis"] = None
+        write_multi_vm_registry(
+            path,
+            {
+                "10.200.0.1": malformed_vm,
+                "10.200.0.2": inline_vm("run-valid"),
+            },
+        )
+
+        with mitm_ctx():
+            state = registry.load_registry_state(str(path))
+            valid_context = registry.get_vm_context("10.200.0.2", str(path))
+
+        assert not isinstance(state, registry.RegistryUnavailable)
+        assert set(state.vms) == {"10.200.0.2"}
+        invalid_vm = state.invalid_vms["10.200.0.1"]
+        assert invalid_vm.reason == "invalid_firewalls"
+        assert invalid_vm.message == "inline firewall apis must be a list"
+        assert valid_context is not None
+        _, compiled_firewalls, _ = valid_context
+        assert compiled_firewalls is not None

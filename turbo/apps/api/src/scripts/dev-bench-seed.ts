@@ -685,7 +685,7 @@ function appendRunEvents(
   });
   args.rows.zeroRunRows.push({
     id: runId,
-    triggerSource: args.workflowAutomationBrief ? "workflow-schedule" : "web",
+    triggerSource: args.workflowAutomationBrief ? "automation-schedule" : "web",
     selectedModel: args.profile.selectedModel,
     chatThreadId: args.threadId,
     summary: `Synthetic ${args.profile.slug} run ${String(args.runIndex)}`,

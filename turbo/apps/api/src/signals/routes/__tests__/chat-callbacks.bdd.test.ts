@@ -842,7 +842,7 @@ async function expectGoalDrainPreCreateTiming(args: {
         success: true,
         run_id: args.runId,
         span_kind: "nested",
-        trigger_source: "workflow-event",
+        trigger_source: "goal",
         zero_run_origin: "goal_continuation",
         goal_drain_timing_role: isGoalDrainWaitingTimingAction(actionType)
           ? "waiting"
@@ -875,7 +875,7 @@ async function expectGoalDrainPreCreateTiming(args: {
       success: true,
       run_id: args.runId,
       span_kind: "nested",
-      trigger_source: "workflow-event",
+      trigger_source: "goal",
       zero_run_origin: "goal_continuation",
       goal_drain_attempt: "initial",
       goal_drain_timing_role: "aggregate",
@@ -899,7 +899,7 @@ async function expectGoalDrainPreCreateTiming(args: {
   expect(preCreate).toStrictEqual(
     expect.objectContaining({
       span_kind: "top_level",
-      trigger_source: "workflow-event",
+      trigger_source: "goal",
       zero_run_origin: "goal_continuation",
     }),
   );

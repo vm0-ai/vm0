@@ -21,7 +21,7 @@ import { db$, writeDb$ } from "../external/db";
 import { deleteS3Objects, listS3ObjectsUnderPrefix } from "../external/s3";
 import { env } from "../../lib/env";
 import { conflict } from "../../lib/error";
-import { reconcileWorkflowEventWatches } from "./workflow-event-watch-lifecycle.service";
+import { reconcileAutomationEventWatches } from "./automation-event-watch-lifecycle.service";
 
 export function zeroComposeExists(args: {
   readonly orgId: string;
@@ -182,7 +182,7 @@ export const deleteComposeById$ = command(
       return conflict("Cannot delete agent: agent is currently running");
     }
 
-    await reconcileWorkflowEventWatches(
+    await reconcileAutomationEventWatches(
       {
         db: writeDb,
         automations: result.automations,

@@ -1,5 +1,41 @@
 # Changelog
 
+## [0.718.0](https://github.com/vm0-ai/vm0/compare/app-v0.717.0...app-v0.718.0) (2026-08-10)
+
+
+### Features
+
+* animate connector catalog count ([#26083](https://github.com/vm0-ai/vm0/issues/26083)) ([78ab60d](https://github.com/vm0-ai/vm0/commit/78ab60d7622cf6174b4c1b206bf22cc0d9f6b190))
+
+
+### Bug Fixes
+
+* **app:** preserve sampled voice before silence timeout ([#26098](https://github.com/vm0-ai/vm0/issues/26098)) ([2b2af9f](https://github.com/vm0-ai/vm0/commit/2b2af9f050d8a74683caa416c8e6f5e97d589768))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.305.0
+    * @vm0/core bumped to 8.538.0
+
+## [0.717.0](https://github.com/vm0-ai/vm0/compare/app-v0.716.0...app-v0.717.0) (2026-08-10)
+
+
+### Features
+
+* manage usage pack plan and package changes ([#25510](https://github.com/vm0-ai/vm0/issues/25510)) ([88a39ab](https://github.com/vm0-ai/vm0/commit/88a39abb32bb47dacd02c308b23f5cb13d43a479))
+* **runs:** accept unattended trigger sources ([#26024](https://github.com/vm0-ai/vm0/issues/26024)) ([2795cfb](https://github.com/vm0-ai/vm0/commit/2795cfb6432db3ebd3ff9cff04b06ed257e22c14))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.304.0
+    * @vm0/core bumped to 8.537.0
+
 ## [0.716.0](https://github.com/vm0-ai/vm0/compare/app-v0.715.1...app-v0.716.0) (2026-08-10)
 
 

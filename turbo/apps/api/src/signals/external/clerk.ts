@@ -115,6 +115,8 @@ export interface ClerkOrganizationsApi {
     inviterUserId?: string;
     role: string;
     redirectUrl?: string;
+    expiresInDays?: number;
+    privateMetadata?: Record<string, unknown>;
   }): Promise<ClerkOrganizationInvitation>;
   revokeOrganizationInvitation(params: {
     organizationId: string;

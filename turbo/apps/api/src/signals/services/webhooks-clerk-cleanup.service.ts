@@ -65,6 +65,7 @@ import {
 } from "./usage-event-cleanup.service";
 import { deleteZeroConnectorLocalState$ } from "./zero-connector-data.service";
 import { loadConnectorRuntimeSnapshot } from "./connector-catalog-runtime.service";
+import { deleteConnectorOwnerState } from "./connector-owner-cleanup.service";
 
 const L = logger("WebhookClerkCleanup");
 const CLERK_ORG_MEMBERSHIP_PAGE_SIZE = 100;
@@ -385,7 +386,9 @@ const revokeOrgConnectorTokens$ = command(
         connectorSlug: connectors.connectorSlug,
       })
       .from(connectors)
-      .where(eq(connectors.orgId, orgId));
+      .where(
+        and(eq(connectors.orgId, orgId), isNotNull(connectors.connectorSlug)),
+      );
     signal.throwIfAborted();
 
     for (const row of rows) {
@@ -427,7 +430,9 @@ const revokeUserConnectorTokens$ = command(
         connectorSlug: connectors.connectorSlug,
       })
       .from(connectors)
-      .where(eq(connectors.userId, userId));
+      .where(
+        and(eq(connectors.userId, userId), isNotNull(connectors.connectorSlug)),
+      );
     signal.throwIfAborted();
 
     for (const row of rows) {
@@ -747,7 +752,11 @@ function deleteUserS3Data(db: Db, userId: string): Computed<Promise<void>> {
   });
 }
 
-async function deleteOrgData(db: Db, orgId: string): Promise<void> {
+async function deleteOrgData(
+  db: Db,
+  orgId: string,
+  signal: AbortSignal,
+): Promise<void> {
   await cancelOrgRuns(db, orgId);
 
   const installations = await db
@@ -784,9 +793,9 @@ async function deleteOrgData(db: Db, orgId: string): Promise<void> {
   await db
     .delete(modelProviderAuthSessions)
     .where(eq(modelProviderAuthSessions.orgId, orgId));
+  await deleteConnectorOwnerState(db, { kind: "organization", orgId }, signal);
   await db.delete(secrets).where(eq(secrets.orgId, orgId));
   await db.delete(variables).where(eq(variables.orgId, orgId));
-  await db.delete(connectors).where(eq(connectors.orgId, orgId));
   await db
     .delete(connectorOauthDeviceAuthorizationSessions)
     .where(eq(connectorOauthDeviceAuthorizationSessions.orgId, orgId));
@@ -810,7 +819,11 @@ async function deleteOrgData(db: Db, orgId: string): Promise<void> {
   await db.delete(orgMetadata).where(eq(orgMetadata.orgId, orgId));
 }
 
-async function deleteUserData(db: Db, userId: string): Promise<void> {
+async function deleteUserData(
+  db: Db,
+  userId: string,
+  signal: AbortSignal,
+): Promise<void> {
   await cancelUserRuns(db, userId);
 
   await db
@@ -854,9 +867,9 @@ async function deleteUserData(db: Db, userId: string): Promise<void> {
   await db
     .delete(modelProviderAuthSessions)
     .where(eq(modelProviderAuthSessions.userId, userId));
+  await deleteConnectorOwnerState(db, { kind: "user", userId }, signal);
   await db.delete(secrets).where(eq(secrets.userId, userId));
   await db.delete(variables).where(eq(variables.userId, userId));
-  await db.delete(connectors).where(eq(connectors.userId, userId));
   await db.delete(usageDaily).where(eq(usageDaily.userId, userId));
   await db.delete(exportJobs).where(eq(exportJobs.userId, userId));
   await db.delete(cliTokens).where(eq(cliTokens.userId, userId));
@@ -886,7 +899,7 @@ export const cleanupClerkDeletedOrg$ = command(
     signal.throwIfAborted();
     await get(deleteOrgS3Data(db, orgId));
     signal.throwIfAborted();
-    await deleteOrgData(db, orgId);
+    await deleteOrgData(db, orgId, signal);
   },
 );
 
@@ -915,10 +928,10 @@ export const cleanupClerkDeletedUser$ = command(
       signal.throwIfAborted();
     }
 
-    await deleteUserData(db, userId);
+    await deleteUserData(db, userId, signal);
     signal.throwIfAborted();
     for (const orgId of emptyOrgIds) {
-      await deleteOrgData(db, orgId);
+      await deleteOrgData(db, orgId, signal);
       signal.throwIfAborted();
     }
   },

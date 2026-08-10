@@ -53,6 +53,7 @@ describe("zero CLI program", () => {
       "recognize",
       "translate",
       "finance",
+      "seo",
       "banking",
     ];
     for (const name of expectedCommands) {
@@ -85,7 +86,7 @@ describe("zero CLI program", () => {
     expect(publicCommandNames).not.toContain("__agent-loop");
   });
 
-  it("should have exactly 38 public commands", () => {
-    expect(publicCommandNames).toHaveLength(38);
+  it("should have exactly 39 public commands", () => {
+    expect(publicCommandNames).toHaveLength(39);
   });
 });

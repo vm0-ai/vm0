@@ -70,6 +70,19 @@ const THEMES = [
   { name: "dark", selector: '[data-theme="dark"]' },
 ];
 
+describe("animated number layout", () => {
+  it("uses real text for width and baseline while animating an overlay", () => {
+    const root = readRuleBody(globalCss, ".animated-number");
+    const measure = readRuleBody(globalCss, ".animated-number-measure");
+    const visual = readRuleBody(globalCss, ".animated-number-visual");
+
+    expect(root).toContain("display: inline-block");
+    expect(root).toContain("vertical-align: baseline");
+    expect(measure).toContain("visibility: hidden");
+    expect(visual).toContain("position: absolute");
+  });
+});
+
 describe("global focus colors", () => {
   it("sets native outlines to the semantic focus color before focus", () => {
     expect(globalCss).toMatch(
@@ -95,6 +108,13 @@ describe("global Lucide defaults", () => {
     expect(readRuleBody(globalCss, selector)).toMatch(
       /stroke-width:\s*var\(--icon-stroke-width\);/,
     );
+  });
+
+  it("renders more icons as solid dots", () => {
+    const selector =
+      "svg.lucide-ellipsis circle,\n  svg.lucide-ellipsis-vertical circle";
+
+    expect(readRuleBody(globalCss, selector)).toMatch(/fill:\s*currentColor;/);
   });
 });
 

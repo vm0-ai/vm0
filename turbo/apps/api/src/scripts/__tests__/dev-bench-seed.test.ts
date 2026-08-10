@@ -116,7 +116,7 @@ describe("dev bench seed profile rows", () => {
       ).toBe(expected.usageEvents);
       expect(
         countWhere(rows.zeroRunRows, (row) => {
-          return row.triggerSource === "workflow-schedule";
+          return row.triggerSource === "automation-schedule";
         }),
       ).toBe(expected.workflowScheduleRuns);
       expect(

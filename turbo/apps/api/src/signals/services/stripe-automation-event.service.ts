@@ -4,15 +4,15 @@ import {
   type StripeInvoiceBillingReason,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import type {
-  StripeWorkflowEventSnapshot,
-  StripeWorkflowEventSnapshotLine,
-  StripeWorkflowEventSnapshotMetadata,
-} from "@vm0/db/jsonb-contracts/stripe-workflow-event";
+  StripeAutomationEventSnapshot,
+  StripeAutomationEventSnapshotLine,
+  StripeAutomationEventSnapshotMetadata,
+} from "@vm0/db/jsonb-contracts/stripe-automation-event";
 import { connectors } from "@vm0/db/schema/connector";
 import {
   stripeWorkflowAutomationHealth,
   stripeWorkflowDeliveries,
-} from "@vm0/db/schema/stripe-workflow-event";
+} from "@vm0/db/schema/stripe-automation-event";
 import {
   workflowUserAutomationThreads,
   zeroWorkflowAutomations,
@@ -43,7 +43,7 @@ import type {
 } from "./zero-workflow-automation-launch.service";
 import { runWorkflowAutomationNow$ } from "./zero-workflow-automation-run.service";
 
-const log = logger("api:stripe-workflow-event");
+const log = logger("api:stripe-automation-event");
 
 const STRIPE_DELIVERY_BATCH_SIZE = 25;
 const STRIPE_DELIVERY_CLAIM_MS = 300_000;
@@ -240,7 +240,7 @@ const stripeDeauthorizedEventSchema = stripeDeauthorizedEventBaseSchema.extend({
 type StripeWorkflowDeliveryRow = typeof stripeWorkflowDeliveries.$inferSelect;
 type StripeWorkflowTransaction = Tx;
 
-type DispatchStripeWorkflowEventResult =
+type DispatchStripeAutomationEventResult =
   | {
       readonly kind: "ok";
       readonly eventKind: "test" | "ignored" | "deauthorized" | "invoice";
@@ -260,7 +260,7 @@ type StripeDeliveryValidation =
   | { readonly kind: "ok"; readonly target: StripeDeliveryTarget }
   | { readonly kind: "skip"; readonly reason: string };
 
-interface ExecuteDueStripeWorkflowEventsResult {
+interface ExecuteDueStripeAutomationEventsResult {
   readonly executed: number;
   readonly skipped: number;
   readonly failed: number;
@@ -297,13 +297,13 @@ function unixSecondsToIso(value: number | null | undefined): string | null {
 
 function normalizeMetadata(
   metadata: Record<string, string> | undefined,
-): StripeWorkflowEventSnapshotMetadata {
+): StripeAutomationEventSnapshotMetadata {
   return metadata ?? {};
 }
 
 function normalizeLine(
   line: z.infer<typeof stripeInvoiceLineSchema>,
-): StripeWorkflowEventSnapshotLine {
+): StripeAutomationEventSnapshotLine {
   const price = stripeLinePriceSchema.safeParse(line.price);
   const pricing = stripeLinePricingSchema.safeParse(line.pricing);
   return {
@@ -343,7 +343,7 @@ function normalizeLine(
 
 function normalizeCustomer(
   value: unknown,
-): StripeWorkflowEventSnapshot["customer"] {
+): StripeAutomationEventSnapshot["customer"] {
   if (typeof value === "string") {
     return { id: value, name: null, email: null };
   }
@@ -431,7 +431,7 @@ function subscriptionId(
 
 function invoiceSnapshot(
   event: z.infer<typeof stripeInvoicePaidEventSchema>,
-): StripeWorkflowEventSnapshot {
+): StripeAutomationEventSnapshot {
   const invoice = event.data.object;
   const payments = normalizePayments(invoice.payments);
   return {
@@ -526,7 +526,7 @@ async function insertStripeWorkflowDelivery(
   args: {
     readonly tx: StripeWorkflowTransaction;
     readonly candidate: StripeInvoiceFanoutCandidate;
-    readonly snapshot: StripeWorkflowEventSnapshot;
+    readonly snapshot: StripeAutomationEventSnapshot;
     readonly receivedAt: Date;
   },
   signal: AbortSignal,
@@ -631,7 +631,7 @@ async function loadStripeInvoiceFanoutCandidates(
 async function recordInvoiceFanout(
   args: {
     readonly tx: StripeWorkflowTransaction;
-    readonly snapshot: StripeWorkflowEventSnapshot;
+    readonly snapshot: StripeAutomationEventSnapshot;
   },
   signal: AbortSignal,
 ): Promise<StripeInvoiceFanoutResult> {
@@ -748,7 +748,7 @@ async function dispatchStripeDeauthorization(
   db: Db,
   event: unknown,
   signal: AbortSignal,
-): Promise<DispatchStripeWorkflowEventResult> {
+): Promise<DispatchStripeAutomationEventResult> {
   const supported = stripeDeauthorizedEventBaseSchema.safeParse(event);
   if (!supported.success) {
     log.debug("Processed Stripe workflow ingress", {
@@ -803,7 +803,7 @@ async function dispatchStripeInvoice(
   db: Db,
   event: unknown,
   signal: AbortSignal,
-): Promise<DispatchStripeWorkflowEventResult> {
+): Promise<DispatchStripeAutomationEventResult> {
   const supported = stripeInvoicePaidEventBaseSchema.safeParse(event);
   if (!supported.success) {
     log.debug("Processed Stripe workflow ingress", {
@@ -849,12 +849,12 @@ async function dispatchStripeInvoice(
   return { kind: "ok", eventKind: "invoice", ...fanout };
 }
 
-export const dispatchStripeWorkflowEvent$ = command(
+export const dispatchStripeAutomationEvent$ = command(
   async (
     { set },
     event: unknown,
     signal: AbortSignal,
-  ): Promise<DispatchStripeWorkflowEventResult> => {
+  ): Promise<DispatchStripeAutomationEventResult> => {
     const eventType = stripeEventTypeSchema.safeParse(event);
     if (!eventType.success) {
       log.debug("Processed Stripe workflow ingress", {
@@ -1356,7 +1356,7 @@ async function processClaimedDelivery(
           target,
         }),
         apiStartTime: now(),
-        triggerSource: "workflow-event",
+        triggerSource: "automation-event",
         triggerBrief: `Stripe invoice paid: ${args.delivery.snapshot.invoice.id}`,
         coalescePendingScheduleRun: false,
         persistSourceTransition: async (tx) => {
@@ -1410,7 +1410,7 @@ async function processClaimedDelivery(
   return await retryDelivery(args, signal);
 }
 
-async function executeDueStripeWorkflowEvents(
+async function executeDueStripeAutomationEvents(
   args: {
     readonly db: Db;
     readonly startRun: (
@@ -1419,7 +1419,7 @@ async function executeDueStripeWorkflowEvents(
     ) => Promise<RunWorkflowAutomationResult>;
   },
   signal: AbortSignal,
-): Promise<ExecuteDueStripeWorkflowEventsResult> {
+): Promise<ExecuteDueStripeAutomationEventsResult> {
   const result = {
     executed: 0,
     skipped: 0,
@@ -1472,12 +1472,12 @@ async function executeDueStripeWorkflowEvents(
   return result;
 }
 
-export const executeDueStripeWorkflowEvents$ = command(
+export const executeDueStripeAutomationEvents$ = command(
   async (
     { set },
     signal: AbortSignal,
-  ): Promise<ExecuteDueStripeWorkflowEventsResult> => {
-    return await executeDueStripeWorkflowEvents(
+  ): Promise<ExecuteDueStripeAutomationEventsResult> => {
+    return await executeDueStripeAutomationEvents(
       {
         db: set(writeDb$),
         startRun: (input, childSignal) => {

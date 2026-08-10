@@ -163,7 +163,7 @@ function buildQueueFirstGoalRunInput(args: {
         : {}),
     },
     apiStartTime: args.apiStartTime,
-    triggerSource: "workflow-event",
+    triggerSource: "goal",
     appendSystemPrompt,
     chatThreadId: normalizedGoal.threadId,
     modelProviderId: modelPin.modelProviderId ?? undefined,

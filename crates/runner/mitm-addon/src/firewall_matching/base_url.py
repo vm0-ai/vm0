@@ -422,7 +422,7 @@ def static_firewall_base_config_key(raw_base: str) -> str | None:
     )
     if parts is None:
         return None
-    return f"{parts.scheme.lower()}://{parts.authority}{parts.path.rstrip('/')}"
+    return f"{parts.scheme.lower()}://{parts.authority}{parts.path}"
 
 
 def static_firewall_base_authority_key(raw_base: str) -> str | None:

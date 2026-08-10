@@ -1,5 +1,34 @@
 # Changelog
 
+## [8.538.0](https://github.com/vm0-ai/vm0/compare/core-v8.537.0...core-v8.538.0) (2026-08-10)
+
+
+### Features
+
+* animate connector catalog count ([#26083](https://github.com/vm0-ai/vm0/issues/26083)) ([78ab60d](https://github.com/vm0-ai/vm0/commit/78ab60d7622cf6174b4c1b206bf22cc0d9f6b190))
+* **cli:** add managed seo commands ([#26017](https://github.com/vm0-ai/vm0/issues/26017)) ([76c3033](https://github.com/vm0-ai/vm0/commit/76c3033db36a06fce0f917b1d2ebf3b1f72507a4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.305.0
+
+## [8.537.0](https://github.com/vm0-ai/vm0/compare/core-v8.536.0...core-v8.537.0) (2026-08-10)
+
+
+### Features
+
+* **runs:** accept unattended trigger sources ([#26024](https://github.com/vm0-ai/vm0/issues/26024)) ([2795cfb](https://github.com/vm0-ai/vm0/commit/2795cfb6432db3ebd3ff9cff04b06ed257e22c14))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.304.0
+
 ## [8.536.0](https://github.com/vm0-ai/vm0/compare/core-v8.535.2...core-v8.536.0) (2026-08-10)
 
 

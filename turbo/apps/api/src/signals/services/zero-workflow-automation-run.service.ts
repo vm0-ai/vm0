@@ -54,7 +54,7 @@ export const runWorkflowAutomationNow$ = command(
               args.automationContext.event,
             ),
           chatThreadId,
-          triggerSource: args.triggerSource ?? "workflow-schedule",
+          triggerSource: args.triggerSource ?? "automation-schedule",
           triggerBrief: args.triggerBrief,
           coalescePendingScheduleRun: args.coalescePendingScheduleRun !== false,
           persistSourceTransition: args.persistSourceTransition,

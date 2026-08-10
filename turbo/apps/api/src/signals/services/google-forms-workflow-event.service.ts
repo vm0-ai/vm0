@@ -38,9 +38,9 @@ import {
 } from "./connector-credential-runtime.service";
 import type { WorkflowQueueAdmissionTransaction } from "./workflow-chat-event-queue.service";
 import {
-  WorkflowEventSourceTiming,
-  type WorkflowEventRunTiming,
-} from "./workflow-event-source-timing.service";
+  AutomationEventSourceTiming,
+  type AutomationEventRunTiming,
+} from "./automation-event-source-timing.service";
 import { workflowAutomationCanFire } from "./zero-workflow-automation-access.service";
 import type { AutomationRow } from "./zero-workflow-automation-launch.service";
 import { runWorkflowAutomationNow$ } from "./zero-workflow-automation-run.service";
@@ -1475,7 +1475,7 @@ type GoogleFormsRunStarter = (args: {
   readonly response: GoogleFormResponse;
   readonly cursor: string;
   readonly previouslyDelivered: boolean;
-  readonly timing: WorkflowEventRunTiming;
+  readonly timing: AutomationEventRunTiming;
 }) => Promise<"ok" | "duplicate" | "error">;
 
 const startGoogleFormsWorkflowRun$ = command(
@@ -1488,7 +1488,7 @@ const startGoogleFormsWorkflowRun$ = command(
       readonly response: GoogleFormResponse;
       readonly cursor: string;
       readonly previouslyDelivered: boolean;
-      readonly timing: WorkflowEventRunTiming;
+      readonly timing: AutomationEventRunTiming;
       readonly apiStartTime: number;
     },
     signal: AbortSignal,
@@ -1505,7 +1505,7 @@ const startGoogleFormsWorkflowRun$ = command(
           },
           automationContext: context,
           apiStartTime: args.apiStartTime,
-          triggerSource: "workflow-event",
+          triggerSource: "automation-event",
           triggerBrief: googleFormsTriggerBrief(args),
           persistSourceTransition: async (tx) => {
             await persistGoogleFormsSourceTransition(
@@ -1577,7 +1577,7 @@ async function dispatchGoogleFormsAutomation(
     readonly state: GoogleFormsWatchStateRow;
     readonly automation: GoogleFormsEventAutomationRow;
     readonly decoded: DecodedGoogleFormsPubSubPush;
-    readonly sourceTiming: WorkflowEventSourceTiming;
+    readonly sourceTiming: AutomationEventSourceTiming;
     readonly startRun: GoogleFormsRunStarter;
   },
   signal: AbortSignal,
@@ -1674,7 +1674,7 @@ async function dispatchGoogleFormsWatchState(
     readonly db: Db;
     readonly state: GoogleFormsWatchStateRow;
     readonly decoded: DecodedGoogleFormsPubSubPush;
-    readonly sourceTiming: WorkflowEventSourceTiming;
+    readonly sourceTiming: AutomationEventSourceTiming;
     readonly startRun: GoogleFormsRunStarter;
   },
   signal: AbortSignal,
@@ -1748,7 +1748,7 @@ export const dispatchGoogleFormsPubSubPush$ = command(
       };
     }
     const db = set(writeDb$);
-    const sourceTiming = new WorkflowEventSourceTiming(
+    const sourceTiming = new AutomationEventSourceTiming(
       "google_forms",
       args.apiStartTime,
     );

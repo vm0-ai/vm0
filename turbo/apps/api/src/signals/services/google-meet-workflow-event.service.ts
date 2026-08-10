@@ -28,9 +28,9 @@ import {
   refreshConnectorCredentialAccess,
 } from "./connector-credential-runtime.service";
 import {
-  WorkflowEventSourceTiming,
-  type WorkflowEventRunTiming,
-} from "./workflow-event-source-timing.service";
+  AutomationEventSourceTiming,
+  type AutomationEventRunTiming,
+} from "./automation-event-source-timing.service";
 import { runWorkflowAutomationNow$ } from "./zero-workflow-automation-run.service";
 import type { AutomationRow } from "./zero-workflow-automation-launch.service";
 import type { WorkflowAutomationContext } from "./workflow-automation-context.service";
@@ -1317,9 +1317,9 @@ async function dispatchGoogleMeetTranscriptEventForState(
     readonly startRun: (args: {
       readonly automation: GoogleMeetEventAutomationRow;
       readonly event: GoogleMeetTranscriptEventContext;
-      readonly timing: WorkflowEventRunTiming;
+      readonly timing: AutomationEventRunTiming;
     }) => Promise<"ok" | "error">;
-    readonly sourceTiming: WorkflowEventSourceTiming;
+    readonly sourceTiming: AutomationEventSourceTiming;
   },
   signal: AbortSignal,
 ): Promise<
@@ -1433,7 +1433,7 @@ export const dispatchGoogleWorkspaceEventsPubSubPush$ = command(
       return event;
     }
 
-    const sourceTiming = new WorkflowEventSourceTiming(
+    const sourceTiming = new AutomationEventSourceTiming(
       "google_meet",
       args.apiStartTime,
     );
@@ -1486,7 +1486,7 @@ export const dispatchGoogleWorkspaceEventsPubSubPush$ = command(
               },
               automationContext: runInput.context,
               apiStartTime: args.apiStartTime,
-              triggerSource: "workflow-event",
+              triggerSource: "automation-event",
               triggerBrief: runInput.triggerBrief,
               dispatchFailedCallbacks: dispatchFailedRunCallbacks,
               timing: timing.collectorForRunStart(),

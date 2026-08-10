@@ -994,16 +994,16 @@ describe("createApp", () => {
   });
 
   describe("web client compatibility", () => {
-    it("rejects pre-canonical-chat-event app clients before route handlers run", async () => {
+    it("rejects pre-MCP-reader app clients before custom connector route matching", async () => {
       const app = createApp({
         signal: context.signal,
         routes: TEST_APP_ROUTES,
       });
-      const response = await app.request("/health", {
+      const response = await app.request("/api/zero/custom-connectors", {
         method: "GET",
         headers: {
           [CLIENT_TYPE_HEADER]: CLIENT_TYPE_APP,
-          [CLIENT_VERSION_HEADER]: "0.706.4",
+          [CLIENT_VERSION_HEADER]: "0.715.1",
         },
       });
 

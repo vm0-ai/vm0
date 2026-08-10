@@ -2,7 +2,7 @@ import type { ConnectorAuthMethodRuntimeConfig } from "@vm0/connectors/connector
 import { connectors } from "@vm0/db/schema/connector";
 import { secrets } from "@vm0/db/schema/secret";
 import { variables } from "@vm0/db/schema/variable";
-import { eq, isNotNull } from "drizzle-orm";
+import { eq, isNotNull, sql, type SQL } from "drizzle-orm";
 
 import { nowDate } from "../../lib/time";
 import type { Db } from "../external/db";
@@ -18,6 +18,25 @@ interface ConnectorOwnedCredentialWrite {
 interface ConnectorOwnedCredentialDescription {
   readonly description: string | null;
   readonly updatedDescription?: string | null;
+}
+
+export type ConnectorOwnerScope =
+  | {
+      readonly kind: "user";
+      readonly userId: string;
+    }
+  | {
+      readonly kind: "organization";
+      readonly orgId: string;
+    };
+
+interface ConnectorOwnedCredentialDeleteConditions {
+  readonly secret: SQL;
+  readonly variable: SQL;
+}
+
+interface ConnectorCredentialStorageDeleteConditions extends ConnectorOwnedCredentialDeleteConditions {
+  readonly connection: SQL;
 }
 
 function requireDeclaredStorageName(args: {
@@ -122,6 +141,27 @@ export async function upsertConnectorOwnedVariable(
   }
 }
 
+async function deleteConnectorOwnedCredentialRowsWhere(
+  db: Db,
+  conditions: ConnectorOwnedCredentialDeleteConditions,
+  signal: AbortSignal,
+): Promise<void> {
+  await db.delete(secrets).where(conditions.secret);
+  signal.throwIfAborted();
+  await db.delete(variables).where(conditions.variable);
+  signal.throwIfAborted();
+}
+
+async function deleteConnectorCredentialStorageConnectionsWhere(
+  db: Db,
+  conditions: ConnectorCredentialStorageDeleteConditions,
+  signal: AbortSignal,
+): Promise<void> {
+  await deleteConnectorOwnedCredentialRowsWhere(db, conditions, signal);
+  await db.delete(connectors).where(conditions.connection);
+  signal.throwIfAborted();
+}
+
 export async function deleteConnectorOwnedCredentialRows(
   db: Db,
   args: {
@@ -129,10 +169,14 @@ export async function deleteConnectorOwnedCredentialRows(
   },
   signal: AbortSignal,
 ): Promise<void> {
-  await db.delete(secrets).where(eq(secrets.connectorId, args.connectorId));
-  signal.throwIfAborted();
-  await db.delete(variables).where(eq(variables.connectorId, args.connectorId));
-  signal.throwIfAborted();
+  await deleteConnectorOwnedCredentialRowsWhere(
+    db,
+    {
+      secret: eq(secrets.connectorId, args.connectorId),
+      variable: eq(variables.connectorId, args.connectorId),
+    },
+    signal,
+  );
 }
 
 export async function deleteConnectorCredentialStorageConnection(
@@ -142,7 +186,37 @@ export async function deleteConnectorCredentialStorageConnection(
   },
   signal: AbortSignal,
 ): Promise<void> {
-  await deleteConnectorOwnedCredentialRows(db, args, signal);
-  await db.delete(connectors).where(eq(connectors.id, args.connectorId));
-  signal.throwIfAborted();
+  await deleteConnectorCredentialStorageConnectionsWhere(
+    db,
+    {
+      secret: eq(secrets.connectorId, args.connectorId),
+      variable: eq(variables.connectorId, args.connectorId),
+      connection: eq(connectors.id, args.connectorId),
+    },
+    signal,
+  );
+}
+
+export async function deleteConnectorCredentialStorageConnectionsForOwner(
+  db: Db,
+  owner: ConnectorOwnerScope,
+  signal: AbortSignal,
+): Promise<void> {
+  const conditions: ConnectorCredentialStorageDeleteConditions =
+    owner.kind === "user"
+      ? {
+          secret: sql`${eq(secrets.userId, owner.userId)} AND ${isNotNull(secrets.connectorId)}`,
+          variable: sql`${eq(variables.userId, owner.userId)} AND ${isNotNull(variables.connectorId)}`,
+          connection: eq(connectors.userId, owner.userId),
+        }
+      : {
+          secret: sql`${eq(secrets.orgId, owner.orgId)} AND ${isNotNull(secrets.connectorId)}`,
+          variable: sql`${eq(variables.orgId, owner.orgId)} AND ${isNotNull(variables.connectorId)}`,
+          connection: eq(connectors.orgId, owner.orgId),
+        };
+  await deleteConnectorCredentialStorageConnectionsWhere(
+    db,
+    conditions,
+    signal,
+  );
 }
