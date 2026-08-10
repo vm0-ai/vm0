@@ -51,7 +51,7 @@ import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { parseScheduledAtTime } from "@vm0/core/timezone";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
-import { stripeWorkflowAutomationHealth } from "@vm0/db/schema/stripe-workflow-event";
+import { stripeWorkflowAutomationHealth } from "@vm0/db/schema/stripe-automation-event";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import {
   strapiIntegrations,
@@ -132,7 +132,7 @@ import {
 } from "./zero-workflow-user-automation-thread.service";
 import { buildWorkflowScheduleAutomationBrief } from "./zero-workflow-automation-brief.service";
 import type { WorkflowAutomationContext } from "./workflow-automation-context.service";
-import { reconcileWorkflowEventWatches } from "./workflow-event-watch-lifecycle.service";
+import { reconcileAutomationEventWatches } from "./automation-event-watch-lifecycle.service";
 
 type AutomationRow = typeof zeroWorkflowAutomations.$inferSelect;
 type WorkflowRow = typeof zeroWorkflows.$inferSelect;
@@ -1814,7 +1814,7 @@ async function createGmailEventAutomationForWorkflow(
   await args.context.db
     .delete(zeroWorkflowAutomations)
     .where(eq(zeroWorkflowAutomations.id, summary.id));
-  await reconcileWorkflowEventWatches(
+  await reconcileAutomationEventWatches(
     {
       db: args.context.db,
       automations: [
@@ -2081,7 +2081,7 @@ async function createGoogleCalendarEventAutomationForWorkflow(
     await args.context.db
       .delete(zeroWorkflowAutomations)
       .where(eq(zeroWorkflowAutomations.id, summary.id));
-    await reconcileWorkflowEventWatches(
+    await reconcileAutomationEventWatches(
       {
         db: args.context.db,
         automations: [
@@ -2190,7 +2190,7 @@ async function createGoogleFormsEventAutomationForWorkflow(
     .delete(zeroWorkflowAutomations)
     .where(eq(zeroWorkflowAutomations.id, summary.id));
   if (!hadConsumer) {
-    await reconcileWorkflowEventWatches(
+    await reconcileAutomationEventWatches(
       {
         db: args.context.db,
         automations: [
@@ -3285,7 +3285,7 @@ export const deleteWorkflowAutomation$ = command(
       .delete(zeroWorkflowAutomations)
       .where(eq(zeroWorkflowAutomations.id, owned.automation.id));
     signal.throwIfAborted();
-    await reconcileWorkflowEventWatches(
+    await reconcileAutomationEventWatches(
       {
         db: writeDb,
         automations: [owned.automation],
@@ -3392,7 +3392,7 @@ async function enabledWatchHadConsumer(
   );
 }
 
-async function ensureEnabledWorkflowEventWatch(
+async function ensureEnabledAutomationEventWatch(
   args: {
     readonly db: Db;
     readonly automation: AutomationRow;
@@ -3469,7 +3469,7 @@ async function restoreDisabledWorkflowAutomation(
     .where(eq(zeroWorkflowAutomations.id, automation.id));
 }
 
-async function ensureEnabledWorkflowEventWatchWithRollback(
+async function ensureEnabledAutomationEventWatchWithRollback(
   args: {
     readonly db: Db;
     readonly previousAutomation: AutomationRow;
@@ -3479,7 +3479,7 @@ async function ensureEnabledWorkflowEventWatchWithRollback(
   signal: AbortSignal,
 ): Promise<AutomationActionFailure | null> {
   const failure = await onRejection(
-    ensureEnabledWorkflowEventWatch(
+    ensureEnabledAutomationEventWatch(
       {
         db: args.db,
         automation: args.enabledAutomation,
@@ -3498,7 +3498,7 @@ async function ensureEnabledWorkflowEventWatchWithRollback(
 
   await restoreDisabledWorkflowAutomation(args.db, args.previousAutomation);
   signal.throwIfAborted();
-  await reconcileWorkflowEventWatches(
+  await reconcileAutomationEventWatches(
     {
       db: args.db,
       automations: [args.enabledAutomation],
@@ -3735,7 +3735,7 @@ export const enableWorkflowAutomation$ = command(
     if (!row) {
       throw new Error("Failed to enable workflow automation");
     }
-    const watchFailure = await ensureEnabledWorkflowEventWatchWithRollback(
+    const watchFailure = await ensureEnabledAutomationEventWatchWithRollback(
       {
         db: writeDb,
         previousAutomation: automation,
@@ -3789,7 +3789,7 @@ export const disableWorkflowAutomation$ = command(
     if (!row) {
       throw new Error("Failed to disable workflow automation");
     }
-    await reconcileWorkflowEventWatches(
+    await reconcileAutomationEventWatches(
       {
         db: writeDb,
         automations: [owned.automation],

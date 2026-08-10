@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
-import { testStripeWorkflowEventFixtureContract } from "@vm0/api-contracts/contracts/test-stripe-workflow-events";
+import { testStripeAutomationEventFixtureContract } from "@vm0/api-contracts/contracts/test-stripe-automation-events";
 import { zeroWorkflowAutomationsContract } from "@vm0/api-contracts/contracts/zero-workflows";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -23,7 +23,7 @@ import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
 import { chatEventDisplayText } from "./helpers/chat-event";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { cronExecuteWorkflowAutomationsRoutes } from "../cron-execute-workflow-automations";
-import { testStripeWorkflowEventRoutes } from "../test-stripe-workflow-events";
+import { testStripeAutomationEventRoutes } from "../test-stripe-automation-events";
 import { webhooksStripeAutomationEventsRoutes } from "../webhooks-stripe-automation-events";
 import { zeroWorkflowAutomationsRoutes } from "../zero-workflow-automations";
 
@@ -98,7 +98,7 @@ async function setupScenario(
   });
   const workflowId = await workflows.createWorkflow(actor, {
     agentId,
-    name: `stripe-workflow-events-${randomUUID()}`,
+    name: `stripe-automation-events-${randomUUID()}`,
   });
   await connectors.updateFeatureSwitches(actor, {
     [FeatureSwitchKey.StripeInvoicePaidWorkflowAutomations]: true,
@@ -227,7 +227,7 @@ function invoicePaidEvent(
   };
 }
 
-async function postStripeWorkflowEvent(
+async function postStripeAutomationEvent(
   event: object,
   expectedStatus = 200,
 ): Promise<Response> {
@@ -272,8 +272,8 @@ async function applyDeliveryFixture(
     | "clear-forced-failures",
 ): Promise<void> {
   const response = await accept(
-    setupApp({ context, routes: testStripeWorkflowEventRoutes })(
-      testStripeWorkflowEventFixtureContract,
+    setupApp({ context, routes: testStripeAutomationEventRoutes })(
+      testStripeAutomationEventFixtureContract,
     ).apply({
       body: { automation_id: scenario.automationId, action },
     }),
@@ -428,24 +428,24 @@ describe("Stripe automation event webhook", () => {
     });
     expect(invalidSignature.status).toBe(401);
 
-    await postStripeWorkflowEvent(
+    await postStripeAutomationEvent(
       { type: "invoice.paid", livemode: true },
       400,
     );
-    await postStripeWorkflowEvent(
+    await postStripeAutomationEvent(
       {
         ...invoicePaidEvent({ eventId: "evt_missing_account" }),
         account: undefined,
       },
       400,
     );
-    await postStripeWorkflowEvent(
+    await postStripeAutomationEvent(
       invoicePaidEvent({ eventId: "evt_test_mode", livemode: false }),
       200,
     );
-    await postStripeWorkflowEvent({ type: "customer.created" }, 200);
+    await postStripeAutomationEvent({ type: "customer.created" }, 200);
     const unmapped = invoicePaidEvent({ eventId: "evt_unmapped_live" });
-    await postStripeWorkflowEvent(unmapped, 200);
+    await postStripeAutomationEvent(unmapped, 200);
 
     expect(
       context.mocks.stripe.webhooks.constructEvent,
@@ -474,8 +474,8 @@ describe("Stripe automation event webhook", () => {
     });
 
     await Promise.all([
-      postStripeWorkflowEvent(event),
-      postStripeWorkflowEvent(event),
+      postStripeAutomationEvent(event),
+      postStripeAutomationEvent(event),
     ]);
 
     expect((await readStripeAutomation(scenario)).health).toStrictEqual({
@@ -563,7 +563,7 @@ describe("Stripe automation event webhook", () => {
       };
     });
 
-    await postStripeWorkflowEvent(
+    await postStripeAutomationEvent(
       invoicePaidEvent({
         accountId: "acct_stripe_current_snapshot",
         eventId: "evt_current_snapshot",
@@ -607,7 +607,7 @@ describe("Stripe automation event webhook", () => {
         },
       }),
     );
-    await postStripeWorkflowEvent(
+    await postStripeAutomationEvent(
       invoicePaidEvent({
         accountId: "acct_stripe_legacy_snapshot",
         eventId: "evt_legacy_snapshot",
@@ -713,7 +713,7 @@ describe("Stripe automation event webhook", () => {
     const second = await setupScenario();
     expect(first.actor.orgId).not.toBe(second.actor.orgId);
     expect(first.actor.userId).not.toBe(second.actor.userId);
-    await postStripeWorkflowEvent(
+    await postStripeAutomationEvent(
       invoicePaidEvent({ eventId: "evt_cross_tenant_seed" }),
     );
     expect((await executeCron()).executed).toBeGreaterThanOrEqual(2);
@@ -725,7 +725,7 @@ describe("Stripe automation event webhook", () => {
     const retryEvent = invoicePaidEvent({
       eventId: "evt_cross_tenant_retry",
     });
-    await postStripeWorkflowEvent(retryEvent, 500);
+    await postStripeAutomationEvent(retryEvent, 500);
     expect(
       (await readStripeAutomation(first)).health.lastMatchingEventReceivedAt,
     ).toBe("2026-08-07T08:30:00.000Z");
@@ -734,7 +734,7 @@ describe("Stripe automation event webhook", () => {
     ).toBe("2026-08-07T08:30:00.000Z");
 
     await applyDeliveryFixture(second, "clear-forced-failures");
-    await postStripeWorkflowEvent(retryEvent);
+    await postStripeAutomationEvent(retryEvent);
     expect((await executeCron()).executed).toBeGreaterThanOrEqual(2);
     await expect(automationInputEvents(first)).resolves.toHaveLength(2);
     await expect(automationInputEvents(second)).resolves.toHaveLength(2);
@@ -742,7 +742,7 @@ describe("Stripe automation event webhook", () => {
 
   it("retries a queue-admission failure without admitting a second source event", async () => {
     const scenario = await setupScenario();
-    await postStripeWorkflowEvent(
+    await postStripeAutomationEvent(
       invoicePaidEvent({ eventId: "evt_queue_admission_retry" }),
     );
     await applyDeliveryFixture(
@@ -771,11 +771,11 @@ describe("Stripe automation event webhook", () => {
     const firstReceipt = Date.parse("2026-08-07T09:00:00.000Z");
     mockNow(firstReceipt);
     const scenario = await setupScenario();
-    await postStripeWorkflowEvent(
+    await postStripeAutomationEvent(
       invoicePaidEvent({ eventId: "evt_health_older" }),
     );
     mockNow(firstReceipt + 60_000);
-    await postStripeWorkflowEvent(
+    await postStripeAutomationEvent(
       invoicePaidEvent({ eventId: "evt_health_newer" }),
     );
     await applyDeliveryFixture(scenario, "hold-latest-claim");
@@ -803,7 +803,7 @@ describe("Stripe automation event webhook", () => {
       accountId: "acct_stripe_disabled_at_receipt",
     });
     await setAutomationEnabled(disabledAtReceipt, false);
-    await postStripeWorkflowEvent(
+    await postStripeAutomationEvent(
       invoicePaidEvent({
         accountId: "acct_stripe_disabled_at_receipt",
         eventId: "evt_disabled_at_receipt",
@@ -822,7 +822,7 @@ describe("Stripe automation event webhook", () => {
     await connectors.updateFeatureSwitches(featureOffAtReceipt.actor, {
       [FeatureSwitchKey.StripeInvoicePaidWorkflowAutomations]: false,
     });
-    await postStripeWorkflowEvent(
+    await postStripeAutomationEvent(
       invoicePaidEvent({
         accountId: "acct_stripe_feature_off_at_receipt",
         eventId: "evt_feature_off_at_receipt",
@@ -842,7 +842,7 @@ describe("Stripe automation event webhook", () => {
       billingReason: "future_reason",
     });
 
-    await postStripeWorkflowEvent(unknownReasonEvent);
+    await postStripeAutomationEvent(unknownReasonEvent);
 
     expect((await readStripeAutomation(filtered)).health).toMatchObject({
       lastMatchingEventReceivedAt: expect.any(String),
@@ -864,7 +864,7 @@ describe("Stripe automation event webhook", () => {
       eventContextFromPrompt(unknownClaim.appendSystemPrompt),
     ).toMatchObject({ invoice: { billingReason: "future_reason" } });
 
-    await postStripeWorkflowEvent(
+    await postStripeAutomationEvent(
       invoicePaidEvent({
         eventId: "evt_known_filter_miss",
         billingReason: "subscription_cycle",
@@ -896,7 +896,7 @@ describe("Stripe automation event webhook", () => {
     const changedAccount = await setupScenario();
     const testMode = await setupScenario();
     const deletedConnector = await setupScenario();
-    await postStripeWorkflowEvent(
+    await postStripeAutomationEvent(
       invoicePaidEvent({ eventId: "evt_lifecycle_changes" }),
     );
 
@@ -936,7 +936,7 @@ describe("Stripe automation event webhook", () => {
     const unaffected = await setupScenario({
       accountId: "acct_stripe_workflow_other",
     });
-    await postStripeWorkflowEvent(
+    await postStripeAutomationEvent(
       invoicePaidEvent({ eventId: "evt_before_deauthorization" }),
     );
     const deauthorization = {
@@ -947,8 +947,8 @@ describe("Stripe automation event webhook", () => {
       created: Math.floor(now() / 1000),
       data: { object: {} },
     };
-    await postStripeWorkflowEvent(deauthorization);
-    await postStripeWorkflowEvent(deauthorization);
+    await postStripeAutomationEvent(deauthorization);
+    await postStripeAutomationEvent(deauthorization);
 
     const affectedConnector = await connectors.readConnectorBySlug(
       affected.actor,
@@ -976,7 +976,7 @@ describe("Stripe automation event webhook", () => {
     const startedAt = Date.parse("2026-08-07T10:00:00.000Z");
     mockNow(startedAt);
     const recoverable = await setupScenario();
-    await postStripeWorkflowEvent(
+    await postStripeAutomationEvent(
       invoicePaidEvent({ eventId: "evt_recoverable_claim" }),
     );
     await applyDeliveryFixture(recoverable, "hold-latest-claim");
@@ -994,7 +994,7 @@ describe("Stripe automation event webhook", () => {
     const exhausted = await setupScenario({
       accountId: "acct_stripe_workflow_retry",
     });
-    await postStripeWorkflowEvent(
+    await postStripeAutomationEvent(
       invoicePaidEvent({
         accountId: "acct_stripe_workflow_retry",
         eventId: "evt_retry_cutoff",

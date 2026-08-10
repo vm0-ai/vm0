@@ -23,9 +23,9 @@ import type { AutomationRow } from "./zero-workflow-automation-launch.service";
 import type { WorkflowAutomationContext } from "./workflow-automation-context.service";
 import { ensureWorkflowUserAutomationThread } from "./zero-workflow-user-automation-thread.service";
 import {
-  WorkflowEventSourceTiming,
-  type WorkflowEventRunTiming,
-} from "./workflow-event-source-timing.service";
+  AutomationEventSourceTiming,
+  type AutomationEventRunTiming,
+} from "./automation-event-source-timing.service";
 
 const log = logger("api:github-workflow-run-event");
 
@@ -348,7 +348,7 @@ const startGithubWorkflowRunAutomation$ = command(
       readonly deliveryId: string;
       readonly payload: GithubWorkflowRunEventPayload;
       readonly apiStartTime: number;
-      readonly timing: WorkflowEventRunTiming;
+      readonly timing: AutomationEventRunTiming;
     },
     signal: AbortSignal,
   ): Promise<"ok" | "error"> => {
@@ -396,7 +396,7 @@ export const dispatchGithubWorkflowRunAutomations$ = command(
       return { kind: "ok", dispatched: 0, duplicates: 0 };
     }
 
-    const sourceTiming = new WorkflowEventSourceTiming(
+    const sourceTiming = new AutomationEventSourceTiming(
       "github",
       args.apiStartTime,
     );

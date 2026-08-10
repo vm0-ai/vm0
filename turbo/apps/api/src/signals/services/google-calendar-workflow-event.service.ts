@@ -33,9 +33,9 @@ import {
   refreshConnectorCredentialAccess,
 } from "./connector-credential-runtime.service";
 import {
-  WorkflowEventSourceTiming,
-  type WorkflowEventRunTiming,
-} from "./workflow-event-source-timing.service";
+  AutomationEventSourceTiming,
+  type AutomationEventRunTiming,
+} from "./automation-event-source-timing.service";
 import { runWorkflowAutomationNow$ } from "./zero-workflow-automation-run.service";
 import type { AutomationRow } from "./zero-workflow-automation-launch.service";
 import type { WorkflowAutomationContext } from "./workflow-automation-context.service";
@@ -220,7 +220,7 @@ type GoogleCalendarRunStarter = (args: {
   // Unique per change of the same calendar event; repeated updates of one event
   // are otherwise indistinguishable.
   readonly eventChangeKey: string;
-  readonly timing: WorkflowEventRunTiming;
+  readonly timing: AutomationEventRunTiming;
 }) => Promise<"ok" | "error">;
 
 interface GoogleCalendarWorkflowRunStartTestInput {
@@ -2378,7 +2378,7 @@ async function dispatchGoogleCalendarAutomationEvent(
     readonly notification: GoogleCalendarWebhookNotification;
     readonly event: CalendarEventContext;
     readonly eventChangeKey: string;
-    readonly timing: WorkflowEventRunTiming;
+    readonly timing: AutomationEventRunTiming;
     readonly startRun: GoogleCalendarRunStarter;
   },
   signal: AbortSignal,
@@ -2433,7 +2433,7 @@ async function dispatchCalendarEventChanges(
     readonly notification: GoogleCalendarWebhookNotification;
     readonly changes: readonly CalendarEventChange[];
     readonly automations: readonly GoogleCalendarEventAutomationRow[];
-    readonly sourceTiming: WorkflowEventSourceTiming;
+    readonly sourceTiming: AutomationEventSourceTiming;
     readonly startRun: GoogleCalendarRunStarter;
   },
   signal: AbortSignal,
@@ -2493,7 +2493,7 @@ async function dispatchGoogleCalendarChanges(
     readonly state: GoogleCalendarWatchStateRow;
     readonly notification: GoogleCalendarWebhookNotification;
     readonly changes: CalendarEventsListOk;
-    readonly sourceTiming: WorkflowEventSourceTiming;
+    readonly sourceTiming: AutomationEventSourceTiming;
     readonly startRun: GoogleCalendarRunStarter;
   },
   signal: AbortSignal,
@@ -2579,7 +2579,7 @@ async function dispatchGoogleCalendarWatchState(
     readonly db: Db;
     readonly state: GoogleCalendarWatchStateRow;
     readonly notification: GoogleCalendarWebhookNotification;
-    readonly sourceTiming: WorkflowEventSourceTiming;
+    readonly sourceTiming: AutomationEventSourceTiming;
     readonly startRun: GoogleCalendarRunStarter;
   },
   signal: AbortSignal,
@@ -2720,7 +2720,7 @@ export const dispatchGoogleCalendarWebhook$ = command(
       };
     }
 
-    const sourceTiming = new WorkflowEventSourceTiming(
+    const sourceTiming = new AutomationEventSourceTiming(
       "google_calendar",
       args.apiStartTime,
     );

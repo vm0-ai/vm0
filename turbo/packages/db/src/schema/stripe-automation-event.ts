@@ -1,4 +1,4 @@
-import type { StripeWorkflowEventSnapshot } from "@vm0/db/jsonb-contracts/stripe-workflow-event";
+import type { StripeAutomationEventSnapshot } from "@vm0/db/jsonb-contracts/stripe-automation-event";
 import { sql } from "drizzle-orm";
 import {
   boolean,
@@ -34,7 +34,7 @@ export const stripeWorkflowDeliveries = pgTable(
     stripeEventId: varchar("stripe_event_id", { length: 255 }).notNull(),
     stripeEventCreatedAt: timestamp("stripe_event_created_at").notNull(),
     billingReason: text("billing_reason"),
-    snapshot: jsonb("snapshot").$type<StripeWorkflowEventSnapshot>().notNull(),
+    snapshot: jsonb("snapshot").$type<StripeAutomationEventSnapshot>().notNull(),
     status: varchar("status", { length: 32 })
       .$type<StripeWorkflowDeliveryStatus>()
       .default("pending")
