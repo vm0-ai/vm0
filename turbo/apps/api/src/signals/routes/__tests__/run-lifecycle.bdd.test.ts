@@ -9,9 +9,14 @@ import {
 } from "@vm0/api-contracts/contracts/model-providers";
 import {
   CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE,
+  CONNECTOR_RUNTIME_SYNC_TARGETS_MAX,
   type ConnectorRuntimeSyncResult,
   type Job as RunnerJob,
 } from "@vm0/api-contracts/contracts/runners";
+import {
+  type CreateCustomConnectorBody,
+  ZERO_CUSTOM_CONNECTOR_IDS_ENV_KEY,
+} from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
   getCustomConnectorSkillStorageName,
@@ -88,6 +93,7 @@ import {
   seedSlackOrgInstallation$,
 } from "./helpers/zero-integrations-slack";
 import {
+  seedCustomConnectorRuntimeConnectors,
   setConnectorCredentialStorageState,
   setCustomConnectorCredentialStorageState,
 } from "./helpers/connector-credential-storage-state";
@@ -131,6 +137,43 @@ const fixtureStore = createStore();
 const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
 const ASSISTANT_EVENT_ID_NAMESPACE = "bfec4fb6-d5b8-43e4-a72a-9f58f87d7e01";
 const TEST_DATA_KEY = Buffer.from("0123456789abcdef0123456789abcdef", "utf8");
+
+type McpCustomConnectorCreateBody = Extract<
+  CreateCustomConnectorBody,
+  { readonly kind: "mcp" }
+>;
+
+function manualMcpRuntimeConnectorBody(args: {
+  readonly displayName: string;
+  readonly endpoint: string;
+  readonly skillMarkdown?: string;
+}): McpCustomConnectorCreateBody {
+  return {
+    kind: "mcp",
+    displayName: args.displayName,
+    endpoint: args.endpoint,
+    transport: "streamable-http",
+    fields: [
+      {
+        key: "secret",
+        label: "API token",
+        kind: "secret",
+        required: true,
+      },
+    ],
+    headerInjections: [
+      {
+        name: "Authorization",
+        valueTemplate: "Bearer {{secrets.secret}}",
+      },
+    ],
+    queryInjections: [],
+    authMode: "manual",
+    ...(args.skillMarkdown === undefined
+      ? {}
+      : { skillMarkdown: args.skillMarkdown }),
+  };
+}
 
 function runnerPreference(job: RunnerJob | null | undefined) {
   return job?.runnerPreference;
@@ -8604,6 +8647,329 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(cancelled.status).toBe("cancelled");
   });
 
+  it("admits feature-gated MCP connectors with exact synchronized runtime state", async () => {
+    const api = createRunsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const fw = createFirewallApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+
+    await connectors.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.CustomConnectorMcp]: true,
+    });
+    const mcpDefinition = manualMcpRuntimeConnectorBody({
+      displayName: "BDD MCP Runtime",
+      endpoint: "https://mcp-runtime.example.test/api/mcp",
+      skillMarkdown: "Use the admitted MCP server.",
+    });
+    const mcp = await connectors.createCustomConnector(actor, mcpDefinition);
+    await connectors.setCustomConnectorValues(actor, mcp.id, [
+      { key: "secret", kind: "secret", value: "mcp-runtime-token" },
+    ]);
+
+    const http = await connectors.createCustomConnector(actor, {
+      displayName: "BDD HTTP Runtime Peer",
+      prefixes: ["https://http-runtime.example.test/api/"],
+      headerName: "Authorization",
+      headerTemplate: "Bearer {{secret}}",
+    });
+    await connectors.setCustomConnectorSecret(
+      actor,
+      http.id,
+      "http-runtime-token",
+    );
+    await connectors.updateAgentCustomConnectors(actor, agentId, [
+      mcp.id,
+      http.id,
+    ]);
+
+    await connectors.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.CustomConnectorMcp]: false,
+    });
+    const disabledRun = await api.createRun(actor, {
+      agentId,
+      prompt: "do not admit MCP while rollout is disabled",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const disabledClaim = await api.claimRunnerJob(disabledRun.runId);
+    const mcpInternalName = `custom_connector_${mcp.id.replaceAll("-", "")}`;
+    expect(disabledClaim.environment?.[ZERO_CUSTOM_CONNECTOR_IDS_ENV_KEY]).toBe(
+      JSON.stringify([http.id]),
+    );
+    expect(disabledClaim.connectorRuntimeTargets).not.toContainEqual(
+      expect.objectContaining({
+        kind: "custom",
+        customConnectorId: mcp.id,
+      }),
+    );
+    expect(
+      findFirewallEntry(disabledClaim.firewalls, mcpInternalName),
+    ).toBeUndefined();
+    expect(
+      expectCanonicalStorageManifest(disabledClaim.storageManifest)
+        ?.storageMounts,
+    ).not.toContainEqual(
+      expect.objectContaining({
+        name: getCustomConnectorSkillStorageName(mcp.id),
+      }),
+    );
+    await api.requestCancelRun(actor, disabledRun.runId, [200]);
+
+    await connectors.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.CustomConnectorMcp]: true,
+    });
+    const composeName = `bdd-mcp-runtime-${randomUUID().slice(0, 8)}`;
+    const compose = await api.createCompose(actor, {
+      version: "1",
+      agents: {
+        [composeName]: {
+          framework: "claude-code",
+          environment: {
+            ANTHROPIC_API_KEY: "bdd-inline-key",
+            [ZERO_CUSTOM_CONNECTOR_IDS_ENV_KEY]: JSON.stringify([randomUUID()]),
+          },
+        },
+      },
+    });
+    const run = await api.createDirectRun(
+      actor,
+      zeroBackedDirectRunBody({
+        agentId,
+        agentComposeVersionId: compose.versionId,
+        prompt: "use the admitted MCP connector",
+      }),
+    );
+    const claim = await api.claimRunnerJob(run.runId);
+    const admittedIds = [http.id, mcp.id].sort();
+    expect(claim.environment?.[ZERO_CUSTOM_CONNECTOR_IDS_ENV_KEY]).toBe(
+      JSON.stringify(admittedIds),
+    );
+    expect(
+      claim.connectorRuntimeTargets
+        .flatMap((target) => {
+          return target.kind === "custom" ? [target.customConnectorId] : [];
+        })
+        .sort(),
+    ).toStrictEqual(admittedIds);
+    expect(claim.connectorRuntimeTargets).toContainEqual({
+      kind: "custom",
+      customConnectorId: mcp.id,
+      baseUrlVars: {},
+    });
+
+    const [mcpApi] = inlineFirewallApis(claim.firewalls, mcpInternalName);
+    expect(mcpApi).toMatchObject({
+      base: "https://mcp-runtime.example.test",
+      hostPolicy: { kind: "publicDestination" },
+      permissions: [
+        {
+          name: "mcp-endpoint",
+          rules: ["POST /api/mcp", "GET /api/mcp", "DELETE /api/mcp"],
+        },
+      ],
+    });
+    const mcpSecretKey = `CUSTOM_${mcp.id.replaceAll("-", "")}_S_SECRET`;
+    expect(mcpApi?.auth.headers?.Authorization).toBe(
+      `Bearer \${{ secrets.${mcpSecretKey} }}`,
+    );
+    expect(claim.networkPolicies?.[mcpInternalName]).toMatchObject({
+      allow: ["mcp-endpoint"],
+      unknownPolicy: "deny",
+    });
+    expect(claim.secretValues).not.toContain("mcp-runtime-token");
+    expect(
+      expectCanonicalStorageManifest(claim.storageManifest)?.storageMounts,
+    ).toContainEqual(
+      expect.objectContaining({
+        name: getCustomConnectorSkillStorageName(mcp.id),
+      }),
+    );
+
+    const target = {
+      kind: "custom" as const,
+      customConnectorId: mcp.id,
+      baseUrlVars: {},
+    };
+    const [initialResult] = await api.syncConnectorRuntime(run.runId, {
+      targets: [target],
+    });
+    const initialRuntime = availableCustomConnectorRuntime(initialResult);
+    const { body: initialAuthBody } = customConnectorRuntimeAuthBody(
+      initialRuntime,
+      fw.encryptedSecretsBody({}),
+    );
+    const initialAuth = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      initialAuthBody,
+      [200],
+    );
+    expect(initialAuth.body).toMatchObject({
+      headers: { Authorization: "Bearer mcp-runtime-token" },
+    });
+
+    await connectors.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.CustomConnectorMcp]: false,
+    });
+    const [activeWhileDisabledResult] = await api.syncConnectorRuntime(
+      run.runId,
+      { targets: [target] },
+    );
+    expect(
+      availableCustomConnectorRuntime(activeWhileDisabledResult).baseUrlVars,
+    ).toStrictEqual({});
+
+    await connectors.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.CustomConnectorMcp]: true,
+    });
+    const movedDefinition = manualMcpRuntimeConnectorBody({
+      displayName: "BDD MCP Runtime Moved",
+      endpoint: "https://mcp-runtime.example.test/v2/mcp/",
+      skillMarkdown: "Use the moved MCP server.",
+    });
+    await connectors.updateCustomConnector(actor, mcp.id, movedDefinition);
+    const [movedResult] = await api.syncConnectorRuntime(run.runId, {
+      targets: [target],
+    });
+    const movedRuntime = availableCustomConnectorRuntime(movedResult);
+    expect(movedRuntime.firewall.firewall.apis[0]).toMatchObject({
+      base: "https://mcp-runtime.example.test",
+      permissions: [
+        {
+          name: "mcp-endpoint",
+          rules: ["POST /v2/mcp/", "GET /v2/mcp/", "DELETE /v2/mcp/"],
+        },
+      ],
+    });
+
+    await connectors.disconnectCustomConnector(actor, mcp.id);
+    const [disconnectedResult] = await api.syncConnectorRuntime(run.runId, {
+      targets: [target],
+    });
+    const disconnectedRuntime =
+      availableCustomConnectorRuntime(disconnectedResult);
+    const { body: disconnectedAuthBody } = customConnectorRuntimeAuthBody(
+      disconnectedRuntime,
+      fw.encryptedSecretsBody({}),
+    );
+    const disconnectedAuth = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      disconnectedAuthBody,
+      [424],
+    );
+    if (disconnectedAuth.status !== 424) {
+      throw new Error("Expected disconnected MCP connector credentials");
+    }
+    expect(disconnectedAuth.body.error).toMatchObject({
+      code: "CONNECTOR_NOT_CONFIGURED",
+    });
+
+    const [mismatchedRoutingResult] = await api.syncConnectorRuntime(
+      run.runId,
+      {
+        targets: [
+          {
+            kind: "custom",
+            customConnectorId: mcp.id,
+            baseUrlVars: { unexpected: "value" },
+          },
+        ],
+      },
+    );
+    expect(mismatchedRoutingResult).toMatchObject({
+      target: { kind: "custom", customConnectorId: mcp.id },
+      state: "unresolved",
+      reason: "runtime-configuration-unavailable",
+    });
+
+    await connectors.setCustomConnectorValues(actor, mcp.id, [
+      { key: "secret", kind: "secret", value: "mcp-restored-token" },
+    ]);
+    await connectors.updateAgentCustomConnectors(
+      actor,
+      agentId,
+      [mcp.id],
+      "remove",
+    );
+    const [removedGrantResult] = await api.syncConnectorRuntime(run.runId, {
+      targets: [target],
+    });
+    expect(
+      availableCustomConnectorRuntime(removedGrantResult).baseUrlVars,
+    ).toStrictEqual({});
+    expect(claim.environment?.[ZERO_CUSTOM_CONNECTOR_IDS_ENV_KEY]).toBe(
+      JSON.stringify(admittedIds),
+    );
+
+    await connectors.deleteCustomConnector(actor, mcp.id);
+    const [deletedResult] = await api.syncConnectorRuntime(run.runId, {
+      targets: [target],
+    });
+    expect(deletedResult).toMatchObject({
+      target: { kind: "custom", customConnectorId: mcp.id },
+      state: "absent",
+      reason: "connector-unavailable",
+    });
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+  });
+
+  it("hands off more than one runtime-sync batch without truncation", async () => {
+    const api = createRunsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    if (!actor.orgId) {
+      throw new Error("Expected a custom connector actor with an organization");
+    }
+    const suffix = randomUUID().slice(0, 8);
+    const connectorCount = CONNECTOR_RUNTIME_SYNC_TARGETS_MAX + 1;
+    const runtimeConnectors = Array.from(
+      { length: connectorCount },
+      (_unused, sequence) => {
+        return {
+          id: randomUUID(),
+          slug: `_bdd-batch-${suffix}-${sequence}`,
+          displayName: `BDD Runtime Batch ${sequence}`,
+          prefixTemplate: `https://batch-${sequence}-${suffix}.example.test/api/`,
+        };
+      },
+    );
+    await seedCustomConnectorRuntimeConnectors(context, {
+      orgId: actor.orgId,
+      userId: actor.userId,
+      customConnectors: runtimeConnectors,
+    });
+    const createdIds = runtimeConnectors.map((connector) => {
+      return connector.id;
+    });
+    const enabledIds = await connectors.updateAgentCustomConnectors(
+      actor,
+      agentId,
+      createdIds,
+    );
+    expect(enabledIds).toHaveLength(connectorCount);
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "use more than one connector runtime sync batch",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+    const expectedIds = [...createdIds].sort();
+    expect(claim.environment?.[ZERO_CUSTOM_CONNECTOR_IDS_ENV_KEY]).toBe(
+      JSON.stringify(expectedIds),
+    );
+    expect(
+      claim.connectorRuntimeTargets
+        .flatMap((target) => {
+          return target.kind === "custom" ? [target.customConnectorId] : [];
+        })
+        .sort(),
+    ).toStrictEqual(expectedIds);
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+  });
+
   it("keeps a granted custom skill independent from runtime admission", async () => {
     const api = createRunsApi(context);
     createBddApi(context).acceptAgentStorageWrites();
@@ -9124,6 +9490,107 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
 
     await api.requestCancelRun(actor, firstRun.runId, [200]);
     await api.requestCancelRun(actor, secondRun.runId, [200]);
+  });
+
+  it("resolves current OAuth credentials for admitted MCP connectors", async () => {
+    const provider = mockCustomConnectorOAuth2Provider(context, {
+      initialExpiresIn: 3600,
+    });
+    const api = createRunsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const fw = createFirewallApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+
+    await connectors.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.CustomConnectorMcp]: true,
+    });
+    const mcp = await connectors.createCustomConnector(actor, {
+      kind: "mcp",
+      displayName: "BDD MCP OAuth Runtime",
+      endpoint: "https://mcp-oauth.example.test/oauth/mcp",
+      transport: "streamable-http",
+      fields: [],
+      headerInjections: [
+        {
+          name: "Authorization",
+          valueTemplate: "Bearer {{oauth.access_token}}",
+        },
+      ],
+      queryInjections: [],
+      authMode: "oauth",
+      oauthConfig: {
+        providerAdapter: "standard",
+        clientId: "mcp-runtime-client-id",
+        clientSecret: "mcp-runtime-client-secret",
+        authorizationUrl: provider.authorizationUrl,
+        tokenUrl: provider.tokenUrl,
+        tokenEndpointAuthMethod: "client_secret_basic",
+        pkceMethod: "none",
+        scopes: ["read"],
+        authorizationParams: {},
+      },
+    });
+    const authorizationUrl = await connectors.startCustomConnectorOAuth2(
+      actor,
+      mcp.id,
+    );
+    const state = new URL(authorizationUrl).searchParams.get("state");
+    if (!state) {
+      throw new Error("Expected MCP custom connector OAuth state");
+    }
+    await connectors.completeCustomConnectorOAuth2Callback({
+      code: "mcp-runtime-authorization-code",
+      state,
+    });
+    await connectors.updateAgentCustomConnectors(actor, agentId, [mcp.id]);
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "use the OAuth MCP connector",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+    expect(claim.environment?.[ZERO_CUSTOM_CONNECTOR_IDS_ENV_KEY]).toBe(
+      JSON.stringify([mcp.id]),
+    );
+    const internalName = `custom_connector_${mcp.id.replaceAll("-", "")}`;
+    expect(inlineFirewallApis(claim.firewalls, internalName)[0]).toMatchObject({
+      base: "https://mcp-oauth.example.test",
+      permissions: [
+        {
+          name: "mcp-endpoint",
+          rules: ["POST /oauth/mcp", "GET /oauth/mcp", "DELETE /oauth/mcp"],
+        },
+      ],
+    });
+    const [runtimeResult] = await api.syncConnectorRuntime(run.runId, {
+      targets: [
+        {
+          kind: "custom",
+          customConnectorId: mcp.id,
+          baseUrlVars: {},
+        },
+      ],
+    });
+    const runtime = availableCustomConnectorRuntime(runtimeResult);
+    const { body: authBody } = customConnectorRuntimeAuthBody(
+      runtime,
+      fw.encryptedSecretsBody({}),
+    );
+    const resolved = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      authBody,
+      [200],
+    );
+    expect(resolved.body).toMatchObject({
+      headers: { Authorization: "Bearer custom-oauth-initial-access-token" },
+    });
+    expect(claim.secretValues).not.toContain(
+      "custom-oauth-initial-access-token",
+    );
+
+    await api.requestCancelRun(actor, run.runId, [200]);
   });
 
   it("injects only enabled custom connector firewalls for Zero-backed direct runs", async () => {
