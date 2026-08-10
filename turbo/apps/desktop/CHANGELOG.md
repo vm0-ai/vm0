@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.29.58](https://github.com/vm0-ai/vm0/compare/desktop-v0.29.57...desktop-v0.29.58) (2026-08-10)
+
+
+### Refactoring
+
+* reduce fallback slop in ui helpers ([#26198](https://github.com/vm0-ai/vm0/issues/26198)) ([bc54305](https://github.com/vm0-ai/vm0/commit/bc54305c09f3ef75dab375bb866ec6c69d10ac4f))
+
 ## [0.29.57](https://github.com/vm0-ai/vm0/compare/desktop-v0.29.56...desktop-v0.29.57) (2026-08-10)
 
 

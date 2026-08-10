@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.723.1](https://github.com/vm0-ai/vm0/compare/app-v0.723.0...app-v0.723.1) (2026-08-10)
+
+
+### Bug Fixes
+
+* restore paid onboarding funnel telemetry ([#26201](https://github.com/vm0-ai/vm0/issues/26201)) ([e420f7d](https://github.com/vm0-ai/vm0/commit/e420f7d71751bddae9ca44b202b1985b6c77c4f0))
+
+
+### Refactoring
+
+* reduce fallback slop in ui helpers ([#26198](https://github.com/vm0-ai/vm0/issues/26198)) ([bc54305](https://github.com/vm0-ai/vm0/commit/bc54305c09f3ef75dab375bb866ec6c69d10ac4f))
+
 ## [0.723.0](https://github.com/vm0-ai/vm0/compare/app-v0.722.0...app-v0.723.0) (2026-08-10)
 
 
