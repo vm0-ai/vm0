@@ -1,1 +1,0 @@
-DROP TABLE "usage_daily" CASCADE;

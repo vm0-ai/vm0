@@ -793,11 +793,6 @@ const updateAgentCustomConnectorsInner$ = command(
         },
       };
     }
-    if (updated.status === "customConnectorsNotConfigured") {
-      return validationError(
-        `Custom connector ids are not configured for this user: ${updated.unconfiguredIds.join(", ")}`,
-      );
-    }
     if (updated.status === "customConnectorPermissionSelectionRequired") {
       return validationError(
         `Permission selection is required for custom connector ids: ${updated.connectorIds.join(", ")}`,

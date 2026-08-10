@@ -388,28 +388,6 @@ export async function publishCancelToRunnerGroup(
   L.debug(`Published ${mode} cancel ${runId} to runner-group:${group}`);
 }
 
-/**
- * Best-effort post-commit wakeup. Delivery failure leaves an active run on its
- * last-known-good policy and must not reinterpret the committed grant change.
- */
-export async function publishConnectorRuntimeSyncToRunnerGroupSafely(
-  group: string,
-  runId: string,
-  target: ConnectorRuntimeTarget,
-): Promise<void> {
-  await tapError(
-    publishConnectorRuntimeSyncToRunnerGroup(group, runId, target),
-    (error) => {
-      L.warn("Failed to publish connector runtime sync", {
-        group,
-        runId,
-        target,
-        error,
-      });
-    },
-  );
-}
-
 export async function publishConnectorRuntimeSyncToRunnerGroup(
   group: string,
   runId: string,

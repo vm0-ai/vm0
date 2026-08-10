@@ -16,6 +16,10 @@
       "import": "./src/jsonb-contracts/*.ts",
       "types": "./src/jsonb-contracts/*.ts"
     },
+    "./rollout-compat/*": {
+      "import": "./src/rollout-compat/*.ts",
+      "types": "./src/rollout-compat/*.ts"
+    },
     "./types": {
       "import": "./src/types.ts",
       "types": "./src/types.ts"

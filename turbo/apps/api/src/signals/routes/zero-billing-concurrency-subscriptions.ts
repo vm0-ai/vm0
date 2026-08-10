@@ -2,9 +2,10 @@ import { command } from "ccstate";
 import { zeroBillingConcurrencySubscriptionContract } from "@vm0/api-contracts/contracts/zero-billing";
 
 import { billingRedirectAllowed } from "../../lib/billing-redirect";
-import { env, optionalEnv } from "../../lib/env";
+import { optionalEnv } from "../../lib/env";
 import {
   badRequestMessage,
+  conflict,
   notFound,
   providerUnavailable,
 } from "../../lib/error";
@@ -13,6 +14,8 @@ import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf } from "../context/request";
 import {
   cancelConcurrencySubscription$,
+  changeConcurrencySubscription$,
+  previewConcurrencySubscriptionChange$,
   reduceConcurrencySubscription$,
   restoreConcurrencySubscription$,
 } from "../services/zero-billing-concurrency-subscription.service";
@@ -27,6 +30,158 @@ const adminRequired = Object.freeze({
     }),
   }),
 });
+
+const previewConcurrencySubscriptionChangeAuthed$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    if (auth.orgRole !== "admin") {
+      return adminRequired;
+    }
+    signal.throwIfAborted();
+
+    const bodyResult = await get(
+      bodyResultOf(zeroBillingConcurrencySubscriptionContract.previewChange),
+    );
+    signal.throwIfAborted();
+    if (!bodyResult.ok) {
+      return bodyResult.response;
+    }
+    const { subscriptionId } = get(
+      pathParamsOf(zeroBillingConcurrencySubscriptionContract.previewChange),
+    );
+    const result = await set(
+      previewConcurrencySubscriptionChange$,
+      {
+        orgId: auth.orgId,
+        subscriptionId,
+        quantity: bodyResult.data.quantity,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+
+    if (!result.ok) {
+      switch (result.reason) {
+        case "not_found": {
+          return notFound("Concurrency subscription not found");
+        }
+        case "canceling": {
+          return badRequestMessage(
+            "Restore the concurrency subscription before changing slots",
+          );
+        }
+        case "no_change": {
+          return badRequestMessage(
+            "New concurrency quantity must differ from the current quantity",
+          );
+        }
+        case "pending_update": {
+          return conflict(
+            "Complete the pending concurrency update before changing slots",
+          );
+        }
+      }
+    }
+
+    return { status: 200 as const, body: result.preview };
+  },
+);
+
+const previewConcurrencySubscriptionChangeRoute$ = command(
+  async ({ set }, signal: AbortSignal) => {
+    if (!optionalEnv("STRIPE_SECRET_KEY")) {
+      return providerUnavailable("Billing not configured");
+    }
+
+    return await set(
+      authRoute(
+        {
+          requireOrganization: true,
+          missingOrganizationStatus: 401,
+          requiredCapability: "billing:write",
+        },
+        previewConcurrencySubscriptionChangeAuthed$,
+      ),
+      signal,
+    );
+  },
+);
+
+const confirmConcurrencySubscriptionChangeAuthed$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    if (auth.orgRole !== "admin") {
+      return adminRequired;
+    }
+    signal.throwIfAborted();
+
+    const bodyResult = await get(
+      bodyResultOf(zeroBillingConcurrencySubscriptionContract.confirmChange),
+    );
+    signal.throwIfAborted();
+    if (!bodyResult.ok) {
+      return bodyResult.response;
+    }
+    const { subscriptionId } = get(
+      pathParamsOf(zeroBillingConcurrencySubscriptionContract.confirmChange),
+    );
+    const result = await set(
+      changeConcurrencySubscription$,
+      {
+        orgId: auth.orgId,
+        subscriptionId,
+        quantity: bodyResult.data.quantity,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+
+    if (!result.ok) {
+      switch (result.reason) {
+        case "not_found": {
+          return notFound("Concurrency subscription not found");
+        }
+        case "canceling": {
+          return badRequestMessage(
+            "Restore the concurrency subscription before changing slots",
+          );
+        }
+        case "invalid_quantity": {
+          return badRequestMessage(
+            "Concurrency quantity must be between 1 and 1000 slots",
+          );
+        }
+        case "pending_update": {
+          return conflict(
+            "Complete the pending concurrency update before changing slots",
+          );
+        }
+      }
+    }
+
+    return { status: 200 as const, body: result.response };
+  },
+);
+
+const confirmConcurrencySubscriptionChangeRoute$ = command(
+  async ({ set }, signal: AbortSignal) => {
+    if (!optionalEnv("STRIPE_SECRET_KEY")) {
+      return providerUnavailable("Billing not configured");
+    }
+
+    return await set(
+      authRoute(
+        {
+          requireOrganization: true,
+          missingOrganizationStatus: 401,
+          requiredCapability: "billing:write",
+        },
+        confirmConcurrencySubscriptionChangeAuthed$,
+      ),
+      signal,
+    );
+  },
+);
 
 const reduceConcurrencySubscriptionAuthed$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -52,15 +207,6 @@ const reduceConcurrencySubscriptionAuthed$ = command(
         "Billing redirects must use the configured app origin",
       );
     }
-    const portalConfigurationId = env(
-      "STRIPE_CONCURRENCY_PORTAL_CONFIGURATION_ID",
-    );
-    if (!portalConfigurationId) {
-      return badRequestMessage(
-        "Concurrency billing portal configuration is not configured",
-      );
-    }
-
     const { subscriptionId } = get(
       pathParamsOf(zeroBillingConcurrencySubscriptionContract.reduce),
     );
@@ -70,9 +216,7 @@ const reduceConcurrencySubscriptionAuthed$ = command(
         orgId: auth.orgId,
         subscriptionId,
         quantity,
-        portalConfigurationId,
         successUrl,
-        cancelUrl,
       },
       signal,
     );
@@ -232,6 +376,14 @@ const restoreConcurrencySubscriptionRoute$ = command(
 );
 
 export const zeroBillingConcurrencySubscriptionRoutes: readonly RouteEntry[] = [
+  {
+    route: zeroBillingConcurrencySubscriptionContract.previewChange,
+    handler: previewConcurrencySubscriptionChangeRoute$,
+  },
+  {
+    route: zeroBillingConcurrencySubscriptionContract.confirmChange,
+    handler: confirmConcurrencySubscriptionChangeRoute$,
+  },
   {
     route: zeroBillingConcurrencySubscriptionContract.reduce,
     handler: reduceConcurrencySubscriptionRoute$,

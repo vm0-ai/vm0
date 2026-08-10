@@ -87,6 +87,8 @@ afterEach(() => {
   Reflect.deleteProperty(window, "__vm0BrowserSupported");
   Reflect.deleteProperty(window, "__vm0BrowserUpgrade");
   Reflect.deleteProperty(window, "__vm0PreBundleCopy");
+  delete document.documentElement.dataset.appBrandName;
+  delete document.documentElement.dataset.appHeadManaged;
   delete document.documentElement.dataset.browserUpgradeTarget;
   delete document.documentElement.dataset.browserSupported;
   testLocaleStorage.updateRaw(() => {
@@ -145,6 +147,52 @@ describe("bootstrap locale", () => {
         title: "Zero — Tu compañero de IA de vm0",
       },
     });
+  });
+
+  it("preserves edge metadata while applying the Okou browser brand", async () => {
+    context.mocks.browser.language("en-US");
+    document.documentElement.dataset.appBrandName = "Okou";
+    document.documentElement.dataset.appHeadManaged = "true";
+    document.documentElement.dataset.browserUpgradeTarget = "chrome";
+
+    const metadata = document.createElement("meta");
+    metadata.name = "description";
+    metadata.content = "Edge-managed description";
+    const upgradeDescription = document.createElement("p");
+    upgradeDescription.id = "browser-upgrade-description";
+    document.head.append(metadata);
+    document.body.append(upgradeDescription);
+    context.signal.addEventListener(
+      "abort",
+      () => {
+        metadata.remove();
+        upgradeDescription.remove();
+      },
+      { once: true },
+    );
+
+    executeLocaleEntrypoint();
+    executeMetadataEntrypoint();
+
+    expect(window.__vm0PreBundleCopy).toMatchObject({
+      browserUpgrade: {
+        chrome: {
+          description:
+            "Okou does not support your current browser version. Update Chrome to continue.",
+        },
+      },
+    });
+
+    await setupPage({
+      context,
+      path: "/error",
+      withoutRender: true,
+    });
+
+    expect(metadata).toHaveAttribute("content", "Edge-managed description");
+    expect(upgradeDescription).toHaveTextContent(
+      "Okou does not support your current browser version.",
+    );
   });
 
   it("loads Korean pre-bundle copy and typed resources from the browser locale", async () => {
@@ -280,7 +328,7 @@ describe("bootstrap locale", () => {
     );
     expect(upgradeTitle).toHaveTextContent("Update Chrome to continue");
     expect(upgradeDescription).toHaveTextContent(
-      "Zero does not support your current browser version.",
+      "VM0 does not support your current browser version.",
     );
     expect(upgradeAction).toHaveTextContent("Update Chrome");
   });

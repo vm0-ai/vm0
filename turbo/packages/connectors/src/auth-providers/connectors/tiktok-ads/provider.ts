@@ -1,9 +1,5 @@
 import type { AuthCodeConnectorAuthProvider } from "../../types";
-import {
-  buildTikTokAdsAuthorizationUrl,
-  exchangeTikTokAdsCode,
-  refreshTikTokAdsToken,
-} from "./oauth";
+import { buildTikTokAdsAuthorizationUrl, exchangeTikTokAdsCode } from "./oauth";
 
 export const tiktokAdsProvider: AuthCodeConnectorAuthProvider<"tiktok-ads"> = {
   grant: {
@@ -28,9 +24,7 @@ export const tiktokAdsProvider: AuthCodeConnectorAuthProvider<"tiktok-ads"> = {
       return {
         outputs: {
           accessToken: result.accessToken,
-          refreshToken: result.refreshToken,
         },
-        expiresIn: result.expiresIn,
         scopes: result.scopes,
         userInfo: {
           id: result.userInfo.id,
@@ -40,25 +34,6 @@ export const tiktokAdsProvider: AuthCodeConnectorAuthProvider<"tiktok-ads"> = {
       };
     },
   },
-  access: {
-    kind: "refresh-token",
-    refresh: async (args, signal: AbortSignal) => {
-      const { clientId, clientSecret } = args.authClient;
-      const currentRefreshToken = args.inputs.refreshToken;
-      const result = await refreshTikTokAdsToken(
-        clientId,
-        clientSecret,
-        currentRefreshToken,
-        signal,
-      );
-      return {
-        outputs: {
-          accessToken: result.accessToken,
-          refreshToken: result.refreshToken ?? currentRefreshToken,
-        },
-        expiresIn: result.expiresIn,
-      };
-    },
-  },
+  access: { kind: "none" },
   revoke: { kind: "none" },
 };

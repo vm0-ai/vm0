@@ -1,8 +1,9 @@
-import type {
-  ConnectorRuntimeCustomUnavailableReason,
-  ConnectorRuntimeSyncResult,
-  ConnectorRuntimeTarget,
-  ConnectorRuntimeTargetRegistration,
+import {
+  connectorRuntimeTargetKey,
+  type ConnectorRuntimeCustomUnavailableReason,
+  type ConnectorRuntimeSyncResult,
+  type ConnectorRuntimeTarget,
+  type ConnectorRuntimeTargetRegistration,
 } from "@vm0/api-contracts/contracts/runners";
 import type { AgentCustomConnectorGrant } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 import { userCustomConnectors } from "@vm0/db/schema/user-custom-connector";
@@ -240,7 +241,13 @@ export async function resolveConnectorRuntimeTargets(args: {
   ]);
   const builtinByTarget = new Map(
     builtinRefreshes.map((refresh) => {
-      return [`builtin:${refresh.connectorSlug}`, refresh] as const;
+      return [
+        connectorRuntimeTargetKey({
+          kind: "builtin",
+          connectorSlug: refresh.connectorSlug,
+        }),
+        refresh,
+      ] as const;
     }),
   );
 
@@ -259,7 +266,7 @@ export async function resolveConnectorRuntimeTargets(args: {
       kind: "builtin" as const,
       connectorSlug: registration.connectorSlug,
     };
-    const refresh = builtinByTarget.get(`builtin:${target.connectorSlug}`);
+    const refresh = builtinByTarget.get(connectorRuntimeTargetKey(target));
     results.push(
       refresh
         ? {
