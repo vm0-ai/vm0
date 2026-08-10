@@ -3,7 +3,7 @@ import { webhookNotionContract } from "@vm0/api-contracts/contracts/webhooks";
 
 import { request$ } from "../context/hono";
 import type { RouteEntry } from "../route-entry";
-import { dispatchNotionWebhook$ } from "../services/notion-workflow-event.service";
+import { dispatchNotionWebhook$ } from "../services/notion-automation-event.service";
 
 function jsonError(message: string, status: 400 | 401 | 503): Response {
   return Response.json({ error: message }, { status });

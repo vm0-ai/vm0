@@ -13,7 +13,7 @@ import { z } from "zod";
 import { logger } from "../../lib/log";
 import { writeDb$, type Db } from "../external/db";
 import { publishUserSignal } from "../external/realtime";
-import { dispatchGithubLabelWorkflowAutomations$ } from "./github-workflow-event.service";
+import { dispatchGithubLabelWorkflowAutomations$ } from "./github-label-automation-event.service";
 import {
   dispatchGithubWebhookAutomations$,
   type GithubDeploymentStatusEventPayload,
