@@ -15,6 +15,10 @@ import {
 } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { testUsageSettlementRoutes } from "../test-usage-settlement";
+import {
+  testUsagePackSubscriptionStateContract,
+  testUsagePackSubscriptionStateRoutes,
+} from "../test-usage-pack-subscription-state";
 import { zeroBillingUsagePackCreditsRoutes } from "../zero-billing-usage-pack-credits";
 
 const context = testContext();
@@ -32,8 +36,11 @@ function fixture(): UsagePackCreditsFixture {
   };
 }
 
-function authenticate(actor: UsagePackCreditsFixture): void {
-  mocks.clerk.session(actor.userId, actor.orgId, "org:member");
+function authenticate(
+  actor: UsagePackCreditsFixture,
+  role: "org:admin" | "org:member" = "org:member",
+): void {
+  mocks.clerk.session(actor.userId, actor.orgId, role);
 }
 
 function creditsClient() {
@@ -46,6 +53,50 @@ function settlementClient() {
   return setupApp({ context, routes: testUsageSettlementRoutes })(
     testUsageSettlementContract,
   );
+}
+
+function usagePackStateClient() {
+  return setupApp({
+    context,
+    routes: testUsagePackSubscriptionStateRoutes,
+  })(testUsagePackSubscriptionStateContract);
+}
+
+async function setupActiveUsagePack(
+  actor: UsagePackCreditsFixture,
+): Promise<string> {
+  await accept(
+    settlementClient().setup({
+      body: { org_id: actor.orgId, credits: 0 },
+    }),
+    [200],
+  );
+  const response = await accept(
+    usagePackStateClient().action({
+      body: {
+        action: "seed",
+        orgId: actor.orgId,
+        tier: "pro",
+        stripePlanPriceId: "price_test_pro",
+        stripeCustomerId: `cus_${randomUUID()}`,
+        stripeCheckoutSessionId: `cs_${randomUUID()}`,
+        allocations: [
+          {
+            userId: actor.userId,
+            invitationId: null,
+            usagePackUsd: 20,
+            stripePriceId: "price_test_usage_pack_20",
+            status: "active",
+          },
+        ],
+      },
+    }),
+    [200],
+  );
+  if (response.body.action !== "seeded") {
+    throw new Error("Expected seeded usage pack state");
+  }
+  return response.body.usagePackSubscriptionId;
 }
 
 async function createGrant(args: {
@@ -70,9 +121,26 @@ async function createGrant(args: {
   );
 }
 
-function registerCleanup(actor: UsagePackCreditsFixture): void {
+function registerCleanup(
+  actor: UsagePackCreditsFixture,
+  usagePackSubscriptionId?: string,
+): void {
   onTestFinished(async () => {
     clearMockNow();
+    if (usagePackSubscriptionId) {
+      await accept(
+        usagePackStateClient().action({
+          body: {
+            action: "cleanup",
+            orgId: actor.orgId,
+            usagePackSubscriptionId,
+            deleteGrants: false,
+            deleteOrgMetadata: true,
+          },
+        }),
+        [200],
+      );
+    }
     await accept(
       settlementClient().cleanup({ body: { org_id: actor.orgId } }),
       [200],
@@ -101,11 +169,37 @@ describe("GET /api/zero/billing/usage-pack-credits", () => {
     });
   });
 
+  it("reports when the organization has no active usage pack", async () => {
+    mockEnv("ENV", "development");
+    const actor = fixture();
+    registerCleanup(actor);
+    await updateFeatureSwitchesForUser(context, actor, {
+      [FeatureSwitchKey.UsagePackPlans]: true,
+    });
+    authenticate(actor);
+
+    const response = await accept(
+      creditsClient().get({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      totalCredits: 0,
+      purchasedCredits: 0,
+      bonusCredits: 0,
+      creditGrants: [],
+      hasUsagePack: false,
+    });
+  });
+
   it("returns only the current member's active purchased and bonus credits", async () => {
     mockEnv("ENV", "development");
     mockNow(new Date("2026-08-10T00:00:00.000Z"));
     const actor = fixture();
-    registerCleanup(actor);
+    const usagePackSubscriptionId = await setupActiveUsagePack(actor);
+    registerCleanup(actor, usagePackSubscriptionId);
 
     await createGrant({
       actor,
@@ -148,6 +242,100 @@ describe("GET /api/zero/billing/usage-pack-credits", () => {
       totalCredits: 20_400,
       purchasedCredits: 20_000,
       bonusCredits: 400,
+      hasUsagePack: true,
+      creditGrants: expect.arrayContaining([
+        expect.objectContaining({
+          grantType: "purchased",
+          amount: 20_000,
+          remaining: 20_000,
+          createdAt: expect.any(String),
+          expiresAt: "2026-09-10T00:00:00.000Z",
+        }),
+        expect.objectContaining({
+          grantType: "bonus",
+          amount: 400,
+          remaining: 400,
+          createdAt: expect.any(String),
+          expiresAt: "2026-09-10T00:00:00.000Z",
+        }),
+      ]),
     });
+    expect(response.body.creditGrants).toHaveLength(2);
+  });
+
+  it("returns every member's active usage pack balance to an admin", async () => {
+    mockEnv("ENV", "development");
+    mockNow(new Date("2026-08-10T00:00:00.000Z"));
+    const actor = fixture();
+    const otherUserId = `user_${randomUUID()}`;
+    const usagePackSubscriptionId = await setupActiveUsagePack(actor);
+    registerCleanup(actor, usagePackSubscriptionId);
+
+    await createGrant({
+      actor,
+      grantType: "purchased",
+      amount: 20_000,
+      expiresAt: "2026-09-10T00:00:00.000Z",
+    });
+    await createGrant({
+      actor,
+      userId: otherUserId,
+      grantType: "purchased",
+      amount: 50_000,
+      expiresAt: "2026-09-10T00:00:00.000Z",
+    });
+    await createGrant({
+      actor,
+      userId: otherUserId,
+      grantType: "bonus",
+      amount: 4350,
+      expiresAt: "2026-09-10T00:00:00.000Z",
+    });
+    await updateFeatureSwitchesForUser(context, actor, {
+      [FeatureSwitchKey.UsagePackPlans]: true,
+    });
+    authenticate(actor, "org:admin");
+
+    const response = await accept(
+      creditsClient().get({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body.memberCredits).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          memberId: actor.userId,
+          totalCredits: 20_000,
+          purchasedCredits: 20_000,
+          bonusCredits: 0,
+          creditGrants: [
+            expect.objectContaining({
+              grantType: "purchased",
+              remaining: 20_000,
+            }),
+          ],
+        }),
+        expect.objectContaining({
+          memberId: otherUserId,
+          totalCredits: 54_350,
+          purchasedCredits: 50_000,
+          bonusCredits: 4350,
+          creditGrants: expect.arrayContaining([
+            expect.objectContaining({
+              grantType: "purchased",
+              remaining: 50_000,
+            }),
+            expect.objectContaining({
+              grantType: "bonus",
+              remaining: 4350,
+            }),
+          ]),
+        }),
+      ]),
+    );
+    expect(response.body.memberCredits).toHaveLength(2);
+    expect(response.body.hasUsagePack).toBeTruthy();
   });
 });

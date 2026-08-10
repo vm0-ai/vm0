@@ -92,6 +92,7 @@ export const apiBillingHandlers = [
       totalCredits: 0,
       purchasedCredits: 0,
       bonusCredits: 0,
+      creditGrants: [],
     });
   }),
 

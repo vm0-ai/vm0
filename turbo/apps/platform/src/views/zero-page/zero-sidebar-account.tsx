@@ -90,18 +90,6 @@ function formatCreditBalance(credits: number): string {
   );
 }
 
-function formatUsagePackCreditBalance(credits: number): string {
-  return i18n.t(
-    ($) => {
-      return $.settings.accountMenu.usagePackCreditBalance;
-    },
-    {
-      count: credits,
-      value: formatLocalizedNumber(credits),
-    },
-  );
-}
-
 function AccountAvatar({
   imageUrl,
   name,
@@ -270,20 +258,39 @@ function AccountUsageGroup({
   resetPending,
   subscriptionRowsCacheKey,
   subscriptionsEnabled,
+  usagePackPlansEnabled,
 }: {
   onOpenCreditBalance: () => void;
   onResetCodexUsage: (resetCredits: number | null) => void;
   resetPending: boolean;
   subscriptionRowsCacheKey: AccountMenuSubscriptionUsageRowsCacheKey;
   subscriptionsEnabled: boolean;
+  usagePackPlansEnabled: boolean;
 }) {
   const isAdminLoadable = useLastLoadable(isOrgAdmin$);
   const isAdmin =
     isAdminLoadable.state === "hasData" && isAdminLoadable.data === true;
 
   if (subscriptionsEnabled) {
-    return isAdmin ? (
-      <AccountUsageGroupWithCredit
+    if (isAdmin) {
+      return usagePackPlansEnabled ? (
+        <AccountUsageGroupWithCombinedCredit
+          onOpenCreditBalance={onOpenCreditBalance}
+          onResetCodexUsage={onResetCodexUsage}
+          resetPending={resetPending}
+          subscriptionRowsCacheKey={subscriptionRowsCacheKey}
+        />
+      ) : (
+        <AccountUsageGroupWithCredit
+          onOpenCreditBalance={onOpenCreditBalance}
+          onResetCodexUsage={onResetCodexUsage}
+          resetPending={resetPending}
+          subscriptionRowsCacheKey={subscriptionRowsCacheKey}
+        />
+      );
+    }
+    return usagePackPlansEnabled ? (
+      <AccountUsageGroupWithUsagePackCredit
         onOpenCreditBalance={onOpenCreditBalance}
         onResetCodexUsage={onResetCodexUsage}
         resetPending={resetPending}
@@ -298,9 +305,59 @@ function AccountUsageGroup({
     );
   }
 
-  return isAdmin ? (
-    <AccountCreditBalanceGroup onOpenCreditBalance={onOpenCreditBalance} />
+  if (isAdmin) {
+    return usagePackPlansEnabled ? (
+      <AccountCombinedCreditBalanceGroup
+        onOpenCreditBalance={onOpenCreditBalance}
+      />
+    ) : (
+      <AccountCreditBalanceGroup onOpenCreditBalance={onOpenCreditBalance} />
+    );
+  }
+  return usagePackPlansEnabled ? (
+    <AccountUsagePackCreditGroup onOpenCreditBalance={onOpenCreditBalance} />
   ) : null;
+}
+
+function useCombinedCreditBalance(): {
+  readonly creditLabel: string | null;
+  readonly loading: boolean;
+} {
+  const billingLoadable = useLastLoadable(billingStatusAsync$);
+  const usagePackLoadable = useLastLoadable(usagePackCreditsAsync$);
+  const organizationCredits =
+    billingLoadable.state === "hasData" ? billingLoadable.data.credits : null;
+  const usagePackCredits =
+    usagePackLoadable.state === "hasData"
+      ? usagePackLoadable.data.totalCredits
+      : null;
+  const waitingForOrganization =
+    billingLoadable.state === "loading" && organizationCredits === null;
+  const waitingForUsagePack =
+    usagePackLoadable.state === "loading" && usagePackCredits === null;
+  const credits =
+    organizationCredits !== null && !waitingForUsagePack
+      ? organizationCredits + (usagePackCredits ?? 0)
+      : null;
+  return {
+    creditLabel: credits !== null ? formatCreditBalance(credits) : null,
+    loading: waitingForOrganization || waitingForUsagePack,
+  };
+}
+
+function useUsagePackCreditBalance(): {
+  readonly creditLabel: string | null;
+  readonly loading: boolean;
+} {
+  const creditsLoadable = useLastLoadable(usagePackCreditsAsync$);
+  const credits =
+    creditsLoadable.state === "hasData"
+      ? creditsLoadable.data.totalCredits
+      : null;
+  return {
+    creditLabel: credits !== null ? formatCreditBalance(credits) : null,
+    loading: creditsLoadable.state === "loading" && credits === null,
+  };
 }
 
 function AccountCreditBalanceGroup({
@@ -380,6 +437,122 @@ function AccountUsageGroupWithCredit({
   );
 }
 
+function AccountUsageGroupWithCombinedCredit({
+  onOpenCreditBalance,
+  onResetCodexUsage,
+  resetPending,
+  subscriptionRowsCacheKey,
+}: {
+  onOpenCreditBalance: () => void;
+  onResetCodexUsage: (resetCredits: number | null) => void;
+  resetPending: boolean;
+  subscriptionRowsCacheKey: AccountMenuSubscriptionUsageRowsCacheKey;
+}) {
+  const { creditLabel, loading: creditLoading } = useCombinedCreditBalance();
+  const { loading: subscriptionsLoading, rows } = useSubscriptionUsageRows({
+    cacheKey: subscriptionRowsCacheKey,
+  });
+  const showCredit = creditLoading || creditLabel !== null;
+  const showSubscriptions = subscriptionsLoading || rows.length > 0;
+
+  if (!showCredit && !showSubscriptions) {
+    return null;
+  }
+
+  return (
+    <>
+      {showCredit ? (
+        <CreditBalanceItem
+          creditLabel={creditLabel}
+          loading={creditLoading}
+          onOpenCreditBalance={onOpenCreditBalance}
+          testId="account-menu-credit-balance"
+        />
+      ) : null}
+      {showCredit && showSubscriptions ? <DropdownMenuSeparator /> : null}
+      {showSubscriptions ? (
+        <AccountMenuSubscriptionsPanel
+          loading={subscriptionsLoading}
+          onResetCodexUsage={onResetCodexUsage}
+          resetPending={resetPending}
+          rows={rows}
+        />
+      ) : null}
+      <DropdownMenuSeparator />
+    </>
+  );
+}
+
+function AccountUsageGroupWithUsagePackCredit({
+  onOpenCreditBalance,
+  onResetCodexUsage,
+  resetPending,
+  subscriptionRowsCacheKey,
+}: {
+  onOpenCreditBalance: () => void;
+  onResetCodexUsage: (resetCredits: number | null) => void;
+  resetPending: boolean;
+  subscriptionRowsCacheKey: AccountMenuSubscriptionUsageRowsCacheKey;
+}) {
+  const { creditLabel, loading: creditLoading } = useUsagePackCreditBalance();
+  const { loading: subscriptionsLoading, rows } = useSubscriptionUsageRows({
+    cacheKey: subscriptionRowsCacheKey,
+  });
+  const showCredit = creditLoading || creditLabel !== null;
+  const showSubscriptions = subscriptionsLoading || rows.length > 0;
+
+  if (!showCredit && !showSubscriptions) {
+    return null;
+  }
+
+  return (
+    <>
+      {showCredit ? (
+        <CreditBalanceItem
+          creditLabel={creditLabel}
+          loading={creditLoading}
+          onOpenCreditBalance={onOpenCreditBalance}
+          testId="account-menu-credit-balance"
+        />
+      ) : null}
+      {showCredit && showSubscriptions ? <DropdownMenuSeparator /> : null}
+      {showSubscriptions ? (
+        <AccountMenuSubscriptionsPanel
+          loading={subscriptionsLoading}
+          onResetCodexUsage={onResetCodexUsage}
+          resetPending={resetPending}
+          rows={rows}
+        />
+      ) : null}
+      <DropdownMenuSeparator />
+    </>
+  );
+}
+
+function AccountCombinedCreditBalanceGroup({
+  onOpenCreditBalance,
+}: {
+  onOpenCreditBalance: () => void;
+}) {
+  const { creditLabel, loading } = useCombinedCreditBalance();
+
+  if (!loading && creditLabel === null) {
+    return null;
+  }
+
+  return (
+    <>
+      <CreditBalanceItem
+        creditLabel={creditLabel}
+        loading={loading}
+        onOpenCreditBalance={onOpenCreditBalance}
+        testId="account-menu-credit-balance"
+      />
+      <DropdownMenuSeparator />
+    </>
+  );
+}
+
 function AccountSubscriptionsGroup({
   onResetCodexUsage,
   resetPending,
@@ -416,14 +589,7 @@ function AccountUsagePackCreditGroup({
 }: {
   onOpenCreditBalance: () => void;
 }) {
-  const creditsLoadable = useLastLoadable(usagePackCreditsAsync$);
-  const credits =
-    creditsLoadable.state === "hasData"
-      ? creditsLoadable.data.totalCredits
-      : null;
-  const loading = creditsLoadable.state === "loading" && credits === null;
-  const creditLabel =
-    credits !== null ? formatUsagePackCreditBalance(credits) : null;
+  const { creditLabel, loading } = useUsagePackCreditBalance();
 
   if (!loading && creditLabel === null) {
     return null;
@@ -435,7 +601,7 @@ function AccountUsagePackCreditGroup({
         creditLabel={creditLabel}
         loading={loading}
         onOpenCreditBalance={onOpenCreditBalance}
-        testId="account-menu-usage-pack-credits"
+        testId="account-menu-credit-balance"
       />
       <DropdownMenuSeparator />
     </>
@@ -819,13 +985,9 @@ export function AccountDropdown({
               resetPending={actionPending}
               subscriptionRowsCacheKey={subscriptionRowsCacheKey}
               subscriptionsEnabled={subscriptionsEnabled}
+              usagePackPlansEnabled={usagePackPlansEnabled}
             />
           )}
-          {!hidePreferences && usagePackPlansEnabled ? (
-            <AccountUsagePackCreditGroup
-              onOpenCreditBalance={handleOpenCreditBalance}
-            />
-          ) : null}
           {!hidePreferences && (
             <UnifiedSettingsGroup
               labEnabled={labEnabled}

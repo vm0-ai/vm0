@@ -173,10 +173,31 @@ const usagePackCatalogResponseSchema = z.object({
   usagePacks: z.array(usagePackCatalogItemSchema),
 });
 
-const usagePackCreditsResponseSchema = z.object({
+const usagePackCreditBalanceSchema = z.object({
   totalCredits: z.number().int().nonnegative(),
   purchasedCredits: z.number().int().nonnegative(),
   bonusCredits: z.number().int().nonnegative(),
+  creditGrants: z.array(
+    z.object({
+      id: z.string(),
+      grantType: z.enum(["purchased", "bonus"]),
+      amount: z.number().int().positive(),
+      remaining: z.number().int().positive(),
+      createdAt: z.string(),
+      expiresAt: z.string(),
+    }),
+  ),
+});
+
+const usagePackCreditsResponseSchema = usagePackCreditBalanceSchema.extend({
+  hasUsagePack: z.boolean().optional(),
+  memberCredits: z
+    .array(
+      usagePackCreditBalanceSchema.extend({
+        memberId: z.string().min(1),
+      }),
+    )
+    .optional(),
 });
 
 const memberUsagePackSchema = z.object({
@@ -204,7 +225,7 @@ const usagePackChangeStatusSchema = z.enum([
 
 const usagePackPendingChangeSchema = z.object({
   id: z.uuid(),
-  kind: z.enum(["upgrade", "downgrade", "removal"]),
+  kind: z.enum(["addition", "upgrade", "downgrade", "removal"]),
   status: usagePackChangeStatusSchema,
   targetUsagePackUsd: usagePackUsdSchema.nullable(),
   effectiveAt: z.iso.datetime().nullable(),
@@ -221,6 +242,7 @@ const managedUsagePackAllocationSchema = z.object({
 const usagePackManagementResponseSchema = z.object({
   tier: z.enum(["pro", "team"]),
   currentPeriodEnd: z.iso.datetime().nullable(),
+  supportsMemberAdditions: z.boolean().optional(),
   allocations: z.array(managedUsagePackAllocationSchema),
 });
 
@@ -614,7 +636,8 @@ export const zeroBillingUsagePackCreditsContract = c.router({
       403: apiErrorSchema,
       500: apiErrorSchema,
     },
-    summary: "Get the current member's spendable usage pack credits",
+    summary:
+      "Get spendable usage pack credits, including member balances for admins",
   },
 });
 

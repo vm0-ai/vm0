@@ -971,6 +971,7 @@
         "changePlan": "Cambiar plan",
         "choosePlan": "Elige un plan",
         "choosePlanDescription": "Elige primero el plan del espacio de trabajo. Los paquetes de miembros se configuran después.",
+        "concurrentSlots": "Espacios simultáneos",
         "configurePackages": "Configurar paquetes de miembros",
         "configurePackagesDescription": "Elige un paquete obligatorio para cada miembro y revisa el total mensual combinado.",
         "currentMember": "Miembro actual",
@@ -1074,13 +1075,21 @@
       "left": "{{value}} restante",
       "member": "Miembro",
       "neverExpires": "Nunca caduca",
+      "orgCredits": "Créditos de la organización",
       "unavailable": "Saldo de crédito no disponible.",
       "upgradeDescription": "Pro incluye créditos mensuales y desbloquea opciones adicionales de crédito.",
       "upgradeTitle": "Actualiza a Pro para conseguir más créditos",
       "usagePack": {
         "bonus": "Bonificación",
+        "members": "Miembros",
+        "membersDescription": "Consulta los créditos restantes y las adiciones de créditos del paquete de cada miembro.",
+        "membersTitle": "Créditos de paquetes de los miembros",
+        "nextExpiry": "Próximo vencimiento",
         "purchased": "Comprados",
-        "title": "Créditos del paquete de uso"
+        "remaining": "Restante",
+        "title": "Créditos del paquete de uso",
+        "totalRemaining": "Total restante",
+        "viewMembers": "Ver saldos de miembros"
       },
       "used": "Usados"
     }
@@ -3989,9 +3998,6 @@
         }
       },
       "switchAccount": "Cambiar de cuenta",
-      "usagePackCreditBalance_one": "{{value}} crédito del paquete de uso",
-      "usagePackCreditBalance_many": "{{value}} créditos del paquete de uso",
-      "usagePackCreditBalance_other": "{{value}} créditos del paquete de uso",
       "userFallback": "Usuario"
     },
     "buildInfo": {

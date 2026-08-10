@@ -950,6 +950,7 @@
         "changePlan": "Ubah paket",
         "choosePlan": "Pilih paket",
         "choosePlanDescription": "Pilih paket ruang kerja terlebih dahulu. Paket anggota dikonfigurasi berikutnya.",
+        "concurrentSlots": "Slot bersamaan",
         "configurePackages": "Konfigurasikan paket anggota",
         "configurePackagesDescription": "Pilih paket wajib untuk setiap anggota, lalu tinjau total bulanan gabungan.",
         "currentMember": "Anggota saat ini",
@@ -1052,13 +1053,21 @@
       "left": "Sisa {{value}}",
       "member": "Anggota",
       "neverExpires": "Tidak pernah kedaluwarsa",
+      "orgCredits": "Kredit organisasi",
       "unavailable": "Saldo kredit tidak tersedia.",
       "upgradeDescription": "Pro mencakup kredit bulanan dan membuka opsi kredit tambahan.",
       "upgradeTitle": "Tingkatkan ke Pro untuk mendapatkan lebih banyak kredit",
       "usagePack": {
         "bonus": "Bonus",
+        "members": "Anggota",
+        "membersDescription": "Tinjau sisa kredit paket penggunaan dan penambahan kredit setiap anggota.",
+        "membersTitle": "Kredit paket penggunaan anggota",
+        "nextExpiry": "Kedaluwarsa berikutnya",
         "purchased": "Dibeli",
-        "title": "Kredit paket penggunaan"
+        "remaining": "Tersisa",
+        "title": "Kredit paket penggunaan",
+        "totalRemaining": "Total tersisa",
+        "viewMembers": "Lihat saldo anggota"
       },
       "used": "Digunakan"
     }
@@ -3939,8 +3948,6 @@
         }
       },
       "switchAccount": "Ganti akun",
-      "usagePackCreditBalance_one": "{{value}} kredit paket penggunaan",
-      "usagePackCreditBalance_other": "{{value}} kredit paket penggunaan",
       "userFallback": "Pengguna"
     },
     "buildInfo": {
