@@ -44,7 +44,8 @@ use crate::ids::RunId;
 use crate::paths::{RunnerPaths, scoped_workspace_image_cache_key};
 use crate::storage_manifest::StorageManifest;
 use crate::types::{
-    ConnectorRuntimeTargetRegistration, FirewallEntry, ResumeSession, SandboxReuseResult,
+    ConnectorRuntimeTargetRegistration, Firewall, FirewallApi, FirewallAuth, FirewallEntry,
+    ResumeSession, SandboxReuseResult,
 };
 use crate::workspace_image_cache::{
     WorkspaceCacheCheckoutResult, WorkspaceCacheTerminalStatus, WorkspaceImageCache,

@@ -173,6 +173,76 @@ async fn proxy_registration_prefers_complete_connector_candidates_with_legacy_fa
 }
 
 #[tokio::test]
+async fn proxy_registration_rejects_conflicting_builtin_candidate_sources() {
+    let routing_variables =
+        HashMap::from([("ZENDESK_SUBDOMAIN".to_string(), "xn--mnich-kva".to_string())]);
+
+    let routing_dir = tempfile::tempdir().unwrap();
+    let routing_config = test_executor_config(routing_dir.path()).await;
+    let mut routing_context = minimal_context();
+    routing_context.firewalls = Some(vec![FirewallEntry::Builtin {
+        name: "zendesk".to_string(),
+        base_url_vars: None,
+    }]);
+    routing_context.connector_runtime_candidate_targets =
+        Some(vec![ConnectorRuntimeTargetRegistration::Builtin {
+            connector_slug: "zendesk".to_string(),
+            base_url_vars: Some(routing_variables),
+        }]);
+
+    let routing_error = match register_proxy(&routing_config, &routing_context, "10.200.0.4").await
+    {
+        Ok(_) => panic!("conflicting pinned routing variables must fail registration"),
+        Err(error) => error,
+    };
+    assert!(
+        routing_error
+            .to_string()
+            .contains("zendesk has conflicting pinned routing variables"),
+        "unexpected error: {routing_error}"
+    );
+
+    let ownership_dir = tempfile::tempdir().unwrap();
+    let ownership_config = test_executor_config(ownership_dir.path()).await;
+    let mut ownership_context = minimal_context();
+    ownership_context.firewalls = Some(vec![FirewallEntry::Inline {
+        firewall: Firewall {
+            name: "zendesk".to_string(),
+            apis: vec![FirewallApi {
+                id: "custom-zendesk:0".to_string(),
+                base: "https://custom.example.test/".to_string(),
+                auth: FirewallAuth {
+                    headers: HashMap::new(),
+                    base: None,
+                    query: None,
+                    aws_sigv4: None,
+                },
+                host_policy: None,
+                permissions: None,
+            }],
+        },
+        custom_connector_id: None,
+    }]);
+    ownership_context.connector_runtime_candidate_targets =
+        Some(vec![ConnectorRuntimeTargetRegistration::Builtin {
+            connector_slug: "zendesk".to_string(),
+            base_url_vars: None,
+        }]);
+
+    let ownership_error =
+        match register_proxy(&ownership_config, &ownership_context, "10.200.0.5").await {
+            Ok(_) => panic!("inline ownership conflicts must fail registration"),
+            Err(error) => error,
+        };
+    assert!(
+        ownership_error
+            .to_string()
+            .contains("zendesk conflicts with an inline firewall"),
+        "unexpected error: {ownership_error}"
+    );
+}
+
+#[tokio::test]
 async fn execute_job_proxy_register_failure_destroys_fresh_sandbox_before_agent_start() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
