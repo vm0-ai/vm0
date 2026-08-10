@@ -564,12 +564,10 @@ describe("team page navigation", () => {
       expect(screen.getByText("https://api.acme.test/v1/")).toBeInTheDocument();
     });
 
-    click(screen.getByLabelText("Authorize Acme Search for this agent"));
+    click(screen.getByLabelText("Grant Acme Search access"));
     await waitFor(() => {
       expect(screen.getByText("Custom connectors saved")).toBeInTheDocument();
-      expect(
-        screen.getByLabelText("Authorize Acme Search for this agent"),
-      ).toBeChecked();
+      expect(screen.getByLabelText("Revoke Acme Search access")).toBeChecked();
     });
     toast.dismiss();
     await waitFor(() => {
@@ -579,7 +577,7 @@ describe("team page navigation", () => {
     });
   });
 
-  it("does not allow enabling custom connectors without a secret", async () => {
+  it("authorizes a disconnected custom connector", async () => {
     let updateCalls = 0;
     mockTeamAPIs({
       customConnector: {
@@ -601,24 +599,24 @@ describe("team page navigation", () => {
         screen.getByRole("heading", { name: "Research Agent" }),
       ).toBeInTheDocument();
       expect(screen.getByText("Acme Search")).toBeInTheDocument();
-      expect(screen.getByText(/no secret set/)).toBeInTheDocument();
+      expect(screen.getByText(/Not connected/)).toBeInTheDocument();
     });
 
-    const toggle = screen.getByLabelText(
-      "Authorize Acme Search for this agent",
-    );
-    expect(toggle).toBeDisabled();
-
-    fireEvent.click(toggle);
-    expect(updateCalls).toBe(0);
-    expect(
-      screen.queryByText("Custom connectors saved"),
-    ).not.toBeInTheDocument();
+    click(screen.getByLabelText("Grant Acme Search access"));
+    await waitFor(() => {
+      expect(updateCalls).toBe(1);
+      expect(screen.getByText("Custom connectors saved")).toBeInTheDocument();
+      expect(screen.getByLabelText("Revoke Acme Search access")).toBeChecked();
+    });
   });
 
-  it("manages grant-required custom connector permissions from the agent auth tab", async () => {
+  it("selects permissions before authorizing a disconnected custom connector", async () => {
     const customConnector = {
       ...createCustomConnector(),
+      connected: false,
+      missingRequiredFields: ["secret"],
+      configuredFieldKeys: [],
+      hasSecret: false,
       permissionBundleRef: "builtin:feishu@1" as const,
     };
     let capturedUpdate: AgentCustomConnectorUpdate | null = null;
@@ -653,13 +651,8 @@ describe("team page navigation", () => {
     );
     context.mocks.api(zeroAgentCustomConnectorsContract.get, ({ respond }) => {
       return respond(200, {
-        enabledIds: [customConnector.id],
-        grants: [
-          {
-            customConnectorId: customConnector.id,
-            permissionNames: [],
-          },
-        ],
+        enabledIds: [],
+        grants: [],
       });
     });
     context.mocks.api(
@@ -687,11 +680,12 @@ describe("team page navigation", () => {
     });
 
     await screen.findByText("Acme Search");
-    click(screen.getByLabelText("Manage Acme Search permissions"));
+    click(screen.getByLabelText("Grant Acme Search access"));
 
     const messagePermission = await screen.findByText("messages:send-as-user");
     const drawer = dialogForElement(messagePermission);
     expect(within(drawer).queryByText("standard:use")).not.toBeInTheDocument();
+    expect(buttonByText("Apply", drawer)).toBeEnabled();
     const messageRow = messagePermission.parentElement?.parentElement;
     if (!(messageRow instanceof HTMLElement)) {
       throw new Error("custom connector permission row not found");
@@ -720,6 +714,25 @@ describe("team page navigation", () => {
     };
     const updatedAgentIds: string[] = [];
     mockTeamAPIs({ customConnector });
+    context.mocks.api(
+      zeroAgentCustomConnectorsContract.get,
+      ({ params, respond }) => {
+        return respond(
+          200,
+          params.id === researchAgentId
+            ? {
+                enabledIds: [customConnector.id],
+                grants: [
+                  {
+                    customConnectorId: customConnector.id,
+                    permissionNames: [],
+                  },
+                ],
+              }
+            : { enabledIds: [], grants: [] },
+        );
+      },
+    );
     context.mocks.api(
       zeroCustomConnectorByIdContract.permissions,
       ({ respond }) => {

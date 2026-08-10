@@ -8626,9 +8626,6 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       permissionBundleRef: "builtin:slack@1",
       skillMarkdown: "Use the selected Slack-compatible operations only.",
     });
-    await connectors.setCustomConnectorValues(actor, custom.id, [
-      { key: "workspace", kind: "variable", value: "acme" },
-    ]);
     const grant = {
       customConnectorId: custom.id,
       permissionNames: ["chat:write"],
@@ -8645,44 +8642,13 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     }
     expect(grantResponse.body.grants).toStrictEqual([grant]);
 
-    const run = await api.createRun(actor, {
-      agentId,
-      prompt: "use only the authorized custom connector operation",
-      modelProvider: "anthropic-api-key",
-    });
-    await api.heartbeatRunner(runnerGroup);
-    const claim = await api.claimRunnerJob(run.runId);
     const internalName = `custom_connector_${custom.id.replaceAll("-", "")}`;
-    const customApis = inlineFirewallApis(claim.firewalls, internalName);
-    expect(customApis[0]?.permissions).toStrictEqual(
-      expect.arrayContaining([expect.objectContaining({ name: "chat:write" })]),
-    );
-    expect(claim.networkPolicies?.[internalName]?.allow).toContain(
-      "chat:write",
-    );
-    expect(claim.networkPolicies?.[internalName]?.deny.length).toBeGreaterThan(
-      0,
-    );
-    expect(claim.networkPolicies?.[internalName]?.unknownPolicy).toBe("deny");
-
-    const skillMount = expectCanonicalStorageManifest(
-      claim.storageManifest,
-    )?.storageMounts.find((storage) => {
-      return storage.name === getCustomConnectorSkillStorageName(custom.id);
-    });
-    expect(skillMount?.mountPath).toBe(
-      `/home/user/.claude/skills/custom-${slug.slice(1, 49)}-${custom.id.replaceAll("-", "").slice(0, 8)}`,
-    );
-
-    await api.requestCancelRun(actor, run.runId, [200]);
-    expect((await api.readRun(actor, run.runId)).status).toBe("cancelled");
-
-    await connectors.disconnectCustomConnector(actor, custom.id);
     const disconnectedRun = await api.createRun(actor, {
       agentId,
       prompt: "use the disconnected custom connector skill",
       modelProvider: "anthropic-api-key",
     });
+    await api.heartbeatRunner(runnerGroup);
     const disconnectedClaim = await api.claimRunnerJob(disconnectedRun.runId);
     expect(
       findFirewallEntry(disconnectedClaim.firewalls, internalName),
@@ -8701,18 +8667,37 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     )?.storageMounts.find((storage) => {
       return storage.name === getCustomConnectorSkillStorageName(custom.id);
     });
-    expect(disconnectedSkillMount?.mountPath).toBe(skillMount?.mountPath);
-    await api.requestCancelRun(actor, disconnectedRun.runId, [200]);
+    expect(disconnectedSkillMount?.mountPath).toBe(
+      `/home/user/.claude/skills/custom-${slug.slice(1, 49)}-${custom.id.replaceAll("-", "").slice(0, 8)}`,
+    );
 
     await connectors.setCustomConnectorValues(actor, custom.id, [
       { key: "workspace", kind: "variable", value: "restored" },
     ]);
+    await api.requestCancelRun(actor, disconnectedRun.runId, [200]);
+
     const restoredRun = await api.createRun(actor, {
       agentId,
       prompt: "use the reconnected custom connector",
       modelProvider: "anthropic-api-key",
     });
     const restoredClaim = await api.claimRunnerJob(restoredRun.runId);
+    const customApis = inlineFirewallApis(
+      restoredClaim.firewalls,
+      internalName,
+    );
+    expect(customApis[0]?.permissions).toStrictEqual(
+      expect.arrayContaining([expect.objectContaining({ name: "chat:write" })]),
+    );
+    expect(restoredClaim.networkPolicies?.[internalName]?.allow).toContain(
+      "chat:write",
+    );
+    expect(
+      restoredClaim.networkPolicies?.[internalName]?.deny.length,
+    ).toBeGreaterThan(0);
+    expect(restoredClaim.networkPolicies?.[internalName]?.unknownPolicy).toBe(
+      "deny",
+    );
     expect(
       findFirewallEntry(restoredClaim.firewalls, internalName),
     ).toMatchObject({
@@ -8724,6 +8709,14 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       customConnectorId: custom.id,
       baseUrlVars: { workspace: "restored" },
     });
+    const restoredSkillMount = expectCanonicalStorageManifest(
+      restoredClaim.storageManifest,
+    )?.storageMounts.find((storage) => {
+      return storage.name === getCustomConnectorSkillStorageName(custom.id);
+    });
+    expect(restoredSkillMount?.mountPath).toBe(
+      disconnectedSkillMount?.mountPath,
+    );
 
     await api.requestCancelRun(actor, restoredRun.runId, [200]);
   });

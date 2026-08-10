@@ -16,10 +16,7 @@
     "connectorsLink": "Integrationen",
     "connectorsSaved": "Integrationen gespeichert",
     "customConnectors": {
-      "authorize": "Autorisieren Sie {{connectorName}} für diesen Agenten",
-      "description": "Benutzerdefinierte Integrationen Ihrer Organisation. Nur Integrationen mit hinterlegtem Secret können aktiviert werden.",
-      "noSecret": "Kein Secret hinterlegt",
-      "noSecretSuffix": " – kein Secret hinterlegt",
+      "description": "Benutzerdefinierte Integrationen Ihrer Organisation.",
       "saved": "Benutzerdefinierte Integrationen gespeichert"
     },
     "description": "Während der Ausführung kann der Agent Ihre verbundenen Dienste sicher nutzen. Sie können den Zugriff jederzeit verwalten oder deaktivieren.",

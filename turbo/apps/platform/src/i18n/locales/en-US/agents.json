@@ -16,10 +16,7 @@
     "connectorsLink": "Connectors",
     "connectorsSaved": "Connectors saved",
     "customConnectors": {
-      "authorize": "Authorize {{connectorName}} for this agent",
-      "description": "Custom connectors registered by your org. Only connectors you have supplied a secret for can be toggled on.",
-      "noSecret": "No secret set",
-      "noSecretSuffix": " — no secret set",
+      "description": "Custom connectors registered by your org.",
       "saved": "Custom connectors saved"
     },
     "description": "When running, the agent can securely use your connected services. You can manage or turn off access anytime.",

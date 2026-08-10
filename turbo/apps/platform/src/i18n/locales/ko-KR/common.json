@@ -1859,12 +1859,6 @@
       }
     },
     "custom": {
-      "agentUsage": {
-        "none": "어떤 에이전트에서도 사용하지 않음",
-        "usedBy": "{{agents}}에서 사용 중",
-        "usedByOverflow_one": "{{agents}}에서 사용 중 +{{value}}",
-        "usedByOverflow_other": "{{agents}}에서 사용 중 +{{value}}"
-      },
       "connect": {
         "apiAuthentication": "API 인증",
         "apiDescription": "제공자가 발급한 API 비밀 키를 입력하세요.",

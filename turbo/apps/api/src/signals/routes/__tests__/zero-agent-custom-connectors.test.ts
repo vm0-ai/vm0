@@ -94,7 +94,7 @@ async function createPermissionedCustomConnector(
   actor: ApiTestUser,
   slug: string,
 ) {
-  const connector = await connectors.createCustomConnector(actor, {
+  return await connectors.createCustomConnector(actor, {
     displayName: `Connector ${slug}`,
     slug: `_${slug}`,
     prefixes: [`https://${slug}.example.test`],
@@ -102,76 +102,6 @@ async function createPermissionedCustomConnector(
     headerTemplate: "Bearer {{secret}}",
     permissionBundleRef: "builtin:slack@1",
   });
-  await connectors.setCustomConnectorSecret(
-    actor,
-    connector.id,
-    `${slug}-secret`,
-  );
-  return connector;
-}
-
-async function createOptionalOnlyCustomConnector(
-  actor: ApiTestUser,
-  slug: string,
-) {
-  return await connectors.createCustomConnector(actor, {
-    displayName: `Connector ${slug}`,
-    slug: `_${slug}`,
-    prefixTemplates: [`https://${slug}.example.test`],
-    fields: [
-      {
-        key: "api_key",
-        label: "API key",
-        kind: "secret",
-        required: false,
-      },
-    ],
-    headerInjections: [
-      {
-        name: "Authorization",
-        valueTemplate: "Bearer {{secrets.api_key}}",
-      },
-    ],
-    queryInjections: [],
-  });
-}
-
-async function createCustomConnectorWithOptionalPrefixVariable(
-  actor: ApiTestUser,
-  slug: string,
-) {
-  const connector = await connectors.createCustomConnector(actor, {
-    displayName: `Connector ${slug}`,
-    slug: `_${slug}`,
-    prefixTemplates: [`https://{{variables.subdomain}}.${slug}.example.test`],
-    fields: [
-      {
-        key: "secret",
-        label: "API key",
-        kind: "secret",
-        required: true,
-      },
-      {
-        key: "subdomain",
-        label: "Subdomain",
-        kind: "variable",
-        required: false,
-      },
-    ],
-    headerInjections: [
-      {
-        name: "Authorization",
-        valueTemplate: "Bearer {{secrets.secret}}",
-      },
-    ],
-    queryInjections: [],
-  });
-  await connectors.setCustomConnectorSecret(
-    actor,
-    connector.id,
-    `${slug}-secret`,
-  );
-  return connector;
 }
 
 describe("GET /api/zero/custom-connectors/:id/permissions", () => {
@@ -406,7 +336,7 @@ describe("PUT /api/zero/agents/:id/custom-connectors", () => {
     });
   });
 
-  it("persists selected permission names and rejects unknown permissions atomically", async () => {
+  it("persists disconnected permission grants and rejects unknown permissions atomically", async () => {
     const actor = bdd.user();
     const agent = await createAgent(actor, {
       displayName: "Permission Grant Agent",
@@ -456,7 +386,7 @@ describe("PUT /api/zero/agents/:id/custom-connectors", () => {
     ).resolves.toStrictEqual([grant]);
   });
 
-  it("rejects enabling custom connectors without required user values", async () => {
+  it("persists disconnected custom connectors through legacy id selection", async () => {
     const actor = bdd.user();
     const agent = await createAgent(actor, { displayName: "Test Agent" });
     const connector = await createUnconfiguredCustomConnector(
@@ -468,21 +398,19 @@ describe("PUT /api/zero/agents/:id/custom-connectors", () => {
       actor,
       agent.agentId,
       [connector.id],
-      [400],
+      [200],
     );
 
     expect(response.body).toStrictEqual({
-      error: {
-        message: `Custom connector ids are not configured for this user: ${connector.id}`,
-        code: "VALIDATION_ERROR",
-      },
+      enabledIds: [connector.id],
+      grants: [{ customConnectorId: connector.id, permissionNames: [] }],
     });
     await expect(
       connectors.readAgentCustomConnectors(actor, agent.agentId),
-    ).resolves.toStrictEqual([]);
+    ).resolves.toStrictEqual([connector.id]);
   });
 
-  it("returns agent not found before connector configuration errors", async () => {
+  it("returns agent not found without leaking a private agent", async () => {
     const owner = bdd.user();
     const requester = bdd.user({ orgId: owner.orgId });
     const agent = await createAgent(owner, {
@@ -509,56 +437,45 @@ describe("PUT /api/zero/agents/:id/custom-connectors", () => {
     });
   });
 
-  it("rejects enabling custom connectors without any configured auth entries", async () => {
+  it("persists a connector after its credential storage becomes incompatible", async () => {
     const actor = bdd.user();
     const agent = await createAgent(actor, { displayName: "Test Agent" });
-    const connector = await createOptionalOnlyCustomConnector(
+    const connector = await createCustomConnector(
       actor,
-      "missing-optional-auth",
+      "incompatible-storage",
     );
+    const updated = await connectors.updateCustomConnector(
+      actor,
+      connector.id,
+      {
+        displayName: connector.displayName,
+        prefixTemplates: connector.prefixTemplates,
+        fields: [
+          ...connector.fields,
+          {
+            key: "replacement",
+            label: "Replacement secret",
+            kind: "secret",
+            required: true,
+          },
+        ],
+        headerInjections: connector.headerInjections,
+        queryInjections: connector.queryInjections,
+        authMode: connector.authMode,
+      },
+    );
+    expect(updated.storageVersion).toBe(connector.storageVersion + 1);
 
-    const response = await connectors.requestUpdateAgentCustomConnectors(
+    const enabled = await connectors.updateAgentCustomConnectors(
       actor,
       agent.agentId,
       [connector.id],
-      [400],
     );
 
-    expect(response.body).toStrictEqual({
-      error: {
-        message: `Custom connector ids are not configured for this user: ${connector.id}`,
-        code: "VALIDATION_ERROR",
-      },
-    });
+    expect(enabled).toStrictEqual([connector.id]);
     await expect(
       connectors.readAgentCustomConnectors(actor, agent.agentId),
-    ).resolves.toStrictEqual([]);
-  });
-
-  it("rejects enabling custom connectors without any configured base urls", async () => {
-    const actor = bdd.user();
-    const agent = await createAgent(actor, { displayName: "Test Agent" });
-    const connector = await createCustomConnectorWithOptionalPrefixVariable(
-      actor,
-      "missing-prefix-variable",
-    );
-
-    const response = await connectors.requestUpdateAgentCustomConnectors(
-      actor,
-      agent.agentId,
-      [connector.id],
-      [400],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: {
-        message: `Custom connector ids are not configured for this user: ${connector.id}`,
-        code: "VALIDATION_ERROR",
-      },
-    });
-    await expect(
-      connectors.readAgentCustomConnectors(actor, agent.agentId),
-    ).resolves.toStrictEqual([]);
+    ).resolves.toStrictEqual([connector.id]);
   });
 
   it("replaces the list atomically", async () => {

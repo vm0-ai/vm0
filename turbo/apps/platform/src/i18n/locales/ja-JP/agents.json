@@ -16,10 +16,7 @@
     "connectorsLink": "コネクター",
     "connectorsSaved": "コネクターを保存しました",
     "customConnectors": {
-      "authorize": "このエージェントに{{connectorName}}を許可",
-      "description": "組織が登録したカスタムコネクターです。シークレットを設定したコネクターのみ有効にできます。",
-      "noSecret": "シークレットは設定されていません",
-      "noSecretSuffix": " — シークレットが設定されていません",
+      "description": "組織が登録したカスタムコネクターです。",
       "saved": "カスタムコネクターを保存しました"
     },
     "description": "実行中、エージェントは接続済みサービスを安全に利用できます。アクセスはいつでも管理または無効化できます。",

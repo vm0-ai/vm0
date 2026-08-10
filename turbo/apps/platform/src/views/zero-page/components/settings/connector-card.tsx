@@ -1,12 +1,6 @@
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import {
-  SlidersHorizontal,
-  CircleCheck,
-  EllipsisVertical,
-  Loader2,
-  Plus,
-} from "lucide-react";
+import { CircleCheck, EllipsisVertical, Loader2, Plus } from "lucide-react";
 import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
 import type { PlatformConnectorCatalogStatusItem } from "../../../../signals/connector-domain.ts";
 import {
@@ -15,10 +9,6 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
   cn,
 } from "@vm0/ui";
 import {
@@ -26,7 +16,7 @@ import {
   connectorExpiryCountdownText,
 } from "../../../../signals/zero-page/settings/connectors.ts";
 import { DropdownMenuModalItem } from "../../../components/dropdown-menu-modal-item.tsx";
-import { LoadingSwitch } from "../../../components/loading-switch.tsx";
+import { ConnectorPermissionRow } from "./connector-permission-row.tsx";
 import { ConnectorIcon } from "./connector-icons.tsx";
 import {
   launchConnectorConnect,
@@ -519,84 +509,29 @@ function PermissionConnectorCard({
   onManage,
   onToggle,
 }: PermissionConnectorCardProps) {
-  const { t } = useTranslation();
   return (
-    <>
-      <div className="flex w-full items-center gap-3 px-5 py-4 text-left transition-colors">
-        <ConnectorIcon icon={connector.icon} size={20} />
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <span
-              data-testid="connector-card-label"
-              className="text-sm font-medium text-foreground"
-            >
-              {connector.label}
-            </span>
-            {connector.connection?.externalUsername ? (
-              <span className="text-xs text-muted-foreground">
-                @{connector.connection.externalUsername}
-              </span>
-            ) : null}
-          </div>
-          {connector.description ? (
-            <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">
-              {permissionDescription(connector.description)}
-            </p>
-          ) : null}
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          {showManage ? (
-            <TooltipProvider delayDuration={200}>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    type="button"
-                    onClick={onManage}
-                    className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
-                    aria-label={t(
-                      ($) => {
-                        return $.connectors.card.managePermissionsFor;
-                      },
-                      { connector: connector.label },
-                    )}
-                  >
-                    <SlidersHorizontal size={15} />
-                  </button>
-                </TooltipTrigger>
-                <TooltipContent side="top">
-                  <p className="text-xs">
-                    {t(($) => {
-                      return $.connectors.card.managePermissions;
-                    })}
-                  </p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-          ) : null}
-          <LoadingSwitch
-            checked={enabled}
-            onCheckedChange={onToggle}
-            loading={loading}
-            ariaLabel={t(
-              ($) => {
-                return $.connectors.card.accessFor;
-              },
-              {
-                action: enabled
-                  ? t(($) => {
-                      return $.connectors.actions.revoke;
-                    })
-                  : t(($) => {
-                      return $.connectors.actions.grant;
-                    }),
-                connector: connector.label,
-              },
-            )}
-          />
-        </div>
-      </div>
-      {!isLast ? <div className="mx-5 border-b border-border/50" /> : null}
-    </>
+    <ConnectorPermissionRow
+      icon={<ConnectorIcon icon={connector.icon} size={20} />}
+      label={connector.label}
+      labelSuffix={
+        connector.connection?.externalUsername ? (
+          <span className="text-xs text-muted-foreground">
+            @{connector.connection.externalUsername}
+          </span>
+        ) : undefined
+      }
+      description={
+        connector.description
+          ? permissionDescription(connector.description)
+          : undefined
+      }
+      enabled={enabled}
+      loading={loading}
+      showManage={showManage}
+      isLast={isLast}
+      onManage={onManage}
+      onToggle={onToggle}
+    />
   );
 }
 
