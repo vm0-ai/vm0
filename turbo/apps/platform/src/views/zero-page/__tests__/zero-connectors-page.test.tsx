@@ -3918,9 +3918,10 @@ describe("connectors page", () => {
     );
   });
 
-  it("connects a managed Feishu connector with the Feishu feature switch", async () => {
+  it("reconnects a managed Feishu connector without replacing its grants", async () => {
     const defaultAgentId = "c0000000-0000-4000-a000-000000000044";
     let oauthStartCount = 0;
+    let authorizationUpdates = 0;
     let connector = customConnector({
       slug: "_feishu-00000000-0000-4000-8000-000000000044",
       displayName: "Feishu",
@@ -3934,6 +3935,7 @@ describe("connectors page", () => {
         },
       ],
       authMode: "oauth",
+      permissionBundleRef: "builtin:feishu@1",
       oauthConfig: {
         providerAdapter: "feishu",
         clientId: "cli_feishu",
@@ -3958,9 +3960,30 @@ describe("connectors page", () => {
     });
     context.mocks.api(zeroAgentCustomConnectorsContract.get, ({ respond }) => {
       return respond(200, {
-        enabledIds: connector.connected ? [connector.id] : [],
+        enabledIds: [connector.id],
+        grants: [
+          {
+            customConnectorId: connector.id,
+            permissionNames: ["messages:send-as-user"],
+          },
+        ],
       });
     });
+    context.mocks.api(
+      zeroAgentCustomConnectorsContract.update,
+      ({ respond }) => {
+        authorizationUpdates += 1;
+        return respond(200, {
+          enabledIds: [connector.id],
+          grants: [
+            {
+              customConnectorId: connector.id,
+              permissionNames: ["messages:send-as-user"],
+            },
+          ],
+        });
+      },
+    );
     const authWindow = createMockAuthWindow();
     context.mocks.browser.open(authWindow);
     context.mocks.api(
@@ -4000,7 +4023,13 @@ describe("connectors page", () => {
         "https://accounts.feishu.cn/open-apis/authen/v1/authorize?state=feishu-ui-test",
       );
       expect(oauthStartCount).toBe(1);
+      expect(
+        within(connectorCardByLabel("Feishu")).getByTestId(
+          "connector-card-agent-access",
+        ),
+      ).toHaveTextContent("Used by Zero");
     });
+    expect(authorizationUpdates).toBe(0);
   });
 
   it("configures OAuth app credentials at creation and authorizes on connect", async () => {
