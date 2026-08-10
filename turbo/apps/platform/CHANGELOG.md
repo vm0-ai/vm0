@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.715.1](https://github.com/vm0-ai/vm0/compare/app-v0.715.0...app-v0.715.1) (2026-08-10)
+
+
+### Bug Fixes
+
+* **connectors:** align custom disconnect ownership ([#26020](https://github.com/vm0-ai/vm0/issues/26020)) ([f7b295a](https://github.com/vm0-ai/vm0/commit/f7b295ac04a89fd469df093b6f9ab4f9ecdd80d4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.302.0
+    * @vm0/core bumped to 8.535.2
+
 ## [0.715.0](https://github.com/vm0-ai/vm0/compare/app-v0.714.6...app-v0.715.0) (2026-08-10)
 
 
