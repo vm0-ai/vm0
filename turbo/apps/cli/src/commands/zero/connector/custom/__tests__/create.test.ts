@@ -406,6 +406,7 @@ describe("zero connector custom create", () => {
     expect(createHelp).toContain("Bearer {{secrets.secret}}");
     expect(createHelp).toContain('"authMode": "oauth"');
     expect(createHelp).toContain("Bearer {{oauth.access_token}}");
+    expect(createHelp).toContain("endpoint for MCP");
     expect(createHelp).toContain("Never ask");
     expect(createHelp).toContain("end-user access token or refresh token");
     expect(createHelp).toContain("does not store a");

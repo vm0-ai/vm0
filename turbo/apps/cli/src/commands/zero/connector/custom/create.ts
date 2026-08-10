@@ -72,8 +72,8 @@ Definition file:
 
 Agent workflow:
   1. For manual connectors, ask only for missing metadata: name, HTTPS API
-     prefix, and the Header or Query injection template. Do not ask the user
-     for the actual API token.
+     prefix for HTTP or endpoint for MCP, and the Header or Query injection
+     template. Do not ask the user for the actual API token.
   2. Convert placeholders such as <API Token> into {{secrets.secret}}. Manual
      definitions use exactly one required secret field whose key is "secret",
      matching the Connect dialog.
