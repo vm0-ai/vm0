@@ -1,4 +1,5 @@
 use super::*;
+use crate::executor::{SandboxReuseDisposition, SandboxReuseTerminal};
 
 use async_trait::async_trait;
 use sandbox::SandboxConfig;
@@ -1379,11 +1380,15 @@ async fn execute_job_codex_ignores_claude_tool_validation() {
     assert!(outcome.sandbox.is_some());
     assert_eq!(overrides.create_configs().len(), 1);
 }
+
 #[tokio::test]
 async fn execute_job_nonzero_exit_still_returns_sandbox() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
-    let factory = MockSandboxFactory::new();
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::with_wait_process_code(
+        7,
+    ));
+    let factory = MockSandboxFactory::with_overrides(overrides);
 
     let cancel = tokio_util::sync::CancellationToken::new();
     let (outcome, _telemetry) = execute_job(
@@ -1399,8 +1404,18 @@ async fn execute_job_nonzero_exit_still_returns_sandbox() {
     )
     .await;
 
-    // The executor returns sandbox ownership even though finalization must
-    // destroy it after a non-zero exit.
+    let failure = outcome
+        .failure
+        .as_ref()
+        .expect("non-zero exit must produce a failure");
+    assert_eq!(failure.exit_code, 7);
+    assert_eq!(failure.error, "Agent exited with code 7");
+    assert_eq!(
+        outcome.sandbox_reuse_disposition,
+        SandboxReuseDisposition::Eligible(SandboxReuseTerminal::NonzeroExit),
+    );
+    // A healthy non-zero exit is reuse-eligible. Returning ownership lets
+    // caller finalization park it when policy permits or destroy it otherwise.
     assert!(
         outcome.sandbox.is_some(),
         "sandbox must be returned for caller finalization"
