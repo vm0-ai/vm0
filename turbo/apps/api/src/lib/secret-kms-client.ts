@@ -6,6 +6,7 @@ import {
   KMSClient,
 } from "@aws-sdk/client-kms";
 
+import { optionalEnv } from "./env";
 import { singleton } from "./singleton";
 
 export interface SecretKmsGenerateDataKeyRequest {
@@ -42,7 +43,15 @@ interface ScopedSecretKmsClient {
 }
 
 const secretKmsClient = singleton((): SecretKmsClient => {
-  const client = new KMSClient({});
+  const region = optionalEnv("AWS_REGION");
+  const accessKeyId = optionalEnv("AWS_ACCESS_KEY_ID");
+  const secretAccessKey = optionalEnv("AWS_SECRET_ACCESS_KEY");
+  const client = new KMSClient({
+    ...(region ? { region } : {}),
+    ...(accessKeyId && secretAccessKey
+      ? { credentials: { accessKeyId, secretAccessKey } }
+      : {}),
+  });
 
   return {
     async generateDataKey(
