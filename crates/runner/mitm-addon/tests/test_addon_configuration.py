@@ -221,6 +221,7 @@ class TestAddonConfiguration:
 
         with (
             patch.object(mitm_addon, "__file__", _addon_file_path(tmp_path)),
+            patch.object(runner_flush_lifecycle, "__file__", str(tmp_path / "runner_flush.py")),
             patch.object(
                 mitm_addon.ctx,
                 "options",
