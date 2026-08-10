@@ -693,22 +693,12 @@ def _parse_firewall_auth_success(
     query = _parse_optional_string_map(decoded_map, "query")
     aws_sigv4 = _parse_optional_aws_sigv4_credentials(decoded_map)
 
-    # The API owns required-versus-optional credential semantics. Both builtin
-    # and custom auth may omit entries backed by unavailable optional fields,
-    # but the API must never introduce an entry the matched firewall did not
-    # define.
-    configured_header_names = set(request.auth_headers)
-    resolved_header_names = set(headers)
-    configured_query_names = set(request.auth_query or {})
-    resolved_query_names = set(query or {})
-    if not resolved_header_names.issubset(configured_header_names):
+    if set(headers) != set(request.auth_headers):
         raise _malformed_firewall_auth_success(
-            "headers must not contain unconfigured auth header names"
+            "headers must match the configured auth header names"
         )
-    if not resolved_query_names.issubset(configured_query_names):
-        raise _malformed_firewall_auth_success(
-            "query must not contain unconfigured auth query names"
-        )
+    if set(query or {}) != set(request.auth_query or {}):
+        raise _malformed_firewall_auth_success("query must match the configured auth query names")
     if (base is not None) != (request.auth_base is not None):
         raise _malformed_firewall_auth_success("base presence must match the configured auth base")
     if (aws_sigv4 is not None) != (request.auth_aws_sigv4 is not None):
