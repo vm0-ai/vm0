@@ -505,6 +505,13 @@
       "when": 1786354744070,
       "tag": "0879_sturdy_peter_quill",
       "breakpoints": true
+    },
+    {
+      "idx": 880,
+      "version": "7",
+      "when": 1786356506954,
+      "tag": "0880_regular_piledriver",
+      "breakpoints": true
     }
   ]
 }

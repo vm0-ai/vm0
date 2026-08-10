@@ -2,6 +2,7 @@ import { PLAN_UPGRADE_CLI_HINT } from "@vm0/api-contracts/contracts/errors";
 import { CANONICAL_WORKING_DIR } from "@vm0/api-contracts/contracts/runners";
 import { zeroRunCreateBodySchema } from "@vm0/api-contracts/contracts/zero-runs";
 import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
+import type { CodexServiceTier } from "@vm0/api-contracts/contracts/chat-threads";
 import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
 import type { AgentCustomConnectorGrant } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 import type { ModelProviderCredentialScope } from "@vm0/api-contracts/contracts/model-providers";
@@ -140,6 +141,7 @@ interface ZeroRunMetadata {
   readonly triggerBrief?: string;
   readonly goalId?: string;
   readonly autonomyBudget?: number;
+  readonly codexServiceTier?: CodexServiceTier;
 }
 
 interface CreateZeroRunCommandArgs {
@@ -171,7 +173,7 @@ interface CreateZeroRunCommandArgs {
   readonly modelProviderId?: string;
   readonly modelProviderCredentialScope?: ModelProviderCredentialScope;
   readonly selectedModelOverride?: string;
-  readonly codexServiceTier?: "fast";
+  readonly codexServiceTier?: CodexServiceTier;
   readonly zeroRunMetadata?: ZeroRunMetadata;
   readonly dispatchFailedCallbacks?: DispatchFailedRunCallbacks;
   readonly zeroRunModelPin?: ZeroRunModelPin;
@@ -845,7 +847,10 @@ function buildZeroCreateAgentRunArgs(args: {
       source: "zero_agent",
     },
     validateEnvironmentReferences: false,
-    zeroRunMetadata: command.zeroRunMetadata,
+    zeroRunMetadata: {
+      ...command.zeroRunMetadata,
+      codexServiceTier: command.codexServiceTier,
+    },
     dispatchFailedCallbacks: command.dispatchFailedCallbacks,
     ...(command.zeroRunModelPin
       ? { zeroRunModelPin: command.zeroRunModelPin }

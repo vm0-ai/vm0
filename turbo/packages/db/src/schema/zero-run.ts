@@ -10,6 +10,7 @@ import {
   check,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
+import type { CodexServiceTier } from "@vm0/api-contracts/contracts/chat-threads";
 import { agentRuns } from "./agent-run";
 import { chatThreads } from "./chat-thread";
 import { zeroWorkflowAutomations } from "./zero-workflow";
@@ -56,6 +57,9 @@ export const zeroRuns = pgTable(
       length: 20,
     }),
     selectedModel: varchar("selected_model", { length: 255 }),
+    codexServiceTier: varchar("codex_service_tier", {
+      length: 20,
+    }).$type<CodexServiceTier>(),
     // Chat thread this run belongs to (null for non-chat triggers like telegram)
     chatThreadId: uuid("chat_thread_id").references(
       () => {
