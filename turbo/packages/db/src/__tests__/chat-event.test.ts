@@ -28,7 +28,7 @@ describe("chatAgentRunContext schema", () => {
 });
 
 describe("chatEvents schema", () => {
-  it("exposes the final canonical stream shape", () => {
+  it("exposes the additive canonical rollout shape", () => {
     const config = getTableConfig(chatEvents);
 
     expect(schema.chatEvents).toBe(chatEvents);
@@ -45,6 +45,7 @@ describe("chatEvents schema", () => {
       "interrupts_run_id",
       "run_group_id",
       "event_type",
+      "payload",
       "context_type",
       "context_id",
       "content",
@@ -56,6 +57,8 @@ describe("chatEvents schema", () => {
       "seq_id",
       "created_at",
     ]);
+    expect(chatEvents.payload.notNull).toBeFalsy();
+    expect(chatEvents.payload.hasDefault).toBeFalsy();
     expect(
       config.indexes
         .map((index) => {

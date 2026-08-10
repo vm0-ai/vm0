@@ -22,7 +22,10 @@ import {
 import { nowDate } from "../../lib/time";
 import { assistantEventIdForRunEvent } from "./assistant-event-id";
 import { insertChatEvents } from "./zero-chat-event.service";
-import { chatEventTypeIn } from "./zero-chat-event-type.service";
+import {
+  chatEventTypeIn,
+  legacyRunOwnedChatEventCondition,
+} from "./zero-chat-event-type.service";
 import { publishFirstAssistantEventCreatedSafely } from "./zero-chat-first-assistant-event-metric.service";
 import {
   appendChatThreadEvent,
@@ -118,6 +121,10 @@ export function visibleChatEventCondition(
     "control.interrupt",
     "control.revoke",
   ]);
+  const hasLegacyRunOwner = and(
+    isNotNull(chatEvents.runId),
+    legacyRunOwnedChatEventCondition(),
+  );
   return and(
     not(chatEventTypeIn(["input.goal"])),
     notExists(
@@ -128,13 +135,13 @@ export function visibleChatEventCondition(
     ),
     or(
       not(isUserInputEvent),
-      isNotNull(chatEvents.runId),
+      hasLegacyRunOwner,
       isNull(chatEvents.revokesEventId),
       isNotNull(chatEvents.error),
     ),
     or(
       not(isUserInputEvent),
-      isNotNull(chatEvents.runId),
+      hasLegacyRunOwner,
       isNull(chatEvents.interruptsRunId),
     ),
   );

@@ -2929,6 +2929,15 @@ const RUN_EVENT_SEQUENCE_NUMBER_CONTRACTION_PREVIOUS_MIGRATION =
   "0809_clean_kronos";
 const RUN_EVENT_SEQUENCE_NUMBER_CONTRACTION_MIGRATION = "0810_small_sway";
 
+async function addCurrentChatEventPayloadStorage(
+  client: Client,
+): Promise<void> {
+  await client.query(`
+    ALTER TABLE "chat_events"
+    ADD COLUMN "payload" jsonb
+  `);
+}
+
 async function addCurrentChatEventAdditiveStorage(
   client: Client,
 ): Promise<void> {
@@ -2936,6 +2945,7 @@ async function addCurrentChatEventAdditiveStorage(
     ALTER TABLE "chat_events"
     ADD COLUMN "active_input_sequence" integer
   `);
+  await addCurrentChatEventPayloadStorage(client);
 }
 
 async function validateRunEventSequenceNumberRollout(): Promise<void> {
@@ -5098,6 +5108,7 @@ async function validateChatEventContractionFinalization(): Promise<void> {
         /chat_events_goal_marker_payload_check/u,
       );
 
+      await addCurrentChatEventPayloadStorage(client);
       const database = drizzle(client);
       const currentInsert = database
         .insert(chatEvents)
@@ -5106,6 +5117,7 @@ async function validateChatEventContractionFinalization(): Promise<void> {
           chatThreadId: fixture.threadId,
           eventType: "output.message",
           content: "Current ORM insert",
+          payload: { content: "Current ORM insert" },
           seqId: 4,
         })
         .returning({ id: chatEvents.id });
@@ -5114,6 +5126,7 @@ async function validateChatEventContractionFinalization(): Promise<void> {
         currentInsertSql.sql,
         /active_input_sequence|goal_event|attach_files|generation_template|recommended_followups/u,
       );
+      assert.match(currentInsertSql.sql, /"payload"/u);
       assert.deepEqual(await currentInsert, [{ id: fixture.currentInsertId }]);
       await assertChatEventsAppendOnlyProtection(
         client,

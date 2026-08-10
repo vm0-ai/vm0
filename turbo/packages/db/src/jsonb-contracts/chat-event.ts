@@ -20,6 +20,15 @@ export interface ChatEventUsagePayload {
   readonly breakdown: readonly ChatEventUsageKindBreakdown[];
 }
 
+/** Canonical lossless envelope for the legacy chat event payload leaves. */
+export interface ChatEventPayload {
+  readonly content?: string;
+  readonly userMessage?: ChatEventUserMessage;
+  readonly thinking?: string;
+  readonly error?: string;
+  readonly usage?: ChatEventUsagePayload;
+}
+
 export interface ChatEventAttachFileMetadata {
   readonly id: string;
   readonly filename: string;
