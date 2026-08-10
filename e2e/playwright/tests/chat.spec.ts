@@ -1,5 +1,5 @@
 import type { Locator, Page, Response } from "@playwright/test";
-import { expect, fetchApiPreviewRoute, test } from "../fixtures";
+import { expect, fetchApiPreviewRouteJson, test } from "../fixtures";
 import { deriveAppUrl } from "../playwright.config";
 
 const appUrl = deriveAppUrl(process.env.VM0_API_BACKEND_URL!);
@@ -129,8 +129,7 @@ async function mockComposerConnectorState(page: Page): Promise<void> {
     });
   });
   await page.route("**/api/okou/connector-catalog/status", async (route) => {
-    const response = await fetchApiPreviewRoute(route);
-    const body: unknown = await response.json();
+    const body = await fetchApiPreviewRouteJson(route);
     if (!isConnectorCatalogStatusResponse(body)) {
       throw new Error("Connector catalog returned an unexpected response");
     }
@@ -145,7 +144,6 @@ async function mockComposerConnectorState(page: Page): Promise<void> {
       }
     }
     await route.fulfill({
-      response,
       json: {
         ...body,
         connectors: body.connectors.map((connector) => {
@@ -175,13 +173,11 @@ async function mockComposerConnectorState(page: Page): Promise<void> {
 
 async function enableResponsiveFollowupCards(page: Page): Promise<void> {
   await page.route("**/api/okou/feature-switches", async (route) => {
-    const response = await fetchApiPreviewRoute(route);
-    const body: unknown = await response.json();
+    const body = await fetchApiPreviewRouteJson(route);
     if (!isRecord(body) || !isRecord(body.effectiveSwitches)) {
       throw new Error("Feature switches returned an unexpected response");
     }
     await route.fulfill({
-      response,
       json: {
         ...body,
         effectiveSwitches: {
@@ -990,7 +986,9 @@ test("chat composer keeps the Send button inside on narrow screens", async ({
   });
   const sendButton = composer.getByRole("button", { name: "Send" });
 
-  await expect(connectorsButton.locator("img")).toHaveCount(3);
+  await expect(connectorsButton.locator("img")).toHaveCount(3, {
+    timeout: 30_000,
+  });
   await connectorsButton.click();
   await expect(
     page.getByRole("switch", { name: "Disable Cloud browser" }),

@@ -1,6 +1,5 @@
 import { setupClerkTestingToken } from "@clerk/testing/playwright";
 import {
-  type APIResponse,
   expect,
   type Route,
   test as base,
@@ -32,13 +31,36 @@ export async function installApiPreviewHeaders(
   });
 }
 
-export function fetchApiPreviewRoute(route: Route): Promise<APIResponse> {
-  return route.fetch({
-    headers: {
-      ...route.request().headers(),
-      ...apiPreviewHeaders(),
-    },
-  });
+export async function fetchApiPreviewRouteJson(route: Route): Promise<unknown> {
+  const request = route.request();
+  const url = new URL(request.url());
+  if (request.method() !== "GET") {
+    throw new Error(`API preview JSON replay requires GET for ${url.pathname}`);
+  }
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      headers: {
+        ...request.headers(),
+        ...apiPreviewHeaders(),
+      },
+      method: "GET",
+      redirect: "manual",
+    });
+  } catch {
+    throw new Error(`API preview request failed for ${url.pathname}`);
+  }
+  if (!response.ok) {
+    await response.body?.cancel();
+    throw new Error(
+      `API preview request returned ${response.status} for ${url.pathname}`,
+    );
+  }
+  try {
+    return await response.json();
+  } catch {
+    throw new Error(`API preview returned invalid JSON for ${url.pathname}`);
+  }
 }
 
 export const test = base.extend({
@@ -53,6 +75,17 @@ export const test = base.extend({
 
     await installApiPreviewHeaders(context);
 
-    await use(context);
+    try {
+      await use(context);
+    } finally {
+      await context.unrouteAll({ behavior: "ignoreErrors" });
+    }
+  },
+  page: async ({ page }, use) => {
+    try {
+      await use(page);
+    } finally {
+      await page.unrouteAll({ behavior: "ignoreErrors" });
+    }
   },
 });

@@ -2174,8 +2174,44 @@ jobs:
           if [[ -f /tmp/stripe-listen.pid ]]; then
             kill "$(cat /tmp/stripe-listen.pid)" 2>/dev/null || true
           fi
-      - name: Upload Playwright report
+      - name: Verify Playwright artifacts exclude credentials
+        id: playwright-artifact-safety
         if: always()
+        shell: bash
+        env:
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_API_PREVIEW_ACCESS_CLIENT_SECRET }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+        run: |
+          set -euo pipefail
+
+          artifact_paths=()
+          for path in e2e/playwright-report e2e/test-results; do
+            if [[ -d "$path" ]]; then
+              artifact_paths+=("$path")
+            fi
+          done
+
+          safe="true"
+          if [[ "${#artifact_paths[@]}" -gt 0 ]]; then
+            for value in "${CF_ACCESS_CLIENT_SECRET:-}" "${VERCEL_AUTOMATION_BYPASS_SECRET:-}"; do
+              if [[ -n "$value" ]] && grep -R --binary-files=text --fixed-strings --quiet -- "$value" "${artifact_paths[@]}"; then
+                safe="false"
+              fi
+            done
+            if grep -R --binary-files=text --extended-regexp --quiet -- \
+              'cf-access-client-(id|secret):|authorization: Bearer eyJ' \
+              "${artifact_paths[@]}"; then
+              safe="false"
+            fi
+          fi
+
+          echo "safe=$safe" >> "$GITHUB_OUTPUT"
+          if [[ "$safe" != "true" ]]; then
+            echo "::error::Playwright artifacts contain preview credentials and will not be uploaded"
+            exit 1
+          fi
+      - name: Upload Playwright report
+        if: always() && steps.playwright-artifact-safety.outputs.safe == 'true'
         uses: actions/upload-artifact@v7
         with:
           name: playwright-report
