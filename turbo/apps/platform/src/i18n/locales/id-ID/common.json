@@ -325,17 +325,18 @@
     "sources": {
       "agent": "Agen",
       "agentphone": "AgentPhone",
+      "automationEvent": "Peristiwa otomatisasi",
+      "automationSchedule": "Jadwal otomatisasi",
       "email": "Email",
       "feishu": "Feishu",
       "github": "GitHub",
+      "goal": "Tujuan",
       "slack": "Slack",
       "teams": "Teams",
       "telegram": "Telegram",
       "test": "Tes",
       "web": "Web",
-      "webhook": "Webhook",
-      "workflowEvent": "Peristiwa alur kerja",
-      "workflowSchedule": "Jadwal alur kerja"
+      "webhook": "Webhook"
     },
     "statuses": {
       "cancelled": "Dibatalkan",

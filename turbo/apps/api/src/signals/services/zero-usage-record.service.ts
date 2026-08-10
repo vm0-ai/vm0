@@ -118,7 +118,13 @@ function sourceExpr() {
       WHEN ${eq(zeroRuns.triggerSource, sql`'web'`)} THEN 'chat'
       WHEN ${inArray(
         zeroRuns.triggerSource,
-        sql`('workflow-schedule', 'workflow-event')`,
+        sql`(
+          'workflow-schedule',
+          'workflow-event',
+          'automation-schedule',
+          'automation-event',
+          'goal'
+        )`,
       )} THEN 'automation'
       WHEN ${inArray(
         zeroRuns.triggerSource,

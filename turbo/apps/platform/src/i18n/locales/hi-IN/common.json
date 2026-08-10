@@ -325,17 +325,18 @@
     "sources": {
       "agent": "एजेंट",
       "agentphone": "AgentPhone",
+      "automationEvent": "ऑटोमेशन घटना",
+      "automationSchedule": "ऑटोमेशन शेड्यूल",
       "email": "ईमेल",
       "feishu": "Feishu",
       "github": "GitHub",
+      "goal": "लक्ष्य",
       "slack": "Slack",
       "teams": "टीमें",
       "telegram": "Telegram",
       "test": "टेस्ट",
       "web": "वेब",
-      "webhook": "वेबहुक",
-      "workflowEvent": "वर्कफ़्लो घटना",
-      "workflowSchedule": "वर्कफ़्लो शेड्यूल"
+      "webhook": "वेबहुक"
     },
     "statuses": {
       "cancelled": "रद्द कर दिया गया",

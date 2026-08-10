@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
+import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
 import { zeroBankingContract } from "@vm0/api-contracts/contracts/zero-banking";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { HttpResponse, http } from "msw";
@@ -22,6 +23,14 @@ import {
 import { zeroBankingRoutes } from "../zero-banking";
 
 const context = testContext();
+
+const UNATTENDED_TRIGGER_SOURCES = [
+  "workflow-schedule",
+  "workflow-event",
+  "automation-schedule",
+  "automation-event",
+  "goal",
+] as const satisfies readonly TriggerSource[];
 
 const FINICITY_BASE_URL = "https://api.finicity.com";
 const FINICITY_AUTH_URL = `${FINICITY_BASE_URL}/aggregation/v2/partners/authentication`;
@@ -48,7 +57,7 @@ interface BankingFixture {
 }
 
 interface SeedBankingFixtureArgs {
-  readonly triggerSource?: "workflow-schedule" | "workflow-event";
+  readonly triggerSource?: (typeof UNATTENDED_TRIGGER_SOURCES)[number];
   readonly operationScopes?: readonly BankingOperationScope[];
   readonly allowAutomationRuns?: boolean;
   readonly connectionStatus?: BankingConnectionStatus;
@@ -422,7 +431,7 @@ describe("POST /api/zero/banking/*", () => {
     expect(authRequestCount).toBe(0);
   });
 
-  it.each(["workflow-schedule", "workflow-event"] as const)(
+  it.each(UNATTENDED_TRIGGER_SOURCES)(
     "denies %s runs unless the banking grant allows automations",
     async (triggerSource) => {
       const fixture = await seedBankingFixture({ triggerSource });
@@ -459,7 +468,7 @@ describe("POST /api/zero/banking/*", () => {
     },
   );
 
-  it.each(["workflow-schedule", "workflow-event"] as const)(
+  it.each(UNATTENDED_TRIGGER_SOURCES)(
     "allows %s runs when the banking grant allows automations",
     async (triggerSource) => {
       const fixture = await seedBankingFixture({

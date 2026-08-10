@@ -24,6 +24,9 @@ import type {
 export const RUN_UPLOADED_FILE_SOURCES = [
   "workflow-schedule",
   "workflow-event",
+  "automation-schedule",
+  "automation-event",
+  "goal",
   "web",
   "slack",
   "teams",

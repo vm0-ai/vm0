@@ -325,17 +325,18 @@
     "sources": {
       "agent": "에이전트",
       "agentphone": "AgentPhone",
+      "automationEvent": "자동화 이벤트",
+      "automationSchedule": "자동화 일정",
       "email": "이메일",
       "feishu": "Feishu",
       "github": "GitHub",
+      "goal": "목표",
       "slack": "Slack",
       "teams": "Teams",
       "telegram": "Telegram",
       "test": "테스트",
       "web": "웹",
-      "webhook": "Webhook",
-      "workflowEvent": "워크플로 이벤트",
-      "workflowSchedule": "워크플로 일정"
+      "webhook": "Webhook"
     },
     "statuses": {
       "cancelled": "취소됨",
