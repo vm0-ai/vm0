@@ -591,6 +591,24 @@ function recurringAmount(invoice: Stripe.Invoice): number {
   return invoice.amount_due;
 }
 
+function restoredSubscriptionRecurringPreviewParams(
+  subscription: Stripe.Subscription,
+): Stripe.InvoiceCreatePreviewParams {
+  const customerId = stripeObjectId(subscription.customer);
+  if (!customerId) {
+    throw new Error(`Stripe subscription ${subscription.id} has no customer`);
+  }
+  return {
+    customer: customerId,
+    preview_mode: "recurring",
+    subscription_details: {
+      items: subscription.items.data.map((item) => {
+        return { price: item.price.id, quantity: item.quantity ?? 1 };
+      }),
+    },
+  };
+}
+
 function planIsUpgrade(source: UsagePackTier, target: UsagePackTier): boolean {
   return source === "pro" && target === "team";
 }
@@ -1050,10 +1068,7 @@ export async function previewUsagePackSubscriptionChange(
   const [recurringPreview, immediatePreview] = await Promise.all([
     stripe.invoices.createPreview(
       prepared.restoreScheduleId
-        ? {
-            subscription: prepared.subscription.id,
-            preview_mode: "recurring",
-          }
+        ? restoredSubscriptionRecurringPreviewParams(prepared.subscription)
         : {
             subscription: prepared.subscription.id,
             preview_mode: "recurring",

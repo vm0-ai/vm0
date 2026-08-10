@@ -1907,6 +1907,7 @@ describe("usage pack allocation management", () => {
     readonly nextRecurringAmountCents: number;
     readonly sourcePriceId: string;
     readonly targetPriceId: string;
+    readonly rejectScheduledSubscriptionRecurringPreview?: boolean;
   }): void {
     context.mocks.stripe.invoices.createPreview.mockImplementation((input) => {
       if (typeof input !== "object" || input === null) {
@@ -1919,6 +1920,14 @@ describe("usage pack allocation management", () => {
           ? input.subscription_details
           : undefined;
       if (previewMode === "recurring") {
+        if (
+          args.rejectScheduledSubscriptionRecurringPreview &&
+          "subscription" in input
+        ) {
+          throw new Error(
+            "Recurring estimates do not support subscription schedules",
+          );
+        }
         if (
           typeof subscriptionDetails === "object" &&
           subscriptionDetails !== null &&
@@ -2455,6 +2464,7 @@ describe("usage pack allocation management", () => {
       nextRecurringAmountCents: 5000,
       sourcePriceId: TEST_PRICE_USAGE_PACK_50,
       targetPriceId: TEST_PRICE_USAGE_PACK_50,
+      rejectScheduledSubscriptionRecurringPreview: true,
     });
     context.mocks.stripe.invoices.createPreview.mockClear();
     const restorePreview = await accept(
@@ -2476,8 +2486,14 @@ describe("usage pack allocation management", () => {
       }),
     );
     expect(context.mocks.stripe.invoices.createPreview).toHaveBeenCalledWith({
-      subscription: fixture.subscriptionId,
+      customer: fixture.customerId,
       preview_mode: "recurring",
+      subscription_details: {
+        items: [
+          { price: TEST_PRICE_USAGE_PACK_PLAN_PRO, quantity: 1 },
+          { price: TEST_PRICE_USAGE_PACK_50, quantity: 1 },
+        ],
+      },
     });
 
     context.mocks.stripe.subscriptionSchedules.release.mockResolvedValue({
