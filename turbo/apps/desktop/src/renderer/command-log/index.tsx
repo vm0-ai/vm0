@@ -78,9 +78,11 @@ export function RuntimePanel({
   const stopDisabled =
     (state.host.status !== "online" && state.host.status !== "recovering") ||
     stopLoadable.state === "loading";
+  const latestError =
+    state.host.lastError ?? state.host.errorLog.at(0)?.message;
   const hasErrorDetails =
     (state.host.status === "error" || state.host.status === "recovering") &&
-    (state.host.lastError !== null || state.host.errorLog.length > 0);
+    latestError !== undefined;
 
   return (
     <Panel title="Runtime" icon={<Activity size={18} />}>
@@ -159,8 +161,9 @@ export function RuntimePanel({
           Refresh
         </IconButton>
       </div>
-      {errorDetailsOpen && hasErrorDetails && (
+      {errorDetailsOpen && hasErrorDetails && latestError !== undefined && (
         <RuntimeErrorDetailsModal
+          latestError={latestError}
           state={state}
           onClose={() => {
             setErrorDetailsOpen(false);

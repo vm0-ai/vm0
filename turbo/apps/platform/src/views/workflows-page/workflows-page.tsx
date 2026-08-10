@@ -63,7 +63,11 @@ import {
   automationTypeLabel,
   WorkflowAutomationEnabledSwitch,
 } from "../zero-page/workflow-automations-page.tsx";
-import { agentLabel, workflowTitle } from "./workflow-shared.tsx";
+import {
+  agentLabel,
+  labelInitials,
+  workflowTitle,
+} from "./workflow-shared.tsx";
 import { WorkflowWebhookUpgradeDialog } from "./workflow-webhook-upgrade-dialog.tsx";
 
 type WorkflowAutomationEntryMap = ReadonlyMap<
@@ -85,14 +89,6 @@ function workflowAutomationEntryMap(
 
 function ownerLabel(workflow: ZeroWorkflowSummary): string {
   return workflow.ownerUserDisplayName?.trim() || workflow.ownerUserId;
-}
-
-function initials(label: string): string {
-  const words = label.trim().split(/\s+/).filter(Boolean);
-  if (words.length >= 2) {
-    return `${words[0]?.[0] ?? ""}${words[1]?.[0] ?? ""}`.toUpperCase();
-  }
-  return (words[0]?.slice(0, 2) || "??").toUpperCase();
 }
 
 function automationDotClass(entry: WorkflowAutomationEntry): string {
@@ -176,7 +172,7 @@ function MemberAvatar({
   }
   return (
     <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-border/60 bg-gray-50 text-[10px] font-semibold text-muted-foreground">
-      {initials(label)}
+      {labelInitials(label)}
     </span>
   );
 }

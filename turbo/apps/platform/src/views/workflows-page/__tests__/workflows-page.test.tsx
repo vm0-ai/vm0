@@ -1,4 +1,5 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import {
   zeroBillingStatusContract,
   type BillingStatusResponse,
@@ -1385,6 +1386,7 @@ async function openCopyDialog(): Promise<HTMLElement> {
 
 describe("workflows routes", () => {
   it("renders the workspace workflows index", async () => {
+    const user = userEvent.setup();
     mockWorkflowApis([salesResearch()]);
 
     detachedSetupPage({
@@ -1399,6 +1401,10 @@ describe("workflows routes", () => {
       ).toBeInTheDocument();
     });
     expect(screen.getByText("Sales Research")).toBeInTheDocument();
+
+    await user.hover(linkByAriaLabel("Open Sales Research"));
+    const tooltip = await screen.findByRole("tooltip");
+    expect(within(tooltip).getByText("TU")).toBeInTheDocument();
   });
 
   it("labels existing Stripe automations on the workspace workflows index", async () => {
