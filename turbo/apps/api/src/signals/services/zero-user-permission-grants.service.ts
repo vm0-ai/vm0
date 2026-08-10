@@ -18,19 +18,7 @@ import {
   connectorCatalogCompatibilityEvaluation,
 } from "@vm0/db/schema/connector-catalog";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { agentSessions } from "@vm0/db/schema/agent-session";
-import {
-  and,
-  asc,
-  eq,
-  gt,
-  inArray,
-  isNotNull,
-  isNull,
-  or,
-  type SQL,
-} from "drizzle-orm";
+import { and, asc, eq, gt, inArray, isNull, or, type SQL } from "drizzle-orm";
 import type {
   ApplyUserPermissionGrantsRequest,
   UserPermissionGrantExpiresIn,
@@ -38,10 +26,7 @@ import type {
 } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import { notFound } from "../../lib/error";
 import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
-import {
-  publishConnectorPermissionUpdatedSafely,
-  publishConnectorRuntimeSyncToRunnerGroupSafely,
-} from "../external/realtime";
+import { publishConnectorPermissionUpdatedSafely } from "../external/realtime";
 import { nowDate } from "../../lib/time";
 import {
   defaultFirewallPolicyForPermissionIndex,
@@ -59,6 +44,7 @@ import {
   connectorCatalogValidationAuthorityIsCurrent,
   currentConnectorCatalogValidatorIdentity,
 } from "./connector-catalog-validator-authority";
+import { commitConnectorRuntimeMutation } from "./connector-runtime-wakeup.service";
 
 const userPermissionGrantSelection = Object.freeze({
   id: userPermissionGrants.id,
@@ -151,11 +137,6 @@ type ApplyUserPermissionGrantsResult =
     }
   | NotFoundResponse
   | ValidationErrorResponse;
-
-interface ActiveNetworkPolicyRefreshRun {
-  readonly runId: string;
-  readonly runnerGroup: string | null;
-}
 
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
@@ -822,48 +803,6 @@ async function applyVisibleAgentGrantRows(
   });
 }
 
-async function loadActiveNetworkPolicyRefreshRuns(
-  db: ReadonlyDb,
-  scope: UserPermissionGrantScope,
-): Promise<readonly ActiveNetworkPolicyRefreshRun[]> {
-  return await db
-    .select({
-      runId: agentRuns.id,
-      runnerGroup: agentRuns.runnerGroup,
-    })
-    .from(agentRuns)
-    .innerJoin(agentSessions, eq(agentSessions.id, agentRuns.sessionId))
-    .where(
-      and(
-        eq(agentRuns.orgId, scope.orgId),
-        eq(agentRuns.userId, scope.userId),
-        eq(agentRuns.status, "running"),
-        isNotNull(agentRuns.runnerGroup),
-        eq(agentSessions.agentComposeId, scope.agentId),
-      ),
-    );
-}
-
-async function publishActiveNetworkPolicyRefreshes(
-  db: ReadonlyDb,
-  scope: UserPermissionGrantScope,
-  connectorSlug: string,
-): Promise<void> {
-  const runs = await loadActiveNetworkPolicyRefreshRuns(db, scope);
-  await Promise.all(
-    runs.flatMap((run) => {
-      if (!run.runnerGroup) {
-        return [];
-      }
-      return publishConnectorRuntimeSyncToRunnerGroupSafely(
-        run.runnerGroup,
-        run.runId,
-        { kind: "builtin", connectorSlug },
-      );
-    }),
-  );
-}
-
 function permissionGrantResponseScope(scope: UserPermissionGrantScope): {
   readonly agentId: string;
 } {
@@ -881,26 +820,24 @@ async function applyRowsAndPublishNetworkPolicyRefreshes(
   args: ApplyUserPermissionGrantsArgs,
   serverFirewalls: ConnectorServerFirewallCatalog,
 ): Promise<readonly StoredPermissionGrantRow[] | NotFoundResponse> {
-  const rows = await applyVisibleGrantRows(db, args);
-  if ("status" in rows) {
-    return rows;
-  }
-
-  if (!serverFirewalls.has(args.apply.connectorSlug)) {
-    return rows;
-  }
-
-  const responseScope = applyPermissionGrantResponseScope(args);
-  await publishActiveNetworkPolicyRefreshes(
-    db,
-    {
-      orgId: args.orgId,
-      userId: args.userId,
-      agentId: responseScope.agentId,
+  return await commitConnectorRuntimeMutation(
+    applyVisibleGrantRows(db, args),
+    (rows) => {
+      if ("status" in rows || !serverFirewalls.has(args.apply.connectorSlug)) {
+        return undefined;
+      }
+      const responseScope = applyPermissionGrantResponseScope(args);
+      return {
+        db,
+        scope: {
+          orgId: args.orgId,
+          userId: args.userId,
+          agentId: responseScope.agentId,
+        },
+        targets: [{ kind: "builtin", connectorSlug: args.apply.connectorSlug }],
+      };
     },
-    args.apply.connectorSlug,
   );
-  return rows;
 }
 
 export const listUserPermissionGrants$ = command(

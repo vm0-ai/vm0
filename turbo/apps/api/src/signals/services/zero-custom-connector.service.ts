@@ -68,9 +68,9 @@ import {
 import { effectiveCustomConnectorPermissionBundleRef } from "./feishu-custom-connector-permissions";
 import { syncCustomConnectorSkillVolume$ } from "./custom-connector-skill-volume.service";
 import {
-  commitCustomConnectorRuntimeMutation,
-  publishCustomConnectorRuntimeSyncWakeups,
-} from "./custom-connector-runtime-wakeup.service";
+  commitConnectorRuntimeMutation,
+  publishConnectorRuntimeSyncWakeups,
+} from "./connector-runtime-wakeup.service";
 import type { Tx } from "../../lib/db-types";
 
 const L = logger("CustomConnectorService");
@@ -1785,10 +1785,10 @@ async function persistCustomConnectorUpdateAndPublishRuntimeWakeup(
     args.grantConfigurationChanged ||
     connector.storageVersion !== args.existing.storageVersion
   ) {
-    await publishCustomConnectorRuntimeSyncWakeups({
+    await publishConnectorRuntimeSyncWakeups({
       db,
       scope: { orgId: args.orgId },
-      customConnectorIds: [connector.id],
+      targets: [{ kind: "custom", customConnectorId: connector.id }],
     });
   }
   return connector;
@@ -1953,18 +1953,15 @@ export const deleteCustomConnector$ = command(
         );
       return true;
     });
-    const deleted = await commitCustomConnectorRuntimeMutation(
-      deletion,
-      (result) => {
-        return result
-          ? {
-              db: writeDb,
-              scope: { orgId: args.orgId },
-              customConnectorIds: [args.id],
-            }
-          : undefined;
-      },
-    );
+    const deleted = await commitConnectorRuntimeMutation(deletion, (result) => {
+      return result
+        ? {
+            db: writeDb,
+            scope: { orgId: args.orgId },
+            targets: [{ kind: "custom", customConnectorId: args.id }],
+          }
+        : undefined;
+    });
     signal.throwIfAborted();
     if (!deleted) {
       return notFound("Custom connector not found");
@@ -2533,14 +2530,16 @@ export const setCustomConnectorValues$ = command(
         signal,
       );
     });
-    const writeResult = await commitCustomConnectorRuntimeMutation(
+    const writeResult = await commitConnectorRuntimeMutation(
       valueWrite,
       (result) => {
         return !("status" in result) && result.runtimeRecovered
           ? {
               db: writeDb,
               scope: { orgId: args.orgId, userId: args.userId },
-              customConnectorIds: [args.connectorId],
+              targets: [
+                { kind: "custom", customConnectorId: args.connectorId },
+              ],
             }
           : undefined;
       },
@@ -3159,7 +3158,6 @@ const authorizeProposalAgent$ = command(
       return notFound("Custom connector not found");
     }
     if (
-      added.status === "customConnectorsNotConfigured" ||
       added.status === "customConnectorPermissionSelectionRequired" ||
       added.status === "invalidCustomConnectorPermissions"
     ) {

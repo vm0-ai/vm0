@@ -3144,7 +3144,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn active_connector_runtime_notification_schedules_immediate_sync() {
+    async fn active_connector_runtime_notification_filters_targets_and_schedules_sync() {
         let server = MockServer::start();
         let (core, mut requests) = core_without_worker(&server);
         let run_id = RunId::nil();
@@ -3158,6 +3158,13 @@ mod tests {
             .lock()
             .await
             .insert(run_id, active_run_connector_runtime_state(registry));
+
+        core.notify_connector_runtime_sync(run_id, builtin_target("github"))
+            .await;
+        assert!(matches!(
+            requests.try_recv(),
+            Err(tokio::sync::mpsc::error::TryRecvError::Empty)
+        ));
 
         core.notify_connector_runtime_sync(run_id, builtin_target("slack"))
             .await;

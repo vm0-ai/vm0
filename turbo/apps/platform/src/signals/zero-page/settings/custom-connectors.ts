@@ -7,12 +7,16 @@ import {
   zeroCustomConnectorsContract,
   customConnectorListResponseSchema,
   customConnectorResponseSchema,
+  isHttpCustomConnectorResponse,
   type CreateCustomConnectorBody,
   type CustomConnectorHttpResponse,
   type CustomConnectorResponse,
   type UpdateCustomConnectorBody,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
-import { zeroAgentCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
+import {
+  zeroAgentCustomConnectorsContract,
+  type AgentCustomConnectorResponse,
+} from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import { IN_VITEST } from "../../../env.ts";
 import { i18n } from "../../../i18n/index.ts";
@@ -71,16 +75,21 @@ export const customConnectors$ = computed(
   },
 );
 
-export const customConnectorAuthorizedAgentsById$ = computed(
-  async (get): Promise<ReadonlyMap<string, readonly TeamComposeItem[]>> => {
+export interface CustomConnectorAgentAuthorization {
+  readonly agent: TeamComposeItem;
+  readonly access: AgentCustomConnectorResponse;
+}
+
+export const customConnectorAgentAuthorizations$ = computed(
+  async (get): Promise<readonly CustomConnectorAgentAuthorization[]> => {
     get(customConnectorAuthorizationReloadVersion$);
     const connectors = await get(customConnectors$);
     if (
       !connectors.some((connector) => {
-        return connector.connected;
+        return isHttpCustomConnectorResponse(connector);
       })
     ) {
-      return new Map();
+      return [];
     }
 
     const allAgents = await get(agents$);
@@ -91,17 +100,21 @@ export const customConnectorAuthorizedAgentsById$ = computed(
           client.get({ params: { id: agent.id } }),
           [200, 404],
         );
-        return result.status === 404
-          ? null
-          : { agent, enabledIds: result.body.enabledIds };
+        return result.status === 404 ? null : { agent, access: result.body };
       }),
     );
+    return rows.filter((row): row is CustomConnectorAgentAuthorization => {
+      return row !== null;
+    });
+  },
+);
+
+export const customConnectorAuthorizedAgentsById$ = computed(
+  async (get): Promise<ReadonlyMap<string, readonly TeamComposeItem[]>> => {
+    const rows = await get(customConnectorAgentAuthorizations$);
     const agentsByConnectorId = new Map<string, TeamComposeItem[]>();
     for (const row of rows) {
-      if (!row) {
-        continue;
-      }
-      for (const connectorId of row.enabledIds) {
+      for (const connectorId of row.access.enabledIds) {
         const authorizedAgents = agentsByConnectorId.get(connectorId) ?? [];
         authorizedAgents.push(row.agent);
         agentsByConnectorId.set(connectorId, authorizedAgents);
@@ -215,6 +228,34 @@ const authorizeCustomConnectorForTarget$ = command(
   },
 );
 
+const shouldWriteLegacyAuthorizationAfterConnection$ = command(
+  async (
+    { get },
+    args: {
+      readonly connector: CustomConnectorResponse;
+      readonly target: CustomConnectorAuthorizationTarget;
+    },
+    signal: AbortSignal,
+  ): Promise<boolean> => {
+    if (!args.connector.permissionBundleRef) {
+      return true;
+    }
+    if (args.target.kind === "visible-agents") {
+      return false;
+    }
+    const agentId = args.target.agentId;
+    const authorizedAgentsByConnectorId = await get(
+      customConnectorAuthorizedAgentsById$,
+    );
+    signal.throwIfAborted();
+    return !(authorizedAgentsByConnectorId.get(args.connector.id) ?? []).some(
+      (agent) => {
+        return agent.id === agentId;
+      },
+    );
+  },
+);
+
 export const createCustomConnector$ = command(
   async (
     { get, set },
@@ -308,6 +349,19 @@ const setCustomConnectorSecretForTarget$ = command(
     },
     signal: AbortSignal,
   ): Promise<void> => {
+    const connector = (await get(customConnectors$)).find((candidate) => {
+      return candidate.id === args.id;
+    });
+    signal.throwIfAborted();
+    if (!connector) {
+      throw new Error(`Custom connector not found: ${args.id}`);
+    }
+    const writeLegacyAuthorization = await set(
+      shouldWriteLegacyAuthorizationAfterConnection$,
+      { connector, target: args.authorizationTarget },
+      signal,
+    );
+    signal.throwIfAborted();
     const createClient = get(zeroClient$);
     const client = createClient(zeroCustomConnectorSecretContract);
     await accept(
@@ -320,14 +374,16 @@ const setCustomConnectorSecretForTarget$ = command(
     );
     signal.throwIfAborted();
     set(bumpReload$);
-    await set(
-      authorizeCustomConnectorForTarget$,
-      {
-        connectorId: args.id,
-        target: args.authorizationTarget,
-      },
-      signal,
-    );
+    if (writeLegacyAuthorization) {
+      await set(
+        authorizeCustomConnectorForTarget$,
+        {
+          connectorId: args.id,
+          target: args.authorizationTarget,
+        },
+        signal,
+      );
+    }
     toast.success(
       i18n.t(($) => {
         return $.connectors.custom.toasts.connected;
@@ -451,10 +507,18 @@ const connectCustomConnectorOAuth2ForTarget$ = command(
     set(bumpReload$);
     const connectors = await get(customConnectors$);
     signal.throwIfAborted();
-    const connected = connectors.some((connector) => {
-      return connector.id === args.id && connector.connected;
+    const connector = connectors.find((candidate) => {
+      return candidate.id === args.id;
     });
-    if (connected) {
+    const writeLegacyAuthorization = connector
+      ? await set(
+          shouldWriteLegacyAuthorizationAfterConnection$,
+          { connector, target: args.authorizationTarget },
+          signal,
+        )
+      : false;
+    signal.throwIfAborted();
+    if (connector?.connected && writeLegacyAuthorization) {
       await set(
         authorizeCustomConnectorForTarget$,
         {
@@ -464,7 +528,7 @@ const connectCustomConnectorOAuth2ForTarget$ = command(
         signal,
       );
     }
-    return connected;
+    return connector?.connected ?? false;
   },
 );
 
@@ -507,7 +571,7 @@ type DialogState =
   | { kind: "create" }
   | { kind: "edit"; connector: CustomConnectorHttpResponse }
   | { kind: "connect"; connector: CustomConnectorHttpResponse }
-  | { kind: "access"; connector: CustomConnectorResponse }
+  | { kind: "access"; connector: CustomConnectorHttpResponse }
   | { kind: "delete"; connector: CustomConnectorResponse };
 
 const internalDialog$ = state<DialogState>({ kind: "none" });
@@ -559,7 +623,7 @@ export const openCustomConnectorConnectDialog$ = command(
   },
 );
 export const openCustomConnectorAccessDialog$ = command(
-  ({ set }, connector: CustomConnectorResponse) => {
+  ({ set }, connector: CustomConnectorHttpResponse) => {
     set(internalDialog$, { kind: "access", connector });
   },
 );

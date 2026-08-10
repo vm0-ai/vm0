@@ -6,7 +6,7 @@ import {
   useLoadable,
   useSet,
 } from "ccstate-react";
-import { Bolt, Check, Cpu } from "lucide-react";
+import { Check, Cpu, Zap } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -362,7 +362,7 @@ function ModelFirstTriggerLabel({
           </span>
           {codexServiceTier === "fast" && (
             <span className="inline-flex h-5 shrink-0 items-center gap-1 rounded bg-amber-500/10 px-1.5 text-[11px] font-medium leading-none text-amber-700 dark:text-amber-300">
-              <Bolt size={12} />
+              <Zap size={12} />
               {t(($) => {
                 return $.settings.models.picker.fast;
               })}
@@ -624,7 +624,7 @@ function CodexFastModeSplitPanel({
           }}
         >
           <span className="inline-flex items-center gap-1 text-xs font-medium">
-            <Bolt size={12} />
+            <Zap size={12} />
             {t(($) => {
               return $.settings.models.picker.fast;
             })}

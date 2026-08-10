@@ -14,15 +14,15 @@ import { useLoadableSet } from "ccstate-react/experimental";
 import { useGet, useSet } from "ccstate-react";
 import { toast } from "@vm0/ui/components/ui/sonner";
 
-import { pageSignal$ } from "../../signals/page-signal.ts";
+import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import {
   customConnectorPermissionDraft$,
-  saveAgentCustomConnectorPermissions$,
+  saveCustomConnectorPermissions$,
   setCustomConnectorPermissionDraftValue$,
-} from "../../signals/zero-page/job-detail/custom-connectors.ts";
-import { detach, Reason } from "../../signals/utils.ts";
-import { CustomConnectorIcon } from "../zero-page/components/settings/custom-connector-icon.tsx";
-import { PermissionPolicyToggle } from "../zero-page/components/settings/permission-policy-toggle.tsx";
+} from "../../../../signals/zero-page/settings/custom-connector-permissions.ts";
+import { detach, Reason } from "../../../../signals/utils.ts";
+import { CustomConnectorIcon } from "./custom-connector-icon.tsx";
+import { PermissionPolicyToggle } from "./permission-policy-toggle.tsx";
 
 function permissionSelectionsEqual(
   left: ReadonlySet<string>,
@@ -50,21 +50,22 @@ function LoadedCustomConnectorPermissions({
   const { t } = useTranslation();
   const draft = useGet(customConnectorPermissionDraft$);
   const setDraftPermission = useSet(setCustomConnectorPermissionDraftValue$);
-  const [saveLoadable, save] = useLoadableSet(
-    saveAgentCustomConnectorPermissions$,
-  );
+  const [saveLoadable, save] = useLoadableSet(saveCustomConnectorPermissions$);
   const pageSignal = useGet(pageSignal$);
   const permissions = bundle.permissions.filter((permission) => {
     return bundle.defaultPolicies[permission.name] === "deny";
   });
-  const draftMatches =
-    draft?.agentId === agentId && draft.connectorId === connectorId;
-  const selected = new Set(draftMatches ? draft.permissionNames : []);
-  const initialSelections = new Set(
-    draftMatches ? draft.initialPermissionNames : [],
-  );
+  const activeDraft =
+    draft?.agentId === agentId && draft.connectorId === connectorId
+      ? draft
+      : null;
+  const selected = new Set(activeDraft?.permissionNames ?? []);
+  const initialSelections = new Set(activeDraft?.initialPermissionNames ?? []);
   const saving = saveLoadable.state === "loading";
-  const changed = !permissionSelectionsEqual(selected, initialSelections);
+  const changed =
+    activeDraft !== null &&
+    (!activeDraft.initiallyAuthorized ||
+      !permissionSelectionsEqual(selected, initialSelections));
 
   const setPermission = (permissionName: string, allow: boolean) => {
     setDraftPermission({

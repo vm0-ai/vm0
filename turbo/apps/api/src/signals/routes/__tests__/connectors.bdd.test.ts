@@ -1679,17 +1679,22 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       connected: false,
       missingRequiredFields: ["oauth"],
     });
-    const rejectedGrant =
-      await connectorsApi.requestUpdateAgentCustomConnectors(
-        member,
-        agent.agentId,
-        [created.id],
-        [400],
-      );
-    expectApiError(rejectedGrant.body);
-    expect(rejectedGrant.body.error.message).toContain(
-      "not configured for this user",
+    const durableGrant = await connectorsApi.requestUpdateAgentCustomConnectors(
+      member,
+      agent.agentId,
+      [created.id],
+      [200],
     );
+    expect(durableGrant.body).toMatchObject({
+      enabledIds: expect.arrayContaining([created.id]),
+    });
+    if ("error" in durableGrant.body) {
+      throw new Error("Expected a durable custom connector grant");
+    }
+    expect(durableGrant.body.grants).toContainEqual({
+      customConnectorId: created.id,
+      permissionNames: [],
+    });
     await expect(
       connectorsApi.readAgentCustomConnectors(member, agent.agentId),
     ).resolves.toContain(created.id);
@@ -2703,7 +2708,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     await bdd.deleteAgent(admin, agent.agentId);
   });
 
-  it("saves a connector proposal without authorizing when required values are missing", async () => {
+  it("authorizes a connector proposal before required values are configured", async () => {
     const bdd = createBddApi(context);
     bdd.acceptAgentStorageWrites();
     const admin = bdd.user({ orgRole: "org:admin" });
@@ -2737,7 +2742,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       agentId: agent.agentId,
     });
 
-    expect(saved.authorizedAgentId).toBeUndefined();
+    expect(saved.authorizedAgentId).toBe(agent.agentId);
     expect(saved.connector).toMatchObject({
       connected: false,
       missingRequiredFields: ["api_key"],
@@ -2745,7 +2750,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     });
     await expect(
       connectorsApi.readAgentCustomConnectors(admin, agent.agentId),
-    ).resolves.toStrictEqual([]);
+    ).resolves.toStrictEqual([saved.connector.id]);
 
     await connectorsApi.deleteCustomConnector(admin, saved.connector.id);
     await bdd.deleteAgent(admin, agent.agentId);
