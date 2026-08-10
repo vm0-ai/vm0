@@ -25,6 +25,7 @@ import {
   customConnectorOAuthStateMatchesDefinition,
   decryptCustomConnectorOAuth2Credentials,
   exchangeCustomConnectorOAuth2Code,
+  lockCustomConnectorOAuth2CredentialContract,
   parseValidCustomConnectorOAuthState,
   startCustomConnectorOAuth2$,
   storeCustomConnectorOAuth2Connection,
@@ -382,6 +383,13 @@ async function persistFeishuOAuthConnection(
         "Failed to authorize Feishu custom connector: agentNotFound",
       );
     }
+    await lockCustomConnectorOAuth2CredentialContract({
+      db: tx,
+      orgId: args.state.orgId,
+      connectorId: args.connector.id,
+      storageVersion: args.connector.storageVersion,
+    });
+    signal.throwIfAborted();
     const connection = await upsertFeishuConnection(
       {
         db: tx,
