@@ -1,8 +1,8 @@
 use crate::support::{
-    Harness, blocking_write_path, blocking_write_pid_path, blocking_write_started_path,
-    captured_output_bytes, exec_exit_code, finish_raw_guest_connection, join_raw_guest_connection,
-    pid_alive, read_raw_message, release_blocking_write, run_exec, shell_quote,
-    start_raw_guest_connection, wait_for_path,
+    Harness, blocking_write_path, blocking_write_pid_path, captured_output_bytes, exec_exit_code,
+    finish_raw_guest_connection, join_raw_guest_connection, pid_alive, read_raw_message,
+    release_blocking_write, run_exec, shell_quote, start_raw_guest_connection,
+    wait_for_blocking_write,
 };
 use std::fs;
 use std::io::{Read, Write};
@@ -35,11 +35,9 @@ async fn blocked_write_keeps_ping_responsive_and_rejects_overlap() {
     stream
         .write_all(&vsock_proto::encode(MSG_WRITE_FILE, 10, &payload).expect("frame blocked write"))
         .expect("send blocked write");
-    wait_for_path(
-        &blocking_write_started_path(&blocked_path),
-        Duration::from_secs(5),
-    )
-    .await;
+    wait_for_blocking_write(&blocked_path, Duration::from_secs(5))
+        .await
+        .expect("blocked write helper should start");
 
     stream
         .write_all(&vsock_proto::encode(MSG_PING, 11, &[]).expect("encode ping"))
@@ -107,6 +105,34 @@ async fn blocked_write_keeps_ping_responsive_and_rejects_overlap() {
 }
 
 #[tokio::test]
+async fn blocked_write_reports_helper_setup_failure() {
+    let h = Harness::new().await;
+    let blocked_path = blocking_write_path(&h.dir, "setup-failure");
+    let blocked_path_string = blocked_path.to_string_lossy().to_string();
+    fs::create_dir(blocking_write_pid_path(&blocked_path))
+        .expect("create conflicting PID marker directory");
+
+    let write = h.host().write_file(&blocked_path_string, b"content", false);
+    let readiness = wait_for_blocking_write(&blocked_path, Duration::from_secs(2));
+    let (write_result, readiness_result) = tokio::join!(write, readiness);
+
+    let readiness_error = readiness_result.expect_err("helper setup should fail");
+    assert!(
+        readiness_error.to_string().contains("write PID marker"),
+        "unexpected readiness error: {readiness_error}"
+    );
+    let write_error = write_result.expect_err("blocked write should report helper failure");
+    assert!(
+        write_error
+            .to_string()
+            .contains("failed to prepare blocking write helper: write PID marker"),
+        "unexpected write error: {write_error}"
+    );
+
+    h.finish();
+}
+
+#[tokio::test]
 async fn blocked_write_allows_exec_cancel_and_quiesce() {
     let h = Harness::new().await;
     let handle = h
@@ -134,11 +160,9 @@ async fn blocked_write_allows_exec_cancel_and_quiesce() {
         .host()
         .write_file(&blocked_path_string, b"control content", false);
     let control = async {
-        wait_for_path(
-            &blocking_write_started_path(&blocked_path),
-            Duration::from_secs(5),
-        )
-        .await;
+        wait_for_blocking_write(&blocked_path, Duration::from_secs(5))
+            .await
+            .expect("blocked write helper should start");
         tokio::time::timeout(
             Duration::from_secs(2),
             h.host().quiesce_operations(Duration::from_secs(1)),
@@ -186,8 +210,9 @@ async fn shutdown_cancels_blocked_write_helper_before_connection_exit() {
                 .expect("frame shutdown blocked write"),
         )
         .expect("send shutdown blocked write");
-    let started_path = blocking_write_started_path(&blocked_path);
-    wait_for_path(&started_path, Duration::from_secs(5)).await;
+    wait_for_blocking_write(&blocked_path, Duration::from_secs(5))
+        .await
+        .expect("blocked write helper should start");
     let pid: u32 = fs::read_to_string(blocking_write_pid_path(&blocked_path))
         .expect("read shutdown helper pid")
         .parse()
@@ -242,11 +267,9 @@ async fn disconnect_cancels_blocked_write_helper_before_connection_exit() {
                 .expect("frame disconnect blocked write"),
         )
         .expect("send disconnect blocked write");
-    wait_for_path(
-        &blocking_write_started_path(&blocked_path),
-        Duration::from_secs(5),
-    )
-    .await;
+    wait_for_blocking_write(&blocked_path, Duration::from_secs(5))
+        .await
+        .expect("blocked write helper should start");
     let pid: u32 = fs::read_to_string(blocking_write_pid_path(&blocked_path))
         .expect("read disconnect helper pid")
         .parse()
