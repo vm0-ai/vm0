@@ -249,7 +249,7 @@ function mockAdminAccountSidebar(): void {
 }
 
 describe("zero sidebar account menu", () => {
-  it("uses the shared focus treatment and preserves keyboard menu behavior", async () => {
+  it("restores visible focus to the account trigger when the menu closes", async () => {
     const user = userEvent.setup();
     prepareDefaultAgent();
 
@@ -269,19 +269,15 @@ describe("zero sidebar account menu", () => {
       throw new Error("Account menu trigger not found");
     }
 
-    expect(accountButton).toHaveClass("focus-visible:outline-none");
-    expect(accountButton).toHaveClass("focus-visible:ring-2");
-    expect(accountButton).toHaveClass("focus-visible:ring-ring");
-    expect(accountButton).toHaveClass("focus-visible:ring-offset-2");
-
-    accountButton.focus();
-    await user.keyboard("{Enter}");
+    await user.click(accountButton);
     const menu = await screen.findByRole("menu");
     expect(menu).toBeInTheDocument();
 
     await user.keyboard("{Escape}");
     await waitFor(() => {
+      expect(screen.queryByRole("menu")).not.toBeInTheDocument();
       expect(accountButton).toHaveFocus();
+      expect(accountButton.matches(":focus-visible")).toBeTruthy();
     });
   });
 
