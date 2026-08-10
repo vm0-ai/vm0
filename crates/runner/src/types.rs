@@ -537,10 +537,56 @@ fn is_unsafe_url_codepoint(ch: char) -> bool {
 
 // Use the shortest valid witness for each URL component so materialization does
 // not push an otherwise satisfiable DNS label past its 63-byte limit.
-const BASE_URL_TEMPLATE_PREFIX_PLACEHOLDER: &str = "https://x.y";
+const BASE_URL_TEMPLATE_WHOLE_BASE_PLACEHOLDER: &str = "https://x.y";
 const BASE_URL_TEMPLATE_HOST_PLACEHOLDER: &str = "x.y";
 const BASE_URL_TEMPLATE_PORT_PLACEHOLDER: &str = "1";
 const BASE_URL_TEMPLATE_PATH_PLACEHOLDER: &str = "x";
+
+// Precompute fixed URL delimiters once; a catalog base can contain many templates.
+struct BaseUrlTemplateComponentBoundaries {
+    authority_start: Option<usize>,
+    path_start: Option<usize>,
+    query_or_fragment_start: Option<usize>,
+}
+
+impl BaseUrlTemplateComponentBoundaries {
+    fn new(base: &str) -> Self {
+        let authority_start = base.find("://").map(|index| index + "://".len());
+        let path_start = authority_start.and_then(|start| {
+            base[start..]
+                .find('/')
+                .map(|relative_index| start + relative_index)
+        });
+        let query_or_fragment_start = authority_start.and_then(|start| {
+            base[start..]
+                .find(['?', '#'])
+                .map(|relative_index| start + relative_index)
+        });
+        Self {
+            authority_start,
+            path_start,
+            query_or_fragment_start,
+        }
+    }
+
+    fn prefix_is_inside_authority(&self, template_start: usize) -> bool {
+        self.authority_start
+            .is_some_and(|start| start <= template_start)
+            && self
+                .path_start
+                .into_iter()
+                .chain(self.query_or_fragment_start)
+                .all(|boundary| template_start <= boundary)
+    }
+
+    fn prefix_is_inside_path(&self, template_start: usize) -> bool {
+        self.path_start
+            .is_some_and(|path_start| path_start < template_start)
+            && self
+                .query_or_fragment_start
+                .is_none_or(|boundary| template_start <= boundary)
+    }
+}
 
 fn validate_firewall_base_for_cache(base: &str) -> Result<(), String> {
     let template_syntax_target = base_url_template_syntax_target_for_cache(base)?;
@@ -604,6 +650,7 @@ fn base_url_template_syntax_target_for_cache(base: &str) -> Result<Option<String
     let mut search_start = 0;
     let mut result = String::new();
     let mut found = false;
+    let boundaries = BaseUrlTemplateComponentBoundaries::new(base);
     while let Some(relative_start) = base[search_start..].find("${{") {
         found = true;
         let start = search_start + relative_start;
@@ -619,6 +666,7 @@ fn base_url_template_syntax_target_for_cache(base: &str) -> Result<Option<String
             base,
             start,
             template_end,
+            &boundaries,
         )?);
         search_start = template_end;
     }
@@ -658,41 +706,27 @@ fn base_url_template_syntax_placeholder_for_cache(
     base: &str,
     start: usize,
     template_end: usize,
+    boundaries: &BaseUrlTemplateComponentBoundaries,
 ) -> Result<&'static str, String> {
-    let prefix = &base[..start];
-    let suffix = &base[template_end..];
-    let ends_base_or_starts_path = suffix.is_empty() || suffix.starts_with('/');
+    let ends_base_or_starts_path =
+        template_end == base.len() || base[template_end..].starts_with('/');
 
-    if prefix.is_empty() && ends_base_or_starts_path {
-        return Ok(BASE_URL_TEMPLATE_PREFIX_PLACEHOLDER);
+    if start == 0 && ends_base_or_starts_path {
+        return Ok(BASE_URL_TEMPLATE_WHOLE_BASE_PLACEHOLDER);
     }
-    if prefix.ends_with("://") && ends_base_or_starts_path {
+    if base[..start].ends_with("://") && ends_base_or_starts_path {
         return Ok(BASE_URL_TEMPLATE_HOST_PLACEHOLDER);
     }
-    if base_url_prefix_is_inside_authority(prefix) {
-        if prefix.ends_with(':') && ends_base_or_starts_path {
+    if boundaries.prefix_is_inside_authority(start) {
+        if base[..start].ends_with(':') && ends_base_or_starts_path {
             return Ok(BASE_URL_TEMPLATE_PORT_PLACEHOLDER);
         }
         return Ok(BASE_URL_TEMPLATE_HOST_PLACEHOLDER);
     }
-    if base_url_prefix_is_inside_path(prefix) {
+    if boundaries.prefix_is_inside_path(start) {
         return Ok(BASE_URL_TEMPLATE_PATH_PLACEHOLDER);
     }
     Err("base URL template variable is used in an unsupported position".to_string())
-}
-
-fn base_url_prefix_is_inside_authority(prefix: &str) -> bool {
-    let Some((_, after_scheme)) = prefix.split_once("://") else {
-        return false;
-    };
-    !after_scheme.contains(['/', '?', '#'])
-}
-
-fn base_url_prefix_is_inside_path(prefix: &str) -> bool {
-    let Some((_, after_scheme)) = prefix.split_once("://") else {
-        return false;
-    };
-    !after_scheme.contains(['?', '#']) && after_scheme.contains('/')
 }
 
 fn validate_template_identifier(name: &str, label: &str) -> Result<(), String> {

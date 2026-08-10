@@ -24,7 +24,7 @@ _RESERVED_PERMISSION_NAMES = frozenset(("all", "__unknown__"))
 _UNTRUSTED_WRITE_BITS = stat.S_IWGRP | stat.S_IWOTH
 # Use the shortest valid witness for each URL component so materialization does
 # not push an otherwise satisfiable DNS label past its 63-byte limit.
-_BASE_URL_TEMPLATE_PREFIX_PLACEHOLDER = "https://x.y"
+_BASE_URL_TEMPLATE_WHOLE_BASE_PLACEHOLDER = "https://x.y"
 _BASE_URL_TEMPLATE_HOST_PLACEHOLDER = "x.y"
 _BASE_URL_TEMPLATE_PORT_PLACEHOLDER = "1"
 _BASE_URL_TEMPLATE_PATH_PLACEHOLDER = "x"
@@ -45,6 +45,13 @@ class CatalogIdentity(NamedTuple):
     catalog_digest: str
     catalog_version: str
     file_key: CatalogFileKey
+
+
+# Precompute fixed URL delimiters once; a catalog base can contain many templates.
+class _BaseUrlTemplateComponentBoundaries(NamedTuple):
+    authority_start: int | None
+    path_start: int | None
+    query_or_fragment_start: int | None
 
 
 CatalogUnavailableReason = Literal[
@@ -439,6 +446,7 @@ def _base_url_template_syntax_target(firewall_name: str, raw_base: str) -> str |
     search_start = 0
     result: list[str] = []
     found = False
+    boundaries = _base_url_template_component_boundaries(raw_base)
     while True:
         start = raw_base.find("${{", search_start)
         if start == -1:
@@ -471,9 +479,32 @@ def _base_url_template_syntax_target(firewall_name: str, raw_base: str) -> str |
                 raw_base,
                 start,
                 template_end,
+                boundaries,
             )
         )
         search_start = template_end
+
+
+def _base_url_template_component_boundaries(
+    raw_base: str,
+) -> _BaseUrlTemplateComponentBoundaries:
+    scheme_delimiter = raw_base.find("://")
+    if scheme_delimiter == -1:
+        return _BaseUrlTemplateComponentBoundaries(None, None, None)
+
+    authority_start = scheme_delimiter + len("://")
+    path_start = raw_base.find("/", authority_start)
+    query_start = raw_base.find("?", authority_start)
+    fragment_start = raw_base.find("#", authority_start)
+    query_or_fragment_start = min(
+        (index for index in (query_start, fragment_start) if index != -1),
+        default=None,
+    )
+    return _BaseUrlTemplateComponentBoundaries(
+        authority_start=authority_start,
+        path_start=None if path_start == -1 else path_start,
+        query_or_fragment_start=query_or_fragment_start,
+    )
 
 
 def _base_url_template_syntax_placeholder(
@@ -481,20 +512,21 @@ def _base_url_template_syntax_placeholder(
     raw_base: str,
     start: int,
     template_end: int,
+    boundaries: _BaseUrlTemplateComponentBoundaries,
 ) -> str:
-    prefix = raw_base[:start]
-    suffix = raw_base[template_end:]
-    ends_base_or_starts_path = suffix == "" or suffix.startswith("/")
+    ends_base_or_starts_path = template_end == len(raw_base) or raw_base.startswith(
+        "/", template_end
+    )
 
-    if prefix == "" and ends_base_or_starts_path:
-        return _BASE_URL_TEMPLATE_PREFIX_PLACEHOLDER
-    if prefix.endswith("://") and ends_base_or_starts_path:
+    if start == 0 and ends_base_or_starts_path:
+        return _BASE_URL_TEMPLATE_WHOLE_BASE_PLACEHOLDER
+    if raw_base.endswith("://", 0, start) and ends_base_or_starts_path:
         return _BASE_URL_TEMPLATE_HOST_PLACEHOLDER
-    if _base_url_prefix_is_inside_authority(prefix):
-        if prefix.endswith(":") and ends_base_or_starts_path:
+    if _base_url_prefix_is_inside_authority(start, boundaries):
+        if raw_base.endswith(":", 0, start) and ends_base_or_starts_path:
             return _BASE_URL_TEMPLATE_PORT_PLACEHOLDER
         return _BASE_URL_TEMPLATE_HOST_PLACEHOLDER
-    if _base_url_prefix_is_inside_path(prefix):
+    if _base_url_prefix_is_inside_path(start, boundaries):
         return _BASE_URL_TEMPLATE_PATH_PLACEHOLDER
     raise BuiltinFirewallCatalogCacheError(
         f'catalog cache firewall "{firewall_name}" api base template variable '
@@ -502,18 +534,29 @@ def _base_url_template_syntax_placeholder(
     )
 
 
-def _base_url_prefix_is_inside_authority(prefix: str) -> bool:
-    _, delimiter, after_scheme = prefix.partition("://")
-    return delimiter != "" and not any(char in after_scheme for char in "/?#")
+def _base_url_prefix_is_inside_authority(
+    template_start: int,
+    boundaries: _BaseUrlTemplateComponentBoundaries,
+) -> bool:
+    if boundaries.authority_start is None or boundaries.authority_start > template_start:
+        return False
+    return all(
+        boundary is None or template_start <= boundary
+        for boundary in (boundaries.path_start, boundaries.query_or_fragment_start)
+    )
 
 
-def _base_url_prefix_is_inside_path(prefix: str) -> bool:
-    _, delimiter, after_scheme = prefix.partition("://")
+def _base_url_prefix_is_inside_path(
+    template_start: int,
+    boundaries: _BaseUrlTemplateComponentBoundaries,
+) -> bool:
     return (
-        delimiter != ""
-        and "?" not in after_scheme
-        and "#" not in after_scheme
-        and "/" in after_scheme
+        boundaries.path_start is not None
+        and boundaries.path_start < template_start
+        and (
+            boundaries.query_or_fragment_start is None
+            or template_start <= boundaries.query_or_fragment_start
+        )
     )
 
 
