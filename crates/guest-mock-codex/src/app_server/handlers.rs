@@ -19,7 +19,9 @@ use uuid::Uuid;
 const HANG_ON_TURN_START_READY_FILE: &str = ".vm0-mock-codex-turn-start-ready";
 const HANG_ON_TURN_START_READY_EVENT: &str = "vm0_mock_codex_turn_start_ready";
 const NOTIFICATION_OVERFLOW_COUNT: usize = 129;
-const OVERSIZED_STDOUT_BYTES: usize = 65 * 1024 * 1024;
+// Integration contract with guest-agent's Codex app-server stdout framing policy.
+const APP_SERVER_STDOUT_MAX_LINE_BYTES: usize = 64 * 1024 * 1024;
+const STDOUT_STREAM_CHUNK_BYTES: usize = 8 * 1024;
 const EVENT_DELIVERY_FLOOD_COUNT: usize = 640;
 const EVENT_DELIVERY_LARGE_EVENT_COUNT: usize = 10;
 const EVENT_DELIVERY_LARGE_EVENT_BYTES: usize = 2 * 1024 * 1024;
@@ -48,7 +50,11 @@ impl AppServerState {
             return Ok(ServerAction::Stop);
         }
         if self.scenario == Scenario::OversizedStdout {
-            writeln!(output, "{}", "x".repeat(OVERSIZED_STDOUT_BYTES))?;
+            let chunk = [b'x'; STDOUT_STREAM_CHUNK_BYTES];
+            for _ in 0..APP_SERVER_STDOUT_MAX_LINE_BYTES / STDOUT_STREAM_CHUNK_BYTES {
+                output.write_all(&chunk)?;
+            }
+            output.write_all(b"x\n")?;
             output.flush()?;
             return Ok(ServerAction::Stop);
         }
