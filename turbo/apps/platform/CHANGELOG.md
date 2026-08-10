@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.723.2](https://github.com/vm0-ai/vm0/compare/app-v0.723.1...app-v0.723.2) (2026-08-10)
+
+
+### Bug Fixes
+
+* **platform:** restore chat scroll after react commit ([#26196](https://github.com/vm0-ai/vm0/issues/26196)) ([adcb5c8](https://github.com/vm0-ai/vm0/commit/adcb5c89538bcfc5adaca625b470ad846dad9847))
+
+
+### Refactoring
+
+* **chat:** cut over canonical event storage ([#26197](https://github.com/vm0-ai/vm0/issues/26197)) ([66d96a7](https://github.com/vm0-ai/vm0/commit/66d96a7b422554ce396927d9ff3ac0bc5cdbc3e3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.310.1
+    * @vm0/core bumped to 8.541.1
+
 ## [0.723.1](https://github.com/vm0-ai/vm0/compare/app-v0.723.0...app-v0.723.1) (2026-08-10)
 
 

@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.420.2](https://github.com/vm0-ai/vm0/compare/api-v1.420.1...api-v1.420.2) (2026-08-10)
+
+
+### Refactoring
+
+* **chat:** cut over canonical event storage ([#26197](https://github.com/vm0-ai/vm0/issues/26197)) ([66d96a7](https://github.com/vm0-ai/vm0/commit/66d96a7b422554ce396927d9ff3ac0bc5cdbc3e3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.310.1
+    * @vm0/core bumped to 8.541.1
+    * @vm0/db bumped to 1.190.2
+    * @vm0/pi-agent-runtime bumped to 1.3.34
+
 ## [1.420.1](https://github.com/vm0-ai/vm0/compare/api-v1.420.0...api-v1.420.1) (2026-08-10)
 
 
