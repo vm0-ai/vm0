@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.163.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.162.14...runner-rs-v0.163.0) (2026-08-10)
+
+
+### Features
+
+* add priority inheritance and gpt-5.6 fast billing ([#26147](https://github.com/vm0-ai/vm0/issues/26147)) ([3350fbb](https://github.com/vm0-ai/vm0/commit/3350fbbec7afa95483d0b051e6580fa969a50b10))
+
 ## [0.162.14](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.162.13...runner-rs-v0.162.14) (2026-08-10)
 
 ## [0.162.13](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.162.12...runner-rs-v0.162.13) (2026-08-10)

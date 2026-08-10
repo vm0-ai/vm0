@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.541.0](https://github.com/vm0-ai/vm0/compare/core-v8.540.0...core-v8.541.0) (2026-08-10)
+
+
+### Features
+
+* add priority inheritance and gpt-5.6 fast billing ([#26147](https://github.com/vm0-ai/vm0/issues/26147)) ([3350fbb](https://github.com/vm0-ai/vm0/commit/3350fbbec7afa95483d0b051e6580fa969a50b10))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.310.0
+
 ## [8.540.0](https://github.com/vm0-ai/vm0/compare/core-v8.539.1...core-v8.540.0) (2026-08-10)
 
 

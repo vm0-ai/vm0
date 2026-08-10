@@ -1,5 +1,37 @@
 # Changelog
 
+## [1.420.0](https://github.com/vm0-ai/vm0/compare/api-v1.419.0...api-v1.420.0) (2026-08-10)
+
+
+### Features
+
+* add priority inheritance and gpt-5.6 fast billing ([#26147](https://github.com/vm0-ai/vm0/issues/26147)) ([3350fbb](https://github.com/vm0-ai/vm0/commit/3350fbbec7afa95483d0b051e6580fa969a50b10))
+* admit mcp custom connectors to agent runs ([#26176](https://github.com/vm0-ai/vm0/issues/26176)) ([1a3745a](https://github.com/vm0-ai/vm0/commit/1a3745a03e85b7b4c209042647dc061f188711a4))
+
+
+### Bug Fixes
+
+* **connectors:** align custom client invalidation ([#26182](https://github.com/vm0-ai/vm0/issues/26182)) ([91da5e2](https://github.com/vm0-ai/vm0/commit/91da5e23afe55a357b99cba52875e379566849b5))
+* **connectors:** preserve active connection during oauth reconnect ([#26167](https://github.com/vm0-ai/vm0/issues/26167)) ([a426327](https://github.com/vm0-ai/vm0/commit/a42632721ea45b120dcf61c7d572312268359395))
+* **onboarding:** preserve marketing entry contract ([#26181](https://github.com/vm0-ai/vm0/issues/26181)) ([99a33e8](https://github.com/vm0-ai/vm0/commit/99a33e82742003e99ff97e168a8c5059be6db36e))
+
+
+### Refactoring
+
+* **api:** extract immutable storage version registration ([#26157](https://github.com/vm0-ai/vm0/issues/26157)) ([26b0a64](https://github.com/vm0-ai/vm0/commit/26b0a64156a5cd520140891e6c3ea9c1f13db07d))
+* simplify autonomy budget inheritance ([#26189](https://github.com/vm0-ai/vm0/issues/26189)) ([067767c](https://github.com/vm0-ai/vm0/commit/067767cf7654c9fefdf102ad129d037eff9b9c05))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.310.0
+    * @vm0/connectors bumped to 1.205.0
+    * @vm0/core bumped to 8.541.0
+    * @vm0/db bumped to 1.190.0
+    * @vm0/pi-agent-runtime bumped to 1.3.33
+
 ## [1.419.0](https://github.com/vm0-ai/vm0/compare/api-v1.418.0...api-v1.419.0) (2026-08-10)
 
 
