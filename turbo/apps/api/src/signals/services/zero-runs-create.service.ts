@@ -800,6 +800,9 @@ function buildZeroCreateAgentRunArgs(args: {
     modelProviderCredentialScope: command.modelProviderCredentialScope,
     modelProviderType: command.body.modelProvider,
     selectedModelOverride: command.selectedModelOverride ?? agentSelectedModel,
+    ...(command.codexServiceTier === "fast"
+      ? { codexServiceTier: command.codexServiceTier }
+      : {}),
     chatThreadId: command.chatThreadId,
     ...(args.threadSessionResolution
       ? { threadSessionResolution: args.threadSessionResolution }

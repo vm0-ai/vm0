@@ -500,7 +500,16 @@ const sendNewThreadMessage$ = command(
     }
     const features = get(featureSwitch$);
     const userMessage = userMessageForNewThread(request, prepared);
-    const annotatedUserMessage = withSelectedModelAnnotation(
+    const optimisticUserMessage = withSelectedModelAnnotation(
+      userMessage,
+      resolvedModelSelection.selectedModel,
+      resolvedModelSelection.codexServiceTier === "fast"
+        ? "priority"
+        : undefined,
+    );
+    // The API derives the authoritative tier from runOptions; keep this body
+    // parseable by deployed APIs whose model annotation predates serviceTier.
+    const requestUserMessage = withSelectedModelAnnotation(
       userMessage,
       resolvedModelSelection.selectedModel,
     );
@@ -513,7 +522,7 @@ const sendNewThreadMessage$ = command(
         createNewThreadOptimisticEventEntry({
           threadId,
           clientEventId,
-          userMessage: annotatedUserMessage,
+          userMessage: optimisticUserMessage,
         }),
       ),
     );
@@ -561,7 +570,7 @@ const sendNewThreadMessage$ = command(
       codexFastModeEnabled: codexFastModeSwitchEnabled(features),
       realAgentInPreviewEnabled:
         features[FeatureSwitchKey.RealAgentInPreview] ?? false,
-      userMessage: annotatedUserMessage,
+      userMessage: requestUserMessage,
       computerUseHostId,
       cloudBrowserEnabled,
     });

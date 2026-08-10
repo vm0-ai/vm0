@@ -1,4 +1,5 @@
 import type {
+  ChatThreadServiceTier,
   FeedbackNotePart,
   GenerationTemplateRequest,
   UserMessageDocument,
@@ -123,6 +124,7 @@ export function withAgentRunSourceAnnotation(
 export function withRunModelAnnotation(
   document: UserMessageDocument,
   selectedModel: string,
+  serviceTier?: ChatThreadServiceTier,
 ): UserMessageDocument {
   return {
     version: 1,
@@ -130,7 +132,11 @@ export function withRunModelAnnotation(
       ...document.parts.filter((part) => {
         return part.type !== "model";
       }),
-      { type: "model", selectedModel },
+      {
+        type: "model",
+        selectedModel,
+        ...(serviceTier === undefined ? {} : { serviceTier }),
+      },
     ],
   };
 }

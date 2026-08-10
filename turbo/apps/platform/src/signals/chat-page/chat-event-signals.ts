@@ -100,9 +100,21 @@ function createSendInputChatEvent({
       const clientEventId = crypto.randomUUID();
       const createdAt = nowDate().toISOString();
       const chatThreadSortEventId = crypto.randomUUID();
-      const userMessage =
+      const requestUserMessage =
         input.delivery === "run"
           ? withSelectedModelAnnotation(input.userMessage, input.selectedModel)
+          : input.userMessage;
+      // Keep requests compatible with APIs that only know the model field. The
+      // current API derives and persists the authoritative tier from runOptions.
+      const optimisticUserMessage =
+        input.delivery === "run"
+          ? withSelectedModelAnnotation(
+              input.userMessage,
+              input.selectedModel,
+              input.runOptions?.codexServiceTier === "fast"
+                ? "priority"
+                : undefined,
+            )
           : input.userMessage;
       L.debug("send input prepared", {
         traceTime: chatEventTraceTime(),
@@ -127,7 +139,7 @@ function createSendInputChatEvent({
             threadId,
             eventType: "input.prompt",
             content: null,
-            userMessage,
+            userMessage: optimisticUserMessage,
             ...(input.revokesEventId === undefined
               ? {}
               : { revokesEventId: input.revokesEventId }),
@@ -157,7 +169,7 @@ function createSendInputChatEvent({
           ...(input.realAgentInPreview === true
             ? { realAgentInPreview: true }
             : {}),
-          userMessage,
+          userMessage: requestUserMessage,
           ...(input.computerUseHostId === undefined
             ? {}
             : { computerUseHostId: input.computerUseHostId }),
