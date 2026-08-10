@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.162.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.162.3...runner-rs-v0.162.4) (2026-08-10)
+
+
+### Documentation
+
+* **python:** document catalog cache lifecycle ([#25988](https://github.com/vm0-ai/vm0/issues/25988)) ([56acb90](https://github.com/vm0-ai/vm0/commit/56acb90b0b3cd796186859ff3c2085c0805f6734))
+
+
+### Refactoring
+
+* **python:** centralize usage counter ownership ([#25987](https://github.com/vm0-ai/vm0/issues/25987)) ([bde3f23](https://github.com/vm0-ai/vm0/commit/bde3f23548737c9293bc8c4697db1c5059a1d74f))
+
 ## [0.162.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.162.2...runner-rs-v0.162.3) (2026-08-10)
 
 

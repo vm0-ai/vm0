@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.535.1](https://github.com/vm0-ai/vm0/compare/core-v8.535.0...core-v8.535.1) (2026-08-10)
+
+
+### Refactoring
+
+* remove quickbooks connector feature switch ([#25986](https://github.com/vm0-ai/vm0/issues/25986)) ([15ed1bb](https://github.com/vm0-ai/vm0/commit/15ed1bb92c990a668c7f1b590f2e2e6abbfb6bd4))
+
 ## [8.535.0](https://github.com/vm0-ai/vm0/compare/core-v8.534.2...core-v8.535.0) (2026-08-10)
 
 
