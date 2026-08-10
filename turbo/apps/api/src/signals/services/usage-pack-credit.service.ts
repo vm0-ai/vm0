@@ -128,16 +128,22 @@ export async function getSpendableUsagePackCredits(
   return row?.total ?? 0;
 }
 
-export async function organizationHasActiveUsagePack(
+export async function hasActiveUsagePackAllocation(
   db: Pick<Db, "select">,
-  orgId: string,
+  args: {
+    readonly orgId: string;
+    readonly userId?: string;
+  },
 ): Promise<boolean> {
   const [allocation] = await db
     .select({ id: usagePackAllocations.id })
     .from(usagePackAllocations)
     .where(
       and(
-        eq(usagePackAllocations.orgId, orgId),
+        eq(usagePackAllocations.orgId, args.orgId),
+        args.userId === undefined
+          ? undefined
+          : eq(usagePackAllocations.userId, args.userId),
         inArray(usagePackAllocations.status, ["active", "pending_invitation"]),
       ),
     )

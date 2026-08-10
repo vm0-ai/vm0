@@ -64,6 +64,7 @@ function usagePackStateClient() {
 
 async function setupActiveUsagePack(
   actor: UsagePackCreditsFixture,
+  allocationUserId = actor.userId,
 ): Promise<string> {
   await accept(
     settlementClient().setup({
@@ -82,7 +83,7 @@ async function setupActiveUsagePack(
         stripeCheckoutSessionId: `cs_${randomUUID()}`,
         allocations: [
           {
-            userId: actor.userId,
+            userId: allocationUserId,
             invitationId: null,
             usagePackUsd: 20,
             stripePriceId: "price_test_usage_pack_20",
@@ -173,6 +174,35 @@ describe("GET /api/zero/billing/usage-pack-credits", () => {
     mockEnv("ENV", "development");
     const actor = fixture();
     registerCleanup(actor);
+    await updateFeatureSwitchesForUser(context, actor, {
+      [FeatureSwitchKey.UsagePackPlans]: true,
+    });
+    authenticate(actor);
+
+    const response = await accept(
+      creditsClient().get({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      totalCredits: 0,
+      purchasedCredits: 0,
+      bonusCredits: 0,
+      creditGrants: [],
+      hasUsagePack: false,
+    });
+  });
+
+  it("reports no usage pack for a member without an active allocation", async () => {
+    mockEnv("ENV", "development");
+    const actor = fixture();
+    const usagePackSubscriptionId = await setupActiveUsagePack(
+      actor,
+      `user_${randomUUID()}`,
+    );
+    registerCleanup(actor, usagePackSubscriptionId);
     await updateFeatureSwitchesForUser(context, actor, {
       [FeatureSwitchKey.UsagePackPlans]: true,
     });

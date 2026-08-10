@@ -10,7 +10,7 @@ import { userFeatureSwitchOverrides } from "../services/feature-switches.service
 import {
   getOrganizationUsagePackCreditBalances,
   getUsagePackCreditBalance,
-  organizationHasActiveUsagePack,
+  hasActiveUsagePackAllocation,
 } from "../services/usage-pack-credit.service";
 import type { RouteEntry } from "../route-entry";
 
@@ -41,7 +41,10 @@ const getUsagePackCredits$ = command(async ({ get }, signal: AbortSignal) => {
   }
 
   const db = get(db$);
-  const hasUsagePack = await organizationHasActiveUsagePack(db, auth.orgId);
+  const hasUsagePack = await hasActiveUsagePackAllocation(db, {
+    orgId: auth.orgId,
+    ...(auth.orgRole === "admin" ? {} : { userId: auth.userId }),
+  });
   signal.throwIfAborted();
   if (!hasUsagePack) {
     return {
