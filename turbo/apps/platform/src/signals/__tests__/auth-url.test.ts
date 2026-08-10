@@ -198,21 +198,20 @@ describe("platform auth redirects", () => {
   it("preserves a presentation onboarding deep link through the auth redirect", async () => {
     setBrowserUrl(PRESENTATION_ONBOARDING_URL);
 
-    detachedSetupPage({
+    await setupPage({
       context,
       path: PRESENTATION_ONBOARDING_PATH,
       session: null,
       user: null,
+      withoutRender: true,
     });
 
-    await waitFor(() => {
-      const url = new URL(window.location.href);
-      expect(url.origin).toBe("https://app.vm0.ai");
-      expect(url.pathname).toBe("/sign-in");
-      expect(url.searchParams.get("redirect_url")).toBe(
-        PRESENTATION_ONBOARDING_URL,
-      );
-    });
+    const url = new URL(window.location.href);
+    expect(url.origin).toBe("https://app.vm0.ai");
+    expect(url.pathname).toBe("/sign-in");
+    expect(url.searchParams.get("redirect_url")).toBe(
+      PRESENTATION_ONBOARDING_URL,
+    );
   });
 
   it("redirects users who need org selection to app auth", async () => {
