@@ -1165,6 +1165,21 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn write_catalog_cache_accepts_whole_host_template_with_path_parameter() {
+        let dir = tempfile::tempdir().unwrap();
+        let cache_path = dir.path().join("builtin-firewall-catalog-cache.json");
+        let lock_path = dir.path().join("builtin-firewall-catalog-cache.json.lock");
+        let base = "https://${{ vars.WORKSPACE_HOST }}/company/v1/hooks/{hookKey}";
+
+        write_catalog_cache(&cache_path, &lock_path, catalog_with_base(base))
+            .await
+            .unwrap();
+
+        let cache = read_catalog_cache(&cache_path).await.unwrap().unwrap();
+        assert_eq!(cache.firewalls["github"].apis[0].base, base);
+    }
+
+    #[tokio::test]
     async fn write_catalog_cache_accepts_safe_base_paths() {
         for base in [
             "https://api.example.com/v1/a..b",
