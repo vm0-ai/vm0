@@ -656,7 +656,7 @@ async function processPendingEvent(
       },
       automationContext: context,
       apiStartTime: now(),
-      triggerSource: "workflow-event",
+      triggerSource: "automation-event",
       triggerBrief: `Strapi published ${args.pending.uid} ${args.pending.documentId} (${args.pending.locales.length} locale${args.pending.locales.length === 1 ? "" : "s"})`,
       coalescePendingScheduleRun: false,
       persistSourceTransition: async (tx) => {

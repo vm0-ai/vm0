@@ -451,7 +451,7 @@ describe("zero workflow automation scheduler", () => {
     expect(logs.body.data).toContainEqual(
       expect.objectContaining({
         id: run.runId,
-        triggerSource: "workflow-schedule",
+        triggerSource: "automation-schedule",
       }),
     );
     expect(run.triggerBrief).toMatch(

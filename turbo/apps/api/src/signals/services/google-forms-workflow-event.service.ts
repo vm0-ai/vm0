@@ -1505,7 +1505,7 @@ const startGoogleFormsWorkflowRun$ = command(
           },
           automationContext: context,
           apiStartTime: args.apiStartTime,
-          triggerSource: "workflow-event",
+          triggerSource: "automation-event",
           triggerBrief: googleFormsTriggerBrief(args),
           persistSourceTransition: async (tx) => {
             await persistGoogleFormsSourceTransition(

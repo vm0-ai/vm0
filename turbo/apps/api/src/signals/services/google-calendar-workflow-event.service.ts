@@ -2777,7 +2777,7 @@ export const dispatchGoogleCalendarWebhook$ = command(
               },
               automationContext: runInput.context,
               apiStartTime: args.apiStartTime,
-              triggerSource: "workflow-event",
+              triggerSource: "automation-event",
               dispatchFailedCallbacks: dispatchFailedRunCallbacks,
               timing: timing.collectorForRunStart(),
             },

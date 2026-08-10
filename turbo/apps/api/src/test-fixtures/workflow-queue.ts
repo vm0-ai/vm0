@@ -67,7 +67,7 @@ export async function admitWorkflowAutomationEventFixture(
     workflowAutomationEventPayload:
       persistedWorkflowAutomationEventPayload(eventPayload),
     chatThreadId: args.chatThreadId,
-    triggerSource: "workflow-event",
+    triggerSource: "automation-event",
     triggerBrief: args.triggerBrief,
     coalescePendingScheduleRun: false,
   });

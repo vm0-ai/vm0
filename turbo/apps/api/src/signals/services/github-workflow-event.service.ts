@@ -489,7 +489,7 @@ const startGithubWorkflowRun$ = command(
         },
         automationContext: runInput.context,
         apiStartTime: args.apiStartTime,
-        triggerSource: "workflow-event",
+        triggerSource: "automation-event",
         dispatchFailedCallbacks: dispatchFailedRunCallbacks,
         timing: args.timing.collectorForRunStart(),
       },
