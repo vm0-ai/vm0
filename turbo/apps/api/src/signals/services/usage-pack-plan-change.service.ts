@@ -24,12 +24,22 @@ import {
   or,
   sql,
 } from "drizzle-orm";
-import type { Stripe } from "stripe";
-
 import { pgBooleanDecoder } from "../../lib/db-structured-result";
 import { nowDate } from "../../lib/time";
 import type { Db } from "../external/db";
-import { getStripeClient } from "../external/stripe-client";
+import {
+  getStripeClient,
+  type StripeInvoice,
+  type StripeInvoiceCreatePreviewParams,
+  type StripeInvoiceLine,
+  type StripePriceRecurring,
+  type StripeSchedulePhaseDiscountParam,
+  type StripeSchedulePhaseItemParam,
+  type StripeSchedulePhaseParam,
+  type StripeSubscription,
+  type StripeSubscriptionItem,
+  type StripeSubscriptionUpdateItemParam,
+} from "../external/stripe-client";
 import {
   calculateUsagePackUpgradeCreditGrants,
   fulfillUsagePackSubscriptionChangeInvoice,
@@ -100,8 +110,8 @@ interface PreparedAllocationChange {
 
 interface PreparedSubscriptionChange {
   readonly context: UsagePackSubscriptionChangeContext;
-  readonly subscription: Stripe.Subscription;
-  readonly planItem: Stripe.SubscriptionItem;
+  readonly subscription: StripeSubscription;
+  readonly planItem: StripeSubscriptionItem;
   readonly targetPlanPriceId: string;
   readonly allocationChanges: readonly PreparedAllocationChange[];
   readonly period: { readonly start: number; readonly end: number };
@@ -148,7 +158,7 @@ type UsagePackSubscriptionChangeInvoiceOutcome =
   | {
       readonly handled: true;
       readonly orgId: string;
-      readonly subscription: Stripe.Subscription;
+      readonly subscription: StripeSubscription;
     };
 
 export async function usagePackSubscriptionChangeSchemaAvailable(
@@ -277,7 +287,7 @@ function packageQuantitiesFromAllocations(
 }
 
 function packageQuantitiesFromSubscription(
-  subscription: Stripe.Subscription,
+  subscription: StripeSubscription,
 ): ReadonlyMap<string, number> {
   const quantities = new Map<string, number>();
   for (const item of subscription.items.data) {
@@ -312,8 +322,8 @@ function quantitiesMatch(
 
 function currentPlanItem(
   context: UsagePackSubscriptionChangeContext,
-  subscription: Stripe.Subscription,
-): Stripe.SubscriptionItem {
+  subscription: StripeSubscription,
+): StripeSubscriptionItem {
   const planItem = subscriptionPlanItem(subscription);
   if (
     planItem.price.id !== context.subscription.stripePlanPriceId ||
@@ -325,8 +335,8 @@ function currentPlanItem(
 }
 
 function subscriptionPlanItem(
-  subscription: Stripe.Subscription,
-): Stripe.SubscriptionItem {
+  subscription: StripeSubscription,
+): StripeSubscriptionItem {
   const planItems = subscription.items.data.filter((item) => {
     return isUsagePackPlanPriceId(item.price.id);
   });
@@ -337,9 +347,7 @@ function subscriptionPlanItem(
   return planItem;
 }
 
-function subscriptionPlanTier(
-  subscription: Stripe.Subscription,
-): UsagePackTier {
+function subscriptionPlanTier(subscription: StripeSubscription): UsagePackTier {
   const tier = tierForKnownPriceId(subscriptionPlanItem(subscription).price.id);
   if (!tier) {
     throw new Error("Stripe usage pack subscription has an invalid base plan");
@@ -349,8 +357,8 @@ function subscriptionPlanTier(
 
 function validateStripeSubscription(
   context: UsagePackSubscriptionChangeContext,
-  subscription: Stripe.Subscription,
-): Stripe.SubscriptionItem {
+  subscription: StripeSubscription,
+): StripeSubscriptionItem {
   if (
     subscription.id !== context.subscription.stripeSubscriptionId ||
     stripeObjectId(subscription.customer) !==
@@ -369,7 +377,7 @@ function validateStripeSubscription(
   return currentPlanItem(context, subscription);
 }
 
-function usagePackPeriod(subscription: Stripe.Subscription): {
+function usagePackPeriod(subscription: StripeSubscription): {
   readonly start: number;
   readonly end: number;
 } {
@@ -506,12 +514,12 @@ function adjustedPackageQuantities(
 }
 
 function subscriptionUpdateItems(
-  subscription: Stripe.Subscription,
-  planItem: Stripe.SubscriptionItem,
+  subscription: StripeSubscription,
+  planItem: StripeSubscriptionItem,
   targetPlanPriceId: string,
   targetPackageQuantities: ReadonlyMap<string, number>,
-): Stripe.SubscriptionUpdateParams.Item[] {
-  const items: Stripe.SubscriptionUpdateParams.Item[] = [];
+): StripeSubscriptionUpdateItemParam[] {
+  const items: StripeSubscriptionUpdateItemParam[] = [];
   if (planItem.price.id !== targetPlanPriceId) {
     items.push({
       id: planItem.id,
@@ -542,12 +550,12 @@ function subscriptionUpdateItems(
   return items;
 }
 
-function invoiceLinePriceId(line: Stripe.InvoiceLineItem): string | null {
+function invoiceLinePriceId(line: StripeInvoiceLine): string | null {
   const price = line.pricing?.price_details?.price;
   return typeof price === "string" ? price : (price?.id ?? null);
 }
 
-function invoiceLineAmountWithTax(line: Stripe.InvoiceLineItem): number {
+function invoiceLineAmountWithTax(line: StripeInvoiceLine): number {
   const exclusiveTax = (line.taxes ?? []).reduce((total, tax) => {
     return tax.tax_behavior === "exclusive" ? total + tax.amount : total;
   }, 0);
@@ -559,7 +567,7 @@ function invoiceLineAmountWithTax(line: Stripe.InvoiceLineItem): number {
 }
 
 function immediateProrationAmount(
-  invoice: Stripe.Invoice,
+  invoice: StripeInvoice,
   prorationTimestamp: number,
 ): number {
   const lines = invoice.lines.data.filter((line) => {
@@ -581,7 +589,7 @@ function immediateProrationAmount(
   return amount;
 }
 
-function recurringAmount(invoice: Stripe.Invoice): number {
+function recurringAmount(invoice: StripeInvoice): number {
   if (
     !Number.isSafeInteger(invoice.amount_due) ||
     invoice.amount_due < 0 ||
@@ -593,8 +601,8 @@ function recurringAmount(invoice: Stripe.Invoice): number {
 }
 
 function restoredSubscriptionRecurringPreviewParams(
-  subscription: Stripe.Subscription,
-): Stripe.InvoiceCreatePreviewParams {
+  subscription: StripeSubscription,
+): StripeInvoiceCreatePreviewParams {
   const customerId = stripeObjectId(subscription.customer);
   if (!customerId) {
     throw new Error(`Stripe subscription ${subscription.id} has no customer`);
@@ -639,13 +647,15 @@ function restorableScheduleId(
     : null;
 }
 
-async function prepareSubscriptionChange(args: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly targetTier: UsagePackTier;
-  readonly memberUsagePacks: readonly MemberUsagePack[];
-  readonly signal: AbortSignal;
-}): Promise<
+async function prepareSubscriptionChange(
+  args: {
+    readonly db: Db;
+    readonly orgId: string;
+    readonly targetTier: UsagePackTier;
+    readonly memberUsagePacks: readonly MemberUsagePack[];
+  },
+  signal: AbortSignal,
+): Promise<
   | { readonly status: "ready"; readonly prepared: PreparedSubscriptionChange }
   | {
       readonly status:
@@ -702,7 +712,7 @@ async function prepareSubscriptionChange(args: {
     context.subscription.stripeSubscriptionId,
     { expand: ["latest_invoice"] },
   );
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   const stripeScheduleId = stripeObjectId(subscription.schedule);
   if (
     subscription.pending_update ||
@@ -1070,10 +1080,10 @@ export async function previewUsagePackSubscriptionChange(
     readonly orgId: string;
     readonly targetTier: UsagePackTier;
     readonly memberUsagePacks: readonly MemberUsagePack[];
-    readonly signal: AbortSignal;
   },
+  signal: AbortSignal,
 ): Promise<UsagePackSubscriptionChangePreviewResult> {
-  const result = await prepareSubscriptionChange({ db, ...args });
+  const result = await prepareSubscriptionChange({ db, ...args }, signal);
   if (result.status !== "ready") {
     return result;
   }
@@ -1135,7 +1145,7 @@ export async function previewUsagePackSubscriptionChange(
         : null,
       immediateUsagePackUpgradeCreditGrant(prepared),
     ]);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (
     immediatePreview &&
     recurringPreview.currency !== immediatePreview.currency
@@ -1187,16 +1197,16 @@ export async function previewUsagePackSubscriptionChange(
 }
 
 function subscriptionPhaseItems(
-  subscription: Stripe.Subscription,
-): Stripe.SubscriptionScheduleUpdateParams.Phase.Item[] {
+  subscription: StripeSubscription,
+): StripeSchedulePhaseItemParam[] {
   return subscription.items.data.map((item) => {
     return { price: item.price.id, quantity: item.quantity ?? 1 };
   });
 }
 
 function subscriptionPhaseDiscounts(
-  subscription: Stripe.Subscription,
-): Stripe.SubscriptionScheduleUpdateParams.Phase.Discount[] {
+  subscription: StripeSubscription,
+): StripeSchedulePhaseDiscountParam[] {
   return (subscription.discounts ?? []).flatMap((discount) => {
     const id = stripeObjectId(discount);
     return id ? [{ discount: id }] : [];
@@ -1204,17 +1214,17 @@ function subscriptionPhaseDiscounts(
 }
 
 function phaseWithDiscounts(
-  phase: Stripe.SubscriptionScheduleUpdateParams.Phase,
-  discounts: readonly Stripe.SubscriptionScheduleUpdateParams.Phase.Discount[],
-): Stripe.SubscriptionScheduleUpdateParams.Phase {
+  phase: StripeSchedulePhaseParam,
+  discounts: readonly StripeSchedulePhaseDiscountParam[],
+): StripeSchedulePhaseParam {
   return discounts.length === 0
     ? phase
     : { ...phase, discounts: [...discounts] };
 }
 
 function subscriptionRecurringDuration(
-  subscription: Stripe.Subscription,
-): Stripe.SubscriptionScheduleUpdateParams.Phase.Duration {
+  subscription: StripeSubscription,
+): StripePriceRecurring {
   const recurring = subscription.items.data.find((item) => {
     return isUsagePackPlanPriceId(item.price.id);
   })?.price.recurring;
@@ -1263,10 +1273,10 @@ function projectedPackageQuantities(
 }
 
 function finalScheduleItems(
-  subscription: Stripe.Subscription,
+  subscription: StripeSubscription,
   targetPlanPriceId: string,
   quantities: ReadonlyMap<string, number>,
-): Stripe.SubscriptionScheduleUpdateParams.Phase.Item[] {
+): StripeSchedulePhaseItemParam[] {
   const unrelated = subscription.items.data
     .filter((item) => {
       return (
@@ -1333,7 +1343,7 @@ async function loadStoredSubscriptionChange(
 async function scheduleDeferredSubscriptionChange(
   db: Db,
   stored: NonNullable<Awaited<ReturnType<typeof loadStoredSubscriptionChange>>>,
-  subscription: Stripe.Subscription,
+  subscription: StripeSubscription,
   signal: AbortSignal | undefined,
 ): Promise<Date> {
   const period = usagePackPeriod(subscription);
@@ -1455,8 +1465,8 @@ async function scheduleDeferredSubscriptionChange(
 }
 
 function expandedLatestInvoice(
-  subscription: Stripe.Subscription,
-): Stripe.Invoice | null {
+  subscription: StripeSubscription,
+): StripeInvoice | null {
   return subscription.latest_invoice &&
     typeof subscription.latest_invoice !== "string"
     ? subscription.latest_invoice
@@ -1595,13 +1605,7 @@ async function confirmationResponseForStoredChange(
       hostedInvoiceUrl: null,
     };
   }
-  return root.status === "applying"
-    ? {
-        status: "processing",
-        effectiveAt: root.effectiveAt.toISOString(),
-        hostedInvoiceUrl: null,
-      }
-    : null;
+  return null;
 }
 
 type StoredSubscriptionChange = NonNullable<
@@ -1620,8 +1624,8 @@ async function prepareSubscriptionChangeConfirmation(
   args: {
     readonly orgId: string;
     readonly changeId: string;
-    readonly signal: AbortSignal;
   },
+  signal: AbortSignal,
 ): Promise<SubscriptionChangeConfirmationPreparation> {
   let stored = await loadStoredSubscriptionChange(db, args.changeId);
   if (!stored || stored.root.orgId !== args.orgId) {
@@ -1636,10 +1640,16 @@ async function prepareSubscriptionChangeConfirmation(
           : { status: "conflict" },
     };
   }
+  if (stored.root.status === "applying") {
+    if (!stored.subscription.stripeSubscriptionId) {
+      throw new Error("Usage pack subscription disappeared during retry");
+    }
+    return { ready: true, stored };
+  }
   const existing = await confirmationResponseForStoredChange(
     stored.root,
     stored.allocationChanges,
-    args.signal,
+    signal,
   );
   if (existing) {
     return {
@@ -1696,7 +1706,7 @@ function applyPackageUpgrades(
 async function recordImmediateSubscriptionChangeInvoice(
   db: Db,
   stored: StoredSubscriptionChange,
-  invoice: Stripe.Invoice,
+  invoice: StripeInvoice,
   pendingUpdateExpiresAt: Date | null,
 ): Promise<void> {
   const pending = pendingUpdateExpiresAt !== null;
@@ -1725,7 +1735,7 @@ async function recordImmediateSubscriptionChangeInvoice(
 }
 
 function subscriptionPendingUpdateExpiresAt(
-  subscription: Stripe.Subscription,
+  subscription: StripeSubscription,
 ): Date | null {
   const expiresAt = subscription.pending_update?.expires_at;
   if (expiresAt === undefined) {
@@ -1741,12 +1751,12 @@ async function applyImmediateSubscriptionChange(
   db: Db,
   args: {
     readonly stored: StoredSubscriptionChange;
-    readonly subscription: Stripe.Subscription;
-    readonly planItem: Stripe.SubscriptionItem;
+    readonly subscription: StripeSubscription;
+    readonly planItem: StripeSubscriptionItem;
     readonly hasPlanUpgrade: boolean;
     readonly packageUpgrades: readonly UsagePackAllocationChangeRow[];
-    readonly signal: AbortSignal;
   },
+  signal: AbortSignal,
 ): Promise<UsagePackSubscriptionChangeConfirmResult> {
   const packageQuantities = new Map(
     packageQuantitiesFromAllocations(args.stored.allocations),
@@ -1776,7 +1786,7 @@ async function applyImmediateSubscriptionChange(
       idempotencyKey: `usage-pack-subscription-change:${args.stored.root.id}:apply`,
     },
   );
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   const invoice = expandedLatestInvoice(updatedSubscription);
   if (!invoice) {
     throw new Error("Stripe did not create a subscription change invoice");
@@ -1812,7 +1822,7 @@ function isScheduledSubscriptionRestore(
 async function restoreScheduledSubscriptionChange(
   db: Db,
   stored: StoredSubscriptionChange,
-  subscription: Stripe.Subscription,
+  subscription: StripeSubscription,
   signal: AbortSignal,
 ): Promise<UsagePackSubscriptionChangeConfirmResult> {
   const scheduledChanges = await db
@@ -1975,14 +1985,17 @@ async function applyStoredSubscriptionChange(
       },
     };
   }
-  return await applyImmediateSubscriptionChange(db, {
-    stored,
-    subscription,
-    planItem,
-    hasPlanUpgrade,
-    packageUpgrades,
+  return await applyImmediateSubscriptionChange(
+    db,
+    {
+      stored,
+      subscription,
+      planItem,
+      hasPlanUpgrade,
+      packageUpgrades,
+    },
     signal,
-  });
+  );
 }
 
 export async function confirmUsagePackSubscriptionChange(
@@ -1990,18 +2003,18 @@ export async function confirmUsagePackSubscriptionChange(
   args: {
     readonly orgId: string;
     readonly changeId: string;
-    readonly signal: AbortSignal;
   },
+  signal: AbortSignal,
 ): Promise<UsagePackSubscriptionChangeConfirmResult> {
-  const preparation = await prepareSubscriptionChangeConfirmation(db, args);
+  const preparation = await prepareSubscriptionChangeConfirmation(
+    db,
+    args,
+    signal,
+  );
   if (!preparation.ready) {
     return preparation.result;
   }
-  return await applyStoredSubscriptionChange(
-    db,
-    preparation.stored,
-    args.signal,
-  );
+  return await applyStoredSubscriptionChange(db, preparation.stored, signal);
 }
 
 function invoiceSubscriptionId(
@@ -2162,8 +2175,8 @@ async function failExpiredPendingSubscriptionChange(
 async function rollbackUnpaidSubscriptionChange(
   db: Db,
   stored: NonNullable<Awaited<ReturnType<typeof loadStoredSubscriptionChange>>>,
-  subscription: Stripe.Subscription,
-  invoice: Stripe.Invoice | null,
+  subscription: StripeSubscription,
+  invoice: StripeInvoice | null,
   signal: AbortSignal,
 ): Promise<void> {
   const stripe = getStripeClient();
@@ -2241,9 +2254,9 @@ async function expireSubscriptionChangePreviews(
 
 async function subscriptionChangeInvoice(
   root: UsagePackSubscriptionChangeRow,
-  subscription: Stripe.Subscription,
+  subscription: StripeSubscription,
   signal: AbortSignal,
-): Promise<Stripe.Invoice | null> {
+): Promise<StripeInvoice | null> {
   const latestInvoice = expandedLatestInvoice(subscription);
   if (!root.stripeInvoiceId || latestInvoice?.id === root.stripeInvoiceId) {
     return latestInvoice;
@@ -2271,7 +2284,7 @@ function pendingSubscriptionPaymentExpired(
 
 function immediateSubscriptionProjectionMatches(
   stored: StoredSubscriptionChange,
-  subscription: Stripe.Subscription,
+  subscription: StripeSubscription,
 ): boolean {
   const expectedImmediateTier = planIsUpgrade(
     stored.root.sourceTier,
@@ -2301,8 +2314,8 @@ async function reconcileSubscriptionChangeCandidate(
     readonly root: UsagePackSubscriptionChangeRow;
     readonly at: Date;
     readonly paymentExpiredBefore: Date;
-    readonly signal: AbortSignal;
   },
+  signal: AbortSignal,
 ): Promise<string | null> {
   const stored = await loadStoredSubscriptionChange(db, args.root.id);
   const subscriptionId = stored?.subscription.stripeSubscriptionId;
@@ -2313,14 +2326,14 @@ async function reconcileSubscriptionChangeCandidate(
     subscriptionId,
     { expand: ["latest_invoice"] },
   );
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (subscription.pending_update) {
     return null;
   }
   const invoice = await subscriptionChangeInvoice(
     args.root,
     subscription,
-    args.signal,
+    signal,
   );
   if (invoice?.status === "paid") {
     const outcome = await handleUsagePackSubscriptionChangeInvoicePaid(
@@ -2341,7 +2354,7 @@ async function reconcileSubscriptionChangeCandidate(
       stored,
       subscription,
       invoice,
-      args.signal,
+      signal,
     );
     return args.root.orgId;
   }
@@ -2385,12 +2398,15 @@ export async function reconcileUsagePackSubscriptionChanges(
   const orgIds = new Set<string>();
   let reconciled = expiredCount;
   for (const root of candidates) {
-    const reconciledOrgId = await reconcileSubscriptionChangeCandidate(db, {
-      root,
-      at,
-      paymentExpiredBefore,
+    const reconciledOrgId = await reconcileSubscriptionChangeCandidate(
+      db,
+      {
+        root,
+        at,
+        paymentExpiredBefore,
+      },
       signal,
-    });
+    );
     if (reconciledOrgId) {
       reconciled += 1;
       orgIds.add(reconciledOrgId);

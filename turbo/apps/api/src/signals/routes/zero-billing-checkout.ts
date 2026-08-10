@@ -510,12 +510,15 @@ const usagePackChangePreviewAuthed$ = command(
     if (!subscriptionSchema || !changeSchema) {
       return providerUnavailable("Usage pack billing is not ready");
     }
-    const result = await previewUsagePackAllocationChange(db, {
-      orgId: access.auth.orgId,
-      userId: bodyResult.data.memberId,
-      targetUsagePackUsd: bodyResult.data.targetUsagePackUsd,
+    const result = await previewUsagePackAllocationChange(
+      db,
+      {
+        orgId: access.auth.orgId,
+        userId: bodyResult.data.memberId,
+        targetUsagePackUsd: bodyResult.data.targetUsagePackUsd,
+      },
       signal,
-    });
+    );
     if (result.status === "not_found") {
       return notFound("Usage pack allocation not found");
     }
@@ -554,11 +557,14 @@ const usagePackChangeConfirmAuthed$ = command(
     if (!subscriptionSchema || !changeSchema) {
       return providerUnavailable("Usage pack billing is not ready");
     }
-    const result = await confirmUsagePackAllocationChange(db, {
-      orgId: access.auth.orgId,
-      changeId,
+    const result = await confirmUsagePackAllocationChange(
+      db,
+      {
+        orgId: access.auth.orgId,
+        changeId,
+      },
       signal,
-    });
+    );
     if (result.status === "not_found") {
       return notFound("Usage pack change not found");
     }
@@ -643,12 +649,15 @@ const usagePackSubscriptionChangePreviewAuthed$ = command(
     if (!subscriptionSchema || !changeSchema || !subscriptionChangeSchema) {
       return providerUnavailable("Usage pack billing is not ready");
     }
-    const result = await previewUsagePackSubscriptionChange(db, {
-      orgId: access.auth.orgId,
-      targetTier: bodyResult.data.targetTier,
-      memberUsagePacks: bodyResult.data.memberUsagePacks,
+    const result = await previewUsagePackSubscriptionChange(
+      db,
+      {
+        orgId: access.auth.orgId,
+        targetTier: bodyResult.data.targetTier,
+        memberUsagePacks: bodyResult.data.memberUsagePacks,
+      },
       signal,
-    });
+    );
     if (result.status === "not_found") {
       return notFound("Usage pack subscription not found");
     }
@@ -693,11 +702,14 @@ const usagePackSubscriptionChangeConfirmAuthed$ = command(
     if (!subscriptionSchema || !changeSchema || !subscriptionChangeSchema) {
       return providerUnavailable("Usage pack billing is not ready");
     }
-    const result = await confirmUsagePackSubscriptionChange(db, {
-      orgId: access.auth.orgId,
-      changeId: bodyResult.data.changeId,
+    const result = await confirmUsagePackSubscriptionChange(
+      db,
+      {
+        orgId: access.auth.orgId,
+        changeId: bodyResult.data.changeId,
+      },
       signal,
-    });
+    );
     if (result.status === "not_found") {
       return notFound("Usage pack subscription not found");
     }

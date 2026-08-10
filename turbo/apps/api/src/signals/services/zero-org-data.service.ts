@@ -294,7 +294,7 @@ async function commitOrgMemberRemoval(
     await cancelUsagePackMemberRemovalReservation(db, reservationId);
   });
   commitSignal.throwIfAborted();
-  await scheduleUsagePackMemberRemoval(db, { ...args, signal: commitSignal });
+  await scheduleUsagePackMemberRemoval(db, args, commitSignal);
   commitSignal.throwIfAborted();
   await cleanupOrgMemberResources(db, args, commitSignal);
   commitSignal.throwIfAborted();
@@ -312,11 +312,14 @@ export const leaveZeroOrg$ = command(
 
     const client = get(clerk$);
     const writeDb = set(writeDb$);
-    const reservationId = await reserveUsagePackMemberRemoval(writeDb, {
-      orgId: args.orgId,
-      userId: args.userId,
+    const reservationId = await reserveUsagePackMemberRemoval(
+      writeDb,
+      {
+        orgId: args.orgId,
+        userId: args.userId,
+      },
       signal,
-    });
+    );
     signal.throwIfAborted();
     await commitOrgMemberRemoval(writeDb, args, reservationId, async () => {
       await client.organizations.deleteOrganizationMembership({
@@ -369,11 +372,14 @@ export const removeZeroOrgMember$ = command(
     }
 
     const writeDb = set(writeDb$);
-    const reservationId = await reserveUsagePackMemberRemoval(writeDb, {
-      orgId: args.orgId,
-      userId: target.id,
+    const reservationId = await reserveUsagePackMemberRemoval(
+      writeDb,
+      {
+        orgId: args.orgId,
+        userId: target.id,
+      },
       signal,
-    });
+    );
     signal.throwIfAborted();
     await commitOrgMemberRemoval(
       writeDb,

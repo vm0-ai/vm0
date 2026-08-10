@@ -929,7 +929,7 @@ async function commitClerkDeletedOrgMembershipCleanup(
   args: { readonly orgId: string; readonly userId: string },
 ): Promise<void> {
   const commitSignal = new AbortController().signal;
-  await scheduleUsagePackMemberRemoval(db, { ...args, signal: commitSignal });
+  await scheduleUsagePackMemberRemoval(db, args, commitSignal);
   commitSignal.throwIfAborted();
   await cleanupOrgMemberResources(db, args, commitSignal);
   commitSignal.throwIfAborted();

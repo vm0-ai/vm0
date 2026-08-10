@@ -26,12 +26,20 @@ import {
   or,
   sql,
 } from "drizzle-orm";
-import type { Stripe } from "stripe";
-
 import { pgBooleanDecoder } from "../../lib/db-structured-result";
 import { nowDate } from "../../lib/time";
 import type { Db } from "../external/db";
-import { getStripeClient } from "../external/stripe-client";
+import {
+  getStripeClient,
+  type StripeInvoice,
+  type StripePriceRecurring,
+  type StripeRef,
+  type StripeSchedulePhaseDiscountParam,
+  type StripeSchedulePhaseItemParam,
+  type StripeSchedulePhaseParam,
+  type StripeSubscription,
+  type StripeSubscriptionUpdateItemParam,
+} from "../external/stripe-client";
 import { createUsagePackCreditGrant } from "./usage-pack-credit.service";
 import { downgradeSubscriptionForOrg } from "./zero-billing-downgrade.service";
 import {
@@ -111,7 +119,6 @@ interface UsagePackChangePreviewArgs {
   readonly orgId: string;
   readonly userId: string;
   readonly targetUsagePackUsd: UsagePackUsd;
-  readonly signal: AbortSignal;
 }
 
 interface StripeUsagePackChangePreview {
@@ -132,7 +139,7 @@ interface UsagePackChangeSubscriptionInput {
   readonly status: string;
   readonly metadata?: Record<string, string> | null;
   readonly schedule?: string | { readonly id: string } | null;
-  readonly discounts?: readonly (string | Stripe.Discount)[];
+  readonly discounts?: readonly StripeRef[];
   readonly pending_update?: {
     readonly expires_at: number;
   } | null;
@@ -143,7 +150,7 @@ interface UsagePackChangeSubscriptionInput {
       readonly price: {
         readonly id: string;
         readonly recurring?: {
-          readonly interval: Stripe.Price.Recurring.Interval;
+          readonly interval: StripePriceRecurring["interval"];
           readonly interval_count: number;
         } | null;
       };
@@ -541,7 +548,7 @@ function changeUpdateItems(
   subscription: UsagePackChangeSubscriptionInput,
   sourcePriceId: string,
   targetPriceId: string,
-): Stripe.SubscriptionUpdateParams.Item[] {
+): StripeSubscriptionUpdateItemParam[] {
   const source = subscription.items.data.find((item) => {
     return item.price.id === sourcePriceId;
   });
@@ -574,7 +581,7 @@ function changeUpdateItems(
   ];
 }
 
-function safeInvoiceAmount(invoice: Stripe.Invoice, label: string): number {
+function safeInvoiceAmount(invoice: StripeInvoice, label: string): number {
   if (
     !Number.isSafeInteger(invoice.amount_due) ||
     invoice.amount_due < 0 ||
@@ -797,6 +804,7 @@ async function persistUsagePackChangePreview(
 export async function previewUsagePackAllocationChange(
   db: Db,
   args: UsagePackChangePreviewArgs,
+  signal: AbortSignal,
 ): Promise<UsagePackChangePreviewResult> {
   const [openSubscriptionChange] = await db
     .select({ id: usagePackSubscriptionChanges.id })
@@ -835,7 +843,7 @@ export async function previewUsagePackAllocationChange(
     source,
     stripeSubscriptionId,
     args.targetUsagePackUsd,
-    args.signal,
+    signal,
   );
   if (!preview) {
     return { status: "conflict" };
@@ -869,7 +877,7 @@ export async function previewUsagePackAllocationChange(
 
 function subscriptionPhaseItems(
   subscription: UsagePackChangeSubscriptionInput,
-): Stripe.SubscriptionScheduleUpdateParams.Phase.Item[] {
+): StripeSchedulePhaseItemParam[] {
   return subscription.items.data.map((item) => {
     return {
       price: item.price.id,
@@ -880,7 +888,7 @@ function subscriptionPhaseItems(
 
 function subscriptionPhaseDiscounts(
   subscription: UsagePackChangeSubscriptionInput,
-): Stripe.SubscriptionScheduleUpdateParams.Phase.Discount[] {
+): StripeSchedulePhaseDiscountParam[] {
   const discounts = subscription.discounts ?? [];
   return discounts.flatMap((discount) => {
     const id = stripeObjectId(discount);
@@ -889,9 +897,9 @@ function subscriptionPhaseDiscounts(
 }
 
 function phaseWithDiscounts(
-  phase: Stripe.SubscriptionScheduleUpdateParams.Phase,
-  discounts: readonly Stripe.SubscriptionScheduleUpdateParams.Phase.Discount[],
-): Stripe.SubscriptionScheduleUpdateParams.Phase {
+  phase: StripeSchedulePhaseParam,
+  discounts: readonly StripeSchedulePhaseDiscountParam[],
+): StripeSchedulePhaseParam {
   return discounts.length === 0
     ? phase
     : { ...phase, discounts: [...discounts] };
@@ -899,7 +907,7 @@ function phaseWithDiscounts(
 
 function subscriptionRecurringDuration(
   subscription: UsagePackChangeSubscriptionInput,
-): Stripe.SubscriptionScheduleUpdateParams.Phase.Duration {
+): StripePriceRecurring {
   const recurring = subscription.items.data.find((item) => {
     return isUsagePackPlanPriceId(item.price.id);
   })?.price.recurring;
@@ -951,7 +959,7 @@ function projectedPackageQuantities(
 function projectedScheduleItems(
   subscription: UsagePackChangeSubscriptionInput,
   quantities: ReadonlyMap<string, number>,
-): Stripe.SubscriptionScheduleUpdateParams.Phase.Item[] {
+): StripeSchedulePhaseItemParam[] {
   const preservedItems = subscription.items.data
     .filter((item) => {
       return usagePackUsdForKnownPriceId(item.price.id) === null;
@@ -1035,13 +1043,13 @@ export async function reserveUsagePackMemberRemoval(
   args: {
     readonly orgId: string;
     readonly userId: string;
-    readonly signal: AbortSignal;
   },
+  signal: AbortSignal,
 ): Promise<string | null> {
   if (!(await usagePackAllocationChangeSchemaAvailable(db))) {
     return null;
   }
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   const at = nowDate();
   const reservationId = await db.transaction(async (tx) => {
     await lockUsagePackBillingOrg(tx, args.orgId);
@@ -1140,7 +1148,7 @@ export async function reserveUsagePackMemberRemoval(
     }
     return reservation.id;
   });
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   return reservationId;
 }
 
@@ -1438,8 +1446,8 @@ export async function scheduleUsagePackMemberRemoval(
   args: {
     readonly orgId: string;
     readonly userId: string;
-    readonly signal: AbortSignal;
   },
+  signal: AbortSignal,
 ): Promise<boolean> {
   if (!(await usagePackAllocationChangeSchemaAvailable(db))) {
     await db
@@ -1451,11 +1459,11 @@ export async function scheduleUsagePackMemberRemoval(
           eq(usagePackCreditGrants.userId, args.userId),
         ),
       );
-    args.signal.throwIfAborted();
+    signal.throwIfAborted();
     return false;
   }
   const prepared = await prepareUsagePackMemberRemoval(db, args);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   if (!prepared) {
     return false;
   }
@@ -1469,28 +1477,26 @@ export async function scheduleUsagePackMemberRemoval(
   }
   const stripeSubscription =
     await getStripeClient().subscriptions.retrieve(stripeSubscriptionId);
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   validateCurrentStripeProjection(prepared.context, stripeSubscription);
   await scheduleDeferredUsagePackChange(
     db,
     prepared.context,
     prepared.change,
     stripeSubscription,
-    args.signal,
+    signal,
   );
   return true;
 }
 
-function latestInvoice(
-  subscription: Stripe.Subscription,
-): Stripe.Invoice | null {
+function latestInvoice(subscription: StripeSubscription): StripeInvoice | null {
   return subscription.latest_invoice &&
     typeof subscription.latest_invoice !== "string"
     ? subscription.latest_invoice
     : null;
 }
 
-function pendingUpdateExpiry(subscription: Stripe.Subscription): Date | null {
+function pendingUpdateExpiry(subscription: StripeSubscription): Date | null {
   return unixDate(subscription.pending_update?.expires_at);
 }
 
@@ -2546,7 +2552,7 @@ async function failExpiredUsagePackUpgrade(
 }
 
 async function paidUpgradeInvoiceForSubscription(
-  subscription: Stripe.Subscription,
+  subscription: StripeSubscription,
 ): Promise<UsagePackChangeInvoiceInput | null> {
   const expanded = latestInvoice(subscription);
   if (expanded) {
@@ -2568,7 +2574,7 @@ async function paidUpgradeInvoiceForSubscription(
 async function retryApplyingDeferredUsagePackChange(
   db: Db,
   context: UsagePackChangeContext,
-  subscription: Stripe.Subscription,
+  subscription: StripeSubscription,
   signal: AbortSignal,
 ): Promise<number> {
   const change = context.changes.find((candidate) => {
@@ -2878,7 +2884,7 @@ async function confirmUsagePackDowngrade(
   db: Db,
   context: UsagePackChangeContext,
   change: UsagePackAllocationChangeRow,
-  subscription: Stripe.Subscription,
+  subscription: StripeSubscription,
   signal: AbortSignal,
 ): Promise<UsagePackChangeConfirmResult> {
   if (!change.targetStripePriceId || change.targetUsagePackUsd === null) {
@@ -2905,7 +2911,7 @@ async function confirmUsagePackUpgrade(
   db: Db,
   context: UsagePackChangeContext,
   change: UsagePackAllocationChangeRow,
-  subscription: Stripe.Subscription,
+  subscription: StripeSubscription,
   signal: AbortSignal,
 ): Promise<UsagePackChangeConfirmResult> {
   if (!change.targetStripePriceId || change.targetUsagePackUsd === null) {
@@ -3014,7 +3020,7 @@ async function storedUsagePackConfirmationResult(
 async function resumeUsagePackChangeConfirmation(
   db: Db,
   change: UsagePackAllocationChangeRow,
-  subscription: Stripe.Subscription,
+  subscription: StripeSubscription,
   signal: AbortSignal,
 ): Promise<UsagePackChangeConfirmResult | null> {
   await reconcileUsagePackAllocationChangeSubscription(db, subscription);
@@ -3068,8 +3074,8 @@ export async function confirmUsagePackAllocationChange(
   args: {
     readonly orgId: string;
     readonly changeId: string;
-    readonly signal: AbortSignal;
   },
+  signal: AbortSignal,
 ): Promise<UsagePackChangeConfirmResult> {
   const prepared = await prepareUsagePackChangeConfirmation(db, args);
   if (prepared.status === "existing") {
@@ -3108,12 +3114,12 @@ export async function confirmUsagePackAllocationChange(
   const subscription = await stripe.subscriptions.retrieve(
     context.subscription.stripeSubscriptionId,
   );
-  args.signal.throwIfAborted();
+  signal.throwIfAborted();
   const resumed = await resumeUsagePackChangeConfirmation(
     db,
     change,
     subscription,
-    args.signal,
+    signal,
   );
   if (resumed) {
     return resumed;
@@ -3125,7 +3131,7 @@ export async function confirmUsagePackAllocationChange(
       context,
       change,
       subscription,
-      args.signal,
+      signal,
     );
   }
   if (change.kind !== "upgrade") {
@@ -3136,6 +3142,6 @@ export async function confirmUsagePackAllocationChange(
     context,
     change,
     subscription,
-    args.signal,
+    signal,
   );
 }
