@@ -111,6 +111,7 @@ function resolveVolumeFilePath(root: string, path: string): string {
   const filePath = resolve(join(root, path));
   const relativePath = relative(root, filePath);
   if (
+    isAbsolute(path) ||
     relativePath === ".." ||
     relativePath.startsWith(`..${sep}`) ||
     isAbsolute(relativePath)
