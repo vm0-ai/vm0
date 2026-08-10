@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNotNull, or } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import {
   orgCustomConnectors,
   type OrgCustomConnectorAuthMode,
@@ -8,7 +8,9 @@ import { orgCustomConnectorValues } from "@vm0/db/schema/org-custom-connector-va
 import { connectors } from "@vm0/db/schema/connector";
 import { secrets } from "@vm0/db/schema/secret";
 
+import { nowDate } from "../../lib/time";
 import type { ReadonlyDb } from "../external/db";
+import { connectorCredentialStatusForAccess } from "./connector-credential-status.service";
 
 const LEGACY_SECRET_KEY = "secret";
 const OAUTH_ACCESS_TOKEN_SECRET_NAME = "access_token";
@@ -25,11 +27,24 @@ interface CustomConnectorCredentialDefinition {
   readonly storageVersion: number;
 }
 
+interface CustomConnectorStoredConnection {
+  readonly id: string;
+  readonly customConnectorId: string;
+  readonly storedAuthMethod: string;
+  readonly storedStorageVersion: number;
+  readonly storedNeedsReconnect: boolean;
+  readonly tokenExpiresAt: Date | null;
+  readonly definitionAuthMethod: OrgCustomConnectorAuthMode;
+  readonly definitionStorageVersion: number;
+  readonly oauthAccessTokenId: string | null;
+}
+
 export type CustomConnectorCredentialAccess =
   | { readonly kind: "absent" }
   | {
       readonly kind: "current";
       readonly memberConnectorId: string;
+      readonly usable: boolean;
     }
   | {
       readonly kind: "incompatible";
@@ -41,6 +56,87 @@ export type CustomConnectorCredentialAccess =
       readonly definitionAuthMethod: OrgCustomConnectorAuthMode;
       readonly definitionStorageVersion: number;
     };
+
+async function loadCustomConnectorStoredConnections(
+  db: Pick<ReadonlyDb, "select">,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly connectorIds?: readonly string[];
+  },
+): Promise<readonly CustomConnectorStoredConnection[]> {
+  if (args.connectorIds?.length === 0) {
+    return [];
+  }
+  return await db
+    .select({
+      id: connectors.id,
+      customConnectorId: orgCustomConnectors.id,
+      storedAuthMethod: connectors.authMethod,
+      storedStorageVersion: connectors.storageVersion,
+      storedNeedsReconnect: connectors.needsReconnect,
+      tokenExpiresAt: connectors.tokenExpiresAt,
+      definitionAuthMethod: orgCustomConnectors.authMode,
+      definitionStorageVersion: orgCustomConnectors.storageVersion,
+      oauthAccessTokenId: secrets.id,
+    })
+    .from(connectors)
+    .innerJoin(
+      orgCustomConnectors,
+      and(
+        eq(orgCustomConnectors.id, connectors.customConnectorId),
+        eq(orgCustomConnectors.orgId, connectors.orgId),
+      ),
+    )
+    .leftJoin(
+      secrets,
+      and(
+        eq(secrets.connectorId, connectors.id),
+        eq(secrets.name, OAUTH_ACCESS_TOKEN_SECRET_NAME),
+      ),
+    )
+    .where(
+      and(
+        eq(connectors.orgId, args.orgId),
+        eq(connectors.userId, args.userId),
+        args.connectorIds
+          ? inArray(connectors.customConnectorId, [...args.connectorIds])
+          : undefined,
+      ),
+    );
+}
+
+function customConnectorStoredConnectionIsCurrent(
+  connection: CustomConnectorStoredConnection,
+): boolean {
+  return (
+    connection.storedAuthMethod === connection.definitionAuthMethod &&
+    connection.storedStorageVersion === connection.definitionStorageVersion
+  );
+}
+
+function customConnectorStoredConnectionIsUsable(
+  connection: CustomConnectorStoredConnection,
+  now: Date,
+): boolean {
+  if (!customConnectorStoredConnectionIsCurrent(connection)) {
+    return false;
+  }
+  const credentialStatus = connectorCredentialStatusForAccess({
+    storedNeedsReconnect: connection.storedNeedsReconnect,
+    tokenExpiresAt:
+      connection.definitionAuthMethod === "oauth"
+        ? connection.tokenExpiresAt
+        : null,
+    now,
+    isRefreshable: connection.definitionAuthMethod === "oauth",
+  });
+  return (
+    credentialStatus === "available" &&
+    (connection.definitionAuthMethod === "manual" ||
+      connection.oauthAccessTokenId !== null)
+  );
+}
 
 export async function loadCustomConnectorCredentialAccesses(
   db: Pick<ReadonlyDb, "select">,
@@ -54,43 +150,23 @@ export async function loadCustomConnectorCredentialAccesses(
     return new Map();
   }
 
-  const rows = await db
-    .select({
-      id: connectors.id,
-      customConnectorId: connectors.customConnectorId,
-      authMethod: connectors.authMethod,
-      storageVersion: connectors.storageVersion,
-      definitionAuthMethod: orgCustomConnectors.authMode,
-      definitionStorageVersion: orgCustomConnectors.storageVersion,
-    })
-    .from(connectors)
-    .innerJoin(
-      orgCustomConnectors,
-      and(
-        eq(orgCustomConnectors.id, connectors.customConnectorId),
-        eq(orgCustomConnectors.orgId, connectors.orgId),
-      ),
-    )
-    .where(
-      and(
-        eq(connectors.orgId, args.orgId),
-        eq(connectors.userId, args.userId),
-        inArray(
-          connectors.customConnectorId,
-          args.definitions.map((definition) => {
-            return definition.id;
-          }),
-        ),
-      ),
-    );
-  const memberByConnectorId = new Map<string, (typeof rows)[number]>();
+  const rows = await loadCustomConnectorStoredConnections(db, {
+    orgId: args.orgId,
+    userId: args.userId,
+    connectorIds: args.definitions.map((definition) => {
+      return definition.id;
+    }),
+  });
+  const memberByConnectorId = new Map<
+    string,
+    CustomConnectorStoredConnection
+  >();
   for (const row of rows) {
-    if (row.customConnectorId) {
-      memberByConnectorId.set(row.customConnectorId, row);
-    }
+    memberByConnectorId.set(row.customConnectorId, row);
   }
 
   const accesses = new Map<string, CustomConnectorCredentialAccess>();
+  const now = nowDate();
   for (const definition of args.definitions) {
     const member = memberByConnectorId.get(definition.id);
     if (!member) {
@@ -98,21 +174,21 @@ export async function loadCustomConnectorCredentialAccesses(
     } else if (
       member.definitionAuthMethod === definition.authMode &&
       member.definitionStorageVersion === definition.storageVersion &&
-      member.authMethod === definition.authMode &&
-      member.storageVersion === definition.storageVersion
+      customConnectorStoredConnectionIsCurrent(member)
     ) {
       accesses.set(definition.id, {
         kind: "current",
         memberConnectorId: member.id,
+        usable: customConnectorStoredConnectionIsUsable(member, now),
       });
     } else {
       accesses.set(definition.id, {
         kind: "incompatible",
         memberConnectorId: member.id,
         expectedAuthMethod: definition.authMode,
-        storedAuthMethod: member.authMethod,
+        storedAuthMethod: member.storedAuthMethod,
         expectedStorageVersion: definition.storageVersion,
-        storedStorageVersion: member.storageVersion,
+        storedStorageVersion: member.storedStorageVersion,
         definitionAuthMethod: member.definitionAuthMethod,
         definitionStorageVersion: member.definitionStorageVersion,
       });
@@ -244,42 +320,13 @@ export async function loadUsableCustomConnectorConnectionIds(
   if (args.connectorIds?.length === 0) {
     return new Set();
   }
-  const rows = await db
-    .select({ customConnectorId: connectors.customConnectorId })
-    .from(connectors)
-    .innerJoin(
-      orgCustomConnectors,
-      and(
-        eq(orgCustomConnectors.id, connectors.customConnectorId),
-        eq(orgCustomConnectors.orgId, connectors.orgId),
-        eq(connectors.authMethod, orgCustomConnectors.authMode),
-        eq(connectors.storageVersion, orgCustomConnectors.storageVersion),
-      ),
-    )
-    .leftJoin(
-      secrets,
-      and(
-        eq(secrets.connectorId, connectors.id),
-        eq(secrets.name, OAUTH_ACCESS_TOKEN_SECRET_NAME),
-      ),
-    )
-    .where(
-      and(
-        eq(connectors.orgId, args.orgId),
-        eq(connectors.userId, args.userId),
-        eq(connectors.needsReconnect, false),
-        or(
-          eq(orgCustomConnectors.authMode, "manual"),
-          and(eq(orgCustomConnectors.authMode, "oauth"), isNotNull(secrets.id)),
-        ),
-        args.connectorIds
-          ? inArray(connectors.customConnectorId, [...args.connectorIds])
-          : undefined,
-      ),
-    );
+  const rows = await loadCustomConnectorStoredConnections(db, args);
+  const now = nowDate();
   return new Set(
     rows.flatMap((row) => {
-      return row.customConnectorId ? [row.customConnectorId] : [];
+      return customConnectorStoredConnectionIsUsable(row, now)
+        ? [row.customConnectorId]
+        : [];
     }),
   );
 }

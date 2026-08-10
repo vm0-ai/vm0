@@ -4425,6 +4425,7 @@ async function buildNewRunCustomConnectorRuntimeContext(
     rows: args.rows.filter((row) => {
       return (
         row.credentialAccess.kind === "current" &&
+        row.credentialAccess.usable &&
         (row.connector.authMode !== "manual" ||
           customConnectorManualAuthReferencesMemberField(row.connector)) &&
         customConnectorRuntimeCredentialsAreComplete(row)

@@ -79,6 +79,7 @@ import {
   type CapturedConnectorClientInvalidationAbort,
 } from "./connector-client-invalidation.service";
 import { isCustomConnectorMcpEnabled } from "./custom-connector-mcp-feature.service";
+import { connectorLocalConnectionState } from "./connector-credential-storage-write.service";
 import type { Tx } from "../../lib/db-types";
 
 const L = logger("CustomConnectorService");
@@ -773,13 +774,11 @@ export function serialiseCustomConnector(args: {
   });
   const validManualAuth =
     args.row.authMode !== "manual" ||
-    (args.row.kind === "http" &&
-      customConnectorManualAuthReferencesMemberField(args.row));
+    customConnectorManualAuthReferencesMemberField(args.row);
   const connected =
-    args.row.kind === "mcp" ||
-    (args.usableConnection &&
-      validManualAuth &&
-      missingRequiredFields.length === 0);
+    args.usableConnection &&
+    validManualAuth &&
+    missingRequiredFields.length === 0;
   const responseMissingRequiredFields = [
     ...missingRequiredFields,
     ...(args.row.authMode === "oauth" && !args.usableConnection
@@ -1388,6 +1387,40 @@ function validateOAuthConfigUpdate(args: {
   };
 }
 
+function validateAuthInjectionReferences(args: {
+  readonly authMode: CustomConnectorAuthMode;
+  readonly fields: readonly CustomConnectorField[];
+  readonly headerInjections: readonly CustomConnectorHeaderInjection[];
+  readonly queryInjections: readonly CustomConnectorQueryInjection[];
+}): BadRequestResponse | null {
+  if (
+    args.authMode === "manual" &&
+    !customConnectorManualAuthReferencesMemberField(args)
+  ) {
+    return badRequestMessage(
+      "Manual custom connector injections must reference a declared secret or variable field",
+    );
+  }
+  if (
+    args.authMode === "oauth" &&
+    ![...args.headerInjections, ...args.queryInjections].some((injection) => {
+      return extractTemplateReferences(injection.valueTemplate).some(
+        (reference) => {
+          return (
+            reference.namespace === "oauth" &&
+            reference.key === CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_SECRET_NAME
+          );
+        },
+      );
+    })
+  ) {
+    return badRequestMessage(
+      `OAuth custom connector injections must reference {{${CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_REFERENCE}}}`,
+    );
+  }
+  return null;
+}
+
 function validateDefinition(
   input: DefinitionInput,
 ): ValidatedDefinition | BadRequestResponse {
@@ -1431,34 +1464,14 @@ function validateDefinition(
       "At least one header or query injection is required",
     );
   }
-  if (
-    authMode === "manual" &&
-    !customConnectorManualAuthReferencesMemberField({
-      fields,
-      headerInjections,
-      queryInjections,
-    })
-  ) {
-    return badRequestMessage(
-      "Manual custom connector injections must reference a declared secret or variable field",
-    );
-  }
-  if (
-    authMode === "oauth" &&
-    ![...headerInjections, ...queryInjections].some((injection) => {
-      return extractTemplateReferences(injection.valueTemplate).some(
-        (reference) => {
-          return (
-            reference.namespace === "oauth" &&
-            reference.key === CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_SECRET_NAME
-          );
-        },
-      );
-    })
-  ) {
-    return badRequestMessage(
-      `OAuth custom connector injections must reference {{${CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_REFERENCE}}}`,
-    );
+  const authInjectionError = validateAuthInjectionReferences({
+    authMode,
+    fields,
+    headerInjections,
+    queryInjections,
+  });
+  if (authInjectionError) {
+    return authInjectionError;
   }
   const slug = validateOptionalSlug(input.slug);
   if (isBadRequest(slug)) {
@@ -2851,6 +2864,7 @@ async function upsertCustomConnectorValueParent(args: {
       storageVersion: args.storageVersion,
       userId: args.request.userId,
       orgId: args.request.orgId,
+      ...connectorLocalConnectionState,
     })
     .onConflictDoUpdate({
       target: [
@@ -2862,6 +2876,7 @@ async function upsertCustomConnectorValueParent(args: {
       set: {
         authMethod: "manual",
         storageVersion: args.storageVersion,
+        ...connectorLocalConnectionState,
         updatedAt: nowDate(),
       },
     });
@@ -2934,6 +2949,7 @@ async function persistCustomConnectorValues(
   | {
       readonly connector: CustomConnectorRow;
       readonly runtimeRecovered: boolean;
+      readonly usableConnection: boolean;
     }
   | BadRequestResponse
   | NotFoundResponse
@@ -2963,6 +2979,7 @@ async function persistCustomConnectorValues(
   return {
     connector: state.connector,
     runtimeRecovered: state.runtimeRecovered,
+    usableConnection: state.establishesCurrentCredentials,
   };
 }
 
@@ -3067,7 +3084,7 @@ export const setCustomConnectorValues$ = command(
     return serialiseCustomConnector({
       row: writeResult.connector,
       valueMarkers: markers,
-      usableConnection: true,
+      usableConnection: writeResult.usableConnection,
     });
   },
 );

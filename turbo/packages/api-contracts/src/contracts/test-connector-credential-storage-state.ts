@@ -95,6 +95,7 @@ export const testConnectorCredentialStorageStateActionBodySchema =
       custom_connector_id: z.uuid(),
       auth_method: z.enum(["manual", "oauth"]),
       storage_version: z.number().int().positive(),
+      needs_reconnect: z.boolean().optional(),
     }),
     z.object({
       action: z.literal("set-secret-owner"),

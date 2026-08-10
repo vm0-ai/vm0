@@ -10149,6 +10149,124 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     await connectors.deleteCustomConnector(actor, saved.connector.id);
   });
 
+  it("omits reconnect-required custom connectors until credentials are rewritten", async () => {
+    const api = createRunsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    const rand = randomUUID().replace(/-/g, "").slice(0, 8);
+    const saved = await connectors.saveCustomConnectorProposal(actor, {
+      proposal: {
+        operation: "create",
+        displayName: "BDD Reconnect Required Runtime",
+        prefixTemplates: [`https://${rand}.reconnect-required.test/v1/`],
+        fields: [
+          {
+            key: "api_key",
+            label: "API key",
+            kind: "secret",
+            required: true,
+          },
+        ],
+        headerInjections: [
+          {
+            name: "Authorization",
+            valueTemplate: "Bearer {{secrets.api_key}}",
+          },
+        ],
+        queryInjections: [],
+      },
+      values: [
+        {
+          key: "api_key",
+          kind: "secret",
+          value: "initial-reconnect-required-secret",
+        },
+      ],
+      agentId,
+    });
+    if (!actor.orgId) {
+      throw new Error("Expected a custom connector actor with an organization");
+    }
+    await setCustomConnectorCredentialStorageState(context, {
+      orgId: actor.orgId,
+      userId: actor.userId,
+      customConnectorId: saved.connector.id,
+      authMethod: "manual",
+      storageVersion: saved.connector.storageVersion,
+      needsReconnect: true,
+    });
+
+    const unavailable = await connectors.listCustomConnectors(actor);
+    expect(
+      unavailable.find((connector) => {
+        return connector.id === saved.connector.id;
+      }),
+    ).toMatchObject({
+      connected: false,
+      configuredFieldKeys: ["api_key"],
+      missingRequiredFields: [],
+    });
+    await expect(
+      connectors.readCustomConnector(actor, saved.connector.id),
+    ).resolves.toMatchObject({ connected: false });
+
+    const blockedRun = await api.createRun(actor, {
+      agentId,
+      prompt: "do not use the reconnect-required custom connector",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const blockedClaim = await api.claimRunnerJob(blockedRun.runId);
+    const internalName = `custom_connector_${saved.connector.id.replaceAll("-", "")}`;
+    expect(
+      findFirewallEntry(blockedClaim.firewalls, internalName),
+    ).toBeUndefined();
+    expect(blockedClaim.networkPolicies ?? {}).not.toHaveProperty(internalName);
+    expect(blockedClaim.connectorRuntimeTargets).not.toContainEqual(
+      expect.objectContaining({
+        kind: "custom",
+        customConnectorId: saved.connector.id,
+      }),
+    );
+    await api.requestCancelRun(actor, blockedRun.runId, [200]);
+
+    const reconnected = await connectors.setCustomConnectorValues(
+      actor,
+      saved.connector.id,
+      [
+        {
+          key: "api_key",
+          kind: "secret",
+          value: "rewritten-reconnect-required-secret",
+        },
+      ],
+    );
+    expect(reconnected).toMatchObject({ connected: true });
+    await expect(
+      connectors.readCustomConnector(actor, saved.connector.id),
+    ).resolves.toMatchObject({ connected: true });
+
+    const admittedRun = await api.createRun(actor, {
+      agentId,
+      prompt: "use the reconnected custom connector",
+      modelProvider: "anthropic-api-key",
+    });
+    const admittedClaim = await api.claimRunnerJob(admittedRun.runId);
+    expect(
+      findFirewallEntry(admittedClaim.firewalls, internalName),
+    ).toBeDefined();
+    expect(admittedClaim.networkPolicies ?? {}).toHaveProperty(internalName);
+    expect(admittedClaim.connectorRuntimeTargets).toContainEqual(
+      expect.objectContaining({
+        kind: "custom",
+        customConnectorId: saved.connector.id,
+      }),
+    );
+
+    await api.requestCancelRun(actor, admittedRun.runId, [200]);
+    await connectors.deleteCustomConnector(actor, saved.connector.id);
+  });
+
   it("admits a custom connector only in runs created after full recovery", async () => {
     const api = createRunsApi(context);
     const connectors = createConnectorBddApi(context);

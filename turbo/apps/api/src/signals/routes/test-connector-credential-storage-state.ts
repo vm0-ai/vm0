@@ -340,6 +340,9 @@ async function setCustomParentState(
     .set({
       authMethod: body.auth_method,
       storageVersion: body.storage_version,
+      ...(body.needs_reconnect === undefined
+        ? {}
+        : { needsReconnect: body.needs_reconnect }),
     })
     .where(
       and(

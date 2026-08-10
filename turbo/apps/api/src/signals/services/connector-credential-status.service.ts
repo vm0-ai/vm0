@@ -3,7 +3,7 @@ import type { ConnectorReconnectReason } from "@vm0/api-contracts/contracts/conn
 
 export type ConnectorCredentialStatus = "available" | "reconnect-required";
 
-function connectorCredentialStatusForAccess(args: {
+export function connectorCredentialStatusForAccess(args: {
   readonly storedNeedsReconnect: boolean;
   readonly tokenExpiresAt: Date | null;
   readonly now: Date;

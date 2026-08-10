@@ -182,6 +182,7 @@ export async function setCustomConnectorCredentialStorageState(
     readonly customConnectorId: string;
     readonly authMethod: "manual" | "oauth";
     readonly storageVersion: number;
+    readonly needsReconnect?: boolean;
   },
 ): Promise<void> {
   await postAction(context, {
@@ -191,6 +192,9 @@ export async function setCustomConnectorCredentialStorageState(
     custom_connector_id: args.customConnectorId,
     auth_method: args.authMethod,
     storage_version: args.storageVersion,
+    ...(args.needsReconnect === undefined
+      ? {}
+      : { needs_reconnect: args.needsReconnect }),
   });
 }
 
