@@ -11,7 +11,10 @@
 import { randomInt, randomUUID } from "node:crypto";
 
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
-import { zeroCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-custom-connectors";
+import {
+  zeroCustomConnectorsContract,
+  type CreateCustomConnectorBody,
+} from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
@@ -49,7 +52,6 @@ import {
   setCustomConnectorCredentialStorageState,
 } from "./helpers/connector-credential-storage-state";
 import { zeroCustomConnectorsRoutes } from "../zero-custom-connectors";
-import { seedMcpCustomConnectorFixture } from "./helpers/runtime-state";
 
 const context = testContext();
 const connectorsApi = createConnectorBddApi(context);
@@ -66,6 +68,39 @@ function customConnectorBody(slug: string) {
     prefixes: [`https://${slug.slice(1)}.example.test/v1/`],
     headerName: "Authorization",
     headerTemplate: "Bearer {{secret}}",
+  };
+}
+
+type McpCreateBody = Extract<
+  CreateCustomConnectorBody,
+  { readonly kind: "mcp" }
+>;
+
+function manualMcpConnectorBody(args: {
+  readonly displayName: string;
+  readonly endpoint: string;
+}): McpCreateBody {
+  return {
+    kind: "mcp",
+    displayName: args.displayName,
+    endpoint: args.endpoint,
+    transport: "streamable-http",
+    fields: [
+      {
+        key: "secret",
+        label: "API Token",
+        kind: "secret",
+        required: true,
+      },
+    ],
+    headerInjections: [
+      {
+        name: "Authorization",
+        valueTemplate: "Bearer {{secrets.secret}}",
+      },
+    ],
+    queryInjections: [],
+    authMode: "manual",
   };
 }
 
@@ -1903,6 +1938,148 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     await connectorsApi.deleteCustomConnector(admin, connector.id);
   });
 
+  it("reuses confidential OAuth for MCP and gates callback writes", async () => {
+    mockEnv("APP_URL", "https://app.vm0.test");
+    const provider = mockCustomConnectorOAuth2Provider(context);
+    const bdd = createBddApi(context);
+    bdd.acceptAgentStorageWrites();
+    const admin = bdd.user({ orgRole: "org:admin" });
+    const member = bdd.user({
+      orgId: admin.orgId,
+      orgRole: "org:member",
+    });
+    await connectorsApi.updateFeatureSwitches(admin, {
+      [FeatureSwitchKey.CustomConnectorMcp]: true,
+    });
+    await connectorsApi.updateFeatureSwitches(member, {
+      [FeatureSwitchKey.CustomConnectorMcp]: true,
+    });
+    const agent = await bdd.createAgent(member, {
+      displayName: "BDD MCP OAuth Agent",
+    });
+    const clientSecret = "bdd-mcp-oauth-client-secret";
+    const definition = {
+      kind: "mcp" as const,
+      displayName: "BDD MCP OAuth",
+      endpoint: "https://oauth-mcp.example.test/server",
+      transport: "streamable-http" as const,
+      fields: [],
+      headerInjections: [
+        {
+          name: "Authorization",
+          valueTemplate: "Bearer {{oauth.access_token}}",
+        },
+      ],
+      queryInjections: [],
+      authMode: "oauth" as const,
+      oauthConfig: {
+        providerAdapter: "standard" as const,
+        clientId: "bdd-mcp-oauth-client",
+        clientSecret,
+        authorizationUrl: provider.authorizationUrl,
+        tokenUrl: provider.tokenUrl,
+        tokenEndpointAuthMethod: "client_secret_post" as const,
+        pkceMethod: "none" as const,
+        scopes: ["read"],
+        authorizationParams: {},
+      },
+    };
+
+    const missingSecret = await connectorsApi.requestCreateCustomConnector(
+      admin,
+      {
+        ...definition,
+        oauthConfig: { ...definition.oauthConfig, clientSecret: undefined },
+      },
+      [400],
+    );
+    expectApiError(missingSecret.body);
+    expect(missingSecret.body.error.message).toContain(
+      "client secret is required",
+    );
+
+    const created = await connectorsApi.createCustomConnector(
+      admin,
+      definition,
+    );
+    expect(created).toMatchObject({
+      kind: "mcp",
+      authMode: "oauth",
+      endpoint: definition.endpoint,
+      storageVersion: 1,
+      connected: false,
+    });
+    expectNoVisibleSecret(created, clientSecret);
+
+    const authorizationUrl = await connectorsApi.startCustomConnectorOAuth2(
+      member,
+      created.id,
+      agent.agentId,
+    );
+    const oauthState = stateFromAuthorizationUrl(authorizationUrl);
+    const moved = await connectorsApi.updateCustomConnector(admin, created.id, {
+      ...definition,
+      endpoint: "https://oauth-mcp.example.test/v2/server",
+      oauthConfig: {
+        ...definition.oauthConfig,
+        clientSecret: undefined,
+      },
+    });
+    expect(moved).toMatchObject({
+      id: created.id,
+      endpoint: "https://oauth-mcp.example.test/v2/server",
+      storageVersion: 1,
+    });
+
+    const callback =
+      await connectorsApi.completeCustomConnectorOAuth2CallbackResult({
+        code: "bdd-mcp-oauth-code",
+        state: oauthState,
+      });
+    expect(callback.body).toStrictEqual({ status: "success", username: null });
+    expect(provider.tokenBodies).toHaveLength(1);
+    expect(provider.tokenBodies[0]?.get("client_secret")).toBe(clientSecret);
+    await expect(
+      connectorsApi.readAgentCustomConnectors(member, agent.agentId),
+    ).resolves.toContain(created.id);
+    const connected = await connectorsApi.readCustomConnector(
+      member,
+      created.id,
+    );
+    expect(connected).toMatchObject({ connected: true, hasSecret: true });
+    expectNoVisibleSecret(connected, clientSecret);
+
+    const blockedCallbackUrl = await connectorsApi.startCustomConnectorOAuth2(
+      member,
+      created.id,
+    );
+    await connectorsApi.updateFeatureSwitches(member, {
+      [FeatureSwitchKey.CustomConnectorMcp]: false,
+    });
+    const blockedCallback =
+      await connectorsApi.completeCustomConnectorOAuth2CallbackResult({
+        code: "bdd-mcp-oauth-blocked-code",
+        state: stateFromAuthorizationUrl(blockedCallbackUrl),
+      });
+    expect(blockedCallback.body).toStrictEqual({
+      status: "error",
+      message: "MCP custom connector management is not enabled",
+    });
+    expect(provider.tokenBodies).toHaveLength(1);
+
+    const blockedStart = await connectorsApi.requestStartCustomConnectorOAuth2(
+      member,
+      created.id,
+      [403],
+    );
+    expectApiError(blockedStart.body);
+    expect(blockedStart.body.error.code).toBe("FORBIDDEN");
+
+    await connectorsApi.disconnectCustomConnector(member, created.id);
+    await connectorsApi.deleteCustomConnector(admin, created.id);
+    await bdd.deleteAgent(member, agent.agentId);
+  });
+
   it("updates OAuth settings and preserves member OAuth data as incompatible", async () => {
     const provider = mockCustomConnectorOAuth2Provider(context);
     const bdd = createBddApi(context);
@@ -3142,84 +3319,287 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     ).resolves.toStrictEqual([]);
   });
 
-  it("lists a persisted MCP definition without exposing HTTP update semantics", async () => {
+  it("manages MCP definitions and keeps feature-off operations access-reducing", async () => {
     const bdd = createBddApi(context);
-    const admin = bdd.user();
-    const orgId = requiredOrgId(admin);
-    const connectorId = randomUUID();
-    const endpoint = "https://mcp-reader.example.test/server";
-
-    await seedMcpCustomConnectorFixture(context, {
-      connectorId,
-      orgId,
-      userId: admin.userId,
-      slug: uniqueSlug("bdd-mcp-reader"),
-      displayName: "BDD MCP Reader",
-      endpoint,
+    bdd.acceptAgentStorageWrites();
+    const admin = bdd.user({ orgRole: "org:admin" });
+    const initialDefinition = manualMcpConnectorBody({
+      displayName: "BDD MCP Management",
+      endpoint: "https://mcp-management.example.test/server",
     });
+    const disabledCreate = await connectorsApi.requestCreateCustomConnector(
+      admin,
+      initialDefinition,
+      [403],
+    );
+    expectApiError(disabledCreate.body);
+    expect(disabledCreate.body.error.code).toBe("FORBIDDEN");
 
-    const listed = await connectorsApi.listCustomConnectors(admin);
-    expect(
-      listed.find((connector) => {
-        return connector.id === connectorId;
-      }),
-    ).toMatchObject({
+    await connectorsApi.updateFeatureSwitches(admin, {
+      [FeatureSwitchKey.CustomConnectorMcp]: true,
+    });
+    const agent = await bdd.createAgent(admin, {
+      displayName: "BDD MCP Management Agent",
+    });
+    const created = await connectorsApi.createCustomConnector(
+      admin,
+      initialDefinition,
+    );
+    expect(created).toMatchObject({
       kind: "mcp",
-      endpoint,
+      displayName: "BDD MCP Management",
+      endpoint: "https://mcp-management.example.test/server",
       transport: "streamable-http",
       prefixes: [],
       prefixTemplates: [],
       headerName: "",
       headerTemplate: "",
       permissionBundleRef: null,
+      storageVersion: 1,
+      connected: false,
     });
 
-    const update = await connectorsApi.requestUpdateCustomConnector(
+    const connected = await connectorsApi.setCustomConnectorValues(
       admin,
-      connectorId,
+      created.id,
+      [{ key: "secret", kind: "secret", value: "bdd-mcp-api-token" }],
+    );
+    expect(connected).toMatchObject({ connected: true, hasSecret: true });
+    expectNoVisibleSecret(connected, "bdd-mcp-api-token");
+    await expect(
+      connectorsApi.updateAgentCustomConnectors(admin, agent.agentId, [
+        created.id,
+      ]),
+    ).resolves.toContain(created.id);
+
+    const movedDefinition = manualMcpConnectorBody({
+      displayName: "BDD MCP Management Moved",
+      endpoint: "https://mcp-management.example.test/v2/server",
+    });
+    const moved = await connectorsApi.updateCustomConnector(
+      admin,
+      created.id,
+      movedDefinition,
+    );
+    expect(moved).toMatchObject({
+      id: created.id,
+      endpoint: movedDefinition.endpoint,
+      storageVersion: 1,
+      connected: true,
+    });
+    await expect(
+      connectorsApi.readAgentCustomConnectors(admin, agent.agentId),
+    ).resolves.toContain(created.id);
+
+    const protocolTransition = await connectorsApi.requestUpdateCustomConnector(
+      admin,
+      created.id,
       {
         displayName: "HTTP Rewrite",
         prefixTemplates: ["https://api.example.test/"],
-        fields: [
-          {
-            key: "secret",
-            label: "Secret",
-            kind: "secret",
-            required: true,
-          },
-        ],
-        headerInjections: [
-          {
-            name: "Authorization",
-            valueTemplate: "Bearer {{secrets.secret}}",
-          },
-        ],
+        fields: initialDefinition.fields,
+        headerInjections: initialDefinition.headerInjections,
         queryInjections: [],
         authMode: "manual",
-        storageVersion: 1,
       },
       [400],
     );
-    expectApiError(update.body);
-    expect(update.body.error.message).toBe(
-      "MCP Custom Connectors cannot be updated with an HTTP definition",
+    expectApiError(protocolTransition.body);
+    expect(protocolTransition.body.error.message).toBe(
+      "Custom connector protocol kind cannot be changed",
     );
+
+    await connectorsApi.updateFeatureSwitches(admin, {
+      [FeatureSwitchKey.CustomConnectorMcp]: false,
+    });
+    await expect(
+      connectorsApi.readCustomConnector(admin, created.id),
+    ).resolves.toMatchObject({
+      kind: "mcp",
+      endpoint: movedDefinition.endpoint,
+    });
+    const renamed = await connectorsApi.updateCustomConnector(
+      admin,
+      created.id,
+      {
+        ...movedDefinition,
+        displayName: "BDD MCP Renamed While Disabled",
+      },
+    );
+    expect(renamed).toMatchObject({
+      displayName: "BDD MCP Renamed While Disabled",
+      endpoint: movedDefinition.endpoint,
+      storageVersion: 1,
+    });
+
+    const blockedDefinition = await connectorsApi.requestUpdateCustomConnector(
+      admin,
+      created.id,
+      {
+        ...movedDefinition,
+        endpoint: "https://mcp-management.example.test/v3/server",
+      },
+      [403],
+    );
+    expectApiError(blockedDefinition.body);
+    expect(blockedDefinition.body.error.code).toBe("FORBIDDEN");
 
     const valueWrite = await connectorsApi.requestSetCustomConnectorValues(
       admin,
-      connectorId,
-      [],
-      [400],
+      created.id,
+      [{ key: "secret", kind: "secret", value: "replacement" }],
+      [403],
     );
     expectApiError(valueWrite.body);
-    expect(valueWrite.body.error.message).toBe(
-      "MCP Custom Connector credentials are not supported yet",
+    expect(valueWrite.body.error.code).toBe("FORBIDDEN");
+
+    await expect(
+      connectorsApi.updateAgentCustomConnectors(
+        admin,
+        agent.agentId,
+        [created.id],
+        "remove",
+      ),
+    ).resolves.not.toContain(created.id);
+    const blockedGrant = await connectorsApi.requestUpdateAgentCustomConnectors(
+      admin,
+      agent.agentId,
+      [created.id],
+      [403],
+      "add",
+    );
+    expectApiError(blockedGrant.body);
+    expect(blockedGrant.body.error.code).toBe("FORBIDDEN");
+
+    await connectorsApi.disconnectCustomConnector(admin, created.id);
+    await expect(
+      connectorsApi.readCustomConnector(admin, created.id),
+    ).resolves.toMatchObject({ connected: false });
+    await connectorsApi.deleteCustomConnector(admin, created.id);
+    await bdd.deleteAgent(admin, agent.agentId);
+  });
+
+  it("rejects unsafe MCP endpoints and protected transport headers", async () => {
+    const bdd = createBddApi(context);
+    const admin = bdd.user({ orgRole: "org:admin" });
+    await connectorsApi.updateFeatureSwitches(admin, {
+      [FeatureSwitchKey.CustomConnectorMcp]: true,
+    });
+
+    const hybrid = await connectorsApi.requestCreateCustomConnectorRaw(admin, {
+      ...manualMcpConnectorBody({
+        displayName: "Hybrid MCP",
+        endpoint: "https://hybrid-mcp.example.test/server",
+      }),
+      prefixTemplates: ["https://api.example.test/"],
+    });
+    expect(hybrid.status).toBe(400);
+    await expect(hybrid.json()).resolves.toMatchObject({
+      error: { code: "BAD_REQUEST" },
+    });
+
+    for (const endpoint of [
+      "http://mcp.example.test/server",
+      "https://user@mcp.example.test/server",
+      "https://mcp.example.test/server?token=value",
+      "https://mcp.example.test/server#fragment",
+      "https://{{variables.host}}/server",
+      "https://127.0.0.1/server",
+      "https://[::1]/server",
+      "https://mcp.example.test:443:444/server",
+    ]) {
+      const response = await connectorsApi.requestCreateCustomConnector(
+        admin,
+        manualMcpConnectorBody({
+          displayName: `Invalid MCP ${endpoint}`,
+          endpoint,
+        }),
+        [400],
+      );
+      expectApiError(response.body);
+    }
+
+    for (const name of [
+      "Host",
+      "Content-Type",
+      "Last-Event-ID",
+      "MCP-Protocol-Version",
+      "X-VM0-Connector-Intent",
+    ]) {
+      const definition = manualMcpConnectorBody({
+        displayName: `Protected ${name}`,
+        endpoint: "https://protected-mcp.example.test/server",
+      });
+      const response = await connectorsApi.requestCreateCustomConnector(
+        admin,
+        {
+          ...definition,
+          headerInjections: [
+            {
+              name,
+              valueTemplate: "Bearer {{secrets.secret}}",
+            },
+          ],
+        },
+        [400],
+      );
+      expectApiError(response.body);
+      expect(response.body.error.message).toContain("protected header");
+    }
+
+    const sharedEndpoint = "https://shared-mcp.example.test/server";
+    const first = await connectorsApi.createCustomConnector(
+      admin,
+      manualMcpConnectorBody({
+        displayName: "Shared MCP One",
+        endpoint: sharedEndpoint,
+      }),
+    );
+    const second = await connectorsApi.createCustomConnector(
+      admin,
+      manualMcpConnectorBody({
+        displayName: "Shared MCP Two",
+        endpoint: sharedEndpoint,
+      }),
+    );
+    expect(first).toMatchObject({ kind: "mcp", endpoint: sharedEndpoint });
+    expect(second).toMatchObject({ kind: "mcp", endpoint: sharedEndpoint });
+
+    const rootEndpoint = "https://root-mcp.example.test";
+    const root = await connectorsApi.createCustomConnector(
+      admin,
+      manualMcpConnectorBody({
+        displayName: "Root MCP",
+        endpoint: rootEndpoint,
+      }),
+    );
+    expect(root).toMatchObject({ kind: "mcp", endpoint: rootEndpoint });
+    expect(root.slug).toMatch(/^_root-mcp-example-test-[a-f0-9]{6}$/u);
+
+    const http = await connectorsApi.createCustomConnector(admin, {
+      displayName: "BDD HTTP Transition Source",
+      prefixes: ["https://http-transition.example.test/"],
+      headerName: "Authorization",
+      headerTemplate: "Bearer {{secret}}",
+    });
+    const transition = await connectorsApi.requestUpdateCustomConnector(
+      admin,
+      http.id,
+      manualMcpConnectorBody({
+        displayName: "MCP Transition Target",
+        endpoint: sharedEndpoint,
+      }),
+      [400],
+    );
+    expectApiError(transition.body);
+    expect(transition.body.error.message).toBe(
+      "Custom connector protocol kind cannot be changed",
     );
 
-    await connectorsApi.deleteCustomConnector(admin, connectorId);
-    await expect(
-      connectorsApi.listCustomConnectors(admin),
-    ).resolves.toStrictEqual([]);
+    await connectorsApi.deleteCustomConnector(admin, first.id);
+    await connectorsApi.deleteCustomConnector(admin, second.id);
+    await connectorsApi.deleteCustomConnector(admin, root.id);
+    await connectorsApi.deleteCustomConnector(admin, http.id);
   });
 
   it("keeps a created custom connector when realtime publishing fails", async () => {

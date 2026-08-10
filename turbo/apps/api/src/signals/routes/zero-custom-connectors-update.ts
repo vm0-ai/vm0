@@ -68,7 +68,11 @@ export const zeroCustomConnectorsUpdateRoutes: readonly RouteEntry[] = [
   {
     route: zeroCustomConnectorByIdContract.update,
     handler: authRoute(
-      { requireOrganization: true, missingOrganizationStatus: 401 },
+      {
+        requireOrganization: true,
+        missingOrganizationStatus: 401,
+        requiredCapability: "connector:write",
+      },
       updateInner$,
     ),
   },

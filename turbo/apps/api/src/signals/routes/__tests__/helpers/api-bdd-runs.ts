@@ -105,6 +105,7 @@ type RunnerConnectorRuntimeSyncRequest = z.input<
   (typeof runnersConnectorRuntimeSyncContract.sync)["body"]
 >;
 type RunnerConnectorRuntimeSyncStatus = 200 | 400 | 401 | 403 | 404 | 409 | 500;
+type RunnerActiveInputDeliveryStatus = 200 | 400 | 401 | 403 | 500;
 type ComposeContent = z.infer<typeof agentComposeApiContentSchema>;
 type OrgModelPolicyRequest = z.infer<
   (typeof zeroModelPoliciesMainContract.update)["body"]
@@ -538,6 +539,69 @@ export function createRunsApi(context: TestContext) {
           body: { eventIds },
         }),
         [409],
+      );
+      return response.body;
+    },
+
+    async requestReserveRunnerActiveInputsAs<
+      TStatus extends RunnerActiveInputDeliveryStatus,
+    >(
+      authorization: string | undefined,
+      runId: string,
+      statuses: readonly TStatus[],
+    ) {
+      return await accept(
+        runApp(context)(runnersActiveInputsContract).reserve({
+          headers: authorization === undefined ? {} : { authorization },
+          params: { runId },
+          body: {},
+        }),
+        statuses,
+      );
+    },
+
+    async reserveRunnerActiveInputs(sandboxToken: string, runId: string) {
+      const response = await accept(
+        runApp(context)(runnersActiveInputsContract).reserve({
+          headers: { authorization: `Bearer ${sandboxToken}` },
+          params: { runId },
+          body: {},
+        }),
+        [200],
+      );
+      return response.body;
+    },
+
+    async requestRecordRunnerActiveInputDeliveryAs<
+      TStatus extends RunnerActiveInputDeliveryStatus,
+    >(
+      authorization: string | undefined,
+      runId: string,
+      deliveryId: string,
+      statuses: readonly TStatus[],
+    ) {
+      return await accept(
+        runApp(context)(runnersActiveInputsContract).receipt({
+          headers: authorization === undefined ? {} : { authorization },
+          params: { runId, deliveryId },
+          body: {},
+        }),
+        statuses,
+      );
+    },
+
+    async recordRunnerActiveInputDelivery(
+      sandboxToken: string,
+      runId: string,
+      deliveryId: string,
+    ) {
+      const response = await accept(
+        runApp(context)(runnersActiveInputsContract).receipt({
+          headers: { authorization: `Bearer ${sandboxToken}` },
+          params: { runId, deliveryId },
+          body: {},
+        }),
+        [200],
       );
       return response.body;
     },
