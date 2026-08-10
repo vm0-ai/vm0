@@ -28,6 +28,16 @@ const storageStateSchema = z.object({
   head_version_id: z.string().nullable(),
 });
 
+const storageVersionStateSchema = z.object({
+  version_id: z.string(),
+  s3_key: z.string(),
+  size: z.number(),
+  archive_size: z.number(),
+  file_count: z.number(),
+  message: z.string().nullable(),
+  created_by: z.string(),
+});
+
 export const testSystemStoragePresignedUrlCacheStateActionBodySchema =
   z.discriminatedUnion("action", [
     z.object({
@@ -56,6 +66,13 @@ export const testSystemStoragePresignedUrlCacheStateActionBodySchema =
       s3_prefix: z.string(),
       s3_key: z.string(),
       archive_size: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+    }),
+    z.object({
+      action: z.literal("read-storage-version"),
+      org_id: z.string(),
+      user_id: z.string(),
+      storage_name: z.string(),
+      version_id: z.string(),
     }),
     z.object({
       action: z.literal("delete-storage-version"),
@@ -87,6 +104,7 @@ export const testSystemStoragePresignedUrlCacheStateActionResponseSchema =
     ok: z.literal(true),
     rows: z.array(cacheRowSchema).optional(),
     storage_state: storageStateSchema.nullable().optional(),
+    storage_version: storageVersionStateSchema.nullable().optional(),
   });
 
 export const testSystemStoragePresignedUrlCacheStateContract = c.router({

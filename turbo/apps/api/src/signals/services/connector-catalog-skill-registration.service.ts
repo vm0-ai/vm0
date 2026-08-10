@@ -5,10 +5,17 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 
 import { nowDate } from "../../lib/time";
 import type { Db, ReadonlyDb } from "../external/db";
+import { settle } from "../utils";
 import type {
   ConnectorCatalogArtifact,
   ConnectorCatalogArtifactConnector,
 } from "./connector-catalog-artifacts/artifacts";
+import {
+  registerPreparedStorageVersions,
+  storageVersionMatches,
+  StorageVersionIdentityConflictError,
+  type PreparedStorageVersion,
+} from "./storage-version-registration.service";
 
 const SYSTEM_STORAGE_CREATOR = "system";
 
@@ -19,6 +26,7 @@ type BundledConnectorSkill = Extract<
 
 interface ExistingStorageVersion {
   readonly id: string;
+  readonly storageId: string;
   readonly orgId: string;
   readonly userId: string;
   readonly name: string;
@@ -117,13 +125,36 @@ function existingVersionMatchesRegistration(
     existing.userId === VOLUME_ORG_USER_ID &&
     existing.name === registration.storageName &&
     existing.s3Prefix === registration.s3Prefix &&
-    existing.s3Key === registration.s3Key &&
-    existing.size === registration.size &&
-    existing.archiveSize === registration.archiveSize &&
-    existing.fileCount === registration.fileCount &&
-    existing.message === null &&
-    existing.createdBy === SYSTEM_STORAGE_CREATOR
+    storageVersionMatches(
+      {
+        storageId: existing.storageId,
+        versionId: existing.id,
+        s3Key: existing.s3Key,
+        size: existing.size,
+        archiveSize: existing.archiveSize,
+        fileCount: existing.fileCount,
+        message: existing.message,
+        createdBy: existing.createdBy,
+      },
+      preparedStorageVersion(registration, existing.storageId),
+    )
   );
+}
+
+function preparedStorageVersion(
+  registration: PreparedConnectorSkillRegistration,
+  storageId: string,
+): PreparedStorageVersion {
+  return {
+    storageId,
+    versionId: registration.versionId,
+    s3Key: registration.s3Key,
+    size: registration.size,
+    archiveSize: registration.archiveSize,
+    fileCount: registration.fileCount,
+    message: null,
+    createdBy: SYSTEM_STORAGE_CREATOR,
+  };
 }
 
 async function readExistingVersions(
@@ -137,6 +168,7 @@ async function readExistingVersions(
   const rows = await db
     .select({
       id: storageVersions.id,
+      storageId: storageVersions.storageId,
       orgId: storages.orgId,
       userId: storages.userId,
       name: storages.name,
@@ -277,56 +309,30 @@ async function createAndReadCanonicalStorages(
   return byName;
 }
 
-async function insertAndValidateStorageVersions(
+async function registerMissingStorageVersions(
   db: Db,
   registrations: readonly PreparedConnectorSkillRegistration[],
   storageByName: ReadonlyMap<string, CanonicalStorage>,
   signal: AbortSignal,
 ): Promise<ReadonlySet<string>> {
-  const inserted = await db
-    .insert(storageVersions)
-    .values(
-      registrations.map((registration) => {
-        const storage = storageByName.get(registration.storageName);
-        if (!storage) {
-          throw new Error("Connector skill storage is unavailable");
-        }
-        return {
-          id: registration.versionId,
-          storageId: storage.id,
-          s3Key: registration.s3Key,
-          size: registration.size,
-          archiveSize: registration.archiveSize,
-          fileCount: registration.fileCount,
-          message: null,
-          createdBy: SYSTEM_STORAGE_CREATOR,
-        };
-      }),
-    )
-    .onConflictDoNothing()
-    .returning({ id: storageVersions.id });
-  signal.throwIfAborted();
-  const existingByVersion = await readExistingVersions(
-    db,
-    registrations.map((registration) => {
-      return registration.versionId;
-    }),
+  const versions = registrations.map((registration) => {
+    const storage = storageByName.get(registration.storageName);
+    if (!storage) {
+      throw new Error("Connector skill storage is unavailable");
+    }
+    return preparedStorageVersion(registration, storage.id);
+  });
+  const result = await settle(
+    registerPreparedStorageVersions({ db, versions }, signal),
     signal,
   );
-  for (const registration of registrations) {
-    const existing = existingByVersion.get(registration.versionId);
-    if (
-      !existing ||
-      !existingVersionMatchesRegistration(existing, registration)
-    ) {
-      fail("invalid-reference", false);
-    }
+  if (result.ok) {
+    return result.value;
   }
-  return new Set(
-    inserted.map((row) => {
-      return row.id;
-    }),
-  );
+  if (result.error instanceof StorageVersionIdentityConflictError) {
+    fail("invalid-reference", false);
+  }
+  throw result.error;
 }
 
 async function updateNewStorageHeads(
@@ -382,7 +388,7 @@ async function registerConnectorCatalogSkills(
     missing,
     signal,
   );
-  const insertedVersionIds = await insertAndValidateStorageVersions(
+  const insertedVersionIds = await registerMissingStorageVersions(
     db,
     missing,
     storageByName,

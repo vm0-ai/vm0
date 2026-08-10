@@ -197,6 +197,46 @@ async function seedStorageVersionForAction(
   return actionOk();
 }
 
+async function readStorageVersionForAction(
+  db: Db,
+  body: CacheStateAction<"read-storage-version">,
+  signal: AbortSignal,
+) {
+  const [version] = await db
+    .select({
+      versionId: storageVersions.id,
+      s3Key: storageVersions.s3Key,
+      size: storageVersions.size,
+      archiveSize: storageVersions.archiveSize,
+      fileCount: storageVersions.fileCount,
+      message: storageVersions.message,
+      createdBy: storageVersions.createdBy,
+    })
+    .from(storageVersions)
+    .innerJoin(storages, eq(storages.id, storageVersions.storageId))
+    .where(
+      and(
+        storageIdentityCondition(body),
+        eq(storageVersions.id, body.version_id),
+      ),
+    )
+    .limit(1);
+  signal.throwIfAborted();
+  return actionOk({
+    storage_version: version
+      ? {
+          version_id: version.versionId,
+          s3_key: version.s3Key,
+          size: version.size,
+          archive_size: version.archiveSize,
+          file_count: version.fileCount,
+          message: version.message,
+          created_by: version.createdBy,
+        }
+      : null,
+  });
+}
+
 async function deleteStorageVersionForAction(
   db: Db,
   body: CacheStateAction<"delete-storage-version">,
@@ -337,6 +377,9 @@ const mutateSystemStoragePresignedUrlCacheState$ = command(
       }
       case "seed-storage-version": {
         return await seedStorageVersionForAction(db, body, signal);
+      }
+      case "read-storage-version": {
+        return await readStorageVersionForAction(db, body, signal);
       }
       case "delete-storage-version": {
         return await deleteStorageVersionForAction(db, body, signal);
