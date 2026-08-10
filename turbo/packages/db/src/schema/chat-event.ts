@@ -15,12 +15,14 @@ import {
 } from "drizzle-orm/pg-core";
 import { chatThreads } from "./chat-thread";
 import type {
+  ChatEventPayload,
   ChatEventUserMessage,
   ChatEventUsagePayload,
 } from "@vm0/db/jsonb-contracts/chat-event";
 export type {
   ChatEventAttachFileMetadata,
   ChatEventAttachFileMetadataList,
+  ChatEventPayload,
   ChatEventUserMessage,
   ChatEventUsageKindBreakdown,
   ChatEventUsagePayload,
@@ -86,13 +88,15 @@ export const chatEvents = pgTable(
     // Stable grouping key for autonomous goal continuations rendered in chat.
     runGroupId: uuid("run_group_id"),
     eventType: text("event_type").$type<ChatEventType>().notNull(),
+    payload: jsonb("payload").$type<ChatEventPayload>(),
     /**
      * Input source discriminator and optional polymorphic context pointer.
      *
-     * `web` and `goal` identify sources without context rows, so contextId is
-     * null for those values. For other values, contextId selects the row in the
-     * table named by contextType. contextId is not unique: when a pending event
-     * is claimed, the revoke + insert replacement reuses it. Legal
+     * `web` identifies a source without a context row, so its contextId is null.
+     * `goal` uses the goal ID as its canonical context pointer. For other values,
+     * contextId selects the row in the table named by contextType. contextId is
+     * not unique: when a pending event is claimed, the revoke + insert
+     * replacement reuses it. Legal
      * (eventType, contextType) combinations are enforced by the NewChatEvent
      * TypeScript write union, not by SQL.
      */

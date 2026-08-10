@@ -523,8 +523,15 @@
     {
       "idx": 882,
       "version": "7",
-      "when": 1786365512153,
-      "tag": "0882_add_gpt_5_6_fast_pricing",
+      "when": 1786365253783,
+      "tag": "0882_nasty_hobgoblin",
+      "breakpoints": true
+    },
+    {
+      "idx": 883,
+      "version": "7",
+      "when": 1786366314623,
+      "tag": "0883_add_gpt_5_6_fast_pricing",
       "breakpoints": true
     }
   ]

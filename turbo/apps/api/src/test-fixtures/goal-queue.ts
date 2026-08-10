@@ -37,6 +37,11 @@ export async function admitGoalQueueEventFixture(
 export async function readGoalQueueStateFixture(threadId: string): Promise<{
   readonly eventIds: readonly string[];
   readonly runIds: readonly string[];
+  readonly runs: readonly {
+    readonly id: string;
+    readonly runGroupId: string | null;
+    readonly goalId: string | null;
+  }[];
 }> {
   const [events, runs] = await Promise.all([
     db()
@@ -49,7 +54,11 @@ export async function readGoalQueueStateFixture(threadId: string): Promise<{
         ),
       ),
     db()
-      .select({ id: zeroRuns.id })
+      .select({
+        id: zeroRuns.id,
+        runGroupId: zeroRuns.runGroupId,
+        goalId: zeroRuns.goalId,
+      })
       .from(zeroRuns)
       .where(
         and(eq(zeroRuns.chatThreadId, threadId), isNotNull(zeroRuns.goalId)),
@@ -62,6 +71,7 @@ export async function readGoalQueueStateFixture(threadId: string): Promise<{
     runIds: runs.map((run) => {
       return run.id;
     }),
+    runs,
   };
 }
 

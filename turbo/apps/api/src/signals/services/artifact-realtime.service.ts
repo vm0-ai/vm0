@@ -5,6 +5,7 @@ import { zeroRuns } from "@vm0/db/schema/zero-run";
 
 import type { Db } from "../external/db";
 import { publishUserSignal } from "../external/realtime";
+import { legacyRunOwnedChatEventForRunCondition } from "./zero-chat-event-type.service";
 
 /**
  * Fire the user-level "artifact catalog changed" signal. The artifacts page
@@ -52,7 +53,7 @@ export async function publishArtifactsChangedForRun(
     })
     .from(chatEvents)
     .innerJoin(chatThreads, eq(chatEvents.chatThreadId, chatThreads.id))
-    .where(eq(chatEvents.runId, runId))
+    .where(legacyRunOwnedChatEventForRunCondition({ runId }))
     .limit(1);
   signal.throwIfAborted();
 

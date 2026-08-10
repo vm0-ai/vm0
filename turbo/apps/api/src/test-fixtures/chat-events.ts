@@ -2,6 +2,10 @@ import { randomUUID } from "node:crypto";
 
 import type { ChatFeishuMessageFiles } from "@vm0/db/jsonb-contracts/chat-feishu-context";
 import type {
+  ChatEventPayload,
+  ChatEventUserMessage,
+} from "@vm0/db/jsonb-contracts/chat-event";
+import type {
   ChatSlackMentionDisplayNames,
   ChatSlackMessageAssets,
   ChatSlackMessageFiles,
@@ -24,16 +28,34 @@ import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { chatEvents } from "@vm0/db/schema/chat-event";
 import { checkpoints } from "@vm0/db/schema/checkpoint";
 import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
-import { and, count, eq, isNull, like, or, sql, type SQL } from "drizzle-orm";
+import { threadGoals } from "@vm0/db/schema/thread-goal";
+import {
+  and,
+  count,
+  eq,
+  inArray,
+  isNull,
+  like,
+  or,
+  sql,
+  type SQL,
+} from "drizzle-orm";
 import { z } from "zod";
 
 import { db } from "../lib/db";
 import { executeRawRows } from "../lib/db-raw-rows";
+import type { Tx } from "../lib/db-types";
 import { nowDate } from "../lib/time";
 import {
   insertChatEvent,
+  insertChatEvents,
   replaceChatEvent,
 } from "../signals/services/zero-chat-event.service";
+import {
+  chatInputPromptDispatchCondition,
+  legacyRunOwnedChatEventForRunCondition,
+} from "../signals/services/zero-chat-event-type.service";
+import { visibleChatEventCondition } from "../signals/services/zero-chat-event-shared.service";
 import { createChatEventSourcePart } from "../signals/services/chat-event-annotation.service";
 import { buildFeishuChatOpenUrl } from "../signals/services/feishu-config";
 import { createUserMessageDocument } from "../signals/services/zero-chat-user-message.service";
@@ -1977,4 +1999,462 @@ export async function insertOutputEventWithConflictingLegacyPayloadFixture(args:
     return inserted;
   });
   return event;
+}
+
+interface CanonicalChatEventStorageRow {
+  readonly id: string;
+  readonly eventType: string;
+  readonly payload: ChatEventPayload | null;
+  readonly content: string | null;
+  readonly userMessage: typeof chatEvents.$inferSelect.userMessage;
+  readonly thinking: string | null;
+  readonly error: string | null;
+  readonly usagePayload: typeof chatEvents.$inferSelect.usagePayload;
+  readonly runId: string | null;
+  readonly interruptsRunId: string | null;
+  readonly runGroupId: string | null;
+  readonly contextType: string | null;
+  readonly contextId: string | null;
+  readonly revokesEventId: string | null;
+}
+
+interface CanonicalChatEventWriteFixture {
+  readonly eventIds: readonly string[];
+  readonly single: {
+    readonly inputRejectedId: string;
+    readonly outputErrorId: string;
+    readonly interruptId: string;
+    readonly interruptTargetRunId: string;
+    readonly goalContextEventId: string;
+    readonly goalId: string;
+    readonly goalOpenId: string;
+  };
+  readonly batch: {
+    readonly thinkingId: string;
+    readonly runFailedId: string;
+    readonly browserCloseId: string;
+    readonly goalCloseId: string;
+    readonly usageId: string;
+  };
+  readonly replacement: {
+    readonly targetId: string;
+    readonly replacementId: string;
+  };
+}
+
+async function insertCanonicalSingleWrites(
+  tx: Tx,
+  threadId: string,
+  single: CanonicalChatEventWriteFixture["single"],
+): Promise<void> {
+  const inputUserMessage = {
+    ...createUserMessageDocument({ text: "rejected canonical input" }),
+    compatibilityProbe: { nested: null },
+  } as unknown as ChatEventUserMessage;
+  await insertChatEvent(tx, {
+    id: single.inputRejectedId,
+    chatThreadId: threadId,
+    eventType: "input.rejected",
+    userMessage: inputUserMessage,
+    runId: null,
+    error: "input rejected",
+  });
+  await insertChatEvent(tx, {
+    id: single.outputErrorId,
+    chatThreadId: threadId,
+    eventType: "output.error",
+    content: "output failed",
+    error: "output error",
+    runId: randomUUID(),
+  });
+  await insertChatEvent(tx, {
+    id: single.interruptId,
+    chatThreadId: threadId,
+    eventType: "control.interrupt",
+    interruptsRunId: single.interruptTargetRunId,
+  });
+  await insertChatEvent(tx, {
+    id: single.goalContextEventId,
+    chatThreadId: threadId,
+    eventType: "output.message",
+    content: "goal output",
+    runId: randomUUID(),
+    runGroupId: single.goalId,
+  });
+  await insertChatEvent(tx, {
+    id: single.goalOpenId,
+    chatThreadId: threadId,
+    eventType: "goal.open",
+    content: "goal opened",
+  });
+}
+
+async function insertCanonicalBatchWrites(
+  tx: Tx,
+  threadId: string,
+  batch: CanonicalChatEventWriteFixture["batch"],
+): Promise<void> {
+  await insertChatEvents(tx, [
+    {
+      id: batch.thinkingId,
+      chatThreadId: threadId,
+      eventType: "output.thinking",
+      thinking: "canonical thinking",
+      runId: randomUUID(),
+    },
+    {
+      id: batch.runFailedId,
+      chatThreadId: threadId,
+      eventType: "run.failed",
+      content: "run failed",
+      error: "runner error",
+      runId: randomUUID(),
+    },
+    {
+      id: batch.browserCloseId,
+      chatThreadId: threadId,
+      eventType: "browser.close",
+    },
+    {
+      id: batch.goalCloseId,
+      chatThreadId: threadId,
+      eventType: "goal.close",
+    },
+    {
+      id: batch.usageId,
+      chatThreadId: threadId,
+      eventType: "usage.recorded",
+      runId: randomUUID(),
+      usagePayload: {
+        version: 1,
+        totalCredits: 9,
+        settledAt: "2026-08-10T00:00:00.000Z",
+        breakdown: [
+          {
+            kind: "model",
+            credits: 9,
+            providers: [{ provider: "test", credits: 9 }],
+          },
+        ],
+      },
+    },
+  ]);
+}
+
+async function insertCanonicalReplacementWrite(
+  tx: Tx,
+  threadId: string,
+  replacement: CanonicalChatEventWriteFixture["replacement"],
+): Promise<void> {
+  const userMessage = createUserMessageDocument({
+    text: "replacement canonical input",
+  });
+  await insertChatEvent(tx, {
+    id: replacement.targetId,
+    chatThreadId: threadId,
+    eventType: "input.prompt",
+    contextType: "web",
+    userMessage,
+    runId: null,
+  });
+  await replaceChatEvent(tx, replacement.targetId, {
+    id: replacement.replacementId,
+    chatThreadId: threadId,
+    eventType: "input.rejected",
+    userMessage,
+    runId: null,
+    error: "replacement rejected",
+  });
+}
+
+/**
+ * Exercise the three production persistence paths while keeping the canonical
+ * storage assertions out of public API contracts until the reader cutover.
+ */
+export async function insertCanonicalChatEventWritesFixture(args: {
+  readonly threadId: string;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly agentId: string;
+}): Promise<CanonicalChatEventWriteFixture> {
+  const interruptTargetSessionId = randomUUID();
+  const single = {
+    inputRejectedId: randomUUID(),
+    outputErrorId: randomUUID(),
+    interruptId: randomUUID(),
+    interruptTargetRunId: randomUUID(),
+    goalContextEventId: randomUUID(),
+    goalId: randomUUID(),
+    goalOpenId: randomUUID(),
+  };
+  const batch = {
+    thinkingId: randomUUID(),
+    runFailedId: randomUUID(),
+    browserCloseId: randomUUID(),
+    goalCloseId: randomUUID(),
+    usageId: randomUUID(),
+  };
+  const replacement = {
+    targetId: randomUUID(),
+    replacementId: randomUUID(),
+  };
+  await db().transaction(async (tx) => {
+    await tx.insert(agentSessions).values({
+      id: interruptTargetSessionId,
+      userId: args.userId,
+      orgId: args.orgId,
+      agentComposeId: args.agentId,
+    });
+    await tx.insert(agentRuns).values({
+      id: single.interruptTargetRunId,
+      userId: args.userId,
+      orgId: args.orgId,
+      sessionId: interruptTargetSessionId,
+      status: "queued",
+      prompt: "canonical interrupt target",
+    });
+    await tx.insert(threadGoals).values({
+      id: single.goalId,
+      orgId: args.orgId,
+      ownerUserId: args.userId,
+      agentId: args.agentId,
+      chatThreadId: args.threadId,
+      status: "active",
+      objective: "canonical storage goal",
+      objectiveBrief: "canonical storage goal",
+    });
+    await insertCanonicalSingleWrites(tx, args.threadId, single);
+    await insertCanonicalBatchWrites(tx, args.threadId, batch);
+    await insertCanonicalReplacementWrite(tx, args.threadId, replacement);
+  });
+
+  return {
+    eventIds: [
+      single.inputRejectedId,
+      single.outputErrorId,
+      single.interruptId,
+      single.goalContextEventId,
+      single.goalOpenId,
+      batch.thinkingId,
+      batch.runFailedId,
+      batch.browserCloseId,
+      batch.goalCloseId,
+      batch.usageId,
+      replacement.targetId,
+      replacement.replacementId,
+    ],
+    single,
+    batch,
+    replacement,
+  };
+}
+
+export async function readCanonicalChatEventStorageFixture(
+  eventIds: readonly string[],
+): Promise<readonly CanonicalChatEventStorageRow[]> {
+  return await db()
+    .select({
+      id: chatEvents.id,
+      eventType: chatEvents.eventType,
+      payload: chatEvents.payload,
+      content: chatEvents.content,
+      userMessage: chatEvents.userMessage,
+      thinking: chatEvents.thinking,
+      error: chatEvents.error,
+      usagePayload: chatEvents.usagePayload,
+      runId: chatEvents.runId,
+      interruptsRunId: chatEvents.interruptsRunId,
+      runGroupId: chatEvents.runGroupId,
+      contextType: chatEvents.contextType,
+      contextId: chatEvents.contextId,
+      revokesEventId: chatEvents.revokesEventId,
+    })
+    .from(chatEvents)
+    .where(inArray(chatEvents.id, [...eventIds]));
+}
+
+export async function isLegacyVisibleChatEventFixture(
+  eventId: string,
+): Promise<boolean> {
+  const database = db();
+  const [event] = await database
+    .select({ id: chatEvents.id })
+    .from(chatEvents)
+    .where(and(eq(chatEvents.id, eventId), visibleChatEventCondition(database)))
+    .limit(1);
+  return event !== undefined;
+}
+
+export async function insertChatEventAgainstPrePayloadSchemaFixture(): Promise<
+  {
+    readonly content: string | null;
+    readonly error: string | null;
+    readonly eventType: string;
+    readonly seqId: number;
+  }[]
+> {
+  const threadId = randomUUID();
+  const eventId = randomUUID();
+  const batchEventId = randomUUID();
+  const replacementTargetId = randomUUID();
+  const replacementId = randomUUID();
+  return await db().transaction(async (tx) => {
+    await tx.execute(sql`SET LOCAL search_path = pg_temp, public`);
+    await tx.execute(sql`
+      CREATE TEMP TABLE chat_threads (
+        id uuid PRIMARY KEY,
+        last_chat_event_seq_id bigint NOT NULL DEFAULT 0
+      ) ON COMMIT DROP
+    `);
+    await tx.execute(sql`
+      CREATE TEMP TABLE chat_events
+      (LIKE public.chat_events INCLUDING DEFAULTS)
+      ON COMMIT DROP
+    `);
+    await tx.execute(sql`ALTER TABLE chat_events DROP COLUMN payload`);
+    await tx.execute(
+      sql`INSERT INTO chat_threads (id) VALUES (${threadId}::uuid)`,
+    );
+    await insertChatEvent(tx, {
+      id: eventId,
+      chatThreadId: threadId,
+      eventType: "goal.open",
+      content: "pre-payload compatibility",
+    });
+    await insertChatEvents(tx, [
+      {
+        id: batchEventId,
+        chatThreadId: threadId,
+        eventType: "output.message",
+        content: "pre-payload batch compatibility",
+        runId: randomUUID(),
+      },
+    ]);
+    const userMessage = createUserMessageDocument({
+      text: "pre-payload replacement target",
+    });
+    await insertChatEvent(tx, {
+      id: replacementTargetId,
+      chatThreadId: threadId,
+      eventType: "input.prompt",
+      contextType: "web",
+      userMessage,
+      runId: null,
+    });
+    await replaceChatEvent(tx, replacementTargetId, {
+      id: replacementId,
+      chatThreadId: threadId,
+      eventType: "input.rejected",
+      userMessage,
+      runId: null,
+      error: "pre-payload replacement compatibility",
+    });
+    const rows = await tx
+      .select({
+        content: chatEvents.content,
+        error: chatEvents.error,
+        eventType: chatEvents.eventType,
+        seqId: chatEvents.seqId,
+      })
+      .from(chatEvents)
+      .where(
+        inArray(chatEvents.id, [
+          eventId,
+          batchEventId,
+          replacementTargetId,
+          replacementId,
+        ]),
+      )
+      .orderBy(chatEvents.seqId);
+    if (rows.length !== 4) {
+      throw new Error("Expected every pre-payload chat event write path");
+    }
+    return rows;
+  });
+}
+
+/**
+ * Exercise the production predicates shared by artifact catalog/realtime,
+ * thread/Google Drive, and Feishu/AgentPhone/Teams/Telegram dispatch readers.
+ */
+export async function readCanonicalRunIdCollisionSafetyFixture(args: {
+  readonly chatThreadId: string;
+  readonly interruptEventId: string;
+  readonly runId: string;
+}): Promise<{
+  readonly artifactLookupMatchedInterrupt: boolean;
+  readonly feishuDispatchMatchedInterrupt: boolean;
+  readonly rawRunIdCollisionExists: boolean;
+  readonly threadScopedArtifactLookupMatchedInterrupt: boolean;
+  readonly threadScopedDispatchMatchedInterrupt: boolean;
+}> {
+  const database = db();
+  const [
+    rawRunIdCollision,
+    artifactLookup,
+    threadScopedArtifactLookup,
+    feishuDispatch,
+    threadScopedDispatch,
+  ] = await Promise.all([
+    database
+      .select({ id: chatEvents.id })
+      .from(chatEvents)
+      .where(
+        and(
+          eq(chatEvents.id, args.interruptEventId),
+          eq(chatEvents.runId, args.runId),
+        ),
+      )
+      .limit(1),
+    database
+      .select({ id: chatEvents.id })
+      .from(chatEvents)
+      .where(
+        and(
+          eq(chatEvents.id, args.interruptEventId),
+          legacyRunOwnedChatEventForRunCondition({ runId: args.runId }),
+        ),
+      )
+      .limit(1),
+    database
+      .select({ id: chatEvents.id })
+      .from(chatEvents)
+      .where(
+        and(
+          eq(chatEvents.id, args.interruptEventId),
+          legacyRunOwnedChatEventForRunCondition({
+            runId: args.runId,
+            chatThreadId: args.chatThreadId,
+          }),
+        ),
+      )
+      .limit(1),
+    database
+      .select({ runId: agentRuns.id })
+      .from(chatEvents)
+      .innerJoin(agentRuns, eq(agentRuns.id, chatEvents.runId))
+      .where(
+        chatInputPromptDispatchCondition({ eventId: args.interruptEventId }),
+      )
+      .limit(1),
+    database
+      .select({ runId: agentRuns.id })
+      .from(chatEvents)
+      .innerJoin(agentRuns, eq(agentRuns.id, chatEvents.runId))
+      .where(
+        chatInputPromptDispatchCondition({
+          eventId: args.interruptEventId,
+          chatThreadId: args.chatThreadId,
+        }),
+      )
+      .limit(1),
+  ]);
+  return {
+    rawRunIdCollisionExists: rawRunIdCollision.length > 0,
+    artifactLookupMatchedInterrupt: artifactLookup.length > 0,
+    threadScopedArtifactLookupMatchedInterrupt:
+      threadScopedArtifactLookup.length > 0,
+    feishuDispatchMatchedInterrupt: feishuDispatch.length > 0,
+    threadScopedDispatchMatchedInterrupt: threadScopedDispatch.length > 0,
+  };
 }

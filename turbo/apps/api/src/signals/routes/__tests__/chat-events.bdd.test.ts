@@ -93,6 +93,7 @@ import {
   holdThreadSessionBindingClearFixture,
   holdThreadSessionConversationChangesFixture,
   holdThreadSessionConversationClearFixture,
+  readCanonicalChatEventStorageFixture,
   readChatEventContextFixture,
   replayPendingChatInputQueueEventFixture,
   replaceBddVm0ApiKey,
@@ -1394,6 +1395,15 @@ describe("CHAT-02: interrupting active chat runs", () => {
     });
     expect(interruptRows).toHaveLength(1);
     expect(interruptRows[0]).toMatchObject({ id: interruptId, content: null });
+    expect(interruptRows[0]).not.toHaveProperty("runId");
+    const [storedInterrupt] = await readCanonicalChatEventStorageFixture([
+      interruptId,
+    ]);
+    expect(storedInterrupt).toMatchObject({
+      payload: null,
+      runId: first.runId,
+      interruptsRunId: first.runId,
+    });
     expect(
       assistantMessages(messages.events).filter((message) => {
         return (

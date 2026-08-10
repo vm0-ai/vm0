@@ -73,7 +73,10 @@ import { touchChatThreadLastMessageAt } from "./zero-chat-event-shared.service";
 import { insertChatEvent } from "./zero-chat-event.service";
 import { createChatEventSourcePart } from "./chat-event-annotation.service";
 import { createUserMessageDocument } from "./zero-chat-user-message.service";
-import { chatEventTypeIn } from "./zero-chat-event-type.service";
+import {
+  chatEventTypeIn,
+  chatInputPromptDispatchCondition,
+} from "./zero-chat-event-type.service";
 
 const L = logger("TeamsDispatch");
 const TEAMS_LOGIN_PROMPT_FALLBACK_TEXT =
@@ -1698,13 +1701,10 @@ async function teamsMessageDispatchState(
       .from(chatEvents)
       .innerJoin(agentRuns, eq(agentRuns.id, chatEvents.runId))
       .where(
-        and(
-          eq(chatEvents.chatThreadId, args.chatThreadId),
-          or(
-            eq(chatEvents.id, args.chatEventId),
-            eq(chatEvents.revokesEventId, args.chatEventId),
-          ),
-        ),
+        chatInputPromptDispatchCondition({
+          eventId: args.chatEventId,
+          chatThreadId: args.chatThreadId,
+        }),
       )
       .limit(1),
     db
