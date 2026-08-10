@@ -6,6 +6,7 @@ import {
   revokedChatEventIds,
   terminatedChatRunIds,
 } from "@vm0/api-contracts/contracts/chat-events";
+import type { ChatThreadServiceTier } from "@vm0/api-contracts/contracts/chat-threads";
 import { isCancelledRunEvent } from "./chat-run-lifecycle.ts";
 import type { ChatEvent } from "./chat-event-types.ts";
 
@@ -494,9 +495,14 @@ export function liveRunIdsFromChatEvents(
   return liveRunIds;
 }
 
-export function runningModelFromChatEvents(
+export interface ChatRunModelSelection {
+  readonly selectedModel: string;
+  readonly serviceTier?: ChatThreadServiceTier;
+}
+
+export function runningModelSelectionFromChatEvents(
   events: readonly ChatEvent[],
-): string | null {
+): ChatRunModelSelection | null {
   const runningRunId = liveRunIdsFromChatEvents(events).at(-1);
   if (runningRunId === undefined) {
     return null;
@@ -515,7 +521,12 @@ export function runningModelFromChatEvents(
       return part.type === "model";
     });
     if (model?.type === "model") {
-      return model.selectedModel;
+      return {
+        selectedModel: model.selectedModel,
+        ...(model.serviceTier === undefined
+          ? {}
+          : { serviceTier: model.serviceTier }),
+      };
     }
   }
   return null;

@@ -53,7 +53,7 @@ import type {
 } from "./zero-workflow-automation-launch.service";
 import type { WorkflowAutomationContext } from "./workflow-automation-context.service";
 
-const log = logger("api:notion-workflow-event");
+const log = logger("api:notion-automation-event");
 
 const NOTION_ACCESS_TOKEN_ENVIRONMENT_NAME = "NOTION_TOKEN";
 const NOTION_API_BASE = "https://api.notion.com/v1";
@@ -1734,7 +1734,7 @@ async function loadDueNotionPendingEvents(
   return rows;
 }
 
-async function executeDueNotionWorkflowEvents(
+async function executeDueNotionAutomationEvents(
   args: {
     readonly db: Db;
     readonly automationId?: string;
@@ -2686,12 +2686,12 @@ async function processClaimedNotionPendingEvent(
   );
 }
 
-export const executeDueNotionWorkflowEvents$ = command(
+export const executeDueNotionAutomationEvents$ = command(
   async (
     { set },
     signal: AbortSignal,
   ): Promise<ExecuteDueNotionEventsResult> => {
-    return await executeDueNotionWorkflowEvents(
+    return await executeDueNotionAutomationEvents(
       {
         db: set(writeDb$),
         startRun: (input, childSignal) => {
@@ -2703,13 +2703,13 @@ export const executeDueNotionWorkflowEvents$ = command(
   },
 );
 
-export const executeDueNotionWorkflowEventsForAutomation$ = command(
+export const executeDueNotionAutomationEventsForAutomation$ = command(
   async (
     { set },
     automationId: string,
     signal: AbortSignal,
   ): Promise<ExecuteDueNotionEventsResult> => {
-    return await executeDueNotionWorkflowEvents(
+    return await executeDueNotionAutomationEvents(
       {
         db: set(writeDb$),
         automationId,

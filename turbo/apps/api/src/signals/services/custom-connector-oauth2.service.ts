@@ -53,6 +53,7 @@ import {
   type StoredValueRow,
 } from "./zero-custom-connector.service";
 import { customConnectorDefinitionSelection } from "./custom-connector-definition-selection";
+import type { StoredCustomConnectorOAuthState } from "./connector-oauth-state.service";
 
 const CUSTOM_CONNECTOR_OAUTH_METHOD_ID = "oauth2";
 const MAX_TOKEN_RESPONSE_BYTES = 64 * 1024;
@@ -571,15 +572,6 @@ export function parseCustomConnectorOAuthStateContext(
   return parsed.success ? parsed.data : null;
 }
 
-type StoredCustomConnectorOAuthState = Pick<
-  typeof connectorOauthStates.$inferSelect,
-  | "authMethod"
-  | "connectorSlug"
-  | "customConnectorId"
-  | "oauthContext"
-  | "storageVersion"
->;
-
 export function parseValidCustomConnectorOAuthState(
   storedState: StoredCustomConnectorOAuthState,
 ): CustomConnectorOAuthStateContext | null {
@@ -588,9 +580,7 @@ export function parseValidCustomConnectorOAuthState(
   );
   if (
     !context ||
-    storedState.connectorSlug !== null ||
     storedState.customConnectorId !== context.connectorId ||
-    storedState.authMethod !== CUSTOM_CONNECTOR_OAUTH_METHOD_ID ||
     storedState.storageVersion !== context.storageVersion
   ) {
     return null;

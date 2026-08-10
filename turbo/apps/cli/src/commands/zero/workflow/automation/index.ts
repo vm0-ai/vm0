@@ -1835,7 +1835,7 @@ function buildCreateRequest(
   return buildNonStripeCreateRequest(kind, options);
 }
 
-function buildGithubWorkflowEventUpdate(
+function buildGithubAutomationEventUpdate(
   options: UpdateOptions,
   existing: Extract<ZeroWorkflowAutomationSummary, { readonly kind: "event" }>,
 ): ZeroWorkflowAutomationUpdateRequest | undefined {
@@ -2012,7 +2012,7 @@ function buildEventUpdate(
     };
   }
 
-  const githubWorkflowUpdate = buildGithubWorkflowEventUpdate(
+  const githubWorkflowUpdate = buildGithubAutomationEventUpdate(
     options,
     existing,
   );

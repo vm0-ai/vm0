@@ -317,7 +317,11 @@ describe("chat thread generation template contract", () => {
       version: 1,
       parts: [
         { type: "text", text: "Run with this model" },
-        { type: "model", selectedModel: "claude-sonnet-4-6" },
+        {
+          type: "model",
+          selectedModel: "gpt-5.6-sol",
+          serviceTier: "priority",
+        },
       ],
     };
     expect(userMessageDocumentSchema.safeParse(userMessage)).toMatchObject({
@@ -344,6 +348,19 @@ describe("chat thread generation template contract", () => {
     expect(userMessageInputDocumentSchema.safeParse(userMessage)).toMatchObject(
       { success: false },
     );
+    expect(
+      userMessageDocumentSchema.safeParse({
+        version: 1,
+        parts: [
+          { type: "text", text: "Run with an invalid tier" },
+          {
+            type: "model",
+            selectedModel: "gpt-5.6-sol",
+            serviceTier: "fast",
+          },
+        ],
+      }),
+    ).toMatchObject({ success: false });
   });
 
   it("accepts template parts inside feedback notes", () => {

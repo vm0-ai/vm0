@@ -2,7 +2,7 @@ import { command } from "ccstate";
 import { cronRenewGoogleCalendarWatchesContract } from "@vm0/api-contracts/contracts/cron";
 
 import type { RouteEntry } from "../route-entry";
-import { renewGoogleCalendarWatches$ } from "../services/google-calendar-workflow-event.service";
+import { renewGoogleCalendarWatches$ } from "../services/google-calendar-automation-event.service";
 import { cronUnauthorized, hasValidCronSecret$ } from "./cron-auth";
 
 const renewGoogleCalendarWatchesRoute$ = command(

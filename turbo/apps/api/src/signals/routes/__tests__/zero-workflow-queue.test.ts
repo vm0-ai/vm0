@@ -304,7 +304,7 @@ async function workflowRunIds(threadId: string): Promise<readonly string[]> {
   });
 }
 
-async function pendingWorkflowEvents(threadId: string) {
+async function pendingAutomationEvents(threadId: string) {
   const events = await wf.readThreadEvents(threadId);
   const revokedIds = new Set(
     events.flatMap((event) => {
@@ -331,7 +331,7 @@ async function pendingWorkflowAutomationIds(
   threadId: string,
 ): Promise<readonly string[]> {
   return await Promise.all(
-    (await pendingWorkflowEvents(threadId)).map(async (event) => {
+    (await pendingAutomationEvents(threadId)).map(async (event) => {
       const eventContext = await readChatEventContextFixture(event.id);
       if (!eventContext?.automationId) {
         throw new Error("Expected pending workflow automation context");
@@ -341,11 +341,11 @@ async function pendingWorkflowAutomationIds(
   );
 }
 
-async function pendingWorkflowEventForAutomation(
+async function pendingAutomationEventForAutomation(
   threadId: string,
   automationId: string,
 ) {
-  for (const event of await pendingWorkflowEvents(threadId)) {
+  for (const event of await pendingAutomationEvents(threadId)) {
     const eventContext = await readChatEventContextFixture(event.id);
     if (eventContext?.automationId === automationId) {
       return event;
@@ -462,7 +462,7 @@ async function expectSweepLeftQueueUntouched(
   pendingEventIds: readonly string[],
 ): Promise<void> {
   expect(
-    (await pendingWorkflowEvents(threadId)).map((event) => {
+    (await pendingAutomationEvents(threadId)).map((event) => {
       return event.id;
     }),
   ).toStrictEqual(pendingEventIds);
@@ -533,7 +533,7 @@ describe("workflow queue", () => {
     expect(goalQueue.eventIds).toContain(goal.eventId);
     await expect(workflowRunIds(automation.threadId)).resolves.toHaveLength(0);
     await expect(
-      pendingWorkflowEvents(automation.threadId),
+      pendingAutomationEvents(automation.threadId),
     ).resolves.toHaveLength(1);
 
     const [goalRunId] = goalQueue.runIds;
@@ -585,7 +585,7 @@ describe("workflow queue", () => {
     expect(goalQueue.eventIds).toContain(goal.eventId);
     await expect(workflowRunIds(automation.threadId)).resolves.toHaveLength(0);
     await expect(
-      pendingWorkflowEvents(automation.threadId),
+      pendingAutomationEvents(automation.threadId),
     ).resolves.toHaveLength(1);
 
     const [goalRunId] = goalQueue.runIds;
@@ -643,7 +643,7 @@ describe("workflow queue", () => {
 
     const workflowRequest = postWorkflowWebhook(automation, "fresh event");
     await expect.poll(admissionLock.waiterCount).toBeGreaterThanOrEqual(1);
-    const event = (await pendingWorkflowEvents(automation.threadId))[0];
+    const event = (await pendingAutomationEvents(automation.threadId))[0];
     if (!event) {
       throw new Error("Expected a pending workflow event");
     }
@@ -677,7 +677,7 @@ describe("workflow queue", () => {
 
     const workflowRequest = postWorkflowWebhook(automation, "stale event");
     await expect.poll(admissionLock.waiterCount).toBeGreaterThanOrEqual(1);
-    const event = (await pendingWorkflowEvents(automation.threadId))[0];
+    const event = (await pendingAutomationEvents(automation.threadId))[0];
     if (!event) {
       throw new Error("Expected a pending workflow event");
     }
@@ -740,7 +740,7 @@ describe("workflow queue", () => {
     expectAcceptedWithoutRun(
       await postWorkflowWebhook(automation, "stale pending event"),
     );
-    const event = (await pendingWorkflowEvents(automation.threadId))[0];
+    const event = (await pendingAutomationEvents(automation.threadId))[0];
     if (!event) {
       throw new Error("Expected a pending workflow event");
     }
@@ -756,7 +756,7 @@ describe("workflow queue", () => {
     await cleanupSandboxes();
 
     await expect(
-      pendingWorkflowEvents(automation.threadId),
+      pendingAutomationEvents(automation.threadId),
     ).resolves.toHaveLength(0);
     await expect(workflowRunIds(automation.threadId)).resolves.toHaveLength(2);
   });
@@ -837,7 +837,7 @@ describe("workflow queue", () => {
     mockNow(secondApiStartTime + 1000);
     expectAcceptedWithoutRun(await postWorkflowWebhook(automation, "third"));
     expect(kms.generateDataKeyCalls).toBe(1);
-    const pendingEvents = await pendingWorkflowEvents(automation.threadId);
+    const pendingEvents = await pendingAutomationEvents(automation.threadId);
     expect(pendingEvents).toHaveLength(2);
     const secondEvent = pendingEvents[0];
     const thirdEvent = pendingEvents[1];
@@ -927,7 +927,7 @@ describe("workflow queue", () => {
     const firedAt = Date.parse(created.body.nextRunAt) + 60_000;
     mockNow(firedAt);
     await executeDueWorkflowAutomations(created.body.id);
-    const pendingTick = await pendingWorkflowEventForAutomation(
+    const pendingTick = await pendingAutomationEventForAutomation(
       webhookAutomation.threadId,
       created.body.id,
     );
@@ -950,8 +950,8 @@ describe("workflow queue", () => {
       automationId: created.body.id,
       triggerBrief: admittedTriggerBrief,
       workflowName: WORKFLOW_NAME,
-      workflowEventType: "schedule",
-      workflowEventPayload: expect.objectContaining({
+      automationEventType: "schedule",
+      automationEventPayload: expect.objectContaining({
         automationId: created.body.id,
         trigger: "schedule",
         firedAt: new Date(firedAt).toISOString(),
@@ -1061,7 +1061,7 @@ describe("workflow queue", () => {
     mockNow(Date.parse(updated.body.nextRunAt) + 60_000);
     await executeDueWorkflowAutomations(created.body.id);
     expect(coalescedKms.generateDataKeyCalls).toBe(0);
-    const coalescedEvents = await pendingWorkflowEvents(
+    const coalescedEvents = await pendingAutomationEvents(
       webhookAutomation.threadId,
     );
     expect(coalescedEvents).toHaveLength(1);
@@ -1103,7 +1103,7 @@ describe("workflow queue", () => {
     const secondRequest = postWorkflowWebhook(automation, "second concurrent");
     await expect.poll(admissionLock.directWaiterCount).toBe(2);
     await expect(
-      pendingWorkflowEvents(automation.threadId),
+      pendingAutomationEvents(automation.threadId),
     ).resolves.toStrictEqual([]);
 
     admissionLock.release();
@@ -1117,7 +1117,7 @@ describe("workflow queue", () => {
     ).toStrictEqual([200, 200]);
     await expect(workflowRunIds(automation.threadId)).resolves.toHaveLength(1);
     await expect(
-      pendingWorkflowEvents(automation.threadId),
+      pendingAutomationEvents(automation.threadId),
     ).resolves.toHaveLength(1);
   });
 
@@ -1180,7 +1180,7 @@ describe("workflow queue", () => {
         : undefined,
     ).toBe(databaseFirst.brief);
     expect(
-      (await pendingWorkflowEvents(automation.threadId)).map((event) => {
+      (await pendingAutomationEvents(automation.threadId)).map((event) => {
         return event.id;
       }),
     ).toContain(databaseSecond.id);
@@ -1245,7 +1245,7 @@ describe("workflow queue", () => {
         : undefined,
     ).toBe(preemptingBrief);
     const pendingEventIds = (
-      await pendingWorkflowEvents(automation.threadId)
+      await pendingAutomationEvents(automation.threadId)
     ).map((event) => {
       return event.id;
     });
@@ -1311,7 +1311,7 @@ describe("workflow queue", () => {
     });
 
     await expect(
-      pendingWorkflowEvents(automation.threadId),
+      pendingAutomationEvents(automation.threadId),
     ).resolves.toHaveLength(0);
     const failedEvents = await accept(
       chatThreadEventsClient().list({
@@ -1386,7 +1386,7 @@ describe("workflow queue", () => {
     const automation = await wf.readAutomation(created.body.id);
     expect(automation.nextRunAt).not.toBeNull();
     await expect(
-      pendingWorkflowEvents(created.body.chatThreadId),
+      pendingAutomationEvents(created.body.chatThreadId),
     ).resolves.toHaveLength(0);
 
     await runsApi.ensureOrgModelProvider(scenario.actor);
@@ -1434,7 +1434,7 @@ describe("workflow queue", () => {
     expect(claimed.enabled).toBeTruthy();
     expect(claimed.nextRunAt).toBeNull();
 
-    const queuedEvent = await pendingWorkflowEventForAutomation(
+    const queuedEvent = await pendingAutomationEventForAutomation(
       created.body.chatThreadId,
       created.body.id,
     );
@@ -1677,7 +1677,7 @@ describe("workflow queue", () => {
   it("revokes one pending automation event with the caller's client event id", async () => {
     const { scenario, automation, runningRunId } = await busyQueueFixture(2);
 
-    const before = await pendingWorkflowEvents(automation.threadId);
+    const before = await pendingAutomationEvents(automation.threadId);
     const target = before[0];
     if (!target) {
       throw new Error("Expected a pending workflow event");
@@ -1696,7 +1696,7 @@ describe("workflow queue", () => {
       [201],
     );
     await expect(
-      pendingWorkflowEvents(automation.threadId),
+      pendingAutomationEvents(automation.threadId),
     ).resolves.toHaveLength(1);
     await expect(
       wf.readThreadEvents(automation.threadId),

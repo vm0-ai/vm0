@@ -4,7 +4,7 @@ import { webhookGoogleWorkspaceEventsContract } from "@vm0/api-contracts/contrac
 import type { RouteEntry } from "../route-entry";
 import { request$ } from "../context/hono";
 import { now } from "../../lib/time";
-import { dispatchGoogleWorkspaceEventsPubSubPush$ } from "../services/google-meet-workflow-event.service";
+import { dispatchGoogleWorkspaceEventsPubSubPush$ } from "../services/google-meet-automation-event.service";
 
 function jsonError(message: string, status: 400 | 401 | 429 | 503): Response {
   return Response.json({ error: message }, { status });
