@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.18](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.6.17...guest-mock-codex-v0.6.18) (2026-08-10)
+
+
+### Performance Improvements
+
+* **guest-mock-codex:** stream oversized stdout fixture ([#26099](https://github.com/vm0-ai/vm0/issues/26099)) ([c28c39d](https://github.com/vm0-ai/vm0/commit/c28c39de2779d3e81dea969c016a83e7425230a6))
+
 ## [0.6.17](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.6.16...guest-mock-codex-v0.6.17) (2026-08-06)
 
 

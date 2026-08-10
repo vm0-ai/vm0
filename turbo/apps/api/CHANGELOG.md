@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.415.0](https://github.com/vm0-ai/vm0/compare/api-v1.414.0...api-v1.415.0) (2026-08-10)
+
+
+### Features
+
+* **cli:** add managed seo commands ([#26017](https://github.com/vm0-ai/vm0/issues/26017)) ([76c3033](https://github.com/vm0-ai/vm0/commit/76c3033db36a06fce0f917b1d2ebf3b1f72507a4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.305.0
+    * @vm0/core bumped to 8.538.0
+    * @vm0/db bumped to 1.185.0
+    * @vm0/pi-agent-runtime bumped to 1.3.27
+
 ## [1.414.0](https://github.com/vm0-ai/vm0/compare/api-v1.413.0...api-v1.414.0) (2026-08-10)
 
 
