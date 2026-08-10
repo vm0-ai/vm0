@@ -27,7 +27,6 @@ import { zeroBuiltInGenerationContract } from "@vm0/api-contracts/contracts/zero
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import { zeroImageIoGenerateContract } from "@vm0/api-contracts/contracts/zero-image-io-generate";
 import { zeroMapsContract } from "@vm0/api-contracts/contracts/zero-maps";
-import { zeroUsageRunsContract } from "@vm0/api-contracts/contracts/zero-usage-daily";
 import { zeroUsageMembersContract } from "@vm0/api-contracts/contracts/zero-usage";
 import {
   zeroUsageRecordContract,
@@ -68,7 +67,6 @@ import { zeroImageIoGenerateRoutes } from "../../zero-image-io-generate";
 import { zeroMapsRoutes } from "../../zero-maps";
 import { zeroUsageMembersRoutes } from "../../zero-usage-members";
 import { zeroUsageRecordRoutes } from "../../zero-usage-record";
-import { zeroUsageRunsRoutes } from "../../zero-usage-runs";
 import { zeroVideoIoGenerateRoutes } from "../../zero-video-io-generate";
 import { zeroVoiceIoQuotaRoutes } from "../../zero-voice-io-quota";
 import { zeroVoiceIoSpeechRoutes } from "../../zero-voice-io-speech";
@@ -533,22 +531,6 @@ export function createBillingMediaApi(context: TestContext) {
       );
     },
 
-    async readUsageRuns(
-      actor: ApiTestUser,
-      statuses: readonly (200 | 400 | 401 | 403 | 500)[],
-    ) {
-      const client = setupApp({ context, routes: zeroUsageRunsRoutes })(
-        zeroUsageRunsContract,
-      );
-      return await accept(
-        client.get({
-          headers: authenticate(actor),
-          query: { page: 1, pageSize: 20 },
-        }),
-        statuses,
-      );
-    },
-
     async readUsageRecord(actor: ApiTestUser) {
       const client = setupApp({ context, routes: zeroUsageRecordRoutes })(
         zeroUsageRecordContract,
@@ -556,7 +538,13 @@ export function createBillingMediaApi(context: TestContext) {
       return await accept(
         client.get({
           headers: authenticate(actor),
-          query: { page: 1, pageSize: 20 },
+          query: {
+            page: 1,
+            pageSize: 20,
+            scope: "mine",
+            range: "24h",
+            tz: "UTC",
+          },
         }),
         [200],
       );

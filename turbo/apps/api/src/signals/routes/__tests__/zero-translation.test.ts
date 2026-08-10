@@ -5,7 +5,7 @@ import {
   ZERO_TRANSLATION_MAX_SOURCE_TEXT_CHARS,
   zeroTranslationContract,
 } from "@vm0/api-contracts/contracts/zero-translation";
-import { zeroUsageRunsContract } from "@vm0/api-contracts/contracts/zero-usage-daily";
+import { zeroUsageRecordContract } from "@vm0/api-contracts/contracts/zero-usage-record";
 import { HttpResponse, http } from "msw";
 
 import { accept, testContext } from "../../../__tests__/test-context";
@@ -24,7 +24,7 @@ import {
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
 import { zeroTranslationRoutes } from "../zero-translation";
-import { zeroUsageRunsRoutes } from "../zero-usage-runs";
+import { zeroUsageRecordRoutes } from "../zero-usage-record";
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
@@ -145,23 +145,29 @@ async function seedBilling(actor: TranslationActor): Promise<void> {
   await seedUsagePricingRows(TRANSLATION_PRICING_ROWS);
 }
 
-async function readRunUsage(actor: TranslationActor) {
+async function readUsageRecord(actor: TranslationActor) {
   context.mocks.clerk.users.getUserList.mockResolvedValue({ data: [] });
   mocks.clerk.session(actor.userId, actor.orgId, "org:admin");
   const response = await accept(
-    setupApp({ context, routes: zeroUsageRunsRoutes })(
-      zeroUsageRunsContract,
+    setupApp({ context, routes: zeroUsageRecordRoutes })(
+      zeroUsageRecordContract,
     ).get({
       headers: { authorization: "Bearer clerk-session" },
-      query: { runId: actor.runId },
+      query: {
+        page: 1,
+        pageSize: 20,
+        scope: "mine",
+        range: "24h",
+        tz: "UTC",
+      },
     }),
     [200],
   );
-  return response.body.runs;
+  return response.body.rows;
 }
 
 async function expectNoUsage(actor: TranslationActor): Promise<void> {
-  await expect(readRunUsage(actor)).resolves.toStrictEqual([]);
+  await expect(readUsageRecord(actor)).resolves.toStrictEqual([]);
 }
 
 describe("POST /api/zero/translate", () => {
@@ -240,13 +246,11 @@ describe("POST /api/zero/translate", () => {
       targetLanguage: "Simplified Chinese",
       text: "Hello, world",
     });
-    await expect(readRunUsage(actor)).resolves.toStrictEqual([
+    await expect(readUsageRecord(actor)).resolves.toStrictEqual([
       expect.objectContaining({
         runId: actor.runId,
-        inputTokens: 4000,
-        outputTokens: 2000,
-        cacheTokens: 2000,
-        creditsCharged: EXPECTED_CHARGE * 2,
+        tokens: 8000,
+        credits: EXPECTED_CHARGE * 2,
       }),
     ]);
   });

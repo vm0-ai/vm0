@@ -209,17 +209,14 @@ async function readRunCreditsCharged(
   runId: string,
 ): Promise<number> {
   const billing = createBillingMediaApi(context);
-  const response = await billing.readUsageRuns(actor, [200]);
-  if (response.status !== 200) {
-    throw new Error("Expected usage runs read to succeed");
-  }
-  const run = response.body.runs.find((entry) => {
+  const response = await billing.readUsageRecord(actor);
+  const run = response.body.rows.find((entry) => {
     return entry.runId === runId;
   });
   if (!run) {
-    throw new Error(`Run ${runId} missing from usage runs read`);
+    throw new Error(`Run ${runId} missing from usage record`);
   }
-  return run.creditsCharged;
+  return run.credits;
 }
 
 describe("Usage Allowance", () => {

@@ -13401,18 +13401,15 @@ describe("BILL-02: usage reads for an entitled organization with runs", () => {
     );
     await billing.processOrgUsageEvents(actor);
 
-    const usageRuns = await billing.readUsageRuns(actor, [200]);
-    if (usageRuns.status !== 200) {
-      throw new Error("Expected usage runs read to succeed");
-    }
+    const usageRecord = await billing.readUsageRecord(actor);
     expect(
-      usageRuns.body.runs.find((entry) => {
+      usageRecord.body.rows.find((entry) => {
         return entry.runId === run.runId;
       }),
-    ).toMatchObject({ creditsCharged: 17 });
+    ).toMatchObject({ credits: 17 });
   });
 
-  it("exposes usage runs, members, and processed usage events through public reads", async () => {
+  it("exposes usage records, members, and processed usage events through public reads", async () => {
     const api = createRunsApi(context);
     const billing = createBillingMediaApi(context);
     const webhooks = createWebhookCallbackApi(context);
@@ -13447,22 +13444,16 @@ describe("BILL-02: usage reads for an entitled organization with runs", () => {
     );
     await billing.processOrgUsageEvents(actor);
 
-    const usageRuns = await billing.readUsageRuns(actor, [200]);
-    if (usageRuns.status !== 200) {
-      throw new Error("Expected usage runs read to succeed");
-    }
-    const listedRun = usageRuns.body.runs.find((entry) => {
+    const record = await billing.readUsageRecord(actor);
+    const listedRun = record.body.rows.find((entry) => {
       return entry.runId === run.runId;
     });
     expect(listedRun).toBeDefined();
-    expect(listedRun?.prompt).toBe("generate usage");
-    expect(usageRuns.body.pagination.total).toBeGreaterThanOrEqual(1);
+    expect(listedRun?.title).toBe("generate usage");
+    expect(record.body.pagination.total).toBeGreaterThanOrEqual(1);
 
     const members = await billing.readUsageMembers(actor);
     expect(members.body.period).not.toBeNull();
-
-    const record = await billing.readUsageRecord(actor);
-    expect(record.status).toBe(200);
   });
 
   it("aggregates usage members across organization users", async () => {

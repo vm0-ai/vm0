@@ -77,7 +77,7 @@ function pcmFormData(): FormData {
 
 describe("BILL-01: billing status and Stripe-backed actions through public API", () => {
   it("chains status, checkout, portal, invoices, redeem, and admin errors without hidden DB state", async () => {
-    const { api, admin, member } = testActors();
+    const { api, admin } = testActors();
     await completeVisibleOnboarding(admin);
 
     const initialStatus = await api.readBillingStatus(admin);
@@ -473,21 +473,6 @@ describe("BILL-02: usage, attribution, and model stats reads", () => {
 
     const usageMembers = await api.readUsageMembers(admin);
     expect(usageMembers.body.members).toStrictEqual([]);
-
-    const usageRuns = await api.readUsageRuns(admin, [200]);
-    if (usageRuns.status !== 200) {
-      throw new Error(
-        `Expected usage runs to be readable, got ${usageRuns.status}`,
-      );
-    }
-    expect(usageRuns.body.pagination.total).toBe(0);
-    expect(usageRuns.body.runs).toStrictEqual([]);
-
-    const memberUsageRuns = await api.readUsageRuns(member, [403]);
-    expectApiError(memberUsageRuns.body);
-    expect(memberUsageRuns.body.error.message).toBe(
-      "Only org admins can view run usage",
-    );
 
     const usageRecord = await api.readUsageRecord(admin);
     expect(usageRecord.body.pagination.total).toBe(0);
