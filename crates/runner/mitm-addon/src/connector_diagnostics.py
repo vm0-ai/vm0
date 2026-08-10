@@ -46,6 +46,7 @@ import builtin_connector_diagnostics
 import connector_intent
 import flow_metadata
 import flow_metadata_keys as metadata_keys
+import http_local_responses
 import matching
 import request_classification
 import runtime_url_parsing
@@ -343,10 +344,10 @@ def maybe_replace_response(
         if isinstance(body, bytes) and not flow.metadata.get(
             _CONNECTOR_DIAGNOSTIC_RESPONSE_STREAM_BODY_SENT
         ):
-            _apply_diagnostic_response_content(
+            http_local_responses.apply_synthetic_json_response_content(
+                flow,
                 flow.response,
-                body,
-                omit_content_length=_is_head_request(flow),
+                lambda: body,
             )
         _log_proxy_entry(
             flow,
@@ -632,10 +633,6 @@ def _response_body(
     return json.dumps(body, separators=(",", ":")).encode()
 
 
-def _is_head_request(flow: http.HTTPFlow) -> bool:
-    return flow.request.method.upper() == "HEAD"
-
-
 def _set_diagnostic_response_content(
     flow: http.HTTPFlow,
     response: http.Response,
@@ -643,26 +640,11 @@ def _set_diagnostic_response_content(
     *,
     upstream_status: int,
 ) -> bytes:
-    bodyless = _is_head_request(flow)
-    content = b"" if bodyless else _response_body(candidate, upstream_status=upstream_status)
-    _apply_diagnostic_response_content(
+    return http_local_responses.apply_synthetic_json_response_content(
+        flow,
         response,
-        content,
-        omit_content_length=bodyless,
+        lambda: _response_body(candidate, upstream_status=upstream_status),
     )
-    return content
-
-
-def _apply_diagnostic_response_content(
-    response: http.Response,
-    content: bytes,
-    *,
-    omit_content_length: bool,
-) -> None:
-    response.content = content
-    response.headers["Content-Type"] = "application/json"
-    if omit_content_length:
-        del response.headers["Content-Length"]
 
 
 def _make_local_response(
