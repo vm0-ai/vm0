@@ -121,6 +121,7 @@ interface SourceErrorIdentity {
 
 interface SourceErrorDiagnostics {
   readonly errorChain: readonly SourceErrorIdentity[];
+  readonly errorSummary?: string;
   readonly httpStatusCode?: number;
 }
 
@@ -560,7 +561,28 @@ function sourceErrorString(
   return "ok" in value && typeof value.ok === "string" ? value.ok : undefined;
 }
 
-function sourceErrorDiagnostics(error: unknown): SourceErrorDiagnostics {
+function redactSourceErrorSummary(
+  summary: string,
+  source: ConnectorCatalogSource,
+): string {
+  return summary
+    .replace(
+      /\b(access[_-]?key|bucket|credential|key|password|secret|token)\s*=\s*[^\s,;]+/gi,
+      "$1=[redacted]",
+    )
+    .replace(/https?:\/\/[^\s,;]+/gi, "[url]")
+    .split(source.bucket)
+    .join("[bucket]")
+    .split(CONNECTOR_CATALOG_ACTIVE_KEY)
+    .join("[key]")
+    .replace(/\b[A-Za-z0-9_+/=-]{32,}\b/g, "[redacted]")
+    .slice(0, 240);
+}
+
+function sourceErrorDiagnostics(
+  error: unknown,
+  source: ConnectorCatalogSource,
+): SourceErrorDiagnostics {
   const errorChain: SourceErrorIdentity[] = [];
   const seen = new Set<object>();
   let current = sourceErrorRecord(error);
@@ -579,23 +601,27 @@ function sourceErrorDiagnostics(error: unknown): SourceErrorDiagnostics {
   }
 
   const root = sourceErrorRecord(error);
+  const message = root ? sourceErrorString(root, "message") : undefined;
   const metadata = sourceErrorRecord(root?.$metadata);
   const httpStatusCode = metadata?.httpStatusCode;
   return {
     errorChain,
+    ...(message
+      ? { errorSummary: redactSourceErrorSummary(message, source) }
+      : {}),
     ...(typeof httpStatusCode === "number" ? { httpStatusCode } : {}),
   };
 }
 
 function logSourceReadFailure(
   operation: "active-pointer" | "catalog-artifact",
-  sourceId: string,
+  source: ConnectorCatalogSource,
   error: unknown,
 ): void {
   log.warn("Connector catalog source read failed", {
-    sourceId,
+    sourceId: source.sourceId,
     operation,
-    ...sourceErrorDiagnostics(error),
+    ...sourceErrorDiagnostics(error, source),
   });
 }
 
@@ -1033,11 +1059,7 @@ async function loadPointerForSync(
   if (!downloaded.ok) {
     const failureCode = classifySyncFailure(downloaded.error);
     if (failureCode === "source-unavailable") {
-      logSourceReadFailure(
-        "active-pointer",
-        runtime.source.sourceId,
-        downloaded.error,
-      );
+      logSourceReadFailure("active-pointer", runtime.source, downloaded.error);
     }
     const pointerObservation =
       downloaded.error instanceof S3ObjectSizeLimitError &&
@@ -1095,11 +1117,7 @@ async function loadCandidateForSync(
   if (!result.ok) {
     const failureCode = classifySyncFailure(result.error);
     if (failureCode === "source-unavailable") {
-      logSourceReadFailure(
-        "catalog-artifact",
-        runtime.source.sourceId,
-        result.error,
-      );
+      logSourceReadFailure("catalog-artifact", runtime.source, result.error);
     }
     return await rejectSyncAttempt(
       runtime,

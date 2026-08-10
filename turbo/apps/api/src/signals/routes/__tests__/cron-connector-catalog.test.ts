@@ -7137,6 +7137,8 @@ describe("connector catalog rejection and latest-valid retention", () => {
       expect.objectContaining({
         operation: "active-pointer",
         errorChain: [{ name: "Error" }, { name: "Error", code: "ETIMEDOUT" }],
+        errorSummary:
+          "credential=[redacted] bucket=[redacted] key=[redacted] url=[url]",
         httpStatusCode: 503,
       }),
     );
