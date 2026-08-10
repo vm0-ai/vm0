@@ -3,6 +3,8 @@
 import json
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 import flow_metadata_keys as metadata_keys
 import usage
 from tests.pending_helpers import assert_current_pending, assert_pending
@@ -27,7 +29,7 @@ class TestUsagePendingCounter:
         pending_path = tmp_path / "usage-pending"
         usage.set_pending_path(str(pending_path), usage_state_id="before-reset")
         usage.increment_in_flight_flows()
-        usage.counters.increment_pending_reports()
+        usage.counters.admit_pending_report()
         usage.counters.set_buffered_usage_events(2)
         usage.write_pending_snapshot(flush_request_id="before-reset")
         pending_state = assert_pending(
@@ -93,20 +95,6 @@ class TestUsagePendingCounter:
             pending_path, flows=0, buffered=0, reports=0, flush_request_id="request-3"
         )
 
-    def test_increment_decrement_pending_reports(self, tmp_path):
-        pending_path = tmp_path / "usage-pending"
-        usage.set_pending_path(str(pending_path))
-        usage.counters.increment_pending_reports()
-        assert_pending(pending_path, flows=0, buffered=0, reports=0)
-        assert_current_pending(
-            pending_path, flows=0, buffered=0, reports=1, flush_request_id="request-1"
-        )
-
-        usage.counters.decrement_pending_reports()
-        assert_current_pending(
-            pending_path, flows=0, buffered=0, reports=0, flush_request_id="request-2"
-        )
-
     def test_pending_report_lease_release_drains_report(self, tmp_path):
         pending_path = tmp_path / "usage-pending"
         usage.set_pending_path(str(pending_path))
@@ -129,10 +117,10 @@ class TestUsagePendingCounter:
         with patch.object(usage.counters.ctx, "log", mock_log, create=True):
             usage.increment_in_flight_flows()
             usage.decrement_in_flight_flows()
-            usage.counters.increment_pending_reports()
-            usage.counters.decrement_pending_reports()
-            lease = usage.counters.admit_pending_report()
-            lease.release()
+            pending_report = usage.counters.admit_pending_report()
+            buffered_report = usage.admit_buffered_report()
+            pending_report.release()
+            buffered_report.release()
 
         assert mock_log.error.call_count == 0
         assert_current_pending(
@@ -253,7 +241,7 @@ class TestUsagePendingCounter:
 
         assert usage.read_usage_flush_request_id() == "request-1"
 
-    def test_decrement_underflow_stays_non_negative_and_logs_once_per_counter(self, tmp_path):
+    def test_flow_decrement_underflow_stays_non_negative_and_logs_once(self, tmp_path):
         pending_path = tmp_path / "usage-pending"
         usage.set_pending_path(str(pending_path))
 
@@ -261,28 +249,49 @@ class TestUsagePendingCounter:
         with patch.object(usage.counters.ctx, "log", mock_log, create=True):
             usage.decrement_in_flight_flows()
             usage.decrement_in_flight_flows()
-            usage.counters.decrement_pending_reports()
-            usage.counters.decrement_pending_reports()
 
         assert_current_pending(
             pending_path, flows=0, buffered=0, reports=0, flush_request_id="request-1"
         )
 
-        assert mock_log.error.call_count == 2
-        messages = [call.args[0] for call in mock_log.error.call_args_list]
-        assert_counter_underflow_message(messages[0], "flows")
-        assert_counter_underflow_message(messages[1], "reports")
+        assert mock_log.error.call_count == 1
+        assert_counter_underflow_message(mock_log.error.call_args[0][0], "flows")
         assert mock_log.warn.call_count == 0
 
-    def test_pending_report_lease_double_release_logs_without_decrementing_other_reports(
-        self, tmp_path
+    @pytest.mark.parametrize(
+        (
+            "admit_report",
+            "counter",
+            "admitted_buffered",
+            "admitted_reports",
+            "remaining_buffered",
+            "remaining_reports",
+        ),
+        [
+            (usage.counters.admit_pending_report, "reports", 0, 2, 0, 1),
+            (usage.admit_buffered_report, "buffered_reports", 2, 0, 1, 0),
+        ],
+    )
+    def test_report_lease_double_release_logs_without_decrementing_other_reports(
+        self,
+        tmp_path,
+        admit_report,
+        counter,
+        admitted_buffered,
+        admitted_reports,
+        remaining_buffered,
+        remaining_reports,
     ):
         pending_path = tmp_path / "usage-pending"
         usage.set_pending_path(str(pending_path))
-        first = usage.counters.admit_pending_report()
-        second = usage.counters.admit_pending_report()
+        first = admit_report()
+        second = admit_report()
         assert_current_pending(
-            pending_path, flows=0, buffered=0, reports=2, flush_request_id="admitted"
+            pending_path,
+            flows=0,
+            buffered=admitted_buffered,
+            reports=admitted_reports,
+            flush_request_id="admitted",
         )
 
         mock_log = MagicMock()
@@ -291,37 +300,14 @@ class TestUsagePendingCounter:
             first.release()
 
         assert_current_pending(
-            pending_path, flows=0, buffered=0, reports=1, flush_request_id="first-released"
+            pending_path,
+            flows=0,
+            buffered=remaining_buffered,
+            reports=remaining_reports,
+            flush_request_id="first-released",
         )
         assert mock_log.error.call_count == 1
-        assert_counter_underflow_message(mock_log.error.call_args[0][0], "reports")
-
-        second.release()
-        assert_current_pending(
-            pending_path, flows=0, buffered=0, reports=0, flush_request_id="all-released"
-        )
-
-    def test_buffered_report_lease_double_release_logs_without_decrementing_other_reports(
-        self, tmp_path
-    ):
-        pending_path = tmp_path / "usage-pending"
-        usage.set_pending_path(str(pending_path))
-        first = usage.admit_buffered_report()
-        second = usage.admit_buffered_report()
-        assert_current_pending(
-            pending_path, flows=0, buffered=2, reports=0, flush_request_id="admitted"
-        )
-
-        mock_log = MagicMock()
-        with patch.object(usage.counters.ctx, "log", mock_log, create=True):
-            first.release()
-            first.release()
-
-        assert_current_pending(
-            pending_path, flows=0, buffered=1, reports=0, flush_request_id="first-released"
-        )
-        assert mock_log.error.call_count == 1
-        assert_counter_underflow_message(mock_log.error.call_args[0][0], "buffered_reports")
+        assert_counter_underflow_message(mock_log.error.call_args[0][0], counter)
 
         second.release()
         assert_current_pending(
@@ -347,8 +333,8 @@ class TestUsagePendingCounter:
         usage.set_pending_path("")
         usage.increment_in_flight_flows()
         usage.decrement_in_flight_flows()
-        usage.counters.increment_pending_reports()
-        usage.counters.decrement_pending_reports()
+        pending_report = usage.counters.admit_pending_report()
+        pending_report.release()
         usage.write_pending_snapshot(flush_request_id="request-1")
         # Should not raise — just no file written.
         pending_path = tmp_path / "usage-pending"

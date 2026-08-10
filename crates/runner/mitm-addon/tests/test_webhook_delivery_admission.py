@@ -25,7 +25,7 @@ def test_sync_executor_worker_error_preserves_other_pending_reports(tmp_path, sy
     proxy_log = tmp_path / "proxy.jsonl"
     pending_path = tmp_path / "usage-pending"
     usage.set_pending_path(str(pending_path))
-    usage.counters.increment_pending_reports()
+    other_pending_report = usage.counters.admit_pending_report()
 
     usage.webhook.enqueue_webhook_delivery(
         "not-a-url",
@@ -46,6 +46,7 @@ def test_sync_executor_worker_error_preserves_other_pending_reports(tmp_path, sy
     assert "non-retryable" in read_jsonl_text_after_flush(proxy_log)
     with pytest.raises(ValueError, match="absolute http"):
         sync_usage_executor.shutdown(wait=True)
+    other_pending_report.release()
 
 
 def test_enqueue_logs_body_free_payload_summary(
