@@ -372,10 +372,36 @@ describe("Steam OpenID connector", () => {
     });
   });
 
-  it("rejects invalid Steam OpenID verification without storing a connection", async () => {
+  it("keeps the active Steam connection until a verified replacement succeeds", async () => {
     const actor = testActor();
     mockSteamRuntimeEnv();
+    const initialAuthorizationUrl = await startSteamOpenId(actor);
+    await completeSteamOpenIdCallback(initialAuthorizationUrl);
+
+    mockSession(actor);
+    const initial = await accept(
+      setupApp({ context, routes: zeroConnectorsRoutes })(
+        zeroConnectorsBySlugContract,
+      ).get({
+        params: { connectorSlug: "steam" },
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+
     const authorizationUrl = await startSteamOpenId(actor);
+    mockSession(actor);
+    const whilePending = await accept(
+      setupApp({ context, routes: zeroConnectorsRoutes })(
+        zeroConnectorsBySlugContract,
+      ).get({
+        params: { connectorSlug: "steam" },
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+    expect(whilePending.body).toStrictEqual(initial.body);
+
     mockSteamOpenIdVerification(false);
 
     const response = await accept(
@@ -402,9 +428,24 @@ describe("Steam OpenID connector", () => {
         params: { connectorSlug: "steam" },
         headers: authHeaders(),
       }),
-      [404],
+      [200],
     );
-    expect(connector.body.error.code).toBe("NOT_FOUND");
+    expect(connector.body).toStrictEqual(initial.body);
+
+    const replacementAuthorizationUrl = await startSteamOpenId(actor);
+    await completeSteamOpenIdCallback(replacementAuthorizationUrl);
+    mockSession(actor);
+    const replaced = await accept(
+      setupApp({ context, routes: zeroConnectorsRoutes })(
+        zeroConnectorsBySlugContract,
+      ).get({
+        params: { connectorSlug: "steam" },
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+    expect(replaced.body.id).toBe(initial.body.id);
+    expect(replaced.body.externalId).toBe(STEAM_ID);
   });
 
   it("rejects OpenID start requests for non-OpenID connector methods", async () => {

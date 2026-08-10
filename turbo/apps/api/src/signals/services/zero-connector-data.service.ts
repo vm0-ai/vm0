@@ -74,21 +74,11 @@ import {
 import { cleanupGmailWatchesForConnector } from "./gmail-automation-event.service";
 import { cleanupGoogleCalendarWatchesForConnector } from "./google-calendar-automation-event.service";
 import { cleanupGoogleFormsWatchesForConnector } from "./google-forms-automation-event.service";
-
-type StoredConnectorRow = {
-  readonly id: string;
-  readonly authMethod: ConnectorResponse["authMethod"];
-  readonly externalId: string | null;
-  readonly externalUsername: string | null;
-  readonly externalEmail: string | null;
-  readonly oauthScopes: string | null;
-  readonly needsReconnect: boolean;
-  readonly reconnectReason: string | null;
-  readonly storageVersion: number;
-  readonly tokenExpiresAt: Date | null;
-  readonly createdAt: Date;
-  readonly updatedAt: Date;
-};
+import { clearConnectorAccountState } from "./connector-account-state.service";
+import {
+  replaceConnectorConnection,
+  type StoredConnectorConnectionRow as StoredConnectorRow,
+} from "./connector-connection-write.service";
 
 const oauthScopesSchema = z.array(z.string());
 const DEFAULT_ACCESS_TOKEN_EXPIRES_IN_SECS = 15 * 60;
@@ -1659,12 +1649,14 @@ async function loadExistingConnectorIdentity(
   signal: AbortSignal,
 ): Promise<{
   readonly authMethod: string;
+  readonly externalId: string | null;
   readonly id: string;
   readonly storageVersion: number;
 } | null> {
   const [existingConnector] = await db
     .select({
       authMethod: connectors.authMethod,
+      externalId: connectors.externalId,
       id: connectors.id,
       storageVersion: connectors.storageVersion,
     })
@@ -1679,75 +1671,6 @@ async function loadExistingConnectorIdentity(
     .limit(1);
   signal.throwIfAborted();
   return existingConnector ?? null;
-}
-
-async function upsertConnectorTokenConnectionRow(
-  db: Db,
-  args: {
-    readonly orgId: string;
-    readonly userId: string;
-    readonly connectorSlug: string;
-    readonly authMethod: string;
-    readonly storageVersion: number;
-    readonly userInfo: ExternalUserInfo;
-    readonly oauthScopes: readonly string[];
-    readonly tokenExpiresAt: Date | null;
-  },
-  signal: AbortSignal,
-): Promise<StoredConnectorRow> {
-  const [connectorRow] = await db
-    .insert(connectors)
-    .values({
-      userId: args.userId,
-      connectorSlug: args.connectorSlug,
-      authMethod: args.authMethod,
-      storageVersion: args.storageVersion,
-      externalId: args.userInfo.id,
-      externalUsername: args.userInfo.username,
-      externalEmail: args.userInfo.email,
-      oauthScopes: JSON.stringify(args.oauthScopes),
-      tokenExpiresAt: args.tokenExpiresAt,
-      needsReconnect: false,
-      reconnectReason: null,
-      orgId: args.orgId,
-    })
-    .onConflictDoUpdate({
-      target: [connectors.orgId, connectors.userId, connectors.connectorSlug],
-      targetWhere: isNotNull(connectors.connectorSlug),
-      set: {
-        authMethod: args.authMethod,
-        storageVersion: args.storageVersion,
-        externalId: args.userInfo.id,
-        externalUsername: args.userInfo.username,
-        externalEmail: args.userInfo.email,
-        oauthScopes: JSON.stringify(args.oauthScopes),
-        tokenExpiresAt: args.tokenExpiresAt,
-        needsReconnect: false,
-        reconnectReason: null,
-        updatedAt: sql`clock_timestamp()`,
-      },
-    })
-    .returning({
-      id: connectors.id,
-      authMethod: connectors.authMethod,
-      externalId: connectors.externalId,
-      externalUsername: connectors.externalUsername,
-      externalEmail: connectors.externalEmail,
-      oauthScopes: connectors.oauthScopes,
-      needsReconnect: connectors.needsReconnect,
-      reconnectReason: connectors.reconnectReason,
-      storageVersion: connectors.storageVersion,
-      tokenExpiresAt: connectors.tokenExpiresAt,
-      createdAt: connectors.createdAt,
-      updatedAt: connectors.updatedAt,
-    });
-  signal.throwIfAborted();
-
-  if (!connectorRow) {
-    throw new Error("Failed to upsert connector");
-  }
-
-  return connectorRow;
 }
 
 async function commitConnectorTokenConnection(
@@ -1766,6 +1689,7 @@ async function commitConnectorTokenConnection(
   signal: AbortSignal,
 ): Promise<{
   readonly connectorRow: StoredConnectorRow;
+  readonly created: boolean;
   readonly pendingTokenRevoke: PendingConnectorTokenRevoke | null;
 }> {
   await lockConnectorState(args.db, {
@@ -1812,44 +1736,50 @@ async function commitConnectorTokenConnection(
         )
       : null;
 
-  if (existingConnector !== null) {
-    await deleteConnectorOwnedCredentialRows(
-      args.db,
-      {
-        connectorId: existingConnector.id,
-      },
-      signal,
-    );
+  if (
+    existingConnector !== null &&
+    existingConnector.externalId !== args.userInfo.id
+  ) {
+    await clearConnectorAccountState(args.db, existingConnector.id, signal);
   }
-  const connectorRow = await upsertConnectorTokenConnectionRow(
+  const connectorRow = await replaceConnectorConnection(
     args.db,
     {
       orgId: args.orgId,
       userId: args.userId,
-      connectorSlug: args.runtimeMethod.connectorSlug,
       authMethod: args.runtimeMethod.authMethodId,
       storageVersion: args.runtimeMethod.method.storage.version,
-      userInfo: args.userInfo,
-      oauthScopes: args.oauthScopes,
       tokenExpiresAt: args.tokenExpiresAt,
+      target: {
+        kind: "builtin",
+        connectorSlug: args.runtimeMethod.connectorSlug,
+        externalId: args.userInfo.id,
+        externalUsername: args.userInfo.username,
+        externalEmail: args.userInfo.email,
+        oauthScopes: args.oauthScopes,
+      },
+      writeCredentials: async ({ db, connectorId }, writeSignal) => {
+        await upsertPreparedConnectorTokenState(
+          {
+            db,
+            connectorId,
+            method: args.runtimeMethod.method,
+            orgId: args.orgId,
+            userId: args.userId,
+            state: args.connectorTokenState,
+          },
+          writeSignal,
+        );
+      },
     },
     signal,
   );
 
-  await upsertPreparedConnectorTokenState(
-    {
-      db: args.db,
-      connectorId: connectorRow.id,
-      method: args.runtimeMethod.method,
-      orgId: args.orgId,
-      userId: args.userId,
-      state: args.connectorTokenState,
-    },
-    signal,
-  );
-  signal.throwIfAborted();
-
-  return { connectorRow, pendingTokenRevoke };
+  return {
+    connectorRow,
+    created: existingConnector === null,
+    pendingTokenRevoke,
+  };
 }
 
 export const upsertConnectorTokenConnection$ = command(
@@ -1948,9 +1878,7 @@ export const upsertConnectorTokenConnection$ = command(
         args.runtimeMethod,
         nowDate(),
       ),
-      created:
-        connectionResult.connectorRow.createdAt.getTime() ===
-        connectionResult.connectorRow.updatedAt.getTime(),
+      created: connectionResult.created,
     };
   },
 );

@@ -23,7 +23,7 @@ import {
 } from "../../lib/error";
 import { optionalEnv } from "../../lib/env";
 import { nowDate } from "../../lib/time";
-import { db$, writeDb$ } from "../external/db";
+import { writeDb$ } from "../external/db";
 import {
   authorizeConnectedConnector$,
   connectorAgentAuthorizationRequested,
@@ -520,22 +520,6 @@ const startConnectorOauthInner$ = command(
     });
     signal.throwIfAborted();
 
-    // Stripe automations persist connector IDs as immutable bindings. Keep the
-    // row until the callback atomically replaces its credential state.
-    if (resolved.connectorSlug !== "stripe") {
-      await set(
-        deleteZeroConnectorLocalState$,
-        {
-          orgId: auth.orgId,
-          userId: auth.userId,
-          connectorSlug: resolved.connectorSlug,
-          snapshot: resolved.snapshot,
-        },
-        signal,
-      );
-      signal.throwIfAborted();
-    }
-
     const writeDb = set(writeDb$);
     await writeDb.insert(connectorOauthStates).values({
       state: prepared.state,
@@ -635,18 +619,6 @@ const startConnectorOpenIdInner$ = command(
       realm: prepared.realm,
       state: prepared.state,
     });
-    signal.throwIfAborted();
-
-    await set(
-      deleteZeroConnectorLocalState$,
-      {
-        orgId: auth.orgId,
-        userId: auth.userId,
-        connectorSlug: resolved.connectorSlug,
-        snapshot: resolved.snapshot,
-      },
-      signal,
-    );
     signal.throwIfAborted();
 
     const writeDb = set(writeDb$);

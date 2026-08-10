@@ -263,15 +263,18 @@ const completeOAuth2Callback$ = command(
           signal,
         );
         signal.throwIfAborted();
-        const connectionStorage = storeCustomConnectorOAuth2Connection({
-          db: set(writeDb$),
-          orgId: claimed.state.orgId,
-          userId: claimed.state.userId,
-          connectorId: connector.id,
-          storageVersion: connector.storageVersion,
-          token,
-          featureContext,
-        });
+        const connectionStorage = storeCustomConnectorOAuth2Connection(
+          {
+            db: set(writeDb$),
+            orgId: claimed.state.orgId,
+            userId: claimed.state.userId,
+            connectorId: connector.id,
+            storageVersion: connector.storageVersion,
+            token,
+            featureContext,
+          },
+          signal,
+        );
         await commitConnectorRuntimeMutation(connectionStorage, () => {
           return {
             db: set(writeDb$),

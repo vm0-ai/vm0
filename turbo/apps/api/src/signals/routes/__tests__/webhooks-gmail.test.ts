@@ -451,10 +451,12 @@ async function grantVisibleCredits(
 async function connectGmail(
   actor: ApiTestUser,
   gmailEmail: string,
+  subject = "bdd-gmail-user-id",
 ): Promise<void> {
   mockGmailConnectorOAuth({
     accessToken: "gmail-access-token",
     email: gmailEmail,
+    subject,
   });
   const start = await connectorsApi.startOauth(actor, "gmail", "oauth");
   const state = new URL(start.authorizationUrl).searchParams.get("state");
@@ -626,6 +628,80 @@ async function completeRunThroughSandbox(
 }
 
 describe("POST /api/webhooks/gmail", () => {
+  it("keeps same-account watch state and drops it when reconnect changes accounts", async () => {
+    const gmailEmail = uniqueGmailEmail();
+    configureGmailEnv();
+    const watch = configureGmailWatchMock();
+    server.use(
+      http.get("https://gmail.googleapis.com/gmail/v1/users/me/history", () => {
+        return HttpResponse.json({ history: [], historyId: "101" });
+      }),
+    );
+
+    const { actor, workflowId } = await setupFixture();
+    await connectGmail(actor, gmailEmail, "gmail-account-one");
+    const initialConnection = await connectorsApi.readConnectorBySlug(
+      actor,
+      "gmail",
+    );
+    const created = await accept(
+      automationsClient().create({
+        headers: authHeaders(actor),
+        params: { workflowId },
+        body: {
+          kind: "event",
+          eventType: "gmail-new-message",
+          eventConfig: { provider: "gmail", event: "new_message" },
+        },
+      }),
+      [201],
+    );
+    expect(watch.calls).toBe(1);
+
+    await connectGmail(actor, gmailEmail, "gmail-account-one");
+    const sameAccountConnection = await connectorsApi.readConnectorBySlug(
+      actor,
+      "gmail",
+    );
+    expect(sameAccountConnection.id).toBe(initialConnection.id);
+    const sameAccountEvent = await postGmailWebhook(
+      gmailPushBody({
+        emailAddress: gmailEmail,
+        historyId: 101,
+        messageId: "pubsub-same-account",
+      }),
+    );
+    expectResponseStatus(sameAccountEvent, 200);
+    expect(sameAccountEvent.body).toMatchObject({ watchStates: 1 });
+
+    await connectGmail(actor, `replacement-${gmailEmail}`, "gmail-account-two");
+    const replacementConnection = await connectorsApi.readConnectorBySlug(
+      actor,
+      "gmail",
+    );
+    expect(replacementConnection).toMatchObject({
+      id: initialConnection.id,
+      externalId: "gmail-account-two",
+    });
+    const oldAccountEvent = await postGmailWebhook(
+      gmailPushBody({
+        emailAddress: gmailEmail,
+        historyId: 102,
+        messageId: "pubsub-old-account",
+      }),
+    );
+    expectResponseStatus(oldAccountEvent, 200);
+    expect(oldAccountEvent.body).toMatchObject({ watchStates: 0 });
+
+    await accept(
+      automationsClient().delete({
+        headers: authHeaders(actor),
+        params: { id: created.body.id },
+      }),
+      [204],
+    );
+  });
+
   it("short-circuits before Gmail history reads when no consumer remains", async () => {
     const gmailEmail = uniqueGmailEmail();
     configureGmailEnv();

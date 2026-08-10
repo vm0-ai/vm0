@@ -543,6 +543,42 @@ describe("POST /api/zero/mail/drafts/link", () => {
     expect(gmail.draftReadCount).toBe(2);
   });
 
+  it("does not attach an existing draft to a different Gmail account", async () => {
+    const fixture = await seedGmailMailCardFixture();
+    const gmail = mockGmailDraftApi();
+    const linked = await linkDraft(fixture);
+
+    mockGmailConnectorOAuth({
+      accessToken: "replacement-gmail-token",
+      subject: "replacement-gmail-account",
+      email: "replacement@example.com",
+    });
+    const start = await connectors.startOauth(fixture.actor, "gmail", "oauth");
+    const state = new URL(start.authorizationUrl).searchParams.get("state");
+    if (!state) {
+      throw new Error("Expected Gmail OAuth state");
+    }
+    await connectors.completeOauthCallback("gmail", {
+      code: "zero-mail-replacement-account-code",
+      state,
+    });
+
+    const detached = await accept(
+      client().getDraft({
+        headers: authHeaders(),
+        params: { mailDraftId: linked.body.mailDraftId },
+      }),
+      [200],
+    );
+    expect(detached.body.mailDraft).toMatchObject({
+      accessStatus: "reconnect",
+      detailAvailable: false,
+      status: "draft",
+      subject: "Attachment review",
+    });
+    expect(gmail.draftReadCount).toBe(1);
+  });
+
   it("rejects a missing Gmail draft and cross-chat relinking", async () => {
     const fixture = await seedGmailMailCardFixture();
     const gmail = mockGmailDraftApi();

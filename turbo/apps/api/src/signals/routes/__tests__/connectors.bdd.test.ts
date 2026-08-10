@@ -47,6 +47,7 @@ import {
 import { readUserSecrets } from "./helpers/user-config-state";
 import { mockClerkMembership } from "./helpers/api-bdd-clerk";
 import {
+  readConnectorCredentialStorageState,
   readCustomConnectorCredentialStorageParent,
   readCustomConnectorOAuthStorageState,
   setCustomConnectorCredentialStorageState,
@@ -1709,17 +1710,22 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       "93.184.216.34",
     );
 
-    await expect(
-      readCustomConnectorCredentialStorageParent(context, {
+    const initialStorage = await readCustomConnectorCredentialStorageParent(
+      context,
+      {
         orgId: requiredOrgId(member),
         userId: member.userId,
         customConnectorId: created.id,
-      }),
-    ).resolves.toMatchObject({
+      },
+    );
+    expect(initialStorage).toMatchObject({
       connector: {
         storage_version: 1,
       },
     });
+    if (!initialStorage.connector) {
+      throw new Error("Expected custom OAuth connector storage");
+    }
 
     const oauthConnected = await connectorsApi.listCustomConnectors(member);
     expect(
@@ -1736,6 +1742,29 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     await expect(
       connectorsApi.readAgentCustomConnectors(member, agent.agentId),
     ).resolves.toContain(created.id);
+
+    const replacementUrl = await connectorsApi.startCustomConnectorOAuth2(
+      member,
+      created.id,
+      agent.agentId,
+    );
+    await connectorsApi.completeCustomConnectorOAuth2CallbackResult({
+      code: "bdd-custom-oauth-replacement-code",
+      state: stateFromAuthorizationUrl(replacementUrl),
+    });
+    const replacementStorage = await readCustomConnectorCredentialStorageParent(
+      context,
+      {
+        orgId: requiredOrgId(member),
+        userId: member.userId,
+        customConnectorId: created.id,
+      },
+    );
+    expect(replacementStorage.connector?.id).toBe(initialStorage.connector.id);
+    expect(provider.tokenBodies).toHaveLength(2);
+    expect(provider.tokenBodies[1]?.get("code")).toBe(
+      "bdd-custom-oauth-replacement-code",
+    );
 
     await setCustomConnectorCredentialStorageState(context, {
       orgId: requiredOrgId(member),
@@ -1819,8 +1848,8 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       code: "bdd-custom-oauth-reconnect-code",
       state: stateFromAuthorizationUrl(reconnectUrl),
     });
-    expect(provider.tokenBodies).toHaveLength(2);
-    expect(provider.tokenBodies[1]?.get("code")).toBe(
+    expect(provider.tokenBodies).toHaveLength(3);
+    expect(provider.tokenBodies[2]?.get("code")).toBe(
       "bdd-custom-oauth-reconnect-code",
     );
     await expect(
@@ -4262,6 +4291,41 @@ describe("CONN-02: OAuth callback validation and state claiming", () => {
 
     const connected = await connectorsApi.readConnectorBySlug(actor, "github");
 
+    const missingCodeStart = await connectorsApi.startOauth(
+      actor,
+      "github",
+      "oauth",
+    );
+    const reconnectWithoutCode = await connectorsApi.completeOauthCallback(
+      "github",
+      { state: stateFromAuthorizationUrl(missingCodeStart.authorizationUrl) },
+    );
+    expectConnectorErrorRedirect(reconnectWithoutCode, {
+      connectorSlug: "github",
+      message: "Missing authorization code",
+    });
+    await expect(
+      connectorsApi.readConnectorBySlug(actor, "github"),
+    ).resolves.toStrictEqual(connected);
+
+    const deniedStart = await connectorsApi.startOauth(
+      actor,
+      "github",
+      "oauth",
+    );
+    const denied = await connectorsApi.completeOauthCallback("github", {
+      error: "access_denied",
+      error_description: "Provider denied access",
+      state: stateFromAuthorizationUrl(deniedStart.authorizationUrl),
+    });
+    expectConnectorErrorRedirect(denied, {
+      connectorSlug: "github",
+      message: "Provider denied access",
+    });
+    await expect(
+      connectorsApi.readConnectorBySlug(actor, "github"),
+    ).resolves.toStrictEqual(connected);
+
     const consumedWithoutCode = await connectorsApi.completeOauthCallback(
       "github",
       { state },
@@ -4307,13 +4371,9 @@ describe("CONN-02: OAuth callback validation and state claiming", () => {
     });
     clearMockNow();
 
-    const afterExpiry = await connectorsApi.requestReadConnectorBySlug(
-      actor,
-      "github",
-      [404],
-    );
-    expectApiError(afterExpiry.body);
-    expect(afterExpiry.body.error.code).toBe("NOT_FOUND");
+    await expect(
+      connectorsApi.readConnectorBySlug(actor, "github"),
+    ).resolves.toStrictEqual(connected);
   });
 
   it("routes callbacks through canonical and trusted web origins", async () => {
@@ -4568,6 +4628,7 @@ describe("CONN-02: test-oauth auth-code journey", () => {
       actor,
       "test-oauth",
     );
+    expect(defaultExpiry.id).toBe(explicitExpiry.id);
     if (!defaultExpiry.tokenExpiresAt) {
       throw new Error("Expected the default token expiry to be stored");
     }
@@ -4576,6 +4637,16 @@ describe("CONN-02: test-oauth auth-code journey", () => {
       defaultBefore + 15 * 60 * 1000,
     );
     expect(defaultExpiryMs).toBeLessThanOrEqual(defaultAfter + 15 * 60 * 1000);
+    const storageBeforeFailures = await readConnectorCredentialStorageState(
+      context,
+      {
+        orgId: requiredOrgId(actor),
+        userId: actor.userId,
+        connectorSlug: "test-oauth",
+        secretNames: ["TEST_OAUTH_ACCESS_TOKEN", "TEST_OAUTH_REFRESH_TOKEN"],
+        variableNames: ["TEST_OAUTH_API_TENANT_ID"],
+      },
+    );
 
     mockSlackConnectorOAuth();
     const slackStart = await connectorsApi.startOauth(actor, "slack", "oauth");
@@ -4614,13 +4685,18 @@ describe("CONN-02: test-oauth auth-code journey", () => {
     expect(tokenFail.headers.getSetCookie()).toStrictEqual(
       expect.arrayContaining([...CONNECTOR_OAUTH_COOKIE_CLEARS]),
     );
-    const afterTokenFail = await connectorsApi.requestReadConnectorBySlug(
-      actor,
-      "test-oauth",
-      [404],
-    );
-    expectApiError(afterTokenFail.body);
-    expect(afterTokenFail.body.error.code).toBe("NOT_FOUND");
+    await expect(
+      connectorsApi.readConnectorBySlug(actor, "test-oauth"),
+    ).resolves.toStrictEqual(defaultExpiry);
+    await expect(
+      readConnectorCredentialStorageState(context, {
+        orgId: requiredOrgId(actor),
+        userId: actor.userId,
+        connectorSlug: "test-oauth",
+        secretNames: ["TEST_OAUTH_ACCESS_TOKEN", "TEST_OAUTH_REFRESH_TOKEN"],
+        variableNames: ["TEST_OAUTH_API_TENANT_ID"],
+      }),
+    ).resolves.toStrictEqual(storageBeforeFailures);
 
     mockTestOAuthAuthCodeProvider({ userinfoError: true });
     const userinfoFailStart = await connectorsApi.startOauth(
@@ -4639,13 +4715,44 @@ describe("CONN-02: test-oauth auth-code journey", () => {
       connectorSlug: "test-oauth",
       message: "OAuth authorization failed. Please try again.",
     });
-    const afterUserinfoFail = await connectorsApi.requestReadConnectorBySlug(
+    await expect(
+      connectorsApi.readConnectorBySlug(actor, "test-oauth"),
+    ).resolves.toStrictEqual(defaultExpiry);
+    await expect(
+      readConnectorCredentialStorageState(context, {
+        orgId: requiredOrgId(actor),
+        userId: actor.userId,
+        connectorSlug: "test-oauth",
+        secretNames: ["TEST_OAUTH_ACCESS_TOKEN", "TEST_OAUTH_REFRESH_TOKEN"],
+        variableNames: ["TEST_OAUTH_API_TENANT_ID"],
+      }),
+    ).resolves.toStrictEqual(storageBeforeFailures);
+
+    mockTestOAuthAuthCodeProvider({
+      accessToken: "bdd-replacement-account-token",
+      userId: "bdd-test-oauth-replacement-user",
+      username: "bdd-test-oauth-replacement",
+      email: "bdd-test-oauth-replacement@example.test",
+    });
+    const replacementStart = await connectorsApi.startOauth(
       actor,
       "test-oauth",
-      [404],
+      "oauth",
     );
-    expectApiError(afterUserinfoFail.body);
-    expect(afterUserinfoFail.body.error.code).toBe("NOT_FOUND");
+    await connectorsApi.completeOauthCallback("test-oauth", {
+      code: "bdd-code-replacement-account",
+      state: stateFromAuthorizationUrl(replacementStart.authorizationUrl),
+    });
+    const replacementAccount = await connectorsApi.readConnectorBySlug(
+      actor,
+      "test-oauth",
+    );
+    expect(replacementAccount).toMatchObject({
+      id: defaultExpiry.id,
+      externalId: "bdd-test-oauth-replacement-user",
+      externalUsername: "bdd-test-oauth-replacement",
+      externalEmail: "bdd-test-oauth-replacement@example.test",
+    });
 
     await connectorsApi.deleteConnectorBySlug(actor, "slack");
     await connectorsApi.deleteFeatureSwitches(actor);
