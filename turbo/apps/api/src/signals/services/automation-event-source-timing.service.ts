@@ -6,7 +6,7 @@ import {
   type ApiDispatchTimingDimensions,
 } from "./api-dispatch-timing.service";
 
-type WorkflowEventSource =
+type AutomationEventSource =
   | "github"
   | "gmail"
   | "google_calendar"
@@ -14,36 +14,36 @@ type WorkflowEventSource =
   | "google_meet"
   | "webhook";
 
-type WorkflowEventSourceTimingActionType = Extract<
+type AutomationEventSourceTimingActionType = Extract<
   ApiDispatchTimingActionType,
   `api_dispatch_pre_create_zero_workflow_event_${string}`
 >;
 
-interface WorkflowEventSourceTimingRecord {
-  readonly actionType: WorkflowEventSourceTimingActionType;
+interface AutomationEventSourceTimingRecord {
+  readonly actionType: AutomationEventSourceTimingActionType;
   readonly startedAt: number;
   readonly finishedAt: number;
 }
 
-function workflowEventSourceDimensions(
-  source: WorkflowEventSource,
+function automationEventSourceDimensions(
+  source: AutomationEventSource,
 ): ApiDispatchTimingDimensions {
   return { workflow_event_source: source };
 }
 
-export class WorkflowEventSourceTiming {
-  private readonly records: WorkflowEventSourceTimingRecord[];
+export class AutomationEventSourceTiming {
+  private readonly records: AutomationEventSourceTimingRecord[];
 
   constructor(
-    private readonly source: WorkflowEventSource,
+    private readonly source: AutomationEventSource,
     private readonly apiStartTime: number,
-    records: readonly WorkflowEventSourceTimingRecord[] = [],
+    records: readonly AutomationEventSourceTimingRecord[] = [],
   ) {
     this.records = [...records];
   }
 
   recordElapsed(
-    actionType: WorkflowEventSourceTimingActionType,
+    actionType: AutomationEventSourceTimingActionType,
     startedAt: number,
     finishedAt: number = now(),
   ): void {
@@ -51,7 +51,7 @@ export class WorkflowEventSourceTiming {
   }
 
   async measure<T>(
-    actionType: WorkflowEventSourceTimingActionType,
+    actionType: AutomationEventSourceTimingActionType,
     operation: () => T | Promise<T>,
   ): Promise<T> {
     const startedAt = now();
@@ -60,16 +60,16 @@ export class WorkflowEventSourceTiming {
     return result;
   }
 
-  createRunTiming(): WorkflowEventRunTiming {
-    return new WorkflowEventRunTiming(
+  createRunTiming(): AutomationEventRunTiming {
+    return new AutomationEventRunTiming(
       this.source,
       this.apiStartTime,
       this.records,
     );
   }
 
-  fork(): WorkflowEventSourceTiming {
-    return new WorkflowEventSourceTiming(
+  fork(): AutomationEventSourceTiming {
+    return new AutomationEventSourceTiming(
       this.source,
       this.apiStartTime,
       this.records,
@@ -77,14 +77,14 @@ export class WorkflowEventSourceTiming {
   }
 }
 
-export class WorkflowEventRunTiming {
+export class AutomationEventRunTiming {
   private readonly collector = new ApiDispatchTimingCollector();
   private finalized = false;
 
   constructor(
-    private readonly source: WorkflowEventSource,
+    private readonly source: AutomationEventSource,
     private readonly apiStartTime: number,
-    records: readonly WorkflowEventSourceTimingRecord[],
+    records: readonly AutomationEventSourceTimingRecord[],
   ) {
     for (const record of records) {
       this.recordElapsed(
@@ -96,7 +96,7 @@ export class WorkflowEventRunTiming {
   }
 
   recordElapsed(
-    actionType: WorkflowEventSourceTimingActionType,
+    actionType: AutomationEventSourceTimingActionType,
     startedAt: number,
     finishedAt: number = now(),
   ): void {
@@ -105,12 +105,12 @@ export class WorkflowEventRunTiming {
       "nested",
       startedAt,
       finishedAt,
-      workflowEventSourceDimensions(this.source),
+      automationEventSourceDimensions(this.source),
     );
   }
 
   async measure<T>(
-    actionType: WorkflowEventSourceTimingActionType,
+    actionType: AutomationEventSourceTimingActionType,
     operation: () => T | Promise<T>,
   ): Promise<T> {
     return await measureApiDispatchTiming(
@@ -118,7 +118,7 @@ export class WorkflowEventRunTiming {
       actionType,
       "nested",
       operation,
-      workflowEventSourceDimensions(this.source),
+      automationEventSourceDimensions(this.source),
     );
   }
 
@@ -135,7 +135,7 @@ export class WorkflowEventRunTiming {
         "nested",
         this.apiStartTime,
         finishedAt,
-        workflowEventSourceDimensions(this.source),
+        automationEventSourceDimensions(this.source),
       );
       this.finalized = true;
     }

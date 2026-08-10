@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.162.8](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.162.7...runner-rs-v0.162.8) (2026-08-10)
+
+
+### Bug Fixes
+
+* **mitm-addon:** reject partial firewall auth success ([#26064](https://github.com/vm0-ai/vm0/issues/26064)) ([b584c72](https://github.com/vm0-ai/vm0/commit/b584c72bd0059ac3ef931bc648b78f4627e05bba))
+
+
+### Documentation
+
+* **mitm-addon:** document usage buffer state transitions ([#26053](https://github.com/vm0-ai/vm0/issues/26053)) ([9295685](https://github.com/vm0-ai/vm0/commit/9295685e1da68866fad050f3ee82fc32b1f84865))
+
+
+### Refactoring
+
+* **python:** centralize firewall auth phase policy ([#26057](https://github.com/vm0-ai/vm0/issues/26057)) ([666403c](https://github.com/vm0-ai/vm0/commit/666403ca496452cf7d3364cf4ebf68dc953442a0))
+
 ## [0.162.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.162.6...runner-rs-v0.162.7) (2026-08-10)
 
 

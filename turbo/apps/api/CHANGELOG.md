@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.414.0](https://github.com/vm0-ai/vm0/compare/api-v1.413.0...api-v1.414.0) (2026-08-10)
+
+
+### Features
+
+* manage usage pack plan and package changes ([#25510](https://github.com/vm0-ai/vm0/issues/25510)) ([88a39ab](https://github.com/vm0-ai/vm0/commit/88a39abb32bb47dacd02c308b23f5cb13d43a479))
+* **runs:** accept unattended trigger sources ([#26024](https://github.com/vm0-ai/vm0/issues/26024)) ([2795cfb](https://github.com/vm0-ai/vm0/commit/2795cfb6432db3ebd3ff9cff04b06ed257e22c14))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.304.0
+    * @vm0/core bumped to 8.537.0
+    * @vm0/db bumped to 1.184.0
+    * @vm0/pi-agent-runtime bumped to 1.3.26
+
 ## [1.413.0](https://github.com/vm0-ai/vm0/compare/api-v1.412.0...api-v1.413.0) (2026-08-10)
 
 

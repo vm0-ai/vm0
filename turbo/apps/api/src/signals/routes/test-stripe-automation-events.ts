@@ -1,5 +1,5 @@
-import { testStripeWorkflowEventFixtureContract } from "@vm0/api-contracts/contracts/test-stripe-workflow-events";
-import { stripeWorkflowDeliveries } from "@vm0/db/schema/stripe-workflow-event";
+import { testStripeAutomationEventFixtureContract } from "@vm0/api-contracts/contracts/test-stripe-automation-events";
+import { stripeWorkflowDeliveries } from "@vm0/db/schema/stripe-automation-event";
 import { command } from "ccstate";
 import { desc, eq, sql } from "drizzle-orm";
 
@@ -13,7 +13,9 @@ import {
   testEndpointNotFoundResponse,
 } from "./test-endpoint-helpers";
 
-const fixtureBody$ = bodyResultOf(testStripeWorkflowEventFixtureContract.apply);
+const fixtureBody$ = bodyResultOf(
+  testStripeAutomationEventFixtureContract.apply,
+);
 
 async function installIngressFailureTrigger(db: Db): Promise<void> {
   await db.execute(sql`
@@ -94,7 +96,7 @@ async function clearFailureTriggers(db: Db): Promise<void> {
   );
 }
 
-const applyStripeWorkflowEventFixture$ = command(
+const applyStripeAutomationEventFixture$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     if (!isTestEndpointAllowed(get(request$))) {
       return testEndpointNotFoundResponse();
@@ -214,9 +216,9 @@ const applyStripeWorkflowEventFixture$ = command(
   },
 );
 
-export const testStripeWorkflowEventRoutes: readonly RouteEntry[] = [
+export const testStripeAutomationEventRoutes: readonly RouteEntry[] = [
   {
-    route: testStripeWorkflowEventFixtureContract.apply,
-    handler: applyStripeWorkflowEventFixture$,
+    route: testStripeAutomationEventFixtureContract.apply,
+    handler: applyStripeAutomationEventFixture$,
   },
 ];

@@ -19,9 +19,9 @@ import { nowDate } from "../../lib/time";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import { workflowAutomationColumns } from "./autonomy-budget-schema.service";
 import {
-  WorkflowEventSourceTiming,
-  type WorkflowEventRunTiming,
-} from "./workflow-event-source-timing.service";
+  AutomationEventSourceTiming,
+  type AutomationEventRunTiming,
+} from "./automation-event-source-timing.service";
 import { runWorkflowAutomationNow$ } from "./zero-workflow-automation-run.service";
 import type { AutomationRow } from "./zero-workflow-automation-launch.service";
 import type { WorkflowAutomationContext } from "./workflow-automation-context.service";
@@ -81,7 +81,7 @@ type GithubWorkflowRunStartArgs = {
   readonly payload: GithubLabelWorkflowEventPayload;
   readonly subjectKind: GithubWorkflowSubjectKind;
   readonly matchedLabelName: string;
-  readonly timing: WorkflowEventRunTiming;
+  readonly timing: AutomationEventRunTiming;
 };
 
 interface GithubWorkflowDispatchCounts {
@@ -439,7 +439,7 @@ async function dispatchGithubAutomationEvent(args: {
   readonly payload: GithubLabelWorkflowEventPayload;
   readonly subjectKind: GithubWorkflowSubjectKind;
   readonly matchedLabelName: string;
-  readonly timing: WorkflowEventRunTiming;
+  readonly timing: AutomationEventRunTiming;
   readonly startRun: () => Promise<"ok" | "error">;
 }): Promise<"dispatched" | "duplicate" | { readonly kind: "run_error" }> {
   const processedId = await args.timing.measure(
@@ -568,7 +568,7 @@ const dispatchMatchedGithubAutomations$ = command(
       readonly payload: GithubLabelWorkflowEventPayload;
       readonly subjectKind: GithubWorkflowSubjectKind;
       readonly apiStartTime: number;
-      readonly sourceTiming: WorkflowEventSourceTiming;
+      readonly sourceTiming: AutomationEventSourceTiming;
     },
     signal: AbortSignal,
   ): Promise<GithubWorkflowDispatchCounts> => {
@@ -671,7 +671,7 @@ export const dispatchGithubLabelWorkflowAutomations$ = command(
       return { kind: "ok", dispatched: 0, duplicates: 0 };
     }
 
-    const sourceTiming = new WorkflowEventSourceTiming(
+    const sourceTiming = new AutomationEventSourceTiming(
       "github",
       args.apiStartTime,
     );

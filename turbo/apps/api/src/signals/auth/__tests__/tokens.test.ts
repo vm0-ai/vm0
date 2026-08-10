@@ -201,6 +201,21 @@ describe("auth tokens", () => {
     expect(verifyZeroToken(token)?.capabilities).toContain("finance:read");
   });
 
+  it("gates SEO capability behind the built-in feature switch", () => {
+    const defaultToken = generateZeroToken("user_zero", "run_zero", "org_zero");
+    const enabledToken = generateZeroToken(
+      "user_zero",
+      "run_zero",
+      "org_zero",
+      { [FeatureSwitchKey.SeoBuiltIn]: true },
+    );
+
+    expect(verifyZeroToken(defaultToken)?.capabilities).not.toContain(
+      "seo:read",
+    );
+    expect(verifyZeroToken(enabledToken)?.capabilities).toContain("seo:read");
+  });
+
   it("includes people-search capability in zero-scoped tokens", () => {
     const token = generateZeroToken("user_zero", "run_zero", "org_zero");
 

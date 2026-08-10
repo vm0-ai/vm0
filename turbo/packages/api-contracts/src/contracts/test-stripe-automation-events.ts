@@ -4,7 +4,7 @@ import { initContract } from "./base";
 
 const c = initContract();
 
-export const testStripeWorkflowEventFixtureActionSchema = z.enum([
+export const testStripeAutomationEventFixtureActionSchema = z.enum([
   "corrupt-latest-snapshot",
   "hold-latest-claim",
   "expire-latest-retry-window",
@@ -13,18 +13,18 @@ export const testStripeWorkflowEventFixtureActionSchema = z.enum([
   "fail-next-queue-admission-for-automation",
   "clear-forced-failures",
 ]);
-export type TestStripeWorkflowEventFixtureAction = z.infer<
-  typeof testStripeWorkflowEventFixtureActionSchema
+export type TestStripeAutomationEventFixtureAction = z.infer<
+  typeof testStripeAutomationEventFixtureActionSchema
 >;
 
-export const testStripeWorkflowEventFixtureContract = c.router({
+export const testStripeAutomationEventFixtureContract = c.router({
   apply: {
     method: "POST",
-    path: "/api/test/stripe-workflow-event-fixture",
+    path: "/api/test/stripe-automation-event-fixture",
     body: z
       .object({
         automation_id: z.uuid(),
-        action: testStripeWorkflowEventFixtureActionSchema,
+        action: testStripeAutomationEventFixtureActionSchema,
       })
       .strict(),
     responses: {

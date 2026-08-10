@@ -23,9 +23,9 @@ import {
   encryptPersistentSecretValue,
 } from "./crypto.utils";
 import {
-  WorkflowEventSourceTiming,
-  type WorkflowEventRunTiming,
-} from "./workflow-event-source-timing.service";
+  AutomationEventSourceTiming,
+  type AutomationEventRunTiming,
+} from "./automation-event-source-timing.service";
 import { runWorkflowAutomationNow$ } from "./zero-workflow-automation-run.service";
 import type {
   RunWorkflowAutomationResult,
@@ -550,7 +550,7 @@ async function prepareWorkflowWebhookDispatch(
     readonly rawBody: string;
     readonly signature: string;
     readonly timestamp: string;
-    readonly sourceTiming: WorkflowEventSourceTiming;
+    readonly sourceTiming: AutomationEventSourceTiming;
   },
   signal: AbortSignal,
 ): Promise<PreparedWorkflowWebhookDispatch> {
@@ -657,7 +657,7 @@ const startWorkflowWebhookRun$ = command(
       readonly headers: Readonly<Record<string, string>>;
       readonly currentTime: Date;
       readonly apiStartTime: number;
-      readonly timing: WorkflowEventRunTiming;
+      readonly timing: AutomationEventRunTiming;
     },
     signal: AbortSignal,
   ): Promise<RunWorkflowAutomationResult | "error"> => {
@@ -733,7 +733,7 @@ export const dispatchWorkflowWebhook$ = command(
     const signature = args.signature;
     const timestamp = args.timestamp;
 
-    const sourceTiming = new WorkflowEventSourceTiming(
+    const sourceTiming = new AutomationEventSourceTiming(
       "webhook",
       args.apiStartTime,
     );

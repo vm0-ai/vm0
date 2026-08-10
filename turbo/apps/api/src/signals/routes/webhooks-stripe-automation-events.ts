@@ -6,7 +6,7 @@ import { logger } from "../../lib/log";
 import { request$ } from "../context/hono";
 import { constructStripeWebhookEvent } from "../external/stripe-client";
 import type { RouteEntry } from "../route-entry";
-import { dispatchStripeWorkflowEvent$ } from "../services/stripe-workflow-event.service";
+import { dispatchStripeAutomationEvent$ } from "../services/stripe-automation-event.service";
 import { safeSync, settle } from "../utils";
 
 const log = logger("api:webhooks-stripe-automation-events");
@@ -38,7 +38,7 @@ const postStripeAutomationEvent$ = command(
     }
 
     const dispatched = await settle(
-      set(dispatchStripeWorkflowEvent$, constructed.ok, signal),
+      set(dispatchStripeAutomationEvent$, constructed.ok, signal),
       signal,
     );
     if (!dispatched.ok) {
