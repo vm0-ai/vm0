@@ -315,6 +315,44 @@ function codexFastAuthJson(): string {
   });
 }
 
+async function configureFastCodexPreference(
+  actor: ReturnType<typeof integrations.user>,
+): Promise<void> {
+  if (!actor.orgId) {
+    throw new Error("Expected the Fast Codex actor to have an org");
+  }
+  await runs.grantProEntitlement(actor);
+  await misc.upsertPersonalModelProvider(
+    actor,
+    {
+      type: "codex-oauth-token",
+      authMethod: "auth_json",
+      secrets: { CODEX_AUTH_JSON: codexFastAuthJson() },
+    },
+    [200, 201],
+  );
+  await runs.updateOrgModelPolicies(actor, [
+    {
+      model: "gpt-5.6-sol",
+      isDefault: true,
+      defaultProviderType: "codex-oauth-token",
+      credentialScope: "member",
+      modelProviderId: null,
+    },
+  ]);
+  await bdd.readOnboardingStatus(actor);
+  await updateFeatureSwitchesForUser(
+    context,
+    { ...actor, orgId: actor.orgId },
+    { [FeatureSwitchKey.CodexFastMode]: true },
+  );
+  await integrations.updateUserModelPreference(
+    actor,
+    "gpt-5.6-sol",
+    "priority",
+  );
+}
+
 function slackPostMessageCallsJson(): string {
   return JSON.stringify(context.mocks.slack.chat.postMessage.mock.calls);
 }
@@ -4088,9 +4126,21 @@ describe("INT-01: Slack app deep webhook flows", () => {
     expect(fastClaim.cliAgentType).toBe("codex");
     expect(fastClaim.environment?.VM0_CODEX_SERVICE_TIER).toBe("fast");
 
+    const agentSend = await integrations.requestSendSlackMessageAsRun(
+      fastClaim.sandboxToken,
+      {
+        channel: channelId,
+        text: "agent-initiated fast message",
+      },
+      [200],
+    );
+    expect(agentSend.body).toMatchObject({ ok: true });
+    expect(slackPostMessageCallsJson()).toContain("GPT 5.6 Sol Fast");
+
     await chat.updateThreadModelSelection(actor, threadId, "gpt-5.6-sol", {
       codexServiceTier: null,
     });
+    context.mocks.slack.chat.postMessage.mockClear();
     await completeSlackTriggeredRun({
       runId: fastRunId,
       sandboxToken: fastClaim.sandboxToken,
@@ -4979,6 +5029,136 @@ describe("INT-02: Telegram integration", () => {
       bots: expect.not.arrayContaining([
         expect.objectContaining({ id: botId }),
       ]),
+    });
+  });
+
+  it("keeps Telegram Fast footers bound to the originating run", async () => {
+    bdd.acceptAgentStorageWrites();
+    runs.acceptStorageDownloads();
+    runs.acceptTelemetryIngest();
+    const runnerGroup = runs.configureRunnerGroup();
+    const actor = integrations.user();
+    await configureFastCodexPreference(actor);
+    const agent = await bdd.createAgent(actor, {
+      displayName: "BDD Telegram Fast agent",
+    });
+
+    const telegramBotId = randomInt(1_000_000_000, 9_999_999_999);
+    const telegramBotToken = `${telegramBotId}:bdd-fast-token`;
+    const botId = String(telegramBotId);
+    const sentMessages: Record<string, unknown>[] = [];
+    server.use(
+      telegramDomainProbe(),
+      http.post(
+        `https://api.telegram.org/bot${telegramBotToken}/sendChatAction`,
+        () => {
+          return HttpResponse.json({ ok: true, result: true });
+        },
+      ),
+      http.post(
+        `https://api.telegram.org/bot${telegramBotToken}/sendMessage`,
+        async ({ request }) => {
+          sentMessages.push((await request.json()) as Record<string, unknown>);
+          return HttpResponse.json({
+            ok: true,
+            result: { message_id: 655, chat: { id: 8_811_224 } },
+          });
+        },
+      ),
+    );
+    context.mocks.telegram.getMe.mockResolvedValue({
+      id: telegramBotId,
+      username: "bdd_fast_bot",
+      can_read_all_group_messages: true,
+    });
+    let webhookSecret: string | undefined;
+    context.mocks.telegram.setWebhook.mockImplementation(
+      (...args: readonly unknown[]) => {
+        const secret = args[2];
+        if (typeof secret === "string") {
+          webhookSecret = secret;
+        }
+        return Promise.resolve();
+      },
+    );
+    await integrations.requestRegisterTelegramBot(
+      actor,
+      { botToken: telegramBotToken, defaultAgentId: agent.agentId },
+      [201],
+    );
+    if (!webhookSecret) {
+      throw new Error(
+        "Expected Telegram registration to configure a webhook secret",
+      );
+    }
+
+    const telegramUserId = randomInt(100_000_000, 999_999_999);
+    await integrations.requestLinkTelegram(
+      actor,
+      {
+        telegramBotId: botId,
+        telegramAuth: telegramLoginAuth(telegramBotToken, {
+          id: telegramUserId,
+          first_name: "BDD",
+          username: "bdd_fast_user",
+        }),
+      },
+      [200],
+    );
+
+    const dmChatId = 8_811_224;
+    const inbound = await integrations.requestTelegramWebhook(
+      botId,
+      JSON.stringify({
+        update_id: 4002,
+        message: {
+          message_id: 72,
+          chat: { id: dmChatId, type: "private" },
+          from: {
+            id: telegramUserId,
+            first_name: "BDD",
+            username: "bdd_fast_user",
+          },
+          text: "reply using the originating Fast run",
+        },
+      }),
+      { "x-telegram-bot-api-secret-token": webhookSecret },
+      [200],
+    );
+    expect(inbound.body).toBe("OK");
+
+    const runId = await pollRunnerRun(
+      runnerGroup,
+      "Expected the Fast Telegram DM to dispatch a run",
+    );
+    const claim = await runs.claimRunnerJob(runId);
+    expect(claim.cliAgentType).toBe("codex");
+    expect(claim.environment?.VM0_CODEX_SERVICE_TIER).toBe("fast");
+
+    const agentSend = await integrations.requestSendTelegramMessageAsRun(
+      claim.sandboxToken,
+      {
+        botId,
+        chatId: String(dmChatId),
+        text: "agent-initiated fast message",
+      },
+      [200],
+    );
+    expect(agentSend.body).toMatchObject({ ok: true });
+    expect(JSON.stringify(sentMessages)).toContain("GPT 5.6 Sol Fast");
+
+    sentMessages.length = 0;
+    await integrations.updateUserModelPreference(actor, "gpt-5.6-sol", null);
+    await completeSlackTriggeredRun({
+      runId,
+      sandboxToken: claim.sandboxToken,
+      cliAgentType: "codex",
+      codexAgentMessageText: "telegram fast reply",
+    });
+    await flushWaitUntilAndAssert(() => {
+      const providerOutput = JSON.stringify(sentMessages);
+      expect(providerOutput).toContain("telegram fast reply");
+      expect(providerOutput).toContain("GPT 5.6 Sol Fast");
     });
   });
 

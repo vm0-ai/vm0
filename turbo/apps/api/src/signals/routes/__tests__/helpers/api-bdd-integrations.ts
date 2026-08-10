@@ -756,6 +756,24 @@ export function createBddIntegrationApi(context: TestContext) {
       );
     },
 
+    async requestSendSlackMessageAsRun(
+      sandboxToken: string,
+      body: SendSlackMessageBody,
+      statuses: readonly (200 | 400 | 401 | 403 | 404)[],
+    ) {
+      const client = setupApp({
+        context,
+        routes: zeroIntegrationsSlackMessageRoutes,
+      })(integrationsSlackMessageContract);
+      return await accept(
+        client.sendMessage({
+          headers: { authorization: `Bearer ${sandboxToken}` },
+          body,
+        }),
+        statuses,
+      );
+    },
+
     async requestSlackUploadInit(
       actor: ApiTestUser | null,
       body: SlackUploadInitBody,
@@ -1174,6 +1192,7 @@ export function createBddIntegrationApi(context: TestContext) {
     async updateUserModelPreference(
       actor: ApiTestUser,
       selectedModel: SupportedRunModel | null,
+      serviceTier?: "priority" | null,
     ): Promise<void> {
       const client = setupApp({
         context,
@@ -1182,7 +1201,7 @@ export function createBddIntegrationApi(context: TestContext) {
       await accept(
         client.update({
           headers: authenticate(context, routeMocks, actor),
-          body: { selectedModel },
+          body: { selectedModel, serviceTier },
         }),
         [200],
       );
@@ -1630,6 +1649,24 @@ export function createBddIntegrationApi(context: TestContext) {
       return await accept(
         client.sendMessage({
           headers: authenticate(context, routeMocks, actor),
+          body,
+        }),
+        statuses,
+      );
+    },
+
+    async requestSendTelegramMessageAsRun(
+      sandboxToken: string,
+      body: SendTelegramMessageBody,
+      statuses: readonly (200 | 400 | 401 | 403 | 404 | 502)[],
+    ) {
+      const client = setupApp({
+        context,
+        routes: zeroIntegrationsTelegramMessageRoutes,
+      })(integrationsTelegramMessageContract);
+      return await accept(
+        client.sendMessage({
+          headers: { authorization: `Bearer ${sandboxToken}` },
           body,
         }),
         statuses,

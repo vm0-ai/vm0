@@ -33,9 +33,14 @@ import fs from "node:fs/promises";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { eq, inArray, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Client } from "pg";
+import { zeroRunsBeforeCodexServiceTier } from "../src/rollout-compat/zero-run-before-codex-service-tier";
+import { agentRuns } from "../src/schema/agent-run";
 import { chatEvents } from "../src/schema/chat-event";
+import { runnerJobQueue } from "../src/schema/runner-job-queue";
+import { zeroRuns } from "../src/schema/zero-run";
 import { NON_TRANSACTIONAL_MIGRATION_MARKER } from "./migration-runner";
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -5217,8 +5222,8 @@ async function validateLatestSnapshotAccuracy(): Promise<void> {
   console.log();
 }
 
-const ZERO_RUN_CODEX_TIER_PREVIOUS_MIGRATION = "0876_nebulous_vision";
-const ZERO_RUN_CODEX_TIER_MIGRATION = "0877_amusing_ender_wiggin";
+const ZERO_RUN_CODEX_TIER_PREVIOUS_MIGRATION = "0877_add_zero_seo_pricing";
+const ZERO_RUN_CODEX_TIER_MIGRATION = "0878_married_leper_queen";
 
 async function validateZeroRunCodexTierExpansion(): Promise<void> {
   console.log("=== Validate zero-run Codex tier expansion ===\n");
@@ -5226,8 +5231,10 @@ async function validateZeroRunCodexTierExpansion(): Promise<void> {
   const testDbUrl = createTestDbUrl(testDb);
   const fixture = {
     composeId: "00000000-0000-4000-8000-000000087701",
-    sessionId: "00000000-0000-4000-8000-000000087702",
-    runId: "00000000-0000-4000-8000-000000087703",
+    regularSessionId: "00000000-0000-4000-8000-000000087702",
+    atomicSessionId: "00000000-0000-4000-8000-000000087703",
+    regularRunId: "00000000-0000-4000-8000-000000087704",
+    atomicRunId: "00000000-0000-4000-8000-000000087705",
   } as const;
 
   await createDatabase(testDb);
@@ -5239,6 +5246,7 @@ async function validateZeroRunCodexTierExpansion(): Promise<void> {
     const client = new Client({ connectionString: testDbUrl });
     await client.connect();
     try {
+      const database = drizzle(client);
       await client.query(
         `
           INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
@@ -5250,76 +5258,122 @@ async function validateZeroRunCodexTierExpansion(): Promise<void> {
         `
           INSERT INTO "agent_sessions" (
             "id", "user_id", "org_id", "agent_compose_id"
-          ) VALUES ($1, 'codex-tier-user', 'codex-tier-org', $2)
+          ) VALUES
+            ($1, 'codex-tier-user', 'codex-tier-org', $3),
+            ($2, 'codex-tier-user', 'codex-tier-org', $3)
         `,
-        [fixture.sessionId, fixture.composeId],
-      );
-      await client.query(
-        `
-          INSERT INTO "agent_runs" (
-            "id", "user_id", "org_id", "session_id", "status", "prompt"
-          ) VALUES (
-            $1,
-            'codex-tier-user',
-            'codex-tier-org',
-            $2,
-            'pending',
-            'migration compatibility'
-          )
-        `,
-        [fixture.runId, fixture.sessionId],
-      );
-      await client.query(
-        `
-          INSERT INTO "zero_runs" ("id", "trigger_source", "selected_model")
-          VALUES ($1, 'web', 'gpt-5.6-sol')
-        `,
-        [fixture.runId],
+        [fixture.regularSessionId, fixture.atomicSessionId, fixture.composeId],
       );
 
-      const beforeExpansion = await client.query<{
-        codexServiceTier: string | null;
-        selectedModel: string | null;
-      }>(
-        `
-          SELECT
-            "selected_model" AS "selectedModel",
-            to_jsonb("zero_runs") ->> 'codex_service_tier'
-              AS "codexServiceTier"
-          FROM "zero_runs"
-          WHERE "id" = $1
-        `,
-        [fixture.runId],
+      // Match insertLaunchRunRows: the production agent_runs insert followed
+      // by the rollout-safe zero_runs insert target.
+      await database.insert(agentRuns).values({
+        id: fixture.regularRunId,
+        userId: "codex-tier-user",
+        orgId: "codex-tier-org",
+        sessionId: fixture.regularSessionId,
+        status: "pending",
+        prompt: "regular migration compatibility",
+      });
+      await database.insert(zeroRunsBeforeCodexServiceTier).values({
+        id: fixture.regularRunId,
+        triggerSource: "web",
+        selectedModel: "gpt-5.6-sol",
+      });
+
+      // Match the atomic pending launch statement: both run rows and the
+      // runner queue row are data-modifying CTEs in one Drizzle query.
+      const insertedRun = database.$with("inserted_launch_run").as(
+        database
+          .insert(agentRuns)
+          .values({
+            id: fixture.atomicRunId,
+            userId: "codex-tier-user",
+            orgId: "codex-tier-org",
+            sessionId: fixture.atomicSessionId,
+            status: "pending",
+            prompt: "atomic migration compatibility",
+          })
+          .returning({ id: agentRuns.id, createdAt: agentRuns.createdAt }),
       );
-      assert.deepEqual(beforeExpansion.rows, [
-        { selectedModel: "gpt-5.6-sol", codexServiceTier: null },
+      const returnedRunId = sql`(SELECT ${insertedRun.id} FROM ${insertedRun})`;
+      const insertedZeroRun = database.$with("inserted_launch_zero_run").as(
+        database.insert(zeroRunsBeforeCodexServiceTier).values({
+          id: returnedRunId,
+          triggerSource: "web",
+          selectedModel: "gpt-5.6-sol",
+        }),
+      );
+      const insertedQueue = database.$with("inserted_launch_runner_job").as(
+        database
+          .insert(runnerJobQueue)
+          .values({
+            runId: returnedRunId,
+            runnerGroup: "vm0/migration-codex-tier",
+            profile: "vm0/default",
+            executionContext: {},
+            expiresAt: sql`now() + interval '1 hour'`,
+          })
+          .returning({ runId: runnerJobQueue.runId }),
+      );
+      const [atomicResult] = await database
+        .with(insertedRun, insertedZeroRun, insertedQueue)
+        .select({ runId: insertedRun.id })
+        .from(insertedRun)
+        .innerJoin(insertedQueue, eq(insertedQueue.runId, insertedRun.id));
+      assert.equal(atomicResult?.runId, fixture.atomicRunId);
+
+      const rolloutSafeTier = sql<string | null>`
+        to_jsonb(${zeroRuns}) ->> 'codex_service_tier'
+      `;
+      const runIds = [fixture.regularRunId, fixture.atomicRunId];
+      const beforeExpansion = await database
+        .select({
+          id: zeroRuns.id,
+          selectedModel: zeroRuns.selectedModel,
+          codexServiceTier: rolloutSafeTier,
+        })
+        .from(zeroRuns)
+        .where(inArray(zeroRuns.id, runIds))
+        .orderBy(zeroRuns.id);
+      assert.deepEqual(beforeExpansion, [
+        {
+          id: fixture.regularRunId,
+          selectedModel: "gpt-5.6-sol",
+          codexServiceTier: null,
+        },
+        {
+          id: fixture.atomicRunId,
+          selectedModel: "gpt-5.6-sol",
+          codexServiceTier: null,
+        },
       ]);
 
       await applyMigrationsUpToTag(client, ZERO_RUN_CODEX_TIER_MIGRATION);
-      await client.query(
-        `
-          UPDATE "zero_runs"
-          SET "codex_service_tier" = 'fast'
-          WHERE "id" = $1
-        `,
-        [fixture.runId],
-      );
-      const afterExpansion = await client.query<{
-        codexServiceTier: string | null;
-        selectedModel: string | null;
-      }>(
-        `
-          SELECT
-            "selected_model" AS "selectedModel",
-            to_jsonb("zero_runs") ->> 'codex_service_tier'
-              AS "codexServiceTier"
-          FROM "zero_runs"
-          WHERE "id" = $1
-        `,
-        [fixture.runId],
-      );
-      assert.deepEqual(afterExpansion.rows, [
-        { selectedModel: "gpt-5.6-sol", codexServiceTier: "fast" },
+      await database
+        .update(zeroRuns)
+        .set({ codexServiceTier: "fast" })
+        .where(eq(zeroRuns.id, fixture.regularRunId));
+      const afterExpansion = await database
+        .select({
+          id: zeroRuns.id,
+          selectedModel: zeroRuns.selectedModel,
+          codexServiceTier: rolloutSafeTier,
+        })
+        .from(zeroRuns)
+        .where(inArray(zeroRuns.id, runIds))
+        .orderBy(zeroRuns.id);
+      assert.deepEqual(afterExpansion, [
+        {
+          id: fixture.regularRunId,
+          selectedModel: "gpt-5.6-sol",
+          codexServiceTier: "fast",
+        },
+        {
+          id: fixture.atomicRunId,
+          selectedModel: "gpt-5.6-sol",
+          codexServiceTier: null,
+        },
       ]);
     } finally {
       await client.end();
@@ -5329,7 +5383,7 @@ async function validateZeroRunCodexTierExpansion(): Promise<void> {
   }
 
   console.log(
-    "   ✅ old-schema standard writes and rollout-safe tier reads remain legal\n",
+    "   ✅ regular and atomic old-schema writes plus rollout-safe reads remain legal\n",
   );
 }
 
