@@ -440,8 +440,6 @@
         "agents": "Agen",
         "artifacts": "Artifact",
         "connectors": "Konektor",
-        "insights": "Insight",
-        "insightsAndUsage": "Wawasan & Penggunaan",
         "newChat": "Chat baru",
         "settings": "Pengaturan",
         "workflows": "Alur kerja",
@@ -2492,94 +2490,6 @@
       "degraded": "Pembaruan langsung mengalami masalah. Segarkan halaman."
     }
   },
-  "insights": {
-    "calendar": {
-      "nextMonth": "Bulan depan",
-      "previousMonth": "Bulan sebelumnya"
-    },
-    "cards": {
-      "agents": "Agen",
-      "agentsRan_one": "{{agents}} menjalankan {{runs}}",
-      "agentsRan_other": "{{agents}} menjalankan {{runs}}",
-      "allowed": "Diizinkan",
-      "allowedSummary_one": "{{calls}} dilakukan dalam {{permissions}} izin yang diberikan",
-      "allowedSummary_other": "{{calls}} dilakukan dalam {{permissions}} izin yang diberikan",
-      "automations": "Otomatisasi",
-      "automationsUsed_one": "{{automations}} menggunakan {{credits}}",
-      "automationsUsed_other": "{{automations}} menggunakan {{credits}}",
-      "balance": "Saldo",
-      "byAgent": "oleh {{agent}}",
-      "chats": "Obrolan",
-      "chatsUsed_one": "{{chats}} menggunakan {{credits}}",
-      "chatsUsed_other": "{{chats}} menggunakan {{credits}}",
-      "clickToOpen": "Klik untuk membuka",
-      "consumedToday": "dipakai hari ini",
-      "moreAutomations_one": "+{{value}} otomatisasi lagi",
-      "moreAutomations_other": "+{{value}} otomatisasi lagi",
-      "moreChats_one": "+{{value}} obrolan lagi",
-      "moreChats_other": "+{{value}} obrolan lagi",
-      "protected": "Dilindungi",
-      "protectedSummary_one": "{{calls}} dilindungi di {{permissions}} izin",
-      "protectedSummary_other": "{{calls}} dilindungi di {{permissions}} izin",
-      "rejected_one": "{{value}} ditolak",
-      "rejected_other": "{{value}} ditolak",
-      "rejectedOf": "{{denied}} dari {{total}} ditolak",
-      "services": "Layanan",
-      "servicesReceived_one": "{{services}} menerima {{calls}}",
-      "servicesReceived_other": "{{services}} menerima {{calls}}",
-      "team": "Tim",
-      "teamCreditUsage": "Penggunaan Kredit Tim",
-      "untitled": "(tanpa judul)",
-      "yourCreditUsage": "Penggunaan Kredit Anda"
-    },
-    "common": {
-      "loadMore": "Muat lebih banyak",
-      "showLess": "Tampilkan lebih sedikit"
-    },
-    "page": {
-      "description": "Pantau apa yang diakses agen Anda, bagaimana kredit digunakan, izin apa yang mereka pakai, dan temukan hal yang tidak biasa.",
-      "documentTitle": "Insight & Penggunaan",
-      "empty": "Jalankan agen untuk melihat insight di sini.",
-      "emptyRange": "Tidak ada aktivitas dalam rentang waktu ini.",
-      "lastUpdated": "Terakhir diperbarui — {{date}}",
-      "loadError": "Tidak dapat memuat aktivitas jaringan.",
-      "title": "Insight"
-    },
-    "range": {
-      "custom": "Rentang Kustom",
-      "last28Days": "28 Hari Terakhir",
-      "last30Days": "30 Hari Terakhir",
-      "last7Days": "7 Hari Terakhir",
-      "today": "Hari Ini",
-      "yesterday": "Kemarin"
-    },
-    "summary": {
-      "activityCaption": "{{first}} · {{second}}",
-      "blocked_one": "{{blocked}} permintaan diblokir oleh aturan izin Anda. Tinjau agar tidak ada yang penting terlewat.",
-      "blocked_other": "{{blocked}} permintaan diblokir oleh aturan izin Anda. Tinjau agar tidak ada yang penting terlewat.",
-      "blockedCaption": "{{calls}} · {{blocked}} diblokir",
-      "busy_one": "Hari yang sibuk — {{agentCount}} agen menyelesaikan {{runs}}. Jaringan Anda bekerja keras.",
-      "busy_other": "Hari yang sibuk — {{agentCount}} agen menyelesaikan {{runs}}. Jaringan Anda bekerja keras.",
-      "distributed_one": "{{agents}} aktif, menggunakan total {{credits}}. Beban kerja tersebar dengan baik.",
-      "distributed_other": "{{agents}} aktif, menggunakan total {{credits}}. Beban kerja tersebar dengan baik.",
-      "highTraffic_one": "{{callCount}} panggilan layanan di {{services}}. Hari dengan lalu lintas tinggi.",
-      "highTraffic_other": "{{callCount}} panggilan layanan di {{services}}. Hari dengan lalu lintas tinggi.",
-      "light_one": "Aktivitas ringan — hanya {{runs}} dan {{calls}}. Hari yang tenang.",
-      "light_other": "Aktivitas ringan — hanya {{runs}} dan {{calls}}. Hari yang tenang.",
-      "quietCaption": "{{runs}} · hari yang tenang",
-      "smooth": "{{runs}} dan {{callCount}} panggilan layanan hari ini. Semuanya berjalan lancar."
-    },
-    "units": {
-      "agent_one": "{{value}} agen",
-      "agent_other": "{{value}} agen",
-      "call_one": "{{value}} panggilan",
-      "call_other": "{{value}} panggilan",
-      "run_one": "{{value}} eksekusi",
-      "run_other": "{{value}} eksekusi",
-      "service_one": "{{value}} layanan",
-      "service_other": "{{value}} layanan"
-    }
-  },
   "lifecycle": {
     "emailUnsubscribe": {
       "action": "Berhenti berlangganan",
@@ -4613,34 +4523,6 @@
     "tryOkou": "Coba Okou"
   },
   "usage": {
-    "automations": {
-      "empty": "Tidak ada otomatisasi yang digunakan pada periode ini",
-      "more_one": "+{{value}} otomatisasi lagi",
-      "more_other": "+{{value}} otomatisasi lagi",
-      "summary_one": "{{automations}} menggunakan {{credits}}",
-      "summary_other": "{{automations}} menggunakan {{credits}}",
-      "title": "Otomatisasi"
-    },
-    "chart": {
-      "ariaLabel": "Total kredit",
-      "credits": "kredit",
-      "groupBy": {
-        "agent": "Agen",
-        "source": "Sumber"
-      },
-      "noUsage": "Tidak ada penggunaan",
-      "showDetails": "Tampilkan detail penggunaan untuk {{date}}"
-    },
-    "chats": {
-      "clickToOpen": "Klik untuk membuka",
-      "empty": "Tidak ada chat pada periode ini",
-      "more_one": "+{{value}} chat lagi",
-      "more_other": "+{{value}} chat lagi",
-      "summary_one": "{{chats}} menggunakan {{credits}}",
-      "summary_other": "{{chats}} menggunakan {{credits}}",
-      "title": "Chat",
-      "untitled": "(tanpa judul)"
-    },
     "displayNames": {
       "finance": "Keuangan",
       "imageRecognize": "Pengenalan Gambar",
@@ -4659,19 +4541,10 @@
       "other": "Lainnya",
       "video": "Video"
     },
-    "page": {
-      "description": "Konsumsi kredit Anda di chat, otomatisasi, dan kanal.",
-      "loadError": "Gagal memuat wawasan penggunaan. Coba lagi nanti.",
-      "title": "Penggunaan"
-    },
     "range": {
-      "ariaLabel": "Rentang tanggal",
       "billingPeriod": "Periode penagihan",
       "last24Hours": "24 jam terakhir",
-      "last28Days": "28 hari terakhir",
-      "last30Days": "30 hari terakhir",
       "last7Days": "7 hari terakhir",
-      "selectedDay": "Hari terpilih",
       "today": "Hari ini",
       "yesterday": "Kemarin"
     },
@@ -4693,16 +4566,12 @@
       "email": "Email",
       "github": "GitHub",
       "other": "Lainnya",
-      "others": "Lain-lain",
       "phone": "Telepon",
       "slack": "Slack",
       "teams": "Microsoft Teams",
-      "telegram": "Telegram",
-      "unknown": "Tidak diketahui"
+      "telegram": "Telegram"
     },
     "units": {
-      "automation_one": "{{value}} otomatisasi",
-      "automation_other": "{{value}} otomatisasi",
       "chat_one": "{{value}} chat",
       "chat_other": "{{value}} chat",
       "credit_one": "{{value}} kredit",

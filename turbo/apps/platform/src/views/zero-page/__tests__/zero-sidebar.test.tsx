@@ -2659,7 +2659,6 @@ describe("zero sidebar", () => {
     // Labeled icon rail carries text captions for its nav destinations.
     expect(within(rail).getByText("Agents")).toBeInTheDocument();
     expect(within(rail).getByText("Connectors")).toBeInTheDocument();
-    expect(within(rail).getByLabelText("Insights")).toBeInTheDocument();
 
     // The middle list column owns the chat header and pinned agents.
     const list = screen.getByTestId("chat-list-column");

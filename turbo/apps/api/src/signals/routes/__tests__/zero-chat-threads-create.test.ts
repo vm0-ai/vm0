@@ -15,7 +15,7 @@ import { signSandboxJwtForTests } from "../../auth/tokens";
 import { createBddApi } from "./helpers/api-bdd";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { seedOrgMembership$ } from "./helpers/zero-org-membership";
-import { seedRun$ } from "./helpers/zero-usage-insight";
+import { seedRun$ } from "./helpers/usage-state";
 import { zeroChatThreadRoutes } from "../zero-chat-threads";
 import { zeroChatThreadGetRoutes } from "../zero-chat-threads-get";
 

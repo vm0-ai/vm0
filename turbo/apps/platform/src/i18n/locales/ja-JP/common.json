@@ -440,8 +440,6 @@
         "agents": "エージェント",
         "artifacts": "アーティファクト",
         "connectors": "コネクター",
-        "insights": "インサイト",
-        "insightsAndUsage": "インサイトと使用量",
         "newChat": "新しいチャット",
         "settings": "設定",
         "workflows": "ワークフロー",
@@ -2492,94 +2490,6 @@
       "degraded": "ライブアップデートで問題が発生しました。ページを更新してください。"
     }
   },
-  "insights": {
-    "calendar": {
-      "nextMonth": "来月",
-      "previousMonth": "前月"
-    },
-    "cards": {
-      "agents": "エージェント",
-      "agentsRan_one": "{{agents}} は {{runs}} を実行しました",
-      "agentsRan_other": "{{agents}} は {{runs}} を実行しました",
-      "allowed": "許可される",
-      "allowedSummary_one": "{{permissions}} 内で作成された {{calls}} には権限が付与されました",
-      "allowedSummary_other": "{{permissions}} 内で作成された {{calls}} に権限が付与されました",
-      "automations": "オートメーション",
-      "automationsUsed_one": "{{automations}} は {{credits}} を使用しました",
-      "automationsUsed_other": "{{automations}} は {{credits}} を使用しました",
-      "balance": "バランス",
-      "byAgent": "{{agent}} 著",
-      "chats": "チャット",
-      "chatsUsed_one": "{{chats}} は {{credits}} を使用しました",
-      "chatsUsed_other": "{{chats}} は {{credits}} を使用しました",
-      "clickToOpen": "クリックして開きます",
-      "consumedToday": "今日消費された",
-      "moreAutomations_one": "+{{value}} のさらなるオートメーション",
-      "moreAutomations_other": "+{{value}} 個以上のオートメーション",
-      "moreChats_one": "+{{value}} その他のチャット",
-      "moreChats_other": "+{{value}} 件以上のチャット",
-      "protected": "保護されています",
-      "protectedSummary_one": "{{calls}} は {{permissions}} 権限全体で保護されています",
-      "protectedSummary_other": "{{calls}} は {{permissions}} 権限全体で保護されています",
-      "rejected_one": "{{value}} が拒否されました",
-      "rejected_other": "{{value}} が拒否されました",
-      "rejectedOf": "{{total}} の {{denied}} が拒否されました",
-      "services": "サービス",
-      "servicesReceived_one": "{{services}} が {{calls}} を受け取りました",
-      "servicesReceived_other": "{{services}} が {{calls}} を受け取りました",
-      "team": "チーム",
-      "teamCreditUsage": "チームクレジットの使用状況",
-      "untitled": "(無題)",
-      "yourCreditUsage": "クレジットの使用状況"
-    },
-    "common": {
-      "loadMore": "さらにロードする",
-      "showLess": "表示を少なくする"
-    },
-    "page": {
-      "description": "エージェントが何にアクセスするか、クレジットがどのように消費されるか、エージェントが使用する権限を監視し、異常な点を見つけます。",
-      "documentTitle": "インサイトと使用量",
-      "empty": "ここでエージェントを実行してインサイトを確認します。",
-      "emptyRange": "この時間範囲にはアクティビティはありません。",
-      "lastUpdated": "最終更新日 — {{date}}",
-      "loadError": "ネットワークアクティビティを読み込めませんでした。",
-      "title": "インサイト"
-    },
-    "range": {
-      "custom": "カスタム範囲",
-      "last28Days": "過去 28 日間",
-      "last30Days": "過去 30 日間",
-      "last7Days": "過去 7 日間",
-      "today": "今日",
-      "yesterday": "昨日"
-    },
-    "summary": {
-      "activityCaption": "{{first}} · {{second}}",
-      "blocked_one": "{{blocked}} リクエストは権限ルールによってブロックされました。重要なことが妨げられていないことを確認するためにレビューしてください。",
-      "blocked_other": "{{blocked}} リクエストは権限ルールによってブロックされました。それらを見直して、重要なことが妨げられていないことを確認してください。",
-      "blockedCaption": "{{calls}} · {{blocked}} がブロックされました",
-      "busy_one": "忙しい 1 日 — {{agentCount}} エージェントが {{runs}} を完了しました。ネットワークは懸命に動作しています。",
-      "busy_other": "忙しい 1 日 — {{agentCount}} エージェントが {{runs}} を完了しました。ネットワークは懸命に動作しています。",
-      "distributed_one": "{{agents}} がアクティブで、合計 {{credits}} を使用しています。適切に分散されたワークロード。",
-      "distributed_other": "{{agents}} がアクティブで、合計 {{credits}} を使用しています。適切に分散されたワークロード。",
-      "highTraffic_one": "{{callCount}} サービスは {{services}} 経由で呼び出します。交通量の多い日。",
-      "highTraffic_other": "{{callCount}} サービスは {{services}} 経由で呼び出します。交通量の多い日。",
-      "light_one": "軽いアクティビティ — {{runs}} および {{calls}} のみ。静かな一日。",
-      "light_other": "軽いアクティビティ — {{runs}} および {{calls}} のみ。静かな一日。",
-      "quietCaption": "{{runs}} · 静かな一日",
-      "smooth": "本日、{{runs}} および {{callCount}} サービス コールが行われます。すべてがスムーズに進んでいます。"
-    },
-    "units": {
-      "agent_one": "{{value}} エージェント",
-      "agent_other": "{{value}} エージェント",
-      "call_one": "{{value}} 呼び出し",
-      "call_other": "{{value}} 呼び出し",
-      "run_one": "{{value}} の実行",
-      "run_other": "{{value}} が実行されます",
-      "service_one": "{{value}} サービス",
-      "service_other": "{{value}} サービス"
-    }
-  },
   "lifecycle": {
     "emailUnsubscribe": {
       "action": "購読を解除する",
@@ -4613,34 +4523,6 @@
     "tryOkou": "Okouを試す"
   },
   "usage": {
-    "automations": {
-      "empty": "この期間にオートメーションの利用はありません",
-      "more_one": "ほか{{value}}件のオートメーション",
-      "more_other": "ほか{{value}}件のオートメーション",
-      "summary_one": "{{automations}}で{{credits}}を使用",
-      "summary_other": "{{automations}}で{{credits}}を使用",
-      "title": "オートメーション"
-    },
-    "chart": {
-      "ariaLabel": "クレジットの合計",
-      "credits": "クレジット",
-      "groupBy": {
-        "agent": "エージェント",
-        "source": "ソース"
-      },
-      "noUsage": "利用なし",
-      "showDetails": "{{date}} の使用状況の詳細を表示する"
-    },
-    "chats": {
-      "clickToOpen": "クリックして開きます",
-      "empty": "この期間にチャットの利用はありません",
-      "more_one": "ほか{{value}}件の会話",
-      "more_other": "ほか{{value}}件の会話",
-      "summary_one": "{{chats}}で{{credits}}を使用",
-      "summary_other": "{{chats}}で{{credits}}を使用",
-      "title": "チャット",
-      "untitled": "(無題)"
-    },
     "displayNames": {
       "finance": "金融",
       "imageRecognize": "画像認識",
@@ -4659,19 +4541,10 @@
       "other": "その他",
       "video": "動画"
     },
-    "page": {
-      "description": "チャット、オートメーション、チャンネル別のクレジット使用量。",
-      "loadError": "使用量のインサイトを読み込めませんでした。しばらくしてからもう一度お試しください。",
-      "title": "使用量"
-    },
     "range": {
-      "ariaLabel": "日付範囲",
       "billingPeriod": "請求期間",
       "last24Hours": "過去 24 時間",
-      "last28Days": "過去 28 日間",
-      "last30Days": "過去 30 日間",
       "last7Days": "過去7日間",
-      "selectedDay": "選択した日",
       "today": "今日",
       "yesterday": "昨日"
     },
@@ -4693,16 +4566,12 @@
       "email": "メール",
       "github": "GitHub",
       "other": "その他",
-      "others": "その他",
       "phone": "電話",
       "slack": "Slack",
       "teams": "Microsoft Teams",
-      "telegram": "Telegram",
-      "unknown": "不明"
+      "telegram": "Telegram"
     },
     "units": {
-      "automation_one": "{{value}}件のオートメーション",
-      "automation_other": "{{value}}件のオートメーション",
       "chat_one": "{{value}}件の会話",
       "chat_other": "{{value}}件の会話",
       "credit_one": "{{value}}クレジット",

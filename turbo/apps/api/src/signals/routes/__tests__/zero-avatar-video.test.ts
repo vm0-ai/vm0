@@ -27,7 +27,7 @@ import { zeroBuiltInGenerationRoutes } from "../zero-built-in-generation";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
-import { seedCompose$, seedRun$ } from "./helpers/zero-usage-insight";
+import { seedCompose$, seedRun$ } from "./helpers/usage-state";
 
 const context = testContext();
 const store = createStore();

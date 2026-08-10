@@ -440,8 +440,6 @@
         "agents": "Agents",
         "artifacts": "Artifacts",
         "connectors": "Connectors",
-        "insights": "Insights",
-        "insightsAndUsage": "Insights & Usage",
         "newChat": "New chat",
         "settings": "Settings",
         "workflows": "Workflows",
@@ -2493,94 +2491,6 @@
       "degraded": "Live updates ran into a problem. Please refresh the page."
     }
   },
-  "insights": {
-    "calendar": {
-      "nextMonth": "Next month",
-      "previousMonth": "Previous month"
-    },
-    "cards": {
-      "agents": "Agents",
-      "agentsRan_one": "{{agents}} ran {{runs}}",
-      "agentsRan_other": "{{agents}} ran {{runs}}",
-      "allowed": "Allowed",
-      "allowedSummary_one": "{{calls}} made within {{permissions}} granted permission",
-      "allowedSummary_other": "{{calls}} made within {{permissions}} granted permissions",
-      "automations": "Automations",
-      "automationsUsed_one": "{{automations}} used {{credits}}",
-      "automationsUsed_other": "{{automations}} used {{credits}}",
-      "balance": "Balance",
-      "byAgent": "by {{agent}}",
-      "chats": "Chats",
-      "chatsUsed_one": "{{chats}} used {{credits}}",
-      "chatsUsed_other": "{{chats}} used {{credits}}",
-      "clickToOpen": "Click to open",
-      "consumedToday": "consumed today",
-      "moreAutomations_one": "+{{value}} more automation",
-      "moreAutomations_other": "+{{value}} more automations",
-      "moreChats_one": "+{{value}} more chat",
-      "moreChats_other": "+{{value}} more chats",
-      "protected": "Protected",
-      "protectedSummary_one": "{{calls}} protected across {{permissions}} permission",
-      "protectedSummary_other": "{{calls}} protected across {{permissions}} permissions",
-      "rejected_one": "{{value}} rejected",
-      "rejected_other": "{{value}} rejected",
-      "rejectedOf": "{{denied}} of {{total}} rejected",
-      "services": "Services",
-      "servicesReceived_one": "{{services}} received {{calls}}",
-      "servicesReceived_other": "{{services}} received {{calls}}",
-      "team": "Team",
-      "teamCreditUsage": "Team Credit Usage",
-      "untitled": "(untitled)",
-      "yourCreditUsage": "Your Credit Usage"
-    },
-    "common": {
-      "loadMore": "Load more",
-      "showLess": "Show less"
-    },
-    "page": {
-      "description": "Monitor what your agents access, how credits are spent, which permissions they use, and spot anything unusual.",
-      "documentTitle": "Insights & Usage",
-      "empty": "Run an agent to see insights here.",
-      "emptyRange": "No activity in this time range.",
-      "lastUpdated": "Last updated — {{date}}",
-      "loadError": "Could not load network activity.",
-      "title": "Insights"
-    },
-    "range": {
-      "custom": "Custom Range",
-      "last28Days": "Last 28 Days",
-      "last30Days": "Last 30 Days",
-      "last7Days": "Last 7 Days",
-      "today": "Today",
-      "yesterday": "Yesterday"
-    },
-    "summary": {
-      "activityCaption": "{{first}} · {{second}}",
-      "blocked_one": "{{blocked}} request was blocked by your permission rules. Review it to make sure nothing important is being held back.",
-      "blocked_other": "{{blocked}} requests were blocked by your permission rules. Review them to make sure nothing important is being held back.",
-      "blockedCaption": "{{calls}} · {{blocked}} blocked",
-      "busy_one": "A busy day — {{agentCount}} agents completed {{runs}}. Your network is working hard.",
-      "busy_other": "A busy day — {{agentCount}} agents completed {{runs}}. Your network is working hard.",
-      "distributed_one": "{{agents}} active, using {{credits}} total. A well-distributed workload.",
-      "distributed_other": "{{agents}} active, using {{credits}} total. A well-distributed workload.",
-      "highTraffic_one": "{{callCount}} service calls across {{services}}. High traffic day.",
-      "highTraffic_other": "{{callCount}} service calls across {{services}}. High traffic day.",
-      "light_one": "Light activity — only {{runs}} and {{calls}}. A quiet day.",
-      "light_other": "Light activity — only {{runs}} and {{calls}}. A quiet day.",
-      "quietCaption": "{{runs}} · a quiet day",
-      "smooth": "{{runs}} and {{callCount}} service calls today. Everything running smoothly."
-    },
-    "units": {
-      "agent_one": "{{value}} agent",
-      "agent_other": "{{value}} agents",
-      "call_one": "{{value}} call",
-      "call_other": "{{value}} calls",
-      "run_one": "{{value}} run",
-      "run_other": "{{value}} runs",
-      "service_one": "{{value}} service",
-      "service_other": "{{value}} services"
-    }
-  },
   "lifecycle": {
     "emailUnsubscribe": {
       "action": "Unsubscribe",
@@ -4614,34 +4524,6 @@
     "tryOkou": "Try Okou"
   },
   "usage": {
-    "automations": {
-      "empty": "No automations used in this period",
-      "more_one": "+{{value}} more automation",
-      "more_other": "+{{value}} more automations",
-      "summary_one": "{{automations}} used {{credits}}",
-      "summary_other": "{{automations}} used {{credits}}",
-      "title": "Automations"
-    },
-    "chart": {
-      "ariaLabel": "Credits totals",
-      "credits": "credits",
-      "groupBy": {
-        "agent": "Agent",
-        "source": "Source"
-      },
-      "noUsage": "No usage",
-      "showDetails": "Show usage details for {{date}}"
-    },
-    "chats": {
-      "clickToOpen": "Click to open",
-      "empty": "No chats in this period",
-      "more_one": "+{{value}} more chat",
-      "more_other": "+{{value}} more chats",
-      "summary_one": "{{chats}} used {{credits}}",
-      "summary_other": "{{chats}} used {{credits}}",
-      "title": "Chats",
-      "untitled": "(untitled)"
-    },
     "displayNames": {
       "finance": "Finance",
       "imageRecognize": "Image Recognize",
@@ -4660,19 +4542,10 @@
       "other": "Other",
       "video": "Videos"
     },
-    "page": {
-      "description": "Your credit consumption across chats, automations, and channels.",
-      "loadError": "Failed to load usage insights. Please try again later.",
-      "title": "Usage"
-    },
     "range": {
-      "ariaLabel": "Date range",
       "billingPeriod": "Billing period",
       "last24Hours": "Last 24 hours",
-      "last28Days": "Last 28 days",
-      "last30Days": "Last 30 days",
       "last7Days": "Last 7 days",
-      "selectedDay": "Selected day",
       "today": "Today",
       "yesterday": "Yesterday"
     },
@@ -4694,16 +4567,12 @@
       "email": "Email",
       "github": "GitHub",
       "other": "Other",
-      "others": "Others",
       "phone": "Phone",
       "slack": "Slack",
       "teams": "Microsoft Teams",
-      "telegram": "Telegram",
-      "unknown": "Unknown"
+      "telegram": "Telegram"
     },
     "units": {
-      "automation_one": "{{value}} automation",
-      "automation_other": "{{value}} automations",
       "chat_one": "{{value}} chat",
       "chat_other": "{{value}} chats",
       "credit_one": "{{value}} credit",

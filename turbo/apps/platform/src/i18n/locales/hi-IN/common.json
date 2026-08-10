@@ -440,8 +440,6 @@
         "agents": "एजेंटों",
         "artifacts": "आर्टिफ़ैक्ट्स",
         "connectors": "कनेक्टर्स",
-        "insights": "इनसाइट्स",
-        "insightsAndUsage": "अंतर्दृष्टि और उपयोग",
         "newChat": "नई चैट",
         "settings": "सेटिंग्स",
         "workflows": "वर्कफ़्लो",
@@ -2493,94 +2491,6 @@
       "degraded": "लाइव अपडेट में समस्या आई। कृपया पृष्ठ को ताज़ा करें."
     }
   },
-  "insights": {
-    "calendar": {
-      "nextMonth": "अगले महीने",
-      "previousMonth": "पिछला महीना"
-    },
-    "cards": {
-      "agents": "एजेंटों",
-      "agentsRan_one": "{{agents}} ने {{runs}} चलाया",
-      "agentsRan_other": "{{agents}} ने {{runs}} चलाया",
-      "allowed": "अनुमत",
-      "allowedSummary_one": "{{permissions}} के भीतर बनाए गए {{calls}} को अनुमति दी गई",
-      "allowedSummary_other": "{{permissions}} के भीतर बने {{calls}} को अनुमति दी गई",
-      "automations": "ऑटोमेशन",
-      "automationsUsed_one": "{{automations}} ने {{credits}} का उपयोग किया",
-      "automationsUsed_other": "{{automations}} ने {{credits}} का उपयोग किया",
-      "balance": "संतुलन",
-      "byAgent": "{{agent}} द्वारा",
-      "chats": "चैट",
-      "chatsUsed_one": "{{chats}} ने {{credits}} का उपयोग किया",
-      "chatsUsed_other": "{{chats}} ने {{credits}} का उपयोग किया",
-      "clickToOpen": "खोलने के लिए क्लिक करें",
-      "consumedToday": "आज सेवन किया गया",
-      "moreAutomations_one": "+{{value}} अधिक ऑटोमेशन",
-      "moreAutomations_other": "+{{value}} अधिक ऑटोमेशन",
-      "moreChats_one": "+{{value}} अधिक चैट",
-      "moreChats_other": "+{{value}} अधिक चैट",
-      "protected": "संरक्षित",
-      "protectedSummary_one": "{{calls}} {{permissions}} अनुमति से सुरक्षित है",
-      "protectedSummary_other": "{{calls}}, {{permissions}} अनुमतियों से सुरक्षित है",
-      "rejected_one": "{{value}} अस्वीकृत",
-      "rejected_other": "{{value}} अस्वीकृत",
-      "rejectedOf": "{{total}} में से {{denied}} अस्वीकृत",
-      "services": "सेवाएं",
-      "servicesReceived_one": "{{services}} को {{calls}} प्राप्त हुआ",
-      "servicesReceived_other": "{{services}} को {{calls}} प्राप्त हुआ",
-      "team": "टीम",
-      "teamCreditUsage": "टीम क्रेडिट उपयोग",
-      "untitled": "(शीर्षक रहित)",
-      "yourCreditUsage": "आपका क्रेडिट उपयोग"
-    },
-    "common": {
-      "loadMore": "और लोड करें",
-      "showLess": "कम दिखाओ"
-    },
-    "page": {
-      "description": "मॉनिटर करें कि आपके एजेंट क्या एक्सेस करते हैं, क्रेडिट कैसे खर्च किए जाते हैं, वे कौन सी अनुमतियों का उपयोग करते हैं, और कुछ भी असामान्य पकड़ें।",
-      "documentTitle": "अंतर्दृष्टि और उपयोग",
-      "empty": "यहां अंतर्दृष्टि देखने के लिए एक एजेंट चलाएँ।",
-      "emptyRange": "इस समय सीमा में कोई गतिविधि नहीं.",
-      "lastUpdated": "अंतिम अद्यतन - {{date}}",
-      "loadError": "नेटवर्क गतिविधि लोड नहीं हो सकी.",
-      "title": "इनसाइट्स"
-    },
-    "range": {
-      "custom": "कस्टम रेंज",
-      "last28Days": "पिछले 28 दिन",
-      "last30Days": "पिछले 30 दिन",
-      "last7Days": "पिछले 7 दिन",
-      "today": "आज",
-      "yesterday": "कल"
-    },
-    "summary": {
-      "activityCaption": "{{first}} · {{second}}",
-      "blocked_one": "{{blocked}} अनुरोध आपके अनुमति नियमों द्वारा अवरुद्ध कर दिया गया था। यह सुनिश्चित करने के लिए इसकी समीक्षा करें कि कोई भी महत्वपूर्ण चीज़ पीछे नहीं रह गई है।",
-      "blocked_other": "{{blocked}} अनुरोध आपके अनुमति नियमों द्वारा अवरुद्ध कर दिए गए थे। यह सुनिश्चित करने के लिए उनकी समीक्षा करें कि कोई भी महत्वपूर्ण चीज़ पीछे नहीं रह गई है।",
-      "blockedCaption": "{{calls}} · {{blocked}} अवरुद्ध",
-      "busy_one": "एक व्यस्त दिन - {{agentCount}} एजेंटों ने {{runs}} पूरा किया। आपका नेटवर्क कड़ी मेहनत कर रहा है.",
-      "busy_other": "एक व्यस्त दिन - {{agentCount}} एजेंटों ने {{runs}} पूरा किया। आपका नेटवर्क कड़ी मेहनत कर रहा है.",
-      "distributed_one": "{{agents}} सक्रिय, कुल {{credits}} का उपयोग कर रहा है। एक अच्छी तरह से वितरित कार्यभार.",
-      "distributed_other": "{{agents}} सक्रिय, कुल {{credits}} का उपयोग कर रहा है। एक अच्छी तरह से वितरित कार्यभार.",
-      "highTraffic_one": "{{callCount}} सेवा {{services}} पर कॉल करती है। उच्च यातायात दिवस.",
-      "highTraffic_other": "{{callCount}} सेवा {{services}} पर कॉल करती है। उच्च यातायात दिवस.",
-      "light_one": "हल्की गतिविधि - केवल {{runs}} और {{calls}}। एक शांत दिन.",
-      "light_other": "हल्की गतिविधि - केवल {{runs}} और {{calls}}। एक शांत दिन.",
-      "quietCaption": "{{runs}} · एक शांत दिन",
-      "smooth": "{{runs}} और {{callCount}} सेवा कॉल आज। सब कुछ सुचारू रूप से चल रहा है."
-    },
-    "units": {
-      "agent_one": "{{value}} एजेंट",
-      "agent_other": "{{value}} एजेंट",
-      "call_one": "{{value}} कॉल",
-      "call_other": "{{value}} कॉल",
-      "run_one": "{{value}} चलाएँ",
-      "run_other": "{{value}} चलता है",
-      "service_one": "{{value}} सेवा",
-      "service_other": "{{value}} सेवाएँ"
-    }
-  },
   "lifecycle": {
     "emailUnsubscribe": {
       "action": "सदस्यता रद्द",
@@ -4614,34 +4524,6 @@
     "tryOkou": "Okou आज़माएँ"
   },
   "usage": {
-    "automations": {
-      "empty": "इस अवधि में किसी भी ऑटोमेशन का उपयोग नहीं किया गया",
-      "more_one": "+{{value}} अधिक ऑटोमेशन",
-      "more_other": "+{{value}} अधिक ऑटोमेशन",
-      "summary_one": "{{automations}} ने {{credits}} का उपयोग किया",
-      "summary_other": "{{automations}} ने {{credits}} का उपयोग किया",
-      "title": "ऑटोमेशन"
-    },
-    "chart": {
-      "ariaLabel": "कुल क्रेडिट",
-      "credits": "क्रेडिट",
-      "groupBy": {
-        "agent": "एजेंट",
-        "source": "स्रोत"
-      },
-      "noUsage": "कोई उपयोग नहीं",
-      "showDetails": "{{date}} के लिए उपयोग विवरण दिखाएँ"
-    },
-    "chats": {
-      "clickToOpen": "खोलने के लिए क्लिक करें",
-      "empty": "इस अवधि में कोई चैट नहीं",
-      "more_one": "+{{value}} अधिक चैट",
-      "more_other": "+{{value}} अधिक चैट",
-      "summary_one": "{{chats}} ने {{credits}} का उपयोग किया",
-      "summary_other": "{{chats}} ने {{credits}} का उपयोग किया",
-      "title": "चैट",
-      "untitled": "(शीर्षक रहित)"
-    },
     "displayNames": {
       "finance": "वित्त",
       "imageRecognize": "छवि पहचान",
@@ -4660,19 +4542,10 @@
       "other": "अन्य",
       "video": "वीडियो"
     },
-    "page": {
-      "description": "चैट, ऑटोमेशन और चैनलों पर आपकी क्रेडिट खपत।",
-      "loadError": "उपयोग संबंधी जानकारी लोड करने में विफल. कृपया बाद में पुन: प्रयास करें।",
-      "title": "उपयोग"
-    },
     "range": {
-      "ariaLabel": "तिथि सीमा",
       "billingPeriod": "बिलिंग अवधि",
       "last24Hours": "पिछले 24 घंटे",
-      "last28Days": "पिछले 28 दिन",
-      "last30Days": "पिछले 30 दिन",
       "last7Days": "पिछले 7 दिन",
-      "selectedDay": "चयनित दिन",
       "today": "आज",
       "yesterday": "कल"
     },
@@ -4694,16 +4567,12 @@
       "email": "ईमेल",
       "github": "GitHub",
       "other": "अन्य",
-      "others": "अन्य",
       "phone": "फ़ोन",
       "slack": "Slack",
       "teams": "Microsoft Teams",
-      "telegram": "Telegram",
-      "unknown": "अज्ञात"
+      "telegram": "Telegram"
     },
     "units": {
-      "automation_one": "{{value}} ऑटोमेशन",
-      "automation_other": "{{value}} ऑटोमेशन",
       "chat_one": "{{value}} चैट",
       "chat_other": "{{value}} चैट",
       "credit_one": "{{value}} क्रेडिट",

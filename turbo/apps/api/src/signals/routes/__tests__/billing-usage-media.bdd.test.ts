@@ -460,65 +460,17 @@ describe("BILL-01: billing status and Stripe-backed actions through public API",
   });
 });
 
-describe("BILL-02: usage, insights, attribution, and model stats reads", () => {
-  it("chains empty scoped usage, insights, rankings, and attribution through visible APIs", async () => {
-    const { api, admin, member } = testActors();
+describe("BILL-02: usage, attribution, and model stats reads", () => {
+  it("chains empty usage records, rankings, and attribution through visible APIs", async () => {
+    const { api, admin } = testActors();
     await completeVisibleOnboarding(admin);
-
-    const personalUsage = await api.readUsage(admin);
-    expect(personalUsage.body.summary).toStrictEqual({
-      total_runs: 0,
-      total_run_time_ms: 0,
-    });
 
     const usageMembers = await api.readUsageMembers(admin);
     expect(usageMembers.body.members).toStrictEqual([]);
 
-    const usageRuns = await api.readUsageRuns(admin, [200]);
-    if (usageRuns.status !== 200) {
-      throw new Error(
-        `Expected usage runs to be readable, got ${usageRuns.status}`,
-      );
-    }
-    expect(usageRuns.body.pagination.total).toBe(0);
-    expect(usageRuns.body.runs).toStrictEqual([]);
-
-    const memberUsageRuns = await api.readUsageRuns(member, [403]);
-    expectApiError(memberUsageRuns.body);
-    expect(memberUsageRuns.body.error.message).toBe(
-      "Only org admins can view run usage",
-    );
-
     const usageRecord = await api.readUsageRecord(admin);
     expect(usageRecord.body.pagination.total).toBe(0);
     expect(usageRecord.body.rows).toStrictEqual([]);
-
-    const usageInsight = await api.readUsageInsight(
-      admin,
-      { range: "today", groupBy: "source", tz: "UTC" },
-      [200],
-    );
-    if (usageInsight.status !== 200) {
-      throw new Error(
-        `Expected usage insight to be readable, got ${usageInsight.status}`,
-      );
-    }
-    expect(usageInsight.body.grandTotalCredits).toBe(0);
-    expect(usageInsight.body.grandTotalTokens).toBe(0);
-
-    const invalidInsight = await api.readUsageInsight(
-      admin,
-      { range: "today", groupBy: "source", tz: "Invalid/Timezone" },
-      [400],
-    );
-    expectApiError(invalidInsight.body);
-    expect(invalidInsight.body.error.message).toBe(
-      "Invalid timezone: Invalid/Timezone",
-    );
-
-    const insights = await api.readInsights(admin);
-    expect(insights.totalCredits).toBe(0);
-    expect(insights.totalRuns).toBe(0);
 
     const modelRankings = await api.readModelRankings();
     expect(modelRankings.body.period).toBe("week");

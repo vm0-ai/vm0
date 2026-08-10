@@ -6,7 +6,7 @@ import {
   zeroRecognitionContract,
 } from "@vm0/api-contracts/contracts/zero-recognition";
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
-import { zeroUsageRunsContract } from "@vm0/api-contracts/contracts/zero-usage-daily";
+import { zeroUsageRecordContract } from "@vm0/api-contracts/contracts/zero-usage-record";
 import { HttpResponse, http } from "msw";
 
 import { accept, testContext } from "../../../__tests__/test-context";
@@ -21,13 +21,13 @@ import {
 } from "../../../test-fixtures/system-config-seeds";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createRunsApi } from "./helpers/api-bdd-runs";
-import { readUsageStorageCounts$ } from "./helpers/zero-usage-insight";
+import { readUsageStorageCounts$ } from "./helpers/usage-state";
 import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
 import { zeroRecognitionRoutes } from "../zero-recognition";
-import { zeroUsageRunsRoutes } from "../zero-usage-runs";
+import { zeroUsageRecordRoutes } from "../zero-usage-record";
 
 const context = testContext();
 const store = createStore();
@@ -167,19 +167,25 @@ function mockClerkUserLookup(): void {
   context.mocks.clerk.users.getUserList.mockResolvedValue({ data: [] });
 }
 
-async function readRunUsage(actor: RecognitionActor) {
+async function readUsageRecord(actor: RecognitionActor) {
   mockClerkUserLookup();
   mocks.clerk.session(actor.userId, actor.orgId, "org:admin");
   const response = await accept(
-    setupApp({ context, routes: zeroUsageRunsRoutes })(
-      zeroUsageRunsContract,
+    setupApp({ context, routes: zeroUsageRecordRoutes })(
+      zeroUsageRecordContract,
     ).get({
       headers: { authorization: "Bearer clerk-session" },
-      query: { runId: actor.runId },
+      query: {
+        page: 1,
+        pageSize: 20,
+        scope: "mine",
+        range: "24h",
+        tz: "UTC",
+      },
     }),
     [200],
   );
-  return response.body.runs;
+  return response.body.rows;
 }
 
 async function expectNoUsage(actor: RecognitionActor): Promise<void> {
@@ -276,13 +282,11 @@ describe("POST /api/zero/recognize", () => {
         context.signal,
       ),
     ).resolves.toStrictEqual({ raw: 6, hourly: 0 });
-    await expect(readRunUsage(actor)).resolves.toStrictEqual([
+    await expect(readUsageRecord(actor)).resolves.toStrictEqual([
       expect.objectContaining({
         runId: actor.runId,
-        inputTokens: 4000,
-        outputTokens: 2000,
-        cacheTokens: 2000,
-        creditsCharged: EXPECTED_CHARGE * 2,
+        tokens: 8000,
+        credits: EXPECTED_CHARGE * 2,
       }),
     ]);
   });

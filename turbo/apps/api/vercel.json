@@ -45,14 +45,6 @@
       "schedule": "0 */12 * * *"
     },
     {
-      "path": "/api/cron/aggregate-usage",
-      "schedule": "5 0 * * *"
-    },
-    {
-      "path": "/api/cron/aggregate-insights",
-      "schedule": "0 * * * *"
-    },
-    {
       "path": "/api/cron/compact-chat-thread-snapshots",
       "schedule": "0 * * * *"
     },

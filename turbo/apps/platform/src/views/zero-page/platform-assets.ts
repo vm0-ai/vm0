@@ -10,7 +10,6 @@ export function avatarSvgAssetUrl(filename: string): string {
 
 export const emptyArtifactImg = zeroPageAssetUrl("assets/empty-artifact.webp");
 export const emptyChatImg = zeroPageAssetUrl("assets/empty-chat.webp");
-export const emptyInsightsImg = zeroPageAssetUrl("assets/empty-insights.webp");
 export const emptyAutomationsImg = zeroPageAssetUrl(
   "assets/empty-automations-fe7f603eaa3c.webp",
 );

@@ -520,26 +520,6 @@ describe("bootstrap locale", () => {
     expect(
       i18n.t(
         ($) => {
-          return $.insights.units.run;
-        },
-        { count: 2, value: "2" },
-      ),
-    ).toBe("2 Ausführungen");
-    expect(
-      i18n.t(
-        ($) => {
-          return $.insights.cards.agentsRan;
-        },
-        {
-          agents: "2 Agenten",
-          count: 2,
-          runs: "12 Ausführungen",
-        },
-      ),
-    ).toBe("2 Agenten haben 12 Ausführungen abgeschlossen");
-    expect(
-      i18n.t(
-        ($) => {
           return $.activity.events.searches;
         },
         { count: 2, formattedCount: "2" },
@@ -553,20 +533,6 @@ describe("bootstrap locale", () => {
         { count: 2, value: "2" },
       ),
     ).toBe("2 Resets übrig");
-    expect(
-      i18n.t(
-        ($) => {
-          return $.insights.summary.highTraffic;
-        },
-        {
-          callCount: "101",
-          count: 1,
-          services: "1 Dienst",
-        },
-      ),
-    ).toBe(
-      "101 Serviceaufrufe über 1 Dienst. Tag mit hohem Verkehrsaufkommen.",
-    );
     expect(
       i18n.t(($) => {
         return $.billing.usage.allowance.title;
