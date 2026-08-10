@@ -34,6 +34,10 @@ import {
   projectUserMessage,
   requiredUserMessageForEvent,
 } from "./zero-chat-user-message.service";
+import {
+  canonicalChatEventContent,
+  canonicalChatEventUserMessage,
+} from "./canonical-chat-event-read.service";
 
 const RECENT_CHAT_RUN_LIMIT = 10;
 const WEB_CHAT_PRIOR_MESSAGE_CHAR_CAP = 4000;
@@ -245,7 +249,7 @@ function lastRunMessageSeqIds(
       and(
         eq(chatEvents.chatThreadId, threadId),
         chatEventTypeIn(CHAT_EVENT_CONTENT_TEXT_TYPES),
-        isNotNull(chatEvents.content),
+        isNotNull(canonicalChatEventContent()),
         inArray(chatEvents.runId, [...runIds]),
         visibleChatEventCondition(db),
       ),
@@ -289,8 +293,8 @@ async function getLatestRunsByThreadId(
     .select({
       runId: chatEvents.runId,
       eventType: chatEvents.eventType,
-      content: chatEvents.content,
-      userMessage: chatEvents.userMessage,
+      content: canonicalChatEventContent(),
+      userMessage: canonicalChatEventUserMessage(),
     })
     .from(chatEvents)
     .where(

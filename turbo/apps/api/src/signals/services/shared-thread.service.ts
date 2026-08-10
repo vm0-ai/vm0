@@ -19,6 +19,11 @@ import { visibleChatEventCondition } from "./zero-chat-event-shared.service";
 import { chatEventTypeIn } from "./zero-chat-event-type.service";
 import { generateSharedThreadTitle } from "./zero-chat-title.service";
 import { projectUserMessageForPublicShare } from "./zero-chat-user-message.service";
+import {
+  canonicalChatEventContent,
+  canonicalChatEventGoalId,
+  canonicalChatEventUserMessage,
+} from "./canonical-chat-event-read.service";
 
 const SHARED_THREAD_MAX_SERIALIZED_BYTES = 2 * 1024 * 1024;
 
@@ -82,10 +87,10 @@ export const createSharedThread$ = command(
     const rows = await database
       .select({
         eventType: chatEvents.eventType,
-        content: chatEvents.content,
-        userMessage: chatEvents.userMessage,
+        content: canonicalChatEventContent(),
+        userMessage: canonicalChatEventUserMessage(),
         runId: chatEvents.runId,
-        runGroupId: chatEvents.runGroupId,
+        runGroupId: canonicalChatEventGoalId(),
       })
       .from(chatEvents)
       .where(

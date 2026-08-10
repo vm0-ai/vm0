@@ -6,6 +6,7 @@ import { alias } from "drizzle-orm/pg-core";
 import { revokeChatEvent, insertChatEvent } from "./zero-chat-event.service";
 import { chatEventTypeIn } from "./zero-chat-event-type.service";
 import type { Tx } from "../../lib/db-types";
+import { canonicalChatEventGoalId } from "./canonical-chat-event-read.service";
 
 type DbTransaction = Tx;
 
@@ -87,7 +88,7 @@ export async function revokeQueuedRunAssistantMarkers(
     .select({
       id: chatEvents.id,
       chatThreadId: chatEvents.chatThreadId,
-      runGroupId: chatEvents.runGroupId,
+      runGroupId: canonicalChatEventGoalId(),
     })
     .from(chatEvents)
     .where(

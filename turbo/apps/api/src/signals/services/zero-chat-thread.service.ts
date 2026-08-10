@@ -4,7 +4,6 @@ import {
   type ChatEventType,
 } from "@vm0/api-contracts/contracts/chat-events";
 import {
-  chatEventResponse,
   type ChatSearchMessage,
   type ChatSearchResult,
   type ChatThreadDraft,
@@ -17,6 +16,8 @@ import {
   type UserMessageInputDocument,
   persistedAttachmentSchema,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import { chatEventFromRow } from "@vm0/api-contracts/contracts/chat-event-row-projection";
+import type { ChatEventRowV4 } from "@vm0/api-contracts/contracts/chat-event-rows";
 import {
   modelProviderCredentialScopeSchema,
   modelProviderTypeSchema,
@@ -29,11 +30,7 @@ import {
 } from "@vm0/api-contracts/contracts/zero-host";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
-import {
-  chatEvents,
-  type ChatEventUsagePayload,
-  type ChatEventUserMessage,
-} from "@vm0/db/schema/chat-event";
+import { chatEvents } from "@vm0/db/schema/chat-event";
 import { chatEventSearchDocs } from "@vm0/db/schema/chat-event-search";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { threadGoals } from "@vm0/db/schema/thread-goal";
@@ -73,6 +70,10 @@ import {
 } from "../../lib/db-structured-result";
 import { type Db, db$, type ReadonlyDb, writeDb$ } from "../external/db";
 import {
+  canonicalChatEventContent,
+  canonicalChatEventUserMessage,
+} from "./canonical-chat-event-read.service";
+import {
   inferMimetype,
   visibleChatEventCondition,
 } from "./zero-chat-event-shared.service";
@@ -89,29 +90,14 @@ import {
 } from "./zero-chat-user-message.service";
 import {
   chatEventTextCondition,
-  legacyRunOwnedChatEventForRunCondition,
+  runOwnedChatEventForRunCondition,
 } from "./zero-chat-event-type.service";
 import { cancellationRecoveryPendingForThread } from "./zero-chat-active-run.service";
 
 const matchedChatEvent = alias(chatEvents, "matched_chat_event");
 
-type ChatEventRow = {
-  readonly id: string;
-  readonly chatThreadId: string;
-  readonly eventType: ChatEventType;
-  readonly content: string | null;
-  readonly userMessage: ChatEventUserMessage | null;
-  readonly thinking: string | null;
-  readonly runId: string | null;
-  readonly runGroupId: string | null;
-  readonly usagePayload: ChatEventUsagePayload | null;
-  readonly runEventId: string | null;
-  readonly error: string | null;
-  readonly seqId: number;
-  readonly sequenceNumber: number | null;
+type ChatEventRow = Omit<ChatEventRowV4, "createdAt"> & {
   readonly createdAt: Date;
-  readonly revokesEventId: string | null;
-  readonly interruptsRunId: string | null;
 };
 
 type ChatSearchMessageRow = {
@@ -160,12 +146,9 @@ type ChatThreadDetailRow = {
   readonly lastReadAt: Date | null;
 };
 
-function effectiveChatEventRunId() {
-  // Keep the public v3 row contract on legacy interrupt semantics while the
-  // canonical storage pointer rolls out: DB/API skew has an observed maximum
-  // of about 102 minutes, and old web/app clients can remain for about two
-  // days. Remove this mask when canonical readers/versioned clients replace
-  // the v3 projection. Follow-up: #26158.
+function publicChatEventRunId() {
+  // Public ChatEvent responses preserve their established shape: an interrupt
+  // exposes its canonical target as interruptsRunId, never as run ownership.
   return sql`CASE
     WHEN ${chatEvents.eventType} = 'control.interrupt' THEN NULL
     ELSE ${chatEvents.runId}
@@ -178,19 +161,15 @@ const eventColumns = {
   id: chatEvents.id,
   chatThreadId: chatEvents.chatThreadId,
   eventType: chatEvents.eventType,
-  content: chatEvents.content,
-  userMessage: chatEvents.userMessage,
-  thinking: chatEvents.thinking,
-  runId: effectiveChatEventRunId(),
-  runGroupId: chatEvents.runGroupId,
-  usagePayload: chatEvents.usagePayload,
+  runId: chatEvents.runId,
+  payload: chatEvents.payload,
+  contextType: chatEvents.contextType,
+  contextId: chatEvents.contextId,
   runEventId: chatEvents.runEventId,
-  error: chatEvents.error,
   seqId: chatEvents.seqId,
-  sequenceNumber: chatEvents.runEventSequenceNumber,
+  runEventSequenceNumber: chatEvents.runEventSequenceNumber,
   createdAt: chatEvents.createdAt,
   revokesEventId: chatEvents.revokesEventId,
-  interruptsRunId: chatEvents.interruptsRunId,
 } as const;
 
 function selectChatEvents(db: Pick<Db, "select">) {
@@ -201,12 +180,12 @@ const searchMessageColumns = {
   messageId: chatEvents.id,
   chatThreadId: chatEvents.chatThreadId,
   eventType: chatEvents.eventType,
-  content: chatEvents.content,
-  userMessage: chatEvents.userMessage,
+  content: canonicalChatEventContent(),
+  userMessage: canonicalChatEventUserMessage(),
   createdAt: chatEvents.createdAt,
   seqId: chatEvents.seqId,
   sequenceNumber: chatEvents.runEventSequenceNumber,
-  runId: effectiveChatEventRunId(),
+  runId: publicChatEventRunId(),
 } as const;
 
 const searchContextMessageColumns = {
@@ -214,6 +193,8 @@ const searchContextMessageColumns = {
   eventType: sql`${chatEvents.eventType}`
     .mapWith(chatEvents.eventType)
     .as("context_event_type"),
+  content: canonicalChatEventContent().as("context_content"),
+  userMessage: canonicalChatEventUserMessage().as("context_user_message"),
 } as const;
 
 function parseHostedArtifactKind(
@@ -356,277 +337,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function normalizeUsagePayload(
-  value: ChatEventUsagePayload | null,
-): Extract<ChatEvent, { eventType: "usage.recorded" }>["usage"] | undefined {
-  if (value === null) {
-    return undefined;
-  }
-
-  return {
-    version: value.version,
-    totalCredits: value.totalCredits,
-    settledAt: value.settledAt,
-    breakdown: value.breakdown.map((kind) => {
-      return {
-        kind: kind.kind,
-        credits: kind.credits,
-        providers: kind.providers.map((provider) => {
-          return {
-            provider: provider.provider,
-            credits: provider.credits,
-          };
-        }),
-      };
-    }),
-  };
-}
-
-function requiredChatEventField<T>(
-  value: T | null,
-  eventType: ChatEventType,
-  field: string,
-): T {
-  if (value === null) {
-    throw new Error(`${eventType} chat event is missing ${field}`);
-  }
-  return value;
-}
-
-function baseChatEventFromRow(row: ChatEventRow, content: string | null) {
-  return {
-    id: row.id,
-    threadId: row.chatThreadId,
-    content,
-    runId: row.runId ?? undefined,
-    runGroupId: row.runGroupId ?? undefined,
-    runEventId: row.runEventId ?? undefined,
-    revokesEventId: row.revokesEventId ?? undefined,
-    seqId: row.seqId,
-    sequenceNumber: row.sequenceNumber,
-    createdAt: row.createdAt.toISOString(),
-  };
-}
-
-type ChatEventBase = ReturnType<typeof baseChatEventFromRow>;
-type ChatEventBuilder = (row: ChatEventRow, event: ChatEventBase) => ChatEvent;
-
-const chatEventBuilders = {
-  "input.prompt": (row, event) => {
-    return {
-      ...event,
-      eventType: "input.prompt",
-      content: null,
-      userMessage: requiredChatEventField(
-        row.userMessage,
-        row.eventType,
-        "userMessage",
-      ),
-    };
-  },
-  "input.automation": (row, event) => {
-    return {
-      ...event,
-      eventType: "input.automation",
-      content: null,
-      userMessage: row.userMessage ?? undefined,
-    };
-  },
-  "input.goal": (row, event) => {
-    return {
-      id: event.id,
-      threadId: event.threadId,
-      eventType: "input.goal",
-      content: null,
-      userMessage: requiredChatEventField(
-        row.userMessage,
-        row.eventType,
-        "userMessage",
-      ),
-      seqId: event.seqId,
-      createdAt: event.createdAt,
-    };
-  },
-  "input.budget": (row, event) => {
-    return {
-      ...event,
-      eventType: "input.budget",
-      content: null,
-      userMessage: requiredChatEventField(
-        row.userMessage,
-        row.eventType,
-        "userMessage",
-      ),
-    };
-  },
-  "input.rejected": (row, event) => {
-    return {
-      ...event,
-      eventType: "input.rejected",
-      content: null,
-      userMessage: requiredChatEventField(
-        row.userMessage,
-        row.eventType,
-        "userMessage",
-      ),
-      error: requiredChatEventField(row.error, row.eventType, "error"),
-    };
-  },
-  "output.message": (row, event) => {
-    return {
-      ...event,
-      eventType: "output.message",
-      content: requiredChatEventField(row.content, row.eventType, "content"),
-    };
-  },
-  "output.error": (row, event) => {
-    return {
-      ...event,
-      eventType: "output.error",
-      error: requiredChatEventField(row.error, row.eventType, "error"),
-    };
-  },
-  "output.thinking": (row, event) => {
-    return {
-      ...event,
-      eventType: "output.thinking",
-      content: null,
-      thinking: requiredChatEventField(row.thinking, row.eventType, "thinking"),
-    };
-  },
-  "output.followups": (row, event) => {
-    return {
-      ...event,
-      eventType: "output.followups",
-      content: requiredChatEventField(row.content, row.eventType, "content"),
-    };
-  },
-  "run.queued": (row, event) => {
-    return {
-      ...event,
-      eventType: "run.queued",
-      runId: requiredChatEventField(row.runId, row.eventType, "runId"),
-      content: requiredChatEventField(row.content, row.eventType, "content"),
-    };
-  },
-  "run.dequeued": (row, event) => {
-    return {
-      ...event,
-      eventType: "run.dequeued",
-      runId: requiredChatEventField(row.runId, row.eventType, "runId"),
-      content: null,
-      revokesEventId: requiredChatEventField(
-        row.revokesEventId,
-        row.eventType,
-        "revokesEventId",
-      ),
-    };
-  },
-  "run.completed": (row, event) => {
-    return {
-      ...event,
-      eventType: "run.completed",
-      runId: requiredChatEventField(row.runId, row.eventType, "runId"),
-      runLifecycleEvent: "completed",
-    };
-  },
-  "run.failed": (row, event) => {
-    return {
-      ...event,
-      eventType: "run.failed",
-      runId: requiredChatEventField(row.runId, row.eventType, "runId"),
-      error: row.error ?? undefined,
-      runLifecycleEvent: "failed",
-    };
-  },
-  "run.cancelled": (row, event) => {
-    return {
-      ...event,
-      eventType: "run.cancelled",
-      runId: requiredChatEventField(row.runId, row.eventType, "runId"),
-      error: row.error ?? undefined,
-      runLifecycleEvent: "cancelled",
-    };
-  },
-  "control.interrupt": (row, event) => {
-    return {
-      ...event,
-      eventType: "control.interrupt",
-      content: null,
-      interruptsRunId: requiredChatEventField(
-        row.interruptsRunId,
-        row.eventType,
-        "interruptsRunId",
-      ),
-    };
-  },
-  "control.revoke": (row, event) => {
-    return {
-      ...event,
-      eventType: "control.revoke",
-      content: null,
-      revokesEventId: requiredChatEventField(
-        row.revokesEventId,
-        row.eventType,
-        "revokesEventId",
-      ),
-    };
-  },
-  "browser.open": (_row, event) => {
-    return {
-      ...event,
-      eventType: "browser.open",
-      content: null,
-    };
-  },
-  "browser.close": (_row, event) => {
-    return {
-      ...event,
-      eventType: "browser.close",
-      content: null,
-    };
-  },
-  "goal.open": (row, event) => {
-    return {
-      id: event.id,
-      threadId: event.threadId,
-      eventType: "goal.open",
-      content: requiredChatEventField(row.content, row.eventType, "content"),
-      seqId: event.seqId,
-      createdAt: event.createdAt,
-    };
-  },
-  "goal.close": (_row, event) => {
-    return {
-      id: event.id,
-      threadId: event.threadId,
-      eventType: "goal.close",
-      content: null,
-      seqId: event.seqId,
-      createdAt: event.createdAt,
-    };
-  },
-  "usage.recorded": (row, event) => {
-    return {
-      ...event,
-      eventType: "usage.recorded",
-      runId: requiredChatEventField(row.runId, row.eventType, "runId"),
-      content: null,
-      usage: requiredChatEventField(
-        normalizeUsagePayload(row.usagePayload) ?? null,
-        row.eventType,
-        "usage",
-      ),
-    };
-  },
-} satisfies Record<ChatEvent["eventType"], ChatEventBuilder>;
-
 function toChatEvent(row: ChatEventRow): ChatEvent {
-  const event = chatEventBuilders[row.eventType](
-    row,
-    baseChatEventFromRow(row, row.content),
-  );
-  return chatEventResponse(event);
+  return chatEventFromRow({
+    ...row,
+    createdAt: row.createdAt.toISOString(),
+  });
 }
 
 const ACTIVE_RUN_STATUSES = ["queued", "pending", "running"] as const;
@@ -898,7 +613,7 @@ function loadZeroChatThreadArtifactRows(
               .select({ id: chatEvents.id })
               .from(chatEvents)
               .where(
-                legacyRunOwnedChatEventForRunCondition({
+                runOwnedChatEventForRunCondition({
                   runId: runUploadedFiles.runId,
                   chatThreadId: args.threadId,
                 }),

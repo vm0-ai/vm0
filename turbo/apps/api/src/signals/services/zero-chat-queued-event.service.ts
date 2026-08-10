@@ -54,6 +54,7 @@ import {
   createUserMessageDocument,
   withRunModelAnnotation,
 } from "./zero-chat-user-message.service";
+import { canonicalChatEventUserMessage } from "./canonical-chat-event-read.service";
 
 type DbTransaction = Tx;
 
@@ -265,7 +266,7 @@ export async function loadNextUnclaimedQueuedUserMessage(
     .select({
       id: chatEvents.id,
       createdAt: chatEvents.createdAt,
-      userMessage: chatEvents.userMessage,
+      userMessage: canonicalChatEventUserMessage(),
       modelProviderId: sql`NULL`.mapWith(pgNullDecoder),
       modelProviderType: sql`NULL`.mapWith(pgNullDecoder),
       modelProviderCredentialScope: sql`NULL`.mapWith(pgNullDecoder),
@@ -357,7 +358,7 @@ async function resolveUserQueueFirstClaimSnapshot(
   const [head] = await db
     .select({
       ...queueFirstReplacementTargetFields,
-      userMessage: chatEvents.userMessage,
+      userMessage: canonicalChatEventUserMessage(),
     })
     .from(chatEvents)
     .where(
@@ -408,7 +409,7 @@ async function resolveAutomationEventQueueFirstClaimSnapshot(
       ...queueFirstReplacementTargetFields,
       automationId: chatAutomationContext.automationId,
       automationKind: zeroWorkflowAutomations.kind,
-      userMessage: chatEvents.userMessage,
+      userMessage: canonicalChatEventUserMessage(),
     })
     .from(chatEvents)
     .leftJoin(
@@ -484,7 +485,8 @@ async function resolveGoalQueueFirstClaimSnapshot(
         eq(threadGoals.chatThreadId, chatEvents.chatThreadId),
         eq(threadGoals.orgId, args.orgId),
         eq(threadGoals.ownerUserId, args.userId),
-        eq(chatEvents.runGroupId, threadGoals.id),
+        eq(chatEvents.contextType, "goal"),
+        eq(chatEvents.contextId, threadGoals.id),
         // Match the lossless revision captured before run preparation.
         eq(sql`${threadGoals.updatedAt}::text`, args.goalStateRevision),
       ),
@@ -839,7 +841,7 @@ export async function failQueuedUserMessage(
 
     const [queued] = await tx
       .select({
-        userMessage: chatEvents.userMessage,
+        userMessage: canonicalChatEventUserMessage(),
         createdAt: chatEvents.createdAt,
       })
       .from(chatEvents)

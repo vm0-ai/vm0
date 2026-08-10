@@ -21,7 +21,7 @@ import { publishUserSignal } from "../external/realtime";
 import { tapError } from "../utils";
 import { assistantEventIdForRunEvent } from "./assistant-event-id";
 import {
-  runGroupIdForRun,
+  goalIdForRun,
   visibleChatEventCondition,
 } from "./zero-chat-event-shared.service";
 import { insertChatEvent } from "./zero-chat-event.service";
@@ -31,6 +31,11 @@ import {
   projectUserMessage,
   requiredUserMessageForEvent,
 } from "./zero-chat-user-message.service";
+import {
+  canonicalChatEventContent,
+  canonicalChatEventError,
+  canonicalChatEventUserMessage,
+} from "./canonical-chat-event-read.service";
 
 const log = logger("api:zero:chat-initial-thinking");
 
@@ -84,8 +89,8 @@ async function loadThinkingContextMessages(args: {
   const rows = await args.db
     .select({
       eventType: chatEvents.eventType,
-      content: chatEvents.content,
-      userMessage: chatEvents.userMessage,
+      content: canonicalChatEventContent(),
+      userMessage: canonicalChatEventUserMessage(),
       createdAt: chatEvents.createdAt,
       sequenceNumber: chatEvents.runEventSequenceNumber,
     })
@@ -102,11 +107,11 @@ async function loadThinkingContextMessages(args: {
         or(
           and(
             chatEventTypeIn(["input.prompt", "input.rejected"]),
-            isNotNull(chatEvents.userMessage),
+            isNotNull(canonicalChatEventUserMessage()),
           ),
           and(
             not(chatEventTypeIn(["input.prompt", "input.rejected"])),
-            isNotNull(chatEvents.content),
+            isNotNull(canonicalChatEventContent()),
           ),
         ),
         visibleChatEventCondition(args.db),
@@ -174,7 +179,10 @@ async function runCanReceiveThinkingMessage(args: {
           "run.failed",
           "run.cancelled",
         ]),
-        or(isNotNull(chatEvents.content), isNotNull(chatEvents.error)) as SQL,
+        or(
+          isNotNull(canonicalChatEventContent()),
+          isNotNull(canonicalChatEventError()),
+        ) as SQL,
       ),
     )
     .limit(1);
@@ -261,7 +269,7 @@ export async function generateAndPersistInitialThinkingMessage(args: {
     return false;
   }
 
-  const runGroupId = await runGroupIdForRun(args.db, args.runId);
+  const goalId = await goalIdForRun(args.db, args.runId);
   const inserted = await args.db.transaction(async (tx) => {
     return await insertChatEvent(
       tx,
@@ -272,7 +280,7 @@ export async function generateAndPersistInitialThinkingMessage(args: {
         ),
         chatThreadId: args.threadId,
         runId: args.runId,
-        runGroupId,
+        runGroupId: goalId,
         eventType: "output.thinking",
         content: null,
         thinking,

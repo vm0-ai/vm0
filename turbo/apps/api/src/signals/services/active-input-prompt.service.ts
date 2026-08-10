@@ -17,6 +17,7 @@ import {
   requiredUserMessageForEvent,
 } from "./zero-chat-user-message.service";
 import { pendingActiveInputCondition } from "./chat-event-queue.service";
+import { canonicalChatEventUserMessage } from "./canonical-chat-event-read.service";
 
 type ChatEventContextType = NonNullable<
   (typeof chatEvents.$inferSelect)["contextType"]
@@ -87,7 +88,7 @@ export function pendingActiveInputRows(
       eventType: chatEvents.eventType,
       contextType: chatEvents.contextType,
       contextId: chatEvents.contextId,
-      userMessage: chatEvents.userMessage,
+      userMessage: canonicalChatEventUserMessage(),
       seqId: chatEvents.seqId,
     })
     .from(chatEvents)
@@ -115,7 +116,7 @@ export function activeInputRowsByIds(
       eventType: chatEvents.eventType,
       contextType: chatEvents.contextType,
       contextId: chatEvents.contextId,
-      userMessage: chatEvents.userMessage,
+      userMessage: canonicalChatEventUserMessage(),
       seqId: chatEvents.seqId,
     })
     .from(chatEvents)

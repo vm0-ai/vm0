@@ -14,6 +14,10 @@ import {
   projectUserMessage,
   requiredUserMessageForEvent,
 } from "./zero-chat-user-message.service";
+import {
+  canonicalChatEventContent,
+  canonicalChatEventUserMessage,
+} from "./canonical-chat-event-read.service";
 
 interface ChatEventSearchProjectionStats {
   readonly threads: number;
@@ -96,8 +100,8 @@ async function projectThread(
       .select({
         id: chatEvents.id,
         eventType: chatEvents.eventType,
-        content: chatEvents.content,
-        userMessage: chatEvents.userMessage,
+        content: canonicalChatEventContent(),
+        userMessage: canonicalChatEventUserMessage(),
         revokesEventId: chatEvents.revokesEventId,
         seqId: chatEvents.seqId,
         createdAt: chatEvents.createdAt,

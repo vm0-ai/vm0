@@ -6,12 +6,9 @@ const requiredJsonValueSchema = z.unknown().refine((value) => {
 }, "Expected a JSON value");
 
 /**
- * One raw chat_events row, exactly as archived into R2 snapshot objects and
- * served by the /event-rows tail endpoint. This is the persisted wire shape
- * behind the snapshot-read pipeline: clients cache these rows verbatim and
- * project them into ChatEvent at the read boundary. The archiver's
- * ARCHIVE_SCHEMA_VERSION tracks this shape; changing it requires a version
- * bump there.
+ * Retained v3 raw-row shape for already-published R2 snapshots. New archive
+ * objects and /event-rows responses use chatEventRowV4Schema, but rollout
+ * readers keep this strict schema until the retained v3 object window closes.
  */
 export const chatEventRowSchema = z
   .object({

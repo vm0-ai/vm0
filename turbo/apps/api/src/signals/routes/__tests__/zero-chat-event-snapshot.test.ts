@@ -1,10 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { chatEventFromRow } from "@vm0/api-contracts/contracts/chat-event-row-projection";
-import {
-  canonicalChatEventRow,
-  chatEventRowSchema,
-} from "@vm0/api-contracts/contracts/chat-event-rows";
+import { chatEventRowV4Schema } from "@vm0/api-contracts/contracts/chat-event-rows";
 import { chatThreadEventsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   cronProjectChatEventSearchContract,
@@ -157,7 +154,7 @@ describe("chat event snapshot read endpoints", () => {
     );
     // The snapshot cron scope is global, so an unsupported head left behind
     // would fail every later pass in the suite.
-    await setChatEventSnapshotHeadVersion(context, threadId, 3);
+    await setChatEventSnapshotHeadVersion(context, threadId, 4);
 
     const stranger = bdd.user({ orgId: `org_${randomUUID()}` });
     const strangerResponse = await accept(
@@ -210,12 +207,17 @@ describe("chat event snapshot read endpoints", () => {
       [200],
     );
     for (const row of rows.body.rows) {
-      chatEventRowSchema.parse(row);
+      chatEventRowV4Schema.parse(row);
       expect(row.chatThreadId).toBe(threadId);
+      expect(row).not.toHaveProperty("content");
+      expect(row).not.toHaveProperty("userMessage");
+      expect(row).not.toHaveProperty("usagePayload");
+      expect(row).not.toHaveProperty("interruptsRunId");
+      expect(row).not.toHaveProperty("runGroupId");
     }
 
     const projected = rows.body.rows.map((row) => {
-      return chatEventFromRow(canonicalChatEventRow(row));
+      return chatEventFromRow(row);
     });
     const expected = events.body.events.filter((event) => {
       return event.seqId > firstSeqId;

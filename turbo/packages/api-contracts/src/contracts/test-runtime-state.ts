@@ -124,6 +124,7 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     action: z.literal("set-chat-event-snapshot-head-version"),
     thread_id: z.uuid(),
     archive_schema_version: z.int().positive(),
+    object_key: z.string().optional(),
   }),
   z.object({
     action: z.literal("clear-run-api-start"),

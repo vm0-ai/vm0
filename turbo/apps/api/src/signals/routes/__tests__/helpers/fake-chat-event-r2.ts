@@ -88,20 +88,25 @@ function fakePutObject(
   record: FakeS3CommandRecord,
   key: string,
   recordedPuts?: RecordedChatEventPut[],
+  beforePut?: (put: RecordedChatEventPut) => Promise<void>,
 ) {
   const body = record.input?.Body;
   if (!Buffer.isBuffer(body)) {
     throw new Error("expected a Buffer body for chat-events puts");
   }
-  writeFakeChatEventObject(key, body);
-  recordedPuts?.push({
+  const put = {
     bucket: record.input?.Bucket ?? "",
     key,
     contentType: record.input?.ContentType,
     contentEncoding: record.input?.ContentEncoding,
     body,
-  });
-  return Promise.resolve({});
+  };
+  return (async () => {
+    await beforePut?.(put);
+    writeFakeChatEventObject(key, body);
+    recordedPuts?.push(put);
+    return {};
+  })();
 }
 
 function fakeGetObject(key: string) {
@@ -153,13 +158,14 @@ function fakeDeleteObjects(record: FakeS3CommandRecord) {
 function handleFakeS3Command(
   command: unknown,
   recordedPuts?: RecordedChatEventPut[],
+  beforePut?: (put: RecordedChatEventPut) => Promise<void>,
 ) {
   const record = command as FakeS3CommandRecord;
   const commandName = record.constructor.name;
   const key = record.input?.Key;
   if (key?.startsWith("chat-events/") === true) {
     if (commandName === "PutObjectCommand") {
-      return fakePutObject(record, key, recordedPuts);
+      return fakePutObject(record, key, recordedPuts, beforePut);
     }
     if (commandName === "GetObjectCommand") {
       return fakeGetObject(key);
@@ -177,11 +183,12 @@ function handleFakeS3Command(
 export function installFakeChatEventR2(
   context: TestContext,
   recordedPuts?: RecordedChatEventPut[],
+  beforePut?: (put: RecordedChatEventPut) => Promise<void>,
 ): void {
   // The suite-wide mock reset primes getSignedUrl in afterEach, so the first
   // test of a file starts unprimed; presigned downloads are part of this fake.
   context.mocks.s3.getSignedUrl.mockResolvedValue(FAKE_CHAT_EVENT_SNAPSHOT_URL);
   context.mocks.s3.send.mockImplementation((command: unknown) => {
-    return handleFakeS3Command(command, recordedPuts);
+    return handleFakeS3Command(command, recordedPuts, beforePut);
   });
 }

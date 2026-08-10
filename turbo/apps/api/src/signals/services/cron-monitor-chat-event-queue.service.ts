@@ -171,7 +171,8 @@ function missingGoalRowCondition(db: Db) {
         .from(threadGoals)
         .where(
           and(
-            eq(threadGoals.id, chatEvents.runGroupId),
+            eq(chatEvents.contextType, "goal"),
+            eq(threadGoals.id, chatEvents.contextId),
             eq(threadGoals.chatThreadId, chatEvents.chatThreadId),
           ),
         ),

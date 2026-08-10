@@ -35,7 +35,7 @@ const TERMINAL_RUN_STATUSES = ["completed", "failed", "cancelled"] as const;
 const USAGE_CONTEXT_GROUP_BY_COLUMNS = [
   agentRuns.status,
   zeroRuns.chatThreadId,
-  zeroRuns.runGroupId,
+  zeroRuns.goalId,
   chatThreads.userId,
 ] as const;
 
@@ -74,7 +74,7 @@ async function loadUsageEventContext(tx: WriteTx, runId: string) {
     .select({
       status: agentRuns.status,
       chatThreadId: zeroRuns.chatThreadId,
-      runGroupId: zeroRuns.runGroupId,
+      goalId: zeroRuns.goalId,
       userId: chatThreads.userId,
       hasPending: exists(
         tx
@@ -184,7 +184,7 @@ export const maybeEmitRunUsageEvent$ = command(
         eventType: "usage.recorded",
         content: null,
         runId,
-        runGroupId: context.runGroupId,
+        runGroupId: context.goalId,
         usagePayload: payload,
         createdAt: new Date(payload.settledAt),
       });

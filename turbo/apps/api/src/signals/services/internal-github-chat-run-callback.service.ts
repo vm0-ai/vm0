@@ -25,6 +25,7 @@ import {
   removeGithubCommentReaction,
 } from "./github-issues-api.service";
 import { chatEventTypeIn } from "./zero-chat-event-type.service";
+import { canonicalChatEventContent } from "./canonical-chat-event-read.service";
 import { resolveGithubAgentReplyFooterText } from "./zero-github-footer.service";
 
 const L = logger("InternalCallbacksGithubChat");
@@ -137,7 +138,7 @@ async function loadGitHubChatDeliveryContext(
   };
 
   const [event] = await args.db
-    .select({ content: chatEvents.content })
+    .select({ content: canonicalChatEventContent() })
     .from(chatEvents)
     .where(
       and(
@@ -150,7 +151,7 @@ async function loadGitHubChatDeliveryContext(
           "run.failed",
           "run.cancelled",
         ]),
-        isNotNull(chatEvents.content),
+        isNotNull(canonicalChatEventContent()),
       ),
     )
     .limit(1);
@@ -402,14 +403,14 @@ export async function deliverGitHubChatAdmissionFailure(
   signal: AbortSignal,
 ): Promise<void> {
   const [event] = await args.db
-    .select({ content: chatEvents.content })
+    .select({ content: canonicalChatEventContent() })
     .from(chatEvents)
     .where(
       and(
         eq(chatEvents.id, args.chatEventId),
         eq(chatEvents.chatThreadId, args.chatThreadId),
         chatEventTypeIn(["output.error"]),
-        isNotNull(chatEvents.content),
+        isNotNull(canonicalChatEventContent()),
       ),
     )
     .limit(1);

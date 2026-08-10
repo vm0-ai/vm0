@@ -124,7 +124,7 @@ import type { ChatRunFinishedEvent } from "./chat-run-finished-event";
 import {
   insertAssistantEvents,
   insertAssistantEvents$,
-  runGroupIdForRun,
+  goalIdForRun,
   touchChatThreadLastMessageAt,
   type InsertAssistantEventsInput,
   visibleChatEventCondition,
@@ -180,6 +180,10 @@ import {
   chatEventTextCondition,
   chatEventTypeIn,
 } from "./zero-chat-event-type.service";
+import {
+  canonicalChatEventContent,
+  canonicalChatEventUserMessage,
+} from "./canonical-chat-event-read.service";
 import {
   loadSlackQueuedLaunchMaterial,
   type SlackQueuedLaunchMaterial,
@@ -949,7 +953,7 @@ async function latestEventBackedAssistantEvent(
 ): Promise<AssistantEventItem | null> {
   const [event] = await db
     .select({
-      content: chatEvents.content,
+      content: canonicalChatEventContent(),
       sequenceNumber: chatEvents.runEventSequenceNumber,
     })
     .from(chatEvents)
@@ -958,8 +962,8 @@ async function latestEventBackedAssistantEvent(
         eq(chatEvents.runId, runId),
         chatEventTypeIn(["output.message"]),
         isNotNull(chatEvents.runEventSequenceNumber),
-        isNotNull(chatEvents.content),
-        not(sql`${chatEvents.content} ~ '^[[:space:]]*$'`),
+        isNotNull(canonicalChatEventContent()),
+        not(sql`${canonicalChatEventContent()} ~ '^[[:space:]]*$'`),
         ...(options.maxSequenceNumber === undefined
           ? []
           : [
@@ -1409,7 +1413,7 @@ async function insertAssistantErrorEvent(args: {
   readonly sourceCallbackId?: string;
 }): Promise<FailedChatCallbackResult> {
   const displayErrorMessage = await args.getFormattedError();
-  const runGroupId = await runGroupIdForRun(args.db, args.runId);
+  const goalId = await goalIdForRun(args.db, args.runId);
   const inserted = await args.db.transaction(async (tx) => {
     const event = await insertChatEvent(
       tx,
@@ -1419,7 +1423,7 @@ async function insertAssistantErrorEvent(args: {
           args.lifecycleEvent === "failed" ? "run.failed" : "run.cancelled",
         content: displayErrorMessage,
         runId: args.runId,
-        runGroupId,
+        runGroupId: goalId,
         error: displayErrorMessage,
       },
       "run-lifecycle",
@@ -1553,7 +1557,7 @@ async function loadCanonicalDeliveryEvent(
       and(
         eq(chatEvents.runId, runId),
         chatEventTypeIn(["output.message"]),
-        isNotNull(chatEvents.content),
+        isNotNull(canonicalChatEventContent()),
         isNotNull(chatEvents.runEventSequenceNumber),
       ),
     )
@@ -1566,7 +1570,7 @@ async function insertIntegrationCompletionFallback(args: {
   readonly db: ChatCallbackTransaction;
   readonly runId: string;
   readonly threadId: string;
-  readonly runGroupId: string | null | undefined;
+  readonly goalId: string | null | undefined;
   readonly createdAt: Date;
 }): Promise<CanonicalDeliveryEvent> {
   const eventId = integrationCompletionFallbackEventIdForRun(args.runId);
@@ -1578,7 +1582,7 @@ async function insertIntegrationCompletionFallback(args: {
       eventType: "output.message",
       content: "Task completed successfully.",
       runId: args.runId,
-      runGroupId: args.runGroupId,
+      runGroupId: args.goalId,
       createdAt: args.createdAt,
     },
     "id",
@@ -1652,7 +1656,7 @@ async function insertRunLifecycleMarkerTransaction(args: {
   readonly tx: ChatCallbackTransaction;
   readonly input: RunLifecycleMarkerArgs;
   readonly markerCreatedAt: Date;
-  readonly runGroupId: string | undefined;
+  readonly goalId: string | undefined;
 }): Promise<RunLifecycleDeliveryCallbacks | null> {
   const { input } = args;
   if (
@@ -1671,7 +1675,7 @@ async function insertRunLifecycleMarkerTransaction(args: {
       db: args.tx,
       runId: input.runId,
       threadId: input.threadId,
-      runGroupId: args.runGroupId,
+      goalId: args.goalId,
       createdAt: args.markerCreatedAt,
     });
   }
@@ -1683,7 +1687,7 @@ async function insertRunLifecycleMarkerTransaction(args: {
         input.event === "completed" ? "run.completed" : "run.cancelled",
       content: null,
       runId: input.runId,
-      runGroupId: args.runGroupId,
+      runGroupId: args.goalId,
       createdAt: args.markerCreatedAt,
     },
     "run-lifecycle",
@@ -1773,13 +1777,13 @@ async function insertRunLifecycleMarker(
   | ({ readonly inserted: true } & RunLifecycleDeliveryCallbacks)
 > {
   const markerCreatedAt = nowDate();
-  const runGroupId = await runGroupIdForRun(args.db, args.runId);
+  const goalId = await goalIdForRun(args.db, args.runId);
   const inserted = await args.db.transaction(async (tx) => {
     return await insertRunLifecycleMarkerTransaction({
       tx,
       input: args,
       markerCreatedAt,
-      runGroupId,
+      goalId,
     });
   });
   if (!inserted) {
@@ -1805,7 +1809,7 @@ async function insertRecommendedFollowupsEvent(args: {
   readonly userId: string;
   readonly followups: readonly ChatRecommendedFollowup[];
 }): Promise<boolean> {
-  const runGroupId = await runGroupIdForRun(args.db, args.runId);
+  const goalId = await goalIdForRun(args.db, args.runId);
   const inserted = await args.db.transaction(async (tx) => {
     return await insertChatEvent(
       tx,
@@ -1815,7 +1819,7 @@ async function insertRecommendedFollowupsEvent(args: {
         eventType: "output.followups",
         content: serializeChatFollowupsContent(args.followups),
         runId: args.runId,
-        runGroupId,
+        runGroupId: goalId,
       },
       "id",
     );
@@ -2394,8 +2398,8 @@ async function getLatestRunsByThreadId(
     .select({
       runId: chatEvents.runId,
       eventType: chatEvents.eventType,
-      content: chatEvents.content,
-      userMessage: chatEvents.userMessage,
+      content: canonicalChatEventContent(),
+      userMessage: canonicalChatEventUserMessage(),
       createdAt: chatEvents.createdAt,
       sequenceNumber: chatEvents.runEventSequenceNumber,
     })
@@ -2741,9 +2745,9 @@ type LaunchLoader = (
 
 /**
  * Web is the only trigger source with no context table: the user typed the
- * message, so `chat_events.user_message` *is* the durable original fact rather
- * than a display copy of something stored elsewhere. This is the one place a
- * launch loader reads it, and it is deliberate.
+ * message, so `chat_events.payload.userMessage` is the durable original fact
+ * rather than a display copy of something stored elsewhere. This is the one
+ * place a launch loader reads it, and it is deliberate.
  */
 const loadWebQueuedLaunchMaterial: LaunchLoader = (_db, args) => {
   return Promise.resolve({

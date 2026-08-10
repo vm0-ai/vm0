@@ -100,7 +100,7 @@ interface ThreadFixture {
   readonly threadId: string;
   readonly promptEventRow: ChatEventRow;
   readonly assistantEventRow: ChatEventRow;
-  readonly tailEventRow: ChatEventRow;
+  readonly tailEventRow: ChatEventRowV4;
 }
 
 function threadFixture(): ThreadFixture {
@@ -109,7 +109,7 @@ function threadFixture(): ThreadFixture {
     threadId,
     promptEventRow: promptRow(threadId, 1, "snapshot prompt"),
     assistantEventRow: baseRow(threadId, 2),
-    tailEventRow: baseRow(threadId, 3),
+    tailEventRow: canonicalChatEventRow(baseRow(threadId, 3)),
   };
 }
 
@@ -356,7 +356,9 @@ describe("chat event snapshot read", () => {
     context.mocks.api(chatThreadEventsContract.rows, ({ query, respond }) => {
       rowRequests.push(query.sinceSeqId);
       if (query.sinceSeqId === 0) {
-        return respond(200, { rows: [promptEventRow, assistantEventRow] });
+        return respond(200, {
+          rows: [promptEventRow, assistantEventRow].map(canonicalChatEventRow),
+        });
       }
       return respond(200, { rows: [] });
     });

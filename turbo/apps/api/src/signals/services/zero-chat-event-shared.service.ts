@@ -24,8 +24,9 @@ import { assistantEventIdForRunEvent } from "./assistant-event-id";
 import { insertChatEvents } from "./zero-chat-event.service";
 import {
   chatEventTypeIn,
-  legacyRunOwnedChatEventCondition,
+  runOwnedChatEventCondition,
 } from "./zero-chat-event-type.service";
+import { canonicalChatEventError } from "./canonical-chat-event-read.service";
 import { publishFirstAssistantEventCreatedSafely } from "./zero-chat-first-assistant-event-metric.service";
 import {
   appendChatThreadEvent,
@@ -121,9 +122,9 @@ export function visibleChatEventCondition(
     "control.interrupt",
     "control.revoke",
   ]);
-  const hasLegacyRunOwner = and(
+  const hasRunOwner = and(
     isNotNull(chatEvents.runId),
-    legacyRunOwnedChatEventCondition(),
+    runOwnedChatEventCondition(),
   );
   return and(
     not(chatEventTypeIn(["input.goal"])),
@@ -135,40 +136,36 @@ export function visibleChatEventCondition(
     ),
     or(
       not(isUserInputEvent),
-      hasLegacyRunOwner,
+      hasRunOwner,
       isNull(chatEvents.revokesEventId),
-      isNotNull(chatEvents.error),
+      isNotNull(canonicalChatEventError()),
     ),
-    or(
-      not(isUserInputEvent),
-      hasLegacyRunOwner,
-      isNull(chatEvents.interruptsRunId),
-    ),
+    not(chatEventTypeIn(["control.interrupt"])),
   );
 }
 
-export async function runGroupIdForRun(
+export async function goalIdForRun(
   db: Db,
   runId: string,
 ): Promise<string | undefined> {
   const [run] = await db
-    .select({ runGroupId: zeroRuns.runGroupId })
+    .select({ goalId: zeroRuns.goalId })
     .from(zeroRuns)
     .where(eq(zeroRuns.id, runId))
     .limit(1);
-  return run?.runGroupId ?? undefined;
+  return run?.goalId ?? undefined;
 }
 
 async function assistantEventRunContextForRun(
   db: ChatThreadEventTransaction,
   runId: string,
 ): Promise<{
-  readonly runGroupId: string | undefined;
+  readonly goalId: string | undefined;
   readonly shouldAttemptFirstAssistantEventClaim: boolean;
 }> {
   const [run] = await db
     .select({
-      runGroupId: zeroRuns.runGroupId,
+      goalId: zeroRuns.goalId,
       apiStartedAt: zeroRuns.apiStartedAt,
       firstAssistantEventAcknowledgedAt:
         zeroRuns.firstAssistantEventAcknowledgedAt,
@@ -177,7 +174,7 @@ async function assistantEventRunContextForRun(
     .where(eq(zeroRuns.id, runId))
     .limit(1);
   return {
-    runGroupId: run?.runGroupId ?? undefined,
+    goalId: run?.goalId ?? undefined,
     shouldAttemptFirstAssistantEventClaim:
       run !== undefined &&
       run.apiStartedAt !== null &&
@@ -212,7 +209,7 @@ export async function insertAssistantEventsInTransaction(
         id: assistantEventIdForRunEvent(args.runId, item.runEventId),
         chatThreadId: args.threadId,
         runId: args.runId,
-        runGroupId: runContext.runGroupId,
+        runGroupId: runContext.goalId,
         eventType: "output.message",
         content: item.content,
         runEventSequenceNumber: item.runEventSequenceNumber,

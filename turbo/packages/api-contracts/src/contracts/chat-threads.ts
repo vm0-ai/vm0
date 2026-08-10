@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
-import { chatEventRowReadSchema } from "./chat-event-rows";
+import { chatEventRowV4Schema } from "./chat-event-rows";
 import { CHAT_EVENT_TYPES } from "./chat-events";
 import { apiErrorSchema } from "./errors";
 import { requireUserMessageForDraftAttachments } from "./draft-user-message";
@@ -1500,7 +1500,7 @@ export const chatThreadEventsContract = c.router({
   },
   /**
    * Snapshot-read cold start: a presigned download for the thread's head
-   * archive object. The object is gzip NDJSON of chatEventRowSchema lines
+   * archive object. The object is gzip NDJSON of chatEventRowV4Schema lines
    * stored with `Content-Encoding: gzip`, so a browser fetch decompresses it
    * transparently. 404 also covers threads whose head has not reached the
    * current archive schema version yet.
@@ -1539,9 +1539,7 @@ export const chatThreadEventsContract = c.router({
     }),
     responses: {
       200: z.object({
-        // Reader union: the server emits v3 rows until the canonical (v4)
-        // cutover; clients normalize every row through canonicalChatEventRow.
-        rows: z.array(chatEventRowReadSchema),
+        rows: z.array(chatEventRowV4Schema),
       }),
       400: apiErrorSchema,
       401: apiErrorSchema,

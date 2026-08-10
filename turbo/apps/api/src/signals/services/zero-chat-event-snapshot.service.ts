@@ -1,4 +1,4 @@
-import type { ChatEventRow } from "@vm0/api-contracts/contracts/chat-event-rows";
+import type { ChatEventRowV4 } from "@vm0/api-contracts/contracts/chat-event-rows";
 import { computed, type Computed } from "ccstate";
 import { and, asc, eq, gt } from "drizzle-orm";
 import { chatEvents } from "@vm0/db/schema/chat-event";
@@ -30,7 +30,7 @@ type ChatEventSnapshotDownload =
 type ChatEventRowsPage =
   | { readonly kind: "thread-not-found" }
   | { readonly kind: "expired" }
-  | { readonly kind: "ok"; readonly rows: readonly ChatEventRow[] };
+  | { readonly kind: "ok"; readonly rows: readonly ChatEventRowV4[] };
 
 const ownedThread = (threadId: string, userId: string) => {
   return and(eq(chatThreads.id, threadId), eq(chatThreads.userId, userId));
@@ -150,17 +150,11 @@ export function zeroChatThreadEventRows(args: {
         id: chatEvents.id,
         chatThreadId: chatEvents.chatThreadId,
         runId: chatEvents.runId,
-        usagePayload: chatEvents.usagePayload,
         revokesEventId: chatEvents.revokesEventId,
-        interruptsRunId: chatEvents.interruptsRunId,
-        runGroupId: chatEvents.runGroupId,
         eventType: chatEvents.eventType,
+        payload: chatEvents.payload,
         contextType: chatEvents.contextType,
         contextId: chatEvents.contextId,
-        content: chatEvents.content,
-        userMessage: chatEvents.userMessage,
-        thinking: chatEvents.thinking,
-        error: chatEvents.error,
         runEventSequenceNumber: chatEvents.runEventSequenceNumber,
         runEventId: chatEvents.runEventId,
         seqId: chatEvents.seqId,

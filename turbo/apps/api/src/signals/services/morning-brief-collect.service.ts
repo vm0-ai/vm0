@@ -29,6 +29,10 @@ import {
   requiredUserMessageForEvent,
 } from "./zero-chat-user-message.service";
 import { chatEventTextCondition } from "./zero-chat-event-type.service";
+import {
+  canonicalChatEventContent,
+  canonicalChatEventUserMessage,
+} from "./canonical-chat-event-read.service";
 
 const GITHUB_API_BASE = "https://api.github.com";
 const GMAIL_API_BASE = "https://gmail.googleapis.com/gmail/v1/users/me";
@@ -605,8 +609,8 @@ async function collectUnreadChatThreads(args: {
     const messages = await args.db
       .select({
         eventType: chatEvents.eventType,
-        content: chatEvents.content,
-        userMessage: chatEvents.userMessage,
+        content: canonicalChatEventContent(),
+        userMessage: canonicalChatEventUserMessage(),
         createdAt: chatEvents.createdAt,
       })
       .from(chatEvents)

@@ -23,6 +23,10 @@ import { chatEventTypeIn } from "./zero-chat-event-type.service";
 import { appendGoalCloseMarker } from "./zero-chat-goal-marker.service";
 import { createUserMessageDocument } from "./zero-chat-user-message.service";
 import { lockGoalThread } from "./zero-goal-lock.service";
+import {
+  canonicalChatEventGoalId,
+  canonicalChatEventUserMessage,
+} from "./canonical-chat-event-read.service";
 
 const goalInputRevoker = alias(chatEvents, "goal_input_revoker");
 
@@ -148,7 +152,7 @@ export async function loadNextGoalQueueEvent(
         chatThreadId: chatEvents.chatThreadId,
         userId: chatThreads.userId,
         orgId: zeroAgents.orgId,
-        goalId: chatEvents.runGroupId,
+        goalId: canonicalChatEventGoalId(),
         createdAt: chatEvents.createdAt,
       })
       .from(chatEvents)
@@ -190,6 +194,8 @@ export async function loadGoalQueueTarget(
       and(
         eq(chatEvents.id, event.id),
         eq(chatEvents.chatThreadId, threadGoals.chatThreadId),
+        eq(chatEvents.contextType, "goal"),
+        eq(chatEvents.contextId, threadGoals.id),
       ),
     )
     .where(
@@ -312,7 +318,7 @@ export async function settleFailedGoalQueueEvent(
 
     const [payload] = await tx
       .select({
-        userMessage: chatEvents.userMessage,
+        userMessage: canonicalChatEventUserMessage(),
         currentGoalObjectiveBrief: threadGoals.objectiveBrief,
       })
       .from(chatEvents)

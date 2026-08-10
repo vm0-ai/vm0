@@ -83,17 +83,37 @@ const cronProjectChatEventSearchResponseSchema = z.object({
   deletedDocs: z.number(),
 });
 
-const cronSnapshotChatEventsResponseSchema = z.object({
-  success: z.literal(true),
-  snapshots: z.number(),
-  archivedEvents: z.number(),
-  r2ObjectsScanned: z.number().int().nonnegative(),
-  r2ObjectsMeasured: z.number().int().nonnegative(),
-  r2ObjectsDeleted: z.number().int().nonnegative(),
-  r2BytesMeasured: z.number().int().nonnegative(),
-  r2BytesDeleted: z.number().int().nonnegative(),
-  r2GcShardsScanned: z.number().int().nonnegative(),
-  r2GcSubpartitionedShards: z.number().int().nonnegative(),
+const chatEventSnapshotConvergenceSchema = z.object({
+  snapshotHeads: z.number().int().nonnegative(),
+  nonV4SnapshotHeads: z.number().int().nonnegative(),
+  snapshotHeadVersions: z.array(
+    z.object({
+      archiveSchemaVersion: z.number().int().positive(),
+      heads: z.number().int().positive(),
+    }),
+  ),
+});
+
+const cronSnapshotChatEventsResponseSchema =
+  chatEventSnapshotConvergenceSchema.extend({
+    success: z.literal(true),
+    snapshots: z.number(),
+    archivedEvents: z.number(),
+    r2ObjectsScanned: z.number().int().nonnegative(),
+    r2ObjectsMeasured: z.number().int().nonnegative(),
+    r2ObjectsDeleted: z.number().int().nonnegative(),
+    r2BytesMeasured: z.number().int().nonnegative(),
+    r2BytesDeleted: z.number().int().nonnegative(),
+    r2GcShardsScanned: z.number().int().nonnegative(),
+    r2GcSubpartitionedShards: z.number().int().nonnegative(),
+  });
+
+const chatEventSnapshotConvergenceIncompleteSchema = z.object({
+  error: z.object({
+    code: z.literal("CHAT_EVENT_SNAPSHOT_V4_CONVERGENCE_INCOMPLETE"),
+    message: z.string(),
+  }),
+  convergence: chatEventSnapshotConvergenceSchema,
 });
 
 const cronCompactUsageEventsResponseSchema = z.object({
@@ -285,6 +305,19 @@ export const cronSnapshotChatEventsContract = c.router({
       500: z.object({ error: z.string() }),
     },
     summary: "Archive chat events into immutable full-thread R2 snapshots",
+  },
+  verifyConvergence: {
+    method: "GET",
+    path: "/api/cron/snapshot-chat-events/verify-convergence",
+    headers: authHeadersSchema,
+    responses: {
+      200: chatEventSnapshotConvergenceSchema.extend({
+        success: z.literal(true),
+      }),
+      401: apiErrorSchema,
+      409: chatEventSnapshotConvergenceIncompleteSchema,
+    },
+    summary: "Verify every chat event snapshot head uses archive schema v4",
   },
 });
 

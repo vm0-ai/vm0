@@ -17,11 +17,12 @@ import { chatThreads } from "./chat-thread";
  * Immutable R2 archive facts for the chat_events stream: one row per uploaded
  * full-thread snapshot object. Every snapshot covers seq_id (0, last_seq_id]
  * of its thread, so readers only ever need the head row plus the Postgres
- * tail. parent_snapshot_id records which snapshot object the archiver
- * replayed while building this one; a null parent is a first-generation
- * snapshot built entirely from Postgres. The object key embeds the gzip
- * content sha256, which makes objects content-addressed and lets readers
- * verify downloads without extra columns.
+ * tail. parent_snapshot_id records the exact head that was replaced by the
+ * compare-and-swap publication; every object generation is rebuilt from
+ * Postgres rather than replaying that parent object. A null parent is a
+ * first-generation snapshot. The object key embeds the gzip content sha256,
+ * which makes objects content-addressed and lets readers verify downloads
+ * without extra columns.
  */
 export const chatEventSnapshots = pgTable(
   "chat_event_snapshots",
