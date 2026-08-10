@@ -1,4 +1,60 @@
-"""Bounded runner-process cache for authenticated Codex model catalogs."""
+"""Bounded runner-process cache for authenticated Codex model catalogs.
+
+Cache identity
+--------------
+Entries and in-flight owners are keyed by the canonical catalog URL and an HMAC-SHA256
+digest of the length-delimited ``Authorization`` and ``ChatGPT-Account-ID`` values. The
+HMAC key is random and process-local, so cache keys do not retain raw credentials and digest
+values are process-specific. Both URL and credential identity must match before a response
+can be reused.
+
+Hook lifecycle
+--------------
+``mitm_addon`` owns the integration order:
+
+1. ``requestheaders()`` and ``request()`` call ``capture_and_strip_prefetch_marker()``
+   before the authenticated request path calls ``prepare_request()``. Preparation may
+   bypass, serve a fresh local response, wait for the current owner, or reserve capacity
+   for a replacement owner. If a wait ends without a local response, the addon's helper
+   revalidates ordinary credential-bearing upstream continuation before proceeding.
+2. ``responseheaders()`` calls ``observe_authenticated_models_etag()`` before
+   ``handle_response_headers()``. For an eligible cold response that continues through the
+   normal pipeline, the addon configures the downstream stream before
+   ``wrap_response_stream()`` composes bounded catalog capture around it.
+3. ``response()`` calls ``finalize_response()`` after the complete streamed response is
+   available. Eligible captures are validated off the event loop before publication;
+   ``error()`` calls ``handle_error()`` for upstream transport failure.
+4. Response completion, response exceptions, transport errors, and WebSocket termination
+   all reach ``release_flow_state()`` through the addon's terminal cleanup. Cleanup must
+   remain last so pending validation and composed stream ownership have finished first.
+
+Single-flight ownership
+-----------------------
+At most one in-flight owner is current for a cache key, and followers wait on that owner's
+future. Every owner path must publish either the stored entry or a no-entry result before
+releasing reserved flow capacity, so followers wake and may recheck the cache or become a
+replacement owner. Publication and capacity release are idempotent, and an old owner may
+remove itself only while it is still current; terminal cleanup supplies the no-entry fallback
+for abandoned flows.
+
+Response modes and authenticated ETags
+---------------------------------------
+Ordinary owners require identity responses. Prefetch owners request Brotli; for an eligible
+Brotli response, the compressed stream passes downstream unchanged while validation decodes
+the bounded capture. A successful, authenticated Codex Responses request can separately
+carry ``x-models-etag``; that signal is scoped to the same credential digest, renews matching
+entries, removes mismatches, and prevents a superseded in-flight catalog response from being
+stored.
+
+Keep this contract synchronized with the owning ``mitm_addon`` hooks and these focused test
+modules:
+
+- ``test_codex_model_catalog_cache_coordination.py``
+- ``test_codex_model_catalog_cache_lifecycle.py``
+- ``test_codex_model_catalog_cache_responses.py``
+- ``test_codex_model_catalog_cache_hooks.py``
+- ``test_codex_model_catalog_cache_async_validation.py``
+"""
 
 import asyncio
 import hashlib
