@@ -210,6 +210,8 @@ def _data_sends(observed: list[commands.Command]) -> list[commands.SendData]:
     ]
 
 
+# Only process composition can introduce a conflicting connection class; no
+# proxied WebSocket flow can construct this installer state.
 def test_install_websocket_framing_rejects_incompatible_connection_class(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
