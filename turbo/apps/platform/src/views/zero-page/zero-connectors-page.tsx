@@ -64,6 +64,7 @@ import { ConnectorCard } from "./components/settings/connector-card.tsx";
 import type { ConnectorConnectHandlers } from "./components/settings/launch-connector-connect.ts";
 import { ScopeReviewModal } from "./components/settings/scope-review-modal.tsx";
 import { ConnectorAccessManagementDialog } from "./components/settings/connector-access-management-dialog.tsx";
+import { ConnectorAgentAccessButton } from "./components/settings/connector-agent-access-button.tsx";
 import {
   closeConnectorAccessManagement$,
   connectorAuthorizedAgentsBySlug$,
@@ -83,9 +84,6 @@ import {
   DropdownMenuSeparator,
 } from "@vm0/ui";
 import { i18n } from "../../i18n/index.ts";
-
-const CONNECTOR_CARD_AGENT_NAME_LIMIT = 2;
-const CONNECTOR_CARD_AGENT_NAME_MAX_CHARS = 12;
 
 function connectorCategoryTranslation(
   id: string,
@@ -705,13 +703,6 @@ function connectorAgentName(agent: TeamComposeItem): string {
   );
 }
 
-function truncateAgentName(name: string): string {
-  if (name.length <= CONNECTOR_CARD_AGENT_NAME_MAX_CHARS) {
-    return name;
-  }
-  return `${name.slice(0, CONNECTOR_CARD_AGENT_NAME_MAX_CHARS - 1)}…`;
-}
-
 function ConnectorAccessButton({
   connectorSlug,
   connectorLabel,
@@ -721,7 +712,6 @@ function ConnectorAccessButton({
   readonly connectorLabel: string;
   readonly onClick: () => void;
 }) {
-  const { t } = useTranslation();
   const agentsBySlugLoadable = useLastLoadable(
     connectorAuthorizedAgentsBySlug$,
   );
@@ -730,58 +720,13 @@ function ConnectorAccessButton({
       ? (agentsBySlugLoadable.data.get(connectorSlug) ?? [])
       : [];
   const loading = agentsBySlugLoadable.state === "loading";
-  const visibleNames = agents
-    .slice(0, CONNECTOR_CARD_AGENT_NAME_LIMIT)
-    .map((agent) => {
-      return truncateAgentName(connectorAgentName(agent));
-    });
-  const overflowCount = agents.length - visibleNames.length;
-
   return (
-    <button
-      type="button"
-      className="inline-flex h-7 min-w-0 shrink items-center gap-0 rounded-lg px-2 text-xs text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-      aria-label={t(
-        ($) => {
-          return $.connectors.catalog.access.manage;
-        },
-        { connector: connectorLabel },
-      )}
+    <ConnectorAgentAccessButton
+      agents={agents}
+      loading={loading}
+      connectorLabel={connectorLabel}
       onClick={onClick}
-    >
-      {loading ? (
-        <span className="block h-3 w-20 animate-pulse rounded bg-muted" />
-      ) : agents.length === 0 ? (
-        <span
-          className="underline decoration-dotted decoration-muted-foreground/40 underline-offset-2"
-          data-testid="connector-card-access-empty"
-        >
-          {t(($) => {
-            return $.connectors.catalog.access.add;
-          })}
-        </span>
-      ) : (
-        <>
-          <span className="shrink-0">
-            {t(($) => {
-              return $.connectors.catalog.access.usedBy;
-            }).trimEnd()}
-            {"\u00a0"}
-          </span>
-          <span
-            className="min-w-0 truncate underline decoration-dotted decoration-muted-foreground/40 underline-offset-2"
-            data-testid="connector-card-access-names"
-          >
-            {visibleNames.join(", ")}
-          </span>
-          {overflowCount > 0 && (
-            <span className="ml-0.5 shrink-0 text-muted-foreground/70">
-              +{overflowCount}
-            </span>
-          )}
-        </>
-      )}
-    </button>
+    />
   );
 }
 

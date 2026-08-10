@@ -5,31 +5,19 @@ import {
 } from "@vm0/api-contracts/contracts/model-providers";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
-import { getModelDisplayName } from "@vm0/core/model-display-name";
+import { getRunModelDisplayName } from "@vm0/core/model-display-name";
 import { modelProviders } from "@vm0/db/schema/model-provider";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
 
 import { env } from "../../lib/env";
 import type { Db } from "../external/db";
+import { resolveZeroRunModelSelection } from "./zero-run-model-selection.service";
 
 const ORG_SENTINEL_USER_ID = "__org__";
 
 function buildLogsUrl(runId: string): string {
   return `${env("APP_URL")}/activities/${encodeURIComponent(runId)}`;
-}
-
-async function resolveRunSelectedModel(
-  db: Db,
-  runId: string,
-): Promise<string | undefined> {
-  const [row] = await db
-    .select({ selectedModel: zeroRuns.selectedModel })
-    .from(zeroRuns)
-    .where(eq(zeroRuns.id, runId))
-    .limit(1);
-  return row?.selectedModel ?? undefined;
 }
 
 async function resolveRespondedByLabel(args: {
@@ -90,11 +78,13 @@ async function resolveModelLabel(args: {
   readonly orgId: string;
   readonly runId: string;
 }): Promise<string | undefined> {
-  const selectedModel = await resolveRunSelectedModel(args.db, args.runId);
+  const runModel = await resolveZeroRunModelSelection(args.db, args.runId);
   const model =
-    selectedModel ??
+    runModel?.selectedModel ??
     (await resolveOrgDefaultModelProviderSelectedModel(args.db, args.orgId));
-  return model ? getModelDisplayName(model) : undefined;
+  return model
+    ? getRunModelDisplayName(model, runModel?.codexServiceTier)
+    : undefined;
 }
 
 export async function resolveIntegrationAgentResponsePresentation(

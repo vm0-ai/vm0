@@ -1,5 +1,5 @@
 import { computed, type Computed } from "ccstate";
-import { getModelDisplayName } from "@vm0/core/model-display-name";
+import { getRunModelDisplayName } from "@vm0/core/model-display-name";
 import {
   getFrameworkForType,
   modelProviderTypeSchema,
@@ -11,12 +11,12 @@ import { modelProviders } from "@vm0/db/schema/model-provider";
 import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
 import { telegramUserLinks } from "@vm0/db/schema/telegram-user-link";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { and, eq } from "drizzle-orm";
 
 import { isOfficialTelegramBotId } from "../external/telegram-official";
 import { db$, type ReadonlyDb } from "../external/db";
 import { escapeHtml } from "../../lib/telegram-format";
+import { resolveZeroRunModelSelection } from "./zero-run-model-selection.service";
 
 const ORG_SENTINEL_USER_ID = "__org__";
 
@@ -123,12 +123,14 @@ async function resolveAgentReplyModelLabel(args: {
   readonly orgId: string;
   readonly runId: string;
 }): Promise<string | undefined> {
-  const selectedModel = await resolveRunSelectedModel(args.db, args.runId);
+  const runModel = await resolveZeroRunModelSelection(args.db, args.runId);
   const model =
-    selectedModel ??
+    runModel?.selectedModel ??
     (await resolveOrgDefaultModelProviderSelectedModel(args.db, args.orgId));
 
-  return model ? escapeHtml(getModelDisplayName(model)) : undefined;
+  return model
+    ? escapeHtml(getRunModelDisplayName(model, runModel?.codexServiceTier))
+    : undefined;
 }
 
 export async function resolveTelegramAgentReplyFooterText(args: {
@@ -215,18 +217,6 @@ async function resolveRunUserLabel(
   return telegramUserMention(row.telegramUserId, label);
 }
 
-async function resolveRunSelectedModel(
-  db: ReadonlyDb,
-  runId: string,
-): Promise<string | undefined> {
-  const [row] = await db
-    .select({ selectedModel: zeroRuns.selectedModel })
-    .from(zeroRuns)
-    .where(eq(zeroRuns.id, runId))
-    .limit(1);
-  return row?.selectedModel ?? undefined;
-}
-
 /**
  * Resolve the audit footer text appended to user-initiated Telegram messages.
  *
@@ -245,13 +235,13 @@ export function telegramMessageSendFooterText(args: {
     }
     const db = get(db$);
 
-    const [agentLabel, userLabel, selectedModel] = await Promise.all([
+    const [agentLabel, userLabel, runModel] = await Promise.all([
       resolveRunAgentLabel(db, args.authRunId),
       resolveRunUserLabel(db, {
         runId: args.authRunId,
         botId: args.botId,
       }),
-      resolveRunSelectedModel(db, args.authRunId),
+      resolveZeroRunModelSelection(db, args.authRunId),
     ]);
 
     const parts: string[] = [];
@@ -261,8 +251,15 @@ export function telegramMessageSendFooterText(args: {
     if (userLabel) {
       parts.push(`Triggered by ${userLabel}`);
     }
-    if (selectedModel) {
-      parts.push(escapeHtml(getModelDisplayName(selectedModel)));
+    if (runModel?.selectedModel) {
+      parts.push(
+        escapeHtml(
+          getRunModelDisplayName(
+            runModel.selectedModel,
+            runModel.codexServiceTier,
+          ),
+        ),
+      );
     }
 
     return parts.length > 0 ? parts.join(" · ") : undefined;

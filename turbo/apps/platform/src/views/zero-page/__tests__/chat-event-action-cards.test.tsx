@@ -2889,6 +2889,96 @@ describe("chat event action cards", () => {
     });
   });
 
+  it("preserves a permissioned custom connector grant when connecting from its action card", async () => {
+    const user = userEvent.setup({ delay: null });
+    let connected = false;
+    let savedSecret: string | null = null;
+    let authorizationUpdates = 0;
+    const connector = customConnector({
+      permissionBundleRef: "builtin:feishu@1",
+    });
+    const connectUrl = `${window.location.origin}/connectors/${connector.slug}/connect?agentId=${AGENT_ID}`;
+    context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
+      return respond(200, {
+        connectors: [
+          {
+            ...connector,
+            connected,
+            hasSecret: connected,
+            missingRequiredFields: connected ? [] : ["secret"],
+            configuredFieldKeys: connected ? ["secret"] : [],
+          },
+        ],
+      });
+    });
+    context.mocks.api(
+      zeroCustomConnectorSecretContract.set,
+      ({ body, respond }) => {
+        savedSecret = body.value;
+        connected = true;
+        return respond(204);
+      },
+    );
+    context.mocks.api(zeroAgentCustomConnectorsContract.get, ({ respond }) => {
+      return respond(200, {
+        enabledIds: [connector.id],
+        grants: [
+          {
+            customConnectorId: connector.id,
+            permissionNames: ["messages:send-as-user"],
+          },
+        ],
+      });
+    });
+    context.mocks.api(
+      zeroAgentCustomConnectorsContract.update,
+      ({ respond }) => {
+        authorizationUpdates += 1;
+        return respond(200, { enabledIds: [connector.id] });
+      },
+    );
+
+    mockChatLifecycle(context, {
+      threadId: "e4000000-0000-4000-a000-000000000118",
+      threadTitle: "Permissioned custom connector card",
+      chatEvents: [
+        {
+          id: "msg-user-permissioned-custom-connector",
+          role: "user",
+          content: "Reconnect the custom connector",
+          runId: "run-permissioned-custom-connector",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-assistant-permissioned-custom-connector-card",
+          role: "assistant",
+          content: connectUrl,
+          runId: "run-permissioned-custom-connector",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/e4000000-0000-4000-a000-000000000118",
+    });
+
+    const card = await screen.findByTestId("connector-action-card");
+    await user.click(await waitForButtonByText("Connect", card));
+    const dialog = await screen.findByRole("dialog", {
+      name: "Connect Acme Internal API",
+    });
+    await user.type(within(dialog).getByLabelText("Secret"), "acme-secret");
+    await user.click(buttonByText("Save", dialog));
+
+    await waitFor(() => {
+      expect(savedSecret).toBe("acme-secret");
+      expect(within(card).getByText("Authorized")).toBeInTheDocument();
+    });
+    expect(authorizationUpdates).toBe(0);
+  });
+
   it("leaves legacy custom connector proposal links as markdown", async () => {
     const proposalUrl = `${window.location.origin}/connectors/custom/proposal?p=legacy`;
     mockChatLifecycle(context, {

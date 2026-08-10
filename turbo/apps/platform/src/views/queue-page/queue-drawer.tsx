@@ -29,12 +29,14 @@ import {
 import { queueData$ } from "../../signals/queue-page/queue-signals.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import {
+  billingStatusAsync$,
+  openConcurrencyChangeReview$,
   startCheckout$,
   startConcurrencyCheckout$,
 } from "../../signals/zero-page/billing.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
-import { orgPlanCapabilities$ } from "../../signals/zero-page/org-plan-capabilities.ts";
+import { orgPlanCapabilitiesFromBilling } from "../../signals/zero-page/org-plan-capabilities.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 
 // ---------------------------------------------------------------------------
@@ -423,12 +425,14 @@ function ConcurrencyPurchaseCard({
   onCheckout,
   onQuantityChange,
   quantity,
+  reviewingInApp,
   tierColor,
 }: {
   readonly loading: boolean;
   readonly onCheckout: (newTab: boolean) => void;
   readonly onQuantityChange: (quantity: number) => void;
   readonly quantity: number;
+  readonly reviewingInApp: boolean;
   readonly tierColor: string;
 }) {
   const { i18n, t } = useTranslation();
@@ -495,9 +499,13 @@ function ConcurrencyPurchaseCard({
         <li className="flex items-center gap-2">
           <CheckCircleIcon />
           <span className="text-[13px] font-light text-muted-foreground">
-            {t(($) => {
-              return $.queue.purchase.appliedAfterCheckout;
-            })}
+            {reviewingInApp
+              ? t(($) => {
+                  return $.billing.concurrency.reviewDescription;
+                })
+              : t(($) => {
+                  return $.queue.purchase.appliedAfterCheckout;
+                })}
           </span>
         </li>
       </ul>
@@ -511,9 +519,13 @@ function ConcurrencyPurchaseCard({
           }}
         >
           {loading
-            ? t(($) => {
-                return $.queue.redirecting;
-              })
+            ? reviewingInApp
+              ? t(($) => {
+                  return $.billing.common.updating;
+                })
+              : t(($) => {
+                  return $.queue.redirecting;
+                })
             : t(
                 ($) => {
                   return $.queue.purchase.buy;
@@ -526,6 +538,71 @@ function ConcurrencyPurchaseCard({
   );
 }
 
+function ConcurrencyPurchaseCardMount({
+  canManageBilling,
+  tierColor,
+}: {
+  readonly canManageBilling: boolean;
+  readonly tierColor: string;
+}) {
+  const pageSignal = useGet(pageSignal$);
+  const [checkoutLoadable, checkout] = useLoadableSet(
+    startConcurrencyCheckout$,
+  );
+  const [reviewLoadable, openReview] = useLoadableSet(
+    openConcurrencyChangeReview$,
+  );
+  const quantity = useGet(concurrencyQuantity$);
+  const setQuantity = useSet(setConcurrencyQuantity$);
+  const billingStatus = useLastResolved(billingStatusAsync$);
+  const capabilities = billingStatus
+    ? orgPlanCapabilitiesFromBilling(billingStatus)
+    : undefined;
+  const activeSubscription = billingStatus?.concurrencySubscriptions.find(
+    (subscription) => {
+      return !subscription.cancelAtPeriodEnd;
+    },
+  );
+  // Old API responses omit this during the ~2-day web/app client version-skew
+  // window. Remove the legacy Checkout branch with #26152 after #26116 has
+  // been deployed beyond that window.
+  const reviewingInApp = activeSubscription?.canChangeInApp === true;
+  const loading =
+    checkoutLoadable.state === "loading" || reviewLoadable.state === "loading";
+
+  if (!canManageBilling || capabilities?.canBuyConcurrency !== true) {
+    return null;
+  }
+
+  return (
+    <ConcurrencyPurchaseCard
+      loading={loading}
+      onCheckout={(newTab) => {
+        if (reviewingInApp && activeSubscription) {
+          detach(
+            openReview(
+              {
+                subscriptionId: activeSubscription.id,
+                currentQuantity: activeSubscription.quantity,
+                targetQuantity: activeSubscription.quantity + quantity,
+                canReduce: activeSubscription.canReduce === true,
+              },
+              pageSignal,
+            ),
+            Reason.DomCallback,
+          );
+          return;
+        }
+        detach(checkout(quantity, newTab, pageSignal), Reason.DomCallback);
+      }}
+      onQuantityChange={setQuantity}
+      quantity={quantity}
+      reviewingInApp={reviewingInApp}
+      tierColor={tierColor}
+    />
+  );
+}
+
 function QueueDrawerContent() {
   const { t } = useTranslation();
   const dataLoadable = useLastLoadable(queueData$);
@@ -533,16 +610,8 @@ function QueueDrawerContent() {
   const pageSignal = useGet(pageSignal$);
   const isAdminLoadable = useLastLoadable(isOrgAdmin$);
   const [planCheckoutLoadable, checkout] = useLoadableSet(startCheckout$);
-  const [concurrencyCheckoutLoadable, concurrencyCheckout] = useLoadableSet(
-    startConcurrencyCheckout$,
-  );
-  const concurrencyQuantity = useGet(concurrencyQuantity$);
-  const setConcurrencyQuantity = useSet(setConcurrencyQuantity$);
-  const capabilities = useLastResolved(orgPlanCapabilities$);
   const features = useGet(featureSwitch$);
   const planCheckoutLoading = planCheckoutLoadable.state === "loading";
-  const concurrencyCheckoutLoading =
-    concurrencyCheckoutLoadable.state === "loading";
   const upgrade = useUpgradePath(data?.concurrency.tier ?? "");
 
   if (!data) {
@@ -582,8 +651,6 @@ function QueueDrawerContent() {
   const canManageBilling =
     isAdminLoadable.state === "hasData" ? isAdminLoadable.data : false;
   const visibleUpgrade = canManageBilling ? upgrade : undefined;
-  const showConcurrencyPurchase =
-    canManageBilling && capabilities?.canBuyConcurrency === true;
 
   const tierColor = "text-[#D27939]";
 
@@ -617,20 +684,10 @@ function QueueDrawerContent() {
         />
       )}
 
-      {showConcurrencyPurchase && (
-        <ConcurrencyPurchaseCard
-          loading={concurrencyCheckoutLoading}
-          onCheckout={(newTab) => {
-            detach(
-              concurrencyCheckout(concurrencyQuantity, newTab, pageSignal),
-              Reason.DomCallback,
-            );
-          }}
-          onQuantityChange={setConcurrencyQuantity}
-          quantity={concurrencyQuantity}
-          tierColor={tierColor}
-        />
-      )}
+      <ConcurrencyPurchaseCardMount
+        canManageBilling={canManageBilling}
+        tierColor={tierColor}
+      />
     </div>
   );
 }

@@ -17,7 +17,7 @@
 
 #![allow(dead_code)] // consumed across multiple test binaries
 
-mod process_session;
+pub(crate) mod process_session;
 mod system_log;
 
 use nix::sys::inotify::{AddWatchFlags, InitFlags, Inotify};
