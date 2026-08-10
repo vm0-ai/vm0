@@ -6,7 +6,6 @@ import type {
   PublicConnectorCatalogAuthMethodSummary,
   PublicConnectorCatalogConnection,
   PublicConnectorCatalogConnectionStatus,
-  PublicConnectorCatalogDetail,
   PublicConnectorCatalogIcon,
   PublicConnectorCatalogItem,
   PublicConnectorCatalogListResponse,
@@ -109,6 +108,10 @@ interface ExternalCatalogReadArgs {
 
 interface ExternalCatalogConnectorReadArgs extends ExternalCatalogReadArgs {
   readonly connectorSlug: string;
+}
+
+interface ExternalCatalogConnectorStatusReadArgs extends ExternalCatalogConnectorReadArgs {
+  readonly connectors: readonly ConnectorResponse[];
 }
 
 interface ExternalCatalogSearchArgs extends ExternalCatalogReadArgs {
@@ -1015,18 +1018,28 @@ export async function searchExternalConnectorCatalog(
   });
 }
 
-export async function getExternalPublicConnectorCatalogDetail(
-  args: ExternalCatalogConnectorReadArgs,
-): Promise<PublicConnectorCatalogDetail | null> {
+export async function getExternalPublicConnectorCatalogStatus(
+  args: ExternalCatalogConnectorStatusReadArgs,
+): Promise<PublicConnectorCatalogStatusItem | null> {
   const catalog = await loadAcceptedConnectorCatalogSnapshot(args.db);
   const effective = effectiveConnectors({
     catalog,
     featureStates: args.featureStates,
   });
-  const connector = effective.find((entry) => {
-    return entry.connector.slug === args.connectorSlug;
+  const entry = effective.find((connector) => {
+    return connector.connector.slug === args.connectorSlug;
   });
-  return connector ? connectorCatalogDetail(connector) : null;
+  if (!entry) {
+    return null;
+  }
+  const connector = args.connectors.find((candidate) => {
+    return candidate.slug === args.connectorSlug;
+  });
+  return connectorCatalogStatusItem({
+    catalog,
+    effective: entry,
+    connector: connector ?? null,
+  });
 }
 
 export async function listExternalPublicConnectorCatalogStatus(

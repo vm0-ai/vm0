@@ -8,10 +8,8 @@ import {
 import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
 import { useTranslation } from "react-i18next";
 import { ConnectorIcon } from "./connector-icons.tsx";
-import {
-  allConnectorCatalogItems$,
-  scopeDiff$,
-} from "../../../../signals/zero-page/settings/connectors.ts";
+import { scopeDiff$ } from "../../../../signals/zero-page/settings/connectors.ts";
+import { connectorCatalogStatus$ } from "../../../../signals/external/connectors.ts";
 
 interface ScopeReviewModalProps {
   connectorSlug: ConnectorSlug | null;
@@ -124,7 +122,7 @@ export function ScopeReviewModal({
 }: ScopeReviewModalProps) {
   const { t } = useTranslation();
   const scopeDiffLoadable = useLoadable(scopeDiff$);
-  const connectorCatalogItems = useLastResolved(allConnectorCatalogItems$);
+  const connectorCatalog = useLastResolved(connectorCatalogStatus$);
   const loading = scopeDiffLoadable.state === "loading";
   const scopeDiff =
     scopeDiffLoadable.state === "hasData" ? scopeDiffLoadable.data : null;
@@ -133,7 +131,7 @@ export function ScopeReviewModal({
     return null;
   }
 
-  const connector = connectorCatalogItems?.find((candidate) => {
+  const connector = connectorCatalog?.connectors.find((candidate) => {
     return candidate.slug === connectorSlug;
   });
   const connectorLabel = connector?.label ?? connectorSlug;

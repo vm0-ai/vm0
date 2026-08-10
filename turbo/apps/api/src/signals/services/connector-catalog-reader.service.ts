@@ -1,9 +1,9 @@
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import type { ConnectorSearchItem } from "@vm0/api-contracts/contracts/zero-connectors";
 import type {
-  PublicConnectorCatalogDetail,
   PublicConnectorCatalogListResponse,
   PublicConnectorCatalogPermissionDetail,
+  PublicConnectorCatalogStatusItem,
   PublicConnectorCatalogStatusResponse,
 } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 
@@ -12,7 +12,7 @@ import type { ConnectorFeatureStates } from "./connector-catalog-feature-states"
 import {
   discoverExternalPublicConnectorCatalogStatus,
   ExternalConnectorCatalogUnavailableError,
-  getExternalPublicConnectorCatalogDetail,
+  getExternalPublicConnectorCatalogStatus,
   getExternalPublicConnectorCatalogPermissionDetail,
   listExternalPublicConnectorCatalog,
   listExternalPublicConnectorCatalogStatus,
@@ -83,10 +83,12 @@ export async function discoverPublicConnectorCatalogStatus(
   return read.status;
 }
 
-export async function getPublicConnectorCatalogDetail(
-  args: ConnectorCatalogConnectorReadArgs,
-): Promise<PublicConnectorCatalogDetail | null> {
-  return await getExternalPublicConnectorCatalogDetail(args);
+export async function getPublicConnectorCatalogStatus(
+  args: ConnectorCatalogConnectorReadArgs & {
+    readonly connectors: readonly ConnectorResponse[];
+  },
+): Promise<PublicConnectorCatalogStatusItem | null> {
+  return await getExternalPublicConnectorCatalogStatus(args);
 }
 
 export async function getPublicConnectorCatalogPermissionDetail(

@@ -12,7 +12,7 @@ import { userFeatureSwitchOverrides } from "../services/feature-switches.service
 import { connectorCatalogDiagnostics$ } from "../services/connector-catalog-diagnostics.service";
 import {
   discoverPublicConnectorCatalogStatus,
-  getPublicConnectorCatalogDetail,
+  getPublicConnectorCatalogStatus,
   getPublicConnectorCatalogPermissionDetail,
   isConnectorCatalogUnavailableError,
   listPublicConnectorCatalog,
@@ -198,15 +198,31 @@ const getConnectorCatalogDiagnosticsInner$ = command(
 
 const getConnectorCatalogInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
     const context = await set(connectorCatalogRequestContext$);
+    signal.throwIfAborted();
+
+    const connectorState = await settleConnectorCatalogRead(
+      get(
+        zeroConnectorList({
+          orgId: auth.orgId,
+          userId: auth.userId,
+        }),
+      ),
+      signal,
+    );
+    if (!connectorState.ok) {
+      return connectorCatalogUnavailable();
+    }
     signal.throwIfAborted();
 
     const params = get(pathParamsOf(zeroConnectorCatalogContract.get));
     const connector = await settleConnectorCatalogRead(
-      getPublicConnectorCatalogDetail({
+      getPublicConnectorCatalogStatus({
         db: context.db,
         connectorSlug: params.connectorSlug,
         featureStates: context.featureStates,
+        connectors: connectorState.value.connectors,
       }),
       signal,
     );

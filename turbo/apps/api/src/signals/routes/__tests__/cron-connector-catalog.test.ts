@@ -1794,7 +1794,7 @@ describe("connector catalog valid lifecycle", () => {
 
     const search = await accept(
       searchClient.search({
-        query: { keyword: "fixture" },
+        query: { keyword: "external" },
         headers,
       }),
       [200],

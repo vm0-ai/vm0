@@ -13,9 +13,11 @@ import {
 } from "./agent-connector-authorizations.ts";
 import { reloadOnboardingStatus$ } from "./zero-onboarding.ts";
 import type {
+  PlatformConnectorCatalogStatusItem,
   PlatformConnectorPermissionMetadata,
   PlatformUserPermissionGrant,
 } from "../connector-domain.ts";
+import { relatedConnectorCatalog } from "../external/connectors.ts";
 import {
   customConnectorAuthorizationReloadVersion$,
   reloadCustomConnectorAuthorizedAgents$,
@@ -51,6 +53,12 @@ export interface ComposerConnectorUiState {
 }
 
 export interface ComposerConnectorSignals {
+  readonly relatedCatalogItems$: Computed<
+    Promise<readonly PlatformConnectorCatalogStatusItem[]>
+  >;
+  readonly addDialogCatalogItems$: Computed<
+    Promise<readonly PlatformConnectorCatalogStatusItem[]>
+  >;
   readonly connectorAuthorization$: Computed<
     Promise<ComposerConnectorAuthorizationState>
   >;
@@ -311,6 +319,23 @@ export function createComposerConnectorSignals(
   agentId: string,
 ): ComposerConnectorSignals {
   const ui = createConnectorUiSignals();
+  const relatedKeyword$ = computed(() => {
+    return "";
+  });
+  const addDialogKeyword$ = computed((get) => {
+    return get(ui.connectorUiState$).addDialogSearch;
+  });
+  const relatedCatalog$ = relatedConnectorCatalog(relatedKeyword$);
+  const searchedCatalog$ = relatedConnectorCatalog(addDialogKeyword$);
+  const relatedCatalogItems$ = computed(async (get) => {
+    return (await get(relatedCatalog$)).connectors;
+  });
+  const addDialogCatalogItems$ = computed(async (get) => {
+    if (!get(addDialogKeyword$).trim()) {
+      return await get(relatedCatalogItems$);
+    }
+    return (await get(searchedCatalog$)).connectors;
+  });
   const connectorPermissionMetadata$ = computed(async (get) => {
     const connectorSlug = get(ui.connectorUiState$).permissionConnectorSlug;
     if (!connectorSlug) {
@@ -325,6 +350,8 @@ export function createComposerConnectorSignals(
   );
 
   return {
+    relatedCatalogItems$,
+    addDialogCatalogItems$,
     connectorAuthorization$: createConnectorAuthorizationSignal(agentId),
     setConnectorAuthorization$: createConnectorAuthorizationCommand(agentId),
     ...ui,

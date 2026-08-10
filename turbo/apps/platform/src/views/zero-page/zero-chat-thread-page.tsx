@@ -6070,6 +6070,7 @@ function ChatConnectorActionConnectModal() {
 
   return (
     <ConnectModal
+      item={active.catalogItem}
       agentId={active.agentId}
       onClose={close}
       onSuccess={onSuccess}

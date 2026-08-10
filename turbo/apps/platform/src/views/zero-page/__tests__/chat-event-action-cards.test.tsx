@@ -28,6 +28,7 @@ import {
   type UserPermissionGrantResponse,
 } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import { UNKNOWN_PERMISSION_GRANT } from "@vm0/connectors/firewall-types";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { HttpResponse } from "msw";
@@ -150,6 +151,16 @@ function mockConnectorCatalogStatus(
 ): void {
   context.mocks.api(zeroConnectorCatalogContract.status, ({ respond }) => {
     return respond(200, { connectors: [...connectors] });
+  });
+  context.mocks.api(zeroConnectorCatalogContract.get, ({ params, respond }) => {
+    const connector = connectors.find((candidate) => {
+      return candidate.slug === params.connectorSlug;
+    });
+    return connector
+      ? respond(200, { connector })
+      : respond(404, {
+          error: { message: "Connector not found", code: "NOT_FOUND" },
+        });
   });
 }
 
@@ -317,7 +328,7 @@ describe("chat event action cards", () => {
       throw new Error("Catalog request did not start");
     };
     context.mocks.api(
-      zeroConnectorCatalogContract.status,
+      zeroConnectorCatalogContract.get,
       async ({ deferred, respond }) => {
         const catalogDeferred = deferred<void>();
         resolveCatalog = () => {
@@ -326,12 +337,10 @@ describe("chat event action cards", () => {
         catalogRequestStarted = true;
         await catalogDeferred.promise;
         return respond(200, {
-          connectors: [
-            publicConnectorStatusItem({
-              slug: "slack",
-              label: "Slack",
-            }),
-          ],
+          connector: publicConnectorStatusItem({
+            slug: "slack",
+            label: "Slack",
+          }),
         });
       },
     );
@@ -349,7 +358,11 @@ describe("chat event action cards", () => {
       ],
     });
 
-    detachedSetupPage({ context, path: `/chats/${threadId}` });
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.ConnectorDiscovery]: true },
+    });
 
     const loadingCard = await screen.findByTestId(
       "connector-action-card-loading",
@@ -1200,37 +1213,35 @@ describe("chat event action cards", () => {
         reconnectReason: "authorization_expired_or_revoked",
       }),
     ]);
-    context.mocks.api(zeroConnectorCatalogContract.status, ({ respond }) => {
+    context.mocks.api(zeroConnectorCatalogContract.get, ({ respond }) => {
       return respond(200, {
-        connectors: [
-          publicConnectorStatusItem({
-            slug: "gmail",
-            label: "Gmail",
-            connected: true,
-            connectionStatus: reconnectRequired
-              ? "reconnect-required"
-              : "connected",
-            connection: {
-              authMethod: "oauth",
-              externalUsername: null,
-              externalEmail: "sender@example.com",
-              reconnectReason: reconnectRequired
-                ? "authorization_expired_or_revoked"
-                : null,
+        connector: publicConnectorStatusItem({
+          slug: "gmail",
+          label: "Gmail",
+          connected: true,
+          connectionStatus: reconnectRequired
+            ? "reconnect-required"
+            : "connected",
+          connection: {
+            authMethod: "oauth",
+            externalUsername: null,
+            externalEmail: "sender@example.com",
+            reconnectReason: reconnectRequired
+              ? "authorization_expired_or_revoked"
+              : null,
+          },
+          authMethods: [
+            {
+              id: "oauth",
+              label: "OAuth",
+              description: null,
+              grantKind: "auth-code",
+              manualFields: [],
+              startOptions: [],
             },
-            authMethods: [
-              {
-                id: "oauth",
-                label: "OAuth",
-                description: null,
-                grantKind: "auth-code",
-                manualFields: [],
-                startOptions: [],
-              },
-            ],
-            singleAuthCodeAuthMethodId: "oauth",
-          }),
-        ],
+          ],
+          singleAuthCodeAuthMethodId: "oauth",
+        }),
       });
     });
     mockAgentConnectorAuthorizations(["gmail"]);
@@ -1282,7 +1293,11 @@ describe("chat event action cards", () => {
       },
     });
 
-    detachedSetupPage({ context, path: `/chats/${threadId}` });
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.ConnectorDiscovery]: true },
+    });
 
     const displayedCopyElement = await screen.findByText(displayedCopy);
     expect(displayedCopyElement).toBeInTheDocument();
@@ -1318,35 +1333,33 @@ describe("chat event action cards", () => {
     });
     context.mocks.browser.open(authWindow);
     context.mocks.data.connectors([]);
-    context.mocks.api(zeroConnectorCatalogContract.status, ({ respond }) => {
+    context.mocks.api(zeroConnectorCatalogContract.get, ({ respond }) => {
       return respond(200, {
-        connectors: [
-          publicConnectorStatusItem({
-            slug: "github",
-            label: "GitHub",
-            connected,
-            connectionStatus: connected ? "connected" : "not-connected",
-            connection: connected
-              ? {
-                  authMethod: "oauth",
-                  externalUsername: "octocat",
-                  externalEmail: null,
-                  reconnectReason: null,
-                }
-              : null,
-            authMethods: [
-              {
-                id: "oauth",
-                label: "OAuth",
-                description: null,
-                grantKind: "auth-code",
-                manualFields: [],
-                startOptions: [],
-              },
-            ],
-            singleAuthCodeAuthMethodId: "oauth",
-          }),
-        ],
+        connector: publicConnectorStatusItem({
+          slug: "github",
+          label: "GitHub",
+          connected,
+          connectionStatus: connected ? "connected" : "not-connected",
+          connection: connected
+            ? {
+                authMethod: "oauth",
+                externalUsername: "octocat",
+                externalEmail: null,
+                reconnectReason: null,
+              }
+            : null,
+          authMethods: [
+            {
+              id: "oauth",
+              label: "OAuth",
+              description: null,
+              grantKind: "auth-code",
+              manualFields: [],
+              startOptions: [],
+            },
+          ],
+          singleAuthCodeAuthMethodId: "oauth",
+        }),
       });
     });
     context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
@@ -1402,7 +1415,11 @@ describe("chat event action cards", () => {
       },
     });
 
-    detachedSetupPage({ context, path: `/chats/${threadId}` });
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.ConnectorDiscovery]: true },
+    });
 
     const connectorCard = await screen.findByTestId("connector-action-card");
     await user.click(await waitForButtonByText("Connect", connectorCard));
@@ -1428,26 +1445,24 @@ describe("chat event action cards", () => {
     let connected = false;
     let authorized = false;
     let connectCalls = 0;
-    context.mocks.api(zeroConnectorCatalogContract.status, ({ respond }) => {
+    context.mocks.api(zeroConnectorCatalogContract.get, ({ respond }) => {
       return respond(200, {
-        connectors: [
-          publicConnectorStatusItem({
-            slug: "stripe",
-            label: "Public Stripe",
-            connected,
-            connectionStatus: connected ? "connected" : "not-connected",
-            authMethods: [
-              {
-                id: "api",
-                label: "Public catalog",
-                description: null,
-                grantKind: "none",
-                manualFields: [],
-                startOptions: [],
-              },
-            ],
-          }),
-        ],
+        connector: publicConnectorStatusItem({
+          slug: "stripe",
+          label: "Public Stripe",
+          connected,
+          connectionStatus: connected ? "connected" : "not-connected",
+          authMethods: [
+            {
+              id: "api",
+              label: "Public catalog",
+              description: null,
+              grantKind: "none",
+              manualFields: [],
+              startOptions: [],
+            },
+          ],
+        }),
       });
     });
     context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
@@ -1494,7 +1509,11 @@ describe("chat event action cards", () => {
       ],
     });
 
-    detachedSetupPage({ context, path: `/chats/${threadId}` });
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.ConnectorDiscovery]: true },
+    });
 
     const connectorCard = await screen.findByTestId("connector-action-card");
     await user.click(await waitForButtonByText("Connect", connectorCard));
@@ -2294,6 +2313,7 @@ describe("chat event action cards", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
+      featureSwitches: { [FeatureSwitchKey.ConnectorDiscovery]: true },
     });
 
     const connectorCard = await screen.findByTestId("connector-action-card");
@@ -2339,6 +2359,7 @@ describe("chat event action cards", () => {
     detachedSetupPage({
       context,
       path: "/chats/e4000000-0000-4000-a000-000000000011",
+      featureSwitches: { [FeatureSwitchKey.ConnectorDiscovery]: true },
     });
 
     const userMessage = await screen.findByText(
@@ -2363,35 +2384,41 @@ describe("chat event action cards", () => {
     const connectorAuthorizeUrl = `${window.location.origin}/connectors/future-connector/authorize?agentId=${AGENT_ID}`;
     let connected = false;
     let authorized = false;
+    let fullCatalogRequests = 0;
     context.mocks.api(zeroConnectorCatalogContract.status, ({ respond }) => {
+      fullCatalogRequests += 1;
+      return respond(200, { connectors: [] });
+    });
+    context.mocks.api(zeroConnectorCatalogContract.discovery, ({ respond }) => {
+      return respond(200, { connectors: [], totalConnectorCount: 347 });
+    });
+    context.mocks.api(zeroConnectorCatalogContract.get, ({ respond }) => {
       return respond(200, {
-        connectors: [
-          publicConnectorStatusItem({
-            slug: "future-connector",
-            label: "Catalog Future Connector",
-            description: "Catalog future connector help text",
-            connected,
-            connectionStatus: connected ? "connected" : "not-connected",
-            authMethods: [
-              {
-                id: "partner-token",
-                label: "Partner token",
-                description: null,
-                grantKind: "manual",
-                manualFields: [
-                  {
-                    id: "apiKey",
-                    label: "API key",
-                    required: true,
-                    placeholder: "future-api-key",
-                    inputType: "password",
-                  },
-                ],
-                startOptions: [],
-              },
-            ],
-          }),
-        ],
+        connector: publicConnectorStatusItem({
+          slug: "future-connector",
+          label: "Catalog Future Connector",
+          description: "Catalog future connector help text",
+          connected,
+          connectionStatus: connected ? "connected" : "not-connected",
+          authMethods: [
+            {
+              id: "partner-token",
+              label: "Partner token",
+              description: null,
+              grantKind: "manual",
+              manualFields: [
+                {
+                  id: "apiKey",
+                  label: "API key",
+                  required: true,
+                  placeholder: "future-api-key",
+                  inputType: "password",
+                },
+              ],
+              startOptions: [],
+            },
+          ],
+        }),
       });
     });
     context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
@@ -2440,6 +2467,7 @@ describe("chat event action cards", () => {
     detachedSetupPage({
       context,
       path: "/chats/e4000000-0000-4000-a000-000000000012",
+      featureSwitches: { [FeatureSwitchKey.ConnectorDiscovery]: true },
     });
 
     const connectorCard = await screen.findByTestId("connector-action-card");
@@ -2473,6 +2501,7 @@ describe("chat event action cards", () => {
     await waitFor(() => {
       expect(within(connectorCard).getByText("Authorized")).toBeInTheDocument();
     });
+    expect(fullCatalogRequests).toBe(0);
   });
 
   it("fails closed when permission action metadata is hidden", async () => {

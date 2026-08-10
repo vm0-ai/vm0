@@ -27,7 +27,6 @@ import { agents$ } from "../../signals/agent.ts";
 import { CustomConnectorsPanel } from "./components/settings/custom-connectors-panel.tsx";
 import { ConnectorCatalogDescription } from "./components/settings/connector-catalog-description.tsx";
 import {
-  allConnectorCatalogItems$,
   connectorCatalogDiscovery$,
   connectConnectorOAuthAuthCode$,
   connectConnectorNoAuth$,
@@ -43,6 +42,7 @@ import {
   pollingOAuthAuthCodeConnectorSlug$,
   pollingOAuthDeviceAuthConnectorSlug$,
   justConnectedSlugs$,
+  relatedCatalogItems$,
   scopeReviewConnectorSlug$,
   setScopeReviewConnectorSlug$,
   getAvailableStatusAuthCodeAuthMethod,
@@ -901,7 +901,7 @@ function connectorLabelForSlug(
 
 export function ZeroConnectorsPage() {
   const { t } = useTranslation();
-  const allCatalogItemsLoadable = useLastLoadable(allConnectorCatalogItems$);
+  const relatedCatalogItemsLoadable = useLastLoadable(relatedCatalogItems$);
   const filteredCatalogItemsLoadable = useLastLoadable(
     filteredConnectorCatalogItems$,
   );
@@ -955,9 +955,14 @@ export function ZeroConnectorsPage() {
       : undefined,
   );
   const allConnectors =
-    allCatalogItemsLoadable.state === "hasData"
-      ? allCatalogItemsLoadable.data
+    relatedCatalogItemsLoadable.state === "hasData"
+      ? relatedCatalogItemsLoadable.data
       : [];
+  const selectedConnector = selectedConnectorSlug
+    ? allConnectors.find((connector) => {
+        return connector.slug === selectedConnectorSlug;
+      })
+    : undefined;
   const managedConnectorLabel = connectorLabelForSlug(
     allConnectors,
     managedConnectorSlug,
@@ -1154,8 +1159,9 @@ export function ZeroConnectorsPage() {
         </div>
       </main>
 
-      {selectedConnectorSlug && (
+      {selectedConnector && (
         <ConnectModal
+          item={selectedConnector}
           authorizeVisibleAgentsOnConnect
           onClose={() => {
             return setSelected(null);

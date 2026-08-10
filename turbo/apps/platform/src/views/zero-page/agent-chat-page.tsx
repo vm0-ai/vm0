@@ -27,7 +27,7 @@ import { detach, Reason } from "../../signals/utils.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import { openSettingsDialogAt$ } from "../../signals/zero-page/settings/settings-dialog.ts";
 import { ZeroChatComposer } from "./zero-chat-composer.tsx";
-import { connectorCatalogStatusBySlug$ } from "../../signals/external/connectors.ts";
+import { relatedCatalogItems$ } from "../../signals/zero-page/settings/connectors.ts";
 import { AttachmentLightbox } from "./zero-attachment-chips.tsx";
 import {
   chatPageTaglineIndex$,
@@ -477,7 +477,14 @@ function SuggestedPromptsGrid({
   onSelectPrompt: (prompt: string) => void;
 }) {
   const { t } = useTranslation("agents");
-  const connectorStatusBySlug = useLastResolved(connectorCatalogStatusBySlug$);
+  const relatedCatalogItems = useLastResolved(relatedCatalogItems$);
+  const connectorStatusBySlug = relatedCatalogItems
+    ? new Map(
+        relatedCatalogItems.map((connector) => {
+          return [connector.slug, connector];
+        }),
+      )
+    : undefined;
   const unfilteredSuggestedPrompts =
     useLastResolved(unfilteredSuggestedPrompts$) ?? [];
   const suggestedPromptsLoadable = useLoadable(suggestedPrompts$);

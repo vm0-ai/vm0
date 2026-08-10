@@ -156,7 +156,6 @@ import { CustomConnectorConnectDialog } from "./components/settings/custom-conne
 import type { ConnectorConnectHandlers } from "./components/settings/launch-connector-connect.ts";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 import {
-  allConnectorCatalogItems$,
   connectConnectorNoAuth$,
   connectConnectorOAuthAuthCode$,
   connectFlowConnectorSlug$,
@@ -165,6 +164,7 @@ import {
   pollingOAuthAuthCodeConnectorSlug$,
   pollingOAuthDeviceAuthConnectorSlug$,
 } from "../../signals/zero-page/settings/connectors.ts";
+import { connectorCatalogStatus$ } from "../../signals/external/connectors.ts";
 import { customConnectors$ } from "../../signals/zero-page/settings/custom-connectors.ts";
 import { LoadingSwitch } from "../components/loading-switch.tsx";
 import { pageSignal$ } from "../../signals/page-signal.ts";
@@ -252,7 +252,10 @@ interface ZeroChatComposerProps {
 }
 
 interface ComposerConnectorReadState {
-  readonly catalogItems: Loadable<
+  readonly relatedCatalogItems: Loadable<
+    readonly PlatformConnectorCatalogStatusItem[]
+  >;
+  readonly addDialogCatalogItems: Loadable<
     readonly PlatformConnectorCatalogStatusItem[]
   >;
   readonly customConnectors: Loadable<readonly CustomConnectorResponse[]>;
@@ -1322,7 +1325,9 @@ function WorkflowTemplateConnectorIcons({
   limit?: number;
   withDivider?: boolean;
 }) {
-  const catalogConnectors = useLastResolved(allConnectorCatalogItems$);
+  const catalogConnectors = useLastResolved(
+    connectorCatalogStatus$,
+  )?.connectors;
   const visibleConnectors = connectorSlugs.flatMap((connectorSlug) => {
     const connector = catalogConnectors?.find((candidate) => {
       return candidate.slug === connectorSlug;
@@ -7549,7 +7554,12 @@ function useComposerConnectorReadState(
   signals: ComposerSignals,
 ): ComposerConnectorReadState {
   return {
-    catalogItems: useLastLoadable(allConnectorCatalogItems$),
+    relatedCatalogItems: useLastLoadable(
+      signals.connector.relatedCatalogItems$,
+    ),
+    addDialogCatalogItems: useLastLoadable(
+      signals.connector.addDialogCatalogItems$,
+    ),
     customConnectors: useLastLoadable(customConnectors$),
     authorization: useLastLoadable(signals.connector.connectorAuthorization$, {
       equalityFn: equalComposerConnectorAuthorizationState,
@@ -7597,22 +7607,28 @@ interface ResolvedComposerConnectorCollections {
 }
 
 function resolveComposerConnectorCollections({
-  catalogItems,
+  relatedCatalogItems,
+  addDialogCatalogItems,
   customConnectors,
   authorizedConnectorSlugs,
   authorizedCustomConnectorIds,
   optimisticConnected,
   selectedCustomConnectorId,
 }: {
-  catalogItems: Loadable<readonly PlatformConnectorCatalogStatusItem[]>;
+  relatedCatalogItems: Loadable<readonly PlatformConnectorCatalogStatusItem[]>;
+  addDialogCatalogItems: Loadable<
+    readonly PlatformConnectorCatalogStatusItem[]
+  >;
   customConnectors: Loadable<readonly CustomConnectorResponse[]>;
   authorizedConnectorSlugs: readonly ConnectorSlug[] | null;
   authorizedCustomConnectorIds: readonly string[] | null;
   optimisticConnected: ReadonlySet<ConnectorSlug>;
   selectedCustomConnectorId: string | null;
 }): ResolvedComposerConnectorCollections {
-  const resolvedCatalogItems =
-    catalogItems.state === "hasData" ? catalogItems.data : [];
+  const resolvedRelatedCatalogItems =
+    relatedCatalogItems.state === "hasData" ? relatedCatalogItems.data : [];
+  const resolvedAddDialogCatalogItems =
+    addDialogCatalogItems.state === "hasData" ? addDialogCatalogItems.data : [];
   const resolvedCustomConnectors =
     customConnectors.state === "hasData"
       ? customConnectors.data.filter(isHttpCustomConnectorResponse)
@@ -7620,19 +7636,23 @@ function resolveComposerConnectorCollections({
   const authorizedSet = new Set(authorizedConnectorSlugs ?? []);
   const authorizedCustomSet = new Set(authorizedCustomConnectorIds ?? []);
   const connectorMap = new Map(
-    resolvedCatalogItems.map((connector) => {
-      return [connector.slug, connector];
-    }),
+    [...resolvedRelatedCatalogItems, ...resolvedAddDialogCatalogItems].map(
+      (connector) => {
+        return [connector.slug, connector];
+      },
+    ),
   );
-  const unconnectedConnectors = resolvedCatalogItems.filter((connector) => {
-    return !connector.connected && !optimisticConnected.has(connector.slug);
-  });
+  const unconnectedConnectors = resolvedAddDialogCatalogItems.filter(
+    (connector) => {
+      return !connector.connected && !optimisticConnected.has(connector.slug);
+    },
+  );
   const unconnectedCustomConnectors = resolvedCustomConnectors.filter(
     (connector) => {
       return !connector.connected;
     },
   );
-  const agentConnectors = resolvedCatalogItems
+  const agentConnectors = resolvedRelatedCatalogItems
     .filter((connector) => {
       return connector.connected || optimisticConnected.has(connector.slug);
     })
@@ -7768,7 +7788,9 @@ function ComposerConnectorsSlot({ signals }: { signals: ComposerSignals }) {
   };
 
   // Connectors: connected (org-level) + authorized (agent-level) → available
-  const connectorCatalogItemsLoadable = connectorReadState.catalogItems;
+  const relatedCatalogItemsLoadable = connectorReadState.relatedCatalogItems;
+  const addDialogCatalogItemsLoadable =
+    connectorReadState.addDialogCatalogItems;
   const customConnectorsLoadable = connectorReadState.customConnectors;
   const authorizationLoadable = connectorReadState.authorization;
   const pageSignal = useGet(pageSignal$);
@@ -7804,7 +7826,7 @@ function ComposerConnectorsSlot({ signals }: { signals: ComposerSignals }) {
   );
 
   const connectorsLoading =
-    connectorCatalogItemsLoadable.state !== "hasData" ||
+    relatedCatalogItemsLoadable.state !== "hasData" ||
     customConnectorsLoadable.state !== "hasData" ||
     authorizedConnectors === null ||
     authorizedCustomConnectors === null;
@@ -7818,13 +7840,17 @@ function ComposerConnectorsSlot({ signals }: { signals: ComposerSignals }) {
     agentCustomConnectors,
     selectedCustomConnector,
   } = resolveComposerConnectorCollections({
-    catalogItems: connectorCatalogItemsLoadable,
+    relatedCatalogItems: relatedCatalogItemsLoadable,
+    addDialogCatalogItems: addDialogCatalogItemsLoadable,
     customConnectors: customConnectorsLoadable,
     authorizedConnectorSlugs: authorizedConnectors,
     authorizedCustomConnectorIds: authorizedCustomConnectors,
     optimisticConnected,
     selectedCustomConnectorId,
   });
+  const selectedConnector = selectedConnectorSlug
+    ? connectorMap.get(selectedConnectorSlug)
+    : undefined;
 
   const handleConnectSuccess = async (connectorSlug: ConnectorSlug) => {
     const label = connectorMap.get(connectorSlug)?.label ?? connectorSlug;
@@ -7988,9 +8014,9 @@ function ComposerConnectorsSlot({ signals }: { signals: ComposerSignals }) {
         onToggle={handleToggle}
         onToggleCustom={handleCustomToggle}
       />
-      {selectedConnectorSlug && (
+      {selectedConnector && (
         <ConnectModal
-          selectedConnectorSlug={selectedConnectorSlug}
+          item={selectedConnector}
           agentId={agentRecordId}
           onClose={() => {
             return updateConnectorUi({ selectedConnectorSlug: null });

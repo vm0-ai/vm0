@@ -30,21 +30,17 @@ import type {
   InitClientReturn,
 } from "@vm0/api-contracts/contracts/trpc-contract";
 import type { ConnectorOauthDeviceAuthSessionPollResponse } from "@vm0/api-contracts/contracts/connector-schemas";
-import {
-  zeroConnectorCatalogContract,
-  type PublicConnectorCatalogAuthMethodDetail,
-  type PublicConnectorCatalogConnectionStatus,
-  type PublicConnectorCatalogIcon,
+import type {
+  PublicConnectorCatalogAuthMethodDetail,
+  PublicConnectorCatalogConnectionStatus,
+  PublicConnectorCatalogIcon,
 } from "@vm0/api-contracts/contracts/zero-connector-catalog";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
-  connectorCatalogStatus$,
   connectors$,
-  connectorsReloadVersion$,
   deleteConnector$,
+  relatedConnectorCatalog,
   reloadConnectors$,
 } from "../../external/connectors.ts";
-import { featureSwitch$ } from "../../external/feature-switch.ts";
 import { replaceSearchParams$, searchParams$ } from "../../route.ts";
 import { connectorAgentAuthorizations$ } from "./connector-access-management.ts";
 import {
@@ -419,30 +415,10 @@ export const connectorsSearch$ = computed((get) => {
   return get(searchParams$).get(CONNECTORS_SEARCH_PARAM) ?? "";
 });
 
-export const connectorCatalogDiscovery$ = computed(async (get) => {
-  const featureStates = get(featureSwitch$);
-  if (!featureStates[FeatureSwitchKey.ConnectorDiscovery]) {
-    return await get(connectorCatalogStatus$);
-  }
+export const connectorCatalogDiscovery$ =
+  relatedConnectorCatalog(connectorsSearch$);
 
-  get(connectorsReloadVersion$);
-  const keyword = get(connectorsSearch$).trim();
-  const createClient = get(zeroClient$);
-  const client = createClient(zeroConnectorCatalogContract);
-  const result = await accept(
-    client.discovery({ query: keyword ? { keyword } : {} }),
-    [200, 404],
-  );
-  // The API deploys before the app, but preserve new-app -> previous-API
-  // compatibility for rollback and propagation windows. Remove after the
-  // discovery backend and replacement app have fully rolled out.
-  if (result.status === 404) {
-    return await get(connectorCatalogStatus$);
-  }
-  return result.body;
-});
-
-export const allConnectorCatalogItems$ = computed(async (get) => {
+export const relatedCatalogItems$ = computed(async (get) => {
   const { connectors } = await get(connectorCatalogDiscovery$);
   const items = [...connectors];
 
@@ -470,8 +446,8 @@ export const filteredConnectorCatalogItems$ = computed(async (get) => {
         )
       : null;
 
-  const allConnectorCatalogItems = await get(allConnectorCatalogItems$);
-  return allConnectorCatalogItems.filter((connector) => {
+  const relatedCatalogItems = await get(relatedCatalogItems$);
+  return relatedCatalogItems.filter((connector) => {
     if (!matchesConnectorSearch(keyword, connector)) {
       return false;
     }
@@ -1102,12 +1078,12 @@ export const runConnectorConnectSuccess$ = command(
 
 // ---------------------------------------------------------------------------
 // Optimistic connected state — bridges the gap between connect success and
-// allConnectorCatalogItems$ recomputation so the UI doesn't flash.
+// relatedCatalogItems$ recomputation so the UI doesn't flash.
 // ---------------------------------------------------------------------------
 
 const internalJustConnectedSlugs$ = state<Set<ConnectorSlug>>(new Set());
 
-/** Slugs that were just connected but may not yet be reflected in allConnectorCatalogItems$. */
+/** Slugs that were just connected but may not yet be reflected in relatedCatalogItems$. */
 export const justConnectedSlugs$ = computed((get) => {
   return get(internalJustConnectedSlugs$);
 });
@@ -1117,7 +1093,7 @@ export const justConnectedSlugs$ = computed((get) => {
  *
  * Without this cleanup, a connector that was connected earlier in the session
  * stays in the Connected section of /connectors after disconnect because the
- * optimistic override in allConnectorCatalogItems$ wins over the fresh
+ * optimistic override in relatedCatalogItems$ wins over the fresh
  * `connected = false` from the API (regression #10272).
  */
 export const disconnectConnector$ = command(

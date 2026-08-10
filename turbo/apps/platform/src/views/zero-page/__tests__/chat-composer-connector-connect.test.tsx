@@ -15,6 +15,7 @@ import {
   zeroConnectorNoAuthGrantContract,
   zeroConnectorOauthStartContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   detachedSetupPage,
@@ -491,5 +492,71 @@ describe("chat composer connector connection", () => {
     await expect(
       screen.findByRole("dialog", { name: "Axiom" }),
     ).resolves.toBeInTheDocument();
+  });
+
+  it("searches beyond featured connectors without loading the full catalog", async () => {
+    const user = userEvent.setup({ delay: null });
+    const github = connectorStatus({
+      slug: "github",
+      label: "GitHub",
+      authMethods: [],
+    });
+    const axiom = connectorStatus({
+      slug: "axiom",
+      label: "Axiom",
+      authMethods: [
+        {
+          id: "api-token",
+          label: "API token",
+          description: null,
+          grantKind: "manual",
+          manualFields: [
+            {
+              id: "apiToken",
+              label: "API token",
+              required: true,
+              placeholder: "xaat",
+              inputType: "password",
+            },
+          ],
+          startOptions: [],
+        },
+      ],
+    });
+    const discoveryKeywords: (string | undefined)[] = [];
+    let fullCatalogRequests = 0;
+    context.mocks.api(
+      zeroConnectorCatalogContract.discovery,
+      ({ query, respond }) => {
+        discoveryKeywords.push(query.keyword);
+        return respond(200, {
+          connectors: query.keyword ? [axiom] : [github],
+          totalConnectorCount: 347,
+        });
+      },
+    );
+    context.mocks.api(zeroConnectorCatalogContract.status, ({ respond }) => {
+      fullCatalogRequests += 1;
+      return respond(200, { connectors: [github, axiom] });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: { [FeatureSwitchKey.ConnectorDiscovery]: true },
+    });
+
+    const dialog = await openAddConnectorsDialog(user);
+    await user.type(
+      within(dialog).getByPlaceholderText(/Find connectors/u),
+      "Axiom",
+    );
+    await user.click(await within(dialog).findByLabelText("Connect Axiom"));
+
+    await expect(
+      screen.findByRole("dialog", { name: "Axiom" }),
+    ).resolves.toBeInTheDocument();
+    expect(discoveryKeywords).toContain("Axiom");
+    expect(fullCatalogRequests).toBe(0);
   });
 });

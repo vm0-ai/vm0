@@ -674,33 +674,6 @@ describe("connectors page", () => {
     expect(legacyStatusRequests).toBe(0);
   });
 
-  it("falls back to catalog status when the previous API lacks discovery", async () => {
-    mockConnectors([]);
-    const github = publicStatusItem({
-      connectorSlug: "github",
-      label: "GitHub",
-      authMethods: [],
-    });
-    context.mocks.api(zeroConnectorCatalogContract.discovery, ({ respond }) => {
-      return respond(404, {
-        error: { code: "NOT_FOUND", message: "Not found" },
-      });
-    });
-    context.mocks.api(zeroConnectorCatalogContract.status, ({ respond }) => {
-      return respond(200, { connectors: [github] });
-    });
-
-    detachedSetupPage({
-      context,
-      path: "/connectors",
-      featureSwitches: { [FeatureSwitchKey.ConnectorDiscovery]: true },
-    });
-
-    await expect(
-      screen.findByTestId("connector-card-label"),
-    ).resolves.toHaveTextContent("GitHub");
-  });
-
   it("shows the exact connector catalog size in the page description", async () => {
     mockConnectors([]);
     mockPublicConnectorStatus([

@@ -323,6 +323,38 @@ export const apiConnectorsHandlers = [
     });
   }),
 
+  mockApi(zeroConnectorCatalogContract.discovery, ({ query, respond }) => {
+    const allConnectors = mockConnectorCatalogStatus();
+    const keyword = query.keyword?.trim().toLowerCase();
+    const connectors = keyword
+      ? allConnectors
+          .filter((connector) => {
+            return (
+              connector.slug.toLowerCase().includes(keyword) ||
+              connector.label.toLowerCase().includes(keyword)
+            );
+          })
+          .slice(0, 100)
+      : allConnectors.slice(0, 100);
+    return respond(200, {
+      connectors,
+      categoryMetadata: testConnectorCatalogCategoryMetadata,
+      totalConnectorCount: allConnectors.length,
+    });
+  }),
+
+  mockApi(zeroConnectorCatalogContract.get, ({ params, respond }) => {
+    const connector = mockConnectorCatalogStatus().find((candidate) => {
+      return candidate.slug === params.connectorSlug;
+    });
+    if (!connector) {
+      return respond(404, {
+        error: { message: "Connector not found", code: "NOT_FOUND" },
+      });
+    }
+    return respond(200, { connector });
+  }),
+
   mockApi(zeroCustomConnectorsContract.list, ({ respond }) => {
     return respond(200, { connectors: [] });
   }),

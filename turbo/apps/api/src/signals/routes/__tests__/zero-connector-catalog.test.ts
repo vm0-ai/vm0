@@ -832,6 +832,38 @@ describe("GET /api/zero/connector-catalog", () => {
     ]);
   });
 
+  it("returns exact connector metadata with the current connection status", async () => {
+    const actor = bdd.user();
+    await connectorsApi.connectManualGrant(actor, "openai", "api-token", {
+      apiKey: "sk-public-detail-status",
+    });
+    mocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
+
+    const client = setupApp({ context, routes: zeroConnectorCatalogRoutes })(
+      zeroConnectorCatalogContract,
+    );
+    const response = await accept(
+      client.get({
+        params: { connectorSlug: "openai" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    assertPublicConnectorCatalogHasNoPrivateFields(response.body);
+    expect(response.body.connector).toMatchObject({
+      slug: "openai",
+      connected: true,
+      connectionStatus: "connected",
+      connection: {
+        authMethod: "api-token",
+        externalUsername: null,
+        externalEmail: null,
+        reconnectReason: null,
+      },
+    });
+  });
+
   it("omits auth text and placeholders derived from private names", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;

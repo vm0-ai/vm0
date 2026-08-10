@@ -107,10 +107,6 @@ const publicConnectorCatalogListResponseSchema = z.object({
   categoryMetadata: publicConnectorCatalogCategoryMetadataSchema.optional(),
 });
 
-const publicConnectorCatalogDetailResponseSchema = z.object({
-  connector: publicConnectorCatalogDetailSchema,
-});
-
 const publicConnectorCatalogConnectionStatusSchema = z.enum([
   "not-connected",
   "connected",
@@ -136,6 +132,10 @@ const publicConnectorCatalogStatusItemSchema =
     singleAuthCodeAuthMethodId: connectorAuthMethodIdSchema.nullable(),
     connectNotice: z.enum(["google-security-warning"]).nullable(),
   });
+
+const publicConnectorCatalogDetailResponseSchema = z.object({
+  connector: publicConnectorCatalogStatusItemSchema,
+});
 
 const publicConnectorCatalogStatusResponseSchema = z.object({
   connectors: z.array(publicConnectorCatalogStatusItemSchema),
@@ -301,7 +301,7 @@ export const zeroConnectorCatalogContract = c.router({
       404: apiErrorSchema,
       503: apiErrorSchema,
     },
-    summary: "Get public connector catalog metadata",
+    summary: "Get public connector catalog metadata with connection status",
   },
   permissions: {
     method: "GET",
