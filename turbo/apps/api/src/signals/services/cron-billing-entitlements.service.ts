@@ -33,7 +33,10 @@ import {
   knownPlanPriceItem,
   tierFromPriceId,
 } from "./zero-billing-checkout.service";
-import { reconcileUsagePackSubscriptions } from "./usage-pack-subscription.service";
+import {
+  reconcileUsagePackSubscriptions,
+  USAGE_PACK_SUBSCRIPTION_PURPOSE,
+} from "./usage-pack-subscription.service";
 import { reconcileUsagePackInvitationPurchases } from "./usage-pack-invitation-purchase.service";
 import { disableIneligibleWorkflowWebhookAutomationsForOrg } from "./workflow-webhook-automation-entitlement.service";
 import type { Tx } from "../../lib/db-types";
@@ -263,6 +266,9 @@ async function upsertStripeSubscriptionPlanSnapshot(
     currentPeriodEnd: scheduledEnd,
     cancelAt,
     expiresAt: cancelAt,
+    memberInviteUsagePackRequired:
+      (args.tier === "pro" || args.tier === "team") &&
+      args.subscription.metadata?.purpose === USAGE_PACK_SUBSCRIPTION_PURPOSE,
     sourceMetadata: args.subscription.metadata ?? {},
   });
 }

@@ -5,8 +5,10 @@ import {
   zeroOrgMembershipRequestsContract,
 } from "@vm0/api-contracts/contracts/zero-org-members";
 import {
+  zeroBillingStatusContract,
   zeroBillingUsagePackCatalogContract,
   zeroBillingUsagePackManagementContract,
+  type BillingStatusResponse,
 } from "@vm0/api-contracts/contracts/zero-billing";
 import { FeatureSwitchKey } from "@vm0/core";
 import { screen, waitFor, within } from "@testing-library/react";
@@ -221,6 +223,29 @@ function mockMembersStory(): void {
   );
 }
 
+function mockMemberInviteEntitlement(required: boolean): void {
+  const response: BillingStatusResponse = {
+    tier: "pro",
+    memberInviteUsagePackRequired: required,
+    credits: 0,
+    onboardingPaymentPending: false,
+    subscriptionStatus: "active",
+    currentPeriodEnd: "2026-09-01T00:00:00.000Z",
+    cancelAtPeriodEnd: false,
+    scheduledChange: null,
+    hasSubscription: true,
+    autoRecharge: { enabled: false, threshold: null, amount: null },
+    creditExpiry: { expiringNextCycle: 0, nextExpiryDate: null },
+    creditBreakdown: [],
+    creditGrants: [],
+    concurrencyLimit: 1,
+    concurrencySubscriptions: [],
+  };
+  context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+    return respond(200, response);
+  });
+}
+
 async function openMembersTab(heading = "People"): Promise<void> {
   detachedSetupPage({
     context,
@@ -365,6 +390,57 @@ describe("organization members settings", () => {
       expect(window.location.href).toBe(
         "https://checkout.stripe.test/member-invitation",
       );
+    });
+  });
+
+  it("keeps invitations package-free when the org entitlement does not require a usage pack", async () => {
+    mockMembersStory();
+    mockMemberInviteEntitlement(false);
+    let managementRequested = false;
+    context.mocks.api(
+      zeroBillingUsagePackManagementContract.get,
+      ({ respond }) => {
+        managementRequested = true;
+        return respond(200, {
+          tier: "pro",
+          currentPeriodEnd: "2026-09-01T00:00:00.000Z",
+          allocations: [],
+        });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/?settings=people",
+      featureSwitches: { [FeatureSwitchKey.UsagePackPlans]: true },
+    });
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "People" }),
+      ).toBeInTheDocument();
+    });
+    click(buttonByText("Add member"));
+    const inviteDialog = await screen.findByRole("dialog", {
+      name: "Invite member",
+    });
+    await fill(
+      within(inviteDialog).getByPlaceholderText("email@example.com"),
+      "legacy.invitee@example.com",
+    );
+    const send = buttonByText("Send invitation", inviteDialog);
+    await waitFor(() => {
+      expect(send).toBeEnabled();
+    });
+    expect(
+      within(inviteDialog).queryByText("Member packages"),
+    ).not.toBeInTheDocument();
+    expect(managementRequested).toBeFalsy();
+    click(send);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("legacy.invitee@example.com"),
+      ).toBeInTheDocument();
     });
   });
 

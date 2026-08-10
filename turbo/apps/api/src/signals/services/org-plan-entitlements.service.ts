@@ -24,6 +24,7 @@ interface UpsertOrgPlanEntitlementArgs {
   readonly currentPeriodEnd?: Date | null;
   readonly cancelAt?: Date | null;
   readonly expiresAt?: Date | null;
+  readonly memberInviteUsagePackRequired?: boolean;
   readonly sourceMetadata?: OrgPlanEntitlementSourceMetadata;
 }
 
@@ -101,6 +102,7 @@ export async function upsertOrgPlanEntitlement(
     baseConcurrencyLimit: limits.baseConcurrencyLimit,
     canBuyConcurrency: limits.canBuyConcurrency,
     canBuyCredits: limits.canBuyCredits,
+    memberInviteUsagePackRequired: args.memberInviteUsagePackRequired ?? false,
     autoRechargeAllowed: limits.autoRechargeAllowed,
     supportByok: limits.supportByok,
     restrictedVm0Models: limits.restrictedVm0Models,
@@ -132,6 +134,7 @@ export async function upsertOrgPlanEntitlement(
         baseConcurrencyLimit: values.baseConcurrencyLimit,
         canBuyConcurrency: values.canBuyConcurrency,
         canBuyCredits: values.canBuyCredits,
+        memberInviteUsagePackRequired: values.memberInviteUsagePackRequired,
         autoRechargeAllowed: values.autoRechargeAllowed,
         supportByok: values.supportByok,
         restrictedVm0Models: values.restrictedVm0Models,

@@ -24,6 +24,7 @@ import { accept } from "../../../lib/accept.ts";
 import { i18n } from "../../../i18n/index.ts";
 import { featureSwitch$ } from "../../external/feature-switch.ts";
 import {
+  billingStatusAsync$,
   usagePackCatalogAsync$,
   usagePackManagementAsync$,
 } from "../billing.ts";
@@ -263,6 +264,10 @@ export const invitationUsagePackCatalog$ = computed((get) => {
     return null;
   }
   return (async () => {
+    const billing = await get(billingStatusAsync$);
+    if (billing.memberInviteUsagePackRequired === false) {
+      return null;
+    }
     const management = await get(usagePackManagementAsync$);
     if (!management) {
       return null;

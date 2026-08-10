@@ -56,7 +56,7 @@ import {
   usagePackUsdForKnownPriceId,
 } from "./zero-billing-checkout.service";
 
-const USAGE_PACK_SUBSCRIPTION_PURPOSE = "usage_pack_subscription";
+export const USAGE_PACK_SUBSCRIPTION_PURPOSE = "usage_pack_subscription";
 const USAGE_PACK_SUBSCRIPTION_ID_METADATA_KEY = "usagePackSubscriptionId";
 
 const CREDITS_PER_DOLLAR = 1000;
@@ -1608,6 +1608,7 @@ async function persistUsagePackPlanState(
     currentPeriodEnd: args.periodEnd,
     cancelAt,
     expiresAt: cancelAt,
+    memberInviteUsagePackRequired: true,
     sourceMetadata: args.stripeSubscription.metadata ?? {},
   });
 }

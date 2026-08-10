@@ -296,7 +296,7 @@ export async function usagePackInvitationPurchaseSchemaAvailable(
   return state?.available ?? false;
 }
 
-export async function currentUsagePackSubscriptionForOrg(
+async function currentUsagePackSubscriptionForOrg(
   db: Pick<Db, "select">,
   orgId: string,
 ): Promise<UsagePackSubscriptionRow | null> {

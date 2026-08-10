@@ -4063,7 +4063,60 @@ describe("usage pack allocation management", () => {
     expect(state.org?.cancelAtPeriodEnd).toBeTruthy();
   });
 
-  it("blocks package-free invites only while usage pack enrollment is enabled", async () => {
+  it.each(["pro", "team"] as const)(
+    "requires a usage pack for managed %s invitation entitlements",
+    async (tier) => {
+      const fixture = await seedManagedUsagePack(
+        [{ userId: `user_${randomUUID()}`, usagePackUsd: 20 }],
+        tier,
+      );
+      const billing = await readBillingStatus(fixture);
+      expect(billing.memberInviteUsagePackRequired).toBeTruthy();
+
+      const client = setupApp({ context, routes: zeroOrgInviteRoutes })(
+        zeroOrgInviteContract,
+      );
+      const blocked = await accept(
+        client.invite({
+          headers: { authorization: "Bearer clerk-session" },
+          body: { email: "paid@example.test", role: "member" },
+        }),
+        [409],
+      );
+      expect(blocked.body.error.code).toBe("CONFLICT");
+      expect(
+        context.mocks.clerk.organizations.createOrganizationInvitation,
+      ).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(["pro", "team"] as const)(
+    "keeps legacy %s invitation entitlements package-free",
+    async (tier) => {
+      const fixture = await createSubscriptionOrg({ tier });
+      const billing = await readBillingStatus(fixture);
+      expect(billing.memberInviteUsagePackRequired).toBeFalsy();
+
+      await updateFeatureSwitchesForUser(context, fixture, {
+        [FeatureSwitchKey.UsagePackPlans]: true,
+      });
+      context.mocks.clerk.organizations.createOrganizationInvitation.mockResolvedValueOnce(
+        { id: `inv_${randomUUID()}` },
+      );
+      const invited = await accept(
+        setupApp({ context, routes: zeroOrgInviteRoutes })(
+          zeroOrgInviteContract,
+        ).invite({
+          headers: { authorization: "Bearer clerk-session" },
+          body: { email: `legacy-${tier}@example.test`, role: "member" },
+        }),
+        [200],
+      );
+      expect(invited.body.message).toContain(`legacy-${tier}@example.test`);
+    },
+  );
+
+  it("keeps package-free invites available when usage pack enrollment is disabled", async () => {
     const fixture = await seedManagedUsagePack([
       { userId: `user_${randomUUID()}`, usagePackUsd: 20 },
     ]);
@@ -4081,6 +4134,9 @@ describe("usage pack allocation management", () => {
     expect(
       context.mocks.clerk.organizations.createOrganizationInvitation,
     ).not.toHaveBeenCalled();
+    expect(
+      (await readBillingStatus(fixture)).memberInviteUsagePackRequired,
+    ).toBeTruthy();
 
     await updateFeatureSwitchesForUser(context, fixture, {
       [FeatureSwitchKey.UsagePackPlans]: false,
