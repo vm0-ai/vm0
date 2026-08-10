@@ -984,6 +984,13 @@ test("avatar catalog surfaces stay stable while scrolling and selecting", async 
   await expect(avatarToolbar).toBeInViewport();
 
   await page.getByRole("button", { name: "Select template Ada" }).click();
+  const voiceScroll = dialog.locator("[data-avatar-voice-list-scroll]");
+  const voiceToolbar = dialog.locator("[data-avatar-voice-toolbar]");
+  await expect(voiceToolbar).toBeVisible();
+  await expect(voiceScroll.locator("[data-avatar-voice-toolbar]")).toHaveCount(
+    0,
+  );
+  await expect(voiceToolbar).toBeInViewport();
   await page.getByRole("button", { name: "Select voice Christopher" }).click();
 
   await page.getByRole("button", { name: "Preview template Ada" }).click();

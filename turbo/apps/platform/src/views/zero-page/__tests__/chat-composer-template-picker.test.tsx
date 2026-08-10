@@ -952,11 +952,16 @@ describe("chat composer templates", () => {
     );
     const voicePicker = dialog.querySelector("[data-avatar-voice-picker]");
     const voiceScroll = dialog.querySelector("[data-avatar-voice-list-scroll]");
+    const voiceToolbar = dialog.querySelector("[data-avatar-voice-toolbar]");
     expect(voicePicker).toHaveClass("overflow-hidden");
     expect(voiceScroll).toHaveClass(
       "overflow-y-auto",
       "[scrollbar-width:none]",
     );
+    expect(voiceToolbar).not.toBeNull();
+    expect(voicePicker?.contains(voiceToolbar)).toBeFalsy();
+    expect(voiceScroll?.contains(voiceToolbar)).toBeFalsy();
+    expect(dialog.querySelector("[data-avatar-catalog-toolbar]")).toBeNull();
     expect(voiceScroll?.contains(selectedAvatarCard)).toBeFalsy();
     await waitFor(() => {
       expect(observedVoiceQueries).toContainEqual({
