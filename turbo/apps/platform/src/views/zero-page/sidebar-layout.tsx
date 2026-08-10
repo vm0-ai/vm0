@@ -79,7 +79,7 @@ function InviteButtonLeaf() {
       }}
       className="flex items-center gap-1.5 h-8 px-3 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-state-hover transition-colors shrink-0"
     >
-      <UserPlus size={14} strokeWidth={1.5} />
+      <UserPlus size={14} />
       {t(($) => {
         return $.appShell.sidebar.mobile.invite;
       })}
@@ -112,7 +112,7 @@ function MobileArtifactsButtonInner({ thread }: { thread: ChatPanelSignals }) {
       })}
       aria-pressed={open}
     >
-      <Package size={16} strokeWidth={1.5} />
+      <Package size={16} />
     </button>
   );
 }
@@ -174,7 +174,7 @@ function MobileShareButtonInner({ thread }: { thread: ChatPanelSignals }) {
         return $.chat.sharing.start;
       })}
     >
-      <Share2 size={16} strokeWidth={1.5} />
+      <Share2 size={16} />
     </button>
   );
 }
@@ -267,7 +267,7 @@ function MobileTopBar() {
           return $.appShell.sidebar.mobile.openMenu;
         })}
       >
-        <Menu size={18} strokeWidth={1.8} />
+        <Menu size={18} />
       </button>
       {breadcrumb && (
         <div className="flex-1 min-w-0 flex items-center gap-2 min-w-0">

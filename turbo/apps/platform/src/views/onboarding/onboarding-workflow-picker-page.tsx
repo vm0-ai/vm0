@@ -244,7 +244,7 @@ function WorkflowCard({
           })}
           onClick={onPreview}
         >
-          <ScanEye size={16} strokeWidth={1.6} aria-hidden="true" />
+          <ScanEye size={16} aria-hidden="true" />
         </button>
       </span>
       {selected ? (
@@ -339,7 +339,7 @@ function CategoryOptions({
             className="flex min-h-[130px] min-w-0 flex-col items-start gap-2.5 rounded-xl border border-border bg-background p-4 text-left shadow-[var(--zero-card-shadow)] transition-colors hover:border-primary"
           >
             <span className="flex h-10 w-10 items-center justify-center rounded-[10px] bg-muted/40">
-              <CategoryIcon size={21} strokeWidth={1.7} aria-hidden="true" />
+              <CategoryIcon size={21} aria-hidden="true" />
             </span>
             <span className="text-sm font-semibold">{category.title}</span>
             <span className="text-xs leading-[1.35] text-muted-foreground">

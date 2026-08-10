@@ -136,7 +136,7 @@ export function SharedThreadPage({
             className="inline-flex items-center gap-2 text-sm font-semibold text-foreground"
           >
             <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-[#ed4e01] text-white">
-              <MessageCircle size={17} strokeWidth={1.8} />
+              <MessageCircle size={17} />
             </span>
             {t(($) => {
               return $.sharedThread.brand;

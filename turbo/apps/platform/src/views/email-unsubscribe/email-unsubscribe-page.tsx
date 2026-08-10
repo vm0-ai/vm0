@@ -26,7 +26,7 @@ export function EmailUnsubscribePage() {
         <VM0Logo />
         {status === "done" ? (
           <div className="flex flex-col items-center gap-2.5">
-            <Check size={20} className="text-muted-foreground" />
+            <Check size={20} className="" />
             <h1 className="text-lg font-medium text-foreground">
               {t(($) => {
                 return $.lifecycle.emailUnsubscribe.doneTitle;

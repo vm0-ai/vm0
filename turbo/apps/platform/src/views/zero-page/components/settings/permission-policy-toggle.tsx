@@ -66,7 +66,7 @@ export function PermissionPolicyToggle({
           tone: "allow",
         })}
       >
-        <Check size={12} strokeWidth={2.5} />
+        <Check size={12} />
         {t(($) => {
           return $.connectors.permissions.actions.allow;
         })}
@@ -83,7 +83,7 @@ export function PermissionPolicyToggle({
           tone: "deny",
         })}
       >
-        <Ban size={12} strokeWidth={2.5} />
+        <Ban size={12} />
         {t(($) => {
           return $.connectors.permissions.actions.deny;
         })}

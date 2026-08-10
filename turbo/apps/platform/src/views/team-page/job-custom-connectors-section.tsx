@@ -95,7 +95,7 @@ function CustomConnectorPermissionRow({
                   { connector: connector.displayName },
                 )}
               >
-                <SlidersHorizontal size={15} strokeWidth={1.5} />
+                <SlidersHorizontal size={15} />
               </button>
             </TooltipTrigger>
             <TooltipContent side="top">

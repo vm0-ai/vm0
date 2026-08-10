@@ -606,7 +606,7 @@ function PlanCard({
     <div className="relative flex flex-col rounded-xl transition-transform duration-200 hover:-translate-y-0.5 zero-border px-6 py-7">
       {plan.tier === "pro" && (
         <span className="absolute top-3 right-3 inline-flex items-center gap-1 rounded-lg px-2 py-0.5 text-xs font-medium text-muted-foreground zero-badge">
-          <Crown size={12} strokeWidth={1.8} className="text-amber-500" />
+          <Crown size={12} className="text-amber-500" />
           {i18n.t(($) => {
             return $.billing.plans.popular;
           })}
@@ -662,7 +662,7 @@ function PlanCard({
                 strokeWidth="2"
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                className="shrink-0 text-muted-foreground/40"
+                className="lucide shrink-0 text-muted-foreground/40"
               >
                 <circle cx="12" cy="12" r="10" />
                 <polyline points="16 9 10.5 15 8 12.5" />
@@ -771,7 +771,7 @@ function PricingPage({
                   return $.billing.common.back;
                 })}
               >
-                <ArrowLeft size={16} strokeWidth={1.8} />
+                <ArrowLeft size={16} />
               </button>
             </TooltipTrigger>
             <TooltipContent side="bottom">
@@ -1350,7 +1350,7 @@ function ConcurrencyQuantityControl({
             onQuantityChange(quantity - 1);
           }}
         >
-          <Minus size={13} strokeWidth={2} data-stroke />
+          <Minus size={13} />
         </button>
         <span className="flex h-8 w-11 items-center justify-center border-x border-border/70 text-sm font-medium tabular-nums text-foreground">
           {formatLocalizedNumber(quantity)}
@@ -1368,7 +1368,7 @@ function ConcurrencyQuantityControl({
             onQuantityChange(quantity + 1);
           }}
         >
-          <Plus size={13} strokeWidth={2} data-stroke />
+          <Plus size={13} />
         </button>
       </div>
     </div>
@@ -2225,7 +2225,7 @@ export function OrgBillingTab() {
                       {t(($) => {
                         return $.billing.common.manage;
                       })}
-                      <ExternalLink size={13} strokeWidth={1.5} />
+                      <ExternalLink size={13} />
                     </Button>
                   </div>
                 </>
@@ -2242,17 +2242,9 @@ export function OrgBillingTab() {
                   {t(($) => {
                     return $.billing.plans.compareAll;
                   })}
-                  <Coins
-                    size={14}
-                    strokeWidth={1.5}
-                    className="text-foreground/40"
-                  />
+                  <Coins size={14} className="text-foreground/40" />
                 </span>
-                <ChevronRight
-                  size={14}
-                  strokeWidth={1.5}
-                  className="shrink-0 text-muted-foreground/50"
-                />
+                <ChevronRight size={14} className="shrink-0" />
               </button>
             </>
           )}

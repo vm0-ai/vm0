@@ -79,7 +79,7 @@ export function MermaidDiagram({
           />
         ) : (
           <span className="mermaid-diagram-pending" aria-hidden="true">
-            <Loader2 size={18} strokeWidth={1.8} className="animate-spin" />
+            <Loader2 size={18} className="animate-spin" />
           </span>
         )}
       </button>

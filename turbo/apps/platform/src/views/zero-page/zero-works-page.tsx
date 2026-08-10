@@ -144,7 +144,7 @@ function SlackCardActions({
             return openFreshOAuth(installUrl);
           }}
         >
-          <Download size={14} strokeWidth={1.5} />
+          <Download size={14} />
           {t(($) => {
             return $.works.slack.install;
           })}
@@ -174,7 +174,7 @@ function SlackCardActions({
                 return $.works.actions.moreOptions;
               })}
             >
-              <EllipsisVertical size={16} strokeWidth={1.5} />
+              <EllipsisVertical size={16} />
             </button>
           </PopoverTrigger>
           <PopoverContent
@@ -437,7 +437,7 @@ function TeamsCardActions({
             return openFreshOAuth(installActionUrl);
           }}
         >
-          <Download size={14} strokeWidth={1.5} />
+          <Download size={14} />
           {t(($) => {
             return $.works.teams.install;
           })}
@@ -468,7 +468,7 @@ function TeamsCardActions({
                 return $.works.teams.moreOptions;
               })}
             >
-              <EllipsisVertical size={16} strokeWidth={1.5} />
+              <EllipsisVertical size={16} />
             </button>
           </PopoverTrigger>
           <PopoverContent
@@ -783,7 +783,7 @@ function GithubCard() {
               target="_blank"
               rel="noreferrer"
             >
-              <Download size={14} strokeWidth={1.5} />
+              <Download size={14} />
               {t(($) => {
                 return $.works.github.install;
               })}
@@ -844,7 +844,7 @@ function TelegramCard() {
           </div>
         </div>
         <span className="shrink-0 inline-flex h-8 items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 text-xs font-medium text-secondary-foreground">
-          <Settings size={14} strokeWidth={1.5} />
+          <Settings size={14} />
           {t(($) => {
             return $.works.actions.manage;
           })}
@@ -878,7 +878,7 @@ function StrapiCard() {
           </div>
         </div>
         <span className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 text-xs font-medium text-secondary-foreground">
-          <Settings size={14} strokeWidth={1.5} />
+          <Settings size={14} />
           {t(($) => {
             return $.works.actions.manage;
           })}

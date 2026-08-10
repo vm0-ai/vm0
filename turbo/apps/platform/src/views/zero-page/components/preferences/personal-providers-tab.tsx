@@ -688,7 +688,7 @@ function OAuthCredentialRow({
                       return $.settings.shared.moreOptions;
                     })}
                   >
-                    <EllipsisVertical size={14} strokeWidth={1.5} />
+                    <EllipsisVertical size={14} />
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-44">

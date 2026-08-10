@@ -39,11 +39,7 @@ function CaptureNetworkBodiesBlock() {
       <div className="flex items-center gap-4 bg-card p-4 rounded-xl zero-border">
         <div className="shrink-0">
           <div className="flex h-7 w-7 items-center justify-center">
-            <Bug
-              size={22}
-              strokeWidth={1.5}
-              className="text-muted-foreground"
-            />
+            <Bug size={22} className="text-muted-foreground" />
           </div>
         </div>
         <div className="flex flex-1 flex-col gap-1 min-w-0">

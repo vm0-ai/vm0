@@ -103,7 +103,7 @@ function PinnedAgentSideDecorator({
               return $.sidebar.markAllRead;
             }),
             disabled: markingRead,
-            icon: <CheckCheck size={16} strokeWidth={2} data-stroke />,
+            icon: <CheckCheck size={16} />,
             onSelect: markAllRead,
           },
         ]
@@ -116,7 +116,7 @@ function PinnedAgentSideDecorator({
                   return $.sidebar.unpin;
                 }),
                 disabled: savingPinned,
-                icon: <PinOff size={16} strokeWidth={2} data-stroke />,
+                icon: <PinOff size={16} />,
                 onSelect: unpinAgent,
               }
             : {
@@ -124,7 +124,7 @@ function PinnedAgentSideDecorator({
                   return $.sidebar.pin;
                 }),
                 disabled: savingPinned,
-                icon: <Pin size={16} strokeWidth={2} data-stroke />,
+                icon: <Pin size={16} />,
                 onSelect: pinAgent,
               },
         ]
@@ -280,10 +280,10 @@ export function PinnedAgentListSection({
             aria-label={t(($) => {
               return $.sidebar.openConversation;
             })}
-            className="flex w-[60px] shrink-0 flex-col items-center gap-1.5 rounded-lg p-1.5 text-sidebar-foreground/70 transition-colors hover:bg-state-hover hover:text-sidebar-foreground"
+            className="flex w-[60px] shrink-0 flex-col items-center gap-1.5 rounded-lg p-1.5 text-sidebar-foreground opacity-70 transition-colors hover:opacity-100 hover:bg-state-hover"
           >
             <span className="flex h-9 w-9 items-center justify-center rounded-full border border-dashed border-[hsl(var(--gray-300))]">
-              <Plus size={16} strokeWidth={2} data-stroke />
+              <Plus size={16} />
             </span>
             <span className="text-[11px] leading-tight">
               {t(($) => {
@@ -312,10 +312,8 @@ export function PinnedAgentListSection({
           })}
           <span className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
             <ChevronRight
+              className={`opacity-35 ${collapsed ? "" : "rotate-90"}`}
               size={12}
-              strokeWidth={2}
-              className={collapsed ? "" : "rotate-90"}
-              data-stroke
             />
           </span>
         </span>
@@ -328,12 +326,12 @@ export function PinnedAgentListSection({
                   e.stopPropagation();
                   openAgentListDialog();
                 }}
-                className="relative z-10 flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-state-selected-hover transition-colors"
+                className="relative z-10 flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground hover:text-sidebar-foreground hover:bg-state-selected-hover transition-colors"
                 aria-label={t(($) => {
                   return $.sidebar.openConversation;
                 })}
               >
-                <Plus size={15} strokeWidth={2.5} />
+                <Plus className="opacity-50" size={15} />
               </button>
             </TooltipTrigger>
             <TooltipContent side="right">

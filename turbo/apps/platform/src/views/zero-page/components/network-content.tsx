@@ -280,10 +280,10 @@ function TypeFilter({
           className="flex h-8 min-w-[140px] items-center justify-between gap-1.5 rounded-md border border-border bg-input px-3 text-xs text-foreground outline-none transition-colors hover:bg-input-hover focus:border-primary focus:ring-[3px] focus:ring-primary/10"
         >
           <span className="flex items-center gap-1.5">
-            <Filter size={14} strokeWidth={1.5} className="shrink-0" />
+            <Filter size={14} className="shrink-0" />
             {typeFilterLabel(typeFilter)}
           </span>
-          <ChevronDown size={14} className="shrink-0 text-muted-foreground" />
+          <ChevronDown size={14} className="shrink-0" />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-40">
@@ -1128,7 +1128,7 @@ export function NetworkContent({
       {hasMore && onLoadMore && (
         <div className="flex justify-center py-4">
           {loading ? (
-            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            <Loader2 className="h-5 w-5 animate-spin" />
           ) : (
             <button
               type="button"

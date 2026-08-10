@@ -1385,7 +1385,7 @@ export function FeishuCard() {
           </div>
         </div>
         <span className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-border bg-background px-2.5 text-xs font-medium text-secondary-foreground">
-          <Settings size={14} strokeWidth={1.5} />
+          <Settings size={14} />
           {t(($) => {
             return $.connectors.providerSettings.feishu.manage;
           })}
@@ -1512,7 +1512,7 @@ function FeishuBotMenu({
             { bot: title },
           )}
         >
-          <EllipsisVertical size={16} strokeWidth={1.5} />
+          <EllipsisVertical size={16} />
         </button>
       </PopoverTrigger>
       <PopoverContent align="end" className="flex w-40 flex-col gap-0.5 p-2">
@@ -1787,7 +1787,7 @@ function FeishuSetupFaq() {
             <ChevronRight
               size={17}
               aria-hidden="true"
-              className="mt-0.5 shrink-0 text-muted-foreground transition-transform group-open:rotate-90"
+              className="mt-0.5 shrink-0 transition-transform group-open:rotate-90"
             />
             <span>
               {t(($) => {
@@ -1807,7 +1807,7 @@ function FeishuSetupFaq() {
             <ChevronRight
               size={17}
               aria-hidden="true"
-              className="mt-0.5 shrink-0 text-muted-foreground transition-transform group-open:rotate-90"
+              className="mt-0.5 shrink-0 transition-transform group-open:rotate-90"
             />
             <span>
               {t(($) => {
@@ -2177,7 +2177,7 @@ export function ZeroFeishuSettingsPage() {
                   return $.connectors.catalog.title;
                 })}
               >
-                <ArrowLeft size={17} strokeWidth={1.8} />
+                <ArrowLeft size={17} />
                 {t(($) => {
                   return $.connectors.providerSettings.feishu
                     .backToIntegrations;

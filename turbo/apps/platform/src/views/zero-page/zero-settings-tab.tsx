@@ -501,7 +501,7 @@ export function ZeroSettingsTab({
             </DialogDescription>
           </DialogHeader>
           <Alert variant="destructive">
-            <AlertTriangle size={16} strokeWidth={1.5} />
+            <AlertTriangle size={16} />
             <AlertTitle>
               {t(($) => {
                 return $.profile.makePrivate.warningTitle;

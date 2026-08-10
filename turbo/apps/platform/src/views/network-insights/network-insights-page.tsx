@@ -306,7 +306,7 @@ function CustomRangePicker({
             })}
             className="h-7 w-7 inline-flex items-center justify-center rounded-md hover:bg-state-hover transition-colors"
           >
-            <ChevronLeft size={14} strokeWidth={1.5} />
+            <ChevronLeft size={14} />
           </button>
           <p className="text-sm font-semibold">{monthLabel}</p>
           <button
@@ -317,7 +317,7 @@ function CustomRangePicker({
             })}
             className="h-7 w-7 inline-flex items-center justify-center rounded-md hover:bg-state-hover transition-colors"
           >
-            <ChevronRight size={14} strokeWidth={1.5} />
+            <ChevronRight size={14} />
           </button>
         </div>
         <CalendarMonth
@@ -366,11 +366,7 @@ function DateRangeFilter({
           className="flex items-center gap-2 rounded-lg border bg-background px-3 py-1.5 text-sm font-medium text-foreground hover:bg-state-hover transition-colors"
         >
           {dateRangeLabel(value)}
-          <ChevronDown
-            size={14}
-            strokeWidth={1.5}
-            className="text-muted-foreground"
-          />
+          <ChevronDown size={14} className="text-muted-foreground" />
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-48">

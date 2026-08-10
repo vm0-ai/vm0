@@ -67,7 +67,7 @@ function CheckingState() {
   const { t } = useTranslation();
   return (
     <>
-      <Loader2 size={40} className="text-muted-foreground animate-spin" />
+      <Loader2 size={40} className="animate-spin" />
       <div className="text-center space-y-1.5">
         <h2 className="text-base font-semibold text-foreground">
           {t(($) => {
@@ -88,7 +88,7 @@ function InvalidState() {
   const { t } = useTranslation();
   return (
     <>
-      <AlertCircle size={40} className="text-muted-foreground/40" />
+      <AlertCircle size={40} className="" />
       <div className="text-center space-y-1.5">
         <h2 className="text-base font-semibold text-foreground">
           {t(($) => {
@@ -191,7 +191,7 @@ function PageContent() {
   if (workspaceId && slackUserId) {
     return (
       <>
-        <BrandSlack size={40} className="text-foreground" />
+        <BrandSlack size={40} className="" />
         <div className="text-center space-y-1.5">
           <h2 className="text-base font-semibold text-foreground">
             {t(($) => {

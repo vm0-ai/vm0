@@ -1209,7 +1209,7 @@ function ArtifactImageNavigationControls({
           data-testid="artifact-sidebar-previous-image"
           className="absolute left-4 top-1/2 z-20 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-border/60 bg-background/90 text-foreground shadow-lg backdrop-blur-sm transition-colors hover:bg-state-hover"
         >
-          <ChevronLeft size={22} strokeWidth={1.8} />
+          <ChevronLeft size={22} />
         </button>
       )}
       {navigation.onNext && (
@@ -1225,7 +1225,7 @@ function ArtifactImageNavigationControls({
           data-testid="artifact-sidebar-next-image"
           className="absolute right-4 top-1/2 z-20 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-border/60 bg-background/90 text-foreground shadow-lg backdrop-blur-sm transition-colors hover:bg-state-hover"
         >
-          <ChevronRight size={22} strokeWidth={1.8} />
+          <ChevronRight size={22} />
         </button>
       )}
     </>
@@ -1291,7 +1291,7 @@ function ArtifactImageZoomControls({
         })}
         data-testid="artifact-sidebar-image-reset-zoom"
       >
-        <RotateCcw size={15} strokeWidth={1.8} />
+        <RotateCcw size={15} />
       </button>
     </div>
   );

@@ -220,7 +220,7 @@ function ActivityBreadcrumbLabel() {
   const { t } = useTranslation();
   return (
     <span className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5">
-      <ChartLine size={14} strokeWidth={1.5} className="shrink-0" />
+      <ChartLine size={14} className="shrink-0" />
       {t(($) => {
         return $.activity.detail.activity;
       })}
@@ -431,7 +431,7 @@ export function ActivityHeaderCard({
                         }
                       }}
                     >
-                      <Download size={14} strokeWidth={1.5} />
+                      <Download size={14} />
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent side="left">
@@ -1224,11 +1224,7 @@ export function StepsList({
       )}
       {isLoading ? (
         <div className="flex justify-center py-8">
-          <Loader2
-            size={20}
-            strokeWidth={1.5}
-            className="animate-spin text-muted-foreground"
-          />
+          <Loader2 size={20} className="animate-spin text-muted-foreground" />
         </div>
       ) : groups.length === 0 && !hasContent ? (
         <div className="py-8 text-center text-muted-foreground">

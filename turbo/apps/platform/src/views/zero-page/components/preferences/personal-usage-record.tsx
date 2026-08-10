@@ -270,11 +270,7 @@ export function UsageRangeSelect({
           className="zero-btn-morandi h-9 shrink-0 rounded-lg border"
         >
           {rangeLabel(value)}
-          <ChevronDown
-            size={14}
-            strokeWidth={1.5}
-            className="ml-1.5 text-muted-foreground"
-          />
+          <ChevronDown size={14} className="ml-1.5 text-muted-foreground" />
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-44">
@@ -436,7 +432,7 @@ function UsageRow({ row, max }: { row: UsageRecordRow; max: number }) {
           aria-label={label}
           className="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg bg-muted/50 text-muted-foreground"
         >
-          <Icon size={20} strokeWidth={1.5} />
+          <Icon size={20} />
         </span>
         <span className="min-w-0 flex-1">
           <span className="flex min-h-8 min-w-0 items-center gap-3">

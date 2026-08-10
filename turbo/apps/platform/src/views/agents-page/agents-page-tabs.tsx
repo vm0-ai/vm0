@@ -241,7 +241,7 @@ function AgentTabsView({
             return onCreate(activeTab);
           }}
         >
-          <Plus size={14} strokeWidth={2} data-stroke />
+          <Plus size={14} />
           {t(($) => {
             return $.list.actions.new;
           })}
@@ -422,7 +422,7 @@ function CreateAgentAvatarPreview() {
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <span className="absolute -right-0.5 -bottom-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-background text-muted-foreground shadow-sm border border-border">
-                      <Wand size={10} strokeWidth={1.5} />
+                      <Wand size={10} />
                     </span>
                   </TooltipTrigger>
                   <TooltipContent side="bottom">
