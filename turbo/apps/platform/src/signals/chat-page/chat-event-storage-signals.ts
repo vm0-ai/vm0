@@ -6,7 +6,7 @@ import {
   type Computed,
   type State,
 } from "ccstate";
-import type { ChatEventRow } from "@vm0/api-contracts/contracts/chat-event-rows";
+import type { ChatEventRowV4 } from "@vm0/api-contracts/contracts/chat-event-rows";
 import { chatEventFromRow } from "@vm0/api-contracts/contracts/chat-event-row-projection";
 import type { ChatEvent as PersistedChatEvent } from "@vm0/api-contracts/contracts/chat-threads";
 import { captureTaskCompletedSuccessfully } from "../../lib/posthog.ts";
@@ -311,7 +311,9 @@ function createSyncRemoteRowsCommand({
   mergePersistentEvents$,
 }: RowSyncDependencies): Command<Promise<void>, [AbortSignal]> {
   return command(async ({ get, set }, signal: AbortSignal): Promise<void> => {
-    const mergeRows = async (rows: readonly ChatEventRow[]): Promise<void> => {
+    const mergeRows = async (
+      rows: readonly ChatEventRowV4[],
+    ): Promise<void> => {
       if (rows.length === 0) {
         return;
       }

@@ -27,10 +27,13 @@ const CHAT_IDB_MORNING_BRIEF_PART_CUTOVER_VERSION = 27;
 // payload shapes. Rebuild all event-bearing stores so v27 cache entries cannot
 // re-enter the v28 fold.
 const CHAT_IDB_CHAT_EVENT_CONTRACT_CUTOVER_VERSION = 28;
-// Raw chat_events rows cached by the snapshot-read pipeline. The store name
-// mirrors the server table because it holds the server row shape verbatim.
-const CHAT_IDB_EVENT_ROWS_VERSION = 29;
-const CHAT_IDB_SCHEMA_VERSION = CHAT_IDB_EVENT_ROWS_VERSION;
+// Raw chat_events rows cached by the snapshot-read pipeline (v29). Since v30
+// the store persists the normalized canonical (v4) row shape instead of the
+// verbatim v3 server rows, so the upgrade drops a store written by an older
+// bundle before its rows can poison the canonical reader; the next sync
+// re-fetches from snapshot plus tail.
+const CHAT_IDB_CANONICAL_EVENT_ROWS_VERSION = 30;
+const CHAT_IDB_SCHEMA_VERSION = CHAT_IDB_CANONICAL_EVENT_ROWS_VERSION;
 const LEGACY_CHAT_THREAD_META_STORE = "chat_thread_agents";
 const LEGACY_ARTIFACT_ITEMS_STORE = "artifact_items";
 const LEGACY_ARTIFACT_SYNC_STORE = "artifact_sync";
@@ -143,6 +146,10 @@ export function upgradeChatIdb(db: IDBPDatabase, oldVersion: number): void {
   if (oldVersion < CHAT_IDB_CHAT_EVENT_CONTRACT_CUTOVER_VERSION) {
     deleteObjectStoreIfExists(db, CHAT_MESSAGES_STORE);
     deleteChatThreadEventStores(db);
+  }
+
+  if (oldVersion < CHAT_IDB_CANONICAL_EVENT_ROWS_VERSION) {
+    deleteObjectStoreIfExists(db, CHAT_EVENT_ROWS_STORE);
   }
 
   if (!db.objectStoreNames.contains(CHAT_MESSAGES_STORE)) {
