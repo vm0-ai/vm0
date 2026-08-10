@@ -610,9 +610,13 @@ export async function getUsagePackManagement(
     return null;
   }
   const changesByUserId = new Map(
-    context.changes.map((change) => {
-      return [change.userId, change] as const;
-    }),
+    context.changes
+      .filter((change) => {
+        return change.status !== "previewed";
+      })
+      .map((change) => {
+        return [change.userId, change] as const;
+      }),
   );
   return {
     tier: context.subscription.tier,

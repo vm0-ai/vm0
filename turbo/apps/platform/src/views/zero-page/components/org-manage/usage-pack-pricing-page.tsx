@@ -379,16 +379,6 @@ function MemberUsageRow({
   readonly onSelect: (selection: MemberUsageSelection) => void;
   readonly selection: MemberUsageSelection;
 }) {
-  const item = usagePackCatalogItem(catalog, selection);
-  const creditBreakdown = i18n.t(
-    ($) => {
-      return $.billing.plans.usagePacks.creditBreakdown;
-    },
-    {
-      bonus: formatLocalizedNumber(item.bonusCredits),
-      purchased: formatLocalizedNumber(item.purchasedCredits),
-    },
-  );
   const downgradeSummary = downgrade
     ? downgrade.effectiveAt
       ? i18n.t(
@@ -443,11 +433,11 @@ function MemberUsageRow({
             })}
           </SelectContent>
         </Select>
-        <p
-          className={`mt-1 truncate text-[10px] ${downgradeSummary ? "font-medium text-amber-600 dark:text-amber-300" : "text-muted-foreground"}`}
-        >
-          {downgradeSummary ?? creditBreakdown}
-        </p>
+        {downgradeSummary && (
+          <p className="mt-1 truncate text-[10px] font-medium text-amber-600 dark:text-amber-300">
+            {downgradeSummary}
+          </p>
+        )}
       </div>
     </div>
   );
@@ -540,6 +530,7 @@ function MemberUsageConfiguration({
         });
         const pendingDowngrade =
           allocation?.pendingChange?.kind === "downgrade" &&
+          allocation.pendingChange.status !== "previewed" &&
           allocation.pendingChange.targetUsagePackUsd !== null
             ? {
                 effectiveAt:
@@ -1404,7 +1395,10 @@ function hasPendingUsagePackChange(
   management: UsagePackManagementResponse,
 ): boolean {
   return management.allocations.some((allocation) => {
-    return allocation.pendingChange !== null;
+    return (
+      allocation.pendingChange !== null &&
+      allocation.pendingChange.status !== "previewed"
+    );
   });
 }
 

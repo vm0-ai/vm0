@@ -946,7 +946,6 @@
         "choosePlanDescription": "पहले वर्कस्पेस प्लान चुनें। सदस्य पैकेज अगले चरण में कॉन्फ़िगर किए जाते हैं।",
         "configurePackages": "सदस्य पैकेज कॉन्फ़िगर करें",
         "configurePackagesDescription": "हर सदस्य के लिए एक आवश्यक पैकेज चुनें, फिर संयुक्त मासिक कुल की समीक्षा करें।",
-        "creditBreakdown": "{{purchased}} खरीदे गए क्रेडिट + {{bonus}} बोनस क्रेडिट",
         "currentMember": "मौजूदा सदस्य",
         "description": "हर सदस्य के लिए मासिक उपयोग पैक चुनें।",
         "discountBonusCredits": "छूट से बोनस क्रेडिट",

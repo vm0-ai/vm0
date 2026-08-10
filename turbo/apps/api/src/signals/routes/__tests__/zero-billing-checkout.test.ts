@@ -2067,6 +2067,11 @@ describe("usage pack allocation management", () => {
       }),
       [200],
     );
+    const management = await accept(
+      client.get({ headers: { authorization: "Bearer clerk-session" } }),
+      [200],
+    );
+    expect(management.body.allocations[0]?.pendingChange).toBeNull();
     const second = await accept(
       client.previewSubscriptionChange({
         headers: { authorization: "Bearer clerk-session" },

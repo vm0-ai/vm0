@@ -489,10 +489,10 @@ describe("organization billing settings", () => {
     expect(samUsage).not.toBeDisabled();
     expect(pendingUsage).not.toBeDisabled();
     expect(
-      within(memberUsage).getAllByText(
+      within(memberUsage).queryByText(
         "20,000 purchased credits + 1,234 bonus credits",
       ),
-    ).toHaveLength(3);
+    ).not.toBeInTheDocument();
     expect(
       within(memberUsage).getByText(
         "Each package belongs to one member and cannot be shared. When a package runs out, usage falls back to pay-as-you-go credits. You can upgrade to a new package later.",
@@ -534,10 +534,10 @@ describe("organization billing settings", () => {
     expect(within(orderSummary).getByText("185,554")).toBeInTheDocument();
     expect(within(orderSummary).getByText("15,554")).toBeInTheDocument();
     expect(
-      within(memberUsage).getByText(
+      within(memberUsage).queryByText(
         "100,000 purchased credits + 9,999 bonus credits",
       ),
-    ).toBeInTheDocument();
+    ).not.toBeInTheDocument();
     expect(alexUsage).not.toBeDisabled();
     expect(samUsage).not.toBeDisabled();
     expect(pendingUsage).not.toBeDisabled();
@@ -641,6 +641,7 @@ describe("organization billing settings", () => {
   it("previews and confirms a current member package change inline", async () => {
     let pendingPayment = false;
     let paymentApplied = false;
+    let previewed = false;
     let confirmationRequests = 0;
     let managementRequests = 0;
     const successToast = vi.spyOn(toast, "success");
@@ -698,7 +699,15 @@ describe("organization billing settings", () => {
                       targetUsagePackUsd: 50,
                       effectiveAt: "2026-03-16T00:00:00Z",
                     }
-                  : null,
+                  : previewed && !paymentApplied
+                    ? {
+                        id: "ad3bd64c-7237-436d-a221-61b14ed719e7",
+                        kind: "upgrade",
+                        status: "previewed",
+                        targetUsagePackUsd: 50,
+                        effectiveAt: "2026-03-16T00:00:00Z",
+                      }
+                    : null,
             },
           ],
         });
@@ -707,6 +716,7 @@ describe("organization billing settings", () => {
     context.mocks.api(
       zeroBillingUsagePackManagementContract.previewSubscriptionChange,
       ({ body, respond }) => {
+        previewed = true;
         expect(body).toStrictEqual({
           targetTier: "pro",
           memberUsagePacks: [{ memberId: "user_1", usagePackUsd: 50 }],
@@ -832,8 +842,31 @@ describe("organization billing settings", () => {
     });
     expect(confirmationRequests).toBe(0);
     expect(window.location.href).toBe(locationBeforeConfirmation);
+    await waitFor(() => {
+      expect(
+        context.mocks.ably.hasSubscription("billing:changed"),
+      ).toBeTruthy();
+    });
+    const managementRequestsBeforePreviewReload = managementRequests;
+    context.mocks.ably.trigger("billing:changed");
+    await waitFor(() => {
+      expect(managementRequests).toBeGreaterThan(
+        managementRequestsBeforePreviewReload,
+      );
+    });
+    expect(
+      buttonByText(
+        "Confirm",
+        screen.getByRole("region", { name: "Order summary" }),
+      ),
+    ).not.toBeDisabled();
 
-    click(buttonByText("Confirm", orderSummary));
+    click(
+      buttonByText(
+        "Confirm",
+        screen.getByRole("region", { name: "Order summary" }),
+      ),
+    );
     const reopenedConfirmationDialog = await screen.findByRole("dialog", {
       name: "Review package change",
     });

@@ -946,7 +946,6 @@
         "choosePlanDescription": "Choose the workspace plan first. Member packages are configured next.",
         "configurePackages": "Configure member packages",
         "configurePackagesDescription": "Choose a required package for every member, then review the combined monthly total.",
-        "creditBreakdown": "{{purchased}} purchased credits + {{bonus}} bonus credits",
         "currentMember": "Current member",
         "description": "Choose a monthly usage pack for every member.",
         "discountBonusCredits": "Bonus credits from discount",

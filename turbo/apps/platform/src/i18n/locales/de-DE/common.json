@@ -946,7 +946,6 @@
         "choosePlanDescription": "Wählen Sie zuerst den Workspace-Plan. Mitgliederpakete konfigurieren Sie im nächsten Schritt.",
         "configurePackages": "Mitgliederpakete konfigurieren",
         "configurePackagesDescription": "Wählen Sie für jedes Mitglied ein erforderliches Paket aus und prüfen Sie dann die kombinierte Monatssumme.",
-        "creditBreakdown": "{{purchased}} gekaufte Credits + {{bonus}} Bonus-Credits",
         "currentMember": "Aktuelles Mitglied",
         "description": "Wählen Sie für jedes Mitglied ein monatliches Nutzungspaket aus.",
         "discountBonusCredits": "Bonus-Credits durch Rabatt",
