@@ -98,11 +98,11 @@ const initialRemoteChatThreadEventsSyncedDeferred$ = computed((get) => {
   return createDeferredPromise<void>(get(rootSignal$));
 });
 
-export const initialLocalChatThreadEventsLoaded$ = computed((get) => {
+const initialLocalChatThreadEventsLoaded$ = computed((get) => {
   return get(initialLocalChatThreadEventsLoadedDeferred$).promise;
 });
 
-export const initialRemoteChatThreadEventsSynced$ = computed((get) => {
+const initialRemoteChatThreadEventsSynced$ = computed((get) => {
   return get(initialRemoteChatThreadEventsSyncedDeferred$).promise;
 });
 
@@ -493,6 +493,25 @@ export const chatThreadMetaMap$ = computed((get) => {
 export function threadMeta(threadId: string) {
   return computed((get): ThreadMeta | null => {
     return get(chatThreadMetaMap$).get(threadId) ?? null;
+  });
+}
+
+export function resolvedThreadMeta(threadId: string) {
+  const meta$ = threadMeta(threadId);
+  return computed(async (get): Promise<ThreadMeta | null> => {
+    let meta = get(meta$);
+    if (meta) {
+      return meta;
+    }
+
+    await get(initialLocalChatThreadEventsLoaded$);
+    meta = get(meta$);
+    if (meta) {
+      return meta;
+    }
+
+    await get(initialRemoteChatThreadEventsSynced$);
+    return get(meta$);
   });
 }
 

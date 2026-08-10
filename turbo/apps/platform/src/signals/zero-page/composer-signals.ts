@@ -2,7 +2,6 @@ import type {
   GenerationTemplateRequest,
   PersistedAttachment,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import type { ZeroAgentResponse } from "@vm0/api-contracts/contracts/zero-agents";
 import { foldActiveChatGoalObjective } from "@vm0/api-contracts/contracts/chat-events";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { command, computed, state, type Command, type Computed } from "ccstate";
@@ -208,7 +207,7 @@ interface ComposerTemplateSignals
 }
 
 export interface ComposerSignals {
-  readonly agent$: Computed<Promise<ZeroAgentResponse>>;
+  readonly agentId: string;
   readonly editor: ComposerEditorSignals;
   readonly feedback: WorkflowComposerSignals["feedback"];
   readonly workflow: ComposerWorkflowSignals;
@@ -224,7 +223,7 @@ export interface ComposerSignals {
 }
 
 interface CreateComposerSignalsOptions {
-  readonly agent$: ComposerSignals["agent$"];
+  readonly agentId: string;
   readonly draft: {
     readonly signals: DraftSignals;
     readonly save$: ComposerDraftSignals["save$"];
@@ -438,8 +437,8 @@ export function createComposerSignals(
 ): ComposerSignals {
   const eventSignals = createComposerChatEventSignals(options.chatEvents$);
   const draft = options.draft.signals;
-  const agentId$ = computed(async (get): Promise<string | null> => {
-    return (await get(options.agent$)).agentId;
+  const agentId$ = computed((): string => {
+    return options.agentId;
   });
   const feedback = createComposerFeedbackModel(options.threadId);
   const temporaryModelNoticeEnabled$ = computed((get): boolean => {
@@ -470,7 +469,7 @@ export function createComposerSignals(
   const ui = createComposerUiSignals();
 
   return {
-    agent$: options.agent$,
+    agentId: options.agentId,
     editor: composerEditorSignals(workflowComposer, options.singleLineOnMobile),
     feedback: workflowComposer.feedback,
     workflow: {
@@ -478,7 +477,7 @@ export function createComposerSignals(
       ...workflowPrompt,
     },
     suggestion: composerSuggestionSignals(workflowComposer),
-    connector: createComposerConnectorSignals(options.agent$),
+    connector: createComposerConnectorSignals(options.agentId),
     draft: {
       seed$: draft.seed$,
       setDraftInput$: draft.setInput$,

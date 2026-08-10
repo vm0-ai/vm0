@@ -304,9 +304,10 @@ import {
   setImageLoadStatus$,
 } from "../../signals/view-component-state.ts";
 import {
-  currentLeftThread$,
-  currentRightThread$,
+  currentLeftPane$,
+  currentRightPane$,
 } from "../../signals/chat-page/chat-thread-panes.ts";
+import type { ChatThreadPaneState } from "../../signals/chat-page/chat-thread-pane-state.ts";
 import {
   focusChatThreadContainer$,
   setChatKeyboardScrollRoot$,
@@ -2627,12 +2628,42 @@ function ChatThread({
   );
 }
 
-function ChatThreadArea({
-  leftThread,
-  rightThread,
+function MissingChatThread({ threadId }: { threadId: string }) {
+  const { t } = useTranslation();
+  return (
+    <section
+      aria-label={t(($) => {
+        return $.chat.thread.ariaLabel;
+      })}
+      className="flex min-w-0 basis-0 flex-1 flex-col min-h-0 bg-transparent focus:outline-none"
+      data-chat-thread-container-id={threadId}
+      tabIndex={-1}
+    >
+      <ChatThreadNotFound />
+    </section>
+  );
+}
+
+function ChatThreadPane({
+  isMain,
+  pane,
 }: {
-  leftThread: ChatPanelSignals | null;
-  rightThread: ChatPanelSignals | null;
+  isMain?: boolean;
+  pane: Exclude<ChatThreadPaneState, null>;
+}) {
+  return pane.kind === "thread" ? (
+    <ChatThread isMain={isMain} thread={pane.thread} />
+  ) : (
+    <MissingChatThread threadId={pane.threadId} />
+  );
+}
+
+function ChatThreadArea({
+  leftPane,
+  rightPane,
+}: {
+  leftPane: ChatThreadPaneState;
+  rightPane: ChatThreadPaneState;
 }) {
   const setKeyboardScrollRoot = useSet(setChatKeyboardScrollRoot$);
 
@@ -2641,11 +2672,11 @@ function ChatThreadArea({
       ref={setKeyboardScrollRoot}
       className="flex w-full flex-1 min-w-0 min-h-0 bg-transparent"
     >
-      {leftThread && <ChatThread isMain thread={leftThread} />}
-      {rightThread && (
+      {leftPane && <ChatThreadPane isMain pane={leftPane} />}
+      {rightPane && (
         <>
           <div className="w-px shrink-0 bg-border/60" aria-hidden="true" />
-          <ChatThread thread={rightThread} />
+          <ChatThreadPane pane={rightPane} />
         </>
       )}
     </div>
@@ -2663,8 +2694,8 @@ function ThreadAutomationsSidebarSlot({
 
 export function ZeroChatThreadPage() {
   const activeThreadSidebar = useGet(activeThreadSidebar$);
-  const leftThread = useGet(currentLeftThread$);
-  const rightThread = useGet(currentRightThread$);
+  const leftPane = useGet(currentLeftPane$);
+  const rightPane = useGet(currentRightPane$);
   const lightboxUrl = useGet(attachmentLightboxUrl$);
   return (
     <>
@@ -2687,7 +2718,7 @@ export function ZeroChatThreadPage() {
           ) : null
         }
       >
-        <ChatThreadArea leftThread={leftThread} rightThread={rightThread} />
+        <ChatThreadArea leftPane={leftPane} rightPane={rightPane} />
       </ChatThreadSidebarShell>
       {lightboxUrl && <AttachmentLightbox />}
       <ChatConnectorActionConnectModal />
@@ -6515,7 +6546,7 @@ function AssistantErrorContent({
 
 function AssistantBubbleAvatar({ thread }: { thread: ChatPanelSignals }) {
   const { t } = useTranslation();
-  const agentId = useGet(thread.agentId$) ?? "";
+  const agentId = thread.agentId;
   return (
     <Link
       pathname="/agents/:agentId"

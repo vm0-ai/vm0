@@ -6,7 +6,6 @@ import type {
   ChatThreadDraft,
   UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import type { ZeroAgentResponse } from "@vm0/api-contracts/contracts/zero-agents";
 import type { ChatClipboardPayload } from "../zero-page/clipboard.ts";
 import type { BodyRenderBlock } from "./parse-body-blocks.ts";
 import type { ChatEventGroup } from "./chat-event.ts";
@@ -115,6 +114,7 @@ export interface QueueMessageOptions {
 
 export interface ChatPanelSignals {
   readonly threadId: string;
+  readonly agentId: string;
   /** Aborts when this chat panel is replaced or its page is left. */
   readonly signal: AbortSignal;
   // -- Data signals ----------------------------------------------------------
@@ -159,11 +159,6 @@ export interface ChatPanelSignals {
   readonly composer: ComposerSignals;
   readonly feedback: ChatThreadFeedbackSignals;
   readonly sharing: ChatThreadSharingSignals;
-  // -- Agent info (derived from threadMeta$.agentId) ------------------------
-  readonly agent$: Computed<Promise<ZeroAgentResponse>>;
-  readonly agentId$: Computed<string | null>;
-  readonly agentDisplayName$: Computed<Promise<string | null>>;
-  readonly agentPinned$: Computed<Promise<boolean | null>>;
   // -- Thread-owned automation resources -----------------------------------
   readonly headerAutomations: HeaderAutomationSignals;
   // -- Thread-owned utility sidebar -----------------------------------------

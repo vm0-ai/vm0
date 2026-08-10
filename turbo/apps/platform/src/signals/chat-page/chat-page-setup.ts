@@ -8,13 +8,48 @@ import { searchParams$ } from "../route.ts";
 import {
   SIDEBAR_PARAM,
   setupLeftThread$,
+  setupLeftThreadNotFound$,
   setupRightThread$,
+  setupRightThreadNotFound$,
   unloadRightThread$,
 } from "./chat-thread-panes.ts";
+import { resolvedThreadMeta } from "./chat-thread-event-sourcing.ts";
 import {
   captureNavigationTiming$,
   markRouteSetupBegin$,
 } from "../../lib/posthog.ts";
+
+const setupResolvedLeftThread$ = command(
+  async (
+    { get, set },
+    threadId: string,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const meta = await get(resolvedThreadMeta(threadId));
+    signal.throwIfAborted();
+    if (meta) {
+      await set(setupLeftThread$, meta, signal);
+      return;
+    }
+    await set(setupLeftThreadNotFound$, threadId, signal);
+  },
+);
+
+const setupResolvedRightThread$ = command(
+  async (
+    { get, set },
+    threadId: string,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const meta = await get(resolvedThreadMeta(threadId));
+    signal.throwIfAborted();
+    if (meta) {
+      await set(setupRightThread$, meta, signal);
+      return;
+    }
+    await set(setupRightThreadNotFound$, threadId, signal);
+  },
+);
 
 const internalSetupChatPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -29,12 +64,13 @@ const internalSetupChatPage$ = command(
     set(captureNavigationTiming$);
 
     const sidebarThreadId = get(searchParams$).get(SIDEBAR_PARAM);
-    const shouldLoadRight = sidebarThreadId && sidebarThreadId !== threadId;
+    const rightThreadId =
+      sidebarThreadId && sidebarThreadId !== threadId ? sidebarThreadId : null;
 
     await Promise.all([
-      set(setupLeftThread$, threadId, signal),
-      shouldLoadRight
-        ? set(setupRightThread$, sidebarThreadId, signal)
+      set(setupResolvedLeftThread$, threadId, signal),
+      rightThreadId
+        ? set(setupResolvedRightThread$, rightThreadId, signal)
         : set(unloadRightThread$),
     ]);
     signal.throwIfAborted();
