@@ -1079,8 +1079,18 @@ jobs:
         id: worker-secrets
         env:
           API_ENV_FILE: ${{ steps.api-deploy-env.outputs.file }}
+          TEST_ENDPOINT_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
         run: |
           set -euo pipefail
+          : "${TEST_ENDPOINT_BYPASS_SECRET:?VERCEL_AUTOMATION_BYPASS_SECRET is required}"
+          grep -Fxq 'ENV=preview' "$API_ENV_FILE" || {
+            echo "::error::Worker API environment must be preview"
+            exit 1
+          }
+          grep -Fxq "VERCEL_AUTOMATION_BYPASS_SECRET=${TEST_ENDPOINT_BYPASS_SECRET}" "$API_ENV_FILE" || {
+            echo "::error::Worker test endpoint bypass secret does not match the CI caller"
+            exit 1
+          }
           grep -q '^CF_ACCESS_CLIENT_ID=.' "$API_ENV_FILE" || {
             echo "::error::CF_API_PREVIEW_ACCESS_CLIENT_ID secret is required"
             exit 1
@@ -1198,6 +1208,30 @@ jobs:
             "${API_DEPLOYMENT_URL}/health")"
           if [[ "$unauthenticated_status" == "200" ]]; then
             echo "::error::Worker Preview health is reachable without Cloudflare Access"
+            exit 1
+          fi
+
+          expected_commit_sha="$(git rev-parse --verify HEAD)"
+          build_info=""
+          alias_ready="false"
+          for attempt in {1..10}; do
+            if build_info="$(curl "${API_DEPLOYMENT_URL}/api/build-info" \
+              -H "CF-Access-Client-Id: ${CF_ACCESS_CLIENT_ID}" \
+              -H "CF-Access-Client-Secret: ${CF_ACCESS_CLIENT_SECRET}" \
+              --fail \
+              --show-error \
+              --silent \
+              --max-time 20)" &&
+              jq -e --arg expected "$expected_commit_sha" \
+                '.commitSha == $expected' <<< "$build_info" >/dev/null; then
+              alias_ready="true"
+              break
+            fi
+            echo "Worker Preview alias has not reached this commit (attempt ${attempt}/10)"
+            sleep 3
+          done
+          if [[ "$alias_ready" != "true" ]]; then
+            echo "::error::Worker Preview alias did not reach commit ${expected_commit_sha}; last build info: ${build_info:-unavailable}"
             exit 1
           fi
 
