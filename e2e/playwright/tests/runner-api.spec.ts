@@ -950,6 +950,14 @@ test("[PREF-01][CONNECTOR-01] refreshes connector values and secrets with redact
     JSON.stringify(initialContext.firewalls),
     `run firewalls must include the resolved connector host ${simulatorHost}`,
   ).toContain(simulatorHost);
+  // The public network log must attribute the sandbox request to the
+  // connector host before the simulator can have observed it.
+  await waitForApiPayload(
+    account,
+    `/api/zero/runs/${run.runId}/network?limit=500&order=asc`,
+    (value) => JSON.stringify(value).includes(simulatorHost),
+    "dynamic connector network log entry",
+  );
   const firstRequest = await control.waitForEvent(
     (event) => event.path === "/tenant/alpha/gate",
     "the first dynamic connector request",
