@@ -17,10 +17,17 @@ function nullTerminatedText(bytes: Buffer): string {
 
 function readOctal(bytes: Buffer, width: number): number {
   const text = bytes.toString("ascii");
-  if (!new RegExp(`^[0-7]{${width - 1}}\\0$`, "u").test(text)) {
+  const digits = text.slice(0, -1);
+  if (
+    text.length !== width ||
+    text.at(-1) !== "\0" ||
+    ![...digits].every((digit) => {
+      return digit >= "0" && digit <= "7";
+    })
+  ) {
     throw new Error(`Invalid tar numeric field: ${JSON.stringify(text)}`);
   }
-  return Number.parseInt(text.slice(0, -1), 8);
+  return Number.parseInt(digits, 8);
 }
 
 function readChecksum(header: Buffer): number {
