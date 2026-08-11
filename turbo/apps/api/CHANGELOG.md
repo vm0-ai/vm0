@@ -1,5 +1,32 @@
 # Changelog
 
+## [1.421.1](https://github.com/vm0-ai/vm0/compare/api-v1.421.0...api-v1.421.1) (2026-08-11)
+
+
+### Bug Fixes
+
+* **api:** finalize active input deliveries on completion ([#26274](https://github.com/vm0-ai/vm0/issues/26274)) ([8ca2b7c](https://github.com/vm0-ai/vm0/commit/8ca2b7c8e59f843fffc769ca0981dd25adae2f6c))
+* **connectors:** align custom oauth state lifecycle ([#26267](https://github.com/vm0-ai/vm0/issues/26267)) ([32cb943](https://github.com/vm0-ai/vm0/commit/32cb94348527bc3bc8e6db769e886b392846e333))
+* **connectors:** repair custom skill version associations ([#26257](https://github.com/vm0-ai/vm0/issues/26257)) ([fc0f2bc](https://github.com/vm0-ai/vm0/commit/fc0f2bc38441c9b1695986d53d28a4af76e4cd8d))
+
+
+### Refactoring
+
+* **connectors:** prepare canonical custom connector definitions ([#26246](https://github.com/vm0-ai/vm0/issues/26246)) ([d611058](https://github.com/vm0-ai/vm0/commit/d611058b8d41047649174462d08db1809f2ba067))
+* **connectors:** unify connector connection writes ([#26273](https://github.com/vm0-ai/vm0/issues/26273)) ([a85d180](https://github.com/vm0-ai/vm0/commit/a85d180538a0dc3812ef7e16e1aaac399658b3ac))
+* drop legacy workflow trigger sources ([#26266](https://github.com/vm0-ai/vm0/issues/26266)) ([cd91f26](https://github.com/vm0-ai/vm0/commit/cd91f26cd5999609e43cc5187ef0b0e91f35c636))
+* **telemetry:** rename dispatch timing strings to automation vocabulary ([#26253](https://github.com/vm0-ai/vm0/issues/26253)) ([19c05f2](https://github.com/vm0-ai/vm0/commit/19c05f23051221aa92aea76309cdeb32febc7847))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.312.0
+    * @vm0/core bumped to 8.542.1
+    * @vm0/db bumped to 1.190.6
+    * @vm0/pi-agent-runtime bumped to 1.3.38
+
 ## [1.421.0](https://github.com/vm0-ai/vm0/compare/api-v1.420.4...api-v1.421.0) (2026-08-11)
 
 

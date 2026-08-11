@@ -1872,17 +1872,13 @@
     },
     "custom": {
       "connect": {
-        "apiAuthentication": "API認証",
-        "apiDescription": "プロバイダーが発行したAPIシークレットを入力します。",
-        "back": "戻る",
+        "configured": "設定済み",
         "connecting": "接続中…",
         "continue": "続ける",
         "continueToProvider": "プロバイダーに進み、アクセスを承認します。",
         "description": "シークレットは保存時に暗号化され、ファイアウォールによって送信リクエストに挿入されます。環境変数としてエージェントに公開されることはありません。",
-        "oauthDescription": "コネクタの OAuth アプリを使用してアクセスを承認します。",
         "save": "保存",
         "saving": "保存中…",
-        "secret": "シークレット",
         "title": "{{connector}} を接続します"
       },
       "create": {

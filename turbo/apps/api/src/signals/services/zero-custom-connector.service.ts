@@ -195,9 +195,6 @@ interface CustomConnectorSharedRow {
 
 export interface CustomConnectorHttpRow extends CustomConnectorSharedRow {
   readonly kind: "http";
-  readonly prefixes: readonly string[];
-  readonly headerName: string;
-  readonly headerTemplate: string;
   readonly prefixTemplates: readonly string[];
   readonly permissionBundleRef: CustomConnectorPermissionBundleRef | null;
 }
@@ -417,15 +414,11 @@ function legacyHeaderTemplateFromCanonical(template: string): string {
 type PersistedHttpDefinitionRow = CustomConnectorDefinitionRow & {
   readonly mcpEndpoint: null;
   readonly mcpTransport: null;
-  readonly headerName: string;
-  readonly headerTemplate: string;
 };
 
 type PersistedMcpDefinitionRow = CustomConnectorDefinitionRow & {
   readonly mcpEndpoint: string;
   readonly mcpTransport: "streamable-http";
-  readonly headerName: null;
-  readonly headerTemplate: null;
   readonly permissionBundleRef: null;
 };
 
@@ -443,32 +436,28 @@ function isValidPersistedHttpDefinition(
     readonly mcpEndpoint: null;
     readonly mcpTransport: null;
   },
-  legacyPrefixes: readonly string[],
   prefixTemplates: readonly string[],
+  headerInjections: readonly CustomConnectorHeaderInjection[],
+  queryInjections: readonly CustomConnectorQueryInjection[],
 ): row is PersistedHttpDefinitionRow {
   return (
-    legacyPrefixes.length > 0 &&
     prefixTemplates.length > 0 &&
-    row.headerName !== null &&
-    row.headerName.length > 0 &&
-    row.headerTemplate !== null &&
-    row.headerTemplate.length > 0
+    (headerInjections.length > 0 || queryInjections.length > 0)
   );
 }
 
 function isValidPersistedMcpDefinition(
   row: CustomConnectorDefinitionRow,
-  legacyPrefixes: readonly string[],
   prefixTemplates: readonly string[],
+  headerInjections: readonly CustomConnectorHeaderInjection[],
+  queryInjections: readonly CustomConnectorQueryInjection[],
 ): row is PersistedMcpDefinitionRow {
   return (
     row.mcpEndpoint !== null &&
     row.mcpEndpoint.trim().length > 0 &&
     row.mcpTransport === "streamable-http" &&
-    legacyPrefixes.length === 0 &&
     prefixTemplates.length === 0 &&
-    row.headerName === null &&
-    row.headerTemplate === null &&
+    (headerInjections.length > 0 || queryInjections.length > 0) &&
     row.permissionBundleRef === null
   );
 }
@@ -481,7 +470,6 @@ export function normaliseCustomConnectorRow(
   const storedFields = fieldArray(row.fields);
   const storedHeaderInjections = headerInjectionArray(row.headerInjections);
   const queryInjections = queryInjectionArray(row.queryInjections);
-  const legacyPrefixes = stringArray(row.prefixes);
   const shared = {
     id: row.id,
     orgId: row.orgId,
@@ -501,40 +489,32 @@ export function normaliseCustomConnectorRow(
   };
 
   if (hasHttpDiscriminator(row)) {
-    if (!isValidPersistedHttpDefinition(row, legacyPrefixes, prefixTemplates)) {
+    if (
+      !isValidPersistedHttpDefinition(
+        row,
+        prefixTemplates,
+        storedHeaderInjections,
+        queryInjections,
+      )
+    ) {
       throw new Error("Invalid persisted HTTP Custom Connector definition");
     }
     return {
       ...shared,
       kind: "http",
-      prefixes: legacyPrefixes,
-      headerName: row.headerName,
-      headerTemplate: row.headerTemplate,
       prefixTemplates,
-      fields:
-        storedFields.length > 0
-          ? storedFields
-          : row.authMode === "manual"
-            ? canonicalFieldsFromLegacy()
-            : [],
-      headerInjections:
-        storedHeaderInjections.length > 0
-          ? storedHeaderInjections
-          : row.authMode === "manual"
-            ? [
-                {
-                  name: row.headerName,
-                  valueTemplate: canonicalHeaderTemplateFromLegacy(
-                    row.headerTemplate,
-                  ),
-                },
-              ]
-            : [],
       permissionBundleRef: row.permissionBundleRef,
     };
   }
 
-  if (!isValidPersistedMcpDefinition(row, legacyPrefixes, prefixTemplates)) {
+  if (
+    !isValidPersistedMcpDefinition(
+      row,
+      prefixTemplates,
+      storedHeaderInjections,
+      queryInjections,
+    )
+  ) {
     throw new Error("Invalid persisted MCP Custom Connector definition");
   }
   return {
@@ -836,14 +816,14 @@ export function serialiseCustomConnector(args: {
     } satisfies CustomConnectorMcpResponse;
   }
 
+  const legacy = legacyColumns(args.row);
+
   return {
     ...common,
     kind: "http",
-    prefixes: [...args.row.prefixTemplates],
-    headerName: args.row.headerInjections[0]?.name ?? args.row.headerName,
-    headerTemplate: legacyHeaderTemplateFromCanonical(
-      args.row.headerInjections[0]?.valueTemplate ?? args.row.headerTemplate,
-    ),
+    prefixes: [...legacy.prefixes],
+    headerName: legacy.headerName,
+    headerTemplate: legacy.headerTemplate,
     prefixTemplates: [...args.row.prefixTemplates],
     permissionBundleRef: effectivePermissionBundleRef(args.row),
   } satisfies CustomConnectorHttpResponse;
@@ -1796,12 +1776,8 @@ async function findCustomConnectorPrefixConflict(
     if (connector.id === args.excludeConnectorId) {
       continue;
     }
-    const storedPrefixTemplates = stringArray(connector.prefixTemplates);
-    const prefixes =
-      storedPrefixTemplates.length > 0
-        ? storedPrefixTemplates
-        : stringArray(connector.prefixes);
-    for (const prefix of prefixes) {
+    const prefixTemplates = stringArray(connector.prefixTemplates);
+    for (const prefix of prefixTemplates) {
       const requestedPrefix = requestedPrefixes.get(
         customConnectorPrefixTemplateIdentity(prefix),
       );

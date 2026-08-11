@@ -1,5 +1,5 @@
 {
-  "id": "6b6486a5-9819-421f-9844-ad9dd60de4e9",
+  "id": "be836601-31a6-4c4e-be2f-668e78a4e1a7",
   "prevId": "1cce4217-e2d9-456b-ae10-1f99ba77f3ee",
   "version": "7",
   "dialect": "postgresql",
@@ -15201,7 +15201,8 @@
           "name": "prefixes",
           "type": "jsonb",
           "primaryKey": false,
-          "notNull": true
+          "notNull": true,
+          "default": "'[]'::jsonb"
         },
         "header_name": {
           "name": "header_name",
@@ -15406,7 +15407,7 @@
         },
         "chk_org_custom_connectors_mcp": {
           "name": "chk_org_custom_connectors_mcp",
-          "value": "(\n          (\n            \"org_custom_connectors\".\"mcp_endpoint\" IS NULL\n            AND \"org_custom_connectors\".\"mcp_transport\" IS NULL\n            AND \"org_custom_connectors\".\"prefixes\" <> '[]'::jsonb\n            AND \"org_custom_connectors\".\"prefix_templates\" <> '[]'::jsonb\n            AND \"org_custom_connectors\".\"header_name\" IS NOT NULL\n            AND \"org_custom_connectors\".\"header_name\" <> ''\n            AND \"org_custom_connectors\".\"header_template\" IS NOT NULL\n            AND \"org_custom_connectors\".\"header_template\" <> ''\n          ) OR (\n            \"org_custom_connectors\".\"mcp_endpoint\" IS NOT NULL\n            AND btrim(\"org_custom_connectors\".\"mcp_endpoint\") <> ''\n            AND \"org_custom_connectors\".\"mcp_transport\" IS NOT NULL\n            AND \"org_custom_connectors\".\"mcp_transport\" = 'streamable-http'\n            AND \"org_custom_connectors\".\"prefixes\" = '[]'::jsonb\n            AND \"org_custom_connectors\".\"prefix_templates\" = '[]'::jsonb\n            AND \"org_custom_connectors\".\"header_name\" IS NULL\n            AND \"org_custom_connectors\".\"header_template\" IS NULL\n            AND \"org_custom_connectors\".\"permission_bundle_ref\" IS NULL\n          )\n        )"
+          "value": "(\n          jsonb_typeof(\"org_custom_connectors\".\"prefix_templates\") = 'array'\n          AND jsonb_typeof(\"org_custom_connectors\".\"fields\") = 'array'\n          AND jsonb_typeof(\"org_custom_connectors\".\"header_injections\") = 'array'\n          AND jsonb_typeof(\"org_custom_connectors\".\"query_injections\") = 'array'\n          AND (\n            (\n              \"org_custom_connectors\".\"mcp_endpoint\" IS NULL\n              AND \"org_custom_connectors\".\"mcp_transport\" IS NULL\n              AND \"org_custom_connectors\".\"prefix_templates\" <> '[]'::jsonb\n              AND (\n                \"org_custom_connectors\".\"header_injections\" <> '[]'::jsonb\n                OR \"org_custom_connectors\".\"query_injections\" <> '[]'::jsonb\n              )\n            ) OR (\n              \"org_custom_connectors\".\"mcp_endpoint\" IS NOT NULL\n              AND btrim(\"org_custom_connectors\".\"mcp_endpoint\") <> ''\n              AND \"org_custom_connectors\".\"mcp_transport\" IS NOT NULL\n              AND \"org_custom_connectors\".\"mcp_transport\" = 'streamable-http'\n              AND \"org_custom_connectors\".\"prefix_templates\" = '[]'::jsonb\n              AND (\n                \"org_custom_connectors\".\"header_injections\" <> '[]'::jsonb\n                OR \"org_custom_connectors\".\"query_injections\" <> '[]'::jsonb\n              )\n              AND \"org_custom_connectors\".\"permission_bundle_ref\" IS NULL\n            )\n          )\n        )"
         },
         "chk_org_custom_connectors_storage_version_positive": {
           "name": "chk_org_custom_connectors_storage_version_positive",
@@ -17113,168 +17114,6 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.presentation_templates": {
-      "name": "presentation_templates",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "org_id": {
-          "name": "org_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "owner_user_id": {
-          "name": "owner_user_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "visibility": {
-          "name": "visibility",
-          "type": "varchar(16)",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'private'"
-        },
-        "title": {
-          "name": "title",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "status": {
-          "name": "status",
-          "type": "varchar(16)",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'pending'"
-        },
-        "error": {
-          "name": "error",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "source_storage_key": {
-          "name": "source_storage_key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "source_filename": {
-          "name": "source_filename",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "page_keys": {
-          "name": "page_keys",
-          "type": "text[]",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'{}'::text[]"
-        },
-        "aspect_ratio": {
-          "name": "aspect_ratio",
-          "type": "real",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_by": {
-          "name": "created_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "updated_by": {
-          "name": "updated_by",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "timestamp",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "idx_presentation_templates_owner_created": {
-          "name": "idx_presentation_templates_owner_created",
-          "columns": [
-            {
-              "expression": "org_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "owner_user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "created_at",
-              "isExpression": false,
-              "asc": false,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "idx_presentation_templates_active_import": {
-          "name": "idx_presentation_templates_active_import",
-          "columns": [
-            {
-              "expression": "owner_user_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "status IN ('pending', 'processing')",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {
-        "chk_presentation_templates_visibility": {
-          "name": "chk_presentation_templates_visibility",
-          "value": "\"presentation_templates\".\"visibility\" IN ('private', 'public')"
-        },
-        "chk_presentation_templates_status": {
-          "name": "chk_presentation_templates_status",
-          "value": "\"presentation_templates\".\"status\" IN ('pending', 'processing', 'ready', 'failed')"
-        }
-      },
       "isRLSEnabled": false
     },
     "public.push_subscriptions": {

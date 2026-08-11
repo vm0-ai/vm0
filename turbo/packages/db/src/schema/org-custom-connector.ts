@@ -47,7 +47,10 @@ export const orgCustomConnectors = pgTable(
     orgId: text("org_id").notNull(),
     slug: varchar("slug", { length: 64 }).notNull(),
     displayName: varchar("display_name", { length: 128 }).notNull(),
-    prefixes: jsonb("prefixes").notNull().$type<OrgCustomConnectorPrefixes>(),
+    prefixes: jsonb("prefixes")
+      .notNull()
+      .default(sql`'[]'::jsonb`)
+      .$type<OrgCustomConnectorPrefixes>(),
     headerName: varchar("header_name", { length: 128 }),
     headerTemplate: text("header_template"),
     prefixTemplates: jsonb("prefix_templates")
@@ -114,25 +117,31 @@ export const orgCustomConnectors = pgTable(
       check(
         "chk_org_custom_connectors_mcp",
         sql`(
-          (
-            ${table.mcpEndpoint} IS NULL
-            AND ${table.mcpTransport} IS NULL
-            AND ${table.prefixes} <> '[]'::jsonb
-            AND ${table.prefixTemplates} <> '[]'::jsonb
-            AND ${table.headerName} IS NOT NULL
-            AND ${table.headerName} <> ''
-            AND ${table.headerTemplate} IS NOT NULL
-            AND ${table.headerTemplate} <> ''
-          ) OR (
-            ${table.mcpEndpoint} IS NOT NULL
-            AND btrim(${table.mcpEndpoint}) <> ''
-            AND ${table.mcpTransport} IS NOT NULL
-            AND ${table.mcpTransport} = 'streamable-http'
-            AND ${table.prefixes} = '[]'::jsonb
-            AND ${table.prefixTemplates} = '[]'::jsonb
-            AND ${table.headerName} IS NULL
-            AND ${table.headerTemplate} IS NULL
-            AND ${table.permissionBundleRef} IS NULL
+          jsonb_typeof(${table.prefixTemplates}) = 'array'
+          AND jsonb_typeof(${table.fields}) = 'array'
+          AND jsonb_typeof(${table.headerInjections}) = 'array'
+          AND jsonb_typeof(${table.queryInjections}) = 'array'
+          AND (
+            (
+              ${table.mcpEndpoint} IS NULL
+              AND ${table.mcpTransport} IS NULL
+              AND ${table.prefixTemplates} <> '[]'::jsonb
+              AND (
+                ${table.headerInjections} <> '[]'::jsonb
+                OR ${table.queryInjections} <> '[]'::jsonb
+              )
+            ) OR (
+              ${table.mcpEndpoint} IS NOT NULL
+              AND btrim(${table.mcpEndpoint}) <> ''
+              AND ${table.mcpTransport} IS NOT NULL
+              AND ${table.mcpTransport} = 'streamable-http'
+              AND ${table.prefixTemplates} = '[]'::jsonb
+              AND (
+                ${table.headerInjections} <> '[]'::jsonb
+                OR ${table.queryInjections} <> '[]'::jsonb
+              )
+              AND ${table.permissionBundleRef} IS NULL
+            )
           )
         )`,
       ),

@@ -287,7 +287,7 @@ export async function mutateRunnerJobConnectorPermissionBaseline(
   context: TestContext,
   runId: string,
   mode:
-    | "legacy-targets"
+    | "rollout-targets"
     | "remove"
     | "malformed"
     | "capability-mismatch"

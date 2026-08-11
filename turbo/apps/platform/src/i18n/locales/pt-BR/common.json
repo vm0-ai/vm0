@@ -1913,17 +1913,13 @@
     },
     "custom": {
       "connect": {
-        "apiAuthentication": "Autenticação por API",
-        "apiDescription": "Insira o segredo de API fornecido pelo provedor.",
-        "back": "Voltar",
+        "configured": "Configurado",
         "connecting": "Conectando…",
         "continue": "Continuar",
         "continueToProvider": "Continue no provedor para autorizar o acesso.",
         "description": "Seu segredo é criptografado em repouso e injetado nas solicitações de saída pelo firewall. Ele nunca é exposto ao agente como uma variável de ambiente.",
-        "oauthDescription": "Autorize o acesso com o app OAuth do conector.",
         "save": "Salvar",
         "saving": "Salvando…",
-        "secret": "Segredo",
         "title": "Conectar {{connector}}"
       },
       "create": {

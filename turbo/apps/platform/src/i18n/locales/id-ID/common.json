@@ -1872,17 +1872,13 @@
     },
     "custom": {
       "connect": {
-        "apiAuthentication": "Autentikasi API",
-        "apiDescription": "Masukkan rahasia API yang diterbitkan oleh penyedia.",
-        "back": "Kembali",
+        "configured": "Terkonfigurasi",
         "connecting": "Menghubungkan…",
         "continue": "Lanjut",
         "continueToProvider": "Lanjutkan ke penyedia untuk mengotorisasi akses.",
         "description": "Rahasia Anda dienkripsi saat disimpan dan disisipkan ke permintaan keluar oleh firewall. Rahasia ini tidak pernah diekspos ke agen sebagai variabel lingkungan.",
-        "oauthDescription": "Otorisasi akses dengan aplikasi OAuth konektor.",
         "save": "Simpan",
         "saving": "Menyimpan…",
-        "secret": "Rahasia",
         "title": "Hubungkan {{connector}}"
       },
       "create": {

@@ -1913,17 +1913,13 @@
     },
     "custom": {
       "connect": {
-        "apiAuthentication": "Authentification API",
-        "apiDescription": "Entrez le secret API fourni par le fournisseur.",
-        "back": "Retour",
+        "configured": "Configuré",
         "connecting": "Connexion en cours…",
         "continue": "Continuer",
         "continueToProvider": "Continuer vers le fournisseur pour autoriser l'accès.",
         "description": "Votre secret est chiffré au repos et injecté dans les requêtes sortantes par le pare-feu. Il n'est jamais exposé à l'agent en tant que variable d'environnement.",
-        "oauthDescription": "Autoriser l'accès avec l'application OAuth du connecteur.",
         "save": "Enregistrer",
         "saving": "Enregistrement en cours…",
-        "secret": "Secret",
         "title": "Connecter {{connector}}"
       },
       "create": {

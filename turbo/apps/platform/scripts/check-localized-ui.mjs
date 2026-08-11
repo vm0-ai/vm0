@@ -144,10 +144,6 @@ function getConnectorAllowedLiterals() {
       "bring-your-own-key product acronym",
     ],
     [
-      "src/views/zero-page/components/settings/custom-connector-connect-dialog.tsx\u0000OAuth 2.0",
-      "OAuth protocol name",
-    ],
-    [
       "src/views/zero-page/components/settings/custom-connector-create-dialog.tsx\u0000Acme API",
       "example connector name",
     ],

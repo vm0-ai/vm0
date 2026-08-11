@@ -8153,7 +8153,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
 });
 
 describe("RUN-02: custom connectors, grants, and network policies", () => {
-  it("keeps overlapping connector candidates behind the legacy runner view", async () => {
+  it("admits overlapping custom and built-in connector targets", async () => {
     const api = createRunsApi(context);
     const connectors = createConnectorBddApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
@@ -8191,26 +8191,26 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(run.runId);
     const internalName = `custom_connector_${custom.id.replaceAll("-", "")}`;
-    expect(findFirewallEntry(claim.firewalls, "figma")).toBeUndefined();
+    expect(findFirewallEntry(claim.firewalls, "figma")).toMatchObject({
+      kind: "builtin",
+      name: "figma",
+    });
     expect(inlineFirewallApis(claim.firewalls, internalName)).toMatchObject([
       {
         base: "https://api.figma.com/",
       },
     ]);
-    expect(claim.connectorRuntimeTargets).not.toContainEqual({
+    expect(claim.connectorRuntimeTargets).toContainEqual({
       kind: "builtin",
       connectorSlug: "figma",
     });
-    expect(claim.connectorRuntimeCandidateTargets).toContainEqual({
-      kind: "builtin",
-      connectorSlug: "figma",
-    });
-    expect(claim.connectorRuntimeCandidateTargets).toContainEqual(
+    expect(claim.connectorRuntimeTargets).toContainEqual(
       expect.objectContaining({
         kind: "custom",
         customConnectorId: custom.id,
       }),
     );
+    expect(claim).not.toHaveProperty("connectorRuntimeCandidateTargets");
     expect(claim.networkPolicies).toHaveProperty("figma");
     expect(claim.networkPolicies?.[internalName]?.unknownPolicy).toBe("allow");
 
@@ -8270,10 +8270,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       kind: "builtin",
       connectorSlug: "figma",
     });
-    expect(claim.connectorRuntimeCandidateTargets).toContainEqual({
-      kind: "builtin",
-      connectorSlug: "figma",
-    });
+    expect(claim).not.toHaveProperty("connectorRuntimeCandidateTargets");
 
     await api.requestCancelRun(actor, run.runId, [200]);
     expect((await api.readRun(actor, run.runId)).status).toBe("cancelled");
@@ -8939,6 +8936,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
   it("hands off more than one runtime-sync batch without truncation", async () => {
     const api = createRunsApi(context);
     const connectors = createConnectorBddApi(context);
+    const fw = createFirewallApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
     if (!actor.orgId) {
       throw new Error("Expected a custom connector actor with an organization");
@@ -8961,6 +8959,22 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       userId: actor.userId,
       customConnectors: runtimeConnectors,
     });
+    const listedRuntimeConnectors =
+      await connectors.listCustomConnectors(actor);
+    const firstRuntimeConnector = runtimeConnectors[0];
+    if (!firstRuntimeConnector) {
+      throw new Error("Expected a canonical runtime connector fixture");
+    }
+    expect(
+      listedRuntimeConnectors.find((connector) => {
+        return connector.id === firstRuntimeConnector.id;
+      }),
+    ).toMatchObject({
+      prefixTemplates: [firstRuntimeConnector.prefixTemplate],
+      prefixes: [firstRuntimeConnector.prefixTemplate],
+      headerName: "X-Connector",
+      headerTemplate: "runtime-batch {{secrets.optional_secret}}",
+    });
     const createdIds = runtimeConnectors.map((connector) => {
       return connector.id;
     });
@@ -8970,6 +8984,13 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       createdIds,
     );
     expect(enabledIds).toHaveLength(connectorCount);
+    await connectors.setCustomConnectorValues(actor, firstRuntimeConnector.id, [
+      {
+        key: "optional_secret",
+        kind: "secret",
+        value: "canonical-runtime-secret",
+      },
+    ]);
 
     const run = await api.createRun(actor, {
       agentId,
@@ -8989,6 +9010,31 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
         })
         .sort(),
     ).toStrictEqual(expectedIds);
+
+    const [firstRuntime] = await api.syncConnectorRuntime(run.runId, {
+      targets: [
+        {
+          kind: "custom",
+          customConnectorId: firstRuntimeConnector.id,
+          baseUrlVars: {},
+        },
+      ],
+    });
+    const availableFirstRuntime = availableCustomConnectorRuntime(firstRuntime);
+    const { body: firstAuthBody } = customConnectorRuntimeAuthBody(
+      availableFirstRuntime,
+      fw.encryptedSecretsBody({}),
+    );
+    const firstAuth = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      firstAuthBody,
+      [200],
+    );
+    expect(firstAuth.body).toMatchObject({
+      headers: {
+        "X-Connector": "runtime-batch canonical-runtime-secret",
+      },
+    });
 
     await api.requestCancelRun(actor, run.runId, [200]);
   });
@@ -10676,11 +10722,12 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       name: "zendesk",
       baseUrlVars: { ZENDESK_SUBDOMAIN: "xn--mnich-kva" },
     });
-    expect(claim.connectorRuntimeCandidateTargets).toContainEqual({
+    expect(claim.connectorRuntimeTargets).toContainEqual({
       kind: "builtin",
       connectorSlug: "zendesk",
       baseUrlVars: { ZENDESK_SUBDOMAIN: "xn--mnich-kva" },
     });
+    expect(claim).not.toHaveProperty("connectorRuntimeCandidateTargets");
     expect(customApis[0]?.base).toBe("https://internal.example.com/api/");
 
     await api.requestCancelRun(actor, run.runId, [200]);
@@ -10802,7 +10849,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     await api.requestCancelRun(actor, run.runId, [200]);
   });
 
-  it("falls back for old, invalid, and incompatible permission baselines", async () => {
+  it("handles rollout, missing, invalid, and incompatible permission baselines", async () => {
     const bdd = createBddApi(context);
     const api = createRunsApi(context);
     const fw = createFirewallApi(context);
@@ -10820,7 +10867,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
 
     const cases = [
       {
-        mode: "legacy-targets",
+        mode: "rollout-targets",
         path: "baseline",
       },
       {
@@ -10853,6 +10900,10 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       },
     ] as const;
 
+    const slackTargets = expect.arrayContaining([
+      { kind: "builtin", connectorSlug: "slack" },
+    ]);
+
     for (const fallbackCase of cases) {
       const run = await api.createRun(actor, {
         agentId: agent.agentId,
@@ -10866,6 +10917,13 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       );
       const claim = await api.claimRunnerJob(run.runId);
 
+      const isRolloutContext = fallbackCase.mode === "rollout-targets";
+      expect(claim.connectorRuntimeTargets).toStrictEqual(
+        isRolloutContext ? [] : slackTargets,
+      );
+      expect(claim.connectorRuntimeCandidateTargets).toStrictEqual(
+        isRolloutContext ? slackTargets : undefined,
+      );
       expect(claim.networkPolicies?.slack?.allow).toContain(
         "conversations:read",
       );
@@ -10875,7 +10933,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       expectClaimRouteResponseTimingActions({
         runId: run.runId,
         expectedActionTypes:
-          fallbackCase.mode === "legacy-targets" ||
+          fallbackCase.mode === "rollout-targets" ||
           fallbackCase.mode === "catalog-mismatch"
             ? [
                 "claim_route_response_network_policy_refresh",

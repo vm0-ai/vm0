@@ -9,7 +9,7 @@ import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-co
 import { zeroAgentCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 import {
   zeroCustomConnectorOAuth2Contract,
-  zeroCustomConnectorSecretContract,
+  zeroCustomConnectorValuesContract,
   zeroCustomConnectorsContract,
   type CustomConnectorHttpResponse,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
@@ -213,9 +213,6 @@ function customConnector(
     storageVersion: 1,
     slug: "_acme-api",
     displayName: "Acme API",
-    prefixes: ["https://api.acme.test/v1/"],
-    headerName: "Authorization",
-    headerTemplate: "Bearer {{secret}}",
     prefixTemplates: ["https://api.acme.test/v1/"],
     fields: [
       {
@@ -350,7 +347,11 @@ describe("directed connector connect page", () => {
   it("connects and authorizes a manual custom connector", async () => {
     let connected = false;
     let enabledIds: string[] = [];
-    let submittedSecret: string | null = null;
+    let submittedValues: readonly {
+      readonly key: string;
+      readonly kind: "secret" | "variable";
+      readonly value: string;
+    }[] = [];
     const connector = customConnector();
     context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
       return respond(200, {
@@ -366,12 +367,18 @@ describe("directed connector connect page", () => {
       });
     });
     context.mocks.api(
-      zeroCustomConnectorSecretContract.set,
+      zeroCustomConnectorValuesContract.set,
       ({ body, params, respond }) => {
         expect(params.id).toBe(connector.id);
-        submittedSecret = body.value;
+        submittedValues = body.values;
         connected = true;
-        return respond(204);
+        return respond(200, {
+          ...connector,
+          connected: true,
+          hasSecret: true,
+          missingRequiredFields: [],
+          configuredFieldKeys: ["secret"],
+        });
       },
     );
     context.mocks.api(
@@ -401,7 +408,9 @@ describe("directed connector connect page", () => {
     click(getButtonByText("Save"));
 
     await waitFor(() => {
-      expect(submittedSecret).toBe("acme-secret");
+      expect(submittedValues).toStrictEqual([
+        { key: "secret", kind: "secret", value: "acme-secret" },
+      ]);
       expect(enabledIds).toStrictEqual([connector.id]);
       expect(screen.getByText("Acme API connected")).toBeInTheDocument();
     });
