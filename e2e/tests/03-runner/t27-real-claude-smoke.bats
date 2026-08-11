@@ -70,7 +70,7 @@ run_real_claude_chat() {
     local expected_output="$2"
     local send_response run_id thread_id run_response events_response
 
-    send_response="$(_runner_chat_send \
+    send_response="$(runner_chat_send \
         "$RUNNER_AGENT_ID" \
         "$prompt" \
         "" \
@@ -80,7 +80,7 @@ run_real_claude_chat() {
     thread_id="$(jq -er '.threadId | select(type == "string" and length > 0)' \
         <<< "$send_response")" || return 1
 
-    run_response="$(_wait_for_runner_run "$run_id" 150)" || return 1
+    run_response="$(runner_wait_for_run "$run_id" 150)" || return 1
     _wait_for_runner_chat_output \
         "$thread_id" \
         "$run_id" \
