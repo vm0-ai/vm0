@@ -150,6 +150,7 @@ function prepareWorkflowImmediateSuccessor(args: {
     orgId: args.target.automation.orgId,
     intentId: args.event.id,
     eventClass: "automation",
+    decisionPoint: "queue_drain",
   });
   return { launchHint, intent };
 }
