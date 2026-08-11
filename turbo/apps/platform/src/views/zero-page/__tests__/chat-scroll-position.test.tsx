@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   chatEventResponse,
   chatThreadEventsContract,
+  chatThreadsContract,
   type ChatEvent,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
@@ -1318,6 +1319,9 @@ describe("chat scroll position", () => {
       threadId,
       initialEvents,
       appendedEvents,
+    });
+    context.mocks.api(chatThreadsContract.unreadIds, ({ respond }) => {
+      return respond(200, { threadIds: [threadId] });
     });
     installChatLayout(
       new Map([
