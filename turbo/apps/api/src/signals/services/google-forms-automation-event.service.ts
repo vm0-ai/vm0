@@ -1603,7 +1603,7 @@ async function dispatchGoogleFormsAutomation(
     return { kind: "ok", dispatched: 0, duplicates: 0 };
   }
   const listed = await args.sourceTiming.measure(
-    "api_dispatch_pre_create_zero_workflow_event_load_external_events",
+    "api_dispatch_pre_create_zero_automation_event_load_external_events",
     async () => {
       return await listGoogleFormResponses(
         {
@@ -1680,7 +1680,7 @@ async function dispatchGoogleFormsWatchState(
   signal: AbortSignal,
 ): Promise<GoogleFormsDispatchStateResult> {
   const automations = await args.sourceTiming.measure(
-    "api_dispatch_pre_create_zero_workflow_event_load_automations",
+    "api_dispatch_pre_create_zero_automation_event_load_automations",
     async () => {
       return await loadGoogleFormsEventAutomations(args, signal);
     },
@@ -1753,7 +1753,7 @@ export const dispatchGoogleFormsPubSubPush$ = command(
       args.apiStartTime,
     );
     const states = await sourceTiming.measure(
-      "api_dispatch_pre_create_zero_workflow_event_load_source_state",
+      "api_dispatch_pre_create_zero_automation_event_load_source_state",
       async () => {
         return await loadGoogleFormsWatchStates({ db, decoded }, signal);
       },
