@@ -5164,11 +5164,13 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
 
     const actor = bdd.user();
     const granted = await runs.grantProEntitlement(actor);
+    const allowanceCustomerId = generatedStripeCustomerId();
+    const allowanceSubscriptionId = generatedStripeSubscriptionId();
     await postUsageAllowanceInvoicePaid(context.signal, {
       orgId: orgOf(actor),
       userId: actor.userId,
-      customerId: generatedStripeCustomerId(),
-      subscriptionId: generatedStripeSubscriptionId(),
+      customerId: allowanceCustomerId,
+      subscriptionId: allowanceSubscriptionId,
       effectiveAt: new Date(now() - 60_000),
       expiresAt: new Date(now() + 365 * 86_400_000),
       shortWindowSeconds: 3600,
@@ -5292,17 +5294,53 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
       runs.listUserPermissionGrants(actor, agent.agentId),
     ).resolves.toHaveLength(1);
 
-    // The first delivery hits a failing Stripe subscription update (a per-step
-    // failure the cleanup continues over) and then a failing org S3 listing,
-    // which aborts the rest of the cleanup without surfacing in the
-    // webhook response.
-    context.mocks.stripe.subscriptions.list.mockResolvedValue({
+    // Billing cleanup completes before a failing org S3 listing aborts the
+    // remaining teardown without surfacing in the webhook response.
+    context.mocks.stripe.subscriptions.list
+      .mockResolvedValueOnce({
+        data: [
+          proSubscription({
+            id: granted.subscriptionId,
+            customerId: granted.customerId,
+          }),
+        ],
+        has_more: false,
+      })
+      .mockResolvedValueOnce({
+        data: [
+          proSubscription({
+            id: allowanceSubscriptionId,
+            customerId: allowanceCustomerId,
+          }),
+        ],
+        has_more: false,
+      })
+      .mockResolvedValueOnce({
+        data: [
+          proSubscription({
+            id: granted.subscriptionId,
+            customerId: granted.customerId,
+            status: "canceled",
+          }),
+        ],
+        has_more: false,
+      })
+      .mockResolvedValueOnce({
+        data: [
+          proSubscription({
+            id: allowanceSubscriptionId,
+            customerId: allowanceCustomerId,
+            status: "canceled",
+          }),
+        ],
+        has_more: false,
+      });
+    context.mocks.stripe.subscriptions.update.mockResolvedValue({});
+    context.mocks.stripe.subscriptions.cancel.mockResolvedValue({});
+    context.mocks.stripe.invoices.list.mockResolvedValue({
       data: [],
       has_more: false,
     });
-    context.mocks.stripe.subscriptions.update.mockRejectedValueOnce(
-      new Error("stripe unavailable"),
-    );
     context.mocks.s3.send.mockRejectedValueOnce(new Error("R2 unavailable"));
     api.verifyNextClerkWebhook({
       type: "organization.deleted",
@@ -5312,9 +5350,12 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
     expect(firstDelivery.body).toBe("OK");
     await flushWaitUntilForTest();
     await waitForExpectation(() => {
-      expect(context.mocks.stripe.subscriptions.update).toHaveBeenCalledWith(
+      expect(context.mocks.stripe.subscriptions.cancel).toHaveBeenCalledWith(
         granted.subscriptionId,
-        { cancel_at_period_end: true },
+        { invoice_now: false, prorate: false },
+        {
+          idempotencyKey: `org-delete:${orgOf(actor)}:${granted.subscriptionId}:cancel`,
+        },
       );
       expect(context.mocks.telegram.deleteWebhook).toHaveBeenCalledWith(
         botToken,

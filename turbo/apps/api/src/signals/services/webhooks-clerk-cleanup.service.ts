@@ -56,6 +56,7 @@ import { getStripeClient } from "../external/stripe-client";
 import { settle, tapError } from "../utils";
 import { decryptPersistentSecretValue } from "./crypto.utils";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
+import { cancelAndRefundOrgBillingForDeletion } from "./org-deletion-billing.service";
 import { cleanupOrgMemberResources } from "./org-member-cleanup.service";
 import { removeUsagePackMemberAllocation } from "./usage-pack-allocation-change.service";
 import { refundUsagePackMemberCredits } from "./usage-pack-credit-refund.service";
@@ -470,12 +471,6 @@ const cleanupOrgExternalServices$ = command(
       readonly name: string;
       readonly run: () => Promise<void>;
     }[] = [
-      {
-        name: "stripe subscriptions",
-        run: () => {
-          return cancelStripeSubscriptionsForDeletedOrg(db, orgId);
-        },
-      },
       {
         name: "telegram webhooks",
         run: () => {
@@ -893,6 +888,8 @@ async function deleteUserData(
 export const cleanupClerkDeletedOrg$ = command(
   async ({ get, set }, orgId: string, signal: AbortSignal): Promise<void> => {
     const db = set(writeDb$);
+    await cancelAndRefundOrgBillingForDeletion(db, orgId, signal);
+    signal.throwIfAborted();
     await set(cleanupOrgExternalServices$, db, orgId, signal);
     signal.throwIfAborted();
     await get(deleteOrgS3Data(db, orgId));
@@ -915,6 +912,13 @@ export const cleanupClerkDeletedUser$ = command(
     await set(cleanupUserExternalServices$, db, userId, signal);
     signal.throwIfAborted();
     for (const orgId of emptyOrgIds) {
+      await tapError(
+        cancelStripeSubscriptionsForDeletedOrg(db, orgId),
+        (error) => {
+          L.warn("failed to cleanup stripe subscriptions", { orgId, error });
+        },
+      );
+      signal.throwIfAborted();
       await set(cleanupOrgExternalServices$, db, orgId, signal);
       signal.throwIfAborted();
     }

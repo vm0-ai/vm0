@@ -7,6 +7,7 @@ import { afterEach, expect, test } from "vitest";
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { clearMockNow, mockNow } from "../../../lib/time";
+import { flushWaitUntilForTest } from "../../context/wait-until";
 import {
   mockStripeClient,
   type StripeCreditNote,
@@ -15,6 +16,9 @@ import {
   type StripeSubscription,
 } from "../../external/stripe-client";
 import { zeroOrgDeleteRoutes } from "../zero-org-delete";
+import type { ApiTestUser } from "./helpers/api-bdd";
+import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
+import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import {
   createBillingWebhookFixture,
@@ -519,4 +523,96 @@ test("does not delete the org when its proportional refund fails", async () => {
   expect(
     context.mocks.clerk.organizations.deleteOrganization,
   ).not.toHaveBeenCalled();
+});
+
+test("retries refunds on redelivery before cleaning a Clerk-deleted org", async () => {
+  const deletionTimestamp = 1_800_000_000;
+  const periodStart = deletionTimestamp - 500;
+  const periodEnd = deletionTimestamp + 500;
+  const subscriptionId = "sub_delete_clerk_webhook";
+  const fixture = createOrgDeleteBillingFixture();
+  const actor: ApiTestUser = {
+    userId: fixture.userId,
+    orgId: fixture.orgId,
+    orgRole: "org:admin",
+    email: "org-delete-clerk@example.test",
+  };
+  mockNow(deletionTimestamp * 1000);
+  await seedPlanSubscription(fixture, subscriptionId, periodEnd);
+  mockStripeClient(context.mocks.stripe as unknown as StripeSDK);
+  mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+
+  context.mocks.stripe.subscriptions.list
+    .mockResolvedValueOnce({
+      data: [subscription(subscriptionId, fixture.customerId)],
+      has_more: false,
+    })
+    .mockResolvedValueOnce({
+      data: [
+        subscription(subscriptionId, fixture.customerId, {
+          status: "canceled",
+          metadata: {
+            vm0_org_delete_org_id: fixture.orgId,
+            vm0_org_delete_at: String(deletionTimestamp),
+          },
+        }),
+      ],
+      has_more: false,
+    });
+  context.mocks.stripe.subscriptions.update.mockResolvedValue({});
+  context.mocks.stripe.subscriptions.cancel.mockResolvedValue({});
+  context.mocks.stripe.invoices.list.mockResolvedValue({
+    data: [
+      paidInvoice("in_delete_clerk", fixture.customerId, subscriptionId, [
+        subscriptionLine(1000, periodStart, periodEnd),
+      ]),
+    ],
+    has_more: false,
+  });
+  context.mocks.stripe.creditNotes.preview.mockResolvedValue(
+    creditNote("preview_delete_clerk", 500),
+  );
+  context.mocks.stripe.creditNotes.create
+    .mockRejectedValueOnce(new Error("Stripe refund unavailable"))
+    .mockResolvedValueOnce(creditNote("cn_delete_clerk", 500));
+
+  const webhooks = createWebhookCallbackApi(context);
+  webhooks.configureClerkWebhookSecret();
+  const deliverOrgDeleted = async (): Promise<void> => {
+    webhooks.verifyNextClerkWebhook({
+      type: "organization.deleted",
+      data: { id: fixture.orgId },
+    });
+    const response = await webhooks.requestClerkWebhook("{}", {}, [200]);
+    expect(response.body).toBe("OK");
+    await flushWaitUntilForTest();
+  };
+
+  await deliverOrgDeleted();
+
+  expect(context.mocks.stripe.subscriptions.cancel).toHaveBeenCalledOnce();
+  expect(context.mocks.stripe.creditNotes.create).toHaveBeenCalledOnce();
+  expect(
+    (await createBillingMediaApi(context).readBillingStatus(actor))
+      .hasSubscription,
+  ).toBeTruthy();
+
+  await deliverOrgDeleted();
+
+  expect(context.mocks.stripe.subscriptions.cancel).toHaveBeenCalledOnce();
+  expect(context.mocks.stripe.creditNotes.create).toHaveBeenCalledTimes(2);
+  expect(context.mocks.stripe.creditNotes.create).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      invoice: "in_delete_clerk",
+      amount: 500,
+      refund_amount: 500,
+    }),
+    expect.objectContaining({
+      idempotencyKey: `org-delete-refund:${fixture.orgId}:${subscriptionId}:in_delete_clerk:${deletionTimestamp}`,
+    }),
+  );
+  expect(
+    (await createBillingMediaApi(context).readBillingStatus(actor))
+      .hasSubscription,
+  ).toBeFalsy();
 });
