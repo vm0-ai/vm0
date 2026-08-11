@@ -9066,9 +9066,12 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       }),
     ).toMatchObject({
       prefixTemplates: [firstRuntimeConnector.prefixTemplate],
-      prefixes: [firstRuntimeConnector.prefixTemplate],
-      headerName: "X-Connector",
-      headerTemplate: "runtime-batch {{secrets.optional_secret}}",
+      headerInjections: [
+        {
+          name: "X-Connector",
+          valueTemplate: "runtime-batch {{secrets.optional_secret}}",
+        },
+      ],
     });
     const createdIds = runtimeConnectors.map((connector) => {
       return connector.id;

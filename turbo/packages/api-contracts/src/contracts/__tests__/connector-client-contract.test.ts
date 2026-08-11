@@ -59,9 +59,6 @@ const customHttpConnectorPayloadBase = {
   configuredFieldKeys: ["token"],
   createdAt: "2026-08-11T00:00:00.000Z",
   updatedAt: "2026-08-11T00:00:00.000Z",
-  prefixes: ["https://api.example.test"],
-  headerName: "Authorization",
-  headerTemplate: "Bearer {{token}}",
   prefixTemplates: ["https://api.example.test"],
 } as const;
 
@@ -267,7 +264,7 @@ describe("custom connector client response contracts", () => {
     ).toStrictEqual({ connectors: [customHttpConnectorClientPayload] });
   });
 
-  it("parses MCP responses without the compatibility property", () => {
+  it("parses canonical MCP responses", () => {
     const payload = {
       id: "00000000-0000-4000-a000-000000000006",
       slug: "_example-mcp",
@@ -287,9 +284,6 @@ describe("custom connector client response contracts", () => {
       updatedAt: "2026-08-11T00:00:00.000Z",
       endpoint: "https://mcp.example.test",
       transport: "streamable-http",
-      prefixes: [],
-      headerName: "",
-      headerTemplate: "",
       prefixTemplates: [],
     } as const;
 

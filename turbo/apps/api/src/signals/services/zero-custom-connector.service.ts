@@ -386,13 +386,6 @@ function queryInjectionArray(
   });
 }
 
-function legacyHeaderTemplateFromCanonical(template: string): string {
-  return template.replaceAll(
-    `{{secrets.${LEGACY_SECRET_KEY}}}`,
-    LEGACY_SECRET_PLACEHOLDER,
-  );
-}
-
 type PersistedHttpDefinitionRow = CustomConnectorDefinitionRow & {
   readonly mcpEndpoint: null;
   readonly mcpTransport: null;
@@ -791,22 +784,14 @@ export function serialiseCustomConnector(args: {
       kind: "mcp",
       endpoint: args.row.endpoint,
       transport: args.row.transport,
-      prefixes: [],
-      headerName: "",
-      headerTemplate: "",
       prefixTemplates: [],
       permissionBundleRef: null,
     } satisfies CustomConnectorMcpResponse;
   }
 
-  const legacy = legacyResponseAliases(args.row);
-
   return {
     ...common,
     kind: "http",
-    prefixes: [...legacy.prefixes],
-    headerName: legacy.headerName,
-    headerTemplate: legacy.headerTemplate,
     prefixTemplates: [...args.row.prefixTemplates],
     permissionBundleRef: effectivePermissionBundleRef(args.row),
   } satisfies CustomConnectorHttpResponse;
@@ -1594,21 +1579,6 @@ function definitionFromUpdateInput(
       input.skillMarkdown !== undefined
         ? input.skillMarkdown
         : (existing?.skillMarkdown ?? null),
-  };
-}
-
-function legacyResponseAliases(definition: ValidatedHttpDefinition): {
-  readonly prefixes: readonly string[];
-  readonly headerName: string;
-  readonly headerTemplate: string;
-} {
-  const firstHeader = definition.headerInjections[0];
-  return {
-    prefixes: [...definition.prefixTemplates],
-    headerName: firstHeader?.name ?? "X-VM0-Custom-Connector",
-    headerTemplate: firstHeader
-      ? legacyHeaderTemplateFromCanonical(firstHeader.valueTemplate)
-      : LEGACY_SECRET_PLACEHOLDER,
   };
 }
 
