@@ -13,6 +13,7 @@ import { createAblyAuthCallback } from "../lib/ably-auth.ts";
 import {
   createDeferredPromise,
   onRejection,
+  settle,
   setLoop,
   throwIfAbort,
   withCleanup,
@@ -299,18 +300,17 @@ const runPayloadLoopIteration$ = command(
     }
     if (!hasPayload && catchUpCommand$ !== undefined) {
       state.catchUpRequested = false;
-      let done = false;
-      // eslint-disable-next-line no-restricted-syntax -- surface one catch-up failure without ending the long-lived subscription
-      try {
-        done = await set(catchUpCommand$, signal);
-        signal.throwIfAborted();
-      } catch (error) {
-        throwIfAbort(error);
-        signal.throwIfAborted();
-        L.warn(`ably catch-up failed`, error);
+      const result = await settle(
+        (async () => {
+          return await set(catchUpCommand$, signal);
+        })(),
+        signal,
+      );
+      if (!result.ok) {
+        L.warn(`ably catch-up failed`, result.error);
         set(notifyRealtimeDegraded$);
       }
-      if (done) {
+      if (result.ok && result.value) {
         return true;
       }
       if (state.pendingPayloads.length > 0 || state.catchUpRequested) {
