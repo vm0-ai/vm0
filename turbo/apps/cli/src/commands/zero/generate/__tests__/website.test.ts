@@ -81,29 +81,8 @@ describe("zero generate website command", () => {
       "Built-in website candidates have `source.archive`; candidates without it are Open Design templates.",
     );
     expect(stdout).toContain(
-      "choose the most suitable option among images supplied by the user, relevant images in the user's source or reference material, and AI-generated images",
+      "use `seedream4` by default unless the user specifies another image model",
     );
-    expect(stdout).toContain(
-      "You, the authoring AI, are responsible for choosing, generating when appropriate, and inserting website images",
-    );
-    expect(stdout).toContain("there is no fixed source order");
-    expect(stdout).toContain(
-      "User-supplied images are recommended when they fit the content and design, but they are not mandatory",
-    );
-    expect(stdout).toContain("Do not use stock-photo or image-search APIs");
-    expect(stdout).toContain(
-      'zero generate image --provider built-in --model seedream4 --raw-prompt "<slot-specific image brief>"',
-    );
-    expect(stdout).toContain(
-      "never hard-code either one in a website template",
-    );
-    expect(stdout).toContain(
-      "Insert each selected or generated image directly into the website yourself",
-    );
-    expect(stdout).not.toContain("outer authoring");
-    expect(stdout).not.toContain("outer workflow");
-    expect(stdout).not.toContain("/api/presentation/images/resolve");
-    expect(stdout).not.toContain("only when neither");
     expect(stdout).toContain(
       "Write the artifact under `./generated/mockups/clearpath-demo/`.",
     );

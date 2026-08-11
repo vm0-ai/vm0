@@ -173,12 +173,7 @@ ${formatRegistryListing(templates, "website templates")}`;
           ...templateSelectionRules,
           "If it is a marketing site, make the product or offer visible in the first viewport.",
           "For app or tool surfaces, prioritize dense, scannable, task-focused UI over decorative sections.",
-          "You, the authoring AI, are responsible for choosing, generating when appropriate, and inserting website images; templates must not search for images, call an image API, or choose an image model.",
-          "For every image slot, choose the most suitable option among images supplied by the user, relevant images in the user's source or reference material, and AI-generated images; there is no fixed source order.",
-          "User-supplied images are recommended when they fit the content and design, but they are not mandatory. Do not use stock-photo or image-search APIs.",
-          'When you choose to generate an image and the user did not choose another model or provider, use the website default supplied by this prompt: `zero generate image --provider built-in --model seedream4 --raw-prompt "<slot-specific image brief>"`.',
-          "Treat the image model and provider as instructions passed to you in this prompt and as arguments to the image-generation command; never hard-code either one in a website template.",
-          "Insert each selected or generated image directly into the website yourself before final verification; do not defer image filling to another workflow or leave visible image slots empty.",
+          "When generating images for a website, use `seedream4` by default unless the user specifies another image model.",
           "Use responsive HTML/CSS and verify the page works at mobile and desktop widths.",
         ],
       });

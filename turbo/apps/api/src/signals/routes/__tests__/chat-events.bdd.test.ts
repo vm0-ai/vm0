@@ -7374,19 +7374,8 @@ describe("CHAT-02: generation templates and attachments", () => {
     expect(websitePrompt).toContain(
       `./generated/resources/${websiteTemplate.sourcePath}/render.mjs`,
     );
-    expect(websitePrompt).not.toContain("resolve-images.mjs");
     expect(websitePrompt).toContain(
-      "You, the authoring AI, are responsible for choosing, generating when appropriate, and inserting website images",
-    );
-    expect(websitePrompt).toContain(
-      "images supplied by the user, relevant images in the user's source or reference material, and AI-generated images",
-    );
-    expect(websitePrompt).toContain("There is no fixed source order");
-    expect(websitePrompt).toContain(
-      'zero generate image --provider built-in --model seedream4 --raw-prompt "<slot-specific image brief>"',
-    );
-    expect(websitePrompt).toContain(
-      "insert each selected or generated asset directly into its media slot yourself",
+      "use `seedream4` by default unless the user specifies another image model",
     );
     expect(websitePrompt).toContain("zero host <output-dir> --site <slug>");
     await cancelChatRun(actor, website.runId);
