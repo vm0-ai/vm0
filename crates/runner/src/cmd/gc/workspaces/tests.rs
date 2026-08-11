@@ -930,7 +930,16 @@ async fn gc_workspace_orphans_does_not_scan_mismatched_base_dir_lock_name() {
     let lock_path = locks_dir.join("base-dir-mismatch.lock");
     std::fs::write(&lock_path, base_dir.as_os_str().as_encoded_bytes()).unwrap();
 
-    let summary = gc_workspace_orphans(&home, false).await.unwrap();
+    let summary = gc_workspace_orphans_with_candidates(
+        discover_base_dir_lock_candidates(&home),
+        &[],
+        &HashSet::new(),
+        false,
+        SystemTime::now(),
+        false,
+    )
+    .await
+    .unwrap();
 
     assert_eq!(summary.workspaces_cleaned, 0);
     assert_eq!(summary.base_dir_locks_removed, 1);

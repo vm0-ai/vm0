@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.724.2](https://github.com/vm0-ai/vm0/compare/app-v0.724.1...app-v0.724.2) (2026-08-11)
+
+
+### Bug Fixes
+
+* use signed urls for document previews ([#26293](https://github.com/vm0-ai/vm0/issues/26293)) ([f2ed156](https://github.com/vm0-ai/vm0/commit/f2ed156c69dceac9cbbc5557203174cc30effeec))
+
+
+### Refactoring
+
+* migrate ui primitives to base ui ([#26270](https://github.com/vm0-ai/vm0/issues/26270)) ([d128261](https://github.com/vm0-ai/vm0/commit/d128261abb465fb0af344643d03990e3d674cca4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.312.2
+    * @vm0/core bumped to 8.542.3
+
 ## [0.724.1](https://github.com/vm0-ai/vm0/compare/app-v0.724.0...app-v0.724.1) (2026-08-11)
 
 

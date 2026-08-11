@@ -743,6 +743,24 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function immediateSuccessorIntentPublishCalls(args: {
+  readonly action: "arm" | "revoke";
+  readonly predecessorRunId: string;
+  readonly intentId: string;
+  readonly eventClass: "prompt" | "goal" | "automation";
+}): readonly unknown[][] {
+  return context.mocks.ably.publish.mock.calls.filter(([topic, payload]) => {
+    return (
+      topic === "immediate-successor-intent" &&
+      isRecord(payload) &&
+      payload.action === args.action &&
+      payload.predecessorRunId === args.predecessorRunId &&
+      payload.intentId === args.intentId &&
+      payload.eventClass === args.eventClass
+    );
+  });
+}
+
 function sandboxOperationEventsForRun(
   runId: string,
 ): readonly Record<string, unknown>[] {
@@ -1828,6 +1846,28 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
         expiresAt: expect.any(String),
       }),
     );
+    const goalArmCalls = immediateSuccessorIntentPublishCalls({
+      action: "arm",
+      predecessorRunId: first.runId,
+      intentId: goalContinuation.revokesEventId,
+      eventClass: "goal",
+    });
+    const goalIntentDecisions = sandboxOperationEventsForRun(
+      first.runId,
+    ).filter((event) => {
+      return (
+        event.op_type === "immediate_successor_intent_source_validation" &&
+        event.immediate_successor_action === "arm" &&
+        event.immediate_successor_event_class === "goal" &&
+        event.immediate_successor_outcome === "valid"
+      );
+    });
+    expect(goalIntentDecisions).toStrictEqual([
+      expect.objectContaining({
+        immediate_successor_decision_point: "queue_admission",
+      }),
+    ]);
+    expect(goalArmCalls).toHaveLength(1);
     await expectGoalDrainPreCreateTiming({
       runId: goalContinuation.runId,
       forbiddenValues: [
@@ -2065,6 +2105,16 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
         eventClass: "goal",
       }),
     );
+    for (const action of ["arm", "revoke"] as const) {
+      expect(
+        immediateSuccessorIntentPublishCalls({
+          action,
+          predecessorRunId: first.runId,
+          intentId: goalEventId,
+          eventClass: "goal",
+        }),
+      ).toHaveLength(1);
+    }
   }, 90_000);
 
   it("revokes a goal invalidated while a failing launch resolves", async () => {

@@ -1,6 +1,7 @@
 import type { ImmediateSuccessorIntentSignal } from "@vm0/api-contracts/contracts/runners";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
+import { createStore, state } from "ccstate";
 import { eq } from "drizzle-orm";
 
 import { logger } from "../../lib/log";
@@ -13,16 +14,33 @@ import { tapError } from "../utils";
 import { RUNNER_FINALIZING_PREDECESSOR_PROTECTION_MS } from "./runner-reuse-preference";
 
 const L = logger("ImmediateSuccessorIntent");
+const MAX_RETAINED_INTENT_HANDLES = 1024;
 
 type ImmediateSuccessorEventClass =
   ImmediateSuccessorIntentSignal["eventClass"];
+type ImmediateSuccessorIntentDecisionPoint = "queue_admission" | "queue_drain";
 
 interface ImmediateSuccessorIntentSource {
   readonly group: string;
   readonly signal: Omit<ImmediateSuccessorIntentSignal, "action">;
 }
 
+interface RetainedImmediateSuccessorIntentHandle {
+  readonly expiresAtMs: number;
+  readonly handle: ImmediateSuccessorIntentHandle;
+}
+
+// Concurrent completion drains can run in separate ccstate command trees in
+// one API process. Share only the short-lived advisory owner; runner receipt
+// idempotency remains the cross-process authority.
+const retainedIntentHandles$ = state<
+  ReadonlyMap<string, RetainedImmediateSuccessorIntentHandle>
+>(new Map());
+const intentHandleStore = createStore();
+
 export interface ImmediateSuccessorIntentHandle {
+  readonly intentId: string;
+  readonly eventClass: ImmediateSuccessorEventClass;
   revoke(): void;
 }
 
@@ -33,6 +51,7 @@ interface ScheduleImmediateSuccessorIntentArgs {
   readonly orgId: string;
   readonly intentId: string;
   readonly eventClass: ImmediateSuccessorEventClass;
+  readonly decisionPoint: ImmediateSuccessorIntentDecisionPoint;
 }
 
 type InvalidSourceReason =
@@ -50,13 +69,83 @@ type IntentOutcome =
   | "published"
   | "publish_failed";
 
+function intentHandleKey(args: {
+  readonly predecessorRunId: string;
+  readonly intentId: string;
+  readonly eventClass: ImmediateSuccessorEventClass;
+}): string {
+  return `${args.predecessorRunId}/${args.eventClass}/${args.intentId}`;
+}
+
+function retainedIntentHandle(
+  key: string,
+  decidedAtMs: number,
+): ImmediateSuccessorIntentHandle | undefined {
+  const retainedIntentHandles = intentHandleStore.get(retainedIntentHandles$);
+  const retained = retainedIntentHandles.get(key);
+  if (!retained) {
+    return undefined;
+  }
+  if (retained.expiresAtMs <= decidedAtMs) {
+    const next = new Map(retainedIntentHandles);
+    next.delete(key);
+    intentHandleStore.set(retainedIntentHandles$, next);
+    return undefined;
+  }
+  return retained.handle;
+}
+
+export function findImmediateSuccessorIntentHandle(args: {
+  readonly predecessorRunId: string | undefined;
+  readonly intentId: string;
+  readonly eventClass: ImmediateSuccessorEventClass;
+}): ImmediateSuccessorIntentHandle | undefined {
+  if (!args.predecessorRunId) {
+    return undefined;
+  }
+  return retainedIntentHandle(
+    intentHandleKey({
+      predecessorRunId: args.predecessorRunId,
+      intentId: args.intentId,
+      eventClass: args.eventClass,
+    }),
+    now(),
+  );
+}
+
+function retainIntentHandle(
+  key: string,
+  handle: ImmediateSuccessorIntentHandle,
+  decidedAtMs: number,
+): void {
+  const retainedIntentHandles = intentHandleStore.get(retainedIntentHandles$);
+  const next = new Map(retainedIntentHandles);
+  if (retainedIntentHandles.size >= MAX_RETAINED_INTENT_HANDLES) {
+    for (const [candidateKey, retained] of retainedIntentHandles) {
+      if (retained.expiresAtMs <= decidedAtMs) {
+        next.delete(candidateKey);
+      }
+    }
+  }
+  if (next.size >= MAX_RETAINED_INTENT_HANDLES) {
+    return;
+  }
+  next.set(key, {
+    expiresAtMs: decidedAtMs + RUNNER_FINALIZING_PREDECESSOR_PROTECTION_MS,
+    handle,
+  });
+  intentHandleStore.set(retainedIntentHandles$, next);
+}
+
 function intentDimensions(args: {
   readonly action: ImmediateSuccessorIntentSignal["action"];
+  readonly decisionPoint: ImmediateSuccessorIntentDecisionPoint;
   readonly eventClass: ImmediateSuccessorEventClass;
   readonly outcome: IntentOutcome;
 }): Record<string, string> {
   return {
     immediate_successor_action: args.action,
+    immediate_successor_decision_point: args.decisionPoint,
     immediate_successor_event_class: args.eventClass,
     immediate_successor_outcome: args.outcome,
   };
@@ -64,6 +153,7 @@ function intentDimensions(args: {
 
 function recordInvalidSource(args: {
   readonly predecessorRunId: string;
+  readonly decisionPoint: ImmediateSuccessorIntentDecisionPoint;
   readonly eventClass: ImmediateSuccessorEventClass;
   readonly decidedAtMs: number;
   readonly reason: InvalidSourceReason;
@@ -77,6 +167,7 @@ function recordInvalidSource(args: {
       runId: args.predecessorRunId,
       dimensions: intentDimensions({
         action: "arm",
+        decisionPoint: args.decisionPoint,
         eventClass: args.eventClass,
         outcome: args.reason,
       }),
@@ -87,6 +178,7 @@ function recordInvalidSource(args: {
 function invalidIntentSource(
   args: {
     readonly predecessorRunId: string;
+    readonly decisionPoint: ImmediateSuccessorIntentDecisionPoint;
     readonly eventClass: ImmediateSuccessorEventClass;
     readonly decidedAtMs: number;
   },
@@ -131,6 +223,7 @@ async function resolveIntentSource(
   const decidedAtMs = args.decidedAt.getTime();
   const invalidArgs = {
     predecessorRunId: args.predecessorRunId,
+    decisionPoint: args.decisionPoint,
     eventClass: args.eventClass,
     decidedAtMs,
   };
@@ -172,6 +265,7 @@ async function resolveIntentSource(
       runId: args.predecessorRunId,
       dimensions: intentDimensions({
         action: "arm",
+        decisionPoint: args.decisionPoint,
         eventClass: args.eventClass,
         outcome: "valid",
       }),
@@ -184,6 +278,7 @@ async function resolveIntentSource(
       runId: args.predecessorRunId,
       dimensions: intentDimensions({
         action: "arm",
+        decisionPoint: args.decisionPoint,
         eventClass: args.eventClass,
         outcome: "valid",
       }),
@@ -210,6 +305,7 @@ async function publishIntentAction(args: {
   readonly source: ImmediateSuccessorIntentSource | null;
   readonly action: ImmediateSuccessorIntentSignal["action"];
   readonly predecessorRunId: string;
+  readonly decisionPoint: ImmediateSuccessorIntentDecisionPoint;
   readonly eventClass: ImmediateSuccessorEventClass;
   readonly decidedAtMs: number;
 }): Promise<void> {
@@ -230,6 +326,7 @@ async function publishIntentAction(args: {
       runId: args.predecessorRunId,
       dimensions: intentDimensions({
         action: args.action,
+        decisionPoint: args.decisionPoint,
         eventClass: args.eventClass,
         outcome: "publish_started",
       }),
@@ -242,6 +339,7 @@ async function publishIntentAction(args: {
       runId: args.predecessorRunId,
       dimensions: intentDimensions({
         action: args.action,
+        decisionPoint: args.decisionPoint,
         eventClass: args.eventClass,
         outcome: published ? "published" : "publish_failed",
       }),
@@ -257,6 +355,15 @@ export function scheduleImmediateSuccessorIntent(
   }
   const predecessorRunId = args.predecessorRunId;
   const decidedAt = nowDate();
+  const key = intentHandleKey({
+    predecessorRunId,
+    intentId: args.intentId,
+    eventClass: args.eventClass,
+  });
+  const retained = retainedIntentHandle(key, decidedAt.getTime());
+  if (retained) {
+    return retained;
+  }
   const source = resolveIntentSource({
     ...args,
     predecessorRunId,
@@ -268,6 +375,7 @@ export function scheduleImmediateSuccessorIntent(
       source: resolved,
       action: "arm",
       predecessorRunId,
+      decisionPoint: args.decisionPoint,
       eventClass: args.eventClass,
       decidedAtMs: decidedAt.getTime(),
     });
@@ -275,8 +383,15 @@ export function scheduleImmediateSuccessorIntent(
   })();
   waitUntil(arm);
 
-  return {
+  let revoked = false;
+  const handle: ImmediateSuccessorIntentHandle = {
+    intentId: args.intentId,
+    eventClass: args.eventClass,
     revoke(): void {
+      if (revoked) {
+        return;
+      }
+      revoked = true;
       const revokeDecidedAtMs = now();
       waitUntil(
         (async () => {
@@ -285,6 +400,7 @@ export function scheduleImmediateSuccessorIntent(
             source: resolved,
             action: "revoke",
             predecessorRunId,
+            decisionPoint: args.decisionPoint,
             eventClass: args.eventClass,
             decidedAtMs: revokeDecidedAtMs,
           });
@@ -292,4 +408,6 @@ export function scheduleImmediateSuccessorIntent(
       );
     },
   };
+  retainIntentHandle(key, handle, decidedAt.getTime());
+  return handle;
 }
