@@ -1045,9 +1045,10 @@ function ArtifactPreviewDialogThreadResolver({
   });
   const navigateImageLightbox = useSet(navigateImageLightbox$);
   const reloadArtifacts = useSet(thread.reloadArtifacts$);
+  const artifactSignalsByUrl = useGet(thread.artifactSignalsByUrl$);
   const imageResourceUrl$ =
     preview.kind === "image"
-      ? thread.artifactSignalsForUrl(preview.url)?.resourceUrl$
+      ? artifactSignalsByUrl.get(preview.url)?.resourceUrl$
       : undefined;
   const item =
     loadable.state === "hasData"

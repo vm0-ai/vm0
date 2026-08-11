@@ -22,7 +22,10 @@ import { activeThreadSidebar$ } from "./thread-sidebar-coordinator.ts";
 import { CHAT_THREAD_SIDEBAR_SPLIT_VIEW_MEDIA_QUERY } from "./chat-thread-sidebar-layout.ts";
 import {
   createChatThreadScrollSignals,
+  createThreadScrollPositionSignals,
+  type ChatThreadScrollSignals,
   type ReadyScrollAfterRenderRequest,
+  type ScrollAfterRenderRequest,
   type ThreadScrollPosition,
 } from "./chat-thread-scroll.ts";
 import {
@@ -90,13 +93,10 @@ import { isCancelledRunEvent } from "./chat-run-lifecycle.ts";
 import {
   deriveRunIndicatorStateFromChatEvents,
   groupSemanticChatEvents,
-  isFollowupsEvent,
   isGoalMarkerEvent,
-  isGoalQueueEvent,
   isInterruptControlEvent,
   isInterruptedAssistantCancellation,
   isQueueMarkerEvent,
-  isRecallControlEvent,
   isUsageEvent,
   liveRunIdsFromChatEvents,
   queuedEventsFromChatEvents,
@@ -116,36 +116,33 @@ import {
 } from "./chat-thread-remote-signals.ts";
 import { markChatThreadRead$ } from "./remote-chat-event-data-source.ts";
 import {
+  cardSlotUrl,
   classifyChatAttachment,
-  type BodyRenderBlock,
-  type ParsedBodyBlock,
+  type CardDescriptorBlock,
 } from "./parse-body-blocks.ts";
-import { parseChatEventBodyBlocks } from "./chat-event-body-blocks.ts";
+import { registerMermaidDiagram$ } from "../mermaid-diagram.ts";
+import {
+  chatEventTreeContent,
+  chatEventTreePlan,
+} from "./chat-event-body-blocks.ts";
+import type { Element as ElementNode, Root } from "hast";
+import {
+  markdownCardKey,
+  parseMarkdownTree,
+} from "../../lib/markdown/pipeline.ts";
+import type { MarkdownCardRef } from "./markdown-card-ref.ts";
 import {
   createArtifactCardSignalsRegistry,
   type ArtifactCardSignalsRegistry,
-  type ArtifactSignals,
 } from "./artifact-card-signals.ts";
 import {
   createAgentReferenceSignalsRegistry,
   type AgentReferenceSignalsRegistry,
 } from "./agent-reference-signals.ts";
-import {
-  createConnectorCardSignalsRegistry,
-  type ConnectorCardSignalsRegistry,
-} from "./connector-action-block.ts";
-import {
-  createPermissionCardSignalsRegistry,
-  type PermissionCardSignalsRegistry,
-} from "./permission-card-signals.ts";
-import {
-  createComputerUseAuthorizationCardSignalsRegistry,
-  type ComputerUseAuthorizationCardSignalsRegistry,
-} from "./computer-use-authorization-block.ts";
-import {
-  createPlanUpgradeCardSignalsRegistry,
-  type PlanUpgradeCardSignalsRegistry,
-} from "./plan-upgrade-block.ts";
+import { createConnectorCardSignalsRegistry } from "./connector-action-block.ts";
+import { createPermissionCardSignalsRegistry } from "./permission-card-signals.ts";
+import { createComputerUseAuthorizationCardSignalsRegistry } from "./computer-use-authorization-block.ts";
+import { createPlanUpgradeCardSignalsRegistry } from "./plan-upgrade-block.ts";
 import { getChatThreadTitleParts } from "./chat-thread-title.ts";
 import {
   optimisticChatThreadCreateUnsettled,
@@ -183,7 +180,6 @@ import {
 import {
   createBrowserSessionSignals,
   type BrowserLifecycleOptimisticEvents,
-  type BrowserSessionSignals,
 } from "./browser-session-block.ts";
 import { createChatThreadContainerSignals } from "./chat-thread-container.ts";
 import { createAssistantErrorRecoverySignals } from "./assistant-error-recovery.ts";
@@ -1016,7 +1012,7 @@ function createRenderedChatGroups(
               userMessage: isInputChatEvent(event)
                 ? event.userMessage
                 : undefined,
-              blocks: event.blocks,
+              tree: event.tree,
             };
           }),
         };
@@ -1032,13 +1028,8 @@ function createRenderedChatGroups(
 
 interface RegisteredChatEvent {
   readonly event: ChatEvent;
-  readonly blocks: BodyRenderBlock[];
   readonly userMessageRenderDocument: UserMessageRenderDocument | undefined;
 }
-
-type BodyBlocksRenderer = (
-  blocks: readonly ParsedBodyBlock[],
-) => BodyRenderBlock[];
 
 function compareCursorString(left: string, right: string): number {
   if (left < right) {
@@ -1062,115 +1053,116 @@ function compareCreatedAt(left: string, right: string): number {
   return leftTime - rightTime;
 }
 
-function skipsEventBodyRendering(event: ChatEvent): boolean {
-  return (
-    isInterruptControlEvent(event) ||
-    isRecallControlEvent(event) ||
-    isQueueMarkerEvent(event) ||
-    isGoalQueueEvent(event) ||
-    isFollowupsEvent(event) ||
-    isGoalMarkerEvent(event)
-  );
+const registerFeedbackNoteRenderPart$ = command(
+  (
+    { set },
+    part: FeedbackNotePart,
+    agentReferenceSignals: AgentReferenceSignalsRegistry,
+  ): UserMessageFeedbackNoteRenderPart => {
+    switch (part.type) {
+      case "text": {
+        return { type: "text", part };
+      }
+      case "chat_thread": {
+        return { type: "chat_thread", part };
+      }
+      case "template": {
+        return { type: "template", part };
+      }
+      case "agent": {
+        return {
+          type: part.type,
+          part,
+          signals: set(agentReferenceSignals.register$, part.agentId),
+        };
+      }
+    }
+  },
+);
+
+interface UserMessagePartRegistries {
+  readonly artifactCardSignals: ArtifactCardSignalsRegistry;
+  readonly agentReferenceSignals: AgentReferenceSignalsRegistry;
 }
 
-function registerFeedbackNoteRenderPart(
-  part: FeedbackNotePart,
-  agentReferenceSignals: AgentReferenceSignalsRegistry,
-): UserMessageFeedbackNoteRenderPart {
-  switch (part.type) {
-    case "text": {
-      return { type: "text", part };
-    }
-    case "chat_thread": {
-      return { type: "chat_thread", part };
-    }
-    case "template": {
-      return { type: "template", part };
-    }
-    case "agent": {
-      return {
-        type: part.type,
-        part,
-        signals: agentReferenceSignals.register(part.agentId),
-      };
-    }
-  }
-}
-
-function registerUserMessageRenderPart(
-  part: UserMessagePart,
-  artifactCardSignals: ArtifactCardSignalsRegistry,
-  agentReferenceSignals: AgentReferenceSignalsRegistry,
-): UserMessageRenderPart {
-  switch (part.type) {
-    case "text": {
-      return { type: "text", part };
-    }
-    case "chat_thread": {
-      return { type: "chat_thread", part };
-    }
-    case "template": {
-      return { type: "template", part };
-    }
-    case "automation": {
-      return { type: "automation", part };
-    }
-    case "goal": {
-      return { type: "goal", part };
-    }
-    case "morning_brief": {
-      return { type: "morning_brief", part };
-    }
-    case "model": {
-      return { type: "model", part };
-    }
-    case "agent": {
-      return {
-        type: part.type,
-        part,
-        signals: agentReferenceSignals.register(part.agentId),
-      };
-    }
-    case "source": {
-      return part.kind === "agent"
-        ? {
-            type: part.type,
-            kind: "agent",
-            part,
-            signals: agentReferenceSignals.register(part.agentId),
-          }
-        : { type: part.type, kind: "external", part };
-    }
-    case "file": {
-      const url = canonicalUserMessageFileUrl(part.fileId);
-      return {
-        type: part.type,
-        part,
-        signals: artifactCardSignals.register({
-          filename: part.filenameSnapshot,
-          url,
-          kind: classifyChatAttachment({
+const registerUserMessageRenderPart$ = command(
+  (
+    { set },
+    part: UserMessagePart,
+    registries: UserMessagePartRegistries,
+  ): UserMessageRenderPart => {
+    const { artifactCardSignals, agentReferenceSignals } = registries;
+    switch (part.type) {
+      case "text": {
+        return { type: "text", part };
+      }
+      case "chat_thread": {
+        return { type: "chat_thread", part };
+      }
+      case "template": {
+        return { type: "template", part };
+      }
+      case "automation": {
+        return { type: "automation", part };
+      }
+      case "goal": {
+        return { type: "goal", part };
+      }
+      case "morning_brief": {
+        return { type: "morning_brief", part };
+      }
+      case "model": {
+        return { type: "model", part };
+      }
+      case "agent": {
+        return {
+          type: part.type,
+          part,
+          signals: set(agentReferenceSignals.register$, part.agentId),
+        };
+      }
+      case "source": {
+        return part.kind === "agent"
+          ? {
+              type: part.type,
+              kind: "agent",
+              part,
+              signals: set(agentReferenceSignals.register$, part.agentId),
+            }
+          : { type: part.type, kind: "external", part };
+      }
+      case "file": {
+        const url = canonicalUserMessageFileUrl(part.fileId);
+        return {
+          type: part.type,
+          part,
+          signals: set(artifactCardSignals.register$, {
             filename: part.filenameSnapshot,
             url,
-            contentType: part.contentType,
+            kind: classifyChatAttachment({
+              filename: part.filenameSnapshot,
+              url,
+              contentType: part.contentType,
+            }),
           }),
-        }),
-      };
+        };
+      }
+      case "feedback": {
+        return {
+          type: part.type,
+          part,
+          note: part.note.map((notePart) => {
+            return set(
+              registerFeedbackNoteRenderPart$,
+              notePart,
+              agentReferenceSignals,
+            );
+          }),
+        };
+      }
     }
-    case "feedback": {
-      return {
-        type: part.type,
-        part,
-        note: part.note.map((notePart) => {
-          return registerFeedbackNoteRenderPart(
-            notePart,
-            agentReferenceSignals,
-          );
-        }),
-      };
-    }
-  }
-}
+  },
+);
 
 function chatEventUserMessage(
   event: ChatEvent,
@@ -1178,52 +1170,28 @@ function chatEventUserMessage(
   return "userMessage" in event ? event.userMessage : undefined;
 }
 
-function registerUserMessageRenderDocument(
-  event: ChatEvent,
-  artifactCardSignals: ArtifactCardSignalsRegistry,
-  agentReferenceSignals: AgentReferenceSignalsRegistry,
-): UserMessageRenderDocument | undefined {
-  const document = chatEventUserMessage(event);
-  if (!document) {
-    return undefined;
-  }
-  return {
-    document,
-    parts: document.parts.map((part) => {
-      return registerUserMessageRenderPart(
-        part,
-        artifactCardSignals,
-        agentReferenceSignals,
-      );
-    }),
-  };
-}
-
-function registerChatEvent(
-  threadId: string,
-  event: ChatEvent,
-  registerBodyBlocks: BodyBlocksRenderer,
-  artifactCardSignals: ArtifactCardSignalsRegistry,
-  agentReferenceSignals: AgentReferenceSignalsRegistry,
-): RegisteredChatEvent {
-  const blocks = skipsEventBodyRendering(event)
-    ? []
-    : registerBodyBlocks(parseChatEventBodyBlocks(event, threadId));
-  return {
-    event,
-    blocks,
-    userMessageRenderDocument: registerUserMessageRenderDocument(
-      event,
-      artifactCardSignals,
-      agentReferenceSignals,
-    ),
-  };
-}
+const registerUserMessageRenderDocument$ = command(
+  (
+    { set },
+    event: ChatEvent,
+    registries: UserMessagePartRegistries,
+  ): UserMessageRenderDocument | undefined => {
+    const document = chatEventUserMessage(event);
+    if (!document) {
+      return undefined;
+    }
+    return {
+      document,
+      parts: document.parts.map((part) => {
+        return set(registerUserMessageRenderPart$, part, registries);
+      }),
+    };
+  },
+);
 
 interface ServerChatEventProjectionEntry {
   event: PersistedChatEvent;
   source: "server";
-  blocks: BodyRenderBlock[];
   userMessageRenderDocument: UserMessageRenderDocument | undefined;
   optimisticUserMessageAssociation?: never;
 }
@@ -1231,7 +1199,6 @@ interface ServerChatEventProjectionEntry {
 interface OptimisticChatEventProjectionEntry {
   event: OptimisticChatEvent;
   source: "optimistic";
-  blocks: BodyRenderBlock[];
   userMessageRenderDocument: UserMessageRenderDocument | undefined;
   optimisticUserMessageAssociation?: OptimisticUserMessageAssociation;
 }
@@ -1273,7 +1240,7 @@ function createTranscriptEventsComputed(
         const { event, isQueued, userMessageRenderDocument } = entry;
         return {
           ...event,
-          blocks: entry.blocks,
+          tree: entry.tree,
           isQueued,
           userMessageRenderDocument,
         };
@@ -1283,7 +1250,7 @@ function createTranscriptEventsComputed(
 }
 
 interface SemanticChatEvent extends SemanticChatEventState {
-  readonly blocks: BodyRenderBlock[];
+  readonly tree: Root | undefined;
   readonly userMessageRenderDocument: UserMessageRenderDocument | undefined;
 }
 
@@ -1293,24 +1260,18 @@ type SemanticChatEventGroup = SemanticChatGroups["activeGroups"][number];
 function semanticTranscriptEventsFromRaw(
   raw: readonly ChatEventProjectionEntry[],
   chatEvents: readonly ChatEvent[],
+  trees: ReadonlyMap<string, Root>,
 ): SemanticChatEvent[] {
-  const renderDataByEventId = new Map(
+  const renderDocumentByEventId = new Map(
     raw.map((entry) => {
-      return [
-        entry.event.id,
-        {
-          blocks: entry.blocks,
-          userMessageRenderDocument: entry.userMessageRenderDocument,
-        },
-      ] as const;
+      return [entry.event.id, entry.userMessageRenderDocument] as const;
     }),
   );
   return semanticChatEventsFromChatEvents(chatEvents).map((entry) => {
-    const renderData = renderDataByEventId.get(entry.event.id);
     return {
       ...entry,
-      blocks: renderData?.blocks ?? [],
-      userMessageRenderDocument: renderData?.userMessageRenderDocument,
+      tree: trees.get(entry.event.id),
+      userMessageRenderDocument: renderDocumentByEventId.get(entry.event.id),
     };
   });
 }
@@ -1652,122 +1613,11 @@ function createLatestEventSignals(
 /** Per-thread chat event sequences start at 1, so this marks the oldest event. */
 const FIRST_CHAT_EVENT_SEQ_ID = 1;
 
-interface BodyBlockRegistries {
-  readonly artifactCardSignals: ArtifactCardSignalsRegistry;
-  readonly connectorCardSignals: ConnectorCardSignalsRegistry;
-  readonly permissionCardSignals: PermissionCardSignalsRegistry;
-  readonly computerUseAuthorizationCardSignals: ComputerUseAuthorizationCardSignalsRegistry;
-  readonly planUpgradeCardSignals: PlanUpgradeCardSignalsRegistry;
-  readonly mailDraftCardSignals: ReturnType<
-    typeof createMailDraftCardSignalsRegistry
-  >;
-  readonly browserSessionSignals: BrowserSessionSignals;
-}
-
-function createBodyBlocksRenderer({
-  artifactCardSignals,
-  connectorCardSignals,
-  permissionCardSignals,
-  computerUseAuthorizationCardSignals,
-  planUpgradeCardSignals,
-  mailDraftCardSignals,
-  browserSessionSignals,
-}: BodyBlockRegistries): (
-  resolution: "register" | "resolve",
-) => BodyBlocksRenderer {
-  return (resolution) => {
-    return (blocks) => {
-      return blocks.map((block): BodyRenderBlock => {
-        switch (block.type) {
-          case "markdown": {
-            return block;
-          }
-          case "artifact": {
-            return {
-              type: block.type,
-              resourceKey: block.resourceKey,
-              signals:
-                resolution === "register"
-                  ? artifactCardSignals.register(block.descriptor)
-                  : artifactCardSignals.resolve(block.resourceKey),
-            };
-          }
-          case "connector-action": {
-            return {
-              type: block.type,
-              resourceKey: block.resourceKey,
-              signals:
-                resolution === "register"
-                  ? connectorCardSignals.register(block.descriptor)
-                  : connectorCardSignals.resolve(block.resourceKey),
-            };
-          }
-          case "permission-action": {
-            return {
-              type: block.type,
-              resourceKey: block.resourceKey,
-              signals:
-                resolution === "register"
-                  ? permissionCardSignals.register(block.descriptor)
-                  : permissionCardSignals.resolve(block.resourceKey),
-            };
-          }
-          case "computer-use-authorization": {
-            return {
-              type: block.type,
-              resourceKey: block.resourceKey,
-              signals:
-                resolution === "register"
-                  ? computerUseAuthorizationCardSignals.register(
-                      block.descriptor,
-                    )
-                  : computerUseAuthorizationCardSignals.resolve(
-                      block.resourceKey,
-                    ),
-            };
-          }
-          case "plan-upgrade": {
-            return {
-              type: block.type,
-              resourceKey: block.resourceKey,
-              signals:
-                resolution === "register"
-                  ? planUpgradeCardSignals.register(block.descriptor)
-                  : planUpgradeCardSignals.resolve(block.resourceKey),
-            };
-          }
-          case "mail-draft": {
-            return {
-              type: block.type,
-              resourceKey: block.resourceKey,
-              signals:
-                resolution === "register"
-                  ? mailDraftCardSignals.register(block.descriptor)
-                  : mailDraftCardSignals.resolve(block.resourceKey),
-            };
-          }
-          case "browser-session": {
-            return {
-              type: block.type,
-              resourceKey: block.resourceKey,
-              signals: browserSessionSignals,
-            };
-          }
-        }
-        const exhaustive: never = block;
-        return exhaustive;
-      });
-    };
-  };
-}
-
 function createMailDraftCardSignalsById(
-  rawEvents$: Computed<ChatEventProjectionEntry[]>,
   mailDraftCardSignals: MailDraftCardSignalsRegistry,
 ): Computed<ReadonlyMap<string, MailDraftSignals>> {
   return computed((get) => {
-    get(rawEvents$);
-    return new Map(mailDraftCardSignals.entries());
+    return get(mailDraftCardSignals.signalsByKey$);
   });
 }
 
@@ -1819,6 +1669,175 @@ function createArtifactPreviewImageUrls(
   });
 }
 
+function collectMermaidSources(tree: Root): string[] {
+  const sources: string[] = [];
+  const visitNode = (node: Root | ElementNode): void => {
+    for (const child of node.children) {
+      if (child.type !== "element") {
+        continue;
+      }
+      const mermaid = child.data?.mermaid;
+      if (mermaid !== undefined) {
+        sources.push(mermaid.code);
+        continue;
+      }
+      visitNode(child);
+    }
+  };
+  visitNode(tree);
+  return sources;
+}
+
+interface EventTreeRegistries {
+  readonly threadId: string;
+  readonly artifactCardSignals: ArtifactCardSignalsRegistry;
+  readonly connectorCardSignals: ReturnType<
+    typeof createConnectorCardSignalsRegistry
+  >;
+  readonly permissionCardSignals: ReturnType<
+    typeof createPermissionCardSignalsRegistry
+  >;
+  readonly computerUseAuthorizationCardSignals: ReturnType<
+    typeof createComputerUseAuthorizationCardSignalsRegistry
+  >;
+  readonly planUpgradeCardSignals: ReturnType<
+    typeof createPlanUpgradeCardSignalsRegistry
+  >;
+  readonly mailDraftCardSignals: MailDraftCardSignalsRegistry;
+  readonly browserSessionSignals: ReturnType<
+    typeof createBrowserSessionSignals
+  >;
+}
+
+function createEventTreeSignals({
+  threadId,
+  artifactCardSignals,
+  connectorCardSignals,
+  permissionCardSignals,
+  computerUseAuthorizationCardSignals,
+  planUpgradeCardSignals,
+  mailDraftCardSignals,
+  browserSessionSignals,
+}: EventTreeRegistries) {
+  interface EventTree {
+    readonly content: string;
+    readonly tree: Root;
+  }
+
+  const internalEventTrees$ = state<ReadonlyMap<string, EventTree>>(new Map());
+  const eventTrees$ = computed((get): ReadonlyMap<string, Root> => {
+    const trees = new Map<string, Root>();
+    for (const [eventId, entry] of get(internalEventTrees$)) {
+      trees.set(eventId, entry.tree);
+    }
+    return trees;
+  });
+
+  const registerCardRef$ = command(
+    ({ set }, descriptor: CardDescriptorBlock): MarkdownCardRef => {
+      switch (descriptor.type) {
+        case "artifact": {
+          return {
+            kind: descriptor.type,
+            signals: set(artifactCardSignals.register$, descriptor.descriptor),
+            threadId,
+          };
+        }
+        case "connector-action": {
+          return {
+            kind: descriptor.type,
+            signals: set(connectorCardSignals.register$, descriptor.descriptor),
+          };
+        }
+        case "permission-action": {
+          return {
+            kind: descriptor.type,
+            signals: set(
+              permissionCardSignals.register$,
+              descriptor.descriptor,
+            ),
+          };
+        }
+        case "computer-use-authorization": {
+          return {
+            kind: descriptor.type,
+            signals: set(
+              computerUseAuthorizationCardSignals.register$,
+              descriptor.descriptor,
+            ),
+          };
+        }
+        case "plan-upgrade": {
+          return {
+            kind: descriptor.type,
+            signals: set(
+              planUpgradeCardSignals.register$,
+              descriptor.descriptor,
+            ),
+          };
+        }
+        case "mail-draft": {
+          return {
+            kind: descriptor.type,
+            signals: set(mailDraftCardSignals.register$, descriptor.descriptor),
+          };
+        }
+        case "browser-session": {
+          return { kind: descriptor.type, signals: browserSessionSignals };
+        }
+      }
+      const exhaustive: never = descriptor;
+      return exhaustive;
+    },
+  );
+
+  /**
+   * Parses the markdown tree of every listed event that has none yet, or whose
+   * body changed since it was parsed. Cards register here, ahead of the parse
+   * that resolves their slots. Runs after every write that can change the
+   * visible window, including scroll captures, so the unchanged path costs a
+   * content lookup per event, not a plan.
+   */
+  const ensureEventTrees$ = command(
+    ({ get, set }, events: readonly ChatEvent[]): void => {
+      const current = get(internalEventTrees$);
+      let next: Map<string, EventTree> | undefined;
+      for (const event of events) {
+        const content = chatEventTreeContent(event);
+        if (content === null || current.get(event.id)?.content === content) {
+          continue;
+        }
+        const plan = chatEventTreePlan(event, threadId);
+        if (plan === null) {
+          continue;
+        }
+        const cards = new Map<string, MarkdownCardRef>();
+        for (const descriptor of plan.descriptors) {
+          cards.set(
+            markdownCardKey(cardSlotUrl(descriptor)),
+            set(registerCardRef$, descriptor),
+          );
+        }
+        const tree = parseMarkdownTree(plan.treeSource, {
+          mathEnabled: true,
+          mermaidScope: threadId,
+          cards,
+        });
+        for (const code of collectMermaidSources(tree)) {
+          set(registerMermaidDiagram$, code, threadId);
+        }
+        next ??= new Map(current);
+        next.set(event.id, { content: plan.content, tree });
+      }
+      if (next) {
+        set(internalEventTrees$, next);
+      }
+    },
+  );
+
+  return { eventTrees$, ensureEventTrees$ };
+}
+
 function createPagedEventResources(
   threadId: string,
   chatEvents$: Computed<ChatEvent[]>,
@@ -1834,53 +1853,70 @@ function createPagedEventResources(
     previewImageUrlsByUrl$,
   );
   const agentReferenceSignals = createAgentReferenceSignalsRegistry();
-  const bodyBlocksRenderer = createBodyBlocksRenderer({
+  const connectorCardSignals = createConnectorCardSignalsRegistry();
+  const permissionCardSignals = createPermissionCardSignalsRegistry();
+  const computerUseAuthorizationCardSignals =
+    createComputerUseAuthorizationCardSignalsRegistry();
+  const planUpgradeCardSignals = createPlanUpgradeCardSignalsRegistry();
+
+  const registerChatEvent$ = command(
+    ({ set }, event: ChatEvent): RegisteredChatEvent => {
+      return {
+        event,
+        userMessageRenderDocument: set(
+          registerUserMessageRenderDocument$,
+          event,
+          {
+            artifactCardSignals,
+            agentReferenceSignals,
+          },
+        ),
+      };
+    },
+  );
+
+  const { eventTrees$, ensureEventTrees$ } = createEventTreeSignals({
+    threadId,
     artifactCardSignals,
-    connectorCardSignals: createConnectorCardSignalsRegistry(),
-    permissionCardSignals: createPermissionCardSignalsRegistry(),
-    computerUseAuthorizationCardSignals:
-      createComputerUseAuthorizationCardSignalsRegistry(),
-    planUpgradeCardSignals: createPlanUpgradeCardSignalsRegistry(),
+    connectorCardSignals,
+    permissionCardSignals,
+    computerUseAuthorizationCardSignals,
+    planUpgradeCardSignals,
     mailDraftCardSignals,
     browserSessionSignals,
   });
-  const registerBodyBlocks = bodyBlocksRenderer("register");
+
   const registeredEvents$ = state<RegisteredChatEvent[]>([]);
+  // Tree parsing is not part of the sync: the render window decides which
+  // events need trees, so the ensure step runs at the window's write points.
   const syncRegisteredEvents$ = command(
     ({ get, set }, signal: AbortSignal): void => {
       signal.throwIfAborted();
       const events = get(chatEvents$);
-      set(registeredEvents$, (previous) => {
-        const previousById = new Map(
-          previous.map((entry) => {
-            return [entry.event.id, entry] as const;
-          }),
-        );
-        return events.map((event) => {
-          const existing = previousById.get(event.id);
-          if (existing?.event === event) {
-            return existing;
-          }
-          return registerChatEvent(
-            threadId,
-            event,
-            registerBodyBlocks,
-            artifactCardSignals,
-            agentReferenceSignals,
-          );
-        });
+      const previousById = new Map(
+        get(registeredEvents$).map((entry) => {
+          return [entry.event.id, entry] as const;
+        }),
+      );
+      const next = events.map((event) => {
+        const existing = previousById.get(event.id);
+        if (existing?.event === event) {
+          return existing;
+        }
+        return set(registerChatEvent$, event);
       });
+      set(registeredEvents$, next);
     },
   );
   return {
     artifactCardSignals,
     mailDraftCardSignals,
+    eventTrees$,
+    ensureEventTrees$,
     publicSignals: {
       browserSessionSignals,
       subscribeBrowserSessions$: browserSessionSignals.subscribe$,
-      artifactSignalsForUrl: (url: string): ArtifactSignals | undefined => {
-        return artifactCardSignals.find(url);
-      },
+      artifactSignalsByUrl$: artifactCardSignals.signalsByKey$,
     },
     registeredEvents$,
     syncRegisteredEvents$,
@@ -1895,16 +1931,22 @@ interface BrowserLifecycleOptimisticEvent {
 function createPagedEventProjections({
   chatEvents$,
   registeredEvents$,
+  eventTrees$,
   mailDraftCardSignals,
 }: {
   chatEvents$: Computed<ChatEvent[]>;
   registeredEvents$: State<RegisteredChatEvent[]>;
+  eventTrees$: Computed<ReadonlyMap<string, Root>>;
   mailDraftCardSignals: MailDraftCardSignalsRegistry;
 }) {
   const rawEvents$ = createRawEventsComputed(registeredEvents$);
   const historyBackfillPending$ = createEventHistoryBackfillPending(rawEvents$);
   const semanticEvents$ = computed((get): SemanticChatEvent[] => {
-    return semanticTranscriptEventsFromRaw(get(rawEvents$), get(chatEvents$));
+    return semanticTranscriptEventsFromRaw(
+      get(rawEvents$),
+      get(chatEvents$),
+      get(eventTrees$),
+    );
   });
   const eventRunIndicatorState$ = createEventRunIndicatorState(chatEvents$);
   return {
@@ -1912,10 +1954,8 @@ function createPagedEventProjections({
     chatEvents$,
     historyBackfillPending$,
     eventRunIndicatorState$,
-    mailDraftCardSignalsById$: createMailDraftCardSignalsById(
-      rawEvents$,
-      mailDraftCardSignals,
-    ),
+    mailDraftCardSignalsById$:
+      createMailDraftCardSignalsById(mailDraftCardSignals),
     ...createLatestEventSignals(rawEvents$),
     ...createEventSemanticSignals(semanticEvents$, eventRunIndicatorState$),
     ...createRenderedChatGroups(semanticEvents$),
@@ -1975,9 +2015,9 @@ function createEventChangeEffects(
     ReturnType<typeof createPagedEventProjections>,
     "rawEvents$" | "latestRunFinishCreatedAt$"
   >,
-  syncRegisteredEvents$: Command<void, [AbortSignal]>,
+  scroll: ChatThreadScrollSignals,
+  syncVisibleEventTrees$: Command<Promise<void>, [AbortSignal]>,
 ) {
-  const scroll = createChatThreadScrollSignals(threadId);
   const sidebar = createThreadSidebarSignals(threadId);
   const locallyMarkedReadAt$ = state<string | undefined>(undefined);
   const markThreadReadIfNeeded$ = createMarkThreadReadIfNeeded({
@@ -2036,7 +2076,7 @@ function createEventChangeEffects(
         ),
       });
       await Promise.all([
-        set(syncRegisteredEvents$, signal),
+        set(syncVisibleEventTrees$, signal),
         set(autoOpenSidebar$, signal),
         set(scroll.autoScroll$, scrollPosition, signal),
         set(markThreadReadIfNeeded$, signal),
@@ -2044,7 +2084,32 @@ function createEventChangeEffects(
       signal.throwIfAborted();
     },
   );
-  return { scroll, sidebar, afterEventsChange$ };
+  return { sidebar, afterEventsChange$ };
+}
+
+function createReadyScrollAfterRenderRequest(
+  pendingScrollAfterRenderRequest$: Computed<ScrollAfterRenderRequest | null>,
+  visibleRenderedChatGroups$: Computed<Promise<ChatEventGroup[]>>,
+): Computed<Promise<ReadyScrollAfterRenderRequest | null>> {
+  return computed(async (get) => {
+    const request = get(pendingScrollAfterRenderRequest$);
+    if (request === null) {
+      return null;
+    }
+    const renderedGroups = await get(visibleRenderedChatGroups$);
+    const currentRequest = get(pendingScrollAfterRenderRequest$);
+    if (currentRequest?.revision !== request.revision) {
+      return null;
+    }
+    return {
+      request,
+      renderedEventKeys: renderedGroups.flatMap((group) => {
+        return group.events.map((event) => {
+          return `${event.id}:${event.isQueued ? "queued" : "active"}`;
+        });
+      }),
+    };
+  });
 }
 
 function createChatThreadMessagePipeline({
@@ -2071,6 +2136,11 @@ function createChatThreadMessagePipeline({
       },
     ),
   };
+  // Construction resolves the window/scroll cycle through the module-scope
+  // position state: the render window computes from the read-only position
+  // view, and the scroll signals that write the position are wired afterwards
+  // with the window's ensure step.
+  const position = createThreadScrollPositionSignals(threadId);
   const resources = createPagedEventResources(
     threadId,
     chatEvents.chatEvents$,
@@ -2080,13 +2150,33 @@ function createChatThreadMessagePipeline({
   const projections = createPagedEventProjections({
     chatEvents$: chatEvents.chatEvents$,
     registeredEvents$: resources.registeredEvents$,
+    eventTrees$: resources.eventTrees$,
     mailDraftCardSignals: resources.mailDraftCardSignals,
   });
+  const renderWindow = createChatRenderWindow({
+    threadId,
+    allRenderedChatGroups$: projections.allRenderedChatGroups$,
+    threadScrollPosition$: position.threadScrollPosition$,
+    awayFromBottom$: position.awayFromBottom$,
+    ensureEventTrees$: resources.ensureEventTrees$,
+  });
+  const syncVisibleEventTrees$ = command(
+    async ({ set }, signal: AbortSignal): Promise<void> => {
+      set(resources.syncRegisteredEvents$, signal);
+      await set(renderWindow.ensureVisibleEventTrees$, signal);
+    },
+  );
+  const scroll = createChatThreadScrollSignals(
+    threadId,
+    position,
+    renderWindow.ensureVisibleEventTrees$,
+  );
   const effects = createEventChangeEffects(
     threadId,
     chatEvents,
     projections,
-    resources.syncRegisteredEvents$,
+    scroll,
+    syncVisibleEventTrees$,
   );
   const chatSkeletonVisible$ = computed((get): boolean => {
     return (
@@ -2102,66 +2192,39 @@ function createChatThreadMessagePipeline({
         effects.afterEventsChange$,
         signal,
       );
-      set(resources.syncRegisteredEvents$, signal);
+      await set(syncVisibleEventTrees$, signal);
       set(effects.sidebar.enableEntryAnimations$);
       await set(chatEvents.setup$, signal);
       signal.throwIfAborted();
     },
   );
-  const renderWindow = createChatRenderWindow({
-    threadId,
-    allRenderedChatGroups$: projections.allRenderedChatGroups$,
-    threadScrollPosition$: effects.scroll.threadScrollPosition$,
-    awayFromBottom$: effects.scroll.awayFromBottom$,
-  });
   const assistantErrorRecovery = createAssistantErrorRecoverySignals({
     threadId,
     chatEvents,
     visibleRenderedChatGroups$: renderWindow.visibleRenderedChatGroups$,
   });
-  const readyScrollAfterRenderRequest$ = computed(
-    async (get): Promise<ReadyScrollAfterRenderRequest | null> => {
-      const request = get(effects.scroll.pendingScrollAfterRenderRequest$);
-      if (request === null) {
-        return null;
-      }
-      const renderedGroups = await get(renderWindow.visibleRenderedChatGroups$);
-      const currentRequest = get(
-        effects.scroll.pendingScrollAfterRenderRequest$,
-      );
-      if (currentRequest?.revision !== request.revision) {
-        return null;
-      }
-      return {
-        request,
-        renderedEventKeys: renderedGroups.flatMap((group) => {
-          return group.events.map((event) => {
-            return `${event.id}:${event.isQueued ? "queued" : "active"}`;
-          });
-        }),
-      };
-    },
+  const readyScrollAfterRenderRequest$ = createReadyScrollAfterRenderRequest(
+    scroll.pendingScrollAfterRenderRequest$,
+    renderWindow.visibleRenderedChatGroups$,
   );
 
   const loadMoreRenderedChatGroups$ = command(
     async ({ set }, signal: AbortSignal): Promise<boolean> => {
-      const scrollPosition = set(
-        effects.scroll.readRenderedThreadScrollPosition$,
-      );
+      const scrollPosition = set(scroll.readRenderedThreadScrollPosition$);
       const didPrepend = await set(
         renderWindow.loadMoreRenderedChatGroups$,
         signal,
       );
       signal.throwIfAborted();
       if (didPrepend) {
-        await set(effects.scroll.autoScroll$, scrollPosition, signal);
+        await set(scroll.autoScroll$, scrollPosition, signal);
         signal.throwIfAborted();
       }
       return didPrepend;
     },
   );
   return {
-    scroll: effects.scroll,
+    scroll,
     sidebar: effects.sidebar,
     setup$,
     chatSkeletonVisible$,
@@ -2305,11 +2368,13 @@ function createChatRenderWindow({
   allRenderedChatGroups$,
   threadScrollPosition$,
   awayFromBottom$,
+  ensureEventTrees$,
 }: {
   threadId: string;
   allRenderedChatGroups$: Computed<Promise<ChatEventGroup[]>>;
   threadScrollPosition$: Computed<ThreadScrollPosition | null>;
   awayFromBottom$: Computed<boolean>;
+  ensureEventTrees$: Command<void, [readonly ChatEvent[]]>;
 }) {
   const visibleRenderedChatGroups$ = computed(
     async (get): Promise<ChatEventGroup[]> => {
@@ -2337,6 +2402,25 @@ function createChatRenderWindow({
     },
   );
 
+  /**
+   * Parses the trees of every event currently in the render window. Every
+   * write that can grow the window or change what it holds runs this
+   * afterwards: the event sync, the load-more cursor, and the scroll position
+   * commands. Parsing stays command-driven — reading the window never parses.
+   */
+  const ensureVisibleEventTrees$ = command(
+    async ({ get, set }, signal: AbortSignal): Promise<void> => {
+      const groups = await get(visibleRenderedChatGroups$);
+      signal.throwIfAborted();
+      set(
+        ensureEventTrees$,
+        groups.flatMap((group) => {
+          return group.events;
+        }),
+      );
+    },
+  );
+
   const loadMoreRenderedChatGroups$ = command(
     async ({ get, set }, signal: AbortSignal): Promise<boolean> => {
       const current = renderWindowStateForThread(
@@ -2361,11 +2445,19 @@ function createChatRenderWindow({
       if (nextStartIndex === startIndex) {
         return false;
       }
-      set(renderWindowStateByThreadId$, (prev) => {
-        return setThreadRenderWindowState(prev, threadId, {
-          cursorGroupId: groups[nextStartIndex]?.beginEventId ?? null,
-        });
-      });
+      set(
+        renderWindowStateByThreadId$,
+        setThreadRenderWindowState(
+          get(renderWindowStateByThreadId$),
+          threadId,
+          {
+            cursorGroupId: groups[nextStartIndex]?.beginEventId ?? null,
+          },
+        ),
+      );
+      // The newly revealed groups need trees before the prepend renders, so
+      // the caller's scroll restoration lands on the final layout.
+      await set(ensureVisibleEventTrees$, signal);
       return true;
     },
   );
@@ -2381,17 +2473,22 @@ function createChatRenderWindow({
     if (current.cursorGroupId === null) {
       return;
     }
-    set(renderWindowStateByThreadId$, (prev) => {
-      return setThreadRenderWindowState(prev, threadId, {
+    // Resetting the cursor only shrinks the window — the visible slice is a
+    // suffix, so every event it still holds already has its tree and no
+    // ensure pass is needed here.
+    set(
+      renderWindowStateByThreadId$,
+      setThreadRenderWindowState(get(renderWindowStateByThreadId$), threadId, {
         ...current,
         cursorGroupId: null,
-      });
-    });
+      }),
+    );
   });
 
   return {
     visibleRenderedChatGroups$,
     visibleRenderedChatGroupsReady$,
+    ensureVisibleEventTrees$,
     loadMoreRenderedChatGroups$,
     resetRenderedChatGroupsIfAtBottom$,
   };
@@ -3549,7 +3646,7 @@ function publicChatThreadEventSignals(events: MessageListSignals) {
     retryAssistantError$: events.retryAssistantError$,
     resetCodexSubscriptionAndRetry$: events.resetCodexSubscriptionAndRetry$,
     eventImageGroups$: events.eventImageGroups$,
-    artifactSignalsForUrl: events.artifactSignalsForUrl,
+    artifactSignalsByUrl$: events.artifactSignalsByUrl$,
     mailDraftCardSignalsById$: events.mailDraftCardSignalsById$,
     browserSessionSignals: events.browserSessionSignals,
     hasEvents$: events.hasEvents$,

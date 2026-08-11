@@ -276,16 +276,16 @@ const setupChatPageShortcutActions$ = command(
           navigatePrev: () => {
             return navigateFocusedThread("prev");
           },
-          scrollBottom: () => {
+          scrollBottom: async () => {
             const thread = focusedThread();
             if (thread) {
-              set(scrollCurrentThread$, thread, "bottom");
+              await set(scrollCurrentThread$, thread, "bottom", signal);
             }
           },
-          scrollTop: () => {
+          scrollTop: async () => {
             const thread = focusedThread();
             if (thread) {
-              set(scrollCurrentThread$, thread, "top");
+              await set(scrollCurrentThread$, thread, "top", signal);
             }
           },
           setEmoji: async (emoji) => {
@@ -420,16 +420,17 @@ export const focusChatThreadContainer$ = command(
 );
 
 const scrollCurrentThread$ = command(
-  ({ set }, thread: ChatPanelSignals, position: "top" | "bottom"): boolean => {
+  async (
+    { set },
+    thread: ChatPanelSignals,
+    position: "top" | "bottom",
+    signal: AbortSignal,
+  ): Promise<void> => {
     if (position === "top") {
-      set(thread.scrollToTop$);
-      return true;
+      await set(thread.scrollToTop$, signal);
+      return;
     }
-    if (position === "bottom") {
-      set(thread.scrollToBottom$);
-      return true;
-    }
-    return false;
+    await set(thread.scrollToBottom$, signal);
   },
 );
 

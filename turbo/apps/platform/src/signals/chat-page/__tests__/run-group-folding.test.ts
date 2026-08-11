@@ -32,7 +32,7 @@ function userMessage(params: {
     runId: params.runId,
     runGroupId: params.runGroupId,
     createdAt: "2026-06-24T00:00:00.000Z",
-    blocks: [],
+    tree: undefined,
     isQueued: false,
   };
 }
@@ -51,7 +51,7 @@ function assistantEvent(params: {
     runId: params.runId,
     runGroupId: params.runGroupId,
     createdAt: "2026-06-24T00:00:00.000Z",
-    blocks: [],
+    tree: undefined,
     userMessageRenderDocument: undefined,
     isQueued: false,
   };

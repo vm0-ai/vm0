@@ -1,7 +1,7 @@
 import { computed, type Computed } from "ccstate";
 import {
-  getOrCreateCardSignals,
-  registeredCardSignals,
+  createCardSignalsRegistry,
+  type CardSignalsRegistry,
 } from "./card-signal-map.ts";
 import {
   createTextPreviewComputed,
@@ -33,11 +33,10 @@ export interface ArtifactSignals extends ArtifactDescriptor {
   readonly text$?: Computed<Promise<string>>;
 }
 
-export interface ArtifactCardSignalsRegistry {
-  register(descriptor: ArtifactDescriptor): ArtifactSignals;
-  resolve(resourceKey: string): ArtifactSignals;
-  find(resourceKey: string): ArtifactSignals | undefined;
-}
+export type ArtifactCardSignalsRegistry = CardSignalsRegistry<
+  ArtifactDescriptor,
+  ArtifactSignals
+>;
 
 function needsTextPreview(kind: ArtifactKind): boolean {
   return isTextPreviewKind(kind);
@@ -69,22 +68,12 @@ function createArtifactSignals(
 export function createArtifactCardSignalsRegistry(
   previewImageUrlsByUrl$: Computed<Promise<ReadonlyMap<string, string>>>,
 ): ArtifactCardSignalsRegistry {
-  const signalsByResourceKey = new Map<string, ArtifactSignals>();
-  return {
-    register(descriptor) {
-      return getOrCreateCardSignals(
-        signalsByResourceKey,
-        descriptor.url,
-        () => {
-          return createArtifactSignals(descriptor, previewImageUrlsByUrl$);
-        },
-      );
+  return createCardSignalsRegistry(
+    (descriptor: ArtifactDescriptor) => {
+      return descriptor.url;
     },
-    resolve(resourceKey) {
-      return registeredCardSignals(signalsByResourceKey, resourceKey);
+    (descriptor) => {
+      return createArtifactSignals(descriptor, previewImageUrlsByUrl$);
     },
-    find(resourceKey) {
-      return signalsByResourceKey.get(resourceKey);
-    },
-  };
+  );
 }

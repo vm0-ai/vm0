@@ -2,13 +2,17 @@ import type {
   ChatThreadArtifactFile,
   ChatThreadArtifactRun,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import { computed } from "ccstate";
+import { computed, createStore } from "ccstate";
+import {
+  markdownCardKey,
+  parseMarkdownTree,
+} from "../../../lib/markdown/pipeline.ts";
 import { describe, expect, it } from "vitest";
 import { createArtifactCardSignalsRegistry } from "../../../signals/chat-page/artifact-card-signals.ts";
+import type { MarkdownCardRef } from "../../../signals/chat-page/markdown-card-ref.ts";
 import {
-  parseBodyBlocks,
-  type BodyRenderBlock,
-  type ParsedBodyBlock,
+  cardSlotUrl,
+  eventBodyPlan,
 } from "../../../signals/chat-page/parse-body-blocks.ts";
 import { currentEventImageArtifactNavigation } from "../zero-artifact-image-navigation.ts";
 
@@ -36,27 +40,30 @@ function artifactFile(
   };
 }
 
+const store = createStore();
+
 function assistantEvent({ content }: { content: string }): EventFixture {
   const artifactCardSignals = createArtifactCardSignalsRegistry(
     emptyArtifactPreviewImageUrls$,
   );
-  const renderBlock = (block: ParsedBodyBlock): BodyRenderBlock => {
-    if (block.type === "markdown") {
-      return block;
+  const plan = eventBodyPlan(content, { previews: true });
+  const cards = new Map<string, MarkdownCardRef>();
+  for (const descriptor of plan.descriptors) {
+    if (descriptor.type !== "artifact") {
+      throw new Error(`Unexpected body card: ${descriptor.type}`);
     }
-    if (block.type === "artifact") {
-      return {
-        type: block.type,
-        resourceKey: block.resourceKey,
-        signals: artifactCardSignals.register(block.descriptor),
-      };
-    }
-    throw new Error(`Unexpected body block: ${block.type}`);
-  };
+    cards.set(markdownCardKey(cardSlotUrl(descriptor)), {
+      kind: "artifact",
+      signals: store.set(artifactCardSignals.register$, descriptor.descriptor),
+      threadId: "test-thread",
+    });
+  }
   return {
-    blocks: parseBodyBlocks(content, { previews: true }).blocks.map(
-      renderBlock,
-    ),
+    tree: parseMarkdownTree(plan.treeSource, {
+      mathEnabled: true,
+      mermaidScope: "test",
+      cards,
+    }),
   };
 }
 

@@ -1,13 +1,13 @@
+import { useGet, useLoadable, useSet } from "ccstate-react";
 import { Loader2 } from "lucide-react";
-import { useGet, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
+
 import {
   mermaidDiagramKey,
-  mermaidDiagramRef$,
-  mermaidDiagramResultByKey$,
-  type MermaidDiagramResult,
+  mermaidDiagramRegisterRef$,
+  mermaidDiagramsByKey$,
+  type MermaidDiagramSignals,
 } from "../../signals/mermaid-diagram.ts";
-import { theme$ } from "../../signals/theme.ts";
 import { openImageLightbox$ } from "../../signals/zero-page/zero-attachment-chips.ts";
 
 /**
@@ -19,11 +19,9 @@ import { openImageLightbox$ } from "../../signals/zero-page/zero-attachment-chip
  * a reader. The SVG is letterboxed inside that box and opens at full size in
  * the lightbox.
  *
- * The button is keyed by scope, theme, and source so a semantic input change
- * remounts it, which re-runs the render command and aborts the previous render.
- * It keeps its position in the tree across statuses so the ref is not
- * re-attached when the render finishes — re-attaching would abort the render
- * that just produced the result and start it again.
+ * The chat pipeline registers the diagram's signals ahead of rendering; other
+ * surfaces register on mount via the placeholder's ref. Either way the image
+ * itself arrives by pulling `diagram$`.
  */
 export function MermaidDiagram({
   code,
@@ -32,72 +30,109 @@ export function MermaidDiagram({
   code: string;
   scope: string;
 }) {
-  const { t } = useTranslation();
-  const theme = useGet(theme$);
-  const diagramRef = useSet(mermaidDiagramRef$);
-  const openImageLightbox = useSet(openImageLightbox$);
-  const resultByKey = useGet(mermaidDiagramResultByKey$);
-  const result: MermaidDiagramResult = resultByKey[
-    mermaidDiagramKey(code, theme, scope)
-  ] ?? { status: "rendering" };
+  const registerRef = useSet(mermaidDiagramRegisterRef$);
+  const signals = useGet(mermaidDiagramsByKey$).get(
+    mermaidDiagramKey(code, scope),
+  );
 
-  return (
-    <div className="mermaid-block" data-mermaid-status={result.status}>
-      <button
-        key={`${scope}:${theme}:${code}`}
-        ref={diagramRef}
-        type="button"
+  if (!signals) {
+    return (
+      <div
+        ref={registerRef}
+        className="mermaid-block"
+        data-mermaid-status="rendering"
         data-mermaid-code={code}
         data-mermaid-scope={scope}
-        data-mermaid-theme={theme}
-        className="mermaid-diagram-expand"
-        disabled={result.status !== "rendered"}
-        aria-label={t(($) => {
-          return $.shared.mermaid.expand;
-        })}
-        onClick={() => {
-          if (result.status !== "rendered") {
-            return;
-          }
-          // The inline image keeps its chat-panel-owned URL. File metadata lets
-          // each preview surface create an independently owned URL and present
-          // it as diagram.svg.
-          openImageLightbox({
-            url: result.url,
-            file: result.file,
-            shareAvailable: false,
-          });
-        }}
       >
-        {result.status === "rendered" ? (
-          <img
-            src={result.url}
-            alt={t(($) => {
-              return $.shared.mermaid.diagramLabel;
-            })}
-            className="mermaid-diagram-image"
-          />
-        ) : (
-          <span className="mermaid-diagram-pending" aria-hidden="true">
-            <Loader2 size={18} className="animate-spin" />
-          </span>
-        )}
-      </button>
-      {result.status === "error" ? (
+        <MermaidPendingBox />
+      </div>
+    );
+  }
+  return <MermaidDiagramView signals={signals} />;
+}
+
+function MermaidPendingBox() {
+  const { t } = useTranslation();
+  return (
+    <button
+      type="button"
+      className="mermaid-diagram-expand"
+      disabled
+      aria-label={t(($) => {
+        return $.shared.mermaid.expand;
+      })}
+    >
+      <span className="mermaid-diagram-pending" aria-hidden="true">
+        <Loader2 size={18} className="animate-spin" />
+      </span>
+    </button>
+  );
+}
+
+function MermaidDiagramView({ signals }: { signals: MermaidDiagramSignals }) {
+  const { t } = useTranslation();
+  const openImageLightbox = useSet(openImageLightbox$);
+  const loadable = useLoadable(signals.diagram$);
+  const status =
+    loadable.state === "hasData"
+      ? "rendered"
+      : loadable.state === "hasError"
+        ? "error"
+        : "rendering";
+
+  return (
+    <div className="mermaid-block" data-mermaid-status={status}>
+      {status === "error" ? (
         <pre data-testid="mermaid-diagram-fallback">
-          <code>{code}</code>
+          <code>{signals.code}</code>
         </pre>
       ) : (
-        <details className="mermaid-diagram-source">
-          <summary>
-            {t(($) => {
-              return $.shared.mermaid.viewSource;
+        <>
+          <button
+            type="button"
+            className="mermaid-diagram-expand"
+            disabled={loadable.state !== "hasData"}
+            aria-label={t(($) => {
+              return $.shared.mermaid.expand;
             })}
-          </summary>
-          <pre>
-            <code>{code}</code>
-          </pre>
-        </details>
+            onClick={() => {
+              if (loadable.state !== "hasData") {
+                return;
+              }
+              // File metadata lets each preview surface present the diagram as
+              // diagram.svg with download support.
+              openImageLightbox({
+                url: loadable.data.url,
+                file: loadable.data.file,
+                shareAvailable: false,
+              });
+            }}
+          >
+            {loadable.state === "hasData" ? (
+              <img
+                src={loadable.data.url}
+                alt={t(($) => {
+                  return $.shared.mermaid.diagramLabel;
+                })}
+                className="mermaid-diagram-image"
+              />
+            ) : (
+              <span className="mermaid-diagram-pending" aria-hidden="true">
+                <Loader2 size={18} className="animate-spin" />
+              </span>
+            )}
+          </button>
+          <details className="mermaid-diagram-source">
+            <summary>
+              {t(($) => {
+                return $.shared.mermaid.viewSource;
+              })}
+            </summary>
+            <pre>
+              <code>{signals.code}</code>
+            </pre>
+          </details>
+        </>
       )}
     </div>
   );

@@ -1,160 +1,65 @@
-import { command, computed, state } from "ccstate";
-import { onRef, settle } from "./utils.ts";
-import {
-  currentLeftThread$,
-  currentRightThread$,
-} from "./chat-page/chat-thread-pane-state.ts";
-import { pageSignal$ } from "./page-signal.ts";
+import { command, computed, state, type Computed } from "ccstate";
 
-export type MermaidDiagramResult =
-  | { readonly status: "rendering" }
-  | {
-      readonly status: "rendered";
-      readonly file: File;
-      readonly url: string;
-    }
-  | { readonly status: "error" };
+import { theme$ } from "./theme.ts";
+import { onRef } from "./utils.ts";
 
-const internalMermaidDiagramResultByKey$ = state<
-  Record<string, MermaidDiagramResult>
->({});
+/**
+ * Mermaid diagrams render through a pull model. Each unique diagram source in
+ * a scope owns one `MermaidDiagramSignals` in a module-scope registry; its
+ * `diagram$` computed loads mermaid, lays the diagram out and resolves to an
+ * image the view shows in an `<img>`. Reading the theme inside the computed
+ * makes a theme switch re-render every diagram without any remounting.
+ *
+ * Registration is a command. The chat pipeline registers diagrams when it
+ * parses an event's tree; surfaces that parse during render register on mount
+ * through `mermaidDiagramRegisterRef$`, the same dataset-driven `onRef` shape
+ * as `imageLoadStatusRef$`.
+ *
+ * The image is a `data:` URL, so there is nothing to revoke and no lifetime to
+ * manage: entries live as long as the registry, keyed by content.
+ */
+export interface MermaidDiagramImage {
+  readonly url: string;
+  readonly file: File;
+}
 
-export const mermaidDiagramResultByKey$ = computed((get) => {
-  return get(internalMermaidDiagramResultByKey$);
+export interface MermaidDiagramSignals {
+  readonly code: string;
+  readonly diagram$: Computed<Promise<MermaidDiagramImage>>;
+}
+
+export function mermaidDiagramKey(code: string, scope: string): string {
+  return `${scope}:${code}`;
+}
+
+const internalMermaidDiagramsByKey$ = state<
+  ReadonlyMap<string, MermaidDiagramSignals>
+>(new Map());
+
+export const mermaidDiagramsByKey$ = computed(
+  (get): ReadonlyMap<string, MermaidDiagramSignals> => {
+    return get(internalMermaidDiagramsByKey$);
+  },
+);
+
+// mermaid costs ~170 KB gzipped for the first diagram, so it is only fetched
+// once a diagram actually needs rendering; the computed memoizes the promise.
+const mermaidModule$ = computed(() => {
+  return import("mermaid");
 });
 
 /**
- * Diagrams are identified by their thread scope, source, and theme. Identical
- * diagrams within one scope share a result, while a thread or theme switch
- * renders a new one.
+ * mermaid needs a DOM id per `render` call. Concurrent renders only happen for
+ * distinct key+theme pairs — the same pair is one deduplicated computed — so a
+ * deterministic hash of both is collision-free where it matters.
  */
-export function mermaidDiagramKey(
-  code: string,
-  theme: string,
-  scope: string,
-): string {
-  return `${scope}:${theme}:${code}`;
+function diagramRenderId(seed: string): string {
+  let hash = 5381;
+  for (let index = 0; index < seed.length; index += 1) {
+    hash = (hash * 33) ^ seed.charCodeAt(index);
+  }
+  return `mermaid-diagram-${(hash >>> 0).toString(36)}`;
 }
-
-const setMermaidDiagramResult$ = command(
-  ({ set }, key: string, result: MermaidDiagramResult) => {
-    set(internalMermaidDiagramResultByKey$, (current) => {
-      return { ...current, [key]: result };
-    });
-  },
-);
-
-// Rendered entries are refcounted by mounted canvases and dropped once the last
-// one detaches. Their object URLs belong to the containing chat panel, but a
-// same-thread query navigation can replace that panel while retaining the
-// mounted canvas. Defer revocation until both the owner has ended and the last
-// canvas has detached so the semantic thread key cannot retain a revoked URL.
-const internalMermaidDiagramRefCountByKey$ = state<Record<string, number>>({});
-const internalPendingMermaidObjectUrlRevocationsByKey$ = state<
-  Record<string, readonly string[]>
->({});
-
-const revokeMermaidObjectUrlWhenUnused$ = command(
-  ({ get, set }, key: string, url: string) => {
-    const refCount = get(internalMermaidDiagramRefCountByKey$)[key] ?? 0;
-    if (refCount === 0) {
-      URL.revokeObjectURL(url);
-      return;
-    }
-    set(internalPendingMermaidObjectUrlRevocationsByKey$, (current) => {
-      return {
-        ...current,
-        [key]: [...(current[key] ?? []), url],
-      };
-    });
-  },
-);
-
-const retainMermaidDiagramResult$ = command(({ get, set }, key: string) => {
-  const refCount = get(internalMermaidDiagramRefCountByKey$)[key] ?? 0;
-  set(internalMermaidDiagramRefCountByKey$, (current) => {
-    return { ...current, [key]: refCount + 1 };
-  });
-  if (get(internalMermaidDiagramResultByKey$)[key]) {
-    // An identical diagram is already rendered — the same source in a second
-    // message, or the same one whose block remounted. Resetting it to
-    // `rendering` would blank a diagram the reader is already looking at.
-    return;
-  }
-  set(setMermaidDiagramResult$, key, { status: "rendering" });
-});
-
-function withoutKey<T>(current: Record<string, T>, key: string) {
-  if (!(key in current)) {
-    return current;
-  }
-  const next = { ...current };
-  delete next[key];
-  return next;
-}
-
-const releaseMermaidDiagramResult$ = command(({ get, set }, key: string) => {
-  const refCount = get(internalMermaidDiagramRefCountByKey$)[key] ?? 0;
-  if (refCount > 1) {
-    set(internalMermaidDiagramRefCountByKey$, (current) => {
-      return { ...current, [key]: refCount - 1 };
-    });
-    return;
-  }
-
-  set(internalMermaidDiagramRefCountByKey$, (current) => {
-    return withoutKey(current, key);
-  });
-  for (const url of get(internalPendingMermaidObjectUrlRevocationsByKey$)[
-    key
-  ] ?? []) {
-    URL.revokeObjectURL(url);
-  }
-  set(internalPendingMermaidObjectUrlRevocationsByKey$, (current) => {
-    return withoutKey(current, key);
-  });
-  set(internalMermaidDiagramResultByKey$, (current) => {
-    return withoutKey(current, key);
-  });
-});
-
-// mermaid costs ~170 KB gzipped for the first diagram, so it is only fetched
-// once a diagram actually needs rendering.
-const mermaidModule$ = state<Promise<typeof import("mermaid")> | undefined>(
-  undefined,
-);
-const renderSequence$ = state(0);
-
-const loadMermaid$ = command(
-  async ({ get, set }, theme: string, signal: AbortSignal) => {
-    const pending = get(mermaidModule$) ?? import("mermaid");
-    set(mermaidModule$, pending);
-    const { default: mermaid } = await pending;
-    signal.throwIfAborted();
-    mermaid.initialize({
-      startOnLoad: false,
-      // "strict" makes mermaid sanitize the generated SVG with DOMPurify and
-      // disables click handlers declared inside diagram sources.
-      securityLevel: "strict",
-      // Without this mermaid injects its own error diagram into the document.
-      suppressErrorRendering: true,
-      theme: theme === "dark" ? "redux-dark" : "redux",
-      // Resolved to a concrete stack rather than passed as `var(...)`: the same
-      // SVG is also shown inside an <img> in the lightbox, where page-level CSS
-      // custom properties do not resolve.
-      fontFamily: getComputedStyle(document.documentElement)
-        .getPropertyValue("--font-family-sans")
-        .trim(),
-      // mermaid's defaults are sized for a standalone page: 16px labels and
-      // 50px rank spacing make a five-node flowchart taller than the message
-      // around it. These match the chat body text and cut roughly a third of
-      // the height.
-      themeVariables: { fontSize: "14px" },
-      flowchart: { nodeSpacing: 30, rankSpacing: 32, padding: 8 },
-    });
-    return mermaid;
-  },
-);
 
 /** Returns the diagram SVG, or undefined when the source is not valid mermaid. */
 async function renderDiagramSvg(
@@ -215,94 +120,98 @@ function sizeDiagramAndSerialize(svg: SVGSVGElement): string {
 }
 
 /**
- * Keep the rendered SVG as a browser-native file. The containing chat panel or
- * page owns the inline object URL, while preview surfaces materialize their own
- * URLs from the File under their respective consumer lifetimes.
+ * Keep the rendered SVG as a browser-native file so preview surfaces can
+ * present it as diagram.svg with download metadata.
  */
 function svgFile(markup: string): File {
   return new File([markup], "diagram.svg", { type: "image/svg+xml" });
 }
 
-/**
- * Renders one diagram into an SVG file. mermaid 11 isolates concurrent `render`
- * calls, so several diagrams in one message can render in parallel.
- *
- * `el` carries the source and theme to render and retains the shared result for
- * the element's lifetime. The matching chat panel or page owns the object URL;
- * the diagram itself is shown by an <img> and never enters the document.
- */
-const renderMermaidDiagram$ = command(
-  async ({ get, set }, el: HTMLElement, signal: AbortSignal) => {
-    const code = el.dataset.mermaidCode ?? "";
-    const theme = el.dataset.mermaidTheme === "dark" ? "dark" : "light";
-    const scope = el.dataset.mermaidScope ?? "";
-    const key = mermaidDiagramKey(code, theme, scope);
-    const panelSignal = [
-      get(currentLeftThread$),
-      get(currentRightThread$),
-    ].find((thread) => {
-      return thread?.threadId === scope;
-    })?.signal;
-    const objectUrlSignal = panelSignal ?? get(pageSignal$);
+function createMermaidDiagramSignals(
+  code: string,
+  key: string,
+): MermaidDiagramSignals {
+  const diagram$ = computed(async (get): Promise<MermaidDiagramImage> => {
+    const theme = get(theme$);
+    const { default: mermaid } = await get(mermaidModule$);
+    mermaid.initialize({
+      startOnLoad: false,
+      // "strict" makes mermaid sanitize the generated SVG with DOMPurify and
+      // disables click handlers declared inside diagram sources.
+      securityLevel: "strict",
+      // Without this mermaid injects its own error diagram into the document.
+      suppressErrorRendering: true,
+      theme: theme === "dark" ? "redux-dark" : "redux",
+      // Resolved to a concrete stack rather than passed as `var(...)`: the same
+      // SVG is also shown inside an <img> in the lightbox, where page-level CSS
+      // custom properties do not resolve.
+      fontFamily: getComputedStyle(document.documentElement)
+        .getPropertyValue("--font-family-sans")
+        .trim(),
+      // mermaid's defaults are sized for a standalone page: 16px labels and
+      // 50px rank spacing make a five-node flowchart taller than the message
+      // around it. These match the chat body text and cut roughly a third of
+      // the height.
+      themeVariables: { fontSize: "14px" },
+      flowchart: { nodeSpacing: 30, rankSpacing: 32, padding: 8 },
+    });
 
-    set(retainMermaidDiagramResult$, key);
-    signal.addEventListener(
-      "abort",
-      () => {
-        set(releaseMermaidDiagramResult$, key);
-      },
-      { once: true },
+    const markup = await renderDiagramSvg(
+      mermaid,
+      diagramRenderId(`${theme}:${key}`),
+      code,
     );
-
-    if (get(internalMermaidDiagramResultByKey$)[key]?.status === "rendered") {
-      // The result is keyed by source and theme, so an existing one is already
-      // this element's diagram: a block that remounted, or the same diagram in
-      // a second message. Laying it out again would produce the same markup.
-      return;
-    }
-
-    const mermaid = await set(loadMermaid$, theme, signal);
-    const sequence = get(renderSequence$) + 1;
-    set(renderSequence$, sequence);
-
-    // A diagram that parses can still fail to lay out; both failures fall back
-    // to showing the source instead of an empty frame.
-    const rendered = await settle(
-      renderDiagramSvg(mermaid, `mermaid-diagram-${String(sequence)}`, code),
-      signal,
-    );
-    if (!rendered.ok || rendered.value === undefined) {
-      set(setMermaidDiagramResult$, key, { status: "error" });
-      return;
+    if (markup === undefined) {
+      throw new Error("mermaid source failed to parse");
     }
 
     // Parsed in a detached element. The markup never reaches the document, so
-    // the only thing that ever shows it is an <img>, where an object URL SVG
+    // the only thing that ever shows it is an <img>, where a data URL SVG
     // cannot run scripts or resolve page-level CSS custom properties.
     const host = document.createElement("div");
-    host.innerHTML = rendered.value;
+    host.innerHTML = markup;
     const svg = host.querySelector("svg");
     if (!svg) {
-      set(setMermaidDiagramResult$, key, { status: "error" });
-      return;
+      throw new Error("mermaid renderer produced no svg");
     }
 
-    const file = svgFile(sizeDiagramAndSerialize(svg));
-    objectUrlSignal.throwIfAborted();
-    const url = URL.createObjectURL(file);
-    objectUrlSignal.addEventListener(
-      "abort",
-      () => {
-        set(revokeMermaidObjectUrlWhenUnused$, key, url);
-      },
-      { once: true },
-    );
-    set(setMermaidDiagramResult$, key, {
-      status: "rendered",
-      file,
-      url,
-    });
+    const serialized = sizeDiagramAndSerialize(svg);
+    return {
+      url: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(serialized)}`,
+      file: svgFile(serialized),
+    };
+  });
+  return { code, diagram$ };
+}
+
+export const registerMermaidDiagram$ = command(
+  ({ get, set }, code: string, scope: string): MermaidDiagramSignals => {
+    const current = get(internalMermaidDiagramsByKey$);
+    const key = mermaidDiagramKey(code, scope);
+    const existing = current.get(key);
+    if (existing !== undefined) {
+      return existing;
+    }
+    const signals = createMermaidDiagramSignals(code, key);
+    const next = new Map(current);
+    next.set(key, signals);
+    set(internalMermaidDiagramsByKey$, next);
+    return signals;
   },
 );
 
-export const mermaidDiagramRef$ = onRef(renderMermaidDiagram$);
+const registerMermaidDiagramOnRef$ = command(
+  ({ set }, el: HTMLElement, _signal: AbortSignal): void => {
+    const code = el.dataset.mermaidCode;
+    if (code !== undefined) {
+      set(registerMermaidDiagram$, code, el.dataset.mermaidScope ?? "");
+    }
+  },
+);
+
+/**
+ * Mount-time registration for surfaces that parse markdown during render and
+ * therefore have no command of their own to register diagrams from. The chat
+ * pipeline registers ahead of time, so its placeholders never mount.
+ */
+export const mermaidDiagramRegisterRef$ = onRef(registerMermaidDiagramOnRef$);
