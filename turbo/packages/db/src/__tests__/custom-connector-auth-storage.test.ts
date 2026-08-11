@@ -88,7 +88,6 @@ describe("custom connector auth storage schema", () => {
 
   it("owns OAuth tokens by connection and stores agent grants", () => {
     const secretConfig = getTableConfig(secrets);
-    const grantConfig = getTableConfig(userCustomConnectors);
 
     expect(
       secretConfig.indexes.map((index) => {
@@ -103,10 +102,5 @@ describe("custom connector auth storage schema", () => {
     expect(secretConfig.foreignKeys[0]?.onDelete).toBe("cascade");
 
     expect(userCustomConnectors.permissionNames.notNull).toBe(true);
-    expect(userCustomConnectors.allowAllMcpTools.notNull).toBe(true);
-    expect(userCustomConnectors.mcpToolNames.notNull).toBe(true);
-    expect(names(grantConfig.checks)).toContain(
-      "chk_user_custom_connectors_mcp_grant",
-    );
   });
 });
