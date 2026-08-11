@@ -10722,9 +10722,16 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       }),
     );
 
-    await connectors.setCustomConnectorValues(actor, saved.connector.id, [
-      { key: "api_key", kind: "secret", value: "recovered-key" },
-    ]);
+    const incompleteRecovery = await connectors.requestSetCustomConnectorValues(
+      actor,
+      saved.connector.id,
+      [{ key: "api_key", kind: "secret", value: "recovered-key" }],
+      [400],
+    );
+    expectApiError(incompleteRecovery.body);
+    expect(incompleteRecovery.body.error.message).toContain(
+      "All required fields must be provided when connecting or restoring",
+    );
     await api.requestCancelRun(actor, incompleteRun.runId, [200]);
 
     const longSubdomain = "a".repeat(55);

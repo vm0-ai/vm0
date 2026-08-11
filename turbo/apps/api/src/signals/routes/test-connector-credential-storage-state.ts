@@ -5,10 +5,12 @@ import {
 } from "@vm0/api-contracts/contracts/test-connector-credential-storage-state";
 import { connectors } from "@vm0/db/schema/connector";
 import { connectorOauthStates } from "@vm0/db/schema/connector-oauth-state";
+import { orgCustomConnectorSecrets } from "@vm0/db/schema/org-custom-connector-secret";
+import { orgCustomConnectorValues } from "@vm0/db/schema/org-custom-connector-value";
 import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
 import { secrets } from "@vm0/db/schema/secret";
 import { variables } from "@vm0/db/schema/variable";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 
 import { request$ } from "../context/hono";
 import { bodyResultOf } from "../context/request";
@@ -149,6 +151,62 @@ async function readCustomParent(
     )
     .limit(1);
   signal.throwIfAborted();
+  const secretRows = connector
+    ? await db
+        .select({
+          name: secrets.name,
+          connectorId: secrets.connectorId,
+          encryptedValue: secrets.encryptedValue,
+          description: secrets.description,
+        })
+        .from(secrets)
+        .where(eq(secrets.connectorId, connector.id))
+        .orderBy(asc(secrets.name))
+    : [];
+  signal.throwIfAborted();
+  const variableRows = connector
+    ? await db
+        .select({
+          name: variables.name,
+          connectorId: variables.connectorId,
+          value: variables.value,
+        })
+        .from(variables)
+        .where(eq(variables.connectorId, connector.id))
+        .orderBy(asc(variables.name))
+    : [];
+  signal.throwIfAborted();
+  const legacyValueRows = await db
+    .select({
+      kind: orgCustomConnectorValues.kind,
+      key: orgCustomConnectorValues.key,
+      encryptedValue: orgCustomConnectorValues.encryptedValue,
+    })
+    .from(orgCustomConnectorValues)
+    .where(
+      and(
+        eq(orgCustomConnectorValues.orgId, body.org_id),
+        eq(orgCustomConnectorValues.userId, body.user_id),
+        eq(orgCustomConnectorValues.connectorId, body.custom_connector_id),
+      ),
+    )
+    .orderBy(
+      asc(orgCustomConnectorValues.kind),
+      asc(orgCustomConnectorValues.key),
+    );
+  signal.throwIfAborted();
+  const [legacySecret] = await db
+    .select({ encryptedValue: orgCustomConnectorSecrets.encryptedValue })
+    .from(orgCustomConnectorSecrets)
+    .where(
+      and(
+        eq(orgCustomConnectorSecrets.orgId, body.org_id),
+        eq(orgCustomConnectorSecrets.userId, body.user_id),
+        eq(orgCustomConnectorSecrets.connectorId, body.custom_connector_id),
+      ),
+    )
+    .limit(1);
+  signal.throwIfAborted();
   return actionOk({
     connector: connector
       ? {
@@ -156,6 +214,29 @@ async function readCustomParent(
           storage_version: connector.storageVersion,
         }
       : null,
+    secrets: secretRows.map((row) => {
+      return {
+        name: row.name,
+        connector_id: requiredConnectorCredentialOwnerId(row.connectorId),
+        encrypted_value: row.encryptedValue,
+        description: row.description,
+      };
+    }),
+    variables: variableRows.map((row) => {
+      return {
+        name: row.name,
+        connector_id: requiredConnectorCredentialOwnerId(row.connectorId),
+        value: row.value,
+      };
+    }),
+    legacy_custom_values: legacyValueRows.map((row) => {
+      return {
+        kind: row.kind,
+        key: row.key,
+        encrypted_value: row.encryptedValue,
+      };
+    }),
+    legacy_custom_secret_encrypted_value: legacySecret?.encryptedValue ?? null,
   });
 }
 

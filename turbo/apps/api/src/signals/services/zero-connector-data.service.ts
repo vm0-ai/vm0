@@ -939,7 +939,7 @@ async function writeManualGrantCredentials(
   for (const field of args.encryptedSecrets) {
     await upsertConnectorOwnedSecret(db, {
       connectorId: args.connectorId,
-      method: args.method,
+      storage: args.method.storage,
       orgId: args.orgId,
       userId: args.userId,
       name: field.name,
@@ -953,7 +953,7 @@ async function writeManualGrantCredentials(
   for (const field of args.variableValues) {
     await upsertConnectorOwnedVariable(db, {
       connectorId: args.connectorId,
-      method: args.method,
+      storage: args.method.storage,
       orgId: args.orgId,
       userId: args.userId,
       name: field.name,
@@ -1510,7 +1510,7 @@ async function upsertConnectorTokenSecrets(
   for (const secret of args.secrets) {
     await upsertConnectorOwnedSecret(args.db, {
       connectorId: args.connectorId,
-      method: args.method,
+      storage: args.method.storage,
       orgId: args.orgId,
       userId: args.userId,
       name: secret.name,
@@ -1536,7 +1536,7 @@ async function upsertConnectorTokenVariables(
   for (const variable of args.variables) {
     await upsertConnectorOwnedVariable(args.db, {
       connectorId: args.connectorId,
-      method: args.method,
+      storage: args.method.storage,
       orgId: args.orgId,
       userId: args.userId,
       name: variable.name,

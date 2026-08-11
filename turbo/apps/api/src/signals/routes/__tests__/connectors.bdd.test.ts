@@ -2918,6 +2918,29 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       hasSecret: true,
     });
     expectNoVisibleSecret(configured, "agent-created-secret");
+    const storage = await readCustomConnectorCredentialStorageParent(context, {
+      orgId: requiredOrgId(admin),
+      userId: admin.userId,
+      customConnectorId: created.body.id,
+    });
+    expect(storage.secrets).toStrictEqual([
+      {
+        name: "secret",
+        connector_id: storage.connector?.id,
+        encrypted_value: expect.any(String),
+        description: null,
+      },
+    ]);
+    expect(storage.legacy_custom_values).toStrictEqual([
+      {
+        kind: "secret",
+        key: "secret",
+        encrypted_value: storage.secrets?.[0]?.encrypted_value,
+      },
+    ]);
+    expect(storage.legacy_custom_secret_encrypted_value).toBe(
+      storage.secrets?.[0]?.encrypted_value,
+    );
 
     await connectorsApi.deleteCustomConnector(admin, created.body.id);
   });
@@ -2978,6 +3001,38 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       customConnectorId: created.id,
     });
     expect(parent.connector).toMatchObject({ storage_version: 1 });
+    if (!parent.connector) {
+      throw new Error("Expected a Custom connector credential parent");
+    }
+    expect(parent.secrets).toStrictEqual([
+      {
+        name: "api_key",
+        connector_id: parent.connector.id,
+        encrypted_value: expect.any(String),
+        description: null,
+      },
+    ]);
+    expect(parent.variables).toStrictEqual([
+      {
+        name: "subdomain",
+        connector_id: parent.connector.id,
+        value: "acme",
+      },
+    ]);
+    expect(parent.legacy_custom_values).toStrictEqual([
+      {
+        kind: "secret",
+        key: "api_key",
+        encrypted_value: parent.secrets?.[0]?.encrypted_value,
+      },
+      {
+        kind: "variable",
+        key: "subdomain",
+        encrypted_value: expect.any(String),
+      },
+    ]);
+    expect(parent.legacy_custom_secret_encrypted_value).toBeNull();
+
     await connectorsApi.setCustomConnectorValues(admin, created.id, [
       { key: "api_key", kind: "secret", value: "updated-secret" },
     ]);
@@ -2990,6 +3045,18 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       },
     );
     expect(updatedParent.connector).toStrictEqual(parent.connector);
+    expect(updatedParent.variables).toStrictEqual(parent.variables);
+    expect(updatedParent.secrets?.[0]?.encrypted_value).not.toBe(
+      parent.secrets?.[0]?.encrypted_value,
+    );
+    expect(updatedParent.legacy_custom_values).toStrictEqual([
+      {
+        kind: "secret",
+        key: "api_key",
+        encrypted_value: updatedParent.secrets?.[0]?.encrypted_value,
+      },
+      parent.legacy_custom_values?.[1],
+    ]);
 
     const listed = await connectorsApi.listCustomConnectors(admin);
     expect(
@@ -3042,7 +3109,13 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
         userId: admin.userId,
         customConnectorId: created.id,
       }),
-    ).resolves.toMatchObject({ connector: null });
+    ).resolves.toMatchObject({
+      connector: null,
+      secrets: [],
+      variables: [],
+      legacy_custom_values: [],
+      legacy_custom_secret_encrypted_value: null,
+    });
     await expect(
       connectorsApi.readCustomConnector(admin, created.id),
     ).resolves.toMatchObject({
@@ -3061,7 +3134,15 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
         userId: admin.userId,
         customConnectorId: created.id,
       }),
-    ).resolves.toMatchObject({ connector: { storage_version: 1 } });
+    ).resolves.toMatchObject({
+      connector: { storage_version: 1 },
+      secrets: [{ name: "api_key" }],
+      variables: [{ name: "subdomain", value: "reconnected" }],
+      legacy_custom_values: [
+        { kind: "secret", key: "api_key" },
+        { kind: "variable", key: "subdomain" },
+      ],
+    });
     await expect(
       connectorsApi.readCustomConnector(admin, created.id),
     ).resolves.toMatchObject({
@@ -3069,6 +3150,191 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       configuredFieldKeys: ["api_key", "subdomain"],
       missingRequiredFields: [],
     });
+
+    await connectorsApi.deleteCustomConnector(admin, created.id);
+  });
+
+  it("rejects an incomplete first manual value write without storing credentials", async () => {
+    const admin = createBddApi(context).user({ orgRole: "org:admin" });
+    const created = await connectorsApi.createCustomConnector(admin, {
+      displayName: "BDD Incomplete First Write",
+      prefixTemplates: ["https://incomplete-first-write.example.test/v1/"],
+      fields: [
+        {
+          key: "api_key",
+          label: "API key",
+          kind: "secret",
+          required: true,
+        },
+        {
+          key: "account",
+          label: "Account",
+          kind: "variable",
+          required: true,
+        },
+      ],
+      headerInjections: [
+        {
+          name: "Authorization",
+          valueTemplate: "Bearer {{secrets.api_key}}",
+        },
+      ],
+      queryInjections: [],
+      authMode: "manual",
+    });
+
+    const rejected = await connectorsApi.requestSetCustomConnectorValues(
+      admin,
+      created.id,
+      [{ key: "api_key", kind: "secret", value: "incomplete-secret" }],
+      [400],
+    );
+    expectApiError(rejected.body);
+    expect(rejected.body.error.message).toContain(
+      "All required fields must be provided when connecting or restoring",
+    );
+    await expect(
+      readCustomConnectorCredentialStorageParent(context, {
+        orgId: requiredOrgId(admin),
+        userId: admin.userId,
+        customConnectorId: created.id,
+      }),
+    ).resolves.toMatchObject({
+      connector: null,
+      secrets: [],
+      variables: [],
+      legacy_custom_values: [],
+      legacy_custom_secret_encrypted_value: null,
+    });
+
+    await connectorsApi.deleteCustomConnector(admin, created.id);
+  });
+
+  it("isolates identical manual variable names by Custom connection", async () => {
+    const admin = createBddApi(context).user({ orgRole: "org:admin" });
+    const definition = {
+      fields: [
+        {
+          key: "region",
+          label: "Region",
+          kind: "variable" as const,
+          required: true,
+        },
+      ],
+      headerInjections: [],
+      queryInjections: [
+        { name: "region", valueTemplate: "{{variables.region}}" },
+      ],
+      authMode: "manual" as const,
+    };
+    const first = await connectorsApi.createCustomConnector(admin, {
+      ...definition,
+      displayName: "BDD Variable Isolation One",
+      prefixTemplates: ["https://variable-isolation-one.example.test/v1/"],
+    });
+    const second = await connectorsApi.createCustomConnector(admin, {
+      ...definition,
+      displayName: "BDD Variable Isolation Two",
+      prefixTemplates: ["https://variable-isolation-two.example.test/v1/"],
+    });
+
+    await connectorsApi.setCustomConnectorValues(admin, first.id, [
+      { key: "region", kind: "variable", value: "east" },
+    ]);
+    await connectorsApi.setCustomConnectorValues(admin, second.id, [
+      { key: "region", kind: "variable", value: "west" },
+    ]);
+    const firstState = await readCustomConnectorCredentialStorageParent(
+      context,
+      {
+        orgId: requiredOrgId(admin),
+        userId: admin.userId,
+        customConnectorId: first.id,
+      },
+    );
+    const secondState = await readCustomConnectorCredentialStorageParent(
+      context,
+      {
+        orgId: requiredOrgId(admin),
+        userId: admin.userId,
+        customConnectorId: second.id,
+      },
+    );
+    expect(firstState.variables).toStrictEqual([
+      {
+        name: "region",
+        connector_id: firstState.connector?.id,
+        value: "east",
+      },
+    ]);
+    expect(secondState.variables).toStrictEqual([
+      {
+        name: "region",
+        connector_id: secondState.connector?.id,
+        value: "west",
+      },
+    ]);
+    expect(firstState.connector?.id).not.toBe(secondState.connector?.id);
+
+    await connectorsApi.deleteCustomConnector(admin, first.id);
+    await connectorsApi.deleteCustomConnector(admin, second.id);
+  });
+
+  it("rolls back legacy and shared Custom values when a shared write fails", async () => {
+    const admin = createBddApi(context).user({ orgRole: "org:admin" });
+    const created = await connectorsApi.createCustomConnector(admin, {
+      displayName: "BDD Custom Value Rollback",
+      prefixTemplates: ["https://custom-value-rollback.example.test/v1/"],
+      fields: [
+        {
+          key: "api_key",
+          label: "API key",
+          kind: "secret",
+          required: true,
+        },
+        {
+          key: "note",
+          label: "Note",
+          kind: "variable",
+          required: false,
+        },
+      ],
+      headerInjections: [
+        {
+          name: "Authorization",
+          valueTemplate: "Bearer {{secrets.api_key}}",
+        },
+      ],
+      queryInjections: [],
+      authMode: "manual",
+    });
+    await connectorsApi.setCustomConnectorValues(admin, created.id, [
+      { key: "api_key", kind: "secret", value: "rollback-original" },
+    ]);
+    const storageBeforeFailure =
+      await readCustomConnectorCredentialStorageParent(context, {
+        orgId: requiredOrgId(admin),
+        userId: admin.userId,
+        customConnectorId: created.id,
+      });
+
+    const failed = await connectorsApi.requestSetCustomConnectorValues(
+      admin,
+      created.id,
+      [
+        { key: "api_key", kind: "secret", value: "rollback-replacement" },
+        { key: "note", kind: "variable", value: "invalid\u0000value" },
+      ],
+      [500],
+    );
+    expect(failed.status).toBe(500);
+    await expect(
+      readCustomConnectorCredentialStorageParent(context, {
+        orgId: requiredOrgId(admin),
+        userId: admin.userId,
+        customConnectorId: created.id,
+      }),
+    ).resolves.toStrictEqual(storageBeforeFailure);
 
     await connectorsApi.deleteCustomConnector(admin, created.id);
   });
@@ -3207,6 +3473,28 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
         customConnectorId: created.id,
       }),
     ).resolves.toMatchObject({ connector: { storage_version: 4 } });
+    const replacementStorage = await readCustomConnectorCredentialStorageParent(
+      context,
+      {
+        orgId: requiredOrgId(admin),
+        userId: admin.userId,
+        customConnectorId: created.id,
+      },
+    );
+    expect(
+      replacementStorage.secrets?.map(({ name }) => {
+        return name;
+      }),
+    ).toStrictEqual(["api_key", "replacement"]);
+    expect(replacementStorage.variables).toStrictEqual([]);
+    expect(
+      replacementStorage.legacy_custom_values?.map(({ kind, key }) => {
+        return { kind, key };
+      }),
+    ).toStrictEqual([
+      { kind: "secret", key: "api_key" },
+      { kind: "secret", key: "replacement" },
+    ]);
 
     const semanticAdvance = await connectorsApi.updateCustomConnector(
       admin,
@@ -3422,6 +3710,55 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       connectorsApi.readAgentCustomConnectors(admin, agent.agentId),
     ).resolves.toStrictEqual([saved.connector.id]);
 
+    const emptyComplete = await connectorsApi.saveCustomConnectorProposal(
+      admin,
+      {
+        proposal: {
+          operation: "create",
+          displayName: "BDD Optional Proposal Value API",
+          prefixTemplates: [`https://optional-${rand}.example.test/v1/`],
+          fields: [
+            {
+              key: "api_key",
+              label: "API key",
+              kind: "secret",
+              required: false,
+            },
+          ],
+          headerInjections: [
+            {
+              name: "Authorization",
+              valueTemplate: "Bearer {{secrets.api_key}}",
+            },
+          ],
+          queryInjections: [],
+        },
+        values: [],
+        agentId: agent.agentId,
+      },
+    );
+    expect(emptyComplete.connector).toMatchObject({
+      connected: true,
+      missingRequiredFields: [],
+      configuredFieldKeys: [],
+    });
+    await expect(
+      readCustomConnectorCredentialStorageParent(context, {
+        orgId: requiredOrgId(admin),
+        userId: admin.userId,
+        customConnectorId: emptyComplete.connector.id,
+      }),
+    ).resolves.toMatchObject({
+      connector: { storage_version: 1 },
+      secrets: [],
+      variables: [],
+      legacy_custom_values: [],
+    });
+
+    await connectorsApi.deleteCustomConnector(
+      admin,
+      emptyComplete.connector.id,
+    );
     await connectorsApi.deleteCustomConnector(admin, saved.connector.id);
     await bdd.deleteAgent(admin, agent.agentId);
   });

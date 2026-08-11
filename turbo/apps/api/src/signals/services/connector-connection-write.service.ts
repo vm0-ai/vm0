@@ -43,13 +43,16 @@ interface ConnectorCredentialWriteContext {
   readonly connectorId: string;
 }
 
-interface ReplaceConnectorConnectionArgs {
+export interface UpsertConnectorConnectionMetadataArgs {
   readonly orgId: string;
   readonly userId: string;
   readonly authMethod: string;
   readonly storageVersion: number;
   readonly tokenExpiresAt: Date | null;
   readonly target: ConnectorConnectionTarget;
+}
+
+interface ReplaceConnectorConnectionArgs extends UpsertConnectorConnectionMetadataArgs {
   readonly writeCredentials: (
     context: ConnectorCredentialWriteContext,
     signal: AbortSignal,
@@ -73,9 +76,9 @@ function connectorConnectionSelection() {
   };
 }
 
-async function upsertConnectorConnection(
+export async function upsertConnectorConnectionMetadata(
   db: Tx,
-  args: Omit<ReplaceConnectorConnectionArgs, "writeCredentials">,
+  args: UpsertConnectorConnectionMetadataArgs,
 ): Promise<StoredConnectorConnectionRow> {
   const identityValues =
     args.target.kind === "builtin" && args.target.identity.kind === "external"
@@ -148,7 +151,7 @@ export async function replaceConnectorConnection(
   args: ReplaceConnectorConnectionArgs,
   signal: AbortSignal,
 ): Promise<StoredConnectorConnectionRow> {
-  const connection = await upsertConnectorConnection(db, args);
+  const connection = await upsertConnectorConnectionMetadata(db, args);
   signal.throwIfAborted();
 
   await deleteConnectorOwnedCredentialRows(
