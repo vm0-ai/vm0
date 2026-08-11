@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.422.1](https://github.com/vm0-ai/vm0/compare/api-v1.422.0...api-v1.422.1) (2026-08-11)
+
+
+### Refactoring
+
+* **connectors:** remove runtime candidate readers ([#26307](https://github.com/vm0-ai/vm0/issues/26307)) ([72a8548](https://github.com/vm0-ai/vm0/commit/72a8548767d4bcb4c147a717ead50fa6cc4e58e2))
+* **connectors:** stop legacy custom connector definition writes ([#26302](https://github.com/vm0-ai/vm0/issues/26302)) ([fb33b52](https://github.com/vm0-ai/vm0/commit/fb33b52776caa905f68aaa2116c209703816c509))
+* **db:** prepare connection-scoped connector variables ([#26300](https://github.com/vm0-ai/vm0/issues/26300)) ([43669a2](https://github.com/vm0-ai/vm0/commit/43669a2ea1fd8f26fe20b1a29013d3f9eb2077f4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.312.2
+    * @vm0/core bumped to 8.542.3
+    * @vm0/db bumped to 1.191.1
+    * @vm0/pi-agent-runtime bumped to 1.3.40
+
 ## [1.422.0](https://github.com/vm0-ai/vm0/compare/api-v1.421.1...api-v1.422.0) (2026-08-11)
 
 
