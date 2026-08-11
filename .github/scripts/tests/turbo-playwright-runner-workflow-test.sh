@@ -44,6 +44,7 @@ ruby -ryaml - "$WORKFLOW" <<'RUBY'
 workflow = YAML.load_file(ARGV.fetch(0))
 jobs = workflow.fetch("jobs")
 prepare = jobs.fetch("prepare")
+stripe_listener = jobs.fetch("deploy-stripe-listener")
 account_prepare = jobs.fetch("cli-e2e-03-runner-prepare")
 bootstrap = jobs.fetch("cli-e2e-03-runner-bootstrap")
 runner = jobs.fetch("cli-e2e-03-runner")
@@ -58,6 +59,16 @@ consumer_step = prepare.fetch("steps").find do |step|
 end
 unless consumer_step&.fetch("run", "")&.end_with?("runner-image-context.sh turbo-consumer")
   raise "Turbo must restore the historical runner E2E consumer detector"
+end
+
+stripe_listener_condition = stripe_listener.fetch("if")
+stripe_listener_lines = stripe_listener_condition.lines.map(&:strip)
+expected_stripe_listener_consumers = [
+  "needs.prepare.outputs.turbo-runner-consumer-needed == 'true' ||",
+  "needs.prepare.outputs.playwright-runner-consumer-needed == 'true'",
+]
+unless stripe_listener_lines.each_cons(2).include?(expected_stripe_listener_consumers)
+  raise "Stripe forwarding must run for every deployed E2E consumer"
 end
 
 unless runner.dig("strategy", "fail-fast") == false
