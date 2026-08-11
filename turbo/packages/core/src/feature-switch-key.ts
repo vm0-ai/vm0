@@ -75,4 +75,5 @@ export enum FeatureSwitchKey {
   PiLoop = "piLoop",
   VideoTemplateOptions = "videoTemplateOptions",
   ChatEventSnapshotRead = "chatEventSnapshotRead",
+  EmojiPickerCategoryRail = "emojiPickerCategoryRail",
 }

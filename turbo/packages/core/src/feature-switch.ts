@@ -355,6 +355,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.EmojiPickerCategoryRail]: {
+    maintainer: "tongx@vm0.ai",
+    description:
+      "Add a category icon rail, pinned section titles, and jump-to-category scrolling to the thread emoji picker.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.ResponsiveFollowupCards]: {
     maintainer: "ethan@vm0.ai",
     description:

@@ -36,6 +36,35 @@ export const setChatThreadEmojiQuery$ = command(({ set }, value: string) => {
   set(internalChatThreadEmojiQuery$, value);
 });
 
+// Which category the rail highlights. Normally it follows the feed, so it names
+// whichever section title is currently pinned to the top.
+const internalChatThreadEmojiActiveCategory$ = state<string | null>(null);
+
+export const chatThreadEmojiActiveCategory$ = computed((get) => {
+  return get(internalChatThreadEmojiActiveCategory$);
+});
+
+export const setChatThreadEmojiActiveCategory$ = command(
+  ({ set }, value: string | null) => {
+    set(internalChatThreadEmojiActiveCategory$, value);
+  },
+);
+
+// A click-to-jump smooth scroll travels over every category in between, which
+// would flicker the rail through all of them. Hold the requested category here
+// so the feed stops driving the highlight until it lands.
+const internalChatThreadEmojiPendingJump$ = state<string | null>(null);
+
+export const chatThreadEmojiPendingJump$ = computed((get) => {
+  return get(internalChatThreadEmojiPendingJump$);
+});
+
+export const setChatThreadEmojiPendingJump$ = command(
+  ({ set }, value: string | null) => {
+    set(internalChatThreadEmojiPendingJump$, value);
+  },
+);
+
 export function filterChatThreadEmojiGroups(
   groups: ChatThreadEmojiGroup[],
   query: string,
