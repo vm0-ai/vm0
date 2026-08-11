@@ -634,6 +634,7 @@ async function seedTargetThreadRuns(
     eventType: "input.prompt" | "output.message";
     contextType?: "web";
     content?: string;
+    payload: { content: string } | { userMessage: UserMessageDocument };
     sequenceNumber: number;
     seqId: number;
     userMessage?: UserMessageDocument;
@@ -663,6 +664,8 @@ async function seedTargetThreadRuns(
           ? targetAttachmentId(i - latestAttachmentStart)
           : undefined;
       const content = markdownLorem(i, m);
+      const userMessage =
+        m === 0 ? benchUserMessage(content, attachmentId) : undefined;
       eventRows.push({
         chatThreadId: fixture.threadId,
         runId,
@@ -671,12 +674,13 @@ async function seedTargetThreadRuns(
         seqId: i * TARGET_MESSAGES_PER_RUN + m + 1,
         // Input events carry their text in user_message only; chat_events
         // rejects a non-null content projection for them.
-        ...(m === 0
+        ...(userMessage !== undefined
           ? {
               contextType: "web",
-              userMessage: benchUserMessage(content, attachmentId),
+              userMessage,
+              payload: { userMessage },
             }
-          : { content }),
+          : { content, payload: { content } }),
         createdAt: new Date(now + i * 1000 + m),
       });
     }
