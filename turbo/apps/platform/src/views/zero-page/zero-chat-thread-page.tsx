@@ -4560,7 +4560,7 @@ function ChatThreadComposer({ thread }: { thread: ChatPanelSignals }) {
   return (
     <footer
       data-chat-composer
-      className="relative shrink-0 bg-[hsl(var(--background))] pb-2"
+      className="relative shrink-0 bg-[hsl(var(--background))]"
     >
       <div className="pointer-events-none absolute inset-x-0 -top-5 h-[21px] bg-gradient-to-t from-[hsl(var(--background))] to-transparent" />
       <div
