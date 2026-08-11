@@ -19,7 +19,6 @@ import {
   type CustomConnectorHttpResponse,
   type CustomConnectorResponse,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
-import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import {
   disconnectCustomConnector$,
   closeCustomConnectorDialog$,
@@ -52,8 +51,6 @@ function connectsDirectlyWithOAuth(
 
 interface CustomConnectorRowProps {
   readonly connector: CustomConnectorResponse;
-  readonly authorizedAgents: readonly TeamComposeItem[];
-  readonly authorizedAgentsLoading: boolean;
   readonly isAdmin: boolean;
   readonly onConnect: () => void;
   readonly onDisconnect: () => void;
@@ -62,17 +59,38 @@ interface CustomConnectorRowProps {
   readonly onDelete: () => void;
 }
 
+function CustomConnectorAgentAccess({
+  connector,
+  onManageAccess,
+}: {
+  readonly connector: CustomConnectorHttpResponse;
+  readonly onManageAccess: () => void;
+}) {
+  const authorizedAgentsByIdLoadable = useLastLoadable(
+    customConnectorAuthorizedAgentsById$,
+  );
+  const authorizedAgents =
+    authorizedAgentsByIdLoadable.state === "hasData"
+      ? (authorizedAgentsByIdLoadable.data.get(connector.id) ?? [])
+      : [];
+
+  return (
+    <ConnectorAgentAccessButton
+      agents={authorizedAgents}
+      loading={authorizedAgentsByIdLoadable.state === "loading"}
+      connectorLabel={connector.displayName}
+      onClick={onManageAccess}
+    />
+  );
+}
+
 function CustomConnectorCardContent({
   connector,
-  authorizedAgents,
-  authorizedAgentsLoading,
   hasActions,
   onConnect,
   onManageAccess,
 }: {
   readonly connector: CustomConnectorResponse;
-  readonly authorizedAgents: readonly TeamComposeItem[];
-  readonly authorizedAgentsLoading: boolean;
   readonly hasActions: boolean;
   readonly onConnect: () => void;
   readonly onManageAccess: () => void;
@@ -157,12 +175,10 @@ function CustomConnectorCardContent({
             })}
           </span>
         ) : null}
-        {connector.kind === "http" ? (
-          <ConnectorAgentAccessButton
-            agents={authorizedAgents}
-            loading={authorizedAgentsLoading}
-            connectorLabel={connector.displayName}
-            onClick={onManageAccess}
+        {connector.kind === "http" && connector.connected ? (
+          <CustomConnectorAgentAccess
+            connector={connector}
+            onManageAccess={onManageAccess}
           />
         ) : null}
       </div>
@@ -172,8 +188,6 @@ function CustomConnectorCardContent({
 
 function CustomConnectorRow({
   connector,
-  authorizedAgents,
-  authorizedAgentsLoading,
   isAdmin,
   onConnect,
   onDisconnect,
@@ -191,8 +205,6 @@ function CustomConnectorRow({
   const cardContent = (
     <CustomConnectorCardContent
       connector={connector}
-      authorizedAgents={authorizedAgents}
-      authorizedAgentsLoading={authorizedAgentsLoading}
       hasActions={hasActions}
       onConnect={onConnect}
       onManageAccess={onManageAccess}
@@ -299,15 +311,6 @@ function CustomConnectorDialogs() {
 export function CustomConnectorsPanel() {
   const { t } = useTranslation();
   const connectors = useLastResolved(customConnectors$);
-  const authorizedAgentsByIdLoadable = useLastLoadable(
-    customConnectorAuthorizedAgentsById$,
-  );
-  const authorizedAgentsById =
-    authorizedAgentsByIdLoadable.state === "hasData"
-      ? authorizedAgentsByIdLoadable.data
-      : new Map<string, readonly TeamComposeItem[]>();
-  const authorizedAgentsLoading =
-    authorizedAgentsByIdLoadable.state === "loading";
   const isAdmin = useLastResolved(isOrgAdmin$) ?? false;
   const openEdit = useSet(openCustomConnectorEditDialog$);
   const openAccess = useSet(openCustomConnectorAccessDialog$);
@@ -359,8 +362,6 @@ export function CustomConnectorsPanel() {
               <CustomConnectorRow
                 key={c.id}
                 connector={c}
-                authorizedAgents={authorizedAgentsById.get(c.id) ?? []}
-                authorizedAgentsLoading={authorizedAgentsLoading}
                 isAdmin={isAdmin}
                 onConnect={() => {
                   if (isHttpCustomConnectorResponse(c)) {

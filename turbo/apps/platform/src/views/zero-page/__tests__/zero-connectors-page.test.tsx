@@ -3488,7 +3488,7 @@ describe("connectors page", () => {
     ).toBeInTheDocument();
   });
 
-  it("manages agent access for a disconnected custom connector", async () => {
+  it("keeps a disconnected custom connector manageable without loading agent access", async () => {
     const researchAgentId = "c0000000-0000-4000-a000-000000000031";
     const supportAgentId = "c0000000-0000-4000-a000-000000000032";
     const connector = customConnector({});
@@ -3501,37 +3501,16 @@ describe("connectors page", () => {
       teamAgent(researchAgentId, "Research"),
       teamAgent(supportAgentId, "Support"),
     ]);
-    const enabledIdsByAgent = new Map<string, string[]>([
-      [researchAgentId, [connector.id]],
-      [supportAgentId, []],
-    ]);
+    let agentAccessReads = 0;
     context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
       return respond(200, { connectors: [connector] });
     });
     context.mocks.api(
       zeroAgentCustomConnectorsContract.get,
       ({ params, respond }) => {
+        agentAccessReads += 1;
         return respond(200, {
-          enabledIds: enabledIdsByAgent.get(params.id) ?? [],
-        });
-      },
-    );
-    context.mocks.api(
-      zeroAgentCustomConnectorsContract.update,
-      ({ params, body, respond }) => {
-        if (!("enabledIds" in body)) {
-          throw new Error("Expected custom connector ID authorization");
-        }
-        const current = enabledIdsByAgent.get(params.id) ?? [];
-        const next =
-          body.operation === "add"
-            ? Array.from(new Set([...current, ...body.enabledIds]))
-            : current.filter((id) => {
-                return !body.enabledIds.includes(id);
-              });
-        enabledIdsByAgent.set(params.id, next);
-        return respond(200, {
-          enabledIds: next,
+          enabledIds: params.id === researchAgentId ? [connector.id] : [],
         });
       },
     );
@@ -3545,41 +3524,28 @@ describe("connectors page", () => {
         within(card).getByText("https://api.acme.test/v1/"),
       ).toBeInTheDocument();
       expect(
-        within(card).getByTestId("connector-card-agent-access"),
-      ).toHaveTextContent("Used by Research");
-    });
-
-    click(
-      within(connectorCardByLabel("Acme Search")).getByLabelText(
-        "Manage Acme Search access",
-      ),
-    );
-    const dialog = await screen.findByRole("dialog", {
-      name: "Manage Acme Search access",
-    });
-    expect(within(dialog).getByText("Research")).toBeInTheDocument();
-    expect(within(dialog).getByText("Support")).toBeInTheDocument();
-
-    click(
-      within(dialog).getByLabelText("Authorize Acme Search access for Support"),
-    );
-    await waitFor(() => {
+        within(card).queryByTestId("connector-card-agent-access"),
+      ).not.toBeInTheDocument();
       expect(
-        within(dialog).getByLabelText("Revoke Acme Search access for Support"),
+        within(card).getByLabelText("Connect Acme Search"),
       ).toBeInTheDocument();
-      expect(
-        within(connectorCardByLabel("Acme Search")).getByTestId(
-          "connector-card-agent-access",
-        ),
-      ).toHaveTextContent("Used by Research, Support");
     });
-    expect(screen.queryByText("Connect Acme Search")).not.toBeInTheDocument();
+
+    click(screen.getByLabelText("More options"));
+    expect(menuItemByText("Connect")).toBeInTheDocument();
+    expect(menuItemByText("Edit")).toBeInTheDocument();
+    expect(menuItemByText("Delete")).toBeInTheDocument();
+    expect(agentAccessReads).toBe(0);
   });
 
   it("selects and edits permissions for a custom connector from settings", async () => {
     const researchAgentId = "c0000000-0000-4000-a000-000000000035";
     const supportAgentId = "c0000000-0000-4000-a000-000000000036";
     const connector = customConnector({
+      connected: true,
+      missingRequiredFields: [],
+      configuredFieldKeys: ["secret"],
+      hasSecret: true,
       permissionBundleRef: "builtin:feishu@1",
     });
     const accessByAgentId = new Map<string, AgentCustomConnectorResponse>([
@@ -4018,6 +3984,7 @@ describe("connectors page", () => {
   it("reconnects a managed Feishu connector without replacing its grants", async () => {
     const defaultAgentId = "c0000000-0000-4000-a000-000000000044";
     let oauthStartCount = 0;
+    let authorizationReads = 0;
     let authorizationUpdates = 0;
     let connector = customConnector({
       slug: "_feishu-00000000-0000-4000-8000-000000000044",
@@ -4056,6 +4023,7 @@ describe("connectors page", () => {
       return respond(200, { connectors: [connector] });
     });
     context.mocks.api(zeroAgentCustomConnectorsContract.get, ({ respond }) => {
+      authorizationReads += 1;
       return respond(200, {
         enabledIds: [connector.id],
         grants: [
@@ -4113,6 +4081,12 @@ describe("connectors page", () => {
     const connectorButton = await waitFor(() => {
       return buttonByAriaLabel("Connect Feishu");
     });
+    expect(
+      within(connectorCardByLabel("Feishu")).queryByTestId(
+        "connector-card-agent-access",
+      ),
+    ).not.toBeInTheDocument();
+    expect(authorizationReads).toBe(0);
     click(connectorButton);
     expect(document.querySelector('[role="dialog"]')).not.toBeInTheDocument();
     await waitFor(() => {
@@ -4126,6 +4100,7 @@ describe("connectors page", () => {
         ),
       ).toHaveTextContent("Used by Zero");
     });
+    expect(authorizationReads).toBe(1);
     expect(authorizationUpdates).toBe(0);
   });
 
@@ -4575,6 +4550,11 @@ describe("connectors page", () => {
 
     await waitFor(() => {
       expect(buttonByAriaLabel("Connect Acme Billing API")).toBeInTheDocument();
+      expect(
+        within(connectorCardByLabel("Acme Billing API")).queryByTestId(
+          "connector-card-agent-access",
+        ),
+      ).not.toBeInTheDocument();
     });
 
     click(screen.getByLabelText("More options"));
