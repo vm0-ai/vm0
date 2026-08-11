@@ -1,7 +1,10 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { clerkSetup } from "@clerk/testing/playwright";
+import {
+  clerkSetup,
+  setupClerkTestingToken,
+} from "@clerk/testing/playwright";
 import { chromium } from "@playwright/test";
 
 import { signInWithClerkTestingHelper } from "./lib/auth";
@@ -62,6 +65,7 @@ async function main(): Promise<void> {
           : undefined,
       });
       try {
+        await setupClerkTestingToken({ context });
         const page = await context.newPage();
         const clerkSessionToken = await signInWithClerkTestingHelper(
           page,
