@@ -282,12 +282,18 @@ async function decryptStoredSecretEnvelope(
 ): Promise<string> {
   try {
     if (!("encryptedDataKey" in envelope.kms)) {
-      const plaintext = await kms.decrypt({
-        keyId: envelope.kms.keyId,
-        ciphertext: Buffer.from(envelope.kms.ciphertext, "base64"),
-        encryptionContext: KMS_ENCRYPTION_CONTEXT,
-      });
-      return Buffer.from(plaintext).toString("utf8");
+      const plaintext = Buffer.from(
+        await kms.decrypt({
+          keyId: envelope.kms.keyId,
+          ciphertext: Buffer.from(envelope.kms.ciphertext, "base64"),
+          encryptionContext: KMS_ENCRYPTION_CONTEXT,
+        }),
+      );
+      try {
+        return plaintext.toString("utf8");
+      } finally {
+        plaintext.fill(0);
+      }
     }
 
     const decryptedDataKey = await kms.decrypt({
@@ -344,10 +350,6 @@ function classifySnapshot(snapshot: SourceSnapshot): Classification {
   if (snapshot.definition.authMode !== "manual") {
     return { outcome: "oauth_transition" };
   }
-  const parsedFields = parseFields(snapshot.definition.fields);
-  if (!parsedFields.valid) {
-    return { outcome: "invalid_definition" };
-  }
   if (!snapshot.connection) {
     return { outcome: "missing_connection" };
   }
@@ -362,6 +364,10 @@ function classifySnapshot(snapshot: SourceSnapshot): Classification {
     snapshot.source.kind !== "variable"
   ) {
     return { outcome: "invalid_kind" };
+  }
+  const parsedFields = parseFields(snapshot.definition.fields);
+  if (!parsedFields.valid) {
+    return { outcome: "invalid_definition" };
   }
   if (
     snapshot.source.table === "legacy-secrets" &&

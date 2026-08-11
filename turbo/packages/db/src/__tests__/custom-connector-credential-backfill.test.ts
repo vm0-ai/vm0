@@ -40,6 +40,7 @@ class FakeKmsClient implements StoredSecretKmsClient {
   readonly requests: StoredSecretKmsDecryptRequest[] = [];
   fail = false;
   beforeFirstDecrypt?: () => Promise<void>;
+  response?: (request: StoredSecretKmsDecryptRequest) => Uint8Array;
   #calledHook = false;
 
   async decrypt(request: StoredSecretKmsDecryptRequest): Promise<Uint8Array> {
@@ -51,7 +52,7 @@ class FakeKmsClient implements StoredSecretKmsClient {
     if (this.fail) {
       throw new Error("fake KMS failure containing test-only details");
     }
-    return DATA_KEY;
+    return this.response?.(request) ?? DATA_KEY;
   }
 }
 
@@ -132,6 +133,18 @@ function storedSecretEnvelope(plaintext: string): string {
       iv: iv.toString("base64"),
       authTag: cipher.getAuthTag().toString("base64"),
       ciphertext: ciphertext.toString("base64"),
+    },
+  };
+  return `vm0secret:v1:${Buffer.from(JSON.stringify(envelope), "utf8").toString("base64url")}`;
+}
+
+function directStoredSecretEnvelope(ciphertext: string): string {
+  const envelope = {
+    v: 1,
+    kind: "stored-secret",
+    kms: {
+      keyId: "alias/vm0-secrets-test",
+      ciphertext: Buffer.from(ciphertext, "utf8").toString("base64"),
     },
   };
   return `vm0secret:v1:${Buffer.from(JSON.stringify(envelope), "utf8").toString("base64url")}`;
@@ -426,6 +439,49 @@ describe("Custom connector credential backfill", () => {
     });
   });
 
+  it("supports direct KMS envelopes without exposing decrypted variables", async () => {
+    const fixture = await createConnector({
+      fields: [
+        {
+          key: "region",
+          label: "Region",
+          kind: "variable",
+          required: true,
+        },
+      ],
+    });
+    const plaintext = "direct-kms-plaintext";
+    const kmsCiphertext = "direct-kms-ciphertext";
+    const envelope = directStoredSecretEnvelope(kmsCiphertext);
+    await addValue(fixture, {
+      kind: "variable",
+      key: "region",
+      encryptedValue: envelope,
+    });
+    const kms = new FakeKmsClient();
+    kms.response = () => {
+      return Buffer.from(plaintext, "utf8");
+    };
+
+    const report = await runBackfill({
+      mode: "dry-run",
+      kms,
+      reportLabel: "direct-kms",
+    });
+
+    expect(report.counts).toMatchObject({ target_missing: 1 });
+    expect(kms.requests).toHaveLength(1);
+    expect(kms.requests[0]).toMatchObject({
+      keyId: "alias/vm0-secrets-test",
+      encryptionContext: { purpose: "vm0-stored-secret" },
+    });
+    expect(
+      Buffer.from(kms.requests[0]?.ciphertext ?? []).toString("utf8"),
+    ).toBe(kmsCiphertext);
+    expect(JSON.stringify(report)).not.toContain(plaintext);
+    expect(JSON.stringify(report)).not.toContain(envelope);
+  });
+
   it("migrates a legacy-only secret while normalized values suppress fallback", async () => {
     const field: OrgCustomConnectorField = {
       key: "secret",
@@ -487,6 +543,11 @@ describe("Custom connector credential backfill", () => {
       fields: [secretField],
       createConnection: false,
     });
+    await databaseClient`
+      UPDATE org_custom_connectors
+      SET fields = ${JSON.stringify([{ key: "invalid" }])}::jsonb
+      WHERE id = ${parentless.definitionId}
+    `;
     await addValue(parentless, {
       kind: "secret",
       key: "secret",
