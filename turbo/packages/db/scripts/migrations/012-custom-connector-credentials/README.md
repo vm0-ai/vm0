@@ -22,6 +22,12 @@ plaintext shared targets.
 - Reports contain outcome counts, source-table names, and opaque source-row
   UUIDs only. They never contain credential values, field names, connector
   names, organization IDs, user IDs, or connection IDs.
+- Report detail rows are capped at 1,000; `omittedDetails` records additional
+  rows while aggregate outcome counts remain complete. A failed row records
+  only its source table, opaque source UUID, and stable processing stage.
+- Executable normalized variables attached to a current OAuth connection block
+  readiness. The current OAuth replacement writer can remove their shared
+  target, so silently migrating them would produce a false convergence result.
 - A migrate run never reports readiness. Run a new complete dry-run from the
   beginning after repairs; only that run can set `ready` to `true`.
 
@@ -42,8 +48,11 @@ pnpm --filter @vm0/db exec tsx \
 
 After reviewing a complete dry-run, add `--migrate` to repair missing or
 mismatched shared targets. Production execution uses a reviewed, temporary PR
-CI job under the protected `production` environment. Remove that job after its
-migrate and complete verification reports have been recorded.
+CI job under the protected `production` environment. That job checks out the
+exact approved PR head, rehearses migrate and verification on an expiring Neon
+branch cloned from production, rechecks the PR head, and only then runs against
+the production database. Remove the job after its migrate and complete
+verification reports have been recorded.
 
 `--batch-size` controls the maximum keyset page size and must be between 1 and
 1,000. Every completed page checkpoints the sanitized report. If a run fails,
@@ -62,10 +71,11 @@ resumes finish, run one final dry-run without `--cursor`.
 
 ## Outcomes
 
-`target_missing`, `target_mismatch`, `source_changed`, and
-`invalid_definition` are blocking differences. Migrate mode repairs the first
-two, reports changed sources as retryable races, and leaves malformed
-definitions for manual review. Other classifications describe legacy residue
-that the current runtime does not execute, including missing or incompatible
-member parents, removed or wrong-kind fields, malformed envelopes, OAuth
-transitions, and suppressed single-secret fallbacks.
+`target_missing`, `target_mismatch`, `source_changed`, `invalid_definition`,
+and `oauth_variable_unsupported` are blocking differences. Migrate mode repairs
+the first two, reports changed sources as retryable races, and leaves malformed
+definitions or unsafe OAuth variable states for review. Other classifications
+describe legacy residue that the current runtime does not execute, including
+missing or incompatible member parents, removed or wrong-kind fields,
+malformed envelopes, OAuth secret transitions, and suppressed single-secret
+fallbacks.

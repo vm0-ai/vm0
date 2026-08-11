@@ -38,6 +38,7 @@ interface ConnectorFixture {
 
 class FakeKmsClient implements StoredSecretKmsClient {
   readonly requests: StoredSecretKmsDecryptRequest[] = [];
+  readonly plaintextResponses: Uint8Array[] = [];
   fail = false;
   beforeFirstDecrypt?: () => Promise<void>;
   response?: (request: StoredSecretKmsDecryptRequest) => Uint8Array;
@@ -52,7 +53,9 @@ class FakeKmsClient implements StoredSecretKmsClient {
     if (this.fail) {
       throw new Error("fake KMS failure containing test-only details");
     }
-    return this.response?.(request) ?? DATA_KEY;
+    const plaintext = this.response?.(request) ?? Buffer.from(DATA_KEY);
+    this.plaintextResponses.push(plaintext);
+    return plaintext;
   }
 }
 
@@ -357,6 +360,12 @@ describe("Custom connector credential backfill", () => {
     expect(
       Buffer.from(kms.requests[0]?.ciphertext ?? []).toString("utf8"),
     ).toBe("wrapped-test-data-key");
+    expect(kms.plaintextResponses).toHaveLength(1);
+    expect(
+      Buffer.from(kms.plaintextResponses[0] ?? []).equals(
+        Buffer.alloc(DATA_KEY.length),
+      ),
+    ).toBe(true);
 
     const serialized = JSON.stringify(report);
     for (const forbidden of [
@@ -404,12 +413,22 @@ describe("Custom connector credential backfill", () => {
       key: "region",
       encryptedValue: variableEnvelope,
     });
+    await db.insert(secrets).values({
+      connectorId: fixture.connectionId,
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      name: "api_key",
+      encryptedValue: secretEnvelope,
+      description: "stale secret description",
+      type: "connector",
+    });
     await db.insert(variables).values({
       connectorId: fixture.connectionId,
       orgId: fixture.orgId,
       userId: fixture.userId,
       name: "region",
       value: "stale-region",
+      description: "stale variable description",
       type: "connector",
     });
 
@@ -418,12 +437,13 @@ describe("Custom connector credential backfill", () => {
       reportLabel: "migrate",
     });
     expect(migrated).toMatchObject({ complete: true, ready: false });
-    expect(migrated.counts).toMatchObject({ inserted: 1, updated: 1 });
+    expect(migrated.counts).toMatchObject({ updated: 2 });
     expect(await db.select().from(secrets)).toEqual([
       expect.objectContaining({
         connectorId: fixture.connectionId,
         name: "api_key",
         encryptedValue: secretEnvelope,
+        description: null,
       }),
     ]);
     expect(await db.select().from(variables)).toEqual([
@@ -431,6 +451,7 @@ describe("Custom connector credential backfill", () => {
         connectorId: fixture.connectionId,
         name: "region",
         value: "us-west-2",
+        description: null,
       }),
     ]);
     expect(await db.select().from(orgCustomConnectorValues)).toHaveLength(2);
@@ -492,6 +513,12 @@ describe("Custom connector credential backfill", () => {
     expect(
       Buffer.from(kms.requests[0]?.ciphertext ?? []).toString("utf8"),
     ).toBe(kmsCiphertext);
+    expect(kms.plaintextResponses).toHaveLength(1);
+    expect(
+      Buffer.from(kms.plaintextResponses[0] ?? []).equals(
+        Buffer.alloc(Buffer.byteLength(plaintext)),
+      ),
+    ).toBe(true);
     expect(JSON.stringify(report)).not.toContain(plaintext);
     expect(JSON.stringify(report)).not.toContain(envelope);
   });
@@ -640,8 +667,20 @@ describe("Custom connector credential backfill", () => {
     });
 
     const oauth = await createConnector({
-      fields: [],
+      fields: [
+        {
+          key: "tenant",
+          label: "Tenant",
+          kind: "variable",
+          required: true,
+        },
+      ],
       authMode: "oauth",
+    });
+    await addValue(oauth, {
+      kind: "variable",
+      key: "tenant",
+      encryptedValue: storedSecretEnvelope("oauth-tenant"),
     });
     await addLegacySecret(oauth, storedSecretEnvelope("obsolete-manual"));
     const oauthAccessToken = storedSecretEnvelope("current-oauth-token");
@@ -668,7 +707,9 @@ describe("Custom connector credential backfill", () => {
       invalid_definition: 1,
       invalid_envelope: 1,
       oauth_transition: 1,
+      oauth_variable_unsupported: 1,
     });
+    expect(report.blockingDifferences).toBe(2);
     expect(await db.select().from(variables)).toHaveLength(0);
     const sharedSecrets = await db.select().from(secrets);
     expect(sharedSecrets).toHaveLength(1);
@@ -677,7 +718,7 @@ describe("Custom connector credential backfill", () => {
       name: "access_token",
       encryptedValue: oauthAccessToken,
     });
-    expect(await db.select().from(orgCustomConnectorValues)).toHaveLength(7);
+    expect(await db.select().from(orgCustomConnectorValues)).toHaveLength(8);
     expect(await db.select().from(orgCustomConnectorSecrets)).toHaveLength(1);
   });
 
@@ -736,6 +777,8 @@ describe("Custom connector credential backfill", () => {
     expect(failedReport).toContain(
       '"failureCode": "credential_decrypt_failed"',
     );
+    expect(failedReport).toContain('"stage": "decrypt_source"');
+    expect(failedReport).toContain(`"sourceRowId": "${FIXED_SECOND_ID}"`);
     expect(failedReport).not.toContain("variable-after-failure");
 
     const resumed = await runBackfill({
@@ -815,7 +858,7 @@ describe("Custom connector credential backfill", () => {
       ],
     });
     const envelope = storedSecretEnvelope("database-failure-secret");
-    await addValue(fixture, {
+    const sourceId = await addValue(fixture, {
       kind: "secret",
       key: "api_key",
       encryptedValue: envelope,
@@ -860,8 +903,38 @@ describe("Custom connector credential backfill", () => {
     expect(serializedReport).toContain(
       '"failureCode": "database_or_internal_failure"',
     );
+    expect(serializedReport).toContain('"stage": "migrate_target"');
+    expect(serializedReport).toContain(`"sourceRowId": "${sourceId}"`);
     expect(serializedReport).not.toContain(envelope);
     expect(serializedReport).not.toContain("database-failure-secret");
     expect(serializedReport).not.toContain("forced shared target failure");
+  });
+
+  it("bounds report details while retaining aggregate counts", async () => {
+    const fixture = await createConnector({ fields: [] });
+    const encryptedValue = storedSecretEnvelope("bounded-detail-value");
+    await db.insert(orgCustomConnectorValues).values(
+      Array.from({ length: 1_001 }, (_, index) => {
+        return {
+          connectorId: fixture.definitionId,
+          orgId: fixture.orgId,
+          userId: fixture.userId,
+          kind: "secret",
+          key: `removed_${index}`,
+          encryptedValue,
+        };
+      }),
+    );
+
+    const report = await runBackfill({
+      mode: "dry-run",
+      batchSize: 1_000,
+      reportLabel: "bounded-details",
+    });
+
+    expect(report.scannedRows).toBe(1_001);
+    expect(report.counts).toMatchObject({ removed_field: 1_001 });
+    expect(report.details).toHaveLength(1_000);
+    expect(report.omittedDetails).toBe(1);
   });
 });

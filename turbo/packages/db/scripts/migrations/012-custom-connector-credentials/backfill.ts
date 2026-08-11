@@ -36,6 +36,7 @@ const KMS_ENCRYPTION_CONTEXT = {
   purpose: "vm0-stored-secret",
 } as const;
 const MAX_BATCH_SIZE = 1_000;
+const MAX_REPORT_DETAILS = 1_000;
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 const normalizedLegacyValues = alias(
@@ -56,6 +57,7 @@ export type BackfillOutcome =
   | "invalid_kind"
   | "invalid_definition"
   | "oauth_transition"
+  | "oauth_variable_unsupported"
   | "missing_connection"
   | "incompatible_connection"
   | "removed_field"
@@ -68,6 +70,11 @@ export type BackfillOutcome =
 type BackfillFailureCode =
   | "credential_decrypt_failed"
   | "database_or_internal_failure";
+
+type BackfillFailureStage =
+  | "decrypt_source"
+  | "inspect_target"
+  | "migrate_target";
 
 export interface StoredSecretKmsDecryptRequest {
   readonly keyId: string;
@@ -174,6 +181,12 @@ interface BackfillDetail {
   readonly outcome: Exclude<BackfillOutcome, "already_current">;
 }
 
+interface BackfillFailureContext {
+  readonly source: SourceTable;
+  readonly sourceRowId: string;
+  readonly stage: BackfillFailureStage;
+}
+
 export interface CustomCredentialBackfillReport {
   readonly generatedAt: string;
   readonly mode: BackfillMode;
@@ -186,7 +199,9 @@ export interface CustomCredentialBackfillReport {
   readonly blockingDifferences: number;
   readonly counts: Readonly<Partial<Record<BackfillOutcome, number>>>;
   readonly details: readonly BackfillDetail[];
+  readonly omittedDetails: number;
   readonly failureCode: BackfillFailureCode | null;
+  readonly failure: BackfillFailureContext | null;
 }
 
 interface MutableReportState {
@@ -197,13 +212,31 @@ interface MutableReportState {
   cursor: SourceCursor | null;
   readonly counts: Partial<Record<BackfillOutcome, number>>;
   readonly details: BackfillDetail[];
+  omittedDetails: number;
   failureCode: BackfillFailureCode | null;
+  failure: BackfillFailureContext | null;
 }
 
 class CredentialDecryptFailure extends Error {
   constructor() {
     super("Stored credential decryption failed");
     this.name = "CredentialDecryptFailure";
+  }
+}
+
+class BackfillRowFailure extends Error {
+  readonly code: BackfillFailureCode;
+  readonly context: BackfillFailureContext;
+
+  constructor(args: {
+    readonly code: BackfillFailureCode;
+    readonly context: BackfillFailureContext;
+    readonly cause: unknown;
+  }) {
+    super("Custom credential row processing failed", { cause: args.cause });
+    this.name = "BackfillRowFailure";
+    this.code = args.code;
+    this.context = args.context;
   }
 }
 
@@ -282,15 +315,17 @@ async function decryptStoredSecretEnvelope(
 ): Promise<string> {
   try {
     if (!("encryptedDataKey" in envelope.kms)) {
-      const plaintext = Buffer.from(
-        await kms.decrypt({
-          keyId: envelope.kms.keyId,
-          ciphertext: Buffer.from(envelope.kms.ciphertext, "base64"),
-          encryptionContext: KMS_ENCRYPTION_CONTEXT,
-        }),
-      );
+      const plaintext = await kms.decrypt({
+        keyId: envelope.kms.keyId,
+        ciphertext: Buffer.from(envelope.kms.ciphertext, "base64"),
+        encryptionContext: KMS_ENCRYPTION_CONTEXT,
+      });
       try {
-        return plaintext.toString("utf8");
+        return Buffer.from(
+          plaintext.buffer,
+          plaintext.byteOffset,
+          plaintext.byteLength,
+        ).toString("utf8");
       } finally {
         plaintext.fill(0);
       }
@@ -301,24 +336,36 @@ async function decryptStoredSecretEnvelope(
       ciphertext: Buffer.from(envelope.kms.encryptedDataKey, "base64"),
       encryptionContext: KMS_ENCRYPTION_CONTEXT,
     });
-    const plaintextDataKey = Buffer.from(decryptedDataKey);
     try {
-      if (plaintextDataKey.byteLength !== DATA_KEY_BYTE_LENGTH) {
+      if (decryptedDataKey.byteLength !== DATA_KEY_BYTE_LENGTH) {
         throw new Error("Invalid stored-secret data key length");
       }
       const decipher = createDecipheriv(
         "aes-256-gcm",
-        plaintextDataKey,
+        decryptedDataKey,
         Buffer.from(envelope.kms.iv, "base64"),
         { authTagLength: 16 },
       );
       decipher.setAuthTag(Buffer.from(envelope.kms.authTag, "base64"));
-      return Buffer.concat([
-        decipher.update(Buffer.from(envelope.kms.ciphertext, "base64")),
-        decipher.final(),
-      ]).toString("utf8");
+      const plaintextChunks: Buffer[] = [];
+      try {
+        plaintextChunks.push(
+          decipher.update(Buffer.from(envelope.kms.ciphertext, "base64")),
+        );
+        plaintextChunks.push(decipher.final());
+        const plaintext = Buffer.concat(plaintextChunks);
+        try {
+          return plaintext.toString("utf8");
+        } finally {
+          plaintext.fill(0);
+        }
+      } finally {
+        for (const chunk of plaintextChunks) {
+          chunk.fill(0);
+        }
+      }
     } finally {
-      plaintextDataKey.fill(0);
+      decryptedDataKey.fill(0);
     }
   } catch {
     throw new CredentialDecryptFailure();
@@ -347,23 +394,33 @@ function parseFields(
 }
 
 function classifySnapshot(snapshot: SourceSnapshot): Classification {
-  if (snapshot.definition.authMode !== "manual") {
+  if (
+    snapshot.source.kind !== "secret" &&
+    snapshot.source.kind !== "variable"
+  ) {
+    return { outcome: "invalid_kind" };
+  }
+  if (
+    snapshot.definition.authMode !== "manual" &&
+    snapshot.definition.authMode !== "oauth"
+  ) {
+    return { outcome: "invalid_definition" };
+  }
+  if (
+    snapshot.definition.authMode === "oauth" &&
+    (snapshot.source.table === "legacy-secrets" ||
+      snapshot.source.kind === "secret")
+  ) {
     return { outcome: "oauth_transition" };
   }
   if (!snapshot.connection) {
     return { outcome: "missing_connection" };
   }
   if (
-    snapshot.connection.authMethod !== "manual" ||
+    snapshot.connection.authMethod !== snapshot.definition.authMode ||
     snapshot.connection.storageVersion !== snapshot.definition.storageVersion
   ) {
     return { outcome: "incompatible_connection" };
-  }
-  if (
-    snapshot.source.kind !== "secret" &&
-    snapshot.source.kind !== "variable"
-  ) {
-    return { outcome: "invalid_kind" };
   }
   const parsedFields = parseFields(snapshot.definition.fields);
   if (!parsedFields.valid) {
@@ -393,6 +450,9 @@ function classifySnapshot(snapshot: SourceSnapshot): Classification {
   const envelope = decodeStoredSecretEnvelope(snapshot.source.encryptedValue);
   if (!envelope) {
     return { outcome: "invalid_envelope" };
+  }
+  if (snapshot.definition.authMode === "oauth") {
+    return { outcome: "oauth_variable_unsupported" };
   }
   return {
     candidate: {
@@ -434,11 +494,15 @@ function countOutcome(
   report.scannedRows += 1;
   report.counts[outcome] = (report.counts[outcome] ?? 0) + 1;
   if (outcome !== "already_current") {
-    report.details.push({
-      source: source.table,
-      sourceRowId: source.id,
-      outcome,
-    });
+    if (report.details.length < MAX_REPORT_DETAILS) {
+      report.details.push({
+        source: source.table,
+        sourceRowId: source.id,
+        outcome,
+      });
+    } else {
+      report.omittedDetails += 1;
+    }
   }
   report.cursor = { table: source.table, id: source.id };
 }
@@ -450,7 +514,8 @@ function blockingDifferenceCount(
     (counts.target_missing ?? 0) +
     (counts.target_mismatch ?? 0) +
     (counts.source_changed ?? 0) +
-    (counts.invalid_definition ?? 0)
+    (counts.invalid_definition ?? 0) +
+    (counts.oauth_variable_unsupported ?? 0)
   );
 }
 
@@ -476,7 +541,9 @@ function createReport(
     blockingDifferences,
     counts: { ...state.counts },
     details: [...state.details],
+    omittedDetails: state.omittedDetails,
     failureCode: state.failureCode,
+    failure: state.failure,
   };
 }
 
@@ -681,7 +748,10 @@ async function targetOutcome(
 ): Promise<"already_current" | "target_missing" | "target_mismatch"> {
   if (candidate.kind === "secret") {
     const [target] = await db
-      .select({ encryptedValue: secrets.encryptedValue })
+      .select({
+        encryptedValue: secrets.encryptedValue,
+        description: secrets.description,
+      })
       .from(secrets)
       .where(
         and(
@@ -693,7 +763,8 @@ async function targetOutcome(
     if (!target) {
       return "target_missing";
     }
-    return target.encryptedValue === candidate.source.encryptedValue
+    return target.encryptedValue === candidate.source.encryptedValue &&
+      target.description === null
       ? "already_current"
       : "target_mismatch";
   }
@@ -702,7 +773,7 @@ async function targetOutcome(
     throw new Error("Decrypted variable value is required");
   }
   const [target] = await db
-    .select({ value: variables.value })
+    .select({ value: variables.value, description: variables.description })
     .from(variables)
     .where(
       and(
@@ -714,7 +785,9 @@ async function targetOutcome(
   if (!target) {
     return "target_missing";
   }
-  return target.value === plaintext ? "already_current" : "target_mismatch";
+  return target.value === plaintext && target.description === null
+    ? "already_current"
+    : "target_mismatch";
 }
 
 function sameCandidate(left: Candidate, right: Candidate): boolean {
@@ -868,6 +941,7 @@ async function migrateCandidate(
           set: {
             encryptedValue:
               lockedClassification.candidate.source.encryptedValue,
+            description: null,
             updatedAt: new Date(),
           },
         });
@@ -889,7 +963,7 @@ async function migrateCandidate(
         .onConflictDoUpdate({
           target: [variables.connectorId, variables.name],
           targetWhere: isNotNull(variables.connectorId),
-          set: { value: plaintext, updatedAt: new Date() },
+          set: { value: plaintext, description: null, updatedAt: new Date() },
         });
     }
     return before === "target_missing" ? "inserted" : "updated";
@@ -902,20 +976,39 @@ async function processSnapshot(
   mode: BackfillMode,
   snapshot: SourceSnapshot,
 ): Promise<BackfillOutcome> {
-  const classification = classifySnapshot(snapshot);
-  if (!("candidate" in classification)) {
-    return classification.outcome;
+  let stage: BackfillFailureStage =
+    mode === "dry-run" ? "inspect_target" : "migrate_target";
+  try {
+    const classification = classifySnapshot(snapshot);
+    if (!("candidate" in classification)) {
+      return classification.outcome;
+    }
+    let plaintext: string | undefined;
+    if (classification.candidate.kind === "variable") {
+      stage = "decrypt_source";
+      plaintext = await decryptStoredSecretEnvelope(
+        classification.candidate.envelope,
+        kms,
+      );
+    }
+    stage = mode === "dry-run" ? "inspect_target" : "migrate_target";
+    return mode === "dry-run"
+      ? await targetOutcome(db, classification.candidate, plaintext)
+      : await migrateCandidate(db, classification.candidate, plaintext);
+  } catch (error) {
+    throw new BackfillRowFailure({
+      code:
+        error instanceof CredentialDecryptFailure
+          ? "credential_decrypt_failed"
+          : "database_or_internal_failure",
+      context: {
+        source: snapshot.source.table,
+        sourceRowId: snapshot.source.id,
+        stage,
+      },
+      cause: error,
+    });
   }
-  const plaintext =
-    classification.candidate.kind === "variable"
-      ? await decryptStoredSecretEnvelope(
-          classification.candidate.envelope,
-          kms,
-        )
-      : undefined;
-  return mode === "dry-run"
-    ? await targetOutcome(db, classification.candidate, plaintext)
-    : await migrateCandidate(db, classification.candidate, plaintext);
 }
 
 async function processTable(args: {
@@ -970,7 +1063,9 @@ export async function runCustomCredentialBackfill(args: {
     cursor: initialCursor ?? null,
     counts: {},
     details: [],
+    omittedDetails: 0,
     failureCode: null,
+    failure: null,
   };
 
   try {
@@ -994,9 +1089,10 @@ export async function runCustomCredentialBackfill(args: {
     return await writeReport(report, args.options.reportPath, true);
   } catch (error) {
     report.failureCode =
-      error instanceof CredentialDecryptFailure
-        ? "credential_decrypt_failed"
+      error instanceof BackfillRowFailure
+        ? error.code
         : "database_or_internal_failure";
+    report.failure = error instanceof BackfillRowFailure ? error.context : null;
     await writeReport(report, args.options.reportPath, false);
     throw new Error(
       `Custom credential backfill stopped (${report.failureCode}); inspect the sanitized report`,

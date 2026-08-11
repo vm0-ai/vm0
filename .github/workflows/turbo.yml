@@ -222,11 +222,11 @@ jobs:
             fi
           done
 
-          if printf '%s\n' "$CHANGED_FILES" | grep -qE "^turbo/packages/db/src/(migrations|schema|jsonb-contracts)/"; then
-            echo "Migration, schema, or JSONB contract changes detected"
+          if printf '%s\n' "$CHANGED_FILES" | grep -qE "^turbo/packages/db/(src/(migrations|schema|jsonb-contracts)/|scripts/migrations/012-custom-connector-credentials/|src/__tests__/custom-connector-credential-backfill\.test\.ts$|vitest\.config\.ts$)"; then
+            echo "Migration, schema, JSONB contract, or migration integration test changes detected"
             echo "migration-changed=true" >> "$GITHUB_OUTPUT"
           else
-            echo "No migration, schema, or JSONB contract changes"
+            echo "No migration, schema, JSONB contract, or migration integration test changes"
             echo "migration-changed=false" >> "$GITHUB_OUTPUT"
           fi
 
@@ -684,6 +684,16 @@ jobs:
         env:
           DATABASE_URL: postgresql://postgres@postgres:5432/postgres
         run: pnpm test:migration-consistency
+      - name: Run Database Migrations for Integration Tests
+        working-directory: turbo
+        env:
+          DATABASE_URL: postgresql://postgres@postgres:5432/postgres
+        run: pnpm --filter @vm0/db db:migrate
+      - name: Test Custom Credential Backfill
+        working-directory: turbo
+        env:
+          DATABASE_URL: postgresql://postgres@postgres:5432/postgres
+        run: pnpm --filter @vm0/db exec vitest run src/__tests__/custom-connector-credential-backfill.test.ts
 
   # This one-time production backfill is intentionally informational: it is not
   # part of ci-gate-turbo and does not run for merge-group validation. Remove
@@ -711,7 +721,6 @@ jobs:
         shell: bash
     steps:
       - name: Check Pull Request Is Current
-        id: current-pr
         env:
           API_URL: ${{ github.api_url }}
           EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
@@ -719,6 +728,7 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           REPO: ${{ github.repository }}
         run: |
+          set -euo pipefail
           PR_JSON=$(
             curl --fail --silent --show-error \
               --retry 3 \
@@ -733,49 +743,77 @@ jobs:
           CURRENT_HEAD_SHA=$(jq -r .head.sha <<< "$PR_JSON")
 
           if [ "$CURRENT_STATE" != "open" ] || [ "$CURRENT_HEAD_SHA" != "$EXPECTED_HEAD_SHA" ]; then
-            echo "::warning::Skipping stale backfill request for PR #$PR_NUMBER"
-            echo "run=false" >> "$GITHUB_OUTPUT"
-            exit 0
+            echo "::error::Refusing stale backfill request for PR #$PR_NUMBER"
+            exit 1
           fi
 
-          echo "run=true" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
 
-      - if: steps.current-pr.outputs.run == 'true'
-        uses: actions/checkout@v7.0.1
+      - name: Verify checked out revision
+        env:
+          EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          ACTUAL_HEAD_SHA=$(git rev-parse HEAD)
+          if [ "$ACTUAL_HEAD_SHA" != "$EXPECTED_HEAD_SHA" ]; then
+            echo "::error::Checked out $ACTUAL_HEAD_SHA instead of approved head $EXPECTED_HEAD_SHA"
+            exit 1
+          fi
 
-      - if: steps.current-pr.outputs.run == 'true'
-        uses: ./.github/actions/toolchain-init
+      - uses: ./.github/actions/toolchain-init
 
       - name: Install neonctl
-        if: steps.current-pr.outputs.run == 'true'
         run: npm install -g neonctl@2.15.0
 
-      - name: Get production database URL
-        if: steps.current-pr.outputs.run == 'true'
-        id: database
+      - name: Create rehearsal database branch
+        id: rehearsal-database
         env:
+          BRANCH_NAME: backfill/custom-connector-credentials-${{ github.run_id }}-${{ github.run_attempt }}
           NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
           NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
         run: |
-          database_url=$(
-            neonctl connection-string production \
+          set -euo pipefail
+          EXPIRES_AT=$(date -u -d "+6 hours" +"%Y-%m-%dT%H:%M:%SZ")
+          CREATE_OUTPUT=$(
+            neonctl branches create \
+              --name "$BRANCH_NAME" \
+              --parent production \
+              --expires-at "$EXPIRES_AT" \
               --project-id "$NEON_PROJECT_ID" \
-              --database-name neondb \
-              --role-name neondb_owner \
-              --pooled
+              --output json
           )
-          echo "::add-mask::$database_url"
-          echo "database_url=$database_url" >> "$GITHUB_OUTPUT"
+          BRANCH_ID=$(jq -er '.branch.id' <<< "$CREATE_OUTPUT")
+          echo "branch-id=$BRANCH_ID" >> "$GITHUB_OUTPUT"
 
-      - name: Backfill production custom connector credentials
-        if: steps.current-pr.outputs.run == 'true'
+          CURRENT_STATE=""
+          for attempt in {1..30}; do
+            CURRENT_STATE=$(neonctl branches get "$BRANCH_ID" --project-id "$NEON_PROJECT_ID" --output json | jq -r '.current_state')
+            if [ "$CURRENT_STATE" = "ready" ]; then
+              break
+            fi
+            echo "Rehearsal branch state: ${CURRENT_STATE:-missing} (attempt $attempt/30)"
+            sleep 2
+          done
+          if [ "$CURRENT_STATE" != "ready" ]; then
+            echo "::error::Rehearsal branch was not ready after 60 seconds (state: ${CURRENT_STATE:-missing})"
+            exit 1
+          fi
+
+          DATABASE_URL=$(neonctl connection-string "$BRANCH_ID" --project-id "$NEON_PROJECT_ID" --database-name neondb --role-name neondb_owner --pooled)
+          echo "::add-mask::$DATABASE_URL"
+          echo "database-url=$DATABASE_URL" >> "$GITHUB_OUTPUT"
+
+      - name: Rehearse custom connector credential backfill
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_REGION: ${{ vars.AWS_REGION }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          DATABASE_URL: ${{ steps.database.outputs.database_url }}
-          REPORT_PATH: ${{ runner.temp }}/custom-connector-credential-backfill-apply.json
+          DATABASE_URL: ${{ steps.rehearsal-database.outputs.database-url }}
+          REPORT_PATH: ${{ runner.temp }}/custom-connector-credential-backfill-rehearsal-apply.json
         run: |
+          set -euo pipefail
           cd turbo
           pnpm --filter @vm0/db exec tsx \
             scripts/migrations/012-custom-connector-credentials/backfill.ts \
@@ -783,15 +821,15 @@ jobs:
             --batch-size 100 \
             --report-path "$REPORT_PATH"
 
-      - name: Verify production custom connector credentials
-        if: steps.current-pr.outputs.run == 'true'
+      - name: Verify rehearsal database
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
           AWS_REGION: ${{ vars.AWS_REGION }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          DATABASE_URL: ${{ steps.database.outputs.database_url }}
-          REPORT_PATH: ${{ runner.temp }}/custom-connector-credential-backfill-verify.json
+          DATABASE_URL: ${{ steps.rehearsal-database.outputs.database-url }}
+          REPORT_PATH: ${{ runner.temp }}/custom-connector-credential-backfill-rehearsal-verify.json
         run: |
+          set -euo pipefail
           cd turbo
           pnpm --filter @vm0/db exec tsx \
             scripts/migrations/012-custom-connector-credentials/backfill.ts \
@@ -804,11 +842,110 @@ jobs:
             .ready == true and
             .resumeCursor == null and
             .blockingDifferences == 0 and
-            .failureCode == null
+            .failureCode == null and
+            .failure == null
+          ' "$REPORT_PATH"
+
+      - name: Delete rehearsal database branch
+        if: always() && steps.rehearsal-database.outputs.branch-id != ''
+        env:
+          BRANCH_ID: ${{ steps.rehearsal-database.outputs.branch-id }}
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+          neonctl branches delete "$BRANCH_ID" --project-id "$NEON_PROJECT_ID"
+
+      - name: Recheck Pull Request Before Production Write
+        env:
+          API_URL: ${{ github.api_url }}
+          EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          PR_JSON=$(
+            curl --fail --silent --show-error \
+              --retry 3 \
+              --retry-delay 1 \
+              --retry-all-errors \
+              --header "Authorization: Bearer $GH_TOKEN" \
+              --header "Accept: application/vnd.github+json" \
+              --header "X-GitHub-Api-Version: 2022-11-28" \
+              "$API_URL/repos/$REPO/pulls/$PR_NUMBER"
+          )
+          CURRENT_STATE=$(jq -r .state <<< "$PR_JSON")
+          CURRENT_HEAD_SHA=$(jq -r .head.sha <<< "$PR_JSON")
+          CHECKED_OUT_HEAD_SHA=$(git rev-parse HEAD)
+
+          if [ "$CURRENT_STATE" != "open" ] || \
+             [ "$CURRENT_HEAD_SHA" != "$EXPECTED_HEAD_SHA" ] || \
+             [ "$CHECKED_OUT_HEAD_SHA" != "$EXPECTED_HEAD_SHA" ]; then
+            echo "::error::Refusing production write because PR #$PR_NUMBER or its checked-out head changed"
+            exit 1
+          fi
+
+      - name: Get production database URL
+        id: production-database
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+          DATABASE_URL=$(
+            neonctl connection-string production \
+              --project-id "$NEON_PROJECT_ID" \
+              --database-name neondb \
+              --role-name neondb_owner \
+              --pooled
+          )
+          echo "::add-mask::$DATABASE_URL"
+          echo "database-url=$DATABASE_URL" >> "$GITHUB_OUTPUT"
+
+      - name: Backfill production custom connector credentials
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          DATABASE_URL: ${{ steps.production-database.outputs.database-url }}
+          REPORT_PATH: ${{ runner.temp }}/custom-connector-credential-backfill-production-apply.json
+        run: |
+          set -euo pipefail
+          cd turbo
+          pnpm --filter @vm0/db exec tsx \
+            scripts/migrations/012-custom-connector-credentials/backfill.ts \
+            --migrate \
+            --batch-size 100 \
+            --report-path "$REPORT_PATH"
+
+      - name: Verify production custom connector credentials
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          DATABASE_URL: ${{ steps.production-database.outputs.database-url }}
+          REPORT_PATH: ${{ runner.temp }}/custom-connector-credential-backfill-production-verify.json
+        run: |
+          set -euo pipefail
+          cd turbo
+          pnpm --filter @vm0/db exec tsx \
+            scripts/migrations/012-custom-connector-credentials/backfill.ts \
+            --batch-size 100 \
+            --report-path "$REPORT_PATH"
+          jq -e '
+            .mode == "dry-run" and
+            .startedFromBeginning == true and
+            .complete == true and
+            .ready == true and
+            .resumeCursor == null and
+            .blockingDifferences == 0 and
+            .failureCode == null and
+            .failure == null
           ' "$REPORT_PATH"
 
       - name: Upload sanitized reports
-        if: always() && steps.current-pr.outputs.run == 'true'
+        if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: custom-connector-credential-backfill-${{ github.run_id }}-${{ github.run_attempt }}
@@ -938,29 +1075,11 @@ jobs:
     timeout-minutes: 10
     container:
       image: ghcr.io/vm0-ai/vm0-toolchain-rust:20260622
-    services:
-      postgres:
-        image: ghcr.io/vm0-ai/pgvector@sha256:d229d4e975e7102b7df031cbfcf5c4463ee21c84d0373d7a736191a2603dddfd
-        options: >-
-          --health-cmd pg_isready
-          --health-interval 2s
-          --health-timeout 5s
-          --health-retries 5
-          --health-start-period 3s
-        env:
-          POSTGRES_HOST_AUTH_METHOD: trust
     steps:
       - uses: actions/checkout@v7.0.1
       - uses: ./.github/actions/toolchain-init
-      - name: Run Database Migrations
-        working-directory: turbo
-        env:
-          DATABASE_URL: postgresql://postgres@postgres:5432/postgres
-        run: pnpm --filter @vm0/db db:migrate
       - name: Test Other Packages
         working-directory: turbo
-        env:
-          DATABASE_URL: postgresql://postgres@postgres:5432/postgres
         run: pnpm vitest run --project=@vm0/core --project=@vm0/ui --project=@vm0/api-contracts --project=@vm0/db --coverage.enabled --coverage.reporter=json
       - name: Test Connectors
         working-directory: turbo
