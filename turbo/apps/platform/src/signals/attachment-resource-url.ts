@@ -20,15 +20,13 @@ function isAuthenticatedAttachmentUrl(url: string): boolean {
 
 /**
  * Persisted chat attachments live in a private bucket behind an authenticated
- * API route, and `<img src>` cannot carry an Authorization header. Exchange the
- * canonical API URL for a short-lived presigned object URL the browser can load
- * on its own; the API still runs the ownership check before signing.
+ * API route, and a bare `src` attribute cannot carry an Authorization header.
+ * Exchange the canonical API URL for a short-lived presigned object URL the
+ * browser can load on its own; the API still runs the ownership check before
+ * signing.
  */
-export function createAttachmentResourceUrl$(
-  source: string | Computed<Promise<string>>,
-): Computed<Promise<string>> {
+function createAttachmentResourceUrl$(url: string): Computed<Promise<string>> {
   return computed(async (get) => {
-    const url = typeof source === "string" ? source : await get(source);
     if (!isAuthenticatedAttachmentUrl(url)) {
       return url;
     }
@@ -51,3 +49,22 @@ export function createAttachmentResourceUrl$(
     return response.body.url;
   });
 }
+
+/**
+ * Every preview kind resolves through this resolver, so a component can ask for
+ * a loadable URL during render: the computed it hands back is memoized per
+ * source URL and therefore stable across renders, instead of signing the same
+ * attachment again on every pass.
+ */
+export const attachmentResourceUrlResolver$ = computed(() => {
+  const resourceUrlByUrl = new Map<string, Computed<Promise<string>>>();
+  return (url: string): Computed<Promise<string>> => {
+    const existing = resourceUrlByUrl.get(url);
+    if (existing) {
+      return existing;
+    }
+    const resourceUrl$ = createAttachmentResourceUrl$(url);
+    resourceUrlByUrl.set(url, resourceUrl$);
+    return resourceUrl$;
+  };
+});

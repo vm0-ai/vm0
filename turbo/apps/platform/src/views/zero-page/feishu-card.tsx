@@ -1501,10 +1501,12 @@ function FeishuBotMenu({
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <button
+        <Button
           type="button"
           disabled={disconnecting}
-          className="shrink-0 rounded p-2 text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          variant="quiet"
+          size="icon-sm"
+          className="shrink-0"
           aria-label={t(
             ($) => {
               return $.connectors.providerSettings.feishu.moreOptions;
@@ -1513,7 +1515,7 @@ function FeishuBotMenu({
           )}
         >
           <EllipsisVertical size={16} />
-        </button>
+        </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="flex w-40 flex-col gap-0.5 p-2">
         {isAdmin ? (

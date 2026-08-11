@@ -111,8 +111,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.JoggAiBuiltIn]: {
     maintainer: "yuma@vm0.ai",
     description: "Enable vm0-managed JoggAI talking-avatar video generation",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.SeoBuiltIn]: {
     maintainer: "yuma@vm0.ai",
@@ -163,11 +162,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.MetaAdsConnector]: {
     maintainer: "ethan@vm0.ai",
     description: "Enable the Meta Ads Manager connector",
-    enabled: false,
-  },
-  [FeatureSwitchKey.TikTokAdsConnector]: {
-    maintainer: "yuma@vm0.ai",
-    description: "Enable the TikTok Ads Manager connector",
     enabled: false,
   },
   [FeatureSwitchKey.PosthogConnector]: {
@@ -357,6 +351,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description:
       "Replace supported Codex and Claude Code limit errors with recovery actions in chat.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.EmojiPickerCategoryRail]: {
+    maintainer: "tongx@vm0.ai",
+    description:
+      "Add a category icon rail, pinned section titles, and jump-to-category scrolling to the thread emoji picker.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

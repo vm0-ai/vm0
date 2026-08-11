@@ -61,12 +61,11 @@ type AgentUsageEventBody = Parameters<
 
 const MODEL = "deepseek-v4-flash";
 const NON_PI_MODELS = [
-  "kimi-k3",
-  "kimi-k2.7-code",
+  "claude-sonnet-5",
+  "claude-opus-4-8",
   "gpt-5.6-sol",
   "gpt-5.6-terra",
   "gpt-5.6-luna",
-  "gpt-5.5",
 ] as const satisfies readonly SupportedRunModel[];
 const DEEPSEEK_RESPONSES_URL = "https://api.deepseek.com/responses";
 const AGENT_DISPLAY_NAME = "Pi edge integration agent";

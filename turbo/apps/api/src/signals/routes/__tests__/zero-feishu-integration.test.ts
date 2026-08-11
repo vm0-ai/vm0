@@ -1769,7 +1769,7 @@ describe("Feishu integration", () => {
     expect(managedConnector).toMatchObject({
       slug: `_feishu-${installationId}`,
       displayName: "Feishu-Okou Feishu",
-      prefixes: ["https://open.feishu.cn/open-apis/"],
+      prefixTemplates: ["https://open.feishu.cn/open-apis/"],
       headerInjections: [
         {
           name: "Authorization",
@@ -2775,6 +2775,10 @@ describe("Feishu integration", () => {
       connectorList.body.connectors[0],
       "Expected connected Feishu custom connector",
     );
+    const managedSkill = await storagesApi.downloadStorage(actor, {
+      name: getCustomConnectorSkillStorageName(managedConnector.id),
+      owner: "organization",
+    });
     const customConnectorGrants = await accept(
       setupApp({ context, routes: zeroAgentsRoutes })(
         zeroAgentCustomConnectorsContract,
@@ -2935,16 +2939,14 @@ describe("Feishu integration", () => {
         permissionNames: ["messages:send-as-user"],
       },
     ]);
-    expect(
-      expectCanonicalStorageManifest(claim.storageManifest)?.storageMounts.some(
-        (storage) => {
-          return (
-            storage.name ===
-            getCustomConnectorSkillStorageName(managedConnector.id)
-          );
-        },
-      ),
-    ).toBeTruthy();
+    const managedSkillMount = expectCanonicalStorageManifest(
+      claim.storageManifest,
+    )?.storageMounts.find((storage) => {
+      return (
+        storage.name === getCustomConnectorSkillStorageName(managedConnector.id)
+      );
+    });
+    expect(managedSkillMount?.versionId).toBe(managedSkill.versionId);
     expect(claim.prompt).toContain(feishuFilePrompt);
     expect(claim.prompt).toContain("   [MESSAGE_ID] om_file_message");
     expect(claim.prompt).toContain("   [TYPE] file");

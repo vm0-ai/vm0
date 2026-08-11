@@ -1,6 +1,6 @@
 import { useGet, useLastLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
-import { Button, Input } from "@vm0/ui";
+import { Button, Input, Textarea } from "@vm0/ui";
 import { AlertTriangle, Check, Loader2, X } from "lucide-react";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
@@ -191,9 +191,9 @@ function ConfirmCard({
                 return $.reportError.fields.description;
               })}
             </label>
-            <textarea
+            <Textarea
               id="report-description"
-              className="flex w-full rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-input px-3 py-2 text-sm text-foreground placeholder:text-sm placeholder:text-muted-foreground outline-none transition-colors focus:border-primary focus:ring-[3px] focus:ring-primary/10 disabled:cursor-not-allowed disabled:opacity-50 resize-none"
+              className="resize-none"
               rows={3}
               placeholder={t(($) => {
                 return $.reportError.fields.descriptionPlaceholder;

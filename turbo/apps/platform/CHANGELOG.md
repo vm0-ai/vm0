@@ -1,5 +1,52 @@
 # Changelog
 
+## [0.725.0](https://github.com/vm0-ai/vm0/compare/app-v0.724.3...app-v0.725.0) (2026-08-11)
+
+
+### Features
+
+* add a category rail to the chat thread emoji picker ([#26342](https://github.com/vm0-ai/vm0/issues/26342)) ([8550bc5](https://github.com/vm0-ai/vm0/commit/8550bc57ab8f6fa0cf026b1a6cc1065b1b123c4a))
+
+
+### Bug Fixes
+
+* complete custom mcp ui and simplify firewall policies ([#26334](https://github.com/vm0-ai/vm0/issues/26334)) ([49329f0](https://github.com/vm0-ai/vm0/commit/49329f08831fa835504c760d6a8911bb9b3f32b9))
+
+
+### Refactoring
+
+* remove runless model annotation compatibility ([#26355](https://github.com/vm0-ai/vm0/issues/26355)) ([5ab99fa](https://github.com/vm0-ai/vm0/commit/5ab99fac14018b097a6921bb7901d17203511e9d))
+* **ui:** move hand-rolled elements onto the shared component library ([#26316](https://github.com/vm0-ai/vm0/issues/26316)) ([41aea60](https://github.com/vm0-ai/vm0/commit/41aea606b40d5dacf02f0c250ad5d7f833998c3f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.313.1
+    * @vm0/connectors bumped to 1.205.1
+    * @vm0/core bumped to 8.544.0
+
+## [0.724.3](https://github.com/vm0-ai/vm0/compare/app-v0.724.2...app-v0.724.3) (2026-08-11)
+
+
+### Bug Fixes
+
+* **chat:** load every attachment preview from a presigned url ([#26275](https://github.com/vm0-ai/vm0/issues/26275)) ([ace447c](https://github.com/vm0-ai/vm0/commit/ace447c68162104c6cbce047e6b6d08b09aebd5b))
+
+
+### Refactoring
+
+* **connectors:** remove legacy grant compatibility ([#26325](https://github.com/vm0-ai/vm0/issues/26325)) ([4133700](https://github.com/vm0-ai/vm0/commit/41337005f2f8a23dc065d2919f0cb0e1ef5f2fd7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.313.0
+    * @vm0/core bumped to 8.543.0
+
 ## [0.724.2](https://github.com/vm0-ai/vm0/compare/app-v0.724.1...app-v0.724.2) (2026-08-11)
 
 

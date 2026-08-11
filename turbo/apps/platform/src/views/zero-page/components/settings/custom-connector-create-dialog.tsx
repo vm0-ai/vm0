@@ -6,7 +6,6 @@ import type {
   CustomConnectorClientResponse,
   UpdateCustomConnectorBody,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
   Button,
   CopyButton,
@@ -24,6 +23,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  Textarea,
 } from "@vm0/ui";
 import { Input } from "@vm0/ui/components/ui/input";
 import { useGet, useSet } from "ccstate-react";
@@ -31,7 +31,7 @@ import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
 
 import { resolveApiBaseForTarget } from "../../../../signals/api-base.ts";
-import { featureSwitch$ } from "../../../../signals/external/feature-switch.ts";
+import { customConnectorMcpEnabled$ } from "../../../../signals/external/feature-switch.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import {
   addCustomConnectorAuthMethod$,
@@ -190,7 +190,7 @@ function BaseFields({
               })}
             </span>
           </label>
-          <textarea
+          <Textarea
             id="cc-prefixes"
             value={form.prefixesRaw}
             onChange={(event) => {
@@ -198,7 +198,7 @@ function BaseFields({
             }}
             placeholder="https://api.acme.com/v1/"
             rows={3}
-            className="w-full rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-input px-3 py-2 text-sm font-mono text-foreground placeholder:text-muted-foreground outline-none transition-colors focus:border-primary focus:ring-[3px] focus:ring-primary/10 resize-y min-h-[72px]"
+            className="min-h-[72px] resize-y font-mono"
           />
         </div>
       ) : (
@@ -635,7 +635,7 @@ function OAuth2AuthenticationFields({
             })}
           </span>
         </label>
-        <textarea
+        <Textarea
           id="cc-oauth-scopes"
           value={form.oauthScopesRaw}
           onChange={(event) => {
@@ -643,7 +643,7 @@ function OAuth2AuthenticationFields({
           }}
           placeholder={"read\nwrite"}
           rows={3}
-          className="w-full rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-input px-3 py-2 text-sm font-mono text-foreground placeholder:text-muted-foreground outline-none transition-colors focus:border-primary focus:ring-[3px] focus:ring-primary/10 resize-y min-h-[72px]"
+          className="min-h-[72px] resize-y font-mono"
         />
       </div>
       <div className="flex flex-col gap-2">
@@ -1201,8 +1201,7 @@ export function CustomConnectorCreateDialog({
 }) {
   const { t } = useTranslation();
   const form = useGet(customConnectorCreateForm$);
-  const mcpEnabled =
-    useGet(featureSwitch$)[FeatureSwitchKey.CustomConnectorMcp] ?? false;
+  const mcpEnabled = useGet(customConnectorMcpEnabled$);
   const setField = useSet(setCustomConnectorCreateField$);
   const setKind = useSet(setCustomConnectorCreateKind$);
   const addAuthMethod = useSet(addCustomConnectorAuthMethod$);

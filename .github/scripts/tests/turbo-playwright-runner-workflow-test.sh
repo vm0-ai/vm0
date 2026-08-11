@@ -4,6 +4,12 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 WORKFLOW="${REPO_ROOT}/.github/workflows/turbo.yml"
+RUNNER_TESTS="${REPO_ROOT}/e2e/tests/03-runner"
+RUNNER_HELPERS=(
+  "${REPO_ROOT}/e2e/helpers/runner-api.bash"
+  "${REPO_ROOT}/e2e/helpers/runner-chat.bash"
+)
+RUNNER_TOKEN="${REPO_ROOT}/e2e/playwright/runner-token.ts"
 
 fail() {
   echo "FAIL: $1" >&2
@@ -26,6 +32,13 @@ grep -Fq "RUNNER_GROUP: \${{ format('vm0/development-{0}', needs.prepare.outputs
 if grep -Fq 'playwright-staging' "$WORKFLOW"; then
   fail "main Playwright runs must not use a group outside the staging API default"
 fi
+if grep -R -Fq '/api/test/' "$RUNNER_TESTS" "${RUNNER_HELPERS[@]}"; then
+  fail "runner E2E coverage must use supported public APIs"
+fi
+grep -Fq 'startVideoOnboardingCheckout' "$RUNNER_TOKEN" ||
+  fail "runner Claude account must upgrade through public paid onboarding"
+grep -Fq 'fillStripeCheckout' "$RUNNER_TOKEN" ||
+  fail "runner Claude account must complete the public Stripe checkout"
 
 ruby -ryaml - "$WORKFLOW" <<'RUBY'
 workflow = YAML.load_file(ARGV.fetch(0))
@@ -47,12 +60,12 @@ unless consumer_step&.fetch("run", "")&.end_with?("runner-image-context.sh turbo
   raise "Turbo must restore the historical runner E2E consumer detector"
 end
 
-expected_indices = (1..12).to_a
 unless runner.dig("strategy", "fail-fast") == false
   raise "runner E2E shards must not fail fast"
 end
-unless runner.dig("strategy", "matrix", "index") == expected_indices
-  raise "runner E2E must preserve the historical twelve-shard matrix"
+expected_matrix = "${{ fromJSON(needs.cli-e2e-03-runner-prepare.outputs.runner-shard-matrix) }}"
+unless runner.dig("strategy", "matrix") == expected_matrix
+  raise "runner E2E must use the generated non-empty shard matrix"
 end
 
 expected_group = "cli-e2e-03-runner-${{ matrix.index }}-${{ needs.prepare.outputs.job-ref }}"
@@ -95,10 +108,15 @@ unless prepare_step.fetch("run").end_with?("runner-account.ts prepare")
   raise "runner E2E account preparation must use the shared lifecycle entry point"
 end
 
-unless %w[prepare deploy-api deploy-app].all? do |job_name|
+unless %w[prepare deploy-api deploy-app deploy-stripe-listener].all? do |job_name|
     Array(account_prepare["needs"]).include?(job_name)
   end
-  raise "runner E2E account preparation must wait for the API and app previews"
+  raise "runner E2E account preparation must wait for previews and Stripe forwarding"
+end
+unless account_prepare.fetch("if").include?(
+    "github.event_name == 'push' || needs.deploy-stripe-listener.result == 'success'"
+  )
+  raise "runner E2E account preparation must use staging or preview Stripe forwarding"
 end
 
 expected_organization_outputs = {
@@ -111,6 +129,22 @@ expected_organization_outputs.each do |job_output, step_output|
   unless account_prepare.dig("outputs", job_output) == expected
     raise "runner E2E account preparation must expose #{job_output}"
   end
+end
+unless account_prepare.dig("outputs", "runner-shard-matrix") ==
+    "${{ steps.shards.outputs.matrix }}"
+  raise "runner E2E preparation must expose the generated shard matrix"
+end
+
+shard_generation_step = account_prepare.fetch("steps").find do |step|
+  step["name"] == "Generate runner E2E shard matrix"
+end
+raise "missing runner E2E shard generation" unless shard_generation_step
+shard_generation_script = shard_generation_step.fetch("run")
+unless shard_generation_step["id"] == "shards" &&
+    shard_generation_script.include?("playwright/runner-shards.ts tests/03-runner") &&
+    shard_generation_script.include?('length > 0 and length <= 12') &&
+    shard_generation_script.include?('echo "matrix=$matrix" >> "$GITHUB_OUTPUT"')
+  raise "runner E2E shard generation must use the tested executable and reject empty matrices"
 end
 
 token_step = account_prepare.fetch("steps").find do |step|
@@ -178,19 +212,63 @@ unless provider_step.fetch("run").include?(
   )
   raise "runner bootstrap must restore the historical mock provider"
 end
+claude_step = bootstrap_steps.find do |step|
+  step["name"] == "Bootstrap real Claude account"
+end
+raise "missing real Claude account bootstrap" unless claude_step
+claude_script = claude_step.fetch("run")
+%w[
+  /api/zero/model-providers
+  /api/zero/model-policies
+  /api/zero/feature-switches
+  claude-sonnet-5
+  realAgentInPreview
+].each do |required_fragment|
+  unless claude_script.include?(required_fragment)
+    raise "real Claude bootstrap must include #{required_fragment}"
+  end
+end
+unless claude_step.dig("env", "ANTHROPIC_API_KEY") ==
+    "${{ secrets.CI_ANTHROPIC_API_KEY }}"
+  raise "real Claude bootstrap must receive the Anthropic credential"
+end
 
 shard_step = runner.fetch("steps").find do |step|
   step["name"] == "Initialize runner E2E shard"
 end
 raise "missing runner E2E shard scaffold" unless shard_step
-if runner.fetch("steps").any? { |step| step.fetch("name", "").include?("Run runner E2E tests") }
-  raise "runner E2E scaffold must not add test coverage yet"
+unless runner.dig("env", "E2E_RUNNER_TEST_FILES_JSON") == "${{ toJSON(matrix.files) }}" &&
+    runner.dig("env", "E2E_RUNNER_SHARD_TOTAL") == "${{ strategy.job-total }}"
+  raise "runner E2E shards must receive their exact file list and dynamic total"
+end
+
+run_step = runner.fetch("steps").find do |step|
+  step.fetch("name", "").include?("Run runner E2E tests")
+end
+raise "missing runner E2E BATS execution" unless run_step
+run_script = run_step.fetch("run")
+unless run_script.include?('mapfile -t test_files') &&
+    run_script.include?('BATS_TEST_TIMEOUT=240 ./test/libs/bats/bin/bats') &&
+    run_script.include?('--report-formatter junit') &&
+    run_script.include?('"${test_files[@]}"')
+  raise "runner E2E must safely execute every matrix file with JUnit reporting"
+end
+unless run_step.dig("env", "VERCEL_AUTOMATION_BYPASS_SECRET") ==
+    "${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}"
+  raise "runner E2E tests must receive the preview bypass secret"
 end
 unless runner.fetch("steps").any? do |step|
     step["name"] == "Download runner E2E API tokens" &&
       step.dig("with", "name") == "e2e-tokens"
   end
   raise "every runner shard must download the token artifact"
+end
+unless runner.fetch("steps").any? do |step|
+    step["name"] == "Upload runner E2E JUnit XML" &&
+      step.dig("with", "name") == "e2e-runner-junit-${{ matrix.index }}" &&
+      step.dig("with", "retention-days") == 7
+  end
+  raise "every runner shard must upload its JUnit report"
 end
 
 cleanup_step = account_cleanup.fetch("steps").find do |step|

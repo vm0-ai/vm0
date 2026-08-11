@@ -18,7 +18,11 @@ import { detach, Reason } from "../../signals/utils.ts";
 import { onboardingVideoPrompt } from "./onboarding-data.ts";
 import { useOnboardingNavigation } from "./onboarding-navigation.ts";
 import { OnboardingRunAction } from "./onboarding-run-action.tsx";
-import { OnboardingShell } from "./onboarding-shell.tsx";
+import { Textarea, cn } from "@vm0/ui";
+import {
+  ONBOARDING_TEXTAREA_CLASS,
+  OnboardingShell,
+} from "./onboarding-shell.tsx";
 
 type TemplateRunKind = "presentation" | "image" | "video";
 
@@ -307,7 +311,7 @@ function OnboardingTemplateRunPage({
         <label className="sr-only" htmlFor={`${kind}-note`}>
           {config.noteLabel}
         </label>
-        <textarea
+        <Textarea
           id={`${kind}-note`}
           value={config.note}
           onChange={(event) => {
@@ -315,7 +319,10 @@ function OnboardingTemplateRunPage({
           }}
           placeholder={config.notePlaceholder}
           rows={5}
-          className="mt-[18px] min-h-32 w-full resize-y rounded-xl border border-border bg-background p-3 text-sm leading-5 outline-none focus:border-primary focus:ring-2 focus:ring-primary/15"
+          className={cn(
+            ONBOARDING_TEXTAREA_CLASS,
+            "mt-[18px] min-h-32 resize-y p-3 leading-5",
+          )}
         />
       </div>
     </OnboardingShell>

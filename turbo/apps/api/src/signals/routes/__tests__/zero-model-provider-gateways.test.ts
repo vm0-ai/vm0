@@ -108,7 +108,7 @@ describe("custom model provider gateway routes", () => {
               authHeaderName: "Authorization",
               authHeaderTemplate: "Bearer {{secret}}",
               modelMappings: {
-                "claude-sonnet-4-6": "company-sonnet",
+                "claude-sonnet-5": "company-sonnet",
               },
             },
             {
@@ -117,7 +117,7 @@ describe("custom model provider gateway routes", () => {
               authHeaderName: "x-api-key",
               authHeaderTemplate: "{{secret}}",
               modelMappings: {
-                "gpt-5.5": "company-codex",
+                "gpt-5.6-sol": "company-codex",
               },
             },
           ],
@@ -161,7 +161,7 @@ describe("custom model provider gateway routes", () => {
               authHeaderName: "Authorization",
               authHeaderTemplate: "Bearer {{secret}}",
               modelMappings: {
-                "claude-sonnet-4-6": "company-sonnet-v2",
+                "claude-sonnet-5": "company-sonnet-v2",
               },
             },
           ],
@@ -238,7 +238,7 @@ describe("custom model provider gateway routes", () => {
         apiBaseUrl: "https://gateway.example.com",
         authHeaderName: "Authorization",
         authHeaderTemplate: "Bearer {{secret}}",
-        modelMappings: { "gpt-5.5": "openai/gpt-5.5" },
+        modelMappings: { "gpt-5.6-sol": "openai/gpt-5.6-sol" },
       },
     },
   ] satisfies readonly {
@@ -302,7 +302,7 @@ describe("custom model provider gateway routes", () => {
               authHeaderName: "x-api-key",
               authHeaderTemplate: "{{secret}}",
               modelMappings: {
-                "gpt-5.5": "company-gpt-production",
+                "gpt-5.6-sol": "company-gpt-production",
               },
             },
           ],
@@ -382,7 +382,7 @@ describe("custom model provider gateway routes", () => {
 
     await runs.updateOrgModelPolicies(actor, [
       {
-        model: "gpt-5.5",
+        model: "gpt-5.6-sol",
         isDefault: true,
         defaultProviderType: "vercel-ai-gateway-codex",
         credentialScope: "org",
@@ -396,7 +396,7 @@ describe("custom model provider gateway routes", () => {
         clientEventId: randomUUID(),
         agentId: agent.agentId,
         prompt: "exercise the custom Responses gateway",
-        model: "gpt-5.5",
+        model: "gpt-5.6-sol",
       },
       [201],
     );

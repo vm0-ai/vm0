@@ -1,4 +1,5 @@
 import { command, computed, state } from "ccstate";
+import type { UsagePackManagementResponse } from "@vm0/api-contracts/contracts/zero-billing";
 import { searchParams$, updateSearchParams$ } from "../../route.ts";
 import { reloadBillingStatus$ } from "../billing.ts";
 import { isOrgAdmin$ } from "../../org.ts";
@@ -11,6 +12,12 @@ import {
   requestBuyCreditsScroll$,
   setBillingSubPage$,
 } from "./workspace-settings-state.ts";
+import {
+  managedUsagePackSelection,
+  resetUsagePackPricing$,
+  setMemberUsageSelections$,
+  setSelectedUsagePackPlan$,
+} from "./usage-pack-pricing-state.ts";
 
 export const SETTINGS_SECTIONS = [
   "preference",
@@ -92,6 +99,7 @@ export const setSettingsActiveSection$ = command(
     set(internalActiveSection$, section);
     if (section !== "billing") {
       set(clearBillingScrollTarget$);
+      set(resetUsagePackPricing$);
     }
     if (section === "model") {
       set(reloadPersonalModelProviders$);
@@ -115,10 +123,29 @@ export const openSettingsBillingPlans$ = command(({ get, set }) => {
   set(updateSearchParams$, params);
 });
 
+export const openSettingsMemberUsagePacks$ = command(
+  ({ set }, management: UsagePackManagementResponse) => {
+    set(openSettingsBillingPlans$);
+    set(
+      setMemberUsageSelections$,
+      Object.fromEntries(
+        management.allocations.map((allocation) => {
+          return [
+            allocation.memberId,
+            managedUsagePackSelection(allocation),
+          ] as const;
+        }),
+      ),
+    );
+    set(setSelectedUsagePackPlan$, management.tier);
+  },
+);
+
 const releaseSettingsDialogSession$ = command(({ get, set }) => {
   set(internalSettingsDialogSignal$, null);
   set(internalSettingsDialogSessionActive$, false);
   set(clearPendingLogo$);
+  set(resetUsagePackPricing$);
 
   const handoffPending = get(internalSettingsDialogHandoffPending$);
   set(internalSettingsDialogHandoffPending$, false);

@@ -3978,7 +3978,7 @@ describe("zero workflow automations", () => {
     // The bound chat thread survives the automation deletion and still carries
     // the org default model selection.
     await expect(wf.readThreadSelectedModel(String(threadId))).resolves.toBe(
-      "claude-sonnet-4-6",
+      "claude-sonnet-5",
     );
   });
 

@@ -55,8 +55,6 @@ import {
   readConnectorCredentialStorageState,
   readCustomConnectorCredentialStorageParent,
   readCustomConnectorOAuthStorageState,
-  seedConnectorStorageRow,
-  setConnectorVariableOwner,
   setCustomConnectorCredentialStorageState,
 } from "./helpers/connector-credential-storage-state";
 import { zeroCustomConnectorsRoutes } from "../zero-custom-connectors";
@@ -1979,24 +1977,9 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       connected: false,
       missingRequiredFields: ["oauth"],
     });
-    const durableGrant =
-      await connectorsApi.requestLegacyAgentCustomConnectorIdsUpdate(
-        member,
-        agent.agentId,
-        [created.id],
-        [200],
-        "add",
-      );
-    expect(durableGrant.body).toMatchObject({
-      enabledIds: expect.arrayContaining([created.id]),
-    });
-    if ("error" in durableGrant.body) {
-      throw new Error("Expected a durable custom connector grant");
-    }
-    expect(durableGrant.body.grants).toContainEqual({
-      customConnectorId: created.id,
-      permissionNames: ["chat:write"],
-    });
+    await expect(
+      connectorsApi.readAgentCustomConnectorGrants(member, agent.agentId),
+    ).resolves.toContainEqual(expectedGrant);
     await expect(
       connectorsApi.readAgentCustomConnectors(member, agent.agentId),
     ).resolves.toContain(created.id);
@@ -2574,7 +2557,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     );
     expect(updated).toMatchObject({
       displayName: "BDD Edited OAuth Connector",
-      prefixes: ["https://editable-oauth.example.test/v2/"],
+      prefixTemplates: ["https://editable-oauth.example.test/v2/"],
       authMode: "oauth",
       storageVersion: 2,
       oauthConfig: {
@@ -2742,9 +2725,13 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     ).toMatchObject({
       slug,
       displayName: "BDD Custom Connector",
-      prefixes: [`https://${slug.slice(1)}.example.test/v1/`],
-      headerName: "Authorization",
-      headerTemplate: "Bearer {{secret}}",
+      prefixTemplates: [`https://${slug.slice(1)}.example.test/v1/`],
+      headerInjections: [
+        {
+          name: "Authorization",
+          valueTemplate: "Bearer {{secrets.secret}}",
+        },
+      ],
       hasSecret: false,
     });
 
@@ -2776,7 +2763,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     );
     expect(updated).toMatchObject({
       displayName: "BDD Custom Connector Updated",
-      prefixes: [`https://${slug.slice(1)}.example.test/v2/`],
+      prefixTemplates: [`https://${slug.slice(1)}.example.test/v2/`],
       connected: true,
       hasSecret: true,
     });
@@ -3298,9 +3285,13 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     expect(saved.authorizedAgentId).toBe(agent.agentId);
     expect(saved.connector).toMatchObject({
       displayName: "BDD Proposal API",
-      prefixes: [`https://{{variables.subdomain}}.${rand}.test/v1/`],
-      headerName: "Authorization",
-      headerTemplate: "Bearer {{secrets.api_key}}",
+      prefixTemplates: [`https://{{variables.subdomain}}.${rand}.test/v1/`],
+      headerInjections: [
+        {
+          name: "Authorization",
+          valueTemplate: "Bearer {{secrets.api_key}}",
+        },
+      ],
       connected: true,
       missingRequiredFields: [],
       configuredFieldKeys: ["api_key", "subdomain"],
@@ -3566,7 +3557,6 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       }),
     );
 
-    expect(connector.prefixes).toStrictEqual([rawPrefix]);
     expect(connector.prefixTemplates).toStrictEqual([rawPrefix]);
     expect(connector.slug).toMatch(/^_xn-mnich-kva-example-[a-z0-9]{6}$/);
 
@@ -3647,8 +3637,6 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
           valueTemplate: "{{variables.subdomain}}",
         },
       ],
-      headerName: "X-VM0-Custom-Connector",
-      headerTemplate: "{{secret}}",
     });
 
     await connectorsApi.disconnectCustomConnector(admin, saved.connector.id);
@@ -3816,7 +3804,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     expect(autoSlug.slug).toMatch(
       new RegExp(`^_api-bdd${rand}-example-test-[a-z0-9]{6}$`),
     );
-    expect(autoSlug.prefixes).toStrictEqual([`https://api.${host}/v1/`]);
+    expect(autoSlug.prefixTemplates).toStrictEqual([`https://api.${host}/v1/`]);
     expect(autoSlug.hasSecret).toBeFalsy();
 
     const duplicateAutoSlug = await connectorsApi.requestCreateCustomConnector(
@@ -3842,7 +3830,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     expect(wildcard.slug).toMatch(
       new RegExp(`^_bdd${rand}-example-test-[a-z0-9]{6}$`),
     );
-    expect(wildcard.prefixes).toStrictEqual([`https://*.${host}/v1/`]);
+    expect(wildcard.prefixTemplates).toStrictEqual([`https://*.${host}/v1/`]);
 
     const missingPlaceholder = await connectorsApi.requestCreateCustomConnector(
       admin,
@@ -3869,7 +3857,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
         prefixTemplates: ["https://api.github.com/v3/"],
       }),
     );
-    expect(builtinOverlap.prefixes).toStrictEqual([
+    expect(builtinOverlap.prefixTemplates).toStrictEqual([
       "https://api.github.com/v3/",
     ]);
 
@@ -3956,10 +3944,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       displayName: "BDD MCP Management",
       endpoint: "https://mcp-management.example.test/server",
       transport: "streamable-http",
-      prefixes: [],
       prefixTemplates: [],
-      headerName: "",
-      headerTemplate: "",
       permissionBundleRef: null,
       storageVersion: 1,
       connected: false,
@@ -5289,21 +5274,6 @@ describe("CONN-02: test-oauth auth-code journey", () => {
         tenantId: "bdd-rollback-manual-tenant",
       },
     );
-    // Production APIs cannot move a connector variable to another connection;
-    // this fixture creates the storage conflict needed to exercise rollback.
-    const conflictOwnerId = await seedConnectorStorageRow(context, {
-      orgId: requiredOrgId(actor),
-      userId: actor.userId,
-      connectorSlug: uniqueSlug("credential-conflict"),
-      authMethod: "fixture",
-      storageVersion: 1,
-    });
-    await setConnectorVariableOwner(context, {
-      connectorId: conflictOwnerId,
-      name: "TEST_OAUTH_API_TOKEN_INPUT_VAR",
-      orgId: requiredOrgId(actor),
-      userId: actor.userId,
-    });
 
     const oauthStart = await connectorsApi.startOauth(
       actor,
@@ -5349,7 +5319,9 @@ describe("CONN-02: test-oauth auth-code journey", () => {
       "api-token",
       {
         apiToken: "bdd-failed-replacement-token",
-        inputVariable: "bdd-failed-replacement-input",
+        // PostgreSQL text rejects NUL after the transaction has replaced the
+        // connection metadata, deleted OAuth credentials, and written the secret.
+        inputVariable: "bdd-failed-replacement-input\u0000",
         tenantId: "bdd-failed-replacement-tenant",
       },
       { statuses: [500] },
@@ -5362,12 +5334,6 @@ describe("CONN-02: test-oauth auth-code journey", () => {
       readConnectorCredentialStorageState(context, storageQuery),
     ).resolves.toStrictEqual(storageBeforeFailure);
 
-    await setConnectorVariableOwner(context, {
-      connectorId: oauthConnector.id,
-      name: "TEST_OAUTH_API_TOKEN_INPUT_VAR",
-      orgId: requiredOrgId(actor),
-      userId: actor.userId,
-    });
     const manual = await connectorsApi.connectManualGrant(
       actor,
       "test-oauth",

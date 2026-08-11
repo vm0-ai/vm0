@@ -419,7 +419,7 @@ describe("thread-owned utility sidebar", () => {
     expect(requestedThreadIds).toContain(THREAD_ID);
   });
 
-  it("previews a public catalog document through its resource URL signal", async () => {
+  it("previews a public catalog document through the resolved resource url", async () => {
     const htmlUrl = "https://catalog-document.sites.vm7.io";
     const summary = catalogArtifact({ title: "launch-site.html" });
     setupArtifactCatalog(
@@ -441,6 +441,8 @@ describe("thread-owned utility sidebar", () => {
     setupChatThread();
     await openCatalogArtifact("launch-site.html");
 
+    // A public URL resolves to itself, so the same path that presigns a private
+    // attachment leaves a hosted site untouched.
     await waitFor(() => {
       expect(screen.getByTestId("artifact-sidebar-body-html")).toHaveAttribute(
         "src",

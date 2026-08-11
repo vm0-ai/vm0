@@ -1,5 +1,4 @@
 import type { ReactNode } from "react";
-import type { Computed } from "ccstate";
 import {
   ArrowLeft,
   Maximize2,
@@ -19,11 +18,12 @@ import {
   useSet,
 } from "ccstate-react";
 import {
-  cn,
+  Button,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  cn,
 } from "@vm0/ui";
 import { useTranslation } from "react-i18next";
 import type { ArtifactRef } from "../../signals/chat-page/thread-sidebar.ts";
@@ -33,6 +33,7 @@ import {
   TextPreviewLoader,
 } from "./zero-attachment-chips.tsx";
 import { publicAttachmentUrl } from "./zero-attachment-url";
+import { useResolvedAttachmentUrl } from "./zero-attachment-resource";
 import { artifactPreviewUrlsMatch } from "./zero-attachment-url.ts";
 import { lightboxDialogVisible$ } from "../../signals/zero-page/zero-attachment-chips.ts";
 import { Markdown } from "../components/markdown.tsx";
@@ -311,7 +312,6 @@ function ArtifactSidebarResolvedContent({
           artifactKind={display.artifactKind}
           imageNavigation={imageNavigation}
           fullscreen={fullscreen}
-          resourceUrl$={display.resourceUrl$}
           text$={text$}
         />
       </div>
@@ -454,7 +454,6 @@ interface ArtifactDisplay {
   filename: string;
   subtitle: string;
   shareAvailable: boolean;
-  resourceUrl$: Computed<Promise<string>>;
   artifactKind?: ChatThreadArtifactFile["artifactKind"];
 }
 
@@ -514,7 +513,6 @@ function resolveArtifactDisplay(
       filename: item.file.filename,
       subtitle: artifactTitleSubtitle(ref.kind, item.file),
       shareAvailable: ref.shareAvailable ?? true,
-      resourceUrl$: ref.resourceUrl$,
       artifactKind: item.file.artifactKind,
     };
   }
@@ -524,7 +522,6 @@ function resolveArtifactDisplay(
     filename: ref.filename,
     subtitle: artifactFallbackSubtitle(ref.kind, ref.filename),
     shareAvailable: ref.shareAvailable ?? true,
-    resourceUrl$: ref.resourceUrl$,
   };
 }
 
@@ -564,16 +561,18 @@ function ArtifactSidebarHeader({
             return $.artifacts.actions.backToAll;
           })}
         >
-          <button
+          <Button
             type="button"
             onClick={onBack}
             aria-label={t(($) => {
               return $.artifacts.actions.backToAll;
             })}
-            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
+            variant="quiet"
+            size="icon-sm"
+            className="shrink-0"
           >
             <ArrowLeft size={16} />
-          </button>
+          </Button>
         </ArtifactActionTooltip>
       )}
       <div className="min-w-0 flex-1">
@@ -733,15 +732,17 @@ function ArtifactFullscreenAction({
       });
   return (
     <ArtifactActionTooltip label={label}>
-      <button
+      <Button
         type="button"
         onClick={onToggleFullscreen}
         aria-label={label}
         data-testid="artifact-sidebar-fullscreen-toggle"
-        className="hidden xl:inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-state-hover hover:text-foreground"
+        variant="quiet"
+        size="icon-sm"
+        className="hidden xl:inline-flex"
       >
         {fullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
-      </button>
+      </Button>
     </ArtifactActionTooltip>
   );
 }
@@ -756,15 +757,16 @@ function ArtifactMoreActions({ onClose }: { onClose: () => void }) {
         })}
       >
         <DropdownMenuTrigger asChild>
-          <button
+          <Button
             type="button"
             aria-label={t(($) => {
               return $.artifacts.actions.more;
             })}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-state-hover hover:text-foreground"
+            variant="quiet"
+            size="icon-sm"
           >
             <Ellipsis size={16} />
-          </button>
+          </Button>
         </DropdownMenuTrigger>
       </ArtifactActionTooltip>
       <DropdownMenuContent align="end">
@@ -786,17 +788,19 @@ function ArtifactCloseAction({ onClose }: { onClose: () => void }) {
         return $.artifacts.actions.closeArtifact;
       })}
     >
-      <button
+      <Button
         type="button"
         onClick={onClose}
         aria-label={t(($) => {
           return $.artifacts.actions.closeArtifact;
         })}
         data-testid="artifact-sidebar-close"
-        className="inline-flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground hover:bg-state-hover hover:text-foreground"
+        variant="quiet"
+        size="icon-sm"
+        className="rounded-full"
       >
         <X size={16} />
-      </button>
+      </Button>
     </ArtifactActionTooltip>
   );
 }
@@ -808,7 +812,6 @@ function ArtifactBody({
   artifactKind,
   imageNavigation,
   fullscreen,
-  resourceUrl$,
   text$,
 }: {
   url: string;
@@ -817,7 +820,6 @@ function ArtifactBody({
   artifactKind?: ChatThreadArtifactFile["artifactKind"];
   imageNavigation?: ArtifactImageNavigationActions;
   fullscreen: boolean;
-  resourceUrl$: Computed<Promise<string>>;
   text$?: TextPreviewComputed;
 }) {
   const { t } = useTranslation();
@@ -872,8 +874,8 @@ function ArtifactBody({
   }
   if (kind === "html" || kind === "pdf") {
     return (
-      <ArtifactIframeResourceBody
-        resourceUrl$={resourceUrl$}
+      <ArtifactIframeBody
+        url={url}
         kind={kind}
         filename={filename}
         artifactKind={artifactKind}
@@ -882,34 +884,6 @@ function ArtifactBody({
     );
   }
   return <ArtifactGenericBody filename={filename} />;
-}
-
-function ArtifactIframeResourceBody({
-  resourceUrl$,
-  kind,
-  filename,
-  artifactKind,
-  fullscreen,
-}: {
-  resourceUrl$: Computed<Promise<string>>;
-  kind: "html" | "pdf";
-  filename: string;
-  artifactKind?: ChatThreadArtifactFile["artifactKind"];
-  fullscreen: boolean;
-}) {
-  const resourceUrl = useLastResolved(resourceUrl$);
-  if (!resourceUrl) {
-    return <ArtifactSpinner />;
-  }
-  return (
-    <ArtifactIframeBody
-      url={resourceUrl}
-      kind={kind}
-      filename={filename}
-      artifactKind={artifactKind}
-      fullscreen={fullscreen}
-    />
-  );
 }
 
 function ArtifactSpinner() {
@@ -1187,6 +1161,11 @@ function ArtifactImageBody({
   filename: string;
 }) {
   const modalOpen = useGet(lightboxDialogVisible$);
+  const resourceUrl = useResolvedAttachmentUrl(url);
+
+  if (resourceUrl === null) {
+    return <ArtifactSpinner />;
+  }
 
   return (
     <ArtifactStageShell flush scrollable={false}>
@@ -1198,7 +1177,7 @@ function ArtifactImageBody({
             navigation={imageNavigation}
           />
           <ZoomableArtifactImageCanvas
-            src={publicAttachmentUrl(url)}
+            src={resourceUrl}
             alt={filename}
             zoomKey={zoomableArtifactImageKey(
               "artifact-sidebar",
@@ -1232,7 +1211,7 @@ function ArtifactImageNavigationControls({
   return (
     <>
       {navigation.onPrevious && (
-        <button
+        <Button
           type="button"
           onClick={navigation.onPrevious}
           aria-label={t(($) => {
@@ -1242,13 +1221,15 @@ function ArtifactImageNavigationControls({
             return $.artifacts.actions.previousImage;
           })}
           data-testid="artifact-sidebar-previous-image"
-          className="absolute left-4 top-1/2 z-20 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-border/60 bg-background/90 text-foreground shadow-lg backdrop-blur-sm transition-colors hover:bg-state-hover"
+          variant="quiet"
+          size="icon-lg"
+          className="absolute left-4 top-1/2 z-20 -translate-y-1/2 rounded-full border border-border/60 bg-background/90 text-foreground shadow-lg backdrop-blur-sm [&_svg]:size-[22px]"
         >
           <ChevronLeft size={22} />
-        </button>
+        </Button>
       )}
       {navigation.onNext && (
-        <button
+        <Button
           type="button"
           onClick={navigation.onNext}
           aria-label={t(($) => {
@@ -1258,10 +1239,12 @@ function ArtifactImageNavigationControls({
             return $.artifacts.actions.nextImage;
           })}
           data-testid="artifact-sidebar-next-image"
-          className="absolute right-4 top-1/2 z-20 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-border/60 bg-background/90 text-foreground shadow-lg backdrop-blur-sm transition-colors hover:bg-state-hover"
+          variant="quiet"
+          size="icon-lg"
+          className="absolute right-4 top-1/2 z-20 -translate-y-1/2 rounded-full border border-border/60 bg-background/90 text-foreground shadow-lg backdrop-blur-sm [&_svg]:size-[22px]"
         >
           <ChevronRight size={22} />
-        </button>
+        </Button>
       )}
     </>
   );
@@ -1340,25 +1323,28 @@ function ArtifactVideoBody({
   filename: string;
 }) {
   const { t } = useTranslation();
+  const resourceUrl = useResolvedAttachmentUrl(url);
   return (
     <ArtifactStageShell centered>
       <div
         className="w-full overflow-hidden rounded-xl border border-border/70 bg-black shadow-sm"
         data-testid="artifact-sidebar-video-stage"
       >
-        <video
-          src={publicAttachmentUrl(url)}
-          controls
-          playsInline
-          className="block aspect-video w-full bg-black object-contain"
-          aria-label={t(
-            ($) => {
-              return $.artifacts.preview.videoLabel;
-            },
-            { filename },
-          )}
-          data-testid="artifact-sidebar-body-video"
-        />
+        {resourceUrl !== null && (
+          <video
+            src={resourceUrl}
+            controls
+            playsInline
+            className="block aspect-video w-full bg-black object-contain"
+            aria-label={t(
+              ($) => {
+                return $.artifacts.preview.videoLabel;
+              },
+              { filename },
+            )}
+            data-testid="artifact-sidebar-body-video"
+          />
+        )}
       </div>
     </ArtifactStageShell>
   );
@@ -1372,23 +1358,26 @@ function ArtifactAudioBody({
   filename: string;
 }) {
   const { t } = useTranslation();
+  const resourceUrl = useResolvedAttachmentUrl(url);
   return (
     <ArtifactStageShell centered>
       <div className="flex w-full max-w-[520px] flex-col items-center gap-4 rounded-xl border border-border/70 bg-background p-6 shadow-sm">
         <p className="text-sm text-muted-foreground">{filename}</p>
-        <audio
-          src={publicAttachmentUrl(url)}
-          controls
-          preload="metadata"
-          className="w-full"
-          aria-label={t(
-            ($) => {
-              return $.artifacts.preview.audioLabel;
-            },
-            { filename },
-          )}
-          data-testid="artifact-sidebar-body-audio"
-        />
+        {resourceUrl !== null && (
+          <audio
+            src={resourceUrl}
+            controls
+            preload="metadata"
+            className="w-full"
+            aria-label={t(
+              ($) => {
+                return $.artifacts.preview.audioLabel;
+              },
+              { filename },
+            )}
+            data-testid="artifact-sidebar-body-audio"
+          />
+        )}
       </div>
     </ArtifactStageShell>
   );
@@ -1408,20 +1397,26 @@ function ArtifactIframeBody({
   fullscreen: boolean;
 }) {
   const { t } = useTranslation();
+  const resourceUrl = useResolvedAttachmentUrl(url);
   // PDF Open Parameters: #navpanes=0 hides Chromium's built-in left rail
   // (thumbnails / bookmarks) so the embedded preview shows just the page
   // and toolbar by default. Firefox/PDF.js silently ignores it.
-  const publicUrl = publicAttachmentUrl(url);
-  const src = kind === "pdf" ? `${publicUrl}#navpanes=0` : publicUrl;
+  const src =
+    resourceUrl !== null && kind === "pdf"
+      ? `${resourceUrl}#navpanes=0`
+      : resourceUrl;
   const isPresentationHtml =
     kind === "html" && artifactKind === "presentation-html";
+  if (resourceUrl === null || src === null) {
+    return <ArtifactSpinner />;
+  }
   if (kind === "html") {
     return (
       <div className="h-full w-full">
         <AutoFocusedArtifactIframe
-          focusKey={`${publicUrl}:${fullscreen ? "fullscreen" : "sidebar"}`}
+          focusKey={`${resourceUrl}:${fullscreen ? "fullscreen" : "sidebar"}`}
           focusOnMount={fullscreen && !isPresentationHtml}
-          src={publicUrl}
+          src={resourceUrl}
           title={t(
             ($) => {
               return $.artifacts.preview.dialogLabel;

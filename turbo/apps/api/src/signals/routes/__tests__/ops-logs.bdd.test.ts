@@ -282,7 +282,7 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
     const api = createOpsLogsApi(context);
     const runs = createRunsApi(context);
     const webhooks = createWebhookCallbackApi(context);
-    const model = "claude-sonnet-4-6";
+    const model = "claude-sonnet-5";
 
     // Random far-past UTC day (2003-2009): isolated from real-now ranking
     // windows and unlikely to collide with another interrupted test fixture.
@@ -952,7 +952,7 @@ describe("BILL-02: model usage aggregation and public rankings", () => {
     const api = createOpsLogsApi(context);
     const runs = createRunsApi(context);
     const webhooks = createWebhookCallbackApi(context);
-    const model = "claude-sonnet-4-6";
+    const model = "claude-sonnet-5";
     const seed = Number.parseInt(randomUUID().slice(0, 8), 16);
     const dayStart = Date.UTC(
       1970 + (seed % 7),

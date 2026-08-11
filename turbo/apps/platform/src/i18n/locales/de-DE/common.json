@@ -1625,6 +1625,7 @@
         "waiting": "Warten",
         "watching": "Aufpassen"
       },
+      "emojiCategories": "Emoji-Kategorien",
       "empty": "Senden Sie eine Nachricht, um das Gespräch zu beginnen",
       "frequentlyUsed": "Häufig verwendet",
       "icon": "Chat-Thread-Symbol",
@@ -1940,6 +1941,7 @@
       "emptyAdmin": "Noch keine benutzerdefinierten Integrationen. Erstellen Sie eine, um eine API zu registrieren, die jedes Mitglied verwenden kann.",
       "emptyMember": "Ihre Organisation hat noch keine benutzerdefinierten Integrationen registriert.",
       "mcpStreamableHttp": "MCP · Streamable HTTP",
+      "mcpType": "MCP",
       "moreOptions": "Weitere Optionen",
       "statusConnected": "Verbunden",
       "toasts": {
@@ -4449,7 +4451,10 @@
           "action": "Aus Arbeitsbereich entfernen",
           "confirmDescription": "{{email}} wird aus diesem Arbeitsbereich entfernt und verliert den Zugriff auf alle Ressourcen.",
           "progress": "Entfernen...",
-          "title": "Mitglied entfernen?"
+          "title": "Mitglied entfernen?",
+          "usagePackImpactDescription": "Die verbleibenden Credits des Nutzungspakets sind sofort nicht mehr verfügbar. Das Paket wird zum Ende des aktuellen Abrechnungszeitraums entfernt. Falls der Arbeitsbereich dadurch kein Nutzungspaket mehr hat, wird auch der Arbeitsbereichstarif zum Ende des Abrechnungszeitraums gekündigt.",
+          "usagePackImpactTitle": "Auswirkungen auf das Nutzungspaket",
+          "usagePackRefundDescription": "Rückerstattung: Der ungenutzte Anteil der gekauften Credits wird auf die ursprüngliche Zahlungsmethode zurückerstattet. Verbrauchte Credits und Bonus-Credits sind nicht erstattungsfähig."
         },
         "revoke": {
           "action": "Einladung widerrufen",
@@ -4471,6 +4476,7 @@
           "progress": "Wechsel...",
           "title": "Zum Mitglied wechseln?"
         },
+        "usagePack": "Nutzungspaket",
         "user": "Benutzer",
         "you": "Sie"
       },

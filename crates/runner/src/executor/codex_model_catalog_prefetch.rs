@@ -8,7 +8,7 @@ use sandbox::{
     ProcessControlMode, ProcessExit, ProcessOutputMode, Sandbox, StartProcessRequest,
 };
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, warn};
+use tracing::warn;
 
 use super::cli_framework::EffectiveCliFramework;
 use super::effective_cli_framework;
@@ -257,10 +257,7 @@ impl<'a> CodexModelCatalogPrefetch<'a> {
                 ExecTermination::StartFailed => (false, Some("process_start_failed")),
                 ExecTermination::WaitFailed => (false, Some("process_wait_failed")),
             },
-            Err(error) => {
-                debug!(error = %error, "Codex model catalog prefetch wait failed");
-                (false, Some("wait_failed"))
-            }
+            Err(_) => (false, Some("wait_failed")),
         };
         self.outcome = Some(PrefetchOutcome {
             duration,

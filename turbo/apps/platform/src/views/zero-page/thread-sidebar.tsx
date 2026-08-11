@@ -2,7 +2,7 @@ import type { UIEvent as ReactUIEvent } from "react";
 import { createPortal } from "react-dom";
 import { ArrowLeft, ExternalLink, Maximize, Minimize, X } from "lucide-react";
 import { useGet, useLastLoadable, useSet } from "ccstate-react";
-import { cn } from "@vm0/ui";
+import { Button, cn } from "@vm0/ui";
 import { useTranslation } from "react-i18next";
 
 import { pageSignal$ } from "../../signals/page-signal.ts";
@@ -76,22 +76,23 @@ function ThreadSidebarHeader({
   return (
     <div className="flex min-h-14 shrink-0 items-center gap-1 border-b border-border/60 px-4">
       {onBack ? (
-        <button
+        <Button
           type="button"
           onClick={onBack}
           aria-label={t(($) => {
             return $.artifacts.actions.backToArtifacts;
           })}
-          className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-state-hover hover:text-foreground"
+          variant="quiet"
+          size="icon-sm"
         >
           <ArrowLeft size={16} />
-        </button>
+        </Button>
       ) : null}
       <span className="min-w-0 flex-1 truncate text-sm font-medium">
         {title}
       </span>
       {onToggleFullscreen ? (
-        <button
+        <Button
           type="button"
           onClick={onToggleFullscreen}
           aria-label={
@@ -104,12 +105,14 @@ function ThreadSidebarHeader({
                 })
           }
           data-testid="thread-sidebar-fullscreen-toggle"
-          className="hidden xl:inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-state-hover hover:text-foreground"
+          variant="quiet"
+          size="icon-sm"
+          className="hidden xl:inline-flex"
         >
           {fullscreen ? <Minimize size={16} /> : <Maximize size={16} />}
-        </button>
+        </Button>
       ) : null}
-      <button
+      <Button
         type="button"
         onClick={onClose}
         aria-label={t(
@@ -122,10 +125,11 @@ function ThreadSidebarHeader({
             ),
           },
         )}
-        className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-state-hover hover:text-foreground"
+        variant="quiet"
+        size="icon-sm"
       >
         <X size={16} />
-      </button>
+      </Button>
     </div>
   );
 }
@@ -355,7 +359,6 @@ function ThreadArtifactDetail({
         url: preview.url,
         kind: preview.kind,
         filename: preview.filename,
-        resourceUrl$: sidebar.selectedArtifactResourceUrl$,
       }}
       thread={thread}
       text$={sidebar.selectedArtifactText$}

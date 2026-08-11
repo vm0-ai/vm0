@@ -1624,6 +1624,7 @@
         "waiting": "待っています",
         "watching": "見てる"
       },
+      "emojiCategories": "絵文字のカテゴリ",
       "empty": "メッセージを送信して会話を始めましょう",
       "frequentlyUsed": "頻繁に使用される",
       "icon": "チャットスレッドアイコン",
@@ -1939,6 +1940,7 @@
       "emptyAdmin": "カスタム コネクタはまだありません。すべてのメンバーが使用する API を登録するために作成します。",
       "emptyMember": "組織はまだカスタム コネクタを登録していません。",
       "mcpStreamableHttp": "MCP · Streamable HTTP",
+      "mcpType": "MCP",
       "moreOptions": "その他のオプション",
       "statusConnected": "接続済み",
       "toasts": {
@@ -4448,7 +4450,10 @@
           "action": "ワークスペースから削除",
           "confirmDescription": "{{email}} はこのワークスペースから削除され、すべてのリソースにアクセスできなくなります。",
           "progress": "削除中...",
-          "title": "メンバーを削除しますか?"
+          "title": "メンバーを削除しますか?",
+          "usagePackImpactDescription": "このメンバーの利用パックの残りクレジットは直ちに利用できなくなります。パックは現在の請求期間の終了時に削除されます。これによりワークスペースに利用パックがなくなる場合、ワークスペースプランも請求期間の終了時に解約されます。",
+          "usagePackImpactTitle": "利用パックへの影響",
+          "usagePackRefundDescription": "返金：購入済みクレジットの未使用分は、元のお支払い方法に返金されます。使用済みクレジットとボーナスクレジットは返金対象外です。"
         },
         "revoke": {
           "action": "招待を取り消す",
@@ -4470,6 +4475,7 @@
           "progress": "切り替え中...",
           "title": "メンバーに切り替えますか？"
         },
+        "usagePack": "利用パック",
         "user": "ユーザー",
         "you": "あなた"
       },

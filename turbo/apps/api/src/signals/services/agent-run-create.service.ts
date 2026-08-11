@@ -27,6 +27,7 @@ import {
 import { modelProviderSurfaceProtocolSchema } from "@vm0/api-contracts/contracts/zero-model-provider-gateways";
 import {
   getDefaultModel,
+  getRetiredRunModelReplacement,
   getModelProviderCodexRuntimeConfig,
   getModelProviderEnvBindings,
   getModelImageInputSupport,
@@ -37,7 +38,9 @@ import {
   getVm0ConcreteProviderType,
   getVm0Vendor,
   hasAuthMethods,
+  isModelSupportedByProvider,
   isSupportedRunModel,
+  isRetiredRunModel,
   MODEL_PROVIDER_TYPES,
   normalizeRunModelId,
   type ModelProviderCodexRuntimeConfig,
@@ -161,6 +164,7 @@ import {
 } from "../../lib/db-structured-result";
 import {
   badRequestMessage,
+  modelRetired,
   notFound,
   providerUnavailable,
 } from "../../lib/error";
@@ -796,6 +800,7 @@ type ApiErrorResponse<Status extends number, Code extends string> = {
 type CreateRunRouteResult =
   | CreateRunSuccessResult
   | ApiErrorResponse<400, "BAD_REQUEST">
+  | ApiErrorResponse<400, "MODEL_RETIRED">
   | ApiErrorResponse<403, "FORBIDDEN">
   | ApiErrorResponse<404, "NOT_FOUND">
   | ApiErrorResponse<402, "INSUFFICIENT_CREDITS">
@@ -822,6 +827,7 @@ export interface CreateAgentRunArgs {
   readonly modelProviderCredentialScope?: ModelProviderCredentialScope;
   readonly modelProviderType?: string;
   readonly selectedModelOverride?: string;
+  readonly reconcileRetiredPersistedModel?: boolean;
   readonly codexServiceTier?: "fast";
   readonly callbacks?: readonly RunCallback[];
   readonly chatThreadId?: string;
@@ -901,6 +907,7 @@ interface CustomConnectorRuntimeContext {
   readonly skills: readonly {
     readonly connectorId: string;
     readonly connectorSlug: string;
+    readonly versionId: string;
   }[];
 }
 
@@ -972,6 +979,28 @@ function skillMountPath(skillsRoot: string, skillName: string): string {
   return `${skillsRoot}/${skillName}`;
 }
 
+type ConnectorSkillVolumeSource = Extract<
+  StorageManifestSource,
+  "connector_skill" | "custom_connector_skill"
+>;
+
+function buildExactConnectorSkillVolume(args: {
+  readonly name: string;
+  readonly version: string;
+  readonly mountPath: string;
+  readonly source: ConnectorSkillVolumeSource;
+}): PreparedAdditionalVolume {
+  return {
+    volume: {
+      name: args.name,
+      version: args.version,
+      mountPath: args.mountPath,
+      ...(args.source === "connector_skill" ? { system: true } : {}),
+    },
+    source: args.source,
+  };
+}
+
 // Legacy CLI runs use the framework resolved from the model provider, never
 // the framework declared in the compose. Eligible Pi runs instead receive the
 // fixed Pi root before Storage resolves any versions or overlays.
@@ -1008,15 +1037,12 @@ function buildConnectorSkillVolumes(
     if (connector.skill.kind === "none") {
       return [];
     }
-    const prepared: PreparedAdditionalVolume = {
-      volume: {
-        name: connector.skill.storageName,
-        version: connector.skill.versionId,
-        mountPath: skillMountPath(skillsRoot, connectorSlug),
-        system: true,
-      },
+    const prepared = buildExactConnectorSkillVolume({
+      name: connector.skill.storageName,
+      version: connector.skill.versionId,
+      mountPath: skillMountPath(skillsRoot, connectorSlug),
       source: "connector_skill",
-    };
+    });
     return [prepared];
   });
 }
@@ -1043,16 +1069,15 @@ function buildCustomConnectorSkillVolumes(
   skillsRoot: string,
 ): readonly PreparedAdditionalVolume[] {
   return skills.map((skill) => {
-    return {
-      volume: {
-        name: getCustomConnectorSkillStorageName(skill.connectorId),
-        mountPath: skillMountPath(
-          skillsRoot,
-          getCustomConnectorSkillName(skill.connectorSlug, skill.connectorId),
-        ),
-      },
+    return buildExactConnectorSkillVolume({
+      name: getCustomConnectorSkillStorageName(skill.connectorId),
+      version: skill.versionId,
+      mountPath: skillMountPath(
+        skillsRoot,
+        getCustomConnectorSkillName(skill.connectorSlug, skill.connectorId),
+      ),
       source: "custom_connector_skill",
-    };
+    });
   });
 }
 
@@ -4029,7 +4054,7 @@ function buildCustomConnectorRuntimeApis(args: {
         serviceName: "MCP custom connector",
         hostPolicy: { kind: "publicDestination" },
       });
-      return endpoint;
+      return canonicalEndpoint;
     });
     if ("error" in endpointResult) {
       args.stats.recordInvalidPrefix();
@@ -4037,24 +4062,13 @@ function buildCustomConnectorRuntimeApis(args: {
       return [];
     }
     const endpoint = endpointResult.ok;
-    const endpointPath = endpoint.pathname;
     args.stats.recordRenderedApi();
     args.stats.recordPhaseDuration("renderPrefixes", prefixStartedAt);
     return [
       {
-        base: endpoint.origin,
+        base: endpoint,
         hostPolicy: { kind: "publicDestination" },
         auth: { headers: args.headers, query: args.query },
-        permissions: [
-          {
-            name: "mcp-endpoint",
-            rules: [
-              `POST ${endpointPath}`,
-              `GET ${endpointPath}`,
-              `DELETE ${endpointPath}`,
-            ],
-          },
-        ],
       },
     ];
   }
@@ -4178,12 +4192,18 @@ interface BuiltCustomConnectorRuntimeRow {
 function customConnectorRuntimeSkill(
   row: CustomConnectorRuntimeDataRows[number],
 ): CustomConnectorRuntimeContext["skills"][number] | undefined {
-  return row.connector.skillMarkdown === null
-    ? undefined
-    : {
-        connectorId: row.connector.id,
-        connectorSlug: row.connector.slug,
-      };
+  const { skillMarkdown, skillStorageVersionId } = row.connector;
+  if (skillMarkdown === null && skillStorageVersionId === null) {
+    return undefined;
+  }
+  if (skillMarkdown === null || skillStorageVersionId === null) {
+    throw new Error("Custom connector skill registration is unavailable");
+  }
+  return {
+    connectorId: row.connector.id,
+    connectorSlug: row.connector.slug,
+    versionId: skillStorageVersionId,
+  };
 }
 
 function customConnectorRuntimeCredentialsAreComplete(
@@ -4343,18 +4363,12 @@ async function buildCustomConnectorRuntimeRow(args: {
       description: args.row.connector.displayName,
       apis,
     },
-    permissionPolicy:
-      args.row.connector.kind === "mcp"
-        ? {
-            policies: { "mcp-endpoint": "allow" },
-            unknownPolicy: "deny",
-          }
-        : permissionBundle
-          ? buildCustomConnectorPermissionPolicy({
-              bundle: permissionBundle,
-              selectedPermissionNames: args.selectedPermissionNames,
-            })
-          : undefined,
+    permissionPolicy: permissionBundle
+      ? buildCustomConnectorPermissionPolicy({
+          bundle: permissionBundle,
+          selectedPermissionNames: args.selectedPermissionNames,
+        })
+      : undefined,
   };
 }
 
@@ -4369,6 +4383,7 @@ export async function buildCustomConnectorRuntimeContext(
   const skills: {
     connectorId: string;
     connectorSlug: string;
+    versionId: string;
   }[] = [];
   const grantByConnectorId = new Map(
     (args.grants ?? []).map((grant) => {
@@ -8285,7 +8300,7 @@ async function resolvePreparedRunModelProvider(
 ): Promise<ResolvedModelProviderEnvironment | null | CreateRunErrorResult> {
   const { resolved, requestedFramework, featureSwitchContext } =
     args.bodyContext;
-  return await args.timing.measure(
+  const result = await args.timing.measure(
     "api_dispatch_prepare_context_resolve_model_provider",
     "nested",
     async () => {
@@ -8300,6 +8315,172 @@ async function resolvePreparedRunModelProvider(
         signal,
       );
     },
+  );
+  if (!isRouteError(result) || !shouldReconcileRetiredModel(args.createArgs)) {
+    return result;
+  }
+  const fallback = await resolveImplicitRetiredModelProvider(
+    args,
+    null,
+    signal,
+  );
+  return fallback ?? result;
+}
+
+function shouldReconcileRetiredModel(args: CreateAgentRunArgs): boolean {
+  return (
+    args.reconcileRetiredPersistedModel === true ||
+    (args.selectedModelOverride === undefined &&
+      args.modelProviderType === undefined)
+  );
+}
+
+function replacementRouteIsCompatible(
+  provider: ResolvedModelProviderEnvironment,
+  replacement: SupportedRunModel,
+): boolean {
+  return (
+    provider.selectedModel === replacement &&
+    (provider.type === "vm0" ||
+      provider.inlineFirewall === true ||
+      isModelSupportedByProvider(replacement, provider.type))
+  );
+}
+
+async function resolveReplacementOnCurrentRoute(
+  args: {
+    readonly db: Db;
+    readonly createArgs: CreateAgentRunArgs;
+    readonly bodyContext: PreparedRunBodyContext;
+  },
+  provider: ResolvedModelProviderEnvironment,
+  replacement: SupportedRunModel,
+): Promise<ResolvedModelProviderEnvironment | null> {
+  const resolved = await resolveModelProviderEnvironment(args.db, {
+    orgId: args.createArgs.orgId,
+    userId: args.createArgs.userId,
+    framework: modelProviderFramework(provider),
+    modelProviderId: provider.id ?? args.createArgs.modelProviderId,
+    modelProviderCredentialScope: args.createArgs.modelProviderCredentialScope,
+    modelProviderType: provider.type,
+    selectedModelOverride: replacement,
+    featureSwitchContext: args.bodyContext.featureSwitchContext,
+    resolvePiEdgeCredentials: false,
+  });
+  return resolved && replacementRouteIsCompatible(resolved, replacement)
+    ? resolved
+    : null;
+}
+
+/**
+ * Rollout compatibility for runs whose model route was persisted by the
+ * previous API during the observed ~102-minute DB/API exposure window. Remove
+ * with #26314 after Stage 2 migrates every implicit selection, production
+ * shows none remain, and the previous API is outside its rollback/drain window.
+ */
+async function resolveImplicitRetiredModelProvider(
+  args: {
+    readonly db: Db;
+    readonly createArgs: CreateAgentRunArgs;
+    readonly bodyContext: PreparedRunBodyContext;
+  },
+  provider: ResolvedModelProviderEnvironment | null,
+  signal: AbortSignal,
+): Promise<ResolvedModelProviderEnvironment | null> {
+  if (!shouldReconcileRetiredModel(args.createArgs)) {
+    return provider;
+  }
+  const selectedModel =
+    provider?.selectedModel ?? args.createArgs.selectedModelOverride;
+  const providerType = provider?.type ?? args.createArgs.modelProviderType;
+  if (!isRetiredRunModel(selectedModel, providerType)) {
+    return provider;
+  }
+  const capabilities = await loadOrgPlanCapabilities(
+    args.db,
+    args.createArgs.orgId,
+  );
+  signal.throwIfAborted();
+  const replacement = getRetiredRunModelReplacement(selectedModel, {
+    restrictedVm0Models:
+      capabilities?.status === "active" && capabilities.restrictedVm0Models,
+    modelProviderType: providerType,
+  });
+  if (!replacement) {
+    return provider;
+  }
+  const preserved = provider
+    ? await resolveReplacementOnCurrentRoute(args, provider, replacement)
+    : null;
+  signal.throwIfAborted();
+  return (
+    preserved ??
+    (await vm0ModelProviderEnvironment(args.db, replacement)) ??
+    provider
+  );
+}
+
+async function retiredResolvedModelError(
+  args: {
+    readonly db: Db;
+    readonly createArgs: CreateAgentRunArgs;
+  },
+  modelProvider: ResolvedModelProviderEnvironment | null,
+  signal: AbortSignal,
+): Promise<ReturnType<typeof modelRetired> | undefined> {
+  const selectedModel =
+    modelProvider?.selectedModel ?? args.createArgs.selectedModelOverride;
+  const modelProviderType =
+    modelProvider?.type ?? args.createArgs.modelProviderType;
+  if (!isRetiredRunModel(selectedModel, modelProviderType)) {
+    return undefined;
+  }
+  const capabilities = await loadOrgPlanCapabilities(
+    args.db,
+    args.createArgs.orgId,
+  );
+  signal.throwIfAborted();
+  const replacement = getRetiredRunModelReplacement(selectedModel, {
+    restrictedVm0Models:
+      capabilities?.status === "active" && capabilities.restrictedVm0Models,
+    modelProviderType,
+  });
+  return replacement
+    ? modelRetired(selectedModel ?? "Z.AI", replacement)
+    : undefined;
+}
+
+async function resolveAdmittedPreparedRunModelProvider(
+  args: {
+    readonly db: Db;
+    readonly createArgs: CreateAgentRunArgs;
+    readonly timing: ApiDispatchTimingCollector;
+    readonly bodyContext: PreparedRunBodyContext;
+  },
+  signal: AbortSignal,
+): Promise<ResolvedModelProviderEnvironment | null | CreateRunErrorResult> {
+  if (!shouldReconcileRetiredModel(args.createArgs)) {
+    const explicitRetiredModelError = await retiredResolvedModelError(
+      args,
+      null,
+      signal,
+    );
+    if (explicitRetiredModelError) {
+      return explicitRetiredModelError;
+    }
+  }
+  let modelProvider = await resolvePreparedRunModelProvider(args, signal);
+  if (isRouteError(modelProvider)) {
+    return modelProvider;
+  }
+  modelProvider = await resolveImplicitRetiredModelProvider(
+    args,
+    modelProvider,
+    signal,
+  );
+  return (
+    (await retiredResolvedModelError(args, modelProvider, signal)) ??
+    modelProvider
   );
 }
 
@@ -8322,7 +8503,10 @@ async function prepareRunRuntimeContext(
     args.connectorScope,
     connectorCatalogSnapshot,
   );
-  const modelProvider = await resolvePreparedRunModelProvider(args, signal);
+  const modelProvider = await resolveAdmittedPreparedRunModelProvider(
+    args,
+    signal,
+  );
   if (isRouteError(modelProvider)) {
     return modelProvider;
   }

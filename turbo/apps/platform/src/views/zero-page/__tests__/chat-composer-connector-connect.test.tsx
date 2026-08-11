@@ -8,6 +8,7 @@ import {
   zeroCustomConnectorValuesContract,
   zeroCustomConnectorsContract,
   type CustomConnectorHttpResponse,
+  type CustomConnectorMcpResponse,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import {
   zeroAgentCustomConnectorsContract,
@@ -116,6 +117,45 @@ function customConnector(
   };
 }
 
+function mcpCustomConnector(
+  overrides: Partial<CustomConnectorMcpResponse> = {},
+): CustomConnectorMcpResponse {
+  return {
+    kind: "mcp",
+    id: "44444444-4444-4444-8444-444444444444",
+    storageVersion: 1,
+    slug: "_deepwiki",
+    displayName: "DeepWiki",
+    endpoint: "https://mcp.deepwiki.com/mcp",
+    transport: "streamable-http",
+    prefixTemplates: [],
+    fields: [
+      {
+        key: "secret",
+        label: "Secret",
+        kind: "secret",
+        required: true,
+      },
+    ],
+    headerInjections: [
+      {
+        name: "X-VM0-Test-Token",
+        valueTemplate: "{{secrets.secret}}",
+      },
+    ],
+    queryInjections: [],
+    authMode: "manual",
+    permissionBundleRef: null,
+    connected: false,
+    missingRequiredFields: ["secret"],
+    configuredFieldKeys: [],
+    hasSecret: false,
+    createdAt: "2026-08-11T00:00:00.000Z",
+    updatedAt: "2026-08-11T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
 function mockCatalog(
   connectors: readonly PublicConnectorCatalogStatusItem[],
 ): void {
@@ -196,9 +236,9 @@ describe("chat composer connector connection", () => {
     });
   });
 
-  it("shows connected custom connectors and toggles agent access", async () => {
+  it("shows connected MCP custom connectors and toggles agent access", async () => {
     const user = userEvent.setup({ delay: null });
-    const connector = customConnector({
+    const connector = mcpCustomConnector({
       connected: true,
       missingRequiredFields: [],
       configuredFieldKeys: ["secret"],
@@ -212,7 +252,7 @@ describe("chat composer connector connection", () => {
       zeroAgentCustomConnectorsContract.get,
       ({ params, respond }) => {
         expect(params.id).toBe(AGENT_ID);
-        return respond(200, { enabledIds: [], grants });
+        return respond(200, { grants });
       },
     );
     let updateCount = 0;
@@ -226,24 +266,79 @@ describe("chat composer connector connection", () => {
           operation: "add",
         });
         grants = [{ customConnectorId: connector.id, permissionNames: [] }];
-        return respond(200, { enabledIds: [connector.id], grants });
+        return respond(200, { grants });
       },
     );
 
     detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: { [FeatureSwitchKey.CustomConnectorMcp]: true },
     });
 
     const composer = composerElementFrom(
       await screen.findByPlaceholderText(PLACEHOLDER),
     );
     await user.click(within(composer).getByLabelText("Connectors"));
-    await user.click(await screen.findByLabelText("Add Acme Search"));
+    await user.click(await screen.findByLabelText("Add DeepWiki"));
 
     await waitFor(() => {
       expect(updateCount).toBe(1);
-      expect(screen.getByLabelText("Remove Acme Search")).toBeInTheDocument();
+      expect(screen.getByLabelText("Remove DeepWiki")).toBeInTheDocument();
+    });
+  });
+
+  it("keeps authorized MCP custom connectors removable while disabled", async () => {
+    const user = userEvent.setup({ delay: null });
+    const connector = mcpCustomConnector({
+      connected: true,
+      missingRequiredFields: [],
+      configuredFieldKeys: ["secret"],
+      hasSecret: true,
+    });
+    let grants: AgentCustomConnectorGrant[] = [
+      { customConnectorId: connector.id, permissionNames: [] },
+    ];
+    let updateCount = 0;
+    context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
+      return respond(200, { connectors: [connector] });
+    });
+    context.mocks.api(
+      zeroAgentCustomConnectorsContract.get,
+      ({ params, respond }) => {
+        expect(params.id).toBe(AGENT_ID);
+        return respond(200, { grants });
+      },
+    );
+    context.mocks.api(
+      zeroAgentCustomConnectorsContract.update,
+      ({ body, params, respond }) => {
+        expect(params.id).toBe(AGENT_ID);
+        expect(body).toStrictEqual({
+          grants: [{ customConnectorId: connector.id, permissionNames: [] }],
+          operation: "remove",
+        });
+        updateCount += 1;
+        grants = [];
+        return respond(200, { grants });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: { [FeatureSwitchKey.CustomConnectorMcp]: false },
+    });
+
+    const composer = composerElementFrom(
+      await screen.findByPlaceholderText(PLACEHOLDER),
+    );
+    await user.click(within(composer).getByLabelText("Connectors"));
+    await user.click(await screen.findByLabelText("Remove DeepWiki"));
+
+    await waitFor(() => {
+      expect(updateCount).toBe(1);
+      expect(screen.queryByText("DeepWiki")).not.toBeInTheDocument();
     });
   });
 
@@ -260,14 +355,14 @@ describe("chat composer connector connection", () => {
       return respond(200, { connectors: [connector] });
     });
     context.mocks.api(zeroAgentCustomConnectorsContract.get, ({ respond }) => {
-      return respond(200, { enabledIds: [], grants: [] });
+      return respond(200, { grants: [] });
     });
     let updateCount = 0;
     context.mocks.api(
       zeroAgentCustomConnectorsContract.update,
       ({ respond }) => {
         updateCount += 1;
-        return respond(200, { enabledIds: [], grants: [] });
+        return respond(200, { grants: [] });
       },
     );
 
@@ -340,7 +435,6 @@ describe("chat composer connector connection", () => {
         });
         updatedAgentIds.push(params.id);
         return respond(200, {
-          enabledIds: [connector.id],
           grants: [{ customConnectorId: connector.id, permissionNames: [] }],
         });
       },

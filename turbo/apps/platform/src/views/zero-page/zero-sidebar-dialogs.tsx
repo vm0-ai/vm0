@@ -6,6 +6,7 @@ import { useLoadableSet } from "ccstate-react/experimental";
 import { Loader2, Search, X, Pin, PinOff } from "lucide-react";
 import type { ChatSearchResult } from "@vm0/api-contracts/contracts/chat-threads";
 import {
+  Button,
   CommandDialog,
   CommandGroup,
   CommandInput,
@@ -97,18 +98,20 @@ export function AgentDialogSearch({
           className={`pl-9 ${query ? "pr-9" : ""}`}
         />
         {query && (
-          <button
+          <Button
             type="button"
             onClick={() => {
               return setQuery("");
             }}
-            className="absolute right-1.5 top-1/2 flex h-7 w-7 shrink-0 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
+            variant="quiet"
+            size="icon-xs"
+            className="absolute right-1.5 top-1/2 shrink-0 -translate-y-1/2"
             aria-label={t(($) => {
               return $.sidebar.clearSearch;
             })}
           >
             <X size={14} />
-          </button>
+          </Button>
         )}
       </div>
     </div>
@@ -192,18 +195,20 @@ function AgentCommandSearch({
           className={query ? "pr-7" : ""}
         />
         {query && (
-          <button
+          <Button
             type="button"
             onClick={() => {
               return setQuery("");
             }}
-            className="absolute right-1.5 top-1/2 flex h-7 w-7 shrink-0 -translate-y-1/2 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
+            variant="quiet"
+            size="icon-xs"
+            className="absolute right-1.5 top-1/2 shrink-0 -translate-y-1/2"
             aria-label={t(($) => {
               return $.sidebar.clearSearch;
             })}
           >
             <X size={14} />
-          </button>
+          </Button>
         )}
       </div>
     </div>

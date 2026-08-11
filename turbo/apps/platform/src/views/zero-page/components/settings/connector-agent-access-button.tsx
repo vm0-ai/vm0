@@ -1,4 +1,5 @@
 import { useTranslation } from "react-i18next";
+import { Button } from "@vm0/ui";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 
 const AGENT_NAME_LIMIT = 2;
@@ -35,9 +36,11 @@ export function ConnectorAgentAccessButton({
   const overflowCount = agents.length - visibleNames.length;
 
   return (
-    <button
+    <Button
       type="button"
-      className="inline-flex h-7 min-w-0 shrink items-center gap-0 rounded-lg px-2 text-xs text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+      variant="quiet"
+      size="xs"
+      className="min-w-0 gap-0 px-2 text-xs"
       aria-label={t(
         ($) => {
           return $.connectors.catalog.access.manage;
@@ -80,6 +83,6 @@ export function ConnectorAgentAccessButton({
           ) : null}
         </>
       )}
-    </button>
+    </Button>
   );
 }

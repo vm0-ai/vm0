@@ -16,7 +16,7 @@ import type { OrgRole } from "@vm0/api-contracts/contracts/org-members";
 import type { UsagePackUsd } from "@vm0/api-contracts/contracts/zero-billing";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { toast } from "@vm0/ui/components/ui/sonner";
-import { org$, refreshOrg$ } from "../../org.ts";
+import { isOrgAdmin$, org$, refreshOrg$ } from "../../org.ts";
 import { zeroClient$ } from "../../api-client.ts";
 import { clerk$, resolveAppAuthUrl } from "../../auth.ts";
 import { refreshOrgMembers$ } from "../../external/org-members.ts";
@@ -24,6 +24,9 @@ import { accept } from "../../../lib/accept.ts";
 import { i18n } from "../../../i18n/index.ts";
 import { featureSwitch$ } from "../../external/feature-switch.ts";
 import {
+  billingStatusAsync$,
+  reloadBillingStatus$,
+  reloadUsagePackManagement$,
   usagePackCatalogAsync$,
   usagePackManagementAsync$,
 } from "../billing.ts";
@@ -255,15 +258,28 @@ export const setInviteUsagePackUsd$ = command(
   },
 );
 
-export const invitationUsagePackCatalog$ = computed((get) => {
-  if (
-    !get(internalInviteDialogOpen$) ||
-    !get(featureSwitch$)[FeatureSwitchKey.UsagePackPlans]
-  ) {
+export const memberUsagePackManagement$ = computed((get) => {
+  if (!get(featureSwitch$)[FeatureSwitchKey.UsagePackPlans]) {
     return null;
   }
   return (async () => {
-    const management = await get(usagePackManagementAsync$);
+    if (!(await get(isOrgAdmin$))) {
+      return null;
+    }
+    const billing = await get(billingStatusAsync$);
+    if (billing.memberInviteUsagePackRequired !== true) {
+      return null;
+    }
+    return await get(usagePackManagementAsync$);
+  })();
+});
+
+export const invitationUsagePackCatalog$ = computed((get) => {
+  if (!get(internalInviteDialogOpen$)) {
+    return null;
+  }
+  return (async () => {
+    const management = await get(memberUsagePackManagement$);
     if (!management) {
       return null;
     }
@@ -632,6 +648,8 @@ export const removeMember$ = command(
       ),
     );
     set(refreshOrgMembers$);
+    set(reloadBillingStatus$);
+    set(reloadUsagePackManagement$);
     set(internalRemoveMemberDialogTarget$, null);
   },
 );

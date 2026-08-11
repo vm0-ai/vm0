@@ -292,6 +292,7 @@ async function evaluatePersistedChatThreadModel(
     orgId: params.orgId,
     userId: params.userId,
     selectedModel: thread.selectedModel ?? params.fallbackSelectedModel ?? null,
+    modelProviderType: thread.modelProviderType,
   });
   if (!modelResolution.route) {
     return {

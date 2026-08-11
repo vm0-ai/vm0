@@ -382,7 +382,7 @@ export const reloadBillingStatus$ = command(({ set }) => {
   });
 });
 
-const reloadUsagePackManagement$ = command(({ set }) => {
+export const reloadUsagePackManagement$ = command(({ set }) => {
   set(usagePackManagementReload$, (value) => {
     return value + 1;
   });
@@ -918,7 +918,12 @@ export const restoreConcurrencySubscription$ = command(
 );
 
 export const openBillingPortal$ = command(
-  async ({ get }, mode: "billing" | "payment_methods", signal: AbortSignal) => {
+  async (
+    { get },
+    mode: "billing" | "payment_methods",
+    newTab: boolean,
+    signal: AbortSignal,
+  ) => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroBillingPortalContract);
     const result = await accept(
@@ -932,7 +937,11 @@ export const openBillingPortal$ = command(
       [200],
     );
     signal.throwIfAborted();
-    window.location.href = result.body.url;
+    if (newTab) {
+      window.open(result.body.url, "_blank");
+    } else {
+      window.location.href = result.body.url;
+    }
   },
 );
 

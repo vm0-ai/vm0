@@ -1,6 +1,7 @@
 // TODO(#8609): split large components to comply with max-lines-per-function (128)
 // oxlint-disable max-lines-per-function
 import { useGet, useLoadable, useSet } from "ccstate-react";
+import { Button } from "@vm0/ui";
 import { useTranslation } from "react-i18next";
 import type { ModelProviderResponse } from "@vm0/api-contracts/contracts/model-providers";
 import { orgConfiguredProviders$ } from "../../../../signals/zero-page/settings/org-model-providers.ts";
@@ -125,7 +126,7 @@ function StaleProviderBanner({
         </p>
         <p className="mt-0.5 text-xs text-muted-foreground">{message}</p>
       </div>
-      <button
+      <Button
         type="button"
         onClick={() => {
           if (isClaudeCode) {
@@ -137,12 +138,13 @@ function StaleProviderBanner({
           }
           detach(openDeviceDialog("reconnect", pageSignal), Reason.DomCallback);
         }}
-        className="shrink-0 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary-hover"
+        size="xs"
+        className="shrink-0 text-xs"
       >
         {t(($) => {
           return $.settings.shared.reconnect;
         })}
-      </button>
+      </Button>
     </section>
   );
 }

@@ -73,18 +73,20 @@ function InviteButtonLeaf() {
     return null;
   }
   return (
-    <button
+    <Button
       type="button"
       onClick={() => {
         detach(openSettings("people", pageSignal), Reason.DomCallback);
       }}
-      className="flex items-center gap-1.5 h-8 px-3 rounded-lg text-sm text-muted-foreground hover:text-foreground hover:bg-state-hover transition-colors shrink-0"
+      variant="quiet"
+      size="sm"
+      className="shrink-0 gap-1.5"
     >
       <UserPlus size={14} />
       {t(($) => {
         return $.appShell.sidebar.mobile.invite;
       })}
-    </button>
+    </Button>
   );
 }
 
@@ -96,17 +98,17 @@ function MobileArtifactsButtonInner({ thread }: { thread: ChatPanelSignals }) {
   const open = sidebarTarget?.type === "artifacts";
 
   return (
-    <button
+    <Button
       type="button"
       onClick={() => {
         reloadArtifacts();
         openThreadArtifacts();
       }}
+      variant="quiet"
+      size="icon-sm"
       className={cn(
-        "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg transition-colors",
-        open
-          ? "bg-primary/10 text-primary"
-          : "text-muted-foreground hover:bg-state-hover hover:text-foreground",
+        "shrink-0",
+        open && "bg-primary/10 text-primary hover:text-primary",
       )}
       aria-label={t(($) => {
         return $.appShell.sidebar.mobile.openArtifacts;
@@ -114,7 +116,7 @@ function MobileArtifactsButtonInner({ thread }: { thread: ChatPanelSignals }) {
       aria-pressed={open}
     >
       <Package size={16} />
-    </button>
+    </Button>
   );
 }
 
@@ -161,7 +163,7 @@ function MobileShareButtonInner({ thread }: { thread: ChatPanelSignals }) {
     return null;
   }
   return (
-    <button
+    <Button
       type="button"
       onClick={() => {
         detach(
@@ -170,13 +172,15 @@ function MobileShareButtonInner({ thread }: { thread: ChatPanelSignals }) {
           "start shared thread selection",
         );
       }}
-      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
+      variant="quiet"
+      size="icon-sm"
+      className="shrink-0"
       aria-label={t(($) => {
         return $.chat.sharing.start;
       })}
     >
       <Share2 size={16} />
-    </button>
+    </Button>
   );
 }
 
@@ -258,18 +262,21 @@ function MobileTopBar() {
   return (
     <div className="relative md:hidden shrink-0 flex items-center min-h-12 px-3 gap-2 bg-background border-b border-border/50 z-10">
       <MobileSharingOverlayLeaf />
-      <button
+      <Button
         type="button"
         onClick={() => {
           setExpanded(true);
         }}
-        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-state-hover transition-colors"
+        variant="quiet"
+        size="icon-sm"
+        iconSize="md"
+        className="shrink-0"
         aria-label={t(($) => {
           return $.appShell.sidebar.mobile.openMenu;
         })}
       >
         <Menu size={18} />
-      </button>
+      </Button>
       {breadcrumb && (
         <div className="flex-1 min-w-0 flex items-center gap-2 min-w-0">
           {breadcrumb.avatarAgentId && <AgentAvatarInTopBar />}

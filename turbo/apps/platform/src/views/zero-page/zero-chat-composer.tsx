@@ -139,11 +139,7 @@ import {
 import { r2ImageTransformUrl } from "@vm0/core/r2-image-transform";
 import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
 import type { PlatformConnectorCatalogStatusItem } from "../../signals/connector-domain.ts";
-import {
-  isHttpCustomConnectorClientResponse,
-  type CustomConnectorClientResponse,
-  type CustomConnectorHttpClientResponse,
-} from "@vm0/api-contracts/contracts/zero-custom-connectors";
+import type { CustomConnectorClientResponse } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import type { AgentCustomConnectorGrant } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 import { getModelDisplayName } from "@vm0/core/model-display-name";
 import {
@@ -153,6 +149,7 @@ import {
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import { ConnectorCard } from "./components/settings/connector-card.tsx";
 import { CustomConnectorIcon } from "./components/settings/custom-connector-icon.tsx";
+import { customConnectorTarget } from "./components/settings/custom-connector-display.ts";
 import { CustomConnectorConnectDialog } from "./components/settings/custom-connector-connect-dialog.tsx";
 import type { ConnectorConnectHandlers } from "./components/settings/launch-connector-connect.ts";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
@@ -181,6 +178,7 @@ import {
 import {
   codexFastModeEnabled$,
   composerConnectorPermissionsEnabled$,
+  customConnectorMcpEnabled$,
   avatarTemplatesEnabled$,
   imageRecognitionAvailable$,
 } from "../../signals/external/feature-switch.ts";
@@ -342,7 +340,7 @@ type ComposerConnectorItem = PlatformConnectorCatalogStatusItem & {
   readonly authorized: boolean;
 };
 
-type ComposerCustomConnectorItem = CustomConnectorHttpClientResponse & {
+type ComposerCustomConnectorItem = CustomConnectorClientResponse & {
   readonly authorized: boolean;
 };
 
@@ -3771,7 +3769,7 @@ function TemplatePreviewPage({
                 </div>
               </div>
             </div>
-            <button
+            <Button
               type="button"
               aria-label={t(
                 ($) => {
@@ -3781,7 +3779,7 @@ function TemplatePreviewPage({
                   title: item.title,
                 },
               )}
-              className="mt-4 h-12 w-full rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              className="mt-4 h-12 w-full font-semibold shadow-sm"
               onClick={() => {
                 setCardThemeId(item.slug, selectedTheme.id);
                 onSelect(
@@ -3793,7 +3791,7 @@ function TemplatePreviewPage({
               {t(($) => {
                 return $.artifacts.templates.useThisTemplate;
               })}
-            </button>
+            </Button>
           </div>
         </div>
       </div>
@@ -5933,7 +5931,7 @@ function ConnectorTriggerIcons({
 
 function matchesCustomConnectorSearch(
   search: string,
-  connector: CustomConnectorHttpClientResponse,
+  connector: CustomConnectorClientResponse,
 ): boolean {
   const normalizedSearch = search.trim().toLowerCase();
   if (!normalizedSearch) {
@@ -5942,7 +5940,7 @@ function matchesCustomConnectorSearch(
   return [
     connector.displayName,
     connector.slug,
-    ...connector.prefixTemplates,
+    customConnectorTarget(connector),
   ].some((value) => {
     return value.toLowerCase().includes(normalizedSearch);
   });
@@ -5952,7 +5950,7 @@ function CustomConnectorCatalogCard({
   connector,
   onConnect,
 }: {
-  connector: CustomConnectorHttpClientResponse;
+  connector: CustomConnectorClientResponse;
   onConnect: () => void;
 }) {
   const { t } = useTranslation();
@@ -5992,9 +5990,21 @@ function CustomConnectorCatalogCard({
       <span className="block px-5 pb-4 pt-1">
         <span
           data-testid="connector-help-text"
-          className="line-clamp-2 text-xs text-muted-foreground"
+          className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground"
         >
-          {connector.prefixTemplates[0]}
+          <span className="shrink-0">
+            {connector.kind === "mcp"
+              ? t(($) => {
+                  return $.connectors.custom.mcpType;
+                })
+              : t(($) => {
+                  return $.connectors.custom.create.httpType;
+                })}
+          </span>
+          <span aria-hidden="true">·</span>
+          <span className="min-w-0 truncate font-mono text-muted-foreground/60">
+            {customConnectorTarget(connector)}
+          </span>
         </span>
       </span>
     </button>
@@ -6012,12 +6022,12 @@ function AddConnectorsDialog({
 }: {
   signals: ComposerSignals;
   unconnected: PlatformConnectorCatalogStatusItem[];
-  unconnectedCustom: CustomConnectorHttpClientResponse[];
+  unconnectedCustom: CustomConnectorClientResponse[];
   busyConnectorSlug: ConnectorSlug | null;
   connectHandlers: (
     connector: PlatformConnectorCatalogStatusItem,
   ) => ConnectorConnectHandlers;
-  onConnectCustom: (connector: CustomConnectorHttpClientResponse) => void;
+  onConnectCustom: (connector: CustomConnectorClientResponse) => void;
   onClose: () => void;
 }) {
   const { t } = useTranslation();
@@ -6588,7 +6598,7 @@ function ConnectorsPopoverButton({
                         agentId &&
                         connector.authorized &&
                         connector.permissionSummary.hasPermissions && (
-                          <button
+                          <Button
                             type="button"
                             onClick={(event) => {
                               event.preventDefault();
@@ -6603,10 +6613,12 @@ function ConnectorsPopoverButton({
                               },
                               { connectorName: connector.label },
                             )}
-                            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
+                            variant="quiet"
+                            size="icon-2xs"
+                            className="shrink-0"
                           >
                             <SlidersHorizontal size={15} />
-                          </button>
+                          </Button>
                         )}
                       <LoadingSwitch
                         checked={connector.authorized}
@@ -7637,12 +7649,10 @@ interface ResolvedComposerConnectorCollections {
     PlatformConnectorCatalogStatusItem
   >;
   readonly unconnectedConnectors: PlatformConnectorCatalogStatusItem[];
-  readonly unconnectedCustomConnectors: CustomConnectorHttpClientResponse[];
+  readonly unconnectedCustomConnectors: CustomConnectorClientResponse[];
   readonly agentConnectors: ComposerConnectorItem[];
   readonly agentCustomConnectors: ComposerCustomConnectorItem[];
-  readonly selectedCustomConnector:
-    | CustomConnectorHttpClientResponse
-    | undefined;
+  readonly selectedCustomConnector: CustomConnectorClientResponse | undefined;
 }
 
 function resolveComposerConnectorCollections({
@@ -7653,6 +7663,7 @@ function resolveComposerConnectorCollections({
   customConnectorGrants,
   optimisticConnected,
   selectedCustomConnectorId,
+  mcpEnabled,
 }: {
   relatedCatalogItems: Loadable<readonly PlatformConnectorCatalogStatusItem[]>;
   addDialogCatalogItems: Loadable<
@@ -7663,21 +7674,28 @@ function resolveComposerConnectorCollections({
   customConnectorGrants: readonly AgentCustomConnectorGrant[] | null;
   optimisticConnected: ReadonlySet<ConnectorSlug>;
   selectedCustomConnectorId: string | null;
+  mcpEnabled: boolean;
 }): ResolvedComposerConnectorCollections {
   const resolvedRelatedCatalogItems =
     relatedCatalogItems.state === "hasData" ? relatedCatalogItems.data : [];
   const resolvedAddDialogCatalogItems =
     addDialogCatalogItems.state === "hasData" ? addDialogCatalogItems.data : [];
-  const resolvedCustomConnectors =
-    customConnectors.state === "hasData"
-      ? customConnectors.data.filter(isHttpCustomConnectorClientResponse)
-      : [];
   const authorizedSet = new Set(authorizedConnectorSlugs ?? []);
   const authorizedCustomSet = new Set(
     customConnectorGrants?.map((grant) => {
       return grant.customConnectorId;
     }) ?? [],
   );
+  const resolvedCustomConnectors =
+    customConnectors.state === "hasData"
+      ? customConnectors.data.filter((connector) => {
+          return (
+            connector.kind === "http" ||
+            mcpEnabled ||
+            authorizedCustomSet.has(connector.id)
+          );
+        })
+      : [];
   const connectorMap = new Map(
     [...resolvedRelatedCatalogItems, ...resolvedAddDialogCatalogItems].map(
       (connector) => {
@@ -7692,7 +7710,7 @@ function resolveComposerConnectorCollections({
   );
   const unconnectedCustomConnectors = resolvedCustomConnectors.filter(
     (connector) => {
-      return !connector.connected;
+      return !connector.connected && (connector.kind === "http" || mcpEnabled);
     },
   );
   const agentConnectors = resolvedRelatedCatalogItems
@@ -7787,6 +7805,7 @@ function ComposerAttachments({ signals }: { signals: ComposerSignals }) {
 
 function ComposerConnectorsSlot({ signals }: { signals: ComposerSignals }) {
   const { t } = useTranslation();
+  const mcpEnabled = useGet(customConnectorMcpEnabled$);
   const connectorReadState = useComposerConnectorReadState(signals);
   const agents = useLastResolved(agents$) ?? [];
   const connectorUi = useGet(signals.connector.connectorUiState$);
@@ -7890,6 +7909,7 @@ function ComposerConnectorsSlot({ signals }: { signals: ComposerSignals }) {
     customConnectorGrants,
     optimisticConnected,
     selectedCustomConnectorId,
+    mcpEnabled,
   });
   const selectedConnector = selectedConnectorSlug
     ? connectorMap.get(selectedConnectorSlug)

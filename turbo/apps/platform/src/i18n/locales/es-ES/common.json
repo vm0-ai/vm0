@@ -1665,6 +1665,7 @@
         "waiting": "Esperando",
         "watching": "Observando"
       },
+      "emojiCategories": "Categorías de emojis",
       "empty": "Envía un mensaje para iniciar la conversación",
       "frequentlyUsed": "Usados con frecuencia",
       "icon": "Icono del hilo de chat",
@@ -1980,6 +1981,7 @@
       "emptyAdmin": "Todavía no hay conectores personalizados. Crea uno para registrar una API para que cada miembro la use.",
       "emptyMember": "Tu organización aún no ha registrado ningún conector personalizado.",
       "mcpStreamableHttp": "MCP · Streamable HTTP",
+      "mcpType": "MCP",
       "moreOptions": "Más opciones",
       "statusConnected": "Conectado",
       "toasts": {
@@ -4500,7 +4502,10 @@
           "action": "Quitar del espacio de trabajo",
           "confirmDescription": "{{email}} será eliminado de este espacio de trabajo y perderá el acceso a todos los recursos.",
           "progress": "Eliminando...",
-          "title": "¿Eliminar al miembro?"
+          "title": "¿Eliminar al miembro?",
+          "usagePackImpactDescription": "Los créditos restantes de su paquete de uso dejarán de estar disponibles de inmediato. El paquete se eliminará al final del periodo de facturación actual. Si esto deja al espacio de trabajo sin ningún paquete de uso, el plan del espacio de trabajo también se cancelará al final del periodo de facturación.",
+          "usagePackImpactTitle": "Impacto en el paquete de uso",
+          "usagePackRefundDescription": "Reembolso: La parte no utilizada de los créditos comprados se devuelve al método de pago original. Los créditos consumidos y los créditos de bonificación no son reembolsables."
         },
         "revoke": {
           "action": "Revocar invitación",
@@ -4522,6 +4527,7 @@
           "progress": "Cambiar...",
           "title": "¿Cambiar a miembro?"
         },
+        "usagePack": "Paquete de uso",
         "user": "Usuario",
         "you": "Tú"
       },
