@@ -18,9 +18,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from mitmproxy import ctx
-
 import runner_flush_request
+
+from .underbilling import log_usage_underbilling
 
 _counter_lock = threading.Lock()
 _pending_write_lock = threading.Lock()
@@ -31,11 +31,11 @@ _usage_state_id = str(uuid.uuid4())
 # hit the bounded usage-drain timeout without any local signal pointing at
 # filesystem trouble.  Emit one error signal per addon process on first failure —
 # enough to seed the operator investigation without spamming logs under
-# persistent FS pressure.  Deliberately goes through mitmproxy's own
-# stderr logger (not ``log_proxy_entry``) because the per-job proxy log
-# shares the same filesystem we just failed to write and is likely
-# affected by the same root cause.  The runner stderr bridge parses the
-# leading key=value fields and re-emits them as structured tracing fields.
+# persistent FS pressure.  Deliberately uses the canonical underbilling
+# helper's stderr fallback because the per-job proxy log shares the same
+# filesystem we just failed to write and is likely affected by the same root
+# cause.  The runner stderr bridge parses the leading key=value fields and
+# re-emits them as structured tracing fields.
 _pending_write_error_logged = False
 _FLUSH_REQUEST_FILE = "usage-flush-request"
 
@@ -141,13 +141,17 @@ def _write_pending_state(pending_path: str, state: dict[str, Any]) -> None:
             # runner's drain timeout and mitmdump stop timeout.
             if not _pending_write_error_logged:
                 _pending_write_error_logged = True
-                ctx.log.error(
-                    "type=usage_underbilling reason=pending_snapshot_write_failed "
-                    "underbilling_class=risk component=mitm_addon "
-                    "Failed to write pending count: "
-                    f"pending_path={pending_path!r} error={exc!r}.  "
-                    "Subsequent failures in this process will be silent; runner "
-                    "shutdown may hit the bounded proxy stop timeout."
+                log_usage_underbilling(
+                    "",
+                    (
+                        "Failed to write pending count. Subsequent failures in this process will "
+                        "be silent; runner shutdown may hit the bounded proxy stop timeout."
+                    ),
+                    "pending_snapshot_write_failed",
+                    "risk",
+                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    pending_path=pending_path,
                 )
 
 
@@ -275,9 +279,10 @@ def _mark_counter_underflow_locked(counter: _PendingCounter) -> bool:
 
 
 def _log_counter_underflow(counter: str) -> None:
-    ctx.log.error(
-        "type=usage_underbilling reason=usage_pending_counter_underflow "
-        "underbilling_class=risk component=mitm_addon "
-        f"counter={counter} Usage pending counter release had no matching admission; "
-        "keeping counter non-negative."
+    log_usage_underbilling(
+        "",
+        "Usage pending counter release had no matching admission; keeping counter non-negative.",
+        "usage_pending_counter_underflow",
+        "risk",
+        counter=counter,
     )
