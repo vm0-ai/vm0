@@ -9,7 +9,6 @@ import {
   and,
   desc,
   eq,
-  gt,
   inArray,
   isNotNull,
   lte,
@@ -54,7 +53,6 @@ const PURCHASE_ID_METADATA_KEY = "usagePackInvitationPurchaseId";
 const RECONCILIATION_DELAY_MS = 5 * 60 * 1000;
 const MIN_CHECKOUT_DURATION_SECONDS = 30 * 60;
 const MAX_CHECKOUT_DURATION_SECONDS = 24 * 60 * 60;
-const MEMBER_REMOVAL_REFUND_REASON = "member_removed";
 const OPEN_INVITATION_PURCHASE_STATUSES = [
   "checkout_pending",
   "payment_succeeded",
@@ -895,9 +893,7 @@ async function finalizeRefund(
       return;
     }
     const at = nowDate();
-    const memberRemoval =
-      purchase.failureReason === MEMBER_REMOVAL_REFUND_REASON;
-    if (purchase.allocationId && !memberRemoval) {
+    if (purchase.allocationId) {
       await tx
         .update(usagePackAllocations)
         .set({ status: "inactive", updatedAt: at })
@@ -908,7 +904,6 @@ async function finalizeRefund(
       .set({
         status: "refunded",
         stripeRefundId: refundId,
-        ...(memberRemoval ? { failureReason: null } : {}),
         refundedAt: at,
         updatedAt: at,
       })
@@ -927,10 +922,7 @@ async function recordFailedRefund(
       status: "refund_pending",
       stripeRefundId: null,
       refundAttempt: purchase.refundAttempt + 1,
-      failureReason:
-        purchase.failureReason === MEMBER_REMOVAL_REFUND_REASON
-          ? MEMBER_REMOVAL_REFUND_REASON
-          : `stripe_refund_failed:${refundId}`,
+      failureReason: `stripe_refund_failed:${refundId}`,
       updatedAt: nowDate(),
     })
     .where(eq(usagePackInvitationPurchases.id, purchase.id));
@@ -1009,79 +1001,6 @@ async function refundPurchase(
     },
   );
   await applyStripeRefundState(db, purchase, refund);
-}
-
-export async function refundAcceptedUsagePackInvitationForMember(
-  db: Db,
-  args: {
-    readonly orgId: string;
-    readonly userId: string;
-  },
-  signal: AbortSignal,
-): Promise<void> {
-  if (!(await usagePackInvitationPurchaseSchemaAvailable(db))) {
-    return;
-  }
-  signal.throwIfAborted();
-  const at = nowDate();
-  const purchaseId = await db.transaction(async (tx) => {
-    const [purchase] = await tx
-      .select({
-        id: usagePackInvitationPurchases.id,
-        status: usagePackInvitationPurchases.status,
-      })
-      .from(usagePackInvitationPurchases)
-      .innerJoin(
-        usagePackAllocations,
-        eq(usagePackInvitationPurchases.allocationId, usagePackAllocations.id),
-      )
-      .where(
-        and(
-          eq(usagePackInvitationPurchases.orgId, args.orgId),
-          eq(usagePackInvitationPurchases.acceptedUserId, args.userId),
-          gt(usagePackInvitationPurchases.currentPeriodEnd, at),
-          eq(usagePackAllocations.status, "active"),
-          or(
-            eq(usagePackInvitationPurchases.status, "accepted"),
-            and(
-              inArray(usagePackInvitationPurchases.status, [
-                "refund_pending",
-                "refunding",
-              ]),
-              eq(
-                usagePackInvitationPurchases.failureReason,
-                MEMBER_REMOVAL_REFUND_REASON,
-              ),
-            ),
-            eq(usagePackInvitationPurchases.status, "refunded"),
-          ),
-        ),
-      )
-      .orderBy(desc(usagePackInvitationPurchases.createdAt))
-      .for("update", { of: usagePackInvitationPurchases })
-      .limit(1);
-    if (!purchase) {
-      return null;
-    }
-    if (purchase.status !== "accepted") {
-      return purchase.id;
-    }
-    await tx
-      .update(usagePackInvitationPurchases)
-      .set({
-        status: "refund_pending",
-        failureReason: MEMBER_REMOVAL_REFUND_REASON,
-        updatedAt: at,
-      })
-      .where(eq(usagePackInvitationPurchases.id, purchase.id));
-    return purchase.id;
-  });
-  signal.throwIfAborted();
-  if (!purchaseId) {
-    return;
-  }
-  await refundPurchase(db, purchaseId, true);
-  signal.throwIfAborted();
 }
 
 async function handleRecordedPayment(
@@ -1288,6 +1207,9 @@ async function activateAcceptedPurchase(
       signal,
     );
     if (current.purchasedCredits > 0) {
+      if (!current.amountPaidCents || !current.stripePaymentIntentId) {
+        throw new Error("Invitation acceptance has no refundable payment");
+      }
       await createUsagePackCreditGrant(tx, {
         orgId: current.orgId,
         userId: acceptedUserId,
@@ -1295,6 +1217,11 @@ async function activateAcceptedPurchase(
         idempotencyKey: `usage-pack-invitation:${current.id}:purchased`,
         amount: current.purchasedCredits,
         expiresAt: current.currentPeriodEnd,
+        refundSource: {
+          type: "payment_intent",
+          paymentIntentId: current.stripePaymentIntentId,
+          amountCents: current.amountPaidCents,
+        },
       });
     }
     if (current.bonusCredits > 0) {

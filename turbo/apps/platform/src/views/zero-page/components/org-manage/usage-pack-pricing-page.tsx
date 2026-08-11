@@ -250,9 +250,13 @@ function memberUsageTotals(
 
 function managedMemberUsageTotals(
   management: UsagePackManagementResponse,
+  members: readonly MemberDisplay[] | undefined,
   catalog: readonly UsagePackCatalogItem[],
 ): MemberUsageTotals {
-  return management.allocations.reduce<MemberUsageTotals>(
+  const allocations = members
+    ? managedAllocationsForMembers(management, members)
+    : management.allocations;
+  return allocations.reduce<MemberUsageTotals>(
     (totals, allocation) => {
       const item = usagePackCatalogItem(
         catalog,
@@ -1469,19 +1473,56 @@ function managementMembersMatch(
       return member.id;
     }),
   );
+  const managedAllocations = managedAllocationsForMembers(management, members);
   return (
     memberIds.size === members.length &&
-    memberIds.size === management.allocations.length &&
-    management.allocations.every((allocation) => {
+    memberIds.size === managedAllocations.length &&
+    managedAllocations.every((allocation) => {
       return memberIds.has(allocation.memberId);
+    }) &&
+    management.allocations.every((allocation) => {
+      return (
+        memberIds.has(allocation.memberId) ||
+        isPendingRemovedMemberAllocation(allocation)
+      );
     })
   );
 }
 
+type ManagedUsagePackAllocation =
+  UsagePackManagementResponse["allocations"][number];
+
+function isPendingRemovedMemberAllocation(
+  allocation: ManagedUsagePackAllocation,
+): boolean {
+  return (
+    allocation.pendingChange?.kind === "removal" &&
+    allocation.pendingChange.status !== "previewed"
+  );
+}
+
+function managedAllocationsForMembers(
+  management: UsagePackManagementResponse,
+  members: readonly MemberDisplay[],
+): readonly ManagedUsagePackAllocation[] {
+  const memberIds = new Set(
+    members.map((member) => {
+      return member.id;
+    }),
+  );
+  return management.allocations.filter((allocation) => {
+    return memberIds.has(allocation.memberId);
+  });
+}
+
 function hasPendingUsagePackChange(
   management: UsagePackManagementResponse,
+  members: readonly MemberDisplay[] | undefined,
 ): boolean {
-  return management.allocations.some((allocation) => {
+  const allocations = members
+    ? managedAllocationsForMembers(management, members)
+    : management.allocations;
+  return allocations.some((allocation) => {
     return (
       allocation.pendingChange !== null &&
       allocation.pendingChange.status !== "previewed"
@@ -1491,8 +1532,12 @@ function hasPendingUsagePackChange(
 
 function hasRestorableUsagePackDowngrade(
   management: UsagePackManagementResponse,
+  members: readonly MemberDisplay[] | undefined,
 ): boolean {
-  const pendingChanges = management.allocations.flatMap((allocation) => {
+  const allocations = members
+    ? managedAllocationsForMembers(management, members)
+    : management.allocations;
+  const pendingChanges = allocations.flatMap((allocation) => {
     return allocation.pendingChange ? [allocation.pendingChange] : [];
   });
   return (
@@ -1512,10 +1557,11 @@ function hasUsagePackConfigurationChange(
   if (!members) {
     return false;
   }
+  const allocations = managedAllocationsForMembers(management, members);
   return (
     management.tier !== plan.tier ||
     !managementMembersMatch(management, members) ||
-    management.allocations.some((allocation) => {
+    allocations.some((allocation) => {
       return (
         memberUsageSelection(selections, allocation.memberId) !==
         managedUsagePackSelection(allocation)
@@ -1530,12 +1576,15 @@ function restoresScheduledUsagePackDowngrade(
   plan: UsagePackPlan,
   selections: Readonly<Record<string, MemberUsageSelection>>,
 ): boolean {
+  const allocations = members
+    ? managedAllocationsForMembers(management, members)
+    : [];
   return (
     members !== undefined &&
     managementMembersMatch(management, members) &&
     management.tier === plan.tier &&
-    hasRestorableUsagePackDowngrade(management) &&
-    management.allocations.every((allocation) => {
+    hasRestorableUsagePackDowngrade(management, members) &&
+    allocations.every((allocation) => {
       return (
         memberUsageSelection(selections, allocation.memberId) ===
         allocation.usagePackUsd
@@ -1546,12 +1595,16 @@ function restoresScheduledUsagePackDowngrade(
 
 function hasUsagePackDowngrade(
   management: UsagePackManagementResponse,
+  members: readonly MemberDisplay[] | undefined,
   plan: UsagePackPlan,
   selections: Readonly<Record<string, MemberUsageSelection>>,
 ): boolean {
+  const allocations = members
+    ? managedAllocationsForMembers(management, members)
+    : management.allocations;
   return (
     (management.tier === "team" && plan.tier === "pro") ||
-    management.allocations.some((allocation) => {
+    allocations.some((allocation) => {
       return (
         memberUsageSelection(selections, allocation.memberId) <
         allocation.usagePackUsd
@@ -1610,21 +1663,29 @@ function ManagedSubscriptionOrderSummary({
           return $.billing.plans.usagePacks.planChangeError;
         })
       : null;
-  const hasPendingChange = hasPendingUsagePackChange(management);
+  const hasPendingChange = hasPendingUsagePackChange(management, members);
   const hasConfigurationChange = hasUsagePackConfigurationChange(
     management,
     members,
     plan,
     selections,
   );
-  const hasScheduledDowngrade = hasRestorableUsagePackDowngrade(management);
+  const hasScheduledDowngrade = hasRestorableUsagePackDowngrade(
+    management,
+    members,
+  );
   const restoresScheduledDowngrade = restoresScheduledUsagePackDowngrade(
     management,
     members,
     plan,
     selections,
   );
-  const hasDowngrade = hasUsagePackDowngrade(management, plan, selections);
+  const hasDowngrade = hasUsagePackDowngrade(
+    management,
+    members,
+    plan,
+    selections,
+  );
   const openPreview = async (): Promise<void> => {
     if (!members) {
       return;
@@ -1785,20 +1846,14 @@ function PackageConfigurationStep({
     ? management.supportsMemberAdditions
       ? activeMembers
       : allMembers
-        ? management.allocations.map((allocation): MemberDisplay => {
-            return (
-              allMembers.find((member) => {
-                return member.id === allocation.memberId;
-              }) ?? {
-                id: allocation.memberId,
-                email: undefined,
-                imageUrl: undefined,
-                isCurrent: allocation.memberId === user?.id,
-                isPending: false,
-                name: allocation.memberId,
-              }
-            );
-          })
+        ? management.allocations.flatMap(
+            (allocation): readonly MemberDisplay[] => {
+              const member = allMembers.find((candidate) => {
+                return candidate.id === allocation.memberId;
+              });
+              return member ? [member] : [];
+            },
+          )
         : undefined
     : allMembers;
   const totals = memberUsageTotals(members ?? [], selections, catalog);
@@ -1815,7 +1870,7 @@ function PackageConfigurationStep({
       />
       {management ? (
         <ManagedSubscriptionOrderSummary
-          currentTotals={managedMemberUsageTotals(management, catalog)}
+          currentTotals={managedMemberUsageTotals(management, members, catalog)}
           management={management}
           members={members}
           plan={plan}

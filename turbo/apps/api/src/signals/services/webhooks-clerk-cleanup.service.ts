@@ -57,8 +57,8 @@ import { settle, tapError } from "../utils";
 import { decryptPersistentSecretValue } from "./crypto.utils";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { cleanupOrgMemberResources } from "./org-member-cleanup.service";
-import { scheduleUsagePackMemberRemoval } from "./usage-pack-allocation-change.service";
-import { refundAcceptedUsagePackInvitationForMember } from "./usage-pack-invitation-purchase.service";
+import { removeUsagePackMemberAllocation } from "./usage-pack-allocation-change.service";
+import { refundUsagePackMemberCredits } from "./usage-pack-credit-refund.service";
 import {
   deleteOrgUsageData,
   deleteUserUsageData,
@@ -940,9 +940,9 @@ async function commitClerkDeletedOrgMembershipCleanup(
   args: { readonly orgId: string; readonly userId: string },
 ): Promise<void> {
   const commitSignal = new AbortController().signal;
-  await scheduleUsagePackMemberRemoval(db, args, commitSignal);
+  await removeUsagePackMemberAllocation(db, args, commitSignal);
   commitSignal.throwIfAborted();
-  await refundAcceptedUsagePackInvitationForMember(db, args, commitSignal);
+  await refundUsagePackMemberCredits(db, args, commitSignal);
   commitSignal.throwIfAborted();
   await cleanupOrgMemberResources(db, args, commitSignal);
   commitSignal.throwIfAborted();

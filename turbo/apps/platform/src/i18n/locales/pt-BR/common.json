@@ -4500,7 +4500,10 @@
           "action": "Remover do espaço de trabalho",
           "confirmDescription": "{{email}} será removido deste espaço de trabalho e perderá o acesso a todos os recursos.",
           "progress": "Removendo...",
-          "title": "Remover membro?"
+          "title": "Remover membro?",
+          "usagePackImpactDescription": "Os créditos restantes do pacote de uso dessa pessoa ficarão indisponíveis imediatamente. O pacote será removido no fim do período de cobrança atual. Se isso deixar o espaço de trabalho sem nenhum pacote de uso, o plano do espaço de trabalho também será cancelado no fim do período de cobrança.",
+          "usagePackImpactTitle": "Impacto no pacote de uso",
+          "usagePackRefundDescription": "Reembolso: a parte não utilizada dos créditos comprados é devolvida ao método de pagamento original. Créditos consumidos e créditos bônus não são reembolsáveis."
         },
         "revoke": {
           "action": "Revogar convite",

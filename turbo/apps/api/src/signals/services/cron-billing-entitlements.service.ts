@@ -37,6 +37,7 @@ import {
   reconcileUsagePackSubscriptions,
   USAGE_PACK_SUBSCRIPTION_PURPOSE,
 } from "./usage-pack-subscription.service";
+import { reconcileUsagePackCreditRefunds } from "./usage-pack-credit-refund.service";
 import { reconcileUsagePackInvitationPurchases } from "./usage-pack-invitation-purchase.service";
 import { disableIneligibleWorkflowWebhookAutomationsForOrg } from "./workflow-webhook-automation-entitlement.service";
 import type { Tx } from "../../lib/db-types";
@@ -1007,6 +1008,8 @@ export const reconcileBillingEntitlements$ = command(
       signal,
     );
     signal.throwIfAborted();
+    await reconcileUsagePackCreditRefunds(db, signal);
+    signal.throwIfAborted();
     const invitationPurchasesReconciled =
       await reconcileUsagePackInvitationPurchases(db, get(clerk$), signal);
     signal.throwIfAborted();
@@ -1118,7 +1121,6 @@ export const reconcileBillingEntitlements$ = command(
         count: invitationPurchasesReconciled,
       });
     }
-
     return { downgraded: downgraded.length };
   },
 );

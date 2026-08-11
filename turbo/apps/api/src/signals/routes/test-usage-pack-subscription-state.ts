@@ -1,6 +1,7 @@
 import { initContract } from "@vm0/api-contracts/contracts/trpc-contract";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { usagePackCreditGrants } from "@vm0/db/schema/usage-pack-credit-grant";
+import { usagePackCreditRefunds } from "@vm0/db/schema/usage-pack-credit-refund";
 import {
   usagePackAllocationChanges,
   usagePackAllocations,
@@ -64,6 +65,13 @@ const actionBodySchema = z.discriminatedUnion("action", [
     orgId: z.string().min(1),
     usagePackSubscriptionId: z.string().uuid(),
     updatedAt: z.iso.datetime(),
+  }),
+  z.object({
+    action: z.literal("set-grant-remaining"),
+    orgId: z.string().min(1),
+    userId: z.string().min(1),
+    grantType: z.enum(["purchased", "bonus"]),
+    remainingAmount: z.number().int().nonnegative(),
   }),
   z.object({
     action: z.literal("cleanup"),
@@ -147,6 +155,26 @@ const readStateSchema = z.object({
       grantType: z.enum(["purchased", "bonus"]),
       originalAmount: z.number().int().positive(),
       expiresAt: z.iso.datetime(),
+    }),
+  ),
+  refunds: z.array(
+    z.object({
+      creditGrantId: z.string().uuid(),
+      userId: z.string(),
+      sourceType: z.enum(["invoice", "payment_intent"]),
+      sourceAmountCents: z.number().int().nonnegative(),
+      status: z.enum([
+        "available",
+        "pending",
+        "processing",
+        "succeeded",
+        "failed",
+      ]),
+      refundCredits: z.number().int().positive().nullable(),
+      requestedAmountCents: z.number().int().positive().nullable(),
+      refundedAmountCents: z.number().int().nonnegative().nullable(),
+      stripeCreditNoteId: z.string().nullable(),
+      stripeRefundId: z.string().nullable(),
     }),
   ),
   fulfillmentInvoiceIds: z.array(z.string()),
@@ -334,6 +362,28 @@ function remainingCreditsByUser(
   });
 }
 
+async function readUsagePackCreditRefunds(db: Db, orgId: string) {
+  const refunds = await db
+    .select()
+    .from(usagePackCreditRefunds)
+    .where(eq(usagePackCreditRefunds.orgId, orgId))
+    .orderBy(asc(usagePackCreditRefunds.createdAt));
+  return refunds.map((refund) => {
+    return {
+      creditGrantId: refund.creditGrantId,
+      userId: refund.userId,
+      sourceType: refund.sourceType,
+      sourceAmountCents: refund.sourceAmountCents,
+      status: refund.status,
+      refundCredits: refund.refundCredits,
+      requestedAmountCents: refund.requestedAmountCents,
+      refundedAmountCents: refund.refundedAmountCents,
+      stripeCreditNoteId: refund.stripeCreditNoteId,
+      stripeRefundId: refund.stripeRefundId,
+    };
+  });
+}
+
 async function readUsagePackState(
   db: Db,
   orgId: string,
@@ -370,6 +420,7 @@ async function readUsagePackState(
       asc(usagePackCreditGrants.expiresAt),
       asc(usagePackCreditGrants.grantType),
     );
+  const refunds = await readUsagePackCreditRefunds(db, orgId);
   const [org] = await db
     .select()
     .from(orgMetadata)
@@ -443,6 +494,7 @@ async function readUsagePackState(
         expiresAt: grant.expiresAt.toISOString(),
       };
     }),
+    refunds,
     fulfillmentInvoiceIds: fulfillments.map((row) => {
       return row.invoiceId;
     }),
@@ -539,6 +591,24 @@ const mutateTestUsagePackSubscriptionState$ = command(
             ),
           );
         signal.throwIfAborted();
+        return { status: 200 as const, body: { action: "ok" as const } };
+      }
+      case "set-grant-remaining": {
+        const rows = await db
+          .update(usagePackCreditGrants)
+          .set({ remainingAmount: body.remainingAmount })
+          .where(
+            and(
+              eq(usagePackCreditGrants.orgId, body.orgId),
+              eq(usagePackCreditGrants.userId, body.userId),
+              eq(usagePackCreditGrants.grantType, body.grantType),
+            ),
+          )
+          .returning({ id: usagePackCreditGrants.id });
+        signal.throwIfAborted();
+        if (rows.length !== 1) {
+          throw new Error("Expected one usage pack credit grant to update");
+        }
         return { status: 200 as const, body: { action: "ok" as const } };
       }
       case "cleanup": {

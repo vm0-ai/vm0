@@ -25,6 +25,8 @@ import { i18n } from "../../../i18n/index.ts";
 import { featureSwitch$ } from "../../external/feature-switch.ts";
 import {
   billingStatusAsync$,
+  reloadBillingStatus$,
+  reloadUsagePackManagement$,
   usagePackCatalogAsync$,
   usagePackManagementAsync$,
 } from "../billing.ts";
@@ -646,6 +648,8 @@ export const removeMember$ = command(
       ),
     );
     set(refreshOrgMembers$);
+    set(reloadBillingStatus$);
+    set(reloadUsagePackManagement$);
     set(internalRemoveMemberDialogTarget$, null);
   },
 );

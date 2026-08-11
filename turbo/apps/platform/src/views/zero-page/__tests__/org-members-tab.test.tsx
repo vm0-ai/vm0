@@ -246,10 +246,11 @@ function mockMemberInviteEntitlement(required: boolean): void {
   });
 }
 
-function mockUsagePackManagement(): void {
+function mockUsagePackManagement(onRequest?: () => void): void {
   context.mocks.api(
     zeroBillingUsagePackManagementContract.get,
     ({ respond }) => {
+      onRequest?.();
       return respond(200, {
         tier: "pro",
         currentPeriodEnd: "2026-09-01T00:00:00.000Z",
@@ -584,6 +585,9 @@ describe("organization members settings", () => {
     expect(
       within(removeDialog).getByText(/lose access to all resources/u),
     ).toBeInTheDocument();
+    expect(
+      within(removeDialog).queryByText("Usage pack impact"),
+    ).not.toBeInTheDocument();
     click(buttonByText("Remove", removeDialog));
 
     await waitFor(() => {
@@ -612,6 +616,51 @@ describe("organization members settings", () => {
       expect(
         screen.queryByLabelText("Actions for alice@example.com"),
       ).not.toBeInTheDocument();
+    });
+  });
+
+  it("explains usage pack and refund consequences before removing a member", async () => {
+    mockMembersStory();
+    mockMemberInviteEntitlement(true);
+    let managementRequests = 0;
+    mockUsagePackManagement(() => {
+      managementRequests += 1;
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/?settings=people",
+      featureSwitches: { [FeatureSwitchKey.UsagePackPlans]: true },
+    });
+    await expect(screen.findByText("Usage pack")).resolves.toBeInTheDocument();
+
+    click(screen.getByLabelText("Actions for bob@example.com"));
+    click(menuItemByText("Remove from workspace"));
+
+    const removeDialog = await screen.findByRole("dialog", {
+      name: "Remove member?",
+    });
+    expect(
+      within(removeDialog).getByText("Usage pack impact"),
+    ).toBeInTheDocument();
+    expect(
+      within(removeDialog).getByText(/credits become unavailable immediately/u),
+    ).toBeInTheDocument();
+    expect(
+      within(removeDialog).getByText(
+        /unused purchased-credit portion is returned/u,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(removeDialog).getByText(
+        /used credits and bonus credits are not refundable/iu,
+      ),
+    ).toBeInTheDocument();
+    click(buttonByText("Remove", removeDialog));
+
+    await waitFor(() => {
+      expect(screen.getByText("Removed bob@example.com")).toBeInTheDocument();
+      expect(managementRequests).toBeGreaterThan(1);
     });
   });
 

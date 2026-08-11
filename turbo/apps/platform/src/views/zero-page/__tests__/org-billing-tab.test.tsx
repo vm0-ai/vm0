@@ -14,7 +14,7 @@ import {
   type BillingStatusResponse,
 } from "@vm0/api-contracts/contracts/zero-billing";
 import { FeatureSwitchKey } from "@vm0/core";
-import { screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
 
@@ -1073,6 +1073,114 @@ describe("organization billing settings", () => {
     ).resolves.toHaveTextContent("$50 · 54,321 credits · 8% off");
   });
 
+  it("hides a retained allocation after its member leaves the workspace", async () => {
+    context.mocks.data.org({
+      id: "org_1",
+      name: "Managed Usage Pack Org",
+      role: "admin",
+    });
+    context.mocks.data.orgMembers({
+      name: "Managed Usage Pack Org",
+      role: "admin",
+      members: [
+        {
+          userId: "user_1",
+          email: "alex@example.com",
+          firstName: "Alex",
+          lastName: "Chen",
+          imageUrl: "",
+          role: "admin",
+          joinedAt: "2026-01-01T00:00:00Z",
+        },
+      ],
+      pendingInvitations: [],
+      membershipRequests: [],
+      createdAt: "2026-01-01T00:00:00Z",
+    });
+    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+      return respond(200, activeProBillingStatus());
+    });
+    context.mocks.api(
+      zeroBillingUsagePackCatalogContract.get,
+      ({ respond }) => {
+        return respond(200, usagePackCatalogResponse());
+      },
+    );
+    context.mocks.api(
+      zeroBillingUsagePackManagementContract.get,
+      ({ respond }) => {
+        return respond(200, {
+          tier: "pro",
+          currentPeriodEnd: "2026-04-01T00:00:00Z",
+          allocations: [
+            {
+              id: "b5235934-83df-4f16-bf41-f46890db7d40",
+              memberId: "user_1",
+              usagePackUsd: 20,
+              currentPeriodEnd: "2026-04-01T00:00:00Z",
+              pendingChange: null,
+            },
+            {
+              id: "f2264b0e-2e55-4098-a9d4-7e2d7ff017d5",
+              memberId: "removed_user",
+              usagePackUsd: 50,
+              currentPeriodEnd: "2026-04-01T00:00:00Z",
+              pendingChange: {
+                id: "18b51e88-6804-46c8-9b2f-3b130f6ca69c",
+                kind: "removal",
+                status: "scheduled",
+                targetUsagePackUsd: null,
+                effectiveAt: "2026-04-01T00:00:00Z",
+              },
+            },
+          ],
+        });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/?settings=billing",
+      user: {
+        id: "user_1",
+        fullName: "Alex Chen",
+        email: "alex@example.com",
+      },
+      featureSwitches: { [FeatureSwitchKey.UsagePackPlans]: true },
+    });
+
+    await screen.findByText("Pro plan");
+    click(buttonByText("Compare all plans"));
+    const proPlan = await screen.findByRole("article", { name: "Pro plan" });
+    click(buttonByText("Manage", proPlan));
+
+    const memberUsage = await screen.findByRole("group", {
+      name: "Member usage",
+    });
+    expect(within(memberUsage).getByText("Alex Chen")).toBeInTheDocument();
+    expect(within(memberUsage).queryByText("removed_user")).toBeNull();
+    expect(
+      within(memberUsage).queryByRole("combobox", {
+        name: "Usage for removed_user",
+      }),
+    ).toBeNull();
+    const orderSummary = screen.getByRole("region", {
+      name: "Order summary",
+    });
+    expect(buttonByText("Current plan", orderSummary)).toBeDisabled();
+
+    const packageSelect = within(memberUsage).getByRole("combobox", {
+      name: "Usage for Alex Chen",
+    });
+    click(packageSelect);
+    click(
+      await screen.findByRole("option", {
+        name: "$50 · 54,321 credits · 8% off",
+      }),
+    );
+    expect(buttonByText("Confirm", orderSummary)).not.toBeDisabled();
+  });
+
   it("shows and restores a scheduled member package downgrade", async () => {
     let restored = false;
     const successToast = vi.spyOn(toast, "success");
@@ -1762,6 +1870,41 @@ describe("organization billing settings", () => {
       );
     });
     expect(portalRequestBody).toMatchObject({ mode: "payment_methods" });
+  });
+
+  it("opens the Stripe payment method portal in a new tab on Command-click", async () => {
+    context.mocks.data.org({
+      id: "org_1",
+      name: "No Subscription Org",
+      role: "admin",
+    });
+    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+      return respond(200, noActiveBillingStatus());
+    });
+    context.mocks.api(zeroBillingPortalContract.create, ({ respond }) => {
+      return respond(200, {
+        url: "https://billing.stripe.com/customer-portal/no-subscription",
+      });
+    });
+    const openedTargets = context.mocks.browser.open();
+
+    await openBillingTab();
+
+    await waitFor(() => {
+      expect(screen.getByText("Payment methods")).toBeInTheDocument();
+    });
+
+    fireEvent.click(buttonByText("Manage"), { metaKey: true });
+
+    await waitFor(() => {
+      expect(openedTargets.calls).toStrictEqual([
+        {
+          url: "https://billing.stripe.com/customer-portal/no-subscription",
+          target: "_blank",
+          features: null,
+        },
+      ]);
+    });
   });
 
   it("uses the legacy billing portal for a subscriber on a previous API", async () => {

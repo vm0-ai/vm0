@@ -12,6 +12,7 @@ import {
   Check,
   X,
   UserPlus,
+  AlertTriangle,
 } from "lucide-react";
 import {
   cn,
@@ -800,6 +801,10 @@ function MemberActions({
   const changingRole = changeRoleLoadable.state === "loading";
   const removing = loadable.state === "loading";
   const pageSignal = useGet(pageSignal$);
+  const hasUsagePack =
+    usagePackManagement?.allocations.some((allocation) => {
+      return allocation.memberId === member.userId;
+    }) ?? false;
 
   const handleRemove = () => {
     detach(doRemove(member.email, pageSignal), Reason.DomCallback);
@@ -892,6 +897,31 @@ function MemberActions({
             )}
           </DialogDescription>
         </DialogHeader>
+        {hasUsagePack && (
+          <div className="flex items-start gap-2.5 rounded-lg border border-amber-200/70 bg-amber-50/70 px-3 py-2.5 text-amber-700 dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-300">
+            <AlertTriangle size={16} className="mt-0.5 shrink-0" />
+            <div className="min-w-0 text-xs leading-relaxed">
+              <p className="font-semibold">
+                {t(($) => {
+                  return $.settings.workspace.members.remove
+                    .usagePackImpactTitle;
+                })}
+              </p>
+              <p className="mt-1">
+                {t(($) => {
+                  return $.settings.workspace.members.remove
+                    .usagePackImpactDescription;
+                })}
+              </p>
+              <p className="mt-1.5">
+                {t(($) => {
+                  return $.settings.workspace.members.remove
+                    .usagePackRefundDescription;
+                })}
+              </p>
+            </div>
+          </div>
+        )}
         <DialogFooter>
           <Button
             variant="outline"
