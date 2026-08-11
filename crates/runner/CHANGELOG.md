@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.163.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.163.5...runner-rs-v0.163.6) (2026-08-11)
+
+
+### Bug Fixes
+
+* **runner:** preserve completion telemetry timestamp ([#26395](https://github.com/vm0-ai/vm0/issues/26395)) ([434bdad](https://github.com/vm0-ai/vm0/commit/434bdad7a497168f023e8a5040dad3987c15f2ab))
+
 ## [0.163.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.163.4...runner-rs-v0.163.5) (2026-08-11)
 
 
