@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
+  Button,
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -227,14 +228,17 @@ function CollapsedExpandButton() {
       <TooltipProvider delayDuration={200}>
         <Tooltip>
           <TooltipTrigger asChild>
-            <button
+            <Button
               type="button"
-              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sidebar-foreground transition-colors hover:bg-state-hover hover:text-sidebar-foreground"
+              variant="quiet"
+              size="icon-sm"
+              iconSize="md"
+              className="shrink-0"
               onClick={onCollapse}
               aria-label={expandLabel}
             >
               <PanelLeftClose size={18} className="rotate-180 opacity-50" />
-            </button>
+            </Button>
           </TooltipTrigger>
           <TooltipContent side="right">
             <p className="text-xs">{expandLabel}</p>
@@ -375,14 +379,17 @@ function ExpandedHeader() {
         <TooltipProvider delayDuration={200}>
           <Tooltip>
             <TooltipTrigger asChild>
-              <button
+              <Button
                 type="button"
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sidebar-foreground hover:text-sidebar-foreground hover:bg-state-hover transition-colors"
+                variant="quiet"
+                size="icon-sm"
+                iconSize="md"
+                className="shrink-0"
                 onClick={onCollapse}
                 aria-label={collapseLabel}
               >
                 <PanelLeftClose className="opacity-50" size={18} />
-              </button>
+              </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom">
               <p className="text-xs">{collapseLabel}</p>
@@ -749,16 +756,17 @@ function ChatListColumn() {
         <TooltipProvider delayDuration={200}>
           <Tooltip>
             <TooltipTrigger asChild>
-              <button
+              <Button
                 type="button"
                 onClick={() => {
                   openAgentList();
                 }}
                 aria-label={searchLabel}
-                className="flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground transition-colors hover:bg-state-hover hover:text-sidebar-foreground"
+                variant="quiet"
+                size="icon-sm"
               >
                 <Search className="opacity-50" size={17} />
-              </button>
+              </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom">
               <p className="text-xs">{searchLabel}</p>

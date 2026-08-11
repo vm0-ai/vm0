@@ -537,25 +537,26 @@ function ArtifactsButtonInner({ thread }: { thread: ChatPanelSignals }) {
     <TooltipProvider delayDuration={300}>
       <Tooltip>
         <TooltipTrigger asChild>
-          <button
+          <Button
             type="button"
             onClick={() => {
               reloadArtifacts();
               openThreadArtifacts();
             }}
+            variant="quiet"
+            size="icon-sm"
+            iconSize="md"
             className={cn(
-              "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors duration-150",
-              open
-                ? "bg-primary/10 text-primary"
-                : "text-muted-foreground/70 hover:bg-state-hover hover:text-foreground",
+              "shrink-0 duration-150",
+              open && "bg-primary/10 text-primary hover:text-primary",
             )}
             aria-label={t(($) => {
               return $.chat.thread.openArtifacts;
             })}
             aria-pressed={open}
           >
-            <Package size={17} />
-          </button>
+            <Package size={18} />
+          </Button>
         </TooltipTrigger>
         <TooltipContent side="bottom">
           {t(($) => {
@@ -598,13 +599,14 @@ export function AutomationMenuButton({
     <TooltipProvider delayDuration={300}>
       <Tooltip>
         <TooltipTrigger asChild>
-          <button
+          <Button
             type="button"
+            variant="quiet"
+            size="icon-sm"
+            iconSize="md"
             className={cn(
-              "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors duration-150",
-              open
-                ? "bg-primary/10 text-primary"
-                : "text-muted-foreground/70 hover:bg-state-hover hover:text-foreground",
+              "shrink-0 duration-150",
+              open && "bg-primary/10 text-primary hover:text-primary",
             )}
             aria-label={
               ariaLabel ??
@@ -619,7 +621,7 @@ export function AutomationMenuButton({
             }}
           >
             <Clock size={18} />
-          </button>
+          </Button>
         </TooltipTrigger>
         <TooltipContent side="bottom">
           {t(($) => {
@@ -641,13 +643,14 @@ function BrowserMenuButton({ thread }: { thread: ChatPanelSignals }) {
     <TooltipProvider delayDuration={300}>
       <Tooltip>
         <TooltipTrigger asChild>
-          <button
+          <Button
             type="button"
+            variant="quiet"
+            size="icon-sm"
+            iconSize="md"
             className={cn(
-              "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors duration-150",
-              open
-                ? "bg-primary/10 text-primary"
-                : "text-muted-foreground/70 hover:bg-state-hover hover:text-foreground",
+              "shrink-0 duration-150",
+              open && "bg-primary/10 text-primary hover:text-primary",
             )}
             aria-label={t(($) => {
               return $.chat.thread.openBrowser;
@@ -658,7 +661,7 @@ function BrowserMenuButton({ thread }: { thread: ChatPanelSignals }) {
             }}
           >
             <Globe size={18} />
-          </button>
+          </Button>
         </TooltipTrigger>
         <TooltipContent side="bottom">
           {t(($) => {
@@ -749,7 +752,7 @@ function ChatThreadHeader({ thread }: { thread: ChatPanelSignals }) {
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
-                <button
+                <Button
                   type="button"
                   onClick={() => {
                     detach(
@@ -758,13 +761,16 @@ function ChatThreadHeader({ thread }: { thread: ChatPanelSignals }) {
                       "start shared thread selection",
                     );
                   }}
-                  className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground/70 transition-colors duration-150 hover:bg-state-hover hover:text-foreground"
+                  variant="quiet"
+                  size="icon-sm"
+                  iconSize="md"
+                  className="shrink-0 duration-150"
                   aria-label={t(($) => {
                     return $.chat.sharing.start;
                   })}
                 >
                   <Share2 size={18} />
-                </button>
+                </Button>
               </TooltipTrigger>
               <TooltipContent side="bottom">
                 {t(($) => {
@@ -883,12 +889,15 @@ function ChatThreadEmojiMenuButton({
         <Tooltip>
           <TooltipTrigger asChild>
             <PopoverTrigger asChild>
-              <button
+              <Button
                 type="button"
                 aria-label={t(($) => {
                   return $.chat.thread.changeIcon;
                 })}
-                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
+                variant="quiet"
+                size="icon-xs"
+                iconSize="md"
+                className="shrink-0"
               >
                 {emoji ? (
                   <span
@@ -900,7 +909,7 @@ function ChatThreadEmojiMenuButton({
                 ) : (
                   <SmilePlus size={18} aria-hidden="true" />
                 )}
-              </button>
+              </Button>
             </PopoverTrigger>
           </TooltipTrigger>
           <TooltipContent side="bottom">
@@ -2601,16 +2610,17 @@ function HeaderAutomationSidebar({
             })}
           </div>
         </div>
-        <button
+        <Button
           type="button"
           onClick={onClose}
           aria-label={t(($) => {
             return $.chat.automations.close;
           })}
-          className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-state-hover hover:text-foreground"
+          variant="quiet"
+          size="icon-sm"
         >
           <X size={16} />
-        </button>
+        </Button>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
@@ -6298,17 +6308,19 @@ function PaidCreditCheckoutActions({
       <div className="flex flex-wrap gap-2">
         {CREDIT_TOP_UP_OPTIONS.map((credits) => {
           return (
-            <button
+            <Button
               key={credits}
               type="button"
               onClick={(event) => {
                 handleCreditClick({ credits }, event);
               }}
               disabled={redirecting}
-              className="inline-flex h-8 items-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-hover disabled:opacity-60"
+              variant="default"
+              size="sm"
+              className="disabled:opacity-60"
             >
               {formatCreditsUsd(credits)}
-            </button>
+            </Button>
           );
         })}
         <details>
@@ -6322,7 +6334,7 @@ function PaidCreditCheckoutActions({
           </summary>
           <form className="mt-2 flex flex-wrap items-center gap-2">
             <span className="text-sm text-muted-foreground">$</span>
-            <input
+            <Input
               type="text"
               inputMode="numeric"
               name="customUsd"
@@ -6336,13 +6348,15 @@ function PaidCreditCheckoutActions({
               aria-label={t(($) => {
                 return $.chat.billing.customDollarAmount;
               })}
-              className="h-8 w-24 rounded-md border border-input bg-background px-2 text-sm text-foreground outline-none transition-colors focus:border-ring"
+              className="h-8 w-24 px-2"
             />
-            <button
+            <Button
               type="button"
               onClick={handleCustomCreditClick}
               disabled={redirecting}
-              className="inline-flex h-8 items-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-hover disabled:opacity-60"
+              variant="default"
+              size="sm"
+              className="disabled:opacity-60"
             >
               {redirecting
                 ? t(($) => {
@@ -6351,7 +6365,7 @@ function PaidCreditCheckoutActions({
                 : t(($) => {
                     return $.chat.billing.buy;
                   })}
-            </button>
+            </Button>
           </form>
         </details>
       </div>
@@ -6424,11 +6438,13 @@ function InsufficientCreditsCard() {
       <p className="text-[0.9375rem] font-medium text-foreground">{headline}</p>
       <p className="mt-1 text-sm text-muted-foreground">{helper}</p>
       {!canShowBillingAction ? null : shouldStartProCheckout ? (
-        <button
+        <Button
           type="button"
           onClick={handleUpgradeClick}
           disabled={redirecting}
-          className="mt-3 inline-flex h-8 items-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-hover disabled:opacity-60"
+          variant="default"
+          size="sm"
+          className="mt-3 disabled:opacity-60"
         >
           {redirecting
             ? t(($) => {
@@ -6437,7 +6453,7 @@ function InsufficientCreditsCard() {
             : t(($) => {
                 return $.chat.billing.upgradeToPro;
               })}
-        </button>
+        </Button>
       ) : (
         <PaidCreditCheckoutActions
           redirecting={redirecting}

@@ -105,6 +105,7 @@ export {
   TableCell,
 } from "./components/ui/table";
 export { Tabs, TabsList, TabsTrigger, TabsContent } from "./components/ui/tabs";
+export { Textarea } from "./components/ui/textarea";
 export {
   Tooltip,
   TooltipTrigger,
