@@ -93,6 +93,7 @@ import {
   seedSlackOrgInstallation$,
 } from "./helpers/zero-integrations-slack";
 import {
+  deleteCustomConnectorCredentialValues,
   seedCustomConnectorRuntimeConnectors,
   setConnectorCredentialStorageState,
   setCustomConnectorCredentialStorageState,
@@ -395,7 +396,6 @@ const API_DISPATCH_CUSTOM_CONNECTOR_SUBSTEP_ACTION_TYPES = [
   "api_dispatch_prepare_context_build_custom_connector_firewalls",
 ] as const;
 const API_DISPATCH_CUSTOM_CONNECTOR_BUILD_PHASE_ACTION_TYPES = [
-  "api_dispatch_prepare_context_decrypt_custom_connector_values",
   "api_dispatch_prepare_context_render_custom_connector_auth_templates",
   "api_dispatch_prepare_context_render_custom_connector_prefixes",
   "api_dispatch_prepare_context_assemble_custom_connector_firewalls",
@@ -407,7 +407,6 @@ const API_DISPATCH_CUSTOM_CONNECTOR_TIMING_ACTION_TYPES = [
 const CUSTOM_CONNECTOR_RUNTIME_BUCKET_DIMENSION_KEYS = [
   "custom_connector_runtime_connector_count_bucket",
   "custom_connector_runtime_configured_value_count_bucket",
-  "custom_connector_runtime_decrypted_value_count_bucket",
   "custom_connector_runtime_prefix_template_count_bucket",
   "custom_connector_runtime_rendered_api_count_bucket",
   "custom_connector_runtime_missing_required_count_bucket",
@@ -9713,6 +9712,9 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const connectors = createConnectorBddApi(context);
     const fw = createFirewallApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
+    if (!actor.orgId) {
+      throw new Error("Expected an organization-scoped run actor");
+    }
     const rand = randomUUID().replace(/-/g, "").slice(0, 8);
 
     const saved = await connectors.saveCustomConnectorProposal(actor, {
@@ -9764,6 +9766,12 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       ],
       agentId,
     });
+    await deleteCustomConnectorCredentialValues(context, {
+      orgId: actor.orgId,
+      userId: actor.userId,
+      customConnectorId: saved.connector.id,
+      storage: "legacy",
+    });
 
     await enableFakeKms(context);
     onTestFinished(async () => {
@@ -9775,7 +9783,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       prompt: "use the proposed custom connector",
       modelProvider: "anthropic-api-key",
     });
-    await expect(readFakeKmsDecryptCallCount(context)).resolves.toBe(1);
+    await expect(readFakeKmsDecryptCallCount(context)).resolves.toBe(0);
     const timingEvents = apiDispatchTimingEventsForRun(run.runId);
     expectApiDispatchActions(
       timingEvents,
@@ -9850,6 +9858,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       tenant: "münich",
       scope: "initial-scope",
     });
+    await expect(readFakeKmsDecryptCallCount(context)).resolves.toBe(1);
 
     context.mocks.ably.publish.mockClear();
     await connectors.setCustomConnectorValues(actor, saved.connector.id, [
@@ -9900,6 +9909,55 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     await api.requestCancelRun(actor, run.runId, [200]);
     const cancelled = await api.readRun(actor, run.runId);
     expect(cancelled.status).toBe("cancelled");
+  });
+
+  it("does not admit legacy-only custom connector credentials", async () => {
+    const api = createRunsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    if (!actor.orgId) {
+      throw new Error("Expected an organization-scoped run actor");
+    }
+    const slug = `_bdd-shared-only-${randomUUID().slice(0, 8)}`;
+    const connector = await connectors.createCustomConnector(
+      actor,
+      manualHttpCustomConnectorCreateBody({
+        slug,
+        displayName: "BDD Shared-only Runtime",
+        prefixTemplates: ["https://shared-only-runtime.example.test/v1/"],
+      }),
+    );
+    await connectors.setCustomConnectorSecret(
+      actor,
+      connector.id,
+      "legacy-only-secret",
+    );
+    await connectors.updateAgentCustomConnectors(actor, agentId, [
+      connector.id,
+    ]);
+    await deleteCustomConnectorCredentialValues(context, {
+      orgId: actor.orgId,
+      userId: actor.userId,
+      customConnectorId: connector.id,
+      storage: "shared",
+    });
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "do not use legacy-only custom credentials",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+    const internalName = `custom_connector_${connector.id.replaceAll("-", "")}`;
+    expect(findFirewallEntry(claim.firewalls, internalName)).toBeUndefined();
+    expect(claim.connectorRuntimeTargets).not.toContainEqual({
+      kind: "custom",
+      customConnectorId: connector.id,
+      baseUrlVars: {},
+    });
+
+    await api.requestCancelRun(actor, run.runId, [200]);
   });
 
   it("fails closed when a custom auth header references an optional missing value", async () => {

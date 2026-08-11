@@ -4480,13 +4480,21 @@ function hasEmptyAwsSigv4Credential(
   );
 }
 
-interface CurrentCustomConnectorAuthRef {
-  readonly secretName: string;
-  readonly connectorId: string;
-  readonly kind: "secret" | "variable";
-  readonly key: string;
-  readonly encryptedValue: string | null;
-}
+type CurrentCustomConnectorAuthRef =
+  | {
+      readonly secretName: string;
+      readonly connectorId: string;
+      readonly kind: "secret";
+      readonly key: string;
+      readonly encryptedValue: string | null;
+    }
+  | {
+      readonly secretName: string;
+      readonly connectorId: string;
+      readonly kind: "variable";
+      readonly key: string;
+      readonly value: string | null;
+    };
 
 async function loadCurrentCustomConnectorAuthRefs(args: {
   readonly db: Db;
@@ -4529,25 +4537,47 @@ async function loadCurrentCustomConnectorAuthRefs(args: {
       // longer part of the executable credential contract.
       continue;
     }
-    refs.set(secretName, {
+    refs.set(
       secretName,
-      connectorId: runtime.connector.id,
-      kind: value.kind,
-      key: value.key,
-      encryptedValue: value.encryptedValue,
-    });
+      value.kind === "secret"
+        ? {
+            secretName,
+            connectorId: runtime.connector.id,
+            kind: "secret",
+            key: value.key,
+            encryptedValue: value.encryptedValue,
+          }
+        : {
+            secretName,
+            connectorId: runtime.connector.id,
+            kind: "variable",
+            key: value.key,
+            value: value.value,
+          },
+    );
   }
   for (const [secretName, field] of declaredFields) {
     if (refs.has(secretName)) {
       continue;
     }
-    refs.set(secretName, {
+    refs.set(
       secretName,
-      connectorId: runtime.connector.id,
-      kind: field.kind,
-      key: field.key,
-      encryptedValue: null,
-    });
+      field.kind === "secret"
+        ? {
+            secretName,
+            connectorId: runtime.connector.id,
+            kind: "secret",
+            key: field.key,
+            encryptedValue: null,
+          }
+        : {
+            secretName,
+            connectorId: runtime.connector.id,
+            kind: "variable",
+            key: field.key,
+            value: null,
+          },
+    );
   }
   if (runtime.connector.authMode === "oauth") {
     const secretName = customConnectorSecretKey({
@@ -4611,6 +4641,12 @@ async function resolveCurrentCustomConnectorSecrets(args: {
     const ref = refsByAlias.get(alias);
     if (!ref) {
       return { kind: "unavailable" };
+    }
+    if (ref.kind === "variable") {
+      if (ref.value !== null) {
+        currentSecrets[alias] = ref.value;
+      }
+      continue;
     }
     let encryptedValue = ref.encryptedValue;
     if (

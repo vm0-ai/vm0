@@ -85,6 +85,24 @@ export async function readCustomConnectorOAuthStorageState(
   });
 }
 
+export async function deleteCustomConnectorCredentialValues(
+  context: TestContext,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly customConnectorId: string;
+    readonly storage: "legacy" | "shared";
+  },
+): Promise<void> {
+  await postAction(context, {
+    action: "delete-custom-credential-values",
+    org_id: args.orgId,
+    user_id: args.userId,
+    custom_connector_id: args.customConnectorId,
+    storage: args.storage,
+  });
+}
+
 export async function seedOwnedConnectorSecret(
   context: TestContext,
   args: {
