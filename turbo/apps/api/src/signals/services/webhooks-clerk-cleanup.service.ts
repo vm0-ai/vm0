@@ -783,12 +783,12 @@ async function deleteOrgData(
   await db.delete(artifacts).where(eq(artifacts.orgId, orgId));
   await db.delete(agentRuns).where(eq(agentRuns.orgId, orgId));
   await db.delete(agentComposes).where(eq(agentComposes.orgId, orgId));
+  await deleteConnectorOwnerState(db, { kind: "organization", orgId }, signal);
   await db.delete(storages).where(eq(storages.orgId, orgId));
   await db.delete(modelProviders).where(eq(modelProviders.orgId, orgId));
   await db
     .delete(modelProviderAuthSessions)
     .where(eq(modelProviderAuthSessions.orgId, orgId));
-  await deleteConnectorOwnerState(db, { kind: "organization", orgId }, signal);
   await db.delete(secrets).where(eq(secrets.orgId, orgId));
   await db.delete(variables).where(eq(variables.orgId, orgId));
   await db

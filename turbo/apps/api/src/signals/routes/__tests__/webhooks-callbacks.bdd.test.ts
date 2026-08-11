@@ -5207,10 +5207,10 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
       displayName: "BDD Org Teardown Agent",
       visibility: "public",
     });
-    const customManual = await connectors.createCustomConnector(
-      actor,
-      customManualConnectorBodyForTeardown("org"),
-    );
+    const customManual = await connectors.createCustomConnector(actor, {
+      ...customManualConnectorBodyForTeardown("org"),
+      skillMarkdown: "Keep this registered teardown skill active.",
+    });
     await connectors.setCustomConnectorSecret(
       actor,
       customManual.id,
