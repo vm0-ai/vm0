@@ -17,7 +17,7 @@ const COMPOSER_SUGGESTION_COLLISION_GAP = 12;
 export function composerSuggestionCollisionPadding():
   | number
   | { top: number; right: number; bottom: number; left: number } {
-  // The global safe-area vars are applied as #root padding, while Radix portals
+  // The global safe-area vars are applied as #root padding, while Base UI portals
   // the menu to body. Read the resolved pixel values from #root so collision
   // detection keeps the portal inside the same visible content boundary.
   const root = document.getElementById("root");
@@ -82,7 +82,7 @@ export function SlashWorkflowMenu({
       onOpenAutoFocus={(event) => {
         event.preventDefault();
       }}
-      className="flex h-[min(16rem,var(--radix-popover-content-available-height))] w-[300px] max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden p-0 md:h-[min(20rem,var(--radix-popover-content-available-height))]"
+      className="flex h-[min(16rem,var(--available-height))] w-[300px] max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden p-0 md:h-[min(20rem,var(--available-height))]"
       data-testid="slash-workflow-menu"
     >
       <div className="px-2.5 pt-2 pb-2 text-xs font-medium text-muted-foreground">

@@ -497,19 +497,19 @@
     background-color: rgba(128, 128, 128, 0.5);
   }
 
-  .zero-dialog-overlay[data-state="open"] {
+  .zero-dialog-overlay[data-open] {
     animation: zero-dialog-overlay-in 180ms ease;
   }
 
-  .zero-dialog-overlay[data-state="closed"] {
+  .zero-dialog-overlay[data-ending-style] {
     animation: zero-dialog-overlay-out 180ms ease;
   }
 
-  .zero-dialog-content[data-state="open"] {
+  .zero-dialog-content[data-open] {
     animation: zero-dialog-content-in 180ms ease;
   }
 
-  .zero-dialog-content[data-state="closed"] {
+  .zero-dialog-content[data-ending-style] {
     animation: zero-dialog-content-out 180ms ease;
   }
 
@@ -522,10 +522,10 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .zero-dialog-overlay[data-state="open"],
-    .zero-dialog-overlay[data-state="closed"],
-    .zero-dialog-content[data-state="open"],
-    .zero-dialog-content[data-state="closed"],
+    .zero-dialog-overlay[data-open],
+    .zero-dialog-overlay[data-ending-style],
+    .zero-dialog-content[data-open],
+    .zero-dialog-content[data-ending-style],
     .zero-dialog-enter-overlay,
     .zero-dialog-enter-content {
       animation: none;

@@ -90,7 +90,7 @@ describe("chat thread sharing", () => {
     expect(initialCheckboxes.length).toBeGreaterThan(0);
     expect(
       initialCheckboxes.every((checkbox) => {
-        return checkbox.dataset.state === "unchecked";
+        return checkbox.hasAttribute("data-unchecked");
       }),
     ).toBeTruthy();
     expect(screen.getAllByText("0 selected").length).toBeGreaterThan(0);
@@ -105,7 +105,7 @@ describe("chat thread sharing", () => {
     await waitFor(() => {
       expect(
         screen.getAllByRole("checkbox").some((checkbox) => {
-          return checkbox.dataset.state === "checked";
+          return checkbox.hasAttribute("data-checked");
         }),
       ).toBeTruthy();
     });
@@ -113,19 +113,19 @@ describe("chat thread sharing", () => {
     const bodySelectedCheckbox = screen
       .getAllByRole("checkbox")
       .find((checkbox) => {
-        return checkbox.dataset.state === "checked";
+        return checkbox.hasAttribute("data-checked");
       });
     if (!bodySelectedCheckbox) {
       throw new Error("Expected the message body to select its visual group");
     }
     await user.click(bodySelectedCheckbox);
     await waitFor(() => {
-      expect(bodySelectedCheckbox).toHaveAttribute("data-state", "unchecked");
+      expect(bodySelectedCheckbox).toHaveAttribute("data-unchecked");
     });
     await user.click(bodySelectedCheckbox);
 
     for (const checkbox of screen.getAllByRole("checkbox")) {
-      if (checkbox.dataset.state !== "checked") {
+      if (!checkbox.hasAttribute("data-checked")) {
         await user.click(checkbox);
       }
     }
@@ -218,7 +218,7 @@ describe("chat thread sharing", () => {
     await expect(
       screen.findByText("Select fewer messages to share"),
     ).resolves.toBeInTheDocument();
-    expect(checkbox).toHaveAttribute("data-state", "unchecked");
+    expect(checkbox).toHaveAttribute("data-unchecked");
     expect(screen.getAllByText("0 selected").length).toBeGreaterThan(0);
   });
 });

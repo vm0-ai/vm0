@@ -33,10 +33,9 @@ export function MultiSelectCombobox({
   const [search, setSearch] = React.useState("");
   const searchInputRef = React.useRef<HTMLInputElement>(null);
 
-  // Radix Dialog's react-remove-scroll adds a non-passive wheel listener on
-  // document that calls preventDefault() for events outside the Dialog DOM.
-  // Popover portal content is outside the Dialog DOM, so scroll gets blocked.
-  // Native stopPropagation prevents the event from reaching that listener.
+  // Modal dialogs can install a document-level wheel listener for content
+  // outside the dialog DOM. Popover portal content lives outside that DOM, so
+  // stop propagation before the event reaches the modal scroll lock.
   const scrollContainerRef = React.useCallback(
     (node: HTMLDivElement | null) => {
       if (!node) return;
@@ -96,7 +95,7 @@ export function MultiSelectCombobox({
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
+      <PopoverTrigger asChild nativeButton={false}>
         <div
           role="combobox"
           aria-expanded={open}
@@ -146,7 +145,7 @@ export function MultiSelectCombobox({
         </div>
       </PopoverTrigger>
       <PopoverContent
-        className="w-[var(--radix-popover-trigger-width)] p-0"
+        className="w-[var(--anchor-width)] p-0"
         align="start"
         onOpenAutoFocus={(e) => {
           e.preventDefault();

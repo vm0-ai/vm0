@@ -1070,7 +1070,7 @@ function VideoTemplatePreview({ item }: { item: VideoTemplateItem }) {
 /**
  * Soft, cool-tinted card shadow matching the home chat composer
  * (`--zero-card-shadow`). The token is scoped to `.zero-app`, but the template
- * picker renders through a Radix portal on `document.body` — outside that
+ * picker renders through a Base UI portal on `document.body` — outside that
  * scope — so the value is inlined here instead of referencing the CSS var.
  * Replaces Tailwind `shadow-sm`, whose hard black tint reads muddy on white.
  */
@@ -4874,7 +4874,7 @@ function TemplatePickerDialog({
   const isPreviewing = Boolean(previewItem);
   const dialogContentClassName = cn(
     "gap-0 overflow-hidden p-0 focus:outline-none focus-visible:outline-none focus-visible:ring-0",
-    skipEnterAnimation && "data-[state=open]:!animate-none",
+    skipEnterAnimation && "data-open:!animate-none",
     "flex h-[min(82vh,760px)] max-w-6xl flex-col [&>button]:right-4 [&>button]:top-4",
   );
   // A persona pill filters the grid, ideation-gallery style.
@@ -5109,7 +5109,7 @@ function TemplatePickerDialog({
         })}
         className={dialogContentClassName}
         overlayClassName={
-          skipEnterAnimation ? "data-[state=open]:!animate-none" : undefined
+          skipEnterAnimation ? "data-open:!animate-none" : undefined
         }
         aria-describedby={undefined}
         onKeyDown={handleDialogKeyDown}
@@ -5633,7 +5633,11 @@ function ComposerTemplateAttachmentSync({
             );
             const selected = readSelectedTemplate();
             if (anchor && selected && Number.isInteger(position)) {
-              openVideoOptions(anchor, selected, position);
+              // Base UI dismisses a popover mounted during the same external
+              // click as an outside press. Mount after that click dispatches.
+              queueMicrotask(() => {
+                openVideoOptions(anchor, selected, position);
+              });
             }
           }
         }}
@@ -6472,7 +6476,7 @@ function ConnectorsPopoverButton({
       <PopoverContent
         side="top"
         align="start"
-        className="flex max-h-[var(--radix-popover-content-available-height)] w-72 flex-col overflow-hidden rounded-lg p-0"
+        className="flex max-h-[var(--available-height)] w-72 flex-col overflow-hidden rounded-lg p-0"
       >
         {(connectorItems.length > 0 || connectorsLoading) && (
           <div className="flex min-h-0 flex-col py-1">
@@ -7414,7 +7418,7 @@ function ComposerModelPickerSlot({ signals }: { signals: ComposerSignals }) {
         triggerClassName={cn(
           "h-8 w-8 max-w-none gap-0 border-transparent bg-transparent px-0 text-sm text-muted-foreground transition-colors sm:w-auto sm:max-w-[14rem] sm:gap-1 sm:px-2",
           "[&>span]:flex [&>span]:items-center [&>span]:justify-center sm:[&>span]:justify-start [&>svg]:hidden sm:[&>svg]:block",
-          "hover:bg-state-hover hover:text-foreground data-[state=open]:bg-state-hover data-[state=open]:text-foreground",
+          "hover:bg-state-hover hover:text-foreground data-popup-open:bg-state-hover data-popup-open:text-foreground",
           COMPOSER_CONTROL_FOCUS_CLASS,
         )}
         compactTrigger

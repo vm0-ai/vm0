@@ -300,7 +300,7 @@ function ConnectorCell({
       </TooltipProvider>
       <PopoverContent
         align="end"
-        className="w-max min-w-[16rem] max-w-[min(28rem,var(--radix-popover-content-available-width))] p-1"
+        className="w-max min-w-[16rem] max-w-[min(28rem,var(--available-width))] p-1"
       >
         <ConnectorPopoverList
           entries={entries}
@@ -904,7 +904,7 @@ function AgentFilterDropdown({
       </DropdownMenuTrigger>
       <DropdownMenuContent
         align="end"
-        className="max-h-[min(20rem,var(--radix-dropdown-menu-content-available-height))] overflow-y-auto"
+        className="max-h-[min(20rem,var(--available-height))] overflow-y-auto"
       >
         <DropdownMenuItem
           onSelect={() => {

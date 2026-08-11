@@ -479,9 +479,7 @@ body {
 }
 
 /* Switch track: ensure visibility against card background in dark mode */
-:where([data-theme="dark"])
-  .zero-app
-  button[role="switch"][data-state="unchecked"] {
+:where([data-theme="dark"]) .zero-app [role="switch"][data-unchecked] {
   background-color: hsl(var(--gray-400));
 }
 
@@ -1395,11 +1393,11 @@ details[open] > summary > span:first-child {
   }
 }
 
-.sheet-content[data-side="right"][data-state="open"] {
+.sheet-content[data-side="right"][data-open] {
   animation: sheet-slide-in-right 0.35s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
-.sheet-content[data-side="right"][data-state="closed"] {
+.sheet-content[data-side="right"][data-ending-style] {
   animation: sheet-slide-out-right 0.25s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 

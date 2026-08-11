@@ -287,7 +287,7 @@ export async function fill(element: Element, value: string): Promise<void> {
 }
 
 /**
- * Fire a click on `element` that works for both regular buttons and Radix
+ * Fire a click on `element` that works for both regular buttons and headless UI
  * triggers (Dropdown/Select/Popover open on `pointerdown`, not `click`).
  *
  * Roughly 3x faster than `userEvent.click(el)` in happy-dom because it skips
@@ -338,7 +338,7 @@ const ROLE_SELECTORS: Record<TextContentRole, string> = {
  * Element is hidden from the accessibility tree — used to match the default
  * `getAllByRole(role, { hidden: false })` behaviour from
  * `@testing-library/dom`, which excludes ancestors flagged with
- * `aria-hidden="true"`, the `hidden` attribute, or `inert`. Radix overlays
+ * `aria-hidden="true"`, the `hidden` attribute, or `inert`. Modal overlays
  * commonly leave background portals mounted with `aria-hidden`; matching
  * those would inflate counts vs. the original role queries.
  */

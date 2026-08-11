@@ -216,7 +216,7 @@ function AgentTabsView({
           <TabsList className="zero-tabs h-9 gap-1 px-1 py-1">
             <TabsTrigger
               value="public"
-              className="gap-1.5 px-3 text-sm data-[state=active]:bg-background"
+              className="gap-1.5 px-3 text-sm data-active:bg-background"
             >
               {t(($) => {
                 return $.list.tabs.public;
@@ -224,7 +224,7 @@ function AgentTabsView({
             </TabsTrigger>
             <TabsTrigger
               value="private"
-              className="gap-1.5 px-3 text-sm data-[state=active]:bg-background"
+              className="gap-1.5 px-3 text-sm data-active:bg-background"
             >
               {t(($) => {
                 return $.list.tabs.private;

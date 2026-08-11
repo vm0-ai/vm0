@@ -222,12 +222,9 @@ describe("chat composer models", () => {
       expect(wrapper.style.transform).not.toContain("-200%");
     });
     const transform = wrapper.style.transform;
-    const availableWidth = wrapper.style.getPropertyValue(
-      "--radix-popper-available-width",
-    );
-    const availableHeight = wrapper.style.getPropertyValue(
-      "--radix-popper-available-height",
-    );
+    const availableWidth = wrapper.style.getPropertyValue("--available-width");
+    const availableHeight =
+      wrapper.style.getPropertyValue("--available-height");
 
     getClientRects.mockRestore();
     getBoundingClientRect.mockRestore();
@@ -291,17 +288,17 @@ describe("chat composer models", () => {
     expect(screen.getByText("support-escalation")).toBeInTheDocument();
     expect(screen.queryByText("deep-dive")).not.toBeInTheDocument();
     expect(screen.queryByText("other-agent-workflow")).not.toBeInTheDocument();
-    // The menu renders in a Radix Popover portal (Floating UI handles
+    // The menu renders in a Base UI Popover portal (Floating UI handles
     // cross-browser placement), so it lives outside the composer element.
     const slashWorkflowMenu = screen.getByTestId("slash-workflow-menu");
     expect(slashWorkflowMenu).toBeInTheDocument();
     expect(slashWorkflowMenu).toHaveClass(
-      "h-[min(16rem,var(--radix-popover-content-available-height))]",
-      "md:h-[min(20rem,var(--radix-popover-content-available-height))]",
+      "h-[min(16rem,var(--available-height))]",
+      "md:h-[min(20rem,var(--available-height))]",
     );
     expect(slashWorkflowMenu).not.toHaveClass(
-      "max-h-[min(16rem,var(--radix-popover-content-available-height))]",
-      "md:max-h-[min(20rem,var(--radix-popover-content-available-height))]",
+      "max-h-[min(16rem,var(--available-height))]",
+      "md:max-h-[min(20rem,var(--available-height))]",
     );
     expect(slashWorkflowMenu).not.toHaveClass("max-h-80");
 

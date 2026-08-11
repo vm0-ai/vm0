@@ -97,7 +97,10 @@ function menuTriggerIsOpen(trigger: Element): boolean {
   if (!(trigger instanceof HTMLElement)) {
     return false;
   }
-  return trigger.dataset.state === "open" || trigger.ariaExpanded === "true";
+  return (
+    Object.hasOwn(trigger.dataset, "popupOpen") ||
+    trigger.ariaExpanded === "true"
+  );
 }
 
 function syncMenuActionClosedAfterTriggerClick(trigger: Element) {

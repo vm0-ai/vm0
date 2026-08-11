@@ -245,7 +245,8 @@ Semantic colors provide consistent theming across the application:
 
 ## 🧩 Components
 
-All components are built with Radix UI primitives and styled with Tailwind CSS.
+Interactive components are built with Base UI primitives and styled with
+Tailwind CSS, following the shadcn Base UI component patterns.
 
 ### Button
 
@@ -339,8 +340,8 @@ import {
 ```tsx
 import { Dialog } from "@vm0/ui";
 
-// Based on Radix UI Dialog primitive
-// See Radix UI docs for full API
+// Based on Base UI Dialog primitive
+// See Base UI docs for the underlying API
 ```
 
 ---
@@ -678,7 +679,7 @@ colors: {
 - [Figma Design File](https://www.figma.com/design/eTWIsjktpymTDYEb55OxXx/VM0-Cloud)
 - [shadcn/ui Documentation](https://ui.shadcn.com/)
 - [Tailwind CSS v4](https://tailwindcss.com/)
-- [Radix UI](https://www.radix-ui.com/)
+- [Base UI](https://base-ui.com/react/)
 - [Class Variance Authority](https://cva.style/docs)
 
 ---

@@ -255,11 +255,13 @@ async function selectAvatarRecommendationFilters(
 ): Promise<void> {
   await user.click(within(dialog).getByText("Filters"));
   await user.click(screen.getByLabelText("Style: All"));
-  await user.click(screen.getByRole("option", { name: "Professional" }));
+  await user.click(await screen.findByRole("option", { name: "Professional" }));
   await user.click(screen.getByLabelText("Scene: All"));
-  await user.click(screen.getByRole("option", { name: "Business" }));
+  await user.click(await screen.findByRole("option", { name: "Business" }));
   await user.click(screen.getByLabelText("Ethnicity: All"));
-  await user.click(screen.getByRole("option", { name: "North american" }));
+  await user.click(
+    await screen.findByRole("option", { name: "North american" }),
+  );
   await user.keyboard("{Escape}");
 }
 
@@ -998,8 +1000,7 @@ describe("chat composer templates", () => {
       screen.getByLabelText("Use case: Advertisement"),
     ).toBeInTheDocument();
     await user.click(screen.getByLabelText("Language: English"));
-    expect(screen.getByRole("option", { name: "Spanish" })).toBeInTheDocument();
-    await user.click(screen.getByRole("option", { name: "Spanish" }));
+    await user.click(await screen.findByRole("option", { name: "Spanish" }));
     await user.keyboard("{Escape}");
     await waitFor(() => {
       expect(
@@ -3406,9 +3407,9 @@ describe("chat composer templates", () => {
     const websitePreviewPlaceholder = screen.getByTitle(
       `${websiteTemplate.title} website preview placeholder`,
     );
-    expect(websitePreviewDialog).toHaveClass("data-[state=open]:!animate-none");
+    expect(websitePreviewDialog).toHaveClass("data-open:!animate-none");
     expect(document.querySelector(".zero-dialog-overlay")).toHaveClass(
-      "data-[state=open]:!animate-none",
+      "data-open:!animate-none",
     );
     expect(websitePreviewPlaceholder).toHaveClass("block");
     fireEvent.load(
@@ -3463,9 +3464,9 @@ describe("chat composer templates", () => {
       screen.getByRole("dialog", {
         name: "Template",
       }),
-    ).toHaveClass("data-[state=open]:!animate-none");
+    ).toHaveClass("data-open:!animate-none");
     expect(document.querySelector(".zero-dialog-overlay")).toHaveClass(
-      "data-[state=open]:!animate-none",
+      "data-open:!animate-none",
     );
     click(screen.getByLabelText("Close"));
     await waitFor(() => {
