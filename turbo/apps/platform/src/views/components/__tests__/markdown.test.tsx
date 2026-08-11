@@ -92,15 +92,19 @@ function mockAgentsPage(): void {
   });
 }
 
-const MERMAID_DATA_URL_PREFIX = "data:image/svg+xml;charset=utf-8,";
+type BlobDownloadMock = ReturnType<typeof context.mocks.browser.blobDownload>;
 
-/** The SVG a rendered diagram shows, decoded from its data URL. */
-function renderedDiagramMarkup(diagram: HTMLElement): string {
+/** The SVG a rendered diagram shows, read back through its blob URL. */
+function renderedDiagramMarkup(
+  diagram: HTMLElement,
+  objectUrls: BlobDownloadMock,
+): Promise<string> {
   const url = diagram.getAttribute("src") ?? "";
-  if (!url.startsWith(MERMAID_DATA_URL_PREFIX)) {
-    throw new Error("Expected the diagram to be shown from a data URL");
+  const blob = objectUrls.blobForUrl(url);
+  if (!blob) {
+    throw new Error("Expected the diagram to be shown from a blob URL");
   }
-  return decodeURIComponent(url.slice(MERMAID_DATA_URL_PREFIX.length));
+  return blob.text();
 }
 
 function getButtonByText(container: ParentNode, text: string): HTMLElement {
@@ -266,6 +270,7 @@ describe("assistant markdown", () => {
   });
 
   it("renders mermaid code blocks as diagrams", async () => {
+    const objectUrls = context.mocks.browser.blobDownload();
     mockThread("```mermaid\nflowchart TD\n  A --> B\n```");
 
     detachedSetupPage({
@@ -274,9 +279,9 @@ describe("assistant markdown", () => {
     });
 
     // The diagram is shown by an <img>, so the SVG itself never reaches the
-    // document — its markup travels as a data URL with nothing to revoke.
+    // document — its markup travels behind a registry-owned blob URL.
     const diagram = await screen.findByAltText("Diagram");
-    expect(renderedDiagramMarkup(diagram)).toContain(
+    await expect(renderedDiagramMarkup(diagram, objectUrls)).resolves.toContain(
       'data-testid="mermaid-svg"',
     );
     expect(document.querySelector("code.language-mermaid")).toBeNull();
@@ -285,6 +290,7 @@ describe("assistant markdown", () => {
   });
 
   it("shows every copy of a diagram that appears more than once", async () => {
+    context.mocks.browser.blobDownload();
     const fence = "```mermaid\nflowchart TD\n  A --> B\n```";
     mockThread(`${fence}\n\nand again\n\n${fence}`);
 
@@ -308,6 +314,7 @@ describe("assistant markdown", () => {
   });
 
   it("uses redux themes for light and dark diagrams", async () => {
+    const objectUrls = context.mocks.browser.blobDownload();
     mockThread("```mermaid\nflowchart TD\n  A --> B\n```");
 
     detachedSetupPage({
@@ -320,10 +327,10 @@ describe("assistant markdown", () => {
     click(getButtonByText(settingsDialog, "Light"));
 
     const lightDiagram = await screen.findByAltText("Diagram");
-    await waitFor(() => {
-      expect(renderedDiagramMarkup(screen.getByAltText("Diagram"))).toContain(
-        'data-mermaid-theme="redux"',
-      );
+    await waitFor(async () => {
+      await expect(
+        renderedDiagramMarkup(screen.getByAltText("Diagram"), objectUrls),
+      ).resolves.toContain('data-mermaid-theme="redux"');
     });
     const lightUrl = lightDiagram.getAttribute("src") ?? "";
 
@@ -335,9 +342,9 @@ describe("assistant markdown", () => {
         lightUrl,
       );
     });
-    expect(renderedDiagramMarkup(screen.getByAltText("Diagram"))).toContain(
-      'data-mermaid-theme="redux-dark"',
-    );
+    await expect(
+      renderedDiagramMarkup(screen.getByAltText("Diagram"), objectUrls),
+    ).resolves.toContain('data-mermaid-theme="redux-dark"');
   });
 
   it("moves a rendered mermaid diagram from the lightbox into split view", async () => {
@@ -535,6 +542,7 @@ describe("assistant markdown", () => {
   });
 
   it("renders a closed mermaid fence that ends the message", async () => {
+    const objectUrls = context.mocks.browser.blobDownload();
     mockThread("Here is the flow:\n\n```mermaid\nflowchart TD\n  A --> B\n```");
 
     detachedSetupPage({
@@ -543,12 +551,13 @@ describe("assistant markdown", () => {
     });
 
     const diagram = await screen.findByAltText("Diagram");
-    expect(renderedDiagramMarkup(diagram)).toContain(
+    await expect(renderedDiagramMarkup(diagram, objectUrls)).resolves.toContain(
       'data-testid="mermaid-svg"',
     );
   });
 
   it("keeps the source visible when a mermaid diagram cannot be parsed", async () => {
+    context.mocks.browser.blobDownload();
     mockThread("```mermaid\nthis is not a diagram\n```");
 
     detachedSetupPage({

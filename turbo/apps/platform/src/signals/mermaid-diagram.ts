@@ -16,8 +16,11 @@ import { theme$ } from "./theme.ts";
  * depends only on the source and the theme, so the same fence in two threads
  * shares one entry.
  *
- * The image is a `data:` URL, so there is nothing to revoke and no lifetime to
- * manage: entries live as long as the registry.
+ * The image is a blob URL owned by the registry entry, so nothing revokes it
+ * while the entry lives — which is forever, like the entry itself. A theme
+ * switch recomputes `diagram$` and strands the previous blob until page
+ * unload; that stranding is bounded by theme flips × diagrams and stays in
+ * the tens of kilobytes.
  */
 export interface MermaidDiagramImage {
   readonly url: string;
@@ -206,9 +209,13 @@ export function createMermaidDiagramSignals(
     }
 
     const serialized = sizeDiagramAndSerialize(svg);
+    const file = svgFile(serialized);
     return {
-      url: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(serialized)}`,
-      file: svgFile(serialized),
+      // A blob URL keeps the multi-kilobyte SVG out of the `src` attribute:
+      // assigning a data: URL string of that size showed up in commit-phase
+      // profiles as a per-mount cost.
+      url: URL.createObjectURL(file),
+      file,
     };
   });
   return { code, diagram$ };
