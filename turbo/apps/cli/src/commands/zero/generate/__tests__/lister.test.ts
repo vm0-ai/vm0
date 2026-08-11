@@ -56,7 +56,7 @@ function connector(
 }
 
 function stubConnectors(connectors: Array<Record<string, unknown>>) {
-  return stubConnectorsWithConfiguredSlugs(connectors, [
+  return stubConnectorsWithCatalogSlugs(connectors, [
     "fal",
     "luma",
     "luma-ai",
@@ -66,9 +66,9 @@ function stubConnectors(connectors: Array<Record<string, unknown>>) {
   ]);
 }
 
-function stubConnectorsWithConfiguredSlugs(
+function stubConnectorsWithCatalogSlugs(
   connectors: Array<Record<string, unknown>>,
-  configuredConnectorSlugs: string[],
+  catalogConnectorSlugs: string[],
 ) {
   const connectedBySlug = new Map(
     connectors.map((item) => {
@@ -95,7 +95,7 @@ function stubConnectorsWithConfiguredSlugs(
     }),
   );
   const visibleConnectorSlugs = new Set([
-    ...configuredConnectorSlugs,
+    ...catalogConnectorSlugs,
     ...connectedBySlug.keys(),
   ]);
   return stubConnectorCatalogStatus(
@@ -347,7 +347,7 @@ describe("zero generate lister", () => {
 
   it("suggests the built-in video command when no video connector is ready", async () => {
     server.use(
-      stubConnectorsWithConfiguredSlugs([], ["fal", "luma-ai", "runway"]),
+      stubConnectorsWithCatalogSlugs([], ["fal", "luma-ai", "runway"]),
       stubUserConnectors([]),
     );
 
@@ -382,7 +382,7 @@ describe("zero generate lister", () => {
 
   it("reflects built-in and connector choices for avatar video", async () => {
     server.use(
-      stubConnectorsWithConfiguredSlugs(
+      stubConnectorsWithCatalogSlugs(
         [connector("joggai", "jogg-user")],
         ["joggai"],
       ),
@@ -411,7 +411,7 @@ describe("zero generate lister", () => {
 
   it("marks built-in video models as plan-restricted before generation", async () => {
     server.use(
-      stubConnectorsWithConfiguredSlugs([], ["fal", "luma-ai", "runway"]),
+      stubConnectorsWithCatalogSlugs([], ["fal", "luma-ai", "runway"]),
       stubUserConnectors([]),
       stubBillingStatus(false),
     );
@@ -428,10 +428,7 @@ describe("zero generate lister", () => {
   });
 
   it("suggests the built-in presentation command", async () => {
-    server.use(
-      stubConnectorsWithConfiguredSlugs([], []),
-      stubUserConnectors([]),
-    );
+    server.use(stubConnectorsWithCatalogSlugs([], []), stubUserConnectors([]));
 
     await generateCommand.parseAsync(["node", "cli", "presentation"]);
 
@@ -451,10 +448,7 @@ describe("zero generate lister", () => {
   });
 
   it("suggests the built-in website command", async () => {
-    server.use(
-      stubConnectorsWithConfiguredSlugs([], []),
-      stubUserConnectors([]),
-    );
+    server.use(stubConnectorsWithCatalogSlugs([], []), stubUserConnectors([]));
 
     await generateCommand.parseAsync(["node", "cli", "website"]);
 
@@ -496,10 +490,7 @@ describe("zero generate lister", () => {
       "Built-in mobile app design generation",
     ],
   ])("suggests the built-in %s command", async (type, label, commandLabel) => {
-    server.use(
-      stubConnectorsWithConfiguredSlugs([], []),
-      stubUserConnectors([]),
-    );
+    server.use(stubConnectorsWithCatalogSlugs([], []), stubUserConnectors([]));
 
     await generateCommand.parseAsync(["node", "cli", type]);
 
@@ -514,7 +505,7 @@ describe("zero generate lister", () => {
 
   it("suggests the built-in voice command when no voice connector is ready", async () => {
     server.use(
-      stubConnectorsWithConfiguredSlugs(
+      stubConnectorsWithCatalogSlugs(
         [],
         ["elevenlabs", "hume", "minimax", "openai"],
       ),
@@ -542,7 +533,7 @@ describe("zero generate lister", () => {
 
   it("also shows the built-in voice provider when a voice connector is ready", async () => {
     server.use(
-      stubConnectorsWithConfiguredSlugs(
+      stubConnectorsWithCatalogSlugs(
         [connector("openai", "openai-user")],
         ["elevenlabs", "hume", "minimax", "openai"],
       ),
@@ -565,7 +556,7 @@ describe("zero generate lister", () => {
 
   it("lists music as the public audio connector-backed subtype", async () => {
     server.use(
-      stubConnectorsWithConfiguredSlugs(
+      stubConnectorsWithCatalogSlugs(
         [connector("elevenlabs", "elevenlabs-user")],
         ["elevenlabs", "minimax"],
       ),

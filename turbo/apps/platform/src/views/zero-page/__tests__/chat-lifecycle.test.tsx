@@ -507,6 +507,7 @@ describe("chat lifecycle", () => {
     let sentUserMessage: UserMessageDocument | undefined;
     context.mocks.data.userModelPreference({
       selectedModel: "glm-5.1",
+      serviceTier: null,
       updatedAt: "2026-03-10T00:00:00Z",
     });
     context.mocks.data.orgModelPolicies([
@@ -589,6 +590,7 @@ describe("chat lifecycle", () => {
     let sentUserMessage: UserMessageDocument | undefined;
     context.mocks.data.userModelPreference({
       selectedModel: "glm-5.1",
+      serviceTier: null,
       updatedAt: "2026-03-10T00:00:00Z",
     });
     context.mocks.data.orgModelPolicies([
@@ -666,6 +668,7 @@ describe("chat lifecycle", () => {
     let sentUserMessage: UserMessageDocument | undefined;
     context.mocks.data.userModelPreference({
       selectedModel: "claude-sonnet-4-6",
+      serviceTier: null,
       updatedAt: "2026-03-10T00:00:00Z",
     });
     context.mocks.data.orgModelPolicies([

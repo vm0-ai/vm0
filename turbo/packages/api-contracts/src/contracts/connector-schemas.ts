@@ -102,9 +102,6 @@ export function guaranteedConnectorProvidedBindingNames(args: {
  */
 export const connectorListResponseSchema = z.object({
   connectors: z.array(connectorResponseSchema),
-  configuredConnectorSlugs: z
-    .array(connectorSlugSchema)
-    .describe("Deprecated rollout compatibility field; always empty"),
   connectorProvidedBindings: z
     .array(connectorProvidedBindingSchema)
     .default([]),

@@ -1045,7 +1045,7 @@ const handleModelCommand$ = command(
       {
         orgId: args.installation.orgId,
         userId: args.connection.vm0UserId,
-        preference: { selectedModel: selected.model },
+        preference: { selectedModel: selected.model, serviceTier: null },
       },
       signal,
     );

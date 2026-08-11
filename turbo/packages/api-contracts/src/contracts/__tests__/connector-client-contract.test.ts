@@ -78,7 +78,6 @@ describe("connector client response contracts", () => {
     expect(
       connectorListResponseSchema.parse({
         connectors: [connector],
-        configuredConnectorSlugs: ["github"],
         connectorProvidedBindings: [
           {
             connectorSlug: "github",
@@ -90,7 +89,11 @@ describe("connector client response contracts", () => {
           },
         ],
       }),
-    ).toMatchObject({ configuredConnectorSlugs: ["github"] });
+    ).toMatchObject({
+      connectorProvidedBindings: [
+        { connectorSlug: "github", name: "GITHUB_TOKEN" },
+      ],
+    });
     expect(
       connectorOauthDeviceAuthSessionStartResponseSchema.parse({
         sessionId: "00000000-0000-4000-a000-000000000003",

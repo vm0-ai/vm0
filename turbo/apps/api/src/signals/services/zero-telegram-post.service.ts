@@ -2108,7 +2108,7 @@ const handleModelCommand$ = command(
       {
         orgId: args.orgId,
         userId: args.userId,
-        preference: { selectedModel: option.model },
+        preference: { selectedModel: option.model, serviceTier: null },
       },
       signal,
     );
