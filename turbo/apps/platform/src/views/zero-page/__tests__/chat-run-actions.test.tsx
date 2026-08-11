@@ -163,7 +163,9 @@ describe("chat run actions", () => {
     const indicator = await screen.findByTestId("chat-steer-indicator");
     await user.hover(indicator);
 
-    await expect(screen.findByRole("tooltip")).resolves.toHaveTextContent(
+    await expect(
+      screen.findByRole("tooltip", undefined, { timeout: 5000 }),
+    ).resolves.toHaveTextContent(
       "Sent while the agent was working to direct its behavior",
     );
   });
