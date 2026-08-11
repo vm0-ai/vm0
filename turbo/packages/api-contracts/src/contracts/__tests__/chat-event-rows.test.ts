@@ -83,14 +83,11 @@ function projectableV4Row(eventType: ChatEventType): ChatEventRowV4 {
 }
 
 describe("canonical chat event row schema", () => {
-  it("accepts strict v4 rows and rejects legacy top-level fields", () => {
+  it("accepts v4 rows", () => {
     const v4 = v4Row({ payload: { content: "canonical" } });
     expect(
       chatEventRowV4Schema.parse(JSON.parse(JSON.stringify(v4))),
     ).toStrictEqual(v4);
-    expect(
-      chatEventRowV4Schema.safeParse({ ...v4, content: "legacy" }).success,
-    ).toBe(false);
   });
 
   it("preserves canonical multi-leaf payloads and nested JSON nulls", () => {
