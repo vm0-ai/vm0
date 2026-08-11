@@ -27,6 +27,7 @@ import { expiredCancellationRecoveryThreads } from "./zero-chat-active-run.servi
 import { drainGoalQueueForThread$ } from "./zero-goal-queue-drain.service";
 import type { ApiDispatchTimingCollector } from "./api-dispatch-timing.service";
 import { pendingActiveInputCondition } from "./chat-event-queue.service";
+import type { ImmediateSuccessorIntentHandle } from "./immediate-successor-intent.service";
 
 const DRAIN_SWEEP_LIMIT = 20;
 export const STALE_QUEUE_ITEM_AGE_MS = 5 * 60 * 1000;
@@ -47,6 +48,7 @@ type QueueDrainSweepCandidate =
 interface DrainChatThreadQueueInput {
   readonly apiStartTime?: number;
   readonly chatThreadId: string;
+  readonly goalImmediateSuccessorIntent?: ImmediateSuccessorIntentHandle;
   readonly immediateSuccessorPredecessorRunId?: string;
   readonly dispatchFailedCallbacks: DispatchFailedRunCallbacks;
   readonly queueItemCreatedBefore?: Date;
@@ -149,6 +151,7 @@ export const drainChatThreadQueueForThread$ = command(
       {
         chatThreadId: input.chatThreadId,
         apiStartTime,
+        goalImmediateSuccessorIntent: input.goalImmediateSuccessorIntent,
         immediateSuccessorPredecessorRunId:
           input.immediateSuccessorPredecessorRunId,
         dispatchFailedCallbacks: input.dispatchFailedCallbacks,

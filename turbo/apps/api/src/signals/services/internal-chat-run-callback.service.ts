@@ -3988,6 +3988,7 @@ async function prepareAutoSendQueuedMessageRunInput(
     orgId: agent.orgId,
     intentId: queuedMessage.id,
     eventClass: "prompt",
+    decisionPoint: "queue_drain",
   });
   const runInput = await measureChatCallbackPreCreateTiming(
     args.timing,

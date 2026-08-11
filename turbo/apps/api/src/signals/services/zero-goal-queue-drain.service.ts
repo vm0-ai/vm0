@@ -22,6 +22,7 @@ import {
 } from "./chat-goal-queue.service";
 import type { InternalRunCallbackKind } from "./internal-run-callback";
 import {
+  findImmediateSuccessorIntentHandle,
   scheduleImmediateSuccessorIntent,
   type ImmediateSuccessorIntentHandle,
 } from "./immediate-successor-intent.service";
@@ -441,6 +442,7 @@ export const drainGoalQueueForThread$ = command(
     args: {
       readonly chatThreadId: string;
       readonly apiStartTime: number;
+      readonly goalImmediateSuccessorIntent?: ImmediateSuccessorIntentHandle;
       readonly immediateSuccessorPredecessorRunId?: string;
       readonly dispatchFailedCallbacks: DispatchFailedRunCallbacks;
       readonly queueItemCreatedBefore?: Date;
@@ -492,6 +494,16 @@ export const drainGoalQueueForThread$ = command(
         }),
       );
 
+      const prearmedImmediateSuccessorIntent =
+        args.goalImmediateSuccessorIntent?.eventClass === "goal" &&
+        args.goalImmediateSuccessorIntent.intentId === event.id
+          ? args.goalImmediateSuccessorIntent
+          : findImmediateSuccessorIntentHandle({
+              predecessorRunId: args.immediateSuccessorPredecessorRunId,
+              intentId: event.id,
+              eventClass: "goal",
+            });
+
       const goal = await timing.measure(
         "api_dispatch_pre_create_zero_goal_drain_load_target",
         "nested",
@@ -506,7 +518,9 @@ export const drainGoalQueueForThread$ = command(
           "api_dispatch_pre_create_zero_goal_drain_revoke_invalid_event",
           "nested",
           async () => {
-            return await revokeGoalEvent(db, event, signal);
+            return await revokeGoalEvent(db, event, signal, () => {
+              prearmedImmediateSuccessorIntent?.revoke();
+            });
           },
           phaseDimensions,
         );
@@ -514,14 +528,17 @@ export const drainGoalQueueForThread$ = command(
         continue;
       }
 
-      const immediateSuccessorIntent = scheduleImmediateSuccessorIntent({
-        db,
-        predecessorRunId: args.immediateSuccessorPredecessorRunId,
-        chatThreadId: event.chatThreadId,
-        orgId: goal.orgId,
-        intentId: event.id,
-        eventClass: "goal",
-      });
+      const immediateSuccessorIntent =
+        prearmedImmediateSuccessorIntent ??
+        scheduleImmediateSuccessorIntent({
+          db,
+          predecessorRunId: args.immediateSuccessorPredecessorRunId,
+          chatThreadId: event.chatThreadId,
+          orgId: goal.orgId,
+          intentId: event.id,
+          eventClass: "goal",
+          decisionPoint: "queue_drain",
+        });
 
       const result = await set(
         launchQueuedGoal$,
