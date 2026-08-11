@@ -2132,19 +2132,25 @@ describe("CHAT-02: queueing and recalling messages", () => {
     );
     await ageClaimedRun(active.runId, RUN_TIME_BUDGET_STEER_AT_MS);
     await runSteerRunTimeBudgetCron();
+    const pendingEventIds = await api.listRunnerActiveInputs(
+      claimed.claim.sandboxToken,
+      active.runId,
+    );
+    expect(pendingEventIds).toHaveLength(2);
+    const budgetEventId = pendingEventIds.find((eventId) => {
+      return eventId !== releasedEventId;
+    });
+    if (!budgetEventId) {
+      throw new Error("Expected a pending budget input");
+    }
     const reserved = await api.reserveRunnerActiveInputs(
       claimed.claim.sandboxToken,
       active.runId,
     );
     if (reserved.outcome !== "reserved") {
-      throw new Error("Expected prompt and budget input to be reserved");
+      throw new Error("Expected the released prompt to be reserved");
     }
-    const budgetEventId = reserved.eventIds.find((eventId) => {
-      return eventId !== releasedEventId;
-    });
-    if (!budgetEventId) {
-      throw new Error("Expected a reserved budget input");
-    }
+    expect(reserved.eventIds).toStrictEqual([releasedEventId]);
     const laterEventId = randomUUID();
     const later = await chat.requestSendEvent(
       actor,

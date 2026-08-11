@@ -758,6 +758,40 @@ async function settleOpenActiveInputDeliveryAsUndelivered(
   };
 }
 
+async function expirePendingActiveInputBudgetEvents(
+  tx: ActiveInputDeliveryTransaction,
+  scope: ActiveInputDeliveryIdentity,
+): Promise<boolean> {
+  const sources = await pendingActiveInputRows(
+    tx,
+    scope.chatThreadId,
+    scope.runId,
+  ).for("update");
+  let chatEventsAppended = false;
+  for (const source of sources) {
+    if (source.eventType === "input.prompt") {
+      continue;
+    }
+    if (source.eventType !== "input.budget") {
+      throw new Error("Pending active input has an invalid source type");
+    }
+    const revoked = await replaceLoadedChatEvent(
+      tx,
+      activeInputReplacementTarget(source),
+      {
+        chatThreadId: scope.chatThreadId,
+        eventType: "control.revoke",
+        runId: scope.runId,
+      },
+    );
+    if (!revoked) {
+      throw new Error("Pending active input budget expiry was not appended");
+    }
+    chatEventsAppended = true;
+  }
+  return chatEventsAppended;
+}
+
 async function recordActiveInputDeliveryReceiptTransition(
   tx: ActiveInputDeliveryTransaction,
   scope: ActiveInputDeliveryScope,
@@ -818,22 +852,31 @@ export async function finalizeActiveInputDeliveryForCompletion(
   },
 ): Promise<FinalizeActiveInputDeliveryResult> {
   const delivery = await lockOpenDelivery(tx, args);
+  const pendingBudgetExpired = await expirePendingActiveInputBudgetEvents(
+    tx,
+    args,
+  );
   if (!delivery) {
     return {
-      finalized: false,
-      chatEventsAppended: false,
+      finalized: pendingBudgetExpired,
+      chatEventsAppended: pendingBudgetExpired,
     };
   }
   const items = delivery.eventIds.map((sourceEventId) => {
     return { sourceEventId, disposition: null };
   });
   if (!args.deliveredDeliveryIds.has(delivery.deliveryId)) {
-    return await settleOpenActiveInputDeliveryAsUndelivered(
+    const finalization = await settleOpenActiveInputDeliveryAsUndelivered(
       tx,
       args,
       delivery.deliveryId,
       items,
     );
+    return {
+      ...finalization,
+      chatEventsAppended:
+        finalization.chatEventsAppended || pendingBudgetExpired,
+    };
   }
   const settlement = await settleOpenActiveInputDeliveryAsDelivered(
     tx,
@@ -846,7 +889,7 @@ export async function finalizeActiveInputDeliveryForCompletion(
   }
   return {
     finalized: true,
-    chatEventsAppended: settlement.replacementsAppended,
+    chatEventsAppended: settlement.replacementsAppended || pendingBudgetExpired,
   };
 }
 
