@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use sandbox::GuestProcessControlHandle;
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, warn};
+use tracing::warn;
 
 use crate::ids::RunId;
 use crate::pi_standby::{PiStandbySignal, PiStandbySubscription};
@@ -46,14 +46,11 @@ impl PiStandbyForwarder {
                 PiStandbySignal::Release => br#"{"type":"pi-standby-release"}"#.as_slice(),
             };
             let correlation_id = format!("pi-standby:{run_id}");
-            match control
+            if let Err(error) = control
                 .control(&correlation_id, payload, PI_STANDBY_CONTROL_TIMEOUT)
                 .await
             {
-                Ok(_) => debug!(run_id = %run_id, ?signal, "forwarded Pi standby control"),
-                Err(error) => {
-                    warn!(run_id = %run_id, ?signal, error = %error, "Pi standby control forward failed")
-                }
+                warn!(run_id = %run_id, ?signal, error = %error, "Pi standby control forward failed");
             }
         });
         Some(Self { stop, task })

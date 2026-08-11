@@ -5,8 +5,6 @@ use std::time::{Duration, Instant};
 use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
 use nix::fcntl::Flock;
 use tokio::fs;
-#[cfg(test)]
-use tracing::debug;
 use tracing::{info, warn};
 
 use crate::duration::duration_ms;
@@ -1109,10 +1107,6 @@ impl WorkspaceImageLease {
             completed_at,
             storage_fingerprints: storage_fingerprints.clone(),
         }) else {
-            debug!(
-                run_id = %run_id,
-                "workspace image cache promotion skipped: checkout result is not promotable"
-            );
             return Ok(false);
         };
         let outcome = promotion.promote().await?;

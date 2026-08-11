@@ -82,6 +82,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
+  Input,
 } from "@vm0/ui";
 import { i18n } from "../../i18n/index.ts";
 
@@ -598,7 +599,7 @@ function ConnectorsToolbarActions({
             size={15}
             className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/60"
           />
-          <input
+          <Input
             type="text"
             placeholder={t(($) => {
               return $.connectors.catalog.search;
@@ -607,7 +608,7 @@ function ConnectorsToolbarActions({
             onChange={(e) => {
               return setSearch(e.target.value);
             }}
-            className="h-9 w-full rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-input pl-9 pr-3 text-sm text-foreground outline-none placeholder:text-muted-foreground transition-colors focus:border-primary focus:ring-[3px] focus:ring-primary/10"
+            className="pl-9 pr-3"
           />
         </div>
       )}

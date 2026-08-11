@@ -242,7 +242,6 @@ pub(super) async fn gc_workspace_orphans(
     .map_err(|e| RunnerError::Internal(format!("discover base-dir locks task failed: {e}")))?;
 
     if candidates.is_empty() {
-        tracing::debug!("workspace gc: no initially-free base-dir locks discovered");
         return Ok(WorkspaceGcSummary::default());
     }
 
@@ -326,7 +325,6 @@ async fn gc_workspace_orphans_with_candidates_and_remove(
 
     let active = active_workspace_paths(firecrackers);
     let mut summary = WorkspaceGcSummary::default();
-    let candidate_count = candidates.len();
 
     for candidate in candidates {
         let lease =
@@ -390,11 +388,6 @@ async fn gc_workspace_orphans_with_candidates_and_remove(
             "workspace orphans: {} cleaned ({})",
             summary.workspaces_cleaned,
             human_bytes(summary.bytes_freed)
-        );
-    } else {
-        tracing::debug!(
-            "workspace gc: no orphans found across {} base-dir lock candidates",
-            candidate_count
         );
     }
 
@@ -499,11 +492,6 @@ async fn gc_workspace_orphans_in_base_dir(
             .and_then(|mtime| workspace_age_reference.duration_since(mtime).ok())
             .unwrap_or_default();
         if age < GC_MIN_AGE {
-            tracing::debug!(
-                "workspace gc: {} too recent ({}s), skipping",
-                path.display(),
-                age.as_secs()
-            );
             preserve_lock = true;
             continue;
         }

@@ -32,8 +32,19 @@ const buttonVariants = cva(
         sm: "h-8 px-3",
         default: "h-9 px-4",
         lg: "h-10 px-6",
-        icon: "h-9 w-9",
+        "icon-2xs": "h-6 w-6",
+        "icon-xs": "h-7 w-7",
         "icon-sm": "h-8 w-8",
+        icon: "h-9 w-9",
+        "icon-lg": "h-10 w-10",
+      },
+      // Icon buttons across the app draw 16px, 18px, or 20px glyphs. The base
+      // `[&_svg]:size-4` covers 16px; the other two need an explicit opt-in so
+      // callers stop hand-rolling `[&_svg]:size-[18px]` on every toolbar.
+      iconSize: {
+        sm: "[&_svg]:size-4",
+        md: "[&_svg]:size-[18px]",
+        lg: "[&_svg]:size-5",
       },
     },
     defaultVariants: {
@@ -86,6 +97,7 @@ const Button = React.forwardRef<HTMLElement, ButtonProps>(
       asChild = false,
       children,
       className,
+      iconSize,
       nativeButton,
       render,
       size,
@@ -94,7 +106,9 @@ const Button = React.forwardRef<HTMLElement, ButtonProps>(
     },
     ref,
   ) => {
-    const resolvedClassName = cn(buttonVariants({ variant, size, className }));
+    const resolvedClassName = cn(
+      buttonVariants({ variant, size, iconSize, className }),
+    );
 
     if (asChild) {
       return (

@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { SlidersHorizontal } from "lucide-react";
 import {
+  Button,
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -61,10 +62,11 @@ export function ConnectorPermissionRow({
             <TooltipProvider delayDuration={200}>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <button
+                  <Button
                     type="button"
                     onClick={onManage}
-                    className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
+                    variant="quiet"
+                    size="icon-xs"
                     aria-label={t(
                       ($) => {
                         return $.connectors.card.managePermissionsFor;
@@ -73,7 +75,7 @@ export function ConnectorPermissionRow({
                     )}
                   >
                     <SlidersHorizontal size={15} />
-                  </button>
+                  </Button>
                 </TooltipTrigger>
                 <TooltipContent side="top">
                   <p className="text-xs">
