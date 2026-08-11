@@ -1266,7 +1266,7 @@ export async function acquireBddVm0ApiKey(args: {
   readonly fixtureId: string;
   readonly vendor: string;
   readonly apiKey: string;
-}): Promise<void> {
+}): Promise<string> {
   const scoped = VM0_BDD_API_KEY_PREFIXES.some((prefix) => {
     return args.apiKey.length > prefix.length && args.apiKey.startsWith(prefix);
   });
@@ -1275,12 +1275,20 @@ export async function acquireBddVm0ApiKey(args: {
       `acquireBddVm0ApiKey: api key must start with one of ${VM0_BDD_API_KEY_PREFIXES.join(", ")}`,
     );
   }
-  await acquireVm0ManagedModelKeyFixture(db(), args.fixtureId, [
-    {
-      vendor: args.vendor,
-      apiKey: args.apiKey,
-    },
-  ]);
+  const [acquired] = await acquireVm0ManagedModelKeyFixture(
+    db(),
+    args.fixtureId,
+    [
+      {
+        vendor: args.vendor,
+        apiKey: args.apiKey,
+      },
+    ],
+  );
+  if (!acquired) {
+    throw new Error(`Expected VM0 managed key for vendor: ${args.vendor}`);
+  }
+  return acquired.apiKey;
 }
 
 /** Releases only this bdd fixture's ownership of its vendor key. */
