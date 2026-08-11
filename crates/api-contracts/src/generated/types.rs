@@ -8,6 +8,29 @@
 
 /// Runner-facing DTOs generated from TypeScript API contracts.
 pub mod runners {
+    /// Run-scoped DTOs exchanged between runners, guests, and the API.
+    pub mod runs {
+        /// DTOs for durable active-input delivery.
+        pub mod active_inputs {
+            /// DTOs for recording active-input acceptance receipts.
+            pub mod receipt {
+                /// API outcome after recording active-input acceptance.
+                #[derive(
+                    Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize,
+                )]
+                #[serde(tag = "outcome")]
+                pub enum Response {
+                    /// The delivery receipt was accepted idempotently.
+                    #[serde(rename = "delivered")]
+                    Delivered,
+                    /// The delivery can no longer be accepted.
+                    #[serde(rename = "rejected")]
+                    Rejected,
+                }
+            }
+        }
+    }
+
     /// Storage manifest DTOs used by runners to mount volumes and artifacts.
     pub mod storage {
         /// Policy used when an artifact mount root is missing from the uploaded manifest.

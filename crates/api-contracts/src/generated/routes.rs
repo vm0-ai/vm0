@@ -161,6 +161,48 @@ pub mod runners {
                         crate::ResolvedRoute::new(CLAIM.method, path(params))
                     }
                 }
+
+                /// Generated route bindings under `runners::runs::by_run_id::active_inputs::deliveries`.
+                pub mod deliveries {
+                    /// Generated route bindings under `runners::runs::by_run_id::active_inputs::deliveries::by_delivery_id`.
+                    pub mod by_delivery_id {
+                        /// Generated route bindings under `runners::runs::by_run_id::active_inputs::deliveries::by_delivery_id::receipt`.
+                        pub mod receipt {
+                            /// Record acceptance of an active-input delivery.
+                            /// Route contract: `POST /api/runners/runs/:runId/active-inputs/deliveries/:deliveryId/receipt`.
+                            pub const RECEIPT: crate::RouteTemplate = crate::RouteTemplate {
+                                method: crate::Method::Post,
+                                path: "/api/runners/runs/:runId/active-inputs/deliveries/:deliveryId/receipt",
+                            };
+
+                            /// Path parameters for `POST /api/runners/runs/:runId/active-inputs/deliveries/:deliveryId/receipt`.
+                            #[derive(Debug, Clone, Copy)]
+                            pub struct Params<'a> {
+                                /// Value for the `:runId` path parameter.
+                                pub run_id: &'a str,
+                                /// Value for the `:deliveryId` path parameter.
+                                pub delivery_id: &'a str,
+                            }
+
+                            /// Build the concrete path for `POST /api/runners/runs/:runId/active-inputs/deliveries/:deliveryId/receipt`.
+                            /// Percent-encodes each path parameter as a URL path segment.
+                            #[must_use]
+                            pub fn path(params: Params<'_>) -> String {
+                                format!(
+                                    "/api/runners/runs/{}/active-inputs/deliveries/{}/receipt",
+                                    crate::route::encode_path_segment(params.run_id),
+                                    crate::route::encode_path_segment(params.delivery_id),
+                                )
+                            }
+
+                            /// Build a resolved route for `POST /api/runners/runs/:runId/active-inputs/deliveries/:deliveryId/receipt`.
+                            #[must_use]
+                            pub fn route(params: Params<'_>) -> crate::ResolvedRoute {
+                                crate::ResolvedRoute::new(RECEIPT.method, path(params))
+                            }
+                        }
+                    }
+                }
             }
 
             /// Generated route bindings under `runners::runs::by_run_id::connector_runtime`.
