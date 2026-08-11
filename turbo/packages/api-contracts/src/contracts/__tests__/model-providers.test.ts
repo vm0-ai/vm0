@@ -280,12 +280,10 @@ describe("model-first canonical catalog", () => {
     expect(isSupportedRunModel("deepseek-v4-flash")).toBe(true);
   });
 
-  it("keeps retired models readable while resolving their replacements", () => {
+  it("keeps catalog models readable while resolving retired replacements", () => {
     expect(RETIRED_RUN_MODELS).toEqual([
-      "gpt-5.5",
       "claude-opus-4-7",
       "claude-opus-4-6",
-      "claude-sonnet-4-6",
       "kimi-k3",
       "kimi-k2.7-code",
       "MiniMax-M3",
@@ -295,13 +293,16 @@ describe("model-first canonical catalog", () => {
       "hy3-preview",
     ]);
     expect(isSupportedRunModel("gpt-5.5")).toBe(true);
-    expect(isRetiredRunModel("gpt-5.5")).toBe(true);
-    expect(getRetiredRunModelReplacement("gpt-5.5")).toBe("gpt-5.6-sol");
+    expect(isRetiredRunModel("gpt-5.5")).toBe(false);
+    expect(isRetiredRunModel("openai/gpt-5.5")).toBe(false);
+    expect(getRetiredRunModelReplacement("gpt-5.5")).toBeUndefined();
+    expect(isRetiredRunModel("claude-sonnet-4-6")).toBe(false);
+    expect(isRetiredRunModel("anthropic/claude-sonnet-4.6")).toBe(false);
+    expect(
+      getRetiredRunModelReplacement("anthropic/claude-sonnet-4.6"),
+    ).toBeUndefined();
     expect(getRetiredRunModelReplacement("anthropic/claude-opus-4.7")).toBe(
       "claude-opus-4-8",
-    );
-    expect(getRetiredRunModelReplacement("anthropic/claude-sonnet-4.6")).toBe(
-      "claude-sonnet-5",
     );
     expect(getRetiredRunModelReplacement("minimax/minimax-m3")).toBe(
       "deepseek-v4-flash",
@@ -336,11 +337,14 @@ describe("model-first canonical catalog", () => {
       "gpt-5.6-sol",
       "gpt-5.6-terra",
       "gpt-5.6-luna",
+      "gpt-5.5",
       "claude-opus-4-8",
       "claude-sonnet-5",
+      "claude-sonnet-4-6",
       "deepseek-v4-flash",
     ]);
-    expect(ACTIVE_RUN_MODELS).not.toContain("gpt-5.5");
+    expect(ACTIVE_RUN_MODELS).toContain("gpt-5.5");
+    expect(ACTIVE_RUN_MODELS).toContain("claude-sonnet-4-6");
     expect(ACTIVE_RUN_MODELS).not.toContain("glm-5.2");
     expect(new Set([...ACTIVE_RUN_MODELS, ...RETIRED_RUN_MODELS])).toEqual(
       new Set(SUPPORTED_RUN_MODELS),
@@ -853,7 +857,8 @@ describe("getVm0VisibleModels", () => {
   it("returns only active VM0 managed models", () => {
     const models = getVm0VisibleModels();
     expect(models).toEqual(ACTIVE_RUN_MODELS);
-    expect(models).not.toContain("gpt-5.5");
+    expect(models).toContain("gpt-5.5");
+    expect(models).toContain("claude-sonnet-4-6");
     expect(models).not.toContain("kimi-k3");
     expect(models).not.toContain("glm-5.2");
   });

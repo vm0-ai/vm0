@@ -113,7 +113,7 @@ describe("POST /api/zero/chat-threads/:id/model-selection", () => {
     await setThreadModelSelectionAsPreviousApi(
       context,
       fixture.threadId,
-      "claude-sonnet-4-6",
+      "claude-opus-4-7",
     );
     await chat.requestSendEvent(
       fixture.actor,
@@ -138,7 +138,7 @@ describe("POST /api/zero/chat-threads/:id/model-selection", () => {
       [200],
     );
 
-    expect(response.body.selectedModel).toBe("claude-sonnet-5");
+    expect(response.body.selectedModel).toBe("claude-opus-4-8");
     expect(response.body.serviceTier).toBeNull();
   });
 
@@ -154,7 +154,7 @@ describe("POST /api/zero/chat-threads/:id/model-selection", () => {
       modelSelectionClient().update({
         headers: { authorization: `Bearer ${token}` },
         params: { id: fixture.threadId },
-        body: { model: "claude-sonnet-4-6" },
+        body: { model: "claude-opus-4-7" },
       }),
       [400],
     );
@@ -163,7 +163,7 @@ describe("POST /api/zero/chat-threads/:id/model-selection", () => {
       error: {
         code: "MODEL_RETIRED",
         message:
-          'Model "claude-sonnet-4-6" has been retired. Use "claude-sonnet-5" instead.',
+          'Model "claude-opus-4-7" has been retired. Use "claude-opus-4-8" instead.',
       },
     });
   });
