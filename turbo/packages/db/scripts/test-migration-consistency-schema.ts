@@ -1171,10 +1171,9 @@ async function assertConnectionScopedVariableIndexes(
   );
 }
 
-async function rerunConnectionScopedVariableMigration(
-  client: Client,
+function connectionScopedVariableMigrationStatements(
   migrationSql: string,
-): Promise<void> {
+): readonly [string, string, string] {
   const statements = migrationSql
     .split("--> statement-breakpoint")
     .map((statement) => {
@@ -1184,6 +1183,19 @@ async function rerunConnectionScopedVariableMigration(
       return statement.length > 0;
     });
   assert.equal(statements.length, 3);
+  const dropShadowIndex = statements.at(0);
+  const createShadowIndex = statements.at(1);
+  const swapIndexes = statements.at(2);
+  assert.ok(dropShadowIndex);
+  assert.ok(createShadowIndex);
+  assert.ok(swapIndexes);
+  return [dropShadowIndex, createShadowIndex, swapIndexes];
+}
+
+async function rerunConnectionScopedVariableMigration(
+  client: Client,
+  statements: readonly string[],
+): Promise<void> {
   for (const statement of statements) {
     await client.query(statement);
   }
@@ -1198,6 +1210,8 @@ async function validateConnectionScopedVariableUniqueness(): Promise<void> {
     path.join(MIGRATIONS_DIR, `${CONNECTION_SCOPED_VARIABLE_MIGRATION}.sql`),
     "utf8",
   );
+  const migrationStatements =
+    connectionScopedVariableMigrationStatements(migrationSql);
   assert.ok(migrationSql.startsWith(NON_TRANSACTIONAL_MIGRATION_MARKER));
   assert.match(
     migrationSql,
@@ -1287,7 +1301,42 @@ async function validateConnectionScopedVariableUniqueness(): Promise<void> {
       values: [secondConnectorId, orgId, userId, connectorVariableName],
     });
 
-    await applyMigrationsUpToTag(client, CONNECTION_SCOPED_VARIABLE_MIGRATION);
+    await client.query(migrationStatements[0]);
+    await client.query(migrationStatements[1]);
+    const interruptedIndexes = await client.query<{
+      isValid: boolean;
+      name: string;
+      predicate: string | null;
+    }>(`
+      SELECT
+        "index_class"."relname" AS "name",
+        "index"."indisvalid" AS "isValid",
+        pg_get_expr("index"."indpred", "index"."indrelid") AS "predicate"
+      FROM "pg_index" AS "index"
+      INNER JOIN "pg_class" AS "index_class"
+        ON "index_class"."oid" = "index"."indexrelid"
+      INNER JOIN "pg_class" AS "table_class"
+        ON "table_class"."oid" = "index"."indrelid"
+      WHERE "table_class"."relname" = 'variables'
+        AND "index_class"."relname" IN (
+          'idx_variables_org_user_type_name',
+          '${CONNECTION_SCOPED_VARIABLE_SHADOW_INDEX}'
+        )
+      ORDER BY "index_class"."relname"
+    `);
+    assert.deepEqual(interruptedIndexes.rows, [
+      {
+        isValid: true,
+        name: "idx_variables_org_user_type_name",
+        predicate: null,
+      },
+      {
+        isValid: true,
+        name: CONNECTION_SCOPED_VARIABLE_SHADOW_INDEX,
+        predicate: "(connector_id IS NULL)",
+      },
+    ]);
+    await rerunConnectionScopedVariableMigration(client, migrationStatements);
     await client.query(
       `
         INSERT INTO "variables" (
@@ -1389,14 +1438,16 @@ async function validateConnectionScopedVariableUniqueness(): Promise<void> {
     ]);
     await assertConnectionScopedVariableIndexes(client);
 
-    await rerunConnectionScopedVariableMigration(client, migrationSql);
+    await rerunConnectionScopedVariableMigration(client, migrationStatements);
     await assertConnectionScopedVariableIndexes(client);
 
     console.log("   ✅ old global uniqueness rejects cross-connection names");
     console.log("   ✅ final indexes split user and connection uniqueness");
     console.log("   ✅ current upserts retain exact connection ownership");
     console.log("   ✅ old connector conflict inference is removed");
-    console.log("   ✅ concurrent shadow migration reruns cleanly\n");
+    console.log(
+      "   ✅ concurrent shadow interruption and full rerun recover cleanly\n",
+    );
   } finally {
     await client.end();
     await dropDatabase(testDb);
