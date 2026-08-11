@@ -53,8 +53,9 @@ export async function listRunMcpConnectors(): Promise<ZeroMcpConnector[]> {
     return discoveredConnectors;
   }
 
-  // Compatibility fallback for old API deployments. Remove in #26389 after
-  // all supported CLIs observe the server-authored discovery endpoint.
+  // Commit-addressed CLI ↔ backend rollout fallback: a newly selected CLI can
+  // reach an API deployment that predates this additive route. Remove with
+  // #26389 after its >4-hour queue/run drain and production evidence gate.
   const admittedIds = readRunConnectorIds();
   const connectors = await listZeroCustomConnectors();
 
