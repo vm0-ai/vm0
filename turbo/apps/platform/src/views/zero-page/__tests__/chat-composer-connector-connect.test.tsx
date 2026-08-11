@@ -5,7 +5,7 @@ import {
   type PublicConnectorCatalogStatusItem,
 } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import {
-  zeroCustomConnectorSecretContract,
+  zeroCustomConnectorValuesContract,
   zeroCustomConnectorsContract,
   type CustomConnectorHttpResponse,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
@@ -264,12 +264,20 @@ describe("chat composer connector connection", () => {
       });
     });
     context.mocks.api(
-      zeroCustomConnectorSecretContract.set,
+      zeroCustomConnectorValuesContract.set,
       ({ body, params, respond }) => {
         expect(params.id).toBe(connector.id);
-        expect(body).toStrictEqual({ value: "acme-secret" });
+        expect(body).toStrictEqual({
+          values: [{ key: "secret", kind: "secret", value: "acme-secret" }],
+        });
         connected = true;
-        return respond(204);
+        return respond(200, {
+          ...connector,
+          connected: true,
+          missingRequiredFields: [],
+          configuredFieldKeys: ["secret"],
+          hasSecret: true,
+        });
       },
     );
     const updatedAgentIds: string[] = [];

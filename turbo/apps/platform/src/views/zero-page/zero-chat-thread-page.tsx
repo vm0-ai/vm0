@@ -83,7 +83,7 @@ import {
   BrandSlack,
 } from "@vm0/ui";
 import { RUN_ERROR_GUIDANCE } from "@vm0/api-contracts/contracts/errors";
-import { isHttpCustomConnectorResponse } from "@vm0/api-contracts/contracts/zero-custom-connectors";
+import { isHttpCustomConnectorClientResponse } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import type {
   ChatEventUsagePayload,
   ChatRecommendedFollowup,
@@ -6149,7 +6149,7 @@ function ChatConnectorActionConnectModal() {
 
   if (active.kind === "custom") {
     const connector = customConnectors
-      ?.filter(isHttpCustomConnectorResponse)
+      ?.filter(isHttpCustomConnectorClientResponse)
       .find((candidate) => {
         return candidate.slug === active.connectorSlug;
       });

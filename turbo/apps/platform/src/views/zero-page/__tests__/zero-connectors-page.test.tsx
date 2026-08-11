@@ -1,8 +1,9 @@
 import { CLIENT_FORCE_UPGRADE_STATUS } from "@vm0/api-contracts/contracts/client-headers";
 import {
   zeroCustomConnectorByIdContract,
+  zeroCustomConnectorConnectionContract,
   zeroCustomConnectorOAuth2Contract,
-  zeroCustomConnectorSecretContract,
+  zeroCustomConnectorValuesContract,
   zeroCustomConnectorsContract,
   type CreateCustomConnectorBody,
   type CustomConnectorHttpResponse,
@@ -452,24 +453,31 @@ function mockCustomConnectorStory(): {
     },
   );
   context.mocks.api(
-    zeroCustomConnectorSecretContract.set,
-    ({ params, respond }) => {
+    zeroCustomConnectorValuesContract.set,
+    ({ params, body, respond }) => {
+      let updated: CustomConnectorHttpResponse | undefined;
       connectors = connectors.map((connector) => {
-        return connector.id === params.id
-          ? {
-              ...connector,
-              connected: true,
-              missingRequiredFields: [],
-              configuredFieldKeys: ["secret"],
-              hasSecret: true,
-            }
-          : connector;
+        if (connector.id !== params.id) {
+          return connector;
+        }
+        updated = {
+          ...connector,
+          connected: true,
+          missingRequiredFields: [],
+          configuredFieldKeys: body.values.map((value) => {
+            return value.key;
+          }),
+          hasSecret: body.values.some((value) => {
+            return value.kind === "secret";
+          }),
+        };
+        return updated;
       });
-      return respond(204);
+      return respond(200, updated ?? customConnector({}));
     },
   );
   context.mocks.api(
-    zeroCustomConnectorSecretContract.disconnect,
+    zeroCustomConnectorConnectionContract.disconnect,
     ({ params, respond }) => {
       connectors = connectors.map((connector) => {
         return connector.id === params.id
@@ -3763,7 +3771,11 @@ describe("connectors page", () => {
       permissionBundleRef: "builtin:feishu@1",
     });
     let connected = false;
-    let savedSecret: string | null = null;
+    let submittedValues: readonly {
+      readonly key: string;
+      readonly kind: "secret" | "variable";
+      readonly value: string;
+    }[] = [];
     let authorizationUpdates = 0;
     context.mocks.data.org({
       id: "org_1",
@@ -3803,11 +3815,17 @@ describe("connectors page", () => {
       },
     );
     context.mocks.api(
-      zeroCustomConnectorSecretContract.set,
+      zeroCustomConnectorValuesContract.set,
       ({ body, respond }) => {
-        savedSecret = body.value;
+        submittedValues = body.values;
         connected = true;
-        return respond(204);
+        return respond(200, {
+          ...connector,
+          connected: true,
+          configuredFieldKeys: ["secret"],
+          hasSecret: true,
+          missingRequiredFields: [],
+        });
       },
     );
 
@@ -3821,7 +3839,9 @@ describe("connectors page", () => {
     click(buttonByText("Save", connectDialog));
 
     await waitFor(() => {
-      expect(savedSecret).toBe("acme-secret");
+      expect(submittedValues).toStrictEqual([
+        { key: "secret", kind: "secret", value: "acme-secret" },
+      ]);
       expect(
         within(connectorCardByLabel("Acme Search")).getByText("Connected"),
       ).toBeInTheDocument();
@@ -3833,6 +3853,177 @@ describe("connectors page", () => {
       ),
     ).toHaveTextContent("Used by Research");
   });
+
+  it("submits declared custom connector fields without prefilling stored values", async () => {
+    const connector = customConnector({
+      displayName: "Acme Multi Field",
+      fields: [
+        {
+          key: "api_token",
+          label: "API token",
+          kind: "secret",
+          required: true,
+          description: "Issued by the provider",
+        },
+        {
+          key: "account_id",
+          label: "Account ID",
+          kind: "variable",
+          required: true,
+          description: "Workspace account",
+        },
+        {
+          key: "region",
+          label: "Region",
+          kind: "variable",
+          required: false,
+        },
+        {
+          key: "backup_token",
+          label: "Backup token",
+          kind: "secret",
+          required: false,
+        },
+      ],
+      missingRequiredFields: ["api_token", "account_id"],
+      configuredFieldKeys: ["backup_token"],
+    });
+    let submittedValues: readonly {
+      readonly key: string;
+      readonly kind: "secret" | "variable";
+      readonly value: string;
+    }[] = [];
+    context.mocks.data.org({
+      id: "org_1",
+      name: "Test Org",
+      role: "admin",
+    });
+    context.mocks.data.team([]);
+    context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
+      return respond(200, { connectors: [connector] });
+    });
+    context.mocks.api(
+      zeroCustomConnectorValuesContract.set,
+      ({ body, respond }) => {
+        submittedValues = body.values;
+        return respond(200, {
+          ...connector,
+          connected: true,
+          missingRequiredFields: [],
+          configuredFieldKeys: ["api_token", "account_id", "backup_token"],
+          hasSecret: true,
+        });
+      },
+    );
+
+    detachedSetupPage({ context, path: "/connectors?tab=custom" });
+
+    click(await screen.findByLabelText("Connect Acme Multi Field"));
+    const dialog = await screen.findByRole("dialog", {
+      name: "Connect Acme Multi Field",
+    });
+    expect(
+      [...dialog.querySelectorAll("label")].map((label) => {
+        return label.textContent;
+      }),
+    ).toStrictEqual(["API token", "Account ID", "Region", "Backup token"]);
+    expect(within(dialog).getByText("Issued by the provider")).toBeVisible();
+    expect(within(dialog).getByText("Workspace account")).toBeVisible();
+    expect(
+      within(dialog).queryByText(/Your secret is encrypted/u),
+    ).not.toBeInTheDocument();
+
+    const apiToken = within(dialog).getByLabelText("API token");
+    const accountId = within(dialog).getByLabelText("Account ID");
+    const region = within(dialog).getByLabelText("Region");
+    const backupToken = within(dialog).getByLabelText("Backup token");
+    expect(apiToken).toHaveAttribute("type", "password");
+    expect(apiToken).toHaveAttribute("autocomplete", "new-password");
+    expect(accountId).toHaveAttribute("type", "text");
+    expect(backupToken).toHaveValue("");
+    expect(backupToken).toHaveAccessibleDescription("Optional · Configured");
+    expect(apiToken).toHaveAccessibleDescription(
+      "Issued by the provider Required",
+    );
+
+    const save = buttonByText("Save", dialog);
+    expect(save).toBeDisabled();
+    await fill(apiToken, "  xa at\n");
+    expect(save).toBeDisabled();
+    await fill(accountId, "  Acme West  ");
+    await fill(region, "   ");
+    expect(save).toBeEnabled();
+    click(save);
+
+    await waitFor(() => {
+      expect(submittedValues).toStrictEqual([
+        { key: "api_token", kind: "secret", value: "xaat" },
+        { key: "account_id", kind: "variable", value: "Acme West" },
+      ]);
+    });
+  });
+
+  it.each(["request failure", "incomplete response"] as const)(
+    "does not authorize a custom connector after a %s",
+    async (outcome) => {
+      const agentId = "c0000000-0000-4000-a000-000000000038";
+      const connector = customConnector({ displayName: "Acme Incomplete" });
+      let valueWrites = 0;
+      let authorizationUpdates = 0;
+      context.mocks.data.org({
+        id: "org_1",
+        name: "Test Org",
+        role: "admin",
+      });
+      context.mocks.data.team([teamAgent(agentId, "Research")]);
+      context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
+        return respond(200, { connectors: [connector] });
+      });
+      context.mocks.api(
+        zeroAgentCustomConnectorsContract.get,
+        ({ respond }) => {
+          return respond(200, { enabledIds: [] });
+        },
+      );
+      context.mocks.api(
+        zeroAgentCustomConnectorsContract.update,
+        ({ respond }) => {
+          authorizationUpdates += 1;
+          return respond(200, { enabledIds: [connector.id] });
+        },
+      );
+      context.mocks.api(
+        zeroCustomConnectorValuesContract.set,
+        ({ respond }) => {
+          valueWrites += 1;
+          return outcome === "request failure"
+            ? respond(500, {
+                error: { code: "UNAVAILABLE", message: "Write unavailable" },
+              })
+            : respond(200, {
+                ...connector,
+                configuredFieldKeys: ["secret"],
+                hasSecret: true,
+              });
+        },
+      );
+
+      detachedSetupPage({ context, path: "/connectors?tab=custom" });
+
+      click(await screen.findByLabelText("Connect Acme Incomplete"));
+      const dialog = await screen.findByRole("dialog", {
+        name: "Connect Acme Incomplete",
+      });
+      await fill(within(dialog).getByLabelText("Secret"), "acme-secret");
+      click(buttonByText("Save", dialog));
+
+      await waitFor(() => {
+        expect(valueWrites).toBe(1);
+      });
+      expect(authorizationUpdates).toBe(0);
+      expect(dialog).toBeInTheDocument();
+    },
+  );
 
   it("connects a kind-less HTTP definition returned by a previous API", async () => {
     const connector = previousApiCustomConnector(
@@ -3870,7 +4061,11 @@ describe("connectors page", () => {
       [supportAgentId, []],
     ]);
     let connector: CustomConnectorMcpResponse | null = null;
-    let savedSecret: string | null = null;
+    let savedValues: readonly {
+      readonly key: string;
+      readonly kind: "secret" | "variable";
+      readonly value: string;
+    }[] = [];
     let disconnectCount = 0;
     context.mocks.data.org({
       id: "org_1",
@@ -3928,12 +4123,12 @@ describe("connectors page", () => {
       },
     );
     context.mocks.api(
-      zeroCustomConnectorSecretContract.set,
+      zeroCustomConnectorValuesContract.set,
       ({ body, respond }) => {
         if (!connector) {
           throw new Error("Expected an MCP custom connector");
         }
-        savedSecret = body.value;
+        savedValues = body.values;
         connector = {
           ...connector,
           connected: true,
@@ -3941,11 +4136,11 @@ describe("connectors page", () => {
           configuredFieldKeys: ["secret"],
           hasSecret: true,
         };
-        return respond(204);
+        return respond(200, connector);
       },
     );
     context.mocks.api(
-      zeroCustomConnectorSecretContract.disconnect,
+      zeroCustomConnectorConnectionContract.disconnect,
       ({ respond }) => {
         if (!connector) {
           throw new Error("Expected an MCP custom connector");
@@ -4062,7 +4257,9 @@ describe("connectors page", () => {
     await fill(within(connectDialog).getByLabelText("Secret"), "mcp-secret");
     click(buttonByText("Save", connectDialog));
     await waitFor(() => {
-      expect(savedSecret).toBe("mcp-secret");
+      expect(savedValues).toStrictEqual([
+        { key: "secret", kind: "secret", value: "mcp-secret" },
+      ]);
       expect(
         within(connectorCardByLabel("Acme MCP")).getByTestId(
           "connector-card-agent-access",
@@ -4381,7 +4578,7 @@ describe("connectors page", () => {
       },
     );
     context.mocks.api(
-      zeroCustomConnectorSecretContract.disconnect,
+      zeroCustomConnectorConnectionContract.disconnect,
       ({ respond }) => {
         disconnectCount += 1;
         connector = {

@@ -1,6 +1,9 @@
 import type { FormEvent } from "react";
 
-import type { CustomConnectorResponse } from "@vm0/api-contracts/contracts/zero-custom-connectors";
+import type {
+  CustomConnectorClientResponse,
+  CustomConnectorValueInput,
+} from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import {
   Button,
   Dialog,
@@ -22,138 +25,112 @@ import {
   customConnectorConnectForm$,
   resetCustomConnectorConnectInput$,
   setCustomConnectorConnectField$,
-  setCustomConnectorSecret$,
-  setCustomConnectorSecretForAgent$,
+  setCustomConnectorValues$,
+  setCustomConnectorValuesForAgent$,
 } from "../../../../signals/zero-page/settings/custom-connectors.ts";
-import { hasTokenInputValue } from "../../../../signals/zero-page/settings/token-input.ts";
+import { sanitizeTokenInputRecord } from "../../../../signals/zero-page/settings/token-input.ts";
 import { detach, Reason } from "../../../../signals/utils.ts";
 import { CustomConnectorIcon } from "./custom-connector-icon.tsx";
 
-type CustomConnectorAuthMethod = { readonly type: "api" | "oauth2" };
-
-function AuthenticationMethodChoice({
-  methods,
-  onSelect,
-}: {
-  readonly methods: readonly CustomConnectorAuthMethod[];
-  readonly onSelect: (type: CustomConnectorAuthMethod["type"]) => void;
-}) {
-  const { t } = useTranslation();
-  return (
-    <div className="grid gap-3 sm:grid-cols-2">
-      {methods.map((method) => {
-        const oauth2 = method.type === "oauth2";
-        return (
-          <button
-            key={method.type}
-            type="button"
-            className="rounded-xl border border-border p-4 text-left transition-colors hover:border-primary hover:bg-state-hover"
-            onClick={() => {
-              onSelect(method.type);
-            }}
-          >
-            <span className="block text-sm font-medium text-foreground">
-              {oauth2
-                ? "OAuth 2.0"
-                : t(($) => {
-                    return $.connectors.custom.connect.apiAuthentication;
-                  })}
-            </span>
-            <span className="mt-1 block text-xs text-muted-foreground">
-              {oauth2
-                ? t(($) => {
-                    return $.connectors.custom.connect.oauthDescription;
-                  })
-                : t(($) => {
-                    return $.connectors.custom.connect.apiDescription;
-                  })}
-            </span>
-          </button>
-        );
-      })}
-    </div>
+function declaredValuesFromForm(
+  connector: CustomConnectorClientResponse,
+  values: Readonly<Record<string, string>>,
+): readonly CustomConnectorValueInput[] {
+  const variableKeys = new Set(
+    connector.fields.flatMap((field) => {
+      return field.kind === "variable" ? [field.key] : [];
+    }),
   );
-}
-
-function ApiSecretField({
-  value,
-  setValue,
-}: {
-  readonly value: string;
-  readonly setValue: (value: string) => void;
-}) {
-  const { t } = useTranslation();
-  return (
-    <div className="flex flex-col gap-2">
-      <label
-        htmlFor="cc-connect-secret"
-        className="text-sm font-medium text-foreground"
-      >
-        {t(($) => {
-          return $.connectors.custom.connect.secret;
-        })}
-      </label>
-      <Input
-        id="cc-connect-secret"
-        type="password"
-        value={value}
-        onChange={(event) => {
-          setValue(event.target.value);
-        }}
-        autoFocus
-      />
-    </div>
+  const normalized = sanitizeTokenInputRecord(
+    { ...values },
+    { preserveWhitespaceKeys: variableKeys },
   );
+
+  return connector.fields.flatMap((field): CustomConnectorValueInput[] => {
+    const value = normalized[field.key] ?? "";
+    return value.length > 0
+      ? [{ key: field.key, kind: field.kind, value }]
+      : [];
+  });
 }
 
 function CredentialFields({
-  selectedMethod,
-  methods,
-  apiSecret,
+  connector,
+  values,
   setField,
 }: {
-  readonly selectedMethod: CustomConnectorAuthMethod | undefined;
-  readonly methods: readonly CustomConnectorAuthMethod[];
-  readonly apiSecret: string;
-  readonly setField: (
-    field: "authMethod" | "apiSecret",
-    value: string | null,
-  ) => void;
+  readonly connector: CustomConnectorClientResponse;
+  readonly values: Readonly<Record<string, string>>;
+  readonly setField: (args: {
+    readonly key: string;
+    readonly value: string;
+  }) => void;
 }) {
   const { t } = useTranslation();
-  if (!selectedMethod) {
+  return connector.fields.map((field, index) => {
+    const inputId = `cc-connect-field-${index}`;
+    const statusId = `${inputId}-status`;
+    const descriptionId = field.description
+      ? `${inputId}-description`
+      : undefined;
+    const configured = connector.configuredFieldKeys.includes(field.key);
+    const status = field.required
+      ? t(($) => {
+          return $.connectors.card.required;
+        })
+      : t(($) => {
+          return $.connectors.card.optional;
+        });
+    const configuredStatus = configured
+      ? t(($) => {
+          return $.connectors.custom.connect.configured;
+        })
+      : null;
+
     return (
-      <AuthenticationMethodChoice
-        methods={methods}
-        onSelect={(type) => {
-          setField("authMethod", type);
-        }}
-      />
+      <div key={field.key} className="flex flex-col gap-2">
+        <div className="flex items-center justify-between gap-3">
+          <label
+            htmlFor={inputId}
+            className="text-sm font-medium text-foreground"
+          >
+            {field.label}
+          </label>
+          <span id={statusId} className="text-xs text-muted-foreground">
+            {status}
+            {configuredStatus ? ` · ${configuredStatus}` : ""}
+          </span>
+        </div>
+        {field.description && (
+          <p id={descriptionId} className="text-xs text-muted-foreground">
+            {field.description}
+          </p>
+        )}
+        <Input
+          id={inputId}
+          name={`custom-connector-${connector.id}-${field.key}`}
+          type={field.kind === "secret" ? "password" : "text"}
+          value={values[field.key] ?? ""}
+          onChange={(event) => {
+            setField({ key: field.key, value: event.target.value });
+          }}
+          autoComplete={field.kind === "secret" ? "new-password" : "off"}
+          aria-describedby={
+            descriptionId ? `${descriptionId} ${statusId}` : statusId
+          }
+          autoFocus={index === 0}
+        />
+      </div>
     );
-  }
-  if (selectedMethod.type === "api") {
-    return (
-      <ApiSecretField
-        value={apiSecret}
-        setValue={(value) => {
-          setField("apiSecret", value);
-        }}
-      />
-    );
-  }
-  return (
-    <p className="text-sm text-muted-foreground">
-      {t(($) => {
-        return $.connectors.custom.connect.continueToProvider;
-      })}
-    </p>
-  );
+  });
 }
 
 function useCustomConnectorConnectionSubmitters(agentId: string | undefined) {
-  const [apiLoadable, submitApi] = useLoadableSet(setCustomConnectorSecret$);
-  const [agentApiLoadable, submitAgentApi] = useLoadableSet(
-    setCustomConnectorSecretForAgent$,
+  const [valuesLoadable, submitValues] = useLoadableSet(
+    setCustomConnectorValues$,
+  );
+  const [agentValuesLoadable, submitAgentValues] = useLoadableSet(
+    setCustomConnectorValuesForAgent$,
   );
   const [oauthLoadable, submitOAuth2] = useLoadableSet(
     connectCustomConnectorOAuth2$,
@@ -162,16 +139,17 @@ function useCustomConnectorConnectionSubmitters(agentId: string | undefined) {
     connectCustomConnectorOAuth2ForAgent$,
   );
 
-  const submitSecret = async (
-    args: { readonly id: string; readonly value: string },
+  const submitDeclaredValues = async (
+    args: {
+      readonly id: string;
+      readonly values: readonly CustomConnectorValueInput[];
+    },
     signal: AbortSignal,
   ): Promise<boolean> => {
     if (agentId) {
-      await submitAgentApi({ ...args, agentId }, signal);
-    } else {
-      await submitApi(args, signal);
+      return await submitAgentValues({ ...args, agentId }, signal);
     }
-    return true;
+    return await submitValues(args, signal);
   };
   const submitOAuth = async (
     connectorId: string,
@@ -185,61 +163,44 @@ function useCustomConnectorConnectionSubmitters(agentId: string | undefined) {
 
   return {
     submitting:
-      apiLoadable.state === "loading" ||
-      agentApiLoadable.state === "loading" ||
+      valuesLoadable.state === "loading" ||
+      agentValuesLoadable.state === "loading" ||
       oauthLoadable.state === "loading" ||
       agentOAuthLoadable.state === "loading",
-    submitSecret,
+    submitDeclaredValues,
     submitOAuth,
   };
 }
 
 function ConnectDialogFooter({
-  selectedMethod,
-  multipleMethods,
+  oauth,
   submitting,
   canSubmit,
-  onBack,
   onClose,
 }: {
-  readonly selectedMethod: CustomConnectorAuthMethod | undefined;
-  readonly multipleMethods: boolean;
+  readonly oauth: boolean;
   readonly submitting: boolean;
   readonly canSubmit: boolean;
-  readonly onBack: () => void;
   readonly onClose: () => void;
 }) {
   const { t } = useTranslation();
-  const submitLabel =
-    selectedMethod?.type === "oauth2"
-      ? submitting
-        ? t(($) => {
-            return $.connectors.custom.connect.connecting;
-          })
-        : t(($) => {
-            return $.connectors.custom.connect.continue;
-          })
-      : submitting
-        ? t(($) => {
-            return $.connectors.custom.connect.saving;
-          })
-        : t(($) => {
-            return $.connectors.custom.connect.save;
-          });
+  const submitLabel = oauth
+    ? submitting
+      ? t(($) => {
+          return $.connectors.custom.connect.connecting;
+        })
+      : t(($) => {
+          return $.connectors.custom.connect.continue;
+        })
+    : submitting
+      ? t(($) => {
+          return $.connectors.custom.connect.saving;
+        })
+      : t(($) => {
+          return $.connectors.custom.connect.save;
+        });
   return (
     <DialogFooter>
-      {multipleMethods && selectedMethod && (
-        <Button
-          type="button"
-          variant="ghost"
-          onClick={onBack}
-          disabled={submitting}
-        >
-          {t(($) => {
-            return $.connectors.custom.connect.back;
-          })}
-        </Button>
-      )}
       <Button
         type="button"
         variant="outline"
@@ -250,11 +211,9 @@ function ConnectDialogFooter({
           return $.connectors.actions.cancel;
         })}
       </Button>
-      {selectedMethod && (
-        <Button type="submit" disabled={!canSubmit}>
-          {submitLabel}
-        </Button>
-      )}
+      <Button type="submit" disabled={!canSubmit}>
+        {submitLabel}
+      </Button>
     </DialogFooter>
   );
 }
@@ -265,31 +224,37 @@ export function CustomConnectorConnectDialog({
   onClose,
   onSuccess,
 }: {
-  readonly connector: CustomConnectorResponse;
+  readonly connector: CustomConnectorClientResponse;
   readonly agentId?: string;
   readonly onClose?: () => void;
   readonly onSuccess?: () => void | Promise<void>;
 }) {
   const { t } = useTranslation();
   const form = useGet(customConnectorConnectForm$);
-  const methods: readonly CustomConnectorAuthMethod[] =
-    connector.authMode === "oauth" ? [{ type: "oauth2" }] : [{ type: "api" }];
-  const selectedMethod =
-    methods.find((method) => {
-      return method.type === form.authMethod;
-    }) ?? (methods.length === 1 ? methods[0] : undefined);
   const setField = useSet(setCustomConnectorConnectField$);
   const resetForm = useSet(resetCustomConnectorConnectInput$);
   const closeDialog = useSet(closeCustomConnectorDialog$);
-  const { submitting, submitSecret, submitOAuth } =
+  const { submitting, submitDeclaredValues, submitOAuth } =
     useCustomConnectorConnectionSubmitters(agentId);
   const signal = useGet(pageSignal$);
-
+  const oauth = connector.authMode === "oauth";
+  const values = declaredValuesFromForm(connector, form.values);
+  const submittedKeys = new Set(
+    values.map((value) => {
+      return value.key;
+    }),
+  );
+  const hasMissingRequiredValues = connector.missingRequiredFields.every(
+    (key) => {
+      return submittedKeys.has(key);
+    },
+  );
   const canSubmit =
-    !submitting &&
-    (selectedMethod?.type === "api"
-      ? hasTokenInputValue(form.apiSecret)
-      : selectedMethod?.type === "oauth2");
+    !submitting && (oauth || (values.length > 0 && hasMissingRequiredValues));
+  const showSecretDescription =
+    !oauth &&
+    connector.fields.length === 1 &&
+    connector.fields[0]?.kind === "secret";
 
   const close = () => {
     resetForm();
@@ -302,18 +267,14 @@ export function CustomConnectorConnectDialog({
 
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!canSubmit || !selectedMethod) {
+    if (!canSubmit) {
       return;
     }
     detach(
       (async () => {
-        const connected =
-          selectedMethod.type === "api"
-            ? await submitSecret(
-                { id: connector.id, value: form.apiSecret },
-                signal,
-              )
-            : await submitOAuth(connector.id, signal);
+        const connected = oauth
+          ? await submitOAuth(connector.id, signal)
+          : await submitDeclaredValues({ id: connector.id, values }, signal);
         if (!connected) {
           return;
         }
@@ -355,26 +316,31 @@ export function CustomConnectorConnectDialog({
             </DialogTitle>
           </div>
         </DialogHeader>
-        <p className="text-sm text-muted-foreground">
-          {t(($) => {
-            return $.connectors.custom.connect.description;
-          })}
-        </p>
+        {showSecretDescription && (
+          <p className="text-sm text-muted-foreground">
+            {t(($) => {
+              return $.connectors.custom.connect.description;
+            })}
+          </p>
+        )}
         <form className="flex flex-col gap-4" onSubmit={onSubmit}>
-          <CredentialFields
-            selectedMethod={selectedMethod}
-            methods={methods}
-            apiSecret={form.apiSecret}
-            setField={setField}
-          />
+          {oauth ? (
+            <p className="text-sm text-muted-foreground">
+              {t(($) => {
+                return $.connectors.custom.connect.continueToProvider;
+              })}
+            </p>
+          ) : (
+            <CredentialFields
+              connector={connector}
+              values={form.values}
+              setField={setField}
+            />
+          )}
           <ConnectDialogFooter
-            selectedMethod={selectedMethod}
-            multipleMethods={methods.length > 1}
+            oauth={oauth}
             submitting={submitting}
             canSubmit={canSubmit}
-            onBack={() => {
-              setField("authMethod", null);
-            }}
             onClose={close}
           />
         </form>

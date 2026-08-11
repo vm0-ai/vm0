@@ -318,13 +318,19 @@ describe("zero connector custom create", () => {
     }
   });
 
-  it("rejects manual fields that the Connect dialog cannot populate", async () => {
-    const definitionPath = writeDefinition({
+  it("creates a manual definition with declared secret and variable fields", async () => {
+    const definition = {
       ...manualDefinition(),
       fields: [
         {
           ...manualDefinition().fields[0],
           key: "api_token",
+        },
+        {
+          key: "account_id",
+          label: "Account ID",
+          kind: "variable",
+          required: false,
         },
       ],
       headerInjections: [
@@ -333,32 +339,43 @@ describe("zero connector custom create", () => {
           valueTemplate: "Bearer {{secrets.api_token}}",
         },
       ],
-    });
-    const mockConsoleError = vi
-      .spyOn(console, "error")
-      .mockImplementation(() => {});
-    const mockExit = vi.spyOn(process, "exit").mockImplementation(() => {
-      return undefined as never;
-    });
+      queryInjections: [
+        {
+          name: "account_id",
+          valueTemplate: "{{variables.account_id}}",
+        },
+      ],
+    } as const;
+    const definitionPath = writeDefinition(definition);
+    let createBody: unknown;
+    server.use(
+      http.post(
+        "http://localhost:3000/api/zero/custom-connectors",
+        async ({ request }) => {
+          createBody = await request.json();
+          return HttpResponse.json(
+            customConnector({
+              id: CONNECTOR_ID,
+              fields: [...definition.fields],
+              headerInjections: [...definition.headerInjections],
+              queryInjections: [...definition.queryInjections],
+              missingRequiredFields: ["api_token"],
+            }),
+            { status: 201 },
+          );
+        },
+      ),
+    );
 
-    try {
-      await customConnectorCommand.parseAsync([
-        "node",
-        "zero",
-        "create",
-        "--file",
-        definitionPath,
-      ]);
+    await customConnectorCommand.parseAsync([
+      "node",
+      "zero",
+      "create",
+      "--file",
+      definitionPath,
+    ]);
 
-      expect(mockConsoleError.mock.calls.flat().join("\n")).toContain(
-        "Manual definitions require exactly one required secret field",
-      );
-      expect(mockExit).toHaveBeenCalledWith(1);
-      expect(mockConsoleLog).not.toHaveBeenCalled();
-    } finally {
-      mockConsoleError.mockRestore();
-      mockExit.mockRestore();
-    }
+    expect(createBody).toStrictEqual(definition);
   });
 
   it("rejects an agent run without custom connector write access", async () => {
@@ -402,7 +419,8 @@ describe("zero connector custom create", () => {
     expect(createHelp).toContain("Never include an API token");
     expect(createHelp).toContain("Do not ask the user");
     expect(createHelp).toContain("for the actual API token");
-    expect(createHelp).toContain("<API Token>");
+    expect(createHelp).toContain("Declare every credential input");
+    expect(createHelp).toContain("{{variables.account_id}}");
     expect(createHelp).toContain("Bearer {{secrets.secret}}");
     expect(createHelp).toContain('"authMode": "oauth"');
     expect(createHelp).toContain("Bearer {{oauth.access_token}}");

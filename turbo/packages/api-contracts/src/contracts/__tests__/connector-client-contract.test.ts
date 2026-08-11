@@ -22,6 +22,10 @@ import {
   zeroConnectorsSearchContract,
 } from "../zero-connectors";
 import {
+  customConnectorClientListResponseSchema,
+  customConnectorClientResponseSchema,
+} from "../zero-custom-connectors";
+import {
   applyUserPermissionGrantsRequestSchema,
   userPermissionGrantResponseSchema,
 } from "../zero-user-permission-grants";
@@ -29,6 +33,42 @@ import { zeroWorkflowConnectorReadinessResponseSchema } from "../zero-workflows"
 import { initClient } from "../trpc-contract";
 
 const AGENT_ID = "00000000-0000-4000-a000-000000000001";
+
+const customHttpConnectorPayloadBase = {
+  id: "00000000-0000-4000-a000-000000000005",
+  slug: "_example",
+  displayName: "Example",
+  fields: [
+    {
+      key: "token",
+      label: "Token",
+      kind: "secret",
+      required: true,
+    },
+  ],
+  headerInjections: [
+    { name: "Authorization", valueTemplate: "Bearer {{token}}" },
+  ],
+  queryInjections: [],
+  authMode: "manual",
+  permissionBundleRef: null,
+  skillMarkdown: null,
+  storageVersion: 1,
+  connected: true,
+  missingRequiredFields: [],
+  configuredFieldKeys: ["token"],
+  createdAt: "2026-08-11T00:00:00.000Z",
+  updatedAt: "2026-08-11T00:00:00.000Z",
+  prefixes: ["https://api.example.test"],
+  headerName: "Authorization",
+  headerTemplate: "Bearer {{token}}",
+  prefixTemplates: ["https://api.example.test"],
+} as const;
+
+const customHttpConnectorClientPayload = {
+  ...customHttpConnectorPayloadBase,
+  kind: "http",
+} as const;
 
 const connector = {
   id: "00000000-0000-4000-a000-000000000002",
@@ -197,6 +237,65 @@ describe("connector client response contracts", () => {
     expect(
       connectorChangedPayloadSchema.parse({ connectorSlug: "github" }),
     ).toStrictEqual({ connectorSlug: "github" });
+  });
+});
+
+describe("custom connector client response contracts", () => {
+  it("normalizes current and future HTTP responses to the client shape", () => {
+    const currentWirePayload = {
+      ...customHttpConnectorClientPayload,
+      hasSecret: true,
+    };
+
+    const current =
+      customConnectorClientResponseSchema.parse(currentWirePayload);
+    const future = customConnectorClientResponseSchema.parse(
+      customHttpConnectorClientPayload,
+    );
+    const kindless = customConnectorClientResponseSchema.parse(
+      customHttpConnectorPayloadBase,
+    );
+
+    expect(current).toStrictEqual(customHttpConnectorClientPayload);
+    expect(future).toStrictEqual(customHttpConnectorClientPayload);
+    expect(kindless).toStrictEqual(customHttpConnectorClientPayload);
+    expect(current).not.toHaveProperty("hasSecret");
+    expect(
+      customConnectorClientListResponseSchema.parse({
+        connectors: [currentWirePayload],
+      }),
+    ).toStrictEqual({ connectors: [customHttpConnectorClientPayload] });
+  });
+
+  it("parses MCP responses without the compatibility property", () => {
+    const payload = {
+      id: "00000000-0000-4000-a000-000000000006",
+      slug: "_example-mcp",
+      displayName: "Example MCP",
+      kind: "mcp",
+      fields: [],
+      headerInjections: [],
+      queryInjections: [],
+      authMode: "manual",
+      permissionBundleRef: null,
+      skillMarkdown: null,
+      storageVersion: 1,
+      connected: true,
+      missingRequiredFields: [],
+      configuredFieldKeys: [],
+      createdAt: "2026-08-11T00:00:00.000Z",
+      updatedAt: "2026-08-11T00:00:00.000Z",
+      endpoint: "https://mcp.example.test",
+      transport: "streamable-http",
+      prefixes: [],
+      headerName: "",
+      headerTemplate: "",
+      prefixTemplates: [],
+    } as const;
+
+    expect(customConnectorClientResponseSchema.parse(payload)).toStrictEqual(
+      payload,
+    );
   });
 });
 

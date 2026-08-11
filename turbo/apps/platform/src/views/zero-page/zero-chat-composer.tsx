@@ -140,9 +140,9 @@ import { r2ImageTransformUrl } from "@vm0/core/r2-image-transform";
 import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
 import type { PlatformConnectorCatalogStatusItem } from "../../signals/connector-domain.ts";
 import {
-  isHttpCustomConnectorResponse,
-  type CustomConnectorHttpResponse,
-  type CustomConnectorResponse,
+  isHttpCustomConnectorClientResponse,
+  type CustomConnectorClientResponse,
+  type CustomConnectorHttpClientResponse,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import { getModelDisplayName } from "@vm0/core/model-display-name";
 import {
@@ -258,7 +258,7 @@ interface ComposerConnectorReadState {
   readonly addDialogCatalogItems: Loadable<
     readonly PlatformConnectorCatalogStatusItem[]
   >;
-  readonly customConnectors: Loadable<readonly CustomConnectorResponse[]>;
+  readonly customConnectors: Loadable<readonly CustomConnectorClientResponse[]>;
   readonly authorization: Loadable<ComposerConnectorAuthorizationState>;
 }
 
@@ -338,7 +338,7 @@ type ComposerConnectorItem = PlatformConnectorCatalogStatusItem & {
   readonly authorized: boolean;
 };
 
-type ComposerCustomConnectorItem = CustomConnectorHttpResponse & {
+type ComposerCustomConnectorItem = CustomConnectorHttpClientResponse & {
   readonly authorized: boolean;
 };
 
@@ -5922,7 +5922,7 @@ function ConnectorTriggerIcons({
 
 function matchesCustomConnectorSearch(
   search: string,
-  connector: CustomConnectorHttpResponse,
+  connector: CustomConnectorHttpClientResponse,
 ): boolean {
   const normalizedSearch = search.trim().toLowerCase();
   if (!normalizedSearch) {
@@ -5939,7 +5939,7 @@ function CustomConnectorCatalogCard({
   connector,
   onConnect,
 }: {
-  connector: CustomConnectorHttpResponse;
+  connector: CustomConnectorHttpClientResponse;
   onConnect: () => void;
 }) {
   const { t } = useTranslation();
@@ -5999,12 +5999,12 @@ function AddConnectorsDialog({
 }: {
   signals: ComposerSignals;
   unconnected: PlatformConnectorCatalogStatusItem[];
-  unconnectedCustom: CustomConnectorHttpResponse[];
+  unconnectedCustom: CustomConnectorHttpClientResponse[];
   busyConnectorSlug: ConnectorSlug | null;
   connectHandlers: (
     connector: PlatformConnectorCatalogStatusItem,
   ) => ConnectorConnectHandlers;
-  onConnectCustom: (connector: CustomConnectorHttpResponse) => void;
+  onConnectCustom: (connector: CustomConnectorHttpClientResponse) => void;
   onClose: () => void;
 }) {
   const { t } = useTranslation();
@@ -7600,10 +7600,12 @@ interface ResolvedComposerConnectorCollections {
     PlatformConnectorCatalogStatusItem
   >;
   readonly unconnectedConnectors: PlatformConnectorCatalogStatusItem[];
-  readonly unconnectedCustomConnectors: CustomConnectorHttpResponse[];
+  readonly unconnectedCustomConnectors: CustomConnectorHttpClientResponse[];
   readonly agentConnectors: ComposerConnectorItem[];
   readonly agentCustomConnectors: ComposerCustomConnectorItem[];
-  readonly selectedCustomConnector: CustomConnectorHttpResponse | undefined;
+  readonly selectedCustomConnector:
+    | CustomConnectorHttpClientResponse
+    | undefined;
 }
 
 function resolveComposerConnectorCollections({
@@ -7619,7 +7621,7 @@ function resolveComposerConnectorCollections({
   addDialogCatalogItems: Loadable<
     readonly PlatformConnectorCatalogStatusItem[]
   >;
-  customConnectors: Loadable<readonly CustomConnectorResponse[]>;
+  customConnectors: Loadable<readonly CustomConnectorClientResponse[]>;
   authorizedConnectorSlugs: readonly ConnectorSlug[] | null;
   authorizedCustomConnectorIds: readonly string[] | null;
   optimisticConnected: ReadonlySet<ConnectorSlug>;
@@ -7631,7 +7633,7 @@ function resolveComposerConnectorCollections({
     addDialogCatalogItems.state === "hasData" ? addDialogCatalogItems.data : [];
   const resolvedCustomConnectors =
     customConnectors.state === "hasData"
-      ? customConnectors.data.filter(isHttpCustomConnectorResponse)
+      ? customConnectors.data.filter(isHttpCustomConnectorClientResponse)
       : [];
   const authorizedSet = new Set(authorizedConnectorSlugs ?? []);
   const authorizedCustomSet = new Set(authorizedCustomConnectorIds ?? []);

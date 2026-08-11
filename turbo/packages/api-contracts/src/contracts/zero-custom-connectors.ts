@@ -173,7 +173,7 @@ const taggedCustomConnectorResponseSchema = z.discriminatedUnion("kind", [
   customConnectorMcpResponseSchema,
 ]);
 
-export const customConnectorResponseSchema = z.preprocess((value) => {
+function normalizeCustomConnectorResponseKind(value: unknown): unknown {
   if (
     typeof value === "object" &&
     value !== null &&
@@ -184,7 +184,12 @@ export const customConnectorResponseSchema = z.preprocess((value) => {
     return { ...value, kind: "http" };
   }
   return value;
-}, taggedCustomConnectorResponseSchema);
+}
+
+export const customConnectorResponseSchema = z.preprocess(
+  normalizeCustomConnectorResponseKind,
+  taggedCustomConnectorResponseSchema,
+);
 export type CustomConnectorResponse = z.infer<
   typeof customConnectorResponseSchema
 >;
@@ -197,6 +202,41 @@ export function isHttpCustomConnectorResponse(
 
 export const customConnectorListResponseSchema = z.object({
   connectors: z.array(customConnectorResponseSchema),
+});
+
+export const customConnectorHttpClientResponseSchema =
+  customConnectorHttpResponseSchema.omit({ hasSecret: true });
+export type CustomConnectorHttpClientResponse = z.infer<
+  typeof customConnectorHttpClientResponseSchema
+>;
+
+export const customConnectorMcpClientResponseSchema =
+  customConnectorMcpResponseSchema.omit({ hasSecret: true });
+export type CustomConnectorMcpClientResponse = z.infer<
+  typeof customConnectorMcpClientResponseSchema
+>;
+
+const taggedCustomConnectorClientResponseSchema = z.discriminatedUnion("kind", [
+  customConnectorHttpClientResponseSchema,
+  customConnectorMcpClientResponseSchema,
+]);
+
+export const customConnectorClientResponseSchema = z.preprocess(
+  normalizeCustomConnectorResponseKind,
+  taggedCustomConnectorClientResponseSchema,
+);
+export type CustomConnectorClientResponse = z.infer<
+  typeof customConnectorClientResponseSchema
+>;
+
+export function isHttpCustomConnectorClientResponse(
+  connector: CustomConnectorClientResponse,
+): connector is CustomConnectorHttpClientResponse {
+  return connector.kind === "http";
+}
+
+export const customConnectorClientListResponseSchema = z.object({
+  connectors: z.array(customConnectorClientResponseSchema),
 });
 
 const customConnectorDefinitionWriteBaseSchema = z.object({
