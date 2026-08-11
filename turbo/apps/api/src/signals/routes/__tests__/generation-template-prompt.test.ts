@@ -373,6 +373,9 @@ describe("buildGenerationTemplatePrompt", () => {
     expect(result.prompt).not.toContain("resolve-images.mjs");
     expect(result.prompt).not.toContain("/api/presentation/images/resolve");
     expect(result.prompt).toContain(
+      "You, the authoring AI, are responsible for choosing, generating when appropriate, and inserting website images",
+    );
+    expect(result.prompt).toContain(
       "choose the most suitable option among images supplied by the user, relevant images in the user's source or reference material, and AI-generated images",
     );
     expect(result.prompt).toContain("There is no fixed source order");
@@ -386,8 +389,13 @@ describe("buildGenerationTemplatePrompt", () => {
       'zero generate image --provider built-in --model seedream4 --raw-prompt "<slot-specific image brief>"',
     );
     expect(result.prompt).toContain(
-      "Keep the model and provider in the outer image-generation command only",
+      "Treat the model and provider as instructions passed to you in this prompt",
     );
+    expect(result.prompt).toContain(
+      "insert each selected or generated asset directly into its media slot yourself",
+    );
+    expect(result.prompt).not.toContain("outer authoring");
+    expect(result.prompt).not.toContain("outer workflow");
     expect(result.prompt).not.toContain("use this priority");
     expect(result.prompt).not.toContain("only when neither");
     expect(result.prompt).toContain(
