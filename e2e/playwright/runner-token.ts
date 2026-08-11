@@ -8,7 +8,10 @@ import {
   refreshClerkSessionToken,
   signInWithClerkTestingHelper,
 } from "./lib/auth";
-import { apiPreviewHeaders } from "./lib/api-preview-auth";
+import {
+  apiPreviewHeaders,
+  installApiPreviewHeadersForUrl,
+} from "./lib/api-preview-auth";
 import { issueCliToken } from "./lib/cli-token";
 import { runnerTestAccounts } from "./lib/clerk-api";
 import {
@@ -86,6 +89,7 @@ async function main(): Promise<void> {
       });
       try {
         await setupClerkTestingToken({ context });
+        await installApiPreviewHeadersForUrl(context, apiUrl);
         const page = await context.newPage();
         let clerkSessionToken = await signInWithClerkTestingHelper(
           page,

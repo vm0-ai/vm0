@@ -7,7 +7,10 @@ import {
   test as base,
   type BrowserContext,
 } from "@playwright/test";
-import { apiPreviewHeaders } from "./lib/api-preview-auth";
+import {
+  apiPreviewHeaders,
+  installApiPreviewHeadersForUrl,
+} from "./lib/api-preview-auth";
 
 export { expect };
 
@@ -18,25 +21,7 @@ export async function installApiPreviewHeaders(
   if (!apiUrl) {
     return;
   }
-  const previewHeaders = apiPreviewHeaders();
-  if (Object.keys(previewHeaders).length === 0) {
-    return;
-  }
-  if (previewHeaders["cf-access-client-id"]) {
-    // The setup project persists its browser state for the feature projects.
-    // Do not carry the short-lived Access session assertion into a new test
-    // context: the service-token headers below will mint a fresh assertion.
-    await context.clearCookies({ name: "CF_Authorization" });
-  }
-  const apiOrigin = new URL(apiUrl).origin;
-  await context.route(`${apiOrigin}/**`, async (route) => {
-    await route.continue({
-      headers: {
-        ...route.request().headers(),
-        ...previewHeaders,
-      },
-    });
-  });
+  await installApiPreviewHeadersForUrl(context, apiUrl);
 }
 
 export async function fetchApiPreviewRouteJson(route: Route): Promise<unknown> {

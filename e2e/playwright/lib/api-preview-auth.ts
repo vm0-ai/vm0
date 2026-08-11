@@ -1,3 +1,5 @@
+import type { BrowserContext } from "@playwright/test";
+
 export type ApiPreviewHeaders = Readonly<
   Partial<
     Record<
@@ -29,4 +31,28 @@ export function apiPreviewHeaders(): ApiPreviewHeaders {
         }
       : undefined),
   };
+}
+
+export async function installApiPreviewHeadersForUrl(
+  context: BrowserContext,
+  apiUrl: string,
+): Promise<void> {
+  const previewHeaders = apiPreviewHeaders();
+  if (Object.keys(previewHeaders).length === 0) {
+    return;
+  }
+  if (previewHeaders["cf-access-client-id"]) {
+    // A persisted browser state can carry a short-lived Access assertion.
+    // Clear it so the service-token headers mint a fresh assertion instead.
+    await context.clearCookies({ name: "CF_Authorization" });
+  }
+  const apiOrigin = new URL(apiUrl).origin;
+  await context.route(`${apiOrigin}/**`, async (route) => {
+    await route.continue({
+      headers: {
+        ...route.request().headers(),
+        ...previewHeaders,
+      },
+    });
+  });
 }
