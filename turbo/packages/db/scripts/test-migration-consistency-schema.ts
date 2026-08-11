@@ -6551,6 +6551,368 @@ async function validateChatRunServiceTierAnnotationBackfill(): Promise<void> {
   }
 }
 
+const RETIRED_RUN_MODEL_STATE_PREVIOUS_MIGRATION = "0897_bizarre_kid_colt";
+const RETIRED_RUN_MODEL_STATE_MIGRATION = "0898_retire_legacy_run_model_state";
+
+async function validateRetiredRunModelStateMigration(): Promise<void> {
+  console.log("=== Validate retired run-model state migration ===\n");
+  const testDb = "migration_retired_run_model_state_test";
+  const testDbUrl = createTestDbUrl(testDb);
+  const providerIds = {
+    openRouter: "00000000-0000-4000-8000-000000089801",
+    openAi: "00000000-0000-4000-8000-000000089802",
+    deepSeek: "00000000-0000-4000-8000-000000089803",
+    zai: "00000000-0000-4000-8000-000000089804",
+  } as const;
+  const composeIds = {
+    unrestricted: "00000000-0000-4000-8000-000000089811",
+    restricted: "00000000-0000-4000-8000-000000089812",
+    zai: "00000000-0000-4000-8000-000000089813",
+  } as const;
+  const customSurfaceId = "00000000-0000-4000-8000-000000089821";
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpToTag(
+      testDbUrl,
+      RETIRED_RUN_MODEL_STATE_PREVIOUS_MIGRATION,
+    );
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+    try {
+      await client.query(
+        `
+          INSERT INTO "org_plan_entitlements" (
+            "org_id",
+            "plan_key",
+            "plan_rank",
+            "source",
+            "status",
+            "restricted_vm0_models"
+          ) VALUES
+            ('migration-model-unrestricted', 'pro', 2, 'fixture', 'active', false),
+            ('migration-model-restricted', 'limited', 0, 'fixture', 'suspended', true),
+            ('migration-model-custom', 'pro', 2, 'fixture', 'active', false),
+            ('migration-model-zai', 'pro', 2, 'fixture', 'active', false)
+        `,
+      );
+      await client.query(
+        `
+          INSERT INTO "model_providers" (
+            "id",
+            "type",
+            "is_default",
+            "selected_model",
+            "user_id",
+            "org_id"
+          ) VALUES
+            ($1, 'openrouter-api-key', true, 'anthropic/claude-opus-4.7', '__org__', 'migration-model-unrestricted'),
+            ($2, 'openai-api-key', true, 'openai/gpt-5.5', '__org__', 'migration-model-restricted'),
+            ($3, 'deepseek', false, 'deepseek-v4-flash', '__org__', 'migration-model-restricted'),
+            ($4, 'zai-api-key', true, 'glm-4.7', '__org__', 'migration-model-zai')
+        `,
+        Object.values(providerIds),
+      );
+      await client.query(
+        `
+          INSERT INTO "secrets" (
+            "id",
+            "name",
+            "encrypted_value",
+            "type",
+            "user_id",
+            "org_id"
+          ) VALUES (
+            '00000000-0000-4000-8000-000000089822',
+            'migration-model-custom',
+            'fixture',
+            'user',
+            '__org__',
+            'migration-model-custom'
+          );
+          INSERT INTO "model_provider_connections" (
+            "id",
+            "org_id",
+            "display_name",
+            "secret_id"
+          ) VALUES (
+            '00000000-0000-4000-8000-000000089823',
+            'migration-model-custom',
+            'Migration gateway',
+            '00000000-0000-4000-8000-000000089822'
+          );
+          INSERT INTO "model_provider_surfaces" (
+            "id",
+            "connection_id",
+            "protocol",
+            "api_base_url",
+            "auth_header_name",
+            "auth_header_template",
+            "model_mappings"
+          ) VALUES (
+            '${customSurfaceId}',
+            '00000000-0000-4000-8000-000000089823',
+            'openai-responses',
+            'https://example.test/v1',
+            'Authorization',
+            'Bearer {{secret}}',
+            '{"gpt-5.5":"vendor/old","gpt-5.6-sol":"vendor/new"}'::jsonb
+          )
+        `,
+      );
+      await client.query(
+        `
+          INSERT INTO "org_model_policies" (
+            "org_id",
+            "model",
+            "is_default",
+            "default_provider_type",
+            "credential_scope",
+            "model_provider_id",
+            "model_provider_surface_id"
+          ) VALUES
+            ('migration-model-unrestricted', 'claude-opus-4-7', true, 'openrouter-api-key', 'org', $1, NULL),
+            ('migration-model-unrestricted', 'claude-opus-4-8', false, 'vm0', 'org', NULL, NULL),
+            ('migration-model-restricted', 'gpt-5.5', true, 'openai-api-key', 'org', $2, NULL),
+            ('migration-model-restricted', 'deepseek-v4-flash', false, 'deepseek', 'org', $3, NULL),
+            ('migration-model-custom', 'gpt-5.5', true, 'vercel-ai-gateway-codex', 'org', NULL, $4),
+            ('migration-model-zai', 'glm-5.2', true, 'vm0', 'org', NULL, NULL)
+        `,
+        [
+          providerIds.openRouter,
+          providerIds.openAi,
+          providerIds.deepSeek,
+          customSurfaceId,
+        ],
+      );
+      await client.query(
+        `
+          INSERT INTO "org_members_metadata" (
+            "org_id",
+            "user_id",
+            "selected_model",
+            "service_tier"
+          ) VALUES
+            ('migration-model-unrestricted', 'migration-member-unrestricted', 'claude-opus-4-7', 'priority'),
+            ('migration-model-restricted', 'migration-member-restricted', 'gpt-5.5', 'priority')
+        `,
+      );
+      await client.query(
+        `
+          INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
+          VALUES
+            ($1, 'migration-member-unrestricted', 'migration-unrestricted-agent', 'migration-model-unrestricted'),
+            ($2, 'migration-member-restricted', 'migration-restricted-agent', 'migration-model-restricted'),
+            ($3, 'migration-member-zai', 'migration-zai-agent', 'migration-model-zai')
+        `,
+        [composeIds.unrestricted, composeIds.restricted, composeIds.zai],
+      );
+      await client.query(
+        `
+          INSERT INTO "zero_agents" (
+            "id",
+            "org_id",
+            "owner",
+            "name",
+            "model_provider_id",
+            "selected_model"
+          ) VALUES
+            ($1, 'migration-model-unrestricted', 'migration-member-unrestricted', 'migration-unrestricted-agent', $4, 'claude-opus-4-7'),
+            ($2, 'migration-model-restricted', 'migration-member-restricted', 'migration-restricted-agent', $5, 'gpt-5.5'),
+            ($3, 'migration-model-zai', 'migration-member-zai', 'migration-zai-agent', $6, NULL)
+        `,
+        [
+          composeIds.unrestricted,
+          composeIds.restricted,
+          composeIds.zai,
+          providerIds.openRouter,
+          providerIds.openAi,
+          providerIds.zai,
+        ],
+      );
+      await client.query(
+        `
+          INSERT INTO "chat_threads" (
+            "id",
+            "user_id",
+            "agent_compose_id",
+            "selected_model",
+            "codex_service_tier"
+          ) VALUES (
+            $1,
+            'migration-member-restricted',
+            $2,
+            'gpt-5.5',
+            'priority'
+          )
+        `,
+        ["00000000-0000-4000-8000-000000089831", composeIds.restricted],
+      );
+
+      await applyMigrationsUpToTag(client, RETIRED_RUN_MODEL_STATE_MIGRATION);
+
+      const policies = await client.query<{
+        orgId: string;
+        model: string;
+        isDefault: boolean;
+        providerType: string;
+        providerId: string | null;
+        surfaceId: string | null;
+      }>(`
+        SELECT
+          "org_id" AS "orgId",
+          "model",
+          "is_default" AS "isDefault",
+          "default_provider_type" AS "providerType",
+          "model_provider_id" AS "providerId",
+          "model_provider_surface_id" AS "surfaceId"
+        FROM "org_model_policies"
+        ORDER BY "org_id", "model"
+      `);
+      assert.deepEqual(policies.rows, [
+        {
+          orgId: "migration-model-custom",
+          model: "gpt-5.6-sol",
+          isDefault: true,
+          providerType: "vercel-ai-gateway-codex",
+          providerId: null,
+          surfaceId: customSurfaceId,
+        },
+        {
+          orgId: "migration-model-restricted",
+          model: "deepseek-v4-flash",
+          isDefault: true,
+          providerType: "vm0",
+          providerId: null,
+          surfaceId: null,
+        },
+        {
+          orgId: "migration-model-unrestricted",
+          model: "claude-opus-4-8",
+          isDefault: true,
+          providerType: "vm0",
+          providerId: null,
+          surfaceId: null,
+        },
+        {
+          orgId: "migration-model-zai",
+          model: "deepseek-v4-flash",
+          isDefault: true,
+          providerType: "vm0",
+          providerId: null,
+          surfaceId: null,
+        },
+      ]);
+
+      const members = await client.query<{
+        orgId: string;
+        selectedModel: string;
+        serviceTier: string | null;
+      }>(`
+        SELECT
+          "org_id" AS "orgId",
+          "selected_model" AS "selectedModel",
+          "service_tier" AS "serviceTier"
+        FROM "org_members_metadata"
+        ORDER BY "org_id"
+      `);
+      assert.deepEqual(members.rows, [
+        {
+          orgId: "migration-model-restricted",
+          selectedModel: "deepseek-v4-flash",
+          serviceTier: null,
+        },
+        {
+          orgId: "migration-model-unrestricted",
+          selectedModel: "claude-opus-4-8",
+          serviceTier: null,
+        },
+      ]);
+
+      const providers = await client.query<{
+        type: string;
+        isDefault: boolean;
+        selectedModel: string | null;
+      }>(`
+        SELECT
+          "type",
+          "is_default" AS "isDefault",
+          "selected_model" AS "selectedModel"
+        FROM "model_providers"
+        ORDER BY "type"
+      `);
+      assert.deepEqual(providers.rows, [
+        {
+          type: "deepseek",
+          isDefault: false,
+          selectedModel: "deepseek-v4-flash",
+        },
+        { type: "openai-api-key", isDefault: false, selectedModel: null },
+        {
+          type: "openrouter-api-key",
+          isDefault: true,
+          selectedModel: "anthropic/claude-opus-4.8",
+        },
+        { type: "zai-api-key", isDefault: false, selectedModel: null },
+      ]);
+
+      const agents = await client.query<{
+        name: string;
+        selectedModel: string | null;
+        providerId: string | null;
+      }>(`
+        SELECT
+          "name",
+          "selected_model" AS "selectedModel",
+          "model_provider_id" AS "providerId"
+        FROM "zero_agents"
+        ORDER BY "name"
+      `);
+      assert.deepEqual(agents.rows, [
+        {
+          name: "migration-restricted-agent",
+          selectedModel: null,
+          providerId: null,
+        },
+        {
+          name: "migration-unrestricted-agent",
+          selectedModel: "claude-opus-4-8",
+          providerId: providerIds.openRouter,
+        },
+        {
+          name: "migration-zai-agent",
+          selectedModel: null,
+          providerId: null,
+        },
+      ]);
+
+      const thread = await client.query<{
+        selectedModel: string;
+        serviceTier: string;
+      }>(`
+        SELECT
+          "selected_model" AS "selectedModel",
+          "codex_service_tier" AS "serviceTier"
+        FROM "chat_threads"
+        WHERE "id" = '00000000-0000-4000-8000-000000089831'
+      `);
+      assert.deepEqual(thread.rows, [
+        { selectedModel: "gpt-5.5", serviceTier: "priority" },
+      ]);
+
+      console.log("   ✅ replacement policies merge and transfer defaults");
+      console.log("   ✅ restricted and incompatible routes fall back safely");
+      console.log(
+        "   ✅ current preferences and agents migrate without rewriting threads\n",
+      );
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+}
+
 async function main(): Promise<void> {
   console.log("🧪 Testing Migration Consistency (Schema Comparison)\n");
 
@@ -6579,6 +6941,7 @@ async function main(): Promise<void> {
     await validateChatEventContractionFinalization();
     await validateCanonicalChatEventStorageBackfill();
     await validateChatRunServiceTierAnnotationBackfill();
+    await validateRetiredRunModelStateMigration();
 
     // Step 1.5: Validate latest snapshot accuracy (NEW)
     await validateLatestSnapshotAccuracy();

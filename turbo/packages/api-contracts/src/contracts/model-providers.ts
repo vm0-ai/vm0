@@ -428,7 +428,7 @@ export function modelSupportsImageInput(
  * Return the VM0 managed models visible to callers.
  */
 export function getVm0VisibleModels(): string[] {
-  return Object.keys(VM0_MODEL_TO_PROVIDER);
+  return [...ACTIVE_RUN_MODELS];
 }
 
 /**
@@ -1065,6 +1065,15 @@ export const RETIRED_RUN_MODELS = [
 ] as const satisfies readonly SupportedRunModel[];
 
 export type RetiredRunModel = (typeof RETIRED_RUN_MODELS)[number];
+
+/**
+ * Canonical models available for current policy and run selection. Historical
+ * schemas continue to use SUPPORTED_RUN_MODELS until the client-skew cleanup.
+ */
+export const ACTIVE_RUN_MODELS: readonly SupportedRunModel[] =
+  SUPPORTED_RUN_MODELS.filter((model) => {
+    return !isRetiredRunModel(model);
+  });
 
 const RETIRED_RUN_MODEL_REPLACEMENTS: Readonly<
   Record<RetiredRunModel, SupportedRunModel>

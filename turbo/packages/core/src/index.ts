@@ -124,6 +124,7 @@ export {
   modelProviderCredentialScopeSchema,
   MODEL_PROVIDER_TYPES,
   SUPPORTED_RUN_MODELS,
+  ACTIVE_RUN_MODELS,
   RETIRED_RUN_MODELS,
   getFrameworkForType,
   getSecretNameForType,
