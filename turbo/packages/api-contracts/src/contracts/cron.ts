@@ -182,6 +182,7 @@ const cronSyncSkillsResponseSchema = z.object({
   skipped: z.number(),
   failed: z.number(),
   removed: z.number(),
+  remaining: z.number(),
   total: z.number(),
 });
 

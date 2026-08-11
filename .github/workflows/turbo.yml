@@ -1444,6 +1444,54 @@ jobs:
           echo "::error::Connector catalog reconcile did not produce a current accepted snapshot"
           exit 1
 
+      # System-skill migrations can touch the full catalog. The route performs
+      # a bounded batch per invocation so it stays below Worker CPU and memory
+      # limits; preview CI drives those batches to convergence before E2E.
+      - name: Converge preview system skills
+        env:
+          API_DEPLOYMENT_URL: ${{ steps.api-deploy.outputs.url }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_API_PREVIEW_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_API_PREVIEW_ACCESS_CLIENT_SECRET }}
+        run: |
+          set -euo pipefail
+
+          for attempt in $(seq 1 64); do
+            response="$(curl "${API_DEPLOYMENT_URL}/api/cron/sync-skills" \
+              --fail-with-body \
+              --show-error \
+              --silent \
+              --max-time 180 \
+              -H "Authorization: Bearer ${CRON_SECRET}" \
+              -H "CF-Access-Client-Id: ${CF_ACCESS_CLIENT_ID}" \
+              -H "CF-Access-Client-Secret: ${CF_ACCESS_CLIENT_SECRET}")"
+            summary="$(jq -c '{
+              commitSha,
+              synced,
+              skipped,
+              failed,
+              removed,
+              remaining,
+              total
+            }' <<< "$response")"
+            echo "System skill convergence ${attempt}/64: ${summary}"
+
+            jq -e '
+              .success == true and
+              (.remaining | type == "number") and
+              (.failed | type == "number")
+            ' <<< "$response" >/dev/null || {
+              echo "::error::System skill convergence returned an invalid response"
+              exit 1
+            }
+            if jq -e '.remaining == 0 and .failed == 0' <<< "$response" >/dev/null; then
+              exit 0
+            fi
+          done
+
+          echo "::error::System skills did not converge after 64 bounded invocations"
+          exit 1
+
       - name: Simulate Worker cron routes
         env:
           API_DEPLOYMENT_URL: ${{ steps.api-deploy.outputs.url }}
@@ -1456,11 +1504,14 @@ jobs:
           mapfile -t cron_routes < <(
             pnpm --dir turbo --filter api worker:cron-routes |
               grep '^/api/cron/' |
-              grep -v '^/api/cron/sync-connector-catalog$'
+              grep -v -E '^/api/cron/(sync-connector-catalog|sync-skills)$'
           )
           expected_cron_routes="$(jq '[
             .crons[].path |
-            select(. != "/api/cron/sync-connector-catalog")
+            select(
+              . != "/api/cron/sync-connector-catalog" and
+              . != "/api/cron/sync-skills"
+            )
           ] | unique | length' turbo/apps/api/vercel.json)"
           if [[ "${#cron_routes[@]}" -ne "$expected_cron_routes" ]]; then
             echo "::error::Expected ${expected_cron_routes} remaining cron routes, found ${#cron_routes[@]}"

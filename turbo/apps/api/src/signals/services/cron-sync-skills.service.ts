@@ -44,6 +44,7 @@ interface SyncSkillsResult {
   readonly skipped: number;
   readonly failed: number;
   readonly removed: number;
+  readonly remaining: number;
   readonly total: number;
 }
 
@@ -118,6 +119,8 @@ const SYSTEM_SKILL_ARCHIVE_FORMAT_MARKER = createHash("sha256")
   .slice(0, 16);
 const SYSTEM_SKILL_MAX_TOTAL_BYTES = 8 * 1024 * 1024;
 const SYSTEM_SKILL_MAX_ARCHIVE_BYTES = 16 * 1024 * 1024;
+const SYSTEM_SKILL_SYNC_MAX_SKILLS = 8;
+const SYSTEM_SKILL_SYNC_MAX_SOURCE_BYTES = 8 * 1024 * 1024;
 
 const gitTreeSchema = z.object({
   truncated: z.boolean(),
@@ -588,6 +591,7 @@ async function upsertSkillRecord(
     readonly storageId: string;
     readonly context: SkillSyncContext;
     readonly upload: SkillArchiveUpload;
+    readonly commitSha: string;
     readonly timestamp: Date;
   },
   signal: AbortSignal,
@@ -602,7 +606,7 @@ async function upsertSkillRecord(
       fullPath: args.context.fullPath,
       storageId: args.storageId,
       versionHash: args.context.versionHash,
-      commitSha: null,
+      commitSha: args.commitSha,
       frontmatter: args.context.frontmatter,
       s3Key: args.upload.s3Key,
       size: args.context.totalSize,
@@ -616,7 +620,7 @@ async function upsertSkillRecord(
         fullPath: args.context.fullPath,
         storageId: args.storageId,
         versionHash: args.context.versionHash,
-        commitSha: null,
+        commitSha: args.commitSha,
         frontmatter: args.context.frontmatter,
         s3Key: args.upload.s3Key,
         size: args.context.totalSize,
@@ -648,6 +652,14 @@ function syncSingleSkill(
         signal,
       )
     ) {
+      await db
+        .update(skills)
+        .set({
+          commitSha: inProgressCommitSha(commitSha),
+          updatedAt: nowDate(),
+        })
+        .where(eq(skills.url, context.url));
+      signal.throwIfAborted();
       return false;
     }
 
@@ -697,6 +709,7 @@ function syncSingleSkill(
         storageId,
         context,
         upload,
+        commitSha: inProgressCommitSha(commitSha),
         timestamp,
       },
       signal,
@@ -822,6 +835,10 @@ function isUsableBaseCommitSha(commitSha: string): boolean {
   return /^[0-9a-f]{40}$/.test(commitSha) && commitSha !== "0".repeat(40);
 }
 
+function inProgressCommitSha(commitSha: string): string {
+  return `pending-${commitSha.slice(0, 32)}`;
+}
+
 async function buildSkillTreeSyncPlan(
   existing: readonly StoredSkillSource[],
   headSha: string,
@@ -832,7 +849,9 @@ async function buildSkillTreeSyncPlan(
   signal.throwIfAborted();
   const baseCommitShas = new Set(
     existing.flatMap((skill) => {
-      return skill.commitSha && isUsableBaseCommitSha(skill.commitSha)
+      return skill.commitSha &&
+        skill.commitSha !== headSha &&
+        isUsableBaseCommitSha(skill.commitSha)
         ? [skill.commitSha]
         : [];
     }),
@@ -865,8 +884,21 @@ async function buildSkillTreeSyncPlan(
       return [skill.url, skill.versionHash] as const;
     }),
   );
+  const existingCommitsByUrl = new Map(
+    existing.map((skill) => {
+      return [skill.url, skill.commitSha] as const;
+    }),
+  );
   for (const skillName of currentTree.skillFiles.keys()) {
     const url = skillUrl(skillName);
+    if (
+      (existingCommitsByUrl.get(url) === headSha ||
+        existingCommitsByUrl.get(url) === inProgressCommitSha(headSha)) &&
+      hasCurrentSystemSkillArchiveFormat(existingVersionsByUrl.get(url) ?? null)
+    ) {
+      changedSkills.delete(skillName);
+      continue;
+    }
     if (
       !existingUrls.has(url) ||
       !hasCurrentSystemSkillArchiveFormat(
@@ -881,6 +913,46 @@ async function buildSkillTreeSyncPlan(
     changedSkills,
     sourceSkillNames: new Set(currentTree.skillFiles.keys()),
   };
+}
+
+function changedSkillsForInvocation(
+  currentTree: GitTreeSnapshot,
+  changedSkills: ReadonlySet<string>,
+): readonly [string, readonly GitTreeFile[]][] {
+  const seedSkillNames = new Set<string>(SEED_SKILLS);
+  const candidates = [...currentTree.skillFiles]
+    .filter(([skillName]) => {
+      return changedSkills.has(skillName);
+    })
+    .sort(([left], [right]) => {
+      const leftSeed = seedSkillNames.has(left);
+      const rightSeed = seedSkillNames.has(right);
+      if (leftSeed !== rightSeed) {
+        return leftSeed ? -1 : 1;
+      }
+      return left.localeCompare(right);
+    });
+  const selected: [string, readonly GitTreeFile[]][] = [];
+  let selectedBytes = 0;
+
+  for (const candidate of candidates) {
+    if (selected.length >= SYSTEM_SKILL_SYNC_MAX_SKILLS) {
+      break;
+    }
+    const candidateBytes = candidate[1].reduce((sum, file) => {
+      return sum + file.size;
+    }, 0);
+    if (
+      selected.length > 0 &&
+      selectedBytes + candidateBytes > SYSTEM_SKILL_SYNC_MAX_SOURCE_BYTES
+    ) {
+      continue;
+    }
+    selected.push(candidate);
+    selectedBytes += candidateBytes;
+  }
+
+  return selected;
 }
 
 function githubApiAuthorization(): string | undefined {
@@ -1008,6 +1080,7 @@ export const syncSkills$ = command(
         skipped: 0,
         failed: 0,
         removed: 0,
+        remaining: 0,
         total: 0,
       };
     }
@@ -1020,15 +1093,19 @@ export const syncSkills$ = command(
     );
 
     let synced = 0;
-    let skipped = 0;
+    const pendingChangedSkills = [...currentTree.skillFiles].filter(
+      ([skillName]) => {
+        return changedSkills.has(skillName);
+      },
+    );
+    const invocationSkills = changedSkillsForInvocation(
+      currentTree,
+      changedSkills,
+    );
+    let skipped = sourceSkillNames.size - pendingChangedSkills.length;
     let failed = 0;
 
-    for (const [skillName, files] of currentTree.skillFiles) {
-      if (!changedSkills.has(skillName)) {
-        skipped++;
-        continue;
-      }
-
+    for (const [skillName, files] of invocationSkills) {
       const outcome = await syncChangedSkill(
         {
           db,
@@ -1047,13 +1124,15 @@ export const syncSkills$ = command(
         skipped++;
       }
     }
+    const remaining =
+      pendingChangedSkills.length - invocationSkills.length + failed;
 
     const removed = await get(
       removeOrphanedSkills(db, sourceSkillNames, signal, s3ClientScope),
     );
     signal.throwIfAborted();
     validateSeedSkills(sourceSkillNames);
-    if (failed === 0) {
+    if (remaining === 0) {
       await markSkillsSyncComplete(db, sourceSkillNames, headSha, signal);
     }
 
@@ -1063,6 +1142,7 @@ export const syncSkills$ = command(
       skipped,
       failed,
       removed,
+      remaining,
       total: sourceSkillNames.size,
     });
 
@@ -1072,6 +1152,7 @@ export const syncSkills$ = command(
       skipped,
       failed,
       removed,
+      remaining,
       total: sourceSkillNames.size,
     };
   },

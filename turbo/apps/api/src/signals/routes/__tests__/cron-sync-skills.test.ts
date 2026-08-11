@@ -435,6 +435,7 @@ describe("GET /api/cron/sync-skills", () => {
       skipped: 0,
       failed: 0,
       removed: 0,
+      remaining: 0,
       total: 0,
     });
   });
@@ -476,6 +477,7 @@ describe("GET /api/cron/sync-skills", () => {
       commitSha,
       synced: 1,
       failed: 0,
+      remaining: 0,
       total: 1,
     });
     expect(s3CallsByName("PutObjectCommand")).toHaveLength(2);
@@ -555,6 +557,96 @@ describe("GET /api/cron/sync-skills", () => {
     });
     expect(alphaArchiveSize).toBeGreaterThan(0);
     expect(s3CallsByName("PutObjectCommand")).toHaveLength(4);
+  });
+
+  it("converges a large skill catalog across bounded invocations", async () => {
+    const commitSha = newCommitSha();
+    const extraSkills = Array.from({ length: 10 }, (_, index) => {
+      const name = `${TEST_SKILL_PREFIX}-batch-${index.toString().padStart(2, "0")}`;
+      return {
+        name,
+        files: [
+          {
+            path: "SKILL.md",
+            content: `---\nname: ${name}\ndescription: ${name} skill\n---\n\n# ${name}\n`,
+          },
+        ],
+      } satisfies MockSkillEntry;
+    });
+    setupMswHandlers(commitSha, createFullSkillTree(extraSkills));
+
+    const first = await accept(
+      apiClient().sync({ headers: cronHeaders() }),
+      [200],
+    );
+    expect(first.body).toMatchObject({
+      success: true,
+      commitSha,
+      failed: 0,
+      remaining: 5,
+      total: 13,
+    });
+    expect(first.body.synced + first.body.skipped).toBe(8);
+
+    const second = await accept(
+      apiClient().sync({ headers: cronHeaders() }),
+      [200],
+    );
+    expect(second.body).toMatchObject({
+      success: true,
+      commitSha,
+      synced: 5,
+      failed: 0,
+      remaining: 0,
+      total: 13,
+    });
+    expect(s3CallsByName("PutObjectCommand")).toHaveLength(20);
+
+    const current = await accept(
+      apiClient().sync({ headers: cronHeaders() }),
+      [200],
+    );
+    expect(current.body).toMatchObject({
+      success: true,
+      commitSha,
+      synced: 0,
+      remaining: 0,
+      total: 0,
+    });
+
+    context.mocks.s3.send.mockClear();
+    const nextCommitSha = newCommitSha();
+    const modifiedExtraSkills = extraSkills.map((skill) => {
+      return {
+        ...skill,
+        files: skill.files.map((file) => {
+          return { ...file, content: `${file.content}\nUpdated.` };
+        }),
+      } satisfies MockSkillEntry;
+    });
+    setupMswHandlers(nextCommitSha, createFullSkillTree(modifiedExtraSkills));
+
+    const changedFirst = await accept(
+      apiClient().sync({ headers: cronHeaders() }),
+      [200],
+    );
+    expect(changedFirst.body).toMatchObject({
+      commitSha: nextCommitSha,
+      synced: 8,
+      failed: 0,
+      remaining: 2,
+    });
+    const changedSecond = await accept(
+      apiClient().sync({ headers: cronHeaders() }),
+      [200],
+    );
+    expect(changedSecond.body).toMatchObject({
+      commitSha: nextCommitSha,
+      synced: 2,
+      failed: 0,
+      remaining: 0,
+    });
+    expect(s3CallsByName("PutObjectCommand")).toHaveLength(20);
   });
 
   it("authenticates public tree requests with OAuth client credentials", async () => {
@@ -705,7 +797,6 @@ describe("GET /api/cron/sync-skills", () => {
       apiClient().sync({ headers: cronHeaders() }),
       [200],
     );
-
     expect(response.body.failed).toBe(1);
     await expect(
       findSkillByUrl(testSkillUrl(EXTRA_SKILLS.alphaSkill.name)),
@@ -732,12 +823,17 @@ describe("GET /api/cron/sync-skills", () => {
     await seedCurrentSeedSkillVersions();
     setupMswHandlers(commitSha, createFullSkillTree([oversizedSkill]));
 
+    const firstResponse = await accept(
+      apiClient().sync({ headers: cronHeaders() }),
+      [200],
+    );
+    expect(firstResponse.body).toMatchObject({ failed: 0, remaining: 1 });
+
     const response = await accept(
       apiClient().sync({ headers: cronHeaders() }),
       [200],
     );
-
-    expect(response.body.failed).toBe(1);
+    expect(response.body).toMatchObject({ failed: 1, remaining: 1 });
     await expect(
       findSkillByUrl(testSkillUrl(oversizedSkill.name)),
     ).resolves.toBeNull();
