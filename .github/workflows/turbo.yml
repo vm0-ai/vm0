@@ -1071,7 +1071,10 @@ jobs:
 
           remote="${METAL_USER}@${stripe_listener_host}"
           secret_file="/var/lib/vm0-runner/stripe/${JOB_REF}/webhook-secret"
-          stripe_webhook_secret="$(ssh "$remote" "sudo cat '$secret_file'")"
+          stripe_webhook_secret="$(
+            printf '%s\n' "$secret_file" |
+              ssh "$remote" 'read -r secret_file; sudo cat -- "$secret_file"'
+          )"
           echo "::add-mask::$stripe_webhook_secret"
           if [[ "$stripe_webhook_secret" != whsec_* ]]; then
             echo "::error::Stripe listener did not provide a webhook secret"
@@ -2251,12 +2254,14 @@ jobs:
 
           remote="${METAL_USER}@${stripe_listener_host}"
           stripe_log="/var/lib/vm0-runner/stripe/${JOB_REF}/stripe-listen.log"
-          if ! ssh "$remote" "sudo test -f '$stripe_log'"; then
+          if ! printf '%s\n' "$stripe_log" |
+            ssh "$remote" 'read -r stripe_log; sudo test -f "$stripe_log"'; then
             echo "::warning::Stripe listener log is unavailable for ${JOB_REF}"
             exit 0
           fi
 
-          ssh "$remote" "sudo tail -200 '$stripe_log'" |
+          printf '%s\n' "$stripe_log" |
+            ssh "$remote" 'read -r stripe_log; sudo tail -200 "$stripe_log"' |
             sed -E \
               -e 's/whsec_[[:alnum:]_]+/[masked-stripe-webhook-secret]/g' \
               -e 's/sk_(test|live)_[[:alnum:]_]+/[masked-stripe-api-key]/g'
@@ -2274,7 +2279,8 @@ jobs:
             while IFS= read -r host; do
               remote="${METAL_USER}@${host}"
               echo "=== Preview runner diagnostics for ${host} ==="
-              ssh "$remote" "sudo journalctl --no-pager --since '-15 min' -n 400 -u 'vm0-runner-${JOB_REF}-*.service'" |
+              printf '%s\n' "$JOB_REF" |
+                ssh "$remote" 'read -r job_ref; sudo journalctl --no-pager --since '\''-15 min'\'' -n 400 -u "vm0-runner-${job_ref}-*.service"' |
                 sed -E \
                   -e 's/vm0_official_[[:alnum:]_.-]+/[masked-runner-token]/g' \
                   -e 's/(CF_ACCESS_CLIENT_SECRET|CF-Access-Client-Secret)[=:][^[:space:]]+/\1=[masked]/g' \
