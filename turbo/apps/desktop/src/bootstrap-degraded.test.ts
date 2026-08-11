@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => {
     },
     autoUpdater: {
       quitAndInstall: vi.fn(),
+      on: vi.fn(),
       once: vi.fn(),
       removeListener: vi.fn(),
     },

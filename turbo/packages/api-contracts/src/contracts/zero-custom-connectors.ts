@@ -142,9 +142,6 @@ const customConnectorResponseBaseSchema = z.object({
 export const customConnectorHttpResponseSchema =
   customConnectorResponseBaseSchema.extend({
     kind: z.literal("http"),
-    prefixes: z.array(z.string()).optional(),
-    headerName: z.string().optional(),
-    headerTemplate: z.string().optional(),
     prefixTemplates: z.array(z.string()),
   });
 export type CustomConnectorHttpResponse = z.infer<
@@ -156,11 +153,6 @@ export const customConnectorMcpResponseSchema =
     kind: z.literal("mcp"),
     endpoint: z.string().min(1),
     transport: customConnectorMcpTransportSchema,
-    // The API still emits these old HTTP response keys for installed clients.
-    // They are optional compatibility aliases, never MCP definition state.
-    prefixes: z.tuple([]).optional(),
-    headerName: z.literal("").optional(),
-    headerTemplate: z.literal("").optional(),
     prefixTemplates: z.tuple([]),
     permissionBundleRef: z.null().optional(),
   });
@@ -250,27 +242,21 @@ const customConnectorDefinitionWriteBaseSchema = z.object({
   storageVersion: z.number().int().positive().optional(),
 });
 
-export const customConnectorHttpCreateBodySchema = z.object({
-  kind: z.literal("http").optional(),
-  displayName: z.string().min(1).max(128),
-  prefixes: z.array(z.string().min(1)).min(1).optional(),
-  headerName: z.string().min(1).max(128).optional(),
-  headerTemplate: z.string().min(1).optional(),
-  prefixTemplates: z.array(z.string().min(1)).min(1).optional(),
-  fields: z.array(customConnectorFieldSchema).optional(),
-  headerInjections: z.array(customConnectorHeaderInjectionSchema).optional(),
-  queryInjections: z.array(customConnectorQueryInjectionSchema).optional(),
-  authMode: customConnectorAuthModeSchema.optional(),
-  oauthConfig: customConnectorOAuthConfigInputSchema.optional(),
-  permissionBundleRef: customConnectorPermissionBundleRefSchema
-    .nullable()
-    .optional(),
-  skillMarkdown: customConnectorSkillMarkdownSchema.nullable().optional(),
-  storageVersion: z.number().int().positive().optional(),
-  slug: z.string().optional(),
-  endpoint: z.never().optional(),
-  transport: z.never().optional(),
-});
+const customConnectorHttpDefinitionWriteSchema =
+  customConnectorDefinitionWriteBaseSchema.extend({
+    kind: z.literal("http").optional(),
+    prefixTemplates: z.array(z.string().min(1)).min(1),
+    permissionBundleRef: customConnectorPermissionBundleRefSchema
+      .nullable()
+      .optional(),
+    endpoint: z.never().optional(),
+    transport: z.never().optional(),
+  });
+
+export const customConnectorHttpCreateBodySchema =
+  customConnectorHttpDefinitionWriteSchema.extend({
+    slug: z.string().optional(),
+  });
 
 export const customConnectorMcpCreateBodySchema =
   customConnectorDefinitionWriteBaseSchema.extend({
@@ -279,9 +265,6 @@ export const customConnectorMcpCreateBodySchema =
     transport: customConnectorMcpTransportSchema,
     permissionBundleRef: z.null().optional(),
     slug: z.string().optional(),
-    prefixes: z.never().optional(),
-    headerName: z.never().optional(),
-    headerTemplate: z.never().optional(),
     prefixTemplates: z.never().optional(),
   });
 
@@ -294,15 +277,7 @@ export type CreateCustomConnectorBody = z.infer<
 >;
 
 export const customConnectorHttpUpdateBodySchema =
-  customConnectorDefinitionWriteBaseSchema.extend({
-    kind: z.literal("http").optional(),
-    prefixTemplates: z.array(z.string().min(1)).min(1),
-    permissionBundleRef: customConnectorPermissionBundleRefSchema
-      .nullable()
-      .optional(),
-    endpoint: z.never().optional(),
-    transport: z.never().optional(),
-  });
+  customConnectorHttpDefinitionWriteSchema;
 
 export const customConnectorMcpUpdateBodySchema =
   customConnectorDefinitionWriteBaseSchema.extend({
@@ -311,9 +286,6 @@ export const customConnectorMcpUpdateBodySchema =
     transport: customConnectorMcpTransportSchema,
     permissionBundleRef: z.null().optional(),
     prefixTemplates: z.never().optional(),
-    prefixes: z.never().optional(),
-    headerName: z.never().optional(),
-    headerTemplate: z.never().optional(),
   });
 
 export const updateCustomConnectorBodySchema = z.union([

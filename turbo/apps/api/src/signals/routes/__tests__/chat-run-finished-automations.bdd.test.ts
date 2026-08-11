@@ -141,7 +141,7 @@ async function startWatchedChatRun(
       agentId: fixture.agentId,
       prompt,
       clientEventId: randomUUID(),
-      model: "claude-sonnet-4-6",
+      model: "claude-sonnet-5",
     },
     [201],
   );
@@ -262,7 +262,7 @@ describe("chat-run-finished workflow automations", () => {
     });
     const otherThread = await chat.createThread(otherUser, {
       agentId: otherAgent.agentId,
-      model: "claude-sonnet-4-6",
+      model: "claude-sonnet-5",
     });
     // Restore the fixture actor's session after acting as the other member.
     await bdd.readMe(fixture.actor);

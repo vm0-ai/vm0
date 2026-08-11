@@ -164,7 +164,6 @@ async fn collect_dir_stats_with_reader(
         let current_meta = match tokio::fs::symlink_metadata(&current).await {
             Ok(metadata) => metadata,
             Err(_) => {
-                tracing::debug!("dir_stats: cannot stat {}", current.display());
                 complete = false;
                 continue;
             }
@@ -176,8 +175,7 @@ async fn collect_dir_stats_with_reader(
 
         let mut entries = match tokio::fs::read_dir(&current).await {
             Ok(rd) => rd,
-            Err(e) => {
-                tracing::debug!("dir_stats: cannot read {}: {e}", current.display());
+            Err(_) => {
                 complete = false;
                 continue;
             }
@@ -198,7 +196,6 @@ async fn collect_dir_stats_with_reader(
             let meta = match tokio::fs::symlink_metadata(&path).await {
                 Ok(metadata) => metadata,
                 Err(_) => {
-                    tracing::debug!("dir_stats: cannot stat {}", entry.path().display());
                     complete = false;
                     continue;
                 }

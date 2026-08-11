@@ -615,12 +615,14 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
     });
   });
 
-  it("processes every non-test trigger source when the run is threadless", async () => {
-    mockNow(THREADLESS_TEST_NOW_MS);
-    const fixtures: RunFixture[] = [];
-    for (const triggerSource of NON_TEST_TRIGGER_SOURCES) {
-      fixtures.push(
-        await trackRun(
+  // Each source owns a separate lifecycle budget because the suite shares its
+  // cleanup lock with past-clock export tests running in another worker.
+  describe.each(NON_TEST_TRIGGER_SOURCES)(
+    "when the trigger source is %s",
+    (triggerSource) => {
+      it("processes the threadless run", async () => {
+        mockNow(THREADLESS_TEST_NOW_MS);
+        const fixture = await trackRun(
           insertRunFixture({
             status: "completed",
             createdAt: new Date(THREADLESS_FORWARD_CUTOFF_MS + 1),
@@ -630,25 +632,21 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
             threadless: true,
             triggerSource,
           }),
-        ),
-      );
-    }
+        );
 
-    const response = await accept(
-      apiClient().cleanup({ headers: cronHeaders() }),
-      [200],
-    );
+        const response = await accept(
+          apiClient().cleanup({ headers: cronHeaders() }),
+          [200],
+        );
 
-    expect(response.body.threadlessRuns.discovered).toBeGreaterThanOrEqual(
-      NON_TEST_TRIGGER_SOURCES.length,
-    );
-    expect(response.body.threadlessRuns.deleted).toBeGreaterThanOrEqual(
-      NON_TEST_TRIGGER_SOURCES.length,
-    );
-    for (const fixture of fixtures) {
-      await expect(findRun(fixture.runId)).resolves.toBeNull();
-    }
-  });
+        expect(response.body.threadlessRuns.discovered).toBeGreaterThanOrEqual(
+          1,
+        );
+        expect(response.body.threadlessRuns.deleted).toBeGreaterThanOrEqual(1);
+        await expect(findRun(fixture.runId)).resolves.toBeNull();
+      });
+    },
+  );
 
   it("waits through the quiet window and deletes at its exact boundary", async () => {
     const completedAt = new Date(THREADLESS_TEST_NOW_MS);

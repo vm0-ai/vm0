@@ -245,7 +245,7 @@ async function startChatRun(
   const messageId = body.clientEventId ?? randomUUID();
   const selectedModel: SupportedRunModel | undefined =
     body.selectedModel ??
-    (body.threadId === undefined ? "claude-sonnet-4-6" : undefined);
+    (body.threadId === undefined ? "claude-sonnet-5" : undefined);
   const requestBody = {
     agentId: body.agentId,
     prompt: body.prompt,
@@ -743,6 +743,24 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function immediateSuccessorIntentPublishCalls(args: {
+  readonly action: "arm" | "revoke";
+  readonly predecessorRunId: string;
+  readonly intentId: string;
+  readonly eventClass: "prompt" | "goal" | "automation";
+}): readonly unknown[][] {
+  return context.mocks.ably.publish.mock.calls.filter(([topic, payload]) => {
+    return (
+      topic === "immediate-successor-intent" &&
+      isRecord(payload) &&
+      payload.action === args.action &&
+      payload.predecessorRunId === args.predecessorRunId &&
+      payload.intentId === args.intentId &&
+      payload.eventClass === args.eventClass
+    );
+  });
+}
+
 function sandboxOperationEventsForRun(
   runId: string,
 ): readonly Record<string, unknown>[] {
@@ -1035,7 +1053,7 @@ describe("CHAT-02: completed chat callback", () => {
     const first = await startChatRun(actor, {
       agentId,
       prompt,
-      selectedModel: "claude-sonnet-4-6",
+      selectedModel: "claude-sonnet-5",
     });
 
     const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0];
@@ -1803,7 +1821,7 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
       version: 1,
       parts: [
         { type: "goal", goalBrief },
-        { type: "model", selectedModel: "claude-sonnet-4-6" },
+        { type: "model", selectedModel: "claude-sonnet-5" },
       ],
     });
     expect(goalContinuation.content).toBeNull();
@@ -1828,6 +1846,28 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
         expiresAt: expect.any(String),
       }),
     );
+    const goalArmCalls = immediateSuccessorIntentPublishCalls({
+      action: "arm",
+      predecessorRunId: first.runId,
+      intentId: goalContinuation.revokesEventId,
+      eventClass: "goal",
+    });
+    const goalIntentDecisions = sandboxOperationEventsForRun(
+      first.runId,
+    ).filter((event) => {
+      return (
+        event.op_type === "immediate_successor_intent_source_validation" &&
+        event.immediate_successor_action === "arm" &&
+        event.immediate_successor_event_class === "goal" &&
+        event.immediate_successor_outcome === "valid"
+      );
+    });
+    expect(goalIntentDecisions).toStrictEqual([
+      expect.objectContaining({
+        immediate_successor_decision_point: "queue_admission",
+      }),
+    ]);
+    expect(goalArmCalls).toHaveLength(1);
     await expectGoalDrainPreCreateTiming({
       runId: goalContinuation.runId,
       forbiddenValues: [
@@ -2065,6 +2105,16 @@ Continue the JPM IJTXX Treasury allocation follow-up for issue #20818 and [ACME-
         eventClass: "goal",
       }),
     );
+    for (const action of ["arm", "revoke"] as const) {
+      expect(
+        immediateSuccessorIntentPublishCalls({
+          action,
+          predecessorRunId: first.runId,
+          intentId: goalEventId,
+          eventClass: "goal",
+        }),
+      ).toHaveLength(1);
+    }
   }, 90_000);
 
   it("revokes a goal invalidated while a failing launch resolves", async () => {
@@ -4197,7 +4247,7 @@ describe("CHAT-02: failed chat callbacks", () => {
     const run = await startChatRun(actor, {
       agentId,
       prompt: "trigger claude overload",
-      selectedModel: "claude-sonnet-4-6",
+      selectedModel: "claude-sonnet-5",
     });
     const sandboxHeaders = await claimChatRun(runnerGroup, run.runId);
     await failChatRun(run.runId, sandboxHeaders, rawOverloadError);
@@ -4208,14 +4258,14 @@ describe("CHAT-02: failed chat callbacks", () => {
       (messages) => {
         return lifecycleMarkers(messages, run.runId, "failed").some(
           (message) => {
-            return message.error?.includes("Claude Sonnet 4.6") ?? false;
+            return message.error?.includes("Claude Sonnet 5") ?? false;
           },
         );
       },
     );
     const marker = lifecycleMarkers(page.events, run.runId, "failed")[0];
     expect(marker?.error).toBe(
-      "Claude Sonnet 4.6 is overloaded. Please wait a few minutes and try again, or switch to another model.",
+      "Claude Sonnet 5 is overloaded. Please wait a few minutes and try again, or switch to another model.",
     );
     expect(marker?.content).toBe(marker?.error);
     expect(marker?.error).not.toContain("status.claude.com");
@@ -4291,7 +4341,7 @@ describe("CHAT-02: failed chat callbacks", () => {
           );
           await api.updateOrgModelPolicies(fixture.actor, [
             {
-              model: "claude-sonnet-4-6",
+              model: "claude-sonnet-5",
               isDefault: true,
               defaultProviderType: "anthropic-api-key",
               credentialScope: "org",
@@ -4337,7 +4387,7 @@ describe("CHAT-02: auto-send after failures", () => {
     const anchor = await startChatRun(actor, {
       agentId,
       prompt: "successful structured context anchor",
-      selectedModel: "claude-sonnet-4-6",
+      selectedModel: "claude-sonnet-5",
     });
     const anchorHeaders = await claimChatRun(runnerGroup, anchor.runId);
     chatCallbacks.mockChatOutputEvents([]);
@@ -4571,7 +4621,7 @@ describe("CHAT-02: auto-send after failures", () => {
     const first = await startChatRun(actor, {
       agentId,
       prompt: "start the session",
-      selectedModel: "claude-sonnet-4-6",
+      selectedModel: "claude-sonnet-5",
     });
     const firstHeaders = await claimChatRun(runnerGroup, first.runId);
     chatCallbacks.mockChatOutputEvents([]);
@@ -4805,7 +4855,7 @@ describe("CHAT-02: auto-send after failures", () => {
     const anchor = await startChatRun(actor, {
       agentId,
       prompt: "successful frontier anchor",
-      selectedModel: "claude-sonnet-4-6",
+      selectedModel: "claude-sonnet-5",
     });
     const anchorHeaders = await claimChatRun(runnerGroup, anchor.runId);
     chatCallbacks.mockChatOutputEvents([]);
@@ -4921,14 +4971,14 @@ describe("CHAT-02: auto-send across a model switch", () => {
     chatCallbacks.failIfChatCallbackRouteIsFetched();
     await chatCallbacks.updateOrgModelPolicies(actor, [
       {
-        model: "claude-sonnet-4-6",
+        model: "claude-sonnet-5",
         isDefault: true,
         defaultProviderType: "anthropic-api-key",
         credentialScope: "org",
         modelProviderId: providerId,
       },
       {
-        model: "claude-opus-4-6",
+        model: "claude-opus-4-8",
         isDefault: false,
         defaultProviderType: "anthropic-api-key",
         credentialScope: "org",
@@ -4951,7 +5001,7 @@ describe("CHAT-02: auto-send across a model switch", () => {
     const first = await startChatRun(actor, {
       agentId,
       prompt: firstPrompt,
-      selectedModel: "claude-opus-4-6",
+      selectedModel: "claude-opus-4-8",
     });
     const firstHeaders = await claimChatRun(runnerGroup, first.runId);
     chatCallbacks.mockChatOutputEvents([
@@ -4974,7 +5024,7 @@ describe("CHAT-02: auto-send across a model switch", () => {
     });
     await chatCallbacks.updateOrgModelPolicies(actor, [
       {
-        model: "claude-sonnet-4-6",
+        model: "claude-sonnet-5",
         isDefault: true,
         defaultProviderType: "anthropic-api-key",
         credentialScope: "org",
@@ -5021,7 +5071,7 @@ describe("CHAT-02: auto-send across a model switch", () => {
       "ANTHROPIC_API_KEY",
     );
     expect(autoContext.body.environment.ANTHROPIC_MODEL).toBe(
-      "claude-sonnet-4-6",
+      "claude-sonnet-5",
     );
 
     const thread = await chat.readThread(actor, first.threadId);
@@ -5039,7 +5089,7 @@ describe("CHAT-02: auto-send across a model switch", () => {
         return (
           event.kind === "model_selection_updated" &&
           event.chatThreadId === first.threadId &&
-          event.selectedModel === "claude-sonnet-4-6"
+          event.selectedModel === "claude-sonnet-5"
         );
       }),
     ).toHaveLength(1);
@@ -5062,14 +5112,14 @@ describe("CHAT-02: auto-send across a model switch", () => {
     chatCallbacks.failIfChatCallbackRouteIsFetched();
     await chatCallbacks.updateOrgModelPolicies(actor, [
       {
-        model: "claude-opus-4-6",
+        model: "claude-opus-4-8",
         isDefault: true,
         defaultProviderType: "anthropic-api-key",
         credentialScope: "org",
         modelProviderId: providerId,
       },
       {
-        model: "claude-sonnet-4-6",
+        model: "claude-sonnet-5",
         isDefault: false,
         defaultProviderType: "anthropic-api-key",
         credentialScope: "org",
@@ -5080,7 +5130,7 @@ describe("CHAT-02: auto-send across a model switch", () => {
     const first = await startChatRun(actor, {
       agentId,
       prompt: "start on opus before queueing a Claude family switch",
-      selectedModel: "claude-opus-4-6",
+      selectedModel: "claude-opus-4-8",
     });
     const firstHeaders = await claimChatRun(runnerGroup, first.runId);
     chatCallbacks.mockChatOutputEvents([]);
@@ -5095,7 +5145,7 @@ describe("CHAT-02: auto-send across a model switch", () => {
     await chat.updateThreadModelSelection(
       actor,
       first.threadId,
-      "claude-sonnet-4-6",
+      "claude-sonnet-5",
     );
     await queueChatEvent(actor, {
       agentId,
@@ -5133,7 +5183,7 @@ describe("CHAT-02: auto-send across a model switch", () => {
       "# Web Chat Run Context",
     );
     expect(autoContext.body.environment.ANTHROPIC_MODEL).toBe(
-      "claude-sonnet-4-6",
+      "claude-sonnet-5",
     );
 
     await api.requestCancelRun(actor, claimed.runId, [200]);

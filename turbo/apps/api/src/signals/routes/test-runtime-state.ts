@@ -22,6 +22,7 @@ import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
 import { threadGoals } from "@vm0/db/schema/thread-goal";
+import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { zeroWorkflowAutomations } from "@vm0/db/schema/zero-workflow";
 import { and, count, desc, eq, sql, type SQL } from "drizzle-orm";
@@ -555,20 +556,6 @@ async function mutateRunnerJobConnectorPermissionBaseline(
 ): Promise<void> {
   let executionContext: SQL;
   switch (body.mode) {
-    case "rollout-targets": {
-      executionContext = sql`jsonb_set(
-        jsonb_set(
-          ${runnerJobQueue.executionContext},
-          '{connectorRuntimeCandidateTargets}',
-          ${runnerJobQueue.executionContext}->'connectorRuntimeTargets',
-          true
-        ),
-        '{connectorRuntimeTargets}',
-        '[]'::jsonb,
-        true
-      )`;
-      break;
-    }
     case "remove": {
       executionContext = sql`${runnerJobQueue.executionContext} - 'connectorPermissionBaseline'`;
       break;
@@ -1132,6 +1119,77 @@ type PreviousApiComputerAccessAction = Extract<
   { action: "set-computer-use-host-as-previous-api" }
 >;
 
+type ModelSelectionFixtureAction = Extract<
+  TestRuntimeStateActionBody,
+  {
+    action:
+      | "set-agent-model-selection-as-previous-api"
+      | "set-run-model-selection-as-previous-api"
+      | "set-thread-model-selection-as-previous-api"
+      | "read-run-model-selection-fixture";
+  }
+>;
+
+async function modelSelectionFixtureActionResponse(
+  db: Db,
+  body: ModelSelectionFixtureAction,
+  signal: AbortSignal,
+) {
+  if (body.action === "read-run-model-selection-fixture") {
+    const [run] = await db
+      .select({
+        modelProvider: zeroRuns.modelProvider,
+        selectedModel: zeroRuns.selectedModel,
+      })
+      .from(zeroRuns)
+      .where(eq(zeroRuns.id, body.run_id))
+      .limit(1);
+    signal.throwIfAborted();
+    if (!run) {
+      throw new Error("Expected a Zero run model selection fixture");
+    }
+    return {
+      status: 200 as const,
+      body: {
+        ok: true as const,
+        run_model_selection: {
+          model_provider: run.modelProvider,
+          selected_model: run.selectedModel,
+        },
+      },
+    };
+  }
+
+  const table =
+    body.action === "set-agent-model-selection-as-previous-api"
+      ? zeroAgents
+      : body.action === "set-run-model-selection-as-previous-api"
+        ? zeroRuns
+        : chatThreads;
+  const idColumn =
+    body.action === "set-agent-model-selection-as-previous-api"
+      ? zeroAgents.id
+      : body.action === "set-run-model-selection-as-previous-api"
+        ? zeroRuns.id
+        : chatThreads.id;
+  const id =
+    "agent_id" in body
+      ? body.agent_id
+      : "run_id" in body
+        ? body.run_id
+        : body.thread_id;
+  const [updated] = await db
+    .update(table)
+    .set({ selectedModel: body.selected_model })
+    .where(eq(idColumn, id))
+    .returning({ id: idColumn });
+  signal.throwIfAborted();
+  if (!updated) {
+    throw new Error("Expected a persisted model selection fixture");
+  }
+  return { status: 200 as const, body: { ok: true as const } };
+}
+
 async function setComputerUseHostAsPreviousApi(
   db: Db,
   body: PreviousApiComputerAccessAction,
@@ -1232,6 +1290,7 @@ type CompatibilityFixtureAction =
   | PreviousApiHostedSiteAction
   | PreviousApiHostedDeploymentAction
   | PreviousApiComputerAccessAction
+  | ModelSelectionFixtureAction
   | PreviousApiBrowserTabSnapshotAction
   | PreviousApiRunnerJobContextProfileAction
   | ConnectorPermissionBaselineMutationAction;
@@ -1370,6 +1429,10 @@ function isCompatibilityFixtureAction(
     "insert-hosted-site-as-previous-api",
     "insert-hosted-deployment-as-previous-api",
     "set-computer-use-host-as-previous-api",
+    "set-agent-model-selection-as-previous-api",
+    "set-run-model-selection-as-previous-api",
+    "set-thread-model-selection-as-previous-api",
+    "read-run-model-selection-fixture",
     "set-browser-tab-snapshot-as-previous-api",
     "set-runner-job-context-profile-as-previous-api",
     "mutate-runner-job-connector-permission-baseline",
@@ -1383,6 +1446,14 @@ async function compatibilityFixtureActionResponse(
 ) {
   if (isAutonomyBudgetFixtureAction(body)) {
     return await autonomyBudgetFixtureActionResponse(db, body, signal);
+  }
+  if (
+    body.action === "set-agent-model-selection-as-previous-api" ||
+    body.action === "set-run-model-selection-as-previous-api" ||
+    body.action === "set-thread-model-selection-as-previous-api" ||
+    body.action === "read-run-model-selection-fixture"
+  ) {
+    return await modelSelectionFixtureActionResponse(db, body, signal);
   }
   switch (body.action) {
     case "insert-legacy-artifact-catalog-file": {

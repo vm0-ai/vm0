@@ -11,7 +11,10 @@ import { mockEnv } from "../../../lib/env";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { mockClerkMembership } from "./helpers/api-bdd-clerk";
-import { createConnectorBddApi } from "./helpers/api-bdd-connectors";
+import {
+  createConnectorBddApi,
+  manualHttpCustomConnectorCreateBody,
+} from "./helpers/api-bdd-connectors";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { zeroAgentsRoutes } from "../zero-agents";
 
@@ -73,13 +76,14 @@ async function createUnconfiguredCustomConnector(
   actor: ApiTestUser,
   slug: string,
 ) {
-  return await connectors.createCustomConnector(actor, {
-    displayName: `Connector ${slug}`,
-    slug: `_${slug}`,
-    prefixes: [`https://${slug}.example.test`],
-    headerName: "Authorization",
-    headerTemplate: "Bearer {{secret}}",
-  });
+  return await connectors.createCustomConnector(
+    actor,
+    manualHttpCustomConnectorCreateBody({
+      displayName: `Connector ${slug}`,
+      slug: `_${slug}`,
+      prefixTemplates: [`https://${slug}.example.test`],
+    }),
+  );
 }
 
 async function createCustomConnector(actor: ApiTestUser, slug: string) {
@@ -96,14 +100,15 @@ async function createPermissionedCustomConnector(
   actor: ApiTestUser,
   slug: string,
 ) {
-  return await connectors.createCustomConnector(actor, {
-    displayName: `Connector ${slug}`,
-    slug: `_${slug}`,
-    prefixes: [`https://${slug}.example.test`],
-    headerName: "Authorization",
-    headerTemplate: "Bearer {{secret}}",
-    permissionBundleRef: "builtin:slack@1",
-  });
+  return await connectors.createCustomConnector(
+    actor,
+    manualHttpCustomConnectorCreateBody({
+      displayName: `Connector ${slug}`,
+      slug: `_${slug}`,
+      prefixTemplates: [`https://${slug}.example.test`],
+      permissionBundleRef: "builtin:slack@1",
+    }),
+  );
 }
 
 describe("GET /api/zero/custom-connectors/:id/permissions", () => {
@@ -169,7 +174,7 @@ describe("GET /api/zero/agents/:id/custom-connectors", () => {
     });
   });
 
-  it("returns empty enabledIds for an agent with no enabled custom connectors", async () => {
+  it("returns empty grants for an agent with no authorized custom connectors", async () => {
     const actor = bdd.user();
     const agent = await createAgent(actor, { displayName: "Test Agent" });
 
@@ -193,7 +198,7 @@ describe("GET /api/zero/agents/:id/custom-connectors", () => {
       [200],
     );
 
-    expect(response.body).toStrictEqual({ enabledIds: [], grants: [] });
+    expect(response.body).toStrictEqual({ grants: [] });
   });
 
   it("returns 404 for a non-existent agent", async () => {
@@ -293,7 +298,7 @@ describe("PUT /api/zero/agents/:id/custom-connectors", () => {
     });
   });
 
-  it("sets enabled ids and round-trips through the API", async () => {
+  it("sets grants and round-trips through the API", async () => {
     const actor = bdd.user();
     const agent = await createAgent(actor, { displayName: "Test Agent" });
     const c1 = await createCustomConnector(actor, "round-a");
@@ -313,30 +318,24 @@ describe("PUT /api/zero/agents/:id/custom-connectors", () => {
     expect([...readBack].sort()).toStrictEqual([...response].sort());
   });
 
-  it("requires explicit permission selection for connectors with a bundle", async () => {
+  it("rejects the legacy id-only request before mutating grants", async () => {
     const actor = bdd.user();
     const agent = await createAgent(actor, {
-      displayName: "Permissioned Agent",
+      displayName: "Canonical Contract Agent",
     });
-    const connector = await createPermissionedCustomConnector(
+    const connector = await createCustomConnector(actor, "legacy-body");
+    const legacyIdField = ["enabled", "Ids"].join("");
+
+    const response = await connectors.requestUpdateAgentCustomConnectorsRaw(
       actor,
-      "permission-required",
+      agent.agentId,
+      { [legacyIdField]: [connector.id] },
     );
 
-    const response =
-      await connectors.requestLegacyAgentCustomConnectorIdsUpdate(
-        actor,
-        agent.agentId,
-        [connector.id],
-        [400],
-      );
-
-    expect(response.body).toStrictEqual({
-      error: {
-        message: `Permission selection is required for custom connector ids: ${connector.id}`,
-        code: "VALIDATION_ERROR",
-      },
-    });
+    expect(response.status).toBe(400);
+    await expect(
+      connectors.readAgentCustomConnectorGrants(actor, agent.agentId),
+    ).resolves.toStrictEqual([]);
   });
 
   it("persists disconnected permission grants and rejects unknown permissions atomically", async () => {
@@ -359,10 +358,7 @@ describe("PUT /api/zero/agents/:id/custom-connectors", () => {
       [grant],
       [200],
     );
-    expect(updated.body).toStrictEqual({
-      enabledIds: [connector.id],
-      grants: [grant],
-    });
+    expect(updated.body).toStrictEqual({ grants: [grant] });
     await expect(
       connectors.readAgentCustomConnectorGrants(actor, agent.agentId),
     ).resolves.toStrictEqual([grant]);
@@ -419,43 +415,7 @@ describe("PUT /api/zero/agents/:id/custom-connectors", () => {
     );
 
     expect(emptied.body).toStrictEqual({
-      enabledIds: [connector.id],
       grants: [{ customConnectorId: connector.id, permissionNames: [] }],
-    });
-  });
-
-  it("preserves existing permissions for a legacy idempotent add", async () => {
-    const actor = bdd.user();
-    const agent = await createAgent(actor, {
-      displayName: "Legacy Permission Agent",
-    });
-    const connector = await createPermissionedCustomConnector(
-      actor,
-      "legacy-permission-preservation",
-    );
-    const grant = {
-      customConnectorId: connector.id,
-      permissionNames: ["chat:write"],
-    };
-    await connectors.requestUpdateAgentCustomConnectorGrants(
-      actor,
-      agent.agentId,
-      [grant],
-      [200],
-    );
-
-    const repeated =
-      await connectors.requestLegacyAgentCustomConnectorIdsUpdate(
-        actor,
-        agent.agentId,
-        [connector.id],
-        [200],
-        "add",
-      );
-
-    expect(repeated.body).toStrictEqual({
-      enabledIds: [connector.id],
-      grants: [grant],
     });
   });
 
@@ -509,35 +469,7 @@ describe("PUT /api/zero/agents/:id/custom-connectors", () => {
       [200],
     );
 
-    expect(response.body).toStrictEqual({
-      enabledIds: [httpConnector.id, mcpConnector.id],
-      grants,
-    });
-  });
-
-  it("persists disconnected custom connectors through legacy id selection", async () => {
-    const actor = bdd.user();
-    const agent = await createAgent(actor, { displayName: "Test Agent" });
-    const connector = await createUnconfiguredCustomConnector(
-      actor,
-      "missing-secret",
-    );
-
-    const response =
-      await connectors.requestLegacyAgentCustomConnectorIdsUpdate(
-        actor,
-        agent.agentId,
-        [connector.id],
-        [200],
-      );
-
-    expect(response.body).toStrictEqual({
-      enabledIds: [connector.id],
-      grants: [{ customConnectorId: connector.id, permissionNames: [] }],
-    });
-    await expect(
-      connectors.readAgentCustomConnectors(actor, agent.agentId),
-    ).resolves.toStrictEqual([connector.id]);
+    expect(response.body).toStrictEqual({ grants });
   });
 
   it("returns agent not found without leaking a private agent", async () => {

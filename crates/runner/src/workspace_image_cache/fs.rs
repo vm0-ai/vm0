@@ -1,15 +1,16 @@
 use std::path::{Path, PathBuf};
-use std::process::Stdio;
 use std::time::Duration;
 
 #[cfg(not(test))]
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::MetadataExt;
 use tokio::fs;
-use tokio::io::AsyncReadExt;
 
 use chrono::SecondsFormat;
 
+use crate::bounded_command::{
+    BoundedCommandError, BoundedCommandOutcome, CommandOutputCapture, run_output_bounded,
+};
 use crate::error::{RunnerError, RunnerResult};
 
 use super::WorkspaceImageCache;
@@ -158,32 +159,13 @@ pub(super) async fn sparse_copy_with_timeout(
         .arg("--no-dereference")
         .arg("--")
         .arg(src)
-        .arg(dst)
-        .stdout(Stdio::null())
-        .stderr(Stdio::piped())
-        .kill_on_drop(true);
-    let mut child = command
-        .spawn()
-        .map_err(|e| RunnerError::Internal(format!("exec cp: {e}")))?;
-    let Some(stderr) = child.stderr.take() else {
-        let _ = child.start_kill();
-        let _ = child.wait().await;
-        return Err(RunnerError::Internal("cp stderr pipe unavailable".into()));
-    };
-    let stderr_task = tokio::spawn(read_child_output(stderr));
-
-    let status = match tokio::time::timeout(timeout, child.wait()).await {
-        Ok(Ok(status)) => status,
-        Ok(Err(e)) => {
-            let _ = child.start_kill();
-            let _ = child.wait().await;
-            let _ = stderr_task.await;
-            return Err(RunnerError::Internal(format!("wait cp: {e}")));
-        }
-        Err(_) => {
-            let _ = child.start_kill();
-            let _ = child.wait().await;
-            let _ = stderr_task.await;
+        .arg(dst);
+    let output = match run_output_bounded(command, "cp", CommandOutputCapture::Stderr, timeout)
+        .await
+        .map_err(cp_command_error)?
+    {
+        BoundedCommandOutcome::Exited(output) => output,
+        BoundedCommandOutcome::TimedOut => {
             return Err(RunnerError::Internal(format!(
                 "cp --sparse=always --no-dereference {} {} timed out after {}ms",
                 src.display(),
@@ -192,14 +174,10 @@ pub(super) async fn sparse_copy_with_timeout(
             )));
         }
     };
-    let stderr = stderr_task
-        .await
-        .map_err(|e| RunnerError::Internal(format!("cp stderr task failed: {e}")))?
-        .map_err(|e| RunnerError::Internal(format!("read cp stderr: {e}")))?;
-    if status.success() {
+    if output.status.success() {
         return Ok(());
     }
-    let stderr = String::from_utf8_lossy(&stderr);
+    let stderr = String::from_utf8_lossy(&output.stderr);
     Err(RunnerError::Internal(format!(
         "cp --sparse=always --no-dereference {} {} failed: {}",
         src.display(),
@@ -208,13 +186,12 @@ pub(super) async fn sparse_copy_with_timeout(
     )))
 }
 
-pub(super) async fn read_child_output<R>(mut output: R) -> std::io::Result<Vec<u8>>
-where
-    R: tokio::io::AsyncRead + Unpin,
-{
-    let mut bytes = Vec::new();
-    output.read_to_end(&mut bytes).await?;
-    Ok(bytes)
+fn cp_command_error(error: BoundedCommandError) -> RunnerError {
+    match error {
+        BoundedCommandError::Spawn(error) => RunnerError::Internal(format!("exec cp: {error}")),
+        BoundedCommandError::Wait(error) => RunnerError::Internal(format!("wait cp: {error}")),
+        BoundedCommandError::Lifecycle(message) => RunnerError::Internal(message),
+    }
 }
 
 #[cfg(not(test))]

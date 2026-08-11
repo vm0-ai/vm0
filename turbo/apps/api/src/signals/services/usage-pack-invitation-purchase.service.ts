@@ -296,7 +296,7 @@ export async function usagePackInvitationPurchaseSchemaAvailable(
   return state?.available ?? false;
 }
 
-export async function currentUsagePackSubscriptionForOrg(
+async function currentUsagePackSubscriptionForOrg(
   db: Pick<Db, "select">,
   orgId: string,
 ): Promise<UsagePackSubscriptionRow | null> {
@@ -1207,6 +1207,9 @@ async function activateAcceptedPurchase(
       signal,
     );
     if (current.purchasedCredits > 0) {
+      if (!current.amountPaidCents || !current.stripePaymentIntentId) {
+        throw new Error("Invitation acceptance has no refundable payment");
+      }
       await createUsagePackCreditGrant(tx, {
         orgId: current.orgId,
         userId: acceptedUserId,
@@ -1214,6 +1217,11 @@ async function activateAcceptedPurchase(
         idempotencyKey: `usage-pack-invitation:${current.id}:purchased`,
         amount: current.purchasedCredits,
         expiresAt: current.currentPeriodEnd,
+        refundSource: {
+          type: "payment_intent",
+          paymentIntentId: current.stripePaymentIntentId,
+          amountCents: current.amountPaidCents,
+        },
       });
     }
     if (current.bonusCredits > 0) {

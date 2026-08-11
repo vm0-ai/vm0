@@ -1001,12 +1001,16 @@ function createInlineTemplateNodeView(
   }
   openButton.addEventListener("mousedown", (event) => {
     event.preventDefault();
+  });
+  openButton.addEventListener("click", () => {
     actions.openTemplate(
       templateAttachmentNodeAttributes(currentNode).category,
     );
   });
   spec.zone.addEventListener("mousedown", (event) => {
     event.preventDefault();
+  });
+  spec.zone.addEventListener("click", () => {
     actions.openOptions(dom.getBoundingClientRect());
   });
   localizedUi.add(localize);

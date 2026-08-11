@@ -111,6 +111,47 @@ interface AuthHeaders {
   readonly authorization?: string;
 }
 
+type HttpCreateCustomConnectorBody = Exclude<
+  CreateCustomConnectorBody,
+  { readonly kind: "mcp" }
+>;
+
+export function manualHttpCustomConnectorCreateBody(args: {
+  readonly displayName: string;
+  readonly prefixTemplates: readonly string[];
+  readonly slug?: string;
+  readonly permissionBundleRef?: HttpCreateCustomConnectorBody["permissionBundleRef"];
+  readonly skillMarkdown?: HttpCreateCustomConnectorBody["skillMarkdown"];
+}): HttpCreateCustomConnectorBody {
+  return {
+    displayName: args.displayName,
+    prefixTemplates: [...args.prefixTemplates],
+    fields: [
+      {
+        key: "secret",
+        label: "Secret",
+        kind: "secret",
+        required: true,
+        description: "API credential",
+      },
+    ],
+    headerInjections: [
+      {
+        name: "Authorization",
+        valueTemplate: "Bearer {{secrets.secret}}",
+      },
+    ],
+    queryInjections: [],
+    ...(args.slug === undefined ? {} : { slug: args.slug }),
+    ...(args.permissionBundleRef === undefined
+      ? {}
+      : { permissionBundleRef: args.permissionBundleRef }),
+    ...(args.skillMarkdown === undefined
+      ? {}
+      : { skillMarkdown: args.skillMarkdown }),
+  };
+}
+
 type CallbackQuery = {
   readonly code?: string;
   readonly state?: string;
@@ -2238,27 +2279,25 @@ export function createConnectorBddApi(context: TestContext) {
       );
     },
 
-    async requestLegacyAgentCustomConnectorIdsUpdate(
+    async requestUpdateAgentCustomConnectorsRaw(
       actor: ApiTestUser | null,
       agentId: string,
-      enabledIds: readonly string[],
-      statuses: readonly (200 | 400 | 401 | 403 | 404)[],
-      operation?: "replace" | "add" | "remove",
-    ) {
-      const client = setupApp({ context, routes: zeroAgentsRoutes })(
-        zeroAgentCustomConnectorsContract,
-      );
-      const body =
-        operation === undefined
-          ? { enabledIds: [...enabledIds] }
-          : { enabledIds: [...enabledIds], operation };
-      return await accept(
-        client.update({
-          params: { id: agentId },
-          headers: authenticate(actor),
-          body,
-        }),
-        statuses,
+      body: unknown,
+    ): Promise<Response> {
+      const app = createApp({
+        signal: context.signal,
+        routes: zeroAgentsRoutes,
+      });
+      return await app.request(
+        `/api/zero/agents/${agentId}/custom-connectors`,
+        {
+          method: "PUT",
+          headers: {
+            ...authenticate(actor),
+            "content-type": "application/json",
+          },
+          body: JSON.stringify(body),
+        },
       );
     },
 

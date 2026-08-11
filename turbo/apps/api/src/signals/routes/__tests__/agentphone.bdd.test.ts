@@ -856,14 +856,14 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     const modelOptions = await commandReply("/model");
     expect(modelOptions).toContain("Available models");
     expect(modelOptions).toContain("Current: workspace default");
-    expect(modelOptions).toContain("/model claude-sonnet-4-6");
+    expect(modelOptions).toContain("/model claude-sonnet-5");
     expect(modelOptions).toContain("(workspace default)");
 
-    const switched = await commandReply("/model claude-sonnet-4-6");
+    const switched = await commandReply("/model claude-sonnet-5");
     expect(switched).toContain("Switched to ");
 
     const optionsAfterSwitch = await commandReply("/model");
-    expect(optionsAfterSwitch).toContain("Current: Claude Sonnet 4.6");
+    expect(optionsAfterSwitch).toContain("Current: Claude Sonnet 5");
     expect(optionsAfterSwitch).toContain("(current, workspace default)");
 
     const unknownModel = await commandReply("/model not-a-model");

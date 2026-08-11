@@ -5,6 +5,7 @@ import {
 } from "@vm0/api-contracts/contracts/test-connector-credential-storage-state";
 
 import { accept, type TestContext } from "../../../../__tests__/test-context";
+import { createApp } from "../../../../app-factory";
 import { setupApp } from "../../../../__tests__/test-helpers";
 import { testConnectorCredentialStorageStateRoutes } from "../../test-connector-credential-storage-state";
 
@@ -22,6 +23,20 @@ async function postAction(
     [200],
   );
   return response.body;
+}
+
+async function requestAction(
+  context: TestContext,
+  body: TestConnectorCredentialStorageStateActionBody,
+): Promise<Response> {
+  return await createApp({
+    signal: context.signal,
+    routes: testConnectorCredentialStorageStateRoutes,
+  }).request(testConnectorCredentialStorageStateContract.action.path, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
 }
 
 export async function readConnectorCredentialStorageState(
@@ -226,6 +241,24 @@ export async function setConnectorVariableOwner(
   },
 ): Promise<void> {
   await postAction(context, {
+    action: "set-variable-owner",
+    connector_id: args.connectorId,
+    name: args.name,
+    org_id: args.orgId,
+    user_id: args.userId,
+  });
+}
+
+export async function requestSetConnectorVariableOwner(
+  context: TestContext,
+  args: {
+    readonly connectorId: string;
+    readonly name: string;
+    readonly orgId: string;
+    readonly userId: string;
+  },
+): Promise<Response> {
+  return await requestAction(context, {
     action: "set-variable-owner",
     connector_id: args.connectorId,
     name: args.name,

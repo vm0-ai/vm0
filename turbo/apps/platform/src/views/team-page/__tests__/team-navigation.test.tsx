@@ -37,8 +37,10 @@ import {
   zeroCustomConnectorByIdContract,
   zeroCustomConnectorsContract,
   type CustomConnectorHttpResponse,
+  type CustomConnectorMcpResponse,
   type CustomConnectorResponse,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import { describe, expect, it } from "vitest";
@@ -89,16 +91,7 @@ function applyCustomConnectorUpdate(
   current: readonly AgentCustomConnectorGrant[],
   body: AgentCustomConnectorUpdate,
 ): AgentCustomConnectorGrant[] {
-  const requested =
-    "grants" in body
-      ? body.grants
-      : body.enabledIds.map((customConnectorId) => {
-          return (
-            current.find((grant) => {
-              return grant.customConnectorId === customConnectorId;
-            }) ?? { customConnectorId, permissionNames: [] }
-          );
-        });
+  const requested = body.grants;
   if (body.operation === "add") {
     const byConnectorId = new Map(
       current.map((grant) => {
@@ -260,6 +253,42 @@ function createCustomConnector(): CustomConnectorHttpResponse {
     hasSecret: true,
     createdAt: "2026-02-01T00:00:00Z",
     updatedAt: "2026-02-01T00:00:00Z",
+  };
+}
+
+function createMcpCustomConnector(): CustomConnectorMcpResponse {
+  return {
+    kind: "mcp",
+    id: "44444444-4444-4444-8444-444444444444",
+    storageVersion: 1,
+    slug: "_deepwiki",
+    displayName: "DeepWiki",
+    endpoint: "https://mcp.deepwiki.com/mcp",
+    transport: "streamable-http",
+    prefixTemplates: [],
+    fields: [
+      {
+        key: "secret",
+        label: "Secret",
+        kind: "secret",
+        required: true,
+      },
+    ],
+    headerInjections: [
+      {
+        name: "X-VM0-Test-Token",
+        valueTemplate: "{{secrets.secret}}",
+      },
+    ],
+    queryInjections: [],
+    authMode: "manual",
+    permissionBundleRef: null,
+    connected: true,
+    missingRequiredFields: [],
+    configuredFieldKeys: ["secret"],
+    hasSecret: true,
+    createdAt: "2026-08-11T00:00:00Z",
+    updatedAt: "2026-08-11T00:00:00Z",
   };
 }
 
@@ -435,12 +464,7 @@ function mockTeamAPIs({
     zeroAgentCustomConnectorsContract.get,
     ({ params, respond }) => {
       const grants = customConnectorGrantsByAgent.get(params.id) ?? [];
-      return respond(200, {
-        enabledIds: grants.map((grant) => {
-          return grant.customConnectorId;
-        }),
-        grants,
-      });
+      return respond(200, { grants });
     },
   );
   context.mocks.api(
@@ -452,12 +476,7 @@ function mockTeamAPIs({
         body,
       );
       customConnectorGrantsByAgent.set(params.id, grants);
-      return respond(200, {
-        enabledIds: grants.map((grant) => {
-          return grant.customConnectorId;
-        }),
-        grants,
-      });
+      return respond(200, { grants });
     },
   );
   context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
@@ -601,6 +620,80 @@ describe("team page navigation", () => {
     });
   });
 
+  it("shows and authorizes connected MCP custom connectors", async () => {
+    const connector = createMcpCustomConnector();
+    mockTeamAPIs({ customConnector: connector });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${researchAgentId}`,
+      featureSwitches: { [FeatureSwitchKey.CustomConnectorMcp]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("DeepWiki")).toBeInTheDocument();
+      expect(
+        screen.getByText("https://mcp.deepwiki.com/mcp"),
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByLabelText("Manage DeepWiki permissions"),
+    ).not.toBeInTheDocument();
+
+    click(screen.getByLabelText("Grant DeepWiki access"));
+    await waitFor(() => {
+      expect(screen.getByText("Custom connectors saved")).toBeInTheDocument();
+      expect(screen.getByLabelText("Revoke DeepWiki access")).toBeChecked();
+    });
+    toast.dismiss();
+  });
+
+  it("keeps authorized MCP custom connectors revocable while disabled", async () => {
+    const connector = createMcpCustomConnector();
+    let grants: AgentCustomConnectorGrant[] = [
+      { customConnectorId: connector.id, permissionNames: [] },
+    ];
+    let updateCount = 0;
+    mockTeamAPIs({ customConnector: connector });
+    context.mocks.api(
+      zeroAgentCustomConnectorsContract.get,
+      ({ params, respond }) => {
+        expect(params.id).toBe(researchAgentId);
+        return respond(200, { grants });
+      },
+    );
+    context.mocks.api(
+      zeroAgentCustomConnectorsContract.update,
+      ({ body, params, respond }) => {
+        expect(params.id).toBe(researchAgentId);
+        expect(body).toStrictEqual({
+          grants: [{ customConnectorId: connector.id, permissionNames: [] }],
+          operation: "remove",
+        });
+        updateCount += 1;
+        grants = [];
+        return respond(200, { grants });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${researchAgentId}`,
+      featureSwitches: { [FeatureSwitchKey.CustomConnectorMcp]: false },
+    });
+
+    await screen.findByText("DeepWiki");
+    expect(
+      screen.queryByLabelText("Grant DeepWiki access"),
+    ).not.toBeInTheDocument();
+    click(screen.getByLabelText("Revoke DeepWiki access"));
+
+    await waitFor(() => {
+      expect(updateCount).toBe(1);
+      expect(screen.queryByText("DeepWiki")).not.toBeInTheDocument();
+    });
+  });
+
   it("hides unavailable custom connectors without loading agent access", async () => {
     const customConnector = {
       ...createCustomConnector(),
@@ -619,10 +712,7 @@ describe("team page navigation", () => {
     });
     context.mocks.api(zeroAgentCustomConnectorsContract.get, ({ respond }) => {
       agentAccessReads += 1;
-      return respond(200, {
-        enabledIds: [],
-        grants: [],
-      });
+      return respond(200, { grants: [] });
     });
 
     detachedSetupPage({
@@ -652,7 +742,6 @@ describe("team page navigation", () => {
           200,
           params.id === researchAgentId
             ? {
-                enabledIds: [customConnector.id],
                 grants: [
                   {
                     customConnectorId: customConnector.id,
@@ -660,7 +749,7 @@ describe("team page navigation", () => {
                   },
                 ],
               }
-            : { enabledIds: [], grants: [] },
+            : { grants: [] },
         );
       },
     );
@@ -686,16 +775,7 @@ describe("team page navigation", () => {
       ({ body, params, respond }) => {
         updatedAgentIds.push(params.id);
         return respond(200, {
-          enabledIds: [customConnector.id],
-          grants:
-            "grants" in body
-              ? body.grants
-              : [
-                  {
-                    customConnectorId: customConnector.id,
-                    permissionNames: [],
-                  },
-                ],
+          grants: body.grants,
         });
       },
     );

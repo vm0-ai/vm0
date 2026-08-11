@@ -17,7 +17,7 @@ import {
 } from "./connector-client-invalidation.service";
 import { deleteCustomConnectorMemberConnection } from "./custom-connector-credential-storage.service";
 import {
-  commitPreparedCustomConnectorSkillVolume,
+  commitPreparedCustomConnectorSkillStorage,
   prepareCustomConnectorSkillVolume$,
 } from "./custom-connector-skill-volume.service";
 import {
@@ -186,9 +186,6 @@ function feishuCustomConnectorDisplayName(botName: string | null): string {
 function desiredConnectorDefinition(installation: FeishuConnectorInstallation) {
   return {
     displayName: feishuCustomConnectorDisplayName(installation.botName),
-    prefixes: [FEISHU_API_PREFIX],
-    headerName: FEISHU_AUTHORIZATION_HEADER,
-    headerTemplate: FEISHU_AUTHORIZATION_TEMPLATE,
     prefixTemplates: [FEISHU_API_PREFIX],
     fields: [],
     headerInjections: [
@@ -223,6 +220,7 @@ function desiredOAuthConfig(installation: FeishuConnectorInstallation) {
 function connectorDefinitionMatches(
   connector: CustomConnectorDefinitionRow,
   installation: FeishuConnectorInstallation,
+  skillStorageVersionId: string,
 ): boolean {
   const desired = desiredConnectorDefinition(installation);
   return (
@@ -234,7 +232,8 @@ function connectorDefinitionMatches(
     connector.authMode === desired.authMode &&
     connector.enabled === desired.enabled &&
     connector.permissionBundleRef === desired.permissionBundleRef &&
-    connector.skillMarkdown === desired.skillMarkdown
+    connector.skillMarkdown === desired.skillMarkdown &&
+    connector.skillStorageVersionId === skillStorageVersionId
   );
 }
 
@@ -263,16 +262,17 @@ async function createFeishuCustomConnector(
   tx: DbTransaction,
   args: EnsureFeishuCustomConnectorArgs,
   installation: FeishuConnectorInstallation,
-  connectorId: string,
+  prepared: PreparedFeishuCustomConnectorSkill,
   signal: AbortSignal,
 ): Promise<ReconciledFeishuCustomConnector> {
   const [connector] = await tx
     .insert(orgCustomConnectors)
     .values({
-      id: connectorId,
+      id: prepared.connectorId,
       orgId: args.orgId,
       slug: getFeishuCustomConnectorSlug(args.installationId),
       ...desiredConnectorDefinition(installation),
+      skillStorageVersionId: prepared.volume.version.versionId,
       createdBy: installation.ownerUserId ?? args.userId,
     })
     .returning({ id: orgCustomConnectors.id });
@@ -294,9 +294,9 @@ async function createFeishuCustomConnector(
 
 async function repairFeishuCustomConnector(
   tx: DbTransaction,
-  args: EnsureFeishuCustomConnectorArgs,
   installation: FeishuConnectorInstallation,
   existing: ExistingFeishuCustomConnector,
+  skillStorageVersionId: string,
   signal: AbortSignal,
 ): Promise<ReconciledFeishuCustomConnector> {
   const credentialContractChanged =
@@ -307,6 +307,7 @@ async function repairFeishuCustomConnector(
     .update(orgCustomConnectors)
     .set({
       ...desiredConnectorDefinition(installation),
+      skillStorageVersionId,
       storageVersion: credentialContractChanged
         ? existing.connector.storageVersion + 1
         : existing.connector.storageVersion,
@@ -429,19 +430,28 @@ async function reconcileFeishuCustomConnector(
     };
   }
 
+  await commitPreparedCustomConnectorSkillStorage(
+    { db: tx, volume: prepared.volume },
+    signal,
+  );
+  const skillStorageVersionId = prepared.volume.version.versionId;
+
   let connector: ReconciledFeishuCustomConnector;
   if (!existing) {
     connector = await createFeishuCustomConnector(
       tx,
       args,
       installation,
-      prepared.connectorId,
+      prepared,
       signal,
     );
   } else {
     const needsRepair =
-      !connectorDefinitionMatches(existing.connector, installation) ||
-      !oauthConfigMatches(existing.oauthConfig, installation);
+      !connectorDefinitionMatches(
+        existing.connector,
+        installation,
+        skillStorageVersionId,
+      ) || !oauthConfigMatches(existing.oauthConfig, installation);
     connector =
       !args.configurationChanged && !needsRepair
         ? {
@@ -451,20 +461,12 @@ async function reconcileFeishuCustomConnector(
           }
         : await repairFeishuCustomConnector(
             tx,
-            args,
             installation,
             existing,
+            skillStorageVersionId,
             signal,
           );
   }
-  await commitPreparedCustomConnectorSkillVolume(
-    {
-      db: tx,
-      connectorId: connector.connectorId,
-      volume: prepared.volume,
-    },
-    signal,
-  );
   return {
     kind: "reconciled",
     connector,

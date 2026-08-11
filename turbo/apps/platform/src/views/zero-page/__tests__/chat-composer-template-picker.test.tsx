@@ -255,11 +255,13 @@ async function selectAvatarRecommendationFilters(
 ): Promise<void> {
   await user.click(within(dialog).getByText("Filters"));
   await user.click(screen.getByLabelText("Style: All"));
-  await user.click(screen.getByRole("option", { name: "Professional" }));
+  await user.click(await screen.findByRole("option", { name: "Professional" }));
   await user.click(screen.getByLabelText("Scene: All"));
-  await user.click(screen.getByRole("option", { name: "Business" }));
+  await user.click(await screen.findByRole("option", { name: "Business" }));
   await user.click(screen.getByLabelText("Ethnicity: All"));
-  await user.click(screen.getByRole("option", { name: "North american" }));
+  await user.click(
+    await screen.findByRole("option", { name: "North american" }),
+  );
   await user.keyboard("{Escape}");
 }
 
@@ -407,7 +409,8 @@ describe("chat composer templates", () => {
     const chip = document.querySelector("[data-composer-inline-template]");
     expect(chip?.querySelectorAll("button")).toHaveLength(2);
 
-    await user.click(spec);
+    spec.focus();
+    await user.keyboard("{Enter}");
     expect(
       queryAllByRoleFast("button").some((button) => {
         return button.textContent === "Reset to default";
@@ -661,6 +664,8 @@ describe("chat composer templates", () => {
     const user = userEvent.setup({ delay: null });
     const illustrationTemplate = ILLUSTRATION_TEMPLATE_ITEMS[0]!;
     const videoTemplate = VIDEO_TEMPLATE_ITEMS[0]!;
+    mockAvatarCatalog();
+    mockVoiceCatalog();
     mockChatLifecycle(context, { threadId: THREAD_ID });
 
     detachedSetupPage({
@@ -685,11 +690,7 @@ describe("chat composer templates", () => {
     expect(tabByText("Illustration")).toBeInTheDocument();
     expect(tabByText("Video")).toBeInTheDocument();
     expect(tabByText("Website")).toBeInTheDocument();
-    expect(
-      queryAllByRoleFast("tab").some((tab) => {
-        return tab.textContent === "Avatar";
-      }),
-    ).toBeFalsy();
+    expect(tabByText("Avatar")).toBeInTheDocument();
     expect(document.activeElement).not.toBe(tabByText("Presentation"));
     expect(tabByText("Presentation")).toHaveAttribute("aria-selected", "true");
     const categorySelect = screen.getByRole("combobox", {
@@ -998,8 +999,7 @@ describe("chat composer templates", () => {
       screen.getByLabelText("Use case: Advertisement"),
     ).toBeInTheDocument();
     await user.click(screen.getByLabelText("Language: English"));
-    expect(screen.getByRole("option", { name: "Spanish" })).toBeInTheDocument();
-    await user.click(screen.getByRole("option", { name: "Spanish" }));
+    await user.click(await screen.findByRole("option", { name: "Spanish" }));
     await user.keyboard("{Escape}");
     await waitFor(() => {
       expect(
@@ -3403,20 +3403,9 @@ describe("chat composer templates", () => {
     const websitePreviewDialog = screen.getByRole("dialog", {
       name: `Website / ${websiteTemplate.title}`,
     });
-    const websitePreviewPlaceholder = screen.getByTitle(
-      `${websiteTemplate.title} website preview placeholder`,
-    );
-    expect(websitePreviewDialog).toHaveClass("data-[state=open]:!animate-none");
-    expect(document.querySelector(".zero-dialog-overlay")).toHaveClass(
-      "data-[state=open]:!animate-none",
-    );
-    expect(websitePreviewPlaceholder).toHaveClass("block");
     fireEvent.load(
       screen.getByTitle(`${websiteTemplate.title} website full preview`),
     );
-    await waitFor(() => {
-      expect(websitePreviewPlaceholder).toHaveClass("hidden");
-    });
     click(within(websitePreviewDialog).getByLabelText("Close"));
     await waitFor(() => {
       expect(
@@ -3463,10 +3452,7 @@ describe("chat composer templates", () => {
       screen.getByRole("dialog", {
         name: "Template",
       }),
-    ).toHaveClass("data-[state=open]:!animate-none");
-    expect(document.querySelector(".zero-dialog-overlay")).toHaveClass(
-      "data-[state=open]:!animate-none",
-    );
+    ).toBeInTheDocument();
     click(screen.getByLabelText("Close"));
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();

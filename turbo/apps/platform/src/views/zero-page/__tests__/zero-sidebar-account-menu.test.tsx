@@ -1309,8 +1309,25 @@ describe("zero sidebar account menu", () => {
 
     menu = await openAccountMenu();
     click(within(menu).getByText("Trocar de conta"));
-    expect(screen.getByText("Jamie Chen")).toBeVisible();
-    expect(screen.getByText("jamie.chen@example.test")).toBeVisible();
-    expect(screen.getByText("Adicionar conta")).toBeVisible();
+    await waitFor(() => {
+      const menuItems = queryAllByRoleFast("menuitem");
+      const switchAccount = menuItems.find((item) => {
+        return (
+          item.textContent?.includes("Jamie Chen") === true &&
+          item.textContent.includes("jamie.chen@example.test")
+        );
+      });
+      if (!switchAccount) {
+        throw new Error("Expected the account switch menu item");
+      }
+      expect(within(switchAccount).getByText("Jamie Chen")).toBeVisible();
+      expect(
+        within(switchAccount).getByText("jamie.chen@example.test"),
+      ).toBeVisible();
+      const addAccount = menuItems.find((item) => {
+        return item.textContent === "Adicionar conta";
+      });
+      expect(addAccount).toBeVisible();
+    });
   });
 });

@@ -92,7 +92,7 @@ export async function commitPreparedCustomConnectorSkillVolume(
   },
   signal: AbortSignal,
 ): Promise<void> {
-  await commitPreparedVolumeServerSide(
+  await commitPreparedCustomConnectorSkillStorage(
     { db: args.db, volume: args.volume },
     signal,
   );
@@ -101,4 +101,17 @@ export async function commitPreparedCustomConnectorSkillVolume(
     .set({ skillStorageVersionId: args.volume.version.versionId })
     .where(eq(orgCustomConnectors.id, args.connectorId));
   signal.throwIfAborted();
+}
+
+export async function commitPreparedCustomConnectorSkillStorage(
+  args: {
+    readonly db: Db;
+    readonly volume: PreparedServerSideVolume;
+  },
+  signal: AbortSignal,
+): Promise<void> {
+  await commitPreparedVolumeServerSide(
+    { db: args.db, volume: args.volume },
+    signal,
+  );
 }

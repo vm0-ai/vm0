@@ -23,7 +23,9 @@ import {
   isModelSupportedByProvider,
   isCodexFastModeModel,
   isSupportedRunModel,
+  isRetiredRunModel,
   normalizeRunModelId,
+  getRetiredRunModelReplacement,
   getAuthMethodsForType,
   getSecretNameForType,
   getSecretsForAuthMethod,
@@ -35,6 +37,7 @@ import {
   LIMITED_FREE1_DEFAULT_RUN_MODEL,
   CODEX_FAST_MODE_MODELS,
   SUPPORTED_RUN_MODELS,
+  RETIRED_RUN_MODELS,
   VM0_MODEL_PRICE_TIER,
   DEFAULT_ORG_MODEL_POLICY_MODELS,
   MODEL_PROVIDER_FIREWALL_CONFIGS,
@@ -274,6 +277,55 @@ describe("model-first canonical catalog", () => {
       "minimax/minimax-m2.7",
     );
     expect(isSupportedRunModel("deepseek-v4-flash")).toBe(true);
+  });
+
+  it("keeps retired models readable while resolving their replacements", () => {
+    expect(RETIRED_RUN_MODELS).toEqual([
+      "gpt-5.5",
+      "claude-opus-4-7",
+      "claude-opus-4-6",
+      "claude-sonnet-4-6",
+      "kimi-k3",
+      "kimi-k2.7-code",
+      "MiniMax-M3",
+      "glm-5.2",
+      "glm-5.1",
+      "mimo-v2.5",
+      "hy3-preview",
+    ]);
+    expect(isSupportedRunModel("gpt-5.5")).toBe(true);
+    expect(isRetiredRunModel("gpt-5.5")).toBe(true);
+    expect(getRetiredRunModelReplacement("gpt-5.5")).toBe("gpt-5.6-sol");
+    expect(getRetiredRunModelReplacement("anthropic/claude-opus-4.7")).toBe(
+      "claude-opus-4-8",
+    );
+    expect(getRetiredRunModelReplacement("anthropic/claude-sonnet-4.6")).toBe(
+      "claude-sonnet-5",
+    );
+    expect(getRetiredRunModelReplacement("minimax/minimax-m3")).toBe(
+      "deepseek-v4-flash",
+    );
+    expect(getRetiredRunModelReplacement("zai/glm-5-turbo")).toBe(
+      "deepseek-v4-flash",
+    );
+    expect(getRetiredRunModelReplacement("glm-4.7")).toBe("deepseek-v4-flash");
+    expect(isRetiredRunModel("glm-4.5-air")).toBe(true);
+    expect(
+      getRetiredRunModelReplacement("some-future-model", {
+        modelProviderType: "zai-api-key",
+      }),
+    ).toBe("deepseek-v4-flash");
+    expect(
+      getRetiredRunModelReplacement("claude-opus-4-7", {
+        restrictedVm0Models: true,
+      }),
+    ).toBe("deepseek-v4-flash");
+    expect(getRetiredRunModelReplacement("claude-opus-4-8")).toBeUndefined();
+    expect(isRetiredRunModel("claude-opus-4-8")).toBe(false);
+    expect(getDefaultModel("moonshot-api-key")).toBe("kimi-k2-thinking-turbo");
+    expect(isRetiredRunModel(getDefaultModel("moonshot-api-key"))).toBe(false);
+    expect(isRetiredRunModel(getDefaultModel("minimax-api-key"))).toBe(false);
+    expect(getDefaultModel("zai-api-key")).toBe("");
   });
 
   it("returns compatible provider types for canonical models", () => {
@@ -691,9 +743,9 @@ describe("model selection for Anthropic-native providers", () => {
   );
 
   it.each(["claude-code-oauth-token", "anthropic-api-key"] as const)(
-    "%s defaults to claude-sonnet-4-6",
+    "%s defaults to claude-sonnet-5",
     (type) => {
-      expect(getDefaultModel(type)).toBe("claude-sonnet-4-6");
+      expect(getDefaultModel(type)).toBe("claude-sonnet-5");
     },
   );
 
@@ -865,17 +917,17 @@ describe("model image input support", () => {
 });
 
 describe("minimax-api-key provider", () => {
-  it("uses M3 by default while keeping supported M2 models available", () => {
+  it("uses M2.1 by default while keeping historical M3 readable", () => {
     expect(getModels("minimax-api-key")).toEqual([
       "MiniMax-M3",
       "MiniMax-M2.1",
     ]);
-    expect(getDefaultModel("minimax-api-key")).toBe("MiniMax-M3");
+    expect(getDefaultModel("minimax-api-key")).toBe("MiniMax-M2.1");
   });
 });
 
 describe("zai-api-key provider", () => {
-  it("defaults to GLM 5.2 while keeping GLM 5.1 available", () => {
+  it("has no active default while keeping historical models readable", () => {
     expect(getModels("zai-api-key")).toEqual([
       "glm-5.2",
       "glm-5.1",
@@ -883,7 +935,7 @@ describe("zai-api-key provider", () => {
       "glm-4.7",
       "glm-4.5-air",
     ]);
-    expect(getDefaultModel("zai-api-key")).toBe("glm-5.2");
+    expect(getDefaultModel("zai-api-key")).toBe("");
   });
 });
 
@@ -979,14 +1031,14 @@ describe("openai-api-key codex provider", () => {
     expect(envBindings!["OPENAI_MODEL"]).toBe("$model");
   });
 
-  it("offers codex-compatible models with gpt-5.5 default", () => {
+  it("offers codex-compatible models with gpt-5.6-sol default", () => {
     expect(getModels("openai-api-key")).toEqual([
       "gpt-5.6-sol",
       "gpt-5.6-terra",
       "gpt-5.6-luna",
       "gpt-5.5",
     ]);
-    expect(getDefaultModel("openai-api-key")).toBe("gpt-5.5");
+    expect(getDefaultModel("openai-api-key")).toBe("gpt-5.6-sol");
   });
 
   it("supports model selection", () => {
@@ -1217,14 +1269,14 @@ describe("codex-oauth-token codex provider", () => {
     expect(envBindings.OPENAI_MODEL).toBe("$model");
   });
 
-  it("offers gpt-5.x models with gpt-5.5 default", () => {
+  it("offers gpt-5.x models with gpt-5.6-sol default", () => {
     expect(getModels("codex-oauth-token")).toEqual([
       "gpt-5.6-sol",
       "gpt-5.6-terra",
       "gpt-5.6-luna",
       "gpt-5.5",
     ]);
-    expect(getDefaultModel("codex-oauth-token")).toBe("gpt-5.5");
+    expect(getDefaultModel("codex-oauth-token")).toBe("gpt-5.6-sol");
   });
 
   it("supports model selection", () => {

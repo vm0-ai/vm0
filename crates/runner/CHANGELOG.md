@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.163.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.163.3...runner-rs-v0.163.4) (2026-08-11)
+
+
+### Bug Fixes
+
+* **runner:** bound workspace copy subprocess cleanup ([#26306](https://github.com/vm0-ai/vm0/issues/26306)) ([090deab](https://github.com/vm0-ai/vm0/commit/090deab41074cd464cc8cb85eb33628c2cf711f5))
+* **runner:** require exact dnsmasq executable matching ([#26296](https://github.com/vm0-ai/vm0/issues/26296)) ([8141bfa](https://github.com/vm0-ai/vm0/commit/8141bfa77796ea7d7f1c7c10049ec077ce6c0c4b))
+
+
+### Refactoring
+
+* **connectors:** remove runtime candidate readers ([#26307](https://github.com/vm0-ai/vm0/issues/26307)) ([72a8548](https://github.com/vm0-ai/vm0/commit/72a8548767d4bcb4c147a717ead50fa6cc4e58e2))
+
 ## [0.163.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.163.2...runner-rs-v0.163.3) (2026-08-11)
 
 ## [0.163.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.163.1...runner-rs-v0.163.2) (2026-08-11)

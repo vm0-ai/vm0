@@ -101,7 +101,7 @@ async function seedGoalApiFixture(): Promise<GoalApiFixture> {
     {
       agentId: agent.agentId,
       prompt: "goal precondition",
-      model: "claude-sonnet-4-6",
+      model: "claude-sonnet-5",
     },
     [201],
   );
@@ -416,7 +416,7 @@ describe("zero goals", () => {
         version: 1,
         parts: [
           { type: "goal", goalBrief: "bootstrap autonomously" },
-          { type: "model", selectedModel: "claude-sonnet-4-6" },
+          { type: "model", selectedModel: "claude-sonnet-5" },
         ],
       },
     });
@@ -470,8 +470,13 @@ describe("zero goals", () => {
       objectiveBrief: "coalesce goal triggers",
     });
 
-    expect(first.kind).toBe("inserted");
-    expect(second).toStrictEqual({ kind: "coalesced" });
+    if (first.kind !== "inserted") {
+      throw new Error("Expected the first goal queue event to be inserted");
+    }
+    expect(second).toStrictEqual({
+      kind: "coalesced",
+      eventId: first.eventId,
+    });
     expect(kms.generateDataKeyCalls).toBe(0);
     const state = await readGoalQueueStateFixture(fixture.threadId);
     expect(state.eventIds).toHaveLength(1);

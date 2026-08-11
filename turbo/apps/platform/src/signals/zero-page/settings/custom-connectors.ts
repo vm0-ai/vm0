@@ -15,7 +15,7 @@ import {
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import {
   zeroAgentCustomConnectorsContract,
-  type AgentCustomConnectorResponse,
+  type AgentCustomConnectorGrants,
 } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import { IN_VITEST } from "../../../env.ts";
@@ -77,7 +77,7 @@ export const customConnectors$ = computed(
 
 export interface CustomConnectorAgentAuthorization {
   readonly agent: TeamComposeItem;
-  readonly access: AgentCustomConnectorResponse;
+  readonly access: AgentCustomConnectorGrants;
 }
 
 export const customConnectorAgentAuthorizations$ = computed(

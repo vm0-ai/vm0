@@ -1,18 +1,32 @@
 import { command, computed, state } from "ccstate";
 import {
   USAGE_PACKS_USD,
+  type UsagePackManagementResponse,
   type UsagePackSubscriptionChangePreviewResponse,
   type UsagePackUsd,
 } from "@vm0/api-contracts/contracts/zero-billing";
 
 import { onRef } from "../../utils.ts";
 
-export { USAGE_PACKS_USD };
 export const MINIMUM_USAGE_PACK_USD = USAGE_PACKS_USD[0];
 
 export type { UsagePackUsd };
 export type UsagePackPlanTier = "pro" | "team";
 export type MemberUsageSelection = UsagePackUsd;
+
+type ManagedUsagePackAllocation =
+  UsagePackManagementResponse["allocations"][number];
+
+export function managedUsagePackSelection(
+  allocation: ManagedUsagePackAllocation,
+): UsagePackUsd {
+  const pendingChange = allocation.pendingChange;
+  return pendingChange?.kind === "downgrade" &&
+    pendingChange.status === "scheduled" &&
+    pendingChange.targetUsagePackUsd !== null
+    ? pendingChange.targetUsagePackUsd
+    : allocation.usagePackUsd;
+}
 
 const internalSelectedUsagePackPlan$ = state<UsagePackPlanTier | null>(null);
 
@@ -40,7 +54,7 @@ export const setSelectedUsagePackPlan$ = command(
   },
 );
 
-const resetUsagePackPricing$ = command(({ set }) => {
+export const resetUsagePackPricing$ = command(({ set }) => {
   set(internalSelectedUsagePackPlan$, null);
   set(internalMemberUsageSelections$, {});
   set(internalUsagePackSubscriptionChangePreview$, null);
@@ -53,15 +67,9 @@ export const setUsagePackSubscriptionChangePreview$ = command(
 );
 
 export const usagePackPricingPageRef$ = onRef(
-  command(({ set }, element: HTMLDivElement, signal: AbortSignal) => {
+  command((_context, element: HTMLDivElement, signal: AbortSignal) => {
+    signal.throwIfAborted();
     element.focus();
-    signal.addEventListener(
-      "abort",
-      () => {
-        set(resetUsagePackPricing$);
-      },
-      { once: true },
-    );
   }),
 );
 

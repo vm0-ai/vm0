@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { Button } from "@vm0/ui";
 import { useGet, useSet } from "ccstate-react";
 import { Loader2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -19,6 +20,15 @@ import {
   closeSettingsModal$,
   settingsDialogOpen$,
 } from "../../signals/zero-page/settings/settings-dialog.ts";
+
+/**
+ * Onboarding uses a softer, larger surface than the rest of the app: a wider
+ * radius, the plain border token, and a looser focus ring. Every onboarding
+ * `Textarea` opts into it through this one constant so the deviation from the
+ * shared field style stays a single deliberate decision.
+ */
+export const ONBOARDING_TEXTAREA_CLASS =
+  "rounded-xl border border-border bg-background focus:ring-2 focus:ring-primary/15";
 
 function OnboardingAccount({ collapsed }: { readonly collapsed: boolean }) {
   const onAccountAction = useSet(handleZeroAccountAction$);
@@ -97,18 +107,20 @@ export function OnboardingFooter({
       ) : (
         <span />
       )}
-      <button
+      <Button
         type="button"
         onClick={onPrimary}
         disabled={primaryDisabled || busy}
         aria-busy={busy}
-        className="inline-flex h-10 min-w-[100px] items-center justify-center gap-2 rounded-lg bg-primary px-6 text-sm font-medium text-white hover:bg-primary-hover disabled:cursor-not-allowed disabled:bg-[hsl(var(--primary-500))]"
+        variant="default"
+        size="lg"
+        className="min-w-[100px] gap-2 disabled:bg-[hsl(var(--primary-500))]"
       >
         {busy ? (
           <Loader2 size={16} className="animate-spin" aria-hidden="true" />
         ) : null}
         {primaryLabel}
-      </button>
+      </Button>
     </div>
   );
 }

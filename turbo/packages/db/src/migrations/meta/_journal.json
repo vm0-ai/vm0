@@ -624,6 +624,48 @@
       "when": 1786429087303,
       "tag": "0896_neat_makkari",
       "breakpoints": true
+    },
+    {
+      "idx": 897,
+      "version": "7",
+      "when": 1786432064522,
+      "tag": "0897_bizarre_kid_colt",
+      "breakpoints": true
+    },
+    {
+      "idx": 898,
+      "version": "7",
+      "when": 1786434656080,
+      "tag": "0898_usage_pack_credit_refunds",
+      "breakpoints": true
+    },
+    {
+      "idx": 899,
+      "version": "7",
+      "when": 1786434673087,
+      "tag": "0899_backfill_member_invite_usage_pack_required",
+      "breakpoints": true
+    },
+    {
+      "idx": 900,
+      "version": "7",
+      "when": 1786434776471,
+      "tag": "0900_replace_scheduled_usage_pack_change",
+      "breakpoints": true
+    },
+    {
+      "idx": 901,
+      "version": "7",
+      "when": 1786439615768,
+      "tag": "0901_parallel_energizer",
+      "breakpoints": true
+    },
+    {
+      "idx": 902,
+      "version": "7",
+      "when": 1786441690180,
+      "tag": "0902_colorful_mandrill",
+      "breakpoints": true
     }
   ]
 }

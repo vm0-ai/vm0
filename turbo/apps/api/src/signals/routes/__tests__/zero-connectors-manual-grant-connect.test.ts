@@ -14,6 +14,7 @@ import { setupApp } from "../../../__tests__/test-helpers";
 import { createApp } from "../../../app-factory";
 import {
   readConnectorCredentialStorageState,
+  requestSetConnectorVariableOwner,
   seedConnectorStorageRow,
   seedOwnedConnectorSecret,
 } from "./helpers/connector-credential-storage-state";
@@ -337,6 +338,64 @@ describe("POST /api/zero/connectors/:connectorSlug/manual-grant", () => {
         { name: "ZENDESK_SUBDOMAIN", connector_id: response.body.id },
       ]),
     );
+  });
+
+  it("rejects connector variable owners from another organization or user", async () => {
+    const fixture = await seedFixture();
+    const response = await accept(
+      setupApp({ context, routes: zeroConnectorsRoutes })(
+        zeroConnectorManualGrantContract,
+      ).connect({
+        params: { connectorSlug: "zendesk" },
+        body: {
+          authMethod: "api-token",
+          values: {
+            apiToken: "zendesk-token",
+            email: "support@example.com",
+            subdomain: "example",
+          },
+        },
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+    const foreignOwners = [
+      {
+        orgId: `org_${randomUUID()}`,
+        userId: fixture.userId,
+      },
+      {
+        orgId: fixture.orgId,
+        userId: `user_${randomUUID()}`,
+      },
+    ];
+
+    for (const owner of foreignOwners) {
+      const foreignConnectorId = await seedConnectorStorageRow(context, {
+        ...owner,
+        connectorSlug: "github",
+        authMethod: "oauth",
+        storageVersion: 1,
+      });
+      const ownerUpdate = await requestSetConnectorVariableOwner(context, {
+        connectorId: foreignConnectorId,
+        name: "ZENDESK_EMAIL",
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+      });
+      expect(ownerUpdate.status).toBe(500);
+    }
+
+    await expect(
+      readConnectorCredentialStorageState(context, {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        connectorSlug: "zendesk",
+        variableNames: ["ZENDESK_EMAIL"],
+      }),
+    ).resolves.toMatchObject({
+      variables: [{ name: "ZENDESK_EMAIL", connector_id: response.body.id }],
+    });
   });
 
   it("deletes connector-owned secret and variable state on disconnect", async () => {

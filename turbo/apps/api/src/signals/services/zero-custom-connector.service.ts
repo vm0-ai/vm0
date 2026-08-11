@@ -71,7 +71,7 @@ import {
 } from "./custom-connector-credential-access.service";
 import { effectiveCustomConnectorPermissionBundleRef } from "./feishu-custom-connector-permissions";
 import {
-  commitPreparedCustomConnectorSkillVolume,
+  commitPreparedCustomConnectorSkillStorage,
   prepareCustomConnectorSkillVolume$,
 } from "./custom-connector-skill-volume.service";
 import type { PreparedServerSideVolume } from "./storage-volume-publication.service";
@@ -187,6 +187,7 @@ interface CustomConnectorSharedRow {
   readonly oauthConfig: CustomConnectorOAuthConfigRow | null;
   readonly enabled: boolean;
   readonly skillMarkdown: string | null;
+  readonly skillStorageVersionId: string | null;
   readonly storageVersion: number;
   readonly createdBy: string;
   readonly createdAt: Date;
@@ -385,32 +386,6 @@ function queryInjectionArray(
   });
 }
 
-function canonicalFieldsFromLegacy(): readonly CustomConnectorField[] {
-  return [
-    {
-      key: LEGACY_SECRET_KEY,
-      label: "Secret",
-      kind: "secret",
-      required: true,
-      description: "API credential",
-    },
-  ];
-}
-
-function canonicalHeaderTemplateFromLegacy(template: string): string {
-  return template.replaceAll(
-    LEGACY_SECRET_PLACEHOLDER,
-    `{{secrets.${LEGACY_SECRET_KEY}}}`,
-  );
-}
-
-function legacyHeaderTemplateFromCanonical(template: string): string {
-  return template.replaceAll(
-    `{{secrets.${LEGACY_SECRET_KEY}}}`,
-    LEGACY_SECRET_PLACEHOLDER,
-  );
-}
-
 type PersistedHttpDefinitionRow = CustomConnectorDefinitionRow & {
   readonly mcpEndpoint: null;
   readonly mcpTransport: null;
@@ -482,6 +457,7 @@ export function normaliseCustomConnectorRow(
     oauthConfig,
     enabled: row.enabled,
     skillMarkdown: row.skillMarkdown,
+    skillStorageVersionId: row.skillStorageVersionId,
     storageVersion: row.storageVersion,
     createdBy: row.createdBy,
     createdAt: row.createdAt,
@@ -808,22 +784,14 @@ export function serialiseCustomConnector(args: {
       kind: "mcp",
       endpoint: args.row.endpoint,
       transport: args.row.transport,
-      prefixes: [],
-      headerName: "",
-      headerTemplate: "",
       prefixTemplates: [],
       permissionBundleRef: null,
     } satisfies CustomConnectorMcpResponse;
   }
 
-  const legacy = legacyColumns(args.row);
-
   return {
     ...common,
     kind: "http",
-    prefixes: [...legacy.prefixes],
-    headerName: legacy.headerName,
-    headerTemplate: legacy.headerTemplate,
     prefixTemplates: [...args.row.prefixTemplates],
     permissionBundleRef: effectivePermissionBundleRef(args.row),
   } satisfies CustomConnectorHttpResponse;
@@ -1543,67 +1511,9 @@ async function validatePermissionBundleRef(
       );
 }
 
-type HttpCreateCustomConnectorBody = Exclude<
-  CreateCustomConnectorBody,
-  { readonly kind: "mcp" }
->;
-
-function definitionFromHttpCreateInput(
-  input: HttpCreateCustomConnectorBody,
-): HttpDefinitionInput | BadRequestResponse {
-  const usesCanonical =
-    input.prefixTemplates !== undefined ||
-    input.fields !== undefined ||
-    input.headerInjections !== undefined ||
-    input.queryInjections !== undefined ||
-    input.authMode !== undefined ||
-    input.oauthConfig !== undefined;
-  if (usesCanonical) {
-    return {
-      kind: "http",
-      displayName: input.displayName,
-      prefixTemplates: input.prefixTemplates ?? [],
-      fields: input.fields ?? [],
-      headerInjections: input.headerInjections ?? [],
-      queryInjections: input.queryInjections ?? [],
-      authMode: input.authMode,
-      permissionBundleRef: input.permissionBundleRef ?? null,
-      skillMarkdown: input.skillMarkdown ?? null,
-      slug: input.slug,
-    };
-  }
-  if (!input.prefixes || !input.headerName || !input.headerTemplate) {
-    return badRequestMessage(
-      "Custom connector requires prefix templates, fields, and header/query injections",
-    );
-  }
-  if (!input.headerTemplate.includes(LEGACY_SECRET_PLACEHOLDER)) {
-    return badRequestMessage(
-      `Custom connector header template must contain ${LEGACY_SECRET_PLACEHOLDER}`,
-    );
-  }
-  return {
-    kind: "http",
-    displayName: input.displayName,
-    prefixTemplates: input.prefixes,
-    fields: canonicalFieldsFromLegacy(),
-    headerInjections: [
-      {
-        name: input.headerName,
-        valueTemplate: canonicalHeaderTemplateFromLegacy(input.headerTemplate),
-      },
-    ],
-    queryInjections: [],
-    authMode: "manual",
-    permissionBundleRef: input.permissionBundleRef ?? null,
-    skillMarkdown: input.skillMarkdown ?? null,
-    slug: input.slug,
-  };
-}
-
 function definitionFromCreateInput(
   input: CreateCustomConnectorBody,
-): DefinitionInput | BadRequestResponse {
+): DefinitionInput {
   return input.kind === "mcp"
     ? {
         kind: "mcp",
@@ -1618,7 +1528,18 @@ function definitionFromCreateInput(
         skillMarkdown: input.skillMarkdown ?? null,
         slug: input.slug,
       }
-    : definitionFromHttpCreateInput(input);
+    : {
+        kind: "http",
+        displayName: input.displayName,
+        prefixTemplates: input.prefixTemplates,
+        fields: input.fields,
+        headerInjections: input.headerInjections,
+        queryInjections: input.queryInjections,
+        authMode: input.authMode,
+        permissionBundleRef: input.permissionBundleRef ?? null,
+        skillMarkdown: input.skillMarkdown ?? null,
+        slug: input.slug,
+      };
 }
 
 function definitionFromUpdateInput(
@@ -1661,25 +1582,7 @@ function definitionFromUpdateInput(
   };
 }
 
-function legacyColumns(definition: ValidatedHttpDefinition): {
-  readonly prefixes: readonly string[];
-  readonly headerName: string;
-  readonly headerTemplate: string;
-} {
-  const firstHeader = definition.headerInjections[0];
-  return {
-    prefixes: [...definition.prefixTemplates],
-    headerName: firstHeader?.name ?? "X-VM0-Custom-Connector",
-    headerTemplate: firstHeader
-      ? legacyHeaderTemplateFromCanonical(firstHeader.valueTemplate)
-      : LEGACY_SECRET_PLACEHOLDER,
-  };
-}
-
 function protocolColumns(definition: ValidatedDefinition): {
-  readonly prefixes: string[];
-  readonly headerName: string | null;
-  readonly headerTemplate: string | null;
   readonly prefixTemplates: string[];
   readonly permissionBundleRef: CustomConnectorPermissionBundleRef | null;
   readonly mcpEndpoint: string | null;
@@ -1687,20 +1590,13 @@ function protocolColumns(definition: ValidatedDefinition): {
 } {
   if (definition.kind === "mcp") {
     return {
-      prefixes: [],
-      headerName: null,
-      headerTemplate: null,
       prefixTemplates: [],
       permissionBundleRef: null,
       mcpEndpoint: definition.endpoint,
       mcpTransport: definition.transport,
     };
   }
-  const legacy = legacyColumns(definition);
   return {
-    prefixes: [...legacy.prefixes],
-    headerName: legacy.headerName,
-    headerTemplate: legacy.headerTemplate,
     prefixTemplates: [...definition.prefixTemplates],
     permissionBundleRef: definition.permissionBundleRef,
     mcpEndpoint: null,
@@ -1761,7 +1657,6 @@ async function findCustomConnectorPrefixConflict(
     .select({
       id: orgCustomConnectors.id,
       displayName: orgCustomConnectors.displayName,
-      prefixes: orgCustomConnectors.prefixes,
       prefixTemplates: orgCustomConnectors.prefixTemplates,
     })
     .from(orgCustomConnectors)
@@ -1822,6 +1717,12 @@ async function persistCustomConnectorCreate(
         return prefixConflict;
       }
     }
+    if (args.preparedSkill) {
+      await commitPreparedCustomConnectorSkillStorage(
+        { db: tx, volume: args.preparedSkill },
+        signal,
+      );
+    }
     const [row] = await tx
       .insert(orgCustomConnectors)
       .values({
@@ -1835,6 +1736,7 @@ async function persistCustomConnectorCreate(
         queryInjections: [...args.definition.queryInjections],
         authMode: args.definition.authMode,
         skillMarkdown: args.definition.skillMarkdown,
+        skillStorageVersionId: args.preparedSkill?.version.versionId ?? null,
         storageVersion: args.storageVersion,
         createdBy: args.userId,
       })
@@ -1861,12 +1763,6 @@ async function persistCustomConnectorCreate(
       }
       oauthConfig = insertedOAuthConfig;
     }
-    if (args.preparedSkill) {
-      await commitPreparedCustomConnectorSkillVolume(
-        { db: tx, connectorId: row.id, volume: args.preparedSkill },
-        signal,
-      );
-    }
     return { row, oauthConfig };
   });
 }
@@ -1882,9 +1778,6 @@ export const createCustomConnector$ = command(
     signal: AbortSignal,
   ): Promise<CustomConnectorRow | BadRequestResponse | ForbiddenResponse> => {
     const canonicalInput = definitionFromCreateInput(args.input);
-    if (isBadRequest(canonicalInput)) {
-      return canonicalInput;
-    }
     const writeDb = set(writeDb$);
     const v = validateDefinition(canonicalInput);
     if (isBadRequest(v)) {
@@ -2077,23 +1970,9 @@ async function persistCustomConnectorUpdate(
         return prefixConflict;
       }
     }
-    const kindColumns = protocolColumns(args.definition);
-    const [updated] = await tx
-      .update(orgCustomConnectors)
-      .set({
-        displayName: args.definition.displayName,
-        ...kindColumns,
-        fields: [...args.definition.fields],
-        headerInjections: [...args.definition.headerInjections],
-        queryInjections: [...args.definition.queryInjections],
-        authMode: args.definition.authMode,
-        skillMarkdown: args.definition.skillMarkdown,
-        ...(args.definition.skillMarkdown === null
-          ? { skillStorageVersionId: null }
-          : {}),
-        storageVersion: args.storageVersion,
-        updatedAt: nowDate(),
-      })
+    const [locked] = await tx
+      .select({ id: orgCustomConnectors.id })
+      .from(orgCustomConnectors)
       .where(
         and(
           eq(orgCustomConnectors.id, args.id),
@@ -2106,8 +1985,9 @@ async function persistCustomConnectorUpdate(
           ),
         ),
       )
-      .returning(customConnectorDefinitionSelection());
-    if (!updated) {
+      .for("update", { of: orgCustomConnectors })
+      .limit(1);
+    if (!locked) {
       const [current] = await tx
         .select({ id: orgCustomConnectors.id })
         .from(orgCustomConnectors)
@@ -2123,6 +2003,37 @@ async function persistCustomConnectorUpdate(
             "Custom connector changed while the definition was being saved; retry",
           )
         : null;
+    }
+    if (args.preparedSkill) {
+      await commitPreparedCustomConnectorSkillStorage(
+        { db: tx, volume: args.preparedSkill },
+        signal,
+      );
+    }
+    const kindColumns = protocolColumns(args.definition);
+    const [updated] = await tx
+      .update(orgCustomConnectors)
+      .set({
+        displayName: args.definition.displayName,
+        ...kindColumns,
+        fields: [...args.definition.fields],
+        headerInjections: [...args.definition.headerInjections],
+        queryInjections: [...args.definition.queryInjections],
+        authMode: args.definition.authMode,
+        skillMarkdown: args.definition.skillMarkdown,
+        skillStorageVersionId: args.preparedSkill?.version.versionId ?? null,
+        storageVersion: args.storageVersion,
+        updatedAt: nowDate(),
+      })
+      .where(
+        and(
+          eq(orgCustomConnectors.id, args.id),
+          eq(orgCustomConnectors.orgId, args.orgId),
+        ),
+      )
+      .returning(customConnectorDefinitionSelection());
+    if (!updated) {
+      throw new Error("Expected locked custom connector to be updated");
     }
     let storedOAuthConfig: CustomConnectorOAuthConfigRow | null = null;
     if (args.oauthConfigUpdate.kind === "none") {
@@ -2158,12 +2069,6 @@ async function persistCustomConnectorUpdate(
         })
         .returning();
       storedOAuthConfig = upserted ?? null;
-    }
-    if (args.preparedSkill) {
-      await commitPreparedCustomConnectorSkillVolume(
-        { db: tx, connectorId: updated.id, volume: args.preparedSkill },
-        signal,
-      );
     }
     return { row: updated, oauthConfig: storedOAuthConfig };
   });

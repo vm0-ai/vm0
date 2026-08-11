@@ -19,7 +19,6 @@ export enum FeatureSwitchKey {
   FigmaConnector = "figmaConnector",
   ExpensifyConnector = "expensifyConnector",
   JoggAiBuiltIn = "joggAiBuiltIn",
-  SeoBuiltIn = "seoBuiltIn",
   MercuryConnector = "mercuryConnector",
   NeonConnector = "neonConnector",
   NetSuiteConnector = "netSuiteConnector",
@@ -29,7 +28,6 @@ export enum FeatureSwitchKey {
   WebflowConnector = "webflowConnector",
   CloseConnector = "closeConnector",
   MetaAdsConnector = "metaAdsConnector",
-  TikTokAdsConnector = "tiktokAdsConnector",
   PosthogConnector = "posthogConnector",
   PayPalConnector = "payPalConnector",
   RampConnector = "rampConnector",
@@ -76,5 +74,6 @@ export enum FeatureSwitchKey {
   PiLoop = "piLoop",
   VideoTemplateOptions = "videoTemplateOptions",
   ChatEventSnapshotRead = "chatEventSnapshotRead",
+  EmojiPickerCategoryRail = "emojiPickerCategoryRail",
   PresentationTemplates = "presentationTemplates",
 }

@@ -1,6 +1,7 @@
 import type {
   CSSProperties,
   FormEvent,
+  KeyboardEvent as ReactKeyboardEvent,
   MouseEvent as ReactMouseEvent,
   ReactNode,
   UIEvent as ReactUIEvent,
@@ -26,7 +27,15 @@ import {
 } from "../../signals/chat-page/run-usage-popover.ts";
 import {
   AlertCircle,
+  Coffee,
+  Flag,
   Hand,
+  Heart,
+  Leaf,
+  Lightbulb,
+  Plane,
+  Smile,
+  Trophy,
   Image,
   ChartLine,
   Globe,
@@ -53,6 +62,7 @@ import {
   Coins,
   Hourglass,
   Share2,
+  type LucideIcon,
 } from "lucide-react";
 import {
   cn,
@@ -83,7 +93,6 @@ import {
   BrandSlack,
 } from "@vm0/ui";
 import { RUN_ERROR_GUIDANCE } from "@vm0/api-contracts/contracts/errors";
-import { isHttpCustomConnectorClientResponse } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import type {
   ChatEventUsagePayload,
   ChatRecommendedFollowup,
@@ -120,6 +129,7 @@ import { isMobileTextInputDevice } from "../../lib/visual-viewport-keyboard.ts";
 import { Markdown } from "../components/markdown.tsx";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
+  customConnectorMcpEnabled$,
   featureSwitch$,
   videoTemplateOptionsEnabled$,
 } from "../../signals/external/feature-switch.ts";
@@ -273,9 +283,13 @@ import {
   CHAT_THREAD_EMOJI_OPTIONS,
 } from "../../signals/chat-page/chat-thread-title.ts";
 import {
+  chatThreadEmojiActiveCategory$,
   chatThreadEmojiGroups$,
+  chatThreadEmojiPendingJump$,
   chatThreadEmojiQuery$,
   filterChatThreadEmojiGroups,
+  setChatThreadEmojiActiveCategory$,
+  setChatThreadEmojiPendingJump$,
   setChatThreadEmojiQuery$,
   type ChatThreadEmojiItem,
 } from "../../signals/chat-page/chat-thread-emoji.ts";
@@ -392,11 +406,7 @@ function modelChangeRunKey(
   if (inputEvent.runId !== undefined) {
     return `run:${inputEvent.runId}`;
   }
-  // Old web/app clients can persist model annotations on steer inputs for up
-  // to about two days. Keep persisted events from looking like run starts
-  // until their stored rows and snapshots are migrated; remove the seqId
-  // check after #25879 confirms no runless model annotations remain.
-  if (inputEvent.seqId === undefined && modelSelection !== undefined) {
+  if (modelSelection !== undefined) {
     return `event:${inputEvent.id}`;
   }
   return undefined;
@@ -537,25 +547,26 @@ function ArtifactsButtonInner({ thread }: { thread: ChatPanelSignals }) {
     <TooltipProvider delayDuration={300}>
       <Tooltip>
         <TooltipTrigger asChild>
-          <button
+          <Button
             type="button"
             onClick={() => {
               reloadArtifacts();
               openThreadArtifacts();
             }}
+            variant="quiet"
+            size="icon-sm"
+            iconSize="md"
             className={cn(
-              "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors duration-150",
-              open
-                ? "bg-primary/10 text-primary"
-                : "text-muted-foreground/70 hover:bg-state-hover hover:text-foreground",
+              "shrink-0 duration-150",
+              open && "bg-primary/10 text-primary hover:text-primary",
             )}
             aria-label={t(($) => {
               return $.chat.thread.openArtifacts;
             })}
             aria-pressed={open}
           >
-            <Package size={17} />
-          </button>
+            <Package size={18} />
+          </Button>
         </TooltipTrigger>
         <TooltipContent side="bottom">
           {t(($) => {
@@ -598,13 +609,14 @@ export function AutomationMenuButton({
     <TooltipProvider delayDuration={300}>
       <Tooltip>
         <TooltipTrigger asChild>
-          <button
+          <Button
             type="button"
+            variant="quiet"
+            size="icon-sm"
+            iconSize="md"
             className={cn(
-              "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors duration-150",
-              open
-                ? "bg-primary/10 text-primary"
-                : "text-muted-foreground/70 hover:bg-state-hover hover:text-foreground",
+              "shrink-0 duration-150",
+              open && "bg-primary/10 text-primary hover:text-primary",
             )}
             aria-label={
               ariaLabel ??
@@ -619,7 +631,7 @@ export function AutomationMenuButton({
             }}
           >
             <Clock size={18} />
-          </button>
+          </Button>
         </TooltipTrigger>
         <TooltipContent side="bottom">
           {t(($) => {
@@ -641,13 +653,14 @@ function BrowserMenuButton({ thread }: { thread: ChatPanelSignals }) {
     <TooltipProvider delayDuration={300}>
       <Tooltip>
         <TooltipTrigger asChild>
-          <button
+          <Button
             type="button"
+            variant="quiet"
+            size="icon-sm"
+            iconSize="md"
             className={cn(
-              "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors duration-150",
-              open
-                ? "bg-primary/10 text-primary"
-                : "text-muted-foreground/70 hover:bg-state-hover hover:text-foreground",
+              "shrink-0 duration-150",
+              open && "bg-primary/10 text-primary hover:text-primary",
             )}
             aria-label={t(($) => {
               return $.chat.thread.openBrowser;
@@ -658,7 +671,7 @@ function BrowserMenuButton({ thread }: { thread: ChatPanelSignals }) {
             }}
           >
             <Globe size={18} />
-          </button>
+          </Button>
         </TooltipTrigger>
         <TooltipContent side="bottom">
           {t(($) => {
@@ -749,7 +762,7 @@ function ChatThreadHeader({ thread }: { thread: ChatPanelSignals }) {
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
-                <button
+                <Button
                   type="button"
                   onClick={() => {
                     detach(
@@ -758,13 +771,16 @@ function ChatThreadHeader({ thread }: { thread: ChatPanelSignals }) {
                       "start shared thread selection",
                     );
                   }}
-                  className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground/70 transition-colors duration-150 hover:bg-state-hover hover:text-foreground"
+                  variant="quiet"
+                  size="icon-sm"
+                  iconSize="md"
+                  className="shrink-0 duration-150"
                   aria-label={t(($) => {
                     return $.chat.sharing.start;
                   })}
                 >
                   <Share2 size={18} />
-                </button>
+                </Button>
               </TooltipTrigger>
               <TooltipContent side="bottom">
                 {t(($) => {
@@ -866,6 +882,8 @@ function ChatThreadEmojiMenuButton({
   const { open, openChatThreadEmojiMenu, closeMenu, selectEmoji, clearEmoji } =
     useChatThreadEmojiMenuActions({ threadId, title });
   const setEmojiQuery = useSet(setChatThreadEmojiQuery$);
+  const setEmojiActiveCategory = useSet(setChatThreadEmojiActiveCategory$);
+  const setEmojiPendingJump = useSet(setChatThreadEmojiPendingJump$);
 
   return (
     <TooltipProvider delayDuration={200}>
@@ -874,6 +892,8 @@ function ChatThreadEmojiMenuButton({
         onOpenChange={(nextOpen) => {
           if (nextOpen) {
             setEmojiQuery("");
+            setEmojiActiveCategory(null);
+            setEmojiPendingJump(null);
             openChatThreadEmojiMenu({ threadId, title });
           } else {
             closeMenu();
@@ -883,12 +903,15 @@ function ChatThreadEmojiMenuButton({
         <Tooltip>
           <TooltipTrigger asChild>
             <PopoverTrigger asChild>
-              <button
+              <Button
                 type="button"
                 aria-label={t(($) => {
                   return $.chat.thread.changeIcon;
                 })}
-                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
+                variant="quiet"
+                size="icon-xs"
+                iconSize="md"
+                className="shrink-0"
               >
                 {emoji ? (
                   <span
@@ -900,7 +923,7 @@ function ChatThreadEmojiMenuButton({
                 ) : (
                   <SmilePlus size={18} aria-hidden="true" />
                 )}
-              </button>
+              </Button>
             </PopoverTrigger>
           </TooltipTrigger>
           <TooltipContent side="bottom">
@@ -963,6 +986,209 @@ function useFrequentlyUsedEmoji(): ChatThreadEmojiItem[] {
   });
 }
 
+// unicode-emoji-json ships the CLDR group names, so key the rail icons off the
+// same strings the sections are titled with.
+function chatThreadEmojiCategoryIcon(group: string): LucideIcon {
+  switch (group) {
+    case "People & Body": {
+      return Hand;
+    }
+    case "Animals & Nature": {
+      return Leaf;
+    }
+    case "Food & Drink": {
+      return Coffee;
+    }
+    case "Travel & Places": {
+      return Plane;
+    }
+    case "Activities": {
+      return Trophy;
+    }
+    case "Objects": {
+      return Lightbulb;
+    }
+    case "Symbols": {
+      return Heart;
+    }
+    case "Flags": {
+      return Flag;
+    }
+    default: {
+      return Smile;
+    }
+  }
+}
+
+const CHAT_THREAD_EMOJI_FREQUENT_CATEGORY = "frequently-used";
+
+interface ChatThreadEmojiCategory {
+  key: string;
+  label: string;
+  icon: LucideIcon;
+  items: ChatThreadEmojiItem[];
+  showShortcutDigits: boolean;
+}
+
+function chatThreadEmojiSectionId(key: string): string {
+  return `chat-thread-emoji-section-${key}`;
+}
+
+// The category whose title is pinned right now: the last section that has
+// already reached the top of the feed.
+function pinnedChatThreadEmojiCategory(feed: HTMLElement): string | null {
+  const sections = Array.from(
+    feed.querySelectorAll<HTMLElement>("[data-chat-thread-emoji-section]"),
+  );
+  let pinned: string | null = null;
+  for (const section of sections) {
+    if (section.offsetTop > feed.scrollTop + 1) {
+      break;
+    }
+    pinned = section.dataset.chatThreadEmojiSection ?? null;
+  }
+  return pinned;
+}
+
+// Where the feed lands when it jumps to a section. A short final category
+// cannot scroll all the way to its own offset, so clamp to the last reachable
+// position: the jump and the arrival check have to agree on the same number.
+function chatThreadEmojiScrollTarget(
+  feed: HTMLElement,
+  section: HTMLElement,
+): number {
+  return Math.min(section.offsetTop, feed.scrollHeight - feed.clientHeight);
+}
+
+// Returns whether the feed will actually move. A jump that scrolls nowhere
+// emits no scroll event, so the caller must not wait for one.
+function scrollChatThreadEmojiCategoryIntoView(key: string): boolean {
+  const section = document.getElementById(chatThreadEmojiSectionId(key));
+  const feed = section?.closest<HTMLElement>("[data-chat-thread-emoji-feed]");
+  if (!section || !feed || typeof feed.scrollTo !== "function") {
+    return false;
+  }
+  const top = chatThreadEmojiScrollTarget(feed, section);
+  if (Math.abs(top - feed.scrollTop) <= 1) {
+    return false;
+  }
+  feed.scrollTo({ top, behavior: "smooth" });
+  return true;
+}
+
+function chatThreadEmojiCategories(
+  frequentLabel: string,
+  frequentItems: ChatThreadEmojiItem[],
+  groups: { name: string; emojis: ChatThreadEmojiItem[] }[] | null,
+): ChatThreadEmojiCategory[] {
+  return [
+    {
+      key: CHAT_THREAD_EMOJI_FREQUENT_CATEGORY,
+      label: frequentLabel,
+      icon: Clock,
+      items: frequentItems,
+      showShortcutDigits: true,
+    },
+    ...(groups ?? []).map((group) => {
+      return {
+        key: group.name,
+        label: group.name,
+        icon: chatThreadEmojiCategoryIcon(group.name),
+        items: group.emojis,
+        showShortcutDigits: false,
+      };
+    }),
+  ];
+}
+
+function ChatThreadEmojiCategoryRail({
+  categories,
+  onSelect,
+}: {
+  categories: ChatThreadEmojiCategory[];
+  onSelect: (key: string) => void;
+}) {
+  const { t } = useTranslation();
+  // Held here rather than in the picker so that following the feed re-renders
+  // the rail alone, not the ~1,900 emoji buttons below it.
+  const activeCategory = useGet(chatThreadEmojiActiveCategory$);
+  const selectedCategory =
+    activeCategory ?? CHAT_THREAD_EMOJI_FREQUENT_CATEGORY;
+
+  // A tablist takes one tab stop, and the arrow keys move between the tabs
+  // inside it.
+  function handleKeyDown(event: ReactKeyboardEvent<HTMLDivElement>): void {
+    const step =
+      event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
+    if (step === 0) {
+      return;
+    }
+    const tabs = Array.from(
+      event.currentTarget.querySelectorAll<HTMLElement>('[role="tab"]'),
+    );
+    const current = tabs.findIndex((tab) => {
+      return tab === document.activeElement;
+    });
+    if (current === -1) {
+      return;
+    }
+    event.preventDefault();
+    const next = (current + step + tabs.length) % tabs.length;
+    tabs[next]?.focus();
+    const nextCategory = categories[next];
+    if (nextCategory) {
+      onSelect(nextCategory.key);
+    }
+  }
+
+  return (
+    <div
+      role="tablist"
+      aria-label={t(($) => {
+        return $.chat.thread.emojiCategories;
+      })}
+      // 7px top and bottom keeps the buttons clear of the popover edge and of
+      // the divider; the active bar then sits inside the bottom gap.
+      className="flex gap-0.5 border-b border-border px-2 py-[7px]"
+      onKeyDown={handleKeyDown}
+    >
+      {categories.map((category) => {
+        const CategoryIcon = category.icon;
+        const selected = category.key === selectedCategory;
+        return (
+          <button
+            key={category.key}
+            type="button"
+            role="tab"
+            aria-selected={selected}
+            aria-controls={chatThreadEmojiSectionId(category.key)}
+            aria-label={category.label}
+            title={category.label}
+            tabIndex={selected ? 0 : -1}
+            className={cn(
+              "relative flex h-8 flex-1 items-center justify-center rounded-lg transition-colors hover:bg-state-hover hover:text-foreground",
+              selected ? "text-foreground" : "text-muted-foreground",
+            )}
+            onClick={() => {
+              onSelect(category.key);
+            }}
+          >
+            <CategoryIcon size={16} aria-hidden="true" />
+            {selected && (
+              <span
+                aria-hidden="true"
+                // -8px == the row's 7px bottom padding plus its 1px border, so
+                // the bar seats on the divider instead of floating above it.
+                className="absolute -bottom-2 h-0.5 w-4 rounded-t-sm bg-primary"
+              />
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function ChatThreadEmojiPicker({
   hasEmoji,
   onSelect,
@@ -977,13 +1203,44 @@ function ChatThreadEmojiPicker({
   const setQuery = useSet(setChatThreadEmojiQuery$);
   const groups = useLastResolved(chatThreadEmojiGroups$) ?? null;
   const frequentlyUsedEmoji = useFrequentlyUsedEmoji();
+  const railEnabled =
+    useGet(featureSwitch$)[FeatureSwitchKey.EmojiPickerCategoryRail] ?? false;
+  const setActiveCategory = useSet(setChatThreadEmojiActiveCategory$);
+  const setPendingJump = useSet(setChatThreadEmojiPendingJump$);
 
   const isSearching = query.trim().length > 0;
   const searchResults =
     isSearching && groups ? filterChatThreadEmojiGroups(groups, query) : [];
 
+  const categories = chatThreadEmojiCategories(
+    t(($) => {
+      return $.chat.thread.frequentlyUsed;
+    }),
+    frequentlyUsedEmoji,
+    groups,
+  );
+  function jumpToCategory(key: string): void {
+    if (isSearching) {
+      setQuery("");
+    }
+    setActiveCategory(key);
+    // The sections may only mount once the query clears, so scroll on the next
+    // frame rather than against the pre-clear layout. Only hold the highlight
+    // when the feed really moves — otherwise no scroll event would arrive to
+    // release the hold and the rail would stop following the feed for good.
+    window.requestAnimationFrame(() => {
+      setPendingJump(scrollChatThreadEmojiCategoryIntoView(key) ? key : null);
+    });
+  }
+
   return (
     <div className="flex flex-col">
+      {railEnabled && (
+        <ChatThreadEmojiCategoryRail
+          categories={categories}
+          onSelect={jumpToCategory}
+        />
+      )}
       <div className="flex items-center gap-2 p-2">
         <div className="relative flex-1">
           <Search
@@ -1018,54 +1275,113 @@ function ChatThreadEmojiPicker({
           </button>
         )}
       </div>
-      <div className="max-h-72 overflow-y-auto px-2 pb-2">
-        {isSearching ? (
-          searchResults.length > 0 ? (
-            <ChatThreadEmojiGrid items={searchResults} onSelect={onSelect} />
-          ) : (
-            <p className="px-1 py-6 text-center text-xs text-muted-foreground">
-              {t(($) => {
-                return $.chat.thread.noEmojiFound;
-              })}
-            </p>
-          )
+      <ChatThreadEmojiFeed
+        categories={categories}
+        searchResults={isSearching ? searchResults : null}
+        onSelect={onSelect}
+        railEnabled={railEnabled}
+      />
+    </div>
+  );
+}
+
+function ChatThreadEmojiFeed({
+  categories,
+  searchResults,
+  onSelect,
+  railEnabled,
+}: {
+  categories: ChatThreadEmojiCategory[];
+  searchResults: ChatThreadEmojiItem[] | null;
+  onSelect: (emoji: string) => void;
+  railEnabled: boolean;
+}) {
+  const { t } = useTranslation();
+  const setActiveCategory = useSet(setChatThreadEmojiActiveCategory$);
+  const pendingJump = useGet(chatThreadEmojiPendingJump$);
+  const setPendingJump = useSet(setChatThreadEmojiPendingJump$);
+
+  function handleScroll(event: ReactUIEvent<HTMLDivElement>): void {
+    const feed = event.currentTarget;
+    if (pendingJump !== null) {
+      const target = feed.querySelector<HTMLElement>(
+        `[data-chat-thread-emoji-section="${pendingJump}"]`,
+      );
+      // Release the hold once the jump lands, and also when its section is no
+      // longer around to land on, so the hold can never outlive the jump.
+      if (
+        !target ||
+        Math.abs(chatThreadEmojiScrollTarget(feed, target) - feed.scrollTop) <=
+          1
+      ) {
+        setPendingJump(null);
+      }
+      return;
+    }
+    setActiveCategory(pinnedChatThreadEmojiCategory(feed));
+  }
+
+  // Scrolling by hand aborts an in-flight smooth scroll, so the jump will never
+  // reach its target: hand the feed back the highlight immediately.
+  function releasePendingJump(): void {
+    if (pendingJump !== null) {
+      setPendingJump(null);
+    }
+  }
+
+  return (
+    <div
+      data-chat-thread-emoji-feed=""
+      // relative so each section's offsetTop is measured against the feed.
+      className="relative max-h-72 overflow-y-auto px-2 pb-2"
+      onScroll={railEnabled ? handleScroll : undefined}
+      onWheel={railEnabled ? releasePendingJump : undefined}
+      onTouchStart={railEnabled ? releasePendingJump : undefined}
+      onPointerDown={railEnabled ? releasePendingJump : undefined}
+    >
+      {searchResults !== null ? (
+        searchResults.length > 0 ? (
+          <ChatThreadEmojiGrid items={searchResults} onSelect={onSelect} />
         ) : (
-          <>
-            <ChatThreadEmojiSection
-              label={t(($) => {
-                return $.chat.thread.frequentlyUsed;
-              })}
-              items={frequentlyUsedEmoji}
-              onSelect={onSelect}
-              showShortcutDigits
-            />
-            {groups?.map((group) => {
-              return (
-                <ChatThreadEmojiSection
-                  key={group.name}
-                  label={group.name}
-                  items={group.emojis}
-                  onSelect={onSelect}
-                />
-              );
+          <p className="px-1 py-6 text-center text-xs text-muted-foreground">
+            {t(($) => {
+              return $.chat.thread.noEmojiFound;
             })}
-          </>
-        )}
-      </div>
+          </p>
+        )
+      ) : (
+        categories.map((category) => {
+          return (
+            <ChatThreadEmojiSection
+              key={category.key}
+              categoryKey={category.key}
+              label={category.label}
+              items={category.items}
+              onSelect={onSelect}
+              showShortcutDigits={category.showShortcutDigits}
+              pinnedTitle={railEnabled}
+            />
+          );
+        })
+      )}
     </div>
   );
 }
 
 function ChatThreadEmojiSection({
+  categoryKey,
   label,
   items,
   onSelect,
   showShortcutDigits = false,
+  pinnedTitle = false,
 }: {
+  categoryKey: string;
   label: string;
   items: ChatThreadEmojiItem[];
   onSelect: (emoji: string) => void;
   showShortcutDigits?: boolean;
+  pinnedTitle?: boolean;
 }) {
   const { t } = useTranslation();
   // Ctrl+Shift is a shared prefix for every digit shortcut, so surface it once
@@ -1077,8 +1393,19 @@ function ChatThreadEmojiSection({
       })}`
     : null;
   return (
-    <div>
-      <div className="flex items-baseline justify-between gap-2 px-1 pb-1 pt-2">
+    <div
+      id={chatThreadEmojiSectionId(categoryKey)}
+      data-chat-thread-emoji-section={categoryKey}
+    >
+      <div
+        className={cn(
+          "flex items-baseline justify-between gap-2 px-1 pb-1 pt-2",
+          // Fade to transparent at the lower edge so emoji dissolve as they
+          // scroll under the pinned title instead of colliding with it.
+          pinnedTitle &&
+            "sticky top-0 z-10 bg-gradient-to-b from-popover from-60% to-transparent pb-2",
+        )}
+      >
         <span className="text-xs font-medium text-muted-foreground">
           {label}
         </span>
@@ -2601,16 +2928,17 @@ function HeaderAutomationSidebar({
             })}
           </div>
         </div>
-        <button
+        <Button
           type="button"
           onClick={onClose}
           aria-label={t(($) => {
             return $.chat.automations.close;
           })}
-          className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-state-hover hover:text-foreground"
+          variant="quiet"
+          size="icon-sm"
         >
           <X size={16} />
-        </button>
+        </Button>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
@@ -6125,6 +6453,7 @@ function PermissionActionCard({ signals }: { signals: PermissionSignals }) {
 
 function ChatConnectorActionConnectModal() {
   const active = useGet(activeChatConnectorAction$);
+  const mcpEnabled = useGet(customConnectorMcpEnabled$);
   const close = useSet(closeChatConnectorActionConnectDialog$);
   const runCallback = useSet(runChatActionCallback$);
   const pageSignal = useGet(pageSignal$);
@@ -6148,11 +6477,12 @@ function ChatConnectorActionConnectModal() {
   };
 
   if (active.kind === "custom") {
-    const connector = customConnectors
-      ?.filter(isHttpCustomConnectorClientResponse)
-      .find((candidate) => {
-        return candidate.slug === active.connectorSlug;
-      });
+    const connector = customConnectors?.find((candidate) => {
+      return (
+        candidate.slug === active.connectorSlug &&
+        (candidate.kind === "http" || mcpEnabled)
+      );
+    });
     return connector ? (
       <CustomConnectorConnectDialog
         connector={connector}
@@ -6298,17 +6628,19 @@ function PaidCreditCheckoutActions({
       <div className="flex flex-wrap gap-2">
         {CREDIT_TOP_UP_OPTIONS.map((credits) => {
           return (
-            <button
+            <Button
               key={credits}
               type="button"
               onClick={(event) => {
                 handleCreditClick({ credits }, event);
               }}
               disabled={redirecting}
-              className="inline-flex h-8 items-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-hover disabled:opacity-60"
+              variant="default"
+              size="sm"
+              className="disabled:opacity-60"
             >
               {formatCreditsUsd(credits)}
-            </button>
+            </Button>
           );
         })}
         <details>
@@ -6322,7 +6654,7 @@ function PaidCreditCheckoutActions({
           </summary>
           <form className="mt-2 flex flex-wrap items-center gap-2">
             <span className="text-sm text-muted-foreground">$</span>
-            <input
+            <Input
               type="text"
               inputMode="numeric"
               name="customUsd"
@@ -6336,13 +6668,15 @@ function PaidCreditCheckoutActions({
               aria-label={t(($) => {
                 return $.chat.billing.customDollarAmount;
               })}
-              className="h-8 w-24 rounded-md border border-input bg-background px-2 text-sm text-foreground outline-none transition-colors focus:border-ring"
+              className="h-8 w-24 px-2"
             />
-            <button
+            <Button
               type="button"
               onClick={handleCustomCreditClick}
               disabled={redirecting}
-              className="inline-flex h-8 items-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-hover disabled:opacity-60"
+              variant="default"
+              size="sm"
+              className="disabled:opacity-60"
             >
               {redirecting
                 ? t(($) => {
@@ -6351,7 +6685,7 @@ function PaidCreditCheckoutActions({
                 : t(($) => {
                     return $.chat.billing.buy;
                   })}
-            </button>
+            </Button>
           </form>
         </details>
       </div>
@@ -6424,11 +6758,13 @@ function InsufficientCreditsCard() {
       <p className="text-[0.9375rem] font-medium text-foreground">{headline}</p>
       <p className="mt-1 text-sm text-muted-foreground">{helper}</p>
       {!canShowBillingAction ? null : shouldStartProCheckout ? (
-        <button
+        <Button
           type="button"
           onClick={handleUpgradeClick}
           disabled={redirecting}
-          className="mt-3 inline-flex h-8 items-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-hover disabled:opacity-60"
+          variant="default"
+          size="sm"
+          className="mt-3 disabled:opacity-60"
         >
           {redirecting
             ? t(($) => {
@@ -6437,7 +6773,7 @@ function InsufficientCreditsCard() {
             : t(($) => {
                 return $.chat.billing.upgradeToPro;
               })}
-        </button>
+        </Button>
       ) : (
         <PaidCreditCheckoutActions
           redirecting={redirecting}

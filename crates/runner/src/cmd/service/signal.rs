@@ -7,7 +7,7 @@ use crate::error::{RunnerError, RunnerResult};
 
 use super::diagnostic::status_field_preview;
 use super::systemctl::{
-    has_service_main_process, has_service_main_process_bounded, run_command_output_bounded,
+    has_service_main_process, has_service_main_process_bounded, run_systemctl_output_bounded,
 };
 use super::target::RunnerServiceUnit;
 
@@ -70,8 +70,7 @@ pub(super) async fn signal_service_main_bounded(
 ) -> RunnerResult<ServiceSignalOutcome> {
     let deadline = Instant::now() + duration;
     let signal_arg = format!("--signal={}", signal.as_str());
-    let output = run_command_output_bounded(
-        "systemctl",
+    let output = run_systemctl_output_bounded(
         &[
             "kill",
             "--kill-whom=main",

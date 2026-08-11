@@ -95,11 +95,6 @@ export function stubAgentCustomConnectors(
   origin = "http://localhost:3000",
 ) {
   return http.get(`${origin}/api/zero/agents/:id/custom-connectors`, () => {
-    return HttpResponse.json({
-      enabledIds: grants.map((grant) => {
-        return grant.customConnectorId;
-      }),
-      grants,
-    });
+    return HttpResponse.json({ grants });
   });
 }

@@ -1666,6 +1666,7 @@
         "waiting": "En attente",
         "watching": "Regarder"
       },
+      "emojiCategories": "Catégories d'emojis",
       "empty": "Envoyer un message pour commencer la conversation",
       "frequentlyUsed": "Fréquemment utilisé",
       "icon": "Icône de fil de discussion",
@@ -1981,6 +1982,7 @@
       "emptyAdmin": "Pas encore de connecteurs personnalisés. Créez-en un pour enregistrer une API que tous les membres pourront utiliser.",
       "emptyMember": "Votre organisation n'a pas encore enregistré de connecteurs personnalisés.",
       "mcpStreamableHttp": "MCP · Streamable HTTP",
+      "mcpType": "MCP",
       "moreOptions": "Plus d'options",
       "statusConnected": "Connecté",
       "toasts": {
@@ -4501,7 +4503,10 @@
           "action": "Retirer de l'espace de travail",
           "confirmDescription": "{{email}} sera retiré de cet espace de travail et perdra l'accès à toutes les ressources.",
           "progress": "Suppression...",
-          "title": "Supprimer le membre ?"
+          "title": "Supprimer le membre ?",
+          "usagePackImpactDescription": "Les crédits restants de son pack d'utilisation deviennent immédiatement indisponibles. Le pack sera supprimé à la fin de la période de facturation en cours. Si l'espace de travail ne dispose alors plus d'aucun pack d'utilisation, son forfait sera également résilié à la fin de la période de facturation.",
+          "usagePackImpactTitle": "Impact sur le pack d'utilisation",
+          "usagePackRefundDescription": "Remboursement : la part non utilisée des crédits achetés est recréditée sur le moyen de paiement d'origine. Les crédits consommés et les crédits bonus ne sont pas remboursables."
         },
         "revoke": {
           "action": "Révoquer l'invitation",
@@ -4523,6 +4528,7 @@
           "progress": "Changement...",
           "title": "Passer en membre ?"
         },
+        "usagePack": "Forfait d’utilisation",
         "user": "Utilisateur",
         "you": "Vous"
       },

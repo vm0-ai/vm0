@@ -2689,32 +2689,27 @@
       }
     },
     {
-      "name": "MCP origin base allows exact POST endpoint path",
+      "name": "MCP endpoint base allows permissionless POST",
       "firewalls": [
         {
           "name": "custom_connector_00000000000040008000000000000001",
           "customConnectorId": "00000000-0000-4000-8000-000000000001",
           "apis": [
             {
-              "base": "https://mcp.example.com",
+              "base": "https://mcp.example.com/api/mcp",
               "hostPolicy": { "kind": "publicDestination" },
               "auth": { "headers": { "Authorization": "Bearer token" } },
-              "permissions": [
-                {
-                  "name": "mcp-endpoint",
-                  "rules": ["POST /api/mcp", "GET /api/mcp", "DELETE /api/mcp"]
-                }
-              ]
+              "permissions": []
             }
           ]
         }
       ],
       "networkPolicies": {
         "custom_connector_00000000000040008000000000000001": {
-          "allow": ["mcp-endpoint"],
+          "allow": [],
           "deny": [],
           "ask": [],
-          "unknownPolicy": "deny"
+          "unknownPolicy": "allow"
         }
       },
       "request": {
@@ -2728,37 +2723,30 @@
       "expected": {
         "kind": "allow",
         "firewallName": "custom_connector_00000000000040008000000000000001",
-        "base": "https://mcp.example.com",
-        "relativePath": "/api/mcp",
-        "permission": "mcp-endpoint",
-        "rule": "POST /api/mcp"
+        "base": "https://mcp.example.com/api/mcp",
+        "relativePath": "/"
       }
     },
     {
-      "name": "MCP origin base allows compatibility GET endpoint path",
+      "name": "MCP endpoint base allows permissionless GET",
       "firewalls": [
         {
           "name": "mcp",
           "apis": [
             {
-              "base": "https://mcp.example.com",
+              "base": "https://mcp.example.com/api/mcp",
               "auth": {},
-              "permissions": [
-                {
-                  "name": "mcp-endpoint",
-                  "rules": ["GET /api/mcp", "DELETE /api/mcp"]
-                }
-              ]
+              "permissions": []
             }
           ]
         }
       ],
       "networkPolicies": {
         "mcp": {
-          "allow": ["mcp-endpoint"],
+          "allow": [],
           "deny": [],
           "ask": [],
-          "unknownPolicy": "deny"
+          "unknownPolicy": "allow"
         }
       },
       "request": {
@@ -2768,37 +2756,30 @@
       "expected": {
         "kind": "allow",
         "firewallName": "mcp",
-        "base": "https://mcp.example.com",
-        "relativePath": "/api/mcp",
-        "permission": "mcp-endpoint",
-        "rule": "GET /api/mcp"
+        "base": "https://mcp.example.com/api/mcp",
+        "relativePath": "/"
       }
     },
     {
-      "name": "MCP origin base allows compatibility DELETE endpoint path",
+      "name": "MCP endpoint base allows permissionless DELETE",
       "firewalls": [
         {
           "name": "mcp",
           "apis": [
             {
-              "base": "https://mcp.example.com",
+              "base": "https://mcp.example.com/api/mcp",
               "auth": {},
-              "permissions": [
-                {
-                  "name": "mcp-endpoint",
-                  "rules": ["GET /api/mcp", "DELETE /api/mcp"]
-                }
-              ]
+              "permissions": []
             }
           ]
         }
       ],
       "networkPolicies": {
         "mcp": {
-          "allow": ["mcp-endpoint"],
+          "allow": [],
           "deny": [],
           "ask": [],
-          "unknownPolicy": "deny"
+          "unknownPolicy": "allow"
         }
       },
       "request": {
@@ -2808,34 +2789,30 @@
       "expected": {
         "kind": "allow",
         "firewallName": "mcp",
-        "base": "https://mcp.example.com",
-        "relativePath": "/api/mcp",
-        "permission": "mcp-endpoint",
-        "rule": "DELETE /api/mcp"
+        "base": "https://mcp.example.com/api/mcp",
+        "relativePath": "/"
       }
     },
     {
-      "name": "MCP exact endpoint denies a distinct trailing slash",
+      "name": "MCP endpoint base allows a trailing slash",
       "firewalls": [
         {
           "name": "mcp",
           "apis": [
             {
-              "base": "https://mcp.example.com",
+              "base": "https://mcp.example.com/api/mcp",
               "auth": {},
-              "permissions": [
-                { "name": "mcp-endpoint", "rules": ["POST /api/mcp"] }
-              ]
+              "permissions": []
             }
           ]
         }
       ],
       "networkPolicies": {
         "mcp": {
-          "allow": ["mcp-endpoint"],
+          "allow": [],
           "deny": [],
           "ask": [],
-          "unknownPolicy": "deny"
+          "unknownPolicy": "allow"
         }
       },
       "request": {
@@ -2843,36 +2820,32 @@
         "url": "https://mcp.example.com/api/mcp/"
       },
       "expected": {
-        "kind": "block",
+        "kind": "allow",
         "firewallName": "mcp",
-        "base": "https://mcp.example.com",
-        "relativePath": "/api/mcp/",
-        "reason": "unknown_endpoint",
-        "permissions": []
+        "base": "https://mcp.example.com/api/mcp",
+        "relativePath": "/"
       }
     },
     {
-      "name": "MCP exact endpoint denies a child path",
+      "name": "MCP endpoint base allows a child path",
       "firewalls": [
         {
           "name": "mcp",
           "apis": [
             {
-              "base": "https://mcp.example.com",
+              "base": "https://mcp.example.com/api/mcp",
               "auth": {},
-              "permissions": [
-                { "name": "mcp-endpoint", "rules": ["POST /api/mcp"] }
-              ]
+              "permissions": []
             }
           ]
         }
       ],
       "networkPolicies": {
         "mcp": {
-          "allow": ["mcp-endpoint"],
+          "allow": [],
           "deny": [],
           "ask": [],
-          "unknownPolicy": "deny"
+          "unknownPolicy": "allow"
         }
       },
       "request": {
@@ -2880,36 +2853,32 @@
         "url": "https://mcp.example.com/api/mcp/child"
       },
       "expected": {
-        "kind": "block",
+        "kind": "allow",
         "firewallName": "mcp",
-        "base": "https://mcp.example.com",
-        "relativePath": "/api/mcp/child",
-        "reason": "unknown_endpoint",
-        "permissions": []
+        "base": "https://mcp.example.com/api/mcp",
+        "relativePath": "/child"
       }
     },
     {
-      "name": "MCP exact endpoint denies an unsupported method",
+      "name": "MCP endpoint base allows any method",
       "firewalls": [
         {
           "name": "mcp",
           "apis": [
             {
-              "base": "https://mcp.example.com",
+              "base": "https://mcp.example.com/api/mcp",
               "auth": {},
-              "permissions": [
-                { "name": "mcp-endpoint", "rules": ["POST /api/mcp"] }
-              ]
+              "permissions": []
             }
           ]
         }
       ],
       "networkPolicies": {
         "mcp": {
-          "allow": ["mcp-endpoint"],
+          "allow": [],
           "deny": [],
           "ask": [],
-          "unknownPolicy": "deny"
+          "unknownPolicy": "allow"
         }
       },
       "request": {
@@ -2917,50 +2886,39 @@
         "url": "https://mcp.example.com/api/mcp"
       },
       "expected": {
-        "kind": "block",
+        "kind": "allow",
         "firewallName": "mcp",
-        "base": "https://mcp.example.com",
-        "relativePath": "/api/mcp",
-        "reason": "unknown_endpoint",
-        "permissions": []
+        "base": "https://mcp.example.com/api/mcp",
+        "relativePath": "/"
       }
     },
     {
-      "name": "MCP exact endpoint denies a sibling path",
+      "name": "MCP endpoint base does not match a sibling path",
       "firewalls": [
         {
           "name": "mcp",
           "apis": [
             {
-              "base": "https://mcp.example.com",
+              "base": "https://mcp.example.com/api/mcp",
               "auth": {},
-              "permissions": [
-                { "name": "mcp-endpoint", "rules": ["POST /api/mcp"] }
-              ]
+              "permissions": []
             }
           ]
         }
       ],
       "networkPolicies": {
         "mcp": {
-          "allow": ["mcp-endpoint"],
+          "allow": [],
           "deny": [],
           "ask": [],
-          "unknownPolicy": "deny"
+          "unknownPolicy": "allow"
         }
       },
       "request": {
         "method": "POST",
         "url": "https://mcp.example.com/api/other"
       },
-      "expected": {
-        "kind": "block",
-        "firewallName": "mcp",
-        "base": "https://mcp.example.com",
-        "relativePath": "/api/other",
-        "reason": "unknown_endpoint",
-        "permissions": []
-      }
+      "expected": { "kind": "no_match" }
     },
     {
       "name": "MCP exact endpoint does not match another host",
@@ -2969,21 +2927,19 @@
           "name": "mcp",
           "apis": [
             {
-              "base": "https://mcp.example.com",
+              "base": "https://mcp.example.com/api/mcp",
               "auth": {},
-              "permissions": [
-                { "name": "mcp-endpoint", "rules": ["POST /api/mcp"] }
-              ]
+              "permissions": []
             }
           ]
         }
       ],
       "networkPolicies": {
         "mcp": {
-          "allow": ["mcp-endpoint"],
+          "allow": [],
           "deny": [],
           "ask": [],
-          "unknownPolicy": "deny"
+          "unknownPolicy": "allow"
         }
       },
       "request": {
@@ -2993,18 +2949,16 @@
       "expected": { "kind": "no_match" }
     },
     {
-      "name": "MCP shared exact endpoint uses stable custom connector intent",
+      "name": "MCP shared endpoint uses stable custom connector intent",
       "firewalls": [
         {
           "name": "custom_connector_00000000000040008000000000000001",
           "customConnectorId": "00000000-0000-4000-8000-000000000001",
           "apis": [
             {
-              "base": "https://mcp.example.com",
+              "base": "https://mcp.example.com/api/mcp",
               "auth": { "headers": { "Authorization": "Bearer first" } },
-              "permissions": [
-                { "name": "mcp-endpoint", "rules": ["POST /api/mcp"] }
-              ]
+              "permissions": []
             }
           ]
         },
@@ -3013,27 +2967,25 @@
           "customConnectorId": "00000000-0000-4000-8000-000000000002",
           "apis": [
             {
-              "base": "https://mcp.example.com",
+              "base": "https://mcp.example.com/api/mcp",
               "auth": { "headers": { "Authorization": "Bearer second" } },
-              "permissions": [
-                { "name": "mcp-endpoint", "rules": ["POST /api/mcp"] }
-              ]
+              "permissions": []
             }
           ]
         }
       ],
       "networkPolicies": {
         "custom_connector_00000000000040008000000000000001": {
-          "allow": ["mcp-endpoint"],
+          "allow": [],
           "deny": [],
           "ask": [],
-          "unknownPolicy": "deny"
+          "unknownPolicy": "allow"
         },
         "custom_connector_00000000000040008000000000000002": {
-          "allow": ["mcp-endpoint"],
+          "allow": [],
           "deny": [],
           "ask": [],
-          "unknownPolicy": "deny"
+          "unknownPolicy": "allow"
         }
       },
       "request": {
@@ -3047,10 +2999,8 @@
       "expected": {
         "kind": "allow",
         "firewallName": "custom_connector_00000000000040008000000000000002",
-        "base": "https://mcp.example.com",
-        "relativePath": "/api/mcp",
-        "permission": "mcp-endpoint",
-        "rule": "POST /api/mcp"
+        "base": "https://mcp.example.com/api/mcp",
+        "relativePath": "/"
       }
     }
   ]

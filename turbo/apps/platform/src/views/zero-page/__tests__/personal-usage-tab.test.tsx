@@ -339,9 +339,12 @@ describe("personal usage settings", () => {
     expect(screen.queryByText("Quarterly planning chat")).toBeNull();
 
     await user.hover(within(card).getByTestId("usage-pack-credit-purchased"));
-    const tooltip = await screen.findByRole("tooltip");
-    expect(tooltip).toHaveTextContent("Purchased — 20,000");
-    expect(tooltip).toHaveTextContent("Expires Apr 1, 2026");
+    await expect(
+      screen.findByText("Purchased — 20,000"),
+    ).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByText("Expires Apr 1, 2026"),
+    ).resolves.toBeInTheDocument();
 
     await user.click(
       within(card).getByTestId("usage-pack-credit-grants-toggle"),
@@ -380,6 +383,60 @@ describe("personal usage settings", () => {
       expect(requests).toBe(1);
     });
     expect(screen.queryByTestId("usage-pack-credit-card")).toBeNull();
+  });
+
+  it("hides member balances when the admin is the only member", async () => {
+    mockPersonalUsageStory(usageRows(), "pro", false, "admin");
+    context.mocks.data.orgMembers({
+      name: "Test Org",
+      role: "admin",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      members: [
+        {
+          userId: "test-user-123",
+          email: "linghan@example.com",
+          firstName: "Linghan",
+          lastName: "Hu",
+          imageUrl: "",
+          role: "admin",
+          joinedAt: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+      pendingInvitations: [],
+      membershipRequests: [],
+    });
+    context.mocks.api(
+      zeroBillingUsagePackCreditsContract.get,
+      ({ respond }) => {
+        return respond(200, {
+          totalCredits: 20_000,
+          purchasedCredits: 20_000,
+          bonusCredits: 0,
+          creditGrants: [],
+          hasUsagePack: true,
+          memberCredits: [
+            {
+              memberId: "test-user-123",
+              totalCredits: 20_000,
+              purchasedCredits: 20_000,
+              bonusCredits: 0,
+              creditGrants: [],
+            },
+          ],
+        });
+      },
+    );
+
+    await openUsageSettings(true);
+
+    const card = await screen.findByTestId("usage-pack-credit-card");
+    await waitFor(() => {
+      expect(
+        queryAllByRoleFast("button", card).some((button) => {
+          return button.getAttribute("aria-label") === "View member balances";
+        }),
+      ).toBeFalsy();
+    });
   });
 
   it("shows every member's usage pack balance to an admin", async () => {

@@ -1,5 +1,5 @@
 import type { MouseEvent, ReactNode } from "react";
-import type { Computed } from "ccstate";
+import { Button } from "@vm0/ui";
 import {
   useGet,
   useLastLoadable,
@@ -62,8 +62,8 @@ import {
   artifactPreviewUrlsMatch,
   attachmentFilenameFromUrl,
   downloadAttachmentUrl,
-  publicAttachmentUrl,
 } from "./zero-attachment-url.ts";
+import { useResolvedAttachmentUrl } from "./zero-attachment-resource.ts";
 import {
   ArtifactActionSeparator,
   ArtifactDownloadMenu,
@@ -260,15 +260,17 @@ function DialogIconButton({
   onClick: () => void;
 }) {
   return (
-    <button
+    <Button
       type="button"
       onClick={onClick}
-      className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
+      variant="quiet"
+      size="icon-sm"
+      className="shrink-0"
       aria-label={ariaLabel}
       title={ariaLabel}
     >
       {children}
-    </button>
+    </Button>
   );
 }
 
@@ -551,7 +553,7 @@ function ArtifactDialogImageNavigationControls({
   return (
     <>
       {navigation.onPrevious && (
-        <button
+        <Button
           type="button"
           onClick={navigation.onPrevious}
           aria-label={t(($) => {
@@ -561,13 +563,15 @@ function ArtifactDialogImageNavigationControls({
             return $.artifacts.actions.previousImage;
           })}
           data-testid="artifact-dialog-previous-image"
-          className="absolute left-4 top-1/2 z-20 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-border/60 bg-background/90 text-foreground shadow-lg backdrop-blur-sm transition-colors hover:bg-state-hover"
+          variant="quiet"
+          size="icon-lg"
+          className="absolute left-4 top-1/2 z-20 -translate-y-1/2 rounded-full border border-border/60 bg-background/90 text-foreground shadow-lg backdrop-blur-sm [&_svg]:size-[22px]"
         >
           <ChevronLeft size={22} />
-        </button>
+        </Button>
       )}
       {navigation.onNext && (
-        <button
+        <Button
           type="button"
           onClick={navigation.onNext}
           aria-label={t(($) => {
@@ -577,10 +581,12 @@ function ArtifactDialogImageNavigationControls({
             return $.artifacts.actions.nextImage;
           })}
           data-testid="artifact-dialog-next-image"
-          className="absolute right-4 top-1/2 z-20 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-border/60 bg-background/90 text-foreground shadow-lg backdrop-blur-sm transition-colors hover:bg-state-hover"
+          variant="quiet"
+          size="icon-lg"
+          className="absolute right-4 top-1/2 z-20 -translate-y-1/2 rounded-full border border-border/60 bg-background/90 text-foreground shadow-lg backdrop-blur-sm [&_svg]:size-[22px]"
         >
           <ChevronRight size={22} />
-        </button>
+        </Button>
       )}
     </>
   );
@@ -784,14 +790,12 @@ function ArtifactDialogImageBody({
   filename,
   imageNavigation,
   preview,
-  resourceUrl$,
 }: {
   filename: string;
   imageNavigation?: ArtifactImageNavigationActions;
   preview: Extract<AttachmentLightboxState, { kind: "image" }>;
-  resourceUrl$: Computed<Promise<string>>;
 }) {
-  const resourceUrl = useLastResolved(resourceUrl$) ?? null;
+  const resourceUrl = useResolvedAttachmentUrl(preview.url);
   return (
     <ArtifactDialogImageStage
       filename={filename}
@@ -802,45 +806,25 @@ function ArtifactDialogImageBody({
   );
 }
 
-function ArtifactDialogBody({
-  imageResourceUrl$,
-  imageNavigation,
+function ArtifactDialogVideoBody({
+  filename,
   preview,
 }: {
-  imageResourceUrl$?: Computed<Promise<string>>;
-  imageNavigation?: ArtifactImageNavigationActions;
+  filename: string;
   preview: AttachmentLightboxState;
 }) {
   const { t } = useTranslation();
-  const filename = artifactDialogFilename(preview);
+  const resourceUrl = useResolvedAttachmentUrl(preview.url);
 
-  if (preview.kind === "image") {
-    return imageResourceUrl$ ? (
-      <ArtifactDialogImageBody
-        filename={filename}
-        imageNavigation={imageNavigation}
-        preview={preview}
-        resourceUrl$={imageResourceUrl$}
-      />
-    ) : (
-      <ArtifactDialogImageStage
-        filename={filename}
-        imageNavigation={imageNavigation}
-        preview={preview}
-        resourceUrl={publicAttachmentUrl(preview.url)}
-      />
-    );
-  }
-
-  if (preview.kind === "video") {
-    return (
-      <ArtifactDialogStage centered>
-        <div
-          className="w-full overflow-hidden rounded-xl border border-border/70 bg-black shadow-sm"
-          data-testid="artifact-dialog-video-stage"
-        >
+  return (
+    <ArtifactDialogStage centered>
+      <div
+        className="w-full overflow-hidden rounded-xl border border-border/70 bg-black shadow-sm"
+        data-testid="artifact-dialog-video-stage"
+      >
+        {resourceUrl !== null && (
           <video
-            src={publicAttachmentUrl(preview.url)}
+            src={resourceUrl}
             controls
             autoPlay
             playsInline
@@ -853,23 +837,34 @@ function ArtifactDialogBody({
               { filename },
             )}
           />
-        </div>
-      </ArtifactDialogStage>
-    );
-  }
+        )}
+      </div>
+    </ArtifactDialogStage>
+  );
+}
 
-  if (preview.kind === "audio") {
-    return (
-      <ArtifactDialogStage centered>
-        <div className="flex w-full max-w-[520px] flex-col items-center gap-4 rounded-xl border border-border/70 bg-background p-6 shadow-sm">
-          <span className="flex h-14 w-14 items-center justify-center rounded-2xl border border-border/70 bg-muted/50 text-muted-foreground">
-            <FileMusic size={28} />
-          </span>
-          <p className="max-w-full truncate text-sm text-muted-foreground">
-            {filename}
-          </p>
+function ArtifactDialogAudioBody({
+  filename,
+  preview,
+}: {
+  filename: string;
+  preview: AttachmentLightboxState;
+}) {
+  const { t } = useTranslation();
+  const resourceUrl = useResolvedAttachmentUrl(preview.url);
+
+  return (
+    <ArtifactDialogStage centered>
+      <div className="flex w-full max-w-[520px] flex-col items-center gap-4 rounded-xl border border-border/70 bg-background p-6 shadow-sm">
+        <span className="flex h-14 w-14 items-center justify-center rounded-2xl border border-border/70 bg-muted/50 text-muted-foreground">
+          <FileMusic size={28} />
+        </span>
+        <p className="max-w-full truncate text-sm text-muted-foreground">
+          {filename}
+        </p>
+        {resourceUrl !== null && (
           <audio
-            src={publicAttachmentUrl(preview.url)}
+            src={resourceUrl}
             controls
             autoPlay
             preload="metadata"
@@ -882,9 +877,77 @@ function ArtifactDialogBody({
             )}
             data-testid="artifact-dialog-audio"
           />
-        </div>
-      </ArtifactDialogStage>
+        )}
+      </div>
+    </ArtifactDialogStage>
+  );
+}
+
+function ArtifactDialogDocumentFrameBody({
+  filename,
+  preview,
+}: {
+  filename: string;
+  preview: AttachmentLightboxState;
+}) {
+  const { t } = useTranslation();
+  const resourceUrl = useResolvedAttachmentUrl(preview.url);
+  // PDF Open Parameters: #navpanes=0 hides Chromium's built-in left rail so the
+  // embedded preview shows just the page and toolbar by default.
+  const src =
+    resourceUrl !== null && preview.kind === "pdf"
+      ? `${resourceUrl}#navpanes=0`
+      : resourceUrl;
+
+  return (
+    <ArtifactDialogStage scrollable={false}>
+      <div
+        className="flex h-full min-h-0 w-full flex-1 overflow-hidden rounded-xl border border-border/70 bg-background shadow-sm"
+        data-testid="artifact-dialog-document-frame"
+      >
+        {src !== null && (
+          <iframe
+            src={src}
+            title={t(
+              ($) => {
+                return $.artifacts.preview.dialogLabel;
+              },
+              { filename },
+            )}
+            scrolling="yes"
+            className="block h-full min-h-0 w-full border-0 bg-background"
+          />
+        )}
+      </div>
+    </ArtifactDialogStage>
+  );
+}
+
+function ArtifactDialogBody({
+  imageNavigation,
+  preview,
+}: {
+  imageNavigation?: ArtifactImageNavigationActions;
+  preview: AttachmentLightboxState;
+}) {
+  const filename = artifactDialogFilename(preview);
+
+  if (preview.kind === "image") {
+    return (
+      <ArtifactDialogImageBody
+        filename={filename}
+        imageNavigation={imageNavigation}
+        preview={preview}
+      />
     );
+  }
+
+  if (preview.kind === "video") {
+    return <ArtifactDialogVideoBody filename={filename} preview={preview} />;
+  }
+
+  if (preview.kind === "audio") {
+    return <ArtifactDialogAudioBody filename={filename} preview={preview} />;
   }
 
   if (
@@ -900,28 +963,8 @@ function ArtifactDialogBody({
     return <ArtifactDialogHtmlBody filename={filename} preview={preview} />;
   }
 
-  const publicUrl = publicAttachmentUrl(preview.url);
-  const src = preview.kind === "pdf" ? `${publicUrl}#navpanes=0` : publicUrl;
-
   return (
-    <ArtifactDialogStage scrollable={false}>
-      <div
-        className="flex h-full min-h-0 w-full flex-1 overflow-hidden rounded-xl border border-border/70 bg-background shadow-sm"
-        data-testid="artifact-dialog-document-frame"
-      >
-        <iframe
-          src={src}
-          title={t(
-            ($) => {
-              return $.artifacts.preview.dialogLabel;
-            },
-            { filename },
-          )}
-          scrolling="yes"
-          className="block h-full min-h-0 w-full border-0 bg-background"
-        />
-      </div>
-    </ArtifactDialogStage>
+    <ArtifactDialogDocumentFrameBody filename={filename} preview={preview} />
   );
 }
 
@@ -934,9 +977,18 @@ function ArtifactDialogHtmlBody({
 }) {
   const { t } = useTranslation();
   const fullscreen = useGet(lightboxDialogFullscreen$);
-  const src = publicAttachmentUrl(preview.url);
+  const src = useResolvedAttachmentUrl(preview.url);
   const isPresentationHtml =
     preview.artifact?.artifactKind === "presentation-html";
+
+  if (src === null) {
+    return (
+      <div
+        className="h-full w-full bg-background"
+        data-testid="artifact-dialog-site-frame"
+      />
+    );
+  }
 
   return (
     <div
@@ -1045,10 +1097,6 @@ function ArtifactPreviewDialogThreadResolver({
   });
   const navigateImageLightbox = useSet(navigateImageLightbox$);
   const reloadArtifacts = useSet(thread.reloadArtifacts$);
-  const imageResourceUrl$ =
-    preview.kind === "image"
-      ? thread.artifactSignalsForUrl(preview.url)?.resourceUrl$
-      : undefined;
   const item =
     loadable.state === "hasData"
       ? findArtifactDialogItemForUrl(loadable.data, preview.url)
@@ -1110,7 +1158,6 @@ function ArtifactPreviewDialogThreadResolver({
           onNext: imageNavigationAction(imageNavigation.next),
           onPrevious: imageNavigationAction(imageNavigation.previous),
         }}
-        imageResourceUrl$={imageResourceUrl$}
         preview={preview}
       />
     );
@@ -1135,7 +1182,6 @@ function ArtifactPreviewDialogThreadResolver({
         onNext: imageNavigationAction(imageNavigation.next),
         onPrevious: imageNavigationAction(imageNavigation.previous),
       }}
-      imageResourceUrl$={imageResourceUrl$}
       preview={preview}
     />
   );
@@ -1254,12 +1300,10 @@ function ArtifactPreviewDialogActions({
 function ArtifactPreviewDialogContent({
   artifact,
   imageNavigation,
-  imageResourceUrl$,
   preview,
 }: {
   artifact: AttachmentArtifactMetadata | undefined;
   imageNavigation?: ArtifactImageNavigationActions;
-  imageResourceUrl$?: Computed<Promise<string>>;
   preview: AttachmentLightboxState;
 }) {
   const { t } = useTranslation();
@@ -1330,7 +1374,6 @@ function ArtifactPreviewDialogContent({
         </div>
         <div className="min-h-0 flex-1 bg-background">
           <ArtifactDialogBody
-            imageResourceUrl$={imageResourceUrl$}
             imageNavigation={imageNavigation}
             preview={preview}
           />
@@ -1552,6 +1595,49 @@ export function PreviewableAudioAttachmentChip({
 // AttachmentChip — chip shown in the composer before the message is sent
 // ---------------------------------------------------------------------------
 
+/**
+ * A restored attachment carries the canonical API URL, so the thumbnail needs
+ * the same presigned exchange the sent message uses. Kept in its own component
+ * so the surrounding button stays one DOM node across the pending-to-uploaded
+ * transition, and the load key stays on the canonical URL, which is stable
+ * across re-signing.
+ */
+function ComposerImagePreviewImage({
+  imageLoadKey,
+  loaded,
+  url,
+}: {
+  imageLoadKey: string;
+  loaded: boolean;
+  url: string;
+}) {
+  const imageLoadStatusRef = useSet(imageLoadStatusRef$);
+  const setImageLoadStatus = useSet(setImageLoadStatus$);
+  const resolvedUrl = useResolvedAttachmentUrl(url);
+
+  if (resolvedUrl === null) {
+    return null;
+  }
+
+  return (
+    <img
+      key={imageLoadKey}
+      ref={imageLoadStatusRef}
+      src={resolvedUrl}
+      alt=""
+      data-image-load-key={imageLoadKey}
+      loading="lazy"
+      onLoad={() => {
+        setImageLoadStatus(imageLoadKey, "loaded");
+      }}
+      onError={() => {
+        setImageLoadStatus(imageLoadKey, "error");
+      }}
+      className={`h-full w-full object-cover ${loaded ? "" : "opacity-0"}`}
+    />
+  );
+}
+
 function ComposerImagePreviewButton({
   filename,
   openImageLightbox,
@@ -1563,8 +1649,6 @@ function ComposerImagePreviewButton({
 }) {
   const { t } = useTranslation();
   const imageLoadStatuses = useGet(imageLoadStatusByKey$);
-  const imageLoadStatusRef = useSet(imageLoadStatusRef$);
-  const setImageLoadStatus = useSet(setImageLoadStatus$);
   const imageLoadKey = url ? `composer-image:${url}` : null;
 
   const currentImageStatus = imageLoadKey
@@ -1621,22 +1705,10 @@ function ComposerImagePreviewButton({
           )}
         </span>
       )}
-      <img
-        key={imageLoadKey}
-        ref={imageLoadStatusRef}
-        src={url}
-        alt=""
-        data-image-load-key={imageLoadKey}
-        loading="lazy"
-        onLoad={() => {
-          setImageLoadStatus(imageLoadKey, "loaded");
-        }}
-        onError={() => {
-          setImageLoadStatus(imageLoadKey, "error");
-        }}
-        className={`h-full w-full object-cover ${
-          currentImageStatus === "loaded" ? "" : "opacity-0"
-        }`}
+      <ComposerImagePreviewImage
+        imageLoadKey={imageLoadKey}
+        loaded={currentImageStatus === "loaded"}
+        url={url}
       />
       <span className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors group-hover/image-preview:bg-black/30">
         <Image

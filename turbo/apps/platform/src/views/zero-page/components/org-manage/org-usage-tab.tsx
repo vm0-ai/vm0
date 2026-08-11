@@ -1,4 +1,5 @@
 import { useLoadable } from "ccstate-react";
+import { Button } from "@vm0/ui";
 import { useTranslation } from "react-i18next";
 import type { OrgMember } from "@vm0/api-contracts/contracts/org-members";
 import type { BillingStatusResponse } from "@vm0/api-contracts/contracts/zero-billing";
@@ -540,9 +541,11 @@ function CreditBalanceChart({
               return $.billing.usage.upgradeDescription;
             })}
           </p>
-          <button
+          <Button
             type="button"
-            className="mt-3 inline-flex h-8 items-center rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary-hover"
+            variant="default"
+            size="sm"
+            className="mt-3 text-xs"
             onClick={() => {
               onComparePlans();
             }}
@@ -550,7 +553,7 @@ function CreditBalanceChart({
             {t(($) => {
               return $.billing.plans.compare;
             })}
-          </button>
+          </Button>
         </div>
       ) : null}
 

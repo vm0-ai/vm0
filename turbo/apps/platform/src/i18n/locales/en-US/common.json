@@ -1626,6 +1626,7 @@
         "waiting": "Waiting",
         "watching": "Watching"
       },
+      "emojiCategories": "Emoji categories",
       "empty": "Send a message to start the conversation",
       "frequentlyUsed": "Frequently used",
       "icon": "Chat thread icon",
@@ -1941,6 +1942,7 @@
       "emptyAdmin": "No custom connectors yet. Create one to register an API for every member to use.",
       "emptyMember": "Your org hasn't registered any custom connectors yet.",
       "mcpStreamableHttp": "MCP · Streamable HTTP",
+      "mcpType": "MCP",
       "moreOptions": "More options",
       "statusConnected": "Connected",
       "toasts": {
@@ -4450,7 +4452,10 @@
           "action": "Remove from workspace",
           "confirmDescription": "{{email}} will be removed from this workspace and lose access to all resources.",
           "progress": "Removing...",
-          "title": "Remove member?"
+          "title": "Remove member?",
+          "usagePackImpactDescription": "Their remaining usage pack credits become unavailable immediately. The package is removed at the end of the current billing period. If this leaves the workspace without a usage pack, the workspace plan will also be canceled at the end of the billing period.",
+          "usagePackImpactTitle": "Usage pack impact",
+          "usagePackRefundDescription": "Refund: The unused purchased-credit portion is returned to its original payment method. Used credits and bonus credits are not refundable."
         },
         "revoke": {
           "action": "Revoke invitation",
@@ -4472,6 +4477,7 @@
           "progress": "Switching...",
           "title": "Switch to member?"
         },
+        "usagePack": "Usage pack",
         "user": "User",
         "you": "You"
       },

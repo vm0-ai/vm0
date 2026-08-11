@@ -18,7 +18,7 @@ function isRecentTimestamp(value: string | null, nowMs: number): boolean {
   );
 }
 
-export function shouldNotifyUserForDesktopUpdate(
+export function shouldDeferDesktopUpdate(
   hostState: ComputerUseHostRuntimeState,
   nowMs = Date.now(),
 ): boolean {

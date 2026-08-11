@@ -16,7 +16,6 @@ export interface OrgCustomConnectorQueryInjection {
   readonly valueTemplate: string;
 }
 
-export type OrgCustomConnectorPrefixes = string[];
 export type OrgCustomConnectorPrefixTemplates = string[];
 export type OrgCustomConnectorFields = OrgCustomConnectorField[];
 export type OrgCustomConnectorHeaderInjections =

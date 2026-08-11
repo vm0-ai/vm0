@@ -1082,6 +1082,381 @@ const MCP_CUSTOM_CONNECTOR_READERS_PREVIOUS_MIGRATION =
   "0872_curious_yellow_claw";
 const MCP_CUSTOM_CONNECTOR_READERS_MIGRATION =
   "0873_prepare_mcp_custom_connector_readers";
+const CUSTOM_CONNECTOR_DEFINITION_CONTRACTION_PREVIOUS_MIGRATION =
+  "0897_bizarre_kid_colt";
+const CUSTOM_CONNECTOR_DEFINITION_CONTRACTION_MIGRATION =
+  "0902_colorful_mandrill";
+
+const CONNECTION_SCOPED_VARIABLE_PREVIOUS_MIGRATION =
+  "0900_replace_scheduled_usage_pack_change";
+const CONNECTION_SCOPED_VARIABLE_MIGRATION = "0901_parallel_energizer";
+const CONNECTION_SCOPED_VARIABLE_SHADOW_INDEX =
+  "idx_variables_org_user_type_name_0901";
+
+async function assertConnectionScopedVariableIndexes(
+  client: Client,
+): Promise<void> {
+  const indexes = await client.query<{
+    definition: string;
+    isUnique: boolean;
+    isValid: boolean;
+    name: string;
+    predicate: string | null;
+  }>(`
+    SELECT
+      "index_class"."relname" AS "name",
+      "index"."indisunique" AS "isUnique",
+      "index"."indisvalid" AS "isValid",
+      pg_get_indexdef("index"."indexrelid") AS "definition",
+      pg_get_expr("index"."indpred", "index"."indrelid") AS "predicate"
+    FROM "pg_index" AS "index"
+    INNER JOIN "pg_class" AS "index_class"
+      ON "index_class"."oid" = "index"."indexrelid"
+    INNER JOIN "pg_class" AS "table_class"
+      ON "table_class"."oid" = "index"."indrelid"
+    WHERE "table_class"."relname" = 'variables'
+      AND "index_class"."relname" IN (
+        'idx_variables_org_user_type_name',
+        'idx_variables_connector_name',
+        '${CONNECTION_SCOPED_VARIABLE_SHADOW_INDEX}'
+      )
+    ORDER BY "index_class"."relname"
+  `);
+  assert.deepEqual(
+    indexes.rows.map((index) => {
+      return {
+        isUnique: index.isUnique,
+        isValid: index.isValid,
+        name: index.name,
+      };
+    }),
+    [
+      {
+        isUnique: true,
+        isValid: true,
+        name: "idx_variables_connector_name",
+      },
+      {
+        isUnique: true,
+        isValid: true,
+        name: "idx_variables_org_user_type_name",
+      },
+    ],
+  );
+  const connectorIndex = indexes.rows[0];
+  const userIndex = indexes.rows[1];
+  assert.match(
+    connectorIndex?.definition ?? "",
+    /\(connector_id, name\).*WHERE \(connector_id IS NOT NULL\)$/u,
+  );
+  assert.match(connectorIndex?.predicate ?? "", /connector_id IS NOT NULL/u);
+  assert.match(
+    userIndex?.definition ?? "",
+    /\(org_id, user_id, type, name\).*WHERE \(connector_id IS NULL\)$/u,
+  );
+  assert.match(userIndex?.predicate ?? "", /connector_id IS NULL/u);
+
+  const ownerConstraint = await client.query<{
+    definition: string;
+    isValidated: boolean;
+  }>(`
+    SELECT
+      pg_get_constraintdef("constraint"."oid") AS "definition",
+      "constraint"."convalidated" AS "isValidated"
+    FROM "pg_constraint" AS "constraint"
+    WHERE "constraint"."conrelid" = 'public.variables'::regclass
+      AND "constraint"."conname" = 'fk_variables_connector_owner'
+  `);
+  assert.equal(ownerConstraint.rows.length, 1);
+  assert.equal(ownerConstraint.rows[0]?.isValidated, true);
+  assert.match(
+    ownerConstraint.rows[0]?.definition ?? "",
+    /FOREIGN KEY \(connector_id, org_id, user_id\) REFERENCES connectors\(id, org_id, user_id\) ON DELETE CASCADE/u,
+  );
+}
+
+function connectionScopedVariableMigrationStatements(
+  migrationSql: string,
+): readonly [string, string, string] {
+  const statements = migrationSql
+    .split("--> statement-breakpoint")
+    .map((statement) => {
+      return statement.trim();
+    })
+    .filter((statement) => {
+      return statement.length > 0;
+    });
+  assert.equal(statements.length, 3);
+  const dropShadowIndex = statements.at(0);
+  const createShadowIndex = statements.at(1);
+  const swapIndexes = statements.at(2);
+  assert.ok(dropShadowIndex);
+  assert.ok(createShadowIndex);
+  assert.ok(swapIndexes);
+  return [dropShadowIndex, createShadowIndex, swapIndexes];
+}
+
+async function rerunConnectionScopedVariableMigration(
+  client: Client,
+  statements: readonly string[],
+): Promise<void> {
+  for (const statement of statements) {
+    await client.query(statement);
+  }
+}
+
+async function validateConnectionScopedVariableUniqueness(): Promise<void> {
+  console.log(
+    "=== Validate connection-scoped variable uniqueness contraction ===\n",
+  );
+  const testDb = "migration_connection_scoped_variable_uniqueness_test";
+  const migrationSql = await fs.readFile(
+    path.join(MIGRATIONS_DIR, `${CONNECTION_SCOPED_VARIABLE_MIGRATION}.sql`),
+    "utf8",
+  );
+  const migrationStatements =
+    connectionScopedVariableMigrationStatements(migrationSql);
+  assert.ok(migrationSql.startsWith(NON_TRANSACTIONAL_MIGRATION_MARKER));
+  assert.match(
+    migrationSql,
+    new RegExp(
+      `CREATE UNIQUE INDEX CONCURRENTLY "${CONNECTION_SCOPED_VARIABLE_SHADOW_INDEX}"`,
+      "u",
+    ),
+  );
+  assert.match(
+    migrationSql,
+    /DROP INDEX "idx_variables_org_user_type_name"[\s\S]*ALTER INDEX "idx_variables_org_user_type_name_0901"[\s\S]*RENAME TO "idx_variables_org_user_type_name"/u,
+  );
+
+  await createDatabase(testDb);
+  const client = new Client({ connectionString: createTestDbUrl(testDb) });
+  await client.connect();
+
+  const orgId = "migration-variable-org";
+  const userId = "migration-variable-user";
+  const firstConnectorId = "26233000-0000-4000-8000-000000000001";
+  const secondConnectorId = "26233000-0000-4000-8000-000000000002";
+  const connectorVariableName = "SHARED_CONNECTOR_VARIABLE";
+  const userVariableName = "USER_VARIABLE";
+
+  try {
+    await applyMigrationsUpToTag(
+      client,
+      CONNECTION_SCOPED_VARIABLE_PREVIOUS_MIGRATION,
+    );
+    await client.query(
+      `
+        INSERT INTO "connectors" (
+          "id",
+          "connector_slug",
+          "auth_method",
+          "storage_version",
+          "org_id",
+          "user_id"
+        )
+        VALUES
+          ($1, 'migration-variable-first', 'manual', 1, $3, $4),
+          ($2, 'migration-variable-second', 'manual', 1, $3, $4)
+      `,
+      [firstConnectorId, secondConnectorId, orgId, userId],
+    );
+    await client.query(
+      `
+        INSERT INTO "variables" (
+          "connector_id",
+          "org_id",
+          "user_id",
+          "type",
+          "name",
+          "value"
+        )
+        VALUES ($1, $2, $3, 'connector', $4, 'first')
+      `,
+      [firstConnectorId, orgId, userId, connectorVariableName],
+    );
+    await client.query(
+      `
+        INSERT INTO "variables" (
+          "org_id",
+          "user_id",
+          "type",
+          "name",
+          "value"
+        )
+        VALUES ($1, $2, 'user', $3, 'user-first')
+      `,
+      [orgId, userId, userVariableName],
+    );
+    await expectDatabaseError(client, {
+      code: "23505",
+      messageIncludes: "idx_variables_org_user_type_name",
+      query: `
+        INSERT INTO "variables" (
+          "connector_id",
+          "org_id",
+          "user_id",
+          "type",
+          "name",
+          "value"
+        )
+        VALUES ($1, $2, $3, 'connector', $4, 'blocked-before-migration')
+      `,
+      values: [secondConnectorId, orgId, userId, connectorVariableName],
+    });
+
+    await client.query(migrationStatements[0]);
+    await client.query(migrationStatements[1]);
+    const interruptedIndexes = await client.query<{
+      isValid: boolean;
+      name: string;
+      predicate: string | null;
+    }>(`
+      SELECT
+        "index_class"."relname" AS "name",
+        "index"."indisvalid" AS "isValid",
+        pg_get_expr("index"."indpred", "index"."indrelid") AS "predicate"
+      FROM "pg_index" AS "index"
+      INNER JOIN "pg_class" AS "index_class"
+        ON "index_class"."oid" = "index"."indexrelid"
+      INNER JOIN "pg_class" AS "table_class"
+        ON "table_class"."oid" = "index"."indrelid"
+      WHERE "table_class"."relname" = 'variables'
+        AND "index_class"."relname" IN (
+          'idx_variables_org_user_type_name',
+          '${CONNECTION_SCOPED_VARIABLE_SHADOW_INDEX}'
+        )
+      ORDER BY "index_class"."relname"
+    `);
+    assert.deepEqual(interruptedIndexes.rows, [
+      {
+        isValid: true,
+        name: "idx_variables_org_user_type_name",
+        predicate: null,
+      },
+      {
+        isValid: true,
+        name: CONNECTION_SCOPED_VARIABLE_SHADOW_INDEX,
+        predicate: "(connector_id IS NULL)",
+      },
+    ]);
+    await rerunConnectionScopedVariableMigration(client, migrationStatements);
+    await client.query(
+      `
+        INSERT INTO "variables" (
+          "connector_id",
+          "org_id",
+          "user_id",
+          "type",
+          "name",
+          "value"
+        )
+        VALUES ($1, $2, $3, 'connector', $4, 'second')
+      `,
+      [secondConnectorId, orgId, userId, connectorVariableName],
+    );
+    await expectDatabaseError(client, {
+      code: "23505",
+      messageIncludes: "idx_variables_connector_name",
+      query: `
+        INSERT INTO "variables" (
+          "connector_id",
+          "org_id",
+          "user_id",
+          "type",
+          "name",
+          "value"
+        )
+        VALUES ($1, $2, $3, 'connector', $4, 'duplicate-first')
+      `,
+      values: [firstConnectorId, orgId, userId, connectorVariableName],
+    });
+    await expectDatabaseError(client, {
+      code: "23505",
+      messageIncludes: "idx_variables_org_user_type_name",
+      query: `
+        INSERT INTO "variables" (
+          "org_id",
+          "user_id",
+          "type",
+          "name",
+          "value"
+        )
+        VALUES ($1, $2, 'user', $3, 'user-duplicate')
+      `,
+      values: [orgId, userId, userVariableName],
+    });
+    await client.query(
+      `
+        INSERT INTO "variables" (
+          "connector_id",
+          "org_id",
+          "user_id",
+          "type",
+          "name",
+          "value"
+        )
+        VALUES ($1, $2, $3, 'connector', $4, 'first-updated')
+        ON CONFLICT ("connector_id", "name")
+          WHERE "connector_id" IS NOT NULL
+        DO UPDATE SET "value" = EXCLUDED."value"
+      `,
+      [firstConnectorId, orgId, userId, connectorVariableName],
+    );
+    await expectDatabaseError(client, {
+      code: "42P10",
+      query: `
+        INSERT INTO "variables" (
+          "connector_id",
+          "org_id",
+          "user_id",
+          "type",
+          "name",
+          "value"
+        )
+        VALUES ($1, $2, $3, 'connector', 'LEGACY_TARGET', 'legacy')
+        ON CONFLICT ("org_id", "user_id", "type", "name")
+        DO UPDATE SET "value" = EXCLUDED."value"
+      `,
+      values: [firstConnectorId, orgId, userId],
+    });
+
+    const connectorVariables = await client.query<{
+      connectorId: string;
+      value: string;
+    }>(
+      `
+        SELECT "connector_id" AS "connectorId", "value"
+        FROM "variables"
+        WHERE "org_id" = $1
+          AND "user_id" = $2
+          AND "type" = 'connector'
+          AND "name" = $3
+        ORDER BY "connector_id"
+      `,
+      [orgId, userId, connectorVariableName],
+    );
+    assert.deepEqual(connectorVariables.rows, [
+      { connectorId: firstConnectorId, value: "first-updated" },
+      { connectorId: secondConnectorId, value: "second" },
+    ]);
+    await assertConnectionScopedVariableIndexes(client);
+
+    await rerunConnectionScopedVariableMigration(client, migrationStatements);
+    await assertConnectionScopedVariableIndexes(client);
+
+    console.log("   ✅ old global uniqueness rejects cross-connection names");
+    console.log("   ✅ final indexes split user and connection uniqueness");
+    console.log("   ✅ current upserts retain exact connection ownership");
+    console.log("   ✅ old connector conflict inference is removed");
+    console.log(
+      "   ✅ concurrent shadow interruption and full rerun recover cleanly\n",
+    );
+  } finally {
+    await client.end();
+    await dropDatabase(testDb);
+  }
+}
 
 async function validateMcpCustomConnectorReaderPreparation(): Promise<void> {
   console.log("=== Validate MCP Custom Connector reader preparation ===\n");
@@ -1315,6 +1690,188 @@ async function validateMcpCustomConnectorReaderPreparation(): Promise<void> {
     console.log("   ✅ legacy MCP state aborts instead of being cleared");
     console.log("   ✅ existing HTTP definitions remain valid");
     console.log("   ✅ only exhaustive MCP definition rows are accepted\n");
+  } finally {
+    await client.end();
+    await dropDatabase(testDb);
+  }
+}
+
+async function validateCustomConnectorDefinitionContraction(): Promise<void> {
+  console.log("=== Validate Custom Connector definition contraction ===\n");
+  const testDb = "migration_custom_connector_definition_contraction_test";
+  await createDatabase(testDb);
+  const client = new Client({ connectionString: createTestDbUrl(testDb) });
+  await client.connect();
+
+  const httpConnectorId = "26216000-0000-4000-8000-000000000001";
+  const mcpConnectorId = "26216000-0000-4000-8000-000000000002";
+
+  try {
+    await applyMigrationsUpToTag(
+      client,
+      CUSTOM_CONNECTOR_DEFINITION_CONTRACTION_PREVIOUS_MIGRATION,
+    );
+
+    await client.query(
+      `
+        INSERT INTO "org_custom_connectors" (
+          "id",
+          "org_id",
+          "slug",
+          "display_name",
+          "prefix_templates",
+          "fields",
+          "header_injections",
+          "query_injections",
+          "created_by"
+        ) VALUES (
+          $1,
+          'issue-26216-org',
+          '_canonical-http',
+          'Canonical HTTP',
+          '["https://api.example.test/"]'::jsonb,
+          '[{"key":"secret","label":"Secret","kind":"secret","required":true}]'::jsonb,
+          '[{"name":"Authorization","valueTemplate":"Bearer {{secrets.secret}}"}]'::jsonb,
+          '[]'::jsonb,
+          'issue-26216-user'
+        )
+      `,
+      [httpConnectorId],
+    );
+    await client.query(
+      `
+        INSERT INTO "org_custom_connectors" (
+          "id",
+          "org_id",
+          "slug",
+          "display_name",
+          "prefix_templates",
+          "fields",
+          "header_injections",
+          "query_injections",
+          "mcp_endpoint",
+          "mcp_transport",
+          "created_by"
+        ) VALUES (
+          $1,
+          'issue-26216-org',
+          '_canonical-mcp',
+          'Canonical MCP',
+          '[]'::jsonb,
+          '[{"key":"secret","label":"Secret","kind":"secret","required":true}]'::jsonb,
+          '[{"name":"Authorization","valueTemplate":"Bearer {{secrets.secret}}"}]'::jsonb,
+          '[]'::jsonb,
+          'https://mcp.example.test/server',
+          'streamable-http',
+          'issue-26216-user'
+        )
+      `,
+      [mcpConnectorId],
+    );
+
+    const outgoingWriterRows = await client.query<{
+      headerName: string | null;
+      headerTemplate: string | null;
+      prefixes: string[];
+    }>(
+      `
+        SELECT
+          "prefixes",
+          "header_name" AS "headerName",
+          "header_template" AS "headerTemplate"
+        FROM "org_custom_connectors"
+        WHERE "id" IN ($1, $2)
+        ORDER BY "id"
+      `,
+      [httpConnectorId, mcpConnectorId],
+    );
+    assert.deepEqual(outgoingWriterRows.rows, [
+      { prefixes: [], headerName: null, headerTemplate: null },
+      { prefixes: [], headerName: null, headerTemplate: null },
+    ]);
+
+    await client.query(`
+      CREATE VIEW "custom_connector_legacy_definition_dependency" AS
+      SELECT "id", "header_template"
+      FROM "org_custom_connectors"
+    `);
+    await assert.rejects(
+      applyMigrationsUpToTag(
+        client,
+        CUSTOM_CONNECTOR_DEFINITION_CONTRACTION_MIGRATION,
+      ),
+      /cannot drop column header_template .* because other objects depend on it/u,
+    );
+    const columnsAfterRejectedContraction = await client.query<{
+      columnName: string;
+    }>(`
+      SELECT "column_name" AS "columnName"
+      FROM "information_schema"."columns"
+      WHERE "table_schema" = 'public'
+        AND "table_name" = 'org_custom_connectors'
+        AND "column_name" IN ('prefixes', 'header_name', 'header_template')
+      ORDER BY "column_name"
+    `);
+    assert.deepEqual(
+      columnsAfterRejectedContraction.rows.map((row) => {
+        return row.columnName;
+      }),
+      ["header_name", "header_template", "prefixes"],
+    );
+
+    await client.query(
+      `DROP VIEW "custom_connector_legacy_definition_dependency"`,
+    );
+    await applyMigrationsUpToTag(
+      client,
+      CUSTOM_CONNECTOR_DEFINITION_CONTRACTION_MIGRATION,
+    );
+
+    const remainingLegacyColumns = await client.query<{ count: string }>(`
+      SELECT count(*)::text AS "count"
+      FROM "information_schema"."columns"
+      WHERE "table_schema" = 'public'
+        AND "table_name" = 'org_custom_connectors'
+        AND "column_name" IN ('prefixes', 'header_name', 'header_template')
+    `);
+    assert.equal(remainingLegacyColumns.rows[0]?.count, "0");
+
+    const canonicalRows = await client.query<{
+      id: string;
+      mcpEndpoint: string | null;
+      prefixTemplates: string[];
+    }>(
+      `
+        SELECT
+          "id",
+          "prefix_templates" AS "prefixTemplates",
+          "mcp_endpoint" AS "mcpEndpoint"
+        FROM "org_custom_connectors"
+        WHERE "id" IN ($1, $2)
+        ORDER BY "id"
+      `,
+      [httpConnectorId, mcpConnectorId],
+    );
+    assert.deepEqual(canonicalRows.rows, [
+      {
+        id: httpConnectorId,
+        prefixTemplates: ["https://api.example.test/"],
+        mcpEndpoint: null,
+      },
+      {
+        id: mcpConnectorId,
+        prefixTemplates: [],
+        mcpEndpoint: "https://mcp.example.test/server",
+      },
+    ]);
+
+    console.log("   ✅ outgoing canonical-only writes survive contraction");
+    console.log(
+      "   ✅ unexpected dependencies abort the contraction atomically",
+    );
+    console.log(
+      "   ✅ retired columns are absent after the dependency is removed\n",
+    );
   } finally {
     await client.end();
     await dropDatabase(testDb);
@@ -2562,9 +3119,6 @@ async function validateCustomConnectorOauthModeConstraints(
       "org_id",
       "slug",
       "display_name",
-      "prefixes",
-      "header_name",
-      "header_template",
       "prefix_templates",
       "fields",
       "header_injections",
@@ -2577,9 +3131,6 @@ async function validateCustomConnectorOauthModeConstraints(
       $2,
       $3,
       $4,
-      '["https://api.example.test/"]'::jsonb,
-      'Authorization',
-      'Bearer {{secret}}',
       '["https://api.example.test/"]'::jsonb,
       CASE
         WHEN $5 = 'manual' THEN '[{"key":"secret","label":"Secret","kind":"secret","required":true}]'::jsonb
@@ -6551,6 +7102,312 @@ async function validateChatRunServiceTierAnnotationBackfill(): Promise<void> {
   }
 }
 
+const USAGE_PACK_REFUND_SCHEMA_MIGRATION = "0898_usage_pack_credit_refunds";
+const USAGE_PACK_INVITE_BACKFILL_MIGRATION =
+  "0899_backfill_member_invite_usage_pack_required";
+const USAGE_PACK_CHANGE_INDEX_MIGRATION =
+  "0900_replace_scheduled_usage_pack_change";
+
+async function validateUsagePackInviteLifecycleMigrations(): Promise<void> {
+  console.log("=== Validate usage-pack invite lifecycle migrations ===\n");
+  const testDb = "migration_usage_pack_invite_lifecycle_test";
+  const testDbUrl = createTestDbUrl(testDb);
+  await createDatabase(testDb);
+
+  try {
+    await runMigrationsUpToTag(testDbUrl, USAGE_PACK_REFUND_SCHEMA_MIGRATION);
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+
+    try {
+      await client.query(`
+        INSERT INTO "org_plan_entitlements" (
+          "org_id",
+          "plan_key",
+          "plan_rank",
+          "source",
+          "stripe_subscription_id"
+        )
+        VALUES
+          ('org_usage_pack_active_pro', 'pro', 1, 'stripe', 'sub_active_pro'),
+          ('org_usage_pack_active_team', 'team', 2, 'stripe', 'sub_active_team'),
+          ('org_usage_pack_free', 'limited-free-1', 0, 'stripe', 'sub_free'),
+          ('org_usage_pack_canceled', 'pro', 1, 'stripe', 'sub_canceled'),
+          ('org_usage_pack_expired', 'team', 2, 'stripe', 'sub_expired'),
+          ('org_usage_pack_invalid', 'pro', 1, 'stripe', 'sub_invalid'),
+          ('org_usage_pack_mismatch', 'pro', 1, 'stripe', 'sub_entitlement')
+      `);
+      await client.query(`
+        INSERT INTO "usage_pack_subscriptions" (
+          "id",
+          "org_id",
+          "tier",
+          "stripe_plan_price_id",
+          "stripe_customer_id",
+          "stripe_subscription_id",
+          "subscription_status"
+        )
+        VALUES
+          (
+            '00000000-0000-4000-8000-000000090001',
+            'org_usage_pack_active_pro',
+            'pro',
+            'price_plan_pro',
+            'cus_active_pro',
+            'sub_active_pro',
+            'active'
+          ),
+          (
+            '00000000-0000-4000-8000-000000090002',
+            'org_usage_pack_active_team',
+            'team',
+            'price_plan_team',
+            'cus_active_team',
+            'sub_active_team',
+            'trialing'
+          ),
+          (
+            '00000000-0000-4000-8000-000000090003',
+            'org_usage_pack_free',
+            'pro',
+            'price_plan_pro',
+            'cus_free',
+            'sub_free',
+            'active'
+          ),
+          (
+            '00000000-0000-4000-8000-000000090004',
+            'org_usage_pack_canceled',
+            'pro',
+            'price_plan_pro',
+            'cus_canceled',
+            'sub_canceled',
+            'canceled'
+          ),
+          (
+            '00000000-0000-4000-8000-000000090005',
+            'org_usage_pack_expired',
+            'team',
+            'price_plan_team',
+            'cus_expired',
+            'sub_expired',
+            'incomplete_expired'
+          ),
+          (
+            '00000000-0000-4000-8000-000000090006',
+            'org_usage_pack_invalid',
+            'pro',
+            'price_plan_pro',
+            'cus_invalid',
+            'sub_invalid',
+            'invalid'
+          ),
+          (
+            '00000000-0000-4000-8000-000000090007',
+            'org_usage_pack_mismatch',
+            'pro',
+            'price_plan_pro',
+            'cus_mismatch',
+            'sub_usage_pack',
+            'active'
+          )
+      `);
+
+      await applyMigrationsUpToTag(
+        client,
+        USAGE_PACK_INVITE_BACKFILL_MIGRATION,
+      );
+      const entitlements = await client.query<{
+        memberInviteUsagePackRequired: boolean;
+        orgId: string;
+      }>(`
+        SELECT
+          "org_id" AS "orgId",
+          "member_invite_usage_pack_required" AS "memberInviteUsagePackRequired"
+        FROM "org_plan_entitlements"
+        WHERE "org_id" LIKE 'org_usage_pack_%'
+        ORDER BY "org_id"
+      `);
+      assert.deepEqual(entitlements.rows, [
+        {
+          memberInviteUsagePackRequired: true,
+          orgId: "org_usage_pack_active_pro",
+        },
+        {
+          memberInviteUsagePackRequired: true,
+          orgId: "org_usage_pack_active_team",
+        },
+        {
+          memberInviteUsagePackRequired: false,
+          orgId: "org_usage_pack_canceled",
+        },
+        {
+          memberInviteUsagePackRequired: false,
+          orgId: "org_usage_pack_expired",
+        },
+        {
+          memberInviteUsagePackRequired: false,
+          orgId: "org_usage_pack_free",
+        },
+        {
+          memberInviteUsagePackRequired: false,
+          orgId: "org_usage_pack_invalid",
+        },
+        {
+          memberInviteUsagePackRequired: false,
+          orgId: "org_usage_pack_mismatch",
+        },
+      ]);
+
+      await client.query(`
+        INSERT INTO "usage_pack_subscription_changes" (
+          "id",
+          "usage_pack_subscription_id",
+          "org_id",
+          "source_tier",
+          "target_tier",
+          "status",
+          "proration_timestamp",
+          "immediate_amount_cents",
+          "next_recurring_amount_cents",
+          "currency",
+          "preview_expires_at",
+          "effective_at"
+        )
+        VALUES
+          (
+            '00000000-0000-4000-8000-000000090011',
+            '00000000-0000-4000-8000-000000090001',
+            'org_usage_pack_active_pro',
+            'pro',
+            'pro',
+            'completed',
+            1,
+            0,
+            0,
+            'usd',
+            '2035-01-01',
+            '2035-02-01'
+          ),
+          (
+            '00000000-0000-4000-8000-000000090012',
+            '00000000-0000-4000-8000-000000090001',
+            'org_usage_pack_active_pro',
+            'pro',
+            'pro',
+            'completed',
+            2,
+            0,
+            0,
+            'usd',
+            '2035-01-01',
+            '2035-02-01'
+          )
+      `);
+      await applyMigrationsUpToTag(client, USAGE_PACK_CHANGE_INDEX_MIGRATION);
+
+      await client.query(`
+        INSERT INTO "usage_pack_allocation_changes" (
+          "id",
+          "usage_pack_subscription_id",
+          "subscription_change_id",
+          "org_id",
+          "user_id",
+          "kind",
+          "status",
+          "target_usage_pack_usd",
+          "target_stripe_price_id"
+        )
+        VALUES
+          (
+            '00000000-0000-4000-8000-000000090021',
+            '00000000-0000-4000-8000-000000090001',
+            '00000000-0000-4000-8000-000000090011',
+            'org_usage_pack_active_pro',
+            'user_grouped_preview',
+            'addition',
+            'previewed',
+            20,
+            'price_usage_pack_20'
+          ),
+          (
+            '00000000-0000-4000-8000-000000090022',
+            '00000000-0000-4000-8000-000000090001',
+            '00000000-0000-4000-8000-000000090012',
+            'org_usage_pack_active_pro',
+            'user_grouped_preview',
+            'addition',
+            'previewed',
+            50,
+            'price_usage_pack_50'
+          ),
+          (
+            '00000000-0000-4000-8000-000000090023',
+            '00000000-0000-4000-8000-000000090001',
+            NULL,
+            'org_usage_pack_active_pro',
+            'user_grouped_preview',
+            'addition',
+            'previewed',
+            100,
+            'price_usage_pack_100'
+          ),
+          (
+            '00000000-0000-4000-8000-000000090024',
+            '00000000-0000-4000-8000-000000090001',
+            '00000000-0000-4000-8000-000000090011',
+            'org_usage_pack_active_pro',
+            'user_scheduled',
+            'addition',
+            'scheduled',
+            20,
+            'price_usage_pack_20'
+          )
+      `);
+      await expectDatabaseError(client, {
+        code: "23505",
+        messageIncludes: "uq_usage_pack_changes_current_user",
+        query: `
+          INSERT INTO "usage_pack_allocation_changes" (
+            "usage_pack_subscription_id",
+            "subscription_change_id",
+            "org_id",
+            "user_id",
+            "kind",
+            "status",
+            "target_usage_pack_usd",
+            "target_stripe_price_id"
+          )
+          VALUES (
+            '00000000-0000-4000-8000-000000090001',
+            '00000000-0000-4000-8000-000000090012',
+            'org_usage_pack_active_pro',
+            'user_scheduled',
+            'addition',
+            'scheduled',
+            50,
+            'price_usage_pack_50'
+          )
+        `,
+      });
+
+      console.log(
+        "   ✅ Active Pro and Team usage-pack subscriptions require invite packages",
+      );
+      console.log(
+        "   ✅ Terminal, free, and mismatched subscriptions remain unchanged",
+      );
+      console.log(
+        "   ✅ Grouped previews coexist while scheduled replacements remain unique\n",
+      );
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+}
+
 async function main(): Promise<void> {
   console.log("🧪 Testing Migration Consistency (Schema Comparison)\n");
 
@@ -6573,12 +7430,15 @@ async function main(): Promise<void> {
     await validateTeamsMessageFileScopeBackfill();
     await validateInvalidatedGoalContinuationCleanup();
     await validateMcpCustomConnectorReaderPreparation();
+    await validateCustomConnectorDefinitionContraction();
     await validateCustomCredentialStorageGenerationBackfill();
     await validateChatEventContractCutover();
     await validateChatEventContractionPreparation();
     await validateChatEventContractionFinalization();
     await validateCanonicalChatEventStorageBackfill();
     await validateChatRunServiceTierAnnotationBackfill();
+    await validateUsagePackInviteLifecycleMigrations();
+    await validateConnectionScopedVariableUniqueness();
 
     // Step 1.5: Validate latest snapshot accuracy (NEW)
     await validateLatestSnapshotAccuracy();

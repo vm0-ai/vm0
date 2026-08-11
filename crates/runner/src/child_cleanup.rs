@@ -1,5 +1,5 @@
 use tokio::runtime::Handle;
-use tracing::{debug, warn};
+use tracing::warn;
 
 /// Kill a child from a synchronous drop fallback and reap it on the active runtime.
 ///
@@ -16,15 +16,7 @@ pub(crate) fn kill_and_reap_child_on_drop(
     let pid = child.id();
 
     match child.try_wait() {
-        Ok(Some(status)) => {
-            debug!(
-                label,
-                ?pid,
-                code = status.code(),
-                "child already exited during drop cleanup"
-            );
-            return;
-        }
+        Ok(Some(_)) => return,
         Ok(None) => {}
         Err(error) => {
             warn!(label, ?pid, error = %error, "failed to check child status during drop cleanup");
@@ -36,15 +28,7 @@ pub(crate) fn kill_and_reap_child_on_drop(
     }
 
     match child.try_wait() {
-        Ok(Some(status)) => {
-            debug!(
-                label,
-                ?pid,
-                code = status.code(),
-                "child exited during drop cleanup"
-            );
-            return;
-        }
+        Ok(Some(_)) => return,
         Ok(None) => {}
         Err(error) => {
             warn!(label, ?pid, error = %error, "failed to recheck child status during drop cleanup");

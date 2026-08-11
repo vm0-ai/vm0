@@ -7,7 +7,7 @@ import {
   type PresentationTemplateItem,
   type VideoTemplateItem,
 } from "@vm0/core";
-import { cn } from "@vm0/ui";
+import { Button, cn } from "@vm0/ui";
 import { useTranslation } from "react-i18next";
 import {
   onboardingDraft$,
@@ -66,24 +66,16 @@ function PresentationPreview({
       onClose={onClose}
       footer={
         <>
-          <button
-            type="button"
-            className="h-9 rounded-[10px] border border-border bg-muted px-4 text-sm font-medium"
-            onClick={onClose}
-          >
+          <Button type="button" variant="outline" onClick={onClose}>
             {t(($) => {
               return $.onboarding.common.gotIt;
             })}
-          </button>
-          <button
-            type="button"
-            className="h-9 rounded-[10px] bg-primary px-4 text-sm font-medium text-white"
-            onClick={onSelect}
-          >
+          </Button>
+          <Button type="button" onClick={onSelect}>
             {t(($) => {
               return $.onboarding.common.selectThisTemplate;
             })}
-          </button>
+          </Button>
         </>
       }
     >

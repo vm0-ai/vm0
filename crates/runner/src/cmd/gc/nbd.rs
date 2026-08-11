@@ -25,12 +25,11 @@ where
     Scan: FnOnce() -> (u32, Vec<(u32, u32)>) + Send + 'static,
     Disconnect: Fn(u32, u32) -> NbdOrphanDisconnect + Clone + Send + 'static,
 {
-    let (max_devs, orphans) = tokio::task::spawn_blocking(scan)
+    let (_, orphans) = tokio::task::spawn_blocking(scan)
         .await
         .map_err(|e| RunnerError::Internal(format!("nbd orphan scan task failed: {e}")))?;
 
     if orphans.is_empty() {
-        tracing::debug!("nbd: scanned {max_devs} devices, no orphans");
         return Ok(GcReport::default());
     }
 

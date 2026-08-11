@@ -39,32 +39,35 @@ export function InstallBanner() {
           return $.lifecycle.pwaInstall.banner;
         })}
       </span>
-      <button
+      <Button
         type="button"
+        size="xs"
         aria-label={t(($) => {
           return $.lifecycle.pwaInstall.installApp;
         })}
         onClick={() => {
           detach(trigger(pageSignal), Reason.DomCallback);
         }}
-        className="h-7 px-3 rounded-md bg-primary text-primary-foreground text-xs font-medium hover:opacity-90 transition-opacity shrink-0"
+        className="shrink-0 text-xs"
       >
         {t(($) => {
           return $.lifecycle.pwaInstall.install;
         })}
-      </button>
-      <button
+      </Button>
+      <Button
         type="button"
         onClick={() => {
           dismiss();
         }}
-        className="h-7 w-7 shrink-0 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-state-hover transition-colors"
+        variant="quiet"
+        size="icon-xs"
+        className="shrink-0"
         aria-label={t(($) => {
           return $.lifecycle.pwaInstall.dismiss;
         })}
       >
         <X size={14} />
-      </button>
+      </Button>
     </div>
   );
 }

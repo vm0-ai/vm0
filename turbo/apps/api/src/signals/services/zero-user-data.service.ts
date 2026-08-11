@@ -10,7 +10,10 @@ import type {
   UpdateUserModelPreferenceRequest,
   UserModelPreferenceResponse,
 } from "@vm0/api-contracts/contracts/zero-user-model-preference";
-import { isSupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
+import {
+  getRetiredRunModelReplacement,
+  isSupportedRunModel,
+} from "@vm0/api-contracts/contracts/model-providers";
 import type { ChatThreadServiceTier } from "@vm0/api-contracts/contracts/chat-threads";
 import type {
   SecretResponse,
@@ -24,8 +27,10 @@ import { variables } from "@vm0/db/schema/variable";
 import { and, eq } from "drizzle-orm";
 
 import { nowDate } from "../../lib/time";
+import { modelRetired } from "../../lib/error";
 import { db$, writeDb$, type ReadonlyDb } from "../external/db";
 import { syncMorningBriefSchedule } from "./morning-brief-schedule.service";
+import { loadOrgPlanCapabilities } from "./org-plan-entitlement-read.service";
 import { isValidTimeZone } from "../utils";
 
 interface UserScopedQuery {
@@ -319,7 +324,7 @@ export const updateUserModelPreference$ = command(
       readonly preference: UpdateUserModelPreferenceRequest;
     },
     signal: AbortSignal,
-  ): Promise<UserModelPreferenceResponse> => {
+  ): Promise<UserModelPreferenceResponse | ReturnType<typeof modelRetired>> => {
     const writeDb = set(writeDb$);
     if (args.preference.selectedModel === null) {
       await writeDb
@@ -333,6 +338,19 @@ export const updateUserModelPreference$ = command(
         );
       signal.throwIfAborted();
       return { selectedModel: null, serviceTier: null, updatedAt: null };
+    }
+
+    const capabilities = await loadOrgPlanCapabilities(writeDb, args.orgId);
+    signal.throwIfAborted();
+    const replacement = getRetiredRunModelReplacement(
+      args.preference.selectedModel,
+      {
+        restrictedVm0Models:
+          capabilities?.status === "active" && capabilities.restrictedVm0Models,
+      },
+    );
+    if (replacement) {
+      return modelRetired(args.preference.selectedModel, replacement);
     }
 
     const updatedAt = nowDate();

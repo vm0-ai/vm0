@@ -6,11 +6,12 @@ import {
 } from "ccstate-react";
 import { useTranslation } from "react-i18next";
 import {
+  Button,
   DropdownMenu,
-  DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
+  DropdownMenuTrigger,
 } from "@vm0/ui";
 import { ChevronDown, Plus, Mail } from "lucide-react";
 import { clerk$, currentOrgInfo$ } from "../../signals/auth.ts";
@@ -105,11 +106,13 @@ function InvitationRow({
       <span className="min-w-0 flex-1 text-sm truncate">
         {invitation.publicOrganizationData.name}
       </span>
-      <button
+      <Button
         type="button"
         disabled={isAccepting}
         onClick={handleAccept}
-        className="shrink-0 flex items-center gap-1 px-2 h-7 rounded-md text-xs font-medium text-muted-foreground border border-border hover:text-foreground hover:bg-state-hover transition-colors disabled:opacity-50 disabled:pointer-events-none"
+        variant="quiet"
+        size="xs"
+        className="shrink-0 gap-1 px-2 text-xs border border-border disabled:opacity-50"
       >
         <Mail size={13} />
         {isAccepting
@@ -119,7 +122,7 @@ function InvitationRow({
           : t(($) => {
               return $.appShell.sidebar.workspaceSwitcher.join;
             })}
-      </button>
+      </Button>
     </div>
   );
 }
@@ -241,7 +244,7 @@ function OrgDropdownContent() {
   return (
     <DropdownMenuContent
       align="start"
-      className="flex max-h-[min(420px,var(--radix-dropdown-menu-content-available-height))] w-72 flex-col overflow-hidden"
+      className="flex max-h-[min(420px,var(--available-height))] w-72 flex-col overflow-hidden"
       onCloseAutoFocus={(event) => {
         event.preventDefault();
       }}
@@ -312,16 +315,18 @@ export function ZeroOrgSwitcherCompact() {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <button
+        <Button
           type="button"
           aria-label={t(($) => {
             return $.appShell.sidebar.workspaceSwitcher.switch;
           })}
-          className="relative flex h-9 w-9 items-center justify-center rounded-lg text-sidebar-foreground transition-colors hover:bg-state-hover"
+          variant="quiet"
+          size="icon"
+          className="relative"
         >
           <OrgAvatar name={orgName} imageUrl={currentOrg?.imageUrl} />
           <PendingInvitationsBadge />
-        </button>
+        </Button>
       </DropdownMenuTrigger>
       <OrgDropdownContent />
     </DropdownMenu>
