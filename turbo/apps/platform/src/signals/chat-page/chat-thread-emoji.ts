@@ -71,6 +71,25 @@ export const setChatThreadEmojiPendingJump$ = command(
   },
 );
 
+// The emoji the pointer or keyboard is currently on, named in the preview bar
+// under the grid. Held in a signal so pointing at a new emoji re-renders that
+// bar alone rather than the whole grid it sits under.
+const internalChatThreadEmojiPreview$ = state<ChatThreadEmojiItem | null>(null);
+
+export const chatThreadEmojiPreview$ = computed((get) => {
+  return get(internalChatThreadEmojiPreview$);
+});
+
+export const setChatThreadEmojiPreview$ = command(
+  ({ get, set }, value: ChatThreadEmojiItem | null) => {
+    // Pointing at one emoji fires repeatedly as the pointer moves across it.
+    if (get(internalChatThreadEmojiPreview$)?.emoji === value?.emoji) {
+      return;
+    }
+    set(internalChatThreadEmojiPreview$, value);
+  },
+);
+
 export function filterChatThreadEmojiGroups(
   groups: ChatThreadEmojiGroup[],
   query: string,

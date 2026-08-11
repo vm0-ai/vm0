@@ -133,6 +133,28 @@ describe("chat thread emoji category rail", () => {
     expect(categoryTab("Frequently used")).toHaveAttribute("tabindex", "-1");
   });
 
+  it("names the emoji the pointer is on", async () => {
+    setupChatWithRail(true);
+    await openEmojiPicker();
+    await waitForCategories();
+
+    expect(screen.getByText("Pick an emoji")).toBeInTheDocument();
+
+    const grinningFace = await screen.findByLabelText("grinning face");
+    fireEvent.mouseOver(grinningFace);
+
+    await waitFor(() => {
+      expect(screen.getByText(":grinning_face:")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Pick an emoji")).toBeNull();
+
+    fireEvent.mouseOver(await screen.findByLabelText("watermelon"));
+
+    await waitFor(() => {
+      expect(screen.getByText(":watermelon:")).toBeInTheDocument();
+    });
+  });
+
   it("leaves the search results when a category is picked", async () => {
     setupChatWithRail(true);
     await openEmojiPicker();
@@ -157,5 +179,6 @@ describe("chat thread emoji category rail", () => {
     await screen.findByText("Frequently used");
 
     expect(categoryTabs()).toHaveLength(0);
+    expect(screen.queryByText("Pick an emoji")).toBeNull();
   });
 });

@@ -1676,6 +1676,7 @@
       "openBrowser": "Abrir navegador",
       "openNamedAgent": "Abrir agente {{name}}",
       "openNamedChat": "Abrir conversa {{title}}",
+      "pickEmoji": "Escolha um emoji",
       "scrollToBottom": "Rolar até o final",
       "searchEmoji": "Buscar emoji"
     },

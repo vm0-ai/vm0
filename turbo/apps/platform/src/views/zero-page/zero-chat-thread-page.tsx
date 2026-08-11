@@ -286,10 +286,12 @@ import {
   chatThreadEmojiActiveCategory$,
   chatThreadEmojiGroups$,
   chatThreadEmojiPendingJump$,
+  chatThreadEmojiPreview$,
   chatThreadEmojiQuery$,
   filterChatThreadEmojiGroups,
   setChatThreadEmojiActiveCategory$,
   setChatThreadEmojiPendingJump$,
+  setChatThreadEmojiPreview$,
   setChatThreadEmojiQuery$,
   type ChatThreadEmojiItem,
 } from "../../signals/chat-page/chat-thread-emoji.ts";
@@ -884,6 +886,7 @@ function ChatThreadEmojiMenuButton({
   const setEmojiQuery = useSet(setChatThreadEmojiQuery$);
   const setEmojiActiveCategory = useSet(setChatThreadEmojiActiveCategory$);
   const setEmojiPendingJump = useSet(setChatThreadEmojiPendingJump$);
+  const setEmojiPreview = useSet(setChatThreadEmojiPreview$);
 
   return (
     <TooltipProvider delayDuration={200}>
@@ -894,6 +897,7 @@ function ChatThreadEmojiMenuButton({
             setEmojiQuery("");
             setEmojiActiveCategory(null);
             setEmojiPendingJump(null);
+            setEmojiPreview(null);
             openChatThreadEmojiMenu({ threadId, title });
           } else {
             closeMenu();
@@ -1241,7 +1245,15 @@ function ChatThreadEmojiPicker({
           onSelect={jumpToCategory}
         />
       )}
-      <div className="flex items-center gap-2 p-2">
+      <div
+        className={cn(
+          "flex items-center gap-2 px-2 pt-2",
+          // Pull the first section title up towards the search field. The title
+          // keeps its own box height so the fade under it is unchanged; only
+          // the gap above it closes.
+          railEnabled ? "pb-1" : "pb-2",
+        )}
+      >
         <div className="relative flex-1">
           <Search
             size={15}
@@ -1281,6 +1293,35 @@ function ChatThreadEmojiPicker({
         onSelect={onSelect}
         railEnabled={railEnabled}
       />
+      {railEnabled && <ChatThreadEmojiPreview />}
+    </div>
+  );
+}
+
+// Names whichever emoji the pointer or keyboard is on, so the grid stays a
+// grid of glyphs and the reader still gets a label for the one in question.
+function ChatThreadEmojiPreview() {
+  const { t } = useTranslation();
+  const preview = useGet(chatThreadEmojiPreview$);
+
+  return (
+    <div className="flex h-10 shrink-0 items-center gap-2 border-t border-border px-3">
+      {preview ? (
+        <>
+          <span aria-hidden="true" className="zero-emoji text-lg leading-none">
+            {preview.emoji}
+          </span>
+          <span className="truncate text-xs font-medium text-muted-foreground">
+            {`:${preview.name.replace(/\s+/g, "_")}:`}
+          </span>
+        </>
+      ) : (
+        <span className="text-xs text-muted-foreground/70">
+          {t(($) => {
+            return $.chat.thread.pickEmoji;
+          })}
+        </span>
+      )}
     </div>
   );
 }
@@ -1300,6 +1341,19 @@ function ChatThreadEmojiFeed({
   const setActiveCategory = useSet(setChatThreadEmojiActiveCategory$);
   const pendingJump = useGet(chatThreadEmojiPendingJump$);
   const setPendingJump = useSet(setChatThreadEmojiPendingJump$);
+  const setPreview = useSet(setChatThreadEmojiPreview$);
+
+  // One delegated listener on the feed rather than a pair on each of the ~1,900
+  // buttons. Pointer and keyboard both report through it.
+  function previewEmojiUnder(target: EventTarget): void {
+    if (!(target instanceof Element)) {
+      return;
+    }
+    const button = target.closest<HTMLElement>("[data-chat-thread-emoji]");
+    const emoji = button?.dataset.chatThreadEmoji;
+    const name = button?.getAttribute("aria-label");
+    setPreview(emoji && name ? { emoji, name } : null);
+  }
 
   function handleScroll(event: ReactUIEvent<HTMLDivElement>): void {
     const feed = event.currentTarget;
@@ -1338,6 +1392,27 @@ function ChatThreadEmojiFeed({
       onWheel={railEnabled ? releasePendingJump : undefined}
       onTouchStart={railEnabled ? releasePendingJump : undefined}
       onPointerDown={railEnabled ? releasePendingJump : undefined}
+      onMouseOver={
+        railEnabled
+          ? (event) => {
+              previewEmojiUnder(event.target);
+            }
+          : undefined
+      }
+      onFocus={
+        railEnabled
+          ? (event) => {
+              previewEmojiUnder(event.target);
+            }
+          : undefined
+      }
+      onMouseLeave={
+        railEnabled
+          ? () => {
+              setPreview(null);
+            }
+          : undefined
+      }
     >
       {searchResults !== null ? (
         searchResults.length > 0 ? (
@@ -1402,8 +1477,11 @@ function ChatThreadEmojiSection({
           "flex items-baseline justify-between gap-2 px-1 pb-1 pt-2",
           // Fade to transparent at the lower edge so emoji dissolve as they
           // scroll under the pinned title instead of colliding with it.
+          // pt-1/pb-3 shifts the label up towards the search field while
+          // keeping the box — and so the painted fade — the same 32px tall as
+          // the pt-2/pb-2 it replaces.
           pinnedTitle &&
-            "sticky top-0 z-10 bg-gradient-to-b from-popover from-60% to-transparent pb-2",
+            "sticky top-0 z-10 bg-gradient-to-b from-popover from-60% to-transparent pb-3 pt-1",
         )}
       >
         <span className="text-xs font-medium text-muted-foreground">
@@ -1459,6 +1537,7 @@ function ChatThreadEmojiGrid({
             key={`${item.name}-${item.emoji}`}
             type="button"
             aria-label={item.name}
+            data-chat-thread-emoji={item.emoji}
             title={shortcutLabel}
             className="relative flex aspect-square items-center justify-center rounded-md text-xl leading-none transition-colors hover:bg-state-hover"
             onClick={() => {
