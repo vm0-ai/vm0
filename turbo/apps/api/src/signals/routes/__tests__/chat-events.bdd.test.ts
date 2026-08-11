@@ -1974,6 +1974,58 @@ describe("CHAT-02: queueing and recalling messages", () => {
     ).toHaveLength(1);
   }, 90_000);
 
+  it("settles delivered input with the terminal run transition", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const active = await sendChatRun(actor, {
+      agentId,
+      prompt: "complete with a durable delivery",
+    });
+    const claimed = await claimChatRun(runnerGroup, active.runId);
+    const pendingEventId = randomUUID();
+    await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: active.threadId,
+        prompt: "settle with the terminal transition",
+        clientEventId: pendingEventId,
+      },
+      [201],
+    );
+    const reserved = await api.reserveRunnerActiveInputs(
+      claimed.claim.sandboxToken,
+      active.runId,
+    );
+    if (reserved.outcome !== "reserved") {
+      throw new Error("Expected terminal input to be reserved");
+    }
+
+    await completeChatRunOk(active.runId, claimed.sandboxHeaders, {
+      activeInputDeliveryIds: [reserved.deliveryId],
+    });
+    await flushWaitUntilForTest();
+
+    expect((await api.readRun(actor, active.runId)).status).toBe("completed");
+    const events = await chat.listThreadEvents(actor, active.threadId);
+    expect(
+      events.events.filter((event) => {
+        return (
+          event.revokesEventId === pendingEventId &&
+          event.runId === active.runId
+        );
+      }),
+    ).toHaveLength(1);
+    await expect(
+      api.recordRunnerActiveInputDelivery(
+        claimed.claim.sandboxToken,
+        active.runId,
+        reserved.deliveryId,
+      ),
+    ).resolves.toStrictEqual({ outcome: "delivered" });
+  }, 90_000);
+
   it("finalizes a late receipt without replaying terminal callbacks", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
