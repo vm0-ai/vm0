@@ -7,7 +7,7 @@
 SET LOCAL lock_timeout = '5s';--> statement-breakpoint
 SET LOCAL statement_timeout = '5min';--> statement-breakpoint
 
-CREATE OR REPLACE FUNCTION pg_temp.stage2_aggressive_replacement_0907(
+CREATE OR REPLACE FUNCTION pg_temp.stage2_aggressive_replacement_0908(
   raw_model text,
   provider_type text,
   restricted_vm0_models boolean
@@ -53,7 +53,7 @@ AS $$
   END
 $$;--> statement-breakpoint
 
-CREATE OR REPLACE FUNCTION pg_temp.stage2_reopened_model_0907(
+CREATE OR REPLACE FUNCTION pg_temp.stage2_reopened_model_0908(
   replacement_model text
 )
 RETURNS text
@@ -68,7 +68,7 @@ AS $$
   END
 $$;--> statement-breakpoint
 
-CREATE OR REPLACE FUNCTION pg_temp.stage2_provider_supports_model_0907(
+CREATE OR REPLACE FUNCTION pg_temp.stage2_provider_supports_model_0908(
   target_model text,
   provider_type text
 )
@@ -96,7 +96,7 @@ AS $$
   END
 $$;--> statement-breakpoint
 
-CREATE OR REPLACE FUNCTION pg_temp.stage2_policy_route_supports_model_0907(
+CREATE OR REPLACE FUNCTION pg_temp.stage2_policy_route_supports_model_0908(
   target_model text,
   route_org_id text,
   provider_type text,
@@ -142,7 +142,7 @@ BEGIN
   THEN
     RETURN false;
   END IF;
-  IF NOT pg_temp.stage2_provider_supports_model_0907(
+  IF NOT pg_temp.stage2_provider_supports_model_0908(
     target_model,
     provider_type
   ) THEN
@@ -187,21 +187,21 @@ BEGIN
   FROM "org_model_policies" AS policy
   LEFT JOIN "org_plan_entitlements" AS entitlement
     ON entitlement."org_id" = policy."org_id"
-  WHERE pg_temp.stage2_reopened_model_0907(policy."model") IS NOT NULL
+  WHERE pg_temp.stage2_reopened_model_0908(policy."model") IS NOT NULL
     AND NOT coalesce(entitlement."restricted_vm0_models", false)
     AND NOT EXISTS (
       SELECT 1
       FROM "org_model_policies" AS reopened
       WHERE reopened."org_id" = policy."org_id"
         AND reopened."model" =
-          pg_temp.stage2_reopened_model_0907(policy."model")
+          pg_temp.stage2_reopened_model_0908(policy."model")
     );
 
   SELECT count(*) INTO thread_count
   FROM "chat_threads" AS thread
   LEFT JOIN "model_providers" AS provider
     ON provider."id" = thread."model_provider_id"
-  WHERE pg_temp.stage2_aggressive_replacement_0907(
+  WHERE pg_temp.stage2_aggressive_replacement_0908(
     thread."selected_model",
     coalesce(thread."model_provider_type", provider."type"),
     false
@@ -219,7 +219,7 @@ BEGIN
   FROM "usage_pricing" AS pricing
   WHERE pricing."kind" = 'model'
     AND (
-      pg_temp.stage2_aggressive_replacement_0907(
+      pg_temp.stage2_aggressive_replacement_0908(
         pricing."provider",
         NULL,
         false
@@ -239,12 +239,12 @@ $$;--> statement-breakpoint
 -- Prevent policy writers from racing the reopened-policy inserts.
 LOCK TABLE "org_model_policies" IN SHARE ROW EXCLUSIVE MODE;--> statement-breakpoint
 
-CREATE TEMP TABLE "stage2_reopened_policy_candidates_0907"
+CREATE TEMP TABLE "stage2_reopened_policy_candidates_0908"
 ON COMMIT DROP
 AS
 SELECT
   policy."org_id",
-  pg_temp.stage2_reopened_model_0907(policy."model") AS "model",
+  pg_temp.stage2_reopened_model_0908(policy."model") AS "model",
   policy."default_provider_type",
   policy."credential_scope",
   policy."model_provider_id",
@@ -256,8 +256,8 @@ SELECT
       AND NOT entitlement."support_byok",
     false
   ) AS "byok_blocked",
-  pg_temp.stage2_policy_route_supports_model_0907(
-    pg_temp.stage2_reopened_model_0907(policy."model"),
+  pg_temp.stage2_policy_route_supports_model_0908(
+    pg_temp.stage2_reopened_model_0908(policy."model"),
     policy."org_id",
     policy."default_provider_type",
     policy."credential_scope",
@@ -267,14 +267,14 @@ SELECT
 FROM "org_model_policies" AS policy
 LEFT JOIN "org_plan_entitlements" AS entitlement
   ON entitlement."org_id" = policy."org_id"
-WHERE pg_temp.stage2_reopened_model_0907(policy."model") IS NOT NULL
+WHERE pg_temp.stage2_reopened_model_0908(policy."model") IS NOT NULL
   AND NOT coalesce(entitlement."restricted_vm0_models", false)
   AND NOT EXISTS (
     SELECT 1
     FROM "org_model_policies" AS reopened
     WHERE reopened."org_id" = policy."org_id"
       AND reopened."model" =
-        pg_temp.stage2_reopened_model_0907(policy."model")
+        pg_temp.stage2_reopened_model_0908(policy."model")
   );--> statement-breakpoint
 
 INSERT INTO "org_model_policies" (
@@ -318,13 +318,13 @@ SELECT
   candidate."updated_by_user_id",
   NOW(),
   NOW()
-FROM "stage2_reopened_policy_candidates_0907" AS candidate
+FROM "stage2_reopened_policy_candidates_0908" AS candidate
 ON CONFLICT ("org_id", "model") DO NOTHING;--> statement-breakpoint
 
 WITH candidates AS (
   SELECT
     thread."id",
-    pg_temp.stage2_aggressive_replacement_0907(
+    pg_temp.stage2_aggressive_replacement_0908(
       thread."selected_model",
       coalesce(thread."model_provider_type", provider."type"),
       coalesce(entitlement."restricted_vm0_models", false)
@@ -347,7 +347,7 @@ FROM candidates AS candidate
 WHERE candidate."id" = thread."id"
   AND candidate."replacement_model" IS NOT NULL;--> statement-breakpoint
 
-CREATE TEMP TABLE "stage2_incompatible_provider_candidates_0907"
+CREATE TEMP TABLE "stage2_incompatible_provider_candidates_0908"
 ON COMMIT DROP
 AS
 SELECT
@@ -375,7 +375,7 @@ WHERE policy."default_provider_type" IN (
   )
   OR EXISTS (
     SELECT 1
-    FROM "stage2_incompatible_provider_candidates_0907" AS candidate
+    FROM "stage2_incompatible_provider_candidates_0908" AS candidate
     WHERE candidate."id" = policy."model_provider_id"
   );--> statement-breakpoint
 
@@ -385,14 +385,14 @@ SET "selected_model" = 'deepseek-v4-flash',
     "updated_at" = NOW()
 WHERE EXISTS (
   SELECT 1
-  FROM "stage2_incompatible_provider_candidates_0907" AS candidate
+  FROM "stage2_incompatible_provider_candidates_0908" AS candidate
   WHERE candidate."id" = agent."model_provider_id"
 );--> statement-breakpoint
 
 UPDATE "model_providers" AS provider
 SET "is_default" = false,
     "updated_at" = NOW()
-FROM "stage2_incompatible_provider_candidates_0907" AS candidate
+FROM "stage2_incompatible_provider_candidates_0908" AS candidate
 WHERE provider."id" = candidate."id"
   AND provider."is_default";--> statement-breakpoint
 
@@ -400,7 +400,7 @@ DO $$
 BEGIN
   IF EXISTS (
     SELECT 1
-    FROM "stage2_incompatible_provider_candidates_0907" AS candidate
+    FROM "stage2_incompatible_provider_candidates_0908" AS candidate
     WHERE NOT EXISTS (
       SELECT 1
       FROM "model_providers" AS default_provider
@@ -428,7 +428,7 @@ SET "is_default" = true,
     "updated_at" = NOW()
 FROM (
   SELECT DISTINCT candidate."org_id", candidate."user_id"
-  FROM "stage2_incompatible_provider_candidates_0907" AS candidate
+  FROM "stage2_incompatible_provider_candidates_0908" AS candidate
 ) AS owner
 WHERE vm0_peer."org_id" = owner."org_id"
   AND vm0_peer."user_id" = owner."user_id"
@@ -442,11 +442,11 @@ WHERE vm0_peer."org_id" = owner."org_id"
   );--> statement-breakpoint
 
 DELETE FROM "model_providers" AS provider
-USING "stage2_incompatible_provider_candidates_0907" AS candidate
+USING "stage2_incompatible_provider_candidates_0908" AS candidate
 WHERE provider."id" = candidate."id";--> statement-breakpoint
 
 DELETE FROM "secrets" AS secret
-USING "stage2_incompatible_provider_candidates_0907" AS candidate
+USING "stage2_incompatible_provider_candidates_0908" AS candidate
 WHERE secret."id" = candidate."secret_id"
   AND NOT EXISTS (
     SELECT 1
@@ -462,7 +462,7 @@ WHERE secret."id" = candidate."secret_id"
 DELETE FROM "usage_pricing" AS pricing
 WHERE pricing."kind" = 'model'
   AND (
-    pg_temp.stage2_aggressive_replacement_0907(
+    pg_temp.stage2_aggressive_replacement_0908(
       pricing."provider",
       NULL,
       false
@@ -472,11 +472,11 @@ WHERE pricing."kind" = 'model'
 
 DO $$
 BEGIN
-  IF pg_temp.stage2_aggressive_replacement_0907(
+  IF pg_temp.stage2_aggressive_replacement_0908(
     'gpt-5.5',
     NULL,
     false
-  ) IS NOT NULL OR pg_temp.stage2_aggressive_replacement_0907(
+  ) IS NOT NULL OR pg_temp.stage2_aggressive_replacement_0908(
     'claude-sonnet-4-6',
     NULL,
     false
@@ -489,15 +489,15 @@ BEGIN
     FROM "org_model_policies" AS policy
     LEFT JOIN "org_plan_entitlements" AS entitlement
       ON entitlement."org_id" = policy."org_id"
-    WHERE pg_temp.stage2_reopened_model_0907(policy."model") IS NOT NULL
+    WHERE pg_temp.stage2_reopened_model_0908(policy."model") IS NOT NULL
       AND NOT coalesce(entitlement."restricted_vm0_models", false)
       AND NOT EXISTS (
         SELECT 1
         FROM "org_model_policies" AS reopened
         WHERE reopened."org_id" = policy."org_id"
           AND reopened."model" =
-            pg_temp.stage2_reopened_model_0907(policy."model")
-          AND pg_temp.stage2_policy_route_supports_model_0907(
+            pg_temp.stage2_reopened_model_0908(policy."model")
+          AND pg_temp.stage2_policy_route_supports_model_0908(
             reopened."model",
             reopened."org_id",
             reopened."default_provider_type",
@@ -516,14 +516,14 @@ BEGIN
     LEFT JOIN "model_providers" AS provider
       ON provider."id" = thread."model_provider_id"
     WHERE (
-      pg_temp.stage2_aggressive_replacement_0907(
+      pg_temp.stage2_aggressive_replacement_0908(
         thread."selected_model",
         coalesce(thread."model_provider_type", provider."type"),
         false
       ) IS NOT NULL
       OR EXISTS (
         SELECT 1
-        FROM "stage2_incompatible_provider_candidates_0907" AS candidate
+        FROM "stage2_incompatible_provider_candidates_0908" AS candidate
         WHERE candidate."id" = thread."model_provider_id"
       )
     )
@@ -548,7 +548,7 @@ BEGIN
     FROM "usage_pricing" AS pricing
     WHERE pricing."kind" = 'model'
       AND (
-        pg_temp.stage2_aggressive_replacement_0907(
+        pg_temp.stage2_aggressive_replacement_0908(
           pricing."provider",
           NULL,
           false

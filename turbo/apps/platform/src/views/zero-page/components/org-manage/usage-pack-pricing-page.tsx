@@ -21,11 +21,14 @@ import type {
   MemberUsagePack,
   UsagePackCatalogItem,
   UsagePackManagementResponse,
+  UsagePackMigrationConfiguration,
   UsagePackSubscriptionChangePreviewResponse,
+  UsagePackMigrationPreviewResponse,
+  UsagePackMigrationRevisionPreviewResponse,
 } from "@vm0/api-contracts/contracts/zero-billing";
 import { useGet, useLastLoadable, useLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
-import type { MouseEvent } from "react";
+import type { MouseEvent, ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
 import { formatLocalizedNumber, formatUsd } from "../../../../i18n/format.ts";
@@ -36,6 +39,10 @@ import {
   closeUsagePackSubscriptionChangePreview$,
   confirmUsagePackSubscriptionChange$,
   previewUsagePackSubscriptionChange$,
+  confirmUsagePackMigration$,
+  confirmUsagePackMigrationRevision$,
+  previewUsagePackMigrationRevision$,
+  previewUsagePackMigration$,
   startUsagePackCheckout$,
   type BillingTier,
   usagePackCatalogAsync$,
@@ -56,6 +63,10 @@ import {
   setSelectedUsagePackPlan$,
   usagePackSubscriptionChangePreview$,
   usagePackPricingPageRef$,
+  closeUsagePackMigrationPreview$,
+  closeUsagePackMigrationRevisionPreview$,
+  usagePackMigrationPreview$,
+  usagePackMigrationRevisionPreview$,
   type MemberUsageSelection,
   type UsagePackPlanTier,
   type UsagePackUsd,
@@ -89,6 +100,7 @@ interface MemberUsageDowngrade {
 }
 
 type PlanSelectionAction =
+  | "convert"
   | "disabled"
   | "downgrade"
   | "manage"
@@ -115,16 +127,18 @@ function usagePackPlan(tier: UsagePackPlanTier): UsagePackPlan {
 }
 
 function canCheckoutUsagePackPlan(
+  checkoutAllowed: boolean,
   currentTier: BillingTier,
   targetTier: UsagePackPlanTier,
 ): boolean {
-  if (currentTier === "custom" || currentTier === "team") {
+  if (!checkoutAllowed || currentTier === "custom" || currentTier === "team") {
     return false;
   }
   return currentTier !== "pro" || targetTier === "team";
 }
 
 function usagePackPlanAction(
+  checkoutAllowed: boolean,
   currentTier: BillingTier,
   managedTier: UsagePackPlanTier | null,
   targetTier: UsagePackPlanTier,
@@ -138,7 +152,7 @@ function usagePackPlanAction(
   if (managedTier === "team" && targetTier === "pro") {
     return "downgrade";
   }
-  return canCheckoutUsagePackPlan(currentTier, targetTier)
+  return canCheckoutUsagePackPlan(checkoutAllowed, currentTier, targetTier)
     ? "select"
     : "disabled";
 }
@@ -155,6 +169,10 @@ function planName(tier: UsagePackPlanTier): string {
 
 function planConcurrentSlots(tier: UsagePackPlanTier): number {
   return tier === "pro" ? 2 : 10;
+}
+
+function legacyPlanMonthlyCredits(tier: UsagePackPlanTier): number {
+  return tier === "pro" ? 20_000 : 120_000;
 }
 
 function formatBillingDate(value: string): string {
@@ -246,6 +264,54 @@ function memberUsageTotals(
     },
     { bonusCredits: 0, totalCredits: 0, totalUsd: 0 },
   );
+}
+
+function migrationConfigurationSelections(
+  configuration: UsagePackMigrationConfiguration,
+): Readonly<Record<string, MemberUsageSelection>> {
+  return Object.fromEntries(
+    configuration.memberUsagePacks.map((selection) => {
+      return [selection.memberId, selection.usagePackUsd] as const;
+    }),
+  );
+}
+
+function migrationConfigurationTotals(
+  configuration: UsagePackMigrationConfiguration,
+  catalog: readonly UsagePackCatalogItem[],
+): MemberUsageTotals {
+  return configuration.memberUsagePacks.reduce<MemberUsageTotals>(
+    (totals, selection) => {
+      const item = usagePackCatalogItem(catalog, selection.usagePackUsd);
+      return {
+        bonusCredits: totals.bonusCredits + item.bonusCredits,
+        totalCredits: totals.totalCredits + item.totalCredits,
+        totalUsd: totals.totalUsd + item.priceUsd,
+      };
+    },
+    { bonusCredits: 0, totalCredits: 0, totalUsd: 0 },
+  );
+}
+
+function migrationConfigurationChanged(
+  configuration: UsagePackMigrationConfiguration,
+  targetTier: UsagePackPlanTier,
+  requested: readonly MemberUsagePack[],
+): boolean {
+  if (
+    configuration.tier !== targetTier ||
+    configuration.memberUsagePacks.length !== requested.length
+  ) {
+    return true;
+  }
+  const currentByMember = new Map(
+    configuration.memberUsagePacks.map((selection) => {
+      return [selection.memberId, selection.usagePackUsd] as const;
+    }),
+  );
+  return requested.some((selection) => {
+    return currentByMember.get(selection.memberId) !== selection.usagePackUsd;
+  });
 }
 
 function managedMemberUsageTotals(
@@ -558,24 +624,28 @@ function PlanSelectionCard({
   const name = planName(plan.tier);
   const displayedPriceUsd = plan.basePriceUsd + minimumPackagePriceUsd;
   const actionLabel =
-    action === "manage"
+    action === "convert"
       ? i18n.t(($) => {
-          return $.billing.common.manage;
+          return $.billing.plans.usagePacks.migration.convertPlan;
         })
-      : action === "upgrade"
+      : action === "manage"
         ? i18n.t(($) => {
-            return $.billing.plans.upgrade;
+            return $.billing.common.manage;
           })
-        : action === "downgrade"
+        : action === "upgrade"
           ? i18n.t(($) => {
-              return $.billing.plans.downgrade;
+              return $.billing.plans.upgrade;
             })
-          : i18n.t(
-              ($) => {
-                return $.billing.plans.usagePacks.selectPlan;
-              },
-              { plan: name },
-            );
+          : action === "downgrade"
+            ? i18n.t(($) => {
+                return $.billing.plans.downgrade;
+              })
+            : i18n.t(
+                ($) => {
+                  return $.billing.plans.usagePacks.selectPlan;
+                },
+                { plan: name },
+              );
   return (
     <article
       aria-label={i18n.t(
@@ -786,7 +856,7 @@ function SelectedPlanSummary({
   onChange,
   plan,
 }: {
-  readonly onChange: () => void;
+  readonly onChange?: () => void;
   readonly plan: UsagePackPlan;
 }) {
   const name = planName(plan.tier);
@@ -813,11 +883,13 @@ function SelectedPlanSummary({
           { price: formatUsd(plan.basePriceUsd, 0) },
         )}
       </p>
-      <Button type="button" variant="outline" size="sm" onClick={onChange}>
-        {i18n.t(($) => {
-          return $.billing.plans.usagePacks.changePlan;
-        })}
-      </Button>
+      {onChange && (
+        <Button type="button" variant="outline" size="sm" onClick={onChange}>
+          {i18n.t(($) => {
+            return $.billing.plans.usagePacks.changePlan;
+          })}
+        </Button>
+      )}
     </section>
   );
 }
@@ -987,6 +1059,7 @@ function CheckoutOrderSummary({
 
 function PlanSelectionStep({
   catalog,
+  checkoutAllowed,
   currentTier,
   error,
   loading,
@@ -995,6 +1068,7 @@ function PlanSelectionStep({
   onAction,
 }: {
   readonly catalog: readonly UsagePackCatalogItem[];
+  readonly checkoutAllowed: boolean;
   readonly currentTier: BillingTier;
   readonly error: string | null;
   readonly loading: boolean;
@@ -1013,6 +1087,7 @@ function PlanSelectionStep({
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         {USAGE_PACK_PLANS.map((plan) => {
           const action = usagePackPlanAction(
+            checkoutAllowed,
             currentTier,
             managedTier,
             plan.tier,
@@ -1037,14 +1112,75 @@ function PlanSelectionStep({
   );
 }
 
+function useUsagePackMembers(): readonly MemberDisplay[] | undefined {
+  const userLoadable = useLastLoadable(currentUserInfo$);
+  const membersLoadable = useLoadable(orgMembers$);
+  const pendingInvitationsLoadable = useLoadable(orgPendingInvitations$);
+  const user = userLoadable.state === "hasData" ? userLoadable.data : undefined;
+  const orgMembers =
+    membersLoadable.state === "hasData" ? membersLoadable.data : undefined;
+  const pendingInvitations =
+    pendingInvitationsLoadable.state === "hasData"
+      ? pendingInvitationsLoadable.data
+      : undefined;
+  if (!user || !orgMembers || !pendingInvitations) {
+    return undefined;
+  }
+  return [
+    {
+      id: user.id,
+      email: user.primaryEmailAddress?.emailAddress,
+      imageUrl: user.imageUrl,
+      isCurrent: true,
+      isPending: false,
+      name:
+        user.fullName ??
+        user.primaryEmailAddress?.emailAddress ??
+        i18n.t(($) => {
+          return $.billing.plans.usagePacks.currentMember;
+        }),
+    },
+    ...orgMembers
+      .filter((member) => {
+        return member.userId !== user.id;
+      })
+      .map((member): MemberDisplay => {
+        return {
+          id: member.userId,
+          email: member.email,
+          imageUrl: member.imageUrl,
+          isCurrent: false,
+          isPending: false,
+          name: memberName(member),
+        };
+      }),
+    ...pendingInvitations.map((invitation): MemberDisplay => {
+      return {
+        id: invitation.id,
+        email: invitation.email,
+        imageUrl: undefined,
+        isCurrent: false,
+        isPending: true,
+        name: invitation.email,
+      };
+    }),
+  ];
+}
+
 function ManagedSubscriptionSummaryDetails({
+  monthlyTotalCents,
   plan,
   totals,
 }: {
+  readonly monthlyTotalCents?: number;
   readonly plan: UsagePackPlan;
   readonly totals: MemberUsageTotals;
 }) {
-  const monthlyTotalUsd = plan.basePriceUsd + totals.totalUsd;
+  const monthlyTotalUsd =
+    monthlyTotalCents === undefined
+      ? plan.basePriceUsd + totals.totalUsd
+      : monthlyTotalCents / 100;
+  const monthlyTotalFractionDigits = Number.isInteger(monthlyTotalUsd) ? 0 : 2;
   const purchasedCredits = totals.totalCredits - totals.bonusCredits;
   return (
     <div className="mt-4 space-y-2.5 text-[13px]">
@@ -1102,7 +1238,9 @@ function ManagedSubscriptionSummaryDetails({
             ($) => {
               return $.billing.plans.pricePerMonth;
             },
-            { price: formatUsd(monthlyTotalUsd, 0) },
+            {
+              price: formatUsd(monthlyTotalUsd, monthlyTotalFractionDigits),
+            },
           )}
         </span>
       </div>
@@ -1110,10 +1248,10 @@ function ManagedSubscriptionSummaryDetails({
   );
 }
 
-interface ManagedSubscriptionComparisonRow {
+interface SubscriptionComparisonRow {
   readonly label: string;
-  readonly current: string;
-  readonly next: string;
+  readonly current: ReactNode;
+  readonly next: ReactNode;
   readonly changed: boolean;
 }
 
@@ -1127,7 +1265,7 @@ function managedSubscriptionComparisonRows({
   readonly currentTotals: MemberUsageTotals;
   readonly plan: UsagePackPlan;
   readonly totals: MemberUsageTotals;
-}): readonly ManagedSubscriptionComparisonRow[] {
+}): readonly SubscriptionComparisonRow[] {
   const currentMonthlyTotalUsd =
     currentPlan.basePriceUsd + currentTotals.totalUsd;
   const nextMonthlyTotalUsd = plan.basePriceUsd + totals.totalUsd;
@@ -1218,6 +1356,14 @@ function ManagedSubscriptionComparison({
     totals,
   });
 
+  return <SubscriptionComparisonTable rows={rows} />;
+}
+
+function SubscriptionComparisonTable({
+  rows,
+}: {
+  readonly rows: readonly SubscriptionComparisonRow[];
+}) {
   return (
     <div className="mt-4 overflow-hidden rounded-lg border border-border/70">
       <table
@@ -1274,24 +1420,22 @@ function ManagedSubscriptionComparison({
   );
 }
 
-function ManagedSubscriptionDowngradeNotice({
-  currentPeriodEnd,
+function SubscriptionChangeNotice({
+  description,
+  effectiveAt,
 }: {
-  readonly currentPeriodEnd: string;
+  readonly description: string;
+  readonly effectiveAt: string;
 }) {
   return (
     <div className="mt-3 rounded-lg border border-amber-200/70 bg-amber-50/70 px-3 py-2 text-xs leading-relaxed text-amber-700 dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-300">
-      <p>
-        {i18n.t(($) => {
-          return $.billing.plans.usagePacks.management.downgradeDescription;
-        })}
-      </p>
+      <p>{description}</p>
       <p className="mt-1 font-medium">
         {i18n.t(
           ($) => {
             return $.billing.plans.usagePacks.management.scheduledFor;
           },
-          { date: formatBillingDate(currentPeriodEnd) },
+          { date: formatBillingDate(effectiveAt) },
         )}
       </p>
     </div>
@@ -1422,14 +1566,7 @@ function UsagePackSubscriptionChangeDialog({
           </DialogDescription>
         </DialogHeader>
         {preview && <UsagePackChangePaymentSummary preview={preview} />}
-        <div className="pt-1">
-          <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-            {i18n.t(($) => {
-              return $.billing.plans.usagePacks.orderSummary;
-            })}
-          </p>
-          <ManagedSubscriptionSummaryDetails plan={plan} totals={totals} />
-        </div>
+        <SubscriptionOrderSummary plan={plan} totals={totals} />
         {error && <p className="text-xs text-destructive">{error}</p>}
         <DialogFooter>
           <Button
@@ -1454,6 +1591,31 @@ function UsagePackSubscriptionChangeDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function SubscriptionOrderSummary({
+  monthlyTotalCents,
+  plan,
+  totals,
+}: {
+  readonly monthlyTotalCents?: number;
+  readonly plan: UsagePackPlan;
+  readonly totals: MemberUsageTotals;
+}) {
+  return (
+    <div className="pt-1">
+      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+        {i18n.t(($) => {
+          return $.billing.plans.usagePacks.orderSummary;
+        })}
+      </p>
+      <ManagedSubscriptionSummaryDetails
+        monthlyTotalCents={monthlyTotalCents}
+        plan={plan}
+        totals={totals}
+      />
+    </div>
   );
 }
 
@@ -1739,8 +1901,11 @@ function ManagedSubscriptionOrderSummary({
         <ManagedSubscriptionSummaryDetails plan={plan} totals={totals} />
       )}
       {hasDowngrade && management.currentPeriodEnd && (
-        <ManagedSubscriptionDowngradeNotice
-          currentPeriodEnd={management.currentPeriodEnd}
+        <SubscriptionChangeNotice
+          description={i18n.t(($) => {
+            return $.billing.plans.usagePacks.management.downgradeDescription;
+          })}
+          effectiveAt={management.currentPeriodEnd}
         />
       )}
       {hasPendingChange && !hasScheduledDowngrade && (
@@ -1797,65 +1962,11 @@ function PackageConfigurationStep({
   readonly onBack: () => void;
   readonly plan: UsagePackPlan;
 }) {
-  const userLoadable = useLastLoadable(currentUserInfo$);
-  const membersLoadable = useLoadable(orgMembers$);
-  const pendingInvitationsLoadable = useLoadable(orgPendingInvitations$);
   const selections = useGet(memberUsageSelections$);
-  const user = userLoadable.state === "hasData" ? userLoadable.data : undefined;
-  const orgMembers =
-    membersLoadable.state === "hasData" ? membersLoadable.data : undefined;
-  const pendingInvitations =
-    pendingInvitationsLoadable.state === "hasData"
-      ? pendingInvitationsLoadable.data
-      : undefined;
-  const activeMembers: readonly MemberDisplay[] | undefined =
-    user && orgMembers
-      ? [
-          {
-            id: user.id,
-            email: user.primaryEmailAddress?.emailAddress,
-            imageUrl: user.imageUrl,
-            isCurrent: true,
-            isPending: false,
-            name:
-              user.fullName ??
-              user.primaryEmailAddress?.emailAddress ??
-              i18n.t(($) => {
-                return $.billing.plans.usagePacks.currentMember;
-              }),
-          },
-          ...orgMembers
-            .filter((member) => {
-              return member.userId !== user.id;
-            })
-            .map((member): MemberDisplay => {
-              return {
-                id: member.userId,
-                email: member.email,
-                imageUrl: member.imageUrl,
-                isCurrent: false,
-                isPending: false,
-                name: memberName(member),
-              };
-            }),
-        ]
-      : undefined;
-  const allMembers: readonly MemberDisplay[] | undefined =
-    activeMembers && pendingInvitations
-      ? [
-          ...activeMembers,
-          ...pendingInvitations.map((invitation): MemberDisplay => {
-            return {
-              id: invitation.id,
-              email: invitation.email,
-              imageUrl: undefined,
-              isCurrent: false,
-              isPending: true,
-              name: invitation.email,
-            };
-          }),
-        ]
-      : undefined;
+  const allMembers = useUsagePackMembers();
+  const activeMembers = allMembers?.filter((member) => {
+    return !member.isPending;
+  });
   const members = management
     ? management.supportsMemberAdditions
       ? activeMembers
@@ -1903,10 +2014,650 @@ function PackageConfigurationStep({
   );
 }
 
+function MigrationOrderSummary({
+  effectiveAt,
+  members,
+  plan,
+  selections,
+  sourceTier,
+  totals,
+}: {
+  readonly effectiveAt: string;
+  readonly members: readonly MemberDisplay[] | undefined;
+  readonly plan: UsagePackPlan;
+  readonly selections: Readonly<Record<string, MemberUsageSelection>>;
+  readonly sourceTier: UsagePackPlanTier;
+  readonly totals: MemberUsageTotals;
+}) {
+  const pageSignal = useGet(pageSignal$);
+  const [previewLoadable, previewMigration] = useLoadableSet(
+    previewUsagePackMigration$,
+  );
+  const previewing = previewLoadable.state === "loading";
+  const previewError = previewLoadable.state === "hasError";
+  const monthlyTotal = plan.basePriceUsd + totals.totalUsd;
+  const currentMonthlyTotal = sourceTier === "pro" ? 20 : 200;
+  return (
+    <section
+      aria-label={i18n.t(($) => {
+        return $.billing.plans.usagePacks.orderSummary;
+      })}
+      className="rounded-xl bg-card p-4 zero-border"
+    >
+      <h4 className="text-sm font-medium text-foreground">
+        {i18n.t(($) => {
+          return $.billing.plans.usagePacks.orderSummary;
+        })}
+      </h4>
+      <MigrationPlanComparison
+        currentAmountCents={currentMonthlyTotal * 100}
+        nextAmountCents={monthlyTotal * 100}
+        nextTotals={totals}
+        sourceTier={sourceTier}
+        targetTier={plan.tier}
+      />
+      <SubscriptionChangeNotice
+        description={i18n.t(($) => {
+          return $.billing.plans.usagePacks.migration.confirmDescription;
+        })}
+        effectiveAt={effectiveAt}
+      />
+      {previewError && (
+        <p className="mt-3 text-xs text-destructive">
+          {i18n.t(($) => {
+            return $.billing.plans.usagePacks.migration.error;
+          })}
+        </p>
+      )}
+      <Button
+        type="button"
+        className="mt-4 h-10 w-full text-sm font-medium"
+        disabled={!members || previewing}
+        onClick={() => {
+          if (!members) {
+            return;
+          }
+          detach(
+            previewMigration(
+              {
+                targetTier: plan.tier,
+                memberUsagePacks: checkoutMemberUsagePacks(members, selections),
+              },
+              pageSignal,
+            ),
+            Reason.DomCallback,
+          );
+        }}
+      >
+        {i18n.t(($) => {
+          return $.billing.plans.usagePacks.migration.review;
+        })}
+      </Button>
+    </section>
+  );
+}
+
+function MigrationRevisionOrderSummary({
+  catalog,
+  configuration,
+  effectiveAt,
+  members,
+  migrationId,
+  plan,
+  selections,
+  totals,
+}: {
+  readonly catalog: readonly UsagePackCatalogItem[];
+  readonly configuration: UsagePackMigrationConfiguration;
+  readonly effectiveAt: string;
+  readonly members: readonly MemberDisplay[] | undefined;
+  readonly migrationId: string;
+  readonly plan: UsagePackPlan;
+  readonly selections: Readonly<Record<string, MemberUsageSelection>>;
+  readonly totals: MemberUsageTotals;
+}) {
+  const pageSignal = useGet(pageSignal$);
+  const [previewLoadable, previewRevision] = useLoadableSet(
+    previewUsagePackMigrationRevision$,
+  );
+  const previewing = previewLoadable.state === "loading";
+  const previewError = previewLoadable.state === "hasError";
+  const currentPlan = usagePackPlan(configuration.tier);
+  const currentTotals = migrationConfigurationTotals(configuration, catalog);
+  const requested = members
+    ? checkoutMemberUsagePacks(members, selections)
+    : [];
+  const hasConfigurationChange =
+    members !== undefined &&
+    migrationConfigurationChanged(configuration, plan.tier, requested);
+  const rows = managedSubscriptionComparisonRows({
+    currentPlan,
+    currentTotals,
+    plan,
+    totals,
+  });
+  return (
+    <section
+      aria-label={i18n.t(($) => {
+        return $.billing.plans.usagePacks.orderSummary;
+      })}
+      className="rounded-xl bg-card p-4 zero-border"
+    >
+      <h4 className="text-sm font-medium text-foreground">
+        {i18n.t(($) => {
+          return $.billing.plans.usagePacks.orderSummary;
+        })}
+      </h4>
+      <SubscriptionComparisonTable rows={rows} />
+      <SubscriptionChangeNotice
+        description={i18n.t(($) => {
+          return $.billing.plans.usagePacks.migration.confirmDescription;
+        })}
+        effectiveAt={effectiveAt}
+      />
+      {previewError && (
+        <p className="mt-3 text-xs text-destructive">
+          {i18n.t(($) => {
+            return $.billing.plans.usagePacks.migration.error;
+          })}
+        </p>
+      )}
+      <Button
+        type="button"
+        className="mt-4 h-10 w-full text-sm font-medium"
+        disabled={!hasConfigurationChange || previewing}
+        onClick={() => {
+          if (!members) {
+            return;
+          }
+          detach(
+            previewRevision(
+              {
+                migrationId,
+                targetTier: plan.tier,
+                memberUsagePacks: requested,
+              },
+              pageSignal,
+            ),
+            Reason.DomCallback,
+          );
+        }}
+      >
+        {hasConfigurationChange
+          ? i18n.t(($) => {
+              return $.billing.plans.usagePacks.migration.review;
+            })
+          : i18n.t(($) => {
+              return $.billing.plans.currentPlan;
+            })}
+      </Button>
+    </section>
+  );
+}
+
+function MigrationReviewDialog({
+  totals,
+}: {
+  readonly totals: MemberUsageTotals;
+}) {
+  const pageSignal = useGet(pageSignal$);
+  const preview = useGet(usagePackMigrationPreview$);
+  const closePreview = useSet(closeUsagePackMigrationPreview$);
+  const [confirmLoadable, confirmMigration] = useLoadableSet(
+    confirmUsagePackMigration$,
+  );
+  const confirming = confirmLoadable.state === "loading";
+  const error = confirmLoadable.state === "hasError";
+  const handleConfirm = async (): Promise<void> => {
+    if (!preview) {
+      return;
+    }
+    await confirmMigration(preview.migrationId, pageSignal);
+  };
+  return (
+    <Dialog
+      open={preview !== null}
+      onOpenChange={(open) => {
+        if (!open && !confirming) {
+          closePreview();
+        }
+      }}
+    >
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>
+            {i18n.t(($) => {
+              return $.billing.plans.usagePacks.migration.reviewTitle;
+            })}
+          </DialogTitle>
+          <DialogDescription>
+            {i18n.t(($) => {
+              return $.billing.plans.usagePacks.migration.reviewDescription;
+            })}
+          </DialogDescription>
+        </DialogHeader>
+        {preview && (
+          <MigrationPreviewDetails preview={preview} totals={totals} />
+        )}
+        {error && (
+          <p className="text-xs text-destructive">
+            {i18n.t(($) => {
+              return $.billing.plans.usagePacks.migration.error;
+            })}
+          </p>
+        )}
+        <DialogFooter>
+          <Button
+            variant="outline"
+            disabled={confirming}
+            onClick={closePreview}
+          >
+            {i18n.t(($) => {
+              return $.billing.common.cancel;
+            })}
+          </Button>
+          <Button
+            disabled={confirming}
+            onClick={() => {
+              detach(handleConfirm(), Reason.DomCallback);
+            }}
+          >
+            {confirming
+              ? i18n.t(($) => {
+                  return $.billing.common.updating;
+                })
+              : i18n.t(($) => {
+                  return $.billing.common.confirm;
+                })}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function MigrationRevisionReviewDialog({
+  members,
+  migrationId,
+  selections,
+  totals,
+}: {
+  readonly members: readonly MemberDisplay[] | undefined;
+  readonly migrationId: string;
+  readonly selections: Readonly<Record<string, MemberUsageSelection>>;
+  readonly totals: MemberUsageTotals;
+}) {
+  const pageSignal = useGet(pageSignal$);
+  const preview = useGet(usagePackMigrationRevisionPreview$);
+  const closePreview = useSet(closeUsagePackMigrationRevisionPreview$);
+  const [confirmLoadable, confirmRevision] = useLoadableSet(
+    confirmUsagePackMigrationRevision$,
+  );
+  const confirming = confirmLoadable.state === "loading";
+  const error = confirmLoadable.state === "hasError";
+  const handleConfirm = async (): Promise<void> => {
+    if (!preview || !members) {
+      return;
+    }
+    await confirmRevision(
+      {
+        migrationId,
+        targetTier: preview.targetTier,
+        memberUsagePacks: checkoutMemberUsagePacks(members, selections),
+      },
+      pageSignal,
+    );
+  };
+  return (
+    <Dialog
+      open={preview !== null}
+      onOpenChange={(open) => {
+        if (!open && !confirming) {
+          closePreview();
+        }
+      }}
+    >
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>
+            {i18n.t(($) => {
+              return $.billing.plans.usagePacks.management.reviewTitle;
+            })}
+          </DialogTitle>
+          <DialogDescription>
+            {i18n.t(($) => {
+              return $.billing.plans.usagePacks.management.reviewDescription;
+            })}
+          </DialogDescription>
+        </DialogHeader>
+        {preview && (
+          <MigrationPreviewDetails preview={preview} totals={totals} />
+        )}
+        {error && (
+          <p className="text-xs text-destructive">
+            {i18n.t(($) => {
+              return $.billing.plans.usagePacks.migration.error;
+            })}
+          </p>
+        )}
+        <DialogFooter>
+          <Button
+            variant="outline"
+            disabled={confirming}
+            onClick={closePreview}
+          >
+            {i18n.t(($) => {
+              return $.billing.common.cancel;
+            })}
+          </Button>
+          <Button
+            disabled={confirming || !members}
+            onClick={() => {
+              detach(handleConfirm(), Reason.DomCallback);
+            }}
+          >
+            {confirming
+              ? i18n.t(($) => {
+                  return $.billing.common.updating;
+                })
+              : i18n.t(($) => {
+                  return $.billing.common.confirm;
+                })}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function MigrationPreviewDetails({
+  preview,
+  totals,
+}: {
+  readonly preview:
+    | UsagePackMigrationPreviewResponse
+    | UsagePackMigrationRevisionPreviewResponse;
+  readonly totals: MemberUsageTotals;
+}) {
+  const previewTotals: MemberUsageTotals = {
+    bonusCredits: preview.bonusCredits,
+    totalCredits: preview.totalCredits,
+    totalUsd: totals.totalUsd,
+  };
+  return (
+    <>
+      <SubscriptionOrderSummary
+        monthlyTotalCents={preview.nextRecurringAmountCents}
+        plan={usagePackPlan(preview.targetTier)}
+        totals={previewTotals}
+      />
+      <SubscriptionChangeNotice
+        description={i18n.t(($) => {
+          return $.billing.plans.usagePacks.migration.confirmDescription;
+        })}
+        effectiveAt={preview.effectiveAt}
+      />
+    </>
+  );
+}
+
+function MigrationPlanComparison({
+  currentAmountCents,
+  nextAmountCents,
+  nextTotals,
+  sourceTier,
+  targetTier,
+}: {
+  readonly currentAmountCents: number;
+  readonly nextAmountCents: number;
+  readonly nextTotals: MemberUsageTotals;
+  readonly sourceTier: UsagePackPlanTier;
+  readonly targetTier: UsagePackPlanTier;
+}) {
+  const rows: readonly SubscriptionComparisonRow[] = [
+    {
+      label: i18n.t(($) => {
+        return $.billing.plans.usagePacks.planStep;
+      }),
+      current: (
+        <span className="inline-flex items-center justify-end gap-1.5">
+          <span>{planName(sourceTier)}</span>
+          <span className="rounded px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground zero-badge">
+            {i18n.t(($) => {
+              return $.billing.plans.legacy;
+            })}
+          </span>
+        </span>
+      ),
+      next: planName(targetTier),
+      changed: true,
+    },
+    {
+      label: i18n.t(($) => {
+        return $.billing.plans.usagePacks.memberPackages;
+      }),
+      current: formatUsd(0, 0),
+      next: formatUsd(nextTotals.totalUsd, 0),
+      changed: nextTotals.totalUsd !== 0,
+    },
+    {
+      label: i18n.t(($) => {
+        return $.billing.plans.usagePacks.concurrentSlots;
+      }),
+      current: formatLocalizedNumber(planConcurrentSlots(sourceTier)),
+      next: formatLocalizedNumber(planConcurrentSlots(targetTier)),
+      changed:
+        planConcurrentSlots(sourceTier) !== planConcurrentSlots(targetTier),
+    },
+    {
+      label: i18n.t(($) => {
+        return $.billing.plans.usagePacks.purchasedCredits;
+      }),
+      current: formatLocalizedNumber(legacyPlanMonthlyCredits(sourceTier)),
+      next: formatLocalizedNumber(
+        nextTotals.totalCredits - nextTotals.bonusCredits,
+      ),
+      changed:
+        legacyPlanMonthlyCredits(sourceTier) !==
+        nextTotals.totalCredits - nextTotals.bonusCredits,
+    },
+    {
+      label: i18n.t(($) => {
+        return $.billing.plans.usagePacks.bonusCredits;
+      }),
+      current: formatLocalizedNumber(0),
+      next: formatLocalizedNumber(nextTotals.bonusCredits),
+      changed: nextTotals.bonusCredits !== 0,
+    },
+    {
+      label: i18n.t(($) => {
+        return $.billing.plans.usagePacks.monthlyTotal;
+      }),
+      current: i18n.t(
+        ($) => {
+          return $.billing.plans.pricePerMonth;
+        },
+        { price: formatUsd(currentAmountCents / 100, 0) },
+      ),
+      next: i18n.t(
+        ($) => {
+          return $.billing.plans.pricePerMonth;
+        },
+        { price: formatUsd(nextAmountCents / 100, 0) },
+      ),
+      changed: currentAmountCents !== nextAmountCents,
+    },
+  ];
+
+  return <SubscriptionComparisonTable rows={rows} />;
+}
+
+export function UsagePackMigrationPlanSelectionPage({
+  configuration,
+  onBack,
+  onSelect,
+}: {
+  readonly configuration: UsagePackMigrationConfiguration | null;
+  readonly onBack: () => void;
+  readonly onSelect: (tier: UsagePackPlanTier) => void;
+}) {
+  const usagePackPricingPageRef = useSet(usagePackPricingPageRef$);
+  const setMemberUsageSelections = useSet(setMemberUsageSelections$);
+  const catalogLoadable = useLoadable(usagePackCatalogAsync$);
+  const catalog =
+    catalogLoadable.state === "hasData" ? catalogLoadable.data : null;
+  return (
+    <div
+      className="flex flex-col gap-5 outline-none"
+      ref={usagePackPricingPageRef}
+      role="group"
+      tabIndex={-1}
+    >
+      <UsagePackPageHeader
+        description={i18n.t(($) => {
+          return $.billing.plans.changeAnytime;
+        })}
+        onBack={onBack}
+        title={i18n.t(($) => {
+          return $.billing.plans.compare;
+        })}
+      />
+      {!catalog ? (
+        <div className="h-80 animate-pulse rounded-xl bg-muted/40" />
+      ) : (
+        <>
+          <PricingSteps current={1} />
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {USAGE_PACK_PLANS.map((plan) => {
+              const action = configuration
+                ? usagePackPlanAction(
+                    false,
+                    configuration.tier,
+                    configuration.tier,
+                    plan.tier,
+                  )
+                : "convert";
+              return (
+                <PlanSelectionCard
+                  key={plan.tier}
+                  action={action}
+                  busy={false}
+                  keepsMemberPackages={configuration !== null}
+                  minimumPackagePriceUsd={
+                    usagePackCatalogItem(catalog, MINIMUM_USAGE_PACK_USD)
+                      .priceUsd
+                  }
+                  plan={plan}
+                  onAction={() => {
+                    setMemberUsageSelections(
+                      configuration
+                        ? migrationConfigurationSelections(configuration)
+                        : {},
+                    );
+                    onSelect(plan.tier);
+                  }}
+                />
+              );
+            })}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+export function UsagePackMigrationPage({
+  configuration,
+  effectiveAt,
+  migrationId,
+  onBack,
+  sourceTier,
+  targetTier,
+}: {
+  readonly configuration: UsagePackMigrationConfiguration | null;
+  readonly effectiveAt: string;
+  readonly migrationId: string | null;
+  readonly onBack: () => void;
+  readonly sourceTier: UsagePackPlanTier;
+  readonly targetTier: UsagePackPlanTier;
+}) {
+  const selections = useGet(memberUsageSelections$);
+  const members = useUsagePackMembers();
+  const usagePackPricingPageRef = useSet(usagePackPricingPageRef$);
+  const catalogLoadable = useLoadable(usagePackCatalogAsync$);
+  const catalog =
+    catalogLoadable.state === "hasData" ? catalogLoadable.data : null;
+  const plan = USAGE_PACK_PLANS.find((candidate) => {
+    return candidate.tier === targetTier;
+  });
+  if (!plan) {
+    throw new Error(`Usage pack migration plan is missing for ${targetTier}`);
+  }
+  const totals = catalog
+    ? memberUsageTotals(members ?? [], selections, catalog)
+    : { bonusCredits: 0, totalCredits: 0, totalUsd: 0 };
+  return (
+    <div
+      className="flex flex-col gap-5 outline-none"
+      ref={usagePackPricingPageRef}
+      role="group"
+      tabIndex={-1}
+    >
+      {!catalog ? (
+        <div className="h-80 animate-pulse rounded-xl bg-muted/40" />
+      ) : (
+        <>
+          <PricingPageHeader onBack={onBack} step={2} />
+          <SelectedPlanSummary plan={plan} />
+          <MemberUsageConfiguration
+            catalog={catalog}
+            management={null}
+            members={members}
+          />
+          {configuration && migrationId ? (
+            <>
+              <MigrationRevisionOrderSummary
+                catalog={catalog}
+                configuration={configuration}
+                effectiveAt={effectiveAt}
+                members={members}
+                migrationId={migrationId}
+                plan={plan}
+                selections={selections}
+                totals={totals}
+              />
+              <MigrationRevisionReviewDialog
+                members={members}
+                migrationId={migrationId}
+                selections={selections}
+                totals={totals}
+              />
+            </>
+          ) : (
+            <>
+              <MigrationOrderSummary
+                effectiveAt={effectiveAt}
+                members={members}
+                plan={plan}
+                selections={selections}
+                sourceTier={sourceTier}
+                totals={totals}
+              />
+              <MigrationReviewDialog totals={totals} />
+            </>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 export function UsagePackPricingPage({
+  checkoutAllowed,
   currentTier,
   onBack,
 }: {
+  readonly checkoutAllowed: boolean;
   readonly currentTier: BillingTier;
   readonly onBack: () => void;
 }) {
@@ -1926,7 +2677,8 @@ export function UsagePackPricingPage({
   const selectedPlan = USAGE_PACK_PLANS.find((plan) => {
     return (
       plan.tier === selectedPlanTier &&
-      (management !== null || canCheckoutUsagePackPlan(currentTier, plan.tier))
+      (management !== null ||
+        canCheckoutUsagePackPlan(checkoutAllowed, currentTier, plan.tier))
     );
   });
   return (
@@ -1950,6 +2702,7 @@ export function UsagePackPricingPage({
       ) : (
         <PlanSelectionStep
           catalog={catalog}
+          checkoutAllowed={checkoutAllowed}
           currentTier={currentTier}
           error={null}
           loading={false}

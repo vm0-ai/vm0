@@ -7912,7 +7912,7 @@ async function validateUsagePackInviteLifecycleMigrations(): Promise<void> {
 const FINALIZE_INACTIVE_RUN_MODELS_PREVIOUS_MIGRATION =
   "0905_retire_legacy_run_model_state";
 const FINALIZE_INACTIVE_RUN_MODELS_MIGRATION =
-  "0907_finalize_inactive_run_model_stage_two";
+  "0908_finalize_inactive_run_model_stage_two";
 
 async function validateInactiveRunModelFinalization(): Promise<void> {
   console.log("=== Validate inactive run-model Stage 2 finalization ===\n");
