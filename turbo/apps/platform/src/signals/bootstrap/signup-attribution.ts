@@ -98,6 +98,12 @@ export const recordSignupAttribution$ = command(
           landing_host: window.location.host,
           landing_path: window.location.pathname,
           source_type: attribution.source_type ?? "unknown",
+          ...(attribution.vm0_campaign_id
+            ? { vm0_campaign_id: attribution.vm0_campaign_id }
+            : {}),
+          ...(attribution.vm0_ad_group_id
+            ? { vm0_ad_group_id: attribution.vm0_ad_group_id }
+            : {}),
         });
       }
     }
