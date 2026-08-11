@@ -1285,40 +1285,42 @@ export async function insertChatEvents(
       sequenceNumber: insertTable.runEventSequenceNumber,
     });
 
-  const reservedRangeByThread = new Map<
-    string,
-    { readonly firstSeqId: number; lastSeqId: number }
-  >();
-  for (const value of valuesWithSeqIds) {
-    const range = reservedRangeByThread.get(value.chatThreadId);
-    if (range === undefined) {
-      reservedRangeByThread.set(value.chatThreadId, {
-        firstSeqId: value.seqId,
-        lastSeqId: value.seqId,
-      });
-    } else {
-      range.lastSeqId = value.seqId;
+  if (rows.length < valuesWithSeqIds.length) {
+    const reservedRangeByThread = new Map<
+      string,
+      { readonly firstSeqId: number; lastSeqId: number }
+    >();
+    for (const value of valuesWithSeqIds) {
+      const range = reservedRangeByThread.get(value.chatThreadId);
+      if (range === undefined) {
+        reservedRangeByThread.set(value.chatThreadId, {
+          firstSeqId: value.seqId,
+          lastSeqId: value.seqId,
+        });
+      } else {
+        range.lastSeqId = value.seqId;
+      }
     }
-  }
 
-  const acceptedLastSeqIdByThread = new Map<string, number>();
-  for (const row of rows) {
-    const acceptedLastSeqId = acceptedLastSeqIdByThread.get(row.chatThreadId);
-    if (acceptedLastSeqId === undefined || row.seqId > acceptedLastSeqId) {
-      acceptedLastSeqIdByThread.set(row.chatThreadId, row.seqId);
+    const acceptedLastSeqIdByThread = new Map<string, number>();
+    for (const row of rows) {
+      const acceptedLastSeqId = acceptedLastSeqIdByThread.get(row.chatThreadId);
+      if (acceptedLastSeqId === undefined || row.seqId > acceptedLastSeqId) {
+        acceptedLastSeqIdByThread.set(row.chatThreadId, row.seqId);
+      }
     }
-  }
 
-  for (const [chatThreadId, range] of [...reservedRangeByThread].sort(
-    ([left], [right]) => {
-      return left.localeCompare(right);
-    },
-  )) {
-    const acceptedLastSeqId =
-      acceptedLastSeqIdByThread.get(chatThreadId) ?? range.firstSeqId - 1;
-    const unusedSuffixCount = range.lastSeqId - acceptedLastSeqId;
-    if (unusedSuffixCount > 0) {
-      await releaseChatEventSeqIds(tx, chatThreadId, unusedSuffixCount);
+    for (const [chatThreadId, range] of [...reservedRangeByThread].sort(
+      ([left], [right]) => {
+        return left.localeCompare(right);
+      },
+    )) {
+      const acceptedLastSeqId =
+        acceptedLastSeqIdByThread.get(chatThreadId) ?? range.firstSeqId - 1;
+      const unusedSuffixCount = range.lastSeqId - acceptedLastSeqId;
+      if (unusedSuffixCount > 0) {
+        await releaseChatEventSeqIds(tx, chatThreadId, unusedSuffixCount);
+      }
     }
   }
 
