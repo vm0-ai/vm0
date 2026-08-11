@@ -74,7 +74,7 @@ run_real_claude_chat() {
         "$RUNNER_AGENT_ID" \
         "$prompt" \
         "" \
-        "claude-sonnet-4-6")" || return 1
+        "claude-sonnet-5")" || return 1
     run_id="$(jq -er '.runId | select(type == "string" and length > 0)' \
         <<< "$send_response")" || return 1
     thread_id="$(jq -er '.threadId | select(type == "string" and length > 0)' \

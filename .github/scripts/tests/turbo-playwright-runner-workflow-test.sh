@@ -202,7 +202,7 @@ claude_script = claude_step.fetch("run")
   /api/zero/model-providers
   /api/zero/model-policies
   /api/zero/feature-switches
-  claude-sonnet-4-6
+  claude-sonnet-5
   realAgentInPreview
 ].each do |required_fragment|
   unless claude_script.include?(required_fragment)

@@ -2667,7 +2667,7 @@ jobs:
             {
               policies: (
                 [.policies[] |
-                  select(.model != "claude-sonnet-4-6") |
+                  select(.model != "claude-sonnet-5") |
                   {
                     model,
                     isDefault,
@@ -2677,7 +2677,7 @@ jobs:
                   }
                 ] + [
                   {
-                    model: "claude-sonnet-4-6",
+                    model: "claude-sonnet-5",
                     isDefault: false,
                     defaultProviderType: "anthropic-api-key",
                     credentialScope: "org",
