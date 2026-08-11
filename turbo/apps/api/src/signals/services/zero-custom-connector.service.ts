@@ -71,7 +71,7 @@ import {
 } from "./custom-connector-credential-access.service";
 import { effectiveCustomConnectorPermissionBundleRef } from "./feishu-custom-connector-permissions";
 import {
-  commitPreparedCustomConnectorSkillVolume,
+  commitPreparedCustomConnectorSkillStorage,
   prepareCustomConnectorSkillVolume$,
 } from "./custom-connector-skill-volume.service";
 import type { PreparedServerSideVolume } from "./storage-volume-publication.service";
@@ -187,6 +187,7 @@ interface CustomConnectorSharedRow {
   readonly oauthConfig: CustomConnectorOAuthConfigRow | null;
   readonly enabled: boolean;
   readonly skillMarkdown: string | null;
+  readonly skillStorageVersionId: string | null;
   readonly storageVersion: number;
   readonly createdBy: string;
   readonly createdAt: Date;
@@ -463,6 +464,7 @@ export function normaliseCustomConnectorRow(
     oauthConfig,
     enabled: row.enabled,
     skillMarkdown: row.skillMarkdown,
+    skillStorageVersionId: row.skillStorageVersionId,
     storageVersion: row.storageVersion,
     createdBy: row.createdBy,
     createdAt: row.createdAt,
@@ -1745,6 +1747,12 @@ async function persistCustomConnectorCreate(
         return prefixConflict;
       }
     }
+    if (args.preparedSkill) {
+      await commitPreparedCustomConnectorSkillStorage(
+        { db: tx, volume: args.preparedSkill },
+        signal,
+      );
+    }
     const [row] = await tx
       .insert(orgCustomConnectors)
       .values({
@@ -1758,6 +1766,7 @@ async function persistCustomConnectorCreate(
         queryInjections: [...args.definition.queryInjections],
         authMode: args.definition.authMode,
         skillMarkdown: args.definition.skillMarkdown,
+        skillStorageVersionId: args.preparedSkill?.version.versionId ?? null,
         storageVersion: args.storageVersion,
         createdBy: args.userId,
       })
@@ -1783,12 +1792,6 @@ async function persistCustomConnectorCreate(
         throw new Error("Expected OAuth config insert to return a row");
       }
       oauthConfig = insertedOAuthConfig;
-    }
-    if (args.preparedSkill) {
-      await commitPreparedCustomConnectorSkillVolume(
-        { db: tx, connectorId: row.id, volume: args.preparedSkill },
-        signal,
-      );
     }
     return { row, oauthConfig };
   });
@@ -1997,23 +2000,9 @@ async function persistCustomConnectorUpdate(
         return prefixConflict;
       }
     }
-    const kindColumns = protocolColumns(args.definition);
-    const [updated] = await tx
-      .update(orgCustomConnectors)
-      .set({
-        displayName: args.definition.displayName,
-        ...kindColumns,
-        fields: [...args.definition.fields],
-        headerInjections: [...args.definition.headerInjections],
-        queryInjections: [...args.definition.queryInjections],
-        authMode: args.definition.authMode,
-        skillMarkdown: args.definition.skillMarkdown,
-        ...(args.definition.skillMarkdown === null
-          ? { skillStorageVersionId: null }
-          : {}),
-        storageVersion: args.storageVersion,
-        updatedAt: nowDate(),
-      })
+    const [locked] = await tx
+      .select({ id: orgCustomConnectors.id })
+      .from(orgCustomConnectors)
       .where(
         and(
           eq(orgCustomConnectors.id, args.id),
@@ -2026,8 +2015,9 @@ async function persistCustomConnectorUpdate(
           ),
         ),
       )
-      .returning(customConnectorDefinitionSelection());
-    if (!updated) {
+      .for("update", { of: orgCustomConnectors })
+      .limit(1);
+    if (!locked) {
       const [current] = await tx
         .select({ id: orgCustomConnectors.id })
         .from(orgCustomConnectors)
@@ -2043,6 +2033,37 @@ async function persistCustomConnectorUpdate(
             "Custom connector changed while the definition was being saved; retry",
           )
         : null;
+    }
+    if (args.preparedSkill) {
+      await commitPreparedCustomConnectorSkillStorage(
+        { db: tx, volume: args.preparedSkill },
+        signal,
+      );
+    }
+    const kindColumns = protocolColumns(args.definition);
+    const [updated] = await tx
+      .update(orgCustomConnectors)
+      .set({
+        displayName: args.definition.displayName,
+        ...kindColumns,
+        fields: [...args.definition.fields],
+        headerInjections: [...args.definition.headerInjections],
+        queryInjections: [...args.definition.queryInjections],
+        authMode: args.definition.authMode,
+        skillMarkdown: args.definition.skillMarkdown,
+        skillStorageVersionId: args.preparedSkill?.version.versionId ?? null,
+        storageVersion: args.storageVersion,
+        updatedAt: nowDate(),
+      })
+      .where(
+        and(
+          eq(orgCustomConnectors.id, args.id),
+          eq(orgCustomConnectors.orgId, args.orgId),
+        ),
+      )
+      .returning(customConnectorDefinitionSelection());
+    if (!updated) {
+      throw new Error("Expected locked custom connector to be updated");
     }
     let storedOAuthConfig: CustomConnectorOAuthConfigRow | null = null;
     if (args.oauthConfigUpdate.kind === "none") {
@@ -2078,12 +2099,6 @@ async function persistCustomConnectorUpdate(
         })
         .returning();
       storedOAuthConfig = upserted ?? null;
-    }
-    if (args.preparedSkill) {
-      await commitPreparedCustomConnectorSkillVolume(
-        { db: tx, connectorId: updated.id, volume: args.preparedSkill },
-        signal,
-      );
     }
     return { row: updated, oauthConfig: storedOAuthConfig };
   });

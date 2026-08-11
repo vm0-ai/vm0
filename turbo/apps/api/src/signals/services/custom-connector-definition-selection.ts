@@ -16,6 +16,7 @@ export function customConnectorDefinitionSelection() {
     mcpEndpoint: orgCustomConnectors.mcpEndpoint,
     mcpTransport: orgCustomConnectors.mcpTransport,
     skillMarkdown: orgCustomConnectors.skillMarkdown,
+    skillStorageVersionId: orgCustomConnectors.skillStorageVersionId,
     storageVersion: orgCustomConnectors.storageVersion,
     createdBy: orgCustomConnectors.createdBy,
     createdAt: orgCustomConnectors.createdAt,

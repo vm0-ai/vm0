@@ -907,6 +907,7 @@ interface CustomConnectorRuntimeContext {
   readonly skills: readonly {
     readonly connectorId: string;
     readonly connectorSlug: string;
+    readonly versionId: string;
   }[];
 }
 
@@ -978,6 +979,28 @@ function skillMountPath(skillsRoot: string, skillName: string): string {
   return `${skillsRoot}/${skillName}`;
 }
 
+type ConnectorSkillVolumeSource = Extract<
+  StorageManifestSource,
+  "connector_skill" | "custom_connector_skill"
+>;
+
+function buildExactConnectorSkillVolume(args: {
+  readonly name: string;
+  readonly version: string;
+  readonly mountPath: string;
+  readonly source: ConnectorSkillVolumeSource;
+}): PreparedAdditionalVolume {
+  return {
+    volume: {
+      name: args.name,
+      version: args.version,
+      mountPath: args.mountPath,
+      ...(args.source === "connector_skill" ? { system: true } : {}),
+    },
+    source: args.source,
+  };
+}
+
 // Legacy CLI runs use the framework resolved from the model provider, never
 // the framework declared in the compose. Eligible Pi runs instead receive the
 // fixed Pi root before Storage resolves any versions or overlays.
@@ -1014,15 +1037,12 @@ function buildConnectorSkillVolumes(
     if (connector.skill.kind === "none") {
       return [];
     }
-    const prepared: PreparedAdditionalVolume = {
-      volume: {
-        name: connector.skill.storageName,
-        version: connector.skill.versionId,
-        mountPath: skillMountPath(skillsRoot, connectorSlug),
-        system: true,
-      },
+    const prepared = buildExactConnectorSkillVolume({
+      name: connector.skill.storageName,
+      version: connector.skill.versionId,
+      mountPath: skillMountPath(skillsRoot, connectorSlug),
       source: "connector_skill",
-    };
+    });
     return [prepared];
   });
 }
@@ -1049,16 +1069,15 @@ function buildCustomConnectorSkillVolumes(
   skillsRoot: string,
 ): readonly PreparedAdditionalVolume[] {
   return skills.map((skill) => {
-    return {
-      volume: {
-        name: getCustomConnectorSkillStorageName(skill.connectorId),
-        mountPath: skillMountPath(
-          skillsRoot,
-          getCustomConnectorSkillName(skill.connectorSlug, skill.connectorId),
-        ),
-      },
+    return buildExactConnectorSkillVolume({
+      name: getCustomConnectorSkillStorageName(skill.connectorId),
+      version: skill.versionId,
+      mountPath: skillMountPath(
+        skillsRoot,
+        getCustomConnectorSkillName(skill.connectorSlug, skill.connectorId),
+      ),
       source: "custom_connector_skill",
-    };
+    });
   });
 }
 
@@ -4184,12 +4203,18 @@ interface BuiltCustomConnectorRuntimeRow {
 function customConnectorRuntimeSkill(
   row: CustomConnectorRuntimeDataRows[number],
 ): CustomConnectorRuntimeContext["skills"][number] | undefined {
-  return row.connector.skillMarkdown === null
-    ? undefined
-    : {
-        connectorId: row.connector.id,
-        connectorSlug: row.connector.slug,
-      };
+  const { skillMarkdown, skillStorageVersionId } = row.connector;
+  if (skillMarkdown === null && skillStorageVersionId === null) {
+    return undefined;
+  }
+  if (skillMarkdown === null || skillStorageVersionId === null) {
+    throw new Error("Custom connector skill registration is unavailable");
+  }
+  return {
+    connectorId: row.connector.id,
+    connectorSlug: row.connector.slug,
+    versionId: skillStorageVersionId,
+  };
 }
 
 function customConnectorRuntimeCredentialsAreComplete(
@@ -4375,6 +4400,7 @@ export async function buildCustomConnectorRuntimeContext(
   const skills: {
     connectorId: string;
     connectorSlug: string;
+    versionId: string;
   }[] = [];
   const grantByConnectorId = new Map(
     (args.grants ?? []).map((grant) => {
