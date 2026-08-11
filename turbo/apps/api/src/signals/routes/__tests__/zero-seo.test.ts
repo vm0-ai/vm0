@@ -2,7 +2,6 @@ import { Buffer } from "node:buffer";
 
 import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
 import { zeroSeoContract } from "@vm0/api-contracts/contracts/zero-seo";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
@@ -22,7 +21,6 @@ import {
   type ApiTestUser,
 } from "./helpers/api-bdd";
 import { createRunsApi } from "./helpers/api-bdd-runs";
-import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { zeroBillingStatusRoutes } from "../zero-billing-status";
 import { zeroSeoRoutes } from "../zero-seo";
@@ -61,7 +59,7 @@ async function seedSeoPricing(): Promise<void> {
   ]);
 }
 
-async function seedActor(featureEnabled = true): Promise<OrgApiTestUser> {
+async function seedActor(): Promise<OrgApiTestUser> {
   const actor = createBddApi(context).user();
   if (!actor.orgId) {
     throw new Error("Zero SEO test actor must belong to an organization");
@@ -69,11 +67,6 @@ async function seedActor(featureEnabled = true): Promise<OrgApiTestUser> {
   const orgActor = { ...actor, orgId: actor.orgId };
   await createRunsApi(context).grantProEntitlement(orgActor);
   await seedSeoPricing();
-  if (featureEnabled) {
-    await updateFeatureSwitchesForUser(context, orgActor, {
-      [FeatureSwitchKey.SeoBuiltIn]: true,
-    });
-  }
   return orgActor;
 }
 
@@ -87,9 +80,6 @@ async function seedUnfundedActor(): Promise<OrgApiTestUser> {
   expect(onboarding.status).toBe(200);
   await seedOrgMetadata({ orgId: orgActor.orgId, tier: "pro", credits: 0 });
   await seedSeoPricing();
-  await updateFeatureSwitchesForUser(context, orgActor, {
-    [FeatureSwitchKey.SeoBuiltIn]: true,
-  });
   return orgActor;
 }
 
@@ -145,31 +135,6 @@ function emptyDataForSeoResponse() {
 }
 
 describe("zero SEO routes", () => {
-  it("rejects requests while the built-in feature is disabled", async () => {
-    const actor = await seedActor(false);
-    configureProviders();
-    let providerRequests = 0;
-    server.use(
-      http.post(`${DATAFORSEO_BASE_URL}/v3/backlinks/summary/live`, () => {
-        providerRequests += 1;
-        return HttpResponse.json(dataForSeoResponse(0.024, [{}]));
-      }),
-    );
-
-    const response = await accept(
-      client()(zeroSeoContract).backlinksSummary({
-        headers: authenticate(actor),
-        body: { target: "example.com", includeSubdomains: true },
-      }),
-      [403],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: { message: "Zero SEO is not enabled", code: "FORBIDDEN" },
-    });
-    expect(providerRequests).toBe(0);
-  });
-
   it("rejects zero tokens without the seo capability", async () => {
     const actor = await seedActor();
     if (!actor.orgId) {

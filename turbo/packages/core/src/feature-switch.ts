@@ -113,12 +113,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable vm0-managed JoggAI talking-avatar video generation",
     enabled: true,
   },
-  [FeatureSwitchKey.SeoBuiltIn]: {
-    maintainer: "yuma@vm0.ai",
-    description: "Enable vm0-managed DataForSEO access",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.MercuryConnector]: {
     maintainer: "yuma@vm0.ai",
     description: "Enable the Mercury banking connector",
