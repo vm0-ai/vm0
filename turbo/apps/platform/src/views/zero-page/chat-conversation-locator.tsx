@@ -6,6 +6,7 @@ import type { ChatPanelSignals } from "../../signals/chat-page/chat-panel-signal
 import type { LocatorRole } from "../../signals/chat-page/chat-conversation-locator.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { AgentAvatarImg } from "./zero-sidebar-shared.tsx";
+import { formatChatTimestamp } from "../../i18n/format.ts";
 
 /** Resting tick length per role. Two discrete steps keep the rail regular. */
 const TICK_BASE_WIDTH_PX = {
@@ -46,6 +47,9 @@ function LocatorPreviewCard({ thread }: { thread: ChatPanelSignals }) {
                 return $.chat.thread.locator.you;
               })
             : null}
+        </span>
+        <span className="tabular-nums">
+          {preview?.createdAt ? formatChatTimestamp(preview.createdAt) : null}
         </span>
         <span className="ml-auto tabular-nums">
           {preview ? `${preview.position}/${preview.total}` : null}

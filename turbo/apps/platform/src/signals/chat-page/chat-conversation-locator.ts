@@ -88,6 +88,8 @@ export interface LocatorPreview {
   readonly turnIndex: number;
   readonly role: LocatorRole;
   readonly text: string;
+  /** ISO timestamp of the turn, or undefined when it carries none. */
+  readonly createdAt: string | undefined;
   /** 1-based, for the "12/32" counter. */
   readonly position: number;
   readonly total: number;
@@ -120,6 +122,8 @@ function emptyLayout(): LocatorLayout {
 interface DomTurn {
   readonly element: HTMLElement;
   readonly role: LocatorRole;
+  /** ISO timestamp stamped on the turn wrapper, absent on optimistic rows. */
+  readonly createdAt: string | undefined;
   /** Offset inside the scroll content, not the offsetParent chain. */
   readonly top: number;
   readonly height: number;
@@ -187,6 +191,7 @@ function readTurns(container: HTMLElement): DomTurn[] {
     turns.push({
       element,
       role: roleOf(element),
+      createdAt: element.dataset.turnCreatedAt,
       top: rect.top - containerTop + scrollTop,
       height: rect.height,
     });
@@ -493,6 +498,7 @@ function createPaint(store: LocatorStore) {
       turnIndex: tick.turnIndex,
       role: tick.role,
       text: previewTextFor(turn.element),
+      createdAt: turn.createdAt,
       position: tick.turnIndex + 1,
       total: layout.turnCount,
     });

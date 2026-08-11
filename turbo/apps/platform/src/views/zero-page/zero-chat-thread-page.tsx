@@ -16,7 +16,7 @@ import {
 import type { TFunction } from "i18next";
 import { equalArrays } from "../../lib/equality.ts";
 import { useTranslation } from "react-i18next";
-import { resolvedAppLocale } from "../../i18n/format.ts";
+import { formatChatTimestamp } from "../../i18n/format.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   runUsagePopoverOpenRunId$,
@@ -1547,15 +1547,6 @@ function ChatThreadEmojiGrid({
       })}
     </div>
   );
-}
-
-function formatChatTimestamp(value: string): string {
-  return new Date(value).toLocaleString(resolvedAppLocale(), {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
 }
 
 function formatHeaderWorkflowAutomationRun(value: string | null): string {
@@ -7413,6 +7404,7 @@ function WorkflowUserMessage({
     <div
       data-role="user"
       data-chat-scroll-anchor-event-id={event.id}
+      data-turn-created-at={event.createdAt}
       className="group"
     >
       <div className="flex flex-col items-end min-w-0 animate-in fade-in slide-in-from-bottom-2 duration-300 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
@@ -7465,6 +7457,7 @@ function GoalUserMessage({
     <div
       data-role="user"
       data-chat-scroll-anchor-event-id={event.id}
+      data-turn-created-at={event.createdAt}
       className="group"
     >
       <div className="flex flex-col items-end min-w-0 animate-in fade-in slide-in-from-bottom-2 duration-300 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
@@ -7596,6 +7589,7 @@ function PagedUserMessage({
       id={inputPromptRunAnchor(inputEvent)}
       data-role="user"
       data-chat-scroll-anchor-event-id={event.id}
+      data-turn-created-at={event.createdAt}
       className={cn("group", stackedOnPrevious && MESSAGE_STACK_PULL_CLASS)}
     >
       <div className="flex flex-col items-end min-w-0 animate-in fade-in slide-in-from-bottom-2 duration-300 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
@@ -7693,6 +7687,7 @@ function PagedAssistantGroup({
       id={groupElementId}
       data-role="assistant"
       data-chat-run-id={runId}
+      data-turn-created-at={group.events[0]?.createdAt}
       className="flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300"
     >
       <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">

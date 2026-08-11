@@ -90,4 +90,39 @@ describe("chat conversation locator", () => {
     expect(rail.querySelectorAll("[data-locator-tick]")).toHaveLength(0);
     expect(rail.className).toContain("opacity-0");
   });
+
+  it("stamps every turn with the timestamp the preview card reads", async () => {
+    renderThread(true);
+
+    await screen.findByText("Answer 4");
+    const turns = [
+      ...document.querySelectorAll<HTMLElement>(
+        '[data-role="user"], [data-role="assistant"]',
+      ),
+    ];
+    expect(turns.length).toBeGreaterThan(0);
+    // The locator reads timestamps off the turn wrappers rather than the group
+    // signals, so every wrapper it can point at has to carry a parseable one.
+    for (const turn of turns) {
+      expect(
+        Number.isNaN(Date.parse(turn.dataset.turnCreatedAt ?? "")),
+      ).toBeFalsy();
+    }
+    expect(
+      turns.some((turn) => {
+        return turn.dataset.role === "user";
+      }),
+    ).toBeTruthy();
+    expect(
+      turns.some((turn) => {
+        return turn.dataset.role === "assistant";
+      }),
+    ).toBeTruthy();
+    // The thinking indicator also carries data-role but is not a turn, and it
+    // is excluded by the exact-value selector rather than by a timestamp.
+    const thinking = document.querySelector<HTMLElement>(
+      '[data-role="assistant-thinking"]',
+    );
+    expect(thinking?.dataset.turnCreatedAt).toBeUndefined();
+  });
 });
