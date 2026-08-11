@@ -26,6 +26,9 @@ end
 
 release_job = release.fetch("jobs").fetch("promote-api-production")
 raise "API release must use the production environment" unless release_job["environment"] == "production"
+unless release_job.dig("defaults", "run", "shell") == "bash"
+  raise "containerized API release steps must run with Bash"
+end
 release_steps = release_job.fetch("steps")
 ordered_release_steps = [
   "Build API Worker production secret shards",
