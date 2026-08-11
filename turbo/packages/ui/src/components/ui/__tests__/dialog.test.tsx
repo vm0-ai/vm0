@@ -19,4 +19,21 @@ describe("Dialog", () => {
       "zero-dialog-content",
     );
   });
+
+  it("renders an overlay for nested dialogs", () => {
+    render(
+      <Dialog open>
+        <DialogContent>
+          <DialogTitle>Parent dialog</DialogTitle>
+          <Dialog open>
+            <DialogContent>
+              <DialogTitle>Nested dialog</DialogTitle>
+            </DialogContent>
+          </Dialog>
+        </DialogContent>
+      </Dialog>,
+    );
+
+    expect(document.querySelectorAll(".zero-dialog-overlay")).toHaveLength(2);
+  });
 });

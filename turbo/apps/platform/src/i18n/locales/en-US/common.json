@@ -917,6 +917,7 @@
         "description": "Legacy free access for existing workspaces.",
         "name": "Free"
       },
+      "legacy": "Legacy",
       "limitedFree": {
         "name": "Limited free"
       },
@@ -974,6 +975,22 @@
         "memberExclusive": "Each package belongs to one member and cannot be shared. When a package runs out, usage falls back to pay-as-you-go credits. You can upgrade to a new package later.",
         "memberPackages": "Member packages",
         "memberUsage": "Member usage",
+        "migration": {
+          "action": "Convert plan",
+          "confirmDescription": "Your current plan and entitlements stay active until this billing period ends. Stripe charges the new recurring total when the new plan starts.",
+          "convertPlan": "Convert plan",
+          "description": "Convert your legacy {{plan}} workspace to a new plan with an individual monthly usage package for every member.",
+          "error": "Could not migrate this subscription. Refresh and try again.",
+          "invoice": "View invoice",
+          "processing": "Scheduling the conversion with Stripe.",
+          "ready": "Choose one required monthly package for every member and pending invitation.",
+          "review": "Review conversion",
+          "reviewDescription": "Compare the current legacy plan with the new recurring plan before scheduling the conversion.",
+          "reviewTitle": "Review plan conversion",
+          "scheduled": "Conversion scheduled for {{date}}. Your current plan and entitlements remain active until then.",
+          "switchesOn": "Switches to {{plan}} on {{date}}",
+          "title": "Convert legacy plan"
+        },
         "minimumPackageBreakdown": "{{base}} plan + {{package}} required member package",
         "monthlyTotal": "Monthly total",
         "orderSummary": "Order summary",

@@ -84,6 +84,7 @@ SheetOverlay.displayName = "SheetOverlay";
 interface SheetContentProps extends SheetPrimitive.Popup.Props {
   onCloseAutoFocus?: LegacyAutoFocusHandler;
   onOpenAutoFocus?: LegacyAutoFocusHandler;
+  overlayClassName?: string;
   side?: "top" | "bottom" | "left" | "right";
 }
 
@@ -96,6 +97,7 @@ const SheetContent = React.forwardRef<HTMLDivElement, SheetContentProps>(
       initialFocus,
       onCloseAutoFocus,
       onOpenAutoFocus,
+      overlayClassName,
       side = "right",
       ...props
     },
@@ -103,7 +105,7 @@ const SheetContent = React.forwardRef<HTMLDivElement, SheetContentProps>(
   ) => {
     return (
       <SheetPortal>
-        <SheetOverlay />
+        <SheetOverlay className={overlayClassName} forceRender />
         <SheetPrimitive.Popup
           ref={ref}
           data-slot="sheet-content"
