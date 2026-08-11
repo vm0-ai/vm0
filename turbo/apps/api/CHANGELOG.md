@@ -1,5 +1,37 @@
 # Changelog
 
+## [1.422.0](https://github.com/vm0-ai/vm0/compare/api-v1.421.1...api-v1.422.0) (2026-08-11)
+
+
+### Features
+
+* **db:** add presentation_templates ([#26272](https://github.com/vm0-ai/vm0/issues/26272)) ([dc3400f](https://github.com/vm0-ai/vm0/commit/dc3400fd211198f28ae564a8f80b994c50675adb))
+
+
+### Bug Fixes
+
+* **test:** arbitrate chat managed key fixtures ([#26287](https://github.com/vm0-ai/vm0/issues/26287)) ([476117e](https://github.com/vm0-ai/vm0/commit/476117eea1d18438ad191a3000f2cf879c6cff1b))
+
+
+### Documentation
+
+* retire remaining workflow event wording ([#26294](https://github.com/vm0-ai/vm0/issues/26294)) ([b688bec](https://github.com/vm0-ai/vm0/commit/b688beca9b8a1be94e5bd0d46d38a0fa2ad0ee80))
+
+
+### Refactoring
+
+* **connectors:** use canonical custom connector grants ([#26250](https://github.com/vm0-ai/vm0/issues/26250)) ([ccf9418](https://github.com/vm0-ai/vm0/commit/ccf941825eba9b0eef085163584be1904b330887))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.312.1
+    * @vm0/core bumped to 8.542.2
+    * @vm0/db bumped to 1.191.0
+    * @vm0/pi-agent-runtime bumped to 1.3.39
+
 ## [1.421.1](https://github.com/vm0-ai/vm0/compare/api-v1.421.0...api-v1.421.1) (2026-08-11)
 
 
