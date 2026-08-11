@@ -27,6 +27,7 @@ import type {
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { ZeroChatAttachment } from "../../signals/zero-page/chat-draft";
 import type { ChatPanelSignals } from "../../signals/chat-page/chat-panel-signals.ts";
+import { downloadAttachment$ } from "../../signals/attachment-download.ts";
 import { rootSignal$ } from "../../signals/root-signal.ts";
 import {
   currentLeftThread$,
@@ -61,7 +62,6 @@ import { FilePreviewIcon } from "./zero-file-preview-icon.tsx";
 import {
   artifactPreviewUrlsMatch,
   attachmentFilenameFromUrl,
-  downloadAttachmentUrl,
 } from "./zero-attachment-url.ts";
 import { useResolvedAttachmentUrl } from "./zero-attachment-resource.ts";
 import {
@@ -1437,12 +1437,14 @@ export function FileAttachmentChip({
   url: string;
 }) {
   const { t } = useTranslation();
+  const downloadAttachment = useSet(downloadAttachment$);
+  const rootSignal = useGet(rootSignal$);
   return (
     <button
       type="button"
       onClick={() => {
         detach(
-          downloadAttachmentUrl(url, undefined, filename),
+          downloadAttachment({ filename, url }, rootSignal),
           Reason.DomCallback,
           "attachment download",
         );

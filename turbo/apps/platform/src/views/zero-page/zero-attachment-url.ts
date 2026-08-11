@@ -230,12 +230,14 @@ function triggerBlobDownload(blob: Blob, filename: string): void {
 async function fetchBlobForDownload(
   url: string,
   signal: AbortSignal,
+  resolveResourceUrl: (url: string) => Promise<string>,
 ): Promise<Blob | null> {
-  const fetchUrl = publicAttachmentUrl(url);
   // The catch branch reports network/CORS failures without falling back to
   // cross-origin anchor navigation, which would open images instead.
   // eslint-disable-next-line no-restricted-syntax -- fetch/CORS failures should surface as download failures
   try {
+    const fetchUrl = await resolveResourceUrl(publicAttachmentUrl(url));
+    signal.throwIfAborted();
     const res = await fetch(fetchUrl, {
       cache: "reload",
       mode: "cors",
@@ -261,8 +263,11 @@ export async function downloadAttachmentUrl(
   url: string,
   signal: AbortSignal = AbortSignal.any([]),
   filename = attachmentFilenameFromUrl(url),
+  resolveResourceUrl: (url: string) => Promise<string> = (resourceUrl) => {
+    return Promise.resolve(resourceUrl);
+  },
 ): Promise<void> {
-  const blob = await fetchBlobForDownload(url, signal);
+  const blob = await fetchBlobForDownload(url, signal, resolveResourceUrl);
   if (blob !== null) {
     triggerBlobDownload(blob, filename);
   }
