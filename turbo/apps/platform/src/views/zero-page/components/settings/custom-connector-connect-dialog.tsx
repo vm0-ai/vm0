@@ -74,13 +74,14 @@ function CredentialFields({
   }) => void;
 }) {
   const { t } = useTranslation();
+  const configuredKeys = new Set(connector.configuredFieldKeys);
   return connector.fields.map((field, index) => {
     const inputId = `cc-connect-field-${index}`;
     const statusId = `${inputId}-status`;
     const descriptionId = field.description
       ? `${inputId}-description`
       : undefined;
-    const configured = connector.configuredFieldKeys.includes(field.key);
+    const configured = configuredKeys.has(field.key);
     const status = field.required
       ? t(($) => {
           return $.connectors.card.required;
