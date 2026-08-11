@@ -5121,7 +5121,7 @@ function TemplatePickerDialog({
         })}
         className={dialogContentClassName}
         overlayClassName={
-          skipEnterAnimation ? "data-open:!animate-none" : undefined
+          skipEnterAnimation ? "zero-dialog-overlay-instant" : undefined
         }
         aria-describedby={undefined}
         onKeyDown={handleDialogKeyDown}

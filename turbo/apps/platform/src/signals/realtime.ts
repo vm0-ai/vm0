@@ -13,6 +13,7 @@ import { createAblyAuthCallback } from "../lib/ably-auth.ts";
 import {
   createDeferredPromise,
   onRejection,
+  settle,
   setLoop,
   throwIfAbort,
   withCleanup,
@@ -291,39 +292,45 @@ const runPayloadLoopIteration$ = command(
     state.poked = false;
 
     const hasPayload = state.pendingPayloads.length > 0;
-    const payload = state.pendingPayloads[0];
     if (
       !hasPayload &&
       (!state.catchUpRequested || catchUpCommand$ === undefined)
     ) {
       return false;
     }
-    if (!hasPayload) {
+    if (!hasPayload && catchUpCommand$ !== undefined) {
       state.catchUpRequested = false;
+      const result = await settle(
+        (async () => {
+          return await set(catchUpCommand$, signal);
+        })(),
+        signal,
+      );
+      if (!result.ok) {
+        L.warn(`ably catch-up failed`, result.error);
+        set(notifyRealtimeDegraded$);
+      }
+      if (result.ok && result.value) {
+        return true;
+      }
+      if (state.pendingPayloads.length > 0 || state.catchUpRequested) {
+        pokeLoop();
+      }
+      return false;
     }
 
+    const payload = state.pendingPayloads[0];
     let done = false;
-    // eslint-disable-next-line no-restricted-syntax -- payload notifications and catch-ups retry transient handler failures a few times before giving up
+    // eslint-disable-next-line no-restricted-syntax -- payload notifications retry transient handler failures before dropping a poisoned queue item
     try {
-      if (hasPayload) {
-        done = await set(loopCommand$, payload, signal);
-      } else if (catchUpCommand$ !== undefined) {
-        done = await set(catchUpCommand$, signal);
-      }
+      done = await set(loopCommand$, payload, signal);
       signal.throwIfAborted();
     } catch (error) {
       throwIfAbort(error);
       signal.throwIfAborted();
       if (state.transientRetryCount >= MAX_TRANSIENT_RETRIES) {
-        L.warn(
-          hasPayload
-            ? `dropping ably payload after repeated handler failures`
-            : `giving up on ably catch-up after repeated handler failures`,
-          error,
-        );
-        if (hasPayload) {
-          state.pendingPayloads.shift();
-        }
+        L.warn(`dropping ably payload after repeated handler failures`, error);
+        state.pendingPayloads.shift();
         state.transientRetryCount = 0;
         set(notifyRealtimeDegraded$);
         if (state.pendingPayloads.length > 0 || state.catchUpRequested) {
@@ -331,24 +338,14 @@ const runPayloadLoopIteration$ = command(
         }
         return false;
       }
-      L.warn(
-        hasPayload
-          ? `transient error in ably payload notification`
-          : `transient error in ably catch-up`,
-        error,
-      );
+      L.warn(`transient error in ably payload notification`, error);
       await waitForTransientRetry(signal, state.transientRetryCount);
       signal.throwIfAborted();
       state.transientRetryCount++;
-      if (!hasPayload) {
-        state.catchUpRequested = true;
-      }
       pokeLoop();
       return false;
     }
-    if (hasPayload) {
-      state.pendingPayloads.shift();
-    }
+    state.pendingPayloads.shift();
     state.transientRetryCount = 0;
     if (done) {
       return true;

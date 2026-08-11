@@ -5,7 +5,7 @@
  * cancellation stops only that request from waiting; it does not interrupt the
  * shared refresh used by the rest of the app.
  */
-import { command, state } from "ccstate";
+import { command, computed, state } from "ccstate";
 import type { Clerk } from "@clerk/clerk-js";
 import { isNetworkRequestError } from "../lib/network-error.ts";
 import {
@@ -26,6 +26,25 @@ const FOREGROUND_CATCH_UP_EVENT = "catch-up";
 const FOREGROUND_CATCH_UP_REQUEST_EVENT = "request-catch-up";
 
 const foregroundCatchUpTarget$ = state(new EventTarget());
+
+interface ForegroundReady {
+  readonly pending: boolean;
+  readonly promise: Promise<void>;
+}
+
+function settledForegroundReady(): ForegroundReady {
+  return { pending: false, promise: Promise.resolve() };
+}
+
+const foregroundReadyState$ = state<ForegroundReady>(settledForegroundReady());
+
+/**
+ * Shared barrier for work that must not confirm remote state while the app is
+ * hidden or Clerk is still recovering the foreground session.
+ */
+export const foregroundReady$ = computed((get) => {
+  return get(foregroundReadyState$);
+});
 
 export const subscribeForegroundCatchUp$ = command(
   ({ get }, callback: () => void, signal: AbortSignal) => {
@@ -81,9 +100,39 @@ export function createAuthRecovery(
  * Route visibility, focus, and realtime reconnect through one catch-up task.
  */
 export const setupAuthCatchUp$ = command(
-  ({ get }, authRecovery: AuthRecovery, signal: AbortSignal): void => {
+  ({ get, set }, authRecovery: AuthRecovery, signal: AbortSignal): void => {
     const catchUpTarget = get(foregroundCatchUpTarget$);
     let catchUpPromise: Promise<void> | null = null;
+    let hiddenReady: ReturnType<typeof createDeferredPromise<void>> | null =
+      null;
+
+    const blockUntilForeground = (): void => {
+      if (!hiddenReady || hiddenReady.settled()) {
+        hiddenReady = createDeferredPromise<void>(signal);
+      }
+      set(foregroundReadyState$, {
+        pending: true,
+        promise: hiddenReady.promise,
+      });
+    };
+
+    const markForegroundReady = (): void => {
+      if (document.visibilityState !== "visible") {
+        blockUntilForeground();
+        return;
+      }
+      if (hiddenReady && !hiddenReady.settled()) {
+        hiddenReady.resolve();
+      }
+      hiddenReady = null;
+      set(foregroundReadyState$, settledForegroundReady());
+    };
+
+    if (document.visibilityState === "visible") {
+      markForegroundReady();
+    } else {
+      blockUntilForeground();
+    }
 
     const catchUpAfterAuth = (): Promise<void> => {
       if (!catchUpPromise) {
@@ -100,9 +149,11 @@ export const setupAuthCatchUp$ = command(
             if (catchUpPromise === catchUp) {
               catchUpPromise = null;
             }
+            markForegroundReady();
           },
         );
         catchUpPromise = catchUp;
+        set(foregroundReadyState$, { pending: true, promise: catchUp });
       }
       return catchUpPromise;
     };
@@ -115,6 +166,13 @@ export const setupAuthCatchUp$ = command(
       { signal },
     );
 
+    const handleVisibilityChange = (): void => {
+      if (document.visibilityState !== "visible") {
+        blockUntilForeground();
+        return;
+      }
+      catchUpTarget.dispatchEvent(new Event(FOREGROUND_CATCH_UP_REQUEST_EVENT));
+    };
     const requestCatchUp = (): void => {
       if (document.visibilityState === "visible") {
         catchUpTarget.dispatchEvent(
@@ -122,7 +180,9 @@ export const setupAuthCatchUp$ = command(
         );
       }
     };
-    document.addEventListener("visibilitychange", requestCatchUp, { signal });
+    document.addEventListener("visibilitychange", handleVisibilityChange, {
+      signal,
+    });
     window.addEventListener("focus", requestCatchUp, { signal });
   },
 );

@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.426.0](https://github.com/vm0-ai/vm0/compare/api-v1.425.0...api-v1.426.0) (2026-08-11)
+
+
+### Features
+
+* migrate inactive retired run models ([#26394](https://github.com/vm0-ai/vm0/issues/26394)) ([afa90b2](https://github.com/vm0-ai/vm0/commit/afa90b2fbc7d94262c680b8c944d66bcb0199364))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.316.0
+    * @vm0/core bumped to 8.545.2
+    * @vm0/db bumped to 1.194.0
+    * @vm0/pi-agent-runtime bumped to 1.3.45
+
 ## [1.425.0](https://github.com/vm0-ai/vm0/compare/api-v1.424.0...api-v1.425.0) (2026-08-11)
 
 

@@ -19,6 +19,7 @@ function buildCommands(): Command[] {
     new Command("agent"),
     new Command("connector"),
     new Command("mcp"),
+    new Command("presentation-template"),
     new Command("credit"),
     new Command("upgrade"),
     new Command("logs"),
@@ -147,7 +148,12 @@ describe("registerZeroCommands", () => {
     vi.stubEnv("ZERO_TOKEN", undefined);
 
     const prog = buildProgram();
-    expect(hiddenCommandNames(prog)).toEqual(["mcp", "recognize", "translate"]);
+    expect(hiddenCommandNames(prog)).toEqual([
+      "mcp",
+      "presentation-template",
+      "recognize",
+      "translate",
+    ]);
     expect(registeredCommandNames(prog)).toContain("upgrade");
     expect(visibleCommandNames(prog)).toContain("browser");
   });
@@ -165,6 +171,7 @@ describe("registerZeroCommands", () => {
       "model",
       "model-provider",
       "agent",
+      "presentation-template",
       "upgrade",
       "resource",
       "whoami",
@@ -206,7 +213,12 @@ describe("registerZeroCommands", () => {
 
     const prog = buildProgram();
 
-    expect(hiddenCommandNames(prog)).toEqual(["mcp", "recognize", "translate"]);
+    expect(hiddenCommandNames(prog)).toEqual([
+      "mcp",
+      "presentation-template",
+      "recognize",
+      "translate",
+    ]);
     expect(registeredCommandNames(prog)).toContain("upgrade");
     expect(visibleCommandNames(prog)).toContain("browser");
   });
@@ -220,7 +232,12 @@ describe("registerZeroCommands", () => {
 
     const prog = buildProgram();
 
-    expect(hiddenCommandNames(prog)).toEqual(["mcp", "recognize", "translate"]);
+    expect(hiddenCommandNames(prog)).toEqual([
+      "mcp",
+      "presentation-template",
+      "recognize",
+      "translate",
+    ]);
     expect(registeredCommandNames(prog)).toContain("upgrade");
     expect(visibleCommandNames(prog)).toContain("browser");
   });
@@ -237,6 +254,7 @@ describe("registerZeroCommands", () => {
     expect(visibleCommandNames(prog)).toEqual([
       "model",
       "model-provider",
+      "presentation-template",
       "upgrade",
       "resource",
       "whoami",
@@ -1119,6 +1137,7 @@ describe("registerZeroCommands", () => {
       "model-provider",
       "connector",
       "mcp",
+      "presentation-template",
       "upgrade",
       "resource",
       "whoami",

@@ -76,4 +76,5 @@ export enum FeatureSwitchKey {
   VideoTemplateOptions = "videoTemplateOptions",
   ChatEventSnapshotRead = "chatEventSnapshotRead",
   EmojiPickerCategoryRail = "emojiPickerCategoryRail",
+  PresentationTemplates = "presentationTemplates",
 }

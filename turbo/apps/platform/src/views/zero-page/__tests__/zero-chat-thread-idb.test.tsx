@@ -24,6 +24,7 @@ import {
 } from "../../../signals/external/chat-idb-store.ts";
 import { setLogErrorHandler } from "../../../signals/log.ts";
 import { CHAT_THREAD_SIDEBAR_SPLIT_VIEW_MEDIA_QUERY } from "../../../signals/chat-page/chat-thread-sidebar-layout.ts";
+import { navigateToChat$ } from "../../../signals/zero-page/zero-nav.ts";
 import { mockChatLifecycle, PLACEHOLDER } from "./chat-test-helpers.ts";
 
 vi.mock("idb", async () => {
@@ -336,6 +337,127 @@ describe("zero chat thread IndexedDB fallback", () => {
       if (!releaseSnapshot.settled()) {
         releaseSnapshot.resolve();
       }
+      runtimeDb.close();
+    }
+  });
+
+  it("keeps a notification-opened thread pending until foreground metadata catch-up", async () => {
+    let visibilityState: DocumentVisibilityState = "visible";
+    vi.spyOn(document, "visibilityState", "get").mockImplementation(() => {
+      return visibilityState;
+    });
+
+    prepareDefaultAgent();
+    mockCurrentThreadDetail();
+    context.mocks.api(zeroBrowserContract.get, ({ respond }) => {
+      return respond(404, {
+        error: {
+          code: "BROWSER_NOT_FOUND",
+          message: "Managed browser not found",
+        },
+      });
+    });
+    const runtimeDb = await primeRuntimeChatDb();
+    let notificationThreadAvailable = false;
+    let snapshotRequests = 0;
+    context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
+      snapshotRequests += 1;
+      return respond(200, {
+        chatThreads: [
+          {
+            id: OTHER_THREAD_ID,
+            agentId: AGENT_ID,
+            title: OTHER_THREAD_TITLE,
+            sortAt: "2026-08-11T07:00:00.000Z",
+            createdAt: "2026-08-11T07:00:00.000Z",
+            updatedAt: "2026-08-11T07:00:00.000Z",
+            pinnedAt: null,
+            renamedAt: null,
+            selectedModel: null,
+            serviceTier: null,
+            computerUseHostId: null,
+          },
+          ...(notificationThreadAvailable
+            ? [
+                {
+                  id: THREAD_ID,
+                  agentId: AGENT_ID,
+                  title: "Notification thread",
+                  sortAt: "2026-08-11T08:00:00.000Z",
+                  createdAt: "2026-08-11T08:00:00.000Z",
+                  updatedAt: "2026-08-11T08:00:00.000Z",
+                  pinnedAt: null,
+                  renamedAt: null,
+                  selectedModel: null,
+                  serviceTier: null,
+                  computerUseHostId: null,
+                },
+              ]
+            : []),
+        ],
+        latestEventId: null,
+        latestSeqId: null,
+      });
+    });
+    context.mocks.api(chatThreadsContract.events, ({ respond }) => {
+      return respond(200, { events: [], hasMore: false });
+    });
+
+    try {
+      detachedSetupPage({
+        context,
+        path: `/chats/${OTHER_THREAD_ID}`,
+        user: { id: IDB_USER_ID, fullName: "Test User" },
+        org: {
+          activeOrg: { id: IDB_ORG_ID, name: "Default Org" },
+          memberships: [{ id: IDB_ORG_ID }],
+        },
+      });
+
+      await expect(
+        screen.findByPlaceholderText(PLACEHOLDER),
+      ).resolves.toBeInTheDocument();
+      expect(
+        document.querySelector(
+          `[data-chat-thread-container-id="${OTHER_THREAD_ID}"]`,
+        ),
+      ).not.toBeNull();
+      const completedSnapshotRequests = snapshotRequests;
+      expect(completedSnapshotRequests).toBeGreaterThan(0);
+
+      visibilityState = "hidden";
+      document.dispatchEvent(new Event("visibilitychange"));
+      notificationThreadAvailable = true;
+      context.store.set(navigateToChat$, THREAD_ID);
+
+      expect(
+        screen.queryByRole("heading", { name: "Chat thread not found" }),
+      ).not.toBeInTheDocument();
+      expect(
+        document.querySelector(
+          `[data-chat-thread-container-id="${OTHER_THREAD_ID}"]`,
+        ),
+      ).not.toBeNull();
+      expect(snapshotRequests).toBe(completedSnapshotRequests);
+
+      visibilityState = "visible";
+      document.dispatchEvent(new Event("visibilitychange"));
+
+      await waitFor(() => {
+        expect(
+          document.querySelector(
+            `[data-chat-thread-container-id="${THREAD_ID}"]`,
+          ),
+        ).not.toBeNull();
+      });
+      expect(screen.getByTestId("chat-thread-header-title")).toHaveTextContent(
+        "Notification thread",
+      );
+      expect(
+        screen.queryByRole("heading", { name: "Chat thread not found" }),
+      ).not.toBeInTheDocument();
+      expect(snapshotRequests).toBeGreaterThan(completedSnapshotRequests);
+    } finally {
       runtimeDb.close();
     }
   });

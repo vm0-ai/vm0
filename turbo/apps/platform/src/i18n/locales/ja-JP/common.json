@@ -334,6 +334,7 @@
       "slack": "Slack",
       "teams": "チーム",
       "telegram": "Telegram",
+      "templateImport": "テンプレートのインポート",
       "test": "テスト",
       "web": "ウェブ",
       "webhook": "Webhook"
