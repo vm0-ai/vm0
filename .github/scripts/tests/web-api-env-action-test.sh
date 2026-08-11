@@ -107,6 +107,12 @@ build_doppler_secrets_json() {
   if [[ "$omit_key" != "STRIPE_OAUTH_CLIENT_ID" ]]; then
     json="$(jq -c --arg value "doppler-STRIPE_OAUTH_CLIENT_ID" '. + {STRIPE_OAUTH_CLIENT_ID: $value}' <<< "$json")"
   fi
+  if [[ "$omit_key" != "STRIPE_APPS_OAUTH_CLIENT_ID" ]]; then
+    json="$(jq -c --arg value "doppler-STRIPE_APPS_OAUTH_CLIENT_ID" '. + {STRIPE_APPS_OAUTH_CLIENT_ID: $value}' <<< "$json")"
+  fi
+  if [[ "$omit_key" != "STRIPE_APPS_OAUTH_CLIENT_SECRET" ]]; then
+    json="$(jq -c --arg value "doppler-STRIPE_APPS_OAUTH_CLIENT_SECRET" '. + {STRIPE_APPS_OAUTH_CLIENT_SECRET: $value}' <<< "$json")"
+  fi
   json="$(
     jq -c '
       . + {
@@ -296,6 +302,26 @@ if [[ "$status" -eq 0 ]]; then
   fail "expected missing Stripe Doppler OAuth client id to fail"
 fi
 assert_contains "$missing_stripe_output" "::error::STRIPE_OAUTH_CLIENT_ID is missing from Doppler OAuth config"
+
+missing_stripe_apps_dir="$(mktemp -d)"
+TEMP_DIRS+=("$missing_stripe_apps_dir")
+missing_stripe_apps_json="$(
+  build_doppler_secrets_json | jq -c 'del(.STRIPE_APPS_OAUTH_CLIENT_ID, .STRIPE_APPS_OAUTH_CLIENT_SECRET)'
+)"
+missing_stripe_apps_output="$(run_action "$missing_stripe_apps_json" "$missing_stripe_apps_dir")"
+missing_stripe_apps_env_file="$(awk -F= '$1 == "file" { sub(/^[^=]*=/, ""); print }' "${missing_stripe_apps_dir}/github-output")"
+assert_contains "$missing_stripe_apps_output" "Rendered"
+assert_env_absent_value "$missing_stripe_apps_env_file" "STRIPE_APPS_OAUTH_CLIENT_ID="
+assert_env_absent_value "$missing_stripe_apps_env_file" "STRIPE_APPS_OAUTH_CLIENT_SECRET="
+
+partial_stripe_apps_dir="$(mktemp -d)"
+TEMP_DIRS+=("$partial_stripe_apps_dir")
+status=0
+partial_stripe_apps_output="$(run_action "$(build_doppler_secrets_json STRIPE_APPS_OAUTH_CLIENT_SECRET)" "$partial_stripe_apps_dir" 2>&1)" || status=$?
+if [[ "$status" -eq 0 ]]; then
+  fail "expected partial Stripe Apps Doppler OAuth client config to fail"
+fi
+assert_contains "$partial_stripe_apps_output" "::error::STRIPE_APPS_OAUTH_CLIENT_ID and STRIPE_APPS_OAUTH_CLIENT_SECRET must both be configured in Doppler OAuth config"
 
 missing_cli_pkg_dir="$(mktemp -d)"
 TEMP_DIRS+=("$missing_cli_pkg_dir")

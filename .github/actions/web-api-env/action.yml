@@ -140,6 +140,25 @@ runs:
           add_oauth_client_config_key "${prefix}_OAUTH_CLIENT_SECRET"
         }
 
+        add_optional_oauth_client_config() {
+          local prefix="$1"
+          local client_id_key="${prefix}_OAUTH_CLIENT_ID"
+          local client_secret_key="${prefix}_OAUTH_CLIENT_SECRET"
+          local client_id
+          local client_secret
+          client_id="$(doppler_secret "$client_id_key")"
+          client_secret="$(doppler_secret "$client_secret_key")"
+          if [[ -z "$client_id" && -z "$client_secret" ]]; then
+            return
+          fi
+          if [[ -z "$client_id" || -z "$client_secret" ]]; then
+            echo "::error::${client_id_key} and ${client_secret_key} must both be configured in Doppler OAuth config"
+            exit 1
+          fi
+          add_env "$client_id_key" "$client_id"
+          add_env "$client_secret_key" "$client_secret"
+        }
+
         if [[ -n "$INPUT_DATABASE_URL" ]]; then
           add_env DATABASE_URL "$INPUT_DATABASE_URL"
         fi
@@ -333,11 +352,11 @@ runs:
           GUMROAD
           MERCURY
           SPOTIFY
-          STRIPE_APPS
         )
         for prefix in "${oauth_client_config_prefixes[@]}"; do
           add_oauth_client_config "$prefix"
         done
+        add_optional_oauth_client_config STRIPE_APPS
 
         add_secret GOOGLE_ADS_DEVELOPER_TOKEN GOOGLE_ADS_DEVELOPER_TOKEN
         add_secret GOOGLE_ADS_LOGIN_CUSTOMER_ID GOOGLE_ADS_LOGIN_CUSTOMER_ID
