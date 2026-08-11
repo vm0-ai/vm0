@@ -55,16 +55,15 @@ response_file=$(mktemp)
 trap 'rm -f "$response_file"' EXIT
 deadline=$((SECONDS + 90))
 while ((SECONDS < deadline)); do
-    if curl --silent --show-error --max-time 5 \
+    curl --silent --show-error --max-time 5 \
         --output "$response_file" \
         --request POST \
         --header 'content-type: application/json' \
         --data '{"objectID":"vm0-e2e"}' \
-        '__REQUEST_URL__'; then
-        if ! grep -Eq '"error"[[:space:]]*:[[:space:]]*"permission_denied"' "$response_file"; then
-            printf 'ALGOLIA_PERMISSION_ALLOWED\n'
-            exit 0
-        fi
+        '__REQUEST_URL__' || true
+    if ! grep -Eq '"error"[[:space:]]*:[[:space:]]*"permission_denied"' "$response_file"; then
+        printf 'ALGOLIA_PERMISSION_ALLOWED\n'
+        exit 0
     fi
     sleep 1
 done
