@@ -163,7 +163,7 @@ runner_e2e_wait_for_agent_text() {
     return 1
 }
 
-runner_e2e_wait_for_chat_text() {
+runner_e2e_wait_for_active_chat_text() {
     local thread_id="$1"
     local run_id="$2"
     local expected="$3"
@@ -204,7 +204,7 @@ runner_e2e_wait_for_chat_text() {
         sleep 2
     done
 
-    echo "Timed out waiting for ${expected@Q} in chat events for run ${run_id}" >&2
+    echo "Timed out waiting for active-run ${expected@Q} in chat events for run ${run_id}" >&2
     echo "Last chat events: ${last_events}" >&2
     echo "Last run response: ${last_run}" >&2
     return 1

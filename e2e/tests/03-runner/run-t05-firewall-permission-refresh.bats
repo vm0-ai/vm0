@@ -84,7 +84,7 @@ EOF
     RUN_ID=$(jq -er '.runId | select(type == "string" and length > 0)' <<<"$output")
     THREAD_ID=$(jq -er '.threadId | select(type == "string" and length > 0)' <<<"$output")
 
-    run runner_e2e_wait_for_chat_text \
+    run runner_e2e_wait_for_active_chat_text \
         "$THREAD_ID" \
         "$RUN_ID" \
         ALGOLIA_PERMISSION_DENIED
@@ -121,10 +121,7 @@ EOF
     echo "$output"
     assert_success
 
-    run runner_e2e_wait_for_chat_text \
-        "$THREAD_ID" \
-        "$RUN_ID" \
-        ALGOLIA_PERMISSION_ALLOWED
+    run runner_e2e_wait_for_agent_text "$RUN_ID" ALGOLIA_PERMISSION_ALLOWED
     echo "$output"
     assert_success
 
