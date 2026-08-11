@@ -1637,6 +1637,34 @@ function managedSubscriptionActionLabel(args: {
       });
 }
 
+function managedSubscriptionChangeState({
+  management,
+  members,
+  plan,
+  selections,
+}: Pick<
+  ManagedSubscriptionOrderSummaryProps,
+  "management" | "members" | "plan" | "selections"
+>) {
+  return {
+    hasConfigurationChange: hasUsagePackConfigurationChange(
+      management,
+      members,
+      plan,
+      selections,
+    ),
+    hasDowngrade: hasUsagePackDowngrade(management, members, plan, selections),
+    hasPendingChange: hasPendingUsagePackChange(management, members),
+    hasScheduledDowngrade: hasRestorableUsagePackDowngrade(management, members),
+    restoresScheduledDowngrade: restoresScheduledUsagePackDowngrade(
+      management,
+      members,
+      plan,
+      selections,
+    ),
+  };
+}
+
 function ManagedSubscriptionOrderSummary({
   currentTotals,
   management,
@@ -1663,29 +1691,13 @@ function ManagedSubscriptionOrderSummary({
           return $.billing.plans.usagePacks.planChangeError;
         })
       : null;
-  const hasPendingChange = hasPendingUsagePackChange(management, members);
-  const hasConfigurationChange = hasUsagePackConfigurationChange(
-    management,
-    members,
-    plan,
-    selections,
-  );
-  const hasScheduledDowngrade = hasRestorableUsagePackDowngrade(
-    management,
-    members,
-  );
-  const restoresScheduledDowngrade = restoresScheduledUsagePackDowngrade(
-    management,
-    members,
-    plan,
-    selections,
-  );
-  const hasDowngrade = hasUsagePackDowngrade(
-    management,
-    members,
-    plan,
-    selections,
-  );
+  const {
+    hasConfigurationChange,
+    hasDowngrade,
+    hasPendingChange,
+    hasScheduledDowngrade,
+    restoresScheduledDowngrade,
+  } = managedSubscriptionChangeState({ management, members, plan, selections });
   const openPreview = async (): Promise<void> => {
     if (!members) {
       return;
