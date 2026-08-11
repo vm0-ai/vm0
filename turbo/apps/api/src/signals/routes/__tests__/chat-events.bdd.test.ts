@@ -92,10 +92,10 @@ import {
   createUnassociatedThreadBoundZeroRunFixture,
 } from "../../../test-fixtures/thread-bound-run-admission";
 import {
+  acquireBddVm0ApiKey,
   completeRunWithoutCallbacksFixture,
   deleteAgentRunFixture,
   holdCheckpointReadsFixture,
-  deleteBddVm0ApiKey,
   holdChatEventFixture,
   holdChatEventQueueItemFixture,
   holdChatThreadRowLockFixture,
@@ -105,8 +105,8 @@ import {
   holdThreadSessionConversationClearFixture,
   readCanonicalChatEventStorageFixture,
   readChatEventContextFixture,
+  releaseBddVm0ApiKey,
   replayPendingChatInputQueueEventFixture,
-  replaceBddVm0ApiKey,
   replaceThreadSessionBindingFixture,
   timeoutRunWithoutCallbacksFixture,
 } from "../../../test-fixtures/chat-events";
@@ -4555,12 +4555,15 @@ describe("CHAT-02: model-first provider policies", () => {
 
   it("routes vm0 Kimi through Moonshot attachment-disabled env bindings", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
-    const keySuffix = randomUUID();
+    const keyFixtureId = randomUUID();
 
-    await replaceBddVm0ApiKey({
+    // Keep a second Moonshot fixture owner alive to cover vendor-unique row
+    // arbitration instead of relying on another test file's scheduling.
+    await seedVm0ManagedModelKey("kimi-k2.7-code");
+    await acquireBddVm0ApiKey({
+      fixtureId: keyFixtureId,
       vendor: "moonshot",
-      apiKey: `vm0-key-bdd-dev-seed-${keySuffix}`,
-      label: "dev-seed",
+      apiKey: `vm0-key-bdd-dev-seed-${keyFixtureId}`,
     });
 
     let runId: string | null = null;
@@ -4569,11 +4572,11 @@ describe("CHAT-02: model-first provider policies", () => {
         await api.requestCancelRun(actor, runId, [200]);
       }
     };
-    const deleteVm0KimiKeys = async () => {
-      await deleteBddVm0ApiKey({ vendor: "moonshot" });
+    const releaseVm0KimiKey = async () => {
+      await releaseBddVm0ApiKey({ fixtureId: keyFixtureId });
     };
     const cleanupRunAndKeys = async () => {
-      await Promise.all([deleteVm0KimiKeys(), cancelRunIfCreated()]);
+      await Promise.all([releaseVm0KimiKey(), cancelRunIfCreated()]);
     };
 
     await (async () => {
@@ -4613,21 +4616,21 @@ describe("CHAT-02: model-first provider policies", () => {
   it("selects a vm0 managed key by vendor", async () => {
     const fw = createFirewallApi(context);
     const { actor, agentId, runnerGroup } = await entitledChatActor();
-    const keySuffix = randomUUID();
-    const apiKey = `vm0-key-bdd-dev-seed-${keySuffix}`;
+    const keyFixtureId = randomUUID();
+    const apiKey = `vm0-key-bdd-dev-seed-${keyFixtureId}`;
     let runId: string | null = null;
 
     onTestFinished(async () => {
       await Promise.all([
-        deleteBddVm0ApiKey({ vendor: "zai" }),
+        releaseBddVm0ApiKey({ fixtureId: keyFixtureId }),
         ...(runId ? [api.requestCancelRun(actor, runId, [200])] : []),
       ]);
     });
 
-    await replaceBddVm0ApiKey({
+    await acquireBddVm0ApiKey({
+      fixtureId: keyFixtureId,
       vendor: "zai",
       apiKey,
-      label: "dev-seed",
     });
 
     await api.updateOrgModelPolicies(actor, [
