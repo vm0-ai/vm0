@@ -290,6 +290,9 @@ unless run_step.dig("env", "VERCEL_AUTOMATION_BYPASS_SECRET") ==
     "${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}"
   raise "runner E2E tests must receive the preview bypass secret"
 end
+unless run_step.dig("env", "CRON_SECRET") == "${{ secrets.CRON_SECRET }}"
+  raise "runner E2E tests must receive the cron secret for usage settlement"
+end
 unless runner.fetch("steps").any? do |step|
     step["name"] == "Download runner E2E API tokens" &&
       step.dig("with", "name") == "e2e-tokens"
