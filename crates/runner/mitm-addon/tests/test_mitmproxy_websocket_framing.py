@@ -1,5 +1,6 @@
 """WebSocket framing integration tests through mitmproxy's real hook pipeline."""
 
+import hashlib
 import weakref
 import zlib
 from dataclasses import dataclass, field
@@ -208,6 +209,32 @@ def _data_sends(observed: list[commands.Command]) -> list[commands.SendData]:
         for command in observed
         if isinstance(command, commands.SendData) and command.data[0] & 0x0F != 0x08
     ]
+
+
+def _bounded_source_websocket(
+    running: _RunningWebSocket,
+    *,
+    from_client: bool,
+) -> websocket_framing._BoundedWebsocketConnection:
+    source = running.layer.client_ws if from_client else running.layer.server_ws
+    assert isinstance(source, websocket_framing._BoundedWebsocketConnection)
+    return source
+
+
+def _assert_bounded_source_state_cleared(
+    running: _RunningWebSocket,
+    *,
+    from_client: bool,
+) -> None:
+    source = _bounded_source_websocket(running, from_client=from_client)
+    assert sum(len(fragment) for fragment in source.frame_buf) == 0
+    assert len(source._vm0_bounded_deflates) == 1
+    bounded_deflate = source._vm0_bounded_deflates[0]
+    assert bounded_deflate._decompressor is None
+    assert bounded_deflate._inbound_is_compressible is None
+    assert bounded_deflate._inbound_compressed is None
+    assert source._vm0_message_limit._budget.decoded_bytes == 0
+    assert source._vm0_message_limit._budget.data_frames == 0
 
 
 # Only process composition can introduce a conflicting connection class; no
@@ -424,6 +451,161 @@ async def test_fragmented_message_limits_ignore_interleaved_control_frames(
     assert byte_rejected.flow.websocket is not None
     assert byte_rejected.flow.websocket.close_code == 1009
     assert byte_rejected.flow.websocket.messages == []
+
+
+@pytest.mark.parametrize("from_client", [True, False])
+async def test_compressed_fragmented_message_limits_are_cumulative(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    from_client: bool,
+) -> None:
+    decoded_limit = 96 * 1024
+    content = hashlib.shake_256(b"vm0 compressed fragmented message budget").digest(128 * 1024)
+    monkeypatch.setattr(websocket_framing, "MAX_DECODED_MESSAGE_BYTES", decoded_limit)
+    monkeypatch.setattr(websocket_framing, "MAX_MESSAGE_DATA_FRAMES", 2)
+
+    with (
+        patch.object(mitm_addon, "__file__", str(tmp_path / "mitm_addon.py")),
+        taddons.context(Proxyserver(), mitm_addon) as addon_context,
+    ):
+        accepted_content = content[: 64 * 1024]
+        accepted = await _start_websocket(
+            addon_context,
+            permessage_deflate=_PERMESSAGE_DEFLATE,
+        )
+        accepted_peer = _peer(
+            from_client=from_client,
+            permessage_deflate=_PERMESSAGE_DEFLATE,
+        )
+        accepted_prefix = await _handle_event(
+            addon_context,
+            accepted,
+            events.DataReceived(
+                _source_connection(accepted, from_client=from_client),
+                accepted_peer.send(
+                    _message_event(
+                        accepted_content[: 32 * 1024],
+                        message_finished=False,
+                    )
+                ),
+            ),
+        )
+        accepted_complete = await _handle_event(
+            addon_context,
+            accepted,
+            events.DataReceived(
+                _source_connection(accepted, from_client=from_client),
+                accepted_peer.send(_message_event(accepted_content[32 * 1024 :])),
+            ),
+        )
+
+        assert _message_hooks(accepted_prefix) == []
+        assert _data_sends(accepted_prefix) == []
+        accepted_hooks = _message_hooks(accepted_complete)
+        accepted_sends = _data_sends(accepted_complete)
+        assert len(accepted_hooks) == 1
+        assert len(accepted_sends) == 2
+        hook_index = accepted_complete.index(accepted_hooks[0])
+        assert all(hook_index < accepted_complete.index(send) for send in accepted_sends)
+        assert accepted.flow.websocket is not None
+        assert accepted.flow.websocket.timestamp_end is None
+        assert [message.content for message in accepted.flow.websocket.messages] == [
+            accepted_content
+        ]
+
+        byte_rejected = await _start_websocket(
+            addon_context,
+            permessage_deflate=_PERMESSAGE_DEFLATE,
+        )
+        byte_rejected_peer = _peer(
+            from_client=from_client,
+            permessage_deflate=_PERMESSAGE_DEFLATE,
+        )
+        byte_prefix = await _handle_event(
+            addon_context,
+            byte_rejected,
+            events.DataReceived(
+                _source_connection(byte_rejected, from_client=from_client),
+                byte_rejected_peer.send(
+                    _message_event(content[: 64 * 1024], message_finished=False)
+                ),
+            ),
+        )
+        byte_rejected_source = _bounded_source_websocket(
+            byte_rejected,
+            from_client=from_client,
+        )
+
+        assert _message_hooks(byte_prefix) == []
+        assert _data_sends(byte_prefix) == []
+        assert byte_rejected_source._vm0_message_limit._budget.data_frames == 1
+        assert 0 < byte_rejected_source._vm0_message_limit._budget.decoded_bytes < decoded_limit
+
+        byte_over_limit = await _handle_event(
+            addon_context,
+            byte_rejected,
+            events.DataReceived(
+                _source_connection(byte_rejected, from_client=from_client),
+                byte_rejected_peer.send(_message_event(content[64 * 1024 :])),
+            ),
+        )
+
+        assert _message_hooks(byte_over_limit) == []
+        assert _data_sends(byte_over_limit) == []
+        assert byte_rejected.flow.websocket is not None
+        assert byte_rejected.flow.websocket.close_code == 1009
+        assert byte_rejected.flow.websocket.messages == []
+        assert not byte_rejected.flow.live
+        _assert_bounded_source_state_cleared(
+            byte_rejected,
+            from_client=from_client,
+        )
+
+        monkeypatch.setattr(websocket_framing, "MAX_MESSAGE_DATA_FRAMES", 1)
+        frame_rejected = await _start_websocket(
+            addon_context,
+            permessage_deflate=_PERMESSAGE_DEFLATE,
+        )
+        frame_rejected_peer = _peer(
+            from_client=from_client,
+            permessage_deflate=_PERMESSAGE_DEFLATE,
+        )
+        frame_prefix = await _handle_event(
+            addon_context,
+            frame_rejected,
+            events.DataReceived(
+                _source_connection(frame_rejected, from_client=from_client),
+                frame_rejected_peer.send(_message_event(b"a", message_finished=False)),
+            ),
+        )
+        frame_rejected_source = _bounded_source_websocket(
+            frame_rejected,
+            from_client=from_client,
+        )
+
+        assert _message_hooks(frame_prefix) == []
+        assert _data_sends(frame_prefix) == []
+        assert frame_rejected_source._vm0_message_limit._budget.data_frames == 1
+
+        frame_over_limit = await _handle_event(
+            addon_context,
+            frame_rejected,
+            events.DataReceived(
+                _source_connection(frame_rejected, from_client=from_client),
+                frame_rejected_peer.send(_message_event(b"b")),
+            ),
+        )
+
+        assert _message_hooks(frame_over_limit) == []
+        assert _data_sends(frame_over_limit) == []
+        assert frame_rejected.flow.websocket is not None
+        assert frame_rejected.flow.websocket.close_code == 1009
+        assert frame_rejected.flow.websocket.messages == []
+        assert not frame_rejected.flow.live
+        _assert_bounded_source_state_cleared(
+            frame_rejected,
+            from_client=from_client,
+        )
 
 
 async def test_compression_preserves_context_takeover_and_is_connection_local(
