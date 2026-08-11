@@ -13,7 +13,7 @@ import {
 import {
   zeroAgentCustomConnectorsContract,
   type AgentCustomConnectorGrant,
-  type AgentCustomConnectorResponse,
+  type AgentCustomConnectorGrants,
   type AgentCustomConnectorUpdate,
 } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 import {
@@ -3595,12 +3595,7 @@ describe("connectors page", () => {
           params.id === researchAgentId
             ? [{ customConnectorId: connector.id, permissionNames: [] }]
             : [];
-        return respond(200, {
-          enabledIds: grants.map((grant) => {
-            return grant.customConnectorId;
-          }),
-          grants,
-        });
+        return respond(200, { grants });
       },
     );
 
@@ -3637,9 +3632,9 @@ describe("connectors page", () => {
       hasSecret: true,
       permissionBundleRef: "builtin:feishu@1",
     });
-    const accessByAgentId = new Map<string, AgentCustomConnectorResponse>([
-      [researchAgentId, { enabledIds: [], grants: [] }],
-      [supportAgentId, { enabledIds: [], grants: [] }],
+    const accessByAgentId = new Map<string, AgentCustomConnectorGrants>([
+      [researchAgentId, { grants: [] }],
+      [supportAgentId, { grants: [] }],
     ]);
     const updates: {
       readonly agentId: string;
@@ -3683,10 +3678,7 @@ describe("connectors page", () => {
     context.mocks.api(
       zeroAgentCustomConnectorsContract.get,
       ({ params, respond }) => {
-        return respond(
-          200,
-          accessByAgentId.get(params.id) ?? { enabledIds: [], grants: [] },
-        );
+        return respond(200, accessByAgentId.get(params.id) ?? { grants: [] });
       },
     );
     context.mocks.api(
@@ -3694,39 +3686,21 @@ describe("connectors page", () => {
       ({ params, body, respond }) => {
         updates.push({ agentId: params.id, body });
         const current = accessByAgentId.get(params.id) ?? {
-          enabledIds: [],
           grants: [],
         };
-        let next: AgentCustomConnectorResponse;
-        if ("grants" in body) {
-          const requestedIds = new Set(
-            body.grants.map((grant) => {
-              return grant.customConnectorId;
-            }),
-          );
-          next = {
-            grants:
-              body.operation === "remove"
-                ? current.grants.filter((grant) => {
-                    return !requestedIds.has(grant.customConnectorId);
-                  })
-                : body.grants,
-            enabledIds:
-              body.operation === "remove"
-                ? current.grants
-                    .filter((grant) => {
-                      return !requestedIds.has(grant.customConnectorId);
-                    })
-                    .map((grant) => {
-                      return grant.customConnectorId;
-                    })
-                : body.grants.map((grant) => {
-                    return grant.customConnectorId;
-                  }),
-          };
-        } else {
-          throw new Error("Expected canonical custom connector grants");
-        }
+        const requestedIds = new Set(
+          body.grants.map((grant) => {
+            return grant.customConnectorId;
+          }),
+        );
+        const next: AgentCustomConnectorGrants = {
+          grants:
+            body.operation === "remove"
+              ? current.grants.filter((grant) => {
+                  return !requestedIds.has(grant.customConnectorId);
+                })
+              : body.grants,
+        };
         accessByAgentId.set(params.id, next);
         return respond(200, next);
       },
@@ -3886,7 +3860,6 @@ describe("connectors page", () => {
     });
     context.mocks.api(zeroAgentCustomConnectorsContract.get, ({ respond }) => {
       return respond(200, {
-        enabledIds: [connector.id],
         grants: [
           {
             customConnectorId: connector.id,
@@ -3900,7 +3873,6 @@ describe("connectors page", () => {
       ({ respond }) => {
         authorizationUpdates += 1;
         return respond(200, {
-          enabledIds: [connector.id],
           grants: [
             {
               customConnectorId: connector.id,
@@ -4092,7 +4064,7 @@ describe("connectors page", () => {
       context.mocks.api(
         zeroAgentCustomConnectorsContract.get,
         ({ respond }) => {
-          return respond(200, { enabledIds: [], grants: [] });
+          return respond(200, { grants: [] });
         },
       );
       context.mocks.api(
@@ -4100,7 +4072,6 @@ describe("connectors page", () => {
         ({ respond }) => {
           authorizationUpdates += 1;
           return respond(200, {
-            enabledIds: [connector.id],
             grants: [
               {
                 customConnectorId: connector.id,
@@ -4280,20 +4251,12 @@ describe("connectors page", () => {
       zeroAgentCustomConnectorsContract.get,
       ({ params, respond }) => {
         const grants = grantsByAgentId.get(params.id) ?? [];
-        return respond(200, {
-          enabledIds: grants.map((grant) => {
-            return grant.customConnectorId;
-          }),
-          grants,
-        });
+        return respond(200, { grants });
       },
     );
     context.mocks.api(
       zeroAgentCustomConnectorsContract.update,
       ({ params, body, respond }) => {
-        if (!("grants" in body)) {
-          throw new Error("Expected canonical custom connector grants");
-        }
         authorizationUpdates.push({ agentId: params.id, body });
         const current = grantsByAgentId.get(params.id) ?? [];
         const requestedIds = new Set(
@@ -4308,12 +4271,7 @@ describe("connectors page", () => {
               })
             : body.grants;
         grantsByAgentId.set(params.id, grants);
-        return respond(200, {
-          enabledIds: grants.map((grant) => {
-            return grant.customConnectorId;
-          }),
-          grants,
-        });
+        return respond(200, { grants });
       },
     );
 
@@ -4431,11 +4389,7 @@ describe("connectors page", () => {
     });
     expect(
       authorizationUpdates.some(({ agentId, body }) => {
-        return (
-          agentId === supportAgentId &&
-          "grants" in body &&
-          body.operation === "remove"
-        );
+        return agentId === supportAgentId && body.operation === "remove";
       }),
     ).toBeTruthy();
     click(within(accessDialog).getByLabelText("Close"));
@@ -4699,18 +4653,13 @@ describe("connectors page", () => {
       zeroAgentCustomConnectorsContract.get,
       ({ params, respond }) => {
         const grants = grantsByAgentId.get(params.id) ?? [];
-        return respond(200, {
-          enabledIds: grants.map((grant) => {
-            return grant.customConnectorId;
-          }),
-          grants,
-        });
+        return respond(200, { grants });
       },
     );
     context.mocks.api(
       zeroAgentCustomConnectorsContract.update,
       ({ params, body, respond }) => {
-        if (!("grants" in body) || body.operation !== "remove") {
+        if (body.operation !== "remove") {
           throw new Error("Expected only MCP authorization removal");
         }
         authorizationUpdates.push(body);
@@ -4724,12 +4673,7 @@ describe("connectors page", () => {
           return !requestedIds.has(grant.customConnectorId);
         });
         grantsByAgentId.set(params.id, grants);
-        return respond(200, {
-          enabledIds: grants.map((grant) => {
-            return grant.customConnectorId;
-          }),
-          grants,
-        });
+        return respond(200, { grants });
       },
     );
     context.mocks.api(
@@ -4889,7 +4833,6 @@ describe("connectors page", () => {
     });
     context.mocks.api(zeroAgentCustomConnectorsContract.get, ({ respond }) => {
       return respond(200, {
-        enabledIds: [connector.id],
         grants: [{ customConnectorId: connector.id, permissionNames: [] }],
       });
     });
@@ -4981,7 +4924,6 @@ describe("connectors page", () => {
     context.mocks.api(zeroAgentCustomConnectorsContract.get, ({ respond }) => {
       authorizationReads += 1;
       return respond(200, {
-        enabledIds: [connector.id],
         grants: [
           {
             customConnectorId: connector.id,
@@ -4995,7 +4937,6 @@ describe("connectors page", () => {
       ({ respond }) => {
         authorizationUpdates += 1;
         return respond(200, {
-          enabledIds: [connector.id],
           grants: [
             {
               customConnectorId: connector.id,

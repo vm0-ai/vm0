@@ -9073,12 +9073,12 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const createdIds = runtimeConnectors.map((connector) => {
       return connector.id;
     });
-    const enabledIds = await connectors.updateAgentCustomConnectors(
+    const authorizedConnectorIds = await connectors.updateAgentCustomConnectors(
       actor,
       agentId,
       createdIds,
     );
-    expect(enabledIds).toHaveLength(connectorCount);
+    expect(authorizedConnectorIds).toHaveLength(connectorCount);
     await connectors.setCustomConnectorValues(actor, firstRuntimeConnector.id, [
       {
         key: "optional_secret",
