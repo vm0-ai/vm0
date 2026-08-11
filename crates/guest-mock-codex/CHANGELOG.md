@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.0](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.6.18...guest-mock-codex-v0.7.0) (2026-08-11)
+
+
+### Features
+
+* **guest:** persist active-input acceptance receipts ([#26191](https://github.com/vm0-ai/vm0/issues/26191)) ([f6ede96](https://github.com/vm0-ai/vm0/commit/f6ede96f136515283ec1f76d380cc3c835f85420))
+
 ## [0.6.18](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.6.17...guest-mock-codex-v0.6.18) (2026-08-10)
 
 
