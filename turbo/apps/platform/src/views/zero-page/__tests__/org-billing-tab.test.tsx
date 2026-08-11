@@ -1355,6 +1355,137 @@ describe("organization billing settings", () => {
     ).toBeDisabled();
   });
 
+  it("allows replacing a scheduled member package downgrade", async () => {
+    context.mocks.data.org({
+      id: "org_1",
+      name: "Replace Scheduled Usage Pack Org",
+      role: "admin",
+    });
+    context.mocks.data.orgMembers({
+      name: "Replace Scheduled Usage Pack Org",
+      role: "admin",
+      members: [
+        {
+          userId: "user_1",
+          email: "alex@example.com",
+          firstName: "Alex",
+          lastName: "Chen",
+          imageUrl: "",
+          role: "admin",
+          joinedAt: "2026-01-01T00:00:00Z",
+        },
+      ],
+      pendingInvitations: [],
+      membershipRequests: [],
+      createdAt: "2026-01-01T00:00:00Z",
+    });
+    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+      return respond(200, activeProBillingStatus());
+    });
+    context.mocks.api(
+      zeroBillingUsagePackCatalogContract.get,
+      ({ respond }) => {
+        return respond(200, usagePackCatalogResponse());
+      },
+    );
+    context.mocks.api(
+      zeroBillingUsagePackManagementContract.get,
+      ({ respond }) => {
+        return respond(200, {
+          tier: "pro",
+          currentPeriodEnd: "2026-04-01T00:00:00Z",
+          allocations: [
+            {
+              id: "b5235934-83df-4f16-bf41-f46890db7d40",
+              memberId: "user_1",
+              usagePackUsd: 200,
+              currentPeriodEnd: "2026-04-01T00:00:00Z",
+              pendingChange: {
+                id: "ad3bd64c-7237-436d-a221-61b14ed719e7",
+                kind: "downgrade",
+                status: "scheduled",
+                targetUsagePackUsd: 50,
+                effectiveAt: "2026-04-01T00:00:00Z",
+              },
+            },
+          ],
+        });
+      },
+    );
+    context.mocks.api(
+      zeroBillingUsagePackManagementContract.previewSubscriptionChange,
+      ({ body, respond }) => {
+        expect(body).toStrictEqual({
+          targetTier: "pro",
+          memberUsagePacks: [{ memberId: "user_1", usagePackUsd: 100 }],
+        });
+        return respond(200, {
+          changeId: "703d633a-fe5b-4ea7-a46d-d76078f6c802",
+          sourceTier: "pro",
+          targetTier: "pro",
+          immediateAmountCents: 0,
+          nextRecurringAmountCents: 10_000,
+          currency: "usd",
+          effectiveAt: "2026-04-01T00:00:00Z",
+          prorationDate: "2026-03-16T00:00:00Z",
+          expiresAt: "2026-03-16T00:15:00Z",
+        });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/?settings=billing",
+      user: {
+        id: "user_1",
+        fullName: "Alex Chen",
+        email: "alex@example.com",
+      },
+      featureSwitches: { [FeatureSwitchKey.UsagePackPlans]: true },
+    });
+
+    await screen.findByText("Pro plan");
+    click(buttonByText("Compare all plans"));
+    const proPlan = await screen.findByRole("article", { name: "Pro plan" });
+    click(buttonByText("Manage", proPlan));
+    const packageSelect = await screen.findByRole("combobox", {
+      name: "Usage for Alex Chen",
+    });
+    const orderSummary = screen.getByRole("region", {
+      name: "Order summary",
+    });
+
+    click(packageSelect);
+    click(
+      await screen.findByRole("option", {
+        name: "$20 · 21,234 credits · 6% off",
+      }),
+    );
+    expect(screen.getByText("Downgrades to $20 on Apr 1, 2026.")).toHaveClass(
+      "text-amber-600",
+    );
+    expect(buttonByText("Confirm", orderSummary)).not.toBeDisabled();
+
+    click(packageSelect);
+    click(
+      await screen.findByRole("option", {
+        name: "$100 · 109,999 credits · 9% off",
+      }),
+    );
+    expect(screen.getByText("Downgrades to $100 on Apr 1, 2026.")).toHaveClass(
+      "text-amber-600",
+    );
+    expect(
+      screen.queryByText("Downgrades to $50 on Apr 1, 2026."),
+    ).not.toBeInTheDocument();
+    expect(buttonByText("Confirm", orderSummary)).not.toBeDisabled();
+
+    click(buttonByText("Confirm", orderSummary));
+    await expect(
+      screen.findByRole("dialog", { name: "Review package change" }),
+    ).resolves.toBeInTheDocument();
+  });
+
   it("upgrades an existing usage pack plan without buying member packages again", async () => {
     context.mocks.data.org({
       id: "org_1",

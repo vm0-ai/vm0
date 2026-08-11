@@ -479,7 +479,8 @@ function MemberUsageConfiguration({
         const pendingDowngrade =
           allocation?.pendingChange?.kind === "downgrade" &&
           allocation.pendingChange.status !== "previewed" &&
-          allocation.pendingChange.targetUsagePackUsd !== null
+          allocation.pendingChange.targetUsagePackUsd !== null &&
+          selection === allocation.pendingChange.targetUsagePackUsd
             ? {
                 effectiveAt:
                   allocation.pendingChange.effectiveAt ??
@@ -1754,7 +1755,7 @@ function ManagedSubscriptionOrderSummary({
         className="mt-4 h-10 w-full text-sm font-medium"
         disabled={
           !members ||
-          (hasPendingChange && !restoresScheduledDowngrade) ||
+          (hasPendingChange && !hasScheduledDowngrade) ||
           (!hasConfigurationChange && !restoresScheduledDowngrade) ||
           previewing ||
           confirming
