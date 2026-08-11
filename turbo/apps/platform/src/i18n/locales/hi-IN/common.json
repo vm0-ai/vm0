@@ -1636,6 +1636,7 @@
       "openBrowser": "खुला ब्राउज़र",
       "openNamedAgent": "ओपन एजेंट {{name}}",
       "openNamedChat": "चैट {{title}} खोलें",
+      "pickEmoji": "एक इमोजी चुनें",
       "scrollToBottom": "नीचे स्क्रॉल करें",
       "searchEmoji": "इमोजी खोजें"
     },
