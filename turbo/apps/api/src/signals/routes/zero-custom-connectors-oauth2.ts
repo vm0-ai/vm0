@@ -11,6 +11,7 @@ import { bodyResultOf, pathParamsOf, queryOf } from "../context/request";
 import { writeDb$, type Db } from "../external/db";
 import {
   claimConnectorOAuthState,
+  getConnectorOAuthStateStatus,
   type StoredCustomConnectorOAuthState,
 } from "../services/connector-oauth-state.service";
 import { validateConnectorAuthorizationTarget$ } from "../services/connected-connector-authorization.service";
@@ -203,29 +204,49 @@ async function persistCustomConnectorOAuth2Connection(
   await publishCustomUserInvalidation(args.userId, signal);
 }
 
+async function codeLessCustomOAuthCallbackResponse(
+  args: { readonly db: Db; readonly origin: string; readonly state: string },
+  signal: AbortSignal,
+): Promise<Response> {
+  const status = await getConnectorOAuthStateStatus(
+    args.db,
+    { state: args.state, target: { kind: "custom" } },
+    signal,
+  );
+  signal.throwIfAborted();
+  return status.kind === "usable"
+    ? callbackError(args.origin, "Missing authorization code")
+    : callbackError(args.origin, "Invalid OAuth state - please try again");
+}
+
 const completeOAuth2Callback$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<Response> => {
     const query = get(queryOf(zeroCustomConnectorOAuth2Contract.callback));
     const origin = new URL(env("APP_URL")).origin;
-    if (!query.state) {
+    const oauthState = query.state;
+    const authorizationCode = query.code ?? "";
+    const providerError = query.error;
+    if (!oauthState) {
       return callbackError(origin, "Missing OAuth state");
+    }
+    if (!providerError && !authorizationCode) {
+      return await codeLessCustomOAuthCallbackResponse(
+        { db: set(writeDb$), origin, state: oauthState },
+        signal,
+      );
     }
     const claimed = await claimConnectorOAuthState(
       set(writeDb$),
-      { state: query.state, target: { kind: "custom" } },
+      { state: oauthState, target: { kind: "custom" } },
       signal,
     );
     signal.throwIfAborted();
     if (claimed.kind !== "usable") {
       return callbackError(origin, "Invalid OAuth state - please try again");
     }
-    if (query.error) {
-      return callbackError(origin, query.error_description ?? query.error);
+    if (providerError) {
+      return callbackError(origin, query.error_description ?? providerError);
     }
-    if (!query.code) {
-      return callbackError(origin, "Missing authorization code");
-    }
-    const authorizationCode = query.code;
     const state = validateClaimedState(claimed.state);
     if (!state.ok) {
       return callbackError(origin, "Invalid OAuth state - please try again");

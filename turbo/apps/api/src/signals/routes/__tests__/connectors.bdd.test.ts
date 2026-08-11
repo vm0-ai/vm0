@@ -2140,7 +2140,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     await connectorsApi.deleteCustomConnector(admin, created.id);
   });
 
-  it("keeps OAuth callback state scoped to its Builtin or Custom target", async () => {
+  it("keeps OAuth state target-scoped and aligns Custom lifecycle with Builtin", async () => {
     mockEnv("APP_URL", "https://app.vm0.test");
     mockGitHubConnectorOAuth();
     const provider = mockCustomConnectorOAuth2Provider(context, {
@@ -2194,6 +2194,16 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       message: "Invalid state - please try again",
     });
 
+    const customMissingCode =
+      await connectorsApi.completeCustomConnectorOAuth2CallbackResult({
+        state: customState,
+      });
+    expect(customMissingCode.body).toStrictEqual({
+      status: "error",
+      message: "Missing authorization code",
+    });
+    expect(provider.tokenBodies).toHaveLength(0);
+
     const customSuccess =
       await connectorsApi.completeCustomConnectorOAuth2CallbackResult({
         code: "custom-success-code",
@@ -2203,6 +2213,8 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       status: "success",
       username: null,
     });
+    expect(provider.tokenBodies).toHaveLength(1);
+    expect(provider.tokenBodies[0]?.get("code")).toBe("custom-success-code");
     const ownerConnectors = await connectorsApi.listCustomConnectors(owner);
     expect(
       ownerConnectors.find((candidate) => {
@@ -2225,6 +2237,31 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       status: "error",
       message: "Invalid OAuth state - please try again",
     });
+    expect(provider.tokenBodies).toHaveLength(1);
+
+    const deniedAuthorizationUrl =
+      await connectorsApi.startCustomConnectorOAuth2(owner, connector.id);
+    const deniedState = stateFromAuthorizationUrl(deniedAuthorizationUrl);
+    const denied =
+      await connectorsApi.completeCustomConnectorOAuth2CallbackResult({
+        error: "access_denied",
+        error_description: "Provider denied access",
+        state: deniedState,
+      });
+    expect(denied.body).toStrictEqual({
+      status: "error",
+      message: "Provider denied access",
+    });
+    const deniedReplay =
+      await connectorsApi.completeCustomConnectorOAuth2CallbackResult({
+        code: "custom-denied-replay-code",
+        state: deniedState,
+      });
+    expect(deniedReplay.body).toStrictEqual({
+      status: "error",
+      message: "Invalid OAuth state - please try again",
+    });
+    expect(provider.tokenBodies).toHaveLength(1);
 
     const builtinAuthorization = await connectorsApi.startOauth(
       peer,
@@ -2236,7 +2273,6 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     );
     const wrongCustomCallback =
       await connectorsApi.completeCustomConnectorOAuth2CallbackResult({
-        code: "wrong-custom-source-code",
         state: builtinState,
       });
     expect(wrongCustomCallback.body).toStrictEqual({
@@ -2262,16 +2298,25 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       await connectorsApi.startCustomConnectorOAuth2(peer, connector.id);
     const expiringState = stateFromAuthorizationUrl(expiringAuthorizationUrl);
     mockNow(now() + 16 * 60 * 1000);
-    const expired =
+    const expiredStatus =
+      await connectorsApi.completeCustomConnectorOAuth2CallbackResult({
+        state: expiringState,
+      });
+    const expiredClaim =
       await connectorsApi.completeCustomConnectorOAuth2CallbackResult({
         code: "expired-custom-code",
         state: expiringState,
       });
     clearMockNow();
-    expect(expired.body).toStrictEqual({
+    expect(expiredStatus.body).toStrictEqual({
       status: "error",
       message: "Invalid OAuth state - please try again",
     });
+    expect(expiredClaim.body).toStrictEqual({
+      status: "error",
+      message: "Invalid OAuth state - please try again",
+    });
+    expect(provider.tokenBodies).toHaveLength(1);
     const peerAfterExpiry = await connectorsApi.listCustomConnectors(peer);
     expect(
       peerAfterExpiry.find((candidate) => {
