@@ -257,9 +257,6 @@ async function seedCustomRuntimeConnectors(
           orgId: body.org_id,
           slug: connector.slug,
           displayName: connector.display_name,
-          prefixes: [connector.prefix_template],
-          headerName: "X-Connector",
-          headerTemplate: "runtime-batch {{secrets.optional_secret}}",
           prefixTemplates: [connector.prefix_template],
           fields: [
             {

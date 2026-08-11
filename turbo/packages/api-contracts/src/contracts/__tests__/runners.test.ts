@@ -325,11 +325,30 @@ describe("connector runtime synchronization contract", () => {
     ).toBe(true);
   });
 
-  it("preserves complete candidate targets and pinned built-in routing values", () => {
+  it("preserves canonical built-in targets and pinned routing values", () => {
     const fixture = executionContextSchema.parse(
       loadRunnerClaimResponseFixture(),
     );
-    const candidateTarget = {
+    const target = {
+      kind: "builtin" as const,
+      connectorSlug: "zendesk",
+      baseUrlVars: { ZENDESK_SUBDOMAIN: "xn--mnich-kva" },
+    };
+
+    const execution = executionContextSchema.parse({
+      ...fixture,
+      connectorRuntimeTargets: [target],
+    });
+
+    expect(execution.connectorRuntimeTargets).toEqual([target]);
+    expect(execution.connectorRuntimeCandidateTargets).toBeUndefined();
+  });
+
+  it("preserves complete targets from rollout contexts", () => {
+    const fixture = executionContextSchema.parse(
+      loadRunnerClaimResponseFixture(),
+    );
+    const target = {
       kind: "builtin" as const,
       connectorSlug: "zendesk",
       baseUrlVars: { ZENDESK_SUBDOMAIN: "xn--mnich-kva" },
@@ -338,18 +357,11 @@ describe("connector runtime synchronization contract", () => {
     const execution = executionContextSchema.parse({
       ...fixture,
       connectorRuntimeTargets: [],
-      connectorRuntimeCandidateTargets: [candidateTarget],
-    });
-    const legacy = executionContextSchema.parse({
-      ...fixture,
-      connectorRuntimeTargets: [],
+      connectorRuntimeCandidateTargets: [target],
     });
 
     expect(execution.connectorRuntimeTargets).toEqual([]);
-    expect(execution.connectorRuntimeCandidateTargets).toEqual([
-      candidateTarget,
-    ]);
-    expect(legacy.connectorRuntimeCandidateTargets).toBeUndefined();
+    expect(execution.connectorRuntimeCandidateTargets).toEqual([target]);
   });
 
   it("requires stable API identities on available custom firewalls", () => {

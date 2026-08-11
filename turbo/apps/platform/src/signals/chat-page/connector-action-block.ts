@@ -5,7 +5,7 @@ import {
 } from "@vm0/api-contracts/contracts/connector-identity";
 import {
   customConnectorSlugSchema,
-  type CustomConnectorResponse,
+  type CustomConnectorClientResponse,
   type CustomConnectorSlug,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import type { PlatformConnectorCatalogStatusItem } from "../connector-domain.ts";
@@ -73,7 +73,9 @@ export type CatalogConnectorSignals = CatalogConnectorActionDescriptor &
 
 export type CustomConnectorSignals = CustomConnectorActionDescriptor &
   ConnectorSignalState & {
-    readonly connector$: Computed<Promise<CustomConnectorResponse | null>>;
+    readonly connector$: Computed<
+      Promise<CustomConnectorClientResponse | null>
+    >;
   };
 
 export type ConnectorSignals = CatalogConnectorSignals | CustomConnectorSignals;

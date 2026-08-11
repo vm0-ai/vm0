@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 
-import type { CustomConnectorResponse } from "@vm0/api-contracts/contracts/zero-custom-connectors";
+import type { CustomConnectorClientResponse } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import chalk from "chalk";
 import { Command } from "commander";
 
@@ -29,7 +29,7 @@ function requireCustomConnectorWriteCapability(): void {
 }
 
 async function printCreateResult(
-  connector: CustomConnectorResponse,
+  connector: CustomConnectorClientResponse,
   json: boolean,
 ): Promise<void> {
   if (json) {
@@ -74,9 +74,9 @@ Agent workflow:
   1. For manual connectors, ask only for missing metadata: name, HTTPS API
      prefix for HTTP or endpoint for MCP, and the Header or Query injection
      template. Do not ask the user for the actual API token.
-  2. Convert placeholders such as <API Token> into {{secrets.secret}}. Manual
-     definitions use exactly one required secret field whose key is "secret",
-     matching the Connect dialog.
+  2. Declare every credential input as a secret or variable field, then use
+     references such as {{secrets.api_token}} or {{variables.account_id}} in
+     Header and Query injection templates.
   3. For OAuth connectors, collect the same OAuth app configuration shown by
      the Connectors page, including the client ID and client secret. Never ask
      for an end-user access token or refresh token.

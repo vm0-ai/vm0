@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.724.0](https://github.com/vm0-ai/vm0/compare/app-v0.723.5...app-v0.724.0) (2026-08-11)
+
+
+### Features
+
+* **connectors:** migrate custom connector clients ([#26255](https://github.com/vm0-ai/vm0/issues/26255)) ([46e42a4](https://github.com/vm0-ai/vm0/commit/46e42a42e816959e73a1eed74298bae5603d9dca))
+* open a read-only spec dialog from sent video template chips ([#26224](https://github.com/vm0-ai/vm0/issues/26224)) ([897393d](https://github.com/vm0-ai/vm0/commit/897393d31bdc780094da4783d61d39e71af8ea01))
+* **platform:** manage mcp custom connectors ([#26262](https://github.com/vm0-ai/vm0/issues/26262)) ([1eda100](https://github.com/vm0-ai/vm0/commit/1eda100054e9771618b991290eb2d800007c31d1))
+
+
+### Bug Fixes
+
+* **connectors:** hide custom agent access while unavailable ([#26263](https://github.com/vm0-ai/vm0/issues/26263)) ([1f44b73](https://github.com/vm0-ai/vm0/commit/1f44b73efdf034b94baba1cc5a1b9765ed5d7258))
+* **platform:** overlap chat composer bottom gap with pwa safe-area inset ([#26248](https://github.com/vm0-ai/vm0/issues/26248)) ([d4330e2](https://github.com/vm0-ai/vm0/commit/d4330e2bc990c068b1f215922a980a155e094a64))
+
+
+### Refactoring
+
+* **connectors:** prepare canonical custom connector definitions ([#26246](https://github.com/vm0-ai/vm0/issues/26246)) ([d611058](https://github.com/vm0-ai/vm0/commit/d611058b8d41047649174462d08db1809f2ba067))
+* drop legacy workflow trigger sources ([#26266](https://github.com/vm0-ai/vm0/issues/26266)) ([cd91f26](https://github.com/vm0-ai/vm0/commit/cd91f26cd5999609e43cc5187ef0b0e91f35c636))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.312.0
+    * @vm0/core bumped to 8.542.1
+
 ## [0.723.5](https://github.com/vm0-ai/vm0/compare/app-v0.723.4...app-v0.723.5) (2026-08-11)
 
 
