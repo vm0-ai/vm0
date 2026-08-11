@@ -41,8 +41,10 @@ const Checkbox = React.forwardRef<HTMLElement, CheckboxProps>(
     return (
       <CheckboxPrimitive.Root
         ref={ref}
-        checked={checked === true}
-        defaultChecked={defaultChecked === true}
+        checked={checked === undefined ? undefined : checked === true}
+        defaultChecked={
+          defaultChecked === undefined ? undefined : defaultChecked === true
+        }
         data-slot="checkbox"
         className={cn(
           "peer relative h-4 w-4 shrink-0 rounded-md border border-border bg-input transition-colors outline-none data-checked:border-primary data-checked:bg-primary data-indeterminate:border-primary data-indeterminate:bg-primary focus-visible:ring-2 focus-visible:ring-ring data-disabled:cursor-not-allowed data-disabled:opacity-50",

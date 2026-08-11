@@ -2292,7 +2292,7 @@ function WorkflowCopyForm({
           </p>
         ) : (
           <Select
-            value={form.selectedAgentId ?? undefined}
+            value={form.selectedAgentId}
             disabled={!agentsLoaded}
             onValueChange={(value) => {
               onChange({ ...form, selectedAgentId: value });
