@@ -1043,6 +1043,12 @@ export function normalizeRunModelId(model: string): string {
  * Canonical model IDs that remain readable for historical records but cannot
  * be selected for a new run. Keep this separate from SUPPORTED_RUN_MODELS:
  * the latter is also used by persisted API response schemas.
+ *
+ * Rollout compatibility: persisted DB/API records may expose these IDs for the
+ * observed ~102-minute backend window, and already-open web/app clients may
+ * send or decode them for ~2 days. Remove the retired IDs and retained provider
+ * catalog entries with #26314 only after Stage 2 leaves no stale persisted
+ * values and the client window closes (or a version floor forces refresh).
  */
 export const RETIRED_RUN_MODELS = [
   "gpt-5.5",

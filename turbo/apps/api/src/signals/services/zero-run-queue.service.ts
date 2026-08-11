@@ -291,6 +291,12 @@ function prepareQueuedPiEdgeTurn(
   };
 }
 
+/**
+ * Rollout compatibility for queue rows written by the previous API during the
+ * observed ~102-minute DB/API exposure window. Remove with #26314 after that
+ * API is outside rollback/drain and every retired-model row has expired,
+ * drained, or been rejected, with production evidence that none remain.
+ */
 async function rejectRetiredQueuedCandidate(
   tx: DbTransaction,
   args: {

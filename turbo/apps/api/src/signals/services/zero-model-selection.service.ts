@@ -383,6 +383,12 @@ function builtInModelRoute(
   };
 }
 
+/**
+ * Rollout compatibility for selections persisted by the previous API across
+ * the observed ~102-minute DB/API exposure window. Remove with #26314 after
+ * Stage 2 migrates every stored selection, production shows none remain, and
+ * the previous API is outside its rollback/drain window.
+ */
 async function resolveStoredModelFirstRoute(params: {
   readonly db: Db;
   readonly orgId: string;

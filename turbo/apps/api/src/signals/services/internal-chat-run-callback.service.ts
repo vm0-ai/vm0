@@ -2557,6 +2557,12 @@ function persistedModelProviderCredentialScope(
   return parsed.success ? parsed.data : null;
 }
 
+/**
+ * Rollout compatibility for unpinned Slack follow-ups whose first-run route
+ * was persisted by the previous API during the observed ~102-minute DB/API
+ * exposure window. Remove with #26314 after Stage 2 migrates these selections,
+ * production shows none remain, and the previous API is outside rollback/drain.
+ */
 async function resolveUnpinnedSlackQueuedMessageModelRoute(args: {
   readonly db: Db;
   readonly threadId: string;

@@ -8363,6 +8363,12 @@ async function resolveReplacementOnCurrentRoute(
     : null;
 }
 
+/**
+ * Rollout compatibility for runs whose model route was persisted by the
+ * previous API during the observed ~102-minute DB/API exposure window. Remove
+ * with #26314 after Stage 2 migrates every implicit selection, production
+ * shows none remain, and the previous API is outside its rollback/drain window.
+ */
 async function resolveImplicitRetiredModelProvider(
   args: {
     readonly db: Db;
