@@ -4055,6 +4055,8 @@ jobs:
             --output "$result_directory" \
             "${test_files[@]}"
         env:
+          CF_ACCESS_CLIENT_ID: ${{ matrix.runtime == 'cloudflare' && secrets.CF_API_PREVIEW_ACCESS_CLIENT_ID || '' }}
+          CF_ACCESS_CLIENT_SECRET: ${{ matrix.runtime == 'cloudflare' && secrets.CF_API_PREVIEW_ACCESS_CLIENT_SECRET || '' }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
       - name: Print runner E2E trace log
         if: always()

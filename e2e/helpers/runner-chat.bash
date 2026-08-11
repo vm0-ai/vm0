@@ -32,6 +32,16 @@ runner_api_curl() {
         -H "Authorization: Bearer $token"
         -H "Content-Type: application/json"
     )
+    if [[ -n "${CF_ACCESS_CLIENT_ID:-}" || -n "${CF_ACCESS_CLIENT_SECRET:-}" ]]; then
+        if [[ -z "${CF_ACCESS_CLIENT_ID:-}" || -z "${CF_ACCESS_CLIENT_SECRET:-}" ]]; then
+            echo "Cloudflare Access credentials must be configured together" >&2
+            return 1
+        fi
+        headers+=(
+            -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID"
+            -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET"
+        )
+    fi
     if [[ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then
         headers+=(
             -H "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET"

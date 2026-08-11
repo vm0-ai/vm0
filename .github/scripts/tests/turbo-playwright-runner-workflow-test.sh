@@ -381,6 +381,11 @@ unless run_step.dig("env", "VERCEL_AUTOMATION_BYPASS_SECRET") ==
     "${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}"
   raise "runner E2E tests must receive the preview bypass secret"
 end
+expected_bootstrap_access_environment.each do |name, value|
+  unless run_step.dig("env", name) == value
+    raise "runner E2E tests must receive runtime-scoped #{name}"
+  end
+end
 unless runner.fetch("steps").any? do |step|
     step["name"] == "Download runner E2E API tokens" &&
       step.dig("with", "name") == "e2e-tokens-${{ matrix.runtime }}"
@@ -454,5 +459,12 @@ end
   raise "CI gate must check #{job_name} with RUNNER_E2E_SKIP_ALLOWED" unless gate_script.include?(expected)
 end
 RUBY
+
+grep -Fq 'CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID' "$RUNNER_HELPER" ||
+  fail "runner API helper must send the Cloudflare Access client ID"
+grep -Fq 'CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET' "$RUNNER_HELPER" ||
+  fail "runner API helper must send the Cloudflare Access client secret"
+grep -Fq 'Cloudflare Access credentials must be configured together' "$RUNNER_HELPER" ||
+  fail "runner API helper must reject partial Cloudflare Access credentials"
 
 echo "turbo-playwright-runner-workflow-test: ok"
