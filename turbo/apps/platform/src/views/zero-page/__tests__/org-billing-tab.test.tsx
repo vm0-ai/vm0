@@ -1091,8 +1091,8 @@ describe("organization billing settings", () => {
           tier: "team",
           targetTier: "team",
           currentRecurringAmountCents: 20_000,
-          nextRecurringAmountCents: 23_000,
-          recurringDifferenceCents: 3000,
+          nextRecurringAmountCents: 22_950,
+          recurringDifferenceCents: 2950,
           currency: "usd",
           purchasedCredits: 70_000,
           bonusCredits: 5555,
@@ -1116,7 +1116,7 @@ describe("organization billing settings", () => {
               { memberId: "user_1", usagePackUsd: 20 },
               { memberId: "invitation_1", usagePackUsd: 50 },
             ],
-            recurringAmountCents: 23_000,
+            recurringAmountCents: 22_950,
             currency: "usd",
           },
         };
@@ -1142,9 +1142,9 @@ describe("organization billing settings", () => {
           migrationId: "3ea4b7cf-d71e-45dc-8273-8bc8b9712490",
           tier: "team",
           targetTier: "pro",
-          currentRecurringAmountCents: 23_000,
+          currentRecurringAmountCents: 22_950,
           nextRecurringAmountCents: 7000,
-          recurringDifferenceCents: -16_000,
+          recurringDifferenceCents: -15_950,
           currency: "usd",
           purchasedCredits: 70_000,
           bonusCredits: 5555,
@@ -1301,7 +1301,7 @@ describe("organization billing settings", () => {
     ).toHaveTextContent("5,555");
     expect(
       within(reviewDialog).getByText("Monthly total").parentElement,
-    ).toHaveTextContent("$230/month");
+    ).toHaveTextContent("$229.50/month");
     expect(
       within(reviewDialog).getByText("Scheduled for Sep 1, 2026"),
     ).toBeInTheDocument();

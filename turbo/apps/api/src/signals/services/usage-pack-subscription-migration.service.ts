@@ -423,6 +423,9 @@ function parseRevisionPreviewToken(
 export async function usagePackSubscriptionMigrationSchemaAvailable(
   db: Pick<Db, "select">,
 ): Promise<boolean> {
+  // Migration hooks run for ordinary Stripe events, so a new API can briefly
+  // precede migration 0906 during the DB/API rollout window (observed maximum:
+  // ~102 minutes). Remove after 0906 is outside the rollback window; #26388.
   const [state] = await db
     .select({
       available:
@@ -1042,7 +1045,7 @@ async function prepareMigrationRevision(
     );
   }
   const targetPreview = await getStripeClient().invoices.createPreview({
-    customer: customerId,
+    subscription: subscription.id,
     preview_mode: "recurring",
     subscription_details: {
       items: targetMigrationConfigurationItems(
@@ -2470,7 +2473,7 @@ export async function handleUsagePackMigrationSubscriptionUpdated(
     return { handled: true, orgId: migration.orgId };
   }
   const result = await reconcileMigration(db, migration);
-  return { handled: true, orgId: result.orgId };
+  return { handled: result.status !== "failed", orgId: result.orgId };
 }
 
 export async function reconcileUsagePackSubscriptionMigrations(

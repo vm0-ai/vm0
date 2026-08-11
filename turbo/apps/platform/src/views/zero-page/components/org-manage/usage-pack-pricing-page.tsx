@@ -1168,13 +1168,19 @@ function useUsagePackMembers(): readonly MemberDisplay[] | undefined {
 }
 
 function ManagedSubscriptionSummaryDetails({
+  monthlyTotalCents,
   plan,
   totals,
 }: {
+  readonly monthlyTotalCents?: number;
   readonly plan: UsagePackPlan;
   readonly totals: MemberUsageTotals;
 }) {
-  const monthlyTotalUsd = plan.basePriceUsd + totals.totalUsd;
+  const monthlyTotalUsd =
+    monthlyTotalCents === undefined
+      ? plan.basePriceUsd + totals.totalUsd
+      : monthlyTotalCents / 100;
+  const monthlyTotalFractionDigits = Number.isInteger(monthlyTotalUsd) ? 0 : 2;
   const purchasedCredits = totals.totalCredits - totals.bonusCredits;
   return (
     <div className="mt-4 space-y-2.5 text-[13px]">
@@ -1232,7 +1238,9 @@ function ManagedSubscriptionSummaryDetails({
             ($) => {
               return $.billing.plans.pricePerMonth;
             },
-            { price: formatUsd(monthlyTotalUsd, 0) },
+            {
+              price: formatUsd(monthlyTotalUsd, monthlyTotalFractionDigits),
+            },
           )}
         </span>
       </div>
@@ -1587,9 +1595,11 @@ function UsagePackSubscriptionChangeDialog({
 }
 
 function SubscriptionOrderSummary({
+  monthlyTotalCents,
   plan,
   totals,
 }: {
+  readonly monthlyTotalCents?: number;
   readonly plan: UsagePackPlan;
   readonly totals: MemberUsageTotals;
 }) {
@@ -1600,7 +1610,11 @@ function SubscriptionOrderSummary({
           return $.billing.plans.usagePacks.orderSummary;
         })}
       </p>
-      <ManagedSubscriptionSummaryDetails plan={plan} totals={totals} />
+      <ManagedSubscriptionSummaryDetails
+        monthlyTotalCents={monthlyTotalCents}
+        plan={plan}
+        totals={totals}
+      />
     </div>
   );
 }
@@ -2373,6 +2387,7 @@ function MigrationPreviewDetails({
   return (
     <>
       <SubscriptionOrderSummary
+        monthlyTotalCents={preview.nextRecurringAmountCents}
         plan={usagePackPlan(preview.targetTier)}
         totals={previewTotals}
       />

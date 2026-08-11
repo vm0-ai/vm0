@@ -1539,6 +1539,7 @@ describe("legacy subscription usage pack migration", () => {
 
   interface MigrationStripeController {
     readonly invoice: () => object;
+    readonly cancelSubscription: () => MigrationSubscriptionMock;
     readonly cancelSchedule: () => void;
     readonly startScheduledPhase: () => void;
   }
@@ -1941,6 +1942,15 @@ describe("legacy subscription usage pack migration", () => {
     return {
       invoice: () => {
         return invoice;
+      },
+      cancelSubscription: () => {
+        subscription = {
+          ...subscription,
+          cancel_at: args.fixture.period.end,
+          cancel_at_period_end: true,
+        };
+        syncRetrievalMocks();
+        return subscription;
       },
       startScheduledPhase: () => {
         invoice = paidInvoice();
@@ -2395,6 +2405,11 @@ describe("legacy subscription usage pack migration", () => {
       bonusCredits: 2600,
       totalCredits: 52_600,
     });
+    expect(
+      context.mocks.stripe.invoices.createPreview,
+    ).toHaveBeenLastCalledWith(
+      expect.objectContaining({ subscription: fixture.subscriptionId }),
+    );
 
     const confirmation = await accept(
       migrationClient().confirmRevision({
@@ -2658,6 +2673,45 @@ describe("legacy subscription usage pack migration", () => {
       tier: "team",
       stripeSubscriptionId: fixture.subscriptionId,
       credits: 12_345,
+    });
+  });
+
+  it("syncs legacy cancellation when a subscription update invalidates migration", async () => {
+    const fixture = await seedLegacyMigrationFixture({ tier: "team" });
+    await enableMigration(fixture);
+    const stripe = mockMigrationStripe({
+      fixture,
+      packageQuantity: 1,
+      currentRecurringAmountCents: 20_000,
+      amountDueCents: 18_000,
+      amountPaidCents: 18_000,
+    });
+    const preview = await previewMigration(fixture);
+    await accept(
+      migrationClient().confirm({
+        params: { migrationId: preview.migrationId },
+        body: {},
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    await postMigrationSubscription(stripe.cancelSubscription());
+
+    const state = await readUsagePackState(fixture.orgId);
+    expect(state.migrations).toStrictEqual([
+      expect.objectContaining({
+        id: preview.migrationId,
+        status: "failed",
+        failureReason: "subscription_changed",
+      }),
+    ]);
+    expect(state.org).toMatchObject({
+      tier: "team",
+      stripeSubscriptionId: fixture.subscriptionId,
+      subscriptionStatus: "active",
+      cancelAtPeriodEnd: true,
+      currentPeriodEnd: new Date(fixture.period.end * 1000).toISOString(),
     });
   });
 

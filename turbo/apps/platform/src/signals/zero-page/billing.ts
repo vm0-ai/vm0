@@ -387,7 +387,7 @@ export const usagePackMigrationAsync$ = computed(
     }
     const createClient = get(zeroClient$);
     const client = createClient(zeroBillingUsagePackMigrationContract);
-    const result = await accept(client.get(), [200, 403, 404, 409, 503]);
+    const result = await accept(client.get(), [200, 403, 404, 409]);
     return result.status === 200 ? result.body : null;
   },
 );
