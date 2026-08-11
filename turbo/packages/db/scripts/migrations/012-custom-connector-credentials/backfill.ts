@@ -1172,7 +1172,6 @@ async function main(): Promise<void> {
         complete: report.complete,
         ready: report.ready,
         scannedRows: report.scannedRows,
-        blockingDifferences: report.blockingDifferences,
       }),
     );
   } finally {
