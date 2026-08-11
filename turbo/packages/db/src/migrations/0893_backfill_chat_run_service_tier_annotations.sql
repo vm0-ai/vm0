@@ -46,7 +46,7 @@ $$;--> statement-breakpoint
 -- Keep the JSON transformation shared by the trigger guard and the batched
 -- update so the temporary append-only exception cannot accept a broader
 -- transition than the migration performs.
-CREATE OR REPLACE FUNCTION "annotate_chat_event_priority_0891"(
+CREATE OR REPLACE FUNCTION "annotate_chat_event_priority_0893"(
   "source_user_message" jsonb
 ) RETURNS jsonb AS $$
   SELECT jsonb_set(
@@ -99,7 +99,7 @@ BEGIN
         AND "part" ->> 'serviceTier' IS DISTINCT FROM 'priority'
     )
   THEN
-    SELECT "annotate_chat_event_priority_0891"(
+    SELECT "annotate_chat_event_priority_0893"(
       OLD."payload" -> 'userMessage'
     )
     INTO expected_user_message
@@ -124,7 +124,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;--> statement-breakpoint
 
-CREATE OR REPLACE PROCEDURE "backfill_chat_run_service_tier_annotations_0891"()
+CREATE OR REPLACE PROCEDURE "backfill_chat_run_service_tier_annotations_0893"()
 LANGUAGE plpgsql AS $$
 DECLARE
   batch_last_id uuid;
@@ -162,13 +162,13 @@ BEGIN
       FOR UPDATE OF "candidate" SKIP LOCKED
     ), updated AS (
       UPDATE "chat_events" AS "target"
-      SET "user_message" = "annotate_chat_event_priority_0891"(
+      SET "user_message" = "annotate_chat_event_priority_0893"(
           "target"."payload" -> 'userMessage'
         ),
         "payload" = jsonb_set(
           "target"."payload",
           '{userMessage}',
-          "annotate_chat_event_priority_0891"(
+          "annotate_chat_event_priority_0893"(
             "target"."payload" -> 'userMessage'
           ),
           false
@@ -259,8 +259,8 @@ BEGIN
 END;
 $$;--> statement-breakpoint
 
-CALL "backfill_chat_run_service_tier_annotations_0891"();--> statement-breakpoint
-DROP PROCEDURE IF EXISTS "backfill_chat_run_service_tier_annotations_0891"();--> statement-breakpoint
+CALL "backfill_chat_run_service_tier_annotations_0893"();--> statement-breakpoint
+DROP PROCEDURE IF EXISTS "backfill_chat_run_service_tier_annotations_0893"();--> statement-breakpoint
 
 CREATE OR REPLACE FUNCTION "reject_chat_event_source_update"() RETURNS trigger AS $$
 BEGIN
@@ -268,7 +268,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;--> statement-breakpoint
 
-DROP FUNCTION IF EXISTS "annotate_chat_event_priority_0891"(jsonb);--> statement-breakpoint
+DROP FUNCTION IF EXISTS "annotate_chat_event_priority_0893"(jsonb);--> statement-breakpoint
 
 DO $$
 DECLARE
