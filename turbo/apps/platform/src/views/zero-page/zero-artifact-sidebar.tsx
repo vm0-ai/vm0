@@ -454,7 +454,7 @@ interface ArtifactDisplay {
   filename: string;
   subtitle: string;
   shareAvailable: boolean;
-  resourceUrl$?: Computed<Promise<string>>;
+  resourceUrl$: Computed<Promise<string>>;
   artifactKind?: ChatThreadArtifactFile["artifactKind"];
 }
 
@@ -514,7 +514,7 @@ function resolveArtifactDisplay(
       filename: item.file.filename,
       subtitle: artifactTitleSubtitle(ref.kind, item.file),
       shareAvailable: ref.shareAvailable ?? true,
-      ...(ref.resourceUrl$ ? { resourceUrl$: ref.resourceUrl$ } : {}),
+      resourceUrl$: ref.resourceUrl$,
       artifactKind: item.file.artifactKind,
     };
   }
@@ -524,7 +524,7 @@ function resolveArtifactDisplay(
     filename: ref.filename,
     subtitle: artifactFallbackSubtitle(ref.kind, ref.filename),
     shareAvailable: ref.shareAvailable ?? true,
-    ...(ref.resourceUrl$ ? { resourceUrl$: ref.resourceUrl$ } : {}),
+    resourceUrl$: ref.resourceUrl$,
   };
 }
 
@@ -817,7 +817,7 @@ function ArtifactBody({
   artifactKind?: ChatThreadArtifactFile["artifactKind"];
   imageNavigation?: ArtifactImageNavigationActions;
   fullscreen: boolean;
-  resourceUrl$?: Computed<Promise<string>>;
+  resourceUrl$: Computed<Promise<string>>;
   text$?: TextPreviewComputed;
 }) {
   const { t } = useTranslation();
@@ -871,17 +871,9 @@ function ArtifactBody({
     return <ArtifactAudioBody url={url} filename={filename} />;
   }
   if (kind === "html" || kind === "pdf") {
-    return resourceUrl$ ? (
+    return (
       <ArtifactIframeResourceBody
         resourceUrl$={resourceUrl$}
-        kind={kind}
-        filename={filename}
-        artifactKind={artifactKind}
-        fullscreen={fullscreen}
-      />
-    ) : (
-      <ArtifactIframeBody
-        url={url}
         kind={kind}
         filename={filename}
         artifactKind={artifactKind}

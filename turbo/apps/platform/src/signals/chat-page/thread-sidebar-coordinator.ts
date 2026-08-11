@@ -14,6 +14,7 @@ import type {
   ArtifactRefInput,
   ThreadSidebarTarget,
 } from "./thread-sidebar.ts";
+import { createAttachmentResourceUrl$ } from "../attachment-resource-url.ts";
 import { createObjectUrlResource } from "../object-url-resource.ts";
 
 // ---------------------------------------------------------------------------
@@ -135,6 +136,7 @@ export function artifactRefFromUrl(url: string): ArtifactRef {
     url,
     kind: classifyChatAttachment(attachment),
     filename: attachment.filename,
+    resourceUrl$: createAttachmentResourceUrl$(url),
   };
 }
 
@@ -154,7 +156,8 @@ function materializeArtifactRef(
         url: input.url,
       }),
       filename: input.filename,
-      ...(input.resourceUrl$ ? { resourceUrl$: input.resourceUrl$ } : {}),
+      resourceUrl$:
+        input.resourceUrl$ ?? createAttachmentResourceUrl$(input.url),
       ...(input.shareAvailable === undefined
         ? {}
         : { shareAvailable: input.shareAvailable }),
@@ -169,6 +172,7 @@ function materializeArtifactRef(
       url: resource.url,
     }),
     filename: input.file.name,
+    resourceUrl$: createAttachmentResourceUrl$(resource.url),
     releaseObjectUrl: resource.release,
     ...(input.shareAvailable === undefined
       ? {}
