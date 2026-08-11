@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.425.0](https://github.com/vm0-ai/vm0/compare/api-v1.424.0...api-v1.425.0) (2026-08-11)
+
+
+### Features
+
+* migrate legacy subscriptions to usage pack plans ([#25529](https://github.com/vm0-ai/vm0/issues/25529)) ([1caa179](https://github.com/vm0-ai/vm0/commit/1caa179590bc228564dbd2a680c9bf3f4f28e88e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.315.0
+    * @vm0/core bumped to 8.545.1
+    * @vm0/db bumped to 1.193.0
+    * @vm0/pi-agent-runtime bumped to 1.3.44
+
 ## [1.424.0](https://github.com/vm0-ai/vm0/compare/api-v1.423.1...api-v1.424.0) (2026-08-11)
 
 
