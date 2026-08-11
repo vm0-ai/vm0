@@ -30,30 +30,58 @@ export function isPresentationTemplatePageKey(
   return key === presentationTemplatePageKey(templateId, index);
 }
 
-export const deletePresentationTemplatePages$ = command(
+export const listPresentationTemplatePageKeys$ = command(
   async (
     { get },
+    templateId: string,
+    signal: AbortSignal,
+  ): Promise<readonly string[]> => {
+    const bucket = env("R2_USER_ARTIFACTS_BUCKET_NAME");
+    const prefixedObjects = await get(
+      listS3ObjectsUnderPrefix(
+        bucket,
+        presentationTemplatePagePrefix(templateId),
+      ),
+    );
+    signal.throwIfAborted();
+    return prefixedObjects.map((object) => {
+      return object.key;
+    });
+  },
+);
+
+export const deletePresentationTemplatePageKeys$ = command(
+  async (
+    { get },
+    args: {
+      readonly keys: readonly string[];
+    },
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const bucket = env("R2_USER_ARTIFACTS_BUCKET_NAME");
+    await get(deleteS3Objects(bucket, args.keys));
+    signal.throwIfAborted();
+  },
+);
+
+export const deletePresentationTemplatePages$ = command(
+  async (
+    { set },
     args: {
       readonly templateId: string;
       readonly storedKeys: readonly string[];
     },
     signal: AbortSignal,
   ): Promise<void> => {
-    const bucket = env("R2_USER_ARTIFACTS_BUCKET_NAME");
-    const prefixedObjects = await get(
-      listS3ObjectsUnderPrefix(
-        bucket,
-        presentationTemplatePagePrefix(args.templateId),
-      ),
+    const prefixedKeys = await set(
+      listPresentationTemplatePageKeys$,
+      args.templateId,
+      signal,
     );
-    signal.throwIfAborted();
-    const keys = new Set([
-      ...args.storedKeys,
-      ...prefixedObjects.map((object) => {
-        return object.key;
-      }),
-    ]);
-    await get(deleteS3Objects(bucket, [...keys]));
-    signal.throwIfAborted();
+    await set(
+      deletePresentationTemplatePageKeys$,
+      { keys: [...new Set([...args.storedKeys, ...prefixedKeys])] },
+      signal,
+    );
   },
 );

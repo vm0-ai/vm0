@@ -22,7 +22,7 @@ import {
 const L = logger("PresentationTemplatePackage");
 const CLEANUP_TIMEOUT_MS = 30_000;
 
-async function lockTemplateLifecycle(
+export async function lockPresentationTemplateLifecycle(
   db: Tx,
   templateId: string,
 ): Promise<void> {
@@ -44,7 +44,7 @@ export const cleanupPresentationTemplatePackage$ = command(
   ): Promise<void> => {
     const db = set(writeDb$);
     await db.transaction(async (tx) => {
-      await lockTemplateLifecycle(tx, args.templateId);
+      await lockPresentationTemplateLifecycle(tx, args.templateId);
       signal.throwIfAborted();
       const [template] = await tx
         .select({ status: presentationTemplates.status })
@@ -173,7 +173,7 @@ export const publishPresentationTemplatePackage$ = command(
     const publish = async (): Promise<boolean> => {
       const db = set(writeDb$);
       const published = await db.transaction(async (tx) => {
-        await lockTemplateLifecycle(tx, args.templateId);
+        await lockPresentationTemplateLifecycle(tx, args.templateId);
         signal.throwIfAborted();
         const [active] = await tx
           .select({ id: presentationTemplates.id })

@@ -34,13 +34,17 @@ import {
 import { deletePresentationTemplate$ } from "../services/presentation-template-delete.service";
 import { failPresentationTemplateImport$ } from "../services/presentation-template-failure.service";
 import {
-  deletePresentationTemplatePages$,
+  deletePresentationTemplatePageKeys$,
   isPresentationTemplatePageKey,
+  listPresentationTemplatePageKeys$,
   PRESENTATION_TEMPLATE_PAGE_CONTENT_TYPE,
   presentationTemplatePageFilename,
   presentationTemplatePageKey,
 } from "../services/presentation-template-page.service";
-import { publishPresentationTemplatePackage$ } from "../services/presentation-template-package.service";
+import {
+  lockPresentationTemplateLifecycle,
+  publishPresentationTemplatePackage$,
+} from "../services/presentation-template-package.service";
 import type { RouteEntry } from "../route-entry";
 
 const PRESIGNED_URL_TTL_SECONDS = 15 * 60;
@@ -294,33 +298,60 @@ const preparePagesInner$ = command(
       return stateError;
     }
 
-    await set(
-      deletePresentationTemplatePages$,
-      { templateId: row.id, storedKeys: row.pageKeys },
+    const prefixedKeys = await set(
+      listPresentationTemplatePageKeys$,
+      row.id,
       signal,
     );
     const keys = Array.from({ length: bodyResult.data.count }, (_, index) => {
       return presentationTemplatePageKey(row.id, index);
     });
-    const [prepared] = await set(writeDb$)
-      .update(presentationTemplates)
-      .set({
-        pageKeys: keys,
-        aspectRatio: null,
-        status: "pending",
-        error: null,
-        updatedAt: nowDate(),
-        updatedBy: auth.userId,
-      })
-      .where(
-        and(
-          eq(presentationTemplates.id, row.id),
-          eq(presentationTemplates.orgId, auth.orgId),
-          eq(presentationTemplates.ownerUserId, auth.userId),
-          inArray(presentationTemplates.status, ["pending", "processing"]),
-        ),
-      )
-      .returning({ id: presentationTemplates.id });
+    const db = set(writeDb$);
+    const prepared = await db.transaction(async (tx) => {
+      await lockPresentationTemplateLifecycle(tx, row.id);
+      signal.throwIfAborted();
+      const [active] = await tx
+        .select({ pageKeys: presentationTemplates.pageKeys })
+        .from(presentationTemplates)
+        .where(
+          and(
+            eq(presentationTemplates.id, row.id),
+            eq(presentationTemplates.orgId, auth.orgId),
+            eq(presentationTemplates.ownerUserId, auth.userId),
+            inArray(presentationTemplates.status, ["pending", "processing"]),
+          ),
+        )
+        .limit(1);
+      signal.throwIfAborted();
+      if (!active) {
+        return false;
+      }
+      await set(
+        deletePresentationTemplatePageKeys$,
+        { keys: [...new Set([...active.pageKeys, ...prefixedKeys])] },
+        signal,
+      );
+      const [updated] = await tx
+        .update(presentationTemplates)
+        .set({
+          pageKeys: keys,
+          aspectRatio: null,
+          status: "pending",
+          error: null,
+          updatedAt: nowDate(),
+          updatedBy: auth.userId,
+        })
+        .where(
+          and(
+            eq(presentationTemplates.id, row.id),
+            eq(presentationTemplates.orgId, auth.orgId),
+            eq(presentationTemplates.ownerUserId, auth.userId),
+            inArray(presentationTemplates.status, ["pending", "processing"]),
+          ),
+        )
+        .returning({ id: presentationTemplates.id });
+      return updated !== undefined;
+    });
     signal.throwIfAborted();
     if (!prepared) {
       return conflict("Presentation template is no longer importing");

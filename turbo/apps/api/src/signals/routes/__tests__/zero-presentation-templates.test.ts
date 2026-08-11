@@ -47,6 +47,20 @@ interface StoredObject {
 
 type Deferred = ReturnType<typeof createDeferredPromise<void>>;
 
+async function waitForFixturePause(
+  pause:
+    | { readonly started: Deferred; readonly released: Deferred }
+    | undefined,
+): Promise<void> {
+  if (!pause) {
+    return;
+  }
+  if (!pause.started.settled()) {
+    pause.started.resolve();
+  }
+  await pause.released.promise;
+}
+
 function commandInput(command: unknown): Record<string, unknown> {
   if (
     typeof command === "object" &&
@@ -153,6 +167,9 @@ function installS3Fixture() {
   let storagePutPause:
     | { readonly started: Deferred; readonly released: Deferred }
     | undefined;
+  let artifactListPause:
+    | { readonly started: Deferred; readonly released: Deferred }
+    | undefined;
   let deleteFailuresRemaining = 0;
 
   context.mocks.s3.send.mockImplementation(async (command: unknown) => {
@@ -162,11 +179,8 @@ function installS3Fixture() {
     const id = objectId(bucket, key);
 
     if (command instanceof PutObjectCommand) {
-      if (bucket === STORAGE_BUCKET && storagePutPause) {
-        if (!storagePutPause.started.settled()) {
-          storagePutPause.started.resolve();
-        }
-        await storagePutPause.released.promise;
+      if (bucket === STORAGE_BUCKET) {
+        await waitForFixturePause(storagePutPause);
       }
       objects.set(id, {
         body: bodyBuffer(input.Body),
@@ -181,6 +195,9 @@ function installS3Fixture() {
       return {};
     }
     if (command instanceof ListObjectsV2Command) {
+      if (bucket === ARTIFACT_BUCKET) {
+        await waitForFixturePause(artifactListPause);
+      }
       const prefix = typeof input.Prefix === "string" ? input.Prefix : "";
       return {
         Contents: listStoredObjects(objects, bucket, prefix),
@@ -265,6 +282,21 @@ function installS3Fixture() {
         started: started.promise,
         release: () => {
           storagePutPause = undefined;
+          released.resolve();
+        },
+      };
+    },
+    pauseArtifactLists(): {
+      readonly started: Promise<void>;
+      readonly release: () => void;
+    } {
+      const started = createDeferredPromise<void>(context.signal);
+      const released = createDeferredPromise<void>(context.signal);
+      artifactListPause = { started, released };
+      return {
+        started: started.promise,
+        release: () => {
+          artifactListPause = undefined;
           released.resolve();
         },
       };
@@ -1079,6 +1111,91 @@ describe("presentation template imports", () => {
       status: "failed",
       pageCount: 0,
       error: { code: "publish_failed", message: "publication cancelled" },
+    });
+  });
+
+  it("keeps committed pages when publication wins page re-preparation", async () => {
+    const actor = bdd.user();
+    await prepareImportActor(actor);
+    const fixture = installS3Fixture();
+    const { created } = await createTemplate(
+      fixture,
+      actor,
+      "prepare-publish-race.pptx",
+    );
+    const runId = await importRunId(actor, created.id);
+    const runHeaders = sandboxHeaders(actor, runId);
+    const prepared = await accept(
+      templateClient().preparePages({
+        headers: runHeaders,
+        params: { templateId: created.id },
+        body: { count: 1 },
+      }),
+      [200],
+    );
+    const upload = prepared.body.uploads[0];
+    if (!upload) {
+      throw new Error("Expected a prepared page upload");
+    }
+    fixture.put({
+      bucket: ARTIFACT_BUCKET,
+      key: upload.key,
+      body: Buffer.from("page"),
+      contentType: "image/png",
+      metadata: metadataFromHeaders(upload.uploadHeaders),
+    });
+    await accept(
+      templateClient().commitPages({
+        headers: runHeaders,
+        params: { templateId: created.id },
+        body: { keys: [upload.key], aspectRatio: 16 / 9 },
+      }),
+      [200],
+    );
+
+    const storagePause = fixture.pauseStoragePuts();
+    const artifactPause = fixture.pauseArtifactLists();
+    const publication = accept(
+      templateClient().publishPackage({
+        headers: runHeaders,
+        params: { templateId: created.id },
+        body: {
+          files: [
+            { path: "DESIGN_SYSTEM.md", content: "# Design" },
+            { path: "LAYOUTS.md", content: "# Layouts" },
+            { path: "tokens.json", content: "{}" },
+          ],
+        },
+      }),
+      [200],
+    );
+    await storagePause.started;
+    const rePreparation = accept(
+      templateClient().preparePages({
+        headers: runHeaders,
+        params: { templateId: created.id },
+        body: { count: 2 },
+      }),
+      [409],
+    );
+    await artifactPause.started;
+    storagePause.release();
+    await publication;
+    artifactPause.release();
+    await rePreparation;
+
+    expect(fixture.has(ARTIFACT_BUCKET, upload.key)).toBeTruthy();
+    mocks.clerk.session(actor.userId, actor.orgId);
+    const detail = await accept(
+      templateClient().get({
+        headers: webHeaders(),
+        params: { templateId: created.id },
+      }),
+      [200],
+    );
+    expect(detail.body).toMatchObject({
+      status: "ready",
+      pageCount: 1,
     });
   });
 });
