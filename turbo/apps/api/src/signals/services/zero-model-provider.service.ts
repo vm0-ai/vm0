@@ -1,7 +1,9 @@
 import { command, computed, type Computed } from "ccstate";
 import {
   getAuthMethodsForType,
+  getDefaultModel,
   getFrameworkForType,
+  getRetiredRunModelReplacement,
   getSecretNameForType,
   getSecretNamesForAuthMethod,
   getSecretsForAuthMethod,
@@ -19,12 +21,13 @@ import { modelProviderConnections } from "@vm0/db/schema/model-provider-gateway"
 import { secrets } from "@vm0/db/schema/secret";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db$, writeDb$, type Db } from "../external/db";
-import { badRequestMessage, notFound } from "../../lib/error";
+import { badRequestMessage, modelRetired, notFound } from "../../lib/error";
 import { logger } from "../../lib/log";
 import { nowDate } from "../../lib/time";
 import { encryptStoredSecretValue } from "./crypto.utils";
 import { lockModelProviderState } from "./auth-state-lock.service";
 import { userFeatureSwitchContext } from "./feature-switches.service";
+import { loadOrgPlanCapabilities } from "./org-plan-entitlement-read.service";
 
 const L = logger("zero-model-provider.service");
 
@@ -264,6 +267,40 @@ export const deleteOrgModelProvider$ = command(
 // ===========================================================================
 
 type BadRequestResponse = ReturnType<typeof badRequestMessage>;
+type ModelProviderUpsertError =
+  | BadRequestResponse
+  | ReturnType<typeof modelRetired>;
+
+async function retiredProviderConfigurationError(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly type: ModelProviderType;
+    readonly selectedModel?: string;
+  },
+): Promise<ReturnType<typeof modelRetired> | null> {
+  const configuredModel =
+    args.selectedModel ?? getDefaultModel(args.type) ?? "";
+  const unrestrictedReplacement = getRetiredRunModelReplacement(
+    configuredModel,
+    { modelProviderType: args.type },
+  );
+  if (!unrestrictedReplacement) {
+    return null;
+  }
+  const capabilities = await loadOrgPlanCapabilities(db, args.orgId);
+  const replacement = getRetiredRunModelReplacement(configuredModel, {
+    restrictedVm0Models:
+      capabilities?.status === "active" && capabilities.restrictedVm0Models,
+    modelProviderType: args.type,
+  });
+  return replacement
+    ? modelRetired(
+        configuredModel || MODEL_PROVIDER_TYPES[args.type].label,
+        replacement,
+      )
+    : null;
+}
 
 /**
  * Row shape returned to the route handler. The codex paste handler's
@@ -582,7 +619,7 @@ export const upsertUserModelProvider$ = command(
     },
     signal: AbortSignal,
   ): Promise<
-    | BadRequestResponse
+    | ModelProviderUpsertError
     | { readonly provider: ModelProviderInfo; readonly created: boolean }
   > => {
     const vm0 = assertVm0OrgOnly(args.type, args.userId);
@@ -596,13 +633,18 @@ export const upsertUserModelProvider$ = command(
       );
     }
 
+    const writeDb = set(writeDb$);
+    const retiredError = await retiredProviderConfigurationError(writeDb, args);
+    signal.throwIfAborted();
+    if (retiredError) {
+      return retiredError;
+    }
+
     const validation = validateSingleSecretProviderRequest(args);
     if ("status" in validation) {
       return validation;
     }
     const { secretName } = validation;
-    const writeDb = set(writeDb$);
-
     const encryptedValue = await encryptStoredSecretValue(args.secret);
     signal.throwIfAborted();
 
@@ -910,7 +952,7 @@ export const upsertUserMultiAuthModelProvider$ = command(
     },
     signal: AbortSignal,
   ): Promise<
-    | BadRequestResponse
+    | ModelProviderUpsertError
     | { readonly provider: ModelProviderInfo; readonly created: boolean }
   > => {
     const validationError = validateMultiAuthUpsertInput({
@@ -923,6 +965,11 @@ export const upsertUserMultiAuthModelProvider$ = command(
     }
 
     const writeDb = set(writeDb$);
+    const retiredError = await retiredProviderConfigurationError(writeDb, args);
+    signal.throwIfAborted();
+    if (retiredError) {
+      return retiredError;
+    }
     const featureSwitchContext = await get(
       userFeatureSwitchContext(args.orgId, args.userId),
     );
@@ -1033,7 +1080,7 @@ export const upsertOrgNoSecretModelProvider$ = command(
     },
     signal: AbortSignal,
   ): Promise<
-    | BadRequestResponse
+    | ModelProviderUpsertError
     | { readonly provider: ModelProviderInfo; readonly created: boolean }
   > => {
     const vm0 = assertVm0OrgOnly(args.type, ORG_SENTINEL_USER_ID);
@@ -1042,6 +1089,11 @@ export const upsertOrgNoSecretModelProvider$ = command(
     }
 
     const writeDb = set(writeDb$);
+    const retiredError = await retiredProviderConfigurationError(writeDb, args);
+    signal.throwIfAborted();
+    if (retiredError) {
+      return retiredError;
+    }
 
     L.debug("upserting org no-secret model provider", {
       orgId: args.orgId,

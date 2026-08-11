@@ -101,7 +101,7 @@ async function seedGoalApiFixture(): Promise<GoalApiFixture> {
     {
       agentId: agent.agentId,
       prompt: "goal precondition",
-      model: "claude-sonnet-4-6",
+      model: "claude-sonnet-5",
     },
     [201],
   );
@@ -416,7 +416,7 @@ describe("zero goals", () => {
         version: 1,
         parts: [
           { type: "goal", goalBrief: "bootstrap autonomously" },
-          { type: "model", selectedModel: "claude-sonnet-4-6" },
+          { type: "model", selectedModel: "claude-sonnet-5" },
         ],
       },
     });

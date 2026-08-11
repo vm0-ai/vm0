@@ -9,9 +9,11 @@ import {
   getCanonicalModelDisplayName,
   getDefaultOrgModelPolicySeed,
   getFrameworkForType,
+  getRetiredRunModelReplacement,
   getVm0ConcreteProviderType,
   isModelSupportedByProvider,
   isLimitedFree1RestrictedRunModel,
+  isRetiredRunModel,
   type ModelProviderCredentialScope,
   type OrgModelPoliciesResponse,
   type OrgModelPolicy,
@@ -31,7 +33,7 @@ import {
 } from "@vm0/db/schema/model-provider-gateway";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
-import { insufficientCredits } from "../../lib/error";
+import { insufficientCredits, modelRetired } from "../../lib/error";
 import { nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
 import {
@@ -63,7 +65,9 @@ type ServiceResult<T> =
   | { readonly ok: false; readonly message: string }
   | {
       readonly ok: false;
-      readonly response: ReturnType<typeof insufficientCredits>;
+      readonly response:
+        | ReturnType<typeof insufficientCredits>
+        | ReturnType<typeof modelRetired>;
     };
 
 const ORG_SENTINEL_USER_ID = "__org__";
@@ -78,6 +82,13 @@ function bad<T>(message: string): ServiceResult<T> {
 
 function planRestricted<T>(): ServiceResult<T> {
   return { ok: false, response: insufficientCredits() };
+}
+
+function retired<T>(
+  model: string,
+  replacement: SupportedRunModel,
+): ServiceResult<T> {
+  return { ok: false, response: modelRetired(model, replacement) };
 }
 
 function isOAuthMemberProviderType(type: ModelProviderType): boolean {
@@ -570,6 +581,13 @@ async function validateUpdatePolicies(
   let defaultCount = 0;
 
   for (const policy of policies) {
+    const replacement = getRetiredRunModelReplacement(policy.model, {
+      restrictedVm0Models: capabilities.restrictedVm0Models,
+      modelProviderType: policy.defaultProviderType,
+    });
+    if (replacement) {
+      return retired(policy.model, replacement);
+    }
     if (!parseSupportedModel(policy.model)) {
       return bad(`Unknown model "${policy.model}"`);
     }
@@ -630,6 +648,13 @@ function getRouteStatus(params: {
     providersById,
     surfacesById,
   } = params;
+
+  if (isRetiredRunModel(model, providerType)) {
+    return {
+      status: "invalid",
+      reason: "This model has been retired.",
+    };
+  }
 
   if (modelProviderSurfaceId) {
     const surface = surfacesById.get(modelProviderSurfaceId);

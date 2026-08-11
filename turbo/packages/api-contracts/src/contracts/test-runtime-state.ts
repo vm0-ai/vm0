@@ -171,6 +171,25 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     computer_use_host_id: z.uuid(),
   }),
   z.object({
+    action: z.literal("set-agent-model-selection-as-previous-api"),
+    agent_id: z.uuid(),
+    selected_model: z.string(),
+  }),
+  z.object({
+    action: z.literal("set-run-model-selection-as-previous-api"),
+    run_id: z.uuid(),
+    selected_model: z.string(),
+  }),
+  z.object({
+    action: z.literal("set-thread-model-selection-as-previous-api"),
+    thread_id: z.uuid(),
+    selected_model: z.string(),
+  }),
+  z.object({
+    action: z.literal("read-run-model-selection-fixture"),
+    run_id: z.uuid(),
+  }),
+  z.object({
     action: z.literal("set-browser-tab-snapshot-as-previous-api"),
     thread_id: z.uuid(),
     tab_urls: z.array(z.string().max(8192)).max(50),
@@ -232,6 +251,12 @@ export const testRuntimeStateActionResponseSchema = z.object({
   file_id: z.uuid().optional(),
   hosted_site_id: z.uuid().optional(),
   hosted_deployment_scope_blocked: z.boolean().optional(),
+  run_model_selection: z
+    .object({
+      model_provider: z.string().nullable(),
+      selected_model: z.string().nullable(),
+    })
+    .optional(),
   storage_persistence: z
     .object({
       run_canonical: z.boolean(),

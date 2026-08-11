@@ -1411,7 +1411,7 @@ async function seedModelPoliciesForAction(
   await db.insert(orgModelPolicies).values([
     {
       orgId: required.org_id!,
-      model: "claude-sonnet-4-6",
+      model: "claude-sonnet-5",
       isDefault: true,
       defaultProviderType: "vm0",
       credentialScope: "org",
@@ -1420,7 +1420,7 @@ async function seedModelPoliciesForAction(
     },
     {
       orgId: required.org_id!,
-      model: "claude-opus-4-7",
+      model: "claude-opus-4-8",
       defaultProviderType: "vm0",
       credentialScope: "org",
       createdByUserId: required.user_id!,

@@ -547,6 +547,30 @@ describe("POST /api/zero/model-providers", () => {
     );
   });
 
+  it("rejects a provider whose entire model catalog is retired", async () => {
+    const fixture = uniqueOrgUser("zmp-upsert-retired-provider");
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+    const client = setupApp({ context, routes: zeroModelProvidersRoutes })(
+      zeroModelProvidersMainContract,
+    );
+
+    const response = await accept(
+      client.upsert({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { type: "zai-api-key", secret: "test-zai-key" },
+      }),
+      [400],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        code: "MODEL_RETIRED",
+        message:
+          'Model "Z.AI (GLM)" has been retired. Use "deepseek-v4-flash" instead.',
+      },
+    });
+  });
+
   it("creates and updates an org single-secret provider", async () => {
     const fixture = uniqueOrgUser("zmp-upsert-single");
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");

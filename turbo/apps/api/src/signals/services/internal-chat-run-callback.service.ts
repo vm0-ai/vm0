@@ -10,7 +10,10 @@ import {
   serializeChatFollowupsContent,
   type ChatRecommendedFollowup,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import { modelProviderCredentialScopeSchema } from "@vm0/api-contracts/contracts/model-providers";
+import {
+  isRetiredRunModel,
+  modelProviderCredentialScopeSchema,
+} from "@vm0/api-contracts/contracts/model-providers";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
@@ -174,6 +177,7 @@ import { loadComputerUseHostGrantForAutoSend } from "./zero-chat-computer-use-ho
 import { resolveRunChatThreadModelContext } from "./zero-chat-run-event.service";
 import { releaseThreadBrowsersForRun$ } from "./zero-browser.service";
 import {
+  resolvePersistedModelFirstRoute,
   resolveModelFirstProviderAdmission,
   type ModelFirstPin,
 } from "./zero-model-selection.service";
@@ -2587,21 +2591,40 @@ async function resolveUnpinnedSlackQueuedMessageModelRoute(args: {
     )
     .orderBy(asc(chatEvents.seqId))
     .limit(1);
-  const modelPin: ModelFirstPin = firstRun
+  const replacementRoute =
+    firstRun &&
+    isRetiredRunModel(firstRun.selectedModel, firstRun.modelProviderType)
+      ? await resolvePersistedModelFirstRoute({
+          db: args.db,
+          orgId: args.orgId,
+          userId: args.userId,
+          selectedModel: firstRun.selectedModel,
+          modelProviderType: firstRun.modelProviderType,
+        })
+      : null;
+  const modelPin: ModelFirstPin = replacementRoute?.route
     ? {
-        modelProviderId: firstRun.modelProviderId,
-        modelProviderType: firstRun.modelProviderType,
-        modelProviderCredentialScope: persistedModelProviderCredentialScope(
-          firstRun.modelProviderCredentialScope,
-        ),
-        selectedModel: firstRun.selectedModel,
+        modelProviderId: replacementRoute.route.modelProviderId,
+        modelProviderType: replacementRoute.route.modelProviderType,
+        modelProviderCredentialScope:
+          replacementRoute.route.modelProviderCredentialScope,
+        selectedModel: replacementRoute.route.selectedModel,
       }
-    : {
-        modelProviderId: null,
-        modelProviderType: null,
-        modelProviderCredentialScope: null,
-        selectedModel: null,
-      };
+    : firstRun
+      ? {
+          modelProviderId: firstRun.modelProviderId,
+          modelProviderType: firstRun.modelProviderType,
+          modelProviderCredentialScope: persistedModelProviderCredentialScope(
+            firstRun.modelProviderCredentialScope,
+          ),
+          selectedModel: firstRun.selectedModel,
+        }
+      : {
+          modelProviderId: null,
+          modelProviderType: null,
+          modelProviderCredentialScope: null,
+          selectedModel: null,
+        };
   const providerAdmission = await resolveModelFirstProviderAdmission({
     db: args.db,
     orgId: args.orgId,

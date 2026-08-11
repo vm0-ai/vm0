@@ -454,7 +454,7 @@ describe("MISC-04: model providers, policies, and logs visible state", () => {
       {
         type: "claude-code-oauth-token",
         secret: "bdd-claude-oauth-token",
-        selectedModel: "claude-sonnet-4-6",
+        selectedModel: "claude-sonnet-5",
       },
       [201],
     );
@@ -463,7 +463,7 @@ describe("MISC-04: model providers, policies, and logs visible state", () => {
       provider: {
         type: "claude-code-oauth-token",
         secretName: "CLAUDE_CODE_OAUTH_TOKEN",
-        selectedModel: "claude-sonnet-4-6",
+        selectedModel: "claude-sonnet-5",
       },
     });
     if (!("provider" in created.body)) {
@@ -479,7 +479,7 @@ describe("MISC-04: model providers, policies, and logs visible state", () => {
     expect(listed.body.modelProviders[0]).toMatchObject({
       type: "claude-code-oauth-token",
       secretName: "CLAUDE_CODE_OAUTH_TOKEN",
-      selectedModel: "claude-sonnet-4-6",
+      selectedModel: "claude-sonnet-5",
     });
 
     const updated = await api.upsertPersonalModelProvider(

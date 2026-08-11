@@ -1532,7 +1532,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     );
     await seedModelPolicies({
       fixture,
-      selectedModel: "claude-sonnet-4-6",
+      selectedModel: "claude-sonnet-5",
     });
     const telegramMocks = telegramApiMocks();
     const chatId = 77_101;
@@ -1684,7 +1684,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     );
     await seedModelPolicies({
       fixture,
-      selectedModel: "claude-sonnet-4-6",
+      selectedModel: "claude-sonnet-5",
     });
     const telegramMocks = telegramApiMocks();
     const botUsername = `bot_${fixture.telegramBotId}`;
@@ -2554,7 +2554,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     await flushWaitUntilForTest();
     expect(telegramMocks.sentMessages[0]?.text).toContain("Available models");
     expect(telegramMocks.sentMessages[0]?.text).toContain(
-      "/model claude-sonnet-4-6",
+      "/model claude-sonnet-5",
     );
     expect(telegramMocks.sentMessages[0]?.text).toContain(
       "/model deepseek-v4-flash",
@@ -2574,13 +2574,13 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
             username: "alice",
             first_name: "Alice",
           },
-          text: "/model Claude Sonnet 4.6",
+          text: "/model Claude Sonnet 5",
         },
       },
     });
     expect(switchModel.status).toBe(200);
     await flushWaitUntilForTest();
-    await expect(selectedModelFor(fixture)).resolves.toBe("claude-sonnet-4-6");
+    await expect(selectedModelFor(fixture)).resolves.toBe("claude-sonnet-5");
 
     const defaultModel = await postWebhook({
       telegramBotId: fixture.telegramBotId,
@@ -2604,7 +2604,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     expect(telegramMocks.sentMessages[2]?.text).toContain(
       "Unknown model &quot;default&quot;.",
     );
-    await expect(selectedModelFor(fixture)).resolves.toBe("claude-sonnet-4-6");
+    await expect(selectedModelFor(fixture)).resolves.toBe("claude-sonnet-5");
   });
 
   it("sends typing for accepted custom-bot runs and a queued message at the concurrency limit", async () => {
@@ -2789,7 +2789,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     });
     await expect(latestZeroRunForFixture(fixture)).resolves.toStrictEqual(
       expect.objectContaining({
-        selectedModel: "claude-opus-4-7",
+        selectedModel: "claude-opus-4-8",
       }),
     );
   });
@@ -2842,7 +2842,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     await expect(latestZeroRunForFixture(fixture)).resolves.toStrictEqual(
       expect.objectContaining({
         modelProvider: "vm0",
-        selectedModel: "claude-sonnet-4-6",
+        selectedModel: "claude-sonnet-5",
       }),
     );
   });
@@ -2895,7 +2895,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     await expect(latestZeroRunForFixture(fixture)).resolves.toStrictEqual(
       expect.objectContaining({
         modelProvider: "vm0",
-        selectedModel: "claude-sonnet-4-6",
+        selectedModel: "claude-sonnet-5",
       }),
     );
   });

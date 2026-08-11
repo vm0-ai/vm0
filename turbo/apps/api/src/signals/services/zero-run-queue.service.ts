@@ -1,4 +1,8 @@
 import { command } from "ccstate";
+import {
+  getRetiredRunModelReplacement,
+  isRetiredRunModel,
+} from "@vm0/api-contracts/contracts/model-providers";
 import type { RunSkillSnapshot } from "@vm0/api-contracts/contracts/runners";
 import { agentRunQueue } from "@vm0/db/schema/agent-run-queue";
 import { agentRuns } from "@vm0/db/schema/agent-run";
@@ -24,6 +28,7 @@ import { writeDb$, type Db } from "../external/db";
 import { now, nowDate } from "../../lib/time";
 import {
   publishOrgSignal,
+  publishRunChangedForUserSafely,
   publishThreadListChanged,
   publishUserSignal,
 } from "../external/realtime";
@@ -48,6 +53,9 @@ import {
   type PendingRunActivation,
 } from "./agent-run-activation.service";
 import type { PiEdgeModelConfig, PiEdgeUsageConfig } from "./pi-edge-config";
+import { loadOrgPlanCapabilities } from "./org-plan-entitlement-read.service";
+import { modelRetired } from "../../lib/error";
+import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 
 const L = logger("ZeroRunQueue");
 
@@ -85,6 +93,8 @@ interface QueueCandidate {
   readonly encryptedParams: string | null;
   readonly runStatus: string | null;
   readonly chatThreadId: string | null;
+  readonly selectedModel: string | null;
+  readonly modelProviderType: string | null;
 }
 
 interface PromotedRunnerJob {
@@ -109,8 +119,18 @@ type PromoteQueuedCandidateResult =
       readonly queueMarkerNotification: QueueMarkerRevokeNotification | null;
     }
   | { readonly status: "full" }
+  | {
+      readonly status: "rejected-retired";
+      readonly error: string;
+      readonly queueMarkerNotification: QueueMarkerRevokeNotification | null;
+    }
   | { readonly status: "removed-stale" }
   | { readonly status: "lost" };
+
+type RetiredQueuedCandidateResult = Extract<
+  PromoteQueuedCandidateResult,
+  { readonly status: "rejected-retired" }
+>;
 
 type PromoteQueuedCandidateSideEffectResult =
   | {
@@ -236,6 +256,8 @@ async function loadDrainCandidates(
         encryptedParams: agentRunQueue.encryptedParams,
         runStatus: agentRuns.status,
         chatThreadId: zeroRuns.chatThreadId,
+        selectedModel: zeroRuns.selectedModel,
+        modelProviderType: zeroRuns.modelProvider,
       })
       .from(agentRunQueue)
       .leftJoin(agentRuns, eq(agentRunQueue.runId, agentRuns.id))
@@ -269,6 +291,46 @@ function prepareQueuedPiEdgeTurn(
   };
 }
 
+async function rejectRetiredQueuedCandidate(
+  tx: DbTransaction,
+  args: {
+    readonly row: QueueCandidate;
+    readonly restrictedVm0Models: boolean;
+  },
+): Promise<RetiredQueuedCandidateResult | null> {
+  if (!isRetiredRunModel(args.row.selectedModel, args.row.modelProviderType)) {
+    return null;
+  }
+  const replacement = getRetiredRunModelReplacement(args.row.selectedModel, {
+    restrictedVm0Models: args.restrictedVm0Models,
+    modelProviderType: args.row.modelProviderType,
+  });
+  if (!replacement) {
+    return null;
+  }
+
+  const retiredError = modelRetired(
+    args.row.selectedModel ?? "Z.AI",
+    replacement,
+  ).body.error;
+  const error = `${retiredError.code}: ${retiredError.message}`;
+  await tx
+    .update(agentRuns)
+    .set({ status: "failed", completedAt: nowDate(), error })
+    .where(
+      and(eq(agentRuns.id, args.row.runId), eq(agentRuns.status, "queued")),
+    );
+  await tx.delete(agentRunQueue).where(eq(agentRunQueue.runId, args.row.runId));
+  return {
+    status: "rejected-retired",
+    error,
+    queueMarkerNotification: await revokeQueuedRunAssistantMarkers(tx, {
+      runId: args.row.runId,
+      userId: args.row.userId,
+    }),
+  };
+}
+
 async function promoteQueuedCandidate(
   db: Db,
   args: {
@@ -276,6 +338,7 @@ async function promoteQueuedCandidate(
     readonly row: QueueCandidate;
     readonly payload: QueuedRunnerJobPayload | null;
     readonly piEdgeTurn: PreparedQueuedPiEdgeTurn | undefined;
+    readonly restrictedVm0Models: boolean;
   },
 ): Promise<PromoteQueuedCandidateResult> {
   return await db.transaction(async (tx) => {
@@ -321,6 +384,11 @@ async function promoteQueuedCandidate(
       .limit(1);
     if (!queueRow) {
       return { status: "lost" };
+    }
+
+    const retiredRejection = await rejectRetiredQueuedCandidate(tx, args);
+    if (retiredRejection) {
+      return retiredRejection;
     }
 
     if (args.payload === null) {
@@ -447,6 +515,7 @@ async function promoteQueuedCandidateWithSideEffects(
     readonly row: QueueCandidate;
     readonly payload: QueuedRunnerJobPayload | null;
     readonly piEdgeTurn: PreparedQueuedPiEdgeTurn | undefined;
+    readonly restrictedVm0Models: boolean;
   },
 ): Promise<PromoteQueuedCandidateSideEffectResult> {
   const result = await promoteQueuedCandidate(db, args);
@@ -460,6 +529,37 @@ async function promoteQueuedCandidateWithSideEffects(
   if (result.status === "lost") {
     L.debug("drainOrgQueue: queued run already transitioned, skipping", {
       runId: args.row.runId,
+    });
+    return { status: "skipped" };
+  }
+  if (result.status === "rejected-retired") {
+    await publishPromotedQueueSideEffects({
+      orgId: args.orgId,
+      queueMarkerNotification: result.queueMarkerNotification,
+    });
+    await tapError(
+      publishRunChangedForUserSafely(args.row.userId, args.row.runId, {
+        status: "failed",
+      }),
+      (error) => {
+        L.error("Failed to publish retired queued run rejection", {
+          runId: args.row.runId,
+          error,
+        });
+      },
+    );
+    await tapError(
+      dispatchFailedRunCallbacks(db, args.row.runId, result.error),
+      (error) => {
+        L.error("Failed to dispatch retired queued run callbacks", {
+          runId: args.row.runId,
+          error,
+        });
+      },
+    );
+    L.warn("Rejected queued run for a retired model", {
+      runId: args.row.runId,
+      error: result.error,
     });
     return { status: "skipped" };
   }
@@ -500,10 +600,15 @@ export const drainOrgQueue$ = command(
 
     const queueRows = await loadDrainCandidates(writeDb, args.orgId);
     signal.throwIfAborted();
+    const capabilities = await loadOrgPlanCapabilities(writeDb, args.orgId);
+    signal.throwIfAborted();
+    const restrictedVm0Models =
+      capabilities?.status === "active" && capabilities.restrictedVm0Models;
 
     for (const row of queueRows) {
       const payload =
-        row.runStatus === "queued"
+        row.runStatus === "queued" &&
+        !isRetiredRunModel(row.selectedModel, row.modelProviderType)
           ? await decryptQueuedRunnerJobPayload(row.encryptedParams)
           : null;
       signal.throwIfAborted();
@@ -516,6 +621,7 @@ export const drainOrgQueue$ = command(
         row,
         payload,
         piEdgeTurn,
+        restrictedVm0Models,
       });
       // Promotion is durable now. Observe request cancellation for diagnostics,
       // but let the commit-owned activation finish independently.

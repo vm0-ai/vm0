@@ -729,7 +729,7 @@ describe("POST /api/webhooks/github for workflow automations", () => {
       version: 1,
       parts: [
         ...admittedEvent.userMessage.parts,
-        { type: "model", selectedModel: "claude-sonnet-4-6" },
+        { type: "model", selectedModel: "claude-sonnet-5" },
       ],
     });
     expect(chatEventDisplayText(claimedEvent)).toBe(displayPrompt);

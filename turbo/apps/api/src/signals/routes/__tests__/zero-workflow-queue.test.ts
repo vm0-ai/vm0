@@ -389,7 +389,7 @@ async function startOrgConcurrencyBlocker(scenario: Scenario): Promise<string> {
       body: {
         agentId: scenario.agentId,
         prompt: "hold org concurrency open",
-        model: "claude-sonnet-4-6",
+        model: "claude-sonnet-5",
         hasTextContent: true,
         userMessage: {
           version: 1,
@@ -1332,7 +1332,7 @@ describe("workflow queue", () => {
       version: 1,
       parts: [
         ...pendingTick.userMessage.parts,
-        { type: "model", selectedModel: "claude-sonnet-4-6" },
+        { type: "model", selectedModel: "claude-sonnet-5" },
       ],
     });
     expect(chatEventDisplayText(claimedTick)).toBe(admittedDisplayPrompt);
