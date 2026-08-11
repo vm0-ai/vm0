@@ -9,7 +9,10 @@ import { now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { mockClerkMembership } from "./helpers/api-bdd-clerk";
-import { createConnectorBddApi } from "./helpers/api-bdd-connectors";
+import {
+  createConnectorBddApi,
+  manualHttpCustomConnectorCreateBody,
+} from "./helpers/api-bdd-connectors";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { zeroAgentsRoutes } from "../zero-agents";
 
@@ -71,13 +74,14 @@ async function createUnconfiguredCustomConnector(
   actor: ApiTestUser,
   slug: string,
 ) {
-  return await connectors.createCustomConnector(actor, {
-    displayName: `Connector ${slug}`,
-    slug: `_${slug}`,
-    prefixes: [`https://${slug}.example.test`],
-    headerName: "Authorization",
-    headerTemplate: "Bearer {{secret}}",
-  });
+  return await connectors.createCustomConnector(
+    actor,
+    manualHttpCustomConnectorCreateBody({
+      displayName: `Connector ${slug}`,
+      slug: `_${slug}`,
+      prefixTemplates: [`https://${slug}.example.test`],
+    }),
+  );
 }
 
 async function createCustomConnector(actor: ApiTestUser, slug: string) {
@@ -94,14 +98,15 @@ async function createPermissionedCustomConnector(
   actor: ApiTestUser,
   slug: string,
 ) {
-  return await connectors.createCustomConnector(actor, {
-    displayName: `Connector ${slug}`,
-    slug: `_${slug}`,
-    prefixes: [`https://${slug}.example.test`],
-    headerName: "Authorization",
-    headerTemplate: "Bearer {{secret}}",
-    permissionBundleRef: "builtin:slack@1",
-  });
+  return await connectors.createCustomConnector(
+    actor,
+    manualHttpCustomConnectorCreateBody({
+      displayName: `Connector ${slug}`,
+      slug: `_${slug}`,
+      prefixTemplates: [`https://${slug}.example.test`],
+      permissionBundleRef: "builtin:slack@1",
+    }),
+  );
 }
 
 describe("GET /api/zero/custom-connectors/:id/permissions", () => {

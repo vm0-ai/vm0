@@ -1008,7 +1008,7 @@ describe("createApp", () => {
         },
       });
 
-      expect(MINIMUM_WEB_CLIENT_VERSION).toBe("0.722.0");
+      expect(MINIMUM_WEB_CLIENT_VERSION).toBe("0.724.0");
       expect(response.status).toBe(CLIENT_FORCE_UPGRADE_STATUS);
       await expect(response.json()).resolves.toStrictEqual({
         error: "Client update required",

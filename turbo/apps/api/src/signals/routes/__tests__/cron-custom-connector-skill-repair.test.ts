@@ -14,7 +14,10 @@ import { createDeferredPromise } from "../../utils";
 import { cronCustomConnectorSkillRepairRoutes } from "../cron-custom-connector-skill-repair";
 import { testCustomConnectorSkillRepairStateRoutes } from "../test-custom-connector-skill-repair-state";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
-import { createConnectorBddApi } from "./helpers/api-bdd-connectors";
+import {
+  createConnectorBddApi,
+  manualHttpCustomConnectorCreateBody,
+} from "./helpers/api-bdd-connectors";
 
 const context = testContext();
 const bdd = createBddApi(context);
@@ -51,14 +54,15 @@ async function createConnector(
   context.mocks.clerk.organizations.getOrganizationMembershipList.mockResolvedValue(
     { data: [{ publicUserData: { userId: actor.userId } }] },
   );
-  const connector = await connectorsApi.createCustomConnector(actor, {
-    displayName: `Repair ${slug}`,
-    slug,
-    prefixes: [`https://${slug.slice(1)}.example.test/v1/`],
-    headerName: "Authorization",
-    headerTemplate: "Bearer {{secret}}",
-    skillMarkdown,
-  });
+  const connector = await connectorsApi.createCustomConnector(
+    actor,
+    manualHttpCustomConnectorCreateBody({
+      displayName: `Repair ${slug}`,
+      slug,
+      prefixTemplates: [`https://${slug.slice(1)}.example.test/v1/`],
+      skillMarkdown,
+    }),
+  );
   if (connector.kind !== "http") {
     throw new Error("Expected an HTTP custom connector");
   }
