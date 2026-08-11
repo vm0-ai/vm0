@@ -154,6 +154,49 @@ async fn sparse_copy_times_out_when_copy_blocks() {
     let err = sparse_copy_with_timeout(&source, &destination, std::time::Duration::ZERO)
         .await
         .unwrap_err();
+    let message = err.to_string();
 
-    assert!(err.to_string().contains("timed out after"));
+    assert!(message.contains("timed out after"));
+    assert!(message.contains(&source.display().to_string()));
+    assert!(message.contains(&destination.display().to_string()));
+}
+
+#[tokio::test]
+async fn sparse_copy_reports_failed_command_stderr() {
+    let dir = tempfile::tempdir().unwrap();
+    let source = dir.path().join("missing.ext4");
+    let destination = dir.path().join("out.ext4");
+
+    let err = sparse_copy_with_timeout(&source, &destination, std::time::Duration::from_secs(1))
+        .await
+        .unwrap_err();
+    let message = err.to_string();
+    let (_, stderr) = message.split_once(" failed: ").unwrap();
+
+    assert!(message.contains("cp --sparse=always --no-dereference"));
+    assert!(message.contains(&source.display().to_string()));
+    assert!(message.contains(&destination.display().to_string()));
+    assert!(!stderr.trim().is_empty());
+}
+
+#[tokio::test]
+async fn sparse_copy_preserves_non_utf8_paths() {
+    use std::ffi::OsString;
+    use std::os::unix::ffi::OsStringExt;
+
+    let dir = tempfile::tempdir().unwrap();
+    let source = dir
+        .path()
+        .join(OsString::from_vec(b"source-\xff.ext4".to_vec()));
+    let destination = dir
+        .path()
+        .join(OsString::from_vec(b"destination-\xff.ext4".to_vec()));
+    let content = b"workspace image";
+    tokio::fs::write(&source, content).await.unwrap();
+
+    sparse_copy_with_timeout(&source, &destination, std::time::Duration::from_secs(1))
+        .await
+        .unwrap();
+
+    assert_eq!(tokio::fs::read(destination).await.unwrap(), content);
 }

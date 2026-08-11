@@ -5,6 +5,7 @@ import {
   type ArtifactCatalogSignals,
 } from "../artifacts-page/create-artifact-catalog-signals.ts";
 import { artifactDetailPreview } from "../artifacts-page/artifact-catalog-signals.ts";
+import { createAttachmentResourceUrl$ } from "../attachment-resource-url.ts";
 import { fetchPreviewText, isTextPreviewKind } from "../text-preview.ts";
 import { resetSignal } from "../utils.ts";
 
@@ -38,6 +39,7 @@ export type ArtifactRef = {
   readonly url: string;
   readonly kind: ArtifactPreviewKind;
   readonly filename: string;
+  readonly resourceUrl$: Computed<Promise<string>>;
   readonly shareAvailable?: boolean;
   readonly releaseObjectUrl?: () => void;
 };
@@ -52,6 +54,7 @@ export type ArtifactMetadataRef = {
   readonly url: string;
   readonly filename: string;
   readonly contentType?: string;
+  readonly resourceUrl$?: Computed<Promise<string>>;
   readonly shareAvailable?: boolean;
 };
 
@@ -99,6 +102,7 @@ export interface ThreadSidebarSignals {
    * with the thread signals themselves on a thread switch.
    */
   readonly artifactCatalog: ArtifactCatalogSignals;
+  readonly selectedArtifactResourceUrl$: Computed<Promise<string>>;
   readonly selectedArtifactText$: Computed<Promise<string>>;
   /**
    * Session resources for an open artifacts list: refresh the first page in
@@ -130,12 +134,20 @@ export function createThreadSidebarSignals(
   const artifactCatalog = createArtifactCatalogSignals({
     chatThreadId: threadId,
   });
-  const selectedArtifactText$ = computed(async (get): Promise<string> => {
+  const selectedArtifactPreview$ = computed(async (get) => {
     const detail = await get(artifactCatalog.selectedArtifactDetail$);
     if (!detail) {
       throw new Error("Selected artifact is unavailable");
     }
-    const preview = artifactDetailPreview(detail);
+    return artifactDetailPreview(detail);
+  });
+  const selectedArtifactUrl$ = computed(async (get): Promise<string> => {
+    return (await get(selectedArtifactPreview$)).url;
+  });
+  const selectedArtifactResourceUrl$ =
+    createAttachmentResourceUrl$(selectedArtifactUrl$);
+  const selectedArtifactText$ = computed(async (get): Promise<string> => {
+    const preview = await get(selectedArtifactPreview$);
     if (!isTextPreviewKind(preview.kind)) {
       throw new Error("Selected artifact is not a text preview");
     }
@@ -222,6 +234,7 @@ export function createThreadSidebarSignals(
       });
     }),
     artifactCatalog,
+    selectedArtifactResourceUrl$,
     selectedArtifactText$,
     setupArtifactsSession$,
   };

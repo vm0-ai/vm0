@@ -355,6 +355,7 @@ function ThreadArtifactDetail({
         url: preview.url,
         kind: preview.kind,
         filename: preview.filename,
+        resourceUrl$: sidebar.selectedArtifactResourceUrl$,
       }}
       thread={thread}
       text$={sidebar.selectedArtifactText$}
