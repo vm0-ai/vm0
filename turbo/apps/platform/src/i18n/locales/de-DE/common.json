@@ -334,6 +334,7 @@
       "slack": "Slack",
       "teams": "Teams",
       "telegram": "Telegram",
+      "templateImport": "Vorlagenimport",
       "test": "Test",
       "web": "Web",
       "webhook": "Webhook"

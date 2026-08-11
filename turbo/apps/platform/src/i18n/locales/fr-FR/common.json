@@ -348,6 +348,7 @@
       "slack": "Slack",
       "teams": "Teams",
       "telegram": "Telegram",
+      "templateImport": "Importation de modèle",
       "test": "Test",
       "web": "Web",
       "webhook": "Webhook"
