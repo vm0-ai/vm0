@@ -23,87 +23,96 @@ import {
 } from "../../../../signals/locale.ts";
 import { detach, Reason } from "../../../../signals/utils.ts";
 
-interface LanguageSelectContentProps {
-  readonly availableLocales: readonly SupportedLocale[];
+interface LanguageSelectItem {
+  readonly label: string;
+  readonly value: SupportedLocale;
+}
+
+function useLanguageSelectItems(
+  availableLocales: readonly SupportedLocale[],
+): LanguageSelectItem[] {
+  const { t } = useTranslation();
+  const items: LanguageSelectItem[] = [
+    {
+      value: "en-US",
+      label: t(($) => {
+        return $.settings.preferences.language.options.english;
+      }),
+    },
+    {
+      value: "pt-BR",
+      label: t(($) => {
+        return $.settings.preferences.language.options.portugueseBrazil;
+      }),
+    },
+    {
+      value: "ja-JP",
+      label: t(($) => {
+        return $.settings.preferences.language.options.japanese;
+      }),
+    },
+    {
+      value: "ko-KR",
+      label: t(($) => {
+        return $.settings.preferences.language.options.korean;
+      }),
+    },
+    {
+      value: "id-ID",
+      label: t(($) => {
+        return $.settings.preferences.language.options.indonesian;
+      }),
+    },
+    {
+      value: "de-DE",
+      label: t(($) => {
+        return $.settings.preferences.language.options.german;
+      }),
+    },
+    {
+      value: "es-ES",
+      label: t(($) => {
+        return $.settings.preferences.language.options.spanish;
+      }),
+    },
+    {
+      value: "it-IT",
+      label: t(($) => {
+        return $.settings.preferences.language.options.italian;
+      }),
+    },
+    {
+      value: "fr-FR",
+      label: t(($) => {
+        return $.settings.preferences.language.options.french;
+      }),
+    },
+    {
+      value: "hi-IN",
+      label: t(($) => {
+        return $.settings.preferences.language.options.hindi;
+      }),
+    },
+  ];
+  return items.filter((item) => {
+    return availableLocales.includes(item.value);
+  });
 }
 
 function LanguageSelectContent({
-  availableLocales,
-}: LanguageSelectContentProps) {
-  const { t } = useTranslation();
-
+  items,
+}: {
+  readonly items: LanguageSelectItem[];
+}) {
   return (
     <SelectContent className="max-h-64">
-      {availableLocales.includes("en-US") && (
-        <SelectItem value="en-US">
-          {t(($) => {
-            return $.settings.preferences.language.options.english;
-          })}
-        </SelectItem>
-      )}
-      {availableLocales.includes("pt-BR") && (
-        <SelectItem value="pt-BR">
-          {t(($) => {
-            return $.settings.preferences.language.options.portugueseBrazil;
-          })}
-        </SelectItem>
-      )}
-      {availableLocales.includes("ja-JP") && (
-        <SelectItem value="ja-JP">
-          {t(($) => {
-            return $.settings.preferences.language.options.japanese;
-          })}
-        </SelectItem>
-      )}
-      {availableLocales.includes("ko-KR") && (
-        <SelectItem value="ko-KR">
-          {t(($) => {
-            return $.settings.preferences.language.options.korean;
-          })}
-        </SelectItem>
-      )}
-      {availableLocales.includes("id-ID") && (
-        <SelectItem value="id-ID">
-          {t(($) => {
-            return $.settings.preferences.language.options.indonesian;
-          })}
-        </SelectItem>
-      )}
-      {availableLocales.includes("de-DE") && (
-        <SelectItem value="de-DE">
-          {t(($) => {
-            return $.settings.preferences.language.options.german;
-          })}
-        </SelectItem>
-      )}
-      {availableLocales.includes("es-ES") && (
-        <SelectItem value="es-ES">
-          {t(($) => {
-            return $.settings.preferences.language.options.spanish;
-          })}
-        </SelectItem>
-      )}
-      {availableLocales.includes("it-IT") && (
-        <SelectItem value="it-IT">
-          {t(($) => {
-            return $.settings.preferences.language.options.italian;
-          })}
-        </SelectItem>
-      )}
-      {availableLocales.includes("fr-FR") && (
-        <SelectItem value="fr-FR">
-          {t(($) => {
-            return $.settings.preferences.language.options.french;
-          })}
-        </SelectItem>
-      )}
-      {availableLocales.includes("hi-IN") && (
-        <SelectItem value="hi-IN">
-          {t(($) => {
-            return $.settings.preferences.language.options.hindi;
-          })}
-        </SelectItem>
-      )}
+      {items.map((item) => {
+        return (
+          <SelectItem key={item.value} value={item.value}>
+            {item.label}
+          </SelectItem>
+        );
+      })}
     </SelectContent>
   );
 }
@@ -117,11 +126,15 @@ export function LanguageSettings() {
   const [updateLoadable, updateLocale] = useLoadableSet(
     updateLocalePreference$,
   );
+  const availableLocales =
+    availableLocalesLoadable.state === "hasData"
+      ? availableLocalesLoadable.data
+      : [];
+  const languageItems = useLanguageSelectItems(availableLocales);
   if (availableLocalesLoadable.state !== "hasData") {
     return null;
   }
 
-  const availableLocales = availableLocalesLoadable.data;
   const hasSelectableLocale = availableLocales.some((availableLocale) => {
     return availableLocale !== "en-US";
   });
@@ -164,7 +177,12 @@ export function LanguageSettings() {
           </div>
         </div>
         <div className="w-full shrink-0 sm:w-40">
-          <Select value={locale} disabled={saving} onValueChange={handleChange}>
+          <Select
+            items={languageItems}
+            value={locale}
+            disabled={saving}
+            onValueChange={handleChange}
+          >
             <SelectTrigger
               aria-label={t(($) => {
                 return $.settings.preferences.language.label;
@@ -173,7 +191,7 @@ export function LanguageSettings() {
             >
               <SelectValue />
             </SelectTrigger>
-            <LanguageSelectContent availableLocales={availableLocales} />
+            <LanguageSelectContent items={languageItems} />
           </Select>
         </div>
       </div>

@@ -329,7 +329,7 @@ export function ZeroPreferencesPage() {
             <TabsList className="zero-tabs h-9 gap-1 px-1 py-1">
               <TabsTrigger
                 value="appearance"
-                className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
+                className="gap-1.5 text-sm data-active:bg-background px-3"
               >
                 {t(($) => {
                   return $.settings.preferences.tabs.appearance;
@@ -337,7 +337,7 @@ export function ZeroPreferencesPage() {
               </TabsTrigger>
               <TabsTrigger
                 value="timezone"
-                className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
+                className="gap-1.5 text-sm data-active:bg-background px-3"
               >
                 {t(($) => {
                   return $.settings.preferences.tabs.timezone;
@@ -346,7 +346,7 @@ export function ZeroPreferencesPage() {
               {showModelConfiguration && (
                 <TabsTrigger
                   value="model-configuration"
-                  className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
+                  className="gap-1.5 text-sm data-active:bg-background px-3"
                 >
                   {t(($) => {
                     return $.settings.preferences.tabs.models;
@@ -356,7 +356,7 @@ export function ZeroPreferencesPage() {
               {showDebug && (
                 <TabsTrigger
                   value="debug"
-                  className="gap-1.5 text-sm data-[state=active]:bg-background px-3"
+                  className="gap-1.5 text-sm data-active:bg-background px-3"
                 >
                   {t(($) => {
                     return $.settings.preferences.debug.tab;

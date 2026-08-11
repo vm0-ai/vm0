@@ -4779,11 +4779,12 @@ describe("connectors page", () => {
     const accessDialog = await screen.findByRole("dialog", {
       name: "Manage Acme MCP access",
     });
-    expect(
-      within(accessDialog).getByLabelText(
-        "Authorize Acme MCP access for Support",
-      ),
-    ).toBeDisabled();
+    const supportAccessSwitch = within(accessDialog).getByLabelText(
+      "Authorize Acme MCP access for Support",
+    );
+    expect(supportAccessSwitch).toHaveAttribute("aria-disabled", "true");
+    click(supportAccessSwitch);
+    expect(authorizationUpdates).toHaveLength(0);
     click(
       within(accessDialog).getByLabelText(
         "Revoke Acme MCP access for Research",
@@ -4805,8 +4806,14 @@ describe("connectors page", () => {
         within(accessDialog).getByLabelText(
           "Authorize Acme MCP access for Research",
         ),
-      ).toBeDisabled();
+      ).toHaveAttribute("aria-disabled", "true");
     });
+    click(
+      within(accessDialog).getByLabelText(
+        "Authorize Acme MCP access for Research",
+      ),
+    );
+    expect(authorizationUpdates).toHaveLength(1);
     click(within(accessDialog).getByLabelText("Close"));
     await waitFor(() => {
       expect(
@@ -5478,9 +5485,6 @@ describe("connectors page", () => {
 
     const editDialog = await screen.findByRole("dialog", {
       name: "Edit custom connector",
-    });
-    await waitFor(() => {
-      expect(editDialog).toHaveStyle({ pointerEvents: "auto" });
     });
     await fill(
       within(editDialog).getByLabelText("Display name"),

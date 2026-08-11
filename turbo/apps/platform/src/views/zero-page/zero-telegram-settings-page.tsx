@@ -1421,7 +1421,7 @@ function TelegramBotAgentSelect({
     <Select
       value={selectedValue}
       disabled={disabled || options.length === 0}
-      onValueChange={onDomEventFn(async (nextAgentId) => {
+      onValueChange={onDomEventFn(async (nextAgentId: string) => {
         if (nextAgentId === selectedValue) {
           return;
         }

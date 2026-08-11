@@ -757,7 +757,7 @@ function ProviderTypeSelect({
 
   return (
     <Select
-      value={value ?? undefined}
+      value={value}
       onValueChange={(next) => {
         onChange(next as ModelProviderType);
       }}
@@ -913,7 +913,7 @@ function GatewayProviderSection({
         })}
       </label>
       <Select
-        value={surfaceId ?? undefined}
+        value={surfaceId}
         onValueChange={(next) => {
           const selected = options.find((option) => {
             return option.surface.id === next;
@@ -1148,7 +1148,7 @@ function ModelSelectionField({
         })}
       </label>
       <Select
-        value={selectedModel ?? undefined}
+        value={selectedModel}
         onValueChange={(next) => {
           onChange(next as SupportedRunModel);
         }}

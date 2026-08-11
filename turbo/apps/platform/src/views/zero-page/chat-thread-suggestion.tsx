@@ -44,7 +44,7 @@ export function ComposerMentionSuggestionMenu({
       onOpenAutoFocus={(event) => {
         event.preventDefault();
       }}
-      className="flex h-[min(16rem,var(--radix-popover-content-available-height))] w-[260px] max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden p-0 md:h-[min(20rem,var(--radix-popover-content-available-height))]"
+      className="flex h-[min(16rem,var(--available-height))] w-[260px] max-w-[calc(100vw-1.5rem)] flex-col overflow-hidden p-0 md:h-[min(20rem,var(--available-height))]"
       data-testid="chat-thread-suggestion-menu"
     >
       <div className="min-h-0 flex-1 overflow-y-auto px-1.5 pb-1.5">

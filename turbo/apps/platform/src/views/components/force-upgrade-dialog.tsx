@@ -29,19 +29,13 @@ export function ForceUpgradeDialog({
   const { t } = useTranslation();
 
   return (
-    <Dialog open={open}>
-      <DialogContent
-        className="max-w-md [&_[aria-label='Close']]:hidden"
-        onEscapeKeyDown={(event) => {
-          event.preventDefault();
-        }}
-        onInteractOutside={(event) => {
-          event.preventDefault();
-        }}
-        onPointerDownOutside={(event) => {
-          event.preventDefault();
-        }}
-      >
+    <Dialog
+      open={open}
+      onOpenChange={(_nextOpen, eventDetails) => {
+        eventDetails.cancel();
+      }}
+    >
+      <DialogContent className="max-w-md [&_[aria-label='Close']]:hidden">
         <DialogHeader>
           <DialogTitle>
             {t(($) => {

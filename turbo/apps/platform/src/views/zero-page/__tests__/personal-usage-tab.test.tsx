@@ -339,9 +339,12 @@ describe("personal usage settings", () => {
     expect(screen.queryByText("Quarterly planning chat")).toBeNull();
 
     await user.hover(within(card).getByTestId("usage-pack-credit-purchased"));
-    const tooltip = await screen.findByRole("tooltip");
-    expect(tooltip).toHaveTextContent("Purchased — 20,000");
-    expect(tooltip).toHaveTextContent("Expires Apr 1, 2026");
+    await expect(
+      screen.findByText("Purchased — 20,000"),
+    ).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByText("Expires Apr 1, 2026"),
+    ).resolves.toBeInTheDocument();
 
     await user.click(
       within(card).getByTestId("usage-pack-credit-grants-toggle"),

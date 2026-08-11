@@ -59,7 +59,7 @@ import {
 
 const GOOGLE_DRIVE_CONNECTOR_SLUG = "google-drive";
 const ARTIFACT_FLOATING_LAYER_CLASS =
-  "!z-[10000] transition-[opacity,transform] duration-[180ms] ease data-[state=open]:!animate-none data-[state=closed]:!animate-none data-[state=open]:translate-y-0 data-[state=open]:opacity-100 data-[state=closed]:translate-y-2 data-[state=closed]:opacity-0";
+  "!z-[10000] transition-[opacity,transform] duration-[180ms] ease data-open:!animate-none data-closed:!animate-none data-open:translate-y-0 data-open:opacity-100 data-closed:translate-y-2 data-closed:opacity-0";
 
 function siteSlugFromUrl(value: string): string | null {
   if (!URL.canParse(value)) {
@@ -602,7 +602,7 @@ function ArtifactDownloadTrigger({
       disabled={downloadPending}
       className={iconButtonClassName(
         cn(
-          "data-[state=open]:bg-state-hover data-[state=open]:text-foreground disabled:pointer-events-none disabled:opacity-70",
+          "data-popup-open:bg-state-hover data-popup-open:text-foreground disabled:pointer-events-none disabled:opacity-70",
           className,
         ),
       )}

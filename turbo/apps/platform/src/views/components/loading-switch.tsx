@@ -3,7 +3,7 @@ import { Switch, cn } from "@vm0/ui";
 
 /** Track/thumb sizing shared with plain `Switch` when toggles must align (e.g. settings rows). */
 const compactSwitchClassName =
-  "shrink-0 h-5 w-9 data-[state=checked]:bg-primary data-[state=unchecked]:bg-muted [&>span]:h-4 [&>span]:w-4 [&>span]:data-[state=checked]:translate-x-4";
+  "shrink-0 h-5 w-9 data-checked:bg-primary data-unchecked:bg-muted [&>span]:h-4 [&>span]:w-4 [&>span]:data-checked:translate-x-4";
 
 interface LoadingSwitchProps {
   checked: boolean;
