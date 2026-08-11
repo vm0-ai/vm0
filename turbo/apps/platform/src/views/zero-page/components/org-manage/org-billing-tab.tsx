@@ -1351,7 +1351,7 @@ function ConcurrencyQuantityControl({
           }
           variant="quiet"
           size="icon-sm"
-          className="rounded-l-lg disabled:cursor-not-allowed disabled:opacity-40"
+          className="rounded-l-lg disabled:opacity-40"
           onClick={() => {
             onQuantityChange(quantity - 1);
           }}
@@ -1371,7 +1371,7 @@ function ConcurrencyQuantityControl({
           }
           variant="quiet"
           size="icon-sm"
-          className="rounded-r-lg disabled:cursor-not-allowed disabled:opacity-40"
+          className="rounded-r-lg disabled:opacity-40"
           onClick={() => {
             onQuantityChange(quantity + 1);
           }}

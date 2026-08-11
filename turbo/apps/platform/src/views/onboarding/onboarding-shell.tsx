@@ -114,7 +114,7 @@ export function OnboardingFooter({
         aria-busy={busy}
         variant="default"
         size="lg"
-        className="min-w-[100px] gap-2 disabled:cursor-not-allowed disabled:bg-[hsl(var(--primary-500))]"
+        className="min-w-[100px] gap-2 disabled:bg-[hsl(var(--primary-500))]"
       >
         {busy ? (
           <Loader2 size={16} className="animate-spin" aria-hidden="true" />

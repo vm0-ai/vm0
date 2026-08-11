@@ -393,7 +393,7 @@ function ConcurrencyQuantityControl({
             disabled={quantity <= CONCURRENCY_QUANTITY_MIN || loading}
             variant="quiet"
             size="icon"
-            className="rounded-l-lg disabled:cursor-not-allowed disabled:opacity-40"
+            className="rounded-l-lg disabled:opacity-40"
             onClick={() => {
               onQuantityChange(quantity - 1);
             }}
@@ -411,7 +411,7 @@ function ConcurrencyQuantityControl({
             disabled={quantity >= CONCURRENCY_QUANTITY_MAX || loading}
             variant="quiet"
             size="icon"
-            className="rounded-r-lg disabled:cursor-not-allowed disabled:opacity-40"
+            className="rounded-r-lg disabled:opacity-40"
             onClick={() => {
               onQuantityChange(quantity + 1);
             }}
