@@ -1184,6 +1184,10 @@ export function resetApiTestMocks(): void {
   apiTestMocks.stripe.paymentMethods.list.mockReset();
   apiTestMocks.stripe.paymentMethods.list.mockResolvedValue({ data: [] });
   apiTestMocks.stripe.invoices.list.mockReset();
+  apiTestMocks.stripe.invoices.list.mockResolvedValue({
+    data: [],
+    has_more: false,
+  });
   apiTestMocks.stripe.invoices.retrieve.mockReset();
   apiTestMocks.stripe.invoices.create.mockReset();
   apiTestMocks.stripe.invoices.createPreview.mockReset();
