@@ -2667,6 +2667,24 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     await connectorsApi.deleteCustomConnector(admin, original.id);
   });
 
+  it("rejects the retired legacy HTTP create body", async () => {
+    const admin = createBddApi(context).user({ orgRole: "org:admin" });
+    const response = await connectorsApi.requestCreateCustomConnectorRaw(
+      admin,
+      {
+        displayName: "BDD Retired Legacy Create",
+        prefixes: ["https://retired-legacy.example.test/v1/"],
+        headerName: "Authorization",
+        headerTemplate: "Bearer {{secret}}",
+      },
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "BAD_REQUEST" },
+    });
+  });
+
   it("creates, patches, secrets, enables for an agent, rejects cross-org ids, and deletes through APIs", async () => {
     const bdd = createBddApi(context);
     bdd.acceptAgentStorageWrites();
