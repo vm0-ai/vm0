@@ -1,5 +1,8 @@
 import { command } from "ccstate";
-import { downloadAttachmentUrl } from "../views/zero-page/zero-attachment-url.ts";
+import {
+  downloadAttachmentUrl,
+  publicAttachmentUrl,
+} from "../views/zero-page/zero-attachment-url.ts";
 import { attachmentResourceUrlResolver$ } from "./attachment-resource-url.ts";
 
 type AttachmentDownload = {
@@ -18,13 +21,10 @@ export const downloadAttachment$ = command(
     signal: AbortSignal,
   ): Promise<void> => {
     const resolveResourceUrl = get(attachmentResourceUrlResolver$);
-    await downloadAttachmentUrl(
-      attachment.url,
-      signal,
-      attachment.filename,
-      (url) => {
-        return get(resolveResourceUrl(url));
-      },
+    const resourceUrl = await get(
+      resolveResourceUrl(publicAttachmentUrl(attachment.url)),
     );
+    signal.throwIfAborted();
+    await downloadAttachmentUrl(resourceUrl, signal, attachment.filename);
   },
 );

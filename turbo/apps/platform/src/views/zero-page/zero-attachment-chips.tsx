@@ -28,6 +28,7 @@ import type {
 import type { ZeroChatAttachment } from "../../signals/zero-page/chat-draft";
 import type { ChatPanelSignals } from "../../signals/chat-page/chat-panel-signals.ts";
 import { downloadAttachment$ } from "../../signals/attachment-download.ts";
+import { pageSignal$ } from "../../signals/page-signal.ts";
 import { rootSignal$ } from "../../signals/root-signal.ts";
 import {
   currentLeftThread$,
@@ -1438,13 +1439,13 @@ export function FileAttachmentChip({
 }) {
   const { t } = useTranslation();
   const downloadAttachment = useSet(downloadAttachment$);
-  const rootSignal = useGet(rootSignal$);
+  const pageSignal = useGet(pageSignal$);
   return (
     <button
       type="button"
       onClick={() => {
         detach(
-          downloadAttachment({ filename, url }, rootSignal),
+          downloadAttachment({ filename, url }, pageSignal),
           Reason.DomCallback,
           "attachment download",
         );
