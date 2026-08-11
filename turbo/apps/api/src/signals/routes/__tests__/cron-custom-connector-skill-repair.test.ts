@@ -456,7 +456,7 @@ describe.sequential("custom connector skill repair cron", () => {
     expect(s3PutCalls()).toHaveLength(0);
   });
 
-  it("keeps user-created Feishu adapters on ordinary skill metadata", async () => {
+  it("does not infer managed Feishu identity from the adapter alone", async () => {
     const actor = bdd.user({ orgRole: "org:admin" });
     const connector = await createTrackedOauthConnector(
       actor,
