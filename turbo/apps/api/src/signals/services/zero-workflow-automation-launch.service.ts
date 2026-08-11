@@ -1,5 +1,7 @@
 import { randomBytes } from "node:crypto";
 import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
+import { isFeatureEnabled } from "@vm0/core/feature-switch";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { zeroWorkflowAutomations } from "@vm0/db/schema/zero-workflow";
 import { command } from "ccstate";
@@ -21,6 +23,7 @@ import {
   ApiDispatchTimingCollector,
   measureApiDispatchTiming,
 } from "./api-dispatch-timing.service";
+import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { createQueueFirstZeroRun$ } from "./zero-runs-create.service";
 import { workflowAutomationCanFire } from "./zero-workflow-automation-access.service";
 import { loadComputerUseHostGrantForAutoSend } from "./zero-chat-computer-use-host.service";
@@ -566,6 +569,19 @@ export const launchQueuedWorkflowAutomation$ = command(
     });
     signal.throwIfAborted();
 
+    // Automation runs execute as the workflow owner, so they honor the same
+    // preview real-agent opt-in as interactive chat runs.
+    const featureSwitchContext = await loadUserFeatureSwitchContext(
+      db,
+      automation.orgId,
+      automation.ownerUserId,
+    );
+    signal.throwIfAborted();
+    const realAgentInPreviewEnabled = isFeatureEnabled(
+      FeatureSwitchKey.RealAgentInPreview,
+      featureSwitchContext,
+    );
+
     const runInput = await buildTimedWorkflowAutomationRunInput({
       command: args,
       automation,
@@ -590,6 +606,7 @@ export const launchQueuedWorkflowAutomation$ = command(
         body: {
           prompt: runInput.prompt,
           agentId,
+          ...(realAgentInPreviewEnabled ? { realAgentInPreview: true } : {}),
           ...(effectiveModelProvider
             ? { modelProvider: effectiveModelProvider }
             : {}),

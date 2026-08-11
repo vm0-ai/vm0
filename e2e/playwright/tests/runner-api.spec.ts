@@ -404,6 +404,16 @@ test.beforeAll(async ({ browser }, testInfo) => {
   simulator = new SimulatorControl(runner.page.request);
   await simulator.reset();
 
+  // Preview chat runs default to the mock agent runtime; this suite validates
+  // real Claude/Codex behavior, so every account opts into the real runtime.
+  for (const account of [runner, codex, claude]) {
+    await account.api.post(
+      "/api/zero/feature-switches",
+      { switches: { realAgentInPreview: true } },
+      [200],
+    );
+  }
+
   const createdAgentIds = {
     runner: await createAgent(runner, "Runner API E2E"),
     codex: await createAgent(codex, "Runner Real Codex E2E"),
