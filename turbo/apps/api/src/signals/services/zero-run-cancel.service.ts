@@ -10,8 +10,6 @@ import { writeDb$, type Db } from "../external/db";
 import {
   publishCancelToRunnerGroup,
   publishChatThreadDetailChangedSafely,
-  publishOrgSignal,
-  publishUserSignal,
   type RunnerCancellationMode,
 } from "../external/realtime";
 import { logger } from "../../lib/log";
@@ -251,7 +249,6 @@ async function publishRunnerCancellation(
  * Post-cancel side effects:
  *  - Notify the runner group to halt the cancelled run (if it was
  *    running on a runner).
- *  - Publish org-level `queue:changed` and user-level `run:changed`.
  *  - Drain the org queue: promote one queued run to pending. The
  *    runner picks up pending runs on its existing poll loop.
  *  - Reconcile credits via `processOrgUsageEvents$` when the cancelled
@@ -280,32 +277,6 @@ export const dispatchCancelSideEffects$ = command(
     const db = set(writeDb$);
     await publishCancellationRecoveryEntered(result, signal);
     await publishRunnerCancellation(result, signal);
-    if (!recoveryRedrive) {
-      await tapError(
-        publishOrgSignal(result.orgId, "queue:changed"),
-        (error) => {
-          L.error("Failed to publish queue changed after run cancellation", {
-            runId: result.runId,
-            orgId: result.orgId,
-            error,
-          });
-        },
-      );
-      signal.throwIfAborted();
-      await tapError(
-        publishUserSignal([result.userId], `run:changed:${result.runId}`, {
-          status: "cancelled",
-        }),
-        (error) => {
-          L.error("Failed to publish cancelled run changed signal", {
-            runId: result.runId,
-            userId: result.userId,
-            error,
-          });
-        },
-      );
-      signal.throwIfAborted();
-    }
 
     const chatCallbackId = await chatCallbackIdForRun(db, result.runId);
     signal.throwIfAborted();

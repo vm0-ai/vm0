@@ -699,7 +699,6 @@ function QueueDrawerContent() {
 export function QueueDrawer() {
   const { t } = useTranslation();
   const open = useGet(queueDrawerOpen$);
-  const pageSignal = useGet(pageSignal$);
   const setOpen = useSet(setQueueDrawerOpen$);
   const resetConcurrencyQuantity = useSet(resetConcurrencyQuantity$);
 
@@ -708,7 +707,7 @@ export function QueueDrawer() {
       open={open}
       onOpenChange={(v) => {
         if (!v) {
-          setOpen(false, pageSignal);
+          setOpen(false);
           resetConcurrencyQuantity();
         }
       }}

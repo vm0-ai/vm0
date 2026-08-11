@@ -10,7 +10,6 @@ import { logger } from "../../lib/log";
 import { isForeignKeyViolation } from "../../lib/pg-errors";
 import { now } from "../../lib/time";
 import type { SandboxAuth } from "../../types/auth";
-import { publishRunChangedForUserSafely } from "../external/realtime";
 import { refreshAgentPhoneTypingEvents$ } from "./agent-event-consumer-agentphone-typing.service";
 import { ingestAxiomEvents } from "./agent-event-consumer-axiom.service";
 import {
@@ -169,12 +168,6 @@ export const dispatchOptionalAgentEventConsumers$ = command(
     }
 
     const range = eventRange(payload.events);
-    await publishRunChangedForUserSafely(
-      payload.context.userId,
-      payload.runId,
-      range,
-    );
-    signal.throwIfAborted();
     await axiomTrace;
     signal.throwIfAborted();
     L.debug(

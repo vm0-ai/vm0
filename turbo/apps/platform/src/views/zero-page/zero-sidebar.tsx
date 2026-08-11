@@ -22,7 +22,6 @@ import {
   cn,
 } from "@vm0/ui";
 import { settingsIconAssetUrl } from "./components/settings/settings-icon-assets.ts";
-import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   sidebarOff$,
   toggleSidebarOff$,
@@ -166,9 +165,8 @@ function useResolvedNavItems() {
 function useNavSelect() {
   const rawOnSelect = useSet(handleZeroNavSelect$);
   const setExpanded = useSet(setSidebarExpanded$);
-  const pageSignal = useGet(pageSignal$);
   return (id: SidebarNavId) => {
-    rawOnSelect(id, pageSignal);
+    rawOnSelect(id);
     setExpanded(false);
   };
 }

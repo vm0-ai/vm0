@@ -172,10 +172,6 @@ import { VERCEL_AUTOMATION_BYPASS_ENV } from "../../lib/preview-automation-bypas
 import { previewAutomationBypass$ } from "../context/hono";
 import { writeDb$, type Db } from "../external/db";
 import { getDatasetName, ingestToAxiom } from "../external/axiom";
-import {
-  publishOrgSignal,
-  publishRunChangedForUserSafely,
-} from "../external/realtime";
 import { now, nowDate } from "../../lib/time";
 import { generateZeroToken } from "../auth/tokens";
 import { onRejection, safeSync, settle, tapError } from "../utils";
@@ -6135,19 +6131,6 @@ export function recordThreadSessionBindingRetryTelemetry(
   }
 }
 
-async function publishQueueChangedSafely(args: {
-  readonly orgId: string;
-  readonly runId: string;
-}): Promise<void> {
-  await tapError(publishOrgSignal(args.orgId, "queue:changed"), (error) => {
-    L.warn("Failed to publish queue changed signal after queued launch", {
-      orgId: args.orgId,
-      runId: args.runId,
-      error,
-    });
-  });
-}
-
 function buildStoredExecutionSecrets(args: {
   readonly connectorContext: ConnectorRuntimeContext;
   readonly modelProvider: ResolvedModelProviderEnvironment | null;
@@ -7125,13 +7108,6 @@ async function commitFailedLaunch(args: {
     });
   }
 
-  await publishRunChangedForUserSafely(
-    args.createArgs.userId,
-    args.identity.runId,
-    {
-      status: "failed",
-    },
-  );
   if (args.createArgs.dispatchFailedCallbacks) {
     await tapError(
       args.createArgs.dispatchFailedCallbacks(
@@ -8834,12 +8810,12 @@ function prepareRunContext(
   );
 }
 
-async function committedAtomicLaunchResponse(args: {
+function committedAtomicLaunchResponse(args: {
   readonly createArgs: CreateAgentRunArgs;
   readonly committed: CommittedAtomicLaunchResult;
   readonly timing: ApiDispatchTimingCollector;
   readonly launch: PreparedRunnerLaunch;
-}): Promise<Extract<CreateRunRouteResult, { readonly status: 201 }>> {
+}): Extract<CreateRunRouteResult, { readonly status: 201 }> {
   if (args.committed.threadSessionBinding) {
     recordThreadSessionBindingTelemetry({
       binding: args.committed.threadSessionBinding,
@@ -8853,10 +8829,6 @@ async function committedAtomicLaunchResponse(args: {
       timestamp: args.committed.telemetryTimestamp,
     });
     ingestRunContextSnapshot(args.committed.runContextSnapshot);
-    await publishQueueChangedSafely({
-      orgId: args.createArgs.orgId,
-      runId: args.committed.run.id,
-    });
     args.timing.flush({
       runId: args.committed.run.id,
       runnerGroup: args.committed.runnerJobPayload.runnerGroup,
@@ -8976,7 +8948,7 @@ function isQueuePayloadRequiredResult(
   );
 }
 
-async function finalizeAtomicLaunchCommit(
+function finalizeAtomicLaunchCommit(
   args: {
     readonly input: AtomicLaunchRunInput;
     readonly identity: LaunchRunIdentity;
@@ -8984,7 +8956,7 @@ async function finalizeAtomicLaunchCommit(
     readonly committed: AtomicLaunchCommitAttempt;
   },
   signal: AbortSignal,
-): Promise<QueueFirstAgentRunResult | QueuePayloadRequiredResult> {
+): QueueFirstAgentRunResult | QueuePayloadRequiredResult {
   if (isReturnableRouteError(args.committed, signal)) {
     return args.committed;
   }
@@ -9003,7 +8975,7 @@ async function finalizeAtomicLaunchCommit(
   if (args.committed.kind === "queue-payload-required") {
     return args.committed;
   }
-  return await committedAtomicLaunchResponse({
+  return committedAtomicLaunchResponse({
     createArgs: args.input.args,
     committed: args.committed,
     timing: args.input.timing,
@@ -9032,7 +9004,7 @@ async function completeQueuePayloadLaunch(
 
   if (!encryptedQueuedParams.ok) {
     const retried = await args.commitLaunch(undefined);
-    const finalizedRetry = await finalizeAtomicLaunchCommit(
+    const finalizedRetry = finalizeAtomicLaunchCommit(
       {
         input: args.input,
         identity: args.identity,
@@ -9057,7 +9029,7 @@ async function completeQueuePayloadLaunch(
   }
 
   const committed = await args.commitLaunch(encryptedQueuedParams.value);
-  const finalized = await finalizeAtomicLaunchCommit(
+  const finalized = finalizeAtomicLaunchCommit(
     {
       input: args.input,
       identity: args.identity,
@@ -9158,7 +9130,7 @@ function createAtomicLaunchRun(
     };
 
     const committed = await commitLaunch(undefined);
-    const finalized = await finalizeAtomicLaunchCommit(
+    const finalized = finalizeAtomicLaunchCommit(
       {
         input,
         identity,

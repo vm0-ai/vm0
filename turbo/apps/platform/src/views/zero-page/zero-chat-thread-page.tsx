@@ -4981,7 +4981,6 @@ function ThinkingLabel({
 }) {
   const { t } = useTranslation();
   const openQueueDrawer = useSet(openQueueDrawer$);
-  const pageSignal = useGet(pageSignal$);
 
   if (isQueued) {
     const waitingIn = t(($) => {
@@ -5005,7 +5004,7 @@ function ThinkingLabel({
         <button
           type="button"
           onClick={() => {
-            openQueueDrawer(pageSignal);
+            openQueueDrawer();
           }}
           className="cursor-pointer underline underline-offset-2"
         >
