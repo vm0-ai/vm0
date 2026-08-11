@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.420.4](https://github.com/vm0-ai/vm0/compare/api-v1.420.3...api-v1.420.4) (2026-08-11)
+
+
+### Bug Fixes
+
+* **connectors:** reconcile custom and builtin firewall candidates ([#26186](https://github.com/vm0-ai/vm0/issues/26186)) ([53ce4b8](https://github.com/vm0-ai/vm0/commit/53ce4b865a2e15de2941591051ffc4e7c4a3e8c9))
+
+
+### Performance Improvements
+
+* **runner:** observe immediate successor intent ([#26150](https://github.com/vm0-ai/vm0/issues/26150)) ([b70479b](https://github.com/vm0-ai/vm0/commit/b70479b296eccd27dc51f7c6acaf9635e4eba094))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.310.3
+    * @vm0/core bumped to 8.541.3
+    * @vm0/db bumped to 1.190.4
+    * @vm0/pi-agent-runtime bumped to 1.3.36
+
 ## [1.420.3](https://github.com/vm0-ai/vm0/compare/api-v1.420.2...api-v1.420.3) (2026-08-11)
 
 
