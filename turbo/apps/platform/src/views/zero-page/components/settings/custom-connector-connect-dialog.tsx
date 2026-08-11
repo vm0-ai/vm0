@@ -1,6 +1,6 @@
 import type { FormEvent } from "react";
 
-import type { CustomConnectorHttpResponse } from "@vm0/api-contracts/contracts/zero-custom-connectors";
+import type { CustomConnectorResponse } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import {
   Button,
   Dialog,
@@ -265,7 +265,7 @@ export function CustomConnectorConnectDialog({
   onClose,
   onSuccess,
 }: {
-  readonly connector: CustomConnectorHttpResponse;
+  readonly connector: CustomConnectorResponse;
   readonly agentId?: string;
   readonly onClose?: () => void;
   readonly onSuccess?: () => void | Promise<void>;
