@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use sandbox::GuestProcessControlHandle;
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, warn};
+use tracing::warn;
 
 use crate::active_input::{ActiveInputBatch, ActiveInputPayload, ActiveInputSource};
 use crate::ids::RunId;
@@ -127,13 +127,10 @@ async fn forward_text(
     // Process control requires a request correlation key. It is deliberately
     // runner-internal and has no active-input identity or deduplication semantics.
     let correlation_id = format!("active-input:{run_id}:{delivery_sequence}");
-    match control
+    if let Err(error) = control
         .control_owned(correlation_id, bytes, ACTIVE_INPUT_CONTROL_TIMEOUT)
         .await
     {
-        Ok(_) => debug!(run_id = %run_id, "forwarded active input"),
-        Err(error) => {
-            warn!(run_id = %run_id, error = %error, "active-input forward failed; dropping input")
-        }
+        warn!(run_id = %run_id, error = %error, "active-input forward failed; dropping input");
     }
 }
