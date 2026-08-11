@@ -83,11 +83,11 @@ export const ARCHIVE_SCHEMA_VERSION = 4;
 const ARCHIVE_CONTENT_TYPE = "application/x-ndjson";
 const ARCHIVE_CONTENT_ENCODING = "gzip";
 /**
- * At the 10-minute cron cadence this cap permits 72k changed threads per day.
+ * At the 10-minute cron cadence this cap permits 144k changed threads per day.
  * Normal traffic re-archives roughly 700 active threads per day, so the cap
  * leaves ample room for bursts while keeping each invocation bounded.
  */
-const DEFAULT_THREAD_BATCH_SIZE = 500;
+const DEFAULT_THREAD_BATCH_SIZE = 1000;
 const EVENT_PAGE_SIZE = 1000;
 const DEFAULT_R2_GC_GRACE_HOURS = 24 * 7;
 const R2_GC_SHARDS_PER_RUN = 16;
