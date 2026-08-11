@@ -5,6 +5,7 @@ interface OrgTierLimits {
   readonly baseConcurrencyLimit: number;
   readonly canBuyConcurrency: boolean;
   readonly canBuyCredits: boolean;
+  readonly memberInvitationAllowed: boolean;
   readonly autoRechargeAllowed: boolean;
   readonly supportByok: boolean;
   readonly restrictedVm0Models: boolean;
@@ -26,6 +27,7 @@ export const ORG_PLAN_ENTITLEMENT_TIER_VALUES: Readonly<
     baseConcurrencyLimit: 1,
     canBuyConcurrency: false,
     canBuyCredits: true,
+    memberInvitationAllowed: false,
     autoRechargeAllowed: false,
     supportByok: true,
     restrictedVm0Models: false,
@@ -40,6 +42,7 @@ export const ORG_PLAN_ENTITLEMENT_TIER_VALUES: Readonly<
     baseConcurrencyLimit: 1,
     canBuyConcurrency: false,
     canBuyCredits: false,
+    memberInvitationAllowed: false,
     autoRechargeAllowed: false,
     supportByok: false,
     restrictedVm0Models: true,
@@ -54,6 +57,7 @@ export const ORG_PLAN_ENTITLEMENT_TIER_VALUES: Readonly<
     baseConcurrencyLimit: 0,
     canBuyConcurrency: false,
     canBuyCredits: false,
+    memberInvitationAllowed: false,
     autoRechargeAllowed: false,
     supportByok: false,
     restrictedVm0Models: true,
@@ -68,6 +72,7 @@ export const ORG_PLAN_ENTITLEMENT_TIER_VALUES: Readonly<
     baseConcurrencyLimit: 2,
     canBuyConcurrency: false,
     canBuyCredits: true,
+    memberInvitationAllowed: true,
     autoRechargeAllowed: true,
     supportByok: true,
     restrictedVm0Models: false,
@@ -82,6 +87,7 @@ export const ORG_PLAN_ENTITLEMENT_TIER_VALUES: Readonly<
     baseConcurrencyLimit: 10,
     canBuyConcurrency: true,
     canBuyCredits: true,
+    memberInvitationAllowed: true,
     autoRechargeAllowed: true,
     supportByok: true,
     restrictedVm0Models: false,
@@ -96,6 +102,7 @@ export const ORG_PLAN_ENTITLEMENT_TIER_VALUES: Readonly<
     baseConcurrencyLimit: 10,
     canBuyConcurrency: true,
     canBuyCredits: true,
+    memberInvitationAllowed: true,
     autoRechargeAllowed: true,
     supportByok: true,
     restrictedVm0Models: false,

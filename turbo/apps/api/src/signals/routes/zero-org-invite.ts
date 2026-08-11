@@ -35,6 +35,16 @@ const adminRequired = Object.freeze({
   }),
 });
 
+const memberInvitationUpgradeRequired = Object.freeze({
+  status: 403 as const,
+  body: Object.freeze({
+    error: Object.freeze({
+      message: "Upgrade to Pro to invite members",
+      code: "FORBIDDEN",
+    }),
+  }),
+});
+
 const inviteBody$ = bodyResultOf(zeroOrgInviteContract.invite);
 
 async function usagePackInvitationsEnabled(
@@ -67,6 +77,9 @@ const inviteInner$ = command(async ({ get }, signal: AbortSignal) => {
     const db = get(db$);
     const capabilities = await loadOrgPlanCapabilities(db, auth.orgId);
     signal.throwIfAborted();
+    if (!capabilities?.memberInvitationAllowed) {
+      return memberInvitationUpgradeRequired;
+    }
     if (capabilities?.memberInviteUsagePackRequired) {
       if (!(await usagePackInvitationPurchaseSchemaAvailable(db))) {
         return providerUnavailable("Usage pack invitations are not ready");
@@ -169,6 +182,11 @@ const purchaseInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
   signal.throwIfAborted();
   const readDb = get(db$);
+  const capabilities = await loadOrgPlanCapabilities(readDb, auth.orgId);
+  signal.throwIfAborted();
+  if (!capabilities?.memberInvitationAllowed) {
+    return memberInvitationUpgradeRequired;
+  }
   if (!(await usagePackInvitationPurchaseSchemaAvailable(readDb))) {
     return providerUnavailable("Usage pack invitations are not ready");
   }
