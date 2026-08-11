@@ -1,20 +1,26 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import {
-  clerkSetup,
-  setupClerkTestingToken,
-} from "@clerk/testing/playwright";
+import { clerkSetup, setupClerkTestingToken } from "@clerk/testing/playwright";
 import { chromium } from "@playwright/test";
 
-import { signInWithClerkTestingHelper } from "./lib/auth";
+import {
+  refreshClerkSessionToken,
+  signInWithClerkTestingHelper,
+} from "./lib/auth";
 import { issueCliToken } from "./lib/cli-token";
 import { runnerTestAccounts } from "./lib/clerk-api";
+import {
+  startVideoOnboardingCheckout,
+  waitForPaidOnboardingCompletion,
+} from "./lib/onboarding";
+import { fillStripeCheckout } from "./lib/stripe-checkout";
 
 interface RunnerCredentialTarget {
   readonly email: string;
   readonly fileName: string;
   readonly organizationId: string;
+  readonly upgradeToPro: boolean;
 }
 
 async function main(): Promise<void> {
@@ -32,6 +38,7 @@ async function main(): Promise<void> {
       email: accounts.runner,
       fileName: "e2e-api-credentials-runner.json",
       organizationId: requiredEnvironmentVariable("E2E_RUNNER_ORGANIZATION_ID"),
+      upgradeToPro: false,
     },
     {
       email: accounts.codex,
@@ -39,6 +46,7 @@ async function main(): Promise<void> {
       organizationId: requiredEnvironmentVariable(
         "E2E_RUNNER_CODEX_ORGANIZATION_ID",
       ),
+      upgradeToPro: false,
     },
     {
       email: accounts.claude,
@@ -46,6 +54,7 @@ async function main(): Promise<void> {
       organizationId: requiredEnvironmentVariable(
         "E2E_RUNNER_CLAUDE_ORGANIZATION_ID",
       ),
+      upgradeToPro: true,
     },
   ];
   const vercelAutomationBypassSecret =
@@ -67,12 +76,20 @@ async function main(): Promise<void> {
       try {
         await setupClerkTestingToken({ context });
         const page = await context.newPage();
-        const clerkSessionToken = await signInWithClerkTestingHelper(
+        let clerkSessionToken = await signInWithClerkTestingHelper(
           page,
           target.email,
           appUrl,
           { activeOrganizationId: target.organizationId },
         );
+        if (target.upgradeToPro) {
+          await startVideoOnboardingCheckout(page, { appUrl });
+          await fillStripeCheckout(page);
+          await waitForPaidOnboardingCompletion(page, { appUrl });
+          clerkSessionToken = await refreshClerkSessionToken(page, {
+            activeOrganizationId: target.organizationId,
+          });
+        }
         const token = await issueCliToken({
           apiUrl,
           clerkSessionToken,
