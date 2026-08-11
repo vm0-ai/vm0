@@ -62,8 +62,22 @@ case "$url" in
       }'
     ;;
   */versions/*)
-    jq -n --arg commit "$TARGET_COMMIT" \
-      '{success: true, result: {annotations: {"workers/tag": $commit}}}'
+    jq -n \
+      --arg commit "$TARGET_COMMIT" \
+      --argjson cpu_ms "$MOCK_CPU_MS" \
+      --arg usage_model "$MOCK_USAGE_MODEL" \
+      '{
+        success: true,
+        result: {
+          annotations: {"workers/tag": $commit},
+          resources: {
+            script_runtime: {
+              limits: {cpu_ms: $cpu_ms},
+              usage_model: $usage_model
+            }
+          }
+        }
+      }'
     ;;
   *)
     echo "unexpected curl URL: $url" >&2
@@ -89,7 +103,9 @@ run_script() {
     CLOUDFLARE_API_TOKEN=test-token \
     GITHUB_OUTPUT="$output_file" \
     MOCK_BOUNDARY_LOG="$boundary_log" \
+    MOCK_CPU_MS="${MOCK_CPU_MS:-300000}" \
     MOCK_DEPLOYMENTS_FILE="$deployments_file" \
+    MOCK_USAGE_MODEL="${MOCK_USAGE_MODEL:-standard}" \
     MOCK_VERSION_COUNT="${MOCK_VERSION_COUNT:-1}" \
     TARGET_COMMIT="$target_commit" \
     TARGET_VERSION_ID="$candidate_version" \
@@ -113,6 +129,22 @@ resolved=$(run_script "${tmp_dir}/resolve.output" resolve)
 
 optional_resolved=$(run_script "${tmp_dir}/resolve-optional.output" resolve-optional)
 [ "$optional_resolved" = "$candidate_version" ] || fail "unexpected optional resolved version: $optional_resolved"
+
+runtime_output=$(run_script "${tmp_dir}/runtime.output" verify-runtime)
+grep -q 'cpu_ms=300000, usage_model=standard' <<<"$runtime_output" ||
+  fail "runtime limits were not verified"
+
+if MOCK_CPU_MS=30000 run_script "${tmp_dir}/runtime-cpu.output" verify-runtime \
+  >"${tmp_dir}/runtime-cpu.log" 2>&1; then
+  fail "default Worker CPU limit should fail runtime verification"
+fi
+grep -q 'got 30000' "${tmp_dir}/runtime-cpu.log" || fail "CPU limit failure was not reported"
+
+if MOCK_USAGE_MODEL=bundled run_script "${tmp_dir}/runtime-usage.output" verify-runtime \
+  >"${tmp_dir}/runtime-usage.log" 2>&1; then
+  fail "non-standard Worker usage model should fail runtime verification"
+fi
+grep -q 'got bundled' "${tmp_dir}/runtime-usage.log" || fail "usage model failure was not reported"
 
 MOCK_VERSION_COUNT=0
 optional_missing=$(run_script "${tmp_dir}/resolve-optional-missing.output" resolve-optional)

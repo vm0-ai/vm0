@@ -1179,6 +1179,8 @@ jobs:
           else
             echo "Reusing immutable vm0-api-production version ${version_id} for ${TARGET_COMMIT}."
           fi
+          TARGET_VERSION_ID="$version_id" \
+            bash ../.github/scripts/api-worker-version.sh verify-runtime
           echo "version-id=$version_id" >>"$GITHUB_OUTPUT"
 
       - name: Upload isolated API Worker candidate version
@@ -1215,6 +1217,8 @@ jobs:
           else
             echo "Reusing immutable vm0-api-production-candidate version ${version_id} for ${TARGET_COMMIT}."
           fi
+          TARGET_VERSION_ID="$version_id" \
+            bash ../.github/scripts/api-worker-version.sh verify-runtime
           echo "version-id=$version_id" >>"$GITHUB_OUTPUT"
 
       - name: Reconcile isolated API Worker candidate routing

@@ -133,6 +133,22 @@ verify_active_version() {
   echo "Verified ${worker_name} version ${TARGET_VERSION_ID} at 100%."
 }
 
+verify_runtime() {
+  require_env TARGET_VERSION_ID
+  local version cpu_ms usage_model
+  version=$(cloudflare_api GET \
+    "/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/scripts/${worker_name}/versions/${TARGET_VERSION_ID}")
+  cpu_ms=$(jq -r '.result.resources.script_runtime.limits.cpu_ms // empty' <<<"$version")
+  usage_model=$(jq -r '.result.resources.script_runtime.usage_model // empty' <<<"$version")
+  if [ "$cpu_ms" != "300000" ]; then
+    fail "${worker_name} version ${TARGET_VERSION_ID} CPU limit must be 300000 ms; got ${cpu_ms:-missing}"
+  fi
+  if [ "$usage_model" != "standard" ]; then
+    fail "${worker_name} version ${TARGET_VERSION_ID} usage model must be standard; got ${usage_model:-missing}"
+  fi
+  echo "Verified ${worker_name} version ${TARGET_VERSION_ID} runtime: cpu_ms=${cpu_ms}, usage_model=${usage_model}."
+}
+
 promote_version() {
   require_env TARGET_VERSION_ID
   create_deployment \
@@ -155,7 +171,10 @@ case "$command" in
   verify-active)
     verify_active_version
     ;;
+  verify-runtime)
+    verify_runtime
+    ;;
   *)
-    fail "Usage: api-worker-version.sh resolve|resolve-optional|promote|verify-active"
+    fail "Usage: api-worker-version.sh resolve|resolve-optional|promote|verify-active|verify-runtime"
     ;;
 esac

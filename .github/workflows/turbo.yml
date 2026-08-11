@@ -1202,6 +1202,9 @@ jobs:
             echo "::error::Wrangler preview alias URL mismatch: expected ${expected_url}, got ${url:-missing}"
             exit 1
           fi
+          CF_API_WORKER_NAME=vm0-api-preview \
+            TARGET_VERSION_ID="$version_id" \
+            bash .github/scripts/api-worker-version.sh verify-runtime
           {
             echo "url=$url"
             echo "version-id=$version_id"

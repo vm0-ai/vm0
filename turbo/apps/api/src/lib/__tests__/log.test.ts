@@ -4,6 +4,11 @@ import { flushLogs, logger, __resetForTest } from "../log";
 import { testContext } from "../../__tests__/test-context";
 
 const { axiomLogging } = testContext().mocks;
+const API_EVENT = {
+  source: "api",
+  environment: "development",
+  git_commit_sha: "test-commit-sha",
+} as const;
 
 beforeEach(() => {
   __resetForTest();
@@ -20,7 +25,7 @@ describe("logToAxiom level dispatch", () => {
     expect(axiomLogging.debug).toHaveBeenCalledWith("hello", {
       key: "value",
       context: "test-debug",
-      [EVENT]: { source: "api" },
+      [EVENT]: API_EVENT,
     });
   });
 
@@ -30,7 +35,7 @@ describe("logToAxiom level dispatch", () => {
 
     expect(axiomLogging.info).toHaveBeenCalledWith("info msg", {
       context: "test-info",
-      [EVENT]: { source: "api" },
+      [EVENT]: API_EVENT,
     });
   });
 
@@ -40,7 +45,7 @@ describe("logToAxiom level dispatch", () => {
 
     expect(axiomLogging.warn).toHaveBeenCalledWith("warning", {
       context: "test-warn",
-      [EVENT]: { source: "api" },
+      [EVENT]: API_EVENT,
     });
   });
 
@@ -50,7 +55,7 @@ describe("logToAxiom level dispatch", () => {
 
     expect(axiomLogging.error).toHaveBeenCalledWith("boom", {
       context: "test-err",
-      [EVENT]: { source: "api" },
+      [EVENT]: API_EVENT,
     });
   });
 
@@ -60,7 +65,7 @@ describe("logToAxiom level dispatch", () => {
 
     expect(axiomLogging.error).toHaveBeenCalledWith("dead", {
       context: "test-fatal",
-      [EVENT]: { source: "api" },
+      [EVENT]: API_EVENT,
     });
   });
 
@@ -71,7 +76,7 @@ describe("logToAxiom level dispatch", () => {
 
     expect(axiomLogging.info).toHaveBeenCalledWith(
       String(obj),
-      expect.objectContaining({ [EVENT]: { source: "api" } }),
+      expect.objectContaining({ [EVENT]: API_EVENT }),
     );
   });
 
@@ -89,12 +94,12 @@ describe("logToAxiom level dispatch", () => {
 
     expect(axiomLogging.info).toHaveBeenCalledWith(
       "[Unreadable]",
-      expect.objectContaining({ [EVENT]: { source: "api" } }),
+      expect.objectContaining({ [EVENT]: API_EVENT }),
     );
   });
 });
 
-// ── Axiom log calls include [EVENT]: { source: "api" } ───────────────────────────────────
+// ── Axiom log calls include the API runtime identity ────────────────────────
 
 describe("Axiom log source field", () => {
   it("includes source: api in info logs", () => {
@@ -103,7 +108,7 @@ describe("Axiom log source field", () => {
 
     expect(axiomLogging.info).toHaveBeenCalledWith(
       "msg",
-      expect.objectContaining({ [EVENT]: { source: "api" } }),
+      expect.objectContaining({ [EVENT]: API_EVENT }),
     );
   });
 
@@ -114,7 +119,7 @@ describe("Axiom log source field", () => {
 
     expect(axiomLogging.error).toHaveBeenCalledWith(
       "fail",
-      expect.objectContaining({ [EVENT]: { source: "api" } }),
+      expect.objectContaining({ [EVENT]: API_EVENT }),
     );
   });
 
@@ -137,7 +142,7 @@ describe("Axiom log source field", () => {
         error: expect.objectContaining({
           message: "[Unreadable]",
         }),
-        [EVENT]: { source: "api" },
+        [EVENT]: API_EVENT,
       }),
     );
   });
@@ -149,7 +154,7 @@ describe("Axiom log source field", () => {
     // context should be from the logger name, not from user fields
     expect(axiomLogging.warn).toHaveBeenCalledWith("msg", {
       context: "ctx-test",
-      [EVENT]: { source: "api" },
+      [EVENT]: API_EVENT,
     });
   });
 
@@ -171,7 +176,7 @@ describe("Axiom log source field", () => {
       orgId: "org-test",
       context: "underbilling-test",
       [EVENT]: {
-        source: "api",
+        ...API_EVENT,
         type: "usage_underbilling",
         reason: "run_not_found",
         underbilling_class: "confirmed",
@@ -202,7 +207,7 @@ describe("Axiom log source field", () => {
         error: { message: "database column missing" },
         context: "unhandled-request-test",
         [EVENT]: {
-          source: "api",
+          ...API_EVENT,
           type: "unhandled_request_error",
           errorSummary: "database column missing",
           route: "/api/test/:id",
@@ -228,7 +233,7 @@ describe("Axiom log source field", () => {
       route: "/api/test/:id",
       method: "GET",
       context: "unknown-type-test",
-      [EVENT]: { source: "api" },
+      [EVENT]: API_EVENT,
     });
   });
 });
@@ -275,7 +280,7 @@ describe("serializeError via logging", () => {
           message: "test error",
           stack: expect.any(String),
         }),
-        [EVENT]: { source: "api" },
+        [EVENT]: API_EVENT,
       }),
     );
   });
@@ -583,7 +588,7 @@ describe("extractFields via logging", () => {
     expect(axiomLogging.info).toHaveBeenCalledWith("data", {
       count: 42,
       context: "extract-obj",
-      [EVENT]: { source: "api" },
+      [EVENT]: API_EVENT,
     });
   });
 
