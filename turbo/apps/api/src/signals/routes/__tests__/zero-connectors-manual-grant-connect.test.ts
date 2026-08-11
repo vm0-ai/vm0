@@ -759,14 +759,17 @@ describe("POST /api/zero/connectors/:connectorSlug/manual-grant", () => {
     const response = await accept(
       client.connect({
         params: { connectorSlug: "stripe" },
-        body: { authMethod: "oauth", values: { apiKey: "sk_test_key" } },
+        body: {
+          authMethod: "app-oauth",
+          values: { apiKey: "sk_test_key" },
+        },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [400],
     );
 
     expect(response.body.error.message).toContain(
-      "stripe oauth auth method does not use a manual grant",
+      "stripe app-oauth auth method does not use a manual grant",
     );
   });
 

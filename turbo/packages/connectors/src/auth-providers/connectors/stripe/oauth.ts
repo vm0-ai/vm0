@@ -3,9 +3,15 @@ import { z } from "zod";
 import type { ConnectorAuthCodeGrantConfig } from "@vm0/connectors/connector-config";
 import { throwOAuthError } from "../../oauth/error";
 
-const STRIPE_TOKEN_URL = "https://connect.stripe.com/oauth/token";
+const STRIPE_CONNECT_TOKEN_URL = "https://connect.stripe.com/oauth/token";
 
-const STRIPE_AUTHORIZATION_URL = "https://connect.stripe.com/oauth/authorize";
+const STRIPE_CONNECT_AUTHORIZATION_URL =
+  "https://connect.stripe.com/oauth/authorize";
+
+const STRIPE_APPS_TOKEN_URL = "https://api.stripe.com/v1/oauth/token";
+
+const STRIPE_APPS_AUTHORIZATION_URL =
+  "https://marketplace.stripe.com/oauth/v2/authorize";
 
 const STRIPE_ACCOUNT_URL = "https://api.stripe.com/v1/account";
 
@@ -29,6 +35,24 @@ interface StripeRefreshResult {
   expiresIn?: number;
 }
 
+const stripeTokenResponseSchema = z.object({
+  access_token: z.string().optional(),
+  livemode: z.boolean(),
+  refresh_token: z.string().nullable().optional(),
+  stripe_user_id: z.string().optional(),
+  scope: z.string().optional(),
+  error: z.string().optional(),
+  error_description: z.string().optional(),
+});
+
+const stripeRefreshResponseSchema = z.object({
+  access_token: z.string().optional(),
+  refresh_token: z.string().nullable().optional(),
+  expires_in: z.number().optional(),
+  error: z.string().optional(),
+  error_description: z.string().optional(),
+});
+
 /**
  * Build Stripe Connect OAuth authorization URL.
  * Uses the Stripe Connect OAuth flow for Standard accounts.
@@ -47,7 +71,26 @@ export function buildStripeAuthorizationUrl(
     state,
   });
 
-  return `${STRIPE_AUTHORIZATION_URL}?${params.toString()}`;
+  return `${STRIPE_CONNECT_AUTHORIZATION_URL}?${params.toString()}`;
+}
+
+/**
+ * Build a Stripe Apps OAuth install URL.
+ * App permissions come from the uploaded Stripe App manifest, not URL scopes.
+ */
+export function buildStripeAppsAuthorizationUrl(
+  _authCodeGrant: ConnectorAuthCodeGrantConfig,
+  clientId: string,
+  redirectUri: string,
+  state: string,
+): string {
+  const params = new URLSearchParams({
+    client_id: clientId,
+    redirect_uri: redirectUri,
+    state,
+  });
+
+  return `${STRIPE_APPS_AUTHORIZATION_URL}?${params.toString()}`;
 }
 
 /**
@@ -60,7 +103,7 @@ export async function exchangeStripeCode(
   clientSecret: string,
   code: string,
 ): Promise<StripeTokenResult> {
-  const response = await fetch(STRIPE_TOKEN_URL, {
+  const response = await fetch(STRIPE_CONNECT_TOKEN_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -72,50 +115,35 @@ export async function exchangeStripeCode(
     }),
   });
 
-  if (!response.ok) {
-    await throwOAuthError("Stripe", "exchange", response);
-  }
-
-  const data = z
-    .object({
-      access_token: z.string().optional(),
-      livemode: z.boolean(),
-      refresh_token: z.string().nullable().optional(),
-      stripe_user_id: z.string().optional(),
-      scope: z.string().optional(),
-      error: z.string().optional(),
-      error_description: z.string().optional(),
-    })
-    .parse(await response.json());
-
-  if (data.error) {
-    throw new Error(data.error_description ?? data.error);
-  }
-
-  if (!data.access_token) {
-    throw new Error("No access token in Stripe response");
-  }
-
-  const stripeUserId = data.stripe_user_id ?? "";
-
-  // Fetch account info for display name and email
-  const userInfo = await fetchStripeAccountInfo(
-    data.access_token,
-    stripeUserId,
-  );
-
-  return {
-    accessToken: data.access_token,
-    livemode: data.livemode,
-    refreshToken: data.refresh_token ?? null,
-    scopes: data.scope ? data.scope.split(" ") : [],
-    userInfo,
-  };
+  return await stripeTokenResult(response);
 }
 
 /**
- * Refresh a Stripe access token using the refresh token.
- * Access token expires_in: 3600s (1 hour). Ref: https://docs.stripe.com/stripe-apps/api-authentication/oauth
+ * Exchange a Stripe Apps authorization code using the app developer secret.
+ */
+export async function exchangeStripeAppsCode(
+  _authCodeGrant: ConnectorAuthCodeGrantConfig,
+  _clientId: string,
+  clientSecret: string,
+  code: string,
+): Promise<StripeTokenResult> {
+  const response = await fetch(STRIPE_APPS_TOKEN_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Basic ${btoa(`${clientSecret}:`)}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: new URLSearchParams({
+      code,
+      grant_type: "authorization_code",
+    }),
+  });
+
+  return await stripeTokenResult(response);
+}
+
+/**
+ * Refresh a legacy Stripe Connect OAuth access token.
  */
 export async function refreshStripeToken(
   _clientId: string,
@@ -123,7 +151,7 @@ export async function refreshStripeToken(
   refreshToken: string,
   signal: AbortSignal,
 ): Promise<StripeRefreshResult> {
-  const response = await fetch(STRIPE_TOKEN_URL, {
+  const response = await fetch(STRIPE_CONNECT_TOKEN_URL, {
     signal,
     method: "POST",
     headers: {
@@ -136,24 +164,75 @@ export async function refreshStripeToken(
     }),
   });
 
+  return await stripeRefreshResult(response);
+}
+
+/**
+ * Refresh a Stripe Apps OAuth token using HTTP Basic client authentication.
+ * Access tokens expire after one hour and refresh tokens roll on every use.
+ */
+export async function refreshStripeAppsToken(
+  _clientId: string,
+  clientSecret: string,
+  refreshToken: string,
+  signal: AbortSignal,
+): Promise<StripeRefreshResult> {
+  const response = await fetch(STRIPE_APPS_TOKEN_URL, {
+    signal,
+    method: "POST",
+    headers: {
+      Authorization: `Basic ${btoa(`${clientSecret}:`)}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: new URLSearchParams({
+      grant_type: "refresh_token",
+      refresh_token: refreshToken,
+    }),
+  });
+
+  return await stripeRefreshResult(response);
+}
+
+async function stripeTokenResult(
+  response: Response,
+): Promise<StripeTokenResult> {
+  if (!response.ok) {
+    await throwOAuthError("Stripe", "exchange", response);
+  }
+
+  const data = stripeTokenResponseSchema.parse(await response.json());
+  if (data.error) {
+    throw new Error(data.error_description ?? data.error);
+  }
+  if (!data.access_token) {
+    throw new Error("No access token in Stripe response");
+  }
+
+  const stripeUserId = data.stripe_user_id ?? "";
+  const userInfo = await fetchStripeAccountInfo(
+    data.access_token,
+    stripeUserId,
+  );
+  return {
+    accessToken: data.access_token,
+    livemode: data.livemode,
+    refreshToken: data.refresh_token ?? null,
+    scopes: data.scope ? data.scope.split(" ") : [],
+    userInfo,
+  };
+}
+
+async function stripeRefreshResult(
+  response: Response,
+): Promise<StripeRefreshResult> {
   if (!response.ok) {
     await throwOAuthError("Stripe", "refresh", response);
   }
 
-  const data = z
-    .object({
-      access_token: z.string().optional(),
-      refresh_token: z.string().nullable().optional(),
-      expires_in: z.number().optional(),
-      error: z.string().optional(),
-      error_description: z.string().optional(),
-    })
-    .parse(await response.json());
-
+  const data = stripeRefreshResponseSchema.parse(await response.json());
   if (data.error) {
     throw new Error(data.error_description ?? data.error);
   }
-
   if (!data.access_token) {
     throw new Error("No access token in Stripe refresh response");
   }

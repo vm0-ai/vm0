@@ -102,6 +102,7 @@ import { slackProvider } from "./connectors/slack/provider";
 import { slockProvider } from "./connectors/slock/provider";
 import { stravaProvider } from "./connectors/strava/provider";
 import {
+  stripeAppsProvider,
   stripeCliProvider,
   stripeProvider,
 } from "./connectors/stripe/provider";
@@ -1062,6 +1063,7 @@ const CONNECTOR_AUTH_METHOD_PROVIDER_ENTRIES = [
   openIdAuthProviderEntry("steam", "openid", steamProvider),
   authCodeRefreshProviderEntry("strava", "oauth", stravaProvider),
   authCodeRefreshProviderEntry("stripe", "oauth", stripeProvider),
+  authCodeRefreshProviderEntry("stripe", "app-oauth", stripeAppsProvider),
   deviceAuthProviderEntry("stripe", "cli", stripeCliProvider),
   authCodeRefreshProviderEntry("supabase", "oauth", supabaseProvider),
   authCodeRefreshProviderEntry("test-oauth", "oauth", testOauthProvider),

@@ -365,6 +365,7 @@ function manualMethod(args: ManualMethodArgs): ConnectorCatalogAuthMethod {
 
 interface StandardOauthMethodArgs {
   readonly connectorSlug: string;
+  readonly authMethodId?: string;
   readonly prefix: string;
   readonly tokenEnvironmentNames: readonly string[];
   readonly additionalValues?: Readonly<Record<string, string>>;
@@ -373,6 +374,7 @@ interface StandardOauthMethodArgs {
   readonly callbackDescription?: string;
   readonly platformEnvironmentNames?: readonly string[];
   readonly storageVersion?: number;
+  readonly visible?: boolean;
 }
 
 function standardOauthMethod(
@@ -388,7 +390,7 @@ function standardOauthMethod(
   };
   return providerMethod({
     connectorSlug: args.connectorSlug,
-    authMethodId: "oauth",
+    authMethodId: args.authMethodId ?? "oauth",
     values,
     envBindings: {
       ...Object.fromEntries(
@@ -407,6 +409,7 @@ function standardOauthMethod(
       args.callbackDescription ?? "Sign in to the test connector provider.",
     scopes: args.scopes,
     refreshableSecrets: [accessTokenName],
+    ...(args.visible === undefined ? {} : { visible: args.visible }),
     ...(args.storageVersion === undefined
       ? {}
       : { storageVersion: args.storageVersion }),
@@ -1527,6 +1530,16 @@ const connectors = [
         additionalValues: { livemode: variable("STRIPE_LIVEMODE") },
         scopes: ["read_write"],
         storageVersion: 2,
+        visible: false,
+      }),
+      standardOauthMethod({
+        connectorSlug: "stripe",
+        authMethodId: "app-oauth",
+        prefix: "STRIPE",
+        tokenEnvironmentNames: ["STRIPE_TOKEN"],
+        additionalValues: { livemode: variable("STRIPE_LIVEMODE") },
+        scopes: ["stripe_apps"],
+        storageVersion: 1,
       }),
       manualMethod({
         fields: [

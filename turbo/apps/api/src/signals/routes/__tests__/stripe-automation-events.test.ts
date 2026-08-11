@@ -75,7 +75,7 @@ async function connectStripeOAuth(
   livemode = true,
 ): Promise<ConnectorResponse> {
   mockStripeConnectorOAuth({ accountId, livemode });
-  const started = await connectors.startOauth(actor, "stripe", "oauth");
+  const started = await connectors.startOauth(actor, "stripe", "app-oauth");
   const state = new URL(started.authorizationUrl).searchParams.get("state");
   if (!state) {
     throw new Error("Expected Stripe OAuth state");

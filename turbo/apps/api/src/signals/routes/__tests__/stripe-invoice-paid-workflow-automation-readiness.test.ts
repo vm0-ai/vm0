@@ -143,7 +143,7 @@ async function connectStripeOAuth(
       : { accessToken: options.accessToken }),
     ...(options.livemode === undefined ? {} : { livemode: options.livemode }),
   });
-  const started = await connectors.startOauth(actor, "stripe", "oauth");
+  const started = await connectors.startOauth(actor, "stripe", "app-oauth");
   const state = new URL(started.authorizationUrl).searchParams.get("state");
   if (!state) {
     throw new Error("Expected Stripe OAuth state");
@@ -245,32 +245,33 @@ describe("Stripe invoice-paid workflow automation readiness", () => {
     expect(rejected.body.error.message).toMatch(/require OAuth/u);
   });
 
-  it("persists a storage-v2 Live OAuth binding and supports the full lifecycle", async () => {
+  it("persists a Stripe Apps OAuth binding and supports the full lifecycle", async () => {
     const scenario = await setupScenario();
     const connected = await connectStripeOAuth(scenario.actor, {
-      accessToken: "stripe-live-storage-v2-token",
+      accessToken: "stripe-live-apps-token",
       code: "stripe-live-storage-v2-code",
     });
     expect(connected.connector).toMatchObject({
       slug: "stripe",
-      authMethod: "oauth",
+      authMethod: "app-oauth",
       externalId: STRIPE_ACCOUNT_ID,
       connectionStatus: "connected",
     });
     expect(connected.provider.tokenBodies).toHaveLength(1);
-    expect(connected.provider.tokenBodies[0]?.get("client_secret")).toBe(
-      "stripe-client-secret",
-    );
+    expect(connected.provider.tokenBodies[0]?.has("client_secret")).toBeFalsy();
+    expect(connected.provider.tokenAuthorizationHeaders).toStrictEqual([
+      `Basic ${btoa("stripe-client-secret:")}`,
+    ]);
     expect(connected.provider.tokenBodies[0]?.get("code")).toBe(connected.code);
     expect(connected.provider.accountAuthorizationHeaders).toStrictEqual([
-      "Bearer stripe-live-storage-v2-token",
+      "Bearer stripe-live-apps-token",
     ]);
 
     const listedConnectors = await connectors.listConnectors(scenario.actor);
     expect(listedConnectors.connectorProvidedBindings).toContainEqual(
       expect.objectContaining({
         connectorSlug: "stripe",
-        authMethod: "oauth",
+        authMethod: "app-oauth",
         namespace: "secrets",
         name: "STRIPE_TOKEN",
         source: {
@@ -303,7 +304,7 @@ describe("Stripe invoice-paid workflow automation readiness", () => {
       },
     });
     expect(JSON.stringify(created.body)).not.toContain(
-      "stripe-live-storage-v2-token",
+      "stripe-live-apps-token",
     );
 
     authenticate(scenario);
@@ -387,7 +388,7 @@ describe("Stripe invoice-paid workflow automation readiness", () => {
     const connected = await connectStripeOAuth(scenario.actor, {
       livemode: false,
     });
-    expect(connected.connector.authMethod).toBe("oauth");
+    expect(connected.connector.authMethod).toBe("app-oauth");
 
     const rejected = await accept(
       createStripeAutomationRequest(scenario),

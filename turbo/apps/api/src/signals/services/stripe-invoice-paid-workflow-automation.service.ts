@@ -82,7 +82,10 @@ async function loadReadyStripeConnection(
   }
 
   const { connection } = loaded;
-  if (connection.runtimeMethod.authMethodId !== "oauth") {
+  if (
+    connection.runtimeMethod.authMethodId !== "oauth" &&
+    connection.runtimeMethod.authMethodId !== "app-oauth"
+  ) {
     return badRequest(STRIPE_OAUTH_REQUIRED_MESSAGE);
   }
   if (connection.needsReconnect) {

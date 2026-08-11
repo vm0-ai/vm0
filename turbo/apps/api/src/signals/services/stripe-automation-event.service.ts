@@ -50,6 +50,7 @@ const STRIPE_DELIVERY_CLAIM_MS = 300_000;
 const STRIPE_DELIVERY_RETRY_BASE_MS = 60_000;
 const STRIPE_DELIVERY_RETRY_MAX_MS = 21_600_000;
 const STRIPE_DELIVERY_RETRY_CUTOFF_MS = 259_200_000;
+const STRIPE_OAUTH_METHOD_IDS = ["oauth", "app-oauth"] as const;
 
 const stripeEventTypeSchema = z.object({
   type: z.string().trim().min(1).max(255),
@@ -513,7 +514,7 @@ async function markStripeConnectorsDeauthorized(
     .where(
       and(
         eq(connectors.connectorSlug, "stripe"),
-        eq(connectors.authMethod, "oauth"),
+        inArray(connectors.authMethod, STRIPE_OAUTH_METHOD_IDS),
         eq(connectors.externalId, args.accountId),
       ),
     )
@@ -584,7 +585,7 @@ async function lockMappedStripeConnectors(
     .where(
       and(
         eq(connectors.connectorSlug, "stripe"),
-        eq(connectors.authMethod, "oauth"),
+        inArray(connectors.authMethod, STRIPE_OAUTH_METHOD_IDS),
         eq(connectors.externalId, args.accountId),
       ),
     )
@@ -615,7 +616,7 @@ async function loadStripeInvoiceFanoutCandidates(
     .where(
       and(
         eq(connectors.connectorSlug, "stripe"),
-        eq(connectors.authMethod, "oauth"),
+        inArray(connectors.authMethod, STRIPE_OAUTH_METHOD_IDS),
         inArray(connectors.id, connectorIds),
         eq(zeroWorkflowAutomations.kind, "event"),
         eq(zeroWorkflowAutomations.eventType, "stripe-invoice-paid"),
@@ -992,7 +993,7 @@ async function loadDeliveryTarget(
         eq(connectors.orgId, zeroWorkflowAutomations.orgId),
         eq(connectors.userId, zeroWorkflowAutomations.ownerUserId),
         eq(connectors.connectorSlug, "stripe"),
-        eq(connectors.authMethod, "oauth"),
+        inArray(connectors.authMethod, STRIPE_OAUTH_METHOD_IDS),
       ),
     )
     .where(eq(zeroWorkflowAutomations.id, delivery.automationId))

@@ -242,8 +242,12 @@ CANVA_OAUTH_CLIENT_SECRET=op://Development/canva/CANVA_OAUTH_CLIENT_SECRET
 WEBFLOW_OAUTH_CLIENT_ID=op://Development/webflow/WEBFLOW_OAUTH_CLIENT_ID
 WEBFLOW_OAUTH_CLIENT_SECRET=op://Development/webflow/WEBFLOW_OAUTH_CLIENT_SECRET
 
-# Optional: Stripe OAuth Connector
+# Optional: Legacy Stripe Connect OAuth Connector
 STRIPE_OAUTH_CLIENT_ID=op://Development/stripe/STRIPE_OAUTH_CLIENT_ID
+
+# Optional: Stripe Apps OAuth Connector
+STRIPE_APPS_OAUTH_CLIENT_ID=op://Development/stripe/STRIPE_APPS_OAUTH_CLIENT_ID
+STRIPE_APPS_OAUTH_CLIENT_SECRET=op://Development/stripe/STRIPE_APPS_OAUTH_CLIENT_SECRET
 
 # Optional: Stripe Billing (Vercel AI Gateway metering)
 STRIPE_VERCEL_GATEWAY_REPORT_ACCESS_KEY=op://Development/stripe/STRIPE_VERCEL_GATEWAY_REPORT_ACCESS_KEY
