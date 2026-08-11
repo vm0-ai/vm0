@@ -14,26 +14,47 @@ const globalsCss = readFileSync(
   "utf8",
 );
 
+/**
+ * Returns the declaration body of the rule that `selector` introduces. A class
+ * also appears inside other rules' selector lists, so skip any occurrence that
+ * is not followed directly by its own opening brace.
+ */
 function getCssBlock(selector: string) {
-  const selectorIndex = globalsCss.indexOf(selector);
-  if (selectorIndex === -1) {
-    throw new Error(`Missing CSS selector ${selector}`);
-  }
-  const openingBraceIndex = globalsCss.indexOf("{", selectorIndex);
-  let depth = 0;
+  for (
+    let selectorIndex = globalsCss.indexOf(selector);
+    selectorIndex !== -1;
+    selectorIndex = globalsCss.indexOf(
+      selector,
+      selectorIndex + selector.length,
+    )
+  ) {
+    const openingBraceIndex = globalsCss.indexOf("{", selectorIndex);
+    if (openingBraceIndex === -1) {
+      break;
+    }
+    const betweenSelectorAndBrace = globalsCss.slice(
+      selectorIndex + selector.length,
+      openingBraceIndex,
+    );
+    if (betweenSelectorAndBrace.trim() !== "") {
+      continue;
+    }
 
-  for (let index = openingBraceIndex; index < globalsCss.length; index += 1) {
-    if (globalsCss[index] === "{") {
-      depth += 1;
-    } else if (globalsCss[index] === "}") {
-      depth -= 1;
-      if (depth === 0) {
-        return globalsCss.slice(openingBraceIndex + 1, index);
+    let depth = 0;
+    for (let index = openingBraceIndex; index < globalsCss.length; index += 1) {
+      if (globalsCss[index] === "{") {
+        depth += 1;
+      } else if (globalsCss[index] === "}") {
+        depth -= 1;
+        if (depth === 0) {
+          return globalsCss.slice(openingBraceIndex + 1, index);
+        }
       }
     }
+    break;
   }
 
-  throw new Error(`Missing CSS block for ${selector}`);
+  throw new Error(`Missing CSS rule for ${selector}`);
 }
 
 describe("RunningIndicator", () => {
