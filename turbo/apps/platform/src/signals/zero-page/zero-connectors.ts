@@ -1,7 +1,10 @@
 import { command, computed, state, type Command, type Computed } from "ccstate";
 import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
-import { zeroAgentCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
+import {
+  zeroAgentCustomConnectorsContract,
+  type AgentCustomConnectorGrant,
+} from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";
 import { firewallPermissionMetadataByConnector } from "../firewall-permission-metadata.ts";
@@ -26,7 +29,7 @@ import {
 export interface ComposerConnectorAuthorizationState {
   readonly agentId: string;
   readonly enabledConnectorSlugs: readonly ConnectorSlug[];
-  readonly enabledCustomConnectorIds: readonly string[];
+  readonly customConnectorGrants: readonly AgentCustomConnectorGrant[];
 }
 
 export type ComposerConnectorAuthorizationTarget =
@@ -37,6 +40,7 @@ export type ComposerConnectorAuthorizationTarget =
   | {
       readonly kind: "custom";
       readonly connectorId: string;
+      readonly permissionBundleRef: string | null;
     };
 
 export interface ComposerConnectorUiState {
@@ -96,12 +100,12 @@ interface AgentCustomConnectorAuthorizationRequestBroker {
     readonly createClient: ZeroClientFactory;
     readonly agentId: string;
     readonly reloadGeneration: number;
-  }): Promise<readonly string[]>;
+  }): Promise<readonly AgentCustomConnectorGrant[]>;
 }
 
 interface ResolvedAgentCustomConnectorAuthorizationRequest {
   readonly key: string;
-  readonly value: readonly string[];
+  readonly value: readonly AgentCustomConnectorGrant[];
 }
 
 function agentCustomConnectorAuthorizationRequestKey(params: {
@@ -114,7 +118,7 @@ function agentCustomConnectorAuthorizationRequestKey(params: {
 function createAgentCustomConnectorAuthorizationRequestBroker(): AgentCustomConnectorAuthorizationRequestBroker {
   const pendingRequestsByClient = new WeakMap<
     ZeroClientFactory,
-    Map<string, Promise<readonly string[]>>
+    Map<string, Promise<readonly AgentCustomConnectorGrant[]>>
   >();
   const latestRequestedKeyByClient = new WeakMap<ZeroClientFactory, string>();
   const latestResolvedByClient = new WeakMap<
@@ -140,13 +144,13 @@ function createAgentCustomConnectorAuthorizationRequestBroker(): AgentCustomConn
         return pendingRequest;
       }
 
-      const load = async (): Promise<readonly string[]> => {
+      const load = async (): Promise<readonly AgentCustomConnectorGrant[]> => {
         const client = params.createClient(zeroAgentCustomConnectorsContract);
         const result = await accept(
           client.get({ params: { id: params.agentId } }),
           [200],
         );
-        const value = result.body.enabledIds;
+        const value = result.body.grants;
         if (latestRequestedKeyByClient.get(params.createClient) === key) {
           latestResolvedByClient.set(params.createClient, { key, value });
         }
@@ -197,14 +201,14 @@ function createConnectorAuthorizationSignal(
   });
 
   return computed(async (get): Promise<ComposerConnectorAuthorizationState> => {
-    const [authorizations, enabledCustomConnectorIds] = await Promise.all([
+    const [authorizations, customConnectorGrants] = await Promise.all([
       get(authorizations$),
       get(customAuthorizations$),
     ]);
     return {
       agentId: authorizations.agentId,
       enabledConnectorSlugs: authorizations.enabledConnectorSlugs,
-      enabledCustomConnectorIds,
+      customConnectorGrants,
     };
   });
 }
@@ -261,7 +265,12 @@ function createCustomConnectorAuthorizationCommand(
           client.update({
             params: { id: agentId },
             body: {
-              enabledIds: [connectorId],
+              grants: [
+                {
+                  customConnectorId: connectorId,
+                  permissionNames: [],
+                },
+              ],
               operation: authorized ? "add" : "remove",
             },
             fetchOptions: { signal },
@@ -297,6 +306,9 @@ function createConnectorAuthorizationCommand(
           authorized,
           signal,
         );
+        return;
+      }
+      if (authorized && target.permissionBundleRef) {
         return;
       }
       await set(

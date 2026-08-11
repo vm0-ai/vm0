@@ -49,6 +49,7 @@ export {
 } from "./components/ui/command";
 export {
   DropdownMenu,
+  DropdownMenuPortal,
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -103,7 +104,7 @@ export {
   TableRow,
   TableCell,
 } from "./components/ui/table";
-export { Tabs, TabsList, TabsTrigger } from "./components/ui/tabs";
+export { Tabs, TabsList, TabsTrigger, TabsContent } from "./components/ui/tabs";
 export { Textarea } from "./components/ui/textarea";
 export {
   Tooltip,

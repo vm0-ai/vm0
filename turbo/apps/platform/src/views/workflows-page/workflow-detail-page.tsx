@@ -1136,7 +1136,7 @@ function DetailHeader({
 }
 
 const WORKFLOW_TAB_TRIGGER_CLASS =
-  "gap-1.5 px-3 text-sm data-[state=active]:bg-background";
+  "gap-1.5 px-3 text-sm data-active:bg-background";
 
 function WorkflowTabNav({
   activeTab,
@@ -2279,7 +2279,7 @@ function WorkflowCopyForm({
           </p>
         ) : (
           <Select
-            value={form.selectedAgentId ?? undefined}
+            value={form.selectedAgentId}
             disabled={!agentsLoaded}
             onValueChange={(value) => {
               onChange({ ...form, selectedAgentId: value });
@@ -7938,11 +7938,16 @@ function GithubWorkflowRunAutomationFields({
                 key={option.value}
                 className="flex items-center gap-2 text-xs text-foreground"
               >
-                <Checkbox
+                {/* Native input: the shared `Checkbox` renders a Base UI hidden
+                    input that carries `name` but not `value`, so it would submit
+                    "on" and this filter reads `FormData.getAll(name)`. */}
+                <input
+                  type="checkbox"
                   name="conclusions"
                   value={option.value}
                   disabled={disabled}
                   defaultChecked={filters?.conclusions?.includes(option.value)}
+                  className="size-4 accent-primary"
                 />
                 {option.label}
               </label>
@@ -8009,11 +8014,14 @@ function GithubCheckboxFilters<T extends string>({
               key={option.value}
               className="flex items-center gap-2 text-xs text-foreground"
             >
-              <Checkbox
+              {/* Native input: see the note in GithubConclusionFilters. */}
+              <input
+                type="checkbox"
                 name={name}
                 value={option.value}
                 disabled={disabled}
                 defaultChecked={selected?.includes(option.value)}
+                className="size-4 accent-primary"
               />
               {option.label}
             </label>
@@ -9929,7 +9937,7 @@ function AutomationMoreActionsMenu({
               aria-label={i18n.t(($) => {
                 return $.workflows.automations.common.moreActions;
               })}
-              className="h-8 w-8 shrink-0 rounded-lg text-muted-foreground hover:bg-state-selected-hover hover:text-foreground data-[state=open]:bg-state-selected-hover data-[state=open]:text-foreground"
+              className="h-8 w-8 shrink-0 rounded-lg text-muted-foreground hover:bg-state-selected-hover hover:text-foreground data-popup-open:bg-state-selected-hover data-popup-open:text-foreground"
             >
               <EllipsisVertical size={14} />
             </Button>

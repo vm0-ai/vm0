@@ -12,6 +12,7 @@ import {
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import {
   zeroAgentCustomConnectorsContract,
+  type AgentCustomConnectorGrant,
   type AgentCustomConnectorResponse,
   type AgentCustomConnectorUpdate,
 } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
@@ -3590,8 +3591,15 @@ describe("connectors page", () => {
       zeroAgentCustomConnectorsContract.get,
       ({ params, respond }) => {
         agentAccessReads += 1;
+        const grants: AgentCustomConnectorGrant[] =
+          params.id === researchAgentId
+            ? [{ customConnectorId: connector.id, permissionNames: [] }]
+            : [];
         return respond(200, {
-          enabledIds: params.id === researchAgentId ? [connector.id] : [],
+          enabledIds: grants.map((grant) => {
+            return grant.customConnectorId;
+          }),
+          grants,
         });
       },
     );
@@ -3691,23 +3699,33 @@ describe("connectors page", () => {
         };
         let next: AgentCustomConnectorResponse;
         if ("grants" in body) {
-          next = {
-            enabledIds: body.grants.map((grant) => {
+          const requestedIds = new Set(
+            body.grants.map((grant) => {
               return grant.customConnectorId;
             }),
-            grants: body.grants,
-          };
-        } else if (body.operation === "remove") {
+          );
           next = {
-            enabledIds: current.enabledIds.filter((connectorId) => {
-              return !body.enabledIds.includes(connectorId);
-            }),
-            grants: (current.grants ?? []).filter((grant) => {
-              return !body.enabledIds.includes(grant.customConnectorId);
-            }),
+            grants:
+              body.operation === "remove"
+                ? current.grants.filter((grant) => {
+                    return !requestedIds.has(grant.customConnectorId);
+                  })
+                : body.grants,
+            enabledIds:
+              body.operation === "remove"
+                ? current.grants
+                    .filter((grant) => {
+                      return !requestedIds.has(grant.customConnectorId);
+                    })
+                    .map((grant) => {
+                      return grant.customConnectorId;
+                    })
+                : body.grants.map((grant) => {
+                    return grant.customConnectorId;
+                  }),
           };
         } else {
-          throw new Error("Expected explicit grants or direct removal");
+          throw new Error("Expected canonical custom connector grants");
         }
         accessByAgentId.set(params.id, next);
         return respond(200, next);
@@ -3818,7 +3836,7 @@ describe("connectors page", () => {
       expect(updates[2]).toStrictEqual({
         agentId: supportAgentId,
         body: {
-          enabledIds: [connector.id],
+          grants: [{ customConnectorId: connector.id, permissionNames: [] }],
           operation: "remove",
         },
       });
@@ -3881,7 +3899,15 @@ describe("connectors page", () => {
       zeroAgentCustomConnectorsContract.update,
       ({ respond }) => {
         authorizationUpdates += 1;
-        return respond(200, { enabledIds: [connector.id] });
+        return respond(200, {
+          enabledIds: [connector.id],
+          grants: [
+            {
+              customConnectorId: connector.id,
+              permissionNames: ["messages:send-as-user"],
+            },
+          ],
+        });
       },
     );
     context.mocks.api(
@@ -4066,14 +4092,22 @@ describe("connectors page", () => {
       context.mocks.api(
         zeroAgentCustomConnectorsContract.get,
         ({ respond }) => {
-          return respond(200, { enabledIds: [] });
+          return respond(200, { enabledIds: [], grants: [] });
         },
       );
       context.mocks.api(
         zeroAgentCustomConnectorsContract.update,
         ({ respond }) => {
           authorizationUpdates += 1;
-          return respond(200, { enabledIds: [connector.id] });
+          return respond(200, {
+            enabledIds: [connector.id],
+            grants: [
+              {
+                customConnectorId: connector.id,
+                permissionNames: [],
+              },
+            ],
+          });
         },
       );
       context.mocks.api(
@@ -4142,7 +4176,7 @@ describe("connectors page", () => {
       readonly agentId: string;
       readonly body: AgentCustomConnectorUpdate;
     }[] = [];
-    const enabledIdsByAgent = new Map<string, string[]>([
+    const grantsByAgentId = new Map<string, AgentCustomConnectorGrant[]>([
       [researchAgentId, []],
       [supportAgentId, []],
     ]);
@@ -4245,29 +4279,41 @@ describe("connectors page", () => {
     context.mocks.api(
       zeroAgentCustomConnectorsContract.get,
       ({ params, respond }) => {
+        const grants = grantsByAgentId.get(params.id) ?? [];
         return respond(200, {
-          enabledIds: enabledIdsByAgent.get(params.id) ?? [],
+          enabledIds: grants.map((grant) => {
+            return grant.customConnectorId;
+          }),
+          grants,
         });
       },
     );
     context.mocks.api(
       zeroAgentCustomConnectorsContract.update,
       ({ params, body, respond }) => {
-        if (!("enabledIds" in body)) {
-          throw new Error("Expected custom connector ID authorization");
+        if (!("grants" in body)) {
+          throw new Error("Expected canonical custom connector grants");
         }
         authorizationUpdates.push({ agentId: params.id, body });
-        const current = enabledIdsByAgent.get(params.id) ?? [];
-        const next =
-          body.operation === "add"
-            ? Array.from(new Set([...current, ...body.enabledIds]))
-            : body.operation === "remove"
-              ? current.filter((id) => {
-                  return !body.enabledIds.includes(id);
-                })
-              : [...body.enabledIds];
-        enabledIdsByAgent.set(params.id, next);
-        return respond(200, { enabledIds: next });
+        const current = grantsByAgentId.get(params.id) ?? [];
+        const requestedIds = new Set(
+          body.grants.map((grant) => {
+            return grant.customConnectorId;
+          }),
+        );
+        const grants =
+          body.operation === "remove"
+            ? current.filter((grant) => {
+                return !requestedIds.has(grant.customConnectorId);
+              })
+            : body.grants;
+        grantsByAgentId.set(params.id, grants);
+        return respond(200, {
+          enabledIds: grants.map((grant) => {
+            return grant.customConnectorId;
+          }),
+          grants,
+        });
       },
     );
 
@@ -4387,7 +4433,7 @@ describe("connectors page", () => {
       authorizationUpdates.some(({ agentId, body }) => {
         return (
           agentId === supportAgentId &&
-          "enabledIds" in body &&
+          "grants" in body &&
           body.operation === "remove"
         );
       }),
@@ -4623,8 +4669,16 @@ describe("connectors page", () => {
       connected: true,
       hasSecret: true,
     });
-    const enabledIdsByAgent = new Map<string, string[]>([
-      [researchAgentId, [connector.id]],
+    const grantsByAgentId = new Map<string, AgentCustomConnectorGrant[]>([
+      [
+        researchAgentId,
+        [
+          {
+            customConnectorId: connector.id,
+            permissionNames: [],
+          },
+        ],
+      ],
       [supportAgentId, []],
     ]);
     const authorizationUpdates: AgentCustomConnectorUpdate[] = [];
@@ -4644,23 +4698,38 @@ describe("connectors page", () => {
     context.mocks.api(
       zeroAgentCustomConnectorsContract.get,
       ({ params, respond }) => {
+        const grants = grantsByAgentId.get(params.id) ?? [];
         return respond(200, {
-          enabledIds: enabledIdsByAgent.get(params.id) ?? [],
+          enabledIds: grants.map((grant) => {
+            return grant.customConnectorId;
+          }),
+          grants,
         });
       },
     );
     context.mocks.api(
       zeroAgentCustomConnectorsContract.update,
       ({ params, body, respond }) => {
-        if (!("enabledIds" in body) || body.operation !== "remove") {
+        if (!("grants" in body) || body.operation !== "remove") {
           throw new Error("Expected only MCP authorization removal");
         }
         authorizationUpdates.push(body);
-        const next = (enabledIdsByAgent.get(params.id) ?? []).filter((id) => {
-          return !body.enabledIds.includes(id);
+        const requestedIds = new Set(
+          body.grants.map((grant) => {
+            return grant.customConnectorId;
+          }),
+        );
+        const current = grantsByAgentId.get(params.id) ?? [];
+        const grants = current.filter((grant) => {
+          return !requestedIds.has(grant.customConnectorId);
         });
-        enabledIdsByAgent.set(params.id, next);
-        return respond(200, { enabledIds: next });
+        grantsByAgentId.set(params.id, grants);
+        return respond(200, {
+          enabledIds: grants.map((grant) => {
+            return grant.customConnectorId;
+          }),
+          grants,
+        });
       },
     );
     context.mocks.api(
@@ -4710,11 +4779,12 @@ describe("connectors page", () => {
     const accessDialog = await screen.findByRole("dialog", {
       name: "Manage Acme MCP access",
     });
-    expect(
-      within(accessDialog).getByLabelText(
-        "Authorize Acme MCP access for Support",
-      ),
-    ).toBeDisabled();
+    const supportAccessSwitch = within(accessDialog).getByLabelText(
+      "Authorize Acme MCP access for Support",
+    );
+    expect(supportAccessSwitch).toHaveAttribute("aria-disabled", "true");
+    click(supportAccessSwitch);
+    expect(authorizationUpdates).toHaveLength(0);
     click(
       within(accessDialog).getByLabelText(
         "Revoke Acme MCP access for Research",
@@ -4723,7 +4793,12 @@ describe("connectors page", () => {
     await waitFor(() => {
       expect(authorizationUpdates).toStrictEqual([
         {
-          enabledIds: [connector.id],
+          grants: [
+            {
+              customConnectorId: connector.id,
+              permissionNames: [],
+            },
+          ],
           operation: "remove",
         },
       ]);
@@ -4731,8 +4806,14 @@ describe("connectors page", () => {
         within(accessDialog).getByLabelText(
           "Authorize Acme MCP access for Research",
         ),
-      ).toBeDisabled();
+      ).toHaveAttribute("aria-disabled", "true");
     });
+    click(
+      within(accessDialog).getByLabelText(
+        "Authorize Acme MCP access for Research",
+      ),
+    );
+    expect(authorizationUpdates).toHaveLength(1);
     click(within(accessDialog).getByLabelText("Close"));
     await waitFor(() => {
       expect(
@@ -4807,7 +4888,10 @@ describe("connectors page", () => {
       return respond(200, { connectors: [connector] });
     });
     context.mocks.api(zeroAgentCustomConnectorsContract.get, ({ respond }) => {
-      return respond(200, { enabledIds: [connector.id] });
+      return respond(200, {
+        enabledIds: [connector.id],
+        grants: [{ customConnectorId: connector.id, permissionNames: [] }],
+      });
     });
 
     detachedSetupPage({
@@ -4922,7 +5006,7 @@ describe("connectors page", () => {
       },
     );
     const authWindow = createMockAuthWindow();
-    context.mocks.browser.open(authWindow);
+    const browserOpen = context.mocks.browser.open(authWindow);
     context.mocks.api(
       zeroCustomConnectorOAuth2Contract.start,
       ({ params, respond }) => {
@@ -4960,6 +5044,7 @@ describe("connectors page", () => {
     ).not.toBeInTheDocument();
     expect(authorizationReads).toBe(0);
     click(connectorButton);
+    expect(browserOpen.calls).toHaveLength(1);
     expect(document.querySelector('[role="dialog"]')).not.toBeInTheDocument();
     await waitFor(() => {
       expect(authWindow.location.href).toBe(
@@ -5400,9 +5485,6 @@ describe("connectors page", () => {
 
     const editDialog = await screen.findByRole("dialog", {
       name: "Edit custom connector",
-    });
-    await waitFor(() => {
-      expect(editDialog).toHaveStyle({ pointerEvents: "auto" });
     });
     await fill(
       within(editDialog).getByLabelText("Display name"),

@@ -2508,21 +2508,27 @@ jobs:
 
           RUNNER_START_SUCCEEDED=1
 
-  # Prepare the shared Clerk identities once, then fan future runner coverage
-  # across the same twelve independent shards used by the retired runner suite.
+  # Prepare the runner identities and API credentials once, then fan future
+  # runner coverage across the same twelve independent shards used by the
+  # retired runner suite.
   cli-e2e-03-runner-prepare:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 8
     concurrency:
       group: cli-e2e-03-runner-prepare-${{ needs.prepare.outputs.job-ref }}
       cancel-in-progress: true
-    needs: [prepare]
+    needs: [prepare, deploy-api, deploy-app]
     if: |
+      always() &&
       needs.prepare.outputs.job-ref != '' &&
       (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) &&
-      needs.prepare.outputs.turbo-runner-consumer-needed == 'true'
+      needs.prepare.outputs.turbo-runner-consumer-needed == 'true' &&
+      needs.deploy-api.result == 'success' &&
+      needs.deploy-app.result == 'success'
     outputs:
-      organization-id: ${{ steps.account.outputs.organization-id }}
+      runner-organization-id: ${{ steps.account.outputs.runner-organization-id }}
+      codex-organization-id: ${{ steps.account.outputs.codex-organization-id }}
+      claude-organization-id: ${{ steps.account.outputs.claude-organization-id }}
       runner-email: ${{ steps.account.outputs.runner-email }}
       codex-email: ${{ steps.account.outputs.codex-email }}
       claude-email: ${{ steps.account.outputs.claude-email }}
@@ -2541,6 +2547,97 @@ jobs:
         env:
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
+      - name: Install Playwright browsers
+        run: cd e2e && pnpm exec playwright install --with-deps chromium
+      - name: Generate runner E2E API tokens
+        run: cd e2e && pnpm exec tsx playwright/runner-token.ts /tmp
+        env:
+          VM0_API_BACKEND_URL: ${{ needs.deploy-api.outputs.preview-url }}
+          ZERO_APP_URL: ${{ needs.deploy-app.outputs.preview-url }}
+          CLERK_PUBLISHABLE_KEY: ${{ vars.CLERK_PUBLISHABLE_KEY }}
+          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
+          JOB_REF: ${{ needs.prepare.outputs.job-ref }}
+          E2E_RUNNER_ORGANIZATION_ID: ${{ steps.account.outputs.runner-organization-id }}
+          E2E_RUNNER_CODEX_ORGANIZATION_ID: ${{ steps.account.outputs.codex-organization-id }}
+          E2E_RUNNER_CLAUDE_ORGANIZATION_ID: ${{ steps.account.outputs.claude-organization-id }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+      - name: Upload runner E2E API tokens
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: e2e-tokens
+          path: |
+            /tmp/e2e-api-credentials-runner.json
+            /tmp/e2e-api-credentials-runner-real-codex.json
+            /tmp/e2e-api-credentials-runner-real-claude.json
+          retention-days: 1
+
+  cli-e2e-03-runner-bootstrap:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    concurrency:
+      group: cli-e2e-03-runner-bootstrap-${{ needs.prepare.outputs.job-ref }}
+      cancel-in-progress: true
+    needs:
+      - prepare
+      - deploy-api
+      - cli-e2e-03-runner-prepare
+    if: |
+      always() &&
+      needs.prepare.outputs.job-ref != '' &&
+      needs.prepare.outputs.turbo-runner-consumer-needed == 'true' &&
+      needs.deploy-api.result == 'success' &&
+      needs.cli-e2e-03-runner-prepare.result == 'success'
+    steps:
+      - name: Download runner E2E API tokens
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: e2e-tokens
+          path: /tmp
+      - name: Setup runner E2E API credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          token=$(jq -er '.token | select(type == "string" and length > 0)' /tmp/e2e-api-credentials-runner.json)
+          api_url=$(jq -er '.apiUrl | select(type == "string" and length > 0)' /tmp/e2e-api-credentials-runner.json)
+          echo "::add-mask::$token"
+          echo "E2E_API_TOKEN=$token" >> "$GITHUB_ENV"
+          echo "E2E_API_URL=$api_url" >> "$GITHUB_ENV"
+      - name: Reset runner model defaults
+        shell: bash
+        run: |
+          set -euo pipefail
+          headers=(-H "Authorization: Bearer ${E2E_API_TOKEN}" -H "Content-Type: application/json")
+          if [[ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then
+            headers+=(-H "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}")
+          fi
+
+          # Fresh Clerk organizations bootstrap onto limited-free-1, so the
+          # deterministic runner policy must stay within that plan's catalog.
+          payload="$(jq -nc '{
+            policies: [
+              {model: "deepseek-v4-flash", isDefault: true, defaultProviderType: "vm0", credentialScope: "org", modelProviderId: null},
+              {model: "gpt-5.6-luna", isDefault: false, defaultProviderType: "vm0", credentialScope: "org", modelProviderId: null}
+            ]
+          }')"
+
+          curl -fsS "${headers[@]}" -X PUT -d "$payload" "${E2E_API_URL}/api/zero/model-policies" >/dev/null
+          curl -fsS "${headers[@]}" -X PUT -d '{"selectedModel":null,"serviceTier":null}' "${E2E_API_URL}/api/zero/user-model-preference" >/dev/null
+        env:
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+      - name: Bootstrap runner mock model provider
+        shell: bash
+        run: |
+          set -euo pipefail
+          headers=(-H "Authorization: Bearer ${E2E_API_TOKEN}" -H "Content-Type: application/json")
+          if [[ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then
+            headers+=(-H "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}")
+          fi
+          curl -fsS "${headers[@]}" \
+            -X POST \
+            -d '{"type":"claude-code-oauth-token","secret":"mock-oauth-token-for-e2e"}' \
+            "${E2E_API_URL}/api/zero/model-providers" >/dev/null
+        env:
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
 
   cli-e2e-03-runner:
     runs-on: ubuntu-latest
@@ -2554,6 +2651,7 @@ jobs:
       - deploy-runner-prepare
       - deploy-runner-start
       - cli-e2e-03-runner-prepare
+      - cli-e2e-03-runner-bootstrap
     if: |
       always() &&
       needs.prepare.outputs.job-ref != '' &&
@@ -2561,13 +2659,16 @@ jobs:
       needs.deploy-api.result == 'success' &&
       needs.deploy-runner-prepare.result == 'success' &&
       needs.deploy-runner-start.result == 'success' &&
-      needs.cli-e2e-03-runner-prepare.result == 'success'
+      needs.cli-e2e-03-runner-prepare.result == 'success' &&
+      needs.cli-e2e-03-runner-bootstrap.result == 'success'
     strategy:
       fail-fast: false
       matrix:
         index: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
     env:
-      E2E_CLERK_ORG_ID: ${{ needs.cli-e2e-03-runner-prepare.outputs.organization-id }}
+      E2E_CLERK_ORG_ID: ${{ needs.cli-e2e-03-runner-prepare.outputs.runner-organization-id }}
+      E2E_RUNNER_CODEX_ORG_ID: ${{ needs.cli-e2e-03-runner-prepare.outputs.codex-organization-id }}
+      E2E_RUNNER_CLAUDE_ORG_ID: ${{ needs.cli-e2e-03-runner-prepare.outputs.claude-organization-id }}
       E2E_RUNNER_EMAIL: ${{ needs.cli-e2e-03-runner-prepare.outputs.runner-email }}
       E2E_RUNNER_CODEX_EMAIL: ${{ needs.cli-e2e-03-runner-prepare.outputs.codex-email }}
       E2E_RUNNER_CLAUDE_EMAIL: ${{ needs.cli-e2e-03-runner-prepare.outputs.claude-email }}
@@ -2584,14 +2685,39 @@ jobs:
         run: corepack enable pnpm
       - name: Install E2E dependencies
         run: cd e2e && pnpm install --frozen-lockfile
+      - name: Download runner E2E API tokens
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: e2e-tokens
+          path: /tmp
+      - name: Setup runner E2E API credentials
+        shell: bash
+        run: |
+          set -euo pipefail
+          for credential_file in \
+            /tmp/e2e-api-credentials-runner.json \
+            /tmp/e2e-api-credentials-runner-real-codex.json \
+            /tmp/e2e-api-credentials-runner-real-claude.json; do
+            jq -er '.token | select(type == "string" and length > 0)' "$credential_file" >/dev/null
+            jq -er '.apiUrl | select(type == "string" and length > 0)' "$credential_file" >/dev/null
+          done
+          token=$(jq -er '.token' /tmp/e2e-api-credentials-runner.json)
+          api_url=$(jq -er '.apiUrl' /tmp/e2e-api-credentials-runner.json)
+          echo "::add-mask::$token"
+          echo "E2E_API_TOKEN=$token" >> "$GITHUB_ENV"
+          echo "E2E_API_URL=$api_url" >> "$GITHUB_ENV"
       - name: Initialize runner E2E shard
         shell: bash
         run: |
           set -euo pipefail
           : "${E2E_CLERK_ORG_ID:?runner E2E organization is required}"
+          : "${E2E_RUNNER_CODEX_ORG_ID:?runner Codex E2E organization is required}"
+          : "${E2E_RUNNER_CLAUDE_ORG_ID:?runner Claude E2E organization is required}"
           : "${E2E_RUNNER_EMAIL:?runner E2E account is required}"
           : "${E2E_RUNNER_CODEX_EMAIL:?runner Codex E2E account is required}"
           : "${E2E_RUNNER_CLAUDE_EMAIL:?runner Claude E2E account is required}"
+          : "${E2E_API_TOKEN:?runner E2E API token is required}"
+          : "${E2E_API_URL:?runner E2E API URL is required}"
           echo "Runner E2E shard ${E2E_RUNNER_SHARD_INDEX}/${E2E_RUNNER_SHARD_TOTAL} is ready"
 
   cli-e2e-03-runner-cleanup:
@@ -2620,7 +2746,9 @@ jobs:
         run: cd e2e && pnpm exec tsx playwright/runner-account.ts cleanup
         env:
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
-          E2E_RUNNER_ORGANIZATION_ID: ${{ needs.cli-e2e-03-runner-prepare.outputs.organization-id }}
+          E2E_RUNNER_ORGANIZATION_ID: ${{ needs.cli-e2e-03-runner-prepare.outputs.runner-organization-id }}
+          E2E_RUNNER_CODEX_ORGANIZATION_ID: ${{ needs.cli-e2e-03-runner-prepare.outputs.codex-organization-id }}
+          E2E_RUNNER_CLAUDE_ORGANIZATION_ID: ${{ needs.cli-e2e-03-runner-prepare.outputs.claude-organization-id }}
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
 
   lint-runtime-api-compat:
@@ -2722,6 +2850,7 @@ jobs:
       - cli-e2e-02-playwright
       - cli-e2e-01-serial
       - cli-e2e-03-runner-prepare
+      - cli-e2e-03-runner-bootstrap
       - cli-e2e-03-runner
       - cli-e2e-03-runner-cleanup
       - deploy-runner-prepare
@@ -2830,6 +2959,7 @@ jobs:
           check_result "cli-e2e-02-playwright" "${{ needs.cli-e2e-02-playwright.result }}" "${{ vars.CI_CHECK_BROWSER_E2E == '1' && 'true' || 'informational' }}"
           check_result "cli-e2e-01-serial" "${{ needs.cli-e2e-01-serial.result }}" "true"
           check_result "cli-e2e-03-runner-prepare" "${{ needs.cli-e2e-03-runner-prepare.result }}" "$RUNNER_E2E_SKIP_ALLOWED"
+          check_result "cli-e2e-03-runner-bootstrap" "${{ needs.cli-e2e-03-runner-bootstrap.result }}" "$RUNNER_E2E_SKIP_ALLOWED"
           check_result "cli-e2e-03-runner" "${{ needs.cli-e2e-03-runner.result }}" "$RUNNER_E2E_SKIP_ALLOWED"
           check_result "cli-e2e-03-runner-cleanup" "${{ needs.cli-e2e-03-runner-cleanup.result }}" "$RUNNER_E2E_SKIP_ALLOWED"
           check_result "deploy-runner-prepare" "${{ needs.deploy-runner-prepare.result }}" "$RUNNER_DEPLOY_SKIP_ALLOWED"

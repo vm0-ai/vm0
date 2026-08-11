@@ -31,6 +31,7 @@ import { createBddIntegrationApi } from "./helpers/api-bdd-integrations";
 import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
 import {
   createConnectorBddApi,
+  manualHttpCustomConnectorCreateBody,
   mockCustomConnectorOAuth2Provider,
   mockSlackConnectorOAuth,
 } from "./helpers/api-bdd-connectors";
@@ -114,13 +115,11 @@ function customManualConnectorBodyForTeardown(
   scope: "org" | "user",
 ): CreateCustomConnectorBody {
   const slug = `_${scope}-teardown-${randomUUID().replaceAll("-", "").slice(0, 12)}`;
-  return {
+  return manualHttpCustomConnectorCreateBody({
     slug,
     displayName: `BDD ${scope === "org" ? "Org" : "User"} Teardown Custom`,
-    prefixes: [`https://${slug.slice(1)}.example.test/v1/`],
-    headerName: "Authorization",
-    headerTemplate: "Bearer {{secret}}",
-  };
+    prefixTemplates: [`https://${slug.slice(1)}.example.test/v1/`],
+  });
 }
 
 function customOauthConnectorBodyForTeardown(

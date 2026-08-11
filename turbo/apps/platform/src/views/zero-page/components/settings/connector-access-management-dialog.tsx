@@ -556,7 +556,9 @@ function customConnectorAccessRows(
   return authorizations.map(({ agent, access }) => {
     return {
       agent,
-      authorized: access.enabledIds.includes(connectorId),
+      authorized: access.grants.some((grant) => {
+        return grant.customConnectorId === connectorId;
+      }),
       grants: [],
     };
   });
@@ -570,7 +572,7 @@ function customConnectorPermissionNamesByAgentId(
     authorizations.map(({ agent, access }) => {
       return [
         agent.id,
-        access.grants?.find((grant) => {
+        access.grants.find((grant) => {
           return grant.customConnectorId === connectorId;
         })?.permissionNames ?? [],
       ] as const;
@@ -647,6 +649,7 @@ function useCustomConnectorAuthorization(
             {
               agentId: row.agent.id,
               connectorId: connector.id,
+              permissionBundleRef: connector.permissionBundleRef ?? null,
               authorized,
             },
             pageSignal,

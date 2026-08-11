@@ -1,4 +1,4 @@
-import { command, computed, state } from "ccstate";
+import { command, computed, state, type Computed } from "ccstate";
 import { timeout } from "signal-timers";
 import { openArtifactInOpenSidebar$ } from "../chat-page/thread-sidebar-coordinator.ts";
 import type { ArtifactRefInput } from "../chat-page/thread-sidebar.ts";
@@ -15,6 +15,7 @@ import {
   type ObjectUrlResource,
 } from "../object-url-resource.ts";
 import { rootSignal$ } from "../root-signal.ts";
+import { createAttachmentResourceUrl$ } from "../attachment-resource-url.ts";
 
 // ---------------------------------------------------------------------------
 // Lightbox state — tracks which attachment is open in the global preview UI
@@ -55,6 +56,11 @@ type AttachmentFramedDocumentLightboxInput = AttachmentDocumentLightboxBase & {
   readonly kind: "html" | "pdf";
 };
 
+type AttachmentFramedDocumentLightboxState =
+  AttachmentFramedDocumentLightboxInput & {
+    readonly resourceUrl$: Computed<Promise<string>>;
+  };
+
 type AttachmentDocumentLightboxInput =
   | AttachmentTextDocumentLightboxInput
   | AttachmentFramedDocumentLightboxInput;
@@ -75,7 +81,7 @@ export type AttachmentDocumentLightboxState =
       readonly kind: TextPreviewKind;
       readonly text$: TextPreviewComputed;
     })
-  | AttachmentFramedDocumentLightboxInput;
+  | AttachmentFramedDocumentLightboxState;
 
 function isAttachmentTextDocumentLightboxInput(
   value: AttachmentDocumentLightboxInput,
@@ -199,6 +205,7 @@ type AttachmentSidebarPreviewInput = {
   readonly file?: File;
   readonly filename?: string;
   readonly contentType?: string;
+  readonly resourceUrl$?: Computed<Promise<string>>;
   readonly shareAvailable?: boolean;
   readonly splitViewAvailable?: boolean;
 };
@@ -210,6 +217,9 @@ export function attachmentSidebarRef(
     value.shareAvailable === undefined
       ? {}
       : { shareAvailable: value.shareAvailable };
+  const resource = value.resourceUrl$
+    ? { resourceUrl$: value.resourceUrl$ }
+    : {};
   if (value.file) {
     return { file: value.file, url: value.url, ...share };
   }
@@ -221,6 +231,7 @@ export function attachmentSidebarRef(
       url: value.url,
       filename: value.filename,
       ...(contentType ? { contentType } : {}),
+      ...resource,
       ...share,
     };
   }
@@ -300,7 +311,17 @@ export const navigateImageLightbox$ = command(
 
 export const openDocumentLightbox$ = command(
   ({ set }, value: AttachmentDocumentLightboxInput) => {
-    if (set(routeToOpenArtifactSidebar$, value)) {
+    const preview: AttachmentDocumentLightboxState =
+      isAttachmentTextDocumentLightboxInput(value)
+        ? {
+            ...value,
+            text$: value.text$ ?? createTextPreviewComputed(value.url),
+          }
+        : {
+            ...value,
+            resourceUrl$: createAttachmentResourceUrl$(value.url),
+          };
+    if (set(routeToOpenArtifactSidebar$, preview)) {
       return;
     }
     set(internalLightboxDialogCloseToken$, (value) => {
@@ -308,14 +329,7 @@ export const openDocumentLightbox$ = command(
     });
     set(internalLightboxDialogVisible$, true);
     set(internalLightboxDialogFullscreen$, false);
-    if (isAttachmentTextDocumentLightboxInput(value)) {
-      set(internalLightboxState$, {
-        ...value,
-        text$: value.text$ ?? createTextPreviewComputed(value.url),
-      });
-      return;
-    }
-    set(internalLightboxState$, value);
+    set(internalLightboxState$, preview);
   },
 );
 

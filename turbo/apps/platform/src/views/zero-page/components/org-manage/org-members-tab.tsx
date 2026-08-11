@@ -605,13 +605,15 @@ function SelfDemoteAction({ email }: { email: string }) {
             event.preventDefault();
           }}
         >
-          <DialogTrigger asChild>
-            <DropdownMenuItem>
-              {t(($) => {
-                return $.settings.workspace.members.selfDemote.action;
-              })}
-            </DropdownMenuItem>
-          </DialogTrigger>
+          <DropdownMenuItem
+            onSelect={() => {
+              setOpen(true);
+            }}
+          >
+            {t(($) => {
+              return $.settings.workspace.members.selfDemote.action;
+            })}
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
 
@@ -732,13 +734,16 @@ function MemberActions({ member }: { member: OrgMember }) {
                   return $.settings.workspace.members.roleActions.makeMember;
                 })}
           </DropdownMenuItem>
-          <DialogTrigger asChild>
-            <DropdownMenuItem className="text-destructive focus:text-destructive">
-              {t(($) => {
-                return $.settings.workspace.members.remove.action;
-              })}
-            </DropdownMenuItem>
-          </DialogTrigger>
+          <DropdownMenuItem
+            className="text-destructive focus:text-destructive"
+            onSelect={() => {
+              setRemoveTarget(member.email);
+            }}
+          >
+            {t(($) => {
+              return $.settings.workspace.members.remove.action;
+            })}
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
 
@@ -873,13 +878,16 @@ function PendingInvitationRow({
                   event.preventDefault();
                 }}
               >
-                <DialogTrigger asChild>
-                  <DropdownMenuItem className="text-destructive focus:text-destructive">
-                    {t(($) => {
-                      return $.settings.workspace.members.revoke.action;
-                    })}
-                  </DropdownMenuItem>
-                </DialogTrigger>
+                <DropdownMenuItem
+                  className="text-destructive focus:text-destructive"
+                  onSelect={() => {
+                    setRevokeTarget(invitation.id);
+                  }}
+                >
+                  {t(($) => {
+                    return $.settings.workspace.members.revoke.action;
+                  })}
+                </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
 

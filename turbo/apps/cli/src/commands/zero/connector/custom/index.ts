@@ -2,7 +2,7 @@ import { Command } from "commander";
 import chalk from "chalk";
 import {
   getZeroAgent,
-  getZeroAgentCustomConnectors,
+  getZeroAgentCustomConnectorGrants,
 } from "../../../../lib/api/domains/zero-agents";
 import {
   getZeroCustomConnector,
@@ -36,14 +36,18 @@ async function resolveCustomAgentContext(agentId: string | undefined): Promise<{
   if (!resolvedAgentId) {
     return null;
   }
-  const [agent, enabledIds] = await Promise.all([
+  const [agent, grants] = await Promise.all([
     getZeroAgent(resolvedAgentId),
-    getZeroAgentCustomConnectors(resolvedAgentId),
+    getZeroAgentCustomConnectorGrants(resolvedAgentId),
   ]);
   return {
     agentId: agent.agentId,
     displayName: agent.displayName ?? agent.agentId,
-    authorizedIds: new Set(enabledIds),
+    authorizedIds: new Set(
+      grants.map((grant) => {
+        return grant.customConnectorId;
+      }),
+    ),
   };
 }
 

@@ -903,12 +903,46 @@ function ArtifactDialogBody({
     return <ArtifactDialogTextBody kind={preview.kind} text$={preview.text$} />;
   }
 
-  if (preview.kind === "html") {
-    return <ArtifactDialogHtmlBody filename={filename} preview={preview} />;
+  if (preview.kind === "html" || preview.kind === "pdf") {
+    return <ArtifactDialogFramedBody filename={filename} preview={preview} />;
   }
 
-  const publicUrl = publicAttachmentUrl(preview.url);
-  const src = preview.kind === "pdf" ? `${publicUrl}#navpanes=0` : publicUrl;
+  return null;
+}
+
+type ArtifactDialogFramedPreview = Extract<
+  AttachmentLightboxState,
+  { readonly kind: "html" | "pdf" }
+>;
+
+function ArtifactDialogFramedBody({
+  filename,
+  preview,
+}: {
+  filename: string;
+  preview: ArtifactDialogFramedPreview;
+}) {
+  const { t } = useTranslation();
+  const resourceUrl = useLastResolved(preview.resourceUrl$);
+  if (!resourceUrl) {
+    return (
+      <ArtifactDialogStage centered>
+        <Loader2 className="animate-spin text-muted-foreground" />
+      </ArtifactDialogStage>
+    );
+  }
+
+  if (preview.kind === "html") {
+    return (
+      <ArtifactDialogHtmlBody
+        filename={filename}
+        preview={preview}
+        src={publicAttachmentUrl(resourceUrl)}
+      />
+    );
+  }
+
+  const src = `${publicAttachmentUrl(resourceUrl)}#navpanes=0`;
 
   return (
     <ArtifactDialogStage scrollable={false}>
@@ -935,13 +969,14 @@ function ArtifactDialogBody({
 function ArtifactDialogHtmlBody({
   filename,
   preview,
+  src,
 }: {
   filename: string;
-  preview: AttachmentLightboxState;
+  preview: ArtifactDialogFramedPreview;
+  src: string;
 }) {
   const { t } = useTranslation();
   const fullscreen = useGet(lightboxDialogFullscreen$);
-  const src = publicAttachmentUrl(preview.url);
   const isPresentationHtml =
     preview.artifact?.artifactKind === "presentation-html";
 

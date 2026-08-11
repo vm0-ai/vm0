@@ -23,7 +23,7 @@ const TEST_APP_ROUTES = Object.freeze([...healthRoutes, ...zeroMailRoutes]);
 
 const MINIMUM_WEB_CLIENT_VERSION =
   webClientCompatibility.minimumSupportedVersion;
-const PRE_CANONICAL_CHAT_EVENT_READER_VERSION = "0.721.0";
+const BELOW_MINIMUM_WEB_CLIENT_VERSION = "0.723.0";
 
 // Derived so that raising the supported floor does not turn this fixture into
 // an unsupported version.
@@ -995,7 +995,7 @@ describe("createApp", () => {
   });
 
   describe("web client compatibility", () => {
-    it("force-upgrades app clients below the canonical chat event reader", async () => {
+    it("force-upgrades app clients below the minimum supported version", async () => {
       const app = createApp({
         signal: context.signal,
         routes: TEST_APP_ROUTES,
@@ -1004,11 +1004,11 @@ describe("createApp", () => {
         method: "GET",
         headers: {
           [CLIENT_TYPE_HEADER]: CLIENT_TYPE_APP,
-          [CLIENT_VERSION_HEADER]: PRE_CANONICAL_CHAT_EVENT_READER_VERSION,
+          [CLIENT_VERSION_HEADER]: BELOW_MINIMUM_WEB_CLIENT_VERSION,
         },
       });
 
-      expect(MINIMUM_WEB_CLIENT_VERSION).toBe("0.722.0");
+      expect(MINIMUM_WEB_CLIENT_VERSION).toBe("0.724.0");
       expect(response.status).toBe(CLIENT_FORCE_UPGRADE_STATUS);
       await expect(response.json()).resolves.toStrictEqual({
         error: "Client update required",

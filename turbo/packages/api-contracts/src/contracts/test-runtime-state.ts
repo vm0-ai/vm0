@@ -75,7 +75,6 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     action: z.literal("mutate-runner-job-connector-permission-baseline"),
     run_id: z.uuid(),
     mode: z.enum([
-      "rollout-targets",
       "remove",
       "malformed",
       "capability-mismatch",

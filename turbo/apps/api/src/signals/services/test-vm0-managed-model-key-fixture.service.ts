@@ -50,9 +50,10 @@ export async function acquireVm0ManagedModelKeyFixture(
   db: Db,
   fixtureId: string,
   rows: readonly Vm0ManagedModelKeyRow[],
-): Promise<void> {
+): Promise<readonly Vm0ManagedModelKeyRow[]> {
+  const acquiredRows: Vm0ManagedModelKeyRow[] = [];
   for (const value of rows) {
-    await db.transaction(async (tx) => {
+    const apiKey = await db.transaction(async (tx) => {
       const [row] = await tx
         .insert(vm0ApiKeys)
         .values({
@@ -66,14 +67,18 @@ export async function acquireVm0ManagedModelKeyFixture(
           // window where the previous fixture owner can delete the row.
           set: { vendor: value.vendor },
         })
-        .returning({ id: vm0ApiKeys.id, label: vm0ApiKeys.label });
+        .returning({
+          id: vm0ApiKeys.id,
+          apiKey: vm0ApiKeys.apiKey,
+          label: vm0ApiKeys.label,
+        });
       if (!row) {
         throw new Error(`Expected VM0 managed key for vendor: ${value.vendor}`);
       }
 
       const fixtureLabel = parseVm0ManagedModelKeyFixtureLabel(row.label);
       if (fixtureLabel?.fixtureIds.includes(fixtureId)) {
-        return;
+        return row.apiKey;
       }
       const fixtureIds = fixtureLabel
         ? [...fixtureLabel.fixtureIds, fixtureId]
@@ -90,8 +95,11 @@ export async function acquireVm0ManagedModelKeyFixture(
           updatedAt: nowDate(),
         })
         .where(eq(vm0ApiKeys.id, row.id));
+      return row.apiKey;
     });
+    acquiredRows.push({ vendor: value.vendor, apiKey });
   }
+  return acquiredRows;
 }
 
 /** Releases only one fixture's ownership, deleting the row at the last owner. */

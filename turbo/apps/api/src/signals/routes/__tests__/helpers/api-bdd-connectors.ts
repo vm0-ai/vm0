@@ -111,6 +111,47 @@ interface AuthHeaders {
   readonly authorization?: string;
 }
 
+type HttpCreateCustomConnectorBody = Exclude<
+  CreateCustomConnectorBody,
+  { readonly kind: "mcp" }
+>;
+
+export function manualHttpCustomConnectorCreateBody(args: {
+  readonly displayName: string;
+  readonly prefixTemplates: readonly string[];
+  readonly slug?: string;
+  readonly permissionBundleRef?: HttpCreateCustomConnectorBody["permissionBundleRef"];
+  readonly skillMarkdown?: HttpCreateCustomConnectorBody["skillMarkdown"];
+}): HttpCreateCustomConnectorBody {
+  return {
+    displayName: args.displayName,
+    prefixTemplates: [...args.prefixTemplates],
+    fields: [
+      {
+        key: "secret",
+        label: "Secret",
+        kind: "secret",
+        required: true,
+        description: "API credential",
+      },
+    ],
+    headerInjections: [
+      {
+        name: "Authorization",
+        valueTemplate: "Bearer {{secrets.secret}}",
+      },
+    ],
+    queryInjections: [],
+    ...(args.slug === undefined ? {} : { slug: args.slug }),
+    ...(args.permissionBundleRef === undefined
+      ? {}
+      : { permissionBundleRef: args.permissionBundleRef }),
+    ...(args.skillMarkdown === undefined
+      ? {}
+      : { skillMarkdown: args.skillMarkdown }),
+  };
+}
+
 type CallbackQuery = {
   readonly code?: string;
   readonly state?: string;
@@ -2187,7 +2228,9 @@ export function createConnectorBddApi(context: TestContext) {
         [200],
       );
       expectStatus(response, 200);
-      return response.body.enabledIds;
+      return response.body.grants.map((grant) => {
+        return grant.customConnectorId;
+      });
     },
 
     async readAgentCustomConnectorGrants(
@@ -2200,10 +2243,43 @@ export function createConnectorBddApi(context: TestContext) {
         [200],
       );
       expectStatus(response, 200);
-      return response.body.grants ?? [];
+      return response.body.grants;
     },
 
     async requestUpdateAgentCustomConnectors(
+      actor: ApiTestUser | null,
+      agentId: string,
+      connectorIds: readonly string[],
+      statuses: readonly (200 | 400 | 401 | 403 | 404)[],
+      operation?: "replace" | "add" | "remove",
+    ) {
+      const client = setupApp({ context, routes: zeroAgentsRoutes })(
+        zeroAgentCustomConnectorsContract,
+      );
+      const body =
+        operation === undefined
+          ? {
+              grants: connectorIds.map((customConnectorId) => {
+                return { customConnectorId, permissionNames: [] };
+              }),
+            }
+          : {
+              grants: connectorIds.map((customConnectorId) => {
+                return { customConnectorId, permissionNames: [] };
+              }),
+              operation,
+            };
+      return await accept(
+        client.update({
+          params: { id: agentId },
+          headers: authenticate(actor),
+          body,
+        }),
+        statuses,
+      );
+    },
+
+    async requestLegacyAgentCustomConnectorIdsUpdate(
       actor: ApiTestUser | null,
       agentId: string,
       enabledIds: readonly string[],
@@ -2230,18 +2306,20 @@ export function createConnectorBddApi(context: TestContext) {
     async updateAgentCustomConnectors(
       actor: ApiTestUser,
       agentId: string,
-      enabledIds: readonly string[],
+      connectorIds: readonly string[],
       operation?: "replace" | "add" | "remove",
     ): Promise<readonly string[]> {
       const response = await api.requestUpdateAgentCustomConnectors(
         actor,
         agentId,
-        enabledIds,
+        connectorIds,
         [200],
         operation,
       );
       expectStatus(response, 200);
-      return response.body.enabledIds;
+      return response.body.grants.map((grant) => {
+        return grant.customConnectorId;
+      });
     },
 
     async requestUpdateAgentCustomConnectorGrants(

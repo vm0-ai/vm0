@@ -1385,24 +1385,44 @@ describe("zero attachment chips", () => {
     expect(documentFrame).toHaveClass("h-full", "min-h-0");
     expect(iframe).toHaveAttribute(
       "src",
-      `${canonicalUserMessageFileUrl("attachment-pdf")}#navpanes=0`,
+      `${presignedFileUrl("attachment-pdf")}#navpanes=0`,
     );
     expect(iframe).toHaveClass("h-full", "min-h-0", "border-0");
 
-    click(screen.getByLabelText("Close"));
+    click(screen.getByLabelText("Open in split view"));
 
     await waitFor(() => {
       expect(
         screen.queryByTestId("attachment-lightbox"),
       ).not.toBeInTheDocument();
+      expect(screen.getByTestId("artifact-sidebar-body-pdf")).toHaveAttribute(
+        "src",
+        `${presignedFileUrl("attachment-pdf")}#navpanes=0`,
+      );
+    });
+
+    click(screen.getByLabelText("Close artifact"));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("artifact-sidebar")).not.toBeInTheDocument();
     });
 
     click(screen.getByLabelText("Open html preview for launch-site.html"));
 
     await waitFor(() => {
-      expect(
-        screen.getByTestId("artifact-dialog-body-html"),
-      ).toBeInTheDocument();
+      expect(screen.getByTestId("artifact-dialog-body-html")).toHaveAttribute(
+        "src",
+        presignedFileUrl("attachment-html"),
+      );
+    });
+
+    click(screen.getByLabelText("Open in split view"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("artifact-sidebar-body-html")).toHaveAttribute(
+        "src",
+        presignedFileUrl("attachment-html"),
+      );
     });
   });
 

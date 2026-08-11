@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import type { Computed } from "ccstate";
 import {
   ArrowLeft,
   Maximize2,
@@ -311,6 +312,7 @@ function ArtifactSidebarResolvedContent({
           artifactKind={display.artifactKind}
           imageNavigation={imageNavigation}
           fullscreen={fullscreen}
+          resourceUrl$={display.resourceUrl$}
           text$={text$}
         />
       </div>
@@ -453,6 +455,7 @@ interface ArtifactDisplay {
   filename: string;
   subtitle: string;
   shareAvailable: boolean;
+  resourceUrl$: Computed<Promise<string>>;
   artifactKind?: ChatThreadArtifactFile["artifactKind"];
 }
 
@@ -512,6 +515,7 @@ function resolveArtifactDisplay(
       filename: item.file.filename,
       subtitle: artifactTitleSubtitle(ref.kind, item.file),
       shareAvailable: ref.shareAvailable ?? true,
+      resourceUrl$: ref.resourceUrl$,
       artifactKind: item.file.artifactKind,
     };
   }
@@ -521,6 +525,7 @@ function resolveArtifactDisplay(
     filename: ref.filename,
     subtitle: artifactFallbackSubtitle(ref.kind, ref.filename),
     shareAvailable: ref.shareAvailable ?? true,
+    resourceUrl$: ref.resourceUrl$,
   };
 }
 
@@ -811,6 +816,7 @@ function ArtifactBody({
   artifactKind,
   imageNavigation,
   fullscreen,
+  resourceUrl$,
   text$,
 }: {
   url: string;
@@ -819,6 +825,7 @@ function ArtifactBody({
   artifactKind?: ChatThreadArtifactFile["artifactKind"];
   imageNavigation?: ArtifactImageNavigationActions;
   fullscreen: boolean;
+  resourceUrl$: Computed<Promise<string>>;
   text$?: TextPreviewComputed;
 }) {
   const { t } = useTranslation();
@@ -873,8 +880,8 @@ function ArtifactBody({
   }
   if (kind === "html" || kind === "pdf") {
     return (
-      <ArtifactIframeBody
-        url={url}
+      <ArtifactIframeResourceBody
+        resourceUrl$={resourceUrl$}
         kind={kind}
         filename={filename}
         artifactKind={artifactKind}
@@ -883,6 +890,34 @@ function ArtifactBody({
     );
   }
   return <ArtifactGenericBody filename={filename} />;
+}
+
+function ArtifactIframeResourceBody({
+  resourceUrl$,
+  kind,
+  filename,
+  artifactKind,
+  fullscreen,
+}: {
+  resourceUrl$: Computed<Promise<string>>;
+  kind: "html" | "pdf";
+  filename: string;
+  artifactKind?: ChatThreadArtifactFile["artifactKind"];
+  fullscreen: boolean;
+}) {
+  const resourceUrl = useLastResolved(resourceUrl$);
+  if (!resourceUrl) {
+    return <ArtifactSpinner />;
+  }
+  return (
+    <ArtifactIframeBody
+      url={resourceUrl}
+      kind={kind}
+      filename={filename}
+      artifactKind={artifactKind}
+      fullscreen={fullscreen}
+    />
+  );
 }
 
 function ArtifactSpinner() {

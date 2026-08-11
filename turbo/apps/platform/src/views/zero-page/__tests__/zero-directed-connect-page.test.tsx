@@ -6,7 +6,10 @@ import {
 } from "@vm0/api-contracts/contracts/zero-connectors";
 import { chatEventsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
-import { zeroAgentCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
+import {
+  zeroAgentCustomConnectorsContract,
+  type AgentCustomConnectorGrant,
+} from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 import {
   zeroCustomConnectorOAuth2Contract,
   zeroCustomConnectorValuesContract,
@@ -346,7 +349,7 @@ function getButtonByText(text: string): HTMLElement {
 describe("directed connector connect page", () => {
   it("connects and authorizes a manual custom connector", async () => {
     let connected = false;
-    let enabledIds: string[] = [];
+    let grants: AgentCustomConnectorGrant[] = [];
     let submittedValues: readonly {
       readonly key: string;
       readonly kind: "secret" | "variable";
@@ -385,11 +388,16 @@ describe("directed connector connect page", () => {
       zeroAgentCustomConnectorsContract.update,
       ({ body, params, respond }) => {
         expect(params.id).toBe(AGENT_ID);
-        if (!("enabledIds" in body)) {
-          throw new Error("Expected custom connector ID authorization");
+        if (!("grants" in body)) {
+          throw new Error("Expected canonical custom connector grants");
         }
-        enabledIds = Array.from(new Set([...enabledIds, ...body.enabledIds]));
-        return respond(200, { enabledIds });
+        grants = body.grants;
+        return respond(200, {
+          enabledIds: grants.map((grant) => {
+            return grant.customConnectorId;
+          }),
+          grants,
+        });
       },
     );
 
@@ -411,14 +419,16 @@ describe("directed connector connect page", () => {
       expect(submittedValues).toStrictEqual([
         { key: "secret", kind: "secret", value: "acme-secret" },
       ]);
-      expect(enabledIds).toStrictEqual([connector.id]);
+      expect(grants).toStrictEqual([
+        { customConnectorId: connector.id, permissionNames: [] },
+      ]);
       expect(screen.getByText("Acme API connected")).toBeInTheDocument();
     });
   });
 
   it("starts OAuth and authorizes an OAuth custom connector", async () => {
     let connected = false;
-    let enabledIds: string[] = [];
+    let grants: AgentCustomConnectorGrant[] = [];
     const connector = customConnector({
       slug: "_acme-oauth",
       displayName: "Acme OAuth",
@@ -461,11 +471,16 @@ describe("directed connector connect page", () => {
       zeroAgentCustomConnectorsContract.update,
       ({ body, params, respond }) => {
         expect(params.id).toBe(AGENT_ID);
-        if (!("enabledIds" in body)) {
-          throw new Error("Expected custom connector ID authorization");
+        if (!("grants" in body)) {
+          throw new Error("Expected canonical custom connector grants");
         }
-        enabledIds = Array.from(new Set([...enabledIds, ...body.enabledIds]));
-        return respond(200, { enabledIds });
+        grants = body.grants;
+        return respond(200, {
+          enabledIds: grants.map((grant) => {
+            return grant.customConnectorId;
+          }),
+          grants,
+        });
       },
     );
     const authWindow = context.mocks.browser.authWindow();
@@ -491,9 +506,112 @@ describe("directed connector connect page", () => {
       expect(authWindow.location.href).toBe(
         "https://acme.test/oauth/authorize",
       );
-      expect(enabledIds).toStrictEqual([connector.id]);
+      expect(grants).toStrictEqual([
+        { customConnectorId: connector.id, permissionNames: [] },
+      ]);
       expect(screen.getByText("Acme OAuth connected")).toBeInTheDocument();
     });
+  });
+
+  it("starts permissioned OAuth before checking the target grant", async () => {
+    let connected = false;
+    let authorizationUpdates = 0;
+    const authorizationRequested = context.mocks.deferred<void>();
+    const releaseAuthorization = context.mocks.deferred<void>();
+    const connector = customConnector({
+      slug: "_acme-permissioned-oauth",
+      displayName: "Acme Permissioned OAuth",
+      authMode: "oauth",
+      fields: [],
+      missingRequiredFields: ["oauth"],
+      permissionBundleRef: "builtin:feishu@1",
+      headerInjections: [
+        {
+          name: "Authorization",
+          valueTemplate: "Bearer {{oauth.access_token}}",
+        },
+      ],
+      oauthConfig: {
+        providerAdapter: "standard",
+        clientId: "client-id",
+        authorizationUrl: "https://acme.test/oauth/authorize",
+        tokenUrl: "https://acme.test/oauth/token",
+        tokenEndpointAuthMethod: "client_secret_post",
+        pkceMethod: "S256",
+        scopes: ["read"],
+        authorizationParams: {},
+      },
+    });
+    context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
+      return respond(200, {
+        connectors: [{ ...connector, connected, hasSecret: connected }],
+      });
+    });
+    context.mocks.api(
+      zeroCustomConnectorOAuth2Contract.start,
+      ({ params, respond }) => {
+        expect(params.id).toBe(connector.id);
+        connected = true;
+        return respond(200, {
+          authorizationUrl: "https://acme.test/oauth/authorize",
+        });
+      },
+    );
+    context.mocks.api(
+      zeroAgentCustomConnectorsContract.get,
+      async ({ params, respond }) => {
+        expect(params.id).toBe(AGENT_ID);
+        authorizationRequested.resolve();
+        await releaseAuthorization.promise;
+        const grants = [
+          {
+            customConnectorId: connector.id,
+            permissionNames: ["messages:send-as-user"],
+          },
+        ];
+        return respond(200, { enabledIds: [connector.id], grants });
+      },
+    );
+    context.mocks.api(
+      zeroAgentCustomConnectorsContract.update,
+      ({ respond }) => {
+        authorizationUpdates += 1;
+        return respond(200, { enabledIds: [], grants: [] });
+      },
+    );
+    const authWindow = context.mocks.browser.authWindow();
+    authWindow.closed = true;
+    Object.defineProperty(authWindow, "location", {
+      value: { href: "" },
+      configurable: true,
+    });
+    context.mocks.browser.open(authWindow);
+
+    detachedSetupPage({
+      context,
+      path: `/connectors/${connector.slug}/connect?agentId=${AGENT_ID}`,
+    });
+
+    await screen.findByText("Zero needs Acme Permissioned OAuth to proceed");
+    click(getButtonByText("Connect"));
+    await screen.findByRole("dialog", {
+      name: "Connect Acme Permissioned OAuth",
+    });
+    click(getButtonByText("Continue"));
+
+    await waitFor(() => {
+      expect(authWindow.location.href).toBe(
+        "https://acme.test/oauth/authorize",
+      );
+    });
+    await authorizationRequested.promise;
+    releaseAuthorization.resolve();
+    await waitFor(() => {
+      expect(
+        screen.getByText("Acme Permissioned OAuth connected"),
+      ).toBeInTheDocument();
+    });
+    expect(authorizationUpdates).toBe(0);
   });
 
   it("starts an OAuth flow from a directed link", async () => {

@@ -99,11 +99,11 @@ interface ModelProviderPickerProps {
   resolveDefaultSelection?: boolean;
 }
 
-// Radix Select reserves the empty string for "no value" and throws if a
-// SelectItem uses it, so use a sentinel to represent the inherit option.
+// Keep the inherit option distinct from an empty model identifier at the UI
+// boundary so its value remains stable across controlled Select updates.
 const INHERIT_SENTINEL = "__inherit_default__";
 
-// Radix Select uses the selected item's offsetHeight as the scroll-button
+// Select uses the selected item's offsetHeight as the scroll-button
 // step. Keep hidden selected items measurable so native hover scrolling works.
 // These items are also `disabled`, and SelectItem's base `data-[disabled]:opacity-50`
 // outranks a plain `opacity-0` on specificity, so restate the hidden opacity under
@@ -203,7 +203,7 @@ function stripInteractiveClasses(cls: string | undefined): string | undefined {
         !c.startsWith("focus:") &&
         !c.startsWith("focus-visible:") &&
         !c.startsWith("active:") &&
-        !c.startsWith("data-[state=")
+        !c.startsWith("data-popup-open:")
       );
     })
     .join(" ");

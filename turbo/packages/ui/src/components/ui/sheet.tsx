@@ -1,91 +1,169 @@
+"use client";
+
 import * as React from "react";
-import * as DialogPrimitive from "@radix-ui/react-dialog";
+import { Dialog as SheetPrimitive } from "@base-ui/react/dialog";
 import { X } from "lucide-react";
 
+import {
+  asChildRender,
+  type LegacyAutoFocusHandler,
+  withLegacyAutoFocus,
+} from "../../lib/base-ui-compat";
 import { cn } from "../../lib/utils";
 
-const Sheet = DialogPrimitive.Root;
+function Sheet(props: SheetPrimitive.Root.Props) {
+  return <SheetPrimitive.Root data-slot="sheet" {...props} />;
+}
 
-const SheetTrigger = DialogPrimitive.Trigger;
+interface SheetTriggerProps extends Omit<
+  SheetPrimitive.Trigger.Props,
+  "render"
+> {
+  asChild?: boolean;
+  render?: SheetPrimitive.Trigger.Props["render"];
+}
 
-const SheetClose = DialogPrimitive.Close;
+const SheetTrigger = React.forwardRef<HTMLButtonElement, SheetTriggerProps>(
+  ({ asChild = false, children, render, ...props }, ref) => {
+    const child = asChild ? asChildRender(children) : undefined;
+    return (
+      <SheetPrimitive.Trigger
+        ref={ref}
+        data-slot="sheet-trigger"
+        render={child ?? render}
+        {...props}
+      >
+        {asChild ? undefined : children}
+      </SheetPrimitive.Trigger>
+    );
+  },
+);
+SheetTrigger.displayName = "SheetTrigger";
 
-const SheetPortal = DialogPrimitive.Portal;
+interface SheetCloseProps extends Omit<SheetPrimitive.Close.Props, "render"> {
+  asChild?: boolean;
+  render?: SheetPrimitive.Close.Props["render"];
+}
+
+const SheetClose = React.forwardRef<HTMLButtonElement, SheetCloseProps>(
+  ({ asChild = false, children, render, ...props }, ref) => {
+    const child = asChild ? asChildRender(children) : undefined;
+    return (
+      <SheetPrimitive.Close
+        ref={ref}
+        data-slot="sheet-close"
+        render={child ?? render}
+        {...props}
+      >
+        {asChild ? undefined : children}
+      </SheetPrimitive.Close>
+    );
+  },
+);
+SheetClose.displayName = "SheetClose";
+
+function SheetPortal(props: SheetPrimitive.Portal.Props) {
+  return <SheetPrimitive.Portal data-slot="sheet-portal" {...props} />;
+}
 
 const SheetOverlay = React.forwardRef<
-  React.ComponentRef<typeof DialogPrimitive.Overlay>,
-  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Overlay>
+  HTMLDivElement,
+  SheetPrimitive.Backdrop.Props
 >(({ className, ...props }, ref) => {
   return (
-    <DialogPrimitive.Overlay
+    <SheetPrimitive.Backdrop
       ref={ref}
+      data-slot="sheet-overlay"
       className={cn("fixed inset-0 z-50", className)}
       {...props}
     />
   );
 });
-SheetOverlay.displayName = DialogPrimitive.Overlay.displayName;
+SheetOverlay.displayName = "SheetOverlay";
 
-interface SheetContentProps extends React.ComponentPropsWithoutRef<
-  typeof DialogPrimitive.Content
-> {
+interface SheetContentProps extends SheetPrimitive.Popup.Props {
+  onCloseAutoFocus?: LegacyAutoFocusHandler;
+  onOpenAutoFocus?: LegacyAutoFocusHandler;
   side?: "top" | "bottom" | "left" | "right";
 }
 
-const SheetContent = React.forwardRef<
-  React.ComponentRef<typeof DialogPrimitive.Content>,
-  SheetContentProps
->(({ side = "right", className, children, ...props }, ref) => {
-  return (
-    <SheetPortal>
-      <SheetOverlay />
-      <DialogPrimitive.Content
-        ref={ref}
-        className={cn(
-          "sheet-content fixed z-50 flex flex-col gap-4 overflow-x-hidden bg-card p-6",
-          side === "right" &&
-            "inset-y-0 right-0 h-full w-3/4 sm:max-w-lg shadow-[-8px_0_24px_-12px_rgba(0,0,0,0.1)] dark:shadow-[-16px_0_48px_-8px_rgba(0,0,0,0.5)]",
-          side === "left" &&
-            "inset-y-0 left-0 h-full w-3/4 sm:max-w-md shadow-[8px_0_24px_-12px_rgba(0,0,0,0.1)] dark:shadow-[16px_0_48px_-8px_rgba(0,0,0,0.5)]",
-          side === "top" && "inset-x-0 top-0",
-          side === "bottom" && "inset-x-0 bottom-0",
-          className,
-        )}
-        data-side={side}
-        {...props}
-      >
-        {children}
-        <DialogPrimitive.Close
-          className="absolute right-4 top-4 icon-button opacity-70 hover:opacity-100"
-          aria-label="Close"
+const SheetContent = React.forwardRef<HTMLDivElement, SheetContentProps>(
+  (
+    {
+      children,
+      className,
+      finalFocus,
+      initialFocus,
+      onCloseAutoFocus,
+      onOpenAutoFocus,
+      side = "right",
+      ...props
+    },
+    ref,
+  ) => {
+    return (
+      <SheetPortal>
+        <SheetOverlay />
+        <SheetPrimitive.Popup
+          ref={ref}
+          data-slot="sheet-content"
+          data-side={side}
+          className={cn(
+            "sheet-content fixed z-50 flex flex-col gap-4 overflow-x-hidden bg-card p-6 outline-none",
+            side === "right" &&
+              "inset-y-0 right-0 h-full w-3/4 shadow-[-8px_0_24px_-12px_rgba(0,0,0,0.1)] sm:max-w-lg dark:shadow-[-16px_0_48px_-8px_rgba(0,0,0,0.5)]",
+            side === "left" &&
+              "inset-y-0 left-0 h-full w-3/4 shadow-[8px_0_24px_-12px_rgba(0,0,0,0.1)] sm:max-w-md dark:shadow-[16px_0_48px_-8px_rgba(0,0,0,0.5)]",
+            side === "top" && "inset-x-0 top-0",
+            side === "bottom" && "inset-x-0 bottom-0",
+            className,
+          )}
+          finalFocus={withLegacyAutoFocus(
+            finalFocus,
+            onCloseAutoFocus,
+            "closeAutoFocus",
+          )}
+          initialFocus={withLegacyAutoFocus(
+            initialFocus,
+            onOpenAutoFocus,
+            "openAutoFocus",
+          )}
+          {...props}
         >
-          <X size={20} className="text-foreground" />
-        </DialogPrimitive.Close>
-      </DialogPrimitive.Content>
-    </SheetPortal>
-  );
-});
+          {children}
+          <SheetPrimitive.Close
+            data-slot="sheet-close"
+            render={
+              <button
+                type="button"
+                className="icon-button absolute right-4 top-4 opacity-70 hover:opacity-100"
+                aria-label="Close"
+              />
+            }
+          >
+            <X size={20} className="text-foreground" />
+          </SheetPrimitive.Close>
+        </SheetPrimitive.Popup>
+      </SheetPortal>
+    );
+  },
+);
 SheetContent.displayName = "SheetContent";
 
-const SheetHeader = ({
-  className,
-  ...props
-}: React.HTMLAttributes<HTMLDivElement>) => {
+function SheetHeader({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
+      data-slot="sheet-header"
       className={cn("flex flex-col space-y-2 text-left", className)}
       {...props}
     />
   );
-};
-SheetHeader.displayName = "SheetHeader";
+}
 
-const SheetFooter = ({
-  className,
-  ...props
-}: React.HTMLAttributes<HTMLDivElement>) => {
+function SheetFooter({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
+      data-slot="sheet-footer"
       className={cn(
         "flex flex-col-reverse gap-2 sm:flex-row sm:justify-end",
         className,
@@ -93,36 +171,30 @@ const SheetFooter = ({
       {...props}
     />
   );
-};
-SheetFooter.displayName = "SheetFooter";
+}
 
-const SheetTitle = React.forwardRef<
-  React.ComponentRef<typeof DialogPrimitive.Title>,
-  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Title>
->(({ className, ...props }, ref) => {
+function SheetTitle({ className, ...props }: SheetPrimitive.Title.Props) {
   return (
-    <DialogPrimitive.Title
-      ref={ref}
+    <SheetPrimitive.Title
+      data-slot="sheet-title"
       className={cn("text-lg font-semibold text-foreground", className)}
       {...props}
     />
   );
-});
-SheetTitle.displayName = DialogPrimitive.Title.displayName;
+}
 
-const SheetDescription = React.forwardRef<
-  React.ComponentRef<typeof DialogPrimitive.Description>,
-  React.ComponentPropsWithoutRef<typeof DialogPrimitive.Description>
->(({ className, ...props }, ref) => {
+function SheetDescription({
+  className,
+  ...props
+}: SheetPrimitive.Description.Props) {
   return (
-    <DialogPrimitive.Description
-      ref={ref}
+    <SheetPrimitive.Description
+      data-slot="sheet-description"
       className={cn("text-sm text-muted-foreground", className)}
       {...props}
     />
   );
-});
-SheetDescription.displayName = DialogPrimitive.Description.displayName;
+}
 
 export {
   Sheet,

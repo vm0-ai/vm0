@@ -244,7 +244,7 @@ function OrgDropdownContent() {
   return (
     <DropdownMenuContent
       align="start"
-      className="flex max-h-[min(420px,var(--radix-dropdown-menu-content-available-height))] w-72 flex-col overflow-hidden"
+      className="flex max-h-[min(420px,var(--available-height))] w-72 flex-col overflow-hidden"
       onCloseAutoFocus={(event) => {
         event.preventDefault();
       }}

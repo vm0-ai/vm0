@@ -71,6 +71,7 @@ import { createComposesBddApi } from "./helpers/api-bdd-composes";
 import { createComputerUseBddApi } from "./helpers/api-bdd-computer-use";
 import {
   createConnectorBddApi,
+  manualHttpCustomConnectorCreateBody,
   mockCustomConnectorOAuth2Provider,
 } from "./helpers/api-bdd-connectors";
 import { createFirewallApi } from "./helpers/api-bdd-firewall";
@@ -8169,13 +8170,14 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     );
     await api.enableAgentConnectors(actor, agentId, ["figma"]);
 
-    const custom = await connectors.createCustomConnector(actor, {
-      slug: `_figma-override-${randomUUID().slice(0, 8)}`,
-      displayName: "Custom Figma",
-      prefixes: ["https://api.figma.com/"],
-      headerName: "Authorization",
-      headerTemplate: "Bearer {{secret}}",
-    });
+    const custom = await connectors.createCustomConnector(
+      actor,
+      manualHttpCustomConnectorCreateBody({
+        slug: `_figma-override-${randomUUID().slice(0, 8)}`,
+        displayName: "Custom Figma",
+        prefixTemplates: ["https://api.figma.com/"],
+      }),
+    );
     await connectors.setCustomConnectorSecret(
       actor,
       custom.id,
@@ -8210,7 +8212,6 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
         customConnectorId: custom.id,
       }),
     );
-    expect(claim).not.toHaveProperty("connectorRuntimeCandidateTargets");
     expect(claim.networkPolicies).toHaveProperty("figma");
     expect(claim.networkPolicies?.[internalName]?.unknownPolicy).toBe("allow");
 
@@ -8235,13 +8236,14 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     );
     await api.enableAgentConnectors(actor, agentId, ["figma"]);
 
-    const custom = await connectors.createCustomConnector(actor, {
-      slug: `_figma-files-${randomUUID().slice(0, 8)}`,
-      displayName: "Custom Figma Files",
-      prefixes: ["https://api.figma.com/v1/files/"],
-      headerName: "Authorization",
-      headerTemplate: "Bearer {{secret}}",
-    });
+    const custom = await connectors.createCustomConnector(
+      actor,
+      manualHttpCustomConnectorCreateBody({
+        slug: `_figma-files-${randomUUID().slice(0, 8)}`,
+        displayName: "Custom Figma Files",
+        prefixTemplates: ["https://api.figma.com/v1/files/"],
+      }),
+    );
     await connectors.setCustomConnectorSecret(
       actor,
       custom.id,
@@ -8270,7 +8272,6 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       kind: "builtin",
       connectorSlug: "figma",
     });
-    expect(claim).not.toHaveProperty("connectorRuntimeCandidateTargets");
 
     await api.requestCancelRun(actor, run.runId, [200]);
     expect((await api.readRun(actor, run.runId)).status).toBe("cancelled");
@@ -8686,12 +8687,13 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       { key: "secret", kind: "secret", value: "mcp-runtime-token" },
     ]);
 
-    const http = await connectors.createCustomConnector(actor, {
-      displayName: "BDD HTTP Runtime Peer",
-      prefixes: ["https://http-runtime.example.test/api/"],
-      headerName: "Authorization",
-      headerTemplate: "Bearer {{secret}}",
-    });
+    const http = await connectors.createCustomConnector(
+      actor,
+      manualHttpCustomConnectorCreateBody({
+        displayName: "BDD HTTP Runtime Peer",
+        prefixTemplates: ["https://http-runtime.example.test/api/"],
+      }),
+    );
     await connectors.setCustomConnectorSecret(
       actor,
       http.id,
@@ -9758,13 +9760,14 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const { actor, agentId, runnerGroup } = await zeroBackedDirectRunActor();
 
     const allowedSlug = `_bdd-direct-internal-${randomUUID().slice(0, 8)}`;
-    const allowed = await connectors.createCustomConnector(actor, {
-      slug: allowedSlug,
-      displayName: "BDD Direct Internal API",
-      prefixes: ["https://*.direct.internal.example.com/api/"],
-      headerName: "Authorization",
-      headerTemplate: "Bearer {{secret}}",
-    });
+    const allowed = await connectors.createCustomConnector(
+      actor,
+      manualHttpCustomConnectorCreateBody({
+        slug: allowedSlug,
+        displayName: "BDD Direct Internal API",
+        prefixTemplates: ["https://*.direct.internal.example.com/api/"],
+      }),
+    );
     await connectors.setCustomConnectorSecret(
       actor,
       allowed.id,
@@ -9772,13 +9775,14 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     );
 
     const blockedSlug = `_bdd-direct-blocked-${randomUUID().slice(0, 8)}`;
-    const blocked = await connectors.createCustomConnector(actor, {
-      slug: blockedSlug,
-      displayName: "BDD Direct Blocked API",
-      prefixes: ["https://*.blocked.internal.example.com/api/"],
-      headerName: "Authorization",
-      headerTemplate: "Bearer {{secret}}",
-    });
+    const blocked = await connectors.createCustomConnector(
+      actor,
+      manualHttpCustomConnectorCreateBody({
+        slug: blockedSlug,
+        displayName: "BDD Direct Blocked API",
+        prefixTemplates: ["https://*.blocked.internal.example.com/api/"],
+      }),
+    );
     await connectors.setCustomConnectorSecret(
       actor,
       blocked.id,
@@ -10692,13 +10696,14 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
 
     // Built-in connector-owned vars must not leak into custom connector bases.
     const slug = `_bdd-vars-${randomUUID().slice(0, 8)}`;
-    const custom = await connectors.createCustomConnector(actor, {
-      slug,
-      displayName: "BDD Vars Custom",
-      prefixes: ["https://internal.example.com/api/"],
-      headerName: "Authorization",
-      headerTemplate: "Bearer {{secret}}",
-    });
+    const custom = await connectors.createCustomConnector(
+      actor,
+      manualHttpCustomConnectorCreateBody({
+        slug,
+        displayName: "BDD Vars Custom",
+        prefixTemplates: ["https://internal.example.com/api/"],
+      }),
+    );
     await connectors.setCustomConnectorSecret(actor, custom.id, "custom-bdd");
     await connectors.updateAgentCustomConnectors(actor, agentId, [custom.id]);
 
@@ -10727,7 +10732,6 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       connectorSlug: "zendesk",
       baseUrlVars: { ZENDESK_SUBDOMAIN: "xn--mnich-kva" },
     });
-    expect(claim).not.toHaveProperty("connectorRuntimeCandidateTargets");
     expect(customApis[0]?.base).toBe("https://internal.example.com/api/");
 
     await api.requestCancelRun(actor, run.runId, [200]);
@@ -10849,7 +10853,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     await api.requestCancelRun(actor, run.runId, [200]);
   });
 
-  it("handles rollout, missing, invalid, and incompatible permission baselines", async () => {
+  it("handles missing, invalid, and incompatible permission baselines", async () => {
     const bdd = createBddApi(context);
     const api = createRunsApi(context);
     const fw = createFirewallApi(context);
@@ -10866,10 +10870,6 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     await api.heartbeatRunner(runnerGroup);
 
     const cases = [
-      {
-        mode: "rollout-targets",
-        path: "baseline",
-      },
       {
         mode: "remove",
         path: "full_missing_baseline",
@@ -10917,13 +10917,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       );
       const claim = await api.claimRunnerJob(run.runId);
 
-      const isRolloutContext = fallbackCase.mode === "rollout-targets";
-      expect(claim.connectorRuntimeTargets).toStrictEqual(
-        isRolloutContext ? [] : slackTargets,
-      );
-      expect(claim.connectorRuntimeCandidateTargets).toStrictEqual(
-        isRolloutContext ? slackTargets : undefined,
-      );
+      expect(claim.connectorRuntimeTargets).toStrictEqual(slackTargets);
       expect(claim.networkPolicies?.slack?.allow).toContain(
         "conversations:read",
       );
@@ -10933,7 +10927,6 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       expectClaimRouteResponseTimingActions({
         runId: run.runId,
         expectedActionTypes:
-          fallbackCase.mode === "rollout-targets" ||
           fallbackCase.mode === "catalog-mismatch"
             ? [
                 "claim_route_response_network_policy_refresh",
@@ -11792,13 +11785,14 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       permission: "chat:write",
       action: "allow",
     });
-    const customConnector = await connectors.createCustomConnector(actor, {
-      slug: `_bdd-context-${randomUUID().slice(0, 8)}`,
-      displayName: "BDD Context API",
-      prefixes: ["https://context.example.com/api/"],
-      headerName: "Authorization",
-      headerTemplate: "Bearer {{secret}}",
-    });
+    const customConnector = await connectors.createCustomConnector(
+      actor,
+      manualHttpCustomConnectorCreateBody({
+        slug: `_bdd-context-${randomUUID().slice(0, 8)}`,
+        displayName: "BDD Context API",
+        prefixTemplates: ["https://context.example.com/api/"],
+      }),
+    );
     await connectors.setCustomConnectorSecret(
       actor,
       customConnector.id,

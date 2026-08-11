@@ -497,7 +497,7 @@ function ConnectorFilterDropdown({
       </DropdownMenuTrigger>
       <DropdownMenuContent
         align="end"
-        className="max-h-[min(420px,var(--radix-dropdown-menu-content-available-height))] w-56 overflow-y-auto"
+        className="max-h-[min(420px,var(--available-height))] w-56 overflow-y-auto"
       >
         <ConnectorFilterOption
           active={value.kind === "all"}

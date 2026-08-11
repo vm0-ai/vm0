@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.724.1](https://github.com/vm0-ai/vm0/compare/app-v0.724.0...app-v0.724.1) (2026-08-11)
+
+
+### Bug Fixes
+
+* keep scroll-to-bottom button opaque on hover ([#26245](https://github.com/vm0-ai/vm0/issues/26245)) ([a14bc00](https://github.com/vm0-ai/vm0/commit/a14bc005dd0f49dc5ba7fdec5ad0d0f804c2a555))
+* remove nested hover surface on the composer goal row ([#26299](https://github.com/vm0-ai/vm0/issues/26299)) ([1a73a68](https://github.com/vm0-ai/vm0/commit/1a73a688abf217a9c2d13570176d214856c86140))
+
+
+### Documentation
+
+* retire remaining workflow event wording ([#26294](https://github.com/vm0-ai/vm0/issues/26294)) ([b688bec](https://github.com/vm0-ai/vm0/commit/b688beca9b8a1be94e5bd0d46d38a0fa2ad0ee80))
+
+
+### Refactoring
+
+* **connectors:** use canonical custom connector grants ([#26250](https://github.com/vm0-ai/vm0/issues/26250)) ([ccf9418](https://github.com/vm0-ai/vm0/commit/ccf941825eba9b0eef085163584be1904b330887))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.312.1
+    * @vm0/core bumped to 8.542.2
+
 ## [0.724.0](https://github.com/vm0-ai/vm0/compare/app-v0.723.5...app-v0.724.0) (2026-08-11)
 
 

@@ -919,7 +919,7 @@ describe("Feishu integration", () => {
     readonly sandboxToken: string;
     readonly sessionId: string;
     readonly history: string;
-    readonly assistantText: string;
+    readonly assistantText?: string;
   }): Promise<void> {
     const historyHash = createHash("sha256").update(args.history).digest("hex");
     const historySize = Buffer.byteLength(args.history, "utf8");
@@ -947,28 +947,34 @@ describe("Feishu integration", () => {
       headers,
       [200],
     );
-    const assistantEvent = {
-      type: "assistant" as const,
-      sequenceNumber: 0,
-      message: {
-        id: `msg_bdd_feishu_${args.runId}`,
-        content: [{ type: "text" as const, text: args.assistantText }],
-      },
-    };
-    chatCallbacks.mockChatOutputEvents([
-      {
-        eventType: assistantEvent.type,
-        sequenceNumber: assistantEvent.sequenceNumber,
-        eventData: { message: assistantEvent.message },
-      },
-    ]);
-    await webhooksApi.requestAgentEvents(
-      { runId: args.runId, events: [assistantEvent] },
-      headers,
-      [200],
-    );
+    if (args.assistantText !== undefined) {
+      const assistantEvent = {
+        type: "assistant" as const,
+        sequenceNumber: 0,
+        message: {
+          id: `msg_bdd_feishu_${args.runId}`,
+          content: [{ type: "text" as const, text: args.assistantText }],
+        },
+      };
+      chatCallbacks.mockChatOutputEvents([
+        {
+          eventType: assistantEvent.type,
+          sequenceNumber: assistantEvent.sequenceNumber,
+          eventData: { message: assistantEvent.message },
+        },
+      ]);
+      await webhooksApi.requestAgentEvents(
+        { runId: args.runId, events: [assistantEvent] },
+        headers,
+        [200],
+      );
+    }
     await webhooksApi.requestAgentComplete(
-      { runId: args.runId, exitCode: 0, lastEventSequence: 0 },
+      {
+        runId: args.runId,
+        exitCode: 0,
+        ...(args.assistantText === undefined ? {} : { lastEventSequence: 0 }),
+      },
       headers,
       [200],
     );
@@ -2471,6 +2477,34 @@ describe("Feishu integration", () => {
         );
       }),
     ).toBeFalsy();
+    const managedConnector = requireValue(
+      (await authOrgApi.listCustomConnectors(actor)).connectors.find(
+        (connector) => {
+          return connector.permissionBundleRef === "builtin:feishu@1";
+        },
+      ),
+      "Expected managed Feishu custom connector",
+    );
+    const agentAccessClient = setupApp({ context, routes: zeroAgentsRoutes })(
+      zeroAgentCustomConnectorsContract,
+    );
+    const selectedPermissions = ["messages:send-as-user"];
+    await accept(
+      agentAccessClient.update({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { id: defaultAgentId },
+        body: {
+          grants: [
+            {
+              customConnectorId: managedConnector.id,
+              permissionNames: selectedPermissions,
+            },
+          ],
+          operation: "add",
+        },
+      }),
+      [200],
+    );
     const retryConnectResponse = await connectApp.request(
       "/api/zero/feishu/connect",
       {
@@ -2485,6 +2519,17 @@ describe("Feishu integration", () => {
     const retryAuthorizationUrl =
       await feishuAuthorizationUrlFromResponse(retryConnectResponse);
     await completeFeishuAuthorization(retryAuthorizationUrl, "ou_feishu_user");
+    const preservedAccess = await accept(
+      agentAccessClient.get({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { id: defaultAgentId },
+      }),
+      [200],
+    );
+    expect(preservedAccess.body.grants).toContainEqual({
+      customConnectorId: managedConnector.id,
+      permissionNames: selectedPermissions,
+    });
     await flushWaitUntilForTest();
     const welcome = outboundMessages.find((message) => {
       return (
@@ -3472,7 +3517,6 @@ describe("Feishu integration", () => {
       sandboxToken: initialClaim.sandboxToken,
       sessionId: mainSessionId,
       history: `bdd main feishu history ${initialRun.id}`,
-      assistantText: "Initial main Feishu answer",
     });
 
     const feishuThreadId = `omt_${randomUUID()}`;
@@ -3497,18 +3541,7 @@ describe("Feishu integration", () => {
       sandboxToken: threadClaim.sandboxToken,
       sessionId: threadSessionId,
       history: `bdd feishu thread history ${threadRun.id}`,
-      assistantText: "Feishu thread answer",
     });
-    const completedThreadReply = [...outboundMessages]
-      .reverse()
-      .find((message) => {
-        return (
-          message.kind === "reply" &&
-          message.target === threadMessageId &&
-          messageContent(message).includes("Feishu thread answer")
-        );
-      });
-    expect(completedThreadReply?.replyInThread).toBeTruthy();
 
     await postEvent(
       callbackUrl,
@@ -3564,6 +3597,18 @@ describe("Feishu integration", () => {
       history: `bdd resumed feishu thread history ${threadRun.id}`,
       assistantText: "Initial resumed Feishu thread answer",
     });
+    const completedThreadReply = [...outboundMessages]
+      .reverse()
+      .find((message) => {
+        return (
+          message.kind === "reply" &&
+          message.target === threadMessageId &&
+          messageContent(message).includes(
+            "Initial resumed Feishu thread answer",
+          )
+        );
+      });
+    expect(completedThreadReply?.replyInThread).toBeTruthy();
 
     const threadHelpMessageId = `om_${randomUUID()}`;
     await postEvent(

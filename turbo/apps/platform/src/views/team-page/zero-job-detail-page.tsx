@@ -254,8 +254,7 @@ function DetailError({ error, agentId }: { error: string; agentId: string }) {
   );
 }
 
-const TAB_TRIGGER_CLASS =
-  "gap-1.5 text-sm data-[state=active]:bg-background px-3";
+const TAB_TRIGGER_CLASS = "gap-1.5 text-sm data-active:bg-background px-3";
 
 function resolveVisibleTab(
   rawTab: string,
