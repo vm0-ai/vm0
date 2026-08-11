@@ -1039,6 +1039,9 @@ describe("chat lifecycle", () => {
       detachedSetupPage({
         context,
         path: `/chats/${threadId}`,
+        featureSwitches: {
+          [FeatureSwitchKey.ChatRunContinuationPresentation]: true,
+        },
       });
 
       await screen.findByText(visibleOrder[0]!);

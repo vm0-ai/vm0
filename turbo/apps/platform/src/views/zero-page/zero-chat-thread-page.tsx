@@ -3403,6 +3403,8 @@ interface ChatRunPresentation {
   readonly steerEventIds: ReadonlySet<string>;
 }
 
+const EMPTY_CHAT_EVENT_IDS: ReadonlySet<string> = new Set();
+
 function isSteerPromptEvent(
   event: EnrichedChatEvent,
   seenUserRunIds: ReadonlySet<string>,
@@ -3505,8 +3507,12 @@ function ChatThreadEventGroups({
       runGroupFolding,
       onToggleRunGroup,
     });
-  const { actionOwnerEventIds, steerEventIds } =
-    chatRunPresentationForGroups(groups);
+  const continuationPresentationEnabled =
+    useGet(featureSwitch$)[FeatureSwitchKey.ChatRunContinuationPresentation] ??
+    false;
+  const runPresentation = continuationPresentationEnabled
+    ? chatRunPresentationForGroups(groups)
+    : null;
 
   return (
     <>
@@ -3536,10 +3542,15 @@ function ChatThreadEventGroups({
               group={group}
               thread={thread}
               modelChanges={modelChanges}
-              showActions={group.events.some((event) => {
-                return actionOwnerEventIds.has(event.id);
-              })}
-              steerEventIds={steerEventIds}
+              showActions={
+                runPresentation === null ||
+                group.events.some((event) => {
+                  return runPresentation.actionOwnerEventIds.has(event.id);
+                })
+              }
+              steerEventIds={
+                runPresentation?.steerEventIds ?? EMPTY_CHAT_EVENT_IDS
+              }
               runGroupFolds={embeddedFolds}
               completedWorkFold={
                 completedWorkFold !== null

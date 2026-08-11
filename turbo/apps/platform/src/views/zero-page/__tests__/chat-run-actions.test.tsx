@@ -1,5 +1,6 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { i18n } from "../../../i18n/index.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -10,6 +11,9 @@ const context = testContext();
 
 const THREAD_ID = "b0000000-0000-4000-a000-000000000903";
 const RUN_ID = "run-active";
+const CONTINUATION_PRESENTATION_ENABLED = {
+  [FeatureSwitchKey.ChatRunContinuationPresentation]: true,
+} as const;
 
 type TranscriptLabel = `U${number}` | `A${number}`;
 
@@ -105,6 +109,7 @@ describe("chat run actions", () => {
       detachedSetupPage({
         context,
         path: `/chats/${THREAD_ID}`,
+        featureSwitches: CONTINUATION_PRESENTATION_ENABLED,
       });
 
       await expect(
@@ -156,6 +161,7 @@ describe("chat run actions", () => {
     detachedSetupPage({
       context,
       path: `/chats/${THREAD_ID}`,
+      featureSwitches: CONTINUATION_PRESENTATION_ENABLED,
     });
 
     const indicator = await screen.findByTestId("chat-steer-indicator");
@@ -163,5 +169,29 @@ describe("chat run actions", () => {
       "Sent while the agent was working to direct its behavior",
     );
     expect(indicator).toHaveAttribute("data-slot", "tooltip-trigger");
+  });
+
+  it("keeps legacy actions and hides steer indicators when the feature switch is disabled", async () => {
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      activeRunIds: [RUN_ID],
+      chatEvents: [
+        transcriptEvent("U1", 0, []),
+        transcriptEvent("A1", 1, []),
+        transcriptEvent("U2", 2, ["U2"]),
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ChatRunContinuationPresentation]: false,
+      },
+    });
+
+    await expect(screen.findByText("U2")).resolves.toBeInTheDocument();
+    expect(screen.queryAllByTestId("chat-event-actions")).toHaveLength(1);
+    expect(screen.queryByTestId("chat-steer-indicator")).toBeNull();
   });
 });
