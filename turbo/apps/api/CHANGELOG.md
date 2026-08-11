@@ -1,5 +1,28 @@
 # Changelog
 
+## [1.423.1](https://github.com/vm0-ai/vm0/compare/api-v1.423.0...api-v1.423.1) (2026-08-11)
+
+
+### Bug Fixes
+
+* complete custom mcp ui and simplify firewall policies ([#26334](https://github.com/vm0-ai/vm0/issues/26334)) ([49329f0](https://github.com/vm0-ai/vm0/commit/49329f08831fa835504c760d6a8911bb9b3f32b9))
+
+
+### Refactoring
+
+* **db:** finalize connection-scoped variable uniqueness ([#26333](https://github.com/vm0-ai/vm0/issues/26333)) ([ed8a33e](https://github.com/vm0-ai/vm0/commit/ed8a33ecc0d0599ada2ea6b89ec167ac44bde9ce))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.313.1
+    * @vm0/connectors bumped to 1.205.1
+    * @vm0/core bumped to 8.544.0
+    * @vm0/db bumped to 1.191.3
+    * @vm0/pi-agent-runtime bumped to 1.3.42
+
 ## [1.423.0](https://github.com/vm0-ai/vm0/compare/api-v1.422.1...api-v1.423.0) (2026-08-11)
 
 
