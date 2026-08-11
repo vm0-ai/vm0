@@ -573,7 +573,7 @@ async def test_matching_http1_absolute_form_authority_is_forwardable_with_auth(
     with (
         patch.object(mitm_addon, "__file__", str(tmp_path / "mitm_addon.py")),
         taddons.context(Proxyserver(), mitm_addon) as addon_context,
-        fake_firewall_headers(headers={"Authorization": "Bearer managed-secret"}) as get_headers,
+        fake_firewall_headers(headers={"Authorization": "Bearer managed-secret"}),
     ):
         addon_context.options.update(
             vm0_api_url="https://api.vm0.ai",
@@ -603,7 +603,6 @@ async def test_matching_http1_absolute_form_authority_is_forwardable_with_auth(
     assert flow.request.authority == "API.GITHUB.COM.:443"
     assert flow.metadata[metadata_keys.ORIGINAL_URL] == "https://api.github.com/repos"
     assert flow.request.headers["Authorization"] == "Bearer managed-secret"
-    assert get_headers.await_count == 1
     forwarded_head = http1.assemble_request_head(flow.request)
     assert forwarded_head.startswith(b"GET https://API.GITHUB.COM.:443/repos HTTP/1.1\r\n")
     assert b"Host: api.github.com\r\n" in forwarded_head

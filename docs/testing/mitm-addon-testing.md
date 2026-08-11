@@ -133,7 +133,7 @@ suites before committing the upgrade.
 | `test_request_headers_api_admission.py`                 | Requestheaders platform API destination admission and binding                                                        |
 | `test_request_headers_connector_admission.py`           | Requestheaders connector destination admission, TLS evidence, and binding                                            |
 | `test_request_headers_firewall_auth.py`                 | Requestheaders stream-safe firewall auth, connector intent, fallback, and cancellation cleanup                       |
-| `test_mitmproxy_request_framing.py`                     | HTTP/2 request framing through mitmproxy's state machine and real addon hook dispatch                                |
+| `test_mitmproxy_request_framing.py`                     | HTTP/1 and HTTP/2 request framing through mitmproxy's state machine and real addon hook dispatch                     |
 | `test_mitmproxy_websocket_framing.py`                   | Decoded WebSocket message bounds through mitmproxy's state machine and real addon hook dispatch                      |
 | `test_request_handler_usage_tracking.py`                | Request-hook billable usage tracking lifecycle                                                                       |
 | `test_response_headers_handler.py`                      | Response-header hook stream setup                                                                                    |
