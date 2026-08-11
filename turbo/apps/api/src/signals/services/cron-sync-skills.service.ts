@@ -91,6 +91,7 @@ interface GitTreeSnapshot {
 interface StoredSkillSource {
   readonly url: string;
   readonly commitSha: string | null;
+  readonly versionHash: string | null;
 }
 
 interface SkillTreeSyncPlan {
@@ -107,6 +108,14 @@ const GITHUB_API_HEADERS = {
   Accept: "application/vnd.github+json",
   "User-Agent": "vm0-api",
 } as const;
+const SYSTEM_SKILL_ARCHIVE_FORMAT_VERSION = "ustar-1";
+// Reserve the first 64 bits of the version ID for a detectable format marker.
+// This lets a cron rebuild archives after a writer change even when Git HEAD
+// and the source files are unchanged, while retaining 192 content-hash bits.
+const SYSTEM_SKILL_ARCHIVE_FORMAT_MARKER = createHash("sha256")
+  .update(`system-skill-archive-format:${SYSTEM_SKILL_ARCHIVE_FORMAT_VERSION}`)
+  .digest("hex")
+  .slice(0, 16);
 const SYSTEM_SKILL_MAX_TOTAL_BYTES = 8 * 1024 * 1024;
 const SYSTEM_SKILL_MAX_ARCHIVE_BYTES = 16 * 1024 * 1024;
 
@@ -250,20 +259,22 @@ function computeSystemSkillHash(
   skillUrl: string,
   files: readonly FileEntryWithHash[],
 ): string {
-  if (files.length === 0) {
-    return createHash("sha256")
-      .update(`system-skill:${skillUrl}\n`)
-      .digest("hex");
-  }
-
+  const versionPrefix = `system-skill:${SYSTEM_SKILL_ARCHIVE_FORMAT_VERSION}:${skillUrl}\n`;
   const entries = files
     .map((file) => {
       return `${file.path}:${file.hash}`;
     })
     .sort();
-  return createHash("sha256")
-    .update(`system-skill:${skillUrl}\n${entries.join("\n")}`)
+  const contentHash = createHash("sha256")
+    .update(`${versionPrefix}${entries.join("\n")}`)
     .digest("hex");
+  return `${SYSTEM_SKILL_ARCHIVE_FORMAT_MARKER}${contentHash.slice(SYSTEM_SKILL_ARCHIVE_FORMAT_MARKER.length)}`;
+}
+
+function hasCurrentSystemSkillArchiveFormat(
+  versionHash: string | null,
+): boolean {
+  return versionHash?.startsWith(SYSTEM_SKILL_ARCHIVE_FORMAT_MARKER) ?? false;
 }
 
 function skillUrl(skillName: string): string {
@@ -849,8 +860,19 @@ async function buildSkillTreeSyncPlan(
       return skill.url;
     }),
   );
+  const existingVersionsByUrl = new Map(
+    existing.map((skill) => {
+      return [skill.url, skill.versionHash] as const;
+    }),
+  );
   for (const skillName of currentTree.skillFiles.keys()) {
-    if (!existingUrls.has(skillUrl(skillName))) {
+    const url = skillUrl(skillName);
+    if (
+      !existingUrls.has(url) ||
+      !hasCurrentSystemSkillArchiveFormat(
+        existingVersionsByUrl.get(url) ?? null,
+      )
+    ) {
       changedSkills.add(skillName);
     }
   }
@@ -962,7 +984,11 @@ export const syncSkills$ = command(
 
     const urlPrefix = `https://github.com/${DEFAULT_SKILLS_OWNER}/${DEFAULT_SKILLS_REPO}/tree/${DEFAULT_SKILLS_BRANCH}/`;
     const existing = await db
-      .select({ url: skills.url, commitSha: skills.commitSha })
+      .select({
+        url: skills.url,
+        commitSha: skills.commitSha,
+        versionHash: skills.versionHash,
+      })
       .from(skills)
       .where(like(skills.url, `${urlPrefix}%`));
     signal.throwIfAborted();
@@ -970,7 +996,10 @@ export const syncSkills$ = command(
     if (
       existing.length > 0 &&
       existing.every((skill) => {
-        return skill.commitSha === headSha;
+        return (
+          skill.commitSha === headSha &&
+          hasCurrentSystemSkillArchiveFormat(skill.versionHash)
+        );
       })
     ) {
       return {

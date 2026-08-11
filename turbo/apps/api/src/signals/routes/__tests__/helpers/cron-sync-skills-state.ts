@@ -2,7 +2,6 @@ import type {
   TestCronSyncSkillsStateActionBody,
   TestCronSyncSkillsStateActionResponse,
   TestCronSyncSkillsStateSkillVersionSeed,
-  TestCronSyncSkillsStateSyncResponse,
 } from "@vm0/api-contracts/contracts/test-cron-sync-skills-state";
 
 import { createAppWithRoutes } from "../../../../app-factory-core";
@@ -12,7 +11,6 @@ import { testCronSyncSkillsStateRoutes } from "../../test-cron-sync-skills-state
 const CRON_SYNC_SKILLS_STATE_ROUTE = "/api/test/cron-sync-skills-state";
 
 interface CronSyncSkillRow {
-  readonly name: string;
   readonly fullPath: string;
   readonly commitSha: string | null;
   readonly versionHash: string | null;
@@ -22,7 +20,6 @@ interface CronSyncSkillRow {
 
 interface CronSyncStorageRow {
   readonly headVersionId: string | null;
-  readonly s3Prefix: string;
   readonly size: number;
   readonly versionSize: number | null;
   readonly archiveSize: number | null;
@@ -68,67 +65,36 @@ async function postAction(
   return await readJson<TestCronSyncSkillsStateActionResponse>(response);
 }
 
-export async function cleanupOwnedSkillsState(
+export async function cleanupOfficialTestSkillsState(
   context: TestContext,
-  input: {
-    readonly skillUrls: readonly string[];
-    readonly storageNames: readonly string[];
-  },
+  urlPrefix: string,
 ): Promise<void> {
   await postAction(context, {
-    action: "cleanup-owned-skills",
-    skill_urls: [...input.skillUrls],
-    storage_names: [...input.storageNames],
+    action: "cleanup-official-test-skills",
+    url_prefix: urlPrefix,
   });
 }
 
-export async function setOwnedSkillsCommitShaState(
+export async function setAllSkillsCommitShaState(
   context: TestContext,
   input: {
-    readonly skills: readonly {
-      readonly name: string;
-      readonly url: string;
-      readonly fullPath: string;
-      readonly frontmatter: unknown;
-    }[];
+    readonly skillName: string;
+    readonly url: string;
+    readonly fullPath: string;
     readonly commitSha: string;
+    readonly versionHashMarker: string;
+    readonly frontmatter: unknown;
   },
 ): Promise<void> {
   await postAction(context, {
-    action: "set-owned-skills-commit-sha",
-    skills: input.skills.map((skill) => {
-      return {
-        name: skill.name,
-        url: skill.url,
-        full_path: skill.fullPath,
-        frontmatter: skill.frontmatter,
-      };
-    }),
+    action: "set-all-skills-commit-sha",
+    skill_name: input.skillName,
+    url: input.url,
+    full_path: input.fullPath,
     commit_sha: input.commitSha,
+    version_hash_marker: input.versionHashMarker,
+    frontmatter: input.frontmatter,
   });
-}
-
-export async function syncOwnedSkillsState(
-  context: TestContext,
-  input: {
-    readonly skillNamePrefix: string;
-    readonly requiredSkillNames: readonly string[];
-  },
-): Promise<TestCronSyncSkillsStateSyncResponse> {
-  const response = await requestCronSyncSkillsState(
-    context,
-    `${CRON_SYNC_SKILLS_STATE_ROUTE}/sync`,
-    {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        skill_name_prefix: input.skillNamePrefix,
-        required_skill_names: input.requiredSkillNames,
-      }),
-    },
-  );
-  expectOk(response, "cron sync skills scoped sync");
-  return await readJson<TestCronSyncSkillsStateSyncResponse>(response);
 }
 
 export async function seedCurrentSkillVersionsState(
@@ -155,7 +121,6 @@ export async function findSkillByUrlState(
   });
   return response.skill
     ? {
-        name: response.skill.name,
         fullPath: response.skill.full_path,
         commitSha: response.skill.commit_sha,
         versionHash: response.skill.version_hash,
@@ -176,7 +141,6 @@ export async function findSystemStorageByNameState(
   return response.storage
     ? {
         headVersionId: response.storage.head_version_id,
-        s3Prefix: response.storage.s3_prefix,
         size: response.storage.size,
         versionSize: response.storage.version_size,
         archiveSize: response.storage.archive_size,

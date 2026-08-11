@@ -35,6 +35,10 @@ const TEST_SKILL_PREFIX = "api-test-skill";
 // entries without coupling these route tests to the connector registry size.
 const REQUIRED_SEED_SKILL_NAMES = SEED_SKILLS;
 const STALE_PRESEEDED_COMMIT_SHA = "0".repeat(40);
+const SYSTEM_SKILL_ARCHIVE_FORMAT_MARKER = createHash("sha256")
+  .update("system-skill-archive-format:ustar-1")
+  .digest("hex")
+  .slice(0, 16);
 
 interface MockSkillEntry {
   readonly name: string;
@@ -114,6 +118,7 @@ async function setAllSkillsCommitSha(commitSha: string): Promise<void> {
     url: testSkillUrl(skillName),
     fullPath: `${DEFAULT_SKILLS_OWNER}/${DEFAULT_SKILLS_REPO}/tree/${DEFAULT_SKILLS_BRANCH}/${skillName}`,
     commitSha,
+    versionHashMarker: SYSTEM_SKILL_ARCHIVE_FORMAT_MARKER,
     frontmatter: {
       name: skillName,
       description: `${skillName} skill`,
@@ -211,11 +216,13 @@ function computeMockSkillVersionHash(skill: MockSkillEntry): string {
       return `${file.path}:${hash}`;
     })
     .sort();
-  return createHash("sha256")
+  const formatVersion = "ustar-1";
+  const contentHash = createHash("sha256")
     .update(
-      `system-skill:${testSkillUrl(skill.name)}\n${fileEntries.join("\n")}`,
+      `system-skill:${formatVersion}:${testSkillUrl(skill.name)}\n${fileEntries.join("\n")}`,
     )
     .digest("hex");
+  return `${SYSTEM_SKILL_ARCHIVE_FORMAT_MARKER}${contentHash.slice(SYSTEM_SKILL_ARCHIVE_FORMAT_MARKER.length)}`;
 }
 
 function mockSkillFileContent(skill: MockSkillEntry, path: string): string {
@@ -429,6 +436,52 @@ describe("GET /api/cron/sync-skills", () => {
       failed: 0,
       removed: 0,
       total: 0,
+    });
+  });
+
+  it("rebuilds legacy archives when the stored commit SHA is unchanged", async () => {
+    const commitSha = newCommitSha();
+    const skill = EXTRA_SKILLS.alphaSkill;
+    const currentVersion = buildMockSkillVersion(skill);
+    const legacyVersionHash = createHash("sha256")
+      .update(`legacy:${currentVersion.versionHash}`)
+      .digest("hex");
+    await seedCurrentSkillVersionsState(context, {
+      staleCommitSha: commitSha,
+      versions: [
+        {
+          name: currentVersion.name,
+          url: currentVersion.url,
+          full_path: currentVersion.fullPath,
+          storage_name: currentVersion.storageName,
+          version_hash: legacyVersionHash,
+          s3_prefix: currentVersion.s3Prefix,
+          s3_key: `${currentVersion.s3Prefix}/${legacyVersionHash}`,
+          size: currentVersion.size,
+          archive_size: currentVersion.archiveSize,
+          file_count: currentVersion.fileCount,
+          frontmatter: currentVersion.frontmatter,
+        },
+      ],
+    });
+    setupMswHandlers(commitSha, [skill]);
+
+    const response = await accept(
+      apiClient().sync({ headers: cronHeaders() }),
+      [200],
+    );
+
+    expect(response.body).toMatchObject({
+      success: true,
+      commitSha,
+      synced: 1,
+      failed: 0,
+      total: 1,
+    });
+    expect(s3CallsByName("PutObjectCommand")).toHaveLength(2);
+    await expect(findSkillByUrl(currentVersion.url)).resolves.toMatchObject({
+      commitSha,
+      versionHash: currentVersion.versionHash,
     });
   });
 
