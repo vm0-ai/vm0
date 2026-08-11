@@ -1,16 +1,17 @@
+import type { ApiPreviewHeaders } from "./api-preview-auth";
+
 export interface CliTokenOptions {
+  readonly apiPreviewHeaders?: ApiPreviewHeaders;
   readonly apiUrl: string;
   readonly clerkSessionToken: string;
-  readonly vercelAutomationBypassSecret?: string;
 }
 
 export async function issueCliToken(options: CliTokenOptions): Promise<string> {
   const commonHeaders = new Headers({ "Content-Type": "application/json" });
-  if (options.vercelAutomationBypassSecret) {
-    commonHeaders.set(
-      "x-vercel-protection-bypass",
-      options.vercelAutomationBypassSecret,
-    );
+  for (const [name, value] of Object.entries(options.apiPreviewHeaders ?? {})) {
+    if (value) {
+      commonHeaders.set(name, value);
+    }
   }
 
   const device = await postJson(

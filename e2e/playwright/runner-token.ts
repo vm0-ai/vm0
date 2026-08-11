@@ -8,6 +8,7 @@ import {
   refreshClerkSessionToken,
   signInWithClerkTestingHelper,
 } from "./lib/auth";
+import { apiPreviewHeaders } from "./lib/api-preview-auth";
 import { issueCliToken } from "./lib/cli-token";
 import { runnerTestAccounts } from "./lib/clerk-api";
 import {
@@ -66,8 +67,9 @@ async function main(): Promise<void> {
       upgradeToPro: true,
     },
   ];
+  const previewHeaders = apiPreviewHeaders();
   const vercelAutomationBypassSecret =
-    process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
+    previewHeaders["x-vercel-protection-bypass"];
 
   await mkdir(outputDirectory, { recursive: true });
   await clerkSetup();
@@ -100,9 +102,9 @@ async function main(): Promise<void> {
           });
         }
         const token = await issueCliToken({
+          apiPreviewHeaders: previewHeaders,
           apiUrl,
           clerkSessionToken,
-          vercelAutomationBypassSecret,
         });
         const outputFile = join(outputDirectory, target.fileName);
         await writeFile(

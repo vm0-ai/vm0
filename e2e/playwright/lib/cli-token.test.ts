@@ -5,6 +5,8 @@ import { test } from "node:test";
 import { issueCliToken } from "./cli-token";
 
 interface ObservedRequest {
+  readonly accessClientId: string | null;
+  readonly accessClientSecret: string | null;
   readonly authorization: string | null;
   readonly bypass: string | null;
   readonly method: string | undefined;
@@ -15,6 +17,10 @@ test("issues a CLI token through the public device authorization flow", async ()
   const requests: ObservedRequest[] = [];
   const server = createServer((request, response) => {
     requests.push({
+      accessClientId: headerValue(request.headers["cf-access-client-id"]),
+      accessClientSecret: headerValue(
+        request.headers["cf-access-client-secret"],
+      ),
       authorization: request.headers.authorization ?? null,
       bypass: headerValue(request.headers["x-vercel-protection-bypass"]),
       method: request.method,
@@ -53,26 +59,36 @@ test("issues a CLI token through the public device authorization flow", async ()
     assert(address && typeof address === "object");
 
     const token = await issueCliToken({
+      apiPreviewHeaders: {
+        "cf-access-client-id": "access-client-id",
+        "cf-access-client-secret": "access-client-secret",
+        "x-vercel-protection-bypass": "preview-bypass",
+      },
       apiUrl: `http://127.0.0.1:${address.port}`,
       clerkSessionToken: "clerk-session-token",
-      vercelAutomationBypassSecret: "preview-bypass",
     });
 
     assert.equal(token, "runner-cli-token");
     assert.deepEqual(requests, [
       {
+        accessClientId: "access-client-id",
+        accessClientSecret: "access-client-secret",
         authorization: null,
         bypass: "preview-bypass",
         method: "POST",
         url: "/api/cli/auth/device",
       },
       {
+        accessClientId: "access-client-id",
+        accessClientSecret: "access-client-secret",
         authorization: "Bearer clerk-session-token",
         bypass: "preview-bypass",
         method: "POST",
         url: "/api/cli/auth/approve",
       },
       {
+        accessClientId: "access-client-id",
+        accessClientSecret: "access-client-secret",
         authorization: null,
         bypass: "preview-bypass",
         method: "POST",

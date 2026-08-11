@@ -181,6 +181,15 @@ unless token_step.dig("env", "E2E_RUNNER_MOCK_CLAUDE_ORGANIZATION_ID") ==
     "${{ steps.account.outputs.mock-claude-organization-id }}"
   raise "runner E2E token generation must receive the mock Claude organization"
 end
+expected_access_environment = {
+  "CF_ACCESS_CLIENT_ID" => "${{ secrets.CF_API_PREVIEW_ACCESS_CLIENT_ID }}",
+  "CF_ACCESS_CLIENT_SECRET" => "${{ secrets.CF_API_PREVIEW_ACCESS_CLIENT_SECRET }}",
+}
+expected_access_environment.each do |name, value|
+  unless token_step.dig("env", name) == value
+    raise "runner E2E token generation must receive #{name}"
+  end
+end
 
 upload_step = account_prepare.fetch("steps").find do |step|
   step["name"] == "Upload runner E2E API tokens"
