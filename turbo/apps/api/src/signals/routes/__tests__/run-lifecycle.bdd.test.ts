@@ -5469,188 +5469,6 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
     await api.requestCancelRun(actor, second.runId, [200]);
   });
 
-  it("finishes promoted queued run notifications after request abort", async () => {
-    const api = createRunsApi(context);
-    const { actor, agentId } = await entitledRunActor();
-    const controller = new AbortController();
-    let queueChangedPublishes = 0;
-
-    const first = await api.createRun(actor, {
-      agentId,
-      prompt: "active run before abort promotion one",
-      modelProvider: "anthropic-api-key",
-    });
-    const second = await api.createRun(actor, {
-      agentId,
-      prompt: "active run before abort promotion two",
-      modelProvider: "anthropic-api-key",
-    });
-    const queued = await api.createRun(actor, {
-      agentId,
-      prompt: "queued run should still notify after abort",
-      modelProvider: "anthropic-api-key",
-    });
-    expect(queued.status).toBe("queued");
-
-    context.mocks.ably.publish.mockImplementation((topic: unknown) => {
-      if (topic === "queue:changed") {
-        queueChangedPublishes++;
-        if (queueChangedPublishes === 2) {
-          const error = new Error("abort after queued promotion commit");
-          error.name = "AbortError";
-          controller.abort(error);
-        }
-      }
-      return Promise.resolve(undefined);
-    });
-
-    const cancelled = await api.requestCancelRunWithSignal(
-      actor,
-      first.runId,
-      controller.signal,
-    );
-    expect(cancelled.status).toBe(200);
-    const promoted = await waitForRunStatus(
-      api,
-      actor,
-      queued.runId,
-      "pending",
-    );
-    expect(promoted.status).toBe("pending");
-    await expect
-      .poll(() => {
-        return context.mocks.ably.publish.mock.calls.some(
-          ([topic, payload]) => {
-            return (
-              topic === "job" &&
-              isRecord(payload) &&
-              payload.runId === queued.runId
-            );
-          },
-        );
-      })
-      .toBe(true);
-
-    await api.requestCancelRun(actor, second.runId, [200]);
-    await api.requestCancelRun(actor, queued.runId, [200]);
-  });
-
-  it("drains queued runs after a cancel request aborts post-commit", async () => {
-    const api = createRunsApi(context);
-    const { actor, agentId } = await entitledRunActor();
-    const controller = new AbortController();
-
-    const first = await api.createRun(actor, {
-      agentId,
-      prompt: "active run before post-commit abort one",
-      modelProvider: "anthropic-api-key",
-    });
-    const second = await api.createRun(actor, {
-      agentId,
-      prompt: "active run before post-commit abort two",
-      modelProvider: "anthropic-api-key",
-    });
-    const queued = await api.createRun(actor, {
-      agentId,
-      prompt: "queued run should drain after cancel abort",
-      modelProvider: "anthropic-api-key",
-    });
-    expect(queued.status).toBe("queued");
-
-    context.mocks.ably.publish.mockImplementation((topic: unknown) => {
-      if (topic === "queue:changed") {
-        const error = new Error("abort after cancel commit");
-        error.name = "AbortError";
-        controller.abort(error);
-      }
-      return Promise.resolve(undefined);
-    });
-
-    const cancelled = await api.requestCancelRunWithSignal(
-      actor,
-      first.runId,
-      controller.signal,
-    );
-    expect(cancelled.status).toBe(200);
-    const promoted = await waitForRunStatus(
-      api,
-      actor,
-      queued.runId,
-      "pending",
-    );
-    expect(promoted.status).toBe("pending");
-    await expect
-      .poll(() => {
-        return context.mocks.ably.publish.mock.calls.some(
-          ([topic, payload]) => {
-            return (
-              topic === "job" &&
-              isRecord(payload) &&
-              payload.runId === queued.runId
-            );
-          },
-        );
-      })
-      .toBe(true);
-
-    await api.requestCancelRun(actor, second.runId, [200]);
-    await api.requestCancelRun(actor, queued.runId, [200]);
-  });
-
-  it("drains queued runs when queue changed publish fails after cancellation", async () => {
-    const api = createRunsApi(context);
-    const { actor, agentId } = await entitledRunActor();
-
-    const first = await api.createRun(actor, {
-      agentId,
-      prompt: "active run before publish failure one",
-      modelProvider: "anthropic-api-key",
-    });
-    const second = await api.createRun(actor, {
-      agentId,
-      prompt: "active run before publish failure two",
-      modelProvider: "anthropic-api-key",
-    });
-    const queued = await api.createRun(actor, {
-      agentId,
-      prompt: "queued run should drain despite queue publish failure",
-      modelProvider: "anthropic-api-key",
-    });
-    expect(queued.status).toBe("queued");
-
-    context.mocks.ably.publish.mockImplementation((topic: unknown) => {
-      if (topic === "queue:changed") {
-        return Promise.reject(new Error("queue changed publish failed"));
-      }
-      return Promise.resolve(undefined);
-    });
-
-    await api.requestCancelRun(actor, first.runId, [200]);
-    const promoted = await waitForRunStatus(
-      api,
-      actor,
-      queued.runId,
-      "pending",
-    );
-    expect(promoted.status).toBe("pending");
-    await expect
-      .poll(() => {
-        return context.mocks.ably.publish.mock.calls.some(
-          ([topic, payload]) => {
-            return (
-              topic === "job" &&
-              isRecord(payload) &&
-              payload.runId === queued.runId
-            );
-          },
-        );
-      })
-      .toBe(true);
-
-    await api.requestCancelRun(actor, second.runId, [200]);
-    await api.requestCancelRun(actor, queued.runId, [200]);
-  });
-
   it("keeps a queued launch visible when enqueue telemetry fails", async () => {
     const api = createRunsApi(context);
     const { actor, agentId } = await entitledRunActor();
@@ -5694,43 +5512,6 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
         op_type: "enqueue_zero_run",
         run_id: queued.runId,
       }),
-    );
-
-    await api.requestCancelRun(actor, queued.runId, [200]);
-    await api.requestCancelRun(actor, first.runId, [200]);
-    await api.requestCancelRun(actor, second.runId, [200]);
-  });
-
-  it("keeps a queued launch visible when queue changed publish fails", async () => {
-    const api = createRunsApi(context);
-    const { actor, agentId } = await entitledRunActor();
-
-    const first = await api.createRun(actor, {
-      agentId,
-      prompt: "active run before queue publish failure one",
-      modelProvider: "anthropic-api-key",
-    });
-    const second = await api.createRun(actor, {
-      agentId,
-      prompt: "active run before queue publish failure two",
-      modelProvider: "anthropic-api-key",
-    });
-    context.mocks.ably.publish.mockRejectedValueOnce(
-      new Error("queue changed publish failed"),
-    );
-
-    const queued = await api.createRun(actor, {
-      agentId,
-      prompt: "queued run should survive queue publish failure",
-      modelProvider: "anthropic-api-key",
-    });
-
-    expect(queued.status).toBe("queued");
-    const stored = await api.readRun(actor, queued.runId);
-    expect(stored.status).toBe("queued");
-    const queue = await api.readRunQueue(actor);
-    expect(queue.body.queue).toContainEqual(
-      expect.objectContaining({ runId: queued.runId }),
     );
 
     await api.requestCancelRun(actor, queued.runId, [200]);
@@ -12434,19 +12215,6 @@ describe("RUN-03: cancellation of dispatched and terminal runs", () => {
     await api.requestCancelRun(actor, run.runId, [200]);
     const cancelled = await api.readRun(actor, run.runId);
     expect(cancelled.status).toBe("cancelled");
-    await expect
-      .poll(() => {
-        return context.mocks.ably.publish.mock.calls.some(
-          ([topic, payload]) => {
-            return (
-              topic === `run:changed:${run.runId}` &&
-              isRecord(payload) &&
-              payload.status === "cancelled"
-            );
-          },
-        );
-      })
-      .toBe(true);
     expect(context.mocks.ably.publish).toHaveBeenCalledWith("cancel", {
       runId: run.runId,
       mode: "cooperative",
@@ -15130,10 +14898,6 @@ describe("RUN-03: sandbox completion reports against missing checkpoints and set
       );
     }
     expect(missing.body).toStrictEqual({ success: true, status: "failed" });
-    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
-      `run:changed:${run.runId}`,
-      { status: "failed" },
-    );
     const failed = await api.readRun(actor, run.runId);
     expect(failed.status).toBe("failed");
     expect(failed.error).toBe("Checkpoint for run not found");

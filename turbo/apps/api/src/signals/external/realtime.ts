@@ -114,19 +114,6 @@ export async function publishUserPreferenceChangedForUserSafely(
   );
 }
 
-export async function publishRunChangedForUserSafely(
-  userId: string,
-  runId: string,
-  payload: unknown = null,
-): Promise<void> {
-  await tapError(
-    publishUserSignal([userId], `run:changed:${runId}`, payload),
-    (error) => {
-      L.warn("Failed to publish run changed signal", { runId, error });
-    },
-  );
-}
-
 /**
  * Fire the user-level "thread list shape changed" signal. The sidebar
  * subscribes to this topic and reloads the full list on any delivery —
@@ -324,11 +311,7 @@ export async function publishBuiltInGenerationChanged(
   );
 }
 
-/**
- * Publish an org-scoped signal. Used for events that any org member's UI
- * may want to see (e.g. queue:changed when a run cancels and a queued
- * run becomes eligible to dispatch).
- */
+/** Publish an org-scoped signal for events shared by organization members. */
 export async function publishOrgSignal(
   orgId: string,
   topic: string,

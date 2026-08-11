@@ -746,15 +746,6 @@ async function expectQueuedPiEdgePromotion(args: {
   );
   expect(modelStarted.settled()).toBeFalsy();
 
-  const promotionController = new AbortController();
-  context.mocks.ably.publish.mockImplementation((topic: unknown) => {
-    if (topic === "queue:changed" && !promotionController.signal.aborted) {
-      const error = new Error("abort after queued run promotion commit");
-      error.name = "AbortError";
-      promotionController.abort(error);
-    }
-    return Promise.resolve(undefined);
-  });
   const completed = await webhooks.requestAgentComplete(
     {
       runId: occupyingRun.runId,
@@ -769,11 +760,9 @@ async function expectQueuedPiEdgePromotion(args: {
       )}`,
     },
     [200],
-    promotionController.signal,
   );
   expect(completed.status).toBe(200);
   await modelStarted.promise;
-  expect(promotionController.signal.aborted).toBeTruthy();
 
   expect((await api.readRun(args.fixture.actor, queuedRun.runId)).status).toBe(
     "pending",
