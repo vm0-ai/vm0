@@ -229,7 +229,7 @@ async fn axiom_filter_does_not_suppress_sibling_local_layers() {
         let _sub = tracing::subscriber::set_default(subscriber);
         tracing::info!("local info");
         tracing::event!(tracing::Level::DEBUG, "local debug");
-        tracing::trace!("local trace");
+        tracing::event!(tracing::Level::TRACE, "local trace");
         tracing::warn!("local warn");
         tracing::warn!(target: INTERNAL_TARGET, dropped = 1_u64, "axiom channel full");
     }
