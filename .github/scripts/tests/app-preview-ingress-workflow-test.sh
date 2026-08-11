@@ -52,9 +52,9 @@ expected_gateway_url = "${{ steps.app-preview.outputs.url }}"
 unless deploy_app.fetch("outputs").fetch("preview-url") == expected_gateway_url
   raise "deploy-app preview-url must expose the app preview gateway"
 end
-expected_vercel_gateway_url = "${{ steps.vercel-app-preview.outputs.url }}"
-unless deploy_app.fetch("outputs").fetch("vercel-preview-url") == expected_vercel_gateway_url
-  raise "deploy-app must expose the isolated Vercel-backed app preview gateway"
+expected_vercel_alias_url = "${{ steps.vercel-app-preview.outputs.url }}"
+unless deploy_app.fetch("outputs").fetch("vercel-preview-url") == expected_vercel_alias_url
+  raise "deploy-app must expose the isolated Vercel-backed Pages alias"
 end
 
 deploy_step = find_step.call("Deploy Cloudflare Pages preview")
@@ -111,6 +111,18 @@ vercel_readiness_step = find_step.call("Wait for Vercel-backed Cloudflare Pages 
 unless vercel_readiness_step.fetch("run").include?("wait-okou-pages-readiness.sh")
   raise "Vercel-backed Pages readiness must use the shared readiness script"
 end
+vercel_alias_step = find_step.call("Resolve Vercel-backed Pages preview URL")
+unless vercel_alias_step.fetch("run").include?("CF_PAGES_PROJECT_NAME") &&
+    vercel_alias_step.fetch("run").include?(".pages.dev")
+  raise "Vercel-backed app preview must use its isolated Pages branch alias"
+end
+vercel_alias_readiness_step = find_step.call(
+  "Wait for Vercel-backed Cloudflare Pages alias readiness"
+)
+unless vercel_alias_readiness_step.fetch("env").fetch("PAGES_URL") == expected_vercel_alias_url &&
+    vercel_alias_readiness_step.fetch("run").include?("wait-okou-pages-readiness.sh")
+  raise "Vercel-backed Pages alias must pass the shared readiness probe"
+end
 
 preview_step = find_step.call("Resolve app preview gateway URL")
 raise "app preview step id changed" unless preview_step["id"] == "app-preview"
@@ -154,10 +166,10 @@ browser_env = browser_run.fetch("env")
 unless browser_env.fetch("VM0_AUTH_URL").include?("matrix.runtime == 'vercel'") &&
     browser_env.fetch("VM0_AUTH_URL").include?("vercel-preview-url") &&
     browser_env.fetch("VM0_AUTH_URL").include?("preview-url")
-  raise "browser E2E must select the smoke-tested gateway for each runtime"
+  raise "browser E2E must select the smoke-tested app preview for each runtime"
 end
 unless browser_env.fetch("VM0_AUTH_REDIRECT_URL").include?("/_/skeleton")
-  raise "browser E2E redirect must stay on the selected app preview gateway"
+  raise "browser E2E redirect must stay on the selected app preview"
 end
 
 playwright_run = playwright_e2e.fetch("steps").find do |step|

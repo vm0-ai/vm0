@@ -151,6 +151,7 @@ const [indexTemplate, manifestTemplate, workerModule] = await Promise.all([
 const worker = workerModule.default;
 const sharedThreadId = "10000000-0000-4000-8000-000000000001";
 const previewOrigin = "https://pr-25304-vm0-api-preview.vm0.workers.dev";
+const vercelPreviewOrigin = "https://pr-25304-vercel-api.vm6.ai";
 const vm0Description =
   "VM0, your trustworthy AI teammate for real work. An AI agent that connects to 100+ tools to run reports, triage, outreach, and research in Slack or the web.";
 const okouDescription =
@@ -392,6 +393,24 @@ assert.equal(
 assert.equal(
   tagAttribute(previewHtml, "link", "rel", "canonical", "href"),
   null,
+);
+
+const vercelPreview = await requestSharedPage({
+  appOrigin: "https://pr-25304-vercel-app.okou-app.pages.dev",
+  apiOrigin: vercelPreviewOrigin,
+  query: "?x-vercel-protection-bypass=preview-secret",
+  metaResponse() {
+    return Response.json({ title: "Vercel preview conversation" });
+  },
+});
+assert.equal(vercelPreview.response.status, 200);
+assert.equal(
+  vercelPreview.observedUrl,
+  `${vercelPreviewOrigin}/api/zero/shared-threads/${sharedThreadId}/meta`,
+);
+assert.equal(
+  vercelPreview.observedHeaders.get("x-vercel-protection-bypass"),
+  "preview-secret",
 );
 
 const production = await requestSharedPage({

@@ -329,20 +329,21 @@ jobs:
       - name: Set preview URLs
         id: preview-urls
         env:
+          CF_PAGES_PROJECT_NAME: ${{ vars.CF_PAGES_PROJECT_NAME }}
           CF_WORKERS_SUBDOMAIN: ${{ vars.CF_WORKERS_SUBDOMAIN }}
         run: |
           JOB_REF="${{ steps.set-job-ref.outputs.job-ref }}"
           CF_PAGES_PREVIEW_DOMAIN="${{ vars.CF_PAGES_PREVIEW_DOMAIN }}"
           PREVIEW_DOMAIN="${{ vars.PREVIEW_DOMAIN }}"
 
-          if [ -n "$CF_PAGES_PREVIEW_DOMAIN" ] && [ -n "$CF_WORKERS_SUBDOMAIN" ] && [ -n "$PREVIEW_DOMAIN" ] && [ -n "$JOB_REF" ]; then
+          if [ -n "$CF_PAGES_PREVIEW_DOMAIN" ] && [ -n "$CF_PAGES_PROJECT_NAME" ] && [ -n "$CF_WORKERS_SUBDOMAIN" ] && [ -n "$PREVIEW_DOMAIN" ] && [ -n "$JOB_REF" ]; then
             APP_URL="$(bash .github/scripts/resolve-app-preview-url.sh \
               "$JOB_REF" \
               "$CF_PAGES_PREVIEW_DOMAIN")"
             {
               echo "app-url=${APP_URL}"
               echo "api-url=https://${JOB_REF}-vm0-api-preview.${CF_WORKERS_SUBDOMAIN}.workers.dev"
-              echo "vercel-app-url=https://${JOB_REF}-vercel-app.${CF_PAGES_PREVIEW_DOMAIN}"
+              echo "vercel-app-url=https://${JOB_REF}-vercel-app.${CF_PAGES_PROJECT_NAME}.pages.dev"
               echo "vercel-api-url=https://${JOB_REF}-vercel-api.${PREVIEW_DOMAIN}"
             } >> "$GITHUB_OUTPUT"
             echo "Resolved isolated Worker and Vercel API/app preview URLs"
@@ -353,7 +354,7 @@ jobs:
               echo "vercel-app-url="
               echo "vercel-api-url="
             } >> "$GITHUB_OUTPUT"
-            echo "Preview URLs not set (preview domains, Worker subdomain, or job-ref is empty)"
+            echo "Preview URLs not set (Pages project, preview domains, Worker subdomain, or job-ref is empty)"
           fi
 
   file-size-check:
@@ -2084,8 +2085,8 @@ jobs:
             API Vercel preview: ${{ steps.api-preview.outputs.url }}
 
   # Build one runtime-independent app artifact, then deploy it to isolated
-  # Pages branches embedding the Worker and Vercel API origins. The shared
-  # gateway fronts both branches at stable app preview URLs.
+  # Pages branches embedding the Worker and Vercel API origins. The existing
+  # gateway fronts the Worker lane; the Vercel lane uses its Pages branch alias.
   deploy-app:
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -2144,17 +2145,17 @@ jobs:
           : "${CF_PAGES_PREVIEW_DOMAIN:?CF_PAGES_PREVIEW_DOMAIN variable is required}"
           echo "url=https://${PAGES_BRANCH}.${CF_PAGES_PREVIEW_DOMAIN}" >> "$GITHUB_OUTPUT"
 
-      - name: Resolve Vercel app preview gateway URL
+      - name: Resolve Vercel-backed Pages preview URL
         id: vercel-app-preview
         env:
           PAGES_BRANCH: ${{ steps.pages-branch.outputs.branch }}
         run: |
-          : "${CF_PAGES_PREVIEW_DOMAIN:?CF_PAGES_PREVIEW_DOMAIN variable is required}"
+          : "${CF_PAGES_PROJECT_NAME:?CF_PAGES_PROJECT_NAME variable is required}"
           job_ref="${PAGES_BRANCH%-app}"
           branch="${job_ref}-vercel-app"
           {
             echo "branch=$branch"
-            echo "url=https://${branch}.${CF_PAGES_PREVIEW_DOMAIN}"
+            echo "url=https://${branch}.${CF_PAGES_PROJECT_NAME}.pages.dev"
           } >> "$GITHUB_OUTPUT"
 
       - uses: ./.github/actions/toolchain-init
@@ -2514,27 +2515,14 @@ jobs:
             "$PAGES_DIST" \
             "$PAGES_URL"
 
-      - name: Smoke test Vercel-backed app preview gateway
+      - name: Wait for Vercel-backed Cloudflare Pages alias readiness
         env:
-          APP_PREVIEW_URL: ${{ steps.vercel-app-preview.outputs.url }}
+          PAGES_DIST: ${{ steps.vercel-pages-preview.outputs.dist }}
+          PAGES_URL: ${{ steps.vercel-app-preview.outputs.url }}
         run: |
-          set -euo pipefail
-          response_headers="$(mktemp)"
-          for attempt in {1..12}; do
-            if curl --fail --silent --show-error \
-              --dump-header "$response_headers" \
-              --output /dev/null \
-              "${APP_PREVIEW_URL}/" && \
-              grep -Eiq '^x-vm0-preview-gateway:[[:space:]]*1[[:space:]]*$' \
-                "$response_headers"; then
-              echo "Vercel-backed app preview gateway is ready"
-              exit 0
-            fi
-            echo "::warning::Vercel-backed app preview gateway is not ready (attempt ${attempt}/12)"
-            sleep 5
-          done
-          echo "::error::${APP_PREVIEW_URL} did not use vm0-preview-gateway"
-          exit 1
+          bash .github/scripts/wait-okou-pages-readiness.sh \
+            "$PAGES_DIST" \
+            "$PAGES_URL"
 
       - name: Record Cloudflare Pages preview
         env:
@@ -2552,7 +2540,7 @@ jobs:
           fi
           echo "Vercel-backed Cloudflare Pages deployment: ${VERCEL_PAGES_DEPLOYMENT_URL}" >> "$GITHUB_STEP_SUMMARY"
           echo "Vercel-backed Cloudflare Pages preview: ${VERCEL_PAGES_PREVIEW_URL}" >> "$GITHUB_STEP_SUMMARY"
-          echo "Vercel-backed app preview gateway: ${VERCEL_APP_PREVIEW_URL}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Vercel-backed app preview alias: ${VERCEL_APP_PREVIEW_URL}" >> "$GITHUB_STEP_SUMMARY"
 
   deploy-stripe-listener:
     runs-on: ubuntu-latest

@@ -3,6 +3,7 @@ const VERCEL_PROTECTION_BYPASS_NAME = "x-vercel-protection-bypass";
 const PREVIEW_BYPASS_COOKIE_MAX_AGE_SECONDS = 60 * 60;
 const PREVIEW_API_ROOT_DOMAIN = "vm6.ai";
 const OKOU_PREVIEW_ROOT_DOMAIN = "omby.ai";
+const OKOU_PAGES_PREVIEW_ROOT_DOMAIN = "okou-app.pages.dev";
 const APP_SERVICE_SUFFIX = "-app";
 const BYPASS_TARGET_SERVICE_SUFFIX = "-api";
 
@@ -25,7 +26,10 @@ function isCorrespondingPreviewService(
   sourceHostname: string,
   targetHostname: string,
 ): boolean {
-  const source = hostnameBeforeRoot(sourceHostname, OKOU_PREVIEW_ROOT_DOMAIN);
+  const sourceRoot = isHostnameWithin(sourceHostname, OKOU_PREVIEW_ROOT_DOMAIN)
+    ? OKOU_PREVIEW_ROOT_DOMAIN
+    : OKOU_PAGES_PREVIEW_ROOT_DOMAIN;
+  const source = hostnameBeforeRoot(sourceHostname, sourceRoot);
   if (!source.endsWith(APP_SERVICE_SUFFIX)) {
     return false;
   }
@@ -62,7 +66,8 @@ function previewBypassForTarget(
 ): string | null {
   const targetHostname = targetUrl(target).hostname.toLowerCase();
   if (
-    !isHostnameWithin(location.hostname, OKOU_PREVIEW_ROOT_DOMAIN) ||
+    (!isHostnameWithin(location.hostname, OKOU_PREVIEW_ROOT_DOMAIN) &&
+      !isHostnameWithin(location.hostname, OKOU_PAGES_PREVIEW_ROOT_DOMAIN)) ||
     !isHostnameWithin(targetHostname, PREVIEW_API_ROOT_DOMAIN) ||
     !isCorrespondingPreviewService(
       location.hostname.toLowerCase(),

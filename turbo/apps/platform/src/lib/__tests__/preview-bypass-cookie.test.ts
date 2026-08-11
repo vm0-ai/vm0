@@ -107,4 +107,28 @@ describe("preview bypass cookie", () => {
       workerLaneUrl.searchParams.has("x-vercel-protection-bypass"),
     ).toBeFalsy();
   });
+
+  it("forwards an isolated Pages alias cookie only to its Vercel API", () => {
+    const location = {
+      hostname: "pr-22085-vercel-app.okou-app.pages.dev",
+      protocol: "https:",
+      search: "?x-vercel-protection-bypass=preview-secret",
+    };
+    const apiUrl = new URL(
+      "https://pr-22085-vercel-api.vm6.ai/api/zero/status",
+    );
+    const workerLaneUrl = new URL(
+      "https://pr-22085-api.vm6.ai/api/zero/status",
+    );
+
+    appendPreviewBypassToUrl(apiUrl, location, "");
+    appendPreviewBypassToUrl(workerLaneUrl, location, "");
+
+    expect(apiUrl.searchParams.get("x-vercel-protection-bypass")).toBe(
+      "preview-secret",
+    );
+    expect(
+      workerLaneUrl.searchParams.has("x-vercel-protection-bypass"),
+    ).toBeFalsy();
+  });
 });

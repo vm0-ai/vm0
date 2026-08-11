@@ -22,6 +22,14 @@ unless prepare.dig("outputs", "vercel-app-preview-url") ==
     "${{ steps.preview-urls.outputs.vercel-app-url }}"
   raise "prepare must expose the isolated Vercel app preview URL"
 end
+preview_urls_step = prepare.fetch("steps").find do |step|
+  step["name"] == "Set preview URLs"
+end
+raise "missing preview URL step" unless preview_urls_step
+unless preview_urls_step.fetch("run").include?("CF_PAGES_PROJECT_NAME") &&
+    preview_urls_step.fetch("run").include?("-vercel-app.${CF_PAGES_PROJECT_NAME}.pages.dev")
+  raise "Vercel app URL must use its isolated Pages branch alias"
+end
 
 unless Array(worker["needs"]).include?("deploy-stripe-listener") &&
     Array(vercel["needs"]).include?("deploy-stripe-listener")

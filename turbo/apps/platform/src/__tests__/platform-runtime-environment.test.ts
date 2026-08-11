@@ -299,6 +299,19 @@ describe("portable platform runtime environment", () => {
     );
   });
 
+  it("uses the configured Vercel API from its isolated Pages alias", async () => {
+    setBrowserUrl("https://pr-23364-vercel-app.okou-app.pages.dev/agents");
+    setPreviewApiOrigin("https://pr-23364-vercel-api.vm6.ai");
+    const runtime = await loadRuntimeSurfaces();
+
+    expect(runtime.apiBase.resolveApiBase()).toBe(
+      "https://pr-23364-vercel-api.vm6.ai",
+    );
+    expect(runtime.apiBase.resolveOAuthApiBase()).toBe(
+      "https://pr-23364-vercel-api.vm6.ai",
+    );
+  });
+
   it("rejects a non-isolated Vercel API from the app preview gateway", async () => {
     setBrowserUrl("https://pr-23364-app.omby.ai/agents");
     setPreviewApiOrigin("https://pr-23364-api.vm6.ai");
