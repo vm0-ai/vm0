@@ -23,6 +23,7 @@ import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
 import { accept } from "../../lib/accept.ts";
 import { i18n } from "../../i18n/index.ts";
+import { downloadAttachment$ } from "../../signals/attachment-download.ts";
 import {
   OAUTH_API_BASE,
   zeroClient$,
@@ -53,7 +54,6 @@ import {
 import type { PlatformConnectorCatalogStatusItem } from "../../signals/connector-domain.ts";
 import {
   copyAttachmentLinkToClipboard,
-  downloadAttachmentUrl,
   publicAttachmentUrl,
 } from "./zero-attachment-url.ts";
 
@@ -672,6 +672,7 @@ export function ArtifactDownloadMenu({
   const closeMenu = useSet(closeArtifactDownloadMenu$);
   const startArtifactDownload = useSet(startArtifactDownload$);
   const finishArtifactDownload = useSet(finishArtifactDownload$);
+  const downloadAttachment = useSet(downloadAttachment$);
   const pageSignal = useGet(pageSignal$);
   const open = openKey === `${menuInstanceKey}:${artifactDownloadKey}`;
   const downloadPending = pendingKey === artifactDownloadKey;
@@ -730,7 +731,10 @@ export function ArtifactDownloadMenu({
             startArtifactDownloadWithCleanup({
               closeMenu,
               operation: "artifact download",
-              download: downloadAttachmentUrl(url, pageSignal, downloadName),
+              download: downloadAttachment(
+                { filename: downloadName, url },
+                pageSignal,
+              ),
               downloadKey: artifactDownloadKey,
               finish: finishArtifactDownload,
               start: startArtifactDownload,
