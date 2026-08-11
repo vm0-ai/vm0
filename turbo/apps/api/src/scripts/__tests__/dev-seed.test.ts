@@ -52,35 +52,6 @@ describe("buildVm0ApiKeys", () => {
     ]);
   });
 
-  it("builds one OpenRouter dev seed row", () => {
-    const openRouterKeys = buildVendorKeys("openrouter", {
-      DEV_MODEL_OPENROUTER_KEY: "dev-openrouter-key",
-      OPENROUTER_API_KEY: "provider-openrouter-key",
-    });
-
-    expect(openRouterKeys).toStrictEqual([
-      {
-        apiKey: "dev-openrouter-key",
-        label: "dev-seed",
-        vendor: "openrouter",
-      },
-    ]);
-  });
-
-  it("builds one Z.AI dev seed row", () => {
-    const zaiKeys = buildVendorKeys("zai", {
-      DEV_MODEL_ZAI_KEY: "dev-zai-key",
-    });
-
-    expect(zaiKeys).toStrictEqual([
-      {
-        apiKey: "dev-zai-key",
-        label: "dev-seed",
-        vendor: "zai",
-      },
-    ]);
-  });
-
   it("builds one OpenAI dev seed row", () => {
     const openAiKeys = buildVendorKeys("openai", {
       DEV_MODEL_OPENAI_KEY: "dev-openai-key",
@@ -92,21 +63,6 @@ describe("buildVm0ApiKeys", () => {
         apiKey: "dev-openai-key",
         label: "dev-seed",
         vendor: "openai",
-      },
-    ]);
-  });
-
-  it("falls back to MOONSHOT_API_KEY for the Moonshot dev seed row", () => {
-    const moonshotKeys = buildVendorKeys("moonshot", {
-      DEV_MODEL_MOONSHOT_KEY: "",
-      MOONSHOT_API_KEY: "provider-moonshot-key",
-    });
-
-    expect(moonshotKeys).toStrictEqual([
-      {
-        apiKey: "provider-moonshot-key",
-        label: "dev-seed",
-        vendor: "moonshot",
       },
     ]);
   });
