@@ -16,6 +16,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
   Input,
+  Textarea,
 } from "@vm0/ui";
 import type {
   ModelProviderConnectionResponse,
@@ -356,11 +357,11 @@ function SurfaceEditor({
             {t(($) => {
               return $.settings.models.gateways.modelMappings;
             })}
-            <textarea
+            <Textarea
               value={surface.modelMappings}
               spellCheck={false}
               rows={5}
-              className="min-h-28 rounded-lg border border-input bg-background px-3 py-2 font-mono text-xs text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="min-h-28 font-mono text-xs"
               onChange={(event) => {
                 update({
                   protocol,

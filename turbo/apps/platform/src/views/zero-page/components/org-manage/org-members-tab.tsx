@@ -696,7 +696,7 @@ function SelfDemoteAction({
     >
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <button
+          <Button
             aria-label={t(
               ($) => {
                 return $.settings.workspace.members.actionsFor;
@@ -705,10 +705,11 @@ function SelfDemoteAction({
                 email,
               },
             )}
-            className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-state-hover transition-colors"
+            variant="quiet"
+            size="icon-xs"
           >
             <Ellipsis size={15} />
-          </button>
+          </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent
           align="end"
@@ -821,7 +822,7 @@ function MemberActions({
     >
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <button
+          <Button
             aria-label={t(
               ($) => {
                 return $.settings.workspace.members.actionsFor;
@@ -831,10 +832,12 @@ function MemberActions({
               },
             )}
             disabled={changingRole}
-            className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-state-hover transition-colors disabled:opacity-50 disabled:pointer-events-none"
+            variant="quiet"
+            size="icon-xs"
+            className="disabled:opacity-50"
           >
             <Ellipsis size={15} />
-          </button>
+          </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent
           align="end"
@@ -1016,17 +1019,18 @@ function PendingInvitationRow({
           >
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button
+                <Button
                   aria-label={t(
                     ($) => {
                       return $.settings.workspace.members.actionsFor;
                     },
                     { email: invitation.email },
                   )}
-                  className="flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:bg-state-hover transition-colors"
+                  variant="quiet"
+                  size="icon-xs"
                 >
                   <Ellipsis size={15} />
-                </button>
+                </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent
                 align="end"

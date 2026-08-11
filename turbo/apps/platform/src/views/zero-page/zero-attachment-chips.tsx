@@ -1,4 +1,5 @@
 import type { MouseEvent, ReactNode } from "react";
+import { Button } from "@vm0/ui";
 import {
   useGet,
   useLastLoadable,
@@ -259,15 +260,17 @@ function DialogIconButton({
   onClick: () => void;
 }) {
   return (
-    <button
+    <Button
       type="button"
       onClick={onClick}
-      className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
+      variant="quiet"
+      size="icon-sm"
+      className="shrink-0"
       aria-label={ariaLabel}
       title={ariaLabel}
     >
       {children}
-    </button>
+    </Button>
   );
 }
 
@@ -550,7 +553,7 @@ function ArtifactDialogImageNavigationControls({
   return (
     <>
       {navigation.onPrevious && (
-        <button
+        <Button
           type="button"
           onClick={navigation.onPrevious}
           aria-label={t(($) => {
@@ -560,13 +563,15 @@ function ArtifactDialogImageNavigationControls({
             return $.artifacts.actions.previousImage;
           })}
           data-testid="artifact-dialog-previous-image"
-          className="absolute left-4 top-1/2 z-20 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-border/60 bg-background/90 text-foreground shadow-lg backdrop-blur-sm transition-colors hover:bg-state-hover"
+          variant="quiet"
+          size="icon-lg"
+          className="absolute left-4 top-1/2 z-20 -translate-y-1/2 rounded-full border border-border/60 bg-background/90 text-foreground shadow-lg backdrop-blur-sm [&_svg]:size-[22px]"
         >
           <ChevronLeft size={22} />
-        </button>
+        </Button>
       )}
       {navigation.onNext && (
-        <button
+        <Button
           type="button"
           onClick={navigation.onNext}
           aria-label={t(($) => {
@@ -576,10 +581,12 @@ function ArtifactDialogImageNavigationControls({
             return $.artifacts.actions.nextImage;
           })}
           data-testid="artifact-dialog-next-image"
-          className="absolute right-4 top-1/2 z-20 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-border/60 bg-background/90 text-foreground shadow-lg backdrop-blur-sm transition-colors hover:bg-state-hover"
+          variant="quiet"
+          size="icon-lg"
+          className="absolute right-4 top-1/2 z-20 -translate-y-1/2 rounded-full border border-border/60 bg-background/90 text-foreground shadow-lg backdrop-blur-sm [&_svg]:size-[22px]"
         >
           <ChevronRight size={22} />
-        </button>
+        </Button>
       )}
     </>
   );

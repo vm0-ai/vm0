@@ -24,6 +24,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  Textarea,
 } from "@vm0/ui";
 import { Input } from "@vm0/ui/components/ui/input";
 import { useGet, useSet } from "ccstate-react";
@@ -190,7 +191,7 @@ function BaseFields({
               })}
             </span>
           </label>
-          <textarea
+          <Textarea
             id="cc-prefixes"
             value={form.prefixesRaw}
             onChange={(event) => {
@@ -198,7 +199,7 @@ function BaseFields({
             }}
             placeholder="https://api.acme.com/v1/"
             rows={3}
-            className="w-full rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-input px-3 py-2 text-sm font-mono text-foreground placeholder:text-muted-foreground outline-none transition-colors focus:border-primary focus:ring-[3px] focus:ring-primary/10 resize-y min-h-[72px]"
+            className="min-h-[72px] resize-y font-mono"
           />
         </div>
       ) : (
@@ -635,7 +636,7 @@ function OAuth2AuthenticationFields({
             })}
           </span>
         </label>
-        <textarea
+        <Textarea
           id="cc-oauth-scopes"
           value={form.oauthScopesRaw}
           onChange={(event) => {
@@ -643,7 +644,7 @@ function OAuth2AuthenticationFields({
           }}
           placeholder={"read\nwrite"}
           rows={3}
-          className="w-full rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-input px-3 py-2 text-sm font-mono text-foreground placeholder:text-muted-foreground outline-none transition-colors focus:border-primary focus:ring-[3px] focus:ring-primary/10 resize-y min-h-[72px]"
+          className="min-h-[72px] resize-y font-mono"
         />
       </div>
       <div className="flex flex-col gap-2">

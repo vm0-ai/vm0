@@ -15,7 +15,7 @@ import {
   TrendingUp,
   type LucideIcon,
 } from "lucide-react";
-import { cn } from "@vm0/ui";
+import { Button, cn } from "@vm0/ui";
 import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
 import { useTranslation } from "react-i18next";
 import {
@@ -125,24 +125,16 @@ export function WorkflowPreview({
       onClose={onClose}
       footer={
         <>
-          <button
-            type="button"
-            className="h-9 rounded-[10px] border border-border bg-muted px-4 text-sm font-medium"
-            onClick={onClose}
-          >
+          <Button type="button" variant="outline" onClick={onClose}>
             {t(($) => {
               return $.onboarding.common.gotIt;
             })}
-          </button>
-          <button
-            type="button"
-            className="h-9 rounded-[10px] bg-primary px-4 text-sm font-medium text-white"
-            onClick={onSelect}
-          >
+          </Button>
+          <Button type="button" onClick={onSelect}>
             {t(($) => {
               return $.onboarding.common.selectTemplate;
             })}
-          </button>
+          </Button>
         </>
       }
     >

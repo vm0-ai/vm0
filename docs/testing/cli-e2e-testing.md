@@ -50,3 +50,16 @@ Before adding a case, verify that it:
 
 When those constraints make a scenario impractical, place the scenario at the
 API integration or crates layer rather than introducing a deployed test hook.
+
+## Running runner E2E tests
+
+The BATS files under `e2e/tests/03-runner` are CI-only and cannot be run from a
+local checkout. They depend on temporary Clerk organizations and API tokens,
+the pull request's deployed API and app previews, and the preview runner fleet
+provisioned by the `cli-e2e-03-runner-*` jobs in `.github/workflows/turbo.yml`.
+There is no supported local setup for those credentials and services.
+
+Push runner E2E changes to a branch and use the pull request pipeline to run
+and validate this suite. Do not treat a local `./e2e/run.sh` invocation as
+validation for `03-runner`; running the script without file arguments also
+selects the CI-only runner tests.

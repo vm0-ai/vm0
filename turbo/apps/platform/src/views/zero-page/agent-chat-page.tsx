@@ -295,17 +295,19 @@ function PinPill() {
     <TooltipProvider delayDuration={200}>
       <Tooltip>
         <TooltipTrigger asChild>
-          <button
+          <Button
             type="button"
             onClick={handlePin}
             disabled={pinSaving}
-            className="absolute -top-0.5 -right-0.5 flex h-6 w-6 items-center justify-center rounded-full zero-border bg-background text-muted-foreground shadow-sm transition-colors hover:bg-state-hover hover:text-foreground hover:shadow-md cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
+            variant="quiet"
+            size="icon-2xs"
+            className="absolute -top-0.5 -right-0.5 rounded-full zero-border bg-background shadow-sm hover:shadow-md disabled:opacity-50"
             aria-label={t(($) => {
               return $.sidebar.pin;
             })}
           >
             <Pin size={12} />
-          </button>
+          </Button>
         </TooltipTrigger>
         <TooltipContent side="bottom">
           <p className="text-xs">

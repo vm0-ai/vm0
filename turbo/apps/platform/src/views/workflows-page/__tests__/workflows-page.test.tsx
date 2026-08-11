@@ -2089,7 +2089,11 @@ describe("workflow detail page", () => {
     const publishSwitch = await screen.findByRole("switch", {
       name: "Make workflow public",
     });
-    expect(publishSwitch).toBeDisabled();
+    // The shared `Switch` renders a `<span role="switch">`, so the disabled
+    // contract is `aria-disabled` rather than the `disabled` attribute.
+    expect(publishSwitch).toHaveAttribute("aria-disabled", "true");
+    fireEvent.click(publishSwitch);
+    expect(publishSwitch).toHaveAttribute("aria-checked", "false");
     expect(
       screen.getByText(
         "Publishing a workflow under an agent you do not own requires org admin permissions.",
