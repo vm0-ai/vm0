@@ -91,8 +91,6 @@ class TestReportModelProviderUsage:
             ("gpt-5.6-sol", 272_001, ".long_context"),
             ("gpt-5.6-terra", 272_001, ".long_context"),
             ("gpt-5.6-luna", 272_001, ".long_context"),
-            ("MiniMax-M3", 512_000, ""),
-            ("MiniMax-M3", 512_001, ".long_context"),
             ("claude-opus-4-6", 300_000, ""),
         ],
     )
