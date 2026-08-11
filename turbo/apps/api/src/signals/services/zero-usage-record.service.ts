@@ -119,8 +119,6 @@ function sourceExpr() {
       WHEN ${inArray(
         zeroRuns.triggerSource,
         sql`(
-          'workflow-schedule',
-          'workflow-event',
           'automation-schedule',
           'automation-event',
           'goal'

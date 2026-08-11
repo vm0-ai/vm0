@@ -25,8 +25,8 @@ import { zeroBankingRoutes } from "../zero-banking";
 const context = testContext();
 
 const UNATTENDED_TRIGGER_SOURCES = [
-  "workflow-schedule",
-  "workflow-event",
+  "automation-schedule",
+  "automation-event",
   "automation-schedule",
   "automation-event",
   "goal",
