@@ -2289,13 +2289,17 @@ describe("usage pack allocation management", () => {
     mockOptionalEnv("STRIPE_WEBHOOK_SECRET", STRIPE_WEBHOOK_SECRET);
   });
 
-  it("keeps usage pack state safe before migration 0898", async () => {
+  it("keeps invitation state safe before entitlement migrations", async () => {
     const response = await usagePackStateAction({
       action: "validate-pre-migration-compatibility",
     });
     expect(response).toStrictEqual({
       action: "pre-migration-compatibility",
       memberInviteUsagePackRequired: false,
+      preMemberInvitationMigration: {
+        memberInviteUsagePackRequired: true,
+        memberInvitationAllowed: true,
+      },
       bonusPreparedRefunds: 0,
     });
   });
