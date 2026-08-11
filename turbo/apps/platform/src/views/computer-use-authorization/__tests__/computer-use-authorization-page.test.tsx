@@ -80,11 +80,13 @@ function computerUsePermissions() {
 
 function computerUseHost(args: {
   readonly id: string;
+  readonly product?: "zero" | "okou";
   readonly displayName: string;
   readonly status: "online" | "offline";
 }) {
   return {
     id: args.id,
+    product: args.product ?? "zero",
     displayName: args.displayName,
     appVersion: "1.0.0",
     osVersion: "macOS 15.0",
@@ -113,6 +115,7 @@ describe("computer use authorization page", () => {
           hosts: [
             computerUseHost({
               id: "00000000-0000-4000-a000-000000000001",
+              product: "okou",
               displayName: "Studio Mac",
               status: "online",
             }),
@@ -157,6 +160,7 @@ describe("computer use authorization page", () => {
       ),
     ).toBeInTheDocument();
     await expect(screen.findByText("Studio Mac")).resolves.toBeInTheDocument();
+    expect(screen.getByText("Okou")).toBeInTheDocument();
     expect(screen.getByText("Travel Mac")).toBeInTheDocument();
     expect(screen.queryByText("Offline Desktop")).not.toBeInTheDocument();
 

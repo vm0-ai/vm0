@@ -1635,8 +1635,10 @@
       "openBrowser": "Buka browser",
       "openNamedAgent": "Buka agen {{name}}",
       "openNamedChat": "Buka chat {{title}}",
+      "pickEmoji": "Pilih emoji",
       "scrollToBottom": "Gulir ke bawah",
-      "searchEmoji": "Cari emoji"
+      "searchEmoji": "Cari emoji",
+      "steerMessageExplanation": "Dikirim saat agen sedang bekerja untuk mengarahkan perilakunya"
     },
     "threadSidebar": {
       "resize": "Ubah ukuran sidebar"
@@ -4182,15 +4184,14 @@
         "useAccount": "Gunakan"
       },
       "picker": {
-        "balancedUse": "Penggunaan seimbang",
         "builtInModel": "Model bawaan",
         "byokHelp": "Menggunakan provider yang Anda atur",
         "fast": "Cepat",
+        "fastImpact": "Kecepatan model 1,5× · penggunaan kredit 2,5×",
         "inheritDefault": "Warisi dari default organisasi",
         "loadError": "Tidak dapat memuat model.",
         "loading": "Memuat model...",
         "models": "Model",
-        "moreCodexCredits": "Menggunakan lebih banyak kredit Codex.",
         "noConfiguredModels": "Tidak ada model yang dikonfigurasi",
         "priceTiers": {
           "balanced": "Biaya dan performa seimbang",
@@ -4198,14 +4199,12 @@
           "frontier": "Model andalan terdepan",
           "premium": "Model terdepan premium untuk tugas tersulit"
         },
-        "prioritizeSpeed": "Prioritaskan kecepatan",
         "pro": "Pro",
         "providerLabels": {
           "azureFoundryPortal": "portal Azure foundry",
           "claudeCodeOauth": "Claude Code (token OAuth)",
           "deepseek": "Deepseek"
         },
-        "runSpeed": "Kecepatan jalankan",
         "standard": "Standar"
       },
       "policies": {

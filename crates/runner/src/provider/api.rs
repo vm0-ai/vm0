@@ -30,8 +30,9 @@ use super::builtin_firewall_catalog::{
 };
 use super::connector_runtime_sync::ConnectorRuntimeSyncHandle;
 use super::{
-    ClaimedJob, CompletionAuth, CompletionAuthError, JobCandidate, JobDiscoverySource, JobProvider,
-    RunnerPreference, RunnerPreferenceClaimState, parse_runner_preference,
+    ClaimedJob, CompletionAuth, CompletionAuthError, CompletionReportTiming, JobCandidate,
+    JobDiscoverySource, JobProvider, RunnerPreference, RunnerPreferenceClaimState,
+    parse_runner_preference,
 };
 use crate::active_input::{ActiveInputNotifications, ActiveInputSource};
 use crate::duration::duration_ms;
@@ -764,6 +765,10 @@ impl JobProvider for ApiProvider {
         }
         self.connector_runtime_sync.shutdown().await;
         self.builtin_firewall_catalog_refresh.shutdown().await;
+    }
+
+    fn completion_report_timing(&self) -> CompletionReportTiming {
+        CompletionReportTiming::ConcurrentWithFinalization
     }
 
     async fn complete(&self, request: CompleteRequest, completion_auth: CompletionAuth) {

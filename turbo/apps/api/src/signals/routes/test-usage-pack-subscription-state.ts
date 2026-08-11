@@ -221,6 +221,10 @@ const actionResponseSchema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("pre-migration-compatibility"),
     memberInviteUsagePackRequired: z.boolean(),
+    preMemberInvitationMigration: z.object({
+      memberInviteUsagePackRequired: z.boolean(),
+      memberInvitationAllowed: z.boolean(),
+    }),
     bonusPreparedRefunds: z.number().int().nonnegative(),
   }),
   z.object({ action: z.literal("ok") }),
@@ -568,6 +572,10 @@ async function validatePreMigrationCompatibility(
   signal: AbortSignal,
 ): Promise<{
   readonly memberInviteUsagePackRequired: boolean;
+  readonly preMemberInvitationMigration: {
+    readonly memberInviteUsagePackRequired: boolean;
+    readonly memberInvitationAllowed: boolean;
+  };
   readonly bonusPreparedRefunds: number;
 }> {
   const memberInviteUsagePackRequired = await db.transaction(async (tx) => {
@@ -600,6 +608,41 @@ async function validatePreMigrationCompatibility(
     return capabilities.memberInviteUsagePackRequired;
   });
 
+  const preMemberInvitationMigration = await db.transaction(async (tx) => {
+    await tx.execute(sql`SET LOCAL search_path = pg_temp, public`);
+    await tx.execute(sql`
+      CREATE TEMP TABLE org_plan_entitlements
+      (LIKE public.org_plan_entitlements INCLUDING ALL)
+      ON COMMIT DROP
+    `);
+    await tx.execute(
+      sql`ALTER TABLE org_plan_entitlements DROP COLUMN member_invitation_allowed`,
+    );
+    const orgId = `org_pre_member_invitation_${randomUUID()}`;
+    await upsertOrgPlanEntitlement(tx, {
+      orgId,
+      tier: "pro",
+      source: "org_metadata_bootstrap",
+      memberInviteUsagePackRequired: true,
+    });
+    await upsertOrgPlanEntitlement(tx, {
+      orgId,
+      tier: "team",
+      source: "org_metadata_bootstrap",
+      memberInviteUsagePackRequired: true,
+    });
+    const capabilities = await loadOrgPlanCapabilities(tx, orgId);
+    if (!capabilities) {
+      throw new Error(
+        "Pre-member-invitation entitlement fixture was not written",
+      );
+    }
+    return {
+      memberInviteUsagePackRequired: capabilities.memberInviteUsagePackRequired,
+      memberInvitationAllowed: capabilities.memberInvitationAllowed,
+    };
+  });
+
   const refundState = await db.transaction(async (tx) => {
     await tx.execute(sql`SET LOCAL search_path = pg_temp`);
     await tx.execute(sql`
@@ -625,7 +668,11 @@ async function validatePreMigrationCompatibility(
     return { bonusPreparedRefunds };
   });
   signal.throwIfAborted();
-  return { memberInviteUsagePackRequired, ...refundState };
+  return {
+    memberInviteUsagePackRequired,
+    preMemberInvitationMigration,
+    ...refundState,
+  };
 }
 
 async function preparePreMigrationPurchasedRefund(db: Db): Promise<void> {

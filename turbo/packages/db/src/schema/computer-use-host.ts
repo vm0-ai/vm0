@@ -18,6 +18,7 @@ import type {
   ComputerUsePermissions,
   ComputerUseSupportedCapabilities,
 } from "@vm0/db/jsonb-contracts/computer-use-host";
+import type { DesktopProduct } from "@vm0/api-contracts/contracts/client-headers";
 export type { ComputerUsePermissions } from "@vm0/db/jsonb-contracts/computer-use-host";
 
 export const computerUseHosts = pgTable(
@@ -29,6 +30,10 @@ export const computerUseHosts = pgTable(
     installationId: uuid("installation_id"),
     displayName: text("display_name").notNull(),
     tokenHash: text("token_hash").notNull(),
+    clientProduct: text("client_product")
+      .$type<DesktopProduct>()
+      .default("zero")
+      .notNull(),
     appVersion: text("app_version").notNull(),
     osVersion: text("os_version").notNull(),
     supportedCapabilities: jsonb("supported_capabilities")
@@ -53,6 +58,10 @@ export const computerUseHosts = pgTable(
         .where(sql`installation_id IS NOT NULL AND revoked_at IS NULL`),
       index("idx_computer_use_hosts_org_user").on(table.orgId, table.userId),
       index("idx_computer_use_hosts_last_seen").on(table.lastSeenAt),
+      check(
+        "computer_use_hosts_client_product_check",
+        sql`client_product IN ('zero', 'okou')`,
+      ),
     ];
   },
 );

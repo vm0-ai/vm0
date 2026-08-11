@@ -285,6 +285,39 @@ describe("chat-run-finished workflow automations", () => {
     expect(foreignThread.body.error.message).toContain("Chat thread not found");
   });
 
+  it("prevents a workflow from watching its own chat thread", async () => {
+    const fixture = await setupChatAutomationFixture();
+    const workflowThread = await chat.createThread(fixture.actor, {
+      agentId: fixture.agentId,
+      model: "claude-sonnet-5",
+    });
+    const workflowId = await wf.createWorkflow(fixture.actor, {
+      agentId: fixture.agentId,
+      name: `self-watching-${randomUUID().slice(0, 8)}`,
+      chatThreadId: workflowThread.id,
+    });
+
+    const response = await accept(
+      automationsClient().create({
+        headers: authHeaders(),
+        params: { workflowId },
+        body: {
+          kind: "event",
+          eventType: "chat-run-finished",
+          eventConfig: {
+            provider: "chat",
+            event: "run_finished",
+            chatThreadId: workflowThread.id,
+          },
+        },
+      }),
+      [400],
+    );
+    expect(response.body.error.message).toBe(
+      "A workflow cannot watch run-finished events from its own chat thread",
+    );
+  });
+
   it(
     "fires claimable matching automations when a watched run completes",
     { timeout: 30_000 },

@@ -113,12 +113,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable vm0-managed JoggAI talking-avatar video generation",
     enabled: true,
   },
-  [FeatureSwitchKey.SeoBuiltIn]: {
-    maintainer: "yuma@vm0.ai",
-    description: "Enable vm0-managed DataForSEO access",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.MercuryConnector]: {
     maintainer: "yuma@vm0.ai",
     description: "Enable the Mercury banking connector",
@@ -354,10 +348,17 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.ChatRunContinuationPresentation]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Distinguish mid-run steer messages and show run actions only after the latest user message.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.EmojiPickerCategoryRail]: {
     maintainer: "tongx@vm0.ai",
     description:
-      "Add a category icon rail, pinned section titles, and jump-to-category scrolling to the thread emoji picker.",
+      "Add a category icon rail, pinned section titles, jump-to-category scrolling, and a hovered-emoji name bar to the thread emoji picker.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
@@ -377,8 +378,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   },
   [FeatureSwitchKey.ConnectorCatalogCount]: {
     maintainer: "ethan@vm0.ai",
-    description:
-      "Show the exact connector catalog size with a pending count animation.",
+    description: "Show an approximate connector catalog size.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

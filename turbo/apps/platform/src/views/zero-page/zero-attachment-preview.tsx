@@ -2,6 +2,8 @@ import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { Download, Eye, FileMusic, Play, Video } from "lucide-react";
 import { useGet, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
+import { downloadAttachment$ } from "../../signals/attachment-download.ts";
+import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import type { TextPreviewComputed } from "../../signals/text-preview.ts";
 import {
@@ -15,10 +17,7 @@ import {
   FilePreviewIcon,
   getFilePreviewAccentClass,
 } from "./zero-file-preview-icon.tsx";
-import {
-  downloadAttachmentUrl,
-  publicAttachmentUrl,
-} from "./zero-attachment-url";
+import { publicAttachmentUrl } from "./zero-attachment-url";
 import { ArtifactThumbnailImage } from "./zero-artifact-thumbnail.tsx";
 
 interface ChatAttachmentDescriptor {
@@ -410,16 +409,17 @@ function FileThumbnailPreview({
 }) {
   const { t } = useTranslation();
   const accentClass = getFilePreviewAccentClass(filename, contentType);
+  const downloadAttachment = useSet(downloadAttachment$);
+  const pageSignal = useGet(pageSignal$);
 
   return (
     <button
       type="button"
       onClick={() => {
         detach(
-          downloadAttachmentUrl(
-            normalizePlatformFileUrl(url),
-            undefined,
-            filename,
+          downloadAttachment(
+            { filename, url: normalizePlatformFileUrl(url) },
+            pageSignal,
           ),
           Reason.DomCallback,
           "attachment download",

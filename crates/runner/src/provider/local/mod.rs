@@ -17,7 +17,7 @@ use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
-use super::{ClaimedJob, CompletionAuth, JobCandidate, JobProvider};
+use super::{ClaimedJob, CompletionAuth, CompletionReportTiming, JobCandidate, JobProvider};
 use crate::local_queue::{LocalClaimResult, LocalDiscoveredJob, LocalQueue};
 use crate::run_cancellation::RunCancellationRegistry;
 use crate::types::{CompleteRequest, ExecutionContext, HeartbeatState};
@@ -227,6 +227,12 @@ impl JobProvider for LocalProvider {
                 None
             }
         }
+    }
+
+    fn completion_report_timing(&self) -> CompletionReportTiming {
+        // Writing the result unblocks `runner local submit`, whose next turn
+        // may immediately depend on the finalized sandbox being reusable.
+        CompletionReportTiming::AfterFinalization
     }
 
     async fn complete(&self, request: CompleteRequest, _completion_auth: CompletionAuth) {

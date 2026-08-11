@@ -17,7 +17,7 @@ import {
   type CreateCustomConnectorBody,
   ZERO_CUSTOM_CONNECTOR_IDS_ENV_KEY,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
-import { testCustomConnectorSkillRepairStateContract } from "@vm0/api-contracts/contracts/test-custom-connector-skill-repair-state";
+import { testCustomConnectorSkillVersionAssociationContract } from "@vm0/api-contracts/contracts/test-custom-connector-skill-version-association";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
   getCustomConnectorSkillStorageName,
@@ -129,7 +129,7 @@ import {
   type SecretKmsDataKey,
   type SecretKmsGenerateDataKeyRequest,
 } from "../../../lib/secret-kms-client";
-import { testCustomConnectorSkillRepairStateRoutes } from "../test-custom-connector-skill-repair-state";
+import { testCustomConnectorSkillVersionAssociationRoutes } from "../test-custom-connector-skill-version-association";
 
 /**
  * RUN-01..04 and CHAIN-RUN: successful run dispatch and lifecycle.
@@ -9293,7 +9293,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     await api.requestCancelRun(actor, restoredRun.runId, [200]);
   });
 
-  it("fails closed when a custom skill exact association is invalid", async () => {
+  it("fails closed when a custom skill version belongs to another storage", async () => {
     const api = createRunsApi(context);
     const bdd = createBddApi(context);
     bdd.acceptAgentStorageWrites();
@@ -9301,8 +9301,8 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const storages = createStoragesBddApi(context);
     const stateClient = setupApp({
       context,
-      routes: testCustomConnectorSkillRepairStateRoutes,
-    })(testCustomConnectorSkillRepairStateContract);
+      routes: testCustomConnectorSkillVersionAssociationRoutes,
+    })(testCustomConnectorSkillVersionAssociationContract);
     const { actor, agentId } = await entitledRunActor();
     const suffix = randomUUID().slice(0, 8);
     const target = await connectors.createCustomConnector(actor, {
@@ -9358,9 +9358,8 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     });
 
     await accept(
-      stateClient.action({
+      stateClient.associate({
         body: {
-          action: "set-connector",
           connectorId: target.id,
           skillStorageVersionId: otherSkill.versionId,
         },
@@ -9376,30 +9375,6 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       status: "failed",
       error: "Custom connector skill registration is unavailable",
     });
-
-    const missingAssociationState = await accept(
-      stateClient.action({
-        body: {
-          action: "set-connector",
-          connectorId: target.id,
-          skillStorageVersionId: null,
-        },
-      }),
-      [200],
-    );
-    expect(missingAssociationState.body.state.connector).toMatchObject({
-      skillMarkdown: "Use only the target connector skill.",
-      skillStorageVersionId: null,
-    });
-    await expect(
-      api.createRun(actor, {
-        agentId,
-        prompt: "reject the missing custom skill association",
-        modelProvider: "anthropic-api-key",
-      }),
-    ).rejects.toThrow(
-      "Unknown response status 500 for POST /api/test/zero-run-fixture",
-    );
   });
 
   it("admits an unrefreshable custom OAuth token only until it expires", async () => {
@@ -10722,9 +10697,16 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       }),
     );
 
-    await connectors.setCustomConnectorValues(actor, saved.connector.id, [
-      { key: "api_key", kind: "secret", value: "recovered-key" },
-    ]);
+    const incompleteRecovery = await connectors.requestSetCustomConnectorValues(
+      actor,
+      saved.connector.id,
+      [{ key: "api_key", kind: "secret", value: "recovered-key" }],
+      [400],
+    );
+    expectApiError(incompleteRecovery.body);
+    expect(incompleteRecovery.body.error.message).toContain(
+      "All required fields must be provided when connecting or restoring",
+    );
     await api.requestCancelRun(actor, incompleteRun.runId, [200]);
 
     const longSubdomain = "a".repeat(55);
@@ -12274,7 +12256,7 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     );
     expect(claim.appendSystemPrompt ?? "").toContain("zero web-search --help");
     expect(claim.appendSystemPrompt ?? "").toContain("zero finance --help");
-    expect(claim.appendSystemPrompt ?? "").not.toContain("zero seo --help");
+    expect(claim.appendSystemPrompt ?? "").toContain("zero seo --help");
     expect(claim.appendSystemPrompt ?? "").toContain("zero scrape --help");
     expect(claim.appendSystemPrompt ?? "").toContain(
       'zero translate "<text>" --to <language> [--from <language>]',
@@ -12288,13 +12270,9 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     await api.requestCancelRun(actor, run.runId, [200]);
   });
 
-  it("advertises managed SEO tools when the feature switch is enabled", async () => {
+  it("advertises managed SEO tools by default", async () => {
     const api = createRunsApi(context);
-    const connectors = createConnectorBddApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
-    await connectors.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.SeoBuiltIn]: true,
-    });
 
     const run = await api.createRun(actor, {
       agentId,

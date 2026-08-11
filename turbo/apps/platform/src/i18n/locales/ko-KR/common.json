@@ -1635,8 +1635,10 @@
       "openBrowser": "브라우저 열기",
       "openNamedAgent": "에이전트 {{name}} 열기",
       "openNamedChat": "채팅 {{title}} 열기",
+      "pickEmoji": "이모지 선택",
       "scrollToBottom": "맨 아래로 스크롤",
-      "searchEmoji": "이모지 검색"
+      "searchEmoji": "이모지 검색",
+      "steerMessageExplanation": "에이전트가 작업하는 동안 동작을 조정하기 위해 보낸 메시지입니다"
     },
     "threadSidebar": {
       "resize": "사이드바 크기 조절"
@@ -4182,15 +4184,14 @@
         "useAccount": "사용"
       },
       "picker": {
-        "balancedUse": "균형 잡힌 사용",
         "builtInModel": "내장 모델",
         "byokHelp": "구성된 공급자 사용",
         "fast": "빠름",
+        "fastImpact": "모델 속도 1.5× · 크레딧 사용량 2.5×",
         "inheritDefault": "조직 기본값 상속",
         "loadError": "모델을 불러올 수 없습니다.",
         "loading": "모델 불러오는 중...",
         "models": "모델",
-        "moreCodexCredits": "Codex 크레딧을 더 많이 사용합니다.",
         "noConfiguredModels": "구성된 모델 없음",
         "priceTiers": {
           "balanced": "비용과 성능의 균형",
@@ -4198,14 +4199,12 @@
           "frontier": "최첨단 프런티어 모델",
           "premium": "가장 어려운 작업용 프리미엄 프런티어 모델"
         },
-        "prioritizeSpeed": "속도 우선",
         "pro": "프로",
         "providerLabels": {
           "azureFoundryPortal": "Azure 파운드리 포털",
           "claudeCodeOauth": "Claude Code (OAuth 토큰)",
           "deepseek": "Deepseek"
         },
-        "runSpeed": "실행 속도",
         "standard": "표준"
       },
       "policies": {

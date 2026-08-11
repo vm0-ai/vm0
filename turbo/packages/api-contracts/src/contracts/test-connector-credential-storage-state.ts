@@ -19,6 +19,13 @@ const secretStateSchema = z.object({
 const variableStateSchema = z.object({
   name: z.string(),
   connector_id: z.uuid(),
+  value: z.string().optional(),
+});
+
+const legacyCustomValueStateSchema = z.object({
+  kind: z.enum(["secret", "variable"]),
+  key: z.string(),
+  encrypted_value: z.string(),
 });
 
 const customOauthStateSchema = z.object({
@@ -121,6 +128,8 @@ export const testConnectorCredentialStorageStateActionResponseSchema = z.object(
     custom_oauth_state: customOauthStateSchema.nullable().optional(),
     secrets: z.array(secretStateSchema).optional(),
     variables: z.array(variableStateSchema).optional(),
+    legacy_custom_values: z.array(legacyCustomValueStateSchema).optional(),
+    legacy_custom_secret_encrypted_value: z.string().nullable().optional(),
   },
 );
 

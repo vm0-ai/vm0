@@ -61,6 +61,15 @@ function selectedCategoryLabel(): string | null {
 // jsdom has no layout, so every section reports offsetTop 0. Scrolling away
 // from 0 is therefore the only way to tell a rail that is following the feed
 // from one still waiting for a jump that will never land.
+function previewBarText(): string {
+  const feed = document.querySelector("[data-chat-thread-emoji-feed]");
+  const bar = feed?.nextElementSibling;
+  if (!(bar instanceof HTMLElement)) {
+    throw new Error("Expected the emoji name bar under the feed");
+  }
+  return bar.textContent ?? "";
+}
+
 function scrollEmojiFeed(scrollTop: number): void {
   const feed = document.querySelector("[data-chat-thread-emoji-feed]");
   if (!(feed instanceof HTMLElement)) {
@@ -133,6 +142,44 @@ describe("chat thread emoji category rail", () => {
     expect(categoryTab("Frequently used")).toHaveAttribute("tabindex", "-1");
   });
 
+  it("names the emoji the pointer is on", async () => {
+    setupChatWithRail(true);
+    await openEmojiPicker();
+    await waitForCategories();
+
+    expect(screen.getByText("Pick an emoji")).toBeInTheDocument();
+
+    const grinningFace = await screen.findByLabelText("grinning face");
+    fireEvent.mouseOver(grinningFace);
+
+    await waitFor(() => {
+      expect(screen.getByText(":grinning_face:")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Pick an emoji")).toBeNull();
+
+    fireEvent.mouseOver(await screen.findByLabelText("watermelon"));
+
+    await waitFor(() => {
+      expect(screen.getByText(":watermelon:")).toBeInTheDocument();
+    });
+  });
+
+  it("names a frequently used emoji by its product label, not as a shortcode", async () => {
+    setupChatWithRail(true);
+    await openEmojiPicker();
+    await waitForCategories();
+
+    // These nine are named by translated product labels rather than by the
+    // emoji dataset, so wrapping them in shortcode colons would claim a
+    // shortcode that does not exist — ":Done:" in en-US, ":完了:" in ja-JP.
+    fireEvent.mouseOver(await screen.findByLabelText("Done"));
+
+    await waitFor(() => {
+      expect(previewBarText()).toContain("Done");
+    });
+    expect(previewBarText()).not.toContain(":Done:");
+  });
+
   it("leaves the search results when a category is picked", async () => {
     setupChatWithRail(true);
     await openEmojiPicker();
@@ -157,5 +204,6 @@ describe("chat thread emoji category rail", () => {
     await screen.findByText("Frequently used");
 
     expect(categoryTabs()).toHaveLength(0);
+    expect(screen.queryByText("Pick an emoji")).toBeNull();
   });
 });

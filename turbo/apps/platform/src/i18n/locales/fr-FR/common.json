@@ -1676,8 +1676,10 @@
       "openBrowser": "Ouvrir le navigateur",
       "openNamedAgent": "Ouvrir l'agent {{name}}",
       "openNamedChat": "Ouvrir le chat {{title}}",
+      "pickEmoji": "Choisissez un emoji",
       "scrollToBottom": "Faire défiler vers le bas",
-      "searchEmoji": "Rechercher un emoji"
+      "searchEmoji": "Rechercher un emoji",
+      "steerMessageExplanation": "Envoyé pendant que l’agent travaillait afin d’orienter son comportement"
     },
     "threadSidebar": {
       "resize": "Redimensionner la barre latérale"
@@ -4232,15 +4234,14 @@
         "useAccount": "Utiliser"
       },
       "picker": {
-        "balancedUse": "Utilisation équilibrée",
         "builtInModel": "Modèle intégré",
         "byokHelp": "Utilise votre fournisseur configuré",
         "fast": "Rapide",
+        "fastImpact": "Vitesse du modèle 1,5× · consommation de crédits 2,5×",
         "inheritDefault": "Hériter des paramètres par défaut de l'organisation",
         "loadError": "Impossible de charger les modèles.",
         "loading": "Chargement des modèles...",
         "models": "Modèles",
-        "moreCodexCredits": "Utilise plus de crédits Codex.",
         "noConfiguredModels": "Aucun modèle configuré",
         "priceTiers": {
           "balanced": "Coût et performance équilibrés",
@@ -4248,14 +4249,12 @@
           "frontier": "Modèle phare Frontier",
           "premium": "Modèle premium Frontier pour les tâches les plus difficiles"
         },
-        "prioritizeSpeed": "Prioriser la vitesse",
         "pro": "Pro",
         "providerLabels": {
           "azureFoundryPortal": "Portail Azure Foundry",
           "claudeCodeOauth": "Claude Code (jeton OAuth)",
           "deepseek": "Deepseek"
         },
-        "runSpeed": "Vitesse d'exécution",
         "standard": "Standard"
       },
       "policies": {
