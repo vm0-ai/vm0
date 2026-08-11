@@ -381,6 +381,8 @@ export function createRunsApi(context: TestContext) {
       const customerId = options.customerId ?? `cus_bdd_${suffix}`;
       const subscriptionId = options.subscriptionId ?? `sub_bdd_${suffix}`;
       const invoiceId = `in_bdd_${suffix}`;
+      const periodEndUnix =
+        options.periodEndUnix ?? Math.floor(now() / 1000) + 30 * 86_400;
       context.mocks.stripe.customers.retrieve.mockResolvedValue({
         id: customerId,
         metadata: { orgId: actor.orgId },
@@ -421,10 +423,8 @@ export function createRunsApi(context: TestContext) {
                 {
                   parent: { type: "subscription_item_details" },
                   period: {
-                    start: Math.floor(now() / 1000),
-                    end:
-                      options.periodEndUnix ??
-                      Math.floor(now() / 1000) + 30 * 86_400,
+                    start: periodEndUnix - 30 * 86_400,
+                    end: periodEndUnix,
                   },
                 },
               ],
