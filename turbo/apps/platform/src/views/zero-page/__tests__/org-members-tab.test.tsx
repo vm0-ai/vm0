@@ -223,10 +223,12 @@ function mockMembersStory(): void {
   );
 }
 
-function mockMemberInviteEntitlement(required: boolean): void {
+function mockMemberInviteEntitlement(required?: boolean): void {
   const response: BillingStatusResponse = {
     tier: "pro",
-    memberInviteUsagePackRequired: required,
+    ...(required === undefined
+      ? {}
+      : { memberInviteUsagePackRequired: required }),
     credits: 0,
     onboardingPaymentPending: false,
     subscriptionStatus: "active",
@@ -370,6 +372,7 @@ describe("organization members settings", () => {
 
   it("requires a package and starts paid invitation Checkout for a usage pack org", async () => {
     mockMembersStory();
+    mockMemberInviteEntitlement(true);
     mockUsagePackManagement();
     mockUsagePackCatalog();
     let checkoutBody: unknown;
@@ -466,57 +469,63 @@ describe("organization members settings", () => {
     ).toHaveTextContent("$20 · 20,400 credits · 2% off");
   });
 
-  it("keeps invitations package-free when the org entitlement does not require a usage pack", async () => {
-    mockMembersStory();
-    mockMemberInviteEntitlement(false);
-    let managementRequested = false;
-    context.mocks.api(
-      zeroBillingUsagePackManagementContract.get,
-      ({ respond }) => {
-        managementRequested = true;
-        return respond(200, {
-          tier: "pro",
-          currentPeriodEnd: "2026-09-01T00:00:00.000Z",
-          allocations: [],
-        });
-      },
-    );
+  it.each([
+    { entitlement: false, label: "false" },
+    { entitlement: undefined, label: "absent" },
+  ] as const)(
+    "keeps invitations package-free when the org entitlement is $label",
+    async ({ entitlement }) => {
+      mockMembersStory();
+      mockMemberInviteEntitlement(entitlement);
+      let managementRequested = false;
+      context.mocks.api(
+        zeroBillingUsagePackManagementContract.get,
+        ({ respond }) => {
+          managementRequested = true;
+          return respond(200, {
+            tier: "pro",
+            currentPeriodEnd: "2026-09-01T00:00:00.000Z",
+            allocations: [],
+          });
+        },
+      );
 
-    detachedSetupPage({
-      context,
-      path: "/?settings=people",
-      featureSwitches: { [FeatureSwitchKey.UsagePackPlans]: true },
-    });
-    await waitFor(() => {
+      detachedSetupPage({
+        context,
+        path: "/?settings=people",
+        featureSwitches: { [FeatureSwitchKey.UsagePackPlans]: true },
+      });
+      await waitFor(() => {
+        expect(
+          screen.getByRole("heading", { name: "People" }),
+        ).toBeInTheDocument();
+      });
+      click(buttonByText("Add member"));
+      const inviteDialog = await screen.findByRole("dialog", {
+        name: "Invite member",
+      });
+      await fill(
+        within(inviteDialog).getByPlaceholderText("email@example.com"),
+        "legacy.invitee@example.com",
+      );
+      const send = buttonByText("Send invitation", inviteDialog);
+      await waitFor(() => {
+        expect(send).toBeEnabled();
+      });
       expect(
-        screen.getByRole("heading", { name: "People" }),
-      ).toBeInTheDocument();
-    });
-    click(buttonByText("Add member"));
-    const inviteDialog = await screen.findByRole("dialog", {
-      name: "Invite member",
-    });
-    await fill(
-      within(inviteDialog).getByPlaceholderText("email@example.com"),
-      "legacy.invitee@example.com",
-    );
-    const send = buttonByText("Send invitation", inviteDialog);
-    await waitFor(() => {
-      expect(send).toBeEnabled();
-    });
-    expect(
-      within(inviteDialog).queryByText("Member packages"),
-    ).not.toBeInTheDocument();
-    expect(screen.queryByText("Usage pack")).not.toBeInTheDocument();
-    expect(managementRequested).toBeFalsy();
-    click(send);
+        within(inviteDialog).queryByText("Member packages"),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByText("Usage pack")).not.toBeInTheDocument();
+      expect(managementRequested).toBeFalsy();
+      click(send);
 
-    await waitFor(() => {
-      expect(
-        screen.getByText("legacy.invitee@example.com"),
-      ).toBeInTheDocument();
-    });
-  });
+      await waitFor(() => {
+        expect(
+          screen.getByText("legacy.invitee@example.com"),
+        ).toBeInTheDocument();
+      });
+    },
+  );
 
   it("accepts and rejects membership requests", async () => {
     mockMembersStory();
