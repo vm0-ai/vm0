@@ -94,6 +94,7 @@ import {
 import { currentLocale, i18n } from "../../../../i18n/index.ts";
 import { formatLocalizedNumber, formatUsd } from "../../../../i18n/format.ts";
 import { featureSwitch$ } from "../../../../signals/external/feature-switch.ts";
+import { openSettingsUsagePackUpgrade$ } from "../../../../signals/zero-page/settings/settings-dialog.ts";
 import {
   UsagePackMigrationPage,
   UsagePackMigrationPlanSelectionPage,
@@ -1126,7 +1127,8 @@ function PlanActionButtons({
   const customLocked = isCustomTier(currentTier);
   const showUpgrade = futureTier
     ? futureTier === "pro"
-    : !customLocked &&
+    : !showConvert &&
+      !customLocked &&
       ((isPaid && currentTier !== "team" && !hasScheduledChange) || !isPaid);
   const showDowngrade = futureTier
     ? futureTier === "team"
@@ -2472,11 +2474,15 @@ export function OrgBillingTab() {
   const setLockedTarget = useSet(setLockedTarget$);
   const openRestore = useSet(openRestoreDialog$);
   const [portalLoadable, portal] = useLoadableSet(openBillingPortal$);
+  const [upgradeLoadable, openUsagePackUpgrade] = useLoadableSet(
+    openSettingsUsagePackUpgrade$,
+  );
   const statusLoadable = useLastLoadable(billingStatusAsync$);
   const migrationLoadable = useLastLoadable(usagePackMigrationAsync$);
   const usagePackPlansEnabled =
     featureSwitches[FeatureSwitchKey.UsagePackPlans];
   const loading = portalLoadable.state === "loading";
+  const upgradeLoading = upgradeLoadable.state === "loading";
 
   const status = loadableDataOrNull(statusLoadable);
   const migration = loadableDataOrNull(migrationLoadable);
@@ -2511,6 +2517,13 @@ export function OrgBillingTab() {
   };
   const handleRestore = () => {
     openRestore();
+  };
+  const handleUpgrade = () => {
+    if (!usagePackPlansEnabled || currentTier !== "pro") {
+      openPricingPage();
+      return;
+    }
+    detach(openUsagePackUpgrade(pageSignal), Reason.DomCallback);
   };
   const scheduledPlanActions = scheduledMigrationPlanActions(
     migration,
@@ -2612,10 +2625,13 @@ export function OrgBillingTab() {
                   hasScheduledChange={hasScheduledChange}
                   currentTier={currentTier}
                   futureTier={scheduledPlanActions.futureTier}
-                  loading={planActionsLoading(loading, migrationInProgress)}
+                  loading={planActionsLoading(
+                    loading || upgradeLoading,
+                    migrationInProgress,
+                  )}
                   showConvert={canConvertLegacyPlan}
                   onConvert={openPricingPage}
-                  onUpgrade={openPricingPage}
+                  onUpgrade={handleUpgrade}
                   onDowngrade={scheduledPlanActions.onDowngrade}
                   onRestore={handleRestore}
                 />

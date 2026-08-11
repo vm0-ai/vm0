@@ -956,6 +956,40 @@ describe("organization billing settings", () => {
     await screen.findByText("Compare plans");
   });
 
+  it("shows conversion without upgrade for a legacy Pro plan", async () => {
+    context.mocks.data.org({
+      id: "org_1",
+      name: "Legacy Pro Org",
+      role: "admin",
+    });
+    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+      return respond(200, activeProBillingStatus());
+    });
+    context.mocks.api(
+      zeroBillingUsagePackMigrationContract.get,
+      ({ respond }) => {
+        return respond(200, {
+          tier: "pro",
+          targetTier: null,
+          status: "eligible",
+          migrationId: null,
+          effectiveAt: "2026-09-01T00:00:00.000Z",
+          hostedInvoiceUrl: null,
+        });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/?settings=billing",
+      featureSwitches: { [FeatureSwitchKey.UsagePackPlans]: true },
+    });
+
+    await screen.findByText("Legacy");
+    expect(buttonByText("Convert plan")).toBeEnabled();
+    expect(queryButtonByText("Upgrade")).toBeUndefined();
+  });
+
   it("does not offer a second checkout when migration is unavailable", async () => {
     context.mocks.data.org({
       id: "org_1",
@@ -2143,14 +2177,14 @@ describe("organization billing settings", () => {
     await waitFor(() => {
       expect(screen.getByText("Pro plan")).toBeInTheDocument();
     });
-    click(buttonByText("Compare all plans"));
-    const teamPlan = await screen.findByRole("article", { name: "Team plan" });
-    expect(within(teamPlan).getByText("$180/month")).toBeInTheDocument();
-    click(buttonByText("Upgrade", teamPlan));
+    click(buttonByText("Upgrade"));
 
     await screen.findByRole("heading", {
       name: "Configure member packages",
     });
+    expect(
+      screen.queryByRole("heading", { name: "Compare plans" }),
+    ).not.toBeInTheDocument();
     expect(
       screen.getByRole("list", { name: "Purchase steps" }),
     ).toHaveTextContent("Packages");
