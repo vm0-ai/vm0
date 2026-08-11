@@ -555,20 +555,6 @@ async function mutateRunnerJobConnectorPermissionBaseline(
 ): Promise<void> {
   let executionContext: SQL;
   switch (body.mode) {
-    case "rollout-targets": {
-      executionContext = sql`jsonb_set(
-        jsonb_set(
-          ${runnerJobQueue.executionContext},
-          '{connectorRuntimeCandidateTargets}',
-          ${runnerJobQueue.executionContext}->'connectorRuntimeTargets',
-          true
-        ),
-        '{connectorRuntimeTargets}',
-        '[]'::jsonb,
-        true
-      )`;
-      break;
-    }
     case "remove": {
       executionContext = sql`${runnerJobQueue.executionContext} - 'connectorPermissionBaseline'`;
       break;

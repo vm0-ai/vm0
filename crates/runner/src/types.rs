@@ -130,10 +130,6 @@ pub struct ExecutionContext {
     #[serde(default)]
     pub network_policy_refreshes: Option<std::collections::HashMap<String, NetworkPolicyRefresh>>,
     pub connector_runtime_targets: Vec<ConnectorRuntimeTargetRegistration>,
-    /// Complete target membership written by candidate-aware APIs. During
-    /// rollout, connector_runtime_targets remains the previous runner view.
-    #[serde(default)]
-    pub connector_runtime_candidate_targets: Option<Vec<ConnectorRuntimeTargetRegistration>>,
     #[serde(default)]
     pub disallowed_tools: Option<Vec<String>>,
     #[serde(default)]
@@ -1963,46 +1959,6 @@ mod tests {
         assert_eq!(snapshot.entries[0].version_id, "version-1");
         let serialized = serde_json::to_string(snapshot).unwrap();
         assert!(!serialized.contains("url"));
-    }
-
-    #[test]
-    fn execution_context_preserves_optional_connector_candidate_targets() {
-        let mut json = serde_json::json!({
-            "runId": "11111111-1111-4111-8111-111111111111",
-            "prompt": "hello",
-            "sandboxToken": "tok",
-            "cliAgentType": "claude-code",
-            "connectorRuntimeTargets": [],
-            "connectorRuntimeCandidateTargets": [{
-                "kind": "builtin",
-                "connectorSlug": "zendesk",
-                "baseUrlVars": {
-                    "ZENDESK_SUBDOMAIN": "xn--mnich-kva"
-                }
-            }]
-        });
-
-        let context: ExecutionContext = serde_json::from_value(json.clone()).unwrap();
-        let candidate = context
-            .connector_runtime_candidate_targets
-            .as_deref()
-            .and_then(|targets| targets.first())
-            .expect("candidate target should be preserved");
-        assert!(matches!(
-            candidate,
-            ConnectorRuntimeTargetRegistration::Builtin {
-                connector_slug,
-                base_url_vars: Some(base_url_vars),
-            } if connector_slug == "zendesk"
-                && base_url_vars.get("ZENDESK_SUBDOMAIN")
-                    .is_some_and(|value| value == "xn--mnich-kva")
-        ));
-
-        json.as_object_mut()
-            .unwrap()
-            .remove("connectorRuntimeCandidateTargets");
-        let legacy: ExecutionContext = serde_json::from_value(json).unwrap();
-        assert!(legacy.connector_runtime_candidate_targets.is_none());
     }
 
     #[test]
