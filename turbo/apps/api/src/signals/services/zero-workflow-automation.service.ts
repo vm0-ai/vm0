@@ -2501,15 +2501,18 @@ const createStripeInvoicePaidEventAutomation$ = command(
   },
 );
 
-async function createChatRunFinishedEventAutomationForWorkflow(args: {
-  readonly context: {
-    readonly db: Db;
-    readonly workflowId: string;
-    readonly agentId: string;
-    readonly workflowTitle: string;
-  };
-  readonly input: CreateChatRunFinishedEventAutomationInput;
-}): Promise<AutomationResult> {
+async function createChatRunFinishedEventAutomationForWorkflow(
+  args: {
+    readonly context: {
+      readonly db: Db;
+      readonly workflowId: string;
+      readonly agentId: string;
+      readonly workflowTitle: string;
+    };
+    readonly input: CreateChatRunFinishedEventAutomationInput;
+  },
+  signal: AbortSignal,
+): Promise<AutomationResult> {
   // The watched thread must belong to the automation owner: the run's final
   // output is surfaced to the workflow run, so cross-user watching would leak
   // another user's conversation.
@@ -2518,6 +2521,7 @@ async function createChatRunFinishedEventAutomationForWorkflow(args: {
     .from(chatThreads)
     .where(eq(chatThreads.id, args.input.eventConfig.chatThreadId))
     .limit(1);
+  signal.throwIfAborted();
   if (!thread || thread.userId !== args.input.member.userId) {
     return {
       kind: "bad-request",
@@ -2533,6 +2537,7 @@ async function createChatRunFinishedEventAutomationForWorkflow(args: {
       workflowId: args.context.workflowId,
     },
   );
+  signal.throwIfAborted();
   if (automationThreadId === args.input.eventConfig.chatThreadId) {
     return {
       kind: "bad-request",
@@ -2548,6 +2553,7 @@ async function createChatRunFinishedEventAutomationForWorkflow(args: {
     workflowTitle: args.context.workflowTitle,
     currentTime: nowDate(),
   });
+  signal.throwIfAborted();
   return { kind: "ok", summary };
 }
 
@@ -2565,10 +2571,13 @@ const createEventAutomationForWorkflow$ = command(
   ): Promise<AutomationResult> => {
     const { input } = args;
     if (automationCreateInputIsChatRunFinished(input)) {
-      return await createChatRunFinishedEventAutomationForWorkflow({
-        context: args,
-        input,
-      });
+      return await createChatRunFinishedEventAutomationForWorkflow(
+        {
+          context: args,
+          input,
+        },
+        signal,
+      );
     }
 
     if (input.eventType === "webhook-received") {
