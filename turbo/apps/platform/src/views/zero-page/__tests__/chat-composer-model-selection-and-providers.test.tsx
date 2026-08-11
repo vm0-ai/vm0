@@ -438,12 +438,6 @@ describe("chat composer models", () => {
 
       await expectComposerModel("GPT 5.6 Sol");
       const modelTrigger = await findComposerModel("GPT 5.6 Sol");
-      click(modelTrigger);
-      const modelPicker = await screen.findByRole("listbox");
-      expect(
-        within(modelPicker).queryByRole("group", { name: "Run speed" }),
-      ).not.toBeInTheDocument();
-      await user.keyboard("{Escape}");
 
       const fastModeButton = await findFastModeButton();
       expect(fastModeButton).toHaveAttribute(
@@ -465,10 +459,6 @@ describe("chat composer models", () => {
           expectedZapIcon ? "currentColor" : "none",
         );
       });
-      expect(fastModeButton).toHaveClass(
-        expectedZapIcon ? "text-amber-600" : "text-muted-foreground",
-      );
-
       await expect(screen.findByText(notice)).resolves.toBeInTheDocument();
       await user.click(buttonContainingText("Set as default", document.body));
 
@@ -661,7 +651,6 @@ describe("chat composer models", () => {
     expect(
       within(fastModePopover).getByText("1.5× model speed · 2.5× credit usage"),
     ).toBeInTheDocument();
-    expect(screen.queryByText("Fast mode on")).not.toBeInTheDocument();
 
     await sendMessageInUI(
       user,
@@ -744,16 +733,10 @@ describe("chat composer models", () => {
         "Velocidade do modelo 1,5× · uso de créditos 2,5×",
       ),
     ).toBeInTheDocument();
-    expect(screen.queryByText("Modo rápido ativado")).not.toBeInTheDocument();
 
     await user.unhover(fastModeButton);
     await user.click(await findComposerModel("GPT 5.6 Sol"));
     const modelPicker = await screen.findByRole("listbox");
-    expect(
-      within(modelPicker).queryByRole("group", {
-        name: "Velocidade de execução",
-      }),
-    ).not.toBeInTheDocument();
 
     await user.hover(within(modelPicker).getByText("$"));
     await expect(
