@@ -289,10 +289,16 @@ beforeEach(async () => {
 });
 
 afterAll(async () => {
-  await databaseClient.end();
-  await adminClient.unsafe(`DROP SCHEMA "${schemaName}" CASCADE`);
-  await adminClient.end();
-  await rm(reportDirectory, { recursive: true, force: true });
+  if (typeof databaseClient !== "undefined") {
+    await databaseClient.end();
+  }
+  if (typeof adminClient !== "undefined") {
+    await adminClient.unsafe(`DROP SCHEMA "${schemaName}" CASCADE`);
+    await adminClient.end();
+  }
+  if (typeof reportDirectory !== "undefined") {
+    await rm(reportDirectory, { recursive: true, force: true });
+  }
 });
 
 describe("Custom connector credential backfill", () => {
