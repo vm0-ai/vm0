@@ -19,6 +19,7 @@ use tokio_util::sync::CancellationToken;
 
 const RUN_ID: &str = "codex-app-server-backend-active-input-cancellation-test";
 const DELIVERY_ID: &str = "2532261d-b0e1-471e-b93d-1acae383d001";
+const LATE_DELIVERY_ID: &str = "2532261d-b0e1-471e-b93d-1acae383d002";
 
 #[tokio::test]
 async fn cancellation_preserves_a_steer_response_already_in_flight()
@@ -62,14 +63,13 @@ async fn cancellation_preserves_a_steer_response_already_in_flight()
         &journal_path,
         HttpClient::with_api_config(server.base_url(), "test-token", "", RUN_ID, Duration::ZERO)?,
     )?;
+    let active_input_controller = active_input.controller();
     assert_eq!(
-        active_input
-            .controller()
-            .handle_control_payload(&serde_json::to_vec(&json!({
-                "type": "active-input",
-                "deliveryId": DELIVERY_ID,
-                "text": "settle this steer before stopping",
-            }))?),
+        active_input_controller.handle_control_payload(&serde_json::to_vec(&json!({
+            "type": "active-input",
+            "deliveryId": DELIVERY_ID,
+            "text": "settle this steer before stopping",
+        }))?),
         ActiveInputControlOutcome::Accepted
     );
 
@@ -98,6 +98,23 @@ async fn cancellation_preserves_a_steer_response_already_in_flight()
     }
 
     cancellation.cancel();
+    tokio::select! {
+        biased;
+        result = &mut execution => {
+            return Err(format!("Codex execution ended before steer release: {result:?}").into());
+        }
+        () = std::future::ready(()) => {}
+    }
+    assert_eq!(
+        active_input_controller.handle_control_payload(&serde_json::to_vec(&json!({
+            "type": "active-input",
+            "deliveryId": LATE_DELIVERY_ID,
+            "text": "do not admit this after cancellation",
+        }))?),
+        ActiveInputControlOutcome::Rejected {
+            diagnostic: "active input is closed",
+        }
+    );
     UnixStream::connect(
         tmp.path()
             .join(common::MOCK_CODEX_TURN_STEER_RELEASE_SOCKET),

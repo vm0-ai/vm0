@@ -118,6 +118,7 @@ async fn settle_active_input_before_stop<Run>(
 where
     Run: Future<Output = Result<CliExecutionResult, AgentError>>,
 {
+    active_input.close_terminal();
     if !active_input.durable_sink_in_flight() {
         return stopped;
     }
