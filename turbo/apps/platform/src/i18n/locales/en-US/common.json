@@ -4424,6 +4424,7 @@
     "workspace": {
       "danger": {
         "delete": {
+          "billingDescription": "All active subscriptions, including usage packs and add-ons, will be canceled immediately. Unused prepaid subscription time will be refunded proportionally. One-time and other non-subscription purchases will not be refunded.",
           "button": "Delete workspace",
           "confirmDescription": "This will permanently delete this workspace and all its data. This action cannot be undone. Type confirm to continue.",
           "description": "Permanently delete this workspace and all its data. This action cannot be undone.",

@@ -237,6 +237,7 @@ import {
 } from "../../signals/zero-page/model-default-selection.ts";
 
 const MAX_FILE_SIZE = 1024 * 1024 * 1024; // 1 GB — keep in sync with web constants
+const FAST_MODE_ACTIVE_PRESS = Symbol("fast-mode-active-press");
 const COMPOSER_CONTROL_FOCUS_CLASS =
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
 
@@ -7410,8 +7411,23 @@ function ComposerFastModeButton({
     return $.settings.models.picker.fastImpact;
   });
   return (
-    <Popover>
-      <PopoverTrigger asChild openOnHover delay={300} closeDelay={120}>
+    <Popover
+      onOpenChange={(open, eventDetails) => {
+        if (
+          open &&
+          eventDetails.reason === "trigger-press" &&
+          Object.hasOwn(eventDetails.event, FAST_MODE_ACTIVE_PRESS)
+        ) {
+          eventDetails.cancel();
+        }
+      }}
+    >
+      <PopoverTrigger
+        asChild
+        openOnHover={!active}
+        delay={300}
+        closeDelay={120}
+      >
         <Button
           type="button"
           variant="quiet"
@@ -7420,11 +7436,18 @@ function ComposerFastModeButton({
             "shrink-0",
             COMPOSER_CONTROL_ICON_CLASS,
             active &&
-              "bg-amber-500/10 text-amber-600 hover:bg-amber-500/15 hover:text-amber-700 dark:text-amber-300 dark:hover:text-amber-200",
+              "text-amber-600 hover:text-amber-700 dark:text-amber-300 dark:hover:text-amber-200",
           )}
           aria-label={label}
           aria-pressed={active}
           disabled={disabled}
+          onClickCapture={(event) => {
+            if (active) {
+              Object.defineProperty(event.nativeEvent, FAST_MODE_ACTIVE_PRESS, {
+                value: true,
+              });
+            }
+          }}
           onClick={() => {
             onChange({
               selectedModel: value.selectedModel,

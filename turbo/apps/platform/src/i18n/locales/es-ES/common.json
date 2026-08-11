@@ -4475,6 +4475,7 @@
     "workspace": {
       "danger": {
         "delete": {
+          "billingDescription": "Todas las suscripciones activas, incluidos los paquetes de uso y los complementos, se cancelarán de inmediato. El tiempo de suscripción prepagado no utilizado se reembolsará proporcionalmente. Las compras únicas y otras compras sin suscripción no se reembolsarán.",
           "button": "Eliminar espacio de trabajo",
           "confirmDescription": "Esto eliminará permanentemente este espacio de trabajo y todos sus datos. Esta acción no puede deshacerse. Escribe confirm para continuar.",
           "description": "Elimina permanentemente este espacio de trabajo y todos sus datos. Esta acción no puede deshacerse.",

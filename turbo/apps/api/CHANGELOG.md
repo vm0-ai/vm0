@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.428.0](https://github.com/vm0-ai/vm0/compare/api-v1.427.0...api-v1.428.0) (2026-08-11)
+
+
+### Features
+
+* add server-authored mcp connector discovery ([#26399](https://github.com/vm0-ai/vm0/issues/26399)) ([4057a4b](https://github.com/vm0-ai/vm0/commit/4057a4b8674253363461aa724cfea68a3a8bfadd))
+
+
+### Bug Fixes
+
+* **api:** keep chat event cursors consistent on conflicts ([#26402](https://github.com/vm0-ai/vm0/issues/26402)) ([23c508e](https://github.com/vm0-ai/vm0/commit/23c508e72aa55f4b015924a8cd942085a109cb51))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.318.0
+    * @vm0/core bumped to 8.546.1
+    * @vm0/db bumped to 1.194.2
+    * @vm0/pi-agent-runtime bumped to 1.3.47
+
 ## [1.427.0](https://github.com/vm0-ai/vm0/compare/api-v1.426.0...api-v1.427.0) (2026-08-11)
 
 

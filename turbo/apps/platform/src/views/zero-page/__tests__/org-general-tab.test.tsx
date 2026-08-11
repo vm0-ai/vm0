@@ -8,6 +8,7 @@ import {
   click,
   detachedSetupPage,
   fill,
+  queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
@@ -262,5 +263,31 @@ describe("organization general settings", () => {
       expect(screen.getByText(/Logo is too large/u)).toBeInTheDocument();
       expect(screen.queryByText("Save changes")).not.toBeInTheDocument();
     });
+  });
+
+  it("warns admins about prorated subscription refunds before deletion", async () => {
+    context.mocks.data.org({
+      id: "org_1",
+      name: "Acme",
+      role: "admin",
+    });
+
+    await openGeneralTab();
+    const deleteButton = queryAllByRoleFast("button").find((button) => {
+      return button.textContent?.trim() === "Delete";
+    });
+    if (!deleteButton) {
+      throw new Error("Delete button not found");
+    }
+    click(deleteButton);
+
+    await expect(
+      screen.findByText(
+        "All active subscriptions, including usage packs and add-ons, will be canceled immediately. Unused prepaid subscription time will be refunded proportionally. One-time and other non-subscription purchases will not be refunded.",
+      ),
+    ).resolves.toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Delete workspace?" }),
+    ).toBeInTheDocument();
   });
 });
