@@ -12,7 +12,6 @@ import type {
 } from "@vm0/db/jsonb-contracts/chat-slack-context";
 import type { ChatTeamsMessageFiles } from "@vm0/db/jsonb-contracts/chat-teams-context";
 import type { JsonObject } from "@vm0/db/jsonb-contracts/shared";
-import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
@@ -1276,17 +1275,16 @@ export async function acquireBddVm0ApiKey(args: {
       `acquireBddVm0ApiKey: api key must start with one of ${VM0_BDD_API_KEY_PREFIXES.join(", ")}`,
     );
   }
-  await acquireVm0ManagedModelKeyFixture(db(), args.fixtureId, [
-    {
-      vendor: args.vendor,
-      apiKey: args.apiKey,
-    },
-  ]);
-  const [acquired] = await db()
-    .select({ apiKey: vm0ApiKeys.apiKey })
-    .from(vm0ApiKeys)
-    .where(eq(vm0ApiKeys.vendor, args.vendor))
-    .limit(1);
+  const [acquired] = await acquireVm0ManagedModelKeyFixture(
+    db(),
+    args.fixtureId,
+    [
+      {
+        vendor: args.vendor,
+        apiKey: args.apiKey,
+      },
+    ],
+  );
   if (!acquired) {
     throw new Error(`Expected VM0 managed key for vendor: ${args.vendor}`);
   }
