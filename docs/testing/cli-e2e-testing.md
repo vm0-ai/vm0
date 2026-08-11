@@ -10,6 +10,11 @@ entry points. The current suite covers:
 - Clerk sign-up and sign-in through the hosted form UI;
 - onboarding, chat submission, runner dispatch, and the assistant result through
   the deployed web application;
+- real Claude BYOK and vm0-managed Codex execution, including public usage
+  attribution;
+- active-run cancellation through the public run and chat-events APIs;
+- ordinary and empty chat attachments across continuation, plus runner-mounted
+  workflow files, agent instructions, and user timezone preferences;
 - connector firewall placeholder and authentication behavior through the
   deployed preview API, runner, sandbox, and proxy.
 
@@ -72,6 +77,12 @@ Runner BATS files live in `e2e/tests/03-runner`. They share the accounts and
 public device-flow tokens prepared by the runner E2E workflow, then create and
 clean up their own agents, threads, and connector connections through public
 `/api/zero/*` endpoints.
+
+The workflow also prepares dedicated real-Codex and real-Claude identities.
+Use the Codex identity for vm0-managed model billing coverage and the Claude
+identity for BYOK coverage so provider policy and usage assertions remain
+isolated. The shared mock-runner identity starts with `UTC` as its timezone;
+tests that change this user preference must restore it during teardown.
 
 Use a different organization-scoped connector slug in each file that can run in
 parallel. Assert sandbox-visible output and vm0-owned telemetry; do not treat an

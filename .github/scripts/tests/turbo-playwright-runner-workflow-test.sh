@@ -204,9 +204,11 @@ raise "missing runner model policy bootstrap" unless model_defaults_step
 model_defaults_script = model_defaults_step.fetch("run")
 unless model_defaults_script.include?("/api/zero/model-policies") &&
     model_defaults_script.include?("/api/zero/user-model-preference") &&
+    model_defaults_script.include?("/api/zero/user-preferences") &&
     model_defaults_script.include?("deepseek-v4-flash") &&
     model_defaults_script.include?("gpt-5.6-luna") &&
-    model_defaults_script.include?('{"selectedModel":null,"serviceTier":null}')
+    model_defaults_script.include?('{"selectedModel":null,"serviceTier":null}') &&
+    model_defaults_script.include?('{"timezone":"UTC"}')
   raise "runner bootstrap must reset the limited-free model defaults"
 end
 %w[claude-opus-4-7 claude-sonnet-4-6 gpt-5.5].each do |restricted_model|
@@ -222,6 +224,26 @@ unless provider_step.fetch("run").include?(
     '{"type":"claude-code-oauth-token","secret":"mock-oauth-token-for-e2e"}',
   )
   raise "runner bootstrap must restore the historical mock provider"
+end
+codex_step = bootstrap_steps.find do |step|
+  step["name"] == "Bootstrap real Codex account"
+end
+raise "missing real Codex account bootstrap" unless codex_step
+codex_script = codex_step.fetch("run")
+%w[
+  e2e-api-credentials-runner-real-codex.json
+  /api/zero/model-policies
+  /api/zero/user-model-preference
+  /api/zero/feature-switches
+  gpt-5.6-luna
+  defaultProviderType:\ "vm0"
+  credentialScope:\ "org"
+  {"selectedModel":"gpt-5.6-luna","serviceTier":null}
+  realAgentInPreview
+].each do |required_fragment|
+  unless codex_script.include?(required_fragment)
+    raise "real Codex bootstrap must include #{required_fragment}"
+  end
 end
 claude_step = bootstrap_steps.find do |step|
   step["name"] == "Bootstrap real Claude account"

@@ -83,6 +83,23 @@ runner_chat_send() {
     local prompt="$2"
     local thread_id="$3"
     local selected_model="$4"
+    local parts
+
+    parts="$(jq -nc --arg prompt "$prompt" '[{type: "text", text: $prompt}]')"
+    runner_chat_send_parts \
+        "$agent_id" \
+        "$prompt" \
+        "$parts" \
+        "$thread_id" \
+        "$selected_model"
+}
+
+runner_chat_send_parts() {
+    local agent_id="$1"
+    local prompt="$2"
+    local parts="$3"
+    local thread_id="$4"
+    local selected_model="$5"
     local client_event_id payload
 
     client_event_id="$(_runner_uuid)"
@@ -92,12 +109,13 @@ runner_chat_send() {
             --arg prompt "$prompt" \
             --arg threadId "$thread_id" \
             --arg clientEventId "$client_event_id" \
+            --argjson parts "$parts" \
             '{
                 agentId: $agentId,
                 prompt: $prompt,
                 threadId: $threadId,
                 clientEventId: $clientEventId,
-                userMessage: {version: 1, parts: [{type: "text", text: $prompt}]},
+                userMessage: {version: 1, parts: $parts},
                 hasTextContent: true
             }')"
     else
@@ -106,12 +124,13 @@ runner_chat_send() {
             --arg prompt "$prompt" \
             --arg model "$selected_model" \
             --arg clientEventId "$client_event_id" \
+            --argjson parts "$parts" \
             '{
                 agentId: $agentId,
                 prompt: $prompt,
                 model: $model,
                 clientEventId: $clientEventId,
-                userMessage: {version: 1, parts: [{type: "text", text: $prompt}]},
+                userMessage: {version: 1, parts: $parts},
                 hasTextContent: true
             }')"
     fi

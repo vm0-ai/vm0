@@ -2636,6 +2636,7 @@ jobs:
 
           curl -fsS "${headers[@]}" -X PUT -d "$payload" "${E2E_API_URL}/api/zero/model-policies" >/dev/null
           curl -fsS "${headers[@]}" -X PUT -d '{"selectedModel":null,"serviceTier":null}' "${E2E_API_URL}/api/zero/user-model-preference" >/dev/null
+          curl -fsS "${headers[@]}" -X POST -d '{"timezone":"UTC"}' "${E2E_API_URL}/api/zero/user-preferences" >/dev/null
         env:
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
       - name: Bootstrap runner mock model provider
@@ -2650,6 +2651,42 @@ jobs:
             -X POST \
             -d '{"type":"claude-code-oauth-token","secret":"mock-oauth-token-for-e2e"}' \
             "${E2E_API_URL}/api/zero/model-providers" >/dev/null
+        env:
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+      - name: Bootstrap real Codex account
+        shell: bash
+        run: |
+          set -euo pipefail
+          token=$(jq -er '.token | select(type == "string" and length > 0)' /tmp/e2e-api-credentials-runner-real-codex.json)
+          api_url=$(jq -er '.apiUrl | select(type == "string" and length > 0)' /tmp/e2e-api-credentials-runner-real-codex.json)
+          echo "::add-mask::$token"
+
+          headers=(-H "Authorization: Bearer ${token}" -H "Content-Type: application/json")
+          if [[ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then
+            headers+=(-H "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}")
+          fi
+
+          payload=$(jq -nc '{
+            policies: [
+              {model: "gpt-5.6-luna", isDefault: true, defaultProviderType: "vm0", credentialScope: "org", modelProviderId: null}
+            ]
+          }')
+          curl -fsS "${headers[@]}" \
+            -X PUT \
+            -d "$payload" \
+            "${api_url}/api/zero/model-policies" \
+            >/dev/null
+          curl -fsS "${headers[@]}" \
+            -X PUT \
+            -d '{"selectedModel":"gpt-5.6-luna","serviceTier":null}' \
+            "${api_url}/api/zero/user-model-preference" \
+            >/dev/null
+          curl -fsS "${headers[@]}" \
+            -X POST \
+            -d '{"switches":{"realAgentInPreview":true}}' \
+            "${api_url}/api/zero/feature-switches" \
+            | jq -e '.effectiveSwitches.realAgentInPreview == true' \
+            >/dev/null
         env:
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
       - name: Bootstrap real Claude account

@@ -1,29 +1,30 @@
 #!/usr/bin/env bats
 
-# Real Claude smoke test through supported billing, model, agent, and chat APIs.
+# Real Claude BYOK smoke test through supported model, agent, chat, and usage APIs.
 
 load '../../helpers/setup'
 load '../../helpers/runner-chat'
+load '../../helpers/runner-api'
 
-setup_file() {
+setup() {
     local credentials="/tmp/e2e-api-credentials-runner-real-claude.json"
     export E2E_API_TOKEN E2E_API_URL
     E2E_API_TOKEN="$(jq -er '.token | select(type == "string" and length > 0)' "$credentials")"
     E2E_API_URL="$(jq -er '.apiUrl | select(type == "string" and length > 0)' "$credentials")"
-    require_runner_api_credentials
+    runner_e2e_require_environment
+    runner_e2e_setup_test
 
     export RUNNER_AGENT_ID
     RUNNER_AGENT_ID="$(create_runner_agent \
         "e2e-real-claude-$(date +%s%3N)-$RANDOM")"
+    AGENT_ID="$RUNNER_AGENT_ID"
     set_runner_agent_instructions \
         "$RUNNER_AGENT_ID" \
         "Real Claude smoke test instructions."
 }
 
-teardown_file() {
-    if [[ -n "${RUNNER_AGENT_ID:-}" ]]; then
-        delete_runner_agent "$RUNNER_AGENT_ID"
-    fi
+teardown() {
+    runner_e2e_teardown_test
 }
 
 wait_for_real_claude_events() {
@@ -105,7 +106,7 @@ run_real_claude_chat() {
     ' <<< "$events_response"
 }
 
-@test "t27-1: real claude returns a successful answer" {
+@test "t27-1: real claude BYOK returns an answer without vm0 usage" {
     run run_real_claude_chat \
         "123+456. Reply only RESULT=<answer>." \
         "RESULT=579"
@@ -115,6 +116,16 @@ run_real_claude_chat() {
     assert_output --partial "RESULT=579"
     assert_output --partial '"type":"result"'
     assert_output --partial '"subtype":"success"'
-    [[ -n "$(runner_chat_field "$output" '.runId')" ]]
+    local run_id thread_id
+    run_id="$(runner_chat_field "$output" '.runId')"
+    thread_id="$(runner_chat_field "$output" '.threadId')"
+    RUN_ID="$run_id"
+    THREAD_ID="$thread_id"
+    [[ -n "$run_id" ]]
     [[ -n "$(runner_chat_field "$output" '.sessionId')" ]]
+
+    run runner_e2e_assert_no_usage_for_thread "$thread_id" "$run_id"
+    echo "$output"
+    assert_success
+    assert_output --partial '"vm0UsageCredits":0'
 }
