@@ -115,8 +115,9 @@ function SentVideoTemplateDetail({
 
 /**
  * Read-only echo of a sent video template, opened by tapping the message
- * chip. Docks to the bottom edge on touch-width viewports — where the chip
- * hides its inline spec — and floats as a small centered dialog elsewhere.
+ * chip — a button only on touch-width viewports, where the chip hides its
+ * inline spec. Docks to the bottom edge; the sm: styles only cover a dialog
+ * kept open while the viewport is resized past the breakpoint.
  */
 export function SentTemplateDetailDialog() {
   const { t } = useTranslation();

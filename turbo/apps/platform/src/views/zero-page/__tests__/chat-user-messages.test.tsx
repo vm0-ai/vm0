@@ -160,21 +160,28 @@ describe("user messages", () => {
       },
     });
 
-    // The hover title repeats the spec because narrow viewports hide the
-    // inline echo.
+    // Wide viewports keep a static record: the inline echo plus a hover
+    // title that repeats the spec. No dialog opens from this variant.
     const reference = await screen.findByTitle(
       `Video \u00b7 ${templateItem.title} \u00b7 ` +
         "Seedance 2.0 fast \u00b7 9:16 \u00b7 8s \u00b7 720p \u00b7 Audio",
     );
+    expect(reference.tagName).toBe("SPAN");
     // Every parameter is echoed, not only the one the user changed.
     expect(reference).toHaveTextContent(
       "Seedance 2.0 fast \u00b7 9:16 \u00b7 8s \u00b7 720p \u00b7 Audio",
     );
 
-    // Touch viewports hide the inline echo and have no hover, so the chip
-    // doubles as a button that opens a read-only detail dialog.
-    expect(reference.tagName).toBe("BUTTON");
     await user.click(reference);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    // Touch-width viewports hide the inline echo and have no hover, so only
+    // there the chip swaps to a button that opens a read-only detail dialog.
+    const chipButton = queryAllByRoleFast("button").find((element) => {
+      return element.textContent === templateItem.title;
+    });
+    expect(chipButton).toBeInstanceOf(HTMLButtonElement);
+    await user.click(chipButton!);
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByText(templateItem.title)).toBeInTheDocument();
     expect(dialog.querySelector("img")).toBeInstanceOf(HTMLImageElement);
