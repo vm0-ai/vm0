@@ -431,14 +431,12 @@ describe("cron snapshot chat events", () => {
       await publicationGate.promise;
     });
 
-    const results = await Promise.all([runSnapshotCron(), runSnapshotCron()]);
+    await Promise.all([runSnapshotCron(), runSnapshotCron()]);
     expect(arrivals).toBe(2);
-    expect(
-      results.reduce((total, result) => {
-        return total + result.snapshots;
-      }, 0),
-    ).toBe(1);
     const head = await readChatEventSnapshotHead(context, threadId);
+    // Cron result counts cover every candidate in the shared test database;
+    // the persisted generation count scopes the CAS assertion to this thread.
+    expect(head.snapshot_count).toBe(parentHead.snapshot_count + 1);
     expect(head.archive_schema_version).toBe(4);
     expect(head.last_seq_id).toBeGreaterThan(parentHead.last_seq_id);
     expect(head.object_key).not.toBe(parentHead.object_key);
