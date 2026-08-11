@@ -4617,7 +4617,9 @@ describe("CHAT-02: model-first provider policies", () => {
     const fw = createFirewallApi(context);
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     const keyFixtureId = randomUUID();
-    const apiKey = `vm0-key-bdd-dev-seed-${keyFixtureId}`;
+    const requestedApiKey = `vm0-key-bdd-dev-seed-${keyFixtureId}`;
+    await seedVm0ManagedModelKey("glm-5.2");
+
     let runId: string | null = null;
 
     onTestFinished(async () => {
@@ -4627,11 +4629,12 @@ describe("CHAT-02: model-first provider policies", () => {
       ]);
     });
 
-    await acquireBddVm0ApiKey({
+    const acquiredApiKey = await acquireBddVm0ApiKey({
       fixtureId: keyFixtureId,
       vendor: "zai",
-      apiKey,
+      apiKey: requestedApiKey,
     });
+    expect(acquiredApiKey === requestedApiKey).toBeFalsy();
 
     await api.updateOrgModelPolicies(actor, [
       {
@@ -4680,7 +4683,9 @@ describe("CHAT-02: model-first provider policies", () => {
       throw new Error("Expected vm0 firewall auth to resolve");
     }
     const authorization = resolved.body.headers.Authorization;
-    expect(authorization).toBe(`Bearer ${apiKey}`);
+    expect(authorization?.startsWith("Bearer ")).toBeTruthy();
+    expect(authorization?.length ?? 0).toBeGreaterThan("Bearer ".length);
+    expect(authorization === `Bearer ${acquiredApiKey}`).toBeTruthy();
   }, 90_000);
   it("rejects legacy blank OpenRouter provider secrets during firewall auth", async () => {
     const fw = createFirewallApi(context);
