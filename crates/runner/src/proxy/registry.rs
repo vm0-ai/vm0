@@ -10,7 +10,8 @@ use crate::error::{RunnerError, RunnerResult};
 use crate::lock;
 use crate::state_file::PROXY_REGISTRY_MAX_BYTES;
 use crate::types::{
-    ConnectorRuntimeTargetRegistration, FirewallEntry, NetworkPolicy, SecretConnectorMetadata,
+    ConnectorRuntimeTarget, ConnectorRuntimeTargetRegistration, FirewallEntry, NetworkPolicy,
+    SecretConnectorMetadata,
 };
 
 #[derive(Serialize, Deserialize)]
@@ -31,6 +32,8 @@ struct VmEntry {
     proxy_log_path: String,
     firewalls: Option<Vec<FirewallEntry>>,
     network_policies: Option<HashMap<String, NetworkPolicy>>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    connector_runtime_targets: Vec<ConnectorRuntimeTarget>,
     #[serde(default, skip_serializing_if = "HashSet::is_empty")]
     omitted_builtin_firewalls: HashSet<String>,
     #[serde(default, skip_serializing_if = "HashSet::is_empty")]
@@ -155,6 +158,7 @@ pub struct ProxyRegistryHandle {
     pub(super) lock_path: PathBuf,
 }
 
+#[derive(Clone)]
 pub(crate) enum CustomConnectorRuntimeRegistryState {
     Available {
         firewall: FirewallEntry,
@@ -162,6 +166,18 @@ pub(crate) enum CustomConnectorRuntimeRegistryState {
         routing_variables: HashMap<String, String>,
     },
     Absent,
+}
+
+#[derive(Clone)]
+pub(crate) enum ConnectorRuntimeRegistryUpdate {
+    BuiltinAvailable {
+        connector_slug: String,
+        network_policy: NetworkPolicy,
+    },
+    Custom {
+        custom_connector_id: String,
+        state: CustomConnectorRuntimeRegistryState,
+    },
 }
 
 fn firewall_name(entry: &FirewallEntry) -> &str {
@@ -238,6 +254,176 @@ fn replace_first_matching_firewall(
     }
 }
 
+fn apply_custom_connector_runtime_state(
+    vm: &mut VmEntry,
+    custom_connector_id: &str,
+    state: &CustomConnectorRuntimeRegistryState,
+) -> RunnerResult<()> {
+    match state {
+        CustomConnectorRuntimeRegistryState::Available {
+            firewall,
+            network_policy,
+            routing_variables,
+        } => {
+            let FirewallEntry::Inline {
+                firewall: inline_firewall,
+                custom_connector_id: Some(entry_connector_id),
+            } = firewall
+            else {
+                return Err(RunnerError::Internal(format!(
+                    "custom connector runtime result {custom_connector_id} has no connector id"
+                )));
+            };
+            if entry_connector_id != custom_connector_id {
+                return Err(RunnerError::Internal(format!(
+                    "custom connector runtime result {custom_connector_id} has mismatched connector id"
+                )));
+            }
+            let inline_firewall_name = inline_firewall.name.clone();
+
+            let firewalls = vm.firewalls.get_or_insert_with(Vec::new);
+            if firewalls.iter().any(|entry| {
+                firewall_name(entry) == inline_firewall_name
+                    && custom_connector_owner(entry) != Some(custom_connector_id)
+            }) {
+                return Err(RunnerError::Internal(format!(
+                    "custom connector {custom_connector_id} cannot claim firewall {inline_firewall_name} owned by another connector"
+                )));
+            }
+            let removed_firewall_names = firewalls
+                .iter()
+                .filter_map(|entry| {
+                    if let FirewallEntry::Inline {
+                        firewall,
+                        custom_connector_id: Some(existing_connector_id),
+                    } = entry
+                        && existing_connector_id == custom_connector_id
+                    {
+                        Some(firewall.name.clone())
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<_>>();
+            replace_first_matching_firewall(firewalls, firewall.clone(), |entry| {
+                if let FirewallEntry::Inline {
+                    custom_connector_id: Some(existing_connector_id),
+                    ..
+                } = entry
+                    && existing_connector_id == custom_connector_id
+                {
+                    true
+                } else {
+                    false
+                }
+            });
+            let retained_firewall_names = firewalls
+                .iter()
+                .map(firewall_name)
+                .map(ToOwned::to_owned)
+                .collect::<HashSet<_>>();
+            let network_policies = vm.network_policies.get_or_insert_with(HashMap::new);
+            for firewall_name in removed_firewall_names {
+                if !retained_firewall_names.contains(&firewall_name) {
+                    network_policies.remove(&firewall_name);
+                }
+            }
+            network_policies.insert(inline_firewall_name, (**network_policy).clone());
+            vm.connector_routing_variables.insert(
+                custom_connector_routing_key(custom_connector_id),
+                routing_variables.clone(),
+            );
+            vm.omitted_custom_connector_ids.remove(custom_connector_id);
+        }
+        CustomConnectorRuntimeRegistryState::Absent => {
+            let mut removed_firewall_names = Vec::new();
+            if let Some(firewalls) = vm.firewalls.as_mut() {
+                firewalls.retain(|entry| {
+                    if let FirewallEntry::Inline {
+                        firewall,
+                        custom_connector_id: Some(existing_connector_id),
+                    } = entry
+                        && existing_connector_id == custom_connector_id
+                    {
+                        removed_firewall_names.push(firewall.name.clone());
+                        false
+                    } else {
+                        true
+                    }
+                });
+            }
+            let retained_firewall_names = vm
+                .firewalls
+                .as_deref()
+                .unwrap_or_default()
+                .iter()
+                .map(firewall_name)
+                .map(ToOwned::to_owned)
+                .collect::<HashSet<_>>();
+            if let Some(network_policies) = vm.network_policies.as_mut() {
+                for firewall_name in removed_firewall_names {
+                    if !retained_firewall_names.contains(&firewall_name) {
+                        network_policies.remove(&firewall_name);
+                    }
+                }
+            }
+            vm.omitted_custom_connector_ids
+                .insert(custom_connector_id.to_string());
+        }
+    }
+    Ok(())
+}
+
+fn apply_connector_runtime_update(
+    vm: &mut VmEntry,
+    update: &ConnectorRuntimeRegistryUpdate,
+) -> RunnerResult<bool> {
+    let target_is_registered =
+        vm.connector_runtime_targets
+            .iter()
+            .any(|target| match (target, update) {
+                (
+                    ConnectorRuntimeTarget::Builtin { connector_slug },
+                    ConnectorRuntimeRegistryUpdate::BuiltinAvailable {
+                        connector_slug: update_slug,
+                        ..
+                    },
+                ) => connector_slug == update_slug,
+                (
+                    ConnectorRuntimeTarget::Custom {
+                        custom_connector_id,
+                    },
+                    ConnectorRuntimeRegistryUpdate::Custom {
+                        custom_connector_id: update_id,
+                        ..
+                    },
+                ) => custom_connector_id == update_id,
+                _ => false,
+            });
+    if !target_is_registered {
+        return Ok(false);
+    }
+
+    match update {
+        ConnectorRuntimeRegistryUpdate::BuiltinAvailable {
+            connector_slug,
+            network_policy,
+        } => {
+            if !vm_has_connector_firewall(vm, connector_slug) {
+                return Ok(false);
+            }
+            vm.network_policies
+                .get_or_insert_with(HashMap::new)
+                .insert(connector_slug.clone(), network_policy.clone());
+        }
+        ConnectorRuntimeRegistryUpdate::Custom {
+            custom_connector_id,
+            state,
+        } => apply_custom_connector_runtime_state(vm, custom_connector_id, state)?,
+    }
+    Ok(true)
+}
+
 fn initial_omitted_connector_runtime_targets(
     registration: &VmRegistration<'_>,
 ) -> (HashSet<String>, HashSet<String>) {
@@ -262,7 +448,7 @@ fn initial_omitted_connector_runtime_targets(
     let mut omitted_custom_connector_ids = HashSet::new();
     for target in registration.connector_runtime_targets.unwrap_or_default() {
         match target {
-            ConnectorRuntimeTargetRegistration::Builtin { connector_slug }
+            ConnectorRuntimeTargetRegistration::Builtin { connector_slug, .. }
                 if !active_builtin_firewalls.contains(connector_slug.as_str()) =>
             {
                 omitted_builtin_firewalls.insert(connector_slug.clone());
@@ -290,7 +476,7 @@ fn initial_connector_routing_variables(
         .unwrap_or_default()
         .iter()
         .filter_map(|target| match target {
-            ConnectorRuntimeTargetRegistration::Builtin { connector_slug } => {
+            ConnectorRuntimeTargetRegistration::Builtin { connector_slug, .. } => {
                 Some(connector_slug.as_str())
             }
             ConnectorRuntimeTargetRegistration::Custom { .. } => None,
@@ -377,6 +563,12 @@ impl ProxyRegistryHandle {
                 proxy_log_path: registration.proxy_log_path.to_string_lossy().into_owned(),
                 firewalls,
                 network_policies: registration.network_policies.cloned(),
+                connector_runtime_targets: registration
+                    .connector_runtime_targets
+                    .unwrap_or_default()
+                    .iter()
+                    .map(ConnectorRuntimeTargetRegistration::target)
+                    .collect(),
                 omitted_builtin_firewalls,
                 omitted_custom_connector_ids,
                 connector_routing_variables,
@@ -411,8 +603,45 @@ impl ProxyRegistryHandle {
         Ok(())
     }
 
-    /// Publish one authoritative custom connector runtime result under the same
-    /// file lock used by VM registration. A stale source IP/run pair is ignored.
+    /// Publish validated Builtin and Custom candidate updates in one registry
+    /// transaction. `None` means the VM disappeared or now belongs to another
+    /// run; otherwise each boolean corresponds to the same-index update.
+    pub(crate) async fn apply_connector_runtime_updates_if_run_matches(
+        &self,
+        source_ip: &str,
+        run_id: &str,
+        updates: &[ConnectorRuntimeRegistryUpdate],
+    ) -> RunnerResult<Option<Vec<bool>>> {
+        let _guard = lock::acquire(self.lock_path.clone()).await?;
+        let mut registry = read_registry(&self.registry_path).await?;
+        let Some(vm) = registry.vms.get_mut(source_ip) else {
+            return Ok(None);
+        };
+        if vm.run_id != run_id {
+            return Ok(None);
+        }
+
+        let outcomes = updates
+            .iter()
+            .map(|update| apply_connector_runtime_update(vm, update))
+            .collect::<RunnerResult<Vec<_>>>()?;
+        if !outcomes.iter().any(|applied| *applied) {
+            return Ok(Some(outcomes));
+        }
+
+        validate_custom_connector_resource_ownership(vm.firewalls.as_deref().unwrap_or_default())?;
+        registry.updated_at = chrono::Utc::now().timestamp_millis();
+        write_registry(&self.registry_path, &registry).await?;
+        info!(
+            source_ip,
+            run_id,
+            update_count = updates.len(),
+            "applied connector runtime updates to proxy registry"
+        );
+        Ok(Some(outcomes))
+    }
+
+    #[cfg(test)]
     pub(crate) async fn replace_custom_connector_runtime_target_if_run_matches(
         &self,
         source_ip: &str,
@@ -420,145 +649,20 @@ impl ProxyRegistryHandle {
         custom_connector_id: &str,
         state: CustomConnectorRuntimeRegistryState,
     ) -> RunnerResult<bool> {
-        let _guard = lock::acquire(self.lock_path.clone()).await?;
-        let mut registry = read_registry(&self.registry_path).await?;
-        let Some(vm) = registry.vms.get_mut(source_ip) else {
-            return Ok(false);
-        };
-        if vm.run_id != run_id {
-            return Ok(false);
-        }
-
-        match state {
-            CustomConnectorRuntimeRegistryState::Available {
-                firewall,
-                network_policy,
-                routing_variables,
-            } => {
-                let FirewallEntry::Inline {
-                    firewall: inline_firewall,
-                    custom_connector_id: Some(entry_connector_id),
-                } = &firewall
-                else {
-                    return Err(RunnerError::Internal(format!(
-                        "custom connector runtime result {} has no connector id",
-                        custom_connector_id
-                    )));
-                };
-                if entry_connector_id != custom_connector_id {
-                    return Err(RunnerError::Internal(format!(
-                        "custom connector runtime result {} has mismatched connector id",
-                        custom_connector_id
-                    )));
-                }
-                let inline_firewall_name = inline_firewall.name.clone();
-
-                let firewalls = vm.firewalls.get_or_insert_with(Vec::new);
-                if firewalls.iter().any(|entry| {
-                    firewall_name(entry) == inline_firewall_name
-                        && custom_connector_owner(entry) != Some(custom_connector_id)
-                }) {
-                    return Err(RunnerError::Internal(format!(
-                        "custom connector {custom_connector_id} cannot claim firewall {inline_firewall_name} owned by another connector"
-                    )));
-                }
-                let removed_firewall_names = firewalls
-                    .iter()
-                    .filter_map(|entry| {
-                        if let FirewallEntry::Inline {
-                            firewall,
-                            custom_connector_id: Some(existing_connector_id),
-                        } = entry
-                            && existing_connector_id == custom_connector_id
-                        {
-                            Some(firewall.name.clone())
-                        } else {
-                            None
-                        }
-                    })
-                    .collect::<Vec<_>>();
-                replace_first_matching_firewall(firewalls, firewall, |entry| {
-                    if let FirewallEntry::Inline {
-                        custom_connector_id: Some(existing_connector_id),
-                        ..
-                    } = entry
-                        && existing_connector_id == custom_connector_id
-                    {
-                        true
-                    } else {
-                        false
-                    }
-                });
-                let retained_firewall_names = firewalls
-                    .iter()
-                    .map(firewall_name)
-                    .map(ToOwned::to_owned)
-                    .collect::<HashSet<_>>();
-                let network_policies = vm.network_policies.get_or_insert_with(HashMap::new);
-                for firewall_name in removed_firewall_names {
-                    if !retained_firewall_names.contains(&firewall_name) {
-                        network_policies.remove(&firewall_name);
-                    }
-                }
-                network_policies.insert(inline_firewall_name, *network_policy);
-                vm.connector_routing_variables.insert(
-                    custom_connector_routing_key(custom_connector_id),
-                    routing_variables,
-                );
-                vm.omitted_custom_connector_ids.remove(custom_connector_id);
-            }
-            CustomConnectorRuntimeRegistryState::Absent => {
-                let mut removed_firewall_names = Vec::new();
-                if let Some(firewalls) = vm.firewalls.as_mut() {
-                    firewalls.retain(|entry| {
-                        if let FirewallEntry::Inline {
-                            firewall,
-                            custom_connector_id: Some(existing_connector_id),
-                        } = entry
-                            && existing_connector_id == custom_connector_id
-                        {
-                            removed_firewall_names.push(firewall.name.clone());
-                            false
-                        } else {
-                            true
-                        }
-                    });
-                }
-                let retained_firewall_names = vm
-                    .firewalls
-                    .as_deref()
-                    .unwrap_or_default()
-                    .iter()
-                    .map(firewall_name)
-                    .map(ToOwned::to_owned)
-                    .collect::<HashSet<_>>();
-                if let Some(network_policies) = vm.network_policies.as_mut() {
-                    for firewall_name in removed_firewall_names {
-                        if !retained_firewall_names.contains(&firewall_name) {
-                            network_policies.remove(&firewall_name);
-                        }
-                    }
-                }
-                vm.omitted_custom_connector_ids
-                    .insert(custom_connector_id.to_string());
-            }
-        }
-
-        registry.updated_at = chrono::Utc::now().timestamp_millis();
-        write_registry(&self.registry_path, &registry).await?;
-        info!(
-            source_ip,
-            run_id,
-            custom_connector_id,
-            "replaced custom connector runtime target in proxy registry"
-        );
-        Ok(true)
+        let outcomes = self
+            .apply_connector_runtime_updates_if_run_matches(
+                source_ip,
+                run_id,
+                &[ConnectorRuntimeRegistryUpdate::Custom {
+                    custom_connector_id: custom_connector_id.to_string(),
+                    state,
+                }],
+            )
+            .await?;
+        Ok(outcomes.is_some_and(|outcomes| outcomes == [true]))
     }
 
-    /// Patch one network policy only if the source IP still belongs to `run_id`.
-    ///
-    /// Returns `Ok(false)` when the VM is gone, belongs to another run, or does
-    /// not contain the requested connector firewall.
+    #[cfg(test)]
     pub async fn patch_network_policy_if_run_matches(
         &self,
         source_ip: &str,
@@ -566,8 +670,17 @@ impl ProxyRegistryHandle {
         connector_slug: &str,
         policy: NetworkPolicy,
     ) -> RunnerResult<bool> {
-        self.patch_existing_network_policy(source_ip, run_id, connector_slug, policy)
-            .await
+        let outcomes = self
+            .apply_connector_runtime_updates_if_run_matches(
+                source_ip,
+                run_id,
+                &[ConnectorRuntimeRegistryUpdate::BuiltinAvailable {
+                    connector_slug: connector_slug.to_string(),
+                    network_policy: policy,
+                }],
+            )
+            .await?;
+        Ok(outcomes.is_some_and(|outcomes| outcomes == [true]))
     }
 
     /// Replace one network policy with deny-all if the source IP still belongs
@@ -667,37 +780,6 @@ impl ProxyRegistryHandle {
             run_id,
             connector_slug = connector_slug,
             "failed closed connector network policy in proxy registry"
-        );
-        Ok(true)
-    }
-
-    async fn patch_existing_network_policy(
-        &self,
-        source_ip: &str,
-        run_id: &str,
-        connector_slug: &str,
-        policy: NetworkPolicy,
-    ) -> RunnerResult<bool> {
-        let _guard = lock::acquire(self.lock_path.clone()).await?;
-
-        let mut registry = read_registry(&self.registry_path).await?;
-        let Some(vm) = registry.vms.get_mut(source_ip) else {
-            return Ok(false);
-        };
-        if vm.run_id != run_id || !vm_has_connector_firewall(vm, connector_slug) {
-            return Ok(false);
-        }
-
-        vm.network_policies
-            .get_or_insert_with(HashMap::new)
-            .insert(connector_slug.to_string(), policy);
-        registry.updated_at = chrono::Utc::now().timestamp_millis();
-        write_registry(&self.registry_path, &registry).await?;
-        info!(
-            source_ip,
-            run_id,
-            connector_slug = connector_slug,
-            "patched connector network policy in proxy registry"
         );
         Ok(true)
     }
@@ -827,6 +909,20 @@ mod tests {
             .collect()
     }
 
+    fn builtin_runtime_targets(
+        connector_slugs: &[&str],
+    ) -> Vec<ConnectorRuntimeTargetRegistration> {
+        connector_slugs
+            .iter()
+            .map(
+                |connector_slug| ConnectorRuntimeTargetRegistration::Builtin {
+                    connector_slug: (*connector_slug).to_string(),
+                    base_url_vars: None,
+                },
+            )
+            .collect()
+    }
+
     fn policy(allow: &[&str], deny: &[&str], ask: &[&str], unknown_policy: &str) -> NetworkPolicy {
         NetworkPolicy {
             allow: allow.iter().map(|value| (*value).to_string()).collect(),
@@ -930,6 +1026,7 @@ mod tests {
                 proxy_log_path: "/tmp/proxy-test-run.jsonl".to_string(),
                 firewalls: None,
                 network_policies: None,
+                connector_runtime_targets: Vec::new(),
                 omitted_builtin_firewalls: HashSet::new(),
                 omitted_custom_connector_ids: HashSet::new(),
                 connector_routing_variables: HashMap::new(),
@@ -1133,9 +1230,11 @@ mod tests {
         let targets = vec![
             ConnectorRuntimeTargetRegistration::Builtin {
                 connector_slug: "slack".to_string(),
+                base_url_vars: None,
             },
             ConnectorRuntimeTargetRegistration::Builtin {
                 connector_slug: "github".to_string(),
+                base_url_vars: None,
             },
             ConnectorRuntimeTargetRegistration::Custom {
                 custom_connector_id: available_custom_id.to_string(),
@@ -1180,6 +1279,23 @@ mod tests {
                 ),
                 (format!("custom:{available_custom_id}"), HashMap::new(),),
             ])
+        );
+        assert_eq!(
+            vm.connector_runtime_targets,
+            vec![
+                ConnectorRuntimeTarget::Builtin {
+                    connector_slug: "slack".to_string(),
+                },
+                ConnectorRuntimeTarget::Builtin {
+                    connector_slug: "github".to_string(),
+                },
+                ConnectorRuntimeTarget::Custom {
+                    custom_connector_id: available_custom_id.to_string(),
+                },
+                ConnectorRuntimeTarget::Custom {
+                    custom_connector_id: omitted_custom_id.to_string(),
+                },
+            ]
         );
     }
 
@@ -1244,6 +1360,16 @@ mod tests {
                 policy(&["chat:write"], &[], &[], "allow"),
             ),
         ]);
+        let runtime_targets = vec![
+            ConnectorRuntimeTargetRegistration::Builtin {
+                connector_slug: "slack".to_string(),
+                base_url_vars: None,
+            },
+            ConnectorRuntimeTargetRegistration::Custom {
+                custom_connector_id: custom_connector_id.to_string(),
+                base_url_vars: None,
+            },
+        ];
         harness
             .handle
             .register_vm(
@@ -1251,6 +1377,7 @@ mod tests {
                 &VmRegistration {
                     firewalls: Some(&firewalls),
                     network_policies: Some(&network_policies),
+                    connector_runtime_targets: Some(&runtime_targets),
                     ..base_registration()
                 },
             )
@@ -1260,15 +1387,23 @@ mod tests {
 
         let error = harness
             .handle
-            .replace_custom_connector_runtime_target_if_run_matches(
+            .apply_connector_runtime_updates_if_run_matches(
                 "10.200.0.2",
                 "run-test",
-                custom_connector_id,
-                CustomConnectorRuntimeRegistryState::Available {
-                    firewall: custom_runtime_firewall(custom_connector_id, "slack"),
-                    network_policy: Box::new(policy(&["custom.write"], &[], &[], "deny")),
-                    routing_variables: HashMap::new(),
-                },
+                &[
+                    ConnectorRuntimeRegistryUpdate::BuiltinAvailable {
+                        connector_slug: "slack".to_string(),
+                        network_policy: policy(&[], &["chat:write"], &[], "deny"),
+                    },
+                    ConnectorRuntimeRegistryUpdate::Custom {
+                        custom_connector_id: custom_connector_id.to_string(),
+                        state: CustomConnectorRuntimeRegistryState::Available {
+                            firewall: custom_runtime_firewall(custom_connector_id, "slack"),
+                            network_policy: Box::new(policy(&["custom.write"], &[], &[], "deny")),
+                            routing_variables: HashMap::new(),
+                        },
+                    },
+                ],
             )
             .await
             .expect_err("custom connector must not overwrite builtin resources");
@@ -1310,10 +1445,16 @@ mod tests {
         ]);
         let pinned_routing_variables =
             HashMap::from([("subdomain".to_string(), "pinned".to_string())]);
-        let runtime_targets = vec![ConnectorRuntimeTargetRegistration::Custom {
-            custom_connector_id: custom_connector_id.to_string(),
-            base_url_vars: Some(pinned_routing_variables.clone()),
-        }];
+        let runtime_targets = vec![
+            ConnectorRuntimeTargetRegistration::Builtin {
+                connector_slug: "slack".to_string(),
+                base_url_vars: None,
+            },
+            ConnectorRuntimeTargetRegistration::Custom {
+                custom_connector_id: custom_connector_id.to_string(),
+                base_url_vars: Some(pinned_routing_variables.clone()),
+            },
+        ];
         harness
             .handle
             .register_vm(
@@ -1329,17 +1470,26 @@ mod tests {
             .await
             .unwrap();
 
-        assert!(
+        assert_eq!(
             harness
                 .handle
-                .replace_custom_connector_runtime_target_if_run_matches(
+                .apply_connector_runtime_updates_if_run_matches(
                     "10.200.0.2",
                     "run-test",
-                    custom_connector_id,
-                    CustomConnectorRuntimeRegistryState::Absent,
+                    &[
+                        ConnectorRuntimeRegistryUpdate::BuiltinAvailable {
+                            connector_slug: "slack".to_string(),
+                            network_policy: policy(&[], &["chat:write"], &[], "deny"),
+                        },
+                        ConnectorRuntimeRegistryUpdate::Custom {
+                            custom_connector_id: custom_connector_id.to_string(),
+                            state: CustomConnectorRuntimeRegistryState::Absent,
+                        },
+                    ],
                 )
                 .await
-                .unwrap()
+                .unwrap(),
+            Some(vec![true, true])
         );
         let absent = read_registry(harness.registry_path()).await.unwrap();
         let absent_vm = &absent.vms["10.200.0.2"];
@@ -1367,6 +1517,11 @@ mod tests {
                 .unwrap()
                 .contains_key("slack")
         );
+        let slack_policy = &absent_vm.network_policies.as_ref().unwrap()["slack"];
+        assert!(slack_policy.allow.is_empty());
+        assert_eq!(slack_policy.deny, ["chat:write"]);
+        assert!(slack_policy.ask.is_empty());
+        assert_eq!(slack_policy.unknown_policy, "deny");
         assert_eq!(
             absent_vm.connector_routing_variables
                 [&custom_connector_routing_key(custom_connector_id)],
@@ -1507,11 +1662,13 @@ mod tests {
             ("github".to_string(), initial_policy.clone()),
             ("slack".to_string(), initial_policy),
         ]);
+        let runtime_targets = builtin_runtime_targets(&["github", "slack"]);
         let empty_padding = HashMap::from([("PADDING".to_string(), String::new())]);
         let measured = VmRegistration {
             run_id: "run-near-limit",
             firewalls: Some(&firewalls),
             network_policies: Some(&network_policies),
+            connector_runtime_targets: Some(&runtime_targets),
             vars: Some(&empty_padding),
             ..base_registration()
         };
@@ -1555,6 +1712,7 @@ mod tests {
             run_id: "run-near-limit",
             firewalls: Some(&firewalls),
             network_policies: Some(&network_policies),
+            connector_runtime_targets: Some(&runtime_targets),
             vars: Some(&padding),
             ..base_registration()
         };
@@ -1626,10 +1784,12 @@ mod tests {
             "github".to_string(),
             policy(&["repos.read"], &[], &[], "ask"),
         );
+        let runtime_targets = builtin_runtime_targets(&["github"]);
         let registration = VmRegistration {
             run_id: "run-1",
             firewalls: Some(&firewalls),
             network_policies: Some(&network_policies),
+            connector_runtime_targets: Some(&runtime_targets),
             ..base_registration()
         };
         harness

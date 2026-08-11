@@ -46,7 +46,9 @@ use crate::restored_session_identity::RestoredSessionIdentity;
 use crate::storage_cache::PreparedFreshStorage;
 use crate::storage_plan::build_storage_plan;
 use crate::telemetry::JobTelemetry;
-use crate::types::{ExecutionContext, WorkspaceReuseResult};
+use crate::types::{
+    ConnectorRuntimeTargetRegistration, ExecutionContext, FirewallEntry, WorkspaceReuseResult,
+};
 use crate::workspace_image_cache::{
     WorkspaceCacheCheckoutResult, WorkspaceImageLease, WorkspaceImageLeaseIdentity,
     WorkspaceImagePrepareRequest,
@@ -1526,6 +1528,57 @@ fn normalize_guest_cli_agent_session_id(
 }
 
 /// Register a VM in the proxy registry and network log manager.
+fn candidate_firewalls(
+    context: &ExecutionContext,
+    targets: &[ConnectorRuntimeTargetRegistration],
+) -> RunnerResult<Option<Vec<FirewallEntry>>> {
+    if context.connector_runtime_candidate_targets.is_none() {
+        return Ok(context.firewalls.clone());
+    }
+
+    let mut firewalls = context.firewalls.clone();
+    for target in targets {
+        let ConnectorRuntimeTargetRegistration::Builtin {
+            connector_slug,
+            base_url_vars,
+        } = target
+        else {
+            continue;
+        };
+        let existing = firewalls
+            .as_deref()
+            .unwrap_or_default()
+            .iter()
+            .find(|entry| match entry {
+                FirewallEntry::Builtin { name, .. } => name == connector_slug,
+                FirewallEntry::Inline { firewall, .. } => firewall.name == *connector_slug,
+            });
+        match existing {
+            Some(FirewallEntry::Builtin {
+                base_url_vars: existing_base_url_vars,
+                ..
+            }) if existing_base_url_vars == base_url_vars => {}
+            Some(FirewallEntry::Builtin { .. }) => {
+                return Err(RunnerError::Internal(format!(
+                    "builtin connector {connector_slug} has conflicting pinned routing variables"
+                )));
+            }
+            Some(FirewallEntry::Inline { .. }) => {
+                return Err(RunnerError::Internal(format!(
+                    "builtin connector {connector_slug} conflicts with an inline firewall"
+                )));
+            }
+            None => firewalls
+                .get_or_insert_with(Vec::new)
+                .push(FirewallEntry::Builtin {
+                    name: connector_slug.clone(),
+                    base_url_vars: base_url_vars.clone(),
+                }),
+        }
+    }
+    Ok(firewalls)
+}
+
 pub(super) async fn register_proxy(
     config: &ExecutorConfig,
     context: &ExecutionContext,
@@ -1535,15 +1588,20 @@ pub(super) async fn register_proxy(
     let proxy_log_path = config.log_paths.proxy_log(context.run_id);
     let run_id_str = context.run_id.to_string();
     let cli_agent_type = normalized_cli_agent_type(&context.cli_agent_type);
+    let connector_runtime_targets = context
+        .connector_runtime_candidate_targets
+        .as_deref()
+        .unwrap_or(&context.connector_runtime_targets);
+    let firewalls = candidate_firewalls(context, connector_runtime_targets)?;
     let registration = proxy::VmRegistration {
         run_id: &run_id_str,
         cli_agent_type,
         sandbox_token: &context.sandbox_token,
         network_log_path: &network_log_path,
         proxy_log_path: &proxy_log_path,
-        firewalls: context.firewalls.as_deref(),
+        firewalls: firewalls.as_deref(),
         network_policies: context.network_policies.as_ref(),
-        connector_runtime_targets: Some(&context.connector_runtime_targets),
+        connector_runtime_targets: Some(connector_runtime_targets),
         encrypted_secrets: context.encrypted_secrets.as_deref(),
         secret_connector_map: context.secret_connector_map.as_ref(),
         secret_connector_metadata_map: context.secret_connector_metadata_map.as_ref(),
@@ -1567,7 +1625,7 @@ pub(super) async fn register_proxy(
                 run_id: context.run_id,
                 source_ip,
                 registry: config.registry.clone(),
-                targets: &context.connector_runtime_targets,
+                targets: connector_runtime_targets,
                 refreshes: context.network_policy_refreshes.as_ref(),
             })
             .await;
