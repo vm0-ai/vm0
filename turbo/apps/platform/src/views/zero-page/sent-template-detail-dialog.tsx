@@ -140,7 +140,11 @@ export function SentTemplateDetailDialog() {
         closeLabel={t(($) => {
           return $.artifacts.actions.close;
         })}
-        className="bottom-0 left-0 right-0 top-auto max-w-none translate-x-0 translate-y-0 gap-3 rounded-b-none rounded-t-2xl p-4 pb-[calc(1rem+var(--sab))] sm:bottom-auto sm:left-[50%] sm:right-auto sm:top-[50%] sm:max-w-sm sm:translate-x-[-50%] sm:translate-y-[-50%] sm:gap-4 sm:rounded-xl sm:p-6"
+        // The kit's close button (size-9 box around a 20px glyph at right-4
+        // top-4) lines its glyph up with a p-6 content box; this sheet uses
+        // p-4, so shift it to keep the glyph on the content edge, centered
+        // on the title row.
+        className="bottom-0 left-0 right-0 top-auto max-w-none translate-x-0 translate-y-0 gap-3 rounded-b-none rounded-t-2xl p-4 pb-[calc(1rem+var(--sab))] [&>button]:right-2 [&>button]:top-1.5 sm:bottom-auto sm:left-[50%] sm:right-auto sm:top-[50%] sm:max-w-sm sm:translate-x-[-50%] sm:translate-y-[-50%] sm:gap-4 sm:rounded-xl sm:p-6 sm:[&>button]:right-4 sm:[&>button]:top-4"
       >
         <SentVideoTemplateDetail
           titleSnapshot={detail.titleSnapshot}
