@@ -15,6 +15,7 @@ import { createApp } from "../../../app-factory";
 import {
   readConnectorCredentialStorageState,
   requestSetConnectorVariableOwner,
+  requestUpsertLegacyConnectorVariable,
   seedConnectorStorageRow,
   seedOwnedConnectorSecret,
   upsertLegacyConnectorVariable,
@@ -341,7 +342,7 @@ describe("POST /api/zero/connectors/:connectorSlug/manual-grant", () => {
     );
   });
 
-  it("keeps legacy connector variable upserts valid", async () => {
+  it("keeps legacy connector variable upserts valid without moving ownership", async () => {
     const fixture = await seedFixture();
     const connectorId = await seedConnectorStorageRow(context, {
       orgId: fixture.orgId,
@@ -366,8 +367,24 @@ describe("POST /api/zero/connectors/:connectorSlug/manual-grant", () => {
       ...args,
       value: "after",
     });
+    const conflictingConnectorId = await seedConnectorStorageRow(context, {
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      connectorSlug: "notion",
+      authMethod: "oauth",
+      storageVersion: 1,
+    });
+    const conflictResponse = await requestUpsertLegacyConnectorVariable(
+      context,
+      {
+        ...args,
+        connectorId: conflictingConnectorId,
+        value: "conflicting",
+      },
+    );
 
     expect(updatedId).toBe(insertedId);
+    expect(conflictResponse.status).toBe(500);
     await expect(
       readConnectorCredentialStorageState(context, {
         orgId: fixture.orgId,

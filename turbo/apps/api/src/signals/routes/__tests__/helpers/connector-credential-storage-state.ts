@@ -25,6 +25,20 @@ async function postAction(
   return response.body;
 }
 
+async function requestAction(
+  context: TestContext,
+  body: TestConnectorCredentialStorageStateActionBody,
+): Promise<Response> {
+  return await createApp({
+    signal: context.signal,
+    routes: testConnectorCredentialStorageStateRoutes,
+  }).request(testConnectorCredentialStorageStateContract.action.path, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
 export async function readConnectorCredentialStorageState(
   context: TestContext,
   args: {
@@ -153,6 +167,28 @@ export async function upsertLegacyConnectorVariable(
   return response.variable_id;
 }
 
+export async function requestUpsertLegacyConnectorVariable(
+  context: TestContext,
+  args: {
+    readonly connectorId: string;
+    readonly description: string | null;
+    readonly name: string;
+    readonly orgId: string;
+    readonly userId: string;
+    readonly value: string;
+  },
+): Promise<Response> {
+  return await requestAction(context, {
+    action: "upsert-legacy-variable",
+    connector_id: args.connectorId,
+    description: args.description,
+    name: args.name,
+    org_id: args.orgId,
+    user_id: args.userId,
+    value: args.value,
+  });
+}
+
 export async function seedCustomConnectorRuntimeConnectors(
   context: TestContext,
   args: {
@@ -272,18 +308,11 @@ export async function requestSetConnectorVariableOwner(
     readonly userId: string;
   },
 ): Promise<Response> {
-  return await createApp({
-    signal: context.signal,
-    routes: testConnectorCredentialStorageStateRoutes,
-  }).request(testConnectorCredentialStorageStateContract.action.path, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      action: "set-variable-owner",
-      connector_id: args.connectorId,
-      name: args.name,
-      org_id: args.orgId,
-      user_id: args.userId,
-    } satisfies TestConnectorCredentialStorageStateActionBody),
+  return await requestAction(context, {
+    action: "set-variable-owner",
+    connector_id: args.connectorId,
+    name: args.name,
+    org_id: args.orgId,
+    user_id: args.userId,
   });
 }
