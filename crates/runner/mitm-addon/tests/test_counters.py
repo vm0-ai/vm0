@@ -389,7 +389,7 @@ class TestUsagePendingCounter:
         assert "\n" not in message
 
     def test_write_failure_does_not_raise(self, tmp_path, mitm_ctx):
-        """Write failures stay best-effort after the one-shot warn — callers
+        """Write failures stay best-effort after the one-shot error signal — callers
         (hot-path increment/decrement) must never observe the OSError."""
         usage.set_pending_path(str(tmp_path / "usage-pending"))
 
