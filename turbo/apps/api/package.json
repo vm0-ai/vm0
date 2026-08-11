@@ -78,6 +78,7 @@
     "@vm0/eslint-rules": "workspace:*",
     "@vm0/typescript-config": "workspace:*",
     "adm-zip": "^0.6.0",
+    "clerk": "^3.0.1",
     "eslint": "^9.34.0",
     "msw": "^2.13.2",
     "oxlint": "^1.75.0",
