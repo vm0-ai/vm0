@@ -71,7 +71,3 @@ export const testCustomConnectorSkillRepairStateContract = c.router({
     summary: "Mutate custom connector skill repair test state",
   },
 });
-
-export type TestCustomConnectorSkillRepairStateAction = z.infer<
-  typeof actionBodySchema
->;
