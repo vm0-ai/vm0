@@ -370,12 +370,31 @@ describe("buildGenerationTemplatePrompt", () => {
     expect(result.prompt).toContain(
       `zero resource pull ${resourceId} --dir ./generated/resources`,
     );
+    expect(result.prompt).not.toContain("resolve-images.mjs");
+    expect(result.prompt).not.toContain("/api/presentation/images/resolve");
     expect(result.prompt).toContain(
-      `./generated/resources/${item.sourcePath}/resolve-images.mjs`,
+      "choose the most suitable option among images supplied by the user, relevant images in the user's source or reference material, and AI-generated images",
     );
-    expect(result.prompt).toContain("/api/presentation/images/resolve");
+    expect(result.prompt).toContain("There is no fixed source order");
+    expect(result.prompt).toContain(
+      "User-supplied images are recommended when they fit the content and design, but they are not mandatory",
+    );
+    expect(result.prompt).toContain(
+      "Do not use stock-photo or image-search APIs",
+    );
+    expect(result.prompt).toContain(
+      'zero generate image --provider built-in --model seedream4 --raw-prompt "<slot-specific image brief>"',
+    );
+    expect(result.prompt).toContain(
+      "Keep the model and provider in the outer image-generation command only",
+    );
+    expect(result.prompt).not.toContain("use this priority");
+    expect(result.prompt).not.toContain("only when neither");
     expect(result.prompt).toContain(
       `./generated/resources/${item.sourcePath}/render.mjs`,
+    );
+    expect(result.prompt).toContain(
+      "verify that no visible image slot is empty",
     );
     expect(result.prompt).toContain("zero host <output-dir> --site <slug>");
     expect(result.prompt).toContain("built-in R2-backed package");
