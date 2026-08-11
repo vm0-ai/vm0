@@ -310,7 +310,7 @@ describe("zero connector status command", () => {
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain(
-        `[Authorize github](https://app.vm0.ai/connectors/github/authorize?agentId=${AGENT_UUID})`,
+        `[Authorize github](https://app.okou.ai/connectors/github/authorize?agentId=${AGENT_UUID})`,
       );
     });
 
