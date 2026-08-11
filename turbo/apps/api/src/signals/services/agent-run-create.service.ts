@@ -4192,12 +4192,9 @@ interface BuiltCustomConnectorRuntimeRow {
 function customConnectorRuntimeSkill(
   row: CustomConnectorRuntimeDataRows[number],
 ): CustomConnectorRuntimeContext["skills"][number] | undefined {
-  const { skillMarkdown, skillStorageVersionId } = row.connector;
-  if (skillMarkdown === null && skillStorageVersionId === null) {
+  const { skillStorageVersionId } = row.connector;
+  if (skillStorageVersionId === null) {
     return undefined;
-  }
-  if (skillMarkdown === null || skillStorageVersionId === null) {
-    throw new Error("Custom connector skill registration is unavailable");
   }
   return {
     connectorId: row.connector.id,
