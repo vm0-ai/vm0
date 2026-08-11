@@ -3884,6 +3884,12 @@ describe("connectors page", () => {
           kind: "secret",
           required: false,
         },
+        {
+          key: "constructor",
+          label: "Constructor ID",
+          kind: "variable",
+          required: false,
+        },
       ],
       missingRequiredFields: ["api_token", "account_id"],
       configuredFieldKeys: ["backup_token"],
@@ -3926,7 +3932,13 @@ describe("connectors page", () => {
       [...dialog.querySelectorAll("label")].map((label) => {
         return label.textContent;
       }),
-    ).toStrictEqual(["API token", "Account ID", "Region", "Backup token"]);
+    ).toStrictEqual([
+      "API token",
+      "Account ID",
+      "Region",
+      "Backup token",
+      "Constructor ID",
+    ]);
     expect(within(dialog).getByText("Issued by the provider")).toBeVisible();
     expect(within(dialog).getByText("Workspace account")).toBeVisible();
     expect(
@@ -3937,10 +3949,12 @@ describe("connectors page", () => {
     const accountId = within(dialog).getByLabelText("Account ID");
     const region = within(dialog).getByLabelText("Region");
     const backupToken = within(dialog).getByLabelText("Backup token");
+    const constructorId = within(dialog).getByLabelText("Constructor ID");
     expect(apiToken).toHaveAttribute("type", "password");
     expect(apiToken).toHaveAttribute("autocomplete", "new-password");
     expect(accountId).toHaveAttribute("type", "text");
     expect(backupToken).toHaveValue("");
+    expect(constructorId).toHaveValue("");
     expect(backupToken).toHaveAccessibleDescription("Optional · Configured");
     expect(apiToken).toHaveAccessibleDescription(
       "Issued by the provider Required",
@@ -4002,6 +4016,8 @@ describe("connectors page", () => {
               })
             : respond(200, {
                 ...connector,
+                connected: false,
+                missingRequiredFields: [],
                 configuredFieldKeys: ["secret"],
                 hasSecret: true,
               });

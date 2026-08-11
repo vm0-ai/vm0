@@ -165,7 +165,10 @@ import {
   pollingOAuthDeviceAuthConnectorSlug$,
 } from "../../signals/zero-page/settings/connectors.ts";
 import { connectorCatalogStatus$ } from "../../signals/external/connectors.ts";
-import { customConnectors$ } from "../../signals/zero-page/settings/custom-connectors.ts";
+import {
+  customConnectors$,
+  resetCustomConnectorConnectInput$,
+} from "../../signals/zero-page/settings/custom-connectors.ts";
 import { LoadingSwitch } from "../components/loading-switch.tsx";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { rootSignal$ } from "../../signals/root-signal.ts";
@@ -6010,6 +6013,9 @@ function AddConnectorsDialog({
   const { t } = useTranslation();
   const connectorUi = useGet(signals.connector.connectorUiState$);
   const updateConnectorUi = useSet(signals.connector.updateConnectorUiState$);
+  const resetCustomConnectorConnectInput = useSet(
+    resetCustomConnectorConnectInput$,
+  );
   const search = connectorUi.addDialogSearch;
   const filtered = unconnected.filter((item) => {
     return matchesConnectorSearch(search, item);
@@ -6074,6 +6080,7 @@ function AddConnectorsDialog({
                   key={item.id}
                   connector={item}
                   onConnect={() => {
+                    resetCustomConnectorConnectInput();
                     onConnectCustom(item);
                   }}
                 />

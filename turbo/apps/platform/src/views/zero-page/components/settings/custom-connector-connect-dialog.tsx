@@ -32,6 +32,13 @@ import { sanitizeTokenInputRecord } from "../../../../signals/zero-page/settings
 import { detach, Reason } from "../../../../signals/utils.ts";
 import { CustomConnectorIcon } from "./custom-connector-icon.tsx";
 
+function formValue(
+  values: Readonly<Record<string, string>>,
+  key: string,
+): string {
+  return Object.hasOwn(values, key) ? values[key] : "";
+}
+
 function declaredValuesFromForm(
   connector: CustomConnectorClientResponse,
   values: Readonly<Record<string, string>>,
@@ -47,7 +54,7 @@ function declaredValuesFromForm(
   );
 
   return connector.fields.flatMap((field): CustomConnectorValueInput[] => {
-    const value = normalized[field.key] ?? "";
+    const value = formValue(normalized, field.key);
     return value.length > 0
       ? [{ key: field.key, kind: field.kind, value }]
       : [];
@@ -110,7 +117,7 @@ function CredentialFields({
           id={inputId}
           name={`custom-connector-${connector.id}-${field.key}`}
           type={field.kind === "secret" ? "password" : "text"}
-          value={values[field.key] ?? ""}
+          value={formValue(values, field.key)}
           onChange={(event) => {
             setField({ key: field.key, value: event.target.value });
           }}

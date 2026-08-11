@@ -21,6 +21,10 @@ import {
   detachedSetupPage,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
+import {
+  resetCustomConnectorConnectInput$,
+  setCustomConnectorConnectField$,
+} from "../../../signals/zero-page/settings/custom-connectors.ts";
 import { PLACEHOLDER } from "./chat-test-helpers.ts";
 import {
   AGENT_ID,
@@ -143,6 +147,7 @@ async function openAddConnectorsDialog(
 }
 
 beforeEach(() => {
+  context.store.set(resetCustomConnectorConnectInput$);
   context.mocks.data.onboardingStatus({ defaultAgentId: AGENT_ID });
   mockOrgModelRoutes("claude-sonnet-4-6");
   mockAgent();
@@ -245,6 +250,10 @@ describe("chat composer connector connection", () => {
   it("connects a custom connector for only the active agent", async () => {
     const user = userEvent.setup({ delay: null });
     const connector = customConnector();
+    context.store.set(setCustomConnectorConnectField$, {
+      key: "secret",
+      value: "stale-secret",
+    });
     mockAgent({ includeOtherAgent: true });
     mockCatalog([]);
     let connected = false;
@@ -306,6 +315,7 @@ describe("chat composer connector connection", () => {
       name: `Connect ${connector.displayName}`,
     });
     expect(dialog).not.toBeInTheDocument();
+    expect(within(connectDialog).getByLabelText("Secret")).toHaveValue("");
     await user.type(
       within(connectDialog).getByLabelText("Secret"),
       "acme-secret",
