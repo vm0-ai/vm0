@@ -303,7 +303,7 @@ describe("cron snapshot chat events", () => {
     );
   }, 60_000);
 
-  it("rebuilds an idle retained v3 head and reports convergence", async () => {
+  it("rebuilds an idle non-v4 head and reports convergence", async () => {
     const owner = bdd.user({ orgId: `org_${randomUUID()}` });
     const agent = await bdd.createAgent(owner, {
       displayName: "Version-only snapshot agent",
@@ -320,14 +320,9 @@ describe("cron snapshot chat events", () => {
     if (firstPut === undefined) {
       throw new Error("Expected a first-generation snapshot object");
     }
-    const legacyObjectKey = `chat-events/${threadId}/retained-v3-${randomUUID()}.ndjson.gz`;
-    writeFakeChatEventObject(legacyObjectKey, firstPut.body);
-    await setChatEventSnapshotHeadVersion(
-      context,
-      threadId,
-      3,
-      legacyObjectKey,
-    );
+    const priorObjectKey = `chat-events/${threadId}/non-v4-${randomUUID()}.ndjson.gz`;
+    writeFakeChatEventObject(priorObjectKey, firstPut.body);
+    await setChatEventSnapshotHeadVersion(context, threadId, 3, priorObjectKey);
 
     const incomplete = await verifySnapshotConvergence();
     expect(incomplete.status).toBe(409);

@@ -30,8 +30,8 @@ interface ChatEventRowWriteStore {
   clearThread(threadId: string, signal?: AbortSignal): Promise<void>;
 }
 
-// The store persists only normalized canonical rows; the schema upgrade that
-// introduced them dropped every store that still held raw v3 rows.
+// The store persists only strict canonical rows. Its introducing schema
+// upgrade dropped the previous raw-row cache before rebuilding it.
 function storedChatEventRow(raw: unknown): ChatEventRowV4 {
   return chatEventRowV4Schema.parse(raw);
 }

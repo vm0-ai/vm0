@@ -28,7 +28,7 @@ describe("chatAgentRunContext schema", () => {
 });
 
 describe("chatEvents schema", () => {
-  it("exposes the additive canonical rollout shape", () => {
+  it("exposes canonical storage with deferred legacy columns", () => {
     const config = getTableConfig(chatEvents);
 
     expect(schema.chatEvents).toBe(chatEvents);
@@ -69,6 +69,7 @@ describe("chatEvents schema", () => {
       "chat_events_control_interrupt_run_id_unique",
       "chat_events_input_automation_context_idx",
       "chat_events_interrupts_run_id_not_null_unique",
+      "chat_events_output_thinking_run_id_unique",
       "chat_events_pending_queue_idx",
       "chat_events_revokes_event_id_not_null_unique",
       "chat_events_run_event_seq_unique",
@@ -80,6 +81,25 @@ describe("chatEvents schema", () => {
       "idx_chat_events_thread_created",
       "idx_chat_events_thread_run_terminal_created",
     ]);
+    const checkNames = config.checks.map((check) => {
+      return check.name;
+    });
+    expect(checkNames).toEqual(
+      expect.arrayContaining([
+        "chat_events_input_user_message_payload_check",
+        "chat_events_input_payload_content_check",
+        "chat_events_goal_open_payload_check",
+        "chat_events_goal_close_payload_check",
+      ]),
+    );
+    expect(checkNames).not.toEqual(
+      expect.arrayContaining([
+        "chat_events_input_user_message_check",
+        "chat_events_input_content_check",
+        "chat_events_goal_open_content_check",
+        "chat_events_goal_close_content_check",
+      ]),
+    );
   });
 
   it("keeps run references after runs are deleted", () => {

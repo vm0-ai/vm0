@@ -1,39 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { CHAT_EVENT_TYPES, type ChatEventType } from "../chat-events";
 import { chatEventFromRow } from "../chat-event-row-projection";
-import {
-  canonicalChatEventRow,
-  chatEventRowReadSchema,
-  chatEventRowV4Schema,
-  type ChatEventRow,
-  type ChatEventRowV4,
-} from "../chat-event-rows";
+import { chatEventRowV4Schema, type ChatEventRowV4 } from "../chat-event-rows";
 
 const CREATED_AT = "2026-08-08T10:00:00.000Z";
-
-function v3Row(overrides: Partial<ChatEventRow>): ChatEventRow {
-  return {
-    id: "00000000-0000-4000-8000-000000000001",
-    chatThreadId: "00000000-0000-4000-8000-000000000002",
-    runId: null,
-    usagePayload: null,
-    revokesEventId: null,
-    interruptsRunId: null,
-    runGroupId: null,
-    eventType: "output.message",
-    contextType: null,
-    contextId: null,
-    content: null,
-    userMessage: null,
-    thinking: null,
-    error: null,
-    runEventSequenceNumber: null,
-    runEventId: null,
-    seqId: 1,
-    createdAt: CREATED_AT,
-    ...overrides,
-  };
-}
 
 function v4Row(overrides: Partial<ChatEventRowV4>): ChatEventRowV4 {
   return {
@@ -112,112 +82,15 @@ function projectableV4Row(eventType: ChatEventType): ChatEventRowV4 {
   return v4Row({ eventType, ...variants[eventType] });
 }
 
-describe("chat event row reader union", () => {
-  it("discriminates strict v3 and v4 rows and rejects hybrids", () => {
-    const v3 = v3Row({ content: "legacy" });
+describe("canonical chat event row schema", () => {
+  it("accepts strict v4 rows and rejects legacy top-level fields", () => {
     const v4 = v4Row({ payload: { content: "canonical" } });
     expect(
-      chatEventRowReadSchema.parse(JSON.parse(JSON.stringify(v3))),
-    ).toStrictEqual(v3);
-    expect(
-      chatEventRowReadSchema.parse(JSON.parse(JSON.stringify(v4))),
+      chatEventRowV4Schema.parse(JSON.parse(JSON.stringify(v4))),
     ).toStrictEqual(v4);
     expect(
-      chatEventRowReadSchema.safeParse({ ...v3, payload: null }).success,
+      chatEventRowV4Schema.safeParse({ ...v4, content: "legacy" }).success,
     ).toBe(false);
-    expect(
-      chatEventRowReadSchema.safeParse({ ...v4, content: "legacy" }).success,
-    ).toBe(false);
-  });
-
-  it("folds every non-null legacy leaf into the canonical payload", () => {
-    const usage = {
-      version: 1,
-      totalCredits: 2.5,
-      settledAt: CREATED_AT,
-      breakdown: [],
-    };
-    const userMessage = {
-      version: 1,
-      parts: [{ type: "text", text: "probe" }],
-      compatibilityProbe: { nested: null },
-    };
-    const normalized = canonicalChatEventRow(
-      v3Row({
-        content: "all leaves",
-        userMessage,
-        thinking: "thinking leaf",
-        error: "error leaf",
-        usagePayload: usage,
-      }),
-    );
-    expect(normalized.payload).toStrictEqual({
-      content: "all leaves",
-      userMessage,
-      thinking: "thinking leaf",
-      error: "error leaf",
-      usage,
-    });
-    // Nested JSON nulls survive normalization verbatim.
-    expect(normalized.payload).toHaveProperty(
-      "userMessage.compatibilityProbe.nested",
-      null,
-    );
-    expect(canonicalChatEventRow(v3Row({})).payload).toBeNull();
-  });
-
-  it("adopts interrupts_run_id as the canonical run of a v3 interrupt", () => {
-    const target = "00000000-0000-4000-8000-000000000010";
-    const masked = canonicalChatEventRow(
-      v3Row({
-        eventType: "control.interrupt",
-        runId: null,
-        interruptsRunId: target,
-      }),
-    );
-    expect(masked.runId).toBe(target);
-    const owned = canonicalChatEventRow(
-      v3Row({ eventType: "output.message", runId: target }),
-    );
-    expect(owned.runId).toBe(target);
-  });
-
-  it("completes compatible goal context pointers from runGroupId", () => {
-    const goalId = "00000000-0000-4000-8000-000000000011";
-    const grouped = canonicalChatEventRow(v3Row({ runGroupId: goalId }));
-    expect(grouped.contextType).toBe("goal");
-    expect(grouped.contextId).toBe(goalId);
-
-    const goalInput = canonicalChatEventRow(
-      v3Row({
-        eventType: "input.goal",
-        runGroupId: goalId,
-        contextType: "goal",
-        contextId: null,
-        userMessage: { version: 1, parts: [] },
-      }),
-    );
-    expect(goalInput.contextType).toBe("goal");
-    expect(goalInput.contextId).toBe(goalId);
-
-    const foreignContext = canonicalChatEventRow(
-      v3Row({
-        contextType: "teams",
-        contextId: "00000000-0000-4000-8000-000000000012",
-      }),
-    );
-    expect(foreignContext.contextType).toBe("teams");
-    expect(foreignContext.contextId).toBe(
-      "00000000-0000-4000-8000-000000000012",
-    );
-  });
-
-  it("passes canonical rows through unchanged", () => {
-    const canonical = v4Row({
-      eventType: "control.interrupt",
-      runId: "00000000-0000-4000-8000-000000000010",
-    });
-    expect(canonicalChatEventRow(canonical)).toBe(canonical);
   });
 
   it("preserves canonical multi-leaf payloads and nested JSON nulls", () => {
@@ -227,7 +100,7 @@ describe("chat event row reader union", () => {
         userMessage: {
           version: 1,
           parts: [{ type: "text", text: "historical input" }],
-          compatibilityProbe: { nested: null },
+          nestedProbe: { value: null },
         },
         thinking: "historical thinking",
         error: "historical error",
@@ -242,7 +115,7 @@ describe("chat event row reader union", () => {
     const parsed = chatEventRowV4Schema.parse(JSON.parse(JSON.stringify(row)));
     expect(parsed).toStrictEqual(row);
     expect(parsed.payload).toHaveProperty(
-      "userMessage.compatibilityProbe.nested",
+      "userMessage.nestedProbe.value",
       null,
     );
     expect(parsed).not.toHaveProperty("content");
@@ -251,7 +124,7 @@ describe("chat event row reader union", () => {
   });
 });
 
-describe("canonical row projection keeps the v3 ChatEvent shape", () => {
+describe("canonical row projection preserves the public ChatEvent contract", () => {
   it("serializes and projects every event type from canonical fields", () => {
     expect(
       CHAT_EVENT_TYPES.map((eventType) => {
@@ -266,13 +139,7 @@ describe("canonical row projection keeps the v3 ChatEvent shape", () => {
   it("emits the canonical interrupt run as interruptsRunId, never runId", () => {
     const target = "00000000-0000-4000-8000-000000000010";
     const projected = chatEventFromRow(
-      canonicalChatEventRow(
-        v3Row({
-          eventType: "control.interrupt",
-          runId: null,
-          interruptsRunId: target,
-        }),
-      ),
+      v4Row({ eventType: "control.interrupt", runId: target }),
     );
     expect(projected).toMatchObject({
       eventType: "control.interrupt",
@@ -297,7 +164,7 @@ describe("canonical row projection keeps the v3 ChatEvent shape", () => {
     });
   });
 
-  it("reads every payload leaf the way the legacy columns projected", () => {
+  it("reads canonical usage and error payloads", () => {
     const usage = {
       version: 1,
       totalCredits: 1,

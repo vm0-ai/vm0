@@ -1,7 +1,6 @@
 import { command } from "ccstate";
 import {
-  canonicalChatEventRow,
-  chatEventRowReadSchema,
+  chatEventRowV4Schema,
   type ChatEventRowV4,
 } from "@vm0/api-contracts/contracts/chat-event-rows";
 import { chatThreadEventsContract } from "@vm0/api-contracts/contracts/chat-threads";
@@ -46,10 +45,7 @@ export const listRowsAfter$ = command(
       sinceSeqId,
       count: result.body.rows.length,
     });
-    // Keep the canonical ingestion boundary explicit even though the tail
-    // contract is now v4-only. The snapshot parser below remains the retained
-    // v3/v4 compatibility reader for already-published archive objects.
-    return { kind: "rows", rows: result.body.rows.map(canonicalChatEventRow) };
+    return { kind: "rows", rows: result.body.rows };
   },
 );
 
@@ -99,9 +95,7 @@ export const fetchChatEventSnapshotRows$ = command(
       .slice(0, -1)
       .split("\n")
       .map((line) => {
-        return canonicalChatEventRow(
-          chatEventRowReadSchema.parse(JSON.parse(line)),
-        );
+        return chatEventRowV4Schema.parse(JSON.parse(line));
       });
     L.debug("fetchChatEventSnapshotRows$", {
       threadId,

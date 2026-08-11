@@ -295,7 +295,7 @@ describe("upgradeChatIdb user-message part cutover", () => {
     expectThreadEventStoresCreated(createdStores, createObjectStore);
   });
 
-  it("drops only the raw v3 event-rows store from v29 to v30", () => {
+  it("drops only the pre-canonical event-rows store from v29 to v30", () => {
     const unrelatedStore = "unrelated_local_data";
     const { db, createdStores, createObjectStore, deleteObjectStore } = fakeDb([
       CHAT_MESSAGES_STORE,

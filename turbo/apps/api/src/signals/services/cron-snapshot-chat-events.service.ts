@@ -321,9 +321,8 @@ async function archiveThread(
 ): Promise<number | null> {
   const archive = await readCanonicalEvents(db, candidate);
   signal.throwIfAborted();
-  // Every generation is rebuilt from canonical Postgres rows. Retained v3 R2
-  // objects are immutable rollback/read-fallback inputs and are never
-  // transformed into a v4 object in place.
+  // Every generation is rebuilt from canonical Postgres rows. Existing R2
+  // objects are never read or transformed in place.
   const compressed = gzipSync(Buffer.concat(archive.lines));
   const objectKey = chatEventSnapshotObjectKey(
     candidate.chatThreadId,
