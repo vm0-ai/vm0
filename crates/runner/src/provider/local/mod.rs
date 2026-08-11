@@ -189,7 +189,6 @@ impl JobProvider for LocalProvider {
             network_policies: None,
             network_policy_refreshes: None,
             connector_runtime_targets: Vec::new(),
-            connector_runtime_candidate_targets: None,
             disallowed_tools: None,
             tools: None,
             settings: None,

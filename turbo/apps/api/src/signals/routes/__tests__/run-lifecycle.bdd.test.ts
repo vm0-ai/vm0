@@ -8210,7 +8210,6 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
         customConnectorId: custom.id,
       }),
     );
-    expect(claim).not.toHaveProperty("connectorRuntimeCandidateTargets");
     expect(claim.networkPolicies).toHaveProperty("figma");
     expect(claim.networkPolicies?.[internalName]?.unknownPolicy).toBe("allow");
 
@@ -8270,7 +8269,6 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       kind: "builtin",
       connectorSlug: "figma",
     });
-    expect(claim).not.toHaveProperty("connectorRuntimeCandidateTargets");
 
     await api.requestCancelRun(actor, run.runId, [200]);
     expect((await api.readRun(actor, run.runId)).status).toBe("cancelled");
@@ -10727,7 +10725,6 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       connectorSlug: "zendesk",
       baseUrlVars: { ZENDESK_SUBDOMAIN: "xn--mnich-kva" },
     });
-    expect(claim).not.toHaveProperty("connectorRuntimeCandidateTargets");
     expect(customApis[0]?.base).toBe("https://internal.example.com/api/");
 
     await api.requestCancelRun(actor, run.runId, [200]);
@@ -10849,7 +10846,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     await api.requestCancelRun(actor, run.runId, [200]);
   });
 
-  it("handles rollout, missing, invalid, and incompatible permission baselines", async () => {
+  it("handles missing, invalid, and incompatible permission baselines", async () => {
     const bdd = createBddApi(context);
     const api = createRunsApi(context);
     const fw = createFirewallApi(context);
@@ -10866,10 +10863,6 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     await api.heartbeatRunner(runnerGroup);
 
     const cases = [
-      {
-        mode: "rollout-targets",
-        path: "baseline",
-      },
       {
         mode: "remove",
         path: "full_missing_baseline",
@@ -10917,13 +10910,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       );
       const claim = await api.claimRunnerJob(run.runId);
 
-      const isRolloutContext = fallbackCase.mode === "rollout-targets";
-      expect(claim.connectorRuntimeTargets).toStrictEqual(
-        isRolloutContext ? [] : slackTargets,
-      );
-      expect(claim.connectorRuntimeCandidateTargets).toStrictEqual(
-        isRolloutContext ? slackTargets : undefined,
-      );
+      expect(claim.connectorRuntimeTargets).toStrictEqual(slackTargets);
       expect(claim.networkPolicies?.slack?.allow).toContain(
         "conversations:read",
       );
@@ -10933,7 +10920,6 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       expectClaimRouteResponseTimingActions({
         runId: run.runId,
         expectedActionTypes:
-          fallbackCase.mode === "rollout-targets" ||
           fallbackCase.mode === "catalog-mismatch"
             ? [
                 "claim_route_response_network_policy_refresh",
