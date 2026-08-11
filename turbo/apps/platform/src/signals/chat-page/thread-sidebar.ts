@@ -38,6 +38,7 @@ export type ArtifactRef = {
   readonly url: string;
   readonly kind: ArtifactPreviewKind;
   readonly filename: string;
+  readonly resourceUrl$?: Computed<Promise<string>>;
   readonly shareAvailable?: boolean;
   readonly releaseObjectUrl?: () => void;
 };
@@ -52,6 +53,7 @@ export type ArtifactMetadataRef = {
   readonly url: string;
   readonly filename: string;
   readonly contentType?: string;
+  readonly resourceUrl$?: Computed<Promise<string>>;
   readonly shareAvailable?: boolean;
 };
 

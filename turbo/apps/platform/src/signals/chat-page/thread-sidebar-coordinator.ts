@@ -154,6 +154,7 @@ function materializeArtifactRef(
         url: input.url,
       }),
       filename: input.filename,
+      ...(input.resourceUrl$ ? { resourceUrl$: input.resourceUrl$ } : {}),
       ...(input.shareAvailable === undefined
         ? {}
         : { shareAvailable: input.shareAvailable }),
