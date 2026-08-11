@@ -55,6 +55,7 @@ response_file=$(mktemp)
 trap 'rm -f "$response_file"' EXIT
 deadline=$((SECONDS + 90))
 while ((SECONDS < deadline)); do
+    : > "$response_file"
     curl --silent --show-error --max-time 5 \
         --output "$response_file" \
         --request POST \
