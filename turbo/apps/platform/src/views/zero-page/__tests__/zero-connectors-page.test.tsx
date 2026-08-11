@@ -4092,14 +4092,22 @@ describe("connectors page", () => {
       context.mocks.api(
         zeroAgentCustomConnectorsContract.get,
         ({ respond }) => {
-          return respond(200, { enabledIds: [] });
+          return respond(200, { enabledIds: [], grants: [] });
         },
       );
       context.mocks.api(
         zeroAgentCustomConnectorsContract.update,
         ({ respond }) => {
           authorizationUpdates += 1;
-          return respond(200, { enabledIds: [connector.id] });
+          return respond(200, {
+            enabledIds: [connector.id],
+            grants: [
+              {
+                customConnectorId: connector.id,
+                permissionNames: [],
+              },
+            ],
+          });
         },
       );
       context.mocks.api(

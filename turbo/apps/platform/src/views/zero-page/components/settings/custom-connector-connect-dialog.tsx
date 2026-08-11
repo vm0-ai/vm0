@@ -231,17 +231,19 @@ function ConnectDialogFooter({
   );
 }
 
+interface CustomConnectorConnectDialogProps {
+  readonly connector: CustomConnectorClientResponse;
+  readonly agentId?: string;
+  readonly onClose?: () => void;
+  readonly onSuccess?: () => void | Promise<void>;
+}
+
 export function CustomConnectorConnectDialog({
   connector,
   agentId,
   onClose,
   onSuccess,
-}: {
-  readonly connector: CustomConnectorClientResponse;
-  readonly agentId?: string;
-  readonly onClose?: () => void;
-  readonly onSuccess?: () => void | Promise<void>;
-}) {
+}: CustomConnectorConnectDialogProps) {
   const { t } = useTranslation();
   const form = useGet(customConnectorConnectForm$);
   const setField = useSet(setCustomConnectorConnectField$);

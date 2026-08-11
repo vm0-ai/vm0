@@ -3075,9 +3075,15 @@ describe("chat event action cards", () => {
         ],
       });
     });
-    context.mocks.api(zeroCustomConnectorSecretContract.set, ({ respond }) => {
+    context.mocks.api(zeroCustomConnectorValuesContract.set, ({ respond }) => {
       connected = true;
-      return respond(204);
+      return respond(200, {
+        ...connector,
+        connected: true,
+        hasSecret: true,
+        missingRequiredFields: [],
+        configuredFieldKeys: ["secret"],
+      });
     });
     context.mocks.api(zeroAgentCustomConnectorsContract.get, ({ respond }) => {
       return respond(200, { enabledIds: [], grants: [] });
