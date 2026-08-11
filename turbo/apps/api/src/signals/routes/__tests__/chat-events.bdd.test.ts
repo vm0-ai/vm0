@@ -328,6 +328,7 @@ interface ChatRunSendBody {
   readonly template?: GenerationTemplateRequest;
   readonly computerUseHostId?: string | null;
   readonly revokesEventId?: string;
+  readonly captureNetworkBodies?: boolean;
 }
 
 /**
@@ -3805,6 +3806,28 @@ describe("CHAT-02: model-first provider policies", () => {
       }
     }
   }, 90_000);
+
+  it("passes request-scoped network body capture into the runner claim", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const captured = await sendChatRun(actor, {
+      agentId,
+      prompt: "capture this run's network bodies",
+      captureNetworkBodies: true,
+    });
+    const capturedClaim = await claimChatRun(runnerGroup, captured.runId);
+    expect(capturedClaim.claim.captureNetworkBodies).toBeTruthy();
+    await cancelChatRun(actor, captured.runId);
+
+    const ordinary = await sendChatRun(actor, {
+      agentId,
+      prompt: "keep ordinary network logging metadata-only",
+    });
+    const ordinaryClaim = await claimChatRun(runnerGroup, ordinary.runId);
+    expect(ordinaryClaim.claim.captureNetworkBodies).toBeUndefined();
+    await cancelChatRun(actor, ordinary.runId);
+  });
 
   it("routes DeepSeek V4 Flash through the native Responses adapter", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();

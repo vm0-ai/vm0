@@ -144,9 +144,16 @@ runner_e2e_wait_for_run_status() {
 runner_e2e_start_chat_run() {
     local agent_id="$1"
     local prompt="$2"
+    local capture_network_bodies="${3:-false}"
     local shell_prompt
     shell_prompt=$(printf '@shell@\n%s' "$prompt")
-    runner_chat_send "$agent_id" "$shell_prompt" "" "deepseek-v4-flash"
+    runner_chat_send \
+        "$agent_id" \
+        "$shell_prompt" \
+        "" \
+        "deepseek-v4-flash" \
+        "" \
+        "$capture_network_bodies"
 }
 
 runner_e2e_continue_chat_run() {
