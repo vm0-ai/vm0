@@ -3603,6 +3603,22 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn report_warns_for_running_when_dnsmasq_name_only_suffix_matches() {
+        let suffix_collision_argv = ["not-dnsmasq", "--port", "5353"]
+            .map(str::to_string)
+            .to_vec();
+        let dns_procs = process::parse_dnsmasq_cmdline(&suffix_collision_argv)
+            .map(|port| dns_proc(888, port))
+            .into_iter()
+            .collect();
+
+        let report = build_test_runner_report("running", None, Some(5353), vec![], dns_procs).await;
+
+        assert!(has_dns_warning(&report));
+        assert_eq!(report.dns_pid, None);
+    }
+
     #[test]
     fn is_test_tld_matches_dot_test() {
         assert!(is_test_tld("https://not-a-real-server.test/api"));

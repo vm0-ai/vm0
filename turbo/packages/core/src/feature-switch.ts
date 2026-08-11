@@ -165,11 +165,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the Meta Ads Manager connector",
     enabled: false,
   },
-  [FeatureSwitchKey.TikTokAdsConnector]: {
-    maintainer: "yuma@vm0.ai",
-    description: "Enable the TikTok Ads Manager connector",
-    enabled: false,
-  },
   [FeatureSwitchKey.PosthogConnector]: {
     maintainer: "yuma@vm0.ai",
     description: "Enable the PostHog analytics connector",
@@ -408,6 +403,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Allow personal Codex and Claude Code subscriptions to store and manually switch between multiple accounts.",
     enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ConcurrencyMemberUsage]: {
     maintainer: "ethan@vm0.ai",

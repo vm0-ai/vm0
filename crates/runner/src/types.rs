@@ -1343,13 +1343,17 @@ pub enum ConnectorRuntimeTarget {
 }
 
 /// Stable connector identity plus run-pinned metadata used at registration and
-/// in runtime synchronization requests. Metadata never participates in target
-/// equality, result correlation, or realtime notification routing.
+/// in runtime synchronization requests. Metadata never participates in the
+/// derived target identity, result correlation, or realtime notification routing.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "kind", rename_all = "lowercase")]
 pub enum ConnectorRuntimeTargetRegistration {
     #[serde(rename_all = "camelCase")]
-    Builtin { connector_slug: String },
+    Builtin {
+        connector_slug: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        base_url_vars: Option<HashMap<String, String>>,
+    },
     #[serde(rename_all = "camelCase")]
     Custom {
         custom_connector_id: String,
@@ -1361,7 +1365,7 @@ pub enum ConnectorRuntimeTargetRegistration {
 impl ConnectorRuntimeTargetRegistration {
     pub(crate) fn target(&self) -> ConnectorRuntimeTarget {
         match self {
-            Self::Builtin { connector_slug } => ConnectorRuntimeTarget::Builtin {
+            Self::Builtin { connector_slug, .. } => ConnectorRuntimeTarget::Builtin {
                 connector_slug: connector_slug.clone(),
             },
             Self::Custom {
@@ -1384,7 +1388,10 @@ impl ConnectorRuntimeTargetRegistration {
 impl From<ConnectorRuntimeTarget> for ConnectorRuntimeTargetRegistration {
     fn from(target: ConnectorRuntimeTarget) -> Self {
         match target {
-            ConnectorRuntimeTarget::Builtin { connector_slug } => Self::Builtin { connector_slug },
+            ConnectorRuntimeTarget::Builtin { connector_slug } => Self::Builtin {
+                connector_slug,
+                base_url_vars: None,
+            },
             ConnectorRuntimeTarget::Custom {
                 custom_connector_id,
             } => Self::Custom {
@@ -1443,8 +1450,6 @@ pub enum ConnectorRuntimeSyncState {
 pub enum ConnectorRuntimeUnresolvedReason {
     #[serde(rename = "connector-unavailable")]
     Connector,
-    #[serde(rename = "grant-unavailable")]
-    Grant,
     #[serde(rename = "permission-bundle-unavailable")]
     PermissionBundle,
     #[serde(rename = "runtime-configuration-unavailable")]
@@ -1455,12 +1460,6 @@ pub enum ConnectorRuntimeUnresolvedReason {
 pub enum ConnectorRuntimeCustomAbsentReason {
     #[serde(rename = "connector-unavailable")]
     Connector,
-    #[serde(rename = "grant-unavailable")]
-    Grant,
-    #[serde(rename = "permission-bundle-unavailable")]
-    PermissionBundle,
-    #[serde(rename = "runtime-configuration-unavailable")]
-    RuntimeConfiguration,
 }
 
 #[derive(Clone, Debug, Deserialize)]

@@ -1403,8 +1403,7 @@ describe("workflows routes", () => {
     expect(screen.getByText("Sales Research")).toBeInTheDocument();
 
     await user.hover(linkByAriaLabel("Open Sales Research"));
-    const tooltip = await screen.findByRole("tooltip");
-    expect(within(tooltip).getByText("TU")).toBeInTheDocument();
+    await expect(screen.findByText("TU")).resolves.toBeInTheDocument();
   });
 
   it("labels existing Stripe automations on the workspace workflows index", async () => {
@@ -2090,7 +2089,11 @@ describe("workflow detail page", () => {
     const publishSwitch = await screen.findByRole("switch", {
       name: "Make workflow public",
     });
-    expect(publishSwitch).toBeDisabled();
+    // The shared `Switch` renders a `<span role="switch">`, so the disabled
+    // contract is `aria-disabled` rather than the `disabled` attribute.
+    expect(publishSwitch).toHaveAttribute("aria-disabled", "true");
+    fireEvent.click(publishSwitch);
+    expect(publishSwitch).toHaveAttribute("aria-checked", "false");
     expect(
       screen.getByText(
         "Publishing a workflow under an agent you do not own requires org admin permissions.",
@@ -2294,6 +2297,7 @@ describe("workflow detail page", () => {
   });
 
   it("moves a workflow by removing the original after copying", async () => {
+    const user = userEvent.setup();
     const workflows = [salesResearch()];
     const copiedWorkflow: ZeroWorkflowDetailResponse = {
       ...salesResearch(),
@@ -2337,7 +2341,9 @@ describe("workflow detail page", () => {
 
     // Opting to remove the original reveals the destructive alert and
     // relabels the primary action.
-    click(within(dialog).getByRole("checkbox"));
+    const removeOriginal = within(dialog).getByRole("checkbox");
+    await user.click(removeOriginal);
+    expect(removeOriginal).toBeChecked();
     expect(
       within(dialog).getByText("This deletes the original"),
     ).toBeInTheDocument();
@@ -3163,6 +3169,7 @@ describe("workflow detail page", () => {
   });
 
   it("creates a Stripe automation with selected billing reasons and refreshes the detail", async () => {
+    const user = userEvent.setup();
     const createBodies: ZeroWorkflowAutomationCreateRequest[] = [];
     const workflow = salesResearch();
     mockWorkflowApis([workflow]);
@@ -3200,8 +3207,14 @@ describe("workflow detail page", () => {
     expect(within(form).getAllByRole("checkbox")).toHaveLength(9);
     expect(within(form).queryByRole("combobox")).not.toBeInTheDocument();
     expect(within(form).queryByRole("textbox")).not.toBeInTheDocument();
-    click(within(form).getByRole("checkbox", { name: "Manual" }));
-    click(within(form).getByRole("checkbox", { name: "Subscription cycle" }));
+    const manual = within(form).getByRole("checkbox", { name: "Manual" });
+    const subscriptionCycle = within(form).getByRole("checkbox", {
+      name: "Subscription cycle",
+    });
+    await user.click(manual);
+    await user.click(subscriptionCycle);
+    expect(manual).toBeChecked();
+    expect(subscriptionCycle).toBeChecked();
     fireEvent.submit(form);
 
     await waitFor(() => {

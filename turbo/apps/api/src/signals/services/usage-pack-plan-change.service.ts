@@ -41,6 +41,7 @@ import {
   type StripeSubscriptionUpdateItemParam,
 } from "../external/stripe-client";
 import {
+  calculateUsagePackAdditionCreditGrant,
   calculateUsagePackUpgradeCreditGrants,
   fulfillUsagePackSubscriptionChangeInvoice,
   reconcileUsagePackAllocationChangeSubscription,
@@ -101,12 +102,19 @@ interface UsagePackSubscriptionChangeContext {
   }[];
 }
 
-interface PreparedAllocationChange {
-  readonly source: UsagePackAllocationRow;
-  readonly targetUsagePackUsd: UsagePackUsd;
-  readonly targetStripePriceId: string;
-  readonly kind: "upgrade" | "downgrade";
-}
+type PreparedAllocationChange =
+  | {
+      readonly kind: "addition";
+      readonly userId: string;
+      readonly targetUsagePackUsd: UsagePackUsd;
+      readonly targetStripePriceId: string;
+    }
+  | {
+      readonly kind: "upgrade" | "downgrade";
+      readonly source: UsagePackAllocationRow;
+      readonly targetUsagePackUsd: UsagePackUsd;
+      readonly targetStripePriceId: string;
+    };
 
 interface PreparedSubscriptionChange {
   readonly context: UsagePackSubscriptionChangeContext;
@@ -118,7 +126,7 @@ interface PreparedSubscriptionChange {
   readonly prorationTimestamp: number;
   readonly hasImmediateChanges: boolean;
   readonly hasScheduledChanges: boolean;
-  readonly restoreScheduleId: string | null;
+  readonly existingScheduleId: string | null;
 }
 
 interface PersistSubscriptionChangePreviewArgs {
@@ -170,6 +178,24 @@ export async function usagePackSubscriptionChangeSchemaAvailable(
         sql`to_regclass('public.usage_pack_subscription_changes') IS NOT NULL`.mapWith(
           pgBooleanDecoder,
         ),
+    })
+    .from(sql`(SELECT 1) AS schema_probe`)
+    .limit(1);
+  return state?.available ?? false;
+}
+
+export async function usagePackMemberAdditionSchemaAvailable(
+  db: Pick<Db, "select">,
+): Promise<boolean> {
+  const [state] = await db
+    .select({
+      available: sql`EXISTS (
+          SELECT 1
+          FROM pg_attribute
+          WHERE attrelid = to_regclass('public.usage_pack_allocation_changes')
+            AND attname = 'source_allocation_id'
+            AND NOT attnotnull
+        )`.mapWith(pgBooleanDecoder),
     })
     .from(sql`(SELECT 1) AS schema_probe`)
     .limit(1);
@@ -415,7 +441,6 @@ function memberSelectionsMatch(
   );
   return (
     selectedIds.size === selections.length &&
-    selectedIds.size === allocations.length &&
     allocations.every((allocation) => {
       return allocation.userId !== null && selectedIds.has(allocation.userId);
     })
@@ -453,37 +478,50 @@ function prepareAllocationChanges(
   if (!memberSelectionsMatch(selections, allocations)) {
     return null;
   }
-  const selectionsByMember = new Map(
-    selections.map((selection) => {
-      return [selection.memberId, selection.usagePackUsd] as const;
+  const allocationsByMember = new Map(
+    allocations.map((allocation) => {
+      if (!allocation.userId) {
+        throw new Error("Usage pack allocation has no member");
+      }
+      return [allocation.userId, allocation] as const;
     }),
   );
-  return allocations.flatMap((source): readonly PreparedAllocationChange[] => {
-    const targetUsagePackUsd = selectionsByMember.get(source.userId ?? "");
-    if (targetUsagePackUsd === undefined) {
-      throw new Error("Usage pack member selection disappeared");
-    }
-    if (targetUsagePackUsd === source.usagePackUsd) {
-      return [];
-    }
-    const targetStripePriceId = activeUsagePackPriceId(targetUsagePackUsd);
-    if (!targetStripePriceId) {
-      throw new Error(
-        `Usage pack $${targetUsagePackUsd} Price is not configured`,
-      );
-    }
-    return [
-      {
-        source,
-        targetUsagePackUsd,
-        targetStripePriceId,
-        kind:
-          targetUsagePackUsd > source.usagePackUsd
-            ? ("upgrade" as const)
-            : ("downgrade" as const),
-      },
-    ];
-  });
+  return selections.flatMap(
+    (selection): readonly PreparedAllocationChange[] => {
+      const source = allocationsByMember.get(selection.memberId);
+      const targetUsagePackUsd = selection.usagePackUsd;
+      const targetStripePriceId = activeUsagePackPriceId(targetUsagePackUsd);
+      if (!targetStripePriceId) {
+        throw new Error(
+          `Usage pack $${targetUsagePackUsd} Price is not configured`,
+        );
+      }
+      if (!source) {
+        return [
+          {
+            kind: "addition",
+            userId: selection.memberId,
+            targetUsagePackUsd,
+            targetStripePriceId,
+          },
+        ];
+      }
+      if (targetUsagePackUsd === source.usagePackUsd) {
+        return [];
+      }
+      return [
+        {
+          source,
+          targetUsagePackUsd,
+          targetStripePriceId,
+          kind:
+            targetUsagePackUsd > source.usagePackUsd
+              ? ("upgrade" as const)
+              : ("downgrade" as const),
+        },
+      ];
+    },
+  );
 }
 
 function adjustedPackageQuantities(
@@ -496,14 +534,16 @@ function adjustedPackageQuantities(
     if (!include(change)) {
       continue;
     }
-    const sourceQuantity = quantities.get(change.source.stripePriceId) ?? 0;
-    if (sourceQuantity <= 0) {
-      throw new Error("Usage pack source quantity disappeared");
-    }
-    if (sourceQuantity === 1) {
-      quantities.delete(change.source.stripePriceId);
-    } else {
-      quantities.set(change.source.stripePriceId, sourceQuantity - 1);
+    if (change.kind !== "addition") {
+      const sourceQuantity = quantities.get(change.source.stripePriceId) ?? 0;
+      if (sourceQuantity <= 0) {
+        throw new Error("Usage pack source quantity disappeared");
+      }
+      if (sourceQuantity === 1) {
+        quantities.delete(change.source.stripePriceId);
+      } else {
+        quantities.set(change.source.stripePriceId, sourceQuantity - 1);
+      }
     }
     quantities.set(
       change.targetStripePriceId,
@@ -600,8 +640,9 @@ function recurringAmount(invoice: StripeInvoice): number {
   return invoice.amount_due;
 }
 
-function restoredSubscriptionRecurringPreviewParams(
+function scheduledSubscriptionRecurringPreviewParams(
   subscription: StripeSubscription,
+  items: readonly StripeSchedulePhaseItemParam[],
 ): StripeInvoiceCreatePreviewParams {
   const customerId = stripeObjectId(subscription.customer);
   if (!customerId) {
@@ -611,9 +652,7 @@ function restoredSubscriptionRecurringPreviewParams(
     customer: customerId,
     preview_mode: "recurring",
     subscription_details: {
-      items: subscription.items.data.map((item) => {
-        return { price: item.price.id, quantity: item.quantity ?? 1 };
-      }),
+      items: [...items],
     },
   };
 }
@@ -645,6 +684,67 @@ function restorableScheduleId(
   })
     ? scheduleId
     : null;
+}
+
+function replacementScheduleId(
+  changes: readonly UsagePackAllocationChangeRow[],
+): string | null {
+  const scheduleId = changes[0]?.stripeScheduleId;
+  if (!scheduleId) {
+    if (
+      changes.some((change) => {
+        return change.stripeScheduleId !== null;
+      })
+    ) {
+      throw new Error(
+        "Usage pack replacement has inconsistent Stripe schedules",
+      );
+    }
+    return null;
+  }
+  if (
+    !changes.every((change) => {
+      return (
+        change.kind === "downgrade" && change.stripeScheduleId === scheduleId
+      );
+    })
+  ) {
+    throw new Error("Usage pack replacement has inconsistent Stripe schedules");
+  }
+  return scheduleId;
+}
+
+type ExistingSchedulePreparation =
+  | { readonly status: "ready"; readonly scheduleId: string | null }
+  | { readonly status: "same_configuration" | "conflict" };
+
+function prepareExistingSchedule(args: {
+  readonly allocationChanges: readonly PreparedAllocationChange[];
+  readonly hasImmediateChanges: boolean;
+  readonly openAllocationChanges: readonly UsagePackAllocationChangeRow[];
+  readonly sameConfiguration: boolean;
+}): ExistingSchedulePreparation {
+  if (args.openAllocationChanges.length === 0) {
+    return args.sameConfiguration
+      ? { status: "same_configuration" }
+      : { status: "ready", scheduleId: null };
+  }
+  const scheduleId = restorableScheduleId(args.openAllocationChanges);
+  if (!scheduleId) {
+    return { status: "conflict" };
+  }
+  if (args.sameConfiguration) {
+    return { status: "ready", scheduleId };
+  }
+  const replacesScheduledDowngrade =
+    !args.hasImmediateChanges &&
+    args.allocationChanges.length > 0 &&
+    args.allocationChanges.every((change) => {
+      return change.kind === "downgrade";
+    });
+  return replacesScheduledDowngrade
+    ? { status: "ready", scheduleId }
+    : { status: "conflict" };
 }
 
 async function prepareSubscriptionChange(
@@ -690,15 +790,21 @@ async function prepareSubscriptionChange(
   const sameConfiguration =
     context.subscription.tier === args.targetTier &&
     allocationChanges.length === 0;
-  const restoreScheduleId = sameConfiguration
-    ? restorableScheduleId(context.openAllocationChanges)
-    : null;
-  if (context.openAllocationChanges.length > 0 && !restoreScheduleId) {
-    return { status: "conflict" };
+  const hasImmediateChanges =
+    planIsUpgrade(context.subscription.tier, args.targetTier) ||
+    allocationChanges.some((change) => {
+      return change.kind === "addition" || change.kind === "upgrade";
+    });
+  const existingSchedule = prepareExistingSchedule({
+    allocationChanges,
+    hasImmediateChanges,
+    openAllocationChanges: context.openAllocationChanges,
+    sameConfiguration,
+  });
+  if (existingSchedule.status !== "ready") {
+    return { status: existingSchedule.status };
   }
-  if (sameConfiguration && !restoreScheduleId) {
-    return { status: "same_configuration" };
-  }
+  const existingScheduleId = existingSchedule.scheduleId;
   const targetPlanPriceId =
     context.subscription.tier === args.targetTier
       ? context.subscription.stripePlanPriceId
@@ -716,8 +822,8 @@ async function prepareSubscriptionChange(
   const stripeScheduleId = stripeObjectId(subscription.schedule);
   if (
     subscription.pending_update ||
-    (restoreScheduleId
-      ? stripeScheduleId !== restoreScheduleId
+    (existingScheduleId
+      ? stripeScheduleId !== existingScheduleId
       : stripeScheduleId !== null)
   ) {
     return { status: "conflict" };
@@ -739,17 +845,13 @@ async function prepareSubscriptionChange(
       allocationChanges,
       period,
       prorationTimestamp,
-      hasImmediateChanges:
-        planIsUpgrade(context.subscription.tier, args.targetTier) ||
-        allocationChanges.some((change) => {
-          return change.kind === "upgrade";
-        }),
+      hasImmediateChanges,
       hasScheduledChanges:
         planIsDowngrade(context.subscription.tier, args.targetTier) ||
         allocationChanges.some((change) => {
           return change.kind === "downgrade";
         }),
-      restoreScheduleId,
+      existingScheduleId,
     },
   };
 }
@@ -916,14 +1018,14 @@ async function subscriptionChangeSnapshotMatches(
       return change.id;
     }),
   );
-  const openAllocationMatches = prepared.restoreScheduleId
+  const openAllocationMatches = prepared.existingScheduleId
     ? openAllocation.length === expectedOpenAllocationIds.size &&
       openAllocation.every((change) => {
         return (
           expectedOpenAllocationIds.has(change.id) &&
           change.status === "scheduled" &&
           change.kind === "downgrade" &&
-          change.stripeScheduleId === prepared.restoreScheduleId
+          change.stripeScheduleId === prepared.existingScheduleId
         );
       })
     : openAllocation.length === 0;
@@ -945,7 +1047,9 @@ function allocationChangePreviewValue(
   rootId: string,
   args: PersistSubscriptionChangePreviewArgs,
 ): UsagePackAllocationChangeInsert {
-  if (!change.source.userId) {
+  const userId =
+    change.kind === "addition" ? change.userId : change.source.userId;
+  if (!userId) {
     throw new Error("Usage pack allocation change has no member");
   }
   const { context } = args.prepared;
@@ -953,19 +1057,22 @@ function allocationChangePreviewValue(
     usagePackSubscriptionId: context.subscription.id,
     subscriptionChangeId: rootId,
     orgId: context.subscription.orgId,
-    userId: change.source.userId,
-    sourceAllocationId: change.source.id,
+    userId,
+    sourceAllocationId: change.kind === "addition" ? null : change.source.id,
     kind: change.kind,
-    sourceUsagePackUsd: change.source.usagePackUsd,
-    sourceStripePriceId: change.source.stripePriceId,
+    sourceUsagePackUsd:
+      change.kind === "addition" ? null : change.source.usagePackUsd,
+    sourceStripePriceId:
+      change.kind === "addition" ? null : change.source.stripePriceId,
     targetUsagePackUsd: change.targetUsagePackUsd,
     targetStripePriceId: change.targetStripePriceId,
     prorationTimestamp: args.prepared.prorationTimestamp,
     immediateAmountCents: null,
     nextRecurringAmountCents: null,
     currency: args.currency,
+    stripeScheduleId: args.prepared.existingScheduleId,
     effectiveAt:
-      change.kind === "upgrade"
+      change.kind === "addition" || change.kind === "upgrade"
         ? new Date(args.prepared.prorationTimestamp * 1000)
         : new Date(args.prepared.period.end * 1000),
     previewExpiresAt: args.expiresAt,
@@ -1052,9 +1159,22 @@ async function immediateUsagePackUpgradeCreditGrant(
     start: prepared.prorationTimestamp,
     end: prepared.period.end,
   });
+  const additionGrants = await Promise.all(
+    prepared.allocationChanges.flatMap((change) => {
+      return change.kind === "addition"
+        ? [
+            calculateUsagePackAdditionCreditGrant(
+              change.targetStripePriceId,
+              prepared.period,
+              prepared.prorationTimestamp,
+            ),
+          ]
+        : [];
+    }),
+  );
   let purchasedCredits = 0;
   let bonusCredits = 0;
-  for (const grant of grants) {
+  for (const grant of [...grants, ...additionGrants]) {
     purchasedCredits += grant.purchasedCredits;
     bonusCredits += grant.bonusCredits;
   }
@@ -1092,7 +1212,7 @@ export async function previewUsagePackSubscriptionChange(
     prepared.context.allocations,
     prepared.allocationChanges,
     (change) => {
-      return change.kind === "upgrade";
+      return change.kind === "addition" || change.kind === "upgrade";
     },
   );
   const finalPackageQuantities = adjustedPackageQuantities(
@@ -1124,8 +1244,15 @@ export async function previewUsagePackSubscriptionChange(
   const [recurringPreview, immediatePreview, immediateCreditGrant] =
     await Promise.all([
       stripe.invoices.createPreview(
-        prepared.restoreScheduleId
-          ? restoredSubscriptionRecurringPreviewParams(prepared.subscription)
+        prepared.existingScheduleId
+          ? scheduledSubscriptionRecurringPreviewParams(
+              prepared.subscription,
+              finalScheduleItems(
+                prepared.subscription,
+                prepared.targetPlanPriceId,
+                finalPackageQuantities,
+              ),
+            )
           : {
               subscription: prepared.subscription.id,
               preview_mode: "recurring",
@@ -1340,6 +1467,86 @@ async function loadStoredSubscriptionChange(
   return { root, allocationChanges, subscription, allocations };
 }
 
+async function persistDeferredSubscriptionChangeSchedule(
+  db: Db,
+  stored: NonNullable<Awaited<ReturnType<typeof loadStoredSubscriptionChange>>>,
+  scheduleId: string,
+  effectiveAt: Date,
+): Promise<void> {
+  const updatedAt = nowDate();
+  const supersededScheduleId = replacementScheduleId(stored.allocationChanges);
+  await db.transaction(async (tx) => {
+    await lockUsagePackBillingOrg(tx, stored.root.orgId);
+    if (supersededScheduleId) {
+      const superseded = await tx
+        .update(usagePackAllocationChanges)
+        .set({
+          status: "failed",
+          failureReason: "scheduled_change_superseded",
+          completedAt: updatedAt,
+          updatedAt,
+        })
+        .where(
+          and(
+            eq(
+              usagePackAllocationChanges.usagePackSubscriptionId,
+              stored.subscription.id,
+            ),
+            eq(usagePackAllocationChanges.status, "scheduled"),
+            eq(
+              usagePackAllocationChanges.stripeScheduleId,
+              supersededScheduleId,
+            ),
+          ),
+        )
+        .returning({ id: usagePackAllocationChanges.id });
+      if (superseded.length === 0) {
+        throw new Error("Scheduled usage pack replacement lost its source");
+      }
+    }
+    await tx
+      .update(usagePackAllocationChanges)
+      .set({
+        status: "scheduled",
+        stripeScheduleId: scheduleId,
+        effectiveAt,
+        updatedAt,
+      })
+      .where(
+        and(
+          eq(usagePackAllocationChanges.subscriptionChangeId, stored.root.id),
+          eq(usagePackAllocationChanges.kind, "downgrade"),
+          inArray(usagePackAllocationChanges.status, [
+            "applying",
+            "pending_payment",
+          ]),
+        ),
+      );
+    await tx
+      .update(usagePackSubscriptionChanges)
+      .set({
+        status: "completed",
+        effectiveAt,
+        completedAt: updatedAt,
+        updatedAt,
+      })
+      .where(eq(usagePackSubscriptionChanges.id, stored.root.id));
+    if (planIsDowngrade(stored.root.sourceTier, stored.root.targetTier)) {
+      await tx
+        .update(orgMetadata)
+        .set({
+          cancelAtPeriodEnd: false,
+          pendingSubscriptionScheduleId: scheduleId,
+          pendingSubscriptionTargetTier: stored.root.targetTier,
+          pendingSubscriptionChangeAt: effectiveAt,
+          currentPeriodEnd: effectiveAt,
+          updatedAt,
+        })
+        .where(eq(orgMetadata.orgId, stored.root.orgId));
+    }
+  });
+}
+
 async function scheduleDeferredSubscriptionChange(
   db: Db,
   stored: NonNullable<Awaited<ReturnType<typeof loadStoredSubscriptionChange>>>,
@@ -1418,49 +1625,12 @@ async function scheduleDeferredSubscriptionChange(
   );
   signal?.throwIfAborted();
   const effectiveAt = new Date(period.end * 1000);
-  const updatedAt = nowDate();
-  await db.transaction(async (tx) => {
-    await tx
-      .update(usagePackAllocationChanges)
-      .set({
-        status: "scheduled",
-        stripeScheduleId: scheduleId,
-        effectiveAt,
-        updatedAt,
-      })
-      .where(
-        and(
-          eq(usagePackAllocationChanges.subscriptionChangeId, stored.root.id),
-          eq(usagePackAllocationChanges.kind, "downgrade"),
-          inArray(usagePackAllocationChanges.status, [
-            "applying",
-            "pending_payment",
-          ]),
-        ),
-      );
-    await tx
-      .update(usagePackSubscriptionChanges)
-      .set({
-        status: "completed",
-        effectiveAt,
-        completedAt: updatedAt,
-        updatedAt,
-      })
-      .where(eq(usagePackSubscriptionChanges.id, stored.root.id));
-    if (planIsDowngrade(stored.root.sourceTier, stored.root.targetTier)) {
-      await tx
-        .update(orgMetadata)
-        .set({
-          cancelAtPeriodEnd: false,
-          pendingSubscriptionScheduleId: scheduleId,
-          pendingSubscriptionTargetTier: stored.root.targetTier,
-          pendingSubscriptionChangeAt: effectiveAt,
-          currentPeriodEnd: effectiveAt,
-          updatedAt,
-        })
-        .where(eq(orgMetadata.orgId, stored.root.orgId));
-    }
-  });
+  await persistDeferredSubscriptionChangeSchedule(
+    db,
+    stored,
+    scheduleId,
+    effectiveAt,
+  );
   return effectiveAt;
 }
 
@@ -1679,22 +1849,29 @@ async function prepareSubscriptionChangeConfirmation(
   return { ready: true, stored };
 }
 
-function applyPackageUpgrades(
+function applyImmediatePackageChanges(
   packageQuantities: Map<string, number>,
-  packageUpgrades: readonly UsagePackAllocationChangeRow[],
+  packageChanges: readonly UsagePackAllocationChangeRow[],
 ): void {
-  for (const change of packageUpgrades) {
+  for (const change of packageChanges) {
     if (!change.targetStripePriceId) {
       throw new Error(`Subscription change ${change.id} has no target Price`);
     }
-    const sourceQuantity = packageQuantities.get(change.sourceStripePriceId);
-    if (!sourceQuantity) {
-      throw new Error(`Subscription change ${change.id} lost its source Price`);
-    }
-    if (sourceQuantity === 1) {
-      packageQuantities.delete(change.sourceStripePriceId);
-    } else {
-      packageQuantities.set(change.sourceStripePriceId, sourceQuantity - 1);
+    if (change.kind !== "addition") {
+      if (!change.sourceStripePriceId) {
+        throw new Error(`Subscription change ${change.id} has no source Price`);
+      }
+      const sourceQuantity = packageQuantities.get(change.sourceStripePriceId);
+      if (!sourceQuantity) {
+        throw new Error(
+          `Subscription change ${change.id} lost its source Price`,
+        );
+      }
+      if (sourceQuantity === 1) {
+        packageQuantities.delete(change.sourceStripePriceId);
+      } else {
+        packageQuantities.set(change.sourceStripePriceId, sourceQuantity - 1);
+      }
     }
     packageQuantities.set(
       change.targetStripePriceId,
@@ -1754,14 +1931,14 @@ async function applyImmediateSubscriptionChange(
     readonly subscription: StripeSubscription;
     readonly planItem: StripeSubscriptionItem;
     readonly hasPlanUpgrade: boolean;
-    readonly packageUpgrades: readonly UsagePackAllocationChangeRow[];
+    readonly immediatePackageChanges: readonly UsagePackAllocationChangeRow[];
   },
   signal: AbortSignal,
 ): Promise<UsagePackSubscriptionChangeConfirmResult> {
   const packageQuantities = new Map(
     packageQuantitiesFromAllocations(args.stored.allocations),
   );
-  applyPackageUpgrades(packageQuantities, args.packageUpgrades);
+  applyImmediatePackageChanges(packageQuantities, args.immediatePackageChanges);
   const targetPlanPriceId = args.hasPlanUpgrade
     ? activeUsagePackPlanPriceId("team")
     : args.stored.subscription.stripePlanPriceId;
@@ -1953,14 +2130,42 @@ async function applyStoredSubscriptionChange(
       signal,
     );
   }
+  const supersededScheduleId = replacementScheduleId(stored.allocationChanges);
+  if (supersededScheduleId) {
+    const scheduledChanges = await db
+      .select()
+      .from(usagePackAllocationChanges)
+      .where(
+        and(
+          eq(
+            usagePackAllocationChanges.usagePackSubscriptionId,
+            stored.subscription.id,
+          ),
+          eq(usagePackAllocationChanges.status, "scheduled"),
+        ),
+      );
+    signal.throwIfAborted();
+    if (
+      stripeObjectId(subscription.schedule) !== supersededScheduleId ||
+      restorableScheduleId(scheduledChanges) !== supersededScheduleId
+    ) {
+      await failApplyingSubscriptionChange(
+        db,
+        stored.root,
+        "scheduled_replacement_conflict",
+      );
+      return { status: "conflict" };
+    }
+  }
   const hasPlanUpgrade = planIsUpgrade(
     stored.root.sourceTier,
     stored.root.targetTier,
   );
-  const packageUpgrades = stored.allocationChanges.filter((change) => {
-    return change.kind === "upgrade";
+  const immediatePackageChanges = stored.allocationChanges.filter((change) => {
+    return change.kind === "addition" || change.kind === "upgrade";
   });
-  const hasImmediateChanges = hasPlanUpgrade || packageUpgrades.length > 0;
+  const hasImmediateChanges =
+    hasPlanUpgrade || immediatePackageChanges.length > 0;
   const hasScheduledChanges =
     planIsDowngrade(stored.root.sourceTier, stored.root.targetTier) ||
     stored.allocationChanges.some((change) => {
@@ -1992,7 +2197,7 @@ async function applyStoredSubscriptionChange(
       subscription,
       planItem,
       hasPlanUpgrade,
-      packageUpgrades,
+      immediatePackageChanges,
     },
     signal,
   );
@@ -2112,11 +2317,13 @@ export async function handleUsagePackSubscriptionChangeInvoicePaid(
       `Subscription change invoice ${invoice.id} was paid before the plan change was applied`,
     );
   }
+  const period = usagePackPeriod(subscription);
   await reconcileUsagePackAllocationChangeSubscription(db, subscription);
   await fulfillUsagePackSubscriptionChangeInvoice(db, {
     subscriptionChangeId: root.id,
     prorationTimestamp: root.prorationTimestamp,
-    periodEnd: usagePackPeriod(subscription).end,
+    periodStart: period.start,
+    periodEnd: period.end,
     invoice,
   });
   const refreshed = await loadStoredSubscriptionChange(db, root.id);
@@ -2296,7 +2503,7 @@ function immediateSubscriptionProjectionMatches(
     stored.allocations,
     stored.allocationChanges,
     (change) => {
-      return change.kind === "upgrade";
+      return change.kind === "addition" || change.kind === "upgrade";
     },
   );
   return (

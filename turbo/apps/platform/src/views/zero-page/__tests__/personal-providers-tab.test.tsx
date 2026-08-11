@@ -7,6 +7,7 @@ import {
 import type { ModelProviderResponse } from "@vm0/api-contracts/contracts/model-providers";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { HttpResponse } from "msw";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -286,17 +287,23 @@ function mockBrowserTimeZone(timeZone: string): void {
 
 describe("personal model providers settings", () => {
   it("lists subscription accounts and switches only on an explicit click", async () => {
+    const user = userEvent.setup();
+    mockBrowserTimeZone("America/New_York");
+    mockNow(new Date("2030-01-01T00:48:00.000Z"));
     context.mocks.data.org({
       id: "org_1",
       name: "Test Org",
       role: "member",
     });
-    const accountA = connectedPersonalCodexAccount({
-      id: "00000000-0000-4000-a000-000000000311",
-      email: "account-a@example.com",
-      isActive: true,
-      createdAt: "2026-03-01T00:00:00Z",
-    });
+    const accountA = {
+      ...connectedPersonalCodexAccount({
+        id: "00000000-0000-4000-a000-000000000311",
+        email: "account-a@example.com",
+        isActive: true,
+        createdAt: "2026-03-01T00:00:00Z",
+      }),
+      workspaceName: "Account A Organization",
+    };
     const accountB = connectedPersonalCodexAccount({
       id: "00000000-0000-4000-a000-000000000312",
       email: "account-b@example.com",
@@ -313,13 +320,44 @@ describe("personal model providers settings", () => {
     const rowB = await screen.findByTestId(`oauth-account-${accountB.id}`);
     expect(within(rowA).getByText("account-a@example.com")).toBeInTheDocument();
     expect(within(rowB).getByText("account-b@example.com")).toBeInTheDocument();
-    expect(within(rowA).getByText("Active")).toBeInTheDocument();
+    expect(within(rowA).queryByText("Active")).not.toBeInTheDocument();
     expect(within(rowB).queryByText("Active")).not.toBeInTheDocument();
+    expect(within(rowB).queryByText("Use")).not.toBeInTheDocument();
+    expect(within(rowA).getByRole("radio", { name: "Active" })).toHaveAttribute(
+      "aria-checked",
+      "true",
+    );
+    expect(within(rowB).getByRole("radio", { name: "Use" })).toHaveAttribute(
+      "aria-checked",
+      "false",
+    );
+    const usageRings = within(rowA).getAllByRole("progressbar");
+    expect(usageRings).toHaveLength(2);
+    expect(usageRings[0]).toHaveAttribute("aria-valuenow", "82");
+    expect(usageRings[1]).toHaveAttribute("aria-valuenow", "55");
+    expect(within(rowA).queryByText("82% left")).not.toBeInTheDocument();
     expect(
       queryAllByRoleFast("button").filter((button) => {
         return button.textContent?.trim() === "Add account";
       }),
     ).toHaveLength(2);
+
+    const accountIdentity = within(rowA).getByText("account-a@example.com");
+    await user.hover(accountIdentity);
+    await expect(
+      screen.findAllByText("Account A Organization"),
+    ).resolves.not.toHaveLength(0);
+
+    usageRings[0].focus();
+    await expect(screen.findAllByText("82% left")).resolves.not.toHaveLength(0);
+    expect(
+      screen.getAllByText(
+        formatResetInTimeZone(
+          "2030-01-01T05:00:00.000Z",
+          "America/New_York",
+        ).replace(/^resets /u, ""),
+      ),
+    ).not.toHaveLength(0);
 
     click(within(rowA).getByLabelText("More options"));
     expect(
@@ -329,9 +367,15 @@ describe("personal model providers settings", () => {
     ).toBeFalsy();
     click(within(rowA).getByLabelText("More options"));
 
-    click(buttonByText("Use", rowB));
+    click(within(rowB).getByRole("radio", { name: "Use" }));
     await waitFor(() => {
-      expect(within(rowB).getByText("Active")).toBeInTheDocument();
+      expect(
+        within(rowB).getByRole("radio", { name: "Active" }),
+      ).toHaveAttribute("aria-checked", "true");
+      expect(within(rowA).getByRole("radio", { name: "Use" })).toHaveAttribute(
+        "aria-checked",
+        "false",
+      );
       expect(within(rowA).queryByText("Active")).not.toBeInTheDocument();
     });
   });

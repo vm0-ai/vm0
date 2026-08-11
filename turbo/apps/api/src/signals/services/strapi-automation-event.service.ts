@@ -730,7 +730,7 @@ async function executeDueStrapiAutomationEvents(
       if (result.error instanceof StrapiPendingEventChangedError) {
         continue;
       }
-      log.error("Failed to process Strapi workflow event", {
+      log.error("Failed to process Strapi automation event", {
         automationId: pending.automationId,
         pendingEventId: pending.id,
         error: result.error,

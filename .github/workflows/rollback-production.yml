@@ -197,15 +197,14 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_PAGES_DEPLOY_API_TOKEN }}
           PAGES_DIST: ${{ steps.app.outputs.pages_dist }}
           TARGET_COMMIT: ${{ needs.resolve-target.outputs.target_commit }}
-        working-directory: turbo
         run: |
           set -euo pipefail
 
-          pnpm --filter @vm0/host-worker exec wrangler pages deploy "$PAGES_DIST" \
-            --project-name "$CF_PAGES_PROJECT_NAME" \
-            --branch production \
-            --commit-hash "$TARGET_COMMIT" \
-            --commit-dirty=false
+          bash .github/scripts/deploy-okou-pages.sh \
+            "$PAGES_DIST" \
+            "$CF_PAGES_PROJECT_NAME" \
+            production \
+            "$TARGET_COMMIT"
 
           for url in "https://${CF_PAGES_PROJECT_NAME}.pages.dev" "https://app.vm0.ai"; do
             curl -fsSL \

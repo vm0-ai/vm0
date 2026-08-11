@@ -1192,7 +1192,7 @@ export function createBddIntegrationApi(context: TestContext) {
     async updateUserModelPreference(
       actor: ApiTestUser,
       selectedModel: SupportedRunModel | null,
-      serviceTier?: "priority" | null,
+      serviceTier: "priority" | null = null,
     ): Promise<void> {
       const client = setupApp({
         context,
@@ -1293,7 +1293,7 @@ export function createBddIntegrationApi(context: TestContext) {
           body: {
             policies: [
               {
-                model: "gpt-5.5",
+                model: "gpt-5.6-sol",
                 isDefault: true,
                 defaultProviderType: "openai-api-key",
                 credentialScope: "org",

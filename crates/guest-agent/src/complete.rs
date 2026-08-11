@@ -36,10 +36,16 @@ struct CompletePayload<'a> {
     sandbox_reuse_result: Option<&'a str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     workspace_reuse_result: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    active_input_delivery_ids: Option<&'a [String]>,
 }
 
 fn as_optional(value: &str) -> Option<&str> {
     if value.is_empty() { None } else { Some(value) }
+}
+
+fn as_optional_slice(values: &[String]) -> Option<&[String]> {
+    (!values.is_empty()).then_some(values)
 }
 
 /// Report a successful run to the host. Normal CLI runs call this only after
@@ -64,15 +70,19 @@ pub async fn report_success_for_run(
     sandbox_reuse_result: &str,
     workspace_reuse_result: &str,
     last_event_sequence: Option<u32>,
+    active_input_delivery_ids: &[String],
 ) {
-    report_for_run(
+    report_payload(
         http,
-        run_id,
-        0,
-        sandbox_id,
-        sandbox_reuse_result,
-        workspace_reuse_result,
-        last_event_sequence,
+        payload_for_run(
+            run_id,
+            0,
+            sandbox_id,
+            sandbox_reuse_result,
+            workspace_reuse_result,
+            last_event_sequence,
+            active_input_delivery_ids,
+        ),
     )
     .await;
 }
@@ -88,40 +98,47 @@ pub async fn report_user_cancellation_for_run(
     sandbox_reuse_result: &str,
     workspace_reuse_result: &str,
     last_event_sequence: Option<u32>,
+    active_input_delivery_ids: &[String],
 ) {
-    report_for_run(
+    report_payload(
         http,
-        run_id,
-        1,
-        sandbox_id,
-        sandbox_reuse_result,
-        workspace_reuse_result,
-        last_event_sequence,
+        payload_for_run(
+            run_id,
+            1,
+            sandbox_id,
+            sandbox_reuse_result,
+            workspace_reuse_result,
+            last_event_sequence,
+            active_input_delivery_ids,
+        ),
     )
     .await;
 }
 
-async fn report_for_run(
-    http: &HttpClient,
-    run_id: &str,
+fn payload_for_run<'a>(
+    run_id: &'a str,
     exit_code: i32,
-    sandbox_id: &str,
-    sandbox_reuse_result: &str,
-    workspace_reuse_result: &str,
+    sandbox_id: &'a str,
+    sandbox_reuse_result: &'a str,
+    workspace_reuse_result: &'a str,
     last_event_sequence: Option<u32>,
-) {
-    if !http.has_api() {
-        return;
-    }
-
-    let payload = CompletePayload {
+    active_input_delivery_ids: &'a [String],
+) -> CompletePayload<'a> {
+    CompletePayload {
         run_id,
         exit_code,
         last_event_sequence,
         sandbox_id: as_optional(sandbox_id),
         sandbox_reuse_result: as_optional(sandbox_reuse_result),
         workspace_reuse_result: as_optional(workspace_reuse_result),
-    };
+        active_input_delivery_ids: as_optional_slice(active_input_delivery_ids),
+    }
+}
+
+async fn report_payload(http: &HttpClient, payload: CompletePayload<'_>) {
+    if !http.has_api() {
+        return;
+    }
 
     // 1 attempt — the runner's fallback is the safety net. Retrying from the
     // guest just delays VM exit without improving the outcome.
@@ -151,6 +168,7 @@ mod tests {
             sandbox_id: None,
             sandbox_reuse_result: None,
             workspace_reuse_result: None,
+            active_input_delivery_ids: None,
         };
         let json = serde_json::to_string(&payload).unwrap();
         assert_eq!(json, r#"{"runId":"run-123","exitCode":0}"#);
@@ -165,6 +183,7 @@ mod tests {
             sandbox_id: Some("abc"),
             sandbox_reuse_result: Some("reused"),
             workspace_reuse_result: Some("sandboxReused"),
+            active_input_delivery_ids: None,
         };
         let json = serde_json::to_string(&payload).unwrap();
         assert!(json.contains(r#""sandboxId":"abc""#));
@@ -183,6 +202,7 @@ mod tests {
             sandbox_id: None,
             sandbox_reuse_result: Some("poolMiss"),
             workspace_reuse_result: None,
+            active_input_delivery_ids: None,
         };
         let json = serde_json::to_string(&payload).unwrap();
         assert!(!json.contains("sandboxId"));
@@ -198,6 +218,7 @@ mod tests {
             sandbox_id: Some("sid"),
             sandbox_reuse_result: None,
             workspace_reuse_result: Some("cacheMiss"),
+            active_input_delivery_ids: None,
         };
         let json = serde_json::to_string(&payload).unwrap();
         assert!(json.contains(r#""sandboxId":"sid""#));
@@ -220,6 +241,7 @@ mod tests {
             sandbox_id: None,
             sandbox_reuse_result: None,
             workspace_reuse_result: None,
+            active_input_delivery_ids: None,
         };
         let json = serde_json::to_string(&payload).unwrap();
         assert_eq!(

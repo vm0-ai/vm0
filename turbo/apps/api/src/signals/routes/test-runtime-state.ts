@@ -18,12 +18,14 @@ import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { chatEventSnapshots } from "@vm0/db/schema/chat-event-snapshot";
 import { checkpoints } from "@vm0/db/schema/checkpoint";
 import { hostedSites } from "@vm0/db/schema/hosted-site";
+import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
 import { threadGoals } from "@vm0/db/schema/thread-goal";
+import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { zeroWorkflowAutomations } from "@vm0/db/schema/zero-workflow";
-import { and, desc, eq, sql, type SQL } from "drizzle-orm";
+import { and, count, desc, eq, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
 import { closeDbPool } from "../../lib/db";
 import { executeRawRows } from "../../lib/db-raw-rows";
@@ -1117,6 +1119,77 @@ type PreviousApiComputerAccessAction = Extract<
   { action: "set-computer-use-host-as-previous-api" }
 >;
 
+type ModelSelectionFixtureAction = Extract<
+  TestRuntimeStateActionBody,
+  {
+    action:
+      | "set-agent-model-selection-as-previous-api"
+      | "set-run-model-selection-as-previous-api"
+      | "set-thread-model-selection-as-previous-api"
+      | "read-run-model-selection-fixture";
+  }
+>;
+
+async function modelSelectionFixtureActionResponse(
+  db: Db,
+  body: ModelSelectionFixtureAction,
+  signal: AbortSignal,
+) {
+  if (body.action === "read-run-model-selection-fixture") {
+    const [run] = await db
+      .select({
+        modelProvider: zeroRuns.modelProvider,
+        selectedModel: zeroRuns.selectedModel,
+      })
+      .from(zeroRuns)
+      .where(eq(zeroRuns.id, body.run_id))
+      .limit(1);
+    signal.throwIfAborted();
+    if (!run) {
+      throw new Error("Expected a Zero run model selection fixture");
+    }
+    return {
+      status: 200 as const,
+      body: {
+        ok: true as const,
+        run_model_selection: {
+          model_provider: run.modelProvider,
+          selected_model: run.selectedModel,
+        },
+      },
+    };
+  }
+
+  const table =
+    body.action === "set-agent-model-selection-as-previous-api"
+      ? zeroAgents
+      : body.action === "set-run-model-selection-as-previous-api"
+        ? zeroRuns
+        : chatThreads;
+  const idColumn =
+    body.action === "set-agent-model-selection-as-previous-api"
+      ? zeroAgents.id
+      : body.action === "set-run-model-selection-as-previous-api"
+        ? zeroRuns.id
+        : chatThreads.id;
+  const id =
+    "agent_id" in body
+      ? body.agent_id
+      : "run_id" in body
+        ? body.run_id
+        : body.thread_id;
+  const [updated] = await db
+    .update(table)
+    .set({ selectedModel: body.selected_model })
+    .where(eq(idColumn, id))
+    .returning({ id: idColumn });
+  signal.throwIfAborted();
+  if (!updated) {
+    throw new Error("Expected a persisted model selection fixture");
+  }
+  return { status: 200 as const, body: { ok: true as const } };
+}
+
 async function setComputerUseHostAsPreviousApi(
   db: Db,
   body: PreviousApiComputerAccessAction,
@@ -1217,9 +1290,45 @@ type CompatibilityFixtureAction =
   | PreviousApiHostedSiteAction
   | PreviousApiHostedDeploymentAction
   | PreviousApiComputerAccessAction
+  | ModelSelectionFixtureAction
   | PreviousApiBrowserTabSnapshotAction
   | PreviousApiRunnerJobContextProfileAction
   | ConnectorPermissionBaselineMutationAction;
+
+type CustomConnectorAuthTemplateFixtureAction = Extract<
+  TestRuntimeStateActionBody,
+  { action: "set-custom-connector-auth-template-fixture" }
+>;
+
+function isCustomConnectorAuthTemplateFixtureAction(
+  body: TestRuntimeStateActionBody,
+): body is CustomConnectorAuthTemplateFixtureAction {
+  return body.action === "set-custom-connector-auth-template-fixture";
+}
+
+async function customConnectorAuthTemplateFixtureActionResponse(
+  db: Db,
+  body: CustomConnectorAuthTemplateFixtureAction,
+  signal: AbortSignal,
+) {
+  const [updated] = await db
+    .update(orgCustomConnectors)
+    .set({
+      headerInjections: [
+        {
+          name: "Authorization",
+          valueTemplate: body.value_template,
+        },
+      ],
+    })
+    .where(eq(orgCustomConnectors.id, body.connector_id))
+    .returning({ id: orgCustomConnectors.id });
+  signal.throwIfAborted();
+  if (!updated) {
+    throw new Error("Expected a Custom Connector definition fixture");
+  }
+  return { status: 200 as const, body: { ok: true as const } };
+}
 
 type ChatEventSnapshotFixtureAction = Extract<
   TestRuntimeStateActionBody,
@@ -1266,21 +1375,30 @@ async function chatEventSnapshotFixtureActionResponse(
     }
     return { status: 200 as const, body: { ok: true as const } };
   }
-  const [head] = await db
-    .select({
-      archiveSchemaVersion: chatEventSnapshots.archiveSchemaVersion,
-      lastSeqId: chatEventSnapshots.lastSeqId,
-      objectKey: chatEventSnapshots.objectKey,
-    })
-    .from(chatEventSnapshots)
-    .where(
-      and(
-        eq(chatEventSnapshots.chatThreadId, body.thread_id),
-        eq(chatEventSnapshots.isHead, true),
-      ),
-    )
-    .limit(1);
+  const [[head], [snapshotCount]] = await Promise.all([
+    db
+      .select({
+        archiveSchemaVersion: chatEventSnapshots.archiveSchemaVersion,
+        lastSeqId: chatEventSnapshots.lastSeqId,
+        objectKey: chatEventSnapshots.objectKey,
+      })
+      .from(chatEventSnapshots)
+      .where(
+        and(
+          eq(chatEventSnapshots.chatThreadId, body.thread_id),
+          eq(chatEventSnapshots.isHead, true),
+        ),
+      )
+      .limit(1),
+    db
+      .select({ value: count() })
+      .from(chatEventSnapshots)
+      .where(eq(chatEventSnapshots.chatThreadId, body.thread_id)),
+  ]);
   signal.throwIfAborted();
+  if (!snapshotCount) {
+    throw new Error("read-chat-event-snapshot-head missing snapshot count");
+  }
   return {
     status: 200 as const,
     body: {
@@ -1290,6 +1408,7 @@ async function chatEventSnapshotFixtureActionResponse(
             archive_schema_version: head.archiveSchemaVersion,
             last_seq_id: head.lastSeqId,
             object_key: head.objectKey,
+            snapshot_count: snapshotCount.value,
           }
         : null,
     },
@@ -1310,6 +1429,10 @@ function isCompatibilityFixtureAction(
     "insert-hosted-site-as-previous-api",
     "insert-hosted-deployment-as-previous-api",
     "set-computer-use-host-as-previous-api",
+    "set-agent-model-selection-as-previous-api",
+    "set-run-model-selection-as-previous-api",
+    "set-thread-model-selection-as-previous-api",
+    "read-run-model-selection-fixture",
     "set-browser-tab-snapshot-as-previous-api",
     "set-runner-job-context-profile-as-previous-api",
     "mutate-runner-job-connector-permission-baseline",
@@ -1323,6 +1446,14 @@ async function compatibilityFixtureActionResponse(
 ) {
   if (isAutonomyBudgetFixtureAction(body)) {
     return await autonomyBudgetFixtureActionResponse(db, body, signal);
+  }
+  if (
+    body.action === "set-agent-model-selection-as-previous-api" ||
+    body.action === "set-run-model-selection-as-previous-api" ||
+    body.action === "set-thread-model-selection-as-previous-api" ||
+    body.action === "read-run-model-selection-fixture"
+  ) {
+    return await modelSelectionFixtureActionResponse(db, body, signal);
   }
   switch (body.action) {
     case "insert-legacy-artifact-catalog-file": {
@@ -1381,6 +1512,13 @@ const postRuntimeStateAction$ = command(
     }
     if (isVm0ManagedModelKeyAction(body)) {
       return await vm0ManagedModelKeyActionResponse(db, body, signal);
+    }
+    if (isCustomConnectorAuthTemplateFixtureAction(body)) {
+      return await customConnectorAuthTemplateFixtureActionResponse(
+        db,
+        body,
+        signal,
+      );
     }
     switch (body.action) {
       case "enable-fake-kms": {

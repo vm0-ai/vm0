@@ -23,10 +23,15 @@ type ConnectorConnectionTarget =
   | {
       readonly kind: "builtin";
       readonly connectorSlug: string;
-      readonly externalId: string;
-      readonly externalUsername: string | null;
-      readonly externalEmail: string | null;
-      readonly oauthScopes: readonly string[];
+      readonly identity:
+        | { readonly kind: "local" }
+        | {
+            readonly kind: "external";
+            readonly externalId: string;
+            readonly externalUsername: string | null;
+            readonly externalEmail: string | null;
+            readonly oauthScopes: readonly string[];
+          };
     }
   | {
       readonly kind: "custom";
@@ -72,85 +77,68 @@ async function upsertConnectorConnection(
   db: Tx,
   args: Omit<ReplaceConnectorConnectionArgs, "writeCredentials">,
 ): Promise<StoredConnectorConnectionRow> {
-  if (args.target.kind === "builtin") {
-    const [row] = await db
-      .insert(connectors)
-      .values({
-        userId: args.userId,
-        connectorSlug: args.target.connectorSlug,
-        authMethod: args.authMethod,
-        storageVersion: args.storageVersion,
-        externalId: args.target.externalId,
-        externalUsername: args.target.externalUsername,
-        externalEmail: args.target.externalEmail,
-        oauthScopes: JSON.stringify(args.target.oauthScopes),
-        tokenExpiresAt: args.tokenExpiresAt,
-        needsReconnect: false,
-        reconnectReason: null,
-        orgId: args.orgId,
-      })
-      .onConflictDoUpdate({
-        target: [connectors.orgId, connectors.userId, connectors.connectorSlug],
-        targetWhere: isNotNull(connectors.connectorSlug),
-        set: {
-          authMethod: args.authMethod,
-          storageVersion: args.storageVersion,
-          externalId: args.target.externalId,
-          externalUsername: args.target.externalUsername,
-          externalEmail: args.target.externalEmail,
-          oauthScopes: JSON.stringify(args.target.oauthScopes),
-          tokenExpiresAt: args.tokenExpiresAt,
-          needsReconnect: false,
-          reconnectReason: null,
-          updatedAt: sql`clock_timestamp()`,
-        },
-      })
-      .returning(connectorConnectionSelection());
-    if (!row) {
-      throw new Error("Failed to upsert Builtin connector connection");
-    }
-    return row;
-  }
+  const identityValues =
+    args.target.kind === "builtin" && args.target.identity.kind === "external"
+      ? {
+          externalId: args.target.identity.externalId,
+          externalUsername: args.target.identity.externalUsername,
+          externalEmail: args.target.identity.externalEmail,
+          oauthScopes: JSON.stringify(args.target.identity.oauthScopes),
+        }
+      : {
+          externalId: null,
+          externalUsername: null,
+          externalEmail: null,
+          oauthScopes: null,
+        };
+  const targetValues =
+    args.target.kind === "builtin"
+      ? {
+          connectorSlug: args.target.connectorSlug,
+          customConnectorId: null,
+        }
+      : {
+          connectorSlug: null,
+          customConnectorId: args.target.customConnectorId,
+        };
+  const replacementValues = {
+    authMethod: args.authMethod,
+    storageVersion: args.storageVersion,
+    ...identityValues,
+    tokenExpiresAt: args.tokenExpiresAt,
+    needsReconnect: false,
+    reconnectReason: null,
+  };
+  const conflictTarget =
+    args.target.kind === "builtin"
+      ? [connectors.orgId, connectors.userId, connectors.connectorSlug]
+      : [connectors.orgId, connectors.userId, connectors.customConnectorId];
+  const conflictTargetWhere =
+    args.target.kind === "builtin"
+      ? isNotNull(connectors.connectorSlug)
+      : isNotNull(connectors.customConnectorId);
 
   const [row] = await db
     .insert(connectors)
     .values({
-      customConnectorId: args.target.customConnectorId,
-      authMethod: args.authMethod,
-      storageVersion: args.storageVersion,
-      externalId: null,
-      externalUsername: null,
-      externalEmail: null,
-      oauthScopes: null,
-      tokenExpiresAt: args.tokenExpiresAt,
-      needsReconnect: false,
-      reconnectReason: null,
-      userId: args.userId,
       orgId: args.orgId,
+      userId: args.userId,
+      ...targetValues,
+      ...replacementValues,
     })
     .onConflictDoUpdate({
-      target: [
-        connectors.orgId,
-        connectors.userId,
-        connectors.customConnectorId,
-      ],
-      targetWhere: isNotNull(connectors.customConnectorId),
+      target: conflictTarget,
+      targetWhere: conflictTargetWhere,
       set: {
-        authMethod: args.authMethod,
-        storageVersion: args.storageVersion,
-        externalId: null,
-        externalUsername: null,
-        externalEmail: null,
-        oauthScopes: null,
-        tokenExpiresAt: args.tokenExpiresAt,
-        needsReconnect: false,
-        reconnectReason: null,
+        ...replacementValues,
         updatedAt: sql`clock_timestamp()`,
       },
     })
     .returning(connectorConnectionSelection());
   if (!row) {
-    throw new Error("Failed to upsert Custom connector connection");
+    throw new Error(
+      `Failed to upsert ${args.target.kind === "builtin" ? "Builtin" : "Custom"} connector connection`,
+    );
   }
   return row;
 }

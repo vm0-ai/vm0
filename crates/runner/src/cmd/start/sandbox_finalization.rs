@@ -33,6 +33,9 @@ use crate::idle_pool::{
     IdleParkRequestParts, ParkResult, ParkingGate,
 };
 use crate::ids::RunId;
+use crate::immediate_successor_intent::{
+    ImmediateSuccessorFinalizationStage, ImmediateSuccessorIntents,
+};
 use crate::network_log_drain::NetworkLogDrainCoordinator;
 use crate::network_log_manager::NetworkLogSession;
 #[cfg(test)]
@@ -56,21 +59,45 @@ use crate::workspace_promotion::prepare_workspace_image_from_active_sandbox;
 struct FinalizationTelemetry<'a> {
     telemetry: Option<&'a mut JobTelemetry>,
     physical_park_completed_at: Option<Instant>,
+    immediate_successor_intents: ImmediateSuccessorIntents,
+    track_immediate_successor_intents: bool,
+    run_id: RunId,
 }
 
 impl<'a> FinalizationTelemetry<'a> {
-    fn new(telemetry: &'a mut JobTelemetry) -> Self {
+    fn new(
+        telemetry: &'a mut JobTelemetry,
+        immediate_successor_intents: ImmediateSuccessorIntents,
+        track_immediate_successor_intents: bool,
+        run_id: RunId,
+    ) -> Self {
+        if track_immediate_successor_intents {
+            immediate_successor_intents.record_finalization_started(run_id, Instant::now());
+        }
         Self {
             telemetry: Some(telemetry),
             physical_park_completed_at: None,
+            immediate_successor_intents,
+            track_immediate_successor_intents,
+            run_id,
         }
     }
 
     #[cfg(test)]
-    fn disabled() -> Self {
+    fn disabled(
+        immediate_successor_intents: ImmediateSuccessorIntents,
+        track_immediate_successor_intents: bool,
+        run_id: RunId,
+    ) -> Self {
+        if track_immediate_successor_intents {
+            immediate_successor_intents.record_finalization_started(run_id, Instant::now());
+        }
         Self {
             telemetry: None,
             physical_park_completed_at: None,
+            immediate_successor_intents,
+            track_immediate_successor_intents,
+            run_id,
         }
     }
 
@@ -85,6 +112,10 @@ impl<'a> FinalizationTelemetry<'a> {
                 success,
                 error,
             );
+        }
+        if success && self.track_immediate_successor_intents {
+            self.immediate_successor_intents
+                .record_idle_publication(self.run_id, Instant::now());
         }
     }
 
@@ -102,23 +133,42 @@ impl SandboxFinalExecParkObserver for FinalizationTelemetry<'_> {
         duration: Duration,
         success: bool,
     ) {
-        let (action_type, error) = match stage {
+        let completed_at = Instant::now();
+        let started_at = completed_at.checked_sub(duration).unwrap_or(completed_at);
+        let (action_type, error, immediate_stage) = match stage {
             SandboxFinalExecParkStage::ReusePreparation => (
                 "runner_host_reuse_preparation",
                 (!success).then_some("reuse preparation failed"),
+                ImmediateSuccessorFinalizationStage::ReusePreparation,
             ),
             SandboxFinalExecParkStage::PhysicalPark => (
                 "runner_host_physical_park",
                 (!success).then_some("physical park failed"),
+                ImmediateSuccessorFinalizationStage::PhysicalPark,
             ),
         };
+        if self.track_immediate_successor_intents {
+            self.immediate_successor_intents.record_finalization_stage(
+                self.run_id,
+                immediate_stage,
+                started_at,
+                completed_at,
+                success,
+            );
+        }
         if let Some(telemetry) = self.telemetry.as_deref_mut() {
             telemetry.record(action_type, duration, success, error);
         }
         if stage == SandboxFinalExecParkStage::PhysicalPark && success {
-            self.physical_park_completed_at = Some(Instant::now());
+            self.physical_park_completed_at = Some(completed_at);
         }
     }
+}
+
+pub(super) fn should_track_immediate_successor_intents(reuse_key: Option<&str>) -> bool {
+    // The API only emits these signals from canonical chat-thread queues. Do
+    // not let unrelated finalizations consume the bounded observation state.
+    reuse_key.is_some_and(|reuse_key| reuse_key_kind(reuse_key) == "thread")
 }
 
 fn local_completed_at() -> String {
@@ -178,6 +228,7 @@ pub(super) struct FinalizeContext {
     pub(super) status: Arc<StatusTracker>,
     pub(super) reuse_state_notify: Arc<tokio::sync::Notify>,
     pub(super) active_run_reuse: ActiveRunReusePublisher,
+    pub(super) immediate_successor_intents: ImmediateSuccessorIntents,
     pub(super) workspace_cache_snapshot: WorkspaceCacheStateSnapshot,
     pub(super) parking_gate: ParkingGate,
     pub(super) network_log_drain: NetworkLogDrainCoordinator,
@@ -205,11 +256,20 @@ pub(super) async fn finalize_sandbox_for_completion_with_telemetry(
     telemetry: &mut JobTelemetry,
     ctx: FinalizeContext,
 ) -> CompletionReady {
+    let immediate_successor_intents = ctx.immediate_successor_intents.clone();
+    let track_immediate_successor_intents =
+        should_track_immediate_successor_intents(ctx.reuse_key.as_deref());
+    let run_id = ctx.run_id;
     finalize_sandbox_for_completion_inner(
         sandbox,
         active_lease,
         completion_payload,
-        FinalizationTelemetry::new(telemetry),
+        FinalizationTelemetry::new(
+            telemetry,
+            immediate_successor_intents,
+            track_immediate_successor_intents,
+            run_id,
+        ),
         ctx,
     )
     .await
@@ -222,11 +282,19 @@ async fn finalize_sandbox_for_completion(
     completion_payload: CompletionPayload,
     ctx: FinalizeContext,
 ) -> CompletionReady {
+    let immediate_successor_intents = ctx.immediate_successor_intents.clone();
+    let track_immediate_successor_intents =
+        should_track_immediate_successor_intents(ctx.reuse_key.as_deref());
+    let run_id = ctx.run_id;
     finalize_sandbox_for_completion_inner(
         sandbox,
         active_lease,
         completion_payload,
-        FinalizationTelemetry::disabled(),
+        FinalizationTelemetry::disabled(
+            immediate_successor_intents,
+            track_immediate_successor_intents,
+            run_id,
+        ),
         ctx,
     )
     .await
@@ -265,6 +333,7 @@ async fn finalize_sandbox_for_completion_inner(
         status,
         reuse_state_notify,
         active_run_reuse,
+        immediate_successor_intents: _immediate_successor_intents,
         workspace_cache_snapshot,
         parking_gate,
         network_log_drain,
@@ -1011,6 +1080,10 @@ mod tests {
         add_healthy_reuse_preparation_matcher, mock_sandbox_ready_for_idle_reuse,
     };
     use crate::ids::RunId;
+    use crate::immediate_successor_intent::{
+        ImmediateSuccessorIntentNotification, ImmediateSuccessorReceiptPhase,
+        ImmediateSuccessorReceiveOutcome,
+    };
     use crate::network_log_drain::NetworkLogDrainCoordinator;
     use crate::network_log_manager::NetworkLogManager;
     use crate::paths::RunnerPaths;
@@ -1132,6 +1205,7 @@ mod tests {
         parking_gate: ParkingGate,
         idle_pool: SharedIdlePool,
         network_log_manager: NetworkLogManager,
+        immediate_successor_intents: ImmediateSuccessorIntents,
     }
 
     impl FinalizeTestFixture {
@@ -1158,6 +1232,7 @@ mod tests {
                     parking_gate.clone(),
                 )));
             let network_log_manager = NetworkLogManager::new();
+            let immediate_successor_intents = ImmediateSuccessorIntents::default();
 
             Self {
                 dir,
@@ -1165,6 +1240,7 @@ mod tests {
                 parking_gate,
                 idle_pool,
                 network_log_manager,
+                immediate_successor_intents,
             }
         }
 
@@ -1204,6 +1280,7 @@ mod tests {
                 status: Arc::clone(&self.status),
                 reuse_state_notify: Arc::new(tokio::sync::Notify::new()),
                 active_run_reuse: ActiveRunReusePublisher::detached(),
+                immediate_successor_intents: self.immediate_successor_intents.clone(),
                 workspace_cache_snapshot: WorkspaceCacheStateSnapshot::new(),
                 parking_gate: self.parking_gate.clone(),
                 network_log_drain: NetworkLogDrainCoordinator::noop(),
@@ -1599,6 +1676,29 @@ mod tests {
         let fixture = FinalizeTestFixture::new().await;
         let network_log_session = fixture.network_log_session().await;
         let run_id = RunId::new_v4();
+        let intent_id = uuid::Uuid::new_v4();
+        let runner_id = "00000000-0000-4000-8000-000000000005";
+        let decided_at = chrono::Utc::now();
+        let notification: ImmediateSuccessorIntentNotification =
+            serde_json::from_value(serde_json::json!({
+                "action": "arm",
+                "predecessorRunId": run_id,
+                "intentId": intent_id,
+                "runnerIdentity": {
+                    "runnerId": runner_id,
+                    "heartbeatGeneration": 7
+                },
+                "eventClass": "prompt",
+                "decidedAt": decided_at.to_rfc3339(),
+                "expiresAt": (decided_at + chrono::Duration::milliseconds(1500)).to_rfc3339()
+            }))
+            .unwrap();
+        assert_eq!(
+            fixture
+                .immediate_successor_intents
+                .receive(notification, runner_id, 7),
+            ImmediateSuccessorReceiveOutcome::Armed
+        );
         let sandbox_id = SandboxId::new_v4();
         let cleanup_state = RunCleanupState::new();
         let workspace_dir = tempfile::tempdir().unwrap();
@@ -1610,7 +1710,7 @@ mod tests {
             &cache,
             run_id,
             sandbox_id,
-            "sess-reuse-rejected",
+            "thread:reuse-rejected",
         )
         .await;
         let overrides = Arc::new(MockSandboxOverrides::new());
@@ -1635,7 +1735,7 @@ mod tests {
         let mut context = fixture.finalize_context(
             run_id,
             sandbox_id,
-            "sess-reuse-rejected",
+            "thread:reuse-rejected",
             network_log_session,
             RunCancellationHandle::new(),
         );
@@ -1664,9 +1764,19 @@ mod tests {
         assert_eq!(overrides.unpark_call_count(), 1);
         assert_eq!(overrides.destroy_call_count(), 1);
         assert_eq!(fixture.idle_pool.lock().await.len(), 0);
+        let observation = fixture
+            .immediate_successor_intents
+            .observe_claim(Some(run_id), Instant::now())
+            .unwrap()
+            .snapshot();
+        assert_eq!(
+            observation.receipt_phase,
+            Some(ImmediateSuccessorReceiptPhase::BeforeFinalization)
+        );
+        assert_eq!(observation.predicted_park_saved, Some(Duration::ZERO));
         let cache_states = cache.held_workspace_states().await;
         assert_eq!(cache_states.len(), 1);
-        assert_eq!(cache_states[0].reuse_key, "sess-reuse-rejected");
+        assert_eq!(cache_states[0].reuse_key, "thread:reuse-rejected");
         assert_eq!(
             cleanup_state.disposition(),
             RunCleanupDisposition::DestroyCompleted

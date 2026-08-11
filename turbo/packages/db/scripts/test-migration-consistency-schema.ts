@@ -2566,6 +2566,9 @@ async function validateCustomConnectorOauthModeConstraints(
       "header_name",
       "header_template",
       "prefix_templates",
+      "fields",
+      "header_injections",
+      "query_injections",
       "auth_mode",
       "created_by"
     )
@@ -2578,6 +2581,15 @@ async function validateCustomConnectorOauthModeConstraints(
       'Authorization',
       'Bearer {{secret}}',
       '["https://api.example.test/"]'::jsonb,
+      CASE
+        WHEN $5 = 'manual' THEN '[{"key":"secret","label":"Secret","kind":"secret","required":true}]'::jsonb
+        ELSE '[]'::jsonb
+      END,
+      CASE
+        WHEN $5 = 'manual' THEN '[{"name":"Authorization","valueTemplate":"Bearer {{secrets.secret}}"}]'::jsonb
+        ELSE '[{"name":"Authorization","valueTemplate":"Bearer {{oauth.access_token}}"}]'::jsonb
+      END,
+      '[]'::jsonb,
       $5,
       $6
     )
@@ -3683,8 +3695,8 @@ async function validateGoalOnlyRunGroupsCleanup(): Promise<void> {
             "goal_id"
           )
           VALUES
-            ($1, 'workflow-schedule', $3, $4, NULL),
-            ($2, 'workflow-event', $3, $5, $5)
+            ($1, 'automation-schedule', $3, $4, NULL),
+            ($2, 'goal', $3, $5, $5)
         `,
         [
           fixture.workflowRunId,
@@ -3788,7 +3800,7 @@ async function validateGoalOnlyRunGroupsCleanup(): Promise<void> {
             "run_group_id",
             "goal_id"
           )
-          VALUES ($1, 'workflow-schedule', $2, $3, NULL)
+          VALUES ($1, 'automation-event', $2, $3, NULL)
         `,
         [
           fixture.drainingWorkflowRunId,
@@ -5855,6 +5867,996 @@ async function validateCanonicalChatEventStorageBackfill(): Promise<void> {
   }
 }
 
+const CHAT_RUN_SERVICE_TIER_PREVIOUS_MIGRATION = "0889_thankful_crusher_hogan";
+const CHAT_RUN_SERVICE_TIER_MIGRATION =
+  "0893_backfill_chat_run_service_tier_annotations";
+
+const CHAT_RUN_SERVICE_TIER_FIXTURE = {
+  composeId: "00000000-0000-4000-8000-000000089001",
+  sessionId: "00000000-0000-4000-8000-000000089002",
+  affectedThreadId: "00000000-0000-4000-8000-000000089003",
+  unaffectedThreadId: "00000000-0000-4000-8000-000000089004",
+  tailThreadId: "00000000-0000-4000-8000-000000089005",
+  fastRunId: "00000000-0000-4000-8000-000000089006",
+  annotatedFastRunId: "00000000-0000-4000-8000-000000089007",
+  standardRunId: "00000000-0000-4000-8000-000000089008",
+  modelLessFastRunId: "00000000-0000-4000-8000-000000089009",
+  tailFastRunId: "00000000-0000-4000-8000-000000089010",
+  fastEventId: "00000000-0000-4000-8000-000000089011",
+  annotatedFastEventId: "00000000-0000-4000-8000-000000089012",
+  standardEventId: "00000000-0000-4000-8000-000000089013",
+  modelLessFastEventId: "00000000-0000-4000-8000-000000089014",
+  tailFastEventId: "00000000-0000-4000-8000-000000089015",
+  tailPrefixEventId: "00000000-0000-4000-8000-000000089016",
+  affectedSnapshotId: "00000000-0000-4000-8000-000000089021",
+  unaffectedSnapshotId: "00000000-0000-4000-8000-000000089022",
+  tailSnapshotId: "00000000-0000-4000-8000-000000089023",
+  concurrentSnapshotId: "00000000-0000-4000-8000-000000089024",
+  staleTailSnapshotId: "00000000-0000-4000-8000-000000089025",
+  orgId: "chat-run-service-tier-org",
+  userId: "chat-run-service-tier-user",
+} as const;
+
+const CHAT_RUN_SERVICE_TIER_MESSAGES = {
+  fast: {
+    version: 1,
+    parts: [
+      { type: "text", text: "fast run" },
+      { type: "model", selectedModel: "gpt-5.6-sol" },
+    ],
+  },
+  expectedFast: {
+    version: 1,
+    parts: [
+      { type: "text", text: "fast run" },
+      {
+        type: "model",
+        selectedModel: "gpt-5.6-sol",
+        serviceTier: "priority",
+      },
+    ],
+  },
+  annotatedFast: {
+    version: 1,
+    parts: [
+      { type: "text", text: "already annotated fast run" },
+      {
+        type: "model",
+        selectedModel: "gpt-5.6-sol",
+        serviceTier: "priority",
+      },
+    ],
+  },
+  standard: {
+    version: 1,
+    parts: [
+      { type: "text", text: "standard run" },
+      { type: "model", selectedModel: "gpt-5.6-sol" },
+    ],
+  },
+  modelLessFast: {
+    version: 1,
+    parts: [{ type: "text", text: "fast run without a model part" }],
+  },
+  tailFast: {
+    version: 1,
+    parts: [
+      { type: "text", text: "fast run in the postgres tail" },
+      { type: "model", selectedModel: "gpt-5.6-sol" },
+    ],
+  },
+  expectedTailFast: {
+    version: 1,
+    parts: [
+      { type: "text", text: "fast run in the postgres tail" },
+      {
+        type: "model",
+        selectedModel: "gpt-5.6-sol",
+        serviceTier: "priority",
+      },
+    ],
+  },
+} as const;
+
+function assertChatRunServiceTierMigrationShape(migrationSql: string): void {
+  assert.ok(migrationSql.startsWith(NON_TRANSACTIONAL_MIGRATION_MARKER));
+  assert.doesNotMatch(migrationSql, /\bLOCK\s+TABLE\b/u);
+  assert.doesNotMatch(
+    migrationSql,
+    /(?:DROP|DISABLE)\s+TRIGGER\s+"chat_events_reject_update"/u,
+  );
+  assert.equal((migrationSql.match(/\bLIMIT 500\b/gu) ?? []).length, 1);
+  assert.equal(
+    (migrationSql.match(/\bFOR UPDATE OF "candidate" SKIP LOCKED\b/gu) ?? [])
+      .length,
+    1,
+  );
+  assert.equal((migrationSql.match(/\bCOMMIT\b/gu) ?? []).length, 1);
+  assert.match(
+    migrationSql,
+    /SET "user_message" =[\s\S]*"payload" = jsonb_set/u,
+  );
+  assert.equal(
+    (migrationSql.match(/"chat_thread_id" = ANY\(updated_thread_ids\)/gu) ?? [])
+      .length,
+    2,
+  );
+  assert.doesNotMatch(migrationSql, /updated_seq_ids/u);
+}
+
+async function seedChatRunServiceTierOwners(client: Client): Promise<void> {
+  const fixture = CHAT_RUN_SERVICE_TIER_FIXTURE;
+  await client.query(
+    `
+      INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
+      VALUES ($1, $2, 'chat-run-service-tier', $3)
+    `,
+    [fixture.composeId, fixture.userId, fixture.orgId],
+  );
+  await client.query(
+    `
+      INSERT INTO "agent_sessions" (
+        "id", "user_id", "org_id", "agent_compose_id"
+      )
+      VALUES ($1, $2, $3, $4)
+    `,
+    [fixture.sessionId, fixture.userId, fixture.orgId, fixture.composeId],
+  );
+  await client.query(
+    `
+      INSERT INTO "chat_threads" (
+        "id",
+        "user_id",
+        "agent_compose_id",
+        "title",
+        "last_chat_event_seq_id"
+      )
+      VALUES
+        ($1, $4, $5, 'affected snapshot', 2),
+        ($2, $4, $5, 'unaffected snapshot', 2),
+        ($3, $4, $5, 'postgres tail snapshot', 2)
+    `,
+    [
+      fixture.affectedThreadId,
+      fixture.unaffectedThreadId,
+      fixture.tailThreadId,
+      fixture.userId,
+      fixture.composeId,
+    ],
+  );
+}
+
+async function seedChatRunServiceTierRuns(client: Client): Promise<void> {
+  const fixture = CHAT_RUN_SERVICE_TIER_FIXTURE;
+  await client.query(
+    `
+      INSERT INTO "agent_runs" (
+        "id", "user_id", "session_id", "status", "prompt", "org_id"
+      )
+      VALUES
+        ($1, $6, $7, 'running', 'fast run', $8),
+        ($2, $6, $7, 'running', 'annotated fast run', $8),
+        ($3, $6, $7, 'running', 'standard run', $8),
+        ($4, $6, $7, 'running', 'model-less fast run', $8),
+        ($5, $6, $7, 'running', 'tail fast run', $8)
+    `,
+    [
+      fixture.fastRunId,
+      fixture.annotatedFastRunId,
+      fixture.standardRunId,
+      fixture.modelLessFastRunId,
+      fixture.tailFastRunId,
+      fixture.userId,
+      fixture.sessionId,
+      fixture.orgId,
+    ],
+  );
+  await client.query(
+    `
+      INSERT INTO "zero_runs" (
+        "id", "trigger_source", "selected_model", "codex_service_tier",
+        "chat_thread_id"
+      )
+      VALUES
+        ($1, 'web', 'gpt-5.6-sol', 'fast', $6),
+        ($2, 'web', 'gpt-5.6-sol', 'fast', $6),
+        ($3, 'web', 'gpt-5.6-sol', NULL, $7),
+        ($4, 'web', 'gpt-5.6-sol', 'fast', $7),
+        ($5, 'web', 'gpt-5.6-sol', 'fast', $8)
+    `,
+    [
+      fixture.fastRunId,
+      fixture.annotatedFastRunId,
+      fixture.standardRunId,
+      fixture.modelLessFastRunId,
+      fixture.tailFastRunId,
+      fixture.affectedThreadId,
+      fixture.unaffectedThreadId,
+      fixture.tailThreadId,
+    ],
+  );
+}
+
+async function seedChatRunServiceTierEvents(client: Client): Promise<void> {
+  const fixture = CHAT_RUN_SERVICE_TIER_FIXTURE;
+  const messages = CHAT_RUN_SERVICE_TIER_MESSAGES;
+  await client.query(
+    `
+      INSERT INTO "chat_events" (
+        "id", "chat_thread_id", "run_id", "event_type", "context_type",
+        "payload", "user_message", "seq_id"
+      )
+      VALUES
+        ($1, $7, $10, 'input.prompt', 'web',
+          jsonb_build_object('userMessage', $15::jsonb), $15::jsonb, 1),
+        ($2, $7, $11, 'input.prompt', 'web',
+          jsonb_build_object('userMessage', $16::jsonb), $16::jsonb, 2),
+        ($3, $8, $12, 'input.prompt', 'web',
+          jsonb_build_object('userMessage', $17::jsonb), $17::jsonb, 1),
+        ($4, $8, $13, 'input.prompt', 'web',
+          jsonb_build_object('userMessage', $18::jsonb), $18::jsonb, 2),
+        ($5, $9, NULL, 'output.message', NULL, NULL, NULL, 1),
+        ($6, $9, $14, 'input.prompt', 'web',
+          jsonb_build_object('userMessage', $19::jsonb), $19::jsonb, 2)
+    `,
+    [
+      fixture.fastEventId,
+      fixture.annotatedFastEventId,
+      fixture.standardEventId,
+      fixture.modelLessFastEventId,
+      fixture.tailPrefixEventId,
+      fixture.tailFastEventId,
+      fixture.affectedThreadId,
+      fixture.unaffectedThreadId,
+      fixture.tailThreadId,
+      fixture.fastRunId,
+      fixture.annotatedFastRunId,
+      fixture.standardRunId,
+      fixture.modelLessFastRunId,
+      fixture.tailFastRunId,
+      JSON.stringify(messages.fast),
+      JSON.stringify(messages.annotatedFast),
+      JSON.stringify(messages.standard),
+      JSON.stringify(messages.modelLessFast),
+      JSON.stringify(messages.tailFast),
+    ],
+  );
+}
+
+async function seedChatRunServiceTierSnapshots(client: Client): Promise<void> {
+  const fixture = CHAT_RUN_SERVICE_TIER_FIXTURE;
+  await client.query(
+    `
+      INSERT INTO "chat_event_snapshots" (
+        "id", "chat_thread_id", "last_seq_id", "archive_schema_version",
+        "object_key", "is_head"
+      )
+      VALUES
+        ($1, $4, 2, 3, 'migration/affected.ndjson.gz', true),
+        ($2, $5, 2, 3, 'migration/unaffected.ndjson.gz', true),
+        ($3, $6, 1, 3, 'migration/tail.ndjson.gz', true)
+    `,
+    [
+      fixture.affectedSnapshotId,
+      fixture.unaffectedSnapshotId,
+      fixture.tailSnapshotId,
+      fixture.affectedThreadId,
+      fixture.unaffectedThreadId,
+      fixture.tailThreadId,
+    ],
+  );
+}
+
+async function seedChatRunServiceTierFixture(client: Client): Promise<void> {
+  await seedChatRunServiceTierOwners(client);
+  await seedChatRunServiceTierRuns(client);
+  await seedChatRunServiceTierEvents(client);
+  await seedChatRunServiceTierSnapshots(client);
+}
+
+async function waitForPostgresBlock(
+  observer: Client,
+  blockedPid: number,
+  blockerPid: number,
+): Promise<void> {
+  for (let attempt = 0; attempt < 500; attempt += 1) {
+    const result = await observer.query<{ blocked: boolean }>(
+      `
+        SELECT $2::integer = ANY(pg_blocking_pids($1::integer)) AS "blocked"
+      `,
+      [blockedPid, blockerPid],
+    );
+    if (result.rows[0]?.blocked) {
+      return;
+    }
+    await observer.query(`SELECT pg_sleep(0.01)`);
+  }
+  assert.fail("migration did not wait for the concurrent snapshot publisher");
+}
+
+async function databaseBackendPid(client: Client): Promise<number> {
+  const result = await client.query<{ pid: number }>(
+    `SELECT pg_backend_pid() AS "pid"`,
+  );
+  const pid = result.rows[0]?.pid;
+  assert.ok(pid);
+  return pid;
+}
+
+async function applyBackfillWhileSnapshotPublisherWins(
+  client: Client,
+  testDbUrl: string,
+): Promise<void> {
+  const fixture = CHAT_RUN_SERVICE_TIER_FIXTURE;
+  const messages = CHAT_RUN_SERVICE_TIER_MESSAGES;
+  const publisher = new Client({ connectionString: testDbUrl });
+  await publisher.connect();
+  let transactionOpen = false;
+  try {
+    // The production publisher reads event bytes before opening its short
+    // expected-parent swap transaction. Capture that stale candidate from a
+    // head which does not cover the event that 0893 will update.
+    const staleTailCandidate = await publisher.query<{
+      archiveSchemaVersion: number;
+      canonicalUserMessage: unknown;
+      lastSeqId: string;
+      objectKey: string;
+    }>(
+      `
+        SELECT
+          "snapshot"."archive_schema_version" AS "archiveSchemaVersion",
+          "event"."payload" -> 'userMessage' AS "canonicalUserMessage",
+          "snapshot"."last_seq_id" AS "lastSeqId",
+          "snapshot"."object_key" AS "objectKey"
+        FROM "chat_event_snapshots" AS "snapshot"
+        INNER JOIN "chat_events" AS "event"
+          ON "event"."chat_thread_id" = "snapshot"."chat_thread_id"
+        WHERE "snapshot"."id" = $1
+          AND "snapshot"."is_head"
+          AND "event"."id" = $2
+      `,
+      [fixture.tailSnapshotId, fixture.tailFastEventId],
+    );
+    assert.deepEqual(staleTailCandidate.rows, [
+      {
+        archiveSchemaVersion: 3,
+        canonicalUserMessage: messages.tailFast,
+        lastSeqId: "1",
+        objectKey: "migration/tail.ndjson.gz",
+      },
+    ]);
+
+    const migrationPid = await databaseBackendPid(client);
+    const publisherPid = await databaseBackendPid(publisher);
+    await publisher.query("BEGIN");
+    transactionOpen = true;
+    const demoted = await publisher.query(
+      `
+        UPDATE "chat_event_snapshots"
+        SET "is_head" = false
+        WHERE "id" = $1 AND "is_head"
+        RETURNING "id"
+      `,
+      [fixture.affectedSnapshotId],
+    );
+    assert.equal(demoted.rowCount, 1);
+    await publisher.query(
+      `
+        INSERT INTO "chat_event_snapshots" (
+          "id", "chat_thread_id", "parent_snapshot_id", "last_seq_id",
+          "archive_schema_version", "object_key", "is_head"
+        )
+        VALUES ($1, $2, $3, 2, 3, 'migration/concurrent.ndjson.gz', true)
+      `,
+      [
+        fixture.concurrentSnapshotId,
+        fixture.affectedThreadId,
+        fixture.affectedSnapshotId,
+      ],
+    );
+
+    const migrationPromise = applyMigrationsUpToTag(
+      client,
+      CHAT_RUN_SERVICE_TIER_MIGRATION,
+    );
+    try {
+      await waitForPostgresBlock(publisher, migrationPid, publisherPid);
+      await publisher.query("COMMIT");
+      transactionOpen = false;
+      await migrationPromise;
+
+      // Complete the stale publisher's short CAS after the migration commits.
+      // 0893 must have demoted its shorter expected parent, otherwise this
+      // would publish a current v4 head containing the old event bytes above.
+      await publisher.query("BEGIN");
+      transactionOpen = true;
+      const staleTailParent = staleTailCandidate.rows[0];
+      assert.ok(staleTailParent);
+      const staleTailDemoted = await publisher.query(
+        `
+          UPDATE "chat_event_snapshots"
+          SET "is_head" = false
+          WHERE "id" = $1
+            AND "chat_thread_id" = $2
+            AND "is_head"
+            AND "archive_schema_version" = $3
+            AND "last_seq_id" = $4
+            AND "object_key" = $5
+          RETURNING "id"
+        `,
+        [
+          fixture.tailSnapshotId,
+          fixture.tailThreadId,
+          staleTailParent.archiveSchemaVersion,
+          staleTailParent.lastSeqId,
+          staleTailParent.objectKey,
+        ],
+      );
+      if (staleTailDemoted.rowCount === 1) {
+        await publisher.query(
+          `
+            INSERT INTO "chat_event_snapshots" (
+              "id", "chat_thread_id", "parent_snapshot_id", "last_seq_id",
+              "archive_schema_version", "object_key", "is_head"
+            )
+            VALUES ($1, $2, $3, 2, 4, 'migration/stale-tail.ndjson.gz', true)
+          `,
+          [
+            fixture.staleTailSnapshotId,
+            fixture.tailThreadId,
+            fixture.tailSnapshotId,
+          ],
+        );
+      }
+      await publisher.query("COMMIT");
+      transactionOpen = false;
+      assert.equal(staleTailDemoted.rowCount, 0);
+    } catch (error) {
+      if (transactionOpen) {
+        await publisher.query("ROLLBACK");
+        transactionOpen = false;
+      }
+      await migrationPromise.catch(() => {
+        return undefined;
+      });
+      throw error;
+    }
+  } finally {
+    if (transactionOpen) {
+      await publisher.query("ROLLBACK");
+    }
+    await publisher.end();
+  }
+}
+
+async function chatEventsRejectFunctionDefinition(
+  client: Client,
+): Promise<string> {
+  const result = await client.query<{ definition: string }>(`
+    SELECT pg_get_functiondef(
+      'public.reject_chat_event_source_update()'::regprocedure
+    ) AS "definition"
+  `);
+  const definition = result.rows[0]?.definition;
+  assert.ok(definition);
+  return definition;
+}
+
+async function assertChatRunServiceTierMessages(client: Client): Promise<void> {
+  const fixture = CHAT_RUN_SERVICE_TIER_FIXTURE;
+  const messages = CHAT_RUN_SERVICE_TIER_MESSAGES;
+  const result = await client.query<{
+    id: string;
+    canonicalUserMessage: unknown;
+    legacyUserMessage: unknown;
+  }>(
+    `
+      SELECT
+        "id",
+        "payload" -> 'userMessage' AS "canonicalUserMessage",
+        "user_message" AS "legacyUserMessage"
+      FROM "chat_events"
+      WHERE "id" IN ($1, $2, $3, $4, $5)
+      ORDER BY "id"
+    `,
+    [
+      fixture.fastEventId,
+      fixture.annotatedFastEventId,
+      fixture.standardEventId,
+      fixture.modelLessFastEventId,
+      fixture.tailFastEventId,
+    ],
+  );
+  assert.deepEqual(result.rows, [
+    {
+      id: fixture.fastEventId,
+      canonicalUserMessage: messages.expectedFast,
+      legacyUserMessage: messages.expectedFast,
+    },
+    {
+      id: fixture.annotatedFastEventId,
+      canonicalUserMessage: messages.annotatedFast,
+      legacyUserMessage: messages.annotatedFast,
+    },
+    {
+      id: fixture.standardEventId,
+      canonicalUserMessage: messages.standard,
+      legacyUserMessage: messages.standard,
+    },
+    {
+      id: fixture.modelLessFastEventId,
+      canonicalUserMessage: messages.modelLessFast,
+      legacyUserMessage: messages.modelLessFast,
+    },
+    {
+      id: fixture.tailFastEventId,
+      canonicalUserMessage: messages.expectedTailFast,
+      legacyUserMessage: messages.expectedTailFast,
+    },
+  ]);
+}
+
+async function assertChatRunServiceTierSnapshotHeads(
+  client: Client,
+): Promise<void> {
+  const fixture = CHAT_RUN_SERVICE_TIER_FIXTURE;
+  const result = await client.query<{ id: string; isHead: boolean }>(
+    `
+      SELECT "id", "is_head" AS "isHead"
+      FROM "chat_event_snapshots"
+      WHERE "id" IN ($1, $2, $3, $4, $5)
+      ORDER BY "id"
+    `,
+    [
+      fixture.affectedSnapshotId,
+      fixture.unaffectedSnapshotId,
+      fixture.tailSnapshotId,
+      fixture.concurrentSnapshotId,
+      fixture.staleTailSnapshotId,
+    ],
+  );
+  assert.deepEqual(result.rows, [
+    { id: fixture.affectedSnapshotId, isHead: false },
+    { id: fixture.unaffectedSnapshotId, isHead: true },
+    { id: fixture.tailSnapshotId, isHead: false },
+    { id: fixture.concurrentSnapshotId, isHead: false },
+  ]);
+}
+
+async function assertChatRunServiceTierMigrationCleanup(
+  client: Client,
+  strictRejectFunctionDefinition: string,
+): Promise<void> {
+  const fixture = CHAT_RUN_SERVICE_TIER_FIXTURE;
+  const artifacts = await client.query<{
+    annotationFunctionPresent: boolean;
+    backfillProcedurePresent: boolean;
+  }>(`
+    SELECT
+      to_regprocedure(
+        'public.annotate_chat_event_priority_0893(jsonb)'
+      ) IS NOT NULL AS "annotationFunctionPresent",
+      to_regprocedure(
+        'public.backfill_chat_run_service_tier_annotations_0893()'
+      ) IS NOT NULL AS "backfillProcedurePresent"
+  `);
+  assert.deepEqual(artifacts.rows, [
+    { annotationFunctionPresent: false, backfillProcedurePresent: false },
+  ]);
+  assert.equal(
+    await chatEventsRejectFunctionDefinition(client),
+    strictRejectFunctionDefinition,
+  );
+  await assertChatEventsAppendOnlyProtection(client, fixture.fastEventId);
+}
+
+async function rerunChatRunServiceTierMigration(
+  client: Client,
+  migrationSql: string,
+): Promise<void> {
+  const fixture = CHAT_RUN_SERVICE_TIER_FIXTURE;
+  const statements = migrationSql
+    .split("--> statement-breakpoint")
+    .map((statement) => {
+      return statement.trim();
+    })
+    .filter((statement) => {
+      return statement.length > 0;
+    });
+  for (const statement of statements) {
+    await client.query(statement);
+  }
+  const remaining = await client.query<{ count: string }>(`
+    SELECT count(*)::text AS "count"
+    FROM "chat_events" AS "event"
+    INNER JOIN "zero_runs" AS "run" ON "run"."id" = "event"."run_id"
+    WHERE "run"."codex_service_tier" = 'fast'
+      AND (
+        "event"."payload" -> 'userMessage'
+          IS DISTINCT FROM "event"."user_message"
+        OR (
+          jsonb_typeof(
+            "event"."payload" -> 'userMessage' -> 'parts'
+          ) = 'array'
+          AND EXISTS (
+            SELECT 1
+            FROM jsonb_array_elements(
+              "event"."payload" -> 'userMessage' -> 'parts'
+            ) AS "part"
+            WHERE "part" ->> 'type' = 'model'
+              AND "part" ->> 'serviceTier' IS DISTINCT FROM 'priority'
+          )
+        )
+      )
+  `);
+  assert.deepEqual(remaining.rows, [{ count: "0" }]);
+  await assertChatEventsAppendOnlyProtection(client, fixture.fastEventId);
+}
+
+async function validateChatRunServiceTierAnnotationBackfill(): Promise<void> {
+  console.log("=== Validate chat-run service tier annotation backfill ===\n");
+  const testDb = "migration_chat_run_service_tier_annotation_test";
+  const testDbUrl = createTestDbUrl(testDb);
+  const migrationSql = await fs.readFile(
+    path.join(
+      MIGRATIONS_DIR,
+      "0893_backfill_chat_run_service_tier_annotations.sql",
+    ),
+    "utf8",
+  );
+  assertChatRunServiceTierMigrationShape(migrationSql);
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpToTag(
+      testDbUrl,
+      CHAT_RUN_SERVICE_TIER_PREVIOUS_MIGRATION,
+    );
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+    try {
+      await seedChatRunServiceTierFixture(client);
+
+      const strictRejectFunctionDefinition =
+        await chatEventsRejectFunctionDefinition(client);
+
+      await applyBackfillWhileSnapshotPublisherWins(client, testDbUrl);
+
+      await assertChatRunServiceTierMessages(client);
+
+      await assertChatRunServiceTierSnapshotHeads(client);
+
+      await assertChatRunServiceTierMigrationCleanup(
+        client,
+        strictRejectFunctionDefinition,
+      );
+      await rerunChatRunServiceTierMigration(client, migrationSql);
+
+      console.log("   ✅ proven fast runs receive priority annotations");
+      console.log("   ✅ standard and model-less messages remain unchanged");
+      console.log(
+        "   ✅ a concurrently published covering snapshot head is demoted",
+      );
+      console.log(
+        "   ✅ a stale publisher cannot extend a non-covering snapshot head",
+      );
+      console.log(
+        "   ✅ backfill is batched, retryable, and restores append-only protection\n",
+      );
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+}
+
+const USAGE_PACK_REFUND_SCHEMA_MIGRATION = "0898_usage_pack_credit_refunds";
+const USAGE_PACK_INVITE_BACKFILL_MIGRATION =
+  "0899_backfill_member_invite_usage_pack_required";
+const USAGE_PACK_CHANGE_INDEX_MIGRATION =
+  "0900_replace_scheduled_usage_pack_change";
+
+async function validateUsagePackInviteLifecycleMigrations(): Promise<void> {
+  console.log("=== Validate usage-pack invite lifecycle migrations ===\n");
+  const testDb = "migration_usage_pack_invite_lifecycle_test";
+  const testDbUrl = createTestDbUrl(testDb);
+  await createDatabase(testDb);
+
+  try {
+    await runMigrationsUpToTag(testDbUrl, USAGE_PACK_REFUND_SCHEMA_MIGRATION);
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+
+    try {
+      await client.query(`
+        INSERT INTO "org_plan_entitlements" (
+          "org_id",
+          "plan_key",
+          "plan_rank",
+          "source",
+          "stripe_subscription_id"
+        )
+        VALUES
+          ('org_usage_pack_active_pro', 'pro', 1, 'stripe', 'sub_active_pro'),
+          ('org_usage_pack_active_team', 'team', 2, 'stripe', 'sub_active_team'),
+          ('org_usage_pack_free', 'limited-free-1', 0, 'stripe', 'sub_free'),
+          ('org_usage_pack_canceled', 'pro', 1, 'stripe', 'sub_canceled'),
+          ('org_usage_pack_expired', 'team', 2, 'stripe', 'sub_expired'),
+          ('org_usage_pack_invalid', 'pro', 1, 'stripe', 'sub_invalid'),
+          ('org_usage_pack_mismatch', 'pro', 1, 'stripe', 'sub_entitlement')
+      `);
+      await client.query(`
+        INSERT INTO "usage_pack_subscriptions" (
+          "id",
+          "org_id",
+          "tier",
+          "stripe_plan_price_id",
+          "stripe_customer_id",
+          "stripe_subscription_id",
+          "subscription_status"
+        )
+        VALUES
+          (
+            '00000000-0000-4000-8000-000000090001',
+            'org_usage_pack_active_pro',
+            'pro',
+            'price_plan_pro',
+            'cus_active_pro',
+            'sub_active_pro',
+            'active'
+          ),
+          (
+            '00000000-0000-4000-8000-000000090002',
+            'org_usage_pack_active_team',
+            'team',
+            'price_plan_team',
+            'cus_active_team',
+            'sub_active_team',
+            'trialing'
+          ),
+          (
+            '00000000-0000-4000-8000-000000090003',
+            'org_usage_pack_free',
+            'pro',
+            'price_plan_pro',
+            'cus_free',
+            'sub_free',
+            'active'
+          ),
+          (
+            '00000000-0000-4000-8000-000000090004',
+            'org_usage_pack_canceled',
+            'pro',
+            'price_plan_pro',
+            'cus_canceled',
+            'sub_canceled',
+            'canceled'
+          ),
+          (
+            '00000000-0000-4000-8000-000000090005',
+            'org_usage_pack_expired',
+            'team',
+            'price_plan_team',
+            'cus_expired',
+            'sub_expired',
+            'incomplete_expired'
+          ),
+          (
+            '00000000-0000-4000-8000-000000090006',
+            'org_usage_pack_invalid',
+            'pro',
+            'price_plan_pro',
+            'cus_invalid',
+            'sub_invalid',
+            'invalid'
+          ),
+          (
+            '00000000-0000-4000-8000-000000090007',
+            'org_usage_pack_mismatch',
+            'pro',
+            'price_plan_pro',
+            'cus_mismatch',
+            'sub_usage_pack',
+            'active'
+          )
+      `);
+
+      await applyMigrationsUpToTag(
+        client,
+        USAGE_PACK_INVITE_BACKFILL_MIGRATION,
+      );
+      const entitlements = await client.query<{
+        memberInviteUsagePackRequired: boolean;
+        orgId: string;
+      }>(`
+        SELECT
+          "org_id" AS "orgId",
+          "member_invite_usage_pack_required" AS "memberInviteUsagePackRequired"
+        FROM "org_plan_entitlements"
+        WHERE "org_id" LIKE 'org_usage_pack_%'
+        ORDER BY "org_id"
+      `);
+      assert.deepEqual(entitlements.rows, [
+        {
+          memberInviteUsagePackRequired: true,
+          orgId: "org_usage_pack_active_pro",
+        },
+        {
+          memberInviteUsagePackRequired: true,
+          orgId: "org_usage_pack_active_team",
+        },
+        {
+          memberInviteUsagePackRequired: false,
+          orgId: "org_usage_pack_canceled",
+        },
+        {
+          memberInviteUsagePackRequired: false,
+          orgId: "org_usage_pack_expired",
+        },
+        {
+          memberInviteUsagePackRequired: false,
+          orgId: "org_usage_pack_free",
+        },
+        {
+          memberInviteUsagePackRequired: false,
+          orgId: "org_usage_pack_invalid",
+        },
+        {
+          memberInviteUsagePackRequired: false,
+          orgId: "org_usage_pack_mismatch",
+        },
+      ]);
+
+      await client.query(`
+        INSERT INTO "usage_pack_subscription_changes" (
+          "id",
+          "usage_pack_subscription_id",
+          "org_id",
+          "source_tier",
+          "target_tier",
+          "status",
+          "proration_timestamp",
+          "immediate_amount_cents",
+          "next_recurring_amount_cents",
+          "currency",
+          "preview_expires_at",
+          "effective_at"
+        )
+        VALUES
+          (
+            '00000000-0000-4000-8000-000000090011',
+            '00000000-0000-4000-8000-000000090001',
+            'org_usage_pack_active_pro',
+            'pro',
+            'pro',
+            'completed',
+            1,
+            0,
+            0,
+            'usd',
+            '2035-01-01',
+            '2035-02-01'
+          ),
+          (
+            '00000000-0000-4000-8000-000000090012',
+            '00000000-0000-4000-8000-000000090001',
+            'org_usage_pack_active_pro',
+            'pro',
+            'pro',
+            'completed',
+            2,
+            0,
+            0,
+            'usd',
+            '2035-01-01',
+            '2035-02-01'
+          )
+      `);
+      await applyMigrationsUpToTag(client, USAGE_PACK_CHANGE_INDEX_MIGRATION);
+
+      await client.query(`
+        INSERT INTO "usage_pack_allocation_changes" (
+          "id",
+          "usage_pack_subscription_id",
+          "subscription_change_id",
+          "org_id",
+          "user_id",
+          "kind",
+          "status",
+          "target_usage_pack_usd",
+          "target_stripe_price_id"
+        )
+        VALUES
+          (
+            '00000000-0000-4000-8000-000000090021',
+            '00000000-0000-4000-8000-000000090001',
+            '00000000-0000-4000-8000-000000090011',
+            'org_usage_pack_active_pro',
+            'user_grouped_preview',
+            'addition',
+            'previewed',
+            20,
+            'price_usage_pack_20'
+          ),
+          (
+            '00000000-0000-4000-8000-000000090022',
+            '00000000-0000-4000-8000-000000090001',
+            '00000000-0000-4000-8000-000000090012',
+            'org_usage_pack_active_pro',
+            'user_grouped_preview',
+            'addition',
+            'previewed',
+            50,
+            'price_usage_pack_50'
+          ),
+          (
+            '00000000-0000-4000-8000-000000090023',
+            '00000000-0000-4000-8000-000000090001',
+            NULL,
+            'org_usage_pack_active_pro',
+            'user_grouped_preview',
+            'addition',
+            'previewed',
+            100,
+            'price_usage_pack_100'
+          ),
+          (
+            '00000000-0000-4000-8000-000000090024',
+            '00000000-0000-4000-8000-000000090001',
+            '00000000-0000-4000-8000-000000090011',
+            'org_usage_pack_active_pro',
+            'user_scheduled',
+            'addition',
+            'scheduled',
+            20,
+            'price_usage_pack_20'
+          )
+      `);
+      await expectDatabaseError(client, {
+        code: "23505",
+        messageIncludes: "uq_usage_pack_changes_current_user",
+        query: `
+          INSERT INTO "usage_pack_allocation_changes" (
+            "usage_pack_subscription_id",
+            "subscription_change_id",
+            "org_id",
+            "user_id",
+            "kind",
+            "status",
+            "target_usage_pack_usd",
+            "target_stripe_price_id"
+          )
+          VALUES (
+            '00000000-0000-4000-8000-000000090001',
+            '00000000-0000-4000-8000-000000090012',
+            'org_usage_pack_active_pro',
+            'user_scheduled',
+            'addition',
+            'scheduled',
+            50,
+            'price_usage_pack_50'
+          )
+        `,
+      });
+
+      console.log(
+        "   ✅ Active Pro and Team usage-pack subscriptions require invite packages",
+      );
+      console.log(
+        "   ✅ Terminal, free, and mismatched subscriptions remain unchanged",
+      );
+      console.log(
+        "   ✅ Grouped previews coexist while scheduled replacements remain unique\n",
+      );
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+}
+
 async function main(): Promise<void> {
   console.log("🧪 Testing Migration Consistency (Schema Comparison)\n");
 
@@ -5882,6 +6884,8 @@ async function main(): Promise<void> {
     await validateChatEventContractionPreparation();
     await validateChatEventContractionFinalization();
     await validateCanonicalChatEventStorageBackfill();
+    await validateChatRunServiceTierAnnotationBackfill();
+    await validateUsagePackInviteLifecycleMigrations();
 
     // Step 1.5: Validate latest snapshot accuracy (NEW)
     await validateLatestSnapshotAccuracy();

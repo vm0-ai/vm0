@@ -1,6 +1,9 @@
+import { randomUUID } from "node:crypto";
+
 import { initContract } from "@vm0/api-contracts/contracts/trpc-contract";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { usagePackCreditGrants } from "@vm0/db/schema/usage-pack-credit-grant";
+import { usagePackCreditRefunds } from "@vm0/db/schema/usage-pack-credit-refund";
 import {
   usagePackAllocationChanges,
   usagePackAllocations,
@@ -9,13 +12,16 @@ import {
   usagePackSubscriptions,
 } from "@vm0/db/schema/usage-pack-subscription";
 import { command } from "ccstate";
-import { and, asc, count, eq } from "drizzle-orm";
+import { and, asc, count, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { request$ } from "../context/hono";
 import { bodyResultOf } from "../context/request";
 import { type Db, writeDb$ } from "../external/db";
 import type { RouteEntry } from "../route-entry";
+import { loadOrgPlanCapabilities } from "../services/org-plan-entitlement-read.service";
+import { upsertOrgPlanEntitlement } from "../services/org-plan-entitlements.service";
+import { prepareUsagePackMemberCreditRefunds } from "../services/usage-pack-credit-refund.service";
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
@@ -36,6 +42,9 @@ const seedAllocationSchema = z
     invitationId: z.string().min(1).nullable(),
     usagePackUsd: usagePackUsdSchema,
     stripePriceId: z.string().min(1),
+    status: z
+      .enum(["pending_payment", "active", "pending_invitation", "inactive"])
+      .optional(),
   })
   .refine((allocation) => {
     return (allocation.userId === null) !== (allocation.invitationId === null);
@@ -61,6 +70,24 @@ const actionBodySchema = z.discriminatedUnion("action", [
     orgId: z.string().min(1),
     usagePackSubscriptionId: z.string().uuid(),
     updatedAt: z.iso.datetime(),
+  }),
+  z.object({
+    action: z.literal("set-grant-remaining"),
+    orgId: z.string().min(1),
+    userId: z.string().min(1),
+    grantType: z.enum(["purchased", "bonus"]),
+    remainingAmount: z.number().int().nonnegative(),
+  }),
+  z.object({
+    action: z.literal("delete-refund-source"),
+    orgId: z.string().min(1),
+    userId: z.string().min(1),
+  }),
+  z.object({
+    action: z.literal("validate-pre-migration-compatibility"),
+  }),
+  z.object({
+    action: z.literal("prepare-pre-migration-purchased-refund"),
   }),
   z.object({
     action: z.literal("cleanup"),
@@ -101,7 +128,7 @@ const readStateSchema = z.object({
     z.object({
       id: z.string().uuid(),
       userId: z.string(),
-      kind: z.enum(["upgrade", "downgrade", "removal"]),
+      kind: z.enum(["addition", "upgrade", "downgrade", "removal"]),
       status: z.enum([
         "previewed",
         "applying",
@@ -111,7 +138,7 @@ const readStateSchema = z.object({
         "completed",
         "failed",
       ]),
-      sourceUsagePackUsd: usagePackUsdSchema,
+      sourceUsagePackUsd: usagePackUsdSchema.nullable(),
       targetUsagePackUsd: usagePackUsdSchema.nullable(),
       immediateAmountCents: z.number().int().nonnegative().nullable(),
       nextRecurringAmountCents: z.number().int().nonnegative().nullable(),
@@ -146,6 +173,26 @@ const readStateSchema = z.object({
       expiresAt: z.iso.datetime(),
     }),
   ),
+  refunds: z.array(
+    z.object({
+      creditGrantId: z.string().uuid(),
+      userId: z.string(),
+      sourceType: z.enum(["invoice", "payment_intent"]),
+      sourceAmountCents: z.number().int().nonnegative(),
+      status: z.enum([
+        "available",
+        "pending",
+        "processing",
+        "succeeded",
+        "failed",
+      ]),
+      refundCredits: z.number().int().positive().nullable(),
+      requestedAmountCents: z.number().int().positive().nullable(),
+      refundedAmountCents: z.number().int().nonnegative().nullable(),
+      stripeCreditNoteId: z.string().nullable(),
+      stripeRefundId: z.string().nullable(),
+    }),
+  ),
   fulfillmentInvoiceIds: z.array(z.string()),
   remainingCredits: z.array(
     z.object({
@@ -171,6 +218,11 @@ const actionResponseSchema = z.discriminatedUnion("action", [
     usagePackSubscriptionId: z.string().uuid(),
   }),
   z.object({ action: z.literal("read"), state: readStateSchema }),
+  z.object({
+    action: z.literal("pre-migration-compatibility"),
+    memberInviteUsagePackRequired: z.boolean(),
+    bonusPreparedRefunds: z.number().int().nonnegative(),
+  }),
   z.object({ action: z.literal("ok") }),
 ]);
 
@@ -186,6 +238,7 @@ export const testUsagePackSubscriptionStateContract = c.router({
         error: z.object({ code: z.string(), message: z.string() }),
       }),
       404: z.string(),
+      500: z.object({ error: z.string() }),
     },
   },
 });
@@ -331,6 +384,28 @@ function remainingCreditsByUser(
   });
 }
 
+async function readUsagePackCreditRefunds(db: Db, orgId: string) {
+  const refunds = await db
+    .select()
+    .from(usagePackCreditRefunds)
+    .where(eq(usagePackCreditRefunds.orgId, orgId))
+    .orderBy(asc(usagePackCreditRefunds.createdAt));
+  return refunds.map((refund) => {
+    return {
+      creditGrantId: refund.creditGrantId,
+      userId: refund.userId,
+      sourceType: refund.sourceType,
+      sourceAmountCents: refund.sourceAmountCents,
+      status: refund.status,
+      refundCredits: refund.refundCredits,
+      requestedAmountCents: refund.requestedAmountCents,
+      refundedAmountCents: refund.refundedAmountCents,
+      stripeCreditNoteId: refund.stripeCreditNoteId,
+      stripeRefundId: refund.stripeRefundId,
+    };
+  });
+}
+
 async function readUsagePackState(
   db: Db,
   orgId: string,
@@ -367,6 +442,7 @@ async function readUsagePackState(
       asc(usagePackCreditGrants.expiresAt),
       asc(usagePackCreditGrants.grantType),
     );
+  const refunds = await readUsagePackCreditRefunds(db, orgId);
   const [org] = await db
     .select()
     .from(orgMetadata)
@@ -405,7 +481,7 @@ async function readUsagePackState(
         userId: change.userId,
         kind: change.kind,
         status: change.status,
-        sourceUsagePackUsd: change.sourceUsagePackUsd as UsagePackUsd,
+        sourceUsagePackUsd: change.sourceUsagePackUsd as UsagePackUsd | null,
         targetUsagePackUsd: change.targetUsagePackUsd as UsagePackUsd | null,
         immediateAmountCents: change.immediateAmountCents,
         nextRecurringAmountCents: change.nextRecurringAmountCents,
@@ -440,6 +516,7 @@ async function readUsagePackState(
         expiresAt: grant.expiresAt.toISOString(),
       };
     }),
+    refunds,
     fulfillmentInvoiceIds: fulfillments.map((row) => {
       return row.invoiceId;
     }),
@@ -483,6 +560,94 @@ async function cleanupUsagePackState(
       await tx.delete(orgMetadata).where(eq(orgMetadata.orgId, body.orgId));
     }
     signal.throwIfAborted();
+  });
+}
+
+async function validatePreMigrationCompatibility(
+  db: Db,
+  signal: AbortSignal,
+): Promise<{
+  readonly memberInviteUsagePackRequired: boolean;
+  readonly bonusPreparedRefunds: number;
+}> {
+  const memberInviteUsagePackRequired = await db.transaction(async (tx) => {
+    await tx.execute(sql`SET LOCAL search_path = pg_temp, public`);
+    await tx.execute(sql`
+      CREATE TEMP TABLE org_plan_entitlements
+      (LIKE public.org_plan_entitlements INCLUDING ALL)
+      ON COMMIT DROP
+    `);
+    await tx.execute(
+      sql`ALTER TABLE org_plan_entitlements DROP COLUMN member_invite_usage_pack_required`,
+    );
+    const orgId = `org_pre_migration_${randomUUID()}`;
+    await upsertOrgPlanEntitlement(tx, {
+      orgId,
+      tier: "pro",
+      source: "org_metadata_bootstrap",
+      memberInviteUsagePackRequired: true,
+    });
+    await upsertOrgPlanEntitlement(tx, {
+      orgId,
+      tier: "team",
+      source: "org_metadata_bootstrap",
+      memberInviteUsagePackRequired: true,
+    });
+    const capabilities = await loadOrgPlanCapabilities(tx, orgId);
+    if (!capabilities) {
+      throw new Error("Pre-migration entitlement fixture was not written");
+    }
+    return capabilities.memberInviteUsagePackRequired;
+  });
+
+  const refundState = await db.transaction(async (tx) => {
+    await tx.execute(sql`SET LOCAL search_path = pg_temp`);
+    await tx.execute(sql`
+      CREATE TEMP TABLE usage_pack_credit_grants
+      (LIKE public.usage_pack_credit_grants INCLUDING ALL)
+      ON COMMIT DROP
+    `);
+    const orgId = `org_pre_migration_${randomUUID()}`;
+    const bonusUserId = `user_bonus_${randomUUID()}`;
+    await tx.insert(usagePackCreditGrants).values({
+      orgId,
+      userId: bonusUserId,
+      grantType: "bonus",
+      idempotencyKey: `pre-migration:bonus:${randomUUID()}`,
+      originalAmount: 500,
+      remainingAmount: 500,
+      expiresAt: new Date("2999-01-01T00:00:00.000Z"),
+    });
+    const bonusPreparedRefunds = await prepareUsagePackMemberCreditRefunds(tx, {
+      orgId,
+      userId: bonusUserId,
+    });
+    return { bonusPreparedRefunds };
+  });
+  signal.throwIfAborted();
+  return { memberInviteUsagePackRequired, ...refundState };
+}
+
+async function preparePreMigrationPurchasedRefund(db: Db): Promise<void> {
+  await db.transaction(async (tx) => {
+    await tx.execute(sql`SET LOCAL search_path = pg_temp`);
+    await tx.execute(sql`
+      CREATE TEMP TABLE usage_pack_credit_grants
+      (LIKE public.usage_pack_credit_grants INCLUDING ALL)
+      ON COMMIT DROP
+    `);
+    const orgId = `org_pre_migration_${randomUUID()}`;
+    const userId = `user_purchased_${randomUUID()}`;
+    await tx.insert(usagePackCreditGrants).values({
+      orgId,
+      userId,
+      grantType: "purchased",
+      idempotencyKey: `pre-migration:purchased:${randomUUID()}`,
+      originalAmount: 10_000,
+      remainingAmount: 5000,
+      expiresAt: new Date("2999-01-01T00:00:00.000Z"),
+    });
+    await prepareUsagePackMemberCreditRefunds(tx, { orgId, userId });
   });
 }
 
@@ -535,6 +700,55 @@ const mutateTestUsagePackSubscriptionState$ = command(
               eq(usagePackSubscriptions.orgId, body.orgId),
             ),
           );
+        signal.throwIfAborted();
+        return { status: 200 as const, body: { action: "ok" as const } };
+      }
+      case "set-grant-remaining": {
+        const rows = await db
+          .update(usagePackCreditGrants)
+          .set({ remainingAmount: body.remainingAmount })
+          .where(
+            and(
+              eq(usagePackCreditGrants.orgId, body.orgId),
+              eq(usagePackCreditGrants.userId, body.userId),
+              eq(usagePackCreditGrants.grantType, body.grantType),
+            ),
+          )
+          .returning({ id: usagePackCreditGrants.id });
+        signal.throwIfAborted();
+        if (rows.length !== 1) {
+          throw new Error("Expected one usage pack credit grant to update");
+        }
+        return { status: 200 as const, body: { action: "ok" as const } };
+      }
+      case "delete-refund-source": {
+        const rows = await db
+          .delete(usagePackCreditRefunds)
+          .where(
+            and(
+              eq(usagePackCreditRefunds.orgId, body.orgId),
+              eq(usagePackCreditRefunds.userId, body.userId),
+            ),
+          )
+          .returning({ creditGrantId: usagePackCreditRefunds.creditGrantId });
+        signal.throwIfAborted();
+        if (rows.length !== 1) {
+          throw new Error("Expected one usage pack refund source to delete");
+        }
+        return { status: 200 as const, body: { action: "ok" as const } };
+      }
+      case "validate-pre-migration-compatibility": {
+        const state = await validatePreMigrationCompatibility(db, signal);
+        return {
+          status: 200 as const,
+          body: {
+            action: "pre-migration-compatibility" as const,
+            ...state,
+          },
+        };
+      }
+      case "prepare-pre-migration-purchased-refund": {
+        await preparePreMigrationPurchasedRefund(db);
         signal.throwIfAborted();
         return { status: 200 as const, body: { action: "ok" as const } };
       }

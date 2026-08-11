@@ -1,4 +1,5 @@
 import { useLastResolved, useLoadable } from "ccstate-react";
+import { Button } from "@vm0/ui";
 import {
   Dialog,
   DialogContent,
@@ -90,26 +91,22 @@ function ScopeDiffContent({
       )}
 
       <div className="flex gap-2 pt-2">
-        <button
+        <Button
           type="button"
           onClick={() => {
             return onReconnect(connectorSlug);
           }}
-          className="flex-1 rounded-md bg-primary px-3 py-2 text-sm font-medium text-primary-foreground hover:bg-primary-hover transition-colors"
+          className="flex-1"
         >
           {t(($) => {
             return $.connectors.actions.reconnect;
           })}
-        </button>
-        <button
-          type="button"
-          onClick={onClose}
-          className="rounded-md border border-border bg-background px-3 py-2 text-sm font-medium text-foreground hover:bg-state-hover transition-colors"
-        >
+        </Button>
+        <Button type="button" variant="outline" onClick={onClose}>
           {t(($) => {
             return $.connectors.actions.close;
           })}
-        </button>
+        </Button>
       </div>
     </div>
   );

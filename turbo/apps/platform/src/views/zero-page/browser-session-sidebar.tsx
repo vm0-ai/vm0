@@ -1,4 +1,5 @@
 import { Maximize2, X } from "lucide-react";
+import { Button } from "@vm0/ui";
 import { useGet, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
 
@@ -44,7 +45,7 @@ export function BrowserSessionSidebar({
         >
           <Maximize2 size={16} />
         </a>
-        <button
+        <Button
           type="button"
           onClick={() => {
             onClose();
@@ -57,10 +58,11 @@ export function BrowserSessionSidebar({
           aria-label={t(($) => {
             return $.browserSession.close;
           })}
-          className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-state-hover hover:text-foreground"
+          variant="quiet"
+          size="icon-sm"
         >
           <X size={16} />
-        </button>
+        </Button>
       </div>
       <div className="min-h-0 flex-1">
         <BrowserSessionPanel signals={signals} containLiveFrame />

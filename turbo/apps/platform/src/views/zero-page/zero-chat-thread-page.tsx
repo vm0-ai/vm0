@@ -79,7 +79,7 @@ import {
   BrandSlack,
 } from "@vm0/ui";
 import { RUN_ERROR_GUIDANCE } from "@vm0/api-contracts/contracts/errors";
-import { isHttpCustomConnectorResponse } from "@vm0/api-contracts/contracts/zero-custom-connectors";
+import { isHttpCustomConnectorClientResponse } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import type {
   ChatEventUsagePayload,
   ChatRecommendedFollowup,
@@ -127,6 +127,8 @@ import {
   videoTemplateSpecText,
   type VideoTemplateSpec,
 } from "../../signals/zero-page/video-template-spec.ts";
+import { openSentTemplateDetail$ } from "../../signals/zero-page/sent-template-detail.ts";
+import { SentTemplateDetailDialog } from "./sent-template-detail-dialog.tsx";
 import { isStandalonePwa } from "../../lib/keyboard-dismiss-gesture.ts";
 import {
   captureRecommendedFollowupSelected,
@@ -497,25 +499,26 @@ function ArtifactsButtonInner({ thread }: { thread: ChatPanelSignals }) {
     <TooltipProvider delayDuration={300}>
       <Tooltip>
         <TooltipTrigger asChild>
-          <button
+          <Button
             type="button"
             onClick={() => {
               reloadArtifacts();
               openThreadArtifacts();
             }}
+            variant="quiet"
+            size="icon-sm"
+            iconSize="md"
             className={cn(
-              "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors duration-150",
-              open
-                ? "bg-primary/10 text-primary"
-                : "text-muted-foreground/70 hover:bg-state-hover hover:text-foreground",
+              "shrink-0 duration-150",
+              open && "bg-primary/10 text-primary hover:text-primary",
             )}
             aria-label={t(($) => {
               return $.chat.thread.openArtifacts;
             })}
             aria-pressed={open}
           >
-            <Package size={17} />
-          </button>
+            <Package size={18} />
+          </Button>
         </TooltipTrigger>
         <TooltipContent side="bottom">
           {t(($) => {
@@ -558,13 +561,14 @@ export function AutomationMenuButton({
     <TooltipProvider delayDuration={300}>
       <Tooltip>
         <TooltipTrigger asChild>
-          <button
+          <Button
             type="button"
+            variant="quiet"
+            size="icon-sm"
+            iconSize="md"
             className={cn(
-              "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors duration-150",
-              open
-                ? "bg-primary/10 text-primary"
-                : "text-muted-foreground/70 hover:bg-state-hover hover:text-foreground",
+              "shrink-0 duration-150",
+              open && "bg-primary/10 text-primary hover:text-primary",
             )}
             aria-label={
               ariaLabel ??
@@ -579,7 +583,7 @@ export function AutomationMenuButton({
             }}
           >
             <Clock size={18} />
-          </button>
+          </Button>
         </TooltipTrigger>
         <TooltipContent side="bottom">
           {t(($) => {
@@ -601,13 +605,14 @@ function BrowserMenuButton({ thread }: { thread: ChatPanelSignals }) {
     <TooltipProvider delayDuration={300}>
       <Tooltip>
         <TooltipTrigger asChild>
-          <button
+          <Button
             type="button"
+            variant="quiet"
+            size="icon-sm"
+            iconSize="md"
             className={cn(
-              "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors duration-150",
-              open
-                ? "bg-primary/10 text-primary"
-                : "text-muted-foreground/70 hover:bg-state-hover hover:text-foreground",
+              "shrink-0 duration-150",
+              open && "bg-primary/10 text-primary hover:text-primary",
             )}
             aria-label={t(($) => {
               return $.chat.thread.openBrowser;
@@ -618,7 +623,7 @@ function BrowserMenuButton({ thread }: { thread: ChatPanelSignals }) {
             }}
           >
             <Globe size={18} />
-          </button>
+          </Button>
         </TooltipTrigger>
         <TooltipContent side="bottom">
           {t(($) => {
@@ -709,7 +714,7 @@ function ChatThreadHeader({ thread }: { thread: ChatPanelSignals }) {
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
-                <button
+                <Button
                   type="button"
                   onClick={() => {
                     detach(
@@ -718,13 +723,16 @@ function ChatThreadHeader({ thread }: { thread: ChatPanelSignals }) {
                       "start shared thread selection",
                     );
                   }}
-                  className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground/70 transition-colors duration-150 hover:bg-state-hover hover:text-foreground"
+                  variant="quiet"
+                  size="icon-sm"
+                  iconSize="md"
+                  className="shrink-0 duration-150"
                   aria-label={t(($) => {
                     return $.chat.sharing.start;
                   })}
                 >
                   <Share2 size={18} />
-                </button>
+                </Button>
               </TooltipTrigger>
               <TooltipContent side="bottom">
                 {t(($) => {
@@ -843,12 +851,15 @@ function ChatThreadEmojiMenuButton({
         <Tooltip>
           <TooltipTrigger asChild>
             <PopoverTrigger asChild>
-              <button
+              <Button
                 type="button"
                 aria-label={t(($) => {
                   return $.chat.thread.changeIcon;
                 })}
-                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
+                variant="quiet"
+                size="icon-xs"
+                iconSize="md"
+                className="shrink-0"
               >
                 {emoji ? (
                   <span
@@ -860,7 +871,7 @@ function ChatThreadEmojiMenuButton({
                 ) : (
                   <SmilePlus size={18} aria-hidden="true" />
                 )}
-              </button>
+              </Button>
             </PopoverTrigger>
           </TooltipTrigger>
           <TooltipContent side="bottom">
@@ -2358,16 +2369,17 @@ function HeaderAutomationSidebar({
             })}
           </div>
         </div>
-        <button
+        <Button
           type="button"
           onClick={onClose}
           aria-label={t(($) => {
             return $.chat.automations.close;
           })}
-          className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-state-hover hover:text-foreground"
+          variant="quiet"
+          size="icon-sm"
         >
           <X size={16} />
-        </button>
+        </Button>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
@@ -2525,6 +2537,7 @@ export function ZeroChatThreadPage() {
         <ChatThreadArea leftPane={leftPane} rightPane={rightPane} />
       </ChatThreadSidebarShell>
       {lightboxUrl && <AttachmentLightbox />}
+      <SentTemplateDetailDialog />
       <ChatConnectorActionConnectModal />
     </>
   );
@@ -4025,7 +4038,7 @@ function ScrollToBottomButton({ thread }: { thread: ChatPanelSignals }) {
       onClick={() => {
         detach(scrollToBottom(pageSignal), Reason.DomCallback);
       }}
-      className="absolute bottom-4 left-1/2 z-20 flex h-9 w-9 -translate-x-1/2 items-center justify-center rounded-full border border-border bg-background text-muted-foreground shadow-md transition-colors hover:bg-state-hover hover:text-foreground"
+      className="absolute bottom-4 left-1/2 z-20 flex h-9 w-9 -translate-x-1/2 items-center justify-center rounded-full border border-border bg-background text-muted-foreground shadow-md transition-colors hover:bg-background-hover hover:text-foreground"
     >
       <ArrowDown size={18} />
     </button>
@@ -4317,7 +4330,7 @@ function ChatThreadComposer({ thread }: { thread: ChatPanelSignals }) {
   return (
     <footer
       data-chat-composer
-      className="relative shrink-0 bg-[hsl(var(--background))] pb-2"
+      className="relative shrink-0 bg-[hsl(var(--background))]"
     >
       <div className="pointer-events-none absolute inset-x-0 -top-5 h-[21px] bg-gradient-to-t from-[hsl(var(--background))] to-transparent" />
       <div
@@ -4777,7 +4790,7 @@ function ChatConnectorActionConnectModal() {
 
   if (active.kind === "custom") {
     const connector = customConnectors
-      ?.filter(isHttpCustomConnectorResponse)
+      ?.filter(isHttpCustomConnectorClientResponse)
       .find((candidate) => {
         return candidate.slug === active.connectorSlug;
       });
@@ -4926,17 +4939,19 @@ function PaidCreditCheckoutActions({
       <div className="flex flex-wrap gap-2">
         {CREDIT_TOP_UP_OPTIONS.map((credits) => {
           return (
-            <button
+            <Button
               key={credits}
               type="button"
               onClick={(event) => {
                 handleCreditClick({ credits }, event);
               }}
               disabled={redirecting}
-              className="inline-flex h-8 items-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-hover disabled:opacity-60"
+              variant="default"
+              size="sm"
+              className="disabled:opacity-60"
             >
               {formatCreditsUsd(credits)}
-            </button>
+            </Button>
           );
         })}
         <details>
@@ -4950,7 +4965,7 @@ function PaidCreditCheckoutActions({
           </summary>
           <form className="mt-2 flex flex-wrap items-center gap-2">
             <span className="text-sm text-muted-foreground">$</span>
-            <input
+            <Input
               type="text"
               inputMode="numeric"
               name="customUsd"
@@ -4964,13 +4979,15 @@ function PaidCreditCheckoutActions({
               aria-label={t(($) => {
                 return $.chat.billing.customDollarAmount;
               })}
-              className="h-8 w-24 rounded-md border border-input bg-background px-2 text-sm text-foreground outline-none transition-colors focus:border-ring"
+              className="h-8 w-24 px-2"
             />
-            <button
+            <Button
               type="button"
               onClick={handleCustomCreditClick}
               disabled={redirecting}
-              className="inline-flex h-8 items-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-hover disabled:opacity-60"
+              variant="default"
+              size="sm"
+              className="disabled:opacity-60"
             >
               {redirecting
                 ? t(($) => {
@@ -4979,7 +4996,7 @@ function PaidCreditCheckoutActions({
                 : t(($) => {
                     return $.chat.billing.buy;
                   })}
-            </button>
+            </Button>
           </form>
         </details>
       </div>
@@ -5052,11 +5069,13 @@ function InsufficientCreditsCard() {
       <p className="text-[0.9375rem] font-medium text-foreground">{headline}</p>
       <p className="mt-1 text-sm text-muted-foreground">{helper}</p>
       {!canShowBillingAction ? null : shouldStartProCheckout ? (
-        <button
+        <Button
           type="button"
           onClick={handleUpgradeClick}
           disabled={redirecting}
-          className="mt-3 inline-flex h-8 items-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-hover disabled:opacity-60"
+          variant="default"
+          size="sm"
+          className="mt-3 disabled:opacity-60"
         >
           {redirecting
             ? t(($) => {
@@ -5065,7 +5084,7 @@ function InsufficientCreditsCard() {
             : t(($) => {
                 return $.chat.billing.upgradeToPro;
               })}
-        </button>
+        </Button>
       ) : (
         <PaidCreditCheckoutActions
           redirecting={redirecting}
@@ -6125,34 +6144,40 @@ function AgentRunSourceMessageAnnotation({
 // File chips carry their own border, so they need more breathing room from the
 // surrounding sentence than a borderless inline mention does.
 const INLINE_FILE_REFERENCE_SPACING_CLASS = "mx-1";
-const STRUCTURED_INLINE_REFERENCE_BASE_CLASS =
-  "relative -top-px mx-0.5 inline-flex h-7 items-center " +
+// Layout without a display class so the spec-bearing chip can pick its own
+// responsive display (hidden sm:inline-flex / sm:hidden) per variant.
+const STRUCTURED_INLINE_REFERENCE_LAYOUT_CLASS =
+  "relative -top-px mx-0.5 h-7 items-center " +
   "gap-1.5 rounded-md bg-orange-500/10 px-2 align-middle text-[13px] " +
   "font-medium text-orange-600 dark:bg-orange-400/15 dark:text-orange-300";
+const STRUCTURED_INLINE_REFERENCE_BASE_CLASS = `inline-flex ${STRUCTURED_INLINE_REFERENCE_LAYOUT_CLASS}`;
 const STRUCTURED_INLINE_REFERENCE_CLASS = `${STRUCTURED_INLINE_REFERENCE_BASE_CLASS} max-w-[240px]`;
-const STRUCTURED_INLINE_LINK_REFERENCE_CLASS =
-  `${STRUCTURED_INLINE_REFERENCE_CLASS} transition-colors ` +
-  "hover:bg-orange-500/15 focus-visible:outline-none focus-visible:ring-2 " +
-  "focus-visible:ring-orange-500/30 active:bg-orange-500/20 " +
-  "dark:hover:bg-orange-400/20 dark:active:bg-orange-400/25";
+const STRUCTURED_INLINE_INTERACTIVE_CLASS =
+  "transition-colors hover:bg-orange-500/15 focus-visible:outline-none " +
+  "focus-visible:ring-2 focus-visible:ring-orange-500/30 " +
+  "active:bg-orange-500/20 dark:hover:bg-orange-400/20 " +
+  "dark:active:bg-orange-400/25";
+const STRUCTURED_INLINE_LINK_REFERENCE_CLASS = `${STRUCTURED_INLINE_REFERENCE_CLASS} ${STRUCTURED_INLINE_INTERACTIVE_CLASS}`;
 
 /**
- * Read-only echo of the parameters a sent video used. Narrow viewports hide
- * the spec entirely — the chip's hover title still carries it — so the
- * template title keeps the room it needs; wide viewports show every
- * parameter in full.
+ * Read-only echo of the parameters a sent video used. Rendered only inside
+ * the wide-viewport chip variant, which owns the responsive visibility.
  */
 function SentVideoTemplateSpec({ spec }: { readonly spec: VideoTemplateSpec }) {
   return (
-    <span className="hidden shrink-0 text-[12px] font-normal text-orange-600/70 dark:text-orange-300/70 sm:inline">
+    <span className="shrink-0 text-[12px] font-normal text-orange-600/70 dark:text-orange-300/70">
       {videoTemplateSpecText(spec)}
     </span>
   );
 }
 
 /**
- * A sent template is a record of what the message used, not a control. It
- * renders as static text so the history stays read-only.
+ * A sent template is a record of what the message used, not an editing
+ * control. Templates without a spec render as static text. A spec-bearing
+ * video chip stays a static record on wide viewports too — the inline echo
+ * and hover title already carry the spec there — and only the touch-width
+ * variant is a button opening the read-only detail dialog, because narrow
+ * viewports hide the inline echo and touch has no hover title.
  */
 function UserMessageTemplateReference({
   part,
@@ -6161,26 +6186,50 @@ function UserMessageTemplateReference({
 }) {
   const typeLabel = generationTemplateTypeLabel(part.template);
   const videoOptionsEnabled = useGet(videoTemplateOptionsEnabled$);
+  const openDetail = useSet(openSentTemplateDetail$);
   const spec = videoOptionsEnabled ? videoTemplateSpec(part.template) : null;
   const label = `${typeLabel ?? part.template.type} · ${part.titleSnapshot}`;
+  if (spec === null) {
+    return (
+      <span
+        data-structured-template-reference=""
+        className={STRUCTURED_INLINE_REFERENCE_CLASS}
+        title={label}
+      >
+        <SwatchBook size={13} className="shrink-0" />
+        <span className="min-w-0 truncate">{part.titleSnapshot}</span>
+      </span>
+    );
+  }
   return (
-    <span
-      data-structured-template-reference=""
-      // The spec is as wide as the chip's old fixed cap on its own, so a
-      // spec-bearing chip trades the cap for the full message width.
-      className={
-        spec === null
-          ? STRUCTURED_INLINE_REFERENCE_CLASS
-          : `${STRUCTURED_INLINE_REFERENCE_BASE_CLASS} max-w-full`
-      }
-      title={
-        spec === null ? label : `${label} · ${videoTemplateSpecText(spec)}`
-      }
-    >
-      <SwatchBook size={13} className="shrink-0" />
-      <span className="min-w-0 truncate">{part.titleSnapshot}</span>
-      {spec !== null && <SentVideoTemplateSpec spec={spec} />}
-    </span>
+    <>
+      <span
+        data-structured-template-reference=""
+        // The spec is as wide as the chip's old fixed cap on its own, so a
+        // spec-bearing chip trades the cap for the full message width.
+        className={`hidden max-w-full sm:inline-flex ${STRUCTURED_INLINE_REFERENCE_LAYOUT_CLASS}`}
+        title={`${label} · ${videoTemplateSpecText(spec)}`}
+      >
+        <SwatchBook size={13} className="shrink-0" />
+        <span className="min-w-0 truncate">{part.titleSnapshot}</span>
+        <SentVideoTemplateSpec spec={spec} />
+      </span>
+      <button
+        type="button"
+        data-structured-template-reference=""
+        className={`max-w-full sm:hidden ${STRUCTURED_INLINE_REFERENCE_BASE_CLASS} ${STRUCTURED_INLINE_INTERACTIVE_CLASS}`}
+        aria-haspopup="dialog"
+        onClick={() => {
+          openDetail({
+            titleSnapshot: part.titleSnapshot,
+            template: part.template,
+          });
+        }}
+      >
+        <SwatchBook size={13} className="shrink-0" />
+        <span className="min-w-0 truncate">{part.titleSnapshot}</span>
+      </button>
+    </>
   );
 }
 

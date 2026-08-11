@@ -142,9 +142,9 @@ const customConnectorResponseBaseSchema = z.object({
 export const customConnectorHttpResponseSchema =
   customConnectorResponseBaseSchema.extend({
     kind: z.literal("http"),
-    prefixes: z.array(z.string()),
-    headerName: z.string(),
-    headerTemplate: z.string(),
+    prefixes: z.array(z.string()).optional(),
+    headerName: z.string().optional(),
+    headerTemplate: z.string().optional(),
     prefixTemplates: z.array(z.string()),
   });
 export type CustomConnectorHttpResponse = z.infer<
@@ -156,11 +156,11 @@ export const customConnectorMcpResponseSchema =
     kind: z.literal("mcp"),
     endpoint: z.string().min(1),
     transport: customConnectorMcpTransportSchema,
-    // Installed CLI versions still require the old HTTP response keys. These
-    // exact literals are wire compatibility only, never MCP definition state.
-    prefixes: z.tuple([]),
-    headerName: z.literal(""),
-    headerTemplate: z.literal(""),
+    // The API still emits these old HTTP response keys for installed clients.
+    // They are optional compatibility aliases, never MCP definition state.
+    prefixes: z.tuple([]).optional(),
+    headerName: z.literal("").optional(),
+    headerTemplate: z.literal("").optional(),
     prefixTemplates: z.tuple([]),
     permissionBundleRef: z.null().optional(),
   });
@@ -173,7 +173,7 @@ const taggedCustomConnectorResponseSchema = z.discriminatedUnion("kind", [
   customConnectorMcpResponseSchema,
 ]);
 
-export const customConnectorResponseSchema = z.preprocess((value) => {
+function normalizeCustomConnectorResponseKind(value: unknown): unknown {
   if (
     typeof value === "object" &&
     value !== null &&
@@ -184,7 +184,12 @@ export const customConnectorResponseSchema = z.preprocess((value) => {
     return { ...value, kind: "http" };
   }
   return value;
-}, taggedCustomConnectorResponseSchema);
+}
+
+export const customConnectorResponseSchema = z.preprocess(
+  normalizeCustomConnectorResponseKind,
+  taggedCustomConnectorResponseSchema,
+);
 export type CustomConnectorResponse = z.infer<
   typeof customConnectorResponseSchema
 >;
@@ -199,6 +204,41 @@ export const customConnectorListResponseSchema = z.object({
   connectors: z.array(customConnectorResponseSchema),
 });
 
+export const customConnectorHttpClientResponseSchema =
+  customConnectorHttpResponseSchema.omit({ hasSecret: true });
+export type CustomConnectorHttpClientResponse = z.infer<
+  typeof customConnectorHttpClientResponseSchema
+>;
+
+export const customConnectorMcpClientResponseSchema =
+  customConnectorMcpResponseSchema.omit({ hasSecret: true });
+export type CustomConnectorMcpClientResponse = z.infer<
+  typeof customConnectorMcpClientResponseSchema
+>;
+
+const taggedCustomConnectorClientResponseSchema = z.discriminatedUnion("kind", [
+  customConnectorHttpClientResponseSchema,
+  customConnectorMcpClientResponseSchema,
+]);
+
+export const customConnectorClientResponseSchema = z.preprocess(
+  normalizeCustomConnectorResponseKind,
+  taggedCustomConnectorClientResponseSchema,
+);
+export type CustomConnectorClientResponse = z.infer<
+  typeof customConnectorClientResponseSchema
+>;
+
+export function isHttpCustomConnectorClientResponse(
+  connector: CustomConnectorClientResponse,
+): connector is CustomConnectorHttpClientResponse {
+  return connector.kind === "http";
+}
+
+export const customConnectorClientListResponseSchema = z.object({
+  connectors: z.array(customConnectorClientResponseSchema),
+});
+
 const customConnectorDefinitionWriteBaseSchema = z.object({
   displayName: z.string().min(1).max(128),
   fields: z.array(customConnectorFieldSchema),
@@ -210,27 +250,21 @@ const customConnectorDefinitionWriteBaseSchema = z.object({
   storageVersion: z.number().int().positive().optional(),
 });
 
-export const customConnectorHttpCreateBodySchema = z.object({
-  kind: z.literal("http").optional(),
-  displayName: z.string().min(1).max(128),
-  prefixes: z.array(z.string().min(1)).min(1).optional(),
-  headerName: z.string().min(1).max(128).optional(),
-  headerTemplate: z.string().min(1).optional(),
-  prefixTemplates: z.array(z.string().min(1)).min(1).optional(),
-  fields: z.array(customConnectorFieldSchema).optional(),
-  headerInjections: z.array(customConnectorHeaderInjectionSchema).optional(),
-  queryInjections: z.array(customConnectorQueryInjectionSchema).optional(),
-  authMode: customConnectorAuthModeSchema.optional(),
-  oauthConfig: customConnectorOAuthConfigInputSchema.optional(),
-  permissionBundleRef: customConnectorPermissionBundleRefSchema
-    .nullable()
-    .optional(),
-  skillMarkdown: customConnectorSkillMarkdownSchema.nullable().optional(),
-  storageVersion: z.number().int().positive().optional(),
-  slug: z.string().optional(),
-  endpoint: z.never().optional(),
-  transport: z.never().optional(),
-});
+const customConnectorHttpDefinitionWriteSchema =
+  customConnectorDefinitionWriteBaseSchema.extend({
+    kind: z.literal("http").optional(),
+    prefixTemplates: z.array(z.string().min(1)).min(1),
+    permissionBundleRef: customConnectorPermissionBundleRefSchema
+      .nullable()
+      .optional(),
+    endpoint: z.never().optional(),
+    transport: z.never().optional(),
+  });
+
+export const customConnectorHttpCreateBodySchema =
+  customConnectorHttpDefinitionWriteSchema.extend({
+    slug: z.string().optional(),
+  });
 
 export const customConnectorMcpCreateBodySchema =
   customConnectorDefinitionWriteBaseSchema.extend({
@@ -254,15 +288,7 @@ export type CreateCustomConnectorBody = z.infer<
 >;
 
 export const customConnectorHttpUpdateBodySchema =
-  customConnectorDefinitionWriteBaseSchema.extend({
-    kind: z.literal("http").optional(),
-    prefixTemplates: z.array(z.string().min(1)).min(1),
-    permissionBundleRef: customConnectorPermissionBundleRefSchema
-      .nullable()
-      .optional(),
-    endpoint: z.never().optional(),
-    transport: z.never().optional(),
-  });
+  customConnectorHttpDefinitionWriteSchema;
 
 export const customConnectorMcpUpdateBodySchema =
   customConnectorDefinitionWriteBaseSchema.extend({
@@ -482,6 +508,7 @@ export const zeroCustomConnectorSecretContract = c.router({
     responses: {
       204: c.noBody(),
       401: apiErrorSchema,
+      403: apiErrorSchema,
       404: apiErrorSchema,
       500: apiErrorSchema,
     },
@@ -490,6 +517,25 @@ export const zeroCustomConnectorSecretContract = c.router({
 });
 export type ZeroCustomConnectorSecretContract =
   typeof zeroCustomConnectorSecretContract;
+
+export const zeroCustomConnectorConnectionContract = c.router({
+  disconnect: {
+    method: "DELETE",
+    path: "/api/zero/custom-connectors/:id/connection",
+    headers: authHeadersSchema,
+    pathParams: z.object({ id: z.string().uuid() }),
+    responses: {
+      204: c.noBody(),
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Disconnect the calling user's custom connector connection",
+  },
+});
+export type ZeroCustomConnectorConnectionContract =
+  typeof zeroCustomConnectorConnectionContract;
 
 export const zeroCustomConnectorValuesContract = c.router({
   set: {

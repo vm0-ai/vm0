@@ -225,6 +225,7 @@ jobs:
             .github/scripts/cloudflare-ssh-command.sh \
             .github/scripts/cloudflare-ssh-diagnostics.sh \
             .github/scripts/cloudflare-ssh-preconnect.sh \
+            .github/scripts/deploy-okou-pages.sh \
             .github/scripts/fetch-okou-desktop-artifact.sh \
             .github/scripts/pass-release-pr-ci-gates.sh \
             .github/scripts/resolve-desktop-version-change.sh \
@@ -239,6 +240,8 @@ jobs:
             .github/scripts/tests/cloudflare-ssh-preconnect-test.sh \
             .github/scripts/tests/cloudflare-ssh-proxy-test.sh \
             .github/scripts/tests/deploy-desktop-workflow-test.sh \
+            .github/scripts/tests/deploy-okou-pages-test.sh \
+            .github/scripts/tests/deploy-okou-pages-workflow-test.sh \
             .github/scripts/tests/fetch-okou-desktop-artifact-test.sh \
             .github/scripts/tests/okou-desktop-artifact-test.sh \
             .github/scripts/tests/resolve-desktop-version-change-test.sh \

@@ -8,17 +8,18 @@ use std::env;
 use std::fs::File;
 #[cfg(not(unix))]
 use std::fs::{self, OpenOptions};
-use std::io;
+use std::io::{self, Read, Write};
 #[cfg(unix)]
 use std::path::Component;
 use std::path::{Path, PathBuf};
 
 #[cfg(unix)]
-use std::ffi::{CString, OsStr};
+use std::ffi::{CString, OsStr, OsString};
 #[cfg(unix)]
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
 #[cfg(unix)]
-use std::os::unix::ffi::OsStrExt;
+use std::os::unix::ffi::{OsStrExt, OsStringExt};
+use uuid::Uuid;
 
 /// Environment variable that overrides the complete guest runtime directory.
 ///
@@ -164,6 +165,11 @@ pub fn session_history_sidecar_export_file(run_dir: impl AsRef<Path>) -> PathBuf
 /// Return the run-root `failure-diagnostic.json` file.
 pub fn failure_diagnostic_file(run_dir: impl AsRef<Path>) -> PathBuf {
     file(run_dir, "failure-diagnostic.json")
+}
+
+/// Return the run-root `active-input-receipts.json` file.
+pub fn active_input_receipt_journal_file(run_dir: impl AsRef<Path>) -> PathBuf {
+    file(run_dir, "active-input-receipts.json")
 }
 
 /// Return the `logs/system.log` file.
@@ -787,6 +793,268 @@ fn secure_regular_private_file(file: &File, path: &Path) -> io::Result<()> {
 }
 
 #[cfg(unix)]
+fn validate_existing_private_file(file: &File, path: &Path, max_bytes: u64) -> io::Result<()> {
+    let mut stat = std::mem::MaybeUninit::<libc::stat>::uninit();
+    // SAFETY: `stat` points to writable memory and `file` owns a live descriptor.
+    let result = unsafe { libc::fstat(file.as_raw_fd(), stat.as_mut_ptr()) };
+    if result != 0 {
+        return Err(wrap_last_os_error(format!(
+            "stat private runtime file {}",
+            path.display()
+        )));
+    }
+    // SAFETY: successful `fstat` initialized the full struct.
+    let stat = unsafe { stat.assume_init() };
+    if stat.st_mode & libc::S_IFMT != libc::S_IFREG {
+        return Err(permission_denied(format!(
+            "{} is not a regular private runtime file",
+            path.display()
+        )));
+    }
+    // SAFETY: `geteuid` only reads the effective process credential.
+    let effective_uid = unsafe { libc::geteuid() };
+    if stat.st_uid != effective_uid {
+        return Err(permission_denied(format!(
+            "{} is not owned by the effective user",
+            path.display()
+        )));
+    }
+    if stat.st_mode & 0o077 != 0 {
+        return Err(permission_denied(format!(
+            "{} grants group or other permissions",
+            path.display()
+        )));
+    }
+    let size = u64::try_from(stat.st_size).unwrap_or(u64::MAX);
+    if size > max_bytes {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!(
+                "{} exceeds the private runtime file limit of {max_bytes} bytes",
+                path.display()
+            ),
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(unix)]
+fn open_existing_private_file(path: &Path, max_bytes: u64) -> io::Result<Option<File>> {
+    let name = file_name(path)?;
+    let name_c = component_cstring(name, path)?;
+    let parent = open_or_create_private_dir(parent_dir(path)?)?;
+    // O_NONBLOCK prevents a hostile special file from blocking before fstat
+    // rejects it. O_NOFOLLOW keeps the final component descriptor-bound.
+    // SAFETY: `name_c` is NUL-terminated and `parent` owns a verified directory fd.
+    let fd = unsafe {
+        libc::openat(
+            parent.as_raw_fd(),
+            name_c.as_ptr(),
+            libc::O_RDONLY | libc::O_NOFOLLOW | libc::O_CLOEXEC | libc::O_NONBLOCK,
+        )
+    };
+    if fd < 0 {
+        let error = io::Error::last_os_error();
+        return match error.raw_os_error() {
+            Some(libc::ENOENT) => Ok(None),
+            Some(libc::ELOOP) => Err(permission_denied(format!(
+                "{} is a symlink; refusing to read it as a private runtime file",
+                path.display()
+            ))),
+            _ => Err(wrap_io_error(
+                error,
+                format!("open private runtime file {}", path.display()),
+            )),
+        };
+    }
+    // SAFETY: `fd` is a fresh descriptor returned by `openat`.
+    let file = unsafe { File::from_raw_fd(fd) };
+    validate_existing_private_file(&file, path, max_bytes)?;
+    Ok(Some(file))
+}
+
+/// Read a bounded runtime-private file without following symlinks.
+///
+/// A missing file returns `Ok(None)`. On Unix, every parent component and the
+/// final file are opened without following symlinks. The final file must be a
+/// regular file owned by the effective user with no group or other permission
+/// bits. The size is checked both before and while reading.
+pub fn read_private_bounded(
+    path: impl AsRef<Path>,
+    max_bytes: usize,
+) -> io::Result<Option<Vec<u8>>> {
+    let path = path.as_ref();
+    #[cfg(unix)]
+    let file = open_existing_private_file(path, u64::try_from(max_bytes).unwrap_or(u64::MAX))?;
+    #[cfg(not(unix))]
+    let file = match File::open(path) {
+        Ok(file) => Some(file),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => None,
+        Err(error) => return Err(error),
+    };
+
+    let Some(file) = file else {
+        return Ok(None);
+    };
+    let read_limit = u64::try_from(max_bytes)
+        .unwrap_or(u64::MAX)
+        .saturating_add(1);
+    let mut bytes = Vec::with_capacity(max_bytes.min(8 * 1024));
+    file.take(read_limit).read_to_end(&mut bytes)?;
+    if bytes.len() > max_bytes {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!(
+                "{} exceeds the private runtime file limit of {max_bytes} bytes",
+                path.display()
+            ),
+        ));
+    }
+    Ok(Some(bytes))
+}
+
+#[cfg(unix)]
+fn replacement_name() -> OsString {
+    // A process can be killed before rename and leave this sibling behind.
+    // A random process-independent name prevents PID reuse after restart from
+    // turning that stale file into a permanent O_EXCL collision.
+    OsString::from_vec(format!(".vm0-private-replacement-{}", Uuid::new_v4()).into_bytes())
+}
+
+#[cfg(unix)]
+fn validate_replace_target(parent: &OwnedFd, name: &OsStr, path: &Path) -> io::Result<()> {
+    let name_c = component_cstring(name, path)?;
+    // SAFETY: `name_c` is NUL-terminated and `parent` owns a verified directory fd.
+    let fd = unsafe {
+        libc::openat(
+            parent.as_raw_fd(),
+            name_c.as_ptr(),
+            libc::O_RDONLY | libc::O_NOFOLLOW | libc::O_CLOEXEC | libc::O_NONBLOCK,
+        )
+    };
+    if fd < 0 {
+        let error = io::Error::last_os_error();
+        return match error.raw_os_error() {
+            Some(libc::ENOENT) => Ok(()),
+            Some(libc::ELOOP) => Err(permission_denied(format!(
+                "{} is a symlink; refusing to replace it as a private runtime file",
+                path.display()
+            ))),
+            _ => Err(wrap_io_error(
+                error,
+                format!("open private runtime replacement target {}", path.display()),
+            )),
+        };
+    }
+    // SAFETY: `fd` is a fresh descriptor returned by `openat`.
+    let file = unsafe { File::from_raw_fd(fd) };
+    validate_existing_private_file(&file, path, u64::MAX)
+}
+
+#[cfg(unix)]
+fn replace_private_atomic_unix(path: &Path, bytes: &[u8]) -> io::Result<()> {
+    let name = file_name(path)?;
+    let name_c = component_cstring(name, path)?;
+    let parent = open_or_create_private_dir(parent_dir(path)?)?;
+    validate_replace_target(&parent, name, path)?;
+
+    let temp_name = replacement_name();
+    let temp_name_c = component_cstring(&temp_name, path)?;
+    // SAFETY: `temp_name_c` is NUL-terminated and `parent` owns a verified directory fd.
+    let fd = unsafe {
+        libc::openat(
+            parent.as_raw_fd(),
+            temp_name_c.as_ptr(),
+            libc::O_WRONLY | libc::O_CREAT | libc::O_EXCL | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+            PRIVATE_FILE_MODE,
+        )
+    };
+    if fd < 0 {
+        return Err(wrap_last_os_error(format!(
+            "create atomic private replacement for {}",
+            path.display()
+        )));
+    }
+    // SAFETY: `fd` is a fresh descriptor returned by `openat`.
+    let mut file = unsafe { File::from_raw_fd(fd) };
+    let operation = (|| {
+        set_file_private(&file)?;
+        file.write_all(bytes)?;
+        file.sync_all()?;
+        // SAFETY: both names are NUL-terminated and `parent` pins the source
+        // and destination directory for the atomic replacement.
+        let result = unsafe {
+            libc::renameat(
+                parent.as_raw_fd(),
+                temp_name_c.as_ptr(),
+                parent.as_raw_fd(),
+                name_c.as_ptr(),
+            )
+        };
+        if result != 0 {
+            return Err(wrap_last_os_error(format!(
+                "publish atomic private replacement for {}",
+                path.display()
+            )));
+        }
+        // SAFETY: `parent` owns a live directory descriptor.
+        if unsafe { libc::fsync(parent.as_raw_fd()) } != 0 {
+            return Err(wrap_last_os_error(format!(
+                "sync atomic private replacement directory for {}",
+                path.display()
+            )));
+        }
+        Ok(())
+    })();
+    if operation.is_err() {
+        // SAFETY: `temp_name_c` is NUL-terminated and `parent` owns the
+        // directory. Failure here must not hide the original operation error.
+        unsafe {
+            libc::unlinkat(parent.as_raw_fd(), temp_name_c.as_ptr(), 0);
+        }
+    }
+    operation
+}
+
+#[cfg(not(unix))]
+fn replace_private_atomic_non_unix(path: &Path, bytes: &[u8]) -> io::Result<()> {
+    ensure_parent_dir(path)?;
+    let temp_path = path.with_file_name(format!(".vm0-private-replacement-{}", Uuid::new_v4()));
+    let mut file = OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&temp_path)?;
+    let operation = (|| {
+        set_file_private(&file)?;
+        file.write_all(bytes)?;
+        file.sync_all()?;
+        fs::rename(&temp_path, path)
+    })();
+    if operation.is_err() {
+        let _ = fs::remove_file(temp_path);
+    }
+    operation
+}
+
+/// Atomically replace a runtime-private file with complete bytes.
+///
+/// On Unix, the replacement is written to an exclusively created `0600`
+/// sibling, synced, and published with descriptor-relative `renameat`. Parent
+/// and final symlinks, non-regular targets, foreign ownership, and group/other
+/// permissions are rejected. Existing readers therefore observe either the
+/// previous complete file or the new complete file.
+pub fn replace_private_atomic(path: impl AsRef<Path>, bytes: impl AsRef<[u8]>) -> io::Result<()> {
+    #[cfg(unix)]
+    {
+        replace_private_atomic_unix(path.as_ref(), bytes.as_ref())
+    }
+    #[cfg(not(unix))]
+    {
+        replace_private_atomic_non_unix(path.as_ref(), bytes.as_ref())
+    }
+}
+
+#[cfg(unix)]
 /// Create or truncate a runtime-private file.
 ///
 /// On Unix, missing parent directories are created with `0700` permissions, an
@@ -948,6 +1216,21 @@ mod tests {
             assert_eq!(mode(temp.path().join("run/logs")), 0o700);
             assert_eq!(mode(&path), 0o600);
         }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn atomic_replacement_name_uses_process_independent_uuid() {
+        // Reproducing PID reuse requires two operating-system processes, so
+        // validate the private naming invariant at its internal boundary.
+        let name = replacement_name();
+        let name = name.to_str().unwrap();
+        let suffix = name.strip_prefix(".vm0-private-replacement-").unwrap();
+
+        assert_eq!(
+            Uuid::parse_str(suffix).unwrap().hyphenated().to_string(),
+            suffix
+        );
     }
 
     #[test]

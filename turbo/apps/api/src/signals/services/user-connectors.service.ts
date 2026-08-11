@@ -38,7 +38,6 @@ type UserConnectorUpdateOperation = "replace" | "add" | "remove";
 type UpdateUserCustomConnectorsResult =
   | {
       readonly status: "updated";
-      readonly enabledIds: readonly string[];
       readonly grants: readonly AgentCustomConnectorGrant[];
     }
   | { readonly status: "agentNotFound" }
@@ -57,6 +56,7 @@ type UpdateUserCustomConnectorsResult =
   | { readonly status: "mcpFeatureDisabled" };
 
 type UserCustomConnectorUpdateOperation = "replace" | "add" | "remove";
+type CustomConnectorPermissionIntent = "exact" | "preserveExistingOrDefault";
 type DbTransaction = Tx;
 
 interface UserCustomConnectorTransactionResult {
@@ -68,8 +68,8 @@ interface UpdateUserCustomConnectorsArgs {
   readonly orgId: string;
   readonly userId: string;
   readonly agentId: string;
-  readonly enabledIds: readonly string[];
-  readonly grants?: readonly AgentCustomConnectorGrant[];
+  readonly grants: readonly AgentCustomConnectorGrant[];
+  readonly permissionIntent: CustomConnectorPermissionIntent;
   readonly operation?: UserCustomConnectorUpdateOperation;
 }
 
@@ -175,10 +175,10 @@ async function lockCustomConnectorDefinitionsForGrant(
   db: Pick<Db, "select">,
   args: {
     readonly orgId: string;
-    readonly enabledIds: readonly string[];
+    readonly connectorIds: readonly string[];
   },
 ): Promise<LockedCustomConnectorDefinitions> {
-  if (args.enabledIds.length === 0) {
+  if (args.connectorIds.length === 0) {
     return {
       missingIds: [],
       mcpConnectorIds: new Set(),
@@ -186,7 +186,7 @@ async function lockCustomConnectorDefinitionsForGrant(
     };
   }
 
-  const sortedIds = [...args.enabledIds].sort();
+  const sortedIds = [...args.connectorIds].sort();
   const lockedRows: LockedCustomConnectorRow[] = [];
   for (const id of sortedIds) {
     const [locked] = await db
@@ -234,7 +234,7 @@ async function lockCustomConnectorDefinitionsForGrant(
       return row.mcpTransport === null ? [] : [row.id];
     }),
   );
-  const missingIds = args.enabledIds.filter((id) => {
+  const missingIds = args.connectorIds.filter((id) => {
     return !lockedIds.has(id);
   });
   if (missingIds.length > 0) {
@@ -347,7 +347,7 @@ export async function updateUserConnectors(
 }
 
 interface NormalizedCustomConnectorGrantRequest {
-  readonly enabledIds: readonly string[];
+  readonly grants: readonly AgentCustomConnectorGrant[];
   readonly grantByConnectorId: ReadonlyMap<string, readonly string[]>;
 }
 
@@ -366,13 +366,13 @@ type PermissionSelectionError = Extract<
 >;
 
 function normalizeCustomConnectorGrantRequest(args: {
-  readonly enabledIds: readonly string[];
-  readonly grants?: readonly AgentCustomConnectorGrant[];
+  readonly grants: readonly AgentCustomConnectorGrant[];
 }):
   | NormalizedCustomConnectorGrantRequest
   | InvalidCustomConnectorPermissionsResult {
   const grantByConnectorId = new Map<string, readonly string[]>();
-  for (const grant of args.grants ?? []) {
+  const grants: AgentCustomConnectorGrant[] = [];
+  for (const grant of args.grants) {
     if (grantByConnectorId.has(grant.customConnectorId)) {
       return {
         status: "invalidCustomConnectorPermissions",
@@ -386,17 +386,18 @@ function normalizeCustomConnectorGrantRequest(args: {
         message: `Duplicate permission names for custom connector ${grant.customConnectorId}`,
       };
     }
-    grantByConnectorId.set(grant.customConnectorId, [...uniquePermissionNames]);
+    const permissionNames = [...uniquePermissionNames];
+    grantByConnectorId.set(grant.customConnectorId, permissionNames);
+    grants.push({
+      customConnectorId: grant.customConnectorId,
+      permissionNames,
+    });
   }
-  const enabledIds =
-    args.grants !== undefined
-      ? [...grantByConnectorId.keys()]
-      : Array.from(new Set(args.enabledIds));
-  return { enabledIds, grantByConnectorId };
+  return { grants, grantByConnectorId };
 }
 
 async function validateExplicitPermissionNames(args: {
-  readonly snapshot: ConnectorRuntimeSnapshot;
+  readonly snapshot: ConnectorRuntimeSnapshot | null;
   readonly connectorId: string;
   readonly permissionNames: readonly string[];
   readonly permissionBundleRef: string | null;
@@ -407,16 +408,20 @@ async function validateExplicitPermissionNames(args: {
       readonly error: InvalidCustomConnectorPermissionsResult;
     }
 > {
+  if (args.permissionNames.length === 0) {
+    return { ok: true, permissionNames: [] };
+  }
   if (args.permissionBundleRef === null) {
-    return args.permissionNames.length === 0
-      ? { ok: true, permissionNames: [] }
-      : {
-          ok: false,
-          error: {
-            status: "invalidCustomConnectorPermissions",
-            message: `Custom connector ${args.connectorId} has no permission bundle`,
-          },
-        };
+    return {
+      ok: false,
+      error: {
+        status: "invalidCustomConnectorPermissions",
+        message: `Custom connector ${args.connectorId} has no permission bundle`,
+      },
+    };
+  }
+  if (!args.snapshot) {
+    throw new Error("Expected connector catalog snapshot");
   }
 
   const bundle = await loadCustomConnectorPermissionBundle({
@@ -448,10 +453,14 @@ async function validateExplicitPermissionNames(args: {
       };
 }
 
-async function validateCustomConnectorPermissionSelection(args: {
-  readonly enabledIds: readonly string[];
-  readonly explicitGrants: boolean;
+async function resolveCustomConnectorPermissionSelection(args: {
+  readonly connectorIds: readonly string[];
+  readonly permissionIntent: CustomConnectorPermissionIntent;
   readonly grantByConnectorId: ReadonlyMap<string, readonly string[]>;
+  readonly previousPermissionNamesByConnectorId: ReadonlyMap<
+    string,
+    readonly string[]
+  >;
   readonly permissionBundleRefs: ReadonlyMap<string, string | null>;
   readonly snapshot: ConnectorRuntimeSnapshot | null;
 }): Promise<
@@ -464,8 +473,11 @@ async function validateCustomConnectorPermissionSelection(args: {
     }
   | { readonly ok: false; readonly error: PermissionSelectionError }
 > {
-  if (!args.explicitGrants) {
-    const connectorIds = args.enabledIds.filter((connectorId) => {
+  if (args.permissionIntent === "preserveExistingOrDefault") {
+    const selectionRequiredIds = args.connectorIds.filter((connectorId) => {
+      if (args.previousPermissionNamesByConnectorId.has(connectorId)) {
+        return false;
+      }
       const permissionBundleRef =
         args.permissionBundleRefs.get(connectorId) ?? null;
       return (
@@ -473,12 +485,16 @@ async function validateCustomConnectorPermissionSelection(args: {
         permissionBundleRef !== FEISHU_CUSTOM_CONNECTOR_PERMISSION_BUNDLE_REF
       );
     });
-    return connectorIds.length === 0
+    return selectionRequiredIds.length === 0
       ? {
           ok: true,
           permissionNamesByConnectorId: new Map(
-            args.enabledIds.map((connectorId) => {
-              return [connectorId, []] as const;
+            args.connectorIds.map((connectorId) => {
+              return [
+                connectorId,
+                args.previousPermissionNamesByConnectorId.get(connectorId) ??
+                  [],
+              ] as const;
             }),
           ),
         }
@@ -486,16 +502,13 @@ async function validateCustomConnectorPermissionSelection(args: {
           ok: false,
           error: {
             status: "customConnectorPermissionSelectionRequired",
-            connectorIds,
+            connectorIds: selectionRequiredIds,
           },
         };
   }
-  if (!args.snapshot) {
-    throw new Error("Expected connector catalog snapshot");
-  }
 
   const permissionNamesByConnectorId = new Map<string, readonly string[]>();
-  for (const connectorId of args.enabledIds) {
+  for (const connectorId of args.connectorIds) {
     const result = await validateExplicitPermissionNames({
       snapshot: args.snapshot,
       connectorId,
@@ -516,14 +529,13 @@ async function persistUserCustomConnectorUpdate(
     readonly orgId: string;
     readonly userId: string;
     readonly agentId: string;
-    readonly enabledIds: readonly string[];
+    readonly grants: readonly AgentCustomConnectorGrant[];
     readonly operation: UserCustomConnectorUpdateOperation;
-    readonly permissionNamesByConnectorId: ReadonlyMap<
-      string,
-      readonly string[]
-    >;
   },
 ): Promise<Extract<UpdateUserCustomConnectorsResult, { status: "updated" }>> {
+  const connectorIds = args.grants.map((grant) => {
+    return grant.customConnectorId;
+  });
   const connectorScope = and(
     eq(userCustomConnectors.orgId, args.orgId),
     eq(userCustomConnectors.userId, args.userId),
@@ -531,31 +543,28 @@ async function persistUserCustomConnectorUpdate(
   );
   if (args.operation === "replace") {
     await tx.delete(userCustomConnectors).where(connectorScope);
-  } else if (args.operation === "remove" && args.enabledIds.length > 0) {
+  } else if (args.operation === "remove" && connectorIds.length > 0) {
     await tx
       .delete(userCustomConnectors)
       .where(
         and(
           connectorScope,
-          inArray(userCustomConnectors.customConnectorId, args.enabledIds),
+          inArray(userCustomConnectors.customConnectorId, connectorIds),
         ),
       );
   }
 
-  if (args.operation !== "remove" && args.enabledIds.length > 0) {
+  if (args.operation !== "remove" && args.grants.length > 0) {
     await tx
       .insert(userCustomConnectors)
       .values(
-        args.enabledIds.map((customConnectorId) => {
+        args.grants.map((grant) => {
           return {
             orgId: args.orgId,
             userId: args.userId,
             agentId: args.agentId,
-            customConnectorId,
-            permissionNames: [
-              ...(args.permissionNamesByConnectorId.get(customConnectorId) ??
-                []),
-            ],
+            customConnectorId: grant.customConnectorId,
+            permissionNames: [...grant.permissionNames],
           };
         }),
       )
@@ -575,15 +584,7 @@ async function persistUserCustomConnectorUpdate(
   if (args.operation === "replace") {
     return {
       status: "updated",
-      enabledIds: args.enabledIds,
-      grants: args.enabledIds.map((customConnectorId) => {
-        return {
-          customConnectorId,
-          permissionNames: [
-            ...(args.permissionNamesByConnectorId.get(customConnectorId) ?? []),
-          ],
-        };
-      }),
+      grants: args.grants,
     };
   }
   const rows = await tx
@@ -603,9 +604,6 @@ async function persistUserCustomConnectorUpdate(
     .orderBy(userCustomConnectors.customConnectorId);
   return {
     status: "updated",
-    enabledIds: rows.map((row) => {
-      return row.customConnectorId;
-    }),
     grants: rows.map((row) => {
       return {
         customConnectorId: row.customConnectorId,
@@ -618,7 +616,7 @@ async function persistUserCustomConnectorUpdate(
 async function persistUserCustomConnectorTransaction(args: {
   readonly tx: DbTransaction;
   readonly request: UpdateUserCustomConnectorsArgs;
-  readonly enabledIds: readonly string[];
+  readonly grants: readonly AgentCustomConnectorGrant[];
   readonly grantByConnectorId: ReadonlyMap<string, readonly string[]>;
   readonly operation: UserCustomConnectorUpdateOperation;
   readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot | null;
@@ -631,7 +629,10 @@ async function persistUserCustomConnectorTransaction(args: {
     return { result: { status: "agentNotFound" }, previousIds: [] };
   }
   const previousRows = await args.tx
-    .select({ customConnectorId: userCustomConnectors.customConnectorId })
+    .select({
+      customConnectorId: userCustomConnectors.customConnectorId,
+      permissionNames: userCustomConnectors.permissionNames,
+    })
     .from(userCustomConnectors)
     .where(
       and(
@@ -644,21 +645,25 @@ async function persistUserCustomConnectorTransaction(args: {
   const previousIds = previousRows.map((row) => {
     return row.customConnectorId;
   });
+  const connectorIds = args.grants.map((grant) => {
+    return grant.customConnectorId;
+  });
 
   if (args.operation === "remove") {
     return {
       result: await persistUserCustomConnectorUpdate(args.tx, {
-        ...args.request,
-        enabledIds: args.enabledIds,
+        orgId: args.request.orgId,
+        userId: args.request.userId,
+        agentId: args.request.agentId,
+        grants: args.grants,
         operation: args.operation,
-        permissionNamesByConnectorId: new Map(),
       }),
       previousIds,
     };
   }
   const definitions = await lockCustomConnectorDefinitionsForGrant(args.tx, {
     orgId: args.request.orgId,
-    enabledIds: args.enabledIds,
+    connectorIds,
   });
   if (definitions.missingIds.length > 0) {
     return {
@@ -670,7 +675,7 @@ async function persistUserCustomConnectorTransaction(args: {
     };
   }
   const previousIdSet = new Set(previousIds);
-  const addsMcpConnector = args.enabledIds.some((connectorId) => {
+  const addsMcpConnector = connectorIds.some((connectorId) => {
     return (
       !previousIdSet.has(connectorId) &&
       definitions.mcpConnectorIds.has(connectorId)
@@ -689,10 +694,15 @@ async function persistUserCustomConnectorTransaction(args: {
       };
     }
   }
-  const permissionSelection = await validateCustomConnectorPermissionSelection({
-    enabledIds: args.enabledIds,
-    explicitGrants: args.request.grants !== undefined,
+  const permissionSelection = await resolveCustomConnectorPermissionSelection({
+    connectorIds,
+    permissionIntent: args.request.permissionIntent,
     grantByConnectorId: args.grantByConnectorId,
+    previousPermissionNamesByConnectorId: new Map(
+      previousRows.map((row) => {
+        return [row.customConnectorId, row.permissionNames] as const;
+      }),
+    ),
     permissionBundleRefs: definitions.permissionBundleRefs,
     snapshot: args.connectorCatalogSnapshot,
   });
@@ -701,11 +711,20 @@ async function persistUserCustomConnectorTransaction(args: {
   }
   return {
     result: await persistUserCustomConnectorUpdate(args.tx, {
-      ...args.request,
-      enabledIds: args.enabledIds,
+      orgId: args.request.orgId,
+      userId: args.request.userId,
+      agentId: args.request.agentId,
+      grants: connectorIds.map((customConnectorId) => {
+        return {
+          customConnectorId,
+          permissionNames: [
+            ...(permissionSelection.permissionNamesByConnectorId.get(
+              customConnectorId,
+            ) ?? []),
+          ],
+        };
+      }),
       operation: args.operation,
-      permissionNamesByConnectorId:
-        permissionSelection.permissionNamesByConnectorId,
     }),
     previousIds,
   };
@@ -720,10 +739,14 @@ export async function updateUserCustomConnectors(
   if ("status" in normalized) {
     return normalized;
   }
-  const { enabledIds, grantByConnectorId } = normalized;
+  const { grants, grantByConnectorId } = normalized;
   const operation = args.operation ?? "replace";
   const connectorCatalogSnapshot =
-    args.grants !== undefined && operation !== "remove"
+    args.permissionIntent === "exact" &&
+    operation !== "remove" &&
+    grants.some((grant) => {
+      return grant.permissionNames.length > 0;
+    })
       ? await loadConnectorRuntimeSnapshot(db)
       : null;
 
@@ -731,7 +754,7 @@ export async function updateUserCustomConnectors(
     return await persistUserCustomConnectorTransaction({
       tx,
       request: args,
-      enabledIds,
+      grants,
       grantByConnectorId,
       operation,
       connectorCatalogSnapshot,
@@ -750,8 +773,12 @@ export async function updateUserCustomConnectors(
       },
       targets: [
         ...committed.previousIds,
-        ...committed.result.enabledIds,
-        ...enabledIds,
+        ...committed.result.grants.map((grant) => {
+          return grant.customConnectorId;
+        }),
+        ...grants.map((grant) => {
+          return grant.customConnectorId;
+        }),
       ].map((customConnectorId) => {
         return { kind: "custom" as const, customConnectorId };
       }),
@@ -776,7 +803,13 @@ export async function addUserCustomConnector(
       orgId: args.orgId,
       userId: args.userId,
       agentId: args.agentId,
-      enabledIds: [args.customConnectorId],
+      grants: [
+        {
+          customConnectorId: args.customConnectorId,
+          permissionNames: [],
+        },
+      ],
+      permissionIntent: "preserveExistingOrDefault",
       operation: "add",
     },
     options,

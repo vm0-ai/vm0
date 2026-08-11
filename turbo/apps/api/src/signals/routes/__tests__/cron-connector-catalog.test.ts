@@ -72,6 +72,7 @@ import {
 import {
   awsVerificationCode,
   createConnectorBddApi,
+  manualHttpCustomConnectorCreateBody,
   mockAwsExternalCodeProvider,
   mockDatadogConnectorOAuth,
   mockGmailConnectorOAuth,
@@ -2731,12 +2732,13 @@ describe("connector catalog valid lifecycle", () => {
         permissions: [{ name: "items.read" }],
       },
     });
-    const hostOverlap = await connectorsApi.createCustomConnector(actor, {
-      displayName: "External Host Overlap",
-      prefixes: ["https://api.example.test/custom/"],
-      headerName: "Authorization",
-      headerTemplate: "Bearer {{secret}}",
-    });
+    const hostOverlap = await connectorsApi.createCustomConnector(
+      actor,
+      manualHttpCustomConnectorCreateBody({
+        displayName: "External Host Overlap",
+        prefixTemplates: ["https://api.example.test/custom/"],
+      }),
+    );
     customConnectorIds.push(hostOverlap.id);
     expect(hostOverlap.prefixes).toStrictEqual([
       "https://api.example.test/custom/",
@@ -2846,13 +2848,14 @@ describe("connector catalog valid lifecycle", () => {
       displayName: "External custom permission agent",
       visibility: "private",
     });
-    const custom = await connectorsApi.createCustomConnector(actor, {
-      displayName: "External custom permission API",
-      prefixes: ["https://custom-permissions.example.test/v1/"],
-      headerName: "Authorization",
-      headerTemplate: "Bearer {{secret}}",
-      permissionBundleRef: `builtin:${connectorSlug}@1`,
-    });
+    const custom = await connectorsApi.createCustomConnector(
+      actor,
+      manualHttpCustomConnectorCreateBody({
+        displayName: "External custom permission API",
+        prefixTemplates: ["https://custom-permissions.example.test/v1/"],
+        permissionBundleRef: `builtin:${connectorSlug}@1`,
+      }),
+    );
     await connectorsApi.setCustomConnectorSecret(
       actor,
       custom.id,
@@ -4358,9 +4361,6 @@ describe("connector catalog valid lifecycle", () => {
       new URL(callbackLocation ?? "https://invalid.example").pathname,
     ).toBe("/connector/success");
     const hiddenConnectedList = await connectorsApi.listConnectors(actor);
-    expect(hiddenConnectedList.configuredConnectorSlugs).not.toContain(
-      "datadog",
-    );
     expect(hiddenConnectedList.connectors).toContainEqual(
       expect.objectContaining({ slug: "datadog", authMethod: "oauth" }),
     );

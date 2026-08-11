@@ -9,8 +9,8 @@ import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import {
-  isHttpCustomConnectorResponse,
-  type CustomConnectorHttpResponse,
+  isHttpCustomConnectorClientResponse,
+  type CustomConnectorHttpClientResponse,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import type { AgentCustomConnectorGrant } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 import { customConnectors$ } from "../../signals/zero-page/settings/custom-connectors.ts";
@@ -43,7 +43,7 @@ function JobCustomConnectorRow({
   isLast,
   onToggle,
 }: {
-  readonly connector: CustomConnectorHttpResponse;
+  readonly connector: CustomConnectorHttpClientResponse;
   readonly enabled: boolean;
   readonly loading: boolean;
   readonly agentId: string | undefined;
@@ -52,7 +52,6 @@ function JobCustomConnectorRow({
   readonly isLast: boolean;
   readonly onToggle: (id: string, checked: boolean) => void;
 }) {
-  const { t: tCommon } = useTranslation();
   const openPermissions = useSet(openCustomConnectorPermissions$);
   const permissionNames =
     grants?.find((grant) => {
@@ -83,14 +82,7 @@ function JobCustomConnectorRow({
       }
       label={connector.displayName}
       description={
-        <span className="font-mono">
-          {connector.prefixes[0]}
-          {!connector.connected
-            ? ` — ${tCommon(($) => {
-                return $.connectors.catalog.filters.notConnected;
-              })}`
-            : null}
-        </span>
+        <span className="font-mono">{connector.prefixTemplates[0]}</span>
       }
       enabled={enabled}
       loading={
@@ -121,9 +113,28 @@ function JobCustomConnectorRow({
 }
 
 export function JobCustomConnectorsSection() {
-  const { t } = useTranslation("agents");
   const connectors = useLastResolved(customConnectors$);
-  const httpConnectors = connectors?.filter(isHttpCustomConnectorResponse);
+  const connectedHttpConnectors = connectors
+    ?.filter(isHttpCustomConnectorClientResponse)
+    .filter((connector) => {
+      return connector.connected;
+    });
+
+  if (!connectedHttpConnectors || connectedHttpConnectors.length === 0) {
+    return null;
+  }
+
+  return (
+    <ConnectedJobCustomConnectorsSection connectors={connectedHttpConnectors} />
+  );
+}
+
+function ConnectedJobCustomConnectorsSection({
+  connectors,
+}: {
+  readonly connectors: readonly CustomConnectorHttpClientResponse[];
+}) {
+  const { t } = useTranslation("agents");
   const addedLoadable = useLastLoadable(agentAddedCustomConnectors$);
   const added = addedLoadable.state === "hasData" ? addedLoadable.data : [];
   const addedSet = new Set(added);
@@ -137,10 +148,6 @@ export function JobCustomConnectorsSection() {
   );
   const grantsLoadable = useLastLoadable(agentCustomConnectorGrants$);
   const detail = useLastResolved(agentDetail$);
-
-  if (!httpConnectors || httpConnectors.length === 0) {
-    return null;
-  }
 
   const handleToggle = (id: string, checked: boolean) => {
     if (saving) {
@@ -167,7 +174,7 @@ export function JobCustomConnectorsSection() {
       ? permissionDraft
       : null;
   const permissionTargetConnector = activePermissionDraft
-    ? httpConnectors.find((connector) => {
+    ? connectors.find((connector) => {
         return connector.id === activePermissionDraft.connectorId;
       })
     : undefined;
@@ -190,7 +197,7 @@ export function JobCustomConnectorsSection() {
           return $.authorization.customConnectors.description;
         })}
       </div>
-      {httpConnectors.map((connector, index) => {
+      {connectors.map((connector, index) => {
         return (
           <JobCustomConnectorRow
             key={connector.id}
@@ -202,7 +209,7 @@ export function JobCustomConnectorsSection() {
               grantsLoadable.state === "hasData" ? grantsLoadable.data : null
             }
             grantsLoading={grantsLoadable.state === "loading"}
-            isLast={index === httpConnectors.length - 1}
+            isLast={index === connectors.length - 1}
             onToggle={handleToggle}
           />
         );

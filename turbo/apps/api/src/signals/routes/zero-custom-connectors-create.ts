@@ -45,7 +45,11 @@ const createInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
   return {
     status: 201 as const,
-    body: serialiseCustomConnector({ row: result, valueMarkers: [] }),
+    body: serialiseCustomConnector({
+      row: result,
+      valueMarkers: [],
+      usableConnection: false,
+    }),
   };
 });
 

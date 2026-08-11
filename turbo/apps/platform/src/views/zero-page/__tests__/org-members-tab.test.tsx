@@ -5,8 +5,10 @@ import {
   zeroOrgMembershipRequestsContract,
 } from "@vm0/api-contracts/contracts/zero-org-members";
 import {
+  zeroBillingStatusContract,
   zeroBillingUsagePackCatalogContract,
   zeroBillingUsagePackManagementContract,
+  type BillingStatusResponse,
 } from "@vm0/api-contracts/contracts/zero-billing";
 import { FeatureSwitchKey } from "@vm0/core";
 import { screen, waitFor, within } from "@testing-library/react";
@@ -221,6 +223,104 @@ function mockMembersStory(): void {
   );
 }
 
+function mockMemberInviteEntitlement(required?: boolean): void {
+  const response: BillingStatusResponse = {
+    tier: "pro",
+    ...(required === undefined
+      ? {}
+      : { memberInviteUsagePackRequired: required }),
+    credits: 0,
+    onboardingPaymentPending: false,
+    subscriptionStatus: "active",
+    currentPeriodEnd: "2026-09-01T00:00:00.000Z",
+    cancelAtPeriodEnd: false,
+    scheduledChange: null,
+    hasSubscription: true,
+    autoRecharge: { enabled: false, threshold: null, amount: null },
+    creditExpiry: { expiringNextCycle: 0, nextExpiryDate: null },
+    creditBreakdown: [],
+    creditGrants: [],
+    concurrencyLimit: 1,
+    concurrencySubscriptions: [],
+  };
+  context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+    return respond(200, response);
+  });
+}
+
+function mockUsagePackManagement(onRequest?: () => void): void {
+  context.mocks.api(
+    zeroBillingUsagePackManagementContract.get,
+    ({ respond }) => {
+      onRequest?.();
+      return respond(200, {
+        tier: "pro",
+        currentPeriodEnd: "2026-09-01T00:00:00.000Z",
+        allocations: [
+          {
+            id: "a99c2cd1-b012-4ba5-952f-3aa9b707d0c6",
+            memberId: "test-user-123",
+            usagePackUsd: 20,
+            currentPeriodEnd: "2026-09-01T00:00:00.000Z",
+            pendingChange: null,
+          },
+          {
+            id: "d0b55925-a0b3-4dd2-a433-f114bdf6cd2a",
+            memberId: "user-bob",
+            usagePackUsd: 50,
+            currentPeriodEnd: "2026-09-01T00:00:00.000Z",
+            pendingChange: null,
+          },
+          {
+            id: "4875750e-c7a1-4740-bafb-3466443955f4",
+            memberId: "user-eve",
+            usagePackUsd: 100,
+            currentPeriodEnd: "2026-09-01T00:00:00.000Z",
+            pendingChange: null,
+          },
+        ],
+      });
+    },
+  );
+}
+
+function mockUsagePackCatalog(): void {
+  context.mocks.api(zeroBillingUsagePackCatalogContract.get, ({ respond }) => {
+    return respond(200, {
+      usagePacks: [
+        {
+          usagePackUsd: 20,
+          priceUsd: 20,
+          purchasedCredits: 20_000,
+          bonusCredits: 400,
+          totalCredits: 20_400,
+        },
+        {
+          usagePackUsd: 50,
+          priceUsd: 50,
+          purchasedCredits: 50_000,
+          bonusCredits: 2600,
+          totalCredits: 52_600,
+        },
+        {
+          usagePackUsd: 100,
+          priceUsd: 100,
+          purchasedCredits: 100_000,
+          bonusCredits: 8700,
+          totalCredits: 108_700,
+        },
+        {
+          usagePackUsd: 200,
+          priceUsd: 200,
+          purchasedCredits: 200_000,
+          bonusCredits: 22_200,
+          totalCredits: 222_200,
+        },
+      ],
+    });
+  });
+}
+
 async function openMembersTab(heading = "People"): Promise<void> {
   detachedSetupPage({
     context,
@@ -272,48 +372,10 @@ describe("organization members settings", () => {
 
   it("requires a package and starts paid invitation Checkout for a usage pack org", async () => {
     mockMembersStory();
+    mockMemberInviteEntitlement(true);
+    mockUsagePackManagement();
+    mockUsagePackCatalog();
     let checkoutBody: unknown;
-    context.mocks.api(
-      zeroBillingUsagePackManagementContract.get,
-      ({ respond }) => {
-        return respond(200, {
-          tier: "pro",
-          currentPeriodEnd: "2026-09-01T00:00:00.000Z",
-          allocations: [
-            {
-              id: "a99c2cd1-b012-4ba5-952f-3aa9b707d0c6",
-              memberId: "test-user-123",
-              usagePackUsd: 20,
-              currentPeriodEnd: "2026-09-01T00:00:00.000Z",
-              pendingChange: null,
-            },
-          ],
-        });
-      },
-    );
-    context.mocks.api(
-      zeroBillingUsagePackCatalogContract.get,
-      ({ respond }) => {
-        return respond(200, {
-          usagePacks: [
-            {
-              usagePackUsd: 20,
-              priceUsd: 20,
-              purchasedCredits: 20_000,
-              bonusCredits: 400,
-              totalCredits: 20_400,
-            },
-            {
-              usagePackUsd: 50,
-              priceUsd: 50,
-              purchasedCredits: 50_000,
-              bonusCredits: 2600,
-              totalCredits: 52_600,
-            },
-          ],
-        });
-      },
-    );
     context.mocks.api(zeroOrgInviteContract.purchase, ({ body, respond }) => {
       checkoutBody = body;
       return respond(200, {
@@ -331,6 +393,16 @@ describe("organization members settings", () => {
         screen.getByRole("heading", { name: "People" }),
       ).toBeInTheDocument();
     });
+    await expect(screen.findByText("Usage pack")).resolves.toBeInTheDocument();
+    expect(
+      within(rowByEmail("alice@example.com")).getByText("$20/month"),
+    ).toBeInTheDocument();
+    expect(
+      within(rowByEmail("bob@example.com")).getByText("$50/month"),
+    ).toBeInTheDocument();
+    expect(
+      within(rowByEmail("eve@example.com")).getByText("$100/month"),
+    ).toBeInTheDocument();
     click(buttonByText("Add member"));
     const inviteDialog = await screen.findByRole("dialog", {
       name: "Invite member",
@@ -349,7 +421,7 @@ describe("organization members settings", () => {
     click(packageSelector);
     click(
       await screen.findByRole("option", {
-        name: "$50 · 52,600 Total credits",
+        name: "$50 · 52,600 credits · 5% off",
       }),
     );
     click(buttonByText("Continue", inviteDialog));
@@ -367,6 +439,93 @@ describe("organization members settings", () => {
       );
     });
   });
+
+  it("opens the current plan package configuration from member actions", async () => {
+    mockMembersStory();
+    mockMemberInviteEntitlement(true);
+    mockUsagePackManagement();
+    mockUsagePackCatalog();
+
+    detachedSetupPage({
+      context,
+      path: "/?settings=people",
+      featureSwitches: { [FeatureSwitchKey.UsagePackPlans]: true },
+    });
+    await expect(screen.findByText("Usage pack")).resolves.toBeInTheDocument();
+
+    click(screen.getByLabelText("Actions for alice@example.com"));
+    click(menuItemByText("Configure member packages"));
+
+    await expect(
+      screen.findByRole("heading", { name: "Billing" }),
+    ).resolves.toBeInTheDocument();
+    const memberUsage = await screen.findByRole("group", {
+      name: "Member usage",
+    });
+    expect(
+      within(memberUsage).getByRole("combobox", {
+        name: "Usage for Test User",
+      }),
+    ).toHaveTextContent("$20 · 20,400 credits · 2% off");
+  });
+
+  it.each([
+    { entitlement: false, label: "false" },
+    { entitlement: undefined, label: "absent" },
+  ] as const)(
+    "keeps invitations package-free when the org entitlement is $label",
+    async ({ entitlement }) => {
+      mockMembersStory();
+      mockMemberInviteEntitlement(entitlement);
+      let managementRequested = false;
+      context.mocks.api(
+        zeroBillingUsagePackManagementContract.get,
+        ({ respond }) => {
+          managementRequested = true;
+          return respond(200, {
+            tier: "pro",
+            currentPeriodEnd: "2026-09-01T00:00:00.000Z",
+            allocations: [],
+          });
+        },
+      );
+
+      detachedSetupPage({
+        context,
+        path: "/?settings=people",
+        featureSwitches: { [FeatureSwitchKey.UsagePackPlans]: true },
+      });
+      await waitFor(() => {
+        expect(
+          screen.getByRole("heading", { name: "People" }),
+        ).toBeInTheDocument();
+      });
+      click(buttonByText("Add member"));
+      const inviteDialog = await screen.findByRole("dialog", {
+        name: "Invite member",
+      });
+      await fill(
+        within(inviteDialog).getByPlaceholderText("email@example.com"),
+        "legacy.invitee@example.com",
+      );
+      const send = buttonByText("Send invitation", inviteDialog);
+      await waitFor(() => {
+        expect(send).toBeEnabled();
+      });
+      expect(
+        within(inviteDialog).queryByText("Member packages"),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByText("Usage pack")).not.toBeInTheDocument();
+      expect(managementRequested).toBeFalsy();
+      click(send);
+
+      await waitFor(() => {
+        expect(
+          screen.getByText("legacy.invitee@example.com"),
+        ).toBeInTheDocument();
+      });
+    },
+  );
 
   it("accepts and rejects membership requests", async () => {
     mockMembersStory();
@@ -435,6 +594,9 @@ describe("organization members settings", () => {
     expect(
       within(removeDialog).getByText(/lose access to all resources/u),
     ).toBeInTheDocument();
+    expect(
+      within(removeDialog).queryByText("Usage pack impact"),
+    ).not.toBeInTheDocument();
     click(buttonByText("Remove", removeDialog));
 
     await waitFor(() => {
@@ -463,6 +625,51 @@ describe("organization members settings", () => {
       expect(
         screen.queryByLabelText("Actions for alice@example.com"),
       ).not.toBeInTheDocument();
+    });
+  });
+
+  it("explains usage pack and refund consequences before removing a member", async () => {
+    mockMembersStory();
+    mockMemberInviteEntitlement(true);
+    let managementRequests = 0;
+    mockUsagePackManagement(() => {
+      managementRequests += 1;
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/?settings=people",
+      featureSwitches: { [FeatureSwitchKey.UsagePackPlans]: true },
+    });
+    await expect(screen.findByText("Usage pack")).resolves.toBeInTheDocument();
+
+    click(screen.getByLabelText("Actions for bob@example.com"));
+    click(menuItemByText("Remove from workspace"));
+
+    const removeDialog = await screen.findByRole("dialog", {
+      name: "Remove member?",
+    });
+    expect(
+      within(removeDialog).getByText("Usage pack impact"),
+    ).toBeInTheDocument();
+    expect(
+      within(removeDialog).getByText(/credits become unavailable immediately/u),
+    ).toBeInTheDocument();
+    expect(
+      within(removeDialog).getByText(
+        /unused purchased-credit portion is returned/u,
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(removeDialog).getByText(
+        /used credits and bonus credits are not refundable/iu,
+      ),
+    ).toBeInTheDocument();
+    click(buttonByText("Remove", removeDialog));
+
+    await waitFor(() => {
+      expect(screen.getByText("Removed bob@example.com")).toBeInTheDocument();
+      expect(managementRequests).toBeGreaterThan(1);
     });
   });
 

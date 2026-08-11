@@ -10,7 +10,10 @@ import {
   serializeChatFollowupsContent,
   type ChatRecommendedFollowup,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import { modelProviderCredentialScopeSchema } from "@vm0/api-contracts/contracts/model-providers";
+import {
+  isRetiredRunModel,
+  modelProviderCredentialScopeSchema,
+} from "@vm0/api-contracts/contracts/model-providers";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
@@ -66,6 +69,7 @@ import {
   isQueueFirstRunClaimLost,
   type DispatchFailedRunCallbacks,
 } from "./agent-run-create.service";
+import { scheduleImmediateSuccessorIntent } from "./immediate-successor-intent.service";
 import type { InternalRunCallbackEnvelope } from "./internal-run-callback";
 import {
   feishuDeliveryTargetSchema,
@@ -173,6 +177,7 @@ import { loadComputerUseHostGrantForAutoSend } from "./zero-chat-computer-use-ho
 import { resolveRunChatThreadModelContext } from "./zero-chat-run-event.service";
 import { releaseThreadBrowsersForRun$ } from "./zero-browser.service";
 import {
+  resolvePersistedModelFirstRoute,
   resolveModelFirstProviderAdmission,
   type ModelFirstPin,
 } from "./zero-model-selection.service";
@@ -467,11 +472,18 @@ type CreatedQueuedRun = {
   readonly claimedEventCreatedAt: Date;
 };
 
+type CreateQueuedRunResult =
+  | { readonly kind: "created"; readonly run: CreatedQueuedRun }
+  | {
+      readonly kind: "not-created";
+      readonly definitiveRejection: boolean;
+    };
+
 type CreateQueuedRun = (
   input: CreateQueuedChatRunInput,
   admissionTime: number,
   signal: AbortSignal,
-) => Promise<CreatedQueuedRun | null>;
+) => Promise<CreateQueuedRunResult>;
 
 interface ChatCallbackDependencies {
   readonly releaseBrowsersForRun: (
@@ -2545,6 +2557,12 @@ function persistedModelProviderCredentialScope(
   return parsed.success ? parsed.data : null;
 }
 
+/**
+ * Rollout compatibility for unpinned Slack follow-ups whose first-run route
+ * was persisted by the previous API during the observed ~102-minute DB/API
+ * exposure window. Remove with #26314 after Stage 2 migrates these selections,
+ * production shows none remain, and the previous API is outside rollback/drain.
+ */
 async function resolveUnpinnedSlackQueuedMessageModelRoute(args: {
   readonly db: Db;
   readonly threadId: string;
@@ -2579,21 +2597,40 @@ async function resolveUnpinnedSlackQueuedMessageModelRoute(args: {
     )
     .orderBy(asc(chatEvents.seqId))
     .limit(1);
-  const modelPin: ModelFirstPin = firstRun
+  const replacementRoute =
+    firstRun &&
+    isRetiredRunModel(firstRun.selectedModel, firstRun.modelProviderType)
+      ? await resolvePersistedModelFirstRoute({
+          db: args.db,
+          orgId: args.orgId,
+          userId: args.userId,
+          selectedModel: firstRun.selectedModel,
+          modelProviderType: firstRun.modelProviderType,
+        })
+      : null;
+  const modelPin: ModelFirstPin = replacementRoute?.route
     ? {
-        modelProviderId: firstRun.modelProviderId,
-        modelProviderType: firstRun.modelProviderType,
-        modelProviderCredentialScope: persistedModelProviderCredentialScope(
-          firstRun.modelProviderCredentialScope,
-        ),
-        selectedModel: firstRun.selectedModel,
+        modelProviderId: replacementRoute.route.modelProviderId,
+        modelProviderType: replacementRoute.route.modelProviderType,
+        modelProviderCredentialScope:
+          replacementRoute.route.modelProviderCredentialScope,
+        selectedModel: replacementRoute.route.selectedModel,
       }
-    : {
-        modelProviderId: null,
-        modelProviderType: null,
-        modelProviderCredentialScope: null,
-        selectedModel: null,
-      };
+    : firstRun
+      ? {
+          modelProviderId: firstRun.modelProviderId,
+          modelProviderType: firstRun.modelProviderType,
+          modelProviderCredentialScope: persistedModelProviderCredentialScope(
+            firstRun.modelProviderCredentialScope,
+          ),
+          selectedModel: firstRun.selectedModel,
+        }
+      : {
+          modelProviderId: null,
+          modelProviderType: null,
+          modelProviderCredentialScope: null,
+          selectedModel: null,
+        };
   const providerAdmission = await resolveModelFirstProviderAdmission({
     db: args.db,
     orgId: args.orgId,
@@ -3217,16 +3254,18 @@ async function appendAutoSentQueuedRunMarker(args: {
 async function createAutoSentQueuedRun(args: {
   readonly createRun: (
     input: CreateQueuedChatRunInput,
-  ) => Promise<CreatedQueuedRun | null>;
+    settleIntent: (result: CreateQueuedRunResult) => void,
+  ) => Promise<CreateQueuedRunResult>;
   readonly runInput: CreateQueuedChatRunInput;
+  readonly settleIntent: (result: CreateQueuedRunResult) => void;
   readonly timing: ChatCallbackPreCreateTimingCollector;
-}): Promise<CreatedQueuedRun | null> {
+}): Promise<CreateQueuedRunResult> {
   return await measureChatCallbackPreCreateTiming(
     args.timing,
     "api_dispatch_pre_create_zero_chat_callback_auto_send_create_run",
     "top_level",
     () => {
-      return args.createRun(args.runInput);
+      return args.createRun(args.runInput, args.settleIntent);
     },
   );
 }
@@ -3311,6 +3350,7 @@ async function handleWebQueuedMessageAdmissionFailure(
     readonly db: Db;
     readonly failure: WebQueuedMessageAdmissionFailure;
     readonly formatError: ChatCallbackDependencies["formatIntegrationRunError"];
+    readonly onRejected: () => void;
   },
   signal: AbortSignal,
 ): Promise<void> {
@@ -3331,6 +3371,9 @@ async function handleWebQueuedMessageAdmissionFailure(
     errorMarker: args.failure.error.code.toLowerCase(),
     currentTime: nowDate(),
   });
+  if (failed) {
+    args.onRejected();
+  }
   signal.throwIfAborted();
   if (!failed) {
     return;
@@ -3353,6 +3396,7 @@ async function handleFeishuQueuedMessageAdmissionFailure(
     readonly formatError: ChatCallbackDependencies["formatIntegrationRunError"];
     readonly deliver: ChatCallbackDependencies["deliverFeishuAdmissionFailure"];
     readonly clearThinking: ChatCallbackDependencies["clearFeishuThinkingReaction"];
+    readonly onRejected: () => void;
   },
   signal: AbortSignal,
 ): Promise<void> {
@@ -3373,6 +3417,9 @@ async function handleFeishuQueuedMessageAdmissionFailure(
     errorMarker: args.failure.error.code.toLowerCase(),
     currentTime: nowDate(),
   });
+  if (failed) {
+    args.onRejected();
+  }
   signal.throwIfAborted();
   if (!failed) {
     return;
@@ -3421,6 +3468,7 @@ async function handleSlackQueuedMessageAdmissionFailure(
     readonly failure: SlackQueuedMessageAdmissionFailure;
     readonly formatError: ChatCallbackDependencies["formatIntegrationRunError"];
     readonly deliver: ChatCallbackDependencies["deliverSlackAdmissionFailure"];
+    readonly onRejected: () => void;
   },
   signal: AbortSignal,
 ): Promise<void> {
@@ -3441,6 +3489,9 @@ async function handleSlackQueuedMessageAdmissionFailure(
     errorMarker: args.failure.error.code.toLowerCase(),
     currentTime: nowDate(),
   });
+  if (failed) {
+    args.onRejected();
+  }
   signal.throwIfAborted();
   if (!failed) {
     return;
@@ -3485,6 +3536,7 @@ async function handleTeamsQueuedMessageAdmissionFailure(
     readonly failure: TeamsQueuedMessageAdmissionFailure;
     readonly formatError: ChatCallbackDependencies["formatIntegrationRunError"];
     readonly deliver: ChatCallbackDependencies["deliverTeamsAdmissionFailure"];
+    readonly onRejected: () => void;
   },
   signal: AbortSignal,
 ): Promise<void> {
@@ -3505,6 +3557,9 @@ async function handleTeamsQueuedMessageAdmissionFailure(
     errorMarker: args.failure.error.code.toLowerCase(),
     currentTime: nowDate(),
   });
+  if (failed) {
+    args.onRejected();
+  }
   signal.throwIfAborted();
   if (!failed) {
     return;
@@ -3545,6 +3600,7 @@ async function handleTelegramQueuedMessageAdmissionFailure(
     readonly failure: TelegramQueuedMessageAdmissionFailure;
     readonly formatError: ChatCallbackDependencies["formatIntegrationRunError"];
     readonly deliver: ChatCallbackDependencies["deliverTelegramAdmissionFailure"];
+    readonly onRejected: () => void;
   },
   signal: AbortSignal,
 ): Promise<void> {
@@ -3565,6 +3621,9 @@ async function handleTelegramQueuedMessageAdmissionFailure(
     errorMarker: args.failure.error.code.toLowerCase(),
     currentTime: nowDate(),
   });
+  if (failed) {
+    args.onRejected();
+  }
   signal.throwIfAborted();
   if (!failed) {
     return;
@@ -3605,6 +3664,7 @@ async function handleAgentPhoneQueuedMessageAdmissionFailure(
     readonly failure: AgentPhoneQueuedMessageAdmissionFailure;
     readonly formatError: ChatCallbackDependencies["formatIntegrationRunError"];
     readonly deliver: ChatCallbackDependencies["deliverAgentPhoneAdmissionFailure"];
+    readonly onRejected: () => void;
   },
   signal: AbortSignal,
 ): Promise<void> {
@@ -3625,6 +3685,9 @@ async function handleAgentPhoneQueuedMessageAdmissionFailure(
     errorMarker: args.failure.error.code.toLowerCase(),
     currentTime: nowDate(),
   });
+  if (failed) {
+    args.onRejected();
+  }
   signal.throwIfAborted();
   if (!failed) {
     return;
@@ -3665,6 +3728,7 @@ async function handleGitHubQueuedMessageAdmissionFailure(
     readonly failure: GitHubQueuedMessageAdmissionFailure;
     readonly formatError: ChatCallbackDependencies["formatIntegrationRunError"];
     readonly deliver: ChatCallbackDependencies["deliverGitHubAdmissionFailure"];
+    readonly onRejected: () => void;
   },
   signal: AbortSignal,
 ): Promise<void> {
@@ -3685,6 +3749,9 @@ async function handleGitHubQueuedMessageAdmissionFailure(
     errorMarker: args.failure.error.code.toLowerCase(),
     currentTime: nowDate(),
   });
+  if (failed) {
+    args.onRejected();
+  }
   signal.throwIfAborted();
   if (!failed) {
     return;
@@ -3724,6 +3791,7 @@ async function handleMorningBriefQueuedMessageAdmissionFailure(
     readonly db: Db;
     readonly failure: MorningBriefQueuedMessageAdmissionFailure;
     readonly formatError: ChatCallbackDependencies["formatIntegrationRunError"];
+    readonly onRejected: () => void;
   },
   signal: AbortSignal,
 ): Promise<void> {
@@ -3744,6 +3812,9 @@ async function handleMorningBriefQueuedMessageAdmissionFailure(
     errorMarker: args.failure.error.code.toLowerCase(),
     currentTime: nowDate(),
   });
+  if (failed) {
+    args.onRejected();
+  }
   signal.throwIfAborted();
   if (!failed) {
     return;
@@ -3790,105 +3861,106 @@ async function handleQueuedMessageAdmissionFailure(
     readonly deliverTelegram: ChatCallbackDependencies["deliverTelegramAdmissionFailure"];
     readonly deliverAgentPhone: ChatCallbackDependencies["deliverAgentPhoneAdmissionFailure"];
     readonly deliverGitHub: ChatCallbackDependencies["deliverGitHubAdmissionFailure"];
+    readonly onRejected: () => void;
   },
   signal: AbortSignal,
 ): Promise<void> {
   const failure = args.failure;
   switch (failure.kind) {
     case "web_admission_failure": {
-      await handleWebQueuedMessageAdmissionFailure(
+      return await handleWebQueuedMessageAdmissionFailure(
         {
           db: args.db,
           failure,
           formatError: args.formatError,
+          onRejected: args.onRejected,
         },
         signal,
       );
-      return;
     }
     case "slack_admission_failure": {
-      await handleSlackQueuedMessageAdmissionFailure(
+      return await handleSlackQueuedMessageAdmissionFailure(
         {
           db: args.db,
           failure,
           formatError: args.formatError,
           deliver: args.deliverSlack,
+          onRejected: args.onRejected,
         },
         signal,
       );
-      return;
     }
     case "feishu_admission_failure": {
-      await handleFeishuQueuedMessageAdmissionFailure(
+      return await handleFeishuQueuedMessageAdmissionFailure(
         {
           db: args.db,
           failure,
           formatError: args.formatError,
           deliver: args.deliverFeishu,
           clearThinking: args.clearFeishuThinking,
+          onRejected: args.onRejected,
         },
         signal,
       );
-      return;
     }
     case "teams_admission_failure": {
-      await handleTeamsQueuedMessageAdmissionFailure(
+      return await handleTeamsQueuedMessageAdmissionFailure(
         {
           db: args.db,
           failure,
           formatError: args.formatError,
           deliver: args.deliverTeams,
+          onRejected: args.onRejected,
         },
         signal,
       );
-      return;
     }
     case "telegram_admission_failure": {
-      await handleTelegramQueuedMessageAdmissionFailure(
+      return await handleTelegramQueuedMessageAdmissionFailure(
         {
           db: args.db,
           failure,
           formatError: args.formatError,
           deliver: args.deliverTelegram,
+          onRejected: args.onRejected,
         },
         signal,
       );
-      return;
     }
     case "agentphone_admission_failure": {
-      await handleAgentPhoneQueuedMessageAdmissionFailure(
+      return await handleAgentPhoneQueuedMessageAdmissionFailure(
         {
           db: args.db,
           failure,
           formatError: args.formatError,
           deliver: args.deliverAgentPhone,
+          onRejected: args.onRejected,
         },
         signal,
       );
-      return;
     }
     case "github_admission_failure": {
-      await handleGitHubQueuedMessageAdmissionFailure(
+      return await handleGitHubQueuedMessageAdmissionFailure(
         {
           db: args.db,
           failure,
           formatError: args.formatError,
           deliver: args.deliverGitHub,
+          onRejected: args.onRejected,
         },
         signal,
       );
-      return;
     }
     case "morning_brief_admission_failure": {
-      await handleMorningBriefQueuedMessageAdmissionFailure(
+      return await handleMorningBriefQueuedMessageAdmissionFailure(
         {
           db: args.db,
           failure,
           formatError: args.formatError,
+          onRejected: args.onRejected,
         },
         signal,
       );
-      return;
     }
     default: {
       return unreachableQueuedAdmissionFailure(failure);
@@ -3904,11 +3976,13 @@ interface AutoSendQueuedMessageArgs {
   readonly admissionTime: number;
   readonly createRun: (
     input: CreateQueuedChatRunInput,
-  ) => Promise<CreatedQueuedRun | null>;
+    settleIntent: (result: CreateQueuedRunResult) => void,
+  ) => Promise<CreateQueuedRunResult>;
   readonly db: Db;
   readonly chatThreadId: string;
   readonly userId: string;
   readonly agentId: string;
+  readonly immediateSuccessorPredecessorRunId?: string;
   readonly queueItemCreatedBefore?: Date;
   readonly timing: ChatCallbackPreCreateTimingCollector;
   readonly resolveMorningBriefSignedUrls: CreateQueuedChatRunInputArgs["resolveMorningBriefSignedUrls"];
@@ -3920,6 +3994,51 @@ interface AutoSendQueuedMessageArgs {
   readonly deliverTelegramAdmissionFailure: ChatCallbackDependencies["deliverTelegramAdmissionFailure"];
   readonly deliverAgentPhoneAdmissionFailure: ChatCallbackDependencies["deliverAgentPhoneAdmissionFailure"];
   readonly deliverGitHubAdmissionFailure: ChatCallbackDependencies["deliverGitHubAdmissionFailure"];
+}
+
+async function prepareAutoSendQueuedMessageRunInput(
+  input: {
+    readonly args: AutoSendQueuedMessageArgs;
+    readonly agent: AgentForAutoSend;
+    readonly queuedMessage: QueuedUserMessage;
+  },
+  signal: AbortSignal,
+): Promise<{
+  readonly immediateSuccessorIntent: ReturnType<
+    typeof scheduleImmediateSuccessorIntent
+  >;
+  readonly runInput: CreateQueuedChatRunInput | QueuedMessageAdmissionFailure;
+}> {
+  const { args, agent, queuedMessage } = input;
+  const immediateSuccessorIntent = scheduleImmediateSuccessorIntent({
+    db: args.db,
+    predecessorRunId: args.immediateSuccessorPredecessorRunId,
+    chatThreadId: args.chatThreadId,
+    orgId: agent.orgId,
+    intentId: queuedMessage.id,
+    eventClass: "prompt",
+    decisionPoint: "queue_drain",
+  });
+  const runInput = await measureChatCallbackPreCreateTiming(
+    args.timing,
+    "api_dispatch_pre_create_zero_chat_callback_auto_send_build_input",
+    "top_level",
+    () => {
+      return buildCreateQueuedChatRunInput(
+        {
+          db: args.db,
+          threadId: args.chatThreadId,
+          userId: args.userId,
+          agent,
+          queuedMessage,
+          timing: args.timing,
+          resolveMorningBriefSignedUrls: args.resolveMorningBriefSignedUrls,
+        },
+        signal,
+      );
+    },
+  );
+  return { immediateSuccessorIntent, runInput };
 }
 
 function chatThreadAdmissionBlockedForAutoSend(
@@ -3949,7 +4068,7 @@ function autoSendAdmissionBlocked(
 /**
  * User-message half of the per-thread scheduler: when the thread has no
  * in-flight run, dispatch the oldest queued user message — whoever sent it.
- * The shared thread scheduler calls this before attempting the workflow-event
+ * The shared thread scheduler calls this before attempting the automation-event
  * half, preserving user-message priority.
  */
 async function autoSendQueuedMessageForThread(
@@ -3990,25 +4109,11 @@ async function autoSendQueuedMessageForThread(
     return;
   }
 
-  const runInput = await measureChatCallbackPreCreateTiming(
-    args.timing,
-    "api_dispatch_pre_create_zero_chat_callback_auto_send_build_input",
-    "top_level",
-    () => {
-      return buildCreateQueuedChatRunInput(
-        {
-          db: args.db,
-          threadId,
-          userId,
-          agent,
-          queuedMessage,
-          timing: args.timing,
-          resolveMorningBriefSignedUrls: args.resolveMorningBriefSignedUrls,
-        },
-        signal,
-      );
-    },
-  );
+  const { immediateSuccessorIntent, runInput } =
+    await prepareAutoSendQueuedMessageRunInput(
+      { args, agent, queuedMessage },
+      signal,
+    );
   const activeRunExists = await autoSendAdmissionBlocked(args, threadId);
   if (activeRunExists) {
     return;
@@ -4026,6 +4131,9 @@ async function autoSendQueuedMessageForThread(
         deliverTelegram: args.deliverTelegramAdmissionFailure,
         deliverAgentPhone: args.deliverAgentPhoneAdmissionFailure,
         deliverGitHub: args.deliverGitHubAdmissionFailure,
+        onRejected: () => {
+          immediateSuccessorIntent?.revoke();
+        },
       },
       signal,
     );
@@ -4035,14 +4143,23 @@ async function autoSendQueuedMessageForThread(
   let createdRunId: string | null = null;
   const run = await onRejection(
     (async () => {
-      const createdRun = await createAutoSentQueuedRun({
+      const launch = await createAutoSentQueuedRun({
         createRun: args.createRun,
         runInput,
+        settleIntent: (result) => {
+          if (
+            (result.kind === "created" && result.run.status === "queued") ||
+            (result.kind === "not-created" && result.definitiveRejection)
+          ) {
+            immediateSuccessorIntent?.revoke();
+          }
+        },
         timing: args.timing,
       });
-      if (!createdRun) {
+      if (launch.kind === "not-created") {
         return null;
       }
+      const createdRun = launch.run;
       createdRunId = createdRun.runId;
       const shouldPublishSignals = await appendAutoSentQueuedRunMarkerIfQueued({
         db: args.db,
@@ -4088,15 +4205,16 @@ async function createQueuedChatRun(
     readonly input: CreateQueuedChatRunInput;
     readonly createRun: (
       input: CreateQueuedChatRunInput,
-    ) => Promise<CreatedQueuedRun | null>;
+    ) => Promise<CreateQueuedRunResult>;
+    readonly settleIntent: (result: CreateQueuedRunResult) => void;
   },
   signal: AbortSignal,
-): Promise<CreatedQueuedRun | null> {
+): Promise<CreateQueuedRunResult> {
   const created = await args.createRun(args.input);
+  // Once run admission has an authoritative outcome, settle its observation
+  // state before honoring a request cancellation that raced that outcome.
+  args.settleIntent(created);
   signal.throwIfAborted();
-  if (!created) {
-    return null;
-  }
   return created;
 }
 
@@ -5241,36 +5359,33 @@ const buildChatCallbackDependencies$ = command(
         );
         const settledRunResult = await settle(
           set(createQueueFirstZeroRun$, createArgs, inputSignal),
-          inputSignal,
         );
-        inputSignal.throwIfAborted();
         if (!settledRunResult.ok) {
           if (
             isForeignKeyViolation(settledRunResult.error) &&
             !(await chatThreadExists(db, runInput.threadId))
           ) {
-            return null;
+            return { kind: "not-created", definitiveRejection: true };
           }
+          inputSignal.throwIfAborted();
           throw settledRunResult.error;
         }
         const runResult = settledRunResult.value;
         if (isQueueFirstRunClaimLost(runResult)) {
+          inputSignal.throwIfAborted();
           log.warn("Auto-send lost the queued-message launch claim", {
             threadId: runInput.threadId,
             userMessageId: runInput.queuedMessage.id,
           });
-          return null;
+          return { kind: "not-created", definitiveRejection: false };
         }
-        if (
-          runResult.status !== 201 ||
-          runResult.body.status === "failed" ||
-          runResult.body.status === "cancelled"
-        ) {
+        if (runResult.status !== 201) {
+          inputSignal.throwIfAborted();
           log.warn("Auto-send failed to create run", {
             threadId: runInput.threadId,
             status: runResult.status,
           });
-          return null;
+          return { kind: "not-created", definitiveRejection: false };
         }
         if (!isCreatedQueuedRunStatus(runResult.body.status)) {
           log.warn("Auto-send created run with unexpected status", {
@@ -5278,12 +5393,15 @@ const buildChatCallbackDependencies$ = command(
             runId: runResult.body.runId,
             status: runResult.body.status,
           });
-          return null;
+          return { kind: "not-created", definitiveRejection: true };
         }
         return {
-          runId: runResult.body.runId,
-          status: runResult.body.status,
-          claimedEventCreatedAt: runResult.queueFirstClaim.createdAt,
+          kind: "created",
+          run: {
+            runId: runResult.body.runId,
+            status: runResult.body.status,
+            claimedEventCreatedAt: runResult.queueFirstClaim.createdAt,
+          },
         };
       },
     };
@@ -5298,6 +5416,7 @@ export const drainQueuedUserMessagesForThread$ = command(
     args: {
       readonly chatThreadId: string;
       readonly apiStartTime: number;
+      readonly immediateSuccessorPredecessorRunId?: string;
       readonly queueItemCreatedBefore?: Date;
       readonly timing?: ChatCallbackPreCreateTimingCollector;
     },
@@ -5336,6 +5455,8 @@ export const drainQueuedUserMessagesForThread$ = command(
         admissionTime,
         userId: thread.userId,
         agentId: thread.agentId,
+        immediateSuccessorPredecessorRunId:
+          args.immediateSuccessorPredecessorRunId,
         queueItemCreatedBefore: args.queueItemCreatedBefore,
         timing: args.timing ?? new ChatCallbackPreCreateTimingCollector(),
         resolveMorningBriefSignedUrls: async (keys, inputSignal) => {
@@ -5371,10 +5492,11 @@ export const drainQueuedUserMessagesForThread$ = command(
           dependencies.deliverAgentPhoneAdmissionFailure,
         deliverGitHubAdmissionFailure:
           dependencies.deliverGitHubAdmissionFailure,
-        createRun: (input) => {
+        createRun: (input, settleIntent) => {
           return createQueuedChatRun(
             {
               input,
+              settleIntent,
               createRun: (runInput) => {
                 return createQueuedRun(runInput, admissionTime, signal);
               },

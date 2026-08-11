@@ -135,6 +135,16 @@ interface RustDeclaration {
   readonly lines: string[];
 }
 
+interface TaggedUnitUnion {
+  readonly tag: string;
+  readonly values: readonly string[];
+}
+
+interface TaggedUnitVariant {
+  readonly tag: string;
+  readonly value: string;
+}
+
 interface NormalizedTypeDeclarationDoc {
   readonly rustDoc: readonly string[];
   readonly fields: ReadonlyMap<string, readonly string[]>;
@@ -1134,6 +1144,11 @@ function rustTypeForSchema(
     return `Option<${rustTypeForSchema(nullable, typeName, context)}>`;
   }
 
+  const taggedUnitUnion = getTaggedUnitUnion(schema, context.label);
+  if (taggedUnitUnion !== null) {
+    return renderTaggedUnitEnum(taggedUnitUnion, typeName, context);
+  }
+
   const enumValues = getStringArray(schema.enum);
   if (enumValues !== null) {
     return renderStringEnum(enumValues, typeName, context);
@@ -1393,6 +1408,56 @@ function renderStringEnum(
   return typeName;
 }
 
+function renderTaggedUnitEnum(
+  union: TaggedUnitUnion,
+  typeName: string,
+  context: RenderTypeContext,
+): string {
+  if (context.declarationNames.has(typeName)) {
+    throw new Error(
+      `${context.label} has duplicate Rust type name: ${typeName}`,
+    );
+  }
+  context.declarationNames.add(typeName);
+  const declarationDoc = typeDeclarationDoc(context, typeName);
+
+  const seenVariants = new Set<string>();
+  const lines = [
+    ...renderOuterRustDoc(declarationDoc.rustDoc, ""),
+    "#[derive(",
+    "    Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize,",
+    ")]",
+    `#[serde(tag = ${rustStringLiteral(union.tag)})]`,
+    `pub enum ${typeName} {`,
+  ];
+
+  for (const value of union.values) {
+    const variant = toRustVariantName(value);
+    if (seenVariants.has(variant)) {
+      throw new Error(
+        `${context.label}.${typeName} has duplicate Rust enum variant: ${variant}`,
+      );
+    }
+    seenVariants.add(variant);
+    lines.push(
+      ...renderOuterRustDoc(
+        typeVariantDoc(context, typeName, value, declarationDoc),
+        "    ",
+      ),
+    );
+    lines.push(`    #[serde(rename = ${rustStringLiteral(value)})]`);
+    lines.push(`    ${variant},`);
+  }
+
+  lines.push("}");
+  context.declarations.push({
+    name: typeName,
+    lines,
+  });
+
+  return typeName;
+}
+
 function renderModuleNode(
   node: ModuleNode,
   indent: string,
@@ -1626,6 +1691,75 @@ function getJsonSchemaType(schema: JsonObject, label: string): string {
   }
 
   return schema.type;
+}
+
+function getTaggedUnitUnion(
+  schema: JsonObject,
+  label: string,
+): TaggedUnitUnion | null {
+  const oneOf = schema.oneOf;
+  if (oneOf === undefined) {
+    return null;
+  }
+  if (!Array.isArray(oneOf) || oneOf.length === 0) {
+    throw new Error(`${label} uses malformed oneOf`);
+  }
+
+  const variants = oneOf.map((entry) => {
+    return getTaggedUnitVariant(entry, label);
+  });
+  const first = variants[0];
+  if (first === undefined) {
+    throw new Error(`${label} uses unsupported oneOf schema`);
+  }
+  if (
+    variants.some((variant) => {
+      return variant.tag !== first.tag;
+    })
+  ) {
+    throw new Error(`${label} uses inconsistent oneOf discriminator fields`);
+  }
+  return {
+    tag: first.tag,
+    values: variants.map((variant) => {
+      return variant.value;
+    }),
+  };
+}
+
+function getTaggedUnitVariant(
+  entry: unknown,
+  label: string,
+): TaggedUnitVariant {
+  if (!isJsonObject(entry) || entry.type !== "object") {
+    throw new Error(`${label} uses unsupported oneOf schema`);
+  }
+  const properties = getOptionalObject(entry.properties);
+  const propertyEntries = properties && Object.entries(properties);
+  const required = getStringArray(entry.required);
+  if (
+    propertyEntries === null ||
+    propertyEntries.length !== 1 ||
+    required === null ||
+    required.length !== 1 ||
+    entry.additionalProperties !== false
+  ) {
+    throw new Error(`${label} uses unsupported oneOf schema`);
+  }
+  const propertyEntry = propertyEntries[0];
+  if (propertyEntry === undefined) {
+    throw new Error(`${label} uses unsupported oneOf schema`);
+  }
+  const [tag, rawTagSchema] = propertyEntry;
+  if (
+    required[0] !== tag ||
+    !isJsonObject(rawTagSchema) ||
+    rawTagSchema.type !== "string" ||
+    typeof rawTagSchema.const !== "string"
+  ) {
+    throw new Error(`${label} uses unsupported oneOf schema`);
+  }
+  return { tag, value: rawTagSchema.const };
 }
 
 function getOptionalObject(value: unknown): JsonObject | null {

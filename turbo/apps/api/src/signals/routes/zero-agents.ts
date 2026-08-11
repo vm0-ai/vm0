@@ -535,9 +535,6 @@ const getAgentCustomConnectorsInner$ = computed(async (get) => {
   return {
     status: 200 as const,
     body: {
-      enabledIds: grants.map((grant) => {
-        return grant.customConnectorId;
-      }),
       grants: [...grants],
     },
   };
@@ -761,21 +758,14 @@ const updateAgentCustomConnectorsInner$ = command(
     }
 
     const writeDb = set(writeDb$);
-    const grants = "grants" in body.data ? body.data.grants : undefined;
-    const enabledIds =
-      "enabledIds" in body.data
-        ? Array.from(new Set(body.data.enabledIds))
-        : body.data.grants.map((grant) => {
-            return grant.customConnectorId;
-          });
     const operation = body.data.operation ?? "replace";
 
     const updated = await updateUserCustomConnectors(writeDb, {
       orgId: auth.orgId,
       userId: auth.userId,
       agentId: params.id,
-      enabledIds,
-      ...(grants !== undefined ? { grants } : {}),
+      grants: body.data.grants,
+      permissionIntent: "exact",
       operation,
     });
     signal.throwIfAborted();
@@ -808,7 +798,6 @@ const updateAgentCustomConnectorsInner$ = command(
     return {
       status: 200 as const,
       body: {
-        enabledIds: [...updated.enabledIds],
         grants: [...updated.grants],
       },
     };

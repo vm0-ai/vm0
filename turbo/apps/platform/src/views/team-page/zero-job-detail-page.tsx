@@ -254,8 +254,7 @@ function DetailError({ error, agentId }: { error: string; agentId: string }) {
   );
 }
 
-const TAB_TRIGGER_CLASS =
-  "gap-1.5 text-sm data-[state=active]:bg-background px-3";
+const TAB_TRIGGER_CLASS = "gap-1.5 text-sm data-active:bg-background px-3";
 
 function resolveVisibleTab(
   rawTab: string,
@@ -483,34 +482,38 @@ function ConnectedConnectorPermissions({
                 }}
                 className="flex-1 bg-transparent text-sm text-foreground placeholder:text-muted-foreground outline-none"
               />
-              <button
+              <Button
                 type="button"
                 onClick={() => {
                   setSearch("");
                   setSearchActive(false);
                 }}
-                className="shrink-0 flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-state-hover transition-colors"
+                variant="quiet"
+                size="icon-xs"
+                className="shrink-0"
                 aria-label={t(($) => {
                   return $.authorization.closeSearch;
                 })}
               >
                 <X size={14} />
-              </button>
+              </Button>
             </div>
           )}
           {!searchActive && (
-            <button
+            <Button
               type="button"
               onClick={() => {
                 return setSearchActive(true);
               }}
-              className="absolute right-3 top-1/2 -translate-y-1/2 flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-state-hover transition-colors"
+              variant="quiet"
+              size="icon-xs"
+              className="absolute right-3 top-1/2 -translate-y-1/2"
               aria-label={t(($) => {
                 return $.authorization.findConnectors;
               })}
             >
               <Search size={14} />
-            </button>
+            </Button>
           )}
         </div>
         {filteredConnectors.length > 0 ? (

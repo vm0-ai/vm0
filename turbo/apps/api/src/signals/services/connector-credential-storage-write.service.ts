@@ -119,21 +119,15 @@ export async function upsertConnectorOwnedVariable(
       type: "connector",
     })
     .onConflictDoUpdate({
-      target: [
-        variables.orgId,
-        variables.userId,
-        variables.type,
-        variables.name,
-      ],
+      target: [variables.connectorId, variables.name],
+      targetWhere: isNotNull(variables.connectorId),
       set: {
-        connectorId: args.connectorId,
         value: args.value,
         ...(args.updatedDescription === undefined
           ? {}
           : { description: args.updatedDescription }),
         updatedAt: nowDate(),
       },
-      setWhere: eq(variables.connectorId, args.connectorId),
     })
     .returning({ id: variables.id });
   if (!row) {

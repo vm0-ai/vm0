@@ -73,6 +73,10 @@
       "schedule": "* * * * *"
     },
     {
+      "path": "/api/cron/repair-custom-connector-skill-versions",
+      "schedule": "* * * * *"
+    },
+    {
       "path": "/api/cron/process-usage-events",
       "schedule": "* * * * *"
     },

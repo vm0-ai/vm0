@@ -1,5 +1,6 @@
 import type { z } from "zod";
 import {
+  activeInputDeliveryReceiptResponseSchema,
   artifactMissingRootPolicySchema,
   storageMountEntrySchema,
 } from "../contracts/runners";
@@ -50,6 +51,20 @@ export const rustTypeModuleDocs = [
     ],
   },
   {
+    rustModulePath: ["runners", "runs"],
+    rustDoc: [
+      "Run-scoped DTOs exchanged between runners, guests, and the API.",
+    ],
+  },
+  {
+    rustModulePath: ["runners", "runs", "active_inputs"],
+    rustDoc: ["DTOs for durable active-input delivery."],
+  },
+  {
+    rustModulePath: ["runners", "runs", "active_inputs", "receipt"],
+    rustDoc: ["DTOs for recording active-input acceptance receipts."],
+  },
+  {
     rustModulePath: ["webhooks"],
     rustDoc: ["Webhook DTOs generated from TypeScript API contracts."],
   },
@@ -82,6 +97,22 @@ export const rustTypeModuleDocs = [
 ] satisfies readonly RustTypeModuleDoc[];
 
 export const rustTypeBindings = [
+  {
+    schema: activeInputDeliveryReceiptResponseSchema,
+    rustModulePath: ["runners", "runs", "active_inputs", "receipt"],
+    rustTypeName: "Response",
+    direction: "response",
+    declarations: [
+      {
+        rustTypeName: "Response",
+        rustDoc: ["API outcome after recording active-input acceptance."],
+        variants: {
+          delivered: ["The delivery receipt was accepted idempotently."],
+          rejected: ["The delivery can no longer be accepted."],
+        },
+      },
+    ],
+  },
   {
     schema: webhookPiTranscriptContract.read.responses[200],
     rustModulePath: ["webhooks", "agent", "pi_transcript"],

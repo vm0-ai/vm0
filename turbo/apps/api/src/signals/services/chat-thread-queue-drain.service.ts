@@ -27,6 +27,7 @@ import { expiredCancellationRecoveryThreads } from "./zero-chat-active-run.servi
 import { drainGoalQueueForThread$ } from "./zero-goal-queue-drain.service";
 import type { ApiDispatchTimingCollector } from "./api-dispatch-timing.service";
 import { pendingActiveInputCondition } from "./chat-event-queue.service";
+import type { ImmediateSuccessorIntentHandle } from "./immediate-successor-intent.service";
 
 const DRAIN_SWEEP_LIMIT = 20;
 export const STALE_QUEUE_ITEM_AGE_MS = 5 * 60 * 1000;
@@ -47,6 +48,8 @@ type QueueDrainSweepCandidate =
 interface DrainChatThreadQueueInput {
   readonly apiStartTime?: number;
   readonly chatThreadId: string;
+  readonly goalImmediateSuccessorIntent?: ImmediateSuccessorIntentHandle;
+  readonly immediateSuccessorPredecessorRunId?: string;
   readonly dispatchFailedCallbacks: DispatchFailedRunCallbacks;
   readonly queueItemCreatedBefore?: Date;
   readonly timing?: ChatCallbackPreCreateTimingCollector;
@@ -135,6 +138,8 @@ export const drainChatThreadQueueForThread$ = command(
       {
         chatThreadId: input.chatThreadId,
         apiStartTime,
+        immediateSuccessorPredecessorRunId:
+          input.immediateSuccessorPredecessorRunId,
         queueItemCreatedBefore: input.queueItemCreatedBefore,
         timing: input.timing,
       },
@@ -146,6 +151,9 @@ export const drainChatThreadQueueForThread$ = command(
       {
         chatThreadId: input.chatThreadId,
         apiStartTime,
+        goalImmediateSuccessorIntent: input.goalImmediateSuccessorIntent,
+        immediateSuccessorPredecessorRunId:
+          input.immediateSuccessorPredecessorRunId,
         dispatchFailedCallbacks: input.dispatchFailedCallbacks,
         queueItemCreatedBefore: input.queueItemCreatedBefore,
       },
@@ -157,6 +165,8 @@ export const drainChatThreadQueueForThread$ = command(
       {
         chatThreadId: input.chatThreadId,
         apiStartTime,
+        immediateSuccessorPredecessorRunId:
+          input.immediateSuccessorPredecessorRunId,
         dispatchFailedCallbacks: input.dispatchFailedCallbacks,
         queueItemCreatedBefore: input.queueItemCreatedBefore,
         ...(input.automationEventLaunch
@@ -195,6 +205,7 @@ export const drainChatThreadQueueForRun$ = command(
       drainChatThreadQueueForThread$,
       {
         chatThreadId: run.chatThreadId,
+        immediateSuccessorPredecessorRunId: input.runId,
         apiStartTime: input.apiStartTime,
         dispatchFailedCallbacks: input.dispatchFailedCallbacks,
       },

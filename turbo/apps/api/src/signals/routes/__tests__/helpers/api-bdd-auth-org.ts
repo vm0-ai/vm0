@@ -30,7 +30,7 @@ import {
 import { authContract } from "@vm0/api-contracts/contracts/auth";
 import {
   zeroAgentCustomConnectorsContract,
-  type AgentCustomConnectorEnabledIds,
+  type AgentCustomConnectorGrants,
 } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 import {
   zeroAgentsByIdContract,
@@ -1587,7 +1587,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
     async readAgentCustomConnectors(
       actor: ApiTestUser,
       agentId: string,
-    ): Promise<AgentCustomConnectorEnabledIds> {
+    ): Promise<AgentCustomConnectorGrants> {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
         zeroAgentCustomConnectorsContract,
       );
@@ -1604,8 +1604,8 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
     async updateAgentCustomConnectors(
       actor: ApiTestUser,
       agentId: string,
-      enabledIds: readonly string[],
-    ): Promise<AgentCustomConnectorEnabledIds> {
+      connectorIds: readonly string[],
+    ): Promise<AgentCustomConnectorGrants> {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
         zeroAgentCustomConnectorsContract,
       );
@@ -1613,7 +1613,11 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
         client.update({
           headers: authenticate(actor),
           params: { id: agentId },
-          body: { enabledIds: [...enabledIds] },
+          body: {
+            grants: connectorIds.map((customConnectorId) => {
+              return { customConnectorId, permissionNames: [] };
+            }),
+          },
         }),
         [200],
       );
@@ -1623,7 +1627,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
     async requestUpdateAgentCustomConnectors(
       actor: ApiTestUser | null,
       agentId: string,
-      enabledIds: readonly string[],
+      connectorIds: readonly string[],
       statuses: readonly (200 | 400 | 401 | 403 | 404)[],
     ) {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
@@ -1633,7 +1637,11 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
         client.update({
           headers: authenticate(actor),
           params: { id: agentId },
-          body: { enabledIds: [...enabledIds] },
+          body: {
+            grants: connectorIds.map((customConnectorId) => {
+              return { customConnectorId, permissionNames: [] };
+            }),
+          },
         }),
         statuses,
       );

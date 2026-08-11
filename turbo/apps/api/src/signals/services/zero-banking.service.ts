@@ -124,8 +124,6 @@ function serviceUnavailable(message: string, code = "NOT_CONFIGURED") {
 
 function isUnattendedTriggerSource(triggerSource: string | null): boolean {
   return (
-    triggerSource === "workflow-schedule" ||
-    triggerSource === "workflow-event" ||
     triggerSource === "automation-schedule" ||
     triggerSource === "automation-event" ||
     triggerSource === "goal"

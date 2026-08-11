@@ -25,6 +25,15 @@ pub const HTTP_TIMEOUT_SECS: u64 = 30;
 /// HTTP request timeout for uploads in seconds.
 pub const HTTP_UPLOAD_TIMEOUT_SECS: u64 = 60;
 
+/// HTTP request timeout for one active-input receipt attempt.
+pub const ACTIVE_INPUT_RECEIPT_TIMEOUT_SECS: u64 = 5;
+
+/// Global active-input receipt finalization budget.
+pub const ACTIVE_INPUT_RECEIPT_FINALIZE_TIMEOUT_SECS: u64 = 5;
+
+/// Maximum wait for an in-flight delivery-identified CLI sink operation.
+pub const ACTIVE_INPUT_SINK_QUIESCENCE_TIMEOUT_SECS: u64 = 5;
+
 /// Workaround for Claude Code bug where WebSearch/WebFetch hang indefinitely.
 /// Kill the CLI process if a network tool hasn't returned a result within
 /// this duration. Override with `VM0_STUCK_TOOL_TIMEOUT_SECS` env var.

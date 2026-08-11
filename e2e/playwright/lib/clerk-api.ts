@@ -17,6 +17,12 @@ interface RetryableClerkRequestInit extends RequestInit {
   readonly method: "GET" | "DELETE" | "PATCH";
 }
 
+export interface RunnerTestAccounts {
+  readonly runner: string;
+  readonly codex: string;
+  readonly claude: string;
+}
+
 function getClerkApiBase(): string {
   const testApiBase = process.env.CLERK_API_TEST_BASE_URL;
   if (!testApiBase) {
@@ -45,6 +51,15 @@ export function generateTestEmail(): string {
   const jobRef = process.env.JOB_REF ?? "local";
   const randHex = randomBytes(4).toString("hex");
   return `${jobRef}+clerk_test@e2e-browser-${randHex}.ai`;
+}
+
+export function runnerTestAccounts(): RunnerTestAccounts {
+  const jobRef = process.env.JOB_REF ?? "local";
+  return {
+    runner: `${jobRef}+clerk_test+runner@vm0-e2e.ai`,
+    codex: `${jobRef}+clerk_test+runner-real-codex@vm0-e2e.ai`,
+    claude: `${jobRef}+clerk_test+runner-real-claude@vm0-e2e.ai`,
+  };
 }
 
 export async function createUser(email: string): Promise<string> {
@@ -155,6 +170,22 @@ export async function deleteStaleTestUsers(): Promise<void> {
         "Failed to delete a stale Clerk test user; continuing stale cleanup",
       );
     }
+  }
+}
+
+export async function deleteOrganizationById(
+  organizationId: string,
+): Promise<void> {
+  const response = await requestClerkWithRetry(
+    "delete Clerk test organization",
+    `/organizations/${organizationId}`,
+    { method: "DELETE", headers: getClerkHeaders() },
+  );
+  await response.body?.cancel();
+  if (!response.ok && response.status !== 404) {
+    throw new Error(
+      `delete Clerk test organization failed with ${formatClerkResponseSummary(response)}`,
+    );
   }
 }
 

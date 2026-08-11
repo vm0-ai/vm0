@@ -568,6 +568,90 @@
       "when": 1786395902038,
       "tag": "0888_loud_toro",
       "breakpoints": true
+    },
+    {
+      "idx": 889,
+      "version": "7",
+      "when": 1786405851625,
+      "tag": "0889_thankful_crusher_hogan",
+      "breakpoints": true
+    },
+    {
+      "idx": 890,
+      "version": "7",
+      "when": 1786414512343,
+      "tag": "0890_backfill_trigger_sources",
+      "breakpoints": true
+    },
+    {
+      "idx": 891,
+      "version": "7",
+      "when": 1786416103938,
+      "tag": "0891_certain_masque",
+      "breakpoints": true
+    },
+    {
+      "idx": 892,
+      "version": "7",
+      "when": 1786417137511,
+      "tag": "0892_ancient_hedge_knight",
+      "breakpoints": true
+    },
+    {
+      "idx": 893,
+      "version": "7",
+      "when": 1786418682349,
+      "tag": "0893_backfill_chat_run_service_tier_annotations",
+      "breakpoints": true
+    },
+    {
+      "idx": 894,
+      "version": "7",
+      "when": 1786421316290,
+      "tag": "0894_rerun_trigger_source_backfill",
+      "breakpoints": true
+    },
+    {
+      "idx": 895,
+      "version": "7",
+      "when": 1786425481396,
+      "tag": "0895_prepare_canonical_custom_connector_definitions",
+      "breakpoints": true
+    },
+    {
+      "idx": 896,
+      "version": "7",
+      "when": 1786429087303,
+      "tag": "0896_neat_makkari",
+      "breakpoints": true
+    },
+    {
+      "idx": 897,
+      "version": "7",
+      "when": 1786432064522,
+      "tag": "0897_bizarre_kid_colt",
+      "breakpoints": true
+    },
+    {
+      "idx": 898,
+      "version": "7",
+      "when": 1786434656080,
+      "tag": "0898_usage_pack_credit_refunds",
+      "breakpoints": true
+    },
+    {
+      "idx": 899,
+      "version": "7",
+      "when": 1786434673087,
+      "tag": "0899_backfill_member_invite_usage_pack_required",
+      "breakpoints": true
+    },
+    {
+      "idx": 900,
+      "version": "7",
+      "when": 1786434776471,
+      "tag": "0900_replace_scheduled_usage_pack_change",
+      "breakpoints": true
     }
   ]
 }

@@ -10,6 +10,7 @@ import { secrets } from "@vm0/db/schema/secret";
 import { variables } from "@vm0/db/schema/variable";
 import { and, eq, inArray } from "drizzle-orm";
 
+import { nowDate } from "../../lib/time";
 import { request$ } from "../context/hono";
 import { bodyResultOf } from "../context/request";
 import { writeDb$, type Db } from "../external/db";
@@ -244,6 +245,45 @@ async function seedConnector(
   return actionOk({ connector_id: connector.id });
 }
 
+async function upsertLegacyVariable(
+  db: Db,
+  body: ConnectorCredentialStorageAction<"upsert-legacy-variable">,
+  signal: AbortSignal,
+) {
+  const [variable] = await db
+    .insert(variables)
+    .values({
+      connectorId: body.connector_id,
+      orgId: body.org_id,
+      userId: body.user_id,
+      name: body.name,
+      value: body.value,
+      description: body.description,
+      type: "connector",
+    })
+    .onConflictDoUpdate({
+      target: [
+        variables.orgId,
+        variables.userId,
+        variables.type,
+        variables.name,
+      ],
+      set: {
+        connectorId: body.connector_id,
+        value: body.value,
+        description: body.description,
+        updatedAt: nowDate(),
+      },
+      setWhere: eq(variables.connectorId, body.connector_id),
+    })
+    .returning({ id: variables.id });
+  signal.throwIfAborted();
+  if (!variable) {
+    throw new Error(`Connector variable ${body.name} is owned by another row`);
+  }
+  return actionOk({ variable_id: variable.id });
+}
+
 async function seedCustomRuntimeConnectors(
   db: Db,
   body: ConnectorCredentialStorageAction<"seed-custom-runtime-connectors">,
@@ -257,9 +297,6 @@ async function seedCustomRuntimeConnectors(
           orgId: body.org_id,
           slug: connector.slug,
           displayName: connector.display_name,
-          prefixes: [connector.prefix_template],
-          headerName: "X-Connector",
-          headerTemplate: "runtime-batch",
           prefixTemplates: [connector.prefix_template],
           fields: [
             {
@@ -270,7 +307,10 @@ async function seedCustomRuntimeConnectors(
             },
           ],
           headerInjections: [
-            { name: "X-Connector", valueTemplate: "runtime-batch" },
+            {
+              name: "X-Connector",
+              valueTemplate: "runtime-batch {{secrets.optional_secret}}",
+            },
           ],
           queryInjections: [],
           authMode: "manual" as const,
@@ -340,6 +380,9 @@ async function setCustomParentState(
     .set({
       authMethod: body.auth_method,
       storageVersion: body.storage_version,
+      ...(body.needs_reconnect === undefined
+        ? {}
+        : { needsReconnect: body.needs_reconnect }),
     })
     .where(
       and(
@@ -439,6 +482,9 @@ const mutateConnectorCredentialStorageState$ = command(
       }
       case "seed-connector": {
         return await seedConnector(db, body, signal);
+      }
+      case "upsert-legacy-variable": {
+        return await upsertLegacyVariable(db, body, signal);
       }
       case "seed-custom-runtime-connectors": {
         return await seedCustomRuntimeConnectors(db, body, signal);

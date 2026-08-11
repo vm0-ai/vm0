@@ -183,6 +183,11 @@ export interface ApiTestMocks {
       readonly create: AsyncMock;
       readonly retrieve: AsyncMock;
     };
+    readonly creditNotes: {
+      readonly preview: AsyncMock;
+      readonly create: AsyncMock;
+      readonly retrieve: AsyncMock;
+    };
     readonly customers: {
       readonly retrieve: AsyncMock;
       readonly create: AsyncMock;
@@ -350,6 +355,11 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
       create: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
     },
     refunds: {
+      create: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+      retrieve: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+    },
+    creditNotes: {
+      preview: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
       create: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
       retrieve: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
     },
@@ -909,6 +919,11 @@ vi.mock("stripe", async (importOriginal) => {
           create: apiTestMocks.stripe.refunds.create,
           retrieve: apiTestMocks.stripe.refunds.retrieve,
         },
+        creditNotes: {
+          preview: apiTestMocks.stripe.creditNotes.preview,
+          create: apiTestMocks.stripe.creditNotes.create,
+          retrieve: apiTestMocks.stripe.creditNotes.retrieve,
+        },
         customers: {
           retrieve: apiTestMocks.stripe.customers.retrieve,
           create: apiTestMocks.stripe.customers.create,
@@ -1132,6 +1147,7 @@ export function resetApiTestMocks(): void {
   apiTestMocks.clerk.organizations.updateOrganizationMembership.mockReset();
   apiTestMocks.clerk.organizations.updateOrganizationLogo.mockReset();
   apiTestMocks.clerk.users.getUserList.mockReset();
+  apiTestMocks.clerk.users.getUserList.mockResolvedValue({ data: [] });
   apiTestMocks.clerk.users.getOrganizationMembershipList.mockReset();
   apiTestMocks.clerk.users.updateUserMetadata.mockReset();
   apiTestMocks.clerk.signInTokens.createSignInToken.mockReset();

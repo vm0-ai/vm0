@@ -319,7 +319,9 @@ describe("zero connector list command", () => {
         stubCustomConnectors([connector]),
         stubAgent(AGENT_UUID, "maya"),
         stubUserConnectors(AGENT_UUID, []),
-        stubAgentCustomConnectors([connector.id]),
+        stubAgentCustomConnectors([
+          { customConnectorId: connector.id, permissionNames: [] },
+        ]),
       );
 
       await listCommand.parseAsync(["node", "cli", "--agent", AGENT_UUID]);

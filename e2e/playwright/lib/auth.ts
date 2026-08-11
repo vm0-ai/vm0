@@ -34,7 +34,7 @@ export async function signInWithClerkTestingHelper(
   email: string,
   appUrl: string,
   options: ClerkTestingSignInOptions,
-): Promise<void> {
+): Promise<string> {
   const helperUrl = new URL("/_/skeleton", appUrl);
   await navigateToLoadedClerk(page, helperUrl);
   const clerkStateBefore = await page.evaluate(() => {
@@ -102,6 +102,7 @@ export async function signInWithClerkTestingHelper(
   });
 
   await gotoAboutBlankAfterClerkNavigation(page);
+  return token;
 }
 
 async function navigateToLoadedClerk(

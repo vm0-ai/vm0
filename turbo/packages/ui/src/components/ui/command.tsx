@@ -24,9 +24,11 @@ const Command = React.forwardRef<
 });
 Command.displayName = CommandPrimitive.displayName;
 
-interface CommandDialogProps extends React.ComponentPropsWithoutRef<
-  typeof Dialog
+interface CommandDialogProps extends Omit<
+  React.ComponentPropsWithoutRef<typeof Dialog>,
+  "children"
 > {
+  readonly children?: React.ReactNode;
   readonly className?: string | undefined;
   readonly closeLabel?: string | undefined;
   readonly commandClassName?: string | undefined;

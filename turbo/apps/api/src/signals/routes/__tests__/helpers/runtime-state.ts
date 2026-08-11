@@ -150,6 +150,20 @@ export async function readUsagePackInvitationSchemaAvailable(
   return response.usage_pack_invitation_schema_available;
 }
 
+export async function setCustomConnectorAuthTemplateFixture(
+  context: TestContext,
+  args: {
+    readonly connectorId: string;
+    readonly valueTemplate: string;
+  },
+): Promise<void> {
+  await postAction(context, {
+    action: "set-custom-connector-auth-template-fixture",
+    connector_id: args.connectorId,
+    value_template: args.valueTemplate,
+  });
+}
+
 export async function readRunAutonomyBudgetFixture(
   context: TestContext,
   runId: string,
@@ -564,6 +578,56 @@ export async function setComputerUseHostAsPreviousApi(
     thread_id: args.threadId,
     computer_use_host_id: args.computerUseHostId,
   });
+}
+
+export async function setAgentModelSelectionAsPreviousApi(
+  context: TestContext,
+  agentId: string,
+  selectedModel: string,
+): Promise<void> {
+  await postAction(context, {
+    action: "set-agent-model-selection-as-previous-api",
+    agent_id: agentId,
+    selected_model: selectedModel,
+  });
+}
+
+export async function setRunModelSelectionAsPreviousApi(
+  context: TestContext,
+  runId: string,
+  selectedModel: string,
+): Promise<void> {
+  await postAction(context, {
+    action: "set-run-model-selection-as-previous-api",
+    run_id: runId,
+    selected_model: selectedModel,
+  });
+}
+
+export async function setThreadModelSelectionAsPreviousApi(
+  context: TestContext,
+  threadId: string,
+  selectedModel: string,
+): Promise<void> {
+  await postAction(context, {
+    action: "set-thread-model-selection-as-previous-api",
+    thread_id: threadId,
+    selected_model: selectedModel,
+  });
+}
+
+export async function readRunModelSelectionFixture(
+  context: TestContext,
+  runId: string,
+): Promise<NonNullable<TestRuntimeStateActionResponse["run_model_selection"]>> {
+  const response = await postAction(context, {
+    action: "read-run-model-selection-fixture",
+    run_id: runId,
+  });
+  if (!response.run_model_selection) {
+    throw new Error("readRunModelSelectionFixture missing model selection");
+  }
+  return response.run_model_selection;
 }
 
 export async function setBrowserTabSnapshotAsPreviousApi(

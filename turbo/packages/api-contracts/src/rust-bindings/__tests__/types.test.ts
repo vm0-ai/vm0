@@ -20,6 +20,11 @@ import {
 
 const expectedBindings = [
   {
+    rustModulePath: ["runners", "runs", "active_inputs", "receipt"],
+    rustTypeName: "Response",
+    direction: "response",
+  },
+  {
     rustModulePath: ["runners", "storage"],
     rustTypeName: "ArtifactEntryMissingRootPolicy",
     direction: "response",
@@ -326,6 +331,30 @@ describe("Rust type bindings", () => {
     expect(rendered).toContain("pub items: Vec<RequestItem>,");
     expect(rendered).toContain("pub some_value: u64,");
     expect(rendered).toContain("pub ok: bool,");
+  });
+
+  it("renders internally tagged unit unions", () => {
+    const rendered = renderExampleRustTypes([
+      validBinding({
+        schema: z.discriminatedUnion("outcome", [
+          z.object({ outcome: z.literal("delivered") }),
+          z.object({ outcome: z.literal("rejected") }),
+        ]),
+        rustTypeName: "Response",
+        declarations: [
+          enumDeclaration("Response", {
+            delivered: ["Delivered outcome."],
+            rejected: ["Rejected outcome."],
+          }),
+        ],
+      }),
+    ]);
+
+    expect(rendered).toContain('#[serde(tag = "outcome")]');
+    expect(rendered).toContain('#[serde(rename = "delivered")]');
+    expect(rendered).toContain("Delivered,");
+    expect(rendered).toContain('#[serde(rename = "rejected")]');
+    expect(rendered).toContain("Rejected,");
   });
 
   it("renders optional nullable fields without nested options", () => {

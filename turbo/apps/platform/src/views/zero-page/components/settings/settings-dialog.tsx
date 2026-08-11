@@ -102,6 +102,8 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
   const isAdmin =
     isAdminLoadable.state === "hasData" ? isAdminLoadable.data : false;
   const showDebug = features[FeatureSwitchKey.ZeroDebug] ?? false;
+  const showUsage =
+    isAdmin || (features[FeatureSwitchKey.UsagePackPlans] ?? false);
   const sectionMeta = {
     preference: {
       title: t(($) => {
@@ -208,15 +210,19 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
       return $.settings.dialog.groups.billing;
     }),
     items: [
-      {
-        id: "usage",
-        label: isAdmin
-          ? sectionMeta.usage.title
-          : t(($) => {
-              return $.settings.dialog.sections.usage.usageTitle;
-            }),
-        icon: Coins,
-      },
+      ...(showUsage
+        ? [
+            {
+              id: "usage" as const,
+              label: isAdmin
+                ? sectionMeta.usage.title
+                : t(($) => {
+                    return $.settings.dialog.sections.usage.usageTitle;
+                  }),
+              icon: Coins,
+            },
+          ]
+        : []),
       ...(isAdmin
         ? [
             {
@@ -237,12 +243,13 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
     personalGroup,
     ...(isAdmin ? [workspaceGroup] : []),
     modelsGroup,
-    billingGroup,
+    ...(billingGroup.items.length > 0 ? [billingGroup] : []),
   ];
 
   // If the user lost admin while the dialog is open, fall back to a safe section
   const resolvedSection: SettingsSection =
     (!showDebug && activeSection === "debug") ||
+    (!showUsage && activeSection === "usage") ||
     (!isAdmin && isAdminOnlySettingsSection(activeSection))
       ? "preference"
       : activeSection;

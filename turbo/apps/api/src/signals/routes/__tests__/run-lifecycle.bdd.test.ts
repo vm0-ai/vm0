@@ -17,6 +17,7 @@ import {
   type CreateCustomConnectorBody,
   ZERO_CUSTOM_CONNECTOR_IDS_ENV_KEY,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
+import { testCustomConnectorSkillRepairStateContract } from "@vm0/api-contracts/contracts/test-custom-connector-skill-repair-state";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
   getCustomConnectorSkillStorageName,
@@ -34,7 +35,8 @@ import { v5 as uuidv5 } from "uuid";
 
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { clearMockNow, mockNow, now, nowDate } from "../../../lib/time";
-import { testContext } from "../../../__tests__/test-context";
+import { accept, testContext } from "../../../__tests__/test-context";
+import { setupApp } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createDeferredPromise } from "../../utils";
@@ -71,6 +73,7 @@ import { createComposesBddApi } from "./helpers/api-bdd-composes";
 import { createComputerUseBddApi } from "./helpers/api-bdd-computer-use";
 import {
   createConnectorBddApi,
+  manualHttpCustomConnectorCreateBody,
   mockCustomConnectorOAuth2Provider,
 } from "./helpers/api-bdd-connectors";
 import { createFirewallApi } from "./helpers/api-bdd-firewall";
@@ -108,12 +111,16 @@ import {
   readOrgAdmissionLockState,
   readRunApiStart,
   readRunClaimOwner,
+  readRunModelSelectionFixture,
   readRunnerJobStorageState,
   readStoragePersistenceState,
   releaseOrgAdmissionLock,
   resetFakeKms,
   seedVm0ManagedDefaultModelKey as seedVm0ManagedDefaultModelKeyState,
   seedVm0ManagedModelKey as seedVm0ManagedModelKeyState,
+  setAgentModelSelectionAsPreviousApi,
+  setCustomConnectorAuthTemplateFixture,
+  setRunModelSelectionAsPreviousApi,
   setRunnerJobContextProfileAsPreviousApi,
 } from "./helpers/runtime-state";
 import {
@@ -122,6 +129,7 @@ import {
   type SecretKmsDataKey,
   type SecretKmsGenerateDataKeyRequest,
 } from "../../../lib/secret-kms-client";
+import { testCustomConnectorSkillRepairStateRoutes } from "../test-custom-connector-skill-repair-state";
 
 /**
  * RUN-01..04 and CHAIN-RUN: successful run dispatch and lifecycle.
@@ -5404,6 +5412,93 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
     expect(emptied.body.concurrency.active).toBe(0);
   });
 
+  it("reconciles a retired persisted agent model before launch", async () => {
+    const api = createRunsApi(context);
+    const { actor, agentId } = await entitledRunActor();
+    await setAgentModelSelectionAsPreviousApi(
+      context,
+      agentId,
+      "claude-sonnet-4-6",
+    );
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "run with a retired persisted agent model",
+      modelProvider: "anthropic-api-key",
+    });
+    const stored = await readRunModelSelectionFixture(context, run.runId);
+
+    expect(stored).toStrictEqual({
+      model_provider: "anthropic-api-key",
+      selected_model: "claude-sonnet-5",
+    });
+    await api.requestCancelRun(actor, run.runId, [200]);
+  });
+
+  it("rejects an explicitly requested retired provider before launch", async () => {
+    const api = createRunsApi(context);
+    const { actor, agentId } = await entitledRunActor();
+
+    const response = await api.requestCreateRun(
+      actor,
+      {
+        agentId,
+        prompt: "run with an explicitly retired Z.AI provider",
+        modelProvider: "zai-api-key",
+      },
+      [400],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        code: "MODEL_RETIRED",
+        message:
+          'Model "Z.AI" has been retired. Use "deepseek-v4-flash" instead.',
+      },
+    });
+  });
+
+  it("rejects a retired queued run instead of promoting it", async () => {
+    const api = createRunsApi(context);
+    const { actor, agentId } = await entitledRunActor();
+    await enableFakeKms(context);
+    onTestFinished(async () => {
+      await resetFakeKms(context);
+    });
+
+    const first = await api.createRun(actor, {
+      agentId,
+      prompt: "active run before retired queue item one",
+      modelProvider: "anthropic-api-key",
+    });
+    const second = await api.createRun(actor, {
+      agentId,
+      prompt: "active run before retired queue item two",
+      modelProvider: "anthropic-api-key",
+    });
+    const queued = await api.createRun(actor, {
+      agentId,
+      prompt: "retired queued run",
+      modelProvider: "anthropic-api-key",
+    });
+    expect(queued.status).toBe("queued");
+
+    await setRunModelSelectionAsPreviousApi(
+      context,
+      queued.runId,
+      "claude-sonnet-4-6",
+    );
+    await api.requestCancelRun(actor, first.runId, [200]);
+
+    const failed = await waitForRunStatus(api, actor, queued.runId, "failed");
+    expect(failed.error).toBe(
+      'MODEL_RETIRED: Model "claude-sonnet-4-6" has been retired. Use "claude-sonnet-5" instead.',
+    );
+    await expect(waitForRunQueueLength(api, actor, 0)).resolves.toBeDefined();
+
+    await api.requestCancelRun(actor, second.runId, [200]);
+  });
+
   it("counts promoted queued runs by promotion heartbeat for admission", async () => {
     const api = createRunsApi(context);
     const { actor, agentId } = await entitledRunActor();
@@ -6336,7 +6431,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     const api = createRunsApi(context);
     const chat = createChatFilesBddApi(context);
     const unsupportedModel = "deepseek-v4-flash";
-    const supportedModel = "claude-sonnet-4-6";
+    const supportedModel = "claude-sonnet-5";
     const unknownModel = "gpt-5.6-sol";
     const { actor, agentId, runnerGroup } = await entitledRunActor();
     const { providerId: anthropicProviderId } =
@@ -6473,7 +6568,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
         "codex-oauth-token",
         "CHATGPT_ACCOUNT_ID",
       ),
-      OPENAI_MODEL: "gpt-5.5",
+      OPENAI_MODEL: "gpt-5.6-sol",
     });
     expect(claim.environment).not.toHaveProperty("CHATGPT_REFRESH_TOKEN");
     expect(claim.environment).not.toHaveProperty("CHATGPT_ID_TOKEN");
@@ -6496,7 +6591,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
       }),
     ).toContain("model-provider:codex-oauth-token");
     expect(claim.billableFirewalls).toStrictEqual([]);
-    expect(claim.modelUsageProvider).toBe("gpt-5.5");
+    expect(claim.modelUsageProvider).toBe("gpt-5.6-sol");
 
     // The encrypted secrets resolve to the seeded plaintext through the
     // firewall-auth webhook, which is the production read surface for them.
@@ -6643,7 +6738,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     const orgProvider = await api.ensureOrgModelProvider(actor);
     await api.updateOrgModelPolicies(actor, [
       {
-        model: "claude-sonnet-4-6",
+        model: "claude-sonnet-5",
         isDefault: true,
         defaultProviderType: "anthropic-api-key",
         credentialScope: "org",
@@ -6676,7 +6771,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     }
     const thread = await chat.createThread(actor, {
       agentId: agent.agentId,
-      model: "claude-sonnet-4-6",
+      model: "claude-sonnet-5",
     });
     const sent = await chat.requestSendEvent(
       actor,
@@ -8152,7 +8247,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
 });
 
 describe("RUN-02: custom connectors, grants, and network policies", () => {
-  it("lets an enabled custom connector override a connected built-in connector", async () => {
+  it("admits overlapping custom and built-in connector targets", async () => {
     const api = createRunsApi(context);
     const connectors = createConnectorBddApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
@@ -8168,13 +8263,14 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     );
     await api.enableAgentConnectors(actor, agentId, ["figma"]);
 
-    const custom = await connectors.createCustomConnector(actor, {
-      slug: `_figma-override-${randomUUID().slice(0, 8)}`,
-      displayName: "Custom Figma",
-      prefixes: ["https://api.figma.com/"],
-      headerName: "Authorization",
-      headerTemplate: "Bearer {{secret}}",
-    });
+    const custom = await connectors.createCustomConnector(
+      actor,
+      manualHttpCustomConnectorCreateBody({
+        slug: `_figma-override-${randomUUID().slice(0, 8)}`,
+        displayName: "Custom Figma",
+        prefixTemplates: ["https://api.figma.com/"],
+      }),
+    );
     await connectors.setCustomConnectorSecret(
       actor,
       custom.id,
@@ -8190,13 +8286,26 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(run.runId);
     const internalName = `custom_connector_${custom.id.replaceAll("-", "")}`;
-    expect(findFirewallEntry(claim.firewalls, "figma")).toBeUndefined();
+    expect(findFirewallEntry(claim.firewalls, "figma")).toMatchObject({
+      kind: "builtin",
+      name: "figma",
+    });
     expect(inlineFirewallApis(claim.firewalls, internalName)).toMatchObject([
       {
         base: "https://api.figma.com/",
       },
     ]);
-    expect(claim.networkPolicies ?? {}).not.toHaveProperty("figma");
+    expect(claim.connectorRuntimeTargets).toContainEqual({
+      kind: "builtin",
+      connectorSlug: "figma",
+    });
+    expect(claim.connectorRuntimeTargets).toContainEqual(
+      expect.objectContaining({
+        kind: "custom",
+        customConnectorId: custom.id,
+      }),
+    );
+    expect(claim.networkPolicies).toHaveProperty("figma");
     expect(claim.networkPolicies?.[internalName]?.unknownPolicy).toBe("allow");
 
     await api.requestCancelRun(actor, run.runId, [200]);
@@ -8220,13 +8329,14 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     );
     await api.enableAgentConnectors(actor, agentId, ["figma"]);
 
-    const custom = await connectors.createCustomConnector(actor, {
-      slug: `_figma-files-${randomUUID().slice(0, 8)}`,
-      displayName: "Custom Figma Files",
-      prefixes: ["https://api.figma.com/v1/files/"],
-      headerName: "Authorization",
-      headerTemplate: "Bearer {{secret}}",
-    });
+    const custom = await connectors.createCustomConnector(
+      actor,
+      manualHttpCustomConnectorCreateBody({
+        slug: `_figma-files-${randomUUID().slice(0, 8)}`,
+        displayName: "Custom Figma Files",
+        prefixTemplates: ["https://api.figma.com/v1/files/"],
+      }),
+    );
     await connectors.setCustomConnectorSecret(
       actor,
       custom.id,
@@ -8251,6 +8361,10 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
         base: "https://api.figma.com/v1/files/",
       },
     ]);
+    expect(claim.connectorRuntimeTargets).toContainEqual({
+      kind: "builtin",
+      connectorSlug: "figma",
+    });
 
     await api.requestCancelRun(actor, run.runId, [200]);
     expect((await api.readRun(actor, run.runId)).status).toBe("cancelled");
@@ -8666,12 +8780,13 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       { key: "secret", kind: "secret", value: "mcp-runtime-token" },
     ]);
 
-    const http = await connectors.createCustomConnector(actor, {
-      displayName: "BDD HTTP Runtime Peer",
-      prefixes: ["https://http-runtime.example.test/api/"],
-      headerName: "Authorization",
-      headerTemplate: "Bearer {{secret}}",
-    });
+    const http = await connectors.createCustomConnector(
+      actor,
+      manualHttpCustomConnectorCreateBody({
+        displayName: "BDD HTTP Runtime Peer",
+        prefixTemplates: ["https://http-runtime.example.test/api/"],
+      }),
+    );
     await connectors.setCustomConnectorSecret(
       actor,
       http.id,
@@ -8916,6 +9031,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
   it("hands off more than one runtime-sync batch without truncation", async () => {
     const api = createRunsApi(context);
     const connectors = createConnectorBddApi(context);
+    const fw = createFirewallApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
     if (!actor.orgId) {
       throw new Error("Expected a custom connector actor with an organization");
@@ -8938,15 +9054,38 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       userId: actor.userId,
       customConnectors: runtimeConnectors,
     });
+    const listedRuntimeConnectors =
+      await connectors.listCustomConnectors(actor);
+    const firstRuntimeConnector = runtimeConnectors[0];
+    if (!firstRuntimeConnector) {
+      throw new Error("Expected a canonical runtime connector fixture");
+    }
+    expect(
+      listedRuntimeConnectors.find((connector) => {
+        return connector.id === firstRuntimeConnector.id;
+      }),
+    ).toMatchObject({
+      prefixTemplates: [firstRuntimeConnector.prefixTemplate],
+      prefixes: [firstRuntimeConnector.prefixTemplate],
+      headerName: "X-Connector",
+      headerTemplate: "runtime-batch {{secrets.optional_secret}}",
+    });
     const createdIds = runtimeConnectors.map((connector) => {
       return connector.id;
     });
-    const enabledIds = await connectors.updateAgentCustomConnectors(
+    const authorizedConnectorIds = await connectors.updateAgentCustomConnectors(
       actor,
       agentId,
       createdIds,
     );
-    expect(enabledIds).toHaveLength(connectorCount);
+    expect(authorizedConnectorIds).toHaveLength(connectorCount);
+    await connectors.setCustomConnectorValues(actor, firstRuntimeConnector.id, [
+      {
+        key: "optional_secret",
+        kind: "secret",
+        value: "canonical-runtime-secret",
+      },
+    ]);
 
     const run = await api.createRun(actor, {
       agentId,
@@ -8967,6 +9106,31 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
         .sort(),
     ).toStrictEqual(expectedIds);
 
+    const [firstRuntime] = await api.syncConnectorRuntime(run.runId, {
+      targets: [
+        {
+          kind: "custom",
+          customConnectorId: firstRuntimeConnector.id,
+          baseUrlVars: {},
+        },
+      ],
+    });
+    const availableFirstRuntime = availableCustomConnectorRuntime(firstRuntime);
+    const { body: firstAuthBody } = customConnectorRuntimeAuthBody(
+      availableFirstRuntime,
+      fw.encryptedSecretsBody({}),
+    );
+    const firstAuth = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      firstAuthBody,
+      [200],
+    );
+    expect(firstAuth.body).toMatchObject({
+      headers: {
+        "X-Connector": "runtime-batch canonical-runtime-secret",
+      },
+    });
+
     await api.requestCancelRun(actor, run.runId, [200]);
   });
 
@@ -8974,6 +9138,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const api = createRunsApi(context);
     createBddApi(context).acceptAgentStorageWrites();
     const connectors = createConnectorBddApi(context);
+    const storages = createStoragesBddApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
     const slug = `_bdd-permission-skill-${randomUUID().slice(0, 8)}`;
     const custom = await connectors.createCustomConnector(actor, {
@@ -9001,6 +9166,10 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       permissionBundleRef: "builtin:slack@1",
       skillMarkdown: "Use the selected Slack-compatible operations only.",
     });
+    const initialSkill = await storages.downloadStorage(actor, {
+      name: getCustomConnectorSkillStorageName(custom.id),
+      owner: "organization",
+    });
     const grant = {
       customConnectorId: custom.id,
       permissionNames: ["chat:write"],
@@ -9023,6 +9192,22 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       prompt: "use the disconnected custom connector skill",
       modelProvider: "anthropic-api-key",
     });
+    await connectors.updateCustomConnector(actor, custom.id, {
+      displayName: custom.displayName,
+      prefixTemplates: custom.prefixTemplates,
+      fields: custom.fields,
+      headerInjections: custom.headerInjections,
+      queryInjections: custom.queryInjections,
+      authMode: custom.authMode ?? "manual",
+      permissionBundleRef: custom.permissionBundleRef,
+      skillMarkdown: "Use the updated Slack-compatible operations only.",
+      storageVersion: custom.storageVersion,
+    });
+    const updatedSkill = await storages.downloadStorage(actor, {
+      name: getCustomConnectorSkillStorageName(custom.id),
+      owner: "organization",
+    });
+    expect(updatedSkill.versionId).not.toBe(initialSkill.versionId);
     await api.heartbeatRunner(runnerGroup);
     const disconnectedClaim = await api.claimRunnerJob(disconnectedRun.runId);
     expect(
@@ -9045,6 +9230,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(disconnectedSkillMount?.mountPath).toBe(
       `/home/user/.claude/skills/custom-${slug.slice(1, 49)}-${custom.id.replaceAll("-", "").slice(0, 8)}`,
     );
+    expect(disconnectedSkillMount?.versionId).toBe(initialSkill.versionId);
 
     await connectors.setCustomConnectorValues(actor, custom.id, [
       { key: "workspace", kind: "variable", value: "restored" },
@@ -9092,8 +9278,208 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(restoredSkillMount?.mountPath).toBe(
       disconnectedSkillMount?.mountPath,
     );
+    expect(restoredSkillMount?.versionId).toBe(updatedSkill.versionId);
 
     await api.requestCancelRun(actor, restoredRun.runId, [200]);
+  });
+
+  it("fails closed when a custom skill exact association is invalid", async () => {
+    const api = createRunsApi(context);
+    const bdd = createBddApi(context);
+    bdd.acceptAgentStorageWrites();
+    const connectors = createConnectorBddApi(context);
+    const storages = createStoragesBddApi(context);
+    const stateClient = setupApp({
+      context,
+      routes: testCustomConnectorSkillRepairStateRoutes,
+    })(testCustomConnectorSkillRepairStateContract);
+    const { actor, agentId } = await entitledRunActor();
+    const suffix = randomUUID().slice(0, 8);
+    const target = await connectors.createCustomConnector(actor, {
+      displayName: "BDD Exact Skill Target",
+      prefixTemplates: [`https://exact-target-${suffix}.example.test/api/`],
+      fields: [
+        {
+          key: "secret",
+          label: "API token",
+          kind: "secret",
+          required: true,
+        },
+      ],
+      headerInjections: [
+        {
+          name: "Authorization",
+          valueTemplate: "Bearer {{secrets.secret}}",
+        },
+      ],
+      queryInjections: [],
+      authMode: "manual",
+      skillMarkdown: "Use only the target connector skill.",
+    });
+    const other = await connectors.createCustomConnector(actor, {
+      displayName: "BDD Exact Skill Other",
+      prefixTemplates: [`https://exact-other-${suffix}.example.test/api/`],
+      fields: [
+        {
+          key: "secret",
+          label: "API token",
+          kind: "secret",
+          required: true,
+        },
+      ],
+      headerInjections: [
+        {
+          name: "Authorization",
+          valueTemplate: "Bearer {{secrets.secret}}",
+        },
+      ],
+      queryInjections: [],
+      authMode: "manual",
+      skillMarkdown: "Use only the other connector skill.",
+    });
+    onTestFinished(async () => {
+      await connectors.deleteCustomConnector(actor, target.id);
+      await connectors.deleteCustomConnector(actor, other.id);
+    });
+    await connectors.updateAgentCustomConnectors(actor, agentId, [target.id]);
+    const otherSkill = await storages.downloadStorage(actor, {
+      name: getCustomConnectorSkillStorageName(other.id),
+      owner: "organization",
+    });
+
+    await accept(
+      stateClient.action({
+        body: {
+          action: "set-connector",
+          connectorId: target.id,
+          skillStorageVersionId: otherSkill.versionId,
+        },
+      }),
+      [200],
+    );
+    const wrongStorageRun = await api.createRun(actor, {
+      agentId,
+      prompt: "reject the wrong custom skill storage owner",
+      modelProvider: "anthropic-api-key",
+    });
+    expect(wrongStorageRun).toMatchObject({
+      status: "failed",
+      error: "Custom connector skill registration is unavailable",
+    });
+
+    const missingAssociationState = await accept(
+      stateClient.action({
+        body: {
+          action: "set-connector",
+          connectorId: target.id,
+          skillStorageVersionId: null,
+        },
+      }),
+      [200],
+    );
+    expect(missingAssociationState.body.state.connector).toMatchObject({
+      skillMarkdown: "Use only the target connector skill.",
+      skillStorageVersionId: null,
+    });
+    await expect(
+      api.createRun(actor, {
+        agentId,
+        prompt: "reject the missing custom skill association",
+        modelProvider: "anthropic-api-key",
+      }),
+    ).rejects.toThrow(
+      "Unknown response status 500 for POST /api/test/zero-run-fixture",
+    );
+  });
+
+  it("admits an unrefreshable custom OAuth token only until it expires", async () => {
+    const provider = mockCustomConnectorOAuth2Provider(context, {
+      initialExpiresIn: 30,
+      initialRefreshToken: null,
+    });
+    const api = createRunsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    const connectedAt = now();
+    mockNow(connectedAt);
+    onTestFinished(() => {
+      clearMockNow();
+    });
+
+    const custom = await connectors.createCustomConnector(actor, {
+      displayName: "BDD Unrefreshable OAuth API",
+      prefixTemplates: ["https://unrefreshable-oauth.example.test/api/"],
+      fields: [],
+      headerInjections: [
+        {
+          name: "Authorization",
+          valueTemplate: "Bearer {{oauth.access_token}}",
+        },
+      ],
+      queryInjections: [],
+      authMode: "oauth",
+      oauthConfig: {
+        providerAdapter: "standard",
+        clientId: "unrefreshable-runtime-client-id",
+        clientSecret: "unrefreshable-runtime-client-secret",
+        authorizationUrl: provider.authorizationUrl,
+        tokenUrl: provider.tokenUrl,
+        tokenEndpointAuthMethod: "client_secret_post",
+        pkceMethod: "none",
+        scopes: ["read"],
+        authorizationParams: {},
+      },
+    });
+    const authorizationUrl = await connectors.startCustomConnectorOAuth2(
+      actor,
+      custom.id,
+    );
+    const oauthState = new URL(authorizationUrl).searchParams.get("state");
+    if (!oauthState) {
+      throw new Error("Expected custom connector OAuth state");
+    }
+    await connectors.completeCustomConnectorOAuth2Callback({
+      code: "unrefreshable-runtime-authorization-code",
+      state: oauthState,
+    });
+    await connectors.updateAgentCustomConnectors(actor, agentId, [custom.id]);
+    await expect(
+      connectors.readCustomConnector(actor, custom.id),
+    ).resolves.toMatchObject({ connected: true });
+
+    const target = expect.objectContaining({
+      kind: "custom",
+      customConnectorId: custom.id,
+    });
+    const currentRun = await api.createRun(actor, {
+      agentId,
+      prompt: "use the current unrefreshable custom connector",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const currentClaim = await api.claimRunnerJob(currentRun.runId);
+    expect(currentClaim.connectorRuntimeTargets).toContainEqual(target);
+    expect(provider.tokenBodies).toHaveLength(1);
+    await api.requestCancelRun(actor, currentRun.runId, [200]);
+
+    mockNow(connectedAt + 31_000);
+    await expect(
+      connectors.readCustomConnector(actor, custom.id),
+    ).resolves.toMatchObject({
+      connected: false,
+      missingRequiredFields: ["oauth"],
+    });
+    const expiredRun = await api.createRun(actor, {
+      agentId,
+      prompt: "do not use the expired unrefreshable custom connector",
+      modelProvider: "anthropic-api-key",
+    });
+    const expiredClaim = await api.claimRunnerJob(expiredRun.runId);
+    expect(expiredClaim.connectorRuntimeTargets).not.toContainEqual(target);
+    expect(provider.tokenBodies).toHaveLength(1);
+
+    await api.requestCancelRun(actor, expiredRun.runId, [200]);
+    await connectors.deleteCustomConnector(actor, custom.id);
   });
 
   it("serializes and injects custom connector OAuth 2.0 refreshes", async () => {
@@ -9599,13 +9985,14 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const { actor, agentId, runnerGroup } = await zeroBackedDirectRunActor();
 
     const allowedSlug = `_bdd-direct-internal-${randomUUID().slice(0, 8)}`;
-    const allowed = await connectors.createCustomConnector(actor, {
-      slug: allowedSlug,
-      displayName: "BDD Direct Internal API",
-      prefixes: ["https://*.direct.internal.example.com/api/"],
-      headerName: "Authorization",
-      headerTemplate: "Bearer {{secret}}",
-    });
+    const allowed = await connectors.createCustomConnector(
+      actor,
+      manualHttpCustomConnectorCreateBody({
+        slug: allowedSlug,
+        displayName: "BDD Direct Internal API",
+        prefixTemplates: ["https://*.direct.internal.example.com/api/"],
+      }),
+    );
     await connectors.setCustomConnectorSecret(
       actor,
       allowed.id,
@@ -9613,13 +10000,14 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     );
 
     const blockedSlug = `_bdd-direct-blocked-${randomUUID().slice(0, 8)}`;
-    const blocked = await connectors.createCustomConnector(actor, {
-      slug: blockedSlug,
-      displayName: "BDD Direct Blocked API",
-      prefixes: ["https://*.blocked.internal.example.com/api/"],
-      headerName: "Authorization",
-      headerTemplate: "Bearer {{secret}}",
-    });
+    const blocked = await connectors.createCustomConnector(
+      actor,
+      manualHttpCustomConnectorCreateBody({
+        slug: blockedSlug,
+        displayName: "BDD Direct Blocked API",
+        prefixTemplates: ["https://*.blocked.internal.example.com/api/"],
+      }),
+    );
     await connectors.setCustomConnectorSecret(
       actor,
       blocked.id,
@@ -9995,6 +10383,80 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(cancelled.status).toBe("cancelled");
   });
 
+  it("fails closed for persisted credentialless custom auth in new runs", async () => {
+    const api = createRunsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    const rand = randomUUID().replace(/-/g, "").slice(0, 8);
+    const saved = await connectors.saveCustomConnectorProposal(actor, {
+      proposal: {
+        operation: "create",
+        displayName: "BDD Persisted Credentialless Runtime",
+        prefixTemplates: [`https://${rand}.credentialless.test/v1/`],
+        fields: [
+          {
+            key: "api_key",
+            label: "API key",
+            kind: "secret",
+            required: true,
+          },
+        ],
+        headerInjections: [
+          {
+            name: "Authorization",
+            valueTemplate: "Bearer {{secrets.api_key}}",
+          },
+        ],
+        queryInjections: [],
+      },
+      values: [
+        {
+          key: "api_key",
+          kind: "secret",
+          value: "persisted-credentialless-secret",
+        },
+      ],
+      agentId,
+    });
+    expect(saved.connector).toMatchObject({ connected: true });
+    expect(saved.authorizedAgentId).toBe(agentId);
+
+    await setCustomConnectorAuthTemplateFixture(context, {
+      connectorId: saved.connector.id,
+      valueTemplate: "Bearer persisted-definition-literal",
+    });
+    const listed = await connectors.listCustomConnectors(actor);
+    expect(
+      listed.find((connector) => {
+        return connector.id === saved.connector.id;
+      }),
+    ).toMatchObject({
+      connected: false,
+      configuredFieldKeys: ["api_key"],
+      hasSecret: false,
+    });
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "do not use credentialless custom auth",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+    const internalName = `custom_connector_${saved.connector.id.replaceAll("-", "")}`;
+    expect(findFirewallEntry(claim.firewalls, internalName)).toBeUndefined();
+    expect(claim.networkPolicies ?? {}).not.toHaveProperty(internalName);
+    expect(claim.connectorRuntimeTargets).not.toContainEqual(
+      expect.objectContaining({
+        kind: "custom",
+        customConnectorId: saved.connector.id,
+      }),
+    );
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    await connectors.deleteCustomConnector(actor, saved.connector.id);
+  });
+
   it("omits storage-incompatible custom connectors from new runs", async () => {
     const api = createRunsApi(context);
     const connectors = createConnectorBddApi(context);
@@ -10017,7 +10479,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
         headerInjections: [
           {
             name: "X-Connector",
-            valueTemplate: "incompatible-runtime",
+            valueTemplate: "Bearer {{secrets.secret}}",
           },
         ],
         queryInjections: [],
@@ -10071,6 +10533,124 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     );
 
     await api.requestCancelRun(actor, run.runId, [200]);
+    await connectors.deleteCustomConnector(actor, saved.connector.id);
+  });
+
+  it("omits reconnect-required custom connectors until credentials are rewritten", async () => {
+    const api = createRunsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    const rand = randomUUID().replace(/-/g, "").slice(0, 8);
+    const saved = await connectors.saveCustomConnectorProposal(actor, {
+      proposal: {
+        operation: "create",
+        displayName: "BDD Reconnect Required Runtime",
+        prefixTemplates: [`https://${rand}.reconnect-required.test/v1/`],
+        fields: [
+          {
+            key: "api_key",
+            label: "API key",
+            kind: "secret",
+            required: true,
+          },
+        ],
+        headerInjections: [
+          {
+            name: "Authorization",
+            valueTemplate: "Bearer {{secrets.api_key}}",
+          },
+        ],
+        queryInjections: [],
+      },
+      values: [
+        {
+          key: "api_key",
+          kind: "secret",
+          value: "initial-reconnect-required-secret",
+        },
+      ],
+      agentId,
+    });
+    if (!actor.orgId) {
+      throw new Error("Expected a custom connector actor with an organization");
+    }
+    await setCustomConnectorCredentialStorageState(context, {
+      orgId: actor.orgId,
+      userId: actor.userId,
+      customConnectorId: saved.connector.id,
+      authMethod: "manual",
+      storageVersion: saved.connector.storageVersion,
+      needsReconnect: true,
+    });
+
+    const unavailable = await connectors.listCustomConnectors(actor);
+    expect(
+      unavailable.find((connector) => {
+        return connector.id === saved.connector.id;
+      }),
+    ).toMatchObject({
+      connected: false,
+      configuredFieldKeys: ["api_key"],
+      missingRequiredFields: [],
+    });
+    await expect(
+      connectors.readCustomConnector(actor, saved.connector.id),
+    ).resolves.toMatchObject({ connected: false });
+
+    const blockedRun = await api.createRun(actor, {
+      agentId,
+      prompt: "do not use the reconnect-required custom connector",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const blockedClaim = await api.claimRunnerJob(blockedRun.runId);
+    const internalName = `custom_connector_${saved.connector.id.replaceAll("-", "")}`;
+    expect(
+      findFirewallEntry(blockedClaim.firewalls, internalName),
+    ).toBeUndefined();
+    expect(blockedClaim.networkPolicies ?? {}).not.toHaveProperty(internalName);
+    expect(blockedClaim.connectorRuntimeTargets).not.toContainEqual(
+      expect.objectContaining({
+        kind: "custom",
+        customConnectorId: saved.connector.id,
+      }),
+    );
+    await api.requestCancelRun(actor, blockedRun.runId, [200]);
+
+    const reconnected = await connectors.setCustomConnectorValues(
+      actor,
+      saved.connector.id,
+      [
+        {
+          key: "api_key",
+          kind: "secret",
+          value: "rewritten-reconnect-required-secret",
+        },
+      ],
+    );
+    expect(reconnected).toMatchObject({ connected: true });
+    await expect(
+      connectors.readCustomConnector(actor, saved.connector.id),
+    ).resolves.toMatchObject({ connected: true });
+
+    const admittedRun = await api.createRun(actor, {
+      agentId,
+      prompt: "use the reconnected custom connector",
+      modelProvider: "anthropic-api-key",
+    });
+    const admittedClaim = await api.claimRunnerJob(admittedRun.runId);
+    expect(
+      findFirewallEntry(admittedClaim.firewalls, internalName),
+    ).toBeDefined();
+    expect(admittedClaim.networkPolicies ?? {}).toHaveProperty(internalName);
+    expect(admittedClaim.connectorRuntimeTargets).toContainEqual(
+      expect.objectContaining({
+        kind: "custom",
+        customConnectorId: saved.connector.id,
+      }),
+    );
+
+    await api.requestCancelRun(actor, admittedRun.runId, [200]);
     await connectors.deleteCustomConnector(actor, saved.connector.id);
   });
 
@@ -10341,13 +10921,14 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
 
     // Built-in connector-owned vars must not leak into custom connector bases.
     const slug = `_bdd-vars-${randomUUID().slice(0, 8)}`;
-    const custom = await connectors.createCustomConnector(actor, {
-      slug,
-      displayName: "BDD Vars Custom",
-      prefixes: ["https://internal.example.com/api/"],
-      headerName: "Authorization",
-      headerTemplate: "Bearer {{secret}}",
-    });
+    const custom = await connectors.createCustomConnector(
+      actor,
+      manualHttpCustomConnectorCreateBody({
+        slug,
+        displayName: "BDD Vars Custom",
+        prefixTemplates: ["https://internal.example.com/api/"],
+      }),
+    );
     await connectors.setCustomConnectorSecret(actor, custom.id, "custom-bdd");
     await connectors.updateAgentCustomConnectors(actor, agentId, [custom.id]);
 
@@ -10369,6 +10950,11 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(findFirewallEntry(claim.firewalls, "zendesk")).toStrictEqual({
       kind: "builtin",
       name: "zendesk",
+      baseUrlVars: { ZENDESK_SUBDOMAIN: "xn--mnich-kva" },
+    });
+    expect(claim.connectorRuntimeTargets).toContainEqual({
+      kind: "builtin",
+      connectorSlug: "zendesk",
       baseUrlVars: { ZENDESK_SUBDOMAIN: "xn--mnich-kva" },
     });
     expect(customApis[0]?.base).toBe("https://internal.example.com/api/");
@@ -10492,7 +11078,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     await api.requestCancelRun(actor, run.runId, [200]);
   });
 
-  it("falls back for old, invalid, and incompatible permission baselines", async () => {
+  it("handles missing, invalid, and incompatible permission baselines", async () => {
     const bdd = createBddApi(context);
     const api = createRunsApi(context);
     const fw = createFirewallApi(context);
@@ -10539,6 +11125,10 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       },
     ] as const;
 
+    const slackTargets = expect.arrayContaining([
+      { kind: "builtin", connectorSlug: "slack" },
+    ]);
+
     for (const fallbackCase of cases) {
       const run = await api.createRun(actor, {
         agentId: agent.agentId,
@@ -10552,6 +11142,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       );
       const claim = await api.claimRunnerJob(run.runId);
 
+      expect(claim.connectorRuntimeTargets).toStrictEqual(slackTargets);
       expect(claim.networkPolicies?.slack?.allow).toContain(
         "conversations:read",
       );
@@ -11419,13 +12010,14 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       permission: "chat:write",
       action: "allow",
     });
-    const customConnector = await connectors.createCustomConnector(actor, {
-      slug: `_bdd-context-${randomUUID().slice(0, 8)}`,
-      displayName: "BDD Context API",
-      prefixes: ["https://context.example.com/api/"],
-      headerName: "Authorization",
-      headerTemplate: "Bearer {{secret}}",
-    });
+    const customConnector = await connectors.createCustomConnector(
+      actor,
+      manualHttpCustomConnectorCreateBody({
+        slug: `_bdd-context-${randomUUID().slice(0, 8)}`,
+        displayName: "BDD Context API",
+        prefixTemplates: ["https://context.example.com/api/"],
+      }),
+    );
     await connectors.setCustomConnectorSecret(
       actor,
       customConnector.id,

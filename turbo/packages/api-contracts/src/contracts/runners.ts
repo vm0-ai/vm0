@@ -99,6 +99,18 @@ const runnerProcessIdentitySchema = z
   })
   .strict();
 
+export const immediateSuccessorIntentSignalSchema = z
+  .object({
+    action: z.enum(["arm", "revoke"]),
+    predecessorRunId: z.uuid(),
+    intentId: z.uuid(),
+    runnerIdentity: runnerProcessIdentitySchema,
+    eventClass: z.enum(["prompt", "goal", "automation"]),
+    decidedAt: z.string().datetime({ offset: true }),
+    expiresAt: z.string().datetime({ offset: true }),
+  })
+  .strict();
+
 /**
  * Atomic advisory decision for cross-runner reuse coordination. A preferred
  * runner is not an exclusive assignee; another runner with a better compatible
@@ -198,10 +210,15 @@ export const connectorRuntimeCustomTargetRegistrationSchema =
     baseUrlVars: z.record(z.string(), z.string()).optional(),
   });
 
+export const connectorRuntimeBuiltinTargetRegistrationSchema =
+  connectorRuntimeBuiltinTargetSchema.extend({
+    baseUrlVars: z.record(z.string(), z.string()).optional(),
+  });
+
 export const connectorRuntimeTargetRegistrationSchema = z.discriminatedUnion(
   "kind",
   [
-    connectorRuntimeBuiltinTargetSchema,
+    connectorRuntimeBuiltinTargetRegistrationSchema,
     connectorRuntimeCustomTargetRegistrationSchema,
   ],
 );
@@ -241,12 +258,14 @@ const connectorRuntimeSyncTargetsSchema = connectorRuntimeTargetsSchema
   .min(1)
   .max(CONNECTOR_RUNTIME_SYNC_TARGETS_MAX);
 
-export const connectorRuntimeCustomUnavailableReasonSchema = z.enum([
-  "connector-unavailable",
-  "grant-unavailable",
+export const connectorRuntimeCustomUnresolvedReasonSchema = z.enum([
   "permission-bundle-unavailable",
   "runtime-configuration-unavailable",
 ]);
+
+export const connectorRuntimeCustomAbsentReasonSchema = z.literal(
+  "connector-unavailable",
+);
 
 const connectorRuntimeResultBaseSchema = z.object({
   nextSyncAt: z.string().datetime({ offset: true }).optional(),
@@ -288,14 +307,14 @@ export const connectorRuntimeCustomUnresolvedResultSchema =
   connectorRuntimeResultBaseSchema.extend({
     target: connectorRuntimeCustomTargetSchema,
     state: z.literal("unresolved"),
-    reason: connectorRuntimeCustomUnavailableReasonSchema,
+    reason: connectorRuntimeCustomUnresolvedReasonSchema,
   });
 
 export const connectorRuntimeCustomAbsentResultSchema =
   connectorRuntimeResultBaseSchema.extend({
     target: connectorRuntimeCustomTargetSchema,
     state: z.literal("absent"),
-    reason: connectorRuntimeCustomUnavailableReasonSchema,
+    reason: connectorRuntimeCustomAbsentReasonSchema,
   });
 
 export const connectorRuntimeSyncResultSchema = z.union([
@@ -1224,6 +1243,9 @@ export type RunnersBuiltinFirewallsResolveContract =
   typeof runnersBuiltinFirewallsResolveContract;
 export type Job = z.infer<typeof jobSchema>;
 export type RunnerPreference = z.infer<typeof runnerPreferenceSchema>;
+export type ImmediateSuccessorIntentSignal = z.infer<
+  typeof immediateSuccessorIntentSignalSchema
+>;
 export type RunnerPreferenceClaimState = z.infer<
   typeof runnerPreferenceClaimStateSchema
 >;
@@ -1249,8 +1271,11 @@ export type ConnectorRuntimeTarget = z.infer<
 export type ConnectorRuntimeTargetRegistration = z.infer<
   typeof connectorRuntimeTargetRegistrationSchema
 >;
-export type ConnectorRuntimeCustomUnavailableReason = z.infer<
-  typeof connectorRuntimeCustomUnavailableReasonSchema
+export type ConnectorRuntimeCustomUnresolvedReason = z.infer<
+  typeof connectorRuntimeCustomUnresolvedReasonSchema
+>;
+export type ConnectorRuntimeCustomAbsentReason = z.infer<
+  typeof connectorRuntimeCustomAbsentReasonSchema
 >;
 export type ConnectorRuntimeSyncResult = z.infer<
   typeof connectorRuntimeSyncResultSchema

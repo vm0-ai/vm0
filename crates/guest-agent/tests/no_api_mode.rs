@@ -96,6 +96,7 @@ async fn no_api_mode_drains_background_webhook_users_without_network_client()
         "reused",
         "sandboxReused",
         Some(1),
+        &[],
     )
     .await;
     drop(complete_log_guard);

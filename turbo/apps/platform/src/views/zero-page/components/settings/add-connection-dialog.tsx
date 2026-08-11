@@ -1481,7 +1481,15 @@ export function ConnectModal({
   return (
     <Dialog
       open
-      onOpenChange={(open) => {
+      onOpenChange={(open, eventDetails) => {
+        if (
+          !open &&
+          connectFlowActive &&
+          eventDetails.reason === "outside-press"
+        ) {
+          eventDetails.cancel();
+          return;
+        }
         if (!open) {
           clearConnectorOAuthDeviceAuth();
           clearConnectorExternalCode();
@@ -1489,15 +1497,7 @@ export function ConnectModal({
         }
       }}
     >
-      <DialogContent
-        className="max-w-md"
-        aria-describedby={undefined}
-        onInteractOutside={(event) => {
-          if (connectFlowActive) {
-            event.preventDefault();
-          }
-        }}
-      >
+      <DialogContent className="max-w-md" aria-describedby={undefined}>
         <DialogHeader>
           <div className="flex items-center gap-3">
             <div className="flex h-5 w-5 shrink-0 items-center justify-center">

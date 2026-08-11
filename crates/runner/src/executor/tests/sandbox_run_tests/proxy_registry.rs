@@ -90,6 +90,60 @@ fn proxy_register_failure_warns_with_error() {
 }
 
 #[tokio::test]
+async fn proxy_registration_accepts_canonical_targets() {
+    let canonical_dir = tempfile::tempdir().unwrap();
+    let canonical_config = test_executor_config(canonical_dir.path()).await;
+    let mut canonical_context = minimal_context();
+    let canonical_routing_variables =
+        HashMap::from([("ZENDESK_SUBDOMAIN".to_string(), "xn--mnich-kva".to_string())]);
+    canonical_context.firewalls = Some(vec![FirewallEntry::Builtin {
+        name: "zendesk".to_string(),
+        base_url_vars: Some(canonical_routing_variables.clone()),
+    }]);
+    canonical_context.connector_runtime_targets =
+        vec![ConnectorRuntimeTargetRegistration::Builtin {
+            connector_slug: "zendesk".to_string(),
+            base_url_vars: Some(canonical_routing_variables),
+        }];
+    canonical_context.vars = Some(HashMap::from([(
+        "ZENDESK_SUBDOMAIN".to_string(),
+        "münich".to_string(),
+    )]));
+
+    let _canonical_session = register_proxy(&canonical_config, &canonical_context, "10.200.0.3")
+        .await
+        .unwrap();
+    let canonical_registry: serde_json::Value = serde_json::from_str(
+        &tokio::fs::read_to_string(canonical_dir.path().join("proxy-registry.json"))
+            .await
+            .unwrap(),
+    )
+    .unwrap();
+    let canonical_vm = &canonical_registry["vms"]["10.200.0.3"];
+    assert_eq!(
+        canonical_vm["firewalls"],
+        serde_json::json!([{
+            "kind": "builtin",
+            "name": "zendesk",
+            "baseUrlVars": {
+                "ZENDESK_SUBDOMAIN": "xn--mnich-kva"
+            }
+        }])
+    );
+    assert_eq!(
+        canonical_vm["connectorRuntimeTargets"],
+        serde_json::json!([{
+            "kind": "builtin",
+            "connectorSlug": "zendesk"
+        }])
+    );
+    assert_eq!(
+        canonical_vm["connectorRoutingVariables"]["builtin:zendesk"],
+        serde_json::json!({"ZENDESK_SUBDOMAIN": "münich"})
+    );
+}
+
+#[tokio::test]
 async fn execute_job_proxy_register_failure_destroys_fresh_sandbox_before_agent_start() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;

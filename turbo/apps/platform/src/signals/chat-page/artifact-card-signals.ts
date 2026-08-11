@@ -7,7 +7,7 @@ import {
   createTextPreviewComputed,
   isTextPreviewKind,
 } from "../text-preview.ts";
-import { createAttachmentResourceUrl$ } from "../attachment-resource-url.ts";
+import { attachmentResourceUrlResolver$ } from "../attachment-resource-url.ts";
 
 export type ArtifactKind =
   | "image"
@@ -46,7 +46,9 @@ function createArtifactSignals(
   descriptor: ArtifactDescriptor,
   previewImageUrlsByUrl$: Computed<Promise<ReadonlyMap<string, string>>>,
 ): ArtifactSignals {
-  const resourceUrl$ = createAttachmentResourceUrl$(descriptor.url);
+  const resourceUrl$ = computed((get) => {
+    return get(get(attachmentResourceUrlResolver$)(descriptor.url));
+  });
   const previewImageUrl$ = computed(async (get) => {
     if (descriptor.kind !== "html" && descriptor.kind !== "video") {
       return undefined;

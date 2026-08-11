@@ -776,12 +776,6 @@ export const testConnectorCatalogCategoryMetadata = {
   groups: [{ id: "ai", label: "AI", menuLabel: "AI" }],
 } satisfies PublicConnectorCatalogCategoryMetadata;
 
-export const testConnectorSlugs = testConnectorCatalogDefinitions.map(
-  (definition) => {
-    return definition.connectorSlug;
-  },
-);
-
 export const composerOverflowConnectorSlugs = [
   "asana",
   "box",

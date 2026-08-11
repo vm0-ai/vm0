@@ -402,14 +402,14 @@ export const dispatchGithubWorkflowRunAutomations$ = command(
     );
     if (args.backgroundScheduledAt !== undefined) {
       sourceTiming.recordElapsed(
-        "api_dispatch_pre_create_zero_workflow_event_background_start_gap",
+        "api_dispatch_pre_create_zero_automation_event_background_start_gap",
         args.backgroundScheduledAt,
       );
     }
 
     const db = set(writeDb$);
     const installation = await sourceTiming.measure(
-      "api_dispatch_pre_create_zero_workflow_event_load_source_state",
+      "api_dispatch_pre_create_zero_automation_event_load_source_state",
       async () => {
         return await findActiveInstallation({
           db,
@@ -428,7 +428,7 @@ export const dispatchGithubWorkflowRunAutomations$ = command(
     }
 
     const automations = await sourceTiming.measure(
-      "api_dispatch_pre_create_zero_workflow_event_load_automations",
+      "api_dispatch_pre_create_zero_automation_event_load_automations",
       async () => {
         return await loadGithubWorkflowRunAutomations(
           {
@@ -446,7 +446,7 @@ export const dispatchGithubWorkflowRunAutomations$ = command(
     for (const automation of automations) {
       const runTiming = sourceTiming.createRunTiming();
       const matches = await runTiming.measure(
-        "api_dispatch_pre_create_zero_workflow_event_match_automations",
+        "api_dispatch_pre_create_zero_automation_event_match_automations",
         () => {
           return workflowRunMatchesConfig({
             config: automation.config,
@@ -459,7 +459,7 @@ export const dispatchGithubWorkflowRunAutomations$ = command(
         continue;
       }
       const processedId = await runTiming.measure(
-        "api_dispatch_pre_create_zero_workflow_event_record_processed_event",
+        "api_dispatch_pre_create_zero_automation_event_record_processed_event",
         async () => {
           return await recordProcessedDelivery({
             db,

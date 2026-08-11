@@ -12,6 +12,7 @@ import {
   type StripeSubscription,
 } from "../external/stripe-client";
 import { getOrCreateStripeCustomer$ } from "./billing-customer.service";
+import { persistOrgAcquisitionAttribution$ } from "./acquisition-attribution.service";
 import { applyStripeConcurrencySubscriptionChange$ } from "./zero-billing-concurrency-subscription.service";
 import { stripePreviewMetadata } from "./stripe-preview-metadata.service";
 import { CONCURRENCY_SUBSCRIPTION_PURPOSE } from "./org-concurrency-entitlements.service";
@@ -298,6 +299,13 @@ export const createCheckoutSession$ = command(
     args: CreateCheckoutSessionArgs,
     signal: AbortSignal,
   ): Promise<string> => {
+    await set(
+      persistOrgAcquisitionAttribution$,
+      { orgId: args.orgId, attribution: args.adAttribution },
+      signal,
+    );
+    signal.throwIfAborted();
+
     const metadata = checkoutSessionMetadata({
       orgId: args.orgId,
       tier: args.tier,

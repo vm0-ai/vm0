@@ -121,6 +121,7 @@ function textarea(): HTMLElement {
 function mockAgentChatPage(agentId: string): void {
   context.mocks.data.userModelPreference({
     selectedModel: "claude-sonnet-4-6",
+    serviceTier: null,
     updatedAt: "2026-03-10T00:00:00Z",
   });
   context.mocks.api(zeroTeamContract.list, ({ respond }) => {
@@ -492,6 +493,7 @@ describe("chat drafts", () => {
   it("preserves per-thread text drafts while navigating", async () => {
     context.mocks.data.userModelPreference({
       selectedModel: "claude-sonnet-4-6",
+      serviceTier: null,
       updatedAt: "2026-03-10T00:00:00Z",
     });
     mockThreadDetails();
@@ -525,6 +527,7 @@ describe("chat drafts", () => {
     const note = "Name the responsible team";
     context.mocks.data.userModelPreference({
       selectedModel: "claude-sonnet-4-6",
+      serviceTier: null,
       updatedAt: "2026-03-10T00:00:00Z",
     });
     mockThreadDetails();
@@ -580,6 +583,7 @@ describe("chat drafts", () => {
   it("restores a saved server draft with attachments on first thread open", async () => {
     context.mocks.data.userModelPreference({
       selectedModel: "claude-sonnet-4-6",
+      serviceTier: null,
       updatedAt: "2026-03-10T00:00:00Z",
     });
     mockThreadDetails();
@@ -928,6 +932,7 @@ describe("chat drafts", () => {
 
     context.mocks.data.userModelPreference({
       selectedModel: "claude-sonnet-4-6",
+      serviceTier: null,
       updatedAt: "2026-03-10T00:00:00Z",
     });
     mockThreadDetails();
@@ -1086,6 +1091,7 @@ describe("chat drafts", () => {
 
     context.mocks.data.userModelPreference({
       selectedModel: "claude-sonnet-4-6",
+      serviceTier: null,
       updatedAt: "2026-03-10T00:00:00Z",
     });
     mockThreadDetails();
@@ -1154,6 +1160,7 @@ describe("chat drafts", () => {
 
     context.mocks.data.userModelPreference({
       selectedModel: "claude-sonnet-4-6",
+      serviceTier: null,
       updatedAt: "2026-03-10T00:00:00Z",
     });
     mockThreadDetails();
@@ -1256,6 +1263,7 @@ describe("chat drafts", () => {
 
     context.mocks.data.userModelPreference({
       selectedModel: "claude-sonnet-4-6",
+      serviceTier: null,
       updatedAt: "2026-03-10T00:00:00Z",
     });
     mockThreadDetails();
@@ -1347,6 +1355,7 @@ describe("chat drafts", () => {
 
     context.mocks.data.userModelPreference({
       selectedModel: "claude-sonnet-4-6",
+      serviceTier: null,
       updatedAt: "2026-03-10T00:00:00Z",
     });
     mockThreadDetails();
@@ -1432,6 +1441,7 @@ describe("chat drafts", () => {
 
     context.mocks.data.userModelPreference({
       selectedModel: "claude-sonnet-4-6",
+      serviceTier: null,
       updatedAt: "2026-03-10T00:00:00Z",
     });
     mockThreadDetails();
@@ -1494,6 +1504,7 @@ describe("chat drafts", () => {
 
     context.mocks.data.userModelPreference({
       selectedModel: "claude-sonnet-4-6",
+      serviceTier: null,
       updatedAt: "2026-03-10T00:00:00Z",
     });
     mockThreadDetails();

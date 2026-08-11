@@ -201,7 +201,7 @@ function ChatThreadMenu({
             onClick={preventChatThreadMenuNavigation}
             className={`peer pointer-events-auto absolute top-1 left-1 flex h-6 w-6 cursor-pointer items-center justify-center rounded-md ${
               showMobileTrigger ? "visible" : "invisible"
-            } md:invisible md:group-hover:visible md:data-[state=open]:visible transition-opacity duration-150 text-sidebar-foreground/80 hover:text-foreground hover:bg-state-selected-hover`}
+            } md:invisible md:group-hover:visible md:data-popup-open:visible transition-opacity duration-150 text-sidebar-foreground/80 hover:text-foreground hover:bg-state-selected-hover`}
             aria-label={t(($) => {
               return $.chat.sidebar.openChatMenu;
             })}
@@ -309,7 +309,7 @@ function ChatThreadSideDecorator({
     <div className="pointer-events-none absolute right-0 top-0 flex h-8 w-8 items-center justify-center">
       <ChatThreadMenu signals={signals} />
       {indicatorState !== null ? (
-        <span className="flex items-center justify-center group-hover:hidden peer-data-[state=open]:hidden">
+        <span className="flex items-center justify-center group-hover:hidden peer-data-popup-open:hidden">
           <SessionStateIndicator signals={signals} />
         </span>
       ) : isPinned ? (
@@ -320,7 +320,7 @@ function ChatThreadSideDecorator({
                 aria-label={t(($) => {
                   return $.chat.sidebar.pinned;
                 })}
-                className="hidden items-center justify-center text-sidebar-foreground group-hover:hidden peer-data-[state=open]:hidden md:flex"
+                className="hidden items-center justify-center text-sidebar-foreground group-hover:hidden peer-data-popup-open:hidden md:flex"
               >
                 <Pin className="opacity-50" size={16} />
               </span>

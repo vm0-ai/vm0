@@ -17,9 +17,12 @@ import {
   type PublicConnectorCatalogStatusItem,
 } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
-import { zeroAgentCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 import {
-  zeroCustomConnectorSecretContract,
+  zeroAgentCustomConnectorsContract,
+  type AgentCustomConnectorGrant,
+} from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
+import {
+  zeroCustomConnectorValuesContract,
   zeroCustomConnectorsContract,
   type CustomConnectorHttpResponse,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
@@ -195,9 +198,6 @@ function customConnector(
     storageVersion: 1,
     slug: "_acme-internal-api",
     displayName: "Acme Internal API",
-    prefixes: ["https://api.acme.test/v1/"],
-    headerName: "Authorization",
-    headerTemplate: "Bearer {{secret}}",
     prefixTemplates: ["https://api.acme.test/v1/"],
     fields: [
       {
@@ -2834,8 +2834,12 @@ describe("chat event action cards", () => {
   it("connects and authorizes a custom connector from its action card", async () => {
     const user = userEvent.setup({ delay: null });
     let connected = false;
-    let enabledIds: string[] = [];
-    let savedSecret: string | null = null;
+    let grants: AgentCustomConnectorGrant[] = [];
+    let submittedValues: readonly {
+      readonly key: string;
+      readonly kind: "secret" | "variable";
+      readonly value: string;
+    }[] = [];
     const connector = customConnector();
     const connectUrl = `${window.location.origin}/connectors/${connector.slug}/connect?agentId=${AGENT_ID}`;
     context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
@@ -2852,24 +2856,27 @@ describe("chat event action cards", () => {
       });
     });
     context.mocks.api(
-      zeroCustomConnectorSecretContract.set,
+      zeroCustomConnectorValuesContract.set,
       ({ body, respond }) => {
-        savedSecret = body.value;
+        submittedValues = body.values;
         connected = true;
-        return respond(204);
+        return respond(200, {
+          ...connector,
+          connected: true,
+          hasSecret: true,
+          missingRequiredFields: [],
+          configuredFieldKeys: ["secret"],
+        });
       },
     );
     context.mocks.api(zeroAgentCustomConnectorsContract.get, ({ respond }) => {
-      return respond(200, { enabledIds });
+      return respond(200, { grants });
     });
     context.mocks.api(
       zeroAgentCustomConnectorsContract.update,
       ({ body, respond }) => {
-        if (!("enabledIds" in body)) {
-          throw new Error("Expected custom connector ID authorization");
-        }
-        enabledIds = Array.from(new Set([...enabledIds, ...body.enabledIds]));
-        return respond(200, { enabledIds });
+        grants = body.grants;
+        return respond(200, { grants });
       },
     );
 
@@ -2914,8 +2921,12 @@ describe("chat event action cards", () => {
     await user.click(buttonByText("Save", dialog));
 
     await waitFor(() => {
-      expect(savedSecret).toBe("acme-secret");
-      expect(enabledIds).toStrictEqual([connector.id]);
+      expect(submittedValues).toStrictEqual([
+        { key: "secret", kind: "secret", value: "acme-secret" },
+      ]);
+      expect(grants).toStrictEqual([
+        { customConnectorId: connector.id, permissionNames: [] },
+      ]);
       expect(within(card).getByText("Authorized")).toBeInTheDocument();
     });
   });
@@ -2923,7 +2934,11 @@ describe("chat event action cards", () => {
   it("preserves a permissioned custom connector grant when connecting from its action card", async () => {
     const user = userEvent.setup({ delay: null });
     let connected = false;
-    let savedSecret: string | null = null;
+    let submittedValues: readonly {
+      readonly key: string;
+      readonly kind: "secret" | "variable";
+      readonly value: string;
+    }[] = [];
     let authorizationUpdates = 0;
     const connector = customConnector({
       permissionBundleRef: "builtin:feishu@1",
@@ -2943,16 +2958,21 @@ describe("chat event action cards", () => {
       });
     });
     context.mocks.api(
-      zeroCustomConnectorSecretContract.set,
+      zeroCustomConnectorValuesContract.set,
       ({ body, respond }) => {
-        savedSecret = body.value;
+        submittedValues = body.values;
         connected = true;
-        return respond(204);
+        return respond(200, {
+          ...connector,
+          connected: true,
+          hasSecret: true,
+          missingRequiredFields: [],
+          configuredFieldKeys: ["secret"],
+        });
       },
     );
     context.mocks.api(zeroAgentCustomConnectorsContract.get, ({ respond }) => {
       return respond(200, {
-        enabledIds: [connector.id],
         grants: [
           {
             customConnectorId: connector.id,
@@ -2965,7 +2985,14 @@ describe("chat event action cards", () => {
       zeroAgentCustomConnectorsContract.update,
       ({ respond }) => {
         authorizationUpdates += 1;
-        return respond(200, { enabledIds: [connector.id] });
+        return respond(200, {
+          grants: [
+            {
+              customConnectorId: connector.id,
+              permissionNames: ["messages:send-as-user"],
+            },
+          ],
+        });
       },
     );
 
@@ -3004,10 +3031,155 @@ describe("chat event action cards", () => {
     await user.click(buttonByText("Save", dialog));
 
     await waitFor(() => {
-      expect(savedSecret).toBe("acme-secret");
+      expect(submittedValues).toStrictEqual([
+        { key: "secret", kind: "secret", value: "acme-secret" },
+      ]);
       expect(within(card).getByText("Authorized")).toBeInTheDocument();
     });
     expect(authorizationUpdates).toBe(0);
+  });
+
+  it("does not complete a new permissioned custom connector action without a selection", async () => {
+    const user = userEvent.setup({ delay: null });
+    let connected = false;
+    let authorizationUpdates = 0;
+    const connector = customConnector({
+      permissionBundleRef: "builtin:feishu@1",
+    });
+    const connectUrl = `${window.location.origin}/connectors/${connector.slug}/connect?agentId=${AGENT_ID}`;
+    context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
+      return respond(200, {
+        connectors: [
+          {
+            ...connector,
+            connected,
+            hasSecret: connected,
+            missingRequiredFields: connected ? [] : ["secret"],
+            configuredFieldKeys: connected ? ["secret"] : [],
+          },
+        ],
+      });
+    });
+    context.mocks.api(zeroCustomConnectorValuesContract.set, ({ respond }) => {
+      connected = true;
+      return respond(200, {
+        ...connector,
+        connected: true,
+        hasSecret: true,
+        missingRequiredFields: [],
+        configuredFieldKeys: ["secret"],
+      });
+    });
+    context.mocks.api(zeroAgentCustomConnectorsContract.get, ({ respond }) => {
+      return respond(200, { grants: [] });
+    });
+    context.mocks.api(
+      zeroAgentCustomConnectorsContract.update,
+      ({ respond }) => {
+        authorizationUpdates += 1;
+        return respond(200, { grants: [] });
+      },
+    );
+    mockChatLifecycle(context, {
+      threadId: "e4000000-0000-4000-a000-000000000218",
+      threadTitle: "New permissioned custom connector card",
+      chatEvents: [
+        {
+          id: "msg-user-new-permissioned-custom-connector",
+          role: "user",
+          content: "Connect the permissioned custom connector",
+          runId: "run-new-permissioned-custom-connector",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-assistant-new-permissioned-custom-connector-card",
+          role: "assistant",
+          content: connectUrl,
+          runId: "run-new-permissioned-custom-connector",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/chats/e4000000-0000-4000-a000-000000000218",
+    });
+
+    const card = await screen.findByTestId("connector-action-card");
+    await user.click(await waitForButtonByText("Connect", card));
+    const dialog = await screen.findByRole("dialog", {
+      name: "Connect Acme Internal API",
+    });
+    await user.type(within(dialog).getByLabelText("Secret"), "acme-secret");
+    await user.click(buttonByText("Save", dialog));
+
+    await waitFor(() => {
+      expect(connected).toBeTruthy();
+      expect(
+        screen.queryByRole("dialog", { name: "Connect Acme Internal API" }),
+      ).not.toBeInTheDocument();
+    });
+    expect(authorizationUpdates).toBe(0);
+    expect(within(card).queryByText("Authorized")).not.toBeInTheDocument();
+  });
+
+  it("keeps a connected permissioned custom connector unauthorized without a selection", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "e4000000-0000-4000-a000-000000000318";
+    const callbackPrompt = "Continue after authorizing Acme Internal API";
+    const connector = customConnector({
+      connected: true,
+      hasSecret: true,
+      missingRequiredFields: [],
+      configuredFieldKeys: ["secret"],
+      permissionBundleRef: "builtin:feishu@1",
+    });
+    const connectUrl = `${window.location.origin}/connectors/${connector.slug}/connect?agentId=${AGENT_ID}&threadId=${threadId}&callbackPrompt=${encodeURIComponent(callbackPrompt)}`;
+    context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
+      return respond(200, { connectors: [connector] });
+    });
+    context.mocks.api(zeroAgentCustomConnectorsContract.get, ({ respond }) => {
+      return respond(200, { grants: [] });
+    });
+    context.mocks.api(zeroAgentCustomConnectorsContract.update, () => {
+      throw new Error(
+        "A permissioned custom connector requires an explicit selection",
+      );
+    });
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Connected permissioned custom connector card",
+      chatEvents: [
+        {
+          id: "msg-user-connected-permissioned-custom-connector",
+          role: "user",
+          content: "Authorize the connected permissioned custom connector",
+          runId: "run-connected-permissioned-custom-connector",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-assistant-connected-permissioned-custom-connector-card",
+          role: "assistant",
+          content: connectUrl,
+          runId: "run-connected-permissioned-custom-connector",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+      ],
+      onSendRequest: () => {
+        throw new Error("The chat must not resume without authorization");
+      },
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    const card = await screen.findByTestId("connector-action-card");
+    await user.click(await waitForButtonByText("Authorize", card));
+
+    await waitFor(() => {
+      expect(within(card).getByText("Authorize")).toBeInTheDocument();
+      expect(within(card).queryByText("Authorized")).not.toBeInTheDocument();
+    });
   });
 
   it("leaves legacy custom connector proposal links as markdown", async () => {

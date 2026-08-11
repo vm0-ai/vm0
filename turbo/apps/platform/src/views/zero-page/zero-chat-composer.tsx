@@ -140,10 +140,11 @@ import { r2ImageTransformUrl } from "@vm0/core/r2-image-transform";
 import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
 import type { PlatformConnectorCatalogStatusItem } from "../../signals/connector-domain.ts";
 import {
-  isHttpCustomConnectorResponse,
-  type CustomConnectorHttpResponse,
-  type CustomConnectorResponse,
+  isHttpCustomConnectorClientResponse,
+  type CustomConnectorClientResponse,
+  type CustomConnectorHttpClientResponse,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
+import type { AgentCustomConnectorGrant } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 import { getModelDisplayName } from "@vm0/core/model-display-name";
 import {
   ModelProviderPicker,
@@ -165,7 +166,10 @@ import {
   pollingOAuthDeviceAuthConnectorSlug$,
 } from "../../signals/zero-page/settings/connectors.ts";
 import { connectorCatalogStatus$ } from "../../signals/external/connectors.ts";
-import { customConnectors$ } from "../../signals/zero-page/settings/custom-connectors.ts";
+import {
+  customConnectors$,
+  resetCustomConnectorConnectInput$,
+} from "../../signals/zero-page/settings/custom-connectors.ts";
 import { LoadingSwitch } from "../components/loading-switch.tsx";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { rootSignal$ } from "../../signals/root-signal.ts";
@@ -258,7 +262,7 @@ interface ComposerConnectorReadState {
   readonly addDialogCatalogItems: Loadable<
     readonly PlatformConnectorCatalogStatusItem[]
   >;
-  readonly customConnectors: Loadable<readonly CustomConnectorResponse[]>;
+  readonly customConnectors: Loadable<readonly CustomConnectorClientResponse[]>;
   readonly authorization: Loadable<ComposerConnectorAuthorizationState>;
 }
 
@@ -338,7 +342,7 @@ type ComposerConnectorItem = PlatformConnectorCatalogStatusItem & {
   readonly authorized: boolean;
 };
 
-type ComposerCustomConnectorItem = CustomConnectorHttpResponse & {
+type ComposerCustomConnectorItem = CustomConnectorHttpClientResponse & {
   readonly authorized: boolean;
 };
 
@@ -440,7 +444,7 @@ function ComposerQueueGlyph() {
   );
 }
 
-// A single strip row — a queued message, workflow event, or active goal. All
+// A single strip row — a queued message, automation event, or active goal. All
 // share one layout so they read as the same kind of pending item; only the
 // leading icon distinguishes them. Goals open a modal because their full
 // objective is fetched lazily by thread.
@@ -518,20 +522,23 @@ function ComposerStripRow({
       className="group flex items-center gap-2 rounded-md pl-2 pr-1 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-state-hover"
     >
       {isGoal && onOpenDetail ? (
+        // This target spans almost the whole row, so it deliberately paints no
+        // background of its own — the row's hover carries the highlight and a
+        // second, near-coextensive surface would read as a box inside a box.
+        // Its icon sits in the same p-1 slot the other rows' leading button
+        // uses, keeping every row's glyph and text on one column.
         <button
           type="button"
-          className="-ml-1 flex min-w-0 flex-1 items-center gap-2 rounded-md p-1 text-left transition-colors hover:bg-state-selected-hover hover:text-sidebar-foreground focus-visible:bg-state-selected-hover focus-visible:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="flex min-w-0 flex-1 items-center gap-2 rounded-md text-left transition-colors hover:text-sidebar-foreground focus-visible:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           onClick={onOpenDetail}
           aria-label={t(($) => {
             return $.chat.queue.openGoalDetails;
           })}
         >
-          <Target
-            size={16}
-            className="shrink-0 text-emerald-800"
-            aria-hidden="true"
-          />
-          <span className="min-w-0 flex-1 truncate">{text}</span>
+          <span className="flex shrink-0 p-1 text-emerald-800">
+            <Target size={16} aria-hidden="true" />
+          </span>
+          <span className="min-w-0 flex-1 truncate py-1">{text}</span>
         </button>
       ) : (
         <>
@@ -730,7 +737,7 @@ function PendingItemsStrip({ signals }: { signals: ComposerSignals }) {
             />
           );
         })}
-        {/* The active goal sits last — below queued messages and workflow events
+        {/* The active goal sits last — below queued messages and automation events
             — because it only runs once the queue drains. Like other pending
             items it can be cancelled from the strip. */}
         {activeGoal ? (
@@ -1070,7 +1077,7 @@ function VideoTemplatePreview({ item }: { item: VideoTemplateItem }) {
 /**
  * Soft, cool-tinted card shadow matching the home chat composer
  * (`--zero-card-shadow`). The token is scoped to `.zero-app`, but the template
- * picker renders through a Radix portal on `document.body` — outside that
+ * picker renders through a Base UI portal on `document.body` — outside that
  * scope — so the value is inlined here instead of referencing the CSS var.
  * Replaces Tailwind `shadow-sm`, whose hard black tint reads muddy on white.
  */
@@ -3764,7 +3771,7 @@ function TemplatePreviewPage({
                 </div>
               </div>
             </div>
-            <button
+            <Button
               type="button"
               aria-label={t(
                 ($) => {
@@ -3774,7 +3781,7 @@ function TemplatePreviewPage({
                   title: item.title,
                 },
               )}
-              className="mt-4 h-12 w-full rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              className="mt-4 h-12 w-full font-semibold shadow-sm"
               onClick={() => {
                 setCardThemeId(item.slug, selectedTheme.id);
                 onSelect(
@@ -3786,7 +3793,7 @@ function TemplatePreviewPage({
               {t(($) => {
                 return $.artifacts.templates.useThisTemplate;
               })}
-            </button>
+            </Button>
           </div>
         </div>
       </div>
@@ -4874,7 +4881,7 @@ function TemplatePickerDialog({
   const isPreviewing = Boolean(previewItem);
   const dialogContentClassName = cn(
     "gap-0 overflow-hidden p-0 focus:outline-none focus-visible:outline-none focus-visible:ring-0",
-    skipEnterAnimation && "data-[state=open]:!animate-none",
+    skipEnterAnimation && "data-open:!animate-none",
     "flex h-[min(82vh,760px)] max-w-6xl flex-col [&>button]:right-4 [&>button]:top-4",
   );
   // A persona pill filters the grid, ideation-gallery style.
@@ -5109,7 +5116,7 @@ function TemplatePickerDialog({
         })}
         className={dialogContentClassName}
         overlayClassName={
-          skipEnterAnimation ? "data-[state=open]:!animate-none" : undefined
+          skipEnterAnimation ? "data-open:!animate-none" : undefined
         }
         aria-describedby={undefined}
         onKeyDown={handleDialogKeyDown}
@@ -5633,7 +5640,11 @@ function ComposerTemplateAttachmentSync({
             );
             const selected = readSelectedTemplate();
             if (anchor && selected && Number.isInteger(position)) {
-              openVideoOptions(anchor, selected, position);
+              // Base UI dismisses a popover mounted during the same external
+              // click as an outside press. Mount after that click dispatches.
+              queueMicrotask(() => {
+                openVideoOptions(anchor, selected, position);
+              });
             }
           }
         }}
@@ -5922,24 +5933,26 @@ function ConnectorTriggerIcons({
 
 function matchesCustomConnectorSearch(
   search: string,
-  connector: CustomConnectorHttpResponse,
+  connector: CustomConnectorHttpClientResponse,
 ): boolean {
   const normalizedSearch = search.trim().toLowerCase();
   if (!normalizedSearch) {
     return true;
   }
-  return [connector.displayName, connector.slug, ...connector.prefixes].some(
-    (value) => {
-      return value.toLowerCase().includes(normalizedSearch);
-    },
-  );
+  return [
+    connector.displayName,
+    connector.slug,
+    ...connector.prefixTemplates,
+  ].some((value) => {
+    return value.toLowerCase().includes(normalizedSearch);
+  });
 }
 
 function CustomConnectorCatalogCard({
   connector,
   onConnect,
 }: {
-  connector: CustomConnectorHttpResponse;
+  connector: CustomConnectorHttpClientResponse;
   onConnect: () => void;
 }) {
   const { t } = useTranslation();
@@ -5981,7 +5994,7 @@ function CustomConnectorCatalogCard({
           data-testid="connector-help-text"
           className="line-clamp-2 text-xs text-muted-foreground"
         >
-          {connector.prefixes[0]}
+          {connector.prefixTemplates[0]}
         </span>
       </span>
     </button>
@@ -5999,17 +6012,20 @@ function AddConnectorsDialog({
 }: {
   signals: ComposerSignals;
   unconnected: PlatformConnectorCatalogStatusItem[];
-  unconnectedCustom: CustomConnectorHttpResponse[];
+  unconnectedCustom: CustomConnectorHttpClientResponse[];
   busyConnectorSlug: ConnectorSlug | null;
   connectHandlers: (
     connector: PlatformConnectorCatalogStatusItem,
   ) => ConnectorConnectHandlers;
-  onConnectCustom: (connector: CustomConnectorHttpResponse) => void;
+  onConnectCustom: (connector: CustomConnectorHttpClientResponse) => void;
   onClose: () => void;
 }) {
   const { t } = useTranslation();
   const connectorUi = useGet(signals.connector.connectorUiState$);
   const updateConnectorUi = useSet(signals.connector.updateConnectorUiState$);
+  const resetCustomConnectorConnectInput = useSet(
+    resetCustomConnectorConnectInput$,
+  );
   const search = connectorUi.addDialogSearch;
   const filtered = unconnected.filter((item) => {
     return matchesConnectorSearch(search, item);
@@ -6074,6 +6090,7 @@ function AddConnectorsDialog({
                   key={item.id}
                   connector={item}
                   onConnect={() => {
+                    resetCustomConnectorConnectInput();
                     onConnectCustom(item);
                   }}
                 />
@@ -6472,7 +6489,7 @@ function ConnectorsPopoverButton({
       <PopoverContent
         side="top"
         align="start"
-        className="flex max-h-[var(--radix-popover-content-available-height)] w-72 flex-col overflow-hidden rounded-lg p-0"
+        className="flex max-h-[var(--available-height)] w-72 flex-col overflow-hidden rounded-lg p-0"
       >
         {(connectorItems.length > 0 || connectorsLoading) && (
           <div className="flex min-h-0 flex-col py-1">
@@ -6571,7 +6588,7 @@ function ConnectorsPopoverButton({
                         agentId &&
                         connector.authorized &&
                         connector.permissionSummary.hasPermissions && (
-                          <button
+                          <Button
                             type="button"
                             onClick={(event) => {
                               event.preventDefault();
@@ -6586,10 +6603,12 @@ function ConnectorsPopoverButton({
                               },
                               { connectorName: connector.label },
                             )}
-                            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
+                            variant="quiet"
+                            size="icon-2xs"
+                            className="shrink-0"
                           >
                             <SlidersHorizontal size={15} />
-                          </button>
+                          </Button>
                         )}
                       <LoadingSwitch
                         checked={connector.authorized}
@@ -7414,7 +7433,7 @@ function ComposerModelPickerSlot({ signals }: { signals: ComposerSignals }) {
         triggerClassName={cn(
           "h-8 w-8 max-w-none gap-0 border-transparent bg-transparent px-0 text-sm text-muted-foreground transition-colors sm:w-auto sm:max-w-[14rem] sm:gap-1 sm:px-2",
           "[&>span]:flex [&>span]:items-center [&>span]:justify-center sm:[&>span]:justify-start [&>svg]:hidden sm:[&>svg]:block",
-          "hover:bg-state-hover hover:text-foreground data-[state=open]:bg-state-hover data-[state=open]:text-foreground",
+          "hover:bg-state-hover hover:text-foreground data-popup-open:bg-state-hover data-popup-open:text-foreground",
           COMPOSER_CONTROL_FOCUS_CLASS,
         )}
         compactTrigger
@@ -7546,7 +7565,27 @@ function equalComposerConnectorAuthorizationState(
   return (
     left.agentId === right.agentId &&
     equalArrays(left.enabledConnectorSlugs, right.enabledConnectorSlugs) &&
-    equalArrays(left.enabledCustomConnectorIds, right.enabledCustomConnectorIds)
+    equalCustomConnectorGrants(
+      left.customConnectorGrants,
+      right.customConnectorGrants,
+    )
+  );
+}
+
+function equalCustomConnectorGrants(
+  left: readonly AgentCustomConnectorGrant[],
+  right: readonly AgentCustomConnectorGrant[],
+): boolean {
+  return (
+    left.length === right.length &&
+    left.every((grant, index) => {
+      const other = right[index];
+      return (
+        other !== undefined &&
+        grant.customConnectorId === other.customConnectorId &&
+        equalArrays(grant.permissionNames, other.permissionNames)
+      );
+    })
   );
 }
 
@@ -7580,17 +7619,17 @@ function matchingAuthorizedConnectorSlugs(
   return authorization.data.enabledConnectorSlugs;
 }
 
-function matchingAuthorizedCustomConnectorIds(
+function matchingCustomConnectorGrants(
   agentId: string,
   authorization: Loadable<ComposerConnectorAuthorizationState>,
-): readonly string[] | null {
+): readonly AgentCustomConnectorGrant[] | null {
   if (authorization.state !== "hasData") {
     return null;
   }
   if (authorization.data.agentId !== agentId) {
     return null;
   }
-  return authorization.data.enabledCustomConnectorIds;
+  return authorization.data.customConnectorGrants;
 }
 
 interface ResolvedComposerConnectorCollections {
@@ -7600,10 +7639,12 @@ interface ResolvedComposerConnectorCollections {
     PlatformConnectorCatalogStatusItem
   >;
   readonly unconnectedConnectors: PlatformConnectorCatalogStatusItem[];
-  readonly unconnectedCustomConnectors: CustomConnectorHttpResponse[];
+  readonly unconnectedCustomConnectors: CustomConnectorHttpClientResponse[];
   readonly agentConnectors: ComposerConnectorItem[];
   readonly agentCustomConnectors: ComposerCustomConnectorItem[];
-  readonly selectedCustomConnector: CustomConnectorHttpResponse | undefined;
+  readonly selectedCustomConnector:
+    | CustomConnectorHttpClientResponse
+    | undefined;
 }
 
 function resolveComposerConnectorCollections({
@@ -7611,7 +7652,7 @@ function resolveComposerConnectorCollections({
   addDialogCatalogItems,
   customConnectors,
   authorizedConnectorSlugs,
-  authorizedCustomConnectorIds,
+  customConnectorGrants,
   optimisticConnected,
   selectedCustomConnectorId,
 }: {
@@ -7619,9 +7660,9 @@ function resolveComposerConnectorCollections({
   addDialogCatalogItems: Loadable<
     readonly PlatformConnectorCatalogStatusItem[]
   >;
-  customConnectors: Loadable<readonly CustomConnectorResponse[]>;
+  customConnectors: Loadable<readonly CustomConnectorClientResponse[]>;
   authorizedConnectorSlugs: readonly ConnectorSlug[] | null;
-  authorizedCustomConnectorIds: readonly string[] | null;
+  customConnectorGrants: readonly AgentCustomConnectorGrant[] | null;
   optimisticConnected: ReadonlySet<ConnectorSlug>;
   selectedCustomConnectorId: string | null;
 }): ResolvedComposerConnectorCollections {
@@ -7631,10 +7672,14 @@ function resolveComposerConnectorCollections({
     addDialogCatalogItems.state === "hasData" ? addDialogCatalogItems.data : [];
   const resolvedCustomConnectors =
     customConnectors.state === "hasData"
-      ? customConnectors.data.filter(isHttpCustomConnectorResponse)
+      ? customConnectors.data.filter(isHttpCustomConnectorClientResponse)
       : [];
   const authorizedSet = new Set(authorizedConnectorSlugs ?? []);
-  const authorizedCustomSet = new Set(authorizedCustomConnectorIds ?? []);
+  const authorizedCustomSet = new Set(
+    customConnectorGrants?.map((grant) => {
+      return grant.customConnectorId;
+    }) ?? [],
+  );
   const connectorMap = new Map(
     [...resolvedRelatedCatalogItems, ...resolvedAddDialogCatalogItems].map(
       (connector) => {
@@ -7820,7 +7865,7 @@ function ComposerConnectorsSlot({ signals }: { signals: ComposerSignals }) {
     agentRecordId,
     authorizationLoadable,
   );
-  const authorizedCustomConnectors = matchingAuthorizedCustomConnectorIds(
+  const customConnectorGrants = matchingCustomConnectorGrants(
     agentRecordId,
     authorizationLoadable,
   );
@@ -7829,7 +7874,7 @@ function ComposerConnectorsSlot({ signals }: { signals: ComposerSignals }) {
     relatedCatalogItemsLoadable.state !== "hasData" ||
     customConnectorsLoadable.state !== "hasData" ||
     authorizedConnectors === null ||
-    authorizedCustomConnectors === null;
+    customConnectorGrants === null;
 
   const {
     authorizedSet,
@@ -7844,7 +7889,7 @@ function ComposerConnectorsSlot({ signals }: { signals: ComposerSignals }) {
     addDialogCatalogItems: addDialogCatalogItemsLoadable,
     customConnectors: customConnectorsLoadable,
     authorizedConnectorSlugs: authorizedConnectors,
-    authorizedCustomConnectorIds: authorizedCustomConnectors,
+    customConnectorGrants,
     optimisticConnected,
     selectedCustomConnectorId,
   });
@@ -7985,10 +8030,20 @@ function ComposerConnectorsSlot({ signals }: { signals: ComposerSignals }) {
   };
 
   const handleCustomToggle = async (connectorId: string, checked: boolean) => {
+    const connector = agentCustomConnectors.find((candidate) => {
+      return candidate.id === connectorId;
+    });
+    if (checked && connector?.permissionBundleRef) {
+      return;
+    }
     updateConnectorUi({ savingCustomConnectorId: connectorId });
     await bestEffort(
       setConnectorAuthorization(
-        { kind: "custom", connectorId },
+        {
+          kind: "custom",
+          connectorId,
+          permissionBundleRef: connector?.permissionBundleRef ?? null,
+        },
         checked,
         pageSignal,
       ),

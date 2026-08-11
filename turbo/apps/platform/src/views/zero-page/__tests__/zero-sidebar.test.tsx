@@ -906,14 +906,8 @@ describe("zero sidebar", () => {
     const titleInput = within(dialog).getByPlaceholderText("Chat title");
     expect(titleInput).toHaveValue("Release plan");
 
-    await waitFor(() => {
-      expect(dialog).toHaveStyle({ pointerEvents: "auto" });
-    });
-
     await fill(titleInput, "Launch plan");
-    const renameForm = titleInput.closest("form");
-    expect(renameForm).not.toBeNull();
-    fireEvent.submit(renameForm!);
+    click(buttonByText("Rename", dialog));
 
     await waitFor(() => {
       expect(within(sidebar()).getByText("Launch plan")).toBeInTheDocument();
@@ -1849,9 +1843,7 @@ describe("zero sidebar", () => {
               sequenceNumber: null,
               runId: null,
             },
-            // The first result deliberately models an older API response so
-            // the rollout fallback is exercised through the rendered page.
-            ...(index === 0 ? {} : { matchedRanges: [{ start: 11, end: 17 }] }),
+            matchedRanges: [{ start: 11, end: 17 }],
             contextBefore: [],
             contextAfter: [],
           };

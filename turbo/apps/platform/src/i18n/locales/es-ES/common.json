@@ -971,6 +971,7 @@
         "changePlan": "Cambiar plan",
         "choosePlan": "Elige un plan",
         "choosePlanDescription": "Elige primero el plan del espacio de trabajo. Los paquetes de miembros se configuran después.",
+        "concurrentSlots": "Espacios simultáneos",
         "configurePackages": "Configurar paquetes de miembros",
         "configurePackagesDescription": "Elige un paquete obligatorio para cada miembro y revisa el total mensual combinado.",
         "currentMember": "Miembro actual",
@@ -1074,9 +1075,22 @@
       "left": "{{value}} restante",
       "member": "Miembro",
       "neverExpires": "Nunca caduca",
+      "orgCredits": "Créditos de la organización",
       "unavailable": "Saldo de crédito no disponible.",
       "upgradeDescription": "Pro incluye créditos mensuales y desbloquea opciones adicionales de crédito.",
       "upgradeTitle": "Actualiza a Pro para conseguir más créditos",
+      "usagePack": {
+        "bonus": "Bonificación",
+        "members": "Miembros",
+        "membersDescription": "Consulta los créditos restantes y las adiciones de créditos del paquete de cada miembro.",
+        "membersTitle": "Créditos de paquetes de los miembros",
+        "nextExpiry": "Próximo vencimiento",
+        "purchased": "Comprados",
+        "remaining": "Restante",
+        "title": "Créditos del paquete de uso",
+        "totalRemaining": "Total restante",
+        "viewMembers": "Ver saldos de miembros"
+      },
       "used": "Usados"
     }
   },
@@ -1899,17 +1913,13 @@
     },
     "custom": {
       "connect": {
-        "apiAuthentication": "Autenticación por API",
-        "apiDescription": "Introduce el secreto de la API emitido por el proveedor.",
-        "back": "Volver",
+        "configured": "Configurado",
         "connecting": "Conectando…",
         "continue": "Continuar",
         "continueToProvider": "Continúa con el proveedor para autorizar el acceso.",
         "description": "Tu secreto se cifra en reposo y se inyecta en las solicitudes salientes por el cortafuegos. Nunca se expone al agente como una variable de entorno.",
-        "oauthDescription": "Autoriza el acceso con la app OAuth del conector.",
         "save": "Guardar",
         "saving": "Guardando…",
-        "secret": "Secreto",
         "title": "Conectar {{connector}}"
       },
       "create": {
@@ -1923,13 +1933,18 @@
         "authorizationUrl": "URL de autorización",
         "clientId": "ID de cliente",
         "clientSecret": "Secreto del cliente",
+        "connectorType": "Tipo de conector",
         "displayName": "Nombre de visualización",
         "headerName": "Nombre de la cabecera",
         "headerTemplate": "Plantilla de cabecera",
         "headerTemplateHint": "(debe contener {{placeholder}})",
         "httpBasicAuthentication": "Autenticación básica HTTP",
+        "httpType": "API HTTP",
         "keepClientSecret": "Deja el secreto del cliente en blanco para conservar el valor almacenado.",
         "keepClientSecretPlaceholder": "Deja en blanco para conservar el valor actual",
+        "mcpEndpoint": "Endpoint MCP",
+        "mcpEndpointHint": "(Streamable HTTP, solo HTTPS)",
+        "mcpEndpointPlaceholder": "https://mcp.acme.com/server",
         "newClientSecret": "Nuevo secreto de cliente",
         "none": "Ninguno",
         "oauthChangesDisconnect": "Cambiar la configuración de OAuth o las credenciales del cliente desconecta las conexiones OAuth existentes.",
@@ -4485,7 +4500,10 @@
           "action": "Quitar del espacio de trabajo",
           "confirmDescription": "{{email}} será eliminado de este espacio de trabajo y perderá el acceso a todos los recursos.",
           "progress": "Eliminando...",
-          "title": "¿Eliminar al miembro?"
+          "title": "¿Eliminar al miembro?",
+          "usagePackImpactDescription": "Los créditos restantes de su paquete de uso dejarán de estar disponibles de inmediato. El paquete se eliminará al final del periodo de facturación actual. Si esto deja al espacio de trabajo sin ningún paquete de uso, el plan del espacio de trabajo también se cancelará al final del periodo de facturación.",
+          "usagePackImpactTitle": "Impacto en el paquete de uso",
+          "usagePackRefundDescription": "Reembolso: La parte no utilizada de los créditos comprados se devuelve al método de pago original. Los créditos consumidos y los créditos de bonificación no son reembolsables."
         },
         "revoke": {
           "action": "Revocar invitación",
@@ -4507,6 +4525,7 @@
           "progress": "Cambiar...",
           "title": "¿Cambiar a miembro?"
         },
+        "usagePack": "Paquete de uso",
         "user": "Usuario",
         "you": "Tú"
       },

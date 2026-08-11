@@ -2280,7 +2280,7 @@ async function createNotionEventAutomationForWorkflow(
           )
         : {
             kind: "bad-request",
-            message: "Unsupported Notion workflow event config",
+            message: "Unsupported Notion automation event config",
           };
   } else if (args.input.eventType === "notion-database-item-created") {
     preparedConfig =
@@ -2305,7 +2305,7 @@ async function createNotionEventAutomationForWorkflow(
           )
         : {
             kind: "bad-request",
-            message: "Unsupported Notion workflow event config",
+            message: "Unsupported Notion automation event config",
           };
   } else {
     preparedConfig =
@@ -2338,7 +2338,7 @@ async function createNotionEventAutomationForWorkflow(
           )
         : {
             kind: "bad-request",
-            message: "Unsupported Notion workflow event config",
+            message: "Unsupported Notion automation event config",
           };
   }
   signal.throwIfAborted();
@@ -2669,7 +2669,7 @@ const createEventAutomationForWorkflow$ = command(
     }
     return {
       kind: "bad-request",
-      message: "Unsupported workflow event automation type",
+      message: "Unsupported event automation type",
     };
   },
 );

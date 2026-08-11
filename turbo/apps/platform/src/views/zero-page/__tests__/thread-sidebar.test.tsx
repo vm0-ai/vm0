@@ -419,6 +419,38 @@ describe("thread-owned utility sidebar", () => {
     expect(requestedThreadIds).toContain(THREAD_ID);
   });
 
+  it("previews a public catalog document through the resolved resource url", async () => {
+    const htmlUrl = "https://catalog-document.sites.vm7.io";
+    const summary = catalogArtifact({ title: "launch-site.html" });
+    setupArtifactCatalog(
+      [summary],
+      new Map([
+        [
+          summary.id,
+          catalogFileDetail({
+            contentType: "text/html",
+            filename: "launch-site.html",
+            fileId: "f0000000-0000-4000-a000-000000000003",
+            summary,
+            url: htmlUrl,
+          }),
+        ],
+      ]),
+    );
+
+    setupChatThread();
+    await openCatalogArtifact("launch-site.html");
+
+    // A public URL resolves to itself, so the same path that presigns a private
+    // attachment leaves a hosted site untouched.
+    await waitFor(() => {
+      expect(screen.getByTestId("artifact-sidebar-body-html")).toHaveAttribute(
+        "src",
+        htmlUrl,
+      );
+    });
+  });
+
   it("shows an unavailable artifact detail with a way back to the list", async () => {
     context.mocks.api(artifactCatalogContract.list, ({ respond }) => {
       return respond(200, {

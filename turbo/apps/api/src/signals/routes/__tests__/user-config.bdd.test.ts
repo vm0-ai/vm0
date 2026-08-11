@@ -311,6 +311,7 @@ describe("AUTH-03 user model preference", () => {
 
     const updated = await cfg.updateModelPreference(admin, {
       selectedModel: DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+      serviceTier: null,
     });
     expect(updated.selectedModel).toBe(DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL);
     expect(updated.serviceTier).toBeNull();
@@ -320,6 +321,7 @@ describe("AUTH-03 user model preference", () => {
 
     const cleared = await cfg.updateModelPreference(admin, {
       selectedModel: null,
+      serviceTier: null,
     });
     expect(cleared).toStrictEqual({
       selectedModel: null,
@@ -331,6 +333,25 @@ describe("AUTH-03 user model preference", () => {
       selectedModel: null,
       serviceTier: null,
       updatedAt: null,
+    });
+  });
+
+  it("uses the restricted fallback for a retired model preference", async () => {
+    const admin = api.user();
+    await onboardAdmin(admin, { slug: slug("bdd-uc-retired-model") });
+
+    const response = await cfg.rawUpdateModelPreference(
+      admin,
+      { selectedModel: "gpt-5.5", serviceTier: "priority" },
+      [400],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        code: "MODEL_RETIRED",
+        message:
+          'Model "gpt-5.5" has been retired. Use "deepseek-v4-flash" instead.',
+      },
     });
   });
 
@@ -347,7 +368,7 @@ describe("AUTH-03 user model preference", () => {
 
     const removedModel = await cfg.rawUpdateModelPreference(
       admin,
-      { selectedModel: "claude-haiku-4-5" },
+      { selectedModel: "claude-haiku-4-5", serviceTier: null },
       [400],
     );
     expectApiError(removedModel.body);

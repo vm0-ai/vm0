@@ -2,7 +2,6 @@ import { command, computed, state } from "ccstate";
 import {
   zeroAgentCustomConnectorsContract,
   type AgentCustomConnectorGrant,
-  type AgentCustomConnectorResponse,
 } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 import { zeroClient$ } from "../../api-client.ts";
 import { withCleanup } from "../../utils.ts";
@@ -26,36 +25,38 @@ const reloadAgentCustomConnectors$ = command(({ set }) => {
   });
 });
 
-const seededCustomConnectorAccess$ = computed(
-  async (get): Promise<AgentCustomConnectorResponse> => {
+const seededCustomConnectorGrants$ = computed(
+  async (get): Promise<readonly AgentCustomConnectorGrant[]> => {
     get(internalReload$);
     get(customConnectorAuthorizationReloadVersion$);
     const detail = await get(agentDetail$);
     if (!detail?.agentId) {
-      return { enabledIds: [], grants: [] };
+      return [];
     }
     const client = get(zeroClient$)(zeroAgentCustomConnectorsContract);
     const result = await accept(
       client.get({ params: { id: detail.agentId } }),
       [200],
     );
-    return result.body;
+    return result.body.grants;
   },
 );
 
-const seededCustomConnectors$ = computed(async (get): Promise<string[]> => {
-  return (await get(seededCustomConnectorAccess$)).enabledIds;
+const seededCustomConnectorIds$ = computed(async (get): Promise<string[]> => {
+  return (await get(seededCustomConnectorGrants$)).map((grant) => {
+    return grant.customConnectorId;
+  });
 });
 
 export const agentCustomConnectorGrants$ = computed(
   async (get): Promise<readonly AgentCustomConnectorGrant[]> => {
-    return (await get(seededCustomConnectorAccess$)).grants ?? [];
+    return await get(seededCustomConnectorGrants$);
   },
 );
 
 type CustomConnectorsDraft = {
   readonly agentId: string;
-  readonly enabledIds: readonly string[];
+  readonly connectorIds: readonly string[];
 };
 
 const internalAdded$ = state<CustomConnectorsDraft | null>(null);
@@ -69,9 +70,9 @@ export const agentAddedCustomConnectors$ = computed(
     }
     const local = get(internalAdded$);
     if (local?.agentId === detail.agentId) {
-      return [...local.enabledIds];
+      return [...local.connectorIds];
     }
-    return await get(seededCustomConnectors$);
+    return await get(seededCustomConnectorIds$);
   },
 );
 
@@ -96,10 +97,10 @@ const setAgentCustomConnectorDraft$ = command(
     const current = get(internalAdded$);
     const base =
       current?.agentId === detail.agentId
-        ? current.enabledIds
-        : await get(seededCustomConnectors$);
+        ? current.connectorIds
+        : await get(seededCustomConnectorIds$);
     signal.throwIfAborted();
-    const enabledIds =
+    const connectorIds =
       args.operation === "add"
         ? Array.from(new Set([...base, args.id]))
         : base.filter((s) => {
@@ -107,7 +108,7 @@ const setAgentCustomConnectorDraft$ = command(
           });
     set(internalAdded$, {
       agentId: detail.agentId,
-      enabledIds,
+      connectorIds,
     });
   },
 );
@@ -155,7 +156,10 @@ const saveAgentCustomConnectors$ = command(
         await accept(
           client.update({
             params: { id: detail.agentId },
-            body: { enabledIds: [id], operation },
+            body: {
+              grants: [{ customConnectorId: id, permissionNames: [] }],
+              operation,
+            },
             fetchOptions: { signal },
           }),
           [200],

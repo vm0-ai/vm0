@@ -11,6 +11,10 @@ import { zeroClient$ } from "../../api-client.ts";
 export type CreditBalanceTab = "mine" | "team";
 
 const creditBalanceTabState$ = state<CreditBalanceTab>("mine");
+const usagePackMembersDialogOpenState$ = state(false);
+const usagePackMemberAdditionsExpandedMemberIdState$ = state<string | null>(
+  null,
+);
 
 export const creditBalanceTab$ = computed((get) => {
   return get(creditBalanceTabState$);
@@ -19,6 +23,35 @@ export const creditBalanceTab$ = computed((get) => {
 export const setCreditBalanceTab$ = command(
   ({ set }, tab: CreditBalanceTab) => {
     set(creditBalanceTabState$, tab);
+  },
+);
+
+export const usagePackMembersDialogOpen$ = computed((get) => {
+  return get(usagePackMembersDialogOpenState$);
+});
+
+export const usagePackMemberAdditionsExpandedMemberId$ = computed((get) => {
+  return get(usagePackMemberAdditionsExpandedMemberIdState$);
+});
+
+export const setUsagePackMembersDialogOpen$ = command(
+  ({ set }, open: boolean) => {
+    set(usagePackMembersDialogOpenState$, open);
+    if (!open) {
+      set(usagePackMemberAdditionsExpandedMemberIdState$, null);
+    }
+  },
+);
+
+export const toggleUsagePackMemberAdditions$ = command(
+  ({ get, set }, memberId: string) => {
+    const expandedMemberId = get(
+      usagePackMemberAdditionsExpandedMemberIdState$,
+    );
+    set(
+      usagePackMemberAdditionsExpandedMemberIdState$,
+      expandedMemberId === memberId ? null : memberId,
+    );
   },
 );
 

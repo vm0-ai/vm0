@@ -7,6 +7,7 @@ from dataclasses import dataclass
 import builtin_base_url
 import builtin_firewall_cache
 import builtin_host_policy
+import connector_runtime_metadata
 
 BuiltinFirewallCatalogFileKey = builtin_firewall_cache.CatalogFileKey
 BuiltinFirewallCatalogIdentity = builtin_firewall_cache.CatalogIdentity
@@ -36,6 +37,50 @@ def _custom_connector_id(entry: dict) -> str | None:
             "inline firewall customConnectorId must be a UUID"
         ) from error
     return custom_connector_id
+
+
+def _connector_runtime_target_ids(vm: dict) -> tuple[set[str], set[str]]:
+    raw_targets = vm.get("connectorRuntimeTargets", [])
+    if not isinstance(raw_targets, list):
+        raise FirewallEntryResolutionError("connectorRuntimeTargets must be a list")
+    builtin_slugs: set[str] = set()
+    custom_connector_ids: set[str] = set()
+    for target in raw_targets:
+        if not isinstance(target, dict):
+            raise FirewallEntryResolutionError("connector runtime targets must be objects")
+        kind = target.get("kind")
+        if kind == "builtin":
+            connector_slug = target.get("connectorSlug")
+            if not isinstance(connector_slug, str) or connector_slug == "":
+                raise FirewallEntryResolutionError(
+                    "builtin connector runtime target must have a connector slug"
+                )
+            if connector_slug in builtin_slugs:
+                raise FirewallEntryResolutionError(
+                    "builtin connector runtime targets must be unique"
+                )
+            builtin_slugs.add(connector_slug)
+            continue
+        if kind == "custom":
+            custom_connector_id = target.get("customConnectorId")
+            if not isinstance(custom_connector_id, str):
+                raise FirewallEntryResolutionError(
+                    "custom connector runtime target must have a UUID"
+                )
+            try:
+                uuid.UUID(custom_connector_id)
+            except ValueError as error:
+                raise FirewallEntryResolutionError(
+                    "custom connector runtime target must have a UUID"
+                ) from error
+            if custom_connector_id in custom_connector_ids:
+                raise FirewallEntryResolutionError(
+                    "custom connector runtime targets must be unique"
+                )
+            custom_connector_ids.add(custom_connector_id)
+            continue
+        raise FirewallEntryResolutionError("connector runtime targets must use a supported kind")
+    return builtin_slugs, custom_connector_ids
 
 
 @dataclass(frozen=True)
@@ -270,6 +315,7 @@ def resolve_firewall_entries(
     resolved: list[dict] = []
     builtin_cache_keys: list[BuiltinFirewallCoreCacheKey | None] = []
     omitted_builtin_names: set[str] = set()
+    builtin_target_slugs, custom_target_ids = _connector_runtime_target_ids(vm)
     for entry in raw_firewalls:
         if not isinstance(entry, dict):
             raise FirewallEntryResolutionError("firewall entries must be objects")
@@ -293,6 +339,11 @@ def resolve_firewall_entries(
             if resolved_builtin is None:
                 omitted_builtin_names.add(raw_name)
                 continue
+            connector_runtime_metadata.clear_connector_runtime_kind(resolved_builtin.firewall)
+            if raw_name in builtin_target_slugs:
+                connector_runtime_metadata.mark_connector_runtime_kind(
+                    resolved_builtin.firewall, "builtin"
+                )
             resolved.append(resolved_builtin.firewall)
             builtin_cache_keys.append(resolved_builtin.cache_key)
             continue
@@ -303,9 +354,14 @@ def resolve_firewall_entries(
                     "inline firewall entry firewall must be an object"
                 )
             resolved_firewall = copy.deepcopy(firewall)
+            connector_runtime_metadata.clear_connector_runtime_kind(resolved_firewall)
             custom_connector_id = _custom_connector_id(entry)
             if custom_connector_id is not None:
                 resolved_firewall["customConnectorId"] = custom_connector_id
+                if custom_connector_id in custom_target_ids:
+                    connector_runtime_metadata.mark_connector_runtime_kind(
+                        resolved_firewall, "custom"
+                    )
                 raw_apis = resolved_firewall.get("apis")
                 if not isinstance(raw_apis, list):
                     raise FirewallEntryResolutionError("inline firewall apis must be a list")

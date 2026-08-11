@@ -91,23 +91,7 @@ describe("GET /api/zero/connectors", () => {
     );
 
     expect(response.body.connectors).toStrictEqual([]);
-    expect(response.body.configuredConnectorSlugs).toStrictEqual([]);
     expect(Array.isArray(response.body.connectorProvidedBindings)).toBeTruthy();
-  });
-
-  it("does not return the connector catalog through the deprecated field", async () => {
-    const fixture = seedAuthenticatedFixture();
-    seededFixtures.push(fixture);
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const client = setupApp({ context, routes: zeroConnectorsRoutes })(
-      zeroConnectorsMainContract,
-    );
-    const nonStaff = await accept(
-      client.list({ headers: authHeaders() }),
-      [200],
-    );
-    expect(nonStaff.body.configuredConnectorSlugs).toStrictEqual([]);
   });
 
   it("returns connectors created through the connector API", async () => {

@@ -1,5 +1,4 @@
 import { command } from "ccstate";
-import { connectorSlugSchema } from "@vm0/api-contracts/contracts/connector-identity";
 import {
   compatibleStoredExecutionContextSchema,
   CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE,
@@ -1398,11 +1397,8 @@ function connectorPermissionBaselineMatchesStoredContext(
 ): boolean {
   const baselineConnectorSlugs = Object.keys(baseline.connectors);
   const storedBuiltinConnectorSlugs = new Set(
-    (storedContext.firewalls ?? []).flatMap((firewall) => {
-      return firewall.kind === "builtin" &&
-        connectorSlugSchema.safeParse(firewall.name).success
-        ? [firewall.name]
-        : [];
+    storedContext.connectorRuntimeTargets.flatMap((target) => {
+      return target.kind === "builtin" ? [target.connectorSlug] : [];
     }),
   );
   const storedNetworkPolicies = storedContext.networkPolicies ?? {};

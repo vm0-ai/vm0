@@ -113,7 +113,7 @@ CACHE_TMP_TAR=""
 
 # Pinned versions (changes here invalidate the template cache via script hash)
 GO_VERSION="1.26.5"
-CLAUDE_CODE_VERSION="2.1.226"
+CLAUDE_CODE_VERSION="2.1.227"
 CODEX_CLI_VERSION="0.147.0"
 GWS_CLI_VERSION="0.22.5"
 XURL_VERSION="1.3.1"
@@ -353,6 +353,7 @@ install_packages() {
   apt-get install -y \
     procps wget git ripgrep jq file iproute2 sudo ffmpeg \
     fonts-noto-core fonts-noto-cjk fonts-noto-color-emoji \
+    libreoffice-impress poppler-utils \
     libnss3 p11-kit-modules unzip \
     nodejs \
     python3 python3-pip \

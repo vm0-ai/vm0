@@ -42,6 +42,11 @@ const cronResultSchema = z.object({
   executed: z.number().int().nonnegative(),
   skipped: z.number().int().nonnegative(),
 });
+const TERMINALLY_SKIPPED_EXECUTION = {
+  success: true,
+  executed: 0,
+  skipped: 1,
+} as const;
 
 interface Scenario {
   readonly actor: ApiTestUser;
@@ -103,7 +108,7 @@ async function setupScenario(
     throw new Error("Expected an organization-scoped workflow owner");
   }
   const { agentId } = await workflows.createAgent(actor, {
-    displayName: "Stripe Workflow Event Agent",
+    displayName: "Stripe Automation Event Agent",
   });
   const workflowId = await workflows.createWorkflow(actor, {
     agentId,
@@ -379,6 +384,22 @@ async function readStripeAutomation(scenario: Scenario) {
     throw new Error("Expected a Stripe invoice-paid automation summary");
   }
   return summary;
+}
+
+async function setupPendingLifecycleDelivery(label: string): Promise<{
+  readonly accountId: string;
+  readonly scenario: Scenario;
+}> {
+  const accountId = `acct_stripe_lifecycle_${label}_${randomUUID()}`;
+  const scenario = await setupScenario({ accountId });
+  await postStripeAutomationEvent(invoicePaidEvent({ accountId }));
+  return { accountId, scenario };
+}
+
+async function executeLifecycleDelivery(scenario: Scenario) {
+  const execution = await executeAutomation(scenario);
+  const inputEvents = await automationInputEvents(scenario);
+  return { execution: execution.body, inputEvents };
 }
 
 beforeEach(() => {
@@ -916,45 +937,74 @@ describe("Stripe automation event webhook", () => {
     });
   });
 
-  it("terminally skips persisted deliveries after every public lifecycle binding change", async () => {
-    const disabled = await setupScenario();
-    const deleted = await setupScenario();
-    const changedAccount = await setupScenario();
-    const testMode = await setupScenario();
-    const deletedConnector = await setupScenario();
-    await postStripeAutomationEvent(
-      invoicePaidEvent({ eventId: "evt_lifecycle_changes" }),
-    );
-
-    await setAutomationEnabled(disabled, false);
-    await deleteAutomation(deleted);
-    const changed = await connectStripeOAuth(
-      changedAccount.actor,
-      "acct_stripe_changed_after_receipt",
-    );
-    expect(changed.id).toBe(changedAccount.connector.id);
-    const testConnection = await connectStripeOAuth(
-      testMode.actor,
-      STRIPE_ACCOUNT_ID,
-      false,
-    );
-    expect(testConnection.id).toBe(testMode.connector.id);
-    await connectors.deleteConnectorBySlug(deletedConnector.actor, "stripe");
-
-    expect((await executeCron()).skipped).toBeGreaterThanOrEqual(5);
-    for (const scenario of [
-      disabled,
-      changedAccount,
-      testMode,
-      deletedConnector,
-    ]) {
+  describe("terminally skips persisted deliveries after public lifecycle binding changes", () => {
+    it("when the automation is disabled", async () => {
+      const { scenario } = await setupPendingLifecycleDelivery("disabled");
+      await setAutomationEnabled(scenario, false);
+      const result = await executeLifecycleDelivery(scenario);
+      expect(result.execution).toStrictEqual(TERMINALLY_SKIPPED_EXECUTION);
       expect((await readStripeAutomation(scenario)).health).toMatchObject({
         lastDeliveryStatus: "skipped",
         warning: null,
       });
-      await expect(automationInputEvents(scenario)).resolves.toHaveLength(0);
-    }
-    await expect(automationInputEvents(deleted)).resolves.toHaveLength(0);
+      expect(result.inputEvents).toHaveLength(0);
+    });
+
+    it("when the automation is deleted", async () => {
+      const { scenario } = await setupPendingLifecycleDelivery("deleted");
+      await deleteAutomation(scenario);
+      const result = await executeLifecycleDelivery(scenario);
+      expect(result.execution).toStrictEqual(TERMINALLY_SKIPPED_EXECUTION);
+      expect(result.inputEvents).toHaveLength(0);
+    });
+
+    it("when the connected account changes", async () => {
+      const { scenario } =
+        await setupPendingLifecycleDelivery("changed_account");
+      const changed = await connectStripeOAuth(
+        scenario.actor,
+        `acct_stripe_changed_${randomUUID()}`,
+      );
+      expect(changed.id).toBe(scenario.connector.id);
+      const result = await executeLifecycleDelivery(scenario);
+      expect(result.execution).toStrictEqual(TERMINALLY_SKIPPED_EXECUTION);
+      expect((await readStripeAutomation(scenario)).health).toMatchObject({
+        lastDeliveryStatus: "skipped",
+        warning: null,
+      });
+      expect(result.inputEvents).toHaveLength(0);
+    });
+
+    it("when the connection changes from live mode to test mode", async () => {
+      const { accountId, scenario } =
+        await setupPendingLifecycleDelivery("test_mode");
+      const testConnection = await connectStripeOAuth(
+        scenario.actor,
+        accountId,
+        false,
+      );
+      expect(testConnection.id).toBe(scenario.connector.id);
+      const result = await executeLifecycleDelivery(scenario);
+      expect(result.execution).toStrictEqual(TERMINALLY_SKIPPED_EXECUTION);
+      expect((await readStripeAutomation(scenario)).health).toMatchObject({
+        lastDeliveryStatus: "skipped",
+        warning: null,
+      });
+      expect(result.inputEvents).toHaveLength(0);
+    });
+
+    it("when the connector is deleted", async () => {
+      const { scenario } =
+        await setupPendingLifecycleDelivery("deleted_connector");
+      await connectors.deleteConnectorBySlug(scenario.actor, "stripe");
+      const result = await executeLifecycleDelivery(scenario);
+      expect(result.execution).toStrictEqual(TERMINALLY_SKIPPED_EXECUTION);
+      expect((await readStripeAutomation(scenario)).health).toMatchObject({
+        lastDeliveryStatus: "skipped",
+        warning: null,
+      });
+      expect(result.inputEvents).toHaveLength(0);
+    });
   });
 
   it("marks only the exact deauthorized account for reconnect and terminally skips its pending delivery", async () => {

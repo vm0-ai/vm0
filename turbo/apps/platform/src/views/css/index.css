@@ -150,6 +150,15 @@ body {
   }
 }
 
+/* The chat composer footer keeps 8px of breathing room below the card but
+   overlaps it with the root-owned bottom inset instead of stacking on top of
+   it, so the gap to the screen edge is max(0.5rem, inset) rather than
+   0.5rem + inset. While the keyboard is open --sab is 0px and the full 8px
+   returns above the keyboard. */
+[data-chat-composer] {
+  padding-bottom: max(0.5rem - var(--sab), 0px);
+}
+
 .zero-sidebar-header {
   padding-top: 0.375rem;
 }
@@ -479,9 +488,7 @@ body {
 }
 
 /* Switch track: ensure visibility against card background in dark mode */
-:where([data-theme="dark"])
-  .zero-app
-  button[role="switch"][data-state="unchecked"] {
+:where([data-theme="dark"]) .zero-app [role="switch"][data-unchecked] {
   background-color: hsl(var(--gray-400));
 }
 
@@ -547,7 +554,7 @@ body {
 .zero-app .zero-tabs [role="tab"]:hover {
   color: hsl(var(--foreground));
 }
-.zero-app .zero-tabs [role="tab"].bg-background {
+.zero-app .zero-tabs [role="tab"][data-active] {
   background-color: hsl(var(--card));
   color: hsl(var(--foreground));
   box-shadow:
@@ -557,7 +564,7 @@ body {
 :where([data-theme="dark"]) .zero-app .zero-tabs {
   background-color: hsl(var(--gray-200));
 }
-:where([data-theme="dark"]) .zero-app .zero-tabs [role="tab"].bg-background {
+:where([data-theme="dark"]) .zero-app .zero-tabs [role="tab"][data-active] {
   background-color: hsl(var(--gray-400));
   box-shadow:
     0 1px 3px hsl(0 0% 0% / 0.3),
@@ -1395,11 +1402,11 @@ details[open] > summary > span:first-child {
   }
 }
 
-.sheet-content[data-side="right"][data-state="open"] {
+.sheet-content[data-side="right"][data-open] {
   animation: sheet-slide-in-right 0.35s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 
-.sheet-content[data-side="right"][data-state="closed"] {
+.sheet-content[data-side="right"][data-ending-style] {
   animation: sheet-slide-out-right 0.25s cubic-bezier(0.22, 1, 0.36, 1) forwards;
 }
 

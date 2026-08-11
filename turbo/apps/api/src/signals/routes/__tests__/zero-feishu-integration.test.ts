@@ -15,8 +15,8 @@ import {
 } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   zeroCustomConnectorByIdContract,
+  zeroCustomConnectorConnectionContract,
   zeroCustomConnectorOAuth2Contract,
-  zeroCustomConnectorSecretContract,
   zeroCustomConnectorsContract,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import { zeroAgentCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
@@ -48,6 +48,7 @@ import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
 import type { ApiTestUser } from "./helpers/api-bdd";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { mockClerkMembership } from "./helpers/api-bdd-clerk";
+import { createStoragesBddApi } from "./helpers/api-bdd-storages";
 import {
   createRunsApi,
   expectCanonicalStorageManifest,
@@ -67,7 +68,6 @@ import { zeroCustomConnectorsDeleteRoutes } from "../zero-custom-connectors-dele
 import { zeroCustomConnectorsGetRoutes } from "../zero-custom-connectors-get";
 import { zeroCustomConnectorOAuth2Routes } from "../zero-custom-connectors-oauth2";
 import { zeroCustomConnectorDisconnectRoutes } from "../zero-custom-connectors-disconnect";
-import { zeroCustomConnectorsSecretSetRoutes } from "../zero-custom-connectors-secret-set";
 import { zeroCustomConnectorsUpdateRoutes } from "../zero-custom-connectors-update";
 import { zeroFeishuConnectRoutes } from "../zero-feishu-connect";
 
@@ -77,16 +77,12 @@ const zeroCustomConnectorByIdTestRoutes = Object.freeze([
   ...zeroCustomConnectorsUpdateRoutes,
 ]);
 
-const zeroCustomConnectorSecretTestRoutes = Object.freeze([
-  ...zeroCustomConnectorDisconnectRoutes,
-  ...zeroCustomConnectorsSecretSetRoutes,
-]);
-
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
 const authOrgApi = createAuthOrgAgentsBddApi(context);
 const chatCallbacks = createChatCallbacksApi(context);
 const runsApi = createRunsApi(context);
+const storagesApi = createStoragesBddApi(context);
 const webhooksApi = createWebhookCallbackApi(context);
 const APP_ORIGIN = "https://app.vm0.test";
 const ENCRYPT_KEY = "feishu-test-encrypt-key";
@@ -347,6 +343,25 @@ async function postEvent(
     method: "POST",
     headers,
     body,
+  });
+}
+
+async function requestFeishuConfigurationFailure(args: {
+  readonly method: "POST" | "PATCH";
+  readonly path: string;
+  readonly body: unknown;
+}): Promise<Response> {
+  const app = createAppWithRoutes({
+    signal: context.signal,
+    routes: zeroFeishuConnectRoutes,
+  });
+  return await app.request(args.path, {
+    method: args.method,
+    headers: {
+      authorization: "Bearer clerk-session",
+      "content-type": "application/json",
+    },
+    body: JSON.stringify(args.body),
   });
 }
 
@@ -904,7 +919,7 @@ describe("Feishu integration", () => {
     readonly sandboxToken: string;
     readonly sessionId: string;
     readonly history: string;
-    readonly assistantText: string;
+    readonly assistantText?: string;
   }): Promise<void> {
     const historyHash = createHash("sha256").update(args.history).digest("hex");
     const historySize = Buffer.byteLength(args.history, "utf8");
@@ -932,28 +947,34 @@ describe("Feishu integration", () => {
       headers,
       [200],
     );
-    const assistantEvent = {
-      type: "assistant" as const,
-      sequenceNumber: 0,
-      message: {
-        id: `msg_bdd_feishu_${args.runId}`,
-        content: [{ type: "text" as const, text: args.assistantText }],
-      },
-    };
-    chatCallbacks.mockChatOutputEvents([
-      {
-        eventType: assistantEvent.type,
-        sequenceNumber: assistantEvent.sequenceNumber,
-        eventData: { message: assistantEvent.message },
-      },
-    ]);
-    await webhooksApi.requestAgentEvents(
-      { runId: args.runId, events: [assistantEvent] },
-      headers,
-      [200],
-    );
+    if (args.assistantText !== undefined) {
+      const assistantEvent = {
+        type: "assistant" as const,
+        sequenceNumber: 0,
+        message: {
+          id: `msg_bdd_feishu_${args.runId}`,
+          content: [{ type: "text" as const, text: args.assistantText }],
+        },
+      };
+      chatCallbacks.mockChatOutputEvents([
+        {
+          eventType: assistantEvent.type,
+          sequenceNumber: assistantEvent.sequenceNumber,
+          eventData: { message: assistantEvent.message },
+        },
+      ]);
+      await webhooksApi.requestAgentEvents(
+        { runId: args.runId, events: [assistantEvent] },
+        headers,
+        [200],
+      );
+    }
     await webhooksApi.requestAgentComplete(
-      { runId: args.runId, exitCode: 0, lastEventSequence: 0 },
+      {
+        runId: args.runId,
+        exitCode: 0,
+        ...(args.assistantText === undefined ? {} : { lastEventSequence: 0 }),
+      },
       headers,
       [200],
     );
@@ -1348,6 +1369,226 @@ describe("Feishu integration", () => {
     );
   });
 
+  it("converges concurrent managed connector retries after skill publication fails", async () => {
+    const actor = authOrgApi.user({
+      userId: `user_${randomUUID()}`,
+      orgId: `org_${randomUUID()}`,
+      orgRole: "org:admin",
+    });
+    authOrgApi.acceptAgentStorageWrites();
+    await enableFeishuIntegration(actor);
+    const agent = await authOrgApi.createAgent(actor, {
+      displayName: "Feishu connector retry agent",
+      visibility: "public",
+    });
+    mocks.clerk.session(actor.userId, actor.orgId, "org:admin");
+    const client = setupApp({ context, routes: zeroFeishuConnectRoutes })(
+      zeroFeishuConnectContract,
+    );
+    context.mocks.s3.send.mockRejectedValue(
+      new Error("Managed connector skill upload failed"),
+    );
+
+    const failedSetup = await requestFeishuConfigurationFailure({
+      method: "POST",
+      path: zeroFeishuConnectContract.setup.path,
+      body: {
+        appId: `cli_${randomUUID()}`,
+        appSecret: APP_SECRET,
+        verificationToken: VERIFICATION_TOKEN,
+        defaultAgentId: agent.agentId,
+        createNew: true,
+      },
+    });
+    expect(failedSetup.status).toBe(500);
+
+    const customConnectorClient = setupApp({
+      context,
+      routes: zeroCustomConnectorsRoutes,
+    })(zeroCustomConnectorsContract);
+    const connectorsAfterFailure = await accept(
+      customConnectorClient.list({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(connectorsAfterFailure.body.connectors).toStrictEqual([]);
+    const status = await accept(
+      client.getStatus({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    const installation = requireValue(
+      status.body.installations?.[0],
+      "Expected the failed setup to retain its Feishu installation",
+    );
+
+    const bothSkillUploadsStarted = createDeferredPromise<void>(context.signal);
+    const releaseSkillUploads = createDeferredPromise<void>(context.signal);
+    const archiveKeys: string[] = [];
+    context.mocks.s3.send.mockImplementation(async (command: unknown) => {
+      const input = commandInput(command);
+      if (
+        String(input.Key).endsWith("/archive.tar.gz") &&
+        Buffer.isBuffer(input.Body)
+      ) {
+        archiveKeys.push(String(input.Key));
+        if (archiveKeys.length === 2) {
+          bothSkillUploadsStarted.resolve();
+        }
+        if (archiveKeys.length <= 2) {
+          await releaseSkillUploads.promise;
+        }
+      }
+      return { ContentLength: 1024 };
+    });
+
+    const updateResponsesPromise = Promise.all([
+      client.updateInstallation({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { installationId: installation.id },
+        body: { defaultAgentId: agent.agentId, setupCompleted: true },
+      }),
+      client.updateInstallation({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { installationId: installation.id },
+        body: { defaultAgentId: agent.agentId, setupCompleted: true },
+      }),
+    ]);
+    await bothSkillUploadsStarted.promise;
+    releaseSkillUploads.resolve();
+    const updateResponses = await updateResponsesPromise;
+
+    expect(
+      updateResponses.map((response) => {
+        return response.status;
+      }),
+    ).toStrictEqual([200, 200]);
+    expect(new Set(archiveKeys).size).toBe(2);
+    const connectorList = await accept(
+      customConnectorClient.list({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(connectorList.body.connectors).toHaveLength(1);
+    const managedConnector = requireValue(
+      connectorList.body.connectors[0],
+      "Expected concurrent retries to converge on one connector",
+    );
+    await expect(
+      storagesApi.downloadStorage(actor, {
+        name: getCustomConnectorSkillStorageName(managedConnector.id),
+        owner: "organization",
+      }),
+    ).resolves.toMatchObject({ fileCount: 1 });
+
+    await accept(
+      client.removeInstallation({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { installationId: installation.id },
+      }),
+      [200],
+    );
+  });
+
+  it("keeps the managed connector and skill HEAD active when repair publication fails", async () => {
+    const actor = authOrgApi.user({
+      userId: `user_${randomUUID()}`,
+      orgId: `org_${randomUUID()}`,
+      orgRole: "org:admin",
+    });
+    authOrgApi.acceptAgentStorageWrites();
+    await enableFeishuIntegration(actor);
+    const agent = await authOrgApi.createAgent(actor, {
+      displayName: "Feishu connector repair agent",
+      visibility: "public",
+    });
+    mocks.clerk.session(actor.userId, actor.orgId, "org:admin");
+    const client = setupApp({ context, routes: zeroFeishuConnectRoutes })(
+      zeroFeishuConnectContract,
+    );
+    const configured = await accept(
+      client.setup({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          appId: `cli_${randomUUID()}`,
+          appSecret: APP_SECRET,
+          verificationToken: VERIFICATION_TOKEN,
+          defaultAgentId: agent.agentId,
+          createNew: true,
+        },
+      }),
+      [200],
+    );
+    const installationId = requireValue(
+      configured.body.installationId,
+      "Expected Feishu setup to return an installation id",
+    );
+    const customConnectorClient = setupApp({
+      context,
+      routes: zeroCustomConnectorsRoutes,
+    })(zeroCustomConnectorsContract);
+    const initialList = await accept(
+      customConnectorClient.list({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    const initialConnector = requireValue(
+      initialList.body.connectors[0],
+      "Expected Feishu setup to activate a managed connector",
+    );
+    const storageName = getCustomConnectorSkillStorageName(initialConnector.id);
+    const initialHead = await storagesApi.downloadStorage(actor, {
+      name: storageName,
+      owner: "organization",
+    });
+    context.mocks.s3.send.mockRejectedValue(
+      new Error("Managed connector repair skill upload failed"),
+    );
+
+    const failedRepair = await requestFeishuConfigurationFailure({
+      method: "PATCH",
+      path: zeroFeishuConnectContract.updateInstallation.path.replace(
+        ":installationId",
+        installationId,
+      ),
+      body: { defaultAgentId: agent.agentId, setupCompleted: true },
+    });
+
+    expect(failedRepair.status).toBe(500);
+    context.mocks.s3.send.mockResolvedValue({ ContentLength: 1024 });
+    const connectorAfterFailure = await accept(
+      customConnectorClient.list({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(connectorAfterFailure.body.connectors).toMatchObject([
+      {
+        id: initialConnector.id,
+        displayName: initialConnector.displayName,
+        skillMarkdown: initialConnector.skillMarkdown,
+      },
+    ]);
+    await expect(
+      storagesApi.downloadStorage(actor, {
+        name: storageName,
+        owner: "organization",
+      }),
+    ).resolves.toMatchObject({ versionId: initialHead.versionId });
+
+    await accept(
+      client.removeInstallation({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { installationId },
+      }),
+      [200],
+    );
+  });
+
   it("requires organization admins even when the user created the bot", async () => {
     const actor = authOrgApi.user({
       userId: `user_${randomUUID()}`,
@@ -1557,6 +1798,13 @@ describe("Feishu integration", () => {
     expect(managedConnector.skillMarkdown).toContain(
       "does not grant whiteboard node update or delete scopes",
     );
+    const managedSkillStorageName = getCustomConnectorSkillStorageName(
+      managedConnector.id,
+    );
+    const managedSkillHead = await storagesApi.downloadStorage(admin, {
+      name: managedSkillStorageName,
+      owner: "organization",
+    });
     const skillMarkdown = uploadedSkillMarkdown();
     expect(skillMarkdown).toContain("---\nname: feishu\n");
     expect(skillMarkdown).toContain(
@@ -1717,8 +1965,8 @@ describe("Feishu integration", () => {
     expect(restoredFeishuStatus.body.isConnected).toBeTruthy();
     clearConnectorInvalidationMocks();
     await accept(
-      setupApp({ context, routes: zeroCustomConnectorSecretTestRoutes })(
-        zeroCustomConnectorSecretContract,
+      setupApp({ context, routes: zeroCustomConnectorDisconnectRoutes })(
+        zeroCustomConnectorConnectionContract,
       ).disconnect({
         headers: { authorization: "Bearer clerk-session" },
         params: { id: managedConnector.id },
@@ -1954,6 +2202,13 @@ describe("Feishu integration", () => {
       [200],
     );
     expect(removedConnectorList.body.connectors).toStrictEqual([]);
+    await expect(
+      storagesApi.downloadStorage(admin, {
+        name: managedSkillStorageName,
+        owner: "organization",
+        version: managedSkillHead.versionId,
+      }),
+    ).resolves.toMatchObject({ versionId: managedSkillHead.versionId });
   });
 
   it("verifies and decrypts URL verification callbacks", async () => {
@@ -2222,6 +2477,34 @@ describe("Feishu integration", () => {
         );
       }),
     ).toBeFalsy();
+    const managedConnector = requireValue(
+      (await authOrgApi.listCustomConnectors(actor)).connectors.find(
+        (connector) => {
+          return connector.permissionBundleRef === "builtin:feishu@1";
+        },
+      ),
+      "Expected managed Feishu custom connector",
+    );
+    const agentAccessClient = setupApp({ context, routes: zeroAgentsRoutes })(
+      zeroAgentCustomConnectorsContract,
+    );
+    const selectedPermissions = ["messages:send-as-user"];
+    await accept(
+      agentAccessClient.update({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { id: defaultAgentId },
+        body: {
+          grants: [
+            {
+              customConnectorId: managedConnector.id,
+              permissionNames: selectedPermissions,
+            },
+          ],
+          operation: "add",
+        },
+      }),
+      [200],
+    );
     const retryConnectResponse = await connectApp.request(
       "/api/zero/feishu/connect",
       {
@@ -2236,6 +2519,17 @@ describe("Feishu integration", () => {
     const retryAuthorizationUrl =
       await feishuAuthorizationUrlFromResponse(retryConnectResponse);
     await completeFeishuAuthorization(retryAuthorizationUrl, "ou_feishu_user");
+    const preservedAccess = await accept(
+      agentAccessClient.get({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { id: defaultAgentId },
+      }),
+      [200],
+    );
+    expect(preservedAccess.body.grants).toContainEqual({
+      customConnectorId: managedConnector.id,
+      permissionNames: selectedPermissions,
+    });
     await flushWaitUntilForTest();
     const welcome = outboundMessages.find((message) => {
       return (
@@ -2481,6 +2775,10 @@ describe("Feishu integration", () => {
       connectorList.body.connectors[0],
       "Expected connected Feishu custom connector",
     );
+    const managedSkill = await storagesApi.downloadStorage(actor, {
+      name: getCustomConnectorSkillStorageName(managedConnector.id),
+      owner: "organization",
+    });
     const customConnectorGrants = await accept(
       setupApp({ context, routes: zeroAgentsRoutes })(
         zeroAgentCustomConnectorsContract,
@@ -2641,16 +2939,14 @@ describe("Feishu integration", () => {
         permissionNames: ["messages:send-as-user"],
       },
     ]);
-    expect(
-      expectCanonicalStorageManifest(claim.storageManifest)?.storageMounts.some(
-        (storage) => {
-          return (
-            storage.name ===
-            getCustomConnectorSkillStorageName(managedConnector.id)
-          );
-        },
-      ),
-    ).toBeTruthy();
+    const managedSkillMount = expectCanonicalStorageManifest(
+      claim.storageManifest,
+    )?.storageMounts.find((storage) => {
+      return (
+        storage.name === getCustomConnectorSkillStorageName(managedConnector.id)
+      );
+    });
+    expect(managedSkillMount?.versionId).toBe(managedSkill.versionId);
     expect(claim.prompt).toContain(feishuFilePrompt);
     expect(claim.prompt).toContain("   [MESSAGE_ID] om_file_message");
     expect(claim.prompt).toContain("   [TYPE] file");
@@ -3223,7 +3519,6 @@ describe("Feishu integration", () => {
       sandboxToken: initialClaim.sandboxToken,
       sessionId: mainSessionId,
       history: `bdd main feishu history ${initialRun.id}`,
-      assistantText: "Initial main Feishu answer",
     });
 
     const feishuThreadId = `omt_${randomUUID()}`;
@@ -3248,18 +3543,7 @@ describe("Feishu integration", () => {
       sandboxToken: threadClaim.sandboxToken,
       sessionId: threadSessionId,
       history: `bdd feishu thread history ${threadRun.id}`,
-      assistantText: "Feishu thread answer",
     });
-    const completedThreadReply = [...outboundMessages]
-      .reverse()
-      .find((message) => {
-        return (
-          message.kind === "reply" &&
-          message.target === threadMessageId &&
-          messageContent(message).includes("Feishu thread answer")
-        );
-      });
-    expect(completedThreadReply?.replyInThread).toBeTruthy();
 
     await postEvent(
       callbackUrl,
@@ -3315,6 +3599,18 @@ describe("Feishu integration", () => {
       history: `bdd resumed feishu thread history ${threadRun.id}`,
       assistantText: "Initial resumed Feishu thread answer",
     });
+    const completedThreadReply = [...outboundMessages]
+      .reverse()
+      .find((message) => {
+        return (
+          message.kind === "reply" &&
+          message.target === threadMessageId &&
+          messageContent(message).includes(
+            "Initial resumed Feishu thread answer",
+          )
+        );
+      });
+    expect(completedThreadReply?.replyInThread).toBeTruthy();
 
     const threadHelpMessageId = `om_${randomUUID()}`;
     await postEvent(

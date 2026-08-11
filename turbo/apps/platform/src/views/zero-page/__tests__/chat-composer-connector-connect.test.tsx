@@ -5,11 +5,14 @@ import {
   type PublicConnectorCatalogStatusItem,
 } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import {
-  zeroCustomConnectorSecretContract,
+  zeroCustomConnectorValuesContract,
   zeroCustomConnectorsContract,
   type CustomConnectorHttpResponse,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
-import { zeroAgentCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
+import {
+  zeroAgentCustomConnectorsContract,
+  type AgentCustomConnectorGrant,
+} from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import {
   zeroConnectorNoAuthGrantContract,
@@ -21,6 +24,10 @@ import {
   detachedSetupPage,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
+import {
+  resetCustomConnectorConnectInput$,
+  setCustomConnectorConnectField$,
+} from "../../../signals/zero-page/settings/custom-connectors.ts";
 import { PLACEHOLDER } from "./chat-test-helpers.ts";
 import {
   AGENT_ID,
@@ -83,9 +90,6 @@ function customConnector(
     storageVersion: 1,
     slug: "_acme-search",
     displayName: "Acme Search",
-    prefixes: ["https://api.acme.test/v1/"],
-    headerName: "Authorization",
-    headerTemplate: "Bearer {{secret}}",
     prefixTemplates: ["https://api.acme.test/v1/"],
     fields: [
       {
@@ -143,6 +147,7 @@ async function openAddConnectorsDialog(
 }
 
 beforeEach(() => {
+  context.store.set(resetCustomConnectorConnectInput$);
   context.mocks.data.onboardingStatus({ defaultAgentId: AGENT_ID });
   mockOrgModelRoutes("claude-sonnet-4-6");
   mockAgent();
@@ -202,12 +207,12 @@ describe("chat composer connector connection", () => {
     context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
       return respond(200, { connectors: [connector] });
     });
-    let enabledIds: string[] = [];
+    let grants: AgentCustomConnectorGrant[] = [];
     context.mocks.api(
       zeroAgentCustomConnectorsContract.get,
       ({ params, respond }) => {
         expect(params.id).toBe(AGENT_ID);
-        return respond(200, { enabledIds });
+        return respond(200, { grants });
       },
     );
     let updateCount = 0;
@@ -217,11 +222,11 @@ describe("chat composer connector connection", () => {
         updateCount += 1;
         expect(params.id).toBe(AGENT_ID);
         expect(body).toStrictEqual({
-          enabledIds: [connector.id],
+          grants: [{ customConnectorId: connector.id, permissionNames: [] }],
           operation: "add",
         });
-        enabledIds = [connector.id];
-        return respond(200, { enabledIds });
+        grants = [{ customConnectorId: connector.id, permissionNames: [] }];
+        return respond(200, { grants });
       },
     );
 
@@ -242,9 +247,54 @@ describe("chat composer connector connection", () => {
     });
   });
 
+  it("does not create an empty grant for a permissioned custom connector", async () => {
+    const user = userEvent.setup({ delay: null });
+    const connector = customConnector({
+      connected: true,
+      missingRequiredFields: [],
+      configuredFieldKeys: ["secret"],
+      hasSecret: true,
+      permissionBundleRef: "builtin:feishu@1",
+    });
+    context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
+      return respond(200, { connectors: [connector] });
+    });
+    context.mocks.api(zeroAgentCustomConnectorsContract.get, ({ respond }) => {
+      return respond(200, { grants: [] });
+    });
+    let updateCount = 0;
+    context.mocks.api(
+      zeroAgentCustomConnectorsContract.update,
+      ({ respond }) => {
+        updateCount += 1;
+        return respond(200, { grants: [] });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+    });
+
+    const composer = composerElementFrom(
+      await screen.findByPlaceholderText(PLACEHOLDER),
+    );
+    await user.click(within(composer).getByLabelText("Connectors"));
+    await user.click(await screen.findByLabelText("Add Acme Search"));
+
+    await waitFor(() => {
+      expect(updateCount).toBe(0);
+      expect(screen.getByLabelText("Add Acme Search")).toBeInTheDocument();
+    });
+  });
+
   it("connects a custom connector for only the active agent", async () => {
     const user = userEvent.setup({ delay: null });
     const connector = customConnector();
+    context.store.set(setCustomConnectorConnectField$, {
+      key: "secret",
+      value: "stale-secret",
+    });
     mockAgent({ includeOtherAgent: true });
     mockCatalog([]);
     let connected = false;
@@ -264,12 +314,20 @@ describe("chat composer connector connection", () => {
       });
     });
     context.mocks.api(
-      zeroCustomConnectorSecretContract.set,
+      zeroCustomConnectorValuesContract.set,
       ({ body, params, respond }) => {
         expect(params.id).toBe(connector.id);
-        expect(body).toStrictEqual({ value: "acme-secret" });
+        expect(body).toStrictEqual({
+          values: [{ key: "secret", kind: "secret", value: "acme-secret" }],
+        });
         connected = true;
-        return respond(204);
+        return respond(200, {
+          ...connector,
+          connected: true,
+          missingRequiredFields: [],
+          configuredFieldKeys: ["secret"],
+          hasSecret: true,
+        });
       },
     );
     const updatedAgentIds: string[] = [];
@@ -277,11 +335,13 @@ describe("chat composer connector connection", () => {
       zeroAgentCustomConnectorsContract.update,
       ({ body, params, respond }) => {
         expect(body).toStrictEqual({
-          enabledIds: [connector.id],
+          grants: [{ customConnectorId: connector.id, permissionNames: [] }],
           operation: "add",
         });
         updatedAgentIds.push(params.id);
-        return respond(200, { enabledIds: [connector.id] });
+        return respond(200, {
+          grants: [{ customConnectorId: connector.id, permissionNames: [] }],
+        });
       },
     );
     detachedSetupPage({
@@ -290,6 +350,10 @@ describe("chat composer connector connection", () => {
     });
 
     const dialog = await openAddConnectorsDialog(user);
+    await user.type(
+      within(dialog).getByPlaceholderText(/Find connectors/u),
+      "API.ACME.TEST",
+    );
     await user.click(
       within(dialog).getByLabelText(`Connect ${connector.displayName}`),
     );
@@ -298,6 +362,7 @@ describe("chat composer connector connection", () => {
       name: `Connect ${connector.displayName}`,
     });
     expect(dialog).not.toBeInTheDocument();
+    expect(within(connectDialog).getByLabelText("Secret")).toHaveValue("");
     await user.type(
       within(connectDialog).getByLabelText("Secret"),
       "acme-secret",

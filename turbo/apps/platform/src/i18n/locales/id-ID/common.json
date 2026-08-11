@@ -950,6 +950,7 @@
         "changePlan": "Ubah paket",
         "choosePlan": "Pilih paket",
         "choosePlanDescription": "Pilih paket ruang kerja terlebih dahulu. Paket anggota dikonfigurasi berikutnya.",
+        "concurrentSlots": "Slot bersamaan",
         "configurePackages": "Konfigurasikan paket anggota",
         "configurePackagesDescription": "Pilih paket wajib untuk setiap anggota, lalu tinjau total bulanan gabungan.",
         "currentMember": "Anggota saat ini",
@@ -1052,9 +1053,22 @@
       "left": "Sisa {{value}}",
       "member": "Anggota",
       "neverExpires": "Tidak pernah kedaluwarsa",
+      "orgCredits": "Kredit organisasi",
       "unavailable": "Saldo kredit tidak tersedia.",
       "upgradeDescription": "Pro mencakup kredit bulanan dan membuka opsi kredit tambahan.",
       "upgradeTitle": "Tingkatkan ke Pro untuk mendapatkan lebih banyak kredit",
+      "usagePack": {
+        "bonus": "Bonus",
+        "members": "Anggota",
+        "membersDescription": "Tinjau sisa kredit paket penggunaan dan penambahan kredit setiap anggota.",
+        "membersTitle": "Kredit paket penggunaan anggota",
+        "nextExpiry": "Kedaluwarsa berikutnya",
+        "purchased": "Dibeli",
+        "remaining": "Tersisa",
+        "title": "Kredit paket penggunaan",
+        "totalRemaining": "Total tersisa",
+        "viewMembers": "Lihat saldo anggota"
+      },
       "used": "Digunakan"
     }
   },
@@ -1858,17 +1872,13 @@
     },
     "custom": {
       "connect": {
-        "apiAuthentication": "Autentikasi API",
-        "apiDescription": "Masukkan rahasia API yang diterbitkan oleh penyedia.",
-        "back": "Kembali",
+        "configured": "Terkonfigurasi",
         "connecting": "Menghubungkan…",
         "continue": "Lanjut",
         "continueToProvider": "Lanjutkan ke penyedia untuk mengotorisasi akses.",
         "description": "Rahasia Anda dienkripsi saat disimpan dan disisipkan ke permintaan keluar oleh firewall. Rahasia ini tidak pernah diekspos ke agen sebagai variabel lingkungan.",
-        "oauthDescription": "Otorisasi akses dengan aplikasi OAuth konektor.",
         "save": "Simpan",
         "saving": "Menyimpan…",
-        "secret": "Rahasia",
         "title": "Hubungkan {{connector}}"
       },
       "create": {
@@ -1882,13 +1892,18 @@
         "authorizationUrl": "URL otorisasi",
         "clientId": "ID Klien",
         "clientSecret": "Rahasia klien",
+        "connectorType": "Jenis konektor",
         "displayName": "Nama tampilan",
         "headerName": "Nama header",
         "headerTemplate": "Template header",
         "headerTemplateHint": "(harus berisi {{placeholder}})",
         "httpBasicAuthentication": "Autentikasi HTTP Basic",
+        "httpType": "API HTTP",
         "keepClientSecret": "Biarkan rahasia klien kosong untuk mempertahankan nilai yang tersimpan.",
         "keepClientSecretPlaceholder": "Kosongkan untuk mempertahankan yang sekarang",
+        "mcpEndpoint": "Endpoint MCP",
+        "mcpEndpointHint": "(Streamable HTTP, hanya HTTPS)",
+        "mcpEndpointPlaceholder": "https://mcp.acme.com/server",
         "newClientSecret": "Rahasia klien baru",
         "none": "Tidak ada",
         "oauthChangesDisconnect": "Mengubah pengaturan OAuth atau kredensial klien akan memutus koneksi OAuth yang sudah ada.",
@@ -4433,7 +4448,10 @@
           "action": "Hapus dari ruang kerja",
           "confirmDescription": "{{email}} akan dihapus dari ruang kerja ini dan kehilangan akses ke semua sumber daya.",
           "progress": "Menghapus...",
-          "title": "Hapus anggota?"
+          "title": "Hapus anggota?",
+          "usagePackImpactDescription": "Sisa kredit paket penggunaan mereka akan langsung tidak tersedia. Paket akan dihapus pada akhir periode penagihan saat ini. Jika ruang kerja tidak lagi memiliki paket penggunaan, paket ruang kerja juga akan dibatalkan pada akhir periode penagihan.",
+          "usagePackImpactTitle": "Dampak paket penggunaan",
+          "usagePackRefundDescription": "Pengembalian dana: Bagian kredit yang dibeli tetapi belum digunakan dikembalikan ke metode pembayaran awal. Kredit yang sudah digunakan dan kredit bonus tidak dapat dikembalikan."
         },
         "revoke": {
           "action": "Cabut undangan",
@@ -4455,6 +4473,7 @@
           "progress": "Mengalihkan...",
           "title": "Alihkan ke anggota?"
         },
+        "usagePack": "Paket penggunaan",
         "user": "Pengguna",
         "you": "Anda"
       },

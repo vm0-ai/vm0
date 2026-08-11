@@ -189,6 +189,37 @@ export interface StripeRefund {
   readonly status: string | null;
 }
 
+export interface StripeCreditNote {
+  readonly id: string;
+  readonly status: "issued" | "void";
+  readonly pre_payment_amount: number;
+  readonly post_payment_amount: number;
+  readonly refunds: readonly {
+    readonly amount_refunded: number;
+    readonly refund: string | StripeRefund;
+  }[];
+}
+
+export interface StripeCreditNoteLineParam {
+  readonly type: "invoice_line_item";
+  readonly invoice_line_item: string;
+  readonly amount: number;
+}
+
+export interface StripeCreditNoteParams {
+  readonly invoice: string;
+  readonly amount?: number;
+  readonly lines?: StripeCreditNoteLineParam[];
+  readonly refund_amount?: number;
+  readonly email_type?: "credit_note" | "none";
+  readonly metadata?: StripeMetadataParam;
+  readonly reason?:
+    | "duplicate"
+    | "fraudulent"
+    | "order_change"
+    | "product_unsatisfactory";
+}
+
 export interface StripeInvoiceLine {
   readonly id?: string;
   readonly amount: number;
@@ -490,6 +521,15 @@ export interface StripeRefundsApi {
   ): Promise<StripeRefund>;
 }
 
+export interface StripeCreditNotesApi {
+  preview(params: StripeCreditNoteParams): Promise<StripeCreditNote>;
+  create(
+    params: StripeCreditNoteParams,
+    options?: StripeRequestOptions,
+  ): Promise<StripeCreditNote>;
+  retrieve(id: string): Promise<StripeCreditNote>;
+}
+
 export interface StripePaymentMethodsApi {
   retrieve(id: string): Promise<StripePaymentMethod>;
   list(params: {
@@ -519,6 +559,7 @@ export interface StripeClient {
   readonly checkout: { readonly sessions: StripeCheckoutSessionsApi };
   readonly paymentMethods: StripePaymentMethodsApi;
   readonly refunds: StripeRefundsApi;
+  readonly creditNotes: StripeCreditNotesApi;
   readonly billingPortal: StripeBillingPortalApi;
 }
 
@@ -715,7 +756,7 @@ const {
 });
 
 /**
- * Raw event for the workflow-events ingress, which zod-parses the payload
+ * Raw event for the automation-event ingress, which zod-parses the payload
  * itself rather than branching on Stripe's union.
  */
 export function constructStripeWebhookEvent(

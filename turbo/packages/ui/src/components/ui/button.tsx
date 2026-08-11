@@ -1,7 +1,9 @@
 import * as React from "react";
-import { Slot } from "@radix-ui/react-slot";
+import { Button as ButtonPrimitive } from "@base-ui/react/button";
+import { useRender } from "@base-ui/react/use-render";
 import { cva, type VariantProps } from "class-variance-authority";
 
+import { asChildRender } from "../../lib/base-ui-compat";
 import { cn } from "../../lib/utils";
 
 const buttonVariants = cva(
@@ -30,8 +32,19 @@ const buttonVariants = cva(
         sm: "h-8 px-3",
         default: "h-9 px-4",
         lg: "h-10 px-6",
-        icon: "h-9 w-9",
+        "icon-2xs": "h-6 w-6",
+        "icon-xs": "h-7 w-7",
         "icon-sm": "h-8 w-8",
+        icon: "h-9 w-9",
+        "icon-lg": "h-10 w-10",
+      },
+      // Icon buttons across the app draw 16px, 18px, or 20px glyphs. The base
+      // `[&_svg]:size-4` covers 16px; the other two need an explicit opt-in so
+      // callers stop hand-rolling `[&_svg]:size-[18px]` on every toolbar.
+      iconSize: {
+        sm: "[&_svg]:size-4",
+        md: "[&_svg]:size-[18px]",
+        lg: "[&_svg]:size-5",
       },
     },
     defaultVariants: {
@@ -43,21 +56,79 @@ const buttonVariants = cva(
 
 export interface ButtonProps
   extends
-    React.ButtonHTMLAttributes<HTMLButtonElement>,
+    Omit<ButtonPrimitive.Props, "className" | "render">,
     VariantProps<typeof buttonVariants> {
   asChild?: boolean;
+  className?: string;
+  render?: ButtonPrimitive.Props["render"];
 }
 
-const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant, size, asChild = false, ...props }, ref) => {
-    const Comp = asChild ? Slot : "button";
+interface ButtonAsChildProps {
+  children: React.ReactNode;
+  className: string;
+  props: Omit<
+    ButtonPrimitive.Props,
+    "children" | "className" | "nativeButton" | "ref" | "render"
+  >;
+  ref: React.ForwardedRef<HTMLElement>;
+}
+
+function ButtonAsChild({
+  children,
+  className,
+  props,
+  ref,
+}: ButtonAsChildProps) {
+  return useRender({
+    defaultTagName: "button",
+    props: {
+      ...props,
+      className,
+      "data-slot": "button",
+    },
+    ref,
+    render: asChildRender(children),
+  });
+}
+
+const Button = React.forwardRef<HTMLElement, ButtonProps>(
+  (
+    {
+      asChild = false,
+      children,
+      className,
+      iconSize,
+      nativeButton,
+      render,
+      size,
+      variant,
+      ...props
+    },
+    ref,
+  ) => {
+    const resolvedClassName = cn(
+      buttonVariants({ variant, size, iconSize, className }),
+    );
+
+    if (asChild) {
+      return (
+        <ButtonAsChild className={resolvedClassName} props={props} ref={ref}>
+          {children}
+        </ButtonAsChild>
+      );
+    }
 
     return (
-      <Comp
-        className={cn(buttonVariants({ variant, size, className }))}
+      <ButtonPrimitive
+        className={resolvedClassName}
+        data-slot="button"
+        nativeButton={nativeButton}
         ref={ref}
+        render={render}
         {...props}
-      />
+      >
+        {children}
+      </ButtonPrimitive>
     );
   },
 );

@@ -1,4 +1,5 @@
 import { useGet, useSet, useLastLoadable } from "ccstate-react";
+import { Button } from "@vm0/ui";
 import {
   connectorSlugSchema,
   type ConnectorAuthMethodId,
@@ -6,9 +7,9 @@ import {
 } from "@vm0/api-contracts/contracts/connector-identity";
 import type { PublicConnectorCatalogAuthMethodDetail } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import {
-  isHttpCustomConnectorResponse,
-  type CustomConnectorHttpResponse,
-  type CustomConnectorResponse,
+  isHttpCustomConnectorClientResponse,
+  type CustomConnectorClientResponse,
+  type CustomConnectorHttpClientResponse,
   type CustomConnectorSlug,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import type { PlatformConnectorCatalogStatusItem } from "../../signals/connector-domain.ts";
@@ -280,10 +281,10 @@ function ManualGrantForm({
           </div>
         );
       })}
-      <button
+      <Button
         type="submit"
         disabled={!allFilled || submitting}
-        className="inline-flex h-9 w-full items-center justify-center gap-2 rounded-[10px] bg-[#ed4e01] text-sm font-medium text-white transition-colors hover:bg-primary-hover disabled:opacity-60"
+        className="w-full px-0 disabled:opacity-60"
       >
         {submitting && <Loader2 size={14} className="animate-spin" />}
         {submitting
@@ -293,7 +294,7 @@ function ManualGrantForm({
           : t(($) => {
               return $.connectors.actions.save;
             })}
-      </button>
+      </Button>
     </form>
   );
 }
@@ -365,11 +366,13 @@ function ConnectActions({
             return $.connectors.card.connected;
           })}
         </div>
-        <button
+        <Button
           type="button"
+          variant="link"
+          size="xs"
           disabled={isConnecting || disabled}
           onClick={onConnect}
-          className="text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline disabled:opacity-60 inline-flex items-center gap-1.5"
+          className="h-auto gap-1.5 px-0 text-xs text-muted-foreground hover:text-foreground disabled:opacity-60"
         >
           {isConnecting && <Loader2 size={12} className="animate-spin" />}
           {isConnecting
@@ -379,16 +382,16 @@ function ConnectActions({
             : t(($) => {
                 return $.connectors.actions.reconnect;
               })}
-        </button>
+        </Button>
       </>
     );
   }
   return (
-    <button
+    <Button
       type="button"
       disabled={isConnecting || disabled}
       onClick={onConnect}
-      className="inline-flex h-9 w-[100px] items-center justify-center gap-2 rounded-[10px] bg-[#ed4e01] text-sm font-medium text-white transition-colors hover:bg-primary-hover disabled:opacity-60"
+      className="w-[100px] px-0 disabled:opacity-60"
     >
       {isConnecting && <Loader2 size={14} className="animate-spin" />}
       {isConnecting
@@ -398,7 +401,7 @@ function ConnectActions({
         : t(($) => {
             return $.connectors.actions.connect;
           })}
-    </button>
+    </Button>
   );
 }
 
@@ -740,12 +743,14 @@ function DirectedConnectCard() {
 }
 
 function customConnectorForSlug(
-  connectors: readonly CustomConnectorResponse[],
+  connectors: readonly CustomConnectorClientResponse[],
   connectorSlug: CustomConnectorSlug,
-): CustomConnectorHttpResponse | undefined {
-  return connectors.filter(isHttpCustomConnectorResponse).find((connector) => {
-    return connector.slug === connectorSlug;
-  });
+): CustomConnectorHttpClientResponse | undefined {
+  return connectors
+    .filter(isHttpCustomConnectorClientResponse)
+    .find((connector) => {
+      return connector.slug === connectorSlug;
+    });
 }
 
 function CustomDirectedConnectCard({

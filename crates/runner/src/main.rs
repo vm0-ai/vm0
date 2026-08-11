@@ -1,6 +1,7 @@
 // Trigger another runner release on 2026-07-31.
 mod active_input;
 mod axiom_layer;
+mod bounded_command;
 mod ca;
 mod child_cleanup;
 mod cmd;
@@ -22,6 +23,7 @@ mod idle_pool;
 mod idle_reuse_preparation;
 mod ids;
 mod image_hash;
+mod immediate_successor_intent;
 mod io_limits;
 mod kmsg_log;
 mod lifecycle;

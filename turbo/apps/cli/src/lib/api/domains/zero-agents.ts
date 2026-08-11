@@ -13,7 +13,10 @@ import {
 } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
-import { zeroAgentCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
+import {
+  zeroAgentCustomConnectorsContract,
+  type AgentCustomConnectorGrant,
+} from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 import { getClientConfig, handleError } from "../core/client-factory";
 
 export type ZeroUserPermissionGrant = UserPermissionGrantResponse;
@@ -88,13 +91,13 @@ export async function getZeroAgentUserConnectors(
   );
 }
 
-export async function getZeroAgentCustomConnectors(
+export async function getZeroAgentCustomConnectorGrants(
   id: string,
-): Promise<string[]> {
+): Promise<AgentCustomConnectorGrant[]> {
   const config = await getClientConfig();
   const client = initClient(zeroAgentCustomConnectorsContract, config);
   const result = await client.get({ params: { id } });
-  if (result.status === 200) return result.body.enabledIds;
+  if (result.status === 200) return result.body.grants;
   handleError(
     result,
     `Failed to get custom connector permissions for zero agent "${id}"`,

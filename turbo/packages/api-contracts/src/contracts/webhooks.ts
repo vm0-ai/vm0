@@ -406,6 +406,32 @@ const currentSandboxReuseMissSchema = z.enum([
   "unparkFailed",
 ]);
 
+export const ACTIVE_INPUT_DELIVERY_RECEIPT_MAX_IDS = 1024;
+
+const activeInputDeliveryIdsSchema = z
+  .array(
+    z
+      .string()
+      .uuid()
+      .refine((id) => {
+        return id === id.toLowerCase();
+      }, "active input delivery IDs must use canonical lowercase UUIDs"),
+  )
+  .max(ACTIVE_INPUT_DELIVERY_RECEIPT_MAX_IDS)
+  .superRefine((ids, context) => {
+    const seen = new Set<string>();
+    ids.forEach((id, index) => {
+      if (seen.has(id)) {
+        context.addIssue({
+          code: "custom",
+          path: [index],
+          message: "active input delivery IDs must be unique",
+        });
+      }
+      seen.add(id);
+    });
+  });
+
 const webhookCompleteBodySchema = z
   .object({
     runId: z.string().min(1, "runId is required"),
@@ -418,6 +444,7 @@ const webhookCompleteBodySchema = z
     sandboxId: z.string().max(255).optional(),
     sandboxReuseResult: sandboxReuseResultSchema.optional(),
     workspaceReuseResult: workspaceReuseResultSchema.optional(),
+    activeInputDeliveryIds: activeInputDeliveryIdsSchema.optional(),
   })
   .superRefine((body, context) => {
     const workspaceResult = body.workspaceReuseResult;

@@ -41,6 +41,7 @@ import * as connectorOauthStateSchema from "./schema/connector-oauth-state";
 import * as usageEventSchema from "./schema/usage-event";
 import * as usageEventHourlyRollupSchema from "./schema/usage-event-hourly-rollup";
 import * as usagePackCreditGrantSchema from "./schema/usage-pack-credit-grant";
+import * as usagePackCreditRefundSchema from "./schema/usage-pack-credit-refund";
 import * as usagePackSubscriptionSchema from "./schema/usage-pack-subscription";
 import * as runBuiltInAdmissionSchema from "./schema/run-built-in-admission";
 import * as githubInstallationSchema from "./schema/github-installation";
@@ -126,6 +127,7 @@ import * as googleWorkspaceEventSchema from "./schema/google-workspace-event";
 import * as connectorCatalogSchema from "./schema/connector-catalog";
 import * as mailDraftSchema from "./schema/mail-draft";
 import * as browserSessionSchema from "./schema/browser-session";
+import * as presentationTemplateSchema from "./schema/presentation-template";
 
 export const schema = {
   ...userSchema,
@@ -186,6 +188,7 @@ export const schema = {
   ...usageEventSchema,
   ...usageEventHourlyRollupSchema,
   ...usagePackCreditGrantSchema,
+  ...usagePackCreditRefundSchema,
   ...usagePackSubscriptionSchema,
   ...runBuiltInAdmissionSchema,
   ...githubInstallationSchema,
@@ -256,6 +259,7 @@ export const schema = {
   ...connectorCatalogSchema,
   ...mailDraftSchema,
   ...browserSessionSchema,
+  ...presentationTemplateSchema,
 };
 
 export type DatabaseSchema = typeof schema;

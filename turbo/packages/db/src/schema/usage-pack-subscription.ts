@@ -42,6 +42,7 @@ export type UsagePackInvitationPurchaseStatus =
   (typeof USAGE_PACK_INVITATION_PURCHASE_STATUSES)[number];
 
 export const USAGE_PACK_ALLOCATION_CHANGE_KINDS = [
+  "addition",
   "upgrade",
   "downgrade",
   "removal",
@@ -415,14 +416,12 @@ export const usagePackAllocationChanges = pgTable(
     ),
     orgId: text("org_id").notNull(),
     userId: text("user_id").notNull(),
-    sourceAllocationId: uuid("source_allocation_id")
-      .notNull()
-      .references(
-        () => {
-          return usagePackAllocations.id;
-        },
-        { onDelete: "cascade" },
-      ),
+    sourceAllocationId: uuid("source_allocation_id").references(
+      () => {
+        return usagePackAllocations.id;
+      },
+      { onDelete: "cascade" },
+    ),
     replacementAllocationId: uuid("replacement_allocation_id"),
     kind: varchar("kind", { length: 20 })
       .$type<UsagePackAllocationChangeKind>()
@@ -431,8 +430,8 @@ export const usagePackAllocationChanges = pgTable(
       .$type<UsagePackAllocationChangeStatus>()
       .notNull()
       .default("previewed"),
-    sourceUsagePackUsd: integer("source_usage_pack_usd").notNull(),
-    sourceStripePriceId: text("source_stripe_price_id").notNull(),
+    sourceUsagePackUsd: integer("source_usage_pack_usd"),
+    sourceStripePriceId: text("source_stripe_price_id"),
     targetUsagePackUsd: integer("target_usage_pack_usd"),
     targetStripePriceId: text("target_stripe_price_id"),
     prorationTimestamp: bigint("proration_timestamp", { mode: "number" }),
@@ -459,7 +458,7 @@ export const usagePackAllocationChanges = pgTable(
       uniqueIndex("uq_usage_pack_changes_current_user")
         .on(table.orgId, table.userId)
         .where(
-          sql`${table.status} IN ('previewed', 'applying', 'pending_payment', 'scheduled', 'applied')`,
+          sql`(${table.subscriptionChangeId} IS NULL AND ${table.status} IN ('previewed', 'applying', 'pending_payment')) OR ${table.status} IN ('scheduled', 'applied')`,
         ),
       uniqueIndex("uq_usage_pack_changes_stripe_invoice")
         .on(table.stripeInvoiceId)
@@ -477,15 +476,15 @@ export const usagePackAllocationChanges = pgTable(
       ),
       check(
         "chk_usage_pack_changes_kind",
-        sql`${table.kind} IN ('upgrade', 'downgrade', 'removal')`,
+        sql`${table.kind} IN ('addition', 'upgrade', 'downgrade', 'removal')`,
       ),
       check(
         "chk_usage_pack_changes_status",
         sql`${table.status} IN ('previewed', 'applying', 'pending_payment', 'scheduled', 'applied', 'completed', 'failed')`,
       ),
       check(
-        "chk_usage_pack_changes_source_package",
-        sql`${table.sourceUsagePackUsd} IN (20, 50, 100, 200)`,
+        "chk_usage_pack_changes_source",
+        sql`(${table.kind} = 'addition' AND ${table.sourceAllocationId} IS NULL AND ${table.sourceUsagePackUsd} IS NULL AND ${table.sourceStripePriceId} IS NULL) OR (${table.kind} <> 'addition' AND ${table.sourceAllocationId} IS NOT NULL AND ${table.sourceUsagePackUsd} IN (20, 50, 100, 200) AND ${table.sourceStripePriceId} IS NOT NULL)`,
       ),
       check(
         "chk_usage_pack_changes_target_package",

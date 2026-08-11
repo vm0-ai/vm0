@@ -41,8 +41,8 @@ function WebsiteTemplatePreviewDialog({
         closeLabel={t(($) => {
           return $.artifacts.actions.close;
         })}
-        className="flex h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] max-w-[1120px] flex-col gap-0 overflow-hidden p-0 data-[state=open]:!animate-none [&>button]:top-[7px] sm:h-[min(760px,calc(100dvh-4rem))]"
-        overlayClassName="data-[state=open]:!animate-none"
+        className="flex h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] max-w-[1120px] flex-col gap-0 overflow-hidden p-0 data-open:!animate-none [&>button]:top-[7px] sm:h-[min(760px,calc(100dvh-4rem))]"
+        overlayClassName="data-open:!animate-none"
       >
         <DialogHeader className="shrink-0 border-b border-border px-5 py-4 pr-14 text-left sm:pr-16">
           <DialogTitle className="flex min-w-0 max-w-full items-center justify-start gap-1.5 text-left text-base leading-none">

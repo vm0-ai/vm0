@@ -458,7 +458,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
     await accept(
       preferenceClient.update({
         headers: authHeaders(),
-        body: { selectedModel: removedModel },
+        body: { selectedModel: removedModel, serviceTier: null },
       }),
       [200],
     );
@@ -511,7 +511,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
     await accept(
       preferenceClient.update({
         headers: authHeaders(),
-        body: { selectedModel: keptModel },
+        body: { selectedModel: keptModel, serviceTier: null },
       }),
       [200],
     );
@@ -544,7 +544,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
     );
     const updates = [
       ...toUpdate(listResponse.body),
-      makeVm0Policy("claude-opus-4-6"),
+      makeVm0Policy("claude-opus-5"),
     ];
 
     const response = await accept(
@@ -559,7 +559,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
       response.body.policies.map((policy) => {
         return policy.model;
       }),
-    ).toStrictEqual([...DEFAULT_ORG_MODEL_POLICY_MODELS, "claude-opus-4-6"]);
+    ).toStrictEqual([...DEFAULT_ORG_MODEL_POLICY_MODELS, "claude-opus-5"]);
   });
 
   it("rejects restricted policy writes for limited-free-1 workspaces", async () => {
@@ -640,14 +640,13 @@ describe("GET/PUT /api/zero/model-policies", () => {
     });
   });
 
-  it("allows compatible GLM 5.2 org provider routes", async () => {
+  it("rejects retired model policy writes with the replacement", async () => {
     const fixture = await seedFixture();
     useSession(fixture);
     const openRouterProviderId = await createOrgProvider(
       fixture,
       "openrouter-api-key",
     );
-    const zaiProviderId = await createOrgProvider(fixture, "zai-api-key");
     const client = apiClient();
     const listResponse = await accept(
       client.list({ headers: authHeaders() }),
@@ -668,50 +667,19 @@ describe("GET/PUT /api/zero/model-policies", () => {
       };
     });
 
-    const openRouterResponse = await accept(
+    const response = await accept(
       client.update({
         headers: authHeaders(),
         body: { policies: updates },
       }),
-      [200],
+      [400],
     );
-    const openRouterGlm = openRouterResponse.body.policies.find((policy) => {
-      return policy.model === "glm-5.2";
-    });
-
-    expect(openRouterGlm).toMatchObject({
-      defaultProviderType: "openrouter-api-key",
-      credentialScope: "org",
-      modelProviderId: openRouterProviderId,
-      routeStatus: "valid",
-    });
-
-    const zaiUpdates = toUpdate(openRouterResponse.body).map((policy) => {
-      if (policy.model !== "glm-5.2") {
-        return policy;
-      }
-      return {
-        ...policy,
-        defaultProviderType: "zai-api-key" as const,
-        modelProviderId: zaiProviderId,
-      };
-    });
-    const zaiResponse = await accept(
-      client.update({
-        headers: authHeaders(),
-        body: { policies: zaiUpdates },
-      }),
-      [200],
-    );
-    const zaiGlm = zaiResponse.body.policies.find((policy) => {
-      return policy.model === "glm-5.2";
-    });
-
-    expect(zaiGlm).toMatchObject({
-      defaultProviderType: "zai-api-key",
-      credentialScope: "org",
-      modelProviderId: zaiProviderId,
-      routeStatus: "valid",
+    expect(response.body).toStrictEqual({
+      error: {
+        code: "MODEL_RETIRED",
+        message:
+          'Model "glm-5.2" has been retired. Use "deepseek-v4-flash" instead.',
+      },
     });
   });
 
@@ -1024,15 +992,6 @@ describe("GET/PUT /api/zero/model-policies", () => {
       (await accept(preferenceClient.get({ headers: authHeaders() }), [200]))
         .body.serviceTier,
     ).toBe("priority");
-
-    const legacyUpdate = await accept(
-      preferenceClient.update({
-        headers: authHeaders(),
-        body: { selectedModel: "gpt-5.6-sol" },
-      }),
-      [200],
-    );
-    expect(legacyUpdate.body.serviceTier).toBeNull();
   });
 
   it("allows compatible member OAuth provider routes", async () => {
@@ -1124,11 +1083,8 @@ describe("GET/PUT /api/zero/model-policies", () => {
       client.list({ headers: authHeaders() }),
       [200],
     );
-    const updates = [
-      ...toUpdate(listResponse.body),
-      makeVm0Policy("glm-5.2"),
-    ].map((policy) => {
-      if (policy.model !== "glm-5.2") {
+    const updates = toUpdate(listResponse.body).map((policy) => {
+      if (policy.model !== "deepseek-v4-flash") {
         return policy;
       }
       return {
@@ -1160,14 +1116,14 @@ describe("GET/PUT /api/zero/model-policies", () => {
     );
     const updates = [
       ...toUpdate(listResponse.body),
-      makeVm0Policy("glm-5.2"),
+      makeVm0Policy("claude-opus-5"),
     ].map((policy) => {
-      if (policy.model !== "glm-5.2") {
+      if (policy.model !== "claude-opus-5") {
         return policy;
       }
       return {
         ...policy,
-        defaultProviderType: "openrouter-api-key" as const,
+        defaultProviderType: "anthropic-api-key" as const,
         credentialScope: "org" as const,
         modelProviderId: null,
       };

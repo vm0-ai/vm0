@@ -25,7 +25,10 @@ import {
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { isChatRunTerminalEventType } from "@vm0/api-contracts/contracts/chat-events";
 import { cronSteerRunTimeBudgetContract } from "@vm0/api-contracts/contracts/cron";
-import { ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES } from "@vm0/api-contracts/contracts/runners";
+import {
+  ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES,
+  CANCELLATION_RECOVERY_STALE_AFTER_MS,
+} from "@vm0/api-contracts/contracts/runners";
 import { zeroMailContract } from "@vm0/api-contracts/contracts/zero-mail";
 import {
   getModelProviderFirewall,
@@ -89,8 +92,10 @@ import {
   createUnassociatedThreadBoundZeroRunFixture,
 } from "../../../test-fixtures/thread-bound-run-admission";
 import {
+  acquireBddVm0ApiKey,
+  completeRunWithoutCallbacksFixture,
   deleteAgentRunFixture,
-  deleteBddVm0ApiKey,
+  holdCheckpointReadsFixture,
   holdChatEventFixture,
   holdChatEventQueueItemFixture,
   holdChatThreadRowLockFixture,
@@ -100,9 +105,10 @@ import {
   holdThreadSessionConversationClearFixture,
   readCanonicalChatEventStorageFixture,
   readChatEventContextFixture,
+  releaseBddVm0ApiKey,
   replayPendingChatInputQueueEventFixture,
-  replaceBddVm0ApiKey,
   replaceThreadSessionBindingFixture,
+  timeoutRunWithoutCallbacksFixture,
 } from "../../../test-fixtures/chat-events";
 import { cronSteerRunTimeBudgetRoutes } from "../cron-steer-run-time-budget";
 import { zeroChatEventsRoutes } from "../zero-chat-events";
@@ -666,7 +672,13 @@ async function waitForRunUserMessage(
 async function waitForRunStatus(
   actor: ApiTestUser,
   runId: string,
-  status: "cancelled" | "completed" | "failed" | "pending" | "running",
+  status:
+    | "cancelled"
+    | "completed"
+    | "failed"
+    | "pending"
+    | "running"
+    | "timeout",
 ): Promise<void> {
   await expect
     .poll(async () => {
@@ -726,6 +738,7 @@ async function completeChatRunOk(
   runId: string,
   sandboxHeaders: { readonly authorization: string },
   options: {
+    readonly activeInputDeliveryIds?: readonly string[];
     readonly cliAgentType?: "claude-code" | "codex";
     readonly lastEventSequence?: number;
   } = {},
@@ -754,6 +767,9 @@ async function completeChatRunOk(
     {
       runId,
       exitCode: 0,
+      ...(options.activeInputDeliveryIds === undefined
+        ? {}
+        : { activeInputDeliveryIds: [...options.activeInputDeliveryIds] }),
       ...(options.lastEventSequence === undefined
         ? stagedOutputEvents.length === 0
           ? {}
@@ -1850,6 +1866,603 @@ describe("CHAT-02: queueing and recalling messages", () => {
     await cancelChatRun(actor, active.runId);
   }, 90_000);
 
+  it("finalizes delivered input from completion receipts exactly once", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const active = await sendChatRun(actor, {
+      agentId,
+      prompt: "complete a durable delivery",
+    });
+    const claimed = await claimChatRun(runnerGroup, active.runId);
+    const pendingEventId = randomUUID();
+    await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: active.threadId,
+        prompt: "accepted before completion",
+        clientEventId: pendingEventId,
+      },
+      [201],
+    );
+    const reserved = await api.reserveRunnerActiveInputs(
+      claimed.claim.sandboxToken,
+      active.runId,
+    );
+    if (reserved.outcome !== "reserved") {
+      throw new Error("Expected completion input to be reserved");
+    }
+
+    const history = `bdd chat session history ${active.runId}`;
+    await webhooks.requestAgentCheckpoint(
+      {
+        runId: active.runId,
+        cliAgentType: "claude-code",
+        cliAgentSessionId: `bdd-cli-${active.runId}`,
+        cliAgentSessionHistoryHash: createHash("sha256")
+          .update(history)
+          .digest("hex"),
+      },
+      claimed.sandboxHeaders,
+      [200],
+    );
+    const checkpointGate = await holdCheckpointReadsFixture({
+      signal: context.signal,
+    });
+    onTestFinished(async () => {
+      checkpointGate.release();
+      await checkpointGate.done;
+    });
+    const completion = webhooks.requestAgentComplete(
+      {
+        runId: active.runId,
+        exitCode: 0,
+        activeInputDeliveryIds: [reserved.deliveryId],
+      },
+      claimed.sandboxHeaders,
+      [200],
+    );
+    await expect
+      .poll(checkpointGate.blockedWaiterCount)
+      .toBeGreaterThanOrEqual(1);
+    await expect(
+      api.recordRunnerActiveInputDelivery(
+        claimed.claim.sandboxToken,
+        active.runId,
+        reserved.deliveryId,
+      ),
+    ).resolves.toStrictEqual({ outcome: "delivered" });
+    checkpointGate.release();
+    await checkpointGate.done;
+    await expect(completion).resolves.toMatchObject({
+      body: { success: true, status: "completed" },
+    });
+    await flushWaitUntilForTest();
+    await expect(
+      api.recordRunnerActiveInputDelivery(
+        claimed.claim.sandboxToken,
+        active.runId,
+        reserved.deliveryId,
+      ),
+    ).resolves.toStrictEqual({ outcome: "delivered" });
+
+    const duplicate = await webhooks.requestAgentComplete(
+      {
+        runId: active.runId,
+        exitCode: 1,
+        error: "late fallback completion",
+        activeInputDeliveryIds: [reserved.deliveryId],
+      },
+      claimed.sandboxHeaders,
+      [200],
+    );
+    expect(duplicate.body).toStrictEqual({
+      success: true,
+      status: "completed",
+    });
+    await flushWaitUntilForTest();
+
+    const events = await chat.listThreadEvents(actor, active.threadId);
+    expect(
+      events.events.filter((event) => {
+        return (
+          event.revokesEventId === pendingEventId &&
+          event.runId === active.runId
+        );
+      }),
+    ).toHaveLength(1);
+  }, 90_000);
+
+  it("settles delivered input with the terminal run transition", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const active = await sendChatRun(actor, {
+      agentId,
+      prompt: "complete with a durable delivery",
+    });
+    const claimed = await claimChatRun(runnerGroup, active.runId);
+    const pendingEventId = randomUUID();
+    await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: active.threadId,
+        prompt: "settle with the terminal transition",
+        clientEventId: pendingEventId,
+      },
+      [201],
+    );
+    const reserved = await api.reserveRunnerActiveInputs(
+      claimed.claim.sandboxToken,
+      active.runId,
+    );
+    if (reserved.outcome !== "reserved") {
+      throw new Error("Expected terminal input to be reserved");
+    }
+
+    await completeChatRunOk(active.runId, claimed.sandboxHeaders, {
+      activeInputDeliveryIds: [reserved.deliveryId],
+    });
+    await flushWaitUntilForTest();
+
+    expect((await api.readRun(actor, active.runId)).status).toBe("completed");
+    const events = await chat.listThreadEvents(actor, active.threadId);
+    expect(
+      events.events.filter((event) => {
+        return (
+          event.revokesEventId === pendingEventId &&
+          event.runId === active.runId
+        );
+      }),
+    ).toHaveLength(1);
+    await expect(
+      api.recordRunnerActiveInputDelivery(
+        claimed.claim.sandboxToken,
+        active.runId,
+        reserved.deliveryId,
+      ),
+    ).resolves.toStrictEqual({ outcome: "delivered" });
+  }, 90_000);
+
+  it("finalizes a late receipt without replaying terminal callbacks", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const active = await sendChatRun(actor, {
+      agentId,
+      prompt: "leave a legacy terminal delivery open",
+    });
+    const claimed = await claimChatRun(runnerGroup, active.runId);
+    const pendingEventId = randomUUID();
+    await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: active.threadId,
+        prompt: "finalize after the terminal transition",
+        clientEventId: pendingEventId,
+      },
+      [201],
+    );
+    const reserved = await api.reserveRunnerActiveInputs(
+      claimed.claim.sandboxToken,
+      active.runId,
+    );
+    if (reserved.outcome !== "reserved") {
+      throw new Error("Expected late completion input to be reserved");
+    }
+    await completeRunWithoutCallbacksFixture({ runId: active.runId });
+
+    const completed = await webhooks.requestAgentComplete(
+      {
+        runId: active.runId,
+        exitCode: 1,
+        error: "duplicate fallback",
+        activeInputDeliveryIds: [reserved.deliveryId],
+      },
+      claimed.sandboxHeaders,
+      [200],
+    );
+    expect(completed.body).toStrictEqual({
+      success: true,
+      status: "completed",
+    });
+    await flushWaitUntilForTest();
+
+    const events = await chat.listThreadEvents(actor, active.threadId);
+    expect(
+      events.events.filter((event) => {
+        return (
+          event.revokesEventId === pendingEventId &&
+          event.runId === active.runId
+        );
+      }),
+    ).toHaveLength(1);
+    await expect(
+      api.recordRunnerActiveInputDelivery(
+        claimed.claim.sandboxToken,
+        active.runId,
+        reserved.deliveryId,
+      ),
+    ).resolves.toStrictEqual({ outcome: "delivered" });
+  }, 90_000);
+
+  it("releases prompts and expires budget input before draining in FIFO order", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const active = await sendChatRun(actor, {
+      agentId,
+      prompt: "finalize an unconfirmed delivery",
+    });
+    const claimed = await claimChatRun(runnerGroup, active.runId);
+    const releasedEventId = randomUUID();
+    await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: active.threadId,
+        prompt: "released queue head",
+        clientEventId: releasedEventId,
+      },
+      [201],
+    );
+    await ageClaimedRun(active.runId, RUN_TIME_BUDGET_STEER_AT_MS);
+    await runSteerRunTimeBudgetCron();
+    const reserved = await api.reserveRunnerActiveInputs(
+      claimed.claim.sandboxToken,
+      active.runId,
+    );
+    if (reserved.outcome !== "reserved") {
+      throw new Error("Expected prompt and budget input to be reserved");
+    }
+    const budgetEventId = reserved.eventIds.find((eventId) => {
+      return eventId !== releasedEventId;
+    });
+    if (!budgetEventId) {
+      throw new Error("Expected a reserved budget input");
+    }
+    const laterEventId = randomUUID();
+    const later = await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: active.threadId,
+        prompt: "later queue input",
+        clientEventId: laterEventId,
+      },
+      [201],
+    );
+    if (later.status !== 201) {
+      throw new Error("Expected later input to remain queued");
+    }
+    expect(later.body.runId).toBeNull();
+
+    await completeChatRunOk(active.runId, claimed.sandboxHeaders);
+    await flushWaitUntilForTest();
+    await expect(
+      api.recordRunnerActiveInputDelivery(
+        claimed.claim.sandboxToken,
+        active.runId,
+        reserved.deliveryId,
+      ),
+    ).resolves.toStrictEqual({ outcome: "rejected" });
+
+    const messages = await waitForThreadMessages(
+      actor,
+      active.threadId,
+      (items) => {
+        return userMessages(items).some((message) => {
+          return (
+            message.revokesEventId === releasedEventId &&
+            typeof message.runId === "string" &&
+            message.runId !== active.runId
+          );
+        });
+      },
+    );
+    const promoted = userMessages(messages.events).find((message) => {
+      return message.revokesEventId === releasedEventId;
+    });
+    if (!promoted?.runId) {
+      throw new Error("Expected the released queue head to be promoted");
+    }
+    expect(
+      messages.events.filter((event) => {
+        return (
+          event.eventType === "control.revoke" &&
+          event.revokesEventId === budgetEventId &&
+          event.runId === active.runId
+        );
+      }),
+    ).toHaveLength(1);
+    expect(
+      userMessages(messages.events).filter((message) => {
+        return message.revokesEventId === laterEventId;
+      }),
+    ).toHaveLength(0);
+
+    const successorClaim = await claimChatRun(runnerGroup, promoted.runId);
+    await expect(
+      api.listRunnerActiveInputs(
+        successorClaim.claim.sandboxToken,
+        promoted.runId,
+      ),
+    ).resolves.toStrictEqual([laterEventId]);
+    await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: active.threadId,
+        revokesEventId: laterEventId,
+      },
+      [201],
+    );
+    await cancelChatRun(actor, promoted.runId, successorClaim.sandboxHeaders);
+  }, 90_000);
+
+  it("keeps cancelled deliveries as barriers after recovery expiry", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const active = await sendChatRun(actor, {
+      agentId,
+      prompt: "cancel with a held delivery",
+    });
+    const claimed = await claimChatRun(runnerGroup, active.runId);
+    const heldEventId = randomUUID();
+    await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: active.threadId,
+        prompt: "accepted before cancellation",
+        clientEventId: heldEventId,
+      },
+      [201],
+    );
+    const reserved = await api.reserveRunnerActiveInputs(
+      claimed.claim.sandboxToken,
+      active.runId,
+    );
+    if (reserved.outcome !== "reserved") {
+      throw new Error("Expected cancelled input to be reserved");
+    }
+    await api.requestCancelRun(actor, active.runId, [200]);
+    await waitForRunStatus(actor, active.runId, "cancelled");
+
+    mockNow(now() + CANCELLATION_RECOVERY_STALE_AFTER_MS + 1);
+    onTestFinished(() => {
+      clearMockNow();
+    });
+    const laterEventId = randomUUID();
+    const later = await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: active.threadId,
+        prompt: "wait behind stale cancellation recovery",
+        clientEventId: laterEventId,
+      },
+      [201],
+    );
+    if (later.status !== 201) {
+      throw new Error("Expected post-cancellation input to remain queued");
+    }
+    expect(later.body.runId).toBeNull();
+    const beforeCompletion = await chat.listThreadEvents(
+      actor,
+      active.threadId,
+    );
+    expect(
+      userMessages(beforeCompletion.events).filter((message) => {
+        return message.revokesEventId === laterEventId;
+      }),
+    ).toHaveLength(0);
+
+    await webhooks.requestAgentComplete(
+      {
+        runId: active.runId,
+        exitCode: 1,
+        error: "Run cancelled",
+        activeInputDeliveryIds: [reserved.deliveryId],
+      },
+      claimed.sandboxHeaders,
+      [200],
+    );
+    await flushWaitUntilForTest();
+    clearMockNow();
+    await expect(
+      api.recordRunnerActiveInputDelivery(
+        claimed.claim.sandboxToken,
+        active.runId,
+        reserved.deliveryId,
+      ),
+    ).resolves.toStrictEqual({ outcome: "delivered" });
+
+    const messages = await waitForThreadMessages(
+      actor,
+      active.threadId,
+      (items) => {
+        return userMessages(items).some((message) => {
+          return (
+            message.revokesEventId === laterEventId &&
+            typeof message.runId === "string" &&
+            message.runId !== active.runId
+          );
+        });
+      },
+    );
+    const successor = userMessages(messages.events).find((message) => {
+      return message.revokesEventId === laterEventId;
+    })?.runId;
+    if (!successor) {
+      throw new Error("Expected the post-cancellation input to start a run");
+    }
+    expect(
+      userMessages(messages.events).filter((message) => {
+        return (
+          message.revokesEventId === heldEventId &&
+          message.runId === active.runId
+        );
+      }),
+    ).toHaveLength(1);
+    const successorClaim = await claimChatRun(runnerGroup, successor);
+    await cancelChatRun(actor, successor, successorClaim.sandboxHeaders);
+  }, 90_000);
+
+  it("keeps timed-out delivery input held until Runner completion", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const active = await sendChatRun(actor, {
+      agentId,
+      prompt: "time out with an uncertain delivery",
+    });
+    const claimed = await claimChatRun(runnerGroup, active.runId);
+    const heldEventId = randomUUID();
+    await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: active.threadId,
+        prompt: "release only after teardown completion",
+        clientEventId: heldEventId,
+      },
+      [201],
+    );
+    const reserved = await api.reserveRunnerActiveInputs(
+      claimed.claim.sandboxToken,
+      active.runId,
+    );
+    if (reserved.outcome !== "reserved") {
+      throw new Error("Expected timeout input to be reserved");
+    }
+    await timeoutRunWithoutCallbacksFixture({ runId: active.runId });
+    await waitForRunStatus(actor, active.runId, "timeout");
+
+    const laterEventId = randomUUID();
+    const later = await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: active.threadId,
+        prompt: "wait behind the timed-out delivery",
+        clientEventId: laterEventId,
+      },
+      [201],
+    );
+    if (later.status !== 201) {
+      throw new Error("Expected post-timeout input to remain queued");
+    }
+    expect(later.body.runId).toBeNull();
+
+    await failChatRun(
+      active.runId,
+      claimed.sandboxHeaders,
+      "Runner observed timed-out process exit",
+    );
+    await flushWaitUntilForTest();
+    await expect(
+      api.recordRunnerActiveInputDelivery(
+        claimed.claim.sandboxToken,
+        active.runId,
+        reserved.deliveryId,
+      ),
+    ).resolves.toStrictEqual({ outcome: "rejected" });
+
+    const messages = await waitForThreadMessages(
+      actor,
+      active.threadId,
+      (items) => {
+        return userMessages(items).some((message) => {
+          return (
+            message.revokesEventId === heldEventId &&
+            typeof message.runId === "string" &&
+            message.runId !== active.runId
+          );
+        });
+      },
+    );
+    const successor = userMessages(messages.events).find((message) => {
+      return message.revokesEventId === heldEventId;
+    })?.runId;
+    if (!successor) {
+      throw new Error("Expected timed-out delivery input to be released");
+    }
+    expect(
+      userMessages(messages.events).filter((message) => {
+        return message.revokesEventId === laterEventId;
+      }),
+    ).toHaveLength(0);
+    const successorClaim = await claimChatRun(runnerGroup, successor);
+    await expect(
+      api.listRunnerActiveInputs(successorClaim.claim.sandboxToken, successor),
+    ).resolves.toStrictEqual([laterEventId]);
+    await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: active.threadId,
+        revokesEventId: laterEventId,
+      },
+      [201],
+    );
+    await cancelChatRun(actor, successor, successorClaim.sandboxHeaders);
+  }, 90_000);
+
+  it("cascades delivery state when its thread is deleted", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const active = await sendChatRun(actor, {
+      agentId,
+      prompt: "delete a thread with reserved input",
+    });
+    const claimed = await claimChatRun(runnerGroup, active.runId);
+    await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: active.threadId,
+        prompt: "delete this reserved input",
+        clientEventId: randomUUID(),
+      },
+      [201],
+    );
+    const reserved = await api.reserveRunnerActiveInputs(
+      claimed.claim.sandboxToken,
+      active.runId,
+    );
+    if (reserved.outcome !== "reserved") {
+      throw new Error("Expected deleted thread input to be reserved");
+    }
+
+    await chat.deleteThread(actor, active.threadId);
+    const missingDelivery = await api.requestRecordRunnerActiveInputDeliveryAs(
+      `Bearer ${claimed.claim.sandboxToken}`,
+      active.runId,
+      reserved.deliveryId,
+      [403],
+    );
+    expectApiError(missingDelivery.body);
+    await failChatRun(
+      active.runId,
+      claimed.sandboxHeaders,
+      "Thread deleted during execution",
+    );
+    await flushWaitUntilForTest();
+
+    const unrelated = await sendChatRun(actor, {
+      agentId,
+      prompt: "run after deleting another delivery thread",
+    });
+    const unrelatedClaim = await claimChatRun(runnerGroup, unrelated.runId);
+    await cancelChatRun(actor, unrelated.runId, unrelatedClaim.sandboxHeaders);
+  }, 90_000);
+
   it("classifies delivery lifecycle and authorization without route-level 404", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
@@ -2200,7 +2813,7 @@ describe("CHAT-02: queueing and recalling messages", () => {
     expect(queued.body.runId).toBeNull();
     await api.updateOrgModelPolicies(actor, [
       {
-        model: "claude-opus-4-6",
+        model: "claude-opus-4-8",
         isDefault: true,
         defaultProviderType: "anthropic-api-key",
         credentialScope: "org",
@@ -2221,7 +2834,7 @@ describe("CHAT-02: queueing and recalling messages", () => {
     await expectNoThreadModelUpdateEvent(
       actor,
       first.threadId,
-      "claude-opus-4-6",
+      "claude-opus-4-8",
     );
 
     // Another user's send cannot claim the queued message's client id.
@@ -2811,7 +3424,7 @@ describe("CHAT-02: admission without spendable credits", () => {
     });
     await api.updateOrgModelPolicies(actor, [
       {
-        model: "claude-sonnet-4-6",
+        model: "claude-sonnet-5",
         isDefault: true,
         defaultProviderType: "vm0",
         credentialScope: "org",
@@ -2823,7 +3436,7 @@ describe("CHAT-02: admission without spendable credits", () => {
     const sendBody: ChatRunSendBody = {
       agentId: agent.agentId,
       prompt: "blocked by suspended plan",
-      model: "claude-sonnet-4-6",
+      model: "claude-sonnet-5",
       clientEventId,
     };
     const sent = await chat.requestSendEvent(actor, sendBody, [201]);
@@ -3097,24 +3710,24 @@ describe("CHAT-02: model-first provider policies", () => {
   it("routes model policy providers into the runner claim", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
-    const { providerId: moonshotId } = await upsertOrgModelProvider(actor, {
-      type: "moonshot-api-key",
-      secret: "selected-moonshot-key",
+    const { providerId: deepseekId } = await upsertOrgModelProvider(actor, {
+      type: "deepseek",
+      secret: "selected-deepseek-key",
     });
     await api.updateOrgModelPolicies(actor, [
       {
-        model: "kimi-k2.7-code",
+        model: "deepseek-v4-flash",
         isDefault: true,
-        defaultProviderType: "moonshot-api-key",
+        defaultProviderType: "deepseek",
         credentialScope: "org",
-        modelProviderId: moonshotId,
+        modelProviderId: deepseekId,
       },
     ]);
 
     const run = await sendChatRun(actor, {
       agentId,
-      prompt: "run with the selected Moonshot provider",
-      model: "kimi-k2.7-code",
+      prompt: "run with the selected DeepSeek provider",
+      model: "deepseek-v4-flash",
     });
 
     const { claim, sandboxHeaders } = await claimChatRun(
@@ -3122,14 +3735,11 @@ describe("CHAT-02: model-first provider policies", () => {
       run.runId,
     );
     const environment = claimEnvironment(claim);
-    expect(environment.ANTHROPIC_AUTH_TOKEN).toBe(
-      modelProviderSecretPlaceholder("moonshot-api-key", "MOONSHOT_API_KEY"),
+    expect(environment.OPENAI_API_KEY).toBe(
+      modelProviderSecretPlaceholder("deepseek", "DEEPSEEK_API_KEY"),
     );
-    expect(environment.ANTHROPIC_BASE_URL).toBe(
-      "https://api.moonshot.ai/anthropic",
-    );
-    expect(environment.ANTHROPIC_MODEL).toBe("kimi-k2.7-code");
-    expect(environment.CLAUDE_CODE_DISABLE_ATTACHMENTS).toBe("1");
+    expect(environment.OPENAI_BASE_URL).toBe("https://api.deepseek.com/");
+    expect(environment.OPENAI_MODEL).toBe("deepseek-v4-flash");
     expect(environment.ANTHROPIC_API_KEY).toBeUndefined();
 
     // The new thread's initial model is recorded on the created event. The
@@ -3146,14 +3756,14 @@ describe("CHAT-02: model-first provider policies", () => {
       expect.objectContaining({
         kind: "created",
         chatThreadId: run.threadId,
-        selectedModel: "kimi-k2.7-code",
+        selectedModel: "deepseek-v4-flash",
       }),
     );
     expect(threadEvents.body.events).not.toContainEqual(
       expect.objectContaining({
         kind: "model_selection_updated",
         chatThreadId: run.threadId,
-        selectedModel: "kimi-k2.7-code",
+        selectedModel: "deepseek-v4-flash",
       }),
     );
 
@@ -3171,13 +3781,13 @@ describe("CHAT-02: model-first provider policies", () => {
       followUp.runId,
     );
     const followUpEnvironment = claimEnvironment(followUpClaim);
-    expect(followUpEnvironment.ANTHROPIC_AUTH_TOKEN).toBe(
-      modelProviderSecretPlaceholder("moonshot-api-key", "MOONSHOT_API_KEY"),
+    expect(followUpEnvironment.OPENAI_API_KEY).toBe(
+      modelProviderSecretPlaceholder("deepseek", "DEEPSEEK_API_KEY"),
     );
-    expect(followUpEnvironment.ANTHROPIC_BASE_URL).toBe(
-      "https://api.moonshot.ai/anthropic",
+    expect(followUpEnvironment.OPENAI_BASE_URL).toBe(
+      "https://api.deepseek.com/",
     );
-    expect(followUpEnvironment.ANTHROPIC_MODEL).toBe("kimi-k2.7-code");
+    expect(followUpEnvironment.OPENAI_MODEL).toBe("deepseek-v4-flash");
     await cancelChatRun(actor, followUp.runId);
 
     // A vm0 provider pin in an entitled org passes the spendable-credits
@@ -3187,7 +3797,7 @@ describe("CHAT-02: model-first provider policies", () => {
     // global vm0 key. Both prove the credits-ok admission arm.
     await api.updateOrgModelPolicies(actor, [
       {
-        model: "claude-sonnet-4-6",
+        model: "claude-sonnet-5",
         isDefault: true,
         defaultProviderType: "vm0",
         credentialScope: "org",
@@ -3202,7 +3812,7 @@ describe("CHAT-02: model-first provider policies", () => {
         version: 1,
         parts: [{ type: "text", text: vm0Prompt }],
       },
-      model: "claude-sonnet-4-6",
+      model: "claude-sonnet-5",
       hasTextContent: true,
     });
     expect([201, 503]).toContain(vm0Send.status);
@@ -3361,7 +3971,7 @@ describe("CHAT-02: model-first provider policies", () => {
     chatCallbacks.failIfChatCallbackRouteIsFetched();
     await api.updateOrgModelPolicies(actor, [
       {
-        model: "claude-sonnet-4-6",
+        model: "claude-sonnet-5",
         isDefault: true,
         defaultProviderType: "anthropic-api-key",
         credentialScope: "org",
@@ -3372,12 +3982,12 @@ describe("CHAT-02: model-first provider policies", () => {
     const first = await sendChatRun(actor, {
       agentId,
       prompt: "start before the thread model is removed",
-      model: "claude-sonnet-4-6",
+      model: "claude-sonnet-5",
     });
     const firstClaim = await claimChatRun(runnerGroup, first.runId);
     expect(firstClaim.claim.cliAgentType).toBe("claude-code");
     expect(claimEnvironment(firstClaim.claim).ANTHROPIC_MODEL).toBe(
-      "claude-sonnet-4-6",
+      "claude-sonnet-5",
     );
     chatCallbacks.mockChatOutputEvents([]);
     await completeChatRunOk(first.runId, firstClaim.sandboxHeaders);
@@ -3466,7 +4076,7 @@ describe("CHAT-02: model-first provider policies", () => {
     chatCallbacks.failIfChatCallbackRouteIsFetched();
     await api.updateOrgModelPolicies(actor, [
       {
-        model: "claude-sonnet-4-6",
+        model: "claude-sonnet-5",
         isDefault: true,
         defaultProviderType: "anthropic-api-key",
         credentialScope: "org",
@@ -3475,11 +4085,11 @@ describe("CHAT-02: model-first provider policies", () => {
     ]);
     const thread = await chat.createThread(actor, {
       agentId,
-      model: "claude-sonnet-4-6",
+      model: "claude-sonnet-5",
     });
     await api.updateOrgModelPolicies(actor, [
       {
-        model: "claude-opus-4-6",
+        model: "claude-opus-4-8",
         isDefault: true,
         defaultProviderType: "anthropic-api-key",
         credentialScope: "org",
@@ -3516,7 +4126,7 @@ describe("CHAT-02: model-first provider policies", () => {
       throw new Error("Expected the concurrent send to create a run");
     }
     const racedClaim = await claimChatRun(runnerGroup, sent.body.runId);
-    expect(["claude-opus-4-6", "claude-sonnet-5"]).toContain(
+    expect(["claude-opus-4-8", "claude-sonnet-5"]).toContain(
       claimEnvironment(racedClaim.claim).ANTHROPIC_MODEL,
     );
     await cancelChatRun(actor, sent.body.runId, racedClaim.sandboxHeaders);
@@ -3549,7 +4159,7 @@ describe("CHAT-02: model-first provider policies", () => {
         return (
           event.kind === "model_selection_updated" &&
           event.chatThreadId === thread.id &&
-          event.selectedModel === "claude-opus-4-6"
+          event.selectedModel === "claude-opus-4-8"
         );
       }).length,
     ).toBeLessThanOrEqual(1);
@@ -3575,7 +4185,7 @@ describe("CHAT-02: model-first provider policies", () => {
         modelProviderId: null,
       },
       {
-        model: "gpt-5.5",
+        model: "gpt-5.6-luna",
         isDefault: false,
         defaultProviderType: "vm0",
         credentialScope: "org",
@@ -3717,7 +4327,7 @@ describe("CHAT-02: model-first provider policies", () => {
       agentId,
       threadId: fast.threadId,
       prompt: "run codex standard",
-      model: "gpt-5.5",
+      model: "gpt-5.6-luna",
     });
     expect(
       (await readThreadProjection(actor, standard.threadId)).serviceTier,
@@ -3744,14 +4354,14 @@ describe("CHAT-02: model-first provider policies", () => {
       }),
     ).toStrictEqual({
       type: "model",
-      selectedModel: "gpt-5.5",
+      selectedModel: "gpt-5.6-luna",
     });
     const { claim: standardClaim } = await claimChatRun(
       runnerGroup,
       standard.runId,
     );
     const standardEnvironment = claimEnvironment(standardClaim);
-    expect(standardEnvironment.OPENAI_MODEL).toBe("gpt-5.5");
+    expect(standardEnvironment.OPENAI_MODEL).toBe("gpt-5.6-luna");
     expect(standardEnvironment.VM0_CODEX_SERVICE_TIER).toBeUndefined();
     await cancelChatRun(actor, standard.runId);
 
@@ -3760,9 +4370,9 @@ describe("CHAT-02: model-first provider policies", () => {
       actor,
       {
         agentId,
-        prompt: "GPT 5.5 cannot use Codex fast mode",
+        prompt: "Claude cannot use Codex fast mode",
         clientThreadId: rejectedThreadId,
-        model: "gpt-5.5",
+        model: "claude-sonnet-5",
         runOptions: { codexServiceTier: "fast" },
       },
       [400],
@@ -3861,7 +4471,7 @@ describe("CHAT-02: model-first provider policies", () => {
     });
     await api.updateOrgModelPolicies(actor, [
       {
-        model: "claude-opus-4-7",
+        model: "claude-opus-4-8",
         isDefault: true,
         defaultProviderType: "openrouter-api-key",
         credentialScope: "org",
@@ -3872,7 +4482,7 @@ describe("CHAT-02: model-first provider policies", () => {
     const run = await sendChatRun(actor, {
       agentId,
       prompt: "run with the selected openrouter provider",
-      model: "claude-opus-4-7",
+      model: "claude-opus-4-8",
     });
 
     const { claim, sandboxHeaders } = await claimChatRun(
@@ -3888,12 +4498,12 @@ describe("CHAT-02: model-first provider policies", () => {
     );
     expect(environment.ANTHROPIC_BASE_URL).toBe("https://openrouter.ai/api");
     expect(environment.ANTHROPIC_API_KEY).toBe("");
-    expect(environment.ANTHROPIC_MODEL).toBe("anthropic/claude-opus-4.7");
+    expect(environment.ANTHROPIC_MODEL).toBe("anthropic/claude-opus-4.8");
     expect(environment.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe(
-      "anthropic/claude-opus-4.7",
+      "anthropic/claude-opus-4.8",
     );
     expect(environment.CLAUDE_CODE_SUBAGENT_MODEL).toBe(
-      "anthropic/claude-opus-4.7",
+      "anthropic/claude-opus-4.8",
     );
     expect(environment.CLAUDE_CODE_DISABLE_ATTACHMENTS).toBeUndefined();
 
@@ -3933,21 +4543,24 @@ describe("CHAT-02: model-first provider policies", () => {
       expect.objectContaining({
         kind: "created",
         chatThreadId: run.threadId,
-        selectedModel: "claude-opus-4-7",
+        selectedModel: "claude-opus-4-8",
       }),
     );
 
     await api.requestCancelRun(actor, run.runId, [200]);
   }, 90_000);
 
-  it("routes vm0 Kimi through Moonshot attachment-disabled env bindings", async () => {
+  it("routes vm0 DeepSeek through native Responses env bindings", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
-    const keySuffix = randomUUID();
+    const keyFixtureId = randomUUID();
 
-    await replaceBddVm0ApiKey({
-      vendor: "moonshot",
-      apiKey: `vm0-key-bdd-dev-seed-${keySuffix}`,
-      label: "dev-seed",
+    // Keep a second DeepSeek fixture owner alive to cover vendor-unique row
+    // arbitration instead of relying on another test file's scheduling.
+    await seedVm0ManagedModelKey("deepseek-v4-flash");
+    await acquireBddVm0ApiKey({
+      fixtureId: keyFixtureId,
+      vendor: "deepseek",
+      apiKey: `vm0-key-bdd-dev-seed-${keyFixtureId}`,
     });
 
     let runId: string | null = null;
@@ -3956,17 +4569,17 @@ describe("CHAT-02: model-first provider policies", () => {
         await api.requestCancelRun(actor, runId, [200]);
       }
     };
-    const deleteVm0KimiKeys = async () => {
-      await deleteBddVm0ApiKey({ vendor: "moonshot" });
+    const releaseVm0DeepSeekKey = async () => {
+      await releaseBddVm0ApiKey({ fixtureId: keyFixtureId });
     };
     const cleanupRunAndKeys = async () => {
-      await Promise.all([deleteVm0KimiKeys(), cancelRunIfCreated()]);
+      await Promise.all([releaseVm0DeepSeekKey(), cancelRunIfCreated()]);
     };
 
     await (async () => {
       await api.updateOrgModelPolicies(actor, [
         {
-          model: "kimi-k2.7-code",
+          model: "deepseek-v4-flash",
           isDefault: true,
           defaultProviderType: "vm0",
           credentialScope: "org",
@@ -3976,21 +4589,18 @@ describe("CHAT-02: model-first provider policies", () => {
 
       const run = await sendChatRun(actor, {
         agentId,
-        prompt: "run with the selected vm0 kimi provider",
-        model: "kimi-k2.7-code",
+        prompt: "run with the selected vm0 DeepSeek provider",
+        model: "deepseek-v4-flash",
       });
       runId = run.runId;
 
       const { claim } = await claimChatRun(runnerGroup, run.runId);
       const environment = claimEnvironment(claim);
-      expect(environment.ANTHROPIC_AUTH_TOKEN).toBe(
-        modelProviderSecretPlaceholder("moonshot-api-key", "MOONSHOT_API_KEY"),
+      expect(environment.OPENAI_API_KEY).toBe(
+        modelProviderSecretPlaceholder("deepseek", "DEEPSEEK_API_KEY"),
       );
-      expect(environment.ANTHROPIC_BASE_URL).toBe(
-        "https://api.moonshot.ai/anthropic",
-      );
-      expect(environment.ANTHROPIC_MODEL).toBe("kimi-k2.7-code");
-      expect(environment.CLAUDE_CODE_DISABLE_ATTACHMENTS).toBe("1");
+      expect(environment.OPENAI_BASE_URL).toBe("https://api.deepseek.com/");
+      expect(environment.OPENAI_MODEL).toBe("deepseek-v4-flash");
     })().then(cleanupRunAndKeys, async (error: unknown) => {
       await cleanupRunAndKeys();
       throw error;
@@ -4000,26 +4610,29 @@ describe("CHAT-02: model-first provider policies", () => {
   it("selects a vm0 managed key by vendor", async () => {
     const fw = createFirewallApi(context);
     const { actor, agentId, runnerGroup } = await entitledChatActor();
-    const keySuffix = randomUUID();
-    const apiKey = `vm0-key-bdd-dev-seed-${keySuffix}`;
+    const keyFixtureId = randomUUID();
+    const requestedApiKey = `vm0-key-bdd-dev-seed-${keyFixtureId}`;
+    await seedVm0ManagedModelKey("claude-opus-4-8");
+
     let runId: string | null = null;
 
     onTestFinished(async () => {
       await Promise.all([
-        deleteBddVm0ApiKey({ vendor: "zai" }),
+        releaseBddVm0ApiKey({ fixtureId: keyFixtureId }),
         ...(runId ? [api.requestCancelRun(actor, runId, [200])] : []),
       ]);
     });
 
-    await replaceBddVm0ApiKey({
-      vendor: "zai",
-      apiKey,
-      label: "dev-seed",
+    const acquiredApiKey = await acquireBddVm0ApiKey({
+      fixtureId: keyFixtureId,
+      vendor: "anthropic",
+      apiKey: requestedApiKey,
     });
+    expect(acquiredApiKey === requestedApiKey).toBeFalsy();
 
     await api.updateOrgModelPolicies(actor, [
       {
-        model: "glm-5.2",
+        model: "claude-opus-4-8",
         isDefault: true,
         defaultProviderType: "vm0",
         credentialScope: "org",
@@ -4030,7 +4643,7 @@ describe("CHAT-02: model-first provider policies", () => {
     const run = await sendChatRun(actor, {
       agentId,
       prompt: "run with the selected vm0 provider",
-      model: "glm-5.2",
+      model: "claude-opus-4-8",
     });
     runId = run.runId;
 
@@ -4039,13 +4652,10 @@ describe("CHAT-02: model-first provider policies", () => {
       run.runId,
     );
     const environment = claimEnvironment(claim);
-    expect(environment.ANTHROPIC_AUTH_TOKEN).toBe(
-      modelProviderSecretPlaceholder("zai-api-key", "ZAI_API_KEY"),
+    expect(environment.ANTHROPIC_API_KEY).toBe(
+      modelProviderSecretPlaceholder("anthropic-api-key", "ANTHROPIC_API_KEY"),
     );
-    expect(environment.ANTHROPIC_BASE_URL).toBe(
-      "https://api.z.ai/api/anthropic",
-    );
-    expect(environment.ANTHROPIC_MODEL).toBe("glm-5.2");
+    expect(environment.ANTHROPIC_MODEL).toBe("claude-opus-4-8");
 
     if (!claim.encryptedSecrets) {
       throw new Error("Expected vm0 claim to carry encrypted secrets");
@@ -4055,7 +4665,7 @@ describe("CHAT-02: model-first provider policies", () => {
       {
         encryptedSecrets: claim.encryptedSecrets,
         authHeaders: {
-          Authorization: `Bearer ${secretTemplate("ZAI_API_KEY")}`,
+          Authorization: `Bearer ${secretTemplate("ANTHROPIC_API_KEY")}`,
         },
       },
       [200],
@@ -4064,7 +4674,9 @@ describe("CHAT-02: model-first provider policies", () => {
       throw new Error("Expected vm0 firewall auth to resolve");
     }
     const authorization = resolved.body.headers.Authorization;
-    expect(authorization).toBe(`Bearer ${apiKey}`);
+    expect(authorization?.startsWith("Bearer ")).toBeTruthy();
+    expect(authorization?.length ?? 0).toBeGreaterThan("Bearer ".length);
+    expect(authorization === `Bearer ${acquiredApiKey}`).toBeTruthy();
   }, 90_000);
   it("rejects legacy blank OpenRouter provider secrets during firewall auth", async () => {
     const fw = createFirewallApi(context);
@@ -4075,7 +4687,7 @@ describe("CHAT-02: model-first provider policies", () => {
     });
     await api.updateOrgModelPolicies(actor, [
       {
-        model: "claude-opus-4-7",
+        model: "claude-opus-4-8",
         isDefault: true,
         defaultProviderType: "openrouter-api-key",
         credentialScope: "org",
@@ -4091,7 +4703,7 @@ describe("CHAT-02: model-first provider policies", () => {
     const run = await sendChatRun(actor, {
       agentId,
       prompt: "run with a legacy blank openrouter provider",
-      model: "claude-opus-4-7",
+      model: "claude-opus-4-8",
     });
     const { claim, sandboxHeaders } = await claimChatRun(
       runnerGroup,
@@ -4128,14 +4740,14 @@ describe("CHAT-02: run-level model overrides", () => {
     chatCallbacks.failIfChatCallbackRouteIsFetched();
     await chatCallbacks.updateOrgModelPolicies(actor, [
       {
-        model: "claude-opus-4-6",
+        model: "claude-opus-4-8",
         isDefault: true,
         defaultProviderType: "anthropic-api-key",
         credentialScope: "org",
         modelProviderId: providerId,
       },
       {
-        model: "claude-sonnet-4-6",
+        model: "claude-sonnet-5",
         isDefault: false,
         defaultProviderType: "anthropic-api-key",
         credentialScope: "org",
@@ -4147,11 +4759,11 @@ describe("CHAT-02: run-level model overrides", () => {
     const first = await sendChatRun(actor, {
       agentId,
       prompt: firstPrompt,
-      model: "claude-opus-4-6",
+      model: "claude-opus-4-8",
     });
     const firstClaim = await claimChatRun(runnerGroup, first.runId);
     expect(claimEnvironment(firstClaim.claim).ANTHROPIC_MODEL).toBe(
-      "claude-opus-4-6",
+      "claude-opus-4-8",
     );
     chatCallbacks.mockChatOutputEvents([assistantEvent(0, "opus answer")]);
     await completeChatRunOk(first.runId, firstClaim.sandboxHeaders, {
@@ -4166,7 +4778,7 @@ describe("CHAT-02: run-level model overrides", () => {
     await expectThreadCreatedModelEvent(
       actor,
       first.threadId,
-      "claude-opus-4-6",
+      "claude-opus-4-8",
     );
     expect(
       (await api.readRun(actor, first.runId)).result?.agentSessionId,
@@ -4179,7 +4791,7 @@ describe("CHAT-02: run-level model overrides", () => {
       agentId,
       threadId: first.threadId,
       prompt: "switch to sonnet",
-      model: "claude-sonnet-4-6",
+      model: "claude-sonnet-5",
     });
     const secondTimingEvents = apiDispatchTimingEventsForRun(second.runId);
     expectApiDispatchSpanKind(
@@ -4209,12 +4821,12 @@ describe("CHAT-02: run-level model overrides", () => {
       `bdd-cli-${first.runId}`,
     );
     expect(claimEnvironment(secondClaim.claim).ANTHROPIC_MODEL).toBe(
-      "claude-sonnet-4-6",
+      "claude-sonnet-5",
     );
     await expectNoThreadModelUpdateEvent(
       actor,
       first.threadId,
-      "claude-sonnet-4-6",
+      "claude-sonnet-5",
     );
     chatCallbacks.mockChatOutputEvents([]);
     await completeChatRunOk(second.runId, secondClaim.sandboxHeaders);
@@ -4233,7 +4845,7 @@ describe("CHAT-02: run-level model overrides", () => {
       `bdd-cli-${second.runId}`,
     );
     expect(claimEnvironment(thirdClaim.claim).ANTHROPIC_MODEL).toBe(
-      "claude-opus-4-6",
+      "claude-opus-4-8",
     );
     await cancelChatRun(actor, third.runId);
   }, 90_000);
@@ -4303,7 +4915,7 @@ describe("CHAT-02: run-level model overrides", () => {
 
     await chatCallbacks.updateOrgModelPolicies(actor, [
       {
-        model: "claude-sonnet-4-6",
+        model: "claude-sonnet-5",
         isDefault: true,
         defaultProviderType: "anthropic-api-key",
         credentialScope: "org",
@@ -4414,14 +5026,14 @@ describe("CHAT-02: run-level model overrides", () => {
     chatCallbacks.failIfChatCallbackRouteIsFetched();
     await chatCallbacks.updateOrgModelPolicies(actor, [
       {
-        model: "claude-opus-4-6",
+        model: "claude-opus-4-8",
         isDefault: true,
         defaultProviderType: "anthropic-api-key",
         credentialScope: "org",
         modelProviderId: providerId,
       },
       {
-        model: "claude-sonnet-4-6",
+        model: "claude-sonnet-5",
         isDefault: false,
         defaultProviderType: "anthropic-api-key",
         credentialScope: "org",
@@ -4432,7 +5044,7 @@ describe("CHAT-02: run-level model overrides", () => {
     const first = await sendChatRun(actor, {
       agentId,
       prompt: "start on opus before switching within Claude",
-      model: "claude-opus-4-6",
+      model: "claude-opus-4-8",
     });
     const firstClaim = await claimChatRun(runnerGroup, first.runId);
     chatCallbacks.mockChatOutputEvents([]);
@@ -4443,7 +5055,7 @@ describe("CHAT-02: run-level model overrides", () => {
       agentId,
       threadId: first.threadId,
       prompt: "continue on sonnet in the same session",
-      model: "claude-sonnet-4-6",
+      model: "claude-sonnet-5",
     });
     expectApiDispatchSpanKind(
       apiDispatchTimingEventsForRun(second.runId),
@@ -4455,7 +5067,7 @@ describe("CHAT-02: run-level model overrides", () => {
       `bdd-cli-${first.runId}`,
     );
     expect(claimEnvironment(secondClaim.claim).ANTHROPIC_MODEL).toBe(
-      "claude-sonnet-4-6",
+      "claude-sonnet-5",
     );
     await cancelChatRun(actor, second.runId);
   }, 90_000);
@@ -4923,7 +5535,7 @@ describe("CHAT-02: run-level model overrides", () => {
               authHeaderName: "Authorization",
               authHeaderTemplate: "Bearer {{secret}}",
               modelMappings: {
-                "claude-sonnet-4-6": "anthropic/claude-sonnet-4.6",
+                "claude-sonnet-5": "anthropic/claude-sonnet-4.6",
               },
             },
           ],
@@ -4937,7 +5549,7 @@ describe("CHAT-02: run-level model overrides", () => {
     }
     await api.updateOrgModelPolicies(actor, [
       {
-        model: "claude-sonnet-4-6",
+        model: "claude-sonnet-5",
         isDefault: true,
         defaultProviderType: "vercel-ai-gateway",
         credentialScope: "org",
@@ -4950,7 +5562,7 @@ describe("CHAT-02: run-level model overrides", () => {
     const anchor = await sendChatRun(actor, {
       agentId,
       prompt: anchorPrompt,
-      model: "claude-sonnet-4-6",
+      model: "claude-sonnet-5",
     });
     const anchorClaim = await claimChatRun(runnerGroup, anchor.runId);
     chatCallbacks.mockChatOutputEvents([
@@ -5033,7 +5645,7 @@ describe("CHAT-02: run-level model overrides", () => {
               authHeaderName: "Authorization",
               authHeaderTemplate: "Bearer {{secret}}",
               modelMappings: {
-                "claude-sonnet-4-6": "anthropic/claude-sonnet-4.6-v2",
+                "claude-sonnet-5": "anthropic/claude-sonnet-4.6-v2",
               },
             },
           ],
@@ -5101,7 +5713,7 @@ describe("CHAT-02: run-level model overrides", () => {
     );
     await api.updateOrgModelPolicies(actor, [
       {
-        model: "claude-sonnet-4-6",
+        model: "claude-sonnet-5",
         isDefault: true,
         defaultProviderType: "anthropic-api-key",
         credentialScope: "org",
@@ -5120,7 +5732,7 @@ describe("CHAT-02: run-level model overrides", () => {
     const first = await sendChatRun(actor, {
       agentId,
       prompt: firstPrompt,
-      model: "claude-sonnet-4-6",
+      model: "claude-sonnet-5",
     });
     const firstClaim = await claimChatRun(runnerGroup, first.runId);
     chatCallbacks.mockChatOutputEvents([
@@ -5363,7 +5975,7 @@ describe("CHAT-02: run-level model overrides", () => {
               authHeaderName: "Authorization",
               authHeaderTemplate: "Bearer {{secret}}",
               modelMappings: {
-                "claude-sonnet-4-6": "anthropic/claude-sonnet-4.6",
+                "claude-sonnet-5": "anthropic/claude-sonnet-4.6",
               },
             },
           ],
@@ -5377,7 +5989,7 @@ describe("CHAT-02: run-level model overrides", () => {
     }
     await api.updateOrgModelPolicies(actor, [
       {
-        model: "claude-sonnet-4-6",
+        model: "claude-sonnet-5",
         isDefault: true,
         defaultProviderType: "vercel-ai-gateway",
         credentialScope: "org",
@@ -5389,7 +6001,7 @@ describe("CHAT-02: run-level model overrides", () => {
     const first = await sendChatRun(actor, {
       agentId,
       prompt: "establish a custom gateway session",
-      model: "claude-sonnet-4-6",
+      model: "claude-sonnet-5",
     });
     const firstClaim = await claimChatRun(runnerGroup, first.runId);
     chatCallbacks.mockChatOutputEvents([]);
@@ -5418,7 +6030,7 @@ describe("CHAT-02: run-level model overrides", () => {
     );
     await api.updateOrgModelPolicies(actor, [
       {
-        model: "claude-sonnet-4-6",
+        model: "claude-sonnet-5",
         isDefault: true,
         defaultProviderType: "vercel-ai-gateway",
         credentialScope: "org",
@@ -5462,7 +6074,7 @@ describe("CHAT-02: run-level model overrides", () => {
     chatCallbacks.failIfChatCallbackRouteIsFetched();
     await api.updateOrgModelPolicies(actor, [
       {
-        model: "claude-sonnet-4-6",
+        model: "claude-sonnet-5",
         isDefault: true,
         defaultProviderType: "anthropic-api-key",
         credentialScope: "org",
@@ -5473,7 +6085,7 @@ describe("CHAT-02: run-level model overrides", () => {
     const first = await sendChatRun(actor, {
       agentId,
       prompt: "establish the original provider route",
-      model: "claude-sonnet-4-6",
+      model: "claude-sonnet-5",
     });
     const firstClaim = await claimChatRun(runnerGroup, first.runId);
     chatCallbacks.mockChatOutputEvents([]);
@@ -5518,7 +6130,7 @@ describe("CHAT-02: run-level model overrides", () => {
     );
     await api.updateOrgModelPolicies(actor, [
       {
-        model: "claude-sonnet-4-6",
+        model: "claude-sonnet-5",
         isDefault: true,
         defaultProviderType: "openrouter-api-key",
         credentialScope: "org",
@@ -5563,7 +6175,7 @@ describe("CHAT-02: run-level model overrides", () => {
     const first = await sendChatRun(actor, {
       agentId,
       prompt: "pin sonnet model-first",
-      model: "claude-sonnet-4-6",
+      model: "claude-sonnet-5",
     });
     const firstClaim = await claimChatRun(runnerGroup, first.runId);
     chatCallbacks.mockChatOutputEvents([]);
@@ -5581,7 +6193,7 @@ describe("CHAT-02: run-level model overrides", () => {
     await expectThreadCreatedModelEvent(
       actor,
       first.threadId,
-      "claude-sonnet-4-6",
+      "claude-sonnet-5",
     );
 
     await misc.upsertPersonalModelProvider(
@@ -5594,7 +6206,7 @@ describe("CHAT-02: run-level model overrides", () => {
     );
     await api.updateOrgModelPolicies(actor, [
       {
-        model: "claude-sonnet-4-6",
+        model: "claude-sonnet-5",
         isDefault: true,
         defaultProviderType: "claude-code-oauth-token",
         credentialScope: "member",
@@ -5615,7 +6227,7 @@ describe("CHAT-02: run-level model overrides", () => {
         "CLAUDE_CODE_OAUTH_TOKEN",
       ),
     );
-    expect(environment.ANTHROPIC_MODEL).toBe("claude-sonnet-4-6");
+    expect(environment.ANTHROPIC_MODEL).toBe("claude-sonnet-5");
     expect(secondClaim.claim.resumeSession?.sessionId).toBe(
       `bdd-cli-${first.runId}`,
     );
@@ -5625,12 +6237,12 @@ describe("CHAT-02: run-level model overrides", () => {
     await expectThreadCreatedModelEvent(
       actor,
       first.threadId,
-      "claude-sonnet-4-6",
+      "claude-sonnet-5",
     );
     await expectNoThreadModelUpdateEvent(
       actor,
       first.threadId,
-      "claude-sonnet-4-6",
+      "claude-sonnet-5",
     );
     await completeChatRunOk(second.runId, secondClaim.sandboxHeaders);
 
@@ -5643,7 +6255,7 @@ describe("CHAT-02: run-level model overrides", () => {
     );
     await api.updateOrgModelPolicies(actor, [
       {
-        model: "claude-sonnet-4-6",
+        model: "claude-sonnet-5",
         isDefault: true,
         defaultProviderType: "openrouter-api-key",
         credentialScope: "org",
@@ -5680,7 +6292,7 @@ describe("CHAT-02: run-level model overrides", () => {
     await expectNoThreadModelUpdateEvent(
       actor,
       first.threadId,
-      "claude-sonnet-4-6",
+      "claude-sonnet-5",
     );
 
     const fourth = await sendChatRun(actor, {
@@ -6377,7 +6989,7 @@ describe("CHAT-02: generation templates and attachments", () => {
         version: 1,
         parts: [
           ...userMessage.parts,
-          { type: "model", selectedModel: "claude-sonnet-4-6" },
+          { type: "model", selectedModel: "claude-sonnet-5" },
         ],
       },
     });
@@ -6479,7 +7091,7 @@ describe("CHAT-02: generation templates and attachments", () => {
         version: 1,
         parts: [
           ...userMessage.parts,
-          { type: "model", selectedModel: "claude-sonnet-4-6" },
+          { type: "model", selectedModel: "claude-sonnet-5" },
         ],
       },
     });
@@ -6541,7 +7153,7 @@ describe("CHAT-02: generation templates and attachments", () => {
             contentType: "text/plain",
           },
           { type: "text", text: "plain API attachment" },
-          { type: "model", selectedModel: "claude-sonnet-4-6" },
+          { type: "model", selectedModel: "claude-sonnet-5" },
         ],
       },
     });
@@ -7208,7 +7820,7 @@ describe("CHAT-02: queued attachments on auto-send", () => {
         ...userMessage.parts,
         {
           type: "model",
-          selectedModel: "claude-sonnet-4-6",
+          selectedModel: "claude-sonnet-5",
         },
       ],
     });
@@ -7805,7 +8417,7 @@ describe("CHAT-02: shared user message queue", () => {
           }),
           {
             type: "model",
-            selectedModel: "claude-sonnet-4-6",
+            selectedModel: "claude-sonnet-5",
           },
         ],
       },
@@ -8133,7 +8745,7 @@ describe("CHAT-02: shared user message queue", () => {
     const rotatedAnchor = await sendChatRun(actor, {
       agentId,
       prompt: rotatedAnchorPrompt,
-      model: "claude-sonnet-4-6",
+      model: "claude-sonnet-5",
     });
     const rotatedAnchorClaim = await claimChatRun(
       runnerGroup,
@@ -8156,7 +8768,7 @@ describe("CHAT-02: shared user message queue", () => {
     );
     await api.updateOrgModelPolicies(actor, [
       {
-        model: "claude-sonnet-4-6",
+        model: "claude-sonnet-5",
         isDefault: true,
         defaultProviderType: "anthropic-api-key",
         credentialScope: "org",

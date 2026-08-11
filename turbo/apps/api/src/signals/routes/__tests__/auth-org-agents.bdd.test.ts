@@ -8,6 +8,7 @@ import {
   type ApiTestUser,
 } from "./helpers/api-bdd-auth-org";
 import { createBddApi, expectApiError } from "./helpers/api-bdd";
+import { manualHttpCustomConnectorCreateBody } from "./helpers/api-bdd-connectors";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 
 /*
@@ -704,13 +705,14 @@ describe("AGENT-01 and AGENT-02", () => {
     expect(crossOrgRead.body.error.code).toBe("NOT_FOUND");
 
     const connectorSlug = `_${slug("bdd-connector")}`;
-    const connector = await api.createCustomConnector(admin, {
-      displayName: "BDD Custom Connector",
-      prefixes: [`https://${connectorSlug}.example.test/api/`],
-      headerName: "Authorization",
-      headerTemplate: "Bearer {{secret}}",
-      slug: connectorSlug,
-    });
+    const connector = await api.createCustomConnector(
+      admin,
+      manualHttpCustomConnectorCreateBody({
+        displayName: "BDD Custom Connector",
+        prefixTemplates: [`https://${connectorSlug}.example.test/api/`],
+        slug: connectorSlug,
+      }),
+    );
     expect(connector).toMatchObject({
       slug: connectorSlug,
       displayName: "BDD Custom Connector",
@@ -737,12 +739,16 @@ describe("AGENT-01 and AGENT-02", () => {
       publicAgent.agentId,
       [connector.id],
     );
-    expect(enabled.enabledIds).toStrictEqual([connector.id]);
+    expect(enabled.grants).toStrictEqual([
+      { customConnectorId: connector.id, permissionNames: [] },
+    ]);
     const readEnabled = await api.readAgentCustomConnectors(
       admin,
       publicAgent.agentId,
     );
-    expect(readEnabled.enabledIds).toStrictEqual([connector.id]);
+    expect(readEnabled.grants).toStrictEqual([
+      { customConnectorId: connector.id, permissionNames: [] },
+    ]);
 
     const otherAgent = await api.createAgent(otherAdmin, {
       displayName: "Other Org Agent",
@@ -762,7 +768,7 @@ describe("AGENT-01 and AGENT-02", () => {
       publicAgent.agentId,
       [],
     );
-    expect(cleared.enabledIds).toStrictEqual([]);
+    expect(cleared.grants).toStrictEqual([]);
 
     await api.disconnectCustomConnector(admin, connector.id);
     const afterDisconnect = await api.listCustomConnectors(admin);

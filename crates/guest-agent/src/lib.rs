@@ -11,6 +11,7 @@
 //! or paths. Thread `GuestConfig` and `GuestPaths` through the caller instead.
 
 pub mod active_input;
+mod active_input_receipts;
 mod artifact;
 pub mod checkpoint;
 pub mod cli;

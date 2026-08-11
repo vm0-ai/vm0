@@ -85,9 +85,11 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  Switch,
   Tabs,
   TabsList,
   TabsTrigger,
+  Textarea,
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -255,10 +257,8 @@ import { emptyAutomationsImg } from "../zero-page/platform-assets.ts";
 import { ConnectorIcon } from "../zero-page/components/settings/connector-icons.tsx";
 import { WorkflowWebhookUpgradeDialog } from "./workflow-webhook-upgrade-dialog.tsx";
 
-const AUTOMATION_FIELD_CLASS =
-  "h-8 w-full rounded-md border border-border/60 bg-background px-2 text-xs";
-const WORKFLOW_EDIT_TEXTAREA_CLASS =
-  "min-h-24 w-full resize-y rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-input px-3 py-2 text-sm text-foreground placeholder:text-sm placeholder:text-muted-foreground outline-none transition-colors focus:border-primary focus:ring-[3px] focus:ring-primary/10 disabled:cursor-not-allowed disabled:opacity-50";
+const AUTOMATION_FIELD_CLASS = "h-8 px-2 text-xs";
+const WORKFLOW_EDIT_TEXTAREA_CLASS = "min-h-24 resize-y";
 const AUTOMATION_TIMEZONE = "UTC";
 
 const STRIPE_INVOICE_BILLING_REASONS = [
@@ -1136,7 +1136,7 @@ function DetailHeader({
 }
 
 const WORKFLOW_TAB_TRIGGER_CLASS =
-  "gap-1.5 px-3 text-sm data-[state=active]:bg-background";
+  "gap-1.5 px-3 text-sm data-active:bg-background";
 
 function WorkflowTabNav({
   activeTab,
@@ -1905,7 +1905,7 @@ function WorkflowMetadataFields({
         description={copy.descriptionHelp}
         wideControls
       >
-        <textarea
+        <Textarea
           id="workflow-edit-description"
           name="description"
           aria-label={copy.description}
@@ -2094,18 +2094,12 @@ function WorkflowPublicToggle({
     <div className="flex flex-col gap-2">
       <div className="flex items-center justify-end gap-3">
         <span className="text-xs text-muted-foreground">{statusLabel}</span>
-        <button
-          type="button"
-          role="switch"
+        <Switch
+          size="compact"
           aria-label={copy.publishAria}
-          aria-checked={isPublic}
+          checked={isPublic}
           disabled={busy || !toggleAction}
-          className={cn(
-            "relative h-5 w-9 shrink-0 rounded-full transition-colors",
-            isPublic ? "bg-primary/70" : "bg-muted",
-            busy || !toggleAction ? "cursor-not-allowed opacity-60" : "",
-          )}
-          onClick={() => {
+          onCheckedChange={() => {
             if (!toggleAction) {
               return;
             }
@@ -2115,14 +2109,7 @@ function WorkflowPublicToggle({
             }
             submitVisibilityAction(toggleAction);
           }}
-        >
-          <span
-            className={cn(
-              "absolute left-0.5 top-0.5 size-4 rounded-full bg-background shadow-sm transition-transform",
-              isPublic ? "translate-x-4" : "translate-x-0",
-            )}
-          />
-        </button>
+        />
       </div>
       {publishBlocked ? (
         <p className="text-xs leading-5 text-muted-foreground">
@@ -2292,7 +2279,7 @@ function WorkflowCopyForm({
           </p>
         ) : (
           <Select
-            value={form.selectedAgentId ?? undefined}
+            value={form.selectedAgentId}
             disabled={!agentsLoaded}
             onValueChange={(value) => {
               onChange({ ...form, selectedAgentId: value });
@@ -7282,16 +7269,18 @@ function WorkflowDayOfWeekPicker({
         {workflowDayOfWeekOptions().map(([value, label]) => {
           const selected = dayOfWeek.split(",").includes(value);
           return (
-            <button
+            <Button
               key={value}
               type="button"
+              size="sm"
+              variant={selected ? "default" : "outline"}
               disabled={disabled}
               aria-pressed={selected}
               className={cn(
-                "h-8 min-w-10 rounded-md border px-2 text-xs font-medium transition-colors disabled:opacity-60",
+                "min-w-10 px-2 text-xs disabled:opacity-60",
                 selected
-                  ? "border-primary bg-primary text-primary-foreground"
-                  : "border-border/60 bg-background text-muted-foreground hover:bg-state-hover",
+                  ? "border border-primary"
+                  : "border-border/60 text-muted-foreground",
               )}
               onClick={() => {
                 const current = dayOfWeek.split(",").filter(Boolean);
@@ -7312,7 +7301,7 @@ function WorkflowDayOfWeekPicker({
               }}
             >
               {label}
-            </button>
+            </Button>
           );
         })}
       </div>
@@ -7949,6 +7938,9 @@ function GithubWorkflowRunAutomationFields({
                 key={option.value}
                 className="flex items-center gap-2 text-xs text-foreground"
               >
+                {/* Native input: the shared `Checkbox` renders a Base UI hidden
+                    input that carries `name` but not `value`, so it would submit
+                    "on" and this filter reads `FormData.getAll(name)`. */}
                 <input
                   type="checkbox"
                   name="conclusions"
@@ -8022,6 +8014,7 @@ function GithubCheckboxFilters<T extends string>({
               key={option.value}
               className="flex items-center gap-2 text-xs text-foreground"
             >
+              {/* Native input: see the note in GithubConclusionFilters. */}
               <input
                 type="checkbox"
                 name={name}
@@ -9944,7 +9937,7 @@ function AutomationMoreActionsMenu({
               aria-label={i18n.t(($) => {
                 return $.workflows.automations.common.moreActions;
               })}
-              className="h-8 w-8 shrink-0 rounded-lg text-muted-foreground hover:bg-state-selected-hover hover:text-foreground data-[state=open]:bg-state-selected-hover data-[state=open]:text-foreground"
+              className="h-8 w-8 shrink-0 rounded-lg text-muted-foreground hover:bg-state-selected-hover hover:text-foreground data-popup-open:bg-state-selected-hover data-popup-open:text-foreground"
             >
               <EllipsisVertical size={14} />
             </Button>
@@ -10433,7 +10426,7 @@ function UpdateGmailLabelAppliedAutomationForm({
         {i18n.t(($) => {
           return $.workflows.automations.gmail.labelName;
         })}
-        <input
+        <Input
           name="labelName"
           aria-label={i18n.t(($) => {
             return $.workflows.automations.gmail.labelName;

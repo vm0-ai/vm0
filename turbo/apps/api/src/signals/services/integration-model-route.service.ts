@@ -2,17 +2,15 @@ import { command } from "ccstate";
 import {
   getFrameworkForType,
   getVm0ConcreteProviderType,
+  isSupportedRunModel,
+  modelProviderTypeSchema,
   type ModelProviderCredentialScope,
 } from "@vm0/api-contracts/contracts/model-providers";
 import type { ChatThreadServiceTier } from "@vm0/api-contracts/contracts/chat-threads";
 import type { SupportedFramework } from "@vm0/core/frameworks";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
-import { listOrgModelPolicies$ } from "./zero-model-policy.service";
-import { userModelPreference } from "./zero-user-data.service";
-import { userFeatureSwitchContext } from "./feature-switches.service";
-import { isCodexFastServiceTierSupported } from "./zero-model-selection.service";
+import { writeDb$ } from "../external/db";
+import { resolveDefaultModelFirstPin } from "./zero-model-selection.service";
 
 export interface IntegrationModelRoutePin {
   readonly modelProviderType: string;
@@ -25,66 +23,40 @@ export interface IntegrationModelRoutePin {
 
 export const resolveIntegrationModelRouteForUser$ = command(
   async (
-    { get, set },
+    { set },
     args: {
       readonly orgId: string;
       readonly userId: string;
     },
     signal: AbortSignal,
   ): Promise<IntegrationModelRoutePin | undefined> => {
-    const preference = await get(
-      userModelPreference({ orgId: args.orgId, userId: args.userId }),
+    const pin = await resolveDefaultModelFirstPin(
+      set(writeDb$),
+      args.orgId,
+      args.userId,
     );
     signal.throwIfAborted();
-
-    const policies = await set(
-      listOrgModelPolicies$,
-      { orgId: args.orgId, userId: args.userId },
-      signal,
+    const providerType = modelProviderTypeSchema.safeParse(
+      pin.modelProviderType,
     );
-    const preferredPolicy = preference.selectedModel
-      ? policies.policies.find((policy) => {
-          return policy.model === preference.selectedModel;
-        })
-      : undefined;
-    const defaultPolicy = policies.policies.find((policy) => {
-      return policy.id === policies.workspaceDefaultPolicyId;
-    });
-    const routePolicy =
-      preferredPolicy ??
-      defaultPolicy ??
-      policies.policies.find((policy) => {
-        return policy.isDefault;
-      });
-    if (!routePolicy || routePolicy.routeStatus !== "valid") {
+    if (
+      !providerType.success ||
+      !pin.modelProviderCredentialScope ||
+      !isSupportedRunModel(pin.selectedModel)
+    ) {
       return undefined;
     }
 
-    const featureSwitchContext =
-      preference.serviceTier === "priority" && routePolicy === preferredPolicy
-        ? await get(userFeatureSwitchContext(args.orgId, args.userId))
-        : null;
-    signal.throwIfAborted();
-    const serviceTier = isCodexFastServiceTierSupported({
-      selectedModel: routePolicy.model,
-      codexFastModeEnabled:
-        featureSwitchContext !== null &&
-        isFeatureEnabled(FeatureSwitchKey.CodexFastMode, featureSwitchContext),
-    })
-      ? "priority"
-      : null;
-
     return {
-      modelProviderType: routePolicy.defaultProviderType,
-      modelProviderId:
-        routePolicy.modelProviderSurfaceId ?? routePolicy.modelProviderId,
-      modelProviderCredentialScope: routePolicy.credentialScope,
-      selectedModel: routePolicy.model,
-      serviceTier,
+      modelProviderType: providerType.data,
+      modelProviderId: pin.modelProviderId,
+      modelProviderCredentialScope: pin.modelProviderCredentialScope,
+      selectedModel: pin.selectedModel,
+      serviceTier: pin.serviceTier,
       cliAgentType: getFrameworkForType(
-        routePolicy.defaultProviderType === "vm0"
-          ? getVm0ConcreteProviderType(routePolicy.model)
-          : routePolicy.defaultProviderType,
+        providerType.data === "vm0"
+          ? getVm0ConcreteProviderType(pin.selectedModel)
+          : providerType.data,
       ),
     };
   },

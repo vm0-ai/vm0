@@ -482,6 +482,7 @@ export {
   MODEL_PROVIDER_TYPES,
   MODEL_LONG_CONTEXT_MIN_TOTAL_INPUT_TOKENS,
   SUPPORTED_RUN_MODELS,
+  RETIRED_RUN_MODELS,
   VM0_MODEL_PRICE_TIER,
   DEFAULT_ORG_MODEL_POLICY_MODELS,
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
@@ -503,6 +504,9 @@ export {
   getProviderRuntimeModel,
   isModelSupportedByProvider,
   isSupportedRunModel,
+  isRetiredRunModel,
+  getRetiredRunModelReplacement,
+  getCanonicalRetiredRunModel,
   normalizeRunModelId,
   getVm0ModelPriceTier,
   // Selectable provider filtering
@@ -527,6 +531,7 @@ export {
   type OrgModelPoliciesResponse,
   type UpdateOrgModelPoliciesRequest,
   type SupportedRunModel,
+  type RetiredRunModel,
   type ModelProviderCredentialScope,
   type DefaultOrgModelPolicySeed,
   // Multi-auth provider types
@@ -666,7 +671,8 @@ export {
   type NetworkPolicyRefresh,
   type ConnectorRuntimeTarget,
   type ConnectorRuntimeTargetRegistration,
-  type ConnectorRuntimeCustomUnavailableReason,
+  type ConnectorRuntimeCustomUnresolvedReason,
+  type ConnectorRuntimeCustomAbsentReason,
   type ConnectorRuntimeSyncResult,
   type SecretConnectorMetadata,
   type CanonicalStorageManifest,
@@ -1109,6 +1115,7 @@ export {
 export {
   zeroCustomConnectorsContract,
   zeroCustomConnectorByIdContract,
+  zeroCustomConnectorConnectionContract,
   zeroCustomConnectorSecretContract,
   zeroCustomConnectorValuesContract,
   zeroCustomConnectorOAuth2Contract,
@@ -1124,6 +1131,7 @@ export {
   customConnectorOAuthConfigInputSchema,
   type ZeroCustomConnectorsContract,
   type ZeroCustomConnectorByIdContract,
+  type ZeroCustomConnectorConnectionContract,
   type ZeroCustomConnectorSecretContract,
   type ZeroCustomConnectorValuesContract,
   type ZeroCustomConnectorOAuth2Contract,
@@ -1138,9 +1146,11 @@ export {
 } from "./zero-custom-connectors";
 export {
   zeroAgentCustomConnectorsContract,
-  agentCustomConnectorEnabledIdsSchema,
+  agentCustomConnectorGrantSchema,
+  agentCustomConnectorGrantsSchema,
   agentCustomConnectorUpdateSchema,
-  type AgentCustomConnectorEnabledIds,
+  type AgentCustomConnectorGrant,
+  type AgentCustomConnectorGrants,
   type AgentCustomConnectorUpdate,
   type ZeroAgentCustomConnectorsContract,
 } from "./zero-agent-custom-connectors";

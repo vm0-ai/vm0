@@ -2,7 +2,10 @@ import {
   zeroTeamContract,
   type TeamComposeItem,
 } from "@vm0/api-contracts/contracts/zero-team";
-import { zeroAgentCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
+import {
+  zeroAgentCustomConnectorsContract,
+  type AgentCustomConnectorGrant,
+} from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 import { zeroComposesListContract } from "@vm0/api-contracts/contracts/zero-composes";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import {
@@ -61,7 +64,10 @@ const DEFAULT_COMPOSES_LIST: ComposeListItem[] = [
 
 let mockComposesList: ComposeListItem[] = [...DEFAULT_COMPOSES_LIST];
 const mockEnabledConnectorSlugsByAgent = new Map<string, string[]>();
-const mockEnabledCustomConnectorIdsByAgent = new Map<string, string[]>();
+const mockCustomConnectorGrantsByAgent = new Map<
+  string,
+  AgentCustomConnectorGrant[]
+>();
 
 export function setMockComposesList(composes: ComposeListItem[]): void {
   mockComposesList = composes;
@@ -73,7 +79,7 @@ export function resetMockComposesList(): void {
 
 export function resetMockUserConnectors(): void {
   mockEnabledConnectorSlugsByAgent.clear();
-  mockEnabledCustomConnectorIdsByAgent.clear();
+  mockCustomConnectorGrantsByAgent.clear();
 }
 
 function mockConnectorUpdateResponse(
@@ -87,6 +93,35 @@ function mockConnectorUpdateResponse(
   if (operation === "remove") {
     return current.filter((value) => {
       return !requested.includes(value);
+    });
+  }
+  return [...requested];
+}
+
+function mockCustomConnectorGrantUpdateResponse(
+  current: readonly AgentCustomConnectorGrant[],
+  requested: readonly AgentCustomConnectorGrant[],
+  operation: "replace" | "add" | "remove" | undefined,
+): AgentCustomConnectorGrant[] {
+  if (operation === "add") {
+    const byConnectorId = new Map(
+      current.map((grant) => {
+        return [grant.customConnectorId, grant] as const;
+      }),
+    );
+    for (const grant of requested) {
+      byConnectorId.set(grant.customConnectorId, grant);
+    }
+    return [...byConnectorId.values()];
+  }
+  if (operation === "remove") {
+    const removedIds = new Set(
+      requested.map((grant) => {
+        return grant.customConnectorId;
+      }),
+    );
+    return current.filter((grant) => {
+      return !removedIds.has(grant.customConnectorId);
     });
   }
   return [...requested];
@@ -114,9 +149,8 @@ export const apiAgentsHandlers = [
 
   // GET /api/zero/agents/:id/custom-connectors
   mockApi(zeroAgentCustomConnectorsContract.get, ({ params, respond }) => {
-    return respond(200, {
-      enabledIds: mockEnabledCustomConnectorIdsByAgent.get(params.id) ?? [],
-    });
+    const grants = mockCustomConnectorGrantsByAgent.get(params.id) ?? [];
+    return respond(200, { grants });
   }),
 
   // PUT /api/zero/agents/:id/user-connectors
@@ -136,19 +170,14 @@ export const apiAgentsHandlers = [
   mockApi(
     zeroAgentCustomConnectorsContract.update,
     ({ body, params, respond }) => {
-      const requestedIds =
-        "enabledIds" in body
-          ? body.enabledIds
-          : body.grants.map((grant) => {
-              return grant.customConnectorId;
-            });
-      const enabledIds = mockConnectorUpdateResponse(
-        mockEnabledCustomConnectorIdsByAgent.get(params.id) ?? [],
-        requestedIds,
+      const current = mockCustomConnectorGrantsByAgent.get(params.id) ?? [];
+      const grants = mockCustomConnectorGrantUpdateResponse(
+        current,
+        body.grants,
         body.operation,
       );
-      mockEnabledCustomConnectorIdsByAgent.set(params.id, enabledIds);
-      return respond(200, { enabledIds });
+      mockCustomConnectorGrantsByAgent.set(params.id, grants);
+      return respond(200, { grants });
     },
   ),
 

@@ -7,6 +7,7 @@ import {
   type MemberUsagePack,
   type UsagePackCatalogItem,
 } from "@vm0/api-contracts/contracts/zero-billing";
+import { adAttributionMetadataSchema } from "@vm0/api-contracts/contracts/zero-attribution";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
@@ -14,6 +15,8 @@ import { eq } from "drizzle-orm";
 
 import { optionalEnv } from "../../lib/env";
 import { billingRedirectAllowed } from "../../lib/billing-redirect";
+import { logger } from "../../lib/log";
+import { settle } from "../utils";
 import {
   badRequestMessage,
   conflict,
@@ -23,7 +26,7 @@ import {
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf } from "../context/request";
-import { clerk$ } from "../external/clerk";
+import { clerk$, type ClerkClient } from "../external/clerk";
 import {
   listAllOrganizationMemberships,
   listAllPendingOrganizationInvitations,
@@ -53,9 +56,14 @@ import {
 import {
   confirmUsagePackSubscriptionChange,
   previewUsagePackSubscriptionChange,
+  usagePackMemberAdditionSchemaAvailable,
   usagePackSubscriptionChangeSchemaAvailable,
 } from "../services/usage-pack-plan-change.service";
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
+import {
+  mergeFirstTouchAttribution,
+  parseStoredSignupAttribution,
+} from "../services/acquisition-attribution.service";
 import type { RouteEntry } from "../route-entry";
 
 const adminRequired = Object.freeze({
@@ -87,6 +95,41 @@ const usagePackManagementDisabled = Object.freeze({
     }),
   }),
 });
+
+const SIGNUP_ATTRIBUTION_KEY = "signup_attribution";
+const log = logger("api:zero:billing-checkout");
+
+async function signupAttributionForUser(
+  clerk: ClerkClient,
+  userId: string,
+  signal: AbortSignal,
+): Promise<ReturnType<typeof adAttributionMetadataSchema.parse> | undefined> {
+  const usersResult = await settle(
+    Promise.resolve(
+      clerk.users.getUserList({
+        userId: [userId],
+        limit: 1,
+      }),
+    ),
+    signal,
+  );
+  if (!usersResult.ok) {
+    log.warn("Unable to read Clerk signup attribution for checkout", {
+      userId,
+      error: usersResult.error,
+    });
+    return undefined;
+  }
+
+  const user = usersResult.value?.data?.find((candidate) => {
+    return candidate.id === userId;
+  });
+  return user
+    ? parseStoredSignupAttribution(
+        user.privateMetadata?.[SIGNUP_ATTRIBUTION_KEY],
+      )
+    : undefined;
+}
 
 function memberUsagePackIdsMatch(
   selections: readonly MemberUsagePack[],
@@ -189,6 +232,16 @@ const checkoutAuthed$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
   const { tier, successUrl, cancelUrl, trialDays, adAttribution } =
     bodyResult.data;
+  const clerk = get(clerk$);
+  const storedAttribution = await signupAttributionForUser(
+    clerk,
+    auth.userId,
+    signal,
+  );
+  const resolvedAttribution = mergeFirstTouchAttribution(
+    adAttribution,
+    storedAttribution,
+  );
 
   if (
     !billingRedirectAllowed(successUrl) ||
@@ -249,7 +302,7 @@ const checkoutAuthed$ = command(async ({ get, set }, signal: AbortSignal) => {
       trialDays,
       successUrl,
       cancelUrl,
-      adAttribution,
+      adAttribution: resolvedAttribution,
     },
     signal,
   );
@@ -308,6 +361,16 @@ const usagePackCheckoutAuthed$ = command(
     }
     const { tier, memberUsagePacks, successUrl, cancelUrl, adAttribution } =
       bodyResult.data;
+    const clerk = get(clerk$);
+    const storedAttribution = await signupAttributionForUser(
+      clerk,
+      auth.userId,
+      signal,
+    );
+    const resolvedAttribution = mergeFirstTouchAttribution(
+      adAttribution,
+      storedAttribution,
+    );
 
     if (
       !billingRedirectAllowed(successUrl) ||
@@ -328,7 +391,6 @@ const usagePackCheckoutAuthed$ = command(
     const catalog = await loadUsagePackCatalog();
     signal.throwIfAborted();
 
-    const clerk = get(clerk$);
     const [memberships, invitations] = await Promise.all([
       listAllOrganizationMemberships(clerk.organizations, auth.orgId),
       listAllPendingOrganizationInvitations(clerk.organizations, auth.orgId),
@@ -375,7 +437,7 @@ const usagePackCheckoutAuthed$ = command(
         allocations,
         successUrl,
         cancelUrl,
-        adAttribution,
+        adAttribution: resolvedAttribution,
       },
       signal,
     );
@@ -471,15 +533,21 @@ const usagePackManagementGetAuthed$ = command(
       return access.response;
     }
     const db = get(db$);
-    const [subscriptionSchema, changeSchema] = await Promise.all([
-      usagePackSubscriptionSchemaAvailable(db),
-      usagePackAllocationChangeSchemaAvailable(db),
-    ]);
+    const [subscriptionSchema, changeSchema, memberAdditionSchema] =
+      await Promise.all([
+        usagePackSubscriptionSchemaAvailable(db),
+        usagePackAllocationChangeSchemaAvailable(db),
+        usagePackMemberAdditionSchemaAvailable(db),
+      ]);
     signal.throwIfAborted();
     if (!subscriptionSchema || !changeSchema) {
       return providerUnavailable("Usage pack billing is not ready");
     }
-    const management = await getUsagePackManagement(db, access.auth.orgId);
+    const management = await getUsagePackManagement(
+      db,
+      access.auth.orgId,
+      memberAdditionSchema,
+    );
     signal.throwIfAborted();
     if (!management) {
       return notFound("Usage pack subscription not found");
@@ -639,15 +707,63 @@ const usagePackSubscriptionChangePreviewAuthed$ = command(
       return bodyResult.response;
     }
     const db = set(writeDb$);
-    const [subscriptionSchema, changeSchema, subscriptionChangeSchema] =
-      await Promise.all([
-        usagePackSubscriptionSchemaAvailable(db),
-        usagePackAllocationChangeSchemaAvailable(db),
-        usagePackSubscriptionChangeSchemaAvailable(db),
-      ]);
+    const [
+      subscriptionSchema,
+      changeSchema,
+      subscriptionChangeSchema,
+      memberAdditionSchema,
+    ] = await Promise.all([
+      usagePackSubscriptionSchemaAvailable(db),
+      usagePackAllocationChangeSchemaAvailable(db),
+      usagePackSubscriptionChangeSchemaAvailable(db),
+      usagePackMemberAdditionSchemaAvailable(db),
+    ]);
     signal.throwIfAborted();
     if (!subscriptionSchema || !changeSchema || !subscriptionChangeSchema) {
       return providerUnavailable("Usage pack billing is not ready");
+    }
+    const management = await getUsagePackManagement(db, access.auth.orgId);
+    signal.throwIfAborted();
+    if (!management) {
+      return notFound("Usage pack subscription not found");
+    }
+    const allocatedMemberIds = new Set(
+      management.allocations.map((allocation) => {
+        return allocation.memberId;
+      }),
+    );
+    const addsMember = bodyResult.data.memberUsagePacks.some((selection) => {
+      return !allocatedMemberIds.has(selection.memberId);
+    });
+    if (addsMember) {
+      if (!memberAdditionSchema) {
+        return providerUnavailable("Usage pack member additions are not ready");
+      }
+      const clerk = get(clerk$);
+      const memberships = await listAllOrganizationMemberships(
+        clerk.organizations,
+        access.auth.orgId,
+      );
+      signal.throwIfAborted();
+      const activeMemberIds = memberships.map((membership) => {
+        const memberId = membership.publicUserData?.userId;
+        if (!memberId) {
+          throw new Error(
+            "Clerk organization membership is missing its user ID",
+          );
+        }
+        return memberId;
+      });
+      if (
+        !memberUsagePackIdsMatch(
+          bodyResult.data.memberUsagePacks,
+          activeMemberIds,
+        )
+      ) {
+        return badRequestMessage(
+          "Organization members changed; refresh billing and try again",
+        );
+      }
     }
     const result = await previewUsagePackSubscriptionChange(
       db,

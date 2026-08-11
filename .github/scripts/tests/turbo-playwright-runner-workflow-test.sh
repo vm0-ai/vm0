@@ -4,6 +4,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 WORKFLOW="${REPO_ROOT}/.github/workflows/turbo.yml"
+RUNNER_TESTS="${REPO_ROOT}/e2e/tests/03-runner"
+RUNNER_HELPER="${REPO_ROOT}/e2e/helpers/runner-chat.bash"
 
 fail() {
   echo "FAIL: $1" >&2
@@ -26,5 +28,244 @@ grep -Fq "RUNNER_GROUP: \${{ format('vm0/development-{0}', needs.prepare.outputs
 if grep -Fq 'playwright-staging' "$WORKFLOW"; then
   fail "main Playwright runs must not use a group outside the staging API default"
 fi
+if grep -R -Fq '/api/test/' "$RUNNER_TESTS" "$RUNNER_HELPER"; then
+  fail "runner E2E coverage must use supported public APIs"
+fi
+
+ruby -ryaml - "$WORKFLOW" <<'RUBY'
+workflow = YAML.load_file(ARGV.fetch(0))
+jobs = workflow.fetch("jobs")
+prepare = jobs.fetch("prepare")
+account_prepare = jobs.fetch("cli-e2e-03-runner-prepare")
+bootstrap = jobs.fetch("cli-e2e-03-runner-bootstrap")
+runner = jobs.fetch("cli-e2e-03-runner")
+account_cleanup = jobs.fetch("cli-e2e-03-runner-cleanup")
+
+unless prepare.dig("outputs", "turbo-runner-consumer-needed") ==
+    "${{ steps.runner-e2e.outputs.turbo-runner-consumer-needed }}"
+  raise "Turbo must expose the historical runner E2E consumer decision"
+end
+consumer_step = prepare.fetch("steps").find do |step|
+  step["id"] == "runner-e2e"
+end
+unless consumer_step&.fetch("run", "")&.end_with?("runner-image-context.sh turbo-consumer")
+  raise "Turbo must restore the historical runner E2E consumer detector"
+end
+
+expected_indices = (1..12).to_a
+unless runner.dig("strategy", "fail-fast") == false
+  raise "runner E2E shards must not fail fast"
+end
+unless runner.dig("strategy", "matrix", "index") == expected_indices
+  raise "runner E2E must preserve the historical twelve-shard matrix"
+end
+
+expected_group = "cli-e2e-03-runner-${{ matrix.index }}-${{ needs.prepare.outputs.job-ref }}"
+unless runner.dig("concurrency", "group") == expected_group
+  raise "each runner E2E shard must keep its independent concurrency group"
+end
+
+required_needs = %w[
+  prepare
+  deploy-api
+  deploy-runner-prepare
+  deploy-runner-start
+  cli-e2e-03-runner-prepare
+  cli-e2e-03-runner-bootstrap
+]
+unless required_needs.all? { |job_name| Array(runner["needs"]).include?(job_name) }
+  raise "runner E2E shards must wait for accounts, API, and runner deployment"
+end
+
+unless account_prepare.fetch("if").include?("turbo-runner-consumer-needed == 'true'")
+  raise "runner E2E account preparation must use the runner E2E consumer"
+end
+unless runner.fetch("if").include?("turbo-runner-consumer-needed == 'true'")
+  raise "runner E2E shards must use the runner E2E consumer"
+end
+
+%w[deploy-runner-prepare deploy-runner-start].each do |job_name|
+  condition = jobs.fetch(job_name).fetch("if")
+  unless condition.include?("turbo-runner-consumer-needed == 'true'") &&
+      condition.include?("playwright-runner-consumer-needed == 'true'")
+    raise "#{job_name} must serve both runner E2E and Playwright consumers"
+  end
+end
+
+prepare_step = account_prepare.fetch("steps").find do |step|
+  step["name"] == "Prepare runner E2E accounts"
+end
+raise "missing runner E2E account preparation" unless prepare_step
+unless prepare_step.fetch("run").end_with?("runner-account.ts prepare")
+  raise "runner E2E account preparation must use the shared lifecycle entry point"
+end
+
+unless %w[prepare deploy-api deploy-app].all? do |job_name|
+    Array(account_prepare["needs"]).include?(job_name)
+  end
+  raise "runner E2E account preparation must wait for the API and app previews"
+end
+
+expected_organization_outputs = {
+  "runner-organization-id" => "runner-organization-id",
+  "codex-organization-id" => "codex-organization-id",
+  "claude-organization-id" => "claude-organization-id",
+}
+expected_organization_outputs.each do |job_output, step_output|
+  expected = "${{ steps.account.outputs.#{step_output} }}"
+  unless account_prepare.dig("outputs", job_output) == expected
+    raise "runner E2E account preparation must expose #{job_output}"
+  end
+end
+
+token_step = account_prepare.fetch("steps").find do |step|
+  step["name"] == "Generate runner E2E API tokens"
+end
+raise "missing runner E2E token generation" unless token_step
+unless token_step.fetch("run").end_with?("runner-token.ts /tmp")
+  raise "runner E2E tokens must use the public device-flow entry point"
+end
+unless token_step.dig("env", "ZERO_APP_URL") == "${{ needs.deploy-app.outputs.preview-url }}"
+  raise "runner E2E token generation must use the app preview URL"
+end
+
+upload_step = account_prepare.fetch("steps").find do |step|
+  step["name"] == "Upload runner E2E API tokens"
+end
+raise "missing runner E2E token artifact upload" unless upload_step
+unless upload_step.dig("with", "name") == "e2e-tokens" &&
+    upload_step.dig("with", "retention-days") == 1
+  raise "runner E2E token artifact must retain the historical contract"
+end
+%w[
+  e2e-api-credentials-runner.json
+  e2e-api-credentials-runner-real-codex.json
+  e2e-api-credentials-runner-real-claude.json
+].each do |file_name|
+  unless upload_step.dig("with", "path").include?(file_name)
+    raise "runner E2E token artifact must include #{file_name}"
+  end
+end
+
+unless Array(bootstrap["needs"]).include?("cli-e2e-03-runner-prepare")
+  raise "runner bootstrap must wait for the token artifact"
+end
+bootstrap_steps = bootstrap.fetch("steps")
+unless bootstrap_steps.any? do |step|
+    step["name"] == "Download runner E2E API tokens" &&
+      step.dig("with", "name") == "e2e-tokens"
+  end
+  raise "runner bootstrap must download the token artifact"
+end
+model_defaults_step = bootstrap_steps.find do |step|
+  step["name"] == "Reset runner model defaults"
+end
+raise "missing runner model policy bootstrap" unless model_defaults_step
+model_defaults_script = model_defaults_step.fetch("run")
+unless model_defaults_script.include?("/api/zero/model-policies") &&
+    model_defaults_script.include?("/api/zero/user-model-preference") &&
+    model_defaults_script.include?("deepseek-v4-flash") &&
+    model_defaults_script.include?("gpt-5.6-luna") &&
+    model_defaults_script.include?('{"selectedModel":null,"serviceTier":null}')
+  raise "runner bootstrap must reset the limited-free model defaults"
+end
+%w[claude-opus-4-7 claude-sonnet-4-6 gpt-5.5].each do |restricted_model|
+  if model_defaults_script.include?(restricted_model)
+    raise "runner bootstrap must not select restricted model #{restricted_model}"
+  end
+end
+provider_step = bootstrap_steps.find do |step|
+  step["name"] == "Bootstrap runner mock model provider"
+end
+raise "missing runner mock provider bootstrap" unless provider_step
+unless provider_step.fetch("run").include?(
+    '{"type":"claude-code-oauth-token","secret":"mock-oauth-token-for-e2e"}',
+  )
+  raise "runner bootstrap must restore the historical mock provider"
+end
+
+shard_step = runner.fetch("steps").find do |step|
+  step["name"] == "Initialize runner E2E shard"
+end
+raise "missing runner E2E shard scaffold" unless shard_step
+run_step = runner.fetch("steps").find do |step|
+  step.fetch("name", "").include?("Run runner E2E tests")
+end
+raise "missing runner E2E test execution" unless run_step
+run_script = run_step.fetch("run")
+%w[
+  e2e/tests/03-runner
+  E2E_RUNNER_SHARD_INDEX
+  E2E_RUNNER_SHARD_TOTAL
+  BATS_TEST_TIMEOUT=240
+  ./e2e/test/libs/bats/bin/bats
+].each do |required_fragment|
+  unless run_script.include?(required_fragment)
+    raise "runner E2E test execution must include #{required_fragment}"
+  end
+end
+unless run_step.dig("env", "VERCEL_AUTOMATION_BYPASS_SECRET") ==
+    "${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}"
+  raise "runner E2E tests must receive the preview bypass secret"
+end
+unless runner.fetch("steps").any? do |step|
+    step["name"] == "Download runner E2E API tokens" &&
+      step.dig("with", "name") == "e2e-tokens"
+  end
+  raise "every runner shard must download the token artifact"
+end
+
+cleanup_step = account_cleanup.fetch("steps").find do |step|
+  step["name"] == "Cleanup runner E2E accounts"
+end
+raise "missing runner E2E account cleanup" unless cleanup_step
+unless account_cleanup.fetch("if").include?("always()")
+  raise "runner E2E account cleanup must run after shard failures"
+end
+unless Array(account_cleanup["needs"]).include?("cli-e2e-03-runner")
+  raise "runner E2E account cleanup must wait for every shard"
+end
+unless cleanup_step.fetch("run").end_with?("runner-account.ts cleanup")
+  raise "runner E2E account cleanup must use the shared lifecycle entry point"
+end
+%w[
+  E2E_RUNNER_ORGANIZATION_ID
+  E2E_RUNNER_CODEX_ORGANIZATION_ID
+  E2E_RUNNER_CLAUDE_ORGANIZATION_ID
+].each do |environment_name|
+  unless cleanup_step.fetch("env").key?(environment_name)
+    raise "runner E2E cleanup must receive #{environment_name}"
+  end
+end
+
+gate_needs = Array(jobs.fetch("ci-gate-turbo")["needs"])
+%w[
+  cli-e2e-03-runner-prepare
+  cli-e2e-03-runner-bootstrap
+  cli-e2e-03-runner
+  cli-e2e-03-runner-cleanup
+].each do |job_name|
+  raise "CI gate must include #{job_name}" unless gate_needs.include?(job_name)
+end
+
+gate_step = jobs.fetch("ci-gate-turbo").fetch("steps").find do |step|
+  step["name"] == "Validate CI results"
+end
+raise "missing Turbo CI gate validation" unless gate_step
+gate_script = gate_step.fetch("run")
+unless gate_script.include?("RUNNER_E2E_SKIP_ALLOWED=\"true\"") &&
+    gate_script.include?("needs.prepare.outputs.turbo-runner-consumer-needed")
+  raise "CI gate must restore the runner-specific E2E skip policy"
+end
+%w[
+  cli-e2e-03-runner-prepare
+  cli-e2e-03-runner-bootstrap
+  cli-e2e-03-runner
+  cli-e2e-03-runner-cleanup
+].each do |job_name|
+  expected = "check_result \"#{job_name}\" \"${{ needs.#{job_name}.result }}\" \"$RUNNER_E2E_SKIP_ALLOWED\""
+  raise "CI gate must check #{job_name} with RUNNER_E2E_SKIP_ALLOWED" unless gate_script.include?(expected)
+end
+RUBY
 
 echo "turbo-playwright-runner-workflow-test: ok"

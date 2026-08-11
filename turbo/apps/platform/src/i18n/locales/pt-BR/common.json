@@ -971,6 +971,7 @@
         "changePlan": "Alterar plano",
         "choosePlan": "Escolha um plano",
         "choosePlanDescription": "Escolha primeiro o plano do workspace. Os pacotes dos membros são configurados em seguida.",
+        "concurrentSlots": "Slots simultâneos",
         "configurePackages": "Configurar pacotes dos membros",
         "configurePackagesDescription": "Escolha um pacote obrigatório para cada membro e revise o total mensal combinado.",
         "currentMember": "Membro atual",
@@ -1074,9 +1075,22 @@
       "left": "{{value}} restantes",
       "member": "Membro",
       "neverExpires": "Nunca expira",
+      "orgCredits": "Créditos da organização",
       "unavailable": "Saldo de créditos indisponível.",
       "upgradeDescription": "O Pro inclui créditos mensais e libera outras opções de créditos.",
       "upgradeTitle": "Faça upgrade para o Pro e obtenha mais créditos",
+      "usagePack": {
+        "bonus": "Bônus",
+        "members": "Membros",
+        "membersDescription": "Confira os créditos restantes e as adições de créditos do pacote de cada membro.",
+        "membersTitle": "Créditos dos pacotes dos membros",
+        "nextExpiry": "Próximo vencimento",
+        "purchased": "Comprados",
+        "remaining": "Restante",
+        "title": "Créditos do pacote de uso",
+        "totalRemaining": "Total restante",
+        "viewMembers": "Ver saldos dos membros"
+      },
       "used": "Usado"
     }
   },
@@ -1899,17 +1913,13 @@
     },
     "custom": {
       "connect": {
-        "apiAuthentication": "Autenticação por API",
-        "apiDescription": "Insira o segredo de API fornecido pelo provedor.",
-        "back": "Voltar",
+        "configured": "Configurado",
         "connecting": "Conectando…",
         "continue": "Continuar",
         "continueToProvider": "Continue no provedor para autorizar o acesso.",
         "description": "Seu segredo é criptografado em repouso e injetado nas solicitações de saída pelo firewall. Ele nunca é exposto ao agente como uma variável de ambiente.",
-        "oauthDescription": "Autorize o acesso com o app OAuth do conector.",
         "save": "Salvar",
         "saving": "Salvando…",
-        "secret": "Segredo",
         "title": "Conectar {{connector}}"
       },
       "create": {
@@ -1923,13 +1933,18 @@
         "authorizationUrl": "URL de autorização",
         "clientId": "ID do cliente",
         "clientSecret": "Segredo do cliente",
+        "connectorType": "Tipo de conector",
         "displayName": "Nome de exibição",
         "headerName": "Nome do header",
         "headerTemplate": "Modelo do header",
         "headerTemplateHint": "(deve conter {{placeholder}})",
         "httpBasicAuthentication": "Autenticação HTTP Basic",
+        "httpType": "API HTTP",
         "keepClientSecret": "Deixe o segredo do cliente em branco para manter o valor armazenado.",
         "keepClientSecretPlaceholder": "Deixe em branco para manter o atual",
+        "mcpEndpoint": "Endpoint MCP",
+        "mcpEndpointHint": "(Streamable HTTP, somente HTTPS)",
+        "mcpEndpointPlaceholder": "https://mcp.acme.com/server",
         "newClientSecret": "Novo segredo do cliente",
         "none": "Nenhum",
         "oauthChangesDisconnect": "Alterar as configurações OAuth ou as credenciais do cliente desconecta as conexões OAuth existentes.",
@@ -4485,7 +4500,10 @@
           "action": "Remover do espaço de trabalho",
           "confirmDescription": "{{email}} será removido deste espaço de trabalho e perderá o acesso a todos os recursos.",
           "progress": "Removendo...",
-          "title": "Remover membro?"
+          "title": "Remover membro?",
+          "usagePackImpactDescription": "Os créditos restantes do pacote de uso dessa pessoa ficarão indisponíveis imediatamente. O pacote será removido no fim do período de cobrança atual. Se isso deixar o espaço de trabalho sem nenhum pacote de uso, o plano do espaço de trabalho também será cancelado no fim do período de cobrança.",
+          "usagePackImpactTitle": "Impacto no pacote de uso",
+          "usagePackRefundDescription": "Reembolso: a parte não utilizada dos créditos comprados é devolvida ao método de pagamento original. Créditos consumidos e créditos bônus não são reembolsáveis."
         },
         "revoke": {
           "action": "Revogar convite",
@@ -4507,6 +4525,7 @@
           "progress": "Alterando...",
           "title": "Mudar para membro?"
         },
+        "usagePack": "Pacote de uso",
         "user": "Usuário",
         "you": "Você"
       },

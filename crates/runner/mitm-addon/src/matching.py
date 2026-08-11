@@ -16,6 +16,7 @@ from typing import Literal, NamedTuple
 from urllib.parse import urlsplit
 
 import connector_intent
+import connector_runtime_metadata
 import connector_template_syntax
 from firewall_auth_config import auth_config_injects_ordinary_upstream_credentials
 from firewall_matching import base_url as _firewall_base_url
@@ -182,6 +183,7 @@ class CompiledFirewallCore(NamedTuple):
 class _CompiledFirewall(NamedTuple):
     core: CompiledFirewallCore
     apis: tuple[_CompiledApi, ...]
+    connector_runtime_kind: connector_runtime_metadata.ConnectorRuntimeKind | None
 
     @property
     def name(self) -> str:
@@ -948,9 +950,10 @@ def bind_compiled_firewall_core(
     even when the target list still has a dictionary at that index.
 
     Fields excluded from core compilation may remain shell-local. Builtin reuse currently rebinds
-    generated API ``id`` values and snapshot-owned ``_builtinHostPolicyRuntime`` metadata. Such raw
-    fields remain subject to their own validity and lifecycle contracts; in particular, runtime
-    host-policy metadata must stay paired with the target shell's resolved registry snapshot.
+    generated API ``id`` values, snapshot-owned ``_builtinHostPolicyRuntime`` metadata, and the
+    registry-owned connector candidate kind. Such raw fields remain subject to their own validity
+    and lifecycle contracts; in particular, runtime host-policy metadata must stay paired with the
+    target shell's resolved registry snapshot.
 
     The caller or its cache key must enforce this compatibility before reuse. This function does
     not compare semantic content. It returns ``None`` only when the target ``apis`` value is not a
@@ -972,7 +975,11 @@ def bind_compiled_firewall_core(
 
     if not compiled_apis:
         return None
-    return _CompiledFirewall(core, tuple(compiled_apis))
+    return _CompiledFirewall(
+        core,
+        tuple(compiled_apis),
+        connector_runtime_metadata.connector_runtime_kind(fw_entry),
+    )
 
 
 def compile_firewalls(vm_firewalls: object | None) -> CompiledFirewallSet | None:
@@ -1704,6 +1711,7 @@ def _match_compiled_firewall_request_with_api_candidates(
     is_asterisk_form: bool,
 ) -> FirewallAllow | FirewallPolicyAllow | FirewallBlock | FirewallAmbiguous | None:
     collection = _FirewallMatchCollection()
+    base_matches: list[_MatchedApi] = []
     unsafe_path: bool | None = False if is_asterisk_form else (True if url_has_backslash else None)
     decision_path = "*" if is_asterisk_form else (url_parts.path or "/")
 
@@ -1744,17 +1752,25 @@ def _match_compiled_firewall_request_with_api_candidates(
             base_params,
             block_match,
         )
+        base_matches.append(api_match)
+
+    custom_connector_matches = any(
+        match.firewall.connector_runtime_kind == "custom" for match in base_matches
+    )
+    for api_match in base_matches:
+        if custom_connector_matches and api_match.firewall.connector_runtime_kind == "builtin":
+            continue
         if not collection.accept_api(api_match):
             continue
 
-        if is_asterisk_form or not api_entry.permissions:
+        if is_asterisk_form or not api_match.api.permissions:
             continue
 
-        rel_path_segs = _split_path_segments(rel_path)
+        rel_path_segs = _split_path_segments(api_match.rel_path)
         rule_entries = (
-            _indexed_rule_candidates(api_entry, upper_method, rel_path_segs)
+            _indexed_rule_candidates(api_match.api, upper_method, rel_path_segs)
             if indexed_rules
-            else api_entry.rule_index.all_rules
+            else api_match.api.rule_index.all_rules
         )
         _collect_rule_routes(
             collection=collection,

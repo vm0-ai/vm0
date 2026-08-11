@@ -2103,16 +2103,26 @@ const handleModelCommand$ = command(
       return;
     }
 
-    await set(
+    const updateResult = await set(
       updateUserModelPreference$,
       {
         orgId: args.orgId,
         userId: args.userId,
-        preference: { selectedModel: option.model },
+        preference: { selectedModel: option.model, serviceTier: null },
       },
       signal,
     );
     signal.throwIfAborted();
+    if ("status" in updateResult) {
+      await postTelegramMessage({
+        botToken: args.botToken,
+        chatId,
+        text: formatTelegramCommandError(updateResult.body.error.message),
+        replyToMessageId,
+      });
+      signal.throwIfAborted();
+      return;
+    }
     await postTelegramMessage({
       botToken: args.botToken,
       chatId,

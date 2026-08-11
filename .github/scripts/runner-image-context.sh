@@ -6,7 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 usage() {
   cat <<'USAGE'
-Usage: runner-image-context.sh <resolve|playwright-consumer|crates-consumer|image-inputs|needed|artifact-name>
+Usage: runner-image-context.sh <resolve|turbo-consumer|playwright-consumer|crates-consumer|image-inputs|needed|artifact-name>
 
 resolve:
   Computes release skip, canonical job ref, and head SHA from GitHub event env.
@@ -14,6 +14,10 @@ resolve:
 needed:
   Computes runner image consumer demand and current-image selection from
   explicit workflow selection booleans.
+
+turbo-consumer:
+  Computes whether Turbo runner E2E is a runner image consumer from the same
+  change booleans used by turbo.yml.
 
 playwright-consumer:
   Computes whether Playwright needs a dedicated runner.
@@ -178,6 +182,12 @@ needed() {
     has_metal_hosts="true"
   fi
 
+  local turbo_consumer
+  turbo_consumer=$(bool "${TURBO_RUNNER_CONSUMER_NEEDED:-false}")
+  if [ "$EVENT_NAME" = "push" ]; then
+    turbo_consumer="false"
+  fi
+
   local playwright_consumer
   playwright_consumer=$(bool "${PLAYWRIGHT_RUNNER_CONSUMER_NEEDED:-false}")
 
@@ -196,17 +206,20 @@ needed() {
   local reason="no-runner-image-consumer"
 
   if [ "$release_skip" = "true" ]; then
+    turbo_consumer="false"
     playwright_consumer="false"
     crates_consumer="false"
     image_inputs_changed="false"
     reason="release-skip"
   elif [ "$has_metal_hosts" != "true" ]; then
+    turbo_consumer="false"
     playwright_consumer="false"
     crates_consumer="false"
     image_inputs_changed="false"
     reason="no-metal-hosts"
   else
-    if [ "$playwright_consumer" = "true" ] ||
+    if [ "$turbo_consumer" = "true" ] ||
+      [ "$playwright_consumer" = "true" ] ||
       [ "$crates_consumer" = "true" ]; then
       runner_consumer="true"
     fi
@@ -228,6 +241,7 @@ needed() {
   fi
 
   emit "has-metal-hosts" "$has_metal_hosts"
+  emit "turbo-runner-consumer-needed" "$turbo_consumer"
   emit "playwright-runner-consumer-needed" "$playwright_consumer"
   emit "crates-runner-consumer-needed" "$crates_consumer"
   emit "runner-image-consumer-needed" "$runner_consumer"
@@ -235,6 +249,24 @@ needed() {
   emit "current-runner-image-needed" "$current_image_needed"
   emit "stable-runner-image-allowed" "$stable_image_allowed"
   emit "image-selection-reason" "$reason"
+}
+
+turbo_consumer() {
+  require_env EVENT_NAME
+
+  local consumer="false"
+  if [ "$EVENT_NAME" != "push" ] && {
+    is_true "${WEB_CHANGED:-false}" ||
+    is_true "${API_CHANGED:-false}" ||
+    is_true "${CLI_CHANGED:-false}" ||
+    is_true "${CRATES_CHANGED:-false}" ||
+    is_true "${CI_CHANGED:-false}" ||
+    is_true "${E2E_CHANGED:-false}"
+  }; then
+    consumer="true"
+  fi
+
+  emit "turbo-runner-consumer-needed" "$consumer"
 }
 
 playwright_consumer() {
@@ -297,6 +329,7 @@ artifact_name() {
 cmd="${1:-}"
 case "$cmd" in
   resolve) resolve ;;
+  turbo-consumer) turbo_consumer ;;
   playwright-consumer) playwright_consumer ;;
   crates-consumer) crates_consumer ;;
   image-inputs) image_inputs ;;

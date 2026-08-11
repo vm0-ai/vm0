@@ -12,7 +12,6 @@ import type {
 } from "@vm0/db/jsonb-contracts/chat-slack-context";
 import type { ChatTeamsMessageFiles } from "@vm0/db/jsonb-contracts/chat-teams-context";
 import type { JsonObject } from "@vm0/db/jsonb-contracts/shared";
-import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
@@ -29,17 +28,7 @@ import { chatEvents } from "@vm0/db/schema/chat-event";
 import { checkpoints } from "@vm0/db/schema/checkpoint";
 import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
 import { threadGoals } from "@vm0/db/schema/thread-goal";
-import {
-  and,
-  count,
-  eq,
-  inArray,
-  isNull,
-  like,
-  or,
-  sql,
-  type SQL,
-} from "drizzle-orm";
+import { and, count, eq, inArray, isNull, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
 
 import { db } from "../lib/db";
@@ -55,6 +44,10 @@ import {
   chatInputPromptDispatchCondition,
   runOwnedChatEventForRunCondition,
 } from "../signals/services/zero-chat-event-type.service";
+import {
+  acquireVm0ManagedModelKeyFixture,
+  releaseVm0ManagedModelKeyFixture,
+} from "../signals/services/test-vm0-managed-model-key-fixture.service";
 import { visibleChatEventCondition } from "../signals/services/zero-chat-event-shared.service";
 import { createChatEventSourcePart } from "../signals/services/chat-event-annotation.service";
 import { buildFeishuChatOpenUrl } from "../signals/services/feishu-config";
@@ -62,9 +55,8 @@ import { createUserMessageDocument } from "../signals/services/zero-chat-user-me
 import { createDeferredPromise, onRejection } from "../signals/utils";
 
 /**
- * BDD-scoped vm0 managed key prefixes. Fixture writes below only ever touch
- * rows whose api_key carries one of these prefixes, so concurrent test files
- * cannot clobber real seed data or each other's non-bdd rows.
+ * BDD-scoped vm0 managed key prefixes. Fixture acquisition below only accepts
+ * keys carrying one of these prefixes.
  */
 const VM0_BDD_API_KEY_PREFIXES = [
   "vm0-key-bdd-fake-",
@@ -810,7 +802,7 @@ export async function replayPendingChatInputQueueEventFixture(args: {
 }
 
 /**
- * Move one exact workflow event into historical state without waiting for real
+ * Move one exact automation event into historical state without waiting for real
  * time to pass. A string preserves PostgreSQL precision beyond JavaScript
  * milliseconds. Product APIs cannot construct an already-stale queue item.
  */
@@ -882,6 +874,45 @@ export async function completeRunWithoutCallbacksFixture(args: {
     .returning({ id: agentRuns.id });
   if (updated.length !== 1) {
     throw new Error("Expected one running run to complete without callbacks");
+  }
+}
+
+/**
+ * Mark one claimed run timed out without completing its terminal side effects.
+ * This isolates the interval where cleanup has recorded uncertainty but the
+ * Runner has not yet reported process exit and teardown through `/complete`.
+ */
+export async function timeoutRunWithoutCallbacksFixture(args: {
+  readonly runId: string;
+}): Promise<void> {
+  const updated = await db()
+    .update(agentRuns)
+    .set({
+      status: "timeout",
+      completedAt: nowDate(),
+      error: "Run timed out (no heartbeat)",
+    })
+    .where(and(eq(agentRuns.id, args.runId), eq(agentRuns.status, "running")))
+    .returning({ id: agentRuns.id });
+  if (updated.length !== 1) {
+    throw new Error("Expected one running run to time out without callbacks");
+  }
+}
+
+/** Create a terminal source that predates runner-process identity tracking. */
+export async function completeRunWithoutRunnerIdentityFixture(args: {
+  readonly runId: string;
+}): Promise<void> {
+  const completedAt = nowDate();
+  const updated = await db()
+    .update(agentRuns)
+    .set({ status: "completed", completedAt })
+    .where(and(eq(agentRuns.id, args.runId), eq(agentRuns.status, "pending")))
+    .returning({ id: agentRuns.id });
+  if (updated.length !== 1) {
+    throw new Error(
+      "Expected one pending run to complete without runner identity",
+    );
   }
 }
 
@@ -1220,57 +1251,51 @@ async function pidIsBlocked(waiterPid: number): Promise<boolean> {
   return rows[0]?.blocked ?? false;
 }
 
-function bddVm0ApiKeyFilter(vendor: string) {
-  const [fakePrefix, devSeedPrefix] = VM0_BDD_API_KEY_PREFIXES;
-  return and(
-    eq(vm0ApiKeys.vendor, vendor),
-    or(
-      like(vm0ApiKeys.apiKey, `${fakePrefix}%`),
-      like(vm0ApiKeys.apiKey, `${devSeedPrefix}%`),
-    ),
-  );
-}
-
 /**
- * Replaces the bdd-scoped row of the platform-managed vm0 API key pool for one
- * vendor.
+ * Acquires bdd-scoped ownership of the platform-managed vm0 API key pool for
+ * one vendor.
  *
  * Why product APIs cannot construct this state: vm0_api_keys is a
  * platform-operations table with no product write surface — keys are
  * provisioned out of band. Keys passed here must carry a
- * VM0_BDD_API_KEY_PREFIXES prefix so only bdd rows are touched.
+ * VM0_BDD_API_KEY_PREFIXES prefix. The shared fixture service atomically
+ * arbitrates the vendor-unique row and prevents one test owner from deleting
+ * another owner's key.
  */
-export async function replaceBddVm0ApiKey(args: {
+export async function acquireBddVm0ApiKey(args: {
+  readonly fixtureId: string;
   readonly vendor: string;
   readonly apiKey: string;
-  readonly label: string;
-}): Promise<void> {
+}): Promise<string> {
   const scoped = VM0_BDD_API_KEY_PREFIXES.some((prefix) => {
     return args.apiKey.length > prefix.length && args.apiKey.startsWith(prefix);
   });
   if (!scoped) {
     throw new Error(
-      `replaceBddVm0ApiKey: api key must start with one of ${VM0_BDD_API_KEY_PREFIXES.join(", ")}`,
+      `acquireBddVm0ApiKey: api key must start with one of ${VM0_BDD_API_KEY_PREFIXES.join(", ")}`,
     );
   }
-  await db().transaction(async (tx) => {
-    await tx.delete(vm0ApiKeys).where(bddVm0ApiKeyFilter(args.vendor));
-    await tx.insert(vm0ApiKeys).values({
-      vendor: args.vendor,
-      apiKey: args.apiKey,
-      label: args.label,
-    });
-  });
+  const [acquired] = await acquireVm0ManagedModelKeyFixture(
+    db(),
+    args.fixtureId,
+    [
+      {
+        vendor: args.vendor,
+        apiKey: args.apiKey,
+      },
+    ],
+  );
+  if (!acquired) {
+    throw new Error(`Expected VM0 managed key for vendor: ${args.vendor}`);
+  }
+  return acquired.apiKey;
 }
 
-/**
- * Deletes the bdd-scoped row of the platform-managed vm0 API key pool for one
- * vendor. See replaceBddVm0ApiKey for why no product API exists.
- */
-export async function deleteBddVm0ApiKey(args: {
-  readonly vendor: string;
+/** Releases only this bdd fixture's ownership of its vendor key. */
+export async function releaseBddVm0ApiKey(args: {
+  readonly fixtureId: string;
 }): Promise<void> {
-  await db().delete(vm0ApiKeys).where(bddVm0ApiKeyFilter(args.vendor));
+  await releaseVm0ManagedModelKeyFixture(db(), args.fixtureId);
 }
 
 /**

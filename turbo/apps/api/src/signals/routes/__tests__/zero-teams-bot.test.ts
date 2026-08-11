@@ -1832,7 +1832,7 @@ describe("POST /api/zero/teams/bot", () => {
         text: "",
         value: {
           zeroTeamsAction: "switch_model",
-          selectedModel: "claude-sonnet-4-6",
+          selectedModel: "claude-sonnet-5",
         },
       }),
       token: teamsToken(),
@@ -1844,7 +1844,7 @@ describe("POST /api/zero/teams/bot", () => {
       activity: {
         value: {
           zeroTeamsAction: "switch_model",
-          selectedModel: "claude-sonnet-4-6",
+          selectedModel: "claude-sonnet-5",
         },
       },
     });
@@ -1852,7 +1852,7 @@ describe("POST /api/zero/teams/bot", () => {
     await expect(
       userConfigApi.readModelPreference(actor),
     ).resolves.toMatchObject({
-      selectedModel: "claude-sonnet-4-6",
+      selectedModel: "claude-sonnet-5",
     });
 
     expect(outboundRequests).toHaveLength(6);
@@ -1927,8 +1927,8 @@ describe("POST /api/zero/teams/bot", () => {
                 id: "selectedModel",
                 choices: expect.arrayContaining([
                   expect.objectContaining({
-                    title: expect.stringContaining("Claude Sonnet 4.6"),
-                    value: "claude-sonnet-4-6",
+                    title: expect.stringContaining("Claude Sonnet 5"),
+                    value: "claude-sonnet-5",
                   }),
                 ]),
               }),
@@ -1950,7 +1950,7 @@ describe("POST /api/zero/teams/bot", () => {
     });
     expect(outboundRequests[5]?.body).toMatchObject({
       type: "message",
-      text: expect.stringContaining("Claude Sonnet 4.6"),
+      text: expect.stringContaining("Claude Sonnet 5"),
     });
 
     outboundRequests.splice(0, outboundRequests.length);
@@ -2022,7 +2022,7 @@ describe("POST /api/zero/teams/bot", () => {
     });
     await runsApi.updateOrgModelPolicies(actor, [
       {
-        model: "claude-sonnet-4-6",
+        model: "claude-sonnet-5",
         isDefault: true,
         defaultProviderType: "anthropic-api-key",
         credentialScope: "org",

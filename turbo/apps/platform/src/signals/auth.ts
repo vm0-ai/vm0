@@ -2,7 +2,11 @@ import { Clerk } from "@clerk/clerk-js";
 import { ui } from "@clerk/ui";
 import { command, computed, state } from "ccstate";
 import { clearSentryUser, setSentryUser } from "../lib/sentry.ts";
-import { clearPostHogUser, setPostHogUser } from "../lib/posthog.ts";
+import {
+  clearPostHogUser,
+  setPostHogOrganization,
+  setPostHogUser,
+} from "../lib/posthog.ts";
 import { appendCapturedPreviewBypassToUrl } from "../lib/preview-bypass-cookie.ts";
 import {
   derivePlatformServiceOrigin,
@@ -41,6 +45,8 @@ const AD_ATTRIBUTION_PARAMS = [
   "utm_source",
   "utm_medium",
   "utm_campaign",
+  "vm0_campaign_id",
+  "vm0_ad_group_id",
   "utm_content",
   "utm_term",
   "vm0_experiment",
@@ -54,6 +60,8 @@ const AD_TRAFFIC_MARKERS = [
   "wbraid",
   "utm_source",
   "utm_campaign",
+  "vm0_campaign_id",
+  "vm0_ad_group_id",
 ] as const;
 
 const HTTP_URL_PREFIX_REGEX = /^https?:\/\//i;
@@ -389,6 +397,7 @@ export const setupClerk$ = command(
         name: clerk.user.fullName ?? undefined,
       });
     }
+    setPostHogOrganization(clerk.organization?.id);
 
     // Track the user ID so we only trigger a reload on actual auth state
     // changes (sign-in / sign-out), not on token refreshes which fire the
@@ -403,6 +412,7 @@ export const setupClerk$ = command(
           email: clerk.user.primaryEmailAddress?.emailAddress,
           name: clerk.user.fullName ?? undefined,
         });
+        setPostHogOrganization(clerk.organization?.id);
       } else {
         clearSentryUser();
         clearPostHogUser();
@@ -451,6 +461,7 @@ export const watchOrgSwitch$ = command(async ({ get }, signal: AbortSignal) => {
   const currentOrgId = clerk.organization?.id ?? undefined;
   prevOrgId = currentOrgId;
   persistOrgId(currentOrgId);
+  setPostHogOrganization(currentOrgId);
 
   // Listener stays `() => void`: Clerk's `ListenerCallback` signature
   // is not awaited, and returning a promise from it would trip
@@ -469,6 +480,7 @@ export const watchOrgSwitch$ = command(async ({ get }, signal: AbortSignal) => {
       }
       prevOrgId = newOrgId;
       persistOrgId(newOrgId);
+      setPostHogOrganization(newOrgId);
 
       await bestEffort(
         (async () => {

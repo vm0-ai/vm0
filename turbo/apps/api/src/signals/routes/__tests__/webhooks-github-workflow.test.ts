@@ -582,7 +582,7 @@ describe("POST /api/webhooks/github for workflow automations", () => {
     const listedRuns = await runsApi.listAgentRuns(actor, { limit: 20 });
     const admittedRunId = listedRuns.runs[0]?.id;
     if (!admittedRunId || listedRuns.runs.length !== 1) {
-      throw new Error("Expected an admitted workflow event run");
+      throw new Error("Expected an admitted automation event run");
     }
     await runsApi.claimRunnerJob(admittedRunId);
 
@@ -606,21 +606,22 @@ describe("POST /api/webhooks/github for workflow automations", () => {
       for (const actionType of [
         "api_dispatch_pre_create_zero_workflow_automation_entrypoint_gap",
         "api_dispatch_pre_create_zero_workflow_automation_queue_admission",
-        "api_dispatch_pre_create_zero_workflow_event_background_start_gap",
-        "api_dispatch_pre_create_zero_workflow_event_load_source_state",
-        "api_dispatch_pre_create_zero_workflow_event_load_automations",
-        "api_dispatch_pre_create_zero_workflow_event_match_automations",
-        "api_dispatch_pre_create_zero_workflow_event_record_processed_event",
-        "api_dispatch_pre_create_zero_workflow_event_build_run_input",
-        "api_dispatch_pre_create_zero_workflow_event_handoff_run",
+        "api_dispatch_pre_create_zero_automation_event_background_start_gap",
+        "api_dispatch_pre_create_zero_automation_event_load_source_state",
+        "api_dispatch_pre_create_zero_automation_event_load_automations",
+        "api_dispatch_pre_create_zero_automation_event_match_automations",
+        "api_dispatch_pre_create_zero_automation_event_record_processed_event",
+        "api_dispatch_pre_create_zero_automation_event_build_run_input",
+        "api_dispatch_pre_create_zero_automation_event_handoff_run",
       ]) {
         expect(actionTypes).toContain(actionType);
       }
       expect(timingEvents).toStrictEqual(
         expect.arrayContaining([
           expect.objectContaining({
-            op_type: "api_dispatch_pre_create_zero_workflow_event_handoff_run",
-            workflow_event_source: "github",
+            op_type:
+              "api_dispatch_pre_create_zero_automation_event_handoff_run",
+            automation_event_source: "github",
             trigger_source: "automation-event",
             zero_run_origin: "workflow_automation",
             span_kind: "nested",
@@ -728,14 +729,14 @@ describe("POST /api/webhooks/github for workflow automations", () => {
       version: 1,
       parts: [
         ...admittedEvent.userMessage.parts,
-        { type: "model", selectedModel: "claude-sonnet-4-6" },
+        { type: "model", selectedModel: "claude-sonnet-5" },
       ],
     });
     expect(chatEventDisplayText(claimedEvent)).toBe(displayPrompt);
     const claim = await runsApi.claimRunnerJob(runId);
     const zeroToken = claim.environment?.ZERO_TOKEN;
     if (!zeroToken) {
-      throw new Error("Expected the workflow event run to expose ZERO_TOKEN");
+      throw new Error("Expected the automation event run to expose ZERO_TOKEN");
     }
     expect(verifyZeroToken(zeroToken)?.capabilities).toContain(
       "goal:user-control:write",

@@ -950,6 +950,7 @@
         "changePlan": "प्लान बदलें",
         "choosePlan": "प्लान चुनें",
         "choosePlanDescription": "पहले वर्कस्पेस प्लान चुनें। सदस्य पैकेज अगले चरण में कॉन्फ़िगर किए जाते हैं।",
+        "concurrentSlots": "समवर्ती स्लॉट",
         "configurePackages": "सदस्य पैकेज कॉन्फ़िगर करें",
         "configurePackagesDescription": "हर सदस्य के लिए एक आवश्यक पैकेज चुनें, फिर संयुक्त मासिक कुल की समीक्षा करें।",
         "currentMember": "मौजूदा सदस्य",
@@ -1052,9 +1053,22 @@
       "left": "{{value}} शेष",
       "member": "सदस्य",
       "neverExpires": "कभी समाप्त नहीं होता",
+      "orgCredits": "संगठन क्रेडिट",
       "unavailable": "क्रेडिट शेष अनुपलब्ध.",
       "upgradeDescription": "प्रो में मासिक क्रेडिट शामिल है और अतिरिक्त क्रेडिट विकल्प अनलॉक करता है।",
       "upgradeTitle": "अधिक क्रेडिट प्राप्त करने के लिए प्रो में अपग्रेड करें",
+      "usagePack": {
+        "bonus": "बोनस",
+        "members": "सदस्य",
+        "membersDescription": "हर सदस्य के बचे हुए उपयोग पैक क्रेडिट और क्रेडिट जोड़ देखें।",
+        "membersTitle": "सदस्यों के उपयोग पैक क्रेडिट",
+        "nextExpiry": "अगली समाप्ति",
+        "purchased": "खरीदे गए",
+        "remaining": "शेष",
+        "title": "उपयोग पैक क्रेडिट",
+        "totalRemaining": "कुल शेष",
+        "viewMembers": "सदस्य बैलेंस देखें"
+      },
       "used": "इस्तेमाल किया गया"
     }
   },
@@ -1859,17 +1873,13 @@
     },
     "custom": {
       "connect": {
-        "apiAuthentication": "API प्रमाणीकरण",
-        "apiDescription": "प्रोवाइडर द्वारा जारी API रहस्य दर्ज करें।",
-        "back": "पीछे",
+        "configured": "कॉन्फ़िगर किया गया",
         "connecting": "कनेक्ट हो रहा है...",
         "continue": "जारी रखना",
         "continueToProvider": "पहुंच को अधिकृत करने के लिए प्रोवाइडर के पास जाना जारी रखें।",
         "description": "आपका रहस्य आराम से एन्क्रिप्ट किया गया है और फ़ायरवॉल द्वारा आउटबाउंड अनुरोधों में इंजेक्ट किया गया है। यह कभी भी पर्यावरण चर के रूप में एजेंट के सामने उजागर नहीं होता है।",
-        "oauthDescription": "कनेक्टर के OAuth ऐप से पहुंच अधिकृत करें।",
         "save": "सहेजें",
         "saving": "सहेजा जा रहा है...",
-        "secret": "गुप्त",
         "title": "{{connector}} कनेक्ट करें"
       },
       "create": {
@@ -1883,13 +1893,18 @@
         "authorizationUrl": "प्राधिकरण URL",
         "clientId": "ग्राहक ID",
         "clientSecret": "ग्राहक रहस्य",
+        "connectorType": "कनेक्टर प्रकार",
         "displayName": "प्रदर्शित होने वाला नाम",
         "headerName": "शीर्षलेख नाम",
         "headerTemplate": "हेडर टेम्पलेट",
         "headerTemplateHint": "({{placeholder}} शामिल होना चाहिए)",
         "httpBasicAuthentication": "HTTP बुनियादी प्रमाणीकरण",
+        "httpType": "HTTP API",
         "keepClientSecret": "संग्रहीत मूल्य को बनाए रखने के लिए क्लाइंट सीक्रेट को खाली छोड़ दें।",
         "keepClientSecretPlaceholder": "चालू रखने के लिए खाली छोड़ें",
+        "mcpEndpoint": "MCP एंडपॉइंट",
+        "mcpEndpointHint": "(Streamable HTTP, केवल HTTPS)",
+        "mcpEndpointPlaceholder": "https://mcp.acme.com/server",
         "newClientSecret": "नए ग्राहक का रहस्य",
         "none": "कोई नहीं",
         "oauthChangesDisconnect": "OAuth सेटिंग्स या क्लाइंट क्रेडेंशियल बदलने से मौजूदा OAuth कनेक्शन डिस्कनेक्ट हो जाते हैं।",
@@ -4434,7 +4449,10 @@
           "action": "वर्कस्पेस से हटाएँ",
           "confirmDescription": "{{email}} को इस वर्कस्पेस से हटा दिया जाएगा और सभी संसाधनों तक पहुंच खो दी जाएगी।",
           "progress": "हटाया जा रहा है...",
-          "title": "सदस्य हटाएँ?"
+          "title": "सदस्य हटाएँ?",
+          "usagePackImpactDescription": "उनके उपयोग पैक के बचे हुए क्रेडिट तुरंत अनुपलब्ध हो जाएंगे। पैक मौजूदा बिलिंग अवधि के अंत में हटा दिया जाएगा। यदि इसके बाद वर्कस्पेस में कोई उपयोग पैक नहीं बचता, तो वर्कस्पेस प्लान भी बिलिंग अवधि के अंत में रद्द कर दिया जाएगा।",
+          "usagePackImpactTitle": "उपयोग पैक पर प्रभाव",
+          "usagePackRefundDescription": "रिफ़ंड: खरीदे गए लेकिन इस्तेमाल न हुए क्रेडिट का हिस्सा मूल भुगतान विधि पर वापस किया जाएगा। इस्तेमाल किए गए क्रेडिट और बोनस क्रेडिट वापस नहीं किए जाते।"
         },
         "revoke": {
           "action": "आमंत्रण रद्द करें",
@@ -4456,6 +4474,7 @@
           "progress": "स्विच किया जा रहा है...",
           "title": "सदस्य पर स्विच करें?"
         },
+        "usagePack": "उपयोग पैक",
         "user": "उपयोगकर्ता",
         "you": "आप"
       },

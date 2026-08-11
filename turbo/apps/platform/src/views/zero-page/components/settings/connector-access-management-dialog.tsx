@@ -5,11 +5,13 @@ import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
 import { SlidersHorizontal, Loader2, Search, X } from "lucide-react";
 import {
+  Button,
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
+  Input,
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -18,7 +20,7 @@ import {
 } from "@vm0/ui";
 import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
 import type {
-  CustomConnectorHttpResponse,
+  CustomConnectorClientResponse,
   CustomConnectorPermissionBundleResponse,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import type { PlatformConnectorPermissionMetadata } from "../../../../signals/connector-domain.ts";
@@ -106,7 +108,7 @@ function ConnectorAccessSearch({
         size={15}
         className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2"
       />
-      <input
+      <Input
         value={value}
         onChange={(event) => {
           onChange(event.currentTarget.value);
@@ -117,7 +119,7 @@ function ConnectorAccessSearch({
         placeholder={t(($) => {
           return $.connectors.access.search;
         })}
-        className="h-9 w-full rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-input pl-9 pr-9 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-[3px] focus:ring-primary/10"
+        className="pl-9 pr-9"
       />
       {value && (
         <button
@@ -141,6 +143,7 @@ function AgentAccessRow({
   row,
   connectorLabel,
   hasPermissions,
+  allowAccessIncrease,
   saving,
   onToggle,
   onManage,
@@ -148,6 +151,7 @@ function AgentAccessRow({
   readonly row: ConnectorAgentAccessRow;
   readonly connectorLabel: string;
   readonly hasPermissions: boolean;
+  readonly allowAccessIncrease: boolean;
   readonly saving: boolean;
   readonly onToggle: (
     row: ConnectorAgentAccessRow,
@@ -173,7 +177,7 @@ function AgentAccessRow({
         <TooltipProvider delayDuration={200}>
           <Tooltip>
             <TooltipTrigger asChild>
-              <button
+              <Button
                 type="button"
                 onClick={() => {
                   onManage(row);
@@ -184,10 +188,12 @@ function AgentAccessRow({
                   },
                   { connector: connectorLabel, agent: name },
                 )}
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
+                variant="quiet"
+                size="icon-sm"
+                className="shrink-0"
               >
                 <SlidersHorizontal size={16} />
-              </button>
+              </Button>
             </TooltipTrigger>
             <TooltipContent>
               {t(($) => {
@@ -200,6 +206,7 @@ function AgentAccessRow({
       <LoadingSwitch
         checked={row.authorized}
         loading={saving}
+        disabled={!row.authorized && !allowAccessIncrease}
         onCheckedChange={(checked) => {
           onToggle(row, checked);
         }}
@@ -228,6 +235,7 @@ function AgentAccessList({
   rows,
   connectorLabel,
   hasPermissions,
+  allowAccessIncrease,
   savingAgentId,
   search,
   onToggle,
@@ -236,6 +244,7 @@ function AgentAccessList({
   readonly rows: readonly ConnectorAgentAccessRow[];
   readonly connectorLabel: string;
   readonly hasPermissions: boolean;
+  readonly allowAccessIncrease: boolean;
   readonly savingAgentId: string | null;
   readonly search: string;
   readonly onToggle: (
@@ -271,6 +280,7 @@ function AgentAccessList({
             row={row}
             connectorLabel={connectorLabel}
             hasPermissions={hasPermissions}
+            allowAccessIncrease={allowAccessIncrease}
             saving={savingAgentId === row.agent.id}
             onToggle={onToggle}
             onManage={onManage}
@@ -300,6 +310,7 @@ function ConnectorAccessDialog({
   rows,
   rowsLoaded,
   hasPermissions,
+  allowAccessIncrease = true,
   savingAgentId,
   search,
   onSearchChange,
@@ -312,6 +323,7 @@ function ConnectorAccessDialog({
   readonly rows: readonly ConnectorAgentAccessRow[];
   readonly rowsLoaded: boolean;
   readonly hasPermissions: boolean;
+  readonly allowAccessIncrease?: boolean;
   readonly savingAgentId: string | null;
   readonly search: string;
   readonly onSearchChange: (value: string) => void;
@@ -369,6 +381,7 @@ function ConnectorAccessDialog({
               rows={rows}
               connectorLabel={connectorLabel}
               hasPermissions={hasPermissions}
+              allowAccessIncrease={allowAccessIncrease}
               savingAgentId={savingAgentId}
               search={search}
               onToggle={onToggle}
@@ -543,7 +556,9 @@ function customConnectorAccessRows(
   return authorizations.map(({ agent, access }) => {
     return {
       agent,
-      authorized: access.enabledIds.includes(connectorId),
+      authorized: access.grants.some((grant) => {
+        return grant.customConnectorId === connectorId;
+      }),
       grants: [],
     };
   });
@@ -557,7 +572,7 @@ function customConnectorPermissionNamesByAgentId(
     authorizations.map(({ agent, access }) => {
       return [
         agent.id,
-        access.grants?.find((grant) => {
+        access.grants.find((grant) => {
           return grant.customConnectorId === connectorId;
         })?.permissionNames ?? [],
       ] as const;
@@ -576,7 +591,7 @@ function CustomConnectorAccessPermissionsDrawer({
 }: {
   readonly draft: CustomConnectorPermissionDraft | null;
   readonly agent: TeamComposeItem | undefined;
-  readonly connector: CustomConnectorHttpResponse;
+  readonly connector: CustomConnectorClientResponse;
   readonly bundle: CustomConnectorPermissionBundleResponse | null;
   readonly loading: boolean;
   readonly loadError: boolean;
@@ -602,7 +617,7 @@ function CustomConnectorAccessPermissionsDrawer({
 }
 
 function useCustomConnectorAuthorization(
-  connector: CustomConnectorHttpResponse,
+  connector: CustomConnectorClientResponse,
   onPermissionRequired: (row: ConnectorAgentAccessRow) => void,
 ) {
   const { t } = useTranslation();
@@ -634,6 +649,7 @@ function useCustomConnectorAuthorization(
             {
               agentId: row.agent.id,
               connectorId: connector.id,
+              permissionBundleRef: connector.permissionBundleRef ?? null,
               authorized,
             },
             pageSignal,
@@ -666,9 +682,11 @@ function useCustomConnectorAuthorization(
 
 export function CustomConnectorAccessManagementDialog({
   connector,
+  allowAccessIncrease,
   onClose,
 }: {
-  readonly connector: CustomConnectorHttpResponse;
+  readonly connector: CustomConnectorClientResponse;
+  readonly allowAccessIncrease: boolean;
   readonly onClose: () => void;
 }) {
   const authorizationsLoadable = useLastLoadable(
@@ -743,6 +761,7 @@ export function CustomConnectorAccessManagementDialog({
         rows={filterRows(rows, search)}
         rowsLoaded={rowsLoaded}
         hasPermissions={Boolean(connector.permissionBundleRef)}
+        allowAccessIncrease={allowAccessIncrease}
         savingAgentId={savingAgentId}
         search={search}
         onSearchChange={setSearch}

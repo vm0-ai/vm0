@@ -443,7 +443,7 @@ async function dispatchGithubAutomationEvent(args: {
   readonly startRun: () => Promise<"ok" | "error">;
 }): Promise<"dispatched" | "duplicate" | { readonly kind: "run_error" }> {
   const processedId = await args.timing.measure(
-    "api_dispatch_pre_create_zero_workflow_event_record_processed_event",
+    "api_dispatch_pre_create_zero_automation_event_record_processed_event",
     async () => {
       return await insertGithubProcessedEvent(args);
     },
@@ -472,7 +472,7 @@ const startGithubWorkflowRun$ = command(
     signal: AbortSignal,
   ): Promise<"ok" | "error"> => {
     const runInput = await args.timing.measure(
-      "api_dispatch_pre_create_zero_workflow_event_build_run_input",
+      "api_dispatch_pre_create_zero_automation_event_build_run_input",
       () => {
         const context = githubLabelTriggerContext(args);
         return { context };
@@ -577,7 +577,7 @@ const dispatchMatchedGithubAutomations$ = command(
     for (const automation of args.automations) {
       const runTiming = args.sourceTiming.createRunTiming();
       const matchedLabelName = await runTiming.measure(
-        "api_dispatch_pre_create_zero_workflow_event_match_automations",
+        "api_dispatch_pre_create_zero_automation_event_match_automations",
         async () => {
           return await matchedLabelForAutomation(
             {
@@ -677,14 +677,14 @@ export const dispatchGithubLabelWorkflowAutomations$ = command(
     );
     if (args.backgroundScheduledAt !== undefined) {
       sourceTiming.recordElapsed(
-        "api_dispatch_pre_create_zero_workflow_event_background_start_gap",
+        "api_dispatch_pre_create_zero_automation_event_background_start_gap",
         args.backgroundScheduledAt,
       );
     }
 
     const db = set(writeDb$);
     const installationRecord = await sourceTiming.measure(
-      "api_dispatch_pre_create_zero_workflow_event_load_source_state",
+      "api_dispatch_pre_create_zero_automation_event_load_source_state",
       async () => {
         return await findActiveInstallation({
           db,
@@ -694,7 +694,7 @@ export const dispatchGithubLabelWorkflowAutomations$ = command(
     );
     signal.throwIfAborted();
     if (!installationRecord) {
-      log.debug("Ignoring GitHub workflow event for unbound installation", {
+      log.debug("Ignoring GitHub automation event for unbound installation", {
         action,
         installationId: String(installation.id),
         repo: repository.full_name,
@@ -703,7 +703,7 @@ export const dispatchGithubLabelWorkflowAutomations$ = command(
     }
 
     const automations = await sourceTiming.measure(
-      "api_dispatch_pre_create_zero_workflow_event_load_automations",
+      "api_dispatch_pre_create_zero_automation_event_load_automations",
       async () => {
         return await loadGithubLabelEventAutomations(
           {

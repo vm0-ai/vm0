@@ -47,13 +47,13 @@ import {
   type OrgMember,
 } from "../../../../signals/external/org-members.ts";
 import {
+  managedUsagePackSelection,
   memberUsageSelections$,
   MINIMUM_USAGE_PACK_USD,
   selectedUsagePackPlan$,
   setMemberUsageSelection$,
   setMemberUsageSelections$,
   setSelectedUsagePackPlan$,
-  USAGE_PACKS_USD,
   usagePackSubscriptionChangePreview$,
   usagePackPricingPageRef$,
   type MemberUsageSelection,
@@ -62,6 +62,10 @@ import {
 } from "../../../../signals/zero-page/settings/usage-pack-pricing-state.ts";
 import { detach, Reason } from "../../../../signals/utils.ts";
 import { planProImg, planTeamImg } from "../../platform-assets.ts";
+import {
+  parseUsagePackOption,
+  usagePackOptionLabel,
+} from "./usage-pack-options.ts";
 
 interface UsagePackPlan {
   readonly tier: UsagePackPlanTier;
@@ -149,6 +153,10 @@ function planName(tier: UsagePackPlanTier): string {
       });
 }
 
+function planConcurrentSlots(tier: UsagePackPlanTier): number {
+  return tier === "pro" ? 2 : 10;
+}
+
 function formatBillingDate(value: string): string {
   return new Date(value).toLocaleDateString(currentLocale(), {
     month: "short",
@@ -208,37 +216,6 @@ function usagePackCatalogItem(
   return item;
 }
 
-function usagePackDiscountPercent(item: UsagePackCatalogItem): number {
-  return Math.round((item.bonusCredits / item.totalCredits) * 100);
-}
-
-function usageSelectionLabel(
-  selection: MemberUsageSelection,
-  catalog: readonly UsagePackCatalogItem[],
-): string {
-  const item = usagePackCatalogItem(catalog, selection);
-  return i18n.t(
-    ($) => {
-      return $.billing.plans.usagePacks.packOption;
-    },
-    {
-      credits: formatLocalizedNumber(item.totalCredits),
-      discount: usagePackDiscountPercent(item),
-      price: formatUsd(item.priceUsd, 0),
-    },
-  );
-}
-
-function parseUsageSelection(value: string): MemberUsageSelection {
-  const pack = USAGE_PACKS_USD.find((candidate) => {
-    return String(candidate) === value;
-  });
-  if (pack === undefined) {
-    throw new Error(`Unknown member usage selection: ${value}`);
-  }
-  return pack;
-}
-
 function memberUsageSelection(
   selections: Readonly<Record<string, MemberUsageSelection>>,
   memberId: string,
@@ -271,25 +248,15 @@ function memberUsageTotals(
   );
 }
 
-type ManagedUsagePackAllocation =
-  UsagePackManagementResponse["allocations"][number];
-
-function managedUsagePackSelection(
-  allocation: ManagedUsagePackAllocation,
-): UsagePackUsd {
-  const pendingChange = allocation.pendingChange;
-  return pendingChange?.kind === "downgrade" &&
-    pendingChange.status === "scheduled" &&
-    pendingChange.targetUsagePackUsd !== null
-    ? pendingChange.targetUsagePackUsd
-    : allocation.usagePackUsd;
-}
-
 function managedMemberUsageTotals(
   management: UsagePackManagementResponse,
+  members: readonly MemberDisplay[] | undefined,
   catalog: readonly UsagePackCatalogItem[],
 ): MemberUsageTotals {
-  return management.allocations.reduce<MemberUsageTotals>(
+  const allocations = members
+    ? managedAllocationsForMembers(management, members)
+    : management.allocations;
+  return allocations.reduce<MemberUsageTotals>(
     (totals, allocation) => {
       const item = usagePackCatalogItem(
         catalog,
@@ -406,7 +373,7 @@ function MemberUsageRow({
         <Select
           value={String(selection)}
           onValueChange={(value) => {
-            onSelect(parseUsageSelection(value));
+            onSelect(parseUsagePackOption(value, catalog));
           }}
         >
           <SelectTrigger
@@ -420,14 +387,15 @@ function MemberUsageRow({
           >
             <SelectValue />
           </SelectTrigger>
-          <SelectContent>
+          <SelectContent className="w-max max-w-[calc(100vw-2rem)]">
             {catalog.map((pack) => {
               return (
                 <SelectItem
                   key={pack.usagePackUsd}
                   value={String(pack.usagePackUsd)}
+                  className="whitespace-nowrap"
                 >
-                  {usageSelectionLabel(pack.usagePackUsd, catalog)}
+                  {usagePackOptionLabel(pack)}
                 </SelectItem>
               );
             })}
@@ -511,7 +479,8 @@ function MemberUsageConfiguration({
         const pendingDowngrade =
           allocation?.pendingChange?.kind === "downgrade" &&
           allocation.pendingChange.status !== "previewed" &&
-          allocation.pendingChange.targetUsagePackUsd !== null
+          allocation.pendingChange.targetUsagePackUsd !== null &&
+          selection === allocation.pendingChange.targetUsagePackUsd
             ? {
                 effectiveAt:
                   allocation.pendingChange.effectiveAt ??
@@ -696,16 +665,17 @@ function UsagePackPageHeader({
       <TooltipProvider delayDuration={200}>
         <Tooltip>
           <TooltipTrigger asChild>
-            <button
+            <Button
               type="button"
               onClick={onBack}
-              className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
+              variant="quiet"
+              size="icon-xs"
               aria-label={t(($) => {
                 return $.billing.common.back;
               })}
             >
               <ArrowLeft size={16} />
-            </button>
+            </Button>
           </TooltipTrigger>
           <TooltipContent side="bottom">
             <p className="text-xs">
@@ -899,6 +869,14 @@ function OrderSummary({
         <div className="flex items-center justify-between gap-4 text-muted-foreground">
           <span>
             {i18n.t(($) => {
+              return $.billing.plans.usagePacks.concurrentSlots;
+            })}
+          </span>
+          <span>{formatLocalizedNumber(planConcurrentSlots(plan.tier))}</span>
+        </div>
+        <div className="flex items-center justify-between gap-4 text-muted-foreground">
+          <span>
+            {i18n.t(($) => {
               return $.billing.plans.usagePacks.memberPackages;
             })}
           </span>
@@ -1084,6 +1062,14 @@ function ManagedSubscriptionSummaryDetails({
       <div className="flex items-center justify-between gap-4 text-muted-foreground">
         <span>
           {i18n.t(($) => {
+            return $.billing.plans.usagePacks.concurrentSlots;
+          })}
+        </span>
+        <span>{formatLocalizedNumber(planConcurrentSlots(plan.tier))}</span>
+      </div>
+      <div className="flex items-center justify-between gap-4 text-muted-foreground">
+        <span>
+          {i18n.t(($) => {
             return $.billing.plans.usagePacks.memberPackages;
           })}
         </span>
@@ -1124,22 +1110,28 @@ function ManagedSubscriptionSummaryDetails({
   );
 }
 
-function ManagedSubscriptionComparison({
+interface ManagedSubscriptionComparisonRow {
+  readonly label: string;
+  readonly current: string;
+  readonly next: string;
+  readonly changed: boolean;
+}
+
+function managedSubscriptionComparisonRows({
+  currentPlan,
   currentTotals,
-  management,
   plan,
   totals,
 }: {
+  readonly currentPlan: UsagePackPlan;
   readonly currentTotals: MemberUsageTotals;
-  readonly management: UsagePackManagementResponse;
   readonly plan: UsagePackPlan;
   readonly totals: MemberUsageTotals;
-}) {
-  const currentPlan = usagePackPlan(management.tier);
+}): readonly ManagedSubscriptionComparisonRow[] {
   const currentMonthlyTotalUsd =
     currentPlan.basePriceUsd + currentTotals.totalUsd;
   const nextMonthlyTotalUsd = plan.basePriceUsd + totals.totalUsd;
-  const rows = [
+  return [
     {
       label: i18n.t(($) => {
         return $.billing.plans.usagePacks.planStep;
@@ -1155,6 +1147,16 @@ function ManagedSubscriptionComparison({
       current: formatUsd(currentTotals.totalUsd, 0),
       next: formatUsd(totals.totalUsd, 0),
       changed: currentTotals.totalUsd !== totals.totalUsd,
+    },
+    {
+      label: i18n.t(($) => {
+        return $.billing.plans.usagePacks.concurrentSlots;
+      }),
+      current: formatLocalizedNumber(planConcurrentSlots(currentPlan.tier)),
+      next: formatLocalizedNumber(planConcurrentSlots(plan.tier)),
+      changed:
+        planConcurrentSlots(currentPlan.tier) !==
+        planConcurrentSlots(plan.tier),
     },
     {
       label: i18n.t(($) => {
@@ -1195,6 +1197,26 @@ function ManagedSubscriptionComparison({
       changed: currentMonthlyTotalUsd !== nextMonthlyTotalUsd,
     },
   ];
+}
+
+function ManagedSubscriptionComparison({
+  currentTotals,
+  management,
+  plan,
+  totals,
+}: {
+  readonly currentTotals: MemberUsageTotals;
+  readonly management: UsagePackManagementResponse;
+  readonly plan: UsagePackPlan;
+  readonly totals: MemberUsageTotals;
+}) {
+  const currentPlan = usagePackPlan(management.tier);
+  const rows = managedSubscriptionComparisonRows({
+    currentPlan,
+    currentTotals,
+    plan,
+    totals,
+  });
 
   return (
     <div className="mt-4 overflow-hidden rounded-lg border border-border/70">
@@ -1444,10 +1466,65 @@ interface ManagedSubscriptionOrderSummaryProps {
   readonly totals: MemberUsageTotals;
 }
 
+function managementMembersMatch(
+  management: UsagePackManagementResponse,
+  members: readonly MemberDisplay[],
+): boolean {
+  const memberIds = new Set(
+    members.map((member) => {
+      return member.id;
+    }),
+  );
+  const managedAllocations = managedAllocationsForMembers(management, members);
+  return (
+    memberIds.size === members.length &&
+    memberIds.size === managedAllocations.length &&
+    managedAllocations.every((allocation) => {
+      return memberIds.has(allocation.memberId);
+    }) &&
+    management.allocations.every((allocation) => {
+      return (
+        memberIds.has(allocation.memberId) ||
+        isPendingRemovedMemberAllocation(allocation)
+      );
+    })
+  );
+}
+
+type ManagedUsagePackAllocation =
+  UsagePackManagementResponse["allocations"][number];
+
+function isPendingRemovedMemberAllocation(
+  allocation: ManagedUsagePackAllocation,
+): boolean {
+  return (
+    allocation.pendingChange?.kind === "removal" &&
+    allocation.pendingChange.status !== "previewed"
+  );
+}
+
+function managedAllocationsForMembers(
+  management: UsagePackManagementResponse,
+  members: readonly MemberDisplay[],
+): readonly ManagedUsagePackAllocation[] {
+  const memberIds = new Set(
+    members.map((member) => {
+      return member.id;
+    }),
+  );
+  return management.allocations.filter((allocation) => {
+    return memberIds.has(allocation.memberId);
+  });
+}
+
 function hasPendingUsagePackChange(
   management: UsagePackManagementResponse,
+  members: readonly MemberDisplay[] | undefined,
 ): boolean {
-  return management.allocations.some((allocation) => {
+  const allocations = members
+    ? managedAllocationsForMembers(management, members)
+    : management.allocations;
+  return allocations.some((allocation) => {
     return (
       allocation.pendingChange !== null &&
       allocation.pendingChange.status !== "previewed"
@@ -1457,8 +1534,12 @@ function hasPendingUsagePackChange(
 
 function hasRestorableUsagePackDowngrade(
   management: UsagePackManagementResponse,
+  members: readonly MemberDisplay[] | undefined,
 ): boolean {
-  const pendingChanges = management.allocations.flatMap((allocation) => {
+  const allocations = members
+    ? managedAllocationsForMembers(management, members)
+    : management.allocations;
+  const pendingChanges = allocations.flatMap((allocation) => {
     return allocation.pendingChange ? [allocation.pendingChange] : [];
   });
   return (
@@ -1471,12 +1552,18 @@ function hasRestorableUsagePackDowngrade(
 
 function hasUsagePackConfigurationChange(
   management: UsagePackManagementResponse,
+  members: readonly MemberDisplay[] | undefined,
   plan: UsagePackPlan,
   selections: Readonly<Record<string, MemberUsageSelection>>,
 ): boolean {
+  if (!members) {
+    return false;
+  }
+  const allocations = managedAllocationsForMembers(management, members);
   return (
     management.tier !== plan.tier ||
-    management.allocations.some((allocation) => {
+    !managementMembersMatch(management, members) ||
+    allocations.some((allocation) => {
       return (
         memberUsageSelection(selections, allocation.memberId) !==
         managedUsagePackSelection(allocation)
@@ -1487,13 +1574,19 @@ function hasUsagePackConfigurationChange(
 
 function restoresScheduledUsagePackDowngrade(
   management: UsagePackManagementResponse,
+  members: readonly MemberDisplay[] | undefined,
   plan: UsagePackPlan,
   selections: Readonly<Record<string, MemberUsageSelection>>,
 ): boolean {
+  const allocations = members
+    ? managedAllocationsForMembers(management, members)
+    : [];
   return (
+    members !== undefined &&
+    managementMembersMatch(management, members) &&
     management.tier === plan.tier &&
-    hasRestorableUsagePackDowngrade(management) &&
-    management.allocations.every((allocation) => {
+    hasRestorableUsagePackDowngrade(management, members) &&
+    allocations.every((allocation) => {
       return (
         memberUsageSelection(selections, allocation.memberId) ===
         allocation.usagePackUsd
@@ -1504,12 +1597,16 @@ function restoresScheduledUsagePackDowngrade(
 
 function hasUsagePackDowngrade(
   management: UsagePackManagementResponse,
+  members: readonly MemberDisplay[] | undefined,
   plan: UsagePackPlan,
   selections: Readonly<Record<string, MemberUsageSelection>>,
 ): boolean {
+  const allocations = members
+    ? managedAllocationsForMembers(management, members)
+    : management.allocations;
   return (
     (management.tier === "team" && plan.tier === "pro") ||
-    management.allocations.some((allocation) => {
+    allocations.some((allocation) => {
       return (
         memberUsageSelection(selections, allocation.memberId) <
         allocation.usagePackUsd
@@ -1542,6 +1639,34 @@ function managedSubscriptionActionLabel(args: {
       });
 }
 
+function managedSubscriptionChangeState({
+  management,
+  members,
+  plan,
+  selections,
+}: Pick<
+  ManagedSubscriptionOrderSummaryProps,
+  "management" | "members" | "plan" | "selections"
+>) {
+  return {
+    hasConfigurationChange: hasUsagePackConfigurationChange(
+      management,
+      members,
+      plan,
+      selections,
+    ),
+    hasDowngrade: hasUsagePackDowngrade(management, members, plan, selections),
+    hasPendingChange: hasPendingUsagePackChange(management, members),
+    hasScheduledDowngrade: hasRestorableUsagePackDowngrade(management, members),
+    restoresScheduledDowngrade: restoresScheduledUsagePackDowngrade(
+      management,
+      members,
+      plan,
+      selections,
+    ),
+  };
+}
+
 function ManagedSubscriptionOrderSummary({
   currentTotals,
   management,
@@ -1568,19 +1693,13 @@ function ManagedSubscriptionOrderSummary({
           return $.billing.plans.usagePacks.planChangeError;
         })
       : null;
-  const hasPendingChange = hasPendingUsagePackChange(management);
-  const hasConfigurationChange = hasUsagePackConfigurationChange(
-    management,
-    plan,
-    selections,
-  );
-  const hasScheduledDowngrade = hasRestorableUsagePackDowngrade(management);
-  const restoresScheduledDowngrade = restoresScheduledUsagePackDowngrade(
-    management,
-    plan,
-    selections,
-  );
-  const hasDowngrade = hasUsagePackDowngrade(management, plan, selections);
+  const {
+    hasConfigurationChange,
+    hasDowngrade,
+    hasPendingChange,
+    hasScheduledDowngrade,
+    restoresScheduledDowngrade,
+  } = managedSubscriptionChangeState({ management, members, plan, selections });
   const openPreview = async (): Promise<void> => {
     if (!members) {
       return;
@@ -1637,7 +1756,7 @@ function ManagedSubscriptionOrderSummary({
         className="mt-4 h-10 w-full text-sm font-medium"
         disabled={
           !members ||
-          (hasPendingChange && !restoresScheduledDowngrade) ||
+          (hasPendingChange && !hasScheduledDowngrade) ||
           (!hasConfigurationChange && !restoresScheduledDowngrade) ||
           previewing ||
           confirming
@@ -1689,8 +1808,8 @@ function PackageConfigurationStep({
     pendingInvitationsLoadable.state === "hasData"
       ? pendingInvitationsLoadable.data
       : undefined;
-  const allMembers: readonly MemberDisplay[] | undefined =
-    user && orgMembers && pendingInvitations
+  const activeMembers: readonly MemberDisplay[] | undefined =
+    user && orgMembers
       ? [
           {
             id: user.id,
@@ -1719,6 +1838,12 @@ function PackageConfigurationStep({
                 name: memberName(member),
               };
             }),
+        ]
+      : undefined;
+  const allMembers: readonly MemberDisplay[] | undefined =
+    activeMembers && pendingInvitations
+      ? [
+          ...activeMembers,
           ...pendingInvitations.map((invitation): MemberDisplay => {
             return {
               id: invitation.id,
@@ -1732,22 +1857,18 @@ function PackageConfigurationStep({
         ]
       : undefined;
   const members = management
-    ? allMembers
-      ? management.allocations.map((allocation): MemberDisplay => {
-          return (
-            allMembers.find((member) => {
-              return member.id === allocation.memberId;
-            }) ?? {
-              id: allocation.memberId,
-              email: undefined,
-              imageUrl: undefined,
-              isCurrent: allocation.memberId === user?.id,
-              isPending: false,
-              name: allocation.memberId,
-            }
-          );
-        })
-      : undefined
+    ? management.supportsMemberAdditions
+      ? activeMembers
+      : allMembers
+        ? management.allocations.flatMap(
+            (allocation): readonly MemberDisplay[] => {
+              const member = allMembers.find((candidate) => {
+                return candidate.id === allocation.memberId;
+              });
+              return member ? [member] : [];
+            },
+          )
+        : undefined
     : allMembers;
   const totals = memberUsageTotals(members ?? [], selections, catalog);
 
@@ -1763,7 +1884,7 @@ function PackageConfigurationStep({
       />
       {management ? (
         <ManagedSubscriptionOrderSummary
-          currentTotals={managedMemberUsageTotals(management, catalog)}
+          currentTotals={managedMemberUsageTotals(management, members, catalog)}
           management={management}
           members={members}
           plan={plan}

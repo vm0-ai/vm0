@@ -950,6 +950,7 @@
         "changePlan": "プランを変更",
         "choosePlan": "プランを選択",
         "choosePlanDescription": "最初にワークスペースプランを選択します。メンバーパッケージは次に設定します。",
+        "concurrentSlots": "同時実行スロット",
         "configurePackages": "メンバーパッケージを設定",
         "configurePackagesDescription": "各メンバーに必須のパッケージを選択し、月額合計を確認します。",
         "currentMember": "現在のメンバー",
@@ -1052,9 +1053,22 @@
       "left": "{{value}} 残り",
       "member": "メンバー",
       "neverExpires": "有効期限はありません",
+      "orgCredits": "組織クレジット",
       "unavailable": "クレジット残高が利用できません。",
       "upgradeDescription": "Pro には毎月のクレジットが含まれており、追加のクレジット オプションのロックが解除されます。",
       "upgradeTitle": "Pro にアップグレードしてより多くのクレジットを獲得",
+      "usagePack": {
+        "bonus": "ボーナス",
+        "members": "メンバー",
+        "membersDescription": "各メンバーの使用量パックの残高とクレジット追加を確認します。",
+        "membersTitle": "メンバーの使用量パッククレジット",
+        "nextExpiry": "次の有効期限",
+        "purchased": "購入分",
+        "remaining": "残り",
+        "title": "使用量パックのクレジット",
+        "totalRemaining": "残り合計",
+        "viewMembers": "メンバー残高を表示"
+      },
       "used": "使用済み"
     }
   },
@@ -1858,17 +1872,13 @@
     },
     "custom": {
       "connect": {
-        "apiAuthentication": "API認証",
-        "apiDescription": "プロバイダーが発行したAPIシークレットを入力します。",
-        "back": "戻る",
+        "configured": "設定済み",
         "connecting": "接続中…",
         "continue": "続ける",
         "continueToProvider": "プロバイダーに進み、アクセスを承認します。",
         "description": "シークレットは保存時に暗号化され、ファイアウォールによって送信リクエストに挿入されます。環境変数としてエージェントに公開されることはありません。",
-        "oauthDescription": "コネクタの OAuth アプリを使用してアクセスを承認します。",
         "save": "保存",
         "saving": "保存中…",
-        "secret": "シークレット",
         "title": "{{connector}} を接続します"
       },
       "create": {
@@ -1882,13 +1892,18 @@
         "authorizationUrl": "認可URL",
         "clientId": "クライアントID",
         "clientSecret": "クライアントシークレット",
+        "connectorType": "コネクターの種類",
         "displayName": "表示名",
         "headerName": "ヘッダー名",
         "headerTemplate": "ヘッダーテンプレート",
         "headerTemplateHint": "({{placeholder}} を含める必要があります)",
         "httpBasicAuthentication": "HTTP基本認証",
+        "httpType": "HTTP API",
         "keepClientSecret": "保存された値を保持するには、クライアント シークレットを空白のままにしておきます。",
         "keepClientSecretPlaceholder": "最新の状態を保つには空白のままにしてください",
+        "mcpEndpoint": "MCP エンドポイント",
+        "mcpEndpointHint": "(Streamable HTTP、HTTPS のみ)",
+        "mcpEndpointPlaceholder": "https://mcp.acme.com/server",
         "newClientSecret": "新しいクライアントシークレット",
         "none": "なし",
         "oauthChangesDisconnect": "OAuth 設定またはクライアント認証情報を変更すると、既存の OAuth 接続が切断されます。",
@@ -4433,7 +4448,10 @@
           "action": "ワークスペースから削除",
           "confirmDescription": "{{email}} はこのワークスペースから削除され、すべてのリソースにアクセスできなくなります。",
           "progress": "削除中...",
-          "title": "メンバーを削除しますか?"
+          "title": "メンバーを削除しますか?",
+          "usagePackImpactDescription": "このメンバーの利用パックの残りクレジットは直ちに利用できなくなります。パックは現在の請求期間の終了時に削除されます。これによりワークスペースに利用パックがなくなる場合、ワークスペースプランも請求期間の終了時に解約されます。",
+          "usagePackImpactTitle": "利用パックへの影響",
+          "usagePackRefundDescription": "返金：購入済みクレジットの未使用分は、元のお支払い方法に返金されます。使用済みクレジットとボーナスクレジットは返金対象外です。"
         },
         "revoke": {
           "action": "招待を取り消す",
@@ -4455,6 +4473,7 @@
           "progress": "切り替え中...",
           "title": "メンバーに切り替えますか？"
         },
+        "usagePack": "利用パック",
         "user": "ユーザー",
         "you": "あなた"
       },

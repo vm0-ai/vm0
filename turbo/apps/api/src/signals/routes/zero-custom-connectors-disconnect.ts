@@ -1,5 +1,8 @@
 import { command } from "ccstate";
-import { zeroCustomConnectorSecretContract } from "@vm0/api-contracts/contracts/zero-custom-connectors";
+import {
+  zeroCustomConnectorConnectionContract,
+  zeroCustomConnectorSecretContract,
+} from "@vm0/api-contracts/contracts/zero-custom-connectors";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -10,7 +13,7 @@ import type { RouteEntry } from "../route-entry";
 const disconnectInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
   const params = get(
-    pathParamsOf(zeroCustomConnectorSecretContract.disconnect),
+    pathParamsOf(zeroCustomConnectorConnectionContract.disconnect),
   );
   signal.throwIfAborted();
 
@@ -31,12 +34,18 @@ const disconnectInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   return { status: 204 as const, body: undefined };
 });
 
+const disconnectHandler$ = authRoute(
+  { requireOrganization: true, missingOrganizationStatus: 401 },
+  disconnectInner$,
+);
+
 export const zeroCustomConnectorDisconnectRoutes: readonly RouteEntry[] = [
   {
+    route: zeroCustomConnectorConnectionContract.disconnect,
+    handler: disconnectHandler$,
+  },
+  {
     route: zeroCustomConnectorSecretContract.disconnect,
-    handler: authRoute(
-      { requireOrganization: true, missingOrganizationStatus: 401 },
-      disconnectInner$,
-    ),
+    handler: disconnectHandler$,
   },
 ];

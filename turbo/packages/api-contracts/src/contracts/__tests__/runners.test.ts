@@ -13,6 +13,7 @@ import {
   heartbeatBodySchema,
   heldSandboxStateSchema,
   heldWorkspaceStateSchema,
+  immediateSuccessorIntentSignalSchema,
   jobSchema,
   RUNNER_CANCELLATION_RECOVERY_GRACE_MS,
   RUNNER_BUILTIN_FIREWALL_RESOLVE_NAMES_MAX,
@@ -324,6 +325,24 @@ describe("connector runtime synchronization contract", () => {
     ).toBe(true);
   });
 
+  it("preserves canonical built-in targets and pinned routing values", () => {
+    const fixture = executionContextSchema.parse(
+      loadRunnerClaimResponseFixture(),
+    );
+    const target = {
+      kind: "builtin" as const,
+      connectorSlug: "zendesk",
+      baseUrlVars: { ZENDESK_SUBDOMAIN: "xn--mnich-kva" },
+    };
+
+    const execution = executionContextSchema.parse({
+      ...fixture,
+      connectorRuntimeTargets: [target],
+    });
+
+    expect(execution.connectorRuntimeTargets).toEqual([target]);
+  });
+
   it("requires stable API identities on available custom firewalls", () => {
     const result = {
       target: { kind: "custom" as const, customConnectorId },
@@ -408,9 +427,37 @@ describe("connector runtime synchronization contract", () => {
       connectorRuntimeSyncResultSchema.safeParse({
         target: customTarget,
         state: "unresolved",
+        reason: "permission-bundle-unavailable",
+      }).success,
+    ).toBe(true);
+    expect(
+      connectorRuntimeSyncResultSchema.safeParse({
+        target: customTarget,
+        state: "unresolved",
         reason: "runtime-configuration-unavailable",
       }).success,
     ).toBe(true);
+    expect(
+      connectorRuntimeSyncResultSchema.safeParse({
+        target: customTarget,
+        state: "unresolved",
+        reason: "connector-unavailable",
+      }).success,
+    ).toBe(false);
+    expect(
+      connectorRuntimeSyncResultSchema.safeParse({
+        target: customTarget,
+        state: "absent",
+        reason: "permission-bundle-unavailable",
+      }).success,
+    ).toBe(false);
+    expect(
+      connectorRuntimeSyncResultSchema.safeParse({
+        target: customTarget,
+        state: "absent",
+        reason: "runtime-configuration-unavailable",
+      }).success,
+    ).toBe(false);
     expect(
       connectorRuntimeSyncResultSchema.safeParse({
         target: builtinTarget,
@@ -1716,6 +1763,42 @@ describe("runner apiStartTime contract", () => {
     expect(elapsedSinceApiStartMs(1_700_000_000_000.5, 1_700_000_001_250)).toBe(
       undefined,
     );
+  });
+});
+
+describe("immediate successor intent contract", () => {
+  const signal = {
+    action: "arm",
+    predecessorRunId: "00000000-0000-4000-8000-000000000001",
+    intentId: "00000000-0000-4000-8000-000000000002",
+    runnerIdentity: {
+      runnerId: "00000000-0000-4000-8000-000000000003",
+      heartbeatGeneration: 7,
+    },
+    eventClass: "automation",
+    decidedAt: "2026-08-10T08:00:00.000Z",
+    expiresAt: "2026-08-10T08:00:01.500Z",
+  } as const;
+
+  it("accepts the bounded additive signal", () => {
+    expect(immediateSuccessorIntentSignalSchema.parse(signal)).toStrictEqual(
+      signal,
+    );
+  });
+
+  it("rejects unknown fields and malformed identities", () => {
+    expect(
+      immediateSuccessorIntentSignalSchema.safeParse({
+        ...signal,
+        opaqueReuseKey: "thread:secret",
+      }).success,
+    ).toBe(false);
+    expect(
+      immediateSuccessorIntentSignalSchema.safeParse({
+        ...signal,
+        intentId: "not-a-uuid",
+      }).success,
+    ).toBe(false);
   });
 });
 
