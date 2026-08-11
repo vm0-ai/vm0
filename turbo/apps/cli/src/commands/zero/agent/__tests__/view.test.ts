@@ -44,14 +44,10 @@ const defaultPermissionDetails = [
   }),
 ];
 
-function mockConnectorListHandler(
-  connectors: Record<string, unknown>[] = [],
-  configuredConnectorSlugs: string[] = [],
-) {
+function mockConnectorListHandler(connectors: Record<string, unknown>[] = []) {
   return http.get("http://localhost:3000/api/zero/connectors", () => {
     return HttpResponse.json({
       connectors,
-      configuredConnectorSlugs,
       connectorProvidedBindings: [],
     });
   });
@@ -457,7 +453,7 @@ describe("zero agent view command", () => {
             return HttpResponse.json({ enabledConnectorSlugs: ["github"] });
           },
         ),
-        mockConnectorListHandler([makeConnector()], ["github"]),
+        mockConnectorListHandler([makeConnector()]),
       );
 
       await viewCommand.parseAsync(["node", "cli", "my-agent"]);
@@ -477,7 +473,7 @@ describe("zero agent view command", () => {
             return HttpResponse.json({ enabledConnectorSlugs: ["github"] });
           },
         ),
-        mockConnectorListHandler([makeConnector()], ["github"]),
+        mockConnectorListHandler([makeConnector()]),
       );
 
       await viewCommand.parseAsync([
@@ -528,16 +524,13 @@ describe("zero agent view command", () => {
             return HttpResponse.json({ enabledConnectorSlugs: ["github"] });
           },
         ),
-        mockConnectorListHandler(
-          [
-            makeConnector({
-              authMethod: "api-token",
-              externalUsername: null,
-              externalEmail: null,
-            }),
-          ],
-          ["github"],
-        ),
+        mockConnectorListHandler([
+          makeConnector({
+            authMethod: "api-token",
+            externalUsername: null,
+            externalEmail: null,
+          }),
+        ]),
       );
 
       await viewCommand.parseAsync([
@@ -562,10 +555,9 @@ describe("zero agent view command", () => {
             return HttpResponse.json({ enabledConnectorSlugs: ["github"] });
           },
         ),
-        mockConnectorListHandler(
-          [makeConnector({ connectionStatus: "reconnect-required" })],
-          ["github"],
-        ),
+        mockConnectorListHandler([
+          makeConnector({ connectionStatus: "reconnect-required" }),
+        ]),
       );
 
       await viewCommand.parseAsync([
@@ -591,15 +583,12 @@ describe("zero agent view command", () => {
             return HttpResponse.json({ enabledConnectorSlugs: ["github"] });
           },
         ),
-        mockConnectorListHandler(
-          [
-            makeConnector({
-              externalUsername: null,
-              externalEmail: "user@example.com",
-            }),
-          ],
-          ["github"],
-        ),
+        mockConnectorListHandler([
+          makeConnector({
+            externalUsername: null,
+            externalEmail: "user@example.com",
+          }),
+        ]),
       );
 
       await viewCommand.parseAsync(["node", "cli", "my-agent"]);

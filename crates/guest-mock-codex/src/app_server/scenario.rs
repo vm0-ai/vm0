@@ -32,6 +32,7 @@ pub(super) enum Scenario {
     RuntimeTurnCompleteAfterSteer,
     RuntimeTurnCompleteBeforeSteerResponse,
     RuntimeTurnStartedBeforeSteer,
+    WaitOnTurnSteerResponse,
     RuntimeTurnCompleteWithoutThreadStarted,
     RuntimeEventFlood,
     RuntimeLargeEventFlood,
@@ -86,6 +87,7 @@ impl Scenario {
                     Ok(Self::RuntimeTurnCompleteBeforeSteerResponse)
                 }
                 "runtime-turn-started-before-steer" => Ok(Self::RuntimeTurnStartedBeforeSteer),
+                "wait-on-turn-steer-response" => Ok(Self::WaitOnTurnSteerResponse),
                 "runtime-turn-complete-without-thread-started" => {
                     Ok(Self::RuntimeTurnCompleteWithoutThreadStarted)
                 }
@@ -123,6 +125,7 @@ impl Scenario {
                 | Self::NoActiveTurn
                 | Self::RuntimeTurnCompleteBeforeSteerResponse
                 | Self::RuntimeTurnStartedBeforeSteer
+                | Self::WaitOnTurnSteerResponse
                 | Self::StaleTurn
         )
     }

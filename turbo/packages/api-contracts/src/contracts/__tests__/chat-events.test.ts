@@ -333,7 +333,7 @@ describe("ChatEvent catalog", () => {
     expect(
       chatEventSchema.safeParse({
         ...automation,
-        triggerSource: "workflow-event",
+        triggerSource: "automation-event",
       }).success,
     ).toBe(false);
     const goal = chatEvents[2];

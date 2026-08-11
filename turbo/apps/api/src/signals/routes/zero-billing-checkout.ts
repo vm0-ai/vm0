@@ -56,6 +56,7 @@ import {
 import {
   confirmUsagePackSubscriptionChange,
   previewUsagePackSubscriptionChange,
+  usagePackMemberAdditionSchemaAvailable,
   usagePackSubscriptionChangeSchemaAvailable,
 } from "../services/usage-pack-plan-change.service";
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
@@ -532,15 +533,21 @@ const usagePackManagementGetAuthed$ = command(
       return access.response;
     }
     const db = get(db$);
-    const [subscriptionSchema, changeSchema] = await Promise.all([
-      usagePackSubscriptionSchemaAvailable(db),
-      usagePackAllocationChangeSchemaAvailable(db),
-    ]);
+    const [subscriptionSchema, changeSchema, memberAdditionSchema] =
+      await Promise.all([
+        usagePackSubscriptionSchemaAvailable(db),
+        usagePackAllocationChangeSchemaAvailable(db),
+        usagePackMemberAdditionSchemaAvailable(db),
+      ]);
     signal.throwIfAborted();
     if (!subscriptionSchema || !changeSchema) {
       return providerUnavailable("Usage pack billing is not ready");
     }
-    const management = await getUsagePackManagement(db, access.auth.orgId);
+    const management = await getUsagePackManagement(
+      db,
+      access.auth.orgId,
+      memberAdditionSchema,
+    );
     signal.throwIfAborted();
     if (!management) {
       return notFound("Usage pack subscription not found");
@@ -700,15 +707,63 @@ const usagePackSubscriptionChangePreviewAuthed$ = command(
       return bodyResult.response;
     }
     const db = set(writeDb$);
-    const [subscriptionSchema, changeSchema, subscriptionChangeSchema] =
-      await Promise.all([
-        usagePackSubscriptionSchemaAvailable(db),
-        usagePackAllocationChangeSchemaAvailable(db),
-        usagePackSubscriptionChangeSchemaAvailable(db),
-      ]);
+    const [
+      subscriptionSchema,
+      changeSchema,
+      subscriptionChangeSchema,
+      memberAdditionSchema,
+    ] = await Promise.all([
+      usagePackSubscriptionSchemaAvailable(db),
+      usagePackAllocationChangeSchemaAvailable(db),
+      usagePackSubscriptionChangeSchemaAvailable(db),
+      usagePackMemberAdditionSchemaAvailable(db),
+    ]);
     signal.throwIfAborted();
     if (!subscriptionSchema || !changeSchema || !subscriptionChangeSchema) {
       return providerUnavailable("Usage pack billing is not ready");
+    }
+    const management = await getUsagePackManagement(db, access.auth.orgId);
+    signal.throwIfAborted();
+    if (!management) {
+      return notFound("Usage pack subscription not found");
+    }
+    const allocatedMemberIds = new Set(
+      management.allocations.map((allocation) => {
+        return allocation.memberId;
+      }),
+    );
+    const addsMember = bodyResult.data.memberUsagePacks.some((selection) => {
+      return !allocatedMemberIds.has(selection.memberId);
+    });
+    if (addsMember) {
+      if (!memberAdditionSchema) {
+        return providerUnavailable("Usage pack member additions are not ready");
+      }
+      const clerk = get(clerk$);
+      const memberships = await listAllOrganizationMemberships(
+        clerk.organizations,
+        access.auth.orgId,
+      );
+      signal.throwIfAborted();
+      const activeMemberIds = memberships.map((membership) => {
+        const memberId = membership.publicUserData?.userId;
+        if (!memberId) {
+          throw new Error(
+            "Clerk organization membership is missing its user ID",
+          );
+        }
+        return memberId;
+      });
+      if (
+        !memberUsagePackIdsMatch(
+          bodyResult.data.memberUsagePacks,
+          activeMemberIds,
+        )
+      ) {
+        return badRequestMessage(
+          "Organization members changed; refresh billing and try again",
+        );
+      }
     }
     const result = await previewUsagePackSubscriptionChange(
       db,

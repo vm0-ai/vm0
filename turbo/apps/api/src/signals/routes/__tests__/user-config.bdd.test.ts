@@ -311,6 +311,7 @@ describe("AUTH-03 user model preference", () => {
 
     const updated = await cfg.updateModelPreference(admin, {
       selectedModel: DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+      serviceTier: null,
     });
     expect(updated.selectedModel).toBe(DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL);
     expect(updated.serviceTier).toBeNull();
@@ -320,6 +321,7 @@ describe("AUTH-03 user model preference", () => {
 
     const cleared = await cfg.updateModelPreference(admin, {
       selectedModel: null,
+      serviceTier: null,
     });
     expect(cleared).toStrictEqual({
       selectedModel: null,
@@ -347,7 +349,7 @@ describe("AUTH-03 user model preference", () => {
 
     const removedModel = await cfg.rawUpdateModelPreference(
       admin,
-      { selectedModel: "claude-haiku-4-5" },
+      { selectedModel: "claude-haiku-4-5", serviceTier: null },
       [400],
     );
     expectApiError(removedModel.body);

@@ -2117,7 +2117,7 @@ const connectedTeamsCardAction$ = command(
       {
         orgId: args.installation.orgId,
         userId: args.connection.vm0UserId,
-        preference: { selectedModel: option.model },
+        preference: { selectedModel: option.model, serviceTier: null },
       },
       signal,
     );

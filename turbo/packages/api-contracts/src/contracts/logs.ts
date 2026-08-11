@@ -55,8 +55,6 @@ export const triggerSourceSchema = z.enum([
   "test",
   "agent",
   "webhook",
-  "workflow-schedule",
-  "workflow-event",
   "automation-schedule",
   "automation-event",
   "goal",

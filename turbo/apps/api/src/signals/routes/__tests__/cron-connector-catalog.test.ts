@@ -4358,9 +4358,6 @@ describe("connector catalog valid lifecycle", () => {
       new URL(callbackLocation ?? "https://invalid.example").pathname,
     ).toBe("/connector/success");
     const hiddenConnectedList = await connectorsApi.listConnectors(actor);
-    expect(hiddenConnectedList.configuredConnectorSlugs).not.toContain(
-      "datadog",
-    );
     expect(hiddenConnectedList.connectors).toContainEqual(
       expect.objectContaining({ slug: "datadog", authMethod: "oauth" }),
     );

@@ -21,6 +21,10 @@ import {
   type PendingGoalQueueEvent,
 } from "./chat-goal-queue.service";
 import type { InternalRunCallbackKind } from "./internal-run-callback";
+import {
+  scheduleImmediateSuccessorIntent,
+  type ImmediateSuccessorIntentHandle,
+} from "./immediate-successor-intent.service";
 import { resolveRunChatThreadModelContext } from "./zero-chat-run-event.service";
 import { normalizeGoalObjectiveBrief } from "./zero-goal-objective-brief-normalization.service";
 import type { ModelFirstPin } from "./zero-model-selection.service";
@@ -264,11 +268,15 @@ async function revokeGoalEvent(
   db: Db,
   event: PendingGoalQueueEvent,
   signal: AbortSignal,
+  onRevoked?: () => void,
 ): Promise<boolean> {
   const revoked = await revokeGoalQueueEvent(db, {
     chatThreadId: event.chatThreadId,
     eventId: event.id,
   });
+  if (revoked) {
+    onRevoked?.();
+  }
   signal.throwIfAborted();
   if (revoked) {
     await publishGoalQueueChanged(event, signal);
@@ -282,6 +290,7 @@ const launchQueuedGoal$ = command(
     args: {
       readonly event: PendingGoalQueueEvent;
       readonly goal: GoalQueueTarget;
+      readonly intent: ImmediateSuccessorIntentHandle | undefined;
       readonly apiStartTime: number;
       readonly attempt: GoalDrainAttempt;
       readonly dispatchFailedCallbacks: DispatchFailedRunCallbacks;
@@ -346,17 +355,85 @@ const launchQueuedGoal$ = command(
       phaseDimensions,
     );
     const result = await set(createQueueFirstZeroRun$, runInput, signal);
-    signal.throwIfAborted();
 
     if (isQueueFirstRunClaimLost(result)) {
+      signal.throwIfAborted();
       return { kind: "enqueued" };
     }
     if (result.status !== 201) {
+      signal.throwIfAborted();
       return { kind: "run_error", response: result };
     }
-    return { kind: "ok", runId: result.body.runId };
+    const runnableImmediately =
+      result.body.status === "pending" || result.body.status === "running";
+    if (!runnableImmediately) {
+      // Run persistence is irreversible. Settle the observation before an
+      // abort can hide a queued or terminal creation result from the outer
+      // drain.
+      args.intent?.revoke();
+    }
+    signal.throwIfAborted();
+    return {
+      kind: "ok",
+      runId: result.body.runId,
+    };
   },
 );
+
+async function handleGoalLaunchResult(
+  args: {
+    readonly db: Db;
+    readonly event: PendingGoalQueueEvent;
+    readonly goal: GoalQueueTarget;
+    readonly result: RunGoalResult;
+    readonly intent: ImmediateSuccessorIntentHandle | undefined;
+  },
+  signal: AbortSignal,
+): Promise<"continue" | "done"> {
+  if (args.result.kind === "ok") {
+    await publishGoalQueueChanged(args.event, signal);
+    return "done";
+  }
+  if (args.result.kind === "enqueued") {
+    const stillValid = await loadGoalQueueTarget(args.db, args.event);
+    signal.throwIfAborted();
+    if (!stillValid) {
+      await revokeGoalEvent(args.db, args.event, signal, () => {
+        args.intent?.revoke();
+      });
+      return "done";
+    }
+    return stillValid.stateRevision === args.goal.stateRevision
+      ? "done"
+      : "continue";
+  }
+
+  const settlement = await settleFailedGoalQueueEvent(args.db, {
+    event: args.event,
+    expectedGoalStateRevision: args.goal.stateRevision,
+    reason: args.result.response.body.error.message,
+  });
+  if (settlement.kind === "revoked" || settlement.kind === "rejected") {
+    args.intent?.revoke();
+  }
+  signal.throwIfAborted();
+  if (settlement.kind === "stale") {
+    return "continue";
+  }
+  if (settlement.kind !== "not_pending") {
+    await publishGoalQueueChanged(args.event, signal);
+  }
+  log.warn("Goal queue event failed to create a run", {
+    eventId: args.event.id,
+    goalId:
+      settlement.kind === "rejected" ? settlement.goalId : args.event.goalId,
+    code: args.result.response.body.error.code,
+    rejected: settlement.kind === "rejected",
+    pauseResult: settlement.kind === "rejected" ? "ok" : "not_paused",
+    settlement: settlement.kind,
+  });
+  return "done";
+}
 
 export const drainGoalQueueForThread$ = command(
   async (
@@ -364,6 +441,7 @@ export const drainGoalQueueForThread$ = command(
     args: {
       readonly chatThreadId: string;
       readonly apiStartTime: number;
+      readonly immediateSuccessorPredecessorRunId?: string;
       readonly dispatchFailedCallbacks: DispatchFailedRunCallbacks;
       readonly queueItemCreatedBefore?: Date;
     },
@@ -436,11 +514,21 @@ export const drainGoalQueueForThread$ = command(
         continue;
       }
 
+      const immediateSuccessorIntent = scheduleImmediateSuccessorIntent({
+        db,
+        predecessorRunId: args.immediateSuccessorPredecessorRunId,
+        chatThreadId: event.chatThreadId,
+        orgId: goal.orgId,
+        intentId: event.id,
+        eventClass: "goal",
+      });
+
       const result = await set(
         launchQueuedGoal$,
         {
           event,
           goal,
+          intent: immediateSuccessorIntent,
           apiStartTime,
           attempt: attemptCategory,
           dispatchFailedCallbacks: args.dispatchFailedCallbacks,
@@ -449,45 +537,19 @@ export const drainGoalQueueForThread$ = command(
         signal,
       );
       signal.throwIfAborted();
-      if (result.kind === "ok") {
-        await publishGoalQueueChanged(event, signal);
-        return;
-      }
-
-      if (result.kind === "enqueued") {
-        const stillValid = await loadGoalQueueTarget(db, event);
-        signal.throwIfAborted();
-        if (!stillValid) {
-          await revokeGoalEvent(db, event, signal);
-          return;
-        }
-        if (stillValid.stateRevision !== goal.stateRevision) {
-          continue;
-        }
-        return;
-      }
-
-      const settlement = await settleFailedGoalQueueEvent(db, {
-        event,
-        expectedGoalStateRevision: goal.stateRevision,
-        reason: result.response.body.error.message,
-      });
-      signal.throwIfAborted();
-      if (settlement.kind === "stale") {
+      const disposition = await handleGoalLaunchResult(
+        {
+          db,
+          event,
+          goal,
+          result,
+          intent: immediateSuccessorIntent,
+        },
+        signal,
+      );
+      if (disposition === "continue") {
         continue;
       }
-      if (settlement.kind !== "not_pending") {
-        await publishGoalQueueChanged(event, signal);
-      }
-      log.warn("Goal queue event failed to create a run", {
-        eventId: event.id,
-        goalId:
-          settlement.kind === "rejected" ? settlement.goalId : event.goalId,
-        code: result.response.body.error.code,
-        rejected: settlement.kind === "rejected",
-        pauseResult: settlement.kind === "rejected" ? "ok" : "not_paused",
-        settlement: settlement.kind,
-      });
       return;
     }
   },

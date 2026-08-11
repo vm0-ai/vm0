@@ -259,11 +259,37 @@ async fn run(runtime: GuestRuntime) -> i32 {
         std::env::var(process_control_ipc::BOOTSTRAP_ENV),
         Ok(endpoint) if !endpoint.is_empty()
     );
-    let active_input = guest_agent::active_input::ActiveInputRuntime::new_with_initial_prompt(
-        &runtime.config.run_id,
-        framework_supports_active_input && has_process_control_endpoint,
-        &runtime.config.prompt,
-    );
+    let active_input_enabled = framework_supports_active_input && has_process_control_endpoint;
+    let active_input = if active_input_enabled {
+        let receipt_journal_path =
+            guest_contracts::runtime_paths::active_input_receipt_journal_file(
+                runtime.paths.runtime_dir(),
+            );
+        match guest_agent::active_input::ActiveInputRuntime::new_with_receipts(
+            &runtime.config.run_id,
+            true,
+            &runtime.config.prompt,
+            receipt_journal_path,
+            http.clone(),
+        ) {
+            Ok(active_input) => active_input,
+            Err(error) => {
+                let message = format!("Active-input receipt initialization failed: {error}");
+                log_error!(LOG_TAG, "{message}");
+                failure_diagnostics::write_guest_error_file(
+                    runtime.paths.checkpoint_error_file(),
+                    &message,
+                );
+                return 1;
+            }
+        }
+    } else {
+        guest_agent::active_input::ActiveInputRuntime::new_with_initial_prompt(
+            &runtime.config.run_id,
+            false,
+            &runtime.config.prompt,
+        )
+    };
     let pi_standby = guest_agent::pi_standby::PiStandbyRuntime::new();
     let control_handle = control::ControlHandle::spawn(
         shutdown.clone(),
@@ -451,6 +477,7 @@ async fn execute(
     log_info!(LOG_TAG, "▷ Execution");
     let cli_start = Instant::now();
     let mut last_event_sequence = None;
+    let mut active_input_delivery_ids = Vec::new();
     let mut event_delivery_failure = None;
     let mut completion_disposition = cli::CliCompletionDisposition::Terminal;
     let cli_result = cli::execute_cli_with_controls_for_config_started_at(
@@ -477,6 +504,7 @@ async fn execute(
     ) = match cli_result {
         Ok(cli_result) => {
             last_event_sequence = cli_result.last_event_sequence;
+            active_input_delivery_ids = cli_result.active_input_delivery_ids.clone();
             completion_disposition = cli_result.completion_disposition;
             if let Some(event_delivery) = cli_result.event_delivery.clone() {
                 let diagnostic = failure_diagnostics::event_delivery_failure_for_config(
@@ -630,6 +658,7 @@ async fn execute(
                 completion_disposition,
                 cli::CliCompletionDisposition::PiCompleted
             ),
+            active_input_delivery_ids: &active_input_delivery_ids,
         },
         telemetry,
         runtime,
@@ -753,6 +782,7 @@ struct CompletionState<'a> {
     failure_diagnostic: Option<FailureDiagnostic>,
     skip_recovery_checkpoint_for_no_history: bool,
     skip_success_checkpoint: bool,
+    active_input_delivery_ids: &'a [String],
 }
 
 async fn complete_execution(
@@ -821,6 +851,7 @@ async fn complete_execution(
                     &config.sandbox_reuse_result,
                     &config.workspace_reuse_result,
                     state.last_event_sequence,
+                    state.active_input_delivery_ids,
                 )
                 .await;
             }
@@ -881,6 +912,7 @@ async fn complete_execution(
                     &config.sandbox_reuse_result,
                     &config.workspace_reuse_result,
                     state.last_event_sequence,
+                    state.active_input_delivery_ids,
                 )
                 .await;
             }
@@ -949,6 +981,7 @@ async fn complete_execution(
             &config.sandbox_reuse_result,
             &config.workspace_reuse_result,
             state.last_event_sequence,
+            state.active_input_delivery_ids,
         )
         .await;
     }
@@ -1301,6 +1334,7 @@ mod tests {
             control_error: None,
             cli_termination: None,
             completion_disposition: cli::CliCompletionDisposition::Terminal,
+            active_input_delivery_ids: Vec::new(),
         };
         let one_turn = cli::CliExecutionResult {
             exit_code: 0,
@@ -1317,6 +1351,7 @@ mod tests {
             control_error: None,
             cli_termination: None,
             completion_disposition: cli::CliCompletionDisposition::Terminal,
+            active_input_delivery_ids: Vec::new(),
         };
         let failed_zero_turn = cli::CliExecutionResult {
             exit_code: 1,
@@ -1333,6 +1368,7 @@ mod tests {
             control_error: None,
             cli_termination: None,
             completion_disposition: cli::CliCompletionDisposition::Terminal,
+            active_input_delivery_ids: Vec::new(),
         };
         let unknown_zero_turn = cli::CliExecutionResult {
             exit_code: 0,
@@ -1349,6 +1385,7 @@ mod tests {
             control_error: None,
             cli_termination: None,
             completion_disposition: cli::CliCompletionDisposition::Terminal,
+            active_input_delivery_ids: Vec::new(),
         };
 
         assert!(is_claude_zero_turn_result(
@@ -1397,6 +1434,7 @@ mod tests {
                 control_error: None,
                 cli_termination: Some(termination),
                 completion_disposition: cli::CliCompletionDisposition::Terminal,
+                active_input_delivery_ids: Vec::new(),
             }
         };
         let successful_cleanup = make_result(
@@ -1719,6 +1757,7 @@ mod tests {
                 failure_diagnostic: None,
                 skip_recovery_checkpoint_for_no_history: false,
                 skip_success_checkpoint: true,
+                active_input_delivery_ids: &[],
             },
             &telemetry,
             &runtime,
@@ -1840,6 +1879,7 @@ mod tests {
                 failure_diagnostic: None,
                 skip_recovery_checkpoint_for_no_history: false,
                 skip_success_checkpoint: true,
+                active_input_delivery_ids: &[],
             },
             &telemetry,
             &runtime,
@@ -1901,6 +1941,7 @@ mod tests {
                 failure_diagnostic: None,
                 skip_recovery_checkpoint_for_no_history: false,
                 skip_success_checkpoint: true,
+                active_input_delivery_ids: &[],
             },
             &telemetry,
             &runtime,
@@ -1955,6 +1996,7 @@ mod tests {
                 failure_diagnostic: None,
                 skip_recovery_checkpoint_for_no_history: false,
                 skip_success_checkpoint: false,
+                active_input_delivery_ids: &[],
             },
             &telemetry,
             &runtime,
@@ -2031,6 +2073,7 @@ mod tests {
                 failure_diagnostic: Some(failure_diagnostic.clone()),
                 skip_recovery_checkpoint_for_no_history: true,
                 skip_success_checkpoint: false,
+                active_input_delivery_ids: &[],
             },
             &telemetry,
             &runtime,
@@ -2133,6 +2176,7 @@ mod tests {
                 failure_diagnostic: Some(failure_diagnostic.clone()),
                 skip_recovery_checkpoint_for_no_history: false,
                 skip_success_checkpoint: false,
+                active_input_delivery_ids: &[],
             },
             &telemetry,
             &runtime,

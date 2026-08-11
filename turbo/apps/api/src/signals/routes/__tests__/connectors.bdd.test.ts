@@ -24,7 +24,7 @@ import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import { extractFileFromTarGz } from "../../../lib/tar";
 import { clearMockNow, mockNow, now } from "../../../lib/time";
-import { generateZeroToken } from "../../auth/tokens";
+import { generateSandboxToken, generateZeroToken } from "../../auth/tokens";
 import { createDeferredPromise } from "../../utils";
 import {
   createBddApi,
@@ -54,6 +54,8 @@ import {
   readConnectorCredentialStorageState,
   readCustomConnectorCredentialStorageParent,
   readCustomConnectorOAuthStorageState,
+  seedConnectorStorageRow,
+  setConnectorVariableOwner,
   setCustomConnectorCredentialStorageState,
 } from "./helpers/connector-credential-storage-state";
 import { zeroCustomConnectorsRoutes } from "../zero-custom-connectors";
@@ -297,7 +299,6 @@ describe("CONN-01 and CHAIN-CONNECTOR: connector discovery and manual grant life
 
     const initialList = await connectorsApi.listConnectors(actor);
     expect(initialList.connectors).toStrictEqual([]);
-    expect(initialList.configuredConnectorSlugs).toStrictEqual([]);
     expect(initialList.connectorProvidedBindings).toStrictEqual([]);
 
     const search = await connectorsApi.searchConnectors(actor, "OPENAI");
@@ -2141,7 +2142,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     await connectorsApi.deleteCustomConnector(admin, created.id);
   });
 
-  it("keeps OAuth callback state scoped to its Builtin or Custom target", async () => {
+  it("keeps OAuth state target-scoped and aligns Custom lifecycle with Builtin", async () => {
     mockEnv("APP_URL", "https://app.vm0.test");
     mockGitHubConnectorOAuth();
     const provider = mockCustomConnectorOAuth2Provider(context, {
@@ -2195,6 +2196,16 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       message: "Invalid state - please try again",
     });
 
+    const customMissingCode =
+      await connectorsApi.completeCustomConnectorOAuth2CallbackResult({
+        state: customState,
+      });
+    expect(customMissingCode.body).toStrictEqual({
+      status: "error",
+      message: "Missing authorization code",
+    });
+    expect(provider.tokenBodies).toHaveLength(0);
+
     const customSuccess =
       await connectorsApi.completeCustomConnectorOAuth2CallbackResult({
         code: "custom-success-code",
@@ -2204,6 +2215,8 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       status: "success",
       username: null,
     });
+    expect(provider.tokenBodies).toHaveLength(1);
+    expect(provider.tokenBodies[0]?.get("code")).toBe("custom-success-code");
     const ownerConnectors = await connectorsApi.listCustomConnectors(owner);
     expect(
       ownerConnectors.find((candidate) => {
@@ -2226,6 +2239,31 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       status: "error",
       message: "Invalid OAuth state - please try again",
     });
+    expect(provider.tokenBodies).toHaveLength(1);
+
+    const deniedAuthorizationUrl =
+      await connectorsApi.startCustomConnectorOAuth2(owner, connector.id);
+    const deniedState = stateFromAuthorizationUrl(deniedAuthorizationUrl);
+    const denied =
+      await connectorsApi.completeCustomConnectorOAuth2CallbackResult({
+        error: "access_denied",
+        error_description: "Provider denied access",
+        state: deniedState,
+      });
+    expect(denied.body).toStrictEqual({
+      status: "error",
+      message: "Provider denied access",
+    });
+    const deniedReplay =
+      await connectorsApi.completeCustomConnectorOAuth2CallbackResult({
+        code: "custom-denied-replay-code",
+        state: deniedState,
+      });
+    expect(deniedReplay.body).toStrictEqual({
+      status: "error",
+      message: "Invalid OAuth state - please try again",
+    });
+    expect(provider.tokenBodies).toHaveLength(1);
 
     const builtinAuthorization = await connectorsApi.startOauth(
       peer,
@@ -2237,7 +2275,6 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     );
     const wrongCustomCallback =
       await connectorsApi.completeCustomConnectorOAuth2CallbackResult({
-        code: "wrong-custom-source-code",
         state: builtinState,
       });
     expect(wrongCustomCallback.body).toStrictEqual({
@@ -2263,16 +2300,25 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       await connectorsApi.startCustomConnectorOAuth2(peer, connector.id);
     const expiringState = stateFromAuthorizationUrl(expiringAuthorizationUrl);
     mockNow(now() + 16 * 60 * 1000);
-    const expired =
+    const expiredStatus =
+      await connectorsApi.completeCustomConnectorOAuth2CallbackResult({
+        state: expiringState,
+      });
+    const expiredClaim =
       await connectorsApi.completeCustomConnectorOAuth2CallbackResult({
         code: "expired-custom-code",
         state: expiringState,
       });
     clearMockNow();
-    expect(expired.body).toStrictEqual({
+    expect(expiredStatus.body).toStrictEqual({
       status: "error",
       message: "Invalid OAuth state - please try again",
     });
+    expect(expiredClaim.body).toStrictEqual({
+      status: "error",
+      message: "Invalid OAuth state - please try again",
+    });
+    expect(provider.tokenBodies).toHaveLength(1);
     const peerAfterExpiry = await connectorsApi.listCustomConnectors(peer);
     expect(
       peerAfterExpiry.find((candidate) => {
@@ -3509,7 +3555,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     await connectorsApi.deleteCustomConnector(admin, saved.connector.id);
   });
 
-  it("rejects unauthenticated and org-less callers across all custom connector routes", async () => {
+  it("preserves authentication boundaries across custom connector routes", async () => {
     const bdd = createBddApi(context);
     const noOrgActor = bdd.user({ orgId: null });
     const connectorId = randomUUID();
@@ -3562,6 +3608,25 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       );
       expectApiError(oauthStart.body);
       expect(oauthStart.body.error.code).toBe("UNAUTHORIZED");
+    }
+
+    const sandboxActor = bdd.user();
+    if (!sandboxActor.orgId) {
+      throw new Error("Expected an org-scoped sandbox actor");
+    }
+    const runId = randomUUID();
+    for (const token of [
+      generateSandboxToken(sandboxActor.userId, runId, sandboxActor.orgId),
+      generateZeroToken(sandboxActor.userId, runId, sandboxActor.orgId),
+    ]) {
+      const disconnect =
+        await connectorsApi.requestDisconnectCustomConnectorWithToken(
+          token,
+          connectorId,
+          [403],
+        );
+      expectApiError(disconnect.body);
+      expect(disconnect.body.error.code).toBe("FORBIDDEN");
     }
   });
 
@@ -4610,6 +4675,17 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     expectApiError(missing.body);
     expect(missing.body.error.message).toBe("Custom connector not found");
 
+    const missingDisconnect =
+      await connectorsApi.requestDisconnectCustomConnector(
+        admin,
+        randomUUID(),
+        [404],
+      );
+    expectApiError(missingDisconnect.body);
+    expect(missingDisconnect.body.error.message).toBe(
+      "Custom connector not found",
+    );
+
     await connectorsApi.setCustomConnectorSecret(
       member,
       shared.id,
@@ -4646,7 +4722,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       readHasSecret(adminInOtherOrg, otherOrg.id),
     ).resolves.toBeTruthy();
 
-    await connectorsApi.disconnectCustomConnector(admin, shared.id);
+    await connectorsApi.disconnectCustomConnectorLegacy(admin, shared.id);
     await connectorsApi.disconnectCustomConnector(admin, shared.id);
     await expect(readHasSecret(admin, shared.id)).resolves.toBeFalsy();
     await expect(readHasSecret(member, shared.id)).resolves.toBeTruthy();
@@ -5071,6 +5147,150 @@ describe("CONN-02: test-oauth auth-code journey", () => {
       }),
     );
     expectNoVisibleSecret(apiListed, "bdd-test-oauth-api-access-token");
+
+    await connectorsApi.deleteConnectorBySlug(actor, "test-oauth");
+    await connectorsApi.deleteFeatureSwitches(actor);
+  });
+
+  it("rolls back failed OAuth-to-manual credential replacement before a successful retry", async () => {
+    const bdd = createBddApi(context);
+    const actor = bdd.user();
+    await connectorsApi.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.TestOauthConnector]: true,
+    });
+    mockTestOAuthAuthCodeProvider({
+      refreshToken: "bdd-rollback-refresh-token",
+    });
+
+    const initial = await connectorsApi.connectManualGrant(
+      actor,
+      "test-oauth",
+      "api-token",
+      {
+        apiToken: "bdd-rollback-manual-token",
+        inputVariable: "bdd-rollback-input",
+        tenantId: "bdd-rollback-manual-tenant",
+      },
+    );
+    // Production APIs cannot move a connector variable to another connection;
+    // this fixture creates the storage conflict needed to exercise rollback.
+    const conflictOwnerId = await seedConnectorStorageRow(context, {
+      orgId: requiredOrgId(actor),
+      userId: actor.userId,
+      connectorSlug: uniqueSlug("credential-conflict"),
+      authMethod: "fixture",
+      storageVersion: 1,
+    });
+    await setConnectorVariableOwner(context, {
+      connectorId: conflictOwnerId,
+      name: "TEST_OAUTH_API_TOKEN_INPUT_VAR",
+      orgId: requiredOrgId(actor),
+      userId: actor.userId,
+    });
+
+    const oauthStart = await connectorsApi.startOauth(
+      actor,
+      "test-oauth",
+      "oauth",
+    );
+    await connectorsApi.completeOauthCallback("test-oauth", {
+      code: "bdd-rollback-oauth-code",
+      state: stateFromAuthorizationUrl(oauthStart.authorizationUrl),
+    });
+    const oauthConnector = await connectorsApi.readConnectorBySlug(
+      actor,
+      "test-oauth",
+    );
+    expect(oauthConnector).toMatchObject({
+      id: initial.id,
+      authMethod: "oauth",
+      externalId: "bdd-test-oauth-user",
+      oauthScopes: ["read"],
+    });
+    const storageQuery = {
+      orgId: requiredOrgId(actor),
+      userId: actor.userId,
+      connectorSlug: "test-oauth",
+      secretNames: [
+        "TEST_OAUTH_TOKEN",
+        "TEST_OAUTH_ACCESS_TOKEN",
+        "TEST_OAUTH_REFRESH_TOKEN",
+      ],
+      variableNames: [
+        "TEST_OAUTH_API_TOKEN_INPUT_VAR",
+        "TEST_OAUTH_API_TENANT_ID",
+      ],
+    };
+    const storageBeforeFailure = await readConnectorCredentialStorageState(
+      context,
+      storageQuery,
+    );
+
+    const failed = await connectorsApi.requestManualGrant(
+      actor,
+      "test-oauth",
+      "api-token",
+      {
+        apiToken: "bdd-failed-replacement-token",
+        inputVariable: "bdd-failed-replacement-input",
+        tenantId: "bdd-failed-replacement-tenant",
+      },
+      { statuses: [500] },
+    );
+    expect(failed.status).toBe(500);
+    await expect(
+      connectorsApi.readConnectorBySlug(actor, "test-oauth"),
+    ).resolves.toStrictEqual(oauthConnector);
+    await expect(
+      readConnectorCredentialStorageState(context, storageQuery),
+    ).resolves.toStrictEqual(storageBeforeFailure);
+
+    await setConnectorVariableOwner(context, {
+      connectorId: oauthConnector.id,
+      name: "TEST_OAUTH_API_TOKEN_INPUT_VAR",
+      orgId: requiredOrgId(actor),
+      userId: actor.userId,
+    });
+    const manual = await connectorsApi.connectManualGrant(
+      actor,
+      "test-oauth",
+      "api-token",
+      {
+        apiToken: "bdd-successful-replacement-token",
+        inputVariable: "bdd-successful-replacement-input",
+        tenantId: "bdd-successful-replacement-tenant",
+      },
+    );
+    expect(manual).toMatchObject({
+      id: oauthConnector.id,
+      authMethod: "api-token",
+      externalId: null,
+      externalUsername: null,
+      externalEmail: null,
+      oauthScopes: null,
+      tokenExpiresAt: null,
+    });
+    const manualStorage = await readConnectorCredentialStorageState(
+      context,
+      storageQuery,
+    );
+    expect(
+      manualStorage.secrets?.map(({ name }) => {
+        return name;
+      }),
+    ).toStrictEqual(["TEST_OAUTH_TOKEN"]);
+    expect(
+      manualStorage.variables
+        ?.map(({ name }) => {
+          return name;
+        })
+        .sort((left, right) => {
+          return left.localeCompare(right);
+        }),
+    ).toStrictEqual([
+      "TEST_OAUTH_API_TENANT_ID",
+      "TEST_OAUTH_API_TOKEN_INPUT_VAR",
+    ]);
 
     await connectorsApi.deleteConnectorBySlug(actor, "test-oauth");
     await connectorsApi.deleteFeatureSwitches(actor);

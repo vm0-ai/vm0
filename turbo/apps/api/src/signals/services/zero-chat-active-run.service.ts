@@ -1,6 +1,7 @@
 import { CANCELLATION_RECOVERY_STALE_AFTER_MS } from "@vm0/api-contracts/contracts/runners";
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRuns } from "@vm0/db/schema/agent-run";
+import { activeInputDeliveries } from "@vm0/db/schema/active-input-delivery";
 import { chatEvents } from "@vm0/db/schema/chat-event";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
@@ -118,7 +119,7 @@ export async function cancellationRecoveryPendingForThread(
   return run !== undefined;
 }
 
-async function activeChatRunExists(
+async function chatThreadAdmissionBlockerExists(
   db: Pick<Db, "select">,
   args: {
     readonly threadId: string;
@@ -126,25 +127,50 @@ async function activeChatRunExists(
     readonly apiStartTime?: number;
   },
 ): Promise<boolean> {
-  const [run] = await db
-    .select({ id: zeroRuns.id })
-    .from(zeroRuns)
-    .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
+  const [thread] = await db
+    .select({ id: chatThreads.id })
+    .from(chatThreads)
     .where(
       and(
-        eq(zeroRuns.chatThreadId, args.threadId),
-        args.excludeRunId === undefined
-          ? undefined
-          : ne(zeroRuns.id, args.excludeRunId),
+        eq(chatThreads.id, args.threadId),
         or(
-          activeChatRunCondition(db),
-          freshUnresolvedCancellationRecoveryCondition(db, args.apiStartTime),
+          exists(
+            db
+              .select({ id: zeroRuns.id })
+              .from(zeroRuns)
+              .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
+              .where(
+                and(
+                  eq(zeroRuns.chatThreadId, args.threadId),
+                  args.excludeRunId === undefined
+                    ? undefined
+                    : ne(zeroRuns.id, args.excludeRunId),
+                  or(
+                    activeChatRunCondition(db),
+                    freshUnresolvedCancellationRecoveryCondition(
+                      db,
+                      args.apiStartTime,
+                    ),
+                  ),
+                ),
+              ),
+          ),
+          exists(
+            db
+              .select({ id: activeInputDeliveries.id })
+              .from(activeInputDeliveries)
+              .where(
+                and(
+                  eq(activeInputDeliveries.chatThreadId, args.threadId),
+                  eq(activeInputDeliveries.status, "open"),
+                ),
+              ),
+          ),
         ),
       ),
     )
     .limit(1);
-
-  return run !== undefined;
+  return thread !== undefined;
 }
 
 // A managed browser outlives the run that opened it and the next run simply
@@ -158,7 +184,7 @@ export async function chatThreadAdmissionBlocked(
     readonly apiStartTime?: number;
   },
 ): Promise<boolean> {
-  return await activeChatRunExists(db, args);
+  return await chatThreadAdmissionBlockerExists(db, args);
 }
 
 /** Pending queue threads whose cancellation recovery barrier has failed open. */

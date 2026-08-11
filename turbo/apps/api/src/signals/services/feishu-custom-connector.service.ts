@@ -20,6 +20,10 @@ import {
   commitPreparedCustomConnectorSkillVolume,
   prepareCustomConnectorSkillVolume$,
 } from "./custom-connector-skill-volume.service";
+import {
+  FEISHU_CUSTOM_CONNECTOR_SKILL_METADATA,
+  getFeishuCustomConnectorSlug,
+} from "./feishu-custom-connector-skill-metadata";
 import { commitConnectorRuntimeMutation } from "./connector-runtime-wakeup.service";
 import {
   customConnectorDefinitionSelection,
@@ -34,9 +38,6 @@ const FEISHU_AUTHORIZATION_URL =
 const FEISHU_TOKEN_URL =
   "https://open.feishu.cn/open-apis/authen/v2/oauth/token";
 const FEISHU_DISPLAY_NAME = "Feishu";
-const FEISHU_SKILL_NAME = "feishu";
-const FEISHU_SKILL_DESCRIPTION =
-  "Feishu OpenAPI for user-authorized messaging, people search, cloud documents, calendars, and tasks. Use when the user asks to work with Feishu.";
 const FEISHU_AUTHORIZATION_HEADER = "Authorization";
 const FEISHU_AUTHORIZATION_TEMPLATE = "Bearer {{oauth.access_token}}";
 
@@ -178,10 +179,6 @@ curl -sS -X POST \
 7. Consult the current Feishu API reference when an endpoint, payload, supported token type, or resource-specific limitation is uncertain.
 `;
 
-function feishuCustomConnectorSlug(installationId: string): string {
-  return `_feishu-${installationId}`;
-}
-
 function feishuCustomConnectorDisplayName(botName: string | null): string {
   return botName ? `${FEISHU_DISPLAY_NAME}-${botName}` : FEISHU_DISPLAY_NAME;
 }
@@ -277,7 +274,7 @@ async function createFeishuCustomConnector(
     .values({
       id: connectorId,
       orgId: args.orgId,
-      slug: feishuCustomConnectorSlug(args.installationId),
+      slug: getFeishuCustomConnectorSlug(args.installationId),
       ...desiredConnectorDefinition(installation),
       createdBy: installation.ownerUserId ?? args.userId,
     })
@@ -359,7 +356,7 @@ async function preflightFeishuCustomConnectorId(
         eq(orgCustomConnectors.orgId, feishuOrgInstallations.orgId),
         eq(
           orgCustomConnectors.slug,
-          feishuCustomConnectorSlug(args.installationId),
+          getFeishuCustomConnectorSlug(args.installationId),
         ),
       ),
     )
@@ -405,7 +402,7 @@ async function reconcileFeishuCustomConnector(
     return { kind: "installation-missing" };
   }
 
-  const slug = feishuCustomConnectorSlug(args.installationId);
+  const slug = getFeishuCustomConnectorSlug(args.installationId);
   const [existing] = await tx
     .select({
       connector: customConnectorDefinitionSelection(),
@@ -491,11 +488,11 @@ export const ensureFeishuCustomConnector$ = command(
         {
           orgId: args.orgId,
           connectorId,
-          connectorSlug: feishuCustomConnectorSlug(args.installationId),
+          connectorSlug: getFeishuCustomConnectorSlug(args.installationId),
           displayName: FEISHU_DISPLAY_NAME,
           skillMarkdown: FEISHU_SKILL_MARKDOWN,
-          skillName: FEISHU_SKILL_NAME,
-          skillDescription: FEISHU_SKILL_DESCRIPTION,
+          skillName: FEISHU_CUSTOM_CONNECTOR_SKILL_METADATA.name,
+          skillDescription: FEISHU_CUSTOM_CONNECTOR_SKILL_METADATA.description,
         },
         signal,
       );
@@ -569,7 +566,7 @@ export const deleteFeishuCustomConnector$ = command(
           eq(orgCustomConnectors.orgId, args.orgId),
           eq(
             orgCustomConnectors.slug,
-            feishuCustomConnectorSlug(args.installationId),
+            getFeishuCustomConnectorSlug(args.installationId),
           ),
         ),
       )
@@ -635,7 +632,7 @@ export async function hasFeishuCustomConnectorOAuthConnection(
         eq(orgCustomConnectors.orgId, args.orgId),
         eq(
           orgCustomConnectors.slug,
-          feishuCustomConnectorSlug(args.installationId),
+          getFeishuCustomConnectorSlug(args.installationId),
         ),
         eq(connectors.userId, args.userId),
         eq(connectors.authMethod, "oauth"),
@@ -663,7 +660,7 @@ export async function disconnectFeishuCustomConnectorOAuthConnection(
         eq(orgCustomConnectors.orgId, args.orgId),
         eq(
           orgCustomConnectors.slug,
-          feishuCustomConnectorSlug(args.installationId),
+          getFeishuCustomConnectorSlug(args.installationId),
         ),
       ),
     )

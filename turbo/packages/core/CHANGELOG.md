@@ -1,5 +1,28 @@
 # Changelog
 
+## [8.542.0](https://github.com/vm0-ai/vm0/compare/core-v8.541.3...core-v8.542.0) (2026-08-11)
+
+
+### Features
+
+* **connectors:** add custom connection endpoint ([#26228](https://github.com/vm0-ai/vm0/issues/26228)) ([b6235c2](https://github.com/vm0-ai/vm0/commit/b6235c2b4000bab04ecb3e9decb23e927e719410))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.311.0
+
+## [8.541.3](https://github.com/vm0-ai/vm0/compare/core-v8.541.2...core-v8.541.3) (2026-08-11)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.310.3
+
 ## [8.541.2](https://github.com/vm0-ai/vm0/compare/core-v8.541.1...core-v8.541.2) (2026-08-11)
 
 

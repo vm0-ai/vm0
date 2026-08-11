@@ -2384,7 +2384,7 @@ async function dispatchGoogleCalendarAutomationEvent(
   signal: AbortSignal,
 ): Promise<"dispatched" | "duplicate" | { readonly kind: "run_error" }> {
   const processedId = await args.timing.measure(
-    "api_dispatch_pre_create_zero_workflow_event_record_processed_event",
+    "api_dispatch_pre_create_zero_automation_event_record_processed_event",
     async () => {
       return await insertGoogleCalendarProcessedEvent(args, signal);
     },
@@ -2449,7 +2449,7 @@ async function dispatchCalendarEventChanges(
     for (const automation of args.automations) {
       const runTiming = changeTiming.createRunTiming();
       const matches = await runTiming.measure(
-        "api_dispatch_pre_create_zero_workflow_event_match_automations",
+        "api_dispatch_pre_create_zero_automation_event_match_automations",
         () => {
           return googleCalendarAutomationMatchesChange(
             automation,
@@ -2499,7 +2499,7 @@ async function dispatchGoogleCalendarChanges(
   signal: AbortSignal,
 ): Promise<GoogleCalendarDispatchStateResult> {
   const snapshotMap = await args.sourceTiming.measure(
-    "api_dispatch_pre_create_zero_workflow_event_load_external_events",
+    "api_dispatch_pre_create_zero_automation_event_load_external_events",
     async () => {
       return await loadCalendarEventSnapshotMap(
         {
@@ -2523,7 +2523,7 @@ async function dispatchGoogleCalendarChanges(
     });
 
   const automations = await args.sourceTiming.measure(
-    "api_dispatch_pre_create_zero_workflow_event_load_automations",
+    "api_dispatch_pre_create_zero_automation_event_load_automations",
     async () => {
       return await loadGoogleCalendarEventAutomations(
         {
@@ -2585,7 +2585,7 @@ async function dispatchGoogleCalendarWatchState(
   signal: AbortSignal,
 ): Promise<GoogleCalendarDispatchStateResult> {
   const hasConsumer = await args.sourceTiming.measure(
-    "api_dispatch_pre_create_zero_workflow_event_load_automations",
+    "api_dispatch_pre_create_zero_automation_event_load_automations",
     async () => {
       return await hasEnabledGoogleCalendarConsumer(
         {
@@ -2608,7 +2608,7 @@ async function dispatchGoogleCalendarWatchState(
   }
 
   const access = await args.sourceTiming.measure(
-    "api_dispatch_pre_create_zero_workflow_event_load_source_state",
+    "api_dispatch_pre_create_zero_automation_event_load_source_state",
     async () => {
       return await resolveGoogleCalendarAccess(
         {
@@ -2659,7 +2659,7 @@ async function dispatchGoogleCalendarWatchState(
   }
 
   const changes = await args.sourceTiming.measure(
-    "api_dispatch_pre_create_zero_workflow_event_load_external_events",
+    "api_dispatch_pre_create_zero_automation_event_load_external_events",
     async () => {
       return await listCalendarEvents(
         {
@@ -2726,7 +2726,7 @@ export const dispatchGoogleCalendarWebhook$ = command(
     );
     const db = set(writeDb$);
     const state = await sourceTiming.measure(
-      "api_dispatch_pre_create_zero_workflow_event_load_source_state",
+      "api_dispatch_pre_create_zero_automation_event_load_source_state",
       async () => {
         return await loadCalendarWatchStateForNotification(
           {
@@ -2756,7 +2756,7 @@ export const dispatchGoogleCalendarWebhook$ = command(
         }
       : async ({ automation, event, eventChangeKey, timing }) => {
           const runInput = await timing.measure(
-            "api_dispatch_pre_create_zero_workflow_event_build_run_input",
+            "api_dispatch_pre_create_zero_automation_event_build_run_input",
             () => {
               const context = googleCalendarTriggerContext({
                 workflowName: automation.workflowName,

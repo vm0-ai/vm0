@@ -1419,17 +1419,13 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CF_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_PAGES_DEPLOY_API_TOKEN }}
           PAGES_DIST: ${{ steps.pages-production.outputs.pages-dist }}
-        working-directory: turbo
         run: |
           set -euo pipefail
-          : "${CF_PAGES_PROJECT_NAME:?CF_PAGES_PROJECT_NAME variable is required}"
-          : "${CLOUDFLARE_ACCOUNT_ID:?CF_ACCOUNT_ID variable is required}"
-          : "${CLOUDFLARE_API_TOKEN:?CF_PAGES_DEPLOY_API_TOKEN secret is required}"
-          pnpm --filter @vm0/host-worker exec wrangler pages deploy "$PAGES_DIST" \
-            --project-name "$CF_PAGES_PROJECT_NAME" \
-            --branch production \
-            --commit-hash "$ARTIFACT_SHA" \
-            --commit-dirty=false
+          bash .github/scripts/deploy-okou-pages.sh \
+            "$PAGES_DIST" \
+            "$CF_PAGES_PROJECT_NAME" \
+            production \
+            "$ARTIFACT_SHA"
 
           pages_url="https://${CF_PAGES_PROJECT_NAME}.pages.dev"
           production_url="https://app.vm0.ai"

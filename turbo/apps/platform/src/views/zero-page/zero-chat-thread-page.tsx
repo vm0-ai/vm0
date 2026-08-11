@@ -128,6 +128,8 @@ import {
   videoTemplateSpecText,
   type VideoTemplateSpec,
 } from "../../signals/zero-page/video-template-spec.ts";
+import { openSentTemplateDetail$ } from "../../signals/zero-page/sent-template-detail.ts";
+import { SentTemplateDetailDialog } from "./sent-template-detail-dialog.tsx";
 import { isStandalonePwa } from "../../lib/keyboard-dismiss-gesture.ts";
 import {
   captureRecommendedFollowupSelected,
@@ -2766,6 +2768,7 @@ export function ZeroChatThreadPage() {
         <ChatThreadArea leftPane={leftPane} rightPane={rightPane} />
       </ChatThreadSidebarShell>
       {lightboxUrl && <AttachmentLightbox />}
+      <SentTemplateDetailDialog />
       <ChatConnectorActionConnectModal />
     </>
   );
@@ -4557,7 +4560,7 @@ function ChatThreadComposer({ thread }: { thread: ChatPanelSignals }) {
   return (
     <footer
       data-chat-composer
-      className="relative shrink-0 bg-[hsl(var(--background))] pb-2"
+      className="relative shrink-0 bg-[hsl(var(--background))]"
     >
       <div className="pointer-events-none absolute inset-x-0 -top-5 h-[21px] bg-gradient-to-t from-[hsl(var(--background))] to-transparent" />
       <div
@@ -7494,34 +7497,40 @@ function AgentRunSourceMessageAnnotation({
 // File chips carry their own border, so they need more breathing room from the
 // surrounding sentence than a borderless inline mention does.
 const INLINE_FILE_REFERENCE_SPACING_CLASS = "mx-1";
-const STRUCTURED_INLINE_REFERENCE_BASE_CLASS =
-  "relative -top-px mx-0.5 inline-flex h-7 items-center " +
+// Layout without a display class so the spec-bearing chip can pick its own
+// responsive display (hidden sm:inline-flex / sm:hidden) per variant.
+const STRUCTURED_INLINE_REFERENCE_LAYOUT_CLASS =
+  "relative -top-px mx-0.5 h-7 items-center " +
   "gap-1.5 rounded-md bg-orange-500/10 px-2 align-middle text-[13px] " +
   "font-medium text-orange-600 dark:bg-orange-400/15 dark:text-orange-300";
+const STRUCTURED_INLINE_REFERENCE_BASE_CLASS = `inline-flex ${STRUCTURED_INLINE_REFERENCE_LAYOUT_CLASS}`;
 const STRUCTURED_INLINE_REFERENCE_CLASS = `${STRUCTURED_INLINE_REFERENCE_BASE_CLASS} max-w-[240px]`;
-const STRUCTURED_INLINE_LINK_REFERENCE_CLASS =
-  `${STRUCTURED_INLINE_REFERENCE_CLASS} transition-colors ` +
-  "hover:bg-orange-500/15 focus-visible:outline-none focus-visible:ring-2 " +
-  "focus-visible:ring-orange-500/30 active:bg-orange-500/20 " +
-  "dark:hover:bg-orange-400/20 dark:active:bg-orange-400/25";
+const STRUCTURED_INLINE_INTERACTIVE_CLASS =
+  "transition-colors hover:bg-orange-500/15 focus-visible:outline-none " +
+  "focus-visible:ring-2 focus-visible:ring-orange-500/30 " +
+  "active:bg-orange-500/20 dark:hover:bg-orange-400/20 " +
+  "dark:active:bg-orange-400/25";
+const STRUCTURED_INLINE_LINK_REFERENCE_CLASS = `${STRUCTURED_INLINE_REFERENCE_CLASS} ${STRUCTURED_INLINE_INTERACTIVE_CLASS}`;
 
 /**
- * Read-only echo of the parameters a sent video used. Narrow viewports hide
- * the spec entirely — the chip's hover title still carries it — so the
- * template title keeps the room it needs; wide viewports show every
- * parameter in full.
+ * Read-only echo of the parameters a sent video used. Rendered only inside
+ * the wide-viewport chip variant, which owns the responsive visibility.
  */
 function SentVideoTemplateSpec({ spec }: { readonly spec: VideoTemplateSpec }) {
   return (
-    <span className="hidden shrink-0 text-[12px] font-normal text-orange-600/70 dark:text-orange-300/70 sm:inline">
+    <span className="shrink-0 text-[12px] font-normal text-orange-600/70 dark:text-orange-300/70">
       {videoTemplateSpecText(spec)}
     </span>
   );
 }
 
 /**
- * A sent template is a record of what the message used, not a control. It
- * renders as static text so the history stays read-only.
+ * A sent template is a record of what the message used, not an editing
+ * control. Templates without a spec render as static text. A spec-bearing
+ * video chip stays a static record on wide viewports too — the inline echo
+ * and hover title already carry the spec there — and only the touch-width
+ * variant is a button opening the read-only detail dialog, because narrow
+ * viewports hide the inline echo and touch has no hover title.
  */
 function UserMessageTemplateReference({
   part,
@@ -7530,26 +7539,50 @@ function UserMessageTemplateReference({
 }) {
   const typeLabel = generationTemplateTypeLabel(part.template);
   const videoOptionsEnabled = useGet(videoTemplateOptionsEnabled$);
+  const openDetail = useSet(openSentTemplateDetail$);
   const spec = videoOptionsEnabled ? videoTemplateSpec(part.template) : null;
   const label = `${typeLabel ?? part.template.type} · ${part.titleSnapshot}`;
+  if (spec === null) {
+    return (
+      <span
+        data-structured-template-reference=""
+        className={STRUCTURED_INLINE_REFERENCE_CLASS}
+        title={label}
+      >
+        <SwatchBook size={13} className="shrink-0" />
+        <span className="min-w-0 truncate">{part.titleSnapshot}</span>
+      </span>
+    );
+  }
   return (
-    <span
-      data-structured-template-reference=""
-      // The spec is as wide as the chip's old fixed cap on its own, so a
-      // spec-bearing chip trades the cap for the full message width.
-      className={
-        spec === null
-          ? STRUCTURED_INLINE_REFERENCE_CLASS
-          : `${STRUCTURED_INLINE_REFERENCE_BASE_CLASS} max-w-full`
-      }
-      title={
-        spec === null ? label : `${label} · ${videoTemplateSpecText(spec)}`
-      }
-    >
-      <SwatchBook size={13} className="shrink-0" />
-      <span className="min-w-0 truncate">{part.titleSnapshot}</span>
-      {spec !== null && <SentVideoTemplateSpec spec={spec} />}
-    </span>
+    <>
+      <span
+        data-structured-template-reference=""
+        // The spec is as wide as the chip's old fixed cap on its own, so a
+        // spec-bearing chip trades the cap for the full message width.
+        className={`hidden max-w-full sm:inline-flex ${STRUCTURED_INLINE_REFERENCE_LAYOUT_CLASS}`}
+        title={`${label} · ${videoTemplateSpecText(spec)}`}
+      >
+        <SwatchBook size={13} className="shrink-0" />
+        <span className="min-w-0 truncate">{part.titleSnapshot}</span>
+        <SentVideoTemplateSpec spec={spec} />
+      </span>
+      <button
+        type="button"
+        data-structured-template-reference=""
+        className={`max-w-full sm:hidden ${STRUCTURED_INLINE_REFERENCE_BASE_CLASS} ${STRUCTURED_INLINE_INTERACTIVE_CLASS}`}
+        aria-haspopup="dialog"
+        onClick={() => {
+          openDetail({
+            titleSnapshot: part.titleSnapshot,
+            template: part.template,
+          });
+        }}
+      >
+        <SwatchBook size={13} className="shrink-0" />
+        <span className="min-w-0 truncate">{part.titleSnapshot}</span>
+      </button>
+    </>
   );
 }
 

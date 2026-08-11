@@ -343,7 +343,10 @@ async function rejectInvalidStoredOAuthStateForCallback(
 ): Promise<Response | undefined> {
   const status = await getConnectorOAuthStateStatus(
     args.db,
-    { state: args.state, connectorSlug: args.connectorSlug },
+    {
+      state: args.state,
+      target: { kind: "builtin", connectorSlug: args.connectorSlug },
+    },
     signal,
   );
   if (status.kind === "usable") {

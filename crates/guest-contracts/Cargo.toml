@@ -8,7 +8,7 @@ description = "Shared contracts between runner and guest binaries"
 libc.workspace = true
 serde = { workspace = true, features = ["derive"] }
 serde_json.workspace = true
-uuid.workspace = true
+uuid = { workspace = true, features = ["v4"] }
 
 [dev-dependencies]
 tempfile.workspace = true

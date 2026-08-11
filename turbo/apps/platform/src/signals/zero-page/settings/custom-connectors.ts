@@ -7,9 +7,7 @@ import {
   zeroCustomConnectorsContract,
   customConnectorListResponseSchema,
   customConnectorResponseSchema,
-  isHttpCustomConnectorResponse,
   type CreateCustomConnectorBody,
-  type CustomConnectorHttpResponse,
   type CustomConnectorResponse,
   type UpdateCustomConnectorBody,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
@@ -84,11 +82,7 @@ export const customConnectorAgentAuthorizations$ = computed(
   async (get): Promise<readonly CustomConnectorAgentAuthorization[]> => {
     get(customConnectorAuthorizationReloadVersion$);
     const connectors = await get(customConnectors$);
-    if (
-      !connectors.some((connector) => {
-        return isHttpCustomConnectorResponse(connector);
-      })
-    ) {
+    if (connectors.length === 0) {
       return [];
     }
 
@@ -569,14 +563,14 @@ export const connectCustomConnectorOAuth2ForAgent$ = command(
 type DialogState =
   | { kind: "none" }
   | { kind: "create" }
-  | { kind: "edit"; connector: CustomConnectorHttpResponse }
-  | { kind: "connect"; connector: CustomConnectorHttpResponse }
-  | { kind: "access"; connector: CustomConnectorHttpResponse }
+  | { kind: "edit"; connector: CustomConnectorResponse }
+  | { kind: "connect"; connector: CustomConnectorResponse }
+  | { kind: "access"; connector: CustomConnectorResponse }
   | { kind: "delete"; connector: CustomConnectorResponse };
 
 const internalDialog$ = state<DialogState>({ kind: "none" });
 const internalEditConfirmation$ = state<{
-  readonly connector: CustomConnectorHttpResponse;
+  readonly connector: CustomConnectorResponse;
   readonly body: UpdateCustomConnectorBody;
 } | null>(null);
 
@@ -591,7 +585,7 @@ export const openCustomConnectorCreateDialog$ = command(({ set }) => {
   set(internalDialog$, { kind: "create" });
 });
 export const openCustomConnectorEditDialog$ = command(
-  ({ set }, connector: CustomConnectorHttpResponse) => {
+  ({ set }, connector: CustomConnectorResponse) => {
     set(internalCreateForm$, createFormFromConnector(connector));
     set(internalEditConfirmation$, null);
     set(internalDialog$, { kind: "edit", connector });
@@ -601,7 +595,7 @@ export const openCustomConnectorEditConfirmationDialog$ = command(
   (
     { set },
     args: {
-      readonly connector: CustomConnectorHttpResponse;
+      readonly connector: CustomConnectorResponse;
       readonly body: UpdateCustomConnectorBody;
     },
   ) => {
@@ -614,7 +608,7 @@ export const closeCustomConnectorEditConfirmationDialog$ = command(
   },
 );
 export const openCustomConnectorConnectDialog$ = command(
-  ({ set }, connector: CustomConnectorHttpResponse) => {
+  ({ set }, connector: CustomConnectorResponse) => {
     set(internalConnectForm$, {
       ...CONNECT_FORM_DEFAULTS,
       authMethod: connector.authMode === "oauth" ? "oauth2" : "api",
@@ -623,7 +617,7 @@ export const openCustomConnectorConnectDialog$ = command(
   },
 );
 export const openCustomConnectorAccessDialog$ = command(
-  ({ set }, connector: CustomConnectorHttpResponse) => {
+  ({ set }, connector: CustomConnectorResponse) => {
     set(internalDialog$, { kind: "access", connector });
   },
 );
@@ -642,8 +636,10 @@ export const closeCustomConnectorDialog$ = command(({ set }) => {
 // ---------------------------------------------------------------------------
 
 export interface CustomConnectorCreateForm {
+  kind: CustomConnectorResponse["kind"];
   displayName: string;
   prefixesRaw: string;
+  mcpEndpoint: string;
   headerName: string;
   headerTemplate: string;
   authMethodTypes: readonly CustomConnectorAuthMethodType[];
@@ -690,8 +686,10 @@ const OAUTH_CREATE_FORM_DEFAULTS = {
 } as const satisfies CustomConnectorOAuthCreateForm;
 
 const CREATE_FORM_DEFAULTS = {
+  kind: "http",
   displayName: "",
   prefixesRaw: "",
+  mcpEndpoint: "",
   headerName: "Authorization",
   headerTemplate: "Bearer {{secret}}",
   authMethodTypes: [],
@@ -722,13 +720,26 @@ function oauthCreateFormFromConnector(
 }
 
 function createFormFromConnector(
-  connector: CustomConnectorHttpResponse,
+  connector: CustomConnectorResponse,
 ): CustomConnectorCreateForm {
+  const simpleManualInjection = connector.headerInjections[0];
   return {
+    kind: connector.kind,
     displayName: connector.displayName,
-    prefixesRaw: connector.prefixTemplates.join("\n"),
-    headerName: connector.headerName,
-    headerTemplate: connector.headerTemplate,
+    prefixesRaw:
+      connector.kind === "http" ? connector.prefixTemplates.join("\n") : "",
+    mcpEndpoint: connector.kind === "mcp" ? connector.endpoint : "",
+    headerName:
+      connector.kind === "http"
+        ? connector.headerName
+        : (simpleManualInjection?.name ?? CREATE_FORM_DEFAULTS.headerName),
+    headerTemplate:
+      connector.kind === "http"
+        ? connector.headerTemplate
+        : (simpleManualInjection?.valueTemplate.replaceAll(
+            "{{secrets.secret}}",
+            "{{secret}}",
+          ) ?? CREATE_FORM_DEFAULTS.headerTemplate),
     authMethodTypes: [connector.authMode === "oauth" ? "oauth2" : "api"],
     ...oauthCreateFormFromConnector(connector),
   };
@@ -742,11 +753,17 @@ export const customConnectorCreateForm$ = computed((get) => {
 export const setCustomConnectorCreateField$ = command(
   (
     { get, set },
-    field: Exclude<keyof CustomConnectorCreateForm, "authMethodTypes">,
+    field: Exclude<keyof CustomConnectorCreateForm, "authMethodTypes" | "kind">,
     value: string,
   ) => {
     const prev = get(internalCreateForm$);
     set(internalCreateForm$, { ...prev, [field]: value });
+  },
+);
+export const setCustomConnectorCreateKind$ = command(
+  ({ get, set }, kind: CustomConnectorResponse["kind"]) => {
+    const form = get(internalCreateForm$);
+    set(internalCreateForm$, { ...form, kind });
   },
 );
 export const addCustomConnectorAuthMethod$ = command(

@@ -33,7 +33,6 @@ import {
   testConnectorCatalogCategoryMetadata,
   testConnectorCatalogDefinitions,
   testConnectorPermissionDetails,
-  testConnectorSlugs,
   type TestConnectorCatalogDefinition,
 } from "./connector-catalog-fixtures.ts";
 
@@ -310,7 +309,6 @@ export const apiConnectorsHandlers = [
   mockApi(zeroConnectorsMainContract.list, ({ respond }) => {
     return respond(200, {
       connectors: mockConnectors,
-      configuredConnectorSlugs: [...testConnectorSlugs],
       connectorProvidedBindings: [],
     });
   }),

@@ -15,8 +15,8 @@ import {
 } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   zeroCustomConnectorByIdContract,
+  zeroCustomConnectorConnectionContract,
   zeroCustomConnectorOAuth2Contract,
-  zeroCustomConnectorSecretContract,
   zeroCustomConnectorsContract,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import { zeroAgentCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
@@ -68,7 +68,6 @@ import { zeroCustomConnectorsDeleteRoutes } from "../zero-custom-connectors-dele
 import { zeroCustomConnectorsGetRoutes } from "../zero-custom-connectors-get";
 import { zeroCustomConnectorOAuth2Routes } from "../zero-custom-connectors-oauth2";
 import { zeroCustomConnectorDisconnectRoutes } from "../zero-custom-connectors-disconnect";
-import { zeroCustomConnectorsSecretSetRoutes } from "../zero-custom-connectors-secret-set";
 import { zeroCustomConnectorsUpdateRoutes } from "../zero-custom-connectors-update";
 import { zeroFeishuConnectRoutes } from "../zero-feishu-connect";
 
@@ -76,11 +75,6 @@ const zeroCustomConnectorByIdTestRoutes = Object.freeze([
   ...zeroCustomConnectorsDeleteRoutes,
   ...zeroCustomConnectorsGetRoutes,
   ...zeroCustomConnectorsUpdateRoutes,
-]);
-
-const zeroCustomConnectorSecretTestRoutes = Object.freeze([
-  ...zeroCustomConnectorDisconnectRoutes,
-  ...zeroCustomConnectorsSecretSetRoutes,
 ]);
 
 const context = testContext();
@@ -1965,8 +1959,8 @@ describe("Feishu integration", () => {
     expect(restoredFeishuStatus.body.isConnected).toBeTruthy();
     clearConnectorInvalidationMocks();
     await accept(
-      setupApp({ context, routes: zeroCustomConnectorSecretTestRoutes })(
-        zeroCustomConnectorSecretContract,
+      setupApp({ context, routes: zeroCustomConnectorDisconnectRoutes })(
+        zeroCustomConnectorConnectionContract,
       ).disconnect({
         headers: { authorization: "Bearer clerk-session" },
         params: { id: managedConnector.id },

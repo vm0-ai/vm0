@@ -320,6 +320,7 @@ pub(super) async fn execute_pi_standby(
         control_error: None,
         cli_termination: None,
         completion_disposition,
+        active_input_delivery_ids: Vec::new(),
     })
 }
 

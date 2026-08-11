@@ -7,6 +7,7 @@ const TEST_RUN_ID: &str = "test-run-001";
 const TEST_SANDBOX_ID: &str = "00000000-0000-4000-8000-000000000abc";
 const TEST_SANDBOX_REUSE_RESULT: &str = "reused";
 const TEST_WORKSPACE_REUSE_RESULT: &str = "sandboxReused";
+const TEST_DELIVERY_ID: &str = "b1e2ad6d-930a-4d51-aa40-7952d54f978b";
 
 // =========================================================================
 // Complete webhook
@@ -33,6 +34,7 @@ async fn complete_report_success_posts_full_payload_when_metadata_present() {
                 "sandboxId": TEST_SANDBOX_ID,
                 "sandboxReuseResult": TEST_SANDBOX_REUSE_RESULT,
                 "workspaceReuseResult": TEST_WORKSPACE_REUSE_RESULT,
+                "activeInputDeliveryIds": [TEST_DELIVERY_ID],
             }));
         then.status(200).json_body(json!({
             "success": true,
@@ -47,6 +49,7 @@ async fn complete_report_success_posts_full_payload_when_metadata_present() {
         TEST_SANDBOX_REUSE_RESULT,
         TEST_WORKSPACE_REUSE_RESULT,
         Some(7),
+        &[TEST_DELIVERY_ID.to_string()],
     )
     .await;
 
@@ -73,8 +76,16 @@ async fn complete_report_success_omits_metadata_when_env_absent() {
         then.status(200).json_body(json!({"success": true}));
     });
 
-    guest_agent::complete::report_success_for_run(&http_client!(), TEST_RUN_ID, "", "", "", None)
-        .await;
+    guest_agent::complete::report_success_for_run(
+        &http_client!(),
+        TEST_RUN_ID,
+        "",
+        "",
+        "",
+        None,
+        &[],
+    )
+    .await;
 
     mock.assert_calls_async(1).await;
 }
@@ -98,6 +109,7 @@ async fn complete_report_success_swallows_server_error() {
         TEST_SANDBOX_REUSE_RESULT,
         TEST_WORKSPACE_REUSE_RESULT,
         None,
+        &[],
     )
     .await;
 
@@ -128,6 +140,7 @@ async fn complete_report_success_swallows_4xx_auth_error() {
         TEST_SANDBOX_REUSE_RESULT,
         TEST_WORKSPACE_REUSE_RESULT,
         None,
+        &[],
     )
     .await;
 
@@ -162,6 +175,7 @@ async fn complete_report_user_cancellation_posts_nonzero_and_swallows_server_err
             TEST_SANDBOX_REUSE_RESULT,
             TEST_WORKSPACE_REUSE_RESULT,
             Some(9),
+            &[],
         ),
     )
     .await;

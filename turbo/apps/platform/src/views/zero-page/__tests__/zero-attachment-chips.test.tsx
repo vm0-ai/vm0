@@ -122,6 +122,7 @@ function setupHostedSiteArtifactPreview({
 beforeEach(() => {
   context.mocks.data.userModelPreference({
     selectedModel: "claude-sonnet-4-6",
+    serviceTier: null,
     updatedAt: "2026-03-10T00:00:00Z",
   });
   context.mocks.browser.blobDownload();

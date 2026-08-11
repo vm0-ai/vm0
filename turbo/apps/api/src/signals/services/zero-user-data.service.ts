@@ -336,7 +336,7 @@ export const updateUserModelPreference$ = command(
     }
 
     const updatedAt = nowDate();
-    const serviceTier = args.preference.serviceTier ?? null;
+    const serviceTier = args.preference.serviceTier;
     await writeDb
       .insert(orgMembersMetadata)
       .values({

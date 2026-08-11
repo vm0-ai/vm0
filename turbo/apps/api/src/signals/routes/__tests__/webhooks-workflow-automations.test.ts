@@ -193,19 +193,19 @@ describe("POST /api/webhooks/workflow-automations/:token", () => {
     );
     for (const actionType of [
       "api_dispatch_pre_create_zero_workflow_automation_entrypoint_gap",
-      "api_dispatch_pre_create_zero_workflow_event_load_source_state",
-      "api_dispatch_pre_create_zero_workflow_event_match_automations",
-      "api_dispatch_pre_create_zero_workflow_event_record_processed_event",
-      "api_dispatch_pre_create_zero_workflow_event_build_run_input",
-      "api_dispatch_pre_create_zero_workflow_event_handoff_run",
+      "api_dispatch_pre_create_zero_automation_event_load_source_state",
+      "api_dispatch_pre_create_zero_automation_event_match_automations",
+      "api_dispatch_pre_create_zero_automation_event_record_processed_event",
+      "api_dispatch_pre_create_zero_automation_event_build_run_input",
+      "api_dispatch_pre_create_zero_automation_event_handoff_run",
     ]) {
       expect(actionTypes).toContain(actionType);
     }
     expect(timingEvents).toStrictEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          op_type: "api_dispatch_pre_create_zero_workflow_event_handoff_run",
-          workflow_event_source: "webhook",
+          op_type: "api_dispatch_pre_create_zero_automation_event_handoff_run",
+          automation_event_source: "webhook",
           trigger_source: "automation-event",
           zero_run_origin: "workflow_automation",
           span_kind: "nested",

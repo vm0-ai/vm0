@@ -222,7 +222,6 @@ export const apiHandlers = [
     return HttpResponse.json(
       {
         connectors: [],
-        configuredConnectorSlugs: [],
         connectorProvidedBindings: [],
       },
       { status: 200 },
@@ -232,7 +231,6 @@ export const apiHandlers = [
     return HttpResponse.json(
       {
         connectors: [],
-        configuredConnectorSlugs: [],
         connectorProvidedBindings: [],
       },
       { status: 200 },
