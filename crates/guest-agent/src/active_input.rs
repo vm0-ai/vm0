@@ -671,12 +671,14 @@ impl ActiveInputController {
         }
     }
 
-    /// Marks a writer-owned frame as delivered to its follow-up sink.
+    /// Marks a legacy writer-owned frame as delivered to its follow-up sink.
     ///
-    /// Writers should call this after successfully writing the frame to stdin
-    /// or an equivalent transport. The mark lets replay filtering later match
-    /// the CLI's echoed user event, or finish cleanup if a uuidless replay was
-    /// already observed. Unknown UUIDs are ignored.
+    /// Writers should call this only for frames without a durable delivery ID.
+    /// Delivery-identified frames must use the backend-acceptance methods so
+    /// their acceptance is persisted before replay cleanup. For legacy frames,
+    /// this mark lets replay filtering later match the CLI's echoed user event,
+    /// or finish cleanup if a uuidless replay was already observed. Unknown
+    /// UUIDs are ignored.
     pub fn mark_written(&self, uuid: &str) {
         self.inner
             .state
@@ -992,10 +994,12 @@ impl ActiveInputWriter {
         self.controller.is_enabled()
     }
 
-    /// Marks a writer-owned frame as delivered.
+    /// Marks a legacy writer-owned frame as delivered.
     ///
-    /// This delegates to [`ActiveInputController::mark_written`] and should be
-    /// called after the writer sink has successfully delivered the frame.
+    /// This delegates to [`ActiveInputController::mark_written`].
+    /// Delivery-identified frames must instead use
+    /// [`Self::mark_backend_accepted_with_replay`] or
+    /// [`Self::mark_backend_accepted_without_replay`].
     pub fn mark_written(&self, uuid: &str) {
         self.controller.mark_written(uuid);
     }
@@ -1028,8 +1032,10 @@ impl ActiveInputWriter {
 
     /// Marks a writer-owned frame as actively being delivered by this writer.
     ///
-    /// This delegates to [`ActiveInputController::mark_writing`] and should be
-    /// paired with [`ActiveInputWriter::mark_written`] after delivery succeeds.
+    /// This delegates to [`ActiveInputController::mark_writing`]. After the sink
+    /// settles, pair it with the matching backend-acceptance method or
+    /// [`Self::mark_backend_failed`]. Legacy-only callers may use
+    /// [`Self::mark_written`] after successful delivery.
     pub fn mark_writing(&self, uuid: &str) {
         self.controller.mark_writing(uuid);
     }
