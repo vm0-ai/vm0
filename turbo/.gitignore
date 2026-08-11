@@ -54,6 +54,7 @@ yarn-error.log*
 .dev-process-pid
 .dev-server.log
 .dev-tunnel-url
+.dev-clerk-webhook-token
 .dev-clerk-webhook-url
 
 # SBOM

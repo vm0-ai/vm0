@@ -14,6 +14,7 @@ ENV_LOCAL_FILE="$API_APP_DIR/.env.local"
 STRIPE_PIDFILE="/tmp/stripe-listen-api.pid"
 CLERK_PIDFILE="/tmp/clerk-listen-api.pid"
 CLERK_LOG_FILE="/tmp/clerk-listen-api.log"
+CLERK_RELAY_TOKEN_FILE="$REPO_ROOT/turbo/.dev-clerk-webhook-token"
 CLERK_RELAY_URL_FILE="$REPO_ROOT/turbo/.dev-clerk-webhook-url"
 TUNNEL_PIDFILE="/tmp/cloudflared-${TUNNEL_PORT}.pid"
 LEGACY_API_TUNNEL_PIDFILE="/tmp/cloudflared-${API_PORT}.pid"
@@ -75,7 +76,7 @@ start_stripe_webhook_forwarding() {
 }
 
 start_clerk_webhook_forwarding() {
-  local clerk_bin clerk_pid relay_url
+  local clerk_bin clerk_pid relay_token relay_url
 
   clerk_bin="$API_APP_DIR/node_modules/.bin/clerk"
   if [[ ! -x "$clerk_bin" ]]; then
@@ -86,9 +87,17 @@ start_clerk_webhook_forwarding() {
   kill_stale "$CLERK_PIDFILE" "clerk webhooks listen .*--forward-to http://localhost:${API_PORT}/api/webhooks/clerk"
   rm -f "$CLERK_RELAY_URL_FILE"
 
+  if [[ -s "$CLERK_RELAY_TOKEN_FILE" ]]; then
+    relay_token="$(cat "$CLERK_RELAY_TOKEN_FILE")"
+  else
+    relay_token="$("$clerk_bin" webhooks token)"
+    printf "%s\n" "$relay_token" > "$CLERK_RELAY_TOKEN_FILE"
+  fi
+
   : > "$CLERK_LOG_FILE"
   "$clerk_bin" webhooks listen \
     --json \
+    --token "$relay_token" \
     --forward-to "http://localhost:${API_PORT}/api/webhooks/clerk" \
     > "$CLERK_LOG_FILE" 2>&1 &
   clerk_pid="$!"
