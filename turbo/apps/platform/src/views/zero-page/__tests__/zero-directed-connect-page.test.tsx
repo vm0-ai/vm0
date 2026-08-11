@@ -513,6 +513,107 @@ describe("directed connector connect page", () => {
     });
   });
 
+  it("starts permissioned OAuth before checking the target grant", async () => {
+    let connected = false;
+    let authorizationUpdates = 0;
+    const authorizationRequested = context.mocks.deferred<void>();
+    const releaseAuthorization = context.mocks.deferred<void>();
+    const connector = customConnector({
+      slug: "_acme-permissioned-oauth",
+      displayName: "Acme Permissioned OAuth",
+      authMode: "oauth",
+      fields: [],
+      missingRequiredFields: ["oauth"],
+      permissionBundleRef: "builtin:feishu@1",
+      headerInjections: [
+        {
+          name: "Authorization",
+          valueTemplate: "Bearer {{oauth.access_token}}",
+        },
+      ],
+      oauthConfig: {
+        providerAdapter: "standard",
+        clientId: "client-id",
+        authorizationUrl: "https://acme.test/oauth/authorize",
+        tokenUrl: "https://acme.test/oauth/token",
+        tokenEndpointAuthMethod: "client_secret_post",
+        pkceMethod: "S256",
+        scopes: ["read"],
+        authorizationParams: {},
+      },
+    });
+    context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
+      return respond(200, {
+        connectors: [{ ...connector, connected, hasSecret: connected }],
+      });
+    });
+    context.mocks.api(
+      zeroCustomConnectorOAuth2Contract.start,
+      ({ params, respond }) => {
+        expect(params.id).toBe(connector.id);
+        connected = true;
+        return respond(200, {
+          authorizationUrl: "https://acme.test/oauth/authorize",
+        });
+      },
+    );
+    context.mocks.api(
+      zeroAgentCustomConnectorsContract.get,
+      async ({ params, respond }) => {
+        expect(params.id).toBe(AGENT_ID);
+        authorizationRequested.resolve();
+        await releaseAuthorization.promise;
+        const grants = [
+          {
+            customConnectorId: connector.id,
+            permissionNames: ["messages:send-as-user"],
+          },
+        ];
+        return respond(200, { enabledIds: [connector.id], grants });
+      },
+    );
+    context.mocks.api(
+      zeroAgentCustomConnectorsContract.update,
+      ({ respond }) => {
+        authorizationUpdates += 1;
+        return respond(200, { enabledIds: [], grants: [] });
+      },
+    );
+    const authWindow = context.mocks.browser.authWindow();
+    authWindow.closed = true;
+    Object.defineProperty(authWindow, "location", {
+      value: { href: "" },
+      configurable: true,
+    });
+    context.mocks.browser.open(authWindow);
+
+    detachedSetupPage({
+      context,
+      path: `/connectors/${connector.slug}/connect?agentId=${AGENT_ID}`,
+    });
+
+    await screen.findByText("Zero needs Acme Permissioned OAuth to proceed");
+    click(getButtonByText("Connect"));
+    await screen.findByRole("dialog", {
+      name: "Connect Acme Permissioned OAuth",
+    });
+    click(getButtonByText("Continue"));
+
+    await waitFor(() => {
+      expect(authWindow.location.href).toBe(
+        "https://acme.test/oauth/authorize",
+      );
+    });
+    await authorizationRequested.promise;
+    releaseAuthorization.resolve();
+    await waitFor(() => {
+      expect(
+        screen.getByText("Acme Permissioned OAuth connected"),
+      ).toBeInTheDocument();
+    });
+    expect(authorizationUpdates).toBe(0);
+  });
+
   it("starts an OAuth flow from a directed link", async () => {
     let startedAgentId: string | undefined;
     let authorizeAgent: true | undefined;

@@ -255,15 +255,19 @@ const isCustomConnectorAuthorizedForTarget$ = command(
     if (args.target.kind === "visible-agents") {
       return false;
     }
-    const agentId = args.target.agentId;
-    const authorizedAgentsByConnectorId = await get(
-      customConnectorAuthorizedAgentsById$,
+    const client = get(zeroClient$)(zeroAgentCustomConnectorsContract);
+    const result = await accept(
+      client.get({
+        params: { id: args.target.agentId },
+        fetchOptions: { signal },
+      }),
+      [200, 404],
     );
-    signal.throwIfAborted();
-    return (authorizedAgentsByConnectorId.get(args.connectorId) ?? []).some(
-      (agent) => {
-        return agent.id === agentId;
-      },
+    return (
+      result.status === 200 &&
+      result.body.grants.some((grant) => {
+        return grant.customConnectorId === args.connectorId;
+      })
     );
   },
 );
@@ -492,25 +496,8 @@ const connectCustomConnectorOAuth2ForTarget$ = command(
     }
     authWindow.opener = null;
     let navigated = false;
-    const targetAlreadyAuthorized = await withCleanup(
+    await withCleanup(
       (async () => {
-        const connectorBeforeConnection = (await get(customConnectors$)).find(
-          (candidate) => {
-            return candidate.id === args.id;
-          },
-        );
-        signal.throwIfAborted();
-        const authorized = connectorBeforeConnection?.permissionBundleRef
-          ? await set(
-              isCustomConnectorAuthorizedForTarget$,
-              {
-                connectorId: connectorBeforeConnection.id,
-                target: args.authorizationTarget,
-              },
-              signal,
-            )
-          : false;
-        signal.throwIfAborted();
         const createClient = get(zeroClient$);
         const client = createClient(zeroCustomConnectorOAuth2Contract, {
           apiBase: "api",
@@ -526,7 +513,6 @@ const connectCustomConnectorOAuth2ForTarget$ = command(
         signal.throwIfAborted();
         authWindow.location.href = result.body.authorizationUrl;
         navigated = true;
-        return authorized;
       })(),
       () => {
         if (!navigated) {
@@ -549,21 +535,29 @@ const connectCustomConnectorOAuth2ForTarget$ = command(
     const connector = connectors.find((candidate) => {
       return candidate.id === args.id;
     });
-    if (connector?.connected && !connector.permissionBundleRef) {
-      await set(
-        authorizeCustomConnectorForTarget$,
-        {
-          connectorId: args.id,
-          target: args.authorizationTarget,
-        },
-        signal,
-      );
+    let targetAuthorized = false;
+    if (connector?.connected) {
+      if (!connector.permissionBundleRef) {
+        await set(
+          authorizeCustomConnectorForTarget$,
+          {
+            connectorId: args.id,
+            target: args.authorizationTarget,
+          },
+          signal,
+        );
+        targetAuthorized = true;
+      } else {
+        targetAuthorized = await set(
+          isCustomConnectorAuthorizedForTarget$,
+          { connectorId: connector.id, target: args.authorizationTarget },
+          signal,
+        );
+      }
     }
     return {
       connected: connector?.connected ?? false,
-      targetAuthorized:
-        connector?.connected === true &&
-        (!connector.permissionBundleRef || targetAlreadyAuthorized),
+      targetAuthorized,
     };
   },
 );
