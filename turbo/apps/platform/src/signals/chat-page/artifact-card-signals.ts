@@ -8,6 +8,10 @@ import {
   isTextPreviewKind,
 } from "../text-preview.ts";
 import { attachmentResourceUrlResolver$ } from "../attachment-resource-url.ts";
+import {
+  createImageLoadSignals,
+  type ImageLoadSignals,
+} from "../image-load.ts";
 
 export type ArtifactKind =
   | "image"
@@ -28,6 +32,8 @@ export interface ArtifactDescriptor {
 }
 
 export interface ArtifactSignals extends ArtifactDescriptor {
+  /** Load state of the card's presented image (the image itself, or a poster). */
+  readonly previewImageLoad: ImageLoadSignals;
   readonly previewImageUrl$: Computed<Promise<string | undefined>>;
   readonly resourceUrl$: Computed<Promise<string>>;
   readonly text$?: Computed<Promise<string>>;
@@ -49,6 +55,7 @@ function createArtifactSignals(
   const resourceUrl$ = computed((get) => {
     return get(get(attachmentResourceUrlResolver$)(descriptor.url));
   });
+  const previewImageLoad = createImageLoadSignals();
   const previewImageUrl$ = computed(async (get) => {
     if (descriptor.kind !== "html" && descriptor.kind !== "video") {
       return undefined;
@@ -57,10 +64,11 @@ function createArtifactSignals(
     return previewImageUrlsByUrl.get(descriptor.url);
   });
   if (!needsTextPreview(descriptor.kind)) {
-    return { ...descriptor, previewImageUrl$, resourceUrl$ };
+    return { ...descriptor, previewImageLoad, previewImageUrl$, resourceUrl$ };
   }
   return {
     ...descriptor,
+    previewImageLoad,
     previewImageUrl$,
     resourceUrl$,
     text$: createTextPreviewComputed(descriptor.url),

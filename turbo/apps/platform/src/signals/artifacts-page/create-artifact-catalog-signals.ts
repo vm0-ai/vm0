@@ -17,15 +17,40 @@ import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { setAblyLoop$ } from "../realtime.ts";
 import { onRejection } from "../utils.ts";
+import {
+  createImageLoadSignals,
+  type ImageLoadSignals,
+} from "../image-load.ts";
 
 // First screen and every scroll step request the same page size. The server
 // orders by `(createdAt, id)` and never reorders on update, so a cursor stays
 // valid for the whole scroll session.
 const ARTIFACT_CATALOG_PAGE_SIZE = 60;
 
+export type CatalogArtifact = ArtifactSummary & {
+  /**
+   * Load state of the thumbnail, created when the page's data arrives. A
+   * reload replaces the page and its signals; an already-broken thumbnail
+   * then reports its state again on the image's next load cycle.
+   */
+  readonly thumbnailLoad: ImageLoadSignals;
+};
+
 export interface ArtifactCatalogPage {
+  readonly artifacts: readonly CatalogArtifact[];
+  readonly nextCursor: string | null;
+}
+
+function withThumbnailLoad(page: {
   readonly artifacts: readonly ArtifactSummary[];
   readonly nextCursor: string | null;
+}): ArtifactCatalogPage {
+  return {
+    artifacts: page.artifacts.map((artifact) => {
+      return { ...artifact, thumbnailLoad: createImageLoadSignals() };
+    }),
+    nextCursor: page.nextCursor,
+  };
 }
 
 export interface ArtifactCatalogSignals {
@@ -68,7 +93,7 @@ function createCatalogPagingSignals(paging: CatalogPagingState): {
       }),
       [200],
     );
-    return result.body;
+    return withThumbnailLoad(result.body);
   });
 
   /**
@@ -138,7 +163,7 @@ function createCatalogPagingSignals(paging: CatalogPagingState): {
         return;
       }
       set(paging.pages$, (pages) => {
-        return [...pages, result.body];
+        return [...pages, withThumbnailLoad(result.body)];
       });
     },
   );

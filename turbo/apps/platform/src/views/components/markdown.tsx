@@ -17,16 +17,13 @@ import {
 import { detach, Reason } from "../../signals/utils.ts";
 import { openImageLightbox$ } from "../../signals/zero-page/zero-attachment-chips.ts";
 import { theme$ } from "../../signals/theme.ts";
-import {
-  imageLoadStatusByKey$,
-  imageLoadStatusRef$,
-  setImageLoadStatus$,
-} from "../../signals/view-component-state.ts";
+import type { ImageLoadSignals } from "../../signals/image-load.ts";
+import { isImageUrl, isSafeMediaUrl, isVideoUrl } from "../../lib/media-url.ts";
 import { MarkdownCardView } from "../zero-page/chat-body-cards.tsx";
 import { MermaidDiagramView } from "./mermaid-diagram.tsx";
 import { cn } from "@vm0/ui";
 
-type MarkdownNodeProp = { node?: unknown };
+type MarkdownNodeProp = { node?: Element };
 type MarkdownAnchorProps = ComponentPropsWithoutRef<"a"> & MarkdownNodeProp;
 type MarkdownImageProps = ComponentPropsWithoutRef<"img"> & MarkdownNodeProp;
 type MarkdownDivProps = ComponentPropsWithoutRef<"div"> & {
@@ -43,22 +40,6 @@ function ResponsiveTable({ children }: ComponentPropsWithoutRef<"table">) {
       <table>{children}</table>
     </div>
   );
-}
-
-function isImageUrl(href: string): boolean {
-  return /\.(png|jpe?g|gif|webp|svg|bmp|avif)(?:\?|#|$)/i.test(href);
-}
-
-function isVideoUrl(href: string): boolean {
-  return /\.(mp4|webm|mov|ogv)(?:\?|#|$)/i.test(href);
-}
-
-/**
- * Only `http:` / `https:` URLs are safe to render as `<img src>` or `<video src>`.
- * Blocks `javascript:`, `data:`, `file:`, etc. in assistant-rendered markdown.
- */
-function isSafeMediaUrl(href: string): boolean {
-  return /^https?:\/\//i.test(href);
 }
 
 function omitMarkdownNodeProp<Props extends object>(
@@ -78,10 +59,18 @@ function PlainLink({ href, children, ...rest }: MarkdownAnchorProps) {
   );
 }
 
-function MediaImage({ src, alt }: { src: string; alt: string }) {
-  const imageLoadStatuses = useGet(imageLoadStatusByKey$);
-  const imageLoadStatusRef = useSet(imageLoadStatusRef$);
-  const setImageLoadStatus = useSet(setImageLoadStatus$);
+function MediaImage({
+  src,
+  alt,
+  load,
+}: {
+  src: string;
+  alt: string;
+  load: ImageLoadSignals;
+}) {
+  const imageStatus = useGet(load.status$);
+  const markLoaded = useSet(load.loaded$);
+  const markFailed = useSet(load.failed$);
   // Self-sourced lightbox handler so MediaImage doesn't need a callback
   // prop chained from the Markdown caller. Removing the `onImageClick`
   // prop chain is what lets the `components` map and the renderer
@@ -89,8 +78,6 @@ function MediaImage({ src, alt }: { src: string; alt: string }) {
   // prevents React from tearing down the <video>/<img> subtree on every
   // re-render of the parent and refetching media metadata unnecessarily.
   const openImageLightbox = useSet(openImageLightbox$);
-  const imageLoadKey = `markdown:${src}`;
-  const imageStatus = imageLoadStatuses[imageLoadKey] ?? "loading";
   const showPlaceholder = imageStatus !== "loaded";
 
   return (
@@ -119,18 +106,12 @@ function MediaImage({ src, alt }: { src: string; alt: string }) {
         </span>
       )}
       <img
-        key={imageLoadKey}
-        ref={imageLoadStatusRef}
+        key={src}
         src={src}
         alt={alt}
-        data-image-load-key={imageLoadKey}
         loading="lazy"
-        onLoad={() => {
-          setImageLoadStatus(imageLoadKey, "loaded");
-        }}
-        onError={() => {
-          setImageLoadStatus(imageLoadKey, "error");
-        }}
+        onLoad={markLoaded}
+        onError={markFailed}
         className={`absolute inset-0 h-full w-full object-contain ${
           showPlaceholder ? "opacity-0" : ""
         }`}
@@ -149,8 +130,18 @@ function MediaLink({ href, children, ...rest }: MarkdownAnchorProps) {
   }
 
   if (isImageUrl(href)) {
-    const alt = typeof children === "string" ? children : "";
-    return <MediaImage src={href} alt={alt} />;
+    const load = rest.node?.data?.imageLoadSignals;
+    if (load) {
+      const alt = typeof children === "string" ? children : "";
+      return <MediaImage src={href} alt={alt} load={load} />;
+    }
+    // A tree parsed during render carries no load signals; the destination
+    // stays an ordinary link.
+    return (
+      <PlainLink href={href} {...rest}>
+        {children}
+      </PlainLink>
+    );
   }
 
   if (isVideoUrl(href)) {
@@ -194,9 +185,9 @@ function PlainImageRenderer(props: MarkdownImageProps) {
 
 function MediaImageRenderer(props: MarkdownImageProps) {
   const { src, alt, ...rest } = props;
-  const hasSafeSrc = typeof src === "string" && isSafeMediaUrl(src);
-  if (hasSafeSrc) {
-    return <MediaImage src={src} alt={alt ?? ""} />;
+  const load = props.node?.data?.imageLoadSignals;
+  if (typeof src === "string" && isSafeMediaUrl(src) && load) {
+    return <MediaImage src={src} alt={alt ?? ""} load={load} />;
   }
   return <img {...omitMarkdownNodeProp(rest)} src={src} alt={alt} />;
 }

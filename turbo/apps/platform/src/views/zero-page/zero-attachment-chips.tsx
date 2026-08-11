@@ -33,12 +33,8 @@ import {
   currentRightThread$,
 } from "../../signals/chat-page/chat-thread-panes.ts";
 import { detach, jsonParseOr, Reason } from "../../signals/utils.ts";
-import {
-  imageLoadStatusByKey$,
-  imageLoadStatusRef$,
-  resetZoomableImageCanvasZoom$,
-  setImageLoadStatus$,
-} from "../../signals/view-component-state.ts";
+import { resetZoomableImageCanvasZoom$ } from "../../signals/view-component-state.ts";
+import type { ImageLoadSignals } from "../../signals/image-load.ts";
 import type { TextPreviewComputed } from "../../signals/text-preview.ts";
 import type { MarkdownPreviewTreeComputed } from "../../signals/markdown-preview-tree.ts";
 import { MarkdownEventBody } from "../components/markdown.tsx";
@@ -1630,16 +1626,16 @@ export function PreviewableAudioAttachmentChip({
  * across re-signing.
  */
 function ComposerImagePreviewImage({
-  imageLoadKey,
+  load,
   loaded,
   url,
 }: {
-  imageLoadKey: string;
+  load: ImageLoadSignals;
   loaded: boolean;
   url: string;
 }) {
-  const imageLoadStatusRef = useSet(imageLoadStatusRef$);
-  const setImageLoadStatus = useSet(setImageLoadStatus$);
+  const markLoaded = useSet(load.loaded$);
+  const markFailed = useSet(load.failed$);
   const resolvedUrl = useResolvedAttachmentUrl(url);
 
   if (resolvedUrl === null) {
@@ -1648,18 +1644,12 @@ function ComposerImagePreviewImage({
 
   return (
     <img
-      key={imageLoadKey}
-      ref={imageLoadStatusRef}
+      key={url}
       src={resolvedUrl}
       alt=""
-      data-image-load-key={imageLoadKey}
       loading="lazy"
-      onLoad={() => {
-        setImageLoadStatus(imageLoadKey, "loaded");
-      }}
-      onError={() => {
-        setImageLoadStatus(imageLoadKey, "error");
-      }}
+      onLoad={markLoaded}
+      onError={markFailed}
       className={`h-full w-full object-cover ${loaded ? "" : "opacity-0"}`}
     />
   );
@@ -1667,22 +1657,19 @@ function ComposerImagePreviewImage({
 
 function ComposerImagePreviewButton({
   filename,
+  load,
   openImageLightbox,
   url,
 }: {
   filename: string;
+  load: ImageLoadSignals;
   openImageLightbox: (url: string) => void;
   url: string | undefined;
 }) {
   const { t } = useTranslation();
-  const imageLoadStatuses = useGet(imageLoadStatusByKey$);
-  const imageLoadKey = url ? `composer-image:${url}` : null;
+  const currentImageStatus = useGet(load.status$);
 
-  const currentImageStatus = imageLoadKey
-    ? (imageLoadStatuses[imageLoadKey] ?? "loading")
-    : "loading";
-
-  if (!url || !imageLoadKey) {
+  if (!url) {
     return (
       <button
         type="button"
@@ -1733,7 +1720,7 @@ function ComposerImagePreviewButton({
         </span>
       )}
       <ComposerImagePreviewImage
-        imageLoadKey={imageLoadKey}
+        load={load}
         loaded={currentImageStatus === "loaded"}
         url={url}
       />
@@ -1769,6 +1756,7 @@ function AttachmentChip({
       {isImage ? (
         <ComposerImagePreviewButton
           filename={attachment.filename}
+          load={attachment.imageLoad}
           openImageLightbox={(previewUrl) => {
             // A pending upload is not an artifact yet, so checking it must not
             // take over an open artifact sidebar.

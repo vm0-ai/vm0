@@ -5722,6 +5722,7 @@ function MessageAttachment({
             filename: a.filename,
           },
         )}
+        load={a.signals.previewImageLoad}
         imageClassName="block h-full w-full object-contain"
         linkClassName={CHAT_INLINE_IMAGE_PREVIEW_CLASS}
         onPreview={() => {
@@ -5736,6 +5737,7 @@ function MessageAttachment({
   if (a.kind === "video") {
     return (
       <ChatVideoPreviewButton
+        posterLoad={a.signals.previewImageLoad}
         ariaLabel={t(
           ($) => {
             return $.chat.attachments.previewFile;
@@ -6246,6 +6248,7 @@ function UserMessageFileReference({
   if (signals.kind === "video") {
     reference = (
       <ChatVideoPreviewButton
+        posterLoad={signals.previewImageLoad}
         ariaLabel={t(
           ($) => {
             return $.chat.attachments.previewFile;

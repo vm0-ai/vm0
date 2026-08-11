@@ -124,6 +124,7 @@ import {
   embedMermaidSignals,
   registerMermaidDiagram$,
 } from "../mermaid-diagram.ts";
+import { embedImageLoadSignals, registerImageLoad$ } from "../image-load.ts";
 import {
   chatEventTreeContent,
   chatEventTreePlan,
@@ -1800,6 +1801,9 @@ function createEventTreeSignals({
         });
         embedMermaidSignals(tree, (code) => {
           return set(registerMermaidDiagram$, code);
+        });
+        embedImageLoadSignals(tree, (url) => {
+          return set(registerImageLoad$, url);
         });
         next ??= new Map(current);
         next.set(event.id, { content: plan.content, tree });

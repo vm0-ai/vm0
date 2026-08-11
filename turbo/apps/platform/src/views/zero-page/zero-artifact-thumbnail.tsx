@@ -1,15 +1,12 @@
 import type { ReactNode } from "react";
 import { useGet, useSet } from "ccstate-react";
 import { cn } from "@vm0/ui";
-import {
-  imageLoadStatusByKey$,
-  imageLoadStatusRef$,
-  setImageLoadStatus$,
-} from "../../signals/view-component-state.ts";
+import type { ImageLoadSignals } from "../../signals/image-load.ts";
 
 type ArtifactThumbnailImageProps = {
   className: string;
   fallback: ReactNode;
+  load: ImageLoadSignals;
   src: string;
   testId: string;
 };
@@ -21,36 +18,25 @@ export function ArtifactThumbnailImage(props: ArtifactThumbnailImageProps) {
 function ArtifactThumbnailImageInstance({
   className,
   fallback,
+  load,
   src,
   testId,
 }: ArtifactThumbnailImageProps) {
-  const imageLoadKey = `artifact-thumbnail:${testId}:${src}`;
-  const imageLoadStatuses = useGet(imageLoadStatusByKey$, {
-    equalityFn: (previous, next) => {
-      return previous[imageLoadKey] === next[imageLoadKey];
-    },
-  });
-  const imageLoadStatusRef = useSet(imageLoadStatusRef$);
-  const setImageLoadStatus = useSet(setImageLoadStatus$);
-  const failed = imageLoadStatuses[imageLoadKey] === "error";
+  const failed = useGet(load.status$) === "error";
+  const markLoaded = useSet(load.loaded$);
+  const markFailed = useSet(load.failed$);
 
   return (
     <>
       {failed ? fallback : null}
       <img
-        ref={imageLoadStatusRef}
         src={src}
         alt=""
         aria-hidden="true"
-        data-image-load-key={imageLoadKey}
         data-testid={testId}
         loading="lazy"
-        onLoad={() => {
-          setImageLoadStatus(imageLoadKey, "loaded");
-        }}
-        onError={() => {
-          setImageLoadStatus(imageLoadKey, "error");
-        }}
+        onLoad={markLoaded}
+        onError={markFailed}
         className={cn(className, failed && "hidden")}
       />
     </>

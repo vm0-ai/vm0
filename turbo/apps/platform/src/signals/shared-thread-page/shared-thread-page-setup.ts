@@ -16,6 +16,7 @@ import {
   embedMermaidSignals,
   registerMermaidDiagram$,
 } from "../mermaid-diagram.ts";
+import { embedImageLoadSignals, registerImageLoad$ } from "../image-load.ts";
 import { pathParams$ } from "../route.ts";
 import { updatePage$ } from "../react-router.ts";
 import { setPageSignal$ } from "../page-signal.ts";
@@ -48,6 +49,9 @@ export const setupSharedThreadPage$ = command(
               });
               embedMermaidSignals(tree, (code) => {
                 return set(registerMermaidDiagram$, code);
+              });
+              embedImageLoadSignals(tree, (url) => {
+                return set(registerImageLoad$, url);
               });
               return { ...message, tree };
             }),

@@ -29,11 +29,7 @@ import {
 } from "../../signals/permission-allow/permission-grant-expiration.ts";
 import { isActiveUserPermissionGrant } from "../../signals/user-permission-grants.ts";
 import { Reason, detach } from "../../signals/utils.ts";
-import {
-  imageLoadStatusByKey$,
-  imageLoadStatusRef$,
-  setImageLoadStatus$,
-} from "../../signals/view-component-state.ts";
+import type { ImageLoadSignals } from "../../signals/image-load.ts";
 import { connectorCurrentConnectionStatus } from "../../signals/zero-page/settings/connectors.ts";
 import { PermissionGrantDurationSelect } from "../components/permission-grant-duration-select.tsx";
 import { ConnectorCard } from "./components/settings/connector-card.tsx";
@@ -78,6 +74,7 @@ type ChatImagePreviewLinkProps = {
   ariaLabel: string;
   imageClassName: string;
   linkClassName: string;
+  load: ImageLoadSignals;
   onPreview: () => void;
   placeholderClassName: string;
   resourceUrl$: ArtifactSignals["resourceUrl$"];
@@ -112,14 +109,15 @@ export function ChatImagePreviewLink({
   ariaLabel,
   imageClassName,
   linkClassName,
+  load,
   onPreview,
   placeholderClassName,
   resourceUrl$,
   url,
 }: ChatImagePreviewLinkProps) {
-  const imageLoadStatuses = useGet(imageLoadStatusByKey$);
-  const imageLoadStatusRef = useSet(imageLoadStatusRef$);
-  const setImageLoadStatus = useSet(setImageLoadStatus$);
+  const imageStatus = useGet(load.status$);
+  const markLoaded = useSet(load.loaded$);
+  const markFailed = useSet(load.failed$);
   const imageUrl = publicAttachmentUrl(url);
   const resourceUrl = useLastResolved(resourceUrl$) ?? null;
   const previewImageUrl =
@@ -129,8 +127,6 @@ export function ChatImagePreviewLink({
           width: 800,
           height: 720,
         });
-  const imageLoadKey = `chat-image-preview:${previewImageUrl ?? imageUrl}`;
-  const imageStatus = imageLoadStatuses[imageLoadKey] ?? "loading";
 
   const showPlaceholder = imageStatus !== "loaded";
 
@@ -177,18 +173,12 @@ export function ChatImagePreviewLink({
       )}
       {previewImageUrl !== null ? (
         <img
-          key={imageLoadKey}
-          ref={imageLoadStatusRef}
+          key={previewImageUrl}
           src={previewImageUrl}
           alt={alt}
-          data-image-load-key={imageLoadKey}
           loading="lazy"
-          onLoad={() => {
-            setImageLoadStatus(imageLoadKey, "loaded");
-          }}
-          onError={() => {
-            setImageLoadStatus(imageLoadKey, "error");
-          }}
+          onLoad={markLoaded}
+          onError={markFailed}
           className={cn(
             "absolute inset-0",
             imageClassName,
@@ -206,6 +196,7 @@ type ChatVideoPreviewButtonProps = {
   filename: string;
   onPreview: () => void;
   posterClassName: string;
+  posterLoad: ImageLoadSignals;
   previewImagePending?: boolean;
   previewImageUrl?: string;
   url: string;
@@ -224,6 +215,7 @@ export function ChatVideoPreviewButton({
   filename,
   onPreview,
   posterClassName,
+  posterLoad,
   previewImagePending,
   previewImageUrl,
   url,
@@ -261,6 +253,7 @@ export function ChatVideoPreviewButton({
       {previewImageUrl ? (
         <ArtifactThumbnailImage
           src={previewImageUrl}
+          load={posterLoad}
           testId="chat-video-preview-thumbnail"
           className={cn("absolute inset-0", videoClassName)}
           fallback={videoFallback}
@@ -346,6 +339,7 @@ function ArtifactCardView({
         onPreview={() => {
           openLightbox(signals.url);
         }}
+        load={signals.previewImageLoad}
         placeholderClassName="h-full w-full"
         resourceUrl$={signals.resourceUrl$}
         url={signals.url}
@@ -372,6 +366,7 @@ function ArtifactCardView({
           });
         }}
         posterClassName="h-full w-full"
+        posterLoad={signals.previewImageLoad}
         previewImagePending={previewImagePending}
         previewImageUrl={previewImageUrl}
         url={signals.url}
@@ -388,6 +383,7 @@ function ArtifactCardView({
         ...(previewImagePending ? { previewImagePending: true } : {}),
         ...(previewImageUrl ? { previewImageUrl } : {}),
       }}
+      previewImageLoad={signals.previewImageLoad}
       text$={signals.text$}
     />
   );
