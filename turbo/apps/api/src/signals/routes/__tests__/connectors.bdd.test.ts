@@ -24,7 +24,7 @@ import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import { extractFileFromTarGz } from "../../../lib/tar";
 import { clearMockNow, mockNow, now } from "../../../lib/time";
-import { generateZeroToken } from "../../auth/tokens";
+import { generateSandboxToken, generateZeroToken } from "../../auth/tokens";
 import { createDeferredPromise } from "../../utils";
 import {
   createBddApi,
@@ -3509,7 +3509,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     await connectorsApi.deleteCustomConnector(admin, saved.connector.id);
   });
 
-  it("rejects unauthenticated and org-less callers across all custom connector routes", async () => {
+  it("preserves authentication boundaries across custom connector routes", async () => {
     const bdd = createBddApi(context);
     const noOrgActor = bdd.user({ orgId: null });
     const connectorId = randomUUID();
@@ -3562,6 +3562,25 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       );
       expectApiError(oauthStart.body);
       expect(oauthStart.body.error.code).toBe("UNAUTHORIZED");
+    }
+
+    const sandboxActor = bdd.user();
+    if (!sandboxActor.orgId) {
+      throw new Error("Expected an org-scoped sandbox actor");
+    }
+    const runId = randomUUID();
+    for (const token of [
+      generateSandboxToken(sandboxActor.userId, runId, sandboxActor.orgId),
+      generateZeroToken(sandboxActor.userId, runId, sandboxActor.orgId),
+    ]) {
+      const disconnect =
+        await connectorsApi.requestDisconnectCustomConnectorWithToken(
+          token,
+          connectorId,
+          [403],
+        );
+      expectApiError(disconnect.body);
+      expect(disconnect.body.error.code).toBe("FORBIDDEN");
     }
   });
 
@@ -4610,6 +4629,17 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     expectApiError(missing.body);
     expect(missing.body.error.message).toBe("Custom connector not found");
 
+    const missingDisconnect =
+      await connectorsApi.requestDisconnectCustomConnector(
+        admin,
+        randomUUID(),
+        [404],
+      );
+    expectApiError(missingDisconnect.body);
+    expect(missingDisconnect.body.error.message).toBe(
+      "Custom connector not found",
+    );
+
     await connectorsApi.setCustomConnectorSecret(
       member,
       shared.id,
@@ -4646,7 +4676,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       readHasSecret(adminInOtherOrg, otherOrg.id),
     ).resolves.toBeTruthy();
 
-    await connectorsApi.disconnectCustomConnector(admin, shared.id);
+    await connectorsApi.disconnectCustomConnectorLegacy(admin, shared.id);
     await connectorsApi.disconnectCustomConnector(admin, shared.id);
     await expect(readHasSecret(admin, shared.id)).resolves.toBeFalsy();
     await expect(readHasSecret(member, shared.id)).resolves.toBeTruthy();
