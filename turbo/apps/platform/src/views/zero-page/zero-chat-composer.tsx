@@ -3771,7 +3771,7 @@ function TemplatePreviewPage({
                 </div>
               </div>
             </div>
-            <button
+            <Button
               type="button"
               aria-label={t(
                 ($) => {
@@ -3781,7 +3781,7 @@ function TemplatePreviewPage({
                   title: item.title,
                 },
               )}
-              className="mt-4 h-12 w-full rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              className="mt-4 h-12 w-full font-semibold shadow-sm"
               onClick={() => {
                 setCardThemeId(item.slug, selectedTheme.id);
                 onSelect(
@@ -3793,7 +3793,7 @@ function TemplatePreviewPage({
               {t(($) => {
                 return $.artifacts.templates.useThisTemplate;
               })}
-            </button>
+            </Button>
           </div>
         </div>
       </div>
@@ -6588,7 +6588,7 @@ function ConnectorsPopoverButton({
                         agentId &&
                         connector.authorized &&
                         connector.permissionSummary.hasPermissions && (
-                          <button
+                          <Button
                             type="button"
                             onClick={(event) => {
                               event.preventDefault();
@@ -6603,10 +6603,12 @@ function ConnectorsPopoverButton({
                               },
                               { connectorName: connector.label },
                             )}
-                            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
+                            variant="quiet"
+                            size="icon-2xs"
+                            className="shrink-0"
                           >
                             <SlidersHorizontal size={15} />
-                          </button>
+                          </Button>
                         )}
                       <LoadingSwitch
                         checked={connector.authorized}

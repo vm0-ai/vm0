@@ -652,6 +652,13 @@
       "when": 1786434776471,
       "tag": "0900_replace_scheduled_usage_pack_change",
       "breakpoints": true
+    },
+    {
+      "idx": 901,
+      "version": "7",
+      "when": 1786439615768,
+      "tag": "0901_parallel_energizer",
+      "breakpoints": true
     }
   ]
 }

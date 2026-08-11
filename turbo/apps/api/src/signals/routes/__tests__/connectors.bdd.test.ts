@@ -55,8 +55,6 @@ import {
   readConnectorCredentialStorageState,
   readCustomConnectorCredentialStorageParent,
   readCustomConnectorOAuthStorageState,
-  seedConnectorStorageRow,
-  setConnectorVariableOwner,
   setCustomConnectorCredentialStorageState,
 } from "./helpers/connector-credential-storage-state";
 import { zeroCustomConnectorsRoutes } from "../zero-custom-connectors";
@@ -5274,21 +5272,6 @@ describe("CONN-02: test-oauth auth-code journey", () => {
         tenantId: "bdd-rollback-manual-tenant",
       },
     );
-    // Production APIs cannot move a connector variable to another connection;
-    // this fixture creates the storage conflict needed to exercise rollback.
-    const conflictOwnerId = await seedConnectorStorageRow(context, {
-      orgId: requiredOrgId(actor),
-      userId: actor.userId,
-      connectorSlug: uniqueSlug("credential-conflict"),
-      authMethod: "fixture",
-      storageVersion: 1,
-    });
-    await setConnectorVariableOwner(context, {
-      connectorId: conflictOwnerId,
-      name: "TEST_OAUTH_API_TOKEN_INPUT_VAR",
-      orgId: requiredOrgId(actor),
-      userId: actor.userId,
-    });
 
     const oauthStart = await connectorsApi.startOauth(
       actor,
@@ -5334,7 +5317,9 @@ describe("CONN-02: test-oauth auth-code journey", () => {
       "api-token",
       {
         apiToken: "bdd-failed-replacement-token",
-        inputVariable: "bdd-failed-replacement-input",
+        // PostgreSQL text rejects NUL after the transaction has replaced the
+        // connection metadata, deleted OAuth credentials, and written the secret.
+        inputVariable: "bdd-failed-replacement-input\u0000",
         tenantId: "bdd-failed-replacement-tenant",
       },
       { statuses: [500] },
@@ -5347,12 +5332,6 @@ describe("CONN-02: test-oauth auth-code journey", () => {
       readConnectorCredentialStorageState(context, storageQuery),
     ).resolves.toStrictEqual(storageBeforeFailure);
 
-    await setConnectorVariableOwner(context, {
-      connectorId: oauthConnector.id,
-      name: "TEST_OAUTH_API_TOKEN_INPUT_VAR",
-      orgId: requiredOrgId(actor),
-      userId: actor.userId,
-    });
     const manual = await connectorsApi.connectManualGrant(
       actor,
       "test-oauth",

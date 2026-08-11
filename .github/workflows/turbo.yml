@@ -2513,18 +2513,19 @@ jobs:
   # runner suite.
   cli-e2e-03-runner-prepare:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 12
     concurrency:
       group: cli-e2e-03-runner-prepare-${{ needs.prepare.outputs.job-ref }}
       cancel-in-progress: true
-    needs: [prepare, deploy-api, deploy-app]
+    needs: [prepare, deploy-api, deploy-app, deploy-stripe-listener]
     if: |
       always() &&
       needs.prepare.outputs.job-ref != '' &&
       (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) &&
       needs.prepare.outputs.turbo-runner-consumer-needed == 'true' &&
       needs.deploy-api.result == 'success' &&
-      needs.deploy-app.result == 'success'
+      needs.deploy-app.result == 'success' &&
+      (github.event_name == 'push' || needs.deploy-stripe-listener.result == 'success')
     outputs:
       runner-organization-id: ${{ steps.account.outputs.runner-organization-id }}
       codex-organization-id: ${{ steps.account.outputs.codex-organization-id }}
@@ -2637,6 +2638,69 @@ jobs:
             -d '{"type":"claude-code-oauth-token","secret":"mock-oauth-token-for-e2e"}' \
             "${E2E_API_URL}/api/zero/model-providers" >/dev/null
         env:
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+      - name: Bootstrap real Claude account
+        shell: bash
+        run: |
+          set -euo pipefail
+          token=$(jq -er '.token | select(type == "string" and length > 0)' /tmp/e2e-api-credentials-runner-real-claude.json)
+          api_url=$(jq -er '.apiUrl | select(type == "string" and length > 0)' /tmp/e2e-api-credentials-runner-real-claude.json)
+          echo "::add-mask::$token"
+
+          headers=(-H "Authorization: Bearer ${token}" -H "Content-Type: application/json")
+          if [[ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then
+            headers+=(-H "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}")
+          fi
+
+          provider_payload=$(jq -nc \
+            --arg secret "$ANTHROPIC_API_KEY" \
+            '{type: "anthropic-api-key", secret: $secret}')
+          provider_response=$(curl -fsS "${headers[@]}" \
+            -X POST \
+            -d "$provider_payload" \
+            "${api_url}/api/zero/model-providers")
+          provider_id=$(jq -er '.provider.id | select(type == "string" and length > 0)' \
+            <<< "$provider_response")
+
+          policies=$(curl -fsS "${headers[@]}" "${api_url}/api/zero/model-policies")
+          policy_payload=$(jq -c --arg providerId "$provider_id" '
+            {
+              policies: (
+                [.policies[] |
+                  select(.model != "claude-sonnet-5") |
+                  {
+                    model,
+                    isDefault,
+                    defaultProviderType,
+                    credentialScope,
+                    modelProviderId
+                  }
+                ] + [
+                  {
+                    model: "claude-sonnet-5",
+                    isDefault: false,
+                    defaultProviderType: "anthropic-api-key",
+                    credentialScope: "org",
+                    modelProviderId: $providerId
+                  }
+                ]
+              )
+            }
+          ' <<< "$policies")
+          curl -fsS "${headers[@]}" \
+            -X PUT \
+            -d "$policy_payload" \
+            "${api_url}/api/zero/model-policies" \
+            >/dev/null
+
+          curl -fsS "${headers[@]}" \
+            -X POST \
+            -d '{"switches":{"realAgentInPreview":true}}' \
+            "${api_url}/api/zero/feature-switches" \
+            | jq -e '.effectiveSwitches.realAgentInPreview == true' \
+            >/dev/null
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.CI_ANTHROPIC_API_KEY }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
 
   cli-e2e-03-runner:
