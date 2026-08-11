@@ -719,6 +719,37 @@ describe("GET/PUT /api/zero/model-policies", () => {
     });
   });
 
+  it("keeps recently active GPT 5.5 and Claude Sonnet 4.6 selectable", async () => {
+    const fixture = await seedFixture();
+    useSession(fixture);
+    const client = apiClient();
+    const listResponse = await accept(
+      client.list({ headers: authHeaders() }),
+      [200],
+    );
+
+    const response = await accept(
+      client.update({
+        headers: authHeaders(),
+        body: {
+          policies: [
+            ...toUpdate(listResponse.body),
+            makeVm0Policy("gpt-5.5"),
+            makeVm0Policy("claude-sonnet-4-6"),
+          ],
+        },
+      }),
+      [200],
+    );
+
+    expect(response.body.policies).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ model: "gpt-5.5" }),
+        expect.objectContaining({ model: "claude-sonnet-4-6" }),
+      ]),
+    );
+  });
+
   it("allows compatible GPT 5.6 OpenAI org provider routes", async () => {
     const fixture = await seedFixture();
     useSession(fixture);

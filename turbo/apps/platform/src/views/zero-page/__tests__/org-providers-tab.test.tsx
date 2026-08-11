@@ -128,8 +128,8 @@ function claudeOpusApiKeyPolicy(): OrgModelPolicy {
 function missingOpenAiPolicy(): OrgModelPolicy {
   return {
     id: "00000000-0000-4000-a000-000000000213",
-    model: "gpt-5.6-sol",
-    modelLabel: "GPT 5.6 Sol",
+    model: "gpt-5.5",
+    modelLabel: "GPT 5.5",
     isDefault: false,
     defaultProviderType: "openai-api-key",
     credentialScope: "org",
@@ -260,6 +260,7 @@ function gatewayConnectionResponse(
 function mockGatewayConnectionLifecycle() {
   let connections: ModelProviderConnectionResponse[] = [];
   let createSecret: string | null = null;
+  let createSurfaces: CreateModelProviderConnectionRequest["surfaces"] = [];
   let updateSecret: string | undefined;
   let updateCount = 0;
   let deleteCount = 0;
@@ -274,6 +275,7 @@ function mockGatewayConnectionLifecycle() {
     zeroModelProviderConnectionsMainContract.create,
     ({ body, respond }) => {
       createSecret = body.secret;
+      createSurfaces = body.surfaces;
       const connection = gatewayConnectionResponse(body);
       connections = [connection];
       return respond(201, connection);
@@ -301,6 +303,9 @@ function mockGatewayConnectionLifecycle() {
   return {
     createSecret: () => {
       return createSecret;
+    },
+    createSurfaces: () => {
+      return createSurfaces;
     },
     deleteCount: () => {
       return deleteCount;
@@ -526,6 +531,23 @@ describe("organization model providers settings", () => {
       within(connectionsSection).findByText("Vercel AI Gateway"),
     ).resolves.toBeInTheDocument();
     expect(lifecycle.createSecret()).toBe("vck-test");
+    const messagesSurface = lifecycle.createSurfaces().find((surface) => {
+      return surface.protocol === "anthropic-messages";
+    });
+    const responsesSurface = lifecycle.createSurfaces().find((surface) => {
+      return surface.protocol === "openai-responses";
+    });
+    expect(messagesSurface?.modelMappings).toMatchObject({
+      "claude-sonnet-4-6": "anthropic/claude-sonnet-4.6",
+      "claude-opus-4-8": "anthropic/claude-opus-4.8",
+    });
+    expect(messagesSurface?.modelMappings).not.toHaveProperty(
+      "claude-opus-4-7",
+    );
+    expect(responsesSurface?.modelMappings).toHaveProperty(
+      "gpt-5.5",
+      "openai/gpt-5.5",
+    );
 
     click(within(connectionsSection).getByLabelText("Gateway actions"));
     click(menuItemByText("Edit"));
@@ -650,6 +672,12 @@ describe("organization model providers settings", () => {
       screen.findByRole("option", { name: "GPT 5.6 Sol" }),
     ).resolves.toBeInTheDocument();
     await expect(
+      screen.findByRole("option", { name: "GPT 5.5" }),
+    ).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByRole("option", { name: "Claude Sonnet 4.6" }),
+    ).resolves.toBeInTheDocument();
+    await expect(
       screen.findByRole("option", { name: "Claude Opus 4.8" }),
     ).resolves.toBeInTheDocument();
     await expect(
@@ -659,22 +687,31 @@ describe("organization model providers settings", () => {
       screen.queryByRole("option", { name: "Kimi K2.7 Code" }),
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByRole("option", { name: "GPT 5.5" }),
-    ).not.toBeInTheDocument();
-    expect(
       screen.queryByRole("option", { name: "Claude Opus 4.7" }),
     ).not.toBeInTheDocument();
   });
 
-  it("hides retired stored policies and excludes them from additions", async () => {
+  it("hides retired policies while keeping recently active models", async () => {
     mockAdminOrg();
     context.mocks.data.orgModelProviders([]);
     context.mocks.data.orgModelPolicies([
       builtInPolicy(
         "00000000-0000-4000-a000-000000000223",
+        "deepseek-v4-flash",
+        "DeepSeek V4 Flash",
+        true,
+      ),
+      builtInPolicy(
+        "00000000-0000-4000-a000-000000000224",
         "kimi-k2.7-code",
         "Kimi K2.7 Code",
-        true,
+        false,
+      ),
+      builtInPolicy(
+        "00000000-0000-4000-a000-000000000225",
+        "gpt-5.5",
+        "GPT 5.5",
+        false,
       ),
     ]);
     await openProvidersTab();
@@ -682,6 +719,9 @@ describe("organization model providers settings", () => {
     expect(
       screen.queryByTestId("org-model-policy-row-kimi-k2.7-code"),
     ).not.toBeInTheDocument();
+    await expect(
+      screen.findByTestId("org-model-policy-row-gpt-5.5"),
+    ).resolves.toBeInTheDocument();
     click(buttonByText("Add model"));
     const dialog = screen.getByRole("dialog", { name: "Add model" });
     click(within(dialog).getByRole("combobox"));
@@ -1024,7 +1064,7 @@ describe("organization model providers settings", () => {
     await openProvidersTab();
 
     const missingRow = await screen.findByTestId(
-      "org-model-policy-row-gpt-5.6-sol",
+      "org-model-policy-row-gpt-5.5",
     );
     expect(
       within(missingRow).getByText("Missing provider"),

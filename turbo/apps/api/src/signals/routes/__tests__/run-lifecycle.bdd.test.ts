@@ -5418,7 +5418,7 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
     await setAgentModelSelectionAsPreviousApi(
       context,
       agentId,
-      "claude-sonnet-4-6",
+      "claude-opus-4-7",
     );
 
     const run = await api.createRun(actor, {
@@ -5430,7 +5430,7 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
 
     expect(stored).toStrictEqual({
       model_provider: "anthropic-api-key",
-      selected_model: "claude-sonnet-5",
+      selected_model: "claude-opus-4-8",
     });
     await api.requestCancelRun(actor, run.runId, [200]);
   });
@@ -5486,13 +5486,13 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
     await setRunModelSelectionAsPreviousApi(
       context,
       queued.runId,
-      "claude-sonnet-4-6",
+      "claude-opus-4-7",
     );
     await api.requestCancelRun(actor, first.runId, [200]);
 
     const failed = await waitForRunStatus(api, actor, queued.runId, "failed");
     expect(failed.error).toBe(
-      'MODEL_RETIRED: Model "claude-sonnet-4-6" has been retired. Use "claude-sonnet-5" instead.',
+      'MODEL_RETIRED: Model "claude-opus-4-7" has been retired. Use "claude-opus-4-8" instead.',
     );
     await expect(waitForRunQueueLength(api, actor, 0)).resolves.toBeDefined();
 
