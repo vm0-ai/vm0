@@ -7,14 +7,14 @@
 //! Nearby due targets for one run are coalesced and split to the shared API
 //! contract limit.
 //!
-//! A sync response must contain each requested target exactly
-//! once. Available builtin results patch only their existing network policy;
-//! available custom results atomically replace their firewall and policy.
-//! Authoritative custom absence removes both while builtin unresolved results
-//! retain last-known-good state and retry. Transport, validation, queue, and
-//! registry publication failures also retain last-known-good state and install
-//! a capped, jittered retry. Older queued or in-flight work cannot clear a newer
-//! realtime trigger.
+//! A sync response must contain each requested target exactly once. Valid
+//! builtin policy and custom firewall updates are prepared independently, then
+//! committed through one checked registry transaction. Authoritative custom
+//! absence removes only that candidate, while unresolved results retain
+//! last-known-good state and retry. Transport, validation, queue, and registry
+//! publication failures also retain last-known-good state and install a capped,
+//! jittered retry. Older queued or in-flight work cannot clear a newer realtime
+//! trigger.
 //!
 //! A typed terminal-run response removes the entire run from tracking, cancels
 //! scheduled work, and fail-closes every still-matching target. Registry writes
@@ -44,7 +44,9 @@ use tracing::{info, warn};
 use super::api::{ApiClient, ConnectorRuntimeSyncOutcome};
 use crate::error::RunnerError;
 use crate::ids::RunId;
-use crate::proxy::{CustomConnectorRuntimeRegistryState, ProxyRegistryHandle};
+use crate::proxy::{
+    ConnectorRuntimeRegistryUpdate, CustomConnectorRuntimeRegistryState, ProxyRegistryHandle,
+};
 use crate::types::{
     ConnectorRuntimeSyncBatchResponse, ConnectorRuntimeSyncState, ConnectorRuntimeTarget,
     ConnectorRuntimeTargetRegistration, ConnectorRuntimeUnresolvedReason, FirewallEntry,
@@ -129,6 +131,13 @@ struct SyncRequest {
 struct ConnectorSyncTarget {
     target: ConnectorRuntimeTarget,
     generation: u64,
+}
+
+struct PreparedConnectorRuntimePublication {
+    target: ConnectorSyncTarget,
+    deadline: Option<tokio::time::Instant>,
+    candidate_base_url_vars: Option<HashMap<String, String>>,
+    update: ConnectorRuntimeRegistryUpdate,
 }
 
 impl ConnectorRuntimeSyncHandle {
@@ -541,6 +550,7 @@ impl ConnectorRuntimeSyncCore {
         }
 
         let mut retry_targets = Vec::new();
+        let mut prepared_publications = Vec::new();
         for target in active_targets {
             if duplicate_targets.contains(&target.target) {
                 retry_targets.push(target.clone());
@@ -609,9 +619,9 @@ impl ConnectorRuntimeSyncCore {
                     continue;
                 }
             };
-            let Some(snapshot) = self.active_snapshot_for_target(run_id, target).await else {
+            if !self.target_generation_is_current(run_id, target).await {
                 continue;
-            };
+            }
             if let Some(candidate) = &candidate_base_url_vars {
                 let Some(matches_pinned_values) = self
                     .custom_base_url_vars_match(run_id, target, candidate)
@@ -629,7 +639,7 @@ impl ConnectorRuntimeSyncCore {
                     continue;
                 }
             }
-            let publication = match (&target.target, &result.state) {
+            let update = match (&target.target, &result.state) {
                 (
                     ConnectorRuntimeTarget::Builtin { connector_slug },
                     ConnectorRuntimeSyncState::Available {
@@ -644,26 +654,10 @@ impl ConnectorRuntimeSyncCore {
                     {
                         Err(error)
                     } else {
-                        match patch_network_policy(
-                            run_id,
-                            connector_slug,
-                            snapshot.clone(),
-                            network_policy.clone(),
-                        )
-                        .await
-                        {
-                            Ok(published) => Ok(published),
-                            Err(error) => {
-                                warn!(
-                                    run_id = %run_id,
-                                    target = %target.target.log_identity(),
-                                    error = %error,
-                                    "failed to publish connector runtime target; retaining last-known-good state"
-                                );
-                                retry_targets.push(target.clone());
-                                continue;
-                            }
-                        }
+                        Ok(ConnectorRuntimeRegistryUpdate::BuiltinAvailable {
+                            connector_slug: connector_slug.clone(),
+                            network_policy: network_policy.clone(),
+                        })
                     }
                 }
                 (
@@ -714,35 +708,17 @@ impl ConnectorRuntimeSyncCore {
                             "custom connector runtime target is authoritatively absent"
                         );
                     }
-                    match snapshot
-                        .registry
-                        .replace_custom_connector_runtime_target_if_run_matches(
-                            &snapshot.source_ip,
-                            &run_id.to_string(),
-                            custom_connector_id,
-                            registry_state,
-                        )
-                        .await
-                    {
-                        Ok(published) => Ok(published),
-                        Err(error) => {
-                            warn!(
-                                run_id = %run_id,
-                                target = %target.target.log_identity(),
-                                error = %error,
-                                "failed to publish connector runtime target; retaining last-known-good state"
-                            );
-                            retry_targets.push(target.clone());
-                            continue;
-                        }
-                    }
+                    Ok(ConnectorRuntimeRegistryUpdate::Custom {
+                        custom_connector_id: custom_connector_id.clone(),
+                        state: registry_state,
+                    })
                 }
                 (ConnectorRuntimeTarget::Builtin { .. }, _) => {
                     Err("builtin connector runtime result has an invalid state")
                 }
             };
-            let published = match publication {
-                Ok(published) => published,
+            let update = match update {
+                Ok(update) => update,
                 Err(error) => {
                     warn!(
                         run_id = %run_id,
@@ -754,28 +730,74 @@ impl ConnectorRuntimeSyncCore {
                     continue;
                 }
             };
-            match published {
-                true => {
-                    if self
-                        .complete_successful_sync(
-                            run_id,
-                            target,
-                            deadline,
-                            candidate_base_url_vars.as_ref(),
-                        )
-                        .await
-                    {
-                        info!(
-                            run_id = %run_id,
-                            target = %target.target.log_identity(),
-                            generation = target.generation,
-                            "synced connector runtime target"
-                        );
+            prepared_publications.push(PreparedConnectorRuntimePublication {
+                target: target.clone(),
+                deadline,
+                candidate_base_url_vars,
+                update,
+            });
+        }
+
+        let Some((snapshot, prepared_publications)) = self
+            .current_connector_runtime_publications(run_id, prepared_publications)
+            .await
+        else {
+            return false;
+        };
+        if !prepared_publications.is_empty() {
+            let updates = prepared_publications
+                .iter()
+                .map(|publication| publication.update.clone())
+                .collect::<Vec<_>>();
+            let publication = snapshot
+                .registry
+                .apply_connector_runtime_updates_if_run_matches(
+                    &snapshot.source_ip,
+                    &run_id.to_string(),
+                    &updates,
+                )
+                .await;
+            match publication {
+                Ok(Some(outcomes)) => {
+                    for (prepared, published) in prepared_publications.into_iter().zip(outcomes) {
+                        if !published {
+                            retry_targets.push(prepared.target);
+                            continue;
+                        }
+                        if self
+                            .complete_successful_sync(
+                                run_id,
+                                &prepared.target,
+                                prepared.deadline,
+                                prepared.candidate_base_url_vars.as_ref(),
+                            )
+                            .await
+                        {
+                            info!(
+                                run_id = %run_id,
+                                target = %prepared.target.target.log_identity(),
+                                generation = prepared.target.generation,
+                                "synced connector runtime target"
+                            );
+                        }
                     }
                 }
-                false => {
+                Ok(None) => {
                     self.unregister_run(run_id).await;
                     return false;
+                }
+                Err(error) => {
+                    warn!(
+                        run_id = %run_id,
+                        error = %error,
+                        target_count = prepared_publications.len(),
+                        "failed to publish connector runtime targets; retaining last-known-good state"
+                    );
+                    retry_targets.extend(
+                        prepared_publications
+                            .into_iter()
+                            .map(|publication| publication.target),
+                    );
                 }
             }
         }
@@ -921,6 +943,7 @@ impl ConnectorRuntimeSyncCore {
                     ConnectorRuntimeTarget::Builtin { connector_slug } => {
                         ConnectorRuntimeTargetRegistration::Builtin {
                             connector_slug: connector_slug.clone(),
+                            base_url_vars: None,
                         }
                     }
                     ConnectorRuntimeTarget::Custom {
@@ -935,24 +958,46 @@ impl ConnectorRuntimeSyncCore {
             .collect()
     }
 
-    async fn active_snapshot_for_target(
+    async fn target_generation_is_current(
         &self,
         run_id: RunId,
         target: &ConnectorSyncTarget,
-    ) -> Option<ActiveRunConnectorRuntimeSnapshot> {
+    ) -> bool {
+        let active_runs = self.inner.active_runs.lock().await;
+        active_runs.get(&run_id).is_some_and(|active| {
+            active
+                .connectors
+                .get(&target.target)
+                .is_some_and(|connector| connector.generation == target.generation)
+        })
+    }
+
+    async fn current_connector_runtime_publications(
+        &self,
+        run_id: RunId,
+        publications: Vec<PreparedConnectorRuntimePublication>,
+    ) -> Option<(
+        ActiveRunConnectorRuntimeSnapshot,
+        Vec<PreparedConnectorRuntimePublication>,
+    )> {
         let active_runs = self.inner.active_runs.lock().await;
         let active = active_runs.get(&run_id)?;
-        if active
-            .connectors
-            .get(&target.target)
-            .is_none_or(|connector| connector.generation != target.generation)
-        {
-            return None;
-        }
-        Some(ActiveRunConnectorRuntimeSnapshot {
-            source_ip: active.source_ip.clone(),
-            registry: active.registry.clone(),
-        })
+        let current = publications
+            .into_iter()
+            .filter(|publication| {
+                active
+                    .connectors
+                    .get(&publication.target.target)
+                    .is_some_and(|connector| connector.generation == publication.target.generation)
+            })
+            .collect();
+        Some((
+            ActiveRunConnectorRuntimeSnapshot {
+                source_ip: active.source_ip.clone(),
+                registry: active.registry.clone(),
+            },
+            current,
+        ))
     }
 
     async fn custom_base_url_vars_match(
@@ -1231,23 +1276,6 @@ async fn run_sync_worker(
             }
         }
     }
-}
-
-async fn patch_network_policy(
-    run_id: RunId,
-    connector_slug: &str,
-    snapshot: ActiveRunConnectorRuntimeSnapshot,
-    policy: NetworkPolicy,
-) -> crate::error::RunnerResult<bool> {
-    snapshot
-        .registry
-        .patch_network_policy_if_run_matches(
-            &snapshot.source_ip,
-            &run_id.to_string(),
-            connector_slug,
-            policy,
-        )
-        .await
 }
 
 fn connector_runtime_unresolved_reason_is_valid(
@@ -1581,6 +1609,7 @@ mod tests {
                 .map(
                     |connector_slug| ConnectorRuntimeTargetRegistration::Builtin {
                         connector_slug: connector_slug.clone(),
+                        base_url_vars: None,
                     },
                 )
                 .collect::<Vec<_>>();
@@ -1620,7 +1649,7 @@ mod tests {
                         proxy_log_path: &proxy_log_path,
                         firewalls: Some(&firewalls),
                         network_policies: Some(&network_policies),
-                        connector_runtime_targets: None,
+                        connector_runtime_targets: Some(&runtime_targets),
                         encrypted_secrets: None,
                         secret_connector_map: None,
                         secret_connector_metadata_map: None,
@@ -1875,6 +1904,10 @@ mod tests {
         let run_id_string = run_id.to_string();
         let network_log_path = dir.path().join("network.jsonl");
         let proxy_log_path = dir.path().join("proxy.log");
+        let runtime_targets = [ConnectorRuntimeTargetRegistration::Builtin {
+            connector_slug: "slack".to_string(),
+            base_url_vars: None,
+        }];
         registry
             .register_vm(
                 "10.200.0.2",
@@ -1886,7 +1919,7 @@ mod tests {
                     proxy_log_path: &proxy_log_path,
                     firewalls: Some(&firewalls),
                     network_policies: Some(&network_policies),
-                    connector_runtime_targets: None,
+                    connector_runtime_targets: Some(&runtime_targets),
                     encrypted_secrets: None,
                     secret_connector_map: None,
                     secret_connector_metadata_map: None,
@@ -1906,6 +1939,41 @@ mod tests {
         firewalls: &[FirewallEntry],
         network_policies: &HashMap<String, NetworkPolicy>,
     ) -> (tempfile::TempDir, ProxyRegistryHandle, std::path::PathBuf) {
+        let runtime_targets = firewalls
+            .iter()
+            .filter_map(|firewall| match firewall {
+                FirewallEntry::Builtin {
+                    name,
+                    base_url_vars,
+                } => Some(ConnectorRuntimeTargetRegistration::Builtin {
+                    connector_slug: name.clone(),
+                    base_url_vars: base_url_vars.clone(),
+                }),
+                FirewallEntry::Inline {
+                    custom_connector_id: Some(custom_connector_id),
+                    ..
+                } => Some(ConnectorRuntimeTargetRegistration::Custom {
+                    custom_connector_id: custom_connector_id.clone(),
+                    base_url_vars: None,
+                }),
+                FirewallEntry::Inline { .. } => None,
+            })
+            .collect::<Vec<_>>();
+        registered_runtime_registry_with_targets(
+            run_id,
+            firewalls,
+            network_policies,
+            &runtime_targets,
+        )
+        .await
+    }
+
+    async fn registered_runtime_registry_with_targets(
+        run_id: RunId,
+        firewalls: &[FirewallEntry],
+        network_policies: &HashMap<String, NetworkPolicy>,
+        runtime_targets: &[ConnectorRuntimeTargetRegistration],
+    ) -> (tempfile::TempDir, ProxyRegistryHandle, std::path::PathBuf) {
         let dir = tempfile::tempdir().expect("tempdir should be created");
         let registry_path = dir.path().join("proxy-registry.json");
         tokio::fs::write(&registry_path, br#"{"vms":{},"updatedAt":0}"#)
@@ -1918,6 +1986,21 @@ mod tests {
         let run_id = run_id.to_string();
         let network_log_path = dir.path().join("network.jsonl");
         let proxy_log_path = dir.path().join("proxy.log");
+        let runtime_vars = firewalls
+            .iter()
+            .filter_map(|firewall| match firewall {
+                FirewallEntry::Builtin {
+                    base_url_vars: Some(base_url_vars),
+                    ..
+                } => Some(base_url_vars),
+                FirewallEntry::Builtin {
+                    base_url_vars: None,
+                    ..
+                }
+                | FirewallEntry::Inline { .. } => None,
+            })
+            .flat_map(|base_url_vars| base_url_vars.clone())
+            .collect::<HashMap<_, _>>();
         registry
             .register_vm(
                 "10.200.0.2",
@@ -1929,11 +2012,11 @@ mod tests {
                     proxy_log_path: &proxy_log_path,
                     firewalls: Some(firewalls),
                     network_policies: Some(network_policies),
-                    connector_runtime_targets: None,
+                    connector_runtime_targets: Some(runtime_targets),
                     encrypted_secrets: None,
                     secret_connector_map: None,
                     secret_connector_metadata_map: None,
-                    vars: None,
+                    vars: (!runtime_vars.is_empty()).then_some(&runtime_vars),
                     capture_network_bodies: false,
                     billable_firewalls: &[],
                     model_usage_provider: None,
@@ -2607,14 +2690,20 @@ mod tests {
         let firewall = custom_runtime_firewall(custom_connector_id);
         let empty_firewalls = Vec::new();
         let empty_policies = HashMap::new();
-        let (_dir, registry, registry_path) =
-            registered_runtime_registry(run_id, &empty_firewalls, &empty_policies).await;
+        let registration = runtime_target_registration(&target);
+        let (_dir, registry, registry_path) = registered_runtime_registry_with_targets(
+            run_id,
+            &empty_firewalls,
+            &empty_policies,
+            std::slice::from_ref(&registration),
+        )
+        .await;
 
         core.register_run(ConnectorRuntimeSyncRegistration {
             run_id,
             source_ip: "10.200.0.2",
             registry,
-            targets: std::slice::from_ref(&runtime_target_registration(&target)),
+            targets: std::slice::from_ref(&registration),
             refreshes: None,
         })
         .await;
@@ -2795,8 +2884,13 @@ mod tests {
         });
         let empty_firewalls = Vec::new();
         let empty_policies = HashMap::new();
-        let (_dir, registry, registry_path) =
-            registered_runtime_registry(run_id, &empty_firewalls, &empty_policies).await;
+        let (_dir, registry, registry_path) = registered_runtime_registry_with_targets(
+            run_id,
+            &empty_firewalls,
+            &empty_policies,
+            std::slice::from_ref(&registration),
+        )
+        .await;
 
         core.register_run(ConnectorRuntimeSyncRegistration {
             run_id,
@@ -3171,15 +3265,21 @@ mod tests {
                 unknown_policy: "allow".to_string(),
             },
         )]);
-        let (_dir, registry, registry_path) =
-            registered_runtime_registry(run_id, &[], &policies).await;
+        let registration = runtime_target_registration(&target);
+        let (_dir, registry, registry_path) = registered_runtime_registry_with_targets(
+            run_id,
+            &[],
+            &policies,
+            std::slice::from_ref(&registration),
+        )
+        .await;
         let registry_before = tokio::fs::read(&registry_path).await.unwrap();
 
         core.register_run(ConnectorRuntimeSyncRegistration {
             run_id,
             source_ip: "10.200.0.2",
             registry,
-            targets: std::slice::from_ref(&runtime_target_registration(&target)),
+            targets: std::slice::from_ref(&registration),
             refreshes: None,
         })
         .await;
@@ -4204,10 +4304,10 @@ mod tests {
         assert_connector_field(
             captured_event(
                 &events,
-                "patched connector network policy in proxy registry",
+                "applied connector runtime updates to proxy registry",
             ),
-            "connector_slug",
-            "slack",
+            "update_count",
+            "1",
         );
         assert_connector_field(
             captured_event(&events, "synced connector runtime target"),

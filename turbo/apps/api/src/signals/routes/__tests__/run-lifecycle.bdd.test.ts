@@ -8153,7 +8153,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
 });
 
 describe("RUN-02: custom connectors, grants, and network policies", () => {
-  it("lets an enabled custom connector override a connected built-in connector", async () => {
+  it("keeps overlapping connector candidates behind the legacy runner view", async () => {
     const api = createRunsApi(context);
     const connectors = createConnectorBddApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
@@ -8197,7 +8197,21 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
         base: "https://api.figma.com/",
       },
     ]);
-    expect(claim.networkPolicies ?? {}).not.toHaveProperty("figma");
+    expect(claim.connectorRuntimeTargets).not.toContainEqual({
+      kind: "builtin",
+      connectorSlug: "figma",
+    });
+    expect(claim.connectorRuntimeCandidateTargets).toContainEqual({
+      kind: "builtin",
+      connectorSlug: "figma",
+    });
+    expect(claim.connectorRuntimeCandidateTargets).toContainEqual(
+      expect.objectContaining({
+        kind: "custom",
+        customConnectorId: custom.id,
+      }),
+    );
+    expect(claim.networkPolicies).toHaveProperty("figma");
     expect(claim.networkPolicies?.[internalName]?.unknownPolicy).toBe("allow");
 
     await api.requestCancelRun(actor, run.runId, [200]);
@@ -8252,6 +8266,14 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
         base: "https://api.figma.com/v1/files/",
       },
     ]);
+    expect(claim.connectorRuntimeTargets).toContainEqual({
+      kind: "builtin",
+      connectorSlug: "figma",
+    });
+    expect(claim.connectorRuntimeCandidateTargets).toContainEqual({
+      kind: "builtin",
+      connectorSlug: "figma",
+    });
 
     await api.requestCancelRun(actor, run.runId, [200]);
     expect((await api.readRun(actor, run.runId)).status).toBe("cancelled");
@@ -10654,6 +10676,11 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       name: "zendesk",
       baseUrlVars: { ZENDESK_SUBDOMAIN: "xn--mnich-kva" },
     });
+    expect(claim.connectorRuntimeCandidateTargets).toContainEqual({
+      kind: "builtin",
+      connectorSlug: "zendesk",
+      baseUrlVars: { ZENDESK_SUBDOMAIN: "xn--mnich-kva" },
+    });
     expect(customApis[0]?.base).toBe("https://internal.example.com/api/");
 
     await api.requestCancelRun(actor, run.runId, [200]);
@@ -10793,6 +10820,10 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
 
     const cases = [
       {
+        mode: "legacy-targets",
+        path: "baseline",
+      },
+      {
         mode: "remove",
         path: "full_missing_baseline",
       },
@@ -10844,6 +10875,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       expectClaimRouteResponseTimingActions({
         runId: run.runId,
         expectedActionTypes:
+          fallbackCase.mode === "legacy-targets" ||
           fallbackCase.mode === "catalog-mismatch"
             ? [
                 "claim_route_response_network_policy_refresh",

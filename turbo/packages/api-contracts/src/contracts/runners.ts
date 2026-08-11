@@ -198,10 +198,15 @@ export const connectorRuntimeCustomTargetRegistrationSchema =
     baseUrlVars: z.record(z.string(), z.string()).optional(),
   });
 
+export const connectorRuntimeBuiltinTargetRegistrationSchema =
+  connectorRuntimeBuiltinTargetSchema.extend({
+    baseUrlVars: z.record(z.string(), z.string()).optional(),
+  });
+
 export const connectorRuntimeTargetRegistrationSchema = z.discriminatedUnion(
   "kind",
   [
-    connectorRuntimeBuiltinTargetSchema,
+    connectorRuntimeBuiltinTargetRegistrationSchema,
     connectorRuntimeCustomTargetRegistrationSchema,
   ],
 );
@@ -836,6 +841,10 @@ const storedExecutionContextObjectSchema = z.object({
   // Stable connector targets pinned for this run. The runner owns this list
   // after claim independently of whether each target is currently available.
   connectorRuntimeTargets: connectorRuntimeTargetsSchema,
+  // Complete target membership for candidate-aware runners. During rollout,
+  // connectorRuntimeTargets remains the filtered compatibility view consumed
+  // by previous runners. Remove this field after that runner generation drains.
+  connectorRuntimeCandidateTargets: connectorRuntimeTargetsSchema.optional(),
   // API-only catalog-derived permission defaults for claim-time grant refresh.
   connectorPermissionBaseline:
     storedConnectorPermissionBaselineSchema.optional(),
@@ -938,6 +947,9 @@ const executionContextObjectSchema = z.object({
   // Stable connector targets pinned for this run. The runner owns this list
   // after claim independently of whether each target is currently available.
   connectorRuntimeTargets: connectorRuntimeTargetsSchema,
+  // Complete target membership for candidate-aware runners. Missing means the
+  // filtered connectorRuntimeTargets list is authoritative.
+  connectorRuntimeCandidateTargets: connectorRuntimeTargetsSchema.optional(),
   // Tools to disable in Claude CLI (passed as --disallowed-tools)
   disallowedTools: z.array(z.string()).optional(),
   // Tools to make available in Claude CLI (passed as --tools)
