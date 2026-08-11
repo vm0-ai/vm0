@@ -97,9 +97,9 @@ async function seedAvatarVideoFixture(options?: {
     { ...fixture, role: "admin" },
     context.signal,
   );
-  if (options?.featureEnabled ?? true) {
+  if (options?.featureEnabled !== undefined) {
     await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.JoggAiBuiltIn]: true,
+      [FeatureSwitchKey.JoggAiBuiltIn]: options.featureEnabled,
     });
   }
   if (options?.withPricing ?? true) {
