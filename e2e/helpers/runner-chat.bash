@@ -225,7 +225,7 @@ _wait_for_runner_chat_steer_consumed() {
     local response=""
 
     while (( SECONDS - start < timeout )); do
-        if response="$(runner_api_curl "/api/zero/chat-threads/$thread_id/events?limit=200" 2>&1)"; then
+        if response="$(runner_api_curl "/api/zero/chat-threads/$thread_id/events?limit=50" 2>&1)"; then
             if jq -e \
                 --arg runId "$run_id" \
                 --arg steerEventId "$steer_event_id" \
