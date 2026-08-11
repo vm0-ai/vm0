@@ -482,6 +482,7 @@ export const zeroCustomConnectorSecretContract = c.router({
     responses: {
       204: c.noBody(),
       401: apiErrorSchema,
+      403: apiErrorSchema,
       404: apiErrorSchema,
       500: apiErrorSchema,
     },
@@ -490,6 +491,25 @@ export const zeroCustomConnectorSecretContract = c.router({
 });
 export type ZeroCustomConnectorSecretContract =
   typeof zeroCustomConnectorSecretContract;
+
+export const zeroCustomConnectorConnectionContract = c.router({
+  disconnect: {
+    method: "DELETE",
+    path: "/api/zero/custom-connectors/:id/connection",
+    headers: authHeadersSchema,
+    pathParams: z.object({ id: z.string().uuid() }),
+    responses: {
+      204: c.noBody(),
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Disconnect the calling user's custom connector connection",
+  },
+});
+export type ZeroCustomConnectorConnectionContract =
+  typeof zeroCustomConnectorConnectionContract;
 
 export const zeroCustomConnectorValuesContract = c.router({
   set: {

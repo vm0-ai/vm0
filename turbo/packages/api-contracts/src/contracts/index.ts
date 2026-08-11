@@ -1110,6 +1110,7 @@ export {
 export {
   zeroCustomConnectorsContract,
   zeroCustomConnectorByIdContract,
+  zeroCustomConnectorConnectionContract,
   zeroCustomConnectorSecretContract,
   zeroCustomConnectorValuesContract,
   zeroCustomConnectorOAuth2Contract,
@@ -1125,6 +1126,7 @@ export {
   customConnectorOAuthConfigInputSchema,
   type ZeroCustomConnectorsContract,
   type ZeroCustomConnectorByIdContract,
+  type ZeroCustomConnectorConnectionContract,
   type ZeroCustomConnectorSecretContract,
   type ZeroCustomConnectorValuesContract,
   type ZeroCustomConnectorOAuth2Contract,

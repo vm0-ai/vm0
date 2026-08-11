@@ -27,6 +27,7 @@ import {
 } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 import {
   zeroCustomConnectorByIdContract,
+  zeroCustomConnectorConnectionContract,
   zeroCustomConnectorOAuth2Contract,
   zeroCustomConnectorProposalContract,
   zeroCustomConnectorSecretContract,
@@ -2048,12 +2049,12 @@ export function createConnectorBddApi(context: TestContext) {
     async requestDisconnectCustomConnector(
       actor: ApiTestUser | null,
       connectorId: string,
-      statuses: readonly (204 | 401 | 404 | 500)[],
+      statuses: readonly (204 | 401 | 403 | 404 | 500)[],
     ) {
       const client = setupApp({
         context,
-        routes: zeroCustomConnectorSecretTestRoutes,
-      })(zeroCustomConnectorSecretContract);
+        routes: zeroCustomConnectorDisconnectRoutes,
+      })(zeroCustomConnectorConnectionContract);
       return await accept(
         client.disconnect({
           params: { id: connectorId },
@@ -2069,6 +2070,41 @@ export function createConnectorBddApi(context: TestContext) {
       statuses: readonly (204 | 401 | 404 | 500)[] = [204],
     ): Promise<void> {
       await api.requestDisconnectCustomConnector(actor, connectorId, statuses);
+    },
+
+    async requestDisconnectCustomConnectorWithToken(
+      token: string,
+      connectorId: string,
+      statuses: readonly (204 | 401 | 403 | 404 | 500)[],
+    ) {
+      const client = setupApp({
+        context,
+        routes: zeroCustomConnectorDisconnectRoutes,
+      })(zeroCustomConnectorConnectionContract);
+      return await accept(
+        client.disconnect({
+          params: { id: connectorId },
+          headers: { authorization: `Bearer ${token}` },
+        }),
+        statuses,
+      );
+    },
+
+    async disconnectCustomConnectorLegacy(
+      actor: ApiTestUser,
+      connectorId: string,
+    ): Promise<void> {
+      const client = setupApp({
+        context,
+        routes: zeroCustomConnectorDisconnectRoutes,
+      })(zeroCustomConnectorSecretContract);
+      await accept(
+        client.disconnect({
+          params: { id: connectorId },
+          headers: authenticate(actor),
+        }),
+        [204],
+      );
     },
 
     async requestStartCustomConnectorOAuth2(
