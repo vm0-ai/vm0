@@ -6,11 +6,9 @@ import {
   type ConnectorSlug,
 } from "@vm0/api-contracts/contracts/connector-identity";
 import type { PublicConnectorCatalogAuthMethodDetail } from "@vm0/api-contracts/contracts/zero-connector-catalog";
-import {
-  isHttpCustomConnectorClientResponse,
-  type CustomConnectorClientResponse,
-  type CustomConnectorHttpClientResponse,
-  type CustomConnectorSlug,
+import type {
+  CustomConnectorClientResponse,
+  CustomConnectorSlug,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import type { PlatformConnectorCatalogStatusItem } from "../../signals/connector-domain.ts";
 import { Input } from "@vm0/ui/components/ui/input";
@@ -79,6 +77,8 @@ import {
 } from "../../signals/zero-page/settings/custom-connectors.ts";
 import { CustomConnectorIcon } from "./components/settings/custom-connector-icon.tsx";
 import { CustomConnectorConnectDialog } from "./components/settings/custom-connector-connect-dialog.tsx";
+import { customConnectorTarget } from "./components/settings/custom-connector-display.ts";
+import { customConnectorMcpEnabled$ } from "../../signals/external/feature-switch.ts";
 
 function runDirectedConnect(
   params: {
@@ -745,12 +745,14 @@ function DirectedConnectCard() {
 function customConnectorForSlug(
   connectors: readonly CustomConnectorClientResponse[],
   connectorSlug: CustomConnectorSlug,
-): CustomConnectorHttpClientResponse | undefined {
-  return connectors
-    .filter(isHttpCustomConnectorClientResponse)
-    .find((connector) => {
-      return connector.slug === connectorSlug;
-    });
+  mcpEnabled: boolean,
+): CustomConnectorClientResponse | undefined {
+  return connectors.find((connector) => {
+    return (
+      connector.slug === connectorSlug &&
+      (connector.kind === "http" || mcpEnabled)
+    );
+  });
 }
 
 function CustomDirectedConnectCard({
@@ -761,6 +763,7 @@ function CustomDirectedConnectCard({
   const agentId = useGet(directedConnectAgentId$);
   const agentNameLoadable = useLastLoadable(directedConnectAgentName$);
   const connectorsLoadable = useLastLoadable(customConnectors$);
+  const mcpEnabled = useGet(customConnectorMcpEnabled$);
   const dialogKey = useGet(directedConnectCustomDialogKey$);
   const setDialogKey = useSet(setDirectedConnectCustomDialogKey$);
   const resetConnectInput = useSet(resetCustomConnectorConnectInput$);
@@ -769,7 +772,11 @@ function CustomDirectedConnectCard({
   const signal = useGet(pageSignal$);
   const connectors =
     connectorsLoadable.state === "hasData" ? connectorsLoadable.data : [];
-  const connector = customConnectorForSlug(connectors, connectorSlug);
+  const connector = customConnectorForSlug(
+    connectors,
+    connectorSlug,
+    mcpEnabled,
+  );
   const dialogOpen =
     dialogKey?.connectorSlug === connectorSlug &&
     dialogKey.agentId === agentId &&
@@ -814,7 +821,7 @@ function CustomDirectedConnectCard({
           ) : null
         }
         connectorLabel={connector?.displayName ?? connectorSlug}
-        connectorDescription={connector?.prefixTemplates[0] ?? ""}
+        connectorDescription={connector ? customConnectorTarget(connector) : ""}
         agentName={agentName}
         isLoading={connectorsLoadable.state === "loading"}
         isConnected={connector?.connected ?? false}
