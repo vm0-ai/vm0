@@ -917,6 +917,7 @@
         "description": "Akses gratis lama untuk ruang kerja yang sudah ada.",
         "name": "Gratis"
       },
+      "legacy": "Lama",
       "limitedFree": {
         "name": "Gratis terbatas"
       },
@@ -975,20 +976,21 @@
         "memberPackages": "Paket anggota",
         "memberUsage": "Penggunaan anggota",
         "migration": {
-          "action": "Konfigurasikan paket",
-          "confirmDescription": "Stripe menerapkan perubahan ini hanya setelah pembayaran berhasil. Jika pembayaran gagal, langganan lama Anda tetap aktif.",
-          "description": "Pertahankan paket ruang kerja {{plan}} dan pindahkan setiap anggota ke paket penggunaan bulanan individual.",
+          "action": "Konversi paket",
+          "confirmDescription": "Paket dan hak Anda saat ini tetap aktif hingga periode penagihan ini berakhir. Stripe menagih total berulang baru saat paket baru dimulai.",
+          "convertPlan": "Konversi paket",
+          "description": "Konversikan ruang kerja {{plan}} lama ke paket baru dengan paket penggunaan bulanan individual untuk setiap anggota.",
+          "effective": "Mulai",
           "error": "Langganan ini tidak dapat dimigrasikan. Muat ulang halaman dan coba lagi.",
           "invoice": "Lihat faktur",
-          "nextRecurring": "Total berulang berikutnya",
-          "pendingPayment": "Menunggu pembayaran Stripe sebelum mengubah langganan.",
-          "processing": "Stripe sedang menerapkan perubahan langganan.",
-          "purchasedCredits": "Kredit yang dibeli",
+          "monthlyDifference": "Selisih bulanan",
+          "processing": "Menjadwalkan konversi dengan Stripe.",
           "ready": "Pilih satu paket bulanan wajib untuk setiap anggota dan undangan yang tertunda.",
-          "review": "Tinjau migrasi",
-          "reviewDescription": "Tinjau perkiraan total bulanan, lalu minta pratinjau prorata Stripe yang tepat.",
-          "reviewTitle": "Tinjau migrasi paket",
-          "title": "Beralih ke paket anggota"
+          "review": "Tinjau konversi",
+          "reviewDescription": "Bandingkan paket lama saat ini dengan paket berulang baru sebelum menjadwalkan konversi.",
+          "reviewTitle": "Tinjau konversi paket",
+          "scheduled": "Konversi dijadwalkan pada {{date}}. Paket dan hak Anda saat ini tetap aktif hingga saat itu.",
+          "title": "Konversi paket lama"
         },
         "minimumPackageBreakdown": "Paket {{base}} + paket anggota wajib {{package}}",
         "monthlyTotal": "Total bulanan",

@@ -82,6 +82,7 @@ import { BuyCreditsSection } from "./buy-credits-section.tsx";
 import {
   billingSubPage$,
   billingMigrationSubPage$,
+  billingMigrationTargetTier$,
   buyCreditsScrollRef$,
   openBillingMigrationSubPage$,
   setBillingSubPage$,
@@ -95,6 +96,7 @@ import { formatLocalizedNumber, formatUsd } from "../../../../i18n/format.ts";
 import { featureSwitch$ } from "../../../../signals/external/feature-switch.ts";
 import {
   UsagePackMigrationPage,
+  UsagePackMigrationPlanSelectionPage,
   UsagePackPricingPage,
 } from "./usage-pack-pricing-page.tsx";
 
@@ -2133,13 +2135,17 @@ function ConcurrencyBillingSection({
 function usagePackMigrationStatusLabel(
   migration: UsagePackMigrationStateResponse,
 ): string {
-  return migration.status === "pending_payment"
-    ? i18n.t(($) => {
-        return $.billing.plans.usagePacks.migration.pendingPayment;
-      })
-    : i18n.t(($) => {
-        return $.billing.plans.usagePacks.migration.processing;
-      });
+  if (migration.status === "scheduled" && migration.effectiveAt) {
+    return i18n.t(
+      ($) => {
+        return $.billing.plans.usagePacks.migration.scheduled;
+      },
+      { date: formatBillingDate(migration.effectiveAt) },
+    );
+  }
+  return i18n.t(($) => {
+    return $.billing.plans.usagePacks.migration.processing;
+  });
 }
 
 function UsagePackMigrationAvailability({
@@ -2245,7 +2251,10 @@ function BillingPricingPage({
   migration,
   migrationLoading,
   migrationOpen,
+  migrationTargetTier,
   onBack,
+  onMigrationBack,
+  onSelectMigration,
   onRestore,
   periodEnd,
   scheduledChange,
@@ -2255,7 +2264,10 @@ function BillingPricingPage({
   readonly migration: UsagePackMigrationStateResponse | null;
   readonly migrationLoading: boolean;
   readonly migrationOpen: boolean;
+  readonly migrationTargetTier: "pro" | "team" | null;
   readonly onBack: () => void;
+  readonly onMigrationBack: () => void;
+  readonly onSelectMigration: (tier: "pro" | "team") => void;
   readonly onRestore: () => void;
   readonly periodEnd: string | null | undefined;
   readonly scheduledChange: ScheduledBillingChange;
@@ -2265,7 +2277,7 @@ function BillingPricingPage({
   const usagePackPlansEnabled =
     featureSwitches[FeatureSwitchKey.UsagePackPlans];
   const migrationInProgress =
-    migration?.status === "applying" || migration?.status === "pending_payment";
+    migration?.status === "applying" || migration?.status === "scheduled";
   return (
     <>
       {migrationLoading ? (
@@ -2273,17 +2285,22 @@ function BillingPricingPage({
           role="status"
           className="h-80 animate-pulse rounded-xl bg-muted/40"
         />
-      ) : migrationOpen && migration && migrationInProgress ? (
+      ) : migration && migrationInProgress ? (
         <UsagePackMigrationProgressPage migration={migration} onBack={onBack} />
-      ) : migrationOpen && migration ? (
-        <UsagePackMigrationPage tier={migration.tier} onBack={onBack} />
+      ) : migrationOpen &&
+        migration &&
+        migrationTargetTier &&
+        migration.effectiveAt ? (
+        <UsagePackMigrationPage
+          effectiveAt={migration.effectiveAt}
+          onBack={onMigrationBack}
+          sourceTier={migration.tier}
+          targetTier={migrationTargetTier}
+        />
       ) : migration ? (
-        <PricingPage
-          currentTier={currentTier}
-          scheduledChange={scheduledChange}
-          periodEnd={periodEnd}
+        <UsagePackMigrationPlanSelectionPage
           onBack={onBack}
-          onRestore={onRestore}
+          onSelect={onSelectMigration}
         />
       ) : usagePackPlansEnabled ? (
         <UsagePackPricingPage
@@ -2321,6 +2338,47 @@ function canStartUsagePackCheckout(
 ): boolean {
   return status?.hasSubscription === false;
 }
+
+function usagePackMigrationInProgress(
+  migration: UsagePackMigrationStateResponse | null,
+): boolean {
+  return migration?.status === "applying" || migration?.status === "scheduled";
+}
+
+function migrationDowngradeTarget(
+  migration: UsagePackMigrationStateResponse | null,
+): "pro-suspend" | null {
+  return migration ? "pro-suspend" : null;
+}
+
+function planActionsLoading(
+  portalLoading: boolean,
+  migrationInProgress: boolean,
+): boolean {
+  return portalLoading || migrationInProgress;
+}
+
+function CurrentPlanTitle({
+  label,
+  legacy,
+}: {
+  readonly label: string;
+  readonly legacy: boolean;
+}) {
+  return (
+    <p className="flex items-center gap-2 text-sm font-medium text-foreground">
+      <span>{label}</span>
+      {legacy && (
+        <span className="rounded px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground zero-badge">
+          {i18n.t(($) => {
+            return $.billing.plans.legacy;
+          })}
+        </span>
+      )}
+    </p>
+  );
+}
+
 export function OrgBillingTab() {
   const { t } = useTranslation();
   const featureSwitches = useGet(featureSwitch$);
@@ -2328,11 +2386,15 @@ export function OrgBillingTab() {
     featureSwitches[FeatureSwitchKey.PaymentMethodManagement];
   const pricingOpen = useGet(billingSubPage$);
   const migrationOpen = useGet(billingMigrationSubPage$);
+  const migrationTargetTier = useGet(billingMigrationTargetTier$);
   const setBillingSubPage = useSet(setBillingSubPage$);
   const openMigrationPage = useSet(openBillingMigrationSubPage$);
   const buyCreditsScrollRef = useSet(buyCreditsScrollRef$);
   const closeBillingSubPage = () => {
     return setBillingSubPage(false);
+  };
+  const closeMigrationSubPage = () => {
+    return setBillingSubPage(true);
   };
   const openPricingPage = () => {
     return setBillingSubPage(true);
@@ -2357,6 +2419,7 @@ export function OrgBillingTab() {
     usagePackPlansEnabled,
     migrationLoadable.state === "loading",
   );
+  const migrationInProgress = usagePackMigrationInProgress(migration);
   const statusLoading = statusLoadable.state === "loading";
   const statusError = statusLoadable.state === "hasError";
   const capabilities = billingControlCapabilities(status);
@@ -2376,7 +2439,7 @@ export function OrgBillingTab() {
   const changeDate = scheduledEffectiveDate(scheduledChange, periodEnd);
 
   const handleDowngrade = () => {
-    setLockedTarget(null);
+    setLockedTarget(migrationDowngradeTarget(migration));
     openDowngrade();
   };
   const handleRestore = () => {
@@ -2412,6 +2475,9 @@ export function OrgBillingTab() {
         migration={migration}
         migrationLoading={migrationLoading}
         migrationOpen={migrationOpen}
+        migrationTargetTier={migrationTargetTier}
+        onMigrationBack={closeMigrationSubPage}
+        onSelectMigration={openMigrationPage}
         scheduledChange={scheduledChange}
         periodEnd={periodEnd}
         usagePackCheckoutAllowed={canStartUsagePackCheckout(status)}
@@ -2461,9 +2527,10 @@ export function OrgBillingTab() {
             <>
               <div className="flex items-center justify-between gap-4 px-5 py-4">
                 <div className="min-w-0">
-                  <p className="text-sm font-medium text-foreground">
-                    {currentPlanLabel}
-                  </p>
+                  <CurrentPlanTitle
+                    label={currentPlanLabel}
+                    legacy={migration !== null}
+                  />
                   <p className="text-[13px] text-muted-foreground mt-0.5">
                     {currentPlanDescription}
                   </p>
@@ -2472,7 +2539,7 @@ export function OrgBillingTab() {
                   isPaid={isPaid}
                   hasScheduledChange={hasScheduledChange}
                   currentTier={currentTier}
-                  loading={loading}
+                  loading={planActionsLoading(loading, migrationInProgress)}
                   onUpgrade={openPricingPage}
                   onDowngrade={handleDowngrade}
                   onRestore={handleRestore}
@@ -2561,10 +2628,6 @@ export function OrgBillingTab() {
         </div>
       </section>
 
-      <UsagePackMigrationAvailability
-        migration={migration}
-        onOpen={openMigrationPage}
-      />
       {showBuyCredits && (
         <div ref={buyCreditsScrollRef}>
           <BuyCreditsSection />

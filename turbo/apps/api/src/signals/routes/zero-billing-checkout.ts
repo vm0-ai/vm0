@@ -766,6 +766,7 @@ const usagePackMigrationPreviewAuthed$ = command(
       db,
       {
         orgId: access.auth.orgId,
+        targetTier: bodyResult.data.targetTier,
         memberUsagePacks: bodyResult.data.memberUsagePacks,
         owners: usagePackMigrationOwners(
           memberships,

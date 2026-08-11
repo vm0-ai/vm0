@@ -917,6 +917,7 @@
         "description": "Kostenloser Legacy-Zugriff für bestehende Arbeitsbereiche.",
         "name": "Frei"
       },
+      "legacy": "Legacy",
       "limitedFree": {
         "name": "Begrenzt kostenlos"
       },
@@ -975,20 +976,21 @@
         "memberPackages": "Mitgliederpakete",
         "memberUsage": "Nutzung des Mitglieds",
         "migration": {
-          "action": "Pakete konfigurieren",
-          "confirmDescription": "Stripe wendet diese Änderung erst nach erfolgreicher Zahlung an. Wenn die Zahlung fehlschlägt, bleibt Ihr bisheriges Abonnement aktiv.",
-          "description": "Behalten Sie den {{plan}}-Workspace-Plan und weisen Sie jedem Mitglied ein eigenes monatliches Nutzungspaket zu.",
+          "action": "Plan umstellen",
+          "confirmDescription": "Ihr aktueller Plan und Ihre Berechtigungen bleiben bis zum Ende dieses Abrechnungszeitraums aktiv. Stripe berechnet den neuen wiederkehrenden Betrag, wenn der neue Plan beginnt.",
+          "convertPlan": "Plan umstellen",
+          "description": "Stellen Sie Ihren bisherigen {{plan}}-Workspace auf einen neuen Plan mit einem individuellen monatlichen Nutzungspaket für jedes Mitglied um.",
+          "effective": "Start",
           "error": "Dieses Abonnement konnte nicht migriert werden. Aktualisieren Sie die Seite und versuchen Sie es erneut.",
           "invoice": "Rechnung anzeigen",
-          "nextRecurring": "Nächster wiederkehrender Gesamtbetrag",
-          "pendingPayment": "Die Stripe-Zahlung wird abgewartet, bevor das Abonnement geändert wird.",
-          "processing": "Stripe wendet die Abonnementänderung an.",
-          "purchasedCredits": "Gekaufte Credits",
+          "monthlyDifference": "Monatliche Differenz",
+          "processing": "Die Umstellung wird bei Stripe geplant.",
           "ready": "Wählen Sie für jedes Mitglied und jede ausstehende Einladung ein erforderliches monatliches Paket.",
-          "review": "Migration prüfen",
-          "reviewDescription": "Prüfen Sie die geschätzte Monatssumme und fordern Sie dann eine genaue anteilige Stripe-Vorschau an.",
-          "reviewTitle": "Planmigration prüfen",
-          "title": "Zu Mitgliederpaketen wechseln"
+          "review": "Umstellung prüfen",
+          "reviewDescription": "Vergleichen Sie den aktuellen Legacy-Plan mit dem neuen wiederkehrenden Plan, bevor Sie die Umstellung planen.",
+          "reviewTitle": "Planumstellung prüfen",
+          "scheduled": "Die Umstellung ist für den {{date}} geplant. Ihr aktueller Plan und Ihre Berechtigungen bleiben bis dahin aktiv.",
+          "title": "Legacy-Plan umstellen"
         },
         "minimumPackageBreakdown": "{{base}} Plan + {{package}} erforderliches Mitgliederpaket",
         "monthlyTotal": "Monatliche Gesamtkosten",

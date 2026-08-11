@@ -607,14 +607,20 @@ export const startUsagePackCheckout$ = command(
 export const previewUsagePackMigration$ = command(
   async (
     { get, set },
-    memberUsagePacks: readonly MemberUsagePack[],
+    args: {
+      readonly targetTier: "pro" | "team";
+      readonly memberUsagePacks: readonly MemberUsagePack[];
+    },
     signal: AbortSignal,
   ) => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroBillingUsagePackMigrationContract);
     const result = await accept(
       client.preview({
-        body: { memberUsagePacks: [...memberUsagePacks] },
+        body: {
+          targetTier: args.targetTier,
+          memberUsagePacks: [...args.memberUsagePacks],
+        },
         fetchOptions: { signal },
       }),
       [200],

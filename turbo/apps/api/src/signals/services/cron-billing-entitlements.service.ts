@@ -137,6 +137,17 @@ function logUsagePackMigrationReconciliation(
   }
 }
 
+function logUsagePackSubscriptionReconciliation(
+  reconciliation: UsagePackMigrationReconciliation,
+): void {
+  if (reconciliation.reconciled > 0) {
+    L.warn("usage pack subscriptions reconciled from Stripe", {
+      count: reconciliation.reconciled,
+      orgIds: reconciliation.orgIds.slice(0, 10),
+    });
+  }
+}
+
 interface ReconcileCandidateRows {
   readonly candidates: readonly BillingCandidate[];
   readonly atomGrantCandidates: readonly AtomGrantCandidate[];
@@ -1130,12 +1141,7 @@ export const reconcileBillingEntitlements$ = command(
         }),
       });
     }
-    if (usagePackReconciliation.reconciled > 0) {
-      L.warn("usage pack subscriptions reconciled from Stripe", {
-        count: usagePackReconciliation.reconciled,
-        orgIds: usagePackReconciliation.orgIds.slice(0, 10),
-      });
-    }
+    logUsagePackSubscriptionReconciliation(usagePackReconciliation);
     logUsagePackMigrationReconciliation(usagePackMigrationReconciliation);
     if (invitationPurchasesReconciled > 0) {
       L.warn("usage pack invitation purchases reconciled", {

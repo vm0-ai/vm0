@@ -938,6 +938,7 @@
         "description": "Accesso gratuito precedente per le aree di lavoro esistenti.",
         "name": "Gratuito"
       },
+      "legacy": "Precedente",
       "limitedFree": {
         "name": "Gratuito limitato"
       },
@@ -996,20 +997,21 @@
         "memberPackages": "Pacchetti dei membri",
         "memberUsage": "Utilizzo del membro",
         "migration": {
-          "action": "Configura pacchetti",
-          "confirmDescription": "Stripe applica questa modifica solo dopo il completamento del pagamento. Se il pagamento non riesce, l’abbonamento precedente rimane attivo.",
-          "description": "Mantieni il piano {{plan}} del workspace e assegna a ogni membro un pacchetto di utilizzo mensile individuale.",
+          "action": "Converti piano",
+          "confirmDescription": "Il piano e i diritti attuali restano attivi fino alla fine di questo periodo di fatturazione. Stripe addebita il nuovo totale ricorrente all’avvio del nuovo piano.",
+          "convertPlan": "Converti piano",
+          "description": "Converti il workspace {{plan}} precedente in un nuovo piano con un pacchetto di utilizzo mensile individuale per ogni membro.",
+          "effective": "Inizia",
           "error": "Impossibile migrare questo abbonamento. Aggiorna la pagina e riprova.",
           "invoice": "Visualizza fattura",
-          "nextRecurring": "Prossimo totale ricorrente",
-          "pendingPayment": "In attesa del pagamento Stripe prima di modificare l’abbonamento.",
-          "processing": "Stripe sta applicando la modifica dell’abbonamento.",
-          "purchasedCredits": "Crediti acquistati",
+          "monthlyDifference": "Differenza mensile",
+          "processing": "Pianificazione della conversione con Stripe.",
           "ready": "Scegli un pacchetto mensile obbligatorio per ogni membro e invito in sospeso.",
-          "review": "Rivedi migrazione",
-          "reviewDescription": "Rivedi il totale mensile stimato, quindi richiedi un’anteprima Stripe proporzionale esatta.",
-          "reviewTitle": "Rivedi migrazione del piano",
-          "title": "Passa ai pacchetti per membro"
+          "review": "Rivedi conversione",
+          "reviewDescription": "Confronta il piano precedente attuale con il nuovo piano ricorrente prima di pianificare la conversione.",
+          "reviewTitle": "Rivedi conversione del piano",
+          "scheduled": "La conversione è pianificata per il {{date}}. Il piano e i diritti attuali restano attivi fino ad allora.",
+          "title": "Converti piano precedente"
         },
         "minimumPackageBreakdown": "Piano da {{base}} + pacchetto membro obbligatorio da {{package}}",
         "monthlyTotal": "Totale mensile",

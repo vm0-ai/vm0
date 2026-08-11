@@ -787,8 +787,10 @@ describe("organization billing settings", () => {
         migrationCalls += 1;
         return respond(200, {
           tier: "team",
+          targetTier: null,
           status: "eligible",
           migrationId: null,
+          effectiveAt: "2026-09-01T00:00:00.000Z",
           hostedInvoiceUrl: null,
         });
       },
@@ -803,7 +805,7 @@ describe("organization billing settings", () => {
     expect(migrationCalls).toBe(0);
   });
 
-  it("keeps legacy pricing visible and offers migration separately", async () => {
+  it("labels the current plan as legacy and offers both new plans", async () => {
     const migrationReady = createDeferredPromise<void>(context.signal);
     context.mocks.data.org({
       id: "org_1",
@@ -843,8 +845,10 @@ describe("organization billing settings", () => {
         await migrationReady.promise;
         return respond(200, {
           tier: "team",
+          targetTier: null,
           status: "eligible",
           migrationId: null,
+          effectiveAt: "2026-09-01T00:00:00.000Z",
           hostedInvoiceUrl: null,
         });
       },
@@ -872,8 +876,10 @@ describe("organization billing settings", () => {
     migrationReady.resolve(undefined);
 
     await screen.findByText("Compare plans");
-    expect(screen.getByText("$200")).toBeInTheDocument();
-    expect(buttonByText("Current plan")).toBeDisabled();
+    const proPlan = screen.getByRole("article", { name: "Pro plan" });
+    const teamPlan = screen.getByRole("article", { name: "Team plan" });
+    expect(buttonByText("Convert plan", proPlan)).toBeEnabled();
+    expect(buttonByText("Convert plan", teamPlan)).toBeEnabled();
     expect(
       screen.queryByRole("heading", { name: "Choose a plan" }),
     ).not.toBeInTheDocument();
@@ -882,8 +888,32 @@ describe("organization billing settings", () => {
     ).not.toBeInTheDocument();
 
     click(screen.getByLabelText("Back"));
-    await screen.findByText("Move to member packages");
-    click(buttonByText("Configure packages"));
+    expect(screen.getByText("Legacy")).toBeInTheDocument();
+    expect(
+      screen.queryByText("Move to member packages"),
+    ).not.toBeInTheDocument();
+
+    click(screen.getByText("Downgrade"));
+    const downgradeDialog = await screen.findByRole("dialog", {
+      name: "Downgrade plan",
+    });
+    expect(
+      within(downgradeDialog).getByText("Downgrade to No plan?"),
+    ).toBeInTheDocument();
+    expect(
+      within(downgradeDialog).queryByText("Choose which plan to downgrade to."),
+    ).not.toBeInTheDocument();
+    expect(within(downgradeDialog).queryByText("Pro")).not.toBeInTheDocument();
+    click(buttonByText("Cancel", downgradeDialog));
+
+    click(buttonByText("Compare all plans"));
+    await screen.findByText("Compare plans");
+    click(
+      buttonByText(
+        "Convert plan",
+        screen.getByRole("article", { name: "Team plan" }),
+      ),
+    );
 
     await screen.findByRole("heading", {
       name: "Configure member packages",
@@ -947,12 +977,10 @@ describe("organization billing settings", () => {
   it("previews and confirms an in-place legacy Team migration", async () => {
     let migrationState = {
       tier: "team" as const,
-      status: "eligible" as
-        | "eligible"
-        | "previewed"
-        | "applying"
-        | "pending_payment",
+      targetTier: null as "pro" | "team" | null,
+      status: "eligible" as "eligible" | "previewed" | "applying" | "scheduled",
       migrationId: null as string | null,
+      effectiveAt: "2026-09-01T00:00:00.000Z" as string | null,
       hostedInvoiceUrl: null as string | null,
     };
     context.mocks.data.org({
@@ -1014,6 +1042,7 @@ describe("organization billing settings", () => {
     context.mocks.api(
       zeroBillingUsagePackMigrationContract.preview,
       ({ body, respond }) => {
+        expect(body.targetTier).toBe("team");
         expect(body.memberUsagePacks).toStrictEqual([
           { memberId: "user_1", usagePackUsd: 20 },
           { memberId: "invitation_1", usagePackUsd: 50 },
@@ -1021,18 +1050,21 @@ describe("organization billing settings", () => {
         migrationState = {
           ...migrationState,
           status: "previewed",
+          targetTier: "team",
           migrationId: "3ea4b7cf-d71e-45dc-8273-8bc8b9712490",
         };
         return respond(200, {
           migrationId: "3ea4b7cf-d71e-45dc-8273-8bc8b9712490",
           tier: "team",
-          immediateAmountCents: 1500,
+          targetTier: "team",
+          currentRecurringAmountCents: 20_000,
           nextRecurringAmountCents: 23_000,
+          recurringDifferenceCents: 3000,
           currency: "usd",
           purchasedCredits: 70_000,
           bonusCredits: 5555,
           totalCredits: 75_555,
-          prorationDate: "2026-03-16T00:00:00Z",
+          effectiveAt: "2026-09-01T00:00:00.000Z",
           expiresAt: "2026-03-16T00:30:00Z",
         });
       },
@@ -1044,12 +1076,12 @@ describe("organization billing settings", () => {
         expect(params.migrationId).toBe("3ea4b7cf-d71e-45dc-8273-8bc8b9712490");
         migrationState = {
           ...migrationState,
-          status: "pending_payment",
-          hostedInvoiceUrl: "https://invoice.stripe.com/test-migration",
+          status: "scheduled",
         };
         return respond(200, {
-          status: "pending_payment",
-          hostedInvoiceUrl: "https://invoice.stripe.com/test-migration",
+          status: "scheduled",
+          effectiveAt: "2026-09-01T00:00:00.000Z",
+          hostedInvoiceUrl: null,
         });
       },
     );
@@ -1065,8 +1097,15 @@ describe("organization billing settings", () => {
       featureSwitches: { [FeatureSwitchKey.UsagePackPlans]: true },
     });
 
-    await screen.findByText("Move to member packages");
-    click(buttonByText("Configure packages"));
+    await screen.findByText("Team plan");
+    click(buttonByText("Compare all plans"));
+    await screen.findByText("Compare plans");
+    click(
+      buttonByText(
+        "Convert plan",
+        screen.getByRole("article", { name: "Team plan" }),
+      ),
+    );
 
     await screen.findByRole("heading", {
       name: "Configure member packages",
@@ -1089,38 +1128,38 @@ describe("organization billing settings", () => {
       }),
     );
 
-    click(buttonByText("Review migration"));
-    const reviewDialog = await screen.findByRole("dialog", {
-      name: "Review plan migration",
+    const orderSummary = screen.getByRole("region", {
+      name: "Order summary",
     });
-    expect(within(reviewDialog).getByText("Due now")).toBeInTheDocument();
-    expect(within(reviewDialog).getByText("$15.00")).toBeInTheDocument();
+    expect(within(orderSummary).getByText("Current")).toBeInTheDocument();
+    expect(within(orderSummary).getByText("New")).toBeInTheDocument();
+    expect(within(orderSummary).getByText("$200.00/month")).toBeInTheDocument();
+    expect(within(orderSummary).getByText("$230.00/month")).toBeInTheDocument();
+    expect(within(orderSummary).getByText("+$30.00")).toBeInTheDocument();
+
+    click(buttonByText("Review conversion", orderSummary));
+    const reviewDialog = await screen.findByRole("dialog", {
+      name: "Review plan conversion",
+    });
     expect(
-      within(reviewDialog).getByText("Next recurring total"),
+      within(reviewDialog).getByText("Monthly difference"),
     ).toBeInTheDocument();
-    expect(within(reviewDialog).getByText("$230.00")).toBeInTheDocument();
-    expect(within(reviewDialog).getByText("70,000")).toBeInTheDocument();
-    expect(within(reviewDialog).getByText("75,555")).toBeInTheDocument();
-    expect(within(reviewDialog).getByText("5,555")).toBeInTheDocument();
+    expect(within(reviewDialog).getByText("+$30.00")).toBeInTheDocument();
+    expect(within(reviewDialog).getByText("Sep 1, 2026")).toBeInTheDocument();
 
     click(buttonByText("Confirm", reviewDialog));
     await waitFor(() => {
       expect(
         screen.getByText(
-          "Waiting for Stripe payment before changing the subscription.",
+          "Conversion scheduled for Sep 1, 2026. Your current plan and entitlements remain active until then.",
         ),
       ).toBeInTheDocument();
     });
-    const invoice = queryAllByRoleFast("link").find((candidate) => {
-      return candidate.textContent?.trim() === "View invoice";
-    });
-    if (!invoice) {
-      throw new Error("View invoice link not found");
-    }
-    expect(invoice).toHaveAttribute(
-      "href",
-      "https://invoice.stripe.com/test-migration",
-    );
+    expect(
+      queryAllByRoleFast("link").find((candidate) => {
+        return candidate.textContent?.trim() === "View invoice";
+      }),
+    ).toBeUndefined();
   });
 
   it("previews and confirms a current member package change inline", async () => {

@@ -917,6 +917,7 @@
         "description": "Legacy free access for existing workspaces.",
         "name": "Free"
       },
+      "legacy": "Legacy",
       "limitedFree": {
         "name": "Limited free"
       },
@@ -975,20 +976,21 @@
         "memberPackages": "Member packages",
         "memberUsage": "Member usage",
         "migration": {
-          "action": "Configure packages",
-          "confirmDescription": "Stripe applies this change only after payment succeeds. If payment fails, your legacy subscription stays active.",
-          "description": "Keep your {{plan}} workspace plan and move every member to an individual monthly usage package.",
+          "action": "Convert plan",
+          "confirmDescription": "Your current plan and entitlements stay active until this billing period ends. Stripe charges the new recurring total when the new plan starts.",
+          "convertPlan": "Convert plan",
+          "description": "Convert your legacy {{plan}} workspace to a new plan with an individual monthly usage package for every member.",
+          "effective": "Starts",
           "error": "Could not migrate this subscription. Refresh and try again.",
           "invoice": "View invoice",
-          "nextRecurring": "Next recurring total",
-          "pendingPayment": "Waiting for Stripe payment before changing the subscription.",
-          "processing": "Stripe is applying the subscription change.",
-          "purchasedCredits": "Purchased credits",
+          "monthlyDifference": "Monthly difference",
+          "processing": "Scheduling the conversion with Stripe.",
           "ready": "Choose one required monthly package for every member and pending invitation.",
-          "review": "Review migration",
-          "reviewDescription": "Review the estimated monthly total, then request an exact prorated Stripe preview.",
-          "reviewTitle": "Review plan migration",
-          "title": "Move to member packages"
+          "review": "Review conversion",
+          "reviewDescription": "Compare the current legacy plan with the new recurring plan before scheduling the conversion.",
+          "reviewTitle": "Review plan conversion",
+          "scheduled": "Conversion scheduled for {{date}}. Your current plan and entitlements remain active until then.",
+          "title": "Convert legacy plan"
         },
         "minimumPackageBreakdown": "{{base}} plan + {{package}} required member package",
         "monthlyTotal": "Monthly total",

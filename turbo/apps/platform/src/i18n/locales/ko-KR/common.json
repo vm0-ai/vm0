@@ -917,6 +917,7 @@
         "description": "기존 워크스페이스용 레거시 무료 액세스.",
         "name": "무료"
       },
+      "legacy": "기존",
       "limitedFree": {
         "name": "제한된 무료"
       },
@@ -975,20 +976,21 @@
         "memberPackages": "구성원 패키지",
         "memberUsage": "구성원 사용량",
         "migration": {
-          "action": "패키지 구성",
-          "confirmDescription": "Stripe는 결제가 완료된 후에만 이 변경을 적용합니다. 결제에 실패하면 기존 구독이 계속 활성 상태로 유지됩니다.",
-          "description": "워크스페이스의 {{plan}} 플랜을 유지하면서 각 구성원을 개별 월간 사용량 패키지로 전환합니다.",
+          "action": "플랜 전환",
+          "confirmDescription": "현재 플랜과 권한은 이번 결제 기간이 끝날 때까지 유지됩니다. 새 플랜이 시작되면 Stripe가 새로운 정기 결제 합계를 청구합니다.",
+          "convertPlan": "플랜 전환",
+          "description": "기존 {{plan}} 워크스페이스를 각 구성원의 개별 월간 사용량 패키지가 포함된 새 플랜으로 전환합니다.",
+          "effective": "시작일",
           "error": "이 구독을 마이그레이션하지 못했습니다. 페이지를 새로고침한 후 다시 시도하세요.",
           "invoice": "청구서 보기",
-          "nextRecurring": "다음 정기 결제 합계",
-          "pendingPayment": "구독을 변경하기 전에 Stripe 결제를 기다리는 중입니다.",
-          "processing": "Stripe가 구독 변경을 적용하고 있습니다.",
-          "purchasedCredits": "구매 크레딧",
+          "monthlyDifference": "월간 차액",
+          "processing": "Stripe에서 전환을 예약하고 있습니다.",
           "ready": "각 구성원과 대기 중인 초대에 필수 월간 패키지를 하나씩 선택하세요.",
-          "review": "마이그레이션 검토",
-          "reviewDescription": "예상 월간 합계를 검토한 다음 Stripe의 정확한 일할 계산 미리보기를 요청하세요.",
-          "reviewTitle": "플랜 마이그레이션 검토",
-          "title": "구성원 패키지로 전환"
+          "review": "전환 검토",
+          "reviewDescription": "전환을 예약하기 전에 현재 기존 플랜과 새로운 정기 플랜을 비교하세요.",
+          "reviewTitle": "플랜 전환 검토",
+          "scheduled": "전환은 {{date}}로 예약되었습니다. 그때까지 현재 플랜과 권한이 유지됩니다.",
+          "title": "기존 플랜 전환"
         },
         "minimumPackageBreakdown": "{{base}} 플랜 + {{package}} 필수 구성원 패키지",
         "monthlyTotal": "월간 합계",

@@ -67,7 +67,7 @@ export type UsagePackAllocationChangeStatus =
 export const USAGE_PACK_SUBSCRIPTION_MIGRATION_STATUSES = [
   "previewed",
   "applying",
-  "pending_payment",
+  "scheduled",
   "completed",
   "failed",
 ] as const;
@@ -78,16 +78,21 @@ export type UsagePackSubscriptionMigrationStatus =
 /**
  * Immutable conversion intent for one legacy Stripe Subscription.
  *
- * The migration UUID becomes the usage-pack subscription UUID only after
- * Stripe applies the pending item replacement. Until then, no spendable
- * allocation exists in the ordinary usage-pack projection.
+ * The migration UUID becomes the usage-pack subscription UUID only after the
+ * scheduled Stripe phase starts and its renewal invoice is paid. Until then,
+ * no spendable allocation exists in the ordinary usage-pack projection.
  */
 export const usagePackSubscriptionMigrations = pgTable(
   "usage_pack_subscription_migrations",
   {
     id: uuid("id").defaultRandom().primaryKey(),
     orgId: text("org_id").notNull(),
-    tier: varchar("tier", { length: 20 }).$type<"pro" | "team">().notNull(),
+    sourceTier: varchar("source_tier", { length: 20 })
+      .$type<"pro" | "team">()
+      .notNull(),
+    targetTier: varchar("target_tier", { length: 20 })
+      .$type<"pro" | "team">()
+      .notNull(),
     stripeCustomerId: text("stripe_customer_id").notNull(),
     stripeSubscriptionId: text("stripe_subscription_id").notNull(),
     legacyStripePriceId: text("legacy_stripe_price_id").notNull(),
@@ -97,17 +102,18 @@ export const usagePackSubscriptionMigrations = pgTable(
       .$type<UsagePackSubscriptionMigrationStatus>()
       .notNull()
       .default("previewed"),
-    prorationTimestamp: bigint("proration_timestamp", {
-      mode: "number",
-    }).notNull(),
-    immediateAmountCents: integer("immediate_amount_cents").notNull(),
+    currentRecurringAmountCents: integer(
+      "current_recurring_amount_cents",
+    ).notNull(),
     nextRecurringAmountCents: integer("next_recurring_amount_cents").notNull(),
+    recurringDifferenceCents: integer("recurring_difference_cents").notNull(),
     currency: varchar("currency", { length: 3 }).notNull(),
+    effectiveAt: timestamp("effective_at").notNull(),
     previewExpiresAt: timestamp("preview_expires_at").notNull(),
+    stripeScheduleId: text("stripe_schedule_id"),
     stripeInvoiceId: text("stripe_invoice_id"),
     stripePaymentIntentId: text("stripe_payment_intent_id"),
     hostedInvoiceUrl: text("hosted_invoice_url"),
-    stripePendingUpdateExpiresAt: timestamp("stripe_pending_update_expires_at"),
     failureReason: text("failure_reason"),
     completedAt: timestamp("completed_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -117,32 +123,31 @@ export const usagePackSubscriptionMigrations = pgTable(
     return [
       uniqueIndex("uq_usage_pack_subscription_migrations_open_org")
         .on(table.orgId)
-        .where(
-          sql`${table.status} IN ('previewed', 'applying', 'pending_payment')`,
-        ),
+        .where(sql`${table.status} IN ('previewed', 'applying', 'scheduled')`),
       uniqueIndex("uq_usage_pack_subscription_migrations_open_subscription")
         .on(table.stripeSubscriptionId)
-        .where(
-          sql`${table.status} IN ('previewed', 'applying', 'pending_payment')`,
-        ),
+        .where(sql`${table.status} IN ('previewed', 'applying', 'scheduled')`),
       uniqueIndex("uq_usage_pack_subscription_migrations_invoice")
         .on(table.stripeInvoiceId)
         .where(sql`${table.stripeInvoiceId} IS NOT NULL`),
+      uniqueIndex("uq_usage_pack_subscription_migrations_schedule")
+        .on(table.stripeScheduleId)
+        .where(sql`${table.stripeScheduleId} IS NOT NULL`),
       index("idx_usage_pack_subscription_migrations_reconcile").on(
         table.status,
         table.updatedAt,
       ),
       check(
-        "chk_usage_pack_subscription_migrations_tier",
-        sql`${table.tier} IN ('pro', 'team')`,
+        "chk_usage_pack_subscription_migrations_tiers",
+        sql`${table.sourceTier} IN ('pro', 'team') AND ${table.targetTier} IN ('pro', 'team')`,
       ),
       check(
         "chk_usage_pack_subscription_migrations_status",
-        sql`${table.status} IN ('previewed', 'applying', 'pending_payment', 'completed', 'failed')`,
+        sql`${table.status} IN ('previewed', 'applying', 'scheduled', 'completed', 'failed')`,
       ),
       check(
         "chk_usage_pack_subscription_migrations_amounts",
-        sql`${table.immediateAmountCents} >= 0 AND ${table.nextRecurringAmountCents} >= 0`,
+        sql`${table.currentRecurringAmountCents} >= 0 AND ${table.nextRecurringAmountCents} >= 0 AND ${table.recurringDifferenceCents} = ${table.nextRecurringAmountCents} - ${table.currentRecurringAmountCents}`,
       ),
     ];
   },

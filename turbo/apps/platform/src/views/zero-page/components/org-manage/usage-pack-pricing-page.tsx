@@ -94,6 +94,7 @@ interface MemberUsageDowngrade {
 }
 
 type PlanSelectionAction =
+  | "convert"
   | "disabled"
   | "downgrade"
   | "manage"
@@ -565,24 +566,28 @@ function PlanSelectionCard({
   const name = planName(plan.tier);
   const displayedPriceUsd = plan.basePriceUsd + minimumPackagePriceUsd;
   const actionLabel =
-    action === "manage"
+    action === "convert"
       ? i18n.t(($) => {
-          return $.billing.common.manage;
+          return $.billing.plans.usagePacks.migration.convertPlan;
         })
-      : action === "upgrade"
+      : action === "manage"
         ? i18n.t(($) => {
-            return $.billing.plans.upgrade;
+            return $.billing.common.manage;
           })
-        : action === "downgrade"
+        : action === "upgrade"
           ? i18n.t(($) => {
-              return $.billing.plans.downgrade;
+              return $.billing.plans.upgrade;
             })
-          : i18n.t(
-              ($) => {
-                return $.billing.plans.usagePacks.selectPlan;
-              },
-              { plan: name },
-            );
+          : action === "downgrade"
+            ? i18n.t(($) => {
+                return $.billing.plans.downgrade;
+              })
+            : i18n.t(
+                ($) => {
+                  return $.billing.plans.usagePacks.selectPlan;
+                },
+                { plan: name },
+              );
   return (
     <article
       aria-label={i18n.t(
@@ -1917,14 +1922,18 @@ function PackageConfigurationStep({
 }
 
 function MigrationOrderSummary({
+  effectiveAt,
   members,
   plan,
   selections,
+  sourceTier,
   totals,
 }: {
+  readonly effectiveAt: string;
   readonly members: readonly MemberDisplay[] | undefined;
   readonly plan: UsagePackPlan;
   readonly selections: Readonly<Record<string, MemberUsageSelection>>;
+  readonly sourceTier: UsagePackPlanTier;
   readonly totals: MemberUsageTotals;
 }) {
   const pageSignal = useGet(pageSignal$);
@@ -1934,6 +1943,8 @@ function MigrationOrderSummary({
   const previewing = previewLoadable.state === "loading";
   const previewError = previewLoadable.state === "hasError";
   const monthlyTotal = plan.basePriceUsd + totals.totalUsd;
+  const currentMonthlyTotal = sourceTier === "pro" ? 20 : 200;
+  const difference = monthlyTotal - currentMonthlyTotal;
   return (
     <section
       aria-label={i18n.t(($) => {
@@ -1951,39 +1962,14 @@ function MigrationOrderSummary({
           return $.billing.plans.usagePacks.migration.reviewDescription;
         })}
       </p>
-      <div className="mt-4 space-y-2.5 text-[13px]">
-        <div className="flex items-center justify-between gap-4 text-muted-foreground">
-          <span>
-            {i18n.t(($) => {
-              return $.billing.plans.usagePacks.memberPackages;
-            })}
-          </span>
-          <span>{formatUsd(totals.totalUsd, 0)}</span>
-        </div>
-        <div className="flex items-center justify-between gap-4 text-muted-foreground">
-          <span>
-            {i18n.t(($) => {
-              return $.billing.plans.usagePacks.totalCredits;
-            })}
-          </span>
-          <span>{formatLocalizedNumber(totals.totalCredits)}</span>
-        </div>
-        <div className="flex items-center justify-between gap-4 border-t border-border pt-3 text-foreground">
-          <span className="font-medium">
-            {i18n.t(($) => {
-              return $.billing.plans.usagePacks.monthlyTotal;
-            })}
-          </span>
-          <span className="text-lg font-semibold">
-            {i18n.t(
-              ($) => {
-                return $.billing.plans.pricePerMonth;
-              },
-              { price: formatUsd(monthlyTotal, 0) },
-            )}
-          </span>
-        </div>
-      </div>
+      <MigrationPlanComparison
+        currentAmountCents={currentMonthlyTotal * 100}
+        differenceCents={difference * 100}
+        effectiveAt={effectiveAt}
+        nextAmountCents={monthlyTotal * 100}
+        sourceTier={sourceTier}
+        targetTier={plan.tier}
+      />
       {previewError && (
         <p className="mt-3 text-xs text-destructive">
           {i18n.t(($) => {
@@ -2001,7 +1987,10 @@ function MigrationOrderSummary({
           }
           detach(
             previewMigration(
-              checkoutMemberUsagePacks(members, selections),
+              {
+                targetTier: plan.tier,
+                memberUsagePacks: checkoutMemberUsagePacks(members, selections),
+              },
               pageSignal,
             ),
             Reason.DomCallback,
@@ -2016,11 +2005,7 @@ function MigrationOrderSummary({
   );
 }
 
-function MigrationReviewDialog({
-  onComplete,
-}: {
-  readonly onComplete: () => void;
-}) {
+function MigrationReviewDialog() {
   const pageSignal = useGet(pageSignal$);
   const preview = useGet(usagePackMigrationPreview$);
   const closePreview = useSet(closeUsagePackMigrationPreview$);
@@ -2034,7 +2019,6 @@ function MigrationReviewDialog({
       return;
     }
     await confirmMigration(preview.migrationId, pageSignal);
-    onComplete();
   };
   return (
     <Dialog
@@ -2102,67 +2086,174 @@ function MigrationPreviewDetails({
   readonly preview: UsagePackMigrationPreviewResponse;
 }) {
   return (
-    <div className="flex flex-col gap-3 rounded-xl bg-muted/30 p-4 text-sm">
-      <div className="flex items-center justify-between gap-4">
-        <span className="text-muted-foreground">
-          {i18n.t(($) => {
-            return $.billing.plans.usagePacks.management.immediateAmount;
-          })}
-        </span>
-        <span className="font-medium text-foreground">
-          {formatUsd(preview.immediateAmountCents / 100, 2)}
-        </span>
+    <MigrationPlanComparison
+      currentAmountCents={preview.currentRecurringAmountCents}
+      differenceCents={preview.recurringDifferenceCents}
+      effectiveAt={preview.effectiveAt}
+      nextAmountCents={preview.nextRecurringAmountCents}
+      sourceTier={preview.tier}
+      targetTier={preview.targetTier}
+    />
+  );
+}
+
+function signedUsd(cents: number): string {
+  const amount = formatUsd(Math.abs(cents) / 100, 2);
+  return cents > 0 ? `+${amount}` : cents < 0 ? `−${amount}` : amount;
+}
+
+function MigrationPlanComparison({
+  currentAmountCents,
+  differenceCents,
+  effectiveAt,
+  nextAmountCents,
+  sourceTier,
+  targetTier,
+}: {
+  readonly currentAmountCents: number;
+  readonly differenceCents: number;
+  readonly effectiveAt: string;
+  readonly nextAmountCents: number;
+  readonly sourceTier: UsagePackPlanTier;
+  readonly targetTier: UsagePackPlanTier;
+}) {
+  return (
+    <div className="mt-4 rounded-xl bg-muted/30 p-4 text-sm">
+      <div className="grid grid-cols-2 gap-3">
+        <div className="rounded-lg bg-background p-3 zero-border">
+          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+            {i18n.t(($) => {
+              return $.billing.plans.usagePacks.management.current;
+            })}
+          </p>
+          <p className="mt-2 text-sm font-medium text-foreground">
+            {planName(sourceTier)}
+            <span className="ml-1.5 rounded px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground zero-badge">
+              {i18n.t(($) => {
+                return $.billing.plans.legacy;
+              })}
+            </span>
+          </p>
+          <p className="mt-1 text-lg font-semibold text-foreground">
+            {i18n.t(
+              ($) => {
+                return $.billing.plans.pricePerMonth;
+              },
+              { price: formatUsd(currentAmountCents / 100, 2) },
+            )}
+          </p>
+        </div>
+        <div className="rounded-lg bg-background p-3 zero-border">
+          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+            {i18n.t(($) => {
+              return $.billing.plans.usagePacks.management.new;
+            })}
+          </p>
+          <p className="mt-2 text-sm font-medium text-foreground">
+            {planName(targetTier)}
+          </p>
+          <p className="mt-1 text-lg font-semibold text-foreground">
+            {i18n.t(
+              ($) => {
+                return $.billing.plans.pricePerMonth;
+              },
+              { price: formatUsd(nextAmountCents / 100, 2) },
+            )}
+          </p>
+        </div>
       </div>
-      <div className="flex items-center justify-between gap-4">
-        <span className="text-muted-foreground">
-          {i18n.t(($) => {
-            return $.billing.plans.usagePacks.migration.nextRecurring;
-          })}
-        </span>
-        <span className="font-medium text-foreground">
-          {formatUsd(preview.nextRecurringAmountCents / 100, 2)}
-        </span>
-      </div>
-      <div className="flex items-center justify-between gap-4">
-        <span className="text-muted-foreground">
-          {i18n.t(($) => {
-            return $.billing.plans.usagePacks.migration.purchasedCredits;
-          })}
-        </span>
-        <span className="font-medium text-foreground">
-          {formatLocalizedNumber(preview.purchasedCredits)}
-        </span>
-      </div>
-      <div className="flex items-center justify-between gap-4">
-        <span className="text-muted-foreground">
-          {i18n.t(($) => {
-            return $.billing.plans.usagePacks.discountBonusCredits;
-          })}
-        </span>
-        <span className="font-medium text-foreground">
-          {formatLocalizedNumber(preview.bonusCredits)}
-        </span>
-      </div>
-      <div className="flex items-center justify-between gap-4">
-        <span className="text-muted-foreground">
-          {i18n.t(($) => {
-            return $.billing.plans.usagePacks.totalCredits;
-          })}
-        </span>
-        <span className="font-medium text-foreground">
-          {formatLocalizedNumber(preview.totalCredits)}
-        </span>
+      <div className="mt-3 space-y-2 border-t border-border pt-3 text-[13px]">
+        <div className="flex items-center justify-between gap-4">
+          <span className="font-medium text-foreground">
+            {i18n.t(($) => {
+              return $.billing.plans.usagePacks.migration.monthlyDifference;
+            })}
+          </span>
+          <span className="font-semibold text-foreground">
+            {signedUsd(differenceCents)}
+          </span>
+        </div>
+        <div className="flex items-center justify-between gap-4 text-muted-foreground">
+          <span>
+            {i18n.t(($) => {
+              return $.billing.plans.usagePacks.migration.effective;
+            })}
+          </span>
+          <span>{formatBillingDate(effectiveAt)}</span>
+        </div>
       </div>
     </div>
   );
 }
 
-export function UsagePackMigrationPage({
+export function UsagePackMigrationPlanSelectionPage({
   onBack,
-  tier,
+  onSelect,
 }: {
   readonly onBack: () => void;
-  readonly tier: UsagePackPlanTier;
+  readonly onSelect: (tier: UsagePackPlanTier) => void;
+}) {
+  const usagePackPricingPageRef = useSet(usagePackPricingPageRef$);
+  const catalogLoadable = useLoadable(usagePackCatalogAsync$);
+  const catalog =
+    catalogLoadable.state === "hasData" ? catalogLoadable.data : null;
+  return (
+    <div
+      className="flex flex-col gap-5 outline-none"
+      ref={usagePackPricingPageRef}
+      role="group"
+      tabIndex={-1}
+    >
+      <UsagePackPageHeader
+        description={i18n.t(($) => {
+          return $.billing.plans.changeAnytime;
+        })}
+        onBack={onBack}
+        title={i18n.t(($) => {
+          return $.billing.plans.compare;
+        })}
+      />
+      {!catalog ? (
+        <div className="h-80 animate-pulse rounded-xl bg-muted/40" />
+      ) : (
+        <>
+          <PricingSteps current={1} />
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {USAGE_PACK_PLANS.map((plan) => {
+              return (
+                <PlanSelectionCard
+                  key={plan.tier}
+                  action="convert"
+                  busy={false}
+                  keepsMemberPackages={false}
+                  minimumPackagePriceUsd={
+                    usagePackCatalogItem(catalog, MINIMUM_USAGE_PACK_USD)
+                      .priceUsd
+                  }
+                  plan={plan}
+                  onAction={() => {
+                    onSelect(plan.tier);
+                  }}
+                />
+              );
+            })}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+export function UsagePackMigrationPage({
+  effectiveAt,
+  onBack,
+  sourceTier,
+  targetTier,
+}: {
+  readonly effectiveAt: string;
+  readonly onBack: () => void;
+  readonly sourceTier: UsagePackPlanTier;
+  readonly targetTier: UsagePackPlanTier;
 }) {
   const selections = useGet(memberUsageSelections$);
   const members = useUsagePackMembers();
@@ -2171,10 +2262,10 @@ export function UsagePackMigrationPage({
   const catalog =
     catalogLoadable.state === "hasData" ? catalogLoadable.data : null;
   const plan = USAGE_PACK_PLANS.find((candidate) => {
-    return candidate.tier === tier;
+    return candidate.tier === targetTier;
   });
   if (!plan) {
-    throw new Error(`Usage pack migration plan is missing for ${tier}`);
+    throw new Error(`Usage pack migration plan is missing for ${targetTier}`);
   }
   const totals = catalog
     ? memberUsageTotals(members ?? [], selections, catalog)
@@ -2198,12 +2289,14 @@ export function UsagePackMigrationPage({
             members={members}
           />
           <MigrationOrderSummary
+            effectiveAt={effectiveAt}
             members={members}
             plan={plan}
             selections={selections}
+            sourceTier={sourceTier}
             totals={totals}
           />
-          <MigrationReviewDialog onComplete={onBack} />
+          <MigrationReviewDialog />
         </>
       )}
     </div>

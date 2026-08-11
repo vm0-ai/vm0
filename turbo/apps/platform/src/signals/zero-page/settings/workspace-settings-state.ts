@@ -178,23 +178,36 @@ export const setDeleteConfirm$ = command(({ set }, value: string) => {
 // Billing sub-page
 // ---------------------------------------------------------------------------
 
-const internalBillingSubPage$ = state<"plans" | "migration" | null>(null);
+type BillingSubPage = "plans" | "migration-pro" | "migration-team" | null;
+
+const internalBillingSubPage$ = state<BillingSubPage>(null);
 
 export const billingSubPage$ = computed((get) => {
   return get(internalBillingSubPage$) !== null;
 });
 
 export const billingMigrationSubPage$ = computed((get) => {
-  return get(internalBillingSubPage$) === "migration";
+  return get(internalBillingSubPage$)?.startsWith("migration-") ?? false;
+});
+
+export const billingMigrationTargetTier$ = computed((get) => {
+  const subPage = get(internalBillingSubPage$);
+  return subPage === "migration-pro"
+    ? "pro"
+    : subPage === "migration-team"
+      ? "team"
+      : null;
 });
 
 export const setBillingSubPage$ = command(({ set }, value: boolean) => {
   set(internalBillingSubPage$, value ? "plans" : null);
 });
 
-export const openBillingMigrationSubPage$ = command(({ set }) => {
-  set(internalBillingSubPage$, "migration");
-});
+export const openBillingMigrationSubPage$ = command(
+  ({ set }, targetTier: "pro" | "team") => {
+    set(internalBillingSubPage$, `migration-${targetTier}`);
+  },
+);
 
 // ---------------------------------------------------------------------------
 // Workspace members

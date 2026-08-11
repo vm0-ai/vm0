@@ -316,30 +316,36 @@ export type UsagePackSubscriptionChangePreviewResponse = z.infer<
 
 const usagePackMigrationStateResponseSchema = z.object({
   tier: z.enum(["pro", "team"]),
-  status: z.enum(["eligible", "previewed", "applying", "pending_payment"]),
+  targetTier: z.enum(["pro", "team"]).nullable(),
+  status: z.enum(["eligible", "previewed", "applying", "scheduled"]),
   migrationId: z.uuid().nullable(),
+  effectiveAt: z.iso.datetime().nullable(),
   hostedInvoiceUrl: z.string().url().nullable(),
 });
 
 const usagePackMigrationPreviewRequestSchema = z.object({
+  targetTier: z.enum(["pro", "team"]),
   memberUsagePacks: z.array(memberUsagePackSchema).min(1).max(1000),
 });
 
 const usagePackMigrationPreviewResponseSchema = z.object({
   migrationId: z.uuid(),
   tier: z.enum(["pro", "team"]),
-  immediateAmountCents: z.number().int().nonnegative(),
+  targetTier: z.enum(["pro", "team"]),
+  currentRecurringAmountCents: z.number().int().nonnegative(),
   nextRecurringAmountCents: z.number().int().nonnegative(),
+  recurringDifferenceCents: z.number().int(),
   currency: z.string().length(3),
   purchasedCredits: z.number().int().positive(),
   bonusCredits: z.number().int().positive(),
   totalCredits: z.number().int().positive(),
-  prorationDate: z.iso.datetime(),
+  effectiveAt: z.iso.datetime(),
   expiresAt: z.iso.datetime(),
 });
 
 const usagePackMigrationConfirmResponseSchema = z.object({
-  status: z.enum(["processing", "pending_payment", "completed"]),
+  status: z.enum(["scheduled", "completed"]),
+  effectiveAt: z.iso.datetime(),
   hostedInvoiceUrl: z.string().url().nullable(),
 });
 

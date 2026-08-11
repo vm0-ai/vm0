@@ -13,7 +13,7 @@ import {
   usagePackSubscriptionMigrationSelections,
   usagePackSubscriptions,
 } from "@vm0/db/schema/usage-pack-subscription";
-import { and, desc, eq, inArray, isNotNull, lte, or, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, lte, or, sql } from "drizzle-orm";
 
 import { pgBooleanDecoder } from "../../lib/db-structured-result";
 import { logger } from "../../lib/log";
@@ -23,6 +23,10 @@ import {
   getStripeClient,
   type StripeInvoice,
   type StripeInvoiceLine,
+  type StripePriceRecurring,
+  type StripeSchedulePhaseDiscountParam,
+  type StripeSchedulePhaseItemParam,
+  type StripeSchedulePhaseParam,
   type StripeSubscription,
   type StripeSubscriptionItem,
   type StripeSubscriptionUpdateItemParam,
@@ -48,12 +52,8 @@ import {
 
 const PREVIEW_TTL_MS = 30 * 60 * 1000;
 const RECONCILIATION_DELAY_MS = 5 * 60 * 1000;
-const OPEN_MIGRATION_STATUSES = [
-  "previewed",
-  "applying",
-  "pending_payment",
-] as const;
-const APPLYING_MIGRATION_STATUSES = ["applying", "pending_payment"] as const;
+const OPEN_MIGRATION_STATUSES = ["previewed", "applying", "scheduled"] as const;
+const RECONCILING_MIGRATION_STATUSES = ["applying", "scheduled"] as const;
 const L = logger("UsagePackSubscriptionMigration");
 
 type MigrationRow = typeof usagePackSubscriptionMigrations.$inferSelect;
@@ -78,7 +78,6 @@ interface LegacyMigrationContext {
   };
   readonly subscription: StripeSubscription;
   readonly legacyItem: StripeSubscriptionItem;
-  readonly stripePlanPriceId: string;
 }
 
 interface PreparedMigrationSelection {
@@ -138,12 +137,6 @@ function stripeObjectId(
   value: string | { readonly id: string } | null | undefined,
 ): string | null {
   return typeof value === "string" ? value : (value?.id ?? null);
-}
-
-function unixDate(value: number | null | undefined): Date | null {
-  return typeof value === "number" && Number.isSafeInteger(value) && value > 0
-    ? new Date(value * 1000)
-    : null;
 }
 
 function safeInvoiceAmount(invoice: StripeInvoice, label: string): number {
@@ -284,9 +277,7 @@ function subscriptionHasUsagePackItems(
   });
 }
 
-function activeMigrationSubscription(
-  subscription: StripeSubscription,
-): boolean {
+function eligibleLegacySubscription(subscription: StripeSubscription): boolean {
   return (
     subscription.status === "active" &&
     subscription.cancel_at === null &&
@@ -328,13 +319,11 @@ async function loadLegacyMigrationContext(
     row.stripeSubscriptionId,
   );
   const legacyItem = legacyPlanItem(subscription, row.tier);
-  const stripePlanPriceId = activeUsagePackPlanPriceId(row.tier);
   if (
-    !activeMigrationSubscription(subscription) ||
+    !eligibleLegacySubscription(subscription) ||
     stripeObjectId(subscription.customer) !== row.stripeCustomerId ||
     !legacyItem ||
-    subscriptionHasUsagePackItems(subscription) ||
-    !stripePlanPriceId
+    subscriptionHasUsagePackItems(subscription)
   ) {
     return null;
   }
@@ -347,7 +336,6 @@ async function loadLegacyMigrationContext(
     },
     subscription,
     legacyItem,
-    stripePlanPriceId,
   };
 }
 
@@ -358,9 +346,11 @@ function migrationState(
     throw new Error(`Migration ${migration.id} is not open`);
   }
   return {
-    tier: migration.tier,
+    tier: migration.sourceTier,
+    targetTier: migration.targetTier,
     status: migration.status,
     migrationId: migration.id,
+    effectiveAt: migration.effectiveAt.toISOString(),
     hostedInvoiceUrl: migration.hostedInvoiceUrl,
   };
 }
@@ -401,8 +391,12 @@ export async function getUsagePackMigrationState(
     status: "ready",
     state: {
       tier: context.org.tier,
+      targetTier: null,
       status: "eligible",
       migrationId: null,
+      effectiveAt: new Date(
+        migrationPeriod(context.legacyItem).end * 1000,
+      ).toISOString(),
       hostedInvoiceUrl: null,
     },
   };
@@ -502,10 +496,13 @@ async function persistMigrationPreview(
   context: LegacyMigrationContext,
   selections: readonly PreparedMigrationSelection[],
   args: {
-    readonly prorationTimestamp: number;
-    readonly immediateAmountCents: number;
+    readonly targetTier: SubscriptionCheckoutTier;
+    readonly stripePlanPriceId: string;
+    readonly currentRecurringAmountCents: number;
     readonly nextRecurringAmountCents: number;
+    readonly recurringDifferenceCents: number;
     readonly currency: string;
+    readonly effectiveAt: Date;
     readonly createdAt: Date;
     readonly expiresAt: Date;
   },
@@ -520,7 +517,7 @@ async function persistMigrationPreview(
           eq(usagePackSubscriptionMigrations.orgId, context.org.orgId),
           inArray(usagePackSubscriptionMigrations.status, [
             "applying",
-            "pending_payment",
+            "scheduled",
           ]),
         ),
       )
@@ -546,16 +543,18 @@ async function persistMigrationPreview(
       .insert(usagePackSubscriptionMigrations)
       .values({
         orgId: context.org.orgId,
-        tier: context.org.tier,
+        sourceTier: context.org.tier,
+        targetTier: args.targetTier,
         stripeCustomerId: context.org.stripeCustomerId,
         stripeSubscriptionId: context.org.stripeSubscriptionId,
         legacyStripePriceId: context.legacyItem.price.id,
         legacyStripeItemId: context.legacyItem.id,
-        stripePlanPriceId: context.stripePlanPriceId,
-        prorationTimestamp: args.prorationTimestamp,
-        immediateAmountCents: args.immediateAmountCents,
+        stripePlanPriceId: args.stripePlanPriceId,
+        currentRecurringAmountCents: args.currentRecurringAmountCents,
         nextRecurringAmountCents: args.nextRecurringAmountCents,
+        recurringDifferenceCents: args.recurringDifferenceCents,
         currency: args.currency,
+        effectiveAt: args.effectiveAt,
         previewExpiresAt: args.expiresAt,
         createdAt: args.createdAt,
         updatedAt: args.createdAt,
@@ -577,6 +576,7 @@ export async function previewUsagePackSubscriptionMigration(
   db: Db,
   args: {
     readonly orgId: string;
+    readonly targetTier: SubscriptionCheckoutTier;
     readonly memberUsagePacks: readonly MemberUsagePack[];
     readonly owners: readonly UsagePackMigrationOwner[];
   },
@@ -600,53 +600,66 @@ export async function previewUsagePackSubscriptionMigration(
   }
 
   const period = migrationPeriod(context.legacyItem);
-  const requestedTimestamp = Math.floor(nowDate().getTime() / 1000);
-  const prorationTimestamp = Math.min(
-    Math.max(requestedTimestamp, period.start),
-    period.end - 1,
-  );
-  const items = migrationUpdateItems(
+  const stripePlanPriceId = activeUsagePackPlanPriceId(args.targetTier);
+  if (!stripePlanPriceId) {
+    throw new Error(
+      `${args.targetTier} usage pack plan Price is not configured`,
+    );
+  }
+  const targetItems = migrationUpdateItems(
     context.legacyItem.id,
-    context.stripePlanPriceId,
+    stripePlanPriceId,
     selections,
   );
+  const currentItems = context.subscription.items.data.map((item) => {
+    return {
+      id: item.id,
+      price: item.price.id,
+      quantity: item.quantity ?? 1,
+    };
+  });
   const stripe = getStripeClient();
-  const [recurringPreview, immediatePreview] = await Promise.all([
+  const [currentPreview, targetPreview] = await Promise.all([
     stripe.invoices.createPreview({
       subscription: context.subscription.id,
       preview_mode: "recurring",
       subscription_details: {
-        items,
-        proration_behavior: "always_invoice",
-        proration_date: prorationTimestamp,
+        items: currentItems,
       },
     }),
     stripe.invoices.createPreview({
       subscription: context.subscription.id,
-      preview_mode: "next",
+      preview_mode: "recurring",
       subscription_details: {
-        items,
-        proration_behavior: "always_invoice",
-        proration_date: prorationTimestamp,
+        items: targetItems,
       },
     }),
   ]);
   signal.throwIfAborted();
-  if (recurringPreview.currency !== immediatePreview.currency) {
+  if (currentPreview.currency !== targetPreview.currency) {
     throw new Error("Stripe migration previews returned different currencies");
   }
-  const immediateAmountCents = safeInvoiceAmount(immediatePreview, "immediate");
-  const nextRecurringAmountCents = safeInvoiceAmount(
-    recurringPreview,
-    "recurring",
+  const currentRecurringAmountCents = safeInvoiceAmount(
+    currentPreview,
+    "current recurring",
   );
+  const nextRecurringAmountCents = safeInvoiceAmount(
+    targetPreview,
+    "target recurring",
+  );
+  const recurringDifferenceCents =
+    nextRecurringAmountCents - currentRecurringAmountCents;
   const createdAt = nowDate();
   const expiresAt = new Date(createdAt.getTime() + PREVIEW_TTL_MS);
+  const effectiveAt = new Date(period.end * 1000);
   const migration = await persistMigrationPreview(db, context, selections, {
-    prorationTimestamp,
-    immediateAmountCents,
+    targetTier: args.targetTier,
+    stripePlanPriceId,
+    currentRecurringAmountCents,
     nextRecurringAmountCents,
-    currency: recurringPreview.currency,
+    recurringDifferenceCents,
+    currency: targetPreview.currency,
+    effectiveAt,
     createdAt,
     expiresAt,
   });
@@ -663,14 +676,16 @@ export async function previewUsagePackSubscriptionMigration(
     status: "ready",
     preview: {
       migrationId: migration.id,
-      tier: migration.tier,
-      immediateAmountCents,
+      tier: migration.sourceTier,
+      targetTier: migration.targetTier,
+      currentRecurringAmountCents,
       nextRecurringAmountCents,
+      recurringDifferenceCents,
       currency: migration.currency,
       purchasedCredits,
       bonusCredits,
       totalCredits: purchasedCredits + bonusCredits,
-      prorationDate: new Date(prorationTimestamp * 1000).toISOString(),
+      effectiveAt: migration.effectiveAt.toISOString(),
       expiresAt: migration.previewExpiresAt.toISOString(),
     },
   };
@@ -694,6 +709,7 @@ function desiredMigrationShape(
   selections: readonly MigrationSelectionRow[],
   subscription: StripeSubscription,
 ): boolean {
+  const effectiveAt = Math.floor(migration.effectiveAt.getTime() / 1000);
   if (
     stripeObjectId(subscription.customer) !== migration.stripeCustomerId ||
     subscription.items.data.some((item) => {
@@ -708,7 +724,8 @@ function desiredMigrationShape(
   if (
     planItems.length !== 1 ||
     planItems[0]?.price.id !== migration.stripePlanPriceId ||
-    (planItems[0].quantity ?? 1) !== 1
+    (planItems[0].quantity ?? 1) !== 1 ||
+    planItems[0].current_period_start !== effectiveAt
   ) {
     return false;
   }
@@ -717,6 +734,9 @@ function desiredMigrationShape(
   for (const item of subscription.items.data) {
     if (usagePackUsdForKnownPriceId(item.price.id) === null) {
       continue;
+    }
+    if (item.current_period_start !== effectiveAt) {
+      return false;
     }
     const quantity = item.quantity ?? 1;
     if (!Number.isSafeInteger(quantity) || quantity <= 0) {
@@ -736,18 +756,22 @@ function legacyMigrationShape(
   migration: MigrationRow,
   subscription: StripeSubscription,
 ): boolean {
-  const legacyItem = legacyPlanItem(subscription, migration.tier);
+  const legacyItem = legacyPlanItem(subscription, migration.sourceTier);
   if (!legacyItem) {
     return false;
   }
   const period = migrationPeriod(legacyItem);
+  const scheduleId = stripeObjectId(subscription.schedule);
   return (
-    activeMigrationSubscription(subscription) &&
+    subscription.status === "active" &&
+    subscription.cancel_at === null &&
+    !subscription.cancel_at_period_end &&
     stripeObjectId(subscription.customer) === migration.stripeCustomerId &&
     legacyItem.id === migration.legacyStripeItemId &&
     legacyItem.price.id === migration.legacyStripePriceId &&
-    migration.prorationTimestamp >= period.start &&
-    migration.prorationTimestamp < period.end &&
+    migration.effectiveAt.getTime() === period.end * 1000 &&
+    (!migration.stripeScheduleId ||
+      scheduleId === migration.stripeScheduleId) &&
     !subscriptionHasUsagePackItems(subscription)
   );
 }
@@ -795,7 +819,7 @@ function latestInvoiceId(subscription: StripeSubscription): string | null {
   return stripeObjectId(subscription.latest_invoice);
 }
 
-async function persistStripeMigrationState(
+async function persistMigrationInvoiceState(
   db: Db,
   migration: MigrationRow,
   selections: readonly MigrationSelectionRow[],
@@ -816,26 +840,24 @@ async function persistStripeMigrationState(
       break;
     }
   }
-  const pendingExpiry = unixDate(subscription.pending_update?.expires_at);
   const updatedAt = nowDate();
   const [updated] = await db
     .update(usagePackSubscriptionMigrations)
     .set({
-      status: subscription.pending_update ? "pending_payment" : "applying",
+      status: "scheduled",
       stripeInvoiceId: invoice?.id ?? migration.stripeInvoiceId,
       stripePaymentIntentId:
         (invoice ? invoicePaymentIntentId(invoice) : null) ??
         migration.stripePaymentIntentId,
       hostedInvoiceUrl:
         invoice?.hosted_invoice_url ?? migration.hostedInvoiceUrl,
-      stripePendingUpdateExpiresAt: pendingExpiry,
       updatedAt,
     })
     .where(
       and(
         eq(usagePackSubscriptionMigrations.id, migration.id),
         inArray(usagePackSubscriptionMigrations.status, [
-          ...APPLYING_MIGRATION_STATUSES,
+          ...RECONCILING_MIGRATION_STATUSES,
         ]),
       ),
     )
@@ -869,7 +891,7 @@ async function materializeUsagePackSnapshot(
       await tx.insert(usagePackSubscriptions).values({
         id: migration.id,
         orgId: migration.orgId,
-        tier: migration.tier,
+        tier: migration.targetTier,
         stripePlanPriceId: migration.stripePlanPriceId,
         stripeCustomerId: migration.stripeCustomerId,
         stripeSubscriptionId: migration.stripeSubscriptionId,
@@ -921,6 +943,34 @@ function invoiceLineAmount(line: StripeInvoiceLine): number | null {
   return Number.isSafeInteger(amount) ? amount : null;
 }
 
+function invoiceLineIsProration(line: StripeInvoiceLine): boolean {
+  if (line.parent?.type === "subscription_item_details") {
+    return (
+      line.parent.subscription_item_details?.proration ??
+      line.proration ??
+      false
+    );
+  }
+  if (line.parent?.type === "invoice_item_details") {
+    return (
+      line.parent.invoice_item_details?.proration ?? line.proration ?? false
+    );
+  }
+  return line.proration ?? false;
+}
+
+function migrationInvoiceLineMatchesPeriod(
+  line: StripeInvoiceLine,
+  migration: MigrationRow,
+): boolean {
+  const effectiveAt = Math.floor(migration.effectiveAt.getTime() / 1000);
+  return (
+    !invoiceLineIsProration(line) &&
+    line.period.start === effectiveAt &&
+    line.period.end > effectiveAt
+  );
+}
+
 function migrationInvoiceMatchesSelections(
   invoice: StripeInvoice,
   migration: MigrationRow,
@@ -928,24 +978,41 @@ function migrationInvoiceMatchesSelections(
 ): boolean {
   if (
     stripeObjectId(invoice.customer) !== migration.stripeCustomerId ||
+    stripeObjectId(invoice.parent?.subscription_details?.subscription) !==
+      migration.stripeSubscriptionId ||
     invoice.currency !== migration.currency
   ) {
     return false;
   }
   const expected = packageQuantities(selections);
   const actual = new Map<string, number>();
+  let targetPlanQuantity = 0;
   for (const line of invoice.lines.data) {
     const priceId = invoiceLinePriceId(line);
-    if (!priceId || usagePackUsdForKnownPriceId(priceId) === null) {
+    if (!priceId) {
       continue;
     }
     const quantity = line.quantity ?? 1;
     if (!Number.isSafeInteger(quantity) || quantity <= 0) {
       return false;
     }
+    if (priceId === migration.stripePlanPriceId) {
+      if (!migrationInvoiceLineMatchesPeriod(line, migration)) {
+        return false;
+      }
+      targetPlanQuantity += quantity;
+      continue;
+    }
+    if (usagePackUsdForKnownPriceId(priceId) === null) {
+      continue;
+    }
+    if (!migrationInvoiceLineMatchesPeriod(line, migration)) {
+      return false;
+    }
     actual.set(priceId, (actual.get(priceId) ?? 0) + quantity);
   }
   return (
+    targetPlanQuantity === 1 &&
     expected.size === actual.size &&
     [...expected].every(([priceId, quantity]) => {
       return actual.get(priceId) === quantity;
@@ -1010,11 +1077,17 @@ function selectionCreditsForInvoice(
 }
 
 function paidAmountsBySelection(
+  invoiceAmountDueCents: number,
   amountPaidCents: number,
   selections: readonly MigrationSelectionRow[],
   credits: ReadonlyMap<string, SelectionCredits>,
 ): ReadonlyMap<string, number> {
-  if (!Number.isSafeInteger(amountPaidCents) || amountPaidCents < 0) {
+  if (
+    !Number.isSafeInteger(invoiceAmountDueCents) ||
+    invoiceAmountDueCents < 0 ||
+    !Number.isSafeInteger(amountPaidCents) ||
+    amountPaidCents < 0
+  ) {
     throw new Error("Migration invoice has an invalid paid amount");
   }
   const totalWeight = selections.reduce((total, selection) => {
@@ -1023,6 +1096,14 @@ function paidAmountsBySelection(
   if (!(totalWeight > 0)) {
     throw new Error("Migration invoice has no package payment weight");
   }
+  const refundableAmount =
+    invoiceAmountDueCents === 0
+      ? 0
+      : Math.floor(
+          (Math.min(amountPaidCents, invoiceAmountDueCents) *
+            Math.min(totalWeight, invoiceAmountDueCents)) /
+            invoiceAmountDueCents,
+        );
   const ordered = [...selections].sort((left, right) => {
     return left.id.localeCompare(right.id);
   });
@@ -1030,11 +1111,11 @@ function paidAmountsBySelection(
   let allocated = 0;
   for (const selection of ordered) {
     const weight = credits.get(selection.id)?.weight ?? 0;
-    const amount = Math.floor((amountPaidCents * weight) / totalWeight);
+    const amount = Math.floor((refundableAmount * weight) / totalWeight);
     result.set(selection.id, amount);
     allocated += amount;
   }
-  let remainder = amountPaidCents - allocated;
+  let remainder = refundableAmount - allocated;
   for (const selection of ordered) {
     if (remainder === 0) {
       break;
@@ -1059,9 +1140,9 @@ async function completeMigrationInvitations(
   const credits = selectionCreditsForInvoice(invoice, selections);
   const payment = paidInvoicePaymentIntent(invoice);
   const paymentIntentId = payment?.id ?? migration.stripePaymentIntentId;
-  const refundableAmount = payment?.amountPaidCents ?? 0;
   const paidAmounts = paidAmountsBySelection(
-    refundableAmount,
+    safeInvoiceAmount(invoice, "paid"),
+    payment?.amountPaidCents ?? 0,
     selections,
     credits,
   );
@@ -1122,7 +1203,7 @@ async function completeMigrationInvitations(
         status: "invitation_pending",
         currentPeriodStart: allocation.currentPeriodStart,
         currentPeriodEnd: allocation.currentPeriodEnd,
-        prorationTimestamp: migration.prorationTimestamp,
+        prorationTimestamp: Math.floor(migration.effectiveAt.getTime() / 1000),
         unitAmountCents: selection.unitAmountCents,
         expectedAmountCents: amountPaidCents,
         amountPaidCents,
@@ -1159,7 +1240,7 @@ function correlatedMigrationInvoice(
   }
   const metadata = usagePackSubscriptionMetadata({
     orgId: migration.orgId,
-    tier: migration.tier,
+    tier: migration.targetTier,
     planPriceId: migration.stripePlanPriceId,
     usagePackSubscriptionId: migration.id,
   });
@@ -1190,7 +1271,8 @@ async function finalizeAppliedMigration(
       status: "active",
       orgId: migration.orgId,
       response: {
-        status: "processing",
+        status: "scheduled",
+        effectiveAt: migration.effectiveAt.toISOString(),
         hostedInvoiceUrl: invoice.hosted_invoice_url ?? null,
       },
     };
@@ -1198,7 +1280,7 @@ async function finalizeAppliedMigration(
   await materializeUsagePackSnapshot(db, migration, selections, subscription);
   const metadata = usagePackSubscriptionMetadata({
     orgId: migration.orgId,
-    tier: migration.tier,
+    tier: migration.targetTier,
     planPriceId: migration.stripePlanPriceId,
     usagePackSubscriptionId: migration.id,
   });
@@ -1235,36 +1317,10 @@ async function finalizeAppliedMigration(
     orgId: migration.orgId,
     response: {
       status: "completed",
+      effectiveAt: migration.effectiveAt.toISOString(),
       hostedInvoiceUrl: invoice.hosted_invoice_url ?? null,
     },
   };
-}
-
-async function failExpiredPendingMigration(
-  db: Db,
-  migration: MigrationRow,
-): Promise<boolean> {
-  const expiresAt = migration.stripePendingUpdateExpiresAt;
-  if (!expiresAt || expiresAt > nowDate()) {
-    return false;
-  }
-  const completedAt = nowDate();
-  const [failed] = await db
-    .update(usagePackSubscriptionMigrations)
-    .set({
-      status: "failed",
-      failureReason: "pending_update_expired",
-      completedAt,
-      updatedAt: completedAt,
-    })
-    .where(
-      and(
-        eq(usagePackSubscriptionMigrations.id, migration.id),
-        eq(usagePackSubscriptionMigrations.status, "pending_payment"),
-      ),
-    )
-    .returning({ id: usagePackSubscriptionMigrations.id });
-  return failed !== undefined;
 }
 
 async function failChangedMigration(
@@ -1283,41 +1339,180 @@ async function failChangedMigration(
     .where(
       and(
         eq(usagePackSubscriptionMigrations.id, migration.id),
-        eq(usagePackSubscriptionMigrations.status, "applying"),
+        inArray(usagePackSubscriptionMigrations.status, [
+          ...RECONCILING_MIGRATION_STATUSES,
+        ]),
       ),
     )
     .returning({ id: usagePackSubscriptionMigrations.id });
   return failed !== undefined;
 }
 
-async function applyMigrationUpdate(
+function migrationRecurringDuration(
+  legacyItem: StripeSubscriptionItem,
+): StripePriceRecurring {
+  const recurring = legacyItem.price.recurring;
+  if (!recurring) {
+    throw new Error("Legacy subscription plan is not recurring");
+  }
+  return {
+    interval: recurring.interval,
+    interval_count: recurring.interval_count,
+  };
+}
+
+function migrationPhaseItems(
+  subscription: StripeSubscription,
+): StripeSchedulePhaseItemParam[] {
+  return subscription.items.data.map((item) => {
+    return { price: item.price.id, quantity: item.quantity ?? 1 };
+  });
+}
+
+function migrationPhaseDiscounts(
+  subscription: StripeSubscription,
+): StripeSchedulePhaseDiscountParam[] {
+  return (subscription.discounts ?? []).flatMap((discount) => {
+    const id = stripeObjectId(discount);
+    return id ? [{ discount: id }] : [];
+  });
+}
+
+function migrationPhaseWithDiscounts(
+  phase: StripeSchedulePhaseParam,
+  discounts: readonly StripeSchedulePhaseDiscountParam[],
+): StripeSchedulePhaseParam {
+  return discounts.length === 0
+    ? phase
+    : { ...phase, discounts: [...discounts] };
+}
+
+function targetMigrationPhaseItems(
+  subscription: StripeSubscription,
+  migration: MigrationRow,
+  selections: readonly MigrationSelectionRow[],
+): StripeSchedulePhaseItemParam[] {
+  const unrelated = subscription.items.data
+    .filter((item) => {
+      return (
+        tierForKnownPriceId(item.price.id) === null &&
+        usagePackUsdForKnownPriceId(item.price.id) === null
+      );
+    })
+    .map((item) => {
+      return { price: item.price.id, quantity: item.quantity ?? 1 };
+    });
+  return [
+    ...unrelated,
+    { price: migration.stripePlanPriceId, quantity: 1 },
+    ...[...packageQuantities(selections)].map(([price, quantity]) => {
+      return { price, quantity };
+    }),
+  ];
+}
+
+function scheduledMigrationResponse(
+  migration: MigrationRow,
+): UsagePackMigrationConfirmResponse {
+  return {
+    status: "scheduled",
+    effectiveAt: migration.effectiveAt.toISOString(),
+    hostedInvoiceUrl: migration.hostedInvoiceUrl,
+  };
+}
+
+async function scheduleMigration(
   db: Db,
   migration: MigrationRow,
   selections: readonly MigrationSelectionRow[],
   subscription: StripeSubscription,
   signal: AbortSignal | undefined,
-): Promise<StripeSubscription> {
+): Promise<MigrationRow> {
   if (!legacyMigrationShape(migration, subscription)) {
     throw new Error(`Legacy subscription ${subscription.id} changed`);
   }
-  const updated = await getStripeClient().subscriptions.update(
-    migration.stripeSubscriptionId,
+  const legacyItem = legacyPlanItem(subscription, migration.sourceTier);
+  if (!legacyItem) {
+    throw new Error(`Legacy subscription ${subscription.id} lost its plan`);
+  }
+  const stripe = getStripeClient();
+  const createdSchedule = migration.stripeScheduleId
+    ? null
+    : await stripe.subscriptionSchedules.create(
+        { from_subscription: migration.stripeSubscriptionId },
+        {
+          idempotencyKey: `usage-pack-migration:${migration.id}:schedule-create`,
+        },
+      );
+  signal?.throwIfAborted();
+  const scheduleId = migration.stripeScheduleId ?? createdSchedule?.id;
+  if (!scheduleId) {
+    throw new Error("Stripe did not return a migration schedule ID");
+  }
+  const attachedScheduleId = stripeObjectId(subscription.schedule);
+  if (attachedScheduleId && attachedScheduleId !== scheduleId) {
+    throw new Error(`Legacy subscription ${subscription.id} schedule changed`);
+  }
+  const period = migrationPeriod(legacyItem);
+  const discounts = migrationPhaseDiscounts(subscription);
+  await stripe.subscriptionSchedules.update(
+    scheduleId,
     {
-      items: migrationUpdateItems(
-        migration.legacyStripeItemId,
-        migration.stripePlanPriceId,
-        selections,
-      ),
-      billing_cycle_anchor: "unchanged",
-      payment_behavior: "pending_if_incomplete",
-      proration_behavior: "always_invoice",
-      proration_date: migration.prorationTimestamp,
-      expand: ["latest_invoice.payments.data.payment.payment_intent"],
+      end_behavior: "release",
+      proration_behavior: "none",
+      phases: [
+        migrationPhaseWithDiscounts(
+          {
+            start_date: period.start,
+            end_date: period.end,
+            items: migrationPhaseItems(subscription),
+            proration_behavior: "none",
+          },
+          discounts,
+        ),
+        migrationPhaseWithDiscounts(
+          {
+            start_date: period.end,
+            duration: migrationRecurringDuration(legacyItem),
+            items: targetMigrationPhaseItems(
+              subscription,
+              migration,
+              selections,
+            ),
+            proration_behavior: "none",
+          },
+          discounts,
+        ),
+      ],
     },
-    { idempotencyKey: `usage-pack-migration:${migration.id}:apply` },
+    {
+      idempotencyKey: `usage-pack-migration:${migration.id}:schedule-update`,
+    },
   );
   signal?.throwIfAborted();
-  return updated;
+  const updatedAt = nowDate();
+  const [scheduled] = await db
+    .update(usagePackSubscriptionMigrations)
+    .set({ status: "scheduled", stripeScheduleId: scheduleId, updatedAt })
+    .where(
+      and(
+        eq(usagePackSubscriptionMigrations.id, migration.id),
+        eq(usagePackSubscriptionMigrations.status, "applying"),
+      ),
+    )
+    .returning();
+  const persisted = scheduled ?? migration;
+  L.debug("usage pack subscription migration scheduled", {
+    migrationId: migration.id,
+    orgId: migration.orgId,
+    stripeScheduleId: scheduleId,
+    effectiveAt: migration.effectiveAt.toISOString(),
+  });
+  return {
+    ...persisted,
+    status: "scheduled",
+    stripeScheduleId: scheduleId,
+  };
 }
 
 async function reconcileMigration(
@@ -1330,97 +1525,65 @@ async function reconcileMigration(
   if (selections.length === 0) {
     throw new Error(`Usage pack migration ${migration.id} has no selections`);
   }
-  let subscription: StripeSubscription =
-    await getStripeClient().subscriptions.retrieve(
-      migration.stripeSubscriptionId,
-    );
+  const subscription = await getStripeClient().subscriptions.retrieve(
+    migration.stripeSubscriptionId,
+  );
   signal?.throwIfAborted();
-  if (subscription.pending_update) {
-    const persisted = await persistStripeMigrationState(
+  if (desiredMigrationShape(migration, selections, subscription)) {
+    const persisted = await persistMigrationInvoiceState(
       db,
       migration,
       selections,
       subscription,
     );
+    const invoiceId = eventInvoice?.id ?? persisted.stripeInvoiceId;
+    const invoice = invoiceId
+      ? await retrieveMigrationInvoice(invoiceId)
+      : null;
+    signal?.throwIfAborted();
+    if (
+      invoice &&
+      migrationInvoiceMatchesSelections(invoice, persisted, selections)
+    ) {
+      return await finalizeAppliedMigration(
+        db,
+        persisted,
+        selections,
+        subscription,
+        invoice,
+      );
+    }
     return {
       status: "active",
       orgId: migration.orgId,
-      response: {
-        status: "pending_payment",
-        hostedInvoiceUrl: persisted.hostedInvoiceUrl,
-      },
+      response: scheduledMigrationResponse(persisted),
     };
   }
-  if (!desiredMigrationShape(migration, selections, subscription)) {
-    if (migration.status === "pending_payment") {
-      if (await failExpiredPendingMigration(db, migration)) {
-        return { status: "failed", orgId: migration.orgId };
-      }
-      return {
-        status: "active",
-        orgId: migration.orgId,
-        response: {
-          status: "pending_payment",
-          hostedInvoiceUrl: migration.hostedInvoiceUrl,
-        },
-      };
+  if (!legacyMigrationShape(migration, subscription)) {
+    if (await failChangedMigration(db, migration)) {
+      return { status: "failed", orgId: migration.orgId };
     }
-    if (!legacyMigrationShape(migration, subscription)) {
-      if (await failChangedMigration(db, migration)) {
-        return { status: "failed", orgId: migration.orgId };
-      }
-      return {
-        status: "active",
-        orgId: migration.orgId,
-        response: { status: "processing", hostedInvoiceUrl: null },
-      };
-    }
-    subscription = await applyMigrationUpdate(
+    return { status: "failed", orgId: migration.orgId };
+  }
+  if (migration.status === "applying") {
+    const scheduled = await scheduleMigration(
       db,
       migration,
       selections,
       subscription,
       signal,
     );
-  }
-  const persisted = await persistStripeMigrationState(
-    db,
-    migration,
-    selections,
-    subscription,
-  );
-  if (subscription.pending_update) {
     return {
       status: "active",
       orgId: migration.orgId,
-      response: {
-        status: "pending_payment",
-        hostedInvoiceUrl: persisted.hostedInvoiceUrl,
-      },
+      response: scheduledMigrationResponse(scheduled),
     };
   }
-  if (!desiredMigrationShape(migration, selections, subscription)) {
-    throw new Error(
-      `Stripe did not apply usage pack migration ${migration.id}`,
-    );
-  }
-  const invoiceId = eventInvoice?.id ?? persisted.stripeInvoiceId;
-  const invoice = invoiceId ? await retrieveMigrationInvoice(invoiceId) : null;
-  signal?.throwIfAborted();
-  if (!invoice) {
-    return {
-      status: "active",
-      orgId: migration.orgId,
-      response: { status: "processing", hostedInvoiceUrl: null },
-    };
-  }
-  return await finalizeAppliedMigration(
-    db,
-    persisted,
-    selections,
-    subscription,
-    invoice,
-  );
+  return {
+    status: "active",
+    orgId: migration.orgId,
+    response: scheduledMigrationResponse(migration),
+  };
 }
 
 async function claimMigrationConfirmation(
@@ -1544,7 +1707,7 @@ async function migrationForInvoice(
                 subscriptionId,
               ),
               inArray(usagePackSubscriptionMigrations.status, [
-                ...APPLYING_MIGRATION_STATUSES,
+                ...RECONCILING_MIGRATION_STATUSES,
               ]),
             )
           : sql`false`,
@@ -1623,7 +1786,7 @@ export async function handleUsagePackMigrationSubscriptionUpdated(
           subscription.id,
         ),
         inArray(usagePackSubscriptionMigrations.status, [
-          ...APPLYING_MIGRATION_STATUSES,
+          ...RECONCILING_MIGRATION_STATUSES,
           ...(usagePackSubscriptionId ? [] : (["completed"] as const)),
         ]),
       ),
@@ -1683,21 +1846,14 @@ export async function reconcileUsagePackSubscriptionMigrations(
     .select()
     .from(usagePackSubscriptionMigrations)
     .where(
-      and(
-        inArray(usagePackSubscriptionMigrations.status, [
-          ...APPLYING_MIGRATION_STATUSES,
-        ]),
-        or(
+      or(
+        and(
+          eq(usagePackSubscriptionMigrations.status, "applying"),
           lte(usagePackSubscriptionMigrations.updatedAt, staleBefore),
-          and(
-            isNotNull(
-              usagePackSubscriptionMigrations.stripePendingUpdateExpiresAt,
-            ),
-            lte(
-              usagePackSubscriptionMigrations.stripePendingUpdateExpiresAt,
-              at,
-            ),
-          ),
+        ),
+        and(
+          eq(usagePackSubscriptionMigrations.status, "scheduled"),
+          lte(usagePackSubscriptionMigrations.effectiveAt, at),
         ),
       ),
     )
