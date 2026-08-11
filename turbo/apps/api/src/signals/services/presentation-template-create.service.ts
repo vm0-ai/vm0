@@ -225,9 +225,14 @@ export const createPresentationTemplate$ = command(
             templateId: inserted.row.id,
           })
         : inserted.row;
+    if (!current) {
+      throw new Error(
+        `Presentation template ${inserted.row.id} disappeared after its import run failed`,
+      );
+    }
     return {
       status: 201 as const,
-      body: presentationTemplateSummary(current ?? inserted.row),
+      body: presentationTemplateSummary(current),
     };
   },
 );

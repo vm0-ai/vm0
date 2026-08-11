@@ -80,7 +80,7 @@ export async function handlePresentationTemplateImportInternalCallback(
     envelope.status === "failed"
       ? {
           code: "analysis_failed",
-          message: envelope.error?.trim() || "Template import run failed",
+          message: envelope.error,
         }
       : {
           code: "publish_failed",

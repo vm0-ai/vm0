@@ -21,14 +21,24 @@ export type InternalRunCallbackDispatchResult =
   | { readonly success: true; readonly skipped?: true }
   | { readonly success: false; readonly error: string };
 
-export interface InternalRunCallbackEnvelope {
+interface InternalRunCallbackEnvelopeBase {
   readonly callbackId?: string;
   readonly runId: string;
-  readonly status: InternalRunCallbackStatus;
   readonly result?: Record<string, unknown>;
-  readonly error?: string;
   readonly payload: unknown;
 }
+
+export type InternalRunCallbackEnvelope = InternalRunCallbackEnvelopeBase &
+  (
+    | {
+        readonly status: "failed";
+        readonly error: string;
+      }
+    | {
+        readonly status: Exclude<InternalRunCallbackStatus, "failed">;
+        readonly error?: string;
+      }
+  );
 
 interface InternalRunCallbackRecord {
   readonly internalKind: string | null;

@@ -626,13 +626,23 @@ async function dispatchInternalCallbackWithoutCcstate(
 function callbackEnvelope(
   input: DispatchInternalRunCallbackInput | DispatchSingleCallbackInput,
 ): InternalRunCallbackEnvelope {
-  return {
+  const base = {
     callbackId: input.callback.id,
     runId: input.runId,
-    status: input.status,
     result: input.result,
-    error: input.error,
     payload: input.callback.payload,
+  };
+  if (input.status === "failed") {
+    const error = input.error?.trim();
+    if (!error) {
+      throw new Error("Failed internal run callbacks require an error");
+    }
+    return { ...base, status: "failed", error };
+  }
+  return {
+    ...base,
+    status: input.status,
+    error: input.error,
   };
 }
 
