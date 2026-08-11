@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.421.0](https://github.com/vm0-ai/vm0/compare/api-v1.420.4...api-v1.421.0) (2026-08-11)
+
+
+### Features
+
+* **connectors:** add custom connection endpoint ([#26228](https://github.com/vm0-ai/vm0/issues/26228)) ([b6235c2](https://github.com/vm0-ai/vm0/commit/b6235c2b4000bab04ecb3e9decb23e927e719410))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.311.0
+    * @vm0/core bumped to 8.542.0
+    * @vm0/db bumped to 1.190.5
+    * @vm0/pi-agent-runtime bumped to 1.3.37
+
 ## [1.420.4](https://github.com/vm0-ai/vm0/compare/api-v1.420.3...api-v1.420.4) (2026-08-11)
 
 
