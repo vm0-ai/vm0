@@ -4054,7 +4054,7 @@ function buildCustomConnectorRuntimeApis(args: {
         serviceName: "MCP custom connector",
         hostPolicy: { kind: "publicDestination" },
       });
-      return endpoint;
+      return canonicalEndpoint;
     });
     if ("error" in endpointResult) {
       args.stats.recordInvalidPrefix();
@@ -4062,24 +4062,13 @@ function buildCustomConnectorRuntimeApis(args: {
       return [];
     }
     const endpoint = endpointResult.ok;
-    const endpointPath = endpoint.pathname;
     args.stats.recordRenderedApi();
     args.stats.recordPhaseDuration("renderPrefixes", prefixStartedAt);
     return [
       {
-        base: endpoint.origin,
+        base: endpoint,
         hostPolicy: { kind: "publicDestination" },
         auth: { headers: args.headers, query: args.query },
-        permissions: [
-          {
-            name: "mcp-endpoint",
-            rules: [
-              `POST ${endpointPath}`,
-              `GET ${endpointPath}`,
-              `DELETE ${endpointPath}`,
-            ],
-          },
-        ],
       },
     ];
   }
@@ -4374,18 +4363,12 @@ async function buildCustomConnectorRuntimeRow(args: {
       description: args.row.connector.displayName,
       apis,
     },
-    permissionPolicy:
-      args.row.connector.kind === "mcp"
-        ? {
-            policies: { "mcp-endpoint": "allow" },
-            unknownPolicy: "deny",
-          }
-        : permissionBundle
-          ? buildCustomConnectorPermissionPolicy({
-              bundle: permissionBundle,
-              selectedPermissionNames: args.selectedPermissionNames,
-            })
-          : undefined,
+    permissionPolicy: permissionBundle
+      ? buildCustomConnectorPermissionPolicy({
+          bundle: permissionBundle,
+          selectedPermissionNames: args.selectedPermissionNames,
+        })
+      : undefined,
   };
 }
 

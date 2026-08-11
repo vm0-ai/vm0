@@ -1980,6 +1980,7 @@
       "emptyAdmin": "Nessun connettore personalizzato ancora. Creane uno per registrare un API affinché ogni membro possa utilizzarlo.",
       "emptyMember": "La tua organizzazione non ha ancora registrato alcun connettore personalizzato.",
       "mcpStreamableHttp": "MCP · Streamable HTTP",
+      "mcpType": "MCP",
       "moreOptions": "Più opzioni",
       "statusConnected": "Connesso",
       "toasts": {

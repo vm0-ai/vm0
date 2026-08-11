@@ -37,8 +37,10 @@ import {
   zeroCustomConnectorByIdContract,
   zeroCustomConnectorsContract,
   type CustomConnectorHttpResponse,
+  type CustomConnectorMcpResponse,
   type CustomConnectorResponse,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import { describe, expect, it } from "vitest";
@@ -251,6 +253,42 @@ function createCustomConnector(): CustomConnectorHttpResponse {
     hasSecret: true,
     createdAt: "2026-02-01T00:00:00Z",
     updatedAt: "2026-02-01T00:00:00Z",
+  };
+}
+
+function createMcpCustomConnector(): CustomConnectorMcpResponse {
+  return {
+    kind: "mcp",
+    id: "44444444-4444-4444-8444-444444444444",
+    storageVersion: 1,
+    slug: "_deepwiki",
+    displayName: "DeepWiki",
+    endpoint: "https://mcp.deepwiki.com/mcp",
+    transport: "streamable-http",
+    prefixTemplates: [],
+    fields: [
+      {
+        key: "secret",
+        label: "Secret",
+        kind: "secret",
+        required: true,
+      },
+    ],
+    headerInjections: [
+      {
+        name: "X-VM0-Test-Token",
+        valueTemplate: "{{secrets.secret}}",
+      },
+    ],
+    queryInjections: [],
+    authMode: "manual",
+    permissionBundleRef: null,
+    connected: true,
+    missingRequiredFields: [],
+    configuredFieldKeys: ["secret"],
+    hasSecret: true,
+    createdAt: "2026-08-11T00:00:00Z",
+    updatedAt: "2026-08-11T00:00:00Z",
   };
 }
 
@@ -580,6 +618,34 @@ describe("team page navigation", () => {
         screen.queryByText("Custom connectors saved"),
       ).not.toBeInTheDocument();
     });
+  });
+
+  it("shows and authorizes connected MCP custom connectors", async () => {
+    const connector = createMcpCustomConnector();
+    mockTeamAPIs({ customConnector: connector });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${researchAgentId}`,
+      featureSwitches: { [FeatureSwitchKey.CustomConnectorMcp]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("DeepWiki")).toBeInTheDocument();
+      expect(
+        screen.getByText("https://mcp.deepwiki.com/mcp"),
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByLabelText("Manage DeepWiki permissions"),
+    ).not.toBeInTheDocument();
+
+    click(screen.getByLabelText("Grant DeepWiki access"));
+    await waitFor(() => {
+      expect(screen.getByText("Custom connectors saved")).toBeInTheDocument();
+      expect(screen.getByLabelText("Revoke DeepWiki access")).toBeChecked();
+    });
+    toast.dismiss();
   });
 
   it("hides unavailable custom connectors without loading agent access", async () => {

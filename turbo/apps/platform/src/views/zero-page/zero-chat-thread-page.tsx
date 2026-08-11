@@ -83,7 +83,6 @@ import {
   BrandSlack,
 } from "@vm0/ui";
 import { RUN_ERROR_GUIDANCE } from "@vm0/api-contracts/contracts/errors";
-import { isHttpCustomConnectorClientResponse } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import type {
   ChatEventUsagePayload,
   ChatRecommendedFollowup,
@@ -120,6 +119,7 @@ import { isMobileTextInputDevice } from "../../lib/visual-viewport-keyboard.ts";
 import { Markdown } from "../components/markdown.tsx";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
+  customConnectorMcpEnabled$,
   featureSwitch$,
   videoTemplateOptionsEnabled$,
 } from "../../signals/external/feature-switch.ts";
@@ -6135,6 +6135,7 @@ function PermissionActionCard({ signals }: { signals: PermissionSignals }) {
 
 function ChatConnectorActionConnectModal() {
   const active = useGet(activeChatConnectorAction$);
+  const mcpEnabled = useGet(customConnectorMcpEnabled$);
   const close = useSet(closeChatConnectorActionConnectDialog$);
   const runCallback = useSet(runChatActionCallback$);
   const pageSignal = useGet(pageSignal$);
@@ -6158,11 +6159,12 @@ function ChatConnectorActionConnectModal() {
   };
 
   if (active.kind === "custom") {
-    const connector = customConnectors
-      ?.filter(isHttpCustomConnectorClientResponse)
-      .find((candidate) => {
-        return candidate.slug === active.connectorSlug;
-      });
+    const connector = customConnectors?.find((candidate) => {
+      return (
+        candidate.slug === active.connectorSlug &&
+        (candidate.kind === "http" || mcpEnabled)
+      );
+    });
     return connector ? (
       <CustomConnectorConnectDialog
         connector={connector}
