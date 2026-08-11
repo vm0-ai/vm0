@@ -5,10 +5,16 @@ import {
 } from "@vm0/core/storage-names";
 import { synthesizeSkillMd } from "@vm0/core/zero-workflow-skill";
 
-import type { Db } from "../external/db";
+import { nowDate } from "../../lib/time";
+import { writeDb$, type Db } from "../external/db";
+import {
+  establishCustomConnectorSkillPublication,
+  retireCustomConnectorSkillPublication,
+} from "./custom-connector-skill-publication.service";
 import {
   commitPreparedVolumeServerSide,
-  prepareVolumeServerSide$,
+  publishStagedVolumeServerSide$,
+  stageVolumeServerSide$,
   type PreparedServerSideVolume,
 } from "./storage-volume-publication.service";
 import { SKILL_FILENAME } from "./zero-workflow-volume.service";
@@ -24,6 +30,11 @@ interface CustomConnectorSkillContentInput {
 
 interface PrepareCustomConnectorSkillVolumeInput extends CustomConnectorSkillContentInput {
   readonly orgId: string;
+}
+
+export interface PreparedCustomConnectorSkillVolume {
+  readonly volume: PreparedServerSideVolume;
+  readonly publicationCoordinated: boolean;
 }
 
 function buildCustomConnectorSkillFiles(
@@ -48,9 +59,9 @@ export const prepareCustomConnectorSkillVolume$ = command(
     { set },
     args: PrepareCustomConnectorSkillVolumeInput,
     signal: AbortSignal,
-  ): Promise<PreparedServerSideVolume> => {
-    const volume = await set(
-      prepareVolumeServerSide$,
+  ): Promise<PreparedCustomConnectorSkillVolume> => {
+    const staged = await set(
+      stageVolumeServerSide$,
       {
         orgId: args.orgId,
         storageName: getCustomConnectorSkillStorageName(args.connectorId),
@@ -59,19 +70,40 @@ export const prepareCustomConnectorSkillVolume$ = command(
       signal,
     );
     signal.throwIfAborted();
-    return volume;
+    const publicationCoordinated = staged.kind === "upload";
+    if (publicationCoordinated) {
+      await establishCustomConnectorSkillPublication(
+        {
+          db: set(writeDb$),
+          volume: staged.volume,
+          stateUpdatedAt: nowDate(),
+        },
+        signal,
+      );
+    }
+    signal.throwIfAborted();
+    const volume = await set(publishStagedVolumeServerSide$, staged, signal);
+    return { volume, publicationCoordinated };
   },
 );
 
 export async function commitPreparedCustomConnectorSkillStorage(
   args: {
     readonly db: Db;
-    readonly volume: PreparedServerSideVolume;
+    readonly skill: PreparedCustomConnectorSkillVolume;
   },
   signal: AbortSignal,
 ): Promise<void> {
+  await retireCustomConnectorSkillPublication(
+    {
+      db: args.db,
+      volume: args.skill.volume,
+      required: args.skill.publicationCoordinated,
+    },
+    signal,
+  );
   await commitPreparedVolumeServerSide(
-    { db: args.db, volume: args.volume },
+    { db: args.db, volume: args.skill.volume },
     signal,
   );
 }

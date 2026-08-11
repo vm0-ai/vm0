@@ -38,7 +38,7 @@ import {
 import { upsertOrgPlanEntitlementFixture } from "../../../test-fixtures/org-plan-entitlement";
 import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import { flushWaitUntilForTest } from "../../context/wait-until";
-import { now } from "../../../lib/time";
+import { clearMockNow, mockNow, now } from "../../../lib/time";
 import { createDeferredPromise } from "../../utils";
 import { zeroFeishuBrowserConnectRoutes } from "../zero-feishu-browser-connect";
 import { zeroFeishuEventsRoutes } from "../zero-feishu-events";
@@ -59,6 +59,7 @@ import {
   readCustomConnectorOAuthStorageState,
   setCustomConnectorCredentialStorageState,
 } from "./helpers/connector-credential-storage-state";
+import { readCustomConnectorSkillCleanupState } from "./helpers/custom-connector-skill-cleanup-state";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { zeroAgentsRoutes } from "../zero-agents";
@@ -1483,7 +1484,18 @@ describe("Feishu integration", () => {
         owner: "organization",
       }),
     ).resolves.toMatchObject({ fileCount: 1 });
+    const activeCleanupState = await readCustomConnectorSkillCleanupState(
+      context,
+      actor,
+      managedConnector.id,
+    );
+    expect(activeCleanupState.storage).not.toBeNull();
+    expect(activeCleanupState.publications).toStrictEqual([]);
+    expect(activeCleanupState.tombstone).toBeNull();
 
+    const deletedAt = new Date("2036-02-03T04:05:06.000Z");
+    context.mocks.s3.send.mockClear();
+    mockNow(deletedAt);
     await accept(
       client.removeInstallation({
         headers: { authorization: "Bearer clerk-session" },
@@ -1491,6 +1503,19 @@ describe("Feishu integration", () => {
       }),
       [200],
     );
+    clearMockNow();
+    expect(context.mocks.s3.send).not.toHaveBeenCalled();
+    await expect(
+      readCustomConnectorSkillCleanupState(context, actor, managedConnector.id),
+    ).resolves.toMatchObject({
+      publications: [],
+      tombstone: {
+        storageId: activeCleanupState.storage?.id,
+        connectorId: managedConnector.id,
+        s3Prefix: activeCleanupState.storage?.s3Prefix,
+        deletedAt: deletedAt.toISOString(),
+      },
+    });
   });
 
   it("keeps the managed connector and skill HEAD active when repair publication fails", async () => {

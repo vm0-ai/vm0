@@ -108,6 +108,7 @@ import * as chatThreadSnapshotSchema from "./schema/chat-thread-snapshot";
 import * as runOutputMaterializationSchema from "./schema/run-output-materialization";
 import * as piThreadMessageSchema from "./schema/pi-thread-message";
 import * as orgCustomConnectorSchema from "./schema/org-custom-connector";
+import * as customConnectorSkillCleanupSchema from "./schema/custom-connector-skill-cleanup";
 import * as orgCustomConnectorOauthConfigSchema from "./schema/org-custom-connector-oauth-config";
 import * as orgCustomConnectorSecretSchema from "./schema/org-custom-connector-secret";
 import * as orgCustomConnectorValueSchema from "./schema/org-custom-connector-value";
@@ -240,6 +241,7 @@ export const schema = {
   ...runOutputMaterializationSchema,
   ...piThreadMessageSchema,
   ...orgCustomConnectorSchema,
+  ...customConnectorSkillCleanupSchema,
   ...orgCustomConnectorOauthConfigSchema,
   ...orgCustomConnectorSecretSchema,
   ...orgCustomConnectorValueSchema,

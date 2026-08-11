@@ -35,6 +35,7 @@ import {
   mockCustomConnectorOAuth2Provider,
   mockSlackConnectorOAuth,
 } from "./helpers/api-bdd-connectors";
+import { readCustomConnectorSkillCleanupState } from "./helpers/custom-connector-skill-cleanup-state";
 import { createGithubBddApi, newGithubUserId } from "./helpers/api-bdd-github";
 import {
   createRunsApi,
@@ -5184,10 +5185,34 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
       displayName: "BDD Org Teardown Agent",
       visibility: "public",
     });
-    const customManual = await connectors.createCustomConnector(
-      actor,
-      customManualConnectorBodyForTeardown("org"),
+    const customManual = await connectors.createCustomConnector(actor, {
+      ...customManualConnectorBodyForTeardown("org"),
+      skillMarkdown: "Keep this registered teardown skill active.",
+    });
+    context.mocks.s3.send.mockRejectedValueOnce(
+      new Error("Leave one pending skill publication for org teardown"),
     );
+    const failedSkillPublication =
+      await connectors.requestUpdateCustomConnector(
+        actor,
+        customManual.id,
+        {
+          displayName: customManual.displayName,
+          prefixTemplates: customManual.prefixTemplates,
+          fields: customManual.fields,
+          headerInjections: customManual.headerInjections,
+          queryInjections: customManual.queryInjections,
+          authMode: customManual.authMode,
+          skillMarkdown: "This pending teardown skill must not activate.",
+        },
+        [500],
+      );
+    expect(failedSkillPublication.status).toBe(500);
+    await expect(
+      readCustomConnectorSkillCleanupState(context, actor, customManual.id),
+    ).resolves.toMatchObject({
+      publications: [expect.objectContaining({ state: "preparing" })],
+    });
     await connectors.setCustomConnectorSecret(
       actor,
       customManual.id,
@@ -5413,6 +5438,15 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
       await expect(
         connectors.listCustomConnectors(actor),
       ).resolves.toStrictEqual([]);
+    });
+    await waitForExpectation(async () => {
+      await expect(
+        readCustomConnectorSkillCleanupState(context, actor, customManual.id),
+      ).resolves.toMatchObject({
+        storage: null,
+        publications: [],
+        tombstone: null,
+      });
     });
     await expect(
       connectors.completeOauthCallbackResult("slack", {

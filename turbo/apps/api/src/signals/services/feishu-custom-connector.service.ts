@@ -19,7 +19,9 @@ import { deleteCustomConnectorMemberConnection } from "./custom-connector-creden
 import {
   commitPreparedCustomConnectorSkillStorage,
   prepareCustomConnectorSkillVolume$,
+  type PreparedCustomConnectorSkillVolume,
 } from "./custom-connector-skill-volume.service";
+import { recordDeletedCustomConnectorSkillStorage } from "./custom-connector-skill-publication.service";
 import {
   FEISHU_CUSTOM_CONNECTOR_SKILL_METADATA,
   getFeishuCustomConnectorSlug,
@@ -30,7 +32,6 @@ import {
   type CustomConnectorDefinitionRow,
 } from "./custom-connector-definition-selection";
 import type { Tx } from "../../lib/db-types";
-import type { PreparedServerSideVolume } from "./storage-volume-publication.service";
 
 const FEISHU_API_PREFIX = "https://open.feishu.cn/open-apis/";
 const FEISHU_AUTHORIZATION_URL =
@@ -73,7 +74,7 @@ interface ReconciledFeishuCustomConnector {
 
 interface PreparedFeishuCustomConnectorSkill {
   readonly connectorId: string;
-  readonly volume: PreparedServerSideVolume;
+  readonly skill: PreparedCustomConnectorSkillVolume;
 }
 
 type FeishuCustomConnectorReconciliation =
@@ -272,7 +273,7 @@ async function createFeishuCustomConnector(
       orgId: args.orgId,
       slug: getFeishuCustomConnectorSlug(args.installationId),
       ...desiredConnectorDefinition(installation),
-      skillStorageVersionId: prepared.volume.version.versionId,
+      skillStorageVersionId: prepared.skill.volume.version.versionId,
       createdBy: installation.ownerUserId ?? args.userId,
     })
     .returning({ id: orgCustomConnectors.id });
@@ -431,10 +432,10 @@ async function reconcileFeishuCustomConnector(
   }
 
   await commitPreparedCustomConnectorSkillStorage(
-    { db: tx, volume: prepared.volume },
+    { db: tx, skill: prepared.skill },
     signal,
   );
-  const skillStorageVersionId = prepared.volume.version.versionId;
+  const skillStorageVersionId = prepared.skill.volume.version.versionId;
 
   let connector: ReconciledFeishuCustomConnector;
   if (!existing) {
@@ -482,7 +483,7 @@ export const ensureFeishuCustomConnector$ = command(
     const db = set(writeDb$);
     let connectorId = await preflightFeishuCustomConnectorId(db, args, signal);
     while (connectorId) {
-      const volume = await set(
+      const skill = await set(
         prepareCustomConnectorSkillVolume$,
         {
           orgId: args.orgId,
@@ -496,7 +497,7 @@ export const ensureFeishuCustomConnector$ = command(
         signal,
       );
       signal.throwIfAborted();
-      const prepared = { connectorId, volume };
+      const prepared = { connectorId, skill };
       const reconciliation = db.transaction(async (tx) => {
         return await reconcileFeishuCustomConnector(tx, args, prepared, signal);
       });
@@ -558,25 +559,48 @@ export const deleteFeishuCustomConnector$ = command(
     },
     signal: AbortSignal,
   ): Promise<void> => {
-    const deletion = set(writeDb$)
-      .delete(orgCustomConnectors)
-      .where(
-        and(
-          eq(orgCustomConnectors.orgId, args.orgId),
-          eq(
-            orgCustomConnectors.slug,
-            getFeishuCustomConnectorSlug(args.installationId),
+    const db = set(writeDb$);
+    const deletion = db.transaction(async (tx) => {
+      const [connector] = await tx
+        .select({ id: orgCustomConnectors.id })
+        .from(orgCustomConnectors)
+        .where(
+          and(
+            eq(orgCustomConnectors.orgId, args.orgId),
+            eq(
+              orgCustomConnectors.slug,
+              getFeishuCustomConnectorSlug(args.installationId),
+            ),
           ),
-        ),
-      )
-      .returning({ id: orgCustomConnectors.id });
+        )
+        .for("update", { of: orgCustomConnectors })
+        .limit(1);
+      signal.throwIfAborted();
+      if (!connector) {
+        return null;
+      }
+      await recordDeletedCustomConnectorSkillStorage(
+        {
+          db: tx,
+          orgId: args.orgId,
+          connectorId: connector.id,
+          deletedAt: nowDate(),
+        },
+        signal,
+      );
+      await tx
+        .delete(orgCustomConnectors)
+        .where(eq(orgCustomConnectors.id, connector.id));
+      signal.throwIfAborted();
+      return connector;
+    });
     let postCommitAbort: CapturedConnectorClientInvalidationAbort | undefined;
-    const [deleted] = await commitConnectorRuntimeMutation(
+    const deleted = await commitConnectorRuntimeMutation(
       deletion,
-      ([connector]) => {
+      (connector) => {
         return connector
           ? {
-              db: set(writeDb$),
+              db,
               scope: { orgId: args.orgId },
               targets: [{ kind: "custom", customConnectorId: connector.id }],
             }

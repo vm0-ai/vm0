@@ -47,9 +47,26 @@ export interface PrepareVolumeServerSideInput {
 
 export interface PreparedServerSideVolume {
   readonly storageName: string;
+  readonly s3Prefix: string;
   readonly version: PreparedStorageVersion;
   readonly updatedAt: Date;
 }
+
+interface StagedServerSideVolumeUpload {
+  readonly kind: "upload";
+  readonly volume: PreparedServerSideVolume;
+  readonly bucketName: string;
+  readonly archiveBuffer: Buffer;
+  readonly manifest: S3StorageManifest;
+  readonly existing: PreparedStorageVersion | undefined;
+}
+
+type StagedServerSideVolume =
+  | {
+      readonly kind: "available";
+      readonly volume: PreparedServerSideVolume;
+    }
+  | StagedServerSideVolumeUpload;
 
 interface S3StorageManifest {
   readonly version: string;
@@ -388,12 +405,12 @@ async function resolveCanonicalVolumeStorage(
   return storage;
 }
 
-export const prepareVolumeServerSide$ = command(
+export const stageVolumeServerSide$ = command(
   async (
     { set },
     args: PrepareVolumeServerSideInput,
     signal: AbortSignal,
-  ): Promise<PreparedServerSideVolume> => {
+  ): Promise<StagedServerSideVolume> => {
     const files = materializeFiles(args.files);
     const totalSize = files.reduce((sum, file) => {
       return sum + file.size;
@@ -445,12 +462,16 @@ export const prepareVolumeServerSide$ = command(
                 signal,
               );
         return {
-          storageName: args.storageName,
-          version: version ?? {
-            ...expectedVersion,
-            archiveSize: objects.archiveSize,
+          kind: "available",
+          volume: {
+            storageName: args.storageName,
+            s3Prefix: storage.s3Prefix,
+            version: version ?? {
+              ...expectedVersion,
+              archiveSize: objects.archiveSize,
+            },
+            updatedAt,
           },
-          updatedAt,
         };
       }
     }
@@ -463,36 +484,76 @@ export const prepareVolumeServerSide$ = command(
       fileCount: files.length,
       files: fileEntries,
     };
+    return {
+      kind: "upload",
+      volume: {
+        storageName: args.storageName,
+        s3Prefix: storage.s3Prefix,
+        version: {
+          ...expectedVersion,
+          archiveSize: archiveBuffer.length,
+        },
+        updatedAt,
+      },
+      bucketName,
+      archiveBuffer,
+      manifest,
+      existing,
+    };
+  },
+);
+
+export const publishStagedVolumeServerSide$ = command(
+  async (
+    { set },
+    staged: StagedServerSideVolume,
+    signal: AbortSignal,
+  ): Promise<PreparedServerSideVolume> => {
+    if (staged.kind === "available") {
+      return staged.volume;
+    }
+
     await set(
       uploadAndVerifyVolumeObjects$,
       {
-        bucketName,
-        s3Key,
-        archiveBuffer,
-        manifest,
-        fileCount: files.length,
-        storageName: args.storageName,
+        bucketName: staged.bucketName,
+        s3Key: staged.volume.version.s3Key,
+        archiveBuffer: staged.archiveBuffer,
+        manifest: staged.manifest,
+        fileCount: staged.volume.version.fileCount,
+        storageName: staged.volume.storageName,
       },
       signal,
     );
 
-    const uploadedVersion = {
-      ...expectedVersion,
-      archiveSize: archiveBuffer.length,
-    };
-    const version = existing
-      ? await reconcileArchiveSize(
-          writeDb,
-          expectedVersion,
-          archiveBuffer.length,
-          signal,
-        )
-      : undefined;
+    if (!staged.existing) {
+      return staged.volume;
+    }
+
+    const { archiveSize, ...expectedVersion } = staged.volume.version;
+    const writeDb = set(writeDb$);
+    const version = await reconcileArchiveSize(
+      writeDb,
+      expectedVersion,
+      archiveSize,
+      signal,
+    );
     return {
-      storageName: args.storageName,
-      version: version ?? uploadedVersion,
-      updatedAt,
+      ...staged.volume,
+      version: version ?? staged.volume.version,
     };
+  },
+);
+
+export const prepareVolumeServerSide$ = command(
+  async (
+    { set },
+    args: PrepareVolumeServerSideInput,
+    signal: AbortSignal,
+  ): Promise<PreparedServerSideVolume> => {
+    const staged = await set(stageVolumeServerSide$, args, signal);
+    signal.throwIfAborted();
+    return await set(publishStagedVolumeServerSide$, staged, signal);
   },
 );
 

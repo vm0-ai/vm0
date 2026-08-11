@@ -1934,10 +1934,12 @@ export function createConnectorBddApi(context: TestContext) {
       connectorId: string,
       body: UpdateCustomConnectorBody,
       statuses: readonly (200 | 400 | 401 | 403 | 404 | 500)[],
+      signal?: AbortSignal,
     ) {
       const client = setupApp({
         context,
         routes: zeroCustomConnectorByIdTestRoutes,
+        signal,
       })(zeroCustomConnectorByIdContract);
       return await accept(
         client.update({

@@ -75,8 +75,9 @@ import { effectiveCustomConnectorPermissionBundleRef } from "./feishu-custom-con
 import {
   commitPreparedCustomConnectorSkillStorage,
   prepareCustomConnectorSkillVolume$,
+  type PreparedCustomConnectorSkillVolume,
 } from "./custom-connector-skill-volume.service";
-import type { PreparedServerSideVolume } from "./storage-volume-publication.service";
+import { recordDeletedCustomConnectorSkillStorage } from "./custom-connector-skill-publication.service";
 import {
   commitConnectorRuntimeMutation,
   publishConnectorRuntimeSyncWakeups,
@@ -1696,7 +1697,7 @@ async function persistCustomConnectorCreate(
     readonly storageVersion: number;
     readonly oauthConfigUpdate: ValidatedOAuthConfigUpdate;
     readonly encryptedClientSecret: string | null;
-    readonly preparedSkill: PreparedServerSideVolume | null;
+    readonly preparedSkill: PreparedCustomConnectorSkillVolume | null;
   },
   signal: AbortSignal,
 ): Promise<
@@ -1718,7 +1719,7 @@ async function persistCustomConnectorCreate(
     }
     if (args.preparedSkill) {
       await commitPreparedCustomConnectorSkillStorage(
-        { db: tx, volume: args.preparedSkill },
+        { db: tx, skill: args.preparedSkill },
         signal,
       );
     }
@@ -1735,7 +1736,8 @@ async function persistCustomConnectorCreate(
         queryInjections: [...args.definition.queryInjections],
         authMode: args.definition.authMode,
         skillMarkdown: args.definition.skillMarkdown,
-        skillStorageVersionId: args.preparedSkill?.version.versionId ?? null,
+        skillStorageVersionId:
+          args.preparedSkill?.volume.version.versionId ?? null,
         storageVersion: args.storageVersion,
         createdBy: args.userId,
       })
@@ -1943,7 +1945,7 @@ interface PersistCustomConnectorUpdateArgs {
   readonly encryptedClientSecret: string | null;
   readonly grantConfigurationChanged: boolean;
   readonly storageVersion: number;
-  readonly preparedSkill: PreparedServerSideVolume | null;
+  readonly preparedSkill: PreparedCustomConnectorSkillVolume | null;
 }
 
 async function persistCustomConnectorUpdate(
@@ -2005,7 +2007,7 @@ async function persistCustomConnectorUpdate(
     }
     if (args.preparedSkill) {
       await commitPreparedCustomConnectorSkillStorage(
-        { db: tx, volume: args.preparedSkill },
+        { db: tx, skill: args.preparedSkill },
         signal,
       );
     }
@@ -2020,7 +2022,8 @@ async function persistCustomConnectorUpdate(
         queryInjections: [...args.definition.queryInjections],
         authMode: args.definition.authMode,
         skillMarkdown: args.definition.skillMarkdown,
-        skillStorageVersionId: args.preparedSkill?.version.versionId ?? null,
+        skillStorageVersionId:
+          args.preparedSkill?.volume.version.versionId ?? null,
         storageVersion: args.storageVersion,
         updatedAt: nowDate(),
       })
@@ -2357,10 +2360,21 @@ export const deleteCustomConnector$ = command(
             eq(orgCustomConnectors.orgId, args.orgId),
           ),
         )
+        .for("update", { of: orgCustomConnectors })
         .limit(1);
+      signal.throwIfAborted();
       if (!existing) {
         return false;
       }
+      await recordDeletedCustomConnectorSkillStorage(
+        {
+          db: tx,
+          orgId: args.orgId,
+          connectorId: existing.id,
+          deletedAt: nowDate(),
+        },
+        signal,
+      );
       await tx
         .delete(orgCustomConnectorValues)
         .where(eq(orgCustomConnectorValues.connectorId, args.id));

@@ -57,6 +57,10 @@ import {
   readCustomConnectorOAuthStorageState,
   setCustomConnectorCredentialStorageState,
 } from "./helpers/connector-credential-storage-state";
+import {
+  claimCustomConnectorSkillPublication,
+  readCustomConnectorSkillCleanupState,
+} from "./helpers/custom-connector-skill-cleanup-state";
 import { zeroCustomConnectorsRoutes } from "../zero-custom-connectors";
 
 const context = testContext();
@@ -4693,30 +4697,135 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     context.mocks.s3.send.mockRejectedValue(
       new Error("Custom connector skill update upload failed"),
     );
+    const failedUpdate = {
+      displayName: "Must Not Become Active",
+      prefixTemplates: created.prefixTemplates,
+      fields: created.fields,
+      headerInjections: created.headerInjections,
+      queryInjections: created.queryInjections,
+      authMode: created.authMode,
+      skillMarkdown: "These failed instructions must not become active.",
+    };
 
     const response = await connectorsApi.requestUpdateCustomConnector(
       admin,
       created.id,
-      {
-        displayName: "Must Not Become Active",
-        prefixTemplates: created.prefixTemplates,
-        fields: created.fields,
-        headerInjections: created.headerInjections,
-        queryInjections: created.queryInjections,
-        authMode: created.authMode,
-        skillMarkdown: "These failed instructions must not become active.",
-      },
+      failedUpdate,
       [500],
     );
 
     expect(response.status).toBe(500);
+    const failedState = await readCustomConnectorSkillCleanupState(
+      context,
+      admin,
+      created.id,
+    );
+    expect(failedState.publications).toHaveLength(1);
+    expect(failedState.publications[0]).toMatchObject({
+      storageId: failedState.storage?.id,
+      s3Prefix: failedState.storage?.s3Prefix,
+      state: "preparing",
+    });
+    const failedVersionId = failedState.publications[0]?.versionId;
+    if (!failedVersionId) {
+      throw new Error("Expected failed publication version state");
+    }
+    await expect(
+      claimCustomConnectorSkillPublication(
+        context,
+        admin,
+        created.id,
+        failedVersionId,
+      ),
+    ).resolves.toBeTruthy();
     context.mocks.s3.send.mockResolvedValue({ ContentLength: 1024 });
+    context.mocks.s3.send.mockClear();
+    const claimedRetry = await connectorsApi.requestUpdateCustomConnector(
+      admin,
+      created.id,
+      failedUpdate,
+      [500],
+    );
+    expect(claimedRetry.status).toBe(500);
+    expect(context.mocks.s3.send).not.toHaveBeenCalled();
+    await expect(
+      readCustomConnectorSkillCleanupState(context, admin, created.id),
+    ).resolves.toMatchObject({
+      publications: [
+        expect.objectContaining({
+          versionId: failedVersionId,
+          state: "cleanup_claimed",
+        }),
+      ],
+    });
     await expect(
       connectorsApi.readCustomConnector(admin, created.id),
     ).resolves.toMatchObject({
       displayName: created.displayName,
       skillMarkdown: "Keep these active instructions.",
     });
+    await expect(
+      storagesApi.downloadStorage(admin, {
+        name: storageName,
+        owner: "organization",
+      }),
+    ).resolves.toMatchObject({ versionId: initialHead.versionId });
+
+    await connectorsApi.deleteCustomConnector(admin, created.id);
+  });
+
+  it("leaves retryable publication state when an upload request aborts", async () => {
+    const bdd = createBddApi(context);
+    const admin = bdd.user();
+    bdd.acceptAgentStorageWrites();
+    const created = await connectorsApi.createCustomConnector(admin, {
+      ...customConnectorBody(uniqueSlug("bdd-skill-update-abort")),
+      skillMarkdown: "Keep these instructions after an abort.",
+    });
+    const storageName = getCustomConnectorSkillStorageName(created.id);
+    const initialHead = await storagesApi.downloadStorage(admin, {
+      name: storageName,
+      owner: "organization",
+    });
+    const controller = new AbortController();
+    const abortError = new Error("Custom connector skill upload aborted");
+    abortError.name = "AbortError";
+    context.mocks.s3.send.mockImplementation((command: unknown) => {
+      if (uploadedSkillInstruction(command)?.includes("Aborted instructions")) {
+        controller.abort(abortError);
+      }
+      return Promise.resolve({ ContentLength: 1024 });
+    });
+
+    const response = await connectorsApi.requestUpdateCustomConnector(
+      admin,
+      created.id,
+      {
+        displayName: "Aborted Definition",
+        prefixTemplates: created.prefixTemplates,
+        fields: created.fields,
+        headerInjections: created.headerInjections,
+        queryInjections: created.queryInjections,
+        authMode: created.authMode,
+        skillMarkdown: "Aborted instructions must not become active.",
+      },
+      [500],
+      controller.signal,
+    );
+
+    expect(response.status).toBe(500);
+    await expect(
+      readCustomConnectorSkillCleanupState(context, admin, created.id),
+    ).resolves.toMatchObject({
+      publications: [expect.objectContaining({ state: "preparing" })],
+    });
+    await expect(
+      connectorsApi.readCustomConnector(admin, created.id),
+    ).resolves.toMatchObject({
+      displayName: created.displayName,
+      skillMarkdown: "Keep these instructions after an abort.",
+    });
+    context.mocks.s3.send.mockResolvedValue({ ContentLength: 1024 });
     await expect(
       storagesApi.downloadStorage(admin, {
         name: storageName,
@@ -4806,6 +4915,16 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
         owner: "organization",
       }),
     ).resolves.toMatchObject({ versionId: winningHead.versionId });
+    const staleState = await readCustomConnectorSkillCleanupState(
+      context,
+      admin,
+      created.id,
+    );
+    expect(staleState.publications).toHaveLength(1);
+    expect(staleState.publications[0]).toMatchObject({ state: "preparing" });
+    expect(staleState.publications[0]?.versionId).not.toBe(
+      winningHead.versionId,
+    );
 
     await connectorsApi.deleteCustomConnector(admin, created.id);
   });
@@ -4830,6 +4949,14 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       name: storageName,
       owner: "organization",
     });
+    const activeCleanupState = await readCustomConnectorSkillCleanupState(
+      context,
+      admin,
+      created.id,
+    );
+    expect(activeCleanupState.storage).not.toBeNull();
+    expect(activeCleanupState.publications).toStrictEqual([]);
+    expect(activeCleanupState.tombstone).toBeNull();
 
     const skillUpdated = await connectorsApi.updateCustomConnector(
       admin,
@@ -4913,7 +5040,24 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       }),
     ).resolves.toMatchObject({ versionId: updatedHead.versionId });
 
+    const deletedAt = new Date("2036-01-02T03:04:05.000Z");
+    context.mocks.s3.send.mockClear();
+    mockNow(deletedAt);
     await connectorsApi.deleteCustomConnector(admin, created.id);
+    clearMockNow();
+    expect(context.mocks.s3.send).not.toHaveBeenCalled();
+    const deletedCleanupState = await readCustomConnectorSkillCleanupState(
+      context,
+      admin,
+      created.id,
+    );
+    expect(deletedCleanupState.publications).toStrictEqual([]);
+    expect(deletedCleanupState.tombstone).toStrictEqual({
+      storageId: activeCleanupState.storage?.id,
+      connectorId: created.id,
+      s3Prefix: activeCleanupState.storage?.s3Prefix,
+      deletedAt: deletedAt.toISOString(),
+    });
     await expect(
       storagesApi.downloadStorage(admin, {
         name: storageName,
