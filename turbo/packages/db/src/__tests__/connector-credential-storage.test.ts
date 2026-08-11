@@ -29,8 +29,18 @@ describe("connector credential storage schema", () => {
     const variableOwnerIndex = variableConfig.indexes.find((index) => {
       return index.config.name === "idx_variables_connector";
     });
+    const variableOwnerNameIndex = variableConfig.indexes.find((index) => {
+      return index.config.name === "idx_variables_connector_name";
+    });
+    const variableLegacyNameIndex = variableConfig.indexes.find((index) => {
+      return index.config.name === "idx_variables_org_user_type_name";
+    });
     expect(secretOwnerIndex?.config.where).toBeDefined();
     expect(variableOwnerIndex?.config.where).toBeDefined();
+    expect(variableOwnerNameIndex?.config.unique).toBe(true);
+    expect(variableOwnerNameIndex?.config.where).toBeDefined();
+    expect(variableLegacyNameIndex?.config.unique).toBe(true);
+    expect(variableLegacyNameIndex?.config.where).toBeUndefined();
     expect(
       secretConfig.checks.map((check) => {
         return check.name;
@@ -44,6 +54,20 @@ describe("connector credential storage schema", () => {
     expect(secretConfig.foreignKeys).toHaveLength(1);
     expect(secretConfig.foreignKeys[0]?.onDelete).toBe("cascade");
     expect(variableConfig.foreignKeys).toHaveLength(1);
-    expect(variableConfig.foreignKeys[0]?.onDelete).toBe("cascade");
+    const variableOwnerForeignKey = variableConfig.foreignKeys[0];
+    expect(variableOwnerForeignKey?.getName()).toBe(
+      "fk_variables_connector_owner",
+    );
+    expect(variableOwnerForeignKey?.onDelete).toBe("cascade");
+    expect(
+      variableOwnerForeignKey?.reference().columns.map((column) => {
+        return column.name;
+      }),
+    ).toStrictEqual(["connector_id", "org_id", "user_id"]);
+    expect(
+      variableOwnerForeignKey?.reference().foreignColumns.map((column) => {
+        return column.name;
+      }),
+    ).toStrictEqual(["id", "org_id", "user_id"]);
   });
 });

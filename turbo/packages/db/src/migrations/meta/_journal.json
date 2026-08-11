@@ -624,6 +624,13 @@
       "when": 1786429087303,
       "tag": "0896_neat_makkari",
       "breakpoints": true
+    },
+    {
+      "idx": 897,
+      "version": "7",
+      "when": 1786432064522,
+      "tag": "0897_bizarre_kid_colt",
+      "breakpoints": true
     }
   ]
 }
