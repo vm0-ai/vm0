@@ -167,15 +167,17 @@ function SlackCardActions({
       {isInstalled && (isConnected || isAdmin) && (
         <Popover>
           <PopoverTrigger asChild>
-            <button
+            <Button
               type="button"
-              className="shrink-0 rounded p-1.5 text-muted-foreground hover:bg-state-hover hover:text-foreground transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              variant="quiet"
+              size="icon-xs"
+              className="shrink-0"
               aria-label={t(($) => {
                 return $.works.actions.moreOptions;
               })}
             >
               <EllipsisVertical size={16} />
-            </button>
+            </Button>
           </PopoverTrigger>
           <PopoverContent
             align="end"
@@ -461,15 +463,17 @@ function TeamsCardActions({
       {isInstalled && (isConnected || isAdmin) && (
         <Popover>
           <PopoverTrigger asChild>
-            <button
+            <Button
               type="button"
-              className="shrink-0 rounded p-1.5 text-muted-foreground hover:bg-state-hover hover:text-foreground transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              variant="quiet"
+              size="icon-xs"
+              className="shrink-0"
               aria-label={t(($) => {
                 return $.works.teams.moreOptions;
               })}
             >
               <EllipsisVertical size={16} />
-            </button>
+            </Button>
           </PopoverTrigger>
           <PopoverContent
             align="end"

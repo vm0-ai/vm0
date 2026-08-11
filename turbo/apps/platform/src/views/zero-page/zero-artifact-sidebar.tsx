@@ -18,11 +18,12 @@ import {
   useSet,
 } from "ccstate-react";
 import {
-  cn,
+  Button,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  cn,
 } from "@vm0/ui";
 import { useTranslation } from "react-i18next";
 import type { ArtifactRef } from "../../signals/chat-page/thread-sidebar.ts";
@@ -559,16 +560,18 @@ function ArtifactSidebarHeader({
             return $.artifacts.actions.backToAll;
           })}
         >
-          <button
+          <Button
             type="button"
             onClick={onBack}
             aria-label={t(($) => {
               return $.artifacts.actions.backToAll;
             })}
-            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
+            variant="quiet"
+            size="icon-sm"
+            className="shrink-0"
           >
             <ArrowLeft size={16} />
-          </button>
+          </Button>
         </ArtifactActionTooltip>
       )}
       <div className="min-w-0 flex-1">
@@ -728,15 +731,17 @@ function ArtifactFullscreenAction({
       });
   return (
     <ArtifactActionTooltip label={label}>
-      <button
+      <Button
         type="button"
         onClick={onToggleFullscreen}
         aria-label={label}
         data-testid="artifact-sidebar-fullscreen-toggle"
-        className="hidden xl:inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-state-hover hover:text-foreground"
+        variant="quiet"
+        size="icon-sm"
+        className="hidden xl:inline-flex"
       >
         {fullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
-      </button>
+      </Button>
     </ArtifactActionTooltip>
   );
 }
@@ -751,15 +756,16 @@ function ArtifactMoreActions({ onClose }: { onClose: () => void }) {
         })}
       >
         <DropdownMenuTrigger asChild>
-          <button
+          <Button
             type="button"
             aria-label={t(($) => {
               return $.artifacts.actions.more;
             })}
-            className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-state-hover hover:text-foreground"
+            variant="quiet"
+            size="icon-sm"
           >
             <Ellipsis size={16} />
-          </button>
+          </Button>
         </DropdownMenuTrigger>
       </ArtifactActionTooltip>
       <DropdownMenuContent align="end">
@@ -781,17 +787,19 @@ function ArtifactCloseAction({ onClose }: { onClose: () => void }) {
         return $.artifacts.actions.closeArtifact;
       })}
     >
-      <button
+      <Button
         type="button"
         onClick={onClose}
         aria-label={t(($) => {
           return $.artifacts.actions.closeArtifact;
         })}
         data-testid="artifact-sidebar-close"
-        className="inline-flex h-8 w-8 items-center justify-center rounded-full text-muted-foreground hover:bg-state-hover hover:text-foreground"
+        variant="quiet"
+        size="icon-sm"
+        className="rounded-full"
       >
         <X size={16} />
-      </button>
+      </Button>
     </ArtifactActionTooltip>
   );
 }
@@ -1197,7 +1205,7 @@ function ArtifactImageNavigationControls({
   return (
     <>
       {navigation.onPrevious && (
-        <button
+        <Button
           type="button"
           onClick={navigation.onPrevious}
           aria-label={t(($) => {
@@ -1207,13 +1215,15 @@ function ArtifactImageNavigationControls({
             return $.artifacts.actions.previousImage;
           })}
           data-testid="artifact-sidebar-previous-image"
-          className="absolute left-4 top-1/2 z-20 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-border/60 bg-background/90 text-foreground shadow-lg backdrop-blur-sm transition-colors hover:bg-state-hover"
+          variant="quiet"
+          size="icon-lg"
+          className="absolute left-4 top-1/2 z-20 -translate-y-1/2 rounded-full border border-border/60 bg-background/90 text-foreground shadow-lg backdrop-blur-sm [&_svg]:size-[22px]"
         >
           <ChevronLeft size={22} />
-        </button>
+        </Button>
       )}
       {navigation.onNext && (
-        <button
+        <Button
           type="button"
           onClick={navigation.onNext}
           aria-label={t(($) => {
@@ -1223,10 +1233,12 @@ function ArtifactImageNavigationControls({
             return $.artifacts.actions.nextImage;
           })}
           data-testid="artifact-sidebar-next-image"
-          className="absolute right-4 top-1/2 z-20 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-border/60 bg-background/90 text-foreground shadow-lg backdrop-blur-sm transition-colors hover:bg-state-hover"
+          variant="quiet"
+          size="icon-lg"
+          className="absolute right-4 top-1/2 z-20 -translate-y-1/2 rounded-full border border-border/60 bg-background/90 text-foreground shadow-lg backdrop-blur-sm [&_svg]:size-[22px]"
         >
           <ChevronRight size={22} />
-        </button>
+        </Button>
       )}
     </>
   );

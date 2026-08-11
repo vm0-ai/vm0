@@ -766,16 +766,17 @@ function PricingPage({
         <TooltipProvider delayDuration={200}>
           <Tooltip>
             <TooltipTrigger asChild>
-              <button
+              <Button
                 type="button"
                 onClick={onBack}
-                className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-state-hover transition-colors"
+                variant="quiet"
+                size="icon-xs"
                 aria-label={i18n.t(($) => {
                   return $.billing.common.back;
                 })}
               >
                 <ArrowLeft size={16} />
-              </button>
+              </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom">
               <p className="text-xs">
@@ -1340,7 +1341,7 @@ function ConcurrencyQuantityControl({
     <div className="flex items-center justify-between gap-3 rounded-lg border border-border/60 bg-muted/20 px-3 py-2">
       <span className="text-[13px] font-medium text-foreground">{label}</span>
       <div className="flex h-8 items-center rounded-lg border border-border/70 bg-background">
-        <button
+        <Button
           type="button"
           aria-label={i18n.t(($) => {
             return $.billing.concurrency.decreaseAria;
@@ -1348,17 +1349,19 @@ function ConcurrencyQuantityControl({
           disabled={
             quantity <= CONCURRENCY_SUBSCRIPTION_QUANTITY_MIN || disabled
           }
-          className="flex h-8 w-8 items-center justify-center rounded-l-lg text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+          variant="quiet"
+          size="icon-sm"
+          className="rounded-l-lg disabled:cursor-not-allowed disabled:opacity-40"
           onClick={() => {
             onQuantityChange(quantity - 1);
           }}
         >
           <Minus size={13} />
-        </button>
+        </Button>
         <span className="flex h-8 w-11 items-center justify-center border-x border-border/70 text-sm font-medium tabular-nums text-foreground">
           {formatLocalizedNumber(quantity)}
         </span>
-        <button
+        <Button
           type="button"
           aria-label={i18n.t(($) => {
             return $.billing.concurrency.increaseAria;
@@ -1366,13 +1369,15 @@ function ConcurrencyQuantityControl({
           disabled={
             quantity >= CONCURRENCY_SUBSCRIPTION_QUANTITY_MAX || disabled
           }
-          className="flex h-8 w-8 items-center justify-center rounded-r-lg text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+          variant="quiet"
+          size="icon-sm"
+          className="rounded-r-lg disabled:cursor-not-allowed disabled:opacity-40"
           onClick={() => {
             onQuantityChange(quantity + 1);
           }}
         >
           <Plus size={13} />
-        </button>
+        </Button>
       </div>
     </div>
   );

@@ -30,8 +30,19 @@ const buttonVariants = cva(
         sm: "h-8 px-3",
         default: "h-9 px-4",
         lg: "h-10 px-6",
-        icon: "h-9 w-9",
+        "icon-2xs": "h-6 w-6",
+        "icon-xs": "h-7 w-7",
         "icon-sm": "h-8 w-8",
+        icon: "h-9 w-9",
+        "icon-lg": "h-10 w-10",
+      },
+      // Icon buttons across the app draw 16px, 18px, or 20px glyphs. The base
+      // `[&_svg]:size-4` covers 16px; the other two need an explicit opt-in so
+      // callers stop hand-rolling `[&_svg]:size-[18px]` on every toolbar.
+      iconSize: {
+        sm: "[&_svg]:size-4",
+        md: "[&_svg]:size-[18px]",
+        lg: "[&_svg]:size-5",
       },
     },
     defaultVariants: {
@@ -49,12 +60,12 @@ export interface ButtonProps
 }
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant, size, asChild = false, ...props }, ref) => {
+  ({ className, variant, size, iconSize, asChild = false, ...props }, ref) => {
     const Comp = asChild ? Slot : "button";
 
     return (
       <Comp
-        className={cn(buttonVariants({ variant, size, className }))}
+        className={cn(buttonVariants({ variant, size, iconSize, className }))}
         ref={ref}
         {...props}
       />

@@ -346,10 +346,12 @@ function OAuthAccountRow({
         />
       ) : null}
       <div className="flex items-center gap-3">
-        <button
+        <Button
           type="button"
           role="radio"
-          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-border text-muted-foreground outline-none transition-colors enabled:hover:border-foreground/40 enabled:hover:bg-state-hover enabled:hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default"
+          variant="quiet"
+          size="icon-xs"
+          className="shrink-0 rounded-full border border-border hover:border-foreground/40 disabled:cursor-default disabled:opacity-100"
           aria-label={
             account.isActive
               ? t(($) => {
@@ -366,7 +368,7 @@ function OAuthAccountRow({
           {account.isActive ? (
             <span className="h-2 w-2 rounded-full bg-foreground" />
           ) : null}
-        </button>
+        </Button>
         <div className="flex min-w-0 flex-1 items-center gap-2">
           {plan ? (
             <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">

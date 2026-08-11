@@ -1,4 +1,5 @@
 import { useGet, useSet, useLastLoadable } from "ccstate-react";
+import { Button } from "@vm0/ui";
 import {
   connectorSlugSchema,
   type ConnectorAuthMethodId,
@@ -70,11 +71,11 @@ function AuthorizeAction({
     );
   }
   return (
-    <button
+    <Button
       type="button"
       disabled={isConnecting || disabled}
       onClick={onAuthorize}
-      className="inline-flex h-9 items-center justify-center gap-2 rounded-[10px] bg-[#ed4e01] px-4 text-sm font-medium text-white transition-colors hover:bg-primary-hover disabled:opacity-60"
+      className="disabled:opacity-60"
     >
       {isConnecting && <Loader2 size={14} className="animate-spin" />}
       {isConnecting
@@ -87,7 +88,7 @@ function AuthorizeAction({
             },
             { agent: agentName },
           )}
-    </button>
+    </Button>
   );
 }
 

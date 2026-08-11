@@ -700,16 +700,17 @@ function UsagePackPageHeader({
       <TooltipProvider delayDuration={200}>
         <Tooltip>
           <TooltipTrigger asChild>
-            <button
+            <Button
               type="button"
               onClick={onBack}
-              className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
+              variant="quiet"
+              size="icon-xs"
               aria-label={t(($) => {
                 return $.billing.common.back;
               })}
             >
               <ArrowLeft size={16} />
-            </button>
+            </Button>
           </TooltipTrigger>
           <TooltipContent side="bottom">
             <p className="text-xs">
