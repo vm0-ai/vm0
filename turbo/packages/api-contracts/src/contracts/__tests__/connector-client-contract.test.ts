@@ -238,12 +238,21 @@ describe("connector client response contracts", () => {
 });
 
 describe("custom connector client response contracts", () => {
-  it("normalizes current and future HTTP responses to the client shape", () => {
+  it("normalizes previous, current, and future HTTP responses to the client shape", () => {
+    const previousWirePayload = {
+      ...customHttpConnectorClientPayload,
+      prefixes: ["https://api.example.test"],
+      headerName: "Authorization",
+      headerTemplate: "Bearer {{token}}",
+      hasSecret: true,
+    };
     const currentWirePayload = {
       ...customHttpConnectorClientPayload,
       hasSecret: true,
     };
 
+    const previous =
+      customConnectorClientResponseSchema.parse(previousWirePayload);
     const current =
       customConnectorClientResponseSchema.parse(currentWirePayload);
     const future = customConnectorClientResponseSchema.parse(
@@ -253,13 +262,14 @@ describe("custom connector client response contracts", () => {
       customHttpConnectorPayloadBase,
     );
 
+    expect(previous).toStrictEqual(customHttpConnectorClientPayload);
     expect(current).toStrictEqual(customHttpConnectorClientPayload);
     expect(future).toStrictEqual(customHttpConnectorClientPayload);
     expect(kindless).toStrictEqual(customHttpConnectorClientPayload);
     expect(current).not.toHaveProperty("hasSecret");
     expect(
       customConnectorClientListResponseSchema.parse({
-        connectors: [currentWirePayload],
+        connectors: [previousWirePayload],
       }),
     ).toStrictEqual({ connectors: [customHttpConnectorClientPayload] });
   });
@@ -286,7 +296,16 @@ describe("custom connector client response contracts", () => {
       transport: "streamable-http",
       prefixTemplates: [],
     } as const;
+    const previousWirePayload = {
+      ...payload,
+      prefixes: [],
+      headerName: "",
+      headerTemplate: "",
+    } as const;
 
+    expect(
+      customConnectorClientResponseSchema.parse(previousWirePayload),
+    ).toStrictEqual(payload);
     expect(customConnectorClientResponseSchema.parse(payload)).toStrictEqual(
       payload,
     );
