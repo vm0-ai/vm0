@@ -13,6 +13,7 @@ import type {
 import { accept } from "../../lib/accept.ts";
 import { activeRoute$ } from "../active-route.ts";
 import { zeroClient$ } from "../api-client.ts";
+import { foregroundReady$ } from "../auth-retry.ts";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { createIdbChatThreadEventStores } from "../external/idb-chat-thread-event-store.ts";
 import { chatIdb$ } from "../external/chat-idb-store.ts";
@@ -104,6 +105,34 @@ const initialLocalChatThreadEventsLoaded$ = computed((get) => {
 
 const initialRemoteChatThreadEventsSynced$ = computed((get) => {
   return get(initialRemoteChatThreadEventsSyncedDeferred$).promise;
+});
+
+interface ChatThreadEventSyncBarrier {
+  inFlight: boolean;
+  next: ReturnType<typeof createDeferredPromise<void>>;
+}
+
+const chatThreadEventSyncBarrier$ = computed(
+  (get): ChatThreadEventSyncBarrier => {
+    return {
+      inFlight: false,
+      next: createDeferredPromise<void>(get(rootSignal$)),
+    };
+  },
+);
+
+const markChatThreadEventSyncPending$ = command(({ get }) => {
+  get(chatThreadEventSyncBarrier$).inFlight = true;
+});
+
+const resolveNextChatThreadEventSync$ = command(({ get }) => {
+  const barrier = get(chatThreadEventSyncBarrier$);
+  const completed = barrier.next;
+  barrier.inFlight = false;
+  barrier.next = createDeferredPromise<void>(get(rootSignal$));
+  if (!completed.settled()) {
+    completed.resolve();
+  }
 });
 
 const optimisticChatThreadCreateIds$ = computed((get): ReadonlySet<string> => {
@@ -332,6 +361,9 @@ const syncChatThreadEvents$ = command(
     mode: ChatThreadEventSyncMode,
     signal: AbortSignal,
   ): Promise<ChatThreadEventSyncResult> => {
+    if (mode === "incremental") {
+      set(markChatThreadEventSyncPending$);
+    }
     const store = get(chatThreadEventStores$);
     const state = get(chatThreadEventState$);
     const client = get(zeroClient$)(chatThreadsContract);
@@ -378,6 +410,7 @@ const syncChatThreadEvents$ = command(
       if (!synced.settled()) {
         synced.resolve();
       }
+      set(resolveNextChatThreadEventSync$);
     }
     return result;
   },
@@ -504,10 +537,26 @@ export function resolvedThreadMeta(threadId: string) {
       return meta;
     }
 
+    const foregroundReady = get(foregroundReady$);
+    const syncBarrier = get(chatThreadEventSyncBarrier$);
+    const foregroundSync =
+      foregroundReady.pending || syncBarrier.inFlight
+        ? syncBarrier.next.promise
+        : null;
+
     await get(initialLocalChatThreadEventsLoaded$);
     meta = get(meta$);
     if (meta) {
       return meta;
+    }
+
+    if (foregroundSync) {
+      await foregroundReady.promise;
+      await foregroundSync;
+      meta = get(meta$);
+      if (meta) {
+        return meta;
+      }
     }
 
     await get(initialRemoteChatThreadEventsSynced$);
