@@ -271,7 +271,10 @@ export interface StripeInvoice {
   readonly status: "draft" | "open" | "paid" | "uncollectible" | "void" | null;
   readonly paid?: boolean;
   readonly subtotal?: number | null;
-  readonly lines: { readonly data: readonly StripeInvoiceLine[] };
+  readonly lines: {
+    readonly data: readonly StripeInvoiceLine[];
+    readonly has_more?: boolean;
+  };
   readonly parent: {
     readonly subscription_details: {
       readonly metadata?: Record<string, string> | null;
@@ -424,6 +427,10 @@ export interface StripeInvoicesApi {
     limit?: number;
     starting_after?: string;
   }): Promise<StripeList<StripeInvoice>>;
+  listLineItems(
+    id: string,
+    params?: { limit?: number; starting_after?: string },
+  ): Promise<StripeList<StripeInvoiceLine>>;
   create(params: {
     customer: string;
     auto_advance?: boolean;

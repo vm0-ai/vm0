@@ -49,6 +49,7 @@ export const webhookClerkContract = c.router({
     responses: {
       200: thirdPartyWebhookOkSchema,
       401: thirdPartyWebhookErrorSchema,
+      503: thirdPartyWebhookErrorSchema,
     },
     summary: "Handle Clerk organization and user webhooks",
   },

@@ -296,18 +296,49 @@ function proratedLineAmount(
 
 function proratedInvoiceAmount(
   invoice: StripeInvoice,
+  lines: readonly StripeInvoiceLine[],
   deletionTimestamp: number,
 ): number {
   if (invoice.status !== "paid") {
     return 0;
   }
-  const amount = invoice.lines.data.reduce((total, line) => {
+  const amount = lines.reduce((total, line) => {
     return total + proratedLineAmount(line, deletionTimestamp);
   }, 0);
   if (!Number.isFinite(amount)) {
     throw new Error(`Stripe invoice ${invoice.id} has an invalid proration`);
   }
   return Math.max(0, Math.floor(amount));
+}
+
+async function listCompleteInvoiceLines(
+  stripe: StripeClient,
+  invoice: StripeInvoice,
+  signal: AbortSignal,
+): Promise<readonly StripeInvoiceLine[]> {
+  if (!invoice.lines.has_more) {
+    return invoice.lines.data;
+  }
+  const lines: StripeInvoiceLine[] = [];
+  let startingAfter: string | undefined;
+  while (true) {
+    const page = await stripe.invoices.listLineItems(invoice.id, {
+      limit: STRIPE_PAGE_SIZE,
+      ...(startingAfter ? { starting_after: startingAfter } : {}),
+    });
+    signal.throwIfAborted();
+    lines.push(...page.data);
+    const last = page.data[page.data.length - 1];
+    if (!page.has_more) {
+      return lines;
+    }
+    if (!last?.id) {
+      throw new Error(
+        `Stripe invoice ${invoice.id} returned an incomplete line-item page`,
+      );
+    }
+    startingAfter = last.id;
+  }
 }
 
 function refundMetadata(args: {
@@ -369,7 +400,7 @@ async function resolveRefund(
     : refund;
 }
 
-async function assertCreditNoteRefundStarted(
+async function assertCreditNoteRefundSucceeded(
   stripe: StripeClient,
   creditNote: StripeCreditNote,
 ): Promise<void> {
@@ -388,8 +419,10 @@ async function assertCreditNoteRefundStarted(
   }
   for (const entry of creditNote.refunds) {
     const refund = await resolveRefund(stripe, entry.refund);
-    if (refund.status === "failed" || refund.status === "canceled") {
-      throw new Error(`Stripe refund ${refund.id} ${refund.status}`);
+    if (refund.status !== "succeeded") {
+      throw new Error(
+        `Stripe refund ${refund.id} has non-terminal status ${String(refund.status)}`,
+      );
     }
   }
 }
@@ -413,7 +446,7 @@ async function refundInvoiceProration(
     signal,
   );
   if (existing) {
-    await assertCreditNoteRefundStarted(stripe, existing);
+    await assertCreditNoteRefundSucceeded(stripe, existing);
     signal.throwIfAborted();
     return;
   }
@@ -438,7 +471,7 @@ async function refundInvoiceProration(
     },
   );
   signal.throwIfAborted();
-  await assertCreditNoteRefundStarted(stripe, creditNote);
+  await assertCreditNoteRefundSucceeded(stripe, creditNote);
   signal.throwIfAborted();
 }
 
@@ -457,7 +490,12 @@ async function refundSubscriptionProration(
     signal,
   );
   for (const invoice of invoices) {
-    const amount = proratedInvoiceAmount(invoice, args.deletionTimestamp);
+    const lines = await listCompleteInvoiceLines(stripe, invoice, signal);
+    const amount = proratedInvoiceAmount(
+      invoice,
+      lines,
+      args.deletionTimestamp,
+    );
     if (amount <= 0) {
       continue;
     }

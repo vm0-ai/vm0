@@ -888,13 +888,19 @@ async function deleteUserData(
 export const cleanupClerkDeletedOrg$ = command(
   async ({ get, set }, orgId: string, signal: AbortSignal): Promise<void> => {
     const db = set(writeDb$);
-    await cancelAndRefundOrgBillingForDeletion(db, orgId, signal);
-    signal.throwIfAborted();
     await set(cleanupOrgExternalServices$, db, orgId, signal);
     signal.throwIfAborted();
     await get(deleteOrgS3Data(db, orgId));
     signal.throwIfAborted();
     await deleteOrgData(db, orgId, signal);
+  },
+);
+
+export const cleanupClerkDeletedOrgBilling$ = command(
+  async ({ set }, orgId: string, signal: AbortSignal): Promise<void> => {
+    const db = set(writeDb$);
+    await cancelAndRefundOrgBillingForDeletion(db, orgId, signal);
+    signal.throwIfAborted();
   },
 );
 

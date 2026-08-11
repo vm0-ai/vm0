@@ -8,10 +8,11 @@ import { type ClerkWebhookEvent, verifyClerkWebhook } from "../external/clerk";
 import { waitUntil } from "../context/wait-until";
 import { type Db, writeDb$ } from "../external/db";
 import type { RouteEntry } from "../route-entry";
-import { tapError } from "../utils";
+import { settle, tapError } from "../utils";
 import { ensureOrgLimitedFreeBootstrap$ } from "../services/org-limited-free-bootstrap.service";
 import {
   cleanupClerkBannedUser$,
+  cleanupClerkDeletedOrgBilling$,
   cleanupClerkDeletedOrgMembership$,
   cleanupClerkDeletedOrg$,
   cleanupClerkDeletedUser$,
@@ -20,7 +21,7 @@ import { handleUsagePackInvitationAccepted } from "../services/usage-pack-invita
 
 const L = logger("WebhookClerkRoute");
 
-function jsonError(message: string, status: 401): Response {
+function jsonError(message: string, status: 401 | 503): Response {
   return Response.json({ error: message }, { status });
 }
 
@@ -189,6 +190,34 @@ async function verifiedClerkWebhook(
   return await tapError(verifyClerkWebhook(request.clone(), { signingSecret }));
 }
 
+function missingOrganizationDeletedIdResponse(data: unknown): Response {
+  L.error("organization.deleted event missing org ID", { data });
+  return new Response("OK", { status: 200 });
+}
+
+async function handleOrganizationDeletedWebhook(
+  orgId: string,
+  billingCleanupTask: Promise<void>,
+  cleanupTask: () => Promise<void>,
+  signal: AbortSignal,
+): Promise<Response> {
+  const billingCleanup = await settle(billingCleanupTask, signal);
+  if (!billingCleanup.ok) {
+    L.error("organization.deleted billing cleanup failed", {
+      orgId,
+      error: billingCleanup.error,
+    });
+    return jsonError("Organization billing cleanup failed", 503);
+  }
+
+  waitUntil(
+    tapError(cleanupTask(), (error) => {
+      L.error("organization.deleted cleanup failed", { orgId, error });
+    }),
+  );
+  return new Response("OK", { status: 200 });
+}
+
 const postClerkWebhook$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<Response> => {
     const event = await verifiedClerkWebhook(get(request$).raw);
@@ -262,18 +291,16 @@ const postClerkWebhook$ = command(
     if (event.type === "organization.deleted") {
       const orgId = eventDataId(event.data);
       if (!orgId) {
-        L.error("organization.deleted event missing org ID", {
-          data: event.data,
-        });
-        return new Response("OK", { status: 200 });
+        return missingOrganizationDeletedIdResponse(event.data);
       }
-
-      waitUntil(
-        tapError(set(cleanupClerkDeletedOrg$, orgId, signal), (error) => {
-          L.error("organization.deleted cleanup failed", { orgId, error });
-        }),
+      return await handleOrganizationDeletedWebhook(
+        orgId,
+        set(cleanupClerkDeletedOrgBilling$, orgId, signal),
+        () => {
+          return set(cleanupClerkDeletedOrg$, orgId, signal);
+        },
+        signal,
       );
-      return new Response("OK", { status: 200 });
     }
 
     if (event.type === "user.deleted") {

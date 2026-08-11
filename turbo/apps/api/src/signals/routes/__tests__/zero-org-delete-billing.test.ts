@@ -123,6 +123,7 @@ function paidInvoice(
   customerId: string,
   subscriptionId: string,
   lines: readonly StripeInvoiceLine[],
+  hasMoreLines = false,
 ): StripeInvoice {
   return {
     id,
@@ -134,7 +135,7 @@ function paidInvoice(
     currency: "usd",
     status: "paid",
     paid: true,
-    lines: { data: lines },
+    lines: { data: lines, has_more: hasMoreLines },
     parent: {
       subscription_details: {
         subscription: subscriptionId,
@@ -148,6 +149,7 @@ function creditNote(
   id: string,
   amount: number,
   metadata?: Record<string, string>,
+  refundStatus = "succeeded",
 ): StripeCreditNote {
   return {
     id,
@@ -158,7 +160,7 @@ function creditNote(
     refunds: [
       {
         amount_refunded: amount,
-        refund: { id: `re_${id}`, status: "succeeded" },
+        refund: { id: `re_${id}`, status: refundStatus },
       },
     ],
   };
@@ -327,6 +329,66 @@ test("immediately cancels and proportionally refunds every org subscription sour
     throw new Error("Expected refund and organization deletion calls");
   }
   expect(lastRefundCall).toBeLessThan(deleteCall);
+});
+
+test("refunds every paginated invoice line", async () => {
+  const deletionTimestamp = 1_800_000_000;
+  const periodStart = deletionTimestamp - 500;
+  const periodEnd = deletionTimestamp + 500;
+  const subscriptionId = "sub_delete_paginated_lines";
+  const fixture = createOrgDeleteBillingFixture();
+  const firstLine = subscriptionLine(600, periodStart, periodEnd);
+  const secondLine = subscriptionLine(400, periodStart, periodEnd);
+  if (!firstLine.id) {
+    throw new Error("Expected invoice line ID");
+  }
+  await seedPlanSubscription(fixture, subscriptionId, periodEnd);
+  mockNow(deletionTimestamp * 1000);
+  mockOrgDeletion(fixture);
+  context.mocks.stripe.subscriptions.list.mockResolvedValue({
+    data: [subscription(subscriptionId, fixture.customerId)],
+    has_more: false,
+  });
+  context.mocks.stripe.invoices.list.mockResolvedValue({
+    data: [
+      paidInvoice(
+        "in_delete_paginated_lines",
+        fixture.customerId,
+        subscriptionId,
+        [firstLine],
+        true,
+      ),
+    ],
+    has_more: false,
+  });
+  context.mocks.stripe.invoices.listLineItems
+    .mockResolvedValueOnce({ data: [firstLine], has_more: true })
+    .mockResolvedValueOnce({ data: [secondLine], has_more: false });
+  context.mocks.stripe.creditNotes.preview.mockResolvedValue(
+    creditNote("preview_paginated_lines", 500),
+  );
+  context.mocks.stripe.creditNotes.create.mockResolvedValue(
+    creditNote("cn_paginated_lines", 500),
+  );
+
+  await accept(requestOrgDeletion(), [200]);
+
+  expect(context.mocks.stripe.invoices.listLineItems).toHaveBeenNthCalledWith(
+    1,
+    "in_delete_paginated_lines",
+    { limit: 100 },
+  );
+  expect(context.mocks.stripe.invoices.listLineItems).toHaveBeenNthCalledWith(
+    2,
+    "in_delete_paginated_lines",
+    { limit: 100, starting_after: firstLine.id },
+  );
+  expect(context.mocks.stripe.creditNotes.preview).toHaveBeenCalledWith(
+    expect.objectContaining({
+      invoice: "in_delete_paginated_lines",
+      amount: 500,
+    }),
+  );
 });
 
 test("deletes an org without Stripe calls when it has no billing references", async () => {
@@ -525,6 +587,42 @@ test("does not delete the org when its proportional refund fails", async () => {
   ).not.toHaveBeenCalled();
 });
 
+test("does not delete the org before its Stripe refund succeeds", async () => {
+  const deletionTimestamp = 1_800_000_000;
+  const periodStart = deletionTimestamp - 500;
+  const periodEnd = deletionTimestamp + 500;
+  const subscriptionId = "sub_delete_refund_pending";
+  const fixture = createOrgDeleteBillingFixture();
+  await seedPlanSubscription(fixture, subscriptionId, periodEnd);
+  mockNow(deletionTimestamp * 1000);
+  mockOrgDeletion(fixture);
+  context.mocks.stripe.subscriptions.list.mockResolvedValue({
+    data: [subscription(subscriptionId, fixture.customerId)],
+    has_more: false,
+  });
+  context.mocks.stripe.invoices.list.mockResolvedValue({
+    data: [
+      paidInvoice("in_delete_pending", fixture.customerId, subscriptionId, [
+        subscriptionLine(1000, periodStart, periodEnd),
+      ]),
+    ],
+    has_more: false,
+  });
+  context.mocks.stripe.creditNotes.preview.mockResolvedValue(
+    creditNote("preview_pending", 500),
+  );
+  context.mocks.stripe.creditNotes.create.mockResolvedValue(
+    creditNote("cn_pending", 500, undefined, "pending"),
+  );
+
+  const response = await requestOrgDeletion();
+
+  expect(response.status).toBe(500);
+  expect(
+    context.mocks.clerk.organizations.deleteOrganization,
+  ).not.toHaveBeenCalled();
+});
+
 test("retries refunds on redelivery before cleaning a Clerk-deleted org", async () => {
   const deletionTimestamp = 1_800_000_000;
   const periodStart = deletionTimestamp - 500;
@@ -578,17 +676,15 @@ test("retries refunds on redelivery before cleaning a Clerk-deleted org", async 
 
   const webhooks = createWebhookCallbackApi(context);
   webhooks.configureClerkWebhookSecret();
-  const deliverOrgDeleted = async (): Promise<void> => {
-    webhooks.verifyNextClerkWebhook({
-      type: "organization.deleted",
-      data: { id: fixture.orgId },
-    });
-    const response = await webhooks.requestClerkWebhook("{}", {}, [200]);
-    expect(response.body).toBe("OK");
-    await flushWaitUntilForTest();
-  };
+  webhooks.verifyNextClerkWebhook({
+    type: "organization.deleted",
+    data: { id: fixture.orgId },
+  });
+  const firstDelivery = await webhooks.requestClerkWebhook("{}", {}, [503]);
 
-  await deliverOrgDeleted();
+  expect(firstDelivery.body).toStrictEqual({
+    error: "Organization billing cleanup failed",
+  });
 
   expect(context.mocks.stripe.subscriptions.cancel).toHaveBeenCalledOnce();
   expect(context.mocks.stripe.creditNotes.create).toHaveBeenCalledOnce();
@@ -597,7 +693,13 @@ test("retries refunds on redelivery before cleaning a Clerk-deleted org", async 
       .hasSubscription,
   ).toBeTruthy();
 
-  await deliverOrgDeleted();
+  webhooks.verifyNextClerkWebhook({
+    type: "organization.deleted",
+    data: { id: fixture.orgId },
+  });
+  const redelivery = await webhooks.requestClerkWebhook("{}", {}, [200]);
+  expect(redelivery.body).toBe("OK");
+  await flushWaitUntilForTest();
 
   expect(context.mocks.stripe.subscriptions.cancel).toHaveBeenCalledOnce();
   expect(context.mocks.stripe.creditNotes.create).toHaveBeenCalledTimes(2);

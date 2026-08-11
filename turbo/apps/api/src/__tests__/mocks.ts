@@ -169,6 +169,7 @@ export interface ApiTestMocks {
     };
     readonly invoices: {
       readonly list: AsyncMock;
+      readonly listLineItems: AsyncMock;
       readonly retrieve: AsyncMock;
       readonly create: AsyncMock;
       readonly createPreview: AsyncMock;
@@ -345,6 +346,7 @@ const apiTestMocks: ApiTestMocks = vi.hoisted((): ApiTestMocks => {
     },
     invoices: {
       list: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
+      listLineItems: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
       retrieve: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
       create: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
       createPreview: vi.fn<(...args: unknown[]) => Promise<unknown>>(),
@@ -907,6 +909,7 @@ vi.mock("stripe", async (importOriginal) => {
         },
         invoices: {
           list: apiTestMocks.stripe.invoices.list,
+          listLineItems: apiTestMocks.stripe.invoices.listLineItems,
           retrieve: apiTestMocks.stripe.invoices.retrieve,
           create: apiTestMocks.stripe.invoices.create,
           createPreview: apiTestMocks.stripe.invoices.createPreview,
@@ -1185,6 +1188,11 @@ export function resetApiTestMocks(): void {
   apiTestMocks.stripe.paymentMethods.list.mockResolvedValue({ data: [] });
   apiTestMocks.stripe.invoices.list.mockReset();
   apiTestMocks.stripe.invoices.list.mockResolvedValue({
+    data: [],
+    has_more: false,
+  });
+  apiTestMocks.stripe.invoices.listLineItems.mockReset();
+  apiTestMocks.stripe.invoices.listLineItems.mockResolvedValue({
     data: [],
     has_more: false,
   });
