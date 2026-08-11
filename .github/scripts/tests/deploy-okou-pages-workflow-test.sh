@@ -49,12 +49,19 @@ release_job = release["jobs"]["promote-app-production"]
 rollback_job = rollback["jobs"]["rollback-app"]
 
 preview_step = find_step(turbo_job, "Deploy Cloudflare Pages preview")
+vercel_preview_step = find_step(
+    turbo_job, "Deploy Vercel-backed Cloudflare Pages preview"
+)
 release_step = find_step(release_job, "Deploy Cloudflare Pages production")
 rollback_step = find_step(rollback_job, "Deploy App to Cloudflare Pages production")
 
 shared_script = "bash .github/scripts/deploy-okou-pages.sh"
 require_fragments(
     preview_step,
+    [shared_script, '"$PAGES_DIST"', '"$CF_PAGES_PROJECT_NAME"', '"$PAGES_BRANCH"', '"$ARTIFACT_SHA"'],
+)
+require_fragments(
+    vercel_preview_step,
     [shared_script, '"$PAGES_DIST"', '"$CF_PAGES_PROJECT_NAME"', '"$PAGES_BRANCH"', '"$ARTIFACT_SHA"'],
 )
 require_fragments(
@@ -66,7 +73,7 @@ require_fragments(
     [shared_script, '"$PAGES_DIST"', '"$CF_PAGES_PROJECT_NAME"', "production", '"$TARGET_COMMIT"'],
 )
 
-for step in (preview_step, release_step, rollback_step):
+for step in (preview_step, vercel_preview_step, release_step, rollback_step):
     if "working-directory" in step:
         raise RuntimeError(f"shared Pages deployment must run from the repository root: {step['name']}")
 
@@ -82,8 +89,14 @@ require_fragments(
     preview_step,
     ["pages-deploy-detailed", "deployment_url", "deployment_commit"],
 )
+require_fragments(
+    vercel_preview_step,
+    ["pages-deploy-detailed", "deployment_url", "deployment_commit"],
+)
 if "WRANGLER_OUTPUT_FILE_PATH" not in preview_step.get("env", {}):
     raise RuntimeError("preview deployment no longer captures Wrangler output")
+if "WRANGLER_OUTPUT_FILE_PATH" not in vercel_preview_step.get("env", {}):
+    raise RuntimeError("Vercel-backed preview no longer captures Wrangler output")
 
 require_fragments(release_step, ["curl -fsSL", '"$pages_url"', '"$production_url"'])
 require_fragments(

@@ -50,14 +50,25 @@ grep -Fq \
   '<meta name="vm0-api-origin" content="https://pr-23364-vm0-api-preview.vm0.workers.dev" />' \
   "${preview_pages_dist}/index.html"
 
-retired_origin_dist="${tmp_dir}/retired-origin"
-mkdir -p "$retired_origin_dist"
+vercel_pages_dist="${tmp_dir}/vercel-pages"
+mkdir -p "$vercel_pages_dist"
+bash \
+  "$script" \
+  "$canonical_dist" \
+  "$vercel_pages_dist" \
+  "https://pr-23364-vercel-api.vm6.ai"
+grep -Fq \
+  '<meta name="vm0-api-origin" content="https://pr-23364-vercel-api.vm6.ai" />' \
+  "${vercel_pages_dist}/index.html"
+
+legacy_vercel_origin_dist="${tmp_dir}/legacy-vercel-origin"
+mkdir -p "$legacy_vercel_origin_dist"
 if bash \
   "$script" \
   "$canonical_dist" \
-  "$retired_origin_dist" \
+  "$legacy_vercel_origin_dist" \
   "https://pr-23364-api.vm6.ai" >/dev/null 2>&1; then
-  echo "expected the retired Vercel API preview origin to be rejected" >&2
+  echo "expected the non-isolated Vercel API preview origin to be rejected" >&2
   exit 1
 fi
 

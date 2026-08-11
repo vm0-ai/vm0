@@ -25,7 +25,9 @@ fi
 cp -a "${canonical_dist}/." "$pages_dist/"
 
 if [[ -n "$preview_api_origin" ]]; then
-  if [[ ! "$preview_api_origin" =~ ^https://(staging|pr-[0-9]+)-vm0-api-preview\.[a-z0-9-]+\.workers\.dev$ ]]; then
+  worker_preview_pattern='^https://(staging|pr-[0-9]+)-vm0-api-preview\.[a-z0-9-]+\.workers\.dev$'
+  vercel_preview_pattern='^https://(staging|pr-[0-9]+)-vercel-api\.[a-z0-9.-]+$'
+  if [[ ! "$preview_api_origin" =~ $worker_preview_pattern && ! "$preview_api_origin" =~ $vercel_preview_pattern ]]; then
     echo "invalid preview API origin: ${preview_api_origin}" >&2
     exit 1
   fi

@@ -286,13 +286,26 @@ describe("portable platform runtime environment", () => {
     );
   });
 
-  it("rejects the retired Vercel API from the app preview gateway", async () => {
+  it("uses the configured Vercel API from its isolated app gateway", async () => {
+    setBrowserUrl("https://pr-23364-vercel-app.omby.ai/agents");
+    setPreviewApiOrigin("https://pr-23364-vercel-api.vm6.ai");
+    const runtime = await loadRuntimeSurfaces();
+
+    expect(runtime.apiBase.resolveApiBase()).toBe(
+      "https://pr-23364-vercel-api.vm6.ai",
+    );
+    expect(runtime.apiBase.resolveOAuthApiBase()).toBe(
+      "https://pr-23364-vercel-api.vm6.ai",
+    );
+  });
+
+  it("rejects a non-isolated Vercel API from the app preview gateway", async () => {
     setBrowserUrl("https://pr-23364-app.omby.ai/agents");
     setPreviewApiOrigin("https://pr-23364-api.vm6.ai");
     const runtime = await loadRuntimeSurfaces();
 
     expect(() => runtime.apiBase.resolveApiBase()).toThrow(
-      "Invalid Cloudflare Pages preview API origin",
+      "Invalid Pages preview API origin",
     );
   });
 
@@ -302,7 +315,7 @@ describe("portable platform runtime environment", () => {
     const runtime = await loadRuntimeSurfaces();
 
     expect(() => runtime.apiBase.resolveApiBase()).toThrow(
-      "Invalid Cloudflare Pages preview API origin",
+      "Invalid Pages preview API origin",
     );
   });
 

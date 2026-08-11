@@ -10,9 +10,9 @@ export { rewritePlatformHostname };
 
 const OKOU_PAGES_PREVIEW_HOST_SUFFIX = ".okou-app.pages.dev";
 const OKOU_PREVIEW_APP_HOSTNAME_PATTERN =
-  /^(?:staging|pr-[0-9]+)-app\.omby\.ai$/u;
+  /^(?:staging|pr-[0-9]+)(?:-vercel)?-app\.omby\.ai$/u;
 const PREVIEW_API_HOSTNAME_PATTERN =
-  /^(?:staging|pr-[0-9]+)-vm0-api-preview\.[a-z0-9-]+\.workers\.dev$/u;
+  /^(?:(?:staging|pr-[0-9]+)-vm0-api-preview\.[a-z0-9-]+\.workers\.dev|(?:staging|pr-[0-9]+)-vercel-api\.vm6\.ai)$/u;
 const PREVIEW_API_ORIGIN_SELECTOR = 'meta[name="vm0-api-origin"]';
 
 function trimTrailingSlash(base: string): string {
@@ -59,7 +59,7 @@ function configuredPreviewApiOrigin(currentOrigin: string): string | null {
     configuredUrl.hash !== "" ||
     !PREVIEW_API_HOSTNAME_PATTERN.test(configuredUrl.hostname)
   ) {
-    throw new Error("Invalid Cloudflare Pages preview API origin");
+    throw new Error("Invalid Pages preview API origin");
   }
 
   return configuredUrl.origin;

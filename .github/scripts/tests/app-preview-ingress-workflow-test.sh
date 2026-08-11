@@ -4,7 +4,8 @@ set -euo pipefail
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 
 ruby -ryaml - "${repo_root}/.github/workflows/turbo.yml" \
-  "${repo_root}/.github/workflows/cleanup.yml" <<'RUBY'
+  "${repo_root}/.github/workflows/cleanup.yml" \
+  "${repo_root}/.github/scripts/wait-okou-pages-readiness.sh" <<'RUBY'
 turbo = YAML.load_file(ARGV.fetch(0))
 jobs = turbo.fetch("jobs")
 deploy_app = jobs.fetch("deploy-app")
@@ -51,6 +52,10 @@ expected_gateway_url = "${{ steps.app-preview.outputs.url }}"
 unless deploy_app.fetch("outputs").fetch("preview-url") == expected_gateway_url
   raise "deploy-app preview-url must expose the app preview gateway"
 end
+expected_vercel_gateway_url = "${{ steps.vercel-app-preview.outputs.url }}"
+unless deploy_app.fetch("outputs").fetch("vercel-preview-url") == expected_vercel_gateway_url
+  raise "deploy-app must expose the isolated Vercel-backed app preview gateway"
+end
 
 deploy_step = find_step.call("Deploy Cloudflare Pages preview")
 if deploy_step.key?("if")
@@ -61,8 +66,11 @@ readiness_step = find_step.call("Wait for Cloudflare Pages deployment readiness"
 unless readiness_step.fetch("env").fetch("PAGES_URL") == expected_deployment_url
   raise "Pages readiness must probe the immutable deployment URL"
 end
-readiness_source = readiness_step.fetch("run")
-unless readiness_source.include?('${PAGES_URL%/}/sign-up')
+readiness_source = File.read(ARGV.fetch(2))
+unless readiness_step.fetch("run").include?("wait-okou-pages-readiness.sh")
+  raise "Pages readiness must use the shared readiness script"
+end
+unless readiness_source.include?('${pages_url}/sign-up')
   raise "Pages readiness must probe an application document"
 end
 unless readiness_source.include?('id="app-bootstrap-skeleton"')
@@ -89,8 +97,19 @@ end
 unless prepare_run.include?("-vm0-api-preview.${CF_WORKERS_SUBDOMAIN}.workers.dev")
   raise "Pages build must embed the stable API Worker preview alias"
 end
-if prepare_run.include?("-api.${PREVIEW_DOMAIN}")
-  raise "Pages build still embeds the retired Vercel API preview origin"
+
+vercel_prepare_step = find_step.call("Prepare Vercel-backed Cloudflare Pages preview")
+vercel_prepare_run = vercel_prepare_step.fetch("run")
+unless vercel_prepare_run.include?("-vercel-api.${PREVIEW_DOMAIN}")
+  raise "Vercel-backed Pages build must embed the isolated Vercel API origin"
+end
+vercel_deploy_step = find_step.call("Deploy Vercel-backed Cloudflare Pages preview")
+unless vercel_deploy_step.fetch("run").include?("deploy-okou-pages.sh")
+  raise "Vercel-backed Pages preview must use the shared deployment script"
+end
+vercel_readiness_step = find_step.call("Wait for Vercel-backed Cloudflare Pages deployment readiness")
+unless vercel_readiness_step.fetch("run").include?("wait-okou-pages-readiness.sh")
+  raise "Vercel-backed Pages readiness must use the shared readiness script"
 end
 
 preview_step = find_step.call("Resolve app preview gateway URL")
@@ -116,6 +135,9 @@ end
 browser_e2e = jobs.fetch("cli-e2e-02-browser")
 playwright_e2e = jobs.fetch("cli-e2e-02-playwright")
 [browser_e2e, playwright_e2e].each do |job|
+  unless job.dig("strategy", "matrix", "runtime") == %w[cloudflare vercel]
+    raise "deployed E2E must run both preview runtimes"
+  end
   unless Array(job["needs"]).include?("deploy-app")
     raise "deployed E2E must depend on deploy-app"
   end
@@ -129,21 +151,23 @@ browser_run = browser_e2e.fetch("steps").find do |step|
 end
 raise "missing browser E2E run step" unless browser_run
 browser_env = browser_run.fetch("env")
-expected_downstream_preview = "${{ needs.deploy-app.outputs.preview-url }}"
-unless browser_env.fetch("VM0_AUTH_URL") == expected_downstream_preview
-  raise "browser E2E must use the smoke-tested app preview gateway"
+unless browser_env.fetch("VM0_AUTH_URL").include?("matrix.runtime == 'vercel'") &&
+    browser_env.fetch("VM0_AUTH_URL").include?("vercel-preview-url") &&
+    browser_env.fetch("VM0_AUTH_URL").include?("preview-url")
+  raise "browser E2E must select the smoke-tested gateway for each runtime"
 end
-unless browser_env.fetch("VM0_AUTH_REDIRECT_URL") == "#{expected_downstream_preview}/_/skeleton"
-  raise "browser E2E redirect must stay on the app preview gateway"
+unless browser_env.fetch("VM0_AUTH_REDIRECT_URL").include?("/_/skeleton")
+  raise "browser E2E redirect must stay on the selected app preview gateway"
 end
 
 playwright_run = playwright_e2e.fetch("steps").find do |step|
   step["name"] == "Run Playwright E2E tests"
 end
 raise "missing Playwright E2E run step" unless playwright_run
-unless playwright_run.fetch("env").fetch("OKOU_APP_URL") == expected_downstream_preview &&
-    playwright_run.fetch("env").fetch("ZERO_APP_URL") == expected_downstream_preview
-  raise "Playwright E2E must emit both branded app preview URLs"
+expected_runtime_app_url = "${{ matrix.runtime == 'vercel' && needs.deploy-app.outputs.vercel-preview-url || needs.deploy-app.outputs.preview-url }}"
+unless playwright_run.fetch("env").fetch("OKOU_APP_URL") == expected_runtime_app_url &&
+    playwright_run.fetch("env").fetch("ZERO_APP_URL") == expected_runtime_app_url
+  raise "Playwright E2E must emit both branded URLs for the selected runtime gateway"
 end
 
 turbo_source = File.read(ARGV.fetch(0))
@@ -174,8 +198,10 @@ raise "missing app Pages deployment cleanup step" unless pages_cleanup_step
 unless pages_cleanup_step.fetch("run").include?("delete-okou-pages-preview-deployments.sh")
   raise "app Pages cleanup must use the audited deletion script"
 end
-unless pages_cleanup_step.fetch("env").fetch("PAGES_BRANCH") == "pr-${{ github.event.pull_request.number }}-app"
-  raise "app Pages cleanup branch must derive only from the closed PR number"
+unless pages_cleanup_step.fetch("env").fetch("PR_NUMBER") == "${{ github.event.pull_request.number }}" &&
+    pages_cleanup_step.fetch("run").include?('"pr-${PR_NUMBER}-app"') &&
+    pages_cleanup_step.fetch("run").include?('"pr-${PR_NUMBER}-vercel-app"')
+  raise "app Pages cleanup must delete both branches derived from the closed PR number"
 end
 
 legacy_cleanup_markers = [

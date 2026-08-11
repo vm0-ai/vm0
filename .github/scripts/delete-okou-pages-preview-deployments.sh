@@ -14,7 +14,7 @@ pages_branch="$3"
 : "${project_name:?Cloudflare Pages project name is required}"
 : "${CLOUDFLARE_API_TOKEN:?CLOUDFLARE_API_TOKEN is required}"
 
-if [[ ! "$pages_branch" =~ ^pr-[1-9][0-9]*-app$ ]]; then
+if [[ ! "$pages_branch" =~ ^pr-[1-9][0-9]*(-vercel)?-app$ ]]; then
   echo "invalid app preview Pages branch: $pages_branch" >&2
   exit 1
 fi
@@ -58,7 +58,7 @@ while (( page <= total_pages )); do
 done
 
 sort -u "$deployment_ids" -o "$deployment_ids"
-deployment_count="$(wc -l < "$deployment_ids")"
+deployment_count="$(wc -l < "$deployment_ids" | tr -d '[:space:]')"
 printf 'Found %s Cloudflare Pages deployment(s) for %s\n' \
   "$deployment_count" "$pages_branch"
 

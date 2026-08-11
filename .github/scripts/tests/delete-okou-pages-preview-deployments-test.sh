@@ -62,6 +62,11 @@ if grep -Fq 'b2222222-2222-2222-2222-222222222222?force=true' "$request_log"; th
   exit 1
 fi
 
+vercel_output="$tmp_dir/vercel-output"
+bash "$script" account-id okou-app pr-42-vercel-app > "$vercel_output"
+grep -Fxq 'Found 0 Cloudflare Pages deployment(s) for pr-42-vercel-app' "$vercel_output"
+grep -Fxq 'Deleted 0 Cloudflare Pages deployment(s) for pr-42-vercel-app' "$vercel_output"
+
 if bash "$script" account-id okou-app staging-app >/dev/null 2>&1; then
   echo "accepted a non-PR Pages branch" >&2
   exit 1

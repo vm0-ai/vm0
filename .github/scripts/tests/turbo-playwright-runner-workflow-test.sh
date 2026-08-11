@@ -17,19 +17,21 @@ fail() {
   exit 1
 }
 
-grep -Fq "local RUNNER_DIRNAME=\"\${RUNNER_DIR##*/}\"" "$WORKFLOW" ||
-  fail "runner config dirname must come from the manifest runner directory"
+grep -Fq 'local RUNNER_DIRNAME="${RUNNER_DIR##*/}${RUNNER_CONFIG_SUFFIX}"' "$WORKFLOW" ||
+  fail "runner config dirname must isolate each runtime beneath the manifest runner directory"
+grep -Fq 'local RUNNER_CONFIG_DIR="${RUNNER_DIR}${RUNNER_CONFIG_SUFFIX}"' "$WORKFLOW" ||
+  fail "runner config path must isolate each runtime"
 grep -Fq -- "--runner-dirname \${RUNNER_DIRNAME}" "$WORKFLOW" ||
   fail "runner config must be written beneath the manifest runner directory"
-grep -Fq -- "--config \${RUNNER_DIR}/runner.yaml" "$WORKFLOW" ||
-  fail "runner service must read the config from the manifest runner directory"
+grep -Fq -- "--config \${RUNNER_CONFIG_DIR}/runner.yaml" "$WORKFLOW" ||
+  fail "runner service must read the runtime-isolated config"
 if grep -Fq -- "--runner-dirname \${RUNNER_SERVICE_REF}" "$WORKFLOW"; then
   fail "runner service identity must not select the manifest config directory"
 fi
-grep -Fq "RUNNER_SERVICE_REF: \${{ needs.prepare.outputs.job-ref }}" "$WORKFLOW" ||
-  fail "runner service identity must follow the deployed API job ref"
-grep -Fq "RUNNER_GROUP: \${{ format('vm0/development-{0}', needs.prepare.outputs.job-ref) }}" "$WORKFLOW" ||
-  fail "runner group must match the deployed API default group"
+grep -Fq "RUNNER_SERVICE_REF: \${{ matrix.runtime == 'vercel'" "$WORKFLOW" ||
+  fail "runner service identity must isolate the Vercel runtime"
+grep -Fq "RUNNER_GROUP: \${{ format('vm0/development-{0}', matrix.runtime == 'vercel'" "$WORKFLOW" ||
+  fail "runner group must match each deployed API default group"
 if grep -Fq 'playwright-staging' "$WORKFLOW"; then
   fail "main Playwright runs must not use a group outside the staging API default"
 fi
@@ -56,6 +58,7 @@ account_prepare = jobs.fetch("cli-e2e-03-runner-prepare")
 bootstrap = jobs.fetch("cli-e2e-03-runner-bootstrap")
 runner = jobs.fetch("cli-e2e-03-runner")
 account_cleanup = jobs.fetch("cli-e2e-03-runner-cleanup")
+runner_start = jobs.fetch("deploy-runner-start")
 
 unless prepare.dig("outputs", "turbo-runner-consumer-needed") ==
     "${{ steps.runner-e2e.outputs.turbo-runner-consumer-needed }}"
@@ -85,8 +88,15 @@ expected_matrix = "${{ fromJSON(needs.cli-e2e-03-runner-prepare.outputs.runner-s
 unless runner.dig("strategy", "matrix") == expected_matrix
   raise "runner E2E must use the generated non-empty shard matrix"
 end
+expected_runtimes = %w[cloudflare vercel]
+unless runner.dig("strategy", "matrix", "runtime") == expected_runtimes
+  raise "runner E2E must shard both preview runtimes"
+end
+unless runner_start.dig("strategy", "matrix", "runtime") == expected_runtimes
+  raise "runner deployment must start isolated services for both runtimes"
+end
 
-expected_group = "cli-e2e-03-runner-${{ matrix.index }}-${{ needs.prepare.outputs.job-ref }}"
+expected_group = "cli-e2e-03-runner-${{ matrix.runtime }}-${{ matrix.index }}-${{ needs.prepare.outputs.job-ref }}"
 unless runner.dig("concurrency", "group") == expected_group
   raise "each runner E2E shard must keep its independent concurrency group"
 end
@@ -94,6 +104,7 @@ end
 required_needs = %w[
   prepare
   deploy-api
+  deploy-api-vercel
   deploy-runner-prepare
   deploy-runner-start
   cli-e2e-03-runner-prepare
@@ -126,7 +137,7 @@ unless prepare_step.fetch("run").end_with?("runner-account.ts prepare")
   raise "runner E2E account preparation must use the shared lifecycle entry point"
 end
 
-unless %w[prepare deploy-api deploy-app deploy-stripe-listener].all? do |job_name|
+unless %w[prepare deploy-api deploy-api-vercel deploy-app deploy-stripe-listener].all? do |job_name|
     Array(account_prepare["needs"]).include?(job_name)
   end
   raise "runner E2E account preparation must wait for previews and Stripe forwarding"
@@ -137,17 +148,11 @@ unless account_prepare.fetch("if").include?(
   raise "runner E2E account preparation must use staging or preview Stripe forwarding"
 end
 
-expected_organization_outputs = {
-  "runner-organization-id" => "runner-organization-id",
-  "codex-organization-id" => "codex-organization-id",
-  "claude-organization-id" => "claude-organization-id",
-  "mock-claude-organization-id" => "mock-claude-organization-id",
-}
-expected_organization_outputs.each do |job_output, step_output|
-  expected = "${{ steps.account.outputs.#{step_output} }}"
-  unless account_prepare.dig("outputs", job_output) == expected
-    raise "runner E2E account preparation must expose #{job_output}"
-  end
+unless account_prepare.dig("strategy", "matrix", "runtime") == expected_runtimes
+  raise "runner E2E account preparation must isolate both runtimes"
+end
+if account_prepare.key?("outputs")
+  raise "matrix account preparation must hand off identities through artifacts"
 end
 unless account_prepare.dig("outputs", "runner-shard-matrix") ==
     "${{ steps.shards.outputs.matrix }}"
@@ -173,9 +178,10 @@ raise "missing runner E2E token generation" unless token_step
 unless token_step.fetch("run").end_with?("runner-token.ts /tmp")
   raise "runner E2E tokens must use the public device-flow entry point"
 end
-unless token_step.dig("env", "OKOU_APP_URL") == "${{ needs.deploy-app.outputs.preview-url }}" &&
-    token_step.dig("env", "ZERO_APP_URL") == "${{ needs.deploy-app.outputs.preview-url }}"
-  raise "runner E2E token generation must emit both branded app preview URLs"
+expected_runtime_app_url = "${{ matrix.runtime == 'vercel' && needs.deploy-app.outputs.vercel-preview-url || needs.deploy-app.outputs.preview-url }}"
+unless token_step.dig("env", "OKOU_APP_URL") == expected_runtime_app_url &&
+    token_step.dig("env", "ZERO_APP_URL") == expected_runtime_app_url
+  raise "runner E2E token generation must emit both branded URLs for the selected runtime"
 end
 unless token_step.dig("env", "E2E_RUNNER_MOCK_CLAUDE_ORGANIZATION_ID") ==
     "${{ steps.account.outputs.mock-claude-organization-id }}"
@@ -195,15 +201,16 @@ upload_step = account_prepare.fetch("steps").find do |step|
   step["name"] == "Upload runner E2E API tokens"
 end
 raise "missing runner E2E token artifact upload" unless upload_step
-unless upload_step.dig("with", "name") == "e2e-tokens" &&
+unless upload_step.dig("with", "name") == "e2e-tokens-${{ matrix.runtime }}" &&
     upload_step.dig("with", "retention-days") == 1
-  raise "runner E2E token artifact must retain the historical contract"
+  raise "runner E2E token artifact must be isolated by runtime"
 end
 %w[
   e2e-api-credentials-runner.json
   e2e-api-credentials-runner-real-codex.json
   e2e-api-credentials-runner-real-claude.json
   e2e-api-credentials-runner-mock-claude.json
+  e2e-runner-accounts.json
 ].each do |file_name|
   unless upload_step.dig("with", "path").include?(file_name)
     raise "runner E2E token artifact must include #{file_name}"
@@ -221,7 +228,7 @@ unless bootstrap_steps.any? do |step|
 end
 unless bootstrap_steps.any? do |step|
     step["name"] == "Download runner E2E API tokens" &&
-      step.dig("with", "name") == "e2e-tokens"
+      step.dig("with", "name") == "e2e-tokens-${{ matrix.runtime }}"
   end
   raise "runner bootstrap must download the token artifact"
 end
@@ -359,7 +366,7 @@ unless run_step.dig("env", "VERCEL_AUTOMATION_BYPASS_SECRET") ==
 end
 unless runner.fetch("steps").any? do |step|
     step["name"] == "Download runner E2E API tokens" &&
-      step.dig("with", "name") == "e2e-tokens"
+      step.dig("with", "name") == "e2e-tokens-${{ matrix.runtime }}"
   end
   raise "every runner shard must download the token artifact"
 end
@@ -386,6 +393,9 @@ unless cleanup_step.fetch("run").end_with?("runner-account.ts cleanup")
 end
 if account_cleanup.fetch("if").include?("!= 'cancelled'")
   raise "runner E2E cleanup must run after cancelled account preparation"
+end
+unless account_cleanup.dig("strategy", "matrix", "runtime") == expected_runtimes
+  raise "runner E2E cleanup must cover both runtime identity namespaces"
 end
 %w[
   E2E_RUNNER_ORGANIZATION_ID

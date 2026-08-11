@@ -164,6 +164,8 @@ jobs:
       runner-image-job-ref: ${{ steps.set-job-ref.outputs.runner-image-job-ref }}
       app-preview-url: ${{ steps.preview-urls.outputs.app-url }}
       api-preview-url: ${{ steps.preview-urls.outputs.api-url }}
+      vercel-app-preview-url: ${{ steps.preview-urls.outputs.vercel-app-url }}
+      vercel-api-preview-url: ${{ steps.preview-urls.outputs.vercel-api-url }}
       api-changed: ${{ steps.detect.outputs.api-changed }}
       cli-changed: ${{ steps.detect.outputs.cli-changed }}
       platform-changed: ${{ steps.detect.outputs.platform-changed }}
@@ -331,22 +333,27 @@ jobs:
         run: |
           JOB_REF="${{ steps.set-job-ref.outputs.job-ref }}"
           CF_PAGES_PREVIEW_DOMAIN="${{ vars.CF_PAGES_PREVIEW_DOMAIN }}"
+          PREVIEW_DOMAIN="${{ vars.PREVIEW_DOMAIN }}"
 
-          if [ -n "$CF_PAGES_PREVIEW_DOMAIN" ] && [ -n "$CF_WORKERS_SUBDOMAIN" ] && [ -n "$JOB_REF" ]; then
+          if [ -n "$CF_PAGES_PREVIEW_DOMAIN" ] && [ -n "$CF_WORKERS_SUBDOMAIN" ] && [ -n "$PREVIEW_DOMAIN" ] && [ -n "$JOB_REF" ]; then
             APP_URL="$(bash .github/scripts/resolve-app-preview-url.sh \
               "$JOB_REF" \
               "$CF_PAGES_PREVIEW_DOMAIN")"
             {
               echo "app-url=${APP_URL}"
               echo "api-url=https://${JOB_REF}-vm0-api-preview.${CF_WORKERS_SUBDOMAIN}.workers.dev"
+              echo "vercel-app-url=https://${JOB_REF}-vercel-app.${CF_PAGES_PREVIEW_DOMAIN}"
+              echo "vercel-api-url=https://${JOB_REF}-vercel-api.${PREVIEW_DOMAIN}"
             } >> "$GITHUB_OUTPUT"
-            echo "App preview URL uses ${CF_PAGES_PREVIEW_DOMAIN}; API preview uses the Worker alias"
+            echo "Resolved isolated Worker and Vercel API/app preview URLs"
           else
             {
               echo "app-url="
               echo "api-url="
+              echo "vercel-app-url="
+              echo "vercel-api-url="
             } >> "$GITHUB_OUTPUT"
-            echo "Preview URL not set (preview domain, Worker subdomain, or job-ref is empty)"
+            echo "Preview URLs not set (preview domains, Worker subdomain, or job-ref is empty)"
           fi
 
   file-size-check:
@@ -1583,14 +1590,508 @@ jobs:
           message: |
             API Worker preview: ${{ steps.api-deploy.outputs.url }}
 
-  # Build the canonical Cloudflare app artifact independently of Vercel, then
-  # deploy the verified R2 artifact to a Pages preview branch. The shared
-  # gateway fronts that branch at the stable app preview URL.
+  # Keep the Vercel rollback runtime deployable from every candidate commit.
+  # It owns an isolated database, app origin, Stripe listener, and E2E identity
+  # namespace so the Worker and Vercel lanes can execute concurrently.
+  deploy-api-vercel:
+    name: deploy-api (vercel)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    concurrency:
+      group: deploy-api-vercel-${{ needs.prepare.outputs.job-ref }}
+      cancel-in-progress: true
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260622
+    needs: [prepare, deploy-stripe-listener]
+    if: |
+      always() &&
+      (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) &&
+      (github.event_name == 'push' || needs.deploy-stripe-listener.result == 'success') &&
+      needs.prepare.outputs.job-ref != '' && (
+        needs.prepare.outputs.api-changed == 'true' ||
+        needs.prepare.outputs.cli-changed == 'true' ||
+        needs.prepare.outputs.platform-changed == 'true' ||
+        needs.prepare.outputs.crates-changed == 'true' ||
+        needs.prepare.outputs.ci-changed == 'true' ||
+        needs.prepare.outputs.e2e-changed == 'true'
+      )
+    outputs:
+      preview-url: ${{ steps.api-preview.outputs.url }}
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+      deployments: write
+      id-token: write
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: ./.github/actions/toolchain-init
+
+      - name: Setup SSH for Vercel preview Stripe listener secret
+        if: github.event_name != 'push'
+        uses: ./.github/actions/setup-ssh-tunnel
+        with:
+          ssh-user: ${{ vars.AWS_METAL_RUNNER_USER }}
+          ssh-hosts: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          require-all-hosts: "false"
+          ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
+          cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+
+      - name: Fetch development Doppler OAuth config
+        id: doppler-oauth
+        uses: dopplerhq/secrets-fetch-action@v2.0.0
+        with:
+          auth-method: oidc
+          doppler-identity-id: ${{ vars.DOPPLER_SERVICE_IDENTITY_ID }}
+          doppler-project: vm0
+          doppler-config: dev
+
+      - name: Resolve Vercel API seed environment
+        id: api-seed-env
+        uses: ./.github/actions/web-api-env
+        with:
+          app: api
+          environment: preview
+          job-ref: ${{ format('{0}-vercel', needs.prepare.outputs.job-ref) }}
+          web-url: ${{ needs.prepare.outputs.vercel-api-preview-url }}
+          app-url: ${{ needs.prepare.outputs.vercel-app-preview-url }}
+          api-backend-url: ${{ needs.prepare.outputs.vercel-api-preview-url }}
+          cli-pkg-url: https://static.vm0.io/okou-cli/${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}/package.tgz
+        env:
+          REPO_VARS_JSON: ${{ toJSON(vars) }}
+          REPO_SECRETS_JSON: ${{ toJSON(secrets) }}
+          DOPPLER_SECRETS_JSON: ${{ toJSON(steps.doppler-oauth.outputs) }}
+
+      - name: Create isolated Vercel Neon branch
+        id: neon
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
+          WEB_API_ENV_FILE: ${{ steps.api-seed-env.outputs.file }}
+          ANTHROPIC_API_KEY: ${{ secrets.CI_ANTHROPIC_API_KEY }}
+          DEV_MODEL_ANTHROPIC_KEY: ${{ secrets.CI_ANTHROPIC_API_KEY }}
+          DEV_MODEL_OPENAI_KEY: ${{ secrets.OPENAI_API_KEY }}
+          DEV_MODEL_OPENROUTER_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          DEV_MODEL_DEEPSEEK_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          DEV_MODEL_MOONSHOT_KEY: ${{ secrets.MOONSHOT_API_KEY }}
+          DEV_MODEL_MINIMAX_KEY: ${{ secrets.MINIMAX_API_KEY }}
+        run: |
+          while IFS= read -r line; do
+            if [ -n "$line" ]; then
+              key="${line%%=*}"
+              value="${line#*=}"
+              export "$key=$value"
+            fi
+          done < "$WEB_API_ENV_FILE"
+
+          required_seed_env=(
+            DEV_MODEL_ANTHROPIC_KEY
+            DEV_MODEL_OPENAI_KEY
+            DEV_MODEL_OPENROUTER_KEY
+            DEV_MODEL_DEEPSEEK_KEY
+            DEV_MODEL_MOONSHOT_KEY
+            DEV_MODEL_MINIMAX_KEY
+          )
+          missing_seed_env=()
+          for key in "${required_seed_env[@]}"; do
+            value="${!key:-}"
+            if [ -z "$value" ]; then
+              missing_seed_env+=("$key")
+            fi
+          done
+          if [ "${#missing_seed_env[@]}" -gt 0 ]; then
+            printf '::error::Missing preview seed model key env(s): %s\n' "${missing_seed_env[*]}"
+            exit 1
+          fi
+
+          npm install -g neonctl@2.15.0
+          BRANCH_NAME="preview/${{ needs.prepare.outputs.job-ref }}-vercel"
+
+          if neonctl branches list --project-id "$NEON_PROJECT_ID" --output json | jq -e --arg name "$BRANCH_NAME" '.[] | select(.name == $name)' > /dev/null; then
+            neonctl branches reset "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID" --parent
+
+            for attempt in {1..30}; do
+              CURRENT_STATE=$(neonctl branches list --project-id "$NEON_PROJECT_ID" --output json | jq -r --arg name "$BRANCH_NAME" '.[] | select(.name == $name) | .current_state')
+              [ "$CURRENT_STATE" = "ready" ] && break
+              echo "Branch state: $CURRENT_STATE (attempt $attempt/30)"
+              sleep 2
+            done
+          else
+            neonctl branches create --name "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID"
+          fi
+
+          DATABASE_URL=$(neonctl connection-string "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID" --database-name neondb --role-name neondb_owner --pooled)
+          if [ -z "$DATABASE_URL" ]; then
+            DATABASE_URL=$(neonctl connection-string "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID" --database-name neondb --role-name neondb_owner)
+          fi
+
+          cd turbo
+          DATABASE_URL="$DATABASE_URL" pnpm -F @vm0/db db:migrate
+          ENV=preview DATABASE_URL="$DATABASE_URL" pnpm -F api db:dev-seed
+
+          echo "database-url=$DATABASE_URL" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve Vercel API deploy environment
+        id: api-deploy-env
+        uses: ./.github/actions/web-api-env
+        with:
+          app: api
+          environment: preview
+          database-url: ${{ steps.neon.outputs.database-url }}
+          job-ref: ${{ format('{0}-vercel', needs.prepare.outputs.job-ref) }}
+          web-url: ${{ needs.prepare.outputs.vercel-api-preview-url }}
+          app-url: ${{ needs.prepare.outputs.vercel-app-preview-url }}
+          api-backend-url: ${{ needs.prepare.outputs.vercel-api-preview-url }}
+          cli-pkg-url: https://static.vm0.io/okou-cli/${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}/package.tgz
+        env:
+          REPO_VARS_JSON: ${{ toJSON(vars) }}
+          REPO_SECRETS_JSON: ${{ toJSON(secrets) }}
+          DOPPLER_SECRETS_JSON: ${{ toJSON(steps.doppler-oauth.outputs) }}
+
+      - name: Use isolated Vercel Stripe listener webhook secret
+        if: github.event_name != 'push'
+        env:
+          API_ENV_FILE: ${{ steps.api-deploy-env.outputs.file }}
+          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
+          METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
+          JOB_REF: ${{ format('{0}-vercel', needs.prepare.outputs.job-ref) }}
+        run: |
+          set -euo pipefail
+
+          stripe_listener_host="$(printf '%s\n' "$METAL_HOSTS" | tr ',' '\n' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | sed '/^$/d' | head -n 1)"
+          if [[ -z "$stripe_listener_host" ]]; then
+            echo "::error::AWS_METAL_RUNNER_HOSTS is empty"
+            exit 1
+          fi
+
+          remote="${METAL_USER}@${stripe_listener_host}"
+          secret_file="/var/lib/vm0-runner/stripe/${JOB_REF}/webhook-secret"
+          stripe_webhook_secret="$(
+            printf '%s\n' "$secret_file" |
+              ssh "$remote" 'read -r secret_file; sudo cat -- "$secret_file"'
+          )"
+          echo "::add-mask::$stripe_webhook_secret"
+          if [[ "$stripe_webhook_secret" != whsec_* ]]; then
+            echo "::error::Stripe listener did not provide a webhook secret"
+            exit 1
+          fi
+
+          grep -q '^STRIPE_WEBHOOK_SECRET=' "$API_ENV_FILE" || {
+            echo "::error::Resolved API environment is missing STRIPE_WEBHOOK_SECRET"
+            exit 1
+          }
+          updated_env="$(mktemp)"
+          while IFS= read -r line || [[ -n "$line" ]]; do
+            if [[ "$line" == STRIPE_WEBHOOK_SECRET=* ]]; then
+              printf 'STRIPE_WEBHOOK_SECRET=%s\n' "$stripe_webhook_secret"
+            else
+              printf '%s\n' "$line"
+            fi
+          done < "$API_ENV_FILE" > "$updated_env"
+          mv "$updated_env" "$API_ENV_FILE"
+
+      - name: Deploy API to Vercel
+        id: api-deploy
+        uses: ./.github/actions/vercel-deploy
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ vars.VERCEL_TEAM_ID }}
+          vercel-project-id: ${{ vars.VERCEL_PROJECT_ID_API }}
+          environment: preview
+          deployment-env: api-vercel
+          prebuilt: "true"
+          prebuilt-build-command: |
+            pnpm --dir turbo/apps/api build
+            rm -rf .vercel/output
+            cp -R turbo/apps/api/.vercel/output .vercel/output
+          environment-file: ${{ steps.api-deploy-env.outputs.file }}
+          meta-branch: ${{ github.head_ref || github.ref_name }}
+          meta-pr: ${{ format('{0}-vercel', needs.prepare.outputs.job-ref) }}
+          skip-start: ${{ github.event_name == 'merge_group' }}
+          skip-finish: "true"
+
+      - name: Create isolated Vercel API alias
+        id: api-alias
+        uses: ./.github/actions/vercel-alias
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ vars.VERCEL_TEAM_ID }}
+          deployment-url: ${{ steps.api-deploy.outputs.url }}
+          app-name: api
+          job-ref: ${{ format('{0}-vercel', needs.prepare.outputs.job-ref) }}
+          preview-domain: ${{ vars.PREVIEW_DOMAIN }}
+          deployment-id: ${{ steps.api-deploy.outputs.deployment-id }}
+          deployment-env: ${{ steps.api-deploy.outputs.deployment-env }}
+
+      - name: Resolve isolated Vercel API preview URL
+        id: api-preview
+        env:
+          ACTUAL_URL: ${{ steps.api-alias.outputs.url }}
+          EXPECTED_URL: ${{ needs.prepare.outputs.vercel-api-preview-url }}
+        run: |
+          set -euo pipefail
+          if [[ "$ACTUAL_URL" != "$EXPECTED_URL" ]]; then
+            echo "::error::Vercel API alias mismatch: expected ${EXPECTED_URL}, got ${ACTUAL_URL:-missing}"
+            exit 1
+          fi
+          echo "url=$ACTUAL_URL" >> "$GITHUB_OUTPUT"
+
+      - name: Check Vercel API deployment, alias, and protection
+        env:
+          API_ALIAS_URL: ${{ steps.api-preview.outputs.url }}
+          API_DEPLOYMENT_URL: ${{ steps.api-deploy.outputs.url }}
+          EXPECTED_COMMIT: ${{ github.sha }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          set -euo pipefail
+          vercel curl /health --deployment "$API_DEPLOYMENT_URL" --token "$VERCEL_TOKEN" -- \
+            --fail \
+            --show-error \
+            --silent \
+            --max-time 20 \
+            --retry 3 \
+            --retry-delay 2 \
+            --retry-all-errors
+          build_info="$(vercel curl /api/build-info --deployment "$API_DEPLOYMENT_URL" --token "$VERCEL_TOKEN" -- \
+            --fail \
+            --show-error \
+            --silent \
+            --max-time 20)"
+          jq -e --arg expected "$EXPECTED_COMMIT" '.commitSha == $expected' <<< "$build_info" >/dev/null || {
+            echo "::error::Vercel API preview did not report commit ${EXPECTED_COMMIT}"
+            exit 1
+          }
+
+          unauthenticated_status="$(curl \
+            --output /dev/null \
+            --silent \
+            --max-time 20 \
+            --write-out '%{http_code}' \
+            "${API_ALIAS_URL}/health")"
+          if [[ "$unauthenticated_status" == "200" ]]; then
+            echo "::error::Vercel API preview health is reachable without deployment protection"
+            exit 1
+          fi
+
+          alias_build_info=""
+          alias_ready="false"
+          for attempt in {1..10}; do
+            if alias_build_info="$(curl "${API_ALIAS_URL}/api/build-info" \
+              --fail \
+              --show-error \
+              --silent \
+              --max-time 20 \
+              -H "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}")" &&
+              jq -e --arg expected "$EXPECTED_COMMIT" \
+                '.commitSha == $expected' <<< "$alias_build_info" >/dev/null; then
+              alias_ready="true"
+              break
+            fi
+            echo "Vercel API preview alias has not reached this commit (attempt ${attempt}/10)"
+            sleep 3
+          done
+          if [[ "$alias_ready" != "true" ]]; then
+            echo "::error::Vercel API preview alias did not reach commit ${EXPECTED_COMMIT}"
+            exit 1
+          fi
+
+          curl "${API_ALIAS_URL}/health" \
+            --fail \
+            --show-error \
+            --silent \
+            --max-time 20 \
+            --retry 3 \
+            --retry-delay 2 \
+            --retry-all-errors \
+            -H "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}"
+
+      - name: Verify Vercel API Stripe webhook signing
+        if: github.event_name != 'push'
+        env:
+          API_DEPLOYMENT_URL: ${{ steps.api-preview.outputs.url }}
+          API_ENV_FILE: ${{ steps.api-deploy-env.outputs.file }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+        run: |
+          set -euo pipefail
+
+          stripe_webhook_secret="$(sed -n 's/^STRIPE_WEBHOOK_SECRET=//p' "$API_ENV_FILE")"
+          echo "::add-mask::$stripe_webhook_secret"
+          if [[ "$stripe_webhook_secret" != whsec_* ]]; then
+            echo "::error::Deployed Vercel API environment is missing the Stripe webhook secret"
+            exit 1
+          fi
+
+          probe_body='{"id":"evt_vm0_vercel_preview_probe","object":"event","type":"vm0.vercel-preview.probe","data":{"object":{}}}'
+          probe_timestamp="$(date +%s)"
+          probe_signature="$(
+            STRIPE_PROBE_SECRET="$stripe_webhook_secret" \
+            STRIPE_PROBE_BODY="$probe_body" \
+            STRIPE_PROBE_TIMESTAMP="$probe_timestamp" \
+              node <<'NODE'
+          const { createHmac } = require("node:crypto");
+
+          const secret = process.env.STRIPE_PROBE_SECRET;
+          const body = process.env.STRIPE_PROBE_BODY;
+          const timestamp = process.env.STRIPE_PROBE_TIMESTAMP;
+          if (!secret || !body || !timestamp) {
+            throw new Error("Stripe probe inputs are required");
+          }
+          process.stdout.write(
+            createHmac("sha256", secret)
+              .update(`${timestamp}.${body}`)
+              .digest("hex"),
+          );
+          NODE
+          )"
+
+          curl "${API_DEPLOYMENT_URL}/api/webhooks/stripe" \
+            --fail-with-body \
+            --show-error \
+            --silent \
+            --max-time 30 \
+            -H 'Content-Type: application/json' \
+            -H "stripe-signature: t=${probe_timestamp},v1=${probe_signature}" \
+            -H "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}" \
+            --data-binary "$probe_body"
+
+      - name: Reconcile Vercel preview connector catalog
+        env:
+          API_DEPLOYMENT_URL: ${{ steps.api-preview.outputs.url }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+        run: |
+          set -euo pipefail
+
+          response=""
+          for attempt in 1 2 3; do
+            if ! response=$(curl \
+              --fail-with-body \
+              --show-error \
+              --silent \
+              --max-time 120 \
+              -H "Authorization: Bearer ${CRON_SECRET}" \
+              -H "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}" \
+              "${API_DEPLOYMENT_URL}/api/cron/sync-connector-catalog"); then
+              echo "::warning::Vercel connector catalog reconcile request failed (attempt ${attempt}/3)"
+            elif summary=$(jq -c '{outcome, state, active, lastAttempt, filtering: {capabilityDigest: .filtering.capabilityDigest, evaluatedAt: .filtering.evaluatedAt, stale: .filtering.stale, filteredAuthMethodCount: (.filtering.filteredAuthMethods | length)}}' <<< "$response"); then
+              echo "Vercel connector catalog reconcile: ${summary}"
+              if jq -e '.state == "current" and .active != null and .filtering.stale == false' <<< "$response" >/dev/null; then
+                exit 0
+              fi
+              echo "::warning::Vercel connector catalog is not ready (attempt ${attempt}/3)"
+            else
+              echo "::warning::Vercel connector catalog reconcile returned invalid JSON (attempt ${attempt}/3)"
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              sleep 2
+            fi
+          done
+
+          echo "::error::Vercel connector catalog reconcile did not produce a current accepted snapshot"
+          exit 1
+
+      - name: Converge Vercel preview system skills
+        env:
+          API_DEPLOYMENT_URL: ${{ steps.api-preview.outputs.url }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+        run: |
+          set -euo pipefail
+
+          for attempt in $(seq 1 64); do
+            response="$(curl "${API_DEPLOYMENT_URL}/api/cron/sync-skills" \
+              --fail-with-body \
+              --show-error \
+              --silent \
+              --max-time 180 \
+              -H "Authorization: Bearer ${CRON_SECRET}" \
+              -H "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}")"
+            summary="$(jq -c '{commitSha, synced, skipped, failed, removed, remaining, total}' <<< "$response")"
+            echo "Vercel system skill convergence ${attempt}/64: ${summary}"
+
+            jq -e '.success == true and (.remaining | type == "number") and (.failed | type == "number")' <<< "$response" >/dev/null || {
+              echo "::error::Vercel system skill convergence returned an invalid response"
+              exit 1
+            }
+            if jq -e '.remaining == 0 and .failed == 0' <<< "$response" >/dev/null; then
+              exit 0
+            fi
+          done
+
+          echo "::error::Vercel system skills did not converge after 64 bounded invocations"
+          exit 1
+
+      - name: Simulate Vercel cron routes
+        env:
+          API_DEPLOYMENT_URL: ${{ steps.api-preview.outputs.url }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+        run: |
+          set -euo pipefail
+
+          mapfile -t cron_routes < <(
+            pnpm --dir turbo --filter api worker:cron-routes |
+              grep '^/api/cron/' |
+              grep -v -E '^/api/cron/(sync-connector-catalog|sync-skills)$'
+          )
+          expected_cron_routes="$(jq '[.crons[].path | select(. != "/api/cron/sync-connector-catalog" and . != "/api/cron/sync-skills")] | unique | length' turbo/apps/api/vercel.json)"
+          if [[ "${#cron_routes[@]}" -ne "$expected_cron_routes" ]]; then
+            echo "::error::Expected ${expected_cron_routes} Vercel cron routes, found ${#cron_routes[@]}"
+            exit 1
+          fi
+
+          failures=0
+          for path in "${cron_routes[@]}"; do
+            response_file="$(mktemp)"
+            http_status="$(curl \
+              --output "$response_file" \
+              --silent \
+              --show-error \
+              --max-time 180 \
+              --write-out '%{http_code}' \
+              -H "Authorization: Bearer ${CRON_SECRET}" \
+              -H "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}" \
+              "${API_DEPLOYMENT_URL}${path}" || true)"
+            if [[ "$http_status" == 2?? ]]; then
+              echo "Vercel cron simulation passed for ${path} (${http_status})"
+            else
+              echo "::error::Vercel cron simulation failed for ${path} with HTTP ${http_status:-unavailable}"
+              if [[ -s "$response_file" ]]; then
+                jq -c '{error, message, code}' "$response_file" 2>/dev/null || true
+              fi
+              failures=$((failures + 1))
+            fi
+            rm -f "$response_file"
+          done
+
+          if [[ "$failures" -ne 0 ]]; then
+            echo "::error::${failures} Vercel cron route simulations failed"
+            exit 1
+          fi
+
+      - name: Post Vercel API preview URL
+        if: github.event_name == 'pull_request'
+        uses: marocchino/sticky-pull-request-comment@v3
+        with:
+          header: api-preview-vercel
+          message: |
+            API Vercel preview: ${{ steps.api-preview.outputs.url }}
+
+  # Build one runtime-independent app artifact, then deploy it to isolated
+  # Pages branches embedding the Worker and Vercel API origins. The shared
+  # gateway fronts both branches at stable app preview URLs.
   deploy-app:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     outputs:
       preview-url: ${{ steps.app-preview.outputs.url }}
+      vercel-preview-url: ${{ steps.vercel-app-preview.outputs.url }}
     concurrency:
       group: deploy-app-${{ github.sha }}
       cancel-in-progress: false
@@ -1614,6 +2115,7 @@ jobs:
       CF_PAGES_PREVIEW_DOMAIN: ${{ vars.CF_PAGES_PREVIEW_DOMAIN }}
       CF_WORKERS_SUBDOMAIN: ${{ vars.CF_WORKERS_SUBDOMAIN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ vars.CF_ACCOUNT_ID }}
+      PREVIEW_DOMAIN: ${{ vars.PREVIEW_DOMAIN }}
       R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
       R2_BUCKET_NAME: ${{ vars.R2_STATIC_BUCKET_NAME }}
     steps:
@@ -1641,6 +2143,19 @@ jobs:
         run: |
           : "${CF_PAGES_PREVIEW_DOMAIN:?CF_PAGES_PREVIEW_DOMAIN variable is required}"
           echo "url=https://${PAGES_BRANCH}.${CF_PAGES_PREVIEW_DOMAIN}" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve Vercel app preview gateway URL
+        id: vercel-app-preview
+        env:
+          PAGES_BRANCH: ${{ steps.pages-branch.outputs.branch }}
+        run: |
+          : "${CF_PAGES_PREVIEW_DOMAIN:?CF_PAGES_PREVIEW_DOMAIN variable is required}"
+          job_ref="${PAGES_BRANCH%-app}"
+          branch="${job_ref}-vercel-app"
+          {
+            echo "branch=$branch"
+            echo "url=https://${branch}.${CF_PAGES_PREVIEW_DOMAIN}"
+          } >> "$GITHUB_OUTPUT"
 
       - uses: ./.github/actions/toolchain-init
 
@@ -1837,6 +2352,7 @@ jobs:
             "$api_origin"
 
           {
+            echo "canonical-dist=$canonical_dist"
             echo "dist=$pages_dist"
             echo "url=https://${PAGES_BRANCH}.${CF_PAGES_PROJECT_NAME}.pages.dev"
           } >> "$GITHUB_OUTPUT"
@@ -1892,140 +2408,9 @@ jobs:
           PAGES_DIST: ${{ steps.pages-preview.outputs.dist }}
           PAGES_URL: ${{ steps.pages-deploy.outputs.url }}
         run: |
-          set -euo pipefail
-
-          mapfile -t probe_files < <(
-            node --input-type=module - "$PAGES_DIST/assets" <<'NODE'
-          import { readdir, readFile } from "node:fs/promises";
-          import path from "node:path";
-
-          const assetsDirectory = process.argv[2];
-          const assetNames = await readdir(assetsDirectory);
-          const javascriptAssets = new Set(
-            assetNames.filter((assetName) => assetName.endsWith(".js")),
-          );
-          const rootPrefixes = ["index-", "Route-", "SignIn-", "SignUp-"];
-          const roots = [...javascriptAssets].filter((assetName) =>
-            rootPrefixes.some((prefix) => assetName.startsWith(prefix)),
-          );
-
-          for (const prefix of rootPrefixes) {
-            if (!roots.some((assetName) => assetName.startsWith(prefix))) {
-              throw new Error(`Could not identify ${prefix} preview assets`);
-            }
-          }
-
-          const queuedAssets = [...roots];
-          const reachableAssets = new Set();
-          const relativeImportPattern =
-            /["']\.\/([^"'?#]+\.js)(?:[?#][^"']*)?["']/g;
-
-          while (queuedAssets.length > 0) {
-            const assetName = queuedAssets.pop();
-            if (!assetName || reachableAssets.has(assetName)) {
-              continue;
-            }
-            reachableAssets.add(assetName);
-
-            const source = await readFile(
-              path.join(assetsDirectory, assetName),
-              "utf8",
-            );
-            for (const match of source.matchAll(relativeImportPattern)) {
-              const dependencyName = match[1];
-              if (
-                javascriptAssets.has(dependencyName) &&
-                !reachableAssets.has(dependencyName)
-              ) {
-                queuedAssets.push(dependencyName);
-              }
-            }
-          }
-
-          for (const assetName of [...reachableAssets].sort()) {
-            console.log(path.join(assetsDirectory, assetName));
-          }
-          NODE
-          )
-          echo "Checking ${#probe_files[@]} app and Clerk JavaScript assets"
-
-          document_body="$(mktemp)"
-          trap 'rm -f "$document_body"' EXIT
-          application_url="${PAGES_URL%/}/sign-up"
-          probe_curl_args=(
-            --output "$document_body"
-            --url "$application_url"
-          )
-          for probe_file in "${probe_files[@]}"; do
-            relative_path="${probe_file#"$PAGES_DIST"/}"
-            probe_curl_args+=(
-              --output /dev/null
-              --url "${PAGES_URL%/}/${relative_path}"
-            )
-          done
-
-          expected_probe_result_count=$((${#probe_files[@]} + 1))
-          ready_passes=0
-          for attempt in {1..60}; do
-            probe_succeeded=false
-            if probe_results="$(curl \
-              --silent \
-              --max-time 10 \
-              --parallel \
-              --parallel-immediate \
-              --parallel-max 16 \
-              --write-out $'%{http_code}|%{content_type}|%{url_effective}\n' \
-              "${probe_curl_args[@]}" 2>/dev/null)"; then
-              probe_succeeded=true
-            fi
-            probe_result_count=0
-            not_ready_files=""
-            document_ready=false
-            while IFS= read -r probe_result; do
-              if [[ "$probe_result" != *"|"* ]]; then
-                continue
-              fi
-              ((probe_result_count += 1))
-              IFS='|' read -r status content_type resource_url <<< "$probe_result"
-              if [[ "$resource_url" == "$application_url" ]]; then
-                if [[ \
-                  "$status" == 2?? &&
-                  "$content_type" == *text/html* \
-                ]] && grep -Fq 'id="app-bootstrap-skeleton"' "$document_body"; then
-                  document_ready=true
-                fi
-              elif [[ "$status" != 2?? || "$content_type" != *javascript* ]]; then
-                not_ready_files+="${not_ready_files:+$'\n'}${resource_url#"${PAGES_URL%/}/"}"
-              fi
-            done <<< "$probe_results"
-            if (( probe_result_count != expected_probe_result_count )); then
-              not_ready_files+="${not_ready_files:+$'\n'}incomplete readiness response"
-            fi
-            if [[ "$probe_succeeded" != true ]]; then
-              not_ready_files+="${not_ready_files:+$'\n'}incomplete readiness transfer"
-            fi
-            if [[ "$document_ready" != true ]]; then
-              not_ready_files+="${not_ready_files:+$'\n'}application document"
-            fi
-
-            if [[ -z "$not_ready_files" ]]; then
-              ((ready_passes += 1))
-            else
-              ready_passes=0
-              first_not_ready="${not_ready_files%%$'\n'*}"
-              not_ready_count="$(wc -l <<< "$not_ready_files")"
-              echo "::warning::${not_ready_count} preview resources are not ready (attempt ${attempt}/60); first: ${first_not_ready}"
-            fi
-
-            if (( ready_passes >= 2 )); then
-              echo "Cloudflare Pages deployment is ready"
-              exit 0
-            fi
-            sleep 2
-          done
-
-          echo "::error::Cloudflare Pages deployment did not become ready"
-          exit 1
+          bash .github/scripts/wait-okou-pages-readiness.sh \
+            "$PAGES_DIST" \
+            "$PAGES_URL"
 
       - name: Smoke test app preview gateway
         if: steps.app-preview.outputs.url != ''
@@ -2050,26 +2435,137 @@ jobs:
           echo "::error::${APP_PREVIEW_URL} did not use vm0-preview-gateway"
           exit 1
 
+      - name: Prepare Vercel-backed Cloudflare Pages preview
+        id: vercel-pages-preview
+        env:
+          CANONICAL_DIST: ${{ steps.pages-preview.outputs.canonical-dist }}
+          PAGES_BRANCH: ${{ steps.vercel-app-preview.outputs.branch }}
+        run: |
+          set -euo pipefail
+
+          : "${CF_PAGES_PROJECT_NAME:?CF_PAGES_PROJECT_NAME variable is required}"
+          : "${PREVIEW_DOMAIN:?PREVIEW_DOMAIN variable is required}"
+
+          pages_dist="$(mktemp -d)"
+          job_ref="${PAGES_BRANCH%-vercel-app}"
+          api_origin="https://${job_ref}-vercel-api.${PREVIEW_DOMAIN}"
+          bash .github/scripts/prepare-okou-pages-dist.sh \
+            "$CANONICAL_DIST" \
+            "$pages_dist" \
+            "$api_origin"
+
+          {
+            echo "dist=$pages_dist"
+            echo "url=https://${PAGES_BRANCH}.${CF_PAGES_PROJECT_NAME}.pages.dev"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Deploy Vercel-backed Cloudflare Pages preview
+        id: vercel-pages-deploy
+        env:
+          ARTIFACT_SHA: ${{ steps.artifact.outputs.sha }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_PAGES_DEPLOY_API_TOKEN }}
+          PAGES_BRANCH: ${{ steps.vercel-app-preview.outputs.branch }}
+          PAGES_DIST: ${{ steps.vercel-pages-preview.outputs.dist }}
+          WRANGLER_OUTPUT_FILE_PATH: /tmp/wrangler-vercel-pages-output.ndjson
+        run: |
+          set -euo pipefail
+          bash .github/scripts/deploy-okou-pages.sh \
+            "$PAGES_DIST" \
+            "$CF_PAGES_PROJECT_NAME" \
+            "$PAGES_BRANCH" \
+            "$ARTIFACT_SHA"
+
+          deployment="$(
+            jq --slurp --compact-output \
+              'map(select(.type == "pages-deploy-detailed")) | last' \
+              "$WRANGLER_OUTPUT_FILE_PATH"
+          )"
+          deployment_url="$(jq -r '.url // empty' <<< "$deployment")"
+          deployment_commit="$(jq -r \
+            '.deployment_trigger.metadata.commit_hash // empty' \
+            <<< "$deployment")"
+
+          if [[ -z "$deployment_url" ]]; then
+            echo "::error::Wrangler did not report a Vercel-backed Pages deployment URL"
+            exit 1
+          fi
+          deployment_host="${deployment_url#https://}"
+          deployment_hash="${deployment_host%%.*}"
+          if [[ \
+            ! "$deployment_hash" =~ ^[0-9a-f]{8}$ ||
+            "$deployment_url" != "https://${deployment_hash}.${CF_PAGES_PROJECT_NAME}.pages.dev" \
+          ]]; then
+            echo "::error::Wrangler did not report an immutable Vercel-backed Pages deployment URL"
+            exit 1
+          fi
+          if [[ "$deployment_commit" != "$ARTIFACT_SHA" ]]; then
+            echo "::error::Vercel-backed Pages deployment commit does not match the app artifact"
+            exit 1
+          fi
+
+          echo "url=$deployment_url" >> "$GITHUB_OUTPUT"
+
+      - name: Wait for Vercel-backed Cloudflare Pages deployment readiness
+        env:
+          PAGES_DIST: ${{ steps.vercel-pages-preview.outputs.dist }}
+          PAGES_URL: ${{ steps.vercel-pages-deploy.outputs.url }}
+        run: |
+          bash .github/scripts/wait-okou-pages-readiness.sh \
+            "$PAGES_DIST" \
+            "$PAGES_URL"
+
+      - name: Smoke test Vercel-backed app preview gateway
+        env:
+          APP_PREVIEW_URL: ${{ steps.vercel-app-preview.outputs.url }}
+        run: |
+          set -euo pipefail
+          response_headers="$(mktemp)"
+          for attempt in {1..12}; do
+            if curl --fail --silent --show-error \
+              --dump-header "$response_headers" \
+              --output /dev/null \
+              "${APP_PREVIEW_URL}/" && \
+              grep -Eiq '^x-vm0-preview-gateway:[[:space:]]*1[[:space:]]*$' \
+                "$response_headers"; then
+              echo "Vercel-backed app preview gateway is ready"
+              exit 0
+            fi
+            echo "::warning::Vercel-backed app preview gateway is not ready (attempt ${attempt}/12)"
+            sleep 5
+          done
+          echo "::error::${APP_PREVIEW_URL} did not use vm0-preview-gateway"
+          exit 1
+
       - name: Record Cloudflare Pages preview
         env:
           APP_PREVIEW_URL: ${{ steps.app-preview.outputs.url }}
           PAGES_DEPLOYMENT_URL: ${{ steps.pages-deploy.outputs.url }}
           PAGES_PREVIEW_URL: ${{ steps.pages-preview.outputs.url }}
+          VERCEL_APP_PREVIEW_URL: ${{ steps.vercel-app-preview.outputs.url }}
+          VERCEL_PAGES_DEPLOYMENT_URL: ${{ steps.vercel-pages-deploy.outputs.url }}
+          VERCEL_PAGES_PREVIEW_URL: ${{ steps.vercel-pages-preview.outputs.url }}
         run: |
           echo "Cloudflare Pages deployment: ${PAGES_DEPLOYMENT_URL}" >> "$GITHUB_STEP_SUMMARY"
           echo "Cloudflare Pages preview: ${PAGES_PREVIEW_URL}" >> "$GITHUB_STEP_SUMMARY"
           if [[ -n "$APP_PREVIEW_URL" ]]; then
             echo "App preview gateway: ${APP_PREVIEW_URL}" >> "$GITHUB_STEP_SUMMARY"
           fi
+          echo "Vercel-backed Cloudflare Pages deployment: ${VERCEL_PAGES_DEPLOYMENT_URL}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Vercel-backed Cloudflare Pages preview: ${VERCEL_PAGES_PREVIEW_URL}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Vercel-backed app preview gateway: ${VERCEL_APP_PREVIEW_URL}" >> "$GITHUB_STEP_SUMMARY"
 
   deploy-stripe-listener:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        runtime: [cloudflare, vercel]
     concurrency:
-      group: deploy-stripe-listener-${{ needs.prepare.outputs.job-ref }}
+      group: deploy-stripe-listener-${{ matrix.runtime }}-${{ needs.prepare.outputs.job-ref }}
       cancel-in-progress: true
-    # Starts before deploy-api so the Worker can use the signing secret created
-    # by this exact long-running Stripe CLI session.
+    # Starts before both API deployments so each runtime can use the signing
+    # secret created by its exact long-running Stripe CLI session.
     needs: [prepare]
     if: |
       always() &&
@@ -2099,11 +2595,13 @@ jobs:
         env:
           METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
           METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
-          JOB_REF: ${{ needs.prepare.outputs.job-ref }}
-          API_PREVIEW_URL: ${{ needs.prepare.outputs.api-preview-url }}
+          JOB_REF: ${{ matrix.runtime == 'vercel' && format('{0}-vercel', needs.prepare.outputs.job-ref) || needs.prepare.outputs.job-ref }}
+          API_PREVIEW_URL: ${{ matrix.runtime == 'vercel' && needs.prepare.outputs.vercel-api-preview-url || needs.prepare.outputs.api-preview-url }}
+          API_RUNTIME: ${{ matrix.runtime }}
           STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
           API_ACCESS_CLIENT_ID: ${{ secrets.CF_API_PREVIEW_ACCESS_CLIENT_ID }}
           API_ACCESS_CLIENT_SECRET: ${{ secrets.CF_API_PREVIEW_ACCESS_CLIENT_SECRET }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
         run: |
           set -euo pipefail
           cd ansible
@@ -2127,14 +2625,21 @@ jobs:
           fi
 
           FORWARD_URL="${API_PREVIEW_URL%/}/api/webhooks/stripe"
+          if [[ "$API_RUNTIME" == "cloudflare" ]]; then
+            : "${API_ACCESS_CLIENT_ID:?CF_API_PREVIEW_ACCESS_CLIENT_ID secret is required}"
+            : "${API_ACCESS_CLIENT_SECRET:?CF_API_PREVIEW_ACCESS_CLIENT_SECRET secret is required}"
+            FORWARD_HEADERS="CF-Access-Client-Id:${API_ACCESS_CLIENT_ID},CF-Access-Client-Secret:${API_ACCESS_CLIENT_SECRET}"
+          else
+            : "${VERCEL_AUTOMATION_BYPASS_SECRET:?VERCEL_AUTOMATION_BYPASS_SECRET is required}"
+            FORWARD_HEADERS="x-vercel-protection-bypass:${VERCEL_AUTOMATION_BYPASS_SECRET}"
+          fi
           EXTRA_VARS="$(jq -nc \
             --arg ansible_user "$METAL_USER" \
             --arg job_ref "$JOB_REF" \
             --arg forward_url "$FORWARD_URL" \
             --arg stripe_secret_key "$STRIPE_SECRET_KEY" \
-            --arg api_access_client_id "$API_ACCESS_CLIENT_ID" \
-            --arg api_access_client_secret "$API_ACCESS_CLIENT_SECRET" \
-            '{ansible_user: $ansible_user, job_ref: $job_ref, forward_url: $forward_url, stripe_secret_key: $stripe_secret_key, api_access_client_id: $api_access_client_id, api_access_client_secret: $api_access_client_secret}')"
+            --arg forward_headers "$FORWARD_HEADERS" \
+            '{ansible_user: $ansible_user, job_ref: $job_ref, forward_url: $forward_url, stripe_secret_key: $stripe_secret_key, forward_headers: $forward_headers}')"
 
           ansible-playbook \
             -i "${STRIPE_LISTENER_HOST}," \
@@ -2142,20 +2647,19 @@ jobs:
             --extra-vars "$EXTRA_VARS" \
             -v
 
-  # CI_CHECK_BROWSER_E2E=1 makes both Browser and Playwright E2E failures
-  # blocking. Any other value keeps the tests running but makes them
-  # informational.
-  #
-  # Exercise the hosted Clerk UI via agent-browser. This is intentionally
-  # separate from Playwright because Playwright signs in through Clerk's
-  # testing helper instead of the third-party form UI.
+  # Exercise the hosted Clerk UI against both preview runtimes via
+  # agent-browser. Both lanes are blocking and use isolated Clerk identities.
   cli-e2e-02-browser:
     runs-on: ubuntu-latest
     timeout-minutes: 8
+    strategy:
+      fail-fast: false
+      matrix:
+        runtime: [cloudflare, vercel]
     concurrency:
-      group: cli-e2e-02-browser-${{ needs.prepare.outputs.job-ref }}
+      group: cli-e2e-02-browser-${{ matrix.runtime }}-${{ needs.prepare.outputs.job-ref }}
       cancel-in-progress: true
-    needs: [prepare, deploy-api, deploy-app]
+    needs: [prepare, deploy-api, deploy-api-vercel, deploy-app]
     if: |
       always() &&
       (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
@@ -2167,6 +2671,7 @@ jobs:
         needs.prepare.outputs.e2e-changed == 'true'
       ) &&
       needs.deploy-api.result == 'success' &&
+      needs.deploy-api-vercel.result == 'success' &&
       needs.deploy-app.result == 'success'
     steps:
       - uses: actions/checkout@v7.0.1
@@ -2178,20 +2683,19 @@ jobs:
       - name: Install E2E dependencies
         run: npm install -g agent-browser@0.22.0
       - name: Run browser E2E tests
-        continue-on-error: ${{ vars.CI_CHECK_BROWSER_E2E != '1' }}
         run: |
           BATS_TEST_TIMEOUT=180 ./e2e/test/libs/bats/bin/bats -T ./e2e/tests/02-browser/*.bats
         env:
-          VM0_API_BACKEND_URL: ${{ needs.deploy-api.outputs.preview-url }}
-          VM0_AUTH_URL: ${{ needs.deploy-app.outputs.preview-url }}
-          VM0_AUTH_REDIRECT_URL: ${{ needs.deploy-app.outputs.preview-url }}/_/skeleton
-          VM0_AUTH_DOMAIN: ${{ needs.prepare.outputs.api-preview-url != '' && format('{0}-vm0-api-preview.{1}.workers.dev', needs.prepare.outputs.job-ref, vars.CF_WORKERS_SUBDOMAIN) || '' }}
-          JOB_REF: ${{ needs.prepare.outputs.job-ref }}
+          VM0_API_BACKEND_URL: ${{ matrix.runtime == 'vercel' && needs.deploy-api-vercel.outputs.preview-url || needs.deploy-api.outputs.preview-url }}
+          VM0_AUTH_URL: ${{ matrix.runtime == 'vercel' && needs.deploy-app.outputs.vercel-preview-url || needs.deploy-app.outputs.preview-url }}
+          VM0_AUTH_REDIRECT_URL: ${{ format('{0}/_/skeleton', matrix.runtime == 'vercel' && needs.deploy-app.outputs.vercel-preview-url || needs.deploy-app.outputs.preview-url) }}
+          VM0_AUTH_DOMAIN: ${{ matrix.runtime == 'vercel' && format('{0}-vercel-api.{1}', needs.prepare.outputs.job-ref, vars.PREVIEW_DOMAIN) || format('{0}-vm0-api-preview.{1}.workers.dev', needs.prepare.outputs.job-ref, vars.CF_WORKERS_SUBDOMAIN) }}
+          JOB_REF: ${{ matrix.runtime == 'vercel' && format('{0}-vercel', needs.prepare.outputs.job-ref) || needs.prepare.outputs.job-ref }}
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
           CF_ACCESS_CLIENT_ID: ${{ secrets.CF_API_PREVIEW_ACCESS_CLIENT_ID }}
           CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_API_PREVIEW_ACCESS_CLIENT_SECRET }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
-          E2E_ACCOUNT: ${{ needs.prepare.outputs.job-ref }}+clerk_test+${{ github.run_id }}-${{ github.run_attempt }}+browser@vm0-e2e.ai
+          E2E_ACCOUNT: ${{ format('{0}+clerk_test+{1}-{2}+browser@vm0-e2e.ai', matrix.runtime == 'vercel' && format('{0}-vercel', needs.prepare.outputs.job-ref) || needs.prepare.outputs.job-ref, github.run_id, github.run_attempt) }}
       - name: Cleanup browser E2E account
         if: always()
         shell: bash
@@ -2200,16 +2704,21 @@ jobs:
           delete_e2e_account_if_exists
         env:
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
-          E2E_ACCOUNT: ${{ needs.prepare.outputs.job-ref }}+clerk_test+${{ github.run_id }}-${{ github.run_attempt }}+browser@vm0-e2e.ai
+          E2E_ACCOUNT: ${{ format('{0}+clerk_test+{1}-{2}+browser@vm0-e2e.ai', matrix.runtime == 'vercel' && format('{0}-vercel', needs.prepare.outputs.job-ref) || needs.prepare.outputs.job-ref, github.run_id, github.run_attempt) }}
   cli-e2e-02-playwright:
     runs-on: ubuntu-latest
     timeout-minutes: 8
+    strategy:
+      fail-fast: false
+      matrix:
+        runtime: [cloudflare, vercel]
     concurrency:
-      group: cli-e2e-02-playwright-${{ needs.prepare.outputs.job-ref }}
+      group: cli-e2e-02-playwright-${{ matrix.runtime }}-${{ needs.prepare.outputs.job-ref }}
       cancel-in-progress: true
     needs:
       - prepare
       - deploy-api
+      - deploy-api-vercel
       - deploy-app
       - deploy-stripe-listener
       - deploy-runner-start
@@ -2224,6 +2733,7 @@ jobs:
         needs.prepare.outputs.e2e-changed == 'true'
       ) &&
       needs.deploy-api.result == 'success' &&
+      needs.deploy-api-vercel.result == 'success' &&
       needs.deploy-app.result == 'success' &&
       (github.event_name == 'push' || needs.deploy-stripe-listener.result == 'success') &&
       (
@@ -2287,18 +2797,17 @@ jobs:
           sed -E 's/whsec_[[:alnum:]_]+/[masked-stripe-webhook-secret]/g' /tmp/stripe-listen.log >&2
           exit 1
         env:
-          API_PREVIEW_URL: ${{ needs.deploy-api.outputs.preview-url }}
+          API_PREVIEW_URL: ${{ matrix.runtime == 'vercel' && needs.deploy-api-vercel.outputs.preview-url || needs.deploy-api.outputs.preview-url }}
           STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
       - name: Run Playwright E2E tests
-        continue-on-error: ${{ vars.CI_CHECK_BROWSER_E2E != '1' }}
         run: cd e2e && npx playwright test --config playwright/playwright.config.ts
         env:
-          VM0_API_BACKEND_URL: ${{ needs.deploy-api.outputs.preview-url }}
-          OKOU_APP_URL: ${{ needs.deploy-app.outputs.preview-url }}
-          ZERO_APP_URL: ${{ needs.deploy-app.outputs.preview-url }}
+          VM0_API_BACKEND_URL: ${{ matrix.runtime == 'vercel' && needs.deploy-api-vercel.outputs.preview-url || needs.deploy-api.outputs.preview-url }}
+          OKOU_APP_URL: ${{ matrix.runtime == 'vercel' && needs.deploy-app.outputs.vercel-preview-url || needs.deploy-app.outputs.preview-url }}
+          ZERO_APP_URL: ${{ matrix.runtime == 'vercel' && needs.deploy-app.outputs.vercel-preview-url || needs.deploy-app.outputs.preview-url }}
           CLERK_PUBLISHABLE_KEY: ${{ vars.CLERK_PUBLISHABLE_KEY }}
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
-          JOB_REF: ${{ needs.prepare.outputs.job-ref }}
+          JOB_REF: ${{ matrix.runtime == 'vercel' && format('{0}-vercel', needs.prepare.outputs.job-ref) || needs.prepare.outputs.job-ref }}
           CF_ACCESS_CLIENT_ID: ${{ secrets.CF_API_PREVIEW_ACCESS_CLIENT_ID }}
           CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_API_PREVIEW_ACCESS_CLIENT_SECRET }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
@@ -2326,7 +2835,7 @@ jobs:
         env:
           METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
           METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
-          JOB_REF: ${{ needs.prepare.outputs.job-ref }}
+          JOB_REF: ${{ matrix.runtime == 'vercel' && format('{0}-vercel', needs.prepare.outputs.job-ref) || needs.prepare.outputs.job-ref }}
         run: |
           set -euo pipefail
 
@@ -2355,7 +2864,7 @@ jobs:
         env:
           METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
           METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
-          JOB_REF: ${{ needs.prepare.outputs.job-ref }}
+          JOB_REF: ${{ matrix.runtime == 'vercel' && format('{0}-vercel', needs.prepare.outputs.job-ref) || needs.prepare.outputs.job-ref }}
         run: |
           set -euo pipefail
 
@@ -2424,7 +2933,7 @@ jobs:
         if: always() && steps.playwright-artifact-safety.outputs.safe == 'true'
         uses: actions/upload-artifact@v7
         with:
-          name: playwright-report
+          name: playwright-report-${{ matrix.runtime }}
           path: |
             e2e/playwright-report/
             e2e/test-results/
@@ -2786,14 +3295,18 @@ jobs:
           PROFILE: vm0/default
         run: .github/scripts/wait-runner-image-groups.sh
 
-  # Deploy runner start: generate config with real API preview URL and start service
-  # Waits for both deploy-runner-prepare (binaries + image) and deploy-api (preview URL)
+  # Deploy runner start: generate isolated configs for both API preview URLs and
+  # start one service namespace per runtime from the shared binary and image.
   deploy-runner-start:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        runtime: [cloudflare, vercel]
     concurrency:
-      group: deploy-runner-start-${{ needs.prepare.outputs.job-ref }}
+      group: deploy-runner-start-${{ matrix.runtime }}-${{ needs.prepare.outputs.job-ref }}
       cancel-in-progress: true
-    needs: [prepare, deploy-runner-prepare, deploy-api]
+    needs: [prepare, deploy-runner-prepare, deploy-api, deploy-api-vercel]
     # Normal starts should finish quickly; failures need enough room for the
     # bounded partial-start cleanup watchdog to run before GitHub kills the job.
     timeout-minutes: 8
@@ -2822,13 +3335,14 @@ jobs:
           METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
           OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
           METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
-          RUNNER_SERVICE_REF: ${{ needs.prepare.outputs.job-ref }}
-          RUNNER_GROUP: ${{ format('vm0/development-{0}', needs.prepare.outputs.job-ref) }}
+          RUNNER_SERVICE_REF: ${{ matrix.runtime == 'vercel' && format('{0}-vercel', needs.prepare.outputs.job-ref) || needs.prepare.outputs.job-ref }}
+          RUNNER_GROUP: ${{ format('vm0/development-{0}', matrix.runtime == 'vercel' && format('{0}-vercel', needs.prepare.outputs.job-ref) || needs.prepare.outputs.job-ref) }}
           BIN_DIR: ${{ needs.deploy-runner-prepare.outputs.bin-dir }}
           RUNNER_DIR: ${{ needs.deploy-runner-prepare.outputs.runner-dir }}
+          RUNNER_CONFIG_SUFFIX: ${{ matrix.runtime == 'vercel' && '-vercel' || '' }}
           ROOTFS_HASH_MAP: ${{ needs.deploy-runner-prepare.outputs.rootfs-hash-map }}
           SNAPSHOT_HASH_MAP: ${{ needs.deploy-runner-prepare.outputs.snapshot-hash-map }}
-          RUNNER_API_URL: ${{ needs.deploy-api.outputs.preview-url }}
+          RUNNER_API_URL: ${{ matrix.runtime == 'vercel' && needs.deploy-api-vercel.outputs.preview-url || needs.deploy-api.outputs.preview-url }}
           CF_ACCESS_CLIENT_ID: ${{ secrets.CF_API_PREVIEW_ACCESS_CLIENT_ID }}
           CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_API_PREVIEW_ACCESS_CLIENT_SECRET }}
           VERCEL_BYPASS: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
@@ -2856,7 +3370,8 @@ jobs:
             local HOST=$1
             local HOST_INDEX=$2
             local RUNNER_NAME="${RUNNER_SERVICE_REF}-${HOST_INDEX}"
-            local RUNNER_DIRNAME="${RUNNER_DIR##*/}"
+            local RUNNER_DIRNAME="${RUNNER_DIR##*/}${RUNNER_CONFIG_SUFFIX}"
+            local RUNNER_CONFIG_DIR="${RUNNER_DIR}${RUNNER_CONFIG_SUFFIX}"
             local REMOTE="${METAL_USER}@${HOST}"
             local MC
             echo "=== Starting runner ${RUNNER_NAME} on ${HOST} ==="
@@ -2896,13 +3411,13 @@ jobs:
             # shellcheck disable=SC2029
             timeout 180s ssh "$REMOTE" "sudo ${BIN_DIR}/runner service stop --name '${RUNNER_NAME}' --force --cleanup partial-start"
             # shellcheck disable=SC2029
-            ssh "$REMOTE" "sudo rm -f ${RUNNER_DIR}/status.json"
+            ssh "$REMOTE" "sudo rm -f ${RUNNER_CONFIG_DIR}/status.json"
 
             # Start as systemd transient service
             # shellcheck disable=SC2029
             ssh "$REMOTE" "sudo ${BIN_DIR}/runner service start \
               --name ${RUNNER_NAME} \
-              --config ${RUNNER_DIR}/runner.yaml \
+              --config ${RUNNER_CONFIG_DIR}/runner.yaml \
               --env CF_ACCESS_CLIENT_ID=${CF_ACCESS_CLIENT_ID} \
               --env CF_ACCESS_CLIENT_SECRET=${CF_ACCESS_CLIENT_SECRET} \
               --env VERCEL_AUTOMATION_BYPASS_SECRET=${VERCEL_BYPASS} \
@@ -3060,33 +3575,16 @@ jobs:
 
           RUNNER_START_SUCCEEDED=1
 
-  # Prepare the runner identities and API credentials once, then fan runner
-  # coverage across no more than twelve non-empty file-balanced shards.
-  cli-e2e-03-runner-prepare:
+  # Generate one file-balanced shard layout, then run it once per API runtime.
+  cli-e2e-03-runner-shards:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
-    concurrency:
-      group: cli-e2e-03-runner-prepare-${{ needs.prepare.outputs.job-ref }}
-      cancel-in-progress: true
-    needs: [prepare, deploy-api, deploy-app, deploy-stripe-listener]
+    timeout-minutes: 5
+    needs: [prepare]
     if: |
-      always() &&
       needs.prepare.outputs.job-ref != '' &&
-      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) &&
-      needs.prepare.outputs.turbo-runner-consumer-needed == 'true' &&
-      needs.deploy-api.result == 'success' &&
-      needs.deploy-app.result == 'success' &&
-      (github.event_name == 'push' || needs.deploy-stripe-listener.result == 'success')
+      needs.prepare.outputs.turbo-runner-consumer-needed == 'true'
     outputs:
-      runner-organization-id: ${{ steps.account.outputs.runner-organization-id }}
-      codex-organization-id: ${{ steps.account.outputs.codex-organization-id }}
-      claude-organization-id: ${{ steps.account.outputs.claude-organization-id }}
-      mock-claude-organization-id: ${{ steps.account.outputs.mock-claude-organization-id }}
-      runner-email: ${{ steps.account.outputs.runner-email }}
-      codex-email: ${{ steps.account.outputs.codex-email }}
-      claude-email: ${{ steps.account.outputs.claude-email }}
-      mock-claude-email: ${{ steps.account.outputs.mock-claude-email }}
-      runner-shard-matrix: ${{ steps.shards.outputs.matrix }}
+      matrix: ${{ steps.shards.outputs.matrix }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
@@ -3101,30 +3599,77 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          matrix="$(cd e2e && pnpm exec tsx playwright/runner-shards.ts tests/03-runner)"
+          base_matrix="$(cd e2e && pnpm exec tsx playwright/runner-shards.ts tests/03-runner)"
+          matrix="$(jq -c '
+            .include as $shards |
+            ($shards | length) as $total |
+            {include: [
+              ["cloudflare", "vercel"][] as $runtime |
+              $shards[] |
+              . + {runtime: $runtime, total: $total}
+            ]}
+          ' <<<"$base_matrix")"
           jq -e '
             .include | type == "array" and
-            length > 0 and length <= 12 and
-            all(.[]; (.files | type == "array" and length > 0))
+            length > 0 and length <= 24 and
+            (map(select(.runtime == "cloudflare")) | length) ==
+              (map(select(.runtime == "vercel")) | length) and
+            all(.[];
+              (.runtime == "cloudflare" or .runtime == "vercel") and
+              (.total | type == "number" and . > 0 and . <= 12) and
+              (.files | type == "array" and length > 0)
+            )
           ' <<<"$matrix" >/dev/null
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
+  # Prepare isolated identities and API credentials for each runtime, then fan
+  # both lanes across the same non-empty file-balanced shards.
+  cli-e2e-03-runner-prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        runtime: [cloudflare, vercel]
+    concurrency:
+      group: cli-e2e-03-runner-prepare-${{ matrix.runtime }}-${{ needs.prepare.outputs.job-ref }}
+      cancel-in-progress: true
+    needs: [prepare, deploy-api, deploy-api-vercel, deploy-app, deploy-stripe-listener]
+    if: |
+      always() &&
+      needs.prepare.outputs.job-ref != '' &&
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) &&
+      needs.prepare.outputs.turbo-runner-consumer-needed == 'true' &&
+      needs.deploy-api.result == 'success' &&
+      needs.deploy-api-vercel.result == 'success' &&
+      needs.deploy-app.result == 'success' &&
+      (github.event_name == 'push' || needs.deploy-stripe-listener.result == 'success')
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 22
+      - name: Install pnpm
+        run: corepack enable pnpm
+      - name: Install E2E dependencies
+        run: cd e2e && pnpm install --frozen-lockfile
       - name: Prepare runner E2E accounts
         id: account
         run: cd e2e && pnpm exec tsx playwright/runner-account.ts prepare
         env:
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
-          JOB_REF: ${{ needs.prepare.outputs.job-ref }}
+          JOB_REF: ${{ matrix.runtime == 'vercel' && format('{0}-vercel', needs.prepare.outputs.job-ref) || needs.prepare.outputs.job-ref }}
       - name: Install Playwright browsers
         run: cd e2e && pnpm exec playwright install --with-deps chromium
       - name: Generate runner E2E API tokens
         run: cd e2e && pnpm exec tsx playwright/runner-token.ts /tmp
         env:
-          VM0_API_BACKEND_URL: ${{ needs.deploy-api.outputs.preview-url }}
-          OKOU_APP_URL: ${{ needs.deploy-app.outputs.preview-url }}
-          ZERO_APP_URL: ${{ needs.deploy-app.outputs.preview-url }}
+          VM0_API_BACKEND_URL: ${{ matrix.runtime == 'vercel' && needs.deploy-api-vercel.outputs.preview-url || needs.deploy-api.outputs.preview-url }}
+          OKOU_APP_URL: ${{ matrix.runtime == 'vercel' && needs.deploy-app.outputs.vercel-preview-url || needs.deploy-app.outputs.preview-url }}
+          ZERO_APP_URL: ${{ matrix.runtime == 'vercel' && needs.deploy-app.outputs.vercel-preview-url || needs.deploy-app.outputs.preview-url }}
           CLERK_PUBLISHABLE_KEY: ${{ vars.CLERK_PUBLISHABLE_KEY }}
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
-          JOB_REF: ${{ needs.prepare.outputs.job-ref }}
+          JOB_REF: ${{ matrix.runtime == 'vercel' && format('{0}-vercel', needs.prepare.outputs.job-ref) || needs.prepare.outputs.job-ref }}
           E2E_RUNNER_ORGANIZATION_ID: ${{ steps.account.outputs.runner-organization-id }}
           E2E_RUNNER_CODEX_ORGANIZATION_ID: ${{ steps.account.outputs.codex-organization-id }}
           E2E_RUNNER_CLAUDE_ORGANIZATION_ID: ${{ steps.account.outputs.claude-organization-id }}
@@ -3132,39 +3677,64 @@ jobs:
           CF_ACCESS_CLIENT_ID: ${{ secrets.CF_API_PREVIEW_ACCESS_CLIENT_ID }}
           CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_API_PREVIEW_ACCESS_CLIENT_SECRET }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+      - name: Create runner E2E account manifest
+        env:
+          RUNNER_ORGANIZATION_ID: ${{ steps.account.outputs.runner-organization-id }}
+          CODEX_ORGANIZATION_ID: ${{ steps.account.outputs.codex-organization-id }}
+          CLAUDE_ORGANIZATION_ID: ${{ steps.account.outputs.claude-organization-id }}
+          RUNNER_EMAIL: ${{ steps.account.outputs.runner-email }}
+          CODEX_EMAIL: ${{ steps.account.outputs.codex-email }}
+          CLAUDE_EMAIL: ${{ steps.account.outputs.claude-email }}
+        run: |
+          jq -n \
+            --arg runnerOrganizationId "$RUNNER_ORGANIZATION_ID" \
+            --arg codexOrganizationId "$CODEX_ORGANIZATION_ID" \
+            --arg claudeOrganizationId "$CLAUDE_ORGANIZATION_ID" \
+            --arg runnerEmail "$RUNNER_EMAIL" \
+            --arg codexEmail "$CODEX_EMAIL" \
+            --arg claudeEmail "$CLAUDE_EMAIL" \
+            '{runnerOrganizationId: $runnerOrganizationId, codexOrganizationId: $codexOrganizationId, claudeOrganizationId: $claudeOrganizationId, runnerEmail: $runnerEmail, codexEmail: $codexEmail, claudeEmail: $claudeEmail}' \
+            > /tmp/e2e-runner-accounts.json
       - name: Upload runner E2E API tokens
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: e2e-tokens
+          name: e2e-tokens-${{ matrix.runtime }}
           path: |
             /tmp/e2e-api-credentials-runner.json
             /tmp/e2e-api-credentials-runner-real-codex.json
             /tmp/e2e-api-credentials-runner-real-claude.json
             /tmp/e2e-api-credentials-runner-mock-claude.json
+            /tmp/e2e-runner-accounts.json
           retention-days: 1
 
   cli-e2e-03-runner-bootstrap:
     runs-on: ubuntu-latest
     timeout-minutes: 2
+    strategy:
+      fail-fast: false
+      matrix:
+        runtime: [cloudflare, vercel]
     concurrency:
-      group: cli-e2e-03-runner-bootstrap-${{ needs.prepare.outputs.job-ref }}
+      group: cli-e2e-03-runner-bootstrap-${{ matrix.runtime }}-${{ needs.prepare.outputs.job-ref }}
       cancel-in-progress: true
     needs:
       - prepare
       - deploy-api
+      - deploy-api-vercel
       - cli-e2e-03-runner-prepare
     if: |
       always() &&
       needs.prepare.outputs.job-ref != '' &&
       needs.prepare.outputs.turbo-runner-consumer-needed == 'true' &&
       needs.deploy-api.result == 'success' &&
+      needs.deploy-api-vercel.result == 'success' &&
       needs.cli-e2e-03-runner-prepare.result == 'success'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Download runner E2E API tokens
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
-          name: e2e-tokens
+          name: e2e-tokens-${{ matrix.runtime }}
           path: /tmp
       - name: Setup runner E2E API credentials
         shell: bash
@@ -3347,11 +3917,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     concurrency:
-      group: cli-e2e-03-runner-${{ matrix.index }}-${{ needs.prepare.outputs.job-ref }}
+      group: cli-e2e-03-runner-${{ matrix.runtime }}-${{ matrix.index }}-${{ needs.prepare.outputs.job-ref }}
       cancel-in-progress: true
     needs:
       - prepare
+      - cli-e2e-03-runner-shards
       - deploy-api
+      - deploy-api-vercel
       - deploy-runner-prepare
       - deploy-runner-start
       - cli-e2e-03-runner-prepare
@@ -3360,25 +3932,20 @@ jobs:
       always() &&
       needs.prepare.outputs.job-ref != '' &&
       needs.prepare.outputs.turbo-runner-consumer-needed == 'true' &&
+      needs.cli-e2e-03-runner-shards.result == 'success' &&
       needs.deploy-api.result == 'success' &&
+      needs.deploy-api-vercel.result == 'success' &&
       needs.deploy-runner-prepare.result == 'success' &&
       needs.deploy-runner-start.result == 'success' &&
       needs.cli-e2e-03-runner-prepare.result == 'success' &&
       needs.cli-e2e-03-runner-bootstrap.result == 'success'
     strategy:
       fail-fast: false
-      matrix: ${{ fromJSON(needs.cli-e2e-03-runner-prepare.outputs.runner-shard-matrix) }}
+      matrix: ${{ fromJSON(needs.cli-e2e-03-runner-shards.outputs.matrix) }}
     env:
-      E2E_CLERK_ORG_ID: ${{ needs.cli-e2e-03-runner-prepare.outputs.runner-organization-id }}
-      E2E_RUNNER_CODEX_ORG_ID: ${{ needs.cli-e2e-03-runner-prepare.outputs.codex-organization-id }}
-      E2E_RUNNER_CLAUDE_ORG_ID: ${{ needs.cli-e2e-03-runner-prepare.outputs.claude-organization-id }}
-      E2E_RUNNER_MOCK_CLAUDE_ORG_ID: ${{ needs.cli-e2e-03-runner-prepare.outputs.mock-claude-organization-id }}
-      E2E_RUNNER_EMAIL: ${{ needs.cli-e2e-03-runner-prepare.outputs.runner-email }}
-      E2E_RUNNER_CODEX_EMAIL: ${{ needs.cli-e2e-03-runner-prepare.outputs.codex-email }}
-      E2E_RUNNER_CLAUDE_EMAIL: ${{ needs.cli-e2e-03-runner-prepare.outputs.claude-email }}
-      E2E_RUNNER_MOCK_CLAUDE_EMAIL: ${{ needs.cli-e2e-03-runner-prepare.outputs.mock-claude-email }}
+      E2E_RUNNER_RUNTIME: ${{ matrix.runtime }}
       E2E_RUNNER_SHARD_INDEX: ${{ matrix.index }}
-      E2E_RUNNER_SHARD_TOTAL: ${{ strategy.job-total }}
+      E2E_RUNNER_SHARD_TOTAL: ${{ matrix.total }}
       E2E_RUNNER_TEST_FILES_JSON: ${{ toJSON(matrix.files) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -3394,7 +3961,7 @@ jobs:
       - name: Download runner E2E API tokens
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
-          name: e2e-tokens
+          name: e2e-tokens-${{ matrix.runtime }}
           path: /tmp
       - name: Setup runner E2E API credentials
         shell: bash
@@ -3413,6 +3980,14 @@ jobs:
           echo "::add-mask::$token"
           echo "E2E_API_TOKEN=$token" >> "$GITHUB_ENV"
           echo "E2E_API_URL=$api_url" >> "$GITHUB_ENV"
+          {
+            echo "E2E_CLERK_ORG_ID=$(jq -er '.runnerOrganizationId' /tmp/e2e-runner-accounts.json)"
+            echo "E2E_RUNNER_CODEX_ORG_ID=$(jq -er '.codexOrganizationId' /tmp/e2e-runner-accounts.json)"
+            echo "E2E_RUNNER_CLAUDE_ORG_ID=$(jq -er '.claudeOrganizationId' /tmp/e2e-runner-accounts.json)"
+            echo "E2E_RUNNER_EMAIL=$(jq -er '.runnerEmail' /tmp/e2e-runner-accounts.json)"
+            echo "E2E_RUNNER_CODEX_EMAIL=$(jq -er '.codexEmail' /tmp/e2e-runner-accounts.json)"
+            echo "E2E_RUNNER_CLAUDE_EMAIL=$(jq -er '.claudeEmail' /tmp/e2e-runner-accounts.json)"
+          } >> "$GITHUB_ENV"
       - name: Initialize runner E2E shard
         shell: bash
         run: |
@@ -3427,6 +4002,7 @@ jobs:
           : "${E2E_RUNNER_MOCK_CLAUDE_EMAIL:?runner mock Claude E2E account is required}"
           : "${E2E_API_TOKEN:?runner E2E API token is required}"
           : "${E2E_API_URL:?runner E2E API URL is required}"
+          : "${E2E_RUNNER_RUNTIME:?runner E2E runtime is required}"
           jq -e '
             type == "array" and length > 0 and
             all(.[]; type == "string" and length > 0)
@@ -3451,7 +4027,7 @@ jobs:
             fi
           done
 
-          result_directory="results/runner-${E2E_RUNNER_SHARD_INDEX}"
+          result_directory="results/runner-${E2E_RUNNER_RUNTIME}-${E2E_RUNNER_SHARD_INDEX}"
           mkdir -p "$result_directory"
           BATS_TEST_TIMEOUT=240 ./test/libs/bats/bin/bats \
             -T \
@@ -3473,19 +4049,26 @@ jobs:
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           flags: e2e-runner
-          files: e2e/results/runner-${{ matrix.index }}/*.xml
+          files: e2e/results/runner-${{ matrix.runtime }}-${{ matrix.index }}/*.xml
           report_type: test_results
       - name: Upload runner E2E JUnit XML
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: e2e-runner-junit-${{ matrix.index }}
-          path: e2e/results/runner-${{ matrix.index }}/
+          name: e2e-runner-junit-${{ matrix.runtime }}-${{ matrix.index }}
+          path: e2e/results/runner-${{ matrix.runtime }}-${{ matrix.index }}/
           retention-days: 7
 
   cli-e2e-03-runner-cleanup:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        runtime: [cloudflare, vercel]
+    concurrency:
+      group: cli-e2e-03-runner-cleanup-${{ matrix.runtime }}-${{ needs.prepare.outputs.job-ref }}
+      cancel-in-progress: true
     needs:
       - prepare
       - cli-e2e-03-runner-prepare
@@ -3508,7 +4091,7 @@ jobs:
         run: cd e2e && pnpm exec tsx playwright/runner-account.ts cleanup
         env:
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
-          JOB_REF: ${{ needs.prepare.outputs.job-ref }}
+          JOB_REF: ${{ matrix.runtime == 'vercel' && format('{0}-vercel', needs.prepare.outputs.job-ref) || needs.prepare.outputs.job-ref }}
 
   lint-runtime-api-compat:
     runs-on: ubuntu-latest
@@ -3602,6 +4185,7 @@ jobs:
       - test-api
       - test-other
       - deploy-api
+      - deploy-api-vercel
       - deploy-app
       - deploy-stripe-listener
       - deploy-cli
@@ -3660,15 +4244,35 @@ jobs:
             RUNNER_E2E_SKIP_ALLOWED=""
           fi
           CF_APP_SKIP_ALLOWED=""
+          API_DEPLOY_SKIP_ALLOWED="skipped"
+          if [ "${{ needs.prepare.outputs.api-changed }}" = "true" ] ||
+            [ "${{ needs.prepare.outputs.platform-changed }}" = "true" ] ||
+            [ "${{ needs.prepare.outputs.cli-changed }}" = "true" ] ||
+            [ "${{ needs.prepare.outputs.crates-changed }}" = "true" ] ||
+            [ "${{ needs.prepare.outputs.ci-changed }}" = "true" ] ||
+            [ "${{ needs.prepare.outputs.e2e-changed }}" = "true" ]; then
+            API_DEPLOY_SKIP_ALLOWED=""
+          fi
+          LIVE_E2E_SKIP_ALLOWED="skipped"
+          if [ "${{ needs.prepare.outputs.api-changed }}" = "true" ] ||
+            [ "${{ needs.prepare.outputs.platform-changed }}" = "true" ] ||
+            [ "${{ needs.prepare.outputs.cli-changed }}" = "true" ] ||
+            [ "${{ needs.prepare.outputs.ci-changed }}" = "true" ] ||
+            [ "${{ needs.prepare.outputs.e2e-changed }}" = "true" ]; then
+            LIVE_E2E_SKIP_ALLOWED=""
+          fi
           if [ "${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name != github.repository }}" = "true" ]; then
             # External fork PRs cannot access runner infra secrets, so their
             # runner deployment and runner E2E jobs are expected to skip.
             RUNNER_DEPLOY_SKIP_ALLOWED="true"
             RUNNER_E2E_SKIP_ALLOWED="true"
             CF_APP_SKIP_ALLOWED="true"
+            API_DEPLOY_SKIP_ALLOWED="skipped"
+            LIVE_E2E_SKIP_ALLOWED="skipped"
           fi
           if [ "${{ github.actor == 'dependabot[bot]' }}" = "true" ]; then
             CF_APP_SKIP_ALLOWED="true"
+            LIVE_E2E_SKIP_ALLOWED="skipped"
           fi
 
           check_result() {
@@ -3710,12 +4314,13 @@ jobs:
 
           # May-skip: 'success' or 'skipped' are both acceptable
           check_result "test-migrate" "${{ needs.test-migrate.result }}" "true"
-          check_result "deploy-api" "${{ needs.deploy-api.result }}" "true"
+          check_result "deploy-api" "${{ needs.deploy-api.result }}" "$API_DEPLOY_SKIP_ALLOWED"
+          check_result "deploy-api-vercel" "${{ needs.deploy-api-vercel.result }}" "$API_DEPLOY_SKIP_ALLOWED"
           check_result "deploy-app" "${{ needs.deploy-app.result }}" "$CF_APP_SKIP_ALLOWED"
           check_result "deploy-stripe-listener" "${{ needs.deploy-stripe-listener.result }}" "true"
           check_result "deploy-cli" "${{ needs.deploy-cli.result }}" "$CF_APP_SKIP_ALLOWED"
-          check_result "cli-e2e-02-browser" "${{ needs.cli-e2e-02-browser.result }}" "${{ vars.CI_CHECK_BROWSER_E2E == '1' && 'true' || 'informational' }}"
-          check_result "cli-e2e-02-playwright" "${{ needs.cli-e2e-02-playwright.result }}" "${{ vars.CI_CHECK_BROWSER_E2E == '1' && 'true' || 'informational' }}"
+          check_result "cli-e2e-02-browser" "${{ needs.cli-e2e-02-browser.result }}" "$LIVE_E2E_SKIP_ALLOWED"
+          check_result "cli-e2e-02-playwright" "${{ needs.cli-e2e-02-playwright.result }}" "$LIVE_E2E_SKIP_ALLOWED"
           check_result "cli-e2e-01-serial" "${{ needs.cli-e2e-01-serial.result }}" "true"
           check_result "cli-e2e-03-runner-prepare" "${{ needs.cli-e2e-03-runner-prepare.result }}" "$RUNNER_E2E_SKIP_ALLOWED"
           check_result "cli-e2e-03-runner-bootstrap" "${{ needs.cli-e2e-03-runner-bootstrap.result }}" "$RUNNER_E2E_SKIP_ALLOWED"

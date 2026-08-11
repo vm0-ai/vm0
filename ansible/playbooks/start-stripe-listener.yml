@@ -10,8 +10,7 @@
 #     -e "job_ref=pr-123" \
 #     -e "forward_url=https://api-preview.example.com/api/webhooks/stripe" \
 #     -e "stripe_secret_key=sk_test_..." \
-#     -e "api_access_client_id=..." \
-#     -e "api_access_client_secret=..."
+#     -e "forward_headers=Header:Value"
 
 - name: Start Stripe CLI Listener
   hosts: all
@@ -36,14 +35,12 @@
           - job_ref is defined
           - forward_url is defined
           - stripe_secret_key is defined
-          - api_access_client_id is defined
-          - api_access_client_secret is defined
+          - forward_headers is defined
           - job_ref | length > 0
           - forward_url | length > 0
           - stripe_secret_key | length > 0
-          - api_access_client_id | length > 0
-          - api_access_client_secret | length > 0
-        fail_msg: "Required variables: job_ref, forward_url, stripe_secret_key, api_access_client_id, api_access_client_secret"
+          - forward_headers | length > 0
+        fail_msg: "Required variables: job_ref, forward_url, stripe_secret_key, forward_headers"
 
     - name: Create Stripe listener directory
       file:
@@ -106,8 +103,7 @@
         mode: "0600"
         content: |
           STRIPE_API_KEY={{ stripe_secret_key }}
-          CF_ACCESS_CLIENT_ID={{ api_access_client_id }}
-          CF_ACCESS_CLIENT_SECRET={{ api_access_client_secret }}
+          STRIPE_FORWARD_HEADERS={{ forward_headers }}
       no_log: true
 
     - name: Write Stripe listener launcher
@@ -120,7 +116,7 @@
           exec "{{ stripe_bin }}" listen \
             --events "{{ stripe_events }}" \
             --forward-to "{{ forward_url }}" \
-            --headers "CF-Access-Client-Id:${CF_ACCESS_CLIENT_ID},CF-Access-Client-Secret:${CF_ACCESS_CLIENT_SECRET}"
+            --headers "${STRIPE_FORWARD_HEADERS}"
 
     - name: Write Stripe listener systemd unit
       copy:

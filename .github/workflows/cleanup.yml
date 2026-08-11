@@ -25,12 +25,14 @@ jobs:
           CF_PAGES_PROJECT_NAME: ${{ vars.CF_PAGES_PROJECT_NAME }}
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CF_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_PAGES_DEPLOY_API_TOKEN }}
-          PAGES_BRANCH: pr-${{ github.event.pull_request.number }}-app
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          bash .github/scripts/delete-okou-pages-preview-deployments.sh \
-            "$CLOUDFLARE_ACCOUNT_ID" \
-            "$CF_PAGES_PROJECT_NAME" \
-            "$PAGES_BRANCH"
+          for pages_branch in "pr-${PR_NUMBER}-vercel-app" "pr-${PR_NUMBER}-app"; do
+            bash .github/scripts/delete-okou-pages-preview-deployments.sh \
+              "$CLOUDFLARE_ACCOUNT_ID" \
+              "$CF_PAGES_PROJECT_NAME" \
+              "$pages_branch"
+          done
 
   cleanup-runner:
     # Skip for release-please PRs (only version bumps and changelogs)
@@ -75,15 +77,16 @@ jobs:
           METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
         run: |
           cd ansible
-          JOB_REF="pr-${PR_NUMBER}"
-          if ! ansible-playbook \
-            -i "${METAL_HOSTS}," \
-            playbooks/cleanup-turbo-runner.yml \
-            -e "ansible_user=${METAL_USER}" \
-            -e "job_ref=${JOB_REF}" \
-            -v; then
-            echo "::warning::Turbo runner cleanup failed for ${JOB_REF} — stale services may remain on metal hosts"
-          fi
+          for JOB_REF in "pr-${PR_NUMBER}-vercel" "pr-${PR_NUMBER}"; do
+            if ! ansible-playbook \
+              -i "${METAL_HOSTS}," \
+              playbooks/cleanup-turbo-runner.yml \
+              -e "ansible_user=${METAL_USER}" \
+              -e "job_ref=${JOB_REF}" \
+              -v; then
+              echo "::warning::Turbo runner cleanup failed for ${JOB_REF} — stale services may remain on metal hosts"
+            fi
+          done
 
       - name: Cleanup Stripe CLI listener on all metal hosts
         if: steps.check.outputs.should-cleanup == 'true'
@@ -93,15 +96,16 @@ jobs:
           METAL_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
         run: |
           cd ansible
-          JOB_REF="pr-${PR_NUMBER}"
-          if ! ansible-playbook \
-            -i "${METAL_HOSTS}," \
-            playbooks/cleanup-stripe-listener.yml \
-            -e "ansible_user=${METAL_USER}" \
-            -e "job_ref=${JOB_REF}" \
-            -v; then
-            echo "::warning::Stripe CLI listener cleanup failed for ${JOB_REF} — stale Stripe forwarding may remain on metal hosts"
-          fi
+          for JOB_REF in "pr-${PR_NUMBER}-vercel" "pr-${PR_NUMBER}"; do
+            if ! ansible-playbook \
+              -i "${METAL_HOSTS}," \
+              playbooks/cleanup-stripe-listener.yml \
+              -e "ansible_user=${METAL_USER}" \
+              -e "job_ref=${JOB_REF}" \
+              -v; then
+              echo "::warning::Stripe CLI listener cleanup failed for ${JOB_REF} — stale Stripe forwarding may remain on metal hosts"
+            fi
+          done
 
       - name: Cleanup crates runner on all metal hosts
         if: steps.check.outputs.should-cleanup == 'true'
@@ -138,10 +142,22 @@ jobs:
           branch-name: "pr-${{ github.event.pull_request.number }}"
           action: "cleanup"
 
+      - name: Delete isolated Vercel Neon Branch
+        uses: ./.github/actions/neon-branch
+        with:
+          neon-api-key: ${{ secrets.NEON_API_KEY }}
+          neon-project-id: ${{ vars.NEON_PROJECT_ID }}
+          branch-name: "pr-${{ github.event.pull_request.number }}-vercel"
+          action: "cleanup"
+
   cleanup-clerk-test-resources:
-    # Delete generation-scoped Clerk test users and organizations for this PR.
+    # Delete generation-scoped Clerk test users and organizations for both runtime namespaces.
     if: "!startsWith(github.head_ref || '', 'release-please--branches--')"
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        runtime: [cloudflare, vercel]
     permissions:
       contents: read
     steps:
@@ -160,7 +176,7 @@ jobs:
         run: cd e2e && pnpm exec tsx playwright/clerk-test-resources.ts cleanup-job-ref
         env:
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
-          JOB_REF: pr-${{ github.event.pull_request.number }}
+          JOB_REF: ${{ matrix.runtime == 'vercel' && format('pr-{0}-vercel', github.event.pull_request.number) || format('pr-{0}', github.event.pull_request.number) }}
 
   cleanup-deployments:
     # Skip for release-please PRs (only version bumps and changelogs)
