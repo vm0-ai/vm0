@@ -5,6 +5,7 @@ import {
 } from "@vm0/api-contracts/contracts/test-connector-credential-storage-state";
 
 import { accept, type TestContext } from "../../../../__tests__/test-context";
+import { createApp } from "../../../../app-factory";
 import { setupApp } from "../../../../__tests__/test-helpers";
 import { testConnectorCredentialStorageStateRoutes } from "../../test-connector-credential-storage-state";
 
@@ -124,6 +125,34 @@ export async function seedConnectorStorageRow(
   return response.connector_id;
 }
 
+export async function upsertLegacyConnectorVariable(
+  context: TestContext,
+  args: {
+    readonly connectorId: string;
+    readonly description: string | null;
+    readonly name: string;
+    readonly orgId: string;
+    readonly userId: string;
+    readonly value: string;
+  },
+): Promise<string> {
+  const response = await postAction(context, {
+    action: "upsert-legacy-variable",
+    connector_id: args.connectorId,
+    description: args.description,
+    name: args.name,
+    org_id: args.orgId,
+    user_id: args.userId,
+    value: args.value,
+  });
+  if (!response.variable_id) {
+    throw new Error(
+      "Connector storage test fixture variable id was not returned",
+    );
+  }
+  return response.variable_id;
+}
+
 export async function seedCustomConnectorRuntimeConnectors(
   context: TestContext,
   args: {
@@ -231,5 +260,30 @@ export async function setConnectorVariableOwner(
     name: args.name,
     org_id: args.orgId,
     user_id: args.userId,
+  });
+}
+
+export async function requestSetConnectorVariableOwner(
+  context: TestContext,
+  args: {
+    readonly connectorId: string;
+    readonly name: string;
+    readonly orgId: string;
+    readonly userId: string;
+  },
+): Promise<Response> {
+  return await createApp({
+    signal: context.signal,
+    routes: testConnectorCredentialStorageStateRoutes,
+  }).request(testConnectorCredentialStorageStateContract.action.path, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      action: "set-variable-owner",
+      connector_id: args.connectorId,
+      name: args.name,
+      org_id: args.orgId,
+      user_id: args.userId,
+    } satisfies TestConnectorCredentialStorageStateActionBody),
   });
 }

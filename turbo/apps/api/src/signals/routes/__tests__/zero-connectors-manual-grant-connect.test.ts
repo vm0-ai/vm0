@@ -14,8 +14,10 @@ import { setupApp } from "../../../__tests__/test-helpers";
 import { createApp } from "../../../app-factory";
 import {
   readConnectorCredentialStorageState,
+  requestSetConnectorVariableOwner,
   seedConnectorStorageRow,
   seedOwnedConnectorSecret,
+  upsertLegacyConnectorVariable,
 } from "./helpers/connector-credential-storage-state";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { zeroConnectorsRoutes } from "../zero-connectors";
@@ -337,6 +339,103 @@ describe("POST /api/zero/connectors/:connectorSlug/manual-grant", () => {
         { name: "ZENDESK_SUBDOMAIN", connector_id: response.body.id },
       ]),
     );
+  });
+
+  it("keeps legacy connector variable upserts valid", async () => {
+    const fixture = await seedFixture();
+    const connectorId = await seedConnectorStorageRow(context, {
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      connectorSlug: "github",
+      authMethod: "oauth",
+      storageVersion: 1,
+    });
+    const args = {
+      connectorId,
+      description: "legacy compatibility variable",
+      name: "LEGACY_COMPAT_VARIABLE",
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+    };
+
+    const insertedId = await upsertLegacyConnectorVariable(context, {
+      ...args,
+      value: "before",
+    });
+    const updatedId = await upsertLegacyConnectorVariable(context, {
+      ...args,
+      value: "after",
+    });
+
+    expect(updatedId).toBe(insertedId);
+    await expect(
+      readConnectorCredentialStorageState(context, {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        connectorSlug: "github",
+        variableNames: [args.name],
+      }),
+    ).resolves.toMatchObject({
+      variables: [{ name: args.name, connector_id: connectorId }],
+    });
+  });
+
+  it("rejects connector variable owners from another organization or user", async () => {
+    const fixture = await seedFixture();
+    const response = await accept(
+      setupApp({ context, routes: zeroConnectorsRoutes })(
+        zeroConnectorManualGrantContract,
+      ).connect({
+        params: { connectorSlug: "zendesk" },
+        body: {
+          authMethod: "api-token",
+          values: {
+            apiToken: "zendesk-token",
+            email: "support@example.com",
+            subdomain: "example",
+          },
+        },
+        headers: authHeaders(),
+      }),
+      [200],
+    );
+    const foreignOwners = [
+      {
+        orgId: `org_${randomUUID()}`,
+        userId: fixture.userId,
+      },
+      {
+        orgId: fixture.orgId,
+        userId: `user_${randomUUID()}`,
+      },
+    ];
+
+    for (const owner of foreignOwners) {
+      const foreignConnectorId = await seedConnectorStorageRow(context, {
+        ...owner,
+        connectorSlug: "github",
+        authMethod: "oauth",
+        storageVersion: 1,
+      });
+      const ownerUpdate = await requestSetConnectorVariableOwner(context, {
+        connectorId: foreignConnectorId,
+        name: "ZENDESK_EMAIL",
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+      });
+      expect(ownerUpdate.status).toBe(500);
+    }
+
+    await expect(
+      readConnectorCredentialStorageState(context, {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        connectorSlug: "zendesk",
+        variableNames: ["ZENDESK_EMAIL"],
+      }),
+    ).resolves.toMatchObject({
+      variables: [{ name: "ZENDESK_EMAIL", connector_id: response.body.id }],
+    });
   });
 
   it("deletes connector-owned secret and variable state on disconnect", async () => {

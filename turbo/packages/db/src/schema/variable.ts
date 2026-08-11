@@ -7,6 +7,7 @@ import {
   timestamp,
   uniqueIndex,
   index,
+  foreignKey,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { connectors } from "./connector";
@@ -24,14 +25,7 @@ export const variables = pgTable(
     value: text("value").notNull(),
     description: text("description"),
     type: varchar("type", { length: 50 }).notNull().default("user"),
-    connectorId: uuid("connector_id").references(
-      () => {
-        return connectors.id;
-      },
-      {
-        onDelete: "cascade",
-      },
-    ),
+    connectorId: uuid("connector_id"),
     userId: text("user_id").notNull(),
     orgId: text("org_id").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -49,6 +43,14 @@ export const variables = pgTable(
         table.type,
         table.name,
       ),
+      uniqueIndex("idx_variables_connector_name")
+        .on(table.connectorId, table.name)
+        .where(sql`${table.connectorId} IS NOT NULL`),
+      foreignKey({
+        name: "fk_variables_connector_owner",
+        columns: [table.connectorId, table.orgId, table.userId],
+        foreignColumns: [connectors.id, connectors.orgId, connectors.userId],
+      }).onDelete("cascade"),
       check(
         "chk_variables_connector_owner_type",
         sql`(${table.type} = 'connector') = (${table.connectorId} IS NOT NULL)`,
