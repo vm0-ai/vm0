@@ -124,6 +124,7 @@ run_action() {
   local input_app="${3:-api}"
   local input_environment="${4:-preview}"
   local input_cli_pkg_url="${5-https://static.vm0.io/okou-cli/test-sha/package.tgz}"
+  local input_app_url="${6-https://pr-123-app.vm0.test}"
   local action_script="${test_dir}/web-api-env-action.sh"
   local github_output="${test_dir}/github-output"
   local repo_vars_json
@@ -141,7 +142,7 @@ run_action() {
     INPUT_DATABASE_URL="postgres://preview-db" \
     INPUT_JOB_REF="pr-123" \
     INPUT_WEB_URL="https://pr-123-www.vm0.test" \
-    INPUT_APP_URL="https://pr-123-app.vm0.test" \
+    INPUT_APP_URL="$input_app_url" \
     INPUT_API_BACKEND_URL="https://pr-123-api-backend.vm0.test" \
     INPUT_CLI_PKG_URL="$input_cli_pkg_url" \
     REPO_VARS_JSON="$repo_vars_json" \
@@ -256,6 +257,7 @@ assert_env_value "$production_api_env_file" VM0_WEB_URL "https://pr-123-www.vm0.
 assert_env_value "$production_api_env_file" VM0_API_BACKEND_URL "https://pr-123-api-backend.vm0.test"
 assert_env_value "$production_api_env_file" FEISHU_CALLBACK_BASE_URL "https://pr-123-api-backend.vm0.test"
 assert_env_value "$production_api_env_file" CLI_PKG_URL "https://static.vm0.io/okou-cli/test-sha/package.tgz"
+assert_env_value "$production_api_env_file" APP_URL "https://pr-123-app.vm0.test"
 assert_env_value "$production_api_env_file" ATOM_URL "https://atom.github.test"
 assert_env_value "$production_api_env_file" VM0_MACHINE_SECRET_KEY "github-atom-machine-secret"
 assert_env_value "$production_api_env_file" JOGGAI_WEBHOOK_SECRET "github-joggai-webhook-secret"
@@ -276,6 +278,13 @@ assert_env_value "$production_api_env_file" STRIPE_WEBHOOK_SECRET "github-stripe
 assert_env_value "$production_api_env_file" STRIPE_AUTOMATION_WEBHOOK_SECRET "github-stripe-automation-webhook-secret"
 assert_env_absent_value "$production_api_env_file" "doppler-stripe-billing-webhook-secret"
 assert_env_absent_value "$production_api_env_file" "doppler-stripe-automation-webhook-secret"
+
+production_api_default_dir="$(mktemp -d)"
+TEMP_DIRS+=("$production_api_default_dir")
+production_api_default_output="$(run_action "$(build_doppler_secrets_json)" "$production_api_default_dir" api production "https://static.vm0.io/okou-cli/test-sha/package.tgz" "")"
+production_api_default_env_file="$(awk -F= '$1 == "file" { sub(/^[^=]*=/, ""); print }' "${production_api_default_dir}/github-output")"
+assert_contains "$production_api_default_output" "Rendered"
+assert_env_value "$production_api_default_env_file" APP_URL "https://app.okou.ai"
 
 missing_dir="$(mktemp -d)"
 TEMP_DIRS+=("$missing_dir")

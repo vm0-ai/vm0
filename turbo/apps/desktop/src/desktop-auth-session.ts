@@ -38,9 +38,8 @@ interface DesktopAuthSessionOptions {
   /** Pre-resolved API base URL (`resolveComputerUseApiBaseUrl(platformUrl)`). */
   readonly apiBaseUrl: string;
   /**
-   * Cookie-merge URLs for auth-state requests, in precedence order
-   * (`[webUrl, platformUrl]`). The per-request URL is appended internally so
-   * its cookies win last, matching the original `[webUrl, platformUrl, requestUrl]`.
+   * Cookie-merge URLs for auth-state requests, in precedence order. The
+   * per-request URL is appended internally so its cookies win last.
    */
   readonly cookieUrls: readonly URL[];
   readonly cookieSource: DesktopSessionCookieSource;

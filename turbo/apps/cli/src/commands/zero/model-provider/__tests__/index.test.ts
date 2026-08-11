@@ -115,6 +115,7 @@ describe("zero model-provider command", () => {
     );
     expect(helpText).toContain("top-left organization menu");
     expect(helpText).toContain("Preferences / Personal Models");
+    expect(helpText).toContain("https://app.okou.ai");
 
     await setCommand.parseAsync(["node", "cli"]);
 

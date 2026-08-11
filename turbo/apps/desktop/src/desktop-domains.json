@@ -1,0 +1,8 @@
+{
+  "defaultPlatformUrl": "https://app.okou.ai",
+  "compatiblePlatformUrls": ["https://app.okou.ai", "https://app.vm0.ai"],
+  "productionServiceUrls": {
+    "api": "https://api.vm0.ai",
+    "www": "https://www.vm0.ai"
+  }
+}

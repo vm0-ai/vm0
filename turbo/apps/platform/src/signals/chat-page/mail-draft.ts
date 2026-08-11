@@ -94,9 +94,11 @@ function hasExplicitUrlOrigin(value: string): boolean {
 }
 
 function isPlatformHostname(hostname: string): boolean {
-  const platformDomain = ["vm0.ai", "vm6.ai", "vm7.ai"].some((suffix) => {
-    return hostname === suffix || hostname.endsWith(`.${suffix}`);
-  });
+  const platformDomain = ["vm0.ai", "okou.ai", "vm6.ai", "vm7.ai"].some(
+    (suffix) => {
+      return hostname === suffix || hostname.endsWith(`.${suffix}`);
+    },
+  );
   return platformDomain && /(^|-)(platform|app|www|api)\./u.test(hostname);
 }
 

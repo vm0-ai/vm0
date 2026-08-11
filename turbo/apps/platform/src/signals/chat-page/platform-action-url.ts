@@ -54,9 +54,11 @@ function hasExplicitUrlOrigin(value: string): boolean {
 }
 
 function isPlatformHostname(hostname: string): boolean {
-  const isPlatformDomain = ["vm0.ai", "vm6.ai", "vm7.ai"].some((suffix) => {
-    return hostname === suffix || hostname.endsWith(`.${suffix}`);
-  });
+  const isPlatformDomain = ["vm0.ai", "okou.ai", "vm6.ai", "vm7.ai"].some(
+    (suffix) => {
+      return hostname === suffix || hostname.endsWith(`.${suffix}`);
+    },
+  );
   if (!isPlatformDomain) {
     return false;
   }

@@ -1,9 +1,13 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import desktopDomains from "./desktop-domains.json";
 import desktopIdentities from "./desktop-identities.json";
-import { rewriteDesktopServiceHostname } from "./desktop-api-base-url";
+import {
+  isProductionDesktopPlatformHostname,
+  rewriteDesktopServiceHostname,
+} from "./desktop-api-base-url";
 
-const PRODUCTION_PLATFORM_URL = "https://app.vm0.ai";
+const PRODUCTION_PLATFORM_URL = desktopDomains.defaultPlatformUrl;
 const DESKTOP_RUNTIME_CONFIG_FILE = "desktop-runtime-config.json";
 
 export type DesktopEnvironment = "production" | "staging" | "development";
@@ -26,6 +30,7 @@ export interface DesktopConfig {
   readonly identity: DesktopIdentity;
   readonly sessionPartition: string;
   readonly allowedAppOrigins: ReadonlySet<string>;
+  readonly authCookieUrls: readonly URL[];
 }
 
 function desktopRuntimeConfigPath(): string {
@@ -94,7 +99,10 @@ function environmentForPlatformUrl(
   platformUrl: URL,
   hasExplicitUrl: boolean,
 ): DesktopEnvironment {
-  if (!hasExplicitUrl || platformUrl.hostname === "app.vm0.ai") {
+  if (
+    !hasExplicitUrl ||
+    isProductionDesktopPlatformHostname(platformUrl.hostname)
+  ) {
     return "production";
   }
   if (platformUrl.hostname === "staging-app.omby.ai") {
@@ -124,11 +132,38 @@ function addDerivedOrigin(
   origins.add(deriveCompanionUrl(platformUrl, target).origin);
 }
 
-function allowedOriginsForPlatformUrl(platformUrl: URL): ReadonlySet<string> {
+function allowedOriginsForPlatformUrl(
+  platformUrl: URL,
+  environment: DesktopEnvironment,
+): ReadonlySet<string> {
   const origins = new Set<string>([platformUrl.origin]);
+  if (environment === "production") {
+    for (const compatiblePlatformUrl of desktopDomains.compatiblePlatformUrls) {
+      origins.add(new URL(compatiblePlatformUrl).origin);
+    }
+  }
   addDerivedOrigin(origins, platformUrl, "www");
   addDerivedOrigin(origins, platformUrl, "api");
   return origins;
+}
+
+function authCookieUrlsForPlatformUrl(
+  platformUrl: URL,
+  webUrl: URL,
+  environment: DesktopEnvironment,
+): readonly URL[] {
+  if (environment !== "production") {
+    return [webUrl, platformUrl];
+  }
+
+  const urls = [
+    webUrl,
+    ...desktopDomains.compatiblePlatformUrls
+      .map((url) => new URL(url))
+      .filter((url) => url.origin !== platformUrl.origin),
+    platformUrl,
+  ];
+  return [...new Map(urls.map((url) => [url.origin, url])).values()];
 }
 
 function deriveCompanionUrl(platformUrl: URL, target: "api" | "www"): URL {
@@ -151,13 +186,19 @@ export function resolveDesktopConfig(rawPlatformUrl?: string): DesktopConfig {
   const hasExplicitUrl = Boolean(platformUrlSource?.trim());
   const platformUrl = parsePlatformUrl(platformUrlSource);
   const environment = environmentForPlatformUrl(platformUrl, hasExplicitUrl);
+  const webUrl = deriveCompanionUrl(platformUrl, "www");
 
   return {
     platformUrl,
-    webUrl: deriveCompanionUrl(platformUrl, "www"),
+    webUrl,
     environment,
     identity: identityForEnvironment(environment),
     sessionPartition: `persist:vm0-desktop-${environment}`,
-    allowedAppOrigins: allowedOriginsForPlatformUrl(platformUrl),
+    allowedAppOrigins: allowedOriginsForPlatformUrl(platformUrl, environment),
+    authCookieUrls: authCookieUrlsForPlatformUrl(
+      platformUrl,
+      webUrl,
+      environment,
+    ),
   };
 }

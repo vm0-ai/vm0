@@ -113,9 +113,9 @@ describe("zero model command", () => {
     );
   });
 
-  it("should point other environments at app.vm0.ai", () => {
+  it("should point other environments at app.okou.ai", () => {
     expect(getModelSwitchGuidance("schedule")).toContain(
-      "Open https://app.vm0.ai",
+      "Open https://app.okou.ai",
     );
   });
 });

@@ -95,6 +95,10 @@ const activeChatConnectorActionState$ = state<ActiveChatConnectorAction | null>(
   null,
 );
 
+function isCompatibleProductionAppOrigin(origin: string): boolean {
+  return origin === "https://app.okou.ai" || origin === "https://app.vm0.ai";
+}
+
 export const activeChatConnectorAction$ = computed((get) => {
   return get(activeChatConnectorActionState$);
 });
@@ -112,7 +116,14 @@ export function parseConnectorAuthorizeUrl(
     return null;
   }
   const url = new URL(value, appOrigin);
-  if (url.origin !== appOrigin && url.origin !== canonicalAppOrigin) {
+  const usesCompatibleProductionOrigin =
+    isCompatibleProductionAppOrigin(appOrigin) &&
+    isCompatibleProductionAppOrigin(url.origin);
+  if (
+    url.origin !== appOrigin &&
+    url.origin !== canonicalAppOrigin &&
+    !usesCompatibleProductionOrigin
+  ) {
     return null;
   }
 

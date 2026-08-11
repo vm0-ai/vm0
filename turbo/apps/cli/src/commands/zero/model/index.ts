@@ -34,7 +34,7 @@ export function getModelSwitchGuidance(integration = getCurrentIntegration()) {
     return "Use /model in Telegram to switch models.";
   }
 
-  return "Open https://app.vm0.ai and switch models from the model selector next to the input box.";
+  return "Open https://app.okou.ai and switch models from the model selector next to the input box.";
 }
 
 const listCommand = new Command()

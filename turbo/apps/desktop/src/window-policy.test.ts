@@ -187,7 +187,7 @@ describe("resolveDesktopConfig", () => {
   it("defaults to production", () => {
     const config = resolveDesktopConfig("");
 
-    expect(config.platformUrl.toString()).toBe("https://app.vm0.ai/");
+    expect(config.platformUrl.toString()).toBe("https://app.okou.ai/");
     expect(config.webUrl.toString()).toBe("https://www.vm0.ai/");
     expect(config.environment).toBe("production");
     expect(config.identity).toMatchObject({
@@ -198,8 +198,33 @@ describe("resolveDesktopConfig", () => {
     expect(config.sessionPartition).toBe("persist:vm0-desktop-production");
     expect([...config.allowedAppOrigins].sort()).toStrictEqual([
       "https://api.vm0.ai",
+      "https://app.okou.ai",
       "https://app.vm0.ai",
       "https://www.vm0.ai",
+    ]);
+    expect(config.authCookieUrls.map((url) => url.origin)).toStrictEqual([
+      "https://www.vm0.ai",
+      "https://app.vm0.ai",
+      "https://app.okou.ai",
+    ]);
+  });
+
+  it("keeps the legacy VM0 app origin in production", () => {
+    const config = resolveDesktopConfig("https://app.vm0.ai/");
+
+    expect(config.environment).toBe("production");
+    expect(config.webUrl.toString()).toBe("https://www.vm0.ai/");
+    expect(config.sessionPartition).toBe("persist:vm0-desktop-production");
+    expect([...config.allowedAppOrigins].sort()).toStrictEqual([
+      "https://api.vm0.ai",
+      "https://app.okou.ai",
+      "https://app.vm0.ai",
+      "https://www.vm0.ai",
+    ]);
+    expect(config.authCookieUrls.map((url) => url.origin)).toStrictEqual([
+      "https://www.vm0.ai",
+      "https://app.okou.ai",
+      "https://app.vm0.ai",
     ]);
   });
 
@@ -611,6 +636,9 @@ describe("desktop auth", () => {
 
 describe("computer use desktop runtime", () => {
   it("derives the API backend URL from platform URLs", () => {
+    expect(resolveComputerUseApiBaseUrl(new URL("https://app.okou.ai"))).toBe(
+      "https://api.vm0.ai",
+    );
     expect(resolveComputerUseApiBaseUrl(new URL("https://app.vm0.ai"))).toBe(
       "https://api.vm0.ai",
     );

@@ -909,7 +909,7 @@ describe("chat event action cards", () => {
   it("renders canonical user text literally and assistant actions on alternate origins", async () => {
     const previousUrl = window.location.href;
     const threadId = "e4000000-0000-4000-a000-000000000004";
-    window.location.href = `https://app.okou.ai/chats/${threadId}`;
+    window.location.href = `https://app.vm0.ai/chats/${threadId}`;
     context.signal.addEventListener(
       "abort",
       () => {
@@ -918,7 +918,7 @@ describe("chat event action cards", () => {
       { once: true },
     );
 
-    const canonicalUrl = `https://app.vm0.ai/connectors/slack/authorize?agentId=${AGENT_ID}`;
+    const canonicalUrl = `https://app.okou.ai/connectors/slack/authorize?agentId=${AGENT_ID}`;
     const untrustedUrl = `https://evil.example.test/connectors/slack/authorize?agentId=${AGENT_ID}`;
     mockConnectorCatalogStatus([
       publicConnectorStatusItem({
@@ -1533,7 +1533,7 @@ describe("chat event action cards", () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "c0000000-0000-4000-a000-000000000018";
     const mailDraftId = "c0000000-0000-4000-a000-000000000019";
-    const mailDraftUrl = `https://app.vm0.ai/mail/drafts/${mailDraftId}`;
+    const mailDraftUrl = `https://app.okou.ai/mail/drafts/${mailDraftId}`;
     const createdAt = "2026-07-14T10:00:00.000Z";
     let deleted = false;
     let draftRequests = 0;
@@ -1852,7 +1852,7 @@ describe("chat event action cards", () => {
     mockNow();
     const user = userEvent.setup({ delay: null });
     const connectorAuthorizeUrl = `${window.location.origin}/connectors/github/authorize?agentId=${AGENT_ID}`;
-    const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?connectorSlug=slack&ref=github&permission=catalog.analytics%3Aread&action=allow&expiresIn=24h`;
+    const permissionAuthorizeUrl = `https://app.okou.ai/agents/${AGENT_ID}/permissions?connectorSlug=slack&ref=github&permission=catalog.analytics%3Aread&action=allow&expiresIn=24h`;
     let capturedPermissionGrantBody: unknown = null;
 
     context.mocks.data.connectors([
@@ -3225,7 +3225,7 @@ describe("chat event action cards", () => {
 
   it("renders delegated computer use authorization links as action cards", async () => {
     const authorizationUrl =
-      "https://app.vm0.ai/computer-use/authorize/vm0_computer_use_authorization_request_test";
+      "https://app.okou.ai/computer-use/authorize/vm0_computer_use_authorization_request_test";
 
     mockChatLifecycle(context, {
       threadId: "e4000000-0000-4000-a000-000000000020",

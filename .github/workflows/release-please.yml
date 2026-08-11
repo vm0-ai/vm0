@@ -962,7 +962,7 @@ jobs:
           environment: production
           database-url: ${{ steps.get-db-url.outputs.database-url }}
           web-url: https://www.vm0.ai
-          app-url: https://app.vm0.ai
+          app-url: https://app.okou.ai
           api-backend-url: ${{ vars.VM0_API_BACKEND_URL }}
           cli-pkg-url: ${{ steps.cli-artifact.outputs.package-url }}
         env:
@@ -1428,8 +1428,9 @@ jobs:
             "$ARTIFACT_SHA"
 
           pages_url="https://${CF_PAGES_PROJECT_NAME}.pages.dev"
-          production_url="https://app.vm0.ai"
-          for url in "$pages_url" "$production_url"; do
+          production_url="https://app.okou.ai"
+          legacy_production_url="https://app.vm0.ai"
+          for url in "$pages_url" "$production_url" "$legacy_production_url"; do
             curl -fsSL \
               --retry 12 \
               --retry-delay 5 \
@@ -1459,7 +1460,7 @@ jobs:
           token: ${{ github.token }}
           status: ${{ job.status }}
           env: ${{ steps.deployment.outputs.env }}
-          env_url: https://app.vm0.ai
+          env_url: https://app.okou.ai
           deployment_id: ${{ steps.deployment.outputs.deployment_id }}
 
       - name: Calculate duration
@@ -1487,7 +1488,7 @@ jobs:
               - type: section
                 text:
                   type: mrkdwn
-                  text: "*App* ✅ Deployed to Cloudflare Pages\n📦 Version: `${{ needs.release-please.outputs.app_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🌐 <https://app.vm0.ai|Open App>\n🔄 <${{ github.server_url }}/${{ github.repository }}/issues/${{ vars.ROLLBACK_ISSUE_NUMBER }}|Rollback Dashboard>"
+                  text: "*App* ✅ Deployed to Cloudflare Pages\n📦 Version: `${{ needs.release-please.outputs.app_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🌐 <https://app.okou.ai|Open App>\n🔄 <${{ github.server_url }}/${{ github.repository }}/issues/${{ vars.ROLLBACK_ISSUE_NUMBER }}|Rollback Dashboard>"
 
       - name: Notify Slack - Failure
         if: ${{ failure() && steps.slack-start.outputs.ts }}

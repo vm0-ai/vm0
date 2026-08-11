@@ -146,7 +146,7 @@ runs:
 
         if [[ "$INPUT_ENVIRONMENT" == "production" ]]; then
           web_url="${INPUT_WEB_URL:-https://www.vm0.ai}"
-          app_url="${INPUT_APP_URL:-https://app.vm0.ai}"
+          app_url="${INPUT_APP_URL:-https://app.okou.ai}"
           api_backend_url="$(first_non_empty "$INPUT_API_BACKEND_URL" "$(repo_var VM0_API_BACKEND_URL)")"
           axiom_dataset_suffix="prod"
           deploy_env="production"

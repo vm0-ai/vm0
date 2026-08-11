@@ -206,7 +206,7 @@ jobs:
             production \
             "$TARGET_COMMIT"
 
-          for url in "https://${CF_PAGES_PROJECT_NAME}.pages.dev" "https://app.vm0.ai"; do
+          for url in "https://${CF_PAGES_PROJECT_NAME}.pages.dev" "https://app.okou.ai" "https://app.vm0.ai"; do
             curl -fsSL \
               --retry 12 \
               --retry-delay 5 \
@@ -224,7 +224,7 @@ jobs:
           token: ${{ github.token }}
           status: ${{ job.status }}
           env: ${{ steps.deployment.outputs.env }}
-          env_url: https://app.vm0.ai
+          env_url: https://app.okou.ai
           deployment_id: ${{ steps.deployment.outputs.deployment_id }}
 
       - name: Notify Slack - Success

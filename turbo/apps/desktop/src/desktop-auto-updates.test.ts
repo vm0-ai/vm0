@@ -72,6 +72,10 @@ const productionConfig: DesktopConfig = {
   },
   sessionPartition: "persist:vm0-desktop-production",
   allowedAppOrigins: new Set(["https://app.vm0.ai"]),
+  authCookieUrls: [
+    new URL("https://www.vm0.ai"),
+    new URL("https://app.vm0.ai"),
+  ],
 };
 
 interface CapturedUpdateOptions {

@@ -73,6 +73,10 @@ function productionConfig(): DesktopConfig {
     },
     sessionPartition: "persist:desktop",
     allowedAppOrigins: new Set(["https://app.vm0.ai"]),
+    authCookieUrls: [
+      new URL("https://www.vm0.ai"),
+      new URL("https://app.vm0.ai"),
+    ],
   };
 }
 

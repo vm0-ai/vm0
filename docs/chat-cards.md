@@ -28,17 +28,17 @@ state creation inside React render.
 The body parser accepts platform links in common message forms:
 
 ```markdown
-https://app.vm0.ai/agents/agent-123/permissions?connectorSlug=slack&permission=messages.write
+https://app.okou.ai/agents/agent-123/permissions?connectorSlug=slack&permission=messages.write
 
-[Review permission](https://app.vm0.ai/agents/agent-123/permissions?connectorSlug=slack&permission=messages.write)
+[Review permission](https://app.okou.ai/agents/agent-123/permissions?connectorSlug=slack&permission=messages.write)
 
 /computer-use/authorize/request-token
 ```
 
-Absolute URLs must use an allowed VM0 platform origin. Relative paths resolve
-against the configured platform origin. A URL becomes a card only when its path
-and required parameters match a card parser exactly. An unrecognized or invalid
-link remains ordinary Markdown.
+Absolute URLs must use an allowed Okou or compatible VM0 platform origin.
+Relative paths resolve against the configured platform origin. A URL becomes a
+card only when its path and required parameters match a card parser exactly. An
+unrecognized or invalid link remains ordinary Markdown.
 
 Current link-backed card patterns include:
 

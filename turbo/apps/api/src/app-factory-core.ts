@@ -565,7 +565,7 @@ export function createAppWithRoutes({
 
   app.use("*", previewAutomationBypassMiddleware);
 
-  // Browser cross-origin requests (e.g. https://app.vm0.ai -> api.vm0.ai). Must
+  // Browser cross-origin requests (e.g. https://app.okou.ai -> api.vm0.ai). Must
   // run before the route handlers so OPTIONS preflight short-circuits without
   // matching a registered method, and so registered route responses receive
   // Access-Control-Allow-Origin without relying on the legacy web proxy.

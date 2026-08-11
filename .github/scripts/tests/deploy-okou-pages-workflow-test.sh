@@ -85,11 +85,33 @@ require_fragments(
 if "WRANGLER_OUTPUT_FILE_PATH" not in preview_step.get("env", {}):
     raise RuntimeError("preview deployment no longer captures Wrangler output")
 
-require_fragments(release_step, ["curl -fsSL", '"$pages_url"', '"$production_url"'])
+require_fragments(
+    release_step,
+    [
+        "curl -fsSL",
+        'production_url="https://app.okou.ai"',
+        'legacy_production_url="https://app.vm0.ai"',
+        '"$pages_url"',
+        '"$production_url"',
+        '"$legacy_production_url"',
+    ],
+)
 require_fragments(
     rollback_step,
-    ["curl -fsSL", '"https://${CF_PAGES_PROJECT_NAME}.pages.dev"', '"https://app.vm0.ai"'],
+    [
+        "curl -fsSL",
+        '"https://${CF_PAGES_PROJECT_NAME}.pages.dev"',
+        '"https://app.okou.ai"',
+        '"https://app.vm0.ai"',
+    ],
 )
+
+for fragment in ("env_url: https://app.okou.ai", "<https://app.okou.ai|Open App>"):
+    if fragment not in release_source:
+        raise RuntimeError(f"release workflow is missing canonical Okou URL: {fragment}")
+
+if "env_url: https://app.okou.ai" not in rollback_source:
+    raise RuntimeError("rollback workflow is missing the canonical Okou environment URL")
 
 print("deploy-okou-pages workflow tests passed")
 PY

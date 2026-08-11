@@ -594,22 +594,27 @@ describe("zero connector check command", () => {
       {
         name: "production API",
         baseUrl: "https://api.vm0.ai",
-        platformOrigin: "https://app.vm0.ai",
+        platformOrigin: "https://app.okou.ai",
       },
       {
         name: "legacy production web",
         baseUrl: "https://www.vm0.ai",
-        platformOrigin: "https://app.vm0.ai",
+        platformOrigin: "https://app.okou.ai",
       },
       {
         name: "legacy production platform",
         baseUrl: "https://platform.vm0.ai",
-        platformOrigin: "https://app.vm0.ai",
+        platformOrigin: "https://app.okou.ai",
+      },
+      {
+        name: "legacy production app",
+        baseUrl: "https://app.vm0.ai",
+        platformOrigin: "https://app.okou.ai",
       },
       {
         name: "canonical production app",
-        baseUrl: "https://app.vm0.ai",
-        platformOrigin: "https://app.vm0.ai",
+        baseUrl: "https://app.okou.ai",
+        platformOrigin: "https://app.okou.ai",
       },
       {
         name: "staging API",

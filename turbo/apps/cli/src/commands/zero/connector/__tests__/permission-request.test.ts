@@ -368,7 +368,7 @@ describe("zero connector permission-request command", () => {
     expect(logCalls).not.toContain("/agents/env-agent-123/permissions?");
   });
 
-  it("transforms www.vm0.ai to app.vm0.ai", async () => {
+  it("transforms the legacy production web origin to app.okou.ai", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "https://www.vm0.ai");
     vi.stubEnv("ZERO_AGENT_ID", "agent-1");
 
@@ -384,7 +384,7 @@ describe("zero connector permission-request command", () => {
 
     const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
     expect(logCalls).toContain(
-      "https://app.vm0.ai/agents/agent-1/permissions?",
+      "https://app.okou.ai/agents/agent-1/permissions?",
     );
   });
 

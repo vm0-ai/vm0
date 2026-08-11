@@ -2,9 +2,14 @@ const os = require("node:os");
 const path = require("node:path");
 
 const packageMetadata = require("./package.json");
+const desktopDomains = require("./src/desktop-domains.json");
 const desktopIdentities = require("./src/desktop-identities.json");
 
-const PRODUCTION_PLATFORM_HOSTNAME = "app.vm0.ai";
+const PRODUCTION_PLATFORM_HOSTNAMES = new Set(
+  desktopDomains.compatiblePlatformUrls.map((url) => new URL(url).hostname),
+);
+const DEFAULT_PLATFORM_HOSTNAME = new URL(desktopDomains.defaultPlatformUrl)
+  .hostname;
 const MINIMUM_MACOS_VERSION = "14.0";
 const DEFAULT_NOTARIZE_KEYCHAIN_PROFILE = "vm0-desktop-notary";
 const DEFAULT_NOTARIZE_KEYCHAIN = path.join(
@@ -57,13 +62,13 @@ function desktopNotarizeOptions() {
 
 function platformHostname(rawUrl) {
   if (!rawUrl || !rawUrl.trim()) {
-    return PRODUCTION_PLATFORM_HOSTNAME;
+    return DEFAULT_PLATFORM_HOSTNAME;
   }
   return new URL(rawUrl).hostname;
 }
 
 function desktopIdentityForPlatformUrl(rawUrl) {
-  if (platformHostname(rawUrl) === PRODUCTION_PLATFORM_HOSTNAME) {
+  if (PRODUCTION_PLATFORM_HOSTNAMES.has(platformHostname(rawUrl))) {
     return desktopIdentities.production;
   }
   return desktopIdentities.development;

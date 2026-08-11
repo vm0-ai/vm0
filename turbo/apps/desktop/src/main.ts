@@ -281,7 +281,7 @@ function getAuthSession(): DesktopAuthSession {
 
   authSession = new DesktopAuthSession({
     apiBaseUrl: desktopApiBaseUrl,
-    cookieUrls: [config.webUrl, config.platformUrl],
+    cookieUrls: config.authCookieUrls,
     cookieSource: session.fromPartition(config.sessionPartition),
     addClientHeaders: addDesktopClientHeaders,
     tokenUrl: desktopAuthTokenUrl,

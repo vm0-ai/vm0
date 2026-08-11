@@ -3,9 +3,10 @@ import { getApiUrl } from "../../../lib/api/config";
 /**
  * Transform the API host to the platform (app) host.
  *
- *   api.vm0.ai                    → app.vm0.ai
- *   www.vm0.ai                    → app.vm0.ai
- *   platform.vm0.ai               → app.vm0.ai
+ *   api.vm0.ai                    → app.okou.ai
+ *   www.vm0.ai                    → app.okou.ai
+ *   platform.vm0.ai               → app.okou.ai
+ *   app.vm0.ai                    → app.okou.ai
  *   staging-api.vm6.ai            → staging-app.omby.ai
  *   pr-123-api.vm6.ai             → pr-123-app.omby.ai
  *   tunnel-user-host-www.vm7.ai   → tunnel-user-host-app.vm7.ai
@@ -14,6 +15,16 @@ import { getApiUrl } from "../../../lib/api/config";
  */
 export function toPlatformUrl(apiUrl: string): URL {
   const parsed = new URL(apiUrl);
+  if (
+    parsed.hostname === "api.vm0.ai" ||
+    parsed.hostname === "www.vm0.ai" ||
+    parsed.hostname === "platform.vm0.ai" ||
+    parsed.hostname === "app.vm0.ai"
+  ) {
+    parsed.hostname = "app.okou.ai";
+    return parsed;
+  }
+
   const parts = parsed.hostname.split(".");
   const serviceLabel = parts[0]!;
   if (serviceLabel.endsWith("-www")) {
