@@ -652,13 +652,17 @@ function appendRunEvents(
   );
   const failed = args.runIndex < args.profile.failedRunCount;
   const prompt = userPromptLorem(args.profile, args.runIndex);
+  const userMessage = {
+    version: 1 as const,
+    parts: [{ type: "text" as const, text: prompt }],
+  };
   const userMessageRow: SeedChatEventRow = {
     id: randomUUID(),
     chatThreadId: args.threadId,
     runId,
     eventType: "input.prompt",
     contextType: args.workflowAutomationBrief ? "automation" : "web",
-    userMessage: { version: 1, parts: [{ type: "text", text: prompt }] },
+    payload: { userMessage },
     createdAt: baseCreatedAt,
   };
 
@@ -754,7 +758,9 @@ function appendAssistantEvents(args: {
       chatThreadId: args.threadId,
       runId: args.runId,
       eventType: "output.message",
-      content: markdownLorem(args.profile, args.runIndex, eventIndex),
+      payload: {
+        content: markdownLorem(args.profile, args.runIndex, eventIndex),
+      },
       sequenceNumber,
       runEventId: runEventId(args.profile, args.runIndex, sequenceNumber),
       createdAt: addMs(args.baseCreatedAt, 10_000 + eventIndex * 750),
@@ -776,13 +782,13 @@ function appendUsageEvent(args: {
     return;
   }
   const createdAt = addMs(args.baseCreatedAt, 44_000 + args.eventCount * 100);
+  const usage = usagePayload(args.profile, args.runIndex, createdAt);
   args.eventRows.push({
     id: randomUUID(),
     chatThreadId: args.threadId,
     runId: args.runId,
     eventType: "usage.recorded",
-    content: null,
-    usagePayload: usagePayload(args.profile, args.runIndex, createdAt),
+    payload: { usage },
     createdAt,
   });
 }
@@ -802,8 +808,7 @@ function appendLifecycleEvent(args: {
     chatThreadId: args.threadId,
     runId: args.runId,
     eventType: args.failed ? "run.failed" : "run.completed",
-    content: null,
-    error: args.failed ? "Synthetic benchmark failure" : null,
+    payload: args.failed ? { error: "Synthetic benchmark failure" } : null,
     createdAt: addMs(args.baseCreatedAt, 45_000 + args.eventCount * 100),
   });
 }
@@ -826,9 +831,11 @@ function appendFollowupsEvent(args: {
     chatThreadId: args.threadId,
     runId: args.runId,
     eventType: "output.followups",
-    content: serializeChatFollowupsContent(
-      followups(args.profile, args.runIndex),
-    ),
+    payload: {
+      content: serializeChatFollowupsContent(
+        followups(args.profile, args.runIndex),
+      ),
+    },
     createdAt: addMs(args.baseCreatedAt, 45_001 + args.eventCount * 100),
   });
 }
@@ -856,21 +863,25 @@ function appendNullRunControlRows(args: {
     );
     const prompt = userPromptLorem(args.profile, controlIndex);
     const isInputPrompt = controlIndex % 2 === 0;
+    const userMessage = {
+      version: 1 as const,
+      parts: [{ type: "text" as const, text: prompt }],
+    };
     args.eventRows.push({
       id: randomUUID(),
       chatThreadId: args.threadId,
       runId: null,
       eventType: isInputPrompt ? "input.prompt" : "output.thinking",
-      content: null,
       ...(isInputPrompt
         ? {
             contextType: "web",
-            userMessage: {
-              version: 1,
-              parts: [{ type: "text", text: prompt }],
-            },
+            payload: { userMessage },
           }
-        : { thinking: `Synthetic background state ${String(controlIndex)}` }),
+        : {
+            payload: {
+              thinking: `Synthetic background state ${String(controlIndex)}`,
+            },
+          }),
       createdAt,
     });
   }

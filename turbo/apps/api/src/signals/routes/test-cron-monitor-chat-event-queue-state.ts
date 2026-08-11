@@ -213,6 +213,9 @@ async function seedGoalAgent(
 }
 
 async function seedQueuedIntegrationEvent(tx: DbTransaction, threadId: string) {
+  const userMessage = createUserMessageDocument({
+    text: "orphan monitor fixture",
+  });
   const [event] = await tx
     .insert(chatEvents)
     .values({
@@ -220,9 +223,7 @@ async function seedQueuedIntegrationEvent(tx: DbTransaction, threadId: string) {
       contextType: "slack",
       contextId: randomUUID(),
       eventType: "input.prompt",
-      userMessage: createUserMessageDocument({
-        text: "orphan monitor fixture",
-      }),
+      payload: { userMessage },
       runId: null,
       seqId: 1,
     })
@@ -278,11 +279,12 @@ async function seedFixture(
   }
 
   const events = await db.transaction(async (tx) => {
+    const userMessage = createUserMessageDocument({
+      text: "orphan monitor fixture",
+    });
     const baseEvent = {
       chatThreadId: thread.id,
-      userMessage: createUserMessageDocument({
-        text: "orphan monitor fixture",
-      }),
+      userMessage,
       runId: null,
     };
     if (fixtureKind === "orphan") {
@@ -291,7 +293,9 @@ async function seedFixture(
         .values(
           STALE_CONTEXT_FIXTURES.map((fixture, index) => {
             return {
-              ...baseEvent,
+              chatThreadId: baseEvent.chatThreadId,
+              payload: { userMessage: baseEvent.userMessage },
+              runId: baseEvent.runId,
               ...fixture,
               contextId: fixture.contextType === null ? null : randomUUID(),
               createdAt: new Date(0),

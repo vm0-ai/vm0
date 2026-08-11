@@ -172,6 +172,11 @@ export const chatEvents = pgTable(
       uniqueIndex("chat_events_run_thinking_unique")
         .on(table.runId)
         .where(sql`${table.thinking} IS NOT NULL`),
+      uniqueIndex("chat_events_output_thinking_run_id_unique")
+        .on(table.runId)
+        .where(
+          sql`${table.eventType} = 'output.thinking' AND ${table.runId} IS NOT NULL`,
+        ),
       // Canonical twin of chat_events_interrupts_run_id_not_null_unique: after
       // the canonical backfill, control.interrupt rows carry their target run
       // in run_id, so the one-interrupt-per-run guarantee must hold there too.
@@ -207,27 +212,34 @@ export const chatEvents = pgTable(
         )`,
       ),
       check(
-        "chat_events_input_user_message_check",
+        "chat_events_input_user_message_payload_check",
         sql`${table.eventType} NOT IN ('input.prompt', 'input.budget', 'input.rejected')
-          OR ${table.userMessage} IS NOT NULL`,
-      ),
-      check(
-        "chat_events_input_content_check",
-        sql`${table.eventType} NOT IN ('input.prompt', 'input.budget', 'input.rejected')
-          OR ${table.content} IS NULL`,
-      ),
-      check(
-        "chat_events_goal_open_content_check",
-        sql`${table.eventType} <> 'goal.open'
           OR (
-            ${table.content} IS NOT NULL
-            AND ${table.content} = btrim(${table.content})
-            AND char_length(${table.content}) > 0
+            ${table.payload} IS NOT NULL
+            AND ${table.payload} ? 'userMessage'
           )`,
       ),
       check(
-        "chat_events_goal_close_content_check",
-        sql`${table.eventType} <> 'goal.close' OR ${table.content} IS NULL`,
+        "chat_events_input_payload_content_check",
+        sql`${table.eventType} NOT IN ('input.prompt', 'input.budget', 'input.rejected')
+          OR ${table.payload} IS NULL
+          OR NOT (${table.payload} ? 'content')`,
+      ),
+      check(
+        "chat_events_goal_open_payload_check",
+        sql`${table.eventType} <> 'goal.open'
+          OR (
+            ${table.payload} IS NOT NULL
+            AND ${table.payload} ? 'content'
+            AND jsonb_typeof(${table.payload} -> 'content') = 'string'
+            AND ${table.payload} ->> 'content' = btrim(${table.payload} ->> 'content')
+            AND char_length(${table.payload} ->> 'content') > 0
+            AND ${table.payload} - 'content' = '{}'::jsonb
+          )`,
+      ),
+      check(
+        "chat_events_goal_close_payload_check",
+        sql`${table.eventType} <> 'goal.close' OR ${table.payload} IS NULL`,
       ),
       check(
         "chat_events_goal_marker_payload_check",

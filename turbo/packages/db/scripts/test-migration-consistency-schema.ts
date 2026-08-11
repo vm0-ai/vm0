@@ -385,34 +385,34 @@ async function validateCanonicalChatMessageStorage(
     content: string | null;
     contextType: string | null;
     id: string;
+    payload: unknown;
     seqId: string;
     userMessage: unknown;
   }>(
     `
       INSERT INTO "chat_events" (
         "chat_thread_id",
-        "content",
         "context_type",
         "event_type",
-        "seq_id",
-        "user_message"
+        "payload",
+        "seq_id"
       )
       VALUES (
         $1,
-        NULL,
         'web',
         'input.prompt',
-        $2,
-        $3::jsonb
+        $3::jsonb,
+        $2
       )
       RETURNING
         "id",
         "seq_id" AS "seqId",
         "content",
         "context_type" AS "contextType",
+        "payload",
         "user_message" AS "userMessage"
     `,
-    [threadId, firstSeqId, JSON.stringify(userMessage)],
+    [threadId, firstSeqId, JSON.stringify({ userMessage })],
   );
   const messageRow = message.rows[0];
   if (!messageRow) {
@@ -421,27 +421,39 @@ async function validateCanonicalChatMessageStorage(
   assert.equal(messageRow.seqId, String(firstSeqId));
   assert.equal(messageRow.content, null);
   assert.equal(messageRow.contextType, "web");
-  assert.deepEqual(messageRow.userMessage, userMessage);
+  assert.deepEqual(messageRow.payload, { userMessage });
+  assert.equal(messageRow.userMessage, null);
 
-  const nextMessage = await client.query<{ seqId: string }>(
+  const nextMessage = await client.query<{
+    content: string | null;
+    payload: unknown;
+    seqId: string;
+  }>(
     `
       INSERT INTO "chat_events" (
         "chat_thread_id",
-        "content",
         "event_type",
+        "payload",
         "seq_id"
       )
       VALUES (
         $1,
-        'second typed API migration test',
         'output.message',
+        '{"content":"second typed API migration test"}'::jsonb,
         $2
       )
-      RETURNING "seq_id" AS "seqId"
+      RETURNING
+        "seq_id" AS "seqId",
+        "content",
+        "payload"
     `,
     [threadId, lastSeqId],
   );
   assert.equal(nextMessage.rows[0]?.seqId, String(lastSeqId));
+  assert.equal(nextMessage.rows[0]?.content, null);
+  assert.deepEqual(nextMessage.rows[0]?.payload, {
+    content: "second typed API migration test",
+  });
 
   const sequenceState = await client.query<{ lastSeqId: string }>(
     `
@@ -702,7 +714,7 @@ async function validateChatEventContextPointerConstraints(
           "event_type",
           "context_type",
           "context_id",
-          "user_message",
+          "payload",
           "seq_id"
         )
         VALUES
@@ -730,7 +742,7 @@ async function validateChatEventContextPointerConstraints(
             'input.prompt',
             'web',
             NULL,
-            '{"version":1,"parts":[{"type":"text","text":"web discriminator"}]}'::jsonb,
+            '{"userMessage":{"version":1,"parts":[{"type":"text","text":"web discriminator"}]}}'::jsonb,
             3
           ),
           (
@@ -739,7 +751,7 @@ async function validateChatEventContextPointerConstraints(
             'input.rejected',
             NULL,
             NULL,
-            '{"version":1,"parts":[{"type":"text","text":"rejected input"}]}'::jsonb,
+            '{"userMessage":{"version":1,"parts":[{"type":"text","text":"rejected input"}]}}'::jsonb,
             4
           )
         RETURNING
@@ -812,7 +824,7 @@ async function validateChatEventContextPointerConstraints(
           "event_type",
           "context_type",
           "context_id",
-          "user_message",
+          "payload",
           "seq_id"
         )
         VALUES (
@@ -821,7 +833,7 @@ async function validateChatEventContextPointerConstraints(
           'input.prompt',
           NULL,
           NULL,
-          '{"version":1,"parts":[{"type":"text","text":"missing discriminator"}]}'::jsonb,
+          '{"userMessage":{"version":1,"parts":[{"type":"text","text":"missing discriminator"}]}}'::jsonb,
           5
         )
       `,

@@ -103,15 +103,16 @@ describe("dev bench seed profile rows", () => {
         countWhere(rows.eventRows, (row) => {
           return (
             row.eventType === "output.followups" &&
-            typeof row.content === "string" &&
-            resolveChatEventRecommendedFollowups({ content: row.content })
-              .length > 0
+            typeof row.payload?.content === "string" &&
+            resolveChatEventRecommendedFollowups({
+              content: row.payload.content,
+            }).length > 0
           );
         }),
       ).toBe(expected.recommendedFollowupEvents);
       expect(
         countWhere(rows.eventRows, (row) => {
-          return row.usagePayload !== null && row.usagePayload !== undefined;
+          return row.payload?.usage !== undefined;
         }),
       ).toBe(expected.usageEvents);
       expect(
