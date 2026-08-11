@@ -53,6 +53,7 @@ import {
   Coins,
   Hourglass,
   Share2,
+  CornerLeftUp,
 } from "lucide-react";
 import {
   cn,
@@ -3065,6 +3066,88 @@ function ChatThreadNextRunModelNotice({
   return <RunSectionDividerRow label={label} announce />;
 }
 
+interface ChatRunPresentation {
+  readonly actionOwnerEventIds: ReadonlySet<string>;
+  readonly steerEventIds: ReadonlySet<string>;
+}
+
+function isSteerPromptEvent(
+  event: EnrichedChatEvent,
+  seenUserRunIds: ReadonlySet<string>,
+  actionOwnerEventIdByRunId: ReadonlyMap<string, string>,
+  lastAssociatedRunId: string | undefined,
+): boolean {
+  if (event.eventType !== "input.prompt") {
+    return false;
+  }
+  if (event.runId !== undefined) {
+    return (
+      seenUserRunIds.has(event.runId) ||
+      actionOwnerEventIdByRunId.has(event.runId)
+    );
+  }
+  return (
+    event.optimisticUserMessageAssociation !== "run" &&
+    lastAssociatedRunId !== undefined
+  );
+}
+
+function chatRunPresentationForGroups(
+  groups: readonly ChatEventGroup[],
+): ChatRunPresentation {
+  const actionOwnerEventIdByRunId = new Map<string, string>();
+  const runlessAssistantOwnerEventIds = new Set<string>();
+  const seenUserRunIds = new Set<string>();
+  const steerEventIds = new Set<string>();
+  let lastAssociatedRunId: string | undefined;
+
+  for (const group of groups) {
+    for (const event of group.events) {
+      const role = chatEventCompatibilityRole(event.eventType);
+      const runId = event.runId;
+      if (role === "user") {
+        const isSteer = isSteerPromptEvent(
+          event,
+          seenUserRunIds,
+          actionOwnerEventIdByRunId,
+          lastAssociatedRunId,
+        );
+        if (isSteer) {
+          steerEventIds.add(event.id);
+        }
+        if (runId !== undefined) {
+          actionOwnerEventIdByRunId.delete(runId);
+          seenUserRunIds.add(runId);
+          lastAssociatedRunId = runId;
+        } else if (isSteer && lastAssociatedRunId !== undefined) {
+          actionOwnerEventIdByRunId.delete(lastAssociatedRunId);
+        }
+        continue;
+      }
+
+      if (runId !== undefined) {
+        lastAssociatedRunId = runId;
+      }
+      if (!isRenderableAssistantEvent(event)) {
+        continue;
+      }
+      if (runId === undefined) {
+        runlessAssistantOwnerEventIds.add(event.id);
+      } else {
+        actionOwnerEventIdByRunId.set(runId, event.id);
+      }
+    }
+  }
+
+  return {
+    actionOwnerEventIds: new Set([
+      ...actionOwnerEventIdByRunId.values(),
+      ...runlessAssistantOwnerEventIds,
+    ]),
+    steerEventIds,
+  };
+}
+
 function ChatThreadEventGroups({
   thread,
   groups,
@@ -3090,6 +3173,8 @@ function ChatThreadEventGroups({
       runGroupFolding,
       onToggleRunGroup,
     });
+  const { actionOwnerEventIds, steerEventIds } =
+    chatRunPresentationForGroups(groups);
 
   return (
     <>
@@ -3119,6 +3204,10 @@ function ChatThreadEventGroups({
               group={group}
               thread={thread}
               modelChanges={modelChanges}
+              showActions={group.events.some((event) => {
+                return actionOwnerEventIds.has(event.id);
+              })}
+              steerEventIds={steerEventIds}
               runGroupFolds={embeddedFolds}
               completedWorkFold={
                 completedWorkFold !== null
@@ -6795,12 +6884,16 @@ function PagedGroupRow({
   group,
   thread,
   modelChanges,
+  showActions,
+  steerEventIds,
   runGroupFolds,
   completedWorkFold,
 }: {
   group: ChatEventGroup;
   thread: ChatPanelSignals;
   modelChanges: ReadonlyMap<string, RunModelChange>;
+  showActions: boolean;
+  steerEventIds: ReadonlySet<string>;
   runGroupFolds?: readonly RunGroupFoldControl[];
   completedWorkFold?: {
     groups: readonly ChatEventGroup[];
@@ -6815,6 +6908,7 @@ function PagedGroupRow({
         group={group}
         thread={thread}
         modelChanges={modelChanges}
+        steerEventIds={steerEventIds}
         runGroupFolds={runGroupFolds}
       />
     );
@@ -6823,6 +6917,7 @@ function PagedGroupRow({
     <PagedAssistantGroup
       group={group}
       thread={thread}
+      showActions={showActions}
       runGroupFolds={runGroupFolds}
       completedWorkFold={completedWorkFold}
     />
@@ -6874,6 +6969,8 @@ function SelectablePagedGroupRow({
   group,
   thread,
   modelChanges,
+  showActions,
+  steerEventIds,
   runGroupFolds,
   completedWorkFold,
 }: Parameters<typeof PagedGroupRow>[0]) {
@@ -6891,6 +6988,8 @@ function SelectablePagedGroupRow({
         group={group}
         thread={thread}
         modelChanges={modelChanges}
+        showActions={showActions}
+        steerEventIds={steerEventIds}
         runGroupFolds={runGroupFolds}
         completedWorkFold={completedWorkFold}
       />
@@ -6934,6 +7033,8 @@ function SelectablePagedGroupRow({
         group={group}
         thread={thread}
         modelChanges={modelChanges}
+        showActions={showActions}
+        steerEventIds={steerEventIds}
         runGroupFolds={runGroupFolds}
         completedWorkFold={completedWorkFold}
       />
@@ -6959,11 +7060,13 @@ function PagedUserGroup({
   group,
   thread,
   modelChanges,
+  steerEventIds,
   runGroupFolds,
 }: {
   group: ChatEventGroup;
   thread: ChatPanelSignals;
   modelChanges: ReadonlyMap<string, RunModelChange>;
+  steerEventIds: ReadonlySet<string>;
   runGroupFolds?: readonly RunGroupFoldControl[];
 }) {
   return (
@@ -6975,7 +7078,11 @@ function PagedUserGroup({
             {modelChange === undefined ? null : (
               <ModelChangeDividerRow change={modelChange} />
             )}
-            <PagedUserMessage event={event} thread={thread} />
+            <PagedUserMessage
+              event={event}
+              thread={thread}
+              steer={steerEventIds.has(event.id)}
+            />
           </div>
         );
       })}
@@ -8015,14 +8122,50 @@ function isElevatedUserMessagePart(
   );
 }
 
+function SteerMessageIndicator() {
+  return (
+    <span
+      data-testid="chat-steer-indicator"
+      aria-hidden
+      className="flex h-7 w-5 shrink-0 items-center justify-center text-muted-foreground"
+    >
+      <CornerLeftUp size={14} strokeWidth={1.8} />
+    </span>
+  );
+}
+
+function UserMessageBubble({
+  children,
+  steer,
+}: {
+  children: ReactNode;
+  steer: boolean;
+}) {
+  const bubble = (
+    <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-[0.9375rem] leading-[1.7] [overflow-wrap:anywhere] overflow-hidden">
+      {children}
+    </div>
+  );
+  return steer ? (
+    <div className="flex w-full items-center justify-end gap-1.5">
+      <SteerMessageIndicator />
+      {bubble}
+    </div>
+  ) : (
+    bubble
+  );
+}
+
 function UserMessageContent({
   document,
   attachments,
   onImageClick,
+  steer,
 }: {
   document: UserMessageRenderDocument;
   attachments: ReturnType<typeof userMessageRenderAttachments>;
   onImageClick: OpenMessageImagePreview;
+  steer: boolean;
 }) {
   // Attachments read as their own object, so they all sit above the bubble
   // instead of interrupting the sentence they were dropped into. Attachments
@@ -8049,14 +8192,14 @@ function UserMessageContent({
         onImageClick={onImageClick}
       />
       {hasBody ? (
-        <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-[0.9375rem] leading-[1.7] [overflow-wrap:anywhere] overflow-hidden">
+        <UserMessageBubble steer={steer}>
           <div className="px-4 py-3">
             <UserMessageView
               document={document}
               elevatedFileIds={elevatedFileIds}
             />
           </div>
-        </div>
+        </UserMessageBubble>
       ) : null}
     </>
   );
@@ -8209,9 +8352,11 @@ function messageImageLightboxTarget(
 function PagedUserMessage({
   event,
   thread,
+  steer,
 }: {
   event: EnrichedChatEvent;
   thread: ChatPanelSignals;
+  steer: boolean;
 }) {
   const inputEvent = asInputChatEvent(event);
   const renderDocument = event.userMessageRenderDocument;
@@ -8292,6 +8437,7 @@ function PagedUserMessage({
               document={renderDocument}
               attachments={allAttachments}
               onImageClick={openLightbox}
+              steer={steer}
             />
           ) : (
             <>
@@ -8300,7 +8446,7 @@ function PagedUserMessage({
                 onImageClick={openLightbox}
               />
               {bodyBlocks.length > 0 && (
-                <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-[0.9375rem] leading-[1.7] [overflow-wrap:anywhere] overflow-hidden">
+                <UserMessageBubble steer={steer}>
                   <div className="px-4 py-3">
                     <BodyContentBlocks
                       blocks={bodyBlocks}
@@ -8311,7 +8457,7 @@ function PagedUserMessage({
                       markdownMediaPreview={false}
                     />
                   </div>
-                </div>
+                </UserMessageBubble>
               )}
             </>
           )}
@@ -8329,11 +8475,13 @@ function PagedUserMessage({
 function PagedAssistantGroup({
   group,
   thread,
+  showActions,
   runGroupFolds,
   completedWorkFold,
 }: {
   group: ChatEventGroup;
   thread: ChatPanelSignals;
+  showActions: boolean;
   runGroupFolds?: readonly RunGroupFoldControl[];
   completedWorkFold?: {
     groups: readonly ChatEventGroup[];
@@ -8412,7 +8560,13 @@ function PagedAssistantGroup({
           })}
         </div>
       </div>
-      <PagedGroupActions group={group} content={fullContent} thread={thread} />
+      {showActions ? (
+        <PagedGroupActions
+          group={group}
+          content={fullContent}
+          thread={thread}
+        />
+      ) : null}
     </div>
   );
 }
