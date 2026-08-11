@@ -37,6 +37,7 @@ import {
   LIMITED_FREE1_DEFAULT_RUN_MODEL,
   CODEX_FAST_MODE_MODELS,
   SUPPORTED_RUN_MODELS,
+  ACTIVE_RUN_MODELS,
   RETIRED_RUN_MODELS,
   VM0_MODEL_PRICE_TIER,
   DEFAULT_ORG_MODEL_POLICY_MODELS,
@@ -326,6 +327,24 @@ describe("model-first canonical catalog", () => {
     expect(isRetiredRunModel(getDefaultModel("moonshot-api-key"))).toBe(false);
     expect(isRetiredRunModel(getDefaultModel("minimax-api-key"))).toBe(false);
     expect(getDefaultModel("zai-api-key")).toBe("");
+  });
+
+  it("keeps the selectable catalog separate from historical schema models", () => {
+    expect(ACTIVE_RUN_MODELS).toEqual([
+      "claude-fable-5",
+      "claude-opus-5",
+      "gpt-5.6-sol",
+      "gpt-5.6-terra",
+      "gpt-5.6-luna",
+      "claude-opus-4-8",
+      "claude-sonnet-5",
+      "deepseek-v4-flash",
+    ]);
+    expect(ACTIVE_RUN_MODELS).not.toContain("gpt-5.5");
+    expect(ACTIVE_RUN_MODELS).not.toContain("glm-5.2");
+    expect(new Set([...ACTIVE_RUN_MODELS, ...RETIRED_RUN_MODELS])).toEqual(
+      new Set(SUPPORTED_RUN_MODELS),
+    );
   });
 
   it("returns compatible provider types for canonical models", () => {
@@ -831,27 +850,12 @@ describe("model selection for Claude-compatible gateway providers", () => {
 });
 
 describe("getVm0VisibleModels", () => {
-  it("returns all VM0 managed models", () => {
+  it("returns only active VM0 managed models", () => {
     const models = getVm0VisibleModels();
-    expect(models).toContain("claude-fable-5");
-    expect(models).toContain("claude-opus-5");
-    expect(models).toContain("claude-opus-4-8");
-    expect(models).toContain("kimi-k3");
-    expect(models).toContain("kimi-k2.7-code");
-    expect(models).toContain("MiniMax-M3");
-    expect(models).toContain("glm-5.2");
-    expect(models).toContain("glm-5.1");
-    expect(models).toContain("mimo-v2.5");
-    expect(models).toContain("hy3-preview");
-    expect(models).toContain("deepseek-v4-flash");
-    expect(models).toContain("gpt-5.6-sol");
-    expect(models).toContain("gpt-5.6-terra");
-    expect(models).toContain("gpt-5.6-luna");
-    expect(models).toContain("gpt-5.5");
-    expect(models).not.toContain("claude-haiku-4-5");
-    expect(models).not.toContain("kimi-k2.6");
-    expect(models).not.toContain("kimi-k2.5");
-    expect(models).not.toContain("MiniMax-M2.7");
+    expect(models).toEqual(ACTIVE_RUN_MODELS);
+    expect(models).not.toContain("gpt-5.5");
+    expect(models).not.toContain("kimi-k3");
+    expect(models).not.toContain("glm-5.2");
   });
 });
 
