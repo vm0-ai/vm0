@@ -664,6 +664,8 @@ describe("chat composer templates", () => {
     const user = userEvent.setup({ delay: null });
     const illustrationTemplate = ILLUSTRATION_TEMPLATE_ITEMS[0]!;
     const videoTemplate = VIDEO_TEMPLATE_ITEMS[0]!;
+    mockAvatarCatalog();
+    mockVoiceCatalog();
     mockChatLifecycle(context, { threadId: THREAD_ID });
 
     detachedSetupPage({
@@ -688,11 +690,7 @@ describe("chat composer templates", () => {
     expect(tabByText("Illustration")).toBeInTheDocument();
     expect(tabByText("Video")).toBeInTheDocument();
     expect(tabByText("Website")).toBeInTheDocument();
-    expect(
-      queryAllByRoleFast("tab").some((tab) => {
-        return tab.textContent === "Avatar";
-      }),
-    ).toBeFalsy();
+    expect(tabByText("Avatar")).toBeInTheDocument();
     expect(document.activeElement).not.toBe(tabByText("Presentation"));
     expect(tabByText("Presentation")).toHaveAttribute("aria-selected", "true");
     const categorySelect = screen.getByRole("combobox", {

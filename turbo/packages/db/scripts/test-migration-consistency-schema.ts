@@ -1082,6 +1082,10 @@ const MCP_CUSTOM_CONNECTOR_READERS_PREVIOUS_MIGRATION =
   "0872_curious_yellow_claw";
 const MCP_CUSTOM_CONNECTOR_READERS_MIGRATION =
   "0873_prepare_mcp_custom_connector_readers";
+const CUSTOM_CONNECTOR_DEFINITION_CONTRACTION_PREVIOUS_MIGRATION =
+  "0897_bizarre_kid_colt";
+const CUSTOM_CONNECTOR_DEFINITION_CONTRACTION_MIGRATION =
+  "0902_colorful_mandrill";
 
 const CONNECTION_SCOPED_VARIABLE_PREVIOUS_MIGRATION =
   "0900_replace_scheduled_usage_pack_change";
@@ -1686,6 +1690,188 @@ async function validateMcpCustomConnectorReaderPreparation(): Promise<void> {
     console.log("   ✅ legacy MCP state aborts instead of being cleared");
     console.log("   ✅ existing HTTP definitions remain valid");
     console.log("   ✅ only exhaustive MCP definition rows are accepted\n");
+  } finally {
+    await client.end();
+    await dropDatabase(testDb);
+  }
+}
+
+async function validateCustomConnectorDefinitionContraction(): Promise<void> {
+  console.log("=== Validate Custom Connector definition contraction ===\n");
+  const testDb = "migration_custom_connector_definition_contraction_test";
+  await createDatabase(testDb);
+  const client = new Client({ connectionString: createTestDbUrl(testDb) });
+  await client.connect();
+
+  const httpConnectorId = "26216000-0000-4000-8000-000000000001";
+  const mcpConnectorId = "26216000-0000-4000-8000-000000000002";
+
+  try {
+    await applyMigrationsUpToTag(
+      client,
+      CUSTOM_CONNECTOR_DEFINITION_CONTRACTION_PREVIOUS_MIGRATION,
+    );
+
+    await client.query(
+      `
+        INSERT INTO "org_custom_connectors" (
+          "id",
+          "org_id",
+          "slug",
+          "display_name",
+          "prefix_templates",
+          "fields",
+          "header_injections",
+          "query_injections",
+          "created_by"
+        ) VALUES (
+          $1,
+          'issue-26216-org',
+          '_canonical-http',
+          'Canonical HTTP',
+          '["https://api.example.test/"]'::jsonb,
+          '[{"key":"secret","label":"Secret","kind":"secret","required":true}]'::jsonb,
+          '[{"name":"Authorization","valueTemplate":"Bearer {{secrets.secret}}"}]'::jsonb,
+          '[]'::jsonb,
+          'issue-26216-user'
+        )
+      `,
+      [httpConnectorId],
+    );
+    await client.query(
+      `
+        INSERT INTO "org_custom_connectors" (
+          "id",
+          "org_id",
+          "slug",
+          "display_name",
+          "prefix_templates",
+          "fields",
+          "header_injections",
+          "query_injections",
+          "mcp_endpoint",
+          "mcp_transport",
+          "created_by"
+        ) VALUES (
+          $1,
+          'issue-26216-org',
+          '_canonical-mcp',
+          'Canonical MCP',
+          '[]'::jsonb,
+          '[{"key":"secret","label":"Secret","kind":"secret","required":true}]'::jsonb,
+          '[{"name":"Authorization","valueTemplate":"Bearer {{secrets.secret}}"}]'::jsonb,
+          '[]'::jsonb,
+          'https://mcp.example.test/server',
+          'streamable-http',
+          'issue-26216-user'
+        )
+      `,
+      [mcpConnectorId],
+    );
+
+    const outgoingWriterRows = await client.query<{
+      headerName: string | null;
+      headerTemplate: string | null;
+      prefixes: string[];
+    }>(
+      `
+        SELECT
+          "prefixes",
+          "header_name" AS "headerName",
+          "header_template" AS "headerTemplate"
+        FROM "org_custom_connectors"
+        WHERE "id" IN ($1, $2)
+        ORDER BY "id"
+      `,
+      [httpConnectorId, mcpConnectorId],
+    );
+    assert.deepEqual(outgoingWriterRows.rows, [
+      { prefixes: [], headerName: null, headerTemplate: null },
+      { prefixes: [], headerName: null, headerTemplate: null },
+    ]);
+
+    await client.query(`
+      CREATE VIEW "custom_connector_legacy_definition_dependency" AS
+      SELECT "id", "header_template"
+      FROM "org_custom_connectors"
+    `);
+    await assert.rejects(
+      applyMigrationsUpToTag(
+        client,
+        CUSTOM_CONNECTOR_DEFINITION_CONTRACTION_MIGRATION,
+      ),
+      /cannot drop column header_template .* because other objects depend on it/u,
+    );
+    const columnsAfterRejectedContraction = await client.query<{
+      columnName: string;
+    }>(`
+      SELECT "column_name" AS "columnName"
+      FROM "information_schema"."columns"
+      WHERE "table_schema" = 'public'
+        AND "table_name" = 'org_custom_connectors'
+        AND "column_name" IN ('prefixes', 'header_name', 'header_template')
+      ORDER BY "column_name"
+    `);
+    assert.deepEqual(
+      columnsAfterRejectedContraction.rows.map((row) => {
+        return row.columnName;
+      }),
+      ["header_name", "header_template", "prefixes"],
+    );
+
+    await client.query(
+      `DROP VIEW "custom_connector_legacy_definition_dependency"`,
+    );
+    await applyMigrationsUpToTag(
+      client,
+      CUSTOM_CONNECTOR_DEFINITION_CONTRACTION_MIGRATION,
+    );
+
+    const remainingLegacyColumns = await client.query<{ count: string }>(`
+      SELECT count(*)::text AS "count"
+      FROM "information_schema"."columns"
+      WHERE "table_schema" = 'public'
+        AND "table_name" = 'org_custom_connectors'
+        AND "column_name" IN ('prefixes', 'header_name', 'header_template')
+    `);
+    assert.equal(remainingLegacyColumns.rows[0]?.count, "0");
+
+    const canonicalRows = await client.query<{
+      id: string;
+      mcpEndpoint: string | null;
+      prefixTemplates: string[];
+    }>(
+      `
+        SELECT
+          "id",
+          "prefix_templates" AS "prefixTemplates",
+          "mcp_endpoint" AS "mcpEndpoint"
+        FROM "org_custom_connectors"
+        WHERE "id" IN ($1, $2)
+        ORDER BY "id"
+      `,
+      [httpConnectorId, mcpConnectorId],
+    );
+    assert.deepEqual(canonicalRows.rows, [
+      {
+        id: httpConnectorId,
+        prefixTemplates: ["https://api.example.test/"],
+        mcpEndpoint: null,
+      },
+      {
+        id: mcpConnectorId,
+        prefixTemplates: [],
+        mcpEndpoint: "https://mcp.example.test/server",
+      },
+    ]);
+
+    console.log("   ✅ outgoing canonical-only writes survive contraction");
+    console.log(
+      "   ✅ unexpected dependencies abort the contraction atomically",
+    );
+    console.log(
+      "   ✅ retired columns are absent after the dependency is removed\n",
+    );
   } finally {
     await client.end();
     await dropDatabase(testDb);
@@ -2933,9 +3119,6 @@ async function validateCustomConnectorOauthModeConstraints(
       "org_id",
       "slug",
       "display_name",
-      "prefixes",
-      "header_name",
-      "header_template",
       "prefix_templates",
       "fields",
       "header_injections",
@@ -2948,9 +3131,6 @@ async function validateCustomConnectorOauthModeConstraints(
       $2,
       $3,
       $4,
-      '["https://api.example.test/"]'::jsonb,
-      'Authorization',
-      'Bearer {{secret}}',
       '["https://api.example.test/"]'::jsonb,
       CASE
         WHEN $5 = 'manual' THEN '[{"key":"secret","label":"Secret","kind":"secret","required":true}]'::jsonb
@@ -7612,6 +7792,7 @@ async function main(): Promise<void> {
     await validateTeamsMessageFileScopeBackfill();
     await validateInvalidatedGoalContinuationCleanup();
     await validateMcpCustomConnectorReaderPreparation();
+    await validateCustomConnectorDefinitionContraction();
     await validateCustomCredentialStorageGenerationBackfill();
     await validateChatEventContractCutover();
     await validateChatEventContractionPreparation();

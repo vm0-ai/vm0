@@ -1769,7 +1769,7 @@ describe("Feishu integration", () => {
     expect(managedConnector).toMatchObject({
       slug: `_feishu-${installationId}`,
       displayName: "Feishu-Okou Feishu",
-      prefixes: ["https://open.feishu.cn/open-apis/"],
+      prefixTemplates: ["https://open.feishu.cn/open-apis/"],
       headerInjections: [
         {
           name: "Authorization",

@@ -436,7 +436,7 @@ function mockCustomConnectorStory(): {
     zeroCustomConnectorsContract.create,
     ({ body, respond }) => {
       createBodies.push(body);
-      const prefixTemplates = body.prefixTemplates ?? body.prefixes ?? [];
+      const prefixTemplates = body.prefixTemplates ?? [];
       const fields = body.fields ?? [];
       const headerInjections = body.headerInjections ?? [];
       const created = customConnector({

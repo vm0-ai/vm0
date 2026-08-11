@@ -17,7 +17,6 @@ import { sql } from "drizzle-orm";
 import type {
   OrgCustomConnectorFields,
   OrgCustomConnectorHeaderInjections,
-  OrgCustomConnectorPrefixes,
   OrgCustomConnectorPrefixTemplates,
   OrgCustomConnectorQueryInjections,
 } from "@vm0/db/jsonb-contracts/org-custom-connector";
@@ -47,12 +46,6 @@ export const orgCustomConnectors = pgTable(
     orgId: text("org_id").notNull(),
     slug: varchar("slug", { length: 64 }).notNull(),
     displayName: varchar("display_name", { length: 128 }).notNull(),
-    prefixes: jsonb("prefixes")
-      .notNull()
-      .default(sql`'[]'::jsonb`)
-      .$type<OrgCustomConnectorPrefixes>(),
-    headerName: varchar("header_name", { length: 128 }),
-    headerTemplate: text("header_template"),
     prefixTemplates: jsonb("prefix_templates")
       .notNull()
       .default(sql`'[]'::jsonb`)
