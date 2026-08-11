@@ -36,9 +36,15 @@ if grep -R -Fq '/api/test/' "$RUNNER_TESTS" "${RUNNER_HELPERS[@]}"; then
   fail "runner E2E coverage must use supported public APIs"
 fi
 grep -Fq 'startVideoOnboardingCheckout' "$RUNNER_TOKEN" ||
-  fail "runner Claude account must upgrade through public paid onboarding"
+  fail "real runner accounts must upgrade through public paid onboarding"
 grep -Fq 'fillStripeCheckout' "$RUNNER_TOKEN" ||
-  fail "runner Claude account must complete the public Stripe checkout"
+  fail "real runner accounts must complete the public Stripe checkout"
+if [[ "$(grep -Fc 'upgradeToPro: true' "$RUNNER_TOKEN")" -ne 2 ]]; then
+  fail "real Codex and Claude runner accounts must both upgrade to Pro"
+fi
+if [[ "$(grep -Fc 'upgradeToPro: false' "$RUNNER_TOKEN")" -ne 1 ]]; then
+  fail "the mock runner account must remain on limited-free"
+fi
 
 ruby -ryaml - "$WORKFLOW" <<'RUBY'
 workflow = YAML.load_file(ARGV.fetch(0))
@@ -223,6 +229,26 @@ unless provider_step.fetch("run").include?(
   )
   raise "runner bootstrap must restore the historical mock provider"
 end
+codex_step = bootstrap_steps.find do |step|
+  step["name"] == "Bootstrap real Codex account"
+end
+raise "missing real Codex account bootstrap" unless codex_step
+codex_script = codex_step.fetch("run")
+%w[
+  /api/zero/model-providers
+  /api/zero/model-policies
+  /api/zero/feature-switches
+  gpt-5.6-luna
+  realAgentInPreview
+].each do |required_fragment|
+  unless codex_script.include?(required_fragment)
+    raise "real Codex bootstrap must include #{required_fragment}"
+  end
+end
+unless codex_step.dig("env", "OPENAI_API_KEY") ==
+    "${{ secrets.OPENAI_API_KEY }}"
+  raise "real Codex bootstrap must receive the OpenAI credential"
+end
 claude_step = bootstrap_steps.find do |step|
   step["name"] == "Bootstrap real Claude account"
 end
@@ -232,7 +258,7 @@ claude_script = claude_step.fetch("run")
   /api/zero/model-providers
   /api/zero/model-policies
   /api/zero/feature-switches
-  claude-sonnet-5
+  claude-sonnet-4-6
   realAgentInPreview
 ].each do |required_fragment|
   unless claude_script.include?(required_fragment)
