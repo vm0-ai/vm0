@@ -424,8 +424,8 @@ export async function usagePackSubscriptionMigrationSchemaAvailable(
   db: Pick<Db, "select">,
 ): Promise<boolean> {
   // Migration hooks run for ordinary Stripe events, so a new API can briefly
-  // precede migration 0906 during the DB/API rollout window (observed maximum:
-  // ~102 minutes). Remove after 0906 is outside the rollback window; #26388.
+  // precede migration 0907 during the DB/API rollout window (observed maximum:
+  // ~102 minutes). Remove after 0907 is outside the rollback window; #26388.
   const [state] = await db
     .select({
       available:
