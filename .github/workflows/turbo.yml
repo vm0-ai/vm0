@@ -2489,6 +2489,122 @@ jobs:
 
           RUNNER_START_SUCCEEDED=1
 
+  # Prepare the shared Clerk identities once, then fan future runner coverage
+  # across the same twelve independent shards used by the retired runner suite.
+  cli-e2e-03-runner-prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    concurrency:
+      group: cli-e2e-03-runner-prepare-${{ needs.prepare.outputs.job-ref }}
+      cancel-in-progress: true
+    needs: [prepare]
+    if: |
+      needs.prepare.outputs.job-ref != '' &&
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) &&
+      needs.prepare.outputs.playwright-runner-consumer-needed == 'true'
+    outputs:
+      organization-id: ${{ steps.account.outputs.organization-id }}
+      runner-email: ${{ steps.account.outputs.runner-email }}
+      codex-email: ${{ steps.account.outputs.codex-email }}
+      claude-email: ${{ steps.account.outputs.claude-email }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 22
+      - name: Install pnpm
+        run: corepack enable pnpm
+      - name: Install E2E dependencies
+        run: cd e2e && pnpm install --frozen-lockfile
+      - name: Prepare runner E2E accounts
+        id: account
+        run: cd e2e && pnpm exec tsx playwright/runner-account.ts prepare
+        env:
+          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
+          JOB_REF: ${{ needs.prepare.outputs.job-ref }}
+
+  cli-e2e-03-runner:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency:
+      group: cli-e2e-03-runner-${{ matrix.index }}-${{ needs.prepare.outputs.job-ref }}
+      cancel-in-progress: true
+    needs:
+      - prepare
+      - deploy-api
+      - deploy-runner-prepare
+      - deploy-runner-start
+      - cli-e2e-03-runner-prepare
+    if: |
+      always() &&
+      (github.event_name != 'push' || !startsWith(github.event.head_commit.message, 'chore: release')) &&
+      needs.prepare.outputs.job-ref != '' &&
+      needs.prepare.outputs.playwright-runner-consumer-needed == 'true' &&
+      needs.deploy-api.result == 'success' &&
+      needs.deploy-runner-prepare.result == 'success' &&
+      needs.deploy-runner-start.result == 'success' &&
+      needs.cli-e2e-03-runner-prepare.result == 'success'
+    strategy:
+      fail-fast: false
+      matrix:
+        index: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+    env:
+      E2E_CLERK_ORG_ID: ${{ needs.cli-e2e-03-runner-prepare.outputs.organization-id }}
+      E2E_RUNNER_EMAIL: ${{ needs.cli-e2e-03-runner-prepare.outputs.runner-email }}
+      E2E_RUNNER_CODEX_EMAIL: ${{ needs.cli-e2e-03-runner-prepare.outputs.codex-email }}
+      E2E_RUNNER_CLAUDE_EMAIL: ${{ needs.cli-e2e-03-runner-prepare.outputs.claude-email }}
+      E2E_RUNNER_SHARD_INDEX: ${{ matrix.index }}
+      E2E_RUNNER_SHARD_TOTAL: 12
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: recursive
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 22
+      - name: Install pnpm
+        run: corepack enable pnpm
+      - name: Install E2E dependencies
+        run: cd e2e && pnpm install --frozen-lockfile
+      - name: Initialize runner E2E shard
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${E2E_CLERK_ORG_ID:?runner E2E organization is required}"
+          : "${E2E_RUNNER_EMAIL:?runner E2E account is required}"
+          : "${E2E_RUNNER_CODEX_EMAIL:?runner Codex E2E account is required}"
+          : "${E2E_RUNNER_CLAUDE_EMAIL:?runner Claude E2E account is required}"
+          echo "Runner E2E shard ${E2E_RUNNER_SHARD_INDEX}/${E2E_RUNNER_SHARD_TOTAL} is ready"
+
+  cli-e2e-03-runner-cleanup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs:
+      - prepare
+      - cli-e2e-03-runner-prepare
+      - cli-e2e-03-runner
+    if: |
+      always() &&
+      needs.prepare.outputs.job-ref != '' &&
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) &&
+      needs.cli-e2e-03-runner-prepare.result != 'skipped' &&
+      needs.cli-e2e-03-runner-prepare.result != 'cancelled'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 22
+      - name: Install pnpm
+        run: corepack enable pnpm
+      - name: Install E2E dependencies
+        run: cd e2e && pnpm install --frozen-lockfile
+      - name: Cleanup runner E2E accounts
+        run: cd e2e && pnpm exec tsx playwright/runner-account.ts cleanup
+        env:
+          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
+          E2E_RUNNER_ORGANIZATION_ID: ${{ needs.cli-e2e-03-runner-prepare.outputs.organization-id }}
+          JOB_REF: ${{ needs.prepare.outputs.job-ref }}
+
   lint-runtime-api-compat:
     runs-on: ubuntu-latest
     timeout-minutes: 8
@@ -2587,6 +2703,9 @@ jobs:
       - cli-e2e-02-browser
       - cli-e2e-02-playwright
       - cli-e2e-01-serial
+      - cli-e2e-03-runner-prepare
+      - cli-e2e-03-runner
+      - cli-e2e-03-runner-cleanup
       - deploy-runner-prepare
       - deploy-runner-start
     # Always run so the gate reports an explicit result (not "skipped").
@@ -2686,6 +2805,9 @@ jobs:
           check_result "cli-e2e-02-browser" "${{ needs.cli-e2e-02-browser.result }}" "${{ vars.CI_CHECK_BROWSER_E2E == '1' && 'true' || 'informational' }}"
           check_result "cli-e2e-02-playwright" "${{ needs.cli-e2e-02-playwright.result }}" "${{ vars.CI_CHECK_BROWSER_E2E == '1' && 'true' || 'informational' }}"
           check_result "cli-e2e-01-serial" "${{ needs.cli-e2e-01-serial.result }}" "true"
+          check_result "cli-e2e-03-runner-prepare" "${{ needs.cli-e2e-03-runner-prepare.result }}" "$RUNNER_DEPLOY_SKIP_ALLOWED"
+          check_result "cli-e2e-03-runner" "${{ needs.cli-e2e-03-runner.result }}" "$RUNNER_DEPLOY_SKIP_ALLOWED"
+          check_result "cli-e2e-03-runner-cleanup" "${{ needs.cli-e2e-03-runner-cleanup.result }}" "$RUNNER_DEPLOY_SKIP_ALLOWED"
           check_result "deploy-runner-prepare" "${{ needs.deploy-runner-prepare.result }}" "$RUNNER_DEPLOY_SKIP_ALLOWED"
           check_result "deploy-runner-start" "${{ needs.deploy-runner-start.result }}" "$RUNNER_DEPLOY_SKIP_ALLOWED"
 
