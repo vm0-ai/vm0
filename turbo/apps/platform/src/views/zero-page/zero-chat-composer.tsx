@@ -237,6 +237,7 @@ import {
 } from "../../signals/zero-page/model-default-selection.ts";
 
 const MAX_FILE_SIZE = 1024 * 1024 * 1024; // 1 GB — keep in sync with web constants
+const FAST_MODE_ACTIVE_PRESS = Symbol("fast-mode-active-press");
 const COMPOSER_CONTROL_FOCUS_CLASS =
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
 
@@ -7412,18 +7413,12 @@ function ComposerFastModeButton({
   return (
     <Popover
       onOpenChange={(open, eventDetails) => {
-        if (eventDetails.reason === "trigger-press") {
-          const trigger = eventDetails.trigger;
-          const preventOpen =
-            open &&
-            trigger instanceof HTMLElement &&
-            trigger.dataset.fastModeActiveBeforePress === "true";
-          if (trigger instanceof HTMLElement) {
-            delete trigger.dataset.fastModeActiveBeforePress;
-          }
-          if (preventOpen) {
-            eventDetails.cancel();
-          }
+        if (
+          open &&
+          eventDetails.reason === "trigger-press" &&
+          Object.hasOwn(eventDetails.event, FAST_MODE_ACTIVE_PRESS)
+        ) {
+          eventDetails.cancel();
         }
       }}
     >
@@ -7442,8 +7437,11 @@ function ComposerFastModeButton({
           aria-pressed={active}
           disabled={disabled}
           onClickCapture={(event) => {
-            event.currentTarget.dataset.fastModeActiveBeforePress =
-              String(active);
+            if (active) {
+              Object.defineProperty(event.nativeEvent, FAST_MODE_ACTIVE_PRESS, {
+                value: true,
+              });
+            }
           }}
           onClick={() => {
             onChange({
