@@ -5857,7 +5857,7 @@ async function validateCanonicalChatEventStorageBackfill(): Promise<void> {
 
 const CHAT_RUN_SERVICE_TIER_PREVIOUS_MIGRATION = "0889_thankful_crusher_hogan";
 const CHAT_RUN_SERVICE_TIER_MIGRATION =
-  "0890_backfill_chat_run_service_tier_annotations";
+  "0891_backfill_chat_run_service_tier_annotations";
 
 const CHAT_RUN_SERVICE_TIER_FIXTURE = {
   composeId: "00000000-0000-4000-8000-000000089001",
@@ -6183,7 +6183,7 @@ async function applyBackfillWhileSnapshotPublisherWins(
   try {
     // The production publisher reads event bytes before opening its short
     // expected-parent swap transaction. Capture that stale candidate from a
-    // head which does not cover the event that 0890 will update.
+    // head which does not cover the event that 0891 will update.
     const staleTailCandidate = await publisher.query<{
       archiveSchemaVersion: number;
       canonicalUserMessage: unknown;
@@ -6254,7 +6254,7 @@ async function applyBackfillWhileSnapshotPublisherWins(
       await migrationPromise;
 
       // Complete the stale publisher's short CAS after the migration commits.
-      // 0890 must have demoted its shorter expected parent, otherwise this
+      // 0891 must have demoted its shorter expected parent, otherwise this
       // would publish a current v4 head containing the old event bytes above.
       await publisher.query("BEGIN");
       transactionOpen = true;
@@ -6422,10 +6422,10 @@ async function assertChatRunServiceTierMigrationCleanup(
   }>(`
     SELECT
       to_regprocedure(
-        'public.annotate_chat_event_priority_0890(jsonb)'
+        'public.annotate_chat_event_priority_0891(jsonb)'
       ) IS NOT NULL AS "annotationFunctionPresent",
       to_regprocedure(
-        'public.backfill_chat_run_service_tier_annotations_0890()'
+        'public.backfill_chat_run_service_tier_annotations_0891()'
       ) IS NOT NULL AS "backfillProcedurePresent"
   `);
   assert.deepEqual(artifacts.rows, [
@@ -6488,7 +6488,7 @@ async function validateChatRunServiceTierAnnotationBackfill(): Promise<void> {
   const migrationSql = await fs.readFile(
     path.join(
       MIGRATIONS_DIR,
-      "0890_backfill_chat_run_service_tier_annotations.sql",
+      "0891_backfill_chat_run_service_tier_annotations.sql",
     ),
     "utf8",
   );
