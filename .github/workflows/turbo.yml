@@ -4214,6 +4214,7 @@ jobs:
       - cli-e2e-02-browser
       - cli-e2e-02-playwright
       - cli-e2e-01-serial
+      - cli-e2e-03-runner-shards
       - cli-e2e-03-runner-prepare
       - cli-e2e-03-runner-bootstrap
       - cli-e2e-03-runner
@@ -4344,6 +4345,7 @@ jobs:
           check_result "cli-e2e-02-browser" "${{ needs.cli-e2e-02-browser.result }}" "$LIVE_E2E_SKIP_ALLOWED"
           check_result "cli-e2e-02-playwright" "${{ needs.cli-e2e-02-playwright.result }}" "$LIVE_E2E_SKIP_ALLOWED"
           check_result "cli-e2e-01-serial" "${{ needs.cli-e2e-01-serial.result }}" "true"
+          check_result "cli-e2e-03-runner-shards" "${{ needs.cli-e2e-03-runner-shards.result }}" "$RUNNER_E2E_SKIP_ALLOWED"
           check_result "cli-e2e-03-runner-prepare" "${{ needs.cli-e2e-03-runner-prepare.result }}" "$RUNNER_E2E_SKIP_ALLOWED"
           check_result "cli-e2e-03-runner-bootstrap" "${{ needs.cli-e2e-03-runner-bootstrap.result }}" "$RUNNER_E2E_SKIP_ALLOWED"
           check_result "cli-e2e-03-runner" "${{ needs.cli-e2e-03-runner.result }}" "$RUNNER_E2E_SKIP_ALLOWED"

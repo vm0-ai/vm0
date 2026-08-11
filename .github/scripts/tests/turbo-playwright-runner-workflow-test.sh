@@ -5,9 +5,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 WORKFLOW="${REPO_ROOT}/.github/workflows/turbo.yml"
 RUNNER_TESTS="${REPO_ROOT}/e2e/tests/03-runner"
+RUNNER_CHAT_HELPER="${REPO_ROOT}/e2e/helpers/runner-chat.bash"
 RUNNER_HELPERS=(
   "${REPO_ROOT}/e2e/helpers/runner-api.bash"
-  "${REPO_ROOT}/e2e/helpers/runner-chat.bash"
+  "$RUNNER_CHAT_HELPER"
 )
 RUNNER_TOKEN="${REPO_ROOT}/e2e/playwright/runner-token.ts"
 RUNNER_MOCK_CLAUDE_BOOTSTRAP="${REPO_ROOT}/e2e/playwright/runner-mock-claude-bootstrap.bash"
@@ -54,6 +55,7 @@ workflow = YAML.load_file(ARGV.fetch(0))
 jobs = workflow.fetch("jobs")
 prepare = jobs.fetch("prepare")
 stripe_listener = jobs.fetch("deploy-stripe-listener")
+shard_plan = jobs.fetch("cli-e2e-03-runner-shards")
 account_prepare = jobs.fetch("cli-e2e-03-runner-prepare")
 bootstrap = jobs.fetch("cli-e2e-03-runner-bootstrap")
 runner = jobs.fetch("cli-e2e-03-runner")
@@ -84,14 +86,11 @@ end
 unless runner.dig("strategy", "fail-fast") == false
   raise "runner E2E shards must not fail fast"
 end
-expected_matrix = "${{ fromJSON(needs.cli-e2e-03-runner-prepare.outputs.runner-shard-matrix) }}"
+expected_matrix = "${{ fromJSON(needs.cli-e2e-03-runner-shards.outputs.matrix) }}"
 unless runner.dig("strategy", "matrix") == expected_matrix
   raise "runner E2E must use the generated non-empty shard matrix"
 end
 expected_runtimes = %w[cloudflare vercel]
-unless runner.dig("strategy", "matrix", "runtime") == expected_runtimes
-  raise "runner E2E must shard both preview runtimes"
-end
 unless runner_start.dig("strategy", "matrix", "runtime") == expected_runtimes
   raise "runner deployment must start isolated services for both runtimes"
 end
@@ -103,6 +102,7 @@ end
 
 required_needs = %w[
   prepare
+  cli-e2e-03-runner-shards
   deploy-api
   deploy-api-vercel
   deploy-runner-prepare
@@ -154,21 +154,22 @@ end
 if account_prepare.key?("outputs")
   raise "matrix account preparation must hand off identities through artifacts"
 end
-unless account_prepare.dig("outputs", "runner-shard-matrix") ==
-    "${{ steps.shards.outputs.matrix }}"
-  raise "runner E2E preparation must expose the generated shard matrix"
+unless shard_plan.dig("outputs", "matrix") == "${{ steps.shards.outputs.matrix }}"
+  raise "runner E2E shard planning must expose the generated matrix"
 end
 
-shard_generation_step = account_prepare.fetch("steps").find do |step|
+shard_generation_step = shard_plan.fetch("steps").find do |step|
   step["name"] == "Generate runner E2E shard matrix"
 end
 raise "missing runner E2E shard generation" unless shard_generation_step
 shard_generation_script = shard_generation_step.fetch("run")
 unless shard_generation_step["id"] == "shards" &&
     shard_generation_script.include?("playwright/runner-shards.ts tests/03-runner") &&
-    shard_generation_script.include?('length > 0 and length <= 12') &&
+    shard_generation_script.include?('["cloudflare", "vercel"][] as $runtime') &&
+    shard_generation_script.include?('length > 0 and length <= 24') &&
+    shard_generation_script.include?('.total | type == "number" and . > 0 and . <= 12') &&
     shard_generation_script.include?('echo "matrix=$matrix" >> "$GITHUB_OUTPUT"')
-  raise "runner E2E shard generation must use the tested executable and reject empty matrices"
+  raise "runner E2E shard generation must balance files across both runtimes"
 end
 
 token_step = account_prepare.fetch("steps").find do |step|
@@ -355,9 +356,10 @@ shard_step = runner.fetch("steps").find do |step|
   step["name"] == "Initialize runner E2E shard"
 end
 raise "missing runner E2E shard scaffold" unless shard_step
-unless runner.dig("env", "E2E_RUNNER_TEST_FILES_JSON") == "${{ toJSON(matrix.files) }}" &&
-    runner.dig("env", "E2E_RUNNER_SHARD_TOTAL") == "${{ strategy.job-total }}"
-  raise "runner E2E shards must receive their exact file list and dynamic total"
+unless runner.dig("env", "E2E_RUNNER_RUNTIME") == "${{ matrix.runtime }}" &&
+    runner.dig("env", "E2E_RUNNER_TEST_FILES_JSON") == "${{ toJSON(matrix.files) }}" &&
+    runner.dig("env", "E2E_RUNNER_SHARD_TOTAL") == "${{ matrix.total }}"
+  raise "runner E2E shards must receive their runtime, exact files, and per-runtime total"
 end
 unless runner.dig("env", "E2E_RUNNER_MOCK_CLAUDE_ORG_ID") ==
     "${{ needs.cli-e2e-03-runner-prepare.outputs.mock-claude-organization-id }}" &&
@@ -394,7 +396,7 @@ unless runner.fetch("steps").any? do |step|
 end
 unless runner.fetch("steps").any? do |step|
     step["name"] == "Upload runner E2E JUnit XML" &&
-      step.dig("with", "name") == "e2e-runner-junit-${{ matrix.index }}" &&
+      step.dig("with", "name") == "e2e-runner-junit-${{ matrix.runtime }}-${{ matrix.index }}" &&
       step.dig("with", "retention-days") == 7
   end
   raise "every runner shard must upload its JUnit report"
@@ -432,6 +434,7 @@ end
 
 gate_needs = Array(jobs.fetch("ci-gate-turbo")["needs"])
 %w[
+  cli-e2e-03-runner-shards
   cli-e2e-03-runner-prepare
   cli-e2e-03-runner-bootstrap
   cli-e2e-03-runner
@@ -450,6 +453,7 @@ unless gate_script.include?("RUNNER_E2E_SKIP_ALLOWED=\"true\"") &&
   raise "CI gate must restore the runner-specific E2E skip policy"
 end
 %w[
+  cli-e2e-03-runner-shards
   cli-e2e-03-runner-prepare
   cli-e2e-03-runner-bootstrap
   cli-e2e-03-runner
@@ -460,11 +464,11 @@ end
 end
 RUBY
 
-grep -Fq 'CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID' "$RUNNER_HELPER" ||
+grep -Fq 'CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID' "$RUNNER_CHAT_HELPER" ||
   fail "runner API helper must send the Cloudflare Access client ID"
-grep -Fq 'CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET' "$RUNNER_HELPER" ||
+grep -Fq 'CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET' "$RUNNER_CHAT_HELPER" ||
   fail "runner API helper must send the Cloudflare Access client secret"
-grep -Fq 'Cloudflare Access credentials must be configured together' "$RUNNER_HELPER" ||
+grep -Fq 'Cloudflare Access credentials must be configured together' "$RUNNER_CHAT_HELPER" ||
   fail "runner API helper must reject partial Cloudflare Access credentials"
 
 echo "turbo-playwright-runner-workflow-test: ok"
