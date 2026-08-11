@@ -33,6 +33,11 @@ type CustomConnectorSkillRepairReason =
   | "staleAssociation"
   | "headMismatch";
 
+type SkillConnectorRepairReason = Exclude<
+  CustomConnectorSkillRepairReason,
+  "inverseInvalid"
+>;
+
 interface CustomConnectorSkillRepairReasonCounts {
   readonly inverseInvalid: number;
   readonly missingStorage: number;
@@ -86,7 +91,14 @@ type CustomConnectorSkillClassification =
   | {
       readonly kind: "unresolved";
       readonly connector: CustomConnectorSkillScanRow;
-      readonly reason: CustomConnectorSkillRepairReason;
+      readonly reason: "inverseInvalid";
+    }
+  | {
+      readonly kind: "unresolved";
+      readonly connector: CustomConnectorSkillScanRow & {
+        readonly skillMarkdown: string;
+      };
+      readonly reason: SkillConnectorRepairReason;
     };
 
 function storageKey(orgId: string, storageName: string): string {
@@ -280,50 +292,72 @@ function classifyConnector(
       ? { kind: "verified", connector }
       : { kind: "unresolved", connector, reason: "inverseInvalid" };
   }
+  const skillConnector = {
+    ...connector,
+    skillMarkdown: connector.skillMarkdown,
+  };
 
   const storage = canonicalStorageByKey.get(
     storageKey(
-      connector.orgId,
-      getCustomConnectorSkillStorageName(connector.id),
+      skillConnector.orgId,
+      getCustomConnectorSkillStorageName(skillConnector.id),
     ),
   );
   if (!storage) {
-    return { kind: "unresolved", connector, reason: "missingStorage" };
+    return {
+      kind: "unresolved",
+      connector: skillConnector,
+      reason: "missingStorage",
+    };
   }
   const expectedVersionId = computeCustomConnectorSkillVersionId(
     storage.id,
-    skillContentInput({ ...connector, skillMarkdown: connector.skillMarkdown }),
+    skillContentInput(skillConnector),
   );
   if (!versionById.has(expectedVersionId)) {
     return {
       kind: "unresolved",
-      connector,
+      connector: skillConnector,
       reason: "missingExpectedVersion",
     };
   }
-  if (connector.skillStorageVersionId === null) {
+  if (skillConnector.skillStorageVersionId === null) {
     return {
       kind: "unresolved",
-      connector,
+      connector: skillConnector,
       reason: "missingAssociation",
     };
   }
-  const associatedVersion = versionById.get(connector.skillStorageVersionId);
+  const associatedVersion = versionById.get(
+    skillConnector.skillStorageVersionId,
+  );
   if (!associatedVersion) {
     throw new Error(
-      `Custom connector ${connector.id} points to missing storage version ${connector.skillStorageVersionId}`,
+      `Custom connector ${skillConnector.id} points to missing storage version ${skillConnector.skillStorageVersionId}`,
     );
   }
   if (associatedVersion.storageId !== storage.id) {
-    return { kind: "unresolved", connector, reason: "wrongStorage" };
+    return {
+      kind: "unresolved",
+      connector: skillConnector,
+      reason: "wrongStorage",
+    };
   }
-  if (connector.skillStorageVersionId !== expectedVersionId) {
-    return { kind: "unresolved", connector, reason: "staleAssociation" };
+  if (skillConnector.skillStorageVersionId !== expectedVersionId) {
+    return {
+      kind: "unresolved",
+      connector: skillConnector,
+      reason: "staleAssociation",
+    };
   }
   if (storage.headVersionId !== expectedVersionId) {
-    return { kind: "unresolved", connector, reason: "headMismatch" };
+    return {
+      kind: "unresolved",
+      connector: skillConnector,
+      reason: "headMismatch",
+    };
   }
-  return { kind: "verified", connector };
+  return { kind: "verified", connector: skillConnector };
 }
 
 async function classifyConnectorPage(
@@ -546,18 +580,19 @@ export const repairCustomConnectorSkillVersions$ = command(
           return true;
         }
         attempted += 1;
-        const connector = classification.connector;
         const didRepair =
           classification.reason === "inverseInvalid"
-            ? await repairInverseInvalidConnector(db, connector.id, signal)
-            : connector.skillMarkdown === null
-              ? false
-              : await repairSkillConnector(
-                  set,
-                  db,
-                  { ...connector, skillMarkdown: connector.skillMarkdown },
-                  signal,
-                );
+            ? await repairInverseInvalidConnector(
+                db,
+                classification.connector.id,
+                signal,
+              )
+            : await repairSkillConnector(
+                set,
+                db,
+                classification.connector,
+                signal,
+              );
         if (didRepair) {
           repaired += 1;
         } else {
