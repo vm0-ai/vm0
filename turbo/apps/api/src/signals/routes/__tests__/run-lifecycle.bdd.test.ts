@@ -111,16 +111,13 @@ import {
   readOrgAdmissionLockState,
   readRunApiStart,
   readRunClaimOwner,
-  readRunModelSelectionFixture,
   readRunnerJobStorageState,
   readStoragePersistenceState,
   releaseOrgAdmissionLock,
   resetFakeKms,
   seedVm0ManagedDefaultModelKey as seedVm0ManagedDefaultModelKeyState,
   seedVm0ManagedModelKey as seedVm0ManagedModelKeyState,
-  setAgentModelSelectionAsPreviousApi,
   setCustomConnectorAuthTemplateFixture,
-  setRunModelSelectionAsPreviousApi,
   setRunnerJobContextProfileAsPreviousApi,
 } from "./helpers/runtime-state";
 import {
@@ -5410,93 +5407,6 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
     await api.requestCancelRun(actor, third.runId, [200]);
     const emptied = await api.readRunQueue(actor);
     expect(emptied.body.concurrency.active).toBe(0);
-  });
-
-  it("reconciles a retired persisted agent model before launch", async () => {
-    const api = createRunsApi(context);
-    const { actor, agentId } = await entitledRunActor();
-    await setAgentModelSelectionAsPreviousApi(
-      context,
-      agentId,
-      "claude-opus-4-7",
-    );
-
-    const run = await api.createRun(actor, {
-      agentId,
-      prompt: "run with a retired persisted agent model",
-      modelProvider: "anthropic-api-key",
-    });
-    const stored = await readRunModelSelectionFixture(context, run.runId);
-
-    expect(stored).toStrictEqual({
-      model_provider: "anthropic-api-key",
-      selected_model: "claude-opus-4-8",
-    });
-    await api.requestCancelRun(actor, run.runId, [200]);
-  });
-
-  it("rejects an explicitly requested retired provider before launch", async () => {
-    const api = createRunsApi(context);
-    const { actor, agentId } = await entitledRunActor();
-
-    const response = await api.requestCreateRun(
-      actor,
-      {
-        agentId,
-        prompt: "run with an explicitly retired Z.AI provider",
-        modelProvider: "zai-api-key",
-      },
-      [400],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: {
-        code: "MODEL_RETIRED",
-        message:
-          'Model "Z.AI" has been retired. Use "deepseek-v4-flash" instead.',
-      },
-    });
-  });
-
-  it("rejects a retired queued run instead of promoting it", async () => {
-    const api = createRunsApi(context);
-    const { actor, agentId } = await entitledRunActor();
-    await enableFakeKms(context);
-    onTestFinished(async () => {
-      await resetFakeKms(context);
-    });
-
-    const first = await api.createRun(actor, {
-      agentId,
-      prompt: "active run before retired queue item one",
-      modelProvider: "anthropic-api-key",
-    });
-    const second = await api.createRun(actor, {
-      agentId,
-      prompt: "active run before retired queue item two",
-      modelProvider: "anthropic-api-key",
-    });
-    const queued = await api.createRun(actor, {
-      agentId,
-      prompt: "retired queued run",
-      modelProvider: "anthropic-api-key",
-    });
-    expect(queued.status).toBe("queued");
-
-    await setRunModelSelectionAsPreviousApi(
-      context,
-      queued.runId,
-      "claude-opus-4-7",
-    );
-    await api.requestCancelRun(actor, first.runId, [200]);
-
-    const failed = await waitForRunStatus(api, actor, queued.runId, "failed");
-    expect(failed.error).toBe(
-      'MODEL_RETIRED: Model "claude-opus-4-7" has been retired. Use "claude-opus-4-8" instead.',
-    );
-    await expect(waitForRunQueueLength(api, actor, 0)).resolves.toBeDefined();
-
-    await api.requestCancelRun(actor, second.runId, [200]);
   });
 
   it("counts promoted queued runs by promotion heartbeat for admission", async () => {

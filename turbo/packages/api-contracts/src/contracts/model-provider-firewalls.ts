@@ -77,27 +77,11 @@ const MODEL_PROVIDER_FIREWALL_PROVIDER_CONFIGS: Record<
     secretName: "OPENROUTER_API_KEY",
     anthropicBaseUrl: "https://openrouter.ai/api",
   },
-  "moonshot-api-key": {
-    framework: "claude-code",
-    secretName: "MOONSHOT_API_KEY",
-    anthropicBaseUrl: "https://api.moonshot.ai/anthropic",
-    piChatCompletionsUrl: "https://api.moonshot.ai/v1/chat/completions",
-  },
-  "minimax-api-key": {
-    framework: "claude-code",
-    secretName: "MINIMAX_API_KEY",
-    anthropicBaseUrl: "https://api.minimax.io/anthropic",
-  },
   deepseek: {
     framework: "codex",
     secretName: "DEEPSEEK_API_KEY",
     openaiBaseUrl: "https://api.deepseek.com/",
     firewallBaseUrl: "https://api.deepseek.com/responses",
-  },
-  "zai-api-key": {
-    framework: "claude-code",
-    secretName: "ZAI_API_KEY",
-    anthropicBaseUrl: "https://api.z.ai/api/anthropic",
   },
   "vercel-ai-gateway": {
     framework: "claude-code",
@@ -202,25 +186,10 @@ export const MODEL_PROVIDER_FIREWALL_CONFIGS = {
     { name: "Authorization", valuePrefix: "Bearer" },
     MODEL_PROVIDER_ENV_PLACEHOLDERS.ANTHROPIC_AUTH_TOKEN,
   ),
-  "moonshot-api-key": mpFirewall(
-    "moonshot-api-key",
-    { name: "Authorization", valuePrefix: "Bearer" },
-    MODEL_PROVIDER_ENV_PLACEHOLDERS.ANTHROPIC_AUTH_TOKEN,
-  ),
-  "minimax-api-key": mpFirewall(
-    "minimax-api-key",
-    { name: "Authorization", valuePrefix: "Bearer" },
-    MODEL_PROVIDER_ENV_PLACEHOLDERS.ANTHROPIC_AUTH_TOKEN,
-  ),
   deepseek: mpFirewall(
     "deepseek",
     { name: "Authorization", valuePrefix: "Bearer" },
     MODEL_PROVIDER_ENV_PLACEHOLDERS.OPENAI_API_KEY,
-  ),
-  "zai-api-key": mpFirewall(
-    "zai-api-key",
-    { name: "Authorization", valuePrefix: "Bearer" },
-    MODEL_PROVIDER_ENV_PLACEHOLDERS.ANTHROPIC_AUTH_TOKEN,
   ),
   "vercel-ai-gateway": mpFirewall(
     "vercel-ai-gateway",

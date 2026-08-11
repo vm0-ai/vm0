@@ -803,9 +803,6 @@ function buildZeroCreateAgentRunArgs(args: {
     modelProviderCredentialScope: command.modelProviderCredentialScope,
     modelProviderType: command.body.modelProvider,
     selectedModelOverride: command.selectedModelOverride ?? agentSelectedModel,
-    ...(command.selectedModelOverride === undefined && agentSelectedModel
-      ? { reconcileRetiredPersistedModel: true }
-      : {}),
     ...(command.codexServiceTier === "fast"
       ? { codexServiceTier: command.codexServiceTier }
       : {}),

@@ -43,7 +43,7 @@ import {
 } from "@vm0/ui";
 import {
   MODEL_PROVIDER_TYPES,
-  ACTIVE_RUN_MODELS,
+  SUPPORTED_RUN_MODELS,
   getCanonicalModelDisplayName,
   getProvidersForModel,
   type ModelProviderResponse,
@@ -1730,14 +1730,14 @@ export function OrgModelPoliciesSection() {
 
   const policies = data.policies;
   const visiblePolicies = policies.filter((policy) => {
-    return ACTIVE_RUN_MODELS.includes(policy.model);
+    return SUPPORTED_RUN_MODELS.includes(policy.model);
   });
   const configuredModels = new Set(
     policies.map((policy) => {
       return policy.model;
     }),
   );
-  const addableModels = ACTIVE_RUN_MODELS.filter((model) => {
+  const addableModels = SUPPORTED_RUN_MODELS.filter((model) => {
     return (
       (isOpenAIOrAnthropicModel(model) || model === "deepseek-v4-flash") &&
       !configuredModels.has(model)

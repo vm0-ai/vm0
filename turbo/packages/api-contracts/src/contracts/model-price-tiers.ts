@@ -12,18 +12,9 @@ export const SUPPORTED_RUN_MODELS = [
   "gpt-5.6-luna",
   "gpt-5.5",
   "claude-opus-4-8",
-  "claude-opus-4-7",
-  "claude-opus-4-6",
   "claude-sonnet-5",
   "claude-sonnet-4-6",
   "deepseek-v4-flash",
-  "kimi-k3",
-  "kimi-k2.7-code",
-  "MiniMax-M3",
-  "glm-5.2",
-  "glm-5.1",
-  "mimo-v2.5",
-  "hy3-preview",
 ] as const;
 
 export type SupportedRunModel = (typeof SUPPORTED_RUN_MODELS)[number];
@@ -45,18 +36,9 @@ export const VM0_MODEL_PRICE_TIER = Object.freeze<
   "gpt-5.6-luna": "$",
   "gpt-5.5": "$$$",
   "claude-opus-4-8": "$$$",
-  "claude-opus-4-7": "$$$",
-  "claude-opus-4-6": "$$$",
   "claude-sonnet-5": "$$",
   "claude-sonnet-4-6": "$$",
   "deepseek-v4-flash": "$",
-  "kimi-k3": "$$",
-  "kimi-k2.7-code": "$",
-  "MiniMax-M3": "$",
-  "glm-5.2": "$",
-  "glm-5.1": "$",
-  "mimo-v2.5": "$",
-  "hy3-preview": "$",
 });
 
 /**
@@ -70,5 +52,4 @@ export const MODEL_LONG_CONTEXT_MIN_TOTAL_INPUT_TOKENS: Readonly<
   "gpt-5.6-sol": 272_001,
   "gpt-5.6-terra": 272_001,
   "gpt-5.6-luna": 272_001,
-  "MiniMax-M3": 512_001,
 } satisfies Partial<Record<SupportedRunModel, number>>);

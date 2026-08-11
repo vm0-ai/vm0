@@ -64,7 +64,7 @@ import {
   OTHER_AGENT_ID,
   THREAD_ID,
   OTHER_AGENT_THREAD_ID,
-  MOONSHOT_PROVIDER_ID,
+  OPENROUTER_PROVIDER_ID,
   applyUserConnectorUpdate,
   expectTextBefore,
   buttonContainingText,
@@ -128,17 +128,17 @@ describe("chat composer models", () => {
   it("keeps model resources cached across Clerk profile events", async () => {
     const policy = buildModelPolicy({
       id: "00000000-0000-4000-a000-000000000205",
-      model: "kimi-k2.7-code",
-      modelLabel: "Kimi K2.7 Code",
+      model: "claude-fable-5",
+      modelLabel: "Claude Fable 5",
       isDefault: true,
-      defaultProviderType: "moonshot-api-key",
+      defaultProviderType: "openrouter-api-key",
       credentialScope: "org",
-      modelProviderId: MOONSHOT_PROVIDER_ID,
+      modelProviderId: OPENROUTER_PROVIDER_ID,
     });
     let policiesRequestCount = 0;
     let preferenceRequestCount = 0;
 
-    mockOrgModelRoutes("kimi-k2.7-code");
+    mockOrgModelRoutes("claude-fable-5");
     context.mocks.api(zeroModelPoliciesMainContract.list, ({ respond }) => {
       policiesRequestCount += 1;
       return respond(200, {
@@ -159,7 +159,7 @@ describe("chat composer models", () => {
 
     detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
 
-    await expectComposerModel("Kimi K2.7 Code");
+    await expectComposerModel("Claude Fable 5");
     await waitFor(() => {
       expect(policiesRequestCount).toBe(1);
       expect(preferenceRequestCount).toBe(1);
@@ -178,17 +178,17 @@ describe("chat composer models", () => {
   it("shows the cached default model immediately when returning from agents", async () => {
     const policy = buildModelPolicy({
       id: "00000000-0000-4000-a000-000000000205",
-      model: "kimi-k2.7-code",
-      modelLabel: "Kimi K2.7 Code",
+      model: "claude-fable-5",
+      modelLabel: "Claude Fable 5",
       isDefault: true,
-      defaultProviderType: "moonshot-api-key",
+      defaultProviderType: "openrouter-api-key",
       credentialScope: "org",
-      modelProviderId: MOONSHOT_PROVIDER_ID,
+      modelProviderId: OPENROUTER_PROVIDER_ID,
     });
     const pendingModelRequests = context.mocks.deferred<void>();
     let blockModelRequests = false;
 
-    mockOrgModelRoutes("kimi-k2.7-code");
+    mockOrgModelRoutes("claude-fable-5");
     context.mocks.api(
       zeroModelPoliciesMainContract.list,
       async ({ respond, withSignal }) => {
@@ -219,7 +219,7 @@ describe("chat composer models", () => {
 
     detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
 
-    await expectComposerModel("Kimi K2.7 Code");
+    await expectComposerModel("Claude Fable 5");
 
     act(() => {
       context.store.set(detachedNavigateTo$, ROUTES.agents);
@@ -236,12 +236,12 @@ describe("chat composer models", () => {
 
     await findComposerEditor();
     expect(
-      screen.getByRole("combobox", { name: "Kimi K2.7 Code" }),
+      screen.getByRole("combobox", { name: "Claude Fable 5" }),
     ).toBeInTheDocument();
   });
 
   it("resolves workspace, user, and thread model choices in the visible picker", async () => {
-    mockOrgModelRoutes("kimi-k2.7-code");
+    mockOrgModelRoutes("claude-fable-5");
     mockAgent();
 
     detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
@@ -249,13 +249,13 @@ describe("chat composer models", () => {
     await waitFor(() => {
       expect(document.title).toContain("Scout");
     });
-    await expectComposerModel("Kimi K2.7 Code");
+    await expectComposerModel("Claude Fable 5");
   });
 
   it("shows user preference over workspace default", async () => {
-    mockOrgModelRoutes("kimi-k2.7-code");
+    mockOrgModelRoutes("claude-fable-5");
     context.mocks.data.userModelPreference({
-      selectedModel: "claude-opus-4-7",
+      selectedModel: "claude-opus-4-8",
       serviceTier: null,
       updatedAt: "2026-03-10T00:00:00Z",
     });
@@ -266,20 +266,20 @@ describe("chat composer models", () => {
     await waitFor(() => {
       expect(document.title).toContain("Scout");
     });
-    await expectComposerModel("Claude Opus 4.7");
+    await expectComposerModel("Claude Opus 4.8");
   });
 
   it("offers to make a temporary new-chat model choice the default below the composer", async () => {
     const user = userEvent.setup({ delay: null });
     let preference: UserModelPreferenceResponse = {
-      selectedModel: "kimi-k2.7-code",
+      selectedModel: "claude-fable-5",
       serviceTier: null,
       updatedAt: "2026-03-10T00:00:00Z",
     };
     const updatedModels: UserModelPreferenceResponse["selectedModel"][] = [];
     const preferenceUpdate = context.mocks.deferred<void>();
 
-    mockOrgModelRoutes("kimi-k2.7-code");
+    mockOrgModelRoutes("claude-fable-5");
     context.mocks.api(zeroUserModelPreferenceContract.get, ({ respond }) => {
       return respond(200, preference);
     });
@@ -306,8 +306,8 @@ describe("chat composer models", () => {
       path: `/agents/${AGENT_ID}/chat`,
     });
 
-    await expectComposerModel("Kimi K2.7 Code");
-    await user.click(await findComposerModel("Kimi K2.7 Code"));
+    await expectComposerModel("Claude Fable 5");
+    await user.click(await findComposerModel("Claude Fable 5"));
     await user.click(
       await screen.findByRole("option", { name: /Claude Sonnet 4\.6/ }),
     );
@@ -322,7 +322,7 @@ describe("chat composer models", () => {
         "Default for new chats and new automations",
       ),
     ).not.toBeInTheDocument();
-    expect(within(modelPicker).getByText("Kimi K2.7 Code")).toBeInTheDocument();
+    expect(within(modelPicker).getByText("Claude Fable 5")).toBeInTheDocument();
     expect(within(modelPicker).queryByText("Default")).not.toBeInTheDocument();
 
     await user.keyboard("{Escape}");
@@ -487,8 +487,8 @@ describe("chat composer models", () => {
     context.mocks.data.orgModelPolicies([
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000918",
-        model: "kimi-k2.7-code",
-        modelLabel: "Kimi K2.7 Code",
+        model: "claude-fable-5",
+        modelLabel: "Claude Fable 5",
         isDefault: true,
         defaultProviderType: "vm0",
         credentialScope: "org",
@@ -503,7 +503,7 @@ describe("chat composer models", () => {
     ]);
     context.mocks.data.personalModelProviders([codexProvider]);
     context.mocks.data.userModelPreference({
-      selectedModel: "kimi-k2.7-code",
+      selectedModel: "claude-fable-5",
       serviceTier: null,
       updatedAt: "2026-03-10T00:00:00Z",
     });
@@ -529,7 +529,7 @@ describe("chat composer models", () => {
       path: `/agents/${AGENT_ID}/chat`,
     });
 
-    await user.click(await findComposerModel("Kimi K2.7 Code"));
+    await user.click(await findComposerModel("Claude Fable 5"));
     await user.click(
       await screen.findByRole("option", { name: /GPT 5\.6 Sol/ }),
     );
@@ -552,7 +552,7 @@ describe("chat composer models", () => {
     const user = userEvent.setup({ delay: null });
     let updatedModel: string | null = null;
 
-    mockOrgModelRoutes("kimi-k2.7-code");
+    mockOrgModelRoutes("claude-fable-5");
     context.mocks.api(
       zeroUserModelPreferenceContract.update,
       ({ body, respond }) => {
@@ -574,7 +574,7 @@ describe("chat composer models", () => {
       path: `/agents/${AGENT_ID}/chat`,
     });
 
-    await user.click(await findComposerModel("Kimi K2.7 Code"));
+    await user.click(await findComposerModel("Claude Fable 5"));
     await user.click(
       await screen.findByRole("option", { name: /Claude Sonnet 4\.6/ }),
     );
@@ -1018,8 +1018,8 @@ describe("chat composer models", () => {
     context.mocks.data.orgModelPolicies([
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000928",
-        model: "kimi-k2.7-code",
-        modelLabel: "Kimi K2.7 Code",
+        model: "claude-fable-5",
+        modelLabel: "Claude Fable 5",
         isDefault: true,
         defaultProviderType: "vm0",
         credentialScope: "org",
@@ -1498,7 +1498,7 @@ describe("chat composer models", () => {
     let holdPreferenceReload = false;
     let preferenceReloadStarted = false;
 
-    mockOrgModelRoutes("kimi-k2.7-code");
+    mockOrgModelRoutes("claude-fable-5");
     context.mocks.api(
       zeroUserModelPreferenceContract.get,
       async ({ respond, withSignal }) => {
@@ -1521,7 +1521,7 @@ describe("chat composer models", () => {
       expect(document.title).toContain("Scout");
     });
     await user.click(
-      await screen.findByRole("combobox", { name: "Kimi K2.7 Code" }),
+      await screen.findByRole("combobox", { name: "Claude Fable 5" }),
     );
     await expect(
       screen.findByRole("option", { name: /Claude Sonnet 4\.6/ }),
@@ -1541,7 +1541,7 @@ describe("chat composer models", () => {
     expect(
       screen.getByRole("combobox", {
         hidden: true,
-        name: "Kimi K2.7 Code",
+        name: "Claude Fable 5",
       }),
     ).toBeInTheDocument();
     expect(screen.getByRole("listbox")).toBeInTheDocument();
@@ -1552,15 +1552,15 @@ describe("chat composer models", () => {
 
   it("shows thread override over user and workspace defaults, then remains editable", async () => {
     const user = userEvent.setup({ delay: null });
-    mockOrgModelRoutes("kimi-k2.7-code");
+    mockOrgModelRoutes("claude-fable-5");
     context.mocks.data.userModelPreference({
-      selectedModel: "claude-opus-4-7",
+      selectedModel: "claude-opus-4-8",
       serviceTier: null,
       updatedAt: "2026-03-10T00:00:00Z",
     });
     mockAgent();
     mockThread({
-      selectedModel: "glm-5.1",
+      selectedModel: "claude-opus-5",
       messages: [
         {
           id: "msg-user",
@@ -1575,7 +1575,7 @@ describe("chat composer models", () => {
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
     await screen.findByText("Use GLM");
-    await user.click(await findComposerModel("GLM-5.1"));
+    await user.click(await findComposerModel("Claude Opus 5"));
     await user.click(
       await screen.findByRole("option", { name: /Claude Sonnet 4\.6/ }),
     );
@@ -1589,9 +1589,9 @@ describe("chat composer models", () => {
   });
 
   it("does not fall back to defaults when thread projection has no model", async () => {
-    mockOrgModelRoutes("kimi-k2.7-code");
+    mockOrgModelRoutes("claude-fable-5");
     context.mocks.data.userModelPreference({
-      selectedModel: "claude-opus-4-7",
+      selectedModel: "claude-opus-4-8",
       serviceTier: null,
       updatedAt: "2026-03-10T00:00:00Z",
     });
@@ -1603,10 +1603,10 @@ describe("chat composer models", () => {
     await screen.findByPlaceholderText(PLACEHOLDER);
     expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
     expect(
-      screen.queryByRole("combobox", { name: "Kimi K2.7 Code" }),
+      screen.queryByRole("combobox", { name: "Claude Fable 5" }),
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByRole("combobox", { name: "Claude Opus 4.7" }),
+      screen.queryByRole("combobox", { name: "Claude Opus 4.8" }),
     ).not.toBeInTheDocument();
   });
 
@@ -1614,18 +1614,18 @@ describe("chat composer models", () => {
     const user = userEvent.setup({ delay: null });
     let preferenceRequestStarted = false;
 
-    mockOrgModelRoutes("kimi-k2.7-code");
+    mockOrgModelRoutes("claude-fable-5");
     context.mocks.api(zeroUserModelPreferenceContract.get, ({ respond }) => {
       preferenceRequestStarted = true;
       return respond(200, {
-        selectedModel: "claude-opus-4-7",
+        selectedModel: "claude-opus-4-8",
         serviceTier: null,
         updatedAt: "2026-03-10T00:00:00Z",
       });
     });
     mockAgent();
     mockThread({
-      selectedModel: "glm-5.1",
+      selectedModel: "claude-opus-5",
       messages: [
         {
           id: "msg-user",
@@ -1646,7 +1646,7 @@ describe("chat composer models", () => {
     });
 
     await screen.findByText("Use GLM");
-    await user.click(await findComposerModel("GLM-5.1"));
+    await user.click(await findComposerModel("Claude Opus 5"));
     await user.click(
       await screen.findByRole("option", { name: /Claude Sonnet 4\.6/ }),
     );
@@ -1736,11 +1736,11 @@ describe("chat composer models", () => {
       }),
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000302",
-        model: "kimi-k2.7-code",
-        modelLabel: "Kimi K2.7 Code",
-        defaultProviderType: "moonshot-api-key",
+        model: "claude-fable-5",
+        modelLabel: "Claude Fable 5",
+        defaultProviderType: "openrouter-api-key",
         credentialScope: "org",
-        modelProviderId: MOONSHOT_PROVIDER_ID,
+        modelProviderId: OPENROUTER_PROVIDER_ID,
       }),
     ]);
     mockChatLifecycle(context, {
@@ -1759,7 +1759,7 @@ describe("chat composer models", () => {
     await waitFor(() => {
       expect(screen.getByRole("listbox")).toBeInTheDocument();
       expect(
-        screen.getByRole("option", { name: /Kimi K2\.7 Code BYOK/ }),
+        screen.getByRole("option", { name: /Claude Fable 5 BYOK/ }),
       ).toBeInTheDocument();
       expect(screen.queryByLabelText("Use workspace default model")).toBeNull();
     });
@@ -1790,8 +1790,8 @@ describe("chat composer models", () => {
     context.mocks.data.orgModelPolicies([
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000305",
-        model: "kimi-k2.7-code",
-        modelLabel: "Kimi K2.7 Code",
+        model: "claude-fable-5",
+        modelLabel: "Claude Fable 5",
         isDefault: true,
         defaultProviderType: "vm0",
         credentialScope: "org",
@@ -1824,7 +1824,7 @@ describe("chat composer models", () => {
         context.mocks.ably.hasSubscription("billing:changed"),
       ).toBeTruthy();
     });
-    await user.click(await findComposerModel("Kimi K2.7 Code"));
+    await user.click(await findComposerModel("Claude Fable 5"));
     await expect(
       screen.findByRole("option", { name: /GPT 5\.5/ }),
     ).resolves.toBeInTheDocument();
@@ -1856,8 +1856,8 @@ describe("chat composer models", () => {
       }),
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000304",
-        model: "kimi-k2.7-code",
-        modelLabel: "Kimi K2.7 Code",
+        model: "claude-fable-5",
+        modelLabel: "Claude Fable 5",
         defaultProviderType: "vm0",
         credentialScope: "org",
       }),
@@ -1878,7 +1878,7 @@ describe("chat composer models", () => {
       await screen.findByRole("combobox", { name: "Claude Sonnet 4.6" }),
     );
     await expect(
-      screen.findByRole("option", { name: /Kimi K2\.7 Code/ }),
+      screen.findByRole("option", { name: /Claude Fable 5/ }),
     ).resolves.toBeInTheDocument();
 
     context.mocks.ably.trigger("billing:changed");
@@ -1887,7 +1887,7 @@ describe("chat composer models", () => {
       screen.findByText("Model picker billing refresh failed"),
     ).resolves.toBeInTheDocument();
     expect(
-      screen.getByRole("option", { name: /Kimi K2\.7 Code/ }),
+      screen.getByRole("option", { name: /Claude Fable 5/ }),
     ).toBeInTheDocument();
     expect(screen.queryByText("Loading models...")).not.toBeInTheDocument();
   });
@@ -1935,17 +1935,17 @@ describe("chat composer models", () => {
     context.mocks.data.orgModelPolicies([
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000309",
-        model: "kimi-k2.7-code",
-        modelLabel: "Kimi K2.7 Code",
+        model: "claude-fable-5",
+        modelLabel: "Claude Fable 5",
         isDefault: true,
-        defaultProviderType: "moonshot-api-key",
+        defaultProviderType: "openrouter-api-key",
         credentialScope: "org",
-        modelProviderId: MOONSHOT_PROVIDER_ID,
+        modelProviderId: OPENROUTER_PROVIDER_ID,
       }),
     ]);
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
-      selectedModel: "kimi-k2.7-code",
+      selectedModel: "claude-fable-5",
       onRunCreate: () => {
         runCreateCount++;
       },
@@ -1971,8 +1971,8 @@ describe("chat composer models", () => {
     context.mocks.data.orgModelPolicies([
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000308",
-        model: "kimi-k2.7-code",
-        modelLabel: "Kimi K2.7 Code",
+        model: "claude-fable-5",
+        modelLabel: "Claude Fable 5",
         isDefault: true,
         defaultProviderType: "vm0",
         credentialScope: "org",
@@ -2085,15 +2085,15 @@ describe("chat composer models", () => {
       }),
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000306",
-        model: "claude-opus-4-7",
-        modelLabel: "Claude Opus 4.7",
+        model: "claude-opus-4-8",
+        modelLabel: "Claude Opus 4.8",
         defaultProviderType: "claude-code-oauth-token",
         credentialScope: "member",
       }),
     ]);
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
-      selectedModel: "claude-opus-4-7",
+      selectedModel: "claude-opus-4-8",
       onRunCreate: () => {
         runCreateCount++;
       },
@@ -2109,7 +2109,7 @@ describe("chat composer models", () => {
       },
     });
 
-    await expectComposerModel("Claude Opus 4.7");
+    await expectComposerModel("Claude Opus 4.8");
     expect(screen.queryByText("Configure model")).not.toBeInTheDocument();
 
     holdProviderReload = true;
@@ -2137,7 +2137,7 @@ describe("chat composer models", () => {
 
     await user.click(
       screen.getByRole("combobox", {
-        name: "Claude Opus 4.7",
+        name: "Claude Opus 4.8",
       }),
     );
     await user.click(await screen.findByRole("option", { name: /GPT 5\.5/ }));
@@ -2316,8 +2316,8 @@ describe("chat composer models", () => {
     context.mocks.browser.open(null);
     context.mocks.data.orgModelPolicies([
       buildModelPolicy({
-        model: "claude-opus-4-7",
-        modelLabel: "Claude Opus 4.7",
+        model: "claude-opus-4-8",
+        modelLabel: "Claude Opus 4.8",
         isDefault: true,
         defaultProviderType: "claude-code-oauth-token",
         credentialScope: "member",
@@ -2351,7 +2351,7 @@ describe("chat composer models", () => {
     );
 
     detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
-    await expectComposerModel("Claude Opus 4.7");
+    await expectComposerModel("Claude Opus 4.8");
 
     await fill(await screen.findByPlaceholderText(PLACEHOLDER), "Hello");
     await user.keyboard("{Enter}");
@@ -2397,7 +2397,7 @@ describe("chat composer models", () => {
 
   it("accepts visual attachments across composer paths for fallback-enabled text-only models", async () => {
     const user = userEvent.setup({ delay: null });
-    mockOrgModelRoutes("glm-5.1");
+    mockOrgModelRoutes("claude-opus-5");
     mockAgent();
     context.mocks.upload.success({
       id: "recognition-compatible-upload",
@@ -2412,7 +2412,7 @@ describe("chat composer models", () => {
       path: `/agents/${AGENT_ID}/chat`,
     });
 
-    await expectComposerModel("GLM-5.1");
+    await expectComposerModel("Claude Opus 5");
     const fileInput =
       document.querySelector<HTMLInputElement>('input[type="file"]')!;
 
@@ -2485,13 +2485,13 @@ describe("chat composer models", () => {
       screen.findByLabelText("Open image preview for dropped.webp"),
     ).resolves.toBeInTheDocument();
     expect(
-      screen.queryByText(/GLM-5\.1 cannot recognize images or videos/i),
+      screen.queryByText(/Claude Opus 5 cannot recognize images or videos/i),
     ).not.toBeInTheDocument();
   });
 
   it("accepts media outside the direct recognition contract for fallback-enabled text-only models", async () => {
     const user = userEvent.setup({ delay: null });
-    mockOrgModelRoutes("glm-5.1");
+    mockOrgModelRoutes("claude-opus-5");
     mockAgent();
     context.mocks.upload.success({
       id: "recognition-boundary-visual",
@@ -2506,7 +2506,7 @@ describe("chat composer models", () => {
       path: `/agents/${AGENT_ID}/chat`,
     });
 
-    await expectComposerModel("GLM-5.1");
+    await expectComposerModel("Claude Opus 5");
     const fileInput =
       document.querySelector<HTMLInputElement>('input[type="file"]')!;
     const oversizedImage = new File(["png"], "oversized.png", {
@@ -2537,7 +2537,7 @@ describe("chat composer models", () => {
       screen.findByLabelText("Remove clip.mp4"),
     ).resolves.toBeInTheDocument();
     expect(
-      screen.queryByText(/GLM-5\.1 cannot recognize images or videos/i),
+      screen.queryByText(/Claude Opus 5 cannot recognize images or videos/i),
     ).not.toBeInTheDocument();
   });
 
@@ -2573,14 +2573,16 @@ describe("chat composer models", () => {
     await user.click(
       screen.getByRole("combobox", { name: "Claude Sonnet 4.6" }),
     );
-    await user.click(await screen.findByRole("option", { name: /GLM-5\.1/ }));
+    await user.click(
+      await screen.findByRole("option", { name: /Claude Opus 5/ }),
+    );
 
     await waitFor(() => {
       expect(
         screen.getByLabelText("Open image preview for storyboard.gif"),
       ).toBeInTheDocument();
       expect(
-        screen.queryByText(/GLM-5\.1 cannot recognize images or videos/i),
+        screen.queryByText(/Claude Opus 5 cannot recognize images or videos/i),
       ).not.toBeInTheDocument();
     });
   });

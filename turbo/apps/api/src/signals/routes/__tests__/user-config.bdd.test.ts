@@ -336,25 +336,6 @@ describe("AUTH-03 user model preference", () => {
     });
   });
 
-  it("uses the restricted fallback for a retired model preference", async () => {
-    const admin = api.user();
-    await onboardAdmin(admin, { slug: slug("bdd-uc-retired-model") });
-
-    const response = await cfg.rawUpdateModelPreference(
-      admin,
-      { selectedModel: "claude-opus-4-7", serviceTier: "priority" },
-      [400],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: {
-        code: "MODEL_RETIRED",
-        message:
-          'Model "claude-opus-4-7" has been retired. Use "deepseek-v4-flash" instead.',
-      },
-    });
-  });
-
   it("rejects contract-invalid model preference bodies and unauthenticated access", async () => {
     const admin = api.user();
     const noOrg = api.user({ orgId: null });

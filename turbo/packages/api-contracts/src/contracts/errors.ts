@@ -24,10 +24,6 @@ export const ApiError = {
     status: 400 as const,
     code: "RUN_NOT_CANCELLABLE",
   },
-  MODEL_RETIRED: {
-    status: 400 as const,
-    code: "MODEL_RETIRED",
-  },
   INSUFFICIENT_CREDITS: {
     status: 402 as const,
     code: "INSUFFICIENT_CREDITS",
@@ -128,11 +124,6 @@ export const RUN_ERROR_GUIDANCE: Record<
     guidance: "Configure a model provider to start running agents.",
     cliHint: "zero model-provider set --help",
   },
-  MODEL_RETIRED: {
-    title: "Model retired",
-    guidance:
-      "Use the replacement model named in the error, then retry the run.",
-  },
   INSUFFICIENT_CREDITS: {
     title: "Credits depleted",
     guidance:
@@ -222,7 +213,6 @@ export const ACTIONABLE_RUN_ERROR_SNIPPETS = [
   "Invalid signature in thinking block",
   "Run cancelled",
   "Selected model is at capacity. Please try a different model.",
-  "MODEL_RETIRED",
   "model is not supported when using Codex with a ChatGPT account",
   // Upstream model usage/quota limits are shown verbatim (the CLI already
   // emits clean, user-friendly copy with reset time and upgrade links).
