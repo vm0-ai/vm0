@@ -40,8 +40,8 @@ teardown() {
     first_marker="ATTACHMENTS_OK_${TEST_ID}"
     first_prompt=$(cat <<'EOF'
 set -euo pipefail
-zero web download-file '__CONTENT_ID__' -o /tmp/runner-content.txt
-zero web download-file '__EMPTY_ID__' -o /tmp/runner-empty.txt
+npx --yes --package="${CLI_PKG_URL}" zero web download-file '__CONTENT_ID__' -o /tmp/runner-content.txt
+npx --yes --package="${CLI_PKG_URL}" zero web download-file '__EMPTY_ID__' -o /tmp/runner-empty.txt
 grep -F '__CONTENT_MARKER__' /tmp/runner-content.txt
 test ! -s /tmp/runner-empty.txt
 printf '__FIRST_MARKER__\n'

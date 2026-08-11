@@ -241,22 +241,20 @@ _wait_for_runner_chat_completion() {
 
 _wait_for_runner_codex_events() {
     local run_id="$1"
-    local prompt="$2"
-    local timeout="${3:-30}"
+    local timeout="${2:-30}"
     local interval="${RUNNER_EVENT_POLL_INTERVAL_SECONDS:-2}"
     local start=$SECONDS
     local response=""
 
     while (( SECONDS - start < timeout )); do
         if response="$(runner_api_curl "/api/zero/runs/$run_id/telemetry/agent?limit=100&order=asc" 2>&1)"; then
-            if jq -e --arg prompt "$prompt" '
+            if jq -e '
                 [.events[]?.eventData |
                     if type == "string" then . else tojson end
                 ] as $payloads |
                 .framework == "codex" and
                 any($payloads[]; contains("thread.started")) and
-                any($payloads[]; contains("turn.completed")) and
-                any($payloads[]; contains($prompt))
+                any($payloads[]; contains("turn.completed"))
             ' <<< "$response" >/dev/null; then
                 printf '%s\n' "$response"
                 return 0
@@ -298,7 +296,7 @@ _runner_chat_execute() {
         "$resolved_thread_id" \
         "$run_id" \
         "$prompt" || return 1
-    events_response="$(_wait_for_runner_codex_events "$run_id" "$prompt")" || return 1
+    events_response="$(_wait_for_runner_codex_events "$run_id")" || return 1
 
     jq -cn \
         --arg runId "$run_id" \

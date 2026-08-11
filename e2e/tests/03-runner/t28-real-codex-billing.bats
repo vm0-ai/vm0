@@ -52,7 +52,7 @@ teardown() {
     echo "$output"
     assert_success
 
-    run _wait_for_runner_codex_events "$RUN_ID" "$prompt" 60
+    run _wait_for_runner_codex_events "$RUN_ID" 60
     echo "$output"
     assert_success
     local agent_events="$output"
