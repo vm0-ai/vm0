@@ -118,15 +118,7 @@ export function stubRunMcpConnectorsUnavailable(
   origin = "http://localhost:3000",
 ) {
   return http.get(`${origin}/api/zero/mcp-connectors`, () => {
-    return HttpResponse.json(
-      {
-        error: {
-          code: "NOT_FOUND",
-          message: "Route not found",
-        },
-      },
-      { status: 404 },
-    );
+    return HttpResponse.json({ error: "Not found" }, { status: 404 });
   });
 }
 

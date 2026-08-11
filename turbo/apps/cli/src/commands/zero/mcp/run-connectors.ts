@@ -79,7 +79,7 @@ export async function resolveRunMcpConnector(
   });
   if (!connector) {
     throw new Error(
-      `MCP connector "${connectorSlug}" is not available in this run`,
+      `MCP connector "${connectorSlug}" is not authorized for this Agent`,
     );
   }
   return connector;

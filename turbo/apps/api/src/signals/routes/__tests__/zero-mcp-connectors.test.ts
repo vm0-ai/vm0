@@ -186,6 +186,32 @@ describe("GET /api/zero/mcp-connectors", () => {
     expect(response.body.connectors).not.toContainEqual(
       expect.objectContaining({ id: ungranted.id }),
     );
+    const peer = bdd.user({ orgId: actor.orgId });
+    const peerResponse = await accept(
+      client().list({
+        headers: headers(
+          runs.zeroTokenForRunWithCapabilities(peer, run.runId, [
+            "connector:read",
+          ]),
+        ),
+      }),
+      [200],
+    );
+    const foreign = bdd.user();
+    mockClerkMembership(context, foreign, "org:admin");
+    const foreignResponse = await accept(
+      client().list({
+        headers: headers(
+          runs.zeroTokenForRunWithCapabilities(foreign, run.runId, [
+            "connector:read",
+          ]),
+        ),
+      }),
+      [200],
+    );
+
+    expect(peerResponse.body).toStrictEqual({ connectors: [] });
+    expect(foreignResponse.body).toStrictEqual({ connectors: [] });
   });
 
   it("returns an empty authoritative result when the token run is absent", async () => {

@@ -713,6 +713,23 @@ describe("zero mcp command", () => {
     expect(consoleLog).toHaveBeenCalledWith('{"connectors":[]}');
   });
 
+  it("treats an empty discovery response as authoritative", async () => {
+    let legacyCalls = 0;
+    vi.stubEnv("ZERO_CUSTOM_CONNECTOR_IDS", "malformed legacy metadata");
+    server.use(
+      stubRunMcpConnectors([]),
+      http.get("http://localhost:3000/api/zero/custom-connectors", () => {
+        legacyCalls++;
+        return HttpResponse.json({ connectors: [mcpCustomConnector()] });
+      }),
+    );
+
+    await zeroMcpCommand.parseAsync(["node", "zero", "list", "--json"]);
+
+    expect(consoleLog).toHaveBeenCalledWith('{"connectors":[]}');
+    expect(legacyCalls).toBe(0);
+  });
+
   it("does not fall back after a discovery server error", async () => {
     let legacyCalls = 0;
     server.use(
@@ -775,7 +792,7 @@ describe("zero mcp command", () => {
 
     expect(seen).toHaveLength(0);
     expect(outputText(consoleError)).toContain(
-      'MCP connector "_not-admitted" is not available in this run',
+      'MCP connector "_not-admitted" is not authorized for this Agent',
     );
   });
 
