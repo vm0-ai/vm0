@@ -173,7 +173,6 @@ describe("registerZeroCommands", () => {
       "agent",
       "upgrade",
       "resource",
-      "presentation-template",
       "whoami",
       "generate",
       "web",
@@ -185,6 +184,7 @@ describe("registerZeroCommands", () => {
       "credit",
       "logs",
       "chat",
+      "presentation-template",
       "schedule",
       "github",
       "slack",
@@ -256,7 +256,6 @@ describe("registerZeroCommands", () => {
       "model-provider",
       "upgrade",
       "resource",
-      "presentation-template",
       "whoami",
       "generate",
       "web",
@@ -660,6 +659,35 @@ describe("registerZeroCommands", () => {
     const prog = buildProgram();
 
     expect(hiddenCommandNames(prog)).toContain("banking");
+  });
+
+  it("should show presentation-template with either template capability", () => {
+    for (const capability of [
+      "presentation-template:read",
+      "presentation-template:write",
+    ]) {
+      const token = buildZeroToken({
+        scope: "zero",
+        capabilities: [capability],
+      });
+      vi.stubEnv("ZERO_TOKEN", token);
+
+      expect(visibleCommandNames(buildProgram())).toContain(
+        "presentation-template",
+      );
+    }
+  });
+
+  it("should hide presentation-template when its capabilities are missing", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["file:write"],
+    });
+    vi.stubEnv("ZERO_TOKEN", token);
+
+    expect(hiddenCommandNames(buildProgram())).toContain(
+      "presentation-template",
+    );
   });
 
   it("should show goal when goal capabilities are present", () => {
@@ -1139,7 +1167,6 @@ describe("registerZeroCommands", () => {
       "mcp",
       "upgrade",
       "resource",
-      "presentation-template",
       "whoami",
       "generate",
       "web",

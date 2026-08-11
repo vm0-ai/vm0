@@ -46,6 +46,8 @@ export const ZERO_CAPABILITIES = [
   "billing:read",
   "billing:write",
   "banking:read",
+  "presentation-template:read",
+  "presentation-template:write",
   "maps:read",
   "weather:read",
   "scrape:read",
@@ -155,6 +157,14 @@ export const ZERO_CAPABILITY_META: Record<ZeroCapability, ZeroCapabilityMeta> =
     "banking:read": {
       group: "Banking",
       label: "Read enabled banking accounts",
+    },
+    "presentation-template:read": {
+      group: "Presentation Templates",
+      label: "Download presentation templates",
+    },
+    "presentation-template:write": {
+      group: "Presentation Templates",
+      label: "Process presentation template imports",
     },
     "maps:read": { group: "Maps", label: "Use managed maps services" },
     "weather:read": {

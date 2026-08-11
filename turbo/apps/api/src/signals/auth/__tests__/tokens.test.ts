@@ -177,6 +177,26 @@ describe("auth tokens", () => {
     );
   });
 
+  it("gates presentation template capabilities behind their feature switch", () => {
+    const defaultToken = generateZeroToken("user_zero", "run_zero", "org_zero");
+    const enabledToken = generateZeroToken(
+      "user_zero",
+      "run_zero",
+      "org_zero",
+      { [FeatureSwitchKey.PresentationTemplates]: true },
+    );
+
+    const defaultCapabilities = verifyZeroToken(defaultToken)?.capabilities;
+    expect(defaultCapabilities).not.toContain("presentation-template:read");
+    expect(defaultCapabilities).not.toContain("presentation-template:write");
+    expect(verifyZeroToken(enabledToken)?.capabilities).toStrictEqual(
+      expect.arrayContaining([
+        "presentation-template:read",
+        "presentation-template:write",
+      ]),
+    );
+  });
+
   it("grants custom connector writes by default", () => {
     const token = generateZeroToken("user_zero", "run_zero", "org_zero");
 

@@ -601,7 +601,10 @@ describe("AUTH-01 sandbox and zero bearers", () => {
 
     const accepted = await cfg.probeAuth(
       { authorization: `Bearer ${sandbox.token}` },
-      { acceptAnySandboxCapability: "true" },
+      {
+        acceptAnySandboxCapability: "true",
+        requiredCapability: "file:read",
+      },
       [200],
     );
     expect(accepted.body).toStrictEqual({
@@ -615,7 +618,10 @@ describe("AUTH-01 sandbox and zero bearers", () => {
     cfg.mockMembership(zeroMember, "org:member");
     const memberProbe = await cfg.probeAuth(
       { authorization: `Bearer ${memberZero.token}` },
-      { acceptAnySandboxCapability: "true" },
+      {
+        acceptAnySandboxCapability: "true",
+        requiredCapability: "file:read",
+      },
       [200],
     );
     expect(memberProbe.body).toStrictEqual({
@@ -625,6 +631,20 @@ describe("AUTH-01 sandbox and zero bearers", () => {
       orgRole: "member",
       runId: memberZero.runId,
       capabilities: ["file:read"],
+    });
+
+    const missingCapabilityProbe = await cfg.probeAuth(
+      { authorization: `Bearer ${memberZero.token}` },
+      {
+        acceptAnySandboxCapability: "true",
+        requiredCapability: "file:write",
+      },
+      [403],
+    );
+    expectApiError(missingCapabilityProbe.body);
+    expect(missingCapabilityProbe.body.error).toStrictEqual({
+      message: "Missing required capability: file:write",
+      code: "FORBIDDEN",
     });
 
     const adminZero = cfg.zeroBearer(zeroAdmin, ["file:read", "file:write"]);

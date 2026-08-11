@@ -47,7 +47,10 @@ const COMMAND_CAPABILITY_MAP: Record<
     "chat-thread:write",
   ],
   resource: null,
-  "presentation-template": null,
+  "presentation-template": [
+    "presentation-template:read",
+    "presentation-template:write",
+  ],
   github: ["github:read", "github:write"],
   slack: "slack:write",
   feishu: "feishu:write",

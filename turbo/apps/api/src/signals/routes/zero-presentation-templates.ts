@@ -55,11 +55,20 @@ const templateWriteAuth = {
   requiredCapability: "agent:write",
 } as const;
 
-const templateRunAuth = {
+const templateRunReadAuth = {
   accept: ["zero", "sandbox"],
   acceptAnySandboxCapability: true,
   requireOrganization: true,
   missingOrganizationStatus: 401,
+  requiredCapability: "presentation-template:read",
+} as const;
+
+const templateRunWriteAuth = {
+  accept: ["zero", "sandbox"],
+  acceptAnySandboxCapability: true,
+  requireOrganization: true,
+  missingOrganizationStatus: 401,
+  requiredCapability: "presentation-template:write",
 } as const;
 
 function templateNotFound(templateId: string) {
@@ -614,22 +623,22 @@ export const zeroPresentationTemplatesRoutes: readonly RouteEntry[] = [
   },
   {
     route: zeroPresentationTemplatesContract.source,
-    handler: authRoute(templateRunAuth, sourceInner$),
+    handler: authRoute(templateRunReadAuth, sourceInner$),
   },
   {
     route: zeroPresentationTemplatesContract.preparePages,
-    handler: authRoute(templateRunAuth, preparePagesInner$),
+    handler: authRoute(templateRunWriteAuth, preparePagesInner$),
   },
   {
     route: zeroPresentationTemplatesContract.commitPages,
-    handler: authRoute(templateRunAuth, commitPagesInner$),
+    handler: authRoute(templateRunWriteAuth, commitPagesInner$),
   },
   {
     route: zeroPresentationTemplatesContract.publishPackage,
-    handler: authRoute(templateRunAuth, packageInner$),
+    handler: authRoute(templateRunWriteAuth, packageInner$),
   },
   {
     route: zeroPresentationTemplatesContract.fail,
-    handler: authRoute(templateRunAuth, failInner$),
+    handler: authRoute(templateRunWriteAuth, failInner$),
   },
 ];

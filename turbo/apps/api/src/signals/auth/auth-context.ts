@@ -128,16 +128,15 @@ const zeroAuth$ = command(
       return null;
     }
 
-    if (!options.acceptAnySandboxCapability) {
-      if (!options.requiredCapability) {
-        return null;
-      }
+    if (options.requiredCapability) {
       const hasCapability = zeroAuth.capabilities.some((capability) => {
         return capability === options.requiredCapability;
       });
       if (!hasCapability) {
         return null;
       }
+    } else if (!options.acceptAnySandboxCapability) {
+      return null;
     }
 
     const result: ZeroAuthContext = {
