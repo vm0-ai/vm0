@@ -263,6 +263,7 @@ const isCustomConnectorAuthorizedForTarget$ = command(
       }),
       [200, 404],
     );
+    signal.throwIfAborted();
     return (
       result.status === 200 &&
       result.body.grants.some((grant) => {
