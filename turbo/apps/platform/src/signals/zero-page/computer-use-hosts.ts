@@ -1,4 +1,5 @@
 import { command, computed, state } from "ccstate";
+import { desktopProductFromClientHeader } from "@vm0/api-contracts/contracts/client-headers";
 import {
   zeroComputerUseHostsContract,
   type ComputerUseHost,
@@ -130,6 +131,7 @@ interface ListedComputerUseHost extends Pick<
   ComputerUseHost,
   "id" | "displayName" | "lastSeenAt" | "status"
 > {
+  readonly product: NonNullable<ComputerUseHost["product"]>;
   readonly hostName: string;
 }
 
@@ -172,6 +174,7 @@ export const computerUseHosts$ = computed(
     return result.body.hosts.map((host) => {
       return {
         id: host.id,
+        product: desktopProductFromClientHeader(host.product),
         hostName: host.hostName ?? host.displayName,
         displayName: host.displayName,
         lastSeenAt: host.lastSeenAt,

@@ -666,6 +666,13 @@
       "when": 1786441690180,
       "tag": "0902_colorful_mandrill",
       "breakpoints": true
+    },
+    {
+      "idx": 903,
+      "version": "7",
+      "when": 1786444037282,
+      "tag": "0903_add_computer_use_host_client_product",
+      "breakpoints": true
     }
   ]
 }

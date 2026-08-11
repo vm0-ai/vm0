@@ -1,4 +1,5 @@
 import { command } from "ccstate";
+import { desktopProductFromClientHeader } from "@vm0/api-contracts/contracts/client-headers";
 import {
   zeroComputerUseAuditEventsContract,
   zeroComputerUseCommandContract,
@@ -17,7 +18,7 @@ import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { authorization$ } from "../context/hono";
+import { authorization$, clientProduct$ } from "../context/hono";
 import { bodyResultOf, pathParamsOf, queryOf } from "../context/request";
 import {
   claimNextComputerUseHostCommand$,
@@ -98,6 +99,7 @@ function parseBearerToken(authorization: string | undefined): string | null {
 const hostStartBody$ = bodyResultOf(zeroComputerUseHostsContract.start);
 const hostStartInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
+  const clientProduct = desktopProductFromClientHeader(get(clientProduct$));
   const bodyResult = await get(hostStartBody$);
   signal.throwIfAborted();
   if (!bodyResult.ok) {
@@ -109,6 +111,7 @@ const hostStartInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     {
       orgId: auth.orgId,
       userId: auth.userId,
+      clientProduct,
       ...bodyResult.data,
     },
     signal,
@@ -133,10 +136,11 @@ const heartbeatInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (!hostToken) {
     return unauthorizedComputerUse;
   }
+  const clientProduct = desktopProductFromClientHeader(get(clientProduct$));
 
   const result = await set(
     heartbeatComputerUseHost$,
-    { hostToken, ...bodyResult.data },
+    { hostToken, clientProduct, ...bodyResult.data },
     signal,
   );
   signal.throwIfAborted();
