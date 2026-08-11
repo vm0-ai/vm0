@@ -40,7 +40,8 @@ import {
   setImageLoadStatus$,
 } from "../../signals/view-component-state.ts";
 import type { TextPreviewComputed } from "../../signals/text-preview.ts";
-import { Markdown } from "../components/markdown.tsx";
+import type { MarkdownPreviewTreeComputed } from "../../signals/markdown-preview-tree.ts";
+import { MarkdownEventBody } from "../components/markdown.tsx";
 import {
   attachmentSidebarRef,
   lightboxUrl$,
@@ -638,11 +639,51 @@ function ArtifactDialogImageNavigationKeydown({
   );
 }
 
+function ArtifactDialogMarkdownBody({
+  tree$,
+}: {
+  tree$: MarkdownPreviewTreeComputed;
+}) {
+  const { t } = useTranslation();
+  const loadable = useLoadable(tree$);
+  if (loadable.state === "loading") {
+    return (
+      <ArtifactDialogStage>
+        <ArtifactDialogCard>
+          <ArtifactDialogLoadingBody />
+        </ArtifactDialogCard>
+      </ArtifactDialogStage>
+    );
+  }
+  if (loadable.state === "hasError") {
+    return (
+      <ArtifactDialogStage>
+        <ArtifactDialogCard>
+          <ArtifactDialogUnavailableBody
+            label={t(($) => {
+              return $.artifacts.kinds.markdown;
+            })}
+          />
+        </ArtifactDialogCard>
+      </ArtifactDialogStage>
+    );
+  }
+  return (
+    <ArtifactDialogStage>
+      <ArtifactDialogCard>
+        <div className="h-full overflow-auto p-6">
+          <MarkdownEventBody tree={loadable.data} mediaPreview={false} />
+        </div>
+      </ArtifactDialogCard>
+    </ArtifactDialogStage>
+  );
+}
+
 function ArtifactDialogTextBody({
   kind,
   text$,
 }: {
-  kind: "markdown" | "text" | "json" | "csv";
+  kind: "text" | "json" | "csv";
   text$: TextPreviewComputed;
 }) {
   const { t } = useTranslation();
@@ -655,13 +696,9 @@ function ArtifactDialogTextBody({
         ? t(($) => {
             return $.artifacts.kinds.csv;
           })
-        : kind === "markdown"
-          ? t(($) => {
-              return $.artifacts.kinds.markdown;
-            })
-          : t(($) => {
-              return $.artifacts.kinds.text;
-            });
+        : t(($) => {
+            return $.artifacts.kinds.text;
+          });
   return (
     <TextPreviewLoader text$={text$}>
       {({ status, text }) => {
@@ -680,18 +717,6 @@ function ArtifactDialogTextBody({
             <ArtifactDialogStage>
               <ArtifactDialogCard>
                 <ArtifactDialogUnavailableBody label={kindLabel} />
-              </ArtifactDialogCard>
-            </ArtifactDialogStage>
-          );
-        }
-
-        if (kind === "markdown") {
-          return (
-            <ArtifactDialogStage>
-              <ArtifactDialogCard>
-                <div className="h-full overflow-auto p-6">
-                  <Markdown source={text} />
-                </div>
               </ArtifactDialogCard>
             </ArtifactDialogStage>
           );
@@ -950,8 +975,10 @@ function ArtifactDialogBody({
     return <ArtifactDialogAudioBody filename={filename} preview={preview} />;
   }
 
+  if (preview.kind === "markdown") {
+    return <ArtifactDialogMarkdownBody tree$={preview.markdownTree$} />;
+  }
   if (
-    preview.kind === "markdown" ||
     preview.kind === "text" ||
     preview.kind === "json" ||
     preview.kind === "csv"

@@ -1,15 +1,15 @@
-import { command, computed, state, type Command, type Computed } from "ccstate";
+import { command, state, type Command } from "ccstate";
 
 /**
  * A thread-owned registry giving every card a stable signal identity across
  * transcript recomputations. The map is a `state` written only by `register$`,
  * so creating signals is always a command and never a side effect of reading
- * the graph; reads go through `signalsByKey$`.
+ * the graph. The map itself stays internal: the command that recognizes a card
+ * hands the returned signals to whatever renders them.
  */
 export interface CardSignalsRegistry<Descriptor, Signals> {
   /** Get-or-create by the descriptor's key; idempotent per key. */
   readonly register$: Command<Signals, [Descriptor]>;
-  readonly signalsByKey$: Computed<ReadonlyMap<string, Signals>>;
 }
 
 export function createCardSignalsRegistry<Descriptor, Signals>(
@@ -32,10 +32,5 @@ export function createCardSignalsRegistry<Descriptor, Signals>(
     return signals;
   });
 
-  return {
-    register$,
-    signalsByKey$: computed((get) => {
-      return get(internalSignalsByKey$);
-    }),
-  };
+  return { register$ };
 }

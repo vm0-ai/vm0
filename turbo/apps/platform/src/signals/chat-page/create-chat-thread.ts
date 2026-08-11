@@ -121,14 +121,14 @@ import {
   type CardDescriptorBlock,
 } from "./parse-body-blocks.ts";
 import {
+  embedMermaidSignals,
   registerMermaidDiagram$,
-  type MermaidDiagramSignals,
 } from "../mermaid-diagram.ts";
 import {
   chatEventTreeContent,
   chatEventTreePlan,
 } from "./chat-event-body-blocks.ts";
-import type { Element as ElementNode, Root } from "hast";
+import type { Root } from "hast";
 import {
   markdownCardKey,
   parseMarkdownTree,
@@ -1663,31 +1663,6 @@ function createArtifactPreviewImageUrls(
   });
 }
 
-/**
- * Resolve every mermaid marker in a freshly parsed tree to its diagram
- * signals and embed them on the node. Rendering then receives the signals
- * object from the tree, the same way cards do — no registry lookup by key.
- */
-function embedMermaidSignals(
-  tree: Root,
-  resolve: (code: string) => MermaidDiagramSignals,
-): void {
-  const visitNode = (node: Root | ElementNode): void => {
-    for (const child of node.children) {
-      if (child.type !== "element") {
-        continue;
-      }
-      const mermaid = child.data?.mermaid;
-      if (mermaid !== undefined) {
-        child.data = { ...child.data, mermaidSignals: resolve(mermaid.code) };
-        continue;
-      }
-      visitNode(child);
-    }
-  };
-  visitNode(tree);
-}
-
 interface EventTreeRegistries {
   readonly threadId: string;
   readonly artifactCardSignals: ArtifactCardSignalsRegistry;
@@ -1820,11 +1795,11 @@ function createEventTreeSignals({
         }
         const tree = parseMarkdownTree(plan.treeSource, {
           mathEnabled: true,
-          mermaidScope: threadId,
+          mermaid: true,
           cards,
         });
         embedMermaidSignals(tree, (code) => {
-          return set(registerMermaidDiagram$, code, threadId);
+          return set(registerMermaidDiagram$, code);
         });
         next ??= new Map(current);
         next.set(event.id, { content: plan.content, tree });
@@ -1915,7 +1890,6 @@ function createPagedEventResources(
     publicSignals: {
       browserSessionSignals,
       subscribeBrowserSessions$: browserSessionSignals.subscribe$,
-      artifactSignalsByUrl$: artifactCardSignals.signalsByKey$,
     },
     registeredEvents$,
     syncRegisteredEvents$,
@@ -3640,7 +3614,6 @@ function publicChatThreadEventSignals(events: MessageListSignals) {
     retryAssistantError$: events.retryAssistantError$,
     resetCodexSubscriptionAndRetry$: events.resetCodexSubscriptionAndRetry$,
     eventImageGroups$: events.eventImageGroups$,
-    artifactSignalsByUrl$: events.artifactSignalsByUrl$,
     browserSessionSignals: events.browserSessionSignals,
     hasEvents$: events.hasEvents$,
     thinkingIndicatorMode$: events.thinkingIndicatorMode$,

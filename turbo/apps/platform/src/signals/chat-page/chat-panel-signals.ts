@@ -14,7 +14,6 @@ import type { HeaderAutomationSignals } from "./header-automation-menu.ts";
 import type { ThreadSidebarSignals } from "./thread-sidebar.ts";
 import type { BrowserSessionSignals } from "./browser-session-block.ts";
 import type { EditorDocumentSnapshot } from "../zero-page/user-message-document-codec.ts";
-import type { ArtifactSignals } from "./artifact-card-signals.ts";
 import type {
   createChatThreadScrollSignals,
   ReadyScrollAfterRenderRequest,
@@ -75,9 +74,6 @@ export interface MessageListSignals {
     [AbortSignal]
   >;
   readonly eventImageGroups$: Computed<Promise<EventImageGroupProjection[]>>;
-  readonly artifactSignalsByUrl$: Computed<
-    ReadonlyMap<string, ArtifactSignals>
-  >;
   readonly browserSessionSignals: BrowserSessionSignals;
   readonly subscribeBrowserSessions$: Command<Promise<void>, [AbortSignal]>;
   readonly hasEvents$: Computed<Promise<boolean>>;
@@ -187,9 +183,6 @@ export interface ChatPanelSignals {
   readonly visibleRenderedChatGroups$: Computed<Promise<ChatEventGroup[]>>;
   readonly visibleRenderedChatGroupsReady$: Computed<Promise<boolean>>;
   readonly eventImageGroups$: Computed<Promise<EventImageGroupProjection[]>>;
-  readonly artifactSignalsByUrl$: Computed<
-    ReadonlyMap<string, ArtifactSignals>
-  >;
   readonly browserSessionSignals: BrowserSessionSignals;
   readonly hasEvents$: Computed<Promise<boolean>>;
   readonly thinkingIndicatorMode$: Computed<Promise<ThinkingIndicatorMode>>;

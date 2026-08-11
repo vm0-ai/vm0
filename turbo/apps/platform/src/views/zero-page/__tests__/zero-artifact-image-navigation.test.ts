@@ -61,7 +61,7 @@ function assistantEvent({ content }: { content: string }): EventFixture {
   return {
     tree: parseMarkdownTree(plan.treeSource, {
       mathEnabled: true,
-      mermaidScope: "test",
+      mermaid: true,
       cards,
     }),
   };

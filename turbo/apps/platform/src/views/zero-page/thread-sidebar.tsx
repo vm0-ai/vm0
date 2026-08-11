@@ -363,6 +363,7 @@ function ThreadArtifactDetail({
       }}
       thread={thread}
       text$={sidebar.selectedArtifactText$}
+      markdownTree$={sidebar.selectedArtifactMarkdownTree$}
       fullscreenState={fullscreenState}
       onBack={backToArtifacts}
       onClose={close}

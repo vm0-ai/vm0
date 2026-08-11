@@ -7,7 +7,6 @@ import remarkCjkFriendlyStrikethrough from "remark-cjk-friendly-gfm-strikethroug
 import remarkMath from "remark-math";
 import { describe, expect, it } from "vitest";
 
-import { rehypeMermaid } from "../../../lib/rehype-mermaid.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { Markdown, MEDIA_MARKDOWN_COMPONENTS } from "../markdown.tsx";
 
@@ -76,7 +75,7 @@ const context = testContext();
  * pipeline, and requires byte-identical DOM. Delete together with the
  * `@uiw/react-markdown-preview` component dependency once this has shipped.
  */
-function legacyHtml(source: string, scope: string): string {
+function legacyHtml(source: string): string {
   const { container } = render(
     <StoreProvider value={context.store}>
       <MarkdownPreview
@@ -105,7 +104,7 @@ function legacyHtml(source: string, scope: string): string {
           remarkCjkFriendly,
           remarkCjkFriendlyStrikethrough,
         ]}
-        rehypePlugins={[rehypeKatex, [rehypeMermaid, { scope }]]}
+        rehypePlugins={[rehypeKatex]}
         components={MEDIA_MARKDOWN_COMPONENTS}
         source={source}
       />
@@ -114,10 +113,10 @@ function legacyHtml(source: string, scope: string): string {
   return container.innerHTML;
 }
 
-function currentHtml(source: string, scope: string): string {
+function currentHtml(source: string): string {
   const { container } = render(
     <StoreProvider value={context.store}>
-      <Markdown mermaidScope={scope} source={source} mediaPreview mathEnabled />
+      <Markdown source={source} mediaPreview mathEnabled />
     </StoreProvider>,
   );
   return container.innerHTML;
@@ -137,6 +136,8 @@ const CASES: Readonly<Record<string, string>> = {
   fencedCode: "```ts\nconst value: number = 1;\nconsole.log(value);\n```",
   fencedCodeUnknownLanguage: "```wat\nnot a real language\n```",
   fencedCodeMeta: "```js showLineNumbers\nconst a = 1;\n```",
+  // Standalone surfaces render mermaid fences as plain code blocks; only
+  // command-prepared trees (chat, shared threads) turn them into diagrams.
   mermaid: "```mermaid\ngraph TD; A-->B;\n```",
   mermaidUnclosed: "```mermaid\ngraph TD; A-->B;",
   blockquote: "> quoted passage\n>\n> second line",
@@ -157,9 +158,7 @@ const CASES: Readonly<Record<string, string>> = {
 };
 
 describe("markdown pipeline parity with react-markdown", () => {
-  it.each(Object.entries(CASES))("renders %s identically", (name, source) => {
-    expect(currentHtml(source, `parity-${name}`)).toBe(
-      legacyHtml(source, `parity-${name}`),
-    );
+  it.each(Object.entries(CASES))("renders %s identically", (_name, source) => {
+    expect(currentHtml(source)).toBe(legacyHtml(source));
   });
 });

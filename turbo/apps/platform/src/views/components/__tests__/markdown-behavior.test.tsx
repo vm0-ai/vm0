@@ -2,19 +2,16 @@ import { fireEvent, render, waitFor } from "@testing-library/react";
 import { StoreProvider } from "ccstate-react";
 import { describe, expect, it, vi } from "vitest";
 
-import {
-  mermaidDiagramKey,
-  mermaidDiagramsByKey$,
-} from "../../../signals/mermaid-diagram.ts";
+import { registerMermaidDiagram$ } from "../../../signals/mermaid-diagram.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { Markdown } from "../markdown.tsx";
 
 const context = testContext();
 
-function html(source: string, scope: string): string {
+function html(source: string): string {
   const { container } = render(
     <StoreProvider value={context.store}>
-      <Markdown mermaidScope={scope} source={source} mediaPreview mathEnabled />
+      <Markdown source={source} mediaPreview mathEnabled />
     </StoreProvider>,
   );
   return container.innerHTML;
@@ -62,51 +59,54 @@ const MIXED_SOURCE = [
 
 describe("parse-in-render markdown", () => {
   // Chat surfaces render one parsed tree many times, so rendering must not
-  // mutate the tree: repeated renders and renders under an unrelated option
-  // have to produce byte-identical html.
+  // mutate the tree: repeated renders have to produce byte-identical html.
   it("renders identical html across repeated renders", () => {
-    const cold = html(MIXED_SOURCE, "mixed");
-    const repeat = html(MIXED_SOURCE, "mixed");
-    const control = html(MIXED_SOURCE, "control");
+    const cold = html(MIXED_SOURCE);
+    const repeat = html(MIXED_SOURCE);
 
     expect(repeat).toBe(cold);
-    expect(control).toBe(cold);
   });
 
-  // `mermaidScope` reaches the mermaid plugin: the same diagram mounted under
-  // two scopes must register two independent entries.
-  it("keys mermaid registration by scope", () => {
-    const source = "```mermaid\ngraph TD; A-->B;\n```";
-    html(source, "scope-one");
-    html(source, "scope-two");
+  // Only command-prepared trees turn mermaid fences into diagrams; a surface
+  // that parses during render keeps the fence as a highlighted code block.
+  it("keeps mermaid fences as code without a preparing command", () => {
+    const rendered = html("```mermaid\ngraph TD; A-->B;\n```");
 
-    const diagrams = context.store.get(mermaidDiagramsByKey$);
-    const first = diagrams.get(
-      mermaidDiagramKey("graph TD; A-->B;", "scope-one"),
+    expect(rendered).toContain("language-mermaid");
+    expect(rendered).not.toContain("mermaid-block");
+  });
+
+  // The diagram registry is content-addressed: the rendered image depends only
+  // on the source and the theme, so the same fence shares one entry wherever
+  // it appears and different sources never collide.
+  it("keys diagram registration by source", () => {
+    const first = context.store.set(
+      registerMermaidDiagram$,
+      "graph TD; A-->B;",
     );
-    const second = diagrams.get(
-      mermaidDiagramKey("graph TD; A-->B;", "scope-two"),
+    const again = context.store.set(
+      registerMermaidDiagram$,
+      "graph TD; A-->B;",
     );
-    expect(first).toBeDefined();
-    expect(second).toBeDefined();
-    expect(first).not.toBe(second);
+    const other = context.store.set(
+      registerMermaidDiagram$,
+      "graph TD; B-->C;",
+    );
+
+    expect(again).toBe(first);
+    expect(other).not.toBe(first);
   });
 
   it("keys entries by escapeHtml", () => {
     const source = "<span> 123 </span>";
     const { container: raw } = render(
       <StoreProvider value={context.store}>
-        <Markdown mermaidScope="escape" source={source} mediaPreview />
+        <Markdown source={source} mediaPreview />
       </StoreProvider>,
     );
     const { container: escaped } = render(
       <StoreProvider value={context.store}>
-        <Markdown
-          mermaidScope="escape"
-          source={source}
-          mediaPreview
-          escapeHtml
-        />
+        <Markdown source={source} mediaPreview escapeHtml />
       </StoreProvider>,
     );
 
@@ -124,7 +124,7 @@ describe("marker node dispatch", () => {
 
     const { container } = render(
       <StoreProvider value={context.store}>
-        <Markdown mermaidScope="copy" source={"```ts\nconst a = 1;\n```"} />
+        <Markdown source={"```ts\nconst a = 1;\n```"} />
       </StoreProvider>,
     );
 

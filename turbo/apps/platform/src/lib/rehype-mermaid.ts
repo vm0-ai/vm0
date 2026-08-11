@@ -20,7 +20,7 @@ interface HastPoint {
 }
 
 interface HastNode {
-  data?: { mermaid?: { code: string; scope: string } };
+  data?: { mermaid?: { code: string } };
   readonly type: string;
   readonly tagName?: string;
   readonly value?: string;
@@ -102,21 +102,17 @@ function isClosedFence(node: HastNode, source: string): boolean {
  * produce — a message quoting `<div class="mermaid-block" data-mermaid-code>`
  * therefore stays a plain div instead of being swallowed by the renderer.
  */
-function mermaidBlockNode(code: string, scope: string): HastNode {
+function mermaidBlockNode(code: string): HastNode {
   return {
     type: "element",
     tagName: "div",
     properties: {},
-    data: { mermaid: { code, scope } },
+    data: { mermaid: { code } },
     children: [],
   };
 }
 
-function replaceMermaidBlocks(
-  node: HastNode,
-  source: string,
-  scope: string,
-): void {
+function replaceMermaidBlocks(node: HastNode, source: string): void {
   const children = node.children;
   if (!children) {
     return;
@@ -127,21 +123,19 @@ function replaceMermaidBlocks(
       if (isClosedFence(child, source)) {
         children[index] = mermaidBlockNode(
           collectText(code).replace(/\n$/, ""),
-          scope,
         );
       }
       continue;
     }
-    replaceMermaidBlocks(child, source, scope);
+    replaceMermaidBlocks(child, source);
   }
 }
 
-export function rehypeMermaid(options: { readonly scope?: string } = {}) {
+export function rehypeMermaid() {
   return (tree: HastNode, file: MarkdownFile): void => {
     replaceMermaidBlocks(
       tree,
       typeof file.value === "string" ? file.value : "",
-      options.scope ?? "",
     );
   };
 }

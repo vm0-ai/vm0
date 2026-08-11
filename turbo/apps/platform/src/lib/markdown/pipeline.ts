@@ -35,7 +35,7 @@ declare module "hast" {
     /** Set by `uiw-nodes`: the code a copy button copies. */
     copyCode?: string;
     /** Set by `rehypeMermaid`: the diagram a placeholder stands for. */
-    mermaid?: { code: string; scope: string };
+    mermaid?: { code: string };
   }
 }
 
@@ -62,7 +62,13 @@ type MarkdownCard = NonNullable<Data["card"]>;
 
 interface MarkdownParseOptions {
   readonly mathEnabled: boolean;
-  readonly mermaidScope: string;
+  /**
+   * Replace closed ```mermaid fences with diagram marker nodes. Only surfaces
+   * whose trees are prepared by a command enable this — the command resolves
+   * each marker's signals and embeds them. Without it, fences stay highlighted
+   * code blocks.
+   */
+  readonly mermaid?: boolean;
   /**
    * Cards already registered for this document, keyed by slot URL. A paragraph
    * consisting of a single link whose href resolves here becomes the card; a
@@ -304,6 +310,7 @@ function rehypePlugins(options: MarkdownParseOptions): PluggableList {
   const cardPlugins: PluggableList = options.cards
     ? [[rehypeCards, { cards: options.cards }]]
     : [];
+  const mermaidPlugins: PluggableList = options.mermaid ? [rehypeMermaid] : [];
   return [
     reservedMeta,
     rehypeRaw,
@@ -315,7 +322,7 @@ function rehypePlugins(options: MarkdownParseOptions): PluggableList {
     [rehypeAttrs, { properties: "attr" }],
     ...mathPlugins,
     ...cardPlugins,
-    [rehypeMermaid, { scope: options.mermaidScope }],
+    ...mermaidPlugins,
     [rehypePrism, { ignoreMissing: true }],
   ];
 }

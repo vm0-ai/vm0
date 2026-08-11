@@ -23,7 +23,7 @@ import {
   setImageLoadStatus$,
 } from "../../signals/view-component-state.ts";
 import { MarkdownCardView } from "../zero-page/chat-body-cards.tsx";
-import { MermaidDiagram, MermaidDiagramView } from "./mermaid-diagram.tsx";
+import { MermaidDiagramView } from "./mermaid-diagram.tsx";
 import { cn } from "@vm0/ui";
 
 type MarkdownNodeProp = { node?: unknown };
@@ -266,13 +266,6 @@ function MarkdownDivRenderer(props: MarkdownDivProps) {
   if (data?.mermaidSignals) {
     return <MermaidDiagramView signals={data.mermaidSignals} />;
   }
-  if (data?.mermaid) {
-    // Trees parsed during render (the standalone `Markdown` surfaces) carry no
-    // embedded signals; their diagrams register on mount instead.
-    return (
-      <MermaidDiagram code={data.mermaid.code} scope={data.mermaid.scope} />
-    );
-  }
   return <div {...omitMarkdownNodeProp(rest)}>{children}</div>;
 }
 
@@ -368,7 +361,6 @@ export function Markdown({
   className,
   style,
   mediaPreview = false,
-  mermaidScope,
   mathEnabled = false,
   escapeHtml = false,
   source,
@@ -377,13 +369,11 @@ export function Markdown({
   readonly className?: string;
   readonly style?: CSSProperties;
   readonly mediaPreview?: boolean;
-  readonly mermaidScope?: string;
   readonly mathEnabled?: boolean;
   readonly escapeHtml?: boolean;
 }) {
   const tree = parseMarkdownTree(escapeHtml ? escapeHtmlTags(source) : source, {
     mathEnabled,
-    mermaidScope: mermaidScope ?? "",
   });
   return (
     <MarkdownFrame

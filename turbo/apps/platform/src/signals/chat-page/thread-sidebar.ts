@@ -11,6 +11,10 @@ import {
   type TextPreviewComputed,
 } from "../text-preview.ts";
 import { resetSignal } from "../utils.ts";
+import {
+  createMarkdownPreviewTree,
+  type MarkdownPreviewTreeComputed,
+} from "../markdown-preview-tree.ts";
 import type { MailDraftSignals } from "./mail-draft.ts";
 
 // ---------------------------------------------------------------------------
@@ -51,6 +55,8 @@ export type ArtifactRef = {
    * ref alone.
    */
   readonly text$?: TextPreviewComputed;
+  /** The prepared tree for markdown-kind refs, diagram signals embedded. */
+  readonly markdownTree$?: MarkdownPreviewTreeComputed;
 };
 
 export type ArtifactFileRef = {
@@ -64,6 +70,7 @@ export type ArtifactMetadataRef = {
   readonly filename: string;
   readonly contentType?: string;
   readonly shareAvailable?: boolean;
+  readonly text$?: TextPreviewComputed;
 };
 
 export type ArtifactRefInput = string | ArtifactFileRef | ArtifactMetadataRef;
@@ -111,6 +118,7 @@ export interface ThreadSidebarSignals {
    */
   readonly artifactCatalog: ArtifactCatalogSignals;
   readonly selectedArtifactText$: Computed<Promise<string>>;
+  readonly selectedArtifactMarkdownTree$: MarkdownPreviewTreeComputed;
   /**
    * Session resources for an open artifacts list: refresh the first page in
    * the background and follow realtime catalog changes. `close$` aborts the
@@ -152,6 +160,9 @@ export function createThreadSidebarSignals(
     }
     return fetchPreviewText(preview.url);
   });
+  const selectedArtifactMarkdownTree$ = createMarkdownPreviewTree(
+    selectedArtifactText$,
+  );
 
   const open$ = command(({ get, set }, target: ThreadSidebarTarget) => {
     const current = get(internalTarget$);
@@ -234,6 +245,7 @@ export function createThreadSidebarSignals(
     }),
     artifactCatalog,
     selectedArtifactText$,
+    selectedArtifactMarkdownTree$,
     setupArtifactsSession$,
   };
 }

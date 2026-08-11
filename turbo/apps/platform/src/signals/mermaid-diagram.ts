@@ -1,22 +1,23 @@
 import { command, computed, state, type Computed } from "ccstate";
+import type { Element, Root } from "hast";
 
 import { theme$ } from "./theme.ts";
-import { onRef } from "./utils.ts";
 
 /**
- * Mermaid diagrams render through a pull model. Each unique diagram source in
- * a scope owns one `MermaidDiagramSignals` in a module-scope registry; its
- * `diagram$` computed loads mermaid, lays the diagram out and resolves to an
- * image the view shows in an `<img>`. Reading the theme inside the computed
- * makes a theme switch re-render every diagram without any remounting.
+ * Mermaid diagrams render through a pull model. Each unique diagram source
+ * owns one `MermaidDiagramSignals` in a module-scope registry; its `diagram$`
+ * computed loads mermaid, lays the diagram out and resolves to an image the
+ * view shows in an `<img>`. Reading the theme inside the computed makes a
+ * theme switch re-render every diagram without any remounting.
  *
- * Registration is a command. The chat pipeline registers diagrams when it
- * parses an event's tree; surfaces that parse during render register on mount
- * through `mermaidDiagramRegisterRef$`, the same dataset-driven `onRef` shape
- * as `imageLoadStatusRef$`.
+ * The command that parses a tree registers each diagram and embeds the
+ * returned signals on the marker node, so rendering receives the signals
+ * object directly. The registry is content-addressed: the rendered image
+ * depends only on the source and the theme, so the same fence in two threads
+ * shares one entry.
  *
  * The image is a `data:` URL, so there is nothing to revoke and no lifetime to
- * manage: entries live as long as the registry, keyed by content.
+ * manage: entries live as long as the registry.
  */
 export interface MermaidDiagramImage {
   readonly url: string;
@@ -28,30 +29,43 @@ export interface MermaidDiagramSignals {
   readonly diagram$: Computed<Promise<MermaidDiagramImage>>;
 }
 
-// The chat pipeline resolves diagram signals while it parses an event's tree
-// and embeds them on the marker node, so rendering receives the signals object
-// directly instead of looking the registry up by key. Declared here rather
-// than in the parse pipeline: the pipeline emits only `data.mermaid`
-// ({code, scope}), and this field is written by the signals layer afterwards.
+// Declared here rather than in the parse pipeline: the pipeline emits only
+// `data.mermaid` ({code}), and this field is written by the signals layer
+// afterwards, by `embedMermaidSignals`.
 declare module "hast" {
   interface Data {
     mermaidSignals?: MermaidDiagramSignals;
   }
 }
 
-export function mermaidDiagramKey(code: string, scope: string): string {
-  return `${scope}:${code}`;
+/**
+ * Resolve every mermaid marker in a freshly parsed tree to its diagram
+ * signals and embed them on the node. Rendering then receives the signals
+ * object from the tree, the same way cards do.
+ */
+export function embedMermaidSignals(
+  tree: Root,
+  resolve: (code: string) => MermaidDiagramSignals,
+): void {
+  const visitNode = (node: Root | Element): void => {
+    for (const child of node.children) {
+      if (child.type !== "element") {
+        continue;
+      }
+      const mermaid = child.data?.mermaid;
+      if (mermaid !== undefined) {
+        child.data = { ...child.data, mermaidSignals: resolve(mermaid.code) };
+        continue;
+      }
+      visitNode(child);
+    }
+  };
+  visitNode(tree);
 }
 
-const internalMermaidDiagramsByKey$ = state<
+const internalMermaidDiagramsByCode$ = state<
   ReadonlyMap<string, MermaidDiagramSignals>
 >(new Map());
-
-export const mermaidDiagramsByKey$ = computed(
-  (get): ReadonlyMap<string, MermaidDiagramSignals> => {
-    return get(internalMermaidDiagramsByKey$);
-  },
-);
 
 // mermaid costs ~170 KB gzipped for the first diagram, so it is only fetched
 // once a diagram actually needs rendering; the computed memoizes the promise.
@@ -61,8 +75,8 @@ const mermaidModule$ = computed(() => {
 
 /**
  * mermaid needs a DOM id per `render` call. Concurrent renders only happen for
- * distinct key+theme pairs — the same pair is one deduplicated computed — so a
- * deterministic hash of both is collision-free where it matters.
+ * distinct code+theme pairs — the same pair is one deduplicated computed — so
+ * a deterministic hash of both is collision-free where it matters.
  */
 function diagramRenderId(seed: string): string {
   let hash = 5381;
@@ -138,9 +152,14 @@ function svgFile(markup: string): File {
   return new File([markup], "diagram.svg", { type: "image/svg+xml" });
 }
 
-function createMermaidDiagramSignals(
+/**
+ * Pure factory for a diagram's signals. Preview trees whose content arrives
+ * with the surface create signals per tree; the chat pipeline goes through
+ * `registerMermaidDiagram$` instead so a streaming message keeps stable
+ * signal identities for fences its growing body re-parses.
+ */
+export function createMermaidDiagramSignals(
   code: string,
-  key: string,
 ): MermaidDiagramSignals {
   const diagram$ = computed(async (get): Promise<MermaidDiagramImage> => {
     const theme = get(theme$);
@@ -169,7 +188,7 @@ function createMermaidDiagramSignals(
 
     const markup = await renderDiagramSvg(
       mermaid,
-      diagramRenderId(`${theme}:${key}`),
+      diagramRenderId(`${theme}:${code}`),
       code,
     );
     if (markup === undefined) {
@@ -196,33 +215,16 @@ function createMermaidDiagramSignals(
 }
 
 export const registerMermaidDiagram$ = command(
-  ({ get, set }, code: string, scope: string): MermaidDiagramSignals => {
-    const current = get(internalMermaidDiagramsByKey$);
-    const key = mermaidDiagramKey(code, scope);
-    const existing = current.get(key);
+  ({ get, set }, code: string): MermaidDiagramSignals => {
+    const current = get(internalMermaidDiagramsByCode$);
+    const existing = current.get(code);
     if (existing !== undefined) {
       return existing;
     }
-    const signals = createMermaidDiagramSignals(code, key);
+    const signals = createMermaidDiagramSignals(code);
     const next = new Map(current);
-    next.set(key, signals);
-    set(internalMermaidDiagramsByKey$, next);
+    next.set(code, signals);
+    set(internalMermaidDiagramsByCode$, next);
     return signals;
   },
 );
-
-const registerMermaidDiagramOnRef$ = command(
-  ({ set }, el: HTMLElement, _signal: AbortSignal): void => {
-    const code = el.dataset.mermaidCode;
-    if (code !== undefined) {
-      set(registerMermaidDiagram$, code, el.dataset.mermaidScope ?? "");
-    }
-  },
-);
-
-/**
- * Mount-time registration for surfaces that parse markdown during render and
- * therefore have no command of their own to register diagrams from. The chat
- * pipeline registers ahead of time, so its placeholders never mount.
- */
-export const mermaidDiagramRegisterRef$ = onRef(registerMermaidDiagramOnRef$);

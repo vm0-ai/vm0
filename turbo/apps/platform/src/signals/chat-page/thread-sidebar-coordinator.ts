@@ -5,6 +5,11 @@ import {
   previewAttachmentFromUrl,
 } from "./parse-body-blocks.ts";
 import {
+  createTextPreviewComputed,
+  isTextPreviewKind,
+} from "../text-preview.ts";
+import { createMarkdownPreviewTree } from "../markdown-preview-tree.ts";
+import {
   currentLeftThread$,
   currentRightThread$,
 } from "./chat-thread-pane-state.ts";
@@ -126,15 +131,35 @@ export function artifactRefFromUrl(url: string): ArtifactRef {
   };
 }
 
+/**
+ * Text-kind refs always carry their preview content: the caller's computed
+ * when it handed one over (reusing its fetch cache), a fresh one otherwise.
+ * Markdown refs additionally carry their prepared tree. The sidebar renders
+ * from the ref alone.
+ */
+function withTextPreview(ref: ArtifactRef): ArtifactRef {
+  if (!isTextPreviewKind(ref.kind)) {
+    return ref;
+  }
+  const text$ = ref.text$ ?? createTextPreviewComputed(ref.url);
+  return {
+    ...ref,
+    text$,
+    ...(ref.kind === "markdown"
+      ? { markdownTree$: createMarkdownPreviewTree(text$) }
+      : {}),
+  };
+}
+
 function materializeArtifactRef(
   input: ArtifactRefInput,
   ownerSignal: AbortSignal,
 ): ArtifactRef {
   if (typeof input === "string") {
-    return artifactRefFromUrl(input);
+    return withTextPreview(artifactRefFromUrl(input));
   }
   if (!("file" in input)) {
-    return {
+    return withTextPreview({
       url: input.url,
       kind: classifyChatAttachment({
         contentType: input.contentType,
@@ -142,13 +167,14 @@ function materializeArtifactRef(
         url: input.url,
       }),
       filename: input.filename,
+      ...(input.text$ === undefined ? {} : { text$: input.text$ }),
       ...(input.shareAvailable === undefined
         ? {}
         : { shareAvailable: input.shareAvailable }),
-    };
+    });
   }
   const resource = createObjectUrlResource(input.file, ownerSignal);
-  return {
+  return withTextPreview({
     url: resource.url,
     kind: classifyChatAttachment({
       contentType: input.file.type,
@@ -160,7 +186,7 @@ function materializeArtifactRef(
     ...(input.shareAvailable === undefined
       ? {}
       : { shareAvailable: input.shareAvailable }),
-  };
+  });
 }
 
 /**
@@ -180,17 +206,11 @@ export const openThreadArtifactSplitView$ = command(
     if (!thread) {
       return;
     }
-    // Resolve the text preview here, from the owning thread's artifact
-    // signals, so the sidebar renders text-kind refs from the ref alone.
-    // Object-url refs (files promoted from the lightbox) have no registry
-    // entry and keep no `text$`.
-    const ref = materializeArtifactRef(input, thread.signal);
-    const text$ = get(thread.artifactSignalsByUrl$).get(ref.url)?.text$;
     set(openOnThread$, thread, {
       type: "artifact",
       source: {
         kind: "attachment",
-        ref: text$ === undefined ? ref : { ...ref, text$ },
+        ref: materializeArtifactRef(input, thread.signal),
       },
     });
   },
@@ -213,15 +233,13 @@ export const openArtifactInOpenSidebar$ = command(
     if (active.thread.signal.aborted) {
       return false;
     }
-    const ref = materializeArtifactRef(input, active.thread.signal);
-    const text$ = get(active.thread.artifactSignalsByUrl$).get(ref.url)?.text$;
     // The owning thread already holds the page's only utility sidebar, so this
     // swaps its content without closing and reopening the pane.
     set(active.thread.sidebar.open$, {
       type: "artifact",
       source: {
         kind: "attachment",
-        ref: text$ === undefined ? ref : { ...ref, text$ },
+        ref: materializeArtifactRef(input, active.thread.signal),
       },
     });
     return true;

@@ -1,69 +1,9 @@
-import { useGet, useLoadable, useSet } from "ccstate-react";
+import { useLoadable, useSet } from "ccstate-react";
 import { Loader2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
-import {
-  mermaidDiagramKey,
-  mermaidDiagramRegisterRef$,
-  mermaidDiagramsByKey$,
-  type MermaidDiagramSignals,
-} from "../../signals/mermaid-diagram.ts";
+import type { MermaidDiagramSignals } from "../../signals/mermaid-diagram.ts";
 import { openImageLightbox$ } from "../../signals/zero-page/zero-attachment-chips.ts";
-
-/**
- * Registration-on-mount fallback for trees parsed during render (the
- * standalone `Markdown` surfaces), which have no command of their own to
- * resolve diagram signals ahead of time. It registers through the
- * placeholder's ref and then reads the entry back by key — the chat pipeline
- * never renders this: its trees carry the signals embedded on the node and go
- * straight to `MermaidDiagramView`. This component and its lookup go away with
- * the parse-in-render surfaces.
- */
-export function MermaidDiagram({
-  code,
-  scope,
-}: {
-  code: string;
-  scope: string;
-}) {
-  const registerRef = useSet(mermaidDiagramRegisterRef$);
-  const signals = useGet(mermaidDiagramsByKey$).get(
-    mermaidDiagramKey(code, scope),
-  );
-
-  if (!signals) {
-    return (
-      <div
-        ref={registerRef}
-        className="mermaid-block"
-        data-mermaid-status="rendering"
-        data-mermaid-code={code}
-        data-mermaid-scope={scope}
-      >
-        <MermaidPendingBox />
-      </div>
-    );
-  }
-  return <MermaidDiagramView signals={signals} />;
-}
-
-function MermaidPendingBox() {
-  const { t } = useTranslation();
-  return (
-    <button
-      type="button"
-      className="mermaid-diagram-expand"
-      disabled
-      aria-label={t(($) => {
-        return $.shared.mermaid.expand;
-      })}
-    >
-      <span className="mermaid-diagram-pending" aria-hidden="true">
-        <Loader2 size={18} className="animate-spin" />
-      </span>
-    </button>
-  );
-}
 
 /**
  * Renders a ```mermaid fenced block as a diagram from its signals.

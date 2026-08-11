@@ -76,7 +76,7 @@ describe("card slots in the tree", () => {
 
     const tree = parseMarkdownTree(plan.treeSource, {
       mathEnabled: true,
-      mermaidScope: "plan",
+      mermaid: true,
       cards,
     });
 
@@ -99,7 +99,7 @@ describe("card slots in the tree", () => {
 
     const tree = parseMarkdownTree(plan.treeSource, {
       mathEnabled: true,
-      mermaidScope: "plan",
+      mermaid: true,
       cards: new Map(),
     });
 
@@ -117,7 +117,7 @@ describe("card slots in the tree", () => {
       `see [${CONNECTOR_URL}](<${CONNECTOR_URL}>) inline`,
       {
         mathEnabled: true,
-        mermaidScope: "plan",
+        mermaid: true,
         cards: new Map([
           [
             markdownCardKey(CONNECTOR_URL),
