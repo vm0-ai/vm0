@@ -111,8 +111,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.JoggAiBuiltIn]: {
     maintainer: "yuma@vm0.ai",
     description: "Enable vm0-managed JoggAI talking-avatar video generation",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.SeoBuiltIn]: {
     maintainer: "yuma@vm0.ai",
