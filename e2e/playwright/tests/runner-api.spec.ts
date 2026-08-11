@@ -406,12 +406,15 @@ test.beforeAll(async ({ browser }, testInfo) => {
 
   // Preview chat runs default to the mock agent runtime; this suite validates
   // real Claude/Codex behavior, so every account opts into the real runtime.
+  // The auth-me call also seeds the user cache the run bootstrap context
+  // reads user info and timezone preferences through.
   for (const account of [runner, codex, claude]) {
     await account.api.post(
       "/api/zero/feature-switches",
       { switches: { realAgentInPreview: true } },
       [200],
     );
+    await account.api.get("/api/auth/me", [200]);
   }
 
   const createdAgentIds = {
