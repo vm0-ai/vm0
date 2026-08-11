@@ -1585,7 +1585,7 @@ jobs:
 
       - name: Post API preview URL
         if: github.event_name == 'pull_request'
-        uses: marocchino/sticky-pull-request-comment@v3
+        uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88 # v3.0.5
         with:
           header: api-preview
           message: |
@@ -1629,7 +1629,7 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: ./.github/actions/toolchain-init
 
       - name: Setup SSH for Vercel preview Stripe listener secret
@@ -1645,7 +1645,7 @@ jobs:
 
       - name: Fetch development Doppler OAuth config
         id: doppler-oauth
-        uses: dopplerhq/secrets-fetch-action@v2.0.0
+        uses: dopplerhq/secrets-fetch-action@451892f16195f9ac360e1a5bcbf0b5fd0e957534 # v2.0.0
         with:
           auth-method: oidc
           doppler-identity-id: ${{ vars.DOPPLER_SERVICE_IDENTITY_ID }}
@@ -2533,14 +2533,16 @@ jobs:
           VERCEL_PAGES_DEPLOYMENT_URL: ${{ steps.vercel-pages-deploy.outputs.url }}
           VERCEL_PAGES_PREVIEW_URL: ${{ steps.vercel-pages-preview.outputs.url }}
         run: |
-          echo "Cloudflare Pages deployment: ${PAGES_DEPLOYMENT_URL}" >> "$GITHUB_STEP_SUMMARY"
-          echo "Cloudflare Pages preview: ${PAGES_PREVIEW_URL}" >> "$GITHUB_STEP_SUMMARY"
-          if [[ -n "$APP_PREVIEW_URL" ]]; then
-            echo "App preview gateway: ${APP_PREVIEW_URL}" >> "$GITHUB_STEP_SUMMARY"
-          fi
-          echo "Vercel-backed Cloudflare Pages deployment: ${VERCEL_PAGES_DEPLOYMENT_URL}" >> "$GITHUB_STEP_SUMMARY"
-          echo "Vercel-backed Cloudflare Pages preview: ${VERCEL_PAGES_PREVIEW_URL}" >> "$GITHUB_STEP_SUMMARY"
-          echo "Vercel-backed app preview alias: ${VERCEL_APP_PREVIEW_URL}" >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "Cloudflare Pages deployment: ${PAGES_DEPLOYMENT_URL}"
+            echo "Cloudflare Pages preview: ${PAGES_PREVIEW_URL}"
+            if [[ -n "$APP_PREVIEW_URL" ]]; then
+              echo "App preview gateway: ${APP_PREVIEW_URL}"
+            fi
+            echo "Vercel-backed Cloudflare Pages deployment: ${VERCEL_PAGES_DEPLOYMENT_URL}"
+            echo "Vercel-backed Cloudflare Pages preview: ${VERCEL_PAGES_PREVIEW_URL}"
+            echo "Vercel-backed app preview alias: ${VERCEL_APP_PREVIEW_URL}"
+          } >> "$GITHUB_STEP_SUMMARY"
 
   deploy-stripe-listener:
     runs-on: ubuntu-latest
@@ -3966,9 +3968,9 @@ jobs:
           token=$(jq -er '.token' /tmp/e2e-api-credentials-runner.json)
           api_url=$(jq -er '.apiUrl' /tmp/e2e-api-credentials-runner.json)
           echo "::add-mask::$token"
-          echo "E2E_API_TOKEN=$token" >> "$GITHUB_ENV"
-          echo "E2E_API_URL=$api_url" >> "$GITHUB_ENV"
           {
+            echo "E2E_API_TOKEN=$token"
+            echo "E2E_API_URL=$api_url"
             echo "E2E_CLERK_ORG_ID=$(jq -er '.runnerOrganizationId' /tmp/e2e-runner-accounts.json)"
             echo "E2E_RUNNER_CODEX_ORG_ID=$(jq -er '.codexOrganizationId' /tmp/e2e-runner-accounts.json)"
             echo "E2E_RUNNER_CLAUDE_ORG_ID=$(jq -er '.claudeOrganizationId' /tmp/e2e-runner-accounts.json)"
