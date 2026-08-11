@@ -2566,6 +2566,9 @@ async function validateCustomConnectorOauthModeConstraints(
       "header_name",
       "header_template",
       "prefix_templates",
+      "fields",
+      "header_injections",
+      "query_injections",
       "auth_mode",
       "created_by"
     )
@@ -2578,6 +2581,15 @@ async function validateCustomConnectorOauthModeConstraints(
       'Authorization',
       'Bearer {{secret}}',
       '["https://api.example.test/"]'::jsonb,
+      CASE
+        WHEN $5 = 'manual' THEN '[{"key":"secret","label":"Secret","kind":"secret","required":true}]'::jsonb
+        ELSE '[]'::jsonb
+      END,
+      CASE
+        WHEN $5 = 'manual' THEN '[{"name":"Authorization","valueTemplate":"Bearer {{secrets.secret}}"}]'::jsonb
+        ELSE '[{"name":"Authorization","valueTemplate":"Bearer {{oauth.access_token}}"}]'::jsonb
+      END,
+      '[]'::jsonb,
       $5,
       $6
     )
