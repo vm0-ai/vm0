@@ -41,9 +41,9 @@ pnpm --filter @vm0/db exec tsx \
 ```
 
 After reviewing a complete dry-run, add `--migrate` to repair missing or
-mismatched shared targets. The repository workflow
-`Backfill Custom Connector Credentials` supplies the production database and
-KMS credentials and requires a separate apply confirmation.
+mismatched shared targets. Production execution uses a reviewed, temporary PR
+CI job under the protected `production` environment. Remove that job after its
+migrate and complete verification reports have been recorded.
 
 `--batch-size` controls the maximum keyset page size and must be between 1 and
 1,000. Every completed page checkpoints the sanitized report. If a run fails,

@@ -685,6 +685,137 @@ jobs:
           DATABASE_URL: postgresql://postgres@postgres:5432/postgres
         run: pnpm test:migration-consistency
 
+  # This one-time production backfill is intentionally informational: it is not
+  # part of ci-gate-turbo and does not run for merge-group validation. Remove
+  # this job after its migrate and verification reports have been recorded.
+  backfill-custom-connector-credentials:
+    name: Backfill custom connector credentials (optional)
+    needs: prepare
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.head_ref == 'chore/issue-26241-backfill-custom-credentials'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    concurrency:
+      group: production-custom-connector-credential-backfill
+      cancel-in-progress: false
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260622
+    permissions:
+      contents: read
+      pull-requests: read
+    environment: production
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check Pull Request Is Current
+        id: current-pr
+        env:
+          API_URL: ${{ github.api_url }}
+          EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          PR_JSON=$(
+            curl --fail --silent --show-error \
+              --retry 3 \
+              --retry-delay 1 \
+              --retry-all-errors \
+              --header "Authorization: Bearer $GH_TOKEN" \
+              --header "Accept: application/vnd.github+json" \
+              --header "X-GitHub-Api-Version: 2022-11-28" \
+              "$API_URL/repos/$REPO/pulls/$PR_NUMBER"
+          )
+          CURRENT_STATE=$(jq -r .state <<< "$PR_JSON")
+          CURRENT_HEAD_SHA=$(jq -r .head.sha <<< "$PR_JSON")
+
+          if [ "$CURRENT_STATE" != "open" ] || [ "$CURRENT_HEAD_SHA" != "$EXPECTED_HEAD_SHA" ]; then
+            echo "::warning::Skipping stale backfill request for PR #$PR_NUMBER"
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "run=true" >> "$GITHUB_OUTPUT"
+
+      - if: steps.current-pr.outputs.run == 'true'
+        uses: actions/checkout@v7.0.1
+
+      - if: steps.current-pr.outputs.run == 'true'
+        uses: ./.github/actions/toolchain-init
+
+      - name: Install neonctl
+        if: steps.current-pr.outputs.run == 'true'
+        run: npm install -g neonctl@2.15.0
+
+      - name: Get production database URL
+        if: steps.current-pr.outputs.run == 'true'
+        id: database
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
+        run: |
+          database_url=$(
+            neonctl connection-string production \
+              --project-id "$NEON_PROJECT_ID" \
+              --database-name neondb \
+              --role-name neondb_owner \
+              --pooled
+          )
+          echo "::add-mask::$database_url"
+          echo "database_url=$database_url" >> "$GITHUB_OUTPUT"
+
+      - name: Backfill production custom connector credentials
+        if: steps.current-pr.outputs.run == 'true'
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          DATABASE_URL: ${{ steps.database.outputs.database_url }}
+          REPORT_PATH: ${{ runner.temp }}/custom-connector-credential-backfill-apply.json
+        run: |
+          cd turbo
+          pnpm --filter @vm0/db exec tsx \
+            scripts/migrations/012-custom-connector-credentials/backfill.ts \
+            --migrate \
+            --batch-size 100 \
+            --report-path "$REPORT_PATH"
+
+      - name: Verify production custom connector credentials
+        if: steps.current-pr.outputs.run == 'true'
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_REGION: ${{ vars.AWS_REGION }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          DATABASE_URL: ${{ steps.database.outputs.database_url }}
+          REPORT_PATH: ${{ runner.temp }}/custom-connector-credential-backfill-verify.json
+        run: |
+          cd turbo
+          pnpm --filter @vm0/db exec tsx \
+            scripts/migrations/012-custom-connector-credentials/backfill.ts \
+            --batch-size 100 \
+            --report-path "$REPORT_PATH"
+          jq -e '
+            .mode == "dry-run" and
+            .startedFromBeginning == true and
+            .complete == true and
+            .ready == true and
+            .resumeCursor == null and
+            .blockingDifferences == 0 and
+            .failureCode == null
+          ' "$REPORT_PATH"
+
+      - name: Upload sanitized reports
+        if: always() && steps.current-pr.outputs.run == 'true'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: custom-connector-credential-backfill-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/custom-connector-credential-backfill-*.json
+          if-no-files-found: warn
+          retention-days: 14
+
   test-cli:
     needs: [detect-turbo-ts-checks]
     if: needs.detect-turbo-ts-checks.outputs.turbo-ts-checks-needed == 'true'
