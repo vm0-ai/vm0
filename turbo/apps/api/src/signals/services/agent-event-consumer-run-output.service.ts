@@ -14,10 +14,7 @@ import type {
 import type { Tx } from "../../lib/db-types";
 import { nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
-import {
-  publishChatThreadMessageCreatedSafely,
-  publishThreadListChangedSafely,
-} from "../external/realtime";
+import { publishChatThreadMessageCreatedSafely } from "../external/realtime";
 import type { ModelTokenCategory } from "./model-token-categories";
 import { projectPiEventsInTransaction } from "./pi-transcript.service";
 import {
@@ -514,7 +511,5 @@ export async function publishMaterializedChatProjection(
       projection.thread.chatThreadId,
     );
   }
-  signal.throwIfAborted();
-  await publishThreadListChangedSafely(projection.thread.userId);
   signal.throwIfAborted();
 }
