@@ -10,6 +10,12 @@ export const MAX_PRESENTATION_TEMPLATE_PAGES = 100;
 export const PRESENTATION_TEMPLATE_CONVERSION_TIMEOUT_SECONDS = 10 * 60;
 export const MAX_PRESENTATION_TEMPLATE_PACKAGE_FILE_BYTES = 512 * 1024;
 
+export const PRESENTATION_TEMPLATE_PACKAGE_PATHS = [
+  "DESIGN_SYSTEM.md",
+  "LAYOUTS.md",
+  "tokens.json",
+] as const;
+
 export const presentationTemplateStatusSchema = z.enum([
   "pending",
   "processing",
@@ -55,8 +61,10 @@ const presentationTemplateDetailSchema =
     pageUrls: z.array(z.string().url()),
   });
 
+export const presentationTemplateIdSchema = z.uuid();
+
 const presentationTemplateIdParamsSchema = z.object({
-  templateId: z.uuid(),
+  templateId: presentationTemplateIdSchema,
 });
 
 const createPresentationTemplateBodySchema = z.object({
@@ -91,11 +99,7 @@ const commitPagesBodySchema = z.object({
   aspectRatio: z.number().positive().max(10),
 });
 
-const packagePathSchema = z.enum([
-  "DESIGN_SYSTEM.md",
-  "LAYOUTS.md",
-  "tokens.json",
-]);
+const packagePathSchema = z.enum(PRESENTATION_TEMPLATE_PACKAGE_PATHS);
 
 const packageFileSchema = z.object({
   path: packagePathSchema,
@@ -252,6 +256,22 @@ export const zeroPresentationTemplatesContract = c.router({
     },
     summary: "Publish a completed presentation template package",
   },
+  downloadPackage: {
+    method: "GET",
+    path: "/api/zero/presentation-templates/:templateId/package",
+    pathParams: presentationTemplateIdParamsSchema,
+    headers: authHeadersSchema,
+    responses: {
+      200: z.object({
+        url: z.string().url(),
+        sha256: z.string().regex(/^[a-f0-9]{64}$/u),
+      }),
+      404: apiErrorSchema,
+      409: apiErrorSchema,
+      ...commonErrors,
+    },
+    summary: "Prepare a presentation template package download",
+  },
   fail: {
     method: "POST",
     path: "/api/zero/presentation-templates/:templateId/fail",
@@ -273,3 +293,8 @@ export type ZeroPresentationTemplatesContract =
 export type PresentationTemplateSummary = z.infer<
   typeof presentationTemplateSummarySchema
 >;
+export type PresentationTemplateImportErrorCode = z.infer<
+  typeof presentationTemplateImportErrorCodeSchema
+>;
+export type PresentationTemplatePackagePath =
+  (typeof PRESENTATION_TEMPLATE_PACKAGE_PATHS)[number];

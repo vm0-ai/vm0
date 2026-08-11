@@ -1,11 +1,7 @@
-import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
 import path from "node:path";
 
 import { Command } from "commander";
 import chalk from "chalk";
-import * as tar from "tar";
 import {
   findColorSystem,
   findDesignSystem,
@@ -21,6 +17,7 @@ import {
 
 import { getRegistryResourceDownload } from "../../../lib/api/domains/registry-resources";
 import { withErrorHandler } from "../../../lib/command/with-error-handler";
+import { pullTarArchive } from "../shared/pull-tar-archive";
 
 type PullableRegistryEntry = RegistryEntry | VideoTemplateRegistryEntry;
 
@@ -60,33 +57,6 @@ export function findRegistryResourceForPull(
     }
   }
   return undefined;
-}
-
-function isSafeTarPath(entryPath: string): boolean {
-  const normalized = entryPath.replace(/\\/gu, "/");
-  return (
-    !path.isAbsolute(normalized) &&
-    !normalized.split("/").some((segment) => {
-      return segment === "..";
-    })
-  );
-}
-
-async function downloadArchive(url: string): Promise<Buffer> {
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error(`Resource archive download failed: ${response.status}`);
-  }
-  return Buffer.from(await response.arrayBuffer());
-}
-
-function verifyArchive(buffer: Buffer, expectedSha256: string): void {
-  const actual = createHash("sha256").update(buffer).digest("hex");
-  if (actual !== expectedSha256) {
-    throw new Error(
-      `Resource archive digest mismatch: expected ${expectedSha256}, got ${actual}`,
-    );
-  }
 }
 
 export const zeroResourceCommand = new Command()
@@ -130,25 +100,12 @@ export const zeroResourceCommand = new Command()
             );
           }
 
-          const buffer = await downloadArchive(download.url);
-          verifyArchive(buffer, archive.sha256);
-
-          const outputDir = path.resolve(options.dir);
-          const tmpDir = await mkdtemp(path.join(tmpdir(), "zero-resource-"));
-          const archivePath = path.join(tmpDir, "resource.tar.gz");
-          await mkdir(outputDir, { recursive: true });
-          await writeFile(archivePath, buffer);
-
-          try {
-            await tar.extract({
-              file: archivePath,
-              cwd: outputDir,
-              gzip: true,
-              filter: isSafeTarPath,
-            });
-          } finally {
-            await rm(tmpDir, { recursive: true, force: true });
-          }
+          const outputDir = await pullTarArchive({
+            url: download.url,
+            expectedSha256: archive.sha256,
+            outputDir: options.dir,
+            label: "Resource archive",
+          });
 
           console.log(chalk.green(`✓ Pulled ${entry.id}`));
           console.log(chalk.dim(`  Extracted to: ${outputDir}`));

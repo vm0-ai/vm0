@@ -47,6 +47,7 @@ const COMMAND_CAPABILITY_MAP: Record<
     "chat-thread:write",
   ],
   resource: null,
+  "presentation-template": null,
   github: ["github:read", "github:write"],
   slack: "slack:write",
   feishu: "feishu:write",
@@ -74,7 +75,12 @@ const COMMAND_CAPABILITY_MAP: Record<
   banking: "banking:read",
 };
 
-const RUN_ONLY_COMMANDS = new Set(["mcp", "recognize", "translate"]);
+const RUN_ONLY_COMMANDS = new Set([
+  "mcp",
+  "presentation-template",
+  "recognize",
+  "translate",
+]);
 
 const ZERO_COMMAND_DEFINITIONS: readonly ZeroCommandDefinition[] = [
   {
@@ -221,6 +227,14 @@ const ZERO_COMMAND_DEFINITIONS: readonly ZeroCommandDefinition[] = [
     description: "Pull registry resources from private R2-backed archives",
     load: async () => {
       return (await import("./commands/zero/resource")).zeroResourceCommand;
+    },
+  },
+  {
+    name: "presentation-template",
+    description: "Import and pull user presentation templates",
+    load: async () => {
+      return (await import("./commands/zero/presentation-template"))
+        .zeroPresentationTemplateCommand;
     },
   },
   {

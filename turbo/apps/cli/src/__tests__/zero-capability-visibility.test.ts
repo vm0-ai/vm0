@@ -24,6 +24,7 @@ function buildCommands(): Command[] {
     new Command("logs"),
     new Command("chat"),
     new Command("resource"),
+    new Command("presentation-template"),
     new Command("schedule"),
     new Command("github"),
     new Command("slack"),
@@ -147,7 +148,12 @@ describe("registerZeroCommands", () => {
     vi.stubEnv("ZERO_TOKEN", undefined);
 
     const prog = buildProgram();
-    expect(hiddenCommandNames(prog)).toEqual(["mcp", "recognize", "translate"]);
+    expect(hiddenCommandNames(prog)).toEqual([
+      "mcp",
+      "presentation-template",
+      "recognize",
+      "translate",
+    ]);
     expect(registeredCommandNames(prog)).toContain("upgrade");
     expect(visibleCommandNames(prog)).toContain("browser");
   });
@@ -167,6 +173,7 @@ describe("registerZeroCommands", () => {
       "agent",
       "upgrade",
       "resource",
+      "presentation-template",
       "whoami",
       "generate",
       "web",
@@ -206,7 +213,12 @@ describe("registerZeroCommands", () => {
 
     const prog = buildProgram();
 
-    expect(hiddenCommandNames(prog)).toEqual(["mcp", "recognize", "translate"]);
+    expect(hiddenCommandNames(prog)).toEqual([
+      "mcp",
+      "presentation-template",
+      "recognize",
+      "translate",
+    ]);
     expect(registeredCommandNames(prog)).toContain("upgrade");
     expect(visibleCommandNames(prog)).toContain("browser");
   });
@@ -220,7 +232,12 @@ describe("registerZeroCommands", () => {
 
     const prog = buildProgram();
 
-    expect(hiddenCommandNames(prog)).toEqual(["mcp", "recognize", "translate"]);
+    expect(hiddenCommandNames(prog)).toEqual([
+      "mcp",
+      "presentation-template",
+      "recognize",
+      "translate",
+    ]);
     expect(registeredCommandNames(prog)).toContain("upgrade");
     expect(visibleCommandNames(prog)).toContain("browser");
   });
@@ -239,6 +256,7 @@ describe("registerZeroCommands", () => {
       "model-provider",
       "upgrade",
       "resource",
+      "presentation-template",
       "whoami",
       "generate",
       "web",
@@ -1121,6 +1139,7 @@ describe("registerZeroCommands", () => {
       "mcp",
       "upgrade",
       "resource",
+      "presentation-template",
       "whoami",
       "generate",
       "web",
