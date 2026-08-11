@@ -509,7 +509,6 @@ function createJump(
   store: LocatorStore,
   threadId: string,
   scrollContainer$: Computed<HTMLElement | null>,
-  scrollToTurn: (container: HTMLElement, top: number) => void,
 ) {
   return command(({ get }, turnIndex: number) => {
     const container = get(scrollContainer$);
@@ -518,10 +517,10 @@ function createJump(
       return;
     }
     L.debug("jump to turn", { threadId, turnIndex });
-    scrollToTurn(
-      container,
-      Math.max(0, turn.top - container.clientHeight * JUMP_VIEWPORT_RATIO),
-    );
+    container.scrollTo({
+      top: Math.max(0, turn.top - container.clientHeight * JUMP_VIEWPORT_RATIO),
+      behavior: "smooth",
+    });
     turn.element.dataset.locatorLanded = "";
     turn.element.ownerDocument.defaultView?.setTimeout(() => {
       delete turn.element.dataset.locatorLanded;
@@ -871,24 +870,14 @@ function createPreviewOnRef(store: LocatorStore) {
 export function createChatConversationLocatorSignals({
   threadId,
   scrollContainer$,
-  scrollToTurn = (container, top) => {
-    container.scrollTo({ top, behavior: "smooth" });
-  },
 }: {
   threadId: string;
   scrollContainer$: Computed<HTMLElement | null>;
-  /** Smooth-scrolls the container; kept injectable so tests can observe it. */
-  scrollToTurn?: (container: HTMLElement, top: number) => void;
 }): ChatConversationLocatorSignals {
   const store = createStore();
   const recompute$ = createRecompute(store, scrollContainer$);
   const paint$ = createPaint(store);
-  const jumpToTurn$ = createJump(
-    store,
-    threadId,
-    scrollContainer$,
-    scrollToTurn,
-  );
+  const jumpToTurn$ = createJump(store, threadId, scrollContainer$);
   const railOnRef$ = createRailOnRef(store, threadId, scrollContainer$, {
     recompute$,
     paint$,

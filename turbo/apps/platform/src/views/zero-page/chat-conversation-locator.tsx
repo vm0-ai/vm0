@@ -1,7 +1,7 @@
 import { useGet, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
-import { cn } from "@vm0/ui";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { cn } from "@okouai/ui";
+import { FeatureSwitchKey } from "@okouai/core/feature-switch-key";
 import type { ChatPanelSignals } from "../../signals/chat-page/chat-panel-signals.ts";
 import type { LocatorRole } from "../../signals/chat-page/chat-conversation-locator.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
@@ -96,6 +96,7 @@ function ConversationLocatorRail({ thread }: { thread: ChatPanelSignals }) {
             <div
               key={tick.turnIndex}
               data-locator-tick={tick.role}
+              data-turn-index={tick.turnIndex}
               className={cn(
                 // Width is written per pointer frame by the locator signals;
                 // React owns everything that only changes with the layout.
