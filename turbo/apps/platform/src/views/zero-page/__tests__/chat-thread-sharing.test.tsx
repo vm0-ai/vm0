@@ -35,6 +35,12 @@ function buttonByText(text: string): HTMLElement {
   return button;
 }
 
+function checkedCheckboxes(): HTMLElement[] {
+  return screen.getAllByRole("checkbox").filter((checkbox) => {
+    return checkbox.getAttribute("aria-checked") === "true";
+  });
+}
+
 function mockShareableThread() {
   mockChatLifecycle(context, {
     threadId: THREAD_ID,
@@ -88,11 +94,9 @@ describe("chat thread sharing", () => {
 
     const initialCheckboxes = await screen.findAllByRole("checkbox");
     expect(initialCheckboxes.length).toBeGreaterThan(0);
-    expect(
-      initialCheckboxes.every((checkbox) => {
-        return checkbox.hasAttribute("data-unchecked");
-      }),
-    ).toBeTruthy();
+    for (const checkbox of initialCheckboxes) {
+      expect(checkbox).not.toBeChecked();
+    }
     expect(screen.getAllByText("0 selected").length).toBeGreaterThan(0);
 
     const promptGroup = screen
@@ -103,29 +107,21 @@ describe("chat thread sharing", () => {
     }
     await user.click(promptGroup);
     await waitFor(() => {
-      expect(
-        screen.getAllByRole("checkbox").some((checkbox) => {
-          return checkbox.hasAttribute("data-checked");
-        }),
-      ).toBeTruthy();
+      expect(checkedCheckboxes().length).toBeGreaterThan(0);
     });
 
-    const bodySelectedCheckbox = screen
-      .getAllByRole("checkbox")
-      .find((checkbox) => {
-        return checkbox.hasAttribute("data-checked");
-      });
+    const bodySelectedCheckbox = checkedCheckboxes()[0];
     if (!bodySelectedCheckbox) {
       throw new Error("Expected the message body to select its visual group");
     }
     await user.click(bodySelectedCheckbox);
     await waitFor(() => {
-      expect(bodySelectedCheckbox).toHaveAttribute("data-unchecked");
+      expect(bodySelectedCheckbox).not.toBeChecked();
     });
     await user.click(bodySelectedCheckbox);
 
     for (const checkbox of screen.getAllByRole("checkbox")) {
-      if (!checkbox.hasAttribute("data-checked")) {
+      if (checkbox.getAttribute("aria-checked") !== "true") {
         await user.click(checkbox);
       }
     }

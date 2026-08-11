@@ -409,7 +409,8 @@ describe("chat composer templates", () => {
     const chip = document.querySelector("[data-composer-inline-template]");
     expect(chip?.querySelectorAll("button")).toHaveLength(2);
 
-    await user.click(spec);
+    spec.focus();
+    await user.keyboard("{Enter}");
     expect(
       queryAllByRoleFast("button").some((button) => {
         return button.textContent === "Reset to default";
