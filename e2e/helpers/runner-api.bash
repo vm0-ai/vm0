@@ -215,7 +215,6 @@ runner_e2e_wait_for_usage_event() {
     local last_events='{}'
 
     while ((SECONDS - started_at < timeout_seconds)); do
-        runner_e2e_process_usage_events || return
         if last_events=$(runner_api_curl \
             "/api/zero/chat-threads/${thread_id}/events?limit=50" 2>&1) &&
             jq -e \
@@ -248,32 +247,6 @@ runner_e2e_usage_record() {
     runner_api_curl "/api/zero/usage/record?page=1&pageSize=100&scope=mine&range=24h&tz=UTC&source=chat"
 }
 
-runner_e2e_process_usage_events() {
-    local base
-    local -a headers
-
-    if [[ -z "${CRON_SECRET:-}" ]]; then
-        echo "CRON_SECRET is required to settle preview usage" >&2
-        return 1
-    fi
-    base=$(runner_api_url) || return
-    headers=(-H "Authorization: Bearer $CRON_SECRET")
-    if [[ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then
-        headers+=(
-            -H "x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET"
-        )
-    fi
-
-    # Vercel does not run scheduled crons for PR previews. Match the previous
-    # Runner billing coverage by settling pending usage before public reads.
-    curl -fsS \
-        --connect-timeout "${E2E_CURL_CONNECT_TIMEOUT_SECONDS:-10}" \
-        --max-time "${E2E_CURL_MAX_TIME_SECONDS:-30}" \
-        "${headers[@]}" \
-        "$base/api/cron/process-usage-events" \
-        >/dev/null
-}
-
 runner_e2e_wait_for_usage_record() {
     local thread_id="$1"
     local provider="$2"
@@ -282,7 +255,6 @@ runner_e2e_wait_for_usage_record() {
     local last_record='{}'
 
     while ((SECONDS - started_at < timeout_seconds)); do
-        runner_e2e_process_usage_events || return
         if last_record=$(runner_e2e_usage_record 2>&1) &&
             jq -e \
                 --arg threadId "$thread_id" \

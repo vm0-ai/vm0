@@ -64,6 +64,38 @@ teardown() {
     echo "$output"
     assert_success
 
+    # Preview deployments do not schedule the production usage cron. Once the
+    # first run's asynchronous usage upload has arrived, cancelling a fresh
+    # pending run exercises the public cancellation reconciliation for the same
+    # organization and settles that usage without an internal test endpoint.
+    run runner_chat_send \
+        "$AGENT_ID" \
+        "This follow-up run should be cancelled immediately." \
+        "$THREAD_ID" \
+        ""
+    echo "$output"
+    assert_success
+    local settlement_run_id
+    settlement_run_id=$(jq -er \
+        '.runId | select(type == "string" and length > 0)' \
+        <<<"$output")
+    run jq -e '.status == "pending"' <<<"$output"
+    echo "$output"
+    assert_success
+
+    run runner_e2e_cancel_run "$settlement_run_id"
+    echo "$output"
+    assert_success
+    run jq -e '.status == "cancelled"' <<<"$output"
+    echo "$output"
+    assert_success
+    run runner_e2e_wait_for_chat_event \
+        "$THREAD_ID" \
+        "$settlement_run_id" \
+        run.cancelled
+    echo "$output"
+    assert_success
+
     run runner_e2e_wait_for_usage_event \
         "$THREAD_ID" \
         "$RUN_ID" \
