@@ -14,7 +14,7 @@ entry points. The current suite covers:
   attribution;
 - active-run cancellation through the public run and chat-events APIs;
 - ordinary and empty chat attachments across continuation, plus runner-mounted
-  workflow files, agent instructions, and user timezone preferences;
+  workflow files and agent instructions;
 - connector firewall placeholder and authentication behavior through the
   deployed preview API, runner, sandbox, and proxy.
 
@@ -81,8 +81,10 @@ clean up their own agents, threads, and connector connections through public
 The workflow also prepares dedicated real-Codex and real-Claude identities.
 Use the Codex identity for vm0-managed model billing coverage and the Claude
 identity for BYOK coverage so provider policy and usage assertions remain
-isolated. The shared mock-runner identity starts with `UTC` as its timezone;
-tests that change this user preference must restore it during teardown.
+isolated. The shared mock-runner identity starts with `UTC` as its timezone.
+Runner BATS must not mutate shared account-level preferences from parallel
+shards. Coverage that needs mutable account-level state requires a dedicated
+identity or a serialized lane.
 
 Use a different organization-scoped connector slug in each file that can run in
 parallel. Assert sandbox-visible output and vm0-owned telemetry; do not treat an
