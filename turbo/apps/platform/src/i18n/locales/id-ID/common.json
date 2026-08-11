@@ -4180,7 +4180,6 @@
         "useAccount": "Gunakan"
       },
       "picker": {
-        "balancedUse": "Penggunaan seimbang",
         "builtInModel": "Model bawaan",
         "byokHelp": "Menggunakan provider yang Anda atur",
         "fast": "Cepat",
@@ -4196,14 +4195,12 @@
           "frontier": "Model andalan terdepan",
           "premium": "Model terdepan premium untuk tugas tersulit"
         },
-        "prioritizeSpeed": "Prioritaskan kecepatan",
         "pro": "Pro",
         "providerLabels": {
           "azureFoundryPortal": "portal Azure foundry",
           "claudeCodeOauth": "Claude Code (token OAuth)",
           "deepseek": "Deepseek"
         },
-        "runSpeed": "Kecepatan jalankan",
         "standard": "Standar"
       },
       "policies": {

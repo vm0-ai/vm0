@@ -4181,7 +4181,6 @@
         "useAccount": "उपयोग करें"
       },
       "picker": {
-        "balancedUse": "संतुलित उपयोग",
         "builtInModel": "अंतर्निर्मित मॉडल",
         "byokHelp": "आपके कॉन्फ़िगर किए गए प्रोवाइडर का उपयोग करता है",
         "fast": "तेज़",
@@ -4197,14 +4196,12 @@
           "frontier": "फ्रंटियर फ्लैगशिप मॉडल",
           "premium": "सबसे कठिन कार्यों के लिए प्रीमियम फ्रंटियर मॉडल"
         },
-        "prioritizeSpeed": "गति को प्राथमिकता दें",
         "pro": "प्रो",
         "providerLabels": {
           "azureFoundryPortal": "एज़्योर फाउंड्री पोर्टल",
           "claudeCodeOauth": "Claude Code (OAuth टोकन)",
           "deepseek": "गहन खोज"
         },
-        "runSpeed": "भागने की गति",
         "standard": "मानक"
       },
       "policies": {

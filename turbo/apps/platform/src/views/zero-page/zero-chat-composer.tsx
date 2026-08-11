@@ -47,6 +47,7 @@ import {
   User,
   Video,
   X,
+  Zap,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -230,7 +231,10 @@ import {
   avatarTemplateSelection,
   toAvatarGenerationTemplate,
 } from "../../signals/zero-page/avatar-template-selection.ts";
-import { resolveModelFirstUserDefaultSelection } from "../../signals/zero-page/model-default-selection.ts";
+import {
+  isCodexFastModeAvailableForSelection,
+  resolveModelFirstUserDefaultSelection,
+} from "../../signals/zero-page/model-default-selection.ts";
 
 const MAX_FILE_SIZE = 1024 * 1024 * 1024; // 1 GB — keep in sync with web constants
 const COMPOSER_CONTROL_FOCUS_CLASS =
@@ -7363,6 +7367,64 @@ function ModelConfigurationWarning({
   );
 }
 
+function ComposerFastModeButton({
+  value,
+  onChange,
+  disabled,
+  codexFastModeEnabled,
+}: ComposerModelPicker & { codexFastModeEnabled: boolean }) {
+  const { t } = useTranslation();
+  const policies = useLastResolved(orgModelPolicies$);
+  const available = isCodexFastModeAvailableForSelection({
+    policies,
+    selectedModel: value?.selectedModel,
+    codexFastModeEnabled,
+  });
+  if (!value || !available) {
+    return null;
+  }
+  const active = value.codexServiceTier === "fast";
+  const label = t(($) => {
+    return $.settings.models.picker.fast;
+  });
+  const creditNotice = t(($) => {
+    return $.settings.models.picker.moreCodexCredits;
+  });
+  return (
+    <TooltipProvider delayDuration={300}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            variant="quiet"
+            size="icon-sm"
+            className={cn(
+              "shrink-0",
+              COMPOSER_CONTROL_ICON_CLASS,
+              active &&
+                "bg-amber-500/10 text-amber-600 hover:bg-amber-500/15 hover:text-amber-700 dark:text-amber-300 dark:hover:text-amber-200",
+            )}
+            aria-label={label}
+            aria-pressed={active}
+            disabled={disabled}
+            onClick={() => {
+              onChange({
+                selectedModel: value.selectedModel,
+                ...(active ? {} : { codexServiceTier: "fast" }),
+              });
+            }}
+          >
+            <Zap fill={active ? "currentColor" : "none"} aria-hidden="true" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="text-xs">
+          {label} · {creditNotice}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
 function ComposerModelPickerSlot({ signals }: { signals: ComposerSignals }) {
   const { t } = useTranslation();
   const codexFastModeEnabled = useGet(codexFastModeEnabled$);
@@ -7422,6 +7484,10 @@ function ComposerModelPickerSlot({ signals }: { signals: ComposerSignals }) {
   return (
     <>
       {submitBlocker && <ModelConfigurationWarning blocker={submitBlocker} />}
+      <ComposerFastModeButton
+        {...modelPicker}
+        codexFastModeEnabled={codexFastModeEnabled}
+      />
       <ModelProviderPicker
         value={modelPicker.value}
         onChange={onModelPickerChange}

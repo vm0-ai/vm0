@@ -4180,7 +4180,6 @@
         "useAccount": "사용"
       },
       "picker": {
-        "balancedUse": "균형 잡힌 사용",
         "builtInModel": "내장 모델",
         "byokHelp": "구성된 공급자 사용",
         "fast": "빠름",
@@ -4196,14 +4195,12 @@
           "frontier": "최첨단 프런티어 모델",
           "premium": "가장 어려운 작업용 프리미엄 프런티어 모델"
         },
-        "prioritizeSpeed": "속도 우선",
         "pro": "프로",
         "providerLabels": {
           "azureFoundryPortal": "Azure 파운드리 포털",
           "claudeCodeOauth": "Claude Code (OAuth 토큰)",
           "deepseek": "Deepseek"
         },
-        "runSpeed": "실행 속도",
         "standard": "표준"
       },
       "policies": {

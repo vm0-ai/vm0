@@ -4180,7 +4180,6 @@
         "useAccount": "使用"
       },
       "picker": {
-        "balancedUse": "バランスよく使う",
         "builtInModel": "内蔵モデル",
         "byokHelp": "設定されたプロバイダーを使用します",
         "fast": "速い",
@@ -4196,14 +4195,12 @@
           "frontier": "フロンティアフラッグシップモデル",
           "premium": "最も困難なタスクに対応するプレミアムフロンティアモデル"
         },
-        "prioritizeSpeed": "スピードを優先",
         "pro": "プロ",
         "providerLabels": {
           "azureFoundryPortal": "Azure ファウンドリ ポータル",
           "claudeCodeOauth": "Claude Code（OAuthトークン）",
           "deepseek": "ディープシーク"
         },
-        "runSpeed": "走行速度",
         "standard": "標準"
       },
       "policies": {

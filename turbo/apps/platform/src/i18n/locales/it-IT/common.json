@@ -4230,7 +4230,6 @@
         "useAccount": "Usa"
       },
       "picker": {
-        "balancedUse": "Utilizzo equilibrato",
         "builtInModel": "Modello da incasso",
         "byokHelp": "Utilizza il provider configurato",
         "fast": "Veloce",
@@ -4246,14 +4245,12 @@
           "frontier": "Modello di punta della frontiera",
           "premium": "Modello premium di frontiera per i compiti più difficili"
         },
-        "prioritizeSpeed": "Dai priorità alla velocità",
         "pro": "Pro",
         "providerLabels": {
           "azureFoundryPortal": "Azure portale della fonderia",
           "claudeCodeOauth": "Claude Code (OAuth token)",
           "deepseek": "Ricerca profonda"
         },
-        "runSpeed": "Corri velocità",
         "standard": "Norma"
       },
       "policies": {

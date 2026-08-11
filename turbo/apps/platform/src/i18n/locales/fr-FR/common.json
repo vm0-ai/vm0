@@ -4230,7 +4230,6 @@
         "useAccount": "Utiliser"
       },
       "picker": {
-        "balancedUse": "Utilisation équilibrée",
         "builtInModel": "Modèle intégré",
         "byokHelp": "Utilise votre fournisseur configuré",
         "fast": "Rapide",
@@ -4246,14 +4245,12 @@
           "frontier": "Modèle phare Frontier",
           "premium": "Modèle premium Frontier pour les tâches les plus difficiles"
         },
-        "prioritizeSpeed": "Prioriser la vitesse",
         "pro": "Pro",
         "providerLabels": {
           "azureFoundryPortal": "Portail Azure Foundry",
           "claudeCodeOauth": "Claude Code (jeton OAuth)",
           "deepseek": "Deepseek"
         },
-        "runSpeed": "Vitesse d'exécution",
         "standard": "Standard"
       },
       "policies": {

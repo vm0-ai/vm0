@@ -108,6 +108,22 @@ async function navigateToChatThread(threadId: string): Promise<void> {
   click(link);
 }
 
+function queryFastModeButton(name = "Fast"): HTMLElement | undefined {
+  return queryAllByRoleFast("button").find((button) => {
+    return button.getAttribute("aria-label") === name;
+  });
+}
+
+function findFastModeButton(name = "Fast"): Promise<HTMLElement> {
+  return waitFor(() => {
+    const button = queryFastModeButton(name);
+    if (!button) {
+      throw new Error(`Fast mode button not found: ${name}`);
+    }
+    return button;
+  });
+}
+
 describe("chat composer models", () => {
   it("keeps model resources cached across Clerk profile events", async () => {
     const policy = buildModelPolicy({
@@ -366,7 +382,6 @@ describe("chat composer models", () => {
     "offers to make a temporary $targetSpeed run speed the default",
     async ({
       defaultServiceTier,
-      targetSpeed,
       notice,
       expectedServiceTier,
       expectedZapIcon,
@@ -422,21 +437,37 @@ describe("chat composer models", () => {
       });
 
       await expectComposerModel("GPT 5.6 Sol");
-      click(await findComposerModel("GPT 5.6 Sol"));
-      const runSpeed = await screen.findByRole("group", { name: "Run speed" });
-      const runSpeedButton = buttonContainingText(targetSpeed, runSpeed);
-      expect(runSpeedButton.querySelector("svg.lucide-zap") !== null).toBe(
-        expectedZapIcon,
-      );
-      click(runSpeedButton);
+      const modelTrigger = await findComposerModel("GPT 5.6 Sol");
+      click(modelTrigger);
+      const modelPicker = await screen.findByRole("listbox");
+      expect(
+        within(modelPicker).queryByRole("group", { name: "Run speed" }),
+      ).not.toBeInTheDocument();
       await user.keyboard("{Escape}");
 
-      const modelTrigger = await findComposerModel("GPT 5.6 Sol");
+      const fastModeButton = await findFastModeButton();
+      expect(fastModeButton).toHaveAttribute(
+        "aria-pressed",
+        String(!expectedZapIcon),
+      );
+      expect(
+        fastModeButton.compareDocumentPosition(modelTrigger) &
+          Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+      click(fastModeButton);
       await waitFor(() => {
-        expect(modelTrigger.querySelector("svg.lucide-zap") !== null).toBe(
-          expectedZapIcon,
+        expect(fastModeButton).toHaveAttribute(
+          "aria-pressed",
+          String(expectedZapIcon),
+        );
+        expect(fastModeButton.querySelector("svg.lucide-zap")).toHaveAttribute(
+          "fill",
+          expectedZapIcon ? "currentColor" : "none",
         );
       });
+      expect(fastModeButton).toHaveClass(
+        expectedZapIcon ? "text-amber-600" : "text-muted-foreground",
+      );
 
       await expect(screen.findByText(notice)).resolves.toBeInTheDocument();
       await user.click(buttonContainingText("Set as default", document.body));
@@ -512,10 +543,7 @@ describe("chat composer models", () => {
     await user.click(
       await screen.findByRole("option", { name: /GPT 5\.6 Sol/ }),
     );
-    click(await findComposerModel("GPT 5.6 Sol"));
-    const runSpeed = await screen.findByRole("group", { name: "Run speed" });
-    click(buttonContainingText("Fast", runSpeed));
-    await user.keyboard("{Escape}");
+    click(await findFastModeButton());
 
     await expect(
       screen.findByText("Temporarily switched to GPT 5.6 Sol Fast"),
@@ -611,18 +639,10 @@ describe("chat composer models", () => {
       path: `/agents/${AGENT_ID}/chat`,
     });
 
-    click(await findComposerModel("GPT 5.6 Sol"));
-    const runSpeed = await screen.findByRole("group", { name: "Run speed" });
-    click(buttonContainingText("Fast", runSpeed));
+    const fastModeButton = await findFastModeButton();
+    click(fastModeButton);
     await waitFor(() => {
-      expect(buttonContainingText("Fast", runSpeed)).toHaveAttribute(
-        "aria-pressed",
-        "true",
-      );
-    });
-    await user.keyboard("{Escape}");
-    await waitFor(() => {
-      expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+      expect(fastModeButton).toHaveAttribute("aria-pressed", "true");
     });
 
     await sendMessageInUI(
@@ -679,24 +699,28 @@ describe("chat composer models", () => {
       path: `/agents/${AGENT_ID}/chat`,
     });
 
-    click(await findComposerModel("GPT 5.6 Sol"));
-    const runSpeed = await screen.findByRole("group", {
-      name: "Velocidade de execução",
-    });
-    expect(buttonContainingText("Padrão", runSpeed)).toBeInTheDocument();
-    expect(buttonContainingText("Rápido", runSpeed)).toBeInTheDocument();
-    expect(within(runSpeed).getByText("Uso equilibrado")).toBeInTheDocument();
-    expect(
-      within(runSpeed).getByText("Prioriza a velocidade"),
-    ).toBeInTheDocument();
-    expect(screen.getByText("Usa mais créditos do Codex.")).toBeInTheDocument();
+    const fastModeButton = await findFastModeButton("Rápido");
+    expect(fastModeButton).toHaveAttribute("aria-pressed", "false");
+    await user.hover(fastModeButton);
+    await expect(
+      screen.findByText("Rápido · Usa mais créditos do Codex."),
+    ).resolves.toBeInTheDocument();
 
-    await user.hover(screen.getByText("$"));
+    await user.unhover(fastModeButton);
+    await user.click(await findComposerModel("GPT 5.6 Sol"));
+    const modelPicker = await screen.findByRole("listbox");
+    expect(
+      within(modelPicker).queryByRole("group", {
+        name: "Velocidade de execução",
+      }),
+    ).not.toBeInTheDocument();
+
+    await user.hover(within(modelPicker).getByText("$"));
     await expect(
       screen.findAllByText("Nível econômico para tarefas simples do dia a dia"),
     ).resolves.not.toHaveLength(0);
 
-    await user.hover(screen.getByText("BYOK"));
+    await user.hover(within(modelPicker).getByText("BYOK"));
     await expect(
       screen.findAllByText("Usa seu provedor configurado"),
     ).resolves.not.toHaveLength(0);
@@ -758,18 +782,10 @@ describe("chat composer models", () => {
       path: `/agents/${AGENT_ID}/chat`,
     });
 
-    click(await findComposerModel("GPT 5.6 Luna"));
-    const runSpeed = await screen.findByRole("group", { name: "Run speed" });
-    click(buttonContainingText("Fast", runSpeed));
+    const fastModeButton = await findFastModeButton();
+    click(fastModeButton);
     await waitFor(() => {
-      expect(buttonContainingText("Fast", runSpeed)).toHaveAttribute(
-        "aria-pressed",
-        "true",
-      );
-    });
-    await user.keyboard("{Escape}");
-    await waitFor(() => {
-      expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+      expect(fastModeButton).toHaveAttribute("aria-pressed", "true");
     });
     act(() => {
       triggerAblyEvent("userPreferenceChanged", {
@@ -849,9 +865,7 @@ describe("chat composer models", () => {
       expect(
         screen.getByRole("combobox", { name: /^GPT 5\.6 Terra$/ }),
       ).toBeInTheDocument();
-      expect(
-        screen.queryByRole("group", { name: "Run speed" }),
-      ).not.toBeInTheDocument();
+      expect(queryFastModeButton()).toBeUndefined();
     });
 
     await sendMessageInUI(
@@ -947,8 +961,8 @@ describe("chat composer models", () => {
         path: `/agents/${AGENT_ID}/chat`,
       });
 
-      const modelPicker = await findComposerModel(modelLabel);
-      expect(within(modelPicker).queryByText("Fast")).toBeNull();
+      await findComposerModel(modelLabel);
+      expect(queryFastModeButton()).toBeUndefined();
       await sendMessageInUI(
         user,
         screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
@@ -1068,14 +1082,10 @@ describe("chat composer models", () => {
         screen.getByRole("combobox", { name: /GPT 5\.6 Sol/ }),
       ).toBeInTheDocument();
     });
-
-    await user.click(screen.getByRole("combobox", { name: /GPT 5\.6 Sol/ }));
-    const runSpeed = await screen.findByRole("group", { name: "Run speed" });
-    expect(buttonContainingText("Fast", runSpeed)).toHaveAttribute(
+    await expect(findFastModeButton()).resolves.toHaveAttribute(
       "aria-pressed",
       "true",
     );
-    await user.keyboard("{Escape}");
 
     await sendMessageInUI(
       user,
@@ -1133,10 +1143,10 @@ describe("chat composer models", () => {
       path: `/chats/${THREAD_ID}`,
     });
 
-    const modelPicker = await screen.findByRole("combobox", {
+    await screen.findByRole("combobox", {
       name: "GPT 5.6 Terra",
     });
-    const showedFast = within(modelPicker).queryByText("Fast") !== null;
+    const showedFast = queryFastModeButton() !== undefined;
 
     await sendMessageInUI(
       user,
@@ -1183,10 +1193,13 @@ describe("chat composer models", () => {
       path: `/chats/${THREAD_ID}`,
     });
 
-    const modelPicker = await screen.findByRole("combobox", {
+    await screen.findByRole("combobox", {
       name: "GPT 5.6 Luna",
     });
-    expect(within(modelPicker).getByText("Fast")).toBeInTheDocument();
+    await expect(findFastModeButton()).resolves.toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
 
     await sendMessageInUI(
       user,
@@ -1247,20 +1260,16 @@ describe("chat composer models", () => {
         screen.getByRole("combobox", { name: /GPT 5\.6 Sol/ }),
       ).toBeInTheDocument();
     });
+    const fastModeButton = await findFastModeButton();
+    expect(fastModeButton).toHaveAttribute("aria-pressed", "true");
 
     lifecycle.setCodexServiceTier(null);
     act(() => {
       triggerAblyEvent("threadListChanged");
     });
-    await user.click(screen.getByRole("combobox", { name: /GPT 5\.6 Sol/ }));
-    const runSpeed = await screen.findByRole("group", { name: "Run speed" });
     await waitFor(() => {
-      expect(buttonContainingText("Standard", runSpeed)).toHaveAttribute(
-        "aria-pressed",
-        "true",
-      );
+      expect(fastModeButton).toHaveAttribute("aria-pressed", "false");
     });
-    await user.keyboard("{Escape}");
     await sendMessageInUI(
       user,
       screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement,
@@ -1399,9 +1408,7 @@ describe("chat composer models", () => {
     click(await findComposerModel("GPT 5.6 Luna"));
     await waitFor(() => {
       expect(screen.getByRole("listbox")).toBeInTheDocument();
-      expect(
-        screen.queryByRole("group", { name: "Run speed" }),
-      ).not.toBeInTheDocument();
+      expect(queryFastModeButton()).toBeUndefined();
     });
   });
 
@@ -1437,9 +1444,7 @@ describe("chat composer models", () => {
     click(await findComposerModel("Claude Sonnet 5"));
     await waitFor(() => {
       expect(screen.getByRole("listbox")).toBeInTheDocument();
-      expect(
-        screen.queryByRole("group", { name: "Run speed" }),
-      ).not.toBeInTheDocument();
+      expect(queryFastModeButton()).toBeUndefined();
     });
   });
 

@@ -4181,7 +4181,6 @@
         "useAccount": "Use"
       },
       "picker": {
-        "balancedUse": "Balanced use",
         "builtInModel": "Built-in model",
         "byokHelp": "Uses your configured provider",
         "fast": "Fast",
@@ -4197,14 +4196,12 @@
           "frontier": "Frontier flagship model",
           "premium": "Premium frontier model for the hardest tasks"
         },
-        "prioritizeSpeed": "Prioritize speed",
         "pro": "Pro",
         "providerLabels": {
           "azureFoundryPortal": "Azure foundry portal",
           "claudeCodeOauth": "Claude Code (OAuth token)",
           "deepseek": "Deepseek"
         },
-        "runSpeed": "Run speed",
         "standard": "Standard"
       },
       "policies": {
