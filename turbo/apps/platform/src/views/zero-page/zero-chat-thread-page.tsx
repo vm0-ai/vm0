@@ -128,6 +128,8 @@ import {
   videoTemplateSpecText,
   type VideoTemplateSpec,
 } from "../../signals/zero-page/video-template-spec.ts";
+import { openSentTemplateDetail$ } from "../../signals/zero-page/sent-template-detail.ts";
+import { SentTemplateDetailDialog } from "./sent-template-detail-dialog.tsx";
 import { isStandalonePwa } from "../../lib/keyboard-dismiss-gesture.ts";
 import {
   captureRecommendedFollowupSelected,
@@ -2766,6 +2768,7 @@ export function ZeroChatThreadPage() {
         <ChatThreadArea leftPane={leftPane} rightPane={rightPane} />
       </ChatThreadSidebarShell>
       {lightboxUrl && <AttachmentLightbox />}
+      <SentTemplateDetailDialog />
       <ChatConnectorActionConnectModal />
     </>
   );
@@ -7499,11 +7502,12 @@ const STRUCTURED_INLINE_REFERENCE_BASE_CLASS =
   "gap-1.5 rounded-md bg-orange-500/10 px-2 align-middle text-[13px] " +
   "font-medium text-orange-600 dark:bg-orange-400/15 dark:text-orange-300";
 const STRUCTURED_INLINE_REFERENCE_CLASS = `${STRUCTURED_INLINE_REFERENCE_BASE_CLASS} max-w-[240px]`;
-const STRUCTURED_INLINE_LINK_REFERENCE_CLASS =
-  `${STRUCTURED_INLINE_REFERENCE_CLASS} transition-colors ` +
-  "hover:bg-orange-500/15 focus-visible:outline-none focus-visible:ring-2 " +
-  "focus-visible:ring-orange-500/30 active:bg-orange-500/20 " +
-  "dark:hover:bg-orange-400/20 dark:active:bg-orange-400/25";
+const STRUCTURED_INLINE_INTERACTIVE_CLASS =
+  "transition-colors hover:bg-orange-500/15 focus-visible:outline-none " +
+  "focus-visible:ring-2 focus-visible:ring-orange-500/30 " +
+  "active:bg-orange-500/20 dark:hover:bg-orange-400/20 " +
+  "dark:active:bg-orange-400/25";
+const STRUCTURED_INLINE_LINK_REFERENCE_CLASS = `${STRUCTURED_INLINE_REFERENCE_CLASS} ${STRUCTURED_INLINE_INTERACTIVE_CLASS}`;
 
 /**
  * Read-only echo of the parameters a sent video used. Narrow viewports hide
@@ -7520,8 +7524,10 @@ function SentVideoTemplateSpec({ spec }: { readonly spec: VideoTemplateSpec }) {
 }
 
 /**
- * A sent template is a record of what the message used, not a control. It
- * renders as static text so the history stays read-only.
+ * A sent template is a record of what the message used, not an editing
+ * control. Templates without a spec render as static text; a spec-bearing
+ * video chip is a button that opens the read-only detail dialog, because
+ * narrow viewports hide the inline spec and touch has no hover title.
  */
 function UserMessageTemplateReference({
   part,
@@ -7530,26 +7536,41 @@ function UserMessageTemplateReference({
 }) {
   const typeLabel = generationTemplateTypeLabel(part.template);
   const videoOptionsEnabled = useGet(videoTemplateOptionsEnabled$);
+  const openDetail = useSet(openSentTemplateDetail$);
   const spec = videoOptionsEnabled ? videoTemplateSpec(part.template) : null;
   const label = `${typeLabel ?? part.template.type} · ${part.titleSnapshot}`;
+  if (spec === null) {
+    return (
+      <span
+        data-structured-template-reference=""
+        className={STRUCTURED_INLINE_REFERENCE_CLASS}
+        title={label}
+      >
+        <SwatchBook size={13} className="shrink-0" />
+        <span className="min-w-0 truncate">{part.titleSnapshot}</span>
+      </span>
+    );
+  }
   return (
-    <span
+    <button
+      type="button"
       data-structured-template-reference=""
       // The spec is as wide as the chip's old fixed cap on its own, so a
       // spec-bearing chip trades the cap for the full message width.
-      className={
-        spec === null
-          ? STRUCTURED_INLINE_REFERENCE_CLASS
-          : `${STRUCTURED_INLINE_REFERENCE_BASE_CLASS} max-w-full`
-      }
-      title={
-        spec === null ? label : `${label} · ${videoTemplateSpecText(spec)}`
-      }
+      className={`${STRUCTURED_INLINE_REFERENCE_BASE_CLASS} max-w-full ${STRUCTURED_INLINE_INTERACTIVE_CLASS}`}
+      title={`${label} · ${videoTemplateSpecText(spec)}`}
+      aria-haspopup="dialog"
+      onClick={() => {
+        openDetail({
+          titleSnapshot: part.titleSnapshot,
+          template: part.template,
+        });
+      }}
     >
       <SwatchBook size={13} className="shrink-0" />
       <span className="min-w-0 truncate">{part.titleSnapshot}</span>
-      {spec !== null && <SentVideoTemplateSpec spec={spec} />}
-    </span>
+      <SentVideoTemplateSpec spec={spec} />
+    </button>
   );
 }
 

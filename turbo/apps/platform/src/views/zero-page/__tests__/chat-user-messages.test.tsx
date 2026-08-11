@@ -116,6 +116,7 @@ describe("user messages", () => {
   });
 
   it("echoes the video parameters a sent template used", async () => {
+    const user = userEvent.setup({ delay: null });
     const threadId = "b0000000-0000-4000-a000-000000000750";
     const templateItem = VIDEO_TEMPLATE_ITEMS[0]!;
     mockChatLifecycle(context, {
@@ -169,6 +170,31 @@ describe("user messages", () => {
     expect(reference).toHaveTextContent(
       "Seedance 2.0 fast \u00b7 9:16 \u00b7 8s \u00b7 720p \u00b7 Audio",
     );
+
+    // Touch viewports hide the inline echo and have no hover, so the chip
+    // doubles as a button that opens a read-only detail dialog.
+    expect(reference.tagName).toBe("BUTTON");
+    await user.click(reference);
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText(templateItem.title)).toBeInTheDocument();
+    expect(dialog.querySelector("img")).toBeInstanceOf(HTMLImageElement);
+    const rows = [
+      ["Model", "Seedance 2.0 fast"],
+      ["Ratio", "9:16"],
+      ["Duration", "8s"],
+      ["Resolution", "720p"],
+      ["Generate audio", "Audio"],
+    ] as const;
+    for (const [label, value] of rows) {
+      expect(within(dialog).getByText(label).parentElement).toHaveTextContent(
+        value,
+      );
+    }
+
+    await user.keyboard("{Escape}");
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
   });
 
   it("renders ordered canonical snapshots with literal Markdown text", async () => {
