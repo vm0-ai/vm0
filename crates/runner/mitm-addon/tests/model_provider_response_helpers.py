@@ -14,6 +14,8 @@ import flow_metadata_keys as metadata_keys
 import http_network_log
 import mitm_addon
 import usage
+from runtime_url_parsing import split_runtime_url
+from tests.model_provider_flow_helpers import record_model_provider_continuation
 
 
 @dataclass(frozen=True)
@@ -382,7 +384,12 @@ def model_provider_flow(
     proxy_log_path: Path | None = None,
     run_id: str = "run-abc-123",
 ):
-    flow = real_flow(with_response=False, host=provider_case.host)
+    flow = real_flow(
+        with_response=False,
+        host=provider_case.host,
+        path=split_runtime_url(provider_case.original_url).path,
+        method="POST",
+    )
     set_model_provider_metadata(
         flow,
         tmp_path,
@@ -392,4 +399,6 @@ def model_provider_flow(
         proxy_log_path=proxy_log_path,
         run_id=run_id,
     )
+    if observable:
+        record_model_provider_continuation(flow)
     return flow

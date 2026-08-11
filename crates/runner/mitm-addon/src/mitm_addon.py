@@ -19,7 +19,7 @@ import tempfile
 from collections.abc import Awaitable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal, NoReturn
+from typing import Literal, NoReturn, assert_never
 
 from mitmproxy import connection, ctx, http, tcp, tls
 from mitmproxy.addonmanager import Loader
@@ -55,6 +55,7 @@ import http_local_responses
 import http_network_log
 import matching
 import mitmproxy_compat
+import model_usage_eligibility
 import platform_api
 import registry
 import request_classification
@@ -1009,7 +1010,11 @@ async def _try_firewall_request_stream_from_headers(
         fall_back()
         return
 
-    _maybe_normalize_accept_encoding_for_body_inspection(flow, allow, vm_info)
+    model_usage_candidate = _maybe_normalize_accept_encoding_for_body_inspection(
+        flow,
+        allow,
+        vm_info,
+    )
     _start_request_timing(flow)
     expected_run_id = flow_metadata.run_id(flow.metadata)
     admitted_server = flow.server_conn
@@ -1042,6 +1047,7 @@ async def _try_firewall_request_stream_from_headers(
         is_billable_firewall(allow.name, vm_info),
         _is_model_provider_usage_observable(allow.name, vm_info),
     )
+    model_usage_eligibility.record_provider_continuation(flow, model_usage_candidate)
     try:
         request_classification.cache_classification(flow, classification)
         flow.metadata[_FIREWALL_AUTH_APPLIED_IN_REQUESTHEADERS] = True
@@ -1400,7 +1406,11 @@ async def request(flow: http.HTTPFlow) -> None:
                     error=host_policy_error,
                 )
                 return
-            _maybe_normalize_accept_encoding_for_body_inspection(flow, allow, vm_info)
+            model_usage_candidate = _maybe_normalize_accept_encoding_for_body_inspection(
+                flow,
+                allow,
+                vm_info,
+            )
             terminal_usage.track_flow_if_needed(
                 flow,
                 is_billable_firewall(allow.name, vm_info),
@@ -1430,6 +1440,10 @@ async def request(flow: http.HTTPFlow) -> None:
                 auth_base_forwarder.release_forward_request_admission_from_flow(flow)
                 terminal_usage.release_tracked_flow(flow)
             elif auth_result is FirewallAuthHandlingResult.CONTINUE_UPSTREAM:
+                model_usage_eligibility.record_provider_continuation(
+                    flow,
+                    model_usage_candidate,
+                )
                 await _prepare_codex_catalog_request_with_upstream_revalidation(
                     flow,
                     allow,
@@ -1437,6 +1451,11 @@ async def request(flow: http.HTTPFlow) -> None:
                     admitted_server=admitted_server,
                     require_connected=require_connected,
                     request_end_stream=True,
+                )
+            elif auth_result is FirewallAuthHandlingResult.INLINE_PROVIDER_RESPONSE:
+                model_usage_eligibility.record_provider_continuation(
+                    flow,
+                    model_usage_candidate,
                 )
             return
 
@@ -1459,6 +1478,7 @@ async def request(flow: http.HTTPFlow) -> None:
         flow.metadata.pop(metadata_keys.HTTP_REQUEST_START_MONOTONIC, None)
         auth_base_forwarder.release_forward_request_admission_from_flow(flow)
         aws_sigv4_body_admission.release_from_flow(flow)
+        model_usage_eligibility.release_flow_state(flow)
         terminal_usage.release_tracked_flow(flow)
         raise
     finally:
@@ -1480,26 +1500,43 @@ def _maybe_normalize_accept_encoding_for_body_inspection(
     flow: http.HTTPFlow,
     allow: matching.FirewallAllow,
     vm_info: dict,
-) -> None:
-    if _is_websocket_upgrade_request(flow):
+) -> model_usage_eligibility.ModelUsageRequest | None:
+    websocket_upgrade_request = _is_websocket_upgrade_request(flow)
+    if websocket_upgrade_request:
         flow.metadata[metadata_keys.WEBSOCKET_UPGRADE_REQUEST] = True
-    if _expects_http_response_body_usage_inspection(flow, allow, vm_info):
+    model_usage_candidate = None
+    if _is_model_provider_usage_observable(allow.name, vm_info):
+        model_usage_candidate = model_usage_eligibility.classify_request_candidate(
+            flow,
+            websocket_upgrade_request=websocket_upgrade_request,
+        )
+    if _expects_http_response_body_usage_inspection(
+        flow,
+        allow,
+        vm_info,
+        model_usage_candidate=model_usage_candidate,
+        websocket_upgrade_request=websocket_upgrade_request,
+    ):
         response_encoding_negotiation.normalize_accept_encoding_for_body_inspection(
             flow.request.headers
         )
+    return model_usage_candidate
 
 
 def _expects_http_response_body_usage_inspection(
     flow: http.HTTPFlow,
     allow: matching.FirewallAllow,
     vm_info: dict,
+    *,
+    model_usage_candidate: model_usage_eligibility.ModelUsageRequest | None,
+    websocket_upgrade_request: bool,
 ) -> bool:
     if flow.request.method.upper() in _HTTP_RESPONSE_BODYLESS_METHODS:
         return False
-    if _is_websocket_upgrade_request(flow):
+    if websocket_upgrade_request:
         return False
     if _is_model_provider_usage_observable(allow.name, vm_info):
-        return True
+        return model_usage_candidate is not None
     return is_billable_firewall(allow.name, vm_info) and usage.has_connector_response_parser(
         allow.name
     )
@@ -1570,19 +1607,16 @@ def websocket_message(flow: http.HTTPFlow) -> None:
 
     message = flow.websocket.messages[-1]
     websocket_retention.schedule_message_trim(flow)
-    if not response_streaming.is_model_websocket_usage_enabled(flow):
+    if not model_usage_eligibility.is_websocket_active(flow):
         return
-    uses_openai_responses = response_streaming.model_usage_protocol(flow) == "openai_responses"
     if getattr(message, "from_client", False):
-        if uses_openai_responses:
-            body = message.content.encode() if isinstance(message.content, str) else message.content
-            event_type = usage.inspect_openai_responses_event_type_json(body)
-            codex_output_timing.observe_client_event(flow, event_type, message.timestamp)
+        body = message.content.encode() if isinstance(message.content, str) else message.content
+        event_type = usage.inspect_openai_responses_event_type_json(body)
+        codex_output_timing.observe_client_event(flow, event_type, message.timestamp)
         return
     body = message.content.encode() if isinstance(message.content, str) else message.content
     event = usage.inspect_openai_responses_event_json(body)
-    if uses_openai_responses:
-        codex_output_timing.observe_server_event(flow, event.event_type)
+    codex_output_timing.observe_server_event(flow, event.event_type)
     response_streaming.feed_model_websocket_usage(flow, event)
 
 
@@ -1619,6 +1653,7 @@ def _release_terminal_flow_state(
     if release_tracking:
         websocket_retention.release_terminal_messages(flow)
         terminal_usage.release_model_websocket_terminal_state(flow)
+        model_usage_eligibility.release_flow_state(flow)
     request_classification.pop_cached_classification(flow)
     flow.metadata.pop(_FIREWALL_AUTH_APPLIED_IN_REQUESTHEADERS, None)
     flow.metadata.pop(metadata_keys.FIREWALL_AUTH_PROBE_FAILURE, None)
@@ -1639,7 +1674,7 @@ def websocket_end(flow: http.HTTPFlow) -> None:
     """Report model-provider usage extracted from a WebSocket-upgraded response."""
     try:
         run_id = flow_metadata.run_id(flow.metadata)
-        if run_id:
+        if run_id and model_usage_eligibility.is_websocket_active(flow):
             terminal_usage.report_model_provider_usage_once(flow, run_id)
     finally:
         _release_terminal_flow_state(flow, release_tracking=True)
@@ -1660,7 +1695,7 @@ def response(flow: http.HTTPFlow) -> Awaitable[None] | None:
 
     release_tracking = True
     try:
-        release_tracking = not response_streaming.is_model_websocket_usage_enabled(flow)
+        release_tracking = not model_usage_eligibility.is_websocket_active(flow)
     finally:
         _release_terminal_flow_state(
             flow,
@@ -1677,7 +1712,7 @@ async def _complete_response(
     release_tracking = True
     try:
         await continuation
-        release_tracking = not response_streaming.is_model_websocket_usage_enabled(flow)
+        release_tracking = not model_usage_eligibility.is_websocket_active(flow)
     finally:
         _release_terminal_flow_state(
             flow,
@@ -1785,13 +1820,14 @@ def _finish_response_handling(
     # For non-streaming responses, fall back to extracting usage from the
     # buffered JSON body only for legacy/test flows that did not pass through
     # responseheaders() and therefore have no incremental extractor.
+    model_protocol = model_usage_eligibility.activated_protocol(flow)
     if (
-        not flow.metadata.get(metadata_keys.MODEL_JSON_USAGE_FINALIZED)
+        model_protocol is not None
+        and not flow.metadata.get(metadata_keys.MODEL_JSON_USAGE_FINALIZED)
         and not flow.metadata.get(metadata_keys.MODEL_PROVIDER_USAGE)
         and stream_buf
         and response_streaming.uses_model_json_fallback(flow)
     ):
-        model_protocol = response_streaming.model_usage_protocol(flow)
         if model_protocol == "openai_responses":
             json_usage, json_error = usage.extract_openai_responses_usage_with_error_from_json(
                 bytes(stream_buf),
@@ -1804,11 +1840,13 @@ def _finish_response_handling(
                     flow.response.headers if flow.response else None,
                 )
             )
-        else:
+        elif model_protocol == "anthropic_messages":
             json_usage, json_error = usage.extract_anthropic_messages_usage_with_error_from_json(
                 bytes(stream_buf),
                 flow.response.headers if flow.response else None,
             )
+        else:
+            assert_never(model_protocol)
         if json_usage:
             flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = json_usage
         elif json_error is not None:

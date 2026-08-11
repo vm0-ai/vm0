@@ -7,6 +7,7 @@ import flow_metadata_keys as metadata_keys
 import mitm_addon
 import response_streaming
 from tests.flow_helpers import header_map, response_stream
+from tests.model_provider_flow_helpers import record_model_provider_continuation
 
 
 class TestReleaseResponseStreamState:
@@ -38,6 +39,7 @@ class TestReleaseResponseStreamState:
         (
             "host",
             "path",
+            "request_method",
             "response_content_type",
             "metadata",
             "finish_key",
@@ -47,6 +49,7 @@ class TestReleaseResponseStreamState:
             pytest.param(
                 "api.anthropic.com",
                 "/v1/messages",
+                "POST",
                 "application/json",
                 {
                     metadata_keys.FIREWALL_NAME: "model-provider:anthropic-api-key",
@@ -60,6 +63,7 @@ class TestReleaseResponseStreamState:
             pytest.param(
                 "api.openai.com",
                 "/v1/responses",
+                "POST",
                 "text/event-stream",
                 {
                     metadata_keys.FIREWALL_NAME: "model-provider:openai-api-key",
@@ -74,6 +78,7 @@ class TestReleaseResponseStreamState:
             pytest.param(
                 "api.x.com",
                 "/2/tweets",
+                "GET",
                 "application/json",
                 {
                     metadata_keys.FIREWALL_NAME: "x",
@@ -87,6 +92,7 @@ class TestReleaseResponseStreamState:
             pytest.param(
                 "api.x.com",
                 "/2/tweets/search/stream",
+                "GET",
                 "application/json",
                 {
                     metadata_keys.FIREWALL_NAME: "x",
@@ -104,13 +110,21 @@ class TestReleaseResponseStreamState:
         real_flow,
         host,
         path,
+        request_method,
         response_content_type,
         metadata,
         finish_key,
         reports_on_interruption,
     ):
-        flow = real_flow(with_response=False, host=host, path=path)
+        flow = real_flow(
+            with_response=False,
+            host=host,
+            path=path,
+            method=request_method,
+        )
         flow.metadata.update(metadata)
+        if finish_key.startswith("model_"):
+            record_model_provider_continuation(flow)
         flow.response = tutils.tresp(
             status_code=200,
             headers=header_map({"content-type": response_content_type}),
@@ -163,10 +177,16 @@ class TestReleaseResponseStreamState:
         assert metadata_keys.STREAM_BUFFER_STATE not in flow.metadata
 
     def test_release_after_response_is_removed_still_drops_metadata(self, real_flow):
-        flow = real_flow(with_response=False, host="api.anthropic.com")
+        flow = real_flow(
+            with_response=False,
+            host="api.anthropic.com",
+            path="/v1/messages",
+            method="POST",
+        )
         flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:anthropic-api-key"
         flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
         flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "claude-sonnet-4-6"
+        record_model_provider_continuation(flow)
         flow.response = tutils.tresp(
             status_code=200, headers=header_map({"content-type": "application/json"})
         )

@@ -38,6 +38,7 @@ class TestUsageReportingIdempotency:
             original_url="https://api.openai.com/v1/responses",
             firewall_name="model-provider:openai-api-key",
             cli_agent_type="codex",
+            model_usage_provider="gpt-5.5",
         )
         flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {
             "model": "gpt-5.5",
@@ -71,10 +72,10 @@ class TestUsageReportingIdempotency:
                 for entry in entries
             )
 
-    def test_empty_model_usage_does_not_block_later_error_usage(
+    def test_terminal_response_does_not_accept_late_error_usage(
         self, tmp_path, real_flow, mitm_ctx, usage_webhook_api
     ):
-        """A no-event response pass must not mark the flow reported."""
+        """Usage added after terminal response cleanup must not be reported."""
         flow = make_model_provider_flow(
             real_flow,
             tmp_path,
@@ -82,6 +83,7 @@ class TestUsageReportingIdempotency:
             original_url="https://api.openai.com/v1/responses",
             firewall_name="model-provider:openai-api-key",
             cli_agent_type="codex",
+            model_usage_provider="gpt-5.5",
         )
         flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {
             "model": "gpt-5.5",
@@ -101,8 +103,7 @@ class TestUsageReportingIdempotency:
             mitm_addon.error(flow)
             usage.flush_usage_events(trigger="test")
 
-        events = webhook.usage_events()
-        assert [event["category"] for event in events] == ["tokens.output"]
+        assert webhook.usage_events() == []
 
     def test_reports_usage_without_provider_message_id(
         self, tmp_path, real_flow, mitm_ctx, headers, usage_webhook_api

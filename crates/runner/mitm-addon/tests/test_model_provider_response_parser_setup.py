@@ -10,6 +10,7 @@ import mitm_addon
 import response_streaming
 from tests.flow_helpers import header_map, response_stream
 from tests.jsonl_log_helpers import jsonl_exists_after_flush
+from tests.model_provider_flow_helpers import record_model_provider_continuation
 from tests.x_flow_helpers import make_x_response_flow
 
 
@@ -24,7 +25,12 @@ class TestResponseHeadersModelJsonParser:
         ],
     )
     def test_non_sse_media_type_uses_json_parser(self, real_flow, content_type):
-        flow = real_flow(with_response=False, host="api.openai.com")
+        flow = real_flow(
+            with_response=False,
+            host="api.openai.com",
+            path="/v1/responses",
+            method="POST",
+        )
         flow.response = tutils.tresp(
             status_code=200,
             headers=header_map({"content-type": content_type}),
@@ -33,6 +39,7 @@ class TestResponseHeadersModelJsonParser:
         flow.metadata[metadata_keys.CLI_AGENT_TYPE] = "codex"
         flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
         flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "gpt-5.5"
+        record_model_provider_continuation(flow)
 
         mitm_addon.responseheaders(flow)
 
@@ -51,7 +58,12 @@ class TestResponseHeadersModelJsonParser:
         }
 
     def test_brotli_model_json_skips_incremental_parser(self, real_flow, mitm_ctx):
-        flow = real_flow(with_response=False, host="api.anthropic.com")
+        flow = real_flow(
+            with_response=False,
+            host="api.anthropic.com",
+            path="/v1/messages",
+            method="POST",
+        )
         flow.response = tutils.tresp(
             status_code=200,
             headers=header_map({"content-type": "application/json", "content-encoding": "br"}),
@@ -59,6 +71,7 @@ class TestResponseHeadersModelJsonParser:
         flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:anthropic-api-key"
         flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
         flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "claude-sonnet-4-6"
+        record_model_provider_continuation(flow)
 
         with mitm_ctx() as log:
             mitm_addon.responseheaders(flow)
@@ -79,15 +92,15 @@ class TestBodylessModelResponseParserAdmission:
     @pytest.mark.parametrize(
         ("request_method", "response_status", "content_type", "content_encoding"),
         [
-            pytest.param("GET", 103, "application/json", "", id="informational"),
-            pytest.param("GET", 204, "application/json", "", id="no-content"),
-            pytest.param("GET", 205, "application/json", "", id="reset-content"),
-            pytest.param("GET", 304, "application/json", "", id="not-modified"),
+            pytest.param("POST", 103, "application/json", "", id="informational"),
+            pytest.param("POST", 204, "application/json", "", id="no-content"),
+            pytest.param("POST", 205, "application/json", "", id="reset-content"),
+            pytest.param("POST", 304, "application/json", "", id="not-modified"),
             pytest.param("HEAD", 200, "application/json", "", id="head"),
             pytest.param("CONNECT", 200, "application/json", "", id="successful-connect"),
-            pytest.param("GET", 204, "application/json", "gzip", id="gzip"),
-            pytest.param("GET", 204, "application/json", "deflate", id="deflate"),
-            pytest.param("GET", 204, "text/event-stream", "", id="sse"),
+            pytest.param("POST", 204, "application/json", "gzip", id="gzip"),
+            pytest.param("POST", 204, "application/json", "deflate", id="deflate"),
+            pytest.param("POST", 204, "text/event-stream", "", id="sse"),
         ],
     )
     def test_bodyless_response_skips_usage_parser_and_keeps_byte_accounting(
@@ -122,6 +135,8 @@ class TestBodylessModelResponseParserAdmission:
                 metadata_keys.MODEL_USAGE_PROVIDER: "claude-sonnet-4-6",
             }
         )
+        if request_method == "POST":
+            record_model_provider_continuation(flow)
 
         with mitm_ctx():
             mitm_addon.responseheaders(flow)
@@ -148,13 +163,19 @@ class TestResponseHeadersSseParser:
     """Tests for SSE parser setup in responseheaders()."""
 
     def test_sets_up_sse_parser_for_model_provider(self, real_flow, headers):
-        flow = real_flow(with_response=False, host="api.anthropic.com")
+        flow = real_flow(
+            with_response=False,
+            host="api.anthropic.com",
+            path="/v1/messages",
+            method="POST",
+        )
         flow.response = tutils.tresp(
             status_code=200, headers=header_map({"content-type": "text/event-stream"})
         )
         flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:anthropic-api-key"
         flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
         flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "claude-sonnet-4-6"
+        record_model_provider_continuation(flow)
 
         mitm_addon.responseheaders(flow)
 
@@ -174,7 +195,12 @@ class TestResponseHeadersSseParser:
         assert flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE]["tokens.input"] == 42
 
     def test_sets_up_sse_parser_with_case_insensitive_content_type(self, real_flow):
-        flow = real_flow(with_response=False, host="api.openai.com")
+        flow = real_flow(
+            with_response=False,
+            host="api.openai.com",
+            path="/v1/responses",
+            method="POST",
+        )
         flow.response = tutils.tresp(
             status_code=200,
             headers=header_map({"content-type": "Text/Event-Stream; Charset=UTF-8"}),
@@ -183,6 +209,7 @@ class TestResponseHeadersSseParser:
         flow.metadata[metadata_keys.CLI_AGENT_TYPE] = "codex"
         flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
         flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "gpt-5.5"
+        record_model_provider_continuation(flow)
 
         mitm_addon.responseheaders(flow)
 
@@ -197,7 +224,12 @@ class TestResponseHeadersSseParser:
         assert flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE]["tokens.output"] == 5
 
     def test_finalizes_sse_parser_for_trailing_event_without_blank_line(self, real_flow):
-        flow = real_flow(with_response=False, host="api.openai.com")
+        flow = real_flow(
+            with_response=False,
+            host="api.openai.com",
+            path="/v1/responses",
+            method="POST",
+        )
         flow.response = tutils.tresp(
             status_code=200,
             headers=header_map({"content-type": "text/event-stream"}),
@@ -206,6 +238,7 @@ class TestResponseHeadersSseParser:
         flow.metadata[metadata_keys.CLI_AGENT_TYPE] = "codex"
         flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
         flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "gpt-5.5"
+        record_model_provider_continuation(flow)
 
         mitm_addon.responseheaders(flow)
 
@@ -223,7 +256,12 @@ class TestResponseHeadersSseParser:
         assert flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE]["tokens.output"] == 7
 
     def test_sets_up_openai_sse_parser_for_openai_model_provider(self, real_flow, headers):
-        flow = real_flow(with_response=False, host="api.openai.com")
+        flow = real_flow(
+            with_response=False,
+            host="api.openai.com",
+            path="/v1/responses",
+            method="POST",
+        )
         flow.response = tutils.tresp(
             status_code=200,
             headers=header_map({"content-type": "text/event-stream"}),
@@ -232,6 +270,7 @@ class TestResponseHeadersSseParser:
         flow.metadata[metadata_keys.CLI_AGENT_TYPE] = "codex"
         flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
         flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "gpt-5.5"
+        record_model_provider_continuation(flow)
 
         mitm_addon.responseheaders(flow)
 
@@ -248,7 +287,12 @@ class TestResponseHeadersSseParser:
         assert flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE]["tokens.cache_read"] == 12
 
     def test_codex_oauth_model_provider_uses_openai_sse_parser(self, real_flow):
-        flow = real_flow(with_response=False, host="chatgpt.com")
+        flow = real_flow(
+            with_response=False,
+            host="chatgpt.com",
+            path="/backend-api/codex/responses",
+            method="POST",
+        )
         flow.response = tutils.tresp(
             status_code=200,
             headers=header_map({"content-type": "text/event-stream"}),
@@ -257,6 +301,7 @@ class TestResponseHeadersSseParser:
         flow.metadata[metadata_keys.CLI_AGENT_TYPE] = "codex"
         flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
         flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "gpt-5.5"
+        record_model_provider_continuation(flow)
 
         mitm_addon.responseheaders(flow)
 
@@ -272,18 +317,26 @@ class TestResponseHeadersSseParser:
         assert flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE]["tokens.input"] == 30
         assert flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE]["tokens.cache_read"] == 12
 
-    @pytest.mark.parametrize("cli_agent_type", [None, ""])
-    def test_default_cli_agent_type_uses_anthropic_sse_parser(self, real_flow, cli_agent_type):
-        flow = real_flow(with_response=False, host="chatgpt.com")
+    @pytest.mark.parametrize("cli_agent_type", [None, "", "codex"])
+    def test_messages_route_uses_anthropic_parser_independent_of_cli(
+        self, real_flow, cli_agent_type
+    ):
+        flow = real_flow(
+            with_response=False,
+            host="api.anthropic.com",
+            path="/v1/messages",
+            method="POST",
+        )
         flow.response = tutils.tresp(
             status_code=200,
             headers=header_map({"content-type": "text/event-stream"}),
         )
-        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:codex-oauth-token"
+        flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:anthropic-api-key"
         if cli_agent_type is not None:
             flow.metadata[metadata_keys.CLI_AGENT_TYPE] = cli_agent_type
         flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
         flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "claude-sonnet-4-6"
+        record_model_provider_continuation(flow)
 
         mitm_addon.responseheaders(flow)
 
@@ -299,7 +352,12 @@ class TestResponseHeadersSseParser:
 
     def test_decompresses_gzip_sse_before_parsing(self, real_flow, headers):
         """Compressed SSE streams must be decompressed before usage extraction."""
-        flow = real_flow(with_response=False, host="api.anthropic.com")
+        flow = real_flow(
+            with_response=False,
+            host="api.anthropic.com",
+            path="/v1/messages",
+            method="POST",
+        )
         flow.response = tutils.tresp(
             status_code=200,
             headers=header_map(
@@ -312,6 +370,7 @@ class TestResponseHeadersSseParser:
         flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:anthropic-api-key"
         flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
         flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "claude-sonnet-4-6"
+        record_model_provider_continuation(flow)
 
         mitm_addon.responseheaders(flow)
 
@@ -346,12 +405,18 @@ class TestResponseHeadersSseParser:
         assert "model_sse_usage_finish" not in flow.metadata
 
     def test_no_sse_parser_for_non_sse_response(self, real_flow, headers):
-        flow = real_flow(with_response=False, host="api.anthropic.com")
+        flow = real_flow(
+            with_response=False,
+            host="api.anthropic.com",
+            path="/v1/messages",
+            method="POST",
+        )
         flow.response = tutils.tresp(
             status_code=200, headers=header_map({"content-type": "application/json"})
         )
         flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:anthropic-api-key"
         flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "claude-sonnet-4-6"
+        record_model_provider_continuation(flow)
 
         mitm_addon.responseheaders(flow)
 
@@ -359,7 +424,12 @@ class TestResponseHeadersSseParser:
         assert "model_sse_usage_finish" not in flow.metadata
 
     def test_no_sse_parser_without_model_usage_provider(self, real_flow, headers):
-        flow = real_flow(with_response=False, host="api.anthropic.com")
+        flow = real_flow(
+            with_response=False,
+            host="api.anthropic.com",
+            path="/v1/messages",
+            method="POST",
+        )
         flow.response = tutils.tresp(
             status_code=200, headers=header_map({"content-type": "text/event-stream"})
         )
@@ -373,13 +443,19 @@ class TestResponseHeadersSseParser:
     def test_sets_up_sse_parser_for_non_billable_observable_model_provider(
         self, real_flow, headers
     ):
-        flow = real_flow(with_response=False, host="api.anthropic.com")
+        flow = real_flow(
+            with_response=False,
+            host="api.anthropic.com",
+            path="/v1/messages",
+            method="POST",
+        )
         flow.response = tutils.tresp(
             status_code=200, headers=header_map({"content-type": "text/event-stream"})
         )
         flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:anthropic-api-key"
         flow.metadata[metadata_keys.FIREWALL_BILLABLE] = False
         flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "claude-sonnet-4-6"
+        record_model_provider_continuation(flow)
 
         mitm_addon.responseheaders(flow)
 

@@ -9,6 +9,7 @@ import http_network_log
 import mitm_addon
 import request_streaming
 from tests.flow_helpers import header_map, response_stream
+from tests.model_provider_flow_helpers import record_model_provider_continuation
 
 
 def test_pops_start_time_even_when_run_id_absent(real_flow, mitm_ctx):
@@ -118,11 +119,17 @@ def test_response_does_not_clear_replaced_request_stream_callback(real_flow):
 
 def test_response_without_run_id_releases_sse_streaming_state(real_flow):
     """Early-returning SSE flows should not retain parser closures."""
-    flow = real_flow(with_response=False, host="api.openai.com")
+    flow = real_flow(
+        with_response=False,
+        host="api.openai.com",
+        path="/v1/responses",
+        method="POST",
+    )
     flow.metadata[metadata_keys.FIREWALL_NAME] = "model-provider:openai-api-key"
     flow.metadata[metadata_keys.CLI_AGENT_TYPE] = "codex"
     flow.metadata[metadata_keys.FIREWALL_BILLABLE] = True
     flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "gpt-5.5"
+    record_model_provider_continuation(flow)
     flow.response = tutils.tresp(
         status_code=200,
         headers=header_map({"content-type": "text/event-stream"}),

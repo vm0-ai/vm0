@@ -200,6 +200,7 @@ def _write_codex_registry(tmp_path: Path, *, capture: bool, billable: bool = Fal
             vm_fields={
                 "captureNetworkBodies": capture,
                 "cliAgentType": "codex",
+                "modelUsageProvider": "gpt-5.5",
             },
         ),
     )
@@ -380,6 +381,9 @@ async def test_catalog_wait_revalidates_only_provider_continuation(
                 assert follower.metadata.get(metadata_keys.FIREWALL_ERROR) is None
 
             mitm_addon.responseheaders(follower)
+            assert metadata_keys.MODEL_PROVIDER_USAGE not in follower.metadata
+            assert "model_json_usage_finish" not in follower.metadata
+            assert "model_sse_usage_finish" not in follower.metadata
             mitm_addon.response(follower)
     finally:
         if follower_task is not None:

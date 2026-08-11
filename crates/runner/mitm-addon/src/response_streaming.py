@@ -18,7 +18,7 @@ Lifecycle:
 """
 
 from collections.abc import Callable
-from typing import Literal, NamedTuple
+from typing import NamedTuple, assert_never
 
 from mitmproxy import http
 from wsproto.utilities import generate_accept_token
@@ -28,7 +28,7 @@ import body_decoding
 import claude_output_timing
 import flow_metadata
 import flow_metadata_keys as metadata_keys
-import runtime_url_parsing
+import model_usage_eligibility
 import usage
 from body_limits import STREAM_BUFFER_LIMIT
 from logging_utils import log_proxy_entry
@@ -43,7 +43,6 @@ _HTTP_STATUS_NOT_MODIFIED = 304
 
 _MODEL_JSON_USAGE_FINISH = "model_json_usage_finish"
 _MODEL_SSE_USAGE_FINISH = "model_sse_usage_finish"
-_MODEL_WEBSOCKET_USAGE_ENABLED = "model_websocket_usage_enabled"
 _CONNECTOR_RESPONSE_FINISH = "connector_response_finish"
 _CONNECTOR_RESPONSE_REPORT_ON_INTERRUPTION = "connector_response_report_on_interruption"
 _RESPONSE_STREAM_CALLBACK = "_vm0_response_stream_callback"
@@ -54,12 +53,6 @@ _OPENAI_CHAT_COMPLETIONS_SSE_PROTOCOL = "openai_chat_completions_sse"
 _OPENAI_RESPONSES_SSE_PROTOCOL = "openai_responses_sse"
 _ANTHROPIC_USAGE_EVENTS = frozenset(("message_start", "message_delta"))
 _ANTHROPIC_MESSAGE_STOP_EVENT = "message_stop"
-
-ModelUsageProtocol = Literal[
-    "anthropic_messages",
-    "openai_chat_completions",
-    "openai_responses",
-]
 
 _ResponseChunkParser = Callable[[bytes], None]
 _SseUsageParseErrorLogger = Callable[[str, str], None]
@@ -90,17 +83,6 @@ class _ResponseUsageStreamSetup(NamedTuple):
     needs_buffered_fallback: bool
 
 
-def model_usage_protocol(flow: http.HTTPFlow) -> ModelUsageProtocol:
-    """Classify model usage from the observed request and CLI fallback."""
-    request_target = flow_metadata.original_url(flow.metadata) or flow.request.path
-    request_path = runtime_url_parsing.strip_url_query_and_fragment(request_target).rstrip("/")
-    if request_path.endswith("/chat/completions"):
-        return "openai_chat_completions"
-    if flow_metadata.cli_agent_type(flow.metadata) == "codex":
-        return "openai_responses"
-    return "anthropic_messages"
-
-
 def _response_has_event_stream_media_type(response: http.Response) -> bool:
     content_type = response.headers.get("content-type", "")
     media_type = content_type.partition(";")[0].strip(_HTTP_OWS_CHARS).lower()
@@ -113,28 +95,12 @@ def uses_model_json_fallback(flow: http.HTTPFlow) -> bool:
     if (
         response is None
         or not _response_can_have_body(flow, response)
-        or not usage.is_model_provider_usage_observable(flow)
+        or model_usage_eligibility.activated_protocol(flow) is None
     ):
         return False
     if _response_has_event_stream_media_type(response):
         return False
     return not _is_confirmed_websocket_upgrade_response(flow)
-
-
-def is_model_websocket_usage_enabled(flow: http.HTTPFlow) -> bool:
-    """Return whether model-provider WebSocket usage extraction is active.
-
-    Read-only predicate used by ``websocket_message()`` feeding and terminal
-    response cleanup. Reads ``_MODEL_WEBSOCKET_USAGE_ENABLED``; true means an
-    HTTP 101 response is not terminal for tracked usage and reporting must wait
-    for ``websocket_end()``.
-    """
-    return bool(flow.metadata.get(_MODEL_WEBSOCKET_USAGE_ENABLED, False))
-
-
-def release_model_websocket_usage_state(flow: http.HTTPFlow) -> None:
-    """Disable WebSocket usage extraction after a terminal websocket/error hook."""
-    flow.metadata.pop(_MODEL_WEBSOCKET_USAGE_ENABLED, None)
 
 
 def _make_response_decode_session(
@@ -235,20 +201,16 @@ def _configure_response_usage_stream(flow: http.HTTPFlow) -> _ResponseUsageStrea
     # and the incremental response parsers used for connector billing payload
     # extraction. Model-provider usage reporting is gated separately.
     is_billable_flow = flow_metadata.is_firewall_billable(flow.metadata)
-    is_observable_model_provider = usage.is_model_provider_usage_observable(flow)
-    model_protocol = model_usage_protocol(flow) if is_observable_model_provider else None
-    if (
-        is_observable_model_provider
-        and model_protocol == "openai_responses"
-        and _is_confirmed_websocket_upgrade_response(flow)
-    ):
+    if _is_confirmed_websocket_upgrade_response(flow):
+        model_usage_eligibility.activate_confirmed_websocket(flow)
+    model_protocol = model_usage_eligibility.activated_protocol(flow)
+    if model_usage_eligibility.is_websocket_active(flow):
         flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = {}
         flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE_SOURCES] = {}
-        flow.metadata[_MODEL_WEBSOCKET_USAGE_ENABLED] = True
         return _ResponseUsageStreamSetup(None, False)
     if not _response_can_have_body(flow, response):
         return _ResponseUsageStreamSetup(None, False)
-    if is_observable_model_provider:
+    if model_protocol is not None:
         if _response_has_event_stream_media_type(response):
             lifecycle_observer: _AnthropicLifecycleObserver | None = None
             anthropic_accounting_events: set[str] = set()
@@ -279,7 +241,7 @@ def _configure_response_usage_stream(flow: http.HTTPFlow) -> _ResponseUsageStrea
                 parser_fn, usage_dict = usage.create_openai_chat_completions_sse_usage_extractor(
                     on_parse_error=log_parse_error,
                 )
-            else:
+            elif model_protocol == "anthropic_messages":
                 usage_protocol = _ANTHROPIC_MESSAGES_SSE_PROTOCOL
                 log_parse_error = _make_model_sse_parse_error_logger(
                     flow,
@@ -291,6 +253,8 @@ def _configure_response_usage_stream(flow: http.HTTPFlow) -> _ResponseUsageStrea
                     on_lifecycle_event=lifecycle_observer,
                     on_accounting_event=anthropic_accounting_events.add,
                 )
+            else:
+                assert_never(model_protocol)
             decode_session = _make_response_decode_session(parser_fn, response.headers)
             if decode_session is None:
                 _maybe_log_response_encoding_inspection_risk(flow, response)
@@ -336,8 +300,10 @@ def _configure_response_usage_stream(flow: http.HTTPFlow) -> _ResponseUsageStrea
             extractor = usage.create_openai_responses_json_usage_extractor()
         elif model_protocol == "openai_chat_completions":
             extractor = usage.create_openai_chat_completions_json_usage_extractor()
-        else:
+        elif model_protocol == "anthropic_messages":
             extractor = usage.create_anthropic_messages_json_usage_extractor()
+        else:
+            assert_never(model_protocol)
         decode_session = _make_response_decode_session(
             extractor.feed,
             response.headers,
@@ -582,15 +548,15 @@ def feed_model_websocket_usage(
     """Merge model-provider usage from one server WebSocket frame.
 
     Called from ``websocket_message()`` only for server-originated frames after
-    provider event inspection. Reads ``_MODEL_WEBSOCKET_USAGE_ENABLED`` via
-    ``is_model_websocket_usage_enabled()`` and temporarily writes per-response sources to
+    provider event inspection. Reads the activated eligibility state and
+    temporarily writes per-response sources to
     ``metadata_keys.MODEL_PROVIDER_USAGE_SOURCES`` while attempting a
     source-preserving report, then releases them from flow metadata. Frames
     without a response id fall back to ``metadata_keys.MODEL_PROVIDER_USAGE``.
     This helper is not idempotent for the same frame; callers must feed each
     server frame once.
     """
-    if not is_model_websocket_usage_enabled(flow):
+    if not model_usage_eligibility.is_websocket_active(flow):
         return
     usage_result, inspection_error = usage.extract_openai_responses_usage_from_event(event)
     if inspection_error is not None:

@@ -8,6 +8,7 @@ import flow_metadata_keys as metadata_keys
 import mitm_addon
 from tests.flow_helpers import header_map, response_stream
 from tests.jsonl_log_helpers import jsonl_exists_after_flush, read_jsonl_entries_after_flush
+from tests.model_provider_flow_helpers import record_model_provider_continuation
 from tests.x_flow_helpers import make_x_pipeline_flow
 
 
@@ -21,6 +22,7 @@ class TestResponseEncodingInspectionRisk:
         *,
         content_encoding: str,
         content_type: str = "application/json",
+        activate: bool = True,
     ) -> http.HTTPFlow:
         flow = real_flow(
             with_response=False,
@@ -46,6 +48,8 @@ class TestResponseEncodingInspectionRisk:
                 metadata_keys.MODEL_USAGE_PROVIDER: "claude-sonnet-4-6",
             }
         )
+        if activate:
+            record_model_provider_continuation(flow)
         return flow
 
     @pytest.mark.parametrize(
@@ -132,7 +136,12 @@ class TestResponseEncodingInspectionRisk:
     def test_non_observable_model_response_does_not_log_encoding_risk(
         self, real_flow, tmp_path, mitm_ctx
     ) -> None:
-        flow = self._model_flow(real_flow, tmp_path, content_encoding="zstd")
+        flow = self._model_flow(
+            real_flow,
+            tmp_path,
+            content_encoding="zstd",
+            activate=False,
+        )
         flow.metadata.pop(metadata_keys.MODEL_USAGE_PROVIDER)
 
         with mitm_ctx():
@@ -145,10 +154,10 @@ class TestResponseEncodingInspectionRisk:
     @pytest.mark.parametrize(
         ("request_method", "response_status"),
         [
-            pytest.param("GET", 101, id="informational"),
-            pytest.param("GET", 204, id="no-content"),
-            pytest.param("GET", 205, id="reset-content"),
-            pytest.param("GET", 304, id="not-modified"),
+            pytest.param("POST", 101, id="informational"),
+            pytest.param("POST", 204, id="no-content"),
+            pytest.param("POST", 205, id="reset-content"),
+            pytest.param("POST", 304, id="not-modified"),
             pytest.param("HEAD", 200, id="head"),
             pytest.param("CONNECT", 200, id="successful-connect"),
         ],
@@ -161,8 +170,15 @@ class TestResponseEncodingInspectionRisk:
         request_method: str,
         response_status: int,
     ) -> None:
-        flow = self._model_flow(real_flow, tmp_path, content_encoding="zstd")
+        flow = self._model_flow(
+            real_flow,
+            tmp_path,
+            content_encoding="zstd",
+            activate=False,
+        )
         flow.request.method = request_method
+        if request_method == "POST":
+            record_model_provider_continuation(flow)
         assert flow.response is not None
         flow.response.status_code = response_status
 

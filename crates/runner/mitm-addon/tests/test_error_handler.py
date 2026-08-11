@@ -28,6 +28,7 @@ from tests.jsonl_log_helpers import (
     read_jsonl_entries_after_flush,
     read_jsonl_text_after_flush,
 )
+from tests.model_provider_flow_helpers import record_model_provider_continuation
 from tests.request_handler_helpers import (
     _single_firewall_vm,
     _vm_without_firewalls,
@@ -769,7 +770,12 @@ class TestErrorHandler:
 
         Verifies that error() hook delivers partial usage through loopback HTTP.
         """
-        flow = real_flow(with_response=False, host="api.anthropic.com")
+        flow = real_flow(
+            with_response=False,
+            host="api.anthropic.com",
+            path="/v1/messages",
+            method="POST",
+        )
         log_path = str(tmp_path / "network.jsonl")
         flow.metadata[metadata_keys.VM_RUN_ID] = "run-int-002"
         flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
@@ -789,6 +795,7 @@ class TestErrorHandler:
             "model": "claude-sonnet-4-6",
             "tokens.input": 80,
         }
+        record_model_provider_continuation(flow)
         flow.error = Error("connection reset by peer")
 
         with usage_webhook_api() as webhook:

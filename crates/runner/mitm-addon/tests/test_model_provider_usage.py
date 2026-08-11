@@ -14,6 +14,7 @@ from tests.jsonl_log_helpers import (
     jsonl_exists_after_flush,
     read_jsonl_entries_after_flush,
 )
+from tests.model_provider_flow_helpers import record_model_provider_continuation
 from tests.usage_helpers import compact_observation_quantities
 
 
@@ -797,7 +798,12 @@ class TestModelProviderResponseHookUsage:
 
         Verifies wiring between all intermediate layers through loopback HTTP.
         """
-        flow = real_flow(with_response=False, host="api.anthropic.com")
+        flow = real_flow(
+            with_response=False,
+            host="api.anthropic.com",
+            path="/v1/messages",
+            method="POST",
+        )
         log_path = str(tmp_path / "network.jsonl")
         flow.metadata[metadata_keys.VM_RUN_ID] = "run-int-001"
         flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
@@ -818,6 +824,7 @@ class TestModelProviderResponseHookUsage:
             "tokens.input": 100,
             "tokens.output": 500,
         }
+        record_model_provider_continuation(flow)
         flow.response = tutils.tresp(
             status_code=200, headers=header_map({"content-type": "text/event-stream"})
         )

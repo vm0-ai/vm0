@@ -10,6 +10,7 @@ from mitmproxy import http
 
 import flow_metadata_keys as metadata_keys
 import mitm_addon
+import model_usage_eligibility
 import usage
 from tests.jsonl_log_helpers import jsonl_exists_after_flush, read_jsonl_entries_after_flush
 from tests.model_provider_flow_helpers import (
@@ -203,7 +204,7 @@ class TestModelProviderWebSocketUsage:
         """Codex Responses WebSocket frames should bill like SSE events."""
         flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
         mitm_addon.responseheaders(flow)
-        assert flow.metadata["model_websocket_usage_enabled"] is True
+        assert model_usage_eligibility.is_websocket_active(flow)
         assert "model_json_usage_finish" not in flow.metadata
         assert "model_sse_usage_finish" not in flow.metadata
         assert metadata_keys.STREAM_BUFFER not in flow.metadata

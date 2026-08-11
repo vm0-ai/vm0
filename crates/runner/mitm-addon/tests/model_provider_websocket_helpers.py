@@ -9,7 +9,7 @@ from wsproto.frame_protocol import Opcode
 
 import deferred_callbacks
 import mitm_addon
-import response_streaming
+import model_usage_eligibility
 
 _WebSocketTrimCallback = Callable[[http.HTTPFlow], None]
 ScheduledWebSocketTrim = tuple[_WebSocketTrimCallback, http.HTTPFlow]
@@ -91,7 +91,7 @@ def set_websocket_message(
 
 
 def _assert_model_websocket_usage_started(flow: http.HTTPFlow) -> None:
-    assert response_streaming.is_model_websocket_usage_enabled(flow)
+    assert model_usage_eligibility.is_websocket_active(flow)
 
 
 def feed_websocket_server_message(flow: http.HTTPFlow, content: bytes) -> None:

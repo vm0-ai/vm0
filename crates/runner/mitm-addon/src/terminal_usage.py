@@ -3,7 +3,7 @@
 from mitmproxy import http
 
 import flow_metadata_keys as metadata_keys
-import response_streaming
+import model_usage_eligibility
 import usage
 
 _USAGE_FLOW_TRACKED = "_usage_flow_tracked"
@@ -35,6 +35,8 @@ def release_tracked_flow(flow: http.HTTPFlow) -> None:
 
 def report_model_provider_usage_once(flow: http.HTTPFlow, run_id: str) -> None:
     """Avoid duplicate usage webhook enqueue if response/error both fire."""
+    if model_usage_eligibility.activated_protocol(flow) is None:
+        return
     if flow.metadata.get(_MODEL_PROVIDER_USAGE_REPORTED, False):
         return
     reported_usage = usage.report_model_provider_usage(flow, run_id)
@@ -44,7 +46,6 @@ def report_model_provider_usage_once(flow: http.HTTPFlow, run_id: str) -> None:
 
 
 def release_model_websocket_terminal_state(flow: http.HTTPFlow) -> None:
-    if response_streaming.is_model_websocket_usage_enabled(flow):
+    if model_usage_eligibility.is_websocket_active(flow):
         flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE_SOURCES] = {}
         usage.release_model_provider_usage_tiers(flow)
-        response_streaming.release_model_websocket_usage_state(flow)

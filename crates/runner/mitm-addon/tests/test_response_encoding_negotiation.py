@@ -236,6 +236,9 @@ def _model_provider_registry(
     model_usage_provider: object = "claude-sonnet-4-6",
     capture_network_bodies: bool = False,
     rule_method: str = "POST",
+    firewall_name: str = _MODEL_PROVIDER_FIREWALL_NAME,
+    host: str = _MODEL_PROVIDER_HOST,
+    path: str = _MODEL_PROVIDER_PATH,
 ) -> Path:
     vm_fields: dict[str, object] = {}
     if model_usage_provider is not None:
@@ -247,16 +250,14 @@ def _model_provider_registry(
         tmp_path,
         vm_info=_single_firewall_vm(
             tmp_path,
-            firewall_name=_MODEL_PROVIDER_FIREWALL_NAME,
+            firewall_name=firewall_name,
             api_entry={
-                "base": f"https://{_MODEL_PROVIDER_HOST}",
+                "base": f"https://{host}",
                 "auth": {"headers": {"x-api-key": "test-key"}},
-                "permissions": [
-                    {"name": "messages", "rules": [f"{rule_method} {_MODEL_PROVIDER_PATH}"]}
-                ],
+                "permissions": [{"name": "operation", "rules": [f"{rule_method} {path}"]}],
             },
             network_policy={
-                "allow": ["messages"],
+                "allow": ["operation"],
                 "deny": [],
                 "ask": [],
                 "unknownPolicy": "deny",
@@ -794,7 +795,7 @@ async def test_response_bodyless_usage_inspected_methods_keep_accept_encoding(
         ),
     ],
 )
-async def test_invalid_websocket_upgrade_normalizes_accept_encoding(
+async def test_invalid_websocket_upgrade_keeps_accept_encoding(
     tmp_path: Path,
     real_flow: Callable[..., http.HTTPFlow],
     headers: Callable[..., http.Headers],
@@ -802,12 +803,21 @@ async def test_invalid_websocket_upgrade_normalizes_accept_encoding(
     fake_firewall_headers,
     extra_headers: tuple[tuple[str, str], ...],
 ) -> None:
-    reg_path = _model_provider_registry(tmp_path, rule_method="GET")
+    host = "api.openai.com"
+    path = "/v1/responses"
+    reg_path = _model_provider_registry(
+        tmp_path,
+        rule_method="GET",
+        firewall_name="model-provider:openai-api-key",
+        host=host,
+        path=path,
+        model_usage_provider="gpt-5.5",
+    )
     flow = _request_flow(
         real_flow,
         headers,
-        host=_MODEL_PROVIDER_HOST,
-        path=_MODEL_PROVIDER_PATH,
+        host=host,
+        path=path,
         method="GET",
         accept_encoding="gzip, zstd, br",
         extra_headers=extra_headers,
@@ -819,7 +829,7 @@ async def test_invalid_websocket_upgrade_normalizes_accept_encoding(
     ):
         await mitm_addon.request(flow)
 
-    assert flow.request.headers[_ACCEPT_ENCODING] == "gzip"
+    assert flow.request.headers[_ACCEPT_ENCODING] == "gzip, zstd, br"
 
 
 async def test_invalid_websocket_upgrade_method_normalizes_accept_encoding(
@@ -855,7 +865,7 @@ async def test_invalid_websocket_upgrade_method_normalizes_accept_encoding(
 
 
 @pytest.mark.parametrize("http_version", ["HTTP/1.0", "HTTP/2.0", "HTTP/3"])
-async def test_invalid_websocket_upgrade_http_version_normalizes_accept_encoding(
+async def test_invalid_websocket_upgrade_http_version_keeps_accept_encoding(
     tmp_path: Path,
     real_flow: Callable[..., http.HTTPFlow],
     headers: Callable[..., http.Headers],
@@ -863,12 +873,21 @@ async def test_invalid_websocket_upgrade_http_version_normalizes_accept_encoding
     fake_firewall_headers,
     http_version: str,
 ) -> None:
-    reg_path = _model_provider_registry(tmp_path, rule_method="GET")
+    host = "api.openai.com"
+    path = "/v1/responses"
+    reg_path = _model_provider_registry(
+        tmp_path,
+        rule_method="GET",
+        firewall_name="model-provider:openai-api-key",
+        host=host,
+        path=path,
+        model_usage_provider="gpt-5.5",
+    )
     flow = _request_flow(
         real_flow,
         headers,
-        host=_MODEL_PROVIDER_HOST,
-        path=_MODEL_PROVIDER_PATH,
+        host=host,
+        path=path,
         method="GET",
         accept_encoding="gzip, zstd, br",
         extra_headers=(
@@ -886,7 +905,7 @@ async def test_invalid_websocket_upgrade_http_version_normalizes_accept_encoding
     ):
         await mitm_addon.request(flow)
 
-    assert flow.request.headers[_ACCEPT_ENCODING] == "gzip"
+    assert flow.request.headers[_ACCEPT_ENCODING] == "gzip, zstd, br"
 
 
 async def test_browser_passthrough_keeps_accept_encoding_for_parser_connector(

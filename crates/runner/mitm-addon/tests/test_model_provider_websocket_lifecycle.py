@@ -9,6 +9,7 @@ from mitmproxy.flow import Error
 from mitmproxy.test import tutils
 
 import mitm_addon
+import model_usage_eligibility
 import usage
 from tests.model_provider_flow_helpers import (
     make_openai_responses_websocket_request_flow,
@@ -87,7 +88,9 @@ class TestModelProviderWebSocketLifecycle:
                 headers=make_openai_responses_websocket_response_headers(),
             )
             mitm_addon.responseheaders(flow)
+            assert model_usage_eligibility.is_websocket_active(flow)
             mitm_addon.response(flow)
+            assert model_usage_eligibility.is_websocket_active(flow)
             usage.write_pending_snapshot(flush_request_id="after-response")
             assert_pending(
                 pending_path,
@@ -115,6 +118,7 @@ class TestModelProviderWebSocketLifecycle:
                 ).encode(),
             )
             mitm_addon.websocket_end(flow)
+            assert not model_usage_eligibility.is_websocket_active(flow)
             usage.flush_usage_events(trigger="test")
 
         events = usage_webhook_server.usage_events()
@@ -163,6 +167,7 @@ class TestModelProviderWebSocketLifecycle:
             fake_firewall_headers(),
         ):
             await mitm_addon.request(flow)
+            assert model_usage_eligibility.activated_protocol(flow) is None
             usage.write_pending_snapshot(flush_request_id="before-response")
             assert_pending(
                 pending_path,
@@ -177,6 +182,7 @@ class TestModelProviderWebSocketLifecycle:
                 headers=http.Headers(upgrade="h2c"),
             )
             mitm_addon.responseheaders(flow)
+            assert not model_usage_eligibility.is_websocket_active(flow)
             mitm_addon.response(flow)
             usage.write_pending_snapshot(flush_request_id="after-response")
 
@@ -189,17 +195,25 @@ class TestModelProviderWebSocketLifecycle:
         )
 
     @pytest.mark.parametrize(
-        "response_headers",
+        ("status_code", "response_headers"),
         [
             pytest.param(
+                400,
+                make_openai_responses_websocket_response_headers(),
+                id="non-switching-response",
+            ),
+            pytest.param(
+                101,
                 make_openai_responses_websocket_response_headers(upgrade="h2c"),
                 id="non-websocket-upgrade",
             ),
             pytest.param(
+                101,
                 make_openai_responses_websocket_response_headers(connection=None),
                 id="missing-connection-upgrade",
             ),
             pytest.param(
+                101,
                 make_openai_responses_websocket_response_headers(accept="wrong"),
                 id="wrong-accept",
             ),
@@ -211,9 +225,10 @@ class TestModelProviderWebSocketLifecycle:
         real_flow,
         mitm_ctx,
         fake_firewall_headers,
+        status_code: int,
         response_headers: http.Headers,
     ):
-        """A malformed 101 WebSocket response must not wait for websocket_end()."""
+        """A failed WebSocket response must not wait for websocket_end()."""
         pending_path = tmp_path / "usage-pending"
         usage.set_pending_path(str(pending_path), usage_state_id="test-usage-state-id")
         reg_path = _write_openai_model_websocket_registry(tmp_path)
@@ -225,6 +240,7 @@ class TestModelProviderWebSocketLifecycle:
             fake_firewall_headers(),
         ):
             await mitm_addon.request(flow)
+            assert model_usage_eligibility.activated_protocol(flow) is None
             usage.write_pending_snapshot(flush_request_id="before-response")
             assert_pending(
                 pending_path,
@@ -234,9 +250,11 @@ class TestModelProviderWebSocketLifecycle:
                 flush_request_id="before-response",
             )
 
-            flow.response = tutils.tresp(status_code=101, headers=response_headers)
+            flow.response = tutils.tresp(status_code=status_code, headers=response_headers)
             mitm_addon.responseheaders(flow)
+            assert not model_usage_eligibility.is_websocket_active(flow)
             mitm_addon.response(flow)
+            assert model_usage_eligibility.activated_protocol(flow) is None
             usage.write_pending_snapshot(flush_request_id="after-response")
 
         assert_pending(
@@ -273,6 +291,7 @@ class TestModelProviderWebSocketLifecycle:
                 headers=make_openai_responses_websocket_response_headers(),
             )
             mitm_addon.responseheaders(flow)
+            assert model_usage_eligibility.is_websocket_active(flow)
             mitm_addon.response(flow)
             usage.write_pending_snapshot(flush_request_id="after-response")
             assert_pending(
@@ -301,6 +320,7 @@ class TestModelProviderWebSocketLifecycle:
             )
             flow.error = Error("connection reset by peer")
             mitm_addon.error(flow)
+            assert not model_usage_eligibility.is_websocket_active(flow)
             usage.flush_usage_events(trigger="test")
 
         events = usage_webhook_server.usage_events()

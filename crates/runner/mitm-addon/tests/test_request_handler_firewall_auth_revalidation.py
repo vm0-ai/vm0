@@ -391,7 +391,7 @@ async def test_registry_change_during_auth_blocks_old_authorization(
     else:
         assert flow.request.headers.get("Host") == "api.github.com"
         assert flow.request.headers.get("Content-Length") == str(STREAM_BUFFER_LIMIT + 1)
-        assert flow.request.headers.get("Accept-Encoding") == "identity"
+        assert flow.request.headers.get("Accept-Encoding") is None
     assert flow.request.path == original_path
     assert flow.request.headers.get("Authorization") is None
     _assert_current_denial(flow, registry_mutation)
@@ -501,7 +501,7 @@ async def test_different_same_run_allow_decision_fails_closed_without_old_creden
     auth_fetch.assert_awaited_once()
     assert flow.request.headers.get("Host") == "api.github.com"
     assert flow.request.headers.get("Content-Length") == str(STREAM_BUFFER_LIMIT + 1)
-    assert flow.request.headers.get("Accept-Encoding") == "identity"
+    assert flow.request.headers.get("Accept-Encoding") is None
     assert flow.request.path == original_path
     assert flow.response is not None
     assert flow.response.status_code == 409
