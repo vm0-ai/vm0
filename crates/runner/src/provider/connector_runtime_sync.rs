@@ -1254,8 +1254,16 @@ fn connector_runtime_unresolved_reason_is_valid(
     target: &ConnectorRuntimeTarget,
     reason: &ConnectorRuntimeUnresolvedReason,
 ) -> bool {
-    matches!(target, ConnectorRuntimeTarget::Custom { .. })
-        || matches!(reason, ConnectorRuntimeUnresolvedReason::Connector)
+    match target {
+        ConnectorRuntimeTarget::Builtin { .. } => {
+            matches!(reason, ConnectorRuntimeUnresolvedReason::Connector)
+        }
+        ConnectorRuntimeTarget::Custom { .. } => matches!(
+            reason,
+            ConnectorRuntimeUnresolvedReason::PermissionBundle
+                | ConnectorRuntimeUnresolvedReason::RuntimeConfiguration
+        ),
+    }
 }
 
 fn custom_connector_runtime_registry_state(
@@ -2592,7 +2600,7 @@ mod tests {
                     "results": [{
                         "target": target.clone(),
                         "state": "absent",
-                        "reason": "grant-unavailable",
+                        "reason": "connector-unavailable",
                     }],
                 }));
         });
@@ -2687,6 +2695,70 @@ mod tests {
                 .sync_tasks
                 .contains_key(&target)
         );
+        core.unregister_run(run_id).await;
+    }
+
+    #[tokio::test]
+    async fn custom_target_rejects_builtin_unresolved_reason() {
+        let server = MockServer::start();
+        let (core, mut requests) = core_without_worker(&server);
+        let run_id = RunId::nil();
+        let custom_connector_id = "550e8400-e29b-41d4-a716-446655440000";
+        let target = custom_target(custom_connector_id);
+        let runtime_sync = server.mock(|when, then| {
+            when.method(POST)
+                .path(format!("/api/runners/runs/{run_id}/connector-runtime/sync"));
+            then.status(200)
+                .header("content-type", "application/json")
+                .json_body(json!({
+                    "results": [{
+                        "target": target.clone(),
+                        "state": "unresolved",
+                        "reason": "connector-unavailable",
+                    }],
+                }));
+        });
+        let firewall = custom_runtime_firewall(custom_connector_id);
+        let policy_name = format!("custom_connector_{}", custom_connector_id.replace('-', ""));
+        let policies = HashMap::from([(
+            policy_name,
+            NetworkPolicy {
+                allow: vec!["custom.read".to_string()],
+                deny: vec![],
+                ask: vec![],
+                unknown_policy: "deny".to_string(),
+            },
+        )]);
+        let firewalls = vec![firewall];
+        let (_dir, registry, registry_path) =
+            registered_runtime_registry(run_id, &firewalls, &policies).await;
+        let registry_before = tokio::fs::read(&registry_path).await.unwrap();
+
+        core.register_run(ConnectorRuntimeSyncRegistration {
+            run_id,
+            source_ip: "10.200.0.2",
+            registry,
+            targets: std::slice::from_ref(&runtime_target_registration(&target)),
+            refreshes: None,
+        })
+        .await;
+        let request = recv_sync_request(&mut requests).await;
+
+        assert!(
+            core.sync_connector_runtime_batch_now(run_id, &request.targets)
+                .await
+        );
+
+        runtime_sync.assert_calls(1);
+        assert_eq!(
+            tokio::fs::read(&registry_path).await.unwrap(),
+            registry_before
+        );
+        let active_runs = core.inner.active_runs.lock().await;
+        let active = &active_runs[&run_id];
+        assert_eq!(active.connectors[&target].consecutive_failures, 1);
+        assert!(active.sync_tasks.contains_key(&target));
+        drop(active_runs);
         core.unregister_run(run_id).await;
     }
 

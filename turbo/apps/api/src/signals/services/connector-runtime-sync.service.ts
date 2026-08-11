@@ -1,6 +1,7 @@
 import {
   connectorRuntimeTargetKey,
-  type ConnectorRuntimeCustomUnavailableReason,
+  type ConnectorRuntimeCustomAbsentReason,
+  type ConnectorRuntimeCustomUnresolvedReason,
   type ConnectorRuntimeSyncResult,
   type ConnectorRuntimeTarget,
   type ConnectorRuntimeTargetRegistration,
@@ -37,7 +38,7 @@ interface CustomTargetSnapshot {
 
 function customAbsentResult(
   target: Extract<ConnectorRuntimeTarget, { readonly kind: "custom" }>,
-  reason: ConnectorRuntimeCustomUnavailableReason,
+  reason: ConnectorRuntimeCustomAbsentReason,
 ): ConnectorRuntimeSyncResult {
   return {
     target,
@@ -48,7 +49,7 @@ function customAbsentResult(
 
 function customUnresolvedResult(
   target: Extract<ConnectorRuntimeTarget, { readonly kind: "custom" }>,
-  reason: ConnectorRuntimeCustomUnavailableReason,
+  reason: ConnectorRuntimeCustomUnresolvedReason,
 ): ConnectorRuntimeSyncResult {
   return {
     target,
