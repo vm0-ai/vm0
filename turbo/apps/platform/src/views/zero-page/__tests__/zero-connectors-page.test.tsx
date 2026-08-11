@@ -3728,6 +3728,9 @@ describe("connectors page", () => {
     ) {
       throw new Error("Custom connector permission drawer not found");
     }
+    expect(document.querySelector('[data-slot="sheet-overlay"]')).toHaveClass(
+      "bg-overlay/45",
+    );
     expect(
       within(permissionDrawer).queryByText("standard:use"),
     ).not.toBeInTheDocument();
@@ -3759,6 +3762,7 @@ describe("connectors page", () => {
           "connector-card-agent-access",
         ),
       ).toHaveTextContent("Used by Support");
+      expect(accessDialog).toBeVisible();
     });
 
     click(

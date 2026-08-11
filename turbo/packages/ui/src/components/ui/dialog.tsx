@@ -108,7 +108,7 @@ const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps>(
   ) => {
     return (
       <DialogPortal>
-        <DialogOverlay className={overlayClassName} />
+        <DialogOverlay className={overlayClassName} forceRender />
         <DialogPrimitive.Popup
           ref={ref}
           data-slot="dialog-content"
