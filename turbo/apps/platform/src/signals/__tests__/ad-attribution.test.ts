@@ -17,6 +17,8 @@ describe("ga4 client id attribution", () => {
         gclid: "click-123",
         utm_source: "google",
         utm_medium: "cpc",
+        vm0_campaign_id: "24006983243",
+        vm0_ad_group_id: "12345",
       }).toString(),
     );
 
@@ -31,6 +33,8 @@ describe("ga4 client id attribution", () => {
       gclid_present: "true",
       utm_source: "google",
       utm_medium: "cpc",
+      vm0_campaign_id: "24006983243",
+      vm0_ad_group_id: "12345",
       ga_client_id: "123456789.987654321",
     });
   });

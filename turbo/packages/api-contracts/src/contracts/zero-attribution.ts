@@ -33,6 +33,10 @@ export const adAttributionMetadataSchema = z
     utm_source: z.string().min(1).max(100).optional(),
     utm_medium: z.string().min(1).max(100).optional(),
     utm_campaign: z.string().min(1).max(200).optional(),
+    // Google Ads ValueTrack IDs are the stable join keys for campaign and ad
+    // group reporting. Names and UTM values can change independently.
+    vm0_campaign_id: z.string().min(1).max(100).optional(),
+    vm0_ad_group_id: z.string().min(1).max(100).optional(),
     utm_content: z.string().min(1).max(200).optional(),
     utm_term: z.string().min(1).max(200).optional(),
     vm0_experiment: z.string().min(1).max(100).optional(),
