@@ -236,14 +236,10 @@ export interface StripeInvoiceLine {
   readonly taxes?:
     | readonly {
         readonly amount: number;
-        readonly tax_behavior?:
-          | "exclusive"
-          | "inclusive"
-          | "unspecified"
-          | null;
+        readonly tax_behavior: "exclusive" | "inclusive";
       }[]
     | null;
-  readonly period: { readonly start?: number; readonly end: number };
+  readonly period: { readonly start: number; readonly end: number };
   readonly parent: {
     readonly type: "subscription_item_details" | "invoice_item_details";
     readonly subscription_item_details?: {
@@ -273,7 +269,7 @@ export interface StripeInvoice {
   readonly subtotal?: number | null;
   readonly lines: {
     readonly data: readonly StripeInvoiceLine[];
-    readonly has_more?: boolean;
+    readonly has_more: boolean;
   };
   readonly parent: {
     readonly subscription_details: {

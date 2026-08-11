@@ -1,12 +1,15 @@
 import { randomUUID } from "node:crypto";
 
+import { zeroAgentsMainContract } from "@vm0/api-contracts/contracts/zero-agents";
 import { zeroOrgDeleteContract } from "@vm0/api-contracts/contracts/zero-org";
+import { createStore } from "ccstate";
 import type StripeSDK from "stripe";
 import { afterEach, expect, test } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { clearMockNow, mockNow } from "../../../lib/time";
+import { signSandboxJwtForTests } from "../../auth/tokens";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import {
   mockStripeClient,
@@ -15,10 +18,16 @@ import {
   type StripeInvoiceLine,
   type StripeSubscription,
 } from "../../external/stripe-client";
+import { zeroAgentsRoutes } from "../zero-agents";
 import { zeroOrgDeleteRoutes } from "../zero-org-delete";
 import type { ApiTestUser } from "./helpers/api-bdd";
 import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
+import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
+import {
+  findSlackOrgConnection$,
+  seedSlackConnectOrg$,
+} from "./helpers/zero-slack-connect";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import {
   createBillingWebhookFixture,
@@ -32,6 +41,7 @@ import {
 } from "./helpers/stripe-billing-webhook";
 
 const context = testContext();
+const store = createStore();
 const mocks = createZeroRouteMocks(context);
 
 interface OrgDeleteBillingFixture extends BillingWebhookFixture {
@@ -556,9 +566,61 @@ test("does not delete the org when its proportional refund fails", async () => {
   const periodEnd = deletionTimestamp + 500;
   const subscriptionId = "sub_delete_refund_failure";
   const fixture = createOrgDeleteBillingFixture();
-  await seedPlanSubscription(fixture, subscriptionId, periodEnd);
+  const actor: ApiTestUser = {
+    userId: fixture.userId,
+    orgId: fixture.orgId,
+    orgRole: "org:admin",
+    email: "org-delete-refund-failure@example.test",
+  };
+  const zeroToken = signSandboxJwtForTests({
+    scope: "zero",
+    userId: fixture.userId,
+    orgId: fixture.orgId,
+    runId: "run_org_delete_refund_failure",
+    capabilities: ["agent:read"],
+    iat: deletionTimestamp,
+    exp: deletionTimestamp + 60,
+  });
+  const agents = setupApp({ context, routes: zeroAgentsRoutes })(
+    zeroAgentsMainContract,
+  );
+  const misc = createMiscRoutesApi(context);
+
   mockNow(deletionTimestamp * 1000);
+  await seedPlanSubscription(fixture, subscriptionId, periodEnd);
+  context.mocks.clerk.users.getOrganizationMembershipList.mockResolvedValue({
+    data: [
+      {
+        role: "org:admin",
+        organization: { id: fixture.orgId },
+        publicUserData: { userId: fixture.userId },
+      },
+    ],
+  });
+  await accept(
+    agents.list({
+      headers: { authorization: `Bearer ${zeroToken}` },
+    }),
+    [200],
+  );
+  await misc.updatePreferences(
+    actor,
+    { timezone: "Asia/Shanghai", locale: "en-US" },
+    [200],
+  );
+  const slackFixture = await store.set(
+    seedSlackConnectOrg$,
+    {
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      withConnection: true,
+    },
+    context.signal,
+  );
   mockOrgDeletion(fixture);
+  context.mocks.clerk.organizations.getOrganizationMembershipList.mockResolvedValue(
+    { data: [{ publicUserData: { userId: fixture.userId } }] },
+  );
   context.mocks.stripe.subscriptions.list.mockResolvedValue({
     data: [subscription(subscriptionId, fixture.customerId)],
     has_more: false,
@@ -582,6 +644,58 @@ test("does not delete the org when its proportional refund fails", async () => {
 
   expect(response.status).toBe(500);
   expect(context.mocks.stripe.subscriptions.cancel).toHaveBeenCalledOnce();
+  expect(
+    context.mocks.clerk.organizations.deleteOrganization,
+  ).not.toHaveBeenCalled();
+  const preservedPreferences = await misc.readPreferences(actor);
+  expect(preservedPreferences.body).toMatchObject({
+    timezone: "Asia/Shanghai",
+    locale: "en-US",
+  });
+  context.mocks.clerk.users.getOrganizationMembershipList.mockClear();
+  context.mocks.clerk.users.getOrganizationMembershipList.mockRejectedValue(
+    new Error("Clerk membership lookup unavailable"),
+  );
+  await accept(
+    agents.list({
+      headers: { authorization: `Bearer ${zeroToken}` },
+    }),
+    [200],
+  );
+  expect(
+    context.mocks.clerk.users.getOrganizationMembershipList,
+  ).not.toHaveBeenCalled();
+  await expect(
+    store.set(
+      findSlackOrgConnection$,
+      {
+        slackWorkspaceId: slackFixture.slackWorkspaceId,
+        slackUserId: slackFixture.slackUserId,
+      },
+      context.signal,
+    ),
+  ).resolves.toStrictEqual(
+    expect.objectContaining({
+      vm0UserId: fixture.userId,
+      slackWorkspaceId: slackFixture.slackWorkspaceId,
+    }),
+  );
+});
+
+test("fails closed when a Stripe page has no continuation cursor", async () => {
+  const subscriptionId = "sub_delete_incomplete_page";
+  const fixture = createOrgDeleteBillingFixture();
+  await seedPlanSubscription(fixture, subscriptionId);
+  mockOrgDeletion(fixture);
+  context.mocks.stripe.subscriptions.list.mockResolvedValue({
+    data: [],
+    has_more: true,
+  });
+
+  const response = await requestOrgDeletion();
+
+  expect(response.status).toBe(500);
+  expect(context.mocks.stripe.subscriptions.cancel).not.toHaveBeenCalled();
   expect(
     context.mocks.clerk.organizations.deleteOrganization,
   ).not.toHaveBeenCalled();

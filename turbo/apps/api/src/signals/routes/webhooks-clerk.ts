@@ -195,28 +195,28 @@ function missingOrganizationDeletedIdResponse(data: unknown): Response {
   return new Response("OK", { status: 200 });
 }
 
-async function handleOrganizationDeletedWebhook(
-  orgId: string,
-  billingCleanupTask: Promise<void>,
-  cleanupTask: () => Promise<void>,
-  signal: AbortSignal,
-): Promise<Response> {
-  const billingCleanup = await settle(billingCleanupTask, signal);
-  if (!billingCleanup.ok) {
-    L.error("organization.deleted billing cleanup failed", {
-      orgId,
-      error: billingCleanup.error,
-    });
-    return jsonError("Organization billing cleanup failed", 503);
-  }
+const handleOrganizationDeletedWebhook$ = command(
+  async ({ set }, orgId: string, signal: AbortSignal): Promise<Response> => {
+    const billingCleanup = await settle(
+      set(cleanupClerkDeletedOrgBilling$, orgId, signal),
+      signal,
+    );
+    if (!billingCleanup.ok) {
+      L.error("organization.deleted billing cleanup failed", {
+        orgId,
+        error: billingCleanup.error,
+      });
+      return jsonError("Organization billing cleanup failed", 503);
+    }
 
-  waitUntil(
-    tapError(cleanupTask(), (error) => {
-      L.error("organization.deleted cleanup failed", { orgId, error });
-    }),
-  );
-  return new Response("OK", { status: 200 });
-}
+    waitUntil(
+      tapError(set(cleanupClerkDeletedOrg$, orgId, signal), (error) => {
+        L.error("organization.deleted cleanup failed", { orgId, error });
+      }),
+    );
+    return new Response("OK", { status: 200 });
+  },
+);
 
 const postClerkWebhook$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<Response> => {
@@ -293,14 +293,7 @@ const postClerkWebhook$ = command(
       if (!orgId) {
         return missingOrganizationDeletedIdResponse(event.data);
       }
-      return await handleOrganizationDeletedWebhook(
-        orgId,
-        set(cleanupClerkDeletedOrgBilling$, orgId, signal),
-        () => {
-          return set(cleanupClerkDeletedOrg$, orgId, signal);
-        },
-        signal,
-      );
+      return await set(handleOrganizationDeletedWebhook$, orgId, signal);
     }
 
     if (event.type === "user.deleted") {

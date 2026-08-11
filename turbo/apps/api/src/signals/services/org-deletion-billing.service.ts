@@ -29,6 +29,20 @@ interface OrgBillingReferences {
   readonly subscriptionIds: ReadonlySet<string>;
 }
 
+function nextPageCursor<T extends { readonly id: string }>(
+  page: { readonly data: readonly T[]; readonly has_more: boolean },
+  resource: string,
+): string | null {
+  if (!page.has_more) {
+    return null;
+  }
+  const last = page.data.at(-1);
+  if (!last) {
+    throw new Error(`${resource} returned an incomplete page`);
+  }
+  return last.id;
+}
+
 function addIfPresent(target: Set<string>, value: string | null): void {
   if (value) {
     target.add(value);
@@ -107,11 +121,14 @@ async function listCustomerSubscriptions(
     });
     signal.throwIfAborted();
     subscriptions.push(...page.data);
-    const last = page.data[page.data.length - 1];
-    if (!page.has_more || !last) {
+    const nextCursor = nextPageCursor(
+      page,
+      `Stripe customer ${customerId} subscriptions`,
+    );
+    if (nextCursor === null) {
       return subscriptions;
     }
-    startingAfter = last.id;
+    startingAfter = nextCursor;
   }
 }
 
@@ -259,11 +276,14 @@ async function listPaidSubscriptionInvoices(
     });
     signal.throwIfAborted();
     invoices.push(...page.data);
-    const last = page.data[page.data.length - 1];
-    if (!page.has_more || !last) {
+    const nextCursor = nextPageCursor(
+      page,
+      `Stripe subscription ${subscriptionId} invoices`,
+    );
+    if (nextCursor === null) {
       return invoices;
     }
-    startingAfter = last.id;
+    startingAfter = nextCursor;
   }
 }
 
@@ -276,7 +296,7 @@ function proratedLineAmount(
   }
   const start = line.period.start;
   const end = line.period.end;
-  if (start === undefined || end <= start || deletionTimestamp >= end) {
+  if (end <= start || deletionTimestamp >= end) {
     return 0;
   }
   const exclusiveTax = (line.taxes ?? []).reduce((total, tax) => {
@@ -300,7 +320,7 @@ function proratedInvoiceAmount(
   deletionTimestamp: number,
 ): number {
   if (invoice.status !== "paid") {
-    return 0;
+    throw new Error(`Stripe invoice ${invoice.id} is not paid`);
   }
   const amount = lines.reduce((total, line) => {
     return total + proratedLineAmount(line, deletionTimestamp);
@@ -383,11 +403,14 @@ async function findDeletionCreditNote(
     if (existing) {
       return existing;
     }
-    const last = page.data[page.data.length - 1];
-    if (!page.has_more || !last) {
+    const nextCursor = nextPageCursor(
+      page,
+      `Stripe invoice ${invoiceId} credit notes`,
+    );
+    if (nextCursor === null) {
       return null;
     }
-    startingAfter = last.id;
+    startingAfter = nextCursor;
   }
 }
 

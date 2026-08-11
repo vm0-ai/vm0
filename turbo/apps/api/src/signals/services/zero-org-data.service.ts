@@ -539,6 +539,9 @@ export const deleteZeroOrg$ = command(
         return Boolean(userId);
       });
 
+    await cancelAndRefundOrgBillingForDeletion(db, args.orgId, signal);
+    signal.throwIfAborted();
+
     for (const userId of memberUserIds) {
       const [installation] = await db
         .select({
@@ -584,9 +587,6 @@ export const deleteZeroOrg$ = command(
         );
       signal.throwIfAborted();
     }
-
-    await cancelAndRefundOrgBillingForDeletion(db, args.orgId, signal);
-    signal.throwIfAborted();
 
     await client.organizations.deleteOrganization(args.orgId);
     signal.throwIfAborted();

@@ -452,7 +452,10 @@ describe("WHCB-01: third-party webhook verification boundaries", () => {
           customer: null,
           metadata: null,
           subtotal: null,
-          lines: { data: [] },
+          lines: {
+            has_more: false,
+            data: [],
+          },
           parent: null,
         },
       },
@@ -729,6 +732,7 @@ describe("WHCB-01: third-party webhook verification boundaries", () => {
           },
           parent: null,
           lines: {
+            has_more: false,
             data: [
               {
                 id: `il_bdd_bootstrap_${randomUUID()}`,
@@ -2330,6 +2334,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
           },
           parent: null,
           lines: {
+            has_more: false,
             data: [
               {
                 id: `il_bdd_atom_grant_${suffix}`,
@@ -2399,6 +2404,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
           },
           parent: null,
           lines: {
+            has_more: false,
             data: [
               {
                 id: `il_bdd_atom_grant_renewed_${suffix}`,
@@ -2498,6 +2504,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
             },
           },
           lines: {
+            has_more: false,
             data: [
               {
                 id: `il_bdd_usage_allowance_${suffix}`,
@@ -2621,6 +2628,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
             },
           },
           lines: {
+            has_more: false,
             data: [
               {
                 id: `il_bdd_usage_allowance_delete_${suffix}`,
@@ -2733,6 +2741,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
           },
           parent: null,
           lines: {
+            has_more: false,
             data: [
               {
                 id: `il_bdd_atom_team_${suffix}`,
@@ -2789,6 +2798,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
           },
           parent: null,
           lines: {
+            has_more: false,
             data: [
               {
                 id: `il_bdd_atom_custom_${suffix}`,
@@ -2847,6 +2857,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
           },
           parent: null,
           lines: {
+            has_more: false,
             data: [
               {
                 id: `il_bdd_atom_custom_forever_${suffix}`,
@@ -2913,6 +2924,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
           },
           parent: null,
           lines: {
+            has_more: false,
             data: [
               {
                 id: `il_bdd_atom_custom_initial_${suffix}`,
@@ -2949,6 +2961,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
           },
           parent: null,
           lines: {
+            has_more: false,
             data: [
               {
                 id: `il_bdd_atom_team_after_custom_${suffix}`,
@@ -3157,7 +3170,10 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
           parent: {
             subscription_details: { subscription: granted.subscriptionId },
           },
-          lines: { data: [] },
+          lines: {
+            has_more: false,
+            data: [],
+          },
         },
       }),
       [500],
@@ -3815,6 +3831,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
         },
       },
       lines: {
+        has_more: false,
         data: [
           {
             id: lineId,
@@ -4024,6 +4041,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
             },
           },
           lines: {
+            has_more: false,
             data: [
               {
                 id: initialLineId,
@@ -4080,6 +4098,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
             },
           },
           lines: {
+            has_more: false,
             data: [
               {
                 id: `il_bdd_concurrency_credit_${suffix}`,
@@ -4619,6 +4638,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
           },
           parent: null,
           lines: {
+            has_more: false,
             data: [
               {
                 id: `il_bdd_metadata_credit_${suffix}`,
@@ -4667,6 +4687,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
           },
           parent: null,
           lines: {
+            has_more: false,
             data: [
               {
                 id: `il_bdd_untrusted_metadata_credit_${suffix}`,

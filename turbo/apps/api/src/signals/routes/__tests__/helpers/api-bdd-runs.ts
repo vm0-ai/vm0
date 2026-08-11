@@ -416,10 +416,12 @@ export function createRunsApi(context: TestContext) {
             metadata: {},
             parent: { subscription_details: { subscription: subscriptionId } },
             lines: {
+              has_more: false,
               data: [
                 {
                   parent: { type: "subscription_item_details" },
                   period: {
+                    start: Math.floor(now() / 1000),
                     end:
                       options.periodEndUnix ??
                       Math.floor(now() / 1000) + 30 * 86_400,

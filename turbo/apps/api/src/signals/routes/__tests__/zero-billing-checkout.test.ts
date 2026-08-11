@@ -343,6 +343,7 @@ async function createSubscriptionOrg(args: {
           },
         },
         lines: {
+          has_more: false,
           data: [
             {
               price: { id: priceId },
@@ -411,6 +412,7 @@ async function createConcurrencySubscriptionOrg(args: {
           },
         },
         lines: {
+          has_more: false,
           data: [
             {
               id: `il_${randomUUID().slice(0, 8)}`,
@@ -1622,6 +1624,7 @@ describe("usage pack allocation management", () => {
         },
       },
       lines: {
+        has_more: false,
         data: [...args.quantities].map(([priceId, quantity]) => {
           const configuration = usagePackPriceConfiguration(priceId);
           return {
@@ -1681,6 +1684,7 @@ describe("usage pack allocation management", () => {
         },
       },
       lines: {
+        has_more: false,
         data: [line(args.sourcePriceId, -1000), line(args.targetPriceId, 2500)],
       },
     };
@@ -1708,6 +1712,7 @@ describe("usage pack allocation management", () => {
         },
       },
       lines: {
+        has_more: false,
         data: [
           {
             id: `il_${randomUUID()}`,
@@ -1974,7 +1979,10 @@ describe("usage pack allocation management", () => {
             ? immediateAmountCents + 2000
             : recurringPlanAmountCents + 2000,
         currency: "usd",
-        lines: { data: lines },
+        lines: {
+          has_more: false,
+          data: lines,
+        },
       });
     });
   }
@@ -2016,7 +2024,10 @@ describe("usage pack allocation management", () => {
         return Promise.resolve({
           amount_due: args.nextRecurringAmountCents,
           currency: "usd",
-          lines: { data: [] },
+          lines: {
+            has_more: false,
+            data: [],
+          },
         });
       }
       if (
@@ -2041,6 +2052,7 @@ describe("usage pack allocation management", () => {
         amount_due: args.immediateAmountCents,
         currency: "usd",
         lines: {
+          has_more: false,
           data: [
             line(args.sourcePriceId, -1000),
             line(args.targetPriceId, args.immediateAmountCents + 1000),
@@ -2247,7 +2259,10 @@ describe("usage pack allocation management", () => {
         return Promise.resolve({
           amount_due: args.nextRecurringAmountCents,
           currency: "usd",
-          lines: { data: [] },
+          lines: {
+            has_more: false,
+            data: [],
+          },
         });
       }
       const subscriptionDetails =
@@ -2265,6 +2280,7 @@ describe("usage pack allocation management", () => {
         amount_due: args.immediateAmountCents,
         currency: "usd",
         lines: {
+          has_more: false,
           data: [
             {
               id: `il_${randomUUID()}`,
@@ -6033,6 +6049,7 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
           amount_due: 17_000,
           currency: "usd",
           lines: {
+            has_more: false,
             data: [
               {
                 id: `il_${randomUUID()}`,
@@ -6196,6 +6213,7 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
           amount_due: 0,
           currency: "usd",
           lines: {
+            has_more: false,
             data: [
               {
                 id: `il_${randomUUID()}`,
@@ -6405,6 +6423,7 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
             },
           },
           lines: {
+            has_more: false,
             data: [
               {
                 id: `il_${randomUUID().slice(0, 8)}`,
