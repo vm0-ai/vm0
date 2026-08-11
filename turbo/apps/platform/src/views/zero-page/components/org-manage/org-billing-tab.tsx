@@ -308,26 +308,12 @@ function billingScheduledChange(
   return null;
 }
 
-type BillingManagementMode = "billing" | "payment_methods" | null;
+type BillingManagementMode = "payment_methods" | null;
 
 function billingManagementMode(
   status: BillingStatusResponse | null,
-  paymentMethodManagementEnabled: boolean,
 ): BillingManagementMode {
-  if (!status) {
-    return null;
-  }
-  // Keep the legacy subscriber UI while the rollout switch is disabled.
-  // Remove this branch with #25716 after the roughly two-day client window.
-  if (!paymentMethodManagementEnabled) {
-    return status.hasSubscription ? "billing" : null;
-  }
-  if (status.paymentMethodManagementAvailable === true) {
-    return "payment_methods";
-  }
-  // A new app can briefly reach an API version that predates this capability.
-  // Preserve its legacy UI until that API is outside the window; #25716 (~2d).
-  return status.hasSubscription ? "billing" : null;
+  return status ? "payment_methods" : null;
 }
 
 type PlanCardAction =
@@ -2451,8 +2437,6 @@ function CurrentPlanTitle({
 export function OrgBillingTab() {
   const { t } = useTranslation();
   const featureSwitches = useGet(featureSwitch$);
-  const paymentMethodManagementEnabled =
-    featureSwitches[FeatureSwitchKey.PaymentMethodManagement];
   const pricingOpen = useGet(billingSubPage$);
   const migrationOpen = useGet(billingMigrationSubPage$);
   const migrationTargetTier = useGet(billingMigrationTargetTier$);
@@ -2537,18 +2521,14 @@ export function OrgBillingTab() {
   );
   const showBuyCredits = capabilities.canBuyCredits;
   const showConcurrency = capabilities.canBuyConcurrency;
-  const managementMode = billingManagementMode(
-    status,
-    paymentMethodManagementEnabled,
-  );
+  const managementMode = billingManagementMode(status);
   const canManageBilling = managementMode !== null;
-  const paymentMethodsOnly = managementMode === "payment_methods";
   const openBillingPortal = (event: React.MouseEvent<HTMLButtonElement>) => {
     if (!managementMode) {
       return;
     }
     return detach(
-      portal(managementMode, event.metaKey || event.ctrlKey, pageSignal),
+      portal(event.metaKey || event.ctrlKey, pageSignal),
       Reason.DomCallback,
     );
   };
@@ -2672,16 +2652,12 @@ export function OrgBillingTab() {
                     <div className="min-w-0">
                       <p className="text-sm font-medium text-foreground">
                         {t(($) => {
-                          return paymentMethodsOnly
-                            ? $.billing.paymentMethods.title
-                            : $.billing.manage.title;
+                          return $.billing.paymentMethods.title;
                         })}
                       </p>
                       <p className="text-[13px] text-muted-foreground mt-0.5">
                         {t(($) => {
-                          return paymentMethodsOnly
-                            ? $.billing.paymentMethods.description
-                            : $.billing.manage.description;
+                          return $.billing.paymentMethods.description;
                         })}
                       </p>
                     </div>
