@@ -6,7 +6,6 @@ import { activeRoute$ } from "../../signals/active-route.ts";
 import {
   buildSignInRedirectUrl,
   buildSignupRedirectUrl,
-  resolveAppUrl,
 } from "../../signals/auth.ts";
 import { authPageMountRef$ } from "../../signals/auth-page-mount.ts";
 import { theme$ } from "../../signals/theme.ts";
@@ -43,15 +42,18 @@ export function AuthPage({ mode }: AuthPageProps) {
   const theme = useGet(theme$);
 
   if (mode === "sign-in") {
-    const appUrl = resolveAppUrl();
     const redirectUrl = buildSignInRedirectUrl(location.search);
+    const signUpRedirectUrl = buildSignupRedirectUrl(location.search);
 
     return (
       <>
+        {/* One Tap completes the sign-in without the card, so it needs the same
+            destination the card would use. Sending it to the bare app origin
+            drops the marketing `?prompt=` deep link and the ad attribution. */}
         {activeRoute === "signIn" && (
           <GoogleOneTap
-            signInForceRedirectUrl={appUrl}
-            signUpForceRedirectUrl={appUrl}
+            signInForceRedirectUrl={redirectUrl}
+            signUpForceRedirectUrl={signUpRedirectUrl}
           />
         )}
         <AuthLayout>

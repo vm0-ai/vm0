@@ -352,6 +352,37 @@ describe("app auth pages", () => {
       "data-clerk-force-redirect-url",
       redirectUrl,
     );
+    expect(screen.getByTestId("clerk-google-one-tap")).toHaveAttribute(
+      "data-sign-in-force-redirect-url",
+      redirectUrl,
+    );
+    expect(screen.getByTestId("clerk-google-one-tap")).toHaveAttribute(
+      "data-sign-up-force-redirect-url",
+      redirectUrl,
+    );
+  });
+
+  it("routes ad-attributed One Tap sign-ups through onboarding", async () => {
+    const path = "/sign-in?gclid=click-123&utm_campaign=summer";
+    setBrowserUrl(`https://app.vm0.ai${path}`);
+
+    detachedSetupPage({ context, path });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("clerk-google-one-tap")).toBeInTheDocument();
+    });
+
+    const oneTap = screen.getByTestId("clerk-google-one-tap");
+    expect(oneTap.dataset.signInForceRedirectUrl).toBe("https://app.vm0.ai");
+
+    const signUpRedirectUrl = new URL(
+      oneTap.dataset.signUpForceRedirectUrl ?? "",
+    );
+    expect(signUpRedirectUrl.origin).toBe("https://app.vm0.ai");
+    expect(signUpRedirectUrl.pathname).toBe("/onboarding");
+    expect(signUpRedirectUrl.searchParams.get("gclid")).toBe("click-123");
+    expect(signUpRedirectUrl.searchParams.get("utm_campaign")).toBe("summer");
+    expect(signUpRedirectUrl.searchParams.get("vm0_source")).toBe("homepage");
   });
 
   it("allows sign-in redirects to okou.ai subdomains", async () => {
