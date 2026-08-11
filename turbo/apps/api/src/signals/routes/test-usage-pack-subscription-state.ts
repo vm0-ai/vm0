@@ -74,6 +74,11 @@ const actionBodySchema = z.discriminatedUnion("action", [
     remainingAmount: z.number().int().nonnegative(),
   }),
   z.object({
+    action: z.literal("delete-refund-source"),
+    orgId: z.string().min(1),
+    userId: z.string().min(1),
+  }),
+  z.object({
     action: z.literal("cleanup"),
     orgId: z.string().min(1),
     usagePackSubscriptionId: z.string().uuid(),
@@ -608,6 +613,22 @@ const mutateTestUsagePackSubscriptionState$ = command(
         signal.throwIfAborted();
         if (rows.length !== 1) {
           throw new Error("Expected one usage pack credit grant to update");
+        }
+        return { status: 200 as const, body: { action: "ok" as const } };
+      }
+      case "delete-refund-source": {
+        const rows = await db
+          .delete(usagePackCreditRefunds)
+          .where(
+            and(
+              eq(usagePackCreditRefunds.orgId, body.orgId),
+              eq(usagePackCreditRefunds.userId, body.userId),
+            ),
+          )
+          .returning({ creditGrantId: usagePackCreditRefunds.creditGrantId });
+        signal.throwIfAborted();
+        if (rows.length !== 1) {
+          throw new Error("Expected one usage pack refund source to delete");
         }
         return { status: 200 as const, body: { action: "ok" as const } };
       }
