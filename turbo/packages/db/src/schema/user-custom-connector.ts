@@ -1,6 +1,4 @@
 import {
-  boolean,
-  check,
   foreignKey,
   pgTable,
   uuid,
@@ -43,13 +41,6 @@ export const userCustomConnectors = pgTable(
       .array()
       .notNull()
       .default(sql`'{}'::text[]`),
-    // Physical compatibility columns only. New readers do not project them;
-    // https://github.com/vm0-ai/vm0/issues/26013 drops them after API drain.
-    allowAllMcpTools: boolean("allow_all_mcp_tools").notNull().default(false),
-    mcpToolNames: text("mcp_tool_names")
-      .array()
-      .notNull()
-      .default(sql`'{}'::text[]`),
     createdAt: timestamp("created_at").defaultNow().notNull(),
   },
   (table) => {
@@ -69,10 +60,6 @@ export const userCustomConnectors = pgTable(
         columns: [table.customConnectorId, table.orgId],
         foreignColumns: [orgCustomConnectors.id, orgCustomConnectors.orgId],
       }).onDelete("cascade"),
-      check(
-        "chk_user_custom_connectors_mcp_grant",
-        sql`NOT ${table.allowAllMcpTools} AND cardinality(${table.mcpToolNames}) = 0`,
-      ),
     ];
   },
 );
