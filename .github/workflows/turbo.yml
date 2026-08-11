@@ -1405,15 +1405,13 @@ jobs:
           PAGES_BRANCH: ${{ steps.pages-branch.outputs.branch }}
           PAGES_DIST: ${{ steps.pages-preview.outputs.dist }}
           WRANGLER_OUTPUT_FILE_PATH: /tmp/wrangler-pages-output.ndjson
-        working-directory: turbo
         run: |
           set -euo pipefail
-          : "${CLOUDFLARE_API_TOKEN:?CF_PAGES_DEPLOY_API_TOKEN secret is required}"
-          pnpm --filter @vm0/host-worker exec wrangler pages deploy "$PAGES_DIST" \
-            --project-name "$CF_PAGES_PROJECT_NAME" \
-            --branch "$PAGES_BRANCH" \
-            --commit-hash "$ARTIFACT_SHA" \
-            --commit-dirty=false
+          bash .github/scripts/deploy-okou-pages.sh \
+            "$PAGES_DIST" \
+            "$CF_PAGES_PROJECT_NAME" \
+            "$PAGES_BRANCH" \
+            "$ARTIFACT_SHA"
 
           deployment="$(
             jq --slurp --compact-output \
