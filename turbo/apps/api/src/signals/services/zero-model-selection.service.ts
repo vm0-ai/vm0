@@ -1,8 +1,11 @@
 import {
   getFrameworkForType,
+  getCanonicalRetiredRunModel,
+  getRetiredRunModelReplacement,
   getVm0ConcreteProviderType,
   isCodexFastModeModel,
   isLimitedFree1RestrictedRunModel,
+  isRetiredRunModel,
   isSupportedRunModel,
   isModelSupportedByProvider,
   modelProviderTypeSchema,
@@ -27,7 +30,11 @@ import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
 import { and, eq, or } from "drizzle-orm";
 
-import { badRequestMessage, insufficientCredits } from "../../lib/error";
+import {
+  badRequestMessage,
+  insufficientCredits,
+  modelRetired,
+} from "../../lib/error";
 import type { Db } from "../external/db";
 import { ensureOrgModelPolicies } from "./zero-model-policy.service";
 import { checkOrgCreditsForRunAdmission } from "./zero-run-admission.service";
@@ -71,6 +78,14 @@ interface ModelSelectionRequest {
 
 interface AvailableModelProviderPin {
   readonly type: string;
+}
+
+interface StoredModelPolicyRoute {
+  readonly model: string;
+  readonly defaultProviderType: string;
+  readonly credentialScope: string;
+  readonly modelProviderId: string | null;
+  readonly modelProviderSurfaceId: string | null;
 }
 
 function providerTypeForSurfaceProtocol(
@@ -219,26 +234,12 @@ function getLegacyOrgProviderId(params: {
     : null;
 }
 
-async function resolveValidPolicyRoute(params: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly capabilities: Pick<
-    OrgPlanCapabilities,
-    "restrictedVm0Models" | "supportByok"
-  >;
-  readonly selectedModel: string;
-}): Promise<ResolvedModelFirstPolicyRoute | null> {
-  if (
-    !isSupportedRunModel(params.selectedModel) ||
-    !modelAllowedForOrgPlan({
-      capabilities: params.capabilities,
-      selectedModel: params.selectedModel,
-    })
-  ) {
-    return null;
-  }
-
-  const [policy] = await params.db
+async function loadModelPolicyRoute(
+  db: Db,
+  orgId: string,
+  model: string,
+): Promise<StoredModelPolicyRoute | null> {
+  const [policy] = await db
     .select({
       model: orgModelPolicies.model,
       defaultProviderType: orgModelPolicies.defaultProviderType,
@@ -248,21 +249,34 @@ async function resolveValidPolicyRoute(params: {
     })
     .from(orgModelPolicies)
     .where(
-      and(
-        eq(orgModelPolicies.orgId, params.orgId),
-        eq(orgModelPolicies.model, params.selectedModel),
-      ),
+      and(eq(orgModelPolicies.orgId, orgId), eq(orgModelPolicies.model, model)),
     )
     .limit(1);
-  const providerType = policy
-    ? modelProviderTypeSchema.safeParse(policy.defaultProviderType)
-    : null;
+  return policy ?? null;
+}
+
+async function resolvePolicyRowForModel(params: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly capabilities: Pick<
+    OrgPlanCapabilities,
+    "restrictedVm0Models" | "supportByok"
+  >;
+  readonly policy: StoredModelPolicyRoute;
+  readonly selectedModel: SupportedRunModel;
+}): Promise<ResolvedModelFirstPolicyRoute | null> {
+  const providerType = modelProviderTypeSchema.safeParse(
+    params.policy.defaultProviderType,
+  );
   if (
-    !policy ||
-    !isSupportedRunModel(policy.model) ||
-    !providerType?.success ||
-    (!policy.modelProviderSurfaceId &&
-      !isModelSupportedByProvider(policy.model, providerType.data)) ||
+    isRetiredRunModel(params.selectedModel) ||
+    !modelAllowedForOrgPlan({
+      capabilities: params.capabilities,
+      selectedModel: params.selectedModel,
+    }) ||
+    !providerType.success ||
+    (!params.policy.modelProviderSurfaceId &&
+      !isModelSupportedByProvider(params.selectedModel, providerType.data)) ||
     !modelProviderAllowedForOrgPlan({
       capabilities: params.capabilities,
       modelProviderType: providerType.data,
@@ -272,19 +286,19 @@ async function resolveValidPolicyRoute(params: {
   }
 
   const credentialScope = parseModelProviderCredentialScope(
-    policy.credentialScope,
+    params.policy.credentialScope,
   );
   if (credentialScope === null) {
     return null;
   }
-  if (policy.modelProviderSurfaceId) {
+  if (params.policy.modelProviderSurfaceId) {
     return await resolveCustomSurfacePolicyRoute({
       db: params.db,
       orgId: params.orgId,
       policy: {
-        model: policy.model,
-        modelProviderId: policy.modelProviderId,
-        modelProviderSurfaceId: policy.modelProviderSurfaceId,
+        model: params.selectedModel,
+        modelProviderId: params.policy.modelProviderId,
+        modelProviderSurfaceId: params.policy.modelProviderSurfaceId,
       },
       providerType: providerType.data,
       credentialScope,
@@ -294,7 +308,7 @@ async function resolveValidPolicyRoute(params: {
     !isLegacyPolicyRouteShapeValid({
       credentialScope,
       providerType: providerType.data,
-      modelProviderId: policy.modelProviderId,
+      modelProviderId: params.policy.modelProviderId,
     })
   ) {
     return null;
@@ -302,7 +316,7 @@ async function resolveValidPolicyRoute(params: {
   const legacyOrgProviderId = getLegacyOrgProviderId({
     credentialScope,
     providerType: providerType.data,
-    modelProviderId: policy.modelProviderId,
+    modelProviderId: params.policy.modelProviderId,
   });
   if (legacyOrgProviderId) {
     const [provider] = await params.db
@@ -322,11 +336,97 @@ async function resolveValidPolicyRoute(params: {
   }
 
   return {
-    modelProviderId: policy.modelProviderId,
+    modelProviderId: params.policy.modelProviderId,
     modelProviderType: providerType.data,
     modelProviderCredentialScope: credentialScope,
-    selectedModel: policy.model,
+    selectedModel: params.selectedModel,
   };
+}
+
+async function resolveValidPolicyRoute(params: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly capabilities: Pick<
+    OrgPlanCapabilities,
+    "restrictedVm0Models" | "supportByok"
+  >;
+  readonly selectedModel: string;
+}): Promise<ResolvedModelFirstPolicyRoute | null> {
+  if (
+    !isSupportedRunModel(params.selectedModel) ||
+    isRetiredRunModel(params.selectedModel)
+  ) {
+    return null;
+  }
+  const policy = await loadModelPolicyRoute(
+    params.db,
+    params.orgId,
+    params.selectedModel,
+  );
+  return policy
+    ? resolvePolicyRowForModel({
+        ...params,
+        policy,
+        selectedModel: params.selectedModel,
+      })
+    : null;
+}
+
+function builtInModelRoute(
+  selectedModel: SupportedRunModel,
+): ResolvedModelFirstPolicyRoute {
+  return {
+    modelProviderId: null,
+    modelProviderType: "vm0",
+    modelProviderCredentialScope: "org",
+    selectedModel,
+  };
+}
+
+/**
+ * Rollout compatibility for selections persisted by the previous API across
+ * the observed ~102-minute DB/API exposure window. Remove with #26314 after
+ * Stage 2 migrates every stored selection, production shows none remain, and
+ * the previous API is outside its rollback/drain window.
+ */
+async function resolveStoredModelFirstRoute(params: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly capabilities: Pick<
+    OrgPlanCapabilities,
+    "restrictedVm0Models" | "supportByok"
+  >;
+  readonly selectedModel: string;
+  readonly modelProviderType?: string | null;
+}): Promise<ResolvedModelFirstPolicyRoute | null> {
+  const replacement = getRetiredRunModelReplacement(params.selectedModel, {
+    restrictedVm0Models: params.capabilities.restrictedVm0Models,
+    modelProviderType: params.modelProviderType,
+  });
+  if (!replacement) {
+    return resolveValidPolicyRoute(params);
+  }
+
+  const configuredReplacement = await resolveValidPolicyRoute({
+    ...params,
+    selectedModel: replacement,
+  });
+  if (configuredReplacement) {
+    return configuredReplacement;
+  }
+
+  const retiredModel = getCanonicalRetiredRunModel(params.selectedModel);
+  const retiredPolicy = retiredModel
+    ? await loadModelPolicyRoute(params.db, params.orgId, retiredModel)
+    : null;
+  const preservedRoute = retiredPolicy
+    ? await resolvePolicyRowForModel({
+        ...params,
+        policy: retiredPolicy,
+        selectedModel: replacement,
+      })
+    : null;
+  return preservedRoute ?? builtInModelRoute(replacement);
 }
 
 export async function resolveDefaultModelFirstPin(
@@ -353,7 +453,7 @@ export async function resolveDefaultModelFirstPin(
       )
       .limit(1);
     if (preference?.selectedModel) {
-      const preferredRoute = await resolveValidPolicyRoute({
+      const preferredRoute = await resolveStoredModelFirstRoute({
         db,
         orgId,
         capabilities,
@@ -417,7 +517,7 @@ async function resolveWorkspaceDefaultModelFirstRoute(params: {
   if (!policy) {
     return null;
   }
-  return resolveValidPolicyRoute({
+  return resolveStoredModelFirstRoute({
     db: params.db,
     orgId: params.orgId,
     capabilities: params.capabilities,
@@ -430,15 +530,17 @@ export async function resolvePersistedModelFirstRoute(params: {
   readonly orgId: string;
   readonly userId: string;
   readonly selectedModel: string | null;
+  readonly modelProviderType?: string | null;
 }): Promise<PersistedModelFirstRouteResolution> {
   await ensureOrgModelPolicies(params.db, params.orgId, params.userId);
   const capabilities = await orgModelCapabilities(params.db, params.orgId);
   const currentRoute = params.selectedModel
-    ? await resolveValidPolicyRoute({
+    ? await resolveStoredModelFirstRoute({
         db: params.db,
         orgId: params.orgId,
         capabilities,
         selectedModel: params.selectedModel,
+        modelProviderType: params.modelProviderType,
       })
     : null;
   if (currentRoute) {
@@ -490,9 +592,17 @@ export async function resolveModelSelectionPin(params: {
   | ModelFirstPin
   | ReturnType<typeof badRequestMessage>
   | ReturnType<typeof insufficientCredits>
+  | ReturnType<typeof modelRetired>
 > {
   const { db, orgId, userId, modelSelection } = params;
   const capabilities = await orgModelCapabilities(db, orgId);
+  const replacement = getRetiredRunModelReplacement(
+    modelSelection.selectedModel,
+    { restrictedVm0Models: capabilities.restrictedVm0Models },
+  );
+  if (replacement) {
+    return modelRetired(modelSelection.selectedModel, replacement);
+  }
   if (
     !modelAllowedForOrgPlan({
       capabilities,
@@ -510,6 +620,16 @@ export async function resolveModelSelectionPin(params: {
     });
     if (!provider) {
       return badRequestMessage("Unknown model provider for this workspace");
+    }
+    const providerReplacement = getRetiredRunModelReplacement(
+      modelSelection.selectedModel,
+      {
+        restrictedVm0Models: capabilities.restrictedVm0Models,
+        modelProviderType: provider.type,
+      },
+    );
+    if (providerReplacement) {
+      return modelRetired(modelSelection.selectedModel, providerReplacement);
     }
     if (
       !modelProviderAllowedForOrgPlan({
@@ -594,11 +714,26 @@ export async function resolveModelFirstProviderAdmission(params: {
   readonly cliAgentType: SupportedFramework | null;
   readonly error:
     | Awaited<ReturnType<typeof checkOrgCreditsForRunAdmission>>
-    | ReturnType<typeof badRequestMessage>;
+    | ReturnType<typeof badRequestMessage>
+    | ReturnType<typeof modelRetired>;
 }> {
   const effectiveModelProvider =
     await resolveEffectiveModelProviderType(params);
   const selectedModel = params.modelPin.selectedModel;
+  if (isRetiredRunModel(selectedModel, effectiveModelProvider)) {
+    const capabilities = await orgModelCapabilities(params.db, params.orgId);
+    const replacement = getRetiredRunModelReplacement(selectedModel, {
+      restrictedVm0Models: capabilities.restrictedVm0Models,
+      modelProviderType: effectiveModelProvider,
+    });
+    if (replacement) {
+      return {
+        effectiveModelProvider,
+        cliAgentType: null,
+        error: modelRetired(selectedModel ?? "Z.AI", replacement),
+      };
+    }
+  }
   const [customSurface] =
     params.modelPin.modelProviderId === null
       ? []

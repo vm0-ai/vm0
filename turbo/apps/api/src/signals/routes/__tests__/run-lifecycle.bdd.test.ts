@@ -109,13 +109,16 @@ import {
   readOrgAdmissionLockState,
   readRunApiStart,
   readRunClaimOwner,
+  readRunModelSelectionFixture,
   readRunnerJobStorageState,
   readStoragePersistenceState,
   releaseOrgAdmissionLock,
   resetFakeKms,
   seedVm0ManagedDefaultModelKey as seedVm0ManagedDefaultModelKeyState,
   seedVm0ManagedModelKey as seedVm0ManagedModelKeyState,
+  setAgentModelSelectionAsPreviousApi,
   setCustomConnectorAuthTemplateFixture,
+  setRunModelSelectionAsPreviousApi,
   setRunnerJobContextProfileAsPreviousApi,
 } from "./helpers/runtime-state";
 import {
@@ -5406,6 +5409,93 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
     expect(emptied.body.concurrency.active).toBe(0);
   });
 
+  it("reconciles a retired persisted agent model before launch", async () => {
+    const api = createRunsApi(context);
+    const { actor, agentId } = await entitledRunActor();
+    await setAgentModelSelectionAsPreviousApi(
+      context,
+      agentId,
+      "claude-sonnet-4-6",
+    );
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "run with a retired persisted agent model",
+      modelProvider: "anthropic-api-key",
+    });
+    const stored = await readRunModelSelectionFixture(context, run.runId);
+
+    expect(stored).toStrictEqual({
+      model_provider: "anthropic-api-key",
+      selected_model: "claude-sonnet-5",
+    });
+    await api.requestCancelRun(actor, run.runId, [200]);
+  });
+
+  it("rejects an explicitly requested retired provider before launch", async () => {
+    const api = createRunsApi(context);
+    const { actor, agentId } = await entitledRunActor();
+
+    const response = await api.requestCreateRun(
+      actor,
+      {
+        agentId,
+        prompt: "run with an explicitly retired Z.AI provider",
+        modelProvider: "zai-api-key",
+      },
+      [400],
+    );
+
+    expect(response.body).toStrictEqual({
+      error: {
+        code: "MODEL_RETIRED",
+        message:
+          'Model "Z.AI" has been retired. Use "deepseek-v4-flash" instead.',
+      },
+    });
+  });
+
+  it("rejects a retired queued run instead of promoting it", async () => {
+    const api = createRunsApi(context);
+    const { actor, agentId } = await entitledRunActor();
+    await enableFakeKms(context);
+    onTestFinished(async () => {
+      await resetFakeKms(context);
+    });
+
+    const first = await api.createRun(actor, {
+      agentId,
+      prompt: "active run before retired queue item one",
+      modelProvider: "anthropic-api-key",
+    });
+    const second = await api.createRun(actor, {
+      agentId,
+      prompt: "active run before retired queue item two",
+      modelProvider: "anthropic-api-key",
+    });
+    const queued = await api.createRun(actor, {
+      agentId,
+      prompt: "retired queued run",
+      modelProvider: "anthropic-api-key",
+    });
+    expect(queued.status).toBe("queued");
+
+    await setRunModelSelectionAsPreviousApi(
+      context,
+      queued.runId,
+      "claude-sonnet-4-6",
+    );
+    await api.requestCancelRun(actor, first.runId, [200]);
+
+    const failed = await waitForRunStatus(api, actor, queued.runId, "failed");
+    expect(failed.error).toBe(
+      'MODEL_RETIRED: Model "claude-sonnet-4-6" has been retired. Use "claude-sonnet-5" instead.',
+    );
+    await expect(waitForRunQueueLength(api, actor, 0)).resolves.toBeDefined();
+
+    await api.requestCancelRun(actor, second.runId, [200]);
+  });
+
   it("counts promoted queued runs by promotion heartbeat for admission", async () => {
     const api = createRunsApi(context);
     const { actor, agentId } = await entitledRunActor();
@@ -6338,7 +6428,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     const api = createRunsApi(context);
     const chat = createChatFilesBddApi(context);
     const unsupportedModel = "deepseek-v4-flash";
-    const supportedModel = "claude-sonnet-4-6";
+    const supportedModel = "claude-sonnet-5";
     const unknownModel = "gpt-5.6-sol";
     const { actor, agentId, runnerGroup } = await entitledRunActor();
     const { providerId: anthropicProviderId } =
@@ -6475,7 +6565,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
         "codex-oauth-token",
         "CHATGPT_ACCOUNT_ID",
       ),
-      OPENAI_MODEL: "gpt-5.5",
+      OPENAI_MODEL: "gpt-5.6-sol",
     });
     expect(claim.environment).not.toHaveProperty("CHATGPT_REFRESH_TOKEN");
     expect(claim.environment).not.toHaveProperty("CHATGPT_ID_TOKEN");
@@ -6498,7 +6588,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
       }),
     ).toContain("model-provider:codex-oauth-token");
     expect(claim.billableFirewalls).toStrictEqual([]);
-    expect(claim.modelUsageProvider).toBe("gpt-5.5");
+    expect(claim.modelUsageProvider).toBe("gpt-5.6-sol");
 
     // The encrypted secrets resolve to the seeded plaintext through the
     // firewall-auth webhook, which is the production read surface for them.
@@ -6645,7 +6735,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     const orgProvider = await api.ensureOrgModelProvider(actor);
     await api.updateOrgModelPolicies(actor, [
       {
-        model: "claude-sonnet-4-6",
+        model: "claude-sonnet-5",
         isDefault: true,
         defaultProviderType: "anthropic-api-key",
         credentialScope: "org",
@@ -6678,7 +6768,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     }
     const thread = await chat.createThread(actor, {
       agentId: agent.agentId,
-      model: "claude-sonnet-4-6",
+      model: "claude-sonnet-5",
     });
     const sent = await chat.requestSendEvent(
       actor,

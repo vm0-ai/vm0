@@ -1040,7 +1040,7 @@ const handleModelCommand$ = command(
       );
       return;
     }
-    await set(
+    const updateResult = await set(
       updateUserModelPreference$,
       {
         orgId: args.installation.orgId,
@@ -1050,6 +1050,19 @@ const handleModelCommand$ = command(
       signal,
     );
     signal.throwIfAborted();
+    if ("status" in updateResult) {
+      await replyNotice(
+        {
+          db: args.db,
+          message: args.message,
+          title: "Model unavailable",
+          text: updateResult.body.error.message,
+          kind: "error",
+        },
+        signal,
+      );
+      return;
+    }
     await replyNotice(
       {
         db: args.db,

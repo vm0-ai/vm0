@@ -2103,7 +2103,7 @@ const handleModelCommand$ = command(
       return;
     }
 
-    await set(
+    const updateResult = await set(
       updateUserModelPreference$,
       {
         orgId: args.orgId,
@@ -2113,6 +2113,16 @@ const handleModelCommand$ = command(
       signal,
     );
     signal.throwIfAborted();
+    if ("status" in updateResult) {
+      await postTelegramMessage({
+        botToken: args.botToken,
+        chatId,
+        text: formatTelegramCommandError(updateResult.body.error.message),
+        replyToMessageId,
+      });
+      signal.throwIfAborted();
+      return;
+    }
     await postTelegramMessage({
       botToken: args.botToken,
       chatId,

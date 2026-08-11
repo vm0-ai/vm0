@@ -2112,7 +2112,7 @@ const connectedTeamsCardAction$ = command(
         replyText: "You don't have access to that model.",
       };
     }
-    await set(
+    const updateResult = await set(
       updateUserModelPreference$,
       {
         orgId: args.installation.orgId,
@@ -2122,6 +2122,12 @@ const connectedTeamsCardAction$ = command(
       signal,
     );
     signal.throwIfAborted();
+    if ("status" in updateResult) {
+      return {
+        kind: "notice",
+        replyText: updateResult.body.error.message,
+      };
+    }
     return {
       kind: "notice",
       replyText: `Switched to **${option.label}**.`,

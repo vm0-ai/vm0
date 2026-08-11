@@ -26,8 +26,8 @@ const store = createStore();
 const bdd = createBddApi(context);
 const api = createRunsApi(context);
 
-const WORKSPACE_DEFAULT_MODEL = "claude-sonnet-4-6";
-const OTHER_WORKSPACE_MODEL = "claude-sonnet-5";
+const WORKSPACE_DEFAULT_MODEL = "claude-sonnet-5";
+const OTHER_WORKSPACE_MODEL = "claude-opus-4-8";
 const PRIORITY_MODEL = "gpt-5.6-sol";
 
 interface AgentFixture {

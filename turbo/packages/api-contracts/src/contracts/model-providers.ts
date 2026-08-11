@@ -466,7 +466,7 @@ export const MODEL_PROVIDER_TYPES = {
       "claude-opus-4-7",
       "claude-opus-4-6",
     ] as string[],
-    defaultModel: "claude-sonnet-4-6",
+    defaultModel: "claude-sonnet-5",
   },
   "anthropic-api-key": {
     framework: "claude-code" as const,
@@ -488,7 +488,7 @@ export const MODEL_PROVIDER_TYPES = {
       "claude-opus-4-7",
       "claude-opus-4-6",
     ] as string[],
-    defaultModel: "claude-sonnet-4-6",
+    defaultModel: "claude-sonnet-5",
   },
   "openrouter-api-key": {
     framework: "claude-code" as const,
@@ -547,7 +547,7 @@ export const MODEL_PROVIDER_TYPES = {
       "kimi-k2-thinking-turbo",
       "kimi-k2-thinking",
     ] as string[],
-    defaultModel: "kimi-k2.7-code",
+    defaultModel: "kimi-k2-thinking-turbo",
   },
   "minimax-api-key": {
     framework: "claude-code" as const,
@@ -570,7 +570,7 @@ export const MODEL_PROVIDER_TYPES = {
       CLAUDE_CODE_DISABLE_ATTACHMENTS: "1",
     } satisfies ModelProviderEnvBindings,
     models: ["MiniMax-M3", "MiniMax-M2.1"] as string[],
-    defaultModel: "MiniMax-M3",
+    defaultModel: "MiniMax-M2.1",
   },
   deepseek: {
     framework: "codex" as const,
@@ -609,7 +609,7 @@ export const MODEL_PROVIDER_TYPES = {
       "glm-4.7",
       "glm-4.5-air",
     ] as string[],
-    defaultModel: "glm-5.2",
+    defaultModel: "",
   },
   "vercel-ai-gateway": {
     framework: "claude-code" as const,
@@ -640,7 +640,7 @@ export const MODEL_PROVIDER_TYPES = {
       "minimax/minimax-m2.5",
       "zai/glm-5-turbo",
     ] as string[],
-    defaultModel: "anthropic/claude-sonnet-4.6",
+    defaultModel: "anthropic/claude-sonnet-5",
   },
   // Codex-framework twin of openrouter-api-key. Same upstream gateway (OpenRouter)
   // and same API key (shared secretName), but routes through OpenRouter's
@@ -707,7 +707,7 @@ export const MODEL_PROVIDER_TYPES = {
       "gpt-5.6-luna",
       "gpt-5.5",
     ] as string[],
-    defaultModel: "gpt-5.5",
+    defaultModel: "gpt-5.6-sol",
   },
   "codex-oauth-token": {
     framework: "codex" as const,
@@ -781,7 +781,7 @@ export const MODEL_PROVIDER_TYPES = {
       "gpt-5.6-luna",
       "gpt-5.5",
     ] as string[],
-    defaultModel: "gpt-5.5",
+    defaultModel: "gpt-5.6-sol",
   },
   "azure-foundry": {
     framework: "claude-code" as const,
@@ -1037,6 +1037,112 @@ const CANONICAL_RUN_MODEL_ALIASES: Readonly<Record<string, SupportedRunModel>> =
 
 export function normalizeRunModelId(model: string): string {
   return CANONICAL_RUN_MODEL_ALIASES[model] ?? model;
+}
+
+/**
+ * Canonical model IDs that remain readable for historical records but cannot
+ * be selected for a new run. Keep this separate from SUPPORTED_RUN_MODELS:
+ * the latter is also used by persisted API response schemas.
+ *
+ * Rollout compatibility: persisted DB/API records may expose these IDs for the
+ * observed ~102-minute backend window, and already-open web/app clients may
+ * send or decode them for ~2 days. Remove the retired IDs and retained provider
+ * catalog entries with #26314 only after Stage 2 leaves no stale persisted
+ * values and the client window closes (or a version floor forces refresh).
+ */
+export const RETIRED_RUN_MODELS = [
+  "gpt-5.5",
+  "claude-opus-4-7",
+  "claude-opus-4-6",
+  "claude-sonnet-4-6",
+  "kimi-k3",
+  "kimi-k2.7-code",
+  "MiniMax-M3",
+  "glm-5.2",
+  "glm-5.1",
+  "mimo-v2.5",
+  "hy3-preview",
+] as const satisfies readonly SupportedRunModel[];
+
+export type RetiredRunModel = (typeof RETIRED_RUN_MODELS)[number];
+
+const RETIRED_RUN_MODEL_REPLACEMENTS: Readonly<
+  Record<RetiredRunModel, SupportedRunModel>
+> = {
+  "gpt-5.5": "gpt-5.6-sol",
+  "claude-opus-4-7": "claude-opus-4-8",
+  "claude-opus-4-6": "claude-opus-4-8",
+  "claude-sonnet-4-6": "claude-sonnet-5",
+  "kimi-k3": "deepseek-v4-flash",
+  "kimi-k2.7-code": "deepseek-v4-flash",
+  "MiniMax-M3": "deepseek-v4-flash",
+  "glm-5.2": "deepseek-v4-flash",
+  "glm-5.1": "deepseek-v4-flash",
+  "mimo-v2.5": "deepseek-v4-flash",
+  "hy3-preview": "deepseek-v4-flash",
+};
+
+export function getCanonicalRetiredRunModel(
+  model: string,
+): RetiredRunModel | null {
+  const trimmedModel = model.trim();
+  if (!trimmedModel) {
+    return null;
+  }
+  const normalizedModel = normalizeRunModelId(trimmedModel).toLowerCase();
+  for (const candidate of RETIRED_RUN_MODELS) {
+    if (candidate.toLowerCase() === normalizedModel) {
+      return candidate;
+    }
+  }
+
+  if (
+    normalizedModel === "openai/gpt-5.5" ||
+    normalizedModel === "minimax/minimax-m3"
+  ) {
+    return normalizedModel === "openai/gpt-5.5" ? "gpt-5.5" : "MiniMax-M3";
+  }
+  if (
+    normalizedModel.startsWith("z-ai/") ||
+    normalizedModel.startsWith("zai/") ||
+    normalizedModel.startsWith("glm-")
+  ) {
+    return "glm-5.2";
+  }
+  return null;
+}
+
+export function isRetiredRunModel(
+  model: string | null | undefined,
+  modelProviderType?: string | null,
+): boolean {
+  if (modelProviderType === "zai-api-key") {
+    return true;
+  }
+  return (
+    typeof model === "string" && getCanonicalRetiredRunModel(model) !== null
+  );
+}
+
+export function getRetiredRunModelReplacement(
+  model: string | null | undefined,
+  options?: {
+    readonly restrictedVm0Models?: boolean;
+    readonly modelProviderType?: string | null;
+  },
+): SupportedRunModel | undefined {
+  const retiredModel =
+    options?.modelProviderType === "zai-api-key"
+      ? "glm-5.2"
+      : typeof model === "string"
+        ? getCanonicalRetiredRunModel(model)
+        : null;
+  if (!retiredModel) {
+    return undefined;
+  }
+  return options?.restrictedVm0Models
+    ? LIMITED_FREE1_DEFAULT_RUN_MODEL
+    : RETIRED_RUN_MODEL_REPLACEMENTS[retiredModel];
 }
 
 export function getProvidersForModel(model: string): ModelProviderType[] {

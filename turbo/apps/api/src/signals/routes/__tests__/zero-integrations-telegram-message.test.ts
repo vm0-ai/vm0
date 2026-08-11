@@ -75,7 +75,7 @@ interface TelegramMessageFixture {
  * the Stripe webhook product path. Without `withOrgModelProvider` the agent
  * compose declares an inline ANTHROPIC_API_KEY so the run records no
  * selected model; with it, the org model provider path records the
- * provider's selected model (claude-sonnet-4-6) on the run.
+ * provider's selected model (claude-sonnet-5) on the run.
  */
 async function seedSendableContext(args: {
   readonly agentName?: string;
@@ -306,7 +306,7 @@ describe("POST /api/zero/integrations/telegram/message", () => {
     const sentText = String(telegramBody?.text);
     expect(sentText).toContain("Hello <b>world</b>");
     expect(sentText).toContain(
-      '<i>Sent via my-assistant · Triggered by <a href="tg://user?id=777000">@ada_telegram</a> · Claude Sonnet 4.6</i>',
+      '<i>Sent via my-assistant · Triggered by <a href="tg://user?id=777000">@ada_telegram</a> · Claude Sonnet 5</i>',
     );
   });
 

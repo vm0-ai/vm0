@@ -1293,7 +1293,7 @@ export function createBddIntegrationApi(context: TestContext) {
           body: {
             policies: [
               {
-                model: "gpt-5.5",
+                model: "gpt-5.6-sol",
                 isDefault: true,
                 defaultProviderType: "openai-api-key",
                 credentialScope: "org",

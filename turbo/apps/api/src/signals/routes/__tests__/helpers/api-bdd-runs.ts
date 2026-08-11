@@ -969,7 +969,7 @@ export function createRunsApi(context: TestContext) {
       const providerId = providerResponse.body.provider.id;
       const policies: OrgModelPolicyRequest["policies"] = [
         {
-          model: "claude-sonnet-4-6",
+          model: "claude-sonnet-5",
           isDefault: true,
           defaultProviderType: "anthropic-api-key",
           credentialScope: "org",
