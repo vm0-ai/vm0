@@ -6,7 +6,6 @@ import type {
   CustomConnectorClientResponse,
   UpdateCustomConnectorBody,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
   Button,
   CopyButton,
@@ -32,7 +31,7 @@ import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
 
 import { resolveApiBaseForTarget } from "../../../../signals/api-base.ts";
-import { featureSwitch$ } from "../../../../signals/external/feature-switch.ts";
+import { customConnectorMcpEnabled$ } from "../../../../signals/external/feature-switch.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import {
   addCustomConnectorAuthMethod$,
@@ -1202,8 +1201,7 @@ export function CustomConnectorCreateDialog({
 }) {
   const { t } = useTranslation();
   const form = useGet(customConnectorCreateForm$);
-  const mcpEnabled =
-    useGet(featureSwitch$)[FeatureSwitchKey.CustomConnectorMcp] ?? false;
+  const mcpEnabled = useGet(customConnectorMcpEnabled$);
   const setField = useSet(setCustomConnectorCreateField$);
   const setKind = useSet(setCustomConnectorCreateKind$);
   const addAuthMethod = useSet(addCustomConnectorAuthMethod$);
