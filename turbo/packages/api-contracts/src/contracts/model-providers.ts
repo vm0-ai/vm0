@@ -428,7 +428,7 @@ export function modelSupportsImageInput(
  * Return the VM0 managed models visible to callers.
  */
 export function getVm0VisibleModels(): string[] {
-  return Object.keys(VM0_MODEL_TO_PROVIDER);
+  return [...ACTIVE_RUN_MODELS];
 }
 
 /**
@@ -1051,10 +1051,8 @@ export function normalizeRunModelId(model: string): string {
  * values and the client window closes (or a version floor forces refresh).
  */
 export const RETIRED_RUN_MODELS = [
-  "gpt-5.5",
   "claude-opus-4-7",
   "claude-opus-4-6",
-  "claude-sonnet-4-6",
   "kimi-k3",
   "kimi-k2.7-code",
   "MiniMax-M3",
@@ -1066,13 +1064,20 @@ export const RETIRED_RUN_MODELS = [
 
 export type RetiredRunModel = (typeof RETIRED_RUN_MODELS)[number];
 
+/**
+ * Canonical models available for current policy and run selection. Historical
+ * schemas continue to use SUPPORTED_RUN_MODELS until the client-skew cleanup.
+ */
+export const ACTIVE_RUN_MODELS: readonly SupportedRunModel[] =
+  SUPPORTED_RUN_MODELS.filter((model) => {
+    return !isRetiredRunModel(model);
+  });
+
 const RETIRED_RUN_MODEL_REPLACEMENTS: Readonly<
   Record<RetiredRunModel, SupportedRunModel>
 > = {
-  "gpt-5.5": "gpt-5.6-sol",
   "claude-opus-4-7": "claude-opus-4-8",
   "claude-opus-4-6": "claude-opus-4-8",
-  "claude-sonnet-4-6": "claude-sonnet-5",
   "kimi-k3": "deepseek-v4-flash",
   "kimi-k2.7-code": "deepseek-v4-flash",
   "MiniMax-M3": "deepseek-v4-flash",
@@ -1096,11 +1101,8 @@ export function getCanonicalRetiredRunModel(
     }
   }
 
-  if (
-    normalizedModel === "openai/gpt-5.5" ||
-    normalizedModel === "minimax/minimax-m3"
-  ) {
-    return normalizedModel === "openai/gpt-5.5" ? "gpt-5.5" : "MiniMax-M3";
+  if (normalizedModel === "minimax/minimax-m3") {
+    return "MiniMax-M3";
   }
   if (
     normalizedModel.startsWith("z-ai/") ||

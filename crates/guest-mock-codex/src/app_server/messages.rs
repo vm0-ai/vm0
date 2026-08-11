@@ -215,6 +215,15 @@ pub(super) fn write_turn_notifications<W: Write>(
     turn_id: &str,
     response_text: &str,
 ) -> io::Result<()> {
+    write_turn_start_notifications(output, thread_id, turn_id)?;
+    write_turn_completion_notifications(output, thread_id, turn_id, response_text)
+}
+
+pub(super) fn write_turn_start_notifications<W: Write>(
+    output: &mut W,
+    thread_id: &str,
+    turn_id: &str,
+) -> io::Result<()> {
     write_json_line(output, &turn_started_notification(thread_id, turn_id))?;
     let started_at_ms = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -243,7 +252,7 @@ pub(super) fn write_turn_notifications<W: Write>(
             ),
         )?;
     }
-    write_turn_completion_notifications(output, thread_id, turn_id, response_text)
+    Ok(())
 }
 
 pub(super) fn write_turn_completion_notifications<W: Write>(

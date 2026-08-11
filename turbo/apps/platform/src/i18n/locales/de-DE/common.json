@@ -918,6 +918,7 @@
         "description": "Kostenloser Legacy-Zugriff für bestehende Arbeitsbereiche.",
         "name": "Frei"
       },
+      "legacy": "Legacy",
       "limitedFree": {
         "name": "Begrenzt kostenlos"
       },
@@ -975,6 +976,22 @@
         "memberExclusive": "Jedes Paket gehört einem Mitglied und kann nicht geteilt werden. Wenn ein Paket aufgebraucht ist, wird die Nutzung über nutzungsabhängige Credits abgerechnet. Sie können später auf ein neues Paket upgraden.",
         "memberPackages": "Mitgliederpakete",
         "memberUsage": "Nutzung des Mitglieds",
+        "migration": {
+          "action": "Plan umstellen",
+          "confirmDescription": "Ihr aktueller Plan und Ihre Berechtigungen bleiben bis zum Ende dieses Abrechnungszeitraums aktiv. Stripe berechnet den neuen wiederkehrenden Betrag, wenn der neue Plan beginnt.",
+          "convertPlan": "Plan umstellen",
+          "description": "Stellen Sie Ihren bisherigen {{plan}}-Workspace auf einen neuen Plan mit einem individuellen monatlichen Nutzungspaket für jedes Mitglied um.",
+          "error": "Dieses Abonnement konnte nicht migriert werden. Aktualisieren Sie die Seite und versuchen Sie es erneut.",
+          "invoice": "Rechnung anzeigen",
+          "processing": "Die Umstellung wird bei Stripe geplant.",
+          "ready": "Wählen Sie für jedes Mitglied und jede ausstehende Einladung ein erforderliches monatliches Paket.",
+          "review": "Umstellung prüfen",
+          "reviewDescription": "Vergleichen Sie den aktuellen Legacy-Plan mit dem neuen wiederkehrenden Plan, bevor Sie die Umstellung planen.",
+          "reviewTitle": "Planumstellung prüfen",
+          "scheduled": "Die Umstellung ist für den {{date}} geplant. Ihr aktueller Plan und Ihre Berechtigungen bleiben bis dahin aktiv.",
+          "switchesOn": "Wechselt am {{date}} zum {{plan}}-Plan",
+          "title": "Legacy-Plan umstellen"
+        },
         "minimumPackageBreakdown": "{{base}} Plan + {{package}} erforderliches Mitgliederpaket",
         "monthlyTotal": "Monatliche Gesamtkosten",
         "orderSummary": "Bestellübersicht",
@@ -1637,8 +1654,10 @@
       "openBrowser": "Browser öffnen",
       "openNamedAgent": "Agent {{name}} öffnen",
       "openNamedChat": "Chat {{title}} öffnen",
+      "pickEmoji": "Ein Emoji auswählen",
       "scrollToBottom": "Nach unten scrollen",
-      "searchEmoji": "Emoji suchen"
+      "searchEmoji": "Emoji suchen",
+      "steerMessageExplanation": "Gesendet, während der Agent arbeitete, um sein Verhalten zu steuern"
     },
     "threadSidebar": {
       "resize": "Größe der Seitenleiste ändern"
@@ -4184,15 +4203,14 @@
         "useAccount": "Verwenden"
       },
       "picker": {
-        "balancedUse": "Ausgewogene Nutzung",
         "builtInModel": "Einbaumodell",
         "byokHelp": "Verwendet Ihren konfigurierten Anbieter",
         "fast": "Schnell",
+        "fastImpact": "1,5× Modellgeschwindigkeit · 2,5× Credit-Nutzung",
         "inheritDefault": "Von der Standardeinstellung der Organisation übernehmen",
         "loadError": "Modelle können nicht geladen werden.",
         "loading": "Modelle werden geladen...",
         "models": "Modelle",
-        "moreCodexCredits": "Verbraucht mehr Codex-Credits.",
         "noConfiguredModels": "Keine konfigurierten Modelle",
         "priceTiers": {
           "balanced": "Ausgewogene Kosten und Leistung",
@@ -4200,14 +4218,12 @@
           "frontier": "Frontier-Flaggschiffmodell",
           "premium": "Premium-Frontier-Modell für die schwierigsten Aufgaben"
         },
-        "prioritizeSpeed": "Priorisieren Sie die Geschwindigkeit",
         "pro": "Pro",
         "providerLabels": {
           "azureFoundryPortal": "Azure Foundry-Portal",
           "claudeCodeOauth": "Claude Code (OAuth-Token)",
           "deepseek": "Deepseek"
         },
-        "runSpeed": "Ausführungsgeschwindigkeit",
         "standard": "Standard"
       },
       "policies": {

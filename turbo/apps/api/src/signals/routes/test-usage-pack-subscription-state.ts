@@ -1,14 +1,17 @@
 import { randomUUID } from "node:crypto";
 
 import { initContract } from "@vm0/api-contracts/contracts/trpc-contract";
+import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { usagePackCreditGrants } from "@vm0/db/schema/usage-pack-credit-grant";
 import { usagePackCreditRefunds } from "@vm0/db/schema/usage-pack-credit-refund";
 import {
+  USAGE_PACK_SUBSCRIPTION_MIGRATION_STATUSES,
   usagePackAllocationChanges,
   usagePackAllocations,
   usagePackInvitationPurchases,
   usagePackInvoiceFulfillments,
+  usagePackSubscriptionMigrations,
   usagePackSubscriptions,
 } from "@vm0/db/schema/usage-pack-subscription";
 import { command } from "ccstate";
@@ -90,6 +93,20 @@ const actionBodySchema = z.discriminatedUnion("action", [
     action: z.literal("prepare-pre-migration-purchased-refund"),
   }),
   z.object({
+    action: z.literal("seed-legacy-migration"),
+    orgId: z.string().min(1),
+    tier: z.enum(["pro", "team"]),
+    stripeCustomerId: z.string().min(1),
+    stripeSubscriptionId: z.string().min(1),
+    currentPeriodEnd: z.iso.datetime(),
+    legacyCreditInvoiceId: z.string().min(1),
+    credits: z.number().int().positive(),
+  }),
+  z.object({
+    action: z.literal("cleanup-migration"),
+    orgId: z.string().min(1),
+  }),
+  z.object({
     action: z.literal("cleanup"),
     orgId: z.string().min(1),
     usagePackSubscriptionId: z.string().uuid(),
@@ -152,7 +169,7 @@ const readStateSchema = z.object({
       normalizedEmail: z.string(),
       status: z.string(),
       allocationId: z.string().uuid().nullable(),
-      expectedAmountCents: z.number().int().positive(),
+      expectedAmountCents: z.number().int().nonnegative(),
       amountPaidCents: z.number().int().nonnegative().nullable(),
       purchasedCredits: z.number().int().nonnegative(),
       bonusCredits: z.number().int().nonnegative(),
@@ -200,6 +217,21 @@ const readStateSchema = z.object({
       amount: z.number().int().nonnegative(),
     }),
   ),
+  migrations: z.array(
+    z.object({
+      id: z.string().uuid(),
+      status: z.enum(USAGE_PACK_SUBSCRIPTION_MIGRATION_STATUSES),
+      failureReason: z.string().nullable(),
+    }),
+  ),
+  legacyCredits: z.array(
+    z.object({
+      stripeInvoiceId: z.string().nullable(),
+      amount: z.number().int().nonnegative(),
+      remaining: z.number().int().nonnegative(),
+      expiresAt: z.iso.datetime(),
+    }),
+  ),
   org: z
     .object({
       tier: z.string(),
@@ -221,6 +253,10 @@ const actionResponseSchema = z.discriminatedUnion("action", [
   z.object({
     action: z.literal("pre-migration-compatibility"),
     memberInviteUsagePackRequired: z.boolean(),
+    preMemberInvitationMigration: z.object({
+      memberInviteUsagePackRequired: z.boolean(),
+      memberInvitationAllowed: z.boolean(),
+    }),
     bonusPreparedRefunds: z.number().int().nonnegative(),
   }),
   z.object({ action: z.literal("ok") }),
@@ -253,6 +289,10 @@ export type TestUsagePackSubscriptionStateResponse = z.infer<
 type SeedAction = Extract<
   TestUsagePackSubscriptionStateAction,
   { readonly action: "seed" }
+>;
+type SeedLegacyMigrationAction = Extract<
+  TestUsagePackSubscriptionStateAction,
+  { readonly action: "seed-legacy-migration" }
 >;
 
 // Stripe callbacks and cron are production ingress surfaces, but production
@@ -297,6 +337,44 @@ async function seedUsagePackState(
     );
     signal.throwIfAborted();
     return subscription.id;
+  });
+}
+
+async function seedLegacyMigrationState(
+  db: Db,
+  body: SeedLegacyMigrationAction,
+  signal: AbortSignal,
+): Promise<void> {
+  await db.transaction(async (tx) => {
+    const currentPeriodEnd = new Date(body.currentPeriodEnd);
+    const orgRows = await tx
+      .update(orgMetadata)
+      .set({
+        tier: body.tier,
+        credits: body.credits,
+        stripeCustomerId: body.stripeCustomerId,
+        stripeSubscriptionId: body.stripeSubscriptionId,
+        subscriptionStatus: "active",
+        currentPeriodEnd,
+        cancelAtPeriodEnd: false,
+        pendingSubscriptionScheduleId: null,
+        pendingSubscriptionTargetTier: null,
+        pendingSubscriptionChangeAt: null,
+      })
+      .where(eq(orgMetadata.orgId, body.orgId))
+      .returning({ orgId: orgMetadata.orgId });
+    if (orgRows.length !== 1) {
+      throw new Error(`Missing organization fixture ${body.orgId}`);
+    }
+    await tx.insert(creditExpiresRecord).values({
+      orgId: body.orgId,
+      source: "subscription_renewal",
+      stripeInvoiceId: body.legacyCreditInvoiceId,
+      amount: body.credits,
+      remaining: body.credits,
+      expiresAt: currentPeriodEnd,
+    });
+    signal.throwIfAborted();
   });
 }
 
@@ -406,6 +484,40 @@ async function readUsagePackCreditRefunds(db: Db, orgId: string) {
   });
 }
 
+async function readOrgUsagePackStateRows(db: Db, orgId: string) {
+  const [grants, migrations, legacyCredits, orgRows] = await Promise.all([
+    db
+      .select()
+      .from(usagePackCreditGrants)
+      .where(eq(usagePackCreditGrants.orgId, orgId))
+      .orderBy(
+        asc(usagePackCreditGrants.expiresAt),
+        asc(usagePackCreditGrants.grantType),
+      ),
+    db
+      .select({
+        id: usagePackSubscriptionMigrations.id,
+        status: usagePackSubscriptionMigrations.status,
+        failureReason: usagePackSubscriptionMigrations.failureReason,
+      })
+      .from(usagePackSubscriptionMigrations)
+      .where(eq(usagePackSubscriptionMigrations.orgId, orgId))
+      .orderBy(asc(usagePackSubscriptionMigrations.createdAt)),
+    db
+      .select({
+        stripeInvoiceId: creditExpiresRecord.stripeInvoiceId,
+        amount: creditExpiresRecord.amount,
+        remaining: creditExpiresRecord.remaining,
+        expiresAt: creditExpiresRecord.expiresAt,
+      })
+      .from(creditExpiresRecord)
+      .where(eq(creditExpiresRecord.orgId, orgId))
+      .orderBy(asc(creditExpiresRecord.createdAt)),
+    db.select().from(orgMetadata).where(eq(orgMetadata.orgId, orgId)).limit(1),
+  ]);
+  return { grants, migrations, legacyCredits, org: orgRows[0] ?? null };
+}
+
 async function readUsagePackState(
   db: Db,
   orgId: string,
@@ -434,20 +546,9 @@ async function readUsagePackState(
     : [];
   const { allocations, fulfillments, changes, invitationPurchases } =
     await readUsagePackRelatedStateRows(db, subscription?.id);
-  const grants = await db
-    .select()
-    .from(usagePackCreditGrants)
-    .where(eq(usagePackCreditGrants.orgId, orgId))
-    .orderBy(
-      asc(usagePackCreditGrants.expiresAt),
-      asc(usagePackCreditGrants.grantType),
-    );
   const refunds = await readUsagePackCreditRefunds(db, orgId);
-  const [org] = await db
-    .select()
-    .from(orgMetadata)
-    .where(eq(orgMetadata.orgId, orgId))
-    .limit(1);
+  const { grants, migrations, legacyCredits, org } =
+    await readOrgUsagePackStateRows(db, orgId);
   signal.throwIfAborted();
 
   return {
@@ -521,6 +622,10 @@ async function readUsagePackState(
       return row.invoiceId;
     }),
     remainingCredits: remainingCreditsByUser(grants),
+    migrations,
+    legacyCredits: legacyCredits.map((credit) => {
+      return { ...credit, expiresAt: credit.expiresAt.toISOString() };
+    }),
     org: org
       ? {
           tier: org.tier,
@@ -532,6 +637,28 @@ async function readUsagePackState(
         }
       : null,
   };
+}
+
+async function cleanupMigrationState(
+  db: Db,
+  orgId: string,
+  signal: AbortSignal,
+): Promise<void> {
+  await db.transaction(async (tx) => {
+    await tx
+      .delete(usagePackCreditGrants)
+      .where(eq(usagePackCreditGrants.orgId, orgId));
+    await tx
+      .delete(usagePackSubscriptions)
+      .where(eq(usagePackSubscriptions.orgId, orgId));
+    await tx
+      .delete(usagePackSubscriptionMigrations)
+      .where(eq(usagePackSubscriptionMigrations.orgId, orgId));
+    await tx
+      .delete(creditExpiresRecord)
+      .where(eq(creditExpiresRecord.orgId, orgId));
+    signal.throwIfAborted();
+  });
 }
 
 async function cleanupUsagePackState(
@@ -568,6 +695,10 @@ async function validatePreMigrationCompatibility(
   signal: AbortSignal,
 ): Promise<{
   readonly memberInviteUsagePackRequired: boolean;
+  readonly preMemberInvitationMigration: {
+    readonly memberInviteUsagePackRequired: boolean;
+    readonly memberInvitationAllowed: boolean;
+  };
   readonly bonusPreparedRefunds: number;
 }> {
   const memberInviteUsagePackRequired = await db.transaction(async (tx) => {
@@ -600,6 +731,41 @@ async function validatePreMigrationCompatibility(
     return capabilities.memberInviteUsagePackRequired;
   });
 
+  const preMemberInvitationMigration = await db.transaction(async (tx) => {
+    await tx.execute(sql`SET LOCAL search_path = pg_temp, public`);
+    await tx.execute(sql`
+      CREATE TEMP TABLE org_plan_entitlements
+      (LIKE public.org_plan_entitlements INCLUDING ALL)
+      ON COMMIT DROP
+    `);
+    await tx.execute(
+      sql`ALTER TABLE org_plan_entitlements DROP COLUMN member_invitation_allowed`,
+    );
+    const orgId = `org_pre_member_invitation_${randomUUID()}`;
+    await upsertOrgPlanEntitlement(tx, {
+      orgId,
+      tier: "pro",
+      source: "org_metadata_bootstrap",
+      memberInviteUsagePackRequired: true,
+    });
+    await upsertOrgPlanEntitlement(tx, {
+      orgId,
+      tier: "team",
+      source: "org_metadata_bootstrap",
+      memberInviteUsagePackRequired: true,
+    });
+    const capabilities = await loadOrgPlanCapabilities(tx, orgId);
+    if (!capabilities) {
+      throw new Error(
+        "Pre-member-invitation entitlement fixture was not written",
+      );
+    }
+    return {
+      memberInviteUsagePackRequired: capabilities.memberInviteUsagePackRequired,
+      memberInvitationAllowed: capabilities.memberInvitationAllowed,
+    };
+  });
+
   const refundState = await db.transaction(async (tx) => {
     await tx.execute(sql`SET LOCAL search_path = pg_temp`);
     await tx.execute(sql`
@@ -625,7 +791,11 @@ async function validatePreMigrationCompatibility(
     return { bonusPreparedRefunds };
   });
   signal.throwIfAborted();
-  return { memberInviteUsagePackRequired, ...refundState };
+  return {
+    memberInviteUsagePackRequired,
+    preMemberInvitationMigration,
+    ...refundState,
+  };
 }
 
 async function preparePreMigrationPurchasedRefund(db: Db): Promise<void> {
@@ -750,6 +920,14 @@ const mutateTestUsagePackSubscriptionState$ = command(
       case "prepare-pre-migration-purchased-refund": {
         await preparePreMigrationPurchasedRefund(db);
         signal.throwIfAborted();
+        return { status: 200 as const, body: { action: "ok" as const } };
+      }
+      case "seed-legacy-migration": {
+        await seedLegacyMigrationState(db, body, signal);
+        return { status: 200 as const, body: { action: "ok" as const } };
+      }
+      case "cleanup-migration": {
+        await cleanupMigrationState(db, body.orgId, signal);
         return { status: 200 as const, body: { action: "ok" as const } };
       }
       case "cleanup": {

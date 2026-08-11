@@ -677,7 +677,7 @@ describe("connectors page", () => {
       screen.findByTestId("connector-card-label"),
     ).resolves.toHaveTextContent("GitHub");
     await expect(
-      screen.findByLabelText("Connect 347 services for your agents to use."),
+      screen.findByText("Connect 700+ services for your agents to use."),
     ).resolves.toBeInTheDocument();
 
     await fill(await screen.findByPlaceholderText("Find connectors"), "Slack");
@@ -689,7 +689,7 @@ describe("connectors page", () => {
     expect(legacyStatusRequests).toBe(0);
   });
 
-  it("shows the exact connector catalog size in the page description", async () => {
+  it("shows the static connector catalog size in the page description", async () => {
     mockConnectors([]);
     mockPublicConnectorStatus([
       publicStatusItem({
@@ -711,7 +711,7 @@ describe("connectors page", () => {
     });
 
     await expect(
-      screen.findByLabelText("Connect 2 services for your agents to use."),
+      screen.findByText("Connect 700+ services for your agents to use."),
     ).resolves.toBeInTheDocument();
   });
 
@@ -740,7 +740,7 @@ describe("connectors page", () => {
       screen.findByText("Connect third-party services for your agents to use."),
     ).resolves.toBeInTheDocument();
     expect(
-      screen.queryByLabelText("Connect 2 services for your agents to use."),
+      screen.queryByText("Connect 700+ services for your agents to use."),
     ).not.toBeInTheDocument();
   });
 
@@ -3728,6 +3728,9 @@ describe("connectors page", () => {
     ) {
       throw new Error("Custom connector permission drawer not found");
     }
+    expect(document.querySelector('[data-slot="sheet-overlay"]')).toHaveClass(
+      "bg-overlay/45",
+    );
     expect(
       within(permissionDrawer).queryByText("standard:use"),
     ).not.toBeInTheDocument();
@@ -3759,6 +3762,7 @@ describe("connectors page", () => {
           "connector-card-agent-access",
         ),
       ).toHaveTextContent("Used by Support");
+      expect(accessDialog).toBeVisible();
     });
 
     click(

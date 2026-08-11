@@ -4,7 +4,7 @@ use super::super::support::{
     test_profiles, wait_budget_count, wait_cancel_token, wait_cancel_token_removed,
     wait_idle_pool_len, wait_status_idle_reuse_keys_and_active_runs,
 };
-use super::support::assert_no_completion_for_run;
+use super::support::{assert_no_completion_for_run, assert_successful_completion_for_run};
 
 use sandbox_mock::MockLifecycleGate;
 
@@ -40,11 +40,12 @@ async fn outer_job_panic_after_idle_pool_owned_cleans_token_and_active_status() 
         Duration::from_secs(5),
     )
     .await;
-    assert_no_completion_for_run(
+    assert_successful_completion_for_run(
         &env,
         run_id,
-        "outer job panic must not synthesize provider completion",
-    );
+        "host completion should report before idle-pool finalization panics",
+    )
+    .await;
 
     shutdown(&env, run_handle).await;
 }
@@ -86,7 +87,7 @@ async fn outer_job_panic_active_unknown_reconciles_on_shutdown_final_scan() {
     assert_no_completion_for_run(
         &env,
         run_id,
-        "outer job panic must not synthesize provider completion",
+        "outer job panic before executor completion must not synthesize provider completion",
     );
 }
 
@@ -134,20 +135,22 @@ async fn outer_job_panic_after_active_stop_panic_preserves_status_for_reconcilia
         Duration::from_secs(5),
     )
     .await;
-    assert_no_completion_for_run(
+    assert_successful_completion_for_run(
         &env,
         run_id,
-        "outer job panic must not synthesize provider completion",
-    );
+        "host completion should report before destroy bookkeeping panics",
+    )
+    .await;
 
     shutdown(&env, run_handle).await;
     wait_status_idle_reuse_keys_and_active_runs(&status_path, &[], &[], Duration::from_secs(5))
         .await;
-    assert_no_completion_for_run(
+    assert_successful_completion_for_run(
         &env,
         run_id,
-        "orphan reconciliation must not synthesize provider completion",
-    );
+        "orphan reconciliation must not duplicate host completion",
+    )
+    .await;
 }
 
 #[tokio::test(start_paused = true)]
@@ -178,11 +181,12 @@ async fn outer_job_panic_after_destroy_completed_cleans_token_and_active_status(
     wait_cancel_token_removed(&cancel_tokens, run_id, Duration::from_secs(5)).await;
     wait_status_idle_reuse_keys_and_active_runs(&status_path, &[], &[], Duration::from_secs(5))
         .await;
-    assert_no_completion_for_run(
+    assert_successful_completion_for_run(
         &env,
         run_id,
-        "outer job panic must not synthesize provider completion",
-    );
+        "host completion should report before completed destroy bookkeeping panics",
+    )
+    .await;
 
     shutdown(&env, run_handle).await;
 }

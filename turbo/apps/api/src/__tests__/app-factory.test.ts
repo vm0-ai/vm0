@@ -1,10 +1,14 @@
 import { initContract } from "@vm0/api-contracts/contracts/trpc-contract";
 import {
   CLIENT_FORCE_UPGRADE_STATUS,
+  CLIENT_PRODUCT_HEADER,
   CLIENT_TYPE_APP,
   CLIENT_TYPE_CLI,
+  CLIENT_TYPE_DESKTOP,
   CLIENT_TYPE_HEADER,
   CLIENT_VERSION_HEADER,
+  DESKTOP_PRODUCT_OKOU,
+  DESKTOP_PRODUCT_ZERO,
 } from "@vm0/api-contracts/contracts/client-headers";
 import { EVENT } from "@axiomhq/logging";
 import { computed } from "ccstate";
@@ -834,7 +838,7 @@ describe("createApp", () => {
           origin: "https://app.vm0.ai",
           "access-control-request-method": "GET",
           "access-control-request-headers":
-            "authorization,x-client-version,x-client-type,x-client-session-id,x-client-request-id",
+            "authorization,x-client-version,x-client-type,x-client-product,x-client-session-id,x-client-request-id",
         },
       });
 
@@ -851,6 +855,7 @@ describe("createApp", () => {
       expect(allowHeaders).toContain("X-Vercel-Protection-Bypass");
       expect(allowHeaders).toContain("X-Client-Version");
       expect(allowHeaders).toContain("X-Client-Type");
+      expect(allowHeaders).toContain("X-Client-Product");
       expect(allowHeaders).toContain("X-Client-Session-Id");
       expect(allowHeaders).toContain("X-Client-Request-Id");
     });
@@ -1119,7 +1124,8 @@ describe("createApp", () => {
           "user-agent": "zero-test-agent",
           "x-forwarded-for": "203.0.113.10, 198.51.100.5",
           "x-client-version": MINIMUM_WEB_CLIENT_VERSION,
-          "x-client-type": "App",
+          "x-client-type": CLIENT_TYPE_DESKTOP,
+          [CLIENT_PRODUCT_HEADER]: DESKTOP_PRODUCT_OKOU,
           "x-client-session-id": "session-test",
           "x-client-request-id": "request-test",
         },
@@ -1137,7 +1143,8 @@ describe("createApp", () => {
         remote_addr: "203.0.113.10",
         user_agent: "zero-test-agent",
         x_client_version: MINIMUM_WEB_CLIENT_VERSION,
-        x_client_type: "App",
+        x_client_type: CLIENT_TYPE_DESKTOP,
+        x_client_product: DESKTOP_PRODUCT_OKOU,
         x_client_session_id: "session-test",
         x_client_request_id: "request-test",
       });
@@ -1145,6 +1152,26 @@ describe("createApp", () => {
       expect(event?.request_time_ms).toStrictEqual(expect.any(Number));
       expect(context.mocks.axiom.flush).toHaveBeenCalledWith({
         client: "telemetry",
+      });
+    });
+
+    it("classifies legacy Desktop requests without a product header as Zero", async () => {
+      const app = createApp({
+        signal: context.signal,
+        routes: TEST_APP_ROUTES,
+      });
+      const response = await app.request("/health", {
+        method: "GET",
+        headers: { [CLIENT_TYPE_HEADER]: CLIENT_TYPE_DESKTOP },
+      });
+
+      expect(response.status).toBe(200);
+      await flushWaitUntilForTest();
+
+      const [event] = axiomRequestLogEvents(context);
+      expect(event).toMatchObject({
+        x_client_type: CLIENT_TYPE_DESKTOP,
+        x_client_product: DESKTOP_PRODUCT_ZERO,
       });
     });
 
@@ -1166,6 +1193,7 @@ describe("createApp", () => {
       });
       expect(event).not.toHaveProperty("x_client_version");
       expect(event).not.toHaveProperty("x_client_type");
+      expect(event).not.toHaveProperty("x_client_product");
       expect(event).not.toHaveProperty("x_client_session_id");
       expect(event).not.toHaveProperty("x_client_request_id");
     });

@@ -918,6 +918,7 @@
         "description": "Akses gratis lama untuk ruang kerja yang sudah ada.",
         "name": "Gratis"
       },
+      "legacy": "Lama",
       "limitedFree": {
         "name": "Gratis terbatas"
       },
@@ -975,6 +976,22 @@
         "memberExclusive": "Setiap paket hanya untuk satu anggota dan tidak dapat dibagikan. Saat paket habis, penggunaan kembali memakai kredit bayar sesuai pemakaian. Anda dapat meningkatkan ke paket baru nanti.",
         "memberPackages": "Paket anggota",
         "memberUsage": "Penggunaan anggota",
+        "migration": {
+          "action": "Konversi paket",
+          "confirmDescription": "Paket dan hak Anda saat ini tetap aktif hingga periode penagihan ini berakhir. Stripe menagih total berulang baru saat paket baru dimulai.",
+          "convertPlan": "Konversi paket",
+          "description": "Konversikan ruang kerja {{plan}} lama ke paket baru dengan paket penggunaan bulanan individual untuk setiap anggota.",
+          "error": "Langganan ini tidak dapat dimigrasikan. Muat ulang halaman dan coba lagi.",
+          "invoice": "Lihat faktur",
+          "processing": "Menjadwalkan konversi dengan Stripe.",
+          "ready": "Pilih satu paket bulanan wajib untuk setiap anggota dan undangan yang tertunda.",
+          "review": "Tinjau konversi",
+          "reviewDescription": "Bandingkan paket lama saat ini dengan paket berulang baru sebelum menjadwalkan konversi.",
+          "reviewTitle": "Tinjau konversi paket",
+          "scheduled": "Konversi dijadwalkan pada {{date}}. Paket dan hak Anda saat ini tetap aktif hingga saat itu.",
+          "switchesOn": "Beralih ke paket {{plan}} pada {{date}}",
+          "title": "Konversi paket lama"
+        },
         "minimumPackageBreakdown": "Paket {{base}} + paket anggota wajib {{package}}",
         "monthlyTotal": "Total bulanan",
         "orderSummary": "Ringkasan pesanan",
@@ -1636,8 +1653,10 @@
       "openBrowser": "Buka browser",
       "openNamedAgent": "Buka agen {{name}}",
       "openNamedChat": "Buka chat {{title}}",
+      "pickEmoji": "Pilih emoji",
       "scrollToBottom": "Gulir ke bawah",
-      "searchEmoji": "Cari emoji"
+      "searchEmoji": "Cari emoji",
+      "steerMessageExplanation": "Dikirim saat agen sedang bekerja untuk mengarahkan perilakunya"
     },
     "threadSidebar": {
       "resize": "Ubah ukuran sidebar"
@@ -4183,15 +4202,14 @@
         "useAccount": "Gunakan"
       },
       "picker": {
-        "balancedUse": "Penggunaan seimbang",
         "builtInModel": "Model bawaan",
         "byokHelp": "Menggunakan provider yang Anda atur",
         "fast": "Cepat",
+        "fastImpact": "Kecepatan model 1,5× · penggunaan kredit 2,5×",
         "inheritDefault": "Warisi dari default organisasi",
         "loadError": "Tidak dapat memuat model.",
         "loading": "Memuat model...",
         "models": "Model",
-        "moreCodexCredits": "Menggunakan lebih banyak kredit Codex.",
         "noConfiguredModels": "Tidak ada model yang dikonfigurasi",
         "priceTiers": {
           "balanced": "Biaya dan performa seimbang",
@@ -4199,14 +4217,12 @@
           "frontier": "Model andalan terdepan",
           "premium": "Model terdepan premium untuk tugas tersulit"
         },
-        "prioritizeSpeed": "Prioritaskan kecepatan",
         "pro": "Pro",
         "providerLabels": {
           "azureFoundryPortal": "portal Azure foundry",
           "claudeCodeOauth": "Claude Code (token OAuth)",
           "deepseek": "Deepseek"
         },
-        "runSpeed": "Kecepatan jalankan",
         "standard": "Standar"
       },
       "policies": {

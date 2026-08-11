@@ -188,33 +188,6 @@ const cronSyncSkillsResponseSchema = z.object({
   total: z.number(),
 });
 
-const customConnectorSkillRepairReasonCountsSchema = z.object({
-  inverseInvalid: z.number().int().nonnegative(),
-  missingStorage: z.number().int().nonnegative(),
-  missingExpectedVersion: z.number().int().nonnegative(),
-  missingAssociation: z.number().int().nonnegative(),
-  wrongStorage: z.number().int().nonnegative(),
-  staleAssociation: z.number().int().nonnegative(),
-  headMismatch: z.number().int().nonnegative(),
-});
-
-const cronCustomConnectorSkillRepairResponseSchema = z.object({
-  success: z.literal(true),
-  scanned: z.number().int().nonnegative(),
-  attempted: z.number().int().nonnegative(),
-  repaired: z.number().int().nonnegative(),
-  conflicts: z.number().int().nonnegative(),
-});
-
-const cronCustomConnectorSkillRepairStatusResponseSchema = z.object({
-  success: z.literal(true),
-  total: z.number().int().nonnegative(),
-  verified: z.number().int().nonnegative(),
-  unresolved: z.number().int().nonnegative(),
-  reasons: customConnectorSkillRepairReasonCountsSchema,
-  complete: z.boolean(),
-});
-
 const connectorCatalogSyncResponseSchema =
   connectorCatalogDiagnosticsSchema.extend({
     outcome: z.enum(["accepted", "unchanged", "rejected"]),
@@ -531,31 +504,6 @@ export const cronSyncSkillsContract = c.router({
   },
 });
 
-export const cronCustomConnectorSkillRepairContract = c.router({
-  repair: {
-    method: "GET",
-    path: "/api/cron/repair-custom-connector-skill-versions",
-    headers: authHeadersSchema,
-    responses: {
-      200: cronCustomConnectorSkillRepairResponseSchema,
-      401: apiErrorSchema,
-      500: apiErrorSchema,
-    },
-    summary: "Repair custom connector skill version associations",
-  },
-  status: {
-    method: "GET",
-    path: "/api/cron/repair-custom-connector-skill-versions/status",
-    headers: authHeadersSchema,
-    responses: {
-      200: cronCustomConnectorSkillRepairStatusResponseSchema,
-      401: apiErrorSchema,
-      500: apiErrorSchema,
-    },
-    summary: "Report custom connector skill repair completion",
-  },
-});
-
 export const cronConnectorCatalogContract = c.router({
   sync: {
     method: "GET",
@@ -642,8 +590,6 @@ export type CronComputerUseScreenshotCleanupContract =
 export type CronBrowserReconcileContract = typeof cronBrowserReconcileContract;
 export type CronDrainEmailOutboxContract = typeof cronDrainEmailOutboxContract;
 export type CronSyncSkillsContract = typeof cronSyncSkillsContract;
-export type CronCustomConnectorSkillRepairContract =
-  typeof cronCustomConnectorSkillRepairContract;
 export type CronConnectorCatalogContract = typeof cronConnectorCatalogContract;
 export type CronRenewGmailWatchesContract =
   typeof cronRenewGmailWatchesContract;

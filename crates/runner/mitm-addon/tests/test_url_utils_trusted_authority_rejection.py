@@ -498,3 +498,75 @@ class TestTrustedAuthorityRejection:
             request_port=request_port,
             fallback_url=expected_fallback_url,
         )
+
+    @pytest.mark.parametrize(
+        (
+            "request_port",
+            "request_authority",
+            "expected_reason",
+            "expected_fallback_url",
+        ),
+        [
+            pytest.param(
+                443,
+                "attacker.example.com",
+                "authority_mismatch",
+                "https://api.github.com/repos",
+                id="host-mismatch",
+            ),
+            pytest.param(
+                443,
+                "api.github.com:bad",
+                "invalid_authority",
+                "https://api.github.com/repos",
+                id="malformed-port",
+            ),
+            pytest.param(
+                443,
+                "api.github.com:444",
+                "authority_port_mismatch",
+                "https://api.github.com/repos",
+                id="port-mismatch",
+            ),
+            pytest.param(
+                8443,
+                "api.github.com",
+                "authority_port_mismatch",
+                "https://api.github.com:8443/repos",
+                id="implicit-default-port-mismatch",
+            ),
+        ],
+    )
+    def test_rejects_invalid_http1_request_target_authority(
+        self,
+        real_flow,
+        headers,
+        request_port,
+        request_authority,
+        expected_reason,
+        expected_fallback_url,
+    ):
+        flow = real_flow(
+            with_response=False,
+            host="203.0.113.10",
+            port=request_port,
+            sni="api.github.com",
+            path="/repos",
+            request_headers=headers(("Host", "api.github.com")),
+        )
+        flow.request.authority = request_authority
+
+        with pytest.raises(AuthorityValidationError) as exc_info:
+            get_trusted_authority(flow)
+
+        assert flow.request.http_version == "HTTP/1.1"
+        assert flow.request.authority == request_authority
+        _assert_authority_error(
+            exc_info,
+            reason=expected_reason,
+            sni="api.github.com",
+            request_host="203.0.113.10",
+            host_header="api.github.com",
+            request_port=request_port,
+            fallback_url=expected_fallback_url,
+        )

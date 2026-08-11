@@ -62,6 +62,7 @@ import {
   Coins,
   Hourglass,
   Share2,
+  CornerLeftUp,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -286,10 +287,12 @@ import {
   chatThreadEmojiActiveCategory$,
   chatThreadEmojiGroups$,
   chatThreadEmojiPendingJump$,
+  chatThreadEmojiPreview$,
   chatThreadEmojiQuery$,
   filterChatThreadEmojiGroups,
   setChatThreadEmojiActiveCategory$,
   setChatThreadEmojiPendingJump$,
+  setChatThreadEmojiPreview$,
   setChatThreadEmojiQuery$,
   type ChatThreadEmojiItem,
 } from "../../signals/chat-page/chat-thread-emoji.ts";
@@ -884,6 +887,7 @@ function ChatThreadEmojiMenuButton({
   const setEmojiQuery = useSet(setChatThreadEmojiQuery$);
   const setEmojiActiveCategory = useSet(setChatThreadEmojiActiveCategory$);
   const setEmojiPendingJump = useSet(setChatThreadEmojiPendingJump$);
+  const setEmojiPreview = useSet(setChatThreadEmojiPreview$);
 
   return (
     <TooltipProvider delayDuration={200}>
@@ -894,6 +898,7 @@ function ChatThreadEmojiMenuButton({
             setEmojiQuery("");
             setEmojiActiveCategory(null);
             setEmojiPendingJump(null);
+            setEmojiPreview(null);
             openChatThreadEmojiMenu({ threadId, title });
           } else {
             closeMenu();
@@ -1028,6 +1033,17 @@ interface ChatThreadEmojiCategory {
   icon: LucideIcon;
   items: ChatThreadEmojiItem[];
   showShortcutDigits: boolean;
+  // The emoji dataset names an emoji the way a shortcode does; the frequently
+  // used row names it the way this product does ("Done", "Urgent"), which is
+  // translated and must not be dressed up as a shortcode.
+  shortcodeNames: boolean;
+}
+
+function chatThreadEmojiDisplayName(
+  name: string,
+  shortcodeNames: boolean,
+): string {
+  return shortcodeNames ? `:${name.replace(/\s+/g, "_")}:` : name;
 }
 
 function chatThreadEmojiSectionId(key: string): string {
@@ -1088,6 +1104,7 @@ function chatThreadEmojiCategories(
       icon: Clock,
       items: frequentItems,
       showShortcutDigits: true,
+      shortcodeNames: false,
     },
     ...(groups ?? []).map((group) => {
       return {
@@ -1096,6 +1113,7 @@ function chatThreadEmojiCategories(
         icon: chatThreadEmojiCategoryIcon(group.name),
         items: group.emojis,
         showShortcutDigits: false,
+        shortcodeNames: true,
       };
     }),
   ];
@@ -1241,7 +1259,15 @@ function ChatThreadEmojiPicker({
           onSelect={jumpToCategory}
         />
       )}
-      <div className="flex items-center gap-2 p-2">
+      <div
+        className={cn(
+          "flex items-center gap-2 px-2 pt-2",
+          // Pull the first section title up towards the search field. The title
+          // keeps its own box height so the fade under it is unchanged; only
+          // the gap above it closes.
+          railEnabled ? "pb-1" : "pb-2",
+        )}
+      >
         <div className="relative flex-1">
           <Search
             size={15}
@@ -1281,6 +1307,35 @@ function ChatThreadEmojiPicker({
         onSelect={onSelect}
         railEnabled={railEnabled}
       />
+      {railEnabled && <ChatThreadEmojiPreview />}
+    </div>
+  );
+}
+
+// Names whichever emoji the pointer or keyboard is on, so the grid stays a
+// grid of glyphs and the reader still gets a label for the one in question.
+function ChatThreadEmojiPreview() {
+  const { t } = useTranslation();
+  const preview = useGet(chatThreadEmojiPreview$);
+
+  return (
+    <div className="flex h-10 shrink-0 items-center gap-2 border-t border-border px-3">
+      {preview ? (
+        <>
+          <span aria-hidden="true" className="zero-emoji text-lg leading-none">
+            {preview.emoji}
+          </span>
+          <span className="truncate text-xs font-medium text-muted-foreground">
+            {preview.name}
+          </span>
+        </>
+      ) : (
+        <span className="text-xs text-muted-foreground/70">
+          {t(($) => {
+            return $.chat.thread.pickEmoji;
+          })}
+        </span>
+      )}
     </div>
   );
 }
@@ -1300,6 +1355,19 @@ function ChatThreadEmojiFeed({
   const setActiveCategory = useSet(setChatThreadEmojiActiveCategory$);
   const pendingJump = useGet(chatThreadEmojiPendingJump$);
   const setPendingJump = useSet(setChatThreadEmojiPendingJump$);
+  const setPreview = useSet(setChatThreadEmojiPreview$);
+
+  // One delegated listener on the feed rather than a pair on each of the ~1,900
+  // buttons. Pointer and keyboard both report through it.
+  function previewEmojiUnder(target: EventTarget): void {
+    if (!(target instanceof Element)) {
+      return;
+    }
+    const button = target.closest<HTMLElement>("[data-chat-thread-emoji]");
+    const emoji = button?.dataset.chatThreadEmoji;
+    const name = button?.dataset.chatThreadEmojiName;
+    setPreview(emoji && name ? { emoji, name } : null);
+  }
 
   function handleScroll(event: ReactUIEvent<HTMLDivElement>): void {
     const feed = event.currentTarget;
@@ -1338,6 +1406,27 @@ function ChatThreadEmojiFeed({
       onWheel={railEnabled ? releasePendingJump : undefined}
       onTouchStart={railEnabled ? releasePendingJump : undefined}
       onPointerDown={railEnabled ? releasePendingJump : undefined}
+      onMouseOver={
+        railEnabled
+          ? (event) => {
+              previewEmojiUnder(event.target);
+            }
+          : undefined
+      }
+      onFocus={
+        railEnabled
+          ? (event) => {
+              previewEmojiUnder(event.target);
+            }
+          : undefined
+      }
+      onMouseLeave={
+        railEnabled
+          ? () => {
+              setPreview(null);
+            }
+          : undefined
+      }
     >
       {searchResults !== null ? (
         searchResults.length > 0 ? (
@@ -1359,6 +1448,7 @@ function ChatThreadEmojiFeed({
               items={category.items}
               onSelect={onSelect}
               showShortcutDigits={category.showShortcutDigits}
+              shortcodeNames={category.shortcodeNames}
               pinnedTitle={railEnabled}
             />
           );
@@ -1374,6 +1464,7 @@ function ChatThreadEmojiSection({
   items,
   onSelect,
   showShortcutDigits = false,
+  shortcodeNames = true,
   pinnedTitle = false,
 }: {
   categoryKey: string;
@@ -1381,6 +1472,7 @@ function ChatThreadEmojiSection({
   items: ChatThreadEmojiItem[];
   onSelect: (emoji: string) => void;
   showShortcutDigits?: boolean;
+  shortcodeNames?: boolean;
   pinnedTitle?: boolean;
 }) {
   const { t } = useTranslation();
@@ -1402,8 +1494,11 @@ function ChatThreadEmojiSection({
           "flex items-baseline justify-between gap-2 px-1 pb-1 pt-2",
           // Fade to transparent at the lower edge so emoji dissolve as they
           // scroll under the pinned title instead of colliding with it.
+          // pt-1/pb-3 shifts the label up towards the search field while
+          // keeping the box — and so the painted fade — the same 32px tall as
+          // the pt-2/pb-2 it replaces.
           pinnedTitle &&
-            "sticky top-0 z-10 bg-gradient-to-b from-popover from-60% to-transparent pb-2",
+            "sticky top-0 z-10 bg-gradient-to-b from-popover from-60% to-transparent pb-3 pt-1",
         )}
       >
         <span className="text-xs font-medium text-muted-foreground">
@@ -1419,6 +1514,7 @@ function ChatThreadEmojiSection({
         items={items}
         onSelect={onSelect}
         showShortcutDigits={showShortcutDigits}
+        shortcodeNames={shortcodeNames}
       />
     </div>
   );
@@ -1435,10 +1531,12 @@ function ChatThreadEmojiGrid({
   items,
   onSelect,
   showShortcutDigits = false,
+  shortcodeNames = true,
 }: {
   items: ChatThreadEmojiItem[];
   onSelect: (emoji: string) => void;
   showShortcutDigits?: boolean;
+  shortcodeNames?: boolean;
 }) {
   // Nine columns so the nine frequently-used digit shortcuts sit on a single
   // row; every other emoji group uses the same width to stay aligned.
@@ -1459,6 +1557,11 @@ function ChatThreadEmojiGrid({
             key={`${item.name}-${item.emoji}`}
             type="button"
             aria-label={item.name}
+            data-chat-thread-emoji={item.emoji}
+            data-chat-thread-emoji-name={chatThreadEmojiDisplayName(
+              item.name,
+              shortcodeNames,
+            )}
             title={shortcutLabel}
             className="relative flex aspect-square items-center justify-center rounded-md text-xl leading-none transition-colors hover:bg-state-hover"
             onClick={() => {
@@ -3393,6 +3496,90 @@ function ChatThreadNextRunModelNotice({
   return <RunSectionDividerRow label={label} announce />;
 }
 
+interface ChatRunPresentation {
+  readonly actionOwnerEventIds: ReadonlySet<string>;
+  readonly steerEventIds: ReadonlySet<string>;
+}
+
+const EMPTY_CHAT_EVENT_IDS: ReadonlySet<string> = new Set();
+
+function isSteerPromptEvent(
+  event: EnrichedChatEvent,
+  seenUserRunIds: ReadonlySet<string>,
+  actionOwnerEventIdByRunId: ReadonlyMap<string, string>,
+  lastAssociatedRunId: string | undefined,
+): boolean {
+  if (event.eventType !== "input.prompt") {
+    return false;
+  }
+  if (event.runId !== undefined) {
+    return (
+      seenUserRunIds.has(event.runId) ||
+      actionOwnerEventIdByRunId.has(event.runId)
+    );
+  }
+  return (
+    event.optimisticUserMessageAssociation !== "run" &&
+    lastAssociatedRunId !== undefined
+  );
+}
+
+function chatRunPresentationForGroups(
+  groups: readonly ChatEventGroup[],
+): ChatRunPresentation {
+  const actionOwnerEventIdByRunId = new Map<string, string>();
+  const runlessAssistantOwnerEventIds = new Set<string>();
+  const seenUserRunIds = new Set<string>();
+  const steerEventIds = new Set<string>();
+  let lastAssociatedRunId: string | undefined;
+
+  for (const group of groups) {
+    for (const event of group.events) {
+      const role = chatEventCompatibilityRole(event.eventType);
+      const runId = event.runId;
+      if (role === "user") {
+        const isSteer = isSteerPromptEvent(
+          event,
+          seenUserRunIds,
+          actionOwnerEventIdByRunId,
+          lastAssociatedRunId,
+        );
+        if (isSteer) {
+          steerEventIds.add(event.id);
+        }
+        if (runId !== undefined) {
+          actionOwnerEventIdByRunId.delete(runId);
+          seenUserRunIds.add(runId);
+          lastAssociatedRunId = runId;
+        } else if (isSteer && lastAssociatedRunId !== undefined) {
+          actionOwnerEventIdByRunId.delete(lastAssociatedRunId);
+        }
+        continue;
+      }
+
+      if (runId !== undefined) {
+        lastAssociatedRunId = runId;
+      }
+      if (!isRenderableAssistantEvent(event)) {
+        continue;
+      }
+      if (runId === undefined) {
+        runlessAssistantOwnerEventIds.add(event.id);
+      } else {
+        actionOwnerEventIdByRunId.set(runId, event.id);
+      }
+    }
+  }
+
+  return {
+    actionOwnerEventIds: new Set([
+      ...actionOwnerEventIdByRunId.values(),
+      ...runlessAssistantOwnerEventIds,
+    ]),
+    steerEventIds,
+  };
+}
+
 function ChatThreadEventGroups({
   thread,
   groups,
@@ -3418,6 +3605,11 @@ function ChatThreadEventGroups({
       runGroupFolding,
       onToggleRunGroup,
     });
+  const continuationPresentationEnabled =
+    useGet(featureSwitch$)[FeatureSwitchKey.ChatRunContinuationPresentation];
+  const runPresentation = continuationPresentationEnabled
+    ? chatRunPresentationForGroups(groups)
+    : null;
 
   return (
     <>
@@ -3447,6 +3639,15 @@ function ChatThreadEventGroups({
               group={group}
               thread={thread}
               modelChanges={modelChanges}
+              showActions={
+                runPresentation === null ||
+                group.events.some((event) => {
+                  return runPresentation.actionOwnerEventIds.has(event.id);
+                })
+              }
+              steerEventIds={
+                runPresentation?.steerEventIds ?? EMPTY_CHAT_EVENT_IDS
+              }
               runGroupFolds={embeddedFolds}
               completedWorkFold={
                 completedWorkFold !== null
@@ -7131,12 +7332,16 @@ function PagedGroupRow({
   group,
   thread,
   modelChanges,
+  showActions,
+  steerEventIds,
   runGroupFolds,
   completedWorkFold,
 }: {
   group: ChatEventGroup;
   thread: ChatPanelSignals;
   modelChanges: ReadonlyMap<string, RunModelChange>;
+  showActions: boolean;
+  steerEventIds: ReadonlySet<string>;
   runGroupFolds?: readonly RunGroupFoldControl[];
   completedWorkFold?: {
     groups: readonly ChatEventGroup[];
@@ -7151,6 +7356,7 @@ function PagedGroupRow({
         group={group}
         thread={thread}
         modelChanges={modelChanges}
+        steerEventIds={steerEventIds}
         runGroupFolds={runGroupFolds}
       />
     );
@@ -7159,6 +7365,7 @@ function PagedGroupRow({
     <PagedAssistantGroup
       group={group}
       thread={thread}
+      showActions={showActions}
       runGroupFolds={runGroupFolds}
       completedWorkFold={completedWorkFold}
     />
@@ -7210,6 +7417,8 @@ function SelectablePagedGroupRow({
   group,
   thread,
   modelChanges,
+  showActions,
+  steerEventIds,
   runGroupFolds,
   completedWorkFold,
 }: Parameters<typeof PagedGroupRow>[0]) {
@@ -7227,6 +7436,8 @@ function SelectablePagedGroupRow({
         group={group}
         thread={thread}
         modelChanges={modelChanges}
+        showActions={showActions}
+        steerEventIds={steerEventIds}
         runGroupFolds={runGroupFolds}
         completedWorkFold={completedWorkFold}
       />
@@ -7270,6 +7481,8 @@ function SelectablePagedGroupRow({
         group={group}
         thread={thread}
         modelChanges={modelChanges}
+        showActions={showActions}
+        steerEventIds={steerEventIds}
         runGroupFolds={runGroupFolds}
         completedWorkFold={completedWorkFold}
       />
@@ -7295,11 +7508,13 @@ function PagedUserGroup({
   group,
   thread,
   modelChanges,
+  steerEventIds,
   runGroupFolds,
 }: {
   group: ChatEventGroup;
   thread: ChatPanelSignals;
   modelChanges: ReadonlyMap<string, RunModelChange>;
+  steerEventIds: ReadonlySet<string>;
   runGroupFolds?: readonly RunGroupFoldControl[];
 }) {
   return (
@@ -7311,7 +7526,11 @@ function PagedUserGroup({
             {modelChange === undefined ? null : (
               <ModelChangeDividerRow change={modelChange} />
             )}
-            <PagedUserMessage event={event} thread={thread} />
+            <PagedUserMessage
+              event={event}
+              thread={thread}
+              steer={steerEventIds.has(event.id)}
+            />
           </div>
         );
       })}
@@ -8351,14 +8570,63 @@ function isElevatedUserMessagePart(
   );
 }
 
+function SteerMessageIndicator() {
+  const { t } = useTranslation();
+  const explanation = t(($) => {
+    return $.chat.thread.steerMessageExplanation;
+  });
+
+  return (
+    <TooltipProvider delayDuration={300}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span
+            data-testid="chat-steer-indicator"
+            role="img"
+            aria-label={explanation}
+            className="flex h-7 w-5 shrink-0 cursor-help items-center justify-center text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <CornerLeftUp size={14} strokeWidth={1.8} />
+          </span>
+        </TooltipTrigger>
+        <TooltipContent side="top">{explanation}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
+function UserMessageBubble({
+  children,
+  steer,
+}: {
+  children: ReactNode;
+  steer: boolean;
+}) {
+  const bubble = (
+    <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-[0.9375rem] leading-[1.7] [overflow-wrap:anywhere] overflow-hidden">
+      {children}
+    </div>
+  );
+  return steer ? (
+    <div className="flex w-full items-center justify-end gap-1.5">
+      <SteerMessageIndicator />
+      {bubble}
+    </div>
+  ) : (
+    bubble
+  );
+}
+
 function UserMessageContent({
   document,
   attachments,
   onImageClick,
+  steer,
 }: {
   document: UserMessageRenderDocument;
   attachments: ReturnType<typeof userMessageRenderAttachments>;
   onImageClick: OpenMessageImagePreview;
+  steer: boolean;
 }) {
   // Attachments read as their own object, so they all sit above the bubble
   // instead of interrupting the sentence they were dropped into. Attachments
@@ -8385,14 +8653,14 @@ function UserMessageContent({
         onImageClick={onImageClick}
       />
       {hasBody ? (
-        <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-[0.9375rem] leading-[1.7] [overflow-wrap:anywhere] overflow-hidden">
+        <UserMessageBubble steer={steer}>
           <div className="px-4 py-3">
             <UserMessageView
               document={document}
               elevatedFileIds={elevatedFileIds}
             />
           </div>
-        </div>
+        </UserMessageBubble>
       ) : null}
     </>
   );
@@ -8545,9 +8813,11 @@ function messageImageLightboxTarget(
 function PagedUserMessage({
   event,
   thread,
+  steer,
 }: {
   event: EnrichedChatEvent;
   thread: ChatPanelSignals;
+  steer: boolean;
 }) {
   const inputEvent = asInputChatEvent(event);
   const renderDocument = event.userMessageRenderDocument;
@@ -8628,6 +8898,7 @@ function PagedUserMessage({
               document={renderDocument}
               attachments={allAttachments}
               onImageClick={openLightbox}
+              steer={steer}
             />
           ) : (
             <>
@@ -8636,7 +8907,7 @@ function PagedUserMessage({
                 onImageClick={openLightbox}
               />
               {bodyBlocks.length > 0 && (
-                <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-[0.9375rem] leading-[1.7] [overflow-wrap:anywhere] overflow-hidden">
+                <UserMessageBubble steer={steer}>
                   <div className="px-4 py-3">
                     <BodyContentBlocks
                       blocks={bodyBlocks}
@@ -8647,7 +8918,7 @@ function PagedUserMessage({
                       markdownMediaPreview={false}
                     />
                   </div>
-                </div>
+                </UserMessageBubble>
               )}
             </>
           )}
@@ -8665,11 +8936,13 @@ function PagedUserMessage({
 function PagedAssistantGroup({
   group,
   thread,
+  showActions,
   runGroupFolds,
   completedWorkFold,
 }: {
   group: ChatEventGroup;
   thread: ChatPanelSignals;
+  showActions: boolean;
   runGroupFolds?: readonly RunGroupFoldControl[];
   completedWorkFold?: {
     groups: readonly ChatEventGroup[];
@@ -8748,7 +9021,13 @@ function PagedAssistantGroup({
           })}
         </div>
       </div>
-      <PagedGroupActions group={group} content={fullContent} thread={thread} />
+      {showActions ? (
+        <PagedGroupActions
+          group={group}
+          content={fullContent}
+          thread={thread}
+        />
+      ) : null}
     </div>
   );
 }

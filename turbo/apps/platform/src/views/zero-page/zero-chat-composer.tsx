@@ -5,6 +5,7 @@ import type {
   KeyboardEvent as ReactKeyboardEvent,
   MouseEvent as ReactMouseEvent,
 } from "react";
+import type { DesktopProduct } from "@vm0/api-contracts/contracts/client-headers";
 import {
   useGet,
   useSet,
@@ -17,6 +18,7 @@ import {
 import { useTranslation } from "react-i18next";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { i18n } from "../../i18n/index.ts";
+import { desktopProductDisplayName } from "../../i18n/desktop-product.ts";
 import { equalArrays } from "../../lib/equality.ts";
 import { ensurePushSubscription$ } from "../../lib/push-notifications.ts";
 import { isMobileTextInputDevice } from "../../lib/visual-viewport-keyboard.ts";
@@ -47,6 +49,7 @@ import {
   User,
   Video,
   X,
+  Zap,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -228,7 +231,10 @@ import {
   avatarTemplateSelection,
   toAvatarGenerationTemplate,
 } from "../../signals/zero-page/avatar-template-selection.ts";
-import { resolveModelFirstUserDefaultSelection } from "../../signals/zero-page/model-default-selection.ts";
+import {
+  isCodexFastModeAvailableForSelection,
+  resolveModelFirstUserDefaultSelection,
+} from "../../signals/zero-page/model-default-selection.ts";
 
 const MAX_FILE_SIZE = 1024 * 1024 * 1024; // 1 GB — keep in sync with web constants
 const COMPOSER_CONTROL_FOCUS_CLASS =
@@ -266,6 +272,7 @@ interface ComposerConnectorReadState {
 
 interface ComposerComputerUseHost {
   id: string;
+  product: DesktopProduct;
   hostName: string;
   displayName: string;
   status: "online" | "offline";
@@ -6205,7 +6212,11 @@ function ComputerUseConnectorMenuSection({
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm text-foreground">
-                    {host.displayName}
+                    <span>{host.displayName}</span>
+                    <span className="ml-1 text-xs text-muted-foreground">
+                      {" "}
+                      {desktopProductDisplayName(host.product)}
+                    </span>
                   </span>
                   {host.status === "offline" && (
                     <span className="block text-[11px] leading-3 text-muted-foreground">
@@ -7375,9 +7386,76 @@ function ModelConfigurationWarning({
   );
 }
 
+function ComposerFastModeButton({
+  value,
+  onChange,
+  disabled,
+  codexFastModeEnabled,
+}: ComposerModelPicker & { codexFastModeEnabled: boolean }) {
+  const { t } = useTranslation();
+  const policies = useLastResolved(orgModelPolicies$);
+  const available = isCodexFastModeAvailableForSelection({
+    policies,
+    selectedModel: value?.selectedModel,
+    codexFastModeEnabled,
+  });
+  if (!value || !available) {
+    return null;
+  }
+  const active = value.codexServiceTier === "fast";
+  const label = t(($) => {
+    return $.settings.models.picker.fast;
+  });
+  const impact = t(($) => {
+    return $.settings.models.picker.fastImpact;
+  });
+  return (
+    <Popover>
+      <PopoverTrigger asChild openOnHover delay={300} closeDelay={120}>
+        <Button
+          type="button"
+          variant="quiet"
+          size="icon-sm"
+          className={cn(
+            "shrink-0",
+            COMPOSER_CONTROL_ICON_CLASS,
+            active &&
+              "bg-amber-500/10 text-amber-600 hover:bg-amber-500/15 hover:text-amber-700 dark:text-amber-300 dark:hover:text-amber-200",
+          )}
+          aria-label={label}
+          aria-pressed={active}
+          disabled={disabled}
+          onClick={() => {
+            onChange({
+              selectedModel: value.selectedModel,
+              ...(active ? {} : { codexServiceTier: "fast" }),
+            });
+          }}
+        >
+          <Zap fill={active ? "currentColor" : "none"} aria-hidden="true" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent side="top" align="center" className="w-72 p-3">
+        <div className="flex items-center gap-2.5">
+          <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-300">
+            <Zap size={16} fill="currentColor" aria-hidden="true" />
+          </span>
+          <div className="min-w-0">
+            <p className="text-sm font-medium">{label}</p>
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              {impact}
+            </p>
+          </div>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 function ComposerModelPickerSlot({ signals }: { signals: ComposerSignals }) {
   const { t } = useTranslation();
   const codexFastModeEnabled = useGet(codexFastModeEnabled$);
+  const policies = useLastResolved(orgModelPolicies$);
   const modelPickerOpen = useGet(signals.model.modelPickerOpen$);
   const setModelPickerOpen = useSet(signals.model.setModelPickerOpen$);
   const modelSelection = useLastLoadable(signals.model.modelSelection$);
@@ -7390,14 +7468,27 @@ function ComposerModelPickerSlot({ signals }: { signals: ComposerSignals }) {
   const pageSignal = useGet(pageSignal$);
   const value = modelSelection.state === "hasData" ? modelSelection.data : null;
   const modelPickerLoading = modelSelection.state === "loading";
+  const onFastModeButtonChange = (selection: ModelProviderSelection | null) => {
+    detach(setModelSelection(selection, pageSignal), Reason.DomCallback);
+  };
   const onModelPickerChange = (selection: ModelProviderSelection | null) => {
+    const nextSelection =
+      selection &&
+      value?.codexServiceTier === "fast" &&
+      isCodexFastModeAvailableForSelection({
+        policies,
+        selectedModel: selection.selectedModel,
+        codexFastModeEnabled,
+      })
+        ? { ...selection, codexServiceTier: "fast" as const }
+        : selection;
     const nextUnsupported = getVisualAttachmentUnsupportedState(
       {
         value,
         onChange: onModelPickerChange,
       },
       imageRecognitionEnabled,
-      selection,
+      nextSelection,
     );
     if (
       nextUnsupported &&
@@ -7407,7 +7498,7 @@ function ComposerModelPickerSlot({ signals }: { signals: ComposerSignals }) {
     ) {
       showVisualAttachmentUnsupportedToast(nextUnsupported);
     }
-    detach(setModelSelection(selection, pageSignal), Reason.DomCallback);
+    detach(setModelSelection(nextSelection, pageSignal), Reason.DomCallback);
   };
   const modelPicker: ComposerModelPicker = {
     value,
@@ -7434,6 +7525,12 @@ function ComposerModelPickerSlot({ signals }: { signals: ComposerSignals }) {
   return (
     <>
       {submitBlocker && <ModelConfigurationWarning blocker={submitBlocker} />}
+      <ComposerFastModeButton
+        value={modelPicker.value}
+        onChange={onFastModeButtonChange}
+        disabled={modelPicker.disabled}
+        codexFastModeEnabled={codexFastModeEnabled}
+      />
       <ModelProviderPicker
         value={modelPicker.value}
         onChange={onModelPickerChange}
@@ -7448,7 +7545,6 @@ function ComposerModelPickerSlot({ signals }: { signals: ComposerSignals }) {
         )}
         compactTrigger
         mobileIconTrigger
-        codexFastModeEnabled={codexFastModeEnabled}
         open={modelPickerOpen}
         onOpenChange={setModelPickerOpen}
         disabled={modelPicker.disabled}

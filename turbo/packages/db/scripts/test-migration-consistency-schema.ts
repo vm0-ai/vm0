@@ -2324,6 +2324,13 @@ const EXPECTED_PERMANENT_TRIGGERS = [
   },
   {
     definition:
+      "CREATE TRIGGER sync_legacy_org_plan_entitlement_member_invitation_allowed BEFORE INSERT OR UPDATE OF plan_key ON public.org_plan_entitlements FOR EACH ROW EXECUTE FUNCTION sync_legacy_org_plan_entitlement_member_invitation_allowed()",
+    schemaName: "public",
+    tableName: "org_plan_entitlements",
+    triggerName: "sync_legacy_org_plan_entitlement_member_invitation_allowed",
+  },
+  {
+    definition:
       "CREATE TRIGGER presentation_artifacts_delete_artifact_registry AFTER DELETE ON public.presentation_artifacts FOR EACH ROW EXECUTE FUNCTION delete_artifact_registry_entity('presentation')",
     schemaName: "public",
     tableName: "presentation_artifacts",
@@ -2461,6 +2468,13 @@ const EXPECTED_PERMANENT_FUNCTIONS = [
   {
     bodyHash: "daf97695043bdbafd864f7ff7a8f8d5d",
     functionName: "sync_legacy_org_plan_entitlement_can_buy_credits",
+    identityArguments: "",
+    kind: "f",
+    schemaName: "public",
+  },
+  {
+    bodyHash: "71b2b16ba3c75c485a4f01091ea02454",
+    functionName: "sync_legacy_org_plan_entitlement_member_invitation_allowed",
     identityArguments: "",
     kind: "f",
     schemaName: "public",
@@ -3269,6 +3283,131 @@ async function validateCustomConnectorOauthModeConstraints(
 
   console.log(
     "   ✅ Deferred constraints accept complete modes and reject mismatched OAuth configuration\n",
+  );
+}
+
+async function validateCustomConnectorSkillVersionPair(
+  dbUrl: string,
+): Promise<void> {
+  console.log(
+    "=== Phase 2.8: Validate custom connector skill version pair ===\n",
+  );
+  const fixture = {
+    connectorId: "73000000-0000-4000-8000-000000000001",
+    orgId: "migration-custom-connector-skill-org",
+    storageId: "73000000-0000-4000-8000-000000000002",
+    userId: "migration-custom-connector-skill-user",
+    versionId: "7".repeat(64),
+  } as const;
+  const client = new Client({ connectionString: dbUrl });
+  await client.connect();
+
+  try {
+    await client.query(
+      `
+        INSERT INTO "storages" (
+          "id", "user_id", "name", "org_id", "s3_prefix"
+        ) VALUES ($1, '__org__', '_migration_skill_storage', $2, $3)
+      `,
+      [
+        fixture.storageId,
+        fixture.orgId,
+        `${fixture.orgId}/volume/_migration_skill_storage`,
+      ],
+    );
+    await client.query(
+      `
+        INSERT INTO "storage_versions" (
+          "id", "storage_id", "s3_key", "archive_size", "created_by"
+        ) VALUES ($1, $2, $3, 1, $4)
+      `,
+      [
+        fixture.versionId,
+        fixture.storageId,
+        `${fixture.orgId}/volume/_migration_skill_storage/${fixture.versionId}`,
+        fixture.userId,
+      ],
+    );
+    await client.query(
+      `
+        INSERT INTO "org_custom_connectors" (
+          "id",
+          "org_id",
+          "slug",
+          "display_name",
+          "prefix_templates",
+          "fields",
+          "header_injections",
+          "query_injections",
+          "auth_mode",
+          "created_by"
+        ) VALUES (
+          $1,
+          $2,
+          '_migration_skill_pair',
+          'Migration Skill Pair',
+          '["https://api.example.test/"]'::jsonb,
+          '[{"key":"secret","label":"Secret","kind":"secret","required":true}]'::jsonb,
+          '[{"name":"Authorization","valueTemplate":"Bearer {{secrets.secret}}"}]'::jsonb,
+          '[]'::jsonb,
+          'manual',
+          $3
+        )
+      `,
+      [fixture.connectorId, fixture.orgId, fixture.userId],
+    );
+    await client.query(
+      `
+        UPDATE "org_custom_connectors"
+        SET
+          "skill_markdown" = 'Use the migration skill.',
+          "skill_storage_version_id" = $2
+        WHERE "id" = $1
+      `,
+      [fixture.connectorId, fixture.versionId],
+    );
+
+    await expectDatabaseError(client, {
+      code: "23514",
+      messageIncludes: "chk_org_custom_connectors_skill_version_pair",
+      query: `
+        UPDATE "org_custom_connectors"
+        SET "skill_markdown" = NULL
+        WHERE "id" = $1
+      `,
+      values: [fixture.connectorId],
+    });
+    await expectDatabaseError(client, {
+      code: "23514",
+      messageIncludes: "chk_org_custom_connectors_skill_version_pair",
+      query: `
+        UPDATE "org_custom_connectors"
+        SET "skill_storage_version_id" = NULL
+        WHERE "id" = $1
+      `,
+      values: [fixture.connectorId],
+    });
+
+    await client.query(
+      `
+        UPDATE "org_custom_connectors"
+        SET "skill_markdown" = NULL, "skill_storage_version_id" = NULL
+        WHERE "id" = $1
+      `,
+      [fixture.connectorId],
+    );
+    await client.query(`DELETE FROM "org_custom_connectors" WHERE "id" = $1`, [
+      fixture.connectorId,
+    ]);
+    await client.query(`DELETE FROM "storages" WHERE "id" = $1`, [
+      fixture.storageId,
+    ]);
+  } finally {
+    await client.end();
+  }
+
+  console.log(
+    "   ✅ Custom connector skill columns accept complete pairs and reject mixed state\n",
   );
 }
 
@@ -7102,6 +7241,368 @@ async function validateChatRunServiceTierAnnotationBackfill(): Promise<void> {
   }
 }
 
+const RETIRED_RUN_MODEL_STATE_PREVIOUS_MIGRATION = "0902_colorful_mandrill";
+const RETIRED_RUN_MODEL_STATE_MIGRATION = "0905_retire_legacy_run_model_state";
+
+async function validateRetiredRunModelStateMigration(): Promise<void> {
+  console.log("=== Validate retired run-model state migration ===\n");
+  const testDb = "migration_retired_run_model_state_test";
+  const testDbUrl = createTestDbUrl(testDb);
+  const providerIds = {
+    openRouter: "00000000-0000-4000-8000-000000089801",
+    openAi: "00000000-0000-4000-8000-000000089802",
+    deepSeek: "00000000-0000-4000-8000-000000089803",
+    zai: "00000000-0000-4000-8000-000000089804",
+  } as const;
+  const composeIds = {
+    unrestricted: "00000000-0000-4000-8000-000000089811",
+    restricted: "00000000-0000-4000-8000-000000089812",
+    zai: "00000000-0000-4000-8000-000000089813",
+  } as const;
+  const customSurfaceId = "00000000-0000-4000-8000-000000089821";
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpToTag(
+      testDbUrl,
+      RETIRED_RUN_MODEL_STATE_PREVIOUS_MIGRATION,
+    );
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+    try {
+      await client.query(
+        `
+          INSERT INTO "org_plan_entitlements" (
+            "org_id",
+            "plan_key",
+            "plan_rank",
+            "source",
+            "status",
+            "restricted_vm0_models"
+          ) VALUES
+            ('migration-model-unrestricted', 'pro', 2, 'fixture', 'active', false),
+            ('migration-model-restricted', 'limited', 0, 'fixture', 'suspended', true),
+            ('migration-model-custom', 'pro', 2, 'fixture', 'active', false),
+            ('migration-model-zai', 'pro', 2, 'fixture', 'active', false)
+        `,
+      );
+      await client.query(
+        `
+          INSERT INTO "model_providers" (
+            "id",
+            "type",
+            "is_default",
+            "selected_model",
+            "user_id",
+            "org_id"
+          ) VALUES
+            ($1, 'openrouter-api-key', true, 'anthropic/claude-opus-4.7', '__org__', 'migration-model-unrestricted'),
+            ($2, 'openai-api-key', true, 'openai/gpt-5.5', '__org__', 'migration-model-restricted'),
+            ($3, 'deepseek', false, 'deepseek-v4-flash', '__org__', 'migration-model-restricted'),
+            ($4, 'zai-api-key', true, 'glm-4.7', '__org__', 'migration-model-zai')
+        `,
+        Object.values(providerIds),
+      );
+      await client.query(
+        `
+          INSERT INTO "secrets" (
+            "id",
+            "name",
+            "encrypted_value",
+            "type",
+            "user_id",
+            "org_id"
+          ) VALUES (
+            '00000000-0000-4000-8000-000000089822',
+            'migration-model-custom',
+            'fixture',
+            'user',
+            '__org__',
+            'migration-model-custom'
+          );
+          INSERT INTO "model_provider_connections" (
+            "id",
+            "org_id",
+            "display_name",
+            "secret_id"
+          ) VALUES (
+            '00000000-0000-4000-8000-000000089823',
+            'migration-model-custom',
+            'Migration gateway',
+            '00000000-0000-4000-8000-000000089822'
+          );
+          INSERT INTO "model_provider_surfaces" (
+            "id",
+            "connection_id",
+            "protocol",
+            "api_base_url",
+            "auth_header_name",
+            "auth_header_template",
+            "model_mappings"
+          ) VALUES (
+            '${customSurfaceId}',
+            '00000000-0000-4000-8000-000000089823',
+            'openai-responses',
+            'https://example.test/v1',
+            'Authorization',
+            'Bearer {{secret}}',
+            '{"gpt-5.5":"vendor/old","gpt-5.6-sol":"vendor/new"}'::jsonb
+          )
+        `,
+      );
+      await client.query(
+        `
+          INSERT INTO "org_model_policies" (
+            "org_id",
+            "model",
+            "is_default",
+            "default_provider_type",
+            "credential_scope",
+            "model_provider_id",
+            "model_provider_surface_id"
+          ) VALUES
+            ('migration-model-unrestricted', 'claude-opus-4-7', true, 'openrouter-api-key', 'org', $1, NULL),
+            ('migration-model-unrestricted', 'claude-opus-4-8', false, 'vm0', 'org', NULL, NULL),
+            ('migration-model-restricted', 'gpt-5.5', true, 'openai-api-key', 'org', $2, NULL),
+            ('migration-model-restricted', 'deepseek-v4-flash', false, 'deepseek', 'org', $3, NULL),
+            ('migration-model-custom', 'gpt-5.5', true, 'vercel-ai-gateway-codex', 'org', NULL, $4),
+            ('migration-model-zai', 'glm-5.2', true, 'vm0', 'org', NULL, NULL)
+        `,
+        [
+          providerIds.openRouter,
+          providerIds.openAi,
+          providerIds.deepSeek,
+          customSurfaceId,
+        ],
+      );
+      await client.query(
+        `
+          INSERT INTO "org_members_metadata" (
+            "org_id",
+            "user_id",
+            "selected_model",
+            "service_tier"
+          ) VALUES
+            ('migration-model-unrestricted', 'migration-member-unrestricted', 'claude-opus-4-7', 'priority'),
+            ('migration-model-restricted', 'migration-member-restricted', 'gpt-5.5', 'priority')
+        `,
+      );
+      await client.query(
+        `
+          INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
+          VALUES
+            ($1, 'migration-member-unrestricted', 'migration-unrestricted-agent', 'migration-model-unrestricted'),
+            ($2, 'migration-member-restricted', 'migration-restricted-agent', 'migration-model-restricted'),
+            ($3, 'migration-member-zai', 'migration-zai-agent', 'migration-model-zai')
+        `,
+        [composeIds.unrestricted, composeIds.restricted, composeIds.zai],
+      );
+      await client.query(
+        `
+          INSERT INTO "zero_agents" (
+            "id",
+            "org_id",
+            "owner",
+            "name",
+            "model_provider_id",
+            "selected_model"
+          ) VALUES
+            ($1, 'migration-model-unrestricted', 'migration-member-unrestricted', 'migration-unrestricted-agent', $4, 'claude-opus-4-7'),
+            ($2, 'migration-model-restricted', 'migration-member-restricted', 'migration-restricted-agent', $5, 'gpt-5.5'),
+            ($3, 'migration-model-zai', 'migration-member-zai', 'migration-zai-agent', $6, NULL)
+        `,
+        [
+          composeIds.unrestricted,
+          composeIds.restricted,
+          composeIds.zai,
+          providerIds.openRouter,
+          providerIds.openAi,
+          providerIds.zai,
+        ],
+      );
+      await client.query(
+        `
+          INSERT INTO "chat_threads" (
+            "id",
+            "user_id",
+            "agent_compose_id",
+            "selected_model",
+            "codex_service_tier"
+          ) VALUES (
+            $1,
+            'migration-member-restricted',
+            $2,
+            'gpt-5.5',
+            'priority'
+          )
+        `,
+        ["00000000-0000-4000-8000-000000089831", composeIds.restricted],
+      );
+
+      await applyMigrationsUpToTag(client, RETIRED_RUN_MODEL_STATE_MIGRATION);
+
+      const policies = await client.query<{
+        orgId: string;
+        model: string;
+        isDefault: boolean;
+        providerType: string;
+        providerId: string | null;
+        surfaceId: string | null;
+      }>(`
+        SELECT
+          "org_id" AS "orgId",
+          "model",
+          "is_default" AS "isDefault",
+          "default_provider_type" AS "providerType",
+          "model_provider_id" AS "providerId",
+          "model_provider_surface_id" AS "surfaceId"
+        FROM "org_model_policies"
+        ORDER BY "org_id", "model"
+      `);
+      assert.deepEqual(policies.rows, [
+        {
+          orgId: "migration-model-custom",
+          model: "gpt-5.6-sol",
+          isDefault: true,
+          providerType: "vercel-ai-gateway-codex",
+          providerId: null,
+          surfaceId: customSurfaceId,
+        },
+        {
+          orgId: "migration-model-restricted",
+          model: "deepseek-v4-flash",
+          isDefault: true,
+          providerType: "vm0",
+          providerId: null,
+          surfaceId: null,
+        },
+        {
+          orgId: "migration-model-unrestricted",
+          model: "claude-opus-4-8",
+          isDefault: true,
+          providerType: "vm0",
+          providerId: null,
+          surfaceId: null,
+        },
+        {
+          orgId: "migration-model-zai",
+          model: "deepseek-v4-flash",
+          isDefault: true,
+          providerType: "vm0",
+          providerId: null,
+          surfaceId: null,
+        },
+      ]);
+
+      const members = await client.query<{
+        orgId: string;
+        selectedModel: string;
+        serviceTier: string | null;
+      }>(`
+        SELECT
+          "org_id" AS "orgId",
+          "selected_model" AS "selectedModel",
+          "service_tier" AS "serviceTier"
+        FROM "org_members_metadata"
+        ORDER BY "org_id"
+      `);
+      assert.deepEqual(members.rows, [
+        {
+          orgId: "migration-model-restricted",
+          selectedModel: "deepseek-v4-flash",
+          serviceTier: null,
+        },
+        {
+          orgId: "migration-model-unrestricted",
+          selectedModel: "claude-opus-4-8",
+          serviceTier: null,
+        },
+      ]);
+
+      const providers = await client.query<{
+        type: string;
+        isDefault: boolean;
+        selectedModel: string | null;
+      }>(`
+        SELECT
+          "type",
+          "is_default" AS "isDefault",
+          "selected_model" AS "selectedModel"
+        FROM "model_providers"
+        ORDER BY "type"
+      `);
+      assert.deepEqual(providers.rows, [
+        {
+          type: "deepseek",
+          isDefault: false,
+          selectedModel: "deepseek-v4-flash",
+        },
+        { type: "openai-api-key", isDefault: false, selectedModel: null },
+        {
+          type: "openrouter-api-key",
+          isDefault: true,
+          selectedModel: "anthropic/claude-opus-4.8",
+        },
+        { type: "zai-api-key", isDefault: false, selectedModel: null },
+      ]);
+
+      const agents = await client.query<{
+        name: string;
+        selectedModel: string | null;
+        providerId: string | null;
+      }>(`
+        SELECT
+          "name",
+          "selected_model" AS "selectedModel",
+          "model_provider_id" AS "providerId"
+        FROM "zero_agents"
+        ORDER BY "name"
+      `);
+      assert.deepEqual(agents.rows, [
+        {
+          name: "migration-restricted-agent",
+          selectedModel: null,
+          providerId: null,
+        },
+        {
+          name: "migration-unrestricted-agent",
+          selectedModel: "claude-opus-4-8",
+          providerId: providerIds.openRouter,
+        },
+        {
+          name: "migration-zai-agent",
+          selectedModel: null,
+          providerId: null,
+        },
+      ]);
+
+      const thread = await client.query<{
+        selectedModel: string;
+        serviceTier: string;
+      }>(`
+        SELECT
+          "selected_model" AS "selectedModel",
+          "codex_service_tier" AS "serviceTier"
+        FROM "chat_threads"
+        WHERE "id" = '00000000-0000-4000-8000-000000089831'
+      `);
+      assert.deepEqual(thread.rows, [
+        { selectedModel: "gpt-5.5", serviceTier: "priority" },
+      ]);
+
+      console.log("   ✅ replacement policies merge and transfer defaults");
+      console.log("   ✅ restricted and incompatible routes fall back safely");
+      console.log(
+        "   ✅ current preferences and agents migrate without rewriting threads\n",
+      );
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+}
+
 const USAGE_PACK_REFUND_SCHEMA_MIGRATION = "0898_usage_pack_credit_refunds";
 const USAGE_PACK_INVITE_BACKFILL_MIGRATION =
   "0899_backfill_member_invite_usage_pack_required";
@@ -7408,6 +7909,855 @@ async function validateUsagePackInviteLifecycleMigrations(): Promise<void> {
   }
 }
 
+const FINALIZE_INACTIVE_RUN_MODELS_PREVIOUS_MIGRATION =
+  "0905_retire_legacy_run_model_state";
+const FINALIZE_INACTIVE_RUN_MODELS_MIGRATION =
+  "0908_finalize_inactive_run_model_stage_two";
+
+async function validateInactiveRunModelFinalization(): Promise<void> {
+  console.log("=== Validate inactive run-model Stage 2 finalization ===\n");
+  const testDb = "migration_inactive_run_model_finalization_test";
+  const testDbUrl = createTestDbUrl(testDb);
+
+  await createDatabase(testDb);
+  const client = new Client({ connectionString: testDbUrl });
+  await client.connect();
+
+  try {
+    await applyMigrationsUpToTag(
+      client,
+      FINALIZE_INACTIVE_RUN_MODELS_PREVIOUS_MIGRATION,
+    );
+
+    await client.query(`
+      INSERT INTO "org_plan_entitlements" (
+        "org_id",
+        "plan_key",
+        "plan_rank",
+        "source",
+        "support_byok",
+        "restricted_vm0_models"
+      ) VALUES
+        (
+          'org-migration-0905-unrestricted',
+          'pro',
+          20,
+          'migration-test',
+          true,
+          false
+        ),
+        (
+          'org-migration-0905-restricted',
+          'free',
+          0,
+          'migration-test',
+          true,
+          true
+        );
+
+      INSERT INTO "secrets" (
+        "id",
+        "name",
+        "encrypted_value",
+        "type",
+        "user_id",
+        "org_id"
+      ) VALUES
+        (
+          '00000000-0000-4000-8000-000000090521',
+          'anthropic-retained',
+          'encrypted-anthropic',
+          'org',
+          '__org__',
+          'org-migration-0905-unrestricted'
+        ),
+        (
+          '00000000-0000-4000-8000-000000090522',
+          'moonshot-deleted',
+          'encrypted-moonshot',
+          'org',
+          '__org__',
+          'org-migration-0905-restricted'
+        ),
+        (
+          '00000000-0000-4000-8000-000000090523',
+          'unrelated-retained',
+          'encrypted-unrelated',
+          'org',
+          '__org__',
+          'org-migration-0905-restricted'
+        ),
+        (
+          '00000000-0000-4000-8000-000000090524',
+          'minimax-deleted',
+          'encrypted-minimax',
+          'org',
+          '__org__',
+          'org-migration-0905-unrestricted'
+        ),
+        (
+          '00000000-0000-4000-8000-000000090525',
+          'zai-deleted',
+          'encrypted-zai',
+          'org',
+          'user-migration-0905-zai',
+          'org-migration-0905-unrestricted'
+        );
+
+      INSERT INTO "model_providers" (
+        "id",
+        "type",
+        "secret_id",
+        "is_default",
+        "selected_model",
+        "user_id",
+        "org_id"
+      ) VALUES
+        (
+          '00000000-0000-4000-8000-000000090511',
+          'anthropic-api-key',
+          '00000000-0000-4000-8000-000000090521',
+          true,
+          'anthropic/claude-opus-4.8',
+          '__org__',
+          'org-migration-0905-unrestricted'
+        ),
+        (
+          '00000000-0000-4000-8000-000000090512',
+          'moonshot-api-key',
+          '00000000-0000-4000-8000-000000090522',
+          false,
+          NULL,
+          '__org__',
+          'org-migration-0905-restricted'
+        ),
+        (
+          '00000000-0000-4000-8000-000000090513',
+          'vm0',
+          NULL,
+          true,
+          'deepseek-v4-flash',
+          '__org__',
+          'org-migration-0905-restricted'
+        ),
+        (
+          '00000000-0000-4000-8000-000000090514',
+          'minimax-api-key',
+          '00000000-0000-4000-8000-000000090524',
+          true,
+          NULL,
+          'user-migration-0905-minimax',
+          'org-migration-0905-unrestricted'
+        ),
+        (
+          '00000000-0000-4000-8000-000000090515',
+          'vm0',
+          NULL,
+          false,
+          'MiniMax-M3',
+          'user-migration-0905-minimax',
+          'org-migration-0905-unrestricted'
+        ),
+        (
+          '00000000-0000-4000-8000-000000090516',
+          'zai-api-key',
+          '00000000-0000-4000-8000-000000090525',
+          true,
+          NULL,
+          'user-migration-0905-zai',
+          'org-migration-0905-unrestricted'
+        ),
+        (
+          '00000000-0000-4000-8000-000000090517',
+          'vm0',
+          NULL,
+          false,
+          'glm-5.2',
+          'user-migration-0905-zai',
+          'org-migration-0905-unrestricted'
+        ),
+        (
+          '00000000-0000-4000-8000-000000090518',
+          'minimax-api-key',
+          '00000000-0000-4000-8000-000000090524',
+          false,
+          NULL,
+          '__org__',
+          'org-migration-0905-unrestricted'
+        );
+
+      INSERT INTO "org_model_policies" (
+        "id",
+        "org_id",
+        "model",
+        "is_default",
+        "default_provider_type",
+        "credential_scope",
+        "model_provider_id"
+      ) VALUES
+        (
+          '00000000-0000-4000-8000-000000090531',
+          'org-migration-0905-unrestricted',
+          'claude-opus-4-8',
+          true,
+          'anthropic-api-key',
+          'org',
+          '00000000-0000-4000-8000-000000090511'
+        ),
+        (
+          '00000000-0000-4000-8000-000000090532',
+          'org-migration-0905-unrestricted',
+          'gpt-5.6-sol',
+          false,
+          'vm0',
+          'org',
+          NULL
+        ),
+        (
+          '00000000-0000-4000-8000-000000090533',
+          'org-migration-0905-restricted',
+          'deepseek-v4-flash',
+          true,
+          'vm0',
+          'org',
+          NULL
+        ),
+        (
+          '00000000-0000-4000-8000-000000090534',
+          'org-migration-0905-unrestricted',
+          'claude-sonnet-5',
+          false,
+          'vm0',
+          'org',
+          NULL
+        ),
+        (
+          '00000000-0000-4000-8000-000000090535',
+          'org-migration-0905-unrestricted',
+          'claude-fable-5',
+          false,
+          'minimax-api-key',
+          'org',
+          '00000000-0000-4000-8000-000000090518'
+        );
+
+      INSERT INTO "org_members_metadata" (
+        "org_id",
+        "user_id",
+        "selected_model",
+        "service_tier"
+      ) VALUES
+        (
+          'org-migration-0905-unrestricted',
+          'user-migration-0905-unrestricted',
+          'claude-opus-4-8',
+          NULL
+        ),
+        (
+          'org-migration-0905-restricted',
+          'user-migration-0905-restricted',
+          'deepseek-v4-flash',
+          NULL
+        ),
+        (
+          'org-migration-0905-unrestricted',
+          'user-migration-0905-active-model',
+          'claude-sonnet-5',
+          NULL
+        ),
+        (
+          'org-migration-0905-unrestricted',
+          'user-migration-0905-gpt-successor',
+          'gpt-5.6-sol',
+          'priority'
+        ),
+        (
+          'org-migration-0905-unrestricted',
+          'user-migration-0905-unset',
+          NULL,
+          NULL
+        );
+
+      INSERT INTO "agent_composes" (
+        "id",
+        "user_id",
+        "name",
+        "org_id"
+      ) VALUES
+        (
+          '00000000-0000-4000-8000-000000090501',
+          'user-migration-0905-unrestricted',
+          'migration-0905-unrestricted',
+          'org-migration-0905-unrestricted'
+        ),
+        (
+          '00000000-0000-4000-8000-000000090502',
+          'user-migration-0905-restricted',
+          'migration-0905-restricted',
+          'org-migration-0905-restricted'
+        ),
+        (
+          '00000000-0000-4000-8000-000000090503',
+          'user-migration-0905-minimax',
+          'migration-0905-minimax',
+          'org-migration-0905-unrestricted'
+        );
+
+      INSERT INTO "chat_threads" (
+        "id",
+        "user_id",
+        "agent_compose_id",
+        "model_provider_id",
+        "model_provider_type",
+        "model_provider_credential_scope",
+        "selected_model",
+        "codex_service_tier",
+        "updated_at"
+      ) VALUES
+        (
+          '00000000-0000-4000-8000-000000090541',
+          'user-migration-0905-unrestricted',
+          '00000000-0000-4000-8000-000000090501',
+          '00000000-0000-4000-8000-000000090511',
+          'anthropic-api-key',
+          'org',
+          'claude-opus-4-7',
+          'flex',
+          '2026-08-01 00:00:00'
+        ),
+        (
+          '00000000-0000-4000-8000-000000090542',
+          'user-migration-0905-restricted',
+          '00000000-0000-4000-8000-000000090502',
+          '00000000-0000-4000-8000-000000090512',
+          'moonshot-api-key',
+          'org',
+          'claude-opus-4-7',
+          'priority',
+          '2026-08-02 00:00:00'
+        ),
+        (
+          '00000000-0000-4000-8000-000000090543',
+          'user-migration-0905-minimax',
+          '00000000-0000-4000-8000-000000090503',
+          '00000000-0000-4000-8000-000000090514',
+          NULL,
+          'org',
+          NULL,
+          'flex',
+          '2026-08-03 00:00:00'
+        ),
+        (
+          '00000000-0000-4000-8000-000000090544',
+          'user-migration-0905-unrestricted',
+          '00000000-0000-4000-8000-000000090501',
+          NULL,
+          'openai-api-key',
+          'org',
+          'gpt-5.5',
+          'priority',
+          '2026-08-04 00:00:00'
+        ),
+        (
+          '00000000-0000-4000-8000-000000090545',
+          'user-migration-0905-unrestricted',
+          '00000000-0000-4000-8000-000000090501',
+          '00000000-0000-4000-8000-000000090511',
+          'anthropic-api-key',
+          'org',
+          'claude-sonnet-4-6',
+          NULL,
+          '2026-08-05 00:00:00'
+        );
+
+      INSERT INTO "zero_agents" (
+        "id",
+        "org_id",
+        "owner",
+        "name",
+        "model_provider_id",
+        "selected_model"
+      ) VALUES
+        (
+          '00000000-0000-4000-8000-000000090501',
+          'org-migration-0905-unrestricted',
+          'user-migration-0905-unrestricted',
+          'migration-0905-unrestricted',
+          '00000000-0000-4000-8000-000000090511',
+          'claude-opus-4-8'
+        ),
+        (
+          '00000000-0000-4000-8000-000000090502',
+          'org-migration-0905-restricted',
+          'user-migration-0905-restricted',
+          'migration-0905-restricted',
+          NULL,
+          'deepseek-v4-flash'
+        ),
+        (
+          '00000000-0000-4000-8000-000000090503',
+          'org-migration-0905-unrestricted',
+          'user-migration-0905-minimax',
+          'migration-0905-minimax',
+          '00000000-0000-4000-8000-000000090514',
+          NULL
+        );
+
+      INSERT INTO "agent_sessions" (
+        "id",
+        "user_id",
+        "org_id",
+        "agent_compose_id"
+      ) VALUES (
+        '00000000-0000-4000-8000-000000090551',
+        'user-migration-0905-unrestricted',
+        'org-migration-0905-unrestricted',
+        '00000000-0000-4000-8000-000000090501'
+      );
+
+      INSERT INTO "agent_runs" (
+        "id",
+        "user_id",
+        "session_id",
+        "status",
+        "prompt",
+        "org_id",
+        "completed_at"
+      ) VALUES (
+        '00000000-0000-4000-8000-000000090561',
+        'user-migration-0905-unrestricted',
+        '00000000-0000-4000-8000-000000090551',
+        'completed',
+        'Historical run remains immutable',
+        'org-migration-0905-unrestricted',
+        '2026-07-01 00:00:00'
+      );
+
+      INSERT INTO "zero_runs" (
+        "id",
+        "trigger_source",
+        "model_provider",
+        "model_provider_id",
+        "model_provider_credential_scope",
+        "selected_model"
+      ) VALUES (
+        '00000000-0000-4000-8000-000000090561',
+        'web',
+        'moonshot-api-key',
+        '00000000-0000-4000-8000-000000090512',
+        'org',
+        'kimi-k3'
+      );
+
+      INSERT INTO "chat_events" (
+        "id",
+        "chat_thread_id",
+        "event_type",
+        "content",
+        "seq_id"
+      ) VALUES (
+        '00000000-0000-4000-8000-000000090571',
+        '00000000-0000-4000-8000-000000090541',
+        'output.message',
+        'Historical claude-opus-4-7 display payload',
+        1
+      );
+
+      INSERT INTO "usage_pricing" (
+        "id",
+        "kind",
+        "provider",
+        "category",
+        "unit_price",
+        "unit_size"
+      ) VALUES
+        (
+          '00000000-0000-4000-8000-000000090581',
+          'model',
+          'claude-opus-4-7',
+          'tokens.input',
+          1,
+          1000000
+        ),
+        (
+          '00000000-0000-4000-8000-000000090582',
+          'model',
+          'MiniMax-M3',
+          'tokens.input',
+          1,
+          1000000
+        ),
+        (
+          '00000000-0000-4000-8000-000000090583',
+          'model',
+          'gpt-5.5',
+          'tokens.input',
+          1,
+          1000000
+        ),
+        (
+          '00000000-0000-4000-8000-000000090584',
+          'model',
+          'claude-sonnet-4-6',
+          'tokens.input',
+          1,
+          1000000
+        ),
+        (
+          '00000000-0000-4000-8000-000000090585',
+          'image-recognition',
+          'xiaomi/mimo-v2.5',
+          'tokens.input',
+          1,
+          1000000
+        ),
+        (
+          '00000000-0000-4000-8000-000000090586',
+          'model',
+          'glm-4.7',
+          'tokens.input',
+          1,
+          1000000
+        );
+    `);
+
+    await applyMigrationsUpToTag(
+      client,
+      FINALIZE_INACTIVE_RUN_MODELS_MIGRATION,
+    );
+
+    const assertMigratedState = async (): Promise<void> => {
+      const policies = await client.query<{
+        defaultProviderType: string;
+        isDefault: boolean;
+        model: string;
+        modelProviderId: string | null;
+        orgId: string;
+      }>(`
+        SELECT
+          "org_id" AS "orgId",
+          "model",
+          "is_default" AS "isDefault",
+          "default_provider_type" AS "defaultProviderType",
+          "model_provider_id"::text AS "modelProviderId"
+        FROM "org_model_policies"
+        ORDER BY "org_id", "model"
+      `);
+      assert.deepEqual(
+        policies.rows,
+        [
+          {
+            defaultProviderType: "vm0",
+            isDefault: true,
+            model: "deepseek-v4-flash",
+            modelProviderId: null,
+            orgId: "org-migration-0905-restricted",
+          },
+          {
+            defaultProviderType: "vm0",
+            isDefault: false,
+            model: "claude-fable-5",
+            modelProviderId: null,
+            orgId: "org-migration-0905-unrestricted",
+          },
+          {
+            defaultProviderType: "anthropic-api-key",
+            isDefault: true,
+            model: "claude-opus-4-8",
+            modelProviderId: "00000000-0000-4000-8000-000000090511",
+            orgId: "org-migration-0905-unrestricted",
+          },
+          {
+            defaultProviderType: "vm0",
+            isDefault: false,
+            model: "claude-sonnet-4-6",
+            modelProviderId: null,
+            orgId: "org-migration-0905-unrestricted",
+          },
+          {
+            defaultProviderType: "vm0",
+            isDefault: false,
+            model: "claude-sonnet-5",
+            modelProviderId: null,
+            orgId: "org-migration-0905-unrestricted",
+          },
+          {
+            defaultProviderType: "vm0",
+            isDefault: false,
+            model: "gpt-5.5",
+            modelProviderId: null,
+            orgId: "org-migration-0905-unrestricted",
+          },
+          {
+            defaultProviderType: "vm0",
+            isDefault: false,
+            model: "gpt-5.6-sol",
+            modelProviderId: null,
+            orgId: "org-migration-0905-unrestricted",
+          },
+        ].sort((left, right) => {
+          return (
+            left.orgId.localeCompare(right.orgId) ||
+            left.model.localeCompare(right.model)
+          );
+        }),
+      );
+
+      const members = await client.query<{
+        selectedModel: string | null;
+        serviceTier: string | null;
+        userId: string;
+      }>(`
+        SELECT
+          "user_id" AS "userId",
+          "selected_model" AS "selectedModel",
+          "service_tier" AS "serviceTier"
+        FROM "org_members_metadata"
+        ORDER BY "user_id"
+      `);
+      assert.deepEqual(members.rows, [
+        {
+          selectedModel: "claude-sonnet-5",
+          serviceTier: null,
+          userId: "user-migration-0905-active-model",
+        },
+        {
+          selectedModel: "gpt-5.6-sol",
+          serviceTier: "priority",
+          userId: "user-migration-0905-gpt-successor",
+        },
+        {
+          selectedModel: "deepseek-v4-flash",
+          serviceTier: null,
+          userId: "user-migration-0905-restricted",
+        },
+        {
+          selectedModel: "claude-opus-4-8",
+          serviceTier: null,
+          userId: "user-migration-0905-unrestricted",
+        },
+        {
+          selectedModel: null,
+          serviceTier: null,
+          userId: "user-migration-0905-unset",
+        },
+      ]);
+
+      const threads = await client.query<{
+        codexServiceTier: string | null;
+        modelProviderCredentialScope: string | null;
+        modelProviderId: string | null;
+        modelProviderType: string | null;
+        selectedModel: string;
+        updatedAt: string;
+      }>(`
+        SELECT
+          "selected_model" AS "selectedModel",
+          "model_provider_id"::text AS "modelProviderId",
+          "model_provider_type" AS "modelProviderType",
+          "model_provider_credential_scope" AS "modelProviderCredentialScope",
+          "codex_service_tier" AS "codexServiceTier",
+          to_char("updated_at", 'YYYY-MM-DD HH24:MI:SS') AS "updatedAt"
+        FROM "chat_threads"
+        ORDER BY "id"
+      `);
+      assert.deepEqual(threads.rows, [
+        {
+          codexServiceTier: null,
+          modelProviderCredentialScope: null,
+          modelProviderId: null,
+          modelProviderType: null,
+          selectedModel: "claude-opus-4-8",
+          updatedAt: "2026-08-01 00:00:00",
+        },
+        {
+          codexServiceTier: null,
+          modelProviderCredentialScope: null,
+          modelProviderId: null,
+          modelProviderType: null,
+          selectedModel: "deepseek-v4-flash",
+          updatedAt: "2026-08-02 00:00:00",
+        },
+        {
+          codexServiceTier: null,
+          modelProviderCredentialScope: null,
+          modelProviderId: null,
+          modelProviderType: null,
+          selectedModel: "deepseek-v4-flash",
+          updatedAt: "2026-08-03 00:00:00",
+        },
+        {
+          codexServiceTier: "priority",
+          modelProviderCredentialScope: "org",
+          modelProviderId: null,
+          modelProviderType: "openai-api-key",
+          selectedModel: "gpt-5.5",
+          updatedAt: "2026-08-04 00:00:00",
+        },
+        {
+          codexServiceTier: null,
+          modelProviderCredentialScope: "org",
+          modelProviderId: "00000000-0000-4000-8000-000000090511",
+          modelProviderType: "anthropic-api-key",
+          selectedModel: "claude-sonnet-4-6",
+          updatedAt: "2026-08-05 00:00:00",
+        },
+      ]);
+
+      const agents = await client.query<{
+        modelProviderId: string | null;
+        selectedModel: string;
+      }>(`
+        SELECT
+          "selected_model" AS "selectedModel",
+          "model_provider_id"::text AS "modelProviderId"
+        FROM "zero_agents"
+        ORDER BY "id"
+      `);
+      assert.deepEqual(agents.rows, [
+        {
+          modelProviderId: "00000000-0000-4000-8000-000000090511",
+          selectedModel: "claude-opus-4-8",
+        },
+        {
+          modelProviderId: null,
+          selectedModel: "deepseek-v4-flash",
+        },
+        {
+          modelProviderId: null,
+          selectedModel: "deepseek-v4-flash",
+        },
+      ]);
+
+      const providers = await client.query<{
+        id: string;
+        isDefault: boolean;
+        selectedModel: string;
+        type: string;
+      }>(`
+        SELECT
+          "id"::text AS "id",
+          "type",
+          "is_default" AS "isDefault",
+          "selected_model" AS "selectedModel"
+        FROM "model_providers"
+        ORDER BY "id"
+      `);
+      assert.deepEqual(providers.rows, [
+        {
+          id: "00000000-0000-4000-8000-000000090511",
+          isDefault: true,
+          selectedModel: "anthropic/claude-opus-4.8",
+          type: "anthropic-api-key",
+        },
+        {
+          id: "00000000-0000-4000-8000-000000090513",
+          isDefault: true,
+          selectedModel: "deepseek-v4-flash",
+          type: "vm0",
+        },
+        {
+          id: "00000000-0000-4000-8000-000000090515",
+          isDefault: true,
+          selectedModel: "deepseek-v4-flash",
+          type: "vm0",
+        },
+        {
+          id: "00000000-0000-4000-8000-000000090517",
+          isDefault: true,
+          selectedModel: "deepseek-v4-flash",
+          type: "vm0",
+        },
+      ]);
+
+      const secretNames = await client.query<{ name: string }>(`
+        SELECT "name"
+        FROM "secrets"
+        ORDER BY "name"
+      `);
+      assert.deepEqual(secretNames.rows, [
+        { name: "anthropic-retained" },
+        { name: "unrelated-retained" },
+      ]);
+
+      const historicalRun = await client.query<{
+        modelProviderId: string;
+        selectedModel: string;
+      }>(`
+        SELECT
+          "model_provider_id"::text AS "modelProviderId",
+          "selected_model" AS "selectedModel"
+        FROM "zero_runs"
+        WHERE "id" = '00000000-0000-4000-8000-000000090561'
+      `);
+      assert.deepEqual(historicalRun.rows, [
+        {
+          modelProviderId: "00000000-0000-4000-8000-000000090512",
+          selectedModel: "kimi-k3",
+        },
+      ]);
+
+      const historicalEvent = await client.query<{ content: string }>(`
+        SELECT "content"
+        FROM "chat_events"
+        WHERE "id" = '00000000-0000-4000-8000-000000090571'
+      `);
+      assert.deepEqual(historicalEvent.rows, [
+        { content: "Historical claude-opus-4-7 display payload" },
+      ]);
+
+      const pricing = await client.query<{
+        kind: string;
+        provider: string;
+      }>(`
+        SELECT "kind", "provider"
+        FROM "usage_pricing"
+        WHERE "id" IN (
+          '00000000-0000-4000-8000-000000090581',
+          '00000000-0000-4000-8000-000000090582',
+          '00000000-0000-4000-8000-000000090583',
+          '00000000-0000-4000-8000-000000090584',
+          '00000000-0000-4000-8000-000000090585',
+          '00000000-0000-4000-8000-000000090586'
+        )
+        ORDER BY "kind", "provider"
+      `);
+      assert.deepEqual(pricing.rows, [
+        { kind: "image-recognition", provider: "xiaomi/mimo-v2.5" },
+        { kind: "model", provider: "claude-sonnet-4-6" },
+        { kind: "model", provider: "gpt-5.5" },
+      ]);
+    };
+
+    await assertMigratedState();
+
+    const migrationSql = await fs.readFile(
+      path.join(
+        MIGRATIONS_DIR,
+        `${FINALIZE_INACTIVE_RUN_MODELS_MIGRATION}.sql`,
+      ),
+      "utf8",
+    );
+    await client.query(migrationSql);
+    await assertMigratedState();
+
+    console.log("   ✅ reopened models regain non-default workspace policies");
+    console.log(
+      "   ✅ aggressive thread pins and direct agent routes converge eagerly",
+    );
+    console.log(
+      "   ✅ incompatible direct providers transfer defaults and are removed",
+    );
+    console.log(
+      "   ✅ reopened models, historical rows, and task pricing stay intact",
+    );
+    console.log("   ✅ rerunning the data migration is idempotent\n");
+  } finally {
+    await client.end();
+    await dropDatabase(testDb);
+  }
+}
+
 async function main(): Promise<void> {
   console.log("🧪 Testing Migration Consistency (Schema Comparison)\n");
 
@@ -7438,7 +8788,9 @@ async function main(): Promise<void> {
     await validateCanonicalChatEventStorageBackfill();
     await validateChatRunServiceTierAnnotationBackfill();
     await validateUsagePackInviteLifecycleMigrations();
+    await validateRetiredRunModelStateMigration();
     await validateConnectionScopedVariableUniqueness();
+    await validateInactiveRunModelFinalization();
 
     // Step 1.5: Validate latest snapshot accuracy (NEW)
     await validateLatestSnapshotAccuracy();
@@ -7463,6 +8815,7 @@ async function main(): Promise<void> {
     await validateChatEventContextPointerConstraints(dbUrl1);
     await validateConnectorCatalogFinalConstraints(dbUrl1);
     await validateCustomConnectorOauthModeConstraints(dbUrl1);
+    await validateCustomConnectorSkillVersionPair(dbUrl1);
 
     // Step 2: Backup and regenerate migrations
     console.log("=== Phase 3: Test regenerated migrations ===\n");
@@ -7499,6 +8852,9 @@ async function main(): Promise<void> {
       );
       console.log(
         "   ✅ Custom connector OAuth mode constraints reject mismatched configuration",
+      );
+      console.log(
+        "   ✅ Custom connector skill columns reject mixed version state",
       );
       console.log("   ✅ Legacy Teams message file scope is backfilled");
       console.log(

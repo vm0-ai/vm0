@@ -939,6 +939,7 @@
         "description": "Accès gratuit hérité pour les espaces de travail existants.",
         "name": "Gratuit"
       },
+      "legacy": "Historique",
       "limitedFree": {
         "name": "Gratuit limité"
       },
@@ -996,6 +997,22 @@
         "memberExclusive": "Chaque forfait appartient à un membre et ne peut pas être partagé. Lorsqu’un forfait est épuisé, l’utilisation revient aux crédits à l’usage. Vous pourrez passer à un nouveau forfait ultérieurement.",
         "memberPackages": "Forfaits des membres",
         "memberUsage": "Utilisation du membre",
+        "migration": {
+          "action": "Convertir le forfait",
+          "confirmDescription": "Votre forfait et vos droits actuels restent actifs jusqu’à la fin de cette période de facturation. Stripe facture le nouveau total récurrent au démarrage du nouveau forfait.",
+          "convertPlan": "Convertir le forfait",
+          "description": "Convertissez votre espace de travail {{plan}} historique vers un nouveau forfait avec un forfait d’utilisation mensuel individuel pour chaque membre.",
+          "error": "Impossible de migrer cet abonnement. Actualisez la page et réessayez.",
+          "invoice": "Voir la facture",
+          "processing": "Planification de la conversion avec Stripe.",
+          "ready": "Choisissez un forfait mensuel obligatoire pour chaque membre et chaque invitation en attente.",
+          "review": "Vérifier la conversion",
+          "reviewDescription": "Comparez le forfait historique actuel au nouveau forfait récurrent avant de planifier la conversion.",
+          "reviewTitle": "Vérifier la conversion du forfait",
+          "scheduled": "La conversion est planifiée pour le {{date}}. Votre forfait et vos droits actuels restent actifs jusque-là.",
+          "switchesOn": "Passe au forfait {{plan}} le {{date}}",
+          "title": "Convertir le forfait historique"
+        },
         "minimumPackageBreakdown": "Forfait de {{base}} + forfait membre obligatoire de {{package}}",
         "monthlyTotal": "Total mensuel",
         "orderSummary": "Récapitulatif de la commande",
@@ -1677,8 +1694,10 @@
       "openBrowser": "Ouvrir le navigateur",
       "openNamedAgent": "Ouvrir l'agent {{name}}",
       "openNamedChat": "Ouvrir le chat {{title}}",
+      "pickEmoji": "Choisissez un emoji",
       "scrollToBottom": "Faire défiler vers le bas",
-      "searchEmoji": "Rechercher un emoji"
+      "searchEmoji": "Rechercher un emoji",
+      "steerMessageExplanation": "Envoyé pendant que l’agent travaillait afin d’orienter son comportement"
     },
     "threadSidebar": {
       "resize": "Redimensionner la barre latérale"
@@ -4233,15 +4252,14 @@
         "useAccount": "Utiliser"
       },
       "picker": {
-        "balancedUse": "Utilisation équilibrée",
         "builtInModel": "Modèle intégré",
         "byokHelp": "Utilise votre fournisseur configuré",
         "fast": "Rapide",
+        "fastImpact": "Vitesse du modèle 1,5× · consommation de crédits 2,5×",
         "inheritDefault": "Hériter des paramètres par défaut de l'organisation",
         "loadError": "Impossible de charger les modèles.",
         "loading": "Chargement des modèles...",
         "models": "Modèles",
-        "moreCodexCredits": "Utilise plus de crédits Codex.",
         "noConfiguredModels": "Aucun modèle configuré",
         "priceTiers": {
           "balanced": "Coût et performance équilibrés",
@@ -4249,14 +4267,12 @@
           "frontier": "Modèle phare Frontier",
           "premium": "Modèle premium Frontier pour les tâches les plus difficiles"
         },
-        "prioritizeSpeed": "Prioriser la vitesse",
         "pro": "Pro",
         "providerLabels": {
           "azureFoundryPortal": "Portail Azure Foundry",
           "claudeCodeOauth": "Claude Code (jeton OAuth)",
           "deepseek": "Deepseek"
         },
-        "runSpeed": "Vitesse d'exécution",
         "standard": "Standard"
       },
       "policies": {

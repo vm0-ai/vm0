@@ -914,18 +914,11 @@ async fn finalizing_successor_starts_before_replaced_sandbox_cleanup_finishes() 
         .wait_entered(2, Duration::from_secs(5))
         .await
         .expect("successor should activate the published sandbox before cleanup finishes");
-    assert!(
-        env.handle
-            .wait_completion(history_generation_run_id, Duration::ZERO)
-            .await
-            .is_none(),
-        "predecessor completion must still be blocked on replaced sandbox cleanup"
-    );
-    destroy_gate.release_one();
     env.handle
         .wait_completion(history_generation_run_id, Duration::from_secs(5))
         .await
-        .expect("predecessor should complete after replaced sandbox cleanup");
+        .expect("predecessor should report completion while replaced sandbox cleanup is blocked");
+    destroy_gate.release_one();
     wait_status_idle_reuse_keys_and_active_runs(
         &status_path,
         &[],
