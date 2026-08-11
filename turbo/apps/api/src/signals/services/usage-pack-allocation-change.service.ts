@@ -42,7 +42,10 @@ import {
   type StripeSubscriptionUpdateItemParam,
 } from "../external/stripe-client";
 import { createUsagePackCreditGrant } from "./usage-pack-credit.service";
-import { prepareUsagePackMemberCreditRefunds } from "./usage-pack-credit-refund.service";
+import {
+  assertUsagePackMemberCreditRefundReady,
+  prepareUsagePackMemberCreditRefunds,
+} from "./usage-pack-credit-refund.service";
 import { downgradeSubscriptionForOrg } from "./zero-billing-downgrade.service";
 import {
   activeUsagePackPriceId,
@@ -1339,12 +1342,14 @@ export async function reserveUsagePackMemberRemoval(
   signal: AbortSignal,
 ): Promise<string | null> {
   if (!(await usagePackAllocationChangeSchemaAvailable(db))) {
+    await assertUsagePackMemberCreditRefundReady(db, args);
     return null;
   }
   signal.throwIfAborted();
   const at = nowDate();
   const reservationId = await db.transaction(async (tx) => {
     await lockUsagePackBillingOrg(tx, args.orgId);
+    await assertUsagePackMemberCreditRefundReady(tx, args);
     await expireStaleUsagePackPreviews(tx, args.orgId, at);
     const [allocation] = await tx
       .select()

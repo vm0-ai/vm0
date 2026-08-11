@@ -43,13 +43,52 @@ async function usagePackCreditRefundSchemaAvailable(
   const [state] = await db
     .select({
       available:
-        sql`to_regclass('public.usage_pack_credit_refunds') IS NOT NULL`.mapWith(
+        sql`to_regclass('usage_pack_credit_refunds') IS NOT NULL`.mapWith(
           pgBooleanDecoder,
         ),
     })
     .from(sql`(SELECT 1) AS schema_probe`)
     .limit(1);
   return state?.available ?? false;
+}
+
+function refundableUsagePackCreditGrantCondition(
+  args: { readonly orgId: string; readonly userId: string },
+  at: Date,
+) {
+  return and(
+    eq(usagePackCreditGrants.orgId, args.orgId),
+    eq(usagePackCreditGrants.userId, args.userId),
+    eq(usagePackCreditGrants.grantType, "purchased"),
+    gt(usagePackCreditGrants.remainingAmount, 0),
+    gt(usagePackCreditGrants.expiresAt, at),
+  );
+}
+
+async function requireUsagePackCreditRefundSchema(
+  db: Pick<Db, "select">,
+): Promise<void> {
+  if (await usagePackCreditRefundSchemaAvailable(db)) {
+    return;
+  }
+  // Member removal must preserve refundable credits until migration 0898 is
+  // available. Remove this guard after 0898 is guaranteed across the DB/API
+  // rollout window.
+  throw new Error("Usage pack credit refund schema is not available");
+}
+
+export async function assertUsagePackMemberCreditRefundReady(
+  db: Pick<Db, "select">,
+  args: { readonly orgId: string; readonly userId: string },
+): Promise<void> {
+  const [grant] = await db
+    .select({ id: usagePackCreditGrants.id })
+    .from(usagePackCreditGrants)
+    .where(refundableUsagePackCreditGrantCondition(args, nowDate()))
+    .limit(1);
+  if (grant) {
+    await requireUsagePackCreditRefundSchema(db);
+  }
 }
 
 function sourceColumns(source: UsagePackCreditRefundSource): {
@@ -236,23 +275,16 @@ export async function prepareUsagePackMemberCreditRefunds(
   db: CreditRefundStore,
   args: { readonly orgId: string; readonly userId: string },
 ): Promise<number> {
-  if (!(await usagePackCreditRefundSchemaAvailable(db))) {
-    return 0;
-  }
+  await assertUsagePackMemberCreditRefundReady(db, args);
   const at = nowDate();
   const grants = await db
     .select()
     .from(usagePackCreditGrants)
-    .where(
-      and(
-        eq(usagePackCreditGrants.orgId, args.orgId),
-        eq(usagePackCreditGrants.userId, args.userId),
-        eq(usagePackCreditGrants.grantType, "purchased"),
-        gt(usagePackCreditGrants.remainingAmount, 0),
-        gt(usagePackCreditGrants.expiresAt, at),
-      ),
-    )
+    .where(refundableUsagePackCreditGrantCondition(args, at))
     .for("update");
+  if (grants.length === 0) {
+    return 0;
+  }
 
   let prepared = 0;
   for (const grant of grants) {

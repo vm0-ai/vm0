@@ -2,12 +2,75 @@ import type { OrgTier } from "@vm0/api-contracts/contracts/orgs";
 import type { OrgPlanEntitlementSourceMetadata } from "@vm0/db/jsonb-contracts/org-plan-entitlement";
 import { orgPlanEntitlements } from "@vm0/db/schema/org-plan-entitlement";
 import { eq } from "drizzle-orm";
+import {
+  boolean,
+  integer,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  varchar,
+} from "drizzle-orm/pg-core";
 
 import { nowDate } from "../../lib/time";
 import { ORG_PLAN_ENTITLEMENT_TIER_VALUES } from "./org-plan-entitlement-tier-values";
+import { memberInviteUsagePackEntitlementSchemaAvailable } from "./org-plan-entitlement-read.service";
 import type { Tx } from "../../lib/db-types";
 
 type WriteTx = Tx;
+
+// Drizzle names every column declared by an insert table, even when a value is
+// omitted. This runtime-only shape keeps pre-0898 writes from naming the new
+// column during the DB/API rollout window. Remove it with the schema probe once
+// migration 0898 is guaranteed everywhere and the rollback window closes.
+const orgPlanEntitlementsBeforeMemberInviteUsagePack = pgTable(
+  "org_plan_entitlements",
+  {
+    orgId: text("org_id").primaryKey(),
+    planKey: text("plan_key").notNull(),
+    planRank: integer("plan_rank").notNull(),
+    source: varchar("source", { length: 50 }).notNull(),
+    status: varchar("status", { length: 30 }).notNull().default("active"),
+    baseConcurrencyLimit: integer("base_concurrency_limit")
+      .notNull()
+      .default(0),
+    canBuyConcurrency: boolean("can_buy_concurrency").notNull().default(false),
+    canBuyCredits: boolean("can_buy_credits").notNull().default(false),
+    autoRechargeAllowed: boolean("auto_recharge_allowed")
+      .notNull()
+      .default(false),
+    supportByok: boolean("support_byok").notNull().default(false),
+    restrictedVm0Models: boolean("restricted_vm0_models")
+      .notNull()
+      .default(true),
+    videoGenerationAllowed: boolean("video_generation_allowed")
+      .notNull()
+      .default(false),
+    workflowWebhookTriggerAllowed: boolean("workflow_webhook_trigger_allowed")
+      .notNull()
+      .default(false),
+    audioLifetimeLimit: integer("audio_lifetime_limit"),
+    audioDailyRateLimit: integer("audio_daily_rate_limit").notNull().default(0),
+    audioDailyDurationSeconds: integer("audio_daily_duration_seconds")
+      .notNull()
+      .default(0),
+    stripeSubscriptionId: text("stripe_subscription_id"),
+    stripeProductId: text("stripe_product_id"),
+    stripePriceId: text("stripe_price_id"),
+    currentPeriodStart: timestamp("current_period_start"),
+    currentPeriodEnd: timestamp("current_period_end"),
+    cancelAt: timestamp("cancel_at"),
+    expiresAt: timestamp("expires_at"),
+    metadataVersion: text("metadata_version").notNull().default("1"),
+    metadataHash: text("metadata_hash"),
+    sourceMetadata: jsonb("source_metadata")
+      .$type<OrgPlanEntitlementSourceMetadata>()
+      .notNull()
+      .default({}),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+);
 
 interface UpsertOrgPlanEntitlementArgs {
   readonly orgId: string;
@@ -93,6 +156,10 @@ export async function upsertOrgPlanEntitlement(
     tx,
     args,
   );
+  const memberInviteUsagePackRequiredAvailable =
+    await memberInviteUsagePackEntitlementSchemaAvailable(tx);
+  const memberInviteUsagePackRequired =
+    args.memberInviteUsagePackRequired ?? false;
   const values = {
     orgId: args.orgId,
     planKey: args.tier,
@@ -102,7 +169,9 @@ export async function upsertOrgPlanEntitlement(
     baseConcurrencyLimit: limits.baseConcurrencyLimit,
     canBuyConcurrency: limits.canBuyConcurrency,
     canBuyCredits: limits.canBuyCredits,
-    memberInviteUsagePackRequired: args.memberInviteUsagePackRequired ?? false,
+    ...(memberInviteUsagePackRequiredAvailable
+      ? { memberInviteUsagePackRequired }
+      : {}),
     autoRechargeAllowed: limits.autoRechargeAllowed,
     supportByok: limits.supportByok,
     restrictedVm0Models: limits.restrictedVm0Models,
@@ -120,12 +189,15 @@ export async function upsertOrgPlanEntitlement(
     sourceMetadata: stripeSubscriptionSnapshot.sourceMetadata,
     updatedAt,
   };
+  const insertTable = memberInviteUsagePackRequiredAvailable
+    ? orgPlanEntitlements
+    : orgPlanEntitlementsBeforeMemberInviteUsagePack;
 
   await tx
-    .insert(orgPlanEntitlements)
+    .insert(insertTable)
     .values(values)
     .onConflictDoUpdate({
-      target: orgPlanEntitlements.orgId,
+      target: insertTable.orgId,
       set: {
         planKey: values.planKey,
         planRank: values.planRank,
@@ -134,7 +206,9 @@ export async function upsertOrgPlanEntitlement(
         baseConcurrencyLimit: values.baseConcurrencyLimit,
         canBuyConcurrency: values.canBuyConcurrency,
         canBuyCredits: values.canBuyCredits,
-        memberInviteUsagePackRequired: values.memberInviteUsagePackRequired,
+        ...(memberInviteUsagePackRequiredAvailable
+          ? { memberInviteUsagePackRequired }
+          : {}),
         autoRechargeAllowed: values.autoRechargeAllowed,
         supportByok: values.supportByok,
         restrictedVm0Models: values.restrictedVm0Models,
