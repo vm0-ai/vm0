@@ -214,7 +214,7 @@ describe("chat thread sharing", () => {
     await expect(
       screen.findByText("Select fewer messages to share"),
     ).resolves.toBeInTheDocument();
-    expect(checkbox).toHaveAttribute("data-unchecked");
+    expect(checkbox).not.toBeChecked();
     expect(screen.getAllByText("0 selected").length).toBeGreaterThan(0);
   });
 });

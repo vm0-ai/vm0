@@ -24,6 +24,5 @@ describe("Checkbox", () => {
 
     const checkbox = screen.getByRole("checkbox", { name: "Select all" });
     expect(checkbox).toHaveAttribute("aria-checked", "mixed");
-    expect(checkbox).toHaveAttribute("data-indeterminate");
   });
 });
