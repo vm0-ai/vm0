@@ -6,6 +6,7 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 WORKFLOW="${REPO_ROOT}/.github/workflows/turbo.yml"
 RUNNER_TESTS="${REPO_ROOT}/e2e/tests/03-runner"
 RUNNER_HELPER="${REPO_ROOT}/e2e/helpers/runner-chat.bash"
+RUNNER_TOKEN="${REPO_ROOT}/e2e/playwright/runner-token.ts"
 
 fail() {
   echo "FAIL: $1" >&2
@@ -31,6 +32,10 @@ fi
 if grep -R -Fq '/api/test/' "$RUNNER_TESTS" "$RUNNER_HELPER"; then
   fail "runner E2E coverage must use supported public APIs"
 fi
+grep -Fq 'startVideoOnboardingCheckout' "$RUNNER_TOKEN" ||
+  fail "runner Claude account must upgrade through public paid onboarding"
+grep -Fq 'fillStripeCheckout' "$RUNNER_TOKEN" ||
+  fail "runner Claude account must complete the public Stripe checkout"
 
 ruby -ryaml - "$WORKFLOW" <<'RUBY'
 workflow = YAML.load_file(ARGV.fetch(0))
@@ -100,10 +105,15 @@ unless prepare_step.fetch("run").end_with?("runner-account.ts prepare")
   raise "runner E2E account preparation must use the shared lifecycle entry point"
 end
 
-unless %w[prepare deploy-api deploy-app].all? do |job_name|
+unless %w[prepare deploy-api deploy-app deploy-stripe-listener].all? do |job_name|
     Array(account_prepare["needs"]).include?(job_name)
   end
-  raise "runner E2E account preparation must wait for the API and app previews"
+  raise "runner E2E account preparation must wait for previews and Stripe forwarding"
+end
+unless account_prepare.fetch("if").include?(
+    "github.event_name == 'push' || needs.deploy-stripe-listener.result == 'success'"
+  )
+  raise "runner E2E account preparation must use staging or preview Stripe forwarding"
 end
 
 expected_organization_outputs = {
@@ -182,6 +192,26 @@ unless provider_step.fetch("run").include?(
     '{"type":"claude-code-oauth-token","secret":"mock-oauth-token-for-e2e"}',
   )
   raise "runner bootstrap must restore the historical mock provider"
+end
+claude_step = bootstrap_steps.find do |step|
+  step["name"] == "Bootstrap real Claude account"
+end
+raise "missing real Claude account bootstrap" unless claude_step
+claude_script = claude_step.fetch("run")
+%w[
+  /api/zero/model-providers
+  /api/zero/model-policies
+  /api/zero/feature-switches
+  claude-sonnet-5
+  realAgentInPreview
+].each do |required_fragment|
+  unless claude_script.include?(required_fragment)
+    raise "real Claude bootstrap must include #{required_fragment}"
+  end
+end
+unless claude_step.dig("env", "ANTHROPIC_API_KEY") ==
+    "${{ secrets.CI_ANTHROPIC_API_KEY }}"
+  raise "real Claude bootstrap must receive the Anthropic credential"
 end
 
 shard_step = runner.fetch("steps").find do |step|

@@ -656,8 +656,15 @@
     {
       "idx": 901,
       "version": "7",
-      "when": 1786439844350,
-      "tag": "0901_retire_legacy_run_model_state",
+      "when": 1786439615768,
+      "tag": "0901_parallel_energizer",
+      "breakpoints": true
+    },
+    {
+      "idx": 902,
+      "version": "7",
+      "when": 1786441775959,
+      "tag": "0902_retire_legacy_run_model_state",
       "breakpoints": true
     }
   ]

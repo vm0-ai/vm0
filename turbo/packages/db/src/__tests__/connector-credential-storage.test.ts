@@ -32,15 +32,15 @@ describe("connector credential storage schema", () => {
     const variableOwnerNameIndex = variableConfig.indexes.find((index) => {
       return index.config.name === "idx_variables_connector_name";
     });
-    const variableLegacyNameIndex = variableConfig.indexes.find((index) => {
+    const variableUserNameIndex = variableConfig.indexes.find((index) => {
       return index.config.name === "idx_variables_org_user_type_name";
     });
     expect(secretOwnerIndex?.config.where).toBeDefined();
     expect(variableOwnerIndex?.config.where).toBeDefined();
     expect(variableOwnerNameIndex?.config.unique).toBe(true);
     expect(variableOwnerNameIndex?.config.where).toBeDefined();
-    expect(variableLegacyNameIndex?.config.unique).toBe(true);
-    expect(variableLegacyNameIndex?.config.where).toBeUndefined();
+    expect(variableUserNameIndex?.config.unique).toBe(true);
+    expect(variableUserNameIndex?.config.where).toBeDefined();
     expect(
       secretConfig.checks.map((check) => {
         return check.name;
