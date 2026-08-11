@@ -55,6 +55,13 @@ fn http_response(status: &str, body: &str) -> String {
     )
 }
 
+fn http_request_body(request: &str) -> &str {
+    request
+        .split_once("\r\n\r\n")
+        .expect("HTTP request should contain a header boundary")
+        .1
+}
+
 async fn spawn_http_server(
     responses: Vec<String>,
 ) -> (
@@ -163,6 +170,108 @@ async fn run_in_sandbox_forwards_local_active_inputs_in_order() {
     assert_eq!(payloads[0]["text"], "first");
     assert_eq!(payloads[1]["text"], "duplicate");
     assert_eq!(payloads[2]["text"], "third");
+}
+
+#[tokio::test]
+async fn run_in_sandbox_forwards_api_active_inputs_as_separate_messages() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let wait_gate = Arc::new(tokio::sync::Notify::new());
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::with_wait_process_gate(
+        Arc::clone(&wait_gate),
+    ));
+    let sandbox = create_overridden_sandbox(Arc::clone(&overrides)).await;
+    let ctx = minimal_context();
+    let run_id = ctx.run_id;
+    let active_input_path = format!("/api/runners/runs/{run_id}/active-inputs");
+    let claim_path = format!("{active_input_path}/claim");
+
+    let (api_url, mut request_rx, server) = spawn_http_server(vec![
+        http_response("200 OK", r#"{"eventIds":["event-1","event-2"]}"#),
+        http_response("200 OK", r#"{"prompt":"first message"}"#),
+        http_response("200 OK", r#"{"eventIds":["event-2"]}"#),
+        http_response("200 OK", r#"{"prompt":"second message"}"#),
+    ])
+    .await;
+
+    let notifications = ActiveInputNotifications::new();
+    let source = ActiveInputSource::api(
+        ApiClient::new(
+            HttpClient::new(HttpClientConfig {
+                api_url,
+                vercel_bypass: None,
+                client_session_id: "active-input-boundary-test".to_string(),
+            })
+            .unwrap(),
+            "runner-token".to_string(),
+        ),
+        run_id,
+        "sandbox-token".to_string(),
+        notifications.subscribe(run_id),
+    );
+    let cancel = tokio_util::sync::CancellationToken::new();
+    let mut telemetry = test_telemetry(&config, &ctx);
+    let run_task = tokio::spawn(async move {
+        run_in_sandbox(
+            &*sandbox,
+            &ctx,
+            &config,
+            RunStart {
+                restore_guest_state: false,
+                reuse_result: SandboxReuseResult::PoolMiss,
+                workspace_reuse_result: crate::types::WorkspaceReuseResult::NotConfigured,
+                prev_storage: None,
+            },
+            &mut telemetry,
+            RunControls::new(cancel, Some(source)),
+        )
+        .await
+    });
+
+    assert!(
+        overrides
+            .wait_for_process_control_calls(2, RUN_IN_SANDBOX_TEST_TIMEOUT)
+            .await,
+        "pending API inputs should be forwarded without waiting for another notification"
+    );
+    wait_gate.notify_one();
+    let result = tokio::time::timeout(RUN_IN_SANDBOX_TEST_TIMEOUT, run_task)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    assert!(result.failure.is_none());
+
+    tokio::time::timeout(RUN_IN_SANDBOX_TEST_TIMEOUT, server)
+        .await
+        .expect("active-input server should finish")
+        .unwrap();
+    let mut requests = Vec::new();
+    while let Some(request) = request_rx.recv().await {
+        requests.push(request);
+    }
+    assert_eq!(requests.len(), 4);
+    assert!(requests[0].starts_with(&format!("GET {active_input_path} ")));
+    assert!(requests[1].starts_with(&format!("POST {claim_path} ")));
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(http_request_body(&requests[1])).unwrap(),
+        serde_json::json!({ "eventIds": ["event-1"] })
+    );
+    assert!(requests[2].starts_with(&format!("GET {active_input_path} ")));
+    assert!(requests[3].starts_with(&format!("POST {claim_path} ")));
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(http_request_body(&requests[3])).unwrap(),
+        serde_json::json!({ "eventIds": ["event-2"] })
+    );
+
+    let calls = overrides.process_control_calls();
+    assert_eq!(calls.len(), 2);
+    let payloads = calls
+        .iter()
+        .map(|call| serde_json::from_slice::<serde_json::Value>(&call.payload).unwrap())
+        .collect::<Vec<_>>();
+    assert_eq!(payloads[0]["text"], "first message");
+    assert_eq!(payloads[1]["text"], "second message");
 }
 
 #[tokio::test]
