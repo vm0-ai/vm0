@@ -4038,7 +4038,7 @@ function autoSendAdmissionBlocked(
 /**
  * User-message half of the per-thread scheduler: when the thread has no
  * in-flight run, dispatch the oldest queued user message — whoever sent it.
- * The shared thread scheduler calls this before attempting the workflow-event
+ * The shared thread scheduler calls this before attempting the automation-event
  * half, preserving user-message priority.
  */
 async function autoSendQueuedMessageForThread(

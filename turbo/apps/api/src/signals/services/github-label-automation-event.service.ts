@@ -694,7 +694,7 @@ export const dispatchGithubLabelWorkflowAutomations$ = command(
     );
     signal.throwIfAborted();
     if (!installationRecord) {
-      log.debug("Ignoring GitHub workflow event for unbound installation", {
+      log.debug("Ignoring GitHub automation event for unbound installation", {
         action,
         installationId: String(installation.id),
         repo: repository.full_name,

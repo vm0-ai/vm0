@@ -103,7 +103,7 @@ async function setupScenario(
     throw new Error("Expected an organization-scoped workflow owner");
   }
   const { agentId } = await workflows.createAgent(actor, {
-    displayName: "Stripe Workflow Event Agent",
+    displayName: "Stripe Automation Event Agent",
   });
   const workflowId = await workflows.createWorkflow(actor, {
     agentId,

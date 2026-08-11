@@ -582,7 +582,7 @@ describe("POST /api/webhooks/github for workflow automations", () => {
     const listedRuns = await runsApi.listAgentRuns(actor, { limit: 20 });
     const admittedRunId = listedRuns.runs[0]?.id;
     if (!admittedRunId || listedRuns.runs.length !== 1) {
-      throw new Error("Expected an admitted workflow event run");
+      throw new Error("Expected an admitted automation event run");
     }
     await runsApi.claimRunnerJob(admittedRunId);
 
@@ -736,7 +736,7 @@ describe("POST /api/webhooks/github for workflow automations", () => {
     const claim = await runsApi.claimRunnerJob(runId);
     const zeroToken = claim.environment?.ZERO_TOKEN;
     if (!zeroToken) {
-      throw new Error("Expected the workflow event run to expose ZERO_TOKEN");
+      throw new Error("Expected the automation event run to expose ZERO_TOKEN");
     }
     expect(verifyZeroToken(zeroToken)?.capabilities).toContain(
       "goal:user-control:write",
