@@ -2,7 +2,6 @@ import { appendFile } from "node:fs/promises";
 
 import {
   createOrganization,
-  createOrganizationMembership,
   createUser,
   deleteOrganizationById,
   deleteUserByEmail,
@@ -33,17 +32,27 @@ async function prepareRunnerAccounts(
   await deleteRunnerUsers(runnerAccounts);
 
   const runnerUserId = await createUser(runnerAccounts.runner);
-  const codexUserId = await createUser(runnerAccounts.codex);
-  const claudeUserId = await createUser(runnerAccounts.claude);
-  const organizationId = await createOrganization(
-    `Runner E2E ${jobRef}`,
+  const runnerOrganizationId = await createOrganization(
+    `e2e-runner-${jobRef}`,
     runnerUserId,
+  );
+  const codexUserId = await createUser(runnerAccounts.codex);
+  const codexOrganizationId = await createOrganization(
+    `e2e-runner-real-codex-${jobRef}`,
+    codexUserId,
+  );
+  const claudeUserId = await createUser(runnerAccounts.claude);
+  const claudeOrganizationId = await createOrganization(
+    `e2e-runner-real-claude-${jobRef}`,
+    claudeUserId,
   );
 
   await appendFile(
     requiredEnvironmentVariable("GITHUB_OUTPUT"),
     [
-      `organization-id=${organizationId}`,
+      `runner-organization-id=${runnerOrganizationId}`,
+      `codex-organization-id=${codexOrganizationId}`,
+      `claude-organization-id=${claudeOrganizationId}`,
       `runner-email=${runnerAccounts.runner}`,
       `codex-email=${runnerAccounts.codex}`,
       `claude-email=${runnerAccounts.claude}`,
@@ -52,11 +61,10 @@ async function prepareRunnerAccounts(
     "utf8",
   );
 
-  await createOrganizationMembership(organizationId, codexUserId);
-  await createOrganizationMembership(organizationId, claudeUserId);
-
   console.log("Prepared runner E2E accounts", {
-    organizationId,
+    runnerOrganizationId,
+    codexOrganizationId,
+    claudeOrganizationId,
     ...runnerAccounts,
   });
 }
@@ -64,9 +72,15 @@ async function prepareRunnerAccounts(
 async function cleanupRunnerAccounts(
   runnerAccounts: RunnerTestAccounts,
 ): Promise<void> {
-  const organizationId = process.env.E2E_RUNNER_ORGANIZATION_ID;
-  if (organizationId) {
-    await deleteOrganizationById(organizationId);
+  const organizationIds = [
+    process.env.E2E_RUNNER_ORGANIZATION_ID,
+    process.env.E2E_RUNNER_CODEX_ORGANIZATION_ID,
+    process.env.E2E_RUNNER_CLAUDE_ORGANIZATION_ID,
+  ];
+  for (const organizationId of organizationIds) {
+    if (organizationId) {
+      await deleteOrganizationById(organizationId);
+    }
   }
 
   await deleteRunnerUsers(runnerAccounts);

@@ -8,7 +8,6 @@ import { test } from "node:test";
 
 import {
   createOrganization,
-  createOrganizationMembership,
   createUser,
   deleteOrganizationById,
   deleteStaleTestUsers,
@@ -111,32 +110,6 @@ test("creates runner accounts with the historical three email names", () => {
   } finally {
     restoreEnvironmentVariable("JOB_REF", previousJobRef);
   }
-});
-
-test("creates an organization member without replaying the POST", async () => {
-  await withClerkServer(
-    (request, response) => {
-      if (
-        request.method === "POST" &&
-        request.url === "/v1/organizations/org_test/memberships"
-      ) {
-        sendJson(response, 200, { role: "org:member" });
-        return;
-      }
-      sendJson(response, 404, { errors: [] });
-    },
-    async (requests) => {
-      await createOrganizationMembership("org_test", "user_member");
-      assert.equal(
-        countRequests(
-          requests,
-          "POST",
-          "/v1/organizations/org_test/memberships",
-        ),
-        1,
-      );
-    },
-  );
 });
 
 test("retries organization cleanup and accepts not found", async () => {
