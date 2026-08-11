@@ -120,7 +120,10 @@ import {
   classifyChatAttachment,
   type CardDescriptorBlock,
 } from "./parse-body-blocks.ts";
-import { registerMermaidDiagram$ } from "../mermaid-diagram.ts";
+import {
+  registerMermaidDiagram$,
+  type MermaidDiagramSignals,
+} from "../mermaid-diagram.ts";
 import {
   chatEventTreeContent,
   chatEventTreePlan,
@@ -175,7 +178,6 @@ import { reloadMountedComposerWorkflows$ } from "../zero-page/tiptap-workflow-co
 import {
   createMailDraftCardSignalsRegistry,
   type MailDraftCardSignalsRegistry,
-  type MailDraftSignals,
 } from "./mail-draft.ts";
 import {
   createBrowserSessionSignals,
@@ -1613,14 +1615,6 @@ function createLatestEventSignals(
 /** Per-thread chat event sequences start at 1, so this marks the oldest event. */
 const FIRST_CHAT_EVENT_SEQ_ID = 1;
 
-function createMailDraftCardSignalsById(
-  mailDraftCardSignals: MailDraftCardSignalsRegistry,
-): Computed<ReadonlyMap<string, MailDraftSignals>> {
-  return computed((get) => {
-    return get(mailDraftCardSignals.signalsByKey$);
-  });
-}
-
 function createEventHistoryBackfillPending(
   rawEvents$: Computed<ChatEventProjectionEntry[]>,
 ): Computed<boolean> {
@@ -1669,8 +1663,15 @@ function createArtifactPreviewImageUrls(
   });
 }
 
-function collectMermaidSources(tree: Root): string[] {
-  const sources: string[] = [];
+/**
+ * Resolve every mermaid marker in a freshly parsed tree to its diagram
+ * signals and embed them on the node. Rendering then receives the signals
+ * object from the tree, the same way cards do — no registry lookup by key.
+ */
+function embedMermaidSignals(
+  tree: Root,
+  resolve: (code: string) => MermaidDiagramSignals,
+): void {
   const visitNode = (node: Root | ElementNode): void => {
     for (const child of node.children) {
       if (child.type !== "element") {
@@ -1678,14 +1679,13 @@ function collectMermaidSources(tree: Root): string[] {
       }
       const mermaid = child.data?.mermaid;
       if (mermaid !== undefined) {
-        sources.push(mermaid.code);
+        child.data = { ...child.data, mermaidSignals: resolve(mermaid.code) };
         continue;
       }
       visitNode(child);
     }
   };
   visitNode(tree);
-  return sources;
 }
 
 interface EventTreeRegistries {
@@ -1823,9 +1823,9 @@ function createEventTreeSignals({
           mermaidScope: threadId,
           cards,
         });
-        for (const code of collectMermaidSources(tree)) {
-          set(registerMermaidDiagram$, code, threadId);
-        }
+        embedMermaidSignals(tree, (code) => {
+          return set(registerMermaidDiagram$, code, threadId);
+        });
         next ??= new Map(current);
         next.set(event.id, { content: plan.content, tree });
       }
@@ -1910,7 +1910,6 @@ function createPagedEventResources(
   );
   return {
     artifactCardSignals,
-    mailDraftCardSignals,
     eventTrees$,
     ensureEventTrees$,
     publicSignals: {
@@ -1932,12 +1931,10 @@ function createPagedEventProjections({
   chatEvents$,
   registeredEvents$,
   eventTrees$,
-  mailDraftCardSignals,
 }: {
   chatEvents$: Computed<ChatEvent[]>;
   registeredEvents$: State<RegisteredChatEvent[]>;
   eventTrees$: Computed<ReadonlyMap<string, Root>>;
-  mailDraftCardSignals: MailDraftCardSignalsRegistry;
 }) {
   const rawEvents$ = createRawEventsComputed(registeredEvents$);
   const historyBackfillPending$ = createEventHistoryBackfillPending(rawEvents$);
@@ -1954,8 +1951,6 @@ function createPagedEventProjections({
     chatEvents$,
     historyBackfillPending$,
     eventRunIndicatorState$,
-    mailDraftCardSignalsById$:
-      createMailDraftCardSignalsById(mailDraftCardSignals),
     ...createLatestEventSignals(rawEvents$),
     ...createEventSemanticSignals(semanticEvents$, eventRunIndicatorState$),
     ...createRenderedChatGroups(semanticEvents$),
@@ -2151,7 +2146,6 @@ function createChatThreadMessagePipeline({
     chatEvents$: chatEvents.chatEvents$,
     registeredEvents$: resources.registeredEvents$,
     eventTrees$: resources.eventTrees$,
-    mailDraftCardSignals: resources.mailDraftCardSignals,
   });
   const renderWindow = createChatRenderWindow({
     threadId,
@@ -3647,7 +3641,6 @@ function publicChatThreadEventSignals(events: MessageListSignals) {
     resetCodexSubscriptionAndRetry$: events.resetCodexSubscriptionAndRetry$,
     eventImageGroups$: events.eventImageGroups$,
     artifactSignalsByUrl$: events.artifactSignalsByUrl$,
-    mailDraftCardSignalsById$: events.mailDraftCardSignalsById$,
     browserSessionSignals: events.browserSessionSignals,
     hasEvents$: events.hasEvents$,
     thinkingIndicatorMode$: events.thinkingIndicatorMode$,

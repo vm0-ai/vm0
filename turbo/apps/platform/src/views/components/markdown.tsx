@@ -23,7 +23,7 @@ import {
   setImageLoadStatus$,
 } from "../../signals/view-component-state.ts";
 import { MarkdownCardView } from "../zero-page/chat-body-cards.tsx";
-import { MermaidDiagram } from "./mermaid-diagram.tsx";
+import { MermaidDiagram, MermaidDiagramView } from "./mermaid-diagram.tsx";
 import { cn } from "@vm0/ui";
 
 type MarkdownNodeProp = { node?: unknown };
@@ -263,7 +263,12 @@ function MarkdownDivRenderer(props: MarkdownDivProps) {
   if (typeof data?.copyCode === "string") {
     return <CodeCopyButton code={data.copyCode} />;
   }
+  if (data?.mermaidSignals) {
+    return <MermaidDiagramView signals={data.mermaidSignals} />;
+  }
   if (data?.mermaid) {
+    // Trees parsed during render (the standalone `Markdown` surfaces) carry no
+    // embedded signals; their diagrams register on mount instead.
     return (
       <MermaidDiagram code={data.mermaid.code} scope={data.mermaid.scope} />
     );

@@ -28,6 +28,17 @@ export interface MermaidDiagramSignals {
   readonly diagram$: Computed<Promise<MermaidDiagramImage>>;
 }
 
+// The chat pipeline resolves diagram signals while it parses an event's tree
+// and embeds them on the marker node, so rendering receives the signals object
+// directly instead of looking the registry up by key. Declared here rather
+// than in the parse pipeline: the pipeline emits only `data.mermaid`
+// ({code, scope}), and this field is written by the signals layer afterwards.
+declare module "hast" {
+  interface Data {
+    mermaidSignals?: MermaidDiagramSignals;
+  }
+}
+
 export function mermaidDiagramKey(code: string, scope: string): string {
   return `${scope}:${code}`;
 }

@@ -5,8 +5,13 @@ import {
   type ArtifactCatalogSignals,
 } from "../artifacts-page/create-artifact-catalog-signals.ts";
 import { artifactDetailPreview } from "../artifacts-page/artifact-catalog-signals.ts";
-import { fetchPreviewText, isTextPreviewKind } from "../text-preview.ts";
+import {
+  fetchPreviewText,
+  isTextPreviewKind,
+  type TextPreviewComputed,
+} from "../text-preview.ts";
 import { resetSignal } from "../utils.ts";
+import type { MailDraftSignals } from "./mail-draft.ts";
 
 // ---------------------------------------------------------------------------
 // Thread-owned utility sidebar.
@@ -40,6 +45,12 @@ export type ArtifactRef = {
   readonly filename: string;
   readonly shareAvailable?: boolean;
   readonly releaseObjectUrl?: () => void;
+  /**
+   * Text preview content for text-kind refs, resolved by the opening command
+   * from the owning thread's artifact signals. The sidebar renders from the
+   * ref alone.
+   */
+  readonly text$?: TextPreviewComputed;
 };
 
 export type ArtifactFileRef = {
@@ -64,7 +75,7 @@ export type ThreadSidebarArtifactSource =
 export type ThreadSidebarTarget =
   | { readonly type: "artifacts" }
   | { readonly type: "artifact"; readonly source: ThreadSidebarArtifactSource }
-  | { readonly type: "email-draft"; readonly mailDraftId: string }
+  | { readonly type: "email-draft"; readonly signals: MailDraftSignals }
   | { readonly type: "browser" }
   | { readonly type: "automations" };
 

@@ -25,6 +25,7 @@ import {
 } from "../artifacts-page/artifact-catalog-page.tsx";
 import { BrowserSessionSidebar } from "./browser-session-sidebar.tsx";
 import { MailDraftSidebar } from "./mail-draft-sidebar.tsx";
+import type { MailDraftSignals } from "../../signals/chat-page/mail-draft.ts";
 import { ArtifactSidebar } from "./zero-artifact-sidebar.tsx";
 
 // ---------------------------------------------------------------------------
@@ -372,16 +373,12 @@ function ThreadArtifactDetail({
 
 function ThreadMailDraftPanel({
   thread,
-  mailDraftId,
+  signals,
 }: {
   readonly thread: ChatPanelSignals;
-  readonly mailDraftId: string;
+  readonly signals: MailDraftSignals;
 }) {
   const close = useSet(thread.sidebar.close$);
-  const signals = useGet(thread.mailDraftCardSignalsById$).get(mailDraftId);
-  if (!signals) {
-    return null;
-  }
   return <MailDraftSidebar signals={signals} onClose={close} />;
 }
 
@@ -419,12 +416,7 @@ export function ThreadSidebarSlot({
       return null;
     }
     case "email-draft": {
-      return (
-        <ThreadMailDraftPanel
-          thread={thread}
-          mailDraftId={target.mailDraftId}
-        />
-      );
+      return <ThreadMailDraftPanel thread={thread} signals={target.signals} />;
     }
     case "browser": {
       return <ThreadBrowserSessionPanel thread={thread} />;

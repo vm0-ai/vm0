@@ -9,6 +9,7 @@ import {
   currentRightThread$,
 } from "./chat-thread-pane-state.ts";
 import type { ChatPanelSignals } from "./chat-panel-signals.ts";
+import type { MailDraftSignals } from "./mail-draft.ts";
 import type {
   ArtifactRef,
   ArtifactRefInput,
@@ -84,34 +85,21 @@ export const openThreadAutomations$ = command(
 );
 
 /**
- * Resolve the pane that owns a per-message card id. Cards render inside their
- * thread, so exactly one pane's registry carries the id; the left (main) pane
- * wins in the impossible tie.
+ * The card hands over its own signals, which carry the owning thread id, so
+ * the sidebar target holds everything its panel renders from — no registry
+ * lookup on either side.
  */
-function threadOwningCard(
-  threads: readonly (ChatPanelSignals | null)[],
-  owns: (thread: ChatPanelSignals) => boolean,
-): ChatPanelSignals | null {
-  for (const thread of threads) {
-    if (thread && owns(thread)) {
-      return thread;
-    }
-  }
-  return threads.find(Boolean) ?? null;
-}
-
 export const openThreadMailDraft$ = command(
-  ({ get, set }, mailDraftId: string) => {
-    const thread = threadOwningCard(
-      [get(currentLeftThread$), get(currentRightThread$)],
+  ({ get, set }, signals: MailDraftSignals) => {
+    const thread = [get(currentLeftThread$), get(currentRightThread$)].find(
       (candidate) => {
-        return get(candidate.mailDraftCardSignalsById$).has(mailDraftId);
+        return candidate?.threadId === signals.threadId;
       },
     );
     if (!thread) {
       return;
     }
-    set(openOnThread$, thread, { type: "email-draft", mailDraftId });
+    set(openOnThread$, thread, { type: "email-draft", signals });
   },
 );
 
@@ -192,11 +180,17 @@ export const openThreadArtifactSplitView$ = command(
     if (!thread) {
       return;
     }
+    // Resolve the text preview here, from the owning thread's artifact
+    // signals, so the sidebar renders text-kind refs from the ref alone.
+    // Object-url refs (files promoted from the lightbox) have no registry
+    // entry and keep no `text$`.
+    const ref = materializeArtifactRef(input, thread.signal);
+    const text$ = get(thread.artifactSignalsByUrl$).get(ref.url)?.text$;
     set(openOnThread$, thread, {
       type: "artifact",
       source: {
         kind: "attachment",
-        ref: materializeArtifactRef(input, thread.signal),
+        ref: text$ === undefined ? ref : { ...ref, text$ },
       },
     });
   },
@@ -219,13 +213,15 @@ export const openArtifactInOpenSidebar$ = command(
     if (active.thread.signal.aborted) {
       return false;
     }
+    const ref = materializeArtifactRef(input, active.thread.signal);
+    const text$ = get(active.thread.artifactSignalsByUrl$).get(ref.url)?.text$;
     // The owning thread already holds the page's only utility sidebar, so this
     // swaps its content without closing and reopening the pane.
     set(active.thread.sidebar.open$, {
       type: "artifact",
       source: {
         kind: "attachment",
-        ref: materializeArtifactRef(input, active.thread.signal),
+        ref: text$ === undefined ? ref : { ...ref, text$ },
       },
     });
     return true;
@@ -239,7 +235,7 @@ export const openArtifactInOpenSidebar$ = command(
 export const activeSidebarMailDraftId$ = computed((get): string | null => {
   const active = get(activeThreadSidebar$);
   return active?.target.type === "email-draft"
-    ? active.target.mailDraftId
+    ? active.target.signals.mailDraftId
     : null;
 });
 

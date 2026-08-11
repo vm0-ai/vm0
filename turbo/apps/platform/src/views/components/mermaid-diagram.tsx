@@ -11,17 +11,13 @@ import {
 import { openImageLightbox$ } from "../../signals/zero-page/zero-attachment-chips.ts";
 
 /**
- * Renders a ```mermaid fenced block as a diagram.
- *
- * The diagram is shown by an <img> inside a box whose size is reserved before
- * the render starts, so a message keeps the same height whatever the diagram's
- * own aspect ratio turns out to be, and the render cannot move the thread under
- * a reader. The SVG is letterboxed inside that box and opens at full size in
- * the lightbox.
- *
- * The chat pipeline registers the diagram's signals ahead of rendering; other
- * surfaces register on mount via the placeholder's ref. Either way the image
- * itself arrives by pulling `diagram$`.
+ * Registration-on-mount fallback for trees parsed during render (the
+ * standalone `Markdown` surfaces), which have no command of their own to
+ * resolve diagram signals ahead of time. It registers through the
+ * placeholder's ref and then reads the entry back by key — the chat pipeline
+ * never renders this: its trees carry the signals embedded on the node and go
+ * straight to `MermaidDiagramView`. This component and its lookup go away with
+ * the parse-in-render surfaces.
  */
 export function MermaidDiagram({
   code,
@@ -69,7 +65,20 @@ function MermaidPendingBox() {
   );
 }
 
-function MermaidDiagramView({ signals }: { signals: MermaidDiagramSignals }) {
+/**
+ * Renders a ```mermaid fenced block as a diagram from its signals.
+ *
+ * The diagram is shown by an <img> inside a box whose size is reserved before
+ * the render starts, so a message keeps the same height whatever the diagram's
+ * own aspect ratio turns out to be, and the render cannot move the thread under
+ * a reader. The SVG is letterboxed inside that box and opens at full size in
+ * the lightbox.
+ */
+export function MermaidDiagramView({
+  signals,
+}: {
+  signals: MermaidDiagramSignals;
+}) {
   const { t } = useTranslation();
   const openImageLightbox = useSet(openImageLightbox$);
   const loadable = useLoadable(signals.diagram$);

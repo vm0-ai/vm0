@@ -151,9 +151,7 @@ function ArtifactSidebarWithThreadContext({
     equalityFn: equalEventImageGroups,
   });
   const reloadArtifacts = useSet(thread.reloadArtifacts$);
-  const artifactSignalsByUrl = useGet(thread.artifactSignalsByUrl$);
-  const text$ =
-    providedText$ ?? artifactSignalsByUrl.get(artifactRef.url)?.text$;
+  const text$ = providedText$ ?? artifactRef.text$;
   const item =
     loadable.state === "hasData"
       ? findArtifactItemForUrl(loadable.data, artifactRef.url)

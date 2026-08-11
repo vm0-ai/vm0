@@ -12,7 +12,6 @@ import type { ChatEventGroup } from "./chat-event.ts";
 import type { ThreadMeta } from "./chat-thread-event-sourcing.ts";
 import type { HeaderAutomationSignals } from "./header-automation-menu.ts";
 import type { ThreadSidebarSignals } from "./thread-sidebar.ts";
-import type { MailDraftSignals } from "./mail-draft.ts";
 import type { BrowserSessionSignals } from "./browser-session-block.ts";
 import type { EditorDocumentSnapshot } from "../zero-page/user-message-document-codec.ts";
 import type { ArtifactSignals } from "./artifact-card-signals.ts";
@@ -78,9 +77,6 @@ export interface MessageListSignals {
   readonly eventImageGroups$: Computed<Promise<EventImageGroupProjection[]>>;
   readonly artifactSignalsByUrl$: Computed<
     ReadonlyMap<string, ArtifactSignals>
-  >;
-  readonly mailDraftCardSignalsById$: Computed<
-    ReadonlyMap<string, MailDraftSignals>
   >;
   readonly browserSessionSignals: BrowserSessionSignals;
   readonly subscribeBrowserSessions$: Command<Promise<void>, [AbortSignal]>;
@@ -193,9 +189,6 @@ export interface ChatPanelSignals {
   readonly eventImageGroups$: Computed<Promise<EventImageGroupProjection[]>>;
   readonly artifactSignalsByUrl$: Computed<
     ReadonlyMap<string, ArtifactSignals>
-  >;
-  readonly mailDraftCardSignalsById$: Computed<
-    ReadonlyMap<string, MailDraftSignals>
   >;
   readonly browserSessionSignals: BrowserSessionSignals;
   readonly hasEvents$: Computed<Promise<boolean>>;
