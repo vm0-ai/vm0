@@ -1588,6 +1588,49 @@ export function PreviewableAudioAttachmentChip({
 // AttachmentChip — chip shown in the composer before the message is sent
 // ---------------------------------------------------------------------------
 
+/**
+ * A restored attachment carries the canonical API URL, so the thumbnail needs
+ * the same presigned exchange the sent message uses. Kept in its own component
+ * so the surrounding button stays one DOM node across the pending-to-uploaded
+ * transition, and the load key stays on the canonical URL, which is stable
+ * across re-signing.
+ */
+function ComposerImagePreviewImage({
+  imageLoadKey,
+  loaded,
+  url,
+}: {
+  imageLoadKey: string;
+  loaded: boolean;
+  url: string;
+}) {
+  const imageLoadStatusRef = useSet(imageLoadStatusRef$);
+  const setImageLoadStatus = useSet(setImageLoadStatus$);
+  const resolvedUrl = useResolvedAttachmentUrl(url);
+
+  if (resolvedUrl === null) {
+    return null;
+  }
+
+  return (
+    <img
+      key={imageLoadKey}
+      ref={imageLoadStatusRef}
+      src={resolvedUrl}
+      alt=""
+      data-image-load-key={imageLoadKey}
+      loading="lazy"
+      onLoad={() => {
+        setImageLoadStatus(imageLoadKey, "loaded");
+      }}
+      onError={() => {
+        setImageLoadStatus(imageLoadKey, "error");
+      }}
+      className={`h-full w-full object-cover ${loaded ? "" : "opacity-0"}`}
+    />
+  );
+}
+
 function ComposerImagePreviewButton({
   filename,
   openImageLightbox,
@@ -1598,8 +1641,14 @@ function ComposerImagePreviewButton({
   url: string | undefined;
 }) {
   const { t } = useTranslation();
+  const imageLoadStatuses = useGet(imageLoadStatusByKey$);
+  const imageLoadKey = url ? `composer-image:${url}` : null;
 
-  if (!url) {
+  const currentImageStatus = imageLoadKey
+    ? (imageLoadStatuses[imageLoadKey] ?? "loading")
+    : "loading";
+
+  if (!url || !imageLoadKey) {
     return (
       <button
         type="button"
@@ -1619,35 +1668,6 @@ function ComposerImagePreviewButton({
       </button>
     );
   }
-
-  return (
-    <ComposerImagePreviewThumbnail
-      filename={filename}
-      openImageLightbox={openImageLightbox}
-      url={url}
-    />
-  );
-}
-
-function ComposerImagePreviewThumbnail({
-  filename,
-  openImageLightbox,
-  url,
-}: {
-  filename: string;
-  openImageLightbox: (url: string) => void;
-  url: string;
-}) {
-  const { t } = useTranslation();
-  const imageLoadStatuses = useGet(imageLoadStatusByKey$);
-  const imageLoadStatusRef = useSet(imageLoadStatusRef$);
-  const setImageLoadStatus = useSet(setImageLoadStatus$);
-  // A restored attachment carries the canonical API URL, so the thumbnail needs
-  // the same presigned exchange the sent message uses. The load key stays on the
-  // canonical URL, which is stable across re-signing.
-  const resolvedUrl = useResolvedAttachmentUrl(url);
-  const imageLoadKey = `composer-image:${url}`;
-  const currentImageStatus = imageLoadStatuses[imageLoadKey] ?? "loading";
 
   return (
     <button
@@ -1678,25 +1698,11 @@ function ComposerImagePreviewThumbnail({
           )}
         </span>
       )}
-      {resolvedUrl !== null && (
-        <img
-          key={imageLoadKey}
-          ref={imageLoadStatusRef}
-          src={resolvedUrl}
-          alt=""
-          data-image-load-key={imageLoadKey}
-          loading="lazy"
-          onLoad={() => {
-            setImageLoadStatus(imageLoadKey, "loaded");
-          }}
-          onError={() => {
-            setImageLoadStatus(imageLoadKey, "error");
-          }}
-          className={`h-full w-full object-cover ${
-            currentImageStatus === "loaded" ? "" : "opacity-0"
-          }`}
-        />
-      )}
+      <ComposerImagePreviewImage
+        imageLoadKey={imageLoadKey}
+        loaded={currentImageStatus === "loaded"}
+        url={url}
+      />
       <span className="absolute inset-0 flex items-center justify-center bg-black/0 transition-colors group-hover/image-preview:bg-black/30">
         <Image
           size={18}
