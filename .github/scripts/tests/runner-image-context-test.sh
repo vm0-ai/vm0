@@ -93,6 +93,30 @@ assert_contains "$out" "release-skip=true"
 assert_contains "$out" "skip-reason=release-please-push"
 assert_contains "$out" "job-ref="
 
+assert_fails "turbo-consumer requires EVENT_NAME" \
+  WEB_CHANGED=true \
+  "$CONTEXT" turbo-consumer
+
+for flag in WEB_CHANGED API_CHANGED CLI_CHANGED CRATES_CHANGED CI_CHANGED E2E_CHANGED; do
+  out=$(run_clean \
+    EVENT_NAME=pull_request \
+    "${flag}=true" \
+    "$CONTEXT" turbo-consumer)
+  assert_contains "$out" "turbo-runner-consumer-needed=true"
+done
+
+out=$(run_clean \
+  EVENT_NAME=merge_group \
+  API_CHANGED=true \
+  "$CONTEXT" turbo-consumer)
+assert_contains "$out" "turbo-runner-consumer-needed=true"
+
+out=$(run_clean \
+  EVENT_NAME=push \
+  WEB_CHANGED=true \
+  "$CONTEXT" turbo-consumer)
+assert_contains "$out" "turbo-runner-consumer-needed=false"
+
 out=$(run_clean "$CONTEXT" playwright-consumer)
 assert_contains "$out" "playwright-runner-consumer-needed=false"
 
@@ -219,6 +243,18 @@ assert_contains "$out" "current-runner-image-needed=false"
 assert_contains "$out" "stable-runner-image-allowed=false"
 assert_contains "$out" "image-selection-reason=no-runner-image-consumer"
 
+out=$(assert_needed_case "Turbo runner E2E consumer" \
+  EVENT_NAME=pull_request \
+  RELEASE_SKIP=false \
+  METAL_HOSTS=dev-1 \
+  TURBO_RUNNER_CONSUMER_NEEDED=true \
+  RUNNER_IMAGE_INPUTS_CHANGED=false)
+assert_contains "$out" "turbo-runner-consumer-needed=true"
+assert_contains "$out" "playwright-runner-consumer-needed=false"
+assert_contains "$out" "runner-image-consumer-needed=true"
+assert_contains "$out" "stable-runner-image-allowed=true"
+assert_contains "$out" "current-runner-image-needed=true"
+
 out=$(assert_needed_case "crates ci-only consumer before stable reuse" \
   EVENT_NAME=pull_request \
   RELEASE_SKIP=false \
@@ -260,6 +296,16 @@ assert_contains "$out" "runner-image-inputs-changed=true"
 assert_contains "$out" "stable-runner-image-allowed=false"
 assert_contains "$out" "current-runner-image-needed=true"
 assert_contains "$out" "image-selection-reason=runner-image-inputs-changed"
+
+out=$(assert_needed_case "Turbo runner E2E ignored on push" \
+  EVENT_NAME=push \
+  RELEASE_SKIP=false \
+  METAL_HOSTS=dev-1 \
+  TURBO_RUNNER_CONSUMER_NEEDED=true \
+  RUNNER_IMAGE_INPUTS_CHANGED=false)
+assert_contains "$out" "turbo-runner-consumer-needed=false"
+assert_contains "$out" "runner-image-consumer-needed=false"
+assert_contains "$out" "current-runner-image-needed=false"
 
 out=$(assert_needed_case "guest input" \
   EVENT_NAME=pull_request \
