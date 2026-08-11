@@ -78,6 +78,7 @@ from .providers.connectors import (
 from .providers.model_provider import (
     has_positive_model_provider_usage,
     is_model_provider_usage_observable,
+    log_terminal_model_provider_usage_sources,
     release_model_provider_usage_tiers,
     report_model_provider_usage,
     report_model_provider_usage_observation,
@@ -115,6 +116,7 @@ __all__ = [
     "inspect_openai_responses_event_json",
     "inspect_openai_responses_event_type_json",
     "is_model_provider_usage_observable",
+    "log_terminal_model_provider_usage_sources",
     "merge_openai_responses_usage_result",
     "needs_connector_response_buffer_fallback",
     "read_usage_flush_request_id",
