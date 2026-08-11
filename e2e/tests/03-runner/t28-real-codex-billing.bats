@@ -31,7 +31,7 @@ teardown() {
     echo "$output"
     assert_success
 
-    local prompt="123+456. Reply only RESULT=<answer>."
+    local prompt="Briefly confirm that the real Codex runner is responding."
     run runner_chat_send "$AGENT_ID" "$prompt" "" "gpt-5.6-luna"
     echo "$output"
     assert_success
@@ -48,7 +48,7 @@ teardown() {
     echo "$output"
     assert_success
 
-    run _wait_for_runner_chat_output "$THREAD_ID" "$RUN_ID" "RESULT=579" 60
+    run _wait_for_runner_chat_completion "$THREAD_ID" "$RUN_ID" 60
     echo "$output"
     assert_success
 

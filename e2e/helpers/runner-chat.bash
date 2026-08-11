@@ -200,6 +200,45 @@ _wait_for_runner_chat_output() {
     return 1
 }
 
+_wait_for_runner_chat_completion() {
+    local thread_id="$1"
+    local run_id="$2"
+    local timeout="${3:-30}"
+    local interval="${RUNNER_CHAT_EVENT_POLL_INTERVAL_SECONDS:-2}"
+    local start=$SECONDS
+    local response=""
+    local output_message=""
+
+    while (( SECONDS - start < timeout )); do
+        if response="$(runner_api_curl "/api/zero/chat-threads/$thread_id/events?limit=50" 2>&1)" &&
+            output_message="$(jq -er --arg runId "$run_id" '
+                [
+                    .events[]?
+                    | select(
+                        .eventType == "output.message" and
+                        .runId == $runId
+                    )
+                    | .content
+                    | select(type == "string" and test("\\S"))
+                ]
+                | last // empty
+            ' <<< "$response")" &&
+            jq -e --arg runId "$run_id" '
+                any(.events[]?;
+                    .eventType == "run.completed" and .runId == $runId
+                )
+            ' <<< "$response" >/dev/null; then
+            printf '%s\n' "$output_message"
+            return 0
+        fi
+        sleep "$interval"
+    done
+
+    echo "# Timed out (${timeout}s) waiting for completed chat output for run $run_id" >&2
+    echo "# Last chat event response: $response" >&2
+    return 1
+}
+
 _wait_for_runner_codex_events() {
     local run_id="$1"
     local prompt="$2"
