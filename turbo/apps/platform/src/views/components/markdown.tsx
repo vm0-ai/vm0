@@ -1,201 +1,34 @@
-import MarkdownPreview, {
-  type MarkdownPreviewProps,
-} from "@uiw/react-markdown-preview/common";
-import { Loader2, Image } from "lucide-react";
+import "@uiw/react-markdown-preview/markdown.css";
 import { useGet, useSet } from "ccstate-react";
-import type { ComponentPropsWithoutRef, ReactNode } from "react";
-import { openImageLightbox$ } from "../../signals/zero-page/zero-attachment-chips.ts";
-import rehypeKatex from "rehype-katex";
-import remarkCjkFriendly from "remark-cjk-friendly";
-import remarkCjkFriendlyStrikethrough from "remark-cjk-friendly-gfm-strikethrough";
-import remarkMath from "remark-math";
-import { MermaidDiagram } from "./mermaid-diagram.tsx";
-import { rehypeMermaid } from "../../lib/rehype-mermaid.ts";
-import { theme$ } from "../../signals/theme.ts";
-import {
-  imageLoadStatusByKey$,
-  imageLoadStatusRef$,
-  setImageLoadStatus$,
-} from "../../signals/view-component-state.ts";
+import type { Element, Root } from "hast";
+import { toJsxRuntime } from "hast-util-to-jsx-runtime";
+import { Loader2, Image } from "lucide-react";
+import type { ComponentPropsWithoutRef, CSSProperties, ReactNode } from "react";
+import { Fragment, jsx, jsxs } from "react/jsx-runtime";
 
-type MarkdownNodeProp = { node?: unknown };
+import {
+  escapeHtmlTags,
+  parseMarkdownTree,
+} from "../../lib/markdown/pipeline.ts";
+import {
+  copiedMarkdownCode$,
+  copyMarkdownCode$,
+} from "../../signals/markdown-copy.ts";
+import { detach, Reason } from "../../signals/utils.ts";
+import { openImageLightbox$ } from "../../signals/zero-page/zero-attachment-chips.ts";
+import { theme$ } from "../../signals/theme.ts";
+import type { ImageLoadSignals } from "../../signals/image-load.ts";
+import { isImageUrl, isSafeMediaUrl, isVideoUrl } from "../../lib/media-url.ts";
+import { MarkdownCardView } from "../zero-page/chat-body-cards.tsx";
+import { MermaidDiagramView } from "./mermaid-diagram.tsx";
+import { cn } from "@vm0/ui";
+
+type MarkdownNodeProp = { node?: Element };
 type MarkdownAnchorProps = ComponentPropsWithoutRef<"a"> & MarkdownNodeProp;
 type MarkdownImageProps = ComponentPropsWithoutRef<"img"> & MarkdownNodeProp;
-type MarkdownDivProps = ComponentPropsWithoutRef<"div"> &
-  MarkdownNodeProp & {
-    "data-mermaid-code"?: string;
-    "data-mermaid-scope"?: string;
-  };
-
-type RewriteArgs = Parameters<
-  NonNullable<MarkdownPreviewProps["rehypeRewrite"]>
->;
-
-/**
- * Rewrite callback that:
- * 1. Converts unknown HTML tags to plain text (e.g. <OrganizationSwitcher>)
- * 2. Strips auto-generated heading anchor links whose SVG icons get sanitized
- *    into visible `<svg>` text by rehype-sanitize.
- */
-const rehypeRewriteHandler = (() => {
-  /** Recursively extract text content from a hast subtree. */
-  const collectText = (n: unknown): string => {
-    const node = n as { type?: string; value?: string; children?: unknown[] };
-    if (node.type === "text" && typeof node.value === "string") {
-      return node.value;
-    }
-    if (Array.isArray(node.children)) {
-      return node.children.map(collectText).join("");
-    }
-    return "";
-  };
-
-  const validHtmlTags: ReadonlySet<string> = new Set([
-    "a",
-    "abbr",
-    "address",
-    "area",
-    "article",
-    "aside",
-    "audio",
-    "b",
-    "bdi",
-    "bdo",
-    "blockquote",
-    "br",
-    "caption",
-    "cite",
-    "code",
-    "col",
-    "colgroup",
-    "data",
-    "dd",
-    "del",
-    "details",
-    "dfn",
-    "dialog",
-    "div",
-    "dl",
-    "dt",
-    "em",
-    "embed",
-    "fieldset",
-    "figcaption",
-    "figure",
-    "footer",
-    "h1",
-    "h2",
-    "h3",
-    "h4",
-    "h5",
-    "h6",
-    "header",
-    "hr",
-    "i",
-    "iframe",
-    "img",
-    "input",
-    "ins",
-    "kbd",
-    "label",
-    "legend",
-    "li",
-    "main",
-    "mark",
-    "menu",
-    "meter",
-    "nav",
-    "ol",
-    "optgroup",
-    "option",
-    "output",
-    "p",
-    "picture",
-    "pre",
-    "progress",
-    "q",
-    "rp",
-    "rt",
-    "ruby",
-    "s",
-    "samp",
-    "section",
-    "small",
-    "source",
-    "span",
-    "strong",
-    "sub",
-    "summary",
-    "sup",
-    "table",
-    "tbody",
-    "td",
-    "template",
-    "textarea",
-    "tfoot",
-    "th",
-    "thead",
-    "time",
-    "tr",
-    "u",
-    "ul",
-    "var",
-    "video",
-    "wbr",
-    // SVG elements (used by code-block copy button icons)
-    "svg",
-    "path",
-    "circle",
-    "rect",
-    "line",
-    "polyline",
-    "polygon",
-    "g",
-  ]);
-
-  return (...args: RewriteArgs) => {
-    const [node, , parent] = args;
-
-    // Convert unknown HTML tags to plain text, preserving child content.
-    // Raw HTML written at the top level of a document lands directly under the
-    // hast root, so root-level nodes must be rewritten too — otherwise tags
-    // like <style> and <script> survive into the app's DOM, where a generated
-    // `* { margin: 0; padding: 0 }` reset unstyles the whole page.
-    if (
-      node.type === "element" &&
-      !validHtmlTags.has(node.tagName) &&
-      (parent?.type === "element" || parent?.type === "root")
-    ) {
-      const inner = collectText(node);
-      const text = inner
-        ? `<${node.tagName}>${inner}</${node.tagName}>`
-        : `<${node.tagName}>`;
-      Object.assign(node, {
-        type: "text",
-        value: text,
-        tagName: undefined,
-        properties: undefined,
-        children: undefined,
-      });
-      return;
-    }
-
-    // Strip heading anchor links (`.anchor` class) that contain escaped `<svg>` text.
-    if (
-      node.type === "element" &&
-      node.tagName === "a" &&
-      node.properties?.class === "anchor"
-    ) {
-      Object.assign(node, {
-        type: "text",
-        value: "",
-        tagName: undefined,
-        properties: undefined,
-        children: undefined,
-      });
-    }
-  };
-})();
+type MarkdownDivProps = ComponentPropsWithoutRef<"div"> & {
+  node?: Element;
+};
 
 /**
  * Wraps a markdown table in an overflow-x-auto container so wide tables scroll
@@ -207,22 +40,6 @@ function ResponsiveTable({ children }: ComponentPropsWithoutRef<"table">) {
       <table>{children}</table>
     </div>
   );
-}
-
-function isImageUrl(href: string): boolean {
-  return /\.(png|jpe?g|gif|webp|svg|bmp|avif)(?:\?|#|$)/i.test(href);
-}
-
-function isVideoUrl(href: string): boolean {
-  return /\.(mp4|webm|mov|ogv)(?:\?|#|$)/i.test(href);
-}
-
-/**
- * Only `http:` / `https:` URLs are safe to render as `<img src>` or `<video src>`.
- * Blocks `javascript:`, `data:`, `file:`, etc. in assistant-rendered markdown.
- */
-function isSafeMediaUrl(href: string): boolean {
-  return /^https?:\/\//i.test(href);
 }
 
 function omitMarkdownNodeProp<Props extends object>(
@@ -242,10 +59,18 @@ function PlainLink({ href, children, ...rest }: MarkdownAnchorProps) {
   );
 }
 
-function MediaImage({ src, alt }: { src: string; alt: string }) {
-  const imageLoadStatuses = useGet(imageLoadStatusByKey$);
-  const imageLoadStatusRef = useSet(imageLoadStatusRef$);
-  const setImageLoadStatus = useSet(setImageLoadStatus$);
+function MediaImage({
+  src,
+  alt,
+  load,
+}: {
+  src: string;
+  alt: string;
+  load: ImageLoadSignals;
+}) {
+  const imageStatus = useGet(load.status$);
+  const markLoaded = useSet(load.loaded$);
+  const markFailed = useSet(load.failed$);
   // Self-sourced lightbox handler so MediaImage doesn't need a callback
   // prop chained from the Markdown caller. Removing the `onImageClick`
   // prop chain is what lets the `components` map and the renderer
@@ -253,8 +78,6 @@ function MediaImage({ src, alt }: { src: string; alt: string }) {
   // prevents React from tearing down the <video>/<img> subtree on every
   // re-render of the parent and refetching media metadata unnecessarily.
   const openImageLightbox = useSet(openImageLightbox$);
-  const imageLoadKey = `markdown:${src}`;
-  const imageStatus = imageLoadStatuses[imageLoadKey] ?? "loading";
   const showPlaceholder = imageStatus !== "loaded";
 
   return (
@@ -283,18 +106,12 @@ function MediaImage({ src, alt }: { src: string; alt: string }) {
         </span>
       )}
       <img
-        key={imageLoadKey}
-        ref={imageLoadStatusRef}
+        key={src}
         src={src}
         alt={alt}
-        data-image-load-key={imageLoadKey}
         loading="lazy"
-        onLoad={() => {
-          setImageLoadStatus(imageLoadKey, "loaded");
-        }}
-        onError={() => {
-          setImageLoadStatus(imageLoadKey, "error");
-        }}
+        onLoad={markLoaded}
+        onError={markFailed}
         className={`absolute inset-0 h-full w-full object-contain ${
           showPlaceholder ? "opacity-0" : ""
         }`}
@@ -313,8 +130,18 @@ function MediaLink({ href, children, ...rest }: MarkdownAnchorProps) {
   }
 
   if (isImageUrl(href)) {
-    const alt = typeof children === "string" ? children : "";
-    return <MediaImage src={href} alt={alt} />;
+    const load = rest.node?.data?.imageLoadSignals;
+    if (load) {
+      const alt = typeof children === "string" ? children : "";
+      return <MediaImage src={href} alt={alt} load={load} />;
+    }
+    // A tree parsed during render carries no load signals; the destination
+    // stays an ordinary link.
+    return (
+      <PlainLink href={href} {...rest}>
+        {children}
+      </PlainLink>
+    );
   }
 
   if (isVideoUrl(href)) {
@@ -358,25 +185,77 @@ function PlainImageRenderer(props: MarkdownImageProps) {
 
 function MediaImageRenderer(props: MarkdownImageProps) {
   const { src, alt, ...rest } = props;
-  const hasSafeSrc = typeof src === "string" && isSafeMediaUrl(src);
-  if (hasSafeSrc) {
-    return <MediaImage src={src} alt={alt ?? ""} />;
+  const load = props.node?.data?.imageLoadSignals;
+  if (typeof src === "string" && isSafeMediaUrl(src) && load) {
+    return <MediaImage src={src} alt={alt ?? ""} load={load} />;
   }
   return <img {...omitMarkdownNodeProp(rest)} src={src} alt={alt} />;
 }
 
+// The markup below is what `@uiw/react-markdown-preview` used to emit, kept so
+// the existing `.copied` styles still apply.
+function CodeCopyButton({ code }: { code: string }) {
+  const copied = useGet(copiedMarkdownCode$).has(code);
+  const copyCode = useSet(copyMarkdownCode$);
+
+  return (
+    <div
+      className={copied ? "copied active" : "copied"}
+      data-code={code}
+      onClick={() => {
+        detach(copyCode(code), Reason.DomCallback);
+      }}
+    >
+      <svg
+        className="octicon-copy"
+        aria-hidden="true"
+        viewBox="0 0 16 16"
+        fill="currentColor"
+        height={12}
+        width={12}
+      >
+        <path
+          fillRule="evenodd"
+          d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 010 1.5h-1.5a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-1.5a.75.75 0 011.5 0v1.5A1.75 1.75 0 019.25 16h-7.5A1.75 1.75 0 010 14.25v-7.5z"
+        />
+        <path
+          fillRule="evenodd"
+          d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0114.25 11h-7.5A1.75 1.75 0 015 9.25v-7.5zm1.75-.25a.25.25 0 00-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 00.25-.25v-7.5a.25.25 0 00-.25-.25h-7.5z"
+        />
+      </svg>
+      <svg
+        className="octicon-check"
+        aria-hidden="true"
+        viewBox="0 0 16 16"
+        fill="currentColor"
+        height={12}
+        width={12}
+      >
+        <path
+          fillRule="evenodd"
+          d="M13.78 4.22a.75.75 0 010 1.06l-7.25 7.25a.75.75 0 01-1.06 0L2.22 9.28a.75.75 0 011.06-1.06L6 10.94l6.72-6.72a.75.75 0 011.06 0z"
+        />
+      </svg>
+    </div>
+  );
+}
+
 // `rehypeMermaid` turns mermaid fences into `<div data-mermaid-code>`; every
 // other div renders as-is.
+// The pipeline marks copy buttons and mermaid diagrams on the node's `data`,
+// which only it can set — `rehype-raw` produces properties, never data — so a
+// message quoting the marker markup renders as the plain div it is.
 function MarkdownDivRenderer(props: MarkdownDivProps) {
   const { children, ...rest } = props;
-  const mermaidCode = props["data-mermaid-code"];
-  if (typeof mermaidCode === "string") {
-    return (
-      <MermaidDiagram
-        code={mermaidCode}
-        scope={props["data-mermaid-scope"] ?? ""}
-      />
-    );
+  const data = props.node?.data;
+  if (data?.card) {
+    return <MarkdownCardView card={data.card} />;
+  }
+  if (typeof data?.copyCode === "string") {
+    return <CodeCopyButton code={data.copyCode} />;
+  }
+  if (data?.mermaidSignals) {
+    return <MermaidDiagramView signals={data.mermaidSignals} />;
   }
   return <div {...omitMarkdownNodeProp(rest)}>{children}</div>;
 }
@@ -388,7 +267,7 @@ const PLAIN_MARKDOWN_COMPONENTS = {
   div: MarkdownDivRenderer,
 } as const;
 
-const MEDIA_MARKDOWN_COMPONENTS = {
+export const MEDIA_MARKDOWN_COMPONENTS = {
   table: ResponsiveTable,
   a: MediaLinkRenderer,
   img: MediaImageRenderer,
@@ -399,94 +278,29 @@ const MEDIA_MARKDOWN_COMPONENTS = {
 // escaping `<` alone stops tag injection. Leaving `>` intact preserves Markdown
 // block syntax that relies on a leading `>` — most importantly blockquotes,
 // which otherwise collapse into a literal `>` paragraph once escaped.
-function escapeHtmlTags(source: string): string {
-  return source.replace(/</g, "&lt;");
+interface MarkdownFrameProps {
+  readonly className?: string;
+  readonly style?: CSSProperties;
+  readonly mediaPreview?: boolean;
+  readonly tree: Root;
 }
 
-type RehypePlugins = MarkdownPreviewProps["rehypePlugins"];
-type RemarkPlugins = NonNullable<MarkdownPreviewProps["remarkPlugins"]>;
-type PluginsFilter = NonNullable<MarkdownPreviewProps["pluginsFilter"]>;
-
-// CommonMark only closes `**`/`*` when the delimiter is not wedged between a
-// punctuation character and a letter. CJK writes `（）。「」` with no surrounding
-// spaces, so `**加粗（x）**后面` never closes and the asterisks leak as text.
-// These two plugins relax that rule for CJK punctuation only; ASCII output is
-// unchanged.
-//
-// `remark-cjk-friendly` is order-independent, but the strikethrough companion
-// has to replace `remark-gfm`'s own `~~` extension and therefore must run after
-// it. `@uiw/react-markdown-preview` builds `[remarkAlert, ...caller, gfm]`, so
-// caller plugins always land *before* `gfm` — moving the companion to the tail
-// is what puts it behind `gfm`.
-const reorderCjkStrikethrough: PluginsFilter = (type, plugins) => {
-  if (type !== "remark") {
-    return plugins;
-  }
-  return [
-    ...plugins.filter((plugin) => {
-      return plugin !== remarkCjkFriendlyStrikethrough;
-    }),
-    remarkCjkFriendlyStrikethrough,
-  ];
-};
-
-function buildRemarkPlugins(args: {
-  mathEnabled: boolean;
-  remarkPlugins: MarkdownPreviewProps["remarkPlugins"];
-}): RemarkPlugins {
-  const mathPlugins: RemarkPlugins = args.mathEnabled
-    ? [[remarkMath, { singleDollarTextMath: false }]]
-    : [];
-  const cjkPlugins: RemarkPlugins = [
-    remarkCjkFriendly,
-    remarkCjkFriendlyStrikethrough,
-  ];
-  return [...mathPlugins, ...cjkPlugins, ...(args.remarkPlugins ?? [])];
-}
-
-// The mermaid plugin has to stay ahead of `rehype-prism-plus`, which
-// `@uiw/react-markdown-preview` appends after every caller-provided plugin.
-function buildRehypePlugins(args: {
-  mathEnabled: boolean;
-  mermaidScope: string;
-  rehypePlugins: RehypePlugins;
-}): RehypePlugins {
-  const mermaidPlugins: NonNullable<RehypePlugins> = [
-    [rehypeMermaid, { scope: args.mermaidScope }],
-  ];
-  return [
-    ...(args.mathEnabled ? [rehypeKatex] : []),
-    ...(args.rehypePlugins ?? []),
-    ...mermaidPlugins,
-  ];
-}
-
-export function Markdown({
+function MarkdownFrame({
   className,
   style,
   mediaPreview = false,
-  mermaidScope,
-  mathEnabled = false,
-  escapeHtml = false,
-  source,
-  remarkPlugins,
-  rehypePlugins,
-  ...rest
-}: MarkdownPreviewProps & {
-  mediaPreview?: boolean;
-  mermaidScope?: string;
-  mathEnabled?: boolean;
-  escapeHtml?: boolean;
-}) {
+  tree,
+}: MarkdownFrameProps) {
   const theme = useGet(theme$);
-  const components = mediaPreview
-    ? MEDIA_MARKDOWN_COMPONENTS
-    : PLAIN_MARKDOWN_COMPONENTS;
-  const renderedSource =
-    escapeHtml && typeof source === "string" ? escapeHtmlTags(source) : source;
+
   return (
-    <MarkdownPreview
-      className={`min-w-0 max-w-full !bg-transparent !text-foreground text-sm ${className ?? ""}`}
+    <div
+      data-color-mode={theme}
+      className={cn(
+        "wmde-markdown wmde-markdown-color",
+        "min-w-0 max-w-full !bg-transparent !text-foreground text-sm",
+        className,
+      )}
       style={{
         backgroundColor: "transparent",
         fontSize: "0.875rem",
@@ -494,21 +308,70 @@ export function Markdown({
         fontFamily: "var(--font-family-sans)",
         ...style,
       }}
-      wrapperElement={{ "data-color-mode": theme }}
-      rehypeRewrite={rehypeRewriteHandler}
-      pluginsFilter={reorderCjkStrikethrough}
-      remarkPlugins={buildRemarkPlugins({
-        mathEnabled,
-        remarkPlugins,
+    >
+      {toJsxRuntime(tree, {
+        Fragment,
+        components: mediaPreview
+          ? MEDIA_MARKDOWN_COMPONENTS
+          : PLAIN_MARKDOWN_COMPONENTS,
+        ignoreInvalidStyle: true,
+        jsx,
+        jsxs,
+        passKeys: true,
+        passNode: true,
       })}
-      rehypePlugins={buildRehypePlugins({
-        mathEnabled,
-        mermaidScope: mermaidScope ?? "",
-        rehypePlugins,
-      })}
-      components={components}
-      source={renderedSource}
-      {...rest}
+    </div>
+  );
+}
+
+/**
+ * The chat transcript's entry point: renders the tree an event's signal parsed
+ * ahead of time, so opening a thread re-renders without re-parsing.
+ */
+export function MarkdownEventBody({
+  tree,
+  mediaPreview,
+}: {
+  readonly tree: Root;
+  readonly mediaPreview: boolean;
+}) {
+  return (
+    <MarkdownFrame
+      tree={tree}
+      mediaPreview={mediaPreview}
+      style={{ fontSize: "inherit", lineHeight: "inherit" }}
+    />
+  );
+}
+
+/**
+ * Parses on render. For one-off documents outside the chat transcript, where
+ * there is no signal to hang the parsed tree off.
+ */
+export function Markdown({
+  className,
+  style,
+  mediaPreview = false,
+  mathEnabled = false,
+  escapeHtml = false,
+  source,
+}: {
+  readonly source: string;
+  readonly className?: string;
+  readonly style?: CSSProperties;
+  readonly mediaPreview?: boolean;
+  readonly mathEnabled?: boolean;
+  readonly escapeHtml?: boolean;
+}) {
+  const tree = parseMarkdownTree(escapeHtml ? escapeHtmlTags(source) : source, {
+    mathEnabled,
+  });
+  return (
+    <MarkdownFrame
+      className={className}
+      style={style}
+      mediaPreview={mediaPreview}
+      tree={tree}
     />
   );
 }

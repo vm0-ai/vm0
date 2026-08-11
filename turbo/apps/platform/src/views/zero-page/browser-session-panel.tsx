@@ -19,6 +19,7 @@ import {
   type BrowserSessionSignals,
 } from "../../signals/chat-page/browser-session-block.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
+import type { ImageLoadSignals } from "../../signals/image-load.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { ArtifactThumbnailImage } from "./zero-artifact-thumbnail.tsx";
 
@@ -225,11 +226,13 @@ function ContainedLiveBrowserViewport({
 
 function PausedBrowserSession({
   screenshotUrl,
+  screenshotLoad,
   containLiveFrame,
   starting,
   onStart,
 }: {
   readonly screenshotUrl?: string | null;
+  readonly screenshotLoad: ImageLoadSignals;
   readonly containLiveFrame: boolean;
   readonly starting: boolean;
   readonly onStart: () => void;
@@ -282,6 +285,7 @@ function PausedBrowserSession({
       <div className="relative min-h-0 flex-1 overflow-hidden bg-muted/20">
         <ArtifactThumbnailImage
           src={screenshotUrl}
+          load={screenshotLoad}
           testId="browser-session-panel-screenshot"
           className="absolute inset-x-0 top-0 h-auto w-full object-contain object-top"
           fallback={
@@ -318,6 +322,7 @@ export function BrowserSessionPanel({
     return (
       <PausedBrowserSession
         screenshotUrl={session?.screenshotUrl}
+        screenshotLoad={signals.screenshotImageLoad}
         containLiveFrame={containLiveFrame}
         starting={starting}
         onStart={() => {

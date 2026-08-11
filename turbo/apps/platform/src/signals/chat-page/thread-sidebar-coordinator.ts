@@ -5,10 +5,16 @@ import {
   previewAttachmentFromUrl,
 } from "./parse-body-blocks.ts";
 import {
+  createTextPreviewComputed,
+  isTextPreviewKind,
+} from "../text-preview.ts";
+import { createMarkdownPreviewTree } from "../markdown-preview-tree.ts";
+import {
   currentLeftThread$,
   currentRightThread$,
 } from "./chat-thread-pane-state.ts";
 import type { ChatPanelSignals } from "./chat-panel-signals.ts";
+import type { MailDraftSignals } from "./mail-draft.ts";
 import type {
   ArtifactRef,
   ArtifactRefInput,
@@ -84,34 +90,21 @@ export const openThreadAutomations$ = command(
 );
 
 /**
- * Resolve the pane that owns a per-message card id. Cards render inside their
- * thread, so exactly one pane's registry carries the id; the left (main) pane
- * wins in the impossible tie.
+ * The card hands over its own signals, which carry the owning thread id, so
+ * the sidebar target holds everything its panel renders from — no registry
+ * lookup on either side.
  */
-function threadOwningCard(
-  threads: readonly (ChatPanelSignals | null)[],
-  owns: (thread: ChatPanelSignals) => boolean,
-): ChatPanelSignals | null {
-  for (const thread of threads) {
-    if (thread && owns(thread)) {
-      return thread;
-    }
-  }
-  return threads.find(Boolean) ?? null;
-}
-
 export const openThreadMailDraft$ = command(
-  ({ get, set }, mailDraftId: string) => {
-    const thread = threadOwningCard(
-      [get(currentLeftThread$), get(currentRightThread$)],
+  ({ get, set }, signals: MailDraftSignals) => {
+    const thread = [get(currentLeftThread$), get(currentRightThread$)].find(
       (candidate) => {
-        return get(candidate.mailDraftCardSignalsById$).has(mailDraftId);
+        return candidate?.threadId === signals.threadId;
       },
     );
     if (!thread) {
       return;
     }
-    set(openOnThread$, thread, { type: "email-draft", mailDraftId });
+    set(openOnThread$, thread, { type: "email-draft", signals });
   },
 );
 
@@ -138,15 +131,35 @@ export function artifactRefFromUrl(url: string): ArtifactRef {
   };
 }
 
+/**
+ * Text-kind refs always carry their preview content: the caller's computed
+ * when it handed one over (reusing its fetch cache), a fresh one otherwise.
+ * Markdown refs additionally carry their prepared tree. The sidebar renders
+ * from the ref alone.
+ */
+function withTextPreview(ref: ArtifactRef): ArtifactRef {
+  if (!isTextPreviewKind(ref.kind)) {
+    return ref;
+  }
+  const text$ = ref.text$ ?? createTextPreviewComputed(ref.url);
+  return {
+    ...ref,
+    text$,
+    ...(ref.kind === "markdown"
+      ? { markdownTree$: createMarkdownPreviewTree(text$) }
+      : {}),
+  };
+}
+
 function materializeArtifactRef(
   input: ArtifactRefInput,
   ownerSignal: AbortSignal,
 ): ArtifactRef {
   if (typeof input === "string") {
-    return artifactRefFromUrl(input);
+    return withTextPreview(artifactRefFromUrl(input));
   }
   if (!("file" in input)) {
-    return {
+    return withTextPreview({
       url: input.url,
       kind: classifyChatAttachment({
         contentType: input.contentType,
@@ -154,13 +167,14 @@ function materializeArtifactRef(
         url: input.url,
       }),
       filename: input.filename,
+      ...(input.text$ === undefined ? {} : { text$: input.text$ }),
       ...(input.shareAvailable === undefined
         ? {}
         : { shareAvailable: input.shareAvailable }),
-    };
+    });
   }
   const resource = createObjectUrlResource(input.file, ownerSignal);
-  return {
+  return withTextPreview({
     url: resource.url,
     kind: classifyChatAttachment({
       contentType: input.file.type,
@@ -172,7 +186,7 @@ function materializeArtifactRef(
     ...(input.shareAvailable === undefined
       ? {}
       : { shareAvailable: input.shareAvailable }),
-  };
+  });
 }
 
 /**
@@ -239,7 +253,7 @@ export const openArtifactInOpenSidebar$ = command(
 export const activeSidebarMailDraftId$ = computed((get): string | null => {
   const active = get(activeThreadSidebar$);
   return active?.target.type === "email-draft"
-    ? active.target.mailDraftId
+    ? active.target.signals.mailDraftId
     : null;
 });
 

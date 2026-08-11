@@ -578,6 +578,39 @@ jobs:
             turbo/apps/api/bench-results-p90.json
           if-no-files-found: warn
 
+  bench-app:
+    needs: [detect-turbo-ts-checks, prepare]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Run on perf branches, on PRs labeled `bench`, or on pushes to main (baseline).
+    if: |
+      needs.detect-turbo-ts-checks.outputs.turbo-ts-checks-needed == 'true' && (
+        startsWith(github.head_ref, 'perf/') ||
+        contains(github.event.pull_request.labels.*.name, 'bench') ||
+        (github.event_name == 'push' && github.ref == 'refs/heads/main')
+      )
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260622
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/toolchain-init
+      - name: Bench App
+        working-directory: turbo
+        run: pnpm -F @vm0/app exec vitest bench --run --outputJson bench-results.json
+      - name: Print bench summary
+        if: success() || failure()
+        working-directory: turbo/apps/platform
+        run: node scripts/print-bench-summary.mjs bench-results-p90.json
+      - name: Upload bench results
+        if: success() || failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: bench-app-results
+          path: |
+            turbo/apps/platform/bench-results.json
+            turbo/apps/platform/bench-results-p90.json
+          if-no-files-found: warn
+
   test-migrate:
     needs: prepare
     runs-on: ubuntu-latest

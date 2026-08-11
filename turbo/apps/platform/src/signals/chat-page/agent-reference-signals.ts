@@ -1,7 +1,10 @@
 import { computed, type Computed } from "ccstate";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import { agents$ } from "../agent.ts";
-import { getOrCreateCardSignals } from "./card-signal-map.ts";
+import {
+  createCardSignalsRegistry,
+  type CardSignalsRegistry,
+} from "./card-signal-map.ts";
 
 /**
  * Reactive agent data backing one or more structured agent references in a
@@ -13,9 +16,10 @@ export interface AgentReferenceSignals {
   readonly agent$: Computed<Promise<TeamComposeItem | null>>;
 }
 
-export interface AgentReferenceSignalsRegistry {
-  register(agentId: string): AgentReferenceSignals;
-}
+export type AgentReferenceSignalsRegistry = CardSignalsRegistry<
+  string,
+  AgentReferenceSignals
+>;
 
 function createAgentReferenceSignals(agentId: string): AgentReferenceSignals {
   return {
@@ -36,12 +40,7 @@ function createAgentReferenceSignals(agentId: string): AgentReferenceSignals {
  * identity across transcript recomputations.
  */
 export function createAgentReferenceSignalsRegistry(): AgentReferenceSignalsRegistry {
-  const signalsByAgentId = new Map<string, AgentReferenceSignals>();
-  return {
-    register(agentId) {
-      return getOrCreateCardSignals(signalsByAgentId, agentId, () => {
-        return createAgentReferenceSignals(agentId);
-      });
-    },
-  };
+  return createCardSignalsRegistry((agentId: string) => {
+    return agentId;
+  }, createAgentReferenceSignals);
 }

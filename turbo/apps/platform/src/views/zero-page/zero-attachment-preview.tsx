@@ -6,6 +6,7 @@ import { downloadAttachment$ } from "../../signals/attachment-download.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import type { TextPreviewComputed } from "../../signals/text-preview.ts";
+import type { ImageLoadSignals } from "../../signals/image-load.ts";
 import {
   lightboxUrl$,
   openAudioLightbox$,
@@ -263,11 +264,13 @@ function fallbackHtmlPreviewTitle(filename: string, url: string): string {
 
 function HtmlSitePreviewCard({
   filename,
+  previewImageLoad,
   previewImagePending,
   previewImageUrl,
   url,
 }: {
   filename: string;
+  previewImageLoad?: ImageLoadSignals;
   previewImagePending?: boolean;
   previewImageUrl?: string;
   url: string;
@@ -309,9 +312,10 @@ function HtmlSitePreviewCard({
         </span>
       </div>
       <div className="relative aspect-[16/10] overflow-hidden bg-muted/30">
-        {previewImageUrl ? (
+        {previewImageUrl && previewImageLoad ? (
           <ArtifactThumbnailImage
             src={previewImageUrl}
+            load={previewImageLoad}
             testId="attachment-preview-thumbnail"
             className="absolute inset-0 h-full w-full object-cover"
             fallback={
@@ -365,6 +369,7 @@ function HtmlSitePreviewViewport({
 function DocumentThumbnailPreview({
   filename,
   kind,
+  previewImageLoad,
   previewImagePending,
   previewImageUrl,
   text$,
@@ -372,6 +377,7 @@ function DocumentThumbnailPreview({
 }: {
   filename: string;
   kind: "markdown" | "csv" | "pdf" | "html";
+  previewImageLoad?: ImageLoadSignals;
   previewImagePending?: boolean;
   previewImageUrl?: string;
   text$?: TextPreviewComputed;
@@ -381,6 +387,7 @@ function DocumentThumbnailPreview({
     return (
       <HtmlSitePreviewCard
         filename={filename}
+        previewImageLoad={previewImageLoad}
         previewImagePending={previewImagePending}
         previewImageUrl={previewImageUrl}
         url={url}
@@ -614,9 +621,11 @@ function VideoThumbnailPreview({
 
 export function AttachmentPreview({
   attachment,
+  previewImageLoad,
   text$,
 }: {
   attachment: ChatAttachmentDescriptor;
+  previewImageLoad?: ImageLoadSignals;
   text$?: TextPreviewComputed;
 }) {
   const kind = classifyChatAttachment(attachment);
@@ -675,6 +684,7 @@ export function AttachmentPreview({
       return (
         <DocumentThumbnailPreview
           filename={attachment.filename}
+          previewImageLoad={previewImageLoad}
           previewImagePending={attachment.previewImagePending}
           previewImageUrl={attachment.previewImageUrl}
           url={attachment.url}

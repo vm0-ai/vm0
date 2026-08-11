@@ -1,6 +1,6 @@
 import {
-  getOrCreateCardSignals,
-  registeredCardSignals,
+  createCardSignalsRegistry,
+  type CardSignalsRegistry,
 } from "./card-signal-map.ts";
 import { parseTrustedPlatformActionUrl } from "./platform-action-url.ts";
 
@@ -13,12 +13,10 @@ export interface ComputerUseAuthorizationDescriptor {
 export type ComputerUseAuthorizationSignals =
   ComputerUseAuthorizationDescriptor;
 
-export interface ComputerUseAuthorizationCardSignalsRegistry {
-  register(
-    descriptor: ComputerUseAuthorizationDescriptor,
-  ): ComputerUseAuthorizationSignals;
-  resolve(resourceKey: string): ComputerUseAuthorizationSignals;
-}
+type ComputerUseAuthorizationCardSignalsRegistry = CardSignalsRegistry<
+  ComputerUseAuthorizationDescriptor,
+  ComputerUseAuthorizationSignals
+>;
 
 export function parseComputerUseAuthorizationUrl(
   value: string,
@@ -49,22 +47,10 @@ function createComputerUseAuthorizationSignals(
 }
 
 export function createComputerUseAuthorizationCardSignalsRegistry(): ComputerUseAuthorizationCardSignalsRegistry {
-  const signalsByResourceKey = new Map<
-    string,
-    ComputerUseAuthorizationSignals
-  >();
-  return {
-    register(descriptor) {
-      return getOrCreateCardSignals(
-        signalsByResourceKey,
-        descriptor.href,
-        () => {
-          return createComputerUseAuthorizationSignals(descriptor);
-        },
-      );
+  return createCardSignalsRegistry(
+    (descriptor: ComputerUseAuthorizationDescriptor) => {
+      return descriptor.href;
     },
-    resolve(resourceKey) {
-      return registeredCardSignals(signalsByResourceKey, resourceKey);
-    },
-  };
+    createComputerUseAuthorizationSignals,
+  );
 }
