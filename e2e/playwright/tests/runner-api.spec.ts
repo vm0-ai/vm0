@@ -871,9 +871,12 @@ test("[PREF-01][CONNECTOR-01] refreshes connector values and secrets with redact
   await control.reset();
   const firstSecret = `connector-first-${randomUUID()}`;
   const secondSecret = `connector-second-${randomUUID()}`;
+  // Prefix template variables are only allowed in the URL host, so the dynamic
+  // base resolves the whole simulator host from a connector variable.
+  const simulatorHost = new URL(simulatorUrl).host;
   const connector = await createManualConnector(account, {
     displayName: `Runner Dynamic Connector ${Date.now()}`,
-    prefixTemplates: [`${simulatorUrl}/tenant/{{variables.workspace}}/`],
+    prefixTemplates: ["https://{{variables.workspace}}/"],
     fields: [
       {
         key: "token",
@@ -898,7 +901,7 @@ test("[PREF-01][CONNECTOR-01] refreshes connector values and secrets with redact
     {
       values: [
         { key: "token", kind: "secret", value: firstSecret },
-        { key: "workspace", kind: "variable", value: "alpha" },
+        { key: "workspace", kind: "variable", value: simulatorHost },
       ],
     },
     [200],
@@ -951,7 +954,7 @@ test("[PREF-01][CONNECTOR-01] refreshes connector values and secrets with redact
     {
       values: [
         { key: "token", kind: "secret", value: secondSecret },
-        { key: "workspace", kind: "variable", value: "beta" },
+        { key: "workspace", kind: "variable", value: simulatorHost },
       ],
     },
     [200],
