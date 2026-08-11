@@ -176,6 +176,9 @@ async fn deliver_receipt(
     journal: &ReceiptJournal,
     rejected: &mut HashSet<String>,
 ) {
+    if !http.has_api() {
+        return;
+    }
     match http.post_active_input_receipt(run_id, delivery_id).await {
         Ok(Response::Delivered) => match journal.acknowledge(delivery_id) {
             Ok(()) => log_info!(

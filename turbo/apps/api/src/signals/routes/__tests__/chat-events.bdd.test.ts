@@ -1803,6 +1803,17 @@ describe("CHAT-02: queueing and recalling messages", () => {
       api.reserveRunnerActiveInputs(claimed.claim.sandboxToken, active.runId),
     ).resolves.toStrictEqual(firstReservation);
 
+    const trailingEventId = randomUUID();
+    await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: active.threadId,
+        prompt: "third steer queued behind the open delivery",
+        clientEventId: trailingEventId,
+      },
+      [201],
+    );
     context.mocks.ably.publish.mockClear();
     const receipts = await Promise.all([
       api.recordRunnerActiveInputDelivery(
@@ -1825,6 +1836,14 @@ describe("CHAT-02: queueing and recalling messages", () => {
         return topic === `chatThreadMessageCreated:${active.threadId}`;
       }),
     ).toHaveLength(1);
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith("active-input", {
+      runId: active.runId,
+    });
+    expect(
+      context.mocks.ably.publish.mock.calls.filter(([topic]) => {
+        return topic === "active-input";
+      }),
+    ).toHaveLength(1);
     await expect(
       api.recordRunnerActiveInputDelivery(
         claimed.claim.sandboxToken,
@@ -1837,6 +1856,20 @@ describe("CHAT-02: queueing and recalling messages", () => {
         return topic === `chatThreadMessageCreated:${active.threadId}`;
       }),
     ).toHaveLength(1);
+
+    const trailingReservation = await api.reserveRunnerActiveInputs(
+      claimed.claim.sandboxToken,
+      active.runId,
+    );
+    if (trailingReservation.outcome !== "reserved") {
+      throw new Error("Expected the trailing input to become reservable");
+    }
+    expect(trailingReservation.eventIds).toStrictEqual([trailingEventId]);
+    await api.recordRunnerActiveInputDelivery(
+      claimed.claim.sandboxToken,
+      active.runId,
+      trailingReservation.deliveryId,
+    );
 
     await expect(
       api.listRunnerActiveInputs(claimed.claim.sandboxToken, active.runId),
@@ -1876,14 +1909,15 @@ describe("CHAT-02: queueing and recalling messages", () => {
       return (
         event.runId === active.runId &&
         (event.revokesEventId === firstEventId ||
-          event.revokesEventId === secondEventId)
+          event.revokesEventId === secondEventId ||
+          event.revokesEventId === trailingEventId)
       );
     });
     expect(
       replacements.map((event) => {
         return event.revokesEventId;
       }),
-    ).toStrictEqual([firstEventId, secondEventId]);
+    ).toStrictEqual([firstEventId, secondEventId, trailingEventId]);
     await cancelChatRun(actor, active.runId);
   }, 90_000);
 

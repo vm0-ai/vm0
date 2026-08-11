@@ -6,7 +6,7 @@
 mod common;
 
 use common::SystemLogOverrideGuard;
-use guest_agent::active_input::ActiveInputRuntime;
+use guest_agent::active_input::{ActiveInputControlOutcome, ActiveInputRuntime};
 use guest_agent::error::AgentError;
 use guest_agent::masker::SecretMasker;
 use guest_agent::run_context::GuestRuntime;
@@ -104,6 +104,44 @@ async fn no_api_mode_drains_background_webhook_users_without_network_client()
     assert!(
         !complete_log.contains("Complete webhook failed"),
         "no-API complete path must return before touching the disabled HTTP client: {complete_log}"
+    );
+
+    let delivery_id = "60fca608-d174-4c1a-a1b2-57607b3adf46";
+    let receipt_log_path = tmp.path().join("active-input-receipt-system.log");
+    let receipt_log_guard = SystemLogOverrideGuard::set(&receipt_log_path);
+    let active_input = ActiveInputRuntime::new_with_receipts(
+        &runtime.config.run_id,
+        true,
+        &runtime.config.prompt,
+        tmp.path().join("active-input-receipts.json"),
+        http.clone(),
+    )?;
+    let active_input_controller = active_input.controller();
+    let mut active_input_writer = active_input.into_writer();
+    assert_eq!(
+        active_input_controller.handle_control_payload(&serde_json::to_vec(&json!({
+            "type": "active-input",
+            "deliveryId": delivery_id,
+            "text": "local follow-up",
+        }))?),
+        ActiveInputControlOutcome::Accepted,
+    );
+    let active_input_frame = active_input_writer
+        .next_frame()
+        .await
+        .expect("local active input should reach the CLI writer");
+    active_input_writer.mark_writing(&active_input_frame.uuid);
+    active_input_writer.mark_backend_accepted_without_replay(&active_input_frame)?;
+    active_input_controller.close_terminal();
+    assert_eq!(
+        active_input_controller.finalize_receipts().await?,
+        vec![delivery_id.to_string()],
+    );
+    drop(receipt_log_guard);
+    let receipt_log = std::fs::read_to_string(&receipt_log_path).unwrap_or_default();
+    assert!(
+        !receipt_log.contains("Active-input receipt attempt failed"),
+        "local active input must not attempt an API receipt: {receipt_log}",
     );
 
     let active_input = ActiveInputRuntime::new_with_initial_prompt(

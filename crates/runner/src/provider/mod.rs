@@ -14,7 +14,7 @@ mod local;
 #[cfg(test)]
 pub mod mock;
 
-pub(crate) use api::ApiClient;
+pub(crate) use api::{ApiClient, ReserveActiveInputResult};
 pub use api::{ApiProvider, ApiProviderConfig, BuiltinFirewallCatalogCachePaths};
 pub(crate) use connector_runtime_sync::{
     ConnectorRuntimeSyncHandle, ConnectorRuntimeSyncRegistration,

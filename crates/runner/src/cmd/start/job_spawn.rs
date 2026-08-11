@@ -224,6 +224,7 @@ impl ExecutorInvocation {
                 ExecutorPhaseOutcome {
                     outcome: executor::ExecuteOutcome {
                         failure: Some(failure),
+                        active_input_delivery_ids: Vec::new(),
                         sandbox_reuse_disposition: executor::SandboxReuseDisposition::default(),
                         sandbox: None,
                         source_ip: String::new(),
@@ -331,6 +332,7 @@ impl FinalizationPhase {
         } = executor_result;
         let executor::ExecuteOutcome {
             failure: _,
+            active_input_delivery_ids: _,
             sandbox_reuse_disposition,
             sandbox,
             source_ip,
@@ -768,6 +770,9 @@ pub(super) async fn run_job(
             reuse_result,
             completion_auth,
         )
+        .with_active_input_delivery_ids(std::mem::take(
+            &mut executor_result.outcome.active_input_delivery_ids,
+        ))
         .with_workspace_reuse_result(executor_result.outcome.workspace_reuse_result);
         // Structural guarantee: claim (in provider) is always paired with complete.
         signal_usage_flush(run_id, &usage_flush_tx);
@@ -1063,6 +1068,7 @@ mod tests {
         ExecutorPhaseOutcome {
             outcome: executor::ExecuteOutcome {
                 failure: None,
+                active_input_delivery_ids: Vec::new(),
                 sandbox_reuse_disposition: executor::SandboxReuseDisposition::Eligible(
                     executor::SandboxReuseTerminal::Success,
                 ),
@@ -1084,6 +1090,7 @@ mod tests {
         ExecutorPhaseOutcome {
             outcome: executor::ExecuteOutcome {
                 failure: None,
+                active_input_delivery_ids: Vec::new(),
                 sandbox_reuse_disposition: executor::SandboxReuseDisposition::default(),
                 sandbox: None,
                 source_ip: String::new(),

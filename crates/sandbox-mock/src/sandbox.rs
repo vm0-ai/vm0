@@ -837,7 +837,7 @@ impl Sandbox for MockSandbox {
         let control = (request.control == ProcessControlMode::Enabled && process_control_supported)
             .then(|| {
                 let overrides = self.overrides.clone();
-                GuestProcessControlHandle::new(move |message_id, payload, timeout| {
+                GuestProcessControlHandle::new_with_outcome(move |message_id, payload, timeout| {
                     let overrides = overrides.clone();
                     Box::pin(async move {
                         if let Some(overrides) = overrides {
@@ -851,16 +851,16 @@ impl Sandbox for MockSandbox {
                                     timeout,
                                 });
                             overrides.process.process_control_notify.notify_waiters();
-                            if let Some((kind, message)) = overrides
+                            if let Some(outcome) = overrides
                                 .process
-                                .process_control_errors
+                                .process_control_outcomes
                                 .lock_ignoring_poison()
                                 .pop_front()
                             {
-                                return Err(std::io::Error::new(kind, message));
+                                return outcome;
                             }
                         }
-                        Ok(ProcessControlAck { message_id })
+                        ProcessControlOutcome::Delivered(ProcessControlAck { message_id })
                     })
                 })
             });

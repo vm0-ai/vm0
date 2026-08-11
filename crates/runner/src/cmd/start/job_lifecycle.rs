@@ -129,6 +129,7 @@ pub(super) struct CompletionPayload {
     sandbox_id: SandboxId,
     reuse_result: SandboxReuseResult,
     workspace_reuse_result: Option<WorkspaceReuseResult>,
+    active_input_delivery_ids: Vec<String>,
     completion_auth: CompletionAuth,
 }
 
@@ -166,6 +167,7 @@ impl CompletionPayload {
             sandbox_id,
             reuse_result,
             workspace_reuse_result: None,
+            active_input_delivery_ids: Vec::new(),
             completion_auth,
         }
     }
@@ -178,6 +180,14 @@ impl CompletionPayload {
         self
     }
 
+    pub(super) fn with_active_input_delivery_ids(
+        mut self,
+        active_input_delivery_ids: Vec<String>,
+    ) -> Self {
+        self.active_input_delivery_ids = active_input_delivery_ids;
+        self
+    }
+
     pub(super) async fn report(self, provider: &dyn JobProvider) -> CompletionReportObservation {
         let Self {
             run_id,
@@ -186,6 +196,7 @@ impl CompletionPayload {
             sandbox_id,
             reuse_result,
             workspace_reuse_result,
+            active_input_delivery_ids,
             completion_auth,
         } = self;
         let provider_completion_started = Instant::now();
@@ -198,6 +209,7 @@ impl CompletionPayload {
                     sandbox_id: Some(sandbox_id),
                     sandbox_reuse_result: Some(reuse_result),
                     workspace_reuse_result,
+                    active_input_delivery_ids,
                 },
                 completion_auth,
             )
@@ -291,6 +303,7 @@ mod tests {
     }
     struct CompletionAuthProvider {
         auth_matches: Arc<AtomicBool>,
+        active_input_delivery_ids: Arc<std::sync::Mutex<Vec<String>>>,
     }
 
     #[async_trait]
@@ -308,6 +321,7 @@ mod tests {
                 completion_auth.matches_sandbox_token_for_test(request.run_id, "completion-token"),
                 Ordering::SeqCst,
             );
+            *self.active_input_delivery_ids.lock().unwrap() = request.active_input_delivery_ids;
         }
 
         async fn heartbeat(&self, _state: &HeartbeatState) {}
@@ -350,8 +364,10 @@ mod tests {
     #[tokio::test]
     async fn completion_payload_forwards_completion_auth() {
         let auth_matches = Arc::new(AtomicBool::new(false));
+        let active_input_delivery_ids = Arc::new(std::sync::Mutex::new(Vec::new()));
         let provider = CompletionAuthProvider {
             auth_matches: Arc::clone(&auth_matches),
+            active_input_delivery_ids: Arc::clone(&active_input_delivery_ids),
         };
         let run_id = RunId::new_v4();
         let sandbox_id = SandboxId::new_v4();
@@ -364,12 +380,17 @@ mod tests {
             SandboxReuseResult::PoolMiss,
             CompletionAuth::sandbox_token(run_id, "completion-token".to_string()),
         )
+        .with_active_input_delivery_ids(vec!["b1e2ad6d-930a-4d51-aa40-7952d54f978b".to_string()])
         .report(&provider)
         .await;
 
         assert!(
             auth_matches.load(Ordering::SeqCst),
             "completion payload auth must be forwarded to provider.complete"
+        );
+        assert_eq!(
+            *active_input_delivery_ids.lock().unwrap(),
+            vec!["b1e2ad6d-930a-4d51-aa40-7952d54f978b".to_string()]
         );
     }
 
