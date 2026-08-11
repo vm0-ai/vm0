@@ -24,7 +24,6 @@ import { recordSandboxOperation } from "../external/sandbox-op-log";
 import {
   publishChatThreadDetailChangedSafely,
   publishChatThreadMessageCreatedSafely,
-  publishRunChangedForUserSafely,
 } from "../external/realtime";
 import { tapError } from "../utils";
 import {
@@ -744,12 +743,6 @@ export const completeAgentRun$ = command(
         success: true,
         runId: input.body.runId,
       });
-      await publishRunChangedForUserSafely(
-        commit.run.userId,
-        input.body.runId,
-        { status: commit.responseStatus },
-      );
-      signal.throwIfAborted();
       if (commit.responseStatus === "completed") {
         L.debug("Run completed successfully", { runId: input.body.runId });
       } else if (commit.transitionFailureKind === "missing-checkpoint") {

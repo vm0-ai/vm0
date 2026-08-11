@@ -4,11 +4,7 @@ import { pathParams$ } from "../route.ts";
 import { createRunLoop } from "../zero-page/polling.ts";
 import { delay } from "signal-timers";
 import { groupVisibleGroups, type EventGroup } from "./log-detail-utils.ts";
-import {
-  autoScrollActivityDetail$,
-  scrollToBottomActivityDetail$,
-} from "./activity-detail-scroll.ts";
-import { setAblyLoop$ } from "../realtime.ts";
+import { scrollToBottomActivityDetail$ } from "./activity-detail-scroll.ts";
 import {
   formatActivityClockTime,
   formatActivityDurationMs,
@@ -39,14 +35,14 @@ export const setZeroActivityStepSearch$ = command(({ set }, value: string) => {
 });
 
 /**
- * Active run loop for the currently selected log.
+ * Active run data for the currently selected log.
  */
 const internalActiveRunLoop$ = state<ReturnType<typeof createRunLoop> | null>(
   null,
 );
 
 /**
- * Set selected log ID directly — triggers detail fetch + event polling.
+ * Set selected log ID directly and trigger the initial detail fetch.
  */
 export const setupActivityLogLoop$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -67,38 +63,11 @@ export const setupActivityLogLoop$ = command(
     // would be a no-op.
     await delay(0, { signal });
     set(scrollToBottomActivityDetail$);
-
-    const onRunChanged$ = command(async ({ set }, sig: AbortSignal) => {
-      const finished = await set(run.checkFinished$, sig);
-      sig.throwIfAborted();
-      set(autoScrollActivityDetail$);
-      return finished;
-    });
-
-    const finished = await set(onRunChanged$, signal);
-    signal.throwIfAborted();
-    if (finished) {
-      return;
-    }
-
-    await Promise.all([
-      set(
-        setAblyLoop$,
-        { topic: `run:changed:${runId}`, loopCommand$: onRunChanged$ },
-        signal,
-      ),
-      set(
-        setAblyLoop$,
-        { topic: "queue:changed", loopCommand$: onRunChanged$ },
-        signal,
-      ),
-    ]);
-    signal.throwIfAborted();
   },
 );
 
 // ---------------------------------------------------------------------------
-// Log detail — re-fetches when run status changes (polling drives updates)
+// Log detail
 // ---------------------------------------------------------------------------
 
 export const zeroActivityDetail$ = computed(async (get) => {

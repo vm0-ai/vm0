@@ -27,8 +27,6 @@ import {
 import { writeDb$, type Db } from "../external/db";
 import { now, nowDate } from "../../lib/time";
 import {
-  publishOrgSignal,
-  publishRunChangedForUserSafely,
   publishThreadListChanged,
   publishUserSignal,
 } from "../external/realtime";
@@ -466,28 +464,9 @@ async function promoteQueuedCandidate(
   });
 }
 
-async function publishRemovedStaleQueueSideEffects(
-  orgId: string,
-): Promise<void> {
-  await tapError(publishOrgSignal(orgId, "queue:changed"), (error) => {
-    L.error("Failed to publish queue changed after stale queue removal", {
-      orgId,
-      error,
-    });
-  });
-}
-
 async function publishPromotedQueueSideEffects(args: {
-  readonly orgId: string;
   readonly queueMarkerNotification: QueueMarkerRevokeNotification | null;
 }): Promise<void> {
-  await tapError(publishOrgSignal(args.orgId, "queue:changed"), (error) => {
-    L.error("Failed to publish queue changed after queued run promotion", {
-      orgId: args.orgId,
-      error,
-    });
-  });
-
   if (args.queueMarkerNotification) {
     await tapError(
       publishUserSignal(
@@ -526,7 +505,6 @@ async function promoteQueuedCandidateWithSideEffects(
 ): Promise<PromoteQueuedCandidateSideEffectResult> {
   const result = await promoteQueuedCandidate(db, args);
   if (result.status === "removed-stale") {
-    await publishRemovedStaleQueueSideEffects(args.orgId);
     return { status: "skipped" };
   }
   if (result.status === "full") {
@@ -540,20 +518,8 @@ async function promoteQueuedCandidateWithSideEffects(
   }
   if (result.status === "rejected-retired") {
     await publishPromotedQueueSideEffects({
-      orgId: args.orgId,
       queueMarkerNotification: result.queueMarkerNotification,
     });
-    await tapError(
-      publishRunChangedForUserSafely(args.row.userId, args.row.runId, {
-        status: "failed",
-      }),
-      (error) => {
-        L.error("Failed to publish retired queued run rejection", {
-          runId: args.row.runId,
-          error,
-        });
-      },
-    );
     await tapError(
       dispatchFailedRunCallbacks(db, args.row.runId, result.error),
       (error) => {
@@ -571,7 +537,6 @@ async function promoteQueuedCandidateWithSideEffects(
   }
 
   await publishPromotedQueueSideEffects({
-    orgId: args.orgId,
     queueMarkerNotification: result.queueMarkerNotification,
   });
   return {

@@ -213,27 +213,25 @@ export function isChatRoute(key: RouteKey | null): boolean {
   );
 }
 
-export const handleZeroNavSelect$ = command(
-  ({ set }, id: SidebarNavId, signal: AbortSignal) => {
-    if (id === "queues") {
-      set(openQueueDrawer$, signal);
-    } else {
-      const navRoutes = {
-        chat: ROUTES.home,
-        agents: ROUTES.agents,
-        artifacts: ROUTES.artifacts,
-        connectors: ROUTES.connectors,
-        workflows: ROUTES.workflows,
-        works: ROUTES.works,
-        settings: ROUTES.settings,
-      } satisfies Record<
-        Exclude<SidebarNavId, "queues">,
-        (typeof ROUTES)[keyof typeof ROUTES]
-      >;
-      set(detachedNavigateTo$, navRoutes[id]);
-    }
-  },
-);
+export const handleZeroNavSelect$ = command(({ set }, id: SidebarNavId) => {
+  if (id === "queues") {
+    set(openQueueDrawer$);
+  } else {
+    const navRoutes = {
+      chat: ROUTES.home,
+      agents: ROUTES.agents,
+      artifacts: ROUTES.artifacts,
+      connectors: ROUTES.connectors,
+      workflows: ROUTES.workflows,
+      works: ROUTES.works,
+      settings: ROUTES.settings,
+    } satisfies Record<
+      Exclude<SidebarNavId, "queues">,
+      (typeof ROUTES)[keyof typeof ROUTES]
+    >;
+    set(detachedNavigateTo$, navRoutes[id]);
+  }
+});
 
 export type ZeroAccountAction = "lab" | "signout";
 

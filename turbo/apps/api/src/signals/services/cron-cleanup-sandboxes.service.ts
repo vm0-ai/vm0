@@ -10,8 +10,6 @@ import { logger } from "../../lib/log";
 import { now, nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
 import {
-  publishOrgSignal,
-  publishRunChangedForUserSafely,
   publishThreadListChanged,
   publishUserSignal,
 } from "../external/realtime";
@@ -63,7 +61,6 @@ interface CleanupSandboxesResult {
 interface StaleRun {
   readonly id: string;
   readonly orgId: string;
-  readonly userId: string;
   readonly status: string;
   readonly sandboxId: string | null;
   readonly lastHeartbeatAt: Date | null;
@@ -80,9 +77,7 @@ interface CleanupCutoffs {
 interface MaintenanceTerminalSideEffectsInput {
   readonly runId: string;
   readonly orgId: string;
-  readonly userId: string;
   readonly error: string;
-  readonly queueChanged: boolean;
   readonly queueMarkerNotification: QueueMarkerRevokeNotification | null;
 }
 
@@ -98,13 +93,6 @@ function staleRunCutoff(run: StaleRun, cutoffs: CleanupCutoffs): Date {
 function isExpiredRun(run: StaleRun, cutoffs: CleanupCutoffs): boolean {
   const referenceTime = run.lastHeartbeatAt ?? run.createdAt;
   return referenceTime < staleRunCutoff(run, cutoffs);
-}
-
-async function publishQueueChangedSafely(
-  orgId: string,
-  signal: AbortSignal,
-): Promise<void> {
-  await bestEffort(publishOrgSignal(orgId, "queue:changed"), signal);
 }
 
 async function publishQueueMarkerNotificationSafely(
@@ -217,15 +205,6 @@ const dispatchMaintenanceTerminalSideEffects$ = command(
     input: MaintenanceTerminalSideEffectsInput,
     signal: AbortSignal,
   ): Promise<void> => {
-    await publishRunChangedForUserSafely(input.userId, input.runId, {
-      status: "failed",
-    });
-    signal.throwIfAborted();
-
-    if (input.queueChanged) {
-      await publishQueueChangedSafely(input.orgId, signal);
-    }
-
     if (input.queueMarkerNotification) {
       await publishQueueMarkerNotificationSafely(
         input.queueMarkerNotification,
@@ -304,9 +283,7 @@ const cleanupSingleRun$ = command(
       {
         runId: run.id,
         orgId: run.orgId,
-        userId: run.userId,
         error: timeoutReason,
-        queueChanged: false,
         queueMarkerNotification: null,
       },
       signal,
@@ -347,9 +324,7 @@ const cleanupQueuedTerminalRuns$ = command(
           {
             runId: run.runId,
             orgId: run.orgId,
-            userId: run.userId,
             error: run.error,
-            queueChanged: true,
             queueMarkerNotification: run.queueMarkerNotification,
           },
           signal,
@@ -482,7 +457,6 @@ export const cleanupSandboxes$ = command(
       .select({
         id: agentRuns.id,
         orgId: agentRuns.orgId,
-        userId: agentRuns.userId,
         status: agentRuns.status,
         sandboxId: agentRuns.sandboxId,
         lastHeartbeatAt: agentRuns.lastHeartbeatAt,
