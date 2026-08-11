@@ -25,10 +25,9 @@ function isAuthenticatedAttachmentUrl(url: string): boolean {
  * on its own; the API still runs the ownership check before signing.
  */
 export function createAttachmentResourceUrl$(
-  source: string | Computed<Promise<string>>,
+  url: string,
 ): Computed<Promise<string>> {
   return computed(async (get) => {
-    const url = typeof source === "string" ? source : await get(source);
     if (!isAuthenticatedAttachmentUrl(url)) {
       return url;
     }
