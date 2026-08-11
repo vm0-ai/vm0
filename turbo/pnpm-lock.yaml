@@ -182,6 +182,9 @@ importers:
       '@vm0/pi-agent-runtime':
         specifier: workspace:*
         version: link:../../packages/pi-agent-runtime
+      '@xmldom/xmldom':
+        specifier: ^0.9.10
+        version: 0.9.10
       ably:
         specifier: ^2.21.0
         version: 2.21.0(bufferutil@4.1.0)(react-dom@19.2.6(react@19.2.8))(react@19.2.8)(utf-8-validate@6.0.6)

@@ -1,7 +1,31 @@
+import {
+  DOMParser as WorkerDOMParser,
+  Node as WorkerDOMNode,
+} from "@xmldom/xmldom";
+
 import { singleton } from "./lib/singleton";
 import { WORKER_CRON_ROUTES } from "./worker-crons";
 
 const MAX_CONCURRENT_CRON_ROUTES = 6;
+
+// Wrangler selects the AWS SDK browser XML parser, while Workers does not
+// provide the DOM globals that parser uses for R2 list responses.
+function installWorkerXmlDomGlobals(): void {
+  if (!("DOMParser" in globalThis)) {
+    Object.defineProperty(globalThis, "DOMParser", {
+      configurable: true,
+      value: WorkerDOMParser,
+    });
+  }
+  if (!("Node" in globalThis)) {
+    Object.defineProperty(globalThis, "Node", {
+      configurable: true,
+      value: WorkerDOMNode,
+    });
+  }
+}
+
+installWorkerXmlDomGlobals();
 
 interface WorkerVersionMetadata {
   readonly id: string;

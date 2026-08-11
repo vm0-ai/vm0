@@ -47,6 +47,7 @@
     "@vm0/core": "workspace:*",
     "@vm0/db": "workspace:*",
     "@vm0/pi-agent-runtime": "workspace:*",
+    "@xmldom/xmldom": "^0.9.10",
     "ably": "^2.21.0",
     "archiver": "^8.0.0",
     "ccstate": "^5.4.0",
