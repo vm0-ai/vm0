@@ -2,9 +2,13 @@ import {
   ZERO_CUSTOM_CONNECTOR_IDS_ENV_KEY,
   type CustomConnectorMcpClientResponse,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
+import type { ZeroMcpConnector } from "@vm0/api-contracts/contracts/zero-mcp-connectors";
 import { z } from "zod";
 
-import { listZeroCustomConnectors } from "../../../lib/api/domains/zero-connectors";
+import {
+  listZeroCustomConnectors,
+  listZeroRunMcpConnectors,
+} from "../../../lib/api/domains/zero-connectors";
 
 const MAX_RUN_CONNECTOR_IDS_BYTES = 128 * 1024;
 const RUN_METADATA_ERROR =
@@ -43,9 +47,14 @@ function readRunConnectorIds(): Set<string> {
   return uniqueIds;
 }
 
-export async function listRunMcpConnectors(): Promise<
-  CustomConnectorMcpClientResponse[]
-> {
+export async function listRunMcpConnectors(): Promise<ZeroMcpConnector[]> {
+  const discoveredConnectors = await listZeroRunMcpConnectors();
+  if (discoveredConnectors !== null) {
+    return discoveredConnectors;
+  }
+
+  // Compatibility fallback for old API deployments. Remove in #26389 after
+  // all supported CLIs observe the server-authored discovery endpoint.
   const admittedIds = readRunConnectorIds();
   const connectors = await listZeroCustomConnectors();
 
@@ -62,7 +71,7 @@ export async function listRunMcpConnectors(): Promise<
 
 export async function resolveRunMcpConnector(
   connectorSlug: string,
-): Promise<CustomConnectorMcpClientResponse> {
+): Promise<ZeroMcpConnector> {
   const connectors = await listRunMcpConnectors();
   const connector = connectors.find((candidate) => {
     return candidate.slug === connectorSlug;

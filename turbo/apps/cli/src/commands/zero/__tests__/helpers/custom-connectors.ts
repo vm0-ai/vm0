@@ -4,6 +4,7 @@ import type {
   CustomConnectorMcpResponse,
   CustomConnectorResponse,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
+import type { ZeroMcpConnector } from "@vm0/api-contracts/contracts/zero-mcp-connectors";
 import type { AgentCustomConnectorGrant } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 
 export function customConnector(
@@ -87,6 +88,45 @@ export function stubCustomConnectors(
 ) {
   return http.get(`${origin}/api/zero/custom-connectors`, () => {
     return HttpResponse.json({ connectors });
+  });
+}
+
+export function runMcpConnector(
+  overrides: Partial<ZeroMcpConnector> = {},
+): ZeroMcpConnector {
+  return {
+    id: "44444444-4444-4444-8444-444444444444",
+    slug: "_acme-mcp",
+    displayName: "Acme MCP",
+    transport: "streamable-http",
+    endpoint: "https://mcp.example.test/server",
+    connected: true,
+    ...overrides,
+  };
+}
+
+export function stubRunMcpConnectors(
+  connectors: readonly ZeroMcpConnector[],
+  origin = "http://localhost:3000",
+) {
+  return http.get(`${origin}/api/zero/mcp-connectors`, () => {
+    return HttpResponse.json({ connectors });
+  });
+}
+
+export function stubRunMcpConnectorsUnavailable(
+  origin = "http://localhost:3000",
+) {
+  return http.get(`${origin}/api/zero/mcp-connectors`, () => {
+    return HttpResponse.json(
+      {
+        error: {
+          code: "NOT_FOUND",
+          message: "Route not found",
+        },
+      },
+      { status: 404 },
+    );
   });
 }
 
