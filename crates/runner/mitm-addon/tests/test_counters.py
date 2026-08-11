@@ -1,7 +1,7 @@
 """Tests for usage pending counters."""
 
 import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -12,11 +12,12 @@ from tests.usage_buffer_helpers import RecordingEnqueue, event
 
 
 def assert_counter_underflow_message(message: str, counter: str) -> None:
-    assert "type=usage_underbilling" in message
-    assert "reason=usage_pending_counter_underflow" in message
-    assert "underbilling_class=risk" in message
-    assert "component=mitm_addon" in message
-    assert f"counter={counter}" in message
+    assert message == (
+        "type=usage_underbilling reason=usage_pending_counter_underflow "
+        "underbilling_class=risk component=mitm_addon "
+        f"counter={counter} Usage pending counter release had no matching admission; "
+        "keeping counter non-negative."
+    )
 
 
 class TestUsagePendingCounter:
@@ -50,10 +51,9 @@ class TestUsagePendingCounter:
         state = assert_pending(next_pending_path, flows=0, buffered=0, reports=0)
         assert state["usageStateId"] != "before-reset"
 
-    def test_reset_for_tests_reenables_pending_write_failure_signal(self, tmp_path):
-        mock_log = MagicMock()
+    def test_reset_for_tests_reenables_pending_write_failure_signal(self, tmp_path, mitm_ctx):
         with (
-            patch.object(usage.counters.ctx, "log", mock_log, create=True),
+            mitm_ctx() as mock_log,
             patch.object(usage.counters.Path, "open", side_effect=OSError("disk full")),
         ):
             usage.set_pending_path(str(tmp_path / "usage-pending-before-reset"))
@@ -109,12 +109,11 @@ class TestUsagePendingCounter:
             pending_path, flows=0, buffered=0, reports=0, flush_request_id="released"
         )
 
-    def test_balanced_counter_releases_do_not_log_underflow(self, tmp_path):
+    def test_balanced_counter_releases_do_not_log_underflow(self, tmp_path, mitm_ctx):
         pending_path = tmp_path / "usage-pending"
         usage.set_pending_path(str(pending_path))
 
-        mock_log = MagicMock()
-        with patch.object(usage.counters.ctx, "log", mock_log, create=True):
+        with mitm_ctx() as mock_log:
             usage.increment_in_flight_flows()
             usage.decrement_in_flight_flows()
             pending_report = usage.counters.admit_pending_report()
@@ -241,12 +240,11 @@ class TestUsagePendingCounter:
 
         assert usage.read_usage_flush_request_id() == "request-1"
 
-    def test_flow_decrement_underflow_stays_non_negative_and_logs_once(self, tmp_path):
+    def test_flow_decrement_underflow_stays_non_negative_and_logs_once(self, tmp_path, mitm_ctx):
         pending_path = tmp_path / "usage-pending"
         usage.set_pending_path(str(pending_path))
 
-        mock_log = MagicMock()
-        with patch.object(usage.counters.ctx, "log", mock_log, create=True):
+        with mitm_ctx() as mock_log:
             usage.decrement_in_flight_flows()
             usage.decrement_in_flight_flows()
 
@@ -281,6 +279,7 @@ class TestUsagePendingCounter:
         admitted_reports,
         remaining_buffered,
         remaining_reports,
+        mitm_ctx,
     ):
         pending_path = tmp_path / "usage-pending"
         usage.set_pending_path(str(pending_path))
@@ -294,8 +293,7 @@ class TestUsagePendingCounter:
             flush_request_id="admitted",
         )
 
-        mock_log = MagicMock()
-        with patch.object(usage.counters.ctx, "log", mock_log, create=True):
+        with mitm_ctx() as mock_log:
             first.release()
             first.release()
 
@@ -314,11 +312,10 @@ class TestUsagePendingCounter:
             pending_path, flows=0, buffered=0, reports=0, flush_request_id="all-released"
         )
 
-    def test_reset_for_tests_reenables_counter_underflow_signal(self, tmp_path):
+    def test_reset_for_tests_reenables_counter_underflow_signal(self, tmp_path, mitm_ctx):
         usage.set_pending_path(str(tmp_path / "usage-pending-before-reset"))
 
-        mock_log = MagicMock()
-        with patch.object(usage.counters.ctx, "log", mock_log, create=True):
+        with mitm_ctx() as mock_log:
             usage.decrement_in_flight_flows()
             usage.counters.reset_for_tests()
             usage.set_pending_path(str(tmp_path / "usage-pending-after-reset"))
@@ -343,37 +340,61 @@ class TestUsagePendingCounter:
 
     # ---- one-shot error signal on write failure (issue #10483) ----
 
-    def test_write_failure_logs_underbilling_once_per_process(self, tmp_path):
+    def test_write_failure_logs_underbilling_once_per_process(self, tmp_path, mitm_ctx):
         """Repeated OSErrors from pending snapshot writes emit exactly one
         ``ctx.log.error`` per addon process — enough to seed FS-trouble
         investigation without spamming logs on sustained failure."""
-        usage.set_pending_path(str(tmp_path / "usage-pending"))
+        pending_path = str(tmp_path / f"usage-pending\n{'p' * 400}")
+        write_error = OSError(f"disk full\n{'e' * 400}")
 
-        mock_log = MagicMock()
         with (
-            patch.object(usage.counters.ctx, "log", mock_log, create=True),
-            patch.object(usage.counters.Path, "open", side_effect=OSError("disk full")),
+            mitm_ctx() as mock_log,
+            patch.object(usage.counters.Path, "open", side_effect=write_error),
         ):
-            for _ in range(3):
+            usage.set_pending_path(pending_path)
+            for _ in range(2):
                 usage.write_pending_snapshot(flush_request_id="request-1")
 
         assert mock_log.error.call_count == 1
         assert mock_log.warn.call_count == 0
         message = mock_log.error.call_args[0][0]
-        assert "type=usage_underbilling" in message
-        assert "reason=pending_snapshot_write_failed" in message
-        assert "underbilling_class=risk" in message
-        assert "component=mitm_addon" in message
-        assert "Failed to write pending count" in message
-        assert "disk full" in message
+        rendered_fields, rendered_message = message.split(" Failed to write pending count.", 1)
+        field_tokens = rendered_fields.split()
+        assert [token.split("=", 1)[0] for token in field_tokens] == [
+            "type",
+            "reason",
+            "underbilling_class",
+            "component",
+            "error",
+            "error_type",
+            "pending_path",
+        ]
+        fields = dict(token.split("=", 1) for token in field_tokens)
+        assert fields["type"] == "usage_underbilling"
+        assert fields["reason"] == "pending_snapshot_write_failed"
+        assert fields["underbilling_class"] == "risk"
+        assert fields["component"] == "mitm_addon"
+        assert fields["error_type"] == "OSError"
+        assert fields["error"].startswith("disk\\sfull\\n")
+        assert fields["pending_path"].startswith(str(tmp_path))
+        assert "\\n" in fields["pending_path"]
+        assert len(fields["error"]) == 256
+        assert len(fields["pending_path"]) == 256
+        assert fields["error"].endswith("...")
+        assert fields["pending_path"].endswith("...")
+        assert rendered_message == (
+            " Subsequent failures in this process will be silent; runner shutdown may hit the "
+            "bounded proxy stop timeout."
+        )
+        assert "\n" not in message
 
-    def test_write_failure_does_not_raise(self, tmp_path):
-        """Write failures stay best-effort after the one-shot warn — callers
+    def test_write_failure_does_not_raise(self, tmp_path, mitm_ctx):
+        """Write failures stay best-effort after the one-shot error signal — callers
         (hot-path increment/decrement) must never observe the OSError."""
         usage.set_pending_path(str(tmp_path / "usage-pending"))
 
         with (
-            patch.object(usage.counters.ctx, "log", MagicMock(), create=True),
+            mitm_ctx(),
             patch.object(usage.counters.Path, "open", side_effect=OSError("disk full")),
         ):
             usage.write_pending_snapshot(flush_request_id="request-1")  # should not raise

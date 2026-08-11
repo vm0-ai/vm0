@@ -2820,8 +2820,9 @@ describe("zero attachment chips", () => {
     expect(screen.queryByAltText("1280x720")).toBeNull();
   });
 
-  it("opens canonical markdown and text previews, shares a document link, and reports download failures", async () => {
+  it("opens canonical text previews and downloads a private presentation from its presigned url", async () => {
     const releaseNotesUrl = canonicalUserMessageFileUrl("attachment-markdown");
+    const browser = context.mocks.browser.blobDownload();
     context.mocks.browser.clipboardWriteText();
     context.mocks.http.get(PRESIGNED_FILE_PATTERN, ({ params }) => {
       const fileId = params.fileId;
@@ -2835,10 +2836,18 @@ describe("zero attachment chips", () => {
           headers: { "Content-Type": "text/plain" },
         });
       }
+      if (fileId === "attachment-presentation") {
+        return new Response("presentation bytes", {
+          headers: {
+            "Content-Type":
+              "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+          },
+        });
+      }
       return new Response(null, { status: 500 });
     });
-    // A download reads the canonical route directly, so it keeps its own
-    // failure path independent of the presigned preview URL.
+    // Guard against regressing to the canonical route, which needs an
+    // Authorization header that the download fetch does not carry.
     context.mocks.http.get("/api/zero/web/download-file", () => {
       return new Response(null, { status: 500 });
     });
@@ -2864,9 +2873,10 @@ describe("zero attachment chips", () => {
             },
             {
               type: "file",
-              fileId: "attachment-file",
-              filenameSnapshot: "archive.bin",
-              contentType: "application/octet-stream",
+              fileId: "attachment-presentation",
+              filenameSnapshot: "quarterly-plan.pptx",
+              contentType:
+                "application/vnd.openxmlformats-officedocument.presentationml.presentation",
             },
           ],
           createdAt: "2026-03-10T00:00:00Z",
@@ -2886,7 +2896,9 @@ describe("zero attachment chips", () => {
       expect(
         screen.getByLabelText("Open text preview for transcript.txt"),
       ).toBeInTheDocument();
-      expect(screen.getByLabelText("Download archive.bin")).toBeInTheDocument();
+      expect(
+        screen.getByLabelText("Download quarterly-plan.pptx"),
+      ).toBeInTheDocument();
     });
 
     click(screen.getByLabelText("Open markdown preview for release-notes.md"));
@@ -2929,10 +2941,15 @@ describe("zero attachment chips", () => {
       ).not.toBeInTheDocument();
     });
 
-    click(screen.getByLabelText("Download archive.bin"));
+    click(screen.getByLabelText("Download quarterly-plan.pptx"));
 
     await waitFor(() => {
-      expect(screen.getByText("Download failed")).toBeInTheDocument();
+      expect(browser.downloads).toHaveLength(1);
     });
+    expect(browser.downloads[0]).toMatchObject({
+      filename: "quarterly-plan.pptx",
+      blob: expect.any(Blob),
+    });
+    expect(screen.queryByText("Download failed")).not.toBeInTheDocument();
   });
 });

@@ -493,6 +493,37 @@ describe("FILE-03 desktop computer-use runtime", () => {
     ).toBeFalsy();
   });
 
+  it("tracks Desktop product identity across start and heartbeat", async () => {
+    const actor = bdd.user();
+    const legacyHost = await api.startComputerUseHost(actor, {
+      hostName: "Legacy Mac",
+    });
+    const okouHost = await api.startComputerUseHost(actor, {
+      clientProduct: "okou",
+      hostName: "Okou Mac",
+    });
+
+    const startedHosts = await api.listComputerUseHosts(actor);
+    expect(startedHosts.hosts).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: legacyHost.hostId, product: "zero" }),
+        expect.objectContaining({ id: okouHost.hostId, product: "okou" }),
+      ]),
+    );
+
+    await api.heartbeatComputerUseHost(okouHost.hostToken, {
+      clientProduct: "zero",
+      hostName: "Okou Mac",
+    });
+
+    const updatedHosts = await api.listComputerUseHosts(actor);
+    expect(
+      updatedHosts.hosts.find((host) => {
+        return host.id === okouHost.hostId;
+      }),
+    ).toMatchObject({ product: "zero" });
+  });
+
   it("keeps multiple active hosts and lets stale heartbeats recover", async () => {
     const actor = bdd.user();
     const base = now();

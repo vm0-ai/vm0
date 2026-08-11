@@ -68,6 +68,7 @@ describe("chat lifecycle", () => {
         hosts: [
           {
             id: hostId,
+            product: "okou",
             displayName: "Studio Mac",
             appVersion: "1.0.0",
             osVersion: "macOS 15.0",
@@ -91,6 +92,7 @@ describe("chat lifecycle", () => {
     });
     await user.click(await screen.findByLabelText("Connectors"));
     expect(screen.getByText("Your computer")).toBeInTheDocument();
+    expect(screen.getByText("Okou")).toBeInTheDocument();
     expect(
       screen.getByRole("switch", { name: "Enable Cloud browser" }),
     ).toHaveAttribute("aria-checked", "false");

@@ -537,62 +537,6 @@
     }
   }
 
-  /* Animated number — the hidden text owns width and baseline while the
-     overlaid digits move independently without shifting adjacent copy. */
-  .animated-number {
-    position: relative;
-    display: inline-block;
-    vertical-align: baseline;
-    line-height: inherit;
-    font-variant-numeric: tabular-nums;
-    font-feature-settings: "tnum" 1;
-    clip-path: inset(0);
-  }
-
-  .animated-number-measure {
-    visibility: hidden;
-    white-space: pre;
-  }
-
-  .animated-number-visual {
-    position: absolute;
-    inset: 0;
-    white-space: pre;
-  }
-
-  .animated-number-digit {
-    display: inline-block;
-    min-width: 1ch;
-    text-align: center;
-    animation: animated-number-digit-in 160ms cubic-bezier(0.22, 1, 0.36, 1)
-      both;
-  }
-
-  .animated-number-separator {
-    display: inline-block;
-    animation: animated-number-separator-in 180ms ease-out both;
-  }
-
-  @keyframes animated-number-digit-in {
-    from {
-      opacity: 0.35;
-      transform: translateY(0.62em);
-    }
-  }
-
-  @keyframes animated-number-separator-in {
-    from {
-      opacity: 0;
-    }
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .animated-number-digit,
-    .animated-number-separator {
-      animation: none;
-    }
-  }
-
   /* Running indicator — breathing dot for "in progress" state. */
   .running-indicator {
     position: relative;

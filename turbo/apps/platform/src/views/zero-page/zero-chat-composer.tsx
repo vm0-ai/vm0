@@ -5,6 +5,7 @@ import type {
   KeyboardEvent as ReactKeyboardEvent,
   MouseEvent as ReactMouseEvent,
 } from "react";
+import type { DesktopProduct } from "@vm0/api-contracts/contracts/client-headers";
 import {
   useGet,
   useSet,
@@ -17,6 +18,7 @@ import {
 import { useTranslation } from "react-i18next";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { i18n } from "../../i18n/index.ts";
+import { desktopProductDisplayName } from "../../i18n/desktop-product.ts";
 import { equalArrays } from "../../lib/equality.ts";
 import { ensurePushSubscription$ } from "../../lib/push-notifications.ts";
 import { isMobileTextInputDevice } from "../../lib/visual-viewport-keyboard.ts";
@@ -266,6 +268,7 @@ interface ComposerConnectorReadState {
 
 interface ComposerComputerUseHost {
   id: string;
+  product: DesktopProduct;
   hostName: string;
   displayName: string;
   status: "online" | "offline";
@@ -6205,7 +6208,11 @@ function ComputerUseConnectorMenuSection({
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm text-foreground">
-                    {host.displayName}
+                    <span>{host.displayName}</span>
+                    <span className="ml-1 text-xs text-muted-foreground">
+                      {" "}
+                      {desktopProductDisplayName(host.product)}
+                    </span>
                   </span>
                   {host.status === "offline" && (
                     <span className="block text-[11px] leading-3 text-muted-foreground">
