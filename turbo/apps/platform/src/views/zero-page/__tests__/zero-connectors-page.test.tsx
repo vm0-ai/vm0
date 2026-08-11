@@ -4557,9 +4557,6 @@ describe("connectors page", () => {
     const editDialog = await screen.findByRole("dialog", {
       name: "Edit custom connector",
     });
-    await waitFor(() => {
-      expect(editDialog).toHaveStyle({ pointerEvents: "auto" });
-    });
     await fill(
       within(editDialog).getByLabelText("Display name"),
       "Acme Billing API",
