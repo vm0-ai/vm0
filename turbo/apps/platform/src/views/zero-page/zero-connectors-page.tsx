@@ -25,7 +25,6 @@ import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import { agents$ } from "../../signals/agent.ts";
 import { CustomConnectorsPanel } from "./components/settings/custom-connectors-panel.tsx";
-import { ConnectorCatalogDescription } from "./components/settings/connector-catalog-description.tsx";
 import {
   connectorCatalogDiscovery$,
   connectConnectorOAuthAuthCode$,
@@ -1035,14 +1034,14 @@ export function ZeroConnectorsPage() {
               })}
             </h1>
             {connectorCatalogCountEnabled ? (
-              <ConnectorCatalogDescription
-                connectorCount={
-                  catalogStatusLoadable.state === "hasData"
-                    ? (catalogStatusLoadable.data.totalConnectorCount ??
-                      catalogStatusLoadable.data.connectors.length)
-                    : null
-                }
-              />
+              <p className="mt-0.5 text-sm text-muted-foreground">
+                {t(
+                  ($) => {
+                    return $.connectors.catalog.descriptionWithCount;
+                  },
+                  { value: "700+" },
+                )}
+              </p>
             ) : (
               <p className="mt-0.5 text-sm text-muted-foreground">
                 {t(($) => {
