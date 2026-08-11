@@ -1792,7 +1792,7 @@ async function validateCustomConnectorDefinitionContraction(): Promise<void> {
 
     await client.query(`
       CREATE VIEW "custom_connector_legacy_definition_dependency" AS
-      SELECT "id", "prefixes"
+      SELECT "id", "header_template"
       FROM "org_custom_connectors"
     `);
     await assert.rejects(
@@ -1800,7 +1800,7 @@ async function validateCustomConnectorDefinitionContraction(): Promise<void> {
         client,
         CUSTOM_CONNECTOR_DEFINITION_CONTRACTION_MIGRATION,
       ),
-      /cannot drop column prefixes .* because other objects depend on it/u,
+      /cannot drop column header_template .* because other objects depend on it/u,
     );
     const columnsAfterRejectedContraction = await client.query<{
       columnName: string;
