@@ -1,7 +1,6 @@
 import { http, HttpResponse } from "msw";
 import type {
   CustomConnectorHttpResponse,
-  CustomConnectorMcpResponse,
   CustomConnectorResponse,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import type { ZeroMcpConnector } from "@vm0/api-contracts/contracts/zero-mcp-connectors";
@@ -43,45 +42,6 @@ export function customConnector(
   };
 }
 
-export function mcpCustomConnector(
-  overrides: Partial<CustomConnectorMcpResponse> = {},
-): CustomConnectorMcpResponse {
-  return {
-    kind: "mcp",
-    id: "44444444-4444-4444-8444-444444444444",
-    slug: "_acme-mcp",
-    displayName: "Acme MCP",
-    endpoint: "https://mcp.example.test/server",
-    transport: "streamable-http",
-    prefixTemplates: [],
-    permissionBundleRef: null,
-    fields: [
-      {
-        key: "secret",
-        label: "Secret",
-        kind: "secret",
-        required: true,
-      },
-    ],
-    headerInjections: [
-      {
-        name: "Authorization",
-        valueTemplate: "Bearer {{secrets.secret}}",
-      },
-    ],
-    queryInjections: [],
-    authMode: "manual",
-    storageVersion: 1,
-    connected: true,
-    missingRequiredFields: [],
-    configuredFieldKeys: ["secret"],
-    createdAt: "2026-01-01T00:00:00.000Z",
-    updatedAt: "2026-01-01T00:00:00.000Z",
-    hasSecret: true,
-    ...overrides,
-  };
-}
-
 export function stubCustomConnectors(
   connectors: readonly CustomConnectorResponse[],
   origin = "http://localhost:3000",
@@ -111,14 +71,6 @@ export function stubRunMcpConnectors(
 ) {
   return http.get(`${origin}/api/zero/mcp-connectors`, () => {
     return HttpResponse.json({ connectors });
-  });
-}
-
-export function stubRunMcpConnectorsUnavailable(
-  origin = "http://localhost:3000",
-) {
-  return http.get(`${origin}/api/zero/mcp-connectors`, () => {
-    return HttpResponse.json({ error: "Not found" }, { status: 404 });
   });
 }
 

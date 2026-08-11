@@ -5,8 +5,6 @@ import { apiErrorSchema } from "./errors";
 
 const c = initContract();
 
-export const ZERO_CUSTOM_CONNECTOR_IDS_ENV_KEY = "ZERO_CUSTOM_CONNECTOR_IDS";
-
 export const customConnectorSlugSchema = z
   .string()
   .regex(/^_[a-z0-9][a-z0-9-]{0,60}[a-z0-9]$/u);

@@ -18,7 +18,6 @@ import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
 import type { CodexServiceTier } from "@vm0/api-contracts/contracts/chat-threads";
 import type { RunContextResponse } from "@vm0/api-contracts/contracts/zero-runs";
 import type { AgentCustomConnectorGrant } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
-import { ZERO_CUSTOM_CONNECTOR_IDS_ENV_KEY } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import {
   connectorSlugSchema,
   type ConnectorAuthMethodId,
@@ -5855,13 +5854,6 @@ async function buildStoredExecutionContextDraft(args: {
     permissionManifest: permissions,
     customTargets: args.customConnectorContext.targets,
   });
-  const customConnectorIds = [
-    ...new Set(
-      connectorRuntimeTargets.flatMap((target) => {
-        return target.kind === "custom" ? [target.customConnectorId] : [];
-      }),
-    ),
-  ].sort();
   const environment = {
     ...expandEnvironment({
       content: args.resolved.content,
@@ -5874,7 +5866,6 @@ async function buildStoredExecutionContextDraft(args: {
     }),
     ...args.extraEnvironment,
     CLI_PKG_URL: env("CLI_PKG_URL"),
-    [ZERO_CUSTOM_CONNECTOR_IDS_ENV_KEY]: JSON.stringify(customConnectorIds),
   };
   const environmentKeyByValue = new Map<string, string>();
   for (const [key, value] of Object.entries(environment)) {

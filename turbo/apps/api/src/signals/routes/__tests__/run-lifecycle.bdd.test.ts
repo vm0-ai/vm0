@@ -13,10 +13,7 @@ import {
   type ConnectorRuntimeSyncResult,
   type Job as RunnerJob,
 } from "@vm0/api-contracts/contracts/runners";
-import {
-  type CreateCustomConnectorBody,
-  ZERO_CUSTOM_CONNECTOR_IDS_ENV_KEY,
-} from "@vm0/api-contracts/contracts/zero-custom-connectors";
+import type { CreateCustomConnectorBody } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import { testCustomConnectorSkillVersionAssociationContract } from "@vm0/api-contracts/contracts/test-custom-connector-skill-version-association";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
@@ -8589,9 +8586,6 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     await api.heartbeatRunner(runnerGroup);
     const disabledClaim = await api.claimRunnerJob(disabledRun.runId);
     const mcpInternalName = `custom_connector_${mcp.id.replaceAll("-", "")}`;
-    expect(disabledClaim.environment?.[ZERO_CUSTOM_CONNECTOR_IDS_ENV_KEY]).toBe(
-      JSON.stringify([http.id]),
-    );
     expect(disabledClaim.connectorRuntimeTargets).not.toContainEqual(
       expect.objectContaining({
         kind: "custom",
@@ -8622,7 +8616,6 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
           framework: "claude-code",
           environment: {
             ANTHROPIC_API_KEY: "bdd-inline-key",
-            [ZERO_CUSTOM_CONNECTOR_IDS_ENV_KEY]: JSON.stringify([randomUUID()]),
           },
         },
       },
@@ -8637,9 +8630,6 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     );
     const claim = await api.claimRunnerJob(run.runId);
     const admittedIds = [http.id, mcp.id].sort();
-    expect(claim.environment?.[ZERO_CUSTOM_CONNECTOR_IDS_ENV_KEY]).toBe(
-      JSON.stringify(admittedIds),
-    );
     expect(
       claim.connectorRuntimeTargets
         .flatMap((target) => {
@@ -8799,9 +8789,6 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(
       availableCustomConnectorRuntime(removedGrantResult).baseUrlVars,
     ).toStrictEqual({});
-    expect(claim.environment?.[ZERO_CUSTOM_CONNECTOR_IDS_ENV_KEY]).toBe(
-      JSON.stringify(admittedIds),
-    );
 
     await connectors.deleteCustomConnector(actor, mcp.id);
     const [deletedResult] = await api.syncConnectorRuntime(run.runId, {
@@ -8886,9 +8873,6 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(run.runId);
     const expectedIds = [...createdIds].sort();
-    expect(claim.environment?.[ZERO_CUSTOM_CONNECTOR_IDS_ENV_KEY]).toBe(
-      JSON.stringify(expectedIds),
-    );
     expect(
       claim.connectorRuntimeTargets
         .flatMap((target) => {
@@ -9703,9 +9687,6 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     });
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(run.runId);
-    expect(claim.environment?.[ZERO_CUSTOM_CONNECTOR_IDS_ENV_KEY]).toBe(
-      JSON.stringify([mcp.id]),
-    );
     const internalName = `custom_connector_${mcp.id.replaceAll("-", "")}`;
     expect(inlineFirewallApis(claim.firewalls, internalName)[0]).toMatchObject({
       base: "https://mcp-oauth.example.test/oauth/mcp",
