@@ -388,8 +388,8 @@ describe("video Artifact previews", () => {
 
 describe("artifact upload provenance", () => {
   it.each([
-    "workflow-schedule",
-    "workflow-event",
+    "automation-schedule",
+    "automation-event",
     "automation-schedule",
     "automation-event",
     "goal",

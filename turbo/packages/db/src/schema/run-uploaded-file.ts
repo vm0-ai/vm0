@@ -22,8 +22,6 @@ import type {
 } from "@vm0/db/jsonb-contracts/run-uploaded-file";
 
 export const RUN_UPLOADED_FILE_SOURCES = [
-  "workflow-schedule",
-  "workflow-event",
   "automation-schedule",
   "automation-event",
   "goal",

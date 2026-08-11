@@ -555,8 +555,8 @@ describe("GET /api/zero/usage/record", () => {
     await seedConnectorPricing(connectorProvider);
 
     const sources = [
-      ["workflow-schedule", 2],
-      ["workflow-event", 3],
+      ["automation-schedule", 2],
+      ["automation-event", 3],
       ["automation-schedule", 4],
       ["automation-event", 5],
       ["goal", 6],

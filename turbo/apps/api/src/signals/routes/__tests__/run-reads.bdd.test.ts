@@ -311,8 +311,8 @@ describe("RUN-03/RUN-04: direct run list, detail, and queue reads", () => {
     }
 
     const triggerSources = [
-      "workflow-schedule",
-      "workflow-event",
+      "automation-schedule",
+      "automation-event",
       "automation-schedule",
       "automation-event",
       "goal",
