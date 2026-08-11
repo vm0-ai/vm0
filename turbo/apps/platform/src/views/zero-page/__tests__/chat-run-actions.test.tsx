@@ -1,4 +1,5 @@
 import { screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
@@ -148,7 +149,8 @@ describe("chat run actions", () => {
     },
   );
 
-  it("explains a steer message through its tooltip trigger", async () => {
+  it("explains a steer message when its indicator is hovered", async () => {
+    const user = userEvent.setup({ delay: null });
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
       activeRunIds: [RUN_ID],
@@ -168,7 +170,14 @@ describe("chat run actions", () => {
     expect(indicator).toHaveAccessibleName(
       "Sent while the agent was working to direct its behavior",
     );
-    expect(indicator).toHaveAttribute("data-slot", "tooltip-trigger");
+    await user.hover(indicator);
+
+    await expect(
+      screen.findByText(
+        "Sent while the agent was working to direct its behavior",
+        { selector: "div" },
+      ),
+    ).resolves.toBeVisible();
   });
 
   it("keeps legacy actions and hides steer indicators when the feature switch is disabled", async () => {

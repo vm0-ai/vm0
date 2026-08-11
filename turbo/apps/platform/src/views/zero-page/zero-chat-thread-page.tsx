@@ -3508,8 +3508,7 @@ function ChatThreadEventGroups({
       onToggleRunGroup,
     });
   const continuationPresentationEnabled =
-    useGet(featureSwitch$)[FeatureSwitchKey.ChatRunContinuationPresentation] ??
-    false;
+    useGet(featureSwitch$)[FeatureSwitchKey.ChatRunContinuationPresentation];
   const runPresentation = continuationPresentationEnabled
     ? chatRunPresentationForGroups(groups)
     : null;
