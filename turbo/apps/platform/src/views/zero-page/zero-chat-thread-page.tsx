@@ -1032,6 +1032,17 @@ interface ChatThreadEmojiCategory {
   icon: LucideIcon;
   items: ChatThreadEmojiItem[];
   showShortcutDigits: boolean;
+  // The emoji dataset names an emoji the way a shortcode does; the frequently
+  // used row names it the way this product does ("Done", "Urgent"), which is
+  // translated and must not be dressed up as a shortcode.
+  shortcodeNames: boolean;
+}
+
+function chatThreadEmojiDisplayName(
+  name: string,
+  shortcodeNames: boolean,
+): string {
+  return shortcodeNames ? `:${name.replace(/\s+/g, "_")}:` : name;
 }
 
 function chatThreadEmojiSectionId(key: string): string {
@@ -1092,6 +1103,7 @@ function chatThreadEmojiCategories(
       icon: Clock,
       items: frequentItems,
       showShortcutDigits: true,
+      shortcodeNames: false,
     },
     ...(groups ?? []).map((group) => {
       return {
@@ -1100,6 +1112,7 @@ function chatThreadEmojiCategories(
         icon: chatThreadEmojiCategoryIcon(group.name),
         items: group.emojis,
         showShortcutDigits: false,
+        shortcodeNames: true,
       };
     }),
   ];
@@ -1312,7 +1325,7 @@ function ChatThreadEmojiPreview() {
             {preview.emoji}
           </span>
           <span className="truncate text-xs font-medium text-muted-foreground">
-            {`:${preview.name.replace(/\s+/g, "_")}:`}
+            {preview.name}
           </span>
         </>
       ) : (
@@ -1351,7 +1364,7 @@ function ChatThreadEmojiFeed({
     }
     const button = target.closest<HTMLElement>("[data-chat-thread-emoji]");
     const emoji = button?.dataset.chatThreadEmoji;
-    const name = button?.getAttribute("aria-label");
+    const name = button?.dataset.chatThreadEmojiName;
     setPreview(emoji && name ? { emoji, name } : null);
   }
 
@@ -1434,6 +1447,7 @@ function ChatThreadEmojiFeed({
               items={category.items}
               onSelect={onSelect}
               showShortcutDigits={category.showShortcutDigits}
+              shortcodeNames={category.shortcodeNames}
               pinnedTitle={railEnabled}
             />
           );
@@ -1449,6 +1463,7 @@ function ChatThreadEmojiSection({
   items,
   onSelect,
   showShortcutDigits = false,
+  shortcodeNames = true,
   pinnedTitle = false,
 }: {
   categoryKey: string;
@@ -1456,6 +1471,7 @@ function ChatThreadEmojiSection({
   items: ChatThreadEmojiItem[];
   onSelect: (emoji: string) => void;
   showShortcutDigits?: boolean;
+  shortcodeNames?: boolean;
   pinnedTitle?: boolean;
 }) {
   const { t } = useTranslation();
@@ -1497,6 +1513,7 @@ function ChatThreadEmojiSection({
         items={items}
         onSelect={onSelect}
         showShortcutDigits={showShortcutDigits}
+        shortcodeNames={shortcodeNames}
       />
     </div>
   );
@@ -1513,10 +1530,12 @@ function ChatThreadEmojiGrid({
   items,
   onSelect,
   showShortcutDigits = false,
+  shortcodeNames = true,
 }: {
   items: ChatThreadEmojiItem[];
   onSelect: (emoji: string) => void;
   showShortcutDigits?: boolean;
+  shortcodeNames?: boolean;
 }) {
   // Nine columns so the nine frequently-used digit shortcuts sit on a single
   // row; every other emoji group uses the same width to stay aligned.
@@ -1538,6 +1557,10 @@ function ChatThreadEmojiGrid({
             type="button"
             aria-label={item.name}
             data-chat-thread-emoji={item.emoji}
+            data-chat-thread-emoji-name={chatThreadEmojiDisplayName(
+              item.name,
+              shortcodeNames,
+            )}
             title={shortcutLabel}
             className="relative flex aspect-square items-center justify-center rounded-md text-xl leading-none transition-colors hover:bg-state-hover"
             onClick={() => {
