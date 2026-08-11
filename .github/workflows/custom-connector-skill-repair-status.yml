@@ -1,0 +1,72 @@
+name: Check custom connector skill repair status
+
+run-name: Check production custom connector skill repair status
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/custom-connector-skill-repair-status.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  status:
+    name: Check production repair status
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: production
+    steps:
+      - name: Query status endpoint
+        shell: bash
+        env:
+          VM0_API_BACKEND_URL: ${{ vars.VM0_API_BACKEND_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${VM0_API_BACKEND_URL}" ]]; then
+            echo "::error::VM0_API_BACKEND_URL is not configured"
+            exit 1
+          fi
+          if [[ -z "${CRON_SECRET}" ]]; then
+            echo "::error::CRON_SECRET is not configured"
+            exit 1
+          fi
+
+          response_path="${RUNNER_TEMP}/custom-connector-skill-repair-status.json"
+          trap 'rm -f "${response_path}"' EXIT
+
+          http_status="$(
+            curl --silent --show-error \
+              --max-time 120 \
+              --output "${response_path}" \
+              --write-out "%{http_code}" \
+              --header "Authorization: Bearer ${CRON_SECRET}" \
+              "${VM0_API_BACKEND_URL%/}/api/cron/repair-custom-connector-skill-versions/status"
+          )"
+
+          if ! jq . "${response_path}"; then
+            echo "::error::Status endpoint returned invalid JSON"
+            exit 1
+          fi
+
+          {
+            echo "## Custom connector skill repair status"
+            echo
+            echo '```json'
+            jq . "${response_path}"
+            echo '```'
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+          if [[ "${http_status}" != "200" ]]; then
+            echo "::error::Status endpoint returned HTTP ${http_status}"
+            exit 1
+          fi
+
+          complete="$(jq -r '.complete // false' "${response_path}")"
+          if [[ "${complete}" == "true" ]]; then
+            echo "::notice::Custom connector skill repair is complete"
+          else
+            echo "::warning::Custom connector skill repair is not complete"
+          fi
