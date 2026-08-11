@@ -18,6 +18,7 @@ import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { chatEventSnapshots } from "@vm0/db/schema/chat-event-snapshot";
 import { checkpoints } from "@vm0/db/schema/checkpoint";
 import { hostedSites } from "@vm0/db/schema/hosted-site";
+import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
 import { threadGoals } from "@vm0/db/schema/thread-goal";
@@ -1221,6 +1222,41 @@ type CompatibilityFixtureAction =
   | PreviousApiRunnerJobContextProfileAction
   | ConnectorPermissionBaselineMutationAction;
 
+type CustomConnectorAuthTemplateFixtureAction = Extract<
+  TestRuntimeStateActionBody,
+  { action: "set-custom-connector-auth-template-fixture" }
+>;
+
+function isCustomConnectorAuthTemplateFixtureAction(
+  body: TestRuntimeStateActionBody,
+): body is CustomConnectorAuthTemplateFixtureAction {
+  return body.action === "set-custom-connector-auth-template-fixture";
+}
+
+async function customConnectorAuthTemplateFixtureActionResponse(
+  db: Db,
+  body: CustomConnectorAuthTemplateFixtureAction,
+  signal: AbortSignal,
+) {
+  const [updated] = await db
+    .update(orgCustomConnectors)
+    .set({
+      headerInjections: [
+        {
+          name: "Authorization",
+          valueTemplate: body.value_template,
+        },
+      ],
+    })
+    .where(eq(orgCustomConnectors.id, body.connector_id))
+    .returning({ id: orgCustomConnectors.id });
+  signal.throwIfAborted();
+  if (!updated) {
+    throw new Error("Expected a Custom Connector definition fixture");
+  }
+  return { status: 200 as const, body: { ok: true as const } };
+}
+
 type ChatEventSnapshotFixtureAction = Extract<
   TestRuntimeStateActionBody,
   {
@@ -1381,6 +1417,13 @@ const postRuntimeStateAction$ = command(
     }
     if (isVm0ManagedModelKeyAction(body)) {
       return await vm0ManagedModelKeyActionResponse(db, body, signal);
+    }
+    if (isCustomConnectorAuthTemplateFixtureAction(body)) {
+      return await customConnectorAuthTemplateFixtureActionResponse(
+        db,
+        body,
+        signal,
+      );
     }
     switch (body.action) {
       case "enable-fake-kms": {

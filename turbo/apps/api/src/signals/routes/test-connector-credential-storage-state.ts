@@ -259,7 +259,7 @@ async function seedCustomRuntimeConnectors(
           displayName: connector.display_name,
           prefixes: [connector.prefix_template],
           headerName: "X-Connector",
-          headerTemplate: "runtime-batch",
+          headerTemplate: "runtime-batch {{secrets.optional_secret}}",
           prefixTemplates: [connector.prefix_template],
           fields: [
             {
@@ -270,7 +270,10 @@ async function seedCustomRuntimeConnectors(
             },
           ],
           headerInjections: [
-            { name: "X-Connector", valueTemplate: "runtime-batch" },
+            {
+              name: "X-Connector",
+              valueTemplate: "runtime-batch {{secrets.optional_secret}}",
+            },
           ],
           queryInjections: [],
           authMode: "manual" as const,
@@ -340,6 +343,9 @@ async function setCustomParentState(
     .set({
       authMethod: body.auth_method,
       storageVersion: body.storage_version,
+      ...(body.needs_reconnect === undefined
+        ? {}
+        : { needsReconnect: body.needs_reconnect }),
     })
     .where(
       and(

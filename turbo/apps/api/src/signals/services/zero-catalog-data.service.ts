@@ -11,8 +11,9 @@ import {
 } from "./zero-custom-connector.service";
 import { customConnectorDefinitionSelection } from "./custom-connector-definition-selection";
 import {
-  loadCurrentCustomConnectorOAuthConnectionIds,
+  customConnectorDefinitionHasUsableConnection,
   loadCurrentCustomConnectorValueMarkers,
+  loadUsableCustomConnectorConnections,
 } from "./custom-connector-credential-access.service";
 
 export function zeroCustomConnectorList(args: {
@@ -21,7 +22,7 @@ export function zeroCustomConnectorList(args: {
 }): Computed<Promise<readonly CustomConnectorResponse[]>> {
   return computed(async (get): Promise<readonly CustomConnectorResponse[]> => {
     const db = get(db$);
-    const [connectorRows, markers, oauthConnected] = await Promise.all([
+    const [connectorRows, markers, usableConnections] = await Promise.all([
       db
         .select({
           connector: customConnectorDefinitionSelection(),
@@ -41,13 +42,16 @@ export function zeroCustomConnectorList(args: {
         .where(eq(orgCustomConnectors.orgId, args.orgId))
         .orderBy(orgCustomConnectors.displayName),
       loadCurrentCustomConnectorValueMarkers(db, args),
-      loadCurrentCustomConnectorOAuthConnectionIds(db, args),
+      loadUsableCustomConnectorConnections(db, args),
     ]);
     return connectorRows.map((row) => {
       return serialiseCustomConnector({
         row: normaliseCustomConnectorRow(row.connector, row.oauthConfig),
         valueMarkers: markers,
-        oauthConnected: oauthConnected.has(row.connector.id),
+        usableConnection: customConnectorDefinitionHasUsableConnection({
+          usableConnections,
+          definition: row.connector,
+        }),
       });
     });
   });

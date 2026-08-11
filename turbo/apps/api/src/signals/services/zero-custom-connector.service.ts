@@ -1,7 +1,7 @@
 import { command, computed, type Computed } from "ccstate";
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
-import { and, eq, gte, inArray, isNotNull, lt, sql } from "drizzle-orm";
+import { and, eq, gte, inArray, lt, sql } from "drizzle-orm";
 import type {
   CreateCustomConnectorBody,
   CustomConnectorAuthMode,
@@ -62,10 +62,12 @@ import {
 } from "./custom-connector-credential-storage.service";
 import { loadCustomConnectorPermissionBundle } from "./custom-connector-permission-bundle.service";
 import {
+  customConnectorDefinitionHasUsableConnection,
   loadCustomConnectorCredentialAccesses,
-  loadCurrentCustomConnectorOAuthConnectionIds,
   loadCurrentCustomConnectorValueMarkers,
+  loadUsableCustomConnectorConnections,
   type CustomConnectorCredentialAccess,
+  type CustomConnectorCredentialValueMarker,
 } from "./custom-connector-credential-access.service";
 import { effectiveCustomConnectorPermissionBundleRef } from "./feishu-custom-connector-permissions";
 import {
@@ -83,6 +85,7 @@ import {
   type CapturedConnectorClientInvalidationAbort,
 } from "./connector-client-invalidation.service";
 import { isCustomConnectorMcpEnabled } from "./custom-connector-mcp-feature.service";
+import { replaceConnectorConnection } from "./connector-connection-write.service";
 import type { Tx } from "../../lib/db-types";
 
 const L = logger("CustomConnectorService");
@@ -705,7 +708,10 @@ export function customConnectorValueMarkerKey(marker: {
 }
 
 function configuredValueMarkerKeys(
-  markers: readonly ValueMarker[],
+  markers: readonly {
+    readonly kind: CustomConnectorFieldKind;
+    readonly key: string;
+  }[],
 ): readonly string[] {
   return [
     ...new Set(
@@ -731,9 +737,12 @@ function configuredFieldKeys(args: {
     .sort();
 }
 
-function computeMissingRequiredFields(args: {
+export function customConnectorMissingRequiredFieldKeys(args: {
   readonly fields: readonly CustomConnectorField[];
-  readonly markers: readonly ValueMarker[];
+  readonly markers: readonly {
+    readonly kind: CustomConnectorFieldKind;
+    readonly key: string;
+  }[];
 }): readonly string[] {
   const configured = new Set(configuredValueMarkerKeys(args.markers));
   return args.fields
@@ -761,13 +770,17 @@ function effectivePermissionBundleRef(
 
 export function serialiseCustomConnector(args: {
   readonly row: CustomConnectorRow;
-  readonly valueMarkers: readonly ValueMarker[];
-  readonly oauthConnected?: boolean;
+  readonly valueMarkers: readonly CustomConnectorCredentialValueMarker[];
+  readonly usableConnection: boolean;
 }): CustomConnectorResponse {
   const connectorMarkers = args.valueMarkers.filter((marker) => {
-    return marker.connectorId === args.row.id;
+    return (
+      marker.connectorId === args.row.id &&
+      marker.authMode === args.row.authMode &&
+      marker.storageVersion === args.row.storageVersion
+    );
   });
-  const missingRequiredFields = computeMissingRequiredFields({
+  const missingRequiredFields = customConnectorMissingRequiredFieldKeys({
     fields: args.row.fields,
     markers: connectorMarkers,
   });
@@ -775,13 +788,18 @@ export function serialiseCustomConnector(args: {
     fields: args.row.fields,
     markers: connectorMarkers,
   });
-  const oauthConnected = args.oauthConnected ?? false;
+  const validManualAuth =
+    args.row.authMode !== "manual" ||
+    customConnectorManualAuthReferencesMemberField(args.row);
   const connected =
-    missingRequiredFields.length === 0 &&
-    (args.row.authMode === "manual" || oauthConnected);
+    args.usableConnection &&
+    validManualAuth &&
+    missingRequiredFields.length === 0;
   const responseMissingRequiredFields = [
     ...missingRequiredFields,
-    ...(args.row.authMode === "oauth" && !oauthConnected ? ["oauth"] : []),
+    ...(args.row.authMode === "oauth" && !args.usableConnection
+      ? ["oauth"]
+      : []),
   ];
   const common = {
     id: args.row.id,
@@ -897,6 +915,35 @@ function extractTemplateReferences(template: string): readonly {
       key: match[2]!,
     };
   });
+}
+
+export function customConnectorManualAuthReferencesMemberField(args: {
+  readonly fields: readonly CustomConnectorField[];
+  readonly headerInjections: readonly CustomConnectorHeaderInjection[];
+  readonly queryInjections: readonly CustomConnectorQueryInjection[];
+}): boolean {
+  const declared = declaredFieldsByNamespace(args.fields);
+  return [...args.headerInjections, ...args.queryInjections].some(
+    (injection) => {
+      if (
+        injection.valueTemplate.includes(LEGACY_SECRET_PLACEHOLDER) &&
+        declared.secrets.has(LEGACY_SECRET_KEY)
+      ) {
+        return true;
+      }
+      return extractTemplateReferences(injection.valueTemplate).some(
+        (reference) => {
+          const fields =
+            reference.namespace === "secrets"
+              ? declared.secrets
+              : reference.namespace === "variables"
+                ? declared.variables
+                : undefined;
+          return fields?.has(reference.key) ?? false;
+        },
+      );
+    },
+  );
 }
 
 export function customConnectorPrefixTemplateVariableKeys(
@@ -1356,6 +1403,40 @@ function validateOAuthConfigUpdate(args: {
   };
 }
 
+function validateAuthInjectionReferences(args: {
+  readonly authMode: CustomConnectorAuthMode;
+  readonly fields: readonly CustomConnectorField[];
+  readonly headerInjections: readonly CustomConnectorHeaderInjection[];
+  readonly queryInjections: readonly CustomConnectorQueryInjection[];
+}): BadRequestResponse | null {
+  if (
+    args.authMode === "manual" &&
+    !customConnectorManualAuthReferencesMemberField(args)
+  ) {
+    return badRequestMessage(
+      "Manual custom connector injections must reference a declared secret or variable field",
+    );
+  }
+  if (
+    args.authMode === "oauth" &&
+    ![...args.headerInjections, ...args.queryInjections].some((injection) => {
+      return extractTemplateReferences(injection.valueTemplate).some(
+        (reference) => {
+          return (
+            reference.namespace === "oauth" &&
+            reference.key === CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_SECRET_NAME
+          );
+        },
+      );
+    })
+  ) {
+    return badRequestMessage(
+      `OAuth custom connector injections must reference {{${CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_REFERENCE}}}`,
+    );
+  }
+  return null;
+}
+
 function validateDefinition(
   input: DefinitionInput,
 ): ValidatedDefinition | BadRequestResponse {
@@ -1399,22 +1480,14 @@ function validateDefinition(
       "At least one header or query injection is required",
     );
   }
-  if (
-    authMode === "oauth" &&
-    ![...headerInjections, ...queryInjections].some((injection) => {
-      return extractTemplateReferences(injection.valueTemplate).some(
-        (reference) => {
-          return (
-            reference.namespace === "oauth" &&
-            reference.key === CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_SECRET_NAME
-          );
-        },
-      );
-    })
-  ) {
-    return badRequestMessage(
-      `OAuth custom connector injections must reference {{${CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_REFERENCE}}}`,
-    );
+  const authInjectionError = validateAuthInjectionReferences({
+    authMode,
+    fields,
+    headerInjections,
+    queryInjections,
+  });
+  if (authInjectionError) {
+    return authInjectionError;
   }
   const slug = validateOptionalSlug(input.slug);
   if (isBadRequest(slug)) {
@@ -2504,12 +2577,12 @@ export function getCustomConnectorResponse(args: {
     if (!connector) {
       return null;
     }
-    const [markers, oauthConnections] = await Promise.all([
+    const [markers, usableConnections] = await Promise.all([
       loadCurrentCustomConnectorValueMarkers(db, {
         orgId: args.orgId,
         userId: args.userId,
       }),
-      loadCurrentCustomConnectorOAuthConnectionIds(db, {
+      loadUsableCustomConnectorConnections(db, {
         orgId: args.orgId,
         userId: args.userId,
       }),
@@ -2517,7 +2590,10 @@ export function getCustomConnectorResponse(args: {
     return serialiseCustomConnector({
       row: connector,
       valueMarkers: markers,
-      oauthConnected: oauthConnections.has(connector.id),
+      usableConnection: customConnectorDefinitionHasUsableConnection({
+        usableConnections,
+        definition: connector,
+      }),
     });
   });
 }
@@ -2772,15 +2848,9 @@ async function prepareCustomConnectorValueWrite(args: {
     )
     .for("update")
     .limit(1);
-  const supplied = new Set(
-    currentValues.map((value) => {
-      return customConnectorValueMarkerKey(value);
-    }),
-  );
-  const missingRequired = connector.fields.filter((field) => {
-    return (
-      field.required && !supplied.has(customConnectorValueMarkerKey(field))
-    );
+  const missingRequired = customConnectorMissingRequiredFieldKeys({
+    fields: connector.fields,
+    markers: currentValues,
   });
   const replacingIncompatibleValues =
     storedConnector !== undefined &&
@@ -2793,11 +2863,9 @@ async function prepareCustomConnectorValueWrite(args: {
     replacingIncompatibleValues || replacingUnversionedValues;
   if (replacingStoredValues && missingRequired.length > 0) {
     return badRequestMessage(
-      `All required fields must be provided when restoring this connector: ${missingRequired
-        .map((field) => {
-          return field.key;
-        })
-        .join(", ")}`,
+      `All required fields must be provided when restoring this connector: ${missingRequired.join(
+        ", ",
+      )}`,
     );
   }
   const establishesCurrentCredentials =
@@ -2810,35 +2878,6 @@ async function prepareCustomConnectorValueWrite(args: {
       replacingStoredValues ||
       (storedConnector === undefined && establishesCurrentCredentials),
   };
-}
-
-async function upsertCustomConnectorValueParent(args: {
-  readonly tx: Tx;
-  readonly request: SetCustomConnectorValuesArgs;
-  readonly storageVersion: number;
-}): Promise<void> {
-  await args.tx
-    .insert(connectors)
-    .values({
-      customConnectorId: args.request.connectorId,
-      authMethod: "manual",
-      storageVersion: args.storageVersion,
-      userId: args.request.userId,
-      orgId: args.request.orgId,
-    })
-    .onConflictDoUpdate({
-      target: [
-        connectors.orgId,
-        connectors.userId,
-        connectors.customConnectorId,
-      ],
-      targetWhere: isNotNull(connectors.customConnectorId),
-      set: {
-        authMethod: "manual",
-        storageVersion: args.storageVersion,
-        updatedAt: nowDate(),
-      },
-    });
 }
 
 async function upsertEncryptedCustomConnectorValues(
@@ -2908,6 +2947,7 @@ async function persistCustomConnectorValues(
   | {
       readonly connector: CustomConnectorRow;
       readonly runtimeRecovered: boolean;
+      readonly usableConnection: boolean;
     }
   | BadRequestResponse
   | NotFoundResponse
@@ -2919,24 +2959,42 @@ async function persistCustomConnectorValues(
   if (state.replacingStoredValues) {
     await deleteCustomConnectorStoredValues(args.tx, args.request, signal);
   }
+  const writeValues = async (tx: Tx, writeSignal: AbortSignal) => {
+    await upsertEncryptedCustomConnectorValues(
+      {
+        tx,
+        request: args.request,
+        values: args.encryptedValues,
+      },
+      writeSignal,
+    );
+  };
   if (state.establishesCurrentCredentials) {
-    await upsertCustomConnectorValueParent({
-      tx: args.tx,
-      request: args.request,
-      storageVersion: state.connector.storageVersion,
-    });
+    await replaceConnectorConnection(
+      args.tx,
+      {
+        orgId: args.request.orgId,
+        userId: args.request.userId,
+        authMethod: "manual",
+        storageVersion: state.connector.storageVersion,
+        tokenExpiresAt: null,
+        target: {
+          kind: "custom",
+          customConnectorId: args.request.connectorId,
+        },
+        writeCredentials: async ({ db }, writeSignal) => {
+          await writeValues(db, writeSignal);
+        },
+      },
+      signal,
+    );
+  } else {
+    await writeValues(args.tx, signal);
   }
-  await upsertEncryptedCustomConnectorValues(
-    {
-      tx: args.tx,
-      request: args.request,
-      values: args.encryptedValues,
-    },
-    signal,
-  );
   return {
     connector: state.connector,
     runtimeRecovered: state.runtimeRecovered,
+    usableConnection: state.establishesCurrentCredentials,
   };
 }
 
@@ -3041,6 +3099,7 @@ export const setCustomConnectorValues$ = command(
     return serialiseCustomConnector({
       row: writeResult.connector,
       valueMarkers: markers,
+      usableConnection: writeResult.usableConnection,
     });
   },
 );

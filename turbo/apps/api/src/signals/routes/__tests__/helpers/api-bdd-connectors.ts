@@ -176,6 +176,7 @@ interface CustomConnectorOAuth2ProviderRecorder {
 
 interface CustomConnectorOAuth2ProviderOptions {
   readonly initialExpiresIn?: number;
+  readonly initialRefreshToken?: string | null;
   readonly refreshResponse?: (attempt: number) => Response | Promise<Response>;
 }
 
@@ -188,6 +189,10 @@ export function mockCustomConnectorOAuth2Provider(
   ]);
   const tokenBodies: URLSearchParams[] = [];
   const authorizationHeaders: (string | null)[] = [];
+  const initialRefreshToken =
+    options.initialRefreshToken === undefined
+      ? "custom-oauth-refresh-token"
+      : options.initialRefreshToken;
   let refreshAttempts = 0;
   server.use(
     http.post(CUSTOM_CONNECTOR_OAUTH2_TOKEN_URL, async ({ request }) => {
@@ -207,7 +212,9 @@ export function mockCustomConnectorOAuth2Provider(
       }
       return HttpResponse.json({
         access_token: "custom-oauth-initial-access-token",
-        refresh_token: "custom-oauth-refresh-token",
+        ...(initialRefreshToken === null
+          ? {}
+          : { refresh_token: initialRefreshToken }),
         id_token: "custom-oauth-id-token",
         token_type: "Bearer",
         expires_in: options.initialExpiresIn ?? 0,

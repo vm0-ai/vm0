@@ -195,6 +195,8 @@ import {
   CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_RUNTIME_KEY,
   CustomConnectorRuntimePrefixError,
   customConnectorInternalName,
+  customConnectorManualAuthReferencesMemberField,
+  customConnectorMissingRequiredFieldKeys,
   customConnectorPrefixTemplateVariableKeys,
   customConnectorValueMarkerKey,
   decryptCustomConnectorValues,
@@ -4195,12 +4197,10 @@ function customConnectorRuntimeCredentialsAreComplete(
   );
   return (
     (row.connector.authMode !== "oauth" || oauthConnected) &&
-    row.connector.fields.every((field) => {
-      return (
-        !field.required ||
-        valueMarkers.has(customConnectorValueMarkerKey(field))
-      );
-    })
+    customConnectorMissingRequiredFieldKeys({
+      fields: row.connector.fields,
+      markers: row.values,
+    }).length === 0
   );
 }
 
@@ -4423,6 +4423,9 @@ async function buildNewRunCustomConnectorRuntimeContext(
     rows: args.rows.filter((row) => {
       return (
         row.credentialAccess.kind === "current" &&
+        row.credentialAccess.usable &&
+        (row.connector.authMode !== "manual" ||
+          customConnectorManualAuthReferencesMemberField(row.connector)) &&
         customConnectorRuntimeCredentialsAreComplete(row)
       );
     }),

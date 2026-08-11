@@ -916,10 +916,12 @@ async function loadConnection(args: {
 }
 
 function connectionAccessTokenIsCurrent(connection: StoredConnection): boolean {
+  const refreshLeewayMs = connection.encryptedRefreshToken
+    ? TOKEN_REFRESH_LEEWAY_MS
+    : 0;
   return (
     !connection.tokenExpiresAt ||
-    connection.tokenExpiresAt.getTime() >
-      nowDate().getTime() + TOKEN_REFRESH_LEEWAY_MS
+    connection.tokenExpiresAt.getTime() > nowDate().getTime() + refreshLeewayMs
   );
 }
 
