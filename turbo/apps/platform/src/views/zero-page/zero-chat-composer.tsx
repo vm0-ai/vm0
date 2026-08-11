@@ -521,20 +521,23 @@ function ComposerStripRow({
       className="group flex items-center gap-2 rounded-md pl-2 pr-1 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-state-hover"
     >
       {isGoal && onOpenDetail ? (
+        // This target spans almost the whole row, so it deliberately paints no
+        // background of its own — the row's hover carries the highlight and a
+        // second, near-coextensive surface would read as a box inside a box.
+        // Its icon sits in the same p-1 slot the other rows' leading button
+        // uses, keeping every row's glyph and text on one column.
         <button
           type="button"
-          className="-ml-1 flex min-w-0 flex-1 items-center gap-2 rounded-md p-1 text-left transition-colors hover:bg-state-selected-hover hover:text-sidebar-foreground focus-visible:bg-state-selected-hover focus-visible:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="flex min-w-0 flex-1 items-center gap-2 rounded-md text-left transition-colors hover:text-sidebar-foreground focus-visible:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           onClick={onOpenDetail}
           aria-label={t(($) => {
             return $.chat.queue.openGoalDetails;
           })}
         >
-          <Target
-            size={16}
-            className="shrink-0 text-emerald-800"
-            aria-hidden="true"
-          />
-          <span className="min-w-0 flex-1 truncate">{text}</span>
+          <span className="flex shrink-0 p-1 text-emerald-800">
+            <Target size={16} aria-hidden="true" />
+          </span>
+          <span className="min-w-0 flex-1 truncate py-1">{text}</span>
         </button>
       ) : (
         <>
