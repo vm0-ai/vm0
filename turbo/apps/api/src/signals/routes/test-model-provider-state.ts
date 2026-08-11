@@ -4,7 +4,6 @@ import {
   type TestModelProviderStateActionBody,
 } from "@vm0/api-contracts/contracts/test-model-provider-state";
 import { modelProviders } from "@vm0/db/schema/model-provider";
-import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
 import { secrets } from "@vm0/db/schema/secret";
 import { and, eq } from "drizzle-orm";
 
@@ -65,27 +64,6 @@ async function overwriteModelProviderSecret(
   return { status: 200 as const, body: { ok: true as const } };
 }
 
-async function seedRetiredDefaultModelPolicy(
-  db: Db,
-  body: Extract<
-    TestModelProviderStateActionBody,
-    { readonly action: "seed-retired-default-policy" }
-  >,
-  signal: AbortSignal,
-) {
-  await db.insert(orgModelPolicies).values({
-    orgId: body.org_id,
-    model: "claude-opus-4-7",
-    isDefault: true,
-    defaultProviderType: "vm0",
-    credentialScope: "org",
-    createdByUserId: body.user_id,
-    updatedByUserId: body.user_id,
-  });
-  signal.throwIfAborted();
-  return { status: 200 as const, body: { ok: true as const } };
-}
-
 async function mutateModelProviderState(
   db: Db,
   body: TestModelProviderStateActionBody,
@@ -94,9 +72,6 @@ async function mutateModelProviderState(
   switch (body.action) {
     case "overwrite-secret": {
       return await overwriteModelProviderSecret(db, body, signal);
-    }
-    case "seed-retired-default-policy": {
-      return await seedRetiredDefaultModelPolicy(db, body, signal);
     }
   }
 }

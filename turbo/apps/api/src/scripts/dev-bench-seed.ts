@@ -99,7 +99,7 @@ export const DEV_BENCH_THREAD_PROFILES: readonly ThreadProfile[] = [
   {
     slug: "feature-switch-digest",
     title: "[dev bench] prod-shaped chat thread A - 1.4k rows",
-    selectedModel: "glm-5.2",
+    selectedModel: "deepseek-v4-flash",
     startAt: "2026-05-10T00:05:02.553Z",
     endAt: "2026-06-23T01:34:51.637Z",
     targetRunRows: 1412,

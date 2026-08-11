@@ -2738,7 +2738,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     );
     await seedModelPolicies({
       fixture,
-      selectedModel: "claude-opus-4-7",
+      selectedModel: "claude-opus-4-8",
     });
     await seedOrgCredits(fixture, 100_000);
     const previousSessionId = await seedCompletedRun({

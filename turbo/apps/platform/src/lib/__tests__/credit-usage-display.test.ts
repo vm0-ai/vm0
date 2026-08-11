@@ -33,8 +33,14 @@ describe("getCreditUsageDisplayName", () => {
     );
   });
 
-  it("formats unknown providers as a readable label", () => {
+  it("preserves raw IDs for historical chat models without friendly names", () => {
     expect(getCreditUsageDisplayName("model", "acme/vision-pro")).toBe(
+      "acme/vision-pro",
+    );
+  });
+
+  it("formats unknown image providers as a readable label", () => {
+    expect(getCreditUsageDisplayName("image", "acme/vision-pro")).toBe(
       "Acme Vision Pro",
     );
   });

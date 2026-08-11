@@ -7,10 +7,7 @@ const PROVIDER_ICONS: Readonly<Record<ModelProviderType, string>> =
     "claude-code-oauth-token": settingsIconAssetUrl("claude-code"),
     "anthropic-api-key": settingsIconAssetUrl("anthropic"),
     "openrouter-api-key": settingsIconAssetUrl("openrouter"),
-    "minimax-api-key": settingsIconAssetUrl("minimax"),
     deepseek: settingsIconAssetUrl("deepseek"),
-    "zai-api-key": settingsIconAssetUrl("chatglm"),
-    "moonshot-api-key": settingsIconAssetUrl("kimi"),
     "vercel-ai-gateway": settingsIconAssetUrl("vercel"),
     "openrouter-codex": settingsIconAssetUrl("openrouter"),
     "vercel-ai-gateway-codex": settingsIconAssetUrl("vercel"),
@@ -26,8 +23,6 @@ const DARK_INVERT_PROVIDER_ICONS: Readonly<
 > = Object.freeze({
   "openai-api-key": true,
   "codex-oauth-token": true,
-  "moonshot-api-key": true,
-  "zai-api-key": true,
 });
 
 function providerIconNeedsDarkInvert(type: ModelProviderType): boolean {

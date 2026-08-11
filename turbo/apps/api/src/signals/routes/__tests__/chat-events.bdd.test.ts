@@ -954,7 +954,6 @@ async function upsertOrgModelProvider(
     readonly type:
       | "anthropic-api-key"
       | "deepseek"
-      | "moonshot-api-key"
       | "openai-api-key"
       | "openrouter-api-key"
       | "vercel-ai-gateway"

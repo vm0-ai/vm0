@@ -1255,24 +1255,6 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       ).resolves.not.toHaveProperty("selectedModel");
     }
 
-    for (const selectedModel of ["claude-opus-4-7", "MiniMax-M3"] as const) {
-      const retiredSelection = await chat.requestUpdateThreadModelSelection(
-        actor,
-        thread.id,
-        selectedModel,
-        [400],
-      );
-      expectApiError(retiredSelection.body);
-      expect(retiredSelection.body.error).toStrictEqual({
-        message: `Model "${selectedModel}" has been retired. Use "deepseek-v4-flash" instead.`,
-        code: "MODEL_RETIRED",
-      });
-
-      await expect(
-        chat.readThread(actor, thread.id),
-      ).resolves.not.toHaveProperty("selectedModel");
-    }
-
     await chat.updateThreadModelSelection(actor, thread.id, "gpt-5.6-luna");
     const detail = await chat.readThread(actor, thread.id);
     expect(detail).not.toHaveProperty("selectedModel");

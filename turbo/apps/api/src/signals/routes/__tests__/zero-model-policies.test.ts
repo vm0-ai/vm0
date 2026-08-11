@@ -22,7 +22,6 @@ import {
   type ApiTestUser,
 } from "./helpers/api-bdd-auth-org";
 import { createRunsApi } from "./helpers/api-bdd-runs";
-import { seedRetiredDefaultModelPolicyForTests } from "./helpers/zero-model-provider-state";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { zeroModelPoliciesRoutes } from "../zero-model-policies";
 import { zeroModelProviderGatewayRoutes } from "../zero-model-provider-gateways";
@@ -229,41 +228,6 @@ describe("GET/PUT /api/zero/model-policies", () => {
         return policy.isDefault;
       })?.model,
     ).toBe(DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL);
-  });
-
-  it("transfers a pre-migration retired-only default before seeding active policies", async () => {
-    const fixture = await seedFixture();
-    useSession(fixture);
-
-    // The current production API rejects retired-model writes, so only a
-    // pre-0905 persisted row can construct this deployment-skew state.
-    await seedRetiredDefaultModelPolicyForTests(context.signal, fixture);
-
-    const response = await accept(
-      apiClient().list({ headers: authHeaders() }),
-      [200],
-    );
-
-    expect(response.body.workspaceDefaultModel).toBe(
-      DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
-    );
-    expect(
-      response.body.policies.map((policy) => {
-        return policy.model;
-      }),
-    ).toStrictEqual(DEFAULT_ORG_MODEL_POLICY_MODELS);
-    expect(
-      response.body.policies.filter((policy) => {
-        return policy.isDefault;
-      }),
-    ).toMatchObject([
-      {
-        model: DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
-        defaultProviderType: "vm0",
-        credentialScope: "org",
-        modelProviderId: null,
-      },
-    ]);
   });
 
   it("lists restricted policies for limited-free-1 workspace UI gating", async () => {
@@ -672,49 +636,6 @@ describe("GET/PUT /api/zero/model-policies", () => {
         message:
           "Insufficient credits. Add credits or configure your own API key to continue.",
         code: "INSUFFICIENT_CREDITS",
-      },
-    });
-  });
-
-  it("rejects retired model policy writes with the replacement", async () => {
-    const fixture = await seedFixture();
-    useSession(fixture);
-    const openRouterProviderId = await createOrgProvider(
-      fixture,
-      "openrouter-api-key",
-    );
-    const client = apiClient();
-    const listResponse = await accept(
-      client.list({ headers: authHeaders() }),
-      [200],
-    );
-    const updates = [
-      ...toUpdate(listResponse.body),
-      makeVm0Policy("glm-5.2"),
-    ].map((policy) => {
-      if (policy.model !== "glm-5.2") {
-        return policy;
-      }
-      return {
-        ...policy,
-        defaultProviderType: "openrouter-api-key" as const,
-        credentialScope: "org" as const,
-        modelProviderId: openRouterProviderId,
-      };
-    });
-
-    const response = await accept(
-      client.update({
-        headers: authHeaders(),
-        body: { policies: updates },
-      }),
-      [400],
-    );
-    expect(response.body).toStrictEqual({
-      error: {
-        code: "MODEL_RETIRED",
-        message:
-          'Model "glm-5.2" has been retired. Use "deepseek-v4-flash" instead.',
       },
     });
   });

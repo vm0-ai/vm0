@@ -17,11 +17,6 @@ export const testModelProviderStateActionBodySchema = z.discriminatedUnion(
       secret_name: z.string(),
       secret: z.string(),
     }),
-    z.object({
-      action: z.literal("seed-retired-default-policy"),
-      org_id: z.string(),
-      user_id: z.string(),
-    }),
   ],
 );
 

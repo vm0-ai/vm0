@@ -506,15 +506,15 @@ describe("chat lifecycle", () => {
     const user = userEvent.setup({ delay: null });
     let sentUserMessage: UserMessageDocument | undefined;
     context.mocks.data.userModelPreference({
-      selectedModel: "glm-5.1",
+      selectedModel: "deepseek-v4-flash",
       serviceTier: null,
       updatedAt: "2026-03-10T00:00:00Z",
     });
     context.mocks.data.orgModelPolicies([
       {
         id: "00000000-0000-4000-a000-000000000719",
-        model: "glm-5.1",
-        modelLabel: "GLM-5.1",
+        model: "deepseek-v4-flash",
+        modelLabel: "DeepSeek V4 Flash",
         isDefault: true,
         defaultProviderType: "vm0",
         credentialScope: "org",
@@ -561,7 +561,7 @@ describe("chat lifecycle", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByRole("combobox", { name: "GLM-5.1" }),
+        screen.getByRole("combobox", { name: "DeepSeek V4 Flash" }),
       ).toBeInTheDocument();
       expect(screen.getByLabelText("Remove brief.png")).toBeInTheDocument();
     });
@@ -589,15 +589,15 @@ describe("chat lifecycle", () => {
     const threadId = "b0000000-0000-4000-a000-000000000994";
     let sentUserMessage: UserMessageDocument | undefined;
     context.mocks.data.userModelPreference({
-      selectedModel: "glm-5.1",
+      selectedModel: "deepseek-v4-flash",
       serviceTier: null,
       updatedAt: "2026-03-10T00:00:00Z",
     });
     context.mocks.data.orgModelPolicies([
       {
         id: "00000000-0000-4000-a000-000000000720",
-        model: "glm-5.1",
-        modelLabel: "GLM-5.1",
+        model: "deepseek-v4-flash",
+        modelLabel: "DeepSeek V4 Flash",
         isDefault: true,
         defaultProviderType: "vm0",
         credentialScope: "org",
@@ -610,7 +610,7 @@ describe("chat lifecycle", () => {
     ]);
     mockChatLifecycle(context, {
       threadId,
-      selectedModel: "glm-5.1",
+      selectedModel: "deepseek-v4-flash",
       onRunCreate: (body) => {
         sentUserMessage = body.userMessage;
       },

@@ -276,7 +276,7 @@ describe("zero agent edit command", () => {
       expect(mockExit).toHaveBeenCalledWith(1);
     });
 
-    it("should reject retired model edit flags", async () => {
+    it("should reject unsupported model edit flags", async () => {
       await expect(async () => {
         await editCommand.parseAsync([
           "node",

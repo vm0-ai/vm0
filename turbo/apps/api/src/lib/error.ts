@@ -65,14 +65,6 @@ export function insufficientCredits() {
   );
 }
 
-export function modelRetired(model: string, replacement: string) {
-  return httpError(
-    400,
-    "MODEL_RETIRED",
-    `Model "${model}" has been retired. Use "${replacement}" instead.`,
-  );
-}
-
 export function teamRequired(message: string) {
   return httpError(402, "TEAM_REQUIRED", message);
 }

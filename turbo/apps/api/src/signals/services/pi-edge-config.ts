@@ -102,9 +102,6 @@ function piProvider(concreteType: string): PiOpenAICompatibleProvider | null {
     case "deepseek": {
       return "deepseek";
     }
-    case "moonshot-api-key": {
-      return "moonshotai";
-    }
     case "openai-api-key": {
       return "openai";
     }

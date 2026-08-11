@@ -155,7 +155,7 @@ describe("chat lifecycle", () => {
         1,
       );
       expect(screen.getAllByText("24,234").length).toBeGreaterThanOrEqual(1);
-      expect(screen.getAllByText("Kimi K2.5").length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText("kimi-k2.5").length).toBeGreaterThanOrEqual(1);
       expect(screen.getAllByText("1,234").length).toBeGreaterThanOrEqual(1);
       expect(screen.getAllByText("GPT Image 2").length).toBeGreaterThanOrEqual(
         1,
@@ -179,7 +179,7 @@ describe("chat lifecycle", () => {
       expect(screen.getAllByText("Credit usage").length).toBeGreaterThanOrEqual(
         1,
       );
-      expect(screen.getAllByText("Kimi K2.5").length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText("kimi-k2.5").length).toBeGreaterThanOrEqual(1);
       expect(screen.getAllByText("1,234").length).toBeGreaterThanOrEqual(1);
     });
   });
@@ -2194,8 +2194,8 @@ describe("chat lifecycle", () => {
       }),
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000977",
-        model: "claude-opus-4-7",
-        modelLabel: "Claude Opus 4.7",
+        model: "claude-opus-4-8",
+        modelLabel: "Claude Opus 4.8",
       }),
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000978",
@@ -2241,7 +2241,7 @@ describe("chat lifecycle", () => {
     const card = await screen.findByTestId("assistant-error-recovery");
     click(within(card).getByRole("combobox", { name: "Switch model" }));
     const claudeOption = await screen.findByRole("option", {
-      name: /Claude Opus 4\.7/u,
+      name: /Claude Opus 4.8/u,
     });
     expect(claudeOption).toBeInTheDocument();
     expect(

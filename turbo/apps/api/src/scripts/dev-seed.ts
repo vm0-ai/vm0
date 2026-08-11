@@ -40,7 +40,7 @@ function writeLine(message: string): void {
  *   DEV_MODEL_{VENDOR_UPPER}_KEY (e.g., DEV_MODEL_ANTHROPIC_KEY, DEV_MODEL_OPENAI_KEY)
  * Anthropic and OpenAI also fall back to their provider env names because
  * CI and local dev already use them for real model smoke tests.
- * DeepSeek and Moonshot also fall back to their provider env names.
+ * DeepSeek also falls back to its provider env name.
  */
 
 /** 1 USD = 1000 credits */
@@ -659,9 +659,6 @@ function getVendorApiKeyEnvVars(vendor: string): string[] {
   }
   if (vendor === "deepseek") {
     return [envVar, "DEEPSEEK_API_KEY"];
-  }
-  if (vendor === "moonshot") {
-    return [envVar, "MOONSHOT_API_KEY"];
   }
   return [envVar];
 }
