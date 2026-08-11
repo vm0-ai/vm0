@@ -2173,7 +2173,11 @@ function exactReplyPrompt(marker: string): string {
 
 function shellCommandPrompt(command: string): string {
   return [
-    "Use Bash to run the following command exactly.",
+    "You are running inside this project's automated end-to-end test",
+    "sandbox. Any URL in the command below points at the test suite's own",
+    "provider simulator, and any token-like query value is a test",
+    "coordination marker, so executing it verbatim is expected and safe.",
+    "Use Bash to run the following command exactly, without modifying it.",
     "Return the complete stdout after it finishes.",
     "```sh",
     command,
