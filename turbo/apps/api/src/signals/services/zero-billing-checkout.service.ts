@@ -1,6 +1,7 @@
 import { command } from "ccstate";
 import type { UsagePackUsd } from "@vm0/api-contracts/contracts/zero-billing";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
+import { orgPlanEntitlements } from "@vm0/db/schema/org-plan-entitlement";
 import { and, eq } from "drizzle-orm";
 
 import { env } from "../../lib/env";
@@ -288,6 +289,19 @@ function subscriptionWillCancel(subscription: StripeSubscription): boolean {
   return subscription.cancel_at_period_end || subscription.cancel_at !== null;
 }
 
+function futureBillingCycleAnchor(
+  periodEnd: Date | null | undefined,
+): number | undefined {
+  if (!periodEnd) {
+    return undefined;
+  }
+  const anchor = Math.floor(periodEnd.getTime() / 1000);
+  const currentSecond = Math.floor(nowDate().getTime() / 1000);
+  return Number.isSafeInteger(anchor) && anchor > currentSecond
+    ? anchor
+    : undefined;
+}
+
 /**
  * Create a Stripe Checkout session for subscription. Returns the
  * checkout session URL. Mirrors apps/web's createCheckoutSession
@@ -533,6 +547,15 @@ export const startConcurrencyPurchase$ = command(
       };
     }
 
+    const db = set(writeDb$);
+    const [plan] = await db
+      .select({ currentPeriodEnd: orgPlanEntitlements.currentPeriodEnd })
+      .from(orgPlanEntitlements)
+      .where(eq(orgPlanEntitlements.orgId, args.orgId))
+      .limit(1);
+    signal.throwIfAborted();
+    const billingCycleAnchor = futureBillingCycleAnchor(plan?.currentPeriodEnd);
+
     const stripe = getStripeClient();
     const customerId = await set(
       getOrCreateStripeCustomer$,
@@ -558,6 +581,12 @@ export const startConcurrencyPurchase$ = command(
       metadata,
       subscription_data: {
         metadata,
+        ...(billingCycleAnchor === undefined
+          ? {}
+          : {
+              billing_cycle_anchor: billingCycleAnchor,
+              proration_behavior: "create_prorations",
+            }),
       },
     });
     signal.throwIfAborted();

@@ -7352,6 +7352,7 @@ describe("POST /api/zero/billing/checkout/complete", () => {
 
 describe("POST /api/zero/billing/concurrency-checkout", () => {
   beforeEach(() => {
+    mockStripeClient(context.mocks.stripe as unknown as StripeSDK);
     setZeroPrice();
   });
 
@@ -7363,7 +7364,7 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
     return fixture;
   }
 
-  it("creates concurrency subscription checkout with the requested quantity", async () => {
+  it("creates concurrency checkout without an anchor when the Plan period is missing", async () => {
     const fixture = await trackedSeed();
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
@@ -7417,7 +7418,115 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
     });
   });
 
-  it("returns the hosted invoice when an existing subscription needs payment", async () => {
+  it("aligns a new concurrency subscription with the Plan billing cycle", async () => {
+    const planPeriodEnd = currentSecond() + 30 * 86_400;
+    const fixture = await createSubscriptionOrg({
+      tier: "team",
+      periodEndUnix: planPeriodEnd,
+    });
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+    context.mocks.stripe.checkout.sessions.create.mockResolvedValue({
+      url: "https://checkout.stripe.com/session/aligned-concurrency",
+    });
+
+    const response = await accept(
+      setupApp({
+        context,
+        routes: zeroBillingConcurrencyCheckoutRoutes,
+      })(zeroBillingConcurrencyCheckoutContract).create({
+        body: {
+          quantity: 3,
+          successUrl: `${APP_ORIGIN}/billing?concurrency=success`,
+          cancelUrl: `${APP_ORIGIN}/billing?concurrency=canceled`,
+        },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      url: "https://checkout.stripe.com/session/aligned-concurrency",
+    });
+    expect(context.mocks.stripe.checkout.sessions.create).toHaveBeenCalledWith({
+      mode: "subscription",
+      customer: fixture.customerId,
+      line_items: [{ price: TEST_PRICE_CONCURRENCY, quantity: 3 }],
+      allow_promotion_codes: true,
+      success_url: `${APP_ORIGIN}/billing?concurrency=success`,
+      cancel_url: `${APP_ORIGIN}/billing?concurrency=canceled`,
+      metadata: {
+        purpose: "concurrency_subscription",
+        orgId: fixture.orgId,
+        priceId: TEST_PRICE_CONCURRENCY,
+        quantity: "3",
+      },
+      subscription_data: {
+        billing_cycle_anchor: planPeriodEnd,
+        metadata: {
+          purpose: "concurrency_subscription",
+          orgId: fixture.orgId,
+          priceId: TEST_PRICE_CONCURRENCY,
+          quantity: "3",
+        },
+        proration_behavior: "create_prorations",
+      },
+    });
+  });
+
+  it("omits the Plan billing anchor when its period end is stale", async () => {
+    const stalePlanPeriodEnd = currentSecond() - 1;
+    const fixture = await createSubscriptionOrg({
+      tier: "team",
+      periodEndUnix: stalePlanPeriodEnd,
+    });
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+    context.mocks.stripe.checkout.sessions.create.mockResolvedValue({
+      url: "https://checkout.stripe.com/session/stale-plan-period",
+    });
+
+    const response = await accept(
+      setupApp({
+        context,
+        routes: zeroBillingConcurrencyCheckoutRoutes,
+      })(zeroBillingConcurrencyCheckoutContract).create({
+        body: {
+          quantity: 1,
+          successUrl: `${APP_ORIGIN}/billing?concurrency=success`,
+          cancelUrl: `${APP_ORIGIN}/billing?concurrency=canceled`,
+        },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      url: "https://checkout.stripe.com/session/stale-plan-period",
+    });
+    expect(context.mocks.stripe.checkout.sessions.create).toHaveBeenCalledWith({
+      mode: "subscription",
+      customer: fixture.customerId,
+      line_items: [{ price: TEST_PRICE_CONCURRENCY, quantity: 1 }],
+      allow_promotion_codes: true,
+      success_url: `${APP_ORIGIN}/billing?concurrency=success`,
+      cancel_url: `${APP_ORIGIN}/billing?concurrency=canceled`,
+      metadata: {
+        purpose: "concurrency_subscription",
+        orgId: fixture.orgId,
+        priceId: TEST_PRICE_CONCURRENCY,
+        quantity: "1",
+      },
+      subscription_data: {
+        metadata: {
+          purpose: "concurrency_subscription",
+          orgId: fixture.orgId,
+          priceId: TEST_PRICE_CONCURRENCY,
+          quantity: "1",
+        },
+      },
+    });
+  });
+
+  it("updates an existing subscription without changing its billing anchor", async () => {
     const subscriptionId = `sub_${randomUUID()}`;
     const subscriptionItemId = `si_${randomUUID()}`;
     const hostedInvoiceUrl =
