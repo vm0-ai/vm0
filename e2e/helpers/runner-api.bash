@@ -215,6 +215,10 @@ runner_e2e_wait_for_usage_event() {
     local last_events='{}'
 
     while ((SECONDS - started_at < timeout_seconds)); do
+        # Vercel does not run scheduled crons for PR previews. Match the
+        # previous Runner billing coverage by settling pending usage before
+        # reading the public chat event.
+        process_zero_usage_events || return
         if last_events=$(runner_api_curl \
             "/api/zero/chat-threads/${thread_id}/events?limit=50" 2>&1) &&
             jq -e \
@@ -255,6 +259,9 @@ runner_e2e_wait_for_usage_record() {
     local last_record='{}'
 
     while ((SECONDS - started_at < timeout_seconds)); do
+        # Usage can arrive after run completion, so keep driving the preview's
+        # otherwise-unscheduled settlement cron while polling the public read.
+        process_zero_usage_events || return
         if last_record=$(runner_e2e_usage_record 2>&1) &&
             jq -e \
                 --arg threadId "$thread_id" \
