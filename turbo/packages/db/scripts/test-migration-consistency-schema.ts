@@ -6922,8 +6922,7 @@ async function validateChatRunServiceTierAnnotationBackfill(): Promise<void> {
   }
 }
 
-const RETIRED_RUN_MODEL_STATE_PREVIOUS_MIGRATION =
-  "0901_parallel_energizer";
+const RETIRED_RUN_MODEL_STATE_PREVIOUS_MIGRATION = "0901_parallel_energizer";
 const RETIRED_RUN_MODEL_STATE_MIGRATION = "0902_retire_legacy_run_model_state";
 
 async function validateRetiredRunModelStateMigration(): Promise<void> {
