@@ -1,6 +1,10 @@
 import { chatEvents } from "@vm0/db/schema/chat-event";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import {
+  activeInputDeliveries,
+  activeInputDeliveryItems,
+} from "@vm0/db/schema/active-input-delivery";
+import {
   and,
   asc,
   eq,
@@ -29,11 +33,29 @@ interface PendingChatQueueEvent {
 }
 
 function unrevokedQueueEventCondition(db: ChatQueueReadDb) {
-  return notExists(
-    db
-      .select({ id: queueEventRevoker.id })
-      .from(queueEventRevoker)
-      .where(eq(queueEventRevoker.revokesEventId, chatEvents.id)),
+  return and(
+    notExists(
+      db
+        .select({ id: queueEventRevoker.id })
+        .from(queueEventRevoker)
+        .where(eq(queueEventRevoker.revokesEventId, chatEvents.id)),
+    ),
+    notExists(
+      db
+        .select({ deliveryId: activeInputDeliveryItems.deliveryId })
+        .from(activeInputDeliveryItems)
+        .innerJoin(
+          activeInputDeliveries,
+          eq(activeInputDeliveries.id, activeInputDeliveryItems.deliveryId),
+        )
+        .where(
+          and(
+            eq(activeInputDeliveryItems.sourceEventId, chatEvents.id),
+            isNull(activeInputDeliveryItems.disposition),
+            eq(activeInputDeliveries.status, "open"),
+          ),
+        ),
+    ),
   );
 }
 
