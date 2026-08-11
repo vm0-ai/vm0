@@ -117,6 +117,88 @@ class TestModelProviderJsonFallback:
             "tokens.cache_creation.long_context": cache_write_tokens,
         }
 
+    def test_json_source_diagnostic_records_aggregate_admission_without_secrets(
+        self, tmp_path, real_flow
+    ):
+        proxy_log_path = tmp_path / "proxy.jsonl"
+        flow = model_provider_flow(
+            real_flow,
+            tmp_path,
+            OPENAI_RESPONSES_CASE,
+            proxy_log_path=proxy_log_path,
+        )
+        secret_userinfo = "diagnostic-user:diagnostic-password"
+        secret_query = "diagnostic-query-secret"
+        secret_fragment = "diagnostic-fragment-secret"
+        secret_authorization = "Bearer diagnostic-authorization-secret"
+        secret_prompt = b"diagnostic-prompt-secret"
+        raw_url = (
+            f"https://{secret_userinfo}@api.openai.com/"
+            + "p" * (logging_utils.URL_LOG_MAX_CHARACTERS + 1)
+            + f"?token={secret_query}#{secret_fragment}"
+        )
+        flow.metadata[metadata_keys.ORIGINAL_URL] = raw_url
+        flow.request.headers["authorization"] = secret_authorization
+        flow.request.content = secret_prompt
+        body = standard_success_payload(OPENAI_RESPONSES_CASE)
+        set_response_stream_buffer(flow, body)
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=header_map({"content-type": "application/json"}),
+        )
+
+        webhook = run_response(flow, self._usage_webhook_api)
+
+        [source_entry] = [
+            entry
+            for entry in read_jsonl_entries_after_flush(proxy_log_path)
+            if entry.get("type") == "model_usage_source"
+        ]
+        assert source_entry["level"] == "info"
+        assert source_entry["message"] == "Model provider usage source reported"
+        assert source_entry["run_id"] == "run-abc-123"
+        assert source_entry["flow_id"] == flow.id
+        assert source_entry["source_id"] == flow.id
+        assert source_entry["method"] == flow.request.method
+        assert source_entry["url"] == "[truncated]"
+        assert source_entry["url_truncated"] is True
+        assert source_entry["url_original_char_count"] == len(raw_url)
+        assert source_entry["transport"] == "http"
+        assert source_entry["buffer_mode"] == "aggregate"
+        assert source_entry["firewall_name"] == "model-provider:openai-api-key"
+        assert source_entry["reported_model"] == OPENAI_RESPONSES_CASE.model
+        assert source_entry["provider_response_id"] == OPENAI_RESPONSES_CASE.message_id
+        assert source_entry["usage"] == expected_event_quantities(OPENAI_RESPONSES_CASE)
+
+        source_events = source_entry["usage_events"]
+        assert {
+            event["category"]: event["quantity"] for event in source_events
+        } == expected_event_quantities(OPENAI_RESPONSES_CASE)
+        assert all(event["buffer_accepted"] is True for event in source_events)
+        source_event_keys = {event["source_idempotency_key"] for event in source_events}
+        aggregate_event_keys = {event["idempotencyKey"] for event in webhook.usage_events()}
+        assert source_event_keys.isdisjoint(aggregate_event_keys)
+
+        source_observations = source_entry["model_usage_observations"]
+        assert all(observation["buffer_accepted"] is True for observation in source_observations)
+        aggregate_observation_keys = {
+            event["idempotencyKey"] for event in webhook.model_usage_observation_events()
+        }
+        assert {
+            observation["source_idempotency_key"] for observation in source_observations
+        }.isdisjoint(aggregate_observation_keys)
+
+        serialized = read_jsonl_text_after_flush(proxy_log_path)
+        for secret in (
+            secret_userinfo,
+            secret_query,
+            secret_fragment,
+            secret_authorization,
+            secret_prompt.decode(),
+        ):
+            assert secret not in serialized
+        assert len(serialized.encode()) < 5_000
+
     def test_anthropic_json_fallback_parse_error_logs_proxy_warning(self, tmp_path, real_flow):
         """Legacy JSON fallback parse failures should be observable."""
         proxy_log_path = tmp_path / "proxy.jsonl"
@@ -561,11 +643,13 @@ class TestModelProviderJsonFallback:
     def test_non_billable_openai_json_reports_observation_without_billing(
         self, tmp_path, real_flow
     ):
+        proxy_log_path = tmp_path / "proxy.jsonl"
         flow = model_provider_flow(
             real_flow,
             tmp_path,
             OPENAI_RESPONSES_CASE,
             billable=False,
+            proxy_log_path=proxy_log_path,
         )
         body = standard_success_payload(OPENAI_RESPONSES_CASE)
         set_response_stream_buffer(flow, body)
@@ -581,6 +665,16 @@ class TestModelProviderJsonFallback:
         by_category = compact_observation_quantities(observations)
         assert by_category == expected_event_quantities(OPENAI_RESPONSES_CASE)
         assert flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE]["model"] == "gpt-5.5"
+        [source_entry] = [
+            entry
+            for entry in read_jsonl_entries_after_flush(proxy_log_path)
+            if entry.get("type") == "model_usage_source"
+        ]
+        assert source_entry["usage_events"] == []
+        assert all(
+            observation["buffer_accepted"] is True
+            for observation in source_entry["model_usage_observations"]
+        )
 
     def test_non_observable_json_fallback_parse_error_stays_quiet(self, tmp_path, real_flow):
         """Model-provider fallback without MODEL_USAGE_PROVIDER must not emit warnings."""

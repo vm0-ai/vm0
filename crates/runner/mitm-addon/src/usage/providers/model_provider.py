@@ -30,7 +30,7 @@ from mitmproxy import http
 import flow_metadata
 import flow_metadata_keys as metadata_keys
 from generated.model_usage import MODEL_LONG_CONTEXT_MIN_TOTAL_INPUT_TOKENS
-from logging_utils import log_proxy_entry
+from logging_utils import log_proxy_entry, project_url_for_proxy_log
 
 from ..buffer import (
     ModelUsageObservation,
@@ -57,6 +57,8 @@ from ..underbilling import log_usage_underbilling
 
 MODEL_USAGE_KIND = "model"
 type _ModelUsageTier = Literal["base", "long_context"]
+type _ModelUsageTransport = Literal["http", "websocket"]
+type _ModelUsageBufferMode = Literal["aggregate", "source"]
 _MODEL_USAGE_TIER_BASE: _ModelUsageTier = "base"
 _MODEL_USAGE_TIER_LONG_CONTEXT: _ModelUsageTier = "long_context"
 _MODEL_USAGE_CATEGORY_INPUT_LONG_CONTEXT = "tokens.input.long_context"
@@ -71,6 +73,13 @@ class _ModelUsageTierDecision:
     tier: _ModelUsageTier
     fast: bool
     committed: bool
+
+
+@dataclass(frozen=True, slots=True)
+class _ModelProviderUsageSource:
+    source_id: str
+    provider_response_id: str | None
+    usage: dict
 
 
 _MODEL_USAGE_LONG_CONTEXT_CATEGORY_BY_BASE = {
@@ -117,7 +126,12 @@ def has_positive_model_provider_usage(source_usage: dict) -> bool:
     return any(_is_positive_int(source_usage.get(category)) for category in MODEL_USAGE_CATEGORIES)
 
 
-def report_model_provider_usage(flow: http.HTTPFlow, run_id: str) -> bool:
+def report_model_provider_usage(
+    flow: http.HTTPFlow,
+    run_id: str,
+    *,
+    accepted_source_keys: set[str] | None = None,
+) -> bool:
     """Buffer billable token usage for model-provider responses if available.
 
     Accepted reporting requires all universal gates to pass:
@@ -130,9 +144,11 @@ def report_model_provider_usage(flow: http.HTTPFlow, run_id: str) -> bool:
       quantity.
     - ``vm_sandbox_token`` and ``get_api_url()`` are both non-empty.
 
-    Returns whether usage was accepted into the reporting path. All failed
-    gates are silent by design except missing sandbox token or API URL, which
-    writes an underbilling signal because billable usage cannot be reported.
+    Returns whether usage was accepted into the reporting path. When provided,
+    the caller-owned set accumulates source payload keys accepted by the
+    process-local buffer. All failed gates are silent by design except missing
+    sandbox token or API URL, which writes an underbilling signal because
+    billable usage cannot be reported.
     """
     if not run_id:
         return False
@@ -148,10 +164,21 @@ def report_model_provider_usage(flow: http.HTTPFlow, run_id: str) -> bool:
     )
     if not events:
         return False
-    return _buffer_model_provider_usage_events(flow, run_id, firewall_name, events)
+    return _buffer_model_provider_usage_events(
+        flow,
+        run_id,
+        firewall_name,
+        events,
+        accepted_source_keys=accepted_source_keys,
+    )
 
 
-def report_model_provider_usage_observation(flow: http.HTTPFlow, run_id: str) -> bool:
+def report_model_provider_usage_observation(
+    flow: http.HTTPFlow,
+    run_id: str,
+    *,
+    accepted_source_keys: set[str] | None = None,
+) -> bool:
     """Buffer model usage statistics for observable model-provider responses.
 
     Observations are sent to
@@ -170,9 +197,10 @@ def report_model_provider_usage_observation(flow: http.HTTPFlow, run_id: str) ->
 
     Non-billable BYOK model-provider flows with ``MODEL_USAGE_PROVIDER`` are
     expected to report observations without reporting billable usage events.
-    All failed gates are silent by design except missing sandbox token or API
-    URL, which writes a proxy warning because that indicates an
-    environment/reporting setup problem.
+    When provided, the caller-owned set accumulates source payload keys
+    accepted by the process-local buffer. All failed gates are silent by design
+    except missing sandbox token or API URL, which writes a proxy warning
+    because that indicates an environment/reporting setup problem.
     """
     if not run_id:
         return False
@@ -181,7 +209,12 @@ def report_model_provider_usage_observation(flow: http.HTTPFlow, run_id: str) ->
     observations = _build_model_provider_usage_observations(flow, run_id)
     if not observations:
         return False
-    return _buffer_model_provider_usage_observations(flow, run_id, observations)
+    return _buffer_model_provider_usage_observations(
+        flow,
+        run_id,
+        observations,
+        accepted_source_keys=accepted_source_keys,
+    )
 
 
 def report_model_provider_usage_source(
@@ -252,18 +285,84 @@ def report_model_provider_usage_source(
             _log_model_usage_observation_context_missing(context)
         return
 
+    accepted_usage_keys: set[str] = set()
+    accepted_observation_keys: set[str] = set()
     if usage_events:
         _buffer_source_model_provider_usage_events(
             context,
             run_id,
             source_id,
             usage_events,
+            accepted_source_keys=accepted_usage_keys,
         )
     if observations:
         _buffer_source_model_provider_usage_observations(
             context,
             run_id,
             observations,
+            accepted_source_keys=accepted_observation_keys,
+        )
+    _log_model_provider_usage_source(
+        flow,
+        run_id,
+        _ModelProviderUsageSource(source_id, message_id, source_usage),
+        provider,
+        usage_events,
+        observations,
+        accepted_usage_keys=accepted_usage_keys,
+        accepted_observation_keys=accepted_observation_keys,
+        transport="websocket",
+        buffer_mode="source",
+    )
+
+
+def log_terminal_model_provider_usage_sources(
+    flow: http.HTTPFlow,
+    run_id: str,
+    *,
+    include_usage_events: bool,
+    include_observations: bool,
+    accepted_usage_keys: set[str],
+    accepted_observation_keys: set[str],
+    transport: _ModelUsageTransport,
+) -> None:
+    """Log aggregate-buffer admission for terminal model usage sources."""
+    for source in _iter_model_provider_usage_sources(flow):
+        provider = _reported_model(flow, source.usage)
+        usage_events: list[UsageEvent] = []
+        if include_usage_events:
+            billing_tier = _model_usage_tier(provider, source.usage)
+            if billing_tier is not None:
+                usage_events = _build_usage_events(
+                    run_id,
+                    source.source_id,
+                    provider,
+                    source.usage,
+                    USAGE_EVENT_NAMESPACE_MODEL,
+                    billing_tier,
+                    _is_fast_service_tier(source.usage),
+                )
+        observations = (
+            _build_model_usage_observations(
+                run_id,
+                source.source_id,
+                provider,
+                source.usage,
+            )
+            if include_observations
+            else []
+        )
+        _log_model_provider_usage_source(
+            flow,
+            run_id,
+            source,
+            provider,
+            usage_events,
+            observations,
+            accepted_usage_keys=accepted_usage_keys,
+            accepted_observation_keys=accepted_observation_keys,
+            transport=transport,
+            buffer_mode="aggregate",
         )
 
 
@@ -277,6 +376,8 @@ def _buffer_model_provider_usage_events(
     run_id: str,
     firewall_name: str,
     events: list[UsageEvent],
+    *,
+    accepted_source_keys: set[str] | None,
 ) -> bool:
     context = usage_reporting_context(flow)
     if not context.is_complete:
@@ -288,6 +389,7 @@ def _buffer_model_provider_usage_events(
         run_id,
         events,
         context.proxy_log_path,
+        accepted_source_keys=accepted_source_keys,
     )
     return True
 
@@ -296,6 +398,8 @@ def _buffer_model_provider_usage_observations(
     flow: http.HTTPFlow,
     run_id: str,
     observations: list[ModelUsageObservation],
+    *,
+    accepted_source_keys: set[str] | None,
 ) -> bool:
     context = usage_reporting_context(flow)
     if not context.is_complete:
@@ -307,6 +411,7 @@ def _buffer_model_provider_usage_observations(
         run_id,
         observations,
         context.proxy_log_path,
+        accepted_source_keys=accepted_source_keys,
     )
     return True
 
@@ -316,6 +421,8 @@ def _buffer_source_model_provider_usage_events(
     run_id: str,
     source_id: str,
     events: list[UsageEvent],
+    *,
+    accepted_source_keys: set[str],
 ) -> None:
     input_partition_events, independent_events = _split_model_input_partition_events(events)
     if input_partition_events:
@@ -330,6 +437,7 @@ def _buffer_source_model_provider_usage_events(
                 run_id,
                 source_id,
             ),
+            accepted_source_keys=accepted_source_keys,
         )
     if independent_events:
         buffer_source_usage_events(
@@ -338,6 +446,7 @@ def _buffer_source_model_provider_usage_events(
             run_id,
             independent_events,
             context.proxy_log_path,
+            accepted_source_keys=accepted_source_keys,
         )
 
 
@@ -345,6 +454,8 @@ def _buffer_source_model_provider_usage_observations(
     context: UsageReportingContext,
     run_id: str,
     observations: list[ModelUsageObservation],
+    *,
+    accepted_source_keys: set[str],
 ) -> None:
     buffer_source_model_usage_observations(
         context.model_usage_observation_url(),
@@ -352,6 +463,7 @@ def _buffer_source_model_provider_usage_observations(
         run_id,
         observations,
         context.proxy_log_path,
+        accepted_source_keys=accepted_source_keys,
     )
 
 
@@ -411,22 +523,22 @@ def _build_model_provider_usage_events(
     namespace: uuid.UUID,
 ) -> list[UsageEvent]:
     events: list[UsageEvent] = []
-    for source_id, usage in _iter_model_provider_usage_sources(flow):
-        provider = _reported_model(flow, usage)
-        billing_tier = _model_usage_tier(provider, usage)
+    for source in _iter_model_provider_usage_sources(flow):
+        provider = _reported_model(flow, source.usage)
+        billing_tier = _model_usage_tier(provider, source.usage)
         if billing_tier is None:
-            if has_positive_model_provider_usage(usage):
+            if has_positive_model_provider_usage(source.usage):
                 _log_model_usage_tier_unresolved(flow, run_id, provider)
             continue
         events.extend(
             _build_usage_events(
                 run_id,
-                source_id,
+                source.source_id,
                 provider,
-                usage,
+                source.usage,
                 namespace,
                 billing_tier,
-                _is_fast_service_tier(usage),
+                _is_fast_service_tier(source.usage),
             )
         )
     return events
@@ -437,13 +549,13 @@ def _build_model_provider_usage_observations(
     run_id: str,
 ) -> list[ModelUsageObservation]:
     observations: list[ModelUsageObservation] = []
-    for source_id, usage in _iter_model_provider_usage_sources(flow):
+    for source in _iter_model_provider_usage_sources(flow):
         observations.extend(
             _build_model_usage_observations(
                 run_id,
-                source_id,
-                _reported_model(flow, usage),
-                usage,
+                source.source_id,
+                _reported_model(flow, source.usage),
+                source.usage,
             )
         )
     return observations
@@ -494,7 +606,7 @@ def _build_model_usage_observations(
     return observations
 
 
-def _iter_model_provider_usage_sources(flow: http.HTTPFlow) -> Iterator[tuple[str, dict]]:
+def _iter_model_provider_usage_sources(flow: http.HTTPFlow) -> Iterator[_ModelProviderUsageSource]:
     usage_sources = flow.metadata.get(metadata_keys.MODEL_PROVIDER_USAGE_SOURCES)
     if isinstance(usage_sources, dict):
         valid_sources = (
@@ -503,11 +615,80 @@ def _iter_model_provider_usage_sources(flow: http.HTTPFlow) -> Iterator[tuple[st
             if isinstance(message_id, str) and message_id and isinstance(source_usage, dict)
         )
         for message_id, source_usage in valid_sources:
-            yield f"{flow.id}:{message_id}", source_usage
+            yield _ModelProviderUsageSource(
+                f"{flow.id}:{message_id}",
+                message_id,
+                source_usage,
+            )
 
     usage = flow.metadata.get(metadata_keys.MODEL_PROVIDER_USAGE)
     if usage and isinstance(usage, dict):
-        yield flow.id, usage
+        yield _ModelProviderUsageSource(
+            flow.id,
+            _string_or_none(usage.get("message_id")),
+            usage,
+        )
+
+
+def _log_model_provider_usage_source(
+    flow: http.HTTPFlow,
+    run_id: str,
+    source: _ModelProviderUsageSource,
+    provider: str,
+    usage_events: list[UsageEvent],
+    observations: list[ModelUsageObservation],
+    *,
+    accepted_usage_keys: set[str],
+    accepted_observation_keys: set[str],
+    transport: _ModelUsageTransport,
+    buffer_mode: _ModelUsageBufferMode,
+) -> None:
+    if not usage_events and not observations:
+        return
+
+    url_projection = project_url_for_proxy_log(flow_metadata.original_url(flow.metadata))
+    log_proxy_entry(
+        flow_metadata.proxy_log_path(flow.metadata),
+        "info",
+        "Model provider usage source reported",
+        type="model_usage_source",
+        run_id=run_id,
+        flow_id=flow.id,
+        source_id=source.source_id,
+        method=flow.request.method,
+        url=url_projection,
+        transport=transport,
+        buffer_mode=buffer_mode,
+        firewall_name=flow_metadata.firewall_name(flow.metadata),
+        reported_model=provider,
+        provider_response_id=source.provider_response_id,
+        usage={
+            category: quantity
+            for category in MODEL_USAGE_CATEGORIES
+            if _is_positive_int(quantity := source.usage.get(category))
+        },
+        usage_events=[
+            {
+                "source_idempotency_key": event["idempotencyKey"],
+                "category": event["category"],
+                "quantity": event["quantity"],
+                "buffer_accepted": event["idempotencyKey"] in accepted_usage_keys,
+            }
+            for event in usage_events
+        ],
+        model_usage_observations=[
+            {
+                "source_idempotency_key": observation["idempotencyKey"],
+                "input_tokens": observation["inputTokens"],
+                "output_tokens": observation["outputTokens"],
+                "cache_read_input_tokens": observation["cacheReadInputTokens"],
+                "cache_creation_input_tokens": observation["cacheCreationInputTokens"],
+                "buffer_accepted": observation["idempotencyKey"] in accepted_observation_keys,
+            }
+            for observation in observations
+        ],
+        **url_projection.truncation_fields(),
+    )
 
 
 def _build_usage_events(

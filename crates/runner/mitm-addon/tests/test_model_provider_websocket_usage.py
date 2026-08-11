@@ -71,6 +71,17 @@ def _openai_websocket_zero_usage_frame(response_id: str, *, model: str | None = 
     ).encode()
 
 
+def _model_usage_source_entries(flow: http.HTTPFlow) -> list[dict]:
+    proxy_log = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
+    if not jsonl_exists_after_flush(proxy_log):
+        return []
+    return [
+        entry
+        for entry in read_jsonl_entries_after_flush(proxy_log)
+        if entry.get("type") == "model_usage_source"
+    ]
+
+
 class TestModelProviderWebSocketUsageSourceRelease:
     """Tests for sources that cannot be delivered to the usage webhook."""
 
@@ -98,6 +109,7 @@ class TestModelProviderWebSocketUsageSourceRelease:
         [observation_entry] = [
             entry for entry in entries if entry.get("type") == "model_usage_observation"
         ]
+        assert not any(entry.get("type") == "model_usage_source" for entry in entries)
         assert entry["type"] == "usage_underbilling"
         assert entry["reason"] == "missing_reporting_context"
         assert entry["underbilling_class"] == "confirmed"
@@ -245,6 +257,29 @@ class TestModelProviderWebSocketUsage:
                 ("gpt-5.5", "tokens.cache_creation", 15),
             ],
         )
+        [source_entry] = _model_usage_source_entries(flow)
+        assert source_entry["flow_id"] == flow.id
+        assert source_entry["source_id"] == f"{flow.id}:resp_ws_1"
+        assert source_entry["provider_response_id"] == "resp_ws_1"
+        assert source_entry["transport"] == "websocket"
+        assert source_entry["buffer_mode"] == "source"
+        assert source_entry["method"] == "GET"
+        assert source_entry["url"] == "https://api.openai.com/v1/responses"
+        assert all(event["buffer_accepted"] is True for event in source_entry["usage_events"])
+        assert {event["source_idempotency_key"] for event in source_entry["usage_events"]} == {
+            event["idempotencyKey"] for event in webhook.usage_events()
+        }
+        assert all(
+            observation["buffer_accepted"] is True
+            for observation in source_entry["model_usage_observations"]
+        )
+        assert {
+            observation["source_idempotency_key"]
+            for observation in source_entry["model_usage_observations"]
+        } == {
+            observation["idempotencyKey"]
+            for observation in webhook.model_usage_observation_events()
+        }
 
     def test_model_websocket_work_limit_warns_and_later_frame_reports(
         self,
@@ -351,6 +386,28 @@ class TestModelProviderWebSocketUsage:
         ]
         _assert_usage_event_rows(webhook.usage_events(), "provider", expected_rows)
         _assert_usage_event_rows(webhook.model_usage_observation_events(), "model", expected_rows)
+        source_entries = _model_usage_source_entries(flow)
+        assert len(source_entries) == 2
+        first_entry = next(
+            entry for entry in source_entries if entry["usage"]["tokens.input"] == 20
+        )
+        repeated_entry = next(
+            entry for entry in source_entries if entry["usage"]["tokens.input"] == 10
+        )
+        assert first_entry["source_id"] == repeated_entry["source_id"]
+        assert first_entry["provider_response_id"] == "resp_ws_1"
+        assert {event["source_idempotency_key"] for event in first_entry["usage_events"]} == {
+            event["source_idempotency_key"] for event in repeated_entry["usage_events"]
+        }
+        assert all(event["buffer_accepted"] is True for event in first_entry["usage_events"])
+        assert all(event["buffer_accepted"] is False for event in repeated_entry["usage_events"])
+        first_observations = first_entry["model_usage_observations"]
+        repeated_observations = repeated_entry["model_usage_observations"]
+        assert {observation["source_idempotency_key"] for observation in first_observations} == {
+            observation["source_idempotency_key"] for observation in repeated_observations
+        }
+        assert all(observation["buffer_accepted"] is True for observation in first_observations)
+        assert all(observation["buffer_accepted"] is False for observation in repeated_observations)
 
     def test_model_websocket_late_same_id_frame_can_add_new_category_after_release(
         self, tmp_path, real_flow
@@ -926,6 +983,30 @@ class TestModelProviderWebSocketUsage:
         ]
         _assert_usage_event_rows(webhook.usage_events(), "provider", expected_rows)
         _assert_usage_event_rows(webhook.model_usage_observation_events(), "model", expected_rows)
+        source_entries = _model_usage_source_entries(flow)
+        assert len(source_entries) == 2
+        [source_preserving_entry] = [
+            entry for entry in source_entries if entry["buffer_mode"] == "source"
+        ]
+        [aggregate_entry] = [
+            entry for entry in source_entries if entry["buffer_mode"] == "aggregate"
+        ]
+        assert source_preserving_entry["provider_response_id"] == "resp_ws_1"
+        assert aggregate_entry["provider_response_id"] is None
+        assert aggregate_entry["source_id"] == flow.id
+        assert aggregate_entry["transport"] == "websocket"
+        webhook_usage_keys = {event["idempotencyKey"] for event in webhook.usage_events()}
+        assert {
+            event["source_idempotency_key"] for event in source_preserving_entry["usage_events"]
+        }.issubset(webhook_usage_keys)
+        assert {
+            event["source_idempotency_key"] for event in aggregate_entry["usage_events"]
+        }.isdisjoint(webhook_usage_keys)
+        assert all(
+            event["buffer_accepted"] is True
+            for entry in source_entries
+            for event in entry["usage_events"]
+        )
 
     @pytest.mark.parametrize(
         "later_cache_write_tokens",

@@ -163,6 +163,7 @@ class _UsageBufferState:
         log_type: str,
         preserve_source_idempotency: bool,
         atomic_source_key: str | None,
+        accepted_source_keys: set[str] | None,
     ) -> int:
         if atomic_source_key is not None:
             events = tuple(events)
@@ -208,6 +209,8 @@ class _UsageBufferState:
                 bucket.source_event_count += 1
             self._source_event_count += 1
             accepted_count += 1
+            if accepted_source_keys is not None:
+                accepted_source_keys.add(source_key)
         # Insert the admission key after its member keys so its bounded
         # insertion-order lifetime covers the entire group.
         if atomic_source_key is not None and accepted_count > 0:
@@ -224,6 +227,7 @@ class _UsageBufferState:
         proxy_log_path: str,
         *,
         preserve_source_idempotency: bool,
+        accepted_source_keys: set[str] | None,
     ) -> int:
         destination = _DestinationKey(
             url,
@@ -265,6 +269,8 @@ class _UsageBufferState:
                 bucket.source_event_count += 1
             self._source_event_count += 1
             accepted_count += 1
+            if accepted_source_keys is not None:
+                accepted_source_keys.add(source_key)
         self._evict_source_keys()
         return accepted_count
 
