@@ -120,7 +120,7 @@ interface UsagePackCheckoutSessionInput {
   readonly status?: string | null;
 }
 
-interface UsagePackSubscriptionInput {
+export interface UsagePackSubscriptionInput {
   readonly id: string;
   readonly customer?: StripeObjectReference | null;
   readonly status: string;
@@ -161,7 +161,7 @@ interface UsagePackInvoiceLineInput {
   } | null;
 }
 
-interface UsagePackInvoiceInput {
+export interface UsagePackInvoiceInput {
   readonly id: string;
   readonly customer: StripeObjectReference | null;
   readonly metadata: Record<string, string> | null;
@@ -387,6 +387,22 @@ export async function usagePackSubscriptionSchemaAvailable(
   return state?.available ?? false;
 }
 
+export function usagePackSubscriptionMetadata(args: {
+  readonly orgId: string;
+  readonly tier: SubscriptionCheckoutTier;
+  readonly planPriceId: string;
+  readonly usagePackSubscriptionId: string;
+}): StripeMetadataParam {
+  return {
+    orgId: args.orgId,
+    tier: args.tier,
+    priceId: args.planPriceId,
+    purpose: USAGE_PACK_SUBSCRIPTION_PURPOSE,
+    [USAGE_PACK_SUBSCRIPTION_ID_METADATA_KEY]: args.usagePackSubscriptionId,
+    ...stripePreviewMetadata(),
+  };
+}
+
 function usagePackCheckoutMetadata(args: {
   readonly orgId: string;
   readonly tier: SubscriptionCheckoutTier;
@@ -396,19 +412,12 @@ function usagePackCheckoutMetadata(args: {
     | Readonly<Record<string, string | undefined>>
     | undefined;
 }): StripeMetadataParam {
-  const metadata: StripeMetadataParam = {
-    orgId: args.orgId,
-    tier: args.tier,
-    priceId: args.planPriceId,
-    purpose: USAGE_PACK_SUBSCRIPTION_PURPOSE,
-    [USAGE_PACK_SUBSCRIPTION_ID_METADATA_KEY]: args.usagePackSubscriptionId,
-  };
+  const metadata = usagePackSubscriptionMetadata(args);
   for (const [key, value] of Object.entries(args.adAttribution ?? {})) {
     if (value) {
       metadata[key] = value;
     }
   }
-  Object.assign(metadata, stripePreviewMetadata());
   return metadata;
 }
 
@@ -530,7 +539,7 @@ export const createUsagePackCheckoutSession$ = command(
   },
 );
 
-function usagePackSubscriptionIdFromMetadata(
+export function usagePackSubscriptionIdFromMetadata(
   metadata: Readonly<Record<string, string>> | null | undefined,
 ): string | null {
   if (metadata?.purpose !== USAGE_PACK_SUBSCRIPTION_PURPOSE) {

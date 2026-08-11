@@ -938,6 +938,7 @@
         "description": "Acceso gratuito heredado para los espacios de trabajo existentes.",
         "name": "Gratis"
       },
+      "legacy": "Heredado",
       "limitedFree": {
         "name": "Gratis limitado"
       },
@@ -995,6 +996,22 @@
         "memberExclusive": "Cada paquete pertenece a un miembro y no se puede compartir. Cuando se agota, el uso vuelve a los créditos de pago por uso. Puedes actualizar a un paquete nuevo más adelante.",
         "memberPackages": "Paquetes de miembros",
         "memberUsage": "Uso del miembro",
+        "migration": {
+          "action": "Convertir plan",
+          "confirmDescription": "Tu plan y tus derechos actuales permanecen activos hasta que termine este período de facturación. Stripe cobra el nuevo total recurrente cuando empieza el nuevo plan.",
+          "convertPlan": "Convertir plan",
+          "description": "Convierte tu espacio de trabajo {{plan}} heredado a un nuevo plan con un paquete de uso mensual individual para cada miembro.",
+          "error": "No se pudo migrar esta suscripción. Actualiza la página e inténtalo de nuevo.",
+          "invoice": "Ver factura",
+          "processing": "Programando la conversión con Stripe.",
+          "ready": "Elige un paquete mensual obligatorio para cada miembro e invitación pendiente.",
+          "review": "Revisar conversión",
+          "reviewDescription": "Compara el plan heredado actual con el nuevo plan recurrente antes de programar la conversión.",
+          "reviewTitle": "Revisar conversión del plan",
+          "scheduled": "La conversión está programada para el {{date}}. Tu plan y tus derechos actuales permanecen activos hasta entonces.",
+          "switchesOn": "Cambia al plan {{plan}} el {{date}}",
+          "title": "Convertir plan heredado"
+        },
         "minimumPackageBreakdown": "Plan de {{base}} + paquete obligatorio de {{package}} para un miembro",
         "monthlyTotal": "Total mensual",
         "orderSummary": "Resumen del pedido",
@@ -1676,8 +1693,10 @@
       "openBrowser": "Abrir navegador",
       "openNamedAgent": "Abrir agente {{name}}",
       "openNamedChat": "Abrir chat {{title}}",
+      "pickEmoji": "Elige un emoji",
       "scrollToBottom": "Desplázate hasta abajo",
-      "searchEmoji": "Buscar emoji"
+      "searchEmoji": "Buscar emoji",
+      "steerMessageExplanation": "Enviado mientras el agente trabajaba para dirigir su comportamiento"
     },
     "threadSidebar": {
       "resize": "Cambiar el tamaño de la barra lateral"
@@ -4232,15 +4251,14 @@
         "useAccount": "Usar"
       },
       "picker": {
-        "balancedUse": "Uso equilibrado",
         "builtInModel": "Modelo integrado",
         "byokHelp": "Usa el proveedor que has configurado",
         "fast": "Rápido",
+        "fastImpact": "1,5× velocidad del modelo · 2,5× uso de créditos",
         "inheritDefault": "Heredar el valor predeterminado de la organización",
         "loadError": "No se pudieron cargar los modelos.",
         "loading": "Cargando modelos...",
         "models": "Modelos",
-        "moreCodexCredits": "Consume más créditos de Codex.",
         "noConfiguredModels": "Sin modelos configurados",
         "priceTiers": {
           "balanced": "Coste y rendimiento equilibrados",
@@ -4248,14 +4266,12 @@
           "frontier": "Modelo insignia de última generación",
           "premium": "Modelo prémium de última generación para las tareas más difíciles"
         },
-        "prioritizeSpeed": "Priorizar la velocidad",
         "pro": "Pro",
         "providerLabels": {
           "azureFoundryPortal": "Portal de Azure AI Foundry",
           "claudeCodeOauth": "Claude Code (token OAuth)",
           "deepseek": "Deepseek"
         },
-        "runSpeed": "Velocidad de ejecución",
         "standard": "Estándar"
       },
       "policies": {

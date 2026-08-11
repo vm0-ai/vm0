@@ -21,7 +21,7 @@ use sandbox::{
 use tokio::io::AsyncRead;
 use tokio::sync::{mpsc, watch};
 use tokio_util::sync::CancellationToken;
-use tracing::{info, trace, warn};
+use tracing::{info, warn};
 use vsock_host::{
     ExecOutputEvent, ExecOwnedCapturedOutput, FencedExecError, FrameWriteObserver,
     NormalOperationFence, NormalOperationFenceRejection, SupervisedExecControl,
@@ -1593,9 +1593,8 @@ fn monitor_process_with_log_readers_and_exit_notifier(
             ProcessMonitorExit::Reaped(status) => (publish_process_monitor_exit(&context), status),
         };
 
-        match &status {
-            Ok(status) => trace!(id = %id, %status, "process monitor observed exit"),
-            Err(error) => warn!(id = %id, %error, "process monitor failed to wait for child"),
+        if let Err(error) = &status {
+            warn!(id = %id, %error, "process monitor failed to wait for child");
         }
         context.runtime_cancel.cancel();
 
@@ -3661,16 +3660,9 @@ async fn wait_for_balloon(client: &ApiClient, target_mib: u32, log_id: &str) -> 
                     return SandboxParkOutcome::Reusable;
                 }
 
-                trace!(
-                    id = %log_id,
-                    actual = stats.actual_mib,
-                    target = target_mib,
-                    deficit_mib,
-                    tolerance_mib,
-                    observed_target_mib = stats.target_mib,
-                    sample_count = summary.sample_count,
-                    "waiting for balloon"
-                );
+                // Balloon timing tests advance paused time only after a completed stats sample.
+                #[cfg(test)]
+                tracing::event!(tracing::Level::TRACE, "waiting for balloon");
             }
             Ok(Err(e)) => {
                 let outcome = summary.park_outcome();

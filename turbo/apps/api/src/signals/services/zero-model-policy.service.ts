@@ -3,6 +3,7 @@ import { and, eq, inArray, notInArray } from "drizzle-orm";
 import {
   DEFAULT_ORG_MODEL_POLICY_MODELS,
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+  ACTIVE_RUN_MODELS,
   LIMITED_FREE1_DEFAULT_RUN_MODEL,
   MODEL_PROVIDER_TYPES,
   SUPPORTED_RUN_MODELS,
@@ -151,7 +152,7 @@ function loadRows(db: Db, orgId: string): Promise<OrgModelPolicyRow[]> {
     .where(
       and(
         eq(orgModelPolicies.orgId, orgId),
-        inArray(orgModelPolicies.model, [...SUPPORTED_RUN_MODELS]),
+        inArray(orgModelPolicies.model, [...ACTIVE_RUN_MODELS]),
       ),
     );
 }
@@ -391,8 +392,16 @@ export async function ensureOrgModelPolicies(
     return sortRowsByCatalog(existing);
   }
 
+  // A retired default can be the only persisted policy while the new API is
+  // deployed ahead of the Stage 2 migration. Transfer the org-wide default
+  // slot before inserting the rest of the active seed so the hidden row does
+  // not collide with the partial unique default index.
+  await setDefaultModelPolicy(db, orgId, userId, seedDefaultModel, {
+    resetRouteToBuiltIn: true,
+  });
+  const initialized = await loadRows(db, orgId);
   const existingModels = new Set(
-    existing.map((policy) => {
+    initialized.map((policy) => {
       return policy.model;
     }),
   );
@@ -410,7 +419,7 @@ export async function ensureOrgModelPolicies(
     });
 
   if (missing.length === 0) {
-    return existing;
+    return sortRowsByCatalog(initialized);
   }
 
   await db

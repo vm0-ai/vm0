@@ -917,6 +917,7 @@
         "description": "既存のワークスペースへの従来の無料アクセス。",
         "name": "無料"
       },
+      "legacy": "旧プラン",
       "limitedFree": {
         "name": "限定無料"
       },
@@ -974,6 +975,22 @@
         "memberExclusive": "各パッケージは1人のメンバー専用で共有できません。パッケージを使い切ると、従量課金クレジットに切り替わります。後から新しいパッケージにアップグレードできます。",
         "memberPackages": "メンバーパッケージ",
         "memberUsage": "メンバーの利用設定",
+        "migration": {
+          "action": "プランを切り替える",
+          "confirmDescription": "現在のプランと権限は、この請求期間が終了するまで有効です。新しいプランの開始時に Stripe が新しい月額合計を請求します。",
+          "convertPlan": "プランを切り替える",
+          "description": "従来の {{plan}} ワークスペースを、各メンバー向けの個別月額利用パッケージを含む新しいプランへ切り替えます。",
+          "error": "このサブスクリプションを移行できませんでした。ページを更新してもう一度お試しください。",
+          "invoice": "請求書を表示",
+          "processing": "Stripe で切り替えを予約しています。",
+          "ready": "各メンバーと保留中の招待に必須の月額パッケージを選択してください。",
+          "review": "切り替え内容を確認",
+          "reviewDescription": "切り替えを予約する前に、現在の旧プランと新しい月額プランを比較します。",
+          "reviewTitle": "プラン切り替えを確認",
+          "scheduled": "切り替えは {{date}} に予定されています。それまでは現在のプランと権限が有効です。",
+          "switchesOn": "{{date}} に {{plan}} プランへ切り替わります",
+          "title": "旧プランを切り替える"
+        },
         "minimumPackageBreakdown": "{{base}} のプラン + {{package}} の必須メンバーパッケージ",
         "monthlyTotal": "月額合計",
         "orderSummary": "注文内容",
@@ -1635,8 +1652,10 @@
       "openBrowser": "ブラウザを開く",
       "openNamedAgent": "エージェント {{name}} を開く",
       "openNamedChat": "チャットを開く {{title}}",
+      "pickEmoji": "絵文字を選択",
       "scrollToBottom": "一番下までスクロール",
-      "searchEmoji": "絵文字を検索"
+      "searchEmoji": "絵文字を検索",
+      "steerMessageExplanation": "エージェントの動作を指示するため、作業中に送信されました"
     },
     "threadSidebar": {
       "resize": "サイドバーのサイズを変更する"
@@ -4182,15 +4201,14 @@
         "useAccount": "使用"
       },
       "picker": {
-        "balancedUse": "バランスよく使う",
         "builtInModel": "内蔵モデル",
         "byokHelp": "設定されたプロバイダーを使用します",
         "fast": "速い",
+        "fastImpact": "モデル速度 1.5× · クレジット消費 2.5×",
         "inheritDefault": "組織のデフォルトから継承",
         "loadError": "モデルをロードできません。",
         "loading": "モデルをロード中...",
         "models": "モデル",
-        "moreCodexCredits": "Codex クレジットをさらに使用します。",
         "noConfiguredModels": "設定されたモデルはありません",
         "priceTiers": {
           "balanced": "バランスの取れたコストとパフォーマンス",
@@ -4198,14 +4216,12 @@
           "frontier": "フロンティアフラッグシップモデル",
           "premium": "最も困難なタスクに対応するプレミアムフロンティアモデル"
         },
-        "prioritizeSpeed": "スピードを優先",
         "pro": "プロ",
         "providerLabels": {
           "azureFoundryPortal": "Azure ファウンドリ ポータル",
           "claudeCodeOauth": "Claude Code（OAuthトークン）",
           "deepseek": "ディープシーク"
         },
-        "runSpeed": "走行速度",
         "standard": "標準"
       },
       "policies": {

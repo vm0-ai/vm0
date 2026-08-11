@@ -77,6 +77,11 @@ Use a different organization-scoped connector slug in each file that can run in
 parallel. Assert sandbox-visible output and vm0-owned telemetry; do not treat an
 external provider's exact response status or body as the test oracle.
 
+For active-run connector refresh cases, coordinate through a run-scoped output
+message in the public chat-events API. Network telemetry is uploaded after the
+run completes, so use it only as the final ordered policy assertion, not as a
+live synchronization point.
+
 The workflow discovers the checked-in BATS files, weighs each file by its test
 count, and assigns whole files to at most twelve non-empty shards. New files are
 included automatically. Keep setup and teardown self-contained within a file so

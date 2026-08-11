@@ -1737,7 +1737,7 @@ describe("CHAT-02: queueing and recalling messages", () => {
     await cancelChatRun(actor, active.runId);
   }, 90_000);
 
-  it("reserves ordered rich input durably and settles concurrent receipts once", async () => {
+  it("reserves rich inputs one at a time and settles concurrent receipts once", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
 
@@ -1795,19 +1795,10 @@ describe("CHAT-02: queueing and recalling messages", () => {
       throw new Error("Expected both concurrent reservations to succeed");
     }
     expect(concurrentReservation).toStrictEqual(firstReservation);
-    expect(firstReservation.eventIds).toStrictEqual([
-      firstEventId,
-      secondEventId,
-    ]);
-    expect(firstReservation.prompt).toBe(
-      [
-        "first durable steer",
-        `[Web file] delivery-notes.txt (text/plain)\n   [ID] ${fileId}`,
-        "second durable steer",
-      ].join("\n\n"),
-    );
+    expect(firstReservation.eventIds).toStrictEqual([firstEventId]);
+    expect(firstReservation.prompt).toBe("first durable steer");
 
-    // Model a lost first response: retry must retrieve the same durable batch.
+    // Model a lost first response: retry must retrieve the same durable delivery.
     await expect(
       api.reserveRunnerActiveInputs(claimed.claim.sandboxToken, active.runId),
     ).resolves.toStrictEqual(firstReservation);
@@ -1847,6 +1838,36 @@ describe("CHAT-02: queueing and recalling messages", () => {
       }),
     ).toHaveLength(1);
 
+    await expect(
+      api.listRunnerActiveInputs(claimed.claim.sandboxToken, active.runId),
+    ).resolves.toStrictEqual([secondEventId]);
+    const secondReservation = await api.reserveRunnerActiveInputs(
+      claimed.claim.sandboxToken,
+      active.runId,
+    );
+    if (secondReservation.outcome !== "reserved") {
+      throw new Error("Expected the second input to be reserved");
+    }
+    expect(secondReservation.deliveryId).not.toBe(firstReservation.deliveryId);
+    expect(secondReservation.eventIds).toStrictEqual([secondEventId]);
+    expect(secondReservation.prompt).toBe(
+      [
+        `[Web file] delivery-notes.txt (text/plain)\n   [ID] ${fileId}`,
+        "second durable steer",
+      ].join("\n\n"),
+    );
+    await expect(
+      api.recordRunnerActiveInputDelivery(
+        claimed.claim.sandboxToken,
+        active.runId,
+        secondReservation.deliveryId,
+      ),
+    ).resolves.toStrictEqual({ outcome: "delivered" });
+    expect(
+      context.mocks.ably.publish.mock.calls.filter(([topic]) => {
+        return topic === `chatThreadMessageCreated:${active.threadId}`;
+      }),
+    ).toHaveLength(2);
     await expect(
       api.listRunnerActiveInputs(claimed.claim.sandboxToken, active.runId),
     ).resolves.toStrictEqual([]);
@@ -2111,19 +2132,25 @@ describe("CHAT-02: queueing and recalling messages", () => {
     );
     await ageClaimedRun(active.runId, RUN_TIME_BUDGET_STEER_AT_MS);
     await runSteerRunTimeBudgetCron();
+    const pendingEventIds = await api.listRunnerActiveInputs(
+      claimed.claim.sandboxToken,
+      active.runId,
+    );
+    expect(pendingEventIds).toHaveLength(2);
+    const budgetEventId = pendingEventIds.find((eventId) => {
+      return eventId !== releasedEventId;
+    });
+    if (!budgetEventId) {
+      throw new Error("Expected a pending budget input");
+    }
     const reserved = await api.reserveRunnerActiveInputs(
       claimed.claim.sandboxToken,
       active.runId,
     );
     if (reserved.outcome !== "reserved") {
-      throw new Error("Expected prompt and budget input to be reserved");
+      throw new Error("Expected the released prompt to be reserved");
     }
-    const budgetEventId = reserved.eventIds.find((eventId) => {
-      return eventId !== releasedEventId;
-    });
-    if (!budgetEventId) {
-      throw new Error("Expected a reserved budget input");
-    }
+    expect(reserved.eventIds).toStrictEqual([releasedEventId]);
     const laterEventId = randomUUID();
     const later = await chat.requestSendEvent(
       actor,

@@ -816,6 +816,9 @@ jobs:
       - name: Test Connectors
         working-directory: turbo
         run: pnpm -F @vm0/connectors exec vitest run --reporter=default
+      - name: Test ESLint Config
+        working-directory: turbo
+        run: pnpm -F @vm0/eslint-config test
       - name: Upload coverage to Codecov
         if: success() || failure()
         uses: codecov/codecov-action@v7

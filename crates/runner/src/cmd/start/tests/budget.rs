@@ -4,7 +4,7 @@ use super::support::{
     mock_run_config_with_overrides, push_job, seed_idle_pool, seed_idle_pool_expired,
     seed_idle_pool_with_timing, shutdown, status_idle_reuse_keys, test_profiles, two_profiles,
     wait_budget_count, wait_cancel_token, wait_discover_entered,
-    wait_idle_cleanup_processed_with_expired_entries,
+    wait_idle_cleanup_processed_with_expired_entries, wait_status_idle_reuse_keys_and_active_runs,
 };
 
 // -----------------------------------------------------------------------
@@ -396,11 +396,13 @@ async fn idle_vm_is_reclaimed_only_after_candidate_discovery() {
         1,
         "idle VM should be retained"
     );
-    assert_eq!(
-        status_idle_reuse_keys(&status_path).await,
-        vec!["sess-pressure-status".to_string()],
-        "status.json should retain the reusable idle VM"
-    );
+    wait_status_idle_reuse_keys_and_active_runs(
+        &status_path,
+        &["sess-pressure-status"],
+        &[],
+        Duration::from_secs(5),
+    )
+    .await;
 
     let generic_run_id = RunId::new_v4();
     push_job(

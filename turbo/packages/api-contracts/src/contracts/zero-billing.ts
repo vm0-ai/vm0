@@ -80,6 +80,7 @@ const billingStatusResponseSchema = z.object({
   canBuyConcurrency: z.boolean().optional(),
   canBuyCredits: z.boolean().optional(),
   memberInviteUsagePackRequired: z.boolean().optional(),
+  memberInvitationAllowed: z.boolean().optional(),
   autoRechargeAllowed: z.boolean().optional(),
   supportByok: z.boolean().optional(),
   restrictedVm0Models: z.boolean().optional(),
@@ -311,6 +312,76 @@ export type UsagePackChangeConfirmResponse = z.infer<
 >;
 export type UsagePackSubscriptionChangePreviewResponse = z.infer<
   typeof usagePackSubscriptionChangePreviewResponseSchema
+>;
+
+export const usagePackMigrationConfigurationSchema = z.object({
+  tier: z.enum(["pro", "team"]),
+  memberUsagePacks: z.array(memberUsagePackSchema).min(1).max(1000),
+  recurringAmountCents: z.number().int().nonnegative(),
+  currency: z.string().length(3),
+});
+
+export type UsagePackMigrationConfiguration = z.infer<
+  typeof usagePackMigrationConfigurationSchema
+>;
+
+const usagePackMigrationStateResponseSchema = z.object({
+  tier: z.enum(["pro", "team"]),
+  targetTier: z.enum(["pro", "team"]).nullable(),
+  status: z.enum(["eligible", "previewed", "applying", "scheduled"]),
+  migrationId: z.uuid().nullable(),
+  effectiveAt: z.iso.datetime().nullable(),
+  hostedInvoiceUrl: z.string().url().nullable(),
+  configuration: usagePackMigrationConfigurationSchema.optional(),
+});
+
+const usagePackMigrationPreviewRequestSchema = z.object({
+  targetTier: z.enum(["pro", "team"]),
+  memberUsagePacks: z.array(memberUsagePackSchema).min(1).max(1000),
+});
+
+const usagePackMigrationPreviewResponseSchema = z.object({
+  migrationId: z.uuid(),
+  tier: z.enum(["pro", "team"]),
+  targetTier: z.enum(["pro", "team"]),
+  currentRecurringAmountCents: z.number().int().nonnegative(),
+  nextRecurringAmountCents: z.number().int().nonnegative(),
+  recurringDifferenceCents: z.number().int(),
+  currency: z.string().length(3),
+  purchasedCredits: z.number().int().positive(),
+  bonusCredits: z.number().int().positive(),
+  totalCredits: z.number().int().positive(),
+  effectiveAt: z.iso.datetime(),
+  expiresAt: z.iso.datetime(),
+});
+
+const usagePackMigrationConfirmResponseSchema = z.object({
+  status: z.enum(["scheduled", "completed"]),
+  effectiveAt: z.iso.datetime(),
+  hostedInvoiceUrl: z.string().url().nullable(),
+});
+
+const usagePackMigrationRevisionPreviewResponseSchema =
+  usagePackMigrationPreviewResponseSchema.extend({
+    previewToken: z.string().min(1),
+  });
+
+const usagePackMigrationRevisionConfirmRequestSchema =
+  usagePackMigrationPreviewRequestSchema.extend({
+    previewToken: z.string().min(1),
+  });
+
+export type UsagePackMigrationStateResponse = z.infer<
+  typeof usagePackMigrationStateResponseSchema
+>;
+export type UsagePackMigrationPreviewResponse = z.infer<
+  typeof usagePackMigrationPreviewResponseSchema
+>;
+export type UsagePackMigrationConfirmResponse = z.infer<
+  typeof usagePackMigrationConfirmResponseSchema
+>;
+export type UsagePackMigrationRevisionPreviewResponse = z.infer<
+  typeof usagePackMigrationRevisionPreviewResponseSchema
 >;
 
 const checkoutCompleteRequestSchema = z.object({
@@ -647,6 +718,98 @@ export type ZeroBillingUsagePackCreditsContract =
 export type UsagePackCreditsResponse = z.infer<
   typeof usagePackCreditsResponseSchema
 >;
+
+export const zeroBillingUsagePackMigrationContract = c.router({
+  get: {
+    method: "GET",
+    path: "/api/zero/billing/usage-pack-migration",
+    headers: authHeadersSchema,
+    responses: {
+      200: usagePackMigrationStateResponseSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      409: apiErrorSchema,
+      500: apiErrorSchema,
+      503: apiErrorSchema,
+    },
+    summary: "Get legacy subscription usage pack migration state",
+  },
+  preview: {
+    method: "POST",
+    path: "/api/zero/billing/usage-pack-migration/preview",
+    headers: authHeadersSchema,
+    body: usagePackMigrationPreviewRequestSchema,
+    responses: {
+      200: usagePackMigrationPreviewResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      409: apiErrorSchema,
+      500: apiErrorSchema,
+      503: apiErrorSchema,
+    },
+    summary: "Preview a legacy subscription usage pack migration",
+  },
+  confirm: {
+    method: "POST",
+    path: "/api/zero/billing/usage-pack-migration/:migrationId/confirm",
+    pathParams: z.object({ migrationId: z.uuid() }),
+    headers: authHeadersSchema,
+    body: z.object({}),
+    responses: {
+      200: usagePackMigrationConfirmResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      409: apiErrorSchema,
+      500: apiErrorSchema,
+      503: apiErrorSchema,
+    },
+    summary: "Confirm a legacy subscription usage pack migration",
+  },
+  previewRevision: {
+    method: "POST",
+    path: "/api/zero/billing/usage-pack-migration/:migrationId/revision/preview",
+    pathParams: z.object({ migrationId: z.uuid() }),
+    headers: authHeadersSchema,
+    body: usagePackMigrationPreviewRequestSchema,
+    responses: {
+      200: usagePackMigrationRevisionPreviewResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      409: apiErrorSchema,
+      500: apiErrorSchema,
+      503: apiErrorSchema,
+    },
+    summary: "Preview a scheduled legacy subscription migration revision",
+  },
+  confirmRevision: {
+    method: "POST",
+    path: "/api/zero/billing/usage-pack-migration/:migrationId/revision/confirm",
+    pathParams: z.object({ migrationId: z.uuid() }),
+    headers: authHeadersSchema,
+    body: usagePackMigrationRevisionConfirmRequestSchema,
+    responses: {
+      200: usagePackMigrationConfirmResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      409: apiErrorSchema,
+      500: apiErrorSchema,
+      503: apiErrorSchema,
+    },
+    summary: "Confirm a scheduled legacy subscription migration revision",
+  },
+});
+
+export type ZeroBillingUsagePackMigrationContract =
+  typeof zeroBillingUsagePackMigrationContract;
 
 /**
  * Zero contract for POST /api/zero/billing/concurrency-checkout

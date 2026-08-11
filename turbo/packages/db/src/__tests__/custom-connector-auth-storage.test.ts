@@ -34,6 +34,7 @@ describe("custom connector auth storage schema", () => {
         "chk_org_custom_connectors_mcp",
         "chk_org_custom_connectors_storage_version_positive",
         "chk_org_custom_connectors_skill_size",
+        "chk_org_custom_connectors_skill_version_pair",
       ]),
     );
 

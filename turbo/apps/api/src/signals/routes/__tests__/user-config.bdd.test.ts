@@ -342,7 +342,7 @@ describe("AUTH-03 user model preference", () => {
 
     const response = await cfg.rawUpdateModelPreference(
       admin,
-      { selectedModel: "gpt-5.5", serviceTier: "priority" },
+      { selectedModel: "claude-opus-4-7", serviceTier: "priority" },
       [400],
     );
 
@@ -350,7 +350,7 @@ describe("AUTH-03 user model preference", () => {
       error: {
         code: "MODEL_RETIRED",
         message:
-          'Model "gpt-5.5" has been retired. Use "deepseek-v4-flash" instead.',
+          'Model "claude-opus-4-7" has been retired. Use "deepseek-v4-flash" instead.',
       },
     });
   });

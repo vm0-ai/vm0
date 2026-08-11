@@ -61,6 +61,17 @@ runner_e2e_start_chat_run() {
     runner_chat_send "$agent_id" "$shell_prompt" "" "deepseek-v4-flash"
 }
 
+runner_e2e_start_checkpointed_chat_run() {
+    local agent_id="$1"
+    local checkpoint_script="$2"
+    local continuation_script="$3"
+    local shell_prompt
+    shell_prompt=$(printf '@shell-checkpoint@\n%s\n@continue@\n%s' \
+        "$checkpoint_script" \
+        "$continuation_script")
+    runner_chat_send "$agent_id" "$shell_prompt" "" "deepseek-v4-flash"
+}
+
 runner_e2e_delete_chat_thread() {
     local thread_id="$1"
     runner_api_curl "/api/zero/chat-threads/${thread_id}" -X DELETE
@@ -152,6 +163,53 @@ runner_e2e_wait_for_agent_text() {
     return 1
 }
 
+runner_e2e_wait_for_active_chat_text() {
+    local thread_id="$1"
+    local run_id="$2"
+    local expected="$3"
+    local timeout_seconds="${4:-90}"
+    local started_at=$SECONDS
+    local last_events='{}'
+    local last_run='{}'
+    local matched_text=""
+    local run_status=""
+
+    while ((SECONDS - started_at < timeout_seconds)); do
+        if last_events=$(runner_api_curl \
+            "/api/zero/chat-threads/${thread_id}/events?limit=50" 2>&1) &&
+            matched_text=$(jq -er --arg runId "$run_id" --arg expected "$expected" '
+                [
+                    .events[]?
+                    | select(.eventType == "output.message" and .runId == $runId)
+                    | .content
+                    | select(type == "string" and contains($expected))
+                ]
+                | last // empty
+            ' <<<"$last_events"); then
+            printf '%s\n' "$matched_text"
+            return 0
+        fi
+
+        if last_run=$(runner_api_curl "/api/zero/runs/${run_id}" 2>&1); then
+            run_status=$(jq -r '.status // empty' <<<"$last_run")
+            case "$run_status" in
+                completed|failed|timeout|cancelled)
+                    echo "Run ${run_id} reached terminal status ${run_status@Q} before ${expected@Q} was visible" >&2
+                    echo "Last chat events: ${last_events}" >&2
+                    echo "Last run response: ${last_run}" >&2
+                    return 1
+                    ;;
+            esac
+        fi
+        sleep 2
+    done
+
+    echo "Timed out waiting for active-run ${expected@Q} in chat events for run ${run_id}" >&2
+    echo "Last chat events: ${last_events}" >&2
+    echo "Last run response: ${last_run}" >&2
+    return 1
+}
+
 runner_e2e_wait_for_firewall_log() {
     local run_id="$1"
     local firewall_name="$2"
@@ -184,6 +242,55 @@ runner_e2e_wait_for_firewall_log() {
     done
 
     echo "Timed out waiting for firewall ${firewall_name@Q} on ${host@Q} for run ${run_id}" >&2
+    echo "Last network telemetry: ${last_logs}" >&2
+    return 1
+}
+
+runner_e2e_wait_for_firewall_transition() {
+    local run_id="$1"
+    local firewall_name="$2"
+    local host="$3"
+    local method="$4"
+    local url="$5"
+    local permission="$6"
+    local timeout_seconds="${7:-90}"
+    local started_at=$SECONDS
+    local last_logs='[]'
+
+    while ((SECONDS - started_at < timeout_seconds)); do
+        if last_logs=$(runner_e2e_network_logs "$run_id" 2>&1) &&
+            jq -e \
+                --arg firewallName "$firewall_name" \
+                --arg host "$host" \
+                --arg method "$method" \
+                --arg url "$url" \
+                --arg permission "$permission" '
+                    [
+                        to_entries[]
+                        | select(
+                            .value.firewall_name == $firewallName and
+                            .value.host == $host and
+                            .value.method == $method and
+                            .value.url == $url and
+                            .value.firewall_permission == $permission
+                        )
+                    ] as $matching
+                    | any($matching[];
+                        . as $denied
+                        | $denied.value.action == "DENY" and
+                            $denied.value.status == 403 and
+                            any($matching[];
+                                .key > $denied.key and .value.action == "ALLOW"
+                            )
+                    )
+                ' <<<"$last_logs" >/dev/null; then
+            printf '%s\n' "$last_logs"
+            return 0
+        fi
+        sleep 2
+    done
+
+    echo "Timed out waiting for firewall transition ${firewall_name@Q} on ${url@Q} for run ${run_id}" >&2
     echo "Last network telemetry: ${last_logs}" >&2
     return 1
 }

@@ -14,7 +14,10 @@ import {
 
 import { nowDate } from "../../lib/time";
 import { ORG_PLAN_ENTITLEMENT_TIER_VALUES } from "./org-plan-entitlement-tier-values";
-import { memberInviteUsagePackEntitlementSchemaAvailable } from "./org-plan-entitlement-read.service";
+import {
+  memberInvitationEntitlementSchemaAvailable,
+  memberInviteUsagePackEntitlementSchemaAvailable,
+} from "./org-plan-entitlement-read.service";
 import type { Tx } from "../../lib/db-types";
 
 type WriteTx = Tx;
@@ -36,6 +39,61 @@ const orgPlanEntitlementsBeforeMemberInviteUsagePack = pgTable(
       .default(0),
     canBuyConcurrency: boolean("can_buy_concurrency").notNull().default(false),
     canBuyCredits: boolean("can_buy_credits").notNull().default(false),
+    autoRechargeAllowed: boolean("auto_recharge_allowed")
+      .notNull()
+      .default(false),
+    supportByok: boolean("support_byok").notNull().default(false),
+    restrictedVm0Models: boolean("restricted_vm0_models")
+      .notNull()
+      .default(true),
+    videoGenerationAllowed: boolean("video_generation_allowed")
+      .notNull()
+      .default(false),
+    workflowWebhookTriggerAllowed: boolean("workflow_webhook_trigger_allowed")
+      .notNull()
+      .default(false),
+    audioLifetimeLimit: integer("audio_lifetime_limit"),
+    audioDailyRateLimit: integer("audio_daily_rate_limit").notNull().default(0),
+    audioDailyDurationSeconds: integer("audio_daily_duration_seconds")
+      .notNull()
+      .default(0),
+    stripeSubscriptionId: text("stripe_subscription_id"),
+    stripeProductId: text("stripe_product_id"),
+    stripePriceId: text("stripe_price_id"),
+    currentPeriodStart: timestamp("current_period_start"),
+    currentPeriodEnd: timestamp("current_period_end"),
+    cancelAt: timestamp("cancel_at"),
+    expiresAt: timestamp("expires_at"),
+    metadataVersion: text("metadata_version").notNull().default("1"),
+    metadataHash: text("metadata_hash"),
+    sourceMetadata: jsonb("source_metadata")
+      .$type<OrgPlanEntitlementSourceMetadata>()
+      .notNull()
+      .default({}),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+);
+
+// This shape keeps new API writes compatible while migration 0901 rolls out.
+// Migration 0898 is preserved here so usage-pack invitation state continues to
+// update throughout the independent DB/API deployment window.
+const orgPlanEntitlementsBeforeMemberInvitationAllowed = pgTable(
+  "org_plan_entitlements",
+  {
+    orgId: text("org_id").primaryKey(),
+    planKey: text("plan_key").notNull(),
+    planRank: integer("plan_rank").notNull(),
+    source: varchar("source", { length: 50 }).notNull(),
+    status: varchar("status", { length: 30 }).notNull().default("active"),
+    baseConcurrencyLimit: integer("base_concurrency_limit")
+      .notNull()
+      .default(0),
+    canBuyConcurrency: boolean("can_buy_concurrency").notNull().default(false),
+    canBuyCredits: boolean("can_buy_credits").notNull().default(false),
+    memberInviteUsagePackRequired: boolean("member_invite_usage_pack_required")
+      .notNull()
+      .default(false),
     autoRechargeAllowed: boolean("auto_recharge_allowed")
       .notNull()
       .default(false),
@@ -158,6 +216,8 @@ export async function upsertOrgPlanEntitlement(
   );
   const memberInviteUsagePackRequiredAvailable =
     await memberInviteUsagePackEntitlementSchemaAvailable(tx);
+  const memberInvitationAllowedAvailable =
+    await memberInvitationEntitlementSchemaAvailable(tx);
   const memberInviteUsagePackRequired =
     args.memberInviteUsagePackRequired ?? false;
   const values = {
@@ -171,6 +231,9 @@ export async function upsertOrgPlanEntitlement(
     canBuyCredits: limits.canBuyCredits,
     ...(memberInviteUsagePackRequiredAvailable
       ? { memberInviteUsagePackRequired }
+      : {}),
+    ...(memberInvitationAllowedAvailable
+      ? { memberInvitationAllowed: limits.memberInvitationAllowed }
       : {}),
     autoRechargeAllowed: limits.autoRechargeAllowed,
     supportByok: limits.supportByok,
@@ -189,9 +252,11 @@ export async function upsertOrgPlanEntitlement(
     sourceMetadata: stripeSubscriptionSnapshot.sourceMetadata,
     updatedAt,
   };
-  const insertTable = memberInviteUsagePackRequiredAvailable
-    ? orgPlanEntitlements
-    : orgPlanEntitlementsBeforeMemberInviteUsagePack;
+  const insertTable = !memberInviteUsagePackRequiredAvailable
+    ? orgPlanEntitlementsBeforeMemberInviteUsagePack
+    : memberInvitationAllowedAvailable
+      ? orgPlanEntitlements
+      : orgPlanEntitlementsBeforeMemberInvitationAllowed;
 
   await tx
     .insert(insertTable)
@@ -208,6 +273,9 @@ export async function upsertOrgPlanEntitlement(
         canBuyCredits: values.canBuyCredits,
         ...(memberInviteUsagePackRequiredAvailable
           ? { memberInviteUsagePackRequired }
+          : {}),
+        ...(memberInvitationAllowedAvailable
+          ? { memberInvitationAllowed: limits.memberInvitationAllowed }
           : {}),
         autoRechargeAllowed: values.autoRechargeAllowed,
         supportByok: values.supportByok,
