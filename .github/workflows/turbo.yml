@@ -751,6 +751,9 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha }}
 
+      - name: Configure git safe directory
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
       - name: Verify checked out revision
         env:
           EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
