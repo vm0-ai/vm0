@@ -40,6 +40,7 @@ _PERCENT_DECODED_HOST_SYNTAX_CHARS = frozenset("{}.\u3002\uff0e\uff61,")
 _URL_PATH_SAFE_CHARS = "/%:@!$&'()*+,;="
 _URL_QUERY_SAFE_CHARS = "/?%:@!$&'()*+,;="
 _VALID_AUTH_BASE_SCHEME = "https"
+_DEFAULT_HTTPS_PORT = 443
 
 
 @dataclass(frozen=True)
@@ -77,10 +78,12 @@ class AuthorityValidationError(Exception):
     - ``missing_sni``: the HTTPS request had no TLS SNI.
     - ``invalid_sni``: the TLS SNI failed hostname normalization.
     - ``missing_authority``: the HTTPS request had no Host/``:authority``.
-    - ``invalid_authority``: Host/``:authority`` was ambiguous or failed
+    - ``invalid_authority``: an asserted HTTP authority was ambiguous or failed
       parsing or normalization.
-    - ``authority_mismatch``: the Host hostname did not match TLS SNI.
-    - ``authority_port_mismatch``: the Host port did not match destination port.
+    - ``authority_mismatch``: an asserted authority hostname did not match TLS
+      SNI.
+    - ``authority_port_mismatch``: an asserted authority port did not match the
+      destination port.
     """
 
     def __init__(
@@ -255,18 +258,20 @@ def get_trusted_authority(flow: http.HTTPFlow) -> TrustedAuthority:
             fallback_url=trusted_url,
         )
 
-    authorities = [host_header]
+    authority_assertions: list[tuple[str, int | None]] = [(host_header, None)]
     if flow.request.authority:
         if flow.request.is_http2 or flow.request.is_http3:
             if raw_host_headers:
-                authorities.append(raw_host_headers[0])
+                authority_assertions.append((raw_host_headers[0], None))
         else:
-            authorities.append(flow.request.authority)
+            # Unlike a Host field, an absolute HTTPS URI with no explicit port
+            # identifies the default 443 origin.
+            authority_assertions.append((flow.request.authority, _DEFAULT_HTTPS_PORT))
 
-    for authority in authorities:
+    for authority, implicit_port in authority_assertions:
         try:
-            header_host, header_port = _parse_host_authority(authority)
-            normalized_header_host = _normalize_hostname(header_host)
+            parsed_host, explicit_port = _parse_host_authority(authority)
+            normalized_authority_host = _normalize_hostname(parsed_host)
         except (UnicodeError, ValueError):
             raise _authority_validation_error(
                 "invalid_authority",
@@ -274,14 +279,15 @@ def get_trusted_authority(flow: http.HTTPFlow) -> TrustedAuthority:
                 fallback_url=trusted_url,
             ) from None
 
-        if normalized_header_host != normalized_sni:
+        if normalized_authority_host != normalized_sni:
             raise _authority_validation_error(
                 "authority_mismatch",
                 message="Request blocked: Host authority does not match TLS SNI",
                 fallback_url=trusted_url,
             )
 
-        if header_port is not None and header_port != port:
+        effective_port = explicit_port if explicit_port is not None else implicit_port
+        if effective_port is not None and effective_port != port:
             raise _authority_validation_error(
                 "authority_port_mismatch",
                 message="Request blocked: Host authority port does not match destination port",

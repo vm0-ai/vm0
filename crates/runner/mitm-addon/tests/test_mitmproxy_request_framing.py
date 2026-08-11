@@ -497,13 +497,37 @@ async def test_http2_duplicate_host_is_rejected_before_auth_or_http1_downgrade(
     )
 
 
+@pytest.mark.parametrize(
+    ("port", "authority", "expected_reason", "expected_original_url"),
+    [
+        pytest.param(
+            443,
+            "attacker.example",
+            "authority_mismatch",
+            "https://api.github.com/repos",
+            id="host-mismatch",
+        ),
+        pytest.param(
+            8443,
+            "api.github.com",
+            "authority_port_mismatch",
+            "https://api.github.com:8443/repos",
+            id="implicit-default-port-mismatch",
+        ),
+    ],
+)
 async def test_http1_absolute_form_authority_is_rejected_before_auth_or_forwarding(
     tmp_path: Path,
     fake_firewall_headers,
+    port: int,
+    authority: str,
+    expected_reason: str,
+    expected_original_url: str,
 ) -> None:
+    firewall_base = "https://api.github.com" if port == 443 else f"https://api.github.com:{port}"
     registry_path = _write_github_firewall_registry(
         tmp_path,
-        base="https://api.github.com",
+        base=firewall_base,
         vm_fields={"captureNetworkBodies": True},
     )
 
@@ -518,16 +542,17 @@ async def test_http1_absolute_form_authority_is_rejected_before_auth_or_forwardi
         )
         http_layer, request_headers_hook = _start_transparent_http1_absolute_request(
             addon_context,
-            authority="attacker.example",
+            authority=authority,
+            port=port,
         )
         flow = request_headers_hook.flow
         original_head = http1.assemble_request_head(flow.request)
 
         assert flow.request.scheme == "https"
         assert flow.request.host == "203.0.113.10"
-        assert flow.request.port == 443
+        assert flow.request.port == port
         assert flow.request.host_header == "api.github.com"
-        assert flow.request.authority == "attacker.example"
+        assert flow.request.authority == authority
 
         await addon_context.master.addons.invoke_addon(mitm_addon, request_headers_hook)
 
@@ -547,9 +572,9 @@ async def test_http1_absolute_form_authority_is_rejected_before_auth_or_forwardi
     assert flow.response is not None
     assert flow.response.status_code == 403
     assert flow.response.content is not None
-    assert json.loads(flow.response.content)["error"] == "authority_mismatch"
-    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "authority_mismatch"
-    assert flow.metadata[metadata_keys.ORIGINAL_URL] == "https://api.github.com/repos"
+    assert json.loads(flow.response.content)["error"] == expected_reason
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == expected_reason
+    assert flow.metadata[metadata_keys.ORIGINAL_URL] == expected_original_url
     assert http1.assemble_request_head(flow.request) == original_head
     assert "Authorization" not in flow.request.headers
     get_headers.assert_not_awaited()

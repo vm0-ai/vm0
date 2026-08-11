@@ -352,22 +352,35 @@ async def test_rejects_disagreement_between_pseudo_authority_and_host(
 
 
 @pytest.mark.parametrize(
-    ("request_authority", "expected_reason"),
+    ("request_port", "request_authority", "expected_reason", "expected_original_url"),
     [
         pytest.param(
+            443,
             "attacker.example.com",
             "authority_mismatch",
+            "https://api.github.com/repos",
             id="host-mismatch",
         ),
         pytest.param(
+            443,
             "api.github.com:bad",
             "invalid_authority",
+            "https://api.github.com/repos",
             id="malformed-port",
         ),
         pytest.param(
+            443,
             "api.github.com:444",
             "authority_port_mismatch",
+            "https://api.github.com/repos",
             id="port-mismatch",
+        ),
+        pytest.param(
+            8443,
+            "api.github.com",
+            "authority_port_mismatch",
+            "https://api.github.com:8443/repos",
+            id="implicit-default-port-mismatch",
         ),
     ],
 )
@@ -377,14 +390,17 @@ async def test_rejects_invalid_http1_request_target_authority_before_firewall_au
     mitm_ctx,
     fake_firewall_headers,
     headers,
+    request_port,
     request_authority,
     expected_reason,
+    expected_original_url,
 ):
     reg_path = _write_github_firewall_registry(tmp_path)
     flow = real_flow(
         with_response=False,
         client_ip="10.200.0.5",
         host="203.0.113.10",
+        port=request_port,
         sni="api.github.com",
         path="/repos",
         request_headers=headers(("Host", "api.github.com")),
@@ -406,7 +422,7 @@ async def test_rejects_invalid_http1_request_target_authority_before_firewall_au
     assert body["host_header"] == "api.github.com"
     assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "DENY"
     assert flow.metadata[metadata_keys.FIREWALL_ERROR] == expected_reason
-    assert flow.metadata[metadata_keys.ORIGINAL_URL] == "https://api.github.com/repos"
+    assert flow.metadata[metadata_keys.ORIGINAL_URL] == expected_original_url
     assert tuple(flow.request.headers.fields) == original_headers
     assert flow.request.authority == request_authority
     auth_fetch.assert_not_called()
