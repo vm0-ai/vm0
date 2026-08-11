@@ -29,7 +29,6 @@ export enum FeatureSwitchKey {
   WebflowConnector = "webflowConnector",
   CloseConnector = "closeConnector",
   MetaAdsConnector = "metaAdsConnector",
-  TikTokAdsConnector = "tiktokAdsConnector",
   PosthogConnector = "posthogConnector",
   PayPalConnector = "payPalConnector",
   RampConnector = "rampConnector",

@@ -165,11 +165,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the Meta Ads Manager connector",
     enabled: false,
   },
-  [FeatureSwitchKey.TikTokAdsConnector]: {
-    maintainer: "yuma@vm0.ai",
-    description: "Enable the TikTok Ads Manager connector",
-    enabled: false,
-  },
   [FeatureSwitchKey.PosthogConnector]: {
     maintainer: "yuma@vm0.ai",
     description: "Enable the PostHog analytics connector",
