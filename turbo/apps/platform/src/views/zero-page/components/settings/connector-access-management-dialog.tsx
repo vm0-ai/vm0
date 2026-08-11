@@ -18,8 +18,8 @@ import {
 } from "@vm0/ui";
 import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
 import type {
-  CustomConnectorHttpResponse,
   CustomConnectorPermissionBundleResponse,
+  CustomConnectorResponse,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import type { PlatformConnectorPermissionMetadata } from "../../../../signals/connector-domain.ts";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
@@ -141,6 +141,7 @@ function AgentAccessRow({
   row,
   connectorLabel,
   hasPermissions,
+  allowAccessIncrease,
   saving,
   onToggle,
   onManage,
@@ -148,6 +149,7 @@ function AgentAccessRow({
   readonly row: ConnectorAgentAccessRow;
   readonly connectorLabel: string;
   readonly hasPermissions: boolean;
+  readonly allowAccessIncrease: boolean;
   readonly saving: boolean;
   readonly onToggle: (
     row: ConnectorAgentAccessRow,
@@ -200,6 +202,7 @@ function AgentAccessRow({
       <LoadingSwitch
         checked={row.authorized}
         loading={saving}
+        disabled={!row.authorized && !allowAccessIncrease}
         onCheckedChange={(checked) => {
           onToggle(row, checked);
         }}
@@ -228,6 +231,7 @@ function AgentAccessList({
   rows,
   connectorLabel,
   hasPermissions,
+  allowAccessIncrease,
   savingAgentId,
   search,
   onToggle,
@@ -236,6 +240,7 @@ function AgentAccessList({
   readonly rows: readonly ConnectorAgentAccessRow[];
   readonly connectorLabel: string;
   readonly hasPermissions: boolean;
+  readonly allowAccessIncrease: boolean;
   readonly savingAgentId: string | null;
   readonly search: string;
   readonly onToggle: (
@@ -271,6 +276,7 @@ function AgentAccessList({
             row={row}
             connectorLabel={connectorLabel}
             hasPermissions={hasPermissions}
+            allowAccessIncrease={allowAccessIncrease}
             saving={savingAgentId === row.agent.id}
             onToggle={onToggle}
             onManage={onManage}
@@ -300,6 +306,7 @@ function ConnectorAccessDialog({
   rows,
   rowsLoaded,
   hasPermissions,
+  allowAccessIncrease = true,
   savingAgentId,
   search,
   onSearchChange,
@@ -312,6 +319,7 @@ function ConnectorAccessDialog({
   readonly rows: readonly ConnectorAgentAccessRow[];
   readonly rowsLoaded: boolean;
   readonly hasPermissions: boolean;
+  readonly allowAccessIncrease?: boolean;
   readonly savingAgentId: string | null;
   readonly search: string;
   readonly onSearchChange: (value: string) => void;
@@ -369,6 +377,7 @@ function ConnectorAccessDialog({
               rows={rows}
               connectorLabel={connectorLabel}
               hasPermissions={hasPermissions}
+              allowAccessIncrease={allowAccessIncrease}
               savingAgentId={savingAgentId}
               search={search}
               onToggle={onToggle}
@@ -576,7 +585,7 @@ function CustomConnectorAccessPermissionsDrawer({
 }: {
   readonly draft: CustomConnectorPermissionDraft | null;
   readonly agent: TeamComposeItem | undefined;
-  readonly connector: CustomConnectorHttpResponse;
+  readonly connector: CustomConnectorResponse;
   readonly bundle: CustomConnectorPermissionBundleResponse | null;
   readonly loading: boolean;
   readonly loadError: boolean;
@@ -602,7 +611,7 @@ function CustomConnectorAccessPermissionsDrawer({
 }
 
 function useCustomConnectorAuthorization(
-  connector: CustomConnectorHttpResponse,
+  connector: CustomConnectorResponse,
   onPermissionRequired: (row: ConnectorAgentAccessRow) => void,
 ) {
   const { t } = useTranslation();
@@ -666,9 +675,11 @@ function useCustomConnectorAuthorization(
 
 export function CustomConnectorAccessManagementDialog({
   connector,
+  allowAccessIncrease,
   onClose,
 }: {
-  readonly connector: CustomConnectorHttpResponse;
+  readonly connector: CustomConnectorResponse;
+  readonly allowAccessIncrease: boolean;
   readonly onClose: () => void;
 }) {
   const authorizationsLoadable = useLastLoadable(
@@ -743,6 +754,7 @@ export function CustomConnectorAccessManagementDialog({
         rows={filterRows(rows, search)}
         rowsLoaded={rowsLoaded}
         hasPermissions={Boolean(connector.permissionBundleRef)}
+        allowAccessIncrease={allowAccessIncrease}
         savingAgentId={savingAgentId}
         search={search}
         onSearchChange={setSearch}
