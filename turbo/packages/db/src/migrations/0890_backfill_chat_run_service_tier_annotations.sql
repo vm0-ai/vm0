@@ -131,13 +131,11 @@ DECLARE
   last_id uuid;
   demoted_head_count bigint;
   updated_thread_ids uuid[];
-  updated_seq_ids bigint[];
 BEGIN
   LOOP
     batch_last_id := NULL;
     demoted_head_count := NULL;
     updated_thread_ids := NULL;
-    updated_seq_ids := NULL;
 
     WITH batch AS (
       SELECT "candidate"."id"
@@ -179,38 +177,27 @@ BEGIN
       WHERE "target"."id" = batch."id"
       RETURNING
         "target"."id",
-        "target"."chat_thread_id",
-        "target"."seq_id"
+        "target"."chat_thread_id"
     )
     SELECT
       (array_agg("updated"."id" ORDER BY "updated"."id" DESC))[1],
-      array_agg(
-        "updated"."chat_thread_id"
-        ORDER BY "updated"."id"
-      ),
-      array_agg("updated"."seq_id" ORDER BY "updated"."id")
-    INTO batch_last_id, updated_thread_ids, updated_seq_ids
+      array_agg(DISTINCT "updated"."chat_thread_id")
+    INTO batch_last_id, updated_thread_ids
     FROM updated;
 
     IF batch_last_id IS NOT NULL THEN
-      -- Snapshot publication reads event bytes before its short head-swap
-      -- transaction. If that transaction wins the old-head row lock, the
-      -- first UPDATE below can recheck and skip the old row while its new head
-      -- remains invisible to that statement snapshot. Keep the updated rows
-      -- in arrays and retry with fresh statement snapshots until no covering
-      -- head remains. Once a visible head is demoted, any publisher built from
-      -- that expected parent loses its guarded swap after this batch commits.
+      -- Snapshot publication reads every event byte before its short head-swap
+      -- transaction. Demote every current head for an updated thread, including
+      -- a shorter head that does not cover the changed seq yet, so a publisher
+      -- carrying pre-update bytes loses its expected-parent swap. If a publisher
+      -- wins the old-head row lock, the first UPDATE below can recheck and skip
+      -- that row while its replacement remains invisible to the same statement
+      -- snapshot. Retry with fresh statement snapshots until no head remains.
       LOOP
         UPDATE "chat_event_snapshots" AS "snapshot"
         SET "is_head" = false
         WHERE "snapshot"."is_head"
-          AND EXISTS (
-            SELECT 1
-            FROM unnest(updated_thread_ids, updated_seq_ids)
-              AS "updated"("chat_thread_id", "seq_id")
-            WHERE "updated"."chat_thread_id" = "snapshot"."chat_thread_id"
-              AND "updated"."seq_id" <= "snapshot"."last_seq_id"
-          );
+          AND "snapshot"."chat_thread_id" = ANY(updated_thread_ids);
         GET DIAGNOSTICS demoted_head_count = ROW_COUNT;
 
         IF demoted_head_count > 0 THEN
@@ -222,13 +209,7 @@ BEGIN
         PERFORM 1
         FROM "chat_event_snapshots" AS "snapshot"
         WHERE "snapshot"."is_head"
-          AND EXISTS (
-            SELECT 1
-            FROM unnest(updated_thread_ids, updated_seq_ids)
-              AS "updated"("chat_thread_id", "seq_id")
-            WHERE "updated"."chat_thread_id" = "snapshot"."chat_thread_id"
-              AND "updated"."seq_id" <= "snapshot"."last_seq_id"
-          )
+          AND "snapshot"."chat_thread_id" = ANY(updated_thread_ids)
         LIMIT 1;
 
         IF NOT FOUND THEN

@@ -5880,6 +5880,7 @@ const CHAT_RUN_SERVICE_TIER_FIXTURE = {
   unaffectedSnapshotId: "00000000-0000-4000-8000-000000089022",
   tailSnapshotId: "00000000-0000-4000-8000-000000089023",
   concurrentSnapshotId: "00000000-0000-4000-8000-000000089024",
+  staleTailSnapshotId: "00000000-0000-4000-8000-000000089025",
   orgId: "chat-run-service-tier-org",
   userId: "chat-run-service-tier-user",
 } as const;
@@ -5963,17 +5964,12 @@ function assertChatRunServiceTierMigrationShape(migrationSql: string): void {
     migrationSql,
     /SET "user_message" =[\s\S]*"payload" = jsonb_set/u,
   );
-  assert.match(
-    migrationSql,
-    /"updated"\."seq_id" <= "snapshot"\."last_seq_id"/u,
-  );
   assert.equal(
-    (
-      migrationSql.match(/unnest\(updated_thread_ids, updated_seq_ids\)/gu) ??
-      []
-    ).length,
+    (migrationSql.match(/"chat_thread_id" = ANY\(updated_thread_ids\)/gu) ?? [])
+      .length,
     2,
   );
+  assert.doesNotMatch(migrationSql, /updated_seq_ids/u);
 }
 
 async function seedChatRunServiceTierOwners(client: Client): Promise<void> {
@@ -6180,10 +6176,44 @@ async function applyBackfillWhileSnapshotPublisherWins(
   testDbUrl: string,
 ): Promise<void> {
   const fixture = CHAT_RUN_SERVICE_TIER_FIXTURE;
+  const messages = CHAT_RUN_SERVICE_TIER_MESSAGES;
   const publisher = new Client({ connectionString: testDbUrl });
   await publisher.connect();
   let transactionOpen = false;
   try {
+    // The production publisher reads event bytes before opening its short
+    // expected-parent swap transaction. Capture that stale candidate from a
+    // head which does not cover the event that 0890 will update.
+    const staleTailCandidate = await publisher.query<{
+      archiveSchemaVersion: number;
+      canonicalUserMessage: unknown;
+      lastSeqId: string;
+      objectKey: string;
+    }>(
+      `
+        SELECT
+          "snapshot"."archive_schema_version" AS "archiveSchemaVersion",
+          "event"."payload" -> 'userMessage' AS "canonicalUserMessage",
+          "snapshot"."last_seq_id" AS "lastSeqId",
+          "snapshot"."object_key" AS "objectKey"
+        FROM "chat_event_snapshots" AS "snapshot"
+        INNER JOIN "chat_events" AS "event"
+          ON "event"."chat_thread_id" = "snapshot"."chat_thread_id"
+        WHERE "snapshot"."id" = $1
+          AND "snapshot"."is_head"
+          AND "event"."id" = $2
+      `,
+      [fixture.tailSnapshotId, fixture.tailFastEventId],
+    );
+    assert.deepEqual(staleTailCandidate.rows, [
+      {
+        archiveSchemaVersion: 3,
+        canonicalUserMessage: messages.tailFast,
+        lastSeqId: "1",
+        objectKey: "migration/tail.ndjson.gz",
+      },
+    ]);
+
     const migrationPid = await databaseBackendPid(client);
     const publisherPid = await databaseBackendPid(publisher);
     await publisher.query("BEGIN");
@@ -6222,6 +6252,53 @@ async function applyBackfillWhileSnapshotPublisherWins(
       await publisher.query("COMMIT");
       transactionOpen = false;
       await migrationPromise;
+
+      // Complete the stale publisher's short CAS after the migration commits.
+      // 0890 must have demoted its shorter expected parent, otherwise this
+      // would publish a current v4 head containing the old event bytes above.
+      await publisher.query("BEGIN");
+      transactionOpen = true;
+      const staleTailParent = staleTailCandidate.rows[0];
+      assert.ok(staleTailParent);
+      const staleTailDemoted = await publisher.query(
+        `
+          UPDATE "chat_event_snapshots"
+          SET "is_head" = false
+          WHERE "id" = $1
+            AND "chat_thread_id" = $2
+            AND "is_head"
+            AND "archive_schema_version" = $3
+            AND "last_seq_id" = $4
+            AND "object_key" = $5
+          RETURNING "id"
+        `,
+        [
+          fixture.tailSnapshotId,
+          fixture.tailThreadId,
+          staleTailParent.archiveSchemaVersion,
+          staleTailParent.lastSeqId,
+          staleTailParent.objectKey,
+        ],
+      );
+      if (staleTailDemoted.rowCount === 1) {
+        await publisher.query(
+          `
+            INSERT INTO "chat_event_snapshots" (
+              "id", "chat_thread_id", "parent_snapshot_id", "last_seq_id",
+              "archive_schema_version", "object_key", "is_head"
+            )
+            VALUES ($1, $2, $3, 2, 4, 'migration/stale-tail.ndjson.gz', true)
+          `,
+          [
+            fixture.staleTailSnapshotId,
+            fixture.tailThreadId,
+            fixture.tailSnapshotId,
+          ],
+        );
+      }
+      await publisher.query("COMMIT");
+      transactionOpen = false;
+      assert.equal(staleTailDemoted.rowCount, 0);
     } catch (error) {
       if (transactionOpen) {
         await publisher.query("ROLLBACK");
@@ -6315,7 +6392,7 @@ async function assertChatRunServiceTierSnapshotHeads(
     `
       SELECT "id", "is_head" AS "isHead"
       FROM "chat_event_snapshots"
-      WHERE "id" IN ($1, $2, $3, $4)
+      WHERE "id" IN ($1, $2, $3, $4, $5)
       ORDER BY "id"
     `,
     [
@@ -6323,12 +6400,13 @@ async function assertChatRunServiceTierSnapshotHeads(
       fixture.unaffectedSnapshotId,
       fixture.tailSnapshotId,
       fixture.concurrentSnapshotId,
+      fixture.staleTailSnapshotId,
     ],
   );
   assert.deepEqual(result.rows, [
     { id: fixture.affectedSnapshotId, isHead: false },
     { id: fixture.unaffectedSnapshotId, isHead: true },
-    { id: fixture.tailSnapshotId, isHead: true },
+    { id: fixture.tailSnapshotId, isHead: false },
     { id: fixture.concurrentSnapshotId, isHead: false },
   ]);
 }
@@ -6446,6 +6524,9 @@ async function validateChatRunServiceTierAnnotationBackfill(): Promise<void> {
       console.log("   ✅ standard and model-less messages remain unchanged");
       console.log(
         "   ✅ a concurrently published covering snapshot head is demoted",
+      );
+      console.log(
+        "   ✅ a stale publisher cannot extend a non-covering snapshot head",
       );
       console.log(
         "   ✅ backfill is batched, retryable, and restores append-only protection\n",
