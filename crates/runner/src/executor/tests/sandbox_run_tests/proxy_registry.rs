@@ -90,7 +90,7 @@ fn proxy_register_failure_warns_with_error() {
 }
 
 #[tokio::test]
-async fn proxy_registration_prefers_complete_connector_candidates_with_legacy_fallback() {
+async fn proxy_registration_accepts_rollout_candidates_and_canonical_targets() {
     let candidate_dir = tempfile::tempdir().unwrap();
     let candidate_config = test_executor_config(candidate_dir.path()).await;
     let mut candidate_context = minimal_context();
@@ -150,26 +150,57 @@ async fn proxy_registration_prefers_complete_connector_candidates_with_legacy_fa
         serde_json::json!({"ZENDESK_SUBDOMAIN": "münich"})
     );
 
-    let legacy_dir = tempfile::tempdir().unwrap();
-    let legacy_config = test_executor_config(legacy_dir.path()).await;
-    let mut legacy_context = minimal_context();
-    legacy_context.firewalls = None;
-    legacy_context.connector_runtime_targets = vec![ConnectorRuntimeTargetRegistration::Builtin {
-        connector_slug: "zendesk".to_string(),
-        base_url_vars: None,
-    }];
-    legacy_context.connector_runtime_candidate_targets = None;
+    let canonical_dir = tempfile::tempdir().unwrap();
+    let canonical_config = test_executor_config(canonical_dir.path()).await;
+    let mut canonical_context = minimal_context();
+    let canonical_routing_variables =
+        HashMap::from([("ZENDESK_SUBDOMAIN".to_string(), "xn--mnich-kva".to_string())]);
+    canonical_context.firewalls = Some(vec![FirewallEntry::Builtin {
+        name: "zendesk".to_string(),
+        base_url_vars: Some(canonical_routing_variables.clone()),
+    }]);
+    canonical_context.connector_runtime_targets =
+        vec![ConnectorRuntimeTargetRegistration::Builtin {
+            connector_slug: "zendesk".to_string(),
+            base_url_vars: Some(canonical_routing_variables),
+        }];
+    canonical_context.connector_runtime_candidate_targets = None;
+    canonical_context.vars = Some(HashMap::from([(
+        "ZENDESK_SUBDOMAIN".to_string(),
+        "münich".to_string(),
+    )]));
 
-    let _legacy_session = register_proxy(&legacy_config, &legacy_context, "10.200.0.3")
+    let _canonical_session = register_proxy(&canonical_config, &canonical_context, "10.200.0.3")
         .await
         .unwrap();
-    let legacy_registry: serde_json::Value = serde_json::from_str(
-        &tokio::fs::read_to_string(legacy_dir.path().join("proxy-registry.json"))
+    let canonical_registry: serde_json::Value = serde_json::from_str(
+        &tokio::fs::read_to_string(canonical_dir.path().join("proxy-registry.json"))
             .await
             .unwrap(),
     )
     .unwrap();
-    assert!(legacy_registry["vms"]["10.200.0.3"]["firewalls"].is_null());
+    let canonical_vm = &canonical_registry["vms"]["10.200.0.3"];
+    assert_eq!(
+        canonical_vm["firewalls"],
+        serde_json::json!([{
+            "kind": "builtin",
+            "name": "zendesk",
+            "baseUrlVars": {
+                "ZENDESK_SUBDOMAIN": "xn--mnich-kva"
+            }
+        }])
+    );
+    assert_eq!(
+        canonical_vm["connectorRuntimeTargets"],
+        serde_json::json!([{
+            "kind": "builtin",
+            "connectorSlug": "zendesk"
+        }])
+    );
+    assert_eq!(
+        canonical_vm["connectorRoutingVariables"]["builtin:zendesk"],
+        serde_json::json!({"ZENDESK_SUBDOMAIN": "münich"})
+    );
 }
 
 #[tokio::test]

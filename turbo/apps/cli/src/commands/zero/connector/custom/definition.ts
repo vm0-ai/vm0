@@ -17,21 +17,12 @@ const customConnectorDefinitionFileSchema = z
   )
   .refine(
     (definition) => {
-      if (definition.authMode !== "manual") {
-        return true;
-      }
-      const field = definition.fields[0];
       return (
-        definition.oauthConfig === undefined &&
-        definition.fields.length === 1 &&
-        field?.key === "secret" &&
-        field.kind === "secret" &&
-        field.required
+        definition.authMode !== "manual" || definition.oauthConfig === undefined
       );
     },
     {
-      message:
-        'Manual definitions require exactly one required secret field with key "secret" and no oauthConfig',
+      message: "Manual definitions cannot include oauthConfig",
     },
   );
 

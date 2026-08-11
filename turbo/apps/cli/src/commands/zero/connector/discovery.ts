@@ -1,5 +1,5 @@
 import chalk from "chalk";
-import type { CustomConnectorResponse } from "@vm0/api-contracts/contracts/zero-custom-connectors";
+import type { CustomConnectorClientResponse } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import type { ZeroConnectorCatalogStatus } from "../../../lib/api/domains/zero-connectors";
 import type { ConnectorDiscoveryAgentContext } from "./agent-context";
 import { renderConnectedAsCell } from "./connected-as";
@@ -25,7 +25,7 @@ interface CustomConnectorDiscoveryItem {
   readonly tags: readonly string[];
   readonly generation: readonly string[];
   readonly authMethods: readonly [];
-  readonly customConnector: CustomConnectorResponse;
+  readonly customConnector: CustomConnectorClientResponse;
 }
 
 type ConnectorDiscoveryItem =
@@ -34,7 +34,7 @@ type ConnectorDiscoveryItem =
 
 export function connectorDiscoveryItems(
   catalogConnectors: readonly ZeroConnectorCatalogStatus[],
-  customConnectors: readonly CustomConnectorResponse[],
+  customConnectors: readonly CustomConnectorClientResponse[],
 ): readonly ConnectorDiscoveryItem[] {
   return [
     ...catalogConnectors.map((connector): CatalogConnectorDiscoveryItem => {

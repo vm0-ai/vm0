@@ -1872,17 +1872,13 @@
     },
     "custom": {
       "connect": {
-        "apiAuthentication": "API 인증",
-        "apiDescription": "제공자가 발급한 API 비밀 키를 입력하세요.",
-        "back": "뒤로",
+        "configured": "구성됨",
         "connecting": "연결 중…",
         "continue": "계속",
         "continueToProvider": "접근 권한 승인을 위해 제공자 페이지로 이동합니다.",
         "description": "비밀 키는 저장 시 암호화되며 방화벽에서 아웃바운드 요청에 주입됩니다. 에이전트에 환경 변수로 노출되지 않습니다.",
-        "oauthDescription": "커넥터의 OAuth 앱으로 접근 권한을 승인하세요.",
         "save": "저장",
         "saving": "저장 중…",
-        "secret": "비밀 키",
         "title": "{{connector}} 연결"
       },
       "create": {

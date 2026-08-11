@@ -1,6 +1,6 @@
 import {
   ZERO_CUSTOM_CONNECTOR_IDS_ENV_KEY,
-  type CustomConnectorMcpResponse,
+  type CustomConnectorMcpClientResponse,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import { z } from "zod";
 
@@ -44,13 +44,13 @@ function readRunConnectorIds(): Set<string> {
 }
 
 export async function listRunMcpConnectors(): Promise<
-  CustomConnectorMcpResponse[]
+  CustomConnectorMcpClientResponse[]
 > {
   const admittedIds = readRunConnectorIds();
   const connectors = await listZeroCustomConnectors();
 
   return connectors
-    .filter((connector): connector is CustomConnectorMcpResponse => {
+    .filter((connector): connector is CustomConnectorMcpClientResponse => {
       return (
         connector.kind === "mcp" && admittedIds.has(connector.id.toLowerCase())
       );
@@ -62,7 +62,7 @@ export async function listRunMcpConnectors(): Promise<
 
 export async function resolveRunMcpConnector(
   connectorSlug: string,
-): Promise<CustomConnectorMcpResponse> {
+): Promise<CustomConnectorMcpClientResponse> {
   const connectors = await listRunMcpConnectors();
   const connector = connectors.find((candidate) => {
     return candidate.slug === connectorSlug;

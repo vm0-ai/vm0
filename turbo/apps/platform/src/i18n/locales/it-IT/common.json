@@ -1913,17 +1913,13 @@
     },
     "custom": {
       "connect": {
-        "apiAuthentication": "API autenticazione",
-        "apiDescription": "Inserisci il segreto API rilasciato dal provider.",
-        "back": "Indietro",
+        "configured": "Configurato",
         "connecting": "Connessione…",
         "continue": "Continua",
         "continueToProvider": "Proseguire presso il provider per autorizzare l'accesso.",
         "description": "Il tuo segreto viene crittografato quando è inattivo e inserito nelle richieste in uscita dal firewall. Non viene mai esposto all'agente come variabile di ambiente.",
-        "oauthDescription": "Autorizza l'accesso con l'app OAuth del connettore.",
         "save": "Salva",
         "saving": "Salvataggio…",
-        "secret": "Segreto",
         "title": "Connetti {{connector}}"
       },
       "create": {

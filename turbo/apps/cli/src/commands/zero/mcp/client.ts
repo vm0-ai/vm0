@@ -6,7 +6,7 @@ import {
   type JSONObject,
   type Tool,
 } from "@modelcontextprotocol/client";
-import type { CustomConnectorMcpResponse } from "@vm0/api-contracts/contracts/zero-custom-connectors";
+import type { CustomConnectorMcpClientResponse } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 
 declare const __CLI_VERSION__: string;
 
@@ -179,7 +179,7 @@ function safeMcpError(
 }
 
 async function runMcpOperation<T>(
-  connector: CustomConnectorMcpResponse,
+  connector: CustomConnectorMcpClientResponse,
   timeoutSeconds: number,
   operation: (
     client: Client,
@@ -317,7 +317,7 @@ async function discoverMcpTools(
 }
 
 export async function listMcpTools(
-  connector: CustomConnectorMcpResponse,
+  connector: CustomConnectorMcpClientResponse,
   timeoutSeconds: number,
 ): Promise<McpOperationResult<Tool[]>> {
   return runMcpOperation(
@@ -330,7 +330,7 @@ export async function listMcpTools(
 }
 
 export async function callMcpTool(
-  connector: CustomConnectorMcpResponse,
+  connector: CustomConnectorMcpClientResponse,
   toolName: string,
   input: JSONObject,
   timeoutSeconds: number,

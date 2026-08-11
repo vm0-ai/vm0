@@ -3537,6 +3537,15 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     expect(saved.connector).toMatchObject({
       connected: true,
       configuredFieldKeys: ["subdomain"],
+      headerInjections: [],
+      queryInjections: [
+        {
+          name: "tenant",
+          valueTemplate: "{{variables.subdomain}}",
+        },
+      ],
+      headerName: "X-VM0-Custom-Connector",
+      headerTemplate: "{{secret}}",
     });
 
     await connectorsApi.disconnectCustomConnector(admin, saved.connector.id);

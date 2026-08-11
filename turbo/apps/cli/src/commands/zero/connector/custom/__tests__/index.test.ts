@@ -23,12 +23,12 @@ describe("zero connector custom readers", () => {
     vi.unstubAllEnvs();
   });
 
-  it("normalizes an older kind-less HTTP list response", async () => {
+  it("normalizes an older kind-less HTTP list response without hasSecret", async () => {
     const connector = customConnector();
     server.use(
       http.get("http://localhost:3000/api/zero/custom-connectors", () => {
         return HttpResponse.json({
-          connectors: [{ ...connector, kind: undefined }],
+          connectors: [{ ...connector, kind: undefined, hasSecret: undefined }],
         });
       }),
     );
@@ -72,22 +72,31 @@ describe("zero connector custom readers", () => {
       displayName: "Acme MCP",
       endpoint: "https://mcp.acme.test/server",
       transport: "streamable-http",
-      prefixes: [],
-      headerName: "",
-      headerTemplate: "",
       prefixTemplates: [],
-      fields: [],
-      headerInjections: [],
+      fields: [
+        {
+          key: "secret",
+          label: "Secret",
+          kind: "secret",
+          required: true,
+        },
+      ],
+      headerInjections: [
+        {
+          name: "Authorization",
+          valueTemplate: "Bearer {{secrets.secret}}",
+        },
+      ],
       queryInjections: [],
       authMode: "manual",
       permissionBundleRef: null,
       storageVersion: 1,
-      connected: false,
+      connected: true,
       missingRequiredFields: [],
-      configuredFieldKeys: [],
+      configuredFieldKeys: ["secret"],
       createdAt: "2026-08-10T00:00:00.000Z",
       updatedAt: "2026-08-10T00:00:00.000Z",
-      hasSecret: false,
+      hasSecret: true,
     } satisfies CustomConnectorMcpResponse;
     server.use(
       http.get(
