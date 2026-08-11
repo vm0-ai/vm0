@@ -1,5 +1,40 @@
 # Changelog
 
+## [1.429.0](https://github.com/vm0-ai/vm0/compare/api-v1.428.0...api-v1.429.0) (2026-08-11)
+
+
+### Features
+
+* **runner:** enable durable active-input delivery ([#26392](https://github.com/vm0-ai/vm0/issues/26392)) ([6225b5e](https://github.com/vm0-ai/vm0/commit/6225b5e85da2833f011830d21498744893b2f625))
+
+
+### Bug Fixes
+
+* **api:** avoid thread-list invalidation for assistant output ([#26416](https://github.com/vm0-ai/vm0/issues/26416)) ([04dc56a](https://github.com/vm0-ai/vm0/commit/04dc56a4a3b56d54e5d73d21b08aeb45102a84ee))
+* **api:** delete connector owners before organization storage ([#26418](https://github.com/vm0-ai/vm0/issues/26418)) ([092a71a](https://github.com/vm0-ai/vm0/commit/092a71a5081f5b05ee0ccf8ec3605cd0e0312931))
+* **billing:** refund subscriptions when deleting org ([#26374](https://github.com/vm0-ai/vm0/issues/26374)) ([bf23d8a](https://github.com/vm0-ai/vm0/commit/bf23d8a8f2593ad64f9fc7acfd118db334f8372e))
+
+
+### Refactoring
+
+* remove legacy mcp discovery handoff ([#26421](https://github.com/vm0-ai/vm0/issues/26421)) ([c9ab181](https://github.com/vm0-ai/vm0/commit/c9ab18109783b83dbec40ce59e010135fe91bf74))
+* remove retired model rollout compatibility ([#26413](https://github.com/vm0-ai/vm0/issues/26413)) ([42dfddf](https://github.com/vm0-ai/vm0/commit/42dfddfd80d393d7794868c0469c8e843f09660f))
+
+
+### Performance Improvements
+
+* remove run and queue realtime signals ([#26417](https://github.com/vm0-ai/vm0/issues/26417)) ([55fe6cf](https://github.com/vm0-ai/vm0/commit/55fe6cf15d6a10e8bad41856b8bd30bdb7d7ba23))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.319.0
+    * @vm0/core bumped to 8.546.2
+    * @vm0/db bumped to 1.194.3
+    * @vm0/pi-agent-runtime bumped to 1.3.48
+
 ## [1.428.0](https://github.com/vm0-ai/vm0/compare/api-v1.427.0...api-v1.428.0) (2026-08-11)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.0](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.8.0...guest-contracts-v0.9.0) (2026-08-11)
+
+
+### Features
+
+* **runner:** enable durable active-input delivery ([#26392](https://github.com/vm0-ai/vm0/issues/26392)) ([6225b5e](https://github.com/vm0-ai/vm0/commit/6225b5e85da2833f011830d21498744893b2f625))
+
 ## [0.8.0](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.7.1...guest-contracts-v0.8.0) (2026-08-11)
 
 
