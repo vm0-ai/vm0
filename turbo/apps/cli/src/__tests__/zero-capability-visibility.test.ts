@@ -18,6 +18,7 @@ function buildCommands(): Command[] {
     new Command("model-provider"),
     new Command("agent"),
     new Command("connector"),
+    new Command("mcp"),
     new Command("credit"),
     new Command("upgrade"),
     new Command("logs"),
@@ -146,7 +147,7 @@ describe("registerZeroCommands", () => {
     vi.stubEnv("ZERO_TOKEN", undefined);
 
     const prog = buildProgram();
-    expect(hiddenCommandNames(prog)).toEqual(["recognize", "translate"]);
+    expect(hiddenCommandNames(prog)).toEqual(["mcp", "recognize", "translate"]);
     expect(registeredCommandNames(prog)).toContain("upgrade");
     expect(visibleCommandNames(prog)).toContain("browser");
   });
@@ -173,6 +174,7 @@ describe("registerZeroCommands", () => {
     expect(hiddenCommandNames(prog)).toEqual([
       "org",
       "connector",
+      "mcp",
       "credit",
       "logs",
       "chat",
@@ -204,7 +206,7 @@ describe("registerZeroCommands", () => {
 
     const prog = buildProgram();
 
-    expect(hiddenCommandNames(prog)).toEqual(["recognize", "translate"]);
+    expect(hiddenCommandNames(prog)).toEqual(["mcp", "recognize", "translate"]);
     expect(registeredCommandNames(prog)).toContain("upgrade");
     expect(visibleCommandNames(prog)).toContain("browser");
   });
@@ -218,7 +220,7 @@ describe("registerZeroCommands", () => {
 
     const prog = buildProgram();
 
-    expect(hiddenCommandNames(prog)).toEqual(["recognize", "translate"]);
+    expect(hiddenCommandNames(prog)).toEqual(["mcp", "recognize", "translate"]);
     expect(registeredCommandNames(prog)).toContain("upgrade");
     expect(visibleCommandNames(prog)).toContain("browser");
   });
@@ -1116,6 +1118,7 @@ describe("registerZeroCommands", () => {
       "model",
       "model-provider",
       "connector",
+      "mcp",
       "upgrade",
       "resource",
       "whoami",
@@ -1136,6 +1139,25 @@ describe("registerZeroCommands", () => {
 
     expect(visibleCommandNames(prog)).toContain("connector");
     expect(visibleCommandNames(prog)).toContain("whoami");
+  });
+
+  it("should show run-only mcp only with connector:read capability", () => {
+    const readToken = buildZeroToken({
+      scope: "zero",
+      capabilities: ["connector:read"],
+    });
+    vi.stubEnv("ZERO_TOKEN", readToken);
+    expect(visibleCommandNames(buildProgram())).toContain("mcp");
+
+    const writeToken = buildZeroToken({
+      scope: "zero",
+      capabilities: ["connector:write"],
+    });
+    vi.stubEnv("ZERO_TOKEN", writeToken);
+    expect(hiddenCommandNames(buildProgram())).toContain("mcp");
+
+    vi.stubEnv("ZERO_TOKEN", undefined);
+    expect(hiddenCommandNames(buildProgram())).toContain("mcp");
   });
 
   it("should show connector when connector:write capability is present", () => {

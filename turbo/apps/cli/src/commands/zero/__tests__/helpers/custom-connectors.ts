@@ -1,6 +1,7 @@
 import { http, HttpResponse } from "msw";
 import type {
   CustomConnectorHttpResponse,
+  CustomConnectorMcpResponse,
   CustomConnectorResponse,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 
@@ -34,6 +35,48 @@ export function customConnector(
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
     hasSecret: false,
+    ...overrides,
+  };
+}
+
+export function mcpCustomConnector(
+  overrides: Partial<CustomConnectorMcpResponse> = {},
+): CustomConnectorMcpResponse {
+  return {
+    kind: "mcp",
+    id: "44444444-4444-4444-8444-444444444444",
+    slug: "_acme-mcp",
+    displayName: "Acme MCP",
+    endpoint: "https://mcp.example.test/server",
+    transport: "streamable-http",
+    prefixes: [],
+    headerName: "",
+    headerTemplate: "",
+    prefixTemplates: [],
+    permissionBundleRef: null,
+    fields: [
+      {
+        key: "secret",
+        label: "Secret",
+        kind: "secret",
+        required: true,
+      },
+    ],
+    headerInjections: [
+      {
+        name: "Authorization",
+        valueTemplate: "Bearer {{secrets.secret}}",
+      },
+    ],
+    queryInjections: [],
+    authMode: "manual",
+    storageVersion: 1,
+    connected: true,
+    missingRequiredFields: [],
+    configuredFieldKeys: ["secret"],
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z",
+    hasSecret: true,
     ...overrides,
   };
 }
