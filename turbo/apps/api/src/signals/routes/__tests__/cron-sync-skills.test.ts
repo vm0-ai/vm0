@@ -19,6 +19,7 @@ import {
   createRunsApi,
   expectCanonicalStorageManifest,
 } from "./helpers/api-bdd-runs";
+import { readStrictTarGzip } from "./helpers/strict-tar-gzip";
 import {
   cleanupOfficialTestSkillsState,
   findSkillByUrlState,
@@ -217,6 +218,16 @@ function computeMockSkillVersionHash(skill: MockSkillEntry): string {
     .digest("hex");
 }
 
+function mockSkillFileContent(skill: MockSkillEntry, path: string): string {
+  const file = skill.files.find((candidate) => {
+    return candidate.path === path;
+  });
+  if (!file) {
+    throw new Error(`Mock skill file not found: ${path}`);
+  }
+  return file.content;
+}
+
 async function seedCurrentSeedSkillVersions(): Promise<void> {
   await seedCurrentSkillVersions(seedSkillEntries());
 }
@@ -322,7 +333,7 @@ function successfulS3Response(command: unknown): Promise<unknown> {
   return Promise.resolve({});
 }
 
-function uploadedBytesForKeySuffix(keySuffix: string): number {
+function uploadedBodyForKeySuffix(keySuffix: string): Buffer {
   const command = s3CallsByName("PutObjectCommand").find((candidate) => {
     const key = commandInput(candidate).Key;
     return typeof key === "string" && key.endsWith(keySuffix);
@@ -331,7 +342,11 @@ function uploadedBytesForKeySuffix(keySuffix: string): number {
   if (!Buffer.isBuffer(body)) {
     throw new Error("Expected a buffered upload body");
   }
-  return body.length;
+  return body;
+}
+
+function uploadedBytesForKeySuffix(keySuffix: string): number {
+  return uploadedBodyForKeySuffix(keySuffix).length;
 }
 
 function setupS3ListObjects(keys: readonly string[]): void {
@@ -464,8 +479,20 @@ describe("GET /api/cron/sync-skills", () => {
       },
     );
     expect(alphaArchiveUpload).toBeDefined();
-    const alphaArchiveSize = uploadedBytesForKeySuffix(
+    const alphaArchive = uploadedBodyForKeySuffix(
       `/${alphaVersion.versionHash}/archive.tar.gz`,
+    );
+    const alphaArchiveSize = alphaArchive.length;
+    const alphaArchiveFiles = readStrictTarGzip(alphaArchive);
+    expect([...alphaArchiveFiles.keys()]).toStrictEqual([
+      "index.ts",
+      "SKILL.md",
+    ]);
+    expect(alphaArchiveFiles.get("SKILL.md")?.toString()).toBe(
+      mockSkillFileContent(EXTRA_SKILLS.alphaSkill, "SKILL.md"),
+    );
+    expect(alphaArchiveFiles.get("index.ts")?.toString()).toBe(
+      mockSkillFileContent(EXTRA_SKILLS.alphaSkill, "index.ts"),
     );
     expect(alphaStorage).toMatchObject({
       headVersionId: expect.any(String),

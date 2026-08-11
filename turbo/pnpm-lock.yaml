@@ -233,12 +233,6 @@ importers:
       svix:
         specifier: 1.92.2
         version: 1.92.2
-      tar:
-        specifier: '>=7.5.21'
-        version: 7.5.22
-      tar-stream:
-        specifier: ^3.1.8
-        version: 3.1.8
       uuid:
         specifier: ^14.0.0
         version: 14.0.0
@@ -273,9 +267,6 @@ importers:
       '@types/pg':
         specifier: ^8.20.0
         version: 8.20.0
-      '@types/tar-stream':
-        specifier: ^3.1.4
-        version: 3.1.4
       '@types/web-push':
         specifier: ^3.6.4
         version: 3.6.4
@@ -5529,9 +5520,6 @@ packages:
 
   '@types/statuses@2.0.6':
     resolution: {integrity: sha512-xMAgYwceFhRA2zY+XbEA7mxYbA093wdiW8Vu6gZPGWy9cmOyU9XesH1tNcEWsKFd5Vzrqx5T3D38PWx1FIIXkA==}
-
-  '@types/tar-stream@3.1.4':
-    resolution: {integrity: sha512-921gW0+g29mCJX0fRvqeHzBlE/XclDaAG0Ousy1LCghsOhvaKacDeRGEVzQP9IPfKn8Vysy7FEXAIxycpc/CMg==}
 
   '@types/tar@6.1.13':
     resolution: {integrity: sha512-IznnlmU5f4WcGTh2ltRu/Ijpmk8wiWXfF0VA4s+HPjHZgvFggk1YaIkbo5krX/zUCzWF8N/l4+W/LNxnvAJ8nw==}
@@ -16007,10 +15995,6 @@ snapshots:
   '@types/retry@0.12.0': {}
 
   '@types/statuses@2.0.6': {}
-
-  '@types/tar-stream@3.1.4':
-    dependencies:
-      '@types/node': 24.3.0
 
   '@types/tar@6.1.13':
     dependencies:

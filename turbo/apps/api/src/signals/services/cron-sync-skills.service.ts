@@ -1,6 +1,4 @@
 import { createHash } from "node:crypto";
-import { once } from "node:events";
-import { createGzip } from "node:zlib";
 
 import {
   DEFAULT_SKILLS_BRANCH,
@@ -22,11 +20,11 @@ import { skills } from "@vm0/db/schema/skill";
 import { storages, storageVersions } from "@vm0/db/schema/storage";
 import { command, computed, createStore, type Computed } from "ccstate";
 import { eq, inArray, like } from "drizzle-orm";
-import { pack, type Headers as TarHeaders, type Pack } from "tar-stream";
 import { z } from "zod";
 
 import { env, optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
+import { createTarGzip } from "../../lib/tar";
 import { nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
 import {
@@ -36,7 +34,7 @@ import {
   s3ClientScopeForBucket,
   type S3ClientScope,
 } from "../external/s3";
-import { createDeferredPromise, settle, tapError } from "../utils";
+import { settle, tapError } from "../utils";
 import type { FileEntryWithHash } from "./storage-content-hash.service";
 import { newStorageS3Location } from "./storage-s3-prefix.utils";
 
@@ -51,6 +49,7 @@ interface SyncSkillsResult {
 
 interface ExtractedFile {
   readonly path: string;
+  readonly content: Buffer;
   readonly hash: string;
   readonly size: number;
 }
@@ -98,12 +97,6 @@ interface SkillTreeSyncPlan {
   readonly currentTree: GitTreeSnapshot;
   readonly changedSkills: ReadonlySet<string>;
   readonly sourceSkillNames: ReadonlySet<string>;
-}
-
-interface SkillArchiveBuilder {
-  readonly archive: Pack;
-  readonly archiveBuffer: Promise<Buffer>;
-  readonly compressed: ReturnType<typeof createGzip>;
 }
 
 const log = logger("skills:sync");
@@ -328,37 +321,6 @@ function createSkillManifest(files: readonly ExtractedFile[]): Buffer {
   );
 }
 
-async function collectSkillArchive(
-  compressed: AsyncIterable<Uint8Array>,
-  signal: AbortSignal,
-): Promise<Buffer> {
-  const chunks: Buffer[] = [];
-  let archiveSize = 0;
-  for await (const chunk of compressed) {
-    signal.throwIfAborted();
-    const buffer = Buffer.from(chunk);
-    archiveSize += buffer.length;
-    if (archiveSize > SYSTEM_SKILL_MAX_ARCHIVE_BYTES) {
-      throw new Error(
-        `Skill archive exceeds ${SYSTEM_SKILL_MAX_ARCHIVE_BYTES.toString()} bytes`,
-      );
-    }
-    chunks.push(buffer);
-  }
-  return Buffer.concat(chunks, archiveSize);
-}
-
-function startSkillArchive(signal: AbortSignal): SkillArchiveBuilder {
-  const archive = pack();
-  const compressed = createGzip({ level: 1 });
-  archive.pipe(compressed);
-  return {
-    archive,
-    archiveBuffer: collectSkillArchive(compressed, signal),
-    compressed,
-  };
-}
-
 function encodedRawFilePath(path: string): string {
   return path
     .split("/")
@@ -368,13 +330,12 @@ function encodedRawFilePath(path: string): string {
     .join("/");
 }
 
-async function writeSkillArchiveFile(
-  builder: SkillArchiveBuilder,
+async function downloadSkillFile(
   skillName: string,
   commitSha: string,
   file: GitTreeFile,
   signal: AbortSignal,
-): Promise<{ readonly file: ExtractedFile; readonly skillMd?: Buffer }> {
+): Promise<ExtractedFile> {
   const response = await fetch(
     `${RAW_CONTENT_BASE}/${commitSha}/${encodedRawFilePath(file.path)}`,
     { signal },
@@ -383,26 +344,8 @@ async function writeSkillArchiveFile(
     throw new Error(`Failed to fetch skill file: ${response.status}`);
   }
   const relativePath = file.path.slice(skillName.length + 1);
-  const header: TarHeaders = {
-    name: relativePath,
-    size: file.size,
-    type: "file",
-    mode: 0o644,
-    mtime: new Date(0),
-  };
-  const archiveEntryComplete = createDeferredPromise<void>(signal);
-  const archiveEntry: ReturnType<Pack["entry"]> = builder.archive.entry(
-    header,
-    (error) => {
-      if (error) {
-        archiveEntryComplete.reject(error);
-      } else {
-        archiveEntryComplete.resolve();
-      }
-    },
-  );
   const hash = createHash("sha256");
-  const skillMdChunks: Buffer[] = [];
+  const chunks: Buffer[] = [];
   let bytesRead = 0;
   const reader = response.body.getReader();
   while (true) {
@@ -413,30 +356,23 @@ async function writeSkillArchiveFile(
     }
     const buffer = Buffer.from(chunk.value);
     bytesRead += buffer.length;
+    if (bytesRead > file.size) {
+      await reader.cancel();
+      throw new Error("Skill file size did not match git tree metadata");
+    }
     hash.update(buffer);
-    if (relativePath === "SKILL.md") {
-      skillMdChunks.push(buffer);
-    }
-    if (!archiveEntry.write(buffer)) {
-      await once(archiveEntry, "drain", { signal });
-    }
+    chunks.push(buffer);
   }
-  archiveEntry.end();
-  await archiveEntryComplete.promise;
   if (bytesRead !== file.size) {
     throw new Error("Skill file size did not match git tree metadata");
   }
 
   return {
-    file: { path: relativePath, hash: hash.digest("hex"), size: bytesRead },
-    ...(relativePath === "SKILL.md"
-      ? { skillMd: Buffer.concat(skillMdChunks, bytesRead) }
-      : {}),
+    path: relativePath,
+    content: Buffer.concat(chunks, bytesRead),
+    hash: hash.digest("hex"),
+    size: bytesRead,
   };
-}
-
-function normalizeArchiveError(error: unknown): Error {
-  return error instanceof Error ? error : new Error(String(error));
 }
 
 function downloadSkillArchive(
@@ -454,44 +390,32 @@ function downloadSkillArchive(
         `Skill content exceeds ${SYSTEM_SKILL_MAX_TOTAL_BYTES.toString()} bytes`,
       );
     }
-    const builder = startSkillArchive(signal);
     const extractedFiles: ExtractedFile[] = [];
-    let skillMdContent: Buffer | undefined;
-    const extracted = await settle(
-      (async () => {
-        for (const file of files) {
-          const result = await writeSkillArchiveFile(
-            builder,
-            skillName,
-            commitSha,
-            file,
-            signal,
-          );
-          extractedFiles.push(result.file);
-          skillMdContent = result.skillMd ?? skillMdContent;
-        }
-        builder.archive.finalize();
-        const archiveBuffer = await builder.archiveBuffer;
-        if (!skillMdContent) {
-          throw new Error("Skill archive is missing SKILL.md");
-        }
-        return {
-          skillName,
-          files: extractedFiles,
-          skillMdContent,
-          archiveBuffer,
-        };
-      })(),
-      signal,
-    );
-    if (!extracted.ok) {
-      const error = normalizeArchiveError(extracted.error);
-      builder.archive.destroy();
-      builder.compressed.destroy(error);
-      await settle(builder.archiveBuffer);
-      throw error;
+    for (const file of files) {
+      extractedFiles.push(
+        await downloadSkillFile(skillName, commitSha, file, signal),
+      );
     }
-    return extracted.value;
+    const skillMd = extractedFiles.find((file) => {
+      return file.path === "SKILL.md";
+    });
+    if (!skillMd) {
+      throw new Error("Skill archive is missing SKILL.md");
+    }
+    signal.throwIfAborted();
+    const archiveBuffer = createTarGzip(extractedFiles);
+    if (archiveBuffer.length > SYSTEM_SKILL_MAX_ARCHIVE_BYTES) {
+      throw new Error(
+        `Skill archive exceeds ${SYSTEM_SKILL_MAX_ARCHIVE_BYTES.toString()} bytes`,
+      );
+    }
+    signal.throwIfAborted();
+    return {
+      skillName,
+      files: extractedFiles,
+      skillMdContent: skillMd.content,
+      archiveBuffer,
+    };
   });
 }
 

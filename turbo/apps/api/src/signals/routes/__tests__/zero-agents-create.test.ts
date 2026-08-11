@@ -14,6 +14,7 @@ import {
   type ApiTestUser,
 } from "./helpers/api-bdd-auth-org";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { readStrictTarGzip } from "./helpers/strict-tar-gzip";
 import { zeroAgentsRoutes } from "../zero-agents";
 
 const context = testContext();
@@ -54,6 +55,33 @@ function agentsByIdClient() {
 
 function currentSecond(): number {
   return Math.floor(now() / 1000);
+}
+
+function commandInput(command: unknown): Record<string, unknown> {
+  if (
+    typeof command !== "object" ||
+    command === null ||
+    !("input" in command) ||
+    typeof command.input !== "object" ||
+    command.input === null
+  ) {
+    return {};
+  }
+  return command.input as Record<string, unknown>;
+}
+
+function uploadedAgentInstructionsArchive(): Buffer {
+  for (const [command] of context.mocks.s3.send.mock.calls) {
+    const input = commandInput(command);
+    if (
+      typeof input.Key === "string" &&
+      input.Key.endsWith("/archive.tar.gz") &&
+      Buffer.isBuffer(input.Body)
+    ) {
+      return input.Body;
+    }
+  }
+  throw new Error("Expected an uploaded agent instructions archive");
 }
 
 describe("POST /api/zero/agents", () => {
@@ -127,6 +155,10 @@ describe("POST /api/zero/agents", () => {
       visibility: "public",
     });
     expect(response.body.agentId).toStrictEqual(expect.any(String));
+    const instructions = readStrictTarGzip(uploadedAgentInstructionsArchive());
+    expect([...instructions.keys()]).toStrictEqual(["AGENTS.md", "CLAUDE.md"]);
+    expect(instructions.get("AGENTS.md")?.toString()).toBe("");
+    expect(instructions.get("CLAUDE.md")?.toString()).toBe("");
   });
 
   it("returns 409 when the public agent limit has been reached", async () => {

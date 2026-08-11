@@ -1,15 +1,12 @@
-import { chmodSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { mkdtemp } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import { VOLUME_ORG_USER_ID } from "@vm0/core/storage-names";
 import { storages, storageVersions } from "@vm0/db/schema/storage";
 import { command } from "ccstate";
 import { and, eq, isNull } from "drizzle-orm";
-import { create } from "tar";
 
 import { env } from "../../lib/env";
+import { createTarGzip } from "../../lib/tar";
 import { nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
 import {
@@ -18,7 +15,6 @@ import {
   s3ObjectHead,
   verifyS3FilesExist,
 } from "../external/s3";
-import { onRejection } from "../utils";
 import {
   computeContentHashFromHashes,
   hashFileContent,
@@ -67,16 +63,6 @@ type RegisteredVolumeObjects =
   | { readonly kind: "missing" }
   | { readonly kind: "available"; readonly archiveSize: number };
 
-async function bufferFromStream(
-  stream: AsyncIterable<Uint8Array>,
-): Promise<Buffer> {
-  const chunks: Buffer[] = [];
-  for await (const chunk of stream) {
-    chunks.push(Buffer.from(chunk));
-  }
-  return Buffer.concat(chunks);
-}
-
 function compareArchiveFiles(
   left: MaterializedVolumeFile,
   right: MaterializedVolumeFile,
@@ -99,7 +85,7 @@ function compareArchiveFiles(
 function materializeFiles(
   files: readonly VolumeFileInput[],
 ): readonly MaterializedVolumeFile[] {
-  const validationRoot = resolve(tmpdir(), "vm0-api-volume-validation");
+  const validationRoot = resolve("/vm0-api-volume-validation");
   return files.map((file) => {
     resolveVolumeFilePath(validationRoot, file.path);
     const content = Buffer.from(file.content, "utf8");
@@ -126,63 +112,14 @@ function resolveVolumeFilePath(root: string, path: string): string {
   return filePath;
 }
 
-function writeFilesToDirectory(
-  tmpDir: string,
-  files: readonly MaterializedVolumeFile[],
-): void {
-  for (const file of files) {
-    const filePath = resolveVolumeFilePath(tmpDir, file.path);
-    mkdirSync(dirname(filePath), { recursive: true });
-    writeFileSync(filePath, file.content);
-    // `tar` portable mode retains file permissions, so canonicalize them.
-    chmodSync(filePath, 0o644);
-  }
-}
-
-function createArchiveBuffer(
-  tmpDir: string,
-  files: readonly MaterializedVolumeFile[],
-): Promise<Buffer> {
-  return bufferFromStream(
-    create(
-      {
-        gzip: { portable: true },
-        portable: true,
-        mtime: new Date(0),
-        cwd: tmpDir,
-      },
-      files.map((file) => {
-        return file.path;
-      }),
-    ),
-  );
-}
-
-async function buildVolumeArchive(
-  tmpDir: string,
+function createVolumeArchive(
   files: readonly MaterializedVolumeFile[],
   signal: AbortSignal,
-): Promise<Buffer> {
-  signal.throwIfAborted();
-  writeFilesToDirectory(tmpDir, files);
-  const archiveBuffer = await createArchiveBuffer(tmpDir, files);
-  signal.throwIfAborted();
-  return archiveBuffer;
-}
-
-async function createVolumeArchive(
-  files: readonly MaterializedVolumeFile[],
-  signal: AbortSignal,
-): Promise<Buffer> {
+): Buffer {
   const archiveFiles = [...files].sort(compareArchiveFiles);
-  const tmpDir = await mkdtemp(join(tmpdir(), "vm0-api-volume-"));
-  const archiveBuffer = await onRejection(
-    buildVolumeArchive(tmpDir, archiveFiles, signal),
-    () => {
-      rmSync(tmpDir, { recursive: true, force: true });
-    },
-  );
-  rmSync(tmpDir, { recursive: true, force: true });
+  signal.throwIfAborted();
+  const archiveBuffer = createTarGzip(archiveFiles);
+  signal.throwIfAborted();
   return archiveBuffer;
 }
 
@@ -455,7 +392,7 @@ export const prepareVolumeServerSide$ = command(
       }
     }
 
-    const archiveBuffer = await createVolumeArchive(files, signal);
+    const archiveBuffer = createVolumeArchive(files, signal);
     const manifest: S3StorageManifest = {
       version: versionId,
       createdAt: updatedAt.toISOString(),
