@@ -7410,7 +7410,13 @@ function ComposerFastModeButton({
     return $.settings.models.picker.fastImpact;
   });
   return (
-    <Popover>
+    <Popover
+      onOpenChange={(open, eventDetails) => {
+        if (open && active && eventDetails.reason === "trigger-press") {
+          eventDetails.cancel();
+        }
+      }}
+    >
       <PopoverTrigger asChild openOnHover delay={300} closeDelay={120}>
         <Button
           type="button"
@@ -7420,7 +7426,7 @@ function ComposerFastModeButton({
             "shrink-0",
             COMPOSER_CONTROL_ICON_CLASS,
             active &&
-              "bg-amber-500/10 text-amber-600 hover:bg-amber-500/15 hover:text-amber-700 dark:text-amber-300 dark:hover:text-amber-200",
+              "text-amber-600 hover:text-amber-700 dark:text-amber-300 dark:hover:text-amber-200",
           )}
           aria-label={label}
           aria-pressed={active}

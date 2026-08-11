@@ -589,7 +589,7 @@ describe("chat composer models", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("opens the Fast impact popover on hover and click, then sends the tier", async () => {
+  it("shows Fast impact without reopening the popover when turning Fast off", async () => {
     const user = userEvent.setup({ delay: null });
     let sentBody:
       | {
@@ -646,11 +646,28 @@ describe("chat composer models", () => {
     await waitFor(() => {
       expect(fastModeButton).toHaveAttribute("aria-pressed", "true");
     });
+    expect(fastModeButton).not.toHaveClass("bg-amber-500/10");
     fastModePopover = await screen.findByRole("dialog");
     expect(within(fastModePopover).getByText("Fast")).toBeInTheDocument();
     expect(
       within(fastModePopover).getByText("1.5× model speed · 2.5× credit usage"),
     ).toBeInTheDocument();
+
+    await user.keyboard("{Escape}");
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
+    click(fastModeButton);
+    await waitFor(() => {
+      expect(fastModeButton).toHaveAttribute("aria-pressed", "false");
+    });
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+
+    click(fastModeButton);
+    await waitFor(() => {
+      expect(fastModeButton).toHaveAttribute("aria-pressed", "true");
+    });
 
     await sendMessageInUI(
       user,
