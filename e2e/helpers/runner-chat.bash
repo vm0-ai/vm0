@@ -78,7 +78,7 @@ _runner_uuid() {
     tr -d '\n' < /proc/sys/kernel/random/uuid
 }
 
-_runner_chat_send() {
+runner_chat_send() {
     local agent_id="$1"
     local prompt="$2"
     local thread_id="$3"
@@ -119,7 +119,7 @@ _runner_chat_send() {
     runner_api_curl "/api/zero/chat/events" -X POST -d "$payload"
 }
 
-_wait_for_runner_run() {
+runner_wait_for_run() {
     local run_id="$1"
     local timeout="${2:-100}"
     local interval="${RUNNER_RUN_POLL_INTERVAL_SECONDS:-2}"
@@ -219,7 +219,7 @@ _runner_chat_execute() {
     local selected_model="$4"
     local send_response run_id resolved_thread_id run_response events_response
 
-    send_response="$(_runner_chat_send \
+    send_response="$(runner_chat_send \
         "$agent_id" \
         "$prompt" \
         "$thread_id" \
@@ -227,7 +227,7 @@ _runner_chat_execute() {
     run_id="$(jq -er '.runId | select(type == "string" and length > 0)' <<< "$send_response")" || return 1
     resolved_thread_id="$(jq -er '.threadId | select(type == "string" and length > 0)' <<< "$send_response")" || return 1
 
-    run_response="$(_wait_for_runner_run "$run_id")" || return 1
+    run_response="$(runner_wait_for_run "$run_id")" || return 1
     if ! jq -e '
         .status == "completed" and
         (.result.agentSessionId | type == "string" and length > 0)
