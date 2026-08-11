@@ -5961,6 +5961,10 @@ function assertChatRunServiceTierMigrationShape(migrationSql: string): void {
   assert.equal((migrationSql.match(/\bCOMMIT\b/gu) ?? []).length, 1);
   assert.match(
     migrationSql,
+    /SET "user_message" =[\s\S]*"payload" = jsonb_set/u,
+  );
+  assert.match(
+    migrationSql,
     /"updated"\."seq_id" <= "snapshot"\."last_seq_id"/u,
   );
   assert.equal(
@@ -6072,15 +6076,20 @@ async function seedChatRunServiceTierEvents(client: Client): Promise<void> {
     `
       INSERT INTO "chat_events" (
         "id", "chat_thread_id", "run_id", "event_type", "context_type",
-        "user_message", "seq_id"
+        "payload", "user_message", "seq_id"
       )
       VALUES
-        ($1, $7, $10, 'input.prompt', 'web', $15::jsonb, 1),
-        ($2, $7, $11, 'input.prompt', 'web', $16::jsonb, 2),
-        ($3, $8, $12, 'input.prompt', 'web', $17::jsonb, 1),
-        ($4, $8, $13, 'input.prompt', 'web', $18::jsonb, 2),
-        ($5, $9, NULL, 'output.message', NULL, NULL, 1),
-        ($6, $9, $14, 'input.prompt', 'web', $19::jsonb, 2)
+        ($1, $7, $10, 'input.prompt', 'web',
+          jsonb_build_object('userMessage', $15::jsonb), $15::jsonb, 1),
+        ($2, $7, $11, 'input.prompt', 'web',
+          jsonb_build_object('userMessage', $16::jsonb), $16::jsonb, 2),
+        ($3, $8, $12, 'input.prompt', 'web',
+          jsonb_build_object('userMessage', $17::jsonb), $17::jsonb, 1),
+        ($4, $8, $13, 'input.prompt', 'web',
+          jsonb_build_object('userMessage', $18::jsonb), $18::jsonb, 2),
+        ($5, $9, NULL, 'output.message', NULL, NULL, NULL, 1),
+        ($6, $9, $14, 'input.prompt', 'web',
+          jsonb_build_object('userMessage', $19::jsonb), $19::jsonb, 2)
     `,
     [
       fixture.fastEventId,
@@ -6247,9 +6256,16 @@ async function chatEventsRejectFunctionDefinition(
 async function assertChatRunServiceTierMessages(client: Client): Promise<void> {
   const fixture = CHAT_RUN_SERVICE_TIER_FIXTURE;
   const messages = CHAT_RUN_SERVICE_TIER_MESSAGES;
-  const result = await client.query<{ id: string; userMessage: unknown }>(
+  const result = await client.query<{
+    id: string;
+    canonicalUserMessage: unknown;
+    legacyUserMessage: unknown;
+  }>(
     `
-      SELECT "id", "user_message" AS "userMessage"
+      SELECT
+        "id",
+        "payload" -> 'userMessage' AS "canonicalUserMessage",
+        "user_message" AS "legacyUserMessage"
       FROM "chat_events"
       WHERE "id" IN ($1, $2, $3, $4, $5)
       ORDER BY "id"
@@ -6263,11 +6279,31 @@ async function assertChatRunServiceTierMessages(client: Client): Promise<void> {
     ],
   );
   assert.deepEqual(result.rows, [
-    { id: fixture.fastEventId, userMessage: messages.expectedFast },
-    { id: fixture.annotatedFastEventId, userMessage: messages.annotatedFast },
-    { id: fixture.standardEventId, userMessage: messages.standard },
-    { id: fixture.modelLessFastEventId, userMessage: messages.modelLessFast },
-    { id: fixture.tailFastEventId, userMessage: messages.expectedTailFast },
+    {
+      id: fixture.fastEventId,
+      canonicalUserMessage: messages.expectedFast,
+      legacyUserMessage: messages.expectedFast,
+    },
+    {
+      id: fixture.annotatedFastEventId,
+      canonicalUserMessage: messages.annotatedFast,
+      legacyUserMessage: messages.annotatedFast,
+    },
+    {
+      id: fixture.standardEventId,
+      canonicalUserMessage: messages.standard,
+      legacyUserMessage: messages.standard,
+    },
+    {
+      id: fixture.modelLessFastEventId,
+      canonicalUserMessage: messages.modelLessFast,
+      legacyUserMessage: messages.modelLessFast,
+    },
+    {
+      id: fixture.tailFastEventId,
+      canonicalUserMessage: messages.expectedTailFast,
+      legacyUserMessage: messages.expectedTailFast,
+    },
   ]);
 }
 
@@ -6345,13 +6381,22 @@ async function rerunChatRunServiceTierMigration(
     FROM "chat_events" AS "event"
     INNER JOIN "zero_runs" AS "run" ON "run"."id" = "event"."run_id"
     WHERE "run"."codex_service_tier" = 'fast'
-      AND "event"."user_message" IS NOT NULL
-      AND jsonb_typeof("event"."user_message" -> 'parts') = 'array'
-      AND EXISTS (
-        SELECT 1
-        FROM jsonb_array_elements("event"."user_message" -> 'parts') AS "part"
-        WHERE "part" ->> 'type' = 'model'
-          AND "part" ->> 'serviceTier' IS DISTINCT FROM 'priority'
+      AND (
+        "event"."payload" -> 'userMessage'
+          IS DISTINCT FROM "event"."user_message"
+        OR (
+          jsonb_typeof(
+            "event"."payload" -> 'userMessage' -> 'parts'
+          ) = 'array'
+          AND EXISTS (
+            SELECT 1
+            FROM jsonb_array_elements(
+              "event"."payload" -> 'userMessage' -> 'parts'
+            ) AS "part"
+            WHERE "part" ->> 'type' = 'model'
+              AND "part" ->> 'serviceTier' IS DISTINCT FROM 'priority'
+          )
+        )
       )
   `);
   assert.deepEqual(remaining.rows, [{ count: "0" }]);

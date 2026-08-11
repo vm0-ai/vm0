@@ -19,6 +19,30 @@ BEGIN
 END;
 $$;--> statement-breakpoint
 
+-- The canonical chat-event payload was backfilled before this migration and
+-- every current writer keeps the retained legacy leaf in sync. Abort instead
+-- of guessing if the fast-run provenance points at a row whose two persisted
+-- representations already disagree.
+DO $$
+DECLARE
+  inconsistent_count bigint;
+BEGIN
+  SELECT COUNT(*)
+  INTO inconsistent_count
+  FROM "chat_events" AS "event"
+  INNER JOIN "zero_runs" AS "run" ON "run"."id" = "event"."run_id"
+  WHERE "run"."codex_service_tier" = 'fast'
+    AND "event"."payload" -> 'userMessage'
+      IS DISTINCT FROM "event"."user_message";
+
+  IF inconsistent_count > 0 THEN
+    RAISE EXCEPTION
+      'chat_events has % fast-run rows whose canonical and legacy user messages disagree',
+      inconsistent_count;
+  END IF;
+END;
+$$;--> statement-breakpoint
+
 -- Keep the JSON transformation shared by the trigger guard and the batched
 -- update so the temporary append-only exception cannot accept a broader
 -- transition than the migration performs.
@@ -59,18 +83,25 @@ BEGIN
   IF TG_TABLE_NAME = 'chat_events'
     AND OLD."run_id" IS NOT NULL
     AND OLD."user_message" IS NOT NULL
-    AND jsonb_typeof(OLD."user_message" -> 'parts') = 'array'
+    AND OLD."payload" -> 'userMessage'
+      IS NOT DISTINCT FROM OLD."user_message"
+    AND jsonb_typeof(OLD."payload" -> 'userMessage' -> 'parts') = 'array'
     AND NEW."user_message" IS DISTINCT FROM OLD."user_message"
-    AND (to_jsonb(NEW) - 'user_message')
-      = (to_jsonb(OLD) - 'user_message')
+    AND NEW."payload" IS DISTINCT FROM OLD."payload"
+    AND (to_jsonb(NEW) - 'payload' - 'user_message')
+      = (to_jsonb(OLD) - 'payload' - 'user_message')
     AND EXISTS (
       SELECT 1
-      FROM jsonb_array_elements(OLD."user_message" -> 'parts') AS "part"
+      FROM jsonb_array_elements(
+        OLD."payload" -> 'userMessage' -> 'parts'
+      ) AS "part"
       WHERE "part" ->> 'type' = 'model'
         AND "part" ->> 'serviceTier' IS DISTINCT FROM 'priority'
     )
   THEN
-    SELECT "annotate_chat_event_priority_0890"(OLD."user_message")
+    SELECT "annotate_chat_event_priority_0890"(
+      OLD."payload" -> 'userMessage'
+    )
     INTO expected_user_message
     FROM "zero_runs" AS "run"
     WHERE "run"."id" = OLD."run_id"
@@ -78,6 +109,12 @@ BEGIN
 
     IF expected_user_message IS NOT NULL
       AND NEW."user_message" = expected_user_message
+      AND NEW."payload" = jsonb_set(
+        OLD."payload",
+        '{userMessage}',
+        expected_user_message,
+        false
+      )
     THEN
       RETURN NEW;
     END IF;
@@ -108,13 +145,16 @@ BEGIN
       INNER JOIN "zero_runs" AS "run"
         ON "run"."id" = "candidate"."run_id"
       WHERE (last_id IS NULL OR "candidate"."id" > last_id)
-        AND "candidate"."user_message" IS NOT NULL
-        AND jsonb_typeof("candidate"."user_message" -> 'parts') = 'array'
+        AND "candidate"."payload" -> 'userMessage'
+          IS NOT DISTINCT FROM "candidate"."user_message"
+        AND jsonb_typeof(
+          "candidate"."payload" -> 'userMessage' -> 'parts'
+        ) = 'array'
         AND "run"."codex_service_tier" = 'fast'
         AND EXISTS (
           SELECT 1
           FROM jsonb_array_elements(
-            "candidate"."user_message" -> 'parts'
+            "candidate"."payload" -> 'userMessage' -> 'parts'
           ) AS "part"
           WHERE "part" ->> 'type' = 'model'
             AND "part" ->> 'serviceTier' IS DISTINCT FROM 'priority'
@@ -125,7 +165,15 @@ BEGIN
     ), updated AS (
       UPDATE "chat_events" AS "target"
       SET "user_message" = "annotate_chat_event_priority_0890"(
-        "target"."user_message"
+          "target"."payload" -> 'userMessage'
+        ),
+        "payload" = jsonb_set(
+          "target"."payload",
+          '{userMessage}',
+          "annotate_chat_event_priority_0890"(
+            "target"."payload" -> 'userMessage'
+          ),
+          false
       )
       FROM batch
       WHERE "target"."id" = batch."id"
@@ -205,13 +253,16 @@ BEGIN
       FROM "chat_events" AS "candidate"
       INNER JOIN "zero_runs" AS "run"
         ON "run"."id" = "candidate"."run_id"
-      WHERE "candidate"."user_message" IS NOT NULL
-        AND jsonb_typeof("candidate"."user_message" -> 'parts') = 'array'
+      WHERE "candidate"."payload" -> 'userMessage'
+          IS NOT DISTINCT FROM "candidate"."user_message"
+        AND jsonb_typeof(
+          "candidate"."payload" -> 'userMessage' -> 'parts'
+        ) = 'array'
         AND "run"."codex_service_tier" = 'fast'
         AND EXISTS (
           SELECT 1
           FROM jsonb_array_elements(
-            "candidate"."user_message" -> 'parts'
+            "candidate"."payload" -> 'userMessage' -> 'parts'
           ) AS "part"
           WHERE "part" ->> 'type' = 'model'
             AND "part" ->> 'serviceTier' IS DISTINCT FROM 'priority'
@@ -239,19 +290,36 @@ $$ LANGUAGE plpgsql;--> statement-breakpoint
 DROP FUNCTION IF EXISTS "annotate_chat_event_priority_0890"(jsonb);--> statement-breakpoint
 
 DO $$
+DECLARE
+  inconsistent_count bigint;
 BEGIN
+  SELECT COUNT(*)
+  INTO inconsistent_count
+  FROM "chat_events" AS "event"
+  INNER JOIN "zero_runs" AS "run" ON "run"."id" = "event"."run_id"
+  WHERE "run"."codex_service_tier" = 'fast'
+    AND "event"."payload" -> 'userMessage'
+      IS DISTINCT FROM "event"."user_message";
+
+  IF inconsistent_count > 0 THEN
+    RAISE EXCEPTION
+      'chat_events has % fast-run rows whose canonical and legacy user messages disagree',
+      inconsistent_count;
+  END IF;
+
   IF EXISTS (
     SELECT 1
     FROM "chat_events" AS "candidate"
     INNER JOIN "zero_runs" AS "run"
       ON "run"."id" = "candidate"."run_id"
-    WHERE "candidate"."user_message" IS NOT NULL
-      AND jsonb_typeof("candidate"."user_message" -> 'parts') = 'array'
+    WHERE jsonb_typeof(
+        "candidate"."payload" -> 'userMessage' -> 'parts'
+      ) = 'array'
       AND "run"."codex_service_tier" = 'fast'
       AND EXISTS (
         SELECT 1
         FROM jsonb_array_elements(
-          "candidate"."user_message" -> 'parts'
+          "candidate"."payload" -> 'userMessage' -> 'parts'
         ) AS "part"
         WHERE "part" ->> 'type' = 'model'
           AND "part" ->> 'serviceTier' IS DISTINCT FROM 'priority'
