@@ -334,6 +334,7 @@
       "slack": "Slack",
       "teams": "Teams",
       "telegram": "Telegram",
+      "templateImport": "템플릿 가져오기",
       "test": "테스트",
       "web": "웹",
       "webhook": "Webhook"

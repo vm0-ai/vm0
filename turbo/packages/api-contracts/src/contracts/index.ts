@@ -1740,6 +1740,18 @@ export {
   type UploadPrepareResponse,
 } from "./zero-uploads";
 export {
+  MAX_PRESENTATION_TEMPLATE_SOURCE_BYTES,
+  MAX_PRESENTATION_TEMPLATE_PAGES,
+  PRESENTATION_TEMPLATE_CONVERSION_TIMEOUT_SECONDS,
+  MAX_PRESENTATION_TEMPLATE_PACKAGE_FILE_BYTES,
+  presentationTemplateStatusSchema,
+  presentationTemplateImportErrorCodeSchema,
+  presentationTemplatePreflightErrorCodeSchema,
+  zeroPresentationTemplatesContract,
+  type PresentationTemplateSummary,
+  type ZeroPresentationTemplatesContract,
+} from "./zero-presentation-templates";
+export {
   zeroGoalsContract,
   zeroGoalCreateRequestSchema,
   zeroGoalEditRequestSchema,
