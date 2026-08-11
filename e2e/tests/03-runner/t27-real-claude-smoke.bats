@@ -5,7 +5,7 @@
 load '../../helpers/setup'
 load '../../helpers/runner-chat'
 
-BATS_TEST_TIMEOUT=450
+BATS_TEST_TIMEOUT=600
 
 setup_file() {
     local credentials="/tmp/e2e-api-credentials-runner-real-claude.json"
@@ -121,7 +121,7 @@ run_real_claude_steer() {
         "$steer_prompt" \
         "claude-sonnet-4-6" \
         "$expected_output" \
-        90)" || return 1
+        150)" || return 1
     run_id="$(jq -er '.runId' <<< "$steer_result")" || return 1
     events_response="$(wait_for_real_claude_events "$run_id" 45)" || return 1
     successor_result="$(runner_chat_send_after_completion \
@@ -130,7 +130,7 @@ run_real_claude_steer() {
         "$run_id" \
         "Reply only $after_complete_output" \
         "$after_complete_output" \
-        90)" || return 1
+        150)" || return 1
     successor_run_id="$(jq -er '.runId' <<< "$successor_result")" || return 1
     successor_events_response="$(wait_for_real_claude_events \
         "$successor_run_id" \
