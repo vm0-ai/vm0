@@ -314,7 +314,7 @@ function proratedLineAmount(
   return numerator / (end - start);
 }
 
-function proratedInvoiceAmount(
+function proratedInvoiceAdjustment(
   invoice: StripeInvoice,
   lines: readonly StripeInvoiceLine[],
   deletionTimestamp: number,
@@ -328,7 +328,81 @@ function proratedInvoiceAmount(
   if (!Number.isFinite(amount)) {
     throw new Error(`Stripe invoice ${invoice.id} has an invalid proration`);
   }
-  return Math.max(0, Math.floor(amount));
+  return amount;
+}
+
+interface InvoiceProration {
+  readonly invoice: StripeInvoice;
+  readonly amount: number;
+}
+
+interface InvoiceRefund {
+  readonly invoice: StripeInvoice;
+  readonly amount: number;
+}
+
+function allocateInvoiceRefunds(
+  prorations: readonly InvoiceProration[],
+): readonly InvoiceRefund[] {
+  // A negative downgrade invoice becomes Stripe customer balance. Include its
+  // unused-time adjustment before allocating the remaining cash refund.
+  const total = prorations.reduce((sum, proration) => {
+    return sum + proration.amount;
+  }, 0);
+  if (!Number.isFinite(total)) {
+    throw new Error("Stripe subscription has an invalid proration");
+  }
+  const refundableTotal = Math.max(0, Math.floor(total));
+  if (!Number.isSafeInteger(refundableTotal)) {
+    throw new Error("Stripe subscription proration exceeds safe precision");
+  }
+
+  let remaining = refundableTotal;
+  const allocations = prorations.map((proration) => {
+    const baseAmount = Math.max(0, Math.floor(proration.amount));
+    if (!Number.isSafeInteger(baseAmount)) {
+      throw new Error(
+        `Stripe invoice ${proration.invoice.id} proration exceeds safe precision`,
+      );
+    }
+    const amount = Math.min(baseAmount, remaining);
+    remaining -= amount;
+    return { ...proration, amount };
+  });
+
+  const fractionalAllocations = prorations
+    .map((proration, index) => {
+      return {
+        index,
+        remainder:
+          proration.amount > 0
+            ? proration.amount - Math.floor(proration.amount)
+            : 0,
+      };
+    })
+    .filter(({ remainder }) => {
+      return remainder > 0;
+    })
+    .sort((left, right) => {
+      return right.remainder - left.remainder || left.index - right.index;
+    });
+  for (const { index } of fractionalAllocations) {
+    if (remaining === 0) {
+      break;
+    }
+    const allocation = allocations[index];
+    if (!allocation) {
+      throw new Error("Stripe subscription refund allocation is incomplete");
+    }
+    allocations[index] = { ...allocation, amount: allocation.amount + 1 };
+    remaining -= 1;
+  }
+  if (remaining !== 0) {
+    throw new Error("Stripe subscription refund allocation is incomplete");
+  }
+  return allocations.filter(({ amount }) => {
+    return amount > 0;
+  });
 }
 
 async function listCompleteInvoiceLines(
@@ -512,16 +586,15 @@ async function refundSubscriptionProration(
     args.subscriptionId,
     signal,
   );
+  const prorations: InvoiceProration[] = [];
   for (const invoice of invoices) {
     const lines = await listCompleteInvoiceLines(stripe, invoice, signal);
-    const amount = proratedInvoiceAmount(
+    prorations.push({
       invoice,
-      lines,
-      args.deletionTimestamp,
-    );
-    if (amount <= 0) {
-      continue;
-    }
+      amount: proratedInvoiceAdjustment(invoice, lines, args.deletionTimestamp),
+    });
+  }
+  for (const { invoice, amount } of allocateInvoiceRefunds(prorations)) {
     await refundInvoiceProration(stripe, { ...args, invoice, amount }, signal);
   }
 }

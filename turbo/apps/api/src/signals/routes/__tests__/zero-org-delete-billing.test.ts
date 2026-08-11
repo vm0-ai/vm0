@@ -500,6 +500,48 @@ test("nets upgrade credits and excludes one-time invoice items from proration", 
   );
 });
 
+test("nets a separate downgrade credit before refunding unused time", async () => {
+  const deletionTimestamp = 1_800_000_000;
+  const periodStart = deletionTimestamp - 750;
+  const periodEnd = deletionTimestamp + 250;
+  const downgradeStart = deletionTimestamp - 250;
+  const subscriptionId = "sub_delete_downgraded";
+  const fixture = createOrgDeleteBillingFixture();
+  await seedPlanSubscription(fixture, subscriptionId, periodEnd);
+  mockNow(deletionTimestamp * 1000);
+  mockOrgDeletion(fixture);
+  context.mocks.stripe.subscriptions.list.mockResolvedValue({
+    data: [subscription(subscriptionId, fixture.customerId)],
+    has_more: false,
+  });
+  context.mocks.stripe.invoices.list.mockResolvedValue({
+    data: [
+      paidInvoice("in_delete_original", fixture.customerId, subscriptionId, [
+        subscriptionLine(2000, periodStart, periodEnd),
+      ]),
+      paidInvoice("in_delete_downgrade", fixture.customerId, subscriptionId, [
+        subscriptionLine(-1000, downgradeStart, periodEnd),
+        subscriptionLine(500, downgradeStart, periodEnd),
+      ]),
+    ],
+    has_more: false,
+  });
+  context.mocks.stripe.creditNotes.preview.mockResolvedValue(
+    creditNote("preview_downgrade", 250),
+  );
+  context.mocks.stripe.creditNotes.create.mockResolvedValue(
+    creditNote("cn_downgrade", 250),
+  );
+
+  await accept(requestOrgDeletion(), [200]);
+
+  expect(context.mocks.stripe.creditNotes.preview).toHaveBeenCalledOnce();
+  expect(context.mocks.stripe.creditNotes.preview).toHaveBeenCalledWith(
+    expect.objectContaining({ invoice: "in_delete_original", amount: 250 }),
+  );
+  expect(context.mocks.stripe.creditNotes.create).toHaveBeenCalledOnce();
+});
+
 test("reuses a prior deletion marker and issued credit note on retry", async () => {
   const deletionTimestamp = 1_800_000_000;
   const periodStart = deletionTimestamp - 600;
