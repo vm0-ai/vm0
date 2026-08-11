@@ -942,6 +942,14 @@ test("[PREF-01][CONNECTOR-01] refreshes connector values and secrets with redact
       },
     ],
   });
+  // The enabled connector must auto-add its resolved base to the run
+  // firewall before the sandbox can reach the simulator at all.
+  await waitForRunStatus(run, ["running"]);
+  const initialContext = await readRunContext(run);
+  expect(
+    JSON.stringify(initialContext.firewalls),
+    `run firewalls must include the resolved connector host ${simulatorHost}`,
+  ).toContain(simulatorHost);
   const firstRequest = await control.waitForEvent(
     (event) => event.path === "/tenant/alpha/gate",
     "the first dynamic connector request",
