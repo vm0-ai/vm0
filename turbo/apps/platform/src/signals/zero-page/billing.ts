@@ -5,6 +5,7 @@ import {
   zeroBillingUsagePackCatalogContract,
   zeroBillingUsagePackCheckoutContract,
   zeroBillingUsagePackManagementContract,
+  zeroBillingUsagePackCreditsContract,
   zeroBillingConcurrencyCheckoutContract,
   zeroBillingConcurrencySubscriptionContract,
   zeroBillingCreditCheckoutContract,
@@ -360,6 +361,14 @@ export const usagePackManagementAsync$ = computed(async (get) => {
   const client = createClient(zeroBillingUsagePackManagementContract);
   const result = await accept(client.get(), [200, 404]);
   return result.status === 200 ? result.body : null;
+});
+
+export const usagePackCreditsAsync$ = computed(async (get) => {
+  get(billingReload$);
+  const createClient = get(zeroClient$);
+  const client = createClient(zeroBillingUsagePackCreditsContract);
+  const result = await accept(client.get(), [200]);
+  return result.body;
 });
 
 // ---------------------------------------------------------------------------

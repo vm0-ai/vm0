@@ -36,6 +36,9 @@ const seedAllocationSchema = z
     invitationId: z.string().min(1).nullable(),
     usagePackUsd: usagePackUsdSchema,
     stripePriceId: z.string().min(1),
+    status: z
+      .enum(["pending_payment", "active", "pending_invitation", "inactive"])
+      .optional(),
   })
   .refine((allocation) => {
     return (allocation.userId === null) !== (allocation.invitationId === null);
@@ -101,7 +104,7 @@ const readStateSchema = z.object({
     z.object({
       id: z.string().uuid(),
       userId: z.string(),
-      kind: z.enum(["upgrade", "downgrade", "removal"]),
+      kind: z.enum(["addition", "upgrade", "downgrade", "removal"]),
       status: z.enum([
         "previewed",
         "applying",
@@ -111,7 +114,7 @@ const readStateSchema = z.object({
         "completed",
         "failed",
       ]),
-      sourceUsagePackUsd: usagePackUsdSchema,
+      sourceUsagePackUsd: usagePackUsdSchema.nullable(),
       targetUsagePackUsd: usagePackUsdSchema.nullable(),
       immediateAmountCents: z.number().int().nonnegative().nullable(),
       nextRecurringAmountCents: z.number().int().nonnegative().nullable(),
@@ -405,7 +408,7 @@ async function readUsagePackState(
         userId: change.userId,
         kind: change.kind,
         status: change.status,
-        sourceUsagePackUsd: change.sourceUsagePackUsd as UsagePackUsd,
+        sourceUsagePackUsd: change.sourceUsagePackUsd as UsagePackUsd | null,
         targetUsagePackUsd: change.targetUsagePackUsd as UsagePackUsd | null,
         immediateAmountCents: change.immediateAmountCents,
         nextRecurringAmountCents: change.nextRecurringAmountCents,

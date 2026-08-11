@@ -2,6 +2,7 @@ import {
   zeroBillingStatusContract,
   zeroBillingCheckoutContract,
   zeroBillingUsagePackCheckoutContract,
+  zeroBillingUsagePackCreditsContract,
   zeroBillingConcurrencyCheckoutContract,
   zeroBillingConcurrencySubscriptionContract,
   zeroBillingPortalContract,
@@ -83,6 +84,15 @@ export const apiBillingHandlers = [
   mockApi(zeroBillingUsagePackCheckoutContract.create, ({ body, respond }) => {
     return respond(200, {
       url: `https://checkout.stripe.com/test?usage-pack-tier=${body.tier}`,
+    });
+  }),
+
+  mockApi(zeroBillingUsagePackCreditsContract.get, ({ respond }) => {
+    return respond(200, {
+      totalCredits: 0,
+      purchasedCredits: 0,
+      bonusCredits: 0,
+      creditGrants: [],
     });
   }),
 

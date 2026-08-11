@@ -971,6 +971,7 @@
         "changePlan": "Alterar plano",
         "choosePlan": "Escolha um plano",
         "choosePlanDescription": "Escolha primeiro o plano do workspace. Os pacotes dos membros são configurados em seguida.",
+        "concurrentSlots": "Slots simultâneos",
         "configurePackages": "Configurar pacotes dos membros",
         "configurePackagesDescription": "Escolha um pacote obrigatório para cada membro e revise o total mensal combinado.",
         "currentMember": "Membro atual",
@@ -1074,9 +1075,22 @@
       "left": "{{value}} restantes",
       "member": "Membro",
       "neverExpires": "Nunca expira",
+      "orgCredits": "Créditos da organização",
       "unavailable": "Saldo de créditos indisponível.",
       "upgradeDescription": "O Pro inclui créditos mensais e libera outras opções de créditos.",
       "upgradeTitle": "Faça upgrade para o Pro e obtenha mais créditos",
+      "usagePack": {
+        "bonus": "Bônus",
+        "members": "Membros",
+        "membersDescription": "Confira os créditos restantes e as adições de créditos do pacote de cada membro.",
+        "membersTitle": "Créditos dos pacotes dos membros",
+        "nextExpiry": "Próximo vencimento",
+        "purchased": "Comprados",
+        "remaining": "Restante",
+        "title": "Créditos do pacote de uso",
+        "totalRemaining": "Total restante",
+        "viewMembers": "Ver saldos dos membros"
+      },
       "used": "Usado"
     }
   },

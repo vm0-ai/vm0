@@ -950,6 +950,7 @@
         "changePlan": "Plan ändern",
         "choosePlan": "Plan auswählen",
         "choosePlanDescription": "Wählen Sie zuerst den Workspace-Plan. Mitgliederpakete konfigurieren Sie im nächsten Schritt.",
+        "concurrentSlots": "Gleichzeitige Slots",
         "configurePackages": "Mitgliederpakete konfigurieren",
         "configurePackagesDescription": "Wählen Sie für jedes Mitglied ein erforderliches Paket aus und prüfen Sie dann die kombinierte Monatssumme.",
         "currentMember": "Aktuelles Mitglied",
@@ -1052,9 +1053,22 @@
       "left": "{{value}} übrig",
       "member": "Mitglied",
       "neverExpires": "Läuft nie ab",
+      "orgCredits": "Organisationsguthaben",
       "unavailable": "Credit-Guthaben nicht verfügbar.",
       "upgradeDescription": "Pro beinhaltet monatliche Credits und schaltet zusätzliche Credit-Optionen frei.",
       "upgradeTitle": "Upgraden Sie auf Pro, um mehr Credits zu erhalten",
+      "usagePack": {
+        "bonus": "Bonus",
+        "members": "Mitglieder",
+        "membersDescription": "Prüfen Sie die verbleibenden Nutzungspaket-Credits und Credit-Zugänge jedes Mitglieds.",
+        "membersTitle": "Nutzungspaket-Credits der Mitglieder",
+        "nextExpiry": "Nächster Ablauf",
+        "purchased": "Gekauft",
+        "remaining": "Verbleibend",
+        "title": "Nutzungspaket-Credits",
+        "totalRemaining": "Insgesamt verbleibend",
+        "viewMembers": "Mitgliederguthaben anzeigen"
+      },
       "used": "Verwendet"
     }
   },

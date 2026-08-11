@@ -950,6 +950,7 @@
         "changePlan": "プランを変更",
         "choosePlan": "プランを選択",
         "choosePlanDescription": "最初にワークスペースプランを選択します。メンバーパッケージは次に設定します。",
+        "concurrentSlots": "同時実行スロット",
         "configurePackages": "メンバーパッケージを設定",
         "configurePackagesDescription": "各メンバーに必須のパッケージを選択し、月額合計を確認します。",
         "currentMember": "現在のメンバー",
@@ -1052,9 +1053,22 @@
       "left": "{{value}} 残り",
       "member": "メンバー",
       "neverExpires": "有効期限はありません",
+      "orgCredits": "組織クレジット",
       "unavailable": "クレジット残高が利用できません。",
       "upgradeDescription": "Pro には毎月のクレジットが含まれており、追加のクレジット オプションのロックが解除されます。",
       "upgradeTitle": "Pro にアップグレードしてより多くのクレジットを獲得",
+      "usagePack": {
+        "bonus": "ボーナス",
+        "members": "メンバー",
+        "membersDescription": "各メンバーの使用量パックの残高とクレジット追加を確認します。",
+        "membersTitle": "メンバーの使用量パッククレジット",
+        "nextExpiry": "次の有効期限",
+        "purchased": "購入分",
+        "remaining": "残り",
+        "title": "使用量パックのクレジット",
+        "totalRemaining": "残り合計",
+        "viewMembers": "メンバー残高を表示"
+      },
       "used": "使用済み"
     }
   },

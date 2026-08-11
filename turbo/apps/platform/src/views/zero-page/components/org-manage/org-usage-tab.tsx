@@ -64,6 +64,16 @@ type CreditGrant = BillingStatusResponse["creditGrants"][number];
 type UsageAllowance = NonNullable<BillingStatusResponse["usageAllowance"]>;
 type UsageAllowanceWindow = UsageAllowance["windows"][number];
 
+export interface CreditAddition {
+  readonly id: string;
+  readonly label: string;
+  readonly amount: number;
+  readonly remaining: number;
+  readonly createdAt: string;
+  readonly expiresAt: string;
+  readonly neverExpires?: boolean;
+}
+
 function descriptionForSegment(
   seg: CreditSegment,
   currentTier: string,
@@ -121,7 +131,7 @@ function labelForSegment(seg: CreditSegment): string {
   });
 }
 
-function formatCreditDate(value: string): string {
+export function formatCreditDate(value: string): string {
   return new Intl.DateTimeFormat(currentLocale(), {
     month: "short",
     day: "numeric",
@@ -129,8 +139,8 @@ function formatCreditDate(value: string): string {
   }).format(new Date(value));
 }
 
-function expiresLabel(grant: CreditGrant): string {
-  if (grant.source === "auto_recharge") {
+function expiresLabel(grant: CreditAddition): string {
+  if (grant.neverExpires) {
     return i18n.t(($) => {
       return $.billing.usage.neverExpires;
     });
@@ -325,48 +335,60 @@ function UsageAllowanceCard({
   );
 }
 
-function CreditGrantRow({ grant }: { grant: CreditGrant }) {
+function CreditGrantRow({
+  grant,
+  showExpiryTooltip,
+  testIdPrefix,
+}: {
+  grant: CreditAddition;
+  showExpiryTooltip: boolean;
+  testIdPrefix: string;
+}) {
   const { t } = useTranslation();
   const hasPartialBalance = grant.remaining !== grant.amount;
+  const row = (
+    <div
+      tabIndex={showExpiryTooltip ? 0 : undefined}
+      data-testid={`${testIdPrefix}-${grant.id}`}
+      className="flex min-w-0 cursor-default items-center justify-between gap-3 rounded-md px-2 py-1.5 outline-none transition-colors hover:bg-state-hover focus-visible:bg-state-hover focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      <div className="min-w-0">
+        <div className="truncate text-[13px] font-medium text-foreground">
+          {grant.label}
+        </div>
+        <div className="text-xs text-muted-foreground">
+          {t(
+            ($) => {
+              return $.billing.usage.added;
+            },
+            { date: formatCreditDate(grant.createdAt) },
+          )}
+        </div>
+      </div>
+      <div className="shrink-0 text-right">
+        <div className="text-[13px] font-medium tabular-nums text-foreground">
+          {formatLocalizedNumber(grant.amount)}
+        </div>
+        {hasPartialBalance ? (
+          <div className="text-xs tabular-nums text-muted-foreground">
+            {t(
+              ($) => {
+                return $.billing.usage.left;
+              },
+              { value: formatLocalizedNumber(grant.remaining) },
+            )}
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+  if (!showExpiryTooltip) {
+    return row;
+  }
 
   return (
     <Tooltip>
-      <TooltipTrigger asChild>
-        <div
-          tabIndex={0}
-          data-testid={`credit-grant-${grant.id}`}
-          className="flex min-w-0 cursor-default items-center justify-between gap-3 rounded-md px-2 py-1.5 outline-none transition-colors hover:bg-state-hover focus-visible:bg-state-hover focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          <div className="min-w-0">
-            <div className="truncate text-[13px] font-medium text-foreground">
-              {grant.label}
-            </div>
-            <div className="text-xs text-muted-foreground">
-              {t(
-                ($) => {
-                  return $.billing.usage.added;
-                },
-                { date: formatCreditDate(grant.createdAt) },
-              )}
-            </div>
-          </div>
-          <div className="shrink-0 text-right">
-            <div className="text-[13px] font-medium tabular-nums text-foreground">
-              {formatLocalizedNumber(grant.amount)}
-            </div>
-            {hasPartialBalance ? (
-              <div className="text-xs tabular-nums text-muted-foreground">
-                {t(
-                  ($) => {
-                    return $.billing.usage.left;
-                  },
-                  { value: formatLocalizedNumber(grant.remaining) },
-                )}
-              </div>
-            ) : null}
-          </div>
-        </div>
-      </TooltipTrigger>
+      <TooltipTrigger asChild>{row}</TooltipTrigger>
       <TooltipContent
         side="top"
         sideOffset={8}
@@ -393,7 +415,44 @@ function CreditGrantRow({ grant }: { grant: CreditGrant }) {
   );
 }
 
-function CreditGrantList({ grants }: { grants: CreditGrant[] }) {
+function CreditAdditionItems({
+  grants,
+  showExpiryTooltip = true,
+  testIdPrefix = "credit-grants",
+}: {
+  grants: readonly CreditAddition[];
+  showExpiryTooltip?: boolean;
+  testIdPrefix?: string;
+}) {
+  if (grants.length === 0) {
+    return null;
+  }
+
+  return (
+    <TooltipProvider delayDuration={100}>
+      <div className="flex flex-col">
+        {grants.map((grant) => {
+          return (
+            <CreditGrantRow
+              key={grant.id}
+              grant={grant}
+              showExpiryTooltip={showExpiryTooltip}
+              testIdPrefix={testIdPrefix}
+            />
+          );
+        })}
+      </div>
+    </TooltipProvider>
+  );
+}
+
+export function CreditAdditionList({
+  grants,
+  testIdPrefix = "credit-grants",
+}: {
+  grants: readonly CreditAddition[];
+  testIdPrefix?: string;
+}) {
   const { t } = useTranslation();
   if (grants.length === 0) {
     return null;
@@ -401,12 +460,15 @@ function CreditGrantList({ grants }: { grants: CreditGrant[] }) {
 
   return (
     <details
-      data-testid="credit-grants-section"
+      data-testid={`${testIdPrefix}-section`}
       className="group mt-4 border-t border-border/50 pt-3"
     >
       <summary
-        data-testid="credit-grants-toggle"
+        data-testid={`${testIdPrefix}-toggle`}
         className="mb-1 cursor-pointer list-none px-2"
+        aria-label={`${t(($) => {
+          return $.billing.usage.creditAdditions;
+        })}: ${grants.length}`}
       >
         <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
           <ChevronRight
@@ -421,14 +483,24 @@ function CreditGrantList({ grants }: { grants: CreditGrant[] }) {
           <span className="tabular-nums">({grants.length})</span>
         </div>
       </summary>
-      <TooltipProvider delayDuration={100}>
-        <div className="flex flex-col">
-          {grants.map((grant) => {
-            return <CreditGrantRow key={grant.id} grant={grant} />;
-          })}
-        </div>
-      </TooltipProvider>
+      <CreditAdditionItems grants={grants} testIdPrefix={testIdPrefix} />
     </details>
+  );
+}
+
+function OrgCreditHeader({ total }: { total: number }) {
+  const { t } = useTranslation();
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <p className="text-sm font-medium text-foreground">
+        {t(($) => {
+          return $.billing.usage.orgCredits;
+        })}
+      </p>
+      <p className="text-sm font-medium tabular-nums text-foreground">
+        {formatLocalizedNumber(total)}
+      </p>
+    </div>
   );
 }
 
@@ -451,9 +523,7 @@ function CreditBalanceChart({
     total <= 0;
   return (
     <div className="px-5 py-4" data-testid="credit-balance-info">
-      <p className="text-sm font-medium tabular-nums text-foreground">
-        {formatLocalizedNumber(total)}
-      </p>
+      <OrgCreditHeader total={total} />
 
       {showFreeEmptyPrompt ? (
         <div
@@ -546,7 +616,14 @@ function CreditBalanceChart({
           </div>
         </div>
       )}
-      <CreditGrantList grants={billing.creditGrants} />
+      <CreditAdditionList
+        grants={billing.creditGrants.map((grant: CreditGrant) => {
+          return {
+            ...grant,
+            neverExpires: grant.source === "auto_recharge",
+          };
+        })}
+      />
     </div>
   );
 }
