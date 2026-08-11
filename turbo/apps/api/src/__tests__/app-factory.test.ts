@@ -919,6 +919,9 @@ describe("createApp", () => {
         "cf-access-jwt-assertion": await assertionFor("wrong-audience"),
       });
       expect(rejected.status).toBe(401);
+      expect(rejected.headers.get("x-vm0-preview-error-summary")).toContain(
+        'unexpected "aud" claim value',
+      );
       await expect(rejected.json()).resolves.toStrictEqual({
         error: "Invalid Cloudflare Access assertion",
       });

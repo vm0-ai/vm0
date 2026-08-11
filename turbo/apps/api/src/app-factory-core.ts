@@ -370,11 +370,19 @@ async function cloudflareAccessAssertionMiddleware(
   }
   const verified = await settle(verifyCloudflareAccessAssertion(assertion));
   if (!verified.ok) {
+    const errorSummary = sanitizeErrorSummary(verified.error);
     L.warn("Cloudflare Access assertion rejected", {
       errorCode: structuredErrorCode(verified.error) ?? "unknown",
-      errorSummary: sanitizeErrorSummary(verified.error),
+      errorSummary,
     });
-    return context.json({ error: "Invalid Cloudflare Access assertion" }, 401);
+    const response = context.json(
+      { error: "Invalid Cloudflare Access assertion" },
+      401,
+    );
+    if (env("ENV") === "preview") {
+      response.headers.set(PREVIEW_ERROR_SUMMARY_HEADER, errorSummary);
+    }
+    return response;
   }
   await next();
 }

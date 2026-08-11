@@ -20,7 +20,7 @@ import {
 import { SEED_SKILLS } from "@vm0/core/zero-seed-skills";
 import { skills } from "@vm0/db/schema/skill";
 import { storages, storageVersions } from "@vm0/db/schema/storage";
-import { command, computed, type Computed } from "ccstate";
+import { command, computed, createStore, type Computed } from "ccstate";
 import { eq, inArray, like } from "drizzle-orm";
 import { pack, type Headers as TarHeaders, type Pack } from "tar-stream";
 import { z } from "zod";
@@ -943,6 +943,70 @@ async function markSkillsSyncComplete(
   signal.throwIfAborted();
 }
 
+type ChangedSkillSyncOutcome = "failed" | "skipped" | "synced";
+
+async function syncChangedSkill(
+  db: Db,
+  skillName: string,
+  files: readonly GitTreeFile[],
+  headSha: string,
+  signal: AbortSignal,
+): Promise<ChangedSkillSyncOutcome> {
+  // Dynamic computed values retain their resolved streams and buffers for the
+  // lifetime of a store. A short-lived store keeps each skill below the Worker
+  // isolate memory limit instead of retaining every completed archive.
+  const skillStore = createStore();
+  const downloaded = await settle(
+    skillStore.get(downloadSkillArchive(skillName, files, headSha, signal)),
+    signal,
+  );
+  signal.throwIfAborted();
+  if (!downloaded.ok) {
+    log.warn("Skipping skill due to sync error", {
+      skillName,
+      error:
+        downloaded.error instanceof Error
+          ? downloaded.error.message
+          : String(downloaded.error),
+    });
+    return "failed";
+  }
+
+  const result = await settle(
+    skillStore.get(syncSingleSkill(db, downloaded.value, headSha, signal)),
+    signal,
+  );
+  const cleaned = await settle(
+    skillStore.get(
+      deleteS3Objects(env("R2_USER_STORAGES_BUCKET_NAME"), [
+        downloaded.value.temporaryArchiveKey,
+      ]),
+    ),
+    signal,
+  );
+  if (!cleaned.ok) {
+    log.warn("Failed to clean up temporary skill archive", {
+      skillName,
+      error:
+        cleaned.error instanceof Error
+          ? cleaned.error.message
+          : String(cleaned.error),
+    });
+  }
+  signal.throwIfAborted();
+  if (!result.ok) {
+    log.warn("Skipping skill due to sync error", {
+      skillName,
+      error:
+        result.error instanceof Error
+          ? result.error.message
+          : String(result.error),
+    });
+    return "failed";
+  }
+  return result.value ? "synced" : "skipped";
+}
+
 export const syncSkills$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<SyncSkillsResult> => {
     const db = set(writeDb$);
@@ -986,55 +1050,16 @@ export const syncSkills$ = command(
         continue;
       }
 
-      const downloaded = await settle(
-        get(downloadSkillArchive(skillName, files, headSha, signal)),
+      const outcome = await syncChangedSkill(
+        db,
+        skillName,
+        files,
+        headSha,
         signal,
       );
-      signal.throwIfAborted();
-      if (!downloaded.ok) {
+      if (outcome === "failed") {
         failed++;
-        log.warn("Skipping skill due to sync error", {
-          skillName,
-          error:
-            downloaded.error instanceof Error
-              ? downloaded.error.message
-              : String(downloaded.error),
-        });
-        continue;
-      }
-
-      const result = await settle(
-        get(syncSingleSkill(db, downloaded.value, headSha, signal)),
-        signal,
-      );
-      const cleaned = await settle(
-        get(
-          deleteS3Objects(env("R2_USER_STORAGES_BUCKET_NAME"), [
-            downloaded.value.temporaryArchiveKey,
-          ]),
-        ),
-        signal,
-      );
-      if (!cleaned.ok) {
-        log.warn("Failed to clean up temporary skill archive", {
-          skillName,
-          error:
-            cleaned.error instanceof Error
-              ? cleaned.error.message
-              : String(cleaned.error),
-        });
-      }
-      signal.throwIfAborted();
-      if (!result.ok) {
-        failed++;
-        log.warn("Skipping skill due to sync error", {
-          skillName,
-          error:
-            result.error instanceof Error
-              ? result.error.message
-              : String(result.error),
-        });
-      } else if (result.value) {
+      } else if (outcome === "synced") {
         synced++;
       } else {
         skipped++;
