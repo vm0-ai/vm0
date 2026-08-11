@@ -22,6 +22,7 @@ import { computerUseIllustrationImg } from "../zero-page/platform-assets.ts";
 import { Vm0LogoLink } from "../zero-page/zero-directed-shared.tsx";
 import { locale$ } from "../../signals/locale.ts";
 import { i18n } from "../../i18n/index.ts";
+import { desktopProductDisplayName } from "../../i18n/desktop-product.ts";
 
 function formatTime(value: string, locale: string): string {
   return new Date(value).toLocaleString(locale, {
@@ -73,7 +74,11 @@ function HostOption({
         </div>
         <div className="min-w-0">
           <div className="truncate text-sm font-medium text-foreground">
-            {host.displayName}
+            <span>{host.displayName}</span>
+            <span className="ml-1 text-xs font-normal text-muted-foreground">
+              {" "}
+              {desktopProductDisplayName(host.product)}
+            </span>
           </div>
           <div className="mt-0.5 text-xs text-muted-foreground">
             {t(
