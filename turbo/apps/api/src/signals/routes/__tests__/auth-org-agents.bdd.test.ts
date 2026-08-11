@@ -8,6 +8,7 @@ import {
   type ApiTestUser,
 } from "./helpers/api-bdd-auth-org";
 import { createBddApi, expectApiError } from "./helpers/api-bdd";
+import { manualHttpCustomConnectorCreateBody } from "./helpers/api-bdd-connectors";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 
 /*
@@ -704,13 +705,14 @@ describe("AGENT-01 and AGENT-02", () => {
     expect(crossOrgRead.body.error.code).toBe("NOT_FOUND");
 
     const connectorSlug = `_${slug("bdd-connector")}`;
-    const connector = await api.createCustomConnector(admin, {
-      displayName: "BDD Custom Connector",
-      prefixes: [`https://${connectorSlug}.example.test/api/`],
-      headerName: "Authorization",
-      headerTemplate: "Bearer {{secret}}",
-      slug: connectorSlug,
-    });
+    const connector = await api.createCustomConnector(
+      admin,
+      manualHttpCustomConnectorCreateBody({
+        displayName: "BDD Custom Connector",
+        prefixTemplates: [`https://${connectorSlug}.example.test/api/`],
+        slug: connectorSlug,
+      }),
+    );
     expect(connector).toMatchObject({
       slug: connectorSlug,
       displayName: "BDD Custom Connector",

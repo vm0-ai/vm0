@@ -250,27 +250,21 @@ const customConnectorDefinitionWriteBaseSchema = z.object({
   storageVersion: z.number().int().positive().optional(),
 });
 
-export const customConnectorHttpCreateBodySchema = z.object({
-  kind: z.literal("http").optional(),
-  displayName: z.string().min(1).max(128),
-  prefixes: z.array(z.string().min(1)).min(1).optional(),
-  headerName: z.string().min(1).max(128).optional(),
-  headerTemplate: z.string().min(1).optional(),
-  prefixTemplates: z.array(z.string().min(1)).min(1).optional(),
-  fields: z.array(customConnectorFieldSchema).optional(),
-  headerInjections: z.array(customConnectorHeaderInjectionSchema).optional(),
-  queryInjections: z.array(customConnectorQueryInjectionSchema).optional(),
-  authMode: customConnectorAuthModeSchema.optional(),
-  oauthConfig: customConnectorOAuthConfigInputSchema.optional(),
-  permissionBundleRef: customConnectorPermissionBundleRefSchema
-    .nullable()
-    .optional(),
-  skillMarkdown: customConnectorSkillMarkdownSchema.nullable().optional(),
-  storageVersion: z.number().int().positive().optional(),
-  slug: z.string().optional(),
-  endpoint: z.never().optional(),
-  transport: z.never().optional(),
-});
+const customConnectorHttpDefinitionWriteSchema =
+  customConnectorDefinitionWriteBaseSchema.extend({
+    kind: z.literal("http").optional(),
+    prefixTemplates: z.array(z.string().min(1)).min(1),
+    permissionBundleRef: customConnectorPermissionBundleRefSchema
+      .nullable()
+      .optional(),
+    endpoint: z.never().optional(),
+    transport: z.never().optional(),
+  });
+
+export const customConnectorHttpCreateBodySchema =
+  customConnectorHttpDefinitionWriteSchema.extend({
+    slug: z.string().optional(),
+  });
 
 export const customConnectorMcpCreateBodySchema =
   customConnectorDefinitionWriteBaseSchema.extend({
@@ -294,15 +288,7 @@ export type CreateCustomConnectorBody = z.infer<
 >;
 
 export const customConnectorHttpUpdateBodySchema =
-  customConnectorDefinitionWriteBaseSchema.extend({
-    kind: z.literal("http").optional(),
-    prefixTemplates: z.array(z.string().min(1)).min(1),
-    permissionBundleRef: customConnectorPermissionBundleRefSchema
-      .nullable()
-      .optional(),
-    endpoint: z.never().optional(),
-    transport: z.never().optional(),
-  });
+  customConnectorHttpDefinitionWriteSchema;
 
 export const customConnectorMcpUpdateBodySchema =
   customConnectorDefinitionWriteBaseSchema.extend({

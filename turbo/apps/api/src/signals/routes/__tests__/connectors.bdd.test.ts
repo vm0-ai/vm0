@@ -34,6 +34,7 @@ import {
 import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
 import {
   createConnectorBddApi,
+  manualHttpCustomConnectorCreateBody,
   mockBase44OAuthProvider,
   mockCustomConnectorOAuth2Provider,
   mockDatadogConnectorOAuth,
@@ -131,13 +132,11 @@ function uploadedSkillInstruction(command: unknown): string | null {
 }
 
 function customConnectorBody(slug: string) {
-  return {
+  return manualHttpCustomConnectorCreateBody({
     slug,
     displayName: "BDD Custom Connector",
-    prefixes: [`https://${slug.slice(1)}.example.test/v1/`],
-    headerName: "Authorization",
-    headerTemplate: "Bearer {{secret}}",
-  };
+    prefixTemplates: [`https://${slug.slice(1)}.example.test/v1/`],
+  });
 }
 
 type McpCreateBody = Extract<
@@ -2685,6 +2684,24 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     await connectorsApi.deleteCustomConnector(admin, original.id);
   });
 
+  it("rejects the retired legacy HTTP create body", async () => {
+    const admin = createBddApi(context).user({ orgRole: "org:admin" });
+    const response = await connectorsApi.requestCreateCustomConnectorRaw(
+      admin,
+      {
+        displayName: "BDD Retired Legacy Create",
+        prefixes: ["https://retired-legacy.example.test/v1/"],
+        headerName: "Authorization",
+        headerTemplate: "Bearer {{secret}}",
+      },
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "BAD_REQUEST" },
+    });
+  });
+
   it("creates, patches, secrets, enables for an agent, rejects cross-org ids, and deletes through APIs", async () => {
     const bdd = createBddApi(context);
     bdd.acceptAgentStorageWrites();
@@ -2706,7 +2723,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       admin,
       {
         ...customConnectorBody(uniqueSlug("bad-custom")),
-        prefixes: ["http://api.example.test/"],
+        prefixTemplates: ["http://api.example.test/"],
       },
       [400],
     );
@@ -3281,6 +3298,9 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     expect(saved.authorizedAgentId).toBe(agent.agentId);
     expect(saved.connector).toMatchObject({
       displayName: "BDD Proposal API",
+      prefixes: [`https://{{variables.subdomain}}.${rand}.test/v1/`],
+      headerName: "Authorization",
+      headerTemplate: "Bearer {{secrets.api_key}}",
       connected: true,
       missingRequiredFields: [],
       configuredFieldKeys: ["api_key", "subdomain"],
@@ -3476,7 +3496,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
         admin,
         {
           ...customConnectorBody(uniqueSlug("invalid-hostname")),
-          prefixes: [`https://${host}/v1/`],
+          prefixTemplates: [`https://${host}/v1/`],
         },
         [400],
       );
@@ -3538,12 +3558,13 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     const admin = bdd.user({ orgRole: "org:admin" });
     const rawPrefix = "https://münich.example/v1/";
 
-    const connector = await connectorsApi.createCustomConnector(admin, {
-      displayName: "BDD Unicode Host API",
-      prefixes: [rawPrefix],
-      headerName: "Authorization",
-      headerTemplate: "Bearer {{secret}}",
-    });
+    const connector = await connectorsApi.createCustomConnector(
+      admin,
+      manualHttpCustomConnectorCreateBody({
+        displayName: "BDD Unicode Host API",
+        prefixTemplates: [rawPrefix],
+      }),
+    );
 
     expect(connector.prefixes).toStrictEqual([rawPrefix]);
     expect(connector.prefixTemplates).toStrictEqual([rawPrefix]);
@@ -3781,12 +3802,13 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
 
     mockAuthoritativeOrganizationMembers([admin]);
 
-    const autoSlug = await connectorsApi.createCustomConnector(admin, {
-      displayName: "BDD Auto Slug",
-      prefixes: [`https://api.${host}/v1`],
-      headerName: "Authorization",
-      headerTemplate: "Bearer {{secret}}",
-    });
+    const autoSlug = await connectorsApi.createCustomConnector(
+      admin,
+      manualHttpCustomConnectorCreateBody({
+        displayName: "BDD Auto Slug",
+        prefixTemplates: [`https://api.${host}/v1`],
+      }),
+    );
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       "customConnectorListChanged",
       null,
@@ -3799,12 +3821,10 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
 
     const duplicateAutoSlug = await connectorsApi.requestCreateCustomConnector(
       admin,
-      {
+      manualHttpCustomConnectorCreateBody({
         displayName: "BDD Duplicate Auto Slug",
-        prefixes: [`https://api.${host}/v1`],
-        headerName: "Authorization",
-        headerTemplate: "Bearer {{secret}}",
-      },
+        prefixTemplates: [`https://api.${host}/v1`],
+      }),
       [400],
     );
     expectApiError(duplicateAutoSlug.body);
@@ -3812,12 +3832,13 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       `"${autoSlug.displayName}"`,
     );
 
-    const wildcard = await connectorsApi.createCustomConnector(admin, {
-      displayName: "BDD Wildcard",
-      prefixes: [`https://*.${host}/v1`],
-      headerName: "Authorization",
-      headerTemplate: "Bearer {{secret}}",
-    });
+    const wildcard = await connectorsApi.createCustomConnector(
+      admin,
+      manualHttpCustomConnectorCreateBody({
+        displayName: "BDD Wildcard",
+        prefixTemplates: [`https://*.${host}/v1`],
+      }),
+    );
     expect(wildcard.slug).toMatch(
       new RegExp(`^_bdd${rand}-example-test-[a-z0-9]{6}$`),
     );
@@ -3826,22 +3847,28 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     const missingPlaceholder = await connectorsApi.requestCreateCustomConnector(
       admin,
       {
-        displayName: "BDD Bad Template",
-        prefixes: [`https://template.${host}/`],
-        headerName: "Authorization",
-        headerTemplate: "Bearer static-token",
+        ...manualHttpCustomConnectorCreateBody({
+          displayName: "BDD Bad Template",
+          prefixTemplates: [`https://template.${host}/`],
+        }),
+        headerInjections: [
+          { name: "Authorization", valueTemplate: "Bearer static-token" },
+        ],
       },
       [400],
     );
     expectApiError(missingPlaceholder.body);
-    expect(missingPlaceholder.body.error.message).toContain("{{secret}}");
+    expect(missingPlaceholder.body.error.message).toContain(
+      "must reference a declared secret or variable field",
+    );
 
-    const builtinOverlap = await connectorsApi.createCustomConnector(admin, {
-      displayName: "Custom GitHub",
-      prefixes: ["https://api.github.com/v3/"],
-      headerName: "Authorization",
-      headerTemplate: "Bearer {{secret}}",
-    });
+    const builtinOverlap = await connectorsApi.createCustomConnector(
+      admin,
+      manualHttpCustomConnectorCreateBody({
+        displayName: "Custom GitHub",
+        prefixTemplates: ["https://api.github.com/v3/"],
+      }),
+    );
     expect(builtinOverlap.prefixes).toStrictEqual([
       "https://api.github.com/v3/",
     ]);
@@ -3849,12 +3876,10 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     const builtinTrailingDotOverlap =
       await connectorsApi.requestCreateCustomConnector(
         admin,
-        {
+        manualHttpCustomConnectorCreateBody({
           displayName: "Custom GitHub Trailing Dot",
-          prefixes: ["https://api.github.com./v3/"],
-          headerName: "Authorization",
-          headerTemplate: "Bearer {{secret}}",
-        },
+          prefixTemplates: ["https://api.github.com./v3/"],
+        }),
         [400],
       );
     expectApiError(builtinTrailingDotOverlap.body);
@@ -4157,12 +4182,13 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     expect(root).toMatchObject({ kind: "mcp", endpoint: rootEndpoint });
     expect(root.slug).toMatch(/^_root-mcp-example-test-[a-f0-9]{6}$/u);
 
-    const http = await connectorsApi.createCustomConnector(admin, {
-      displayName: "BDD HTTP Transition Source",
-      prefixes: ["https://http-transition.example.test/"],
-      headerName: "Authorization",
-      headerTemplate: "Bearer {{secret}}",
-    });
+    const http = await connectorsApi.createCustomConnector(
+      admin,
+      manualHttpCustomConnectorCreateBody({
+        displayName: "BDD HTTP Transition Source",
+        prefixTemplates: ["https://http-transition.example.test/"],
+      }),
+    );
     const transition = await connectorsApi.requestUpdateCustomConnector(
       admin,
       http.id,
@@ -4193,12 +4219,13 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       new Error("Ably channel rate limit exceeded"),
     );
 
-    const created = await connectorsApi.createCustomConnector(admin, {
-      displayName: "BDD Realtime Failure",
-      prefixes: [`https://realtime-${rand}.example.test/v1/`],
-      headerName: "Authorization",
-      headerTemplate: "Bearer {{secret}}",
-    });
+    const created = await connectorsApi.createCustomConnector(
+      admin,
+      manualHttpCustomConnectorCreateBody({
+        displayName: "BDD Realtime Failure",
+        prefixTemplates: [`https://realtime-${rand}.example.test/v1/`],
+      }),
+    );
     expectCustomConnectorInvalidations([admin.userId]);
 
     await expect(
@@ -4223,12 +4250,13 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     );
     clearConnectorInvalidationMocks();
 
-    const created = await connectorsApi.createCustomConnector(admin, {
-      displayName: "BDD Membership Failure",
-      prefixes: [`https://membership-${rand}.example.test/v1/`],
-      headerName: "Authorization",
-      headerTemplate: "Bearer {{secret}}",
-    });
+    const created = await connectorsApi.createCustomConnector(
+      admin,
+      manualHttpCustomConnectorCreateBody({
+        displayName: "BDD Membership Failure",
+        prefixTemplates: [`https://membership-${rand}.example.test/v1/`],
+      }),
+    );
 
     expect(context.mocks.ably.channelGet).not.toHaveBeenCalled();
     expect(context.mocks.ably.publish).not.toHaveBeenCalled();
@@ -4276,12 +4304,10 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
 
     const response = await connectorsApi.requestCreateCustomConnector(
       admin,
-      {
+      manualHttpCustomConnectorCreateBody({
         displayName: "BDD Post-Commit Abort",
-        prefixes: ["https://post-commit-abort.example.test/v1/"],
-        headerName: "Authorization",
-        headerTemplate: "Bearer {{secret}}",
-      },
+        prefixTemplates: ["https://post-commit-abort.example.test/v1/"],
+      }),
       [500],
       controller.signal,
     );
@@ -4625,7 +4651,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
         {
           ...customConnectorBody(uniqueSlug("bdd-prefix-concurrent-a")),
           displayName: "BDD Concurrent Prefix A",
-          prefixes: [prefix],
+          prefixTemplates: [prefix],
         },
         [201, 400],
       ),
@@ -4634,7 +4660,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
         {
           ...customConnectorBody(uniqueSlug("bdd-prefix-concurrent-b")),
           displayName: "BDD Concurrent Prefix B",
-          prefixes: [prefix.slice(0, -1)],
+          prefixTemplates: [prefix.slice(0, -1)],
         },
         [201, 400],
       ),
