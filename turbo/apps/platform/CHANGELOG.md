@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.730.0](https://github.com/vm0-ai/vm0/compare/app-v0.729.1...app-v0.730.0) (2026-08-11)
+
+
+### Features
+
+* **runner:** enable durable active-input delivery ([#26392](https://github.com/vm0-ai/vm0/issues/26392)) ([6225b5e](https://github.com/vm0-ai/vm0/commit/6225b5e85da2833f011830d21498744893b2f625))
+
+
+### Bug Fixes
+
+* **billing:** refund subscriptions when deleting org ([#26374](https://github.com/vm0-ai/vm0/issues/26374)) ([bf23d8a](https://github.com/vm0-ai/vm0/commit/bf23d8a8f2593ad64f9fc7acfd118db334f8372e))
+* refine fast mode toggle feedback ([#26405](https://github.com/vm0-ai/vm0/issues/26405)) ([1dd1fbf](https://github.com/vm0-ai/vm0/commit/1dd1fbfc8f82b7a9fc0a3cf2847492f6ad555040))
+
+
+### Refactoring
+
+* remove retired model rollout compatibility ([#26413](https://github.com/vm0-ai/vm0/issues/26413)) ([42dfddf](https://github.com/vm0-ai/vm0/commit/42dfddfd80d393d7794868c0469c8e843f09660f))
+
+
+### Performance Improvements
+
+* remove run and queue realtime signals ([#26417](https://github.com/vm0-ai/vm0/issues/26417)) ([55fe6cf](https://github.com/vm0-ai/vm0/commit/55fe6cf15d6a10e8bad41856b8bd30bdb7d7ba23))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.319.0
+    * @vm0/core bumped to 8.546.2
+
 ## [0.729.1](https://github.com/vm0-ai/vm0/compare/app-v0.729.0...app-v0.729.1) (2026-08-11)
 
 
