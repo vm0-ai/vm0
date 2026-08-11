@@ -57,6 +57,10 @@ export const setupActivityLogLoop$ = command(
 
     const run = createRunLoop(runId);
     set(internalActiveRunLoop$, run);
+    // Finish the initial paged-event load before refreshing the run status once.
+    // Realtime updates stay disabled; subsequent changes require a page reload.
+    await set(run.checkFinished$, signal);
+    signal.throwIfAborted();
     // Yield one microtask tick so React can flush the run detail panel into the
     // DOM before we trigger scrollToBottomActivityDetail$. Without this yield
     // the scroll container may still reflect the previous layout and the scroll
