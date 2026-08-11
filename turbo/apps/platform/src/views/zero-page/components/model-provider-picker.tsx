@@ -25,7 +25,6 @@ import {
 import {
   getCanonicalModelDisplayName,
   getProvidersForModel,
-  isCodexFastModeModel,
   isSupportedRunModel,
   VM0_MODEL_TO_PROVIDER,
   type ModelProviderType,
@@ -83,8 +82,6 @@ interface ModelProviderPickerProps {
    * the normal label on larger screens.
    */
   mobileIconTrigger?: boolean;
-  /** Preserves Fast mode when switching between eligible ChatGPT subscription models. */
-  codexFastModeEnabled?: boolean;
   /** Controlled open state for programmatic toggle (e.g. keyboard shortcut). */
   open?: boolean;
   /** Callback when the open state changes. */
@@ -285,38 +282,6 @@ function selectionAllowedValue(
     ? modelPolicyAllowedForPlan(policy, modelCapabilities)
     : modelAllowedForPlan(value.selectedModel, modelCapabilities);
   return allowed ? value : null;
-}
-
-function codexFastModeAvailableForModel(
-  policies: OrgModelPolicy[],
-  selectedModel: string | null | undefined,
-): boolean {
-  if (!isCodexFastModeModel(selectedModel)) {
-    return false;
-  }
-  const policy = policies.find((candidate) => {
-    return candidate.model === selectedModel;
-  });
-  return policy?.routeStatus === "valid";
-}
-
-function selectionWithCodexServiceTier(
-  selection: ModelProviderSelection | null,
-  current: ModelProviderSelection | null,
-  policies: OrgModelPolicy[],
-  codexFastModeEnabled: boolean,
-): ModelProviderSelection | null {
-  if (!selection) {
-    return null;
-  }
-  if (
-    codexFastModeEnabled &&
-    current?.codexServiceTier === "fast" &&
-    codexFastModeAvailableForModel(policies, selection.selectedModel)
-  ) {
-    return { ...selection, codexServiceTier: "fast" };
-  }
-  return selection;
 }
 
 function ModelFirstTriggerLabel({
@@ -681,7 +646,6 @@ function SubscribedModelFirstModelPicker({
   triggerClassName,
   compactTrigger,
   mobileIconTrigger,
-  codexFastModeEnabled = false,
   open,
   onOpenChange,
   disabled,
@@ -748,14 +712,7 @@ function SubscribedModelFirstModelPicker({
         return;
       }
     }
-    onChange(
-      selectionWithCodexServiceTier(
-        modelFirstSelectionFromRaw(raw),
-        value,
-        state.selectablePolicies,
-        codexFastModeEnabled,
-      ),
-    );
+    onChange(modelFirstSelectionFromRaw(raw));
   };
 
   return (
@@ -918,8 +875,6 @@ function EnabledExplicitModelFirstModelPicker(
         const result = await resolveSelection(
           {
             selection: modelFirstSelectionFromRaw(raw),
-            current: props.value,
-            codexFastModeEnabled: props.codexFastModeEnabled ?? false,
           },
           pageSignal,
         );
@@ -1002,7 +957,6 @@ export function ModelProviderPicker({
   triggerClassName,
   compactTrigger = false,
   mobileIconTrigger = false,
-  codexFastModeEnabled = false,
   open,
   onOpenChange,
   disabled = false,
@@ -1021,7 +975,6 @@ export function ModelProviderPicker({
     triggerClassName,
     compactTrigger,
     mobileIconTrigger,
-    codexFastModeEnabled,
     open,
     onOpenChange,
     disabled,

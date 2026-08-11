@@ -4184,11 +4184,11 @@
         "builtInModel": "Built-in model",
         "byokHelp": "Uses your configured provider",
         "fast": "Fast",
+        "fastImpact": "1.5× model speed · 2.5× credit usage",
         "inheritDefault": "Inherit from org default",
         "loadError": "Unable to load models.",
         "loading": "Loading models...",
         "models": "Models",
-        "moreCodexCredits": "Uses more Codex credits.",
         "noConfiguredModels": "No configured models",
         "priceTiers": {
           "balanced": "Balanced cost and performance",

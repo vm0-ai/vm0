@@ -4233,11 +4233,11 @@
         "builtInModel": "Modelo integrado",
         "byokHelp": "Usa el proveedor que has configurado",
         "fast": "Rápido",
+        "fastImpact": "1,5× velocidad del modelo · 2,5× uso de créditos",
         "inheritDefault": "Heredar el valor predeterminado de la organización",
         "loadError": "No se pudieron cargar los modelos.",
         "loading": "Cargando modelos...",
         "models": "Modelos",
-        "moreCodexCredits": "Consume más créditos de Codex.",
         "noConfiguredModels": "Sin modelos configurados",
         "priceTiers": {
           "balanced": "Coste y rendimiento equilibrados",

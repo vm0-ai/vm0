@@ -4183,11 +4183,11 @@
         "builtInModel": "内蔵モデル",
         "byokHelp": "設定されたプロバイダーを使用します",
         "fast": "速い",
+        "fastImpact": "モデル速度 1.5× · クレジット消費 2.5×",
         "inheritDefault": "組織のデフォルトから継承",
         "loadError": "モデルをロードできません。",
         "loading": "モデルをロード中...",
         "models": "モデル",
-        "moreCodexCredits": "Codex クレジットをさらに使用します。",
         "noConfiguredModels": "設定されたモデルはありません",
         "priceTiers": {
           "balanced": "バランスの取れたコストとパフォーマンス",

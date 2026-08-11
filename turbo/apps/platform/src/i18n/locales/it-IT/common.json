@@ -4233,11 +4233,11 @@
         "builtInModel": "Modello da incasso",
         "byokHelp": "Utilizza il provider configurato",
         "fast": "Veloce",
+        "fastImpact": "Velocità del modello 1,5× · consumo di crediti 2,5×",
         "inheritDefault": "Eredita dall'impostazione predefinita dell'organizzazione",
         "loadError": "Impossibile caricare i modelli.",
         "loading": "Caricamento modelli...",
         "models": "Modelli",
-        "moreCodexCredits": "Utilizza più Codex crediti.",
         "noConfiguredModels": "Nessun modello configurato",
         "priceTiers": {
           "balanced": "Costo e prestazioni equilibrati",

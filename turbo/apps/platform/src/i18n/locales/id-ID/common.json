@@ -4183,11 +4183,11 @@
         "builtInModel": "Model bawaan",
         "byokHelp": "Menggunakan provider yang Anda atur",
         "fast": "Cepat",
+        "fastImpact": "Kecepatan model 1,5× · penggunaan kredit 2,5×",
         "inheritDefault": "Warisi dari default organisasi",
         "loadError": "Tidak dapat memuat model.",
         "loading": "Memuat model...",
         "models": "Model",
-        "moreCodexCredits": "Menggunakan lebih banyak kredit Codex.",
         "noConfiguredModels": "Tidak ada model yang dikonfigurasi",
         "priceTiers": {
           "balanced": "Biaya dan performa seimbang",

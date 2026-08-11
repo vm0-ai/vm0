@@ -599,7 +599,7 @@ describe("chat composer models", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("sends Codex fast mode as a run option from the model picker", async () => {
+  it("shows Fast impact and sends the tier from the composer button", async () => {
     const user = userEvent.setup({ delay: null });
     let sentBody:
       | {
@@ -640,10 +640,23 @@ describe("chat composer models", () => {
     });
 
     const fastModeButton = await findFastModeButton();
-    click(fastModeButton);
+    await user.click(fastModeButton);
     await waitFor(() => {
       expect(fastModeButton).toHaveAttribute("aria-pressed", "true");
     });
+    await expect(
+      screen.findByText("Fast mode on"),
+    ).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByText("1.5× model speed · 2.5× credit usage"),
+    ).resolves.toBeInTheDocument();
+
+    await user.unhover(fastModeButton);
+    await user.hover(fastModeButton);
+    await expect(
+      screen.findByText("Fast · 1.5× model speed · 2.5× credit usage"),
+    ).resolves.toBeInTheDocument();
+    await user.unhover(fastModeButton);
 
     await sendMessageInUI(
       user,
@@ -701,9 +714,23 @@ describe("chat composer models", () => {
 
     const fastModeButton = await findFastModeButton("Rápido");
     expect(fastModeButton).toHaveAttribute("aria-pressed", "false");
+    await user.click(fastModeButton);
+    await waitFor(() => {
+      expect(fastModeButton).toHaveAttribute("aria-pressed", "true");
+    });
+    await expect(
+      screen.findByText("Modo rápido ativado"),
+    ).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByText("Velocidade do modelo 1,5× · uso de créditos 2,5×"),
+    ).resolves.toBeInTheDocument();
+
+    await user.unhover(fastModeButton);
     await user.hover(fastModeButton);
     await expect(
-      screen.findByText("Rápido · Usa mais créditos do Codex."),
+      screen.findByText(
+        "Rápido · Velocidade do modelo 1,5× · uso de créditos 2,5×",
+      ),
     ).resolves.toBeInTheDocument();
 
     await user.unhover(fastModeButton);
@@ -1281,7 +1308,7 @@ describe("chat composer models", () => {
     });
   });
 
-  it("clears Codex fast mode when switching to a non-fast model", async () => {
+  it("preserves Fast across supported models and clears it for unsupported models", async () => {
     const user = userEvent.setup({ delay: null });
     const codexProvider = buildProvider({
       id: "00000000-0000-4000-a000-000000000915",
@@ -1321,6 +1348,13 @@ describe("chat composer models", () => {
       }),
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000917",
+        model: "gpt-5.6-luna",
+        modelLabel: "GPT 5.6 Luna",
+        defaultProviderType: "vm0",
+        credentialScope: "org",
+      }),
+      buildModelPolicy({
+        id: "00000000-0000-4000-a000-000000000932",
         model: "claude-sonnet-5",
         modelLabel: "Claude Sonnet 5",
         defaultProviderType: "vm0",
@@ -1349,6 +1383,20 @@ describe("chat composer models", () => {
     await user.click(
       await screen.findByRole("combobox", { name: /GPT 5\.6 Sol/ }),
     );
+    await user.click(
+      await screen.findByRole("option", { name: /GPT 5\.6 Luna/ }),
+    );
+    await waitFor(() => {
+      expect(
+        screen.getByRole("combobox", { name: /GPT 5\.6 Luna/ }),
+      ).toBeInTheDocument();
+    });
+    await expect(findFastModeButton()).resolves.toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+
+    await user.click(screen.getByRole("combobox", { name: /GPT 5\.6 Luna/ }));
     await user.click(
       await screen.findByRole("option", { name: /Claude Sonnet 5/ }),
     );
