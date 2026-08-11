@@ -371,7 +371,7 @@ function classifySnapshot(snapshot: SourceSnapshot): Classification {
   }
   if (
     snapshot.source.table === "legacy-secrets" &&
-    snapshot.normalizedOverride
+    snapshot.normalizedOverride !== null
   ) {
     return {
       outcome:

@@ -404,13 +404,21 @@ describe("Custom connector credential backfill", () => {
       key: "region",
       encryptedValue: variableEnvelope,
     });
+    await db.insert(variables).values({
+      connectorId: fixture.connectionId,
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      name: "region",
+      value: "stale-region",
+      type: "connector",
+    });
 
     const migrated = await runBackfill({
       mode: "migrate",
       reportLabel: "migrate",
     });
     expect(migrated).toMatchObject({ complete: true, ready: false });
-    expect(migrated.counts).toMatchObject({ inserted: 2 });
+    expect(migrated.counts).toMatchObject({ inserted: 1, updated: 1 });
     expect(await db.select().from(secrets)).toEqual([
       expect.objectContaining({
         connectorId: fixture.connectionId,
@@ -497,9 +505,13 @@ describe("Custom connector credential backfill", () => {
     };
     const legacyOnly = await createConnector({ fields: [field] });
     const duplicate = await createConnector({ fields: [field] });
+    const invalidNormalized = await createConnector({ fields: [field] });
     const legacyOnlyEnvelope = storedSecretEnvelope("legacy-only");
     const normalizedEnvelope = storedSecretEnvelope("normalized-wins");
     const obsoleteFallbackEnvelope = storedSecretEnvelope("obsolete-fallback");
+    const suppressedFallbackEnvelope = storedSecretEnvelope(
+      "suppressed-fallback",
+    );
     await addLegacySecret(legacyOnly, legacyOnlyEnvelope);
     await addValue(duplicate, {
       kind: "secret",
@@ -507,6 +519,12 @@ describe("Custom connector credential backfill", () => {
       encryptedValue: normalizedEnvelope,
     });
     await addLegacySecret(duplicate, obsoleteFallbackEnvelope);
+    await addValue(invalidNormalized, {
+      kind: "secret",
+      key: "secret",
+      encryptedValue: "",
+    });
+    await addLegacySecret(invalidNormalized, suppressedFallbackEnvelope);
 
     const report = await runBackfill({
       mode: "migrate",
@@ -515,7 +533,8 @@ describe("Custom connector credential backfill", () => {
 
     expect(report.counts).toMatchObject({
       inserted: 2,
-      fallback_duplicate_different: 1,
+      fallback_duplicate_different: 2,
+      invalid_envelope: 1,
     });
     const targets = await db
       .select({
@@ -536,6 +555,7 @@ describe("Custom connector credential backfill", () => {
       ]),
     );
     expect(JSON.stringify(targets)).not.toContain(obsoleteFallbackEnvelope);
+    expect(JSON.stringify(targets)).not.toContain(suppressedFallbackEnvelope);
   });
 
   it("classifies non-executable residue without changing OAuth tokens", async () => {
