@@ -3743,6 +3743,14 @@ jobs:
           if [[ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then
             headers+=(-H "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}")
           fi
+          if [[ -n "${CF_ACCESS_CLIENT_ID:-}" || -n "${CF_ACCESS_CLIENT_SECRET:-}" ]]; then
+            : "${CF_ACCESS_CLIENT_ID:?Cloudflare Access client ID is required}"
+            : "${CF_ACCESS_CLIENT_SECRET:?Cloudflare Access client secret is required}"
+            headers+=(
+              -H "CF-Access-Client-Id: ${CF_ACCESS_CLIENT_ID}"
+              -H "CF-Access-Client-Secret: ${CF_ACCESS_CLIENT_SECRET}"
+            )
+          fi
 
           # Fresh Clerk organizations bootstrap onto limited-free-1, so the
           # deterministic runner policy must stay within that plan's catalog.
@@ -3756,6 +3764,8 @@ jobs:
           curl -fsS "${headers[@]}" -X PUT -d "$payload" "${E2E_API_URL}/api/okou/model-policies" >/dev/null
           curl -fsS "${headers[@]}" -X PUT -d '{"selectedModel":null,"serviceTier":null}' "${E2E_API_URL}/api/okou/user-model-preference" >/dev/null
         env:
+          CF_ACCESS_CLIENT_ID: ${{ matrix.runtime == 'cloudflare' && secrets.CF_API_PREVIEW_ACCESS_CLIENT_ID || '' }}
+          CF_ACCESS_CLIENT_SECRET: ${{ matrix.runtime == 'cloudflare' && secrets.CF_API_PREVIEW_ACCESS_CLIENT_SECRET || '' }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
       - name: Bootstrap runner mock model provider
         shell: bash
@@ -3765,11 +3775,21 @@ jobs:
           if [[ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then
             headers+=(-H "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}")
           fi
+          if [[ -n "${CF_ACCESS_CLIENT_ID:-}" || -n "${CF_ACCESS_CLIENT_SECRET:-}" ]]; then
+            : "${CF_ACCESS_CLIENT_ID:?Cloudflare Access client ID is required}"
+            : "${CF_ACCESS_CLIENT_SECRET:?Cloudflare Access client secret is required}"
+            headers+=(
+              -H "CF-Access-Client-Id: ${CF_ACCESS_CLIENT_ID}"
+              -H "CF-Access-Client-Secret: ${CF_ACCESS_CLIENT_SECRET}"
+            )
+          fi
           curl -fsS "${headers[@]}" \
             -X POST \
             -d '{"type":"claude-code-oauth-token","secret":"mock-oauth-token-for-e2e"}' \
             "${E2E_API_URL}/api/okou/model-providers" >/dev/null
         env:
+          CF_ACCESS_CLIENT_ID: ${{ matrix.runtime == 'cloudflare' && secrets.CF_API_PREVIEW_ACCESS_CLIENT_ID || '' }}
+          CF_ACCESS_CLIENT_SECRET: ${{ matrix.runtime == 'cloudflare' && secrets.CF_API_PREVIEW_ACCESS_CLIENT_SECRET || '' }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
       - name: Bootstrap mock Claude account
         shell: bash
@@ -3851,6 +3871,14 @@ jobs:
           if [[ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then
             headers+=(-H "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}")
           fi
+          if [[ -n "${CF_ACCESS_CLIENT_ID:-}" || -n "${CF_ACCESS_CLIENT_SECRET:-}" ]]; then
+            : "${CF_ACCESS_CLIENT_ID:?Cloudflare Access client ID is required}"
+            : "${CF_ACCESS_CLIENT_SECRET:?Cloudflare Access client secret is required}"
+            headers+=(
+              -H "CF-Access-Client-Id: ${CF_ACCESS_CLIENT_ID}"
+              -H "CF-Access-Client-Secret: ${CF_ACCESS_CLIENT_SECRET}"
+            )
+          fi
 
           provider_payload=$(jq -nc \
             --arg secret "$ANTHROPIC_API_KEY" \
@@ -3901,6 +3929,8 @@ jobs:
             >/dev/null
         env:
           ANTHROPIC_API_KEY: ${{ secrets.CI_ANTHROPIC_API_KEY }}
+          CF_ACCESS_CLIENT_ID: ${{ matrix.runtime == 'cloudflare' && secrets.CF_API_PREVIEW_ACCESS_CLIENT_ID || '' }}
+          CF_ACCESS_CLIENT_SECRET: ${{ matrix.runtime == 'cloudflare' && secrets.CF_API_PREVIEW_ACCESS_CLIENT_SECRET || '' }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
 
   cli-e2e-03-runner:

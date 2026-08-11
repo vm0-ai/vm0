@@ -334,6 +334,23 @@ unless claude_step.dig("env", "ANTHROPIC_API_KEY") ==
   raise "real Claude bootstrap must receive the Anthropic credential"
 end
 
+expected_bootstrap_access_environment = {
+  "CF_ACCESS_CLIENT_ID" => "${{ matrix.runtime == 'cloudflare' && secrets.CF_API_PREVIEW_ACCESS_CLIENT_ID || '' }}",
+  "CF_ACCESS_CLIENT_SECRET" => "${{ matrix.runtime == 'cloudflare' && secrets.CF_API_PREVIEW_ACCESS_CLIENT_SECRET || '' }}",
+}
+[model_defaults_step, provider_step, claude_step].each do |step|
+  expected_bootstrap_access_environment.each do |name, value|
+    unless step.dig("env", name) == value
+      raise "#{step.fetch("name")} must receive runtime-scoped #{name}"
+    end
+  end
+  script = step.fetch("run")
+  unless script.include?("CF-Access-Client-Id") &&
+      script.include?("CF-Access-Client-Secret")
+    raise "#{step.fetch("name")} must authenticate Cloudflare Worker API requests"
+  end
+end
+
 shard_step = runner.fetch("steps").find do |step|
   step["name"] == "Initialize runner E2E shard"
 end
