@@ -146,6 +146,16 @@ export const orgCustomConnectors = pgTable(
         "chk_org_custom_connectors_skill_size",
         sql`${table.skillMarkdown} IS NULL OR octet_length(${table.skillMarkdown}) <= 65536`,
       ),
+      check(
+        "chk_org_custom_connectors_skill_version_pair",
+        sql`(
+          (${table.skillMarkdown} IS NULL AND ${table.skillStorageVersionId} IS NULL)
+          OR (
+            ${table.skillMarkdown} IS NOT NULL
+            AND ${table.skillStorageVersionId} IS NOT NULL
+          )
+        )`,
+      ),
     ];
   },
 );
