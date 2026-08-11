@@ -37,12 +37,9 @@ export const variables = pgTable(
       index("idx_variables_connector")
         .on(table.connectorId)
         .where(sql`${table.connectorId} IS NOT NULL`),
-      uniqueIndex("idx_variables_org_user_type_name").on(
-        table.orgId,
-        table.userId,
-        table.type,
-        table.name,
-      ),
+      uniqueIndex("idx_variables_org_user_type_name")
+        .on(table.orgId, table.userId, table.type, table.name)
+        .where(sql`${table.connectorId} IS NULL`),
       uniqueIndex("idx_variables_connector_name")
         .on(table.connectorId, table.name)
         .where(sql`${table.connectorId} IS NOT NULL`),

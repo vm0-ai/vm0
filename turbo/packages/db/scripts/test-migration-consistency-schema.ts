@@ -1083,6 +1083,326 @@ const MCP_CUSTOM_CONNECTOR_READERS_PREVIOUS_MIGRATION =
 const MCP_CUSTOM_CONNECTOR_READERS_MIGRATION =
   "0873_prepare_mcp_custom_connector_readers";
 
+const CONNECTION_SCOPED_VARIABLE_PREVIOUS_MIGRATION =
+  "0900_replace_scheduled_usage_pack_change";
+const CONNECTION_SCOPED_VARIABLE_MIGRATION = "0901_parallel_energizer";
+const CONNECTION_SCOPED_VARIABLE_SHADOW_INDEX =
+  "idx_variables_org_user_type_name_0901";
+
+async function assertConnectionScopedVariableIndexes(
+  client: Client,
+): Promise<void> {
+  const indexes = await client.query<{
+    definition: string;
+    isUnique: boolean;
+    isValid: boolean;
+    name: string;
+    predicate: string | null;
+  }>(`
+    SELECT
+      "index_class"."relname" AS "name",
+      "index"."indisunique" AS "isUnique",
+      "index"."indisvalid" AS "isValid",
+      pg_get_indexdef("index"."indexrelid") AS "definition",
+      pg_get_expr("index"."indpred", "index"."indrelid") AS "predicate"
+    FROM "pg_index" AS "index"
+    INNER JOIN "pg_class" AS "index_class"
+      ON "index_class"."oid" = "index"."indexrelid"
+    INNER JOIN "pg_class" AS "table_class"
+      ON "table_class"."oid" = "index"."indrelid"
+    WHERE "table_class"."relname" = 'variables'
+      AND "index_class"."relname" IN (
+        'idx_variables_org_user_type_name',
+        'idx_variables_connector_name',
+        '${CONNECTION_SCOPED_VARIABLE_SHADOW_INDEX}'
+      )
+    ORDER BY "index_class"."relname"
+  `);
+  assert.deepEqual(
+    indexes.rows.map((index) => {
+      return {
+        isUnique: index.isUnique,
+        isValid: index.isValid,
+        name: index.name,
+      };
+    }),
+    [
+      {
+        isUnique: true,
+        isValid: true,
+        name: "idx_variables_connector_name",
+      },
+      {
+        isUnique: true,
+        isValid: true,
+        name: "idx_variables_org_user_type_name",
+      },
+    ],
+  );
+  const connectorIndex = indexes.rows[0];
+  const userIndex = indexes.rows[1];
+  assert.match(
+    connectorIndex?.definition ?? "",
+    /\(connector_id, name\).*WHERE \(connector_id IS NOT NULL\)$/u,
+  );
+  assert.match(connectorIndex?.predicate ?? "", /connector_id IS NOT NULL/u);
+  assert.match(
+    userIndex?.definition ?? "",
+    /\(org_id, user_id, type, name\).*WHERE \(connector_id IS NULL\)$/u,
+  );
+  assert.match(userIndex?.predicate ?? "", /connector_id IS NULL/u);
+
+  const ownerConstraint = await client.query<{
+    definition: string;
+    isValidated: boolean;
+  }>(`
+    SELECT
+      pg_get_constraintdef("constraint"."oid") AS "definition",
+      "constraint"."convalidated" AS "isValidated"
+    FROM "pg_constraint" AS "constraint"
+    WHERE "constraint"."conrelid" = 'public.variables'::regclass
+      AND "constraint"."conname" = 'fk_variables_connector_owner'
+  `);
+  assert.equal(ownerConstraint.rows.length, 1);
+  assert.equal(ownerConstraint.rows[0]?.isValidated, true);
+  assert.match(
+    ownerConstraint.rows[0]?.definition ?? "",
+    /FOREIGN KEY \(connector_id, org_id, user_id\) REFERENCES connectors\(id, org_id, user_id\) ON DELETE CASCADE/u,
+  );
+}
+
+async function rerunConnectionScopedVariableMigration(
+  client: Client,
+  migrationSql: string,
+): Promise<void> {
+  const statements = migrationSql
+    .split("--> statement-breakpoint")
+    .map((statement) => {
+      return statement.trim();
+    })
+    .filter((statement) => {
+      return statement.length > 0;
+    });
+  assert.equal(statements.length, 3);
+  for (const statement of statements) {
+    await client.query(statement);
+  }
+}
+
+async function validateConnectionScopedVariableUniqueness(): Promise<void> {
+  console.log(
+    "=== Validate connection-scoped variable uniqueness contraction ===\n",
+  );
+  const testDb = "migration_connection_scoped_variable_uniqueness_test";
+  const migrationSql = await fs.readFile(
+    path.join(MIGRATIONS_DIR, `${CONNECTION_SCOPED_VARIABLE_MIGRATION}.sql`),
+    "utf8",
+  );
+  assert.ok(migrationSql.startsWith(NON_TRANSACTIONAL_MIGRATION_MARKER));
+  assert.match(
+    migrationSql,
+    new RegExp(
+      `CREATE UNIQUE INDEX CONCURRENTLY "${CONNECTION_SCOPED_VARIABLE_SHADOW_INDEX}"`,
+      "u",
+    ),
+  );
+  assert.match(
+    migrationSql,
+    /DROP INDEX "idx_variables_org_user_type_name"[\s\S]*ALTER INDEX "idx_variables_org_user_type_name_0901"[\s\S]*RENAME TO "idx_variables_org_user_type_name"/u,
+  );
+
+  await createDatabase(testDb);
+  const client = new Client({ connectionString: createTestDbUrl(testDb) });
+  await client.connect();
+
+  const orgId = "migration-variable-org";
+  const userId = "migration-variable-user";
+  const firstConnectorId = "26233000-0000-4000-8000-000000000001";
+  const secondConnectorId = "26233000-0000-4000-8000-000000000002";
+  const connectorVariableName = "SHARED_CONNECTOR_VARIABLE";
+  const userVariableName = "USER_VARIABLE";
+
+  try {
+    await applyMigrationsUpToTag(
+      client,
+      CONNECTION_SCOPED_VARIABLE_PREVIOUS_MIGRATION,
+    );
+    await client.query(
+      `
+        INSERT INTO "connectors" (
+          "id",
+          "connector_slug",
+          "auth_method",
+          "storage_version",
+          "org_id",
+          "user_id"
+        )
+        VALUES
+          ($1, 'migration-variable-first', 'manual', 1, $3, $4),
+          ($2, 'migration-variable-second', 'manual', 1, $3, $4)
+      `,
+      [firstConnectorId, secondConnectorId, orgId, userId],
+    );
+    await client.query(
+      `
+        INSERT INTO "variables" (
+          "connector_id",
+          "org_id",
+          "user_id",
+          "type",
+          "name",
+          "value"
+        )
+        VALUES ($1, $2, $3, 'connector', $4, 'first')
+      `,
+      [firstConnectorId, orgId, userId, connectorVariableName],
+    );
+    await client.query(
+      `
+        INSERT INTO "variables" (
+          "org_id",
+          "user_id",
+          "type",
+          "name",
+          "value"
+        )
+        VALUES ($1, $2, 'user', $3, 'user-first')
+      `,
+      [orgId, userId, userVariableName],
+    );
+    await expectDatabaseError(client, {
+      code: "23505",
+      messageIncludes: "idx_variables_org_user_type_name",
+      query: `
+        INSERT INTO "variables" (
+          "connector_id",
+          "org_id",
+          "user_id",
+          "type",
+          "name",
+          "value"
+        )
+        VALUES ($1, $2, $3, 'connector', $4, 'blocked-before-migration')
+      `,
+      values: [secondConnectorId, orgId, userId, connectorVariableName],
+    });
+
+    await applyMigrationsUpToTag(client, CONNECTION_SCOPED_VARIABLE_MIGRATION);
+    await client.query(
+      `
+        INSERT INTO "variables" (
+          "connector_id",
+          "org_id",
+          "user_id",
+          "type",
+          "name",
+          "value"
+        )
+        VALUES ($1, $2, $3, 'connector', $4, 'second')
+      `,
+      [secondConnectorId, orgId, userId, connectorVariableName],
+    );
+    await expectDatabaseError(client, {
+      code: "23505",
+      messageIncludes: "idx_variables_connector_name",
+      query: `
+        INSERT INTO "variables" (
+          "connector_id",
+          "org_id",
+          "user_id",
+          "type",
+          "name",
+          "value"
+        )
+        VALUES ($1, $2, $3, 'connector', $4, 'duplicate-first')
+      `,
+      values: [firstConnectorId, orgId, userId, connectorVariableName],
+    });
+    await expectDatabaseError(client, {
+      code: "23505",
+      messageIncludes: "idx_variables_org_user_type_name",
+      query: `
+        INSERT INTO "variables" (
+          "org_id",
+          "user_id",
+          "type",
+          "name",
+          "value"
+        )
+        VALUES ($1, $2, 'user', $3, 'user-duplicate')
+      `,
+      values: [orgId, userId, userVariableName],
+    });
+    await client.query(
+      `
+        INSERT INTO "variables" (
+          "connector_id",
+          "org_id",
+          "user_id",
+          "type",
+          "name",
+          "value"
+        )
+        VALUES ($1, $2, $3, 'connector', $4, 'first-updated')
+        ON CONFLICT ("connector_id", "name")
+          WHERE "connector_id" IS NOT NULL
+        DO UPDATE SET "value" = EXCLUDED."value"
+      `,
+      [firstConnectorId, orgId, userId, connectorVariableName],
+    );
+    await expectDatabaseError(client, {
+      code: "42P10",
+      query: `
+        INSERT INTO "variables" (
+          "connector_id",
+          "org_id",
+          "user_id",
+          "type",
+          "name",
+          "value"
+        )
+        VALUES ($1, $2, $3, 'connector', 'LEGACY_TARGET', 'legacy')
+        ON CONFLICT ("org_id", "user_id", "type", "name")
+        DO UPDATE SET "value" = EXCLUDED."value"
+      `,
+      values: [firstConnectorId, orgId, userId],
+    });
+
+    const connectorVariables = await client.query<{
+      connectorId: string;
+      value: string;
+    }>(
+      `
+        SELECT "connector_id" AS "connectorId", "value"
+        FROM "variables"
+        WHERE "org_id" = $1
+          AND "user_id" = $2
+          AND "type" = 'connector'
+          AND "name" = $3
+        ORDER BY "connector_id"
+      `,
+      [orgId, userId, connectorVariableName],
+    );
+    assert.deepEqual(connectorVariables.rows, [
+      { connectorId: firstConnectorId, value: "first-updated" },
+      { connectorId: secondConnectorId, value: "second" },
+    ]);
+    await assertConnectionScopedVariableIndexes(client);
+
+    await rerunConnectionScopedVariableMigration(client, migrationSql);
+    await assertConnectionScopedVariableIndexes(client);
+
+    console.log("   ✅ old global uniqueness rejects cross-connection names");
+    console.log("   ✅ final indexes split user and connection uniqueness");
+    console.log("   ✅ current upserts retain exact connection ownership");
+    console.log("   ✅ old connector conflict inference is removed");
+    console.log("   ✅ concurrent shadow migration reruns cleanly\n");
+  } finally {
+    await client.end();
+    await dropDatabase(testDb);
+  }
+}
+
 async function validateMcpCustomConnectorReaderPreparation(): Promise<void> {
   console.log("=== Validate MCP Custom Connector reader preparation ===\n");
   const testDb = "migration_mcp_custom_connector_readers_test";
@@ -6886,6 +7206,7 @@ async function main(): Promise<void> {
     await validateCanonicalChatEventStorageBackfill();
     await validateChatRunServiceTierAnnotationBackfill();
     await validateUsagePackInviteLifecycleMigrations();
+    await validateConnectionScopedVariableUniqueness();
 
     // Step 1.5: Validate latest snapshot accuracy (NEW)
     await validateLatestSnapshotAccuracy();
