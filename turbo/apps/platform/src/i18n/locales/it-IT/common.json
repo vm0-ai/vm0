@@ -896,10 +896,6 @@
       "selectMonth": "Seleziona il mese",
       "to": "A"
     },
-    "manage": {
-      "description": "Abbonamento, metodo di pagamento e fatture in Stripe.",
-      "title": "Gestisci la fatturazione"
-    },
     "paymentMethods": {
       "description": "Gestisci i metodi di pagamento utilizzati per la fatturazione in Stripe.",
       "title": "Metodi di pagamento"
