@@ -5127,6 +5127,8 @@ describe("CONN-02: test-oauth auth-code journey", () => {
         tenantId: "bdd-rollback-manual-tenant",
       },
     );
+    // Production APIs cannot move a connector variable to another connection;
+    // this fixture creates the storage conflict needed to exercise rollback.
     const conflictOwnerId = await seedConnectorStorageRow(context, {
       orgId: requiredOrgId(actor),
       userId: actor.userId,
