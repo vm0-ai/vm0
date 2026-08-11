@@ -471,7 +471,10 @@ function mockCustomConnectorStory(): {
         };
         return updated;
       });
-      return respond(200, updated ?? customConnector({}));
+      if (!updated) {
+        throw new Error(`Expected custom connector ${params.id}`);
+      }
+      return respond(200, updated);
     },
   );
   context.mocks.api(
@@ -522,7 +525,10 @@ function mockCustomConnectorStory(): {
         };
         return updated;
       });
-      return respond(200, updated ?? customConnector({}));
+      if (!updated) {
+        throw new Error(`Expected custom connector ${params.id}`);
+      }
+      return respond(200, updated);
     },
   );
   context.mocks.api(
