@@ -74,7 +74,7 @@ run_real_claude_chat() {
         "$RUNNER_AGENT_ID" \
         "$prompt" \
         "" \
-        "claude-sonnet-5")" || return 1
+        "claude-sonnet-4-6")" || return 1
     run_id="$(jq -er '.runId | select(type == "string" and length > 0)' \
         <<< "$send_response")" || return 1
     thread_id="$(jq -er '.threadId | select(type == "string" and length > 0)' \
@@ -105,6 +105,55 @@ run_real_claude_chat() {
     ' <<< "$events_response"
 }
 
+run_real_claude_steer() {
+    local steer_prompt="$1"
+    local after_complete_prompt="$2"
+    local initial_prompt='Run `sleep 10` with Bash, then read the follow-up message received during this run. Reply only RESULT=claude-initial-5k2+FOLLOWUP, replacing FOLLOWUP with its exact text. If no follow-up is received, reply only RESULT=missing.'
+    local expected_output="RESULT=claude-initial-5k2+$steer_prompt"
+    local after_complete_output="RESULT=claude-after-complete+$after_complete_prompt"
+    local steer_result run_id events_response successor_result successor_run_id successor_events_response
+
+    steer_result="$(runner_chat_steer \
+        "$RUNNER_AGENT_ID" \
+        "$initial_prompt" \
+        "$steer_prompt" \
+        "claude-sonnet-4-6" \
+        "$expected_output" \
+        180)" || return 1
+    run_id="$(jq -er '.runId' <<< "$steer_result")" || return 1
+    events_response="$(wait_for_real_claude_events "$run_id" 45)" || return 1
+    successor_result="$(runner_chat_send_after_completion \
+        "$RUNNER_AGENT_ID" \
+        "$(jq -er '.threadId' <<< "$steer_result")" \
+        "$run_id" \
+        "Reply only $after_complete_output" \
+        "$after_complete_output" \
+        180)" || return 1
+    successor_run_id="$(jq -er '.runId' <<< "$successor_result")" || return 1
+    successor_events_response="$(wait_for_real_claude_events \
+        "$successor_run_id" \
+        45)" || return 1
+
+    jq -c \
+        --arg framework "$(jq -er '.framework' <<< "$events_response")" \
+        --arg successorRunId "$successor_run_id" \
+        --arg successorThreadId "$(jq -er '.threadId' <<< "$successor_result")" \
+        --arg successorSessionId "$(jq -er '.sessionId' <<< "$successor_result")" \
+        '. + {
+            framework: $framework,
+            successorRunId: $successorRunId,
+            successorThreadId: $successorThreadId,
+            successorSessionId: $successorSessionId
+        }' \
+        <<< "$steer_result"
+    jq -r '.events[].eventData |
+        if type == "string" then . else tojson end
+    ' <<< "$events_response"
+    jq -r '.events[].eventData |
+        if type == "string" then . else tojson end
+    ' <<< "$successor_events_response"
+}
+
 @test "t27-1: real claude returns a successful answer" {
     run run_real_claude_chat \
         "123+456. Reply only RESULT=<answer>." \
@@ -117,4 +166,30 @@ run_real_claude_chat() {
     assert_output --partial '"subtype":"success"'
     [[ -n "$(runner_chat_field "$output" '.runId')" ]]
     [[ -n "$(runner_chat_field "$output" '.sessionId')" ]]
+}
+
+@test "t27-2: real claude steers an active run then starts a successor" {
+    local steer_nonce steer_prompt after_complete_nonce after_complete_prompt
+    steer_nonce="$(_runner_uuid)"
+    steer_prompt="claude-steer-${steer_nonce%%-*}"
+    after_complete_nonce="$(_runner_uuid)"
+    after_complete_prompt="claude-new-run-${after_complete_nonce%%-*}"
+
+    run run_real_claude_steer "$steer_prompt" "$after_complete_prompt"
+
+    assert_success
+    assert_output --partial '"framework":"claude-code"'
+    assert_output --partial "RESULT=claude-initial-5k2+$steer_prompt"
+    assert_output --partial "RESULT=claude-after-complete+$after_complete_prompt"
+    assert_output --partial '"type":"result"'
+    assert_output --partial '"subtype":"success"'
+    [[ -n "$(runner_chat_field "$output" '.runId')" ]]
+    [[ -n "$(runner_chat_field "$output" '.steerEventId')" ]]
+    [[ -n "$(runner_chat_field "$output" '.sessionId')" ]]
+    [[ -n "$(runner_chat_field "$output" '.successorRunId')" ]]
+    [[ -n "$(runner_chat_field "$output" '.successorSessionId')" ]]
+    [[ "$(runner_chat_field "$output" '.successorRunId')" != \
+        "$(runner_chat_field "$output" '.runId')" ]]
+    [[ "$(runner_chat_field "$output" '.successorThreadId')" == \
+        "$(runner_chat_field "$output" '.threadId')" ]]
 }

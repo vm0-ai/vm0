@@ -223,6 +223,26 @@ unless provider_step.fetch("run").include?(
   )
   raise "runner bootstrap must restore the historical mock provider"
 end
+codex_step = bootstrap_steps.find do |step|
+  step["name"] == "Bootstrap real Codex account"
+end
+raise "missing real Codex account bootstrap" unless codex_step
+codex_script = codex_step.fetch("run")
+%w[
+  /api/zero/model-providers
+  /api/zero/model-policies
+  /api/zero/feature-switches
+  gpt-5.6-luna
+  realAgentInPreview
+].each do |required_fragment|
+  unless codex_script.include?(required_fragment)
+    raise "real Codex bootstrap must include #{required_fragment}"
+  end
+end
+unless codex_step.dig("env", "OPENAI_API_KEY") ==
+    "${{ secrets.OPENAI_API_KEY }}"
+  raise "real Codex bootstrap must receive the OpenAI credential"
+end
 claude_step = bootstrap_steps.find do |step|
   step["name"] == "Bootstrap real Claude account"
 end
@@ -232,7 +252,7 @@ claude_script = claude_step.fetch("run")
   /api/zero/model-providers
   /api/zero/model-policies
   /api/zero/feature-switches
-  claude-sonnet-5
+  claude-sonnet-4-6
   realAgentInPreview
 ].each do |required_fragment|
   unless claude_script.include?(required_fragment)
