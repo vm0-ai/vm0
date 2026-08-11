@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.723.3](https://github.com/vm0-ai/vm0/compare/app-v0.723.2...app-v0.723.3) (2026-08-11)
+
+
+### Bug Fixes
+
+* **app:** simplify personal provider account rows ([#26206](https://github.com/vm0-ai/vm0/issues/26206)) ([495a498](https://github.com/vm0-ai/vm0/commit/495a498d52c1a7af9d8c3d7011d82b9342808a41))
+* persist paid acquisition attribution through billing ([#26204](https://github.com/vm0-ai/vm0/issues/26204)) ([ecef070](https://github.com/vm0-ai/vm0/commit/ecef070473330ffabf8a94ff26b6c62e1f65f3e1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.310.2
+    * @vm0/core bumped to 8.541.2
+
 ## [0.723.2](https://github.com/vm0-ai/vm0/compare/app-v0.723.1...app-v0.723.2) (2026-08-10)
 
 

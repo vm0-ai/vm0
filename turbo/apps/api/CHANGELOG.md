@@ -1,5 +1,30 @@
 # Changelog
 
+## [1.420.3](https://github.com/vm0-ai/vm0/compare/api-v1.420.2...api-v1.420.3) (2026-08-11)
+
+
+### Bug Fixes
+
+* **api:** seed canonical chat event payload in benchmark ([#26208](https://github.com/vm0-ai/vm0/issues/26208)) ([fb1f9f2](https://github.com/vm0-ai/vm0/commit/fb1f9f29ee6e2a5c0139b5af4ce7c825ea8b9944))
+* **connectors:** activate custom connector skills atomically ([#26193](https://github.com/vm0-ai/vm0/issues/26193)) ([7899a3b](https://github.com/vm0-ai/vm0/commit/7899a3bc6095ea232fd6103c116d27a726628e72))
+* **connectors:** align custom auth lifecycle ([#26118](https://github.com/vm0-ai/vm0/issues/26118)) ([6e23934](https://github.com/vm0-ai/vm0/commit/6e23934dfd2aa3214b186faeafcd59ce29b2a579))
+* persist paid acquisition attribution through billing ([#26204](https://github.com/vm0-ai/vm0/issues/26204)) ([ecef070](https://github.com/vm0-ai/vm0/commit/ecef070473330ffabf8a94ff26b6c62e1f65f3e1))
+
+
+### Refactoring
+
+* **connectors:** narrow runtime sync states ([#26194](https://github.com/vm0-ai/vm0/issues/26194)) ([0f5b3cf](https://github.com/vm0-ai/vm0/commit/0f5b3cf64a4837c89d87c6b04cc18a860b442963))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.310.2
+    * @vm0/core bumped to 8.541.2
+    * @vm0/db bumped to 1.190.3
+    * @vm0/pi-agent-runtime bumped to 1.3.35
+
 ## [1.420.2](https://github.com/vm0-ai/vm0/compare/api-v1.420.1...api-v1.420.2) (2026-08-10)
 
 

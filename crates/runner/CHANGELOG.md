@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.163.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.163.0...runner-rs-v0.163.1) (2026-08-11)
+
+
+### Refactoring
+
+* **connectors:** narrow runtime sync states ([#26194](https://github.com/vm0-ai/vm0/issues/26194)) ([0f5b3cf](https://github.com/vm0-ai/vm0/commit/0f5b3cf64a4837c89d87c6b04cc18a860b442963))
+
 ## [0.163.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.162.14...runner-rs-v0.163.0) (2026-08-10)
 
 
