@@ -3710,6 +3710,55 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       connectorsApi.readAgentCustomConnectors(admin, agent.agentId),
     ).resolves.toStrictEqual([saved.connector.id]);
 
+    const emptyComplete = await connectorsApi.saveCustomConnectorProposal(
+      admin,
+      {
+        proposal: {
+          operation: "create",
+          displayName: "BDD Optional Proposal Value API",
+          prefixTemplates: [`https://optional-${rand}.example.test/v1/`],
+          fields: [
+            {
+              key: "api_key",
+              label: "API key",
+              kind: "secret",
+              required: false,
+            },
+          ],
+          headerInjections: [
+            {
+              name: "Authorization",
+              valueTemplate: "Bearer {{secrets.api_key}}",
+            },
+          ],
+          queryInjections: [],
+        },
+        values: [],
+        agentId: agent.agentId,
+      },
+    );
+    expect(emptyComplete.connector).toMatchObject({
+      connected: true,
+      missingRequiredFields: [],
+      configuredFieldKeys: [],
+    });
+    await expect(
+      readCustomConnectorCredentialStorageParent(context, {
+        orgId: requiredOrgId(admin),
+        userId: admin.userId,
+        customConnectorId: emptyComplete.connector.id,
+      }),
+    ).resolves.toMatchObject({
+      connector: { storage_version: 1 },
+      secrets: [],
+      variables: [],
+      legacy_custom_values: [],
+    });
+
+    await connectorsApi.deleteCustomConnector(
+      admin,
+      emptyComplete.connector.id,
+    );
     await connectorsApi.deleteCustomConnector(admin, saved.connector.id);
     await bdd.deleteAgent(admin, agent.agentId);
   });

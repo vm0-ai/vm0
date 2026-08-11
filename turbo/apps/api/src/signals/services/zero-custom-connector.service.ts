@@ -3580,7 +3580,12 @@ export const saveCustomConnectorProposal$ = command(
       return connector;
     }
 
-    if (args.values.length > 0) {
+    const missingRequiredProposalValues =
+      customConnectorMissingRequiredFieldKeys({
+        fields: proposalDefinition.fields,
+        markers: proposalValues,
+      });
+    if (args.values.length > 0 || missingRequiredProposalValues.length === 0) {
       const valueResult = await set(
         setCustomConnectorValues$,
         {
