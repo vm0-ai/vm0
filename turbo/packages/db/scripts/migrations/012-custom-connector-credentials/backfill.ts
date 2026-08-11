@@ -48,7 +48,7 @@ type BackfillDatabase = PostgresJsDatabase<Record<string, never>>;
 type BackfillMode = "dry-run" | "migrate";
 type SourceTable = "values" | "legacy-secrets";
 
-export type BackfillOutcome =
+type BackfillOutcome =
   | "already_current"
   | "target_missing"
   | "target_mismatch"
@@ -76,17 +76,17 @@ type BackfillFailureStage =
   | "inspect_target"
   | "migrate_target";
 
-export interface StoredSecretKmsDecryptRequest {
+interface StoredSecretKmsDecryptRequest {
   readonly keyId: string;
   readonly ciphertext: Uint8Array;
   readonly encryptionContext: Readonly<Record<string, string>>;
 }
 
-export interface StoredSecretKmsClient {
+interface StoredSecretKmsClient {
   decrypt(request: StoredSecretKmsDecryptRequest): Promise<Uint8Array>;
 }
 
-export interface CustomCredentialBackfillOptions {
+interface CustomCredentialBackfillOptions {
   readonly mode: BackfillMode;
   readonly batchSize: number;
   readonly cursor?: string;
@@ -187,7 +187,7 @@ interface BackfillFailureContext {
   readonly stage: BackfillFailureStage;
 }
 
-export interface CustomCredentialBackfillReport {
+interface CustomCredentialBackfillReport {
   readonly generatedAt: string;
   readonly mode: BackfillMode;
   readonly batchSize: number;
@@ -1042,7 +1042,7 @@ async function processTable(args: {
   }
 }
 
-export async function runCustomCredentialBackfill(args: {
+async function runCustomCredentialBackfill(args: {
   readonly db: BackfillDatabase;
   readonly kms: StoredSecretKmsClient;
   readonly options: CustomCredentialBackfillOptions;

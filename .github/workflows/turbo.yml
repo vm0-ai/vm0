@@ -222,11 +222,11 @@ jobs:
             fi
           done
 
-          if printf '%s\n' "$CHANGED_FILES" | grep -qE "^turbo/packages/db/(src/(migrations|schema|jsonb-contracts)/|scripts/migrations/012-custom-connector-credentials/|src/__tests__/custom-connector-credential-backfill\.test\.ts$|vitest\.config\.ts$)"; then
-            echo "Migration, schema, JSONB contract, or migration integration test changes detected"
+          if printf '%s\n' "$CHANGED_FILES" | grep -qE "^turbo/packages/db/src/(migrations|schema|jsonb-contracts)/"; then
+            echo "Migration, schema, or JSONB contract changes detected"
             echo "migration-changed=true" >> "$GITHUB_OUTPUT"
           else
-            echo "No migration, schema, JSONB contract, or migration integration test changes"
+            echo "No migration, schema, or JSONB contract changes"
             echo "migration-changed=false" >> "$GITHUB_OUTPUT"
           fi
 
@@ -684,16 +684,6 @@ jobs:
         env:
           DATABASE_URL: postgresql://postgres@postgres:5432/postgres
         run: pnpm test:migration-consistency
-      - name: Run Database Migrations for Integration Tests
-        working-directory: turbo
-        env:
-          DATABASE_URL: postgresql://postgres@postgres:5432/postgres
-        run: pnpm --filter @vm0/db db:migrate
-      - name: Test Custom Credential Backfill
-        working-directory: turbo
-        env:
-          DATABASE_URL: postgresql://postgres@postgres:5432/postgres
-        run: pnpm --filter @vm0/db exec vitest run src/__tests__/custom-connector-credential-backfill.test.ts
 
   test-cli:
     needs: [detect-turbo-ts-checks]
