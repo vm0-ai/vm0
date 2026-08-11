@@ -2812,6 +2812,10 @@ describe("usage pack allocation management", () => {
   });
 
   it("adds an active member package to the existing subscription", async () => {
+    mockNow(new Date("2035-01-16T00:00:00.000Z"));
+    onTestFinished(() => {
+      clearMockNow();
+    });
     const orgFixture = createOrgFixture();
     const addedUserId = `user_${randomUUID()}`;
     const fixture = await seedManagedUsagePack(
