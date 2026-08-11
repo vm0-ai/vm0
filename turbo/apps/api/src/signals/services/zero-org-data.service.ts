@@ -29,6 +29,7 @@ import { now, nowDate } from "../../lib/time";
 import { onRejection, settle } from "../utils";
 import { cleanupOrgMemberResources } from "./org-member-cleanup.service";
 import { refundUsagePackMemberCredits } from "./usage-pack-credit-refund.service";
+import { cancelAndRefundOrgBillingForDeletion } from "./org-deletion-billing.service";
 import {
   cancelUsagePackMemberRemovalReservation,
   reserveUsagePackMemberRemoval,
@@ -583,6 +584,9 @@ export const deleteZeroOrg$ = command(
         );
       signal.throwIfAborted();
     }
+
+    await cancelAndRefundOrgBillingForDeletion(db, args.orgId, signal);
+    signal.throwIfAborted();
 
     await client.organizations.deleteOrganization(args.orgId);
     signal.throwIfAborted();

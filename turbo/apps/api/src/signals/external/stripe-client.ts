@@ -192,6 +192,7 @@ export interface StripeRefund {
 export interface StripeCreditNote {
   readonly id: string;
   readonly status: "issued" | "void";
+  readonly metadata?: Record<string, string> | null;
   readonly pre_payment_amount: number;
   readonly post_payment_amount: number;
   readonly refunds: readonly {
@@ -367,10 +368,12 @@ export interface StripeSubscriptionsApi {
     status?: StripeSubscriptionListStatus;
     price?: string;
     limit?: number;
+    starting_after?: string;
   }): Promise<StripeList<StripeSubscription>>;
   cancel(
     id: string,
     params?: { invoice_now?: boolean; prorate?: boolean },
+    options?: StripeRequestOptions,
   ): Promise<StripeSubscription>;
 }
 
@@ -419,6 +422,7 @@ export interface StripeInvoicesApi {
     customer?: string;
     status?: "draft" | "open" | "paid" | "uncollectible" | "void";
     limit?: number;
+    starting_after?: string;
   }): Promise<StripeList<StripeInvoice>>;
   create(params: {
     customer: string;
@@ -522,6 +526,11 @@ export interface StripeRefundsApi {
 }
 
 export interface StripeCreditNotesApi {
+  list(params: {
+    invoice: string;
+    limit?: number;
+    starting_after?: string;
+  }): Promise<StripeList<StripeCreditNote>>;
   preview(params: StripeCreditNoteParams): Promise<StripeCreditNote>;
   create(
     params: StripeCreditNoteParams,

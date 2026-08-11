@@ -4405,6 +4405,7 @@
     "workspace": {
       "danger": {
         "delete": {
+          "billingDescription": "Alle aktiven Abonnements, einschließlich Nutzungspaketen und Add-ons, werden sofort gekündigt. Ungenutzte vorausbezahlte Abonnementzeit wird anteilig erstattet. Einmalige und andere Käufe ohne Abonnement werden nicht erstattet.",
           "button": "Arbeitsbereich löschen",
           "confirmDescription": "Dadurch werden dieser Arbeitsbereich und alle seine Daten dauerhaft gelöscht. Diese Aktion kann nicht rückgängig gemacht werden. Geben Sie confirm ein, um fortzufahren.",
           "description": "Löschen Sie diesen Arbeitsbereich und alle seine Daten dauerhaft. Diese Aktion kann nicht rückgängig gemacht werden.",
