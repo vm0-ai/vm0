@@ -160,14 +160,10 @@ export async function getConnectorOAuthStateStatus(
   db: Db,
   args: {
     readonly state: string;
-    readonly connectorSlug: ConnectorSlug;
+    readonly target: OAuthStateTarget;
   },
   signal: AbortSignal,
 ): Promise<ConnectorOAuthStateStatus> {
-  const target: BuiltinOAuthStateTarget = {
-    kind: "builtin",
-    connectorSlug: args.connectorSlug,
-  };
   const [storedState] = await db
     .select({
       connectorSlug: connectorOauthStates.connectorSlug,
@@ -185,7 +181,7 @@ export async function getConnectorOAuthStateStatus(
   }
 
   if (
-    !matchesOAuthStateTarget(storedState, target) ||
+    !matchesOAuthStateTarget(storedState, args.target) ||
     storedState.consumedAt ||
     storedState.expiresAt <= nowDate()
   ) {
