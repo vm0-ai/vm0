@@ -1388,20 +1388,42 @@ describe("zero attachment chips", () => {
     );
     expect(iframe).toHaveClass("h-full", "min-h-0", "border-0");
 
-    click(screen.getByLabelText("Close"));
+    // The split view reads the same document, so it must resolve the same
+    // loadable URL rather than falling back to the canonical route.
+    click(screen.getByLabelText("Open in split view"));
 
     await waitFor(() => {
       expect(
         screen.queryByTestId("attachment-lightbox"),
       ).not.toBeInTheDocument();
+      expect(screen.getByTestId("artifact-sidebar-body-pdf")).toHaveAttribute(
+        "src",
+        `${presignedFileUrl("attachment-pdf")}#navpanes=0`,
+      );
+    });
+
+    click(screen.getByLabelText("Close artifact"));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("artifact-sidebar")).not.toBeInTheDocument();
     });
 
     click(screen.getByLabelText("Open html preview for launch-site.html"));
 
     await waitFor(() => {
-      expect(
-        screen.getByTestId("artifact-dialog-body-html"),
-      ).toBeInTheDocument();
+      expect(screen.getByTestId("artifact-dialog-body-html")).toHaveAttribute(
+        "src",
+        presignedFileUrl("attachment-html"),
+      );
+    });
+
+    click(screen.getByLabelText("Open in split view"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("artifact-sidebar-body-html")).toHaveAttribute(
+        "src",
+        presignedFileUrl("attachment-html"),
+      );
     });
   });
 
