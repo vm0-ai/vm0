@@ -1637,7 +1637,8 @@
       "openNamedChat": "Buka chat {{title}}",
       "pickEmoji": "Pilih emoji",
       "scrollToBottom": "Gulir ke bawah",
-      "searchEmoji": "Cari emoji"
+      "searchEmoji": "Cari emoji",
+      "steerMessageExplanation": "Dikirim saat agen sedang bekerja untuk mengarahkan perilakunya"
     },
     "threadSidebar": {
       "resize": "Ubah ukuran sidebar"

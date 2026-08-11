@@ -1678,7 +1678,8 @@
       "openNamedChat": "Abrir chat {{title}}",
       "pickEmoji": "Elige un emoji",
       "scrollToBottom": "Desplázate hasta abajo",
-      "searchEmoji": "Buscar emoji"
+      "searchEmoji": "Buscar emoji",
+      "steerMessageExplanation": "Enviado mientras el agente trabajaba para dirigir su comportamiento"
     },
     "threadSidebar": {
       "resize": "Cambiar el tamaño de la barra lateral"

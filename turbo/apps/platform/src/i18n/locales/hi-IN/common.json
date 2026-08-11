@@ -1638,7 +1638,8 @@
       "openNamedChat": "चैट {{title}} खोलें",
       "pickEmoji": "एक इमोजी चुनें",
       "scrollToBottom": "नीचे स्क्रॉल करें",
-      "searchEmoji": "इमोजी खोजें"
+      "searchEmoji": "इमोजी खोजें",
+      "steerMessageExplanation": "एजेंट के काम करते समय उसके व्यवहार को निर्देशित करने के लिए भेजा गया"
     },
     "threadSidebar": {
       "resize": "साइडबार का आकार बदलें"

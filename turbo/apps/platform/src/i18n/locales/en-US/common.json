@@ -1638,7 +1638,8 @@
       "openNamedChat": "Open chat {{title}}",
       "pickEmoji": "Pick an emoji",
       "scrollToBottom": "Scroll to bottom",
-      "searchEmoji": "Search emoji"
+      "searchEmoji": "Search emoji",
+      "steerMessageExplanation": "Sent while the agent was working to direct its behavior"
     },
     "threadSidebar": {
       "resize": "Resize sidebar"

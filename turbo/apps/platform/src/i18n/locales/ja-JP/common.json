@@ -1637,7 +1637,8 @@
       "openNamedChat": "チャットを開く {{title}}",
       "pickEmoji": "絵文字を選択",
       "scrollToBottom": "一番下までスクロール",
-      "searchEmoji": "絵文字を検索"
+      "searchEmoji": "絵文字を検索",
+      "steerMessageExplanation": "エージェントの動作を指示するため、作業中に送信されました"
     },
     "threadSidebar": {
       "resize": "サイドバーのサイズを変更する"
