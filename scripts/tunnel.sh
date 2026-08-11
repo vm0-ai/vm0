@@ -262,9 +262,15 @@ while [[ $ATTEMPT -lt $MAX_WAIT ]]; do
   else
     # Anonymous tunnel: wait for trycloudflare.com URL. Guard the assignment:
     # under set -e/pipefail a not-yet-logged URL would otherwise kill the loop.
+    # A fresh quick-tunnel hostname resolves only after DNS propagation, so
+    # keep polling until the edge actually serves this origin.
     TUNNEL_URL=$(grep -o 'https://[a-z0-9-]*\.trycloudflare\.com' "$TUNNEL_LOG" 2>/dev/null | head -n 1 || true)
     if [[ -n "$TUNNEL_URL" ]]; then
-      break
+      STATUS=$(curl -sS --max-time 5 -o /dev/null -w "%{http_code}" "${TUNNEL_URL}/" 2>/dev/null || true)
+      if [[ "$STATUS" =~ ^[234][0-9][0-9]$ ]]; then
+        TUNNEL_READY=1
+        break
+      fi
     fi
   fi
 
@@ -272,8 +278,8 @@ while [[ $ATTEMPT -lt $MAX_WAIT ]]; do
   sleep 1
 done
 
-if [[ "$MODE" == "anonymous" && -z "${TUNNEL_URL:-}" ]]; then
-  log "Error: failed to get tunnel URL after ${MAX_WAIT}s"
+if [[ "$MODE" == "anonymous" && -z "${TUNNEL_READY:-}" ]]; then
+  log "Error: failed to get a reachable tunnel URL after ${MAX_WAIT}s"
   cat "$TUNNEL_LOG" >&2
   exit 1
 fi
