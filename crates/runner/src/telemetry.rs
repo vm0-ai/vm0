@@ -2,7 +2,7 @@ use std::future::Future;
 use std::time::{Duration, Instant};
 
 use api_contracts::generated::routes;
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use serde::Serialize;
 use tokio::task::JoinHandle;
 use tracing::warn;
@@ -95,6 +95,28 @@ impl JobTelemetry {
         error: Option<&str>,
     ) {
         self.record_inner(action_type, duration, success, error, None);
+    }
+
+    /// Record a timed operation using the timestamp captured when it completed.
+    ///
+    /// This preserves event timing when a concurrently polled operation cannot
+    /// be added to this mutable buffer until another operation also finishes.
+    pub(crate) fn record_at(
+        &mut self,
+        action_type: &str,
+        duration: Duration,
+        success: bool,
+        error: Option<&str>,
+        completed_at: DateTime<Utc>,
+    ) {
+        self.push_operation(sandbox_op_at(
+            action_type,
+            duration,
+            success,
+            error,
+            None,
+            completed_at,
+        ));
     }
 
     pub(crate) fn record_api_to_spawn(
@@ -339,8 +361,19 @@ fn sandbox_op(
     error: Option<&str>,
     metadata: Option<SessionHistoryTelemetryMetadata>,
 ) -> SandboxOp {
+    sandbox_op_at(action_type, duration, success, error, metadata, Utc::now())
+}
+
+fn sandbox_op_at(
+    action_type: &str,
+    duration: Duration,
+    success: bool,
+    error: Option<&str>,
+    metadata: Option<SessionHistoryTelemetryMetadata>,
+    completed_at: DateTime<Utc>,
+) -> SandboxOp {
     SandboxOp {
-        ts: Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
+        ts: completed_at.to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
         action_type: action_type.to_string(),
         duration_ms: duration_ms(duration),
         success,
@@ -646,6 +679,43 @@ mod tests {
 
         assert_eq!(telemetry.pending_ops_snapshot().len(), 2);
         assert!(telemetry.oldest_pending.is_some());
+    }
+
+    #[tokio::test]
+    async fn telemetry_flush_preserves_captured_operation_timestamp() {
+        use httpmock::prelude::*;
+
+        let server = MockServer::start_async().await;
+        let telemetry_mock = server
+            .mock_async(|when, then| {
+                when.method(POST)
+                    .path("/api/webhooks/agent/telemetry")
+                    .body_includes(r#""ts":"2026-08-11T10:20:30.456Z""#)
+                    .body_includes(r#""action_type":"concurrent_operation""#);
+                then.status(200)
+                    .header("content-type", "application/json")
+                    .body(r#"{"success":true,"id":"ok"}"#);
+            })
+            .await;
+        let mut telemetry = JobTelemetry::new(
+            http_client_for_api_url(&server.base_url()),
+            RunId::nil(),
+            "tok".to_string(),
+        );
+        let completed_at = DateTime::parse_from_rfc3339("2026-08-11T10:20:30.456Z")
+            .unwrap()
+            .with_timezone(&Utc);
+
+        telemetry.record_at(
+            "concurrent_operation",
+            Duration::from_millis(25),
+            true,
+            None,
+            completed_at,
+        );
+        telemetry.flush().await;
+
+        telemetry_mock.assert_calls_async(1).await;
     }
 
     #[tokio::test]

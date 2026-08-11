@@ -771,16 +771,15 @@ pub(super) async fn run_job(
         .with_workspace_reuse_result(executor_result.outcome.workspace_reuse_result);
         // Structural guarantee: claim (in provider) is always paired with complete.
         signal_usage_flush(run_id, &usage_flush_tx);
-        let (provider_completion_duration, finalized) = match provider.completion_report_timing() {
+        let (completion_report, finalized) = match provider.completion_report_timing() {
             CompletionReportTiming::ConcurrentWithFinalization => tokio::join!(
                 completion_payload.report(provider.as_ref()),
                 finalization.finalize(executor_result),
             ),
             CompletionReportTiming::AfterFinalization => {
                 let finalized = finalization.finalize(executor_result).await;
-                let provider_completion_duration =
-                    completion_payload.report(provider.as_ref()).await;
-                (provider_completion_duration, finalized)
+                let completion_report = completion_payload.report(provider.as_ref()).await;
+                (completion_report, finalized)
             }
         };
         let FinalizedJob {
@@ -788,12 +787,7 @@ pub(super) async fn run_job(
             mut telemetry,
             immediate_successor_receipt,
         } = finalized;
-        telemetry.record(
-            "runner_host_completion_fallback",
-            provider_completion_duration,
-            true,
-            None,
-        );
+        completion_report.record(&mut telemetry);
         completion_settlement
             .settle(finalization_ready, &mut telemetry)
             .await;

@@ -1,7 +1,9 @@
-use sandbox::SandboxId;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::time::{Duration, Instant};
+
+use chrono::{DateTime, Utc};
+use sandbox::SandboxId;
 
 use crate::ids::RunId;
 use crate::provider::{CompletionAuth, JobProvider};
@@ -130,6 +132,24 @@ pub(super) struct CompletionPayload {
     completion_auth: CompletionAuth,
 }
 
+#[must_use]
+pub(super) struct CompletionReportObservation {
+    duration: Duration,
+    completed_at: DateTime<Utc>,
+}
+
+impl CompletionReportObservation {
+    pub(super) fn record(self, telemetry: &mut crate::telemetry::JobTelemetry) {
+        telemetry.record_at(
+            "runner_host_completion_fallback",
+            self.duration,
+            true,
+            None,
+            self.completed_at,
+        );
+    }
+}
+
 impl CompletionPayload {
     pub(super) fn new(
         run_id: RunId,
@@ -158,7 +178,7 @@ impl CompletionPayload {
         self
     }
 
-    pub(super) async fn report(self, provider: &dyn JobProvider) -> Duration {
+    pub(super) async fn report(self, provider: &dyn JobProvider) -> CompletionReportObservation {
         let Self {
             run_id,
             exit_code,
@@ -182,7 +202,10 @@ impl CompletionPayload {
                 completion_auth,
             )
             .await;
-        provider_completion_started.elapsed()
+        CompletionReportObservation {
+            duration: provider_completion_started.elapsed(),
+            completed_at: Utc::now(),
+        }
     }
 }
 
