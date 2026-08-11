@@ -117,7 +117,7 @@ suites before committing the upgrade.
 | `test_codex_model_catalog_cache_lifecycle.py`           | Codex catalog partitioning, expiry, ETag invalidation, and stored-entry eviction                                     |
 | `test_codex_model_catalog_cache_responses.py`           | Codex catalog response cacheability, decoding, framing, validation, and replay                                       |
 | `test_request_handler_passthrough.py`                   | Request-hook ordinary and browser user-agent passthrough decisions                                                   |
-| `test_request_handler_authority_validation.py`          | Request-hook Host/SNI/`:authority` validation and denial effects                                                     |
+| `test_request_handler_authority_validation.py`          | Request-hook SNI and asserted HTTP authority validation and denial effects                                           |
 | `test_request_handler_builtin_host_policy.py`           | Request-hook runtime built-in host-policy enforcement and compiled-policy reuse                                      |
 | `test_request_handler_connector_admission.py`           | Request-hook connector destination admission, TLS evidence, test-endpoint bypass, and API binding interaction        |
 | `test_request_handler_api_admission.py`                 | Request-hook platform API auto-allow, port scoping, registry gate, and destination binding                           |
@@ -133,7 +133,7 @@ suites before committing the upgrade.
 | `test_request_headers_api_admission.py`                 | Requestheaders platform API destination admission and binding                                                        |
 | `test_request_headers_connector_admission.py`           | Requestheaders connector destination admission, TLS evidence, and binding                                            |
 | `test_request_headers_firewall_auth.py`                 | Requestheaders stream-safe firewall auth, connector intent, fallback, and cancellation cleanup                       |
-| `test_mitmproxy_request_framing.py`                     | HTTP/2 request framing through mitmproxy's state machine and real addon hook dispatch                                |
+| `test_mitmproxy_request_framing.py`                     | HTTP/1 and HTTP/2 request framing through mitmproxy's state machine and real addon hook dispatch                     |
 | `test_mitmproxy_websocket_framing.py`                   | Decoded WebSocket message bounds through mitmproxy's state machine and real addon hook dispatch                      |
 | `test_request_handler_usage_tracking.py`                | Request-hook billable usage tracking lifecycle                                                                       |
 | `test_response_headers_handler.py`                      | Response-header hook stream setup                                                                                    |

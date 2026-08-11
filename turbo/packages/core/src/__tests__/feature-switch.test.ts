@@ -27,7 +27,6 @@ describe("isFeatureEnabled", () => {
   it("should return false for disabled switch without context", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.AhrefsConnector, {})).toBe(false);
     expect(isFeatureEnabled(FeatureSwitchKey.MetaAdsConnector, {})).toBe(false);
-    expect(isFeatureEnabled(FeatureSwitchKey.SeoBuiltIn, {})).toBe(false);
   });
 
   it("should return false for disabled switch with non-matching userId", () => {
@@ -111,7 +110,6 @@ describe("getAllFeatureStates", () => {
       true,
     );
     expect(staffOrgStates[FeatureSwitchKey.StrapiIntegration]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.SeoBuiltIn]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ConcurrencyMemberUsage]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ConnectorDiscovery]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ConnectorCatalogCount]).toBe(true);
@@ -136,7 +134,6 @@ describe("getAllFeatureStates", () => {
       false,
     );
     expect(otherOrgStates[FeatureSwitchKey.StrapiIntegration]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.SeoBuiltIn]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ConcurrencyMemberUsage]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ConnectorDiscovery]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ConnectorCatalogCount]).toBe(false);

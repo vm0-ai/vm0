@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   CLIENT_FORCE_UPGRADE_STATUS,
   CLIENT_HEADER_NAMES,
+  CLIENT_PRODUCT_HEADER,
   CLIENT_REQUEST_ID_HEADER,
   CLIENT_SESSION_ID_HEADER,
   CLIENT_TYPE_APP,
@@ -12,6 +13,9 @@ import {
   CLIENT_TYPE_MITM_ADDON,
   CLIENT_TYPE_RUNNER,
   CLIENT_VERSION_HEADER,
+  DESKTOP_PRODUCT_OKOU,
+  DESKTOP_PRODUCT_ZERO,
+  desktopProductFromClientHeader,
 } from "./client-headers";
 
 describe("client header contract", () => {
@@ -37,15 +41,29 @@ describe("client header contract", () => {
     expect(CLIENT_HEADER_NAMES).toStrictEqual([
       CLIENT_VERSION_HEADER,
       CLIENT_TYPE_HEADER,
+      CLIENT_PRODUCT_HEADER,
       CLIENT_SESSION_ID_HEADER,
       CLIENT_REQUEST_ID_HEADER,
     ]);
     expect(CLIENT_HEADER_NAMES).toStrictEqual([
       "X-Client-Version",
       "X-Client-Type",
+      "X-Client-Product",
       "X-Client-Session-Id",
       "X-Client-Request-Id",
     ]);
+  });
+
+  it("defaults missing desktop product identity to Zero", () => {
+    expect(desktopProductFromClientHeader(undefined)).toBe(
+      DESKTOP_PRODUCT_ZERO,
+    );
+    expect(desktopProductFromClientHeader(DESKTOP_PRODUCT_ZERO)).toBe(
+      DESKTOP_PRODUCT_ZERO,
+    );
+    expect(desktopProductFromClientHeader(DESKTOP_PRODUCT_OKOU)).toBe(
+      DESKTOP_PRODUCT_OKOU,
+    );
   });
 
   it("keeps the force upgrade status stable for app clients", () => {
