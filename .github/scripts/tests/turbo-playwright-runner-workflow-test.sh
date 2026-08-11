@@ -4,6 +4,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 WORKFLOW="${REPO_ROOT}/.github/workflows/turbo.yml"
+RUNNER_TESTS="${REPO_ROOT}/e2e/tests/03-runner"
+RUNNER_HELPER="${REPO_ROOT}/e2e/helpers/runner-chat.bash"
 
 fail() {
   echo "FAIL: $1" >&2
@@ -25,6 +27,9 @@ grep -Fq "RUNNER_GROUP: \${{ format('vm0/development-{0}', needs.prepare.outputs
   fail "runner group must match the deployed API default group"
 if grep -Fq 'playwright-staging' "$WORKFLOW"; then
   fail "main Playwright runs must not use a group outside the staging API default"
+fi
+if grep -R -Fq '/api/test/' "$RUNNER_TESTS" "$RUNNER_HELPER"; then
+  fail "runner E2E coverage must use supported public APIs"
 fi
 
 ruby -ryaml - "$WORKFLOW" <<'RUBY'
@@ -183,8 +188,25 @@ shard_step = runner.fetch("steps").find do |step|
   step["name"] == "Initialize runner E2E shard"
 end
 raise "missing runner E2E shard scaffold" unless shard_step
-if runner.fetch("steps").any? { |step| step.fetch("name", "").include?("Run runner E2E tests") }
-  raise "runner E2E scaffold must not add test coverage yet"
+run_step = runner.fetch("steps").find do |step|
+  step.fetch("name", "").include?("Run runner E2E tests")
+end
+raise "missing runner E2E test execution" unless run_step
+run_script = run_step.fetch("run")
+%w[
+  e2e/tests/03-runner
+  E2E_RUNNER_SHARD_INDEX
+  E2E_RUNNER_SHARD_TOTAL
+  BATS_TEST_TIMEOUT=240
+  ./e2e/test/libs/bats/bin/bats
+].each do |required_fragment|
+  unless run_script.include?(required_fragment)
+    raise "runner E2E test execution must include #{required_fragment}"
+  end
+end
+unless run_step.dig("env", "VERCEL_AUTOMATION_BYPASS_SECRET") ==
+    "${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}"
+  raise "runner E2E tests must receive the preview bypass secret"
 end
 unless runner.fetch("steps").any? do |step|
     step["name"] == "Download runner E2E API tokens" &&
