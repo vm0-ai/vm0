@@ -7422,7 +7422,12 @@ function ComposerFastModeButton({
         }
       }}
     >
-      <PopoverTrigger asChild openOnHover delay={300} closeDelay={120}>
+      <PopoverTrigger
+        asChild
+        openOnHover={!active}
+        delay={300}
+        closeDelay={120}
+      >
         <Button
           type="button"
           variant="quiet"
