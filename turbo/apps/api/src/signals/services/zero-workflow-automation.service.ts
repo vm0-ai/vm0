@@ -2525,6 +2525,22 @@ async function createChatRunFinishedEventAutomationForWorkflow(args: {
     };
   }
 
+  const automationThreadId = await loadWorkflowUserAutomationThreadId(
+    args.context.db,
+    {
+      orgId: args.input.orgId,
+      userId: args.input.member.userId,
+      workflowId: args.context.workflowId,
+    },
+  );
+  if (automationThreadId === args.input.eventConfig.chatThreadId) {
+    return {
+      kind: "bad-request",
+      message:
+        "A workflow cannot watch run-finished events from its own chat thread",
+    };
+  }
+
   const summary = await insertEventAutomation(args.context.db, {
     input: args.input,
     workflowId: args.context.workflowId,
