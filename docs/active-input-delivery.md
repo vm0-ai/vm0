@@ -26,11 +26,12 @@ The delivery becomes settled through one of two proof-bearing paths:
 - A direct receipt confirms that the Guest accepted the batch. Each source is
   replaced by a run-attributed event and every item becomes `delivered`.
 - `/api/webhooks/agent/complete` proves that the Guest has quiesced, or that the
-  Runner observed process exit and completed sandbox teardown. Delivery IDs in
-  `activeInputDeliveryIds` become `delivered`. If the open delivery ID is not
-  present, prompt items become `released` and their original source events stay
-  pending; run-scoped budget items become `expired` and receive a
-  `control.revoke` event.
+  Runner observed process exit, stopped forwarding, and recovered the receipt
+  journal. Completion may overlap sandbox finalization after that boundary.
+  Delivery IDs in `activeInputDeliveryIds` become `delivered`. If the open
+  delivery ID is not present, prompt items become `released` and their original
+  source events stay pending; run-scoped budget items become `expired` and
+  receive a `control.revoke` event.
 
 All item and delivery transitions are monotonic. A late receipt for a released
 or expired delivery is rejected, while a repeated receipt for an already
