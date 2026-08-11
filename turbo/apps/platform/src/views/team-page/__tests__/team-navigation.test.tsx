@@ -220,9 +220,6 @@ function createCustomConnector(): CustomConnectorHttpResponse {
     storageVersion: 1,
     slug: "acme-search",
     displayName: "Acme Search",
-    prefixes: ["https://api.acme.test/v1/"],
-    headerName: "Authorization",
-    headerTemplate: "Bearer {{secret}}",
     prefixTemplates: ["https://api.acme.test/v1/"],
     fields: [
       {

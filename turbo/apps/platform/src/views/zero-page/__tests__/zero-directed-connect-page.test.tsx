@@ -213,9 +213,6 @@ function customConnector(
     storageVersion: 1,
     slug: "_acme-api",
     displayName: "Acme API",
-    prefixes: ["https://api.acme.test/v1/"],
-    headerName: "Authorization",
-    headerTemplate: "Bearer {{secret}}",
     prefixTemplates: ["https://api.acme.test/v1/"],
     fields: [
       {

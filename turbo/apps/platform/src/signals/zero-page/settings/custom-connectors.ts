@@ -722,24 +722,19 @@ function oauthCreateFormFromConnector(
 function createFormFromConnector(
   connector: CustomConnectorResponse,
 ): CustomConnectorCreateForm {
-  const simpleManualInjection = connector.headerInjections[0];
+  const firstHeader = connector.headerInjections[0];
   return {
     kind: connector.kind,
     displayName: connector.displayName,
     prefixesRaw:
       connector.kind === "http" ? connector.prefixTemplates.join("\n") : "",
     mcpEndpoint: connector.kind === "mcp" ? connector.endpoint : "",
-    headerName:
-      connector.kind === "http"
-        ? connector.headerName
-        : (simpleManualInjection?.name ?? CREATE_FORM_DEFAULTS.headerName),
+    headerName: firstHeader?.name ?? CREATE_FORM_DEFAULTS.headerName,
     headerTemplate:
-      connector.kind === "http"
-        ? connector.headerTemplate
-        : (simpleManualInjection?.valueTemplate.replaceAll(
-            "{{secrets.secret}}",
-            "{{secret}}",
-          ) ?? CREATE_FORM_DEFAULTS.headerTemplate),
+      firstHeader?.valueTemplate.replaceAll(
+        "{{secrets.secret}}",
+        "{{secret}}",
+      ) ?? CREATE_FORM_DEFAULTS.headerTemplate,
     authMethodTypes: [connector.authMode === "oauth" ? "oauth2" : "api"],
     ...oauthCreateFormFromConnector(connector),
   };

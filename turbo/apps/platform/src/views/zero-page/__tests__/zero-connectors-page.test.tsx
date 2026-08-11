@@ -282,9 +282,6 @@ function customConnector(
     id: "33333333-3333-4333-8333-333333333333",
     slug: "acme-search",
     displayName: "Acme Search",
-    prefixes: ["https://api.acme.test/v1/"],
-    headerName: "Authorization",
-    headerTemplate: "Bearer {{secret}}",
     prefixTemplates: ["https://api.acme.test/v1/"],
     fields: [
       {
@@ -322,20 +319,29 @@ function mcpCustomConnector(
     displayName: "Acme MCP",
     endpoint: "https://mcp.acme.test/server",
     transport: "streamable-http",
-    prefixes: [],
-    headerName: "",
-    headerTemplate: "",
     prefixTemplates: [],
-    fields: [],
-    headerInjections: [],
+    fields: [
+      {
+        key: "secret",
+        label: "Secret",
+        kind: "secret",
+        required: true,
+      },
+    ],
+    headerInjections: [
+      {
+        name: "Authorization",
+        valueTemplate: "Bearer {{secrets.secret}}",
+      },
+    ],
     queryInjections: [],
     authMode: "manual",
     permissionBundleRef: null,
     storageVersion: 1,
     connected: true,
     missingRequiredFields: [],
-    configuredFieldKeys: [],
-    hasSecret: false,
+    configuredFieldKeys: ["secret"],
+    hasSecret: true,
     createdAt: "2026-08-10T00:00:00.000Z",
     updatedAt: "2026-08-10T00:00:00.000Z",
     ...overrides,
@@ -431,21 +437,13 @@ function mockCustomConnectorStory(): {
       const prefixTemplates = body.prefixTemplates ?? body.prefixes ?? [];
       const fields = body.fields ?? [];
       const headerInjections = body.headerInjections ?? [];
-      const firstHeader = headerInjections[0];
       const created = customConnector({
         displayName: body.displayName,
-        prefixes: prefixTemplates,
         prefixTemplates,
         fields,
         headerInjections,
         queryInjections: body.queryInjections ?? [],
         authMode: body.authMode ?? "manual",
-        headerName: firstHeader?.name ?? body.headerName,
-        headerTemplate:
-          firstHeader?.valueTemplate.replaceAll(
-            "{{secrets.secret}}",
-            "{{secret}}",
-          ) ?? body.headerTemplate,
       });
       connectors = [...connectors, created];
       return respond(201, created);
@@ -499,11 +497,9 @@ function mockCustomConnectorStory(): {
         if (connector.id !== params.id) {
           return connector;
         }
-        const firstHeader = body.headerInjections[0];
         updated = {
           ...connector,
           displayName: body.displayName,
-          prefixes: body.prefixTemplates,
           prefixTemplates: body.prefixTemplates,
           fields: body.fields,
           headerInjections: body.headerInjections,
@@ -515,12 +511,6 @@ function mockCustomConnectorStory(): {
                 oauthConfig: publicCustomConnectorOAuthConfig(body.oauthConfig),
               }
             : {}),
-          headerName: firstHeader?.name ?? connector.headerName,
-          headerTemplate:
-            firstHeader?.valueTemplate.replaceAll(
-              "{{secrets.secret}}",
-              "{{secret}}",
-            ) ?? connector.headerTemplate,
         };
         return updated;
       });
@@ -4579,7 +4569,6 @@ describe("connectors page", () => {
     let connector = customConnector({
       slug: "_feishu-00000000-0000-4000-8000-000000000044",
       displayName: "Feishu",
-      prefixes: ["https://open.feishu.cn/open-apis/"],
       prefixTemplates: ["https://open.feishu.cn/open-apis/"],
       fields: [],
       headerInjections: [
@@ -4723,7 +4712,6 @@ describe("connectors page", () => {
         createdBodies.push(body);
         connector = customConnector({
           displayName: body.displayName,
-          prefixes: body.prefixTemplates ?? [],
           prefixTemplates: body.prefixTemplates ?? [],
           fields: body.fields ?? [],
           headerInjections: body.headerInjections ?? [],
@@ -4753,7 +4741,6 @@ describe("connectors page", () => {
         connector = {
           ...connector,
           displayName: body.displayName,
-          prefixes: body.prefixTemplates,
           prefixTemplates: body.prefixTemplates,
           fields: body.fields,
           headerInjections: body.headerInjections,

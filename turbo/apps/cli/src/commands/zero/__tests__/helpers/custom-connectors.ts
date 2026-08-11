@@ -13,9 +13,6 @@ export function customConnector(
     id: "33333333-3333-4333-8333-333333333333",
     slug: "_acme-search",
     displayName: "Acme Search",
-    prefixes: ["https://api.acme.test/v1/"],
-    headerName: "Authorization",
-    headerTemplate: "Bearer {{apiKey}}",
     prefixTemplates: ["https://api.acme.test/v1/"],
     fields: [
       {
@@ -25,7 +22,12 @@ export function customConnector(
         required: true,
       },
     ],
-    headerInjections: [],
+    headerInjections: [
+      {
+        name: "Authorization",
+        valueTemplate: "Bearer {{secrets.apiKey}}",
+      },
+    ],
     queryInjections: [],
     authMode: "manual",
     storageVersion: 1,
@@ -49,9 +51,6 @@ export function mcpCustomConnector(
     displayName: "Acme MCP",
     endpoint: "https://mcp.example.test/server",
     transport: "streamable-http",
-    prefixes: [],
-    headerName: "",
-    headerTemplate: "",
     prefixTemplates: [],
     permissionBundleRef: null,
     fields: [

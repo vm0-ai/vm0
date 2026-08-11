@@ -8939,6 +8939,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
   it("hands off more than one runtime-sync batch without truncation", async () => {
     const api = createRunsApi(context);
     const connectors = createConnectorBddApi(context);
+    const fw = createFirewallApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
     if (!actor.orgId) {
       throw new Error("Expected a custom connector actor with an organization");
@@ -8961,6 +8962,22 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       userId: actor.userId,
       customConnectors: runtimeConnectors,
     });
+    const listedRuntimeConnectors =
+      await connectors.listCustomConnectors(actor);
+    const firstRuntimeConnector = runtimeConnectors[0];
+    if (!firstRuntimeConnector) {
+      throw new Error("Expected a canonical runtime connector fixture");
+    }
+    expect(
+      listedRuntimeConnectors.find((connector) => {
+        return connector.id === firstRuntimeConnector.id;
+      }),
+    ).toMatchObject({
+      prefixTemplates: [firstRuntimeConnector.prefixTemplate],
+      prefixes: [firstRuntimeConnector.prefixTemplate],
+      headerName: "X-Connector",
+      headerTemplate: "runtime-batch {{secrets.optional_secret}}",
+    });
     const createdIds = runtimeConnectors.map((connector) => {
       return connector.id;
     });
@@ -8970,6 +8987,13 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       createdIds,
     );
     expect(enabledIds).toHaveLength(connectorCount);
+    await connectors.setCustomConnectorValues(actor, firstRuntimeConnector.id, [
+      {
+        key: "optional_secret",
+        kind: "secret",
+        value: "canonical-runtime-secret",
+      },
+    ]);
 
     const run = await api.createRun(actor, {
       agentId,
@@ -8989,6 +9013,31 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
         })
         .sort(),
     ).toStrictEqual(expectedIds);
+
+    const [firstRuntime] = await api.syncConnectorRuntime(run.runId, {
+      targets: [
+        {
+          kind: "custom",
+          customConnectorId: firstRuntimeConnector.id,
+          baseUrlVars: {},
+        },
+      ],
+    });
+    const availableFirstRuntime = availableCustomConnectorRuntime(firstRuntime);
+    const { body: firstAuthBody } = customConnectorRuntimeAuthBody(
+      availableFirstRuntime,
+      fw.encryptedSecretsBody({}),
+    );
+    const firstAuth = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      firstAuthBody,
+      [200],
+    );
+    expect(firstAuth.body).toMatchObject({
+      headers: {
+        "X-Connector": "runtime-batch canonical-runtime-secret",
+      },
+    });
 
     await api.requestCancelRun(actor, run.runId, [200]);
   });

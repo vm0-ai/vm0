@@ -72,22 +72,31 @@ describe("zero connector custom readers", () => {
       displayName: "Acme MCP",
       endpoint: "https://mcp.acme.test/server",
       transport: "streamable-http",
-      prefixes: [],
-      headerName: "",
-      headerTemplate: "",
       prefixTemplates: [],
-      fields: [],
-      headerInjections: [],
+      fields: [
+        {
+          key: "secret",
+          label: "Secret",
+          kind: "secret",
+          required: true,
+        },
+      ],
+      headerInjections: [
+        {
+          name: "Authorization",
+          valueTemplate: "Bearer {{secrets.secret}}",
+        },
+      ],
       queryInjections: [],
       authMode: "manual",
       permissionBundleRef: null,
       storageVersion: 1,
-      connected: false,
+      connected: true,
       missingRequiredFields: [],
-      configuredFieldKeys: [],
+      configuredFieldKeys: ["secret"],
       createdAt: "2026-08-10T00:00:00.000Z",
       updatedAt: "2026-08-10T00:00:00.000Z",
-      hasSecret: false,
+      hasSecret: true,
     } satisfies CustomConnectorMcpResponse;
     server.use(
       http.get(

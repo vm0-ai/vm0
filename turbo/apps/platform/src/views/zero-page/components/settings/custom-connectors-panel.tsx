@@ -128,9 +128,9 @@ function CustomConnectorCardContent({
         ) : !connector.connected ? (
           <span
             className="block truncate font-mono text-xs text-muted-foreground/60"
-            title={connector.prefixes[0]}
+            title={connector.prefixTemplates[0]}
           >
-            {connector.prefixes[0]}
+            {connector.prefixTemplates[0]}
           </span>
         ) : null}
       </span>
