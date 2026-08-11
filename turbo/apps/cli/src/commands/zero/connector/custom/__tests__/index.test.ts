@@ -23,12 +23,12 @@ describe("zero connector custom readers", () => {
     vi.unstubAllEnvs();
   });
 
-  it("normalizes an older kind-less HTTP list response", async () => {
+  it("normalizes an older kind-less HTTP list response without hasSecret", async () => {
     const connector = customConnector();
     server.use(
       http.get("http://localhost:3000/api/zero/custom-connectors", () => {
         return HttpResponse.json({
-          connectors: [{ ...connector, kind: undefined }],
+          connectors: [{ ...connector, kind: undefined, hasSecret: undefined }],
         });
       }),
     );

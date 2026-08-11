@@ -19,7 +19,7 @@ import {
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { zeroAgentCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 import {
-  zeroCustomConnectorSecretContract,
+  zeroCustomConnectorValuesContract,
   zeroCustomConnectorsContract,
   type CustomConnectorHttpResponse,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
@@ -2835,7 +2835,11 @@ describe("chat event action cards", () => {
     const user = userEvent.setup({ delay: null });
     let connected = false;
     let enabledIds: string[] = [];
-    let savedSecret: string | null = null;
+    let submittedValues: readonly {
+      readonly key: string;
+      readonly kind: "secret" | "variable";
+      readonly value: string;
+    }[] = [];
     const connector = customConnector();
     const connectUrl = `${window.location.origin}/connectors/${connector.slug}/connect?agentId=${AGENT_ID}`;
     context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
@@ -2852,11 +2856,17 @@ describe("chat event action cards", () => {
       });
     });
     context.mocks.api(
-      zeroCustomConnectorSecretContract.set,
+      zeroCustomConnectorValuesContract.set,
       ({ body, respond }) => {
-        savedSecret = body.value;
+        submittedValues = body.values;
         connected = true;
-        return respond(204);
+        return respond(200, {
+          ...connector,
+          connected: true,
+          hasSecret: true,
+          missingRequiredFields: [],
+          configuredFieldKeys: ["secret"],
+        });
       },
     );
     context.mocks.api(zeroAgentCustomConnectorsContract.get, ({ respond }) => {
@@ -2914,7 +2924,9 @@ describe("chat event action cards", () => {
     await user.click(buttonByText("Save", dialog));
 
     await waitFor(() => {
-      expect(savedSecret).toBe("acme-secret");
+      expect(submittedValues).toStrictEqual([
+        { key: "secret", kind: "secret", value: "acme-secret" },
+      ]);
       expect(enabledIds).toStrictEqual([connector.id]);
       expect(within(card).getByText("Authorized")).toBeInTheDocument();
     });
@@ -2923,7 +2935,11 @@ describe("chat event action cards", () => {
   it("preserves a permissioned custom connector grant when connecting from its action card", async () => {
     const user = userEvent.setup({ delay: null });
     let connected = false;
-    let savedSecret: string | null = null;
+    let submittedValues: readonly {
+      readonly key: string;
+      readonly kind: "secret" | "variable";
+      readonly value: string;
+    }[] = [];
     let authorizationUpdates = 0;
     const connector = customConnector({
       permissionBundleRef: "builtin:feishu@1",
@@ -2943,11 +2959,17 @@ describe("chat event action cards", () => {
       });
     });
     context.mocks.api(
-      zeroCustomConnectorSecretContract.set,
+      zeroCustomConnectorValuesContract.set,
       ({ body, respond }) => {
-        savedSecret = body.value;
+        submittedValues = body.values;
         connected = true;
-        return respond(204);
+        return respond(200, {
+          ...connector,
+          connected: true,
+          hasSecret: true,
+          missingRequiredFields: [],
+          configuredFieldKeys: ["secret"],
+        });
       },
     );
     context.mocks.api(zeroAgentCustomConnectorsContract.get, ({ respond }) => {
@@ -3004,7 +3026,9 @@ describe("chat event action cards", () => {
     await user.click(buttonByText("Save", dialog));
 
     await waitFor(() => {
-      expect(savedSecret).toBe("acme-secret");
+      expect(submittedValues).toStrictEqual([
+        { key: "secret", kind: "secret", value: "acme-secret" },
+      ]);
       expect(within(card).getByText("Authorized")).toBeInTheDocument();
     });
     expect(authorizationUpdates).toBe(0);

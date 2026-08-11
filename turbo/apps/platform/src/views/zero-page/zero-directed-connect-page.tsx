@@ -6,9 +6,9 @@ import {
 } from "@vm0/api-contracts/contracts/connector-identity";
 import type { PublicConnectorCatalogAuthMethodDetail } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import {
-  isHttpCustomConnectorResponse,
-  type CustomConnectorHttpResponse,
-  type CustomConnectorResponse,
+  isHttpCustomConnectorClientResponse,
+  type CustomConnectorClientResponse,
+  type CustomConnectorHttpClientResponse,
   type CustomConnectorSlug,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import type { PlatformConnectorCatalogStatusItem } from "../../signals/connector-domain.ts";
@@ -740,12 +740,14 @@ function DirectedConnectCard() {
 }
 
 function customConnectorForSlug(
-  connectors: readonly CustomConnectorResponse[],
+  connectors: readonly CustomConnectorClientResponse[],
   connectorSlug: CustomConnectorSlug,
-): CustomConnectorHttpResponse | undefined {
-  return connectors.filter(isHttpCustomConnectorResponse).find((connector) => {
-    return connector.slug === connectorSlug;
-  });
+): CustomConnectorHttpClientResponse | undefined {
+  return connectors
+    .filter(isHttpCustomConnectorClientResponse)
+    .find((connector) => {
+      return connector.slug === connectorSlug;
+    });
 }
 
 function CustomDirectedConnectCard({

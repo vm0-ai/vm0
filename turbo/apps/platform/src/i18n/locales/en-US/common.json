@@ -1873,17 +1873,13 @@
     },
     "custom": {
       "connect": {
-        "apiAuthentication": "API authentication",
-        "apiDescription": "Enter the API secret issued by the provider.",
-        "back": "Back",
+        "configured": "Configured",
         "connecting": "Connecting…",
         "continue": "Continue",
         "continueToProvider": "Continue to the provider to authorize access.",
         "description": "Your secret is encrypted at rest and injected into outbound requests by the firewall. It's never exposed to the agent as an environment variable.",
-        "oauthDescription": "Authorize access with the connector's OAuth app.",
         "save": "Save",
         "saving": "Saving…",
-        "secret": "Secret",
         "title": "Connect {{connector}}"
       },
       "create": {
