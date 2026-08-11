@@ -6,7 +6,10 @@ import {
 } from "@vm0/api-contracts/contracts/zero-connectors";
 import { chatEventsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
-import { zeroAgentCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
+import {
+  zeroAgentCustomConnectorsContract,
+  type AgentCustomConnectorGrant,
+} from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 import {
   zeroCustomConnectorOAuth2Contract,
   zeroCustomConnectorValuesContract,
@@ -346,7 +349,7 @@ function getButtonByText(text: string): HTMLElement {
 describe("directed connector connect page", () => {
   it("connects and authorizes a manual custom connector", async () => {
     let connected = false;
-    let enabledIds: string[] = [];
+    let grants: AgentCustomConnectorGrant[] = [];
     let submittedValues: readonly {
       readonly key: string;
       readonly kind: "secret" | "variable";
@@ -385,11 +388,16 @@ describe("directed connector connect page", () => {
       zeroAgentCustomConnectorsContract.update,
       ({ body, params, respond }) => {
         expect(params.id).toBe(AGENT_ID);
-        if (!("enabledIds" in body)) {
-          throw new Error("Expected custom connector ID authorization");
+        if (!("grants" in body)) {
+          throw new Error("Expected canonical custom connector grants");
         }
-        enabledIds = Array.from(new Set([...enabledIds, ...body.enabledIds]));
-        return respond(200, { enabledIds });
+        grants = body.grants;
+        return respond(200, {
+          enabledIds: grants.map((grant) => {
+            return grant.customConnectorId;
+          }),
+          grants,
+        });
       },
     );
 
@@ -411,14 +419,16 @@ describe("directed connector connect page", () => {
       expect(submittedValues).toStrictEqual([
         { key: "secret", kind: "secret", value: "acme-secret" },
       ]);
-      expect(enabledIds).toStrictEqual([connector.id]);
+      expect(grants).toStrictEqual([
+        { customConnectorId: connector.id, permissionNames: [] },
+      ]);
       expect(screen.getByText("Acme API connected")).toBeInTheDocument();
     });
   });
 
   it("starts OAuth and authorizes an OAuth custom connector", async () => {
     let connected = false;
-    let enabledIds: string[] = [];
+    let grants: AgentCustomConnectorGrant[] = [];
     const connector = customConnector({
       slug: "_acme-oauth",
       displayName: "Acme OAuth",
@@ -461,11 +471,16 @@ describe("directed connector connect page", () => {
       zeroAgentCustomConnectorsContract.update,
       ({ body, params, respond }) => {
         expect(params.id).toBe(AGENT_ID);
-        if (!("enabledIds" in body)) {
-          throw new Error("Expected custom connector ID authorization");
+        if (!("grants" in body)) {
+          throw new Error("Expected canonical custom connector grants");
         }
-        enabledIds = Array.from(new Set([...enabledIds, ...body.enabledIds]));
-        return respond(200, { enabledIds });
+        grants = body.grants;
+        return respond(200, {
+          enabledIds: grants.map((grant) => {
+            return grant.customConnectorId;
+          }),
+          grants,
+        });
       },
     );
     const authWindow = context.mocks.browser.authWindow();
@@ -491,7 +506,9 @@ describe("directed connector connect page", () => {
       expect(authWindow.location.href).toBe(
         "https://acme.test/oauth/authorize",
       );
-      expect(enabledIds).toStrictEqual([connector.id]);
+      expect(grants).toStrictEqual([
+        { customConnectorId: connector.id, permissionNames: [] },
+      ]);
       expect(screen.getByText("Acme OAuth connected")).toBeInTheDocument();
     });
   });

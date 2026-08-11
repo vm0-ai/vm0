@@ -144,6 +144,7 @@ import {
   type CustomConnectorClientResponse,
   type CustomConnectorHttpClientResponse,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
+import type { AgentCustomConnectorGrant } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 import { getModelDisplayName } from "@vm0/core/model-display-name";
 import {
   ModelProviderPicker,
@@ -7555,7 +7556,27 @@ function equalComposerConnectorAuthorizationState(
   return (
     left.agentId === right.agentId &&
     equalArrays(left.enabledConnectorSlugs, right.enabledConnectorSlugs) &&
-    equalArrays(left.enabledCustomConnectorIds, right.enabledCustomConnectorIds)
+    equalCustomConnectorGrants(
+      left.customConnectorGrants,
+      right.customConnectorGrants,
+    )
+  );
+}
+
+function equalCustomConnectorGrants(
+  left: readonly AgentCustomConnectorGrant[],
+  right: readonly AgentCustomConnectorGrant[],
+): boolean {
+  return (
+    left.length === right.length &&
+    left.every((grant, index) => {
+      const other = right[index];
+      return (
+        other !== undefined &&
+        grant.customConnectorId === other.customConnectorId &&
+        equalArrays(grant.permissionNames, other.permissionNames)
+      );
+    })
   );
 }
 
@@ -7589,17 +7610,17 @@ function matchingAuthorizedConnectorSlugs(
   return authorization.data.enabledConnectorSlugs;
 }
 
-function matchingAuthorizedCustomConnectorIds(
+function matchingCustomConnectorGrants(
   agentId: string,
   authorization: Loadable<ComposerConnectorAuthorizationState>,
-): readonly string[] | null {
+): readonly AgentCustomConnectorGrant[] | null {
   if (authorization.state !== "hasData") {
     return null;
   }
   if (authorization.data.agentId !== agentId) {
     return null;
   }
-  return authorization.data.enabledCustomConnectorIds;
+  return authorization.data.customConnectorGrants;
 }
 
 interface ResolvedComposerConnectorCollections {
@@ -7622,7 +7643,7 @@ function resolveComposerConnectorCollections({
   addDialogCatalogItems,
   customConnectors,
   authorizedConnectorSlugs,
-  authorizedCustomConnectorIds,
+  customConnectorGrants,
   optimisticConnected,
   selectedCustomConnectorId,
 }: {
@@ -7632,7 +7653,7 @@ function resolveComposerConnectorCollections({
   >;
   customConnectors: Loadable<readonly CustomConnectorClientResponse[]>;
   authorizedConnectorSlugs: readonly ConnectorSlug[] | null;
-  authorizedCustomConnectorIds: readonly string[] | null;
+  customConnectorGrants: readonly AgentCustomConnectorGrant[] | null;
   optimisticConnected: ReadonlySet<ConnectorSlug>;
   selectedCustomConnectorId: string | null;
 }): ResolvedComposerConnectorCollections {
@@ -7645,7 +7666,11 @@ function resolveComposerConnectorCollections({
       ? customConnectors.data.filter(isHttpCustomConnectorClientResponse)
       : [];
   const authorizedSet = new Set(authorizedConnectorSlugs ?? []);
-  const authorizedCustomSet = new Set(authorizedCustomConnectorIds ?? []);
+  const authorizedCustomSet = new Set(
+    customConnectorGrants?.map((grant) => {
+      return grant.customConnectorId;
+    }) ?? [],
+  );
   const connectorMap = new Map(
     [...resolvedRelatedCatalogItems, ...resolvedAddDialogCatalogItems].map(
       (connector) => {
@@ -7831,7 +7856,7 @@ function ComposerConnectorsSlot({ signals }: { signals: ComposerSignals }) {
     agentRecordId,
     authorizationLoadable,
   );
-  const authorizedCustomConnectors = matchingAuthorizedCustomConnectorIds(
+  const customConnectorGrants = matchingCustomConnectorGrants(
     agentRecordId,
     authorizationLoadable,
   );
@@ -7840,7 +7865,7 @@ function ComposerConnectorsSlot({ signals }: { signals: ComposerSignals }) {
     relatedCatalogItemsLoadable.state !== "hasData" ||
     customConnectorsLoadable.state !== "hasData" ||
     authorizedConnectors === null ||
-    authorizedCustomConnectors === null;
+    customConnectorGrants === null;
 
   const {
     authorizedSet,
@@ -7855,7 +7880,7 @@ function ComposerConnectorsSlot({ signals }: { signals: ComposerSignals }) {
     addDialogCatalogItems: addDialogCatalogItemsLoadable,
     customConnectors: customConnectorsLoadable,
     authorizedConnectorSlugs: authorizedConnectors,
-    authorizedCustomConnectorIds: authorizedCustomConnectors,
+    customConnectorGrants,
     optimisticConnected,
     selectedCustomConnectorId,
   });
@@ -7996,10 +8021,20 @@ function ComposerConnectorsSlot({ signals }: { signals: ComposerSignals }) {
   };
 
   const handleCustomToggle = async (connectorId: string, checked: boolean) => {
+    const connector = agentCustomConnectors.find((candidate) => {
+      return candidate.id === connectorId;
+    });
+    if (checked && connector?.permissionBundleRef) {
+      return;
+    }
     updateConnectorUi({ savingCustomConnectorId: connectorId });
     await bestEffort(
       setConnectorAuthorization(
-        { kind: "custom", connectorId },
+        {
+          kind: "custom",
+          connectorId,
+          permissionBundleRef: connector?.permissionBundleRef ?? null,
+        },
         checked,
         pageSignal,
       ),

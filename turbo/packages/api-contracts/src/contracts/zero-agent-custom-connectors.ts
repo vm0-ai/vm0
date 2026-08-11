@@ -33,7 +33,7 @@ export type AgentCustomConnectorGrants = z.infer<
 
 export const agentCustomConnectorResponseSchema =
   agentCustomConnectorEnabledIdsSchema.extend({
-    grants: z.array(agentCustomConnectorGrantSchema).optional(),
+    grants: z.array(agentCustomConnectorGrantSchema),
   });
 export type AgentCustomConnectorResponse = z.infer<
   typeof agentCustomConnectorResponseSchema
@@ -81,7 +81,7 @@ export const zeroAgentCustomConnectorsContract = c.router({
       403: apiErrorSchema,
       404: apiErrorSchema,
     },
-    summary: "Get enabled custom connector ids for user on agent",
+    summary: "Get custom connector grants for user on agent",
   },
   update: {
     method: "PUT",
@@ -96,7 +96,7 @@ export const zeroAgentCustomConnectorsContract = c.router({
       403: apiErrorSchema,
       404: apiErrorSchema,
     },
-    summary: "Update enabled custom connector ids for user on agent",
+    summary: "Update custom connector grants for user on agent",
   },
 });
 export type ZeroAgentCustomConnectorsContract =

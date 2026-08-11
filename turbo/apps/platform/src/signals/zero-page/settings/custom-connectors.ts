@@ -110,10 +110,11 @@ export const customConnectorAuthorizedAgentsById$ = computed(
     const rows = await get(customConnectorAgentAuthorizations$);
     const agentsByConnectorId = new Map<string, TeamComposeItem[]>();
     for (const row of rows) {
-      for (const connectorId of row.access.enabledIds) {
-        const authorizedAgents = agentsByConnectorId.get(connectorId) ?? [];
+      for (const grant of row.access.grants) {
+        const authorizedAgents =
+          agentsByConnectorId.get(grant.customConnectorId) ?? [];
         authorizedAgents.push(row.agent);
-        agentsByConnectorId.set(connectorId, authorizedAgents);
+        agentsByConnectorId.set(grant.customConnectorId, authorizedAgents);
       }
     }
     return agentsByConnectorId;
@@ -132,17 +133,26 @@ export const setCustomConnectorAgentAuthorization$ = command(
     args: {
       readonly agentId: string;
       readonly connectorId: string;
+      readonly permissionBundleRef: string | null;
       readonly authorized: boolean;
     },
     signal: AbortSignal,
-  ): Promise<void> => {
+  ): Promise<boolean> => {
+    if (args.authorized && args.permissionBundleRef) {
+      return false;
+    }
     const client = get(zeroClient$)(zeroAgentCustomConnectorsContract);
     await withCleanup(
       accept(
         client.update({
           params: { id: args.agentId },
           body: {
-            enabledIds: [args.connectorId],
+            grants: [
+              {
+                customConnectorId: args.connectorId,
+                permissionNames: [],
+              },
+            ],
             operation: args.authorized ? "add" : "remove",
           },
           fetchOptions: { signal },
@@ -154,6 +164,7 @@ export const setCustomConnectorAgentAuthorization$ = command(
       },
     );
     signal.throwIfAborted();
+    return true;
   },
 );
 
@@ -209,7 +220,15 @@ const authorizeCustomConnectorForTarget$ = command(
           await accept(
             client.update({
               params: { id: agentId },
-              body: { enabledIds: [args.connectorId], operation: "add" },
+              body: {
+                grants: [
+                  {
+                    customConnectorId: args.connectorId,
+                    permissionNames: [],
+                  },
+                ],
+                operation: "add",
+              },
               fetchOptions: { signal },
             }),
             args.target.kind === "agent" ? [200] : [200, 404],
@@ -224,18 +243,15 @@ const authorizeCustomConnectorForTarget$ = command(
   },
 );
 
-const shouldWriteLegacyAuthorizationAfterConnection$ = command(
+const isCustomConnectorAuthorizedForTarget$ = command(
   async (
     { get },
     args: {
-      readonly connector: CustomConnectorClientResponse;
+      readonly connectorId: string;
       readonly target: CustomConnectorAuthorizationTarget;
     },
     signal: AbortSignal,
   ): Promise<boolean> => {
-    if (!args.connector.permissionBundleRef) {
-      return true;
-    }
     if (args.target.kind === "visible-agents") {
       return false;
     }
@@ -244,13 +260,18 @@ const shouldWriteLegacyAuthorizationAfterConnection$ = command(
       customConnectorAuthorizedAgentsById$,
     );
     signal.throwIfAborted();
-    return !(authorizedAgentsByConnectorId.get(args.connector.id) ?? []).some(
+    return (authorizedAgentsByConnectorId.get(args.connectorId) ?? []).some(
       (agent) => {
         return agent.id === agentId;
       },
     );
   },
 );
+
+interface CustomConnectorConnectionResult {
+  readonly connected: boolean;
+  readonly targetAuthorized: boolean;
+}
 
 export const createCustomConnector$ = command(
   async (
@@ -344,7 +365,7 @@ const setCustomConnectorValuesForTarget$ = command(
       readonly authorizationTarget: CustomConnectorAuthorizationTarget;
     },
     signal: AbortSignal,
-  ): Promise<boolean> => {
+  ): Promise<CustomConnectorConnectionResult> => {
     const createClient = get(zeroClient$);
     const client = createClient(zeroCustomConnectorValuesContract);
     const result = await accept(
@@ -359,23 +380,25 @@ const setCustomConnectorValuesForTarget$ = command(
     const connector = customConnectorClientResponseSchema.parse(result.body);
     set(bumpReload$);
     if (!connector.connected) {
-      return false;
+      return { connected: false, targetAuthorized: false };
     }
-    const writeLegacyAuthorization = await set(
-      shouldWriteLegacyAuthorizationAfterConnection$,
-      { connector, target: args.authorizationTarget },
-      signal,
-    );
-    signal.throwIfAborted();
-    if (writeLegacyAuthorization) {
+    let targetAuthorized: boolean;
+    if (connector.permissionBundleRef) {
+      targetAuthorized = await set(
+        isCustomConnectorAuthorizedForTarget$,
+        { connectorId: connector.id, target: args.authorizationTarget },
+        signal,
+      );
+    } else {
       await set(
         authorizeCustomConnectorForTarget$,
         {
-          connectorId: args.id,
+          connectorId: connector.id,
           target: args.authorizationTarget,
         },
         signal,
       );
+      targetAuthorized = true;
     }
     signal.throwIfAborted();
     toast.success(
@@ -383,7 +406,7 @@ const setCustomConnectorValuesForTarget$ = command(
         return $.connectors.custom.toasts.connected;
       }),
     );
-    return true;
+    return { connected: true, targetAuthorized };
   },
 );
 
@@ -395,7 +418,7 @@ export const setCustomConnectorValues$ = command(
       readonly values: readonly CustomConnectorValueInput[];
     },
     signal: AbortSignal,
-  ): Promise<boolean> => {
+  ): Promise<CustomConnectorConnectionResult> => {
     return await set(
       setCustomConnectorValuesForTarget$,
       {
@@ -416,7 +439,7 @@ export const setCustomConnectorValuesForAgent$ = command(
       readonly agentId: string;
     },
     signal: AbortSignal,
-  ): Promise<boolean> => {
+  ): Promise<CustomConnectorConnectionResult> => {
     return await set(
       setCustomConnectorValuesForTarget$,
       {
@@ -458,7 +481,7 @@ const connectCustomConnectorOAuth2ForTarget$ = command(
       readonly authorizationTarget: CustomConnectorAuthorizationTarget;
     },
     signal: AbortSignal,
-  ): Promise<boolean> => {
+  ): Promise<CustomConnectorConnectionResult> => {
     const authWindow = window.open(
       "about:blank",
       "_blank",
@@ -469,8 +492,25 @@ const connectCustomConnectorOAuth2ForTarget$ = command(
     }
     authWindow.opener = null;
     let navigated = false;
-    await withCleanup(
+    const targetAlreadyAuthorized = await withCleanup(
       (async () => {
+        const connectorBeforeConnection = (await get(customConnectors$)).find(
+          (candidate) => {
+            return candidate.id === args.id;
+          },
+        );
+        signal.throwIfAborted();
+        const authorized = connectorBeforeConnection?.permissionBundleRef
+          ? await set(
+              isCustomConnectorAuthorizedForTarget$,
+              {
+                connectorId: connectorBeforeConnection.id,
+                target: args.authorizationTarget,
+              },
+              signal,
+            )
+          : false;
+        signal.throwIfAborted();
         const createClient = get(zeroClient$);
         const client = createClient(zeroCustomConnectorOAuth2Contract, {
           apiBase: "api",
@@ -486,6 +526,7 @@ const connectCustomConnectorOAuth2ForTarget$ = command(
         signal.throwIfAborted();
         authWindow.location.href = result.body.authorizationUrl;
         navigated = true;
+        return authorized;
       })(),
       () => {
         if (!navigated) {
@@ -508,15 +549,7 @@ const connectCustomConnectorOAuth2ForTarget$ = command(
     const connector = connectors.find((candidate) => {
       return candidate.id === args.id;
     });
-    const writeLegacyAuthorization = connector
-      ? await set(
-          shouldWriteLegacyAuthorizationAfterConnection$,
-          { connector, target: args.authorizationTarget },
-          signal,
-        )
-      : false;
-    signal.throwIfAborted();
-    if (connector?.connected && writeLegacyAuthorization) {
+    if (connector?.connected && !connector.permissionBundleRef) {
       await set(
         authorizeCustomConnectorForTarget$,
         {
@@ -526,12 +559,21 @@ const connectCustomConnectorOAuth2ForTarget$ = command(
         signal,
       );
     }
-    return connector?.connected ?? false;
+    return {
+      connected: connector?.connected ?? false,
+      targetAuthorized:
+        connector?.connected === true &&
+        (!connector.permissionBundleRef || targetAlreadyAuthorized),
+    };
   },
 );
 
 export const connectCustomConnectorOAuth2$ = command(
-  async ({ set }, id: string, signal: AbortSignal): Promise<boolean> => {
+  async (
+    { set },
+    id: string,
+    signal: AbortSignal,
+  ): Promise<CustomConnectorConnectionResult> => {
     return await set(
       connectCustomConnectorOAuth2ForTarget$,
       {
@@ -548,7 +590,7 @@ export const connectCustomConnectorOAuth2ForAgent$ = command(
     { set },
     args: { readonly id: string; readonly agentId: string },
     signal: AbortSignal,
-  ): Promise<boolean> => {
+  ): Promise<CustomConnectorConnectionResult> => {
     return await set(
       connectCustomConnectorOAuth2ForTarget$,
       {

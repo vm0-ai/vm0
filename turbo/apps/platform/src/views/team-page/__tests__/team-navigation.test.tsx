@@ -15,6 +15,7 @@ import {
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import {
   zeroAgentCustomConnectorsContract,
+  type AgentCustomConnectorGrant,
   type AgentCustomConnectorUpdate,
 } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 import {
@@ -85,24 +86,41 @@ function applyUserConnectorUpdate(
 }
 
 function applyCustomConnectorUpdate(
-  current: readonly string[],
+  current: readonly AgentCustomConnectorGrant[],
   body: AgentCustomConnectorUpdate,
-): string[] {
-  const enabledIds =
-    "enabledIds" in body
-      ? body.enabledIds
-      : body.grants.map((grant) => {
-          return grant.customConnectorId;
+): AgentCustomConnectorGrant[] {
+  const requested =
+    "grants" in body
+      ? body.grants
+      : body.enabledIds.map((customConnectorId) => {
+          return (
+            current.find((grant) => {
+              return grant.customConnectorId === customConnectorId;
+            }) ?? { customConnectorId, permissionNames: [] }
+          );
         });
   if (body.operation === "add") {
-    return Array.from(new Set([...current, ...enabledIds]));
+    const byConnectorId = new Map(
+      current.map((grant) => {
+        return [grant.customConnectorId, grant] as const;
+      }),
+    );
+    for (const grant of requested) {
+      byConnectorId.set(grant.customConnectorId, grant);
+    }
+    return [...byConnectorId.values()];
   }
   if (body.operation === "remove") {
-    return current.filter((id) => {
-      return !enabledIds.includes(id);
+    const removedIds = new Set(
+      requested.map((grant) => {
+        return grant.customConnectorId;
+      }),
+    );
+    return current.filter((grant) => {
+      return !removedIds.has(grant.customConnectorId);
     });
   }
-  return [...enabledIds];
+  return [...requested];
 }
 
 function createAgent(id: string, displayName: string): TeamComposeItem {
@@ -390,7 +408,10 @@ function mockTeamAPIs({
     createConnector("slack", "ops"),
   ]);
   const enabledConnectorSlugsByAgent = new Map<string, string[]>();
-  const enabledCustomConnectorIdsByAgent = new Map<string, string[]>();
+  const customConnectorGrantsByAgent = new Map<
+    string,
+    AgentCustomConnectorGrant[]
+  >();
   context.mocks.api(zeroUserConnectorsContract.get, ({ params, respond }) => {
     return respond(200, {
       enabledConnectorSlugs: enabledConnectorSlugsByAgent.get(params.id) ?? [],
@@ -413,8 +434,12 @@ function mockTeamAPIs({
   context.mocks.api(
     zeroAgentCustomConnectorsContract.get,
     ({ params, respond }) => {
+      const grants = customConnectorGrantsByAgent.get(params.id) ?? [];
       return respond(200, {
-        enabledIds: enabledCustomConnectorIdsByAgent.get(params.id) ?? [],
+        enabledIds: grants.map((grant) => {
+          return grant.customConnectorId;
+        }),
+        grants,
       });
     },
   );
@@ -422,15 +447,17 @@ function mockTeamAPIs({
     zeroAgentCustomConnectorsContract.update,
     ({ body, params, respond }) => {
       onCustomConnectorUpdate?.();
-      const enabledCustomConnectorIds = applyCustomConnectorUpdate(
-        enabledCustomConnectorIdsByAgent.get(params.id) ?? [],
+      const grants = applyCustomConnectorUpdate(
+        customConnectorGrantsByAgent.get(params.id) ?? [],
         body,
       );
-      enabledCustomConnectorIdsByAgent.set(
-        params.id,
-        enabledCustomConnectorIds,
-      );
-      return respond(200, { enabledIds: enabledCustomConnectorIds });
+      customConnectorGrantsByAgent.set(params.id, grants);
+      return respond(200, {
+        enabledIds: grants.map((grant) => {
+          return grant.customConnectorId;
+        }),
+        grants,
+      });
     },
   );
   context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {

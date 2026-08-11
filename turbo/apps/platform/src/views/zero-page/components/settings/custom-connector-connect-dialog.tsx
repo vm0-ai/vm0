@@ -32,6 +32,11 @@ import { sanitizeTokenInputRecord } from "../../../../signals/zero-page/settings
 import { detach, Reason } from "../../../../signals/utils.ts";
 import { CustomConnectorIcon } from "./custom-connector-icon.tsx";
 
+interface CustomConnectorConnectionSubmission {
+  readonly connected: boolean;
+  readonly targetAuthorized: boolean;
+}
+
 function formValue(
   values: Readonly<Record<string, string>>,
   key: string,
@@ -153,7 +158,7 @@ function useCustomConnectorConnectionSubmitters(agentId: string | undefined) {
       readonly values: readonly CustomConnectorValueInput[];
     },
     signal: AbortSignal,
-  ): Promise<boolean> => {
+  ): Promise<CustomConnectorConnectionSubmission> => {
     if (agentId) {
       return await submitAgentValues({ ...args, agentId }, signal);
     }
@@ -162,7 +167,7 @@ function useCustomConnectorConnectionSubmitters(agentId: string | undefined) {
   const submitOAuth = async (
     connectorId: string,
     signal: AbortSignal,
-  ): Promise<boolean> => {
+  ): Promise<CustomConnectorConnectionSubmission> => {
     if (agentId) {
       return await submitAgentOAuth2({ id: connectorId, agentId }, signal);
     }
@@ -280,13 +285,15 @@ export function CustomConnectorConnectDialog({
     }
     detach(
       (async () => {
-        const connected = oauth
+        const result = oauth
           ? await submitOAuth(connector.id, signal)
           : await submitDeclaredValues({ id: connector.id, values }, signal);
-        if (!connected) {
+        if (!result.connected) {
           return;
         }
-        await onSuccess?.();
+        if (result.targetAuthorized) {
+          await onSuccess?.();
+        }
         close();
       })(),
       Reason.DomCallback,
