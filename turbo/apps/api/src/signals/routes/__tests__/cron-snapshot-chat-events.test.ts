@@ -23,6 +23,7 @@ import {
   type RecordedChatEventPut,
 } from "./helpers/fake-chat-event-r2";
 import {
+  advanceChatEventSequenceAsPreviousApi,
   readChatEventSnapshotHead,
   setChatEventSnapshotHeadVersion,
 } from "./helpers/runtime-state";
@@ -128,6 +129,7 @@ function archivedLines(body: Buffer): readonly ArchivedLine[] {
 function expectArchiveInvariants(
   put: RecordedPut,
   threadId: string,
+  lastPhysicalSeqId?: number,
 ): readonly ArchivedLine[] {
   const match = OBJECT_KEY_PATTERN.exec(put.key);
   expect(match?.[1]).toBe(threadId);
@@ -139,7 +141,7 @@ function expectArchiveInvariants(
   const lines = archivedLines(put.body);
   expect(lines.length).toBeGreaterThan(0);
   const lastLine = lines[lines.length - 1];
-  expect(String(lastLine?.seqId)).toBe(match?.[2]);
+  expect(lastLine?.seqId).toBe(lastPhysicalSeqId ?? Number(match?.[2]));
   for (const [index, line] of lines.entries()) {
     expect(Object.keys(line).sort()).toStrictEqual(ARCHIVE_V4_KEYS);
     expect(line.chatThreadId).toBe(threadId);
@@ -251,6 +253,54 @@ describe("cron snapshot chat events", () => {
 
     await runSnapshotCron();
     expect(putsForThread(threadId)).toHaveLength(2);
+  }, 60_000);
+
+  it("publishes sparse indexed coverage and tails later rows", async () => {
+    const owner = bdd.user({ orgId: `org_${randomUUID()}` });
+    const agent = await bdd.createAgent(owner, {
+      displayName: "Sparse snapshot agent",
+    });
+    const threadId = await sendNoCreditMessage(owner, {
+      agentId: agent.agentId,
+      prompt: `sparse-snapshot-${randomUUID()}`,
+    });
+    const initialRows = await chat.listThreadEventRows(owner, threadId);
+    const lastPhysicalRow = initialRows.at(-1);
+    if (lastPhysicalRow === undefined) {
+      throw new Error("Expected a physical chat event before the sparse tail");
+    }
+    const coveredSeqId = lastPhysicalRow.seqId + 1;
+
+    await advanceChatEventSequenceAsPreviousApi(context, threadId, 1);
+    await projectChatEventSearch();
+    const result = await runSnapshotCron();
+    expect(result.success).toBeTruthy();
+
+    const put = putsForThread(threadId)[0];
+    if (put === undefined) {
+      throw new Error("Expected a sparse-coverage snapshot object");
+    }
+    expectArchiveInvariants(put, threadId, lastPhysicalRow.seqId);
+    expect(OBJECT_KEY_PATTERN.exec(put.key)?.[2]).toBe(coveredSeqId.toString());
+    const head = await readChatEventSnapshotHead(context, threadId);
+    expect(head.last_seq_id).toBe(coveredSeqId);
+
+    await sendNoCreditMessage(owner, {
+      agentId: agent.agentId,
+      threadId,
+      prompt: `sparse-snapshot-tail-${randomUUID()}`,
+    });
+    const tail = await chat.listThreadEventRows(owner, threadId, coveredSeqId);
+    expect(tail.length).toBeGreaterThan(0);
+    expect(
+      tail.map((row) => {
+        return row.seqId;
+      }),
+    ).toStrictEqual(
+      tail.map((_, index) => {
+        return coveredSeqId + index + 1;
+      }),
+    );
   }, 60_000);
 
   it("rebuilds an idle retained v3 head and reports convergence", async () => {

@@ -3544,7 +3544,7 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
     ).toBeFalsy();
   }, 30_000);
 
-  it("keeps repeated at-least-once event batches idempotent", async () => {
+  it("reclaims only unused suffixes from repeated event batches", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     const run = await startChatRun(actor, {
       agentId,
@@ -3552,41 +3552,106 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
     });
     const sandboxHeaders = await claimChatRun(runnerGroup, run.runId);
 
-    for (let attempt = 0; attempt < 2; attempt += 1) {
-      await webhooks.requestAgentEvents(
-        {
-          runId: run.runId,
-          events: [
-            {
-              type: "assistant",
-              sequenceNumber: 0,
-              message: {
-                id: "msg_repeated_event_batch",
-                content: [{ type: "text", text: "Store this output once." }],
-              },
+    const sequenceOne = {
+      type: "assistant" as const,
+      sequenceNumber: 1,
+      message: {
+        id: "msg_repeated_event_batch_1",
+        content: [{ type: "text" as const, text: "Stored sequence one." }],
+      },
+    };
+    const sequenceZero = {
+      type: "assistant" as const,
+      sequenceNumber: 0,
+      message: {
+        id: "msg_repeated_event_batch_0",
+        content: [{ type: "text" as const, text: "Stored sequence zero." }],
+      },
+    };
+    await webhooks.requestAgentEvents(
+      { runId: run.runId, events: [sequenceOne] },
+      sandboxHeaders,
+      [200],
+    );
+    // The existing sequence-one row is the rejected suffix of this batch.
+    await webhooks.requestAgentEvents(
+      { runId: run.runId, events: [sequenceZero, sequenceOne] },
+      sandboxHeaders,
+      [200],
+    );
+    // A fully repeated batch releases its entire reservation.
+    await webhooks.requestAgentEvents(
+      { runId: run.runId, events: [sequenceZero] },
+      sandboxHeaders,
+      [200],
+    );
+    // This time the rejected sequence-one row is an interior gap before a
+    // newly accepted row and must not cause the accepted row to be renumbered.
+    await webhooks.requestAgentEvents(
+      {
+        runId: run.runId,
+        events: [
+          sequenceOne,
+          {
+            type: "assistant",
+            sequenceNumber: 2,
+            message: {
+              id: "msg_repeated_event_batch_2",
+              content: [
+                { type: "text", text: "Stored sequence two after a gap." },
+              ],
             },
-          ],
-        },
-        sandboxHeaders,
-        [200],
-      );
-    }
+          },
+        ],
+      },
+      sandboxHeaders,
+      [200],
+    );
+    await webhooks.requestAgentEvents(
+      {
+        runId: run.runId,
+        events: [
+          {
+            type: "assistant",
+            sequenceNumber: 3,
+            message: {
+              id: "msg_repeated_event_batch_3",
+              content: [{ type: "text", text: "Stored sequence three." }],
+            },
+          },
+        ],
+      },
+      sandboxHeaders,
+      [200],
+    );
     await flushWaitUntilForTest();
 
     const messages = await chat.listThreadEvents(actor, run.threadId);
-    expect(
+    const outputByRunSequence = new Map(
       eventBackedContents(messages.events, run.runId).map((message) => {
-        return {
-          content: message.content,
-          sequenceNumber: message.sequenceNumber,
-        };
+        return [message.sequenceNumber, message] as const;
       }),
-    ).toStrictEqual([
-      {
-        content: "Store this output once.",
-        sequenceNumber: 0,
-      },
-    ]);
+    );
+    expect(
+      [...outputByRunSequence.keys()].sort((left, right) => {
+        return (left ?? 0) - (right ?? 0);
+      }),
+    ).toStrictEqual([0, 1, 2, 3]);
+    const sequenceZeroRow = outputByRunSequence.get(0);
+    const sequenceOneRow = outputByRunSequence.get(1);
+    const sequenceTwoRow = outputByRunSequence.get(2);
+    const sequenceThreeRow = outputByRunSequence.get(3);
+    if (
+      sequenceZeroRow === undefined ||
+      sequenceOneRow === undefined ||
+      sequenceTwoRow === undefined ||
+      sequenceThreeRow === undefined
+    ) {
+      throw new Error("Expected every canonical repeated-batch output");
+    }
+    expect(sequenceZeroRow.seqId).toBe(sequenceOneRow.seqId + 1);
+    expect(sequenceTwoRow.seqId).toBe(sequenceZeroRow.seqId + 2);
+    expect(sequenceThreeRow.seqId).toBe(sequenceTwoRow.seqId + 1);
     expect(firstAssistantEventsForRun(run.runId)).toHaveLength(1);
   });
 
