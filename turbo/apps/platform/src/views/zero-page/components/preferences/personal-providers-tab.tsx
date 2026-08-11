@@ -1,6 +1,6 @@
 import { useGet, useLastLoadable, useLoadable, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
-import { Check, EllipsisVertical, Plus } from "lucide-react";
+import { EllipsisVertical, Plus } from "lucide-react";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
   Button,
@@ -9,6 +9,10 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
 } from "@vm0/ui";
 import type {
   ModelProviderResponse,
@@ -133,58 +137,60 @@ function OAuthAccountGroupsSection() {
   return (
     <section className="flex flex-col gap-4">
       <PersonalModelsHeading />
-      <div
-        className="overflow-hidden rounded-xl bg-card"
-        style={{ border: "0.7px solid hsl(var(--gray-400))" }}
-      >
-        {isLoading ? (
-          <>
-            <OAuthCredentialRowSkeleton />
-            <OAuthCredentialRowSkeleton />
-          </>
-        ) : (
-          PERSONAL_ACCOUNT_PROVIDER_TYPES.map((type) => {
-            return (
-              <OAuthAccountGroup
-                key={type}
-                type={type}
-                accounts={providers.filter((provider) => {
-                  return provider.type === type;
-                })}
-                actionPending={actionPending}
-                actionLabel={
-                  supportByok
-                    ? t(($) => {
-                        return $.settings.models.personal.addAccount;
-                      })
-                    : t(($) => {
-                        return $.settings.models.actions.upgradePro;
-                      })
-                }
-                onAdd={() => {
-                  openAccountAuth(type);
-                }}
-                onActivate={(id) => {
-                  detach(activateAccount(id, pageSignal), Reason.DomCallback);
-                }}
-                onReconnect={(id) => {
-                  openAccountAuth(type, id);
-                }}
-                onRemove={(id) => {
-                  detach(deleteAccount(id, pageSignal), Reason.DomCallback);
-                }}
-                onReset={(account) => {
-                  setResetDialog({
-                    open: true,
-                    resetCredits: account.subscriptionResetCredits ?? null,
-                    accountId: account.id,
-                  });
-                }}
-              />
-            );
-          })
-        )}
-      </div>
+      <TooltipProvider delayDuration={100}>
+        <div
+          className="overflow-hidden rounded-xl bg-card"
+          style={{ border: "0.7px solid hsl(var(--gray-400))" }}
+        >
+          {isLoading ? (
+            <>
+              <OAuthCredentialRowSkeleton />
+              <OAuthCredentialRowSkeleton />
+            </>
+          ) : (
+            PERSONAL_ACCOUNT_PROVIDER_TYPES.map((type) => {
+              return (
+                <OAuthAccountGroup
+                  key={type}
+                  type={type}
+                  accounts={providers.filter((provider) => {
+                    return provider.type === type;
+                  })}
+                  actionPending={actionPending}
+                  actionLabel={
+                    supportByok
+                      ? t(($) => {
+                          return $.settings.models.personal.addAccount;
+                        })
+                      : t(($) => {
+                          return $.settings.models.actions.upgradePro;
+                        })
+                  }
+                  onAdd={() => {
+                    openAccountAuth(type);
+                  }}
+                  onActivate={(id) => {
+                    detach(activateAccount(id, pageSignal), Reason.DomCallback);
+                  }}
+                  onReconnect={(id) => {
+                    openAccountAuth(type, id);
+                  }}
+                  onRemove={(id) => {
+                    detach(deleteAccount(id, pageSignal), Reason.DomCallback);
+                  }}
+                  onReset={(account) => {
+                    setResetDialog({
+                      open: true,
+                      resetCredits: account.subscriptionResetCredits ?? null,
+                      accountId: account.id,
+                    });
+                  }}
+                />
+              );
+            })
+          )}
+        </div>
+      </TooltipProvider>
       <CodexResetDialogController
         actionPending={actionPending}
         mode="account"
@@ -264,7 +270,11 @@ function OAuthAccountGroup({
           })}
         </p>
       ) : (
-        <div className="border-t border-border/50">
+        <div
+          className="border-t border-border/50"
+          role="radiogroup"
+          aria-label={title}
+        >
           {accounts.map((account, index) => {
             return (
               <OAuthAccountRow
@@ -327,12 +337,19 @@ function OAuthAccountRow({
   return (
     <div
       data-testid={`oauth-account-${account.id}`}
-      className="px-5 py-3.5 [&:not(:first-child)]:border-t [&:not(:first-child)]:border-border/40"
+      className={`relative px-5 py-3.5 [&:not(:first-child)]:border-t [&:not(:first-child)]:border-border/40 ${account.isActive ? "bg-gray-50" : ""}`}
     >
+      {account.isActive ? (
+        <span
+          aria-hidden="true"
+          className="absolute inset-y-3 left-0 w-[3px] rounded-r-full bg-foreground"
+        />
+      ) : null}
       <div className="flex items-center gap-3">
         <button
           type="button"
-          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-border text-muted-foreground enabled:hover:border-foreground/40 enabled:hover:text-foreground disabled:cursor-default"
+          role="radio"
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-border text-muted-foreground outline-none transition-colors enabled:hover:border-foreground/40 enabled:hover:bg-state-hover enabled:hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default"
           aria-label={
             account.isActive
               ? t(($) => {
@@ -342,39 +359,48 @@ function OAuthAccountRow({
                   return $.settings.models.personal.useAccount;
                 })
           }
-          aria-pressed={account.isActive}
+          aria-checked={account.isActive}
           disabled={account.isActive || actionPending}
           onClick={onActivate}
         >
-          {account.isActive ? <Check size={14} /> : null}
-        </button>
-        <div className="min-w-0 flex-1">
-          <div className="flex min-w-0 items-center gap-2">
-            {plan ? (
-              <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
-                {plan}
-              </span>
-            ) : null}
-            <p className="min-w-0 truncate text-sm font-medium text-foreground">
-              {identity}
-            </p>
-            {account.isActive ? (
-              <span className="shrink-0 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
-                {t(($) => {
-                  return $.settings.models.personal.activeAccount;
-                })}
-              </span>
-            ) : null}
-          </div>
-          {account.needsReconnect || detail ? (
-            <p className="mt-0.5 truncate text-xs text-muted-foreground">
-              {account.needsReconnect
-                ? t(($) => {
-                    return $.settings.models.personal.status.stale;
-                  })
-                : detail}
-            </p>
+          {account.isActive ? (
+            <span className="h-2 w-2 rounded-full bg-foreground" />
           ) : null}
+        </button>
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          {plan ? (
+            <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
+              {plan}
+            </span>
+          ) : null}
+          {detail ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span
+                  tabIndex={0}
+                  className="min-w-0 truncate rounded-md px-1 py-0.5 -mx-1 -my-0.5 text-sm font-medium text-foreground outline-none transition-colors hover:bg-state-hover focus-visible:bg-state-hover"
+                >
+                  {identity}
+                </span>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" align="start" sideOffset={8}>
+                {detail}
+              </TooltipContent>
+            </Tooltip>
+          ) : (
+            <span className="min-w-0 truncate text-sm font-medium text-foreground">
+              {identity}
+            </span>
+          )}
+          {account.needsReconnect ? (
+            <span className="shrink-0 rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-600 dark:text-amber-400">
+              {t(($) => {
+                return $.settings.models.personal.status.stale;
+              })}
+            </span>
+          ) : (
+            <SubscriptionUsageRings identity={identity} usage={usage} />
+          )}
         </div>
         <OAuthAccountMenu
           account={account}
@@ -384,11 +410,6 @@ function OAuthAccountRow({
           onReset={onReset}
         />
       </div>
-      {!account.needsReconnect && usageWindows(usage).length > 0 ? (
-        <div className="mt-3 pl-10">
-          <SubscriptionUsageMeter usage={usage} />
-        </div>
-      ) : null}
     </div>
   );
 }
@@ -879,12 +900,16 @@ function usageWindows(usage: SubscriptionUsage | null | undefined): readonly {
 
 function usageTone(remainingPercent: number | null): {
   readonly barClassName: string;
+  readonly ringClassName: string;
+  readonly ringTrackClassName: string;
   readonly textClassName: string;
   readonly trackClassName: string;
 } {
   if (remainingPercent !== null && remainingPercent < 20) {
     return {
       barClassName: "bg-red-500",
+      ringClassName: "stroke-red-500",
+      ringTrackClassName: "stroke-red-500/15",
       textClassName: "text-red-600 dark:text-red-400",
       trackClassName: "bg-red-500/15",
     };
@@ -892,15 +917,187 @@ function usageTone(remainingPercent: number | null): {
   if (remainingPercent !== null && remainingPercent < 50) {
     return {
       barClassName: "bg-amber-500",
+      ringClassName: "stroke-amber-500",
+      ringTrackClassName: "stroke-amber-500/15",
       textClassName: "text-amber-600 dark:text-amber-400",
       trackClassName: "bg-amber-500/15",
     };
   }
   return {
     barClassName: "bg-emerald-500",
+    ringClassName: "stroke-emerald-500",
+    ringTrackClassName: "stroke-emerald-500/15",
     textClassName: "text-emerald-600 dark:text-emerald-400",
     trackClassName: "bg-emerald-500/15",
   };
+}
+
+function SubscriptionUsageRings({
+  identity,
+  usage,
+}: {
+  readonly identity: string;
+  readonly usage: SubscriptionUsage | null | undefined;
+}) {
+  const windows = usageWindows(usage);
+
+  if (windows.length === 0) {
+    return null;
+  }
+
+  return (
+    <span className="flex shrink-0 items-center gap-1.5">
+      {windows.map(({ kind, window }) => {
+        return (
+          <SubscriptionUsageRing
+            key={kind}
+            identity={identity}
+            kind={kind}
+            window={window}
+          />
+        );
+      })}
+    </span>
+  );
+}
+
+function SubscriptionUsageRing({
+  identity,
+  kind,
+  window,
+}: {
+  readonly identity: string;
+  readonly kind: "fiveHour" | "week";
+  readonly window: SubscriptionUsageWindow;
+}) {
+  const { t } = useTranslation();
+  const windowLabel =
+    kind === "week"
+      ? t(($) => {
+          return $.settings.models.personal.status.week;
+        })
+      : t(($) => {
+          return $.settings.models.personal.status.fiveHour;
+        });
+  const shortWindowLabel =
+    kind === "week" ? windowLabel.charAt(0) : windowLabel;
+  const remainingPercent =
+    window.remainingPercent ??
+    (window.usedPercent === null ? null : 100 - window.usedPercent);
+  const displayPercent = formatUsagePercent(remainingPercent);
+  const progress =
+    remainingPercent === null
+      ? 0
+      : Math.min(100, Math.max(0, remainingPercent));
+  const reset = formatSubscriptionUsageReset(window.resetAt);
+  const tone = usageTone(remainingPercent);
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span
+          tabIndex={0}
+          role="progressbar"
+          aria-label={t(
+            ($) => {
+              return $.settings.accountMenu.subscriptions.usageRemaining;
+            },
+            { provider: identity, window: windowLabel },
+          )}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={remainingPercent ?? undefined}
+          className="relative flex h-7 w-7 shrink-0 cursor-default items-center justify-center rounded-full outline-none transition-colors hover:bg-state-hover focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          <svg
+            aria-hidden="true"
+            viewBox="0 0 28 28"
+            className="h-7 w-7 -rotate-90"
+          >
+            <circle
+              cx="14"
+              cy="14"
+              r="11"
+              fill="none"
+              strokeWidth="3"
+              className={tone.ringTrackClassName}
+            />
+            <circle
+              cx="14"
+              cy="14"
+              r="11"
+              fill="none"
+              pathLength="100"
+              strokeDasharray="100"
+              strokeDashoffset={100 - progress}
+              strokeLinecap="round"
+              strokeWidth="3"
+              className={`${tone.ringClassName} transition-[stroke-dashoffset]`}
+            />
+          </svg>
+          <span className="absolute max-w-5 truncate text-[7px] font-semibold leading-none text-muted-foreground">
+            {shortWindowLabel}
+          </span>
+        </span>
+      </TooltipTrigger>
+      <TooltipContent
+        side="bottom"
+        sideOffset={8}
+        style={{
+          backgroundColor: "hsl(var(--popover))",
+          color: "hsl(var(--popover-foreground))",
+        }}
+        className="min-w-48 border shadow-md"
+      >
+        <div className="flex items-center justify-between gap-4">
+          <span className="font-medium text-foreground">{windowLabel}</span>
+          <span className={`font-medium ${tone.textClassName}`}>
+            {displayPercent
+              ? t(
+                  ($) => {
+                    return $.settings.models.personal.status.left;
+                  },
+                  { percent: displayPercent },
+                )
+              : "--"}
+          </span>
+        </div>
+        <SubscriptionUsageResetTooltip reset={reset} />
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
+function SubscriptionUsageResetTooltip({
+  reset,
+}: {
+  readonly reset: ReturnType<typeof formatSubscriptionUsageReset>;
+}) {
+  const { t } = useTranslation();
+  if (reset === null) {
+    return (
+      <p className="mt-1 text-[10px] text-muted-foreground">
+        {t(($) => {
+          return $.settings.accountMenu.subscriptions.resetTimeUnavailable;
+        })}
+      </p>
+    );
+  }
+  if ("fallbackText" in reset) {
+    return (
+      <p className="mt-1 text-[10px] text-muted-foreground">
+        {reset.fallbackText}
+      </p>
+    );
+  }
+  return (
+    <div className="mt-1 space-y-0.5">
+      <p className="text-xs font-medium text-foreground">
+        {reset.tooltipTitle}
+      </p>
+      <p className="text-[10px] text-muted-foreground">{reset.absoluteText}</p>
+    </div>
+  );
 }
 
 function SubscriptionUsageMeter({
