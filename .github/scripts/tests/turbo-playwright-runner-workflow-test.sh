@@ -36,9 +36,15 @@ if grep -R -Fq '/api/test/' "$RUNNER_TESTS" "${RUNNER_HELPERS[@]}"; then
   fail "runner E2E coverage must use supported public APIs"
 fi
 grep -Fq 'startVideoOnboardingCheckout' "$RUNNER_TOKEN" ||
-  fail "runner Claude account must upgrade through public paid onboarding"
+  fail "real runner accounts must upgrade through public paid onboarding"
 grep -Fq 'fillStripeCheckout' "$RUNNER_TOKEN" ||
-  fail "runner Claude account must complete the public Stripe checkout"
+  fail "real runner accounts must complete the public Stripe checkout"
+if [[ "$(grep -Fc 'upgradeToPro: true' "$RUNNER_TOKEN")" -ne 2 ]]; then
+  fail "real Codex and Claude runner accounts must both upgrade to Pro"
+fi
+if [[ "$(grep -Fc 'upgradeToPro: false' "$RUNNER_TOKEN")" -ne 1 ]]; then
+  fail "the mock runner account must remain on limited-free"
+fi
 
 ruby -ryaml - "$WORKFLOW" <<'RUBY'
 workflow = YAML.load_file(ARGV.fetch(0))

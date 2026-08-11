@@ -46,7 +46,7 @@ async function main(): Promise<void> {
       organizationId: requiredEnvironmentVariable(
         "E2E_RUNNER_CODEX_ORGANIZATION_ID",
       ),
-      upgradeToPro: false,
+      upgradeToPro: true,
     },
     {
       email: accounts.claude,
