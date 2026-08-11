@@ -926,7 +926,6 @@ test("[PREF-01][CONNECTOR-01] refreshes connector values and secrets with redact
     [200],
   );
 
-  const gate = `secret-refresh-${randomUUID()}`;
   const outputMarker = `CONNECTOR_REFRESH_OK_${Date.now()}`;
   const run = await sendChatRun({
     account,
@@ -937,8 +936,7 @@ test("[PREF-01][CONNECTOR-01] refreshes connector values and secrets with redact
         type: "text",
         text: shellCommandPrompt(
           [
-            `curl -fsS '${simulatorUrl}/tenant/alpha/gate?gate=${gate}' >/tmp/gate.json`,
-            `curl -fsS '${simulatorUrl}/tenant/beta/echo' >/tmp/echo.json`,
+            `curl -fsS '${simulatorUrl}/tenant/alpha/echo' >/tmp/first.json`,
             `printf 'TZ=%s\\n${outputMarker}\\n' \"$TZ\"`,
           ].join(" && "),
         ),
@@ -954,12 +952,26 @@ test("[PREF-01][CONNECTOR-01] refreshes connector values and secrets with redact
     `run firewalls must include the resolved connector host ${simulatorHost}`,
   ).toContain(simulatorHost);
   const firstRequest = await control.waitForEvent(
-    (event) => event.path === "/tenant/alpha/gate",
+    (event) => event.path === "/tenant/alpha/echo",
     "the first dynamic connector request",
   );
   expect(firstRequest.headers["x-runner-secret"]).toBe(firstSecret);
   expect(firstRequest.query.api_key).toBe(firstSecret);
+  await waitForTerminalRun(run, "completed");
+  const output = await waitForThreadOutput(run, outputMarker);
+  expect(output).toContain("TZ=Asia/Tokyo");
+  expect(output).not.toContain(firstSecret);
+  const context = await readRunContext(run);
+  const environment = requireStringRecord(
+    context.environment,
+    "connector run context.environment",
+  );
+  expect(environment.TZ).toBe("Asia/Tokyo");
+  expect(JSON.stringify(context)).not.toContain(firstSecret);
 
+  // Secret rotation propagates to the next run's egress; a fresh thread
+  // gets a fresh sandbox, so the refreshed value is picked up
+  // deterministically instead of racing the in-run auth cache.
   await account.api.put(
     `/api/zero/custom-connectors/${connector.id}/values`,
     {
@@ -970,26 +982,38 @@ test("[PREF-01][CONNECTOR-01] refreshes connector values and secrets with redact
     },
     [200],
   );
-  await control.releaseGate(gate);
-  await waitForTerminalRun(run, "completed");
-  const output = await waitForThreadOutput(run, outputMarker);
-  expect(output).toContain("TZ=Asia/Tokyo");
-  expect(output).not.toContain(firstSecret);
-  expect(output).not.toContain(secondSecret);
+  const refreshedMarker = `CONNECTOR_ROTATED_OK_${Date.now()}`;
+  const refreshedRun = await sendChatRun({
+    account,
+    agentId: currentAgentId,
+    model: CLAUDE_MODEL,
+    parts: [
+      {
+        type: "text",
+        text: shellCommandPrompt(
+          [
+            `curl -fsS '${simulatorUrl}/tenant/beta/echo' >/tmp/second.json`,
+            `printf '${refreshedMarker}\\n'`,
+          ].join(" && "),
+        ),
+      },
+    ],
+  });
   const secondRequest = await control.waitForEvent(
     (event) => event.path === "/tenant/beta/echo",
     "the refreshed dynamic connector request",
   );
   expect(secondRequest.headers["x-runner-secret"]).toBe(secondSecret);
   expect(secondRequest.query.api_key).toBe(secondSecret);
-  const context = await readRunContext(run);
-  const environment = requireStringRecord(
-    context.environment,
-    "connector run context.environment",
+  await waitForTerminalRun(refreshedRun, "completed");
+  const refreshedOutput = await waitForThreadOutput(
+    refreshedRun,
+    refreshedMarker,
   );
-  expect(environment.TZ).toBe("Asia/Tokyo");
-  expect(JSON.stringify(context)).not.toContain(firstSecret);
-  expect(JSON.stringify(context)).not.toContain(secondSecret);
+  expect(refreshedOutput).not.toContain(firstSecret);
+  expect(refreshedOutput).not.toContain(secondSecret);
+  const refreshedContext = await readRunContext(refreshedRun);
+  expect(JSON.stringify(refreshedContext)).not.toContain(secondSecret);
 
   const legacySecret = `legacy-${randomUUID()}`;
   const legacy = requireRecord(
