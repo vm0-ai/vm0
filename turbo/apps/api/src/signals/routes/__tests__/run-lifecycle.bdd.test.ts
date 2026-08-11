@@ -71,6 +71,7 @@ import { createComposesBddApi } from "./helpers/api-bdd-composes";
 import { createComputerUseBddApi } from "./helpers/api-bdd-computer-use";
 import {
   createConnectorBddApi,
+  manualHttpCustomConnectorCreateBody,
   mockCustomConnectorOAuth2Provider,
 } from "./helpers/api-bdd-connectors";
 import { createFirewallApi } from "./helpers/api-bdd-firewall";
@@ -8169,13 +8170,14 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     );
     await api.enableAgentConnectors(actor, agentId, ["figma"]);
 
-    const custom = await connectors.createCustomConnector(actor, {
-      slug: `_figma-override-${randomUUID().slice(0, 8)}`,
-      displayName: "Custom Figma",
-      prefixes: ["https://api.figma.com/"],
-      headerName: "Authorization",
-      headerTemplate: "Bearer {{secret}}",
-    });
+    const custom = await connectors.createCustomConnector(
+      actor,
+      manualHttpCustomConnectorCreateBody({
+        slug: `_figma-override-${randomUUID().slice(0, 8)}`,
+        displayName: "Custom Figma",
+        prefixTemplates: ["https://api.figma.com/"],
+      }),
+    );
     await connectors.setCustomConnectorSecret(
       actor,
       custom.id,
@@ -8235,13 +8237,14 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     );
     await api.enableAgentConnectors(actor, agentId, ["figma"]);
 
-    const custom = await connectors.createCustomConnector(actor, {
-      slug: `_figma-files-${randomUUID().slice(0, 8)}`,
-      displayName: "Custom Figma Files",
-      prefixes: ["https://api.figma.com/v1/files/"],
-      headerName: "Authorization",
-      headerTemplate: "Bearer {{secret}}",
-    });
+    const custom = await connectors.createCustomConnector(
+      actor,
+      manualHttpCustomConnectorCreateBody({
+        slug: `_figma-files-${randomUUID().slice(0, 8)}`,
+        displayName: "Custom Figma Files",
+        prefixTemplates: ["https://api.figma.com/v1/files/"],
+      }),
+    );
     await connectors.setCustomConnectorSecret(
       actor,
       custom.id,
@@ -8686,12 +8689,13 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       { key: "secret", kind: "secret", value: "mcp-runtime-token" },
     ]);
 
-    const http = await connectors.createCustomConnector(actor, {
-      displayName: "BDD HTTP Runtime Peer",
-      prefixes: ["https://http-runtime.example.test/api/"],
-      headerName: "Authorization",
-      headerTemplate: "Bearer {{secret}}",
-    });
+    const http = await connectors.createCustomConnector(
+      actor,
+      manualHttpCustomConnectorCreateBody({
+        displayName: "BDD HTTP Runtime Peer",
+        prefixTemplates: ["https://http-runtime.example.test/api/"],
+      }),
+    );
     await connectors.setCustomConnectorSecret(
       actor,
       http.id,
@@ -9758,13 +9762,14 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const { actor, agentId, runnerGroup } = await zeroBackedDirectRunActor();
 
     const allowedSlug = `_bdd-direct-internal-${randomUUID().slice(0, 8)}`;
-    const allowed = await connectors.createCustomConnector(actor, {
-      slug: allowedSlug,
-      displayName: "BDD Direct Internal API",
-      prefixes: ["https://*.direct.internal.example.com/api/"],
-      headerName: "Authorization",
-      headerTemplate: "Bearer {{secret}}",
-    });
+    const allowed = await connectors.createCustomConnector(
+      actor,
+      manualHttpCustomConnectorCreateBody({
+        slug: allowedSlug,
+        displayName: "BDD Direct Internal API",
+        prefixTemplates: ["https://*.direct.internal.example.com/api/"],
+      }),
+    );
     await connectors.setCustomConnectorSecret(
       actor,
       allowed.id,
@@ -9772,13 +9777,14 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     );
 
     const blockedSlug = `_bdd-direct-blocked-${randomUUID().slice(0, 8)}`;
-    const blocked = await connectors.createCustomConnector(actor, {
-      slug: blockedSlug,
-      displayName: "BDD Direct Blocked API",
-      prefixes: ["https://*.blocked.internal.example.com/api/"],
-      headerName: "Authorization",
-      headerTemplate: "Bearer {{secret}}",
-    });
+    const blocked = await connectors.createCustomConnector(
+      actor,
+      manualHttpCustomConnectorCreateBody({
+        slug: blockedSlug,
+        displayName: "BDD Direct Blocked API",
+        prefixTemplates: ["https://*.blocked.internal.example.com/api/"],
+      }),
+    );
     await connectors.setCustomConnectorSecret(
       actor,
       blocked.id,
@@ -10692,13 +10698,14 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
 
     // Built-in connector-owned vars must not leak into custom connector bases.
     const slug = `_bdd-vars-${randomUUID().slice(0, 8)}`;
-    const custom = await connectors.createCustomConnector(actor, {
-      slug,
-      displayName: "BDD Vars Custom",
-      prefixes: ["https://internal.example.com/api/"],
-      headerName: "Authorization",
-      headerTemplate: "Bearer {{secret}}",
-    });
+    const custom = await connectors.createCustomConnector(
+      actor,
+      manualHttpCustomConnectorCreateBody({
+        slug,
+        displayName: "BDD Vars Custom",
+        prefixTemplates: ["https://internal.example.com/api/"],
+      }),
+    );
     await connectors.setCustomConnectorSecret(actor, custom.id, "custom-bdd");
     await connectors.updateAgentCustomConnectors(actor, agentId, [custom.id]);
 
@@ -11792,13 +11799,14 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       permission: "chat:write",
       action: "allow",
     });
-    const customConnector = await connectors.createCustomConnector(actor, {
-      slug: `_bdd-context-${randomUUID().slice(0, 8)}`,
-      displayName: "BDD Context API",
-      prefixes: ["https://context.example.com/api/"],
-      headerName: "Authorization",
-      headerTemplate: "Bearer {{secret}}",
-    });
+    const customConnector = await connectors.createCustomConnector(
+      actor,
+      manualHttpCustomConnectorCreateBody({
+        slug: `_bdd-context-${randomUUID().slice(0, 8)}`,
+        displayName: "BDD Context API",
+        prefixTemplates: ["https://context.example.com/api/"],
+      }),
+    );
     await connectors.setCustomConnectorSecret(
       actor,
       customConnector.id,

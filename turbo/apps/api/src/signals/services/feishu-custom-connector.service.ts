@@ -186,9 +186,6 @@ function feishuCustomConnectorDisplayName(botName: string | null): string {
 function desiredConnectorDefinition(installation: FeishuConnectorInstallation) {
   return {
     displayName: feishuCustomConnectorDisplayName(installation.botName),
-    prefixes: [FEISHU_API_PREFIX],
-    headerName: FEISHU_AUTHORIZATION_HEADER,
-    headerTemplate: FEISHU_AUTHORIZATION_TEMPLATE,
     prefixTemplates: [FEISHU_API_PREFIX],
     fields: [],
     headerInjections: [

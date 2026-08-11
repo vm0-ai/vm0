@@ -111,6 +111,47 @@ interface AuthHeaders {
   readonly authorization?: string;
 }
 
+type HttpCreateCustomConnectorBody = Exclude<
+  CreateCustomConnectorBody,
+  { readonly kind: "mcp" }
+>;
+
+export function manualHttpCustomConnectorCreateBody(args: {
+  readonly displayName: string;
+  readonly prefixTemplates: readonly string[];
+  readonly slug?: string;
+  readonly permissionBundleRef?: HttpCreateCustomConnectorBody["permissionBundleRef"];
+  readonly skillMarkdown?: HttpCreateCustomConnectorBody["skillMarkdown"];
+}): HttpCreateCustomConnectorBody {
+  return {
+    displayName: args.displayName,
+    prefixTemplates: [...args.prefixTemplates],
+    fields: [
+      {
+        key: "secret",
+        label: "Secret",
+        kind: "secret",
+        required: true,
+        description: "API credential",
+      },
+    ],
+    headerInjections: [
+      {
+        name: "Authorization",
+        valueTemplate: "Bearer {{secrets.secret}}",
+      },
+    ],
+    queryInjections: [],
+    ...(args.slug === undefined ? {} : { slug: args.slug }),
+    ...(args.permissionBundleRef === undefined
+      ? {}
+      : { permissionBundleRef: args.permissionBundleRef }),
+    ...(args.skillMarkdown === undefined
+      ? {}
+      : { skillMarkdown: args.skillMarkdown }),
+  };
+}
+
 type CallbackQuery = {
   readonly code?: string;
   readonly state?: string;

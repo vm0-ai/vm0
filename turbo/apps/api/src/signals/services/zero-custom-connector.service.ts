@@ -385,25 +385,6 @@ function queryInjectionArray(
   });
 }
 
-function canonicalFieldsFromLegacy(): readonly CustomConnectorField[] {
-  return [
-    {
-      key: LEGACY_SECRET_KEY,
-      label: "Secret",
-      kind: "secret",
-      required: true,
-      description: "API credential",
-    },
-  ];
-}
-
-function canonicalHeaderTemplateFromLegacy(template: string): string {
-  return template.replaceAll(
-    LEGACY_SECRET_PLACEHOLDER,
-    `{{secrets.${LEGACY_SECRET_KEY}}}`,
-  );
-}
-
 function legacyHeaderTemplateFromCanonical(template: string): string {
   return template.replaceAll(
     `{{secrets.${LEGACY_SECRET_KEY}}}`,
@@ -816,7 +797,7 @@ export function serialiseCustomConnector(args: {
     } satisfies CustomConnectorMcpResponse;
   }
 
-  const legacy = legacyColumns(args.row);
+  const legacy = legacyResponseAliases(args.row);
 
   return {
     ...common,
@@ -1543,67 +1524,9 @@ async function validatePermissionBundleRef(
       );
 }
 
-type HttpCreateCustomConnectorBody = Exclude<
-  CreateCustomConnectorBody,
-  { readonly kind: "mcp" }
->;
-
-function definitionFromHttpCreateInput(
-  input: HttpCreateCustomConnectorBody,
-): HttpDefinitionInput | BadRequestResponse {
-  const usesCanonical =
-    input.prefixTemplates !== undefined ||
-    input.fields !== undefined ||
-    input.headerInjections !== undefined ||
-    input.queryInjections !== undefined ||
-    input.authMode !== undefined ||
-    input.oauthConfig !== undefined;
-  if (usesCanonical) {
-    return {
-      kind: "http",
-      displayName: input.displayName,
-      prefixTemplates: input.prefixTemplates ?? [],
-      fields: input.fields ?? [],
-      headerInjections: input.headerInjections ?? [],
-      queryInjections: input.queryInjections ?? [],
-      authMode: input.authMode,
-      permissionBundleRef: input.permissionBundleRef ?? null,
-      skillMarkdown: input.skillMarkdown ?? null,
-      slug: input.slug,
-    };
-  }
-  if (!input.prefixes || !input.headerName || !input.headerTemplate) {
-    return badRequestMessage(
-      "Custom connector requires prefix templates, fields, and header/query injections",
-    );
-  }
-  if (!input.headerTemplate.includes(LEGACY_SECRET_PLACEHOLDER)) {
-    return badRequestMessage(
-      `Custom connector header template must contain ${LEGACY_SECRET_PLACEHOLDER}`,
-    );
-  }
-  return {
-    kind: "http",
-    displayName: input.displayName,
-    prefixTemplates: input.prefixes,
-    fields: canonicalFieldsFromLegacy(),
-    headerInjections: [
-      {
-        name: input.headerName,
-        valueTemplate: canonicalHeaderTemplateFromLegacy(input.headerTemplate),
-      },
-    ],
-    queryInjections: [],
-    authMode: "manual",
-    permissionBundleRef: input.permissionBundleRef ?? null,
-    skillMarkdown: input.skillMarkdown ?? null,
-    slug: input.slug,
-  };
-}
-
 function definitionFromCreateInput(
   input: CreateCustomConnectorBody,
-): DefinitionInput | BadRequestResponse {
+): DefinitionInput {
   return input.kind === "mcp"
     ? {
         kind: "mcp",
@@ -1618,7 +1541,18 @@ function definitionFromCreateInput(
         skillMarkdown: input.skillMarkdown ?? null,
         slug: input.slug,
       }
-    : definitionFromHttpCreateInput(input);
+    : {
+        kind: "http",
+        displayName: input.displayName,
+        prefixTemplates: input.prefixTemplates,
+        fields: input.fields,
+        headerInjections: input.headerInjections,
+        queryInjections: input.queryInjections,
+        authMode: input.authMode,
+        permissionBundleRef: input.permissionBundleRef ?? null,
+        skillMarkdown: input.skillMarkdown ?? null,
+        slug: input.slug,
+      };
 }
 
 function definitionFromUpdateInput(
@@ -1661,7 +1595,7 @@ function definitionFromUpdateInput(
   };
 }
 
-function legacyColumns(definition: ValidatedHttpDefinition): {
+function legacyResponseAliases(definition: ValidatedHttpDefinition): {
   readonly prefixes: readonly string[];
   readonly headerName: string;
   readonly headerTemplate: string;
@@ -1677,9 +1611,6 @@ function legacyColumns(definition: ValidatedHttpDefinition): {
 }
 
 function protocolColumns(definition: ValidatedDefinition): {
-  readonly prefixes: string[];
-  readonly headerName: string | null;
-  readonly headerTemplate: string | null;
   readonly prefixTemplates: string[];
   readonly permissionBundleRef: CustomConnectorPermissionBundleRef | null;
   readonly mcpEndpoint: string | null;
@@ -1687,20 +1618,13 @@ function protocolColumns(definition: ValidatedDefinition): {
 } {
   if (definition.kind === "mcp") {
     return {
-      prefixes: [],
-      headerName: null,
-      headerTemplate: null,
       prefixTemplates: [],
       permissionBundleRef: null,
       mcpEndpoint: definition.endpoint,
       mcpTransport: definition.transport,
     };
   }
-  const legacy = legacyColumns(definition);
   return {
-    prefixes: [...legacy.prefixes],
-    headerName: legacy.headerName,
-    headerTemplate: legacy.headerTemplate,
     prefixTemplates: [...definition.prefixTemplates],
     permissionBundleRef: definition.permissionBundleRef,
     mcpEndpoint: null,
@@ -1761,7 +1685,6 @@ async function findCustomConnectorPrefixConflict(
     .select({
       id: orgCustomConnectors.id,
       displayName: orgCustomConnectors.displayName,
-      prefixes: orgCustomConnectors.prefixes,
       prefixTemplates: orgCustomConnectors.prefixTemplates,
     })
     .from(orgCustomConnectors)
@@ -1882,9 +1805,6 @@ export const createCustomConnector$ = command(
     signal: AbortSignal,
   ): Promise<CustomConnectorRow | BadRequestResponse | ForbiddenResponse> => {
     const canonicalInput = definitionFromCreateInput(args.input);
-    if (isBadRequest(canonicalInput)) {
-      return canonicalInput;
-    }
     const writeDb = set(writeDb$);
     const v = validateDefinition(canonicalInput);
     if (isBadRequest(v)) {
