@@ -694,6 +694,13 @@
       "when": 1786447540678,
       "tag": "0906_unknown_rictor",
       "breakpoints": true
+    },
+    {
+      "idx": 907,
+      "version": "7",
+      "when": 1786449103054,
+      "tag": "0907_majestic_sheva_callister",
+      "breakpoints": true
     }
   ]
 }
