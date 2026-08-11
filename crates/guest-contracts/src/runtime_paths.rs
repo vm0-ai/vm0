@@ -12,7 +12,6 @@ use std::io::{self, Read, Write};
 #[cfg(unix)]
 use std::path::Component;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU64, Ordering};
 
 #[cfg(unix)]
 use std::ffi::{CString, OsStr, OsString};
@@ -20,6 +19,7 @@ use std::ffi::{CString, OsStr, OsString};
 use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
 #[cfg(unix)]
 use std::os::unix::ffi::{OsStrExt, OsStringExt};
+use uuid::Uuid;
 
 /// Environment variable that overrides the complete guest runtime directory.
 ///
@@ -33,7 +33,6 @@ const DEFAULT_RUNTIME_PARENT: &str = ".vm0/guest-agent/runs";
 const PRIVATE_DIR_MODE: libc::mode_t = 0o700;
 #[cfg(unix)]
 const PRIVATE_FILE_MODE: libc::mode_t = 0o600;
-static PRIVATE_REPLACEMENT_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
 /// Error returned when resolving a guest runtime path contract.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -914,20 +913,12 @@ pub fn read_private_bounded(
     Ok(Some(bytes))
 }
 
-fn replacement_sequence() -> u64 {
-    PRIVATE_REPLACEMENT_SEQUENCE.fetch_add(1, Ordering::Relaxed)
-}
-
 #[cfg(unix)]
 fn replacement_name() -> OsString {
-    OsString::from_vec(
-        format!(
-            ".vm0-private-replacement-{}-{}",
-            std::process::id(),
-            replacement_sequence()
-        )
-        .into_bytes(),
-    )
+    // A process can be killed before rename and leave this sibling behind.
+    // A random process-independent name prevents PID reuse after restart from
+    // turning that stale file into a permanent O_EXCL collision.
+    OsString::from_vec(format!(".vm0-private-replacement-{}", Uuid::new_v4()).into_bytes())
 }
 
 #[cfg(unix)]
@@ -1028,11 +1019,7 @@ fn replace_private_atomic_unix(path: &Path, bytes: &[u8]) -> io::Result<()> {
 #[cfg(not(unix))]
 fn replace_private_atomic_non_unix(path: &Path, bytes: &[u8]) -> io::Result<()> {
     ensure_parent_dir(path)?;
-    let temp_path = path.with_file_name(format!(
-        ".vm0-private-replacement-{}-{}",
-        std::process::id(),
-        replacement_sequence()
-    ));
+    let temp_path = path.with_file_name(format!(".vm0-private-replacement-{}", Uuid::new_v4()));
     let mut file = OpenOptions::new()
         .write(true)
         .create_new(true)
@@ -1229,6 +1216,21 @@ mod tests {
             assert_eq!(mode(temp.path().join("run/logs")), 0o700);
             assert_eq!(mode(&path), 0o600);
         }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn atomic_replacement_name_uses_process_independent_uuid() {
+        // Reproducing PID reuse requires two operating-system processes, so
+        // validate the private naming invariant at its internal boundary.
+        let name = replacement_name();
+        let name = name.to_str().unwrap();
+        let suffix = name.strip_prefix(".vm0-private-replacement-").unwrap();
+
+        assert_eq!(
+            Uuid::parse_str(suffix).unwrap().hyphenated().to_string(),
+            suffix
+        );
     }
 
     #[test]
