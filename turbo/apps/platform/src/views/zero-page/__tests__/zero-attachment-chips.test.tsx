@@ -1200,6 +1200,56 @@ describe("zero attachment chips", () => {
     ).toBe(docChip);
   });
 
+  it("keeps undecodable image formats downloadable and previews every markdown extension", async () => {
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      chatEvents: [
+        {
+          id: "msg-attachment-kinds",
+          role: "user",
+          content: "Review these formats",
+          fileParts: [
+            {
+              type: "file",
+              fileId: "attachment-heic",
+              filenameSnapshot: "capture.heic",
+              contentType: "image/heic",
+            },
+            {
+              type: "file",
+              fileId: "attachment-psd",
+              filenameSnapshot: "poster.psd",
+              contentType: "image/vnd.adobe.photoshop",
+            },
+            {
+              type: "file",
+              fileId: "attachment-mdx",
+              filenameSnapshot: "guide.mdx",
+              contentType: "application/octet-stream",
+            },
+          ],
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+    await waitFor(() => {
+      expect(screen.getByText("Review these formats")).toBeInTheDocument();
+    });
+
+    // A browser cannot decode either format in `<img>`, so neither claims an
+    // image preview.
+    expect(screen.getByLabelText("Download capture.heic")).toBeInTheDocument();
+    expect(screen.getByLabelText("Download poster.psd")).toBeInTheDocument();
+    expect(screen.queryByAltText("capture.heic")).toBeNull();
+    expect(screen.queryByAltText("poster.psd")).toBeNull();
+    expect(
+      screen.getByLabelText("Open markdown preview for guide.mdx"),
+    ).toBeInTheDocument();
+  });
+
   it("opens persisted canonical audio, video, and document attachments", async () => {
     context.mocks.http.get(PRESIGNED_FILE_PATTERN, ({ params }) => {
       expect(params.fileId).toBe("attachment-json");

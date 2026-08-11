@@ -243,10 +243,20 @@ const CHAT_KIND_BY_CONTENT_TYPE: Readonly<Record<string, BodyPreviewKind>> = {
   "text/csv": "csv",
   "application/pdf": "pdf",
   "text/html": "html",
+  // Image types no browser decodes in `<img>`. Claiming an image preview for
+  // them renders a broken frame, so they stay download-only files.
+  "image/heic": "file",
+  "image/heic-sequence": "file",
+  "image/heif": "file",
+  "image/heif-sequence": "file",
+  "image/tiff": "file",
+  "image/vnd.adobe.photoshop": "file",
 } as const;
 
 const CHAT_KIND_BY_EXTENSION: Readonly<Record<string, BodyPreviewKind>> = {
   md: "markdown",
+  markdown: "markdown",
+  mdx: "markdown",
   txt: "text",
   log: "text",
   xml: "text",
@@ -266,11 +276,6 @@ const CHAT_KIND_BY_EXTENSION: Readonly<Record<string, BodyPreviewKind>> = {
   svg: "image",
   bmp: "image",
   avif: "image",
-  heic: "image",
-  heif: "image",
-  tif: "image",
-  tiff: "image",
-  psd: "image",
   mp4: "video",
   webm: "video",
   mov: "video",
@@ -305,15 +310,20 @@ export function classifyChatAttachment(
 ): ChatAttachmentKind {
   const type = normalizeType(attachment.contentType);
   const ext = fileExt(attachment.filename);
-  const mediaKind = mediaKindFromContentType(type);
 
+  // An exact content type wins over the media prefix, so a type the browser
+  // cannot render is not claimed as a preview by its `image/` prefix alone.
+  const exactKind = CHAT_KIND_BY_CONTENT_TYPE[type];
+  if (exactKind) {
+    return exactKind;
+  }
+
+  const mediaKind = mediaKindFromContentType(type);
   if (mediaKind) {
     return mediaKind;
   }
 
-  return (
-    CHAT_KIND_BY_CONTENT_TYPE[type] ?? CHAT_KIND_BY_EXTENSION[ext] ?? "file"
-  );
+  return CHAT_KIND_BY_EXTENSION[ext] ?? "file";
 }
 
 function filenameFromUrl(url: string): string {

@@ -6173,10 +6173,10 @@ function ChatConnectorActionConnectModal() {
   );
 }
 
+// Only formats a browser decodes in `<img>`. An undecodable image format
+// renders a broken thumbnail, so it stays a downloadable file chip.
 function isImageFilename(filename: string): boolean {
-  return /\.(png|jpe?g|gif|webp|svg|bmp|avif|heic|heif|tiff?|psd)$/i.test(
-    filename,
-  );
+  return /\.(png|jpe?g|gif|webp|svg|bmp|avif)$/i.test(filename);
 }
 
 const CREDITS_PER_DOLLAR = 1000;

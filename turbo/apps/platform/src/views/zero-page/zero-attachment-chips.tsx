@@ -32,6 +32,7 @@ import {
   currentRightThread$,
 } from "../../signals/chat-page/chat-thread-panes.ts";
 import { detach, jsonParseOr, Reason } from "../../signals/utils.ts";
+import { classifyChatAttachment } from "../../signals/chat-page/parse-body-blocks.ts";
 import {
   imageLoadStatusByKey$,
   imageLoadStatusRef$,
@@ -1726,7 +1727,14 @@ function AttachmentChip({
   const url =
     infoLoadable.state === "hasData" ? infoLoadable.data?.url : undefined;
   const openImageLightbox = useSet(openImageLightbox$);
-  const isImage = attachment.contentType.startsWith("image/");
+  // Classified rather than prefix-matched, so an image format the browser
+  // cannot decode gets a file chip instead of a broken thumbnail.
+  const isImage =
+    classifyChatAttachment({
+      contentType: attachment.contentType,
+      filename: attachment.filename,
+      url: url ?? "",
+    }) === "image";
   return (
     <div
       className="relative inline-flex items-center"
