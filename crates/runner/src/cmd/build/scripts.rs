@@ -593,6 +593,33 @@ wait
     }
 
     #[test]
+    fn template_installs_and_verifies_document_conversion_tools() {
+        for package in ["libreoffice-impress", "poppler-utils"] {
+            assert!(
+                template_build_installs_apt_package(package),
+                "build-template.sh should install {package} so uploaded decks can be converted \
+                 to per-page images inside the sandbox"
+            );
+        }
+
+        assert!(
+            VERIFY_SCRIPT
+                .contains(r#"check_bin "/usr/lib/libreoffice/program/soffice.bin" "LibreOffice"#),
+            "verify-rootfs.sh should verify LibreOffice is present in sandbox images"
+        );
+        for (path, name) in [
+            ("/usr/bin/pdftoppm", "pdftoppm"),
+            ("/usr/bin/pdfinfo", "pdfinfo"),
+        ] {
+            let check = format!(r#"check_required_executable "{path}" "{name}""#);
+            assert!(
+                VERIFY_SCRIPT.contains(&check),
+                "verify-rootfs.sh should verify {name} is present in sandbox images"
+            );
+        }
+    }
+
+    #[test]
     fn template_installs_and_verifies_noto_fonts() {
         for package in [
             "fonts-noto-core",
