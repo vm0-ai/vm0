@@ -183,6 +183,7 @@ function paidInvoice(
       },
     },
     lines: {
+      has_more: false,
       data: [...args.quantities].map(([priceId, quantity]) => {
         const configuration = usagePackForPriceId(priceId);
         const fullAmount = configuration.usagePackUsd * 100 * quantity;

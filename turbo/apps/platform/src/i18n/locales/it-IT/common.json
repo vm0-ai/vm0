@@ -4475,6 +4475,7 @@
     "workspace": {
       "danger": {
         "delete": {
+          "billingDescription": "Tutti gli abbonamenti attivi, inclusi i pacchetti di utilizzo e i componenti aggiuntivi, verranno annullati immediatamente. Il periodo di abbonamento prepagato non utilizzato verrà rimborsato in proporzione. Gli acquisti una tantum e gli altri acquisti senza abbonamento non verranno rimborsati.",
           "button": "Elimina l'area di lavoro",
           "confirmDescription": "Questa operazione eliminerà definitivamente quest'area di lavoro e tutti i suoi dati. Non può essere annullata. Digita confirm per continuare.",
           "description": "Elimina definitivamente questa area di lavoro e tutti i suoi dati. L'operazione non può essere annullata.",
