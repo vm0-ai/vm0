@@ -1703,8 +1703,14 @@ async function resolveAdditionalStorageInput(args: {
   readonly volume: AdditionalVolume;
   readonly source: StorageManifestSource;
 }): Promise<ResolvedManifestStorageInput | null> {
-  if (args.source === "connector_skill") {
-    return resolveConnectorSkillStorageInput(args);
+  const { source } = args;
+  if (source === "connector_skill" || source === "custom_connector_skill") {
+    return resolveConnectorSkillStorageInput({
+      index: args.index,
+      runtimeOrgId: args.runtimeOrgId,
+      volume: args.volume,
+      source,
+    });
   }
   const resolvedResult = await settle(
     resolveVolumeStorage({
@@ -1734,42 +1740,60 @@ async function resolveAdditionalStorageInput(args: {
 
 const CONNECTOR_SKILL_REGISTRATION_ERROR =
   "Connector skill registration is unavailable";
+const CUSTOM_CONNECTOR_SKILL_REGISTRATION_ERROR =
+  "Custom connector skill registration is unavailable";
 
-function connectorSkillRegistrationError(): Error {
-  return new Error(CONNECTOR_SKILL_REGISTRATION_ERROR);
+type ConnectorSkillStorageSource = Extract<
+  StorageManifestSource,
+  "connector_skill" | "custom_connector_skill"
+>;
+
+function connectorSkillRegistrationError(
+  source: ConnectorSkillStorageSource,
+): Error {
+  return new Error(
+    source === "connector_skill"
+      ? CONNECTOR_SKILL_REGISTRATION_ERROR
+      : CUSTOM_CONNECTOR_SKILL_REGISTRATION_ERROR,
+  );
 }
 
 function resolveConnectorSkillStorageInput(args: {
   readonly index: StorageIndex;
+  readonly runtimeOrgId: string;
   readonly volume: AdditionalVolume;
+  readonly source: ConnectorSkillStorageSource;
 }): ResolvedManifestStorageInput {
   const version = args.volume.version;
   if (
-    !args.volume.system ||
+    (args.source === "connector_skill") !== (args.volume.system === true) ||
     version === undefined ||
     !/^[a-f0-9]{64}$/u.test(version)
   ) {
-    throw connectorSkillRegistrationError();
+    throw connectorSkillRegistrationError(args.source);
   }
 
-  const lookup = volumeStorageLookup(SYSTEM_ORG_ID, args.volume);
+  const ownerOrgId =
+    args.source === "connector_skill" ? SYSTEM_ORG_ID : args.runtimeOrgId;
+  const lookup = volumeStorageLookup(ownerOrgId, args.volume);
   const storage = args.index.get(
     storageIndexKey(lookup.orgId, lookup.userId, lookup.name),
   );
   if (!storage) {
-    throw connectorSkillRegistrationError();
+    throw connectorSkillRegistrationError(args.source);
   }
   const resolved = resolvePreloadedExactVersion(storage, lookup, version);
   if (!resolved) {
-    throw connectorSkillRegistrationError();
+    throw connectorSkillRegistrationError(args.source);
   }
 
-  const expectedPrefix = `${SYSTEM_ORG_ID}/volume/${args.volume.name}`;
+  const expectedKey = `${resolved.s3Prefix}/${version}`;
   if (
-    resolved.s3Prefix !== expectedPrefix ||
-    resolved.s3Key !== `${expectedPrefix}/${version}`
+    resolved.s3Key !== expectedKey ||
+    (args.source === "connector_skill" &&
+      resolved.s3Prefix !== `${SYSTEM_ORG_ID}/volume/${args.volume.name}`)
   ) {
-    throw connectorSkillRegistrationError();
+    throw connectorSkillRegistrationError(args.source);
   }
 
   return {
@@ -2320,12 +2344,16 @@ function storageManifestRequests(args: {
   }
   for (const [index, volume] of (args.additionalVolumes ?? []).entries()) {
     const version = volumeVersion(volume);
-    if (
-      additionalVolumeSourceAt(args.additionalVolumeSources, index) ===
-      "connector_skill"
-    ) {
+    const source = additionalVolumeSourceAt(
+      args.additionalVolumeSources,
+      index,
+    );
+    if (source === "connector_skill" || source === "custom_connector_skill") {
       requests.push({
-        lookup: volumeStorageLookup(SYSTEM_ORG_ID, volume),
+        lookup: volumeStorageLookup(
+          source === "connector_skill" ? SYSTEM_ORG_ID : args.runtimeOrgId,
+          volume,
+        ),
         version,
       });
       continue;
