@@ -170,6 +170,9 @@ function installS3Fixture() {
   let artifactListPause:
     | { readonly started: Deferred; readonly released: Deferred }
     | undefined;
+  let artifactHeadPause:
+    | { readonly started: Deferred; readonly released: Deferred }
+    | undefined;
   let deleteFailuresRemaining = 0;
 
   context.mocks.s3.send.mockImplementation(async (command: unknown) => {
@@ -207,6 +210,9 @@ function installS3Fixture() {
       const object = objects.get(id);
       if (!object) {
         throw notFoundError(key);
+      }
+      if (bucket === ARTIFACT_BUCKET) {
+        await waitForFixturePause(artifactHeadPause);
       }
       return {
         ContentLength: object.body.length,
@@ -297,6 +303,21 @@ function installS3Fixture() {
         started: started.promise,
         release: () => {
           artifactListPause = undefined;
+          released.resolve();
+        },
+      };
+    },
+    pauseArtifactHeads(): {
+      readonly started: Promise<void>;
+      readonly release: () => void;
+    } {
+      const started = createDeferredPromise<void>(context.signal);
+      const released = createDeferredPromise<void>(context.signal);
+      artifactHeadPause = { started, released };
+      return {
+        started: started.promise,
+        release: () => {
+          artifactHeadPause = undefined;
           released.resolve();
         },
       };
@@ -1196,6 +1217,92 @@ describe("presentation template imports", () => {
     expect(detail.body).toMatchObject({
       status: "ready",
       pageCount: 1,
+    });
+  });
+
+  it("serializes page commit with page re-preparation", async () => {
+    const actor = bdd.user();
+    await prepareImportActor(actor);
+    const fixture = installS3Fixture();
+    const { created } = await createTemplate(
+      fixture,
+      actor,
+      "commit-prepare-race.pptx",
+    );
+    const runId = await importRunId(actor, created.id);
+    const runHeaders = sandboxHeaders(actor, runId);
+    const prepared = await accept(
+      templateClient().preparePages({
+        headers: runHeaders,
+        params: { templateId: created.id },
+        body: { count: 1 },
+      }),
+      [200],
+    );
+    const upload = prepared.body.uploads[0];
+    if (!upload) {
+      throw new Error("Expected a prepared page upload");
+    }
+    fixture.put({
+      bucket: ARTIFACT_BUCKET,
+      key: upload.key,
+      body: Buffer.from("page"),
+      contentType: "image/png",
+      metadata: metadataFromHeaders(upload.uploadHeaders),
+    });
+
+    const headPause = fixture.pauseArtifactHeads();
+    const staleCommit = accept(
+      templateClient().commitPages({
+        headers: runHeaders,
+        params: { templateId: created.id },
+        body: { keys: [upload.key], aspectRatio: 16 / 9 },
+      }),
+      [200],
+    );
+    await headPause.started;
+    const listPause = fixture.pauseArtifactLists();
+    const rePreparation = accept(
+      templateClient().preparePages({
+        headers: runHeaders,
+        params: { templateId: created.id },
+        body: { count: 2 },
+      }),
+      [200],
+    );
+    await listPause.started;
+    listPause.release();
+    headPause.release();
+    const [, newlyPrepared] = await Promise.all([staleCommit, rePreparation]);
+
+    expect(newlyPrepared.body.uploads).toHaveLength(2);
+    expect(fixture.has(ARTIFACT_BUCKET, upload.key)).toBeFalsy();
+    await accept(
+      templateClient().publishPackage({
+        headers: runHeaders,
+        params: { templateId: created.id },
+        body: {
+          files: [
+            { path: "DESIGN_SYSTEM.md", content: "# Design" },
+            { path: "LAYOUTS.md", content: "# Layouts" },
+            { path: "tokens.json", content: "{}" },
+          ],
+        },
+      }),
+      [409],
+    );
+
+    mocks.clerk.session(actor.userId, actor.orgId);
+    const detail = await accept(
+      templateClient().get({
+        headers: webHeaders(),
+        params: { templateId: created.id },
+      }),
+      [200],
+    );
+    expect(detail.body).toMatchObject({
+      status: "pending",
+      pageCount: 0,
     });
   });
 });

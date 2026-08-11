@@ -413,76 +413,106 @@ const commitPagesInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (new Set(keys).size !== keys.length) {
     return badRequestMessage("Page image keys must be unique");
   }
-  if (
-    row.pageKeys.length > 0 &&
-    (row.pageKeys.length !== keys.length ||
-      row.pageKeys.some((key, index) => {
+
+  const bucket = env("R2_USER_ARTIFACTS_BUCKET_NAME");
+  const db = set(writeDb$);
+  const commit = await db.transaction(async (tx) => {
+    await lockPresentationTemplateLifecycle(tx, row.id);
+    signal.throwIfAborted();
+    const [active] = await tx
+      .select({ pageKeys: presentationTemplates.pageKeys })
+      .from(presentationTemplates)
+      .where(
+        and(
+          eq(presentationTemplates.id, row.id),
+          eq(presentationTemplates.orgId, auth.orgId),
+          eq(presentationTemplates.ownerUserId, auth.userId),
+          inArray(presentationTemplates.status, ["pending", "processing"]),
+        ),
+      )
+      .limit(1);
+    signal.throwIfAborted();
+    if (!active) {
+      return { kind: "inactive" } as const;
+    }
+    if (
+      active.pageKeys.length !== keys.length ||
+      active.pageKeys.some((key, index) => {
         return keys[index] !== key;
-      }))
-  ) {
+      })
+    ) {
+      return { kind: "mismatched-keys" } as const;
+    }
+
+    const validPages = await Promise.all(
+      keys.map(async (key, index) => {
+        if (!isPresentationTemplatePageKey(row.id, index, key)) {
+          return false;
+        }
+        const head = await get(s3ObjectHead(bucket, key));
+        if (
+          head.kind === "missing" ||
+          head.contentType !== PRESENTATION_TEMPLATE_PAGE_CONTENT_TYPE
+        ) {
+          return false;
+        }
+        const expected = artifactObjectMetadata(
+          auth.userId,
+          row.id,
+          presentationTemplatePageFilename(index),
+        );
+        return Object.entries(expected).every(([name, value]) => {
+          return head.metadata[name] === value;
+        });
+      }),
+    );
+    signal.throwIfAborted();
+    if (
+      validPages.some((valid) => {
+        return !valid;
+      })
+    ) {
+      return { kind: "invalid-pages" } as const;
+    }
+
+    const [updated] = await tx
+      .update(presentationTemplates)
+      .set({
+        pageKeys: keys,
+        aspectRatio: bodyResult.data.aspectRatio,
+        status: "processing",
+        error: null,
+        updatedAt: nowDate(),
+        updatedBy: auth.userId,
+      })
+      .where(
+        and(
+          eq(presentationTemplates.id, row.id),
+          eq(presentationTemplates.orgId, auth.orgId),
+          eq(presentationTemplates.ownerUserId, auth.userId),
+          inArray(presentationTemplates.status, ["pending", "processing"]),
+        ),
+      )
+      .returning({ id: presentationTemplates.id });
+    return updated
+      ? ({ kind: "committed", id: updated.id } as const)
+      : ({ kind: "inactive" } as const);
+  });
+  signal.throwIfAborted();
+  if (commit.kind === "inactive") {
+    return conflict("Presentation template is no longer importing");
+  }
+  if (commit.kind === "mismatched-keys") {
     return badRequestMessage(
       "Page image keys do not match the prepared upload",
     );
   }
-
-  const bucket = env("R2_USER_ARTIFACTS_BUCKET_NAME");
-  const validPages = await Promise.all(
-    keys.map(async (key, index) => {
-      if (!isPresentationTemplatePageKey(row.id, index, key)) {
-        return false;
-      }
-      const head = await get(s3ObjectHead(bucket, key));
-      if (
-        head.kind === "missing" ||
-        head.contentType !== PRESENTATION_TEMPLATE_PAGE_CONTENT_TYPE
-      ) {
-        return false;
-      }
-      const expected = artifactObjectMetadata(
-        auth.userId,
-        row.id,
-        presentationTemplatePageFilename(index),
-      );
-      return Object.entries(expected).every(([name, value]) => {
-        return head.metadata[name] === value;
-      });
-    }),
-  );
-  signal.throwIfAborted();
-  if (
-    validPages.some((valid) => {
-      return !valid;
-    })
-  ) {
+  if (commit.kind === "invalid-pages") {
     return badRequestMessage("One or more page image uploads are invalid");
-  }
-
-  const [updated] = await set(writeDb$)
-    .update(presentationTemplates)
-    .set({
-      pageKeys: keys,
-      aspectRatio: bodyResult.data.aspectRatio,
-      status: "processing",
-      error: null,
-      updatedAt: nowDate(),
-      updatedBy: auth.userId,
-    })
-    .where(
-      and(
-        eq(presentationTemplates.id, row.id),
-        eq(presentationTemplates.orgId, auth.orgId),
-        eq(presentationTemplates.ownerUserId, auth.userId),
-        inArray(presentationTemplates.status, ["pending", "processing"]),
-      ),
-    )
-    .returning({ id: presentationTemplates.id });
-  signal.throwIfAborted();
-  if (!updated) {
-    return conflict("Presentation template is no longer importing");
   }
   return {
     status: 200 as const,
-    body: { id: updated.id, status: "processing" as const },
+    body: { id: commit.id, status: "processing" as const },
   };
 });
 
