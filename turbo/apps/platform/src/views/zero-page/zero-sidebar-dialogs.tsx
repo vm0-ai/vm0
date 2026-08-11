@@ -692,7 +692,7 @@ function avoidSplitSurrogateEnd(content: string, end: number): number {
 
 function chatMessageSnippetParts(
   content: string,
-  ranges: NonNullable<ChatSearchResult["matchedRanges"]>,
+  ranges: ChatSearchResult["matchedRanges"],
 ): ChatMessageSnippetPart[] {
   const validRanges = ranges.filter((range) => {
     return (
@@ -748,10 +748,7 @@ function ChatMessageSnippet({
   readonly message: ChatSearchResult;
 }) {
   const content = message.matchedMessage.content;
-  // Keep a new client compatible with an older API during PR #25901's at-most
-  // 2-day web/app-to-API rollout window. Remove with #25913 after that window
-  // and the API rollback window have closed.
-  const parts = chatMessageSnippetParts(content, message.matchedRanges ?? []);
+  const parts = chatMessageSnippetParts(content, message.matchedRanges);
   return (
     <span
       className="block truncate text-xs text-muted-foreground"

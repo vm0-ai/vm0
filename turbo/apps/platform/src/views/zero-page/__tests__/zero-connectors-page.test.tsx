@@ -2325,7 +2325,6 @@ describe("connectors page", () => {
       }
       return respond(200, {
         connectors: listedConnectors,
-        configuredConnectorSlugs: ["stripe"],
         connectorProvidedBindings: [],
       });
     });

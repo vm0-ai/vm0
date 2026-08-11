@@ -1192,7 +1192,7 @@ export function createBddIntegrationApi(context: TestContext) {
     async updateUserModelPreference(
       actor: ApiTestUser,
       selectedModel: SupportedRunModel | null,
-      serviceTier?: "priority" | null,
+      serviceTier: "priority" | null = null,
     ): Promise<void> {
       const client = setupApp({
         context,

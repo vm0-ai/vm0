@@ -1849,9 +1849,7 @@ describe("zero sidebar", () => {
               sequenceNumber: null,
               runId: null,
             },
-            // The first result deliberately models an older API response so
-            // the rollout fallback is exercised through the rendered page.
-            ...(index === 0 ? {} : { matchedRanges: [{ start: 11, end: 17 }] }),
+            matchedRanges: [{ start: 11, end: 17 }],
             contextBefore: [],
             contextAfter: [],
           };

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   chatThreadByIdContract,
+  chatSearchContract,
   chatEventsContract,
   chatThreadEventsContract,
   chatThreadComputerUseHostContract,
@@ -175,6 +176,45 @@ describe("chat event pagination request compatibility", () => {
       success: true,
       data: { sinceSeqId: 42, limit: 20 },
     });
+  });
+});
+
+describe("chat search response contract", () => {
+  it("rejects results without matched ranges", () => {
+    const resultWithoutMatchedRanges = {
+      chatThreadId: "thread-1",
+      agentName: "test-agent",
+      matchedMessage: {
+        messageId: "message-1",
+        chatThreadId: "thread-1",
+        role: "user",
+        content: "find this",
+        createdAt: "2026-08-11T00:00:00.000Z",
+        seqId: 1,
+        sequenceNumber: null,
+        runId: null,
+      },
+      contextBefore: [],
+      contextAfter: [],
+    };
+
+    expect(
+      chatSearchContract.search.responses[200].safeParse({
+        results: [
+          {
+            ...resultWithoutMatchedRanges,
+            matchedRanges: [{ start: 0, end: 4 }],
+          },
+        ],
+        hasMore: false,
+      }).success,
+    ).toBe(true);
+    expect(
+      chatSearchContract.search.responses[200].safeParse({
+        results: [resultWithoutMatchedRanges],
+        hasMore: false,
+      }).success,
+    ).toBe(false);
   });
 });
 

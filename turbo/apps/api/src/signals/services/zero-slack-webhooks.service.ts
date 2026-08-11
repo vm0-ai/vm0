@@ -1947,7 +1947,7 @@ const handleModelPickerSubmit$ = command(
       {
         orgId: ctx.orgId,
         userId: ctx.connection.vm0UserId,
-        preference: { selectedModel: option.model },
+        preference: { selectedModel: option.model, serviceTier: null },
       },
       signal,
     );

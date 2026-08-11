@@ -458,7 +458,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
     await accept(
       preferenceClient.update({
         headers: authHeaders(),
-        body: { selectedModel: removedModel },
+        body: { selectedModel: removedModel, serviceTier: null },
       }),
       [200],
     );
@@ -511,7 +511,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
     await accept(
       preferenceClient.update({
         headers: authHeaders(),
-        body: { selectedModel: keptModel },
+        body: { selectedModel: keptModel, serviceTier: null },
       }),
       [200],
     );
@@ -1024,15 +1024,6 @@ describe("GET/PUT /api/zero/model-policies", () => {
       (await accept(preferenceClient.get({ headers: authHeaders() }), [200]))
         .body.serviceTier,
     ).toBe("priority");
-
-    const legacyUpdate = await accept(
-      preferenceClient.update({
-        headers: authHeaders(),
-        body: { selectedModel: "gpt-5.6-sol" },
-      }),
-      [200],
-    );
-    expect(legacyUpdate.body.serviceTier).toBeNull();
   });
 
   it("allows compatible member OAuth provider routes", async () => {

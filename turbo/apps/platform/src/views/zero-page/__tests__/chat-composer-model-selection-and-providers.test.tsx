@@ -133,7 +133,11 @@ describe("chat composer models", () => {
     });
     context.mocks.api(zeroUserModelPreferenceContract.get, ({ respond }) => {
       preferenceRequestCount += 1;
-      return respond(200, { selectedModel: null, updatedAt: null });
+      return respond(200, {
+        selectedModel: null,
+        serviceTier: null,
+        updatedAt: null,
+      });
     });
     mockAgent();
 
@@ -188,7 +192,11 @@ describe("chat composer models", () => {
         if (blockModelRequests) {
           await withSignal(pendingModelRequests.promise);
         }
-        return respond(200, { selectedModel: null, updatedAt: null });
+        return respond(200, {
+          selectedModel: null,
+          serviceTier: null,
+          updatedAt: null,
+        });
       },
     );
     mockAgent();
@@ -232,6 +240,7 @@ describe("chat composer models", () => {
     mockOrgModelRoutes("kimi-k2.7-code");
     context.mocks.data.userModelPreference({
       selectedModel: "claude-opus-4-7",
+      serviceTier: null,
       updatedAt: "2026-03-10T00:00:00Z",
     });
     mockAgent();
@@ -248,6 +257,7 @@ describe("chat composer models", () => {
     const user = userEvent.setup({ delay: null });
     let preference: UserModelPreferenceResponse = {
       selectedModel: "kimi-k2.7-code",
+      serviceTier: null,
       updatedAt: "2026-03-10T00:00:00Z",
     };
     const updatedModels: UserModelPreferenceResponse["selectedModel"][] = [];
@@ -264,6 +274,7 @@ describe("chat composer models", () => {
         await preferenceUpdate.promise;
         preference = {
           selectedModel: body.selectedModel,
+          serviceTier: body.serviceTier,
           updatedAt: "2026-03-10T00:01:00Z",
         };
         return respond(200, preference);
@@ -394,7 +405,7 @@ describe("chat composer models", () => {
           updatedPreference = body;
           return respond(200, {
             selectedModel: body.selectedModel,
-            serviceTier: body.serviceTier ?? null,
+            serviceTier: body.serviceTier,
             updatedAt: "2026-03-10T00:01:00Z",
           });
         },
@@ -481,7 +492,7 @@ describe("chat composer models", () => {
         updatedPreference = body;
         return respond(200, {
           selectedModel: body.selectedModel,
-          serviceTier: body.serviceTier ?? null,
+          serviceTier: body.serviceTier,
           updatedAt: "2026-03-10T00:01:00Z",
         });
       },
@@ -530,6 +541,7 @@ describe("chat composer models", () => {
         updatedModel = body.selectedModel;
         return respond(200, {
           selectedModel: body.selectedModel,
+          serviceTier: body.serviceTier,
           updatedAt: "2026-03-10T00:01:00Z",
         });
       },
@@ -1445,7 +1457,11 @@ describe("chat composer models", () => {
           preferenceReloadStarted = true;
           await withSignal(pendingPreferenceReload.promise);
         }
-        return respond(200, { selectedModel: null, updatedAt: null });
+        return respond(200, {
+          selectedModel: null,
+          serviceTier: null,
+          updatedAt: null,
+        });
       },
     );
     mockAgent();
@@ -1490,6 +1506,7 @@ describe("chat composer models", () => {
     mockOrgModelRoutes("kimi-k2.7-code");
     context.mocks.data.userModelPreference({
       selectedModel: "claude-opus-4-7",
+      serviceTier: null,
       updatedAt: "2026-03-10T00:00:00Z",
     });
     mockAgent();
@@ -1526,6 +1543,7 @@ describe("chat composer models", () => {
     mockOrgModelRoutes("kimi-k2.7-code");
     context.mocks.data.userModelPreference({
       selectedModel: "claude-opus-4-7",
+      serviceTier: null,
       updatedAt: "2026-03-10T00:00:00Z",
     });
     mockAgent();
@@ -1552,6 +1570,7 @@ describe("chat composer models", () => {
       preferenceRequestStarted = true;
       return respond(200, {
         selectedModel: "claude-opus-4-7",
+        serviceTier: null,
         updatedAt: "2026-03-10T00:00:00Z",
       });
     });

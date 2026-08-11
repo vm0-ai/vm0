@@ -6,17 +6,9 @@ import { chatThreadServiceTierSchema } from "./chat-threads";
 
 const c = initContract();
 
-// PR #26028 rollout compatibility: old web/app clients omit serviceTier in
-// requests, while new clients can still receive responses from an old API that
-// omits it. Keep the field optional for the ~2-day client-skew window; remove
-// after #26028 has been live in production for two days. Follow-up: #26042.
-const rolloutCompatibleServiceTierSchema = chatThreadServiceTierSchema
-  .nullable()
-  .optional();
-
 export const userModelPreferenceResponseSchema = z.object({
   selectedModel: supportedRunModelSchema.nullable(),
-  serviceTier: rolloutCompatibleServiceTierSchema,
+  serviceTier: chatThreadServiceTierSchema.nullable(),
   updatedAt: z.string().nullable(),
 });
 
@@ -26,7 +18,7 @@ export type UserModelPreferenceResponse = z.infer<
 
 export const updateUserModelPreferenceRequestSchema = z.object({
   selectedModel: supportedRunModelSchema.nullable(),
-  serviceTier: rolloutCompatibleServiceTierSchema,
+  serviceTier: chatThreadServiceTierSchema.nullable(),
 });
 
 export type UpdateUserModelPreferenceRequest = z.infer<

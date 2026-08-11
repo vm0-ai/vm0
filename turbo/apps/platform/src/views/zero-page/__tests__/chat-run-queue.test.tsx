@@ -646,6 +646,7 @@ describe("chat run queue", () => {
     });
     context.mocks.data.userModelPreference({
       selectedModel: "gpt-5.5",
+      serviceTier: null,
       updatedAt: "2026-08-06T09:00:00Z",
     });
     context.mocks.data.orgModelPolicies([
@@ -858,6 +859,7 @@ describe("chat run queue", () => {
     });
     context.mocks.data.userModelPreference({
       selectedModel: "gpt-5.5",
+      serviceTier: null,
       updatedAt: "2026-08-06T09:00:00Z",
     });
     context.mocks.data.orgModelPolicies([

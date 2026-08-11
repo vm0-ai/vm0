@@ -328,7 +328,6 @@ describe("zero whoami command", () => {
                 updatedAt: "2025-01-01T00:00:00Z",
               },
             ],
-            configuredConnectorSlugs: ["github", "google"],
             connectorProvidedBindings: [],
           });
         }),
@@ -390,7 +389,6 @@ describe("zero whoami command", () => {
                 updatedAt: "2025-01-01T00:00:00Z",
               },
             ],
-            configuredConnectorSlugs: ["slack"],
             connectorProvidedBindings: [],
           });
         }),
@@ -469,7 +467,6 @@ describe("zero whoami command", () => {
         http.get("http://localhost:3000/api/zero/connectors", () => {
           return HttpResponse.json({
             connectors: [],
-            configuredConnectorSlugs: [],
             connectorProvidedBindings: [],
           });
         }),
@@ -521,7 +518,6 @@ describe("zero whoami command", () => {
                 updatedAt: "2025-01-01T00:00:00Z",
               },
             ],
-            configuredConnectorSlugs: ["github"],
             connectorProvidedBindings: [],
           });
         }),
@@ -586,7 +582,6 @@ describe("zero whoami command", () => {
                 updatedAt: "2025-01-01T00:00:00Z",
               },
             ],
-            configuredConnectorSlugs: ["slack"],
             connectorProvidedBindings: [],
           });
         }),
@@ -681,7 +676,6 @@ describe("zero whoami command", () => {
                 updatedAt: "2025-01-01T00:00:00Z",
               },
             ],
-            configuredConnectorSlugs: ["server-only"],
             connectorProvidedBindings: [],
           });
         }),
@@ -748,7 +742,6 @@ describe("zero whoami command", () => {
                 updatedAt: "2025-01-01T00:00:00Z",
               },
             ],
-            configuredConnectorSlugs: ["github"],
             connectorProvidedBindings: [],
           });
         }),
@@ -807,7 +800,6 @@ describe("zero whoami command", () => {
                 updatedAt: "2025-01-01T00:00:00Z",
               },
             ],
-            configuredConnectorSlugs: ["github"],
             connectorProvidedBindings: [],
           });
         }),
@@ -885,7 +877,6 @@ describe("zero whoami command", () => {
                 updatedAt: "2025-01-01T00:00:00Z",
               },
             ],
-            configuredConnectorSlugs: ["github"],
             connectorProvidedBindings: [],
           });
         }),
@@ -958,7 +949,6 @@ describe("zero whoami command", () => {
                 updatedAt: "2025-01-01T00:00:00Z",
               },
             ],
-            configuredConnectorSlugs: ["github"],
             connectorProvidedBindings: [],
           });
         }),
@@ -1045,7 +1035,6 @@ describe("zero whoami command", () => {
                 updatedAt: "2025-01-01T00:00:00Z",
               },
             ],
-            configuredConnectorSlugs: ["github", "axiom"],
             connectorProvidedBindings: [],
           });
         }),
