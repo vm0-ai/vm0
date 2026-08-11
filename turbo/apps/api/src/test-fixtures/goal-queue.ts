@@ -78,12 +78,15 @@ export async function readGoalQueueStateFixture(threadId: string): Promise<{
 /** Run the same shared scheduler that follows production goal admission. */
 export async function drainChatThreadQueueFixture(args: {
   readonly threadId: string;
+  readonly immediateSuccessorPredecessorRunId?: string;
   readonly signal: AbortSignal;
 }): Promise<void> {
   await createStore().set(
     drainChatThreadQueueForThread$,
     {
       chatThreadId: args.threadId,
+      immediateSuccessorPredecessorRunId:
+        args.immediateSuccessorPredecessorRunId,
       dispatchFailedCallbacks: dispatchFailedRunCallbacks,
     },
     args.signal,

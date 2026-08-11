@@ -99,6 +99,18 @@ const runnerProcessIdentitySchema = z
   })
   .strict();
 
+export const immediateSuccessorIntentSignalSchema = z
+  .object({
+    action: z.enum(["arm", "revoke"]),
+    predecessorRunId: z.uuid(),
+    intentId: z.uuid(),
+    runnerIdentity: runnerProcessIdentitySchema,
+    eventClass: z.enum(["prompt", "goal", "automation"]),
+    decidedAt: z.string().datetime({ offset: true }),
+    expiresAt: z.string().datetime({ offset: true }),
+  })
+  .strict();
+
 /**
  * Atomic advisory decision for cross-runner reuse coordination. A preferred
  * runner is not an exclusive assignee; another runner with a better compatible
@@ -1238,6 +1250,9 @@ export type RunnersBuiltinFirewallsResolveContract =
   typeof runnersBuiltinFirewallsResolveContract;
 export type Job = z.infer<typeof jobSchema>;
 export type RunnerPreference = z.infer<typeof runnerPreferenceSchema>;
+export type ImmediateSuccessorIntentSignal = z.infer<
+  typeof immediateSuccessorIntentSignalSchema
+>;
 export type RunnerPreferenceClaimState = z.infer<
   typeof runnerPreferenceClaimStateSchema
 >;

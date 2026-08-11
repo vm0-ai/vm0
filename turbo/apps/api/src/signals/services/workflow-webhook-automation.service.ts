@@ -205,7 +205,9 @@ interface WorkflowWebhookRunStartTestInput {
 
 type WorkflowWebhookRunStarterTestOverride = (
   args: WorkflowWebhookRunStartTestInput,
-) => Promise<{ readonly kind: "ok"; readonly runId: string } | "error">;
+) => Promise<
+  Extract<RunWorkflowAutomationResult, { readonly kind: "ok" }> | "error"
+>;
 
 const workflowWebhookRunStarterOverride = testOverride<
   WorkflowWebhookRunStarterTestOverride | undefined
