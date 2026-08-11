@@ -1,0 +1,113 @@
+name: Backfill Acquisition Attribution
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Dry-run discovers coverage; apply writes only null first-touch rows"
+        required: true
+        type: choice
+        options:
+          - dry-run
+          - apply
+        default: dry-run
+      org_id:
+        description: "Optional Clerk org ID; leave blank to process all orgs"
+        required: false
+        type: string
+      confirmed_apply:
+        description: "I reviewed a dry-run and authorize production writes"
+        required: true
+        type: choice
+        options:
+          - "no"
+          - "yes"
+        default: "no"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-acquisition-attribution-backfill
+  cancel-in-progress: false
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260622
+    environment: production
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Gate production apply
+        if: inputs.mode == 'apply' && inputs.confirmed_apply != 'yes'
+        run: |
+          echo "::error::confirmed_apply must be yes before applying production writes."
+          exit 1
+
+      # Always execute the implementation on main. Workflow inputs are data and
+      # cannot select a branch containing different production-write code.
+      - uses: actions/checkout@v7.0.1
+        with:
+          ref: main
+
+      - name: Initialize toolchain
+        uses: ./.github/actions/toolchain-init
+
+      - name: Install neonctl
+        run: npm install -g neonctl@2.15.0
+
+      - name: Get production database URL
+        id: database
+        env:
+          NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+          NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+          database_url=$(
+            neonctl connection-string production \
+              --project-id "$NEON_PROJECT_ID" \
+              --database-name neondb \
+              --role-name neondb_owner \
+              --pooled
+          )
+          echo "::add-mask::$database_url"
+          echo "database_url=$database_url" >> "$GITHUB_OUTPUT"
+
+      - name: Backfill acquisition attribution
+        env:
+          BACKFILL_MODE: ${{ inputs.mode }}
+          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
+          DATABASE_URL: ${{ steps.database.outputs.database_url }}
+          ORG_ID: ${{ inputs.org_id }}
+          REPORT_PATH: ${{ runner.temp }}/acquisition-attribution-backfill.json
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+        run: |
+          set -euo pipefail
+          args=(--report-path "$REPORT_PATH")
+          if [[ "$BACKFILL_MODE" == "apply" ]]; then
+            args+=(--apply)
+          fi
+          if [[ -n "$ORG_ID" ]]; then
+            if [[ ! "$ORG_ID" =~ ^org_[A-Za-z0-9]+$ ]]; then
+              echo "::error::org_id must be a Clerk organization ID."
+              exit 1
+            fi
+            args+=(--org-id "$ORG_ID")
+          fi
+          cd turbo
+          pnpm --filter @vm0/db exec tsx \
+            scripts/migrations/011-backfill-acquisition-attribution/backfill.ts \
+            "${args[@]}"
+
+      - name: Upload sanitized report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: acquisition-attribution-backfill-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/acquisition-attribution-backfill.json
+          if-no-files-found: warn
+          retention-days: 14
