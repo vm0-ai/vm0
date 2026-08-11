@@ -12269,7 +12269,7 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     );
     expect(claim.appendSystemPrompt ?? "").toContain("zero web-search --help");
     expect(claim.appendSystemPrompt ?? "").toContain("zero finance --help");
-    expect(claim.appendSystemPrompt ?? "").not.toContain("zero seo --help");
+    expect(claim.appendSystemPrompt ?? "").toContain("zero seo --help");
     expect(claim.appendSystemPrompt ?? "").toContain("zero scrape --help");
     expect(claim.appendSystemPrompt ?? "").toContain(
       'zero translate "<text>" --to <language> [--from <language>]',
@@ -12283,13 +12283,9 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     await api.requestCancelRun(actor, run.runId, [200]);
   });
 
-  it("advertises managed SEO tools when the feature switch is enabled", async () => {
+  it("advertises managed SEO tools by default", async () => {
     const api = createRunsApi(context);
-    const connectors = createConnectorBddApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
-    await connectors.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.SeoBuiltIn]: true,
-    });
 
     const run = await api.createRun(actor, {
       agentId,

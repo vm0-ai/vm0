@@ -1,13 +1,10 @@
 import { zeroSeoContract } from "@vm0/api-contracts/contracts/zero-seo";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
-import { command, computed } from "ccstate";
+import { command } from "ccstate";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
 import type { RouteEntry } from "../route-entry";
-import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import { zeroSeo$ } from "../services/zero-seo.service";
 
 const serpBody$ = bodyResultOf(zeroSeoContract.serp);
@@ -15,32 +12,7 @@ const keywordIdeasBody$ = bodyResultOf(zeroSeoContract.keywordIdeas);
 const rankedKeywordsBody$ = bodyResultOf(zeroSeoContract.rankedKeywords);
 const backlinksSummaryBody$ = bodyResultOf(zeroSeoContract.backlinksSummary);
 
-const zeroSeoDisabled = Object.freeze({
-  status: 403 as const,
-  body: Object.freeze({
-    error: Object.freeze({
-      message: "Zero SEO is not enabled",
-      code: "FORBIDDEN",
-    }),
-  }),
-});
-
-const zeroSeoEnabled$ = computed(async (get) => {
-  const auth = get(organizationAuthContext$);
-  const overrides = await get(
-    userFeatureSwitchOverrides(auth.orgId, auth.userId),
-  );
-  return isFeatureEnabled(FeatureSwitchKey.SeoBuiltIn, {
-    orgId: auth.orgId,
-    userId: auth.userId,
-    overrides,
-  });
-});
-
 const serpInner$ = command(async ({ get, set }, signal: AbortSignal) => {
-  if (!(await get(zeroSeoEnabled$))) {
-    return zeroSeoDisabled;
-  }
   signal.throwIfAborted();
   const auth = get(organizationAuthContext$);
   const bodyResult = await get(serpBody$);
@@ -57,9 +29,6 @@ const serpInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
 const keywordIdeasInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    if (!(await get(zeroSeoEnabled$))) {
-      return zeroSeoDisabled;
-    }
     signal.throwIfAborted();
     const auth = get(organizationAuthContext$);
     const bodyResult = await get(keywordIdeasBody$);
@@ -80,9 +49,6 @@ const keywordIdeasInner$ = command(
 
 const rankedKeywordsInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    if (!(await get(zeroSeoEnabled$))) {
-      return zeroSeoDisabled;
-    }
     signal.throwIfAborted();
     const auth = get(organizationAuthContext$);
     const bodyResult = await get(rankedKeywordsBody$);
@@ -103,9 +69,6 @@ const rankedKeywordsInner$ = command(
 
 const backlinksSummaryInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    if (!(await get(zeroSeoEnabled$))) {
-      return zeroSeoDisabled;
-    }
     signal.throwIfAborted();
     const auth = get(organizationAuthContext$);
     const bodyResult = await get(backlinksSummaryBody$);
