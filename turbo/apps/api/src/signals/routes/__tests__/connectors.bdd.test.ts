@@ -54,6 +54,8 @@ import {
   readConnectorCredentialStorageState,
   readCustomConnectorCredentialStorageParent,
   readCustomConnectorOAuthStorageState,
+  seedConnectorStorageRow,
+  setConnectorVariableOwner,
   setCustomConnectorCredentialStorageState,
 } from "./helpers/connector-credential-storage-state";
 import { zeroCustomConnectorsRoutes } from "../zero-custom-connectors";
@@ -5145,6 +5147,150 @@ describe("CONN-02: test-oauth auth-code journey", () => {
       }),
     );
     expectNoVisibleSecret(apiListed, "bdd-test-oauth-api-access-token");
+
+    await connectorsApi.deleteConnectorBySlug(actor, "test-oauth");
+    await connectorsApi.deleteFeatureSwitches(actor);
+  });
+
+  it("rolls back failed OAuth-to-manual credential replacement before a successful retry", async () => {
+    const bdd = createBddApi(context);
+    const actor = bdd.user();
+    await connectorsApi.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.TestOauthConnector]: true,
+    });
+    mockTestOAuthAuthCodeProvider({
+      refreshToken: "bdd-rollback-refresh-token",
+    });
+
+    const initial = await connectorsApi.connectManualGrant(
+      actor,
+      "test-oauth",
+      "api-token",
+      {
+        apiToken: "bdd-rollback-manual-token",
+        inputVariable: "bdd-rollback-input",
+        tenantId: "bdd-rollback-manual-tenant",
+      },
+    );
+    // Production APIs cannot move a connector variable to another connection;
+    // this fixture creates the storage conflict needed to exercise rollback.
+    const conflictOwnerId = await seedConnectorStorageRow(context, {
+      orgId: requiredOrgId(actor),
+      userId: actor.userId,
+      connectorSlug: uniqueSlug("credential-conflict"),
+      authMethod: "fixture",
+      storageVersion: 1,
+    });
+    await setConnectorVariableOwner(context, {
+      connectorId: conflictOwnerId,
+      name: "TEST_OAUTH_API_TOKEN_INPUT_VAR",
+      orgId: requiredOrgId(actor),
+      userId: actor.userId,
+    });
+
+    const oauthStart = await connectorsApi.startOauth(
+      actor,
+      "test-oauth",
+      "oauth",
+    );
+    await connectorsApi.completeOauthCallback("test-oauth", {
+      code: "bdd-rollback-oauth-code",
+      state: stateFromAuthorizationUrl(oauthStart.authorizationUrl),
+    });
+    const oauthConnector = await connectorsApi.readConnectorBySlug(
+      actor,
+      "test-oauth",
+    );
+    expect(oauthConnector).toMatchObject({
+      id: initial.id,
+      authMethod: "oauth",
+      externalId: "bdd-test-oauth-user",
+      oauthScopes: ["read"],
+    });
+    const storageQuery = {
+      orgId: requiredOrgId(actor),
+      userId: actor.userId,
+      connectorSlug: "test-oauth",
+      secretNames: [
+        "TEST_OAUTH_TOKEN",
+        "TEST_OAUTH_ACCESS_TOKEN",
+        "TEST_OAUTH_REFRESH_TOKEN",
+      ],
+      variableNames: [
+        "TEST_OAUTH_API_TOKEN_INPUT_VAR",
+        "TEST_OAUTH_API_TENANT_ID",
+      ],
+    };
+    const storageBeforeFailure = await readConnectorCredentialStorageState(
+      context,
+      storageQuery,
+    );
+
+    const failed = await connectorsApi.requestManualGrant(
+      actor,
+      "test-oauth",
+      "api-token",
+      {
+        apiToken: "bdd-failed-replacement-token",
+        inputVariable: "bdd-failed-replacement-input",
+        tenantId: "bdd-failed-replacement-tenant",
+      },
+      { statuses: [500] },
+    );
+    expect(failed.status).toBe(500);
+    await expect(
+      connectorsApi.readConnectorBySlug(actor, "test-oauth"),
+    ).resolves.toStrictEqual(oauthConnector);
+    await expect(
+      readConnectorCredentialStorageState(context, storageQuery),
+    ).resolves.toStrictEqual(storageBeforeFailure);
+
+    await setConnectorVariableOwner(context, {
+      connectorId: oauthConnector.id,
+      name: "TEST_OAUTH_API_TOKEN_INPUT_VAR",
+      orgId: requiredOrgId(actor),
+      userId: actor.userId,
+    });
+    const manual = await connectorsApi.connectManualGrant(
+      actor,
+      "test-oauth",
+      "api-token",
+      {
+        apiToken: "bdd-successful-replacement-token",
+        inputVariable: "bdd-successful-replacement-input",
+        tenantId: "bdd-successful-replacement-tenant",
+      },
+    );
+    expect(manual).toMatchObject({
+      id: oauthConnector.id,
+      authMethod: "api-token",
+      externalId: null,
+      externalUsername: null,
+      externalEmail: null,
+      oauthScopes: null,
+      tokenExpiresAt: null,
+    });
+    const manualStorage = await readConnectorCredentialStorageState(
+      context,
+      storageQuery,
+    );
+    expect(
+      manualStorage.secrets?.map(({ name }) => {
+        return name;
+      }),
+    ).toStrictEqual(["TEST_OAUTH_TOKEN"]);
+    expect(
+      manualStorage.variables
+        ?.map(({ name }) => {
+          return name;
+        })
+        .sort((left, right) => {
+          return left.localeCompare(right);
+        }),
+    ).toStrictEqual([
+      "TEST_OAUTH_API_TENANT_ID",
+      "TEST_OAUTH_API_TOKEN_INPUT_VAR",
+    ]);
 
     await connectorsApi.deleteConnectorBySlug(actor, "test-oauth");
     await connectorsApi.deleteFeatureSwitches(actor);
