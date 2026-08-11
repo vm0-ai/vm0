@@ -186,6 +186,7 @@ async function handleControlRequest(
       .update(`${timestamp}.${rawBody}`)
       .digest("hex");
     const delivered = await postWebhook(webhookUrl, rawBody, {
+      ...parseDeliveryHeaders(input.headers),
       "content-type": "application/json",
       "x-vm0-timestamp": String(timestamp),
       "x-vm0-signature": signature,
@@ -218,7 +219,6 @@ function postWebhook(
       {
         method: "POST",
         headers: { ...headers, "content-length": Buffer.byteLength(body) },
-        ...(url.protocol === "https:" ? { rejectUnauthorized: false } : {}),
       },
       (incoming) => {
         const chunks: Buffer[] = [];
@@ -332,6 +332,21 @@ function requireRecord(
     throw new Error(`${description} must be an object`);
   }
   return Object.fromEntries(Object.entries(value));
+}
+
+function parseDeliveryHeaders(
+  value: unknown,
+): Readonly<Record<string, string>> {
+  if (value === undefined) {
+    return {};
+  }
+  const record = requireRecord(value, "webhook delivery input.headers");
+  return Object.fromEntries(
+    Object.keys(record).map((name) => [
+      name,
+      requireString(record, name, "webhook delivery input.headers"),
+    ]),
+  );
 }
 
 function requireString(

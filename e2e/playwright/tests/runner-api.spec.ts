@@ -303,8 +303,21 @@ class SimulatorControl {
     readonly body: unknown;
     readonly timestamp: number;
   }> {
+    // Preview API deployments sit behind Vercel deployment protection, so the
+    // simulated external delivery must carry the automation bypass header.
+    const bypassSecret = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
     const response = requireRecord(
-      await this.fetch("POST", "/__control/deliver-webhook", args, [200]),
+      await this.fetch(
+        "POST",
+        "/__control/deliver-webhook",
+        {
+          ...args,
+          ...(bypassSecret
+            ? { headers: { "x-vercel-protection-bypass": bypassSecret } }
+            : {}),
+        },
+        [200],
+      ),
       "simulator webhook delivery response",
     );
     const rawResponseBody = requireString(
