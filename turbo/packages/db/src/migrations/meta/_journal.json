@@ -617,6 +617,13 @@
       "when": 1786425481396,
       "tag": "0895_prepare_canonical_custom_connector_definitions",
       "breakpoints": true
+    },
+    {
+      "idx": 896,
+      "version": "7",
+      "when": 1786429087303,
+      "tag": "0896_neat_makkari",
+      "breakpoints": true
     }
   ]
 }
