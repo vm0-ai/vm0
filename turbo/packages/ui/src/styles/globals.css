@@ -149,6 +149,11 @@
   );
   --color-state-pressed: hsl(var(--state-layer) / var(--state-pressed-alpha));
 
+  --color-background-hover: color-mix(
+    in srgb,
+    hsl(var(--background)),
+    hsl(var(--state-layer)) var(--state-hover-alpha)
+  );
   --color-card-hover: color-mix(
     in srgb,
     hsl(var(--card)),
