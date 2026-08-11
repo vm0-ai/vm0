@@ -648,6 +648,52 @@ describe("team page navigation", () => {
     toast.dismiss();
   });
 
+  it("keeps authorized MCP custom connectors revocable while disabled", async () => {
+    const connector = createMcpCustomConnector();
+    let grants: AgentCustomConnectorGrant[] = [
+      { customConnectorId: connector.id, permissionNames: [] },
+    ];
+    let updateCount = 0;
+    mockTeamAPIs({ customConnector: connector });
+    context.mocks.api(
+      zeroAgentCustomConnectorsContract.get,
+      ({ params, respond }) => {
+        expect(params.id).toBe(researchAgentId);
+        return respond(200, { grants });
+      },
+    );
+    context.mocks.api(
+      zeroAgentCustomConnectorsContract.update,
+      ({ body, params, respond }) => {
+        expect(params.id).toBe(researchAgentId);
+        expect(body).toStrictEqual({
+          grants: [{ customConnectorId: connector.id, permissionNames: [] }],
+          operation: "remove",
+        });
+        updateCount += 1;
+        grants = [];
+        return respond(200, { grants });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${researchAgentId}`,
+      featureSwitches: { [FeatureSwitchKey.CustomConnectorMcp]: false },
+    });
+
+    await screen.findByText("DeepWiki");
+    expect(
+      screen.queryByLabelText("Grant DeepWiki access"),
+    ).not.toBeInTheDocument();
+    click(screen.getByLabelText("Revoke DeepWiki access"));
+
+    await waitFor(() => {
+      expect(updateCount).toBe(1);
+      expect(screen.queryByText("DeepWiki")).not.toBeInTheDocument();
+    });
+  });
+
   it("hides unavailable custom connectors without loading agent access", async () => {
     const customConnector = {
       ...createCustomConnector(),

@@ -288,6 +288,60 @@ describe("chat composer connector connection", () => {
     });
   });
 
+  it("keeps authorized MCP custom connectors removable while disabled", async () => {
+    const user = userEvent.setup({ delay: null });
+    const connector = mcpCustomConnector({
+      connected: true,
+      missingRequiredFields: [],
+      configuredFieldKeys: ["secret"],
+      hasSecret: true,
+    });
+    let grants: AgentCustomConnectorGrant[] = [
+      { customConnectorId: connector.id, permissionNames: [] },
+    ];
+    let updateCount = 0;
+    context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
+      return respond(200, { connectors: [connector] });
+    });
+    context.mocks.api(
+      zeroAgentCustomConnectorsContract.get,
+      ({ params, respond }) => {
+        expect(params.id).toBe(AGENT_ID);
+        return respond(200, { grants });
+      },
+    );
+    context.mocks.api(
+      zeroAgentCustomConnectorsContract.update,
+      ({ body, params, respond }) => {
+        expect(params.id).toBe(AGENT_ID);
+        expect(body).toStrictEqual({
+          grants: [{ customConnectorId: connector.id, permissionNames: [] }],
+          operation: "remove",
+        });
+        updateCount += 1;
+        grants = [];
+        return respond(200, { grants });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: { [FeatureSwitchKey.CustomConnectorMcp]: false },
+    });
+
+    const composer = composerElementFrom(
+      await screen.findByPlaceholderText(PLACEHOLDER),
+    );
+    await user.click(within(composer).getByLabelText("Connectors"));
+    await user.click(await screen.findByLabelText("Remove DeepWiki"));
+
+    await waitFor(() => {
+      expect(updateCount).toBe(1);
+      expect(screen.queryByText("DeepWiki")).not.toBeInTheDocument();
+    });
+  });
+
   it("does not create an empty grant for a permissioned custom connector", async () => {
     const user = userEvent.setup({ delay: null });
     const connector = customConnector({
