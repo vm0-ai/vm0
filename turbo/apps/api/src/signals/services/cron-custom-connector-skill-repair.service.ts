@@ -1,4 +1,4 @@
-import { command } from "ccstate";
+import { command, type Setter } from "ccstate";
 import {
   getCustomConnectorSkillStorageName,
   VOLUME_ORG_USER_ID,
@@ -88,8 +88,6 @@ type CustomConnectorSkillClassification =
       readonly connector: CustomConnectorSkillScanRow;
       readonly reason: CustomConnectorSkillRepairReason;
     };
-
-type CommandSet = Parameters<Parameters<typeof command>[0]>[0]["set"];
 
 function storageKey(orgId: string, storageName: string): string {
   return `${orgId}\u0000${storageName}`;
@@ -430,7 +428,7 @@ async function readLockedConnector(
 }
 
 async function repairSkillConnector(
-  set: CommandSet,
+  set: Setter,
   db: Db,
   connector: CustomConnectorSkillScanRow & { readonly skillMarkdown: string },
   signal: AbortSignal,
