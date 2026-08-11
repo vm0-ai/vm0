@@ -1455,8 +1455,12 @@ jobs:
               grep '^/api/cron/' |
               grep -v '^/api/cron/sync-connector-catalog$'
           )
-          if [[ "${#cron_routes[@]}" -ne 22 ]]; then
-            echo "::error::Expected 22 remaining cron routes, found ${#cron_routes[@]}"
+          expected_cron_routes="$(jq '[
+            .crons[].path |
+            select(. != "/api/cron/sync-connector-catalog")
+          ] | unique | length' turbo/apps/api/vercel.json)"
+          if [[ "${#cron_routes[@]}" -ne "$expected_cron_routes" ]]; then
+            echo "::error::Expected ${expected_cron_routes} remaining cron routes, found ${#cron_routes[@]}"
             exit 1
           fi
 

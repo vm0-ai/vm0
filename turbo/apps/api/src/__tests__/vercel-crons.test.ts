@@ -30,6 +30,7 @@ import {
 import { describe, expect, it } from "vitest";
 
 import { ROUTES } from "../signals/route";
+import { WORKER_CRON_ROUTES } from "../worker-crons";
 
 interface VercelCron {
   readonly path: string;
@@ -151,6 +152,21 @@ describe("vercel cron config", () => {
     const crons = readVercelConfig().crons ?? [];
 
     expect(crons).toStrictEqual(expectedVercelCrons);
+  });
+
+  it("keeps the Worker cron schedule map aligned with Vercel", () => {
+    const workerCrons = Object.entries(WORKER_CRON_ROUTES).flatMap(
+      ([schedule, paths]) => {
+        return paths.map((path) => ({ path, schedule }));
+      },
+    );
+    const byPath = (left: VercelCron, right: VercelCron): number => {
+      return left.path.localeCompare(right.path);
+    };
+
+    expect(workerCrons.sort(byPath)).toStrictEqual(
+      [...expectedVercelCrons].sort(byPath),
+    );
   });
 
   it("targets existing API routes without duplicate paths", () => {
