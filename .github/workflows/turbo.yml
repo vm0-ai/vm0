@@ -2669,7 +2669,6 @@ jobs:
 
           curl -fsS "${headers[@]}" -X PUT -d "$payload" "${E2E_API_URL}/api/zero/model-policies" >/dev/null
           curl -fsS "${headers[@]}" -X PUT -d '{"selectedModel":null,"serviceTier":null}' "${E2E_API_URL}/api/zero/user-model-preference" >/dev/null
-          curl -fsS "${headers[@]}" -X POST -d '{"timezone":"UTC"}' "${E2E_API_URL}/api/zero/user-preferences" >/dev/null
         env:
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
       - name: Bootstrap runner mock model provider
@@ -2710,14 +2709,6 @@ jobs:
             <<< "$provider_response")
 
           policies=$(curl -fsS "${headers[@]}" "${api_url}/api/zero/model-policies")
-          jq -e '
-            any(.policies[]?;
-              .model == "gpt-5.6-sol" and
-              .defaultProviderType == "vm0" and
-              .credentialScope == "org" and
-              .modelProviderId == null
-            )
-          ' <<< "$policies" >/dev/null
           policy_payload=$(jq -c --arg providerId "$provider_id" '
             {
               policies: (

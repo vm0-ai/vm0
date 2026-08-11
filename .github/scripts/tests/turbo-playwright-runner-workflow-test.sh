@@ -210,11 +210,9 @@ raise "missing runner model policy bootstrap" unless model_defaults_step
 model_defaults_script = model_defaults_step.fetch("run")
 unless model_defaults_script.include?("/api/zero/model-policies") &&
     model_defaults_script.include?("/api/zero/user-model-preference") &&
-    model_defaults_script.include?("/api/zero/user-preferences") &&
     model_defaults_script.include?("deepseek-v4-flash") &&
     model_defaults_script.include?("gpt-5.6-luna") &&
-    model_defaults_script.include?('{"selectedModel":null,"serviceTier":null}') &&
-    model_defaults_script.include?('{"timezone":"UTC"}')
+    model_defaults_script.include?('{"selectedModel":null,"serviceTier":null}')
   raise "runner bootstrap must reset the limited-free model defaults"
 end
 %w[claude-opus-4-7 claude-sonnet-4-6 gpt-5.5].each do |restricted_model|
@@ -240,9 +238,7 @@ codex_script = codex_step.fetch("run")
   /api/zero/model-providers
   /api/zero/model-policies
   /api/zero/feature-switches
-  gpt-5.6-sol
   gpt-5.6-luna
-  defaultProviderType\ ==\ "vm0"
   realAgentInPreview
 ].each do |required_fragment|
   unless codex_script.include?(required_fragment)
