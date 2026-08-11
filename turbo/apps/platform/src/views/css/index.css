@@ -524,6 +524,12 @@ body {
   border-top: 0.7px dashed hsl(var(--gray-400));
 }
 
+/* Avatar / logo thumbnails: a hairline lighter than zero-border, so the edge of
+   a picture stays readable without the stroke reading as a frame. */
+.zero-thumb-border {
+  border: 0.5px solid hsl(var(--gray-400));
+}
+
 /* Role / status badge: pill with 0.7px border on neutral background */
 .zero-badge {
   border: 0.7px solid hsl(var(--gray-400));

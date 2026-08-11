@@ -86,6 +86,7 @@ import {
 } from "../../../../signals/zero-page/settings/workspace-settings-state.ts";
 import { openSettingsMemberUsagePacks$ } from "../../../../signals/zero-page/settings/settings-dialog.ts";
 import { formatUsd } from "../../../../i18n/format.ts";
+import { UserAvatar } from "../../../components/avatar.tsx";
 import {
   parseUsagePackOption,
   usagePackOptionLabel,
@@ -562,7 +563,7 @@ function MemberRow({
   return (
     <div className={cn(memberRowGrid(showUsagePack), "py-3 px-5")}>
       <div className="flex items-center gap-3 min-w-0">
-        <MemberAvatar
+        <UserAvatar
           imageUrl={member.imageUrl}
           initial={initial}
           name={name || member.email}
@@ -983,7 +984,7 @@ function PendingInvitationRow({
   return (
     <div className={cn(memberRowGrid(showUsagePack), "py-3 px-5")}>
       <div className="flex items-center gap-3 min-w-0">
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted/50 text-xs font-medium text-muted-foreground border border-dashed border-border">
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted/50 text-xs font-medium text-muted-foreground border border-dashed border-border">
           {initial}
         </div>
         <div className="min-w-0">
@@ -1136,7 +1137,7 @@ function MembershipRequestRow({
   return (
     <div className={cn(memberRowGrid(showUsagePack), "py-3 px-5")}>
       <div className="flex items-center gap-3 min-w-0">
-        <MemberAvatar
+        <UserAvatar
           imageUrl={request.imageUrl}
           initial={initial}
           name={name || request.email}
@@ -1192,36 +1193,13 @@ function MembershipRequestRow({
   );
 }
 
-function MemberAvatar({
-  imageUrl,
-  initial,
-  name,
-}: {
-  imageUrl: string;
-  initial: string;
-  name: string;
-}) {
-  if (imageUrl) {
-    return (
-      <div className="h-8 w-8 shrink-0 rounded-lg overflow-hidden">
-        <img src={imageUrl} alt={name} className="h-full w-full object-cover" />
-      </div>
-    );
-  }
-  return (
-    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted/50 text-xs font-medium text-muted-foreground">
-      {initial}
-    </div>
-  );
-}
-
 function MemberRowSkeleton({ showUsagePack }: { showUsagePack: boolean }) {
   return (
     <div
       className={cn(memberRowGrid(showUsagePack), "py-3 px-5 animate-pulse")}
     >
       <div className="flex items-center gap-3">
-        <div className="h-8 w-8 shrink-0 rounded-lg bg-muted/50" />
+        <div className="h-8 w-8 shrink-0 rounded-full bg-muted/50" />
         <div className="flex flex-col gap-1">
           <div className="h-4 w-24 rounded bg-muted/50" />
           <div className="h-3 w-36 rounded bg-muted/30" />
