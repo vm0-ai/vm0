@@ -8,6 +8,10 @@ import { and, desc, eq, gt, inArray, sql, sum } from "drizzle-orm";
 import { pgInt8ToSafeIntegerDecoder } from "../../lib/db-structured-result";
 import { nowDate } from "../../lib/time";
 import type { Db } from "../external/db";
+import {
+  ensureUsagePackCreditRefundSource,
+  type UsagePackCreditRefundSource,
+} from "./usage-pack-credit-refund.service";
 
 interface UsagePackCreditGrantArgs {
   readonly orgId: string;
@@ -16,6 +20,7 @@ interface UsagePackCreditGrantArgs {
   readonly idempotencyKey: string;
   readonly amount: number;
   readonly expiresAt: Date;
+  readonly refundSource?: UsagePackCreditRefundSource;
 }
 
 interface UsagePackCreditGrantResult {
@@ -72,6 +77,17 @@ export async function createUsagePackCreditGrant(
     .onConflictDoNothing({ target: usagePackCreditGrants.idempotencyKey })
     .returning({ id: usagePackCreditGrants.id });
   if (inserted) {
+    if (args.refundSource) {
+      if (args.grantType !== "purchased") {
+        throw new Error("Bonus usage pack credits cannot have a refund source");
+      }
+      await ensureUsagePackCreditRefundSource(db, {
+        creditGrantId: inserted.id,
+        orgId: args.orgId,
+        userId: args.userId,
+        source: args.refundSource,
+      });
+    }
     return { id: inserted.id, created: true };
   }
 
@@ -96,6 +112,17 @@ export async function createUsagePackCreditGrant(
     existing.expiresAt.getTime() !== args.expiresAt.getTime()
   ) {
     throw new Error("Usage pack credit grant idempotency key conflict");
+  }
+  if (args.refundSource) {
+    if (args.grantType !== "purchased") {
+      throw new Error("Bonus usage pack credits cannot have a refund source");
+    }
+    await ensureUsagePackCreditRefundSource(db, {
+      creditGrantId: existing.id,
+      orgId: args.orgId,
+      userId: args.userId,
+      source: args.refundSource,
+    });
   }
   return { id: existing.id, created: false };
 }

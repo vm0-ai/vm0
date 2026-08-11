@@ -2,7 +2,6 @@ import { command } from "ccstate";
 import { zeroOrgInviteContract } from "@vm0/api-contracts/contracts/zero-org-members";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { isStaffOrg } from "@vm0/core/staff-org";
 
 import { billingRedirectAllowed } from "../../lib/billing-redirect";
 import { env, optionalEnv } from "../../lib/env";
@@ -18,9 +17,9 @@ import { bodyResultOf } from "../context/request";
 import { clerk$ } from "../external/clerk";
 import { db$, writeDb$ } from "../external/db";
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
+import { loadOrgPlanCapabilities } from "../services/org-plan-entitlement-read.service";
 import {
   createUsagePackInvitationCheckout,
-  currentUsagePackSubscriptionForOrg,
   revokeUsagePackInvitationPurchase,
   usagePackInvitationPurchaseSchemaAvailable,
 } from "../services/usage-pack-invitation-purchase.service";
@@ -43,9 +42,6 @@ async function usagePackInvitationsEnabled(
   orgId: string,
   userId: string,
 ): Promise<boolean> {
-  if (!isStaffOrg(orgId)) {
-    return false;
-  }
   const overrides = await get(userFeatureSwitchOverrides(orgId, userId));
   return isFeatureEnabled(FeatureSwitchKey.UsagePackPlans, {
     orgId,
@@ -69,8 +65,9 @@ const inviteInner$ = command(async ({ get }, signal: AbortSignal) => {
   if (await usagePackInvitationsEnabled(get, auth.orgId, auth.userId)) {
     signal.throwIfAborted();
     const db = get(db$);
-    if (await currentUsagePackSubscriptionForOrg(db, auth.orgId)) {
-      signal.throwIfAborted();
+    const capabilities = await loadOrgPlanCapabilities(db, auth.orgId);
+    signal.throwIfAborted();
+    if (capabilities?.memberInviteUsagePackRequired) {
       if (!(await usagePackInvitationPurchaseSchemaAvailable(db))) {
         return providerUnavailable("Usage pack invitations are not ready");
       }

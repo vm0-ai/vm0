@@ -631,6 +631,27 @@
       "when": 1786432064522,
       "tag": "0897_bizarre_kid_colt",
       "breakpoints": true
+    },
+    {
+      "idx": 898,
+      "version": "7",
+      "when": 1786434656080,
+      "tag": "0898_usage_pack_credit_refunds",
+      "breakpoints": true
+    },
+    {
+      "idx": 899,
+      "version": "7",
+      "when": 1786434673087,
+      "tag": "0899_backfill_member_invite_usage_pack_required",
+      "breakpoints": true
+    },
+    {
+      "idx": 900,
+      "version": "7",
+      "when": 1786434776471,
+      "tag": "0900_replace_scheduled_usage_pack_change",
+      "breakpoints": true
     }
   ]
 }

@@ -6551,6 +6551,312 @@ async function validateChatRunServiceTierAnnotationBackfill(): Promise<void> {
   }
 }
 
+const USAGE_PACK_REFUND_SCHEMA_MIGRATION = "0898_usage_pack_credit_refunds";
+const USAGE_PACK_INVITE_BACKFILL_MIGRATION =
+  "0899_backfill_member_invite_usage_pack_required";
+const USAGE_PACK_CHANGE_INDEX_MIGRATION =
+  "0900_replace_scheduled_usage_pack_change";
+
+async function validateUsagePackInviteLifecycleMigrations(): Promise<void> {
+  console.log("=== Validate usage-pack invite lifecycle migrations ===\n");
+  const testDb = "migration_usage_pack_invite_lifecycle_test";
+  const testDbUrl = createTestDbUrl(testDb);
+  await createDatabase(testDb);
+
+  try {
+    await runMigrationsUpToTag(testDbUrl, USAGE_PACK_REFUND_SCHEMA_MIGRATION);
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+
+    try {
+      await client.query(`
+        INSERT INTO "org_plan_entitlements" (
+          "org_id",
+          "plan_key",
+          "plan_rank",
+          "source",
+          "stripe_subscription_id"
+        )
+        VALUES
+          ('org_usage_pack_active_pro', 'pro', 1, 'stripe', 'sub_active_pro'),
+          ('org_usage_pack_active_team', 'team', 2, 'stripe', 'sub_active_team'),
+          ('org_usage_pack_free', 'limited-free-1', 0, 'stripe', 'sub_free'),
+          ('org_usage_pack_canceled', 'pro', 1, 'stripe', 'sub_canceled'),
+          ('org_usage_pack_expired', 'team', 2, 'stripe', 'sub_expired'),
+          ('org_usage_pack_invalid', 'pro', 1, 'stripe', 'sub_invalid'),
+          ('org_usage_pack_mismatch', 'pro', 1, 'stripe', 'sub_entitlement')
+      `);
+      await client.query(`
+        INSERT INTO "usage_pack_subscriptions" (
+          "id",
+          "org_id",
+          "tier",
+          "stripe_plan_price_id",
+          "stripe_customer_id",
+          "stripe_subscription_id",
+          "subscription_status"
+        )
+        VALUES
+          (
+            '00000000-0000-4000-8000-000000090001',
+            'org_usage_pack_active_pro',
+            'pro',
+            'price_plan_pro',
+            'cus_active_pro',
+            'sub_active_pro',
+            'active'
+          ),
+          (
+            '00000000-0000-4000-8000-000000090002',
+            'org_usage_pack_active_team',
+            'team',
+            'price_plan_team',
+            'cus_active_team',
+            'sub_active_team',
+            'trialing'
+          ),
+          (
+            '00000000-0000-4000-8000-000000090003',
+            'org_usage_pack_free',
+            'pro',
+            'price_plan_pro',
+            'cus_free',
+            'sub_free',
+            'active'
+          ),
+          (
+            '00000000-0000-4000-8000-000000090004',
+            'org_usage_pack_canceled',
+            'pro',
+            'price_plan_pro',
+            'cus_canceled',
+            'sub_canceled',
+            'canceled'
+          ),
+          (
+            '00000000-0000-4000-8000-000000090005',
+            'org_usage_pack_expired',
+            'team',
+            'price_plan_team',
+            'cus_expired',
+            'sub_expired',
+            'incomplete_expired'
+          ),
+          (
+            '00000000-0000-4000-8000-000000090006',
+            'org_usage_pack_invalid',
+            'pro',
+            'price_plan_pro',
+            'cus_invalid',
+            'sub_invalid',
+            'invalid'
+          ),
+          (
+            '00000000-0000-4000-8000-000000090007',
+            'org_usage_pack_mismatch',
+            'pro',
+            'price_plan_pro',
+            'cus_mismatch',
+            'sub_usage_pack',
+            'active'
+          )
+      `);
+
+      await applyMigrationsUpToTag(
+        client,
+        USAGE_PACK_INVITE_BACKFILL_MIGRATION,
+      );
+      const entitlements = await client.query<{
+        memberInviteUsagePackRequired: boolean;
+        orgId: string;
+      }>(`
+        SELECT
+          "org_id" AS "orgId",
+          "member_invite_usage_pack_required" AS "memberInviteUsagePackRequired"
+        FROM "org_plan_entitlements"
+        WHERE "org_id" LIKE 'org_usage_pack_%'
+        ORDER BY "org_id"
+      `);
+      assert.deepEqual(entitlements.rows, [
+        {
+          memberInviteUsagePackRequired: true,
+          orgId: "org_usage_pack_active_pro",
+        },
+        {
+          memberInviteUsagePackRequired: true,
+          orgId: "org_usage_pack_active_team",
+        },
+        {
+          memberInviteUsagePackRequired: false,
+          orgId: "org_usage_pack_canceled",
+        },
+        {
+          memberInviteUsagePackRequired: false,
+          orgId: "org_usage_pack_expired",
+        },
+        {
+          memberInviteUsagePackRequired: false,
+          orgId: "org_usage_pack_free",
+        },
+        {
+          memberInviteUsagePackRequired: false,
+          orgId: "org_usage_pack_invalid",
+        },
+        {
+          memberInviteUsagePackRequired: false,
+          orgId: "org_usage_pack_mismatch",
+        },
+      ]);
+
+      await client.query(`
+        INSERT INTO "usage_pack_subscription_changes" (
+          "id",
+          "usage_pack_subscription_id",
+          "org_id",
+          "source_tier",
+          "target_tier",
+          "status",
+          "proration_timestamp",
+          "immediate_amount_cents",
+          "next_recurring_amount_cents",
+          "currency",
+          "preview_expires_at",
+          "effective_at"
+        )
+        VALUES
+          (
+            '00000000-0000-4000-8000-000000090011',
+            '00000000-0000-4000-8000-000000090001',
+            'org_usage_pack_active_pro',
+            'pro',
+            'pro',
+            'completed',
+            1,
+            0,
+            0,
+            'usd',
+            '2035-01-01',
+            '2035-02-01'
+          ),
+          (
+            '00000000-0000-4000-8000-000000090012',
+            '00000000-0000-4000-8000-000000090001',
+            'org_usage_pack_active_pro',
+            'pro',
+            'pro',
+            'completed',
+            2,
+            0,
+            0,
+            'usd',
+            '2035-01-01',
+            '2035-02-01'
+          )
+      `);
+      await applyMigrationsUpToTag(client, USAGE_PACK_CHANGE_INDEX_MIGRATION);
+
+      await client.query(`
+        INSERT INTO "usage_pack_allocation_changes" (
+          "id",
+          "usage_pack_subscription_id",
+          "subscription_change_id",
+          "org_id",
+          "user_id",
+          "kind",
+          "status",
+          "target_usage_pack_usd",
+          "target_stripe_price_id"
+        )
+        VALUES
+          (
+            '00000000-0000-4000-8000-000000090021',
+            '00000000-0000-4000-8000-000000090001',
+            '00000000-0000-4000-8000-000000090011',
+            'org_usage_pack_active_pro',
+            'user_grouped_preview',
+            'addition',
+            'previewed',
+            20,
+            'price_usage_pack_20'
+          ),
+          (
+            '00000000-0000-4000-8000-000000090022',
+            '00000000-0000-4000-8000-000000090001',
+            '00000000-0000-4000-8000-000000090012',
+            'org_usage_pack_active_pro',
+            'user_grouped_preview',
+            'addition',
+            'previewed',
+            50,
+            'price_usage_pack_50'
+          ),
+          (
+            '00000000-0000-4000-8000-000000090023',
+            '00000000-0000-4000-8000-000000090001',
+            NULL,
+            'org_usage_pack_active_pro',
+            'user_grouped_preview',
+            'addition',
+            'previewed',
+            100,
+            'price_usage_pack_100'
+          ),
+          (
+            '00000000-0000-4000-8000-000000090024',
+            '00000000-0000-4000-8000-000000090001',
+            '00000000-0000-4000-8000-000000090011',
+            'org_usage_pack_active_pro',
+            'user_scheduled',
+            'addition',
+            'scheduled',
+            20,
+            'price_usage_pack_20'
+          )
+      `);
+      await expectDatabaseError(client, {
+        code: "23505",
+        messageIncludes: "uq_usage_pack_changes_current_user",
+        query: `
+          INSERT INTO "usage_pack_allocation_changes" (
+            "usage_pack_subscription_id",
+            "subscription_change_id",
+            "org_id",
+            "user_id",
+            "kind",
+            "status",
+            "target_usage_pack_usd",
+            "target_stripe_price_id"
+          )
+          VALUES (
+            '00000000-0000-4000-8000-000000090001',
+            '00000000-0000-4000-8000-000000090012',
+            'org_usage_pack_active_pro',
+            'user_scheduled',
+            'addition',
+            'scheduled',
+            50,
+            'price_usage_pack_50'
+          )
+        `,
+      });
+
+      console.log(
+        "   ✅ Active Pro and Team usage-pack subscriptions require invite packages",
+      );
+      console.log(
+        "   ✅ Terminal, free, and mismatched subscriptions remain unchanged",
+      );
+      console.log(
+        "   ✅ Grouped previews coexist while scheduled replacements remain unique\n",
+      );
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+}
+
 async function main(): Promise<void> {
   console.log("🧪 Testing Migration Consistency (Schema Comparison)\n");
 
@@ -6579,6 +6885,7 @@ async function main(): Promise<void> {
     await validateChatEventContractionFinalization();
     await validateCanonicalChatEventStorageBackfill();
     await validateChatRunServiceTierAnnotationBackfill();
+    await validateUsagePackInviteLifecycleMigrations();
 
     // Step 1.5: Validate latest snapshot accuracy (NEW)
     await validateLatestSnapshotAccuracy();

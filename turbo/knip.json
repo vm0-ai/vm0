@@ -28,7 +28,7 @@
         "src/**/*.{test,spec}.ts"
       ],
       "project": ["src/**/*.ts"],
-      "ignoreDependencies": ["@hono/node-server-v1"]
+      "ignoreDependencies": ["@hono/node-server-v1", "clerk"]
     },
     "apps/platform": {
       "entry": ["src/main.ts", "i18next.config.ts", "**/*.{test,spec}.ts?(x)"],
