@@ -7,6 +7,7 @@ from mitmproxy.flow import Error
 
 import flow_metadata_keys as metadata_keys
 import mitm_addon
+import model_usage_eligibility
 import usage
 from tests.model_provider_flow_helpers import (
     make_openai_responses_websocket_flow,
@@ -163,7 +164,7 @@ class TestModelProviderWebSocketRetentionWithUsageDelivery:
         )
         assert flow.websocket is not None
         assert flow.websocket.messages == []
-        assert "model_websocket_usage_enabled" not in flow.metadata
+        assert not model_usage_eligibility.is_websocket_active(flow)
 
         run_deferred_websocket_trims(deferred_websocket_trim_scheduler)
         assert flow.websocket.messages == []
@@ -197,7 +198,7 @@ class TestModelProviderWebSocketRetentionWithUsageDelivery:
         )
         assert flow.websocket is not None
         assert flow.websocket.messages == []
-        assert "model_websocket_usage_enabled" not in flow.metadata
+        assert not model_usage_eligibility.is_websocket_active(flow)
 
         run_deferred_websocket_trims(deferred_websocket_trim_scheduler)
         assert flow.websocket.messages == []

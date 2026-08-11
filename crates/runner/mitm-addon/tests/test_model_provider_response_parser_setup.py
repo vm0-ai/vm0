@@ -7,6 +7,7 @@ from mitmproxy.test import tutils
 
 import flow_metadata_keys as metadata_keys
 import mitm_addon
+import model_usage_eligibility
 import response_streaming
 from tests.flow_helpers import header_map, response_stream
 from tests.jsonl_log_helpers import jsonl_exists_after_flush
@@ -143,7 +144,7 @@ class TestBodylessModelResponseParserAdmission:
 
             assert "model_json_usage_finish" not in flow.metadata
             assert "model_sse_usage_finish" not in flow.metadata
-            assert "model_websocket_usage_enabled" not in flow.metadata
+            assert not model_usage_eligibility.is_websocket_active(flow)
             assert metadata_keys.MODEL_PROVIDER_USAGE not in flow.metadata
 
             unexpected_wire_bytes = b"bodyless-response-wire-bytes"
