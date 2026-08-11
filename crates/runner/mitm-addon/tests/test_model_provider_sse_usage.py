@@ -24,7 +24,10 @@ from tests.jsonl_log_helpers import (
     jsonl_exists_after_flush,
     read_jsonl_entries_after_flush,
 )
-from tests.model_provider_flow_helpers import make_model_provider_sse_flow
+from tests.model_provider_flow_helpers import (
+    make_model_provider_sse_flow,
+    model_usage_source_entries,
+)
 from tests.pending_helpers import assert_current_pending, assert_pending
 from tests.usage_buffer_helpers import event as usage_event
 from tests.usage_helpers import (
@@ -147,17 +150,6 @@ def _model_sse_parse_warnings(flow: http.HTTPFlow) -> list[dict]:
         entry
         for entry in read_jsonl_entries_after_flush(proxy_log)
         if entry.get("message") == "Model provider SSE usage extraction failed"
-    ]
-
-
-def _model_usage_source_entries(flow: http.HTTPFlow) -> list[dict]:
-    proxy_log = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
-    if not jsonl_exists_after_flush(proxy_log):
-        return []
-    return [
-        entry
-        for entry in read_jsonl_entries_after_flush(proxy_log)
-        if entry.get("type") == "model_usage_source"
     ]
 
 
@@ -398,7 +390,7 @@ class TestModelProviderSseUsage:
             event["category"]: event["quantity"] for event in webhook.usage_events()
         } == expected
         assert compact_observation_quantities(webhook.model_usage_observation_events()) == expected
-        [source_entry] = _model_usage_source_entries(flow)
+        [source_entry] = model_usage_source_entries(flow)
         assert source_entry["source_id"] == flow.id
         assert source_entry["provider_response_id"] == "resp_sse_1"
         assert source_entry["transport"] == "http"

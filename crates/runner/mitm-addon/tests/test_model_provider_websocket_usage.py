@@ -15,6 +15,7 @@ from tests.jsonl_log_helpers import jsonl_exists_after_flush, read_jsonl_entries
 from tests.model_provider_flow_helpers import (
     make_openai_responses_websocket_flow,
     model_provider_usage_sources,
+    model_usage_source_entries,
 )
 from tests.model_provider_websocket_helpers import (
     ScheduledWebSocketTrim,
@@ -69,17 +70,6 @@ def _openai_websocket_zero_usage_frame(response_id: str, *, model: str | None = 
             "response": response,
         }
     ).encode()
-
-
-def _model_usage_source_entries(flow: http.HTTPFlow) -> list[dict]:
-    proxy_log = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
-    if not jsonl_exists_after_flush(proxy_log):
-        return []
-    return [
-        entry
-        for entry in read_jsonl_entries_after_flush(proxy_log)
-        if entry.get("type") == "model_usage_source"
-    ]
 
 
 class TestModelProviderWebSocketUsageSourceRelease:
@@ -257,7 +247,7 @@ class TestModelProviderWebSocketUsage:
                 ("gpt-5.5", "tokens.cache_creation", 15),
             ],
         )
-        [source_entry] = _model_usage_source_entries(flow)
+        [source_entry] = model_usage_source_entries(flow)
         assert source_entry["flow_id"] == flow.id
         assert source_entry["source_id"] == f"{flow.id}:resp_ws_1"
         assert source_entry["provider_response_id"] == "resp_ws_1"
@@ -386,7 +376,7 @@ class TestModelProviderWebSocketUsage:
         ]
         _assert_usage_event_rows(webhook.usage_events(), "provider", expected_rows)
         _assert_usage_event_rows(webhook.model_usage_observation_events(), "model", expected_rows)
-        source_entries = _model_usage_source_entries(flow)
+        source_entries = model_usage_source_entries(flow)
         assert len(source_entries) == 2
         first_entry = next(
             entry for entry in source_entries if entry["usage"]["tokens.input"] == 20
@@ -983,7 +973,7 @@ class TestModelProviderWebSocketUsage:
         ]
         _assert_usage_event_rows(webhook.usage_events(), "provider", expected_rows)
         _assert_usage_event_rows(webhook.model_usage_observation_events(), "model", expected_rows)
-        source_entries = _model_usage_source_entries(flow)
+        source_entries = model_usage_source_entries(flow)
         assert len(source_entries) == 2
         [source_preserving_entry] = [
             entry for entry in source_entries if entry["buffer_mode"] == "source"

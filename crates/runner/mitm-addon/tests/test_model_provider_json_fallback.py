@@ -19,6 +19,7 @@ from tests.jsonl_log_helpers import (
     read_jsonl_entries_after_flush,
     read_jsonl_text_after_flush,
 )
+from tests.model_provider_flow_helpers import model_usage_source_entries
 from tests.model_provider_response_helpers import (
     ANTHROPIC_JSON_CASE,
     CODEX_OAUTH_RESPONSES_CASE,
@@ -149,11 +150,7 @@ class TestModelProviderJsonFallback:
 
         webhook = run_response(flow, self._usage_webhook_api)
 
-        [source_entry] = [
-            entry
-            for entry in read_jsonl_entries_after_flush(proxy_log_path)
-            if entry.get("type") == "model_usage_source"
-        ]
+        [source_entry] = model_usage_source_entries(flow)
         assert source_entry["level"] == "info"
         assert source_entry["message"] == "Model provider usage source reported"
         assert source_entry["run_id"] == "run-abc-123"
@@ -665,11 +662,7 @@ class TestModelProviderJsonFallback:
         by_category = compact_observation_quantities(observations)
         assert by_category == expected_event_quantities(OPENAI_RESPONSES_CASE)
         assert flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE]["model"] == "gpt-5.5"
-        [source_entry] = [
-            entry
-            for entry in read_jsonl_entries_after_flush(proxy_log_path)
-            if entry.get("type") == "model_usage_source"
-        ]
+        [source_entry] = model_usage_source_entries(flow)
         assert source_entry["usage_events"] == []
         assert all(
             observation["buffer_accepted"] is True
