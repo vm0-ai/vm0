@@ -92,6 +92,9 @@ describe("platform entrypoint safe area behavior", () => {
       /@media\s*\(display-mode:\s*standalone\)\s*{[\s\S]*\[data-chat-composer\]\s+\.zero-composer\s*{\s*scroll-margin-block-end:\s*16px;\s*}/,
     );
     expect(globalCss).toMatch(
+      /\[data-chat-composer\]\s*{\s*padding-bottom:\s*max\(0\.5rem\s*-\s*var\(--sab\),\s*0px\);\s*}/,
+    );
+    expect(globalCss).toMatch(
       /#root::after\s*{[\s\S]*height:\s*var\(--zero-keyboard-scroll-reserve,\s*0px\);[\s\S]*pointer-events:\s*none;/,
     );
     expect(globalCss).not.toContain("data-keyboard-inset-page");
