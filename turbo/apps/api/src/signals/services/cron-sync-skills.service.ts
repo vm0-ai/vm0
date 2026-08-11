@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import { once } from "node:events";
 import { createGzip } from "node:zlib";
 
@@ -30,13 +30,11 @@ import { logger } from "../../lib/log";
 import { nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
 import {
-  copyS3Object,
   deleteS3Objects,
   listS3ObjectsUnderPrefix,
   putS3Object,
   s3ClientScopeForBucket,
   type S3ClientScope,
-  uploadS3ObjectStream,
 } from "../external/s3";
 import { createDeferredPromise, settle, tapError } from "../utils";
 import type { FileEntryWithHash } from "./storage-content-hash.service";
@@ -61,8 +59,7 @@ interface ExtractedSkill {
   readonly skillName: string;
   readonly files: readonly ExtractedFile[];
   readonly skillMdContent: Buffer;
-  readonly temporaryArchiveKey: string;
-  readonly archiveSize: number;
+  readonly archiveBuffer: Buffer;
 }
 
 interface SkillSyncContext {
@@ -105,9 +102,8 @@ interface SkillTreeSyncPlan {
 
 interface SkillArchiveBuilder {
   readonly archive: Pack;
-  readonly archiveSize: Promise<number>;
+  readonly archiveBuffer: Promise<Buffer>;
   readonly compressed: ReturnType<typeof createGzip>;
-  readonly temporaryArchiveKey: string;
 }
 
 const log = logger("skills:sync");
@@ -118,7 +114,8 @@ const GITHUB_API_HEADERS = {
   Accept: "application/vnd.github+json",
   "User-Agent": "vm0-api",
 } as const;
-const SKILL_ARCHIVE_TEMP_PREFIX = "_system/skill-sync";
+const SYSTEM_SKILL_MAX_TOTAL_BYTES = 8 * 1024 * 1024;
+const SYSTEM_SKILL_MAX_ARCHIVE_BYTES = 16 * 1024 * 1024;
 
 const gitTreeSchema = z.object({
   truncated: z.boolean(),
@@ -331,29 +328,35 @@ function createSkillManifest(files: readonly ExtractedFile[]): Buffer {
   );
 }
 
-function startSkillArchive(
-  skillName: string,
-  commitSha: string,
+async function collectSkillArchive(
+  compressed: AsyncIterable<Uint8Array>,
   signal: AbortSignal,
-  s3ClientScope: S3ClientScope,
-): Computed<SkillArchiveBuilder> {
-  return computed((get): SkillArchiveBuilder => {
-    const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
-    const temporaryArchiveKey = `${SKILL_ARCHIVE_TEMP_PREFIX}/${commitSha}/${randomUUID()}-${skillName}.tar.gz`;
-    const archive = pack();
-    const compressed = createGzip({ level: 1 });
-    archive.pipe(compressed);
-    const archiveSize = get(
-      uploadS3ObjectStream(
-        bucket,
-        temporaryArchiveKey,
-        compressed,
-        { contentType: "application/gzip", clientScope: s3ClientScope },
-        signal,
-      ),
-    );
-    return { archive, archiveSize, compressed, temporaryArchiveKey };
-  });
+): Promise<Buffer> {
+  const chunks: Buffer[] = [];
+  let archiveSize = 0;
+  for await (const chunk of compressed) {
+    signal.throwIfAborted();
+    const buffer = Buffer.from(chunk);
+    archiveSize += buffer.length;
+    if (archiveSize > SYSTEM_SKILL_MAX_ARCHIVE_BYTES) {
+      throw new Error(
+        `Skill archive exceeds ${SYSTEM_SKILL_MAX_ARCHIVE_BYTES.toString()} bytes`,
+      );
+    }
+    chunks.push(buffer);
+  }
+  return Buffer.concat(chunks, archiveSize);
+}
+
+function startSkillArchive(signal: AbortSignal): SkillArchiveBuilder {
+  const archive = pack();
+  const compressed = createGzip({ level: 1 });
+  archive.pipe(compressed);
+  return {
+    archive,
+    archiveBuffer: collectSkillArchive(compressed, signal),
+    compressed,
+  };
 }
 
 function encodedRawFilePath(path: string): string {
@@ -441,12 +444,17 @@ function downloadSkillArchive(
   files: readonly GitTreeFile[],
   commitSha: string,
   signal: AbortSignal,
-  s3ClientScope: S3ClientScope,
 ): Computed<Promise<ExtractedSkill>> {
-  return computed(async (get): Promise<ExtractedSkill> => {
-    const builder = get(
-      startSkillArchive(skillName, commitSha, signal, s3ClientScope),
-    );
+  return computed(async (): Promise<ExtractedSkill> => {
+    const totalSize = files.reduce((sum, file) => {
+      return sum + file.size;
+    }, 0);
+    if (totalSize > SYSTEM_SKILL_MAX_TOTAL_BYTES) {
+      throw new Error(
+        `Skill content exceeds ${SYSTEM_SKILL_MAX_TOTAL_BYTES.toString()} bytes`,
+      );
+    }
+    const builder = startSkillArchive(signal);
     const extractedFiles: ExtractedFile[] = [];
     let skillMdContent: Buffer | undefined;
     const extracted = await settle(
@@ -463,7 +471,7 @@ function downloadSkillArchive(
           skillMdContent = result.skillMd ?? skillMdContent;
         }
         builder.archive.finalize();
-        const archiveSize = await builder.archiveSize;
+        const archiveBuffer = await builder.archiveBuffer;
         if (!skillMdContent) {
           throw new Error("Skill archive is missing SKILL.md");
         }
@@ -471,8 +479,7 @@ function downloadSkillArchive(
           skillName,
           files: extractedFiles,
           skillMdContent,
-          temporaryArchiveKey: builder.temporaryArchiveKey,
-          archiveSize,
+          archiveBuffer,
         };
       })(),
       signal,
@@ -481,7 +488,7 @@ function downloadSkillArchive(
       const error = normalizeArchiveError(extracted.error);
       builder.archive.destroy();
       builder.compressed.destroy(error);
-      await settle(builder.archiveSize);
+      await settle(builder.archiveBuffer);
       throw error;
     }
     return extracted.value;
@@ -523,12 +530,12 @@ function uploadSkillArchive(
 
     await Promise.all([
       get(
-        copyS3Object(
+        putS3Object(
           bucketName,
-          extracted.temporaryArchiveKey,
           `${s3Key}/archive.tar.gz`,
-          signal,
-          s3ClientScope,
+          extracted.archiveBuffer,
+          "application/gzip",
+          { signal, clientScope: s3ClientScope },
         ),
       ),
       get(
@@ -544,7 +551,7 @@ function uploadSkillArchive(
     signal.throwIfAborted();
 
     return {
-      archiveSize: extracted.archiveSize,
+      archiveSize: extracted.archiveBuffer.length,
       s3Key,
     };
   });
@@ -981,13 +988,7 @@ async function syncChangedSkill(
   const skillStore = createStore();
   const downloaded = await settle(
     skillStore.get(
-      downloadSkillArchive(
-        args.skillName,
-        args.files,
-        args.headSha,
-        signal,
-        args.s3ClientScope,
-      ),
+      downloadSkillArchive(args.skillName, args.files, args.headSha, signal),
     ),
     signal,
   );
@@ -1015,25 +1016,6 @@ async function syncChangedSkill(
     ),
     signal,
   );
-  const cleaned = await settle(
-    skillStore.get(
-      deleteS3Objects(
-        env("R2_USER_STORAGES_BUCKET_NAME"),
-        [downloaded.value.temporaryArchiveKey],
-        args.s3ClientScope,
-      ),
-    ),
-    signal,
-  );
-  if (!cleaned.ok) {
-    log.warn("Failed to clean up temporary skill archive", {
-      skillName: args.skillName,
-      error:
-        cleaned.error instanceof Error
-          ? cleaned.error.message
-          : String(cleaned.error),
-    });
-  }
   signal.throwIfAborted();
   if (!result.ok) {
     log.warn("Skipping skill due to sync error", {

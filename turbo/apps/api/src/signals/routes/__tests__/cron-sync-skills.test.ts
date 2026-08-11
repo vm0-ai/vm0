@@ -40,6 +40,7 @@ interface MockSkillEntry {
   readonly files: readonly {
     readonly path: string;
     readonly content: string;
+    readonly declaredSize?: number;
   }[];
 }
 
@@ -260,7 +261,7 @@ function setupMswHandlersWithTrees(
                 mode: "100644",
                 type: "blob",
                 sha: mockGitBlobSha(file.content),
-                size: Buffer.byteLength(file.content),
+                size: file.declaredSize ?? Buffer.byteLength(file.content),
                 url: `https://api.github.com/repos/vm0-ai/vm0-skills/git/blobs/${mockGitBlobSha(file.content)}`,
               };
             });
@@ -318,29 +319,19 @@ function s3CallsByName(name: string): unknown[] {
 }
 
 function successfulS3Response(command: unknown): Promise<unknown> {
-  if (commandName(command) === "CreateMultipartUploadCommand") {
-    return Promise.resolve({ UploadId: randomUUID() });
-  }
-  if (commandName(command) === "UploadPartCommand") {
-    const partNumber = commandInput(command).PartNumber;
-    return Promise.resolve({ ETag: `etag-${String(partNumber)}` });
-  }
   return Promise.resolve({});
 }
 
 function uploadedBytesForKeySuffix(keySuffix: string): number {
-  return s3CallsByName("UploadPartCommand")
-    .filter((command) => {
-      const key = commandInput(command).Key;
-      return typeof key === "string" && key.endsWith(keySuffix);
-    })
-    .reduce<number>((total, command) => {
-      const body = commandInput(command).Body;
-      if (!Buffer.isBuffer(body)) {
-        throw new Error("Expected a multipart upload body");
-      }
-      return total + body.length;
-    }, 0);
+  const command = s3CallsByName("PutObjectCommand").find((candidate) => {
+    const key = commandInput(candidate).Key;
+    return typeof key === "string" && key.endsWith(keySuffix);
+  });
+  const body = commandInput(command).Body;
+  if (!Buffer.isBuffer(body)) {
+    throw new Error("Expected a buffered upload body");
+  }
+  return body.length;
 }
 
 function setupS3ListObjects(keys: readonly string[]): void {
@@ -463,7 +454,7 @@ describe("GET /api/cron/sync-skills", () => {
       ),
     );
     const alphaVersion = buildMockSkillVersion(EXTRA_SKILLS.alphaSkill);
-    const alphaArchiveCopy = s3CallsByName("CopyObjectCommand").find(
+    const alphaArchiveUpload = s3CallsByName("PutObjectCommand").find(
       (command) => {
         const key = commandInput(command).Key;
         return (
@@ -472,9 +463,9 @@ describe("GET /api/cron/sync-skills", () => {
         );
       },
     );
-    expect(alphaArchiveCopy).toBeDefined();
+    expect(alphaArchiveUpload).toBeDefined();
     const alphaArchiveSize = uploadedBytesForKeySuffix(
-      `-${EXTRA_SKILLS.alphaSkill.name}.tar.gz`,
+      `/${alphaVersion.versionHash}/archive.tar.gz`,
     );
     expect(alphaStorage).toMatchObject({
       headVersionId: expect.any(String),
@@ -483,8 +474,7 @@ describe("GET /api/cron/sync-skills", () => {
       archiveSize: alphaArchiveSize,
     });
     expect(alphaArchiveSize).toBeGreaterThan(0);
-    expect(s3CallsByName("CopyObjectCommand")).toHaveLength(2);
-    expect(s3CallsByName("PutObjectCommand")).toHaveLength(2);
+    expect(s3CallsByName("PutObjectCommand")).toHaveLength(4);
   });
 
   it("authenticates public tree requests with OAuth client credentials", async () => {
@@ -645,6 +635,34 @@ describe("GET /api/cron/sync-skills", () => {
     ).resolves.toBeNull();
   });
 
+  it("rejects a skill whose declared content cannot fit the Worker bound", async () => {
+    const commitSha = newCommitSha();
+    const oversizedSkill = {
+      name: `${TEST_SKILL_PREFIX}-oversized`,
+      files: [
+        {
+          path: "SKILL.md",
+          content:
+            `---\nname: ${TEST_SKILL_PREFIX}-oversized\n` +
+            "description: Oversized skill\n---\n",
+          declaredSize: 8 * 1024 * 1024 + 1,
+        },
+      ],
+    } satisfies MockSkillEntry;
+    await seedCurrentSeedSkillVersions();
+    setupMswHandlers(commitSha, createFullSkillTree([oversizedSkill]));
+
+    const response = await accept(
+      apiClient().sync({ headers: cronHeaders() }),
+      [200],
+    );
+
+    expect(response.body.failed).toBe(1);
+    await expect(
+      findSkillByUrl(testSkillUrl(oversizedSkill.name)),
+    ).resolves.toBeNull();
+  });
+
   it("retries a transient skill download failure at the same commit", async () => {
     const commitSha = newCommitSha();
     const sourceSkills = createFullSkillTree([EXTRA_SKILLS.alphaSkill]);
@@ -677,7 +695,7 @@ describe("GET /api/cron/sync-skills", () => {
     await expect(
       findSkillByUrl(testSkillUrl(EXTRA_SKILLS.alphaSkill.name)),
     ).resolves.toBeNull();
-    expect(s3CallsByName("AbortMultipartUploadCommand")).toHaveLength(1);
+    expect(s3CallsByName("PutObjectCommand")).toHaveLength(0);
 
     const retriedResponse = await accept(
       apiClient().sync({ headers: cronHeaders() }),
@@ -730,8 +748,7 @@ describe("GET /api/cron/sync-skills", () => {
     expect(response.body.commitSha).toBe(nextCommitSha);
     expect(response.body.synced).toBe(1);
     expect(response.body.skipped).toBeGreaterThanOrEqual(1);
-    expect(s3CallsByName("CopyObjectCommand")).toHaveLength(1);
-    expect(s3CallsByName("PutObjectCommand")).toHaveLength(1);
+    expect(s3CallsByName("PutObjectCommand")).toHaveLength(2);
 
     await expect(
       findSkillByUrl(testSkillUrl(EXTRA_SKILLS.alphaSkill.name)),
