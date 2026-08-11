@@ -5855,8 +5855,7 @@ async function validateCanonicalChatEventStorageBackfill(): Promise<void> {
   }
 }
 
-const CHAT_RUN_SERVICE_TIER_PREVIOUS_MIGRATION =
-  "0889_thankful_crusher_hogan";
+const CHAT_RUN_SERVICE_TIER_PREVIOUS_MIGRATION = "0889_thankful_crusher_hogan";
 const CHAT_RUN_SERVICE_TIER_MIGRATION =
   "0890_backfill_chat_run_service_tier_annotations";
 
