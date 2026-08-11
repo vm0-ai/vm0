@@ -62,11 +62,12 @@ unless consumer_step&.fetch("run", "")&.end_with?("runner-image-context.sh turbo
 end
 
 stripe_listener_condition = stripe_listener.fetch("if")
-unless stripe_listener_condition.include?(
-    "turbo-runner-consumer-needed == 'true'"
-  ) && stripe_listener_condition.include?(
-    "playwright-runner-consumer-needed == 'true'"
-  )
+stripe_listener_lines = stripe_listener_condition.lines.map(&:strip)
+expected_stripe_listener_consumers = [
+  "needs.prepare.outputs.turbo-runner-consumer-needed == 'true' ||",
+  "needs.prepare.outputs.playwright-runner-consumer-needed == 'true'",
+]
+unless stripe_listener_lines.each_cons(2).include?(expected_stripe_listener_consumers)
   raise "Stripe forwarding must run for every deployed E2E consumer"
 end
 
