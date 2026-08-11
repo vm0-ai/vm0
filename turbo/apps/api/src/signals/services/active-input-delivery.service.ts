@@ -38,6 +38,16 @@ interface ActiveInputDeliveryReference {
   readonly eventIds: readonly string[];
 }
 
+interface ActiveInputDeliveryIdentity {
+  readonly runId: string;
+  readonly chatThreadId: string;
+}
+
+export interface FinalizeActiveInputDeliveryResult {
+  readonly finalized: boolean;
+  readonly chatEventsAppended: boolean;
+}
+
 type ReserveActiveInputDeliveryResult =
   | ({
       readonly outcome: "reserved";
@@ -188,7 +198,7 @@ async function prepareReservation(
 
 async function lockOpenDelivery(
   tx: ActiveInputDeliveryTransaction,
-  scope: ActiveInputDeliveryScope,
+  scope: ActiveInputDeliveryIdentity,
 ): Promise<ActiveInputDeliveryReference | null> {
   const [delivery] = await tx
     .select({
@@ -411,14 +421,7 @@ export async function replacePendingActiveInputEvent(
   ) {
     throw new Error("Pending active input has invalid event type");
   }
-  const target = {
-    id: event.id,
-    chatThreadId: event.chatThreadId,
-    createdAt: event.createdAt,
-    eventType: event.eventType,
-    contextType: event.contextType,
-    contextId: event.contextId,
-  };
+  const target = activeInputReplacementTarget(event);
   const replacement =
     event.eventType === "input.budget"
       ? await replaceLoadedChatEvent(tx, target, {
@@ -438,8 +441,42 @@ export async function replacePendingActiveInputEvent(
   }
 }
 
+type ActiveInputSourceRow = Awaited<
+  ReturnType<typeof activeInputRowsByIds>
+>[number];
+
+type ActiveInputReplacementTargetSource = Pick<
+  ActiveInputSourceRow,
+  | "id"
+  | "chatThreadId"
+  | "createdAt"
+  | "eventType"
+  | "contextType"
+  | "contextId"
+>;
+
+function activeInputReplacementTarget(
+  event: ActiveInputReplacementTargetSource,
+): {
+  readonly id: string;
+  readonly chatThreadId: string;
+  readonly createdAt: Date;
+  readonly eventType: ActiveInputSourceRow["eventType"];
+  readonly contextType: ActiveInputSourceRow["contextType"];
+  readonly contextId: ActiveInputSourceRow["contextId"];
+} {
+  return {
+    id: event.id,
+    chatThreadId: event.chatThreadId,
+    createdAt: event.createdAt,
+    eventType: event.eventType,
+    contextType: event.contextType,
+    contextId: event.contextId,
+  };
+}
+
 function sourceIsPendingForRun(
-  source: Awaited<ReturnType<typeof activeInputRowsByIds>>[number],
+  source: ActiveInputSourceRow,
   runId: string,
 ): boolean {
   if (source.runId !== null) {
@@ -461,6 +498,16 @@ interface LockedActiveInputDeliveryReceipt {
     readonly sourceEventId: string;
     readonly disposition: (typeof activeInputDeliveryItems.$inferSelect)["disposition"];
   }[];
+}
+
+interface ActiveInputDeliveryRevoker {
+  readonly eventType: (typeof chatEvents.$inferSelect)["eventType"];
+  readonly runId: string | null;
+}
+
+interface LockedActiveInputDeliverySources {
+  readonly sources: readonly ActiveInputSourceRow[];
+  readonly revokerBySource: ReadonlyMap<string, ActiveInputDeliveryRevoker>;
 }
 
 async function lockActiveInputDeliveryReceipt(
@@ -516,12 +563,11 @@ async function lockActiveInputDeliveryReceipt(
   return { status: delivery.status, items };
 }
 
-async function settleOpenActiveInputDeliveryReceipt(
+async function lockActiveInputDeliverySources(
   tx: ActiveInputDeliveryTransaction,
-  scope: ActiveInputDeliveryScope,
-  deliveryId: string,
+  scope: ActiveInputDeliveryIdentity,
   items: LockedActiveInputDeliveryReceipt["items"],
-): Promise<RecordActiveInputDeliveryReceiptResult> {
+): Promise<LockedActiveInputDeliverySources> {
   const eventIds = items.map((item) => {
     return item.sourceEventId;
   });
@@ -552,44 +598,62 @@ async function settleOpenActiveInputDeliveryReceipt(
       if (!revoker.revokesEventId) {
         throw new Error("Active input revoker is missing its source event");
       }
-      return [revoker.revokesEventId, revoker] as const;
+      return [
+        revoker.revokesEventId,
+        { eventType: revoker.eventType, runId: revoker.runId },
+      ] as const;
     }),
   );
-  const invalidSource = sources.some((source) => {
-    const revoker = revokerBySource.get(source.id);
+  return { sources, revokerBySource };
+}
+
+function activeInputDeliverySourcesAreDeliverable(
+  scope: ActiveInputDeliveryIdentity,
+  state: LockedActiveInputDeliverySources,
+): boolean {
+  return state.sources.every((source) => {
+    const revoker = state.revokerBySource.get(source.id);
     if (revoker) {
-      return !(
+      return (
         revoker.runId === scope.runId &&
         revoker.eventType === source.eventType &&
         (source.eventType === "input.prompt" ||
           source.eventType === "input.budget")
       );
     }
-    return !sourceIsPendingForRun(source, scope.runId);
+    return sourceIsPendingForRun(source, scope.runId);
   });
-  if (invalidSource) {
-    return { outcome: "rejected", replacementsAppended: false };
-  }
-  let replacementsAppended = false;
-  for (const source of sources) {
-    if (!revokerBySource.has(source.id)) {
-      await replacePendingActiveInputEvent(tx, source, scope.runId);
-      replacementsAppended = true;
-    }
+}
+
+async function settleActiveInputDeliveryItems(
+  tx: ActiveInputDeliveryTransaction,
+  deliveryId: string,
+  sourceEventIds: readonly string[],
+  disposition: "delivered" | "released" | "expired",
+): Promise<void> {
+  if (sourceEventIds.length === 0) {
+    return;
   }
   const updatedItems = await tx
     .update(activeInputDeliveryItems)
-    .set({ disposition: "delivered" })
+    .set({ disposition })
     .where(
       and(
         eq(activeInputDeliveryItems.deliveryId, deliveryId),
+        inArray(activeInputDeliveryItems.sourceEventId, sourceEventIds),
         isNull(activeInputDeliveryItems.disposition),
       ),
     )
     .returning({ sourceEventId: activeInputDeliveryItems.sourceEventId });
-  if (updatedItems.length !== items.length) {
+  if (updatedItems.length !== sourceEventIds.length) {
     throw new Error("Active input delivery item settlement was incomplete");
   }
+}
+
+async function settleActiveInputDelivery(
+  tx: ActiveInputDeliveryTransaction,
+  deliveryId: string,
+): Promise<void> {
   const [settled] = await tx
     .update(activeInputDeliveries)
     .set({ status: "settled" })
@@ -603,10 +667,94 @@ async function settleOpenActiveInputDeliveryReceipt(
   if (!settled) {
     throw new Error("Active input delivery settlement was incomplete");
   }
+}
+
+async function settleOpenActiveInputDeliveryAsDelivered(
+  tx: ActiveInputDeliveryTransaction,
+  scope: ActiveInputDeliveryIdentity,
+  deliveryId: string,
+  items: LockedActiveInputDeliveryReceipt["items"],
+): Promise<{ readonly replacementsAppended: boolean } | null> {
+  const state = await lockActiveInputDeliverySources(tx, scope, items);
+  if (!activeInputDeliverySourcesAreDeliverable(scope, state)) {
+    return null;
+  }
+  let replacementsAppended = false;
+  for (const source of state.sources) {
+    if (!state.revokerBySource.has(source.id)) {
+      await replacePendingActiveInputEvent(tx, source, scope.runId);
+      replacementsAppended = true;
+    }
+  }
+  await settleActiveInputDeliveryItems(
+    tx,
+    deliveryId,
+    items.map((item) => {
+      return item.sourceEventId;
+    }),
+    "delivered",
+  );
+  await settleActiveInputDelivery(tx, deliveryId);
+  return { replacementsAppended };
+}
+
+async function settleOpenActiveInputDeliveryAsUndelivered(
+  tx: ActiveInputDeliveryTransaction,
+  scope: ActiveInputDeliveryIdentity,
+  deliveryId: string,
+  items: LockedActiveInputDeliveryReceipt["items"],
+): Promise<FinalizeActiveInputDeliveryResult> {
+  const state = await lockActiveInputDeliverySources(tx, scope, items);
+  if (
+    state.sources.some((source) => {
+      return (
+        state.revokerBySource.has(source.id) ||
+        !sourceIsPendingForRun(source, scope.runId)
+      );
+    })
+  ) {
+    throw new Error("Undelivered active input source is no longer pending");
+  }
+  const promptEventIds: string[] = [];
+  const budgetEventIds: string[] = [];
+  for (const source of state.sources) {
+    if (source.eventType === "input.prompt") {
+      promptEventIds.push(source.id);
+      continue;
+    }
+    if (source.eventType !== "input.budget") {
+      throw new Error("Active input delivery has an invalid source type");
+    }
+    const revoked = await replaceLoadedChatEvent(
+      tx,
+      activeInputReplacementTarget(source),
+      {
+        chatThreadId: scope.chatThreadId,
+        eventType: "control.revoke",
+        runId: scope.runId,
+      },
+    );
+    if (!revoked) {
+      throw new Error("Active input budget expiry was not appended");
+    }
+    budgetEventIds.push(source.id);
+  }
+  await settleActiveInputDeliveryItems(
+    tx,
+    deliveryId,
+    promptEventIds,
+    "released",
+  );
+  await settleActiveInputDeliveryItems(
+    tx,
+    deliveryId,
+    budgetEventIds,
+    "expired",
+  );
+  await settleActiveInputDelivery(tx, deliveryId);
   return {
-    outcome: "delivered",
-    replacementsAppended,
-    chatThreadId: scope.chatThreadId,
+    finalized: true,
+    chatEventsAppended: budgetEventIds.length > 0,
   };
 }
 
@@ -647,12 +795,59 @@ async function recordActiveInputDeliveryReceiptTransition(
   ) {
     throw new Error("Open active input delivery has settled items");
   }
-  return await settleOpenActiveInputDeliveryReceipt(
+  const settlement = await settleOpenActiveInputDeliveryAsDelivered(
     tx,
     scope,
     deliveryId,
     delivery.items,
   );
+  if (!settlement) {
+    return { outcome: "rejected", replacementsAppended: false };
+  }
+  return {
+    outcome: "delivered",
+    replacementsAppended: settlement.replacementsAppended,
+    chatThreadId: scope.chatThreadId,
+  };
+}
+
+export async function finalizeActiveInputDeliveryForCompletion(
+  tx: ActiveInputDeliveryTransaction,
+  args: ActiveInputDeliveryIdentity & {
+    readonly deliveredDeliveryIds: ReadonlySet<string>;
+  },
+): Promise<FinalizeActiveInputDeliveryResult> {
+  const delivery = await lockOpenDelivery(tx, args);
+  if (!delivery) {
+    return {
+      finalized: false,
+      chatEventsAppended: false,
+    };
+  }
+  const items = delivery.eventIds.map((sourceEventId) => {
+    return { sourceEventId, disposition: null };
+  });
+  if (!args.deliveredDeliveryIds.has(delivery.deliveryId)) {
+    return await settleOpenActiveInputDeliveryAsUndelivered(
+      tx,
+      args,
+      delivery.deliveryId,
+      items,
+    );
+  }
+  const settlement = await settleOpenActiveInputDeliveryAsDelivered(
+    tx,
+    args,
+    delivery.deliveryId,
+    items,
+  );
+  if (!settlement) {
+    throw new Error("Delivered active input source is no longer valid");
+  }
+  return {
+    finalized: true,
+    chatEventsAppended: settlement.replacementsAppended,
+  };
 }
 
 export async function recordActiveInputDeliveryReceipt(
