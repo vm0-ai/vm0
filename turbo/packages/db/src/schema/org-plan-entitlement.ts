@@ -35,6 +35,9 @@ export const orgPlanEntitlements = pgTable(
     memberInviteUsagePackRequired: boolean("member_invite_usage_pack_required")
       .notNull()
       .default(false),
+    memberInvitationAllowed: boolean("member_invitation_allowed")
+      .notNull()
+      .default(false),
     autoRechargeAllowed: boolean("auto_recharge_allowed")
       .notNull()
       .default(false),

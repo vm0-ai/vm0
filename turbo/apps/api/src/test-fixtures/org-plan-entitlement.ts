@@ -22,6 +22,7 @@ interface OrgPlanEntitlementFixtureState {
   readonly canBuyConcurrency: boolean;
   readonly canBuyCredits: boolean;
   readonly memberInviteUsagePackRequired: boolean;
+  readonly memberInvitationAllowed: boolean;
   readonly autoRechargeAllowed: boolean;
   readonly supportByok: boolean;
   readonly restrictedVm0Models: boolean;
@@ -45,6 +46,7 @@ export async function upsertOrgPlanEntitlementFixture(values: {
   readonly canBuyConcurrency?: boolean;
   readonly canBuyCredits?: boolean;
   readonly memberInviteUsagePackRequired?: boolean;
+  readonly memberInvitationAllowed?: boolean;
   readonly autoRechargeAllowed?: boolean;
   readonly supportByok?: boolean;
   readonly restrictedVm0Models?: boolean;
@@ -61,6 +63,7 @@ export async function upsertOrgPlanEntitlementFixture(values: {
     canBuyConcurrency: values.canBuyConcurrency,
     canBuyCredits: values.canBuyCredits,
     memberInviteUsagePackRequired: values.memberInviteUsagePackRequired,
+    memberInvitationAllowed: values.memberInvitationAllowed,
     autoRechargeAllowed: values.autoRechargeAllowed,
     supportByok: values.supportByok,
     restrictedVm0Models: values.restrictedVm0Models,
@@ -90,6 +93,9 @@ export async function upsertOrgPlanEntitlementFixture(values: {
           : {
               memberInviteUsagePackRequired: row.memberInviteUsagePackRequired,
             }),
+        ...(row.memberInvitationAllowed === undefined
+          ? {}
+          : { memberInvitationAllowed: row.memberInvitationAllowed }),
         ...(row.autoRechargeAllowed === undefined
           ? {}
           : { autoRechargeAllowed: row.autoRechargeAllowed }),
@@ -154,6 +160,7 @@ export async function readOrgPlanEntitlementFixture(
       canBuyCredits: orgPlanEntitlements.canBuyCredits,
       memberInviteUsagePackRequired:
         orgPlanEntitlements.memberInviteUsagePackRequired,
+      memberInvitationAllowed: orgPlanEntitlements.memberInvitationAllowed,
       autoRechargeAllowed: orgPlanEntitlements.autoRechargeAllowed,
       supportByok: orgPlanEntitlements.supportByok,
       restrictedVm0Models: orgPlanEntitlements.restrictedVm0Models,
