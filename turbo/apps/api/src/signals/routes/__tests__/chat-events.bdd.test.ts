@@ -25,7 +25,10 @@ import {
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { isChatRunTerminalEventType } from "@vm0/api-contracts/contracts/chat-events";
 import { cronSteerRunTimeBudgetContract } from "@vm0/api-contracts/contracts/cron";
-import { ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES } from "@vm0/api-contracts/contracts/runners";
+import {
+  ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES,
+  CANCELLATION_RECOVERY_STALE_AFTER_MS,
+} from "@vm0/api-contracts/contracts/runners";
 import { zeroMailContract } from "@vm0/api-contracts/contracts/zero-mail";
 import {
   getModelProviderFirewall,
@@ -89,7 +92,9 @@ import {
   createUnassociatedThreadBoundZeroRunFixture,
 } from "../../../test-fixtures/thread-bound-run-admission";
 import {
+  completeRunWithoutCallbacksFixture,
   deleteAgentRunFixture,
+  holdCheckpointReadsFixture,
   deleteBddVm0ApiKey,
   holdChatEventFixture,
   holdChatEventQueueItemFixture,
@@ -103,6 +108,7 @@ import {
   replayPendingChatInputQueueEventFixture,
   replaceBddVm0ApiKey,
   replaceThreadSessionBindingFixture,
+  timeoutRunWithoutCallbacksFixture,
 } from "../../../test-fixtures/chat-events";
 import { cronSteerRunTimeBudgetRoutes } from "../cron-steer-run-time-budget";
 import { zeroChatEventsRoutes } from "../zero-chat-events";
@@ -666,7 +672,13 @@ async function waitForRunUserMessage(
 async function waitForRunStatus(
   actor: ApiTestUser,
   runId: string,
-  status: "cancelled" | "completed" | "failed" | "pending" | "running",
+  status:
+    | "cancelled"
+    | "completed"
+    | "failed"
+    | "pending"
+    | "running"
+    | "timeout",
 ): Promise<void> {
   await expect
     .poll(async () => {
@@ -726,6 +738,7 @@ async function completeChatRunOk(
   runId: string,
   sandboxHeaders: { readonly authorization: string },
   options: {
+    readonly activeInputDeliveryIds?: readonly string[];
     readonly cliAgentType?: "claude-code" | "codex";
     readonly lastEventSequence?: number;
   } = {},
@@ -754,6 +767,9 @@ async function completeChatRunOk(
     {
       runId,
       exitCode: 0,
+      ...(options.activeInputDeliveryIds === undefined
+        ? {}
+        : { activeInputDeliveryIds: [...options.activeInputDeliveryIds] }),
       ...(options.lastEventSequence === undefined
         ? stagedOutputEvents.length === 0
           ? {}
@@ -1848,6 +1864,603 @@ describe("CHAT-02: queueing and recalling messages", () => {
       }),
     ).toStrictEqual([firstEventId, secondEventId]);
     await cancelChatRun(actor, active.runId);
+  }, 90_000);
+
+  it("finalizes delivered input from completion receipts exactly once", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const active = await sendChatRun(actor, {
+      agentId,
+      prompt: "complete a durable delivery",
+    });
+    const claimed = await claimChatRun(runnerGroup, active.runId);
+    const pendingEventId = randomUUID();
+    await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: active.threadId,
+        prompt: "accepted before completion",
+        clientEventId: pendingEventId,
+      },
+      [201],
+    );
+    const reserved = await api.reserveRunnerActiveInputs(
+      claimed.claim.sandboxToken,
+      active.runId,
+    );
+    if (reserved.outcome !== "reserved") {
+      throw new Error("Expected completion input to be reserved");
+    }
+
+    const history = `bdd chat session history ${active.runId}`;
+    await webhooks.requestAgentCheckpoint(
+      {
+        runId: active.runId,
+        cliAgentType: "claude-code",
+        cliAgentSessionId: `bdd-cli-${active.runId}`,
+        cliAgentSessionHistoryHash: createHash("sha256")
+          .update(history)
+          .digest("hex"),
+      },
+      claimed.sandboxHeaders,
+      [200],
+    );
+    const checkpointGate = await holdCheckpointReadsFixture({
+      signal: context.signal,
+    });
+    onTestFinished(async () => {
+      checkpointGate.release();
+      await checkpointGate.done;
+    });
+    const completion = webhooks.requestAgentComplete(
+      {
+        runId: active.runId,
+        exitCode: 0,
+        activeInputDeliveryIds: [reserved.deliveryId],
+      },
+      claimed.sandboxHeaders,
+      [200],
+    );
+    await expect
+      .poll(checkpointGate.blockedWaiterCount)
+      .toBeGreaterThanOrEqual(1);
+    await expect(
+      api.recordRunnerActiveInputDelivery(
+        claimed.claim.sandboxToken,
+        active.runId,
+        reserved.deliveryId,
+      ),
+    ).resolves.toStrictEqual({ outcome: "delivered" });
+    checkpointGate.release();
+    await checkpointGate.done;
+    await expect(completion).resolves.toMatchObject({
+      body: { success: true, status: "completed" },
+    });
+    await flushWaitUntilForTest();
+    await expect(
+      api.recordRunnerActiveInputDelivery(
+        claimed.claim.sandboxToken,
+        active.runId,
+        reserved.deliveryId,
+      ),
+    ).resolves.toStrictEqual({ outcome: "delivered" });
+
+    const duplicate = await webhooks.requestAgentComplete(
+      {
+        runId: active.runId,
+        exitCode: 1,
+        error: "late fallback completion",
+        activeInputDeliveryIds: [reserved.deliveryId],
+      },
+      claimed.sandboxHeaders,
+      [200],
+    );
+    expect(duplicate.body).toStrictEqual({
+      success: true,
+      status: "completed",
+    });
+    await flushWaitUntilForTest();
+
+    const events = await chat.listThreadEvents(actor, active.threadId);
+    expect(
+      events.events.filter((event) => {
+        return (
+          event.revokesEventId === pendingEventId &&
+          event.runId === active.runId
+        );
+      }),
+    ).toHaveLength(1);
+  }, 90_000);
+
+  it("settles delivered input with the terminal run transition", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const active = await sendChatRun(actor, {
+      agentId,
+      prompt: "complete with a durable delivery",
+    });
+    const claimed = await claimChatRun(runnerGroup, active.runId);
+    const pendingEventId = randomUUID();
+    await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: active.threadId,
+        prompt: "settle with the terminal transition",
+        clientEventId: pendingEventId,
+      },
+      [201],
+    );
+    const reserved = await api.reserveRunnerActiveInputs(
+      claimed.claim.sandboxToken,
+      active.runId,
+    );
+    if (reserved.outcome !== "reserved") {
+      throw new Error("Expected terminal input to be reserved");
+    }
+
+    await completeChatRunOk(active.runId, claimed.sandboxHeaders, {
+      activeInputDeliveryIds: [reserved.deliveryId],
+    });
+    await flushWaitUntilForTest();
+
+    expect((await api.readRun(actor, active.runId)).status).toBe("completed");
+    const events = await chat.listThreadEvents(actor, active.threadId);
+    expect(
+      events.events.filter((event) => {
+        return (
+          event.revokesEventId === pendingEventId &&
+          event.runId === active.runId
+        );
+      }),
+    ).toHaveLength(1);
+    await expect(
+      api.recordRunnerActiveInputDelivery(
+        claimed.claim.sandboxToken,
+        active.runId,
+        reserved.deliveryId,
+      ),
+    ).resolves.toStrictEqual({ outcome: "delivered" });
+  }, 90_000);
+
+  it("finalizes a late receipt without replaying terminal callbacks", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const active = await sendChatRun(actor, {
+      agentId,
+      prompt: "leave a legacy terminal delivery open",
+    });
+    const claimed = await claimChatRun(runnerGroup, active.runId);
+    const pendingEventId = randomUUID();
+    await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: active.threadId,
+        prompt: "finalize after the terminal transition",
+        clientEventId: pendingEventId,
+      },
+      [201],
+    );
+    const reserved = await api.reserveRunnerActiveInputs(
+      claimed.claim.sandboxToken,
+      active.runId,
+    );
+    if (reserved.outcome !== "reserved") {
+      throw new Error("Expected late completion input to be reserved");
+    }
+    await completeRunWithoutCallbacksFixture({ runId: active.runId });
+
+    const completed = await webhooks.requestAgentComplete(
+      {
+        runId: active.runId,
+        exitCode: 1,
+        error: "duplicate fallback",
+        activeInputDeliveryIds: [reserved.deliveryId],
+      },
+      claimed.sandboxHeaders,
+      [200],
+    );
+    expect(completed.body).toStrictEqual({
+      success: true,
+      status: "completed",
+    });
+    await flushWaitUntilForTest();
+
+    const events = await chat.listThreadEvents(actor, active.threadId);
+    expect(
+      events.events.filter((event) => {
+        return (
+          event.revokesEventId === pendingEventId &&
+          event.runId === active.runId
+        );
+      }),
+    ).toHaveLength(1);
+    await expect(
+      api.recordRunnerActiveInputDelivery(
+        claimed.claim.sandboxToken,
+        active.runId,
+        reserved.deliveryId,
+      ),
+    ).resolves.toStrictEqual({ outcome: "delivered" });
+  }, 90_000);
+
+  it("releases prompts and expires budget input before draining in FIFO order", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const active = await sendChatRun(actor, {
+      agentId,
+      prompt: "finalize an unconfirmed delivery",
+    });
+    const claimed = await claimChatRun(runnerGroup, active.runId);
+    const releasedEventId = randomUUID();
+    await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: active.threadId,
+        prompt: "released queue head",
+        clientEventId: releasedEventId,
+      },
+      [201],
+    );
+    await ageClaimedRun(active.runId, RUN_TIME_BUDGET_STEER_AT_MS);
+    await runSteerRunTimeBudgetCron();
+    const reserved = await api.reserveRunnerActiveInputs(
+      claimed.claim.sandboxToken,
+      active.runId,
+    );
+    if (reserved.outcome !== "reserved") {
+      throw new Error("Expected prompt and budget input to be reserved");
+    }
+    const budgetEventId = reserved.eventIds.find((eventId) => {
+      return eventId !== releasedEventId;
+    });
+    if (!budgetEventId) {
+      throw new Error("Expected a reserved budget input");
+    }
+    const laterEventId = randomUUID();
+    const later = await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: active.threadId,
+        prompt: "later queue input",
+        clientEventId: laterEventId,
+      },
+      [201],
+    );
+    if (later.status !== 201) {
+      throw new Error("Expected later input to remain queued");
+    }
+    expect(later.body.runId).toBeNull();
+
+    await completeChatRunOk(active.runId, claimed.sandboxHeaders);
+    await flushWaitUntilForTest();
+    await expect(
+      api.recordRunnerActiveInputDelivery(
+        claimed.claim.sandboxToken,
+        active.runId,
+        reserved.deliveryId,
+      ),
+    ).resolves.toStrictEqual({ outcome: "rejected" });
+
+    const messages = await waitForThreadMessages(
+      actor,
+      active.threadId,
+      (items) => {
+        return userMessages(items).some((message) => {
+          return (
+            message.revokesEventId === releasedEventId &&
+            typeof message.runId === "string" &&
+            message.runId !== active.runId
+          );
+        });
+      },
+    );
+    const promoted = userMessages(messages.events).find((message) => {
+      return message.revokesEventId === releasedEventId;
+    });
+    if (!promoted?.runId) {
+      throw new Error("Expected the released queue head to be promoted");
+    }
+    expect(
+      messages.events.filter((event) => {
+        return (
+          event.eventType === "control.revoke" &&
+          event.revokesEventId === budgetEventId &&
+          event.runId === active.runId
+        );
+      }),
+    ).toHaveLength(1);
+    expect(
+      userMessages(messages.events).filter((message) => {
+        return message.revokesEventId === laterEventId;
+      }),
+    ).toHaveLength(0);
+
+    const successorClaim = await claimChatRun(runnerGroup, promoted.runId);
+    await expect(
+      api.listRunnerActiveInputs(
+        successorClaim.claim.sandboxToken,
+        promoted.runId,
+      ),
+    ).resolves.toStrictEqual([laterEventId]);
+    await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: active.threadId,
+        revokesEventId: laterEventId,
+      },
+      [201],
+    );
+    await cancelChatRun(actor, promoted.runId, successorClaim.sandboxHeaders);
+  }, 90_000);
+
+  it("keeps cancelled deliveries as barriers after recovery expiry", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const active = await sendChatRun(actor, {
+      agentId,
+      prompt: "cancel with a held delivery",
+    });
+    const claimed = await claimChatRun(runnerGroup, active.runId);
+    const heldEventId = randomUUID();
+    await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: active.threadId,
+        prompt: "accepted before cancellation",
+        clientEventId: heldEventId,
+      },
+      [201],
+    );
+    const reserved = await api.reserveRunnerActiveInputs(
+      claimed.claim.sandboxToken,
+      active.runId,
+    );
+    if (reserved.outcome !== "reserved") {
+      throw new Error("Expected cancelled input to be reserved");
+    }
+    await api.requestCancelRun(actor, active.runId, [200]);
+    await waitForRunStatus(actor, active.runId, "cancelled");
+
+    mockNow(now() + CANCELLATION_RECOVERY_STALE_AFTER_MS + 1);
+    onTestFinished(() => {
+      clearMockNow();
+    });
+    const laterEventId = randomUUID();
+    const later = await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: active.threadId,
+        prompt: "wait behind stale cancellation recovery",
+        clientEventId: laterEventId,
+      },
+      [201],
+    );
+    if (later.status !== 201) {
+      throw new Error("Expected post-cancellation input to remain queued");
+    }
+    expect(later.body.runId).toBeNull();
+    const beforeCompletion = await chat.listThreadEvents(
+      actor,
+      active.threadId,
+    );
+    expect(
+      userMessages(beforeCompletion.events).filter((message) => {
+        return message.revokesEventId === laterEventId;
+      }),
+    ).toHaveLength(0);
+
+    await webhooks.requestAgentComplete(
+      {
+        runId: active.runId,
+        exitCode: 1,
+        error: "Run cancelled",
+        activeInputDeliveryIds: [reserved.deliveryId],
+      },
+      claimed.sandboxHeaders,
+      [200],
+    );
+    await flushWaitUntilForTest();
+    clearMockNow();
+    await expect(
+      api.recordRunnerActiveInputDelivery(
+        claimed.claim.sandboxToken,
+        active.runId,
+        reserved.deliveryId,
+      ),
+    ).resolves.toStrictEqual({ outcome: "delivered" });
+
+    const messages = await waitForThreadMessages(
+      actor,
+      active.threadId,
+      (items) => {
+        return userMessages(items).some((message) => {
+          return (
+            message.revokesEventId === laterEventId &&
+            typeof message.runId === "string" &&
+            message.runId !== active.runId
+          );
+        });
+      },
+    );
+    const successor = userMessages(messages.events).find((message) => {
+      return message.revokesEventId === laterEventId;
+    })?.runId;
+    if (!successor) {
+      throw new Error("Expected the post-cancellation input to start a run");
+    }
+    expect(
+      userMessages(messages.events).filter((message) => {
+        return (
+          message.revokesEventId === heldEventId &&
+          message.runId === active.runId
+        );
+      }),
+    ).toHaveLength(1);
+    const successorClaim = await claimChatRun(runnerGroup, successor);
+    await cancelChatRun(actor, successor, successorClaim.sandboxHeaders);
+  }, 90_000);
+
+  it("keeps timed-out delivery input held until Runner completion", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const active = await sendChatRun(actor, {
+      agentId,
+      prompt: "time out with an uncertain delivery",
+    });
+    const claimed = await claimChatRun(runnerGroup, active.runId);
+    const heldEventId = randomUUID();
+    await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: active.threadId,
+        prompt: "release only after teardown completion",
+        clientEventId: heldEventId,
+      },
+      [201],
+    );
+    const reserved = await api.reserveRunnerActiveInputs(
+      claimed.claim.sandboxToken,
+      active.runId,
+    );
+    if (reserved.outcome !== "reserved") {
+      throw new Error("Expected timeout input to be reserved");
+    }
+    await timeoutRunWithoutCallbacksFixture({ runId: active.runId });
+    await waitForRunStatus(actor, active.runId, "timeout");
+
+    const laterEventId = randomUUID();
+    const later = await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: active.threadId,
+        prompt: "wait behind the timed-out delivery",
+        clientEventId: laterEventId,
+      },
+      [201],
+    );
+    if (later.status !== 201) {
+      throw new Error("Expected post-timeout input to remain queued");
+    }
+    expect(later.body.runId).toBeNull();
+
+    await failChatRun(
+      active.runId,
+      claimed.sandboxHeaders,
+      "Runner observed timed-out process exit",
+    );
+    await flushWaitUntilForTest();
+    await expect(
+      api.recordRunnerActiveInputDelivery(
+        claimed.claim.sandboxToken,
+        active.runId,
+        reserved.deliveryId,
+      ),
+    ).resolves.toStrictEqual({ outcome: "rejected" });
+
+    const messages = await waitForThreadMessages(
+      actor,
+      active.threadId,
+      (items) => {
+        return userMessages(items).some((message) => {
+          return (
+            message.revokesEventId === heldEventId &&
+            typeof message.runId === "string" &&
+            message.runId !== active.runId
+          );
+        });
+      },
+    );
+    const successor = userMessages(messages.events).find((message) => {
+      return message.revokesEventId === heldEventId;
+    })?.runId;
+    if (!successor) {
+      throw new Error("Expected timed-out delivery input to be released");
+    }
+    expect(
+      userMessages(messages.events).filter((message) => {
+        return message.revokesEventId === laterEventId;
+      }),
+    ).toHaveLength(0);
+    const successorClaim = await claimChatRun(runnerGroup, successor);
+    await expect(
+      api.listRunnerActiveInputs(successorClaim.claim.sandboxToken, successor),
+    ).resolves.toStrictEqual([laterEventId]);
+    await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: active.threadId,
+        revokesEventId: laterEventId,
+      },
+      [201],
+    );
+    await cancelChatRun(actor, successor, successorClaim.sandboxHeaders);
+  }, 90_000);
+
+  it("cascades delivery state when its thread is deleted", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const active = await sendChatRun(actor, {
+      agentId,
+      prompt: "delete a thread with reserved input",
+    });
+    const claimed = await claimChatRun(runnerGroup, active.runId);
+    await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: active.threadId,
+        prompt: "delete this reserved input",
+        clientEventId: randomUUID(),
+      },
+      [201],
+    );
+    const reserved = await api.reserveRunnerActiveInputs(
+      claimed.claim.sandboxToken,
+      active.runId,
+    );
+    if (reserved.outcome !== "reserved") {
+      throw new Error("Expected deleted thread input to be reserved");
+    }
+
+    await chat.deleteThread(actor, active.threadId);
+    const missingDelivery = await api.requestRecordRunnerActiveInputDeliveryAs(
+      `Bearer ${claimed.claim.sandboxToken}`,
+      active.runId,
+      reserved.deliveryId,
+      [403],
+    );
+    expectApiError(missingDelivery.body);
+    await failChatRun(
+      active.runId,
+      claimed.sandboxHeaders,
+      "Thread deleted during execution",
+    );
+    await flushWaitUntilForTest();
+
+    const unrelated = await sendChatRun(actor, {
+      agentId,
+      prompt: "run after deleting another delivery thread",
+    });
+    const unrelatedClaim = await claimChatRun(runnerGroup, unrelated.runId);
+    await cancelChatRun(actor, unrelated.runId, unrelatedClaim.sandboxHeaders);
   }, 90_000);
 
   it("classifies delivery lifecycle and authorization without route-level 404", async () => {

@@ -1,7 +1,11 @@
 import { command } from "ccstate";
 import type { z } from "zod";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
-import type { RunResult, RunStatus } from "@vm0/api-contracts/contracts/runs";
+import {
+  runStatusSchema,
+  type RunResult,
+  type RunStatus,
+} from "@vm0/api-contracts/contracts/runs";
 import { webhookCompleteContract } from "@vm0/api-contracts/contracts/webhooks";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
@@ -13,11 +17,13 @@ import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { notFound } from "../../lib/error";
 import { logger } from "../../lib/log";
 import { now, nowDate } from "../../lib/time";
+import type { Tx } from "../../lib/db-types";
 import type { SandboxAuth } from "../../types/auth";
 import { writeDb$, type Db } from "../external/db";
 import { recordSandboxOperation } from "../external/sandbox-op-log";
 import {
   publishChatThreadDetailChangedSafely,
+  publishChatThreadMessageCreatedSafely,
   publishRunChangedForUserSafely,
 } from "../external/realtime";
 import { tapError } from "../utils";
@@ -27,6 +33,11 @@ import {
   dispatchRunCallbacks$,
 } from "./agent-run-callback.service";
 import { drainChatThreadQueueForRun$ } from "./chat-thread-queue-drain.service";
+import {
+  finalizeActiveInputDeliveryForCompletion,
+  type FinalizeActiveInputDeliveryResult,
+} from "./active-input-delivery.service";
+import { lockChatQueueThread } from "./chat-event-queue.service";
 import { projectLegacyCheckpointStorage } from "./storage-legacy-projection.service";
 import { maybeEmitRunUsageEvent$ } from "./zero-chat-usage-event.service";
 import { processOrgUsageEvents$ } from "./zero-credit-usage.service";
@@ -56,11 +67,21 @@ interface CancellationRecoverySideEffectsInput {
   readonly runId: string;
   readonly userId: string;
   readonly chatThreadId: string | null;
+  readonly chatEventsAppended: boolean;
+}
+
+interface DeliveryFinalizationSideEffectsInput {
+  readonly kind: "delivery-finalization";
+  readonly runId: string;
+  readonly userId: string;
+  readonly chatThreadId: string;
+  readonly chatEventsAppended: boolean;
 }
 
 type CompleteSideEffectsInput =
   | TerminalSideEffectsInput
-  | CancellationRecoverySideEffectsInput;
+  | CancellationRecoverySideEffectsInput
+  | DeliveryFinalizationSideEffectsInput;
 
 type DispatchCompleteSideEffectsInput = CompleteSideEffectsInput & {
   readonly apiStartTime?: number;
@@ -85,10 +106,31 @@ interface CompletionResponse {
 interface RunRecord {
   readonly cancellationRecoveryCompleted: boolean | null;
   readonly orgId: string;
-  readonly status: string;
+  readonly status: RunStatus;
   readonly userId: string;
   readonly chatThreadId: string | null;
 }
+
+interface PreparedCompletion {
+  readonly status: TerminalStatus;
+  readonly result?: RunResult;
+  readonly error?: string;
+  readonly failureKind?: "missing-checkpoint" | "reported";
+}
+
+interface CompletionCommit {
+  readonly run: RunRecord;
+  readonly transitioned: boolean;
+  readonly responseStatus: TerminalStatus;
+  readonly transitionError?: string;
+  readonly transitionFailureKind?: PreparedCompletion["failureKind"];
+  readonly finalization: FinalizeActiveInputDeliveryResult;
+}
+
+type CompletionTransactionResult =
+  | { readonly kind: "not-found" }
+  | { readonly kind: "retry"; readonly chatThreadId: string | null }
+  | { readonly kind: "committed"; readonly commit: CompletionCommit };
 
 const L = logger("webhook:complete");
 
@@ -121,7 +163,7 @@ function buildRunResult(
 }
 
 async function persistLastEventSequence(
-  db: Db,
+  db: Tx,
   runId: string,
   userId: string,
   lastEventSequence: number,
@@ -134,83 +176,11 @@ async function persistLastEventSequence(
     .where(and(eq(agentRuns.id, runId), eq(agentRuns.userId, userId)));
 }
 
-async function transitionRunStatus(
-  db: Db,
-  runId: string,
-  update: {
-    readonly status: RunStatus;
-    readonly completedAt: Date;
-    readonly error?: string;
-    readonly result?: RunResult;
-    readonly sandboxId?: string;
-    readonly sandboxReuseResult?: WebhookCompleteBody["sandboxReuseResult"];
-    readonly workspaceReuseResult?: WebhookCompleteBody["workspaceReuseResult"];
-  },
-  allowedFromStatuses: readonly RunStatus[],
-): Promise<boolean> {
-  const [updated] = await db
-    .update(agentRuns)
-    .set(update)
-    .where(
-      and(
-        eq(agentRuns.id, runId),
-        inArray(agentRuns.status, [...allowedFromStatuses]),
-      ),
-    )
-    .returning({ id: agentRuns.id });
-  if (!updated) {
-    return false;
-  }
-  // Pi jobs can stay in the queue after a standby claim. Nothing consumes them
-  // once the run settles. Ordinary rows are already removed by the normal
-  // claim/expiry lifecycle, and deleting them here would change stale-claim
-  // errors.
-  await db
-    .delete(runnerJobQueue)
-    .where(
-      and(
-        eq(runnerJobQueue.runId, runId),
-        sql`${runnerJobQueue.executionContext}->>'piExecutionMode' = 'standby'`,
-      ),
-    );
-  recordSandboxOperation({
-    sandboxType: "runner",
-    actionType: "run_terminal_transition_committed",
-    durationMs: 0,
-    success: true,
-    runId,
-  });
-  return true;
-}
-
-function successResponse(
-  runId: string,
-  orgId: string,
-  status: TerminalStatus,
-  error?: string,
-): CompletionResponse {
-  return {
-    status: 200,
-    body: {
-      success: true,
-      status,
-    },
-    sideEffects: {
-      kind: "terminal",
-      runId,
-      orgId,
-      status,
-      ...(error ? { error } : {}),
-    },
-  };
-}
-
-async function handleLostTerminalTransition(
+async function loadCompletionRun(
   db: Db,
   input: CompleteAgentRunInput,
-  signal: AbortSignal,
-): Promise<CompletionResponse> {
-  const [currentRun] = await db
+): Promise<RunRecord | null> {
+  const [run] = await db
     .select({
       orgId: agentRuns.orgId,
       status: agentRuns.status,
@@ -227,27 +197,92 @@ async function handleLostTerminalTransition(
       ),
     )
     .limit(1);
-  signal.throwIfAborted();
-
-  if (currentRun?.status === "cancelled") {
-    return await handleCancelledCompletion(db, input, currentRun, signal);
+  if (!run) {
+    return null;
   }
+  return { ...run, status: runStatusSchema.parse(run.status) };
+}
 
+async function prepareCompletion(
+  db: Db,
+  input: CompleteAgentRunInput,
+  signal: AbortSignal,
+): Promise<PreparedCompletion> {
+  if (input.body.exitCode !== 0) {
+    return {
+      status: "failed",
+      error: input.body.error?.trim() || "Run failed without error message",
+      failureKind: "reported",
+    };
+  }
+  const [checkpoint] = await db
+    .select({
+      id: checkpoints.id,
+      conversationId: checkpoints.conversationId,
+      storageMounts: checkpoints.storageMounts,
+    })
+    .from(checkpoints)
+    .where(eq(checkpoints.runId, input.body.runId))
+    .limit(1);
+  signal.throwIfAborted();
+  if (!checkpoint) {
+    const allowCheckpointlessSuccess =
+      input.allowCheckpointlessSuccess ||
+      (await hasAcknowledgedTerminalPiMessage(db, input, signal));
+    if (allowCheckpointlessSuccess) {
+      return { status: "completed" };
+    }
+    return {
+      status: "failed",
+      error: "Checkpoint for run not found",
+      failureKind: "missing-checkpoint",
+    };
+  }
+  const [session] = await db
+    .select({ id: agentSessions.id })
+    .from(agentSessions)
+    .where(eq(agentSessions.conversationId, checkpoint.conversationId))
+    .limit(1);
+  signal.throwIfAborted();
   return {
-    status: 200,
-    body: {
-      success: true,
-      status: currentRun?.status === "completed" ? "completed" : "failed",
-    },
+    status: "completed",
+    result: buildRunResult(checkpoint, session?.id),
   };
 }
 
-async function handleCancelledCompletion(
-  db: Db,
+async function lockCompletionRun(
+  tx: Tx,
+  input: CompleteAgentRunInput,
+): Promise<RunRecord | null> {
+  const [run] = await tx
+    .select({
+      orgId: agentRuns.orgId,
+      status: agentRuns.status,
+      userId: agentRuns.userId,
+      cancellationRecoveryCompleted: agentRuns.cancellationRecoveryCompleted,
+      chatThreadId: zeroRuns.chatThreadId,
+    })
+    .from(agentRuns)
+    .leftJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
+    .where(
+      and(
+        eq(agentRuns.id, input.body.runId),
+        eq(agentRuns.userId, input.auth.userId),
+      ),
+    )
+    .for("update", { of: agentRuns })
+    .limit(1);
+  if (!run) {
+    return null;
+  }
+  return { ...run, status: runStatusSchema.parse(run.status) };
+}
+
+async function applyCancelledCompletionMetadata(
+  tx: Tx,
   input: CompleteAgentRunInput,
   run: RunRecord,
-  signal: AbortSignal,
-): Promise<CompletionResponse> {
+): Promise<void> {
   // Guest and host completion may both arrive after cancellation. Preserve the
   // first terminal metadata just like the completed/failed transition paths.
   const update = {
@@ -271,7 +306,7 @@ async function handleCancelledCompletion(
       : {}),
   };
   if (Object.keys(update).length > 0) {
-    await db
+    await tx
       .update(agentRuns)
       .set(update)
       .where(
@@ -281,109 +316,184 @@ async function handleCancelledCompletion(
           eq(agentRuns.status, "cancelled"),
         ),
       );
-    signal.throwIfAborted();
   }
+}
 
+async function applyTerminalCompletion(
+  tx: Tx,
+  input: CompleteAgentRunInput,
+  prepared: PreparedCompletion,
+): Promise<void> {
+  const [updated] = await tx
+    .update(agentRuns)
+    .set({
+      status: prepared.status,
+      completedAt: nowDate(),
+      ...(prepared.error !== undefined ? { error: prepared.error } : {}),
+      ...(prepared.result !== undefined ? { result: prepared.result } : {}),
+      sandboxId: input.body.sandboxId,
+      sandboxReuseResult: input.body.sandboxReuseResult,
+      workspaceReuseResult: input.body.workspaceReuseResult,
+    })
+    .where(
+      and(
+        eq(agentRuns.id, input.body.runId),
+        eq(agentRuns.userId, input.auth.userId),
+        inArray(agentRuns.status, ["pending", "running", "timeout"]),
+      ),
+    )
+    .returning({ id: agentRuns.id });
+  if (!updated) {
+    throw new Error("Locked agent run lost its terminal transition");
+  }
+  // Pi jobs can stay in the queue after a standby claim. Nothing consumes them
+  // once the run settles. Ordinary rows are already removed by the normal
+  // claim/expiry lifecycle, and deleting them here would change stale-claim
+  // errors.
+  await tx
+    .delete(runnerJobQueue)
+    .where(
+      and(
+        eq(runnerJobQueue.runId, input.body.runId),
+        sql`${runnerJobQueue.executionContext}->>'piExecutionMode' = 'standby'`,
+      ),
+    );
+}
+
+function noActiveInputFinalization(): FinalizeActiveInputDeliveryResult {
+  return {
+    finalized: false,
+    chatEventsAppended: false,
+  };
+}
+
+async function completeAgentRunTransition(
+  tx: Tx,
+  input: CompleteAgentRunInput,
+  prepared: PreparedCompletion | null,
+  expectedChatThreadId: string | null,
+): Promise<CompletionTransactionResult> {
+  const threadLocked =
+    expectedChatThreadId === null
+      ? false
+      : await lockChatQueueThread(tx, expectedChatThreadId);
+  const run = await lockCompletionRun(tx, input);
+  if (!run) {
+    return { kind: "not-found" };
+  }
+  if (run.chatThreadId !== expectedChatThreadId) {
+    return { kind: "retry", chatThreadId: run.chatThreadId };
+  }
+  if (expectedChatThreadId !== null && !threadLocked) {
+    throw new Error("Agent run retained a missing chat thread");
+  }
+  if (input.body.lastEventSequence !== undefined) {
+    await persistLastEventSequence(
+      tx,
+      input.body.runId,
+      input.auth.userId,
+      input.body.lastEventSequence,
+    );
+  }
+  const finalization =
+    run.chatThreadId === null
+      ? noActiveInputFinalization()
+      : await finalizeActiveInputDeliveryForCompletion(tx, {
+          runId: input.body.runId,
+          chatThreadId: run.chatThreadId,
+          deliveredDeliveryIds: new Set(
+            input.body.activeInputDeliveryIds ?? [],
+          ),
+        });
+  const canTransition =
+    run.status === "pending" ||
+    run.status === "running" ||
+    run.status === "timeout";
+  if (canTransition) {
+    if (!prepared) {
+      throw new Error("Active agent run completion was not prepared");
+    }
+    await applyTerminalCompletion(tx, input, prepared);
+    return {
+      kind: "committed",
+      commit: {
+        run,
+        transitioned: true,
+        responseStatus: prepared.status,
+        transitionError: prepared.error,
+        transitionFailureKind: prepared.failureKind,
+        finalization,
+      },
+    };
+  }
+  if (run.status === "cancelled") {
+    await applyCancelledCompletionMetadata(tx, input, run);
+  }
+  return {
+    kind: "committed",
+    commit: {
+      run,
+      transitioned: false,
+      responseStatus: run.status === "completed" ? "completed" : "failed",
+      finalization,
+    },
+  };
+}
+
+function completionResponse(
+  runId: string,
+  commit: CompletionCommit,
+): CompletionResponse {
+  let sideEffects: CompleteSideEffectsInput | undefined;
+  if (commit.transitioned) {
+    sideEffects = {
+      kind: "terminal",
+      runId,
+      orgId: commit.run.orgId,
+      status: commit.responseStatus,
+      ...(commit.transitionError !== undefined
+        ? { error: commit.transitionError }
+        : {}),
+    };
+  } else if (
+    commit.run.status === "cancelled" &&
+    (commit.run.cancellationRecoveryCompleted !== null ||
+      commit.finalization.finalized)
+  ) {
+    sideEffects = {
+      kind: "cancellation-recovery",
+      runId,
+      userId: commit.run.userId,
+      chatThreadId: commit.run.chatThreadId,
+      chatEventsAppended: commit.finalization.chatEventsAppended,
+    };
+  } else if (
+    commit.finalization.finalized &&
+    commit.run.chatThreadId !== null
+  ) {
+    sideEffects = {
+      kind: "delivery-finalization",
+      runId,
+      userId: commit.run.userId,
+      chatThreadId: commit.run.chatThreadId,
+      chatEventsAppended: commit.finalization.chatEventsAppended,
+    };
+  }
+  return {
+    status: 200,
+    body: { success: true, status: commit.responseStatus },
+    ...(sideEffects ? { sideEffects } : {}),
+  };
+}
+
+function deletedRunCompletionResponse(run: RunRecord): CompletionResponse {
   return {
     status: 200,
     body: {
       success: true,
-      status: "failed",
+      status: run.status === "completed" ? "completed" : "failed",
     },
-    ...(run.cancellationRecoveryCompleted !== null
-      ? {
-          sideEffects: {
-            kind: "cancellation-recovery" as const,
-            runId: input.body.runId,
-            userId: run.userId,
-            chatThreadId: run.chatThreadId,
-          },
-        }
-      : {}),
   };
-}
-
-async function handleMissingCheckpoint(
-  db: Db,
-  input: CompleteAgentRunInput,
-  run: RunRecord,
-  signal: AbortSignal,
-): Promise<CompletionResponse> {
-  const error = "Checkpoint for run not found";
-  const completedAt = nowDate();
-  const transitioned = await transitionRunStatus(
-    db,
-    input.body.runId,
-    {
-      status: "failed",
-      completedAt,
-      error,
-      sandboxId: input.body.sandboxId,
-      sandboxReuseResult: input.body.sandboxReuseResult,
-      workspaceReuseResult: input.body.workspaceReuseResult,
-    },
-    ["pending", "running", "timeout"],
-  );
-  signal.throwIfAborted();
-
-  if (!transitioned) {
-    return await handleLostTerminalTransition(db, input, signal);
-  }
-
-  await publishRunChangedForUserSafely(run.userId, input.body.runId, {
-    status: "failed",
-  });
-  signal.throwIfAborted();
-
-  L.warn("Run failed because checkpoint was not found", {
-    runId: input.body.runId,
-    error,
-  });
-  return successResponse(input.body.runId, run.orgId, "failed", error);
-}
-
-async function handleSuccessfulCompletion(
-  db: Db,
-  input: CompleteAgentRunInput,
-  run: RunRecord,
-  signal: AbortSignal,
-): Promise<CompletionResponse> {
-  const [checkpoint] = await db
-    .select({
-      id: checkpoints.id,
-      conversationId: checkpoints.conversationId,
-      storageMounts: checkpoints.storageMounts,
-    })
-    .from(checkpoints)
-    .where(eq(checkpoints.runId, input.body.runId))
-    .limit(1);
-  signal.throwIfAborted();
-
-  if (!checkpoint) {
-    const allowCheckpointlessSuccess =
-      input.allowCheckpointlessSuccess ||
-      (await hasAcknowledgedTerminalPiMessage(db, input, signal));
-    if (allowCheckpointlessSuccess) {
-      return await persistSuccessfulCompletion(
-        db,
-        input,
-        run,
-        undefined,
-        signal,
-      );
-    }
-    return await handleMissingCheckpoint(db, input, run, signal);
-  }
-
-  const [session] = await db
-    .select({ id: agentSessions.id })
-    .from(agentSessions)
-    .where(eq(agentSessions.conversationId, checkpoint.conversationId))
-    .limit(1);
-  signal.throwIfAborted();
-
-  const result = buildRunResult(checkpoint, session?.id);
-  return await persistSuccessfulCompletion(db, input, run, result, signal);
 }
 
 async function hasAcknowledgedTerminalPiMessage(
@@ -420,118 +530,12 @@ async function hasAcknowledgedTerminalPiMessage(
   );
 }
 
-async function persistSuccessfulCompletion(
-  db: Db,
-  input: CompleteAgentRunInput,
-  run: RunRecord,
-  result: RunResult | undefined,
-  signal: AbortSignal,
-): Promise<CompletionResponse> {
-  const completedAt = nowDate();
-  const transitioned = await transitionRunStatus(
-    db,
-    input.body.runId,
-    {
-      status: "completed",
-      completedAt,
-      ...(result ? { result } : {}),
-      sandboxId: input.body.sandboxId,
-      sandboxReuseResult: input.body.sandboxReuseResult,
-      workspaceReuseResult: input.body.workspaceReuseResult,
-    },
-    ["pending", "running", "timeout"],
-  );
-  signal.throwIfAborted();
-
-  if (!transitioned) {
-    return await handleLostTerminalTransition(db, input, signal);
-  }
-
-  await publishRunChangedForUserSafely(run.userId, input.body.runId, {
-    status: "completed",
-  });
-  signal.throwIfAborted();
-
-  L.debug("Run completed successfully", { runId: input.body.runId });
-  return successResponse(input.body.runId, run.orgId, "completed");
-}
-
-async function handleFailedCompletion(
-  db: Db,
-  input: CompleteAgentRunInput,
-  run: RunRecord,
-  signal: AbortSignal,
-): Promise<CompletionResponse> {
-  const error = input.body.error?.trim() || "Run failed without error message";
-  const completedAt = nowDate();
-  const transitioned = await transitionRunStatus(
-    db,
-    input.body.runId,
-    {
-      status: "failed",
-      completedAt,
-      error,
-      sandboxId: input.body.sandboxId,
-      sandboxReuseResult: input.body.sandboxReuseResult,
-      workspaceReuseResult: input.body.workspaceReuseResult,
-    },
-    ["pending", "running", "timeout"],
-  );
-  signal.throwIfAborted();
-
-  if (!transitioned) {
-    return await handleLostTerminalTransition(db, input, signal);
-  }
-
-  await publishRunChangedForUserSafely(run.userId, input.body.runId, {
-    status: "failed",
-  });
-  signal.throwIfAborted();
-
-  L.warn("Run failed", {
-    runId: input.body.runId,
-    exitCode: input.body.exitCode,
-    error,
-  });
-  return successResponse(input.body.runId, run.orgId, "failed", error);
-}
-
-export const dispatchCompleteSideEffects$ = command(
+const dispatchTerminalCompleteSideEffects$ = command(
   async (
     { set },
-    input: DispatchCompleteSideEffectsInput,
+    input: TerminalSideEffectsInput & { readonly apiStartTime: number },
     signal: AbortSignal,
   ): Promise<void> => {
-    const apiStartTime = input.apiStartTime ?? now();
-    if (input.kind === "cancellation-recovery") {
-      if (input.chatThreadId !== null) {
-        await publishChatThreadDetailChangedSafely(
-          input.userId,
-          input.chatThreadId,
-        );
-        signal.throwIfAborted();
-      }
-      await tapError(
-        set(
-          drainChatThreadQueueForRun$,
-          {
-            runId: input.runId,
-            dispatchFailedCallbacks: dispatchFailedRunCallbacks,
-            apiStartTime,
-          },
-          signal,
-        ),
-        (error) => {
-          L.error("Failed to drain chat thread queue after recovery", {
-            runId: input.runId,
-            error,
-          });
-        },
-      );
-      signal.throwIfAborted();
-      return;
-    }
-
     const db = set(writeDb$);
     const callbackStatus =
       input.status === "completed" ? "completed" : "failed";
@@ -567,7 +571,7 @@ export const dispatchCompleteSideEffects$ = command(
           {
             runId: input.runId,
             dispatchFailedCallbacks: dispatchFailedRunCallbacks,
-            apiStartTime,
+            apiStartTime: input.apiStartTime,
           },
           signal,
         ),
@@ -610,6 +614,84 @@ export const dispatchCompleteSideEffects$ = command(
   },
 );
 
+export const dispatchCompleteSideEffects$ = command(
+  async (
+    { set },
+    input: DispatchCompleteSideEffectsInput,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const apiStartTime = input.apiStartTime ?? now();
+    if (input.kind === "cancellation-recovery") {
+      if (input.chatThreadId !== null) {
+        await publishChatThreadDetailChangedSafely(
+          input.userId,
+          input.chatThreadId,
+        );
+        signal.throwIfAborted();
+        if (input.chatEventsAppended) {
+          await publishChatThreadMessageCreatedSafely(
+            input.userId,
+            input.chatThreadId,
+          );
+          signal.throwIfAborted();
+        }
+      }
+      await tapError(
+        set(
+          drainChatThreadQueueForRun$,
+          {
+            runId: input.runId,
+            dispatchFailedCallbacks: dispatchFailedRunCallbacks,
+            apiStartTime,
+          },
+          signal,
+        ),
+        (error) => {
+          L.error("Failed to drain chat thread queue after recovery", {
+            runId: input.runId,
+            error,
+          });
+        },
+      );
+      signal.throwIfAborted();
+      return;
+    }
+    if (input.kind === "delivery-finalization") {
+      if (input.chatEventsAppended) {
+        await publishChatThreadMessageCreatedSafely(
+          input.userId,
+          input.chatThreadId,
+        );
+        signal.throwIfAborted();
+      }
+      await tapError(
+        set(
+          drainChatThreadQueueForRun$,
+          {
+            runId: input.runId,
+            dispatchFailedCallbacks: dispatchFailedRunCallbacks,
+            apiStartTime,
+          },
+          signal,
+        ),
+        (error) => {
+          L.error("Failed to drain chat thread queue after delivery", {
+            runId: input.runId,
+            error,
+          });
+        },
+      );
+      signal.throwIfAborted();
+      return;
+    }
+    await set(
+      dispatchTerminalCompleteSideEffects$,
+      { ...input, apiStartTime },
+      signal,
+    );
+  },
+);
+
 export const completeAgentRun$ = command(
   async (
     { set },
@@ -617,62 +699,81 @@ export const completeAgentRun$ = command(
     signal: AbortSignal,
   ): Promise<CompletionResponse> => {
     const db = set(writeDb$);
-    const [run] = await db
-      .select({
-        id: agentRuns.id,
-        orgId: agentRuns.orgId,
-        status: agentRuns.status,
-        userId: agentRuns.userId,
-        cancellationRecoveryCompleted: agentRuns.cancellationRecoveryCompleted,
-        chatThreadId: zeroRuns.chatThreadId,
-      })
-      .from(agentRuns)
-      .leftJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
-      .where(
-        and(
-          eq(agentRuns.id, input.body.runId),
-          eq(agentRuns.userId, input.auth.userId),
-        ),
-      )
-      .limit(1);
+    const initialRun = await loadCompletionRun(db, input);
     signal.throwIfAborted();
-
-    if (!run) {
+    if (!initialRun) {
       return notFound("Agent run not found");
     }
+    const shouldPrepare =
+      initialRun.status === "pending" ||
+      initialRun.status === "running" ||
+      initialRun.status === "timeout";
+    const prepared = shouldPrepare
+      ? await prepareCompletion(db, input, signal)
+      : null;
+    signal.throwIfAborted();
 
-    if (input.body.lastEventSequence !== undefined) {
-      await persistLastEventSequence(
-        db,
+    let expectedChatThreadId = initialRun.chatThreadId;
+    let commit: CompletionCommit;
+    while (true) {
+      const result = await db.transaction(async (tx) => {
+        return await completeAgentRunTransition(
+          tx,
+          input,
+          prepared,
+          expectedChatThreadId,
+        );
+      });
+      signal.throwIfAborted();
+      if (result.kind === "retry") {
+        expectedChatThreadId = result.chatThreadId;
+        continue;
+      }
+      if (result.kind === "not-found") {
+        return deletedRunCompletionResponse(initialRun);
+      }
+      commit = result.commit;
+      break;
+    }
+
+    if (commit.transitioned) {
+      recordSandboxOperation({
+        sandboxType: "runner",
+        actionType: "run_terminal_transition_committed",
+        durationMs: 0,
+        success: true,
+        runId: input.body.runId,
+      });
+      await publishRunChangedForUserSafely(
+        commit.run.userId,
         input.body.runId,
-        input.auth.userId,
-        input.body.lastEventSequence,
+        { status: commit.responseStatus },
       );
       signal.throwIfAborted();
-    }
-
-    if (run.status === "completed" || run.status === "failed") {
-      L.debug("Skipping duplicate completion for terminal run", {
+      if (commit.responseStatus === "completed") {
+        L.debug("Run completed successfully", { runId: input.body.runId });
+      } else if (commit.transitionFailureKind === "missing-checkpoint") {
+        L.warn("Run failed because checkpoint was not found", {
+          runId: input.body.runId,
+          error: commit.transitionError,
+        });
+      } else {
+        L.warn("Run failed", {
+          runId: input.body.runId,
+          exitCode: input.body.exitCode,
+          error: commit.transitionError,
+        });
+      }
+    } else if (
+      commit.run.status === "completed" ||
+      commit.run.status === "failed"
+    ) {
+      L.debug("Processed duplicate completion for terminal run", {
         runId: input.body.runId,
-        status: run.status,
+        status: commit.run.status,
+        activeInputFinalized: commit.finalization.finalized,
       });
-      return {
-        status: 200,
-        body: {
-          success: true,
-          status: run.status === "completed" ? "completed" : "failed",
-        },
-      };
     }
-
-    if (run.status === "cancelled") {
-      return await handleCancelledCompletion(db, input, run, signal);
-    }
-
-    if (input.body.exitCode === 0) {
-      return await handleSuccessfulCompletion(db, input, run, signal);
-    }
-
-    return await handleFailedCompletion(db, input, run, signal);
+    return completionResponse(input.body.runId, commit);
   },
 );

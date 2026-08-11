@@ -312,7 +312,9 @@ function customConnector(
   };
 }
 
-function mcpCustomConnector(): CustomConnectorMcpResponse {
+function mcpCustomConnector(
+  overrides: Partial<CustomConnectorMcpResponse> = {},
+): CustomConnectorMcpResponse {
   return {
     kind: "mcp",
     id: "44444444-4444-4444-8444-444444444444",
@@ -336,6 +338,7 @@ function mcpCustomConnector(): CustomConnectorMcpResponse {
     hasSecret: false,
     createdAt: "2026-08-10T00:00:00.000Z",
     updatedAt: "2026-08-10T00:00:00.000Z",
+    ...overrides,
   };
 }
 
@@ -3488,7 +3491,7 @@ describe("connectors page", () => {
     ).toBeInTheDocument();
   });
 
-  it("manages agent access for a disconnected custom connector", async () => {
+  it("keeps a disconnected custom connector manageable without loading agent access", async () => {
     const researchAgentId = "c0000000-0000-4000-a000-000000000031";
     const supportAgentId = "c0000000-0000-4000-a000-000000000032";
     const connector = customConnector({});
@@ -3501,37 +3504,16 @@ describe("connectors page", () => {
       teamAgent(researchAgentId, "Research"),
       teamAgent(supportAgentId, "Support"),
     ]);
-    const enabledIdsByAgent = new Map<string, string[]>([
-      [researchAgentId, [connector.id]],
-      [supportAgentId, []],
-    ]);
+    let agentAccessReads = 0;
     context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
       return respond(200, { connectors: [connector] });
     });
     context.mocks.api(
       zeroAgentCustomConnectorsContract.get,
       ({ params, respond }) => {
+        agentAccessReads += 1;
         return respond(200, {
-          enabledIds: enabledIdsByAgent.get(params.id) ?? [],
-        });
-      },
-    );
-    context.mocks.api(
-      zeroAgentCustomConnectorsContract.update,
-      ({ params, body, respond }) => {
-        if (!("enabledIds" in body)) {
-          throw new Error("Expected custom connector ID authorization");
-        }
-        const current = enabledIdsByAgent.get(params.id) ?? [];
-        const next =
-          body.operation === "add"
-            ? Array.from(new Set([...current, ...body.enabledIds]))
-            : current.filter((id) => {
-                return !body.enabledIds.includes(id);
-              });
-        enabledIdsByAgent.set(params.id, next);
-        return respond(200, {
-          enabledIds: next,
+          enabledIds: params.id === researchAgentId ? [connector.id] : [],
         });
       },
     );
@@ -3545,41 +3527,28 @@ describe("connectors page", () => {
         within(card).getByText("https://api.acme.test/v1/"),
       ).toBeInTheDocument();
       expect(
-        within(card).getByTestId("connector-card-agent-access"),
-      ).toHaveTextContent("Used by Research");
-    });
-
-    click(
-      within(connectorCardByLabel("Acme Search")).getByLabelText(
-        "Manage Acme Search access",
-      ),
-    );
-    const dialog = await screen.findByRole("dialog", {
-      name: "Manage Acme Search access",
-    });
-    expect(within(dialog).getByText("Research")).toBeInTheDocument();
-    expect(within(dialog).getByText("Support")).toBeInTheDocument();
-
-    click(
-      within(dialog).getByLabelText("Authorize Acme Search access for Support"),
-    );
-    await waitFor(() => {
+        within(card).queryByTestId("connector-card-agent-access"),
+      ).not.toBeInTheDocument();
       expect(
-        within(dialog).getByLabelText("Revoke Acme Search access for Support"),
+        within(card).getByLabelText("Connect Acme Search"),
       ).toBeInTheDocument();
-      expect(
-        within(connectorCardByLabel("Acme Search")).getByTestId(
-          "connector-card-agent-access",
-        ),
-      ).toHaveTextContent("Used by Research, Support");
     });
-    expect(screen.queryByText("Connect Acme Search")).not.toBeInTheDocument();
+
+    click(screen.getByLabelText("More options"));
+    expect(menuItemByText("Connect")).toBeInTheDocument();
+    expect(menuItemByText("Edit")).toBeInTheDocument();
+    expect(menuItemByText("Delete")).toBeInTheDocument();
+    expect(agentAccessReads).toBe(0);
   });
 
   it("selects and edits permissions for a custom connector from settings", async () => {
     const researchAgentId = "c0000000-0000-4000-a000-000000000035";
     const supportAgentId = "c0000000-0000-4000-a000-000000000036";
     const connector = customConnector({
+      connected: true,
+      missingRequiredFields: [],
+      configuredFieldKeys: ["secret"],
+      hasSecret: true,
       permissionBundleRef: "builtin:feishu@1",
     });
     const accessByAgentId = new Map<string, AgentCustomConnectorResponse>([
@@ -3887,8 +3856,322 @@ describe("connectors page", () => {
     ).resolves.toBeInTheDocument();
   });
 
-  it("shows MCP metadata without offering HTTP management actions", async () => {
-    const connector = mcpCustomConnector();
+  it("manages a manual MCP custom connector through the settings lifecycle", async () => {
+    const researchAgentId = "c0000000-0000-4000-a000-000000000061";
+    const supportAgentId = "c0000000-0000-4000-a000-000000000062";
+    const createBodies: CreateCustomConnectorBody[] = [];
+    const updateBodies: UpdateCustomConnectorBody[] = [];
+    const authorizationUpdates: {
+      readonly agentId: string;
+      readonly body: AgentCustomConnectorUpdate;
+    }[] = [];
+    const enabledIdsByAgent = new Map<string, string[]>([
+      [researchAgentId, []],
+      [supportAgentId, []],
+    ]);
+    let connector: CustomConnectorMcpResponse | null = null;
+    let savedSecret: string | null = null;
+    let disconnectCount = 0;
+    context.mocks.data.org({
+      id: "org_1",
+      name: "Test Org",
+      role: "admin",
+    });
+    context.mocks.data.team([
+      teamAgent(researchAgentId, "Research"),
+      teamAgent(supportAgentId, "Support"),
+    ]);
+    context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
+      return respond(200, { connectors: connector ? [connector] : [] });
+    });
+    context.mocks.api(
+      zeroCustomConnectorsContract.create,
+      ({ body, respond }) => {
+        if (body.kind !== "mcp") {
+          throw new Error("Expected an MCP custom connector create");
+        }
+        createBodies.push(body);
+        connector = mcpCustomConnector({
+          displayName: body.displayName,
+          endpoint: body.endpoint,
+          fields: body.fields,
+          headerInjections: body.headerInjections,
+          queryInjections: body.queryInjections,
+          authMode: body.authMode,
+          storageVersion: body.storageVersion ?? 1,
+          connected: false,
+          missingRequiredFields: ["secret"],
+          configuredFieldKeys: [],
+          hasSecret: false,
+        });
+        return respond(201, connector);
+      },
+    );
+    context.mocks.api(
+      zeroCustomConnectorByIdContract.update,
+      ({ body, respond }) => {
+        if (body.kind !== "mcp" || !connector) {
+          throw new Error("Expected an existing MCP custom connector update");
+        }
+        updateBodies.push(body);
+        connector = {
+          ...connector,
+          displayName: body.displayName,
+          endpoint: body.endpoint,
+          fields: body.fields,
+          headerInjections: body.headerInjections,
+          queryInjections: body.queryInjections,
+          authMode: body.authMode,
+          storageVersion: body.storageVersion ?? connector.storageVersion,
+        };
+        return respond(200, connector);
+      },
+    );
+    context.mocks.api(
+      zeroCustomConnectorSecretContract.set,
+      ({ body, respond }) => {
+        if (!connector) {
+          throw new Error("Expected an MCP custom connector");
+        }
+        savedSecret = body.value;
+        connector = {
+          ...connector,
+          connected: true,
+          missingRequiredFields: [],
+          configuredFieldKeys: ["secret"],
+          hasSecret: true,
+        };
+        return respond(204);
+      },
+    );
+    context.mocks.api(
+      zeroCustomConnectorSecretContract.disconnect,
+      ({ respond }) => {
+        if (!connector) {
+          throw new Error("Expected an MCP custom connector");
+        }
+        disconnectCount += 1;
+        connector = {
+          ...connector,
+          connected: false,
+          missingRequiredFields: ["secret"],
+          configuredFieldKeys: [],
+          hasSecret: false,
+        };
+        return respond(204);
+      },
+    );
+    context.mocks.api(
+      zeroAgentCustomConnectorsContract.get,
+      ({ params, respond }) => {
+        return respond(200, {
+          enabledIds: enabledIdsByAgent.get(params.id) ?? [],
+        });
+      },
+    );
+    context.mocks.api(
+      zeroAgentCustomConnectorsContract.update,
+      ({ params, body, respond }) => {
+        if (!("enabledIds" in body)) {
+          throw new Error("Expected custom connector ID authorization");
+        }
+        authorizationUpdates.push({ agentId: params.id, body });
+        const current = enabledIdsByAgent.get(params.id) ?? [];
+        const next =
+          body.operation === "add"
+            ? Array.from(new Set([...current, ...body.enabledIds]))
+            : body.operation === "remove"
+              ? current.filter((id) => {
+                  return !body.enabledIds.includes(id);
+                })
+              : [...body.enabledIds];
+        enabledIdsByAgent.set(params.id, next);
+        return respond(200, { enabledIds: next });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/connectors?tab=custom",
+      featureSwitches: { [FeatureSwitchKey.CustomConnectorMcp]: true },
+    });
+
+    click(await screen.findByText("New connector"));
+    const createDialog = await screen.findByRole("dialog", {
+      name: "New custom connector",
+    });
+    expect(
+      within(createDialog).getByLabelText("Connector type"),
+    ).toHaveTextContent("HTTP API");
+    click(within(createDialog).getByLabelText("Connector type"));
+    click(await screen.findByRole("option", { name: "MCP · Streamable HTTP" }));
+    await waitFor(() => {
+      expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    });
+    expect(
+      within(createDialog).queryByLabelText(/Prefixes/u),
+    ).not.toBeInTheDocument();
+    fireEvent.change(within(createDialog).getByLabelText("Display name"), {
+      target: { value: "Acme MCP" },
+    });
+    click(buttonByText("Add authentication", createDialog));
+    click(menuItemByText("API authentication"));
+    expect(buttonByText("Create", createDialog)).toBeDisabled();
+    fireEvent.change(within(createDialog).getByLabelText(/MCP endpoint/u), {
+      target: { value: "https://mcp.acme.test/server" },
+    });
+    await waitFor(() => {
+      expect(buttonByText("Create", createDialog)).toBeEnabled();
+    });
+    click(buttonByText("Create", createDialog));
+
+    await waitFor(() => {
+      expect(connectorCardByLabel("Acme MCP")).toBeInTheDocument();
+    });
+    expect(createBodies).toStrictEqual([
+      {
+        kind: "mcp",
+        displayName: "Acme MCP",
+        endpoint: "https://mcp.acme.test/server",
+        transport: "streamable-http",
+        fields: [
+          {
+            key: "secret",
+            label: "Secret",
+            kind: "secret",
+            required: true,
+            description: "API credential",
+          },
+        ],
+        headerInjections: [
+          {
+            name: "Authorization",
+            valueTemplate: "Bearer {{secrets.secret}}",
+          },
+        ],
+        queryInjections: [],
+        authMode: "manual",
+        storageVersion: 1,
+      },
+    ]);
+
+    click(buttonByAriaLabel("Connect Acme MCP"));
+    const connectDialog = await screen.findByRole("dialog", {
+      name: "Connect Acme MCP",
+    });
+    await fill(within(connectDialog).getByLabelText("Secret"), "mcp-secret");
+    click(buttonByText("Save", connectDialog));
+    await waitFor(() => {
+      expect(savedSecret).toBe("mcp-secret");
+      expect(
+        within(connectorCardByLabel("Acme MCP")).getByTestId(
+          "connector-card-agent-access",
+        ),
+      ).toHaveTextContent("Used by Research, Support");
+    });
+
+    click(
+      within(connectorCardByLabel("Acme MCP")).getByLabelText(
+        "Manage Acme MCP access",
+      ),
+    );
+    const accessDialog = await screen.findByRole("dialog", {
+      name: "Manage Acme MCP access",
+    });
+    click(
+      within(accessDialog).getByLabelText("Revoke Acme MCP access for Support"),
+    );
+    await waitFor(() => {
+      expect(
+        within(accessDialog).getByLabelText(
+          "Authorize Acme MCP access for Support",
+        ),
+      ).toBeEnabled();
+    });
+    click(
+      within(accessDialog).getByLabelText(
+        "Authorize Acme MCP access for Support",
+      ),
+    );
+    await waitFor(() => {
+      expect(
+        within(accessDialog).getByLabelText(
+          "Revoke Acme MCP access for Support",
+        ),
+      ).toBeInTheDocument();
+    });
+    expect(
+      authorizationUpdates.some(({ agentId, body }) => {
+        return (
+          agentId === supportAgentId &&
+          "enabledIds" in body &&
+          body.operation === "remove"
+        );
+      }),
+    ).toBeTruthy();
+    click(within(accessDialog).getByLabelText("Close"));
+
+    click(screen.getByLabelText("More options"));
+    click(await screen.findByText("Edit"));
+    const editDialog = await screen.findByRole("dialog", {
+      name: "Edit custom connector",
+    });
+    expect(
+      within(editDialog).queryByLabelText("Connector type"),
+    ).not.toBeInTheDocument();
+    await fill(
+      within(editDialog).getByLabelText("Display name"),
+      "Acme MCP v2",
+    );
+    fireEvent.change(within(editDialog).getByLabelText(/MCP endpoint/u), {
+      target: { value: "https://mcp.acme.test/v2" },
+    });
+    click(buttonByText("Save", editDialog));
+    await waitFor(() => {
+      expect(connectorCardByLabel("Acme MCP v2")).toBeInTheDocument();
+    });
+    expect(updateBodies).toStrictEqual([
+      {
+        kind: "mcp",
+        displayName: "Acme MCP v2",
+        endpoint: "https://mcp.acme.test/v2",
+        transport: "streamable-http",
+        fields: [
+          {
+            key: "secret",
+            label: "Secret",
+            kind: "secret",
+            required: true,
+            description: "API credential",
+          },
+        ],
+        headerInjections: [
+          {
+            name: "Authorization",
+            valueTemplate: "Bearer {{secrets.secret}}",
+          },
+        ],
+        queryInjections: [],
+        authMode: "manual",
+        storageVersion: 1,
+      },
+    ]);
+
+    click(screen.getByLabelText("More options"));
+    click(await screen.findByText("Disconnect"));
+    await waitFor(() => {
+      expect(disconnectCount).toBe(1);
+      expect(buttonByAriaLabel("Connect Acme MCP v2")).toBeInTheDocument();
+    });
+  });
+
+  it("preserves confidential OAuth configuration for MCP edits and connects", async () => {
+    const createdBodies: CreateCustomConnectorBody[] = [];
+    const updatedBodies: UpdateCustomConnectorBody[] = [];
+    let connector: CustomConnectorMcpResponse | null = null;
+    let oauthStartCount = 0;
+    const authWindow = createMockAuthWindow();
+    context.mocks.browser.open(authWindow);
     context.mocks.data.org({
       id: "org_1",
       name: "Test Org",
@@ -3896,10 +4179,237 @@ describe("connectors page", () => {
     });
     context.mocks.data.team([]);
     context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
-      return respond(200, { connectors: [connector] });
+      return respond(200, { connectors: connector ? [connector] : [] });
+    });
+    context.mocks.api(
+      zeroCustomConnectorsContract.create,
+      ({ body, respond }) => {
+        if (body.kind !== "mcp" || !body.oauthConfig) {
+          throw new Error("Expected an OAuth MCP custom connector create");
+        }
+        createdBodies.push(body);
+        connector = mcpCustomConnector({
+          displayName: body.displayName,
+          endpoint: body.endpoint,
+          fields: body.fields,
+          headerInjections: body.headerInjections,
+          queryInjections: body.queryInjections,
+          authMode: "oauth",
+          oauthConfig: publicCustomConnectorOAuthConfig(body.oauthConfig),
+          storageVersion: body.storageVersion ?? 1,
+          connected: false,
+          missingRequiredFields: ["oauth"],
+          configuredFieldKeys: [],
+          hasSecret: false,
+        });
+        return respond(201, connector);
+      },
+    );
+    context.mocks.api(
+      zeroCustomConnectorByIdContract.update,
+      ({ body, respond }) => {
+        if (body.kind !== "mcp" || !body.oauthConfig || !connector) {
+          throw new Error("Expected an OAuth MCP custom connector update");
+        }
+        updatedBodies.push(body);
+        connector = {
+          ...connector,
+          displayName: body.displayName,
+          endpoint: body.endpoint,
+          fields: body.fields,
+          headerInjections: body.headerInjections,
+          queryInjections: body.queryInjections,
+          authMode: "oauth",
+          oauthConfig: publicCustomConnectorOAuthConfig(body.oauthConfig),
+          storageVersion: body.storageVersion ?? connector.storageVersion,
+        };
+        return respond(200, connector);
+      },
+    );
+    context.mocks.api(
+      zeroCustomConnectorOAuth2Contract.start,
+      ({ respond }) => {
+        if (!connector) {
+          throw new Error("Expected an OAuth MCP custom connector");
+        }
+        oauthStartCount += 1;
+        connector = {
+          ...connector,
+          connected: true,
+          missingRequiredFields: [],
+          hasSecret: true,
+        };
+        authWindow.close();
+        return respond(200, {
+          authorizationUrl: "https://oauth.acme.test/authorize?state=mcp-ui",
+        });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/connectors?tab=custom",
+      featureSwitches: { [FeatureSwitchKey.CustomConnectorMcp]: true },
     });
 
-    detachedSetupPage({ context, path: "/connectors?tab=custom" });
+    click(await screen.findByText("New connector"));
+    const createDialog = await screen.findByRole("dialog", {
+      name: "New custom connector",
+    });
+    click(within(createDialog).getByLabelText("Connector type"));
+    click(await screen.findByRole("option", { name: "MCP · Streamable HTTP" }));
+    fireEvent.change(within(createDialog).getByLabelText("Display name"), {
+      target: { value: "OAuth MCP" },
+    });
+    fireEvent.change(within(createDialog).getByLabelText(/MCP endpoint/u), {
+      target: { value: "https://mcp.acme.test/oauth" },
+    });
+    click(buttonByText("Add authentication", createDialog));
+    click(menuItemByText("OAuth 2.0"));
+    fireEvent.change(within(createDialog).getByLabelText("Authorization URL"), {
+      target: { value: "https://oauth.acme.test/authorize" },
+    });
+    fireEvent.change(within(createDialog).getByLabelText("Token URL"), {
+      target: { value: "https://oauth.acme.test/token" },
+    });
+    fireEvent.change(within(createDialog).getByLabelText("Client ID"), {
+      target: { value: "mcp-client" },
+    });
+    fireEvent.change(within(createDialog).getByLabelText("Client secret"), {
+      target: { value: "mcp-client-secret" },
+    });
+    await waitFor(() => {
+      expect(buttonByText("Create", createDialog)).toBeEnabled();
+    });
+    click(buttonByText("Create", createDialog));
+    await waitFor(() => {
+      expect(connectorCardByLabel("OAuth MCP")).toBeInTheDocument();
+    });
+    expect(createdBodies[0]).toMatchObject({
+      kind: "mcp",
+      displayName: "OAuth MCP",
+      endpoint: "https://mcp.acme.test/oauth",
+      transport: "streamable-http",
+      authMode: "oauth",
+      oauthConfig: {
+        clientId: "mcp-client",
+        clientSecret: "mcp-client-secret",
+        authorizationUrl: "https://oauth.acme.test/authorize",
+        tokenUrl: "https://oauth.acme.test/token",
+      },
+    });
+    expect(createdBodies[0]).not.toHaveProperty("prefixTemplates");
+
+    click(screen.getByLabelText("More options"));
+    click(await screen.findByText("Edit"));
+    const editDialog = await screen.findByRole("dialog", {
+      name: "Edit custom connector",
+    });
+    expect(within(editDialog).getByLabelText("New client secret")).toHaveValue(
+      "",
+    );
+    fireEvent.change(within(editDialog).getByLabelText(/MCP endpoint/u), {
+      target: { value: "https://mcp.acme.test/oauth-v2" },
+    });
+    click(buttonByText("Save", editDialog));
+    await waitFor(() => {
+      expect(updatedBodies).toHaveLength(1);
+    });
+    expect(updatedBodies[0]).toMatchObject({
+      kind: "mcp",
+      endpoint: "https://mcp.acme.test/oauth-v2",
+      transport: "streamable-http",
+      storageVersion: 1,
+    });
+    expect(updatedBodies[0]?.oauthConfig).not.toHaveProperty("clientSecret");
+    expect(updatedBodies[0]).not.toHaveProperty("prefixTemplates");
+
+    click(buttonByAriaLabel("Connect OAuth MCP"));
+    await waitFor(() => {
+      expect(oauthStartCount).toBe(1);
+      expect(authWindow.location.href).toBe(
+        "https://oauth.acme.test/authorize?state=mcp-ui",
+      );
+    });
+  });
+
+  it("keeps MCP access reductions available while the feature is disabled", async () => {
+    const researchAgentId = "c0000000-0000-4000-a000-000000000063";
+    const supportAgentId = "c0000000-0000-4000-a000-000000000064";
+    let connector = mcpCustomConnector({
+      connected: true,
+      hasSecret: true,
+    });
+    const enabledIdsByAgent = new Map<string, string[]>([
+      [researchAgentId, [connector.id]],
+      [supportAgentId, []],
+    ]);
+    const authorizationUpdates: AgentCustomConnectorUpdate[] = [];
+    let disconnectCount = 0;
+    context.mocks.data.org({
+      id: "org_1",
+      name: "Test Org",
+      role: "admin",
+    });
+    context.mocks.data.team([
+      teamAgent(researchAgentId, "Research"),
+      teamAgent(supportAgentId, "Support"),
+    ]);
+    context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
+      return respond(200, { connectors: [connector] });
+    });
+    context.mocks.api(
+      zeroAgentCustomConnectorsContract.get,
+      ({ params, respond }) => {
+        return respond(200, {
+          enabledIds: enabledIdsByAgent.get(params.id) ?? [],
+        });
+      },
+    );
+    context.mocks.api(
+      zeroAgentCustomConnectorsContract.update,
+      ({ params, body, respond }) => {
+        if (!("enabledIds" in body) || body.operation !== "remove") {
+          throw new Error("Expected only MCP authorization removal");
+        }
+        authorizationUpdates.push(body);
+        const next = (enabledIdsByAgent.get(params.id) ?? []).filter((id) => {
+          return !body.enabledIds.includes(id);
+        });
+        enabledIdsByAgent.set(params.id, next);
+        return respond(200, { enabledIds: next });
+      },
+    );
+    context.mocks.api(
+      zeroCustomConnectorSecretContract.disconnect,
+      ({ respond }) => {
+        disconnectCount += 1;
+        connector = {
+          ...connector,
+          connected: false,
+          hasSecret: false,
+        };
+        return respond(204);
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/connectors?tab=custom",
+      featureSwitches: { [FeatureSwitchKey.CustomConnectorMcp]: false },
+    });
+
+    click(await screen.findByText("New connector"));
+    const createDialog = await screen.findByRole("dialog", {
+      name: "New custom connector",
+    });
+    expect(
+      within(createDialog).queryByLabelText("Connector type"),
+    ).not.toBeInTheDocument();
+    expect(
+      within(createDialog).getByLabelText(/Prefixes/u),
+    ).toBeInTheDocument();
+    click(buttonByText("Cancel", createDialog));
 
     const card = await waitFor(() => {
       return connectorCardByLabel("Acme MCP");
@@ -3908,6 +4418,52 @@ describe("connectors page", () => {
     expect(
       within(card).getByText("https://mcp.acme.test/server"),
     ).toBeInTheDocument();
+    expect(screen.queryByLabelText("Connect Acme MCP")).not.toBeInTheDocument();
+    expect(
+      within(card).getByTestId("connector-card-agent-access"),
+    ).toHaveTextContent("Used by Research");
+
+    click(within(card).getByLabelText("Manage Acme MCP access"));
+    const accessDialog = await screen.findByRole("dialog", {
+      name: "Manage Acme MCP access",
+    });
+    expect(
+      within(accessDialog).getByLabelText(
+        "Authorize Acme MCP access for Support",
+      ),
+    ).toBeDisabled();
+    click(
+      within(accessDialog).getByLabelText(
+        "Revoke Acme MCP access for Research",
+      ),
+    );
+    await waitFor(() => {
+      expect(authorizationUpdates).toStrictEqual([
+        {
+          enabledIds: [connector.id],
+          operation: "remove",
+        },
+      ]);
+      expect(
+        within(accessDialog).getByLabelText(
+          "Authorize Acme MCP access for Research",
+        ),
+      ).toBeDisabled();
+    });
+    click(within(accessDialog).getByLabelText("Close"));
+    await waitFor(() => {
+      expect(
+        within(connectorCardByLabel("Acme MCP")).queryByTestId(
+          "connector-card-agent-access",
+        ),
+      ).not.toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("More options"));
+    click(await screen.findByText("Disconnect"));
+    await waitFor(() => {
+      expect(disconnectCount).toBe(1);
+    });
     expect(screen.queryByLabelText("Connect Acme MCP")).not.toBeInTheDocument();
 
     click(screen.getByLabelText("More options"));
@@ -4018,6 +4574,7 @@ describe("connectors page", () => {
   it("reconnects a managed Feishu connector without replacing its grants", async () => {
     const defaultAgentId = "c0000000-0000-4000-a000-000000000044";
     let oauthStartCount = 0;
+    let authorizationReads = 0;
     let authorizationUpdates = 0;
     let connector = customConnector({
       slug: "_feishu-00000000-0000-4000-8000-000000000044",
@@ -4056,6 +4613,7 @@ describe("connectors page", () => {
       return respond(200, { connectors: [connector] });
     });
     context.mocks.api(zeroAgentCustomConnectorsContract.get, ({ respond }) => {
+      authorizationReads += 1;
       return respond(200, {
         enabledIds: [connector.id],
         grants: [
@@ -4113,6 +4671,12 @@ describe("connectors page", () => {
     const connectorButton = await waitFor(() => {
       return buttonByAriaLabel("Connect Feishu");
     });
+    expect(
+      within(connectorCardByLabel("Feishu")).queryByTestId(
+        "connector-card-agent-access",
+      ),
+    ).not.toBeInTheDocument();
+    expect(authorizationReads).toBe(0);
     click(connectorButton);
     expect(document.querySelector('[role="dialog"]')).not.toBeInTheDocument();
     await waitFor(() => {
@@ -4126,6 +4690,7 @@ describe("connectors page", () => {
         ),
       ).toHaveTextContent("Used by Zero");
     });
+    expect(authorizationReads).toBe(1);
     expect(authorizationUpdates).toBe(0);
   });
 
@@ -4575,6 +5140,11 @@ describe("connectors page", () => {
 
     await waitFor(() => {
       expect(buttonByAriaLabel("Connect Acme Billing API")).toBeInTheDocument();
+      expect(
+        within(connectorCardByLabel("Acme Billing API")).queryByTestId(
+          "connector-card-agent-access",
+        ),
+      ).not.toBeInTheDocument();
     });
 
     click(screen.getByLabelText("More options"));
