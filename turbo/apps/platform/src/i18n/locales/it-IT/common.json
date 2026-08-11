@@ -1665,6 +1665,7 @@
         "waiting": "In attesa",
         "watching": "Guardando"
       },
+      "emojiCategories": "Categorie di emoji",
       "empty": "Invia un messaggio per avviare la conversazione",
       "frequentlyUsed": "Usato frequentemente",
       "icon": "Icona del thread di chat",
@@ -1980,6 +1981,7 @@
       "emptyAdmin": "Nessun connettore personalizzato ancora. Creane uno per registrare un API affinché ogni membro possa utilizzarlo.",
       "emptyMember": "La tua organizzazione non ha ancora registrato alcun connettore personalizzato.",
       "mcpStreamableHttp": "MCP · Streamable HTTP",
+      "mcpType": "MCP",
       "moreOptions": "Più opzioni",
       "statusConnected": "Connesso",
       "toasts": {

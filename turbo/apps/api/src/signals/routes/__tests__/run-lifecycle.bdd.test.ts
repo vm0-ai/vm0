@@ -8874,22 +8874,19 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
 
     const [mcpApi] = inlineFirewallApis(claim.firewalls, mcpInternalName);
     expect(mcpApi).toMatchObject({
-      base: "https://mcp-runtime.example.test",
+      base: "https://mcp-runtime.example.test/api/mcp",
       hostPolicy: { kind: "publicDestination" },
-      permissions: [
-        {
-          name: "mcp-endpoint",
-          rules: ["POST /api/mcp", "GET /api/mcp", "DELETE /api/mcp"],
-        },
-      ],
+      permissions: [],
     });
     const mcpSecretKey = `CUSTOM_${mcp.id.replaceAll("-", "")}_S_SECRET`;
     expect(mcpApi?.auth.headers?.Authorization).toBe(
       `Bearer \${{ secrets.${mcpSecretKey} }}`,
     );
-    expect(claim.networkPolicies?.[mcpInternalName]).toMatchObject({
-      allow: ["mcp-endpoint"],
-      unknownPolicy: "deny",
+    expect(claim.networkPolicies?.[mcpInternalName]).toStrictEqual({
+      allow: [],
+      deny: [],
+      ask: [],
+      unknownPolicy: "allow",
     });
     expect(claim.secretValues).not.toContain("mcp-runtime-token");
     expect(
@@ -8909,6 +8906,15 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       targets: [target],
     });
     const initialRuntime = availableCustomConnectorRuntime(initialResult);
+    expect(initialRuntime.firewall.firewall.apis[0]?.permissions).toStrictEqual(
+      [],
+    );
+    expect(initialRuntime.networkPolicy).toStrictEqual({
+      allow: [],
+      deny: [],
+      ask: [],
+      unknownPolicy: "allow",
+    });
     const { body: initialAuthBody } = customConnectorRuntimeAuthBody(
       initialRuntime,
       fw.encryptedSecretsBody({}),
@@ -8947,13 +8953,14 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     });
     const movedRuntime = availableCustomConnectorRuntime(movedResult);
     expect(movedRuntime.firewall.firewall.apis[0]).toMatchObject({
-      base: "https://mcp-runtime.example.test",
-      permissions: [
-        {
-          name: "mcp-endpoint",
-          rules: ["POST /v2/mcp/", "GET /v2/mcp/", "DELETE /v2/mcp/"],
-        },
-      ],
+      base: "https://mcp-runtime.example.test/v2/mcp/",
+      permissions: [],
+    });
+    expect(movedRuntime.networkPolicy).toStrictEqual({
+      allow: [],
+      deny: [],
+      ask: [],
+      unknownPolicy: "allow",
     });
 
     await connectors.disconnectCustomConnector(actor, mcp.id);
@@ -9942,13 +9949,8 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     );
     const internalName = `custom_connector_${mcp.id.replaceAll("-", "")}`;
     expect(inlineFirewallApis(claim.firewalls, internalName)[0]).toMatchObject({
-      base: "https://mcp-oauth.example.test",
-      permissions: [
-        {
-          name: "mcp-endpoint",
-          rules: ["POST /oauth/mcp", "GET /oauth/mcp", "DELETE /oauth/mcp"],
-        },
-      ],
+      base: "https://mcp-oauth.example.test/oauth/mcp",
+      permissions: [],
     });
     const [runtimeResult] = await api.syncConnectorRuntime(run.runId, {
       targets: [

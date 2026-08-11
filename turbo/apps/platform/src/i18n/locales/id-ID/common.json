@@ -1624,6 +1624,7 @@
         "waiting": "Menunggu",
         "watching": "Dipantau"
       },
+      "emojiCategories": "Kategori emoji",
       "empty": "Kirim pesan untuk memulai percakapan",
       "frequentlyUsed": "Sering digunakan",
       "icon": "Ikon thread chat",
@@ -1939,6 +1940,7 @@
       "emptyAdmin": "Belum ada konektor kustom. Buat satu untuk mendaftarkan API agar bisa digunakan semua anggota.",
       "emptyMember": "Org Anda belum mendaftarkan konektor kustom apa pun.",
       "mcpStreamableHttp": "MCP · Streamable HTTP",
+      "mcpType": "MCP",
       "moreOptions": "Opsi lainnya",
       "statusConnected": "Terhubung",
       "toasts": {
