@@ -2619,7 +2619,7 @@ describe("chat composer models", () => {
       return respond(200, { enabledConnectorSlugs: ["github"] });
     });
     context.mocks.api(zeroAgentCustomConnectorsContract.get, ({ respond }) => {
-      return respond(200, { enabledIds: [], grants: [] });
+      return respond(200, { grants: [] });
     });
 
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
@@ -2726,7 +2726,7 @@ describe("chat composer models", () => {
         if (customAuthorizationRequestCount > 1) {
           await withSignal(unexpectedCustomReload.promise);
         }
-        return respond(200, { enabledIds: [], grants: [] });
+        return respond(200, { grants: [] });
       },
     );
     context.mocks.api(

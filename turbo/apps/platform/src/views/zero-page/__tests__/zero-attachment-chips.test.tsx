@@ -29,6 +29,9 @@ function presignedFileUrl(fileId: string): string {
   return `https://r2.example.com/artifacts/${fileId}?sig=test`;
 }
 
+/** Matches presignedFileUrl so a preview body can be served from that URL. */
+const PRESIGNED_FILE_PATTERN = "https://r2.example.com/artifacts/:fileId";
+
 function artifactFile(
   url: string,
   overrides: Partial<ChatThreadArtifactFile> = {},
@@ -1198,10 +1201,8 @@ describe("zero attachment chips", () => {
   });
 
   it("opens persisted canonical audio, video, and document attachments", async () => {
-    context.mocks.http.get("/api/zero/web/download-file", ({ request }) => {
-      expect(new URL(request.url).searchParams.get("file_id")).toBe(
-        "attachment-json",
-      );
+    context.mocks.http.get(PRESIGNED_FILE_PATTERN, ({ params }) => {
+      expect(params.fileId).toBe("attachment-json");
       return new Response(JSON.stringify({ status: "ready" }), {
         headers: { "Content-Type": "application/json" },
       });
@@ -1297,10 +1298,8 @@ describe("zero attachment chips", () => {
   });
 
   it("opens persisted canonical csv, pdf, and html document previews", async () => {
-    context.mocks.http.get("/api/zero/web/download-file", ({ request }) => {
-      expect(new URL(request.url).searchParams.get("file_id")).toBe(
-        "attachment-csv",
-      );
+    context.mocks.http.get(PRESIGNED_FILE_PATTERN, ({ params }) => {
+      expect(params.fileId).toBe("attachment-csv");
       return new Response("metric,value\nsignups,42\nactivation,87", {
         headers: { "Content-Type": "text/csv" },
       });
@@ -1389,6 +1388,8 @@ describe("zero attachment chips", () => {
     );
     expect(iframe).toHaveClass("h-full", "min-h-0", "border-0");
 
+    // The split view reads the same document, so it must resolve the same
+    // loadable URL rather than falling back to the canonical route.
     click(screen.getByLabelText("Open in split view"));
 
     await waitFor(() => {
@@ -2822,8 +2823,8 @@ describe("zero attachment chips", () => {
   it("opens canonical markdown and text previews, shares a document link, and reports download failures", async () => {
     const releaseNotesUrl = canonicalUserMessageFileUrl("attachment-markdown");
     context.mocks.browser.clipboardWriteText();
-    context.mocks.http.get("/api/zero/web/download-file", ({ request }) => {
-      const fileId = new URL(request.url).searchParams.get("file_id");
+    context.mocks.http.get(PRESIGNED_FILE_PATTERN, ({ params }) => {
+      const fileId = params.fileId;
       if (fileId === "attachment-markdown") {
         return new Response("# Release notes\n\nThe rollout is ready.", {
           headers: { "Content-Type": "text/markdown" },
@@ -2834,6 +2835,11 @@ describe("zero attachment chips", () => {
           headers: { "Content-Type": "text/plain" },
         });
       }
+      return new Response(null, { status: 500 });
+    });
+    // A download reads the canonical route directly, so it keeps its own
+    // failure path independent of the presigned preview URL.
+    context.mocks.http.get("/api/zero/web/download-file", () => {
       return new Response(null, { status: 500 });
     });
     mockChatLifecycle(context, {

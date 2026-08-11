@@ -2813,7 +2813,7 @@ describe("CHAT-02: queueing and recalling messages", () => {
     expect(queued.body.runId).toBeNull();
     await api.updateOrgModelPolicies(actor, [
       {
-        model: "claude-opus-4-6",
+        model: "claude-opus-4-8",
         isDefault: true,
         defaultProviderType: "anthropic-api-key",
         credentialScope: "org",
@@ -2834,7 +2834,7 @@ describe("CHAT-02: queueing and recalling messages", () => {
     await expectNoThreadModelUpdateEvent(
       actor,
       first.threadId,
-      "claude-opus-4-6",
+      "claude-opus-4-8",
     );
 
     // Another user's send cannot claim the queued message's client id.
@@ -3424,7 +3424,7 @@ describe("CHAT-02: admission without spendable credits", () => {
     });
     await api.updateOrgModelPolicies(actor, [
       {
-        model: "claude-sonnet-4-6",
+        model: "claude-sonnet-5",
         isDefault: true,
         defaultProviderType: "vm0",
         credentialScope: "org",
@@ -3436,7 +3436,7 @@ describe("CHAT-02: admission without spendable credits", () => {
     const sendBody: ChatRunSendBody = {
       agentId: agent.agentId,
       prompt: "blocked by suspended plan",
-      model: "claude-sonnet-4-6",
+      model: "claude-sonnet-5",
       clientEventId,
     };
     const sent = await chat.requestSendEvent(actor, sendBody, [201]);
@@ -3710,24 +3710,24 @@ describe("CHAT-02: model-first provider policies", () => {
   it("routes model policy providers into the runner claim", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
-    const { providerId: moonshotId } = await upsertOrgModelProvider(actor, {
-      type: "moonshot-api-key",
-      secret: "selected-moonshot-key",
+    const { providerId: deepseekId } = await upsertOrgModelProvider(actor, {
+      type: "deepseek",
+      secret: "selected-deepseek-key",
     });
     await api.updateOrgModelPolicies(actor, [
       {
-        model: "kimi-k2.7-code",
+        model: "deepseek-v4-flash",
         isDefault: true,
-        defaultProviderType: "moonshot-api-key",
+        defaultProviderType: "deepseek",
         credentialScope: "org",
-        modelProviderId: moonshotId,
+        modelProviderId: deepseekId,
       },
     ]);
 
     const run = await sendChatRun(actor, {
       agentId,
-      prompt: "run with the selected Moonshot provider",
-      model: "kimi-k2.7-code",
+      prompt: "run with the selected DeepSeek provider",
+      model: "deepseek-v4-flash",
     });
 
     const { claim, sandboxHeaders } = await claimChatRun(
@@ -3735,14 +3735,11 @@ describe("CHAT-02: model-first provider policies", () => {
       run.runId,
     );
     const environment = claimEnvironment(claim);
-    expect(environment.ANTHROPIC_AUTH_TOKEN).toBe(
-      modelProviderSecretPlaceholder("moonshot-api-key", "MOONSHOT_API_KEY"),
+    expect(environment.OPENAI_API_KEY).toBe(
+      modelProviderSecretPlaceholder("deepseek", "DEEPSEEK_API_KEY"),
     );
-    expect(environment.ANTHROPIC_BASE_URL).toBe(
-      "https://api.moonshot.ai/anthropic",
-    );
-    expect(environment.ANTHROPIC_MODEL).toBe("kimi-k2.7-code");
-    expect(environment.CLAUDE_CODE_DISABLE_ATTACHMENTS).toBe("1");
+    expect(environment.OPENAI_BASE_URL).toBe("https://api.deepseek.com/");
+    expect(environment.OPENAI_MODEL).toBe("deepseek-v4-flash");
     expect(environment.ANTHROPIC_API_KEY).toBeUndefined();
 
     // The new thread's initial model is recorded on the created event. The
@@ -3759,14 +3756,14 @@ describe("CHAT-02: model-first provider policies", () => {
       expect.objectContaining({
         kind: "created",
         chatThreadId: run.threadId,
-        selectedModel: "kimi-k2.7-code",
+        selectedModel: "deepseek-v4-flash",
       }),
     );
     expect(threadEvents.body.events).not.toContainEqual(
       expect.objectContaining({
         kind: "model_selection_updated",
         chatThreadId: run.threadId,
-        selectedModel: "kimi-k2.7-code",
+        selectedModel: "deepseek-v4-flash",
       }),
     );
 
@@ -3784,13 +3781,13 @@ describe("CHAT-02: model-first provider policies", () => {
       followUp.runId,
     );
     const followUpEnvironment = claimEnvironment(followUpClaim);
-    expect(followUpEnvironment.ANTHROPIC_AUTH_TOKEN).toBe(
-      modelProviderSecretPlaceholder("moonshot-api-key", "MOONSHOT_API_KEY"),
+    expect(followUpEnvironment.OPENAI_API_KEY).toBe(
+      modelProviderSecretPlaceholder("deepseek", "DEEPSEEK_API_KEY"),
     );
-    expect(followUpEnvironment.ANTHROPIC_BASE_URL).toBe(
-      "https://api.moonshot.ai/anthropic",
+    expect(followUpEnvironment.OPENAI_BASE_URL).toBe(
+      "https://api.deepseek.com/",
     );
-    expect(followUpEnvironment.ANTHROPIC_MODEL).toBe("kimi-k2.7-code");
+    expect(followUpEnvironment.OPENAI_MODEL).toBe("deepseek-v4-flash");
     await cancelChatRun(actor, followUp.runId);
 
     // A vm0 provider pin in an entitled org passes the spendable-credits
@@ -3800,7 +3797,7 @@ describe("CHAT-02: model-first provider policies", () => {
     // global vm0 key. Both prove the credits-ok admission arm.
     await api.updateOrgModelPolicies(actor, [
       {
-        model: "claude-sonnet-4-6",
+        model: "claude-sonnet-5",
         isDefault: true,
         defaultProviderType: "vm0",
         credentialScope: "org",
@@ -3815,7 +3812,7 @@ describe("CHAT-02: model-first provider policies", () => {
         version: 1,
         parts: [{ type: "text", text: vm0Prompt }],
       },
-      model: "claude-sonnet-4-6",
+      model: "claude-sonnet-5",
       hasTextContent: true,
     });
     expect([201, 503]).toContain(vm0Send.status);
@@ -3974,7 +3971,7 @@ describe("CHAT-02: model-first provider policies", () => {
     chatCallbacks.failIfChatCallbackRouteIsFetched();
     await api.updateOrgModelPolicies(actor, [
       {
-        model: "claude-sonnet-4-6",
+        model: "claude-sonnet-5",
         isDefault: true,
         defaultProviderType: "anthropic-api-key",
         credentialScope: "org",
@@ -3985,12 +3982,12 @@ describe("CHAT-02: model-first provider policies", () => {
     const first = await sendChatRun(actor, {
       agentId,
       prompt: "start before the thread model is removed",
-      model: "claude-sonnet-4-6",
+      model: "claude-sonnet-5",
     });
     const firstClaim = await claimChatRun(runnerGroup, first.runId);
     expect(firstClaim.claim.cliAgentType).toBe("claude-code");
     expect(claimEnvironment(firstClaim.claim).ANTHROPIC_MODEL).toBe(
-      "claude-sonnet-4-6",
+      "claude-sonnet-5",
     );
     chatCallbacks.mockChatOutputEvents([]);
     await completeChatRunOk(first.runId, firstClaim.sandboxHeaders);
@@ -4079,7 +4076,7 @@ describe("CHAT-02: model-first provider policies", () => {
     chatCallbacks.failIfChatCallbackRouteIsFetched();
     await api.updateOrgModelPolicies(actor, [
       {
-        model: "claude-sonnet-4-6",
+        model: "claude-sonnet-5",
         isDefault: true,
         defaultProviderType: "anthropic-api-key",
         credentialScope: "org",
@@ -4088,11 +4085,11 @@ describe("CHAT-02: model-first provider policies", () => {
     ]);
     const thread = await chat.createThread(actor, {
       agentId,
-      model: "claude-sonnet-4-6",
+      model: "claude-sonnet-5",
     });
     await api.updateOrgModelPolicies(actor, [
       {
-        model: "claude-opus-4-6",
+        model: "claude-opus-4-8",
         isDefault: true,
         defaultProviderType: "anthropic-api-key",
         credentialScope: "org",
@@ -4129,7 +4126,7 @@ describe("CHAT-02: model-first provider policies", () => {
       throw new Error("Expected the concurrent send to create a run");
     }
     const racedClaim = await claimChatRun(runnerGroup, sent.body.runId);
-    expect(["claude-opus-4-6", "claude-sonnet-5"]).toContain(
+    expect(["claude-opus-4-8", "claude-sonnet-5"]).toContain(
       claimEnvironment(racedClaim.claim).ANTHROPIC_MODEL,
     );
     await cancelChatRun(actor, sent.body.runId, racedClaim.sandboxHeaders);
@@ -4162,7 +4159,7 @@ describe("CHAT-02: model-first provider policies", () => {
         return (
           event.kind === "model_selection_updated" &&
           event.chatThreadId === thread.id &&
-          event.selectedModel === "claude-opus-4-6"
+          event.selectedModel === "claude-opus-4-8"
         );
       }).length,
     ).toBeLessThanOrEqual(1);
@@ -4188,7 +4185,7 @@ describe("CHAT-02: model-first provider policies", () => {
         modelProviderId: null,
       },
       {
-        model: "gpt-5.5",
+        model: "gpt-5.6-luna",
         isDefault: false,
         defaultProviderType: "vm0",
         credentialScope: "org",
@@ -4330,7 +4327,7 @@ describe("CHAT-02: model-first provider policies", () => {
       agentId,
       threadId: fast.threadId,
       prompt: "run codex standard",
-      model: "gpt-5.5",
+      model: "gpt-5.6-luna",
     });
     expect(
       (await readThreadProjection(actor, standard.threadId)).serviceTier,
@@ -4357,14 +4354,14 @@ describe("CHAT-02: model-first provider policies", () => {
       }),
     ).toStrictEqual({
       type: "model",
-      selectedModel: "gpt-5.5",
+      selectedModel: "gpt-5.6-luna",
     });
     const { claim: standardClaim } = await claimChatRun(
       runnerGroup,
       standard.runId,
     );
     const standardEnvironment = claimEnvironment(standardClaim);
-    expect(standardEnvironment.OPENAI_MODEL).toBe("gpt-5.5");
+    expect(standardEnvironment.OPENAI_MODEL).toBe("gpt-5.6-luna");
     expect(standardEnvironment.VM0_CODEX_SERVICE_TIER).toBeUndefined();
     await cancelChatRun(actor, standard.runId);
 
@@ -4373,9 +4370,9 @@ describe("CHAT-02: model-first provider policies", () => {
       actor,
       {
         agentId,
-        prompt: "GPT 5.5 cannot use Codex fast mode",
+        prompt: "Claude cannot use Codex fast mode",
         clientThreadId: rejectedThreadId,
-        model: "gpt-5.5",
+        model: "claude-sonnet-5",
         runOptions: { codexServiceTier: "fast" },
       },
       [400],
@@ -4474,7 +4471,7 @@ describe("CHAT-02: model-first provider policies", () => {
     });
     await api.updateOrgModelPolicies(actor, [
       {
-        model: "claude-opus-4-7",
+        model: "claude-opus-4-8",
         isDefault: true,
         defaultProviderType: "openrouter-api-key",
         credentialScope: "org",
@@ -4485,7 +4482,7 @@ describe("CHAT-02: model-first provider policies", () => {
     const run = await sendChatRun(actor, {
       agentId,
       prompt: "run with the selected openrouter provider",
-      model: "claude-opus-4-7",
+      model: "claude-opus-4-8",
     });
 
     const { claim, sandboxHeaders } = await claimChatRun(
@@ -4501,12 +4498,12 @@ describe("CHAT-02: model-first provider policies", () => {
     );
     expect(environment.ANTHROPIC_BASE_URL).toBe("https://openrouter.ai/api");
     expect(environment.ANTHROPIC_API_KEY).toBe("");
-    expect(environment.ANTHROPIC_MODEL).toBe("anthropic/claude-opus-4.7");
+    expect(environment.ANTHROPIC_MODEL).toBe("anthropic/claude-opus-4.8");
     expect(environment.ANTHROPIC_DEFAULT_OPUS_MODEL).toBe(
-      "anthropic/claude-opus-4.7",
+      "anthropic/claude-opus-4.8",
     );
     expect(environment.CLAUDE_CODE_SUBAGENT_MODEL).toBe(
-      "anthropic/claude-opus-4.7",
+      "anthropic/claude-opus-4.8",
     );
     expect(environment.CLAUDE_CODE_DISABLE_ATTACHMENTS).toBeUndefined();
 
@@ -4546,23 +4543,23 @@ describe("CHAT-02: model-first provider policies", () => {
       expect.objectContaining({
         kind: "created",
         chatThreadId: run.threadId,
-        selectedModel: "claude-opus-4-7",
+        selectedModel: "claude-opus-4-8",
       }),
     );
 
     await api.requestCancelRun(actor, run.runId, [200]);
   }, 90_000);
 
-  it("routes vm0 Kimi through Moonshot attachment-disabled env bindings", async () => {
+  it("routes vm0 DeepSeek through native Responses env bindings", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     const keyFixtureId = randomUUID();
 
-    // Keep a second Moonshot fixture owner alive to cover vendor-unique row
+    // Keep a second DeepSeek fixture owner alive to cover vendor-unique row
     // arbitration instead of relying on another test file's scheduling.
-    await seedVm0ManagedModelKey("kimi-k2.7-code");
+    await seedVm0ManagedModelKey("deepseek-v4-flash");
     await acquireBddVm0ApiKey({
       fixtureId: keyFixtureId,
-      vendor: "moonshot",
+      vendor: "deepseek",
       apiKey: `vm0-key-bdd-dev-seed-${keyFixtureId}`,
     });
 
@@ -4572,17 +4569,17 @@ describe("CHAT-02: model-first provider policies", () => {
         await api.requestCancelRun(actor, runId, [200]);
       }
     };
-    const releaseVm0KimiKey = async () => {
+    const releaseVm0DeepSeekKey = async () => {
       await releaseBddVm0ApiKey({ fixtureId: keyFixtureId });
     };
     const cleanupRunAndKeys = async () => {
-      await Promise.all([releaseVm0KimiKey(), cancelRunIfCreated()]);
+      await Promise.all([releaseVm0DeepSeekKey(), cancelRunIfCreated()]);
     };
 
     await (async () => {
       await api.updateOrgModelPolicies(actor, [
         {
-          model: "kimi-k2.7-code",
+          model: "deepseek-v4-flash",
           isDefault: true,
           defaultProviderType: "vm0",
           credentialScope: "org",
@@ -4592,21 +4589,18 @@ describe("CHAT-02: model-first provider policies", () => {
 
       const run = await sendChatRun(actor, {
         agentId,
-        prompt: "run with the selected vm0 kimi provider",
-        model: "kimi-k2.7-code",
+        prompt: "run with the selected vm0 DeepSeek provider",
+        model: "deepseek-v4-flash",
       });
       runId = run.runId;
 
       const { claim } = await claimChatRun(runnerGroup, run.runId);
       const environment = claimEnvironment(claim);
-      expect(environment.ANTHROPIC_AUTH_TOKEN).toBe(
-        modelProviderSecretPlaceholder("moonshot-api-key", "MOONSHOT_API_KEY"),
+      expect(environment.OPENAI_API_KEY).toBe(
+        modelProviderSecretPlaceholder("deepseek", "DEEPSEEK_API_KEY"),
       );
-      expect(environment.ANTHROPIC_BASE_URL).toBe(
-        "https://api.moonshot.ai/anthropic",
-      );
-      expect(environment.ANTHROPIC_MODEL).toBe("kimi-k2.7-code");
-      expect(environment.CLAUDE_CODE_DISABLE_ATTACHMENTS).toBe("1");
+      expect(environment.OPENAI_BASE_URL).toBe("https://api.deepseek.com/");
+      expect(environment.OPENAI_MODEL).toBe("deepseek-v4-flash");
     })().then(cleanupRunAndKeys, async (error: unknown) => {
       await cleanupRunAndKeys();
       throw error;
@@ -4618,7 +4612,7 @@ describe("CHAT-02: model-first provider policies", () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     const keyFixtureId = randomUUID();
     const requestedApiKey = `vm0-key-bdd-dev-seed-${keyFixtureId}`;
-    await seedVm0ManagedModelKey("glm-5.2");
+    await seedVm0ManagedModelKey("claude-opus-4-8");
 
     let runId: string | null = null;
 
@@ -4631,14 +4625,14 @@ describe("CHAT-02: model-first provider policies", () => {
 
     const acquiredApiKey = await acquireBddVm0ApiKey({
       fixtureId: keyFixtureId,
-      vendor: "zai",
+      vendor: "anthropic",
       apiKey: requestedApiKey,
     });
     expect(acquiredApiKey === requestedApiKey).toBeFalsy();
 
     await api.updateOrgModelPolicies(actor, [
       {
-        model: "glm-5.2",
+        model: "claude-opus-4-8",
         isDefault: true,
         defaultProviderType: "vm0",
         credentialScope: "org",
@@ -4649,7 +4643,7 @@ describe("CHAT-02: model-first provider policies", () => {
     const run = await sendChatRun(actor, {
       agentId,
       prompt: "run with the selected vm0 provider",
-      model: "glm-5.2",
+      model: "claude-opus-4-8",
     });
     runId = run.runId;
 
@@ -4658,13 +4652,10 @@ describe("CHAT-02: model-first provider policies", () => {
       run.runId,
     );
     const environment = claimEnvironment(claim);
-    expect(environment.ANTHROPIC_AUTH_TOKEN).toBe(
-      modelProviderSecretPlaceholder("zai-api-key", "ZAI_API_KEY"),
+    expect(environment.ANTHROPIC_API_KEY).toBe(
+      modelProviderSecretPlaceholder("anthropic-api-key", "ANTHROPIC_API_KEY"),
     );
-    expect(environment.ANTHROPIC_BASE_URL).toBe(
-      "https://api.z.ai/api/anthropic",
-    );
-    expect(environment.ANTHROPIC_MODEL).toBe("glm-5.2");
+    expect(environment.ANTHROPIC_MODEL).toBe("claude-opus-4-8");
 
     if (!claim.encryptedSecrets) {
       throw new Error("Expected vm0 claim to carry encrypted secrets");
@@ -4674,7 +4665,7 @@ describe("CHAT-02: model-first provider policies", () => {
       {
         encryptedSecrets: claim.encryptedSecrets,
         authHeaders: {
-          Authorization: `Bearer ${secretTemplate("ZAI_API_KEY")}`,
+          Authorization: `Bearer ${secretTemplate("ANTHROPIC_API_KEY")}`,
         },
       },
       [200],
@@ -4696,7 +4687,7 @@ describe("CHAT-02: model-first provider policies", () => {
     });
     await api.updateOrgModelPolicies(actor, [
       {
-        model: "claude-opus-4-7",
+        model: "claude-opus-4-8",
         isDefault: true,
         defaultProviderType: "openrouter-api-key",
         credentialScope: "org",
@@ -4712,7 +4703,7 @@ describe("CHAT-02: model-first provider policies", () => {
     const run = await sendChatRun(actor, {
       agentId,
       prompt: "run with a legacy blank openrouter provider",
-      model: "claude-opus-4-7",
+      model: "claude-opus-4-8",
     });
     const { claim, sandboxHeaders } = await claimChatRun(
       runnerGroup,
@@ -4749,14 +4740,14 @@ describe("CHAT-02: run-level model overrides", () => {
     chatCallbacks.failIfChatCallbackRouteIsFetched();
     await chatCallbacks.updateOrgModelPolicies(actor, [
       {
-        model: "claude-opus-4-6",
+        model: "claude-opus-4-8",
         isDefault: true,
         defaultProviderType: "anthropic-api-key",
         credentialScope: "org",
         modelProviderId: providerId,
       },
       {
-        model: "claude-sonnet-4-6",
+        model: "claude-sonnet-5",
         isDefault: false,
         defaultProviderType: "anthropic-api-key",
         credentialScope: "org",
@@ -4768,11 +4759,11 @@ describe("CHAT-02: run-level model overrides", () => {
     const first = await sendChatRun(actor, {
       agentId,
       prompt: firstPrompt,
-      model: "claude-opus-4-6",
+      model: "claude-opus-4-8",
     });
     const firstClaim = await claimChatRun(runnerGroup, first.runId);
     expect(claimEnvironment(firstClaim.claim).ANTHROPIC_MODEL).toBe(
-      "claude-opus-4-6",
+      "claude-opus-4-8",
     );
     chatCallbacks.mockChatOutputEvents([assistantEvent(0, "opus answer")]);
     await completeChatRunOk(first.runId, firstClaim.sandboxHeaders, {
@@ -4787,7 +4778,7 @@ describe("CHAT-02: run-level model overrides", () => {
     await expectThreadCreatedModelEvent(
       actor,
       first.threadId,
-      "claude-opus-4-6",
+      "claude-opus-4-8",
     );
     expect(
       (await api.readRun(actor, first.runId)).result?.agentSessionId,
@@ -4800,7 +4791,7 @@ describe("CHAT-02: run-level model overrides", () => {
       agentId,
       threadId: first.threadId,
       prompt: "switch to sonnet",
-      model: "claude-sonnet-4-6",
+      model: "claude-sonnet-5",
     });
     const secondTimingEvents = apiDispatchTimingEventsForRun(second.runId);
     expectApiDispatchSpanKind(
@@ -4830,12 +4821,12 @@ describe("CHAT-02: run-level model overrides", () => {
       `bdd-cli-${first.runId}`,
     );
     expect(claimEnvironment(secondClaim.claim).ANTHROPIC_MODEL).toBe(
-      "claude-sonnet-4-6",
+      "claude-sonnet-5",
     );
     await expectNoThreadModelUpdateEvent(
       actor,
       first.threadId,
-      "claude-sonnet-4-6",
+      "claude-sonnet-5",
     );
     chatCallbacks.mockChatOutputEvents([]);
     await completeChatRunOk(second.runId, secondClaim.sandboxHeaders);
@@ -4854,7 +4845,7 @@ describe("CHAT-02: run-level model overrides", () => {
       `bdd-cli-${second.runId}`,
     );
     expect(claimEnvironment(thirdClaim.claim).ANTHROPIC_MODEL).toBe(
-      "claude-opus-4-6",
+      "claude-opus-4-8",
     );
     await cancelChatRun(actor, third.runId);
   }, 90_000);
@@ -4924,7 +4915,7 @@ describe("CHAT-02: run-level model overrides", () => {
 
     await chatCallbacks.updateOrgModelPolicies(actor, [
       {
-        model: "claude-sonnet-4-6",
+        model: "claude-sonnet-5",
         isDefault: true,
         defaultProviderType: "anthropic-api-key",
         credentialScope: "org",
@@ -5035,14 +5026,14 @@ describe("CHAT-02: run-level model overrides", () => {
     chatCallbacks.failIfChatCallbackRouteIsFetched();
     await chatCallbacks.updateOrgModelPolicies(actor, [
       {
-        model: "claude-opus-4-6",
+        model: "claude-opus-4-8",
         isDefault: true,
         defaultProviderType: "anthropic-api-key",
         credentialScope: "org",
         modelProviderId: providerId,
       },
       {
-        model: "claude-sonnet-4-6",
+        model: "claude-sonnet-5",
         isDefault: false,
         defaultProviderType: "anthropic-api-key",
         credentialScope: "org",
@@ -5053,7 +5044,7 @@ describe("CHAT-02: run-level model overrides", () => {
     const first = await sendChatRun(actor, {
       agentId,
       prompt: "start on opus before switching within Claude",
-      model: "claude-opus-4-6",
+      model: "claude-opus-4-8",
     });
     const firstClaim = await claimChatRun(runnerGroup, first.runId);
     chatCallbacks.mockChatOutputEvents([]);
@@ -5064,7 +5055,7 @@ describe("CHAT-02: run-level model overrides", () => {
       agentId,
       threadId: first.threadId,
       prompt: "continue on sonnet in the same session",
-      model: "claude-sonnet-4-6",
+      model: "claude-sonnet-5",
     });
     expectApiDispatchSpanKind(
       apiDispatchTimingEventsForRun(second.runId),
@@ -5076,7 +5067,7 @@ describe("CHAT-02: run-level model overrides", () => {
       `bdd-cli-${first.runId}`,
     );
     expect(claimEnvironment(secondClaim.claim).ANTHROPIC_MODEL).toBe(
-      "claude-sonnet-4-6",
+      "claude-sonnet-5",
     );
     await cancelChatRun(actor, second.runId);
   }, 90_000);
@@ -5544,7 +5535,7 @@ describe("CHAT-02: run-level model overrides", () => {
               authHeaderName: "Authorization",
               authHeaderTemplate: "Bearer {{secret}}",
               modelMappings: {
-                "claude-sonnet-4-6": "anthropic/claude-sonnet-4.6",
+                "claude-sonnet-5": "anthropic/claude-sonnet-4.6",
               },
             },
           ],
@@ -5558,7 +5549,7 @@ describe("CHAT-02: run-level model overrides", () => {
     }
     await api.updateOrgModelPolicies(actor, [
       {
-        model: "claude-sonnet-4-6",
+        model: "claude-sonnet-5",
         isDefault: true,
         defaultProviderType: "vercel-ai-gateway",
         credentialScope: "org",
@@ -5571,7 +5562,7 @@ describe("CHAT-02: run-level model overrides", () => {
     const anchor = await sendChatRun(actor, {
       agentId,
       prompt: anchorPrompt,
-      model: "claude-sonnet-4-6",
+      model: "claude-sonnet-5",
     });
     const anchorClaim = await claimChatRun(runnerGroup, anchor.runId);
     chatCallbacks.mockChatOutputEvents([
@@ -5654,7 +5645,7 @@ describe("CHAT-02: run-level model overrides", () => {
               authHeaderName: "Authorization",
               authHeaderTemplate: "Bearer {{secret}}",
               modelMappings: {
-                "claude-sonnet-4-6": "anthropic/claude-sonnet-4.6-v2",
+                "claude-sonnet-5": "anthropic/claude-sonnet-4.6-v2",
               },
             },
           ],
@@ -5722,7 +5713,7 @@ describe("CHAT-02: run-level model overrides", () => {
     );
     await api.updateOrgModelPolicies(actor, [
       {
-        model: "claude-sonnet-4-6",
+        model: "claude-sonnet-5",
         isDefault: true,
         defaultProviderType: "anthropic-api-key",
         credentialScope: "org",
@@ -5741,7 +5732,7 @@ describe("CHAT-02: run-level model overrides", () => {
     const first = await sendChatRun(actor, {
       agentId,
       prompt: firstPrompt,
-      model: "claude-sonnet-4-6",
+      model: "claude-sonnet-5",
     });
     const firstClaim = await claimChatRun(runnerGroup, first.runId);
     chatCallbacks.mockChatOutputEvents([
@@ -5984,7 +5975,7 @@ describe("CHAT-02: run-level model overrides", () => {
               authHeaderName: "Authorization",
               authHeaderTemplate: "Bearer {{secret}}",
               modelMappings: {
-                "claude-sonnet-4-6": "anthropic/claude-sonnet-4.6",
+                "claude-sonnet-5": "anthropic/claude-sonnet-4.6",
               },
             },
           ],
@@ -5998,7 +5989,7 @@ describe("CHAT-02: run-level model overrides", () => {
     }
     await api.updateOrgModelPolicies(actor, [
       {
-        model: "claude-sonnet-4-6",
+        model: "claude-sonnet-5",
         isDefault: true,
         defaultProviderType: "vercel-ai-gateway",
         credentialScope: "org",
@@ -6010,7 +6001,7 @@ describe("CHAT-02: run-level model overrides", () => {
     const first = await sendChatRun(actor, {
       agentId,
       prompt: "establish a custom gateway session",
-      model: "claude-sonnet-4-6",
+      model: "claude-sonnet-5",
     });
     const firstClaim = await claimChatRun(runnerGroup, first.runId);
     chatCallbacks.mockChatOutputEvents([]);
@@ -6039,7 +6030,7 @@ describe("CHAT-02: run-level model overrides", () => {
     );
     await api.updateOrgModelPolicies(actor, [
       {
-        model: "claude-sonnet-4-6",
+        model: "claude-sonnet-5",
         isDefault: true,
         defaultProviderType: "vercel-ai-gateway",
         credentialScope: "org",
@@ -6083,7 +6074,7 @@ describe("CHAT-02: run-level model overrides", () => {
     chatCallbacks.failIfChatCallbackRouteIsFetched();
     await api.updateOrgModelPolicies(actor, [
       {
-        model: "claude-sonnet-4-6",
+        model: "claude-sonnet-5",
         isDefault: true,
         defaultProviderType: "anthropic-api-key",
         credentialScope: "org",
@@ -6094,7 +6085,7 @@ describe("CHAT-02: run-level model overrides", () => {
     const first = await sendChatRun(actor, {
       agentId,
       prompt: "establish the original provider route",
-      model: "claude-sonnet-4-6",
+      model: "claude-sonnet-5",
     });
     const firstClaim = await claimChatRun(runnerGroup, first.runId);
     chatCallbacks.mockChatOutputEvents([]);
@@ -6139,7 +6130,7 @@ describe("CHAT-02: run-level model overrides", () => {
     );
     await api.updateOrgModelPolicies(actor, [
       {
-        model: "claude-sonnet-4-6",
+        model: "claude-sonnet-5",
         isDefault: true,
         defaultProviderType: "openrouter-api-key",
         credentialScope: "org",
@@ -6184,7 +6175,7 @@ describe("CHAT-02: run-level model overrides", () => {
     const first = await sendChatRun(actor, {
       agentId,
       prompt: "pin sonnet model-first",
-      model: "claude-sonnet-4-6",
+      model: "claude-sonnet-5",
     });
     const firstClaim = await claimChatRun(runnerGroup, first.runId);
     chatCallbacks.mockChatOutputEvents([]);
@@ -6202,7 +6193,7 @@ describe("CHAT-02: run-level model overrides", () => {
     await expectThreadCreatedModelEvent(
       actor,
       first.threadId,
-      "claude-sonnet-4-6",
+      "claude-sonnet-5",
     );
 
     await misc.upsertPersonalModelProvider(
@@ -6215,7 +6206,7 @@ describe("CHAT-02: run-level model overrides", () => {
     );
     await api.updateOrgModelPolicies(actor, [
       {
-        model: "claude-sonnet-4-6",
+        model: "claude-sonnet-5",
         isDefault: true,
         defaultProviderType: "claude-code-oauth-token",
         credentialScope: "member",
@@ -6236,7 +6227,7 @@ describe("CHAT-02: run-level model overrides", () => {
         "CLAUDE_CODE_OAUTH_TOKEN",
       ),
     );
-    expect(environment.ANTHROPIC_MODEL).toBe("claude-sonnet-4-6");
+    expect(environment.ANTHROPIC_MODEL).toBe("claude-sonnet-5");
     expect(secondClaim.claim.resumeSession?.sessionId).toBe(
       `bdd-cli-${first.runId}`,
     );
@@ -6246,12 +6237,12 @@ describe("CHAT-02: run-level model overrides", () => {
     await expectThreadCreatedModelEvent(
       actor,
       first.threadId,
-      "claude-sonnet-4-6",
+      "claude-sonnet-5",
     );
     await expectNoThreadModelUpdateEvent(
       actor,
       first.threadId,
-      "claude-sonnet-4-6",
+      "claude-sonnet-5",
     );
     await completeChatRunOk(second.runId, secondClaim.sandboxHeaders);
 
@@ -6264,7 +6255,7 @@ describe("CHAT-02: run-level model overrides", () => {
     );
     await api.updateOrgModelPolicies(actor, [
       {
-        model: "claude-sonnet-4-6",
+        model: "claude-sonnet-5",
         isDefault: true,
         defaultProviderType: "openrouter-api-key",
         credentialScope: "org",
@@ -6301,7 +6292,7 @@ describe("CHAT-02: run-level model overrides", () => {
     await expectNoThreadModelUpdateEvent(
       actor,
       first.threadId,
-      "claude-sonnet-4-6",
+      "claude-sonnet-5",
     );
 
     const fourth = await sendChatRun(actor, {
@@ -6998,7 +6989,7 @@ describe("CHAT-02: generation templates and attachments", () => {
         version: 1,
         parts: [
           ...userMessage.parts,
-          { type: "model", selectedModel: "claude-sonnet-4-6" },
+          { type: "model", selectedModel: "claude-sonnet-5" },
         ],
       },
     });
@@ -7100,7 +7091,7 @@ describe("CHAT-02: generation templates and attachments", () => {
         version: 1,
         parts: [
           ...userMessage.parts,
-          { type: "model", selectedModel: "claude-sonnet-4-6" },
+          { type: "model", selectedModel: "claude-sonnet-5" },
         ],
       },
     });
@@ -7162,7 +7153,7 @@ describe("CHAT-02: generation templates and attachments", () => {
             contentType: "text/plain",
           },
           { type: "text", text: "plain API attachment" },
-          { type: "model", selectedModel: "claude-sonnet-4-6" },
+          { type: "model", selectedModel: "claude-sonnet-5" },
         ],
       },
     });
@@ -7829,7 +7820,7 @@ describe("CHAT-02: queued attachments on auto-send", () => {
         ...userMessage.parts,
         {
           type: "model",
-          selectedModel: "claude-sonnet-4-6",
+          selectedModel: "claude-sonnet-5",
         },
       ],
     });
@@ -8426,7 +8417,7 @@ describe("CHAT-02: shared user message queue", () => {
           }),
           {
             type: "model",
-            selectedModel: "claude-sonnet-4-6",
+            selectedModel: "claude-sonnet-5",
           },
         ],
       },
@@ -8754,7 +8745,7 @@ describe("CHAT-02: shared user message queue", () => {
     const rotatedAnchor = await sendChatRun(actor, {
       agentId,
       prompt: rotatedAnchorPrompt,
-      model: "claude-sonnet-4-6",
+      model: "claude-sonnet-5",
     });
     const rotatedAnchorClaim = await claimChatRun(
       runnerGroup,
@@ -8777,7 +8768,7 @@ describe("CHAT-02: shared user message queue", () => {
     );
     await api.updateOrgModelPolicies(actor, [
       {
-        model: "claude-sonnet-4-6",
+        model: "claude-sonnet-5",
         isDefault: true,
         defaultProviderType: "anthropic-api-key",
         credentialScope: "org",

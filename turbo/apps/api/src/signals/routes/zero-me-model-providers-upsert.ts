@@ -1,8 +1,11 @@
 import { command } from "ccstate";
 import {
+  getDefaultModel,
+  getRetiredRunModelReplacement,
   hasAuthMethods,
   type ModelProviderResponse,
   type ModelProviderType,
+  type UpsertModelProviderRequest,
 } from "@vm0/api-contracts/contracts/model-providers";
 import { zeroPersonalModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-personal-model-providers";
 import {
@@ -14,7 +17,7 @@ import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
-import { badRequestMessage } from "../../lib/error";
+import { badRequestMessage, modelRetired } from "../../lib/error";
 import { handleCodexAuthJsonPaste } from "../services/codex-auth-json-paste-handler";
 import {
   upsertUserModelProvider$,
@@ -29,6 +32,7 @@ import {
   upsertPersonalModelProviderAccount,
   type PersonalSubscriptionProviderType,
 } from "../services/model-provider-account.service";
+import { loadOrgPlanCapabilities } from "../services/org-plan-entitlement-read.service";
 
 function providerNotFound(type: string) {
   return {
@@ -168,60 +172,99 @@ const upsertPersonalCodexAuthJson$ = command(
   },
 );
 
-const upsertInner$ = command(async ({ get, set }, signal: AbortSignal) => {
-  const auth = get(organizationAuthContext$);
-
-  // Body parse
-  const bodyResult = await get(
-    bodyResultOf(zeroPersonalModelProvidersMainContract.upsert),
-  );
-  signal.throwIfAborted();
-  if (!bodyResult.ok) {
-    return bodyResult.response;
-  }
-  const { type, secret, authMethod, secrets, selectedModel } = bodyResult.data;
-
-  // Gate 2: personal provider routes only support model-first provider types.
-  if (!isModelFirstPersonalProviderType(type)) {
-    return providerNotFound(type);
-  }
-  const featureSwitchContext = await get(
-    userFeatureSwitchContext(auth.orgId, auth.userId),
-  );
-  signal.throwIfAborted();
-  const accountsEnabled =
-    isPersonalSubscriptionProviderType(type) &&
-    isFeatureEnabled(
-      FeatureSwitchKey.PersonalModelProviderAccounts,
-      featureSwitchContext,
+const upsertAcceptedPersonalProvider$ = command(
+  async (
+    { get, set },
+    args: {
+      readonly orgId: string;
+      readonly userId: string;
+      readonly body: UpsertModelProviderRequest & {
+        readonly type: PersonalSubscriptionProviderType;
+      };
+    },
+    signal: AbortSignal,
+  ) => {
+    const auth = args;
+    const { type, secret, authMethod, secrets, selectedModel } = args.body;
+    const featureSwitchContext = await get(
+      userFeatureSwitchContext(auth.orgId, auth.userId),
     );
-
-  // Branch 1: codex-oauth-token + auth_json paste flow
-  if (type === "codex-oauth-token" && authMethod === "auth_json") {
-    const raw = secrets?.CODEX_AUTH_JSON;
-    if (!raw) {
-      return badRequestMessage("Missing CODEX_AUTH_JSON secret");
-    }
-    return await set(
-      upsertPersonalCodexAuthJson$,
-      {
-        orgId: auth.orgId,
-        userId: auth.userId,
-        rawAuthJson: raw,
-        selectedModel,
-        accountsEnabled,
+    signal.throwIfAborted();
+    const accountsEnabled =
+      isPersonalSubscriptionProviderType(type) &&
+      isFeatureEnabled(
+        FeatureSwitchKey.PersonalModelProviderAccounts,
         featureSwitchContext,
-      },
-      signal,
-    );
-  }
-
-  // Branch 2: multi-auth provider
-  if (hasAuthMethods(type)) {
-    if (!authMethod || !secrets) {
-      return badRequestMessage(
-        `Provider "${type}" requires authMethod and secrets`,
       );
+
+    // Branch 1: codex-oauth-token + auth_json paste flow
+    if (type === "codex-oauth-token" && authMethod === "auth_json") {
+      const raw = secrets?.CODEX_AUTH_JSON;
+      if (!raw) {
+        return badRequestMessage("Missing CODEX_AUTH_JSON secret");
+      }
+      return await set(
+        upsertPersonalCodexAuthJson$,
+        {
+          orgId: auth.orgId,
+          userId: auth.userId,
+          rawAuthJson: raw,
+          selectedModel,
+          accountsEnabled,
+          featureSwitchContext,
+        },
+        signal,
+      );
+    }
+
+    // Branch 2: multi-auth provider
+    if (hasAuthMethods(type)) {
+      if (!authMethod || !secrets) {
+        return badRequestMessage(
+          `Provider "${type}" requires authMethod and secrets`,
+        );
+      }
+      if (accountsEnabled) {
+        const result = await upsertPersonalModelProviderAccount(
+          {
+            db: set(writeDb$),
+            orgId: auth.orgId,
+            userId: auth.userId,
+            type,
+            authMethod,
+            secretValues: secrets,
+            selectedModel,
+            mode: { kind: "replace-active" },
+            featureSwitchContext,
+          },
+          signal,
+        );
+        signal.throwIfAborted();
+        return "status" in result
+          ? result
+          : shapeAccountUpsertResult(result.provider, result.created);
+      }
+      const result = await set(
+        upsertUserMultiAuthModelProvider$,
+        {
+          orgId: auth.orgId,
+          userId: auth.userId,
+          type,
+          authMethod,
+          secretValues: secrets,
+          selectedModel,
+        },
+        signal,
+      );
+      signal.throwIfAborted();
+      return "status" in result
+        ? result
+        : shapeUpsertResult(result.provider, result.created);
+    }
+
+    // Branch 3: single-secret provider
+    if (!secret) {
+      return badRequestMessage(`Provider "${type}" requires a secret`);
     }
     if (accountsEnabled) {
       const result = await upsertPersonalModelProviderAccount(
@@ -230,8 +273,10 @@ const upsertInner$ = command(async ({ get, set }, signal: AbortSignal) => {
           orgId: auth.orgId,
           userId: auth.userId,
           type,
-          authMethod,
-          secretValues: secrets,
+          authMethod: null,
+          secretValues: {
+            CLAUDE_CODE_OAUTH_TOKEN: secret,
+          },
           selectedModel,
           mode: { kind: "replace-active" },
           featureSwitchContext,
@@ -244,13 +289,12 @@ const upsertInner$ = command(async ({ get, set }, signal: AbortSignal) => {
         : shapeAccountUpsertResult(result.provider, result.created);
     }
     const result = await set(
-      upsertUserMultiAuthModelProvider$,
+      upsertUserModelProvider$,
       {
         orgId: auth.orgId,
         userId: auth.userId,
         type,
-        authMethod,
-        secretValues: secrets,
+        secret,
         selectedModel,
       },
       signal,
@@ -259,49 +303,43 @@ const upsertInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return "status" in result
       ? result
       : shapeUpsertResult(result.provider, result.created);
+  },
+);
+
+const upsertInner$ = command(async ({ get, set }, signal: AbortSignal) => {
+  const auth = get(organizationAuthContext$);
+  const bodyResult = await get(
+    bodyResultOf(zeroPersonalModelProvidersMainContract.upsert),
+  );
+  signal.throwIfAborted();
+  if (!bodyResult.ok) {
+    return bodyResult.response;
+  }
+  const { type, selectedModel } = bodyResult.data;
+  if (!isModelFirstPersonalProviderType(type)) {
+    return providerNotFound(type);
   }
 
-  // Branch 3: single-secret provider
-  if (!secret) {
-    return badRequestMessage(`Provider "${type}" requires a secret`);
+  const capabilities = await loadOrgPlanCapabilities(set(writeDb$), auth.orgId);
+  signal.throwIfAborted();
+  const configuredModel = selectedModel ?? getDefaultModel(type) ?? "";
+  const replacement = getRetiredRunModelReplacement(configuredModel, {
+    restrictedVm0Models:
+      capabilities?.status === "active" && capabilities.restrictedVm0Models,
+    modelProviderType: type,
+  });
+  if (replacement) {
+    return modelRetired(configuredModel, replacement);
   }
-  if (accountsEnabled) {
-    const result = await upsertPersonalModelProviderAccount(
-      {
-        db: set(writeDb$),
-        orgId: auth.orgId,
-        userId: auth.userId,
-        type,
-        authMethod: null,
-        secretValues: {
-          CLAUDE_CODE_OAUTH_TOKEN: secret,
-        },
-        selectedModel,
-        mode: { kind: "replace-active" },
-        featureSwitchContext,
-      },
-      signal,
-    );
-    signal.throwIfAborted();
-    return "status" in result
-      ? result
-      : shapeAccountUpsertResult(result.provider, result.created);
-  }
-  const result = await set(
-    upsertUserModelProvider$,
+  return await set(
+    upsertAcceptedPersonalProvider$,
     {
       orgId: auth.orgId,
       userId: auth.userId,
-      type,
-      secret,
-      selectedModel,
+      body: { ...bodyResult.data, type },
     },
     signal,
   );
-  signal.throwIfAborted();
-  return "status" in result
-    ? result
-    : shapeUpsertResult(result.provider, result.created);
 });
 
 export const zeroMeModelProvidersUpsertRoutes: readonly RouteEntry[] = [

@@ -388,16 +388,8 @@ describe("directed connector connect page", () => {
       zeroAgentCustomConnectorsContract.update,
       ({ body, params, respond }) => {
         expect(params.id).toBe(AGENT_ID);
-        if (!("grants" in body)) {
-          throw new Error("Expected canonical custom connector grants");
-        }
         grants = body.grants;
-        return respond(200, {
-          enabledIds: grants.map((grant) => {
-            return grant.customConnectorId;
-          }),
-          grants,
-        });
+        return respond(200, { grants });
       },
     );
 
@@ -471,16 +463,8 @@ describe("directed connector connect page", () => {
       zeroAgentCustomConnectorsContract.update,
       ({ body, params, respond }) => {
         expect(params.id).toBe(AGENT_ID);
-        if (!("grants" in body)) {
-          throw new Error("Expected canonical custom connector grants");
-        }
         grants = body.grants;
-        return respond(200, {
-          enabledIds: grants.map((grant) => {
-            return grant.customConnectorId;
-          }),
-          grants,
-        });
+        return respond(200, { grants });
       },
     );
     const authWindow = context.mocks.browser.authWindow();
@@ -569,14 +553,14 @@ describe("directed connector connect page", () => {
             permissionNames: ["messages:send-as-user"],
           },
         ];
-        return respond(200, { enabledIds: [connector.id], grants });
+        return respond(200, { grants });
       },
     );
     context.mocks.api(
       zeroAgentCustomConnectorsContract.update,
       ({ respond }) => {
         authorizationUpdates += 1;
-        return respond(200, { enabledIds: [], grants: [] });
+        return respond(200, { grants: [] });
       },
     );
     const authWindow = context.mocks.browser.authWindow();

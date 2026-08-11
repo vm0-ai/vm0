@@ -1,5 +1,4 @@
 import type { ReactNode } from "react";
-import type { Computed } from "ccstate";
 import {
   ArrowLeft,
   Maximize2,
@@ -34,6 +33,7 @@ import {
   TextPreviewLoader,
 } from "./zero-attachment-chips.tsx";
 import { publicAttachmentUrl } from "./zero-attachment-url";
+import { useResolvedAttachmentUrl } from "./zero-attachment-resource";
 import { artifactPreviewUrlsMatch } from "./zero-attachment-url.ts";
 import { lightboxDialogVisible$ } from "../../signals/zero-page/zero-attachment-chips.ts";
 import { Markdown } from "../components/markdown.tsx";
@@ -312,7 +312,6 @@ function ArtifactSidebarResolvedContent({
           artifactKind={display.artifactKind}
           imageNavigation={imageNavigation}
           fullscreen={fullscreen}
-          resourceUrl$={display.resourceUrl$}
           text$={text$}
         />
       </div>
@@ -455,7 +454,6 @@ interface ArtifactDisplay {
   filename: string;
   subtitle: string;
   shareAvailable: boolean;
-  resourceUrl$: Computed<Promise<string>>;
   artifactKind?: ChatThreadArtifactFile["artifactKind"];
 }
 
@@ -515,7 +513,6 @@ function resolveArtifactDisplay(
       filename: item.file.filename,
       subtitle: artifactTitleSubtitle(ref.kind, item.file),
       shareAvailable: ref.shareAvailable ?? true,
-      resourceUrl$: ref.resourceUrl$,
       artifactKind: item.file.artifactKind,
     };
   }
@@ -525,7 +522,6 @@ function resolveArtifactDisplay(
     filename: ref.filename,
     subtitle: artifactFallbackSubtitle(ref.kind, ref.filename),
     shareAvailable: ref.shareAvailable ?? true,
-    resourceUrl$: ref.resourceUrl$,
   };
 }
 
@@ -816,7 +812,6 @@ function ArtifactBody({
   artifactKind,
   imageNavigation,
   fullscreen,
-  resourceUrl$,
   text$,
 }: {
   url: string;
@@ -825,7 +820,6 @@ function ArtifactBody({
   artifactKind?: ChatThreadArtifactFile["artifactKind"];
   imageNavigation?: ArtifactImageNavigationActions;
   fullscreen: boolean;
-  resourceUrl$: Computed<Promise<string>>;
   text$?: TextPreviewComputed;
 }) {
   const { t } = useTranslation();
@@ -880,8 +874,8 @@ function ArtifactBody({
   }
   if (kind === "html" || kind === "pdf") {
     return (
-      <ArtifactIframeResourceBody
-        resourceUrl$={resourceUrl$}
+      <ArtifactIframeBody
+        url={url}
         kind={kind}
         filename={filename}
         artifactKind={artifactKind}
@@ -890,34 +884,6 @@ function ArtifactBody({
     );
   }
   return <ArtifactGenericBody filename={filename} />;
-}
-
-function ArtifactIframeResourceBody({
-  resourceUrl$,
-  kind,
-  filename,
-  artifactKind,
-  fullscreen,
-}: {
-  resourceUrl$: Computed<Promise<string>>;
-  kind: "html" | "pdf";
-  filename: string;
-  artifactKind?: ChatThreadArtifactFile["artifactKind"];
-  fullscreen: boolean;
-}) {
-  const resourceUrl = useLastResolved(resourceUrl$);
-  if (!resourceUrl) {
-    return <ArtifactSpinner />;
-  }
-  return (
-    <ArtifactIframeBody
-      url={resourceUrl}
-      kind={kind}
-      filename={filename}
-      artifactKind={artifactKind}
-      fullscreen={fullscreen}
-    />
-  );
 }
 
 function ArtifactSpinner() {
@@ -1195,6 +1161,11 @@ function ArtifactImageBody({
   filename: string;
 }) {
   const modalOpen = useGet(lightboxDialogVisible$);
+  const resourceUrl = useResolvedAttachmentUrl(url);
+
+  if (resourceUrl === null) {
+    return <ArtifactSpinner />;
+  }
 
   return (
     <ArtifactStageShell flush scrollable={false}>
@@ -1206,7 +1177,7 @@ function ArtifactImageBody({
             navigation={imageNavigation}
           />
           <ZoomableArtifactImageCanvas
-            src={publicAttachmentUrl(url)}
+            src={resourceUrl}
             alt={filename}
             zoomKey={zoomableArtifactImageKey(
               "artifact-sidebar",
@@ -1352,25 +1323,28 @@ function ArtifactVideoBody({
   filename: string;
 }) {
   const { t } = useTranslation();
+  const resourceUrl = useResolvedAttachmentUrl(url);
   return (
     <ArtifactStageShell centered>
       <div
         className="w-full overflow-hidden rounded-xl border border-border/70 bg-black shadow-sm"
         data-testid="artifact-sidebar-video-stage"
       >
-        <video
-          src={publicAttachmentUrl(url)}
-          controls
-          playsInline
-          className="block aspect-video w-full bg-black object-contain"
-          aria-label={t(
-            ($) => {
-              return $.artifacts.preview.videoLabel;
-            },
-            { filename },
-          )}
-          data-testid="artifact-sidebar-body-video"
-        />
+        {resourceUrl !== null && (
+          <video
+            src={resourceUrl}
+            controls
+            playsInline
+            className="block aspect-video w-full bg-black object-contain"
+            aria-label={t(
+              ($) => {
+                return $.artifacts.preview.videoLabel;
+              },
+              { filename },
+            )}
+            data-testid="artifact-sidebar-body-video"
+          />
+        )}
       </div>
     </ArtifactStageShell>
   );
@@ -1384,23 +1358,26 @@ function ArtifactAudioBody({
   filename: string;
 }) {
   const { t } = useTranslation();
+  const resourceUrl = useResolvedAttachmentUrl(url);
   return (
     <ArtifactStageShell centered>
       <div className="flex w-full max-w-[520px] flex-col items-center gap-4 rounded-xl border border-border/70 bg-background p-6 shadow-sm">
         <p className="text-sm text-muted-foreground">{filename}</p>
-        <audio
-          src={publicAttachmentUrl(url)}
-          controls
-          preload="metadata"
-          className="w-full"
-          aria-label={t(
-            ($) => {
-              return $.artifacts.preview.audioLabel;
-            },
-            { filename },
-          )}
-          data-testid="artifact-sidebar-body-audio"
-        />
+        {resourceUrl !== null && (
+          <audio
+            src={resourceUrl}
+            controls
+            preload="metadata"
+            className="w-full"
+            aria-label={t(
+              ($) => {
+                return $.artifacts.preview.audioLabel;
+              },
+              { filename },
+            )}
+            data-testid="artifact-sidebar-body-audio"
+          />
+        )}
       </div>
     </ArtifactStageShell>
   );
@@ -1420,20 +1397,26 @@ function ArtifactIframeBody({
   fullscreen: boolean;
 }) {
   const { t } = useTranslation();
+  const resourceUrl = useResolvedAttachmentUrl(url);
   // PDF Open Parameters: #navpanes=0 hides Chromium's built-in left rail
   // (thumbnails / bookmarks) so the embedded preview shows just the page
   // and toolbar by default. Firefox/PDF.js silently ignores it.
-  const publicUrl = publicAttachmentUrl(url);
-  const src = kind === "pdf" ? `${publicUrl}#navpanes=0` : publicUrl;
+  const src =
+    resourceUrl !== null && kind === "pdf"
+      ? `${resourceUrl}#navpanes=0`
+      : resourceUrl;
   const isPresentationHtml =
     kind === "html" && artifactKind === "presentation-html";
+  if (resourceUrl === null || src === null) {
+    return <ArtifactSpinner />;
+  }
   if (kind === "html") {
     return (
       <div className="h-full w-full">
         <AutoFocusedArtifactIframe
-          focusKey={`${publicUrl}:${fullscreen ? "fullscreen" : "sidebar"}`}
+          focusKey={`${resourceUrl}:${fullscreen ? "fullscreen" : "sidebar"}`}
           focusOnMount={fullscreen && !isPresentationHtml}
-          src={publicUrl}
+          src={resourceUrl}
           title={t(
             ($) => {
               return $.artifacts.preview.dialogLabel;

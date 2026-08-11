@@ -741,12 +741,9 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       "Renamed event title",
       renameEventId,
     );
-    await chat.updateThreadModelSelection(
-      actor,
-      thread.id,
-      "claude-sonnet-4-6",
-      { eventId: modelSelectionEventId },
-    );
+    await chat.updateThreadModelSelection(actor, thread.id, "claude-sonnet-5", {
+      eventId: modelSelectionEventId,
+    });
 
     const allEvents = await chat.requestThreadEvents(actor, {}, [200]);
     expect(allEvents.status).toBe(200);
@@ -784,7 +781,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
           chatThreadId: thread.id,
           agentId: agent.agentId,
           title: null,
-          selectedModel: "claude-sonnet-4-6",
+          selectedModel: "claude-sonnet-5",
           createdAt: expect.any(String),
         }),
         expect.objectContaining({
@@ -1043,7 +1040,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     await chat.updateThreadModelSelection(
       actor,
       liveThread.id,
-      "claude-sonnet-4-6",
+      "claude-sonnet-5",
       { eventId: modelSelectionEventId },
     );
 
@@ -1076,7 +1073,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
         agentId: liveAgent.agentId,
         title: "Renamed compact title",
         renamedAt: expect.any(String),
-        selectedModel: "claude-sonnet-4-6",
+        selectedModel: "claude-sonnet-5",
       }),
     ]);
 
@@ -1128,7 +1125,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     const run = await sendChatRun(actor, {
       agentId,
       prompt: "pin the first run model",
-      model: "claude-sonnet-4-6",
+      model: "claude-sonnet-5",
     });
 
     let detail = await chat.readThread(actor, run.threadId);
@@ -1156,7 +1153,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     );
     await api.updateOrgModelPolicies(actor, [
       {
-        model: "claude-opus-4-6",
+        model: "claude-opus-4-8",
         isDefault: true,
         defaultProviderType: "anthropic-api-key",
         credentialScope: "org",
@@ -1170,7 +1167,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       {
         agentId,
         clientThreadId: rejectedThreadId,
-        model: "claude-sonnet-4-6",
+        model: "claude-sonnet-5",
       },
       [400],
     );
@@ -1182,12 +1179,12 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
 
     const thread = await chat.createThread(actor, {
       agentId,
-      model: "claude-opus-4-6",
+      model: "claude-opus-4-8",
     });
     const rejectedUpdate = await chat.requestUpdateThreadModelSelection(
       actor,
       thread.id,
-      "claude-sonnet-4-6",
+      "claude-sonnet-5",
       [400],
     );
     expectApiError(rejectedUpdate.body);
@@ -1234,12 +1231,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       model: "deepseek-v4-flash",
       title: "limited free model pin",
     });
-    for (const selectedModel of [
-      "gpt-5.6-sol",
-      "gpt-5.5",
-      "claude-sonnet-5",
-      "MiniMax-M3",
-    ] as const) {
+    for (const selectedModel of ["gpt-5.6-sol", "claude-sonnet-5"] as const) {
       const restrictedSelection = await chat.requestUpdateThreadModelSelection(
         actor,
         thread.id,
@@ -1251,6 +1243,24 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
         message:
           "Insufficient credits. Add credits or configure your own API key to continue.",
         code: "INSUFFICIENT_CREDITS",
+      });
+
+      await expect(
+        chat.readThread(actor, thread.id),
+      ).resolves.not.toHaveProperty("selectedModel");
+    }
+
+    for (const selectedModel of ["gpt-5.5", "MiniMax-M3"] as const) {
+      const retiredSelection = await chat.requestUpdateThreadModelSelection(
+        actor,
+        thread.id,
+        selectedModel,
+        [400],
+      );
+      expectApiError(retiredSelection.body);
+      expect(retiredSelection.body.error).toStrictEqual({
+        message: `Model "${selectedModel}" has been retired. Use "deepseek-v4-flash" instead.`,
+        code: "MODEL_RETIRED",
       });
 
       await expect(

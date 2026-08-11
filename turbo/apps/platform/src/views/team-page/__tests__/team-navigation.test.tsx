@@ -89,16 +89,7 @@ function applyCustomConnectorUpdate(
   current: readonly AgentCustomConnectorGrant[],
   body: AgentCustomConnectorUpdate,
 ): AgentCustomConnectorGrant[] {
-  const requested =
-    "grants" in body
-      ? body.grants
-      : body.enabledIds.map((customConnectorId) => {
-          return (
-            current.find((grant) => {
-              return grant.customConnectorId === customConnectorId;
-            }) ?? { customConnectorId, permissionNames: [] }
-          );
-        });
+  const requested = body.grants;
   if (body.operation === "add") {
     const byConnectorId = new Map(
       current.map((grant) => {
@@ -435,12 +426,7 @@ function mockTeamAPIs({
     zeroAgentCustomConnectorsContract.get,
     ({ params, respond }) => {
       const grants = customConnectorGrantsByAgent.get(params.id) ?? [];
-      return respond(200, {
-        enabledIds: grants.map((grant) => {
-          return grant.customConnectorId;
-        }),
-        grants,
-      });
+      return respond(200, { grants });
     },
   );
   context.mocks.api(
@@ -452,12 +438,7 @@ function mockTeamAPIs({
         body,
       );
       customConnectorGrantsByAgent.set(params.id, grants);
-      return respond(200, {
-        enabledIds: grants.map((grant) => {
-          return grant.customConnectorId;
-        }),
-        grants,
-      });
+      return respond(200, { grants });
     },
   );
   context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
@@ -619,10 +600,7 @@ describe("team page navigation", () => {
     });
     context.mocks.api(zeroAgentCustomConnectorsContract.get, ({ respond }) => {
       agentAccessReads += 1;
-      return respond(200, {
-        enabledIds: [],
-        grants: [],
-      });
+      return respond(200, { grants: [] });
     });
 
     detachedSetupPage({
@@ -652,7 +630,6 @@ describe("team page navigation", () => {
           200,
           params.id === researchAgentId
             ? {
-                enabledIds: [customConnector.id],
                 grants: [
                   {
                     customConnectorId: customConnector.id,
@@ -660,7 +637,7 @@ describe("team page navigation", () => {
                   },
                 ],
               }
-            : { enabledIds: [], grants: [] },
+            : { grants: [] },
         );
       },
     );
@@ -686,16 +663,7 @@ describe("team page navigation", () => {
       ({ body, params, respond }) => {
         updatedAgentIds.push(params.id);
         return respond(200, {
-          enabledIds: [customConnector.id],
-          grants:
-            "grants" in body
-              ? body.grants
-              : [
-                  {
-                    customConnectorId: customConnector.id,
-                    permissionNames: [],
-                  },
-                ],
+          grants: body.grants,
         });
       },
     );
