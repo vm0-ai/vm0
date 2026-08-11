@@ -227,9 +227,6 @@ function connectorDefinitionMatches(
   const desired = desiredConnectorDefinition(installation);
   return (
     connector.displayName === desired.displayName &&
-    isDeepStrictEqual(connector.prefixes, desired.prefixes) &&
-    connector.headerName === desired.headerName &&
-    connector.headerTemplate === desired.headerTemplate &&
     isDeepStrictEqual(connector.prefixTemplates, desired.prefixTemplates) &&
     isDeepStrictEqual(connector.fields, desired.fields) &&
     isDeepStrictEqual(connector.headerInjections, desired.headerInjections) &&

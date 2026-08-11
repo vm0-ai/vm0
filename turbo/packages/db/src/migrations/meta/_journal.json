@@ -610,6 +610,13 @@
       "when": 1786421316290,
       "tag": "0894_rerun_trigger_source_backfill",
       "breakpoints": true
+    },
+    {
+      "idx": 895,
+      "version": "7",
+      "when": 1786425481396,
+      "tag": "0895_prepare_canonical_custom_connector_definitions",
+      "breakpoints": true
     }
   ]
 }

@@ -81,7 +81,9 @@ function JobCustomConnectorRow({
         />
       }
       label={connector.displayName}
-      description={<span className="font-mono">{connector.prefixes[0]}</span>}
+      description={
+        <span className="font-mono">{connector.prefixTemplates[0]}</span>
+      }
       enabled={enabled}
       loading={
         loading || (Boolean(connector.permissionBundleRef) && grantsLoading)

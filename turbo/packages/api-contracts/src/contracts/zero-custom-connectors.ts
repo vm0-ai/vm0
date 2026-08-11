@@ -142,9 +142,9 @@ const customConnectorResponseBaseSchema = z.object({
 export const customConnectorHttpResponseSchema =
   customConnectorResponseBaseSchema.extend({
     kind: z.literal("http"),
-    prefixes: z.array(z.string()),
-    headerName: z.string(),
-    headerTemplate: z.string(),
+    prefixes: z.array(z.string()).optional(),
+    headerName: z.string().optional(),
+    headerTemplate: z.string().optional(),
     prefixTemplates: z.array(z.string()),
   });
 export type CustomConnectorHttpResponse = z.infer<
@@ -156,11 +156,11 @@ export const customConnectorMcpResponseSchema =
     kind: z.literal("mcp"),
     endpoint: z.string().min(1),
     transport: customConnectorMcpTransportSchema,
-    // Installed CLI versions still require the old HTTP response keys. These
-    // exact literals are wire compatibility only, never MCP definition state.
-    prefixes: z.tuple([]),
-    headerName: z.literal(""),
-    headerTemplate: z.literal(""),
+    // The API still emits these old HTTP response keys for installed clients.
+    // They are optional compatibility aliases, never MCP definition state.
+    prefixes: z.tuple([]).optional(),
+    headerName: z.literal("").optional(),
+    headerTemplate: z.literal("").optional(),
     prefixTemplates: z.tuple([]),
     permissionBundleRef: z.null().optional(),
   });

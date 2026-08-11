@@ -5931,11 +5931,13 @@ function matchesCustomConnectorSearch(
   if (!normalizedSearch) {
     return true;
   }
-  return [connector.displayName, connector.slug, ...connector.prefixes].some(
-    (value) => {
-      return value.toLowerCase().includes(normalizedSearch);
-    },
-  );
+  return [
+    connector.displayName,
+    connector.slug,
+    ...connector.prefixTemplates,
+  ].some((value) => {
+    return value.toLowerCase().includes(normalizedSearch);
+  });
 }
 
 function CustomConnectorCatalogCard({
@@ -5984,7 +5986,7 @@ function CustomConnectorCatalogCard({
           data-testid="connector-help-text"
           className="line-clamp-2 text-xs text-muted-foreground"
         >
-          {connector.prefixes[0]}
+          {connector.prefixTemplates[0]}
         </span>
       </span>
     </button>
