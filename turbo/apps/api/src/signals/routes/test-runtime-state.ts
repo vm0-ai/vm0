@@ -1327,6 +1327,9 @@ async function chatEventSnapshotFixtureActionResponse(
       .where(eq(chatEventSnapshots.chatThreadId, body.thread_id)),
   ]);
   signal.throwIfAborted();
+  if (!snapshotCount) {
+    throw new Error("read-chat-event-snapshot-head missing snapshot count");
+  }
   return {
     status: 200 as const,
     body: {
@@ -1336,7 +1339,7 @@ async function chatEventSnapshotFixtureActionResponse(
             archive_schema_version: head.archiveSchemaVersion,
             last_seq_id: head.lastSeqId,
             object_key: head.objectKey,
-            snapshot_count: snapshotCount?.value ?? 0,
+            snapshot_count: snapshotCount.value,
           }
         : null,
     },
