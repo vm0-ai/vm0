@@ -2,20 +2,31 @@ import type {
   SharedMessage,
   SharedThreadResponse,
 } from "@vm0/api-contracts/contracts/shared-threads";
+import type { Root } from "hast";
 import { MessageCircle } from "lucide-react";
 import { useTranslation } from "react-i18next";
 
-import { Markdown } from "../components/markdown.tsx";
+import { MarkdownEventBody } from "../components/markdown.tsx";
+
+/**
+ * A shared message with the tree its body parsed into. The page setup command
+ * parses assistant bodies and embeds their diagram signals before rendering.
+ */
+export type SharedDisplayMessage = SharedMessage & { readonly tree?: Root };
+
+export type SharedDisplayThread = Omit<SharedThreadResponse, "messages"> & {
+  readonly messages: readonly SharedDisplayMessage[];
+};
 
 interface SharedMessageGroup {
   readonly key: number;
   readonly role: SharedMessage["role"];
-  readonly messages: readonly SharedMessage[];
+  readonly messages: readonly SharedDisplayMessage[];
 }
 
 function shouldMergeSharedMessage(
   group: SharedMessageGroup,
-  message: SharedMessage,
+  message: SharedDisplayMessage,
 ): boolean {
   if (group.role !== message.role) {
     return false;
@@ -33,7 +44,7 @@ function shouldMergeSharedMessage(
 }
 
 function groupSharedMessages(
-  messages: readonly SharedMessage[],
+  messages: readonly SharedDisplayMessage[],
 ): readonly SharedMessageGroup[] {
   const groups: SharedMessageGroup[] = [];
   for (const message of messages) {
@@ -82,13 +93,11 @@ function SharedAssistantGroup({
       data-role="assistant"
     >
       {group.messages.map((message) => {
-        return (
-          <Markdown
+        return message.tree === undefined ? null : (
+          <MarkdownEventBody
             key={message.messageIndex}
-            source={message.content}
+            tree={message.tree}
             mediaPreview
-            mathEnabled
-            style={{ fontSize: "inherit", lineHeight: "inherit" }}
           />
         );
       })}
@@ -120,7 +129,7 @@ function SharedThreadNotFound() {
 export function SharedThreadPage({
   sharedThread,
 }: {
-  readonly sharedThread: SharedThreadResponse | null;
+  readonly sharedThread: SharedDisplayThread | null;
 }) {
   const { t } = useTranslation();
   const groups = sharedThread ? groupSharedMessages(sharedThread.messages) : [];

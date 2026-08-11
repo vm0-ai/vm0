@@ -5,8 +5,17 @@ import {
   type ArtifactCatalogSignals,
 } from "../artifacts-page/create-artifact-catalog-signals.ts";
 import { artifactDetailPreview } from "../artifacts-page/artifact-catalog-signals.ts";
-import { fetchPreviewText, isTextPreviewKind } from "../text-preview.ts";
+import {
+  fetchPreviewText,
+  isTextPreviewKind,
+  type TextPreviewComputed,
+} from "../text-preview.ts";
 import { resetSignal } from "../utils.ts";
+import {
+  createMarkdownPreviewTree,
+  type MarkdownPreviewTreeComputed,
+} from "../markdown-preview-tree.ts";
+import type { MailDraftSignals } from "./mail-draft.ts";
 
 // ---------------------------------------------------------------------------
 // Thread-owned utility sidebar.
@@ -40,6 +49,14 @@ export type ArtifactRef = {
   readonly filename: string;
   readonly shareAvailable?: boolean;
   readonly releaseObjectUrl?: () => void;
+  /**
+   * Text preview content for text-kind refs, resolved by the opening command
+   * from the owning thread's artifact signals. The sidebar renders from the
+   * ref alone.
+   */
+  readonly text$?: TextPreviewComputed;
+  /** The prepared tree for markdown-kind refs, diagram signals embedded. */
+  readonly markdownTree$?: MarkdownPreviewTreeComputed;
 };
 
 export type ArtifactFileRef = {
@@ -53,6 +70,7 @@ export type ArtifactMetadataRef = {
   readonly filename: string;
   readonly contentType?: string;
   readonly shareAvailable?: boolean;
+  readonly text$?: TextPreviewComputed;
 };
 
 export type ArtifactRefInput = string | ArtifactFileRef | ArtifactMetadataRef;
@@ -64,7 +82,7 @@ export type ThreadSidebarArtifactSource =
 export type ThreadSidebarTarget =
   | { readonly type: "artifacts" }
   | { readonly type: "artifact"; readonly source: ThreadSidebarArtifactSource }
-  | { readonly type: "email-draft"; readonly mailDraftId: string }
+  | { readonly type: "email-draft"; readonly signals: MailDraftSignals }
   | { readonly type: "browser" }
   | { readonly type: "automations" };
 
@@ -100,6 +118,7 @@ export interface ThreadSidebarSignals {
    */
   readonly artifactCatalog: ArtifactCatalogSignals;
   readonly selectedArtifactText$: Computed<Promise<string>>;
+  readonly selectedArtifactMarkdownTree$: MarkdownPreviewTreeComputed;
   /**
    * Session resources for an open artifacts list: refresh the first page in
    * the background and follow realtime catalog changes. `close$` aborts the
@@ -141,6 +160,9 @@ export function createThreadSidebarSignals(
     }
     return fetchPreviewText(preview.url);
   });
+  const selectedArtifactMarkdownTree$ = createMarkdownPreviewTree(
+    selectedArtifactText$,
+  );
 
   const open$ = command(({ get, set }, target: ThreadSidebarTarget) => {
     const current = get(internalTarget$);
@@ -223,6 +245,7 @@ export function createThreadSidebarSignals(
     }),
     artifactCatalog,
     selectedArtifactText$,
+    selectedArtifactMarkdownTree$,
     setupArtifactsSession$,
   };
 }

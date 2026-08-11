@@ -202,7 +202,7 @@ export function MailDraftCard({ signals }: MailDraftCardProps) {
       return $.chat.mail.noSubjectPlain;
     });
   const openDraft = () => {
-    openSidebar(signals.mailDraftId);
+    openSidebar(signals);
   };
   const content = (
     <MailDraftCardContent

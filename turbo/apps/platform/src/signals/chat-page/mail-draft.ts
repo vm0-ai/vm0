@@ -19,8 +19,8 @@ import {
 } from "../api-base.ts";
 import { pageSignal$ } from "../page-signal.ts";
 import {
-  getOrCreateCardSignals,
-  registeredCardSignals,
+  createCardSignalsRegistry,
+  type CardSignalsRegistry,
 } from "./card-signal-map.ts";
 import { onRef } from "../utils.ts";
 import {
@@ -53,11 +53,10 @@ export interface MailDraftSignals extends MailDraftDescriptor {
   readonly send$: Command<Promise<void>, [AbortSignal]>;
 }
 
-export interface MailDraftCardSignalsRegistry {
-  register(descriptor: MailDraftDescriptor): MailDraftSignals;
-  resolve(resourceKey: string): MailDraftSignals;
-  entries(): ReadonlyMap<string, MailDraftSignals>;
-}
+export type MailDraftCardSignalsRegistry = CardSignalsRegistry<
+  MailDraftDescriptor,
+  MailDraftSignals
+>;
 
 function browserOrigin(): string | null {
   if (typeof location === "undefined" || !location.origin) {
@@ -351,22 +350,12 @@ function createMailDraftSignals(
 export function createMailDraftCardSignalsRegistry(
   threadId: string,
 ): MailDraftCardSignalsRegistry {
-  const signalsByResourceKey = new Map<string, MailDraftSignals>();
-  return {
-    register(descriptor) {
-      return getOrCreateCardSignals(
-        signalsByResourceKey,
-        descriptor.mailDraftId,
-        () => {
-          return createMailDraftSignals(threadId, descriptor);
-        },
-      );
+  return createCardSignalsRegistry(
+    (descriptor: MailDraftDescriptor) => {
+      return descriptor.mailDraftId;
     },
-    resolve(resourceKey) {
-      return registeredCardSignals(signalsByResourceKey, resourceKey);
+    (descriptor) => {
+      return createMailDraftSignals(threadId, descriptor);
     },
-    entries() {
-      return signalsByResourceKey;
-    },
-  };
+  );
 }

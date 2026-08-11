@@ -1,3 +1,4 @@
+import type { Root } from "hast";
 import type { Command, Computed } from "ccstate";
 import type {
   ChatRecommendedFollowup,
@@ -7,15 +8,12 @@ import type {
   UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { ChatClipboardPayload } from "../zero-page/clipboard.ts";
-import type { BodyRenderBlock } from "./parse-body-blocks.ts";
 import type { ChatEventGroup } from "./chat-event.ts";
 import type { ThreadMeta } from "./chat-thread-event-sourcing.ts";
 import type { HeaderAutomationSignals } from "./header-automation-menu.ts";
 import type { ThreadSidebarSignals } from "./thread-sidebar.ts";
-import type { MailDraftSignals } from "./mail-draft.ts";
 import type { BrowserSessionSignals } from "./browser-session-block.ts";
 import type { EditorDocumentSnapshot } from "../zero-page/user-message-document-codec.ts";
-import type { ArtifactSignals } from "./artifact-card-signals.ts";
 import type {
   createChatThreadScrollSignals,
   ReadyScrollAfterRenderRequest,
@@ -45,7 +43,7 @@ export interface EventImageGroupProjection {
   readonly role: ChatEventGroup["role"];
   readonly events: readonly {
     readonly userMessage?: UserMessageDocument;
-    readonly blocks: readonly BodyRenderBlock[];
+    readonly tree?: Root;
   }[];
 }
 
@@ -76,10 +74,6 @@ export interface MessageListSignals {
     [AbortSignal]
   >;
   readonly eventImageGroups$: Computed<Promise<EventImageGroupProjection[]>>;
-  readonly artifactSignalsForUrl: (url: string) => ArtifactSignals | undefined;
-  readonly mailDraftCardSignalsById$: Computed<
-    ReadonlyMap<string, MailDraftSignals>
-  >;
   readonly browserSessionSignals: BrowserSessionSignals;
   readonly subscribeBrowserSessions$: Command<Promise<void>, [AbortSignal]>;
   readonly hasEvents$: Computed<Promise<boolean>>;
@@ -153,8 +147,8 @@ export interface ChatPanelSignals {
   >;
   readonly threadScrollPosition$: Computed<ThreadScrollPosition | null>;
   readonly scrollTo$: Command<void, [ThreadScrollPosition]>;
-  readonly scrollToBottom$: Command<void, []>;
-  readonly scrollToTop$: Command<void, []>;
+  readonly scrollToBottom$: Command<Promise<void>, [AbortSignal]>;
+  readonly scrollToTop$: Command<Promise<void>, [AbortSignal]>;
   readonly containerEl$: Computed<HTMLElement | null>;
   readonly setContainerRef$: Command<
     (() => void) | undefined,
@@ -189,10 +183,6 @@ export interface ChatPanelSignals {
   readonly visibleRenderedChatGroups$: Computed<Promise<ChatEventGroup[]>>;
   readonly visibleRenderedChatGroupsReady$: Computed<Promise<boolean>>;
   readonly eventImageGroups$: Computed<Promise<EventImageGroupProjection[]>>;
-  readonly artifactSignalsForUrl: (url: string) => ArtifactSignals | undefined;
-  readonly mailDraftCardSignalsById$: Computed<
-    ReadonlyMap<string, MailDraftSignals>
-  >;
   readonly browserSessionSignals: BrowserSessionSignals;
   readonly hasEvents$: Computed<Promise<boolean>>;
   readonly thinkingIndicatorMode$: Computed<Promise<ThinkingIndicatorMode>>;

@@ -8,6 +8,10 @@ import {
 } from "ccstate";
 import { delay } from "signal-timers";
 import { onRejection, resetSignal, settle, tapError } from "../utils.ts";
+import {
+  createImageLoadSignals,
+  type ImageLoadSignals,
+} from "../image-load.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { accept } from "../../lib/accept.ts";
 import { IN_VITEST } from "../../env.ts";
@@ -211,6 +215,8 @@ export interface ZeroChatAttachment {
   filename: string;
   contentType: string;
   size: number;
+  /** Load state of the chip's image thumbnail, for image attachments. */
+  imageLoad: ImageLoadSignals;
   /** Reactive file info (id + url) — loading while uploading, hasData when done. */
   fileInfo$: Computed<Promise<FileInfo | null>>;
   /** Synchronous upload state used to guard composer submission. */
@@ -223,6 +229,7 @@ export interface ZeroChatAttachment {
 
 function createChatAttachment(file: File): ZeroChatAttachment {
   const contentType = inferUploadContentType(file);
+  const imageLoad = createImageLoadSignals();
   const resetSignal$ = resetSignal();
   const internalUpload$ = state<AttachmentUploadState>({
     status: "pending",
@@ -349,6 +356,7 @@ function createChatAttachment(file: File): ZeroChatAttachment {
     filename: file.name,
     contentType,
     size: file.size,
+    imageLoad,
     fileInfo$,
     uploadPending$,
     cancel$,
@@ -426,6 +434,7 @@ export function createRestoredAttachment(
     filename: persisted.filename,
     contentType: persisted.contentType,
     size: persisted.size,
+    imageLoad: createImageLoadSignals(),
     fileInfo$,
     uploadPending$: noUploadPending$,
     cancel$,
