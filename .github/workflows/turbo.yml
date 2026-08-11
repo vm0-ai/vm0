@@ -1448,7 +1448,6 @@ jobs:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
           CF_ACCESS_CLIENT_ID: ${{ secrets.CF_API_PREVIEW_ACCESS_CLIENT_ID }}
           CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_API_PREVIEW_ACCESS_CLIENT_SECRET }}
-          JOB_REF: ${{ needs.prepare.outputs.job-ref }}
         run: |
           set -euo pipefail
 
@@ -1498,7 +1497,7 @@ jobs:
             if [[ -n "$axiom_token" && "$axiom_suffix" == "dev" ]]; then
               echo "::add-mask::$axiom_token"
               sleep 5
-              apl="['vm0-web-logs-dev'] | where type == \"unhandled_request_error\" and preview_job_ref == \"${JOB_REF}\" | project _time, errorSummary, errorCode, method, route, worker_version, git_commit_sha | sort by _time desc | limit 20"
+              apl="['vm0-web-logs-dev'] | where type == \"unhandled_request_error\" and route == \"/api/cron/snapshot-chat-events\" | project _time, errorSummary, method, route | sort by _time desc | limit 20"
               query_payload="$(jq -cn --arg apl "$apl" '{
                 apl: $apl,
                 startTime: "now-10m",
@@ -1518,15 +1517,13 @@ jobs:
                 diagnostics="$(jq -c '[.matches[]? | {
                   time: ._time,
                   errorSummary: .data.errorSummary,
-                  errorCode: .data.errorCode,
                   method: .data.method,
-                  route: .data.route,
-                  workerVersion: .data.worker_version,
-                  gitCommitSha: .data.git_commit_sha
+                  route: .data.route
                 }]' <<< "$query_response")"
                 echo "Worker cron error diagnostics: ${diagnostics}"
               else
-                echo "::warning::Unable to query sanitized Worker preview error diagnostics"
+                query_error="$(jq -r '.message // .error // "unknown Axiom query error"' <<< "$query_response" 2>/dev/null || true)"
+                echo "::warning::Unable to query sanitized Worker preview error diagnostics: ${query_error}"
               fi
             else
               echo "::warning::Worker preview Axiom diagnostics are not configured"
