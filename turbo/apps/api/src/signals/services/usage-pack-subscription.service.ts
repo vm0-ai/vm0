@@ -34,6 +34,7 @@ import {
   type StripePrice,
 } from "../external/stripe-client";
 import { getOrCreateStripeCustomer$ } from "./billing-customer.service";
+import { persistOrgAcquisitionAttribution$ } from "./acquisition-attribution.service";
 import { upsertOrgPlanEntitlement } from "./org-plan-entitlements.service";
 import { stripePreviewMetadata } from "./stripe-preview-metadata.service";
 import {
@@ -438,6 +439,13 @@ export const createUsagePackCheckoutSession$ = command(
     if (args.allocations.length === 0) {
       throw new Error("Usage pack checkout requires at least one allocation");
     }
+
+    await set(
+      persistOrgAcquisitionAttribution$,
+      { orgId: args.orgId, attribution: args.adAttribution },
+      signal,
+    );
+    signal.throwIfAborted();
 
     const customerId = await set(
       getOrCreateStripeCustomer$,

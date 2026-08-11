@@ -4,6 +4,7 @@ import {
   type AdAttributionMetadata,
   type SourceType,
 } from "@vm0/api-contracts/contracts/zero-attribution";
+import { registerPostHogAttribution } from "../../lib/posthog.ts";
 
 const AD_ATTRIBUTION_SOURCE_PARAM = "vm0_source";
 
@@ -23,6 +24,8 @@ const AD_ATTRIBUTION_PARAMS = [
   "utm_source",
   "utm_medium",
   "utm_campaign",
+  "vm0_campaign_id",
+  "vm0_ad_group_id",
   "utm_content",
   "utm_term",
   "vm0_experiment",
@@ -38,6 +41,8 @@ const STRIPE_METADATA_PARAMS = [
   "utm_source",
   "utm_medium",
   "utm_campaign",
+  "vm0_campaign_id",
+  "vm0_ad_group_id",
   "utm_content",
   "utm_term",
   "vm0_experiment",
@@ -131,6 +136,24 @@ function collectAttributionFromCookie(cookieString: string): string {
   return collectAttributionParams(new URLSearchParams(stored)).toString();
 }
 
+function registerStoredAttribution(
+  storage: Storage,
+  cookieString: string,
+): void {
+  const metadata = getStoredAdAttributionMetadata(storage, cookieString);
+  if (!metadata) {
+    return;
+  }
+
+  const properties: Record<string, string> = {};
+  for (const [key, value] of Object.entries(metadata)) {
+    if (typeof value === "string" && value) {
+      properties[key] = value;
+    }
+  }
+  registerPostHogAttribution(properties);
+}
+
 export function recordAdAttribution(
   searchParams: URLSearchParams,
   storage: Storage | null = getSessionStorage(),
@@ -142,6 +165,7 @@ export function recordAdAttribution(
 
   // First-touch: once captured this session, never overwrite.
   if (storage.getItem(STORED_AD_ATTRIBUTION_KEY)) {
+    registerStoredAttribution(storage, cookieString);
     return;
   }
 
@@ -155,6 +179,7 @@ export function recordAdAttribution(
   }
 
   storage.setItem(STORED_AD_ATTRIBUTION_KEY, serializedAttribution);
+  registerStoredAttribution(storage, cookieString);
 }
 
 export function applyStoredAdAttribution(

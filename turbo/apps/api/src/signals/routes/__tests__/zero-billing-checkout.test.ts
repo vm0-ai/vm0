@@ -45,6 +45,7 @@ import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { webhooksStripeRoutes } from "../webhooks-stripe";
+import { readOrgAcquisitionAttributionFixture } from "../../../test-fixtures/org-metadata";
 import { webhooksClerkRoutes } from "../webhooks-clerk";
 import { cronReconcileBillingEntitlementsRoutes } from "../cron-reconcile-billing-entitlements";
 import { zeroBillingCheckoutRoutes } from "../zero-billing-checkout";
@@ -872,11 +873,15 @@ describe("POST /api/zero/billing/checkout", () => {
           successUrl: `${APP_ORIGIN}/billing?billing=success`,
           cancelUrl: `${APP_ORIGIN}/billing?billing=canceled`,
           adAttribution: {
+            source_type: "paid",
             vm0_source: "presentation",
+            vm0_campaign_id: "1234567890",
+            vm0_ad_group_id: "9876543210",
             utm_source: "google",
             utm_medium: "cpc",
             utm_campaign: "presentation_search_en",
             utm_content: "hero",
+            utm_term: "ai",
             gclid: "test-gclid",
             gclid_present: "true",
           },
@@ -890,11 +895,15 @@ describe("POST /api/zero/billing/checkout", () => {
       url: "https://checkout.stripe.com/session/attributed",
     });
     const expectedAttribution = {
+      source_type: "paid",
       vm0_source: "presentation",
+      vm0_campaign_id: "1234567890",
+      vm0_ad_group_id: "9876543210",
       utm_source: "google",
       utm_medium: "cpc",
       utm_campaign: "presentation_search_en",
       utm_content: "hero",
+      utm_term: "ai",
       gclid: "test-gclid",
       gclid_present: "true",
     };
@@ -918,6 +927,22 @@ describe("POST /api/zero/billing/checkout", () => {
         }),
       }),
     );
+
+    await expect(
+      readOrgAcquisitionAttributionFixture(fixture.orgId),
+    ).resolves.toMatchObject({
+      acquisitionSourceType: "paid",
+      acquisitionVm0Source: "presentation",
+      acquisitionCampaignId: "1234567890",
+      acquisitionAdGroupId: "9876543210",
+      acquisitionCampaign: "presentation_search_en",
+      acquisitionUtmSource: "google",
+      acquisitionUtmMedium: "cpc",
+      acquisitionUtmContent: "hero",
+      acquisitionUtmTerm: "ai",
+      acquisitionGclid: "test-gclid",
+      acquisitionRecordedAt: expect.any(Date),
+    });
   });
 
   it("returns Pro trial checkout URL during onboarding payment", async () => {

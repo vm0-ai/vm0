@@ -52,6 +52,30 @@ export function setPostHogUser(user: PostHogUser): void {
   });
 }
 
+/**
+ * Register first-touch acquisition fields as super properties so product
+ * events, including task completion, retain the campaign and ad group that
+ * brought the user into the app.
+ */
+export function registerPostHogAttribution(
+  properties: Record<string, string>,
+): void {
+  runPostHog(() => {
+    posthog.register(properties);
+  });
+}
+
+/** Keep product events joinable to the billing organization. */
+export function setPostHogOrganization(orgId: string | undefined): void {
+  runPostHog(() => {
+    if (orgId) {
+      posthog.register({ org_id: orgId });
+    } else {
+      posthog.unregister("org_id");
+    }
+  });
+}
+
 export function clearPostHogUser(): void {
   runPostHog(() => {
     posthog.reset();
