@@ -154,19 +154,19 @@ describe("chat event snapshot read", () => {
     clearMockedAuth();
   });
 
-  it("cold-starts from the snapshot object and tails the rows endpoint", async () => {
+  it("tails from snapshot coverage beyond the final archive row", async () => {
     mockSignedInUser();
     enableSnapshotRead();
     rejectLegacyEventsEndpoint();
-    const { threadId, promptEventRow, assistantEventRow, tailEventRow } =
-      threadFixture();
+    const { threadId, promptEventRow, assistantEventRow } = threadFixture();
+    const tailEventRow = canonicalChatEventRow(baseRow(threadId, 4));
     const appDb = await context.store.get(chatIdb$);
 
     context.mocks.api(chatThreadEventsContract.snapshot, ({ respond }) => {
       return respond(200, {
         url: SNAPSHOT_URL,
         expiresInSeconds: 900,
-        lastSeqId: 2,
+        lastSeqId: 3,
       });
     });
     context.mocks.http.get(SNAPSHOT_URL, () => {
@@ -175,7 +175,7 @@ describe("chat event snapshot read", () => {
     const rowRequests: number[] = [];
     context.mocks.api(chatThreadEventsContract.rows, ({ query, respond }) => {
       rowRequests.push(query.sinceSeqId);
-      if (query.sinceSeqId === 2) {
+      if (query.sinceSeqId === 3) {
         return respond(200, { rows: [tailEventRow] });
       }
       return respond(200, { rows: [] });
@@ -203,7 +203,7 @@ describe("chat event snapshot read", () => {
       ).toStrictEqual([
         { id: promptEventRow.id, seqId: 1, eventType: "input.prompt" },
         { id: assistantEventRow.id, seqId: 2, eventType: "output.message" },
-        { id: tailEventRow.id, seqId: 3, eventType: "output.message" },
+        { id: tailEventRow.id, seqId: 4, eventType: "output.message" },
       ]);
       const prompt = events[0];
       if (prompt?.eventType !== "input.prompt") {
@@ -217,7 +217,7 @@ describe("chat event snapshot read", () => {
       expect(
         context.store.get(signals.initialRemoteEventsResolved$),
       ).toBeTruthy();
-      expect(rowRequests).toStrictEqual([2]);
+      expect(rowRequests).toStrictEqual([3]);
 
       await expect(
         appDb.get(CHAT_EVENT_ROWS_STORE, tailEventRow.id),
