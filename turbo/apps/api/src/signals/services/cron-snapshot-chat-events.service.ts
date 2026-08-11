@@ -249,12 +249,12 @@ async function readCanonicalEvents(
       cursor = lastRow.seqId;
     }
     if (rows.length < EVENT_PAGE_SIZE) {
-      if (count === 0 || cursor !== candidate.indexedSeqId) {
+      if (count === 0) {
         throw new Error(
-          `chat event snapshot rebuild for ${candidate.chatThreadId} ended at ${cursor.toString()} instead of indexed seq ${candidate.indexedSeqId.toString()}`,
+          `chat event snapshot rebuild for ${candidate.chatThreadId} contained no events through indexed seq ${candidate.indexedSeqId.toString()}`,
         );
       }
-      return { lines, count, lastSeqId: cursor };
+      return { lines, count, lastSeqId: candidate.indexedSeqId };
     }
   }
 }

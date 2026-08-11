@@ -9914,6 +9914,38 @@ describe("CHAT-02: shared user message queue", () => {
         return run.prompt === prompt;
       }),
     ).toHaveLength(0);
+
+    const recalledEvent = userMessages(messages.events).find((message) => {
+      return message.revokesEventId === messageId && !message.runId;
+    });
+    if (recalledEvent === undefined) {
+      throw new Error("Expected the winning recall event");
+    }
+    const probeEventId = randomUUID();
+    const probe = await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: anchor.threadId,
+        prompt: "append after the lost queue claim",
+        clientEventId: probeEventId,
+      },
+      [201],
+    );
+    if (probe.status !== 201) {
+      throw new Error("Expected the post-race probe event to be accepted");
+    }
+    const afterProbe = await chat.listThreadEvents(actor, anchor.threadId);
+    const probeEvent = userMessages(afterProbe.events).find((message) => {
+      return message.id === probeEventId;
+    });
+    if (probeEvent === undefined) {
+      throw new Error("Expected the post-race probe event");
+    }
+    expect(probeEvent.seqId).toBe(recalledEvent.seqId + 1);
+    if (probe.body.runId !== null) {
+      await cancelChatRun(actor, probe.body.runId);
+    }
   }, 90_000);
 
   it("does not publish a queued auto-send after thread deletion wins", async () => {

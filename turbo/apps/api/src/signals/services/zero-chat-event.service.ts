@@ -1129,14 +1129,19 @@ async function reserveChatEventSeqIds(
   return thread.lastSeqId - count + 1;
 }
 
-async function releaseChatEventSeqId(
+async function releaseChatEventSeqIds(
   tx: ChatEventWriteTransaction,
   chatThreadId: string,
+  count: number,
 ): Promise<void> {
+  if (!Number.isInteger(count) || count <= 0) {
+    throw new Error("chat event seq_id release count must be positive");
+  }
+
   const [thread] = await tx
     .update(chatThreads)
     .set({
-      lastChatEventSeqId: sql`${chatThreads.lastChatEventSeqId} - 1`,
+      lastChatEventSeqId: sql`${chatThreads.lastChatEventSeqId} - ${count}`,
     })
     .where(eq(chatThreads.id, chatThreadId))
     .returning({ id: chatThreads.id });
@@ -1232,7 +1237,7 @@ export async function insertChatEvent(
   if (rows.length === 0) {
     // A rejected idempotent write is not part of the canonical stream, so it
     // must not consume the thread's next cursor.
-    await releaseChatEventSeqId(tx, values.chatThreadId);
+    await releaseChatEventSeqIds(tx, values.chatThreadId, 1);
   } else {
     const inserted = rows[0];
     if (!inserted) {
@@ -1268,16 +1273,63 @@ export async function insertChatEvents(
   const insertTable = payloadSchemaAvailable
     ? chatEvents
     : chatEventsBeforePayload;
-  return await tx
+  const rows = await tx
     .insert(insertTable)
     .values([...valuesWithSeqIds])
     .onConflictDoNothing()
     .returning({
       id: insertTable.id,
+      chatThreadId: insertTable.chatThreadId,
       createdAt: insertTable.createdAt,
       seqId: insertTable.seqId,
       sequenceNumber: insertTable.runEventSequenceNumber,
     });
+
+  const reservedRangeByThread = new Map<
+    string,
+    { readonly firstSeqId: number; lastSeqId: number }
+  >();
+  for (const value of valuesWithSeqIds) {
+    const range = reservedRangeByThread.get(value.chatThreadId);
+    if (range === undefined) {
+      reservedRangeByThread.set(value.chatThreadId, {
+        firstSeqId: value.seqId,
+        lastSeqId: value.seqId,
+      });
+    } else {
+      range.lastSeqId = value.seqId;
+    }
+  }
+
+  const acceptedLastSeqIdByThread = new Map<string, number>();
+  for (const row of rows) {
+    const acceptedLastSeqId = acceptedLastSeqIdByThread.get(row.chatThreadId);
+    if (acceptedLastSeqId === undefined || row.seqId > acceptedLastSeqId) {
+      acceptedLastSeqIdByThread.set(row.chatThreadId, row.seqId);
+    }
+  }
+
+  for (const [chatThreadId, range] of [...reservedRangeByThread].sort(
+    ([left], [right]) => {
+      return left.localeCompare(right);
+    },
+  )) {
+    const acceptedLastSeqId =
+      acceptedLastSeqIdByThread.get(chatThreadId) ?? range.firstSeqId - 1;
+    const unusedSuffixCount = range.lastSeqId - acceptedLastSeqId;
+    if (unusedSuffixCount > 0) {
+      await releaseChatEventSeqIds(tx, chatThreadId, unusedSuffixCount);
+    }
+  }
+
+  return rows.map((row) => {
+    return {
+      id: row.id,
+      createdAt: row.createdAt,
+      seqId: row.seqId,
+      sequenceNumber: row.sequenceNumber,
+    };
+  });
 }
 
 /** Append a replacement event after validating its immutable revoke edge. */
@@ -1361,6 +1413,7 @@ export async function replaceLoadedChatEvent(
     });
   const inserted = rows[0];
   if (!inserted) {
+    await releaseChatEventSeqIds(tx, replacement.chatThreadId, 1);
     return null;
   }
 
