@@ -1882,6 +1882,7 @@ async fn complete_claimed_failure(
                 sandbox_id: None,
                 sandbox_reuse_result: reuse_result,
                 workspace_reuse_result: None,
+                active_input_delivery_ids: Vec::new(),
             },
             completion_auth,
         )

@@ -41,7 +41,7 @@ tar = { workspace = true }
 tempfile = { workspace = true }
 unicode-normalization = { workspace = true }
 url = { workspace = true }
-uuid = { workspace = true, features = ["v4", "serde"] }
+uuid = { workspace = true, features = ["v4", "v5", "serde"] }
 sentry = { workspace = true, features = ["panic"] }
 which = { workspace = true }
 zstd = { workspace = true, features = ["zstdmt"] }

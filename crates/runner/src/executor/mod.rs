@@ -344,6 +344,9 @@ pub(crate) enum SandboxReuseRejection {
 /// Outcome of a job execution and ownership of any sandbox still alive afterward.
 pub struct ExecuteOutcome {
     pub failure: Option<ExecutionFailure>,
+    /// Backend-accepted active-input deliveries not already confirmed through
+    /// the direct receipt route. Provider completion settles these IDs.
+    pub(crate) active_input_delivery_ids: Vec<String>,
     pub(crate) sandbox_reuse_disposition: SandboxReuseDisposition,
     /// Sandbox ownership after execution.
     ///
@@ -377,6 +380,7 @@ impl ExecuteOutcome {
     ) -> Self {
         Self {
             failure: Some(failure),
+            active_input_delivery_ids: Vec::new(),
             sandbox_reuse_disposition: SandboxReuseDisposition::default(),
             sandbox: Some(sandbox),
             source_ip,
@@ -615,6 +619,7 @@ pub(crate) async fn execute_job_with_prepared_notifier(
     ) {
         ExecuteOutcome {
             failure: Some(ExecutionFailure::from_error(error)),
+            active_input_delivery_ids: Vec::new(),
             sandbox_reuse_disposition: SandboxReuseDisposition::default(),
             sandbox: None,
             source_ip: String::new(),
@@ -645,6 +650,7 @@ pub(crate) async fn execute_job_with_prepared_notifier(
             Ok(outcome) => outcome,
             Err(e) => ExecuteOutcome {
                 failure: Some(ExecutionFailure::from_error(e.to_string())),
+                active_input_delivery_ids: Vec::new(),
                 sandbox_reuse_disposition: SandboxReuseDisposition::default(),
                 sandbox: None,
                 source_ip: String::new(),

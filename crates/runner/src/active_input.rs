@@ -2,13 +2,20 @@ use std::io::{self, Write};
 use std::time::Duration;
 
 use tokio::sync::broadcast;
+use uuid::Uuid;
 
-use api_contracts::generated::constants::runners::ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES as ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES_U64;
+use api_contracts::generated::{
+    constants::runners::ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES as ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES_U64,
+    types::runners::runs::active_inputs::{
+        receipt::Response as ActiveInputReceiptResponse,
+        reserve::Response as ActiveInputReserveResponse,
+    },
+};
 
-use crate::error::RunnerResult;
+use crate::error::{RunnerError, RunnerResult};
 use crate::ids::RunId;
 use crate::local_queue::{ActiveInputEntry, LocalQueue};
-use crate::provider::ApiClient;
+use crate::provider::{ApiClient, ReserveActiveInputResult};
 
 /// Exec-control payloads are bounded by the guest-side process-control IPC frame limit.
 pub(crate) const ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES: usize =
@@ -21,13 +28,16 @@ const _: () = assert!(
 pub(crate) struct ActiveInputPayload<'a> {
     #[serde(rename = "type")]
     payload_type: &'static str,
+    #[serde(rename = "deliveryId", skip_serializing_if = "Option::is_none")]
+    delivery_id: Option<&'a str>,
     text: &'a str,
 }
 
 impl<'a> ActiveInputPayload<'a> {
-    pub(crate) fn new(text: &'a str) -> Self {
+    pub(crate) fn new(delivery_id: Option<&'a str>, text: &'a str) -> Self {
         Self {
             payload_type: "active-input",
+            delivery_id,
             text,
         }
     }
@@ -62,10 +72,27 @@ impl Write for CountingWriter {
     }
 }
 
-pub(crate) fn active_input_payload_len(text: &str) -> Result<usize, serde_json::Error> {
+pub(crate) fn active_input_payload_len(
+    delivery_id: Option<&str>,
+    text: &str,
+) -> Result<usize, serde_json::Error> {
     let mut counter = CountingWriter::default();
-    serde_json::to_writer(&mut counter, &ActiveInputPayload::new(text))?;
+    serde_json::to_writer(&mut counter, &ActiveInputPayload::new(delivery_id, text))?;
     Ok(counter.len())
+}
+
+pub(crate) fn identified_active_input_payload_len(text: &str) -> Result<usize, serde_json::Error> {
+    let delivery_id = Uuid::nil().hyphenated().to_string();
+    active_input_payload_len(Some(&delivery_id), text)
+}
+
+pub(crate) fn local_active_input_delivery_id(run_id: RunId, sequence: u64) -> String {
+    Uuid::new_v5(
+        &Uuid::NAMESPACE_OID,
+        format!("vm0:local-active-input:{run_id}:{sequence}").as_bytes(),
+    )
+    .hyphenated()
+    .to_string()
 }
 
 pub(crate) enum ActiveInputSource {
@@ -84,11 +111,27 @@ pub(crate) struct ApiActiveInputSource {
     run_id: RunId,
     sandbox_token: String,
     notifications: ActiveInputSubscription,
+    mode: ApiActiveInputMode,
+}
+
+#[derive(Clone)]
+pub(crate) struct ApiActiveInputRecovery {
+    api: ApiClient,
+    run_id: RunId,
+    sandbox_token: String,
+}
+
+#[derive(Clone, Copy)]
+enum ApiActiveInputMode {
+    Probe,
+    Reserve,
+    Legacy,
 }
 
 pub(crate) enum ActiveInputBatch {
     Local(Vec<ActiveInputEntry>),
-    Api {
+    ApiReserve(ActiveInputReserveResponse),
+    ApiLegacy {
         prompt: Option<String>,
         has_more: bool,
     },
@@ -156,10 +199,22 @@ impl ActiveInputSource {
             run_id,
             sandbox_token,
             notifications,
+            mode: ApiActiveInputMode::Probe,
         })
     }
 
-    pub(crate) async fn read(&self, min_sequence: u64) -> RunnerResult<ActiveInputBatch> {
+    pub(crate) fn api_recovery(&self) -> Option<ApiActiveInputRecovery> {
+        match self {
+            Self::LocalQueue(_) => None,
+            Self::Api(source) => Some(ApiActiveInputRecovery {
+                api: source.api.clone(),
+                run_id: source.run_id,
+                sandbox_token: source.sandbox_token.clone(),
+            }),
+        }
+    }
+
+    pub(crate) async fn read(&mut self, min_sequence: u64) -> RunnerResult<ActiveInputBatch> {
         match self {
             Self::LocalQueue(source) => {
                 let source = source.clone();
@@ -176,30 +231,7 @@ impl ActiveInputSource {
                 })?;
                 Ok(ActiveInputBatch::Local(entries))
             }
-            Self::Api(source) => {
-                let event_ids = source
-                    .api
-                    .list_active_input_event_ids(source.run_id, &source.sandbox_token)
-                    .await?;
-                let Some(event_id) = event_ids.first() else {
-                    return Ok(ActiveInputBatch::Api {
-                        prompt: None,
-                        has_more: false,
-                    });
-                };
-                let prompt = source
-                    .api
-                    .claim_active_inputs(
-                        source.run_id,
-                        &source.sandbox_token,
-                        std::slice::from_ref(event_id),
-                    )
-                    .await?;
-                Ok(ActiveInputBatch::Api {
-                    prompt: Some(prompt),
-                    has_more: event_ids.len() > 1,
-                })
-            }
+            Self::Api(source) => read_api_active_input(source).await,
         }
     }
 
@@ -216,6 +248,88 @@ impl ActiveInputSource {
     }
 }
 
+impl ApiActiveInputRecovery {
+    pub(crate) async fn record_delivery(
+        &self,
+        delivery_id: &str,
+    ) -> RunnerResult<ActiveInputReceiptResponse> {
+        self.api
+            .record_active_input_delivery(self.run_id, &self.sandbox_token, delivery_id)
+            .await
+    }
+}
+
+async fn read_api_active_input(
+    source: &mut ApiActiveInputSource,
+) -> RunnerResult<ActiveInputBatch> {
+    match source.mode {
+        ApiActiveInputMode::Legacy => read_legacy_api_active_input(source).await,
+        ApiActiveInputMode::Probe => {
+            let result = source
+                .api
+                .reserve_active_inputs(source.run_id, &source.sandbox_token)
+                .await;
+            match result {
+                Ok(ReserveActiveInputResult::RouteUnavailable) => {
+                    // A newly deployed Runner can reach an API version from before the
+                    // reserve route during the Runner/API rollout and rollback window
+                    // (up to two hours). Remove this legacy selection after that window
+                    // closes and production drain evidence satisfies #26061.
+                    source.mode = ApiActiveInputMode::Legacy;
+                    read_legacy_api_active_input(source).await
+                }
+                Ok(ReserveActiveInputResult::Response(response)) => {
+                    source.mode = ApiActiveInputMode::Reserve;
+                    Ok(ActiveInputBatch::ApiReserve(response))
+                }
+                Err(error) => {
+                    source.mode = ApiActiveInputMode::Reserve;
+                    Err(error)
+                }
+            }
+        }
+        ApiActiveInputMode::Reserve => match source
+            .api
+            .reserve_active_inputs(source.run_id, &source.sandbox_token)
+            .await?
+        {
+            ReserveActiveInputResult::Response(response) => {
+                Ok(ActiveInputBatch::ApiReserve(response))
+            }
+            ReserveActiveInputResult::RouteUnavailable => Err(RunnerError::Api(
+                "reserve active inputs returned 404 after reserve support was selected".to_string(),
+            )),
+        },
+    }
+}
+
+async fn read_legacy_api_active_input(
+    source: &ApiActiveInputSource,
+) -> RunnerResult<ActiveInputBatch> {
+    let event_ids = source
+        .api
+        .list_active_input_event_ids(source.run_id, &source.sandbox_token)
+        .await?;
+    let Some(event_id) = event_ids.first() else {
+        return Ok(ActiveInputBatch::ApiLegacy {
+            prompt: None,
+            has_more: false,
+        });
+    };
+    let prompt = source
+        .api
+        .claim_active_inputs(
+            source.run_id,
+            &source.sandbox_token,
+            std::slice::from_ref(event_id),
+        )
+        .await?;
+    Ok(ActiveInputBatch::ApiLegacy {
+        prompt: Some(prompt),
+        has_more: event_ids.len() > 1,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -228,11 +342,16 @@ mod tests {
             "unicode café 你好 🚀".to_string(),
             "x".repeat(ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES - 128),
         ];
+        let delivery_id = Uuid::new_v4().hyphenated().to_string();
 
         for text in texts {
-            let counted = active_input_payload_len(&text).unwrap();
-            let serialized = ActiveInputPayload::new(&text).to_vec().unwrap();
-            assert_eq!(counted, serialized.len(), "text len={}", text.len());
+            for candidate_delivery_id in [None, Some(delivery_id.as_str())] {
+                let counted = active_input_payload_len(candidate_delivery_id, &text).unwrap();
+                let serialized = ActiveInputPayload::new(candidate_delivery_id, &text)
+                    .to_vec()
+                    .unwrap();
+                assert_eq!(counted, serialized.len(), "text len={}", text.len());
+            }
         }
     }
 }

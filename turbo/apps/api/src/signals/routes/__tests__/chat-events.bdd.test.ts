@@ -1824,6 +1824,14 @@ describe("CHAT-02: queueing and recalling messages", () => {
         return topic === `chatThreadMessageCreated:${active.threadId}`;
       }),
     ).toHaveLength(1);
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith("active-input", {
+      runId: active.runId,
+    });
+    expect(
+      context.mocks.ably.publish.mock.calls.filter(([topic]) => {
+        return topic === "active-input";
+      }),
+    ).toHaveLength(1);
     await expect(
       api.recordRunnerActiveInputDelivery(
         claimed.claim.sandboxToken,
