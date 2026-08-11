@@ -1,6 +1,6 @@
 {
-  "id": "3ea8f960-29e1-4c4f-869a-8026ffed8052",
-  "prevId": "6aabd3a7-7fae-4548-9735-c5c59210c590",
+  "id": "18805998-e14e-423b-b273-33de8c3dbd40",
+  "prevId": "49fec744-b593-411f-9858-0d76bd644871",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -23485,7 +23485,7 @@
             }
           ],
           "isUnique": true,
-          "where": "\"usage_pack_allocation_changes\".\"status\" IN ('previewed', 'applying', 'pending_payment', 'scheduled', 'applied')",
+          "where": "(\"usage_pack_allocation_changes\".\"subscription_change_id\" IS NULL AND \"usage_pack_allocation_changes\".\"status\" IN ('previewed', 'applying', 'pending_payment')) OR \"usage_pack_allocation_changes\".\"status\" IN ('scheduled', 'applied')",
           "concurrently": false,
           "method": "btree",
           "with": {}

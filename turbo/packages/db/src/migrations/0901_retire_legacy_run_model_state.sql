@@ -4,7 +4,7 @@
 SET LOCAL lock_timeout = '5s';--> statement-breakpoint
 SET LOCAL statement_timeout = '60s';--> statement-breakpoint
 
-CREATE OR REPLACE FUNCTION pg_temp.vm0_retired_model_replacement_0898(
+CREATE OR REPLACE FUNCTION pg_temp.vm0_retired_model_replacement_0901(
   source_model text,
   restricted_vm0_models boolean
 ) RETURNS text AS $$
@@ -54,7 +54,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql IMMUTABLE;--> statement-breakpoint
 
-CREATE OR REPLACE FUNCTION pg_temp.vm0_provider_supports_model_0898(
+CREATE OR REPLACE FUNCTION pg_temp.vm0_provider_supports_model_0901(
   target_model text,
   provider_type text
 ) RETURNS boolean AS $$
@@ -87,7 +87,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql IMMUTABLE;--> statement-breakpoint
 
-CREATE OR REPLACE FUNCTION pg_temp.vm0_provider_runtime_model_0898(
+CREATE OR REPLACE FUNCTION pg_temp.vm0_provider_runtime_model_0901(
   target_model text,
   provider_type text
 ) RETURNS text AS $$
@@ -111,7 +111,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql IMMUTABLE;--> statement-breakpoint
 
-CREATE OR REPLACE FUNCTION pg_temp.vm0_policy_route_supports_model_0898(
+CREATE OR REPLACE FUNCTION pg_temp.vm0_policy_route_supports_model_0901(
   target_model text,
   route_org_id text,
   provider_type text,
@@ -150,7 +150,7 @@ BEGIN
   IF model_provider_id IS NOT NULL AND model_provider_surface_id IS NOT NULL THEN
     RETURN false;
   END IF;
-  IF NOT pg_temp.vm0_provider_supports_model_0898(
+  IF NOT pg_temp.vm0_provider_supports_model_0901(
     target_model,
     provider_type
   ) THEN
@@ -194,21 +194,21 @@ DECLARE
 BEGIN
   SELECT count(*) INTO policy_count
   FROM "org_model_policies" AS "policy"
-  WHERE pg_temp.vm0_retired_model_replacement_0898(
+  WHERE pg_temp.vm0_retired_model_replacement_0901(
     "policy"."model",
     false
   ) IS NOT NULL;
 
   SELECT count(*) INTO member_count
   FROM "org_members_metadata" AS "member"
-  WHERE pg_temp.vm0_retired_model_replacement_0898(
+  WHERE pg_temp.vm0_retired_model_replacement_0901(
     "member"."selected_model",
     false
   ) IS NOT NULL;
 
   SELECT count(*) INTO thread_count
   FROM "chat_threads" AS "thread"
-  WHERE pg_temp.vm0_retired_model_replacement_0898(
+  WHERE pg_temp.vm0_retired_model_replacement_0901(
     "thread"."selected_model",
     false
   ) IS NOT NULL;
@@ -218,7 +218,7 @@ BEGIN
   LEFT JOIN "model_providers" AS "provider"
     ON "provider"."id" = "agent"."model_provider_id"
   WHERE "provider"."type" = 'zai-api-key'
-    OR pg_temp.vm0_retired_model_replacement_0898(
+    OR pg_temp.vm0_retired_model_replacement_0901(
       "agent"."selected_model",
       false
     ) IS NOT NULL;
@@ -226,7 +226,7 @@ BEGIN
   SELECT count(*) INTO provider_count
   FROM "model_providers" AS "provider"
   WHERE "provider"."type" = 'zai-api-key'
-    OR pg_temp.vm0_retired_model_replacement_0898(
+    OR pg_temp.vm0_retired_model_replacement_0901(
       "provider"."selected_model",
       false
     ) IS NOT NULL;
@@ -244,7 +244,7 @@ $$;--> statement-breakpoint
 -- Stage 1 admission and persistence guards must be live before this migration.
 LOCK TABLE "org_model_policies" IN SHARE ROW EXCLUSIVE MODE;--> statement-breakpoint
 
-CREATE TEMPORARY TABLE "retired_org_policy_candidates_0898"
+CREATE TEMPORARY TABLE "retired_org_policy_candidates_0901"
 ON COMMIT DROP
 AS
 SELECT DISTINCT ON (
@@ -285,13 +285,13 @@ FROM "org_model_policies" AS "policy"
 LEFT JOIN "org_plan_entitlements" AS "entitlement"
   ON "entitlement"."org_id" = "policy"."org_id"
 CROSS JOIN LATERAL (
-  SELECT pg_temp.vm0_retired_model_replacement_0898(
+  SELECT pg_temp.vm0_retired_model_replacement_0901(
     "policy"."model",
     COALESCE("entitlement"."restricted_vm0_models", false)
   ) AS "replacement_model"
 ) AS "mapped"
 CROSS JOIN LATERAL (
-  SELECT pg_temp.vm0_policy_route_supports_model_0898(
+  SELECT pg_temp.vm0_policy_route_supports_model_0901(
     "mapped"."replacement_model",
     "policy"."org_id",
     "policy"."default_provider_type",
@@ -315,7 +315,7 @@ UPDATE "org_model_policies" AS "policy"
 SET "is_default" = false,
     "updated_at" = NOW()
 WHERE "policy"."is_default" = true
-  AND pg_temp.vm0_retired_model_replacement_0898(
+  AND pg_temp.vm0_retired_model_replacement_0901(
     "policy"."model",
     false
   ) IS NOT NULL;--> statement-breakpoint
@@ -327,7 +327,7 @@ UPDATE "org_model_policies" AS "target"
 SET "is_default" = "target"."is_default" OR "candidate"."source_is_default",
     "default_provider_type" = CASE
       WHEN "candidate"."restricted"
-        OR NOT pg_temp.vm0_policy_route_supports_model_0898(
+        OR NOT pg_temp.vm0_policy_route_supports_model_0901(
           "target"."model",
           "target"."org_id",
           "target"."default_provider_type",
@@ -340,7 +340,7 @@ SET "is_default" = "target"."is_default" OR "candidate"."source_is_default",
     END,
     "credential_scope" = CASE
       WHEN "candidate"."restricted"
-        OR NOT pg_temp.vm0_policy_route_supports_model_0898(
+        OR NOT pg_temp.vm0_policy_route_supports_model_0901(
           "target"."model",
           "target"."org_id",
           "target"."default_provider_type",
@@ -353,7 +353,7 @@ SET "is_default" = "target"."is_default" OR "candidate"."source_is_default",
     END,
     "model_provider_id" = CASE
       WHEN "candidate"."restricted"
-        OR NOT pg_temp.vm0_policy_route_supports_model_0898(
+        OR NOT pg_temp.vm0_policy_route_supports_model_0901(
           "target"."model",
           "target"."org_id",
           "target"."default_provider_type",
@@ -366,7 +366,7 @@ SET "is_default" = "target"."is_default" OR "candidate"."source_is_default",
     END,
     "model_provider_surface_id" = CASE
       WHEN "candidate"."restricted"
-        OR NOT pg_temp.vm0_policy_route_supports_model_0898(
+        OR NOT pg_temp.vm0_policy_route_supports_model_0901(
           "target"."model",
           "target"."org_id",
           "target"."default_provider_type",
@@ -382,7 +382,7 @@ SET "is_default" = "target"."is_default" OR "candidate"."source_is_default",
       "target"."updated_by_user_id"
     ),
     "updated_at" = NOW()
-FROM "retired_org_policy_candidates_0898" AS "candidate"
+FROM "retired_org_policy_candidates_0901" AS "candidate"
 WHERE "target"."org_id" = "candidate"."org_id"
   AND "target"."model" = "candidate"."replacement_model";--> statement-breakpoint
 
@@ -411,11 +411,11 @@ SELECT
   "candidate"."updated_by_user_id",
   NOW(),
   NOW()
-FROM "retired_org_policy_candidates_0898" AS "candidate"
+FROM "retired_org_policy_candidates_0901" AS "candidate"
 ON CONFLICT ("org_id", "model") DO NOTHING;--> statement-breakpoint
 
 DELETE FROM "org_model_policies" AS "policy"
-WHERE pg_temp.vm0_retired_model_replacement_0898(
+WHERE pg_temp.vm0_retired_model_replacement_0901(
   "policy"."model",
   false
 ) IS NOT NULL;--> statement-breakpoint
@@ -424,7 +424,7 @@ WITH "member_candidates" AS (
   SELECT
     "member"."org_id",
     "member"."user_id",
-    pg_temp.vm0_retired_model_replacement_0898(
+    pg_temp.vm0_retired_model_replacement_0901(
       "member"."selected_model",
       COALESCE("entitlement"."restricted_vm0_models", false)
     ) AS "replacement_model"
@@ -449,7 +449,7 @@ WITH "provider_candidates" AS (
   SELECT
     "provider"."id",
     "provider"."type",
-    pg_temp.vm0_retired_model_replacement_0898(
+    pg_temp.vm0_retired_model_replacement_0901(
       CASE
         WHEN "provider"."type" = 'zai-api-key' THEN 'glm-5.2'
         ELSE "provider"."selected_model"
@@ -460,24 +460,24 @@ WITH "provider_candidates" AS (
   LEFT JOIN "org_plan_entitlements" AS "entitlement"
     ON "entitlement"."org_id" = "provider"."org_id"
   WHERE "provider"."type" = 'zai-api-key'
-    OR pg_temp.vm0_retired_model_replacement_0898(
+    OR pg_temp.vm0_retired_model_replacement_0901(
       "provider"."selected_model",
       false
     ) IS NOT NULL
 )
 UPDATE "model_providers" AS "provider"
 SET "selected_model" = CASE
-      WHEN pg_temp.vm0_provider_supports_model_0898(
+      WHEN pg_temp.vm0_provider_supports_model_0901(
         "candidate"."replacement_model",
         "candidate"."type"
-      ) THEN pg_temp.vm0_provider_runtime_model_0898(
+      ) THEN pg_temp.vm0_provider_runtime_model_0901(
         "candidate"."replacement_model",
         "candidate"."type"
       )
       ELSE NULL
     END,
     "is_default" = CASE
-      WHEN pg_temp.vm0_provider_supports_model_0898(
+      WHEN pg_temp.vm0_provider_supports_model_0901(
         "candidate"."replacement_model",
         "candidate"."type"
       ) THEN "provider"."is_default"
@@ -492,7 +492,7 @@ WITH "agent_candidates" AS (
     "agent"."id",
     "agent"."model_provider_id",
     "provider"."type" AS "provider_type",
-    pg_temp.vm0_retired_model_replacement_0898(
+    pg_temp.vm0_retired_model_replacement_0901(
       CASE
         WHEN "provider"."type" = 'zai-api-key' THEN 'glm-5.2'
         ELSE "agent"."selected_model"
@@ -505,7 +505,7 @@ WITH "agent_candidates" AS (
   LEFT JOIN "org_plan_entitlements" AS "entitlement"
     ON "entitlement"."org_id" = "agent"."org_id"
   WHERE "provider"."type" = 'zai-api-key'
-    OR pg_temp.vm0_retired_model_replacement_0898(
+    OR pg_temp.vm0_retired_model_replacement_0901(
       "agent"."selected_model",
       false
     ) IS NOT NULL
@@ -513,7 +513,7 @@ WITH "agent_candidates" AS (
 UPDATE "zero_agents" AS "agent"
 SET "selected_model" = CASE
       WHEN "candidate"."model_provider_id" IS NULL
-        OR pg_temp.vm0_provider_supports_model_0898(
+        OR pg_temp.vm0_provider_supports_model_0901(
           "candidate"."replacement_model",
           "candidate"."provider_type"
         ) THEN "candidate"."replacement_model"
@@ -521,7 +521,7 @@ SET "selected_model" = CASE
     END,
     "model_provider_id" = CASE
       WHEN "candidate"."model_provider_id" IS NULL
-        OR pg_temp.vm0_provider_supports_model_0898(
+        OR pg_temp.vm0_provider_supports_model_0901(
           "candidate"."replacement_model",
           "candidate"."provider_type"
         ) THEN "candidate"."model_provider_id"
@@ -538,7 +538,7 @@ BEGIN
   IF EXISTS (
     SELECT 1
     FROM "org_model_policies" AS "policy"
-    WHERE pg_temp.vm0_retired_model_replacement_0898(
+    WHERE pg_temp.vm0_retired_model_replacement_0901(
       "policy"."model",
       false
     ) IS NOT NULL
@@ -549,7 +549,7 @@ BEGIN
   IF EXISTS (
     SELECT 1
     FROM "org_members_metadata" AS "member"
-    WHERE pg_temp.vm0_retired_model_replacement_0898(
+    WHERE pg_temp.vm0_retired_model_replacement_0901(
       "member"."selected_model",
       false
     ) IS NOT NULL
@@ -560,7 +560,7 @@ BEGIN
   IF EXISTS (
     SELECT 1
     FROM "model_providers" AS "provider"
-    WHERE pg_temp.vm0_retired_model_replacement_0898(
+    WHERE pg_temp.vm0_retired_model_replacement_0901(
       "provider"."selected_model",
       false
     ) IS NOT NULL
@@ -574,7 +574,7 @@ BEGIN
     FROM "zero_agents" AS "agent"
     LEFT JOIN "model_providers" AS "provider"
       ON "provider"."id" = "agent"."model_provider_id"
-    WHERE pg_temp.vm0_retired_model_replacement_0898(
+    WHERE pg_temp.vm0_retired_model_replacement_0901(
       "agent"."selected_model",
       false
     ) IS NOT NULL
@@ -585,7 +585,7 @@ BEGIN
 
   IF EXISTS (
     SELECT 1
-    FROM "retired_org_policy_candidates_0898" AS "candidate"
+    FROM "retired_org_policy_candidates_0901" AS "candidate"
     LEFT JOIN "org_model_policies" AS "target"
       ON "target"."org_id" = "candidate"."org_id"
       AND "target"."model" = "candidate"."replacement_model"
@@ -594,7 +594,7 @@ BEGIN
         "candidate"."source_is_default"
         AND NOT "target"."is_default"
       )
-      OR NOT pg_temp.vm0_policy_route_supports_model_0898(
+      OR NOT pg_temp.vm0_policy_route_supports_model_0901(
         "target"."model",
         "target"."org_id",
         "target"."default_provider_type",
@@ -608,7 +608,7 @@ BEGIN
 
   SELECT count(*) INTO lazy_thread_count
   FROM "chat_threads" AS "thread"
-  WHERE pg_temp.vm0_retired_model_replacement_0898(
+  WHERE pg_temp.vm0_retired_model_replacement_0901(
     "thread"."selected_model",
     false
   ) IS NOT NULL;

@@ -31,9 +31,7 @@ API clients send `X-Client-Type: App` and a build-time `X-Client-Version`. Befor
 route handlers run, the API rejects an app request whose parseable advertised
 version is below the floor in
 `turbo/apps/api/src/lib/web-client-compatibility.json`. The general floor does
-not reject a missing or unparseable `X-Client-Version`. Endpoint-specific
-protocol gates can produce the same response; Zero Mail currently requires the
-exact `X-Zero-Mail-Client-Version` on `/api/zero/mail/*` requests.
+not reject a missing or unparseable `X-Client-Version`.
 
 An incompatible request receives `426 Upgrade Required` with `Cache-Control:
 no-store`. The shared contract client and fetch wrapper turn that response into
@@ -108,6 +106,35 @@ Backend changes must be safe with:
 - old runner -> new backend
 - new runner -> old backend, if traffic propagation or non-production
   deployment order can expose that pairing
+
+### Commit-addressed CLI artifacts
+
+The private CLI used inside supported runs is published as an immutable,
+commit-addressed package. When the backend creates run execution context, it
+records the configured package URL in `CLI_PKG_URL`. A queued run therefore
+keeps the CLI artifact selected at context creation even after a later backend
+deployment starts selecting a newer package.
+
+Treat the package commit as the release identity for protocol compatibility.
+The package's semantic version may remain unchanged across artifacts and must
+not be used as a compatibility floor unless the release process guarantees that
+it advances for every relevant artifact change.
+
+When removing a backend response or request variant consumed by the CLI:
+
+1. Deploy a backend that still supports both variants and starts selecting the
+   canonical commit-addressed package.
+2. Wait through the maximum queue lifetime plus the maximum claimed execution
+   and finalization lifetime for contexts created before that deployment.
+3. Confirm that no queued or active pre-deployment context, and no explicitly
+   supported external caller, can still use the old variant.
+4. Remove compatibility in a later backend release.
+
+This drain is separate from runner binary drain: a current runner can execute an
+older CLI package retained by an older execution context. If the same cleanup
+raises the frontend compatibility floor, rolling the frontend below that floor
+also requires rolling back the backend floor. Rolling the backend back to the
+dual-protocol preparation release remains safe for canonical clients.
 
 ### Runner
 
@@ -372,7 +399,9 @@ boundary.
 For frontend/backend API changes:
 
 - Test the current request shape.
-- Test the previous frontend request shape when the API contract changes.
+- Test the previous frontend request shape while it can still reach the API
+  during rollout; after an enforced floor and completed drain, test rejection
+  of the retired shape instead.
 - Test missing new response fields or old response shapes when frontend code can
   receive them during rollout.
 

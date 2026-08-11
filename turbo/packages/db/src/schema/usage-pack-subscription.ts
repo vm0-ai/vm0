@@ -458,7 +458,7 @@ export const usagePackAllocationChanges = pgTable(
       uniqueIndex("uq_usage_pack_changes_current_user")
         .on(table.orgId, table.userId)
         .where(
-          sql`${table.status} IN ('previewed', 'applying', 'pending_payment', 'scheduled', 'applied')`,
+          sql`(${table.subscriptionChangeId} IS NULL AND ${table.status} IN ('previewed', 'applying', 'pending_payment')) OR ${table.status} IN ('scheduled', 'applied')`,
         ),
       uniqueIndex("uq_usage_pack_changes_stripe_invoice")
         .on(table.stripeInvoiceId)

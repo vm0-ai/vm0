@@ -212,7 +212,7 @@ describe("chat composer connector connection", () => {
       zeroAgentCustomConnectorsContract.get,
       ({ params, respond }) => {
         expect(params.id).toBe(AGENT_ID);
-        return respond(200, { enabledIds: [], grants });
+        return respond(200, { grants });
       },
     );
     let updateCount = 0;
@@ -226,7 +226,7 @@ describe("chat composer connector connection", () => {
           operation: "add",
         });
         grants = [{ customConnectorId: connector.id, permissionNames: [] }];
-        return respond(200, { enabledIds: [connector.id], grants });
+        return respond(200, { grants });
       },
     );
 
@@ -260,14 +260,14 @@ describe("chat composer connector connection", () => {
       return respond(200, { connectors: [connector] });
     });
     context.mocks.api(zeroAgentCustomConnectorsContract.get, ({ respond }) => {
-      return respond(200, { enabledIds: [], grants: [] });
+      return respond(200, { grants: [] });
     });
     let updateCount = 0;
     context.mocks.api(
       zeroAgentCustomConnectorsContract.update,
       ({ respond }) => {
         updateCount += 1;
-        return respond(200, { enabledIds: [], grants: [] });
+        return respond(200, { grants: [] });
       },
     );
 
@@ -340,7 +340,6 @@ describe("chat composer connector connection", () => {
         });
         updatedAgentIds.push(params.id);
         return respond(200, {
-          enabledIds: [connector.id],
           grants: [{ customConnectorId: connector.id, permissionNames: [] }],
         });
       },
