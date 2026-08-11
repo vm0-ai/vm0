@@ -167,7 +167,7 @@ async function prepareReservation(
     db,
     scope.chatThreadId,
     scope.runId,
-  );
+  ).limit(1);
   signal.throwIfAborted();
   if (rows.length === 0) {
     return { kind: "empty" };
