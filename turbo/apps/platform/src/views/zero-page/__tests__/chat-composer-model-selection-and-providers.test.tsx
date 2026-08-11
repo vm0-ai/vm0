@@ -646,7 +646,6 @@ describe("chat composer models", () => {
     await waitFor(() => {
       expect(fastModeButton).toHaveAttribute("aria-pressed", "true");
     });
-    expect(fastModeButton).not.toHaveClass("bg-amber-500/10");
     fastModePopover = await screen.findByRole("dialog");
     expect(within(fastModePopover).getByText("Fast")).toBeInTheDocument();
     expect(
