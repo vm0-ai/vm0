@@ -577,40 +577,7 @@ describe("team page navigation", () => {
     });
   });
 
-  it("authorizes a disconnected custom connector", async () => {
-    let updateCalls = 0;
-    mockTeamAPIs({
-      customConnector: {
-        ...createCustomConnector(),
-        connected: false,
-        missingRequiredFields: ["secret"],
-        configuredFieldKeys: [],
-        hasSecret: false,
-      },
-      onCustomConnectorUpdate: () => {
-        updateCalls += 1;
-      },
-    });
-
-    detachedSetupPage({ context, path: `/agents/${researchAgentId}` });
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Research Agent" }),
-      ).toBeInTheDocument();
-      expect(screen.getByText("Acme Search")).toBeInTheDocument();
-      expect(screen.getByText(/Not connected/)).toBeInTheDocument();
-    });
-
-    click(screen.getByLabelText("Grant Acme Search access"));
-    await waitFor(() => {
-      expect(updateCalls).toBe(1);
-      expect(screen.getByText("Custom connectors saved")).toBeInTheDocument();
-      expect(screen.getByLabelText("Revoke Acme Search access")).toBeChecked();
-    });
-  });
-
-  it("selects permissions before authorizing a disconnected custom connector", async () => {
+  it("hides unavailable custom connectors without loading agent access", async () => {
     const customConnector = {
       ...createCustomConnector(),
       connected: false,
@@ -619,92 +586,32 @@ describe("team page navigation", () => {
       hasSecret: false,
       permissionBundleRef: "builtin:feishu@1" as const,
     };
-    let capturedUpdate: AgentCustomConnectorUpdate | null = null;
+    let connectorListReads = 0;
+    let agentAccessReads = 0;
     mockTeamAPIs({ customConnector });
-    context.mocks.api(
-      zeroCustomConnectorByIdContract.permissions,
-      ({ params, respond }) => {
-        expect(params.id).toBe(customConnector.id);
-        return respond(200, {
-          ref: "builtin:feishu@1",
-          permissions: [
-            {
-              name: "standard:use",
-              description: "Use standard Feishu APIs with approval.",
-            },
-            {
-              name: "messages:send-as-user",
-              description: "Send or edit messages as the connected user.",
-            },
-            {
-              name: "resources:delete",
-              description: "Delete Feishu content.",
-            },
-          ],
-          defaultPolicies: {
-            "standard:use": "allow",
-            "messages:send-as-user": "deny",
-            "resources:delete": "deny",
-          },
-        });
-      },
-    );
+    context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
+      connectorListReads += 1;
+      return respond(200, { connectors: [customConnector] });
+    });
     context.mocks.api(zeroAgentCustomConnectorsContract.get, ({ respond }) => {
+      agentAccessReads += 1;
       return respond(200, {
         enabledIds: [],
         grants: [],
       });
     });
-    context.mocks.api(
-      zeroAgentCustomConnectorsContract.update,
-      ({ body, respond }) => {
-        capturedUpdate = body;
-        return respond(200, {
-          enabledIds: [customConnector.id],
-          grants:
-            "grants" in body
-              ? body.grants
-              : [
-                  {
-                    customConnectorId: customConnector.id,
-                    permissionNames: [],
-                  },
-                ],
-        });
-      },
-    );
 
     detachedSetupPage({
       context,
       path: `/agents/${researchAgentId}`,
     });
 
-    await screen.findByText("Acme Search");
-    click(screen.getByLabelText("Grant Acme Search access"));
-
-    const messagePermission = await screen.findByText("messages:send-as-user");
-    const drawer = dialogForElement(messagePermission);
-    expect(within(drawer).queryByText("standard:use")).not.toBeInTheDocument();
-    expect(buttonByText("Apply", drawer)).toBeEnabled();
-    const messageRow = messagePermission.parentElement?.parentElement;
-    if (!(messageRow instanceof HTMLElement)) {
-      throw new Error("custom connector permission row not found");
-    }
-    click(buttonByText("Allow", messageRow));
-    click(buttonByText("Apply", drawer));
-
     await waitFor(() => {
-      expect(capturedUpdate).toStrictEqual({
-        grants: [
-          {
-            customConnectorId: customConnector.id,
-            permissionNames: ["messages:send-as-user"],
-          },
-        ],
-        operation: "add",
-      });
-      expect(screen.getByText("Permissions updated")).toBeInTheDocument();
+      expect(connectorListReads).toBeGreaterThan(0);
+      expect(screen.getByText("@workspace")).toBeInTheDocument();
     });
+    expect(screen.queryByText("Acme Search")).not.toBeInTheDocument();
+    expect(agentAccessReads).toBe(0);
   });
 
   it("does not show a custom connector permission draft on another agent", async () => {
