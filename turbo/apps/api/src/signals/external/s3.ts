@@ -59,6 +59,29 @@ interface S3Credentials {
   readonly secretAccessKey: string;
 }
 
+export interface S3ClientScope {
+  listObjects(prefix: string): Promise<readonly S3Object[]>;
+  deleteObjects(keys: readonly string[]): Promise<void>;
+  putObject(
+    key: string,
+    body: string | Buffer,
+    contentType: string,
+    metadata: Readonly<Record<string, string>> | undefined,
+    signal: AbortSignal | undefined,
+  ): Promise<void>;
+  uploadObjectStream(
+    key: string,
+    body: AsyncIterable<Uint8Array>,
+    contentType: string,
+    signal: AbortSignal,
+  ): Promise<number>;
+  copyObject(
+    sourceKey: string,
+    destinationKey: string,
+    signal: AbortSignal,
+  ): Promise<void>;
+}
+
 interface DownloadS3BufferOptions {
   readonly maxBytes?: number;
 }
@@ -175,34 +198,30 @@ function s3ClientForBucket(
   return usePublicEndpoint ? publicS3Client$ : s3Client$;
 }
 
-const hostedSitesS3Client$ = computed((): S3Client => {
-  return createS3Client(
-    env("S3_ENDPOINT") ?? defaultS3Endpoint(),
-    hostedSitesS3Credentials(),
-  );
-});
-
-const hostedSitesPublicS3Client$ = computed((get): S3Client => {
-  const publicEndpoint = env("S3_PUBLIC_ENDPOINT");
-  if (!publicEndpoint) {
-    return get(hostedSitesS3Client$);
-  }
-  return createS3Client(publicEndpoint, hostedSitesS3Credentials());
-});
-
-export function listS3Objects(
+export function s3ClientScopeForBucket(
   bucket: string,
-  prefix: string,
-): Computed<Promise<readonly S3Object[]>> {
-  return computed(async (get): Promise<readonly S3Object[]> => {
-    const client = get(s3ClientForBucket(bucket));
+): Computed<S3ClientScope> {
+  return computed((get): S3ClientScope => {
+    return new S3ClientScopeImpl(get(s3ClientForBucket(bucket)), bucket);
+  });
+}
+
+const S3_STREAMING_PART_BYTES = 8 * 1024 * 1024;
+
+class S3ClientScopeImpl implements S3ClientScope {
+  constructor(
+    private readonly client: S3Client,
+    private readonly bucket: string,
+  ) {}
+
+  async listObjects(prefix: string): Promise<readonly S3Object[]> {
     const objects: S3Object[] = [];
     let continuationToken: string | undefined;
 
     do {
-      const response = await client.send(
+      const response = await this.client.send(
         new ListObjectsV2Command({
-          Bucket: bucket,
+          Bucket: this.bucket,
           Prefix: prefix,
           ContinuationToken: continuationToken,
         }),
@@ -222,6 +241,190 @@ export function listS3Objects(
     } while (continuationToken);
 
     return objects;
+  }
+
+  async deleteObjects(keys: readonly string[]): Promise<void> {
+    if (keys.length === 0) {
+      return;
+    }
+    const response = await this.client.send(
+      new DeleteObjectsCommand({
+        Bucket: this.bucket,
+        Delete: {
+          Objects: keys.map((Key) => {
+            return { Key };
+          }),
+        },
+      }),
+    );
+    if ((response.Errors?.length ?? 0) > 0) {
+      throw new Error(
+        `S3 object deletion failed for ${response.Errors?.length.toString() ?? "0"} object(s)`,
+      );
+    }
+  }
+
+  async putObject(
+    key: string,
+    body: string | Buffer,
+    contentType: string,
+    metadata: Readonly<Record<string, string>> | undefined,
+    signal: AbortSignal | undefined,
+  ): Promise<void> {
+    await this.client.send(
+      new PutObjectCommand({
+        Bucket: this.bucket,
+        Key: key,
+        Body: body,
+        ContentType: contentType,
+        Metadata: metadata,
+      }),
+      signal ? { abortSignal: signal } : undefined,
+    );
+  }
+
+  async uploadObjectStream(
+    key: string,
+    body: AsyncIterable<Uint8Array>,
+    contentType: string,
+    signal: AbortSignal,
+  ): Promise<number> {
+    const created = await this.client.send(
+      new CreateMultipartUploadCommand({
+        Bucket: this.bucket,
+        Key: key,
+        ContentType: contentType,
+      }),
+      { abortSignal: signal },
+    );
+    const uploadId = created.UploadId;
+    if (!uploadId) {
+      throw new Error("R2 did not return a multipart upload ID");
+    }
+
+    const parts: MultipartS3Part[] = [];
+    let chunks: Buffer[] = [];
+    let bufferedBytes = 0;
+    let uploadedBytes = 0;
+    const uploadPart = async (): Promise<void> => {
+      if (bufferedBytes === 0) {
+        return;
+      }
+      const partNumber = parts.length + 1;
+      const partBody = Buffer.concat(chunks, bufferedBytes);
+      chunks = [];
+      bufferedBytes = 0;
+      const uploaded = await this.client.send(
+        new UploadPartCommand({
+          Bucket: this.bucket,
+          Key: key,
+          UploadId: uploadId,
+          PartNumber: partNumber,
+          Body: partBody,
+        }),
+        { abortSignal: signal },
+      );
+      if (!uploaded.ETag) {
+        throw new Error("R2 did not return a multipart upload part ETag");
+      }
+      uploadedBytes += partBody.length;
+      parts.push({ partNumber, etag: uploaded.ETag });
+    };
+
+    const completed = await settle(
+      (async () => {
+        for await (const chunk of body) {
+          signal.throwIfAborted();
+          const buffer = Buffer.from(chunk);
+          let offset = 0;
+          while (offset < buffer.length) {
+            const availableBytes = S3_STREAMING_PART_BYTES - bufferedBytes;
+            const end = Math.min(offset + availableBytes, buffer.length);
+            const slice = buffer.subarray(offset, end);
+            chunks.push(slice);
+            bufferedBytes += slice.length;
+            offset = end;
+            if (bufferedBytes === S3_STREAMING_PART_BYTES) {
+              await uploadPart();
+            }
+          }
+        }
+        await uploadPart();
+        if (parts.length === 0) {
+          throw new Error("Cannot multipart upload an empty S3 object");
+        }
+        await this.client.send(
+          new CompleteMultipartUploadCommand({
+            Bucket: this.bucket,
+            Key: key,
+            UploadId: uploadId,
+            MultipartUpload: {
+              Parts: parts.map((part) => {
+                return { ETag: part.etag, PartNumber: part.partNumber };
+              }),
+            },
+          }),
+          { abortSignal: signal },
+        );
+      })(),
+      signal,
+    );
+    if (!completed.ok) {
+      await settle(
+        this.client.send(
+          new AbortMultipartUploadCommand({
+            Bucket: this.bucket,
+            Key: key,
+            UploadId: uploadId,
+          }),
+        ),
+      );
+      throw completed.error;
+    }
+    return uploadedBytes;
+  }
+
+  async copyObject(
+    sourceKey: string,
+    destinationKey: string,
+    signal: AbortSignal,
+  ): Promise<void> {
+    await this.client.send(
+      new CopyObjectCommand({
+        Bucket: this.bucket,
+        Key: destinationKey,
+        CopySource: `${this.bucket}/${sourceKey}`,
+      }),
+      { abortSignal: signal },
+    );
+  }
+}
+
+const hostedSitesS3Client$ = computed((): S3Client => {
+  return createS3Client(
+    env("S3_ENDPOINT") ?? defaultS3Endpoint(),
+    hostedSitesS3Credentials(),
+  );
+});
+
+const hostedSitesPublicS3Client$ = computed((get): S3Client => {
+  const publicEndpoint = env("S3_PUBLIC_ENDPOINT");
+  if (!publicEndpoint) {
+    return get(hostedSitesS3Client$);
+  }
+  return createS3Client(publicEndpoint, hostedSitesS3Credentials());
+});
+
+export function listS3Objects(
+  bucket: string,
+  prefix: string,
+  clientScope?: S3ClientScope,
+): Computed<Promise<readonly S3Object[]>> {
+  return computed((get): Promise<readonly S3Object[]> => {
+    const scope =
+      clientScope ??
+      new S3ClientScopeImpl(get(s3ClientForBucket(bucket)), bucket);
+    return scope.listObjects(prefix);
   });
 }
 
@@ -266,35 +469,22 @@ export function listS3ObjectsPage(
 export function listS3ObjectsUnderPrefix(
   bucket: string,
   prefix: string,
+  clientScope?: S3ClientScope,
 ): Computed<Promise<readonly S3Object[]>> {
   const boundedPrefix = prefix.endsWith("/") ? prefix : `${prefix}/`;
-  return listS3Objects(bucket, boundedPrefix);
+  return listS3Objects(bucket, boundedPrefix, clientScope);
 }
 
 export function deleteS3Objects(
   bucket: string,
   keys: readonly string[],
+  clientScope?: S3ClientScope,
 ): Computed<Promise<void>> {
-  return computed(async (get): Promise<void> => {
-    if (keys.length === 0) {
-      return;
-    }
-    const client = get(s3ClientForBucket(bucket));
-    const response = await client.send(
-      new DeleteObjectsCommand({
-        Bucket: bucket,
-        Delete: {
-          Objects: keys.map((Key) => {
-            return { Key };
-          }),
-        },
-      }),
-    );
-    if ((response.Errors?.length ?? 0) > 0) {
-      throw new Error(
-        `S3 object deletion failed for ${response.Errors?.length.toString() ?? "0"} object(s)`,
-      );
-    }
+  return computed((get): Promise<void> => {
+    const scope =
+      clientScope ??
+      new S3ClientScopeImpl(get(s3ClientForBucket(bucket)), bucket);
+    return scope.deleteObjects(keys);
   });
 }
 
@@ -803,9 +993,22 @@ export function putS3Object(
     | {
         readonly signal?: AbortSignal;
         readonly metadata?: Readonly<Record<string, string>>;
+        readonly clientScope?: S3ClientScope;
       },
 ): Computed<Promise<void>> {
   const writeOptions = isAbortSignal(options) ? { signal: options } : options;
+  const clientScope = writeOptions?.clientScope;
+  if (clientScope) {
+    return computed((): Promise<void> => {
+      return clientScope.putObject(
+        key,
+        body,
+        contentType,
+        writeOptions?.metadata,
+        writeOptions?.signal,
+      );
+    });
+  }
   return putS3ObjectWithClient(
     s3ClientForBucket(bucket),
     {
@@ -857,110 +1060,22 @@ function putS3ObjectWithClient(
 }
 
 const IMMUTABLE_CACHE_CONTROL = "public, max-age=31536000, immutable";
-const S3_STREAMING_PART_BYTES = 8 * 1024 * 1024;
 
 export function uploadS3ObjectStream(
   bucket: string,
   key: string,
   body: AsyncIterable<Uint8Array>,
-  contentType: string,
+  options: {
+    readonly contentType: string;
+    readonly clientScope?: S3ClientScope;
+  },
   signal: AbortSignal,
 ): Computed<Promise<number>> {
-  return computed(async (get): Promise<number> => {
-    const client = get(s3ClientForBucket(bucket));
-    const created = await client.send(
-      new CreateMultipartUploadCommand({
-        Bucket: bucket,
-        Key: key,
-        ContentType: contentType,
-      }),
-      { abortSignal: signal },
-    );
-    const uploadId = created.UploadId;
-    if (!uploadId) {
-      throw new Error("R2 did not return a multipart upload ID");
-    }
-
-    const parts: MultipartS3Part[] = [];
-    let chunks: Buffer[] = [];
-    let bufferedBytes = 0;
-    let uploadedBytes = 0;
-    const uploadPart = async (): Promise<void> => {
-      if (bufferedBytes === 0) {
-        return;
-      }
-      const partNumber = parts.length + 1;
-      const partBody = Buffer.concat(chunks, bufferedBytes);
-      chunks = [];
-      bufferedBytes = 0;
-      const uploaded = await client.send(
-        new UploadPartCommand({
-          Bucket: bucket,
-          Key: key,
-          UploadId: uploadId,
-          PartNumber: partNumber,
-          Body: partBody,
-        }),
-        { abortSignal: signal },
-      );
-      if (!uploaded.ETag) {
-        throw new Error("R2 did not return a multipart upload part ETag");
-      }
-      uploadedBytes += partBody.length;
-      parts.push({ partNumber, etag: uploaded.ETag });
-    };
-
-    const completed = await settle(
-      (async () => {
-        for await (const chunk of body) {
-          signal.throwIfAborted();
-          const buffer = Buffer.from(chunk);
-          let offset = 0;
-          while (offset < buffer.length) {
-            const availableBytes = S3_STREAMING_PART_BYTES - bufferedBytes;
-            const end = Math.min(offset + availableBytes, buffer.length);
-            const slice = buffer.subarray(offset, end);
-            chunks.push(slice);
-            bufferedBytes += slice.length;
-            offset = end;
-            if (bufferedBytes === S3_STREAMING_PART_BYTES) {
-              await uploadPart();
-            }
-          }
-        }
-        await uploadPart();
-        if (parts.length === 0) {
-          throw new Error("Cannot multipart upload an empty S3 object");
-        }
-        await client.send(
-          new CompleteMultipartUploadCommand({
-            Bucket: bucket,
-            Key: key,
-            UploadId: uploadId,
-            MultipartUpload: {
-              Parts: parts.map((part) => {
-                return { ETag: part.etag, PartNumber: part.partNumber };
-              }),
-            },
-          }),
-          { abortSignal: signal },
-        );
-      })(),
-      signal,
-    );
-    if (!completed.ok) {
-      await settle(
-        client.send(
-          new AbortMultipartUploadCommand({
-            Bucket: bucket,
-            Key: key,
-            UploadId: uploadId,
-          }),
-        ),
-      );
-      throw completed.error;
-    }
-    return uploadedBytes;
+  return computed((get): Promise<number> => {
+    const scope =
+      options.clientScope ??
+      new S3ClientScopeImpl(get(s3ClientForBucket(bucket)), bucket);
+    return scope.uploadObjectStream(key, body, options.contentType, signal);
   });
 }
 
@@ -969,17 +1084,13 @@ export function copyS3Object(
   sourceKey: string,
   destinationKey: string,
   signal: AbortSignal,
+  clientScope?: S3ClientScope,
 ): Computed<Promise<void>> {
-  return computed(async (get): Promise<void> => {
-    const client = get(s3ClientForBucket(bucket));
-    await client.send(
-      new CopyObjectCommand({
-        Bucket: bucket,
-        Key: destinationKey,
-        CopySource: `${bucket}/${sourceKey}`,
-      }),
-      { abortSignal: signal },
-    );
+  return computed((get): Promise<void> => {
+    const scope =
+      clientScope ??
+      new S3ClientScopeImpl(get(s3ClientForBucket(bucket)), bucket);
+    return scope.copyObject(sourceKey, destinationKey, signal);
   });
 }
 

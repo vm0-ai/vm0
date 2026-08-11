@@ -34,6 +34,8 @@ import {
   deleteS3Objects,
   listS3ObjectsUnderPrefix,
   putS3Object,
+  s3ClientScopeForBucket,
+  type S3ClientScope,
   uploadS3ObjectStream,
 } from "../external/s3";
 import { createDeferredPromise, settle, tapError } from "../utils";
@@ -333,6 +335,7 @@ function startSkillArchive(
   skillName: string,
   commitSha: string,
   signal: AbortSignal,
+  s3ClientScope: S3ClientScope,
 ): Computed<SkillArchiveBuilder> {
   return computed((get): SkillArchiveBuilder => {
     const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
@@ -345,7 +348,7 @@ function startSkillArchive(
         bucket,
         temporaryArchiveKey,
         compressed,
-        "application/gzip",
+        { contentType: "application/gzip", clientScope: s3ClientScope },
         signal,
       ),
     );
@@ -438,9 +441,12 @@ function downloadSkillArchive(
   files: readonly GitTreeFile[],
   commitSha: string,
   signal: AbortSignal,
+  s3ClientScope: S3ClientScope,
 ): Computed<Promise<ExtractedSkill>> {
   return computed(async (get): Promise<ExtractedSkill> => {
-    const builder = get(startSkillArchive(skillName, commitSha, signal));
+    const builder = get(
+      startSkillArchive(skillName, commitSha, signal, s3ClientScope),
+    );
     const extractedFiles: ExtractedFile[] = [];
     let skillMdContent: Buffer | undefined;
     const extracted = await settle(
@@ -508,6 +514,7 @@ function uploadSkillArchive(
   extracted: ExtractedSkill,
   s3Prefix: string,
   signal: AbortSignal,
+  s3ClientScope: S3ClientScope,
 ): Computed<Promise<SkillArchiveUpload>> {
   return computed(async (get): Promise<SkillArchiveUpload> => {
     const bucketName = env("R2_USER_STORAGES_BUCKET_NAME");
@@ -521,6 +528,7 @@ function uploadSkillArchive(
           extracted.temporaryArchiveKey,
           `${s3Key}/archive.tar.gz`,
           signal,
+          s3ClientScope,
         ),
       ),
       get(
@@ -529,6 +537,7 @@ function uploadSkillArchive(
           `${s3Key}/manifest.json`,
           manifestBuffer,
           "application/json",
+          { clientScope: s3ClientScope },
         ),
       ),
     ]);
@@ -682,6 +691,7 @@ function syncSingleSkill(
   extracted: ExtractedSkill,
   commitSha: string,
   signal: AbortSignal,
+  s3ClientScope: S3ClientScope,
 ): Computed<Promise<boolean>> {
   return computed(async (get): Promise<boolean> => {
     const context = buildSkillSyncContext(extracted);
@@ -712,7 +722,13 @@ function syncSingleSkill(
     );
     const storageId = storage.id;
     const upload = await get(
-      uploadSkillArchive(context, extracted, storage.s3Prefix, signal),
+      uploadSkillArchive(
+        context,
+        extracted,
+        storage.s3Prefix,
+        signal,
+        s3ClientScope,
+      ),
     );
     await insertSkillStorageVersion(
       {
@@ -756,6 +772,7 @@ function removeOrphanedSkills(
   db: Db,
   sourceSkillNames: ReadonlySet<string>,
   signal: AbortSignal,
+  s3ClientScope: S3ClientScope,
 ): Computed<Promise<number>> {
   return computed(async (get): Promise<number> => {
     const sourceUrls = new Set(
@@ -810,7 +827,7 @@ function removeOrphanedSkills(
       await tapError(
         (async () => {
           const objects = await get(
-            listS3ObjectsUnderPrefix(bucket, storage.s3Prefix),
+            listS3ObjectsUnderPrefix(bucket, storage.s3Prefix, s3ClientScope),
           );
           signal.throwIfAborted();
           if (objects.length > 0) {
@@ -820,6 +837,7 @@ function removeOrphanedSkills(
                 objects.map((object) => {
                   return object.key;
                 }),
+                s3ClientScope,
               ),
             );
             signal.throwIfAborted();
@@ -945,25 +963,38 @@ async function markSkillsSyncComplete(
 
 type ChangedSkillSyncOutcome = "failed" | "skipped" | "synced";
 
+interface SyncChangedSkillArgs {
+  readonly db: Db;
+  readonly skillName: string;
+  readonly files: readonly GitTreeFile[];
+  readonly headSha: string;
+  readonly s3ClientScope: S3ClientScope;
+}
+
 async function syncChangedSkill(
-  db: Db,
-  skillName: string,
-  files: readonly GitTreeFile[],
-  headSha: string,
+  args: SyncChangedSkillArgs,
   signal: AbortSignal,
 ): Promise<ChangedSkillSyncOutcome> {
-  // Dynamic computed values retain their resolved streams and buffers for the
-  // lifetime of a store. A short-lived store keeps each skill below the Worker
-  // isolate memory limit instead of retaining every completed archive.
+  // Keep each skill's computation graph short-lived while reusing the request's
+  // S3 client. This releases completed archive state without accumulating
+  // clients and their connection state inside the Worker isolate.
   const skillStore = createStore();
   const downloaded = await settle(
-    skillStore.get(downloadSkillArchive(skillName, files, headSha, signal)),
+    skillStore.get(
+      downloadSkillArchive(
+        args.skillName,
+        args.files,
+        args.headSha,
+        signal,
+        args.s3ClientScope,
+      ),
+    ),
     signal,
   );
   signal.throwIfAborted();
   if (!downloaded.ok) {
     log.warn("Skipping skill due to sync error", {
-      skillName,
+      skillName: args.skillName,
       error:
         downloaded.error instanceof Error
           ? downloaded.error.message
@@ -973,20 +1004,30 @@ async function syncChangedSkill(
   }
 
   const result = await settle(
-    skillStore.get(syncSingleSkill(db, downloaded.value, headSha, signal)),
+    skillStore.get(
+      syncSingleSkill(
+        args.db,
+        downloaded.value,
+        args.headSha,
+        signal,
+        args.s3ClientScope,
+      ),
+    ),
     signal,
   );
   const cleaned = await settle(
     skillStore.get(
-      deleteS3Objects(env("R2_USER_STORAGES_BUCKET_NAME"), [
-        downloaded.value.temporaryArchiveKey,
-      ]),
+      deleteS3Objects(
+        env("R2_USER_STORAGES_BUCKET_NAME"),
+        [downloaded.value.temporaryArchiveKey],
+        args.s3ClientScope,
+      ),
     ),
     signal,
   );
   if (!cleaned.ok) {
     log.warn("Failed to clean up temporary skill archive", {
-      skillName,
+      skillName: args.skillName,
       error:
         cleaned.error instanceof Error
           ? cleaned.error.message
@@ -996,7 +1037,7 @@ async function syncChangedSkill(
   signal.throwIfAborted();
   if (!result.ok) {
     log.warn("Skipping skill due to sync error", {
-      skillName,
+      skillName: args.skillName,
       error:
         result.error instanceof Error
           ? result.error.message
@@ -1039,6 +1080,9 @@ export const syncSkills$ = command(
     const authorization = githubApiAuthorization();
     const { currentTree, changedSkills, sourceSkillNames } =
       await buildSkillTreeSyncPlan(existing, headSha, authorization, signal);
+    const s3ClientScope = get(
+      s3ClientScopeForBucket(env("R2_USER_STORAGES_BUCKET_NAME")),
+    );
 
     let synced = 0;
     let skipped = 0;
@@ -1051,10 +1095,13 @@ export const syncSkills$ = command(
       }
 
       const outcome = await syncChangedSkill(
-        db,
-        skillName,
-        files,
-        headSha,
+        {
+          db,
+          skillName,
+          files,
+          headSha,
+          s3ClientScope,
+        },
         signal,
       );
       if (outcome === "failed") {
@@ -1067,7 +1114,7 @@ export const syncSkills$ = command(
     }
 
     const removed = await get(
-      removeOrphanedSkills(db, sourceSkillNames, signal),
+      removeOrphanedSkills(db, sourceSkillNames, signal, s3ClientScope),
     );
     signal.throwIfAborted();
     validateSeedSkills(sourceSkillNames);
