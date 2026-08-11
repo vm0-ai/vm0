@@ -4,7 +4,7 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "test": "node --test no-abort-signal-in-object-params.test.js"
+    "test": "node --test no-abort-signal-in-object-params.node.js"
   },
   "exports": {
     "./base": "./base.js",
