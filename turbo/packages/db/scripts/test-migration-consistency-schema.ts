@@ -7102,8 +7102,8 @@ async function validateChatRunServiceTierAnnotationBackfill(): Promise<void> {
   }
 }
 
-const RETIRED_RUN_MODEL_STATE_PREVIOUS_MIGRATION = "0901_parallel_energizer";
-const RETIRED_RUN_MODEL_STATE_MIGRATION = "0902_retire_legacy_run_model_state";
+const RETIRED_RUN_MODEL_STATE_PREVIOUS_MIGRATION = "0902_colorful_mandrill";
+const RETIRED_RUN_MODEL_STATE_MIGRATION = "0903_retire_legacy_run_model_state";
 
 async function validateRetiredRunModelStateMigration(): Promise<void> {
   console.log("=== Validate retired run-model state migration ===\n");
