@@ -658,13 +658,13 @@ describe("chat composer models", () => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
 
-    click(fastModeButton);
+    await user.click(fastModeButton);
     await waitFor(() => {
       expect(fastModeButton).toHaveAttribute("aria-pressed", "false");
     });
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 
-    click(fastModeButton);
+    await user.click(fastModeButton);
     await waitFor(() => {
       expect(fastModeButton).toHaveAttribute("aria-pressed", "true");
     });

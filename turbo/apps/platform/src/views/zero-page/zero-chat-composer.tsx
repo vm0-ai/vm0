@@ -7412,8 +7412,18 @@ function ComposerFastModeButton({
   return (
     <Popover
       onOpenChange={(open, eventDetails) => {
-        if (open && active && eventDetails.reason === "trigger-press") {
-          eventDetails.cancel();
+        if (eventDetails.reason === "trigger-press") {
+          const trigger = eventDetails.trigger;
+          const preventOpen =
+            open &&
+            trigger instanceof HTMLElement &&
+            trigger.dataset.fastModeActiveBeforePress === "true";
+          if (trigger instanceof HTMLElement) {
+            delete trigger.dataset.fastModeActiveBeforePress;
+          }
+          if (preventOpen) {
+            eventDetails.cancel();
+          }
         }
       }}
     >
@@ -7431,6 +7441,10 @@ function ComposerFastModeButton({
           aria-label={label}
           aria-pressed={active}
           disabled={disabled}
+          onClickCapture={(event) => {
+            event.currentTarget.dataset.fastModeActiveBeforePress =
+              String(active);
+          }}
           onClick={() => {
             onChange({
               selectedModel: value.selectedModel,
