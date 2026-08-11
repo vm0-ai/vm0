@@ -159,9 +159,15 @@ raise "missing runner model policy bootstrap" unless model_defaults_step
 model_defaults_script = model_defaults_step.fetch("run")
 unless model_defaults_script.include?("/api/zero/model-policies") &&
     model_defaults_script.include?("/api/zero/user-model-preference") &&
-    model_defaults_script.include?("claude-sonnet-4-6") &&
+    model_defaults_script.include?("deepseek-v4-flash") &&
+    model_defaults_script.include?("gpt-5.6-luna") &&
     model_defaults_script.include?('{"selectedModel":null,"serviceTier":null}')
-  raise "runner bootstrap must restore the historical model defaults"
+  raise "runner bootstrap must reset the limited-free model defaults"
+end
+%w[claude-opus-4-7 claude-sonnet-4-6 gpt-5.5].each do |restricted_model|
+  if model_defaults_script.include?(restricted_model)
+    raise "runner bootstrap must not select restricted model #{restricted_model}"
+  end
 end
 provider_step = bootstrap_steps.find do |step|
   step["name"] == "Bootstrap runner mock model provider"

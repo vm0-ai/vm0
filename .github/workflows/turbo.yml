@@ -2611,12 +2611,12 @@ jobs:
             headers+=(-H "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}")
           fi
 
+          # Fresh Clerk organizations bootstrap onto limited-free-1, so the
+          # deterministic runner policy must stay within that plan's catalog.
           payload="$(jq -nc '{
             policies: [
-              {model: "claude-opus-4-7", isDefault: false, defaultProviderType: "vm0", credentialScope: "org", modelProviderId: null},
-              {model: "claude-sonnet-4-6", isDefault: true, defaultProviderType: "vm0", credentialScope: "org", modelProviderId: null},
-              {model: "deepseek-v4-flash", isDefault: false, defaultProviderType: "vm0", credentialScope: "org", modelProviderId: null},
-              {model: "gpt-5.5", isDefault: false, defaultProviderType: "vm0", credentialScope: "org", modelProviderId: null}
+              {model: "deepseek-v4-flash", isDefault: true, defaultProviderType: "vm0", credentialScope: "org", modelProviderId: null},
+              {model: "gpt-5.6-luna", isDefault: false, defaultProviderType: "vm0", credentialScope: "org", modelProviderId: null}
             ]
           }')"
 
