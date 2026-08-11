@@ -443,7 +443,7 @@ function ComposerQueueGlyph() {
   );
 }
 
-// A single strip row — a queued message, workflow event, or active goal. All
+// A single strip row — a queued message, automation event, or active goal. All
 // share one layout so they read as the same kind of pending item; only the
 // leading icon distinguishes them. Goals open a modal because their full
 // objective is fetched lazily by thread.
@@ -733,7 +733,7 @@ function PendingItemsStrip({ signals }: { signals: ComposerSignals }) {
             />
           );
         })}
-        {/* The active goal sits last — below queued messages and workflow events
+        {/* The active goal sits last — below queued messages and automation events
             — because it only runs once the queue drains. Like other pending
             items it can be cancelled from the strip. */}
         {activeGoal ? (

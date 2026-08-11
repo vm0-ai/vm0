@@ -715,7 +715,7 @@ const {
 });
 
 /**
- * Raw event for the workflow-events ingress, which zod-parses the payload
+ * Raw event for the automation-event ingress, which zod-parses the payload
  * itself rather than branching on Stripe's union.
  */
 export function constructStripeWebhookEvent(

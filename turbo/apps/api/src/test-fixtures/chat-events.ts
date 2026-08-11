@@ -810,7 +810,7 @@ export async function replayPendingChatInputQueueEventFixture(args: {
 }
 
 /**
- * Move one exact workflow event into historical state without waiting for real
+ * Move one exact automation event into historical state without waiting for real
  * time to pass. A string preserves PostgreSQL precision beyond JavaScript
  * milliseconds. Product APIs cannot construct an already-stale queue item.
  */

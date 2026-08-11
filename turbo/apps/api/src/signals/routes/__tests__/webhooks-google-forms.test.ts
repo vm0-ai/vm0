@@ -239,13 +239,13 @@ function eventContextFromPrompt(
   const marker = "# This run's event\n";
   const markerIndex = appendSystemPrompt.indexOf(marker);
   if (markerIndex === -1) {
-    throw new Error("Expected workflow event payload in appendSystemPrompt");
+    throw new Error("Expected automation event payload in appendSystemPrompt");
   }
   const parsed = JSON.parse(
     appendSystemPrompt.slice(markerIndex + marker.length),
   ) as unknown;
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-    throw new Error("Expected workflow event payload object");
+    throw new Error("Expected automation event payload object");
   }
   return parsed as Record<string, unknown>;
 }
