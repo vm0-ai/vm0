@@ -104,30 +104,6 @@ export async function createOrganization(
   return data.id;
 }
 
-export async function createOrganizationMembership(
-  organizationId: string,
-  userId: string,
-): Promise<void> {
-  const response = await requestClerk(
-    "create Clerk organization membership",
-    `/organizations/${organizationId}/memberships`,
-    {
-      method: "POST",
-      headers: getClerkHeaders(),
-      body: JSON.stringify({ user_id: userId, role: "org:member" }),
-    },
-  );
-  const data = await readClerkJson(
-    response,
-    "create Clerk organization membership",
-  );
-  if (!hasStringProperty(data, "role") || data.role !== "org:member") {
-    throw new Error(
-      `create Clerk organization membership returned an unexpected role: ${formatClerkResponseSummary(response)}`,
-    );
-  }
-}
-
 async function updateOrganizationMembershipRole(
   organizationId: string,
   userId: string,
