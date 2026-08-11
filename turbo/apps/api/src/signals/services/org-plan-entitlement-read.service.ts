@@ -1,8 +1,9 @@
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { orgPlanEntitlements } from "@vm0/db/schema/org-plan-entitlement";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 
 import type { Db } from "../external/db";
+import { pgBooleanDecoder } from "../../lib/db-structured-result";
 
 type ReadDb = Pick<Db, "select">;
 
@@ -11,6 +12,7 @@ export interface OrgPlanCapabilities {
   readonly baseConcurrencyLimit: number;
   readonly canBuyConcurrency: boolean;
   readonly canBuyCredits: boolean;
+  readonly memberInviteUsagePackRequired: boolean;
   readonly autoRechargeAllowed: boolean;
   readonly supportByok: boolean;
   readonly restrictedVm0Models: boolean;
@@ -26,6 +28,12 @@ const CAPABILITY_SELECTION = {
   baseConcurrencyLimit: orgPlanEntitlements.baseConcurrencyLimit,
   canBuyConcurrency: orgPlanEntitlements.canBuyConcurrency,
   canBuyCredits: orgPlanEntitlements.canBuyCredits,
+  memberInviteUsagePackRequired: sql`
+    COALESCE(
+      (to_jsonb(${orgPlanEntitlements}) ->> 'member_invite_usage_pack_required')::boolean,
+      false
+    )
+  `.mapWith(pgBooleanDecoder),
   autoRechargeAllowed: orgPlanEntitlements.autoRechargeAllowed,
   supportByok: orgPlanEntitlements.supportByok,
   restrictedVm0Models: orgPlanEntitlements.restrictedVm0Models,
@@ -36,6 +44,31 @@ const CAPABILITY_SELECTION = {
   audioDailyRateLimit: orgPlanEntitlements.audioDailyRateLimit,
   audioDailyDurationSeconds: orgPlanEntitlements.audioDailyDurationSeconds,
 } as const;
+
+export async function memberInviteUsagePackEntitlementSchemaAvailable(
+  db: ReadDb,
+): Promise<boolean> {
+  // A new API can deploy before migration 0898 during the DB/API rollout
+  // window. Remove this probe after 0898 is guaranteed across that window.
+  const [state] = await db
+    .select({
+      available: sql`
+        EXISTS (
+          SELECT 1
+          FROM pg_catalog.pg_attribute
+          WHERE attrelid = to_regclass('org_plan_entitlements')
+            AND attname = 'member_invite_usage_pack_required'
+            AND NOT attisdropped
+        )
+      `.mapWith(pgBooleanDecoder),
+    })
+    .from(sql`(SELECT 1) AS schema_probe`)
+    .limit(1);
+  if (!state) {
+    throw new Error("Member invite usage pack schema probe returned no row");
+  }
+  return state.available;
+}
 
 function runtimeStatusForEntitlement(
   status: string,

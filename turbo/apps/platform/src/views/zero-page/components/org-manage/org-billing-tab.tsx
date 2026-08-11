@@ -2217,11 +2217,14 @@ export function OrgBillingTab() {
   );
   const canManageBilling = managementMode !== null;
   const paymentMethodsOnly = managementMode === "payment_methods";
-  const openBillingPortal = () => {
+  const openBillingPortal = (event: React.MouseEvent<HTMLButtonElement>) => {
     if (!managementMode) {
       return;
     }
-    return detach(portal(managementMode, pageSignal), Reason.DomCallback);
+    return detach(
+      portal(managementMode, event.metaKey || event.ctrlKey, pageSignal),
+      Reason.DomCallback,
+    );
   };
 
   if (pricingOpen) {

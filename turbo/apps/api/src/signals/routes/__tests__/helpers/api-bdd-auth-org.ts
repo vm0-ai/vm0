@@ -30,7 +30,7 @@ import {
 import { authContract } from "@vm0/api-contracts/contracts/auth";
 import {
   zeroAgentCustomConnectorsContract,
-  type AgentCustomConnectorResponse,
+  type AgentCustomConnectorGrants,
 } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 import {
   zeroAgentsByIdContract,
@@ -1587,7 +1587,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
     async readAgentCustomConnectors(
       actor: ApiTestUser,
       agentId: string,
-    ): Promise<AgentCustomConnectorResponse> {
+    ): Promise<AgentCustomConnectorGrants> {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
         zeroAgentCustomConnectorsContract,
       );
@@ -1605,7 +1605,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       actor: ApiTestUser,
       agentId: string,
       connectorIds: readonly string[],
-    ): Promise<AgentCustomConnectorResponse> {
+    ): Promise<AgentCustomConnectorGrants> {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
         zeroAgentCustomConnectorsContract,
       );

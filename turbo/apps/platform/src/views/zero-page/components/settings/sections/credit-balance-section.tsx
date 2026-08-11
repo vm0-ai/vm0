@@ -554,30 +554,17 @@ function UsagePackMemberTable({
 
 function UsagePackMemberBalances({
   memberCredits,
+  members,
 }: {
   memberCredits: NonNullable<UsagePackCreditsResponse["memberCredits"]>;
+  members: readonly OrgMember[];
 }) {
-  const membersLoadable = useLoadable(orgMembers$);
-  if (membersLoadable.state === "hasError") {
-    return null;
-  }
-  if (membersLoadable.state === "loading") {
-    return (
-      <div className="space-y-2">
-        <div className="h-9 animate-pulse rounded bg-muted/40" />
-        <div className="h-12 animate-pulse rounded bg-muted/40" />
-        <div className="h-16 animate-pulse rounded bg-muted/40" />
-        <div className="h-16 animate-pulse rounded bg-muted/40" />
-      </div>
-    );
-  }
-
   const creditsByMember = new Map(
     memberCredits.map((credits) => {
       return [credits.memberId, credits] as const;
     }),
   );
-  const rows = membersLoadable.data.map((member) => {
+  const rows = members.map((member) => {
     return {
       member,
       credits:
@@ -598,8 +585,12 @@ function UsagePackMemberBalancesDialog({
   memberCredits: NonNullable<UsagePackCreditsResponse["memberCredits"]>;
 }) {
   const { t } = useTranslation();
+  const membersLoadable = useLoadable(orgMembers$);
   const open = useGet(usagePackMembersDialogOpen$);
   const setOpen = useSet(setUsagePackMembersDialogOpen$);
+  if (membersLoadable.state !== "hasData" || membersLoadable.data.length <= 1) {
+    return null;
+  }
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <TooltipProvider delayDuration={100}>
@@ -649,7 +640,10 @@ function UsagePackMemberBalancesDialog({
           data-testid="usage-pack-members-dialog-scroll-area"
           className="min-h-0 overflow-y-auto px-6 py-5"
         >
-          <UsagePackMemberBalances memberCredits={memberCredits} />
+          <UsagePackMemberBalances
+            memberCredits={memberCredits}
+            members={membersLoadable.data}
+          />
         </div>
       </DialogContent>
     </Dialog>

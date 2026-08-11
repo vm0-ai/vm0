@@ -4448,7 +4448,10 @@
           "action": "Hapus dari ruang kerja",
           "confirmDescription": "{{email}} akan dihapus dari ruang kerja ini dan kehilangan akses ke semua sumber daya.",
           "progress": "Menghapus...",
-          "title": "Hapus anggota?"
+          "title": "Hapus anggota?",
+          "usagePackImpactDescription": "Sisa kredit paket penggunaan mereka akan langsung tidak tersedia. Paket akan dihapus pada akhir periode penagihan saat ini. Jika ruang kerja tidak lagi memiliki paket penggunaan, paket ruang kerja juga akan dibatalkan pada akhir periode penagihan.",
+          "usagePackImpactTitle": "Dampak paket penggunaan",
+          "usagePackRefundDescription": "Pengembalian dana: Bagian kredit yang dibeli tetapi belum digunakan dikembalikan ke metode pembayaran awal. Kredit yang sudah digunakan dan kredit bonus tidak dapat dikembalikan."
         },
         "revoke": {
           "action": "Cabut undangan",
@@ -4470,6 +4473,7 @@
           "progress": "Mengalihkan...",
           "title": "Alihkan ke anggota?"
         },
+        "usagePack": "Paket penggunaan",
         "user": "Pengguna",
         "you": "Anda"
       },

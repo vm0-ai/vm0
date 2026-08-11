@@ -56,7 +56,7 @@ import {
   usagePackUsdForKnownPriceId,
 } from "./zero-billing-checkout.service";
 
-const USAGE_PACK_SUBSCRIPTION_PURPOSE = "usage_pack_subscription";
+export const USAGE_PACK_SUBSCRIPTION_PURPOSE = "usage_pack_subscription";
 const USAGE_PACK_SUBSCRIPTION_ID_METADATA_KEY = "usagePackSubscriptionId";
 
 const CREDITS_PER_DOLLAR = 1000;
@@ -213,6 +213,8 @@ interface PreparedUsagePackAllocationGrant {
   readonly userId: string | null;
   readonly purchasedCredits: number;
   readonly bonusCredits: number;
+  readonly stripeInvoiceLineId: string | null;
+  readonly sourceAmountCents: number;
 }
 
 interface PreparedUsagePackFulfillment {
@@ -227,6 +229,9 @@ interface PreparedUsagePackPriceCredits {
   readonly periodEnd: Date;
   readonly purchasedCredits: number;
   readonly bonusCredits: number;
+  readonly stripeInvoiceLineId: string | null;
+  readonly sourceAmountCents: number;
+  readonly quantity: number;
 }
 
 interface CommitUsagePackFulfillmentArgs {
@@ -1323,6 +1328,9 @@ function prepareUsagePackPriceCredits(
     periodEnd,
     purchasedCredits: Math.floor(catalogItem.purchasedCredits * fraction),
     bonusCredits: Math.floor(catalogItem.bonusCredits * fraction),
+    stripeInvoiceLineId: line.id ?? null,
+    sourceAmountCents: amount,
+    quantity: subscriptionQuantity,
   };
 }
 
@@ -1365,20 +1373,35 @@ function prepareUsagePackAllocationGrants(
   if (!allocations.valid) {
     throw new Error(allocations.reason);
   }
-  return allocations.value.map((allocation) => {
-    const credits = creditsByPriceId.get(allocation.stripePriceId);
-    if (!credits) {
-      throw new Error(
-        `Allocation ${allocation.id} has no matching invoice line`,
+  const sourceIndexes = new Map<string, number>();
+  return [...allocations.value]
+    .sort((left, right) => {
+      return left.id.localeCompare(right.id);
+    })
+    .map((allocation) => {
+      const credits = creditsByPriceId.get(allocation.stripePriceId);
+      if (!credits) {
+        throw new Error(
+          `Allocation ${allocation.id} has no matching invoice line`,
+        );
+      }
+      const sourceIndex = sourceIndexes.get(allocation.stripePriceId) ?? 0;
+      sourceIndexes.set(allocation.stripePriceId, sourceIndex + 1);
+      const baseSourceAmount = Math.floor(
+        credits.sourceAmountCents / credits.quantity,
       );
-    }
-    return {
-      allocationId: allocation.id,
-      userId: allocation.userId,
-      purchasedCredits: credits.purchasedCredits,
-      bonusCredits: credits.bonusCredits,
-    };
-  });
+      const sourceRemainder = credits.sourceAmountCents % credits.quantity;
+      const sourceAmountCents =
+        baseSourceAmount + (sourceIndex < sourceRemainder ? 1 : 0);
+      return {
+        allocationId: allocation.id,
+        userId: allocation.userId,
+        purchasedCredits: credits.purchasedCredits,
+        bonusCredits: credits.bonusCredits,
+        stripeInvoiceLineId: credits.stripeInvoiceLineId,
+        sourceAmountCents,
+      };
+    });
 }
 
 async function prepareUsagePackFulfillment(
@@ -1523,6 +1546,12 @@ async function createUsagePackMemberGrants(
         ),
         amount: allocation.purchasedCredits,
         expiresAt: args.fulfillment.periodEnd,
+        refundSource: {
+          type: "invoice",
+          invoiceId: args.invoice.id,
+          invoiceLineId: allocation.stripeInvoiceLineId,
+          amountCents: allocation.sourceAmountCents,
+        },
       });
     }
     if (allocation.bonusCredits > 0) {
@@ -1608,6 +1637,7 @@ async function persistUsagePackPlanState(
     currentPeriodEnd: args.periodEnd,
     cancelAt,
     expiresAt: cancelAt,
+    memberInviteUsagePackRequired: true,
     sourceMetadata: args.stripeSubscription.metadata ?? {},
   });
 }

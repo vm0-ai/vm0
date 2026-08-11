@@ -21,6 +21,7 @@ interface OrgPlanEntitlementFixtureState {
   readonly baseConcurrencyLimit: number;
   readonly canBuyConcurrency: boolean;
   readonly canBuyCredits: boolean;
+  readonly memberInviteUsagePackRequired: boolean;
   readonly autoRechargeAllowed: boolean;
   readonly supportByok: boolean;
   readonly restrictedVm0Models: boolean;
@@ -43,6 +44,7 @@ export async function upsertOrgPlanEntitlementFixture(values: {
   readonly baseConcurrencyLimit?: number;
   readonly canBuyConcurrency?: boolean;
   readonly canBuyCredits?: boolean;
+  readonly memberInviteUsagePackRequired?: boolean;
   readonly autoRechargeAllowed?: boolean;
   readonly supportByok?: boolean;
   readonly restrictedVm0Models?: boolean;
@@ -58,6 +60,7 @@ export async function upsertOrgPlanEntitlementFixture(values: {
     baseConcurrencyLimit: values.baseConcurrencyLimit ?? 0,
     canBuyConcurrency: values.canBuyConcurrency,
     canBuyCredits: values.canBuyCredits,
+    memberInviteUsagePackRequired: values.memberInviteUsagePackRequired,
     autoRechargeAllowed: values.autoRechargeAllowed,
     supportByok: values.supportByok,
     restrictedVm0Models: values.restrictedVm0Models,
@@ -82,6 +85,11 @@ export async function upsertOrgPlanEntitlementFixture(values: {
         ...(row.canBuyCredits === undefined
           ? {}
           : { canBuyCredits: row.canBuyCredits }),
+        ...(row.memberInviteUsagePackRequired === undefined
+          ? {}
+          : {
+              memberInviteUsagePackRequired: row.memberInviteUsagePackRequired,
+            }),
         ...(row.autoRechargeAllowed === undefined
           ? {}
           : { autoRechargeAllowed: row.autoRechargeAllowed }),
@@ -144,6 +152,8 @@ export async function readOrgPlanEntitlementFixture(
       baseConcurrencyLimit: orgPlanEntitlements.baseConcurrencyLimit,
       canBuyConcurrency: orgPlanEntitlements.canBuyConcurrency,
       canBuyCredits: orgPlanEntitlements.canBuyCredits,
+      memberInviteUsagePackRequired:
+        orgPlanEntitlements.memberInviteUsagePackRequired,
       autoRechargeAllowed: orgPlanEntitlements.autoRechargeAllowed,
       supportByok: orgPlanEntitlements.supportByok,
       restrictedVm0Models: orgPlanEntitlements.restrictedVm0Models,

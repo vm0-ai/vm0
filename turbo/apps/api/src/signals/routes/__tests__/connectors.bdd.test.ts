@@ -1979,24 +1979,9 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       connected: false,
       missingRequiredFields: ["oauth"],
     });
-    const durableGrant =
-      await connectorsApi.requestLegacyAgentCustomConnectorIdsUpdate(
-        member,
-        agent.agentId,
-        [created.id],
-        [200],
-        "add",
-      );
-    expect(durableGrant.body).toMatchObject({
-      enabledIds: expect.arrayContaining([created.id]),
-    });
-    if ("error" in durableGrant.body) {
-      throw new Error("Expected a durable custom connector grant");
-    }
-    expect(durableGrant.body.grants).toContainEqual({
-      customConnectorId: created.id,
-      permissionNames: ["chat:write"],
-    });
+    await expect(
+      connectorsApi.readAgentCustomConnectorGrants(member, agent.agentId),
+    ).resolves.toContainEqual(expectedGrant);
     await expect(
       connectorsApi.readAgentCustomConnectors(member, agent.agentId),
     ).resolves.toContain(created.id);

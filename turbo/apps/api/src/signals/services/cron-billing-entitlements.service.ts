@@ -33,7 +33,11 @@ import {
   knownPlanPriceItem,
   tierFromPriceId,
 } from "./zero-billing-checkout.service";
-import { reconcileUsagePackSubscriptions } from "./usage-pack-subscription.service";
+import {
+  reconcileUsagePackSubscriptions,
+  USAGE_PACK_SUBSCRIPTION_PURPOSE,
+} from "./usage-pack-subscription.service";
+import { reconcileUsagePackCreditRefunds } from "./usage-pack-credit-refund.service";
 import { reconcileUsagePackInvitationPurchases } from "./usage-pack-invitation-purchase.service";
 import { disableIneligibleWorkflowWebhookAutomationsForOrg } from "./workflow-webhook-automation-entitlement.service";
 import type { Tx } from "../../lib/db-types";
@@ -263,6 +267,9 @@ async function upsertStripeSubscriptionPlanSnapshot(
     currentPeriodEnd: scheduledEnd,
     cancelAt,
     expiresAt: cancelAt,
+    memberInviteUsagePackRequired:
+      (args.tier === "pro" || args.tier === "team") &&
+      args.subscription.metadata?.purpose === USAGE_PACK_SUBSCRIPTION_PURPOSE,
     sourceMetadata: args.subscription.metadata ?? {},
   });
 }
@@ -1001,6 +1008,8 @@ export const reconcileBillingEntitlements$ = command(
       signal,
     );
     signal.throwIfAborted();
+    await reconcileUsagePackCreditRefunds(db, signal);
+    signal.throwIfAborted();
     const invitationPurchasesReconciled =
       await reconcileUsagePackInvitationPurchases(db, get(clerk$), signal);
     signal.throwIfAborted();
@@ -1112,7 +1121,6 @@ export const reconcileBillingEntitlements$ = command(
         count: invitationPurchasesReconciled,
       });
     }
-
     return { downgraded: downgraded.length };
   },
 );

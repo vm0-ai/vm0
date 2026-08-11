@@ -4500,7 +4500,10 @@
           "action": "Rimuovere dall'area di lavoro",
           "confirmDescription": "{{email}} verrà rimosso da quest'area di lavoro e perderà l'accesso a tutte le risorse.",
           "progress": "Rimozione...",
-          "title": "Rimuovere il membro?"
+          "title": "Rimuovere il membro?",
+          "usagePackImpactDescription": "I crediti rimanenti del suo pacchetto di utilizzo diventeranno immediatamente non disponibili. Il pacchetto verrà rimosso alla fine del periodo di fatturazione corrente. Se l'area di lavoro rimane senza pacchetti di utilizzo, anche il piano dell'area di lavoro verrà annullato alla fine del periodo di fatturazione.",
+          "usagePackImpactTitle": "Impatto sul pacchetto di utilizzo",
+          "usagePackRefundDescription": "Rimborso: la parte non utilizzata dei crediti acquistati viene restituita al metodo di pagamento originale. I crediti consumati e i crediti bonus non sono rimborsabili."
         },
         "revoke": {
           "action": "Revoca l'invito",
@@ -4522,6 +4525,7 @@
           "progress": "Commutazione...",
           "title": "Passare a membro?"
         },
+        "usagePack": "Pacchetto di utilizzo",
         "user": "Utente",
         "you": "Tu"
       },
