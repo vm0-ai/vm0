@@ -2699,21 +2699,55 @@ jobs:
             headers+=(-H "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}")
           fi
 
-          payload=$(jq -nc '{
-            policies: [
-              {model: "gpt-5.6-luna", isDefault: true, defaultProviderType: "vm0", credentialScope: "org", modelProviderId: null}
-            ]
-          }')
+          provider_payload=$(jq -nc \
+            --arg secret "$OPENAI_API_KEY" \
+            '{type: "openai-api-key", secret: $secret}')
+          provider_response=$(curl -fsS "${headers[@]}" \
+            -X POST \
+            -d "$provider_payload" \
+            "${api_url}/api/zero/model-providers")
+          provider_id=$(jq -er '.provider.id | select(type == "string" and length > 0)' \
+            <<< "$provider_response")
+
+          policies=$(curl -fsS "${headers[@]}" "${api_url}/api/zero/model-policies")
+          jq -e '
+            any(.policies[]?;
+              .model == "gpt-5.6-sol" and
+              .defaultProviderType == "vm0" and
+              .credentialScope == "org" and
+              .modelProviderId == null
+            )
+          ' <<< "$policies" >/dev/null
+          policy_payload=$(jq -c --arg providerId "$provider_id" '
+            {
+              policies: (
+                [.policies[] |
+                  select(.model != "gpt-5.6-luna") |
+                  {
+                    model,
+                    isDefault,
+                    defaultProviderType,
+                    credentialScope,
+                    modelProviderId
+                  }
+                ] + [
+                  {
+                    model: "gpt-5.6-luna",
+                    isDefault: false,
+                    defaultProviderType: "openai-api-key",
+                    credentialScope: "org",
+                    modelProviderId: $providerId
+                  }
+                ]
+              )
+            }
+          ' <<< "$policies")
           curl -fsS "${headers[@]}" \
             -X PUT \
-            -d "$payload" \
+            -d "$policy_payload" \
             "${api_url}/api/zero/model-policies" \
             >/dev/null
-          curl -fsS "${headers[@]}" \
-            -X PUT \
-            -d '{"selectedModel":"gpt-5.6-luna","serviceTier":null}' \
-            "${api_url}/api/zero/user-model-preference" \
-            >/dev/null
+
           curl -fsS "${headers[@]}" \
             -X POST \
             -d '{"switches":{"realAgentInPreview":true}}' \
@@ -2721,6 +2755,7 @@ jobs:
             | jq -e '.effectiveSwitches.realAgentInPreview == true' \
             >/dev/null
         env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
       - name: Bootstrap real Claude account
         shell: bash
@@ -2750,7 +2785,7 @@ jobs:
             {
               policies: (
                 [.policies[] |
-                  select(.model != "claude-sonnet-5") |
+                  select(.model != "claude-sonnet-4-6") |
                   {
                     model,
                     isDefault,
@@ -2760,7 +2795,7 @@ jobs:
                   }
                 ] + [
                   {
-                    model: "claude-sonnet-5",
+                    model: "claude-sonnet-4-6",
                     isDefault: false,
                     defaultProviderType: "anthropic-api-key",
                     credentialScope: "org",

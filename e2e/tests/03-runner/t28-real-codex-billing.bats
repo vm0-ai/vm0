@@ -31,8 +31,11 @@ teardown() {
     echo "$output"
     assert_success
 
+    # The same dedicated Codex organization uses gpt-5.6-luna for BYOK steer
+    # coverage. Its independent gpt-5.6-sol policy remains vm0-managed, so the
+    # two real-agent shards can run concurrently without changing org state.
     local prompt="Briefly confirm that the real Codex runner is responding."
-    run runner_chat_send "$AGENT_ID" "$prompt" "" "gpt-5.6-luna"
+    run runner_chat_send "$AGENT_ID" "$prompt" "" "gpt-5.6-sol"
     echo "$output"
     assert_success
     RUN_ID=$(jq -er '.runId | select(type == "string" and length > 0)' <<<"$output")
@@ -52,7 +55,7 @@ teardown() {
     echo "$output"
     assert_success
 
-    run _wait_for_runner_codex_events "$RUN_ID" 60
+    run _wait_for_runner_codex_events "$RUN_ID" "" 60
     echo "$output"
     assert_success
     local agent_events="$output"
@@ -99,11 +102,11 @@ teardown() {
     run runner_e2e_wait_for_usage_event \
         "$THREAD_ID" \
         "$RUN_ID" \
-        "gpt-5.6-luna"
+        "gpt-5.6-sol"
     echo "$output"
     assert_success
 
-    run runner_e2e_wait_for_usage_record "$THREAD_ID" "gpt-5.6-luna"
+    run runner_e2e_wait_for_usage_record "$THREAD_ID" "gpt-5.6-sol"
     echo "$output"
     assert_success
     local usage_record="$output"
@@ -115,7 +118,7 @@ teardown() {
             any(.breakdown[]?;
                 .kind == "model" and
                 any(.providers[]?;
-                    .provider == "gpt-5.6-luna" and .credits > 0
+                    .provider == "gpt-5.6-sol" and .credits > 0
                 )
             )
         )
