@@ -7390,44 +7390,46 @@ function ComposerFastModeButton({
   const impact = t(($) => {
     return $.settings.models.picker.fastImpact;
   });
-  const enabledLabel = t(($) => {
-    return $.chat.run.fastModeOn;
-  });
   return (
-    <TooltipProvider delayDuration={300}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            type="button"
-            variant="quiet"
-            size="icon-sm"
-            className={cn(
-              "shrink-0",
-              COMPOSER_CONTROL_ICON_CLASS,
-              active &&
-                "bg-amber-500/10 text-amber-600 hover:bg-amber-500/15 hover:text-amber-700 dark:text-amber-300 dark:hover:text-amber-200",
-            )}
-            aria-label={label}
-            aria-pressed={active}
-            disabled={disabled}
-            onClick={() => {
-              onChange({
-                selectedModel: value.selectedModel,
-                ...(active ? {} : { codexServiceTier: "fast" }),
-              });
-              if (!active) {
-                toast.success(enabledLabel, { description: impact });
-              }
-            }}
-          >
-            <Zap fill={active ? "currentColor" : "none"} aria-hidden="true" />
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="top" className="text-xs">
-          {label} · {impact}
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+    <Popover>
+      <PopoverTrigger asChild openOnHover delay={300} closeDelay={120}>
+        <Button
+          type="button"
+          variant="quiet"
+          size="icon-sm"
+          className={cn(
+            "shrink-0",
+            COMPOSER_CONTROL_ICON_CLASS,
+            active &&
+              "bg-amber-500/10 text-amber-600 hover:bg-amber-500/15 hover:text-amber-700 dark:text-amber-300 dark:hover:text-amber-200",
+          )}
+          aria-label={label}
+          aria-pressed={active}
+          disabled={disabled}
+          onClick={() => {
+            onChange({
+              selectedModel: value.selectedModel,
+              ...(active ? {} : { codexServiceTier: "fast" }),
+            });
+          }}
+        >
+          <Zap fill={active ? "currentColor" : "none"} aria-hidden="true" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent side="top" align="center" className="w-72 p-3">
+        <div className="flex items-center gap-2.5">
+          <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-300">
+            <Zap size={16} fill="currentColor" aria-hidden="true" />
+          </span>
+          <div className="min-w-0">
+            <p className="text-sm font-medium">{label}</p>
+            <p className="text-xs leading-relaxed text-muted-foreground">
+              {impact}
+            </p>
+          </div>
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 

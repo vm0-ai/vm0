@@ -599,7 +599,7 @@ describe("chat composer models", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("shows Fast impact and sends the tier from the composer button", async () => {
+  it("opens the Fast impact popover on hover and click, then sends the tier", async () => {
     const user = userEvent.setup({ delay: null });
     let sentBody:
       | {
@@ -640,23 +640,28 @@ describe("chat composer models", () => {
     });
 
     const fastModeButton = await findFastModeButton();
+    await user.hover(fastModeButton);
+    let fastModePopover = await screen.findByRole("dialog");
+    expect(within(fastModePopover).getByText("Fast")).toBeInTheDocument();
+    expect(
+      within(fastModePopover).getByText("1.5× model speed · 2.5× credit usage"),
+    ).toBeInTheDocument();
+
+    await user.unhover(fastModeButton);
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
     await user.click(fastModeButton);
     await waitFor(() => {
       expect(fastModeButton).toHaveAttribute("aria-pressed", "true");
     });
-    await expect(
-      screen.findByText("Fast mode on"),
-    ).resolves.toBeInTheDocument();
-    await expect(
-      screen.findByText("1.5× model speed · 2.5× credit usage"),
-    ).resolves.toBeInTheDocument();
-
-    await user.unhover(fastModeButton);
-    await user.hover(fastModeButton);
-    await expect(
-      screen.findByText("Fast · 1.5× model speed · 2.5× credit usage"),
-    ).resolves.toBeInTheDocument();
-    await user.unhover(fastModeButton);
+    fastModePopover = await screen.findByRole("dialog");
+    expect(within(fastModePopover).getByText("Fast")).toBeInTheDocument();
+    expect(
+      within(fastModePopover).getByText("1.5× model speed · 2.5× credit usage"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Fast mode on")).not.toBeInTheDocument();
 
     await sendMessageInUI(
       user,
@@ -714,24 +719,32 @@ describe("chat composer models", () => {
 
     const fastModeButton = await findFastModeButton("Rápido");
     expect(fastModeButton).toHaveAttribute("aria-pressed", "false");
+    await user.hover(fastModeButton);
+    let fastModePopover = await screen.findByRole("dialog");
+    expect(within(fastModePopover).getByText("Rápido")).toBeInTheDocument();
+    expect(
+      within(fastModePopover).getByText(
+        "Velocidade do modelo 1,5× · uso de créditos 2,5×",
+      ),
+    ).toBeInTheDocument();
+
+    await user.unhover(fastModeButton);
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+
     await user.click(fastModeButton);
     await waitFor(() => {
       expect(fastModeButton).toHaveAttribute("aria-pressed", "true");
     });
-    await expect(
-      screen.findByText("Modo rápido ativado"),
-    ).resolves.toBeInTheDocument();
-    await expect(
-      screen.findByText("Velocidade do modelo 1,5× · uso de créditos 2,5×"),
-    ).resolves.toBeInTheDocument();
-
-    await user.unhover(fastModeButton);
-    await user.hover(fastModeButton);
-    await expect(
-      screen.findByText(
-        "Rápido · Velocidade do modelo 1,5× · uso de créditos 2,5×",
+    fastModePopover = await screen.findByRole("dialog");
+    expect(within(fastModePopover).getByText("Rápido")).toBeInTheDocument();
+    expect(
+      within(fastModePopover).getByText(
+        "Velocidade do modelo 1,5× · uso de créditos 2,5×",
       ),
-    ).resolves.toBeInTheDocument();
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Modo rápido ativado")).not.toBeInTheDocument();
 
     await user.unhover(fastModeButton);
     await user.click(await findComposerModel("GPT 5.6 Sol"));
