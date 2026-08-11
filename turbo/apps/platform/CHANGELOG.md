@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.724.3](https://github.com/vm0-ai/vm0/compare/app-v0.724.2...app-v0.724.3) (2026-08-11)
+
+
+### Bug Fixes
+
+* **chat:** load every attachment preview from a presigned url ([#26275](https://github.com/vm0-ai/vm0/issues/26275)) ([ace447c](https://github.com/vm0-ai/vm0/commit/ace447c68162104c6cbce047e6b6d08b09aebd5b))
+
+
+### Refactoring
+
+* **connectors:** remove legacy grant compatibility ([#26325](https://github.com/vm0-ai/vm0/issues/26325)) ([4133700](https://github.com/vm0-ai/vm0/commit/41337005f2f8a23dc065d2919f0cb0e1ef5f2fd7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.313.0
+    * @vm0/core bumped to 8.543.0
+
 ## [0.724.2](https://github.com/vm0-ai/vm0/compare/app-v0.724.1...app-v0.724.2) (2026-08-11)
 
 
