@@ -1635,7 +1635,8 @@
       "openNamedAgent": "에이전트 {{name}} 열기",
       "openNamedChat": "채팅 {{title}} 열기",
       "scrollToBottom": "맨 아래로 스크롤",
-      "searchEmoji": "이모지 검색"
+      "searchEmoji": "이모지 검색",
+      "steerMessageExplanation": "에이전트가 작업하는 동안 동작을 조정하기 위해 보낸 메시지입니다"
     },
     "threadSidebar": {
       "resize": "사이드바 크기 조절"

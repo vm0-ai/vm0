@@ -1,4 +1,5 @@
 import { screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { i18n } from "../../../i18n/index.ts";
@@ -142,4 +143,28 @@ describe("chat run actions", () => {
       ).toStrictEqual(actionBars);
     },
   );
+
+  it("explains a steer message when its indicator is hovered", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      activeRunIds: [RUN_ID],
+      chatEvents: [
+        transcriptEvent("U1", 0, []),
+        transcriptEvent("U2", 1, ["U2"]),
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    const indicator = await screen.findByTestId("chat-steer-indicator");
+    await user.hover(indicator);
+
+    await expect(screen.findByRole("tooltip")).resolves.toHaveTextContent(
+      "Sent while the agent was working to direct its behavior",
+    );
+  });
 });

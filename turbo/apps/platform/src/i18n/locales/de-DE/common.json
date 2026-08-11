@@ -1636,7 +1636,8 @@
       "openNamedAgent": "Agent {{name}} öffnen",
       "openNamedChat": "Chat {{title}} öffnen",
       "scrollToBottom": "Nach unten scrollen",
-      "searchEmoji": "Emoji suchen"
+      "searchEmoji": "Emoji suchen",
+      "steerMessageExplanation": "Gesendet, während der Agent arbeitete, um sein Verhalten zu steuern"
     },
     "threadSidebar": {
       "resize": "Größe der Seitenleiste ändern"

@@ -1636,7 +1636,8 @@
       "openNamedAgent": "Open agent {{name}}",
       "openNamedChat": "Open chat {{title}}",
       "scrollToBottom": "Scroll to bottom",
-      "searchEmoji": "Search emoji"
+      "searchEmoji": "Search emoji",
+      "steerMessageExplanation": "Sent while the agent was working to direct its behavior"
     },
     "threadSidebar": {
       "resize": "Resize sidebar"

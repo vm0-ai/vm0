@@ -8123,14 +8123,27 @@ function isElevatedUserMessagePart(
 }
 
 function SteerMessageIndicator() {
+  const { t } = useTranslation();
+  const explanation = t(($) => {
+    return $.chat.thread.steerMessageExplanation;
+  });
+
   return (
-    <span
-      data-testid="chat-steer-indicator"
-      aria-hidden
-      className="flex h-7 w-5 shrink-0 items-center justify-center text-muted-foreground"
-    >
-      <CornerLeftUp size={14} strokeWidth={1.8} />
-    </span>
+    <TooltipProvider delayDuration={300}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span
+            data-testid="chat-steer-indicator"
+            role="img"
+            aria-label={explanation}
+            className="flex h-7 w-5 shrink-0 cursor-help items-center justify-center text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <CornerLeftUp size={14} strokeWidth={1.8} />
+          </span>
+        </TooltipTrigger>
+        <TooltipContent side="top">{explanation}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }
 

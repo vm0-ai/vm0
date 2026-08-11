@@ -1676,7 +1676,8 @@
       "openNamedAgent": "Apri agente {{name}}",
       "openNamedChat": "Apri la chat {{title}}",
       "scrollToBottom": "Scorri fino in fondo",
-      "searchEmoji": "Cerca emoji"
+      "searchEmoji": "Cerca emoji",
+      "steerMessageExplanation": "Inviato mentre l'agente lavorava per orientarne il comportamento"
     },
     "threadSidebar": {
       "resize": "Ridimensiona la barra laterale"
