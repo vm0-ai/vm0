@@ -3481,6 +3481,80 @@ describe("connectors page", () => {
     ).toBeInTheDocument();
   });
 
+  it("initializes query-only custom connector edits from canonical fields", async () => {
+    const connector = customConnector({
+      headerInjections: [],
+      queryInjections: [
+        {
+          name: "api_key",
+          valueTemplate: "{{secrets.secret}}",
+        },
+      ],
+    });
+    context.mocks.data.org({
+      id: "org_1",
+      name: "Test Org",
+      role: "admin",
+    });
+    context.mocks.data.team([]);
+    context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
+      return respond(200, { connectors: [connector] });
+    });
+    const updatedBodies: UpdateCustomConnectorBody[] = [];
+    context.mocks.api(
+      zeroCustomConnectorByIdContract.update,
+      ({ body, respond }) => {
+        if (body.kind === "mcp") {
+          throw new Error("Expected an HTTP custom connector update");
+        }
+        updatedBodies.push(body);
+        return respond(200, {
+          ...connector,
+          displayName: body.displayName,
+          prefixTemplates: body.prefixTemplates,
+          fields: body.fields,
+          headerInjections: body.headerInjections,
+          queryInjections: body.queryInjections,
+          storageVersion: body.storageVersion ?? connector.storageVersion,
+        });
+      },
+    );
+
+    detachedSetupPage({ context, path: "/connectors?tab=custom" });
+
+    await screen.findByText(connector.displayName);
+    click(screen.getByLabelText("More options"));
+    click(await screen.findByText("Edit"));
+    const editDialog = await screen.findByRole("dialog", {
+      name: "Edit custom connector",
+    });
+
+    expect(within(editDialog).getByLabelText("Display name")).toHaveValue(
+      connector.displayName,
+    );
+    expect(within(editDialog).getByLabelText(/Prefixes/u)).toHaveValue(
+      "https://api.acme.test/v1/",
+    );
+    expect(
+      within(editDialog).getByText(
+        "Advanced API fields and injections are preserved when you save.",
+      ),
+    ).toBeInTheDocument();
+
+    click(buttonByText("Save", editDialog));
+    await waitFor(() => {
+      expect(updatedBodies).toHaveLength(1);
+    });
+    expect(updatedBodies).toStrictEqual([
+      expect.objectContaining({
+        prefixTemplates: connector.prefixTemplates,
+        fields: connector.fields,
+        headerInjections: [],
+        queryInjections: connector.queryInjections,
+      }),
+    ]);
+  });
+
   it("keeps a disconnected custom connector manageable without loading agent access", async () => {
     const researchAgentId = "c0000000-0000-4000-a000-000000000031";
     const supportAgentId = "c0000000-0000-4000-a000-000000000032";

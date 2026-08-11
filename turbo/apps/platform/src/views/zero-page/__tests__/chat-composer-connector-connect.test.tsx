@@ -287,6 +287,10 @@ describe("chat composer connector connection", () => {
     });
 
     const dialog = await openAddConnectorsDialog(user);
+    await user.type(
+      within(dialog).getByPlaceholderText(/Find connectors/u),
+      "API.ACME.TEST",
+    );
     await user.click(
       within(dialog).getByLabelText(`Connect ${connector.displayName}`),
     );
