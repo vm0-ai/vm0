@@ -392,8 +392,16 @@ export async function ensureOrgModelPolicies(
     return sortRowsByCatalog(existing);
   }
 
+  // A retired default can be the only persisted policy while the new API is
+  // deployed ahead of the Stage 2 migration. Transfer the org-wide default
+  // slot before inserting the rest of the active seed so the hidden row does
+  // not collide with the partial unique default index.
+  await setDefaultModelPolicy(db, orgId, userId, seedDefaultModel, {
+    resetRouteToBuiltIn: true,
+  });
+  const initialized = await loadRows(db, orgId);
   const existingModels = new Set(
-    existing.map((policy) => {
+    initialized.map((policy) => {
       return policy.model;
     }),
   );
@@ -411,7 +419,7 @@ export async function ensureOrgModelPolicies(
     });
 
   if (missing.length === 0) {
-    return existing;
+    return sortRowsByCatalog(initialized);
   }
 
   await db
