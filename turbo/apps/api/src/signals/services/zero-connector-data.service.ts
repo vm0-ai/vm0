@@ -60,7 +60,6 @@ import {
 import { publishBuiltinConnectorInvalidationAfterCommit } from "./connector-client-invalidation.service";
 import {
   deleteConnectorCredentialStorageConnection,
-  deleteConnectorOwnedCredentialRows,
   upsertConnectorOwnedSecret,
   upsertConnectorOwnedVariable,
 } from "./connector-credential-storage-write.service";
@@ -816,70 +815,6 @@ export const deleteZeroConnectorLocalState$ = command(
   },
 );
 
-async function upsertLocalConnectorRow(
-  db: Db,
-  args: {
-    readonly orgId: string;
-    readonly userId: string;
-    readonly connectorSlug: string;
-    readonly authMethod: string;
-    readonly storageVersion: number;
-  },
-): Promise<StoredConnectorRow> {
-  const [row] = await db
-    .insert(connectors)
-    .values({
-      orgId: args.orgId,
-      userId: args.userId,
-      connectorSlug: args.connectorSlug,
-      authMethod: args.authMethod,
-      storageVersion: args.storageVersion,
-      externalId: null,
-      externalUsername: null,
-      externalEmail: null,
-      oauthScopes: null,
-      tokenExpiresAt: null,
-      needsReconnect: false,
-      reconnectReason: null,
-    })
-    .onConflictDoUpdate({
-      target: [connectors.orgId, connectors.userId, connectors.connectorSlug],
-      targetWhere: isNotNull(connectors.connectorSlug),
-      set: {
-        authMethod: args.authMethod,
-        storageVersion: args.storageVersion,
-        externalId: null,
-        externalUsername: null,
-        externalEmail: null,
-        oauthScopes: null,
-        tokenExpiresAt: null,
-        needsReconnect: false,
-        reconnectReason: null,
-        updatedAt: sql`clock_timestamp()`,
-      },
-    })
-    .returning({
-      id: connectors.id,
-      authMethod: connectors.authMethod,
-      externalId: connectors.externalId,
-      externalUsername: connectors.externalUsername,
-      externalEmail: connectors.externalEmail,
-      oauthScopes: connectors.oauthScopes,
-      needsReconnect: connectors.needsReconnect,
-      reconnectReason: connectors.reconnectReason,
-      storageVersion: connectors.storageVersion,
-      tokenExpiresAt: connectors.tokenExpiresAt,
-      createdAt: connectors.createdAt,
-      updatedAt: connectors.updatedAt,
-    });
-
-  if (!row) {
-    throw new Error("Failed to upsert local connector");
-  }
-
-  return row;
-}
-
 async function deleteUserSecretNames(
   db: Db,
   args: {
@@ -928,7 +863,7 @@ async function deleteVariableNames(
   }
 }
 
-async function cleanupExistingStoredConnectorForLocalConnect(
+async function loadPendingConnectorTokenRevokeForLocalConnect(
   db: Db,
   args: {
     readonly orgId: string;
@@ -985,14 +920,6 @@ async function cleanupExistingStoredConnectorForLocalConnect(
       signal,
     );
   }
-
-  await deleteConnectorOwnedCredentialRows(
-    db,
-    {
-      connectorId: existing.id,
-    },
-    signal,
-  );
 
   return pendingTokenRevoke;
 }
@@ -1084,7 +1011,7 @@ export const connectManualGrantConnector$ = command(
       });
       signal.throwIfAborted();
 
-      pendingTokenRevoke = await cleanupExistingStoredConnectorForLocalConnect(
+      pendingTokenRevoke = await loadPendingConnectorTokenRevokeForLocalConnect(
         tx,
         {
           orgId: args.orgId,
@@ -1096,24 +1023,33 @@ export const connectManualGrantConnector$ = command(
         signal,
       );
 
-      connectorRow = await upsertLocalConnectorRow(tx, {
-        orgId: args.orgId,
-        userId: args.userId,
-        connectorSlug: args.runtimeMethod.connectorSlug,
-        authMethod: args.runtimeMethod.authMethodId,
-        storageVersion: args.runtimeMethod.method.storage.version,
-      });
-      signal.throwIfAborted();
-
-      await writeManualGrantCredentials(
+      connectorRow = await replaceConnectorConnection(
         tx,
         {
-          connectorId: connectorRow.id,
-          encryptedSecrets,
-          method: args.runtimeMethod.method,
           orgId: args.orgId,
           userId: args.userId,
-          variableValues: preparedResult.prepared.variableValues,
+          authMethod: args.runtimeMethod.authMethodId,
+          storageVersion: args.runtimeMethod.method.storage.version,
+          tokenExpiresAt: null,
+          target: {
+            kind: "builtin",
+            connectorSlug: args.runtimeMethod.connectorSlug,
+            identity: { kind: "local" },
+          },
+          writeCredentials: async ({ db, connectorId }, writeSignal) => {
+            await writeManualGrantCredentials(
+              db,
+              {
+                connectorId,
+                encryptedSecrets,
+                method: args.runtimeMethod.method,
+                orgId: args.orgId,
+                userId: args.userId,
+                variableValues: preparedResult.prepared.variableValues,
+              },
+              writeSignal,
+            );
+          },
         },
         signal,
       );
@@ -1196,7 +1132,7 @@ export const connectNoAuthConnector$ = command(
       });
       signal.throwIfAborted();
 
-      pendingTokenRevoke = await cleanupExistingStoredConnectorForLocalConnect(
+      pendingTokenRevoke = await loadPendingConnectorTokenRevokeForLocalConnect(
         tx,
         {
           orgId: args.orgId,
@@ -1208,14 +1144,25 @@ export const connectNoAuthConnector$ = command(
         signal,
       );
 
-      connectorRow = await upsertLocalConnectorRow(tx, {
-        orgId: args.orgId,
-        userId: args.userId,
-        connectorSlug: args.runtimeMethod.connectorSlug,
-        authMethod: args.runtimeMethod.authMethodId,
-        storageVersion: args.runtimeMethod.method.storage.version,
-      });
-      signal.throwIfAborted();
+      connectorRow = await replaceConnectorConnection(
+        tx,
+        {
+          orgId: args.orgId,
+          userId: args.userId,
+          authMethod: args.runtimeMethod.authMethodId,
+          storageVersion: args.runtimeMethod.method.storage.version,
+          tokenExpiresAt: null,
+          target: {
+            kind: "builtin",
+            connectorSlug: args.runtimeMethod.connectorSlug,
+            identity: { kind: "local" },
+          },
+          writeCredentials: () => {
+            return Promise.resolve();
+          },
+        },
+        signal,
+      );
     });
     if (signal.aborted) {
       postCommitAbort ??= signal.reason;
@@ -1759,10 +1706,13 @@ async function commitConnectorTokenConnection(
       target: {
         kind: "builtin",
         connectorSlug: args.runtimeMethod.connectorSlug,
-        externalId: args.userInfo.id,
-        externalUsername: args.userInfo.username,
-        externalEmail: args.userInfo.email,
-        oauthScopes: args.oauthScopes,
+        identity: {
+          kind: "external",
+          externalId: args.userInfo.id,
+          externalUsername: args.userInfo.username,
+          externalEmail: args.userInfo.email,
+          oauthScopes: args.oauthScopes,
+        },
       },
       writeCredentials: async ({ db, connectorId }, writeSignal) => {
         await upsertPreparedConnectorTokenState(
