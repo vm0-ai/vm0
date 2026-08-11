@@ -879,6 +879,7 @@
       "today": "Hoy"
     },
     "downgrade": {
+      "cancelAddOnsWarning": "Todas las suscripciones de complementos, incluidas las de concurrencia y los paquetes de uso, se cancelarán cuando finalice tu plan. El tiempo de suscripción prepagado no utilizado se reembolsará proporcionalmente.",
       "cancelSubscription": "Cancelar suscripción",
       "chooseTarget": "Elige a qué plan inferior quieres cambiar.",
       "confirmProCancellation": "¿Estás seguro de que quieres cancelar tu plan Pro?",

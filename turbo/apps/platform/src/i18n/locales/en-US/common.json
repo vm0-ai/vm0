@@ -858,6 +858,7 @@
       "today": "Today"
     },
     "downgrade": {
+      "cancelAddOnsWarning": "All add-on subscriptions, including concurrency and usage packs, will be canceled when your plan ends. Unused prepaid subscription time will be refunded proportionally.",
       "cancelSubscription": "Cancel subscription",
       "chooseTarget": "Choose which plan to downgrade to.",
       "confirmProCancellation": "Are you sure you want to cancel your Pro plan?",

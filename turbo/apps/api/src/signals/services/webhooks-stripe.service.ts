@@ -3,6 +3,7 @@ import { creditExpiresRecord } from "@okouai/db/schema/credit-expires-record";
 import { orgConcurrencyEntitlements } from "@okouai/db/schema/org-concurrency-entitlement";
 import { orgConcurrencySubscriptions } from "@okouai/db/schema/org-concurrency-subscription";
 import { orgMetadata } from "@okouai/db/schema/org-metadata";
+import { orgPlanEntitlements } from "@okouai/db/schema/org-plan-entitlement";
 import {
   orgUsageAllowanceEntitlements,
   orgUsageAllowanceWindows,
@@ -73,6 +74,10 @@ import {
   handleUsagePackMigrationInvoicePaid,
   handleUsagePackMigrationSubscriptionUpdated,
 } from "./usage-pack-subscription-migration.service";
+import {
+  cancelAndRefundOrgAddOnsForPlanCancellation,
+  isOrgDeletionBillingCancellation,
+} from "./org-deletion-billing.service";
 
 const L = logger("WebhookStripe");
 
@@ -4027,7 +4032,35 @@ async function handleSubscriptionDeletedLegacy(
 async function handleSubscriptionDeleted(
   db: Db,
   subscription: SubscriptionDeletedInput,
+  cancellationTimestamp: number,
+  signal: AbortSignal,
 ): Promise<readonly string[]> {
+  const [entitlementPlan] = await db
+    .select({ orgId: orgPlanEntitlements.orgId })
+    .from(orgPlanEntitlements)
+    .where(eq(orgPlanEntitlements.stripeSubscriptionId, subscription.id))
+    .limit(1);
+  const entitlementOrgId = entitlementPlan?.orgId ?? null;
+  const [legacyPlan] = entitlementOrgId
+    ? []
+    : await db
+        .select({ orgId: orgMetadata.orgId })
+        .from(orgMetadata)
+        .where(eq(orgMetadata.stripeSubscriptionId, subscription.id))
+        .limit(1);
+  const planOrgId = entitlementOrgId ?? legacyPlan?.orgId ?? null;
+  if (planOrgId && !isOrgDeletionBillingCancellation(subscription, planOrgId)) {
+    await cancelAndRefundOrgAddOnsForPlanCancellation(
+      db,
+      {
+        orgId: planOrgId,
+        planSubscriptionId: subscription.id,
+        cancellationTimestamp,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+  }
   const usagePackOutcome = await handleUsagePackSubscriptionDeleted(
     db,
     subscription,
@@ -4151,7 +4184,12 @@ export const handleStripeWebhookEvent$ = command(
         break;
       }
       case "customer.subscription.deleted": {
-        const orgIds = await handleSubscriptionDeleted(db, event.object);
+        const orgIds = await handleSubscriptionDeleted(
+          db,
+          event.object,
+          event.created,
+          signal,
+        );
         signal.throwIfAborted();
         addBillingChangedOrgIds(billingChangedOrgIds, orgIds);
         break;

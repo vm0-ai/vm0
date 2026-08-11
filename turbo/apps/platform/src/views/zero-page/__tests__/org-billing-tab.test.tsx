@@ -3955,6 +3955,11 @@ describe("organization billing settings", () => {
         "Are you sure you want to cancel your Pro plan?",
       ),
     ).toBeInTheDocument();
+    expect(
+      within(downgradeCancelDialog).getByText(
+        "All add-on subscriptions, including concurrency and usage packs, will be canceled when your plan ends. Unused prepaid subscription time will be refunded proportionally.",
+      ),
+    ).toBeInTheDocument();
     click(buttonByText("Cancel", downgradeCancelDialog));
 
     await waitFor(() => {
@@ -4116,6 +4121,9 @@ describe("organization billing settings", () => {
       throw new Error("Pro downgrade option not found");
     }
     click(proOption);
+    expect(
+      within(downgradeDialog).queryByText(/All add-on subscriptions/u),
+    ).not.toBeInTheDocument();
     click(buttonByText("Downgrade to Pro", downgradeDialog));
 
     await waitFor(() => {

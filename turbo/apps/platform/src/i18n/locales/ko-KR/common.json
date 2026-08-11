@@ -858,6 +858,7 @@
       "today": "오늘"
     },
     "downgrade": {
+      "cancelAddOnsWarning": "동시 실행 및 사용량 패키지를 포함한 모든 추가 기능 구독은 플랜이 종료될 때 취소됩니다. 사용하지 않은 선불 구독 기간은 비례 계산하여 환불됩니다.",
       "cancelSubscription": "구독 취소",
       "chooseTarget": "다운그레이드할 플랜을 선택하세요.",
       "confirmProCancellation": "Pro 플랜을 취소하시겠습니까?",

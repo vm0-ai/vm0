@@ -879,6 +879,7 @@
       "today": "Aujourd’hui"
     },
     "downgrade": {
+      "cancelAddOnsWarning": "Tous les abonnements complémentaires, y compris les exécutions simultanées et les forfaits d'utilisation, seront résiliés à la fin de votre forfait. La durée d'abonnement prépayée non utilisée sera remboursée au prorata.",
       "cancelSubscription": "Annuler l'abonnement",
       "chooseTarget": "Choisissez le plan vers lequel rétrograder.",
       "confirmProCancellation": "Êtes-vous sûr de vouloir annuler votre plan Pro ?",

@@ -4084,6 +4084,210 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     expect(afterDeleted.body.concurrency.limit).toBe(2);
   });
 
+  it("cancels and refunds Plan add-ons without touching Custom allowances", async () => {
+    const bdd = createBddApi(context);
+    const runs = createRunsApi(context);
+    const billing = createBillingMediaApi(context);
+    const actor = bdd.user();
+    const orgId = orgOf(actor);
+    const granted = await runs.grantProEntitlement(actor);
+    const suffix = randomUUID().slice(0, 8);
+    const concurrencySubscriptionId = `sub_bdd_plan_add_on_${suffix}`;
+    const allowanceSubscriptionId = `sub_bdd_plan_allowance_${suffix}`;
+    const allowanceCustomerId = `cus_bdd_plan_allowance_${suffix}`;
+    const concurrencyPeriodStart = epochSeconds(-1);
+    const concurrencyPeriodEnd = epochSeconds(30);
+
+    await postUsageAllowanceInvoicePaid(context.signal, {
+      orgId,
+      userId: actor.userId,
+      customerId: allowanceCustomerId,
+      subscriptionId: allowanceSubscriptionId,
+      effectiveAt: new Date(concurrencyPeriodStart * 1000),
+      expiresAt: new Date(concurrencyPeriodEnd * 1000),
+      shortWindowSeconds: 3600,
+      shortWindowUnits: 100,
+      weeklyWindowSeconds: 7 * 86_400,
+      weeklyWindowUnits: 1000,
+    });
+    api.configureStripeBillingEnv();
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "invoice.paid",
+        object: {
+          id: `in_bdd_plan_add_on_${suffix}`,
+          customer: granted.customerId,
+          metadata: {},
+          parent: {
+            subscription_details: {
+              subscription: concurrencySubscriptionId,
+              metadata: {
+                purpose: "concurrency_subscription",
+                orgId,
+              },
+            },
+          },
+          lines: {
+            data: [
+              {
+                id: `il_bdd_plan_add_on_${suffix}`,
+                quantity: 2,
+                price: { id: "price_bdd_concurrency" },
+                period: {
+                  start: concurrencyPeriodStart,
+                  end: concurrencyPeriodEnd,
+                },
+                parent: { type: "subscription_item_details" },
+              },
+            ],
+          },
+        },
+      }),
+      [200],
+    );
+
+    const cancellationTimestamp = Math.floor(now() / 1000);
+    const refundPeriodStart = cancellationTimestamp - 500;
+    const refundPeriodEnd = cancellationTimestamp + 500;
+    const refundInvoiceId = `in_bdd_plan_add_on_refund_${suffix}`;
+    const creditNoteId = `cn_bdd_plan_add_on_${suffix}`;
+    context.mocks.stripe.subscriptions.retrieve.mockReset();
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(
+      concurrencySubscription({
+        id: concurrencySubscriptionId,
+        customerId: granted.customerId,
+        quantity: 2,
+        periodEnd: concurrencyPeriodEnd,
+      }),
+    );
+    context.mocks.stripe.subscriptions.update.mockReset();
+    context.mocks.stripe.subscriptions.update.mockResolvedValue({});
+    context.mocks.stripe.subscriptions.cancel.mockReset();
+    context.mocks.stripe.subscriptions.cancel.mockResolvedValue({});
+    context.mocks.stripe.invoices.list.mockReset();
+    context.mocks.stripe.invoices.list.mockResolvedValue({
+      data: [
+        {
+          id: refundInvoiceId,
+          customer: granted.customerId,
+          metadata: {},
+          amount_due: 10_000,
+          currency: "usd",
+          status: "paid",
+          paid: true,
+          lines: {
+            data: [
+              {
+                id: `il_bdd_plan_add_on_refund_${suffix}`,
+                amount: 10_000,
+                taxes: [],
+                period: { start: refundPeriodStart, end: refundPeriodEnd },
+                parent: {
+                  type: "subscription_item_details",
+                  subscription_item_details: { proration: false },
+                },
+              },
+            ],
+          },
+          parent: {
+            subscription_details: {
+              subscription: concurrencySubscriptionId,
+              metadata: {},
+            },
+          },
+        },
+      ],
+      has_more: false,
+    });
+    context.mocks.stripe.creditNotes.list.mockReset();
+    context.mocks.stripe.creditNotes.list.mockResolvedValue({
+      data: [],
+      has_more: false,
+    });
+    context.mocks.stripe.creditNotes.preview.mockResolvedValue({
+      id: `preview_${creditNoteId}`,
+      status: "issued",
+      pre_payment_amount: 0,
+      post_payment_amount: 5000,
+      refunds: [],
+    });
+    context.mocks.stripe.creditNotes.create.mockResolvedValue({
+      id: creditNoteId,
+      status: "issued",
+      pre_payment_amount: 0,
+      post_payment_amount: 5000,
+      refunds: [
+        {
+          amount_refunded: 5000,
+          refund: {
+            id: `re_${creditNoteId}`,
+            status: "succeeded",
+          },
+        },
+      ],
+    });
+
+    await api.postStripeEvent(
+      {
+        id: `evt_bdd_plan_add_on_${suffix}`,
+        type: "customer.subscription.deleted",
+        created: cancellationTimestamp,
+        data: {
+          object: { id: granted.subscriptionId, metadata: {} },
+        },
+      },
+      [200],
+    );
+
+    expect(context.mocks.stripe.subscriptions.update).toHaveBeenCalledWith(
+      concurrencySubscriptionId,
+      {
+        metadata: {
+          vm0_plan_cancel_add_on_org_id: orgId,
+          vm0_plan_cancel_add_on_at: String(cancellationTimestamp),
+        },
+      },
+      {
+        idempotencyKey: `plan-cancel-add-on:${orgId}:${concurrencySubscriptionId}:mark`,
+      },
+    );
+    expect(context.mocks.stripe.subscriptions.cancel).toHaveBeenCalledOnce();
+    expect(context.mocks.stripe.subscriptions.cancel).toHaveBeenCalledWith(
+      concurrencySubscriptionId,
+      { invoice_now: false, prorate: false },
+      {
+        idempotencyKey: `plan-cancel-add-on:${orgId}:${concurrencySubscriptionId}:cancel`,
+      },
+    );
+    expect(context.mocks.stripe.creditNotes.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        invoice: refundInvoiceId,
+        amount: 5000,
+        refund_amount: 5000,
+        metadata: {
+          purpose: "plan_cancellation_add_on_prorated_refund",
+          orgId,
+          subscriptionId: concurrencySubscriptionId,
+          canceledAt: String(cancellationTimestamp),
+        },
+      }),
+      {
+        idempotencyKey: `plan-cancel-add-on-refund:${orgId}:${concurrencySubscriptionId}:${refundInvoiceId}:${cancellationTimestamp}`,
+      },
+    );
+    await expect(
+      readUsageAllowanceEntitlementFixture(orgId),
+    ).resolves.toMatchObject({
+      status: "active",
+      stripeSubscriptionId: allowanceSubscriptionId,
+    });
+    await expect(billing.readBillingStatus(actor)).resolves.toMatchObject({
+      tier: "limited-free-1",
+      subscriptionStatus: "canceled",
+      hasSubscription: true,
+    });
+  });
+
   it("keeps Stripe quantity across prorations and stale concurrent events", async () => {
     const bdd = createBddApi(context);
     const billing = createBillingMediaApi(context);

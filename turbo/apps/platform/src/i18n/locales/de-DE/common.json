@@ -858,6 +858,7 @@
       "today": "Heute"
     },
     "downgrade": {
+      "cancelAddOnsWarning": "Alle Add-on-Abonnements, einschließlich Parallelität und Nutzungspaketen, werden gekündigt, wenn Ihr Plan endet. Ungenutzte vorausbezahlte Abonnementzeit wird anteilig erstattet.",
       "cancelSubscription": "Abo kündigen",
       "chooseTarget": "Wählen Sie den Plan aus, auf den Sie ein Downgrade durchführen möchten.",
       "confirmProCancellation": "Sind Sie sicher, dass Sie Ihren Pro-Plan kündigen möchten?",

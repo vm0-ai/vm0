@@ -22,7 +22,41 @@ import { settle } from "../utils";
 const ORG_DELETE_ORG_METADATA_KEY = "vm0_org_delete_org_id";
 const ORG_DELETE_AT_METADATA_KEY = "vm0_org_delete_at";
 const ORG_DELETE_REFUND_PURPOSE = "org_deletion_prorated_refund";
+const PLAN_CANCEL_ADD_ON_ORG_METADATA_KEY = "vm0_plan_cancel_add_on_org_id";
+const PLAN_CANCEL_ADD_ON_AT_METADATA_KEY = "vm0_plan_cancel_add_on_at";
+const PLAN_CANCEL_ADD_ON_REFUND_PURPOSE =
+  "plan_cancellation_add_on_prorated_refund";
 const STRIPE_PAGE_SIZE = 100;
+
+interface SubscriptionCancellationReason {
+  readonly markerOrgIdMetadataKey: string;
+  readonly markerAtMetadataKey: string;
+  readonly refundPurpose: string;
+  readonly refundAtMetadataKey: string;
+  readonly operationIdempotencyPrefix: string;
+  readonly refundIdempotencyPrefix: string;
+  readonly description: string;
+}
+
+const ORG_DELETION_REASON = Object.freeze({
+  markerOrgIdMetadataKey: ORG_DELETE_ORG_METADATA_KEY,
+  markerAtMetadataKey: ORG_DELETE_AT_METADATA_KEY,
+  refundPurpose: ORG_DELETE_REFUND_PURPOSE,
+  refundAtMetadataKey: "deletionAt",
+  operationIdempotencyPrefix: "org-delete",
+  refundIdempotencyPrefix: "org-delete-refund",
+  description: "organization deletion",
+} satisfies SubscriptionCancellationReason);
+
+const PLAN_CANCELLATION_ADD_ON_REASON = Object.freeze({
+  markerOrgIdMetadataKey: PLAN_CANCEL_ADD_ON_ORG_METADATA_KEY,
+  markerAtMetadataKey: PLAN_CANCEL_ADD_ON_AT_METADATA_KEY,
+  refundPurpose: PLAN_CANCEL_ADD_ON_REFUND_PURPOSE,
+  refundAtMetadataKey: "canceledAt",
+  operationIdempotencyPrefix: "plan-cancel-add-on",
+  refundIdempotencyPrefix: "plan-cancel-add-on-refund",
+  description: "plan cancellation",
+} satisfies SubscriptionCancellationReason);
 
 interface OrgBillingReferences {
   readonly customerIds: ReadonlySet<string>;
@@ -176,24 +210,25 @@ async function loadOrgSubscriptions(
   return [...subscriptions.values()];
 }
 
-function markedDeletionTimestamp(
+function markedCancellationTimestamp(
   subscription: StripeSubscription,
   orgId: string,
+  reason: SubscriptionCancellationReason,
 ): number | null {
   const metadata = subscription.metadata ?? {};
-  const markedOrgId = metadata[ORG_DELETE_ORG_METADATA_KEY];
+  const markedOrgId = metadata[reason.markerOrgIdMetadataKey];
   if (!markedOrgId) {
     return null;
   }
   if (markedOrgId !== orgId) {
     throw new Error(
-      `Stripe subscription ${subscription.id} belongs to another organization deletion`,
+      `Stripe subscription ${subscription.id} belongs to another ${reason.description}`,
     );
   }
-  const timestamp = Number(metadata[ORG_DELETE_AT_METADATA_KEY]);
+  const timestamp = Number(metadata[reason.markerAtMetadataKey]);
   if (!Number.isSafeInteger(timestamp) || timestamp <= 0) {
     throw new Error(
-      `Stripe subscription ${subscription.id} has an invalid organization deletion timestamp`,
+      `Stripe subscription ${subscription.id} has an invalid ${reason.description} timestamp`,
     );
   }
   return timestamp;
@@ -207,13 +242,14 @@ function isTerminalSubscription(subscription: StripeSubscription): boolean {
   );
 }
 
-async function markSubscriptionForOrgDeletion(
+async function markSubscriptionForCancellation(
   stripe: StripeClient,
   args: {
     readonly orgId: string;
     readonly subscriptionId: string;
-    readonly deletionTimestamp: number;
+    readonly cancellationTimestamp: number;
   },
+  reason: SubscriptionCancellationReason,
   signal: AbortSignal,
 ): Promise<boolean> {
   const result = await settle(
@@ -221,12 +257,12 @@ async function markSubscriptionForOrgDeletion(
       args.subscriptionId,
       {
         metadata: {
-          [ORG_DELETE_ORG_METADATA_KEY]: args.orgId,
-          [ORG_DELETE_AT_METADATA_KEY]: String(args.deletionTimestamp),
+          [reason.markerOrgIdMetadataKey]: args.orgId,
+          [reason.markerAtMetadataKey]: String(args.cancellationTimestamp),
         },
       },
       {
-        idempotencyKey: `org-delete:${args.orgId}:${args.subscriptionId}:mark`,
+        idempotencyKey: `${reason.operationIdempotencyPrefix}:${args.orgId}:${args.subscriptionId}:mark`,
       },
     ),
   );
@@ -243,6 +279,7 @@ async function markSubscriptionForOrgDeletion(
 async function cancelSubscriptionImmediately(
   stripe: StripeClient,
   args: { readonly orgId: string; readonly subscriptionId: string },
+  reason: SubscriptionCancellationReason,
   signal: AbortSignal,
 ): Promise<void> {
   const result = await settle(
@@ -250,7 +287,7 @@ async function cancelSubscriptionImmediately(
       args.subscriptionId,
       { invoice_now: false, prorate: false },
       {
-        idempotencyKey: `org-delete:${args.orgId}:${args.subscriptionId}:cancel`,
+        idempotencyKey: `${reason.operationIdempotencyPrefix}:${args.orgId}:${args.subscriptionId}:cancel`,
       },
     ),
   );
@@ -438,13 +475,14 @@ async function listCompleteInvoiceLines(
 function refundMetadata(args: {
   readonly orgId: string;
   readonly subscriptionId: string;
-  readonly deletionTimestamp: number;
+  readonly cancellationTimestamp: number;
+  readonly reason: SubscriptionCancellationReason;
 }): Record<string, string> {
   return {
-    purpose: ORG_DELETE_REFUND_PURPOSE,
+    purpose: args.reason.refundPurpose,
     orgId: args.orgId,
     subscriptionId: args.subscriptionId,
-    deletionAt: String(args.deletionTimestamp),
+    [args.reason.refundAtMetadataKey]: String(args.cancellationTimestamp),
   };
 }
 
@@ -529,13 +567,14 @@ async function refundInvoiceProration(
   args: {
     readonly orgId: string;
     readonly subscriptionId: string;
-    readonly deletionTimestamp: number;
+    readonly cancellationTimestamp: number;
     readonly invoice: StripeInvoice;
     readonly amount: number;
   },
+  reason: SubscriptionCancellationReason,
   signal: AbortSignal,
 ): Promise<void> {
-  const metadata = refundMetadata(args);
+  const metadata = refundMetadata({ ...args, reason });
   const existing = await findDeletionCreditNote(
     stripe,
     args.invoice.id,
@@ -564,7 +603,7 @@ async function refundInvoiceProration(
   const creditNote = await stripe.creditNotes.create(
     { ...commonParams, refund_amount: preview.post_payment_amount },
     {
-      idempotencyKey: `org-delete-refund:${args.orgId}:${args.subscriptionId}:${args.invoice.id}:${args.deletionTimestamp}`,
+      idempotencyKey: `${reason.refundIdempotencyPrefix}:${args.orgId}:${args.subscriptionId}:${args.invoice.id}:${args.cancellationTimestamp}`,
     },
   );
   signal.throwIfAborted();
@@ -577,8 +616,9 @@ async function refundSubscriptionProration(
   args: {
     readonly orgId: string;
     readonly subscriptionId: string;
-    readonly deletionTimestamp: number;
+    readonly cancellationTimestamp: number;
   },
+  reason: SubscriptionCancellationReason,
   signal: AbortSignal,
 ): Promise<void> {
   const invoices = await listPaidSubscriptionInvoices(
@@ -591,11 +631,20 @@ async function refundSubscriptionProration(
     const lines = await listCompleteInvoiceLines(stripe, invoice, signal);
     prorations.push({
       invoice,
-      amount: proratedInvoiceAdjustment(invoice, lines, args.deletionTimestamp),
+      amount: proratedInvoiceAdjustment(
+        invoice,
+        lines,
+        args.cancellationTimestamp,
+      ),
     });
   }
   for (const { invoice, amount } of allocateInvoiceRefunds(prorations)) {
-    await refundInvoiceProration(stripe, { ...args, invoice, amount }, signal);
+    await refundInvoiceProration(
+      stripe,
+      { ...args, invoice, amount },
+      reason,
+      signal,
+    );
   }
 }
 
@@ -604,26 +653,30 @@ async function cancelAndRefundSubscription(
   args: {
     readonly orgId: string;
     readonly subscription: StripeSubscription;
-    readonly defaultDeletionTimestamp: number;
+    readonly defaultCancellationTimestamp: number;
   },
+  reason: SubscriptionCancellationReason,
   signal: AbortSignal,
 ): Promise<void> {
-  const markedTimestamp = markedDeletionTimestamp(
+  const markedTimestamp = markedCancellationTimestamp(
     args.subscription,
     args.orgId,
+    reason,
   );
   if (isTerminalSubscription(args.subscription) && markedTimestamp === null) {
     return;
   }
-  const deletionTimestamp = markedTimestamp ?? args.defaultDeletionTimestamp;
+  const cancellationTimestamp =
+    markedTimestamp ?? args.defaultCancellationTimestamp;
   if (markedTimestamp === null) {
-    const marked = await markSubscriptionForOrgDeletion(
+    const marked = await markSubscriptionForCancellation(
       stripe,
       {
         orgId: args.orgId,
         subscriptionId: args.subscription.id,
-        deletionTimestamp,
+        cancellationTimestamp,
       },
+      reason,
       signal,
     );
     if (!marked) {
@@ -634,6 +687,7 @@ async function cancelAndRefundSubscription(
     await cancelSubscriptionImmediately(
       stripe,
       { orgId: args.orgId, subscriptionId: args.subscription.id },
+      reason,
       signal,
     );
   }
@@ -642,10 +696,89 @@ async function cancelAndRefundSubscription(
     {
       orgId: args.orgId,
       subscriptionId: args.subscription.id,
-      deletionTimestamp,
+      cancellationTimestamp,
     },
+    reason,
     signal,
   );
+}
+
+async function loadOrgAddOnSubscriptionIds(
+  db: ReadonlyDb,
+  orgId: string,
+  planSubscriptionId: string,
+): Promise<ReadonlySet<string>> {
+  const [concurrencyRows, usagePackRows] = await Promise.all([
+    db
+      .select({
+        subscriptionId: orgConcurrencySubscriptions.stripeSubscriptionId,
+      })
+      .from(orgConcurrencySubscriptions)
+      .where(eq(orgConcurrencySubscriptions.orgId, orgId)),
+    db
+      .select({ subscriptionId: usagePackSubscriptions.stripeSubscriptionId })
+      .from(usagePackSubscriptions)
+      .where(eq(usagePackSubscriptions.orgId, orgId)),
+  ]);
+  const subscriptionIds = new Set<string>();
+  for (const row of [...concurrencyRows, ...usagePackRows]) {
+    addIfPresent(subscriptionIds, row.subscriptionId);
+  }
+  subscriptionIds.delete(planSubscriptionId);
+  return subscriptionIds;
+}
+
+export function isOrgDeletionBillingCancellation(
+  subscription: {
+    readonly metadata?: Record<string, string> | null;
+  },
+  orgId: string,
+): boolean {
+  return subscription.metadata?.[ORG_DELETE_ORG_METADATA_KEY] === orgId;
+}
+
+/**
+ * Cancels paid add-on subscriptions when their owning Plan ends. Usage
+ * allowance subscriptions belong to Custom plans and are intentionally
+ * excluded. A usage pack that shares the Plan subscription is also excluded
+ * because Stripe has already canceled it as part of the Plan.
+ */
+export async function cancelAndRefundOrgAddOnsForPlanCancellation(
+  db: ReadonlyDb,
+  args: {
+    readonly orgId: string;
+    readonly planSubscriptionId: string;
+    readonly cancellationTimestamp: number;
+  },
+  signal: AbortSignal,
+): Promise<void> {
+  const subscriptionIds = await loadOrgAddOnSubscriptionIds(
+    db,
+    args.orgId,
+    args.planSubscriptionId,
+  );
+  signal.throwIfAborted();
+  if (subscriptionIds.size === 0) {
+    return;
+  }
+  const stripe = getStripeClient();
+  const subscriptions = await loadOrgSubscriptions(
+    stripe,
+    { customerIds: new Set(), subscriptionIds },
+    signal,
+  );
+  for (const subscription of subscriptions) {
+    await cancelAndRefundSubscription(
+      stripe,
+      {
+        orgId: args.orgId,
+        subscription,
+        defaultCancellationTimestamp: args.cancellationTimestamp,
+      },
+      PLAN_CANCELLATION_ADD_ON_REASON,
+      signal,
+    );
+  }
 }
 
 /**
@@ -669,17 +802,22 @@ export async function cancelAndRefundOrgBillingForDeletion(
   const stripe = getStripeClient();
   const subscriptions = await loadOrgSubscriptions(stripe, references, signal);
   const markedTimestamps = subscriptions.flatMap((subscription) => {
-    const timestamp = markedDeletionTimestamp(subscription, orgId);
+    const timestamp = markedCancellationTimestamp(
+      subscription,
+      orgId,
+      ORG_DELETION_REASON,
+    );
     return timestamp === null ? [] : [timestamp];
   });
-  const defaultDeletionTimestamp =
+  const defaultCancellationTimestamp =
     markedTimestamps.length > 0
       ? Math.min(...markedTimestamps)
       : Math.floor(nowDate().getTime() / 1000);
   for (const subscription of subscriptions) {
     await cancelAndRefundSubscription(
       stripe,
-      { orgId, subscription, defaultDeletionTimestamp },
+      { orgId, subscription, defaultCancellationTimestamp },
+      ORG_DELETION_REASON,
       signal,
     );
   }

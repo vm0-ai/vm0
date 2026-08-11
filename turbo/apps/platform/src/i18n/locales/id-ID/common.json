@@ -858,6 +858,7 @@
       "today": "Hari ini"
     },
     "downgrade": {
+      "cancelAddOnsWarning": "Semua langganan add-on, termasuk concurrency dan paket penggunaan, akan dibatalkan saat paket Anda berakhir. Waktu langganan prabayar yang belum digunakan akan dikembalikan secara prorata.",
       "cancelSubscription": "Batalkan langganan",
       "chooseTarget": "Pilih paket yang ingin diturunkan.",
       "confirmProCancellation": "Yakin ingin membatalkan paket Pro Anda?",

@@ -879,6 +879,7 @@
       "today": "Hoje"
     },
     "downgrade": {
+      "cancelAddOnsWarning": "Todas as assinaturas de complementos, incluindo concorrência e pacotes de uso, serão canceladas quando seu plano terminar. O período de assinatura pré-pago não utilizado será reembolsado proporcionalmente.",
       "cancelSubscription": "Cancelar assinatura",
       "chooseTarget": "Escolha o plano para o qual deseja fazer downgrade.",
       "confirmProCancellation": "Tem certeza de que deseja cancelar seu plano Pro?",

@@ -849,6 +849,8 @@ function DowngradeConfirmDialog({ currentTier }: { currentTier: BillingTier }) {
   const isTeam = currentTier === "team";
   const isLockedTarget = lockedTarget !== null;
   const downgradeTarget = isTeam ? selectedTarget : "limited-free-1";
+  const cancelsPlan =
+    downgradeTarget === "limited-free-1" || downgradeTarget === "pro-suspend";
   const targetLabel = formatTierLabel(downgradeTarget);
   const proPlanPrice = getPlanPrice("pro");
   const freePlanPrice = getPlanPrice("free");
@@ -916,6 +918,14 @@ function DowngradeConfirmDialog({ currentTier }: { currentTier: BillingTier }) {
           </p>
         )}
 
+        {cancelsPlan && (
+          <p className="text-sm text-amber-600 dark:text-amber-400 mt-2">
+            {i18n.t(($) => {
+              return $.billing.downgrade.cancelAddOnsWarning;
+            })}
+          </p>
+        )}
+
         {isTeam && !isLockedTarget && (
           <div className="flex flex-col gap-2 mt-2">
             <button
@@ -979,8 +989,7 @@ function DowngradeConfirmDialog({ currentTier }: { currentTier: BillingTier }) {
               ? i18n.t(($) => {
                   return $.billing.downgrade.inProgress;
                 })
-              : downgradeTarget === "limited-free-1" ||
-                  downgradeTarget === "pro-suspend"
+              : cancelsPlan
                 ? i18n.t(($) => {
                     return $.billing.downgrade.cancelSubscription;
                   })

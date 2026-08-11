@@ -879,6 +879,7 @@
       "today": "Oggi"
     },
     "downgrade": {
+      "cancelAddOnsWarning": "Tutti gli abbonamenti aggiuntivi, inclusi quelli per la concorrenza e i pacchetti di utilizzo, verranno annullati al termine del piano. Il periodo di abbonamento prepagato non utilizzato verrà rimborsato in proporzione.",
       "cancelSubscription": "Annulla l'abbonamento",
       "chooseTarget": "Scegli a quale piano effettuare il downgrade.",
       "confirmProCancellation": "Sei sicuro di voler annullare il tuo piano Pro?",

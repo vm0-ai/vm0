@@ -858,6 +858,7 @@
       "today": "本日"
     },
     "downgrade": {
+      "cancelAddOnsWarning": "同時実行や使用量パックを含むすべてのアドオンサブスクリプションは、プランの終了時に解約されます。未使用の前払いサブスクリプション期間は日割りで返金されます。",
       "cancelSubscription": "サブスクリプションをキャンセルする",
       "chooseTarget": "どのプランにダウングレードするかを選択します。",
       "confirmProCancellation": "Pro プランをキャンセルしてもよろしいですか?",

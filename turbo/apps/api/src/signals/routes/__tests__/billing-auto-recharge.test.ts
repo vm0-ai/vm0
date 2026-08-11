@@ -4,10 +4,14 @@ import { zeroBillingAutoRechargeContract } from "@okouai/api-contracts/contracts
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
-import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
+import {
+  seedOrgMetadata,
+  seedUsagePricingRows,
+} from "../../../test-fixtures/system-config-seeds";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
 import { createRunsApi } from "./helpers/api-bdd-runs";
+import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { billingAutoRechargeRoutes } from "../billing-auto-recharge";
 
@@ -350,6 +354,80 @@ describe("PUT /api/zero/billing/auto-recharge", () => {
           "Auto-recharge is only available for Pro, Team, or Custom workspaces",
         code: "BAD_REQUEST",
       },
+    });
+  });
+
+  it("does not recharge after an enabled org loses Plan permission", async () => {
+    bdd.acceptAgentStorageWrites();
+    runsApi.acceptStorageDownloads();
+    runsApi.acceptTelemetryIngest();
+    runsApi.configureRunnerGroup();
+    const { admin, entitlement } = await createProActor();
+    await runsApi.ensureOrgModelProvider(admin);
+    const agent = await bdd.createAgent(admin, {
+      displayName: `Auto-recharge permission ${randomUUID()}`,
+      visibility: "private",
+    });
+    const run = await runsApi.createRun(admin, {
+      agentId: agent.agentId,
+      prompt: "charge usage after Plan permission is revoked",
+      modelProvider: "anthropic-api-key",
+    });
+    const status = await billingApi.readBillingStatus(admin);
+    const threshold = status.credits - 1;
+    const amount = status.credits + 5000;
+    await billingApi.updateAutoRecharge(
+      admin,
+      { enabled: true, threshold, amount },
+      [200],
+    );
+    const usageProvider = `auto-recharge-permission-${randomUUID().slice(0, 8)}`;
+    await seedUsagePricingRows([
+      {
+        kind: "connector",
+        provider: usageProvider,
+        category: "call",
+        unitPrice: 10,
+        unitSize: 1,
+      },
+    ]);
+    await createWebhookCallbackApi(context).requestAgentUsageEvent(
+      {
+        runId: run.runId,
+        events: [
+          {
+            idempotencyKey: randomUUID(),
+            kind: "connector",
+            provider: usageProvider,
+            category: "call",
+            quantity: 1,
+          },
+        ],
+      },
+      {
+        authorization: `Bearer ${runsApi.sandboxTokenForRun(admin, run.runId)}`,
+      },
+      [200],
+    );
+
+    await seedOrgMetadata({
+      orgId: admin.orgId,
+      tier: "limited-free-1",
+      credits: status.credits,
+    });
+    context.mocks.stripe.invoices.create.mockClear();
+    acceptAutoRechargeStripeInvoice(entitlement.customerId);
+
+    await billingApi.processOrgUsageEvents(admin);
+
+    expect(context.mocks.stripe.invoices.create).not.toHaveBeenCalled();
+    await expect(billingApi.readBillingStatus(admin)).resolves.toMatchObject({
+      credits: status.credits - 10,
+    });
+    await expect(billingApi.readAutoRecharge(admin)).resolves.toStrictEqual({
+      enabled: true,
+      threshold,
+      amount,
     });
   });
 
