@@ -1,6 +1,7 @@
 import type {
   CSSProperties,
   FormEvent,
+  KeyboardEvent as ReactKeyboardEvent,
   MouseEvent as ReactMouseEvent,
   ReactNode,
   UIEvent as ReactUIEvent,
@@ -1044,13 +1045,30 @@ function pinnedChatThreadEmojiCategory(feed: HTMLElement): string | null {
   return pinned;
 }
 
-function scrollChatThreadEmojiCategoryIntoView(key: string): void {
+// Where the feed lands when it jumps to a section. A short final category
+// cannot scroll all the way to its own offset, so clamp to the last reachable
+// position: the jump and the arrival check have to agree on the same number.
+function chatThreadEmojiScrollTarget(
+  feed: HTMLElement,
+  section: HTMLElement,
+): number {
+  return Math.min(section.offsetTop, feed.scrollHeight - feed.clientHeight);
+}
+
+// Returns whether the feed will actually move. A jump that scrolls nowhere
+// emits no scroll event, so the caller must not wait for one.
+function scrollChatThreadEmojiCategoryIntoView(key: string): boolean {
   const section = document.getElementById(chatThreadEmojiSectionId(key));
   const feed = section?.closest<HTMLElement>("[data-chat-thread-emoji-feed]");
   if (!section || !feed || typeof feed.scrollTo !== "function") {
-    return;
+    return false;
   }
-  feed.scrollTo({ top: section.offsetTop, behavior: "smooth" });
+  const top = chatThreadEmojiScrollTarget(feed, section);
+  if (Math.abs(top - feed.scrollTop) <= 1) {
+    return false;
+  }
+  feed.scrollTo({ top, behavior: "smooth" });
+  return true;
 }
 
 function chatThreadEmojiCategories(
@@ -1080,14 +1098,44 @@ function chatThreadEmojiCategories(
 
 function ChatThreadEmojiCategoryRail({
   categories,
-  selectedCategory,
   onSelect,
 }: {
   categories: ChatThreadEmojiCategory[];
-  selectedCategory: string;
   onSelect: (key: string) => void;
 }) {
   const { t } = useTranslation();
+  // Held here rather than in the picker so that following the feed re-renders
+  // the rail alone, not the ~1,900 emoji buttons below it.
+  const activeCategory = useGet(chatThreadEmojiActiveCategory$);
+  const selectedCategory =
+    activeCategory ?? CHAT_THREAD_EMOJI_FREQUENT_CATEGORY;
+
+  // A tablist takes one tab stop, and the arrow keys move between the tabs
+  // inside it.
+  function handleKeyDown(event: ReactKeyboardEvent<HTMLDivElement>): void {
+    const step =
+      event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
+    if (step === 0) {
+      return;
+    }
+    const tabs = Array.from(
+      event.currentTarget.querySelectorAll<HTMLElement>('[role="tab"]'),
+    );
+    const current = tabs.findIndex((tab) => {
+      return tab === document.activeElement;
+    });
+    if (current === -1) {
+      return;
+    }
+    event.preventDefault();
+    const next = (current + step + tabs.length) % tabs.length;
+    tabs[next]?.focus();
+    const nextCategory = categories[next];
+    if (nextCategory) {
+      onSelect(nextCategory.key);
+    }
+  }
+
   return (
     <div
       role="tablist"
@@ -1097,6 +1145,7 @@ function ChatThreadEmojiCategoryRail({
       // 7px top and bottom keeps the buttons clear of the popover edge and of
       // the divider; the active bar then sits inside the bottom gap.
       className="flex gap-0.5 border-b border-border px-2 py-[7px]"
+      onKeyDown={handleKeyDown}
     >
       {categories.map((category) => {
         const CategoryIcon = category.icon;
@@ -1107,8 +1156,10 @@ function ChatThreadEmojiCategoryRail({
             type="button"
             role="tab"
             aria-selected={selected}
+            aria-controls={chatThreadEmojiSectionId(category.key)}
             aria-label={category.label}
             title={category.label}
+            tabIndex={selected ? 0 : -1}
             className={cn(
               "relative flex h-8 flex-1 items-center justify-center rounded-lg transition-colors hover:bg-state-hover hover:text-foreground",
               selected ? "text-foreground" : "text-muted-foreground",
@@ -1149,7 +1200,6 @@ function ChatThreadEmojiPicker({
   const frequentlyUsedEmoji = useFrequentlyUsedEmoji();
   const railEnabled =
     useGet(featureSwitch$)[FeatureSwitchKey.EmojiPickerCategoryRail] ?? false;
-  const activeCategory = useGet(chatThreadEmojiActiveCategory$);
   const setActiveCategory = useSet(setChatThreadEmojiActiveCategory$);
   const setPendingJump = useSet(setChatThreadEmojiPendingJump$);
 
@@ -1164,19 +1214,17 @@ function ChatThreadEmojiPicker({
     frequentlyUsedEmoji,
     groups,
   );
-  const selectedCategory =
-    activeCategory ?? CHAT_THREAD_EMOJI_FREQUENT_CATEGORY;
-
   function jumpToCategory(key: string): void {
     if (isSearching) {
       setQuery("");
     }
     setActiveCategory(key);
-    setPendingJump(key);
     // The sections may only mount once the query clears, so scroll on the next
-    // frame rather than against the pre-clear layout.
+    // frame rather than against the pre-clear layout. Only hold the highlight
+    // when the feed really moves — otherwise no scroll event would arrive to
+    // release the hold and the rail would stop following the feed for good.
     window.requestAnimationFrame(() => {
-      scrollChatThreadEmojiCategoryIntoView(key);
+      setPendingJump(scrollChatThreadEmojiCategoryIntoView(key) ? key : null);
     });
   }
 
@@ -1185,7 +1233,6 @@ function ChatThreadEmojiPicker({
       {railEnabled && (
         <ChatThreadEmojiCategoryRail
           categories={categories}
-          selectedCategory={selectedCategory}
           onSelect={jumpToCategory}
         />
       )}
@@ -1245,7 +1292,6 @@ function ChatThreadEmojiFeed({
   railEnabled: boolean;
 }) {
   const { t } = useTranslation();
-  const activeCategory = useGet(chatThreadEmojiActiveCategory$);
   const setActiveCategory = useSet(setChatThreadEmojiActiveCategory$);
   const pendingJump = useGet(chatThreadEmojiPendingJump$);
   const setPendingJump = useSet(setChatThreadEmojiPendingJump$);
@@ -1256,14 +1302,25 @@ function ChatThreadEmojiFeed({
       const target = feed.querySelector<HTMLElement>(
         `[data-chat-thread-emoji-section="${pendingJump}"]`,
       );
-      if (target && Math.abs(target.offsetTop - feed.scrollTop) <= 1) {
+      // Release the hold once the jump lands, and also when its section is no
+      // longer around to land on, so the hold can never outlive the jump.
+      if (
+        !target ||
+        Math.abs(chatThreadEmojiScrollTarget(feed, target) - feed.scrollTop) <=
+          1
+      ) {
         setPendingJump(null);
       }
       return;
     }
-    const pinned = pinnedChatThreadEmojiCategory(feed);
-    if (pinned !== null && pinned !== activeCategory) {
-      setActiveCategory(pinned);
+    setActiveCategory(pinnedChatThreadEmojiCategory(feed));
+  }
+
+  // Scrolling by hand aborts an in-flight smooth scroll, so the jump will never
+  // reach its target: hand the feed back the highlight immediately.
+  function releasePendingJump(): void {
+    if (pendingJump !== null) {
+      setPendingJump(null);
     }
   }
 
@@ -1273,6 +1330,9 @@ function ChatThreadEmojiFeed({
       // relative so each section's offsetTop is measured against the feed.
       className="relative max-h-72 overflow-y-auto px-2 pb-2"
       onScroll={railEnabled ? handleScroll : undefined}
+      onWheel={railEnabled ? releasePendingJump : undefined}
+      onTouchStart={railEnabled ? releasePendingJump : undefined}
+      onPointerDown={railEnabled ? releasePendingJump : undefined}
     >
       {searchResults !== null ? (
         searchResults.length > 0 ? (

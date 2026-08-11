@@ -44,8 +44,14 @@ export const chatThreadEmojiActiveCategory$ = computed((get) => {
   return get(internalChatThreadEmojiActiveCategory$);
 });
 
+// The feed reports the pinned category on every scroll event, so ignore the
+// repeats: without this the rail would re-render the whole emoji grid at scroll
+// frequency instead of only when the category actually changes.
 export const setChatThreadEmojiActiveCategory$ = command(
-  ({ set }, value: string | null) => {
+  ({ get, set }, value: string | null) => {
+    if (get(internalChatThreadEmojiActiveCategory$) === value) {
+      return;
+    }
     set(internalChatThreadEmojiActiveCategory$, value);
   },
 );
