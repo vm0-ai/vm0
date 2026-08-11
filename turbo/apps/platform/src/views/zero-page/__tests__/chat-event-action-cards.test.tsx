@@ -3139,6 +3139,64 @@ describe("chat event action cards", () => {
     expect(within(card).queryByText("Authorized")).not.toBeInTheDocument();
   });
 
+  it("keeps a connected permissioned custom connector unauthorized without a selection", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "e4000000-0000-4000-a000-000000000318";
+    const callbackPrompt = "Continue after authorizing Acme Internal API";
+    const connector = customConnector({
+      connected: true,
+      hasSecret: true,
+      missingRequiredFields: [],
+      configuredFieldKeys: ["secret"],
+      permissionBundleRef: "builtin:feishu@1",
+    });
+    const connectUrl = `${window.location.origin}/connectors/${connector.slug}/connect?agentId=${AGENT_ID}&threadId=${threadId}&callbackPrompt=${encodeURIComponent(callbackPrompt)}`;
+    context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
+      return respond(200, { connectors: [connector] });
+    });
+    context.mocks.api(zeroAgentCustomConnectorsContract.get, ({ respond }) => {
+      return respond(200, { enabledIds: [], grants: [] });
+    });
+    context.mocks.api(zeroAgentCustomConnectorsContract.update, () => {
+      throw new Error(
+        "A permissioned custom connector requires an explicit selection",
+      );
+    });
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Connected permissioned custom connector card",
+      chatEvents: [
+        {
+          id: "msg-user-connected-permissioned-custom-connector",
+          role: "user",
+          content: "Authorize the connected permissioned custom connector",
+          runId: "run-connected-permissioned-custom-connector",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-assistant-connected-permissioned-custom-connector-card",
+          role: "assistant",
+          content: connectUrl,
+          runId: "run-connected-permissioned-custom-connector",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+      ],
+      onSendRequest: () => {
+        throw new Error("The chat must not resume without authorization");
+      },
+    });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    const card = await screen.findByTestId("connector-action-card");
+    await user.click(await waitForButtonByText("Authorize", card));
+
+    await waitFor(() => {
+      expect(within(card).getByText("Authorize")).toBeInTheDocument();
+      expect(within(card).queryByText("Authorized")).not.toBeInTheDocument();
+    });
+  });
+
   it("leaves legacy custom connector proposal links as markdown", async () => {
     const proposalUrl = `${window.location.origin}/connectors/custom/proposal?p=legacy`;
     mockChatLifecycle(context, {

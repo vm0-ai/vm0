@@ -4,10 +4,15 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { CustomConnectorMcpResponse } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 
 import { server } from "../../../../../mocks/server";
-import { customConnector } from "../../../__tests__/helpers/custom-connectors";
+import {
+  customConnector,
+  stubAgentCustomConnectors,
+  stubCustomConnectors,
+} from "../../../__tests__/helpers/custom-connectors";
 import { customConnectorCommand } from "../index";
 
 const CONNECTOR_ID = "33333333-3333-4333-8333-333333333333";
+const AGENT_ID = "44444444-4444-4444-8444-444444444444";
 
 describe("zero connector custom readers", () => {
   const consoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
@@ -39,6 +44,46 @@ describe("zero connector custom readers", () => {
     expect(output).toContain("KIND");
     expect(output).toContain("Acme Search");
     expect(output).toContain("http");
+  });
+
+  it("renders grant-based authorization for an agent", async () => {
+    const connector = customConnector();
+    server.use(
+      stubCustomConnectors([connector]),
+      http.get(`http://localhost:3000/api/zero/agents/${AGENT_ID}`, () => {
+        return HttpResponse.json({
+          agentId: AGENT_ID,
+          ownerId: "owner-1",
+          description: null,
+          displayName: "Maya",
+          sound: null,
+          avatarUrl: null,
+        });
+      }),
+      stubAgentCustomConnectors([
+        {
+          customConnectorId: connector.id,
+          permissionNames: ["chat:write"],
+        },
+      ]),
+    );
+
+    await customConnectorCommand.parseAsync([
+      "node",
+      "zero",
+      "list",
+      "--agent",
+      AGENT_ID,
+    ]);
+
+    const output = consoleLog.mock.calls.flat().join("\n");
+    expect(output).toContain("AUTHORIZED FOR Maya");
+    const connectorRow = (consoleLog.mock.calls.flat() as string[]).find(
+      (line) => {
+        return line.startsWith(connector.id);
+      },
+    );
+    expect(connectorRow).toMatch(/✓$/u);
   });
 
   it("keeps HTTP routing details in status for an older kind-less response", async () => {
