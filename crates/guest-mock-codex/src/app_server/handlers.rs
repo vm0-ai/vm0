@@ -14,6 +14,7 @@ use serde_json::{Value, json};
 use std::io::{self, Write};
 use std::os::unix::net::UnixListener;
 use std::path::PathBuf;
+use std::process::Command;
 use std::thread;
 use uuid::Uuid;
 
@@ -31,6 +32,7 @@ const EVENT_DELIVERY_LARGE_EVENT_COUNT: usize = 10;
 const EVENT_DELIVERY_LARGE_EVENT_BYTES: usize = 2 * 1024 * 1024;
 const SECONDARY_THREAD_ID: &str = "00000000-0000-4000-8000-000000000def";
 const SECONDARY_ITEM_STARTED_AT_MS: u64 = 1_700_000_000_000;
+const SHELL_PROMPT_PREFIX: &str = "@shell@\n";
 
 impl AppServerState {
     pub(super) fn handle_initialize<W: Write>(
@@ -293,7 +295,7 @@ impl AppServerState {
             },
             &inputs,
         )?;
-        let response_text = mock_response_text(inputs.iter().map(String::as_str));
+        let response_text = mock_response_text(inputs.iter().map(String::as_str))?;
         write_success(output, id, json!({ "turn": turn(&turn_id) }))?;
         if self.scenario == Scenario::UnexpectedThreadOutputItemStarted {
             write_json_line(
@@ -466,7 +468,7 @@ impl AppServerState {
                 .iter()
                 .chain(&self.steered_inputs)
                 .map(String::as_str),
-        );
+        )?;
         if self.scenario == Scenario::RuntimeTurnCompleteBeforeSteerResponse {
             write_turn_completion_notifications(
                 output,
@@ -581,9 +583,28 @@ fn write_secondary_thread_notifications<W: Write>(
     write_json_line(output, &turn_completed_notification(thread_id, turn_id))
 }
 
-fn mock_response_text<'a>(inputs: impl IntoIterator<Item = &'a str>) -> String {
+fn mock_response_text<'a>(inputs: impl IntoIterator<Item = &'a str>) -> io::Result<String> {
     let prompt = inputs.into_iter().collect::<Vec<_>>().join(" ");
-    format!("guest-mock-codex app-server response: {prompt}")
+    let Some(script) = prompt.strip_prefix(SHELL_PROMPT_PREFIX) else {
+        return Ok(format!("guest-mock-codex app-server response: {prompt}"));
+    };
+
+    let output = Command::new("bash").args(["-c", script]).output()?;
+    let mut response = String::from_utf8_lossy(&output.stdout).into_owned();
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    if !stderr.is_empty() {
+        if !response.is_empty() && !response.ends_with('\n') {
+            response.push('\n');
+        }
+        response.push_str(&stderr);
+    }
+    if !output.status.success() {
+        if !response.is_empty() && !response.ends_with('\n') {
+            response.push('\n');
+        }
+        response.push_str(&format!("mock shell exited with {}", output.status));
+    }
+    Ok(response)
 }
 
 fn validate_initialize_params(params: &Value) -> Result<(), &'static str> {
