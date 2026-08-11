@@ -15,10 +15,7 @@ import {
 } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { writeDb$, type Db } from "../external/db";
-import {
-  publishChatThreadMessageCreatedSafely,
-  publishThreadListChangedSafely,
-} from "../external/realtime";
+import { publishChatThreadMessageCreatedSafely } from "../external/realtime";
 import { nowDate } from "../../lib/time";
 import { assistantEventIdForRunEvent } from "./assistant-event-id";
 import { insertChatEvents } from "./zero-chat-event.service";
@@ -251,9 +248,6 @@ export async function insertAssistantEvents(
     } else {
       await publishChatThreadMessageCreatedSafely(args.userId, args.threadId);
     }
-    signal.throwIfAborted();
-
-    await publishThreadListChangedSafely(args.userId);
     signal.throwIfAborted();
   }
 
