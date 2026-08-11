@@ -31,9 +31,10 @@ plaintext shared targets.
 - A migrate run never reports readiness. Run a new complete dry-run from the
   beginning after repairs; only that run can set `ready` to `true`.
 
-Do not run migrate mode in production until #26240 is deployed and every older
-API writer has drained. Do not begin #26242 until a complete production dry-run
-reports `ready: true` and zero blocking differences.
+The one-time production backfill completed on 2026-08-12 after an expiring Neon
+branch rehearsal. Its final full production dry-run scanned 33 rows and
+reported `ready: true` with zero blocking differences. The temporary production
+job was removed after the reports were recorded.
 
 ## Usage
 
@@ -47,12 +48,8 @@ pnpm --filter @vm0/db exec tsx \
 ```
 
 After reviewing a complete dry-run, add `--migrate` to repair missing or
-mismatched shared targets. Production execution uses a reviewed, temporary PR
-CI job under the protected `production` environment. That job checks out the
-exact approved PR head, rehearses migrate and verification on an expiring Neon
-branch cloned from production, rechecks the PR head, and only then runs against
-the production database. Remove the job after its migrate and complete
-verification reports have been recorded.
+mismatched shared targets. A migrate run must always be followed by a complete
+dry-run from the beginning before its result can be treated as ready.
 
 `--batch-size` controls the maximum keyset page size and must be between 1 and
 1,000. Every completed page checkpoints the sanitized report. If a run fails,
