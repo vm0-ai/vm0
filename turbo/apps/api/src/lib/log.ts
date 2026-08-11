@@ -7,8 +7,8 @@ import { Axiom } from "@axiomhq/js";
 
 import { formatMessage, extractFields } from "@vm0/core/log-utils";
 
-import { env } from "./env";
-import { invocationResource } from "./invocation-context";
+import { env, optionalEnv } from "./env";
+import { currentInvocation, invocationResource } from "./invocation-context";
 import { singleton } from "./singleton";
 
 type LogMethod = (...args: unknown[]) => void;
@@ -242,9 +242,15 @@ function logToAxiom(level: Level, name: string, args: unknown[]): void {
   const message = formatMessage(args);
   const fields = extractFields(args);
   const eventRootFields = rootEventFields(fields);
+  const jobRef = optionalEnv("VM0_PREVIEW_JOB_REF");
+  const workerVersion = currentInvocation()?.metadata.workerVersion;
   const data = {
     [EVENT]: {
       source: "api",
+      environment: env("ENV"),
+      git_commit_sha: env("GIT_COMMIT_SHA"),
+      ...(jobRef ? { preview_job_ref: jobRef } : {}),
+      ...(workerVersion ? { worker_version: workerVersion } : {}),
       ...eventRootFields,
     },
     ...fields,

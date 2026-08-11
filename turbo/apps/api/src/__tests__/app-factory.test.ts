@@ -264,6 +264,8 @@ describe("createApp", () => {
     });
     expect(logFields[EVENT]).toMatchObject({
       source: "api",
+      environment: "development",
+      git_commit_sha: "test-commit-sha",
       type: "unhandled_request_error",
       errorSummary:
         "column chat_threads.last_read_message_id does not exist for user [email] at [url] Bearer [redacted] [number] [id] [id] [id] API key=[redacted] client secret=[redacted] refresh_token=[redacted] Authorization=[redacted]",
@@ -289,6 +291,54 @@ describe("createApp", () => {
     expect(serialized).not.toContain("client-secret");
     expect(serialized).not.toContain("refresh-secret");
     expect(serialized).not.toContain("basic-secret");
+  });
+
+  it("tags Worker errors with preview and version identity", async () => {
+    mockEnv("ENV", "production");
+    mockEnv("CF_API_PUBLIC_ORIGIN", "https://api.vm0.ai");
+    mockEnv(
+      "CF_API_PRODUCTION_CANDIDATE_ORIGIN",
+      "https://api-worker-candidate.vm0.ai",
+    );
+    mockOptionalEnv("VM0_PREVIEW_JOB_REF", "pr-25722");
+    const handler$ = computed((): never => {
+      throw new Error("worker probe failed");
+    });
+    const app = createApp({
+      routes: [
+        ...TEST_APP_ROUTES,
+        { route: errorTestContract.boom, handler: handler$ },
+      ],
+    });
+    const pending: Promise<unknown>[] = [];
+
+    const response = await runInvocation(
+      {
+        waitUntil(work) {
+          pending.push(work);
+        },
+      },
+      {
+        kind: "fetch",
+        requestId: "worker-error-test",
+        workerVersion: "worker-version-test",
+      },
+      async () => {
+        return await app.request("https://api.vm0.ai/__test/boom");
+      },
+    );
+    await Promise.allSettled(pending);
+
+    expect(response.status).toBe(500);
+    const [, fields] = context.mocks.axiomLogging.error.mock.calls.at(-1) ?? [];
+    const logFields = fields as Record<PropertyKey, unknown>;
+    expect(logFields[EVENT]).toMatchObject({
+      environment: "production",
+      git_commit_sha: "test-commit-sha",
+      preview_job_ref: "pr-25722",
+      source: "api",
+      worker_version: "worker-version-test",
+    });
   });
 
   it("bounds long unhandled error summaries", async () => {

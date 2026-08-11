@@ -157,7 +157,9 @@ describe("vercel cron config", () => {
   it("keeps the Worker cron schedule map aligned with Vercel", () => {
     const workerCrons = Object.entries(WORKER_CRON_ROUTES).flatMap(
       ([schedule, paths]) => {
-        return paths.map((path) => ({ path, schedule }));
+        return paths.map((path) => {
+          return { path, schedule };
+        });
       },
     );
     const byPath = (left: VercelCron, right: VercelCron): number => {
