@@ -72,6 +72,10 @@ export const composerConnectorPermissionsEnabled$ = computed((get): boolean => {
   );
 });
 
+export const customConnectorMcpEnabled$ = computed((get): boolean => {
+  return get(featureSwitch$)[FeatureSwitchKey.CustomConnectorMcp] ?? false;
+});
+
 export const reloadFeatureSwitch$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const clerk = await get(clerk$);

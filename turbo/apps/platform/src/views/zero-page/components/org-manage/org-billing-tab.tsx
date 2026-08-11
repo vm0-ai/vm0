@@ -1,6 +1,6 @@
 // TODO(#8609): split large components to comply with max-lines-per-function (128)
 // oxlint-disable max-lines-per-function
-import { useGet, useSet, useLastLoadable } from "ccstate-react";
+import { useGet, useSet, useLastLoadable, type Loadable } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
 import { FeatureSwitchKey } from "@vm0/core";
@@ -46,6 +46,7 @@ import {
   closeRestoreDialog$,
   restoreDialogOpen$,
   restorePlan$,
+  usagePackMigrationAsync$,
   type BillingTier,
   type ConcurrencyChangeMode,
   type ConcurrencyConfirmDialogState,
@@ -61,6 +62,7 @@ import {
 import type {
   BillingStatusResponse,
   ConcurrencySubscriptionChangePreviewResponse,
+  UsagePackMigrationStateResponse,
 } from "@vm0/api-contracts/contracts/zero-billing";
 import {
   Dialog,
@@ -79,7 +81,10 @@ import {
 import { BuyCreditsSection } from "./buy-credits-section.tsx";
 import {
   billingSubPage$,
+  billingMigrationSubPage$,
+  billingMigrationTargetTier$,
   buyCreditsScrollRef$,
+  openBillingMigrationSubPage$,
   setBillingSubPage$,
   lockedTarget$,
   selectedTarget$,
@@ -89,7 +94,12 @@ import {
 import { currentLocale, i18n } from "../../../../i18n/index.ts";
 import { formatLocalizedNumber, formatUsd } from "../../../../i18n/format.ts";
 import { featureSwitch$ } from "../../../../signals/external/feature-switch.ts";
-import { UsagePackPricingPage } from "./usage-pack-pricing-page.tsx";
+import { openSettingsUsagePackUpgrade$ } from "../../../../signals/zero-page/settings/settings-dialog.ts";
+import {
+  UsagePackMigrationPage,
+  UsagePackMigrationPlanSelectionPage,
+  UsagePackPricingPage,
+} from "./usage-pack-pricing-page.tsx";
 
 const PLANS = [
   {
@@ -862,8 +872,12 @@ function DowngradeConfirmDialog({ currentTier }: { currentTier: BillingTier }) {
         if (v) {
           return;
         }
-        setLockedTarget(null);
         close();
+      }}
+      onOpenChangeComplete={(v) => {
+        if (!v) {
+          setLockedTarget(null);
+        }
       }}
     >
       <DialogContent className="sm:max-w-[440px]">
@@ -959,14 +973,7 @@ function DowngradeConfirmDialog({ currentTier }: { currentTier: BillingTier }) {
         {error && <p className="text-sm text-destructive mt-2">{error}</p>}
 
         <div className="flex justify-end gap-2 mt-4">
-          <Button
-            variant="outline"
-            onClick={() => {
-              setLockedTarget(null);
-              return close();
-            }}
-            disabled={loading}
-          >
+          <Button variant="outline" onClick={close} disabled={loading}>
             {i18n.t(($) => {
               return $.billing.common.cancel;
             })}
@@ -1098,7 +1105,10 @@ function PlanActionButtons({
   isPaid,
   hasScheduledChange,
   currentTier,
+  futureTier,
   loading,
+  showConvert,
+  onConvert,
   onUpgrade,
   onDowngrade,
   onRestore,
@@ -1106,17 +1116,25 @@ function PlanActionButtons({
   isPaid: boolean;
   hasScheduledChange: boolean;
   currentTier: BillingTier;
+  futureTier: "pro" | "team" | null;
   loading: boolean;
+  showConvert: boolean;
+  onConvert: () => void;
   onUpgrade: () => void;
   onDowngrade: () => void;
   onRestore: () => void;
 }) {
   const customLocked = isCustomTier(currentTier);
-  const showUpgrade =
-    !customLocked &&
-    ((isPaid && currentTier !== "team" && !hasScheduledChange) || !isPaid);
-  const showDowngrade = !customLocked && isPaid && !hasScheduledChange;
-  const showRestore = !customLocked && isPaid && hasScheduledChange;
+  const showUpgrade = futureTier
+    ? futureTier === "pro"
+    : !showConvert &&
+      !customLocked &&
+      ((isPaid && currentTier !== "team" && !hasScheduledChange) || !isPaid);
+  const showDowngrade = futureTier
+    ? futureTier === "team"
+    : !customLocked && isPaid && !hasScheduledChange;
+  const showRestore =
+    !futureTier && !customLocked && isPaid && hasScheduledChange;
 
   return (
     <div className="flex items-center gap-2 shrink-0">
@@ -1141,6 +1159,18 @@ function PlanActionButtons({
         >
           {i18n.t(($) => {
             return $.billing.plans.upgrade;
+          })}
+        </Button>
+      )}
+      {showConvert && (
+        <Button
+          size="sm"
+          className="rounded-lg h-8 text-xs"
+          disabled={loading}
+          onClick={onConvert}
+        >
+          {i18n.t(($) => {
+            return $.billing.plans.usagePacks.migration.convertPlan;
           })}
         </Button>
       )}
@@ -1197,12 +1227,29 @@ function currentPlanStatusLabel(
 
 function billingPeriodLabel(args: {
   isPaid: boolean;
+  migration: UsagePackMigrationStateResponse | null;
   scheduledChange: ScheduledBillingChange;
   periodEnd: string | null | undefined;
 }): string | null {
-  const { isPaid, scheduledChange, periodEnd } = args;
+  const { isPaid, migration, scheduledChange, periodEnd } = args;
   if (!isPaid) {
     return null;
+  }
+
+  if (
+    migration?.targetTier &&
+    migration.effectiveAt &&
+    migration.status === "scheduled"
+  ) {
+    return i18n.t(
+      ($) => {
+        return $.billing.plans.usagePacks.migration.switchesOn;
+      },
+      {
+        plan: planName(migration.targetTier),
+        date: formatBillingDate(migration.effectiveAt),
+      },
+    );
   }
 
   const changeDate = scheduledEffectiveDate(scheduledChange, periodEnd);
@@ -2123,26 +2170,186 @@ function ConcurrencyBillingSection({
   );
 }
 
+function usagePackMigrationStatusLabel(
+  migration: UsagePackMigrationStateResponse,
+): string {
+  if (migration.status === "scheduled" && migration.effectiveAt) {
+    return i18n.t(
+      ($) => {
+        return $.billing.plans.usagePacks.migration.scheduled;
+      },
+      { date: formatBillingDate(migration.effectiveAt) },
+    );
+  }
+  return i18n.t(($) => {
+    return $.billing.plans.usagePacks.migration.processing;
+  });
+}
+
+function UsagePackMigrationAvailability({
+  migration,
+  onOpen,
+}: {
+  readonly migration: UsagePackMigrationStateResponse | null;
+  readonly onOpen?: () => void;
+}) {
+  if (!migration) {
+    return null;
+  }
+  const configurable = usagePackMigrationConfigurable(migration);
+  return (
+    <section className="flex flex-col gap-3">
+      <div>
+        <h3 className="text-sm font-medium text-foreground">
+          {i18n.t(($) => {
+            return $.billing.plans.usagePacks.migration.title;
+          })}
+        </h3>
+        <p className="mt-0.5 text-[13px] text-muted-foreground">
+          {i18n.t(
+            ($) => {
+              return $.billing.plans.usagePacks.migration.description;
+            },
+            { plan: planName(migration.tier) },
+          )}
+        </p>
+      </div>
+      <div className="flex items-center justify-between gap-4 rounded-xl bg-card px-5 py-4 zero-border">
+        <p className="text-sm text-muted-foreground">
+          {configurable
+            ? i18n.t(($) => {
+                return $.billing.plans.usagePacks.migration.ready;
+              })
+            : usagePackMigrationStatusLabel(migration)}
+        </p>
+        <div className="flex shrink-0 items-center gap-2">
+          {migration.hostedInvoiceUrl && (
+            <Button asChild variant="outline" size="sm" className="h-8 text-xs">
+              <a
+                href={migration.hostedInvoiceUrl}
+                target="_blank"
+                rel="noreferrer"
+              >
+                {i18n.t(($) => {
+                  return $.billing.plans.usagePacks.migration.invoice;
+                })}
+                <ExternalLink size={13} strokeWidth={1.5} />
+              </a>
+            </Button>
+          )}
+          {configurable && onOpen && (
+            <Button size="sm" className="h-8 text-xs" onClick={onOpen}>
+              {i18n.t(($) => {
+                return $.billing.plans.usagePacks.migration.action;
+              })}
+            </Button>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function UsagePackMigrationProgressPage({
+  migration,
+  onBack,
+}: {
+  readonly migration: UsagePackMigrationStateResponse;
+  readonly onBack: () => void;
+}) {
+  return (
+    <div className="flex flex-col gap-5">
+      <div className="flex items-center gap-3">
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7"
+          onClick={onBack}
+          aria-label={i18n.t(($) => {
+            return $.billing.common.back;
+          })}
+        >
+          <ArrowLeft size={16} strokeWidth={1.8} />
+        </Button>
+        <h3 className="text-sm font-medium text-foreground">
+          {i18n.t(($) => {
+            return $.billing.plans.usagePacks.migration.title;
+          })}
+        </h3>
+      </div>
+      <UsagePackMigrationAvailability migration={migration} />
+    </div>
+  );
+}
+
 function BillingPricingPage({
   currentTier,
+  migration,
+  migrationLoading,
+  migrationOpen,
+  migrationTargetTier,
   onBack,
+  onMigrationBack,
+  onSelectMigration,
   onRestore,
   periodEnd,
   scheduledChange,
+  usagePackCheckoutAllowed,
 }: {
   readonly currentTier: BillingTier;
+  readonly migration: UsagePackMigrationStateResponse | null;
+  readonly migrationLoading: boolean;
+  readonly migrationOpen: boolean;
+  readonly migrationTargetTier: "pro" | "team" | null;
   readonly onBack: () => void;
+  readonly onMigrationBack: () => void;
+  readonly onSelectMigration: (tier: "pro" | "team") => void;
   readonly onRestore: () => void;
   readonly periodEnd: string | null | undefined;
   readonly scheduledChange: ScheduledBillingChange;
+  readonly usagePackCheckoutAllowed: boolean;
 }) {
   const featureSwitches = useGet(featureSwitch$);
   const usagePackPlansEnabled =
     featureSwitches[FeatureSwitchKey.UsagePackPlans];
+  const migrationInProgress = usagePackMigrationInProgress(migration);
+  const scheduledMigrationMissingConfiguration =
+    migration?.status === "scheduled" && !migration.configuration;
   return (
     <>
-      {usagePackPlansEnabled ? (
-        <UsagePackPricingPage currentTier={currentTier} onBack={onBack} />
+      {migrationLoading ? (
+        <div
+          role="status"
+          className="h-80 animate-pulse rounded-xl bg-muted/40"
+        />
+      ) : migration &&
+        (migrationInProgress || scheduledMigrationMissingConfiguration) ? (
+        <UsagePackMigrationProgressPage migration={migration} onBack={onBack} />
+      ) : migrationOpen &&
+        migration &&
+        migrationTargetTier &&
+        migration.effectiveAt ? (
+        <UsagePackMigrationPage
+          configuration={migration.configuration ?? null}
+          effectiveAt={migration.effectiveAt}
+          migrationId={migration.migrationId}
+          onBack={onMigrationBack}
+          sourceTier={migration.tier}
+          targetTier={migrationTargetTier}
+        />
+      ) : migration ? (
+        <UsagePackMigrationPlanSelectionPage
+          configuration={migration.configuration ?? null}
+          onBack={onBack}
+          onSelect={onSelectMigration}
+        />
+      ) : usagePackPlansEnabled ? (
+        <UsagePackPricingPage
+          checkoutAllowed={usagePackCheckoutAllowed}
+          currentTier={currentTier}
+          onBack={onBack}
+        />
       ) : (
         <PricingPage
           currentTier={currentTier}
@@ -2162,16 +2369,104 @@ function BillingPricingPage({
   );
 }
 
+function shouldWaitForUsagePackMigration(
+  enabled: boolean,
+  loading: boolean,
+): boolean {
+  return enabled && loading;
+}
+function canStartUsagePackCheckout(
+  status: BillingStatusResponse | null,
+): boolean {
+  return status?.hasSubscription === false;
+}
+
+function usagePackMigrationInProgress(
+  migration: UsagePackMigrationStateResponse | null,
+): boolean {
+  return migration?.status === "applying";
+}
+
+function usagePackMigrationConfigurable(
+  migration: UsagePackMigrationStateResponse | null,
+): boolean {
+  return migration?.status === "eligible" || migration?.status === "previewed";
+}
+
+function migrationDowngradeTarget(
+  migration: UsagePackMigrationStateResponse | null,
+): "pro-suspend" | null {
+  return migration ? "pro-suspend" : null;
+}
+
+function planActionsLoading(
+  portalLoading: boolean,
+  migrationInProgress: boolean,
+): boolean {
+  return portalLoading || migrationInProgress;
+}
+
+function loadableDataOrNull<T>(loadable: Loadable<T>): T | null {
+  return loadable.state === "hasData" ? loadable.data : null;
+}
+
+function scheduledMigrationPlanActions(
+  migration: UsagePackMigrationStateResponse | null,
+  openPricingPage: () => void,
+  handleDowngrade: () => void,
+): {
+  futureTier: "pro" | "team" | null;
+  onDowngrade: () => void;
+} {
+  if (migration?.status !== "scheduled") {
+    return { futureTier: null, onDowngrade: handleDowngrade };
+  }
+  return {
+    futureTier: migration.configuration?.tier ?? null,
+    onDowngrade: openPricingPage,
+  };
+}
+
+function CurrentPlanTitle({
+  label,
+  legacy,
+}: {
+  readonly label: string;
+  readonly legacy: boolean;
+}) {
+  return (
+    <p className="flex items-center gap-2 text-sm font-medium text-foreground">
+      <span>{label}</span>
+      {legacy && (
+        <span className="rounded px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground zero-badge">
+          {i18n.t(($) => {
+            return $.billing.plans.legacy;
+          })}
+        </span>
+      )}
+    </p>
+  );
+}
+
 export function OrgBillingTab() {
   const { t } = useTranslation();
   const featureSwitches = useGet(featureSwitch$);
   const paymentMethodManagementEnabled =
     featureSwitches[FeatureSwitchKey.PaymentMethodManagement];
   const pricingOpen = useGet(billingSubPage$);
+  const migrationOpen = useGet(billingMigrationSubPage$);
+  const migrationTargetTier = useGet(billingMigrationTargetTier$);
   const setBillingSubPage = useSet(setBillingSubPage$);
+  const openMigrationPage = useSet(openBillingMigrationSubPage$);
   const buyCreditsScrollRef = useSet(buyCreditsScrollRef$);
-  const setPricingOpen = (v: boolean) => {
-    return setBillingSubPage(v);
+  const closeBillingSubPage = () => {
+    return setBillingSubPage(false);
+  };
+  const closeMigrationSubPage = () => {
+    return setBillingSubPage(true);
+  };
+  const openPricingPage = () => {
+    return setBillingSubPage(true);
   };
   const pageSignal = useGet(pageSignal$);
   const reloadBilling = useSet(reloadBillingStatus$);
@@ -2179,11 +2474,24 @@ export function OrgBillingTab() {
   const setLockedTarget = useSet(setLockedTarget$);
   const openRestore = useSet(openRestoreDialog$);
   const [portalLoadable, portal] = useLoadableSet(openBillingPortal$);
+  const [upgradeLoadable, openUsagePackUpgrade] = useLoadableSet(
+    openSettingsUsagePackUpgrade$,
+  );
   const statusLoadable = useLastLoadable(billingStatusAsync$);
+  const migrationLoadable = useLastLoadable(usagePackMigrationAsync$);
+  const usagePackPlansEnabled =
+    featureSwitches[FeatureSwitchKey.UsagePackPlans];
   const loading = portalLoadable.state === "loading";
+  const upgradeLoading = upgradeLoadable.state === "loading";
 
-  const status =
-    statusLoadable.state === "hasData" ? statusLoadable.data : null;
+  const status = loadableDataOrNull(statusLoadable);
+  const migration = loadableDataOrNull(migrationLoadable);
+  const migrationLoading = shouldWaitForUsagePackMigration(
+    usagePackPlansEnabled,
+    migrationLoadable.state === "loading",
+  );
+  const migrationInProgress = usagePackMigrationInProgress(migration);
+  const canConvertLegacyPlan = usagePackMigrationConfigurable(migration);
   const statusLoading = statusLoadable.state === "loading";
   const statusError = statusLoadable.state === "hasError";
   const capabilities = billingControlCapabilities(status);
@@ -2197,18 +2505,31 @@ export function OrgBillingTab() {
   const periodEnd = status?.currentPeriodEnd;
   const periodLabel = billingPeriodLabel({
     isPaid,
+    migration,
     scheduledChange,
     periodEnd,
   });
   const changeDate = scheduledEffectiveDate(scheduledChange, periodEnd);
 
   const handleDowngrade = () => {
-    setLockedTarget(null);
+    setLockedTarget(migrationDowngradeTarget(migration));
     openDowngrade();
   };
   const handleRestore = () => {
     openRestore();
   };
+  const handleUpgrade = () => {
+    if (!usagePackPlansEnabled || currentTier !== "pro") {
+      openPricingPage();
+      return;
+    }
+    detach(openUsagePackUpgrade(pageSignal), Reason.DomCallback);
+  };
+  const scheduledPlanActions = scheduledMigrationPlanActions(
+    migration,
+    openPricingPage,
+    handleDowngrade,
+  );
   const currentPlanLabel = currentPlanNameLabel(currentTier);
   const currentPlanDescription = currentPlanStatusLabel(
     currentTier,
@@ -2236,11 +2557,16 @@ export function OrgBillingTab() {
     return (
       <BillingPricingPage
         currentTier={currentTier}
+        migration={migration}
+        migrationLoading={migrationLoading}
+        migrationOpen={migrationOpen}
+        migrationTargetTier={migrationTargetTier}
+        onMigrationBack={closeMigrationSubPage}
+        onSelectMigration={openMigrationPage}
         scheduledChange={scheduledChange}
         periodEnd={periodEnd}
-        onBack={() => {
-          return setPricingOpen(false);
-        }}
+        usagePackCheckoutAllowed={canStartUsagePackCheckout(status)}
+        onBack={closeBillingSubPage}
         onRestore={handleRestore}
       />
     );
@@ -2286,9 +2612,10 @@ export function OrgBillingTab() {
             <>
               <div className="flex items-center justify-between gap-4 px-5 py-4">
                 <div className="min-w-0">
-                  <p className="text-sm font-medium text-foreground">
-                    {currentPlanLabel}
-                  </p>
+                  <CurrentPlanTitle
+                    label={currentPlanLabel}
+                    legacy={migration !== null}
+                  />
                   <p className="text-[13px] text-muted-foreground mt-0.5">
                     {currentPlanDescription}
                   </p>
@@ -2297,11 +2624,15 @@ export function OrgBillingTab() {
                   isPaid={isPaid}
                   hasScheduledChange={hasScheduledChange}
                   currentTier={currentTier}
-                  loading={loading}
-                  onUpgrade={() => {
-                    return setPricingOpen(true);
-                  }}
-                  onDowngrade={handleDowngrade}
+                  futureTier={scheduledPlanActions.futureTier}
+                  loading={planActionsLoading(
+                    loading || upgradeLoading,
+                    migrationInProgress,
+                  )}
+                  showConvert={canConvertLegacyPlan}
+                  onConvert={openPricingPage}
+                  onUpgrade={handleUpgrade}
+                  onDowngrade={scheduledPlanActions.onDowngrade}
                   onRestore={handleRestore}
                 />
               </div>
@@ -2373,9 +2704,7 @@ export function OrgBillingTab() {
               <button
                 type="button"
                 className="flex w-full items-center justify-between gap-4 px-5 py-3 text-left transition-colors bg-muted/20 hover:bg-state-hover"
-                onClick={() => {
-                  return setPricingOpen(true);
-                }}
+                onClick={openPricingPage}
               >
                 <span className="inline-flex items-center gap-2 text-sm font-medium text-foreground">
                   {t(($) => {

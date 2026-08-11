@@ -15,6 +15,7 @@ describe("isFeatureEnabled", () => {
       true,
     );
     expect(isFeatureEnabled(FeatureSwitchKey.TeamsIntegration, {})).toBe(true);
+    expect(isFeatureEnabled(FeatureSwitchKey.JoggAiBuiltIn, {})).toBe(true);
   });
 
   it("should return true for globally enabled switch even with context", () => {
@@ -26,8 +27,6 @@ describe("isFeatureEnabled", () => {
   it("should return false for disabled switch without context", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.AhrefsConnector, {})).toBe(false);
     expect(isFeatureEnabled(FeatureSwitchKey.MetaAdsConnector, {})).toBe(false);
-    expect(isFeatureEnabled(FeatureSwitchKey.JoggAiBuiltIn, {})).toBe(false);
-    expect(isFeatureEnabled(FeatureSwitchKey.SeoBuiltIn, {})).toBe(false);
   });
 
   it("should return false for disabled switch with non-matching userId", () => {
@@ -100,6 +99,9 @@ describe("getAllFeatureStates", () => {
     });
     expect(staffOrgStates[FeatureSwitchKey.Lab]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatErrorRecovery]).toBe(true);
+    expect(
+      staffOrgStates[FeatureSwitchKey.ChatRunContinuationPresentation],
+    ).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.PiLoop]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.NewChatDefaultModelAction]).toBe(
       true,
@@ -111,8 +113,6 @@ describe("getAllFeatureStates", () => {
       true,
     );
     expect(staffOrgStates[FeatureSwitchKey.StrapiIntegration]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.JoggAiBuiltIn]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.SeoBuiltIn]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ConcurrencyMemberUsage]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ConnectorDiscovery]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ConnectorCatalogCount]).toBe(true);
@@ -126,6 +126,9 @@ describe("getAllFeatureStates", () => {
     });
     expect(otherOrgStates[FeatureSwitchKey.Lab]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatErrorRecovery]).toBe(false);
+    expect(
+      otherOrgStates[FeatureSwitchKey.ChatRunContinuationPresentation],
+    ).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.PiLoop]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.NewChatDefaultModelAction]).toBe(
       false,
@@ -137,8 +140,6 @@ describe("getAllFeatureStates", () => {
       false,
     );
     expect(otherOrgStates[FeatureSwitchKey.StrapiIntegration]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.JoggAiBuiltIn]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.SeoBuiltIn]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ConcurrencyMemberUsage]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ConnectorDiscovery]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ConnectorCatalogCount]).toBe(false);

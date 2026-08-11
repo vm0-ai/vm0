@@ -50,6 +50,11 @@ export function getCustomSkillStorageName(skillName: string): string {
   return `custom-skill@${skillName}`;
 }
 
+/** Generate the private compiled-package storage name for a template import. */
+export function getPresentationTemplateStorageName(templateId: string): string {
+  return `presentation-template@${templateId}`;
+}
+
 /**
  * Generate the storage name for a custom connector skill.
  * The connector id is used so renaming the connector does not orphan storage.

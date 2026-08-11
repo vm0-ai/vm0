@@ -19,6 +19,13 @@ const secretStateSchema = z.object({
 const variableStateSchema = z.object({
   name: z.string(),
   connector_id: z.uuid(),
+  value: z.string().optional(),
+});
+
+const legacyCustomValueStateSchema = z.object({
+  kind: z.enum(["secret", "variable"]),
+  key: z.string(),
+  encrypted_value: z.string(),
 });
 
 const customOauthStateSchema = z.object({
@@ -64,15 +71,6 @@ export const testConnectorCredentialStorageStateActionBodySchema =
       connector_slug: z.string(),
       auth_method: z.string(),
       storage_version: z.number().int().positive(),
-    }),
-    z.object({
-      action: z.literal("upsert-legacy-variable"),
-      org_id: z.string(),
-      user_id: z.string(),
-      connector_id: z.uuid(),
-      name: z.string(),
-      value: z.string(),
-      description: z.string().nullable(),
     }),
     z.object({
       action: z.literal("seed-custom-runtime-connectors"),
@@ -127,10 +125,11 @@ export const testConnectorCredentialStorageStateActionResponseSchema = z.object(
     ok: z.literal(true),
     connector: connectorStateSchema.nullable().optional(),
     connector_id: z.uuid().optional(),
-    variable_id: z.uuid().optional(),
     custom_oauth_state: customOauthStateSchema.nullable().optional(),
     secrets: z.array(secretStateSchema).optional(),
     variables: z.array(variableStateSchema).optional(),
+    legacy_custom_values: z.array(legacyCustomValueStateSchema).optional(),
+    legacy_custom_secret_encrypted_value: z.string().nullable().optional(),
   },
 );
 

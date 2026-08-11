@@ -1,10 +1,8 @@
 import { command, computed } from "ccstate";
 import type { ArtifactDetail } from "@vm0/api-contracts/contracts/artifact-catalog";
 
-import {
-  downloadAttachmentUrl,
-  publicAttachmentUrl,
-} from "../../views/zero-page/zero-attachment-url.ts";
+import { publicAttachmentUrl } from "../../views/zero-page/zero-attachment-url.ts";
+import { downloadAttachment$ } from "../attachment-download.ts";
 import { fetchPreviewText, isTextPreviewKind } from "../text-preview.ts";
 import {
   classifyChatAttachment,
@@ -118,7 +116,11 @@ export const openArtifact$ = command(
       return;
     }
     if (preview.kind === "file") {
-      await downloadAttachmentUrl(preview.url, signal, preview.filename);
+      await set(
+        downloadAttachment$,
+        { filename: preview.filename, url: preview.url },
+        signal,
+      );
       signal.throwIfAborted();
       return;
     }

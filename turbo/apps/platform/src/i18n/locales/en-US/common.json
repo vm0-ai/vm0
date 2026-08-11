@@ -334,6 +334,7 @@
       "slack": "Slack",
       "teams": "Teams",
       "telegram": "Telegram",
+      "templateImport": "Template import",
       "test": "Test",
       "web": "Web",
       "webhook": "Webhook"
@@ -917,6 +918,7 @@
         "description": "Legacy free access for existing workspaces.",
         "name": "Free"
       },
+      "legacy": "Legacy",
       "limitedFree": {
         "name": "Limited free"
       },
@@ -974,6 +976,22 @@
         "memberExclusive": "Each package belongs to one member and cannot be shared. When a package runs out, usage falls back to pay-as-you-go credits. You can upgrade to a new package later.",
         "memberPackages": "Member packages",
         "memberUsage": "Member usage",
+        "migration": {
+          "action": "Convert plan",
+          "confirmDescription": "Your current plan and entitlements stay active until this billing period ends. Stripe charges the new recurring total when the new plan starts.",
+          "convertPlan": "Convert plan",
+          "description": "Convert your legacy {{plan}} workspace to a new plan with an individual monthly usage package for every member.",
+          "error": "Could not migrate this subscription. Refresh and try again.",
+          "invoice": "View invoice",
+          "processing": "Scheduling the conversion with Stripe.",
+          "ready": "Choose one required monthly package for every member and pending invitation.",
+          "review": "Review conversion",
+          "reviewDescription": "Compare the current legacy plan with the new recurring plan before scheduling the conversion.",
+          "reviewTitle": "Review plan conversion",
+          "scheduled": "Conversion scheduled for {{date}}. Your current plan and entitlements remain active until then.",
+          "switchesOn": "Switches to {{plan}} on {{date}}",
+          "title": "Convert legacy plan"
+        },
         "minimumPackageBreakdown": "{{base}} plan + {{package}} required member package",
         "monthlyTotal": "Monthly total",
         "orderSummary": "Order summary",
@@ -1625,6 +1643,7 @@
         "waiting": "Waiting",
         "watching": "Watching"
       },
+      "emojiCategories": "Emoji categories",
       "empty": "Send a message to start the conversation",
       "frequentlyUsed": "Frequently used",
       "icon": "Chat thread icon",
@@ -1635,8 +1654,10 @@
       "openBrowser": "Open browser",
       "openNamedAgent": "Open agent {{name}}",
       "openNamedChat": "Open chat {{title}}",
+      "pickEmoji": "Pick an emoji",
       "scrollToBottom": "Scroll to bottom",
-      "searchEmoji": "Search emoji"
+      "searchEmoji": "Search emoji",
+      "steerMessageExplanation": "Sent while the agent was working to direct its behavior"
     },
     "threadSidebar": {
       "resize": "Resize sidebar"
@@ -1940,6 +1961,7 @@
       "emptyAdmin": "No custom connectors yet. Create one to register an API for every member to use.",
       "emptyMember": "Your org hasn't registered any custom connectors yet.",
       "mcpStreamableHttp": "MCP · Streamable HTTP",
+      "mcpType": "MCP",
       "moreOptions": "More options",
       "statusConnected": "Connected",
       "toasts": {
@@ -4181,15 +4203,14 @@
         "useAccount": "Use"
       },
       "picker": {
-        "balancedUse": "Balanced use",
         "builtInModel": "Built-in model",
         "byokHelp": "Uses your configured provider",
         "fast": "Fast",
+        "fastImpact": "1.5× model speed · 2.5× credit usage",
         "inheritDefault": "Inherit from org default",
         "loadError": "Unable to load models.",
         "loading": "Loading models...",
         "models": "Models",
-        "moreCodexCredits": "Uses more Codex credits.",
         "noConfiguredModels": "No configured models",
         "priceTiers": {
           "balanced": "Balanced cost and performance",
@@ -4197,14 +4218,12 @@
           "frontier": "Frontier flagship model",
           "premium": "Premium frontier model for the hardest tasks"
         },
-        "prioritizeSpeed": "Prioritize speed",
         "pro": "Pro",
         "providerLabels": {
           "azureFoundryPortal": "Azure foundry portal",
           "claudeCodeOauth": "Claude Code (OAuth token)",
           "deepseek": "Deepseek"
         },
-        "runSpeed": "Run speed",
         "standard": "Standard"
       },
       "policies": {

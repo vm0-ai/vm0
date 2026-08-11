@@ -1,5 +1,62 @@
 # Changelog
 
+## [8.545.2](https://github.com/vm0-ai/vm0/compare/core-v8.545.1...core-v8.545.2) (2026-08-11)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.316.0
+
+## [8.545.1](https://github.com/vm0-ai/vm0/compare/core-v8.545.0...core-v8.545.1) (2026-08-11)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.315.0
+
+## [8.545.0](https://github.com/vm0-ai/vm0/compare/core-v8.544.0...core-v8.545.0) (2026-08-11)
+
+
+### Features
+
+* migrate retired run model state ([#26338](https://github.com/vm0-ai/vm0/issues/26338)) ([eb9fc94](https://github.com/vm0-ai/vm0/commit/eb9fc9419a23a08a671a5d7c5707fb77dc0d4952))
+* name the hovered emoji and tighten the picker section titles ([#26382](https://github.com/vm0-ai/vm0/issues/26382)) ([73a89c9](https://github.com/vm0-ai/vm0/commit/73a89c9f7b6e49b36e2d8bc622aafb64daba9823))
+
+
+### Bug Fixes
+
+* simplify connector catalog count ([#26362](https://github.com/vm0-ai/vm0/issues/26362)) ([fbc46db](https://github.com/vm0-ai/vm0/commit/fbc46db2de3468aab2eae6b86455db58e0ee457a))
+
+
+### Refactoring
+
+* **api:** remove seo built-in feature switch ([#26354](https://github.com/vm0-ai/vm0/issues/26354)) ([8d4f16d](https://github.com/vm0-ai/vm0/commit/8d4f16d606eab08cdc37a3ac30804a112fc0b5b8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.314.0
+
+## [8.544.0](https://github.com/vm0-ai/vm0/compare/core-v8.543.0...core-v8.544.0) (2026-08-11)
+
+
+### Features
+
+* add a category rail to the chat thread emoji picker ([#26342](https://github.com/vm0-ai/vm0/issues/26342)) ([8550bc5](https://github.com/vm0-ai/vm0/commit/8550bc57ab8f6fa0cf026b1a6cc1065b1b123c4a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.313.1
+
 ## [8.543.0](https://github.com/vm0-ai/vm0/compare/core-v8.542.3...core-v8.543.0) (2026-08-11)
 
 

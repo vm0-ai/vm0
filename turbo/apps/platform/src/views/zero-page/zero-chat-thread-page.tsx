@@ -1,6 +1,7 @@
 import type {
   CSSProperties,
   FormEvent,
+  KeyboardEvent as ReactKeyboardEvent,
   MouseEvent as ReactMouseEvent,
   ReactNode,
   UIEvent as ReactUIEvent,
@@ -23,7 +24,15 @@ import {
 } from "../../signals/chat-page/run-usage-popover.ts";
 import {
   AlertCircle,
+  Coffee,
+  Flag,
   Hand,
+  Heart,
+  Leaf,
+  Lightbulb,
+  Plane,
+  Smile,
+  Trophy,
   Image,
   ChartLine,
   Globe,
@@ -49,6 +58,8 @@ import {
   Clock,
   Hourglass,
   Share2,
+  CornerLeftUp,
+  type LucideIcon,
 } from "lucide-react";
 import {
   cn,
@@ -79,7 +90,6 @@ import {
   BrandSlack,
 } from "@vm0/ui";
 import { RUN_ERROR_GUIDANCE } from "@vm0/api-contracts/contracts/errors";
-import { isHttpCustomConnectorClientResponse } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import type {
   ChatEventUsagePayload,
   ChatRecommendedFollowup,
@@ -119,6 +129,7 @@ import {
 } from "./chat-body-cards.tsx";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
+  customConnectorMcpEnabled$,
   featureSwitch$,
   videoTemplateOptionsEnabled$,
 } from "../../signals/external/feature-switch.ts";
@@ -245,9 +256,15 @@ import {
   CHAT_THREAD_EMOJI_OPTIONS,
 } from "../../signals/chat-page/chat-thread-title.ts";
 import {
+  chatThreadEmojiActiveCategory$,
   chatThreadEmojiGroups$,
+  chatThreadEmojiPendingJump$,
+  chatThreadEmojiPreview$,
   chatThreadEmojiQuery$,
   filterChatThreadEmojiGroups,
+  setChatThreadEmojiActiveCategory$,
+  setChatThreadEmojiPendingJump$,
+  setChatThreadEmojiPreview$,
   setChatThreadEmojiQuery$,
   type ChatThreadEmojiItem,
 } from "../../signals/chat-page/chat-thread-emoji.ts";
@@ -354,11 +371,7 @@ function modelChangeRunKey(
   if (inputEvent.runId !== undefined) {
     return `run:${inputEvent.runId}`;
   }
-  // Old web/app clients can persist model annotations on steer inputs for up
-  // to about two days. Keep persisted events from looking like run starts
-  // until their stored rows and snapshots are migrated; remove the seqId
-  // check after #25879 confirms no runless model annotations remain.
-  if (inputEvent.seqId === undefined && modelSelection !== undefined) {
+  if (modelSelection !== undefined) {
     return `event:${inputEvent.id}`;
   }
   return undefined;
@@ -834,6 +847,9 @@ function ChatThreadEmojiMenuButton({
   const { open, openChatThreadEmojiMenu, closeMenu, selectEmoji, clearEmoji } =
     useChatThreadEmojiMenuActions({ threadId, title });
   const setEmojiQuery = useSet(setChatThreadEmojiQuery$);
+  const setEmojiActiveCategory = useSet(setChatThreadEmojiActiveCategory$);
+  const setEmojiPendingJump = useSet(setChatThreadEmojiPendingJump$);
+  const setEmojiPreview = useSet(setChatThreadEmojiPreview$);
 
   return (
     <TooltipProvider delayDuration={200}>
@@ -842,6 +858,9 @@ function ChatThreadEmojiMenuButton({
         onOpenChange={(nextOpen) => {
           if (nextOpen) {
             setEmojiQuery("");
+            setEmojiActiveCategory(null);
+            setEmojiPendingJump(null);
+            setEmojiPreview(null);
             openChatThreadEmojiMenu({ threadId, title });
           } else {
             closeMenu();
@@ -934,6 +953,222 @@ function useFrequentlyUsedEmoji(): ChatThreadEmojiItem[] {
   });
 }
 
+// unicode-emoji-json ships the CLDR group names, so key the rail icons off the
+// same strings the sections are titled with.
+function chatThreadEmojiCategoryIcon(group: string): LucideIcon {
+  switch (group) {
+    case "People & Body": {
+      return Hand;
+    }
+    case "Animals & Nature": {
+      return Leaf;
+    }
+    case "Food & Drink": {
+      return Coffee;
+    }
+    case "Travel & Places": {
+      return Plane;
+    }
+    case "Activities": {
+      return Trophy;
+    }
+    case "Objects": {
+      return Lightbulb;
+    }
+    case "Symbols": {
+      return Heart;
+    }
+    case "Flags": {
+      return Flag;
+    }
+    default: {
+      return Smile;
+    }
+  }
+}
+
+const CHAT_THREAD_EMOJI_FREQUENT_CATEGORY = "frequently-used";
+
+interface ChatThreadEmojiCategory {
+  key: string;
+  label: string;
+  icon: LucideIcon;
+  items: ChatThreadEmojiItem[];
+  showShortcutDigits: boolean;
+  // The emoji dataset names an emoji the way a shortcode does; the frequently
+  // used row names it the way this product does ("Done", "Urgent"), which is
+  // translated and must not be dressed up as a shortcode.
+  shortcodeNames: boolean;
+}
+
+function chatThreadEmojiDisplayName(
+  name: string,
+  shortcodeNames: boolean,
+): string {
+  return shortcodeNames ? `:${name.replace(/\s+/g, "_")}:` : name;
+}
+
+function chatThreadEmojiSectionId(key: string): string {
+  return `chat-thread-emoji-section-${key}`;
+}
+
+// The category whose title is pinned right now: the last section that has
+// already reached the top of the feed.
+function pinnedChatThreadEmojiCategory(feed: HTMLElement): string | null {
+  const sections = Array.from(
+    feed.querySelectorAll<HTMLElement>("[data-chat-thread-emoji-section]"),
+  );
+  let pinned: string | null = null;
+  for (const section of sections) {
+    if (section.offsetTop > feed.scrollTop + 1) {
+      break;
+    }
+    pinned = section.dataset.chatThreadEmojiSection ?? null;
+  }
+  return pinned;
+}
+
+// Where the feed lands when it jumps to a section. A short final category
+// cannot scroll all the way to its own offset, so clamp to the last reachable
+// position: the jump and the arrival check have to agree on the same number.
+function chatThreadEmojiScrollTarget(
+  feed: HTMLElement,
+  section: HTMLElement,
+): number {
+  return Math.min(section.offsetTop, feed.scrollHeight - feed.clientHeight);
+}
+
+// Returns whether the feed will actually move. A jump that scrolls nowhere
+// emits no scroll event, so the caller must not wait for one.
+function scrollChatThreadEmojiCategoryIntoView(key: string): boolean {
+  const section = document.getElementById(chatThreadEmojiSectionId(key));
+  const feed = section?.closest<HTMLElement>("[data-chat-thread-emoji-feed]");
+  if (!section || !feed || typeof feed.scrollTo !== "function") {
+    return false;
+  }
+  const top = chatThreadEmojiScrollTarget(feed, section);
+  if (Math.abs(top - feed.scrollTop) <= 1) {
+    return false;
+  }
+  feed.scrollTo({ top, behavior: "smooth" });
+  return true;
+}
+
+function chatThreadEmojiCategories(
+  frequentLabel: string,
+  frequentItems: ChatThreadEmojiItem[],
+  groups: { name: string; emojis: ChatThreadEmojiItem[] }[] | null,
+): ChatThreadEmojiCategory[] {
+  return [
+    {
+      key: CHAT_THREAD_EMOJI_FREQUENT_CATEGORY,
+      label: frequentLabel,
+      icon: Clock,
+      items: frequentItems,
+      showShortcutDigits: true,
+      shortcodeNames: false,
+    },
+    ...(groups ?? []).map((group) => {
+      return {
+        key: group.name,
+        label: group.name,
+        icon: chatThreadEmojiCategoryIcon(group.name),
+        items: group.emojis,
+        showShortcutDigits: false,
+        shortcodeNames: true,
+      };
+    }),
+  ];
+}
+
+function ChatThreadEmojiCategoryRail({
+  categories,
+  onSelect,
+}: {
+  categories: ChatThreadEmojiCategory[];
+  onSelect: (key: string) => void;
+}) {
+  const { t } = useTranslation();
+  // Held here rather than in the picker so that following the feed re-renders
+  // the rail alone, not the ~1,900 emoji buttons below it.
+  const activeCategory = useGet(chatThreadEmojiActiveCategory$);
+  const selectedCategory =
+    activeCategory ?? CHAT_THREAD_EMOJI_FREQUENT_CATEGORY;
+
+  // A tablist takes one tab stop, and the arrow keys move between the tabs
+  // inside it.
+  function handleKeyDown(event: ReactKeyboardEvent<HTMLDivElement>): void {
+    const step =
+      event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
+    if (step === 0) {
+      return;
+    }
+    const tabs = Array.from(
+      event.currentTarget.querySelectorAll<HTMLElement>('[role="tab"]'),
+    );
+    const current = tabs.findIndex((tab) => {
+      return tab === document.activeElement;
+    });
+    if (current === -1) {
+      return;
+    }
+    event.preventDefault();
+    const next = (current + step + tabs.length) % tabs.length;
+    tabs[next]?.focus();
+    const nextCategory = categories[next];
+    if (nextCategory) {
+      onSelect(nextCategory.key);
+    }
+  }
+
+  return (
+    <div
+      role="tablist"
+      aria-label={t(($) => {
+        return $.chat.thread.emojiCategories;
+      })}
+      // 7px top and bottom keeps the buttons clear of the popover edge and of
+      // the divider; the active bar then sits inside the bottom gap.
+      className="flex gap-0.5 border-b border-border px-2 py-[7px]"
+      onKeyDown={handleKeyDown}
+    >
+      {categories.map((category) => {
+        const CategoryIcon = category.icon;
+        const selected = category.key === selectedCategory;
+        return (
+          <button
+            key={category.key}
+            type="button"
+            role="tab"
+            aria-selected={selected}
+            aria-controls={chatThreadEmojiSectionId(category.key)}
+            aria-label={category.label}
+            title={category.label}
+            tabIndex={selected ? 0 : -1}
+            className={cn(
+              "relative flex h-8 flex-1 items-center justify-center rounded-lg transition-colors hover:bg-state-hover hover:text-foreground",
+              selected ? "text-foreground" : "text-muted-foreground",
+            )}
+            onClick={() => {
+              onSelect(category.key);
+            }}
+          >
+            <CategoryIcon size={16} aria-hidden="true" />
+            {selected && (
+              <span
+                aria-hidden="true"
+                // -8px == the row's 7px bottom padding plus its 1px border, so
+                // the bar seats on the divider instead of floating above it.
+                className="absolute -bottom-2 h-0.5 w-4 rounded-t-sm bg-primary"
+              />
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function ChatThreadEmojiPicker({
   hasEmoji,
   onSelect,
@@ -948,14 +1183,53 @@ function ChatThreadEmojiPicker({
   const setQuery = useSet(setChatThreadEmojiQuery$);
   const groups = useLastResolved(chatThreadEmojiGroups$) ?? null;
   const frequentlyUsedEmoji = useFrequentlyUsedEmoji();
+  const railEnabled =
+    useGet(featureSwitch$)[FeatureSwitchKey.EmojiPickerCategoryRail] ?? false;
+  const setActiveCategory = useSet(setChatThreadEmojiActiveCategory$);
+  const setPendingJump = useSet(setChatThreadEmojiPendingJump$);
 
   const isSearching = query.trim().length > 0;
   const searchResults =
     isSearching && groups ? filterChatThreadEmojiGroups(groups, query) : [];
 
+  const categories = chatThreadEmojiCategories(
+    t(($) => {
+      return $.chat.thread.frequentlyUsed;
+    }),
+    frequentlyUsedEmoji,
+    groups,
+  );
+  function jumpToCategory(key: string): void {
+    if (isSearching) {
+      setQuery("");
+    }
+    setActiveCategory(key);
+    // The sections may only mount once the query clears, so scroll on the next
+    // frame rather than against the pre-clear layout. Only hold the highlight
+    // when the feed really moves — otherwise no scroll event would arrive to
+    // release the hold and the rail would stop following the feed for good.
+    window.requestAnimationFrame(() => {
+      setPendingJump(scrollChatThreadEmojiCategoryIntoView(key) ? key : null);
+    });
+  }
+
   return (
     <div className="flex flex-col">
-      <div className="flex items-center gap-2 p-2">
+      {railEnabled && (
+        <ChatThreadEmojiCategoryRail
+          categories={categories}
+          onSelect={jumpToCategory}
+        />
+      )}
+      <div
+        className={cn(
+          "flex items-center gap-2 px-2 pt-2",
+          // Pull the first section title up towards the search field. The title
+          // keeps its own box height so the fade under it is unchanged; only
+          // the gap above it closes.
+          railEnabled ? "pb-1" : "pb-2",
+        )}
+      >
         <div className="relative flex-1">
           <Search
             size={15}
@@ -989,54 +1263,179 @@ function ChatThreadEmojiPicker({
           </button>
         )}
       </div>
-      <div className="max-h-72 overflow-y-auto px-2 pb-2">
-        {isSearching ? (
-          searchResults.length > 0 ? (
-            <ChatThreadEmojiGrid items={searchResults} onSelect={onSelect} />
-          ) : (
-            <p className="px-1 py-6 text-center text-xs text-muted-foreground">
-              {t(($) => {
-                return $.chat.thread.noEmojiFound;
-              })}
-            </p>
-          )
+      <ChatThreadEmojiFeed
+        categories={categories}
+        searchResults={isSearching ? searchResults : null}
+        onSelect={onSelect}
+        railEnabled={railEnabled}
+      />
+      {railEnabled && <ChatThreadEmojiPreview />}
+    </div>
+  );
+}
+
+// Names whichever emoji the pointer or keyboard is on, so the grid stays a
+// grid of glyphs and the reader still gets a label for the one in question.
+function ChatThreadEmojiPreview() {
+  const { t } = useTranslation();
+  const preview = useGet(chatThreadEmojiPreview$);
+
+  return (
+    <div className="flex h-10 shrink-0 items-center gap-2 border-t border-border px-3">
+      {preview ? (
+        <>
+          <span aria-hidden="true" className="zero-emoji text-lg leading-none">
+            {preview.emoji}
+          </span>
+          <span className="truncate text-xs font-medium text-muted-foreground">
+            {preview.name}
+          </span>
+        </>
+      ) : (
+        <span className="text-xs text-muted-foreground/70">
+          {t(($) => {
+            return $.chat.thread.pickEmoji;
+          })}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function ChatThreadEmojiFeed({
+  categories,
+  searchResults,
+  onSelect,
+  railEnabled,
+}: {
+  categories: ChatThreadEmojiCategory[];
+  searchResults: ChatThreadEmojiItem[] | null;
+  onSelect: (emoji: string) => void;
+  railEnabled: boolean;
+}) {
+  const { t } = useTranslation();
+  const setActiveCategory = useSet(setChatThreadEmojiActiveCategory$);
+  const pendingJump = useGet(chatThreadEmojiPendingJump$);
+  const setPendingJump = useSet(setChatThreadEmojiPendingJump$);
+  const setPreview = useSet(setChatThreadEmojiPreview$);
+
+  // One delegated listener on the feed rather than a pair on each of the ~1,900
+  // buttons. Pointer and keyboard both report through it.
+  function previewEmojiUnder(target: EventTarget): void {
+    if (!(target instanceof Element)) {
+      return;
+    }
+    const button = target.closest<HTMLElement>("[data-chat-thread-emoji]");
+    const emoji = button?.dataset.chatThreadEmoji;
+    const name = button?.dataset.chatThreadEmojiName;
+    setPreview(emoji && name ? { emoji, name } : null);
+  }
+
+  function handleScroll(event: ReactUIEvent<HTMLDivElement>): void {
+    const feed = event.currentTarget;
+    if (pendingJump !== null) {
+      const target = feed.querySelector<HTMLElement>(
+        `[data-chat-thread-emoji-section="${pendingJump}"]`,
+      );
+      // Release the hold once the jump lands, and also when its section is no
+      // longer around to land on, so the hold can never outlive the jump.
+      if (
+        !target ||
+        Math.abs(chatThreadEmojiScrollTarget(feed, target) - feed.scrollTop) <=
+          1
+      ) {
+        setPendingJump(null);
+      }
+      return;
+    }
+    setActiveCategory(pinnedChatThreadEmojiCategory(feed));
+  }
+
+  // Scrolling by hand aborts an in-flight smooth scroll, so the jump will never
+  // reach its target: hand the feed back the highlight immediately.
+  function releasePendingJump(): void {
+    if (pendingJump !== null) {
+      setPendingJump(null);
+    }
+  }
+
+  return (
+    <div
+      data-chat-thread-emoji-feed=""
+      // relative so each section's offsetTop is measured against the feed.
+      className="relative max-h-72 overflow-y-auto px-2 pb-2"
+      onScroll={railEnabled ? handleScroll : undefined}
+      onWheel={railEnabled ? releasePendingJump : undefined}
+      onTouchStart={railEnabled ? releasePendingJump : undefined}
+      onPointerDown={railEnabled ? releasePendingJump : undefined}
+      onMouseOver={
+        railEnabled
+          ? (event) => {
+              previewEmojiUnder(event.target);
+            }
+          : undefined
+      }
+      onFocus={
+        railEnabled
+          ? (event) => {
+              previewEmojiUnder(event.target);
+            }
+          : undefined
+      }
+      onMouseLeave={
+        railEnabled
+          ? () => {
+              setPreview(null);
+            }
+          : undefined
+      }
+    >
+      {searchResults !== null ? (
+        searchResults.length > 0 ? (
+          <ChatThreadEmojiGrid items={searchResults} onSelect={onSelect} />
         ) : (
-          <>
-            <ChatThreadEmojiSection
-              label={t(($) => {
-                return $.chat.thread.frequentlyUsed;
-              })}
-              items={frequentlyUsedEmoji}
-              onSelect={onSelect}
-              showShortcutDigits
-            />
-            {groups?.map((group) => {
-              return (
-                <ChatThreadEmojiSection
-                  key={group.name}
-                  label={group.name}
-                  items={group.emojis}
-                  onSelect={onSelect}
-                />
-              );
+          <p className="px-1 py-6 text-center text-xs text-muted-foreground">
+            {t(($) => {
+              return $.chat.thread.noEmojiFound;
             })}
-          </>
-        )}
-      </div>
+          </p>
+        )
+      ) : (
+        categories.map((category) => {
+          return (
+            <ChatThreadEmojiSection
+              key={category.key}
+              categoryKey={category.key}
+              label={category.label}
+              items={category.items}
+              onSelect={onSelect}
+              showShortcutDigits={category.showShortcutDigits}
+              shortcodeNames={category.shortcodeNames}
+              pinnedTitle={railEnabled}
+            />
+          );
+        })
+      )}
     </div>
   );
 }
 
 function ChatThreadEmojiSection({
+  categoryKey,
   label,
   items,
   onSelect,
   showShortcutDigits = false,
+  shortcodeNames = true,
+  pinnedTitle = false,
 }: {
+  categoryKey: string;
   label: string;
   items: ChatThreadEmojiItem[];
   onSelect: (emoji: string) => void;
   showShortcutDigits?: boolean;
+  shortcodeNames?: boolean;
+  pinnedTitle?: boolean;
 }) {
   const { t } = useTranslation();
   // Ctrl+Shift is a shared prefix for every digit shortcut, so surface it once
@@ -1048,8 +1447,22 @@ function ChatThreadEmojiSection({
       })}`
     : null;
   return (
-    <div>
-      <div className="flex items-baseline justify-between gap-2 px-1 pb-1 pt-2">
+    <div
+      id={chatThreadEmojiSectionId(categoryKey)}
+      data-chat-thread-emoji-section={categoryKey}
+    >
+      <div
+        className={cn(
+          "flex items-baseline justify-between gap-2 px-1 pb-1 pt-2",
+          // Fade to transparent at the lower edge so emoji dissolve as they
+          // scroll under the pinned title instead of colliding with it.
+          // pt-1/pb-3 shifts the label up towards the search field while
+          // keeping the box — and so the painted fade — the same 32px tall as
+          // the pt-2/pb-2 it replaces.
+          pinnedTitle &&
+            "sticky top-0 z-10 bg-gradient-to-b from-popover from-60% to-transparent pb-3 pt-1",
+        )}
+      >
         <span className="text-xs font-medium text-muted-foreground">
           {label}
         </span>
@@ -1063,6 +1476,7 @@ function ChatThreadEmojiSection({
         items={items}
         onSelect={onSelect}
         showShortcutDigits={showShortcutDigits}
+        shortcodeNames={shortcodeNames}
       />
     </div>
   );
@@ -1079,10 +1493,12 @@ function ChatThreadEmojiGrid({
   items,
   onSelect,
   showShortcutDigits = false,
+  shortcodeNames = true,
 }: {
   items: ChatThreadEmojiItem[];
   onSelect: (emoji: string) => void;
   showShortcutDigits?: boolean;
+  shortcodeNames?: boolean;
 }) {
   // Nine columns so the nine frequently-used digit shortcuts sit on a single
   // row; every other emoji group uses the same width to stay aligned.
@@ -1103,6 +1519,11 @@ function ChatThreadEmojiGrid({
             key={`${item.name}-${item.emoji}`}
             type="button"
             aria-label={item.name}
+            data-chat-thread-emoji={item.emoji}
+            data-chat-thread-emoji-name={chatThreadEmojiDisplayName(
+              item.name,
+              shortcodeNames,
+            )}
             title={shortcutLabel}
             className="relative flex aspect-square items-center justify-center rounded-md text-xl leading-none transition-colors hover:bg-state-hover"
             onClick={() => {
@@ -2834,6 +3255,90 @@ function ChatThreadNextRunModelNotice({
   return <RunSectionDividerRow label={label} announce />;
 }
 
+interface ChatRunPresentation {
+  readonly actionOwnerEventIds: ReadonlySet<string>;
+  readonly steerEventIds: ReadonlySet<string>;
+}
+
+const EMPTY_CHAT_EVENT_IDS: ReadonlySet<string> = new Set();
+
+function isSteerPromptEvent(
+  event: EnrichedChatEvent,
+  seenUserRunIds: ReadonlySet<string>,
+  actionOwnerEventIdByRunId: ReadonlyMap<string, string>,
+  lastAssociatedRunId: string | undefined,
+): boolean {
+  if (event.eventType !== "input.prompt") {
+    return false;
+  }
+  if (event.runId !== undefined) {
+    return (
+      seenUserRunIds.has(event.runId) ||
+      actionOwnerEventIdByRunId.has(event.runId)
+    );
+  }
+  return (
+    event.optimisticUserMessageAssociation !== "run" &&
+    lastAssociatedRunId !== undefined
+  );
+}
+
+function chatRunPresentationForGroups(
+  groups: readonly ChatEventGroup[],
+): ChatRunPresentation {
+  const actionOwnerEventIdByRunId = new Map<string, string>();
+  const runlessAssistantOwnerEventIds = new Set<string>();
+  const seenUserRunIds = new Set<string>();
+  const steerEventIds = new Set<string>();
+  let lastAssociatedRunId: string | undefined;
+
+  for (const group of groups) {
+    for (const event of group.events) {
+      const role = chatEventCompatibilityRole(event.eventType);
+      const runId = event.runId;
+      if (role === "user") {
+        const isSteer = isSteerPromptEvent(
+          event,
+          seenUserRunIds,
+          actionOwnerEventIdByRunId,
+          lastAssociatedRunId,
+        );
+        if (isSteer) {
+          steerEventIds.add(event.id);
+        }
+        if (runId !== undefined) {
+          actionOwnerEventIdByRunId.delete(runId);
+          seenUserRunIds.add(runId);
+          lastAssociatedRunId = runId;
+        } else if (isSteer && lastAssociatedRunId !== undefined) {
+          actionOwnerEventIdByRunId.delete(lastAssociatedRunId);
+        }
+        continue;
+      }
+
+      if (runId !== undefined) {
+        lastAssociatedRunId = runId;
+      }
+      if (!isRenderableAssistantEvent(event)) {
+        continue;
+      }
+      if (runId === undefined) {
+        runlessAssistantOwnerEventIds.add(event.id);
+      } else {
+        actionOwnerEventIdByRunId.set(runId, event.id);
+      }
+    }
+  }
+
+  return {
+    actionOwnerEventIds: new Set([
+      ...actionOwnerEventIdByRunId.values(),
+      ...runlessAssistantOwnerEventIds,
+    ]),
+    steerEventIds,
+  };
+}
+
 function ChatThreadEventGroups({
   thread,
   groups,
@@ -2859,6 +3364,11 @@ function ChatThreadEventGroups({
       runGroupFolding,
       onToggleRunGroup,
     });
+  const continuationPresentationEnabled =
+    useGet(featureSwitch$)[FeatureSwitchKey.ChatRunContinuationPresentation];
+  const runPresentation = continuationPresentationEnabled
+    ? chatRunPresentationForGroups(groups)
+    : null;
 
   return (
     <>
@@ -2888,6 +3398,15 @@ function ChatThreadEventGroups({
               group={group}
               thread={thread}
               modelChanges={modelChanges}
+              showActions={
+                runPresentation === null ||
+                group.events.some((event) => {
+                  return runPresentation.actionOwnerEventIds.has(event.id);
+                })
+              }
+              steerEventIds={
+                runPresentation?.steerEventIds ?? EMPTY_CHAT_EVENT_IDS
+              }
               runGroupFolds={embeddedFolds}
               completedWorkFold={
                 completedWorkFold !== null
@@ -4766,6 +5285,7 @@ function ThinkingIndicator({ thread }: { thread: ChatPanelSignals }) {
 
 function ChatConnectorActionConnectModal() {
   const active = useGet(activeChatConnectorAction$);
+  const mcpEnabled = useGet(customConnectorMcpEnabled$);
   const close = useSet(closeChatConnectorActionConnectDialog$);
   const runCallback = useSet(runChatActionCallback$);
   const pageSignal = useGet(pageSignal$);
@@ -4789,11 +5309,12 @@ function ChatConnectorActionConnectModal() {
   };
 
   if (active.kind === "custom") {
-    const connector = customConnectors
-      ?.filter(isHttpCustomConnectorClientResponse)
-      .find((candidate) => {
-        return candidate.slug === active.connectorSlug;
-      });
+    const connector = customConnectors?.find((candidate) => {
+      return (
+        candidate.slug === active.connectorSlug &&
+        (candidate.kind === "http" || mcpEnabled)
+      );
+    });
     return connector ? (
       <CustomConnectorConnectDialog
         connector={connector}
@@ -5442,12 +5963,16 @@ function PagedGroupRow({
   group,
   thread,
   modelChanges,
+  showActions,
+  steerEventIds,
   runGroupFolds,
   completedWorkFold,
 }: {
   group: ChatEventGroup;
   thread: ChatPanelSignals;
   modelChanges: ReadonlyMap<string, RunModelChange>;
+  showActions: boolean;
+  steerEventIds: ReadonlySet<string>;
   runGroupFolds?: readonly RunGroupFoldControl[];
   completedWorkFold?: {
     groups: readonly ChatEventGroup[];
@@ -5462,6 +5987,7 @@ function PagedGroupRow({
         group={group}
         thread={thread}
         modelChanges={modelChanges}
+        steerEventIds={steerEventIds}
         runGroupFolds={runGroupFolds}
       />
     );
@@ -5470,6 +5996,7 @@ function PagedGroupRow({
     <PagedAssistantGroup
       group={group}
       thread={thread}
+      showActions={showActions}
       runGroupFolds={runGroupFolds}
       completedWorkFold={completedWorkFold}
     />
@@ -5521,6 +6048,8 @@ function SelectablePagedGroupRow({
   group,
   thread,
   modelChanges,
+  showActions,
+  steerEventIds,
   runGroupFolds,
   completedWorkFold,
 }: Parameters<typeof PagedGroupRow>[0]) {
@@ -5538,6 +6067,8 @@ function SelectablePagedGroupRow({
         group={group}
         thread={thread}
         modelChanges={modelChanges}
+        showActions={showActions}
+        steerEventIds={steerEventIds}
         runGroupFolds={runGroupFolds}
         completedWorkFold={completedWorkFold}
       />
@@ -5581,6 +6112,8 @@ function SelectablePagedGroupRow({
         group={group}
         thread={thread}
         modelChanges={modelChanges}
+        showActions={showActions}
+        steerEventIds={steerEventIds}
         runGroupFolds={runGroupFolds}
         completedWorkFold={completedWorkFold}
       />
@@ -5606,11 +6139,13 @@ function PagedUserGroup({
   group,
   thread,
   modelChanges,
+  steerEventIds,
   runGroupFolds,
 }: {
   group: ChatEventGroup;
   thread: ChatPanelSignals;
   modelChanges: ReadonlyMap<string, RunModelChange>;
+  steerEventIds: ReadonlySet<string>;
   runGroupFolds?: readonly RunGroupFoldControl[];
 }) {
   return (
@@ -5622,7 +6157,11 @@ function PagedUserGroup({
             {modelChange === undefined ? null : (
               <ModelChangeDividerRow change={modelChange} />
             )}
-            <PagedUserMessage event={event} thread={thread} />
+            <PagedUserMessage
+              event={event}
+              thread={thread}
+              steer={steerEventIds.has(event.id)}
+            />
           </div>
         );
       })}
@@ -6665,14 +7204,63 @@ function isElevatedUserMessagePart(
   );
 }
 
+function SteerMessageIndicator() {
+  const { t } = useTranslation();
+  const explanation = t(($) => {
+    return $.chat.thread.steerMessageExplanation;
+  });
+
+  return (
+    <TooltipProvider delayDuration={300}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span
+            data-testid="chat-steer-indicator"
+            role="img"
+            aria-label={explanation}
+            className="flex h-7 w-5 shrink-0 cursor-help items-center justify-center text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <CornerLeftUp size={14} strokeWidth={1.8} />
+          </span>
+        </TooltipTrigger>
+        <TooltipContent side="top">{explanation}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
+function UserMessageBubble({
+  children,
+  steer,
+}: {
+  children: ReactNode;
+  steer: boolean;
+}) {
+  const bubble = (
+    <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-[0.9375rem] leading-[1.7] [overflow-wrap:anywhere] overflow-hidden">
+      {children}
+    </div>
+  );
+  return steer ? (
+    <div className="flex w-full items-center justify-end gap-1.5">
+      <SteerMessageIndicator />
+      {bubble}
+    </div>
+  ) : (
+    bubble
+  );
+}
+
 function UserMessageContent({
   document,
   attachments,
   onImageClick,
+  steer,
 }: {
   document: UserMessageRenderDocument;
   attachments: ReturnType<typeof userMessageRenderAttachments>;
   onImageClick: OpenMessageImagePreview;
+  steer: boolean;
 }) {
   // Attachments read as their own object, so they all sit above the bubble
   // instead of interrupting the sentence they were dropped into. Attachments
@@ -6699,14 +7287,14 @@ function UserMessageContent({
         onImageClick={onImageClick}
       />
       {hasBody ? (
-        <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-[0.9375rem] leading-[1.7] [overflow-wrap:anywhere] overflow-hidden">
+        <UserMessageBubble steer={steer}>
           <div className="px-4 py-3">
             <UserMessageView
               document={document}
               elevatedFileIds={elevatedFileIds}
             />
           </div>
-        </div>
+        </UserMessageBubble>
       ) : null}
     </>
   );
@@ -6859,9 +7447,11 @@ function messageImageLightboxTarget(
 function PagedUserMessage({
   event,
   thread,
+  steer,
 }: {
   event: EnrichedChatEvent;
   thread: ChatPanelSignals;
+  steer: boolean;
 }) {
   const inputEvent = asInputChatEvent(event);
   const renderDocument = event.userMessageRenderDocument;
@@ -6941,6 +7531,7 @@ function PagedUserMessage({
               document={renderDocument}
               attachments={allAttachments}
               onImageClick={openLightbox}
+              steer={steer}
             />
           ) : (
             <>
@@ -6949,11 +7540,11 @@ function PagedUserMessage({
                 onImageClick={openLightbox}
               />
               {event.tree !== undefined && (
-                <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-[0.9375rem] leading-[1.7] [overflow-wrap:anywhere] overflow-hidden">
+                <UserMessageBubble steer={steer}>
                   <div className="px-4 py-3">
                     <MarkdownEventBody tree={event.tree} mediaPreview={false} />
                   </div>
-                </div>
+                </UserMessageBubble>
               )}
             </>
           )}
@@ -6971,11 +7562,13 @@ function PagedUserMessage({
 function PagedAssistantGroup({
   group,
   thread,
+  showActions,
   runGroupFolds,
   completedWorkFold,
 }: {
   group: ChatEventGroup;
   thread: ChatPanelSignals;
+  showActions: boolean;
   runGroupFolds?: readonly RunGroupFoldControl[];
   completedWorkFold?: {
     groups: readonly ChatEventGroup[];
@@ -7054,7 +7647,13 @@ function PagedAssistantGroup({
           })}
         </div>
       </div>
-      <PagedGroupActions group={group} content={fullContent} thread={thread} />
+      {showActions ? (
+        <PagedGroupActions
+          group={group}
+          content={fullContent}
+          thread={thread}
+        />
+      ) : null}
     </div>
   );
 }

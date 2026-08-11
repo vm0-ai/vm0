@@ -6,11 +6,13 @@ overlap.
 
 ## Lifecycle
 
-The Runner reserves the current ordered active-input batch before sending it to
-the Guest. Reservation creates one `active_input_deliveries` row and ordered
-`active_input_delivery_items` rows, but it does not revoke or copy the source
-chat events. Retrying the reservation returns the same delivery ID, event IDs,
-and materialized prompt while that delivery remains open.
+The Runner reserves the oldest active-input event before sending it to the
+Guest. New reservations contain one source event so each user message reaches
+the CLI as a separate input with its own delivery identity. Reservation creates
+one `active_input_deliveries` row and one `active_input_delivery_items` row, but
+it does not revoke or copy the source chat event. Retrying the reservation
+returns the same delivery ID, event ID, and materialized prompt while that
+delivery remains open.
 
 The delivery becomes settled through one of two proof-bearing paths:
 
@@ -66,6 +68,12 @@ protocol version or feature discriminator is persisted.
 The current server support is dormant until the Runner begins reserving active
 input. Runner journal recovery and activation are delivered separately in
 [#26060](https://github.com/vm0-ai/vm0/issues/26060).
+
+During rollout, the legacy list/claim endpoint still accepts multiple event IDs
+for old Runners. Current Runners claim only the oldest listed event and
+immediately recheck when more are pending. The legacy batch shape can be removed
+under [#26061](https://github.com/vm0-ai/vm0/issues/26061) after old Runners and
+their claimed runs drain.
 
 Deleting a thread or run cascades its delivery state, so an abandoned delivery
 cannot block an unrelated thread.

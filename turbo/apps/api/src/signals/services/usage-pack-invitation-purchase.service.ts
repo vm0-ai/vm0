@@ -38,6 +38,7 @@ import {
   lockUsagePackBillingOrg,
   previewUsagePackAllocationAddition,
   syncUsagePackAllocationProjection,
+  syncUsagePackAllocationProjectionAfterInvitationRemoval,
   type UsagePackAllocationAdditionPreview,
 } from "./usage-pack-allocation-change.service";
 import { createUsagePackCreditGrant } from "./usage-pack-credit.service";
@@ -911,6 +912,45 @@ async function finalizeRefund(
   });
 }
 
+async function removeRefundedInvitationProjection(
+  db: Db,
+  purchase: UsagePackInvitationPurchaseRow,
+): Promise<void> {
+  if (purchase.stripeCheckoutSessionId || !purchase.allocationId) {
+    return;
+  }
+  const allocationId = purchase.allocationId;
+  await db.transaction(async (tx) => {
+    await lockUsagePackBillingOrg(tx, purchase.orgId);
+    await lockPurchase(tx, purchase.id);
+    const current = await loadPurchase(tx, purchase.id);
+    if (!current || current.status === "refunded") {
+      return;
+    }
+    if (current.status !== "refunding") {
+      throw new Error("Invitation refund changed during projection removal");
+    }
+    await tx
+      .update(usagePackAllocations)
+      .set({ status: "inactive", updatedAt: nowDate() })
+      .where(eq(usagePackAllocations.id, allocationId));
+    await syncUsagePackAllocationProjectionAfterInvitationRemoval(tx, {
+      usagePackSubscriptionId: current.usagePackSubscriptionId,
+      operationId: `invitation:${current.id}:refund`,
+      removedAllocationId: allocationId,
+    });
+  });
+}
+
+async function completeSuccessfulRefund(
+  db: Db,
+  purchase: UsagePackInvitationPurchaseRow,
+  refundId: string | null,
+): Promise<void> {
+  await removeRefundedInvitationProjection(db, purchase);
+  await finalizeRefund(db, purchase.id, refundId);
+}
+
 async function recordFailedRefund(
   db: Db,
   purchase: UsagePackInvitationPurchaseRow,
@@ -934,7 +974,7 @@ async function applyStripeRefundState(
   refund: StripeRefund,
 ): Promise<void> {
   if (refund.status === "succeeded") {
-    await finalizeRefund(db, purchase.id, refund.id);
+    await completeSuccessfulRefund(db, purchase, refund.id);
     return;
   }
   if (refund.status === "failed" || refund.status === "canceled") {
@@ -981,8 +1021,12 @@ async function refundPurchase(
   if (!purchase) {
     return;
   }
-  if (!purchase.amountPaidCents || !purchase.stripePaymentIntentId) {
-    throw new Error("Paid invitation is missing its dedicated PaymentIntent");
+  if (purchase.amountPaidCents === 0) {
+    await completeSuccessfulRefund(db, purchase, null);
+    return;
+  }
+  if (purchase.amountPaidCents === null || !purchase.stripePaymentIntentId) {
+    throw new Error("Paid invitation is missing its PaymentIntent");
   }
   const stripe = getStripeClient();
   if (purchase.stripeRefundId) {

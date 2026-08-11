@@ -82,6 +82,7 @@ def test_model_usage_observation_buffer_uses_model_event_shape(tmp_path):
 def test_source_preserving_usage_buffer_keeps_source_idempotency_keys(tmp_path):
     enqueue = RecordingEnqueue()
     usage.reset_usage_buffer_for_tests(enqueue_webhook=enqueue)
+    accepted_source_keys: set[str] = set()
 
     usage.buffer_source_usage_events(
         "https://api.test/api/webhooks/agent/usage-event",
@@ -93,7 +94,9 @@ def test_source_preserving_usage_buffer_keeps_source_idempotency_keys(tmp_path):
             event(source_key="source-1", quantity=100),
         ],
         str(tmp_path / "proxy.jsonl"),
+        accepted_source_keys=accepted_source_keys,
     )
+    assert accepted_source_keys == {"source-1", "source-2"}
     assert usage.flush_usage_events(trigger="test") == 1
 
     enqueue.assert_called_once()
@@ -122,6 +125,7 @@ def test_source_preserving_atomic_group_rejects_repeated_group_key(tmp_path):
     enqueue = RecordingEnqueue()
     usage.reset_usage_buffer_for_tests(enqueue_webhook=enqueue)
     proxy_log_path = str(tmp_path / "proxy.jsonl")
+    accepted_source_keys: set[str] = set()
 
     assert (
         usage.buffer_source_usage_events(
@@ -149,9 +153,12 @@ def test_source_preserving_atomic_group_rejects_repeated_group_key(tmp_path):
             ],
             proxy_log_path,
             atomic_source_key="input-partition-1",
+            accepted_source_keys=accepted_source_keys,
         )
         == 2
     )
+    assert accepted_source_keys == {"source-input", "source-cache-read"}
+    rejected_source_keys: set[str] = set()
     assert (
         usage.buffer_source_usage_events(
             "https://api.test/api/webhooks/agent/usage-event",
@@ -166,9 +173,11 @@ def test_source_preserving_atomic_group_rejects_repeated_group_key(tmp_path):
             ],
             proxy_log_path,
             atomic_source_key="input-partition-1",
+            accepted_source_keys=rejected_source_keys,
         )
         == 0
     )
+    assert rejected_source_keys == set()
 
     assert usage.flush_usage_events(trigger="test") == 1
     enqueue.assert_called_once()
@@ -298,6 +307,7 @@ def test_source_preserving_atomic_group_rejects_duplicate_member_keys(tmp_path):
 def test_source_preserving_observation_buffer_uses_model_event_shape(tmp_path):
     enqueue = RecordingEnqueue()
     usage.reset_usage_buffer_for_tests(enqueue_webhook=enqueue)
+    accepted_source_keys: set[str] = set()
 
     usage.buffer_source_model_usage_observations(
         "https://api.test/api/webhooks/agent/model-usage-observation",
@@ -311,7 +321,9 @@ def test_source_preserving_observation_buffer_uses_model_event_shape(tmp_path):
             )
         ],
         str(tmp_path / "proxy.jsonl"),
+        accepted_source_keys=accepted_source_keys,
     )
+    assert accepted_source_keys == {"source-1"}
     assert usage.flush_usage_events(trigger="test") == 1
 
     enqueue.assert_called_once()

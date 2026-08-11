@@ -510,6 +510,45 @@
     animation: zero-dialog-overlay-out 180ms ease;
   }
 
+  /* The scrim carries its blur on a separate layer. A backdrop-filter costs
+     nothing while the page behind it holds still, but any frame that repaints
+     a pixel — including the scrim fading its own opacity — re-blurs the whole
+     viewport. So the blur waits out the fade and drops again the moment the
+     dialog starts closing, which leaves both transitions blur-free. */
+  .zero-dialog-overlay::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    -webkit-backdrop-filter: blur(2px);
+    backdrop-filter: blur(2px);
+  }
+
+  .zero-dialog-overlay[data-open]::after {
+    animation: zero-dialog-blur-in 180ms step-end;
+  }
+
+  .zero-dialog-overlay[data-ending-style]::after {
+    visibility: hidden;
+  }
+
+  /* Dialogs that skip the enter animation have no fade to wait out, so the
+     blur lands with the scrim instead of trailing it. */
+  .zero-dialog-overlay-instant[data-open],
+  .zero-dialog-overlay-instant[data-open]::after {
+    animation: none;
+  }
+
+  /* Same reason: a blurred backdrop only stays cached while nothing moves
+     underneath it, and the page keeps a breathing dot per running thread. Park
+     them for as long as a scrim is mounted — indicators inside the dialog keep
+     running, since those still carry state the user is looking at. */
+  html:has(.zero-dialog-overlay)
+    :is(.running-indicator-center, .running-indicator-ripple):not(
+      .zero-dialog-content *
+    ) {
+    animation-play-state: paused;
+  }
+
   .zero-dialog-content[data-open] {
     animation: zero-dialog-content-in 180ms ease;
   }
@@ -535,60 +574,10 @@
     .zero-dialog-enter-content {
       animation: none;
     }
-  }
 
-  /* Animated number — the hidden text owns width and baseline while the
-     overlaid digits move independently without shifting adjacent copy. */
-  .animated-number {
-    position: relative;
-    display: inline-block;
-    vertical-align: baseline;
-    line-height: inherit;
-    font-variant-numeric: tabular-nums;
-    font-feature-settings: "tnum" 1;
-    clip-path: inset(0);
-  }
-
-  .animated-number-measure {
-    visibility: hidden;
-    white-space: pre;
-  }
-
-  .animated-number-visual {
-    position: absolute;
-    inset: 0;
-    white-space: pre;
-  }
-
-  .animated-number-digit {
-    display: inline-block;
-    min-width: 1ch;
-    text-align: center;
-    animation: animated-number-digit-in 160ms cubic-bezier(0.22, 1, 0.36, 1)
-      both;
-  }
-
-  .animated-number-separator {
-    display: inline-block;
-    animation: animated-number-separator-in 180ms ease-out both;
-  }
-
-  @keyframes animated-number-digit-in {
-    from {
-      opacity: 0.35;
-      transform: translateY(0.62em);
-    }
-  }
-
-  @keyframes animated-number-separator-in {
-    from {
-      opacity: 0;
-    }
-  }
-
-  @media (prefers-reduced-motion: reduce) {
-    .animated-number-digit,
-    .animated-number-separator {
+    /* Without the fade there is nothing to wait for, so the blur can land
+       with the scrim. */
+    .zero-dialog-overlay[data-open]::after {
       animation: none;
     }
   }
@@ -650,6 +639,15 @@
   }
   to {
     opacity: 0;
+  }
+}
+
+@keyframes zero-dialog-blur-in {
+  from {
+    visibility: hidden;
+  }
+  to {
+    visibility: visible;
   }
 }
 

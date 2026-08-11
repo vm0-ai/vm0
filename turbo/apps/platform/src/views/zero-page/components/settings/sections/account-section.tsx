@@ -7,6 +7,7 @@ import {
   currentUserInfo$,
   resolveClerkSatelliteConfig,
 } from "../../../../../signals/auth.ts";
+import { UserAvatar } from "../../../../components/avatar.tsx";
 
 // Clerk satellite domains do not receive their own hosted Account Portal.
 const CLERK_PRIMARY_USER_PROFILE_URL = "https://accounts.vm0.ai/user";
@@ -26,17 +27,12 @@ export function AccountSection() {
 
   return (
     <div className="flex items-center gap-4 bg-card rounded-xl zero-border p-5">
-      {user?.imageUrl ? (
-        <img
-          src={user.imageUrl}
-          alt=""
-          className="h-12 w-12 rounded-xl object-cover shrink-0"
-        />
-      ) : (
-        <div className="h-12 w-12 rounded-xl bg-muted flex items-center justify-center text-sm font-medium text-muted-foreground shrink-0">
-          {initial}
-        </div>
-      )}
+      <UserAvatar
+        imageUrl={user?.imageUrl}
+        name={displayName}
+        initial={initial}
+        size="xl"
+      />
       <div className="flex-1 min-w-0">
         {displayName && (
           <div className="text-sm font-medium text-foreground truncate">

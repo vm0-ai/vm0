@@ -112,8 +112,8 @@ function builtInPolicy(
 function claudeOpusApiKeyPolicy(): OrgModelPolicy {
   return {
     id: "00000000-0000-4000-a000-000000000212",
-    model: "claude-opus-4-7",
-    modelLabel: "Claude Opus 4.7",
+    model: "claude-opus-4-8",
+    modelLabel: "Claude Opus 4.8",
     isDefault: false,
     defaultProviderType: "anthropic-api-key",
     credentialScope: "org",
@@ -125,17 +125,17 @@ function claudeOpusApiKeyPolicy(): OrgModelPolicy {
   };
 }
 
-function missingMoonshotPolicy(): OrgModelPolicy {
+function missingOpenAiPolicy(): OrgModelPolicy {
   return {
     id: "00000000-0000-4000-a000-000000000213",
-    model: "kimi-k2.7-code",
-    modelLabel: "Kimi K2.7 Code",
+    model: "gpt-5.5",
+    modelLabel: "GPT 5.5",
     isDefault: false,
-    defaultProviderType: "moonshot-api-key",
+    defaultProviderType: "openai-api-key",
     credentialScope: "org",
     modelProviderId: "00000000-0000-4000-a000-000000009999",
     routeStatus: "missing_provider",
-    routeStatusReason: "Workspace Moonshot API key was removed",
+    routeStatusReason: "Workspace OpenAI API key was removed",
     createdAt: "2026-03-01T00:00:00Z",
     updatedAt: "2026-03-01T00:00:00Z",
   };
@@ -260,6 +260,7 @@ function gatewayConnectionResponse(
 function mockGatewayConnectionLifecycle() {
   let connections: ModelProviderConnectionResponse[] = [];
   let createSecret: string | null = null;
+  let createSurfaces: CreateModelProviderConnectionRequest["surfaces"] = [];
   let updateSecret: string | undefined;
   let updateCount = 0;
   let deleteCount = 0;
@@ -274,6 +275,7 @@ function mockGatewayConnectionLifecycle() {
     zeroModelProviderConnectionsMainContract.create,
     ({ body, respond }) => {
       createSecret = body.secret;
+      createSurfaces = body.surfaces;
       const connection = gatewayConnectionResponse(body);
       connections = [connection];
       return respond(201, connection);
@@ -301,6 +303,9 @@ function mockGatewayConnectionLifecycle() {
   return {
     createSecret: () => {
       return createSecret;
+    },
+    createSurfaces: () => {
+      return createSurfaces;
     },
     deleteCount: () => {
       return deleteCount;
@@ -355,7 +360,7 @@ async function openAddApiKeyModelDialog(): Promise<void> {
   await openProvidersTab();
 
   click(screen.getByText("Add model"));
-  await selectDialogModel("Claude Opus 4.7");
+  await selectDialogModel("Claude Opus 4.8");
   click(screen.getByRole("radio", { name: /API key/u }));
   await waitFor(() => {
     expect(
@@ -526,6 +531,23 @@ describe("organization model providers settings", () => {
       within(connectionsSection).findByText("Vercel AI Gateway"),
     ).resolves.toBeInTheDocument();
     expect(lifecycle.createSecret()).toBe("vck-test");
+    const messagesSurface = lifecycle.createSurfaces().find((surface) => {
+      return surface.protocol === "anthropic-messages";
+    });
+    const responsesSurface = lifecycle.createSurfaces().find((surface) => {
+      return surface.protocol === "openai-responses";
+    });
+    expect(messagesSurface?.modelMappings).toMatchObject({
+      "claude-sonnet-4-6": "anthropic/claude-sonnet-4.6",
+      "claude-opus-4-8": "anthropic/claude-opus-4.8",
+    });
+    expect(messagesSurface?.modelMappings).not.toHaveProperty(
+      "claude-opus-4-7",
+    );
+    expect(responsesSurface?.modelMappings).toHaveProperty(
+      "gpt-5.5",
+      "openai/gpt-5.5",
+    );
 
     click(within(connectionsSection).getByLabelText("Gateway actions"));
     click(menuItemByText("Edit"));
@@ -604,8 +626,8 @@ describe("organization model providers settings", () => {
       ),
       builtInPolicy(
         "00000000-0000-4000-a000-000000000215",
-        "gpt-5.5",
-        "GPT 5.5",
+        "gpt-5.6-sol",
+        "GPT 5.6 Sol",
         false,
       ),
     ]);
@@ -629,14 +651,14 @@ describe("organization model providers settings", () => {
 
     const defaultRow = screen.getByTestId("default-model-row");
     click(within(defaultRow).getByRole("combobox"));
-    click(await screen.findByRole("option", { name: "GPT 5.5" }));
+    click(await screen.findByRole("option", { name: "GPT 5.6 Sol" }));
 
     await expect(
       screen.findByText("Configurações dos provedores de modelo atualizadas"),
     ).resolves.toBeInTheDocument();
   });
 
-  it("only offers supported workspace models when adding a model", async () => {
+  it("only offers active workspace models when adding a model", async () => {
     mockAdminOrg();
     context.mocks.data.orgModelProviders([]);
     context.mocks.data.orgModelPolicies([]);
@@ -647,10 +669,16 @@ describe("organization model providers settings", () => {
     click(within(dialog).getByRole("combobox"));
 
     await expect(
+      screen.findByRole("option", { name: "GPT 5.6 Sol" }),
+    ).resolves.toBeInTheDocument();
+    await expect(
       screen.findByRole("option", { name: "GPT 5.5" }),
     ).resolves.toBeInTheDocument();
     await expect(
-      screen.findByRole("option", { name: "Claude Opus 4.7" }),
+      screen.findByRole("option", { name: "Claude Sonnet 4.6" }),
+    ).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByRole("option", { name: "Claude Opus 4.8" }),
     ).resolves.toBeInTheDocument();
     await expect(
       screen.findByRole("option", { name: "DeepSeek V4 Flash" }),
@@ -658,23 +686,41 @@ describe("organization model providers settings", () => {
     expect(
       screen.queryByRole("option", { name: "Kimi K2.7 Code" }),
     ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("option", { name: "Claude Opus 4.7" }),
+    ).not.toBeInTheDocument();
   });
 
-  it("keeps existing non-target models while excluding them from additions", async () => {
+  it("hides retired policies while keeping recently active models", async () => {
     mockAdminOrg();
     context.mocks.data.orgModelProviders([]);
     context.mocks.data.orgModelPolicies([
       builtInPolicy(
         "00000000-0000-4000-a000-000000000223",
+        "deepseek-v4-flash",
+        "DeepSeek V4 Flash",
+        true,
+      ),
+      builtInPolicy(
+        "00000000-0000-4000-a000-000000000224",
         "kimi-k2.7-code",
         "Kimi K2.7 Code",
-        true,
+        false,
+      ),
+      builtInPolicy(
+        "00000000-0000-4000-a000-000000000225",
+        "gpt-5.5",
+        "GPT 5.5",
+        false,
       ),
     ]);
     await openProvidersTab();
 
+    expect(
+      screen.queryByTestId("org-model-policy-row-kimi-k2.7-code"),
+    ).not.toBeInTheDocument();
     await expect(
-      screen.findByTestId("org-model-policy-row-kimi-k2.7-code"),
+      screen.findByTestId("org-model-policy-row-gpt-5.5"),
     ).resolves.toBeInTheDocument();
     click(buttonByText("Add model"));
     const dialog = screen.getByRole("dialog", { name: "Add model" });
@@ -742,9 +788,9 @@ describe("organization model providers settings", () => {
     click(buttonByText("Add model"));
 
     const row = await screen.findByTestId(
-      "org-model-policy-row-claude-opus-4-7",
+      "org-model-policy-row-claude-opus-4-8",
     );
-    expect(within(row).getByText("Claude Opus 4.7")).toBeInTheDocument();
+    expect(within(row).getByText("Claude Opus 4.8")).toBeInTheDocument();
     expect(within(row).getByText("Anthropic")).toBeInTheDocument();
   });
 
@@ -753,12 +799,12 @@ describe("organization model providers settings", () => {
     await openProvidersTab();
 
     const row = await screen.findByTestId(
-      "org-model-policy-row-claude-opus-4-7",
+      "org-model-policy-row-claude-opus-4-8",
     );
-    expect(within(row).getByText("Claude Opus 4.7")).toBeInTheDocument();
+    expect(within(row).getByText("Claude Opus 4.8")).toBeInTheDocument();
     expect(within(row).getByText("Anthropic")).toBeInTheDocument();
 
-    click(within(row).getByLabelText("Actions for Claude Opus 4.7"));
+    click(within(row).getByLabelText("Actions for Claude Opus 4.8"));
     click(menuItemByText("Edit model"));
 
     await waitFor(() => {
@@ -785,10 +831,10 @@ describe("organization model providers settings", () => {
     await openProvidersTab();
 
     const row = await screen.findByTestId(
-      "org-model-policy-row-claude-opus-4-7",
+      "org-model-policy-row-claude-opus-4-8",
     );
     expect(within(row).getByText("Anthropic")).toBeInTheDocument();
-    click(within(row).getByLabelText("Actions for Claude Opus 4.7"));
+    click(within(row).getByLabelText("Actions for Claude Opus 4.8"));
     click(menuItemByText("Edit model"));
 
     await waitFor(() => {
@@ -803,12 +849,12 @@ describe("organization model providers settings", () => {
       expect(within(row).getByText("Built-in")).toBeInTheDocument();
     });
 
-    click(within(row).getByLabelText("Actions for Claude Opus 4.7"));
+    click(within(row).getByLabelText("Actions for Claude Opus 4.8"));
     click(menuItemByText("Delete model"));
 
     await waitFor(() => {
       expect(
-        screen.queryByTestId("org-model-policy-row-claude-opus-4-7"),
+        screen.queryByTestId("org-model-policy-row-claude-opus-4-8"),
       ).not.toBeInTheDocument();
     });
   });
@@ -819,14 +865,14 @@ describe("organization model providers settings", () => {
     await openProvidersTab();
 
     click(buttonByText("Add model"));
-    await selectDialogModel("Claude Opus 4.7");
+    await selectDialogModel("Claude Opus 4.8");
     click(screen.getByRole("radio", { name: /Claude subscription/u }));
     click(buttonByText("Add model"));
 
     const oauthRow = await screen.findByTestId(
-      "org-model-policy-row-claude-opus-4-7",
+      "org-model-policy-row-claude-opus-4-8",
     );
-    expect(within(oauthRow).getByText("Claude Opus 4.7")).toBeInTheDocument();
+    expect(within(oauthRow).getByText("Claude Opus 4.8")).toBeInTheDocument();
     expect(
       within(oauthRow).getByText("Claude Code (OAuth token)"),
     ).toBeInTheDocument();
@@ -841,16 +887,18 @@ describe("organization model providers settings", () => {
     click(buttonByText("Add model"));
     const dialog = screen.getByRole("dialog", { name: "Add model" });
     click(within(dialog).getByRole("combobox"));
-    click(await screen.findByRole("option", { name: "GPT 5.5" }));
+    click(await screen.findByRole("option", { name: "GPT 5.6 Sol" }));
     click(screen.getByRole("radio", { name: /Codex subscription/u }));
     click(buttonByText("Add model", dialog));
 
-    const codexRow = await screen.findByTestId("org-model-policy-row-gpt-5.5");
-    expect(within(codexRow).getByText("GPT 5.5")).toBeInTheDocument();
+    const codexRow = await screen.findByTestId(
+      "org-model-policy-row-gpt-5.6-sol",
+    );
+    expect(within(codexRow).getByText("GPT 5.6 Sol")).toBeInTheDocument();
     expect(within(codexRow).getByText("ChatGPT (Codex)")).toBeInTheDocument();
     expect(
       within(screen.getByTestId("default-model-row")).getByRole("combobox"),
-    ).toHaveTextContent("GPT 5.5");
+    ).toHaveTextContent("GPT 5.6 Sol");
   });
 
   it("opens compare plans for a limited-free-1 default Pro model", async () => {
@@ -902,7 +950,7 @@ describe("organization model providers settings", () => {
     click(within(dialog).getByRole("combobox"));
 
     const gptOption = await screen.findByRole("option", {
-      name: /GPT 5\.5\s+Pro/u,
+      name: /GPT 5\.6 Sol\s+Pro/u,
     });
     click(gptOption);
 
@@ -924,8 +972,8 @@ describe("organization model providers settings", () => {
     context.mocks.data.orgModelPolicies([
       builtInPolicy(
         "00000000-0000-4000-a000-000000000222",
-        "kimi-k2.7-code",
-        "Kimi K2.7 Code",
+        "deepseek-v4-flash",
+        "DeepSeek V4 Flash",
         true,
       ),
     ]);
@@ -963,7 +1011,7 @@ describe("organization model providers settings", () => {
     click(buttonByText("Add model"));
     const dialog = screen.getByRole("dialog", { name: "Add model" });
     click(within(dialog).getByRole("combobox"));
-    click(await screen.findByRole("option", { name: /GPT 5\.5\s+Pro/u }));
+    click(await screen.findByRole("option", { name: /GPT 5\.6 Sol\s+Pro/u }));
     expect(buttonByText("Upgrade to Pro", dialog)).toBeInTheDocument();
 
     await selectDialogModel("DeepSeek V4 Flash");
@@ -995,7 +1043,7 @@ describe("organization model providers settings", () => {
         screen.queryByTestId("org-model-policy-row-deepseek-v4-flash"),
       ).not.toBeInTheDocument();
       expect(within(defaultRow).getByRole("combobox")).toHaveTextContent(
-        "Claude Opus 4.7",
+        "Claude Opus 4.8",
       );
     });
   });
@@ -1011,18 +1059,18 @@ describe("organization model providers settings", () => {
         true,
       ),
       claudeOpusApiKeyPolicy(),
-      missingMoonshotPolicy(),
+      missingOpenAiPolicy(),
     ]);
     await openProvidersTab();
 
     const missingRow = await screen.findByTestId(
-      "org-model-policy-row-kimi-k2.7-code",
+      "org-model-policy-row-gpt-5.5",
     );
     expect(
       within(missingRow).getByText("Missing provider"),
     ).toBeInTheDocument();
     expect(
-      within(missingRow).getByText("Workspace Moonshot API key was removed"),
+      within(missingRow).getByText("Workspace OpenAI API key was removed"),
     ).toBeInTheDocument();
 
     const defaultRow = screen.getByTestId("default-model-row");
@@ -1031,11 +1079,11 @@ describe("organization model providers settings", () => {
     );
 
     click(within(defaultRow).getByRole("combobox"));
-    click(await screen.findByRole("option", { name: "Claude Opus 4.7" }));
+    click(await screen.findByRole("option", { name: "Claude Opus 4.8" }));
 
     await waitFor(() => {
       expect(within(defaultRow).getByRole("combobox")).toHaveTextContent(
-        "Claude Opus 4.7",
+        "Claude Opus 4.8",
       );
     });
   });

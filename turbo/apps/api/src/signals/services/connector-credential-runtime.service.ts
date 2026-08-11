@@ -316,7 +316,7 @@ async function persistConnectorRefreshOutputs(
       const encryptedValue = await encryptStoredSecretValue(value);
       await upsertConnectorOwnedSecret(args.db, {
         connectorId: args.connection.connectorId,
-        method: args.connection.runtimeMethod.method,
+        storage: args.connection.runtimeMethod.method.storage,
         description: `Connector token output for ${args.connection.connectorSlug}: ${target.name}`,
         encryptedValue,
         name: target.name,
@@ -326,7 +326,7 @@ async function persistConnectorRefreshOutputs(
     } else {
       await upsertConnectorOwnedVariable(args.db, {
         connectorId: args.connection.connectorId,
-        method: args.connection.runtimeMethod.method,
+        storage: args.connection.runtimeMethod.method.storage,
         description: null,
         name: target.name,
         orgId: args.orgId,

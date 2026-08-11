@@ -2105,7 +2105,7 @@ async function persistRefreshOutputValues(
           );
           await upsertConnectorOwnedSecret(args.db, {
             connectorId: prepared.connectorId,
-            method: prepared.runtimeMethod.method,
+            storage: prepared.runtimeMethod.method.storage,
             orgId: args.orgId,
             userId: context.secretUserId,
             name: target.name,
@@ -2124,7 +2124,7 @@ async function persistRefreshOutputValues(
         }
         await upsertConnectorOwnedVariable(args.db, {
           connectorId: prepared.connectorId,
-          method: prepared.runtimeMethod.method,
+          storage: prepared.runtimeMethod.method.storage,
           orgId: args.orgId,
           userId: context.secretUserId,
           name: target.name,

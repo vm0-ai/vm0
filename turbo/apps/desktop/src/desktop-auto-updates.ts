@@ -1,12 +1,8 @@
 import { app, autoUpdater, dialog } from "electron";
-import {
-  UpdateSourceType,
-  updateElectronApp,
-  type IUpdateInfo,
-} from "update-electron-app";
+import { UpdateSourceType, updateElectronApp } from "update-electron-app";
 
 import type { DesktopConfig } from "./config";
-import { shouldNotifyUserForDesktopUpdate } from "./desktop-auto-update-policy";
+import { shouldDeferDesktopUpdate } from "./desktop-auto-update-policy";
 import {
   desktopUpdateFeedBaseUrl,
   shouldInstallDesktopAutoUpdates,
@@ -25,28 +21,6 @@ async function restartForUpdate(
 ): Promise<void> {
   await prepareForQuitAndInstall();
   autoUpdater.quitAndInstall();
-}
-
-async function promptToRestartForUpdate(
-  info: IUpdateInfo,
-  prepareForQuitAndInstall: () => Promise<void>,
-): Promise<void> {
-  const result = await dialog.showMessageBox({
-    type: "info",
-    buttons: ["Restart", "Later"],
-    defaultId: 0,
-    cancelId: 1,
-    title: "Update Ready",
-    message: info.releaseName,
-    detail:
-      "A new version has been downloaded. Restart Zero Computer Use to install it.",
-  });
-
-  if (result.response !== 0) {
-    return;
-  }
-
-  await restartForUpdate(prepareForQuitAndInstall);
 }
 
 async function notifyNoDesktopUpdatesFound(): Promise<void> {
@@ -71,27 +45,15 @@ async function notifyDesktopUpdateCheckFailed(error: unknown): Promise<void> {
   });
 }
 
-function shouldPromptForDownloadedUpdate(
+function shouldDeferDownloadedUpdate(
   getComputerUseHostState: () => ComputerUseHostRuntimeState,
 ): boolean {
   try {
-    return shouldNotifyUserForDesktopUpdate(getComputerUseHostState());
+    return shouldDeferDesktopUpdate(getComputerUseHostState());
   } catch (error) {
     console.warn("Unable to inspect Computer Use activity for update", error);
     return true;
   }
-}
-
-async function handleDownloadedUpdate(
-  info: IUpdateInfo,
-  options: DesktopAutoUpdateOptions,
-): Promise<void> {
-  if (shouldPromptForDownloadedUpdate(options.getComputerUseHostState)) {
-    await promptToRestartForUpdate(info, options.prepareForQuitAndInstall);
-    return;
-  }
-
-  await restartForUpdate(options.prepareForQuitAndInstall);
 }
 
 export function installDesktopAutoUpdates(
@@ -114,6 +76,35 @@ export function installDesktopAutoUpdates(
     return false;
   }
 
+  let downloadedUpdatePending = false;
+  let updateInstallationInProgress = false;
+
+  const installPendingUpdateWhenInactive = async (): Promise<void> => {
+    if (
+      !downloadedUpdatePending ||
+      updateInstallationInProgress ||
+      shouldDeferDownloadedUpdate(options.getComputerUseHostState)
+    ) {
+      return;
+    }
+
+    updateInstallationInProgress = true;
+    try {
+      await restartForUpdate(options.prepareForQuitAndInstall);
+      downloadedUpdatePending = false;
+    } finally {
+      updateInstallationInProgress = false;
+    }
+  };
+
+  const tryInstallPendingUpdate = (): void => {
+    void installPendingUpdateWhenInactive().catch((error) => {
+      console.error("Desktop update install failed", error);
+    });
+  };
+
+  autoUpdater.on("checking-for-update", tryInstallPendingUpdate);
+
   updateElectronApp({
     updateSource: {
       type: UpdateSourceType.StaticStorage,
@@ -121,10 +112,9 @@ export function installDesktopAutoUpdates(
     },
     updateInterval: "30 minutes",
     notifyUser: true,
-    onNotifyUser: (info) => {
-      void handleDownloadedUpdate(info, options).catch((error) => {
-        console.error("Desktop update restart prompt failed", error);
-      });
+    onNotifyUser: () => {
+      downloadedUpdatePending = true;
+      tryInstallPendingUpdate();
     },
   });
   return true;

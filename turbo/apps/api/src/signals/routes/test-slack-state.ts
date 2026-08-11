@@ -763,6 +763,7 @@ async function seedUserVariablesForTest(
           variables.type,
           variables.name,
         ],
+        targetWhere: isNull(variables.connectorId),
         set: { value, updatedAt: nowDate() },
       });
   }

@@ -118,8 +118,9 @@ class UsageEventBuffer:
         log_type: str = "usage_event",
         preserve_source_idempotency: bool = False,
         atomic_source_key: str | None = None,
+        accepted_source_keys: set[str] | None = None,
     ) -> int:
-        """Add source usage events and flush if the buffer exceeds a bound."""
+        """Add source events, collect accepted keys when requested, and maybe flush."""
         flush_now = False
         timer_to_start: _TimerHandle | None = None
         with self._lock:
@@ -134,6 +135,7 @@ class UsageEventBuffer:
                 log_type=log_type,
                 preserve_source_idempotency=preserve_source_idempotency,
                 atomic_source_key=atomic_source_key,
+                accepted_source_keys=accepted_source_keys,
             )
             if accepted_count == 0:
                 timer_to_start = self._schedule_timer_if_buffered_locked()
@@ -158,8 +160,9 @@ class UsageEventBuffer:
         proxy_log_path: str,
         *,
         preserve_source_idempotency: bool = False,
+        accepted_source_keys: set[str] | None = None,
     ) -> int:
-        """Add compact model observations and flush if a bound is exceeded."""
+        """Add observations, collect accepted keys when requested, and maybe flush."""
         flush_now = False
         timer_to_start: _TimerHandle | None = None
         with self._lock:
@@ -170,6 +173,7 @@ class UsageEventBuffer:
                 observations,
                 proxy_log_path,
                 preserve_source_idempotency=preserve_source_idempotency,
+                accepted_source_keys=accepted_source_keys,
             )
             if accepted_count == 0:
                 timer_to_start = self._schedule_timer_if_buffered_locked()

@@ -1,4 +1,3 @@
-import type { ConnectorAuthMethodRuntimeConfig } from "@vm0/connectors/connector-config";
 import { connectors } from "@vm0/db/schema/connector";
 import { secrets } from "@vm0/db/schema/secret";
 import { variables } from "@vm0/db/schema/variable";
@@ -7,9 +6,14 @@ import { eq, isNotNull, sql, type SQL } from "drizzle-orm";
 import { nowDate } from "../../lib/time";
 import type { Db } from "../external/db";
 
+export interface ConnectorCredentialStorageDeclaration {
+  readonly secrets: readonly string[];
+  readonly variables: readonly string[];
+}
+
 interface ConnectorOwnedCredentialWrite {
   readonly connectorId: string;
-  readonly method: ConnectorAuthMethodRuntimeConfig;
+  readonly storage: ConnectorCredentialStorageDeclaration;
   readonly name: string;
   readonly orgId: string;
   readonly userId: string;
@@ -41,13 +45,11 @@ interface ConnectorCredentialStorageDeleteConditions extends ConnectorOwnedCrede
 
 function requireDeclaredStorageName(args: {
   readonly kind: "secret" | "variable";
-  readonly method: ConnectorAuthMethodRuntimeConfig;
+  readonly storage: ConnectorCredentialStorageDeclaration;
   readonly name: string;
 }): void {
   const names =
-    args.kind === "secret"
-      ? args.method.storage.secrets
-      : args.method.storage.variables;
+    args.kind === "secret" ? args.storage.secrets : args.storage.variables;
   if (!names.includes(args.name)) {
     throw new Error(
       `Connector auth method does not declare ${args.kind} ${args.name}`,
@@ -64,7 +66,7 @@ export async function upsertConnectorOwnedSecret(
 ): Promise<void> {
   requireDeclaredStorageName({
     kind: "secret",
-    method: args.method,
+    storage: args.storage,
     name: args.name,
   });
   const [row] = await db
@@ -104,7 +106,7 @@ export async function upsertConnectorOwnedVariable(
 ): Promise<void> {
   requireDeclaredStorageName({
     kind: "variable",
-    method: args.method,
+    storage: args.storage,
     name: args.name,
   });
   const [row] = await db

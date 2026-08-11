@@ -1,7 +1,7 @@
 import { command, computed, state } from "ccstate";
 import type { UsagePackManagementResponse } from "@vm0/api-contracts/contracts/zero-billing";
 import { searchParams$, updateSearchParams$ } from "../../route.ts";
-import { reloadBillingStatus$ } from "../billing.ts";
+import { reloadBillingStatus$, usagePackManagementAsync$ } from "../billing.ts";
 import { isOrgAdmin$ } from "../../org.ts";
 import { reloadPersonalModelProviders$ } from "../../external/personal-model-providers.ts";
 import { resetSignal } from "../../utils.ts";
@@ -123,8 +123,12 @@ export const openSettingsBillingPlans$ = command(({ get, set }) => {
   set(updateSearchParams$, params);
 });
 
-export const openSettingsMemberUsagePacks$ = command(
-  ({ set }, management: UsagePackManagementResponse) => {
+const openSettingsUsagePackPlan$ = command(
+  (
+    { set },
+    management: UsagePackManagementResponse,
+    targetTier: UsagePackManagementResponse["tier"],
+  ) => {
     set(openSettingsBillingPlans$);
     set(
       setMemberUsageSelections$,
@@ -137,7 +141,25 @@ export const openSettingsMemberUsagePacks$ = command(
         }),
       ),
     );
-    set(setSelectedUsagePackPlan$, management.tier);
+    set(setSelectedUsagePackPlan$, targetTier);
+  },
+);
+
+export const openSettingsMemberUsagePacks$ = command(
+  ({ set }, management: UsagePackManagementResponse) => {
+    set(openSettingsUsagePackPlan$, management, management.tier);
+  },
+);
+
+export const openSettingsUsagePackUpgrade$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const management = await get(usagePackManagementAsync$);
+    signal.throwIfAborted();
+    if (!management) {
+      set(openSettingsBillingPlans$);
+      return;
+    }
+    set(openSettingsUsagePackPlan$, management, "team");
   },
 );
 

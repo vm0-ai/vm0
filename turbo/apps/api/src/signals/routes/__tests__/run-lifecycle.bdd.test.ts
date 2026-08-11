@@ -17,7 +17,7 @@ import {
   type CreateCustomConnectorBody,
   ZERO_CUSTOM_CONNECTOR_IDS_ENV_KEY,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
-import { testCustomConnectorSkillRepairStateContract } from "@vm0/api-contracts/contracts/test-custom-connector-skill-repair-state";
+import { testCustomConnectorSkillVersionAssociationContract } from "@vm0/api-contracts/contracts/test-custom-connector-skill-version-association";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
   getCustomConnectorSkillStorageName,
@@ -129,7 +129,7 @@ import {
   type SecretKmsDataKey,
   type SecretKmsGenerateDataKeyRequest,
 } from "../../../lib/secret-kms-client";
-import { testCustomConnectorSkillRepairStateRoutes } from "../test-custom-connector-skill-repair-state";
+import { testCustomConnectorSkillVersionAssociationRoutes } from "../test-custom-connector-skill-version-association";
 
 /**
  * RUN-01..04 and CHAIN-RUN: successful run dispatch and lifecycle.
@@ -5418,7 +5418,7 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
     await setAgentModelSelectionAsPreviousApi(
       context,
       agentId,
-      "claude-sonnet-4-6",
+      "claude-opus-4-7",
     );
 
     const run = await api.createRun(actor, {
@@ -5430,7 +5430,7 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
 
     expect(stored).toStrictEqual({
       model_provider: "anthropic-api-key",
-      selected_model: "claude-sonnet-5",
+      selected_model: "claude-opus-4-8",
     });
     await api.requestCancelRun(actor, run.runId, [200]);
   });
@@ -5486,13 +5486,13 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
     await setRunModelSelectionAsPreviousApi(
       context,
       queued.runId,
-      "claude-sonnet-4-6",
+      "claude-opus-4-7",
     );
     await api.requestCancelRun(actor, first.runId, [200]);
 
     const failed = await waitForRunStatus(api, actor, queued.runId, "failed");
     expect(failed.error).toBe(
-      'MODEL_RETIRED: Model "claude-sonnet-4-6" has been retired. Use "claude-sonnet-5" instead.',
+      'MODEL_RETIRED: Model "claude-opus-4-7" has been retired. Use "claude-opus-4-8" instead.',
     );
     await expect(waitForRunQueueLength(api, actor, 0)).resolves.toBeDefined();
 
@@ -8874,22 +8874,19 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
 
     const [mcpApi] = inlineFirewallApis(claim.firewalls, mcpInternalName);
     expect(mcpApi).toMatchObject({
-      base: "https://mcp-runtime.example.test",
+      base: "https://mcp-runtime.example.test/api/mcp",
       hostPolicy: { kind: "publicDestination" },
-      permissions: [
-        {
-          name: "mcp-endpoint",
-          rules: ["POST /api/mcp", "GET /api/mcp", "DELETE /api/mcp"],
-        },
-      ],
+      permissions: [],
     });
     const mcpSecretKey = `CUSTOM_${mcp.id.replaceAll("-", "")}_S_SECRET`;
     expect(mcpApi?.auth.headers?.Authorization).toBe(
       `Bearer \${{ secrets.${mcpSecretKey} }}`,
     );
-    expect(claim.networkPolicies?.[mcpInternalName]).toMatchObject({
-      allow: ["mcp-endpoint"],
-      unknownPolicy: "deny",
+    expect(claim.networkPolicies?.[mcpInternalName]).toStrictEqual({
+      allow: [],
+      deny: [],
+      ask: [],
+      unknownPolicy: "allow",
     });
     expect(claim.secretValues).not.toContain("mcp-runtime-token");
     expect(
@@ -8909,6 +8906,15 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       targets: [target],
     });
     const initialRuntime = availableCustomConnectorRuntime(initialResult);
+    expect(initialRuntime.firewall.firewall.apis[0]?.permissions).toStrictEqual(
+      [],
+    );
+    expect(initialRuntime.networkPolicy).toStrictEqual({
+      allow: [],
+      deny: [],
+      ask: [],
+      unknownPolicy: "allow",
+    });
     const { body: initialAuthBody } = customConnectorRuntimeAuthBody(
       initialRuntime,
       fw.encryptedSecretsBody({}),
@@ -8947,13 +8953,14 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     });
     const movedRuntime = availableCustomConnectorRuntime(movedResult);
     expect(movedRuntime.firewall.firewall.apis[0]).toMatchObject({
-      base: "https://mcp-runtime.example.test",
-      permissions: [
-        {
-          name: "mcp-endpoint",
-          rules: ["POST /v2/mcp/", "GET /v2/mcp/", "DELETE /v2/mcp/"],
-        },
-      ],
+      base: "https://mcp-runtime.example.test/v2/mcp/",
+      permissions: [],
+    });
+    expect(movedRuntime.networkPolicy).toStrictEqual({
+      allow: [],
+      deny: [],
+      ask: [],
+      unknownPolicy: "allow",
     });
 
     await connectors.disconnectCustomConnector(actor, mcp.id);
@@ -9066,9 +9073,12 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       }),
     ).toMatchObject({
       prefixTemplates: [firstRuntimeConnector.prefixTemplate],
-      prefixes: [firstRuntimeConnector.prefixTemplate],
-      headerName: "X-Connector",
-      headerTemplate: "runtime-batch {{secrets.optional_secret}}",
+      headerInjections: [
+        {
+          name: "X-Connector",
+          valueTemplate: "runtime-batch {{secrets.optional_secret}}",
+        },
+      ],
     });
     const createdIds = runtimeConnectors.map((connector) => {
       return connector.id;
@@ -9283,7 +9293,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     await api.requestCancelRun(actor, restoredRun.runId, [200]);
   });
 
-  it("fails closed when a custom skill exact association is invalid", async () => {
+  it("fails closed when a custom skill version belongs to another storage", async () => {
     const api = createRunsApi(context);
     const bdd = createBddApi(context);
     bdd.acceptAgentStorageWrites();
@@ -9291,8 +9301,8 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const storages = createStoragesBddApi(context);
     const stateClient = setupApp({
       context,
-      routes: testCustomConnectorSkillRepairStateRoutes,
-    })(testCustomConnectorSkillRepairStateContract);
+      routes: testCustomConnectorSkillVersionAssociationRoutes,
+    })(testCustomConnectorSkillVersionAssociationContract);
     const { actor, agentId } = await entitledRunActor();
     const suffix = randomUUID().slice(0, 8);
     const target = await connectors.createCustomConnector(actor, {
@@ -9348,9 +9358,8 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     });
 
     await accept(
-      stateClient.action({
+      stateClient.associate({
         body: {
-          action: "set-connector",
           connectorId: target.id,
           skillStorageVersionId: otherSkill.versionId,
         },
@@ -9366,30 +9375,6 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       status: "failed",
       error: "Custom connector skill registration is unavailable",
     });
-
-    const missingAssociationState = await accept(
-      stateClient.action({
-        body: {
-          action: "set-connector",
-          connectorId: target.id,
-          skillStorageVersionId: null,
-        },
-      }),
-      [200],
-    );
-    expect(missingAssociationState.body.state.connector).toMatchObject({
-      skillMarkdown: "Use only the target connector skill.",
-      skillStorageVersionId: null,
-    });
-    await expect(
-      api.createRun(actor, {
-        agentId,
-        prompt: "reject the missing custom skill association",
-        modelProvider: "anthropic-api-key",
-      }),
-    ).rejects.toThrow(
-      "Unknown response status 500 for POST /api/test/zero-run-fixture",
-    );
   });
 
   it("admits an unrefreshable custom OAuth token only until it expires", async () => {
@@ -9942,13 +9927,8 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     );
     const internalName = `custom_connector_${mcp.id.replaceAll("-", "")}`;
     expect(inlineFirewallApis(claim.firewalls, internalName)[0]).toMatchObject({
-      base: "https://mcp-oauth.example.test",
-      permissions: [
-        {
-          name: "mcp-endpoint",
-          rules: ["POST /oauth/mcp", "GET /oauth/mcp", "DELETE /oauth/mcp"],
-        },
-      ],
+      base: "https://mcp-oauth.example.test/oauth/mcp",
+      permissions: [],
     });
     const [runtimeResult] = await api.syncConnectorRuntime(run.runId, {
       targets: [
@@ -10717,9 +10697,16 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       }),
     );
 
-    await connectors.setCustomConnectorValues(actor, saved.connector.id, [
-      { key: "api_key", kind: "secret", value: "recovered-key" },
-    ]);
+    const incompleteRecovery = await connectors.requestSetCustomConnectorValues(
+      actor,
+      saved.connector.id,
+      [{ key: "api_key", kind: "secret", value: "recovered-key" }],
+      [400],
+    );
+    expectApiError(incompleteRecovery.body);
+    expect(incompleteRecovery.body.error.message).toContain(
+      "All required fields must be provided when connecting or restoring",
+    );
     await api.requestCancelRun(actor, incompleteRun.runId, [200]);
 
     const longSubdomain = "a".repeat(55);
@@ -12269,7 +12256,7 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     );
     expect(claim.appendSystemPrompt ?? "").toContain("zero web-search --help");
     expect(claim.appendSystemPrompt ?? "").toContain("zero finance --help");
-    expect(claim.appendSystemPrompt ?? "").not.toContain("zero seo --help");
+    expect(claim.appendSystemPrompt ?? "").toContain("zero seo --help");
     expect(claim.appendSystemPrompt ?? "").toContain("zero scrape --help");
     expect(claim.appendSystemPrompt ?? "").toContain(
       'zero translate "<text>" --to <language> [--from <language>]',
@@ -12283,13 +12270,9 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     await api.requestCancelRun(actor, run.runId, [200]);
   });
 
-  it("advertises managed SEO tools when the feature switch is enabled", async () => {
+  it("advertises managed SEO tools by default", async () => {
     const api = createRunsApi(context);
-    const connectors = createConnectorBddApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
-    await connectors.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.SeoBuiltIn]: true,
-    });
 
     const run = await api.createRun(actor, {
       agentId,

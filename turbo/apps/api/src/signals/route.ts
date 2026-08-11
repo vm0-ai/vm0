@@ -8,7 +8,6 @@ import { cronSnapshotChatEventsRoutes } from "./routes/cron-snapshot-chat-events
 import { cronCompactUsageEventsRoutes } from "./routes/cron-compact-usage-events";
 import { cronCleanupSandboxesRoutes } from "./routes/cron-cleanup-sandboxes";
 import { cronConnectorCatalogRoutes } from "./routes/cron-connector-catalog";
-import { cronCustomConnectorSkillRepairRoutes } from "./routes/cron-custom-connector-skill-repair";
 import { cronConnectorOauthStateCleanupRoutes } from "./routes/cron-connector-oauth-state-cleanup";
 import { cronDrainEmailOutboxRoutes } from "./routes/cron-drain-email-outbox";
 import { cronExecuteMorningBriefsRoutes } from "./routes/cron-execute-morning-briefs";
@@ -182,6 +181,7 @@ import { zeroTeamRoutes } from "./routes/zero-team";
 import { zeroUploadsCompleteRoutes } from "./routes/zero-uploads-complete";
 import { zeroUploadsMultipartRoutes } from "./routes/zero-uploads-multipart";
 import { zeroUploadsPrepareRoutes } from "./routes/zero-uploads-prepare";
+import { zeroPresentationTemplatesRoutes } from "./routes/zero-presentation-templates";
 import { zeroUsageMembersRoutes } from "./routes/zero-usage-members";
 import { zeroUsageRecordRoutes } from "./routes/zero-usage-record";
 import { zeroUserPreferencesRoutes } from "./routes/zero-user-preferences";
@@ -231,7 +231,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...cronCompactUsageEventsRoutes,
   ...cronCleanupSandboxesRoutes,
   ...cronConnectorCatalogRoutes,
-  ...cronCustomConnectorSkillRepairRoutes,
   ...cronConnectorOauthStateCleanupRoutes,
   ...cronDrainEmailOutboxRoutes,
   ...cronExecuteMorningBriefsRoutes,
@@ -385,6 +384,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroUploadsCompleteRoutes,
   ...zeroUploadsMultipartRoutes,
   ...zeroUploadsPrepareRoutes,
+  ...zeroPresentationTemplatesRoutes,
   ...registryResourceDownloadRoutes,
   ...zeroUsageMembersRoutes,
   ...zeroUsageRecordRoutes,

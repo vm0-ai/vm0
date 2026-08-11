@@ -348,6 +348,7 @@
       "slack": "Slack",
       "teams": "Microsoft Teams",
       "telegram": "Telegram",
+      "templateImport": "Importazione modello",
       "test": "Test",
       "web": "Rete",
       "webhook": "Webhook"
@@ -938,6 +939,7 @@
         "description": "Accesso gratuito precedente per le aree di lavoro esistenti.",
         "name": "Gratuito"
       },
+      "legacy": "Precedente",
       "limitedFree": {
         "name": "Gratuito limitato"
       },
@@ -995,6 +997,22 @@
         "memberExclusive": "Ogni pacchetto appartiene a un membro e non può essere condiviso. Quando un pacchetto si esaurisce, l’utilizzo torna ai crediti a consumo. In seguito puoi passare a un nuovo pacchetto.",
         "memberPackages": "Pacchetti dei membri",
         "memberUsage": "Utilizzo del membro",
+        "migration": {
+          "action": "Converti piano",
+          "confirmDescription": "Il piano e i diritti attuali restano attivi fino alla fine di questo periodo di fatturazione. Stripe addebita il nuovo totale ricorrente all’avvio del nuovo piano.",
+          "convertPlan": "Converti piano",
+          "description": "Converti il workspace {{plan}} precedente in un nuovo piano con un pacchetto di utilizzo mensile individuale per ogni membro.",
+          "error": "Impossibile migrare questo abbonamento. Aggiorna la pagina e riprova.",
+          "invoice": "Visualizza fattura",
+          "processing": "Pianificazione della conversione con Stripe.",
+          "ready": "Scegli un pacchetto mensile obbligatorio per ogni membro e invito in sospeso.",
+          "review": "Rivedi conversione",
+          "reviewDescription": "Confronta il piano precedente attuale con il nuovo piano ricorrente prima di pianificare la conversione.",
+          "reviewTitle": "Rivedi conversione del piano",
+          "scheduled": "La conversione è pianificata per il {{date}}. Il piano e i diritti attuali restano attivi fino ad allora.",
+          "switchesOn": "Passa al piano {{plan}} il {{date}}",
+          "title": "Converti piano precedente"
+        },
         "minimumPackageBreakdown": "Piano da {{base}} + pacchetto membro obbligatorio da {{package}}",
         "monthlyTotal": "Totale mensile",
         "orderSummary": "Riepilogo dell’ordine",
@@ -1665,6 +1683,7 @@
         "waiting": "In attesa",
         "watching": "Guardando"
       },
+      "emojiCategories": "Categorie di emoji",
       "empty": "Invia un messaggio per avviare la conversazione",
       "frequentlyUsed": "Usato frequentemente",
       "icon": "Icona del thread di chat",
@@ -1675,8 +1694,10 @@
       "openBrowser": "Apri il browser",
       "openNamedAgent": "Apri agente {{name}}",
       "openNamedChat": "Apri la chat {{title}}",
+      "pickEmoji": "Scegli un'emoji",
       "scrollToBottom": "Scorri fino in fondo",
-      "searchEmoji": "Cerca emoji"
+      "searchEmoji": "Cerca emoji",
+      "steerMessageExplanation": "Inviato mentre l'agente lavorava per orientarne il comportamento"
     },
     "threadSidebar": {
       "resize": "Ridimensiona la barra laterale"
@@ -1980,6 +2001,7 @@
       "emptyAdmin": "Nessun connettore personalizzato ancora. Creane uno per registrare un API affinché ogni membro possa utilizzarlo.",
       "emptyMember": "La tua organizzazione non ha ancora registrato alcun connettore personalizzato.",
       "mcpStreamableHttp": "MCP · Streamable HTTP",
+      "mcpType": "MCP",
       "moreOptions": "Più opzioni",
       "statusConnected": "Connesso",
       "toasts": {
@@ -4230,15 +4252,14 @@
         "useAccount": "Usa"
       },
       "picker": {
-        "balancedUse": "Utilizzo equilibrato",
         "builtInModel": "Modello da incasso",
         "byokHelp": "Utilizza il provider configurato",
         "fast": "Veloce",
+        "fastImpact": "Velocità del modello 1,5× · consumo di crediti 2,5×",
         "inheritDefault": "Eredita dall'impostazione predefinita dell'organizzazione",
         "loadError": "Impossibile caricare i modelli.",
         "loading": "Caricamento modelli...",
         "models": "Modelli",
-        "moreCodexCredits": "Utilizza più Codex crediti.",
         "noConfiguredModels": "Nessun modello configurato",
         "priceTiers": {
           "balanced": "Costo e prestazioni equilibrati",
@@ -4246,14 +4267,12 @@
           "frontier": "Modello di punta della frontiera",
           "premium": "Modello premium di frontiera per i compiti più difficili"
         },
-        "prioritizeSpeed": "Dai priorità alla velocità",
         "pro": "Pro",
         "providerLabels": {
           "azureFoundryPortal": "Azure portale della fonderia",
           "claudeCodeOauth": "Claude Code (OAuth token)",
           "deepseek": "Ricerca profonda"
         },
-        "runSpeed": "Corri velocità",
         "standard": "Norma"
       },
       "policies": {

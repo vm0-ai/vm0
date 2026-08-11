@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.163.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.163.5...runner-rs-v0.163.6) (2026-08-11)
+
+
+### Bug Fixes
+
+* **runner:** preserve completion telemetry timestamp ([#26395](https://github.com/vm0-ai/vm0/issues/26395)) ([434bdad](https://github.com/vm0-ai/vm0/commit/434bdad7a497168f023e8a5040dad3987c15f2ab))
+
+## [0.163.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.163.4...runner-rs-v0.163.5) (2026-08-11)
+
+
+### Bug Fixes
+
+* **runner:** validate h1 absolute-form authorities ([#26323](https://github.com/vm0-ai/vm0/issues/26323)) ([1c7edb2](https://github.com/vm0-ai/vm0/commit/1c7edb237e43afeb838c8478004333c7467bc39d))
+
+
+### Refactoring
+
+* **python:** centralize counter underbilling emission ([#26336](https://github.com/vm0-ai/vm0/issues/26336)) ([da94429](https://github.com/vm0-ai/vm0/commit/da94429af94c1c2ec8ab7c0069d85dd569bcdab2))
+
 ## [0.163.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.163.3...runner-rs-v0.163.4) (2026-08-11)
 
 

@@ -1,5 +1,87 @@
 # Changelog
 
+## [0.728.0](https://github.com/vm0-ai/vm0/compare/app-v0.727.0...app-v0.728.0) (2026-08-11)
+
+
+### Features
+
+* migrate inactive retired run models ([#26394](https://github.com/vm0-ai/vm0/issues/26394)) ([afa90b2](https://github.com/vm0-ai/vm0/commit/afa90b2fbc7d94262c680b8c944d66bcb0199364))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.316.0
+    * @vm0/core bumped to 8.545.2
+
+## [0.727.0](https://github.com/vm0-ai/vm0/compare/app-v0.726.0...app-v0.727.0) (2026-08-11)
+
+
+### Features
+
+* migrate legacy subscriptions to usage pack plans ([#25529](https://github.com/vm0-ai/vm0/issues/25529)) ([1caa179](https://github.com/vm0-ai/vm0/commit/1caa179590bc228564dbd2a680c9bf3f4f28e88e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.315.0
+    * @vm0/core bumped to 8.545.1
+
+## [0.726.0](https://github.com/vm0-ai/vm0/compare/app-v0.725.0...app-v0.726.0) (2026-08-11)
+
+
+### Features
+
+* add fast mode toggle beside model picker ([#26331](https://github.com/vm0-ai/vm0/issues/26331)) ([d02441b](https://github.com/vm0-ai/vm0/commit/d02441b450a2af80d5a4a65b48a61f5ece530657))
+* **billing:** gate member invitations by plan entitlement ([#26343](https://github.com/vm0-ai/vm0/issues/26343)) ([91e8b71](https://github.com/vm0-ai/vm0/commit/91e8b71aca03ba28501ed4be58f68c0f0b7375e9))
+* **desktop:** add product identity observability ([#26377](https://github.com/vm0-ai/vm0/issues/26377)) ([7de4612](https://github.com/vm0-ai/vm0/commit/7de4612ec7d2cd6e09e561c49e3be7b0d2689315))
+* migrate retired run model state ([#26338](https://github.com/vm0-ai/vm0/issues/26338)) ([eb9fc94](https://github.com/vm0-ai/vm0/commit/eb9fc9419a23a08a671a5d7c5707fb77dc0d4952))
+* name the hovered emoji and tighten the picker section titles ([#26382](https://github.com/vm0-ai/vm0/issues/26382)) ([73a89c9](https://github.com/vm0-ai/vm0/commit/73a89c9f7b6e49b36e2d8bc622aafb64daba9823))
+
+
+### Bug Fixes
+
+* **chat:** download private attachments from signed urls ([#26367](https://github.com/vm0-ai/vm0/issues/26367)) ([9af59b1](https://github.com/vm0-ai/vm0/commit/9af59b1031d0c796c396f6fbd7e7dfce71193f38))
+* simplify connector catalog count ([#26362](https://github.com/vm0-ai/vm0/issues/26362)) ([fbc46db](https://github.com/vm0-ai/vm0/commit/fbc46db2de3468aab2eae6b86455db58e0ee457a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.314.0
+    * @vm0/core bumped to 8.545.0
+
+## [0.725.0](https://github.com/vm0-ai/vm0/compare/app-v0.724.3...app-v0.725.0) (2026-08-11)
+
+
+### Features
+
+* add a category rail to the chat thread emoji picker ([#26342](https://github.com/vm0-ai/vm0/issues/26342)) ([8550bc5](https://github.com/vm0-ai/vm0/commit/8550bc57ab8f6fa0cf026b1a6cc1065b1b123c4a))
+
+
+### Bug Fixes
+
+* complete custom mcp ui and simplify firewall policies ([#26334](https://github.com/vm0-ai/vm0/issues/26334)) ([49329f0](https://github.com/vm0-ai/vm0/commit/49329f08831fa835504c760d6a8911bb9b3f32b9))
+
+
+### Refactoring
+
+* remove runless model annotation compatibility ([#26355](https://github.com/vm0-ai/vm0/issues/26355)) ([5ab99fa](https://github.com/vm0-ai/vm0/commit/5ab99fac14018b097a6921bb7901d17203511e9d))
+* **ui:** move hand-rolled elements onto the shared component library ([#26316](https://github.com/vm0-ai/vm0/issues/26316)) ([41aea60](https://github.com/vm0-ai/vm0/commit/41aea606b40d5dacf02f0c250ad5d7f833998c3f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.313.1
+    * @vm0/connectors bumped to 1.205.1
+    * @vm0/core bumped to 8.544.0
+
 ## [0.724.3](https://github.com/vm0-ai/vm0/compare/app-v0.724.2...app-v0.724.3) (2026-08-11)
 
 

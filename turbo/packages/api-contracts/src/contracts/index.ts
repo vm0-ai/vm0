@@ -482,6 +482,7 @@ export {
   MODEL_PROVIDER_TYPES,
   MODEL_LONG_CONTEXT_MIN_TOTAL_INPUT_TOKENS,
   SUPPORTED_RUN_MODELS,
+  ACTIVE_RUN_MODELS,
   RETIRED_RUN_MODELS,
   VM0_MODEL_PRICE_TIER,
   DEFAULT_ORG_MODEL_POLICY_MODELS,
@@ -1738,6 +1739,18 @@ export {
   type ZeroUploadsContract,
   type UploadPrepareResponse,
 } from "./zero-uploads";
+export {
+  MAX_PRESENTATION_TEMPLATE_SOURCE_BYTES,
+  MAX_PRESENTATION_TEMPLATE_PAGES,
+  PRESENTATION_TEMPLATE_CONVERSION_TIMEOUT_SECONDS,
+  MAX_PRESENTATION_TEMPLATE_PACKAGE_FILE_BYTES,
+  presentationTemplateStatusSchema,
+  presentationTemplateImportErrorCodeSchema,
+  presentationTemplatePreflightErrorCodeSchema,
+  zeroPresentationTemplatesContract,
+  type PresentationTemplateSummary,
+  type ZeroPresentationTemplatesContract,
+} from "./zero-presentation-templates";
 export {
   zeroGoalsContract,
   zeroGoalCreateRequestSchema,

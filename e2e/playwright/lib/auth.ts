@@ -10,7 +10,7 @@ export interface ClerkTestingSignInOptions {
 export async function refreshClerkSessionToken(
   page: Page,
   options: { readonly activeOrganizationId?: string } = {},
-): Promise<void> {
+): Promise<string> {
   await page.waitForFunction(() => Boolean(window.Clerk?.session), undefined, {
     timeout: 30_000,
   });
@@ -21,12 +21,13 @@ export async function refreshClerkSessionToken(
       { timeout: 30_000 },
     );
   }
-  const tokenRefreshed = await page.evaluate(async () => {
-    return Boolean(await window.Clerk?.session?.getToken({ skipCache: true }));
+  const token = await page.evaluate(async () => {
+    return (await window.Clerk?.session?.getToken({ skipCache: true })) ?? null;
   });
-  if (!tokenRefreshed) {
+  if (!token) {
     throw new Error("Clerk session token unavailable after refresh");
   }
+  return token;
 }
 
 export async function signInWithClerkTestingHelper(

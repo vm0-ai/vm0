@@ -1,5 +1,51 @@
 # Changelog
 
+## [0.30.2](https://github.com/vm0-ai/vm0/compare/desktop-v0.30.1...desktop-v0.30.2) (2026-08-11)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.316.0
+
+## [0.30.1](https://github.com/vm0-ai/vm0/compare/desktop-v0.30.0...desktop-v0.30.1) (2026-08-11)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.315.0
+
+## [0.30.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.29.67...desktop-v0.30.0) (2026-08-11)
+
+
+### Features
+
+* **desktop:** add product identity observability ([#26377](https://github.com/vm0-ai/vm0/issues/26377)) ([7de4612](https://github.com/vm0-ai/vm0/commit/7de4612ec7d2cd6e09e561c49e3be7b0d2689315))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.314.0
+
+## [0.29.67](https://github.com/vm0-ai/vm0/compare/desktop-v0.29.66...desktop-v0.29.67) (2026-08-11)
+
+
+### Bug Fixes
+
+* **desktop:** defer active background updates ([#26352](https://github.com/vm0-ai/vm0/issues/26352)) ([ef7babf](https://github.com/vm0-ai/vm0/commit/ef7babfdb8a7ad18cecf824fe700276b2a2c94d3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.313.1
+
 ## [0.29.66](https://github.com/vm0-ai/vm0/compare/desktop-v0.29.65...desktop-v0.29.66) (2026-08-11)
 
 

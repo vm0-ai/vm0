@@ -1,6 +1,6 @@
 // TODO(#8609): split large components to comply with max-lines-per-function (128)
 // oxlint-disable max-lines-per-function
-import { useGet, useLoadable, useSet } from "ccstate-react";
+import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
 import {
@@ -39,6 +39,7 @@ import {
   orgRoleSchema,
   type OrgRole,
 } from "@vm0/api-contracts/contracts/org-members";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import type {
   UsagePackManagementResponse,
   UsagePackUsd,
@@ -55,6 +56,8 @@ import { isOrgAdmin$ } from "../../../../signals/org.ts";
 import { user$ } from "../../../../signals/auth.ts";
 import { detach, Reason } from "../../../../signals/utils.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
+import { featureSwitch$ } from "../../../../signals/external/feature-switch.ts";
+import { orgPlanCapabilities$ } from "../../../../signals/zero-page/org-plan-capabilities.ts";
 import {
   memberSearch$,
   setMemberSearch$,
@@ -84,8 +87,12 @@ import {
   acceptRequest$,
   rejectRequest$,
 } from "../../../../signals/zero-page/settings/workspace-settings-state.ts";
-import { openSettingsMemberUsagePacks$ } from "../../../../signals/zero-page/settings/settings-dialog.ts";
+import {
+  openSettingsBillingPlans$,
+  openSettingsMemberUsagePacks$,
+} from "../../../../signals/zero-page/settings/settings-dialog.ts";
 import { formatUsd } from "../../../../i18n/format.ts";
+import { UserAvatar } from "../../../components/avatar.tsx";
 import {
   parseUsagePackOption,
   usagePackOptionLabel,
@@ -337,12 +344,19 @@ function InviteDialog() {
   const setRole = useSet(setInviteRole$);
   const usagePackUsd = useGet(inviteUsagePackUsd$);
   const setUsagePackUsd = useSet(setInviteUsagePackUsd$);
+  const featureSwitches = useGet(featureSwitch$);
+  const capabilities = useLastResolved(orgPlanCapabilities$);
+  const openBillingPlans = useSet(openSettingsBillingPlans$);
   const catalogLoadable = useLoadable(invitationUsagePackCatalog$);
   const usagePacks =
     catalogLoadable.state === "hasData" ? catalogLoadable.data : null;
   const requiresUsagePack = usagePacks !== null;
   const usagePackContextLoading = catalogLoadable.state === "loading";
   const usagePackContextError = catalogLoadable.state === "hasError";
+  const upgradeRequired =
+    featureSwitches[FeatureSwitchKey.UsagePackPlans] &&
+    capabilities !== undefined &&
+    !capabilities.memberInvitationAllowed;
   const [loadable, doInvite] = useLoadableSet(inviteMember$);
   const sending = loadable.state === "loading";
   const pageSignal = useGet(pageSignal$);
@@ -363,6 +377,11 @@ function InviteDialog() {
       ),
       Reason.DomCallback,
     );
+  };
+
+  const handleUpgrade = () => {
+    setOpen(false);
+    openBillingPlans();
   };
 
   return (
@@ -411,7 +430,7 @@ function InviteDialog() {
               })}
               type="email"
               value={email}
-              disabled={sending}
+              disabled={sending || upgradeRequired}
               onChange={(e) => {
                 setEmail(e.target.value);
                 setTouched(false);
@@ -439,7 +458,7 @@ function InviteDialog() {
               onValueChange={(v) => {
                 return setRole(orgRoleSchema.parse(v));
               }}
-              disabled={sending}
+              disabled={sending || upgradeRequired}
             >
               <SelectTrigger>
                 <SelectValue />
@@ -472,7 +491,7 @@ function InviteDialog() {
                     parseUsagePackOption(value, usagePacks),
                   );
                 }}
-                disabled={sending}
+                disabled={sending || upgradeRequired}
               >
                 <SelectTrigger>
                   <SelectValue />
@@ -510,24 +529,29 @@ function InviteDialog() {
           <Button
             size="sm"
             disabled={
-              !isValid ||
-              sending ||
-              usagePackContextLoading ||
-              usagePackContextError
+              !upgradeRequired &&
+              (!isValid ||
+                sending ||
+                usagePackContextLoading ||
+                usagePackContextError)
             }
-            onClick={handleSend}
+            onClick={upgradeRequired ? handleUpgrade : handleSend}
           >
-            {sending
+            {upgradeRequired
               ? t(($) => {
-                  return $.settings.workspace.members.invite.progress;
+                  return $.settings.models.actions.upgradePro;
                 })
-              : requiresUsagePack
+              : sending
                 ? t(($) => {
-                    return $.chat.actions.continue;
+                    return $.settings.workspace.members.invite.progress;
                   })
-                : t(($) => {
-                    return $.settings.workspace.members.invite.send;
-                  })}
+                : requiresUsagePack
+                  ? t(($) => {
+                      return $.chat.actions.continue;
+                    })
+                  : t(($) => {
+                      return $.settings.workspace.members.invite.send;
+                    })}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -562,7 +586,7 @@ function MemberRow({
   return (
     <div className={cn(memberRowGrid(showUsagePack), "py-3 px-5")}>
       <div className="flex items-center gap-3 min-w-0">
-        <MemberAvatar
+        <UserAvatar
           imageUrl={member.imageUrl}
           initial={initial}
           name={name || member.email}
@@ -983,7 +1007,7 @@ function PendingInvitationRow({
   return (
     <div className={cn(memberRowGrid(showUsagePack), "py-3 px-5")}>
       <div className="flex items-center gap-3 min-w-0">
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted/50 text-xs font-medium text-muted-foreground border border-dashed border-border">
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted/50 text-xs font-medium text-muted-foreground border border-dashed border-border">
           {initial}
         </div>
         <div className="min-w-0">
@@ -1136,7 +1160,7 @@ function MembershipRequestRow({
   return (
     <div className={cn(memberRowGrid(showUsagePack), "py-3 px-5")}>
       <div className="flex items-center gap-3 min-w-0">
-        <MemberAvatar
+        <UserAvatar
           imageUrl={request.imageUrl}
           initial={initial}
           name={name || request.email}
@@ -1192,36 +1216,13 @@ function MembershipRequestRow({
   );
 }
 
-function MemberAvatar({
-  imageUrl,
-  initial,
-  name,
-}: {
-  imageUrl: string;
-  initial: string;
-  name: string;
-}) {
-  if (imageUrl) {
-    return (
-      <div className="h-8 w-8 shrink-0 rounded-lg overflow-hidden">
-        <img src={imageUrl} alt={name} className="h-full w-full object-cover" />
-      </div>
-    );
-  }
-  return (
-    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted/50 text-xs font-medium text-muted-foreground">
-      {initial}
-    </div>
-  );
-}
-
 function MemberRowSkeleton({ showUsagePack }: { showUsagePack: boolean }) {
   return (
     <div
       className={cn(memberRowGrid(showUsagePack), "py-3 px-5 animate-pulse")}
     >
       <div className="flex items-center gap-3">
-        <div className="h-8 w-8 shrink-0 rounded-lg bg-muted/50" />
+        <div className="h-8 w-8 shrink-0 rounded-full bg-muted/50" />
         <div className="flex flex-col gap-1">
           <div className="h-4 w-24 rounded bg-muted/50" />
           <div className="h-3 w-36 rounded bg-muted/30" />

@@ -21,6 +21,7 @@ describe("zero CLI program", () => {
       "agent",
       "connector",
       "mcp",
+      "presentation-template",
       "mail",
       "credit",
       "upgrade",
@@ -87,7 +88,7 @@ describe("zero CLI program", () => {
     expect(publicCommandNames).not.toContain("__agent-loop");
   });
 
-  it("should have exactly 40 public commands", () => {
-    expect(publicCommandNames).toHaveLength(40);
+  it("should have exactly 41 public commands", () => {
+    expect(publicCommandNames).toHaveLength(41);
   });
 });

@@ -24,7 +24,10 @@ from tests.jsonl_log_helpers import (
     jsonl_exists_after_flush,
     read_jsonl_entries_after_flush,
 )
-from tests.model_provider_flow_helpers import make_model_provider_sse_flow
+from tests.model_provider_flow_helpers import (
+    make_model_provider_sse_flow,
+    model_usage_source_entries,
+)
 from tests.pending_helpers import assert_current_pending, assert_pending
 from tests.usage_buffer_helpers import event as usage_event
 from tests.usage_helpers import (
@@ -387,6 +390,29 @@ class TestModelProviderSseUsage:
             event["category"]: event["quantity"] for event in webhook.usage_events()
         } == expected
         assert compact_observation_quantities(webhook.model_usage_observation_events()) == expected
+        [source_entry] = model_usage_source_entries(flow)
+        assert source_entry["source_id"] == flow.id
+        assert source_entry["provider_response_id"] == "resp_sse_1"
+        assert source_entry["transport"] == "http"
+        assert source_entry["buffer_mode"] == "aggregate"
+        assert source_entry["usage"] == expected
+        assert all(event["buffer_accepted"] is True for event in source_entry["usage_events"])
+        assert all(
+            observation["buffer_accepted"] is True
+            for observation in source_entry["model_usage_observations"]
+        )
+        assert {
+            event["source_idempotency_key"] for event in source_entry["usage_events"]
+        }.isdisjoint({event["idempotencyKey"] for event in webhook.usage_events()})
+        assert {
+            observation["source_idempotency_key"]
+            for observation in source_entry["model_usage_observations"]
+        }.isdisjoint(
+            {
+                observation["idempotencyKey"]
+                for observation in webhook.model_usage_observation_events()
+            }
+        )
         _assert_single_model_sse_parse_warning(
             flow,
             usage_protocol="openai_responses_sse",

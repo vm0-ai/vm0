@@ -4,7 +4,6 @@ use std::time::Duration;
 use tokio::io::AsyncReadExt;
 use tokio::process::{Child, Command};
 use tokio::task::JoinHandle;
-use tracing::trace;
 
 use crate::process::ChildExitNotifier;
 
@@ -175,7 +174,6 @@ pub async fn exec_with_timeout(
     timeout: Duration,
 ) -> Result<String, CommandError> {
     let cmd_display = format_command_display(program, args);
-    trace!(command = %cmd_display, timeout_ms = timeout.as_millis() as u64, "exec_with_timeout");
 
     let output = command_output_with_timeout(program, args, timeout)
         .await
@@ -205,7 +203,6 @@ pub async fn exec_status_with_timeout(
     timeout: Duration,
 ) -> Result<(), CommandError> {
     let cmd_display = format_command_display(program, args);
-    trace!(command = %cmd_display, timeout_ms = timeout.as_millis() as u64, "exec_status_with_timeout");
 
     let output =
         command_output_with_policy(program, args, timeout, CommandOutputPolicy::status_only())
@@ -234,50 +231,23 @@ pub async fn exec_ignore_errors_with_timeout(
     args: &[&str],
     timeout: Duration,
 ) -> IgnoredCommandOutcome {
-    let cmd_display = format_command_display(program, args);
-    trace!(command = %cmd_display, timeout_ms = timeout.as_millis() as u64, "exec_ignore_errors_with_timeout");
-
     match command_output_with_policy(program, args, timeout, CommandOutputPolicy::status_only())
         .await
     {
         Ok(o) if o.status.success() => IgnoredCommandOutcome::Success,
-        Ok(o) => {
-            let stderr = o.stderr.to_lossy_trimmed_string();
-            trace!(command = %cmd_display, stderr = %stderr, "command failed (ignored)");
-            IgnoredCommandOutcome::NonZero
-        }
-        Err(CommandRunError::Timeout(ms)) => {
-            trace!(command = %cmd_display, timeout_ms = ms as u64, "command timed out (ignored)");
-            IgnoredCommandOutcome::Timeout
-        }
-        Err(CommandRunError::Wait(e)) => {
-            trace!(command = %cmd_display, error = %e, "command wait failed (ignored)");
-            IgnoredCommandOutcome::WaitError
-        }
-        Err(CommandRunError::PipeTask(e)) => {
-            trace!(command = %cmd_display, error = %e, "command pipe task failed (ignored)");
-            IgnoredCommandOutcome::PipeError
-        }
-        Err(CommandRunError::PipeRead(e)) => {
-            trace!(command = %cmd_display, error = %e, "command pipe read failed (ignored)");
-            IgnoredCommandOutcome::PipeError
-        }
-        Err(CommandRunError::PipeUnavailable(pipe)) => {
-            trace!(command = %cmd_display, pipe, "command pipe unavailable (ignored)");
-            IgnoredCommandOutcome::PipeError
-        }
-        Err(CommandRunError::OutputTooLarge { pipe, limit }) => {
-            trace!(command = %cmd_display, pipe, limit, "command output exceeded limit (ignored)");
-            IgnoredCommandOutcome::OutputTooLarge
-        }
+        Ok(_) => IgnoredCommandOutcome::NonZero,
+        Err(CommandRunError::Timeout(_)) => IgnoredCommandOutcome::Timeout,
+        Err(CommandRunError::Wait(_)) => IgnoredCommandOutcome::WaitError,
+        Err(
+            CommandRunError::PipeTask(_)
+            | CommandRunError::PipeRead(_)
+            | CommandRunError::PipeUnavailable(_),
+        ) => IgnoredCommandOutcome::PipeError,
+        Err(CommandRunError::OutputTooLarge { .. }) => IgnoredCommandOutcome::OutputTooLarge,
         Err(CommandRunError::Spawn(e)) if e.kind() == std::io::ErrorKind::NotFound => {
-            trace!(command = %cmd_display, error = %e, "command not found (ignored)");
             IgnoredCommandOutcome::NotFound
         }
-        Err(CommandRunError::Spawn(e)) => {
-            trace!(command = %cmd_display, error = %e, "command failed to spawn (ignored)");
-            IgnoredCommandOutcome::SpawnError
-        }
+        Err(CommandRunError::Spawn(_)) => IgnoredCommandOutcome::SpawnError,
     }
 }
 

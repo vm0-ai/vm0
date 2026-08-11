@@ -172,6 +172,7 @@ export function createWorkflowsBddApi(context: TestContext) {
       options: {
         readonly agentId: string;
         readonly name: string;
+        readonly chatThreadId?: string;
         readonly visibility?: "public" | "private";
       },
     ): Promise<string> {
@@ -184,6 +185,9 @@ export function createWorkflowsBddApi(context: TestContext) {
           body: {
             agentId: options.agentId,
             name: options.name,
+            ...(options.chatThreadId
+              ? { chatThreadId: options.chatThreadId }
+              : {}),
             visibility: options.visibility ?? "public",
           },
         }),

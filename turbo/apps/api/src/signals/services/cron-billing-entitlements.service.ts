@@ -39,6 +39,7 @@ import {
 } from "./usage-pack-subscription.service";
 import { reconcileUsagePackCreditRefunds } from "./usage-pack-credit-refund.service";
 import { reconcileUsagePackInvitationPurchases } from "./usage-pack-invitation-purchase.service";
+import { reconcileUsagePackSubscriptionMigrations } from "./usage-pack-subscription-migration.service";
 import { disableIneligibleWorkflowWebhookAutomationsForOrg } from "./workflow-webhook-automation-entitlement.service";
 import type { Tx } from "../../lib/db-types";
 
@@ -118,6 +119,33 @@ interface ReconciledUsageAllowance {
 interface UsageAllowanceCandidateRow {
   readonly orgId: string;
   readonly stripeSubscriptionId: string | null;
+}
+
+interface UsagePackMigrationReconciliation {
+  readonly reconciled: number;
+  readonly orgIds: readonly string[];
+}
+
+function logUsagePackMigrationReconciliation(
+  reconciliation: UsagePackMigrationReconciliation,
+): void {
+  if (reconciliation.reconciled > 0) {
+    L.warn("usage pack subscription migrations reconciled from Stripe", {
+      count: reconciliation.reconciled,
+      orgIds: reconciliation.orgIds.slice(0, 10),
+    });
+  }
+}
+
+function logUsagePackSubscriptionReconciliation(
+  reconciliation: UsagePackMigrationReconciliation,
+): void {
+  if (reconciliation.reconciled > 0) {
+    L.warn("usage pack subscriptions reconciled from Stripe", {
+      count: reconciliation.reconciled,
+      orgIds: reconciliation.orgIds.slice(0, 10),
+    });
+  }
 }
 
 interface ReconcileCandidateRows {
@@ -1003,6 +1031,9 @@ export const reconcileBillingEntitlements$ = command(
       now.getTime() - PAYMENT_FAILURE_DOWNGRADE_GRACE_MS,
     );
 
+    const usagePackMigrationReconciliation =
+      await reconcileUsagePackSubscriptionMigrations(db, signal);
+    signal.throwIfAborted();
     const usagePackReconciliation = await reconcileUsagePackSubscriptions(
       db,
       signal,
@@ -1110,12 +1141,8 @@ export const reconcileBillingEntitlements$ = command(
         }),
       });
     }
-    if (usagePackReconciliation.reconciled > 0) {
-      L.warn("usage pack subscriptions reconciled from Stripe", {
-        count: usagePackReconciliation.reconciled,
-        orgIds: usagePackReconciliation.orgIds.slice(0, 10),
-      });
-    }
+    logUsagePackSubscriptionReconciliation(usagePackReconciliation);
+    logUsagePackMigrationReconciliation(usagePackMigrationReconciliation);
     if (invitationPurchasesReconciled > 0) {
       L.warn("usage pack invitation purchases reconciled", {
         count: invitationPurchasesReconciled,

@@ -81,6 +81,11 @@ export function getTriggerSourceLabel(source: TriggerSource): string {
         return $.activity.sources.goal;
       });
     }
+    case "template-import": {
+      return i18n.t(($) => {
+        return $.activity.sources.templateImport;
+      });
+    }
   }
 }
 

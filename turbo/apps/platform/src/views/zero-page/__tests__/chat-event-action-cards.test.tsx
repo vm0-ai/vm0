@@ -25,6 +25,7 @@ import {
   zeroCustomConnectorValuesContract,
   zeroCustomConnectorsContract,
   type CustomConnectorHttpResponse,
+  type CustomConnectorMcpResponse,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import {
   zeroUserPermissionGrantsContract,
@@ -222,6 +223,42 @@ function customConnector(
     createdAt: "2026-06-09T10:00:00Z",
     updatedAt: "2026-06-09T10:00:00Z",
     ...overrides,
+  };
+}
+
+function mcpCustomConnector(): CustomConnectorMcpResponse {
+  return {
+    kind: "mcp",
+    id: "44444444-4444-4444-8444-444444444444",
+    storageVersion: 1,
+    slug: "_deepwiki",
+    displayName: "DeepWiki",
+    endpoint: "https://mcp.deepwiki.com/mcp",
+    transport: "streamable-http",
+    prefixTemplates: [],
+    fields: [
+      {
+        key: "secret",
+        label: "Secret",
+        kind: "secret",
+        required: true,
+      },
+    ],
+    headerInjections: [
+      {
+        name: "X-VM0-Test-Token",
+        valueTemplate: "{{secrets.secret}}",
+      },
+    ],
+    queryInjections: [],
+    authMode: "manual",
+    permissionBundleRef: null,
+    connected: false,
+    missingRequiredFields: ["secret"],
+    configuredFieldKeys: [],
+    hasSecret: false,
+    createdAt: "2026-08-11T00:00:00Z",
+    updatedAt: "2026-08-11T00:00:00Z",
   };
 }
 
@@ -2831,7 +2868,7 @@ describe("chat event action cards", () => {
     expect(queryButtonByText("Confirm", permissionCard)).toBeNull();
   });
 
-  it("connects and authorizes a custom connector from its action card", async () => {
+  it("connects and authorizes an MCP custom connector from its action card", async () => {
     const user = userEvent.setup({ delay: null });
     let connected = false;
     let grants: AgentCustomConnectorGrant[] = [];
@@ -2840,7 +2877,7 @@ describe("chat event action cards", () => {
       readonly kind: "secret" | "variable";
       readonly value: string;
     }[] = [];
-    const connector = customConnector();
+    const connector = mcpCustomConnector();
     const connectUrl = `${window.location.origin}/connectors/${connector.slug}/connect?agentId=${AGENT_ID}`;
     context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
       return respond(200, {
@@ -2904,10 +2941,11 @@ describe("chat event action cards", () => {
     detachedSetupPage({
       context,
       path: "/chats/e4000000-0000-4000-a000-000000000018",
+      featureSwitches: { [FeatureSwitchKey.CustomConnectorMcp]: true },
     });
 
     const card = await screen.findByTestId("connector-action-card");
-    expect(within(card).getByText("Acme Internal API")).toBeInTheDocument();
+    expect(within(card).getByText("DeepWiki")).toBeInTheDocument();
     expect(
       within(card).getByText(
         "Review, connect, and authorize this custom connector for the agent.",
@@ -2915,7 +2953,7 @@ describe("chat event action cards", () => {
     ).toBeInTheDocument();
     await user.click(await waitForButtonByText("Connect", card));
     const dialog = await screen.findByRole("dialog", {
-      name: "Connect Acme Internal API",
+      name: "Connect DeepWiki",
     });
     await user.type(within(dialog).getByLabelText("Secret"), "acme-secret");
     await user.click(buttonByText("Save", dialog));

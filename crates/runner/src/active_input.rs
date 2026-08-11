@@ -88,7 +88,10 @@ pub(crate) struct ApiActiveInputSource {
 
 pub(crate) enum ActiveInputBatch {
     Local(Vec<ActiveInputEntry>),
-    Api(Option<String>),
+    Api {
+        prompt: Option<String>,
+        has_more: bool,
+    },
 }
 
 const LOCAL_ACTIVE_INPUT_POLL_INTERVAL: Duration = Duration::from_millis(250);
@@ -178,14 +181,24 @@ impl ActiveInputSource {
                     .api
                     .list_active_input_event_ids(source.run_id, &source.sandbox_token)
                     .await?;
-                if event_ids.is_empty() {
-                    return Ok(ActiveInputBatch::Api(None));
-                }
+                let Some(event_id) = event_ids.first() else {
+                    return Ok(ActiveInputBatch::Api {
+                        prompt: None,
+                        has_more: false,
+                    });
+                };
                 let prompt = source
                     .api
-                    .claim_active_inputs(source.run_id, &source.sandbox_token, &event_ids)
+                    .claim_active_inputs(
+                        source.run_id,
+                        &source.sandbox_token,
+                        std::slice::from_ref(event_id),
+                    )
                     .await?;
-                Ok(ActiveInputBatch::Api(Some(prompt)))
+                Ok(ActiveInputBatch::Api {
+                    prompt: Some(prompt),
+                    has_more: event_ids.len() > 1,
+                })
             }
         }
     }
