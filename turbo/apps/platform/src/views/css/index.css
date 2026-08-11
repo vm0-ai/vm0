@@ -554,7 +554,7 @@ body {
 .zero-app .zero-tabs [role="tab"]:hover {
   color: hsl(var(--foreground));
 }
-.zero-app .zero-tabs [role="tab"].bg-background {
+.zero-app .zero-tabs [role="tab"][data-active] {
   background-color: hsl(var(--card));
   color: hsl(var(--foreground));
   box-shadow:
@@ -564,7 +564,7 @@ body {
 :where([data-theme="dark"]) .zero-app .zero-tabs {
   background-color: hsl(var(--gray-200));
 }
-:where([data-theme="dark"]) .zero-app .zero-tabs [role="tab"].bg-background {
+:where([data-theme="dark"]) .zero-app .zero-tabs [role="tab"][data-active] {
   background-color: hsl(var(--gray-400));
   box-shadow:
     0 1px 3px hsl(0 0% 0% / 0.3),
