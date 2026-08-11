@@ -2836,7 +2836,7 @@ jobs:
           fi
       - name: Upload runner E2E test results to Codecov
         if: ${{ !cancelled() }}
-        uses: codecov/codecov-action@v7
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           flags: e2e-runner
@@ -2844,7 +2844,7 @@ jobs:
           report_type: test_results
       - name: Upload runner E2E JUnit XML
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.0
         with:
           name: e2e-runner-junit-${{ matrix.index }}
           path: e2e/results/runner-${{ matrix.index }}/
