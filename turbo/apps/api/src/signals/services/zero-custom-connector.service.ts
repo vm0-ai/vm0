@@ -68,7 +68,11 @@ import {
   type CustomConnectorCredentialAccess,
 } from "./custom-connector-credential-access.service";
 import { effectiveCustomConnectorPermissionBundleRef } from "./feishu-custom-connector-permissions";
-import { syncCustomConnectorSkillVolume$ } from "./custom-connector-skill-volume.service";
+import {
+  commitPreparedCustomConnectorSkillVolume,
+  prepareCustomConnectorSkillVolume$,
+} from "./custom-connector-skill-volume.service";
+import type { PreparedServerSideVolume } from "./storage-volume-publication.service";
 import {
   commitConnectorRuntimeMutation,
   publishConnectorRuntimeSyncWakeups,
@@ -1741,6 +1745,7 @@ async function findCustomConnectorPrefixConflict(
 async function persistCustomConnectorCreate(
   db: Db,
   args: {
+    readonly connectorId: string;
     readonly orgId: string;
     readonly userId: string;
     readonly slug: string;
@@ -1748,7 +1753,9 @@ async function persistCustomConnectorCreate(
     readonly storageVersion: number;
     readonly oauthConfigUpdate: ValidatedOAuthConfigUpdate;
     readonly encryptedClientSecret: string | null;
+    readonly preparedSkill: PreparedServerSideVolume | null;
   },
+  signal: AbortSignal,
 ): Promise<
   | {
       readonly row: CustomConnectorDefinitionRow;
@@ -1769,6 +1776,7 @@ async function persistCustomConnectorCreate(
     const [row] = await tx
       .insert(orgCustomConnectors)
       .values({
+        id: args.connectorId,
         orgId: args.orgId,
         slug: args.slug,
         displayName: args.definition.displayName,
@@ -1785,23 +1793,30 @@ async function persistCustomConnectorCreate(
     if (!row) {
       throw new Error("Expected insert to return a row");
     }
+    let oauthConfig: CustomConnectorOAuthConfigRow | null = null;
     if (
-      args.oauthConfigUpdate.kind !== "upsert" ||
-      !args.encryptedClientSecret
+      args.oauthConfigUpdate.kind === "upsert" &&
+      args.encryptedClientSecret
     ) {
-      return { row, oauthConfig: null };
+      const [insertedOAuthConfig] = await tx
+        .insert(orgCustomConnectorOauthConfigs)
+        .values({
+          connectorId: row.id,
+          orgId: args.orgId,
+          ...args.oauthConfigUpdate.config,
+          encryptedClientSecret: args.encryptedClientSecret,
+        })
+        .returning();
+      if (!insertedOAuthConfig) {
+        throw new Error("Expected OAuth config insert to return a row");
+      }
+      oauthConfig = insertedOAuthConfig;
     }
-    const [oauthConfig] = await tx
-      .insert(orgCustomConnectorOauthConfigs)
-      .values({
-        connectorId: row.id,
-        orgId: args.orgId,
-        ...args.oauthConfigUpdate.config,
-        encryptedClientSecret: args.encryptedClientSecret,
-      })
-      .returning();
-    if (!oauthConfig) {
-      throw new Error("Expected OAuth config insert to return a row");
+    if (args.preparedSkill) {
+      await commitPreparedCustomConnectorSkillVolume(
+        { db: tx, connectorId: row.id, volume: args.preparedSkill },
+        signal,
+      );
     }
     return { row, oauthConfig };
   });
@@ -1867,18 +1882,41 @@ export const createCustomConnector$ = command(
 
     const slugHost = hostSlugFromDefinition(v);
     const slug = v.slug ?? `_${slugHost}-${randomShortId()}`;
+    const connectorId = randomUUID();
     L.debug("creating custom connector", { orgId: args.orgId, slug });
 
+    const preparedSkill =
+      v.skillMarkdown === null
+        ? null
+        : await set(
+            prepareCustomConnectorSkillVolume$,
+            {
+              orgId: args.orgId,
+              connectorId,
+              connectorSlug: slug,
+              displayName: v.displayName,
+              skillMarkdown: v.skillMarkdown,
+            },
+            signal,
+          );
+    signal.throwIfAborted();
+
     let postCommitAbort: CapturedConnectorClientInvalidationAbort | undefined;
-    const created = await persistCustomConnectorCreate(writeDb, {
-      orgId: args.orgId,
-      userId: args.userId,
-      slug,
-      definition: v,
-      storageVersion: args.input.storageVersion ?? 1,
-      oauthConfigUpdate,
-      encryptedClientSecret,
-    });
+    const created = await persistCustomConnectorCreate(
+      writeDb,
+      {
+        connectorId,
+        orgId: args.orgId,
+        userId: args.userId,
+        slug,
+        definition: v,
+        storageVersion: args.input.storageVersion ?? 1,
+        oauthConfigUpdate,
+        encryptedClientSecret,
+        preparedSkill,
+      },
+      signal,
+    );
     if (signal.aborted) {
       postCommitAbort = { reason: signal.reason };
     }
@@ -1897,20 +1935,6 @@ export const createCustomConnector$ = command(
       signal,
       postCommitAbort,
     );
-    if (result.skillMarkdown !== null) {
-      await set(
-        syncCustomConnectorSkillVolume$,
-        {
-          orgId: result.orgId,
-          connectorId: result.id,
-          connectorSlug: result.slug,
-          displayName: result.displayName,
-          skillMarkdown: result.skillMarkdown,
-        },
-        signal,
-      );
-      signal.throwIfAborted();
-    }
     return result;
   },
 );
@@ -1978,11 +2002,13 @@ interface PersistCustomConnectorUpdateArgs {
   readonly encryptedClientSecret: string | null;
   readonly grantConfigurationChanged: boolean;
   readonly storageVersion: number;
+  readonly preparedSkill: PreparedServerSideVolume | null;
 }
 
 async function persistCustomConnectorUpdate(
   db: Db,
   args: PersistCustomConnectorUpdateArgs,
+  signal: AbortSignal,
 ): Promise<
   | {
       readonly row: CustomConnectorDefinitionRow;
@@ -2013,6 +2039,9 @@ async function persistCustomConnectorUpdate(
         queryInjections: [...args.definition.queryInjections],
         authMode: args.definition.authMode,
         skillMarkdown: args.definition.skillMarkdown,
+        ...(args.definition.skillMarkdown === null
+          ? { skillStorageVersionId: null }
+          : {}),
         storageVersion: args.storageVersion,
         updatedAt: nowDate(),
       })
@@ -2081,6 +2110,12 @@ async function persistCustomConnectorUpdate(
         .returning();
       storedOAuthConfig = upserted ?? null;
     }
+    if (args.preparedSkill) {
+      await commitPreparedCustomConnectorSkillVolume(
+        { db: tx, connectorId: updated.id, volume: args.preparedSkill },
+        signal,
+      );
+    }
     return { row: updated, oauthConfig: storedOAuthConfig };
   });
 }
@@ -2093,7 +2128,7 @@ async function persistCustomConnectorUpdateAndPublishRuntimeWakeup(
   readonly result: CustomConnectorRow | BadRequestResponse | null;
   readonly postCommitAbort?: CapturedConnectorClientInvalidationAbort;
 }> {
-  const result = await persistCustomConnectorUpdate(db, args);
+  const result = await persistCustomConnectorUpdate(db, args, signal);
   if (isBadRequest(result) || !result) {
     return {
       result,
@@ -2307,6 +2342,21 @@ export const updateCustomConnectorDefinition$ = command(
     if (isBadRequest(resolved)) {
       return resolved;
     }
+    const preparedSkill =
+      prepared.definition.skillMarkdown === null
+        ? null
+        : await set(
+            prepareCustomConnectorSkillVolume$,
+            {
+              orgId: args.orgId,
+              connectorId: existingConnector.id,
+              connectorSlug: existingConnector.slug,
+              displayName: prepared.definition.displayName,
+              skillMarkdown: prepared.definition.skillMarkdown,
+            },
+            signal,
+          );
+    signal.throwIfAborted();
     const { result: normalized, postCommitAbort } =
       await persistCustomConnectorUpdateAndPublishRuntimeWakeup(
         writeDb,
@@ -2319,6 +2369,7 @@ export const updateCustomConnectorDefinition$ = command(
           encryptedClientSecret,
           grantConfigurationChanged: resolved.grantConfigurationChanged,
           storageVersion: resolved.storageVersion,
+          preparedSkill,
         },
         signal,
       );
@@ -2332,23 +2383,6 @@ export const updateCustomConnectorDefinition$ = command(
       signal,
       postCommitAbort,
     );
-    if (
-      normalized.skillMarkdown !== null ||
-      args.input.skillMarkdown !== undefined
-    ) {
-      await set(
-        syncCustomConnectorSkillVolume$,
-        {
-          orgId: normalized.orgId,
-          connectorId: normalized.id,
-          connectorSlug: normalized.slug,
-          displayName: normalized.displayName,
-          skillMarkdown: normalized.skillMarkdown,
-        },
-        signal,
-      );
-      signal.throwIfAborted();
-    }
     return normalized;
   },
 );
@@ -2413,18 +2447,6 @@ export const deleteCustomConnector$ = command(
       signal,
       postCommitAbort,
     );
-    await set(
-      syncCustomConnectorSkillVolume$,
-      {
-        orgId: args.orgId,
-        connectorId: args.id,
-        connectorSlug: "_deleted",
-        displayName: "Deleted custom connector",
-        skillMarkdown: null,
-      },
-      signal,
-    );
-    signal.throwIfAborted();
     L.debug("custom connector deleted", { orgId: args.orgId, id: args.id });
     return undefined;
   },
