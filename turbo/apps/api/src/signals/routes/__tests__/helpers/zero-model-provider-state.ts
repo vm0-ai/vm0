@@ -63,3 +63,17 @@ export async function overwriteModelProviderSecretForTests(
     secret: args.secret,
   });
 }
+
+export async function seedRetiredDefaultModelPolicyForTests(
+  signal: AbortSignal,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+  },
+): Promise<void> {
+  await postAction(signal, {
+    action: "seed-retired-default-policy",
+    org_id: args.orgId,
+    user_id: args.userId,
+  });
+}

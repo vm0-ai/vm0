@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use sandbox::GuestProcessControlHandle;
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, warn};
+use tracing::warn;
 
 use crate::active_input::{ActiveInputBatch, ActiveInputPayload, ActiveInputSource};
 use crate::ids::RunId;
@@ -67,7 +67,7 @@ async fn run_forwarder(
             () = job_cancel.cancelled() => return,
             batch = source.read(next_local_sequence) => batch,
         };
-        let retry_after_read_error = match batch {
+        let (retry_after_read_error, recheck_immediately) = match batch {
             Ok(ActiveInputBatch::Local(entries)) => {
                 for entry in entries {
                     if entry.sequence < next_local_sequence {
@@ -80,18 +80,20 @@ async fn run_forwarder(
                     forward_text(run_id, delivery_sequence, &entry.text, &control).await;
                     next_local_sequence = next_local_sequence.saturating_add(1);
                 }
-                false
+                (false, false)
             }
-            Ok(ActiveInputBatch::Api(prompt)) => {
-                if let Some(prompt) = prompt {
+            Ok(ActiveInputBatch::Api { prompt, has_more }) => {
+                let forwarded = if let Some(prompt) = prompt {
                     delivery_sequence = delivery_sequence.saturating_add(1);
-                    forward_text(run_id, delivery_sequence, &prompt, &control).await;
-                }
-                false
+                    forward_text(run_id, delivery_sequence, &prompt, &control).await
+                } else {
+                    false
+                };
+                (false, has_more && forwarded)
             }
             Err(error) => {
                 warn!(run_id = %run_id, error = %error, "active-input source read failed");
-                true
+                (true, false)
             }
         };
 
@@ -100,6 +102,9 @@ async fn run_forwarder(
             () = stop.cancelled() => return,
             () = job_cancel.cancelled() => return,
             () = async {
+                if recheck_immediately {
+                    return;
+                }
                 if retry_after_read_error {
                     tokio::time::sleep(ACTIVE_INPUT_READ_RETRY_INTERVAL).await;
                 } else {
@@ -115,13 +120,13 @@ async fn forward_text(
     delivery_sequence: u64,
     text: &str,
     control: &GuestProcessControlHandle,
-) {
+) -> bool {
     let payload = ActiveInputPayload::new(text);
     let bytes = match payload.to_vec() {
         Ok(bytes) => bytes,
         Err(error) => {
             warn!(run_id = %run_id, error = %error, "failed to serialize active input");
-            return;
+            return false;
         }
     };
     // Process control requires a request correlation key. It is deliberately
@@ -131,9 +136,10 @@ async fn forward_text(
         .control_owned(correlation_id, bytes, ACTIVE_INPUT_CONTROL_TIMEOUT)
         .await
     {
-        Ok(_) => debug!(run_id = %run_id, "forwarded active input"),
+        Ok(_) => true,
         Err(error) => {
-            warn!(run_id = %run_id, error = %error, "active-input forward failed; dropping input")
+            warn!(run_id = %run_id, error = %error, "active-input forward failed; dropping input");
+            false
         }
     }
 }

@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
 use futures_util::future::BoxFuture;
-use tracing::{debug, info};
+use tracing::info;
 
 use super::active_runs::ActiveRuns;
 use crate::config::ProfileConfig;
@@ -361,11 +361,6 @@ pub(super) async fn send_heartbeat(
         reusable_sandboxes = state.held_sandbox_states.len(),
         workspace_states = state.held_workspace_states.len(),
         "heartbeat"
-    );
-    debug!(
-        reusable_sandboxes = state.held_sandbox_states.len(),
-        workspace_states = state.held_workspace_states.len(),
-        "heartbeat held reusable states"
     );
     hb.provider.heartbeat(&state).await;
 }
@@ -926,16 +921,17 @@ mod tests {
         let ((), events) =
             capture_heartbeat_events(send_heartbeat(&hb, RunnerMode::Running, 42)).await;
 
-        let debug_event = captured_event(&events, "heartbeat held reusable states");
+        let heartbeat_event = captured_event(&events, "heartbeat");
+        assert_eq!(heartbeat_event.level, tracing::Level::INFO);
         assert_eq!(
-            debug_event
+            heartbeat_event
                 .fields
                 .get("reusable_sandboxes")
                 .map(String::as_str),
             Some("0")
         );
         assert_eq!(
-            debug_event
+            heartbeat_event
                 .fields
                 .get("workspace_states")
                 .map(String::as_str),

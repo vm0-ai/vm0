@@ -652,6 +652,41 @@
       "when": 1786434776471,
       "tag": "0900_replace_scheduled_usage_pack_change",
       "breakpoints": true
+    },
+    {
+      "idx": 901,
+      "version": "7",
+      "when": 1786439615768,
+      "tag": "0901_parallel_energizer",
+      "breakpoints": true
+    },
+    {
+      "idx": 902,
+      "version": "7",
+      "when": 1786441690180,
+      "tag": "0902_colorful_mandrill",
+      "breakpoints": true
+    },
+    {
+      "idx": 903,
+      "version": "7",
+      "when": 1786444037282,
+      "tag": "0903_add_computer_use_host_client_product",
+      "breakpoints": true
+    },
+    {
+      "idx": 904,
+      "version": "7",
+      "when": 1786445398597,
+      "tag": "0904_member_invitation_allowed",
+      "breakpoints": true
+    },
+    {
+      "idx": 905,
+      "version": "7",
+      "when": 1786446435262,
+      "tag": "0905_retire_legacy_run_model_state",
+      "breakpoints": true
     }
   ]
 }

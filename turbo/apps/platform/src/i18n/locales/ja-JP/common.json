@@ -1624,6 +1624,7 @@
         "waiting": "待っています",
         "watching": "見てる"
       },
+      "emojiCategories": "絵文字のカテゴリ",
       "empty": "メッセージを送信して会話を始めましょう",
       "frequentlyUsed": "頻繁に使用される",
       "icon": "チャットスレッドアイコン",
@@ -1634,8 +1635,10 @@
       "openBrowser": "ブラウザを開く",
       "openNamedAgent": "エージェント {{name}} を開く",
       "openNamedChat": "チャットを開く {{title}}",
+      "pickEmoji": "絵文字を選択",
       "scrollToBottom": "一番下までスクロール",
-      "searchEmoji": "絵文字を検索"
+      "searchEmoji": "絵文字を検索",
+      "steerMessageExplanation": "エージェントの動作を指示するため、作業中に送信されました"
     },
     "threadSidebar": {
       "resize": "サイドバーのサイズを変更する"
@@ -1939,6 +1942,7 @@
       "emptyAdmin": "カスタム コネクタはまだありません。すべてのメンバーが使用する API を登録するために作成します。",
       "emptyMember": "組織はまだカスタム コネクタを登録していません。",
       "mcpStreamableHttp": "MCP · Streamable HTTP",
+      "mcpType": "MCP",
       "moreOptions": "その他のオプション",
       "statusConnected": "接続済み",
       "toasts": {
@@ -4180,15 +4184,14 @@
         "useAccount": "使用"
       },
       "picker": {
-        "balancedUse": "バランスよく使う",
         "builtInModel": "内蔵モデル",
         "byokHelp": "設定されたプロバイダーを使用します",
         "fast": "速い",
+        "fastImpact": "モデル速度 1.5× · クレジット消費 2.5×",
         "inheritDefault": "組織のデフォルトから継承",
         "loadError": "モデルをロードできません。",
         "loading": "モデルをロード中...",
         "models": "モデル",
-        "moreCodexCredits": "Codex クレジットをさらに使用します。",
         "noConfiguredModels": "設定されたモデルはありません",
         "priceTiers": {
           "balanced": "バランスの取れたコストとパフォーマンス",
@@ -4196,14 +4199,12 @@
           "frontier": "フロンティアフラッグシップモデル",
           "premium": "最も困難なタスクに対応するプレミアムフロンティアモデル"
         },
-        "prioritizeSpeed": "スピードを優先",
         "pro": "プロ",
         "providerLabels": {
           "azureFoundryPortal": "Azure ファウンドリ ポータル",
           "claudeCodeOauth": "Claude Code（OAuthトークン）",
           "deepseek": "ディープシーク"
         },
-        "runSpeed": "走行速度",
         "standard": "標準"
       },
       "policies": {

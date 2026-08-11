@@ -1625,6 +1625,7 @@
         "waiting": "Waiting",
         "watching": "Watching"
       },
+      "emojiCategories": "Emoji categories",
       "empty": "Send a message to start the conversation",
       "frequentlyUsed": "Frequently used",
       "icon": "Chat thread icon",
@@ -1635,8 +1636,10 @@
       "openBrowser": "Open browser",
       "openNamedAgent": "Open agent {{name}}",
       "openNamedChat": "Open chat {{title}}",
+      "pickEmoji": "Pick an emoji",
       "scrollToBottom": "Scroll to bottom",
-      "searchEmoji": "Search emoji"
+      "searchEmoji": "Search emoji",
+      "steerMessageExplanation": "Sent while the agent was working to direct its behavior"
     },
     "threadSidebar": {
       "resize": "Resize sidebar"
@@ -1940,6 +1943,7 @@
       "emptyAdmin": "No custom connectors yet. Create one to register an API for every member to use.",
       "emptyMember": "Your org hasn't registered any custom connectors yet.",
       "mcpStreamableHttp": "MCP · Streamable HTTP",
+      "mcpType": "MCP",
       "moreOptions": "More options",
       "statusConnected": "Connected",
       "toasts": {
@@ -4181,15 +4185,14 @@
         "useAccount": "Use"
       },
       "picker": {
-        "balancedUse": "Balanced use",
         "builtInModel": "Built-in model",
         "byokHelp": "Uses your configured provider",
         "fast": "Fast",
+        "fastImpact": "1.5× model speed · 2.5× credit usage",
         "inheritDefault": "Inherit from org default",
         "loadError": "Unable to load models.",
         "loading": "Loading models...",
         "models": "Models",
-        "moreCodexCredits": "Uses more Codex credits.",
         "noConfiguredModels": "No configured models",
         "priceTiers": {
           "balanced": "Balanced cost and performance",
@@ -4197,14 +4200,12 @@
           "frontier": "Frontier flagship model",
           "premium": "Premium frontier model for the hardest tasks"
         },
-        "prioritizeSpeed": "Prioritize speed",
         "pro": "Pro",
         "providerLabels": {
           "azureFoundryPortal": "Azure foundry portal",
           "claudeCodeOauth": "Claude Code (OAuth token)",
           "deepseek": "Deepseek"
         },
-        "runSpeed": "Run speed",
         "standard": "Standard"
       },
       "policies": {

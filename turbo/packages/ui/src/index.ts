@@ -1,9 +1,5 @@
 // shadcn components
 export {
-  AnimatedNumber,
-  type AnimatedNumberProps,
-} from "./components/ui/animated-number";
-export {
   Button,
   buttonVariants,
   type ButtonProps,
@@ -105,6 +101,7 @@ export {
   TableCell,
 } from "./components/ui/table";
 export { Tabs, TabsList, TabsTrigger, TabsContent } from "./components/ui/tabs";
+export { Textarea } from "./components/ui/textarea";
 export {
   Tooltip,
   TooltipTrigger,

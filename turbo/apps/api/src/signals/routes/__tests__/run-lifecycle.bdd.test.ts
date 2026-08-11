@@ -8874,22 +8874,19 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
 
     const [mcpApi] = inlineFirewallApis(claim.firewalls, mcpInternalName);
     expect(mcpApi).toMatchObject({
-      base: "https://mcp-runtime.example.test",
+      base: "https://mcp-runtime.example.test/api/mcp",
       hostPolicy: { kind: "publicDestination" },
-      permissions: [
-        {
-          name: "mcp-endpoint",
-          rules: ["POST /api/mcp", "GET /api/mcp", "DELETE /api/mcp"],
-        },
-      ],
+      permissions: [],
     });
     const mcpSecretKey = `CUSTOM_${mcp.id.replaceAll("-", "")}_S_SECRET`;
     expect(mcpApi?.auth.headers?.Authorization).toBe(
       `Bearer \${{ secrets.${mcpSecretKey} }}`,
     );
-    expect(claim.networkPolicies?.[mcpInternalName]).toMatchObject({
-      allow: ["mcp-endpoint"],
-      unknownPolicy: "deny",
+    expect(claim.networkPolicies?.[mcpInternalName]).toStrictEqual({
+      allow: [],
+      deny: [],
+      ask: [],
+      unknownPolicy: "allow",
     });
     expect(claim.secretValues).not.toContain("mcp-runtime-token");
     expect(
@@ -8909,6 +8906,15 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       targets: [target],
     });
     const initialRuntime = availableCustomConnectorRuntime(initialResult);
+    expect(initialRuntime.firewall.firewall.apis[0]?.permissions).toStrictEqual(
+      [],
+    );
+    expect(initialRuntime.networkPolicy).toStrictEqual({
+      allow: [],
+      deny: [],
+      ask: [],
+      unknownPolicy: "allow",
+    });
     const { body: initialAuthBody } = customConnectorRuntimeAuthBody(
       initialRuntime,
       fw.encryptedSecretsBody({}),
@@ -8947,13 +8953,14 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     });
     const movedRuntime = availableCustomConnectorRuntime(movedResult);
     expect(movedRuntime.firewall.firewall.apis[0]).toMatchObject({
-      base: "https://mcp-runtime.example.test",
-      permissions: [
-        {
-          name: "mcp-endpoint",
-          rules: ["POST /v2/mcp/", "GET /v2/mcp/", "DELETE /v2/mcp/"],
-        },
-      ],
+      base: "https://mcp-runtime.example.test/v2/mcp/",
+      permissions: [],
+    });
+    expect(movedRuntime.networkPolicy).toStrictEqual({
+      allow: [],
+      deny: [],
+      ask: [],
+      unknownPolicy: "allow",
     });
 
     await connectors.disconnectCustomConnector(actor, mcp.id);
@@ -9066,9 +9073,12 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       }),
     ).toMatchObject({
       prefixTemplates: [firstRuntimeConnector.prefixTemplate],
-      prefixes: [firstRuntimeConnector.prefixTemplate],
-      headerName: "X-Connector",
-      headerTemplate: "runtime-batch {{secrets.optional_secret}}",
+      headerInjections: [
+        {
+          name: "X-Connector",
+          valueTemplate: "runtime-batch {{secrets.optional_secret}}",
+        },
+      ],
     });
     const createdIds = runtimeConnectors.map((connector) => {
       return connector.id;
@@ -9942,13 +9952,8 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     );
     const internalName = `custom_connector_${mcp.id.replaceAll("-", "")}`;
     expect(inlineFirewallApis(claim.firewalls, internalName)[0]).toMatchObject({
-      base: "https://mcp-oauth.example.test",
-      permissions: [
-        {
-          name: "mcp-endpoint",
-          rules: ["POST /oauth/mcp", "GET /oauth/mcp", "DELETE /oauth/mcp"],
-        },
-      ],
+      base: "https://mcp-oauth.example.test/oauth/mcp",
+      permissions: [],
     });
     const [runtimeResult] = await api.syncConnectorRuntime(run.runId, {
       targets: [
@@ -10717,9 +10722,16 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       }),
     );
 
-    await connectors.setCustomConnectorValues(actor, saved.connector.id, [
-      { key: "api_key", kind: "secret", value: "recovered-key" },
-    ]);
+    const incompleteRecovery = await connectors.requestSetCustomConnectorValues(
+      actor,
+      saved.connector.id,
+      [{ key: "api_key", kind: "secret", value: "recovered-key" }],
+      [400],
+    );
+    expectApiError(incompleteRecovery.body);
+    expect(incompleteRecovery.body.error.message).toContain(
+      "All required fields must be provided when connecting or restoring",
+    );
     await api.requestCancelRun(actor, incompleteRun.runId, [200]);
 
     const longSubdomain = "a".repeat(55);
@@ -12269,7 +12281,7 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     );
     expect(claim.appendSystemPrompt ?? "").toContain("zero web-search --help");
     expect(claim.appendSystemPrompt ?? "").toContain("zero finance --help");
-    expect(claim.appendSystemPrompt ?? "").not.toContain("zero seo --help");
+    expect(claim.appendSystemPrompt ?? "").toContain("zero seo --help");
     expect(claim.appendSystemPrompt ?? "").toContain("zero scrape --help");
     expect(claim.appendSystemPrompt ?? "").toContain(
       'zero translate "<text>" --to <language> [--from <language>]',
@@ -12283,13 +12295,9 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     await api.requestCancelRun(actor, run.runId, [200]);
   });
 
-  it("advertises managed SEO tools when the feature switch is enabled", async () => {
+  it("advertises managed SEO tools by default", async () => {
     const api = createRunsApi(context);
-    const connectors = createConnectorBddApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
-    await connectors.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.SeoBuiltIn]: true,
-    });
 
     const run = await api.createRun(actor, {
       agentId,

@@ -2,7 +2,6 @@ import { Buffer } from "node:buffer";
 
 import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
 import { zeroSeoContract } from "@vm0/api-contracts/contracts/zero-seo";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
@@ -22,7 +21,6 @@ import {
   type ApiTestUser,
 } from "./helpers/api-bdd";
 import { createRunsApi } from "./helpers/api-bdd-runs";
-import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { zeroBillingStatusRoutes } from "../zero-billing-status";
 import { zeroSeoRoutes } from "../zero-seo";
@@ -61,7 +59,7 @@ async function seedSeoPricing(): Promise<void> {
   ]);
 }
 
-async function seedActor(featureEnabled = true): Promise<OrgApiTestUser> {
+async function seedActor(): Promise<OrgApiTestUser> {
   const actor = createBddApi(context).user();
   if (!actor.orgId) {
     throw new Error("Zero SEO test actor must belong to an organization");
@@ -69,11 +67,6 @@ async function seedActor(featureEnabled = true): Promise<OrgApiTestUser> {
   const orgActor = { ...actor, orgId: actor.orgId };
   await createRunsApi(context).grantProEntitlement(orgActor);
   await seedSeoPricing();
-  if (featureEnabled) {
-    await updateFeatureSwitchesForUser(context, orgActor, {
-      [FeatureSwitchKey.SeoBuiltIn]: true,
-    });
-  }
   return orgActor;
 }
 
@@ -87,9 +80,6 @@ async function seedUnfundedActor(): Promise<OrgApiTestUser> {
   expect(onboarding.status).toBe(200);
   await seedOrgMetadata({ orgId: orgActor.orgId, tier: "pro", credits: 0 });
   await seedSeoPricing();
-  await updateFeatureSwitchesForUser(context, orgActor, {
-    [FeatureSwitchKey.SeoBuiltIn]: true,
-  });
   return orgActor;
 }
 
@@ -131,32 +121,20 @@ function dataForSeoResponse(cost: number, result: unknown) {
   };
 }
 
+function emptyDataForSeoResponse() {
+  return {
+    version: "0.1.20260810",
+    status_code: 20_000,
+    status_message: "Ok.",
+    time: "0.1000 sec.",
+    cost: 0,
+    tasks_count: 0,
+    tasks_error: 0,
+    tasks: [],
+  };
+}
+
 describe("zero SEO routes", () => {
-  it("rejects requests while the built-in feature is disabled", async () => {
-    const actor = await seedActor(false);
-    configureProviders();
-    let providerRequests = 0;
-    server.use(
-      http.post(`${DATAFORSEO_BASE_URL}/v3/backlinks/summary/live`, () => {
-        providerRequests += 1;
-        return HttpResponse.json(dataForSeoResponse(0.024, [{}]));
-      }),
-    );
-
-    const response = await accept(
-      client()(zeroSeoContract).backlinksSummary({
-        headers: authenticate(actor),
-        body: { target: "example.com", includeSubdomains: true },
-      }),
-      [403],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: { message: "Zero SEO is not enabled", code: "FORBIDDEN" },
-    });
-    expect(providerRequests).toBe(0);
-  });
-
   it("rejects zero tokens without the seo capability", async () => {
     const actor = await seedActor();
     if (!actor.orgId) {
@@ -268,7 +246,10 @@ describe("zero SEO routes", () => {
     );
 
     expectApiError(response.body);
-    expect(response.body.error.code).toBe("SEO_PROVIDER_ERROR");
+    expect(response.body.error).toStrictEqual({
+      code: "DATAFORSEO_AUTH_ERROR",
+      message: "DataForSEO authentication failed",
+    });
     await expect(credits(actor)).resolves.toBe(beforeCredits);
     expect(context.mocks.axiomLogging.warn).toHaveBeenCalledTimes(1);
     expect(context.mocks.axiomLogging.warn).toHaveBeenCalledWith(
@@ -290,6 +271,187 @@ describe("zero SEO routes", () => {
     expect(warningCalls).not.toContain("test-dataforseo-login");
     expect(warningCalls).not.toContain("test-dataforseo-password");
     expect(warningCalls).not.toContain("Basic ");
+  });
+
+  it("reports an unverified DataForSEO account without charging credits", async () => {
+    const actor = await seedActor();
+    configureProviders();
+    const beforeCredits = await credits(actor);
+    server.use(
+      http.post(
+        `${DATAFORSEO_BASE_URL}/v3/serp/google/organic/live/advanced`,
+        () => {
+          return HttpResponse.json(
+            {
+              status_code: 40_104,
+              status_message:
+                "Please verify your account before using the API.",
+            },
+            { status: 403, statusText: "Forbidden" },
+          );
+        },
+      ),
+    );
+
+    const response = await accept(
+      client()(zeroSeoContract).serp({
+        headers: authenticate(actor),
+        body: {
+          query: "technical seo",
+          provider: "dataforseo",
+          engine: "google",
+          location: "United States",
+          languageCode: "en",
+          device: "desktop",
+          limit: 10,
+        },
+      }),
+      [502],
+    );
+
+    expect(response.body.error).toStrictEqual({
+      code: "DATAFORSEO_ACCOUNT_UNVERIFIED",
+      message: "DataForSEO account requires verification",
+    });
+    await expect(credits(actor)).resolves.toBe(beforeCredits);
+  });
+
+  it("retries a zero-cost empty task response once and charges only the successful result", async () => {
+    const actor = await seedActor();
+    configureProviders();
+    const beforeCredits = await credits(actor);
+    let providerRequests = 0;
+    server.use(
+      http.post(
+        `${DATAFORSEO_BASE_URL}/v3/serp/google/organic/live/advanced`,
+        () => {
+          providerRequests += 1;
+          return HttpResponse.json(
+            providerRequests === 1
+              ? emptyDataForSeoResponse()
+              : dataForSeoResponse(0.002, [{ keyword: "technical seo" }]),
+          );
+        },
+      ),
+    );
+
+    const response = await accept(
+      client()(zeroSeoContract).serp({
+        headers: authenticate(actor),
+        body: {
+          query: "technical seo",
+          provider: "dataforseo",
+          engine: "google",
+          location: "United States",
+          languageCode: "en",
+          device: "desktop",
+          limit: 10,
+        },
+      }),
+      [200],
+    );
+
+    expect(response.body).toMatchObject({
+      billingQuantity: 2000,
+      providerCostUsd: 0.002,
+      creditsCharged: 3,
+    });
+    expect(providerRequests).toBe(2);
+    expect(beforeCredits - (await credits(actor))).toBe(3);
+  });
+
+  it("returns an explicit error when DataForSEO repeats an empty task response", async () => {
+    const actor = await seedActor();
+    configureProviders();
+    const beforeCredits = await credits(actor);
+    let providerRequests = 0;
+    server.use(
+      http.post(
+        `${DATAFORSEO_BASE_URL}/v3/serp/google/organic/live/advanced`,
+        () => {
+          providerRequests += 1;
+          return HttpResponse.json(emptyDataForSeoResponse());
+        },
+      ),
+    );
+
+    const response = await accept(
+      client()(zeroSeoContract).serp({
+        headers: authenticate(actor),
+        body: {
+          query: "technical seo",
+          provider: "dataforseo",
+          engine: "google",
+          location: "United States",
+          languageCode: "en",
+          device: "desktop",
+          limit: 10,
+        },
+      }),
+      [502],
+    );
+
+    expect(response.body.error).toStrictEqual({
+      code: "DATAFORSEO_EMPTY_TASKS",
+      message: "DataForSEO returned no task",
+    });
+    expect(providerRequests).toBe(2);
+    await expect(credits(actor)).resolves.toBe(beforeCredits);
+  });
+
+  it("returns DataForSEO task parameter errors as bad requests", async () => {
+    const actor = await seedActor();
+    configureProviders();
+    const beforeCredits = await credits(actor);
+    server.use(
+      http.post(
+        `${DATAFORSEO_BASE_URL}/v3/serp/google/maps/live/advanced`,
+        () => {
+          return HttpResponse.json({
+            version: "0.1.20260810",
+            status_code: 20_000,
+            status_message: "Ok.",
+            time: "0.1000 sec.",
+            cost: 0,
+            tasks_count: 1,
+            tasks_error: 1,
+            tasks: [
+              {
+                id: "seo-task",
+                status_code: 40_501,
+                status_message: "Invalid Field: 'location_name'.",
+                time: "0.1000 sec.",
+                cost: 0,
+                result_count: 0,
+                result: null,
+              },
+            ],
+          });
+        },
+      ),
+    );
+
+    const response = await accept(
+      client()(zeroSeoContract).serp({
+        headers: authenticate(actor),
+        body: {
+          query: "coffee shops",
+          provider: "dataforseo",
+          engine: "google_maps",
+          location: "Austin, Texas, United States",
+          languageCode: "en",
+          device: "desktop",
+          limit: 10,
+        },
+      }),
+      [400],
+    );
+
+    expect(response.body.error).toStrictEqual({
+      code: "DATAFORSEO_INVALID_REQUEST",
+      message: "Invalid Field: 'location_name'.",
+    });
+    await expect(credits(actor)).resolves.toBe(beforeCredits);
   });
 
   it("maps DataForSEO operations and bills the reported cost with a 25% markup", async () => {
@@ -549,7 +711,7 @@ describe("zero SEO routes", () => {
       [
         {
           keyword: "coffee shops",
-          location_name: "Austin, Texas, United States",
+          location_name: "Austin,Texas,United States",
           language_code: "en",
           device: "mobile",
           depth: 100,

@@ -317,14 +317,14 @@ async fn read_record_with_liveness(
         Ok(Some(content)) => content,
         Ok(None) => return Ok(RecordRead::Missing),
         Err(e) => {
-            tracing::debug!(path = %path.display(), error = %e, "ignoring unreadable live runner instance record");
+            tracing::info!(path = %path.display(), error = %e, "ignoring unreadable live runner instance record");
             return Ok(RecordRead::InvalidFile);
         }
     };
     let record: LiveRunnerInstanceRecord = match serde_json::from_str(&content) {
         Ok(record) => record,
         Err(e) => {
-            tracing::debug!(path = %path.display(), error = %e, "ignoring malformed live runner instance record");
+            tracing::info!(path = %path.display(), error = %e, "ignoring malformed live runner instance record");
             return Ok(RecordRead::InvalidFile);
         }
     };
@@ -340,7 +340,7 @@ async fn remove_stale_records(home: &HomePaths) {
     let mut entries = match tokio::fs::read_dir(&dir).await {
         Ok(entries) => entries,
         Err(e) => {
-            tracing::debug!(path = %dir.display(), error = %e, "cannot scan live runner instances");
+            tracing::info!(path = %dir.display(), error = %e, "cannot scan live runner instances");
             return;
         }
     };
@@ -351,7 +351,7 @@ async fn remove_stale_records(home: &HomePaths) {
             Ok(Some(entry)) => entry,
             Ok(None) => break,
             Err(e) => {
-                tracing::debug!(path = %dir.display(), error = %e, "cannot read live runner instance entry");
+                tracing::info!(path = %dir.display(), error = %e, "cannot read live runner instance entry");
                 break;
             }
         };
@@ -360,7 +360,7 @@ async fn remove_stale_records(home: &HomePaths) {
         if let Some(identity) = stable_record_identity_from_file_name(&file_name) {
             match read_record_for_identity(&path, identity, &liveness).await {
                 Err(e) => {
-                    tracing::debug!(
+                    tracing::info!(
                         path = %path.display(),
                         error = %e,
                         "preserving live runner instance record after liveness check failed"
@@ -395,7 +395,7 @@ async fn read_record_for_identity(
     if record.pid == identity.pid && record.starttime == identity.starttime {
         Ok(RecordForIdentity::Valid(record))
     } else {
-        tracing::debug!(
+        tracing::info!(
             path = %path.display(),
             record_pid = record.pid,
             record_starttime = record.starttime,
@@ -429,7 +429,7 @@ async fn remove_stale_tmp_file(
             remove_stale_file(path, "stale live runner instance tmp file").await;
         }
         Err(e) => {
-            tracing::debug!(
+            tracing::info!(
                 path = %path.display(),
                 error = %e,
                 "preserving live runner instance tmp file after liveness check failed"
@@ -440,12 +440,10 @@ async fn remove_stale_tmp_file(
 
 async fn remove_stale_file(path: &Path, reason: &'static str) {
     match tokio::fs::remove_file(path).await {
-        Ok(()) => {
-            tracing::debug!(path = %path.display(), reason, "removed stale live runner instance file");
-        }
+        Ok(()) => {}
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
         Err(e) => {
-            tracing::debug!(path = %path.display(), reason, error = %e, "cannot remove stale live runner instance file");
+            tracing::info!(path = %path.display(), reason, error = %e, "cannot remove stale live runner instance file");
         }
     }
 }

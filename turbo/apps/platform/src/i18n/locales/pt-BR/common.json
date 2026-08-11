@@ -1665,6 +1665,7 @@
         "waiting": "Aguardando",
         "watching": "Monitorando"
       },
+      "emojiCategories": "Categorias de emoji",
       "empty": "Envie uma mensagem para iniciar a conversa",
       "frequentlyUsed": "Usados com frequência",
       "icon": "Ícone da conversa",
@@ -1675,8 +1676,10 @@
       "openBrowser": "Abrir navegador",
       "openNamedAgent": "Abrir agente {{name}}",
       "openNamedChat": "Abrir conversa {{title}}",
+      "pickEmoji": "Escolha um emoji",
       "scrollToBottom": "Rolar até o final",
-      "searchEmoji": "Buscar emoji"
+      "searchEmoji": "Buscar emoji",
+      "steerMessageExplanation": "Enviada enquanto o agente trabalhava para orientar o comportamento dele"
     },
     "threadSidebar": {
       "resize": "Redimensionar barra lateral"
@@ -1980,6 +1983,7 @@
       "emptyAdmin": "Ainda não há conectores personalizados. Crie um para registrar uma API que todos os membros possam usar.",
       "emptyMember": "Sua organização ainda não registrou conectores personalizados.",
       "mcpStreamableHttp": "MCP · Streamable HTTP",
+      "mcpType": "MCP",
       "moreOptions": "Mais opções",
       "statusConnected": "Conectado",
       "toasts": {
@@ -4230,15 +4234,14 @@
         "useAccount": "Usar"
       },
       "picker": {
-        "balancedUse": "Uso equilibrado",
         "builtInModel": "Modelo integrado",
         "byokHelp": "Usa seu provedor configurado",
         "fast": "Rápido",
+        "fastImpact": "Velocidade do modelo 1,5× · uso de créditos 2,5×",
         "inheritDefault": "Herdar o padrão da organização",
         "loadError": "Não foi possível carregar os modelos.",
         "loading": "Carregando modelos...",
         "models": "Modelos",
-        "moreCodexCredits": "Usa mais créditos do Codex.",
         "noConfiguredModels": "Nenhum modelo configurado",
         "priceTiers": {
           "balanced": "Custo e desempenho equilibrados",
@@ -4246,14 +4249,12 @@
           "frontier": "Modelo principal de ponta",
           "premium": "Modelo premium de ponta para as tarefas mais difíceis"
         },
-        "prioritizeSpeed": "Prioriza a velocidade",
         "pro": "Pro",
         "providerLabels": {
           "azureFoundryPortal": "Portal do Azure Foundry",
           "claudeCodeOauth": "Claude Code (token OAuth)",
           "deepseek": "Deepseek"
         },
-        "runSpeed": "Velocidade de execução",
         "standard": "Padrão"
       },
       "policies": {

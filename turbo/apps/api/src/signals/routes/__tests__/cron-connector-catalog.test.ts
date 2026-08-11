@@ -2740,7 +2740,7 @@ describe("connector catalog valid lifecycle", () => {
       }),
     );
     customConnectorIds.push(hostOverlap.id);
-    expect(hostOverlap.prefixes).toStrictEqual([
+    expect(hostOverlap.prefixTemplates).toStrictEqual([
       "https://api.example.test/custom/",
     ]);
     const grants = await accept(

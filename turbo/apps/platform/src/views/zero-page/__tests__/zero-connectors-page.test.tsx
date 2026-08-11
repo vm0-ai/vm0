@@ -436,7 +436,7 @@ function mockCustomConnectorStory(): {
     zeroCustomConnectorsContract.create,
     ({ body, respond }) => {
       createBodies.push(body);
-      const prefixTemplates = body.prefixTemplates ?? body.prefixes ?? [];
+      const prefixTemplates = body.prefixTemplates ?? [];
       const fields = body.fields ?? [];
       const headerInjections = body.headerInjections ?? [];
       const created = customConnector({
@@ -677,7 +677,7 @@ describe("connectors page", () => {
       screen.findByTestId("connector-card-label"),
     ).resolves.toHaveTextContent("GitHub");
     await expect(
-      screen.findByLabelText("Connect 347 services for your agents to use."),
+      screen.findByText("Connect 700+ services for your agents to use."),
     ).resolves.toBeInTheDocument();
 
     await fill(await screen.findByPlaceholderText("Find connectors"), "Slack");
@@ -689,7 +689,7 @@ describe("connectors page", () => {
     expect(legacyStatusRequests).toBe(0);
   });
 
-  it("shows the exact connector catalog size in the page description", async () => {
+  it("shows the static connector catalog size in the page description", async () => {
     mockConnectors([]);
     mockPublicConnectorStatus([
       publicStatusItem({
@@ -711,7 +711,7 @@ describe("connectors page", () => {
     });
 
     await expect(
-      screen.findByLabelText("Connect 2 services for your agents to use."),
+      screen.findByText("Connect 700+ services for your agents to use."),
     ).resolves.toBeInTheDocument();
   });
 
@@ -740,7 +740,7 @@ describe("connectors page", () => {
       screen.findByText("Connect third-party services for your agents to use."),
     ).resolves.toBeInTheDocument();
     expect(
-      screen.queryByLabelText("Connect 2 services for your agents to use."),
+      screen.queryByText("Connect 700+ services for your agents to use."),
     ).not.toBeInTheDocument();
   });
 
@@ -3603,6 +3603,7 @@ describe("connectors page", () => {
 
     await waitFor(() => {
       const card = connectorCardByLabel("Acme Search");
+      expect(within(card).getByText("HTTP API")).toBeInTheDocument();
       expect(within(card).getByText("Not connected")).toBeInTheDocument();
       expect(
         within(card).getByText("https://api.acme.test/v1/"),
@@ -4311,7 +4312,12 @@ describe("connectors page", () => {
     click(buttonByText("Create", createDialog));
 
     await waitFor(() => {
-      expect(connectorCardByLabel("Acme MCP")).toBeInTheDocument();
+      const card = connectorCardByLabel("Acme MCP");
+      expect(within(card).getByText("MCP")).toBeInTheDocument();
+      expect(
+        within(card).getByText("https://mcp.acme.test/server"),
+      ).toBeInTheDocument();
+      expect(within(card).getByText("Not connected")).toBeInTheDocument();
     });
     expect(createBodies).toStrictEqual([
       {
@@ -4355,6 +4361,9 @@ describe("connectors page", () => {
           "connector-card-agent-access",
         ),
       ).toHaveTextContent("Used by Research, Support");
+      expect(
+        within(connectorCardByLabel("Acme MCP")).getByText("Connected"),
+      ).toBeInTheDocument();
     });
 
     click(
@@ -4710,10 +4719,11 @@ describe("connectors page", () => {
     const card = await waitFor(() => {
       return connectorCardByLabel("Acme MCP");
     });
-    expect(within(card).getByText("MCP · Streamable HTTP")).toBeInTheDocument();
+    expect(within(card).getByText("MCP")).toBeInTheDocument();
     expect(
       within(card).getByText("https://mcp.acme.test/server"),
     ).toBeInTheDocument();
+    expect(within(card).getByText("Connected")).toBeInTheDocument();
     expect(screen.queryByLabelText("Connect Acme MCP")).not.toBeInTheDocument();
     expect(
       within(card).getByTestId("connector-card-agent-access"),
@@ -5418,8 +5428,10 @@ describe("connectors page", () => {
       ),
     ).toHaveAttribute("title", "Zero, Research, Support");
     expect(
-      screen.queryByText("https://api.acme.test/v1/"),
-    ).not.toBeInTheDocument();
+      within(connectorCardByLabel("Acme API")).getByText(
+        "https://api.acme.test/v1/",
+      ),
+    ).toBeInTheDocument();
 
     click(screen.getByLabelText("More options"));
     click(await screen.findByText("Edit"));
