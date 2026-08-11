@@ -94,6 +94,7 @@ pub struct MockJobProvider {
     heartbeat_notify: Arc<Notify>,
     heartbeat_control: Arc<MockHeartbeatControl>,
     claim_control: Arc<MockClaimControl>,
+    completion_control: Arc<MockCompletionControl>,
 }
 
 /// Test-side handle for driving the mock provider.
@@ -116,6 +117,7 @@ pub struct MockProviderHandle {
     heartbeat_notify: Arc<Notify>,
     heartbeat_control: Arc<MockHeartbeatControl>,
     claim_control: Arc<MockClaimControl>,
+    completion_control: Arc<MockCompletionControl>,
 }
 
 #[derive(Clone)]
@@ -148,6 +150,13 @@ struct MockClaimControl {
     in_flight: AtomicUsize,
     release: Notify,
     state_changed: Notify,
+}
+
+#[derive(Default)]
+struct MockCompletionControl {
+    blocked: AtomicBool,
+    in_flight: AtomicUsize,
+    release: Notify,
 }
 
 impl MockHeartbeatControl {
@@ -185,12 +194,32 @@ impl MockClaimControl {
     }
 }
 
+impl MockCompletionControl {
+    fn enter(&self) -> MockCompletionInFlight<'_> {
+        self.in_flight.fetch_add(1, Ordering::SeqCst);
+        MockCompletionInFlight { control: self }
+    }
+
+    fn block(&self) {
+        self.blocked.store(true, Ordering::SeqCst);
+    }
+
+    fn unblock(&self) {
+        self.blocked.store(false, Ordering::SeqCst);
+        self.release.notify_waiters();
+    }
+}
+
 struct MockHeartbeatInFlight<'a> {
     control: &'a MockHeartbeatControl,
 }
 
 struct MockClaimInFlight<'a> {
     control: &'a MockClaimControl,
+}
+
+struct MockCompletionInFlight<'a> {
+    control: &'a MockCompletionControl,
 }
 
 impl Drop for MockHeartbeatInFlight<'_> {
@@ -204,6 +233,12 @@ impl Drop for MockClaimInFlight<'_> {
     fn drop(&mut self) {
         self.control.in_flight.fetch_sub(1, Ordering::SeqCst);
         self.control.state_changed.notify_waiters();
+    }
+}
+
+impl Drop for MockCompletionInFlight<'_> {
+    fn drop(&mut self) {
+        self.control.in_flight.fetch_sub(1, Ordering::SeqCst);
     }
 }
 
@@ -300,6 +335,7 @@ impl MockJobProvider {
         let heartbeat_notify = Arc::new(Notify::new());
         let heartbeat_control = Arc::new(MockHeartbeatControl::default());
         let claim_control = Arc::new(MockClaimControl::default());
+        let completion_control = Arc::new(MockCompletionControl::default());
         let provider = Arc::new(Self {
             startup_readiness: Arc::clone(&startup_readiness),
             discovery: Mutex::new(rx),
@@ -318,6 +354,7 @@ impl MockJobProvider {
             heartbeat_notify: Arc::clone(&heartbeat_notify),
             heartbeat_control: Arc::clone(&heartbeat_control),
             claim_control: Arc::clone(&claim_control),
+            completion_control: Arc::clone(&completion_control),
         });
         let handle = MockProviderHandle {
             startup_readiness,
@@ -334,6 +371,7 @@ impl MockJobProvider {
             heartbeat_notify,
             heartbeat_control,
             claim_control,
+            completion_control,
         };
         (provider, handle)
     }
@@ -384,6 +422,20 @@ impl MockProviderHandle {
 
     pub fn startup_readiness_calls(&self) -> usize {
         self.startup_readiness.calls()
+    }
+
+    /// Block completion calls after recording their request payload.
+    pub fn block_completions(&self) {
+        self.completion_control.block();
+    }
+
+    /// Release blocked completion calls and allow later calls to return.
+    pub fn unblock_completions(&self) {
+        self.completion_control.unblock();
+    }
+
+    pub fn completion_in_flight(&self) -> usize {
+        self.completion_control.in_flight.load(Ordering::SeqCst)
     }
 
     pub fn discover_started_count(&self) -> usize {
@@ -635,6 +687,10 @@ impl JobProvider for MockJobProvider {
     }
 
     async fn complete(&self, request: CompleteRequest, _completion_auth: CompletionAuth) {
+        let release = self.completion_control.release.notified();
+        tokio::pin!(release);
+        release.as_mut().enable();
+        let _in_flight = self.completion_control.enter();
         self.completions
             .lock()
             .unwrap_or_else(|e| e.into_inner())
@@ -649,6 +705,9 @@ impl JobProvider for MockJobProvider {
         // Wake all pending `wait_completion` waiters — they re-scan the vec
         // and return if their run_id is now present.
         self.completion_notify.notify_waiters();
+        if self.completion_control.blocked.load(Ordering::SeqCst) {
+            release.await;
+        }
     }
 
     async fn heartbeat(&self, state: &HeartbeatState) {
