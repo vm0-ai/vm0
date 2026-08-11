@@ -1132,6 +1132,7 @@ export function resetApiTestMocks(): void {
   apiTestMocks.clerk.organizations.updateOrganizationMembership.mockReset();
   apiTestMocks.clerk.organizations.updateOrganizationLogo.mockReset();
   apiTestMocks.clerk.users.getUserList.mockReset();
+  apiTestMocks.clerk.users.getUserList.mockResolvedValue({ data: [] });
   apiTestMocks.clerk.users.getOrganizationMembershipList.mockReset();
   apiTestMocks.clerk.users.updateUserMetadata.mockReset();
   apiTestMocks.clerk.signInTokens.createSignInToken.mockReset();
