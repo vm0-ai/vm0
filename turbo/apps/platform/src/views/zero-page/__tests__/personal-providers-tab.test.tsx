@@ -895,7 +895,7 @@ describe("personal model providers settings", () => {
       name: "Adicionar modelo",
     });
     click(within(policyDialog).getByRole("combobox"));
-    click(await screen.findByRole("option", { name: "Claude Opus 4.7" }));
+    click(await screen.findByRole("option", { name: "Claude Opus 4.8" }));
     click(screen.getByRole("radio", { name: /Chave de API/u }));
     expect(
       within(policyDialog).getByText("Chave de API da Anthropic"),
