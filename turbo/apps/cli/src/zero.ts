@@ -122,7 +122,7 @@ const ZERO_COMMAND_DEFINITIONS: readonly ZeroCommandDefinition[] = [
   },
   {
     name: "mcp",
-    description: "Use MCP Custom Connectors admitted to this Agent Run",
+    description: "Use MCP Custom Connectors authorized for this Agent",
     load: async () => {
       return (await import("./commands/zero/mcp")).zeroMcpCommand;
     },
