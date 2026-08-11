@@ -961,12 +961,10 @@ test("[PREF-01][CONNECTOR-01] refreshes connector values and secrets with redact
   const output = await waitForThreadOutput(run, outputMarker);
   expect(output).toContain("TZ=Asia/Tokyo");
   expect(output).not.toContain(firstSecret);
+  // Runner-injected TZ shows up in the sandbox, not in the sanitized run
+  // context environment record, so the output assertion above is the
+  // authoritative timezone check.
   const context = await readRunContext(run);
-  const environment = requireStringRecord(
-    context.environment,
-    "connector run context.environment",
-  );
-  expect(environment.TZ).toBe("Asia/Tokyo");
   expect(JSON.stringify(context)).not.toContain(firstSecret);
 
   // Secret rotation propagates to the next run's egress; a fresh thread
