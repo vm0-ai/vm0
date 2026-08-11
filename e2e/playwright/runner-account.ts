@@ -52,12 +52,10 @@ async function prepareRunnerAccounts(
   await createOrganizationMembership(organizationId, codexUserId);
   await createOrganizationMembership(organizationId, claudeUserId);
 
-  console.log(
-    `Prepared runner E2E accounts in organization ${organizationId}:`,
-    runnerAccounts.runner,
-    runnerAccounts.codex,
-    runnerAccounts.claude,
-  );
+  console.log("Prepared runner E2E accounts", {
+    organizationId,
+    ...runnerAccounts,
+  });
 }
 
 async function cleanupRunnerAccounts(
