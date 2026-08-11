@@ -750,7 +750,7 @@ pub(super) async fn run_job(
         #[cfg(test)]
         maybe_panic_outer_job(outer_job_panic, OuterJobPanicPoint::ActiveOrUnknown, run_id);
 
-        let executor_result = executor.execute().await;
+        let mut executor_result = executor.execute().await;
         let cancelled_for_log = job_cancel.is_cancelled();
         log_terminal_job_outcome(
             run_id,
@@ -763,7 +763,7 @@ pub(super) async fn run_job(
         let completion_payload = CompletionPayload::new(
             run_id,
             executor_result.exit_code,
-            executor_result.err.clone(),
+            executor_result.err.take(),
             sandbox_id,
             reuse_result,
             completion_auth,
