@@ -2870,26 +2870,13 @@ describe("chat event action cards", () => {
       },
     );
     context.mocks.api(zeroAgentCustomConnectorsContract.get, ({ respond }) => {
-      return respond(200, {
-        enabledIds: grants.map((grant) => {
-          return grant.customConnectorId;
-        }),
-        grants,
-      });
+      return respond(200, { grants });
     });
     context.mocks.api(
       zeroAgentCustomConnectorsContract.update,
       ({ body, respond }) => {
-        if (!("grants" in body)) {
-          throw new Error("Expected canonical custom connector grants");
-        }
         grants = body.grants;
-        return respond(200, {
-          enabledIds: grants.map((grant) => {
-            return grant.customConnectorId;
-          }),
-          grants,
-        });
+        return respond(200, { grants });
       },
     );
 
@@ -2986,7 +2973,6 @@ describe("chat event action cards", () => {
     );
     context.mocks.api(zeroAgentCustomConnectorsContract.get, ({ respond }) => {
       return respond(200, {
-        enabledIds: [connector.id],
         grants: [
           {
             customConnectorId: connector.id,
@@ -3000,7 +2986,6 @@ describe("chat event action cards", () => {
       ({ respond }) => {
         authorizationUpdates += 1;
         return respond(200, {
-          enabledIds: [connector.id],
           grants: [
             {
               customConnectorId: connector.id,
@@ -3086,13 +3071,13 @@ describe("chat event action cards", () => {
       });
     });
     context.mocks.api(zeroAgentCustomConnectorsContract.get, ({ respond }) => {
-      return respond(200, { enabledIds: [], grants: [] });
+      return respond(200, { grants: [] });
     });
     context.mocks.api(
       zeroAgentCustomConnectorsContract.update,
       ({ respond }) => {
         authorizationUpdates += 1;
-        return respond(200, { enabledIds: [], grants: [] });
+        return respond(200, { grants: [] });
       },
     );
     mockChatLifecycle(context, {
@@ -3155,7 +3140,7 @@ describe("chat event action cards", () => {
       return respond(200, { connectors: [connector] });
     });
     context.mocks.api(zeroAgentCustomConnectorsContract.get, ({ respond }) => {
-      return respond(200, { enabledIds: [], grants: [] });
+      return respond(200, { grants: [] });
     });
     context.mocks.api(zeroAgentCustomConnectorsContract.update, () => {
       throw new Error(

@@ -23,7 +23,7 @@ const TEST_APP_ROUTES = Object.freeze([...healthRoutes, ...zeroMailRoutes]);
 
 const MINIMUM_WEB_CLIENT_VERSION =
   webClientCompatibility.minimumSupportedVersion;
-const BELOW_MINIMUM_WEB_CLIENT_VERSION = "0.723.0";
+const PRE_CANONICAL_CUSTOM_CONNECTOR_GRANTS_VERSION = "0.724.0";
 
 // Derived so that raising the supported floor does not turn this fixture into
 // an unsupported version.
@@ -995,7 +995,7 @@ describe("createApp", () => {
   });
 
   describe("web client compatibility", () => {
-    it("force-upgrades app clients below the minimum supported version", async () => {
+    it("force-upgrades app clients without canonical custom connector grants", async () => {
       const app = createApp({
         signal: context.signal,
         routes: TEST_APP_ROUTES,
@@ -1004,11 +1004,12 @@ describe("createApp", () => {
         method: "GET",
         headers: {
           [CLIENT_TYPE_HEADER]: CLIENT_TYPE_APP,
-          [CLIENT_VERSION_HEADER]: BELOW_MINIMUM_WEB_CLIENT_VERSION,
+          [CLIENT_VERSION_HEADER]:
+            PRE_CANONICAL_CUSTOM_CONNECTOR_GRANTS_VERSION,
         },
       });
 
-      expect(MINIMUM_WEB_CLIENT_VERSION).toBe("0.724.0");
+      expect(MINIMUM_WEB_CLIENT_VERSION).toBe("0.724.1");
       expect(response.status).toBe(CLIENT_FORCE_UPGRADE_STATUS);
       await expect(response.json()).resolves.toStrictEqual({
         error: "Client update required",
@@ -1056,7 +1057,7 @@ describe("createApp", () => {
       expect(response.headers.get("cache-control")).toBe("no-store");
     });
 
-    it("allows the canonical chat event reader floor", async () => {
+    it("allows the canonical custom connector grants floor", async () => {
       const app = createApp({
         signal: context.signal,
         routes: TEST_APP_ROUTES,
@@ -1072,7 +1073,7 @@ describe("createApp", () => {
       expect(response.status).toBe(200);
     });
 
-    it("allows app clients newer than the canonical reader floor", async () => {
+    it("allows app clients newer than the canonical grants floor", async () => {
       const app = createApp({
         signal: context.signal,
         routes: TEST_APP_ROUTES,
