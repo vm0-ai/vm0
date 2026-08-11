@@ -321,12 +321,9 @@ function OAuthAccountRow({
       },
       { number: fallbackIndex },
     );
-  const details = [
-    account.workspaceName === identity ? null : account.workspaceName,
-    formatSubscriptionPlan(account),
-  ].filter((value): value is string => {
-    return Boolean(value);
-  });
+  const plan = formatSubscriptionPlan(account);
+  const detail =
+    account.workspaceName === identity ? null : account.workspaceName;
   return (
     <div
       data-testid={`oauth-account-${account.id}`}
@@ -353,7 +350,12 @@ function OAuthAccountRow({
         </button>
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 items-center gap-2">
-            <p className="truncate text-sm font-medium text-foreground">
+            {plan ? (
+              <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
+                {plan}
+              </span>
+            ) : null}
+            <p className="min-w-0 truncate text-sm font-medium text-foreground">
               {identity}
             </p>
             {account.isActive ? (
@@ -364,31 +366,16 @@ function OAuthAccountRow({
               </span>
             ) : null}
           </div>
-          <p className="mt-0.5 truncate text-xs text-muted-foreground">
-            {account.needsReconnect
-              ? t(($) => {
-                  return $.settings.models.personal.status.stale;
-                })
-              : details.join(" · ") ||
-                t(($) => {
-                  return $.settings.models.personal.status.connected;
-                })}
-          </p>
+          {account.needsReconnect || detail ? (
+            <p className="mt-0.5 truncate text-xs text-muted-foreground">
+              {account.needsReconnect
+                ? t(($) => {
+                    return $.settings.models.personal.status.stale;
+                  })
+                : detail}
+            </p>
+          ) : null}
         </div>
-        {!account.isActive ? (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="h-8 shrink-0 rounded-lg"
-            disabled={actionPending}
-            onClick={onActivate}
-          >
-            {t(($) => {
-              return $.settings.models.personal.useAccount;
-            })}
-          </Button>
-        ) : null}
         <OAuthAccountMenu
           account={account}
           actionPending={actionPending}

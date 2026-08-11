@@ -315,6 +315,7 @@ describe("personal model providers settings", () => {
     expect(within(rowB).getByText("account-b@example.com")).toBeInTheDocument();
     expect(within(rowA).getByText("Active")).toBeInTheDocument();
     expect(within(rowB).queryByText("Active")).not.toBeInTheDocument();
+    expect(within(rowB).queryByText("Use")).not.toBeInTheDocument();
     expect(
       queryAllByRoleFast("button").filter((button) => {
         return button.textContent?.trim() === "Add account";
@@ -329,7 +330,7 @@ describe("personal model providers settings", () => {
     ).toBeFalsy();
     click(within(rowA).getByLabelText("More options"));
 
-    click(buttonByText("Use", rowB));
+    click(buttonByLabel("Use", rowB));
     await waitFor(() => {
       expect(within(rowB).getByText("Active")).toBeInTheDocument();
       expect(within(rowA).queryByText("Active")).not.toBeInTheDocument();
