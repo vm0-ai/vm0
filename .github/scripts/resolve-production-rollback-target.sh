@@ -17,6 +17,8 @@ require_env() {
 
 for name in \
   AWS_METAL_RUNNER_HOSTS \
+  CLOUDFLARE_ACCOUNT_ID \
+  CLOUDFLARE_API_TOKEN \
   GH_TOKEN \
   GITHUB_OUTPUT \
   GITHUB_REPOSITORY \
@@ -65,6 +67,11 @@ if [ "$match_count" -ne 1 ]; then
   fail "Expected exactly one READY production API deployment for ${TARGET_COMMIT}, found ${match_count}."
 fi
 api_deployment_url="https://$(jq -r '.[0].url' <<<"$matches")"
+api_worker_version_id=$(TARGET_COMMIT="$TARGET_COMMIT" \
+  bash "${script_dir}/api-worker-version.sh" resolve)
+api_worker_candidate_version_id=$(CF_API_WORKER_NAME=vm0-api-production-candidate \
+  TARGET_COMMIT="$TARGET_COMMIT" \
+  bash "${script_dir}/api-worker-version.sh" resolve)
 
 r2_endpoint="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
 app_artifact_uri="s3://${R2_BUCKET_NAME}/okou-app/${TARGET_COMMIT}"
@@ -118,6 +125,8 @@ done <<<"$runner_targets"
 
 {
   echo "api_deployment_url=$api_deployment_url"
+  echo "api_worker_candidate_version_id=$api_worker_candidate_version_id"
+  echo "api_worker_version_id=$api_worker_version_id"
   echo "runner_matrix=$runner_matrix"
   echo "runner_tag=$runner_tag"
   echo "runner_version=$runner_version"
@@ -127,6 +136,8 @@ done <<<"$runner_targets"
 echo "Release target: ${TARGET_COMMIT}"
 printf '%s\n' "$release_tags"
 echo "API target: ${api_deployment_url}"
+echo "API Worker candidate target: ${api_worker_candidate_version_id}"
+echo "API Worker target: ${api_worker_version_id}"
 echo "App target: ${app_artifact_uri}/"
 echo "Runner target: ${runner_tag}"
 jq . <<<"$runner_matrix"

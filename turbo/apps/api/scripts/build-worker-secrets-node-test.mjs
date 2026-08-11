@@ -9,6 +9,7 @@ test("writes every shard and excludes Sentry runtime settings", () => {
       "DATABASE_URL=postgres://example",
       "ENV=preview",
       'CF_ACCESS_JWKS={"keys":[{"kty":"RSA"}]}',
+      "CF_API_PUBLIC_ORIGIN=https://api.vm0.ai",
       "SENTRY_DSN=https://example@sentry.io/1",
       "TIKTOK_ADS_OAUTH_CLIENT_ID=tiktok-client",
       "TIKTOK_ADS_OAUTH_CLIENT_SECRET=tiktok-secret",
@@ -24,6 +25,7 @@ test("writes every shard and excludes Sentry runtime settings", () => {
   });
   assert.deepEqual(Object.fromEntries(decoded), {
     CF_ACCESS_JWKS: '{"keys":[{"kty":"RSA"}]}',
+    CF_API_PUBLIC_ORIGIN: "https://api.vm0.ai",
     DATABASE_URL: "postgres://example",
     ENV: "preview",
     TIKTOK_ADS_OAUTH_CLIENT_ID: "tiktok-client",

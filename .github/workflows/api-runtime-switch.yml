@@ -1,0 +1,91 @@
+name: Switch API Runtime
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_runtime:
+        description: "Public api.vm0.ai runtime"
+        required: true
+        type: choice
+        options:
+          - cloudflare
+          - vercel
+
+permissions:
+  contents: read
+
+jobs:
+  queue-production-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: main
+      - name: Wait for older production deployment workflows
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash .github/scripts/wait-production-deploy-queue.sh
+
+  switch-api-runtime:
+    name: Switch API runtime to ${{ inputs.target_runtime }}
+    needs: queue-production-deploy
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+      deployments: write
+    steps:
+      # The current main implementation owns all mutation logic. Runtime and
+      # release versions are read as live state; workflow code is never loaded
+      # from a historical release commit.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: main
+
+      - name: Start GitHub Deployment
+        id: deployment
+        uses: bobheadxi/deployments@648679e8e4915b27893bd7dbc35cb504dc915bc8 # v1
+        with:
+          step: start
+          token: ${{ github.token }}
+          env: api/runtime
+          ref: main
+          desc: Switching public API runtime to ${{ inputs.target_runtime }}
+
+      - name: Verify Vercel and Worker release pair
+        id: pair
+        env:
+          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_API_PRODUCTION_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_API_PRODUCTION_ACCESS_CLIENT_SECRET }}
+          CF_API_PRODUCTION_CANDIDATE_ORIGIN: https://vm0-api-production-candidate.${{ vars.CF_WORKERS_SUBDOMAIN }}.workers.dev
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CF_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_WORKER_PRODUCTION_DEPLOY_API_TOKEN }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+          VERCEL_ORG_ID: ${{ vars.VERCEL_TEAM_ID }}
+          VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID_API }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: bash .github/scripts/verify-api-production-pair.sh
+
+      - name: Reconcile public API runtime
+        env:
+          CF_API_PUBLIC_HOSTNAME: api.vm0.ai
+          CF_ZONE_ID: ${{ vars.CF_ZONE_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_RUNTIME_SWITCH_API_TOKEN }}
+          EXPECTED_COMMIT: ${{ steps.pair.outputs.target_commit }}
+          TARGET_RUNTIME: ${{ inputs.target_runtime }}
+        run: bash .github/scripts/reconcile-api-runtime.sh
+
+      - name: Finish GitHub Deployment
+        if: always()
+        uses: bobheadxi/deployments@648679e8e4915b27893bd7dbc35cb504dc915bc8 # v1
+        with:
+          step: finish
+          token: ${{ github.token }}
+          status: ${{ job.status }}
+          env: ${{ steps.deployment.outputs.env }}
+          env_url: https://api.vm0.ai/api/build-info
+          deployment_id: ${{ steps.deployment.outputs.deployment_id }}

@@ -139,7 +139,25 @@ describe("release-please API deployment graph", () => {
       "- name: Initialize API deployment toolchain",
     );
     const deploymentStep = promoteApiProductionJob.indexOf(
-      "- name: Deploy API Production",
+      "- name: Deploy Vercel API production candidate",
+    );
+    const workerCandidateDeploymentStep = promoteApiProductionJob.indexOf(
+      "- name: Deploy isolated API Worker candidate",
+    );
+    const vercelCandidateCheckStep = promoteApiProductionJob.indexOf(
+      "- name: Check Vercel API production candidate",
+    );
+    const workerCandidateCheckStep = promoteApiProductionJob.indexOf(
+      "- name: Check API Worker production candidate",
+    );
+    const vercelPromotionStep = promoteApiProductionJob.indexOf(
+      "- name: Promote Vercel API production candidate",
+    );
+    const workerPromotionStep = promoteApiProductionJob.indexOf(
+      "- name: Promote API Worker production candidate",
+    );
+    const productionPairVerificationStep = promoteApiProductionJob.indexOf(
+      "- name: Verify API production runtime pair",
     );
 
     expect(promoteApiProductionJob).toContain(
@@ -175,6 +193,15 @@ describe("release-please API deployment graph", () => {
     expect(migrationStep).toBeGreaterThan(deploymentToolchainStep);
     expect(migrationStep).toBeGreaterThan(migrationSmokeStep);
     expect(deploymentStep).toBeGreaterThan(migrationStep);
+    expect(workerCandidateDeploymentStep).toBeGreaterThan(deploymentStep);
+    expect(vercelCandidateCheckStep).toBeGreaterThan(
+      workerCandidateDeploymentStep,
+    );
+    expect(workerCandidateCheckStep).toBeGreaterThan(vercelCandidateCheckStep);
+    expect(vercelPromotionStep).toBeGreaterThan(workerCandidateCheckStep);
+    expect(workerPromotionStep).toBeGreaterThan(vercelPromotionStep);
+    expect(productionPairVerificationStep).toBeGreaterThan(workerPromotionStep);
+    expect(promoteApiProductionJob).not.toContain("reconcile-api-runtime.sh");
     expect(promoteApiProductionJob).toContain('prebuilt: "true"');
     expect(promoteApiProductionJob).toContain('skip-setup: "true"');
   });

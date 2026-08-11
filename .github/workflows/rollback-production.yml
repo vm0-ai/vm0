@@ -18,6 +18,14 @@ on:
           - graceful
           - emergency
         default: graceful
+      api_runtime:
+        description: "Public API runtime after both Vercel and Worker reach target_commit"
+        required: true
+        type: choice
+        options:
+          - cloudflare
+          - vercel
+        default: vercel
       confirmed_compatible:
         description: "I confirm the target Runner is compatible with current API, guest, and on-disk state"
         required: true
@@ -51,6 +59,8 @@ jobs:
     environment: production
     outputs:
       api_deployment_url: ${{ steps.resolve.outputs.api_deployment_url }}
+      api_worker_candidate_version_id: ${{ steps.resolve.outputs.api_worker_candidate_version_id }}
+      api_worker_version_id: ${{ steps.resolve.outputs.api_worker_version_id }}
       runner_matrix: ${{ steps.resolve.outputs.runner_matrix }}
       runner_version: ${{ steps.resolve.outputs.runner_version }}
       target_commit: ${{ steps.resolve.outputs.target_commit }}
@@ -85,6 +95,8 @@ jobs:
           AWS_DEFAULT_REGION: auto
           AWS_METAL_RUNNER_HOSTS: ${{ secrets.AWS_METAL_RUNNER_HOSTS }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CF_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_WORKER_PRODUCTION_DEPLOY_API_TOKEN }}
           METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
           R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
           R2_BUCKET_NAME: ${{ vars.R2_STATIC_BUCKET_NAME }}
@@ -391,6 +403,24 @@ jobs:
             channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
             text: "*Production* ⏪ rolling API back to `${{ needs.resolve-target.outputs.target_commit }}`..."
 
+      - name: Promote target isolated API Worker candidate
+        env:
+          CF_API_WORKER_NAME: vm0-api-production-candidate
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CF_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_WORKER_PRODUCTION_DEPLOY_API_TOKEN }}
+          TARGET_COMMIT: ${{ needs.resolve-target.outputs.target_commit }}
+          TARGET_VERSION_ID: ${{ needs.resolve-target.outputs.api_worker_candidate_version_id }}
+        run: bash .github/scripts/api-worker-version.sh promote
+
+      - name: Check target isolated API Worker candidate
+        env:
+          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_API_PRODUCTION_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_API_PRODUCTION_ACCESS_CLIENT_SECRET }}
+          CF_API_PRODUCTION_CANDIDATE_ORIGIN: https://vm0-api-production-candidate.${{ vars.CF_WORKERS_SUBDOMAIN }}.workers.dev
+          TARGET_COMMIT: ${{ needs.resolve-target.outputs.target_commit }}
+          TARGET_VERSION_ID: ${{ needs.resolve-target.outputs.api_worker_candidate_version_id }}
+        run: bash .github/scripts/smoke-api-worker-version.sh
+
       - name: Promote target API deployment
         uses: ./.github/actions/vercel-promote
         with:
@@ -398,6 +428,38 @@ jobs:
           vercel-org-id: ${{ vars.VERCEL_TEAM_ID }}
           vercel-project-id: ${{ vars.VERCEL_PROJECT_ID_API }}
           deployment-url: ${{ needs.resolve-target.outputs.api_deployment_url }}
+
+      - name: Promote target API Worker version
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CF_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_WORKER_PRODUCTION_DEPLOY_API_TOKEN }}
+          TARGET_COMMIT: ${{ needs.resolve-target.outputs.target_commit }}
+          TARGET_VERSION_ID: ${{ needs.resolve-target.outputs.api_worker_version_id }}
+        run: bash .github/scripts/api-worker-version.sh promote
+
+      - name: Verify API production runtime pair
+        id: pair
+        env:
+          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_API_PRODUCTION_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_API_PRODUCTION_ACCESS_CLIENT_SECRET }}
+          CF_API_PRODUCTION_CANDIDATE_ORIGIN: https://vm0-api-production-candidate.${{ vars.CF_WORKERS_SUBDOMAIN }}.workers.dev
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CF_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_WORKER_PRODUCTION_DEPLOY_API_TOKEN }}
+          EXPECTED_COMMIT: ${{ needs.resolve-target.outputs.target_commit }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+          VERCEL_ORG_ID: ${{ vars.VERCEL_TEAM_ID }}
+          VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID_API }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: bash .github/scripts/verify-api-production-pair.sh
+
+      - name: Reconcile public API runtime
+        env:
+          CF_API_PUBLIC_HOSTNAME: api.vm0.ai
+          CF_ZONE_ID: ${{ vars.CF_ZONE_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_RUNTIME_SWITCH_API_TOKEN }}
+          EXPECTED_COMMIT: ${{ steps.pair.outputs.target_commit }}
+          TARGET_RUNTIME: ${{ inputs.api_runtime }}
+        run: bash .github/scripts/reconcile-api-runtime.sh
 
       - name: Finish GitHub Deployment
         if: always()

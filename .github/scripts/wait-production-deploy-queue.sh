@@ -43,7 +43,8 @@ while true; do
         | select(.id < $current_run_id)
         | select(
             .path == ".github/workflows/release-please.yml" or
-            .path == ".github/workflows/rollback-production.yml"
+            .path == ".github/workflows/rollback-production.yml" or
+            .path == ".github/workflows/api-runtime-switch.yml"
           )
         | [.id, .name, .status, .html_url]
         | @tsv

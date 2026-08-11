@@ -1016,6 +1016,7 @@ jobs:
     outputs:
       deployment_url: ${{ steps.deploy.outputs.url }}
       vercel_dashboard_url: ${{ steps.vercel-dashboard.outputs.url }}
+      worker_version_id: ${{ steps.worker-upload.outputs.version-id }}
     permissions:
       contents: read
       deployments: write
@@ -1130,6 +1131,113 @@ jobs:
           REPO_VARS_JSON: ${{ toJSON(vars) }}
           REPO_SECRETS_JSON: ${{ toJSON(secrets) }}
           DOPPLER_SECRETS_JSON: ${{ toJSON(steps.doppler-oauth.outputs) }}
+
+      - name: Build API Worker production secret shards
+        id: worker-secrets
+        env:
+          API_ENV_FILE: ${{ steps.api-production-env.outputs.file }}
+          CF_ACCESS_AUD: ${{ vars.CF_API_PRODUCTION_ACCESS_AUD }}
+          CF_ACCESS_TEAM_DOMAIN: ${{ vars.CF_ACCESS_TEAM_DOMAIN }}
+          CF_API_PRODUCTION_CANDIDATE_ORIGIN: https://vm0-api-production-candidate.${{ vars.CF_WORKERS_SUBDOMAIN }}.workers.dev
+          CF_API_PRODUCTION_R2_SENTINEL_KEY: ${{ vars.CF_API_PRODUCTION_R2_SENTINEL_KEY }}
+          CF_API_PUBLIC_ORIGIN: https://api.vm0.ai
+        run: bash .github/scripts/build-api-worker-production-secrets.sh
+
+      - name: Upload public API Worker production version
+        id: worker-upload
+        working-directory: turbo
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CF_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_WORKER_PRODUCTION_DEPLOY_API_TOKEN }}
+          TARGET_COMMIT: ${{ needs.release-please.outputs.release_target }}
+          WORKER_SECRETS_FILE: ${{ steps.worker-secrets.outputs.file }}
+          WRANGLER_OUTPUT_FILE_PATH: ${{ runner.temp }}/wrangler-api-production-output.json
+        run: |
+          set -euo pipefail
+          : "${CLOUDFLARE_ACCOUNT_ID:?CF_ACCOUNT_ID variable is required}"
+          : "${CLOUDFLARE_API_TOKEN:?CF_API_WORKER_PRODUCTION_DEPLOY_API_TOKEN secret is required}"
+
+          version_id=$(bash ../.github/scripts/api-worker-version.sh resolve-optional)
+          if [ -z "$version_id" ]; then
+            pnpm --filter api exec wrangler versions upload \
+              --env production \
+              --secrets-file "$WORKER_SECRETS_FILE" \
+              --tag "$TARGET_COMMIT" \
+              --message "API production candidate ${TARGET_COMMIT}"
+
+            version_id=$(jq -rs '[.[] | select(.type == "version-upload")][0].version_id // empty' \
+              "$WRANGLER_OUTPUT_FILE_PATH")
+            if [ -z "$version_id" ]; then
+              echo "::error::Wrangler did not report an uploaded production Worker version id"
+              cat "$WRANGLER_OUTPUT_FILE_PATH"
+              exit 1
+            fi
+            echo "Uploaded vm0-api-production version ${version_id} for ${TARGET_COMMIT}."
+          else
+            echo "Reusing immutable vm0-api-production version ${version_id} for ${TARGET_COMMIT}."
+          fi
+          echo "version-id=$version_id" >>"$GITHUB_OUTPUT"
+
+      - name: Upload isolated API Worker candidate version
+        id: worker-candidate-upload
+        working-directory: turbo
+        env:
+          CF_API_WORKER_NAME: vm0-api-production-candidate
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CF_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_WORKER_PRODUCTION_DEPLOY_API_TOKEN }}
+          TARGET_COMMIT: ${{ needs.release-please.outputs.release_target }}
+          WORKER_SECRETS_FILE: ${{ steps.worker-secrets.outputs.file }}
+          WRANGLER_OUTPUT_FILE_PATH: ${{ runner.temp }}/wrangler-api-production-candidate-output.json
+        run: |
+          set -euo pipefail
+          : "${CLOUDFLARE_ACCOUNT_ID:?CF_ACCOUNT_ID variable is required}"
+          : "${CLOUDFLARE_API_TOKEN:?CF_API_WORKER_PRODUCTION_DEPLOY_API_TOKEN secret is required}"
+
+          version_id=$(bash ../.github/scripts/api-worker-version.sh resolve-optional)
+          if [ -z "$version_id" ]; then
+            pnpm --filter api exec wrangler versions upload \
+              --env production-candidate \
+              --secrets-file "$WORKER_SECRETS_FILE" \
+              --tag "$TARGET_COMMIT" \
+              --message "Isolated API production candidate ${TARGET_COMMIT}"
+
+            version_id=$(jq -rs '[.[] | select(.type == "version-upload")][0].version_id // empty' \
+              "$WRANGLER_OUTPUT_FILE_PATH")
+            if [ -z "$version_id" ]; then
+              echo "::error::Wrangler did not report an uploaded isolated Worker candidate version id"
+              cat "$WRANGLER_OUTPUT_FILE_PATH"
+              exit 1
+            fi
+            echo "Uploaded vm0-api-production-candidate version ${version_id} for ${TARGET_COMMIT}."
+          else
+            echo "Reusing immutable vm0-api-production-candidate version ${version_id} for ${TARGET_COMMIT}."
+          fi
+          echo "version-id=$version_id" >>"$GITHUB_OUTPUT"
+
+      - name: Reconcile isolated API Worker candidate routing
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CF_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_WORKER_PRODUCTION_DEPLOY_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          response=$(curl \
+            --request POST \
+            --fail-with-body \
+            --show-error \
+            --silent \
+            --max-time 30 \
+            -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" \
+            -H 'Content-Type: application/json' \
+            --data '{"enabled":true,"previews_enabled":false}' \
+            "https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/scripts/vm0-api-production-candidate/subdomain")
+          jq -e '
+            .success == true and
+            .result.enabled == true and
+            .result.previews_enabled == false
+          ' <<<"$response" >/dev/null || {
+            echo "::error::Cloudflare did not expose only the stable isolated candidate hostname"
+            exit 1
+          }
 
       - name: Notify Slack - Migration Starting
         id: migration-slack-start
@@ -1270,7 +1378,7 @@ jobs:
         id: timer
         run: echo "start=$(date +%s)" >> "$GITHUB_OUTPUT"
 
-      - name: Deploy API Production
+      - name: Deploy Vercel API production candidate
         id: deploy
         uses: ./.github/actions/vercel-deploy
         with:
@@ -1284,9 +1392,66 @@ jobs:
             rm -rf .vercel/output
             cp -R turbo/apps/api/.vercel/output .vercel/output
           environment-file: ${{ steps.api-production-env.outputs.file }}
+          skip-domain: "true"
           skip-start: "true"
           skip-finish: "true"
           skip-setup: "true"
+
+      - name: Deploy isolated API Worker candidate
+        env:
+          CF_API_WORKER_NAME: vm0-api-production-candidate
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CF_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_WORKER_PRODUCTION_DEPLOY_API_TOKEN }}
+          TARGET_COMMIT: ${{ needs.release-please.outputs.release_target }}
+          TARGET_VERSION_ID: ${{ steps.worker-candidate-upload.outputs.version-id }}
+        run: bash .github/scripts/api-worker-version.sh promote
+
+      - name: Check Vercel API production candidate
+        env:
+          TARGET_COMMIT: ${{ needs.release-please.outputs.release_target }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+          VERCEL_DEPLOYMENT_URL: ${{ steps.deploy.outputs.url }}
+        run: bash .github/scripts/smoke-api-vercel-deployment.sh
+
+      - name: Check API Worker production candidate
+        env:
+          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_API_PRODUCTION_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_API_PRODUCTION_ACCESS_CLIENT_SECRET }}
+          CF_API_PRODUCTION_CANDIDATE_ORIGIN: https://vm0-api-production-candidate.${{ vars.CF_WORKERS_SUBDOMAIN }}.workers.dev
+          TARGET_COMMIT: ${{ needs.release-please.outputs.release_target }}
+          TARGET_VERSION_ID: ${{ steps.worker-candidate-upload.outputs.version-id }}
+        run: bash .github/scripts/smoke-api-worker-version.sh
+
+      - name: Promote Vercel API production candidate
+        uses: ./.github/actions/vercel-promote
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ vars.VERCEL_TEAM_ID }}
+          vercel-project-id: ${{ vars.VERCEL_PROJECT_ID_API }}
+          deployment-url: ${{ steps.deploy.outputs.url }}
+          skip-setup: "true"
+
+      - name: Promote API Worker production candidate
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CF_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_WORKER_PRODUCTION_DEPLOY_API_TOKEN }}
+          TARGET_COMMIT: ${{ needs.release-please.outputs.release_target }}
+          TARGET_VERSION_ID: ${{ steps.worker-upload.outputs.version-id }}
+        run: bash .github/scripts/api-worker-version.sh promote
+
+      - name: Verify API production runtime pair
+        env:
+          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_API_PRODUCTION_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_API_PRODUCTION_ACCESS_CLIENT_SECRET }}
+          CF_API_PRODUCTION_CANDIDATE_ORIGIN: https://vm0-api-production-candidate.${{ vars.CF_WORKERS_SUBDOMAIN }}.workers.dev
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CF_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_WORKER_PRODUCTION_DEPLOY_API_TOKEN }}
+          EXPECTED_COMMIT: ${{ needs.release-please.outputs.release_target }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+          VERCEL_ORG_ID: ${{ vars.VERCEL_TEAM_ID }}
+          VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID_API }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: bash .github/scripts/verify-api-production-pair.sh
 
       - name: Resolve Vercel dashboard URL
         id: vercel-dashboard
@@ -1295,17 +1460,6 @@ jobs:
         with:
           vercel-token: ${{ secrets.VERCEL_TOKEN }}
           deployment-url: ${{ steps.deploy.outputs.url }}
-
-      - name: Finish GitHub Deployment
-        if: ${{ always() && steps.deployment.outputs.deployment_id }}
-        uses: bobheadxi/deployments@v1
-        with:
-          step: finish
-          token: ${{ github.token }}
-          status: ${{ job.status }}
-          env: ${{ steps.deployment.outputs.env }}
-          env_url: ${{ steps.vercel-dashboard.outputs.url }}
-          deployment_id: ${{ steps.deployment.outputs.deployment_id }}
 
       - name: Calculate duration
         id: duration
@@ -1317,6 +1471,17 @@ jobs:
           elif [ $m -gt 0 ]; then text="${m}m ${s}s"
           else text="${s}s"; fi
           echo "text=$text" >> "$GITHUB_OUTPUT"
+
+      - name: Finish GitHub Deployment
+        if: ${{ always() && steps.deployment.outputs.deployment_id }}
+        uses: bobheadxi/deployments@v1
+        with:
+          step: finish
+          token: ${{ github.token }}
+          status: ${{ job.status }}
+          env: ${{ steps.deployment.outputs.env }}
+          env_url: ${{ steps.vercel-dashboard.outputs.url }}
+          deployment_id: ${{ steps.deployment.outputs.deployment_id }}
 
       - name: Notify Slack - Success
         if: ${{ success() && steps.slack-start.outputs.ts }}

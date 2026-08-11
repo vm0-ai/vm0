@@ -62,6 +62,9 @@ const SCHEMA = {
   CF_ACCESS_AUD: z.string().min(1).optional(),
   CF_ACCESS_JWKS: z.string().min(1).optional(),
   CF_ACCESS_TEAM_DOMAIN: z.string().min(1).optional(),
+  CF_API_PUBLIC_ORIGIN: z.url().optional(),
+  CF_API_PRODUCTION_CANDIDATE_ORIGIN: z.url().optional(),
+  CF_API_PRODUCTION_R2_SENTINEL_KEY: z.string().min(1).optional(),
   // Direct origin of the API backend for self-dispatched internal callbacks
   // (`/api/internal/**`). Optional; when unset, production defaults to the API
   // backend origin and other environments fall back to VM0_WEB_URL.

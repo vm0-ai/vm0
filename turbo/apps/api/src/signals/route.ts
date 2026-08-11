@@ -195,6 +195,7 @@ import { zeroVideoIoGenerateRoutes } from "./routes/zero-video-io-generate";
 import { zeroWebDownloadRoutes } from "./routes/zero-web-download";
 import { zeroWebFileUrlRoutes } from "./routes/zero-web-file-url";
 import { workerRuntimeProbeRoutes } from "./routes/worker-runtime-probe";
+import { workerProductionReadinessRoutes } from "./routes/worker-production-readiness";
 
 export const ROUTES: readonly RouteEntry[] = [
   ...healthRoutes,
@@ -204,6 +205,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...desktopAuthRoutes,
   ...desktopUpdateRoutes,
   ...healthAuthProbeRoutes,
+  ...workerProductionReadinessRoutes,
   ...workerRuntimeProbeRoutes,
   ...githubOauthRoutes,
   ...userExportRoutes,

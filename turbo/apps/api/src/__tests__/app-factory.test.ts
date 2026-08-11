@@ -776,6 +776,7 @@ describe("createApp", () => {
     }
 
     it("rejects protected Worker requests without an Access assertion", async () => {
+      mockEnv("ENV", "preview");
       const response = await requestInWorkerInvocation("/health");
 
       expect(response.status).toBe(401);
@@ -785,6 +786,7 @@ describe("createApp", () => {
     });
 
     it("verifies Access assertions against the deploy-time key set", async () => {
+      mockEnv("ENV", "preview");
       const { privateKey, publicKey } = await generateKeyPair("RS256");
       const publicJwk = await exportJWK(publicKey);
       const issuer = "https://test.cloudflareaccess.com";
@@ -831,9 +833,53 @@ describe("createApp", () => {
     });
 
     it("keeps signed webhook paths reachable without an Access assertion", async () => {
+      mockEnv("ENV", "preview");
       const response = await requestInWorkerInvocation("/api/webhooks/clerk");
 
       expect(response.status).toBe(404);
+    });
+
+    it("keeps the production public Worker origin outside Cloudflare Access", async () => {
+      mockEnv("ENV", "production");
+      mockEnv("CF_API_PUBLIC_ORIGIN", "https://api.vm0.ai");
+      mockEnv(
+        "CF_API_PRODUCTION_CANDIDATE_ORIGIN",
+        "https://api-worker-candidate.vm0.ai",
+      );
+
+      const response = await requestInWorkerInvocation(
+        "https://api.vm0.ai/health",
+      );
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get("x-vm0-api-runtime")).toBe(
+        "cloudflare-worker",
+      );
+    });
+
+    it("protects the production candidate origin and rejects unknown Worker hosts", async () => {
+      mockEnv("ENV", "production");
+      mockEnv("CF_API_PUBLIC_ORIGIN", "https://api.vm0.ai");
+      mockEnv(
+        "CF_API_PRODUCTION_CANDIDATE_ORIGIN",
+        "https://api-worker-candidate.vm0.ai",
+      );
+
+      const candidate = await requestInWorkerInvocation(
+        "https://api-worker-candidate.vm0.ai/health",
+      );
+      expect(candidate.status).toBe(401);
+      await expect(candidate.json()).resolves.toStrictEqual({
+        error: "Cloudflare Access assertion required",
+      });
+
+      const unknown = await requestInWorkerInvocation(
+        "https://unexpected.vm0.ai/health",
+      );
+      expect(unknown.status).toBe(404);
+      await expect(unknown.json()).resolves.toStrictEqual({
+        error: "Not found",
+      });
     });
   });
 

@@ -16,12 +16,24 @@ fail() {
 
 target_commit=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 
+sha256_file() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    sha256sum "$1" | cut -d ' ' -f 1
+  else
+    shasum -a 256 "$1" | cut -d ' ' -f 1
+  fi
+}
+
+file_size() {
+  wc -c <"$1" | tr -d '[:space:]'
+}
+
 printf '<!doctype html>\n' >"${artifact_dir}/index.html"
 printf 'console.log("rollback");\n' >"${artifact_dir}/assets/app.js"
-index_sha=$(sha256sum "${artifact_dir}/index.html" | cut -d ' ' -f 1)
-index_size=$(stat -c '%s' "${artifact_dir}/index.html")
-asset_sha=$(sha256sum "${artifact_dir}/assets/app.js" | cut -d ' ' -f 1)
-asset_size=$(stat -c '%s' "${artifact_dir}/assets/app.js")
+index_sha=$(sha256_file "${artifact_dir}/index.html")
+index_size=$(file_size "${artifact_dir}/index.html")
+asset_sha=$(sha256_file "${artifact_dir}/assets/app.js")
+asset_size=$(file_size "${artifact_dir}/assets/app.js")
 jq -n \
   --arg commit_sha "$target_commit" \
   --arg index_sha "$index_sha" \
@@ -36,7 +48,7 @@ jq -n \
       {path: "assets/app.js", sha256: $asset_sha, size: $asset_size}
     ]
   }' >"${artifact_dir}/manifest.json"
-manifest_sha=$(sha256sum "${artifact_dir}/manifest.json" | cut -d ' ' -f 1)
+manifest_sha=$(sha256_file "${artifact_dir}/manifest.json")
 jq -n \
   --arg commit_sha "$target_commit" \
   --arg manifest_sha "$manifest_sha" \
@@ -85,6 +97,38 @@ if [[ "$*" == *"api.vercel.com/v6/deployments"* ]]; then
   exit 0
 fi
 
+if [[ "$*" == *"/workers/scripts/vm0-api-production-candidate/versions?deployable=true"* ]]; then
+  jq -n \
+    --arg sha "$TARGET_COMMIT" \
+    --argjson count "${MOCK_CF_CANDIDATE_VERSION_COUNT:-1}" \
+    '{
+      success: true,
+      result: {
+        items: [range(0; $count) | {
+          id: "11111111-2222-3333-4444-000000000001",
+          annotations: {"workers/tag": $sha}
+        }]
+      }
+    }'
+  exit 0
+fi
+
+if [[ "$*" == *"/workers/scripts/vm0-api-production/versions?deployable=true"* ]]; then
+  jq -n \
+    --arg sha "$TARGET_COMMIT" \
+    --argjson count "${MOCK_CF_VERSION_COUNT:-1}" \
+    '{
+      success: true,
+      result: {
+        items: [range(0; $count) | {
+          id: "11111111-2222-3333-4444-000000000000",
+          annotations: {"workers/tag": $sha}
+        }]
+      }
+    }'
+  exit 0
+fi
+
 if [ "${MOCK_RUNNER_ASSETS_VALID:-1}" = "1" ]; then
   jq -n '{assets: [
     {name: "runner-v1.2.3-aarch64-linux"},
@@ -130,7 +174,27 @@ case "$host" in
   *) exit 255 ;;
 esac
 SH
-chmod +x "${fake_bin}/git" "${fake_bin}/curl" "${fake_bin}/aws" "${fake_bin}/ssh"
+
+cat >"${fake_bin}/sha256sum" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+shasum -a 256 "$@"
+SH
+
+cat >"${fake_bin}/stat" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+[ "${1:-}" = "-c" ] && [ "${2:-}" = "%s" ] && [ "$#" -eq 3 ] || exit 2
+wc -c <"$3" | tr -d '[:space:]'
+printf '\n'
+SH
+chmod +x \
+  "${fake_bin}/git" \
+  "${fake_bin}/curl" \
+  "${fake_bin}/aws" \
+  "${fake_bin}/ssh" \
+  "${fake_bin}/sha256sum" \
+  "${fake_bin}/stat"
 
 run_resolver() {
   local output_file=$1
@@ -140,6 +204,8 @@ run_resolver() {
     PATH="${fake_bin}:$PATH" \
     HOME="${HOME:-/tmp}" \
     AWS_METAL_RUNNER_HOSTS=arm-1,x86-1 \
+    CLOUDFLARE_ACCOUNT_ID=test-account \
+    CLOUDFLARE_API_TOKEN=test-cloudflare-token \
     GH_TOKEN=test-github-token \
     GITHUB_OUTPUT="$output_file" \
     GITHUB_REPOSITORY=vm0-ai/vm0 \
@@ -170,6 +236,8 @@ output_file="${tmp_dir}/success.output"
 run_resolver "$output_file" >"${tmp_dir}/success.log"
 grep -qx "target_commit=${target_commit}" "$output_file" || fail "missing target commit output"
 grep -qx "api_deployment_url=https://api-0.vercel.app" "$output_file" || fail "missing API deployment output"
+grep -qx "api_worker_candidate_version_id=11111111-2222-3333-4444-000000000001" "$output_file" || fail "missing API Worker candidate version output"
+grep -qx "api_worker_version_id=11111111-2222-3333-4444-000000000000" "$output_file" || fail "missing API Worker version output"
 grep -qx "runner_version=1.2.3" "$output_file" || fail "missing Runner version output"
 runner_matrix=$(sed -n 's/^runner_matrix=//p' "$output_file")
 jq -e 'length == 2 and .[0].id == "arm64" and .[1].id == "x86_64"' >/dev/null <<<"$runner_matrix" || fail "unexpected Runner matrix"
@@ -188,6 +256,20 @@ fi
 : >"${tmp_dir}/boundaries.log"
 assert_failure "found 2" run_resolver "${tmp_dir}/multiple.output" MOCK_VERCEL_MATCH_COUNT=2
 [ ! -s "${tmp_dir}/multiple.output" ] || fail "ambiguous API resolution must not publish outputs"
+
+: >"${tmp_dir}/boundaries.log"
+assert_failure "deployable vm0-api-production version" run_resolver "${tmp_dir}/missing-worker.output" MOCK_CF_VERSION_COUNT=0
+[ ! -s "${tmp_dir}/missing-worker.output" ] || fail "missing API Worker version must not publish outputs"
+if grep -q '^aws ' "${tmp_dir}/boundaries.log"; then
+  fail "App preflight must not start after API Worker resolution failure"
+fi
+
+: >"${tmp_dir}/boundaries.log"
+assert_failure "deployable vm0-api-production-candidate version" run_resolver "${tmp_dir}/missing-worker-candidate.output" MOCK_CF_CANDIDATE_VERSION_COUNT=0
+[ ! -s "${tmp_dir}/missing-worker-candidate.output" ] || fail "missing API Worker candidate version must not publish outputs"
+if grep -q '^aws ' "${tmp_dir}/boundaries.log"; then
+  fail "App preflight must not start after API Worker candidate resolution failure"
+fi
 
 corrupt_artifact_dir="${tmp_dir}/corrupt-artifact"
 cp -a "$artifact_dir" "$corrupt_artifact_dir"

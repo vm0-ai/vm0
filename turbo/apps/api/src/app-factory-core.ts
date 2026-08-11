@@ -31,6 +31,7 @@ import {
   VERCEL_PROTECTION_BYPASS_HEADER,
 } from "./lib/preview-automation-bypass";
 import { now } from "./lib/time";
+import { workerIngressForUrl } from "./lib/worker-ingress";
 import { isSupportedWebClientVersion } from "./lib/web-client-compatibility";
 import { waitUntil } from "./signals/context/wait-until";
 import { honoSignalHandler } from "./signals/context/route";
@@ -63,6 +64,7 @@ const REQUEST_LOG_DATASET = "request-log";
 const ERROR_CHAIN_MAX_DEPTH = 32;
 const ERROR_SUMMARY_MAX_LENGTH = 240;
 const ERROR_SUMMARY_SOURCE_MAX_LENGTH = 4096;
+const API_RUNTIME_HEADER = "x-vm0-api-runtime";
 
 interface UnhandledRequestErrorLogFields {
   readonly type: typeof UNHANDLED_REQUEST_ERROR_TYPE;
@@ -347,10 +349,15 @@ async function cloudflareAccessAssertionMiddleware(
   context: Context,
   next: Next,
 ): Promise<Response | void> {
+  const ingress = workerIngressForUrl(context.req.url);
+  if (ingress === "unknown") {
+    return context.json({ error: "Not found" }, 404);
+  }
   if (
-    !currentInvocation() ||
+    ingress === "not-worker" ||
+    ingress === "production-public" ||
     isCorsPreflightRequest(context) ||
-    isPreviewAutomationBypassExemptPath(context)
+    (ingress === "preview" && isPreviewAutomationBypassExemptPath(context))
   ) {
     await next();
     return;
@@ -619,6 +626,18 @@ export function createAppWithRoutes({
 
   app.use("*", cloudflareAccessAssertionMiddleware);
   app.use("*", previewAutomationBypassMiddleware);
+
+  app.use("*", async (context, next) => {
+    await next();
+    context.header(
+      API_RUNTIME_HEADER,
+      currentInvocation()
+        ? "cloudflare-worker"
+        : optionalEnv("VERCEL")
+          ? "vercel"
+          : "node",
+    );
+  });
 
   // Browser cross-origin requests (e.g. https://app.vm0.ai -> api.vm0.ai). Must
   // run before the route handlers so OPTIONS preflight short-circuits without
