@@ -88,16 +88,16 @@ impl ActiveBudgetLease {
     }
 }
 
-/// Budget ownership after sandbox finalization but before completion is reported.
+/// Budget ownership after sandbox finalization but before runner-local settlement.
 ///
-/// This distinguishes a lease that completion must release from one already
+/// This distinguishes a lease that settlement must release from one already
 /// transferred to an accepted idle-pool entry.
 #[must_use]
 pub(super) enum BudgetOwnership {
-    /// The active job retains the lease through provider completion and active-status
-    /// removal, after which completion releases it.
+    /// The active job retains the lease until provider completion and active-status
+    /// settlement have both finished, after which settlement releases it.
     Active(ActiveBudgetLease),
-    /// The idle pool accepted the sandbox and its lease, so completion performs no
+    /// The idle pool accepted the sandbox and its lease, so settlement performs no
     /// release. Reuse transfers the lease; idle destruction drops it.
     IdleOwned,
 }
