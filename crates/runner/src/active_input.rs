@@ -271,6 +271,10 @@ async fn read_api_active_input(
                 .await;
             match result {
                 Ok(ReserveActiveInputResult::RouteUnavailable) => {
+                    // A newly deployed Runner can reach an API version from before the
+                    // reserve route during the Runner/API rollout and rollback window
+                    // (up to two hours). Remove this legacy selection after that window
+                    // closes and production drain evidence satisfies #26061.
                     source.mode = ApiActiveInputMode::Legacy;
                     read_legacy_api_active_input(source).await
                 }
