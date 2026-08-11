@@ -1904,10 +1904,10 @@ jobs:
       (github.event_name == 'push' || needs.deploy-stripe-listener.result == 'success') &&
       needs.deploy-runner-start.result == 'success'
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           submodules: recursive
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 22
       - name: Install pnpm
@@ -2016,9 +2016,11 @@ jobs:
           simulator_url="$(bash scripts/tunnel.sh "$simulator_port")"
           curl -fsS "${simulator_url}/health" >/dev/null
 
-          echo "E2E_PROVIDER_SIMULATOR_URL=$simulator_url" >> "$GITHUB_ENV"
-          echo "E2E_PROVIDER_SIMULATOR_CONTROL_URL=http://127.0.0.1:${simulator_port}" >> "$GITHUB_ENV"
-          echo "E2E_PROVIDER_SIMULATOR_CONTROL_TOKEN=$control_token" >> "$GITHUB_ENV"
+          {
+            echo "E2E_PROVIDER_SIMULATOR_URL=$simulator_url"
+            echo "E2E_PROVIDER_SIMULATOR_CONTROL_URL=http://127.0.0.1:${simulator_port}"
+            echo "E2E_PROVIDER_SIMULATOR_CONTROL_TOKEN=$control_token"
+          } >> "$GITHUB_ENV"
       - name: Run runner API E2E tests
         run: cd e2e && pnpm exec playwright test --config playwright/playwright.config.ts --project runner-api
         env:
@@ -2056,7 +2058,7 @@ jobs:
           fi
       - name: Upload runner API Playwright report
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: runner-api-playwright-report
           path: |

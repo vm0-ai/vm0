@@ -1499,7 +1499,6 @@ async function openAccount(
     extraHTTPHeaders: bypassSecret
       ? { "x-vercel-protection-bypass": bypassSecret }
       : undefined,
-    ignoreHTTPSErrors: true,
   });
   await setupClerkTestingToken({ context });
   const page = await context.newPage();
