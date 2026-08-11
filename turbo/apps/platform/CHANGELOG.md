@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.729.1](https://github.com/vm0-ai/vm0/compare/app-v0.729.0...app-v0.729.1) (2026-08-11)
+
+
+### Bug Fixes
+
+* **api:** keep chat event cursors consistent on conflicts ([#26402](https://github.com/vm0-ai/vm0/issues/26402)) ([23c508e](https://github.com/vm0-ai/vm0/commit/23c508e72aa55f4b015924a8cd942085a109cb51))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.318.0
+    * @vm0/core bumped to 8.546.1
+
 ## [0.729.0](https://github.com/vm0-ai/vm0/compare/app-v0.728.0...app-v0.729.0) (2026-08-11)
 
 
