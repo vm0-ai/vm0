@@ -10,22 +10,25 @@ import {
   type RunnerTestAccounts,
 } from "./lib/clerk-api";
 
-const command = process.argv[2];
-if (command !== "prepare" && command !== "cleanup") {
-  throw new Error("Usage: runner-account.ts <prepare|cleanup>");
-}
+async function main(): Promise<void> {
+  const command = process.argv[2];
+  if (command !== "prepare" && command !== "cleanup") {
+    throw new Error("Usage: runner-account.ts <prepare|cleanup>");
+  }
 
-const jobRef = requiredEnvironmentVariable("JOB_REF");
-const accounts = runnerTestAccounts();
+  const jobRef = requiredEnvironmentVariable("JOB_REF");
+  const accounts = runnerTestAccounts();
 
-if (command === "prepare") {
-  await prepareRunnerAccounts(accounts);
-} else {
-  await cleanupRunnerAccounts(accounts);
+  if (command === "prepare") {
+    await prepareRunnerAccounts(accounts, jobRef);
+  } else {
+    await cleanupRunnerAccounts(accounts);
+  }
 }
 
 async function prepareRunnerAccounts(
   runnerAccounts: RunnerTestAccounts,
+  jobRef: string,
 ): Promise<void> {
   await deleteRunnerUsers(runnerAccounts);
 
@@ -85,3 +88,8 @@ function requiredEnvironmentVariable(name: string): string {
   }
   return value;
 }
+
+void main().catch((error: unknown) => {
+  console.error(error);
+  process.exitCode = 1;
+});
