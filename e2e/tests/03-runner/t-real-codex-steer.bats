@@ -5,6 +5,8 @@
 load '../../helpers/setup'
 load '../../helpers/runner-chat'
 
+BATS_TEST_TIMEOUT=450
+
 setup_file() {
     local credentials="/tmp/e2e-api-credentials-runner-real-codex.json"
     export E2E_API_TOKEN E2E_API_URL
@@ -40,7 +42,7 @@ run_real_codex_steer() {
         "$steer_prompt" \
         "gpt-5.6-luna" \
         "$expected_output" \
-        180)" || return 1
+        90)" || return 1
     run_id="$(jq -er '.runId' <<< "$steer_result")" || return 1
     events_response="$(_wait_for_runner_codex_events \
         "$run_id" \
@@ -52,7 +54,7 @@ run_real_codex_steer() {
         "$run_id" \
         "Reply only $after_complete_output" \
         "$after_complete_output" \
-        180)" || return 1
+        90)" || return 1
     successor_run_id="$(jq -er '.runId' <<< "$successor_result")" || return 1
     successor_events_response="$(_wait_for_runner_codex_events \
         "$successor_run_id" \
