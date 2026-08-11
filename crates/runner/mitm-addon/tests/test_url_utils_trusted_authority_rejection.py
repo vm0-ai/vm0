@@ -498,3 +498,54 @@ class TestTrustedAuthorityRejection:
             request_port=request_port,
             fallback_url=expected_fallback_url,
         )
+
+    @pytest.mark.parametrize(
+        ("request_authority", "expected_reason"),
+        [
+            pytest.param(
+                "attacker.example.com",
+                "authority_mismatch",
+                id="host-mismatch",
+            ),
+            pytest.param(
+                "api.github.com:bad",
+                "invalid_authority",
+                id="malformed-port",
+            ),
+            pytest.param(
+                "api.github.com:444",
+                "authority_port_mismatch",
+                id="port-mismatch",
+            ),
+        ],
+    )
+    def test_rejects_invalid_http1_request_target_authority(
+        self,
+        real_flow,
+        headers,
+        request_authority,
+        expected_reason,
+    ):
+        flow = real_flow(
+            with_response=False,
+            host="203.0.113.10",
+            sni="api.github.com",
+            path="/repos",
+            request_headers=headers(("Host", "api.github.com")),
+        )
+        flow.request.authority = request_authority
+
+        with pytest.raises(AuthorityValidationError) as exc_info:
+            get_trusted_authority(flow)
+
+        assert flow.request.http_version == "HTTP/1.1"
+        assert flow.request.authority == request_authority
+        _assert_authority_error(
+            exc_info,
+            reason=expected_reason,
+            sni="api.github.com",
+            request_host="203.0.113.10",
+            host_header="api.github.com",
+            request_port=443,
+            fallback_url="https://api.github.com/repos",
+        )

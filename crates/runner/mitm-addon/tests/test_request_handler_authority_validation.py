@@ -235,6 +235,65 @@ async def test_valid_pseudo_authority_allows_firewall_auth(
     assert flow.request.headers["Authorization"] == "Bearer x"
 
 
+@pytest.mark.parametrize(
+    ("request_port", "request_authority", "expected_original_url"),
+    [
+        pytest.param(
+            443,
+            "API.GITHUB.COM.",
+            "https://api.github.com/repos",
+            id="normalized-host",
+        ),
+        pytest.param(
+            8443,
+            "api.github.com:8443",
+            "https://api.github.com:8443/repos",
+            id="matching-port",
+        ),
+    ],
+)
+async def test_valid_http1_request_target_authority_allows_firewall_auth(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    fake_firewall_headers,
+    headers,
+    request_port,
+    request_authority,
+    expected_original_url,
+):
+    firewall_base = (
+        "https://api.github.com"
+        if request_port == 443
+        else f"https://api.github.com:{request_port}"
+    )
+    reg_path = _write_github_firewall_registry(tmp_path, base=firewall_base)
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="203.0.113.10",
+        port=request_port,
+        sni="api.github.com",
+        path="/repos",
+        request_headers=headers(("Host", "api.github.com")),
+    )
+    flow.request.authority = request_authority
+    bind_flow_upstream(flow, port=request_port)
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers(),
+    ):
+        await mitm_addon.request(flow)
+
+    assert flow.response is None
+    assert flow.request.http_version == "HTTP/1.1"
+    assert flow.request.authority == request_authority
+    assert flow.metadata[metadata_keys.FIREWALL_BASE] == firewall_base
+    assert flow.metadata[metadata_keys.ORIGINAL_URL] == expected_original_url
+    assert flow.request.headers["Authorization"] == "Bearer x"
+
+
 @pytest.mark.parametrize("http_version", ["HTTP/2.0", "HTTP/3"])
 @pytest.mark.parametrize(
     ("pseudo_authority", "regular_host"),
@@ -288,6 +347,68 @@ async def test_rejects_disagreement_between_pseudo_authority_and_host(
     assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "DENY"
     assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "authority_mismatch"
     assert flow.metadata[metadata_keys.ORIGINAL_URL] == "https://api.github.com/repos"
+    auth_fetch.assert_not_called()
+    assert "Authorization" not in flow.request.headers
+
+
+@pytest.mark.parametrize(
+    ("request_authority", "expected_reason"),
+    [
+        pytest.param(
+            "attacker.example.com",
+            "authority_mismatch",
+            id="host-mismatch",
+        ),
+        pytest.param(
+            "api.github.com:bad",
+            "invalid_authority",
+            id="malformed-port",
+        ),
+        pytest.param(
+            "api.github.com:444",
+            "authority_port_mismatch",
+            id="port-mismatch",
+        ),
+    ],
+)
+async def test_rejects_invalid_http1_request_target_authority_before_firewall_auth(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    fake_firewall_headers,
+    headers,
+    request_authority,
+    expected_reason,
+):
+    reg_path = _write_github_firewall_registry(tmp_path)
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="203.0.113.10",
+        sni="api.github.com",
+        path="/repos",
+        request_headers=headers(("Host", "api.github.com")),
+    )
+    flow.request.authority = request_authority
+    original_headers = tuple(flow.request.headers.fields)
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        await mitm_addon.request(flow)
+
+    assert flow.response is not None
+    assert flow.response.status_code == 403
+    body = json.loads(flow.response.content)
+    assert body["error"] == expected_reason
+    assert body["sni"] == "api.github.com"
+    assert body["host_header"] == "api.github.com"
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "DENY"
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == expected_reason
+    assert flow.metadata[metadata_keys.ORIGINAL_URL] == "https://api.github.com/repos"
+    assert tuple(flow.request.headers.fields) == original_headers
+    assert flow.request.authority == request_authority
     auth_fetch.assert_not_called()
     assert "Authorization" not in flow.request.headers
 

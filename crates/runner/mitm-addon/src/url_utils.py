@@ -46,7 +46,7 @@ _VALID_AUTH_BASE_SCHEME = "https"
 class TrustedAuthority:
     """Authority components trusted by firewall/auth decisions.
 
-    For HTTPS, ``host`` is the normalized TLS SNI after Host/``:authority``
+    For HTTPS, ``host`` is the normalized TLS SNI after HTTP request authority
     validation. For non-HTTPS traffic, ``host`` is the transparent destination
     because there is no SNI binding. ``url`` is the reconstructed URL used by
     firewall matching and credential injection.
@@ -182,11 +182,11 @@ def get_trusted_authority(flow: http.HTTPFlow) -> TrustedAuthority:
 
     In transparent mode, mitmproxy's request host is the ``SO_ORIGINAL_DST``
     destination. For HTTPS, the TLS SNI is the domain authority used for
-    upstream TLS, while Host/``:authority`` values are only client assertions.
-    Require every HTTP authority to agree with SNI before using the URL for
-    firewall matching or credential injection. For non-HTTPS traffic there is
-    no SNI binding, so use the transparent destination host and do not trust
-    Host.
+    upstream TLS, while Host, HTTP/1 request-target authority, and HTTP/2/3
+    ``:authority`` values are only client assertions. Require every HTTP
+    authority to agree with SNI before using the URL for firewall matching or
+    credential injection. For non-HTTPS traffic there is no SNI binding, so use
+    the transparent destination host and do not trust Host.
 
     HTTPS validation failures raise ``AuthorityValidationError`` with one of
     the documented ``AuthorityValidationReason`` values.
@@ -256,12 +256,12 @@ def get_trusted_authority(flow: http.HTTPFlow) -> TrustedAuthority:
         )
 
     authorities = [host_header]
-    if (
-        (flow.request.is_http2 or flow.request.is_http3)
-        and flow.request.authority
-        and raw_host_headers
-    ):
-        authorities.append(raw_host_headers[0])
+    if flow.request.authority:
+        if flow.request.is_http2 or flow.request.is_http3:
+            if raw_host_headers:
+                authorities.append(raw_host_headers[0])
+        else:
+            authorities.append(flow.request.authority)
 
     for authority in authorities:
         try:

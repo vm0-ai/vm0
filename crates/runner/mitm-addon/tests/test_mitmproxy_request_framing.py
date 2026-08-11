@@ -14,6 +14,7 @@ from h2.connection import H2Connection
 from mitmproxy import connection, http
 from mitmproxy.addons.proxyserver import Proxyserver
 from mitmproxy.flow import Error
+from mitmproxy.net.http import http1
 from mitmproxy.proxy import commands, events
 from mitmproxy.proxy.context import Context
 from mitmproxy.proxy.layers.http import (
@@ -159,6 +160,9 @@ def _start_http_layer(
     *,
     alpn: bytes,
     host: str = _PLACEHOLDER_HOST,
+    server_host: str | None = None,
+    server_port: int = 443,
+    mode: HTTPMode = HTTPMode.regular,
 ) -> tuple[connection.Client, HttpLayer]:
     client = connection.Client(
         peername=(_CLIENT_IP, 12345),
@@ -169,8 +173,10 @@ def _start_http_layer(
         sni=host,
     )
     context = Context(client, addon_context.options)
-    context.server.address = (host, 443)
-    http_layer = HttpLayer(context, HTTPMode.regular)
+    context.server.address = (server_host or host, server_port)
+    if mode is HTTPMode.transparent:
+        context.server.tls = True
+    http_layer = HttpLayer(context, mode)
     list(http_layer.handle_event(events.Start()))
     return client, http_layer
 
@@ -246,6 +252,38 @@ def _start_http1_request(
             events.DataReceived(
                 client,
                 f"{method} / HTTP/1.1\r\nHost: placeholder.example.com\r\n\r\n".encode(),
+            )
+        )
+    )
+    request_headers_hook = next(
+        command for command in commands if isinstance(command, HttpRequestHeadersHook)
+    )
+    return http_layer, request_headers_hook
+
+
+def _start_transparent_http1_absolute_request(
+    addon_context: taddons.context,
+    *,
+    authority: str,
+    host: str = "api.github.com",
+    original_host: str = "203.0.113.10",
+    port: int = 443,
+    path: str = "/repos",
+) -> tuple[HttpLayer, HttpRequestHeadersHook]:
+    client, http_layer = _start_http_layer(
+        addon_context,
+        alpn=b"http/1.1",
+        host=host,
+        server_host=original_host,
+        server_port=port,
+        mode=HTTPMode.transparent,
+    )
+
+    commands = list(
+        http_layer.handle_event(
+            events.DataReceived(
+                client,
+                f"GET https://{authority}{path} HTTP/1.1\r\nHost: {host}\r\n\r\n".encode(),
             )
         )
     )
@@ -457,6 +495,119 @@ async def test_http2_duplicate_host_is_rejected_before_auth_or_http1_downgrade(
         and isinstance(command.connection, connection.Server)
         for command in request_commands
     )
+
+
+async def test_http1_absolute_form_authority_is_rejected_before_auth_or_forwarding(
+    tmp_path: Path,
+    fake_firewall_headers,
+) -> None:
+    registry_path = _write_github_firewall_registry(
+        tmp_path,
+        base="https://api.github.com",
+        vm_fields={"captureNetworkBodies": True},
+    )
+
+    with (
+        patch.object(mitm_addon, "__file__", str(tmp_path / "mitm_addon.py")),
+        taddons.context(Proxyserver(), mitm_addon) as addon_context,
+        fake_firewall_headers(headers={"Authorization": "Bearer managed-secret"}) as get_headers,
+    ):
+        addon_context.options.update(
+            vm0_api_url="https://api.vm0.ai",
+            vm0_proxy_registry_path=str(registry_path),
+        )
+        http_layer, request_headers_hook = _start_transparent_http1_absolute_request(
+            addon_context,
+            authority="attacker.example",
+        )
+        flow = request_headers_hook.flow
+        original_head = http1.assemble_request_head(flow.request)
+
+        assert flow.request.scheme == "https"
+        assert flow.request.host == "203.0.113.10"
+        assert flow.request.port == 443
+        assert flow.request.host_header == "api.github.com"
+        assert flow.request.authority == "attacker.example"
+
+        await addon_context.master.addons.invoke_addon(mitm_addon, request_headers_hook)
+
+        get_headers.assert_not_awaited()
+        assert http1.assemble_request_head(flow.request) == original_head
+
+        header_commands = list(
+            http_layer.handle_event(events.HookCompleted(request_headers_hook, None))
+        )
+        request_hook = next(
+            command for command in header_commands if isinstance(command, HttpRequestHook)
+        )
+        await addon_context.master.addons.invoke_addon(mitm_addon, request_hook)
+
+        request_commands = list(http_layer.handle_event(events.HookCompleted(request_hook, None)))
+
+    assert flow.response is not None
+    assert flow.response.status_code == 403
+    assert flow.response.content is not None
+    assert json.loads(flow.response.content)["error"] == "authority_mismatch"
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "authority_mismatch"
+    assert flow.metadata[metadata_keys.ORIGINAL_URL] == "https://api.github.com/repos"
+    assert http1.assemble_request_head(flow.request) == original_head
+    assert "Authorization" not in flow.request.headers
+    get_headers.assert_not_awaited()
+    assert not any(
+        isinstance(command, (commands.OpenConnection, commands.SendData))
+        and isinstance(command.connection, connection.Server)
+        for command in request_commands
+    )
+
+
+async def test_matching_http1_absolute_form_authority_is_forwardable_with_auth(
+    tmp_path: Path,
+    fake_firewall_headers,
+) -> None:
+    registry_path = _write_github_firewall_registry(
+        tmp_path,
+        base="https://api.github.com",
+        vm_fields={"captureNetworkBodies": True},
+    )
+
+    with (
+        patch.object(mitm_addon, "__file__", str(tmp_path / "mitm_addon.py")),
+        taddons.context(Proxyserver(), mitm_addon) as addon_context,
+        fake_firewall_headers(headers={"Authorization": "Bearer managed-secret"}) as get_headers,
+    ):
+        addon_context.options.update(
+            vm0_api_url="https://api.vm0.ai",
+            vm0_proxy_registry_path=str(registry_path),
+        )
+        http_layer, request_headers_hook = _start_transparent_http1_absolute_request(
+            addon_context,
+            authority="API.GITHUB.COM.:443",
+        )
+        flow = request_headers_hook.flow
+
+        assert flow.request.host == "203.0.113.10"
+        assert flow.request.host_header == "api.github.com"
+        assert flow.request.authority == "API.GITHUB.COM.:443"
+
+        await addon_context.master.addons.invoke_addon(mitm_addon, request_headers_hook)
+        header_commands = list(
+            http_layer.handle_event(events.HookCompleted(request_headers_hook, None))
+        )
+        request_hook = next(
+            command for command in header_commands if isinstance(command, HttpRequestHook)
+        )
+        await addon_context.master.addons.invoke_addon(mitm_addon, request_hook)
+        list(http_layer.handle_event(events.HookCompleted(request_hook, None)))
+
+    assert flow.response is None
+    assert flow.request.authority == "API.GITHUB.COM.:443"
+    assert flow.metadata[metadata_keys.ORIGINAL_URL] == "https://api.github.com/repos"
+    assert flow.request.headers["Authorization"] == "Bearer managed-secret"
+    assert get_headers.await_count == 1
+    forwarded_head = http1.assemble_request_head(flow.request)
+    assert forwarded_head.startswith(b"GET https://API.GITHUB.COM.:443/repos HTTP/1.1\r\n")
+    assert b"Host: api.github.com\r\n" in forwarded_head
+    assert b"Authorization: Bearer managed-secret\r\n" in forwarded_head
 
 
 async def test_http2_fresh_catalog_hit_completes_without_provider_connection(
