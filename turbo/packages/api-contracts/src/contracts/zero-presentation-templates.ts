@@ -99,7 +99,17 @@ const packagePathSchema = z.enum([
 
 const packageFileSchema = z.object({
   path: packagePathSchema,
-  content: z.string().max(MAX_PRESENTATION_TEMPLATE_PACKAGE_FILE_BYTES),
+  content: z.string().refine(
+    (content) => {
+      return (
+        new TextEncoder().encode(content).byteLength <=
+        MAX_PRESENTATION_TEMPLATE_PACKAGE_FILE_BYTES
+      );
+    },
+    {
+      message: `Package files must be ${MAX_PRESENTATION_TEMPLATE_PACKAGE_FILE_BYTES.toString()} UTF-8 bytes or smaller`,
+    },
+  ),
 });
 
 const publishPackageBodySchema = z
@@ -129,12 +139,6 @@ const mutationResponseSchema = z.object({
   status: presentationTemplateStatusSchema,
 });
 
-const commonErrors = {
-  401: apiErrorSchema,
-  403: apiErrorSchema,
-  500: apiErrorSchema,
-} as const;
-
 export const zeroPresentationTemplatesContract = c.router({
   list: {
     method: "GET",
@@ -142,7 +146,9 @@ export const zeroPresentationTemplatesContract = c.router({
     headers: authHeadersSchema,
     responses: {
       200: z.array(presentationTemplateSummarySchema),
-      ...commonErrors,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      500: apiErrorSchema,
     },
     summary: "List presentation templates owned by the current user",
   },
@@ -159,7 +165,9 @@ export const zeroPresentationTemplatesContract = c.router({
       409: apiErrorSchema,
       429: apiErrorSchema,
       503: apiErrorSchema,
-      ...commonErrors,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      500: apiErrorSchema,
     },
     summary: "Create and start importing a presentation template",
   },
@@ -171,7 +179,9 @@ export const zeroPresentationTemplatesContract = c.router({
     responses: {
       200: presentationTemplateDetailSchema,
       404: apiErrorSchema,
-      ...commonErrors,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      500: apiErrorSchema,
     },
     summary: "Get a presentation template",
   },
@@ -184,7 +194,9 @@ export const zeroPresentationTemplatesContract = c.router({
     responses: {
       200: presentationTemplateSummarySchema,
       404: apiErrorSchema,
-      ...commonErrors,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      500: apiErrorSchema,
     },
     summary: "Rename a presentation template",
   },
@@ -194,7 +206,13 @@ export const zeroPresentationTemplatesContract = c.router({
     pathParams: presentationTemplateIdParamsSchema,
     headers: authHeadersSchema,
     body: c.noBody(),
-    responses: { 204: c.noBody(), 404: apiErrorSchema, ...commonErrors },
+    responses: {
+      204: c.noBody(),
+      404: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      500: apiErrorSchema,
+    },
     summary: "Delete a presentation template",
   },
   source: {
@@ -205,7 +223,9 @@ export const zeroPresentationTemplatesContract = c.router({
     responses: {
       200: sourceResponseSchema,
       404: apiErrorSchema,
-      ...commonErrors,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      500: apiErrorSchema,
     },
     summary: "Prepare a presentation template source download",
   },
@@ -219,7 +239,9 @@ export const zeroPresentationTemplatesContract = c.router({
       200: z.object({ uploads: z.array(pageUploadSchema) }),
       404: apiErrorSchema,
       409: apiErrorSchema,
-      ...commonErrors,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      500: apiErrorSchema,
     },
     summary: "Prepare direct page image uploads",
   },
@@ -234,7 +256,9 @@ export const zeroPresentationTemplatesContract = c.router({
       400: apiErrorSchema,
       404: apiErrorSchema,
       409: apiErrorSchema,
-      ...commonErrors,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      500: apiErrorSchema,
     },
     summary: "Commit uploaded page images",
   },
@@ -246,9 +270,12 @@ export const zeroPresentationTemplatesContract = c.router({
     body: publishPackageBodySchema,
     responses: {
       200: mutationResponseSchema,
+      400: apiErrorSchema,
       404: apiErrorSchema,
       409: apiErrorSchema,
-      ...commonErrors,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      500: apiErrorSchema,
     },
     summary: "Publish a completed presentation template package",
   },
@@ -262,7 +289,9 @@ export const zeroPresentationTemplatesContract = c.router({
       200: mutationResponseSchema,
       404: apiErrorSchema,
       409: apiErrorSchema,
-      ...commonErrors,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      500: apiErrorSchema,
     },
     summary: "Mark a presentation template import as failed",
   },

@@ -21,6 +21,10 @@ import {
   handleMorningBriefEmailInternalCallback$,
 } from "./internal-morning-brief-run-callback.service";
 import {
+  handlePresentationTemplateImportInternalCallback,
+  handlePresentationTemplateImportInternalCallback$,
+} from "./internal-presentation-template-import-run-callback.service";
+import {
   handleFeishuOrgInternalCallback$,
   handleFeishuOrgInternalCallbackWithoutCcstate,
 } from "./internal-feishu-org-run-callback.service";
@@ -159,6 +163,13 @@ const dispatchInternalCallback$ = command(
       case "morning-brief:email": {
         return await set(
           handleMorningBriefEmailInternalCallback$,
+          input.envelope,
+          signal,
+        );
+      }
+      case "presentation-template:import": {
+        return await set(
+          handlePresentationTemplateImportInternalCallback$,
           input.envelope,
           signal,
         );
@@ -562,6 +573,12 @@ async function dispatchInternalCallbackWithoutCcstate(
     }
     case "morning-brief:email": {
       return await handleMorningBriefEmailInternalCallback(
+        input.db,
+        callbackEnvelope(input),
+      );
+    }
+    case "presentation-template:import": {
+      return await handlePresentationTemplateImportInternalCallback(
         input.db,
         callbackEnvelope(input),
       );

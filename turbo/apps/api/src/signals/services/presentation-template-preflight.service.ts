@@ -34,7 +34,10 @@ function failure(
 }
 
 function normalizedContentType(contentType: string): string {
-  return contentType.split(";", 1)[0]?.trim().toLowerCase() ?? "";
+  const separator = contentType.indexOf(";");
+  return (separator === -1 ? contentType : contentType.slice(0, separator))
+    .trim()
+    .toLowerCase();
 }
 
 function extensionOf(filename: string): string {

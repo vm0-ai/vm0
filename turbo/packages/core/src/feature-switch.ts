@@ -326,6 +326,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Cold-start chat threads from R2 snapshot objects plus the raw-row tail endpoint instead of paging the full history from Postgres.",
     enabled: false,
   },
+  [FeatureSwitchKey.PresentationTemplates]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Enable owner-scoped presentation template imports and catalog APIs.",
+    enabled: false,
+  },
   [FeatureSwitchKey.UsagePackPlans]: {
     maintainer: "yuma@vm0.ai",
     description:

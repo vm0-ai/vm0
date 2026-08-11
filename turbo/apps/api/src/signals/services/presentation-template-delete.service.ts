@@ -1,19 +1,15 @@
-import {
-  getPresentationTemplateStorageName,
-  VOLUME_ORG_USER_ID,
-} from "@vm0/core/storage-names";
 import { presentationTemplates } from "@vm0/db/schema/presentation-template";
-import { storages } from "@vm0/db/schema/storage";
 import { command } from "ccstate";
 import { and, eq } from "drizzle-orm";
 
-import { env } from "../../lib/env";
+import { nowDate } from "../../lib/time";
 import { writeDb$ } from "../external/db";
-import { deleteS3Objects, listS3ObjectsUnderPrefix } from "../external/s3";
+import { deletePresentationTemplatePages$ } from "./presentation-template-page.service";
+import { cleanupPresentationTemplatePackage$ } from "./presentation-template-package.service";
 
 export const deletePresentationTemplate$ = command(
   async (
-    { get, set },
+    { set },
     args: {
       readonly orgId: string;
       readonly ownerUserId: string;
@@ -22,7 +18,7 @@ export const deletePresentationTemplate$ = command(
     signal: AbortSignal,
   ): Promise<boolean> => {
     const writeDb = set(writeDb$);
-    const result = await writeDb.transaction(async (tx) => {
+    const template = await writeDb.transaction(async (tx) => {
       const [template] = await tx
         .select({
           id: presentationTemplates.id,
@@ -36,62 +32,48 @@ export const deletePresentationTemplate$ = command(
             eq(presentationTemplates.ownerUserId, args.ownerUserId),
           ),
         )
+        .for("update")
         .limit(1);
       if (!template) {
-        return { deleted: false as const };
+        return null;
       }
-
       await tx
-        .delete(presentationTemplates)
+        .update(presentationTemplates)
+        .set({
+          status: "failed",
+          updatedAt: nowDate(),
+          updatedBy: args.ownerUserId,
+        })
         .where(eq(presentationTemplates.id, template.id));
-
-      const [storage] = await tx
-        .select({ id: storages.id, s3Prefix: storages.s3Prefix })
-        .from(storages)
-        .where(
-          and(
-            eq(storages.orgId, args.orgId),
-            eq(storages.userId, VOLUME_ORG_USER_ID),
-            eq(storages.name, getPresentationTemplateStorageName(template.id)),
-          ),
-        )
-        .limit(1);
-      if (storage) {
-        await tx.delete(storages).where(eq(storages.id, storage.id));
-      }
-      return {
-        deleted: true as const,
-        pageKeys: template.pageKeys,
-        storagePrefix: storage?.s3Prefix ?? null,
-      };
+      return template;
     });
     signal.throwIfAborted();
-    if (!result.deleted) {
+    if (!template) {
       return false;
     }
 
-    if (result.pageKeys.length > 0) {
-      await get(
-        deleteS3Objects(env("R2_USER_ARTIFACTS_BUCKET_NAME"), result.pageKeys),
-      );
-      signal.throwIfAborted();
-    }
-    if (result.storagePrefix) {
-      const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
-      const objects = await get(
-        listS3ObjectsUnderPrefix(bucket, result.storagePrefix),
-      );
-      signal.throwIfAborted();
-      await get(
-        deleteS3Objects(
-          bucket,
-          objects.map((object) => {
-            return object.key;
-          }),
+    await set(
+      deletePresentationTemplatePages$,
+      { templateId: template.id, storedKeys: template.pageKeys },
+      signal,
+    );
+    await set(
+      cleanupPresentationTemplatePackage$,
+      { orgId: args.orgId, templateId: template.id },
+      signal,
+    );
+    const [deleted] = await writeDb
+      .delete(presentationTemplates)
+      .where(
+        and(
+          eq(presentationTemplates.id, template.id),
+          eq(presentationTemplates.orgId, args.orgId),
+          eq(presentationTemplates.ownerUserId, args.ownerUserId),
+          eq(presentationTemplates.status, "failed"),
         ),
-      );
-      signal.throwIfAborted();
-    }
-    return true;
+      )
+      .returning({ id: presentationTemplates.id });
+    signal.throwIfAborted();
+    return deleted !== undefined;
   },
 );

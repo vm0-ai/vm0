@@ -3,6 +3,7 @@ export const internalRunCallbackKinds = [
   "chat",
   "github:chat",
   "morning-brief:email",
+  "presentation-template:import",
   "slack:chat",
   "feishu:chat",
   "teams:chat",
@@ -41,6 +42,7 @@ function isInternalRunCallbackKind(
     case "chat":
     case "github:chat":
     case "morning-brief:email":
+    case "presentation-template:import":
     case "slack:chat":
     case "feishu:chat":
     case "teams:chat":

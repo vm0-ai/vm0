@@ -1,5 +1,3 @@
-import { randomUUID } from "node:crypto";
-
 import {
   DeleteObjectsCommand,
   GetObjectCommand,
@@ -7,18 +5,25 @@ import {
   ListObjectsV2Command,
   PutObjectCommand,
 } from "@aws-sdk/client-s3";
-import { zeroPresentationTemplatesContract } from "@vm0/api-contracts/contracts/zero-presentation-templates";
+import {
+  MAX_PRESENTATION_TEMPLATE_PACKAGE_FILE_BYTES,
+  zeroPresentationTemplatesContract,
+} from "@vm0/api-contracts/contracts/zero-presentation-templates";
 import { zeroUploadsContract } from "@vm0/api-contracts/contracts/zero-uploads";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import AdmZip from "adm-zip";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
-import { mockEnv } from "../../../lib/env";
-import { now, nowDate } from "../../../lib/time";
-import { signSandboxJwtForTests } from "../../auth/tokens";
+import { mockEnv, mockOptionalEnv } from "../../../lib/env";
+import { nowDate } from "../../../lib/time";
+import { flushWaitUntilForTest } from "../../context/wait-until";
+import { createDeferredPromise } from "../../utils";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createRunsApi } from "./helpers/api-bdd-runs";
+import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
+import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { zeroPresentationTemplatesRoutes } from "../zero-presentation-templates";
 import { zeroUploadsPrepareRoutes } from "../zero-uploads-prepare";
@@ -26,6 +31,7 @@ import { zeroUploadsPrepareRoutes } from "../zero-uploads-prepare";
 const context = testContext();
 const bdd = createBddApi(context);
 const runs = createRunsApi(context);
+const webhooks = createWebhookCallbackApi(context);
 const mocks = createZeroRouteMocks(context);
 const ARTIFACT_BUCKET = "presentation-template-artifacts-test";
 const STORAGE_BUCKET = "test-user-storages";
@@ -38,6 +44,8 @@ interface StoredObject {
   readonly metadata: Readonly<Record<string, string>>;
   readonly lastModified: Date;
 }
+
+type Deferred = ReturnType<typeof createDeferredPromise<void>>;
 
 function commandInput(command: unknown): Record<string, unknown> {
   if (
@@ -142,14 +150,24 @@ function deleteStoredObjects(
 
 function installS3Fixture() {
   const objects = new Map<string, StoredObject>();
+  let storagePutPause:
+    | { readonly started: Deferred; readonly released: Deferred }
+    | undefined;
+  let deleteFailuresRemaining = 0;
 
-  context.mocks.s3.send.mockImplementation((command: unknown) => {
+  context.mocks.s3.send.mockImplementation(async (command: unknown) => {
     const input = commandInput(command);
     const bucket = typeof input.Bucket === "string" ? input.Bucket : "";
     const key = typeof input.Key === "string" ? input.Key : "";
     const id = objectId(bucket, key);
 
     if (command instanceof PutObjectCommand) {
+      if (bucket === STORAGE_BUCKET && storagePutPause) {
+        if (!storagePutPause.started.settled()) {
+          storagePutPause.started.resolve();
+        }
+        await storagePutPause.released.promise;
+      }
       objects.set(id, {
         body: bodyBuffer(input.Body),
         contentType:
@@ -160,43 +178,47 @@ function installS3Fixture() {
             : {},
         lastModified: nowDate(),
       });
-      return Promise.resolve({});
+      return {};
     }
     if (command instanceof ListObjectsV2Command) {
       const prefix = typeof input.Prefix === "string" ? input.Prefix : "";
-      return Promise.resolve({
+      return {
         Contents: listStoredObjects(objects, bucket, prefix),
-      });
+      };
     }
     if (command instanceof HeadObjectCommand) {
       const object = objects.get(id);
       if (!object) {
-        return Promise.reject(notFoundError(key));
+        throw notFoundError(key);
       }
-      return Promise.resolve({
+      return {
         ContentLength: object.body.length,
         ContentType: object.contentType,
         Metadata: object.metadata,
         LastModified: object.lastModified,
-      });
+      };
     }
     if (command instanceof GetObjectCommand) {
       const object = objects.get(id);
       if (!object) {
-        return Promise.reject(notFoundError(key));
+        throw notFoundError(key);
       }
       const body = rangeSlice(object.body, input.Range);
-      return Promise.resolve({
+      return {
         Body: byteStream(body),
         ContentLength: body.length,
         ContentType: object.contentType,
-      });
+      };
     }
     if (command instanceof DeleteObjectsCommand) {
+      if (deleteFailuresRemaining > 0) {
+        deleteFailuresRemaining -= 1;
+        throw new Error("Injected R2 delete failure");
+      }
       deleteStoredObjects(objects, bucket, input.Delete);
-      return Promise.resolve({});
+      return {};
     }
-    return Promise.resolve({});
+    return {};
   });
   context.mocks.s3.getSignedUrl.mockResolvedValue(
     "https://r2.example.test/presigned?signature=test",
@@ -229,6 +251,24 @@ function installS3Fixture() {
           : [];
       });
     },
+    failNextDelete(): void {
+      deleteFailuresRemaining += 1;
+    },
+    pauseStoragePuts(): {
+      readonly started: Promise<void>;
+      readonly release: () => void;
+    } {
+      const started = createDeferredPromise<void>(context.signal);
+      const released = createDeferredPromise<void>(context.signal);
+      storagePutPause = { started, released };
+      return {
+        started: started.promise,
+        release: () => {
+          storagePutPause = undefined;
+          released.resolve();
+        },
+      };
+    },
   };
 }
 
@@ -259,20 +299,60 @@ function webHeaders() {
   return { authorization: "Bearer clerk-session" };
 }
 
-function sandboxHeaders(actor: ApiTestUser) {
+function sandboxHeaders(actor: ApiTestUser, runId: string) {
+  return {
+    authorization: `Bearer ${runs.sandboxTokenForRun(actor, runId)}`,
+  };
+}
+
+async function enablePresentationTemplates(actor: ApiTestUser): Promise<void> {
   if (!actor.orgId) {
-    throw new Error("Expected an organization-scoped actor");
+    throw new Error("Presentation template tests require an organization");
   }
-  const seconds = Math.floor(now() / 1000);
-  const token = signSandboxJwtForTests({
-    scope: "sandbox",
-    userId: actor.userId,
-    orgId: actor.orgId,
-    runId: `run_${randomUUID()}`,
-    iat: seconds,
-    exp: seconds + 3600,
+  await updateFeatureSwitchesForUser(
+    context,
+    { ...actor, orgId: actor.orgId },
+    {
+      [FeatureSwitchKey.PresentationTemplates]: true,
+    },
+  );
+}
+
+async function prepareImportActor(
+  actor: ApiTestUser,
+  options: { readonly configureRunner?: boolean } = {},
+): Promise<string> {
+  await enablePresentationTemplates(actor);
+  bdd.acceptAgentStorageWrites();
+  await runs.grantProEntitlement(actor);
+  const defaultAgentId = await bdd.bootstrapLimitedFreeOnboarding(actor, {
+    displayName: "Presentation import agent",
   });
-  return { authorization: `Bearer ${token}` };
+  await runs.ensureOrgModelProvider(actor);
+  if (options.configureRunner !== false) {
+    runs.configureRunnerGroup();
+  }
+  runs.acceptStorageDownloads();
+  runs.acceptTelemetryIngest();
+  return defaultAgentId;
+}
+
+async function importRunId(
+  actor: ApiTestUser,
+  templateId: string,
+): Promise<string> {
+  const listed = await runs.listAgentRuns(actor, { limit: 20 });
+  const run = listed.runs.find((candidate) => {
+    return candidate.prompt.startsWith(
+      `Import presentation template ${templateId}.`,
+    );
+  });
+  if (!run) {
+    throw new Error(
+      `Expected import run for presentation template ${templateId}`,
+    );
+  }
+  return run.id;
 }
 
 function templateClient() {
@@ -322,13 +402,72 @@ async function prepareSource(
   return { upload: prepared.body, key, body: args.body };
 }
 
+async function createTemplate(
+  fixture: ReturnType<typeof installS3Fixture>,
+  actor: ApiTestUser,
+  filename: string,
+) {
+  const source = await prepareSource(fixture, {
+    actor,
+    filename,
+    contentType: PPTX_CONTENT_TYPE,
+    body: pptxSource(),
+  });
+  const created = await accept(
+    templateClient().create({
+      headers: webHeaders(),
+      body: {
+        uploadId: source.upload.id,
+        filename: source.upload.filename,
+        contentType: source.upload.contentType,
+      },
+    }),
+    [201],
+  );
+  return { created: created.body, source };
+}
+
 beforeEach(() => {
   mockEnv("R2_USER_ARTIFACTS_BUCKET_NAME", ARTIFACT_BUCKET);
+  mockEnv("R2_USER_STORAGES_BUCKET_NAME", STORAGE_BUCKET);
 });
 
 describe("presentation template imports", () => {
+  it("keeps the catalog and template-import trigger source behind the feature switch", async () => {
+    const actor = bdd.user();
+    const fixture = installS3Fixture();
+    const source = await prepareSource(fixture, {
+      actor,
+      filename: "disabled.pptx",
+      contentType: PPTX_CONTENT_TYPE,
+      body: pptxSource(),
+    });
+    const client = templateClient();
+
+    await accept(client.list({ headers: webHeaders() }), [403]);
+    await accept(
+      client.create({
+        headers: webHeaders(),
+        body: {
+          uploadId: source.upload.id,
+          filename: source.upload.filename,
+          contentType: source.upload.contentType,
+        },
+      }),
+      [403],
+    );
+    expect((await runs.listAgentRuns(actor, { limit: 20 })).runs).toStrictEqual(
+      [],
+    );
+
+    await enablePresentationTemplates(actor);
+    const enabled = await accept(client.list({ headers: webHeaders() }), [200]);
+    expect(enabled.body).toStrictEqual([]);
+  });
+
   it("rejects PDF and HTML before creating a template", async () => {
     const actor = bdd.user();
+    await enablePresentationTemplates(actor);
     const fixture = installS3Fixture();
     const unsupportedSources = [
       {
@@ -370,17 +509,125 @@ describe("presentation template imports", () => {
     expect(listed.body).toStrictEqual([]);
   });
 
+  it("enforces owner and import-run scope and rejects a second active import", async () => {
+    const owner = bdd.user();
+    const ownerAgentId = await prepareImportActor(owner);
+    const fixture = installS3Fixture();
+    const { created } = await createTemplate(
+      fixture,
+      owner,
+      "owner-template.pptx",
+    );
+    const ownerRunId = await importRunId(owner, created.id);
+
+    const secondSource = await prepareSource(fixture, {
+      actor: owner,
+      filename: "second-template.pptx",
+      contentType: PPTX_CONTENT_TYPE,
+      body: pptxSource(),
+    });
+    await accept(
+      templateClient().create({
+        headers: webHeaders(),
+        body: {
+          uploadId: secondSource.upload.id,
+          filename: secondSource.upload.filename,
+          contentType: secondSource.upload.contentType,
+        },
+      }),
+      [409],
+    );
+
+    const peer = bdd.user({ orgId: owner.orgId });
+    await enablePresentationTemplates(peer);
+    const peerList = await accept(
+      templateClient().list({ headers: webHeaders() }),
+      [200],
+    );
+    expect(peerList.body).toStrictEqual([]);
+    await accept(
+      templateClient().get({
+        headers: webHeaders(),
+        params: { templateId: created.id },
+      }),
+      [404],
+    );
+
+    const otherOrg = bdd.user({ userId: owner.userId });
+    await enablePresentationTemplates(otherOrg);
+    await accept(
+      templateClient().get({
+        headers: webHeaders(),
+        params: { templateId: created.id },
+      }),
+      [404],
+    );
+
+    const unrelatedRun = await runs.createDirectRun(owner, {
+      agentComposeId: ownerAgentId,
+      prompt: "Unrelated owner run",
+      triggerSource: "test",
+      vars: { ZERO_AGENT_ID: ownerAgentId },
+      secrets: { ZERO_TOKEN: "unrelated-test-token" },
+    });
+
+    const wrongRunHeaders = [
+      sandboxHeaders(peer, ownerRunId),
+      sandboxHeaders(otherOrg, ownerRunId),
+      sandboxHeaders(owner, unrelatedRun.runId),
+    ];
+    for (const headers of wrongRunHeaders) {
+      await accept(
+        templateClient().source({
+          headers,
+          params: { templateId: created.id },
+        }),
+        [404],
+      );
+      await accept(
+        templateClient().preparePages({
+          headers,
+          params: { templateId: created.id },
+          body: { count: 1 },
+        }),
+        [404],
+      );
+      await accept(
+        templateClient().commitPages({
+          headers,
+          params: { templateId: created.id },
+          body: { keys: ["not-the-import-page.png"], aspectRatio: 16 / 9 },
+        }),
+        [404],
+      );
+      await accept(
+        templateClient().publishPackage({
+          headers,
+          params: { templateId: created.id },
+          body: {
+            files: [
+              { path: "DESIGN_SYSTEM.md", content: "# Design" },
+              { path: "LAYOUTS.md", content: "# Layouts" },
+              { path: "tokens.json", content: "{}" },
+            ],
+          },
+        }),
+        [404],
+      );
+      await accept(
+        templateClient().fail({
+          headers,
+          params: { templateId: created.id },
+          body: { code: "analysis_failed", message: "wrong run" },
+        }),
+        [404],
+      );
+    }
+  });
+
   it("creates, compiles, renames, reads, and deletes an owned template", async () => {
     const actor = bdd.user();
-    bdd.acceptAgentStorageWrites();
-    await runs.grantProEntitlement(actor);
-    await bdd.bootstrapLimitedFreeOnboarding(actor, {
-      displayName: "Presentation import agent",
-    });
-    await runs.ensureOrgModelProvider(actor);
-    runs.configureRunnerGroup();
-    runs.acceptStorageDownloads();
-    runs.acceptTelemetryIngest();
+    await prepareImportActor(actor);
 
     const fixture = installS3Fixture();
     const source = await prepareSource(fixture, {
@@ -408,7 +655,8 @@ describe("presentation template imports", () => {
       coverUrl: null,
     });
 
-    const runHeaders = sandboxHeaders(actor);
+    const runId = await importRunId(actor, created.body.id);
+    const runHeaders = sandboxHeaders(actor, runId);
     const sourceDownload = await accept(
       client.source({
         headers: runHeaders,
@@ -454,6 +702,28 @@ describe("presentation template imports", () => {
       [200],
     );
     expect(committed.body.status).toBe("processing");
+
+    const oversizedUtf8Package = await accept(
+      client.publishPackage({
+        headers: runHeaders,
+        params: { templateId: created.body.id },
+        body: {
+          files: [
+            {
+              path: "DESIGN_SYSTEM.md",
+              content: "é".repeat(
+                Math.floor(MAX_PRESENTATION_TEMPLATE_PACKAGE_FILE_BYTES / 2) +
+                  1,
+              ),
+            },
+            { path: "LAYOUTS.md", content: "# Layouts" },
+            { path: "tokens.json", content: '{"colors":{}}' },
+          ],
+        },
+      }),
+      [400],
+    );
+    expect(oversizedUtf8Package.body.error.code).toBe("BAD_REQUEST");
 
     const storageKeysBeforePublish = new Set(fixture.keys(STORAGE_BUCKET));
     const published = await accept(
@@ -541,9 +811,10 @@ describe("presentation template imports", () => {
       }),
       [201],
     );
+    const failedRunId = await importRunId(actor, failedTemplate.body.id);
     const failed = await accept(
       client.fail({
-        headers: runHeaders,
+        headers: sandboxHeaders(actor, failedRunId),
         params: { templateId: failedTemplate.body.id },
         body: { code: "render_failed", message: "Renderer exited with 1" },
       }),
@@ -570,5 +841,244 @@ describe("presentation template imports", () => {
       }),
       [204],
     );
+  });
+
+  it("terminalizes an import when run dispatch fails immediately", async () => {
+    const actor = bdd.user();
+    await prepareImportActor(actor, { configureRunner: false });
+    mockOptionalEnv("RUNNER_DEFAULT_GROUP", undefined);
+    const fixture = installS3Fixture();
+
+    const first = await createTemplate(fixture, actor, "dispatch-fails.pptx");
+    expect(first.created).toMatchObject({ status: "failed", pageCount: 0 });
+
+    const second = await createTemplate(
+      fixture,
+      actor,
+      "dispatch-fails-again.pptx",
+    );
+    expect(second.created).toMatchObject({ status: "failed", pageCount: 0 });
+  });
+
+  it("cleans prepared pages when the import run fails automatically", async () => {
+    const actor = bdd.user();
+    await prepareImportActor(actor);
+    const fixture = installS3Fixture();
+    const { created } = await createTemplate(
+      fixture,
+      actor,
+      "terminal-failure.pptx",
+    );
+    const runId = await importRunId(actor, created.id);
+    const runHeaders = sandboxHeaders(actor, runId);
+    const prepared = await accept(
+      templateClient().preparePages({
+        headers: runHeaders,
+        params: { templateId: created.id },
+        body: { count: 1 },
+      }),
+      [200],
+    );
+    const upload = prepared.body.uploads[0];
+    if (!upload) {
+      throw new Error("Expected a prepared page upload");
+    }
+    fixture.put({
+      bucket: ARTIFACT_BUCKET,
+      key: upload.key,
+      body: Buffer.from("prepared-page"),
+      contentType: "image/png",
+      metadata: metadataFromHeaders(upload.uploadHeaders),
+    });
+
+    await webhooks.requestAgentComplete(
+      { runId, exitCode: 1, error: "renderer crashed" },
+      runHeaders,
+      [200],
+    );
+    await flushWaitUntilForTest();
+
+    expect(fixture.has(ARTIFACT_BUCKET, upload.key)).toBeFalsy();
+    mocks.clerk.session(actor.userId, actor.orgId);
+    const detail = await accept(
+      templateClient().get({
+        headers: webHeaders(),
+        params: { templateId: created.id },
+      }),
+      [200],
+    );
+    expect(detail.body).toMatchObject({
+      status: "failed",
+      pageCount: 0,
+      error: { code: "analysis_failed", message: "renderer crashed" },
+    });
+  });
+
+  it("keeps deletion retryable for a prepared but uncommitted page", async () => {
+    const actor = bdd.user();
+    await prepareImportActor(actor);
+    const fixture = installS3Fixture();
+    const { created } = await createTemplate(
+      fixture,
+      actor,
+      "delete-prepared.pptx",
+    );
+    const runId = await importRunId(actor, created.id);
+    const prepared = await accept(
+      templateClient().preparePages({
+        headers: sandboxHeaders(actor, runId),
+        params: { templateId: created.id },
+        body: { count: 1 },
+      }),
+      [200],
+    );
+    const upload = prepared.body.uploads[0];
+    if (!upload) {
+      throw new Error("Expected a prepared page upload");
+    }
+    fixture.put({
+      bucket: ARTIFACT_BUCKET,
+      key: upload.key,
+      body: Buffer.from("prepared-page"),
+      contentType: "image/png",
+      metadata: metadataFromHeaders(upload.uploadHeaders),
+    });
+
+    mocks.clerk.session(actor.userId, actor.orgId);
+    fixture.failNextDelete();
+    await accept(
+      templateClient().delete({
+        headers: webHeaders(),
+        params: { templateId: created.id },
+      }),
+      [500],
+    );
+    expect(fixture.has(ARTIFACT_BUCKET, upload.key)).toBeTruthy();
+    await accept(
+      templateClient().get({
+        headers: webHeaders(),
+        params: { templateId: created.id },
+      }),
+      [200],
+    );
+
+    await accept(
+      templateClient().delete({
+        headers: webHeaders(),
+        params: { templateId: created.id },
+      }),
+      [204],
+    );
+    expect(fixture.has(ARTIFACT_BUCKET, upload.key)).toBeFalsy();
+
+    fixture.put({
+      bucket: ARTIFACT_BUCKET,
+      key: upload.key,
+      body: Buffer.from("late-prepared-page"),
+      contentType: "image/png",
+      metadata: metadataFromHeaders(upload.uploadHeaders),
+    });
+    await webhooks.requestAgentComplete(
+      { runId, exitCode: 1, error: "cancelled after deletion" },
+      sandboxHeaders(actor, runId),
+      [200],
+    );
+    await flushWaitUntilForTest();
+    expect(fixture.has(ARTIFACT_BUCKET, upload.key)).toBeFalsy();
+  });
+
+  it("compensates package objects when failure wins the publication race", async () => {
+    const actor = bdd.user();
+    await prepareImportActor(actor);
+    const fixture = installS3Fixture();
+    const { created } = await createTemplate(
+      fixture,
+      actor,
+      "publish-race.pptx",
+    );
+    const runId = await importRunId(actor, created.id);
+    const runHeaders = sandboxHeaders(actor, runId);
+    const prepared = await accept(
+      templateClient().preparePages({
+        headers: runHeaders,
+        params: { templateId: created.id },
+        body: { count: 1 },
+      }),
+      [200],
+    );
+    const upload = prepared.body.uploads[0];
+    if (!upload) {
+      throw new Error("Expected a prepared page upload");
+    }
+    fixture.put({
+      bucket: ARTIFACT_BUCKET,
+      key: upload.key,
+      body: Buffer.from("page"),
+      contentType: "image/png",
+      metadata: metadataFromHeaders(upload.uploadHeaders),
+    });
+    await accept(
+      templateClient().commitPages({
+        headers: runHeaders,
+        params: { templateId: created.id },
+        body: { keys: [upload.key], aspectRatio: 16 / 9 },
+      }),
+      [200],
+    );
+
+    const pause = fixture.pauseStoragePuts();
+    const publication = accept(
+      templateClient().publishPackage({
+        headers: runHeaders,
+        params: { templateId: created.id },
+        body: {
+          files: [
+            { path: "DESIGN_SYSTEM.md", content: "# Design" },
+            { path: "LAYOUTS.md", content: "# Layouts" },
+            { path: "tokens.json", content: "{}" },
+          ],
+        },
+      }),
+      [409],
+    );
+    await pause.started;
+    const failure = accept(
+      templateClient().fail({
+        headers: runHeaders,
+        params: { templateId: created.id },
+        body: { code: "publish_failed", message: "publication cancelled" },
+      }),
+      [200],
+    );
+    await expect
+      .poll(async () => {
+        mocks.clerk.session(actor.userId, actor.orgId);
+        const detail = await accept(
+          templateClient().get({
+            headers: webHeaders(),
+            params: { templateId: created.id },
+          }),
+          [200],
+        );
+        return detail.body.status;
+      })
+      .toBe("failed");
+    pause.release();
+    await Promise.all([failure, publication]);
+
+    expect(fixture.keys(STORAGE_BUCKET)).toStrictEqual([]);
+    mocks.clerk.session(actor.userId, actor.orgId);
+    const detail = await accept(
+      templateClient().get({
+        headers: webHeaders(),
+        params: { templateId: created.id },
+      }),
+      [200],
+    );
+    expect(detail.body).toMatchObject({
+      status: "failed",
+      pageCount: 0,
+      error: { code: "publish_failed", message: "publication cancelled" },
+    });
   });
 });
