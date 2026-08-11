@@ -306,6 +306,53 @@ async fn sandbox_finalization_progresses_while_completion_report_is_blocked() {
     shutdown(&env, run_handle).await;
 }
 
+#[tokio::test]
+async fn provider_can_require_finalization_before_completion_is_observable() {
+    let park_gate = sandbox_mock::MockLifecycleGate::new();
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    overrides.set_park_lifecycle_gate(park_gate.clone());
+    let (config, env) = mock_run_config_with_overrides(test_profiles(), 8, 32768, 4, overrides);
+    let idle_pool = Arc::clone(&config.shared.idle_pool);
+    let status_path = env._temp_dir.path().join("status.json");
+    env.handle.require_finalization_before_completion();
+    let run_handle = tokio::spawn(run(config));
+
+    let run_id = RunId::new_v4();
+    let reuse_key = "thread:completion-after-park";
+    let mut context = minimal_context(run_id);
+    context.reuse_key = Some(reuse_key.into());
+    push_job(&env, run_id, "vm0/default", Some(context));
+
+    park_gate
+        .wait_entered(1, Duration::from_secs(5))
+        .await
+        .expect("sandbox park should reach the lifecycle gate");
+    assert!(
+        env.handle
+            .wait_completion(run_id, Duration::ZERO)
+            .await
+            .is_none(),
+        "provider completion must remain hidden until sandbox finalization finishes",
+    );
+    wait_status_idle_empty_with_active_run(&status_path, run_id, Duration::from_secs(5)).await;
+
+    park_gate.release_one();
+    env.handle
+        .wait_completion(run_id, Duration::from_secs(5))
+        .await
+        .expect("provider completion should be reported after sandbox finalization");
+    wait_idle_pool_reuse_keys(&idle_pool, &[reuse_key], Duration::from_secs(5)).await;
+    wait_status_idle_reuse_keys_and_active_runs(
+        &status_path,
+        &[reuse_key],
+        &[],
+        Duration::from_secs(5),
+    )
+    .await;
+
+    shutdown(&env, run_handle).await;
+}
+
 // -----------------------------------------------------------------------
 // Test 11: Job without a reuse key destroys its sandbox (no parking)
 // -----------------------------------------------------------------------

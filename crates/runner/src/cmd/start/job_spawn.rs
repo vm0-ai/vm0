@@ -38,7 +38,7 @@ use crate::idle_pool::{ParkingGate, ReusableIdleSandbox};
 use crate::ids::RunId;
 use crate::network_log_drain::NetworkLogDrainCoordinator;
 use crate::network_logs;
-use crate::provider::{ClaimedJob, JobProvider};
+use crate::provider::{ClaimedJob, CompletionReportTiming, JobProvider};
 use crate::resource_budget::{BudgetLease, ResourceBudget};
 use crate::run_cancellation::{
     RunCancellationHandle, RunCancellationRegistration, RunCancellationSignals,
@@ -771,10 +771,18 @@ pub(super) async fn run_job(
         .with_workspace_reuse_result(executor_result.outcome.workspace_reuse_result);
         // Structural guarantee: claim (in provider) is always paired with complete.
         signal_usage_flush(run_id, &usage_flush_tx);
-        let (provider_completion_duration, finalized) = tokio::join!(
-            completion_payload.report(provider.as_ref()),
-            finalization.finalize(executor_result),
-        );
+        let (provider_completion_duration, finalized) = match provider.completion_report_timing() {
+            CompletionReportTiming::ConcurrentWithFinalization => tokio::join!(
+                completion_payload.report(provider.as_ref()),
+                finalization.finalize(executor_result),
+            ),
+            CompletionReportTiming::AfterFinalization => {
+                let finalized = finalization.finalize(executor_result).await;
+                let provider_completion_duration =
+                    completion_payload.report(provider.as_ref()).await;
+                (provider_completion_duration, finalized)
+            }
+        };
         let FinalizedJob {
             finalization_ready,
             mut telemetry,

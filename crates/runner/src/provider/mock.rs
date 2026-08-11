@@ -26,7 +26,7 @@ use tokio::sync::{Mutex, Notify, mpsc};
 use tokio_util::sync::CancellationToken;
 use tracing::warn;
 
-use super::{ClaimedJob, CompletionAuth, JobCandidate, JobProvider};
+use super::{ClaimedJob, CompletionAuth, CompletionReportTiming, JobCandidate, JobProvider};
 use crate::error::{RunnerError, RunnerResult};
 use crate::ids::RunId;
 use crate::types::{
@@ -95,6 +95,7 @@ pub struct MockJobProvider {
     heartbeat_control: Arc<MockHeartbeatControl>,
     claim_control: Arc<MockClaimControl>,
     completion_control: Arc<MockCompletionControl>,
+    completion_after_finalization: Arc<AtomicBool>,
 }
 
 /// Test-side handle for driving the mock provider.
@@ -118,6 +119,7 @@ pub struct MockProviderHandle {
     heartbeat_control: Arc<MockHeartbeatControl>,
     claim_control: Arc<MockClaimControl>,
     completion_control: Arc<MockCompletionControl>,
+    completion_after_finalization: Arc<AtomicBool>,
 }
 
 #[derive(Clone)]
@@ -336,6 +338,7 @@ impl MockJobProvider {
         let heartbeat_control = Arc::new(MockHeartbeatControl::default());
         let claim_control = Arc::new(MockClaimControl::default());
         let completion_control = Arc::new(MockCompletionControl::default());
+        let completion_after_finalization = Arc::new(AtomicBool::new(false));
         let provider = Arc::new(Self {
             startup_readiness: Arc::clone(&startup_readiness),
             discovery: Mutex::new(rx),
@@ -355,6 +358,7 @@ impl MockJobProvider {
             heartbeat_control: Arc::clone(&heartbeat_control),
             claim_control: Arc::clone(&claim_control),
             completion_control: Arc::clone(&completion_control),
+            completion_after_finalization: Arc::clone(&completion_after_finalization),
         });
         let handle = MockProviderHandle {
             startup_readiness,
@@ -372,6 +376,7 @@ impl MockJobProvider {
             heartbeat_control,
             claim_control,
             completion_control,
+            completion_after_finalization,
         };
         (provider, handle)
     }
@@ -436,6 +441,11 @@ impl MockProviderHandle {
 
     pub fn completion_in_flight(&self) -> usize {
         self.completion_control.in_flight.load(Ordering::SeqCst)
+    }
+
+    pub fn require_finalization_before_completion(&self) {
+        self.completion_after_finalization
+            .store(true, Ordering::SeqCst);
     }
 
     pub fn discover_started_count(&self) -> usize {
@@ -684,6 +694,14 @@ impl JobProvider for MockJobProvider {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .pop_front()
+    }
+
+    fn completion_report_timing(&self) -> CompletionReportTiming {
+        if self.completion_after_finalization.load(Ordering::SeqCst) {
+            CompletionReportTiming::AfterFinalization
+        } else {
+            CompletionReportTiming::ConcurrentWithFinalization
+        }
     }
 
     async fn complete(&self, request: CompleteRequest, _completion_auth: CompletionAuth) {
