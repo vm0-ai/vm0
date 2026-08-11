@@ -66,6 +66,7 @@ import {
   useSubscriptionUsageRows,
 } from "./zero-sidebar-subscriptions.tsx";
 import { DropdownMenuModalItem } from "../components/dropdown-menu-modal-item.tsx";
+import { UserAvatar } from "../components/avatar.tsx";
 import { formatLocalizedNumber } from "../../i18n/format.ts";
 import { i18n } from "../../i18n/index.ts";
 
@@ -87,35 +88,6 @@ function formatCreditBalance(credits: number): string {
       count: credits,
       value: formatLocalizedNumber(credits),
     },
-  );
-}
-
-function AccountAvatar({
-  imageUrl,
-  name,
-  initial,
-  size = "sm",
-}: {
-  imageUrl: string | undefined;
-  name: string;
-  initial: string;
-  size?: "sm" | "md";
-}) {
-  const dim = size === "md" ? "h-9 w-9" : "h-8 w-8";
-  const textSize = size === "md" ? "text-sm" : "text-xs";
-  if (imageUrl) {
-    return (
-      <div className={`${dim} shrink-0 rounded-xl overflow-hidden`}>
-        <img src={imageUrl} alt={name} className="h-full w-full object-cover" />
-      </div>
-    );
-  }
-  return (
-    <div
-      className={`${dim} rounded-xl bg-orange-200/95 dark:bg-orange-300/80 flex items-center justify-center text-orange-900 dark:text-orange-950 ${textSize} font-medium shrink-0`}
-    >
-      {initial}
-    </div>
   );
 }
 
@@ -189,31 +161,40 @@ function accountDisplayFrom(
 }
 
 function renderAccountTrigger(display: AccountDisplay, collapsed: boolean) {
+  if (collapsed) {
+    return (
+      <Button
+        type="button"
+        variant="quiet"
+        size="icon"
+        className="shrink-0 p-0"
+      >
+        <UserAvatar
+          imageUrl={display.imageUrl}
+          name={display.name}
+          initial={display.initial}
+          size="sm"
+        />
+      </Button>
+    );
+  }
+  // Geometry mirrors ZeroOrgSwitcher's trigger so the workspace row at the top
+  // of the sidebar and the account row at the bottom read as one pair.
   return (
-    <Button
+    <button
       type="button"
-      variant="ghost"
-      size={collapsed ? "icon-sm" : "default"}
-      className={`font-normal text-sidebar-foreground duration-200 ${
-        collapsed ? "shrink-0 p-0" : "h-auto w-full justify-start p-2 text-left"
-      }`}
+      className="w-full flex items-center gap-2.5 px-2 py-2 rounded-lg hover:bg-state-hover text-sidebar-foreground transition-colors"
     >
-      <AccountAvatar
+      <UserAvatar
         imageUrl={display.imageUrl}
         name={display.name}
         initial={display.initial}
+        size="sm"
       />
-      {!collapsed && (
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium leading-tight truncate text-sidebar-foreground">
-            {display.name}
-          </p>
-          <p className="text-xs leading-tight truncate mt-px text-sidebar-foreground opacity-70">
-            {display.email}
-          </p>
-        </div>
-      )}
-    </Button>
+      <span className="min-w-0 flex-1 text-left text-sm font-medium leading-tight truncate">
+        {display.name}
+      </span>
+    </button>
   );
 }
 
@@ -231,11 +212,11 @@ function CurrentAccountHeader({
     <>
       <div className="px-3 py-3">
         <div className="flex items-center gap-3">
-          <AccountAvatar
+          <UserAvatar
             imageUrl={display.imageUrl}
             name={display.name}
             initial={display.initial}
-            size="md"
+            size="lg"
           />
           <div className="flex-1 min-w-0">
             <div className="text-sm font-medium text-foreground truncate">
@@ -723,7 +704,7 @@ function AccountManagementGroup({
               }}
               className="gap-3 px-3 py-2.5"
             >
-              <AccountAvatar
+              <UserAvatar
                 imageUrl={account.imageUrl}
                 name={account.name}
                 initial={account.initial}

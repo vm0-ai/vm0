@@ -75,7 +75,7 @@ const DialogOverlay = React.forwardRef<
       ref={ref}
       data-slot="dialog-overlay"
       className={cn(
-        "zero-dialog-overlay fixed inset-0 z-50 bg-overlay/45 backdrop-blur-sm dark:bg-overlay/55",
+        "zero-dialog-overlay fixed inset-0 z-50 bg-overlay/45 dark:bg-overlay/55",
         className,
       )}
       {...props}
@@ -108,7 +108,7 @@ const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps>(
   ) => {
     return (
       <DialogPortal>
-        <DialogOverlay className={overlayClassName} />
+        <DialogOverlay className={overlayClassName} forceRender />
         <DialogPrimitive.Popup
           ref={ref}
           data-slot="dialog-content"

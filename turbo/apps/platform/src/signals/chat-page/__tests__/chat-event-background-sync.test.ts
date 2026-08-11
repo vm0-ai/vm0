@@ -151,6 +151,42 @@ describe("chat event background sync", () => {
     );
   });
 
+  it("catches up only unread threads after reconnect", async () => {
+    const requestedThreadIds: string[] = [];
+    let unreadThreadIds = [THREAD_ID];
+    let unreadIdsRequests = 0;
+
+    context.mocks.api(chatThreadsContract.unreadIds, ({ respond }) => {
+      unreadIdsRequests += 1;
+      return respond(200, { threadIds: unreadThreadIds });
+    });
+    context.mocks.api(chatThreadsContract.activeIds, ({ respond }) => {
+      return respond(200, { threadIds: [OTHER_THREAD_ID] });
+    });
+    context.mocks.api(chatThreadEventsContract.list, ({ params, respond }) => {
+      requestedThreadIds.push(params.threadId);
+      return respond(200, { events: [] });
+    });
+
+    await setupAuthenticatedBackgroundSync();
+
+    await waitFor(() => {
+      expect(new Set(requestedThreadIds)).toStrictEqual(
+        new Set([THREAD_ID, OTHER_THREAD_ID]),
+      );
+      expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
+    });
+    requestedThreadIds.length = 0;
+    unreadThreadIds = [THIRD_THREAD_ID];
+
+    context.mocks.ably.triggerReconnect();
+
+    await waitFor(() => {
+      expect(unreadIdsRequests).toBe(2);
+      expect(requestedThreadIds).toStrictEqual([THIRD_THREAD_ID]);
+    });
+  });
+
   it("fills only messages after the cached thread end", async () => {
     mockSignedInUser();
     const appDb = await context.store.get(chatIdb$);

@@ -21,6 +21,10 @@ import {
   handleMorningBriefEmailInternalCallback$,
 } from "./internal-morning-brief-run-callback.service";
 import {
+  handlePresentationTemplateImportInternalCallback,
+  handlePresentationTemplateImportInternalCallback$,
+} from "./internal-presentation-template-import-run-callback.service";
+import {
   handleFeishuOrgInternalCallback$,
   handleFeishuOrgInternalCallbackWithoutCcstate,
 } from "./internal-feishu-org-run-callback.service";
@@ -159,6 +163,13 @@ const dispatchInternalCallback$ = command(
       case "morning-brief:email": {
         return await set(
           handleMorningBriefEmailInternalCallback$,
+          input.envelope,
+          signal,
+        );
+      }
+      case "presentation-template:import": {
+        return await set(
+          handlePresentationTemplateImportInternalCallback$,
           input.envelope,
           signal,
         );
@@ -566,6 +577,12 @@ async function dispatchInternalCallbackWithoutCcstate(
         callbackEnvelope(input),
       );
     }
+    case "presentation-template:import": {
+      return await handlePresentationTemplateImportInternalCallback(
+        input.db,
+        callbackEnvelope(input),
+      );
+    }
     case "feishu:org": {
       return await handleFeishuOrgInternalCallbackWithoutCcstate(
         input.db,
@@ -609,13 +626,23 @@ async function dispatchInternalCallbackWithoutCcstate(
 function callbackEnvelope(
   input: DispatchInternalRunCallbackInput | DispatchSingleCallbackInput,
 ): InternalRunCallbackEnvelope {
-  return {
+  const base = {
     callbackId: input.callback.id,
     runId: input.runId,
-    status: input.status,
     result: input.result,
-    error: input.error,
     payload: input.callback.payload,
+  };
+  if (input.status === "failed") {
+    const error = input.error?.trim();
+    if (!error) {
+      throw new Error("Failed internal run callbacks require an error");
+    }
+    return { ...base, status: "failed", error };
+  }
+  return {
+    ...base,
+    status: input.status,
+    error: input.error,
   };
 }
 

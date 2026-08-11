@@ -1,6 +1,7 @@
 import { command } from "ccstate";
 import { chatEventFromRow } from "@vm0/api-contracts/contracts/chat-event-row-projection";
 import type { ChatEvent } from "@vm0/api-contracts/contracts/chat-threads";
+import { foregroundReady$ } from "../auth-retry.ts";
 import { chatEventSnapshotReadEnabled$ } from "../external/feature-switch.ts";
 import { logger } from "../log.ts";
 import { setAblyMessageLoop$ } from "../realtime.ts";
@@ -21,10 +22,7 @@ import {
   CHAT_EVENT_ROWS_PAGE_LIMIT,
   listRowsAfter$,
 } from "./remote-chat-event-row-data-source.ts";
-import {
-  activeChatEventThreadIds$,
-  receiveActiveChatEvents$,
-} from "./chat-event-signal-registry.ts";
+import { receiveActiveChatEvents$ } from "./chat-event-signal-registry.ts";
 import { sidebarActiveThreadIds$ } from "./chat-thread-event-sourcing.ts";
 import { allUnreadThreadIds$ } from "./sidebar-unread-threads.ts";
 import {
@@ -238,17 +236,21 @@ const handleUserChannelMessage$ = command(
   },
 );
 
-const catchUpVisibleChatThreadEvents$ = command(
+const catchUpUnreadChatThreadEvents$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<boolean> => {
+    const foregroundReady = get(foregroundReady$);
+    await foregroundReady.promise;
+    signal.throwIfAborted();
+
+    const unreadThreadIds = await get(allUnreadThreadIds$);
+    signal.throwIfAborted();
     await Promise.all(
-      get(activeChatEventThreadIds$).map(async (threadId) => {
-        const events = await set(
-          syncChatThreadEventsToIndexedDb$,
-          { threadId, syncThroughSeqId: null },
+      Array.from(unreadThreadIds, (threadId) => {
+        return set(
+          handleUserChannelMessage$,
+          { name: `${CHAT_THREAD_MESSAGE_CREATED_PREFIX}${threadId}` },
           signal,
         );
-        signal.throwIfAborted();
-        await set(receiveActiveChatEvents$, threadId, events, signal);
       }),
     );
     signal.throwIfAborted();
@@ -262,7 +264,7 @@ const subscribeChatEventBackgroundSync$ = command(
       setAblyMessageLoop$,
       {
         loopCommand$: handleUserChannelMessage$,
-        catchUpCommand$: catchUpVisibleChatThreadEvents$,
+        catchUpCommand$: catchUpUnreadChatThreadEvents$,
       },
       signal,
     );

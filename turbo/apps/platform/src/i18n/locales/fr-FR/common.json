@@ -348,6 +348,7 @@
       "slack": "Slack",
       "teams": "Teams",
       "telegram": "Telegram",
+      "templateImport": "Importation de modèle",
       "test": "Test",
       "web": "Web",
       "webhook": "Webhook"
@@ -938,6 +939,7 @@
         "description": "Accès gratuit hérité pour les espaces de travail existants.",
         "name": "Gratuit"
       },
+      "legacy": "Historique",
       "limitedFree": {
         "name": "Gratuit limité"
       },
@@ -995,6 +997,22 @@
         "memberExclusive": "Chaque forfait appartient à un membre et ne peut pas être partagé. Lorsqu’un forfait est épuisé, l’utilisation revient aux crédits à l’usage. Vous pourrez passer à un nouveau forfait ultérieurement.",
         "memberPackages": "Forfaits des membres",
         "memberUsage": "Utilisation du membre",
+        "migration": {
+          "action": "Convertir le forfait",
+          "confirmDescription": "Votre forfait et vos droits actuels restent actifs jusqu’à la fin de cette période de facturation. Stripe facture le nouveau total récurrent au démarrage du nouveau forfait.",
+          "convertPlan": "Convertir le forfait",
+          "description": "Convertissez votre espace de travail {{plan}} historique vers un nouveau forfait avec un forfait d’utilisation mensuel individuel pour chaque membre.",
+          "error": "Impossible de migrer cet abonnement. Actualisez la page et réessayez.",
+          "invoice": "Voir la facture",
+          "processing": "Planification de la conversion avec Stripe.",
+          "ready": "Choisissez un forfait mensuel obligatoire pour chaque membre et chaque invitation en attente.",
+          "review": "Vérifier la conversion",
+          "reviewDescription": "Comparez le forfait historique actuel au nouveau forfait récurrent avant de planifier la conversion.",
+          "reviewTitle": "Vérifier la conversion du forfait",
+          "scheduled": "La conversion est planifiée pour le {{date}}. Votre forfait et vos droits actuels restent actifs jusque-là.",
+          "switchesOn": "Passe au forfait {{plan}} le {{date}}",
+          "title": "Convertir le forfait historique"
+        },
         "minimumPackageBreakdown": "Forfait de {{base}} + forfait membre obligatoire de {{package}}",
         "monthlyTotal": "Total mensuel",
         "orderSummary": "Récapitulatif de la commande",

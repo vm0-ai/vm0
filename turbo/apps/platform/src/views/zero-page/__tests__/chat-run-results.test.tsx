@@ -5,6 +5,7 @@ import {
   chatThreadByIdContract,
   chatThreadMarkReadContract,
   chatThreadEventsContract,
+  chatThreadsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
@@ -1792,6 +1793,9 @@ describe("chat lifecycle", () => {
     const sinceSeqIds: number[] = [];
 
     mockSubagentThread(context, threadId);
+    context.mocks.api(chatThreadsContract.unreadIds, ({ respond }) => {
+      return respond(200, { threadIds: [threadId] });
+    });
     context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
         lastReadAt: null,

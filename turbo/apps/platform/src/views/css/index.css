@@ -524,6 +524,12 @@ body {
   border-top: 0.7px dashed hsl(var(--gray-400));
 }
 
+/* Avatar / logo thumbnails: a hairline lighter than zero-border, so the edge of
+   a picture stays readable without the stroke reading as a frame. */
+.zero-thumb-border {
+  border: 0.5px solid hsl(var(--gray-400));
+}
+
 /* Role / status badge: pill with 0.7px border on neutral background */
 .zero-badge {
   border: 0.7px solid hsl(var(--gray-400));
@@ -1875,4 +1881,23 @@ details[open] > summary > span:first-child {
   text-overflow: ellipsis;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
+}
+
+/* A dialog scrim blurs the page behind it, and that blur only stays cached
+   while the page holds still — one moving pixel re-blurs the whole viewport,
+   every frame, for as long as the dialog is open. These are the app's
+   always-on animations, so park them while a scrim is mounted. Anything
+   rendered inside the dialog keeps running. */
+html:has(.zero-dialog-overlay)
+  :is(
+    .speaker-notes-dot-1,
+    .speaker-notes-dot-2,
+    .speaker-notes-dot-3,
+    .zero-shimmer-window,
+    .zero-shimmer-highlight,
+    .zero-blocks span,
+    .mic-starting-spinner,
+    .owf-diagram-beam
+  ):not(.zero-dialog-content *) {
+  animation-play-state: paused;
 }

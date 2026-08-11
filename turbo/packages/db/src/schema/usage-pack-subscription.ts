@@ -64,6 +64,161 @@ export const USAGE_PACK_ALLOCATION_CHANGE_STATUSES = [
 export type UsagePackAllocationChangeStatus =
   (typeof USAGE_PACK_ALLOCATION_CHANGE_STATUSES)[number];
 
+export const USAGE_PACK_SUBSCRIPTION_MIGRATION_STATUSES = [
+  "previewed",
+  "applying",
+  "revising",
+  "scheduled",
+  "completed",
+  "failed",
+] as const;
+
+export type UsagePackSubscriptionMigrationStatus =
+  (typeof USAGE_PACK_SUBSCRIPTION_MIGRATION_STATUSES)[number];
+
+/**
+ * Conversion intent for one legacy Stripe Subscription. A scheduled intent can
+ * be revised before its effective date.
+ *
+ * The migration UUID becomes the usage-pack subscription UUID only after the
+ * scheduled Stripe phase starts and its renewal invoice is paid. Until then,
+ * no spendable allocation exists in the ordinary usage-pack projection.
+ */
+export const usagePackSubscriptionMigrations = pgTable(
+  "usage_pack_subscription_migrations",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    orgId: text("org_id").notNull(),
+    sourceTier: varchar("source_tier", { length: 20 })
+      .$type<"pro" | "team">()
+      .notNull(),
+    targetTier: varchar("target_tier", { length: 20 })
+      .$type<"pro" | "team">()
+      .notNull(),
+    stripeCustomerId: text("stripe_customer_id").notNull(),
+    stripeSubscriptionId: text("stripe_subscription_id").notNull(),
+    legacyStripePriceId: text("legacy_stripe_price_id").notNull(),
+    legacyStripeItemId: text("legacy_stripe_item_id").notNull(),
+    stripePlanPriceId: text("stripe_plan_price_id").notNull(),
+    status: varchar("status", { length: 30 })
+      .$type<UsagePackSubscriptionMigrationStatus>()
+      .notNull()
+      .default("previewed"),
+    currentRecurringAmountCents: integer(
+      "current_recurring_amount_cents",
+    ).notNull(),
+    nextRecurringAmountCents: integer("next_recurring_amount_cents").notNull(),
+    recurringDifferenceCents: integer("recurring_difference_cents").notNull(),
+    currency: varchar("currency", { length: 3 }).notNull(),
+    effectiveAt: timestamp("effective_at").notNull(),
+    previewExpiresAt: timestamp("preview_expires_at").notNull(),
+    stripeScheduleId: text("stripe_schedule_id"),
+    stripeInvoiceId: text("stripe_invoice_id"),
+    stripePaymentIntentId: text("stripe_payment_intent_id"),
+    hostedInvoiceUrl: text("hosted_invoice_url"),
+    failureReason: text("failure_reason"),
+    completedAt: timestamp("completed_at"),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => {
+    return [
+      uniqueIndex("uq_usage_pack_subscription_migrations_open_org")
+        .on(table.orgId)
+        .where(
+          sql`${table.status} IN ('previewed', 'applying', 'revising', 'scheduled')`,
+        ),
+      uniqueIndex("uq_usage_pack_subscription_migrations_open_subscription")
+        .on(table.stripeSubscriptionId)
+        .where(
+          sql`${table.status} IN ('previewed', 'applying', 'revising', 'scheduled')`,
+        ),
+      uniqueIndex("uq_usage_pack_subscription_migrations_invoice")
+        .on(table.stripeInvoiceId)
+        .where(sql`${table.stripeInvoiceId} IS NOT NULL`),
+      uniqueIndex("uq_usage_pack_subscription_migrations_schedule")
+        .on(table.stripeScheduleId)
+        .where(sql`${table.stripeScheduleId} IS NOT NULL`),
+      index("idx_usage_pack_subscription_migrations_reconcile").on(
+        table.status,
+        table.updatedAt,
+      ),
+      check(
+        "chk_usage_pack_subscription_migrations_tiers",
+        sql`${table.sourceTier} IN ('pro', 'team') AND ${table.targetTier} IN ('pro', 'team')`,
+      ),
+      check(
+        "chk_usage_pack_subscription_migrations_status",
+        sql`${table.status} IN ('previewed', 'applying', 'revising', 'scheduled', 'completed', 'failed')`,
+      ),
+      check(
+        "chk_usage_pack_subscription_migrations_amounts",
+        sql`${table.currentRecurringAmountCents} >= 0 AND ${table.nextRecurringAmountCents} >= 0 AND ${table.recurringDifferenceCents} = ${table.nextRecurringAmountCents} - ${table.currentRecurringAmountCents}`,
+      ),
+    ];
+  },
+);
+
+/** Member and existing-invitation package snapshot for a conversion. */
+export const usagePackSubscriptionMigrationSelections = pgTable(
+  "usage_pack_subscription_migration_selections",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    migrationId: uuid("migration_id")
+      .notNull()
+      .references(
+        () => {
+          return usagePackSubscriptionMigrations.id;
+        },
+        { onDelete: "cascade" },
+      ),
+    userId: text("user_id"),
+    invitationId: text("invitation_id"),
+    normalizedEmail: text("normalized_email"),
+    role: varchar("role", { length: 20 }).$type<"admin" | "member">(),
+    inviterUserId: text("inviter_user_id"),
+    usagePackUsd: integer("usage_pack_usd").notNull(),
+    stripePriceId: text("stripe_price_id").notNull(),
+    unitAmountCents: integer("unit_amount_cents").notNull(),
+    purchasedCredits: bigint("purchased_credits", { mode: "number" })
+      .notNull()
+      .default(0),
+    bonusCredits: bigint("bonus_credits", { mode: "number" })
+      .notNull()
+      .default(0),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => {
+    return [
+      uniqueIndex("uq_usage_pack_migration_selections_user")
+        .on(table.migrationId, table.userId)
+        .where(sql`${table.userId} IS NOT NULL`),
+      uniqueIndex("uq_usage_pack_migration_selections_invitation")
+        .on(table.migrationId, table.invitationId)
+        .where(sql`${table.invitationId} IS NOT NULL`),
+      index("idx_usage_pack_migration_selections_migration").on(
+        table.migrationId,
+      ),
+      check(
+        "chk_usage_pack_migration_selections_owner",
+        sql`(${table.userId} IS NOT NULL AND ${table.invitationId} IS NULL AND ${table.normalizedEmail} IS NULL AND ${table.role} IS NULL AND ${table.inviterUserId} IS NULL) OR (${table.userId} IS NULL AND ${table.invitationId} IS NOT NULL AND ${table.normalizedEmail} IS NOT NULL AND ${table.role} IS NOT NULL AND ${table.inviterUserId} IS NOT NULL)`,
+      ),
+      check(
+        "chk_usage_pack_migration_selections_role",
+        sql`${table.role} IS NULL OR ${table.role} IN ('admin', 'member')`,
+      ),
+      check(
+        "chk_usage_pack_migration_selections_package",
+        sql`${table.usagePackUsd} IN (20, 50, 100, 200)`,
+      ),
+      check(
+        "chk_usage_pack_migration_selections_amounts",
+        sql`${table.unitAmountCents} > 0 AND ${table.purchasedCredits} > 0 AND ${table.bonusCredits} > 0`,
+      ),
+    ];
+  },
+);
+
 export const USAGE_PACK_SUBSCRIPTION_CHANGE_STATUSES = [
   "previewed",
   "applying",
@@ -351,7 +506,7 @@ export const usagePackInvitationPurchases = pgTable(
       uniqueIndex("uq_usage_pack_invitation_purchases_checkout")
         .on(table.stripeCheckoutSessionId)
         .where(sql`${table.stripeCheckoutSessionId} IS NOT NULL`),
-      uniqueIndex("uq_usage_pack_invitation_purchases_payment_intent")
+      index("idx_usage_pack_invitation_purchases_payment_intent")
         .on(table.stripePaymentIntentId)
         .where(sql`${table.stripePaymentIntentId} IS NOT NULL`),
       uniqueIndex("uq_usage_pack_invitation_purchases_refund")
@@ -384,7 +539,7 @@ export const usagePackInvitationPurchases = pgTable(
       ),
       check(
         "chk_usage_pack_invitation_purchases_amounts",
-        sql`${table.unitAmountCents} > 0 AND ${table.expectedAmountCents} > 0 AND (${table.amountPaidCents} IS NULL OR ${table.amountPaidCents} >= 0) AND ${table.purchasedCredits} >= 0 AND ${table.bonusCredits} >= 0 AND ${table.refundAttempt} > 0`,
+        sql`${table.unitAmountCents} > 0 AND ${table.expectedAmountCents} >= 0 AND (${table.amountPaidCents} IS NULL OR ${table.amountPaidCents} >= 0) AND ${table.purchasedCredits} >= 0 AND ${table.bonusCredits} >= 0 AND ${table.refundAttempt} > 0`,
       ),
     ];
   },

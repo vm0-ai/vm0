@@ -169,6 +169,7 @@ export function CustomConnectorPermissionsDrawer({
   bundle,
   loading,
   loadError,
+  overlayClassName,
   onClose,
 }: {
   readonly agentId: string;
@@ -178,6 +179,7 @@ export function CustomConnectorPermissionsDrawer({
   readonly bundle: CustomConnectorPermissionBundleResponse | null;
   readonly loading: boolean;
   readonly loadError: boolean;
+  readonly overlayClassName?: string;
   readonly onClose: () => void;
 }) {
   const { t } = useTranslation();
@@ -190,7 +192,7 @@ export function CustomConnectorPermissionsDrawer({
         }
       }}
     >
-      <SheetContent side="right">
+      <SheetContent side="right" overlayClassName={overlayClassName}>
         <SheetHeader>
           <div className="flex items-center gap-3">
             <CustomConnectorIcon

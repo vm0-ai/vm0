@@ -709,9 +709,7 @@ async fn handle_message(
     close_rx: &mut CloseReceiver,
 ) -> LoopAction {
     match msg.action {
-        action::HEARTBEAT => {
-            tracing::trace!("Heartbeat received");
-        }
+        action::HEARTBEAT => {}
         action::MESSAGE => {
             if !message_targets_channel(&msg, &p.channel) {
                 return LoopAction::Continue;

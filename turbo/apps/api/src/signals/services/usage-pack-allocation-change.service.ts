@@ -1206,17 +1206,43 @@ async function syncUsagePackProjection(
   signal?.throwIfAborted();
 }
 
-/**
- * Converges Stripe to the local allocation projection without creating a
- * current-period proration. This is safe to retry after invitation acceptance.
- */
-export async function syncUsagePackAllocationProjection(
+type UsagePackInvitationProjectionChange =
+  | {
+      readonly kind: "accept";
+      readonly allocationId: string;
+      readonly userId: string;
+    }
+  | { readonly kind: "remove"; readonly allocationId: string };
+
+function contextForInvitationProjection(
+  context: UsagePackChangeContext,
+  change: UsagePackInvitationProjectionChange,
+): UsagePackChangeContext {
+  const allocation = context.allocations.find((candidate) => {
+    return candidate.id === change.allocationId;
+  });
+  if (change.kind === "remove") {
+    if (allocation?.status !== "inactive") {
+      throw new Error("Removed invitation allocation is not inactive");
+    }
+    return context;
+  }
+  if (
+    allocation?.userId !== change.userId ||
+    (allocation.status !== "paid_pending_invitation" &&
+      allocation.status !== "active")
+  ) {
+    throw new Error("Accepted invitation allocation is not ready");
+  }
+  return withAcceptedInvitationAllocations(context);
+}
+
+async function syncUsagePackInvitationProjection(
   db: Pick<Db, "select">,
   args: {
     readonly usagePackSubscriptionId: string;
     readonly operationId: string;
-    readonly includedAllocationId: string;
-    readonly includedUserId: string;
+    readonly change: UsagePackInvitationProjectionChange;
   },
   signal?: AbortSignal,
 ): Promise<void> {
@@ -1238,17 +1264,10 @@ export async function syncUsagePackAllocationProjection(
   ) {
     throw new Error("Stripe subscription does not match the usage pack record");
   }
-  const includedAllocation = context.allocations.find((allocation) => {
-    return allocation.id === args.includedAllocationId;
-  });
-  if (
-    includedAllocation?.userId !== args.includedUserId ||
-    (includedAllocation.status !== "paid_pending_invitation" &&
-      includedAllocation.status !== "active")
-  ) {
-    throw new Error("Accepted invitation allocation is not ready");
-  }
-  const projectionContext = withAcceptedInvitationAllocations(context);
+  const projectionContext = contextForInvitationProjection(
+    context,
+    args.change,
+  );
   const currentQuantities = packageQuantitiesForAllocations(
     projectionContext.allocations,
   );
@@ -1268,6 +1287,51 @@ export async function syncUsagePackAllocationProjection(
     },
     signal,
   );
+}
+
+/**
+ * Converges Stripe to the local allocation projection without creating a
+ * current-period proration. This is safe to retry after invitation acceptance.
+ */
+export async function syncUsagePackAllocationProjection(
+  db: Pick<Db, "select">,
+  args: {
+    readonly usagePackSubscriptionId: string;
+    readonly operationId: string;
+    readonly includedAllocationId: string;
+    readonly includedUserId: string;
+  },
+  signal?: AbortSignal,
+): Promise<void> {
+  await syncUsagePackInvitationProjection(
+    db,
+    {
+      usagePackSubscriptionId: args.usagePackSubscriptionId,
+      operationId: args.operationId,
+      change: {
+        kind: "accept",
+        allocationId: args.includedAllocationId,
+        userId: args.includedUserId,
+      },
+    },
+    signal,
+  );
+}
+
+/** Removes a refunded, already-billed invitation from current and renewal quantities. */
+export async function syncUsagePackAllocationProjectionAfterInvitationRemoval(
+  db: Pick<Db, "select">,
+  args: {
+    readonly usagePackSubscriptionId: string;
+    readonly operationId: string;
+    readonly removedAllocationId: string;
+  },
+): Promise<void> {
+  await syncUsagePackInvitationProjection(db, {
+    usagePackSubscriptionId: args.usagePackSubscriptionId,
+    operationId: args.operationId,
+    change: { kind: "remove", allocationId: args.removedAllocationId },
+  });
 }
 
 async function scheduleUsagePackAllocationChange(

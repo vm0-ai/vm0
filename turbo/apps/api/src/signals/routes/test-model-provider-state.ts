@@ -75,7 +75,7 @@ async function seedRetiredDefaultModelPolicy(
 ) {
   await db.insert(orgModelPolicies).values({
     orgId: body.org_id,
-    model: "gpt-5.5",
+    model: "claude-opus-4-7",
     isDefault: true,
     defaultProviderType: "vm0",
     credentialScope: "org",
