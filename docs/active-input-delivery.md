@@ -38,12 +38,13 @@ delivered delivery is idempotent. Duplicate completion still processes an open
 delivery even when the run is already terminal.
 
 After the Guest process exits, the Runner reads the bounded run-scoped receipt
-journal while it still owns the sandbox. It retries those receipts for up to
-five seconds and includes unresolved IDs in the normal completion request. This
-uses completion's existing retry and idempotency boundary as the final recovery
-path. A successful direct receipt also reuses the existing Runner notification
-channel when settlement exposes another queued prompt; the 30-second poll
-remains notification-loss recovery rather than normal steering latency.
+journal while it still owns the sandbox. It attempts those receipts within one
+total five-second budget and includes unresolved IDs in the normal completion
+request. This uses completion's existing retry and idempotency boundary as the
+final recovery path. A successful direct receipt also reuses the existing
+Runner notification channel when settlement exposes another queued prompt; the
+30-second poll remains notification-loss recovery rather than normal steering
+latency.
 
 ## Terminal Status and Quiescence
 
