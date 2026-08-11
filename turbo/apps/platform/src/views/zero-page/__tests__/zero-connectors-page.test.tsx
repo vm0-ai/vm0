@@ -4550,6 +4550,11 @@ describe("connectors page", () => {
 
     await waitFor(() => {
       expect(buttonByAriaLabel("Connect Acme Billing API")).toBeInTheDocument();
+      expect(
+        within(connectorCardByLabel("Acme Billing API")).queryByTestId(
+          "connector-card-agent-access",
+        ),
+      ).not.toBeInTheDocument();
     });
 
     click(screen.getByLabelText("More options"));
