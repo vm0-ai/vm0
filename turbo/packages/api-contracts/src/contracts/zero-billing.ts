@@ -80,6 +80,7 @@ const billingStatusResponseSchema = z.object({
   canBuyConcurrency: z.boolean().optional(),
   canBuyCredits: z.boolean().optional(),
   memberInviteUsagePackRequired: z.boolean().optional(),
+  memberInvitationAllowed: z.boolean().optional(),
   autoRechargeAllowed: z.boolean().optional(),
   supportByok: z.boolean().optional(),
   restrictedVm0Models: z.boolean().optional(),

@@ -236,7 +236,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
     useSession(fixture);
 
     // The current production API rejects retired-model writes, so only a
-    // pre-0904 persisted row can construct this deployment-skew state.
+    // pre-0905 persisted row can construct this deployment-skew state.
     await seedRetiredDefaultModelPolicyForTests(context.signal, fixture);
 
     const response = await accept(

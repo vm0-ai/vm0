@@ -133,6 +133,7 @@ interface BillingStatusResponse {
   canBuyConcurrency: boolean;
   canBuyCredits: boolean;
   memberInviteUsagePackRequired: boolean;
+  memberInvitationAllowed: boolean;
   autoRechargeAllowed: boolean;
   supportByok: boolean;
   restrictedVm0Models: boolean;
@@ -571,6 +572,7 @@ function billingStatusResponse(args: {
   canBuyConcurrency: boolean;
   canBuyCredits: boolean;
   memberInviteUsagePackRequired: boolean;
+  memberInvitationAllowed: boolean;
   autoRechargeAllowed: boolean;
   supportByok: boolean;
   restrictedVm0Models: boolean;
@@ -600,6 +602,7 @@ function billingStatusResponse(args: {
     canBuyConcurrency: args.canBuyConcurrency,
     canBuyCredits: args.canBuyCredits,
     memberInviteUsagePackRequired: args.memberInviteUsagePackRequired,
+    memberInvitationAllowed: args.memberInvitationAllowed,
     autoRechargeAllowed: args.autoRechargeAllowed,
     supportByok: args.supportByok,
     restrictedVm0Models: args.restrictedVm0Models,
@@ -658,6 +661,12 @@ function memberInviteUsagePackRequired(
   capabilities: OrgPlanCapabilities | null,
 ): boolean {
   return capabilities?.memberInviteUsagePackRequired ?? false;
+}
+
+function memberInvitationAllowed(
+  capabilities: OrgPlanCapabilities | null,
+): boolean {
+  return capabilities?.memberInvitationAllowed ?? false;
 }
 
 export function zeroBillingStatus(
@@ -740,6 +749,7 @@ export function zeroBillingStatus(
       canBuyCredits: capabilities?.canBuyCredits ?? false,
       memberInviteUsagePackRequired:
         memberInviteUsagePackRequired(capabilities),
+      memberInvitationAllowed: memberInvitationAllowed(capabilities),
       autoRechargeAllowed: capabilities?.autoRechargeAllowed ?? false,
       supportByok: capabilities?.supportByok ?? false,
       restrictedVm0Models: capabilities?.restrictedVm0Models ?? false,

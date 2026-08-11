@@ -2324,6 +2324,13 @@ const EXPECTED_PERMANENT_TRIGGERS = [
   },
   {
     definition:
+      "CREATE TRIGGER sync_legacy_org_plan_entitlement_member_invitation_allowed BEFORE INSERT OR UPDATE OF plan_key ON public.org_plan_entitlements FOR EACH ROW EXECUTE FUNCTION sync_legacy_org_plan_entitlement_member_invitation_allowed()",
+    schemaName: "public",
+    tableName: "org_plan_entitlements",
+    triggerName: "sync_legacy_org_plan_entitlement_member_invitation_allowed",
+  },
+  {
+    definition:
       "CREATE TRIGGER presentation_artifacts_delete_artifact_registry AFTER DELETE ON public.presentation_artifacts FOR EACH ROW EXECUTE FUNCTION delete_artifact_registry_entity('presentation')",
     schemaName: "public",
     tableName: "presentation_artifacts",
@@ -2461,6 +2468,13 @@ const EXPECTED_PERMANENT_FUNCTIONS = [
   {
     bodyHash: "daf97695043bdbafd864f7ff7a8f8d5d",
     functionName: "sync_legacy_org_plan_entitlement_can_buy_credits",
+    identityArguments: "",
+    kind: "f",
+    schemaName: "public",
+  },
+  {
+    bodyHash: "71b2b16ba3c75c485a4f01091ea02454",
+    functionName: "sync_legacy_org_plan_entitlement_member_invitation_allowed",
     identityArguments: "",
     kind: "f",
     schemaName: "public",
@@ -7103,7 +7117,7 @@ async function validateChatRunServiceTierAnnotationBackfill(): Promise<void> {
 }
 
 const RETIRED_RUN_MODEL_STATE_PREVIOUS_MIGRATION = "0902_colorful_mandrill";
-const RETIRED_RUN_MODEL_STATE_MIGRATION = "0904_retire_legacy_run_model_state";
+const RETIRED_RUN_MODEL_STATE_MIGRATION = "0905_retire_legacy_run_model_state";
 
 async function validateRetiredRunModelStateMigration(): Promise<void> {
   console.log("=== Validate retired run-model state migration ===\n");

@@ -223,12 +223,21 @@ function mockMembersStory(): void {
   );
 }
 
-function mockMemberInviteEntitlement(required?: boolean): void {
+function mockMemberInviteEntitlement(
+  required?: boolean,
+  invitation?: {
+    readonly tier: string;
+    readonly allowed: boolean;
+  },
+): void {
   const response: BillingStatusResponse = {
-    tier: "pro",
+    tier: invitation?.tier ?? "pro",
     ...(required === undefined
       ? {}
       : { memberInviteUsagePackRequired: required }),
+    ...(invitation === undefined
+      ? {}
+      : { memberInvitationAllowed: invitation.allowed }),
     credits: 0,
     onboardingPaymentPending: false,
     subscriptionStatus: "active",
@@ -526,6 +535,45 @@ describe("organization members settings", () => {
       });
     },
   );
+
+  it("opens compare plans when member invitations require Pro", async () => {
+    mockMembersStory();
+    mockMemberInviteEntitlement(false, {
+      tier: "limited-free-1",
+      allowed: false,
+    });
+    mockUsagePackCatalog();
+
+    detachedSetupPage({
+      context,
+      path: "/?settings=people",
+      featureSwitches: { [FeatureSwitchKey.UsagePackPlans]: true },
+    });
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "People" }),
+      ).toBeInTheDocument();
+    });
+    click(buttonByText("Add member"));
+    const inviteDialog = await screen.findByRole("dialog", {
+      name: "Invite member",
+    });
+    const email =
+      within(inviteDialog).getByPlaceholderText("email@example.com");
+    const upgrade = await waitFor(() => {
+      return buttonByText("Upgrade Pro to use", inviteDialog);
+    });
+    expect(email).toBeDisabled();
+    expect(upgrade).toBeEnabled();
+    click(upgrade);
+
+    await expect(
+      screen.findByRole("heading", { name: "Choose a plan" }),
+    ).resolves.toBeInTheDocument();
+    await expect(
+      screen.findByRole("article", { name: "Pro plan" }),
+    ).resolves.toBeInTheDocument();
+  });
 
   it("accepts and rejects membership requests", async () => {
     mockMembersStory();

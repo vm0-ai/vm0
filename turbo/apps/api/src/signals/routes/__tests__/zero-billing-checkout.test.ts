@@ -2289,13 +2289,17 @@ describe("usage pack allocation management", () => {
     mockOptionalEnv("STRIPE_WEBHOOK_SECRET", STRIPE_WEBHOOK_SECRET);
   });
 
-  it("keeps usage pack state safe before migration 0898", async () => {
+  it("keeps invitation state safe before entitlement migrations", async () => {
     const response = await usagePackStateAction({
       action: "validate-pre-migration-compatibility",
     });
     expect(response).toStrictEqual({
       action: "pre-migration-compatibility",
       memberInviteUsagePackRequired: false,
+      preMemberInvitationMigration: {
+        memberInviteUsagePackRequired: true,
+        memberInvitationAllowed: true,
+      },
       bonusPreparedRefunds: 0,
     });
   });
@@ -4546,10 +4550,53 @@ describe("usage pack allocation management", () => {
     expect(legacy.body.message).toContain("legacy@example.test");
   });
 
+  it("blocks free plans only while usage pack plans are enabled", async () => {
+    const fixture = await seedManagedUsagePack([
+      { userId: `user_${randomUUID()}`, usagePackUsd: 20 },
+    ]);
+    const client = setupApp({ context, routes: zeroOrgInviteRoutes })(
+      zeroOrgInviteContract,
+    );
+
+    for (const tier of ["free", "limited-free-1", "pro-suspend"] as const) {
+      await seedOrgMetadata({ orgId: fixture.orgId, tier, credits: 0 });
+      const blocked = await accept(
+        client.invite({
+          headers: { authorization: "Bearer clerk-session" },
+          body: { email: `${tier}@example.test`, role: "member" },
+        }),
+        [403],
+      );
+      expect(blocked.body.error).toStrictEqual({
+        message: "Upgrade to Pro to invite members",
+        code: "FORBIDDEN",
+      });
+    }
+    expect(
+      context.mocks.clerk.organizations.createOrganizationInvitation,
+    ).not.toHaveBeenCalled();
+
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.UsagePackPlans]: false,
+    });
+    context.mocks.clerk.organizations.createOrganizationInvitation.mockResolvedValueOnce(
+      { id: `inv_${randomUUID()}` },
+    );
+    const legacy = await accept(
+      client.invite({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { email: "suspended@example.test", role: "member" },
+      }),
+      [200],
+    );
+    expect(legacy.body.message).toContain("suspended@example.test");
+  });
+
   it("honors the invitation feature switch for a non-staff org", async () => {
     const fixture = createOrgFixture();
     expect(isStaffOrg(fixture.orgId)).toBeFalsy();
     authenticateOrg(fixture);
+    await seedOrgMetadata({ orgId: fixture.orgId, tier: "pro", credits: 0 });
     await updateFeatureSwitchesForUser(context, fixture, {
       [FeatureSwitchKey.UsagePackPlans]: true,
     });
