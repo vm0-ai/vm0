@@ -39,8 +39,10 @@ import {
 import { currentLocale, i18n } from "../../i18n/index.ts";
 import { featureSwitch$ } from "../external/feature-switch.ts";
 import {
+  setUsagePackMigrationRevisionPreview$,
   setUsagePackMigrationPreview$,
   setUsagePackSubscriptionChangePreview$,
+  usagePackMigrationRevisionPreview$,
   usagePackSubscriptionChangePreview$,
 } from "./settings/usage-pack-pricing-state.ts";
 
@@ -647,6 +649,80 @@ export const confirmUsagePackMigration$ = command(
     set(setUsagePackMigrationPreview$, null);
     set(reloadUsagePackMigration$);
     set(reloadUsagePackManagement$);
+    set(reloadBillingStatus$);
+    return result.body;
+  },
+);
+
+export const previewUsagePackMigrationRevision$ = command(
+  async (
+    { get, set },
+    args: {
+      readonly migrationId: string;
+      readonly targetTier: "pro" | "team";
+      readonly memberUsagePacks: readonly MemberUsagePack[];
+    },
+    signal: AbortSignal,
+  ) => {
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroBillingUsagePackMigrationContract);
+    const result = await accept(
+      client.previewRevision({
+        params: { migrationId: args.migrationId },
+        body: {
+          targetTier: args.targetTier,
+          memberUsagePacks: [...args.memberUsagePacks],
+        },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    set(setUsagePackMigrationRevisionPreview$, result.body);
+    return result.body;
+  },
+);
+
+export const confirmUsagePackMigrationRevision$ = command(
+  async (
+    { get, set },
+    args: {
+      readonly migrationId: string;
+      readonly targetTier: "pro" | "team";
+      readonly memberUsagePacks: readonly MemberUsagePack[];
+    },
+    signal: AbortSignal,
+  ) => {
+    const preview = get(usagePackMigrationRevisionPreview$);
+    if (
+      !preview ||
+      preview.migrationId !== args.migrationId ||
+      preview.targetTier !== args.targetTier
+    ) {
+      throw new Error("Usage pack migration revision preview is not open");
+    }
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroBillingUsagePackMigrationContract);
+    const result = await accept(
+      client.confirmRevision({
+        params: { migrationId: args.migrationId },
+        body: {
+          targetTier: args.targetTier,
+          memberUsagePacks: [...args.memberUsagePacks],
+          previewToken: preview.previewToken,
+        },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    toast.success(
+      i18n.t(($) => {
+        return $.billing.toasts.subscriptionChangeConfirmed;
+      }),
+    );
+    set(setUsagePackMigrationRevisionPreview$, null);
+    set(reloadUsagePackMigration$);
     set(reloadBillingStatus$);
     return result.body;
   },

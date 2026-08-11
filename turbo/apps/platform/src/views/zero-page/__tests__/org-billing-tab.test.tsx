@@ -13,6 +13,7 @@ import {
   zeroBillingRestoreContract,
   zeroBillingStatusContract,
   type BillingStatusResponse,
+  type UsagePackMigrationStateResponse,
 } from "@vm0/api-contracts/contracts/zero-billing";
 import { FeatureSwitchKey } from "@vm0/core";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
@@ -52,6 +53,19 @@ function buttonByText(
   const button = queryButtonByText(text, container);
   if (!button) {
     throw new Error(`${text} button not found`);
+  }
+  return button;
+}
+
+function buttonByLabel(
+  label: string,
+  container: ParentNode = document.body,
+): HTMLElement {
+  const button = queryAllByRoleFast("button", container).find((candidate) => {
+    return candidate.getAttribute("aria-label") === label;
+  });
+  if (!button) {
+    throw new Error(`${label} button not found`);
   }
   return button;
 }
@@ -802,6 +816,7 @@ describe("organization billing settings", () => {
     expect(
       screen.queryByText("Move to member packages"),
     ).not.toBeInTheDocument();
+    expect(queryButtonByText("Convert plan")).toBeUndefined();
     expect(migrationCalls).toBe(0);
   });
 
@@ -887,11 +902,37 @@ describe("organization billing settings", () => {
       screen.queryByRole("heading", { name: "Configure member packages" }),
     ).not.toBeInTheDocument();
 
+    click(
+      buttonByText(
+        "Convert plan",
+        screen.getByRole("article", { name: "Pro plan" }),
+      ),
+    );
+
+    await screen.findByRole("heading", {
+      name: "Configure member packages",
+    });
+    expect(
+      screen.queryByRole("heading", { name: "Choose a plan" }),
+    ).not.toBeInTheDocument();
+    const comparison = screen.getByRole("table", {
+      name: "Current and new subscription comparison",
+    });
+    expect(
+      within(comparison).getByRole("row", {
+        name: /Plan Team Legacy Pro/u,
+      }),
+    ).toBeInTheDocument();
+    expect(within(comparison).getByText("Monthly total")).toBeInTheDocument();
+
+    click(screen.getByLabelText("Back"));
+    await screen.findByText("Compare plans");
     click(screen.getByLabelText("Back"));
     expect(screen.getByText("Legacy")).toBeInTheDocument();
     expect(
       screen.queryByText("Move to member packages"),
     ).not.toBeInTheDocument();
+    expect(buttonByText("Convert plan")).toBeEnabled();
 
     click(screen.getByText("Downgrade"));
     const downgradeDialog = await screen.findByRole("dialog", {
@@ -905,22 +946,14 @@ describe("organization billing settings", () => {
     ).not.toBeInTheDocument();
     expect(within(downgradeDialog).queryByText("Pro")).not.toBeInTheDocument();
     click(buttonByText("Cancel", downgradeDialog));
-
-    click(buttonByText("Compare all plans"));
-    await screen.findByText("Compare plans");
-    click(
-      buttonByText(
-        "Convert plan",
-        screen.getByRole("article", { name: "Team plan" }),
-      ),
-    );
-
-    await screen.findByRole("heading", {
-      name: "Configure member packages",
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "Downgrade plan" }),
+      ).not.toBeInTheDocument();
     });
-    expect(
-      screen.queryByRole("heading", { name: "Choose a plan" }),
-    ).not.toBeInTheDocument();
+
+    click(buttonByText("Convert plan"));
+    await screen.findByText("Compare plans");
   });
 
   it("does not offer a second checkout when migration is unavailable", async () => {
@@ -975,13 +1008,13 @@ describe("organization billing settings", () => {
   });
 
   it("previews and confirms an in-place legacy Team migration", async () => {
-    let migrationState = {
-      tier: "team" as const,
-      targetTier: null as "pro" | "team" | null,
-      status: "eligible" as "eligible" | "previewed" | "applying" | "scheduled",
-      migrationId: null as string | null,
-      effectiveAt: "2026-09-01T00:00:00.000Z" as string | null,
-      hostedInvoiceUrl: null as string | null,
+    let migrationState: UsagePackMigrationStateResponse = {
+      tier: "team",
+      targetTier: null,
+      status: "eligible",
+      migrationId: null,
+      effectiveAt: "2026-09-01T00:00:00.000Z",
+      hostedInvoiceUrl: null,
     };
     context.mocks.data.org({
       id: "org_1",
@@ -1077,6 +1110,76 @@ describe("organization billing settings", () => {
         migrationState = {
           ...migrationState,
           status: "scheduled",
+          configuration: {
+            tier: "team",
+            memberUsagePacks: [
+              { memberId: "user_1", usagePackUsd: 20 },
+              { memberId: "invitation_1", usagePackUsd: 50 },
+            ],
+            recurringAmountCents: 23_000,
+            currency: "usd",
+          },
+        };
+        return respond(200, {
+          status: "scheduled",
+          effectiveAt: "2026-09-01T00:00:00.000Z",
+          hostedInvoiceUrl: null,
+        });
+      },
+    );
+    context.mocks.api(
+      zeroBillingUsagePackMigrationContract.previewRevision,
+      ({ body, params, respond }) => {
+        expect(params.migrationId).toBe("3ea4b7cf-d71e-45dc-8273-8bc8b9712490");
+        expect(body).toStrictEqual({
+          targetTier: "pro",
+          memberUsagePacks: [
+            { memberId: "user_1", usagePackUsd: 20 },
+            { memberId: "invitation_1", usagePackUsd: 50 },
+          ],
+        });
+        return respond(200, {
+          migrationId: "3ea4b7cf-d71e-45dc-8273-8bc8b9712490",
+          tier: "team",
+          targetTier: "pro",
+          currentRecurringAmountCents: 23_000,
+          nextRecurringAmountCents: 7000,
+          recurringDifferenceCents: -16_000,
+          currency: "usd",
+          purchasedCredits: 70_000,
+          bonusCredits: 5555,
+          totalCredits: 75_555,
+          effectiveAt: "2026-09-01T00:00:00.000Z",
+          expiresAt: "2026-03-16T00:30:00Z",
+          previewToken: "signed-revision-preview",
+        });
+      },
+    );
+    context.mocks.api(
+      zeroBillingUsagePackMigrationContract.confirmRevision,
+      ({ body, params, respond }) => {
+        expect(params.migrationId).toBe("3ea4b7cf-d71e-45dc-8273-8bc8b9712490");
+        expect(body).toStrictEqual({
+          targetTier: "pro",
+          memberUsagePacks: [
+            { memberId: "user_1", usagePackUsd: 20 },
+            { memberId: "invitation_1", usagePackUsd: 50 },
+          ],
+          previewToken: "signed-revision-preview",
+        });
+        migrationState = {
+          ...migrationState,
+          targetTier: "pro",
+          status: "scheduled",
+          configuration: {
+            tier: "pro",
+            memberUsagePacks: [
+              { memberId: "user_1", usagePackUsd: 20 },
+              { memberId: "invitation_1", usagePackUsd: 50 },
+            ],
+            recurringAmountCents: 7000,
+            currency: "usd",
+          },
         };
         return respond(200, {
           status: "scheduled",
@@ -1131,35 +1234,116 @@ describe("organization billing settings", () => {
     const orderSummary = screen.getByRole("region", {
       name: "Order summary",
     });
-    expect(within(orderSummary).getByText("Current")).toBeInTheDocument();
-    expect(within(orderSummary).getByText("New")).toBeInTheDocument();
-    expect(within(orderSummary).getByText("$200.00/month")).toBeInTheDocument();
-    expect(within(orderSummary).getByText("$230.00/month")).toBeInTheDocument();
-    expect(within(orderSummary).getByText("+$30.00")).toBeInTheDocument();
+    const orderComparison = within(orderSummary).getByRole("table", {
+      name: "Current and new subscription comparison",
+    });
+    expect(
+      within(orderComparison).getByRole("row", {
+        name: /Plan Team Legacy Team/u,
+      }),
+    ).toBeInTheDocument();
+    expect(
+      within(orderComparison).getByRole("row", {
+        name: /Member packages \$0 \$70/u,
+      }),
+    ).toBeInTheDocument();
+    expect(
+      within(orderComparison).getByRole("row", {
+        name: /Concurrent slots 10 10/u,
+      }),
+    ).toBeInTheDocument();
+    expect(
+      within(orderComparison).getByRole("row", {
+        name: /Purchased credits 120,000 70,000/u,
+      }),
+    ).toBeInTheDocument();
+    expect(
+      within(orderComparison).getByRole("row", {
+        name: /Bonus credits 0 5,555/u,
+      }),
+    ).toBeInTheDocument();
+    expect(
+      within(orderComparison).getByRole("row", {
+        name: /Monthly total \$200\/month \$230\/month/u,
+      }),
+    ).toBeInTheDocument();
+    expect(
+      within(orderSummary).queryByText("Monthly difference"),
+    ).not.toBeInTheDocument();
+    expect(
+      within(orderSummary).getByText("Scheduled for Sep 1, 2026"),
+    ).toBeInTheDocument();
 
     click(buttonByText("Review conversion", orderSummary));
     const reviewDialog = await screen.findByRole("dialog", {
       name: "Review plan conversion",
     });
     expect(
-      within(reviewDialog).getByText("Monthly difference"),
+      within(reviewDialog).queryByRole("table", {
+        name: "Current and new subscription comparison",
+      }),
+    ).not.toBeInTheDocument();
+    expect(within(reviewDialog).getByText("Order summary")).toBeInTheDocument();
+    expect(
+      within(reviewDialog).getByText("Team plan").parentElement,
+    ).toHaveTextContent("$160");
+    expect(
+      within(reviewDialog).getByText("Concurrent slots").parentElement,
+    ).toHaveTextContent("10");
+    expect(
+      within(reviewDialog).getByText("Member packages").parentElement,
+    ).toHaveTextContent("$70");
+    expect(
+      within(reviewDialog).getByText("Purchased credits").parentElement,
+    ).toHaveTextContent("70,000");
+    expect(
+      within(reviewDialog).getByText("Bonus credits").parentElement,
+    ).toHaveTextContent("5,555");
+    expect(
+      within(reviewDialog).getByText("Monthly total").parentElement,
+    ).toHaveTextContent("$230/month");
+    expect(
+      within(reviewDialog).getByText("Scheduled for Sep 1, 2026"),
     ).toBeInTheDocument();
-    expect(within(reviewDialog).getByText("+$30.00")).toBeInTheDocument();
-    expect(within(reviewDialog).getByText("Sep 1, 2026")).toBeInTheDocument();
 
     click(buttonByText("Confirm", reviewDialog));
     await waitFor(() => {
-      expect(
-        screen.getByText(
-          "Conversion scheduled for Sep 1, 2026. Your current plan and entitlements remain active until then.",
-        ),
-      ).toBeInTheDocument();
+      expect(buttonByText("Current plan")).toBeInTheDocument();
     });
     expect(
-      queryAllByRoleFast("link").find((candidate) => {
-        return candidate.textContent?.trim() === "View invoice";
-      }),
-    ).toBeUndefined();
+      screen.queryByText(
+        "Conversion scheduled for Sep 1, 2026. Your current plan and entitlements remain active until then.",
+      ),
+    ).not.toBeInTheDocument();
+
+    click(buttonByLabel("Back"));
+    await screen.findByText("Compare plans");
+    click(buttonByLabel("Back"));
+    await screen.findByText("Team plan");
+    expect(screen.getByText("Legacy")).toBeInTheDocument();
+    expect(screen.getByText("Switches to Team on Sep 1, 2026")).toBeVisible();
+
+    click(buttonByText("Downgrade"));
+    const proPlan = await screen.findByRole("article", { name: "Pro plan" });
+    click(buttonByText("Downgrade", proPlan));
+    await screen.findByRole("heading", {
+      name: "Configure member packages",
+    });
+    click(buttonByText("Review conversion"));
+    const revisionDialog = await screen.findByRole("dialog", {
+      name: "Review package change",
+    });
+    click(buttonByText("Confirm", revisionDialog));
+    await waitFor(() => {
+      expect(buttonByText("Current plan")).toBeDisabled();
+    });
+
+    click(buttonByLabel("Back"));
+    await screen.findByText("Compare plans");
+    click(buttonByLabel("Back"));
+    await expect(
+      screen.findByText("Switches to Pro on Sep 1, 2026"),
+    ).resolves.toBeVisible();
   });
 
   it("previews and confirms a current member package change inline", async () => {

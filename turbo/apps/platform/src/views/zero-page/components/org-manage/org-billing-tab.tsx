@@ -1,6 +1,6 @@
 // TODO(#8609): split large components to comply with max-lines-per-function (128)
 // oxlint-disable max-lines-per-function
-import { useGet, useSet, useLastLoadable } from "ccstate-react";
+import { useGet, useSet, useLastLoadable, type Loadable } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
 import { FeatureSwitchKey } from "@vm0/core";
@@ -871,8 +871,12 @@ function DowngradeConfirmDialog({ currentTier }: { currentTier: BillingTier }) {
         if (v) {
           return;
         }
-        setLockedTarget(null);
         close();
+      }}
+      onOpenChangeComplete={(v) => {
+        if (!v) {
+          setLockedTarget(null);
+        }
       }}
     >
       <DialogContent className="sm:max-w-[440px]">
@@ -968,14 +972,7 @@ function DowngradeConfirmDialog({ currentTier }: { currentTier: BillingTier }) {
         {error && <p className="text-sm text-destructive mt-2">{error}</p>}
 
         <div className="flex justify-end gap-2 mt-4">
-          <Button
-            variant="outline"
-            onClick={() => {
-              setLockedTarget(null);
-              return close();
-            }}
-            disabled={loading}
-          >
+          <Button variant="outline" onClick={close} disabled={loading}>
             {i18n.t(($) => {
               return $.billing.common.cancel;
             })}
@@ -1107,7 +1104,10 @@ function PlanActionButtons({
   isPaid,
   hasScheduledChange,
   currentTier,
+  futureTier,
   loading,
+  showConvert,
+  onConvert,
   onUpgrade,
   onDowngrade,
   onRestore,
@@ -1115,17 +1115,24 @@ function PlanActionButtons({
   isPaid: boolean;
   hasScheduledChange: boolean;
   currentTier: BillingTier;
+  futureTier: "pro" | "team" | null;
   loading: boolean;
+  showConvert: boolean;
+  onConvert: () => void;
   onUpgrade: () => void;
   onDowngrade: () => void;
   onRestore: () => void;
 }) {
   const customLocked = isCustomTier(currentTier);
-  const showUpgrade =
-    !customLocked &&
-    ((isPaid && currentTier !== "team" && !hasScheduledChange) || !isPaid);
-  const showDowngrade = !customLocked && isPaid && !hasScheduledChange;
-  const showRestore = !customLocked && isPaid && hasScheduledChange;
+  const showUpgrade = futureTier
+    ? futureTier === "pro"
+    : !customLocked &&
+      ((isPaid && currentTier !== "team" && !hasScheduledChange) || !isPaid);
+  const showDowngrade = futureTier
+    ? futureTier === "team"
+    : !customLocked && isPaid && !hasScheduledChange;
+  const showRestore =
+    !futureTier && !customLocked && isPaid && hasScheduledChange;
 
   return (
     <div className="flex items-center gap-2 shrink-0">
@@ -1150,6 +1157,18 @@ function PlanActionButtons({
         >
           {i18n.t(($) => {
             return $.billing.plans.upgrade;
+          })}
+        </Button>
+      )}
+      {showConvert && (
+        <Button
+          size="sm"
+          className="rounded-lg h-8 text-xs"
+          disabled={loading}
+          onClick={onConvert}
+        >
+          {i18n.t(($) => {
+            return $.billing.plans.usagePacks.migration.convertPlan;
           })}
         </Button>
       )}
@@ -1206,12 +1225,29 @@ function currentPlanStatusLabel(
 
 function billingPeriodLabel(args: {
   isPaid: boolean;
+  migration: UsagePackMigrationStateResponse | null;
   scheduledChange: ScheduledBillingChange;
   periodEnd: string | null | undefined;
 }): string | null {
-  const { isPaid, scheduledChange, periodEnd } = args;
+  const { isPaid, migration, scheduledChange, periodEnd } = args;
   if (!isPaid) {
     return null;
+  }
+
+  if (
+    migration?.targetTier &&
+    migration.effectiveAt &&
+    migration.status === "scheduled"
+  ) {
+    return i18n.t(
+      ($) => {
+        return $.billing.plans.usagePacks.migration.switchesOn;
+      },
+      {
+        plan: planName(migration.targetTier),
+        date: formatBillingDate(migration.effectiveAt),
+      },
+    );
   }
 
   const changeDate = scheduledEffectiveDate(scheduledChange, periodEnd);
@@ -2158,8 +2194,7 @@ function UsagePackMigrationAvailability({
   if (!migration) {
     return null;
   }
-  const configurable =
-    migration.status === "eligible" || migration.status === "previewed";
+  const configurable = usagePackMigrationConfigurable(migration);
   return (
     <section className="flex flex-col gap-3">
       <div>
@@ -2276,8 +2311,9 @@ function BillingPricingPage({
   const featureSwitches = useGet(featureSwitch$);
   const usagePackPlansEnabled =
     featureSwitches[FeatureSwitchKey.UsagePackPlans];
-  const migrationInProgress =
-    migration?.status === "applying" || migration?.status === "scheduled";
+  const migrationInProgress = usagePackMigrationInProgress(migration);
+  const scheduledMigrationMissingConfiguration =
+    migration?.status === "scheduled" && !migration.configuration;
   return (
     <>
       {migrationLoading ? (
@@ -2285,20 +2321,24 @@ function BillingPricingPage({
           role="status"
           className="h-80 animate-pulse rounded-xl bg-muted/40"
         />
-      ) : migration && migrationInProgress ? (
+      ) : migration &&
+        (migrationInProgress || scheduledMigrationMissingConfiguration) ? (
         <UsagePackMigrationProgressPage migration={migration} onBack={onBack} />
       ) : migrationOpen &&
         migration &&
         migrationTargetTier &&
         migration.effectiveAt ? (
         <UsagePackMigrationPage
+          configuration={migration.configuration ?? null}
           effectiveAt={migration.effectiveAt}
+          migrationId={migration.migrationId}
           onBack={onMigrationBack}
           sourceTier={migration.tier}
           targetTier={migrationTargetTier}
         />
       ) : migration ? (
         <UsagePackMigrationPlanSelectionPage
+          configuration={migration.configuration ?? null}
           onBack={onBack}
           onSelect={onSelectMigration}
         />
@@ -2342,7 +2382,13 @@ function canStartUsagePackCheckout(
 function usagePackMigrationInProgress(
   migration: UsagePackMigrationStateResponse | null,
 ): boolean {
-  return migration?.status === "applying" || migration?.status === "scheduled";
+  return migration?.status === "applying";
+}
+
+function usagePackMigrationConfigurable(
+  migration: UsagePackMigrationStateResponse | null,
+): boolean {
+  return migration?.status === "eligible" || migration?.status === "previewed";
 }
 
 function migrationDowngradeTarget(
@@ -2356,6 +2402,27 @@ function planActionsLoading(
   migrationInProgress: boolean,
 ): boolean {
   return portalLoading || migrationInProgress;
+}
+
+function loadableDataOrNull<T>(loadable: Loadable<T>): T | null {
+  return loadable.state === "hasData" ? loadable.data : null;
+}
+
+function scheduledMigrationPlanActions(
+  migration: UsagePackMigrationStateResponse | null,
+  openPricingPage: () => void,
+  handleDowngrade: () => void,
+): {
+  futureTier: "pro" | "team" | null;
+  onDowngrade: () => void;
+} {
+  if (migration?.status !== "scheduled") {
+    return { futureTier: null, onDowngrade: handleDowngrade };
+  }
+  return {
+    futureTier: migration.configuration?.tier ?? null,
+    onDowngrade: openPricingPage,
+  };
 }
 
 function CurrentPlanTitle({
@@ -2411,15 +2478,14 @@ export function OrgBillingTab() {
     featureSwitches[FeatureSwitchKey.UsagePackPlans];
   const loading = portalLoadable.state === "loading";
 
-  const status =
-    statusLoadable.state === "hasData" ? statusLoadable.data : null;
-  const migration =
-    migrationLoadable.state === "hasData" ? migrationLoadable.data : null;
+  const status = loadableDataOrNull(statusLoadable);
+  const migration = loadableDataOrNull(migrationLoadable);
   const migrationLoading = shouldWaitForUsagePackMigration(
     usagePackPlansEnabled,
     migrationLoadable.state === "loading",
   );
   const migrationInProgress = usagePackMigrationInProgress(migration);
+  const canConvertLegacyPlan = usagePackMigrationConfigurable(migration);
   const statusLoading = statusLoadable.state === "loading";
   const statusError = statusLoadable.state === "hasError";
   const capabilities = billingControlCapabilities(status);
@@ -2433,6 +2499,7 @@ export function OrgBillingTab() {
   const periodEnd = status?.currentPeriodEnd;
   const periodLabel = billingPeriodLabel({
     isPaid,
+    migration,
     scheduledChange,
     periodEnd,
   });
@@ -2445,6 +2512,11 @@ export function OrgBillingTab() {
   const handleRestore = () => {
     openRestore();
   };
+  const scheduledPlanActions = scheduledMigrationPlanActions(
+    migration,
+    openPricingPage,
+    handleDowngrade,
+  );
   const currentPlanLabel = currentPlanNameLabel(currentTier);
   const currentPlanDescription = currentPlanStatusLabel(
     currentTier,
@@ -2539,9 +2611,12 @@ export function OrgBillingTab() {
                   isPaid={isPaid}
                   hasScheduledChange={hasScheduledChange}
                   currentTier={currentTier}
+                  futureTier={scheduledPlanActions.futureTier}
                   loading={planActionsLoading(loading, migrationInProgress)}
+                  showConvert={canConvertLegacyPlan}
+                  onConvert={openPricingPage}
                   onUpgrade={openPricingPage}
-                  onDowngrade={handleDowngrade}
+                  onDowngrade={scheduledPlanActions.onDowngrade}
                   onRestore={handleRestore}
                 />
               </div>

@@ -67,6 +67,7 @@ export type UsagePackAllocationChangeStatus =
 export const USAGE_PACK_SUBSCRIPTION_MIGRATION_STATUSES = [
   "previewed",
   "applying",
+  "revising",
   "scheduled",
   "completed",
   "failed",
@@ -76,7 +77,8 @@ export type UsagePackSubscriptionMigrationStatus =
   (typeof USAGE_PACK_SUBSCRIPTION_MIGRATION_STATUSES)[number];
 
 /**
- * Immutable conversion intent for one legacy Stripe Subscription.
+ * Conversion intent for one legacy Stripe Subscription. A scheduled intent can
+ * be revised before its effective date.
  *
  * The migration UUID becomes the usage-pack subscription UUID only after the
  * scheduled Stripe phase starts and its renewal invoice is paid. Until then,
@@ -123,10 +125,14 @@ export const usagePackSubscriptionMigrations = pgTable(
     return [
       uniqueIndex("uq_usage_pack_subscription_migrations_open_org")
         .on(table.orgId)
-        .where(sql`${table.status} IN ('previewed', 'applying', 'scheduled')`),
+        .where(
+          sql`${table.status} IN ('previewed', 'applying', 'revising', 'scheduled')`,
+        ),
       uniqueIndex("uq_usage_pack_subscription_migrations_open_subscription")
         .on(table.stripeSubscriptionId)
-        .where(sql`${table.status} IN ('previewed', 'applying', 'scheduled')`),
+        .where(
+          sql`${table.status} IN ('previewed', 'applying', 'revising', 'scheduled')`,
+        ),
       uniqueIndex("uq_usage_pack_subscription_migrations_invoice")
         .on(table.stripeInvoiceId)
         .where(sql`${table.stripeInvoiceId} IS NOT NULL`),
@@ -143,7 +149,7 @@ export const usagePackSubscriptionMigrations = pgTable(
       ),
       check(
         "chk_usage_pack_subscription_migrations_status",
-        sql`${table.status} IN ('previewed', 'applying', 'scheduled', 'completed', 'failed')`,
+        sql`${table.status} IN ('previewed', 'applying', 'revising', 'scheduled', 'completed', 'failed')`,
       ),
       check(
         "chk_usage_pack_subscription_migrations_amounts",
