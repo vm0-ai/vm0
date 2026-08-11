@@ -1,4 +1,4 @@
-import { command, type Setter } from "ccstate";
+import { command } from "ccstate";
 import {
   getCustomConnectorSkillStorageName,
   VOLUME_ORG_USER_ID,
@@ -461,54 +461,61 @@ async function readLockedConnector(
   };
 }
 
-async function repairSkillConnector(
-  set: Setter,
-  db: Db,
-  connector: CustomConnectorSkillScanRow & { readonly skillMarkdown: string },
-  signal: AbortSignal,
-): Promise<boolean> {
-  const volume = await set(
-    prepareCustomConnectorSkillVolume$,
-    {
-      orgId: connector.orgId,
-      ...skillContentInput(connector),
+const repairSkillConnector$ = command(
+  async (
+    { set },
+    db: Db,
+    connector: CustomConnectorSkillScanRow & {
+      readonly skillMarkdown: string;
     },
-    signal,
-  );
-  signal.throwIfAborted();
-
-  return await db.transaction(async (tx) => {
-    const current = await readLockedConnector(tx, connector.id, signal);
-    if (
-      !current ||
-      current.orgId !== connector.orgId ||
-      current.skillMarkdown === null ||
-      computeCustomConnectorSkillVersionId(
-        volume.version.storageId,
-        skillContentInput({ ...current, skillMarkdown: current.skillMarkdown }),
-      ) !== volume.version.versionId
-    ) {
-      return false;
-    }
-    const [storage] = await tx
-      .select({ headVersionId: storages.headVersionId })
-      .from(storages)
-      .where(eq(storages.id, volume.version.storageId))
-      .limit(1);
-    signal.throwIfAborted();
-    if (
-      current.skillStorageVersionId === volume.version.versionId &&
-      storage?.headVersionId === volume.version.versionId
-    ) {
-      return false;
-    }
-    await commitPreparedCustomConnectorSkillVolume(
-      { db: tx, connectorId: connector.id, volume },
+    signal: AbortSignal,
+  ): Promise<boolean> => {
+    const volume = await set(
+      prepareCustomConnectorSkillVolume$,
+      {
+        orgId: connector.orgId,
+        ...skillContentInput(connector),
+      },
       signal,
     );
-    return true;
-  });
-}
+    signal.throwIfAborted();
+
+    return await db.transaction(async (tx) => {
+      const current = await readLockedConnector(tx, connector.id, signal);
+      if (
+        !current ||
+        current.orgId !== connector.orgId ||
+        current.skillMarkdown === null ||
+        computeCustomConnectorSkillVersionId(
+          volume.version.storageId,
+          skillContentInput({
+            ...current,
+            skillMarkdown: current.skillMarkdown,
+          }),
+        ) !== volume.version.versionId
+      ) {
+        return false;
+      }
+      const [storage] = await tx
+        .select({ headVersionId: storages.headVersionId })
+        .from(storages)
+        .where(eq(storages.id, volume.version.storageId))
+        .limit(1);
+      signal.throwIfAborted();
+      if (
+        current.skillStorageVersionId === volume.version.versionId &&
+        storage?.headVersionId === volume.version.versionId
+      ) {
+        return false;
+      }
+      await commitPreparedCustomConnectorSkillVolume(
+        { db: tx, connectorId: connector.id, volume },
+        signal,
+      );
+      return true;
+    });
+  },
+);
 
 async function repairInverseInvalidConnector(
   db: Db,
@@ -587,8 +594,8 @@ export const repairCustomConnectorSkillVersions$ = command(
                 classification.connector.id,
                 signal,
               )
-            : await repairSkillConnector(
-                set,
+            : await set(
+                repairSkillConnector$,
                 db,
                 classification.connector,
                 signal,
