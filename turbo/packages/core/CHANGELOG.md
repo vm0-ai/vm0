@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.546.0](https://github.com/vm0-ai/vm0/compare/core-v8.545.2...core-v8.546.0) (2026-08-11)
+
+
+### Features
+
+* **api:** add presentation template catalog and import pipeline ([#26301](https://github.com/vm0-ai/vm0/issues/26301)) ([e785873](https://github.com/vm0-ai/vm0/commit/e785873209e46f722ca1dd19398a66d2b3b0ed6f))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.317.0
+
 ## [8.545.2](https://github.com/vm0-ai/vm0/compare/core-v8.545.1...core-v8.545.2) (2026-08-11)
 
 

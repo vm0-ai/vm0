@@ -29,6 +29,11 @@ import {
   type CustomConnectorClientResponse,
   type UpdateCustomConnectorBody,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
+import {
+  zeroMcpConnectorListResponseSchema,
+  zeroMcpConnectorsContract,
+  type ZeroMcpConnector,
+} from "@vm0/api-contracts/contracts/zero-mcp-connectors";
 import type {
   ConnectorListResponse,
   ConnectorResponse,
@@ -194,6 +199,25 @@ export async function listZeroCustomConnectors(): Promise<
   }
 
   handleError(result, "Failed to list custom connectors");
+}
+
+export async function listZeroRunMcpConnectors(): Promise<
+  ZeroMcpConnector[] | null
+> {
+  const config = await getClientConfig();
+  const client = initClient(zeroMcpConnectorsContract, config);
+
+  const result = await client.list({ headers: {} });
+  if (result.status === 200) {
+    return zeroMcpConnectorListResponseSchema.parse(result.body).connectors;
+  }
+  // This collection has no resource-level 404. A 404 means the API
+  // deployment predates this route and activates the temporary CLI fallback.
+  if (result.status === 404) {
+    return null;
+  }
+
+  handleError(result, "Failed to list MCP connectors for this run");
 }
 
 export async function createZeroCustomConnector(

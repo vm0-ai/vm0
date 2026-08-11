@@ -1,6 +1,6 @@
 import {
-  getOrCreateCardSignals,
-  registeredCardSignals,
+  createCardSignalsRegistry,
+  type CardSignalsRegistry,
 } from "./card-signal-map.ts";
 import { parseTrustedPlatformActionUrl } from "./platform-action-url.ts";
 
@@ -10,10 +10,10 @@ export interface PlanUpgradeDescriptor {
 
 export type PlanUpgradeSignals = PlanUpgradeDescriptor;
 
-export interface PlanUpgradeCardSignalsRegistry {
-  register(descriptor: PlanUpgradeDescriptor): PlanUpgradeSignals;
-  resolve(resourceKey: string): PlanUpgradeSignals;
-}
+type PlanUpgradeCardSignalsRegistry = CardSignalsRegistry<
+  PlanUpgradeDescriptor,
+  PlanUpgradeSignals
+>;
 
 export function parsePlanUpgradeUrl(
   value: string,
@@ -34,19 +34,12 @@ export function parsePlanUpgradeUrl(
 }
 
 export function createPlanUpgradeCardSignalsRegistry(): PlanUpgradeCardSignalsRegistry {
-  const signalsByResourceKey = new Map<string, PlanUpgradeSignals>();
-  return {
-    register(descriptor) {
-      return getOrCreateCardSignals(
-        signalsByResourceKey,
-        descriptor.href,
-        () => {
-          return descriptor;
-        },
-      );
+  return createCardSignalsRegistry(
+    (descriptor: PlanUpgradeDescriptor) => {
+      return descriptor.href;
     },
-    resolve(resourceKey) {
-      return registeredCardSignals(signalsByResourceKey, resourceKey);
+    (descriptor) => {
+      return descriptor;
     },
-  };
+  );
 }

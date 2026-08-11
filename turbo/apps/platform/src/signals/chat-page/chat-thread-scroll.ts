@@ -1,7 +1,7 @@
 import { command, computed, state, type Command, type Computed } from "ccstate";
 import { animationFrame } from "signal-timers";
 import { logger } from "../log.ts";
-import { onRef } from "../utils.ts";
+import { onDomEventFn, onRef } from "../utils.ts";
 
 const L = logger("AutoScroll");
 const AT_BOTTOM_THRESHOLD_PX = 10;
@@ -49,11 +49,34 @@ export interface ChatThreadScrollSignals {
     [ThreadScrollPosition | null, AbortSignal]
   >;
   readonly scrollTo$: Command<void, [ThreadScrollPosition]>;
-  readonly scrollToTop$: Command<void, []>;
-  readonly scrollToBottom$: Command<void, []>;
+  readonly scrollToTop$: Command<Promise<void>, [AbortSignal]>;
+  readonly scrollToBottom$: Command<Promise<void>, [AbortSignal]>;
 }
 
 const threadScrollPositions$ = state(new Map<string, ThreadScrollPosition>());
+
+interface ThreadScrollPositionSignals {
+  readonly threadScrollPosition$: Computed<ThreadScrollPosition | null>;
+  readonly awayFromBottom$: Computed<boolean>;
+}
+
+/**
+ * Read-only view of a thread's held scroll position. Derived from module
+ * state, so it can be created before the scroll signals themselves — the
+ * render window is computed from it, while the commands that write the
+ * position are wired to run the window's ensure step afterwards.
+ */
+export function createThreadScrollPositionSignals(
+  threadId: string,
+): ThreadScrollPositionSignals {
+  const threadScrollPosition$ = computed((get) => {
+    return get(threadScrollPositions$).get(threadId) ?? null;
+  });
+  const awayFromBottom$ = computed((get) => {
+    return get(threadScrollPosition$) !== null;
+  });
+  return { threadScrollPosition$, awayFromBottom$ };
+}
 
 function isAtBottom(container: HTMLElement): boolean {
   return (
@@ -180,20 +203,26 @@ interface ScrollRuntime {
   programmaticScrollTop: number | null;
 }
 
-function createInternalScrollSignals(threadId: string) {
+function createInternalScrollSignals(
+  threadId: string,
+  position: ThreadScrollPositionSignals,
+  afterThreadScrollPositionChanged$: Command<Promise<void>, [AbortSignal]>,
+) {
   const internalScrollContainer$ = state<HTMLElement | null>(null);
   const scrollContainer$ = computed((get) => {
     return get(internalScrollContainer$);
   });
-  const threadScrollPosition$ = computed((get) => {
-    return get(threadScrollPositions$).get(threadId) ?? null;
-  });
-  const awayFromBottom$ = computed((get) => {
-    return get(threadScrollPosition$) !== null;
-  });
+  const { threadScrollPosition$, awayFromBottom$ } = position;
 
+  // The held position feeds the render window, so every write below runs the
+  // window's ensure step afterwards — parsing is command-driven, and this is
+  // one of the places the set of visible events can change.
   const setThreadScrollPosition$ = command(
-    ({ get, set }, position: ThreadScrollPosition) => {
+    async (
+      { get, set },
+      position: ThreadScrollPosition,
+      signal: AbortSignal,
+    ): Promise<void> => {
       const positions = get(threadScrollPositions$);
       if (sameScrollPosition(positions.get(threadId), position)) {
         return;
@@ -201,25 +230,34 @@ function createInternalScrollSignals(threadId: string) {
       const next = new Map(positions);
       next.set(threadId, position);
       set(threadScrollPositions$, next);
+      await set(afterThreadScrollPositionChanged$, signal);
     },
   );
-  const clearThreadScrollPosition$ = command(({ get, set }) => {
-    const positions = get(threadScrollPositions$);
-    if (!positions.has(threadId)) {
-      return;
-    }
-    const next = new Map(positions);
-    next.delete(threadId);
-    set(threadScrollPositions$, next);
-  });
+  const clearThreadScrollPosition$ = command(
+    async ({ get, set }, signal: AbortSignal): Promise<void> => {
+      const positions = get(threadScrollPositions$);
+      if (!positions.has(threadId)) {
+        return;
+      }
+      const next = new Map(positions);
+      next.delete(threadId);
+      set(threadScrollPositions$, next);
+      await set(afterThreadScrollPositionChanged$, signal);
+    },
+  );
   const syncThreadScrollPosition$ = command(
-    ({ set }, container: HTMLElement, capturePosition: boolean) => {
+    async (
+      { set },
+      container: HTMLElement,
+      capturePosition: boolean,
+      signal: AbortSignal,
+    ): Promise<void> => {
       if (isAtBottom(container)) {
-        set(clearThreadScrollPosition$);
         L.debug("scroll position cleared at bottom", {
           threadId,
           scrollTop: container.scrollTop,
         });
+        await set(clearThreadScrollPosition$, signal);
         return;
       }
       if (!capturePosition) {
@@ -231,12 +269,12 @@ function createInternalScrollSignals(threadId: string) {
       }
       const position = captureScrollPosition(container);
       if (position) {
-        set(setThreadScrollPosition$, position);
         L.debug("scroll position captured", {
           threadId,
           ...position,
           scrollTop: container.scrollTop,
         });
+        await set(setThreadScrollPosition$, position, signal);
       }
     },
   );
@@ -300,66 +338,74 @@ function createScrollNavigationSignals(
     runtime.initialized = true;
   });
 
-  const scrollToBottom$ = command(({ get, set }) => {
-    const container = get(scroll.scrollContainer$);
-    if (!container) {
-      throw new Error("Chat scroll container is not mounted");
-    }
-    L.debug("scroll to bottom", {
-      threadId,
-      scrollTop: container.scrollTop,
-      scrollHeight: container.scrollHeight,
-      heldTargetEventId:
-        get(scroll.threadScrollPosition$)?.targetEventId ?? null,
-    });
-    set(scroll.clearThreadScrollPosition$);
-    applyScrollTop(runtime, container, container.scrollHeight);
-    runtime.initialized = true;
-  });
-
-  const scrollToTop$ = command(({ get, set }) => {
-    const container = get(scroll.scrollContainer$);
-    if (!container) {
-      throw new Error("Chat scroll container is not mounted");
-    }
-    applyScrollTop(runtime, container, 0);
-    runtime.initialized = true;
-    set(scroll.syncThreadScrollPosition$, container, true);
-  });
-
-  const restoreAfterResize$ = command(({ get, set }) => {
-    const position = get(scroll.threadScrollPosition$);
-    const container = get(scroll.scrollContainer$);
-    L.debug("resize scroll restore", {
-      threadId,
-      targetEventId: position?.targetEventId ?? null,
-      viewportOffsetTop: position?.viewportOffsetTop ?? null,
-    });
-    if (!container) {
-      throw new Error("Chat scroll container is not mounted");
-    }
-    if (position) {
-      if (scrollToPosition(runtime, container, position)) {
-        runtime.initialized = true;
-        return;
+  const scrollToBottom$ = command(
+    async ({ get, set }, signal: AbortSignal): Promise<void> => {
+      const container = get(scroll.scrollContainer$);
+      if (!container) {
+        throw new Error("Chat scroll container is not mounted");
       }
-      if (get(pendingScrollAfterRenderRequest$) !== null) {
-        // Event rendering can replace the content between ResizeObserver's
-        // notification and this restore. The commit marker owns that pending
-        // batch, so keep the anchor until React acknowledges its final DOM.
-        L.debug("resize scroll restore waiting for render commit", {
+      L.debug("scroll to bottom", {
+        threadId,
+        scrollTop: container.scrollTop,
+        scrollHeight: container.scrollHeight,
+        heldTargetEventId:
+          get(scroll.threadScrollPosition$)?.targetEventId ?? null,
+      });
+      // The DOM write happens before the awaited state clear so the jump is
+      // part of the current task and cannot paint at the old offset first.
+      applyScrollTop(runtime, container, container.scrollHeight);
+      runtime.initialized = true;
+      await set(scroll.clearThreadScrollPosition$, signal);
+    },
+  );
+
+  const scrollToTop$ = command(
+    async ({ get, set }, signal: AbortSignal): Promise<void> => {
+      const container = get(scroll.scrollContainer$);
+      if (!container) {
+        throw new Error("Chat scroll container is not mounted");
+      }
+      applyScrollTop(runtime, container, 0);
+      runtime.initialized = true;
+      await set(scroll.syncThreadScrollPosition$, container, true, signal);
+    },
+  );
+
+  const restoreAfterResize$ = command(
+    async ({ get, set }, signal: AbortSignal): Promise<void> => {
+      const position = get(scroll.threadScrollPosition$);
+      const container = get(scroll.scrollContainer$);
+      L.debug("resize scroll restore", {
+        threadId,
+        targetEventId: position?.targetEventId ?? null,
+        viewportOffsetTop: position?.viewportOffsetTop ?? null,
+      });
+      if (!container) {
+        throw new Error("Chat scroll container is not mounted");
+      }
+      if (position) {
+        if (scrollToPosition(runtime, container, position)) {
+          runtime.initialized = true;
+          return;
+        }
+        if (get(pendingScrollAfterRenderRequest$) !== null) {
+          // Event rendering can replace the content between ResizeObserver's
+          // notification and this restore. The commit marker owns that pending
+          // batch, so keep the anchor until React acknowledges its final DOM.
+          L.debug("resize scroll restore waiting for render commit", {
+            threadId,
+            targetEventId: position.targetEventId,
+          });
+          return;
+        }
+        L.debug("resize scroll restore target no longer rendered", {
           threadId,
           targetEventId: position.targetEventId,
         });
-        return;
       }
-      L.debug("resize scroll restore target no longer rendered", {
-        threadId,
-        targetEventId: position.targetEventId,
-      });
-    }
-    set(scrollToBottom$);
-  });
+      await set(scrollToBottom$, signal);
+    },
+  );
 
   // The viewport and the composer settle their layout over a frame, so their
   // restore waits for the next one and the flag folds repeated notifications
@@ -375,10 +421,10 @@ function createScrollNavigationSignals(
       runtime.resizeScheduled = true;
       L.debug("resize scroll restore scheduled", { threadId });
       animationFrame(
-        () => {
+        onDomEventFn(() => {
           runtime.resizeScheduled = false;
-          set(restoreAfterResize$);
-        },
+          return set(restoreAfterResize$, signal);
+        }),
         { signal },
       );
     },
@@ -391,13 +437,15 @@ function createScrollNavigationSignals(
   // Deliberately outside `resizeScheduled`: sharing that flag would fold this
   // restore into the deferred pass, which is the frame of delay it exists to
   // avoid.
-  const restoreAfterContentResize$ = command(({ set }) => {
-    if (!runtime.initialized) {
-      return;
-    }
-    L.debug("content resize scroll restore", { threadId });
-    set(restoreAfterResize$);
-  });
+  const restoreAfterContentResize$ = command(
+    async ({ set }, signal: AbortSignal): Promise<void> => {
+      if (!runtime.initialized) {
+        return;
+      }
+      L.debug("content resize scroll restore", { threadId });
+      await set(restoreAfterResize$, signal);
+    },
+  );
 
   return {
     scrollTo$,
@@ -426,58 +474,68 @@ function createRenderScrollSignals(
     },
   );
   const scrollCommitOnRef$ = onRef(
-    command(({ get, set }, marker: HTMLElement, signal: AbortSignal): void => {
-      signal.throwIfAborted();
-      const revision = scrollRenderRevision(marker);
-      const request = get(pendingScrollAfterRenderRequest$);
-      if (!request || request.revision !== revision) {
-        L.debug("stale render scroll commit ignored", {
-          threadId,
-          revision,
-          currentRevision: request?.revision ?? null,
-        });
-        return;
-      }
-      const container = scrollContainerForCommitMarker(marker);
-      if (scrollAnchors(container).length === 0) {
-        L.debug("render scroll commit waiting for messages", {
-          threadId,
-          revision,
-        });
-        return;
-      }
-      if (marker.hasAttribute(SCROLL_COMMIT_TO_TAIL_ATTRIBUTE)) {
-        set(scroll.clearThreadScrollPosition$);
-        applyScrollTop(runtime, container, container.scrollHeight);
-      } else if (
-        !request.position ||
-        !scrollToPosition(runtime, container, request.position)
-      ) {
-        throw new Error(
-          `Chat scroll target is not rendered: ${request.position?.targetEventId ?? "none"}`,
+    command(
+      async (
+        { get, set },
+        marker: HTMLElement,
+        signal: AbortSignal,
+      ): Promise<void> => {
+        signal.throwIfAborted();
+        const revision = scrollRenderRevision(marker);
+        const request = get(pendingScrollAfterRenderRequest$);
+        if (!request || request.revision !== revision) {
+          L.debug("stale render scroll commit ignored", {
+            threadId,
+            revision,
+            currentRevision: request?.revision ?? null,
+          });
+          return;
+        }
+        const container = scrollContainerForCommitMarker(marker);
+        if (scrollAnchors(container).length === 0) {
+          L.debug("render scroll commit waiting for messages", {
+            threadId,
+            revision,
+          });
+          return;
+        }
+        const commitToTail = marker.hasAttribute(
+          SCROLL_COMMIT_TO_TAIL_ATTRIBUTE,
         );
-      }
-      runtime.initialized = true;
-      set(clearPendingRequest$, revision);
-      L.debug("render scroll committed", {
-        threadId,
-        revision,
-        targetEventId: request.position?.targetEventId ?? null,
-        viewportOffsetTop: request.position?.viewportOffsetTop ?? null,
-        scrollTop: container.scrollTop,
-      });
-    }),
+        if (commitToTail) {
+          applyScrollTop(runtime, container, container.scrollHeight);
+        } else if (
+          !request.position ||
+          !scrollToPosition(runtime, container, request.position)
+        ) {
+          throw new Error(
+            `Chat scroll target is not rendered: ${request.position?.targetEventId ?? "none"}`,
+          );
+        }
+        runtime.initialized = true;
+        set(clearPendingRequest$, revision);
+        L.debug("render scroll committed", {
+          threadId,
+          revision,
+          targetEventId: request.position?.targetEventId ?? null,
+          viewportOffsetTop: request.position?.viewportOffsetTop ?? null,
+          scrollTop: container.scrollTop,
+        });
+        if (commitToTail) {
+          // After the DOM write: the commit runs during React's ref phase, and
+          // the offset must be applied before this frame paints.
+          await set(scroll.clearThreadScrollPosition$, signal);
+        }
+      },
+    ),
   );
   const autoScroll$ = command(
-    (
+    async (
       { set },
       position: ThreadScrollPosition | null,
       signal: AbortSignal,
     ): Promise<void> => {
       signal.throwIfAborted();
-      if (position === null) {
-        set(scroll.clearThreadScrollPosition$);
-      }
       runtime.latestRenderRequestRevision += 1;
       const request: ScrollAfterRenderRequest = {
         revision: runtime.latestRenderRequestRevision,
@@ -490,7 +548,9 @@ function createRenderScrollSignals(
         viewportOffsetTop: position?.viewportOffsetTop ?? null,
       });
       set(internalPendingRequest$, request);
-      return Promise.resolve();
+      if (position === null) {
+        await set(scroll.clearThreadScrollPosition$, signal);
+      }
     },
   );
 
@@ -517,7 +577,7 @@ function createScrollContainerOnRef(
         initialized: runtime.initialized,
       });
 
-      const handleScroll = (event: Event) => {
+      const handleScroll = onDomEventFn((event: Event) => {
         if (!runtime.initialized) {
           L.debug("pre-initialization scroll ignored", { threadId });
           return;
@@ -537,8 +597,13 @@ function createScrollContainerOnRef(
           // more of them than the restores that wrote them.
           runtime.programmaticScrollTop = null;
         }
-        set(scroll.syncThreadScrollPosition$, container, !programmatic);
-      };
+        return set(
+          scroll.syncThreadScrollPosition$,
+          container,
+          !programmatic,
+          signal,
+        );
+      });
       const scheduleRestoreAfterResize = () => {
         set(navigation.scheduleRestoreAfterResize$, signal);
       };
@@ -597,9 +662,11 @@ function createScrollContentOnRef(
   return onRef(
     command(({ set }, content: HTMLElement, signal: AbortSignal) => {
       L.debug("content bound", { threadId });
-      const resizeObserver = new ResizeObserver(() => {
-        set(navigation.restoreAfterContentResize$);
-      });
+      const resizeObserver = new ResizeObserver(
+        onDomEventFn(() => {
+          return set(navigation.restoreAfterContentResize$, signal);
+        }),
+      );
       resizeObserver.observe(content);
       signal.addEventListener(
         "abort",
@@ -615,6 +682,8 @@ function createScrollContentOnRef(
 
 export function createChatThreadScrollSignals(
   threadId: string,
+  position: ThreadScrollPositionSignals,
+  afterThreadScrollPositionChanged$: Command<Promise<void>, [AbortSignal]>,
 ): ChatThreadScrollSignals {
   const runtime: ScrollRuntime = {
     initialized: false,
@@ -622,7 +691,11 @@ export function createChatThreadScrollSignals(
     latestRenderRequestRevision: 0,
     programmaticScrollTop: null,
   };
-  const scroll = createInternalScrollSignals(threadId);
+  const scroll = createInternalScrollSignals(
+    threadId,
+    position,
+    afterThreadScrollPositionChanged$,
+  );
   const render = createRenderScrollSignals(threadId, scroll, runtime);
   const navigation = createScrollNavigationSignals(
     threadId,

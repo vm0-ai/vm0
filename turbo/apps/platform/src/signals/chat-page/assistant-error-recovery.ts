@@ -1,3 +1,4 @@
+import { hasChatEventBodyContent } from "./chat-event-body-blocks.ts";
 import { command, computed, type Computed } from "ccstate";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { isChatEventContentTextType } from "@vm0/api-contracts/contracts/chat-events";
@@ -165,7 +166,7 @@ function classifyAssistantError(
 function isRenderableAssistantEvent(event: EnrichedChatEvent): boolean {
   return (
     (isChatEventContentTextType(event.eventType) && Boolean(event.content)) ||
-    event.blocks.length > 0 ||
+    hasChatEventBodyContent(event) ||
     event.eventType === "input.rejected" ||
     event.eventType === "output.error" ||
     event.eventType === "run.failed" ||

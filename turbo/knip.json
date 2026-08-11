@@ -31,7 +31,13 @@
       "ignoreDependencies": ["@hono/node-server-v1", "clerk"]
     },
     "apps/platform": {
-      "entry": ["src/main.ts", "i18next.config.ts", "**/*.{test,spec}.ts?(x)"],
+      "entry": [
+        "src/main.ts",
+        "i18next.config.ts",
+        "scripts/bench-p90-reporter.ts",
+        "src/**/__benches__/**/*.bench.tsx",
+        "**/*.{test,spec}.ts?(x)"
+      ],
       "project": ["**/*.{ts,tsx}"],
       "ignore": [
         "src/views/zero-page/zero-sidebar-account.tsx",

@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.729.0](https://github.com/vm0-ai/vm0/compare/app-v0.728.0...app-v0.729.0) (2026-08-11)
+
+
+### Features
+
+* **api:** add presentation template catalog and import pipeline ([#26301](https://github.com/vm0-ai/vm0/issues/26301)) ([e785873](https://github.com/vm0-ai/vm0/commit/e785873209e46f722ca1dd19398a66d2b3b0ed6f))
+* **platform:** unify avatar and workspace logo thumbnails ([#26390](https://github.com/vm0-ai/vm0/issues/26390)) ([b9638a1](https://github.com/vm0-ai/vm0/commit/b9638a132cda52a2310398f3c8ab8570cb2abf70))
+
+
+### Bug Fixes
+
+* **platform:** recover chat state after foreground reconnect ([#26327](https://github.com/vm0-ai/vm0/issues/26327)) ([e1f971e](https://github.com/vm0-ai/vm0/commit/e1f971e308d9c899bcd458fe7012f0634a1f02ab))
+
+
+### Refactoring
+
+* **platform:** parse chat markdown into per-event hast trees ([#26360](https://github.com/vm0-ai/vm0/issues/26360)) ([86f0362](https://github.com/vm0-ai/vm0/commit/86f0362e6551e7daa10a0747ceaa38b7bd9aada4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.317.0
+    * @vm0/core bumped to 8.546.0
+
 ## [0.728.0](https://github.com/vm0-ai/vm0/compare/app-v0.727.0...app-v0.728.0) (2026-08-11)
 
 

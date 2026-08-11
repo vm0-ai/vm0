@@ -1,7 +1,6 @@
 import {
   parseConnectorAuthorizeUrl,
   type ConnectorActionDescriptor,
-  type ConnectorSignals,
 } from "./connector-action-block.ts";
 import {
   parsePermissionActionUrl,
@@ -11,29 +10,21 @@ import {
 import {
   parseComputerUseAuthorizationUrl,
   type ComputerUseAuthorizationDescriptor,
-  type ComputerUseAuthorizationSignals,
 } from "./computer-use-authorization-block.ts";
 import {
   parsePlanUpgradeUrl,
   type PlanUpgradeDescriptor,
-  type PlanUpgradeSignals,
 } from "./plan-upgrade-block.ts";
 import type {
   ArtifactDescriptor,
   ArtifactKind,
-  ArtifactSignals,
 } from "./artifact-card-signals.ts";
-import type { PermissionSignals } from "./permission-card-signals.ts";
-import {
-  parseMailDraftUrl,
-  type MailDraftDescriptor,
-  type MailDraftSignals,
-} from "./mail-draft.ts";
+import { parseMailDraftUrl, type MailDraftDescriptor } from "./mail-draft.ts";
 import {
   parseBrowserSessionUrl,
   type BrowserSessionDescriptor,
-  type BrowserSessionSignals,
 } from "./browser-session-block.ts";
+
 import {
   resolvePublicArtifactsBaseUrl,
   resolveZeroHostDomain,
@@ -45,50 +36,14 @@ import {
 
 export type BodyPreviewKind = ArtifactKind;
 
-export type BodyRenderBlock =
-  | {
-      type: "markdown";
-      id: string;
-      content: string;
-    }
-  | {
-      type: "artifact";
-      resourceKey: string;
-      signals: ArtifactSignals;
-    }
-  | {
-      type: "connector-action";
-      resourceKey: string;
-      signals: ConnectorSignals;
-    }
-  | {
-      type: "permission-action";
-      resourceKey: string;
-      signals: PermissionSignals;
-    }
-  | {
-      type: "computer-use-authorization";
-      resourceKey: string;
-      signals: ComputerUseAuthorizationSignals;
-    }
-  | {
-      type: "plan-upgrade";
-      resourceKey: string;
-      signals: PlanUpgradeSignals;
-    }
-  | {
-      type: "mail-draft";
-      resourceKey: string;
-      signals: MailDraftSignals;
-    }
-  | {
-      type: "browser-session";
-      resourceKey: string;
-      signals: BrowserSessionSignals;
-    };
+export interface ParsedMarkdownBlock {
+  type: "markdown";
+  id: string;
+  content: string;
+}
 
 export type ParsedBodyBlock =
-  | Extract<BodyRenderBlock, { type: "markdown" }>
+  | ParsedMarkdownBlock
   | {
       type: "artifact";
       resourceKey: string;
@@ -1117,4 +1072,78 @@ export function parseBodyBlocks(
     cleanContent,
     blocks,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Event body plan
+// ---------------------------------------------------------------------------
+
+export type CardDescriptorBlock = Exclude<ParsedBodyBlock, ParsedMarkdownBlock>;
+
+/** The URL a card's slot stands on, and the key its signals are looked up by. */
+export function cardSlotUrl(block: CardDescriptorBlock): string {
+  switch (block.type) {
+    case "artifact": {
+      return block.descriptor.url;
+    }
+    case "connector-action": {
+      return block.descriptor.originalUrl;
+    }
+    case "permission-action": {
+      return block.descriptor.originalUrl;
+    }
+    case "computer-use-authorization": {
+      return block.descriptor.originalUrl;
+    }
+    case "plan-upgrade": {
+      return block.descriptor.href;
+    }
+    case "mail-draft": {
+      return block.descriptor.originalUrl;
+    }
+    case "browser-session": {
+      return block.descriptor.href;
+    }
+  }
+}
+
+function cardSlotMarkdown(url: string): string {
+  const label = url
+    .replace(/\\/g, String.raw`\\`)
+    .replace(/\]/g, String.raw`\]`);
+  return `[${label}](<${url}>)`;
+}
+
+interface EventBodyPlan {
+  /**
+   * The event body as one markdown document. Where the scanner recognized a
+   * card, the prose carries a link to the card's URL standing alone in a
+   * paragraph; the tree pass swaps those paragraphs for the cards registered
+   * under the same URL and leaves any it cannot resolve as ordinary links.
+   */
+  readonly treeSource: string;
+  /** The recognized cards, in the order their slots appear in the source. */
+  readonly descriptors: readonly CardDescriptorBlock[];
+}
+
+/**
+ * Plans one event body. The line scanner in `parseBodyBlocks` stays the sole
+ * authority on which URLs become cards — fences, tables and inline labels
+ * behave exactly as before — and this only re-joins its output into a single
+ * document instead of a block list.
+ */
+export function eventBodyPlan(
+  content: string,
+  options: ParseBodyBlocksOptions = {},
+): EventBodyPlan {
+  const { blocks } = parseBodyBlocks(content, options);
+  const descriptors: CardDescriptorBlock[] = [];
+  const parts = blocks.map((block) => {
+    if (block.type === "markdown") {
+      return block.content;
+    }
+    descriptors.push(block);
+    return cardSlotMarkdown(cardSlotUrl(block));
+  });
+  return { treeSource: parts.join("\n\n"), descriptors };
 }

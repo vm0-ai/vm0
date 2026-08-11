@@ -1,10 +1,4 @@
-import {
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-  within,
-} from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import {
   chatThreadByIdContract,
   chatThreadEventsContract,
@@ -98,19 +92,15 @@ function mockAgentsPage(): void {
   });
 }
 
-type BlobDownloadMock = ReturnType<typeof context.mocks.browser.blobDownload>;
+const MERMAID_DATA_URL_PREFIX = "data:image/svg+xml;charset=utf-8,";
 
-/** The SVG a rendered diagram shows, read back out of its object URL. */
-function renderedDiagramMarkup(
-  diagram: HTMLElement,
-  objectUrls: BlobDownloadMock,
-): Promise<string> {
-  const url = diagram.getAttribute("src");
-  const blob = url ? objectUrls.blobForUrl(url) : null;
-  if (!blob) {
-    throw new Error("Expected the diagram source to resolve to a Blob");
+/** The SVG a rendered diagram shows, decoded from its data URL. */
+function renderedDiagramMarkup(diagram: HTMLElement): string {
+  const url = diagram.getAttribute("src") ?? "";
+  if (!url.startsWith(MERMAID_DATA_URL_PREFIX)) {
+    throw new Error("Expected the diagram to be shown from a data URL");
   }
-  return blob.text();
+  return decodeURIComponent(url.slice(MERMAID_DATA_URL_PREFIX.length));
 }
 
 function getButtonByText(container: ParentNode, text: string): HTMLElement {
@@ -276,7 +266,6 @@ describe("assistant markdown", () => {
   });
 
   it("renders mermaid code blocks as diagrams", async () => {
-    const objectUrls = context.mocks.browser.blobDownload();
     mockThread("```mermaid\nflowchart TD\n  A --> B\n```");
 
     detachedSetupPage({
@@ -285,18 +274,9 @@ describe("assistant markdown", () => {
     });
 
     // The diagram is shown by an <img>, so the SVG itself never reaches the
-    // document — its markup lives in a browser-native file.
+    // document — its markup travels as a data URL with nothing to revoke.
     const diagram = await screen.findByAltText("Diagram");
-    const url = diagram.getAttribute("src") ?? "";
-    expect(url).toContain("blob:mock-download-");
-    const blob = objectUrls.blobForUrl(url);
-    expect(blob).toBeInstanceOf(File);
-    if (!(blob instanceof File)) {
-      throw new Error("Expected the rendered diagram to be a File");
-    }
-    expect(blob.name).toBe("diagram.svg");
-    expect(blob.type).toBe("image/svg+xml");
-    await expect(renderedDiagramMarkup(diagram, objectUrls)).resolves.toContain(
+    expect(renderedDiagramMarkup(diagram)).toContain(
       'data-testid="mermaid-svg"',
     );
     expect(document.querySelector("code.language-mermaid")).toBeNull();
@@ -305,7 +285,6 @@ describe("assistant markdown", () => {
   });
 
   it("shows every copy of a diagram that appears more than once", async () => {
-    context.mocks.browser.blobDownload();
     const fence = "```mermaid\nflowchart TD\n  A --> B\n```";
     mockThread(`${fence}\n\nand again\n\n${fence}`);
 
@@ -314,8 +293,8 @@ describe("assistant markdown", () => {
       path: `/chats/${THREAD_ID}`,
     });
 
-    // Copies share one result entry. Mounting the second must not reset that
-    // entry to `rendering`, which would blank the first one.
+    // Copies share one diagram entry keyed by content, so both images resolve
+    // to the same rendered markup.
     const diagrams = await waitFor(() => {
       const found = screen.getAllByAltText("Diagram");
       expect(found).toHaveLength(2);
@@ -329,7 +308,6 @@ describe("assistant markdown", () => {
   });
 
   it("uses redux themes for light and dark diagrams", async () => {
-    const objectUrls = context.mocks.browser.blobDownload();
     mockThread("```mermaid\nflowchart TD\n  A --> B\n```");
 
     detachedSetupPage({
@@ -342,9 +320,11 @@ describe("assistant markdown", () => {
     click(getButtonByText(settingsDialog, "Light"));
 
     const lightDiagram = await screen.findByAltText("Diagram");
-    await expect(
-      renderedDiagramMarkup(lightDiagram, objectUrls),
-    ).resolves.toContain('data-mermaid-theme="redux"');
+    await waitFor(() => {
+      expect(renderedDiagramMarkup(screen.getByAltText("Diagram"))).toContain(
+        'data-mermaid-theme="redux"',
+      );
+    });
     const lightUrl = lightDiagram.getAttribute("src") ?? "";
 
     click(getButtonByText(settingsDialog, "Dark"));
@@ -355,12 +335,9 @@ describe("assistant markdown", () => {
         lightUrl,
       );
     });
-    await expect(
-      renderedDiagramMarkup(screen.getByAltText("Diagram"), objectUrls),
-    ).resolves.toContain('data-mermaid-theme="redux-dark"');
-    // Theme changes replace the rendered entry, but the panel still owns both
-    // object URLs until its lifetime signal aborts.
-    expect(objectUrls.revokedUrls).not.toContain(lightUrl);
+    expect(renderedDiagramMarkup(screen.getByAltText("Diagram"))).toContain(
+      'data-mermaid-theme="redux-dark"',
+    );
   });
 
   it("moves a rendered mermaid diagram from the lightbox into split view", async () => {
@@ -541,108 +518,6 @@ describe("assistant markdown", () => {
     });
   });
 
-  it("revokes a mermaid object URL when its chat panel signal aborts", async () => {
-    const objectUrls = context.mocks.browser.blobDownload();
-    const replacementThreadId = "c0000000-0000-4000-a000-000000000002";
-    mockThread("```mermaid\nflowchart TD\n  A --> B\n```", [
-      threadSnapshot(replacementThreadId, "Replacement thread"),
-    ]);
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${THREAD_ID}`,
-    });
-
-    const diagram = await screen.findByAltText("Diagram");
-    const url = diagram.getAttribute("src") ?? "";
-    expect(objectUrls.revokedUrls).not.toContain(url);
-
-    // Following a real thread link replaces the panel through the same route
-    // transition a user triggers from the chat sidebar.
-    click(
-      await waitFor(() => {
-        return getLinkByText(document, "Replacement thread");
-      }),
-    );
-
-    await waitFor(() => {
-      expect(document.title).toBe("Replacement thread | VM0");
-      expect(objectUrls.revokedUrls).toContain(url);
-    });
-
-    const replacementDiagram = await screen.findByAltText("Diagram");
-    const replacementUrl = replacementDiagram.getAttribute("src") ?? "";
-    expect(replacementUrl).not.toBe(url);
-    expect(objectUrls.revokedUrls).not.toContain(replacementUrl);
-  });
-
-  it("keeps a mermaid preview while query navigation replaces the same thread panel", async () => {
-    const objectUrls = context.mocks.browser.blobDownload();
-    const sidebarThreadId = "c0000000-0000-4000-a000-000000000003";
-    mockThread("```mermaid\nflowchart TD\n  A --> B\n```", [
-      threadSnapshot(sidebarThreadId, "Sidebar thread"),
-    ]);
-    mockAgentsPage();
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${THREAD_ID}`,
-    });
-
-    const originalDiagram = await screen.findByAltText("Diagram");
-    const originalUrl = originalDiagram.getAttribute("src") ?? "";
-    expect(objectUrls.revokedUrls).not.toContain(originalUrl);
-    const originalExpand = originalDiagram.closest("button");
-    if (!originalExpand) {
-      throw new Error("Expected the diagram expand button");
-    }
-
-    // Alt-click is the product interaction for opening a thread in the second
-    // pane. Open the preview from the still-mounted original diagram while the
-    // route transition replaces its panel.
-    fireEvent.click(
-      await waitFor(() => {
-        return getLinkByText(document, "Sidebar thread");
-      }),
-      { altKey: true },
-    );
-    expect(originalDiagram).toBeInTheDocument();
-    click(originalExpand);
-
-    const lightboxImage = await screen.findByTestId(
-      "attachment-lightbox-image",
-    );
-    const lightboxUrl = lightboxImage.getAttribute("src") ?? "";
-    expect(lightboxUrl).not.toBe(originalUrl);
-    expect(objectUrls.blobForUrl(lightboxUrl)).not.toBeNull();
-
-    await waitFor(() => {
-      expect(screen.getAllByLabelText("Chat thread")).toHaveLength(2);
-    });
-    const mainThread = document.querySelector(
-      `[data-chat-thread-container-id="${THREAD_ID}"]`,
-    );
-    expect(mainThread).toBeInstanceOf(HTMLElement);
-    const retainedDiagram = within(mainThread as HTMLElement).getByAltText(
-      "Diagram",
-    );
-    const retainedUrl = retainedDiagram.getAttribute("src") ?? "";
-    await waitFor(() => {
-      expect(objectUrls.revokedUrls).toContain(originalUrl);
-    });
-    expect(retainedUrl).not.toBe(originalUrl);
-    expect(objectUrls.revokedUrls).not.toContain(retainedUrl);
-    expect(lightboxImage).toHaveAttribute("src", lightboxUrl);
-    expect(objectUrls.revokedUrls).not.toContain(lightboxUrl);
-    expect(objectUrls.blobForUrl(lightboxUrl)).not.toBeNull();
-
-    await navigateToAgents();
-
-    await waitFor(() => {
-      expect(objectUrls.revokedUrls).toContain(lightboxUrl);
-    });
-  });
-
   it("leaves a streaming mermaid fence as code until it closes", async () => {
     mockThread("```mermaid\nflowchart TD\n  A --> B");
 
@@ -660,7 +535,6 @@ describe("assistant markdown", () => {
   });
 
   it("renders a closed mermaid fence that ends the message", async () => {
-    const objectUrls = context.mocks.browser.blobDownload();
     mockThread("Here is the flow:\n\n```mermaid\nflowchart TD\n  A --> B\n```");
 
     detachedSetupPage({
@@ -669,7 +543,7 @@ describe("assistant markdown", () => {
     });
 
     const diagram = await screen.findByAltText("Diagram");
-    await expect(renderedDiagramMarkup(diagram, objectUrls)).resolves.toContain(
+    expect(renderedDiagramMarkup(diagram)).toContain(
       'data-testid="mermaid-svg"',
     );
   });
@@ -691,10 +565,6 @@ describe("assistant markdown", () => {
       "this is not a diagram",
     );
     expect(screen.queryByAltText("Diagram")).toBeNull();
-    // The box stays mounted across the transition to the fallback: it carries
-    // the ref that drives the render, and re-attaching it would abort the
-    // render that produced this result and start the same one again.
-    expect(screen.getByLabelText("Expand diagram")).toBeInTheDocument();
   });
 
   it("keeps external links safe", async () => {

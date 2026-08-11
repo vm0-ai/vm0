@@ -3,10 +3,9 @@ import type {
   ChatThreadArtifactRun,
   UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import {
-  type BodyRenderBlock,
-  classifyChatAttachment,
-} from "../../signals/chat-page/parse-body-blocks.ts";
+import type { Element, Root } from "hast";
+
+import { classifyChatAttachment } from "../../signals/chat-page/parse-body-blocks.ts";
 import { artifactPreviewUrlsMatch } from "./zero-attachment-url.ts";
 import { userMessageFileAttachments } from "../../signals/chat-page/user-message-files.ts";
 
@@ -32,13 +31,13 @@ type ImageArtifactNavigation = {
 };
 
 /**
- * Minimal shape of a chat event needed to scope image navigation. Images in a
- * event come from canonical user-message file parts and rendered body `blocks`
- * (image previews parsed from event content, e.g. agent-generated images).
+ * Minimal shape of a chat event needed to scope image navigation. Images in an
+ * event come from canonical user-message file parts and from its rendered
+ * markdown tree: artifact card slots, plain images, and image links.
  */
 type EventImageSource = {
   readonly userMessage?: UserMessageDocument;
-  readonly blocks?: readonly BodyRenderBlock[];
+  readonly tree?: Root;
 };
 
 type EventImageGroup = {
@@ -74,12 +73,6 @@ type ArtifactImageMetadata = {
 // optional image marker, label/alt text, and url while allowing escaped label
 // characters. Agent-generated images can render as markdown image lines or
 // media links rather than dedicated preview blocks.
-const MARKDOWN_IMAGE_OR_LINK_PATTERN = /(!?)\[((?:\\.|[^\]\\])*)\]\(([^)]+)\)/g;
-
-function unescapeMarkdownText(value: string): string {
-  return value.replace(/\\([\]\\])/g, "$1");
-}
-
 function filenameFromImageUrl(url: string): string {
   const path = url.split("?")[0].split("#")[0];
   return path.split("/").pop() || "image";
@@ -93,7 +86,7 @@ function isMarkdownImageLinkUrl(url: string): boolean {
 }
 
 function filenameFromMarkdownLink(label: string, url: string): string {
-  const text = unescapeMarkdownText(label).trim();
+  const text = label.trim();
   if (text.length > 0 && !/^https?:\/\//i.test(text)) {
     return text;
   }
@@ -118,35 +111,62 @@ function eventImages(event: EventImageSource): EventImage[] {
       add(file.url, file.filename);
     }
   }
-  for (const block of event.blocks ?? []) {
-    if (block.type === "artifact") {
-      if (block.signals.kind === "image") {
-        add(block.signals.url, block.signals.filename);
-      }
-      continue;
-    }
-    if (block.type === "markdown") {
-      for (const match of block.content.matchAll(
-        MARKDOWN_IMAGE_OR_LINK_PATTERN,
-      )) {
-        const marker = match[1];
-        const label = match[2] ?? "";
-        const url = match[3];
-        if (!url) {
-          continue;
-        }
-        if (marker === "!") {
-          const alt = unescapeMarkdownText(label);
-          add(url, alt || filenameFromImageUrl(url));
-          continue;
-        }
-        if (isMarkdownImageLinkUrl(url)) {
-          add(url, filenameFromMarkdownLink(label, url));
-        }
-      }
-    }
+  if (event.tree) {
+    visitTreeImages(event.tree, add);
   }
   return images;
+}
+
+function nodeText(node: Element): string {
+  return node.children
+    .map((child) => {
+      if (child.type === "text") {
+        return child.value;
+      }
+      return child.type === "element" ? nodeText(child) : "";
+    })
+    .join("");
+}
+
+/** Walks a rendered body for its images: card slots, `<img>`, image links. */
+function visitTreeImages(
+  root: Root,
+  add: (url: string, filename: string) => void,
+): void {
+  const visit = (node: Root | Element): void => {
+    for (const child of node.children) {
+      if (child.type !== "element") {
+        continue;
+      }
+      const card = child.data?.card;
+      if (card !== undefined) {
+        if (card.kind === "artifact" && card.signals.kind === "image") {
+          add(card.signals.url, card.signals.filename);
+        }
+        continue;
+      }
+      if (child.tagName === "img") {
+        const src = child.properties.src;
+        const alt = child.properties.alt;
+        if (typeof src === "string") {
+          add(
+            src,
+            (typeof alt === "string" && alt) || filenameFromImageUrl(src),
+          );
+        }
+        continue;
+      }
+      if (child.tagName === "a") {
+        const href = child.properties.href;
+        if (typeof href === "string" && isMarkdownImageLinkUrl(href)) {
+          add(href, filenameFromMarkdownLink(nodeText(child), href));
+        }
+        continue;
+      }
+      visit(child);
+    }
+  };
+  visit(root);
 }
 
 function eventHasImageUrl(

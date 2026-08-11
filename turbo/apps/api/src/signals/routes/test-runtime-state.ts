@@ -1257,29 +1257,47 @@ async function customConnectorAuthTemplateFixtureActionResponse(
   return { status: 200 as const, body: { ok: true as const } };
 }
 
-type ChatEventSnapshotFixtureAction = Extract<
+type ChatEventFixtureAction = Extract<
   TestRuntimeStateActionBody,
   {
     action:
+      | "advance-chat-event-sequence-as-previous-api"
       | "read-chat-event-snapshot-head"
       | "set-chat-event-snapshot-head-version";
   }
 >;
 
-function isChatEventSnapshotFixtureAction(
+function isChatEventFixtureAction(
   body: TestRuntimeStateActionBody,
-): body is ChatEventSnapshotFixtureAction {
+): body is ChatEventFixtureAction {
   return (
+    body.action === "advance-chat-event-sequence-as-previous-api" ||
     body.action === "read-chat-event-snapshot-head" ||
     body.action === "set-chat-event-snapshot-head-version"
   );
 }
 
-async function chatEventSnapshotFixtureActionResponse(
+async function chatEventFixtureActionResponse(
   db: Db,
-  body: ChatEventSnapshotFixtureAction,
+  body: ChatEventFixtureAction,
   signal: AbortSignal,
 ) {
+  if (body.action === "advance-chat-event-sequence-as-previous-api") {
+    const [updated] = await db
+      .update(chatThreads)
+      .set({
+        lastChatEventSeqId: sql`${chatThreads.lastChatEventSeqId} + ${body.count}`,
+      })
+      .where(eq(chatThreads.id, body.thread_id))
+      .returning({ id: chatThreads.id });
+    signal.throwIfAborted();
+    if (!updated) {
+      throw new Error(
+        "advance-chat-event-sequence-as-previous-api missing thread",
+      );
+    }
+    return { status: 200 as const, body: { ok: true as const } };
+  }
   if (body.action === "set-chat-event-snapshot-head-version") {
     const updated = await db
       .update(chatEventSnapshots)
@@ -1419,8 +1437,8 @@ const postRuntimeStateAction$ = command(
     if (isThreadSessionStateAction(body)) {
       return await threadSessionStateActionResponse(db, body, signal);
     }
-    if (isChatEventSnapshotFixtureAction(body)) {
-      return await chatEventSnapshotFixtureActionResponse(db, body, signal);
+    if (isChatEventFixtureAction(body)) {
+      return await chatEventFixtureActionResponse(db, body, signal);
     }
     if (isCompatibilityFixtureAction(body)) {
       return await compatibilityFixtureActionResponse(db, body, signal);

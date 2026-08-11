@@ -1,3 +1,4 @@
+import type { Root } from "hast";
 import { command } from "ccstate";
 import { detachedNavigateTo$ } from "../route.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
@@ -15,7 +16,6 @@ import {
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
-import type { BodyRenderBlock } from "./parse-body-blocks.ts";
 import { nowDate } from "../../lib/time.ts";
 import { i18n } from "../../i18n/index.ts";
 import { registerOptimisticChatThreadEvent$ } from "./chat-thread-event-sourcing.ts";
@@ -123,7 +123,8 @@ export interface UserMessageRenderDocument {
 }
 
 export type EnrichedChatEvent = ChatEvent & {
-  blocks: BodyRenderBlock[];
+  /** The parsed body, present once the event entered the render window. */
+  tree: Root | undefined;
   isQueued: boolean;
   userMessageRenderDocument: UserMessageRenderDocument | undefined;
 };

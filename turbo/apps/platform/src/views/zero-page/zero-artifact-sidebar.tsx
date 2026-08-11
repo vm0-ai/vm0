@@ -15,6 +15,7 @@ import {
   useGet,
   useLastLoadable,
   useLastResolved,
+  useLoadable,
   useSet,
 } from "ccstate-react";
 import {
@@ -36,9 +37,10 @@ import { publicAttachmentUrl } from "./zero-attachment-url";
 import { useResolvedAttachmentUrl } from "./zero-attachment-resource";
 import { artifactPreviewUrlsMatch } from "./zero-attachment-url.ts";
 import { lightboxDialogVisible$ } from "../../signals/zero-page/zero-attachment-chips.ts";
-import { Markdown } from "../components/markdown.tsx";
+import { MarkdownEventBody } from "../components/markdown.tsx";
 import { jsonParseOr } from "../../signals/utils.ts";
 import type { TextPreviewComputed } from "../../signals/text-preview.ts";
+import type { MarkdownPreviewTreeComputed } from "../../signals/markdown-preview-tree.ts";
 import { resetZoomableImageCanvasZoom$ } from "../../signals/view-component-state.ts";
 import {
   ZoomableArtifactImageCanvas,
@@ -79,6 +81,7 @@ const ARTIFACT_FULLSCREEN_DEFAULT_LAYER_CLASSNAME = "z-[100]";
 export function ArtifactSidebar({
   artifactRef,
   fullscreenState,
+  markdownTree$,
   onBack,
   onClose,
   onNavigateImage,
@@ -89,6 +92,7 @@ export function ArtifactSidebar({
     <ArtifactSidebarWithThreadContext
       artifactRef={artifactRef}
       fullscreenState={fullscreenState}
+      markdownTree$={markdownTree$}
       onBack={onBack}
       onClose={onClose}
       onNavigateImage={onNavigateImage}
@@ -106,6 +110,7 @@ type ArtifactSidebarFullscreenState = {
 type ArtifactSidebarProps = {
   readonly artifactRef: ArtifactRef;
   readonly fullscreenState: ArtifactSidebarFullscreenState;
+  readonly markdownTree$?: MarkdownPreviewTreeComputed;
   readonly onBack?: () => void;
   readonly onClose: () => void;
   readonly onNavigateImage: (url: string) => void;
@@ -129,6 +134,7 @@ type ArtifactSidebarContentProps = {
   fullscreenState: ArtifactSidebarFullscreenState;
   imageNavigation?: ArtifactImageNavigationActions;
   item?: ArtifactSidebarItem;
+  markdownTree$?: MarkdownPreviewTreeComputed;
   onBack?: () => void;
   onClose: () => void;
   onSyncSuccess?: () => void;
@@ -139,6 +145,7 @@ type ArtifactSidebarContentProps = {
 function ArtifactSidebarWithThreadContext({
   artifactRef,
   fullscreenState,
+  markdownTree$: providedMarkdownTree$,
   onBack,
   onClose,
   onNavigateImage,
@@ -151,8 +158,8 @@ function ArtifactSidebarWithThreadContext({
     equalityFn: equalEventImageGroups,
   });
   const reloadArtifacts = useSet(thread.reloadArtifacts$);
-  const text$ =
-    providedText$ ?? thread.artifactSignalsForUrl(artifactRef.url)?.text$;
+  const text$ = providedText$ ?? artifactRef.text$;
+  const markdownTree$ = providedMarkdownTree$ ?? artifactRef.markdownTree$;
   const item =
     loadable.state === "hasData"
       ? findArtifactItemForUrl(loadable.data, artifactRef.url)
@@ -186,6 +193,7 @@ function ArtifactSidebarWithThreadContext({
         onPrevious: imageNavigationAction(imageNavigation.previous),
       }}
       item={item}
+      markdownTree$={markdownTree$}
       onBack={onBack}
       onClose={onClose}
       onSyncSuccess={() => {
@@ -228,6 +236,7 @@ function ArtifactSidebarContent({
   fullscreenState,
   imageNavigation,
   item,
+  markdownTree$,
   onBack,
   onClose,
   onSyncSuccess,
@@ -252,6 +261,7 @@ function ArtifactSidebarContent({
       display={display}
       fullscreen={fullscreen}
       imageNavigation={imageNavigation}
+      markdownTree$={markdownTree$}
       onBack={onBack}
       resetZoomableImageCanvasZoom={resetZoomableImageCanvasZoom}
       syncTarget={syncTarget}
@@ -266,6 +276,7 @@ type ArtifactSidebarResolvedContentProps = {
   readonly display: ArtifactDisplay;
   readonly fullscreen: boolean;
   readonly imageNavigation?: ArtifactImageNavigationActions;
+  readonly markdownTree$?: MarkdownPreviewTreeComputed;
   readonly onBack?: () => void;
   readonly resetZoomableImageCanvasZoom: (key: string) => void;
   readonly syncTarget?: ArtifactDownloadSyncTarget;
@@ -278,6 +289,7 @@ function ArtifactSidebarResolvedContent({
   display,
   fullscreen,
   imageNavigation,
+  markdownTree$,
   onBack,
   resetZoomableImageCanvasZoom,
   syncTarget,
@@ -312,6 +324,7 @@ function ArtifactSidebarResolvedContent({
           artifactKind={display.artifactKind}
           imageNavigation={imageNavigation}
           fullscreen={fullscreen}
+          markdownTree$={markdownTree$}
           text$={text$}
         />
       </div>
@@ -812,6 +825,7 @@ function ArtifactBody({
   artifactKind,
   imageNavigation,
   fullscreen,
+  markdownTree$,
   text$,
 }: {
   url: string;
@@ -820,12 +834,13 @@ function ArtifactBody({
   artifactKind?: ChatThreadArtifactFile["artifactKind"];
   imageNavigation?: ArtifactImageNavigationActions;
   fullscreen: boolean;
+  markdownTree$?: MarkdownPreviewTreeComputed;
   text$?: TextPreviewComputed;
 }) {
   const { t } = useTranslation();
   if (kind === "markdown") {
-    return text$ ? (
-      <ArtifactMarkdownBody text$={text$} />
+    return markdownTree$ ? (
+      <ArtifactMarkdownBody tree$={markdownTree$} />
     ) : (
       <ArtifactBodyError
         message={t(($) => {
@@ -960,51 +975,50 @@ function ArtifactStageCard({
   );
 }
 
-function ArtifactMarkdownBody({ text$ }: { text$: TextPreviewComputed }) {
+function ArtifactMarkdownBody({
+  tree$,
+}: {
+  tree$: MarkdownPreviewTreeComputed;
+}) {
   const { t } = useTranslation();
+  const loadable = useLoadable(tree$);
+  if (loadable.state === "loading") {
+    return (
+      <ArtifactStageShell>
+        <ArtifactStageCard>
+          <ArtifactSpinner />
+        </ArtifactStageCard>
+      </ArtifactStageShell>
+    );
+  }
+  if (loadable.state === "hasError") {
+    return (
+      <ArtifactStageShell>
+        <ArtifactStageCard>
+          <ArtifactBodyError
+            message={t(
+              ($) => {
+                return $.artifacts.preview.unavailable;
+              },
+              {
+                kind: t(($) => {
+                  return $.artifacts.kinds.markdown;
+                }),
+              },
+            )}
+          />
+        </ArtifactStageCard>
+      </ArtifactStageShell>
+    );
+  }
   return (
-    <TextPreviewLoader text$={text$}>
-      {({ status, text }) => {
-        if (status === "loading") {
-          return (
-            <ArtifactStageShell>
-              <ArtifactStageCard>
-                <ArtifactSpinner />
-              </ArtifactStageCard>
-            </ArtifactStageShell>
-          );
-        }
-        if (status === "error") {
-          return (
-            <ArtifactStageShell>
-              <ArtifactStageCard>
-                <ArtifactBodyError
-                  message={t(
-                    ($) => {
-                      return $.artifacts.preview.unavailable;
-                    },
-                    {
-                      kind: t(($) => {
-                        return $.artifacts.kinds.markdown;
-                      }),
-                    },
-                  )}
-                />
-              </ArtifactStageCard>
-            </ArtifactStageShell>
-          );
-        }
-        return (
-          <ArtifactStageShell>
-            <ArtifactStageCard>
-              <div className="h-full overflow-auto p-6">
-                <Markdown source={text} />
-              </div>
-            </ArtifactStageCard>
-          </ArtifactStageShell>
-        );
-      }}
-    </TextPreviewLoader>
+    <ArtifactStageShell>
+      <ArtifactStageCard>
+        <div className="h-full overflow-auto p-6">
+          <MarkdownEventBody tree={loadable.data} mediaPreview={false} />
+        </div>
+      </ArtifactStageCard>
+    </ArtifactStageShell>
   );
 }
 
