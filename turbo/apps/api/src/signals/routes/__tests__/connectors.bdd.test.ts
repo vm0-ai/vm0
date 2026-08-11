@@ -3279,6 +3279,9 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     expect(saved.authorizedAgentId).toBe(agent.agentId);
     expect(saved.connector).toMatchObject({
       displayName: "BDD Proposal API",
+      prefixes: [`https://{{variables.subdomain}}.${rand}.test/v1/`],
+      headerName: "Authorization",
+      headerTemplate: "Bearer {{secrets.api_key}}",
       connected: true,
       missingRequiredFields: [],
       configuredFieldKeys: ["api_key", "subdomain"],
