@@ -260,8 +260,9 @@ while [[ $ATTEMPT -lt $MAX_WAIT ]]; do
       fi
     fi
   else
-    # Anonymous tunnel: wait for trycloudflare.com URL
-    TUNNEL_URL=$(grep -o 'https://[a-z0-9-]*\.trycloudflare\.com' "$TUNNEL_LOG" 2>/dev/null | head -n 1)
+    # Anonymous tunnel: wait for trycloudflare.com URL. Guard the assignment:
+    # under set -e/pipefail a not-yet-logged URL would otherwise kill the loop.
+    TUNNEL_URL=$(grep -o 'https://[a-z0-9-]*\.trycloudflare\.com' "$TUNNEL_LOG" 2>/dev/null | head -n 1 || true)
     if [[ -n "$TUNNEL_URL" ]]; then
       break
     fi
