@@ -1,10 +1,10 @@
 use super::super::super::*;
 use super::super::support::{
-    MockRunEnv, context_with_session, mock_run_config_with_overrides, push_job, seed_idle_pool,
-    shutdown, test_profiles, wait_budget_count, wait_cancel_handle, wait_cancel_token_removed,
+    context_with_session, mock_run_config_with_overrides, push_job, seed_idle_pool, shutdown,
+    test_profiles, wait_budget_count, wait_cancel_handle, wait_cancel_token_removed,
     wait_status_idle_reuse_keys_and_active_runs, wait_workspace_cache_reuse_keys,
 };
-use super::support::assert_no_completion_for_run;
+use super::support::assert_successful_completion_for_run;
 
 use crate::idle_pool::ParkingState;
 use crate::paths::RunnerPaths;
@@ -270,19 +270,13 @@ async fn non_reusable_park_keeps_budget_until_destroy_and_never_enters_idle_stat
         Duration::from_secs(5),
     )
     .await;
-    assert_no_completion_for_run(
+    assert_successful_completion_for_run(
         &env,
         run_id,
-        "provider.complete must wait until non-reusable VM destroy finishes",
-    );
-
-    release_destroy_and_wait_for_successful_completion(
-        &env,
-        &destroy_gate,
-        run_id,
-        "successful job should complete after non-reusable VM destroy finishes",
+        "host completion should report while non-reusable VM destroy is blocked",
     )
     .await;
+    destroy_gate.release_one();
 
     assert_post_destroy_cleanup(&budget, &idle_pool, None, run_id, 0, 0).await;
     wait_status_idle_reuse_keys_and_active_runs(&status_path, &[], &[], Duration::from_secs(5))
@@ -389,25 +383,6 @@ async fn assert_idle_pool_len(idle_pool: &SharedIdlePool, expected_len: usize, m
     assert_eq!(idle_pool.lock().await.len(), expected_len, "{message}");
 }
 
-async fn release_destroy_and_wait_for_successful_completion(
-    env: &MockRunEnv,
-    destroy_gate: &MockLifecycleGate,
-    run_id: RunId,
-    completion_message: &str,
-) {
-    destroy_gate.release_one();
-    let completion = env
-        .handle
-        .wait_completion(run_id, Duration::from_secs(5))
-        .await
-        .expect(completion_message);
-    assert_eq!(completion.exit_code, 0);
-    assert!(
-        completion.error.is_none(),
-        "parking cleanup should not rewrite job result"
-    );
-}
-
 async fn assert_post_destroy_cleanup(
     budget: &ResourceBudget,
     idle_pool: &SharedIdlePool,
@@ -509,19 +484,13 @@ async fn assert_workspace_cache_after_late_cancellation(
         "cancelled VM should be sent to destroy exactly once",
         "cancelled VM must retain budget while destroy is in-flight",
     );
-    assert_no_completion_for_run(
+    assert_successful_completion_for_run(
         &env,
         run_id,
-        "provider.complete must wait until cancelled VM destroy finishes",
-    );
-
-    release_destroy_and_wait_for_successful_completion(
-        &env,
-        &destroy_gate,
-        run_id,
-        "job should complete after destroy finishes",
+        "host completion should report while cancelled VM destroy is blocked",
     )
     .await;
+    destroy_gate.release_one();
 
     assert_post_destroy_cleanup(&budget, &idle_pool, Some(&cancel_tokens), run_id, 0, 0).await;
     wait_workspace_cache_reuse_keys(&workspace_cache, &[session_id], Duration::from_secs(2)).await;
@@ -599,19 +568,13 @@ async fn pool_full_rejected_vm_keeps_budget_until_destroy_and_completion() {
         "rejected VM should be sent to destroy",
         "rejected active VM must retain its budget while destroy is in-flight",
     );
-    assert_no_completion_for_run(
+    assert_successful_completion_for_run(
         &env,
         run_id,
-        "provider.complete must wait until rejected VM destroy finishes",
-    );
-
-    release_destroy_and_wait_for_successful_completion(
-        &env,
-        &destroy_gate,
-        run_id,
-        "job should complete after rejected VM destroy",
+        "host completion should report while rejected VM destroy is blocked",
     )
     .await;
+    destroy_gate.release_one();
 
     wait_budget_count(&budget, 1, Duration::from_secs(2)).await;
     let pool = idle_pool.lock().await;
@@ -670,19 +633,13 @@ async fn parking_gate_closing_after_sandbox_park_rejects_and_waits_for_destroy()
         "closed gate must reject the candidate instead of parking it",
     )
     .await;
-    assert_no_completion_for_run(
+    assert_successful_completion_for_run(
         &env,
         run_id,
-        "provider.complete must wait until rejected VM destroy finishes",
-    );
-
-    release_destroy_and_wait_for_successful_completion(
-        &env,
-        &destroy_gate,
-        run_id,
-        "job should complete after destroy finishes",
+        "host completion should report while rejected VM destroy is blocked",
     )
     .await;
+    destroy_gate.release_one();
 
     assert_post_destroy_cleanup(&budget, &idle_pool, None, run_id, 0, 0).await;
 
@@ -740,19 +697,13 @@ async fn cancellation_while_waiting_for_idle_pool_lock_destroys_instead_of_parki
         "cancelled VM must not enter the idle pool after waiting for the lock",
     )
     .await;
-    assert_no_completion_for_run(
+    assert_successful_completion_for_run(
         &env,
         run_id,
-        "provider.complete must wait until cancelled VM destroy finishes",
-    );
-
-    release_destroy_and_wait_for_successful_completion(
-        &env,
-        &destroy_gate,
-        run_id,
-        "job should complete after destroy finishes",
+        "host completion should report while cancelled VM destroy is blocked",
     )
     .await;
+    destroy_gate.release_one();
 
     assert_post_destroy_cleanup(&budget, &idle_pool, Some(&cancel_tokens), run_id, 0, 0).await;
 
@@ -808,19 +759,13 @@ async fn cancellation_during_sandbox_park_destroys_instead_of_parking() {
         "cancelled VM must not enter the idle pool after park returns",
     )
     .await;
-    assert_no_completion_for_run(
+    assert_successful_completion_for_run(
         &env,
         run_id,
-        "provider.complete must wait until cancelled VM destroy finishes",
-    );
-
-    release_destroy_and_wait_for_successful_completion(
-        &env,
-        &destroy_gate,
-        run_id,
-        "job should complete after destroy finishes",
+        "host completion should report while cancelled VM destroy is blocked",
     )
     .await;
+    destroy_gate.release_one();
 
     assert_post_destroy_cleanup(&budget, &idle_pool, Some(&cancel_tokens), run_id, 0, 0).await;
 

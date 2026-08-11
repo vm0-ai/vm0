@@ -21,7 +21,7 @@ use super::idle_lifecycle::{
     SharedIdlePool, destroy_idle_jobs_and_wait, destroy_idle_payload_and_wait,
 };
 use super::job_lifecycle::{
-    ActiveBudgetLease, BudgetOwnership, CompletionPayload, CompletionReady, RunCleanupState,
+    ActiveBudgetLease, BudgetOwnership, FinalizationReady, RunCleanupState,
 };
 use super::ownership::OwnershipTransitions;
 #[cfg(test)]
@@ -38,8 +38,6 @@ use crate::immediate_successor_intent::{
 };
 use crate::network_log_drain::NetworkLogDrainCoordinator;
 use crate::network_log_manager::NetworkLogSession;
-#[cfg(test)]
-use crate::provider::CompletionAuth;
 use crate::resource_budget::BudgetLease;
 use crate::restored_session_identity::RestoredSessionIdentity;
 use crate::run_cancellation::RunCancellationHandle;
@@ -176,13 +174,13 @@ fn local_completed_at() -> String {
 }
 
 fn mark_reuse_state_refresh(
-    completion_ready: CompletionReady,
+    finalization_ready: FinalizationReady,
     reuse_state_changed: bool,
-) -> CompletionReady {
+) -> FinalizationReady {
     if reuse_state_changed {
-        completion_ready.with_reuse_state_changed()
+        finalization_ready.with_reuse_state_changed()
     } else {
-        completion_ready
+        finalization_ready
     }
 }
 
@@ -252,10 +250,9 @@ pub(super) struct FinalizeContext {
 pub(super) async fn finalize_sandbox_for_completion_with_telemetry(
     sandbox: Option<Box<dyn Sandbox>>,
     active_lease: ActiveBudgetLease,
-    completion_payload: CompletionPayload,
     telemetry: &mut JobTelemetry,
     ctx: FinalizeContext,
-) -> CompletionReady {
+) -> FinalizationReady {
     let immediate_successor_intents = ctx.immediate_successor_intents.clone();
     let track_immediate_successor_intents =
         should_track_immediate_successor_intents(ctx.reuse_key.as_deref());
@@ -263,7 +260,6 @@ pub(super) async fn finalize_sandbox_for_completion_with_telemetry(
     finalize_sandbox_for_completion_inner(
         sandbox,
         active_lease,
-        completion_payload,
         FinalizationTelemetry::new(
             telemetry,
             immediate_successor_intents,
@@ -279,9 +275,8 @@ pub(super) async fn finalize_sandbox_for_completion_with_telemetry(
 async fn finalize_sandbox_for_completion(
     sandbox: Option<Box<dyn Sandbox>>,
     active_lease: ActiveBudgetLease,
-    completion_payload: CompletionPayload,
     ctx: FinalizeContext,
-) -> CompletionReady {
+) -> FinalizationReady {
     let immediate_successor_intents = ctx.immediate_successor_intents.clone();
     let track_immediate_successor_intents =
         should_track_immediate_successor_intents(ctx.reuse_key.as_deref());
@@ -289,7 +284,6 @@ async fn finalize_sandbox_for_completion(
     finalize_sandbox_for_completion_inner(
         sandbox,
         active_lease,
-        completion_payload,
         FinalizationTelemetry::disabled(
             immediate_successor_intents,
             track_immediate_successor_intents,
@@ -303,12 +297,11 @@ async fn finalize_sandbox_for_completion(
 async fn finalize_sandbox_for_completion_inner(
     sandbox: Option<Box<dyn Sandbox>>,
     active_lease: ActiveBudgetLease,
-    completion_payload: CompletionPayload,
     mut telemetry: FinalizationTelemetry<'_>,
     ctx: FinalizeContext,
-) -> CompletionReady {
+) -> FinalizationReady {
     let Some(sandbox) = sandbox else {
-        return CompletionReady::new(completion_payload, BudgetOwnership::active(active_lease));
+        return FinalizationReady::new(BudgetOwnership::active(active_lease));
     };
 
     let FinalizeContext {
@@ -473,12 +466,9 @@ async fn finalize_sandbox_for_completion_inner(
                     );
                     record_destroy_result(destroy_result.outcome, destroy_bookkeeping);
                     return mark_reuse_state_refresh(
-                        CompletionReady::new(
-                            completion_payload,
-                            BudgetOwnership::active(ActiveBudgetLease::from_idle_park_lease(
-                                budget_lease,
-                            )),
-                        ),
+                        FinalizationReady::new(BudgetOwnership::active(
+                            ActiveBudgetLease::from_idle_park_lease(budget_lease),
+                        )),
                         workspace_cache_promoted,
                     );
                 }
@@ -518,7 +508,7 @@ async fn finalize_sandbox_for_completion_inner(
                         destroy_result.workspace_cache_promoted,
                     );
                     return mark_reuse_state_refresh(
-                        CompletionReady::new(completion_payload, destroy_result.budget),
+                        FinalizationReady::new(destroy_result.budget),
                         workspace_cache_promoted,
                     );
                 }
@@ -683,7 +673,7 @@ async fn finalize_sandbox_for_completion_inner(
                             destroy_result.workspace_cache_promoted,
                         );
                         return mark_reuse_state_refresh(
-                            CompletionReady::new(completion_payload, destroy_result.budget),
+                            FinalizationReady::new(destroy_result.budget),
                             workspace_cache_promoted,
                         );
                     }
@@ -717,7 +707,7 @@ async fn finalize_sandbox_for_completion_inner(
                         destroy_result.workspace_cache_promoted,
                     );
                     return mark_reuse_state_refresh(
-                        CompletionReady::new(completion_payload, destroy_result.budget),
+                        FinalizationReady::new(destroy_result.budget),
                         workspace_cache_promoted,
                     );
                 }
@@ -864,10 +854,7 @@ async fn finalize_sandbox_for_completion_inner(
         BudgetOwnership::active(active_lease)
     };
 
-    mark_reuse_state_refresh(
-        CompletionReady::new(completion_payload, budget),
-        reuse_state_changed,
-    )
+    mark_reuse_state_refresh(FinalizationReady::new(budget), reuse_state_changed)
 }
 
 #[derive(Clone, Copy)]
@@ -1069,9 +1056,7 @@ mod tests {
 
     use super::super::active_runs::ActiveRuns;
     use super::super::idle_lifecycle::SharedIdlePool;
-    use super::super::job_lifecycle::{
-        ActiveBudgetLease, CompletionPayload, RunCleanupDisposition, RunCleanupState,
-    };
+    use super::super::job_lifecycle::{ActiveBudgetLease, RunCleanupDisposition, RunCleanupState};
     use crate::idle_pool::{
         IdleParkRequest, IdleParkRequestParts, IdlePool, IdlePoolConfig, ParkResult, ParkingGate,
         RestoreReservedIdleResult, test_support::ParkedIdleCandidateBuilder,
@@ -1494,19 +1479,11 @@ mod tests {
         );
         context.guest_timezone_intent = GuestTimezoneIntent::Configured("Asia/Shanghai".into());
 
-        let _completion_ready = finalize_sandbox_for_completion(
+        let _finalization_ready = finalize_sandbox_for_completion(
             Some(Box::new(mock_sandbox_ready_for_idle_reuse(
                 "network-log-park",
             ))),
             ActiveBudgetLease::new(lease),
-            CompletionPayload::new(
-                run_id,
-                0,
-                None,
-                sandbox_id,
-                SandboxReuseResult::PoolMiss,
-                CompletionAuth::local(),
-            ),
             context,
         )
         .await;
@@ -1579,22 +1556,11 @@ mod tests {
         context.runner_id = "runner-attribution-test".into();
         context.reuse_result = SandboxReuseResult::Reused;
 
-        let (completion_ready, events) = capture_async_log_events(finalize_sandbox_for_completion(
-            Some(sandbox),
-            ActiveBudgetLease::new(lease),
-            CompletionPayload::new(
-                run_id,
-                0,
-                None,
-                sandbox_id,
-                SandboxReuseResult::Reused,
-                CompletionAuth::local(),
-            ),
-            context,
-        ))
+        let (_finalization_ready, events) = capture_async_log_events(
+            finalize_sandbox_for_completion(Some(sandbox), ActiveBudgetLease::new(lease), context),
+        )
         .await;
 
-        assert_eq!(completion_ready.result_for_test(), (0, None));
         assert_eq!(overrides.destroy_call_count(), 1);
         assert_eq!(fixture.idle_pool.lock().await.len(), 0);
         let matching_events: Vec<_> = events
@@ -1744,22 +1710,10 @@ mod tests {
         context.workspace_image = Some(workspace_image);
         context.workspace_image_size_bytes = b"image".len() as u64;
 
-        let completion_ready = finalize_sandbox_for_completion(
-            Some(sandbox),
-            ActiveBudgetLease::new(lease),
-            CompletionPayload::new(
-                run_id,
-                0,
-                None,
-                sandbox_id,
-                SandboxReuseResult::PoolMiss,
-                CompletionAuth::local(),
-            ),
-            context,
-        )
-        .await;
+        let _finalization_ready =
+            finalize_sandbox_for_completion(Some(sandbox), ActiveBudgetLease::new(lease), context)
+                .await;
 
-        assert_eq!(completion_ready.result_for_test(), (0, None));
         assert_eq!(overrides.park_call_count(), 1);
         assert_eq!(overrides.unpark_call_count(), 1);
         assert_eq!(overrides.destroy_call_count(), 1);
@@ -1801,19 +1755,11 @@ mod tests {
         );
         context.test_observer = observer.clone();
 
-        let _completion_ready = finalize_sandbox_for_completion(
+        let _finalization_ready = finalize_sandbox_for_completion(
             Some(Box::new(mock_sandbox_ready_for_idle_reuse(
                 "finalizer-redaction",
             ))),
             ActiveBudgetLease::new(lease),
-            CompletionPayload::new(
-                run_id,
-                0,
-                None,
-                sandbox_id,
-                SandboxReuseResult::PoolMiss,
-                CompletionAuth::local(),
-            ),
             context,
         )
         .await;
@@ -1842,19 +1788,11 @@ mod tests {
         );
         context.cleanup_state = cleanup_state.clone();
 
-        let _completion_ready = finalize_sandbox_for_completion(
+        let _finalization_ready = finalize_sandbox_for_completion(
             Some(Box::new(mock_sandbox_ready_for_idle_reuse(
                 "cancel-after-transfer",
             ))),
             ActiveBudgetLease::new(lease),
-            CompletionPayload::new(
-                run_id,
-                0,
-                None,
-                sandbox_id,
-                SandboxReuseResult::PoolMiss,
-                CompletionAuth::local(),
-            ),
             context,
         )
         .await;
@@ -2163,19 +2101,11 @@ mod tests {
         context.workspace_image = Some(workspace_image);
         context.workspace_image_size_bytes = b"image".len() as u64;
 
-        let _completion_ready = finalize_sandbox_for_completion(
+        let _finalization_ready = finalize_sandbox_for_completion(
             Some(Box::new(mock_sandbox_ready_for_idle_reuse(
                 "guest-session-promotion",
             ))),
             ActiveBudgetLease::new(lease),
-            CompletionPayload::new(
-                run_id,
-                0,
-                None,
-                sandbox_id,
-                SandboxReuseResult::PoolMiss,
-                CompletionAuth::local(),
-            ),
             context,
         )
         .await;
@@ -2233,20 +2163,9 @@ mod tests {
         context.workspace_image = Some(workspace_image);
         context.workspace_image_size_bytes = b"image".len() as u64 + 1;
 
-        let _completion_ready = finalize_sandbox_for_completion(
-            Some(sandbox),
-            ActiveBudgetLease::new(lease),
-            CompletionPayload::new(
-                run_id,
-                0,
-                None,
-                sandbox_id,
-                SandboxReuseResult::PoolMiss,
-                CompletionAuth::local(),
-            ),
-            context,
-        )
-        .await;
+        let _finalization_ready =
+            finalize_sandbox_for_completion(Some(sandbox), ActiveBudgetLease::new(lease), context)
+                .await;
 
         assert_eq!(
             overrides.park_call_count(),
@@ -2378,20 +2297,9 @@ mod tests {
         context.workspace_image = Some(workspace_image);
         context.workspace_image_size_bytes = b"image".len() as u64;
 
-        let _completion_ready = finalize_sandbox_for_completion(
-            Some(sandbox),
-            ActiveBudgetLease::new(lease),
-            CompletionPayload::new(
-                run_id,
-                1,
-                Some("rotation failed before session discovery".into()),
-                sandbox_id,
-                SandboxReuseResult::PoolMiss,
-                CompletionAuth::local(),
-            ),
-            context,
-        )
-        .await;
+        let _finalization_ready =
+            finalize_sandbox_for_completion(Some(sandbox), ActiveBudgetLease::new(lease), context)
+                .await;
 
         assert_eq!(overrides.park_call_count(), 0);
         assert_eq!(overrides.destroy_call_count(), 1);
@@ -2533,17 +2441,9 @@ mod tests {
         context.workspace_image_size_bytes = b"image".len() as u64;
         context.parking_gate.close();
 
-        let _completion_ready = finalize_sandbox_for_completion(
+        let _finalization_ready = finalize_sandbox_for_completion(
             Some(Box::new(sandbox)),
             ActiveBudgetLease::new(lease),
-            CompletionPayload::new(
-                run_id,
-                0,
-                None,
-                sandbox_id,
-                SandboxReuseResult::PoolMiss,
-                CompletionAuth::local(),
-            ),
             context,
         )
         .await;
@@ -2627,17 +2527,9 @@ mod tests {
         context.workspace_image_size_bytes = b"image".len() as u64;
         let workspace_cache_snapshot = context.workspace_cache_snapshot.clone();
 
-        let _completion_ready = finalize_sandbox_for_completion(
+        let _finalization_ready = finalize_sandbox_for_completion(
             Some(Box::new(MockSandbox::new("reuse-key-promotion"))),
             ActiveBudgetLease::new(lease),
-            CompletionPayload::new(
-                run_id,
-                1,
-                Some("invalid resume session".into()),
-                sandbox_id,
-                SandboxReuseResult::Reused,
-                CompletionAuth::local(),
-            ),
             context,
         )
         .await;
@@ -2714,20 +2606,9 @@ mod tests {
         context.workspace_image_size_bytes = b"image".len() as u64;
         let workspace_cache_snapshot = context.workspace_cache_snapshot.clone();
 
-        let _completion_ready = finalize_sandbox_for_completion(
-            Some(sandbox),
-            ActiveBudgetLease::new(lease),
-            CompletionPayload::new(
-                run_id,
-                1,
-                Some("simulated agent failure".into()),
-                sandbox_id,
-                SandboxReuseResult::PoolMiss,
-                CompletionAuth::local(),
-            ),
-            context,
-        )
-        .await;
+        let _finalization_ready =
+            finalize_sandbox_for_completion(Some(sandbox), ActiveBudgetLease::new(lease), context)
+                .await;
 
         assert_eq!(overrides.park_call_count(), 0);
         assert_eq!(overrides.destroy_call_count(), 1);
@@ -2797,20 +2678,9 @@ mod tests {
         context.workspace_image_size_bytes = b"image".len() as u64;
         let workspace_cache_snapshot = context.workspace_cache_snapshot.clone();
 
-        let _completion_ready = finalize_sandbox_for_completion(
-            Some(sandbox),
-            ActiveBudgetLease::new(lease),
-            CompletionPayload::new(
-                run_id,
-                1,
-                Some("simulated failure".into()),
-                sandbox_id,
-                SandboxReuseResult::PoolMiss,
-                CompletionAuth::local(),
-            ),
-            context,
-        )
-        .await;
+        let _finalization_ready =
+            finalize_sandbox_for_completion(Some(sandbox), ActiveBudgetLease::new(lease), context)
+                .await;
 
         let exec_calls = overrides.exec_calls();
         assert_eq!(exec_calls.len(), 1);
@@ -2877,19 +2747,11 @@ mod tests {
         context.workspace_image = Some(workspace_image);
         context.workspace_image_size_bytes = b"image".len() as u64;
 
-        let _completion_ready = finalize_sandbox_for_completion(
+        let _finalization_ready = finalize_sandbox_for_completion(
             Some(Box::new(mock_sandbox_ready_for_idle_reuse(
                 "rejected-workspace-promotion",
             ))),
             ActiveBudgetLease::new(lease),
-            CompletionPayload::new(
-                run_id,
-                0,
-                None,
-                sandbox_id,
-                SandboxReuseResult::PoolMiss,
-                CompletionAuth::local(),
-            ),
             context,
         )
         .await;
@@ -2998,14 +2860,6 @@ mod tests {
                 "replacement-sandbox",
             ))),
             ActiveBudgetLease::new(lease),
-            CompletionPayload::new(
-                new_run_id,
-                0,
-                None,
-                new_sandbox_id,
-                SandboxReuseResult::PoolMiss,
-                CompletionAuth::local(),
-            ),
             context,
         ));
 
@@ -3019,7 +2873,7 @@ mod tests {
         );
 
         destroy_gate.release_one();
-        let _completion_ready = finalize_task.await.expect("finalizer task should join");
+        let _finalization_ready = finalize_task.await.expect("finalizer task should join");
         assert!(
             reuse_state_notify.notified().now_or_never().is_some(),
             "replaced idle workspace cache promotion should notify after destroy"
@@ -3044,17 +2898,9 @@ mod tests {
         let run_id = RunId::new_v4();
         let sandbox_id = SandboxId::new_v4();
 
-        let _completion_ready = finalize_sandbox_for_completion(
+        let _finalization_ready = finalize_sandbox_for_completion(
             Some(Box::new(MockSandbox::new("network-log-cancel"))),
             ActiveBudgetLease::new(lease),
-            CompletionPayload::new(
-                run_id,
-                0,
-                None,
-                sandbox_id,
-                SandboxReuseResult::PoolMiss,
-                CompletionAuth::local(),
-            ),
             fixture.finalize_context(
                 run_id,
                 sandbox_id,
@@ -3096,19 +2942,11 @@ mod tests {
         context.restored_session_identity = Some(identity.clone());
         context.cleanup_state = cleanup_state.clone();
 
-        let _completion_ready = finalize_sandbox_for_completion(
+        let _finalization_ready = finalize_sandbox_for_completion(
             Some(Box::new(mock_sandbox_ready_for_idle_reuse(
                 "late-cooperative-cancel",
             ))),
             ActiveBudgetLease::new(lease),
-            CompletionPayload::new(
-                run_id,
-                137,
-                Some("cancelled by user".into()),
-                sandbox_id,
-                SandboxReuseResult::PoolMiss,
-                CompletionAuth::local(),
-            ),
             context,
         )
         .await;
@@ -3166,14 +3004,6 @@ mod tests {
         let finalize_task = tokio::spawn(finalize_sandbox_for_completion(
             Some(sandbox),
             ActiveBudgetLease::new(lease),
-            CompletionPayload::new(
-                run_id,
-                0,
-                None,
-                sandbox_id,
-                SandboxReuseResult::PoolMiss,
-                CompletionAuth::local(),
-            ),
             context,
         ));
 
@@ -3206,7 +3036,7 @@ mod tests {
         );
 
         destroy_gate.release_one();
-        let _completion_ready = finalize_task.await.expect("finalizer task should join");
+        let _finalization_ready = finalize_task.await.expect("finalizer task should join");
         assert_eq!(overrides.park_call_count(), 1);
         assert_eq!(overrides.destroy_call_count(), 1);
         assert_eq!(
@@ -3248,14 +3078,6 @@ mod tests {
         let finalize_task = tokio::spawn(finalize_sandbox_for_completion(
             Some(sandbox),
             ActiveBudgetLease::new(lease),
-            CompletionPayload::new(
-                run_id,
-                0,
-                None,
-                sandbox_id,
-                SandboxReuseResult::PoolMiss,
-                CompletionAuth::local(),
-            ),
             context,
         ));
 
@@ -3283,7 +3105,7 @@ mod tests {
         );
 
         destroy_gate.release_one();
-        let _completion_ready = finalize_task.await.expect("finalizer task should join");
+        let _finalization_ready = finalize_task.await.expect("finalizer task should join");
         assert_eq!(overrides.park_call_count(), 1);
         assert_eq!(overrides.destroy_call_count(), 1);
         assert_eq!(
