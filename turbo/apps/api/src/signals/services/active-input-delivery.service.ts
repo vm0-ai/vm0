@@ -19,6 +19,7 @@ import {
   activeInputDeliveryPromptFitsControlPayload,
   activeInputRowsByIds,
   materializePendingActiveInputPrompts,
+  pendingActiveInputBudgetRows,
   pendingActiveInputRows,
   type PendingActiveInputRow,
 } from "./active-input-prompt.service";
@@ -762,16 +763,13 @@ async function expirePendingActiveInputBudgetEvents(
   tx: ActiveInputDeliveryTransaction,
   scope: ActiveInputDeliveryIdentity,
 ): Promise<boolean> {
-  const sources = await pendingActiveInputRows(
+  const sources = await pendingActiveInputBudgetRows(
     tx,
     scope.chatThreadId,
     scope.runId,
   ).for("update");
   let chatEventsAppended = false;
   for (const source of sources) {
-    if (source.eventType === "input.prompt") {
-      continue;
-    }
     if (source.eventType !== "input.budget") {
       throw new Error("Pending active input has an invalid source type");
     }
