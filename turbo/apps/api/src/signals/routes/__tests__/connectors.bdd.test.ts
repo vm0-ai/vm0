@@ -1775,6 +1775,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       ],
       queryInjections: [],
       authMode: "oauth" as const,
+      permissionBundleRef: "builtin:slack@1",
       oauthConfig: {
         providerAdapter: "standard" as const,
         clientId,
@@ -1817,6 +1818,16 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       connected: false,
     });
     expectNoVisibleSecret(created, clientSecret);
+    const expectedGrant = {
+      customConnectorId: created.id,
+      permissionNames: ["chat:write"],
+    };
+    await connectorsApi.requestUpdateAgentCustomConnectorGrants(
+      member,
+      agent.agentId,
+      [expectedGrant],
+      [200],
+    );
 
     const authorizationUrl = await connectorsApi.startCustomConnectorOAuth2(
       member,
@@ -1923,6 +1934,9 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     await expect(
       connectorsApi.readAgentCustomConnectors(member, agent.agentId),
     ).resolves.toContain(created.id);
+    await expect(
+      connectorsApi.readAgentCustomConnectorGrants(member, agent.agentId),
+    ).resolves.toContainEqual(expectedGrant);
 
     const replacementUrl = await connectorsApi.startCustomConnectorOAuth2(
       member,
@@ -1946,6 +1960,9 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     expect(provider.tokenBodies[1]?.get("code")).toBe(
       "bdd-custom-oauth-replacement-code",
     );
+    await expect(
+      connectorsApi.readAgentCustomConnectorGrants(member, agent.agentId),
+    ).resolves.toContainEqual(expectedGrant);
 
     await setCustomConnectorCredentialStorageState(context, {
       orgId: requiredOrgId(member),
@@ -1963,12 +1980,14 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       connected: false,
       missingRequiredFields: ["oauth"],
     });
-    const durableGrant = await connectorsApi.requestUpdateAgentCustomConnectors(
-      member,
-      agent.agentId,
-      [created.id],
-      [200],
-    );
+    const durableGrant =
+      await connectorsApi.requestLegacyAgentCustomConnectorIdsUpdate(
+        member,
+        agent.agentId,
+        [created.id],
+        [200],
+        "add",
+      );
     expect(durableGrant.body).toMatchObject({
       enabledIds: expect.arrayContaining([created.id]),
     });
@@ -1977,7 +1996,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     }
     expect(durableGrant.body.grants).toContainEqual({
       customConnectorId: created.id,
-      permissionNames: [],
+      permissionNames: ["chat:write"],
     });
     await expect(
       connectorsApi.readAgentCustomConnectors(member, agent.agentId),
@@ -3282,6 +3301,69 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     expectNoVisibleSecret(listed, "proposal-secret");
 
     await connectorsApi.deleteCustomConnector(admin, saved.connector.id);
+    await bdd.deleteAgent(admin, agent.agentId);
+  });
+
+  it("preserves selected permissions when a proposal reauthorizes an existing connector", async () => {
+    const bdd = createBddApi(context);
+    bdd.acceptAgentStorageWrites();
+    const admin = bdd.user({ orgRole: "org:admin" });
+    const agent = await bdd.createAgent(admin, {
+      displayName: "BDD Permissioned Proposal Agent",
+    });
+    const rand = randomUUID().replace(/-/g, "").slice(0, 8);
+    const connector = await connectorsApi.createCustomConnector(admin, {
+      displayName: "BDD Permissioned Proposal API",
+      prefixTemplates: [`https://${rand}.permissioned-proposal.test/v1/`],
+      fields: [
+        {
+          key: "api_key",
+          label: "API key",
+          kind: "secret",
+          required: true,
+        },
+      ],
+      headerInjections: [
+        {
+          name: "Authorization",
+          valueTemplate: "Bearer {{secrets.api_key}}",
+        },
+      ],
+      queryInjections: [],
+      authMode: "manual",
+      permissionBundleRef: "builtin:slack@1",
+    });
+    const grant = {
+      customConnectorId: connector.id,
+      permissionNames: ["chat:write"],
+    };
+    await connectorsApi.requestUpdateAgentCustomConnectorGrants(
+      admin,
+      agent.agentId,
+      [grant],
+      [200],
+    );
+
+    const saved = await connectorsApi.saveCustomConnectorProposal(admin, {
+      proposal: {
+        operation: "update",
+        connectorId: connector.id,
+        displayName: connector.displayName,
+        prefixTemplates: connector.prefixTemplates,
+        fields: connector.fields,
+        headerInjections: connector.headerInjections,
+        queryInjections: connector.queryInjections,
+      },
+      values: [{ key: "api_key", kind: "secret", value: "proposal-secret" }],
+      agentId: agent.agentId,
+    });
+
+    expect(saved.authorizedAgentId).toBe(agent.agentId);
+    await expect(
+      connectorsApi.readAgentCustomConnectorGrants(admin, agent.agentId),
+    ).resolves.toStrictEqual([grant]);
+
+    await connectorsApi.deleteCustomConnector(admin, connector.id);
     await bdd.deleteAgent(admin, agent.agentId);
   });
 

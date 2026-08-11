@@ -4,6 +4,7 @@ import type {
   CustomConnectorMcpResponse,
   CustomConnectorResponse,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
+import type { AgentCustomConnectorGrant } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 
 export function customConnector(
   overrides: Partial<CustomConnectorHttpResponse> = {},
@@ -90,10 +91,15 @@ export function stubCustomConnectors(
 }
 
 export function stubAgentCustomConnectors(
-  enabledIds: readonly string[],
+  grants: readonly AgentCustomConnectorGrant[],
   origin = "http://localhost:3000",
 ) {
   return http.get(`${origin}/api/zero/agents/:id/custom-connectors`, () => {
-    return HttpResponse.json({ enabledIds });
+    return HttpResponse.json({
+      enabledIds: grants.map((grant) => {
+        return grant.customConnectorId;
+      }),
+      grants,
+    });
   });
 }

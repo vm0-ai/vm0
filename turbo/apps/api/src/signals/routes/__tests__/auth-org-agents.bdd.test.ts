@@ -737,12 +737,16 @@ describe("AGENT-01 and AGENT-02", () => {
       publicAgent.agentId,
       [connector.id],
     );
-    expect(enabled.enabledIds).toStrictEqual([connector.id]);
+    expect(enabled.grants).toStrictEqual([
+      { customConnectorId: connector.id, permissionNames: [] },
+    ]);
     const readEnabled = await api.readAgentCustomConnectors(
       admin,
       publicAgent.agentId,
     );
-    expect(readEnabled.enabledIds).toStrictEqual([connector.id]);
+    expect(readEnabled.grants).toStrictEqual([
+      { customConnectorId: connector.id, permissionNames: [] },
+    ]);
 
     const otherAgent = await api.createAgent(otherAdmin, {
       displayName: "Other Org Agent",
@@ -762,7 +766,7 @@ describe("AGENT-01 and AGENT-02", () => {
       publicAgent.agentId,
       [],
     );
-    expect(cleared.enabledIds).toStrictEqual([]);
+    expect(cleared.grants).toStrictEqual([]);
 
     await api.disconnectCustomConnector(admin, connector.id);
     const afterDisconnect = await api.listCustomConnectors(admin);

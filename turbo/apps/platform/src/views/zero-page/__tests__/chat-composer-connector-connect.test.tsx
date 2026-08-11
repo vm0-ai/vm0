@@ -9,7 +9,10 @@ import {
   zeroCustomConnectorsContract,
   type CustomConnectorHttpResponse,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
-import { zeroAgentCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
+import {
+  zeroAgentCustomConnectorsContract,
+  type AgentCustomConnectorGrant,
+} from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import {
   zeroConnectorNoAuthGrantContract,
@@ -204,12 +207,12 @@ describe("chat composer connector connection", () => {
     context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
       return respond(200, { connectors: [connector] });
     });
-    let enabledIds: string[] = [];
+    let grants: AgentCustomConnectorGrant[] = [];
     context.mocks.api(
       zeroAgentCustomConnectorsContract.get,
       ({ params, respond }) => {
         expect(params.id).toBe(AGENT_ID);
-        return respond(200, { enabledIds });
+        return respond(200, { enabledIds: [], grants });
       },
     );
     let updateCount = 0;
@@ -219,11 +222,11 @@ describe("chat composer connector connection", () => {
         updateCount += 1;
         expect(params.id).toBe(AGENT_ID);
         expect(body).toStrictEqual({
-          enabledIds: [connector.id],
+          grants: [{ customConnectorId: connector.id, permissionNames: [] }],
           operation: "add",
         });
-        enabledIds = [connector.id];
-        return respond(200, { enabledIds });
+        grants = [{ customConnectorId: connector.id, permissionNames: [] }];
+        return respond(200, { enabledIds: [connector.id], grants });
       },
     );
 
@@ -241,6 +244,47 @@ describe("chat composer connector connection", () => {
     await waitFor(() => {
       expect(updateCount).toBe(1);
       expect(screen.getByLabelText("Remove Acme Search")).toBeInTheDocument();
+    });
+  });
+
+  it("does not create an empty grant for a permissioned custom connector", async () => {
+    const user = userEvent.setup({ delay: null });
+    const connector = customConnector({
+      connected: true,
+      missingRequiredFields: [],
+      configuredFieldKeys: ["secret"],
+      hasSecret: true,
+      permissionBundleRef: "builtin:feishu@1",
+    });
+    context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
+      return respond(200, { connectors: [connector] });
+    });
+    context.mocks.api(zeroAgentCustomConnectorsContract.get, ({ respond }) => {
+      return respond(200, { enabledIds: [], grants: [] });
+    });
+    let updateCount = 0;
+    context.mocks.api(
+      zeroAgentCustomConnectorsContract.update,
+      ({ respond }) => {
+        updateCount += 1;
+        return respond(200, { enabledIds: [], grants: [] });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+    });
+
+    const composer = composerElementFrom(
+      await screen.findByPlaceholderText(PLACEHOLDER),
+    );
+    await user.click(within(composer).getByLabelText("Connectors"));
+    await user.click(await screen.findByLabelText("Add Acme Search"));
+
+    await waitFor(() => {
+      expect(updateCount).toBe(0);
+      expect(screen.getByLabelText("Add Acme Search")).toBeInTheDocument();
     });
   });
 
@@ -291,11 +335,14 @@ describe("chat composer connector connection", () => {
       zeroAgentCustomConnectorsContract.update,
       ({ body, params, respond }) => {
         expect(body).toStrictEqual({
-          enabledIds: [connector.id],
+          grants: [{ customConnectorId: connector.id, permissionNames: [] }],
           operation: "add",
         });
         updatedAgentIds.push(params.id);
-        return respond(200, { enabledIds: [connector.id] });
+        return respond(200, {
+          enabledIds: [connector.id],
+          grants: [{ customConnectorId: connector.id, permissionNames: [] }],
+        });
       },
     );
     detachedSetupPage({

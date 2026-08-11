@@ -1,6 +1,6 @@
 import {
   getZeroAgent,
-  getZeroAgentCustomConnectors,
+  getZeroAgentCustomConnectorGrants,
   getZeroAgentUserConnectors,
 } from "../../../lib/api/domains/zero-agents";
 
@@ -38,17 +38,21 @@ export async function resolveConnectorDiscoveryAgentContext(
   const agentId = flagAgentId ?? process.env.ZERO_AGENT_ID;
   if (!agentId) return null;
 
-  const [agent, enabledConnectorSlugs, enabledCustomConnectorIds] =
+  const [agent, enabledConnectorSlugs, customConnectorGrants] =
     await Promise.all([
       getZeroAgent(agentId),
       getZeroAgentUserConnectors(agentId),
-      getZeroAgentCustomConnectors(agentId),
+      getZeroAgentCustomConnectorGrants(agentId),
     ]);
 
   return {
     agentId: agent.agentId,
     displayName: agent.displayName ?? agent.agentId,
     authorizedConnectorSlugs: new Set(enabledConnectorSlugs),
-    authorizedCustomConnectorIds: new Set(enabledCustomConnectorIds),
+    authorizedCustomConnectorIds: new Set(
+      customConnectorGrants.map((grant) => {
+        return grant.customConnectorId;
+      }),
+    ),
   };
 }

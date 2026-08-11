@@ -2471,6 +2471,34 @@ describe("Feishu integration", () => {
         );
       }),
     ).toBeFalsy();
+    const managedConnector = requireValue(
+      (await authOrgApi.listCustomConnectors(actor)).connectors.find(
+        (connector) => {
+          return connector.permissionBundleRef === "builtin:feishu@1";
+        },
+      ),
+      "Expected managed Feishu custom connector",
+    );
+    const agentAccessClient = setupApp({ context, routes: zeroAgentsRoutes })(
+      zeroAgentCustomConnectorsContract,
+    );
+    const selectedPermissions = ["messages:send-as-user"];
+    await accept(
+      agentAccessClient.update({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { id: defaultAgentId },
+        body: {
+          grants: [
+            {
+              customConnectorId: managedConnector.id,
+              permissionNames: selectedPermissions,
+            },
+          ],
+          operation: "add",
+        },
+      }),
+      [200],
+    );
     const retryConnectResponse = await connectApp.request(
       "/api/zero/feishu/connect",
       {
@@ -2485,6 +2513,17 @@ describe("Feishu integration", () => {
     const retryAuthorizationUrl =
       await feishuAuthorizationUrlFromResponse(retryConnectResponse);
     await completeFeishuAuthorization(retryAuthorizationUrl, "ou_feishu_user");
+    const preservedAccess = await accept(
+      agentAccessClient.get({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { id: defaultAgentId },
+      }),
+      [200],
+    );
+    expect(preservedAccess.body.grants).toContainEqual({
+      customConnectorId: managedConnector.id,
+      permissionNames: selectedPermissions,
+    });
     await flushWaitUntilForTest();
     const welcome = outboundMessages.find((message) => {
       return (
