@@ -406,11 +406,7 @@ function modelChangeRunKey(
   if (inputEvent.runId !== undefined) {
     return `run:${inputEvent.runId}`;
   }
-  // Old web/app clients can persist model annotations on steer inputs for up
-  // to about two days. Keep persisted events from looking like run starts
-  // until their stored rows and snapshots are migrated; remove the seqId
-  // check after #25879 confirms no runless model annotations remain.
-  if (inputEvent.seqId === undefined && modelSelection !== undefined) {
+  if (modelSelection !== undefined) {
     return `event:${inputEvent.id}`;
   }
   return undefined;

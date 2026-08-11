@@ -962,53 +962,6 @@ describe("chat run queue", () => {
     expectTextBefore(MODEL_CHANGED_COPY, "Start the model B run");
   });
 
-  it("does not mistake a persisted steer model annotation for a new run", async () => {
-    mockChatLifecycle(context, {
-      threadId: THREAD_ID,
-      chatEvents: [
-        {
-          id: `${THREAD_ID}-active-user`,
-          role: "user",
-          content: "Start the model A run",
-          userMessage: modelAnnotatedMessage(
-            "Start the model A run",
-            "gpt-5.5",
-          ),
-          runId: "run-active",
-          createdAt: "2026-08-06T09:00:00Z",
-        },
-        {
-          id: `${THREAD_ID}-active-assistant`,
-          role: "assistant",
-          content: "Model A finished.",
-          runId: "run-active",
-          createdAt: "2026-08-06T09:00:01Z",
-        },
-        {
-          id: `${THREAD_ID}-persisted-steer`,
-          role: "user",
-          content: "Legacy persisted steer",
-          userMessage: modelAnnotatedMessage(
-            "Legacy persisted steer",
-            "claude-sonnet-4-6",
-          ),
-          runId: undefined,
-          createdAt: "2026-08-06T09:00:02Z",
-        },
-      ],
-    });
-
-    detachedSetupPage({
-      context,
-      path: CHAT_PATH,
-    });
-
-    await expect(
-      screen.findByText("Legacy persisted steer"),
-    ).resolves.toBeInTheDocument();
-    expect(screen.queryByText(MODEL_CHANGED_COPY)).not.toBeInTheDocument();
-  });
-
   it.each([
     {
       name: "the models match",
