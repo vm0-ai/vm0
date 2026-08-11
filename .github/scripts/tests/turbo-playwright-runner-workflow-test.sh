@@ -5,7 +5,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 WORKFLOW="${REPO_ROOT}/.github/workflows/turbo.yml"
 RUNNER_TESTS="${REPO_ROOT}/e2e/tests/03-runner"
-RUNNER_HELPER="${REPO_ROOT}/e2e/helpers/runner-chat.bash"
+RUNNER_HELPERS=(
+  "${REPO_ROOT}/e2e/helpers/runner-api.bash"
+  "${REPO_ROOT}/e2e/helpers/runner-chat.bash"
+)
 RUNNER_TOKEN="${REPO_ROOT}/e2e/playwright/runner-token.ts"
 
 fail() {
@@ -29,7 +32,7 @@ grep -Fq "RUNNER_GROUP: \${{ format('vm0/development-{0}', needs.prepare.outputs
 if grep -Fq 'playwright-staging' "$WORKFLOW"; then
   fail "main Playwright runs must not use a group outside the staging API default"
 fi
-if grep -R -Fq '/api/test/' "$RUNNER_TESTS" "$RUNNER_HELPER"; then
+if grep -R -Fq '/api/test/' "$RUNNER_TESTS" "${RUNNER_HELPERS[@]}"; then
   fail "runner E2E coverage must use supported public APIs"
 fi
 grep -Fq 'startVideoOnboardingCheckout' "$RUNNER_TOKEN" ||

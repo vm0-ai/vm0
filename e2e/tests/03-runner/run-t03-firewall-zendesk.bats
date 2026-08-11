@@ -1,6 +1,7 @@
 #!/usr/bin/env bats
 
 load '../../helpers/setup'
+load '../../helpers/runner-chat'
 load '../../helpers/runner-api'
 
 setup() {
@@ -14,10 +15,10 @@ teardown() {
 
 @test "runner firewall resolves the Zendesk variable base and header auth" {
     local subdomain="e2e${RANDOM}${RANDOM}"
-    run runner_e2e_create_private_agent "runner-firewall-zendesk-${TEST_ID}"
+    run create_runner_agent "runner-firewall-zendesk-${TEST_ID}"
     echo "$output"
     assert_success
-    AGENT_ID=$(jq -er '.agentId' <<<"$output")
+    AGENT_ID="$output"
 
     local values
     values=$(jq -nc \
@@ -45,7 +46,7 @@ EOF
     RUN_ID=$(jq -er '.runId | select(type == "string" and length > 0)' <<<"$output")
     THREAD_ID=$(jq -er '.threadId' <<<"$output")
 
-    run runner_e2e_wait_for_run_completed "$RUN_ID"
+    run runner_wait_for_run "$RUN_ID" 180
     echo "$output"
     assert_success
 

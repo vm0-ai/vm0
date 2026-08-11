@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
 
 runner_e2e_require_environment() {
-    : "${E2E_API_TOKEN:?runner E2E API token is required}"
-    : "${E2E_API_URL:?runner E2E API URL is required}"
-    command -v curl >/dev/null
+    require_runner_api_credentials || return
+    command -v curl >/dev/null || return
     command -v jq >/dev/null
 }
 
@@ -23,45 +22,9 @@ runner_e2e_teardown_test() {
         runner_e2e_delete_chat_thread "$THREAD_ID" >/dev/null 2>&1 || true
     fi
     if [[ -n "${AGENT_ID:-}" ]]; then
-        runner_e2e_delete_agent "$AGENT_ID" >/dev/null 2>&1 || true
+        delete_runner_agent "$AGENT_ID" >/dev/null 2>&1 || true
     fi
     runner_e2e_delete_connector "$connector_slug" >/dev/null 2>&1 || true
-}
-
-runner_e2e_api_request() {
-    local method="$1"
-    local path="$2"
-    local body="${3-}"
-    local -a args=(
-        --fail-with-body
-        --silent
-        --show-error
-        --max-time 60
-        --request "$method"
-        --header "Authorization: Bearer ${E2E_API_TOKEN}"
-        --header "Accept: application/json"
-    )
-
-    if [[ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then
-        args+=(--header "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}")
-    fi
-    if [[ $# -ge 3 ]]; then
-        args+=(--header "Content-Type: application/json" --data-binary "$body")
-    fi
-
-    curl "${args[@]}" "${E2E_API_URL%/}${path}"
-}
-
-runner_e2e_create_private_agent() {
-    local display_name="$1"
-    local payload
-    payload=$(jq -nc --arg displayName "$display_name" '{displayName: $displayName, visibility: "private"}')
-    runner_e2e_api_request POST "/api/zero/agents" "$payload"
-}
-
-runner_e2e_delete_agent() {
-    local agent_id="$1"
-    runner_e2e_api_request DELETE "/api/zero/agents/${agent_id}"
 }
 
 runner_e2e_connect_manual_connector() {
@@ -75,81 +38,32 @@ runner_e2e_connect_manual_connector() {
         --arg agentId "$agent_id" \
         --argjson values "$values" \
         '{authMethod: $authMethod, agentId: $agentId, authorizeAgent: true, values: $values}')
-    runner_e2e_api_request \
-        POST \
-        "/api/zero/connectors/${connector_slug}/manual-grant" \
-        "$payload"
+    runner_api_curl "/api/zero/connectors/${connector_slug}/manual-grant" \
+        -X POST \
+        -d "$payload"
 }
 
 runner_e2e_delete_connector() {
     local connector_slug="$1"
-    runner_e2e_api_request DELETE "/api/zero/connectors/${connector_slug}"
+    runner_api_curl "/api/zero/connectors/${connector_slug}" -X DELETE
 }
 
 runner_e2e_cancel_run() {
     local run_id="$1"
-    runner_e2e_api_request POST "/api/zero/runs/${run_id}/cancel"
+    runner_api_curl "/api/zero/runs/${run_id}/cancel" -X POST
 }
 
 runner_e2e_start_chat_run() {
     local agent_id="$1"
     local prompt="$2"
     local shell_prompt
-    local client_thread_id
-    local payload
     shell_prompt=$(printf '@shell@\n%s' "$prompt")
-    client_thread_id=$(cat /proc/sys/kernel/random/uuid)
-    payload=$(jq -nc \
-        --arg agentId "$agent_id" \
-        --arg clientThreadId "$client_thread_id" \
-        --arg model "deepseek-v4-flash" \
-        --arg prompt "$shell_prompt" \
-        '{
-            agentId: $agentId,
-            clientThreadId: $clientThreadId,
-            model: $model,
-            prompt: $prompt,
-            userMessage: {version: 1, parts: [{type: "text", text: $prompt}]},
-            hasTextContent: true
-        }')
-    runner_e2e_api_request POST "/api/zero/chat/events" "$payload"
+    runner_chat_send "$agent_id" "$shell_prompt" "" "deepseek-v4-flash"
 }
 
 runner_e2e_delete_chat_thread() {
     local thread_id="$1"
-    runner_e2e_api_request DELETE "/api/zero/chat-threads/${thread_id}"
-}
-
-runner_e2e_wait_for_run_completed() {
-    local run_id="$1"
-    local timeout_seconds="${2:-180}"
-    local started_at=$SECONDS
-    local last_response=""
-    local status=""
-
-    while ((SECONDS - started_at < timeout_seconds)); do
-        if last_response=$(runner_e2e_api_request GET "/api/zero/runs/${run_id}" 2>&1); then
-            status=$(jq -er '.status' <<<"$last_response") || {
-                echo "Runner E2E run returned an invalid status payload: $last_response" >&2
-                return 1
-            }
-            case "$status" in
-                completed)
-                    printf '%s\n' "$last_response"
-                    return 0
-                    ;;
-                failed | timeout | cancelled)
-                    echo "Runner E2E run ${run_id} reached ${status}: $last_response" >&2
-                    return 1
-                    ;;
-            esac
-        fi
-        sleep 2
-    done
-
-    echo "Timed out after ${timeout_seconds}s waiting for runner E2E run ${run_id}" >&2
-    echo "Last run response: ${last_response}" >&2
-    return 1
+    runner_api_curl "/api/zero/chat-threads/${thread_id}" -X DELETE
 }
 
 runner_e2e_agent_events() {
@@ -179,7 +93,7 @@ runner_e2e_collect_pages() {
             encoded_cursor=$(jq -rn --arg cursor "$cursor" '$cursor | @uri')
             query="${query}&cursor=${encoded_cursor}"
         fi
-        page=$(runner_e2e_api_request GET "${path}${query}") || return
+        page=$(runner_api_curl "${path}${query}") || return
         accumulated=$(jq -c \
             --arg collectionKey "$collection_key" \
             --argjson accumulated "$accumulated" \
