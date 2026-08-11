@@ -411,7 +411,7 @@ async function publishHostedSiteFromDirectRun(args: {
         agentComposeId: args.owner.agentId,
         prompt: `publish ${args.site}`,
         modelProviderType: "anthropic-api-key",
-        triggerSource: "workflow-schedule",
+        triggerSource: "automation-schedule",
         vars: { ZERO_AGENT_ID: args.owner.agentId },
         secrets: { ZERO_TOKEN: "bdd-artifact-catalog-token" },
       })
@@ -1015,7 +1015,7 @@ describe("GET /api/zero/artifacts/catalog", () => {
       agentComposeId: owner.agentId,
       prompt: "create a workflow artifact",
       modelProviderType: "anthropic-api-key",
-      triggerSource: "workflow-schedule",
+      triggerSource: "automation-schedule",
       vars: { ZERO_AGENT_ID: owner.agentId },
       secrets: { ZERO_TOKEN: "bdd-artifact-catalog-token" },
     });

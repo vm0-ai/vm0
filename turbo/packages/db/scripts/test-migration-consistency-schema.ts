@@ -3683,8 +3683,8 @@ async function validateGoalOnlyRunGroupsCleanup(): Promise<void> {
             "goal_id"
           )
           VALUES
-            ($1, 'workflow-schedule', $3, $4, NULL),
-            ($2, 'workflow-event', $3, $5, $5)
+            ($1, 'automation-schedule', $3, $4, NULL),
+            ($2, 'goal', $3, $5, $5)
         `,
         [
           fixture.workflowRunId,
@@ -3788,7 +3788,7 @@ async function validateGoalOnlyRunGroupsCleanup(): Promise<void> {
             "run_group_id",
             "goal_id"
           )
-          VALUES ($1, 'workflow-schedule', $2, $3, NULL)
+          VALUES ($1, 'automation-event', $2, $3, NULL)
         `,
         [
           fixture.drainingWorkflowRunId,
