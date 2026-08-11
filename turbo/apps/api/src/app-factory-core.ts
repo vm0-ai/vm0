@@ -65,6 +65,7 @@ const ERROR_CHAIN_MAX_DEPTH = 32;
 const ERROR_SUMMARY_MAX_LENGTH = 240;
 const ERROR_SUMMARY_SOURCE_MAX_LENGTH = 4096;
 const API_RUNTIME_HEADER = "x-vm0-api-runtime";
+const PREVIEW_ERROR_SUMMARY_HEADER = "x-vm0-preview-error-summary";
 
 interface UnhandledRequestErrorLogFields {
   readonly type: typeof UNHANDLED_REQUEST_ERROR_TYPE;
@@ -589,7 +590,11 @@ function handleError(error: unknown, context: Context): Response {
 
   const fields = unhandledRequestErrorLogFields(error, context);
   L.error(`Unhandled request error: ${fields.errorSummary}`, fields);
-  return context.json({ error: "Internal server error" }, 500);
+  const response = context.json({ error: "Internal server error" }, 500);
+  if (env("ENV") === "preview") {
+    response.headers.set(PREVIEW_ERROR_SUMMARY_HEADER, fields.errorSummary);
+  }
+  return response;
 }
 
 interface CreateAppWithRoutesOptions {

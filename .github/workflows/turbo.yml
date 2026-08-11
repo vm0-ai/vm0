@@ -1443,7 +1443,6 @@ jobs:
 
       - name: Simulate Worker cron routes
         env:
-          API_ENV_FILE: ${{ steps.api-deploy-env.outputs.file }}
           API_DEPLOYMENT_URL: ${{ steps.api-deploy.outputs.url }}
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
           CF_ACCESS_CLIENT_ID: ${{ secrets.CF_API_PREVIEW_ACCESS_CLIENT_ID }}
@@ -1465,69 +1464,59 @@ jobs:
             exit 1
           fi
 
+          cron_diagnostics_dir="$(mktemp -d)"
+          run_cron_route() {
+            local path="$1"
+            local name="${path#/api/cron/}"
+            local status
+
+            status="$(curl "${API_DEPLOYMENT_URL}${path}" \
+              --show-error \
+              --silent \
+              --output "${cron_diagnostics_dir}/${name}.body" \
+              --dump-header "${cron_diagnostics_dir}/${name}.headers" \
+              --write-out '%{http_code}' \
+              --max-time 180 \
+              -H "Authorization: Bearer ${CRON_SECRET}" \
+              -H "CF-Access-Client-Id: ${CF_ACCESS_CLIENT_ID}" \
+              -H "CF-Access-Client-Secret: ${CF_ACCESS_CLIENT_SECRET}")"
+            printf '%s' "$status" > "${cron_diagnostics_dir}/${name}.status"
+            [[ "$status" =~ ^2[0-9][0-9]$ ]]
+          }
+
           failures=0
           for ((offset = 0; offset < ${#cron_routes[@]}; offset += 6)); do
             pids=()
             paths=()
             for path in "${cron_routes[@]:offset:6}"; do
               echo "Simulating ${path}"
-              curl "${API_DEPLOYMENT_URL}${path}" \
-                --fail \
-                --show-error \
-                --silent \
-                --output /dev/null \
-                --max-time 180 \
-                -H "Authorization: Bearer ${CRON_SECRET}" \
-                -H "CF-Access-Client-Id: ${CF_ACCESS_CLIENT_ID}" \
-                -H "CF-Access-Client-Secret: ${CF_ACCESS_CLIENT_SECRET}" &
+              run_cron_route "$path" &
               pids+=("$!")
               paths+=("$path")
             done
             for index in "${!pids[@]}"; do
               if ! wait "${pids[$index]}"; then
-                echo "::error::Cron simulation failed for ${paths[$index]}"
+                path="${paths[$index]}"
+                name="${path#/api/cron/}"
+                http_status="$(cat "${cron_diagnostics_dir}/${name}.status" 2>/dev/null || echo unavailable)"
+                error_summary="$(sed -n \
+                  's/^[Xx]-[Vv][Mm]0-[Pp]review-[Ee]rror-[Ss]ummary:[[:space:]]*//p' \
+                  "${cron_diagnostics_dir}/${name}.headers" 2>/dev/null | tr -d '\r' || true)"
+                response_body="$(head -c 500 \
+                  "${cron_diagnostics_dir}/${name}.body" 2>/dev/null | tr '\r\n' ' ' || true)"
+                echo "::error::Cron simulation failed for ${path} with HTTP ${http_status}"
+                if [[ -n "$error_summary" ]]; then
+                  echo "Sanitized preview error for ${path}: ${error_summary}"
+                fi
+                if [[ -n "$response_body" ]]; then
+                  echo "Response body for ${path}: ${response_body}"
+                fi
                 failures=$((failures + 1))
               fi
             done
           done
 
           if [[ "$failures" -ne 0 ]]; then
-            axiom_token="$(sed -n 's/^AXIOM_TOKEN_TELEMETRY=//p' "$API_ENV_FILE")"
-            axiom_suffix="$(sed -n 's/^AXIOM_DATASET_SUFFIX=//p' "$API_ENV_FILE")"
-            if [[ -n "$axiom_token" && "$axiom_suffix" == "dev" ]]; then
-              echo "::add-mask::$axiom_token"
-              sleep 5
-              apl="['vm0-web-logs-dev'] | where type == \"unhandled_request_error\" and route == \"/api/cron/snapshot-chat-events\" | project _time, errorSummary, method, route | sort by _time desc | limit 20"
-              query_payload="$(jq -cn --arg apl "$apl" '{
-                apl: $apl,
-                startTime: "now-10m",
-                endTime: "now",
-                defaultLimit: 20
-              }')"
-              if query_response="$(curl \
-                --request POST \
-                --fail-with-body \
-                --show-error \
-                --silent \
-                --max-time 30 \
-                -H "Authorization: Bearer ${axiom_token}" \
-                -H 'Content-Type: application/json' \
-                --data "$query_payload" \
-                'https://api.axiom.co/v1/datasets/_apl?format=legacy')"; then
-                diagnostics="$(jq -c '[.matches[]? | {
-                  time: ._time,
-                  errorSummary: .data.errorSummary,
-                  method: .data.method,
-                  route: .data.route
-                }]' <<< "$query_response")"
-                echo "Worker cron error diagnostics: ${diagnostics}"
-              else
-                query_error="$(jq -r '.message // .error // "unknown Axiom query error"' <<< "$query_response" 2>/dev/null || true)"
-                echo "::warning::Unable to query sanitized Worker preview error diagnostics: ${query_error}"
-              fi
-            else
-              echo "::warning::Worker preview Axiom diagnostics are not configured"
-            fi
             echo "::error::${failures} Worker cron route simulations failed"
             exit 1
           fi

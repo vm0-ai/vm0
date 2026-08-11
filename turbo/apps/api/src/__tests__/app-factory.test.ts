@@ -133,6 +133,48 @@ describe("createApp", () => {
     expect(context.mocks.sentry.captureException).toHaveBeenCalledWith(error);
   });
 
+  it("exposes only the sanitized error summary in protected previews", async () => {
+    mockEnv("ENV", "preview");
+    const error = new Error(
+      "database failed for test@example.com at https://example.test/path?token=secret Bearer abcdef1234567890",
+    );
+    const handler$ = computed((): never => {
+      throw error;
+    });
+    const client = setupApp({
+      context,
+      routes: [
+        ...TEST_APP_ROUTES,
+        { route: errorTestContract.boom, handler: handler$ },
+      ],
+    })(errorTestContract);
+
+    const response = await accept(client.boom(), [500]);
+
+    expect(response.headers.get("x-vm0-preview-error-summary")).toBe(
+      "database failed for [email] at [url] Bearer [redacted]",
+    );
+    expect(response.body).toStrictEqual({ error: "Internal server error" });
+  });
+
+  it("does not expose error summaries outside previews", async () => {
+    mockEnv("ENV", "production");
+    const handler$ = computed((): never => {
+      throw new Error("database details");
+    });
+    const client = setupApp({
+      context,
+      routes: [
+        ...TEST_APP_ROUTES,
+        { route: errorTestContract.boom, handler: handler$ },
+      ],
+    })(errorTestContract);
+
+    const response = await accept(client.boom(), [500]);
+
+    expect(response.headers.get("x-vm0-preview-error-summary")).toBeNull();
+  });
+
   it("handles non-Error thrown values while logging unhandled errors", async () => {
     const thrownValue = 1n;
     const handler$ = computed((): never => {
