@@ -217,6 +217,7 @@ export const testRuntimeStateActionResponseSchema = z.object({
       archive_schema_version: z.int().positive(),
       last_seq_id: z.int().positive(),
       object_key: z.string(),
+      snapshot_count: z.int().positive(),
     })
     .nullable()
     .optional(),

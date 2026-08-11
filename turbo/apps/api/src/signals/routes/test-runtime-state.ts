@@ -24,7 +24,7 @@ import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
 import { threadGoals } from "@vm0/db/schema/thread-goal";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { zeroWorkflowAutomations } from "@vm0/db/schema/zero-workflow";
-import { and, desc, eq, sql, type SQL } from "drizzle-orm";
+import { and, count, desc, eq, sql, type SQL } from "drizzle-orm";
 import { z } from "zod";
 import { closeDbPool } from "../../lib/db";
 import { executeRawRows } from "../../lib/db-raw-rows";
@@ -1306,21 +1306,30 @@ async function chatEventSnapshotFixtureActionResponse(
     }
     return { status: 200 as const, body: { ok: true as const } };
   }
-  const [head] = await db
-    .select({
-      archiveSchemaVersion: chatEventSnapshots.archiveSchemaVersion,
-      lastSeqId: chatEventSnapshots.lastSeqId,
-      objectKey: chatEventSnapshots.objectKey,
-    })
-    .from(chatEventSnapshots)
-    .where(
-      and(
-        eq(chatEventSnapshots.chatThreadId, body.thread_id),
-        eq(chatEventSnapshots.isHead, true),
-      ),
-    )
-    .limit(1);
+  const [[head], [snapshotCount]] = await Promise.all([
+    db
+      .select({
+        archiveSchemaVersion: chatEventSnapshots.archiveSchemaVersion,
+        lastSeqId: chatEventSnapshots.lastSeqId,
+        objectKey: chatEventSnapshots.objectKey,
+      })
+      .from(chatEventSnapshots)
+      .where(
+        and(
+          eq(chatEventSnapshots.chatThreadId, body.thread_id),
+          eq(chatEventSnapshots.isHead, true),
+        ),
+      )
+      .limit(1),
+    db
+      .select({ value: count() })
+      .from(chatEventSnapshots)
+      .where(eq(chatEventSnapshots.chatThreadId, body.thread_id)),
+  ]);
   signal.throwIfAborted();
+  if (!snapshotCount) {
+    throw new Error("read-chat-event-snapshot-head missing snapshot count");
+  }
   return {
     status: 200 as const,
     body: {
@@ -1330,6 +1339,7 @@ async function chatEventSnapshotFixtureActionResponse(
             archive_schema_version: head.archiveSchemaVersion,
             last_seq_id: head.lastSeqId,
             object_key: head.objectKey,
+            snapshot_count: snapshotCount.value,
           }
         : null,
     },
