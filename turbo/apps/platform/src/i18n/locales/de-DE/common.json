@@ -4184,15 +4184,14 @@
         "useAccount": "Verwenden"
       },
       "picker": {
-        "balancedUse": "Ausgewogene Nutzung",
         "builtInModel": "Einbaumodell",
         "byokHelp": "Verwendet Ihren konfigurierten Anbieter",
         "fast": "Schnell",
+        "fastImpact": "1,5× Modellgeschwindigkeit · 2,5× Credit-Nutzung",
         "inheritDefault": "Von der Standardeinstellung der Organisation übernehmen",
         "loadError": "Modelle können nicht geladen werden.",
         "loading": "Modelle werden geladen...",
         "models": "Modelle",
-        "moreCodexCredits": "Verbraucht mehr Codex-Credits.",
         "noConfiguredModels": "Keine konfigurierten Modelle",
         "priceTiers": {
           "balanced": "Ausgewogene Kosten und Leistung",
@@ -4200,14 +4199,12 @@
           "frontier": "Frontier-Flaggschiffmodell",
           "premium": "Premium-Frontier-Modell für die schwierigsten Aufgaben"
         },
-        "prioritizeSpeed": "Priorisieren Sie die Geschwindigkeit",
         "pro": "Pro",
         "providerLabels": {
           "azureFoundryPortal": "Azure Foundry-Portal",
           "claudeCodeOauth": "Claude Code (OAuth-Token)",
           "deepseek": "Deepseek"
         },
-        "runSpeed": "Ausführungsgeschwindigkeit",
         "standard": "Standard"
       },
       "policies": {

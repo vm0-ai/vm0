@@ -4233,15 +4233,14 @@
         "useAccount": "Usa"
       },
       "picker": {
-        "balancedUse": "Utilizzo equilibrato",
         "builtInModel": "Modello da incasso",
         "byokHelp": "Utilizza il provider configurato",
         "fast": "Veloce",
+        "fastImpact": "Velocità del modello 1,5× · consumo di crediti 2,5×",
         "inheritDefault": "Eredita dall'impostazione predefinita dell'organizzazione",
         "loadError": "Impossibile caricare i modelli.",
         "loading": "Caricamento modelli...",
         "models": "Modelli",
-        "moreCodexCredits": "Utilizza più Codex crediti.",
         "noConfiguredModels": "Nessun modello configurato",
         "priceTiers": {
           "balanced": "Costo e prestazioni equilibrati",
@@ -4249,14 +4248,12 @@
           "frontier": "Modello di punta della frontiera",
           "premium": "Modello premium di frontiera per i compiti più difficili"
         },
-        "prioritizeSpeed": "Dai priorità alla velocità",
         "pro": "Pro",
         "providerLabels": {
           "azureFoundryPortal": "Azure portale della fonderia",
           "claudeCodeOauth": "Claude Code (OAuth token)",
           "deepseek": "Ricerca profonda"
         },
-        "runSpeed": "Corri velocità",
         "standard": "Norma"
       },
       "policies": {

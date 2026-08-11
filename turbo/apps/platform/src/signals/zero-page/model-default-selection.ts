@@ -89,8 +89,6 @@ export const resolveExplicitModelSelection$ = command(
     { get },
     params: {
       selection: ModelProviderSelection | null;
-      current: ModelProviderSelection | null;
-      codexFastModeEnabled: boolean;
     },
     signal: AbortSignal,
   ): Promise<ExplicitModelSelectionResult> => {
@@ -109,20 +107,6 @@ export const resolveExplicitModelSelection$ = command(
         !modelPolicyAllowedForPlan(selectedPolicy, modelCapabilities))
     ) {
       return { kind: "compare-plans" };
-    }
-    if (
-      params.selection &&
-      params.current?.codexServiceTier === "fast" &&
-      isCodexFastModeAvailableForSelection({
-        policies,
-        selectedModel: params.selection.selectedModel,
-        codexFastModeEnabled: params.codexFastModeEnabled,
-      })
-    ) {
-      return {
-        kind: "select",
-        selection: { ...params.selection, codexServiceTier: "fast" },
-      };
     }
     return { kind: "select", selection: params.selection };
   },

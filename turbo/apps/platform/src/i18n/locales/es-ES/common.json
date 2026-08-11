@@ -4233,15 +4233,14 @@
         "useAccount": "Usar"
       },
       "picker": {
-        "balancedUse": "Uso equilibrado",
         "builtInModel": "Modelo integrado",
         "byokHelp": "Usa el proveedor que has configurado",
         "fast": "Rápido",
+        "fastImpact": "1,5× velocidad del modelo · 2,5× uso de créditos",
         "inheritDefault": "Heredar el valor predeterminado de la organización",
         "loadError": "No se pudieron cargar los modelos.",
         "loading": "Cargando modelos...",
         "models": "Modelos",
-        "moreCodexCredits": "Consume más créditos de Codex.",
         "noConfiguredModels": "Sin modelos configurados",
         "priceTiers": {
           "balanced": "Coste y rendimiento equilibrados",
@@ -4249,14 +4248,12 @@
           "frontier": "Modelo insignia de última generación",
           "premium": "Modelo prémium de última generación para las tareas más difíciles"
         },
-        "prioritizeSpeed": "Priorizar la velocidad",
         "pro": "Pro",
         "providerLabels": {
           "azureFoundryPortal": "Portal de Azure AI Foundry",
           "claudeCodeOauth": "Claude Code (token OAuth)",
           "deepseek": "Deepseek"
         },
-        "runSpeed": "Velocidad de ejecución",
         "standard": "Estándar"
       },
       "policies": {
