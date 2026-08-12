@@ -1,6 +1,7 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { ChatEventRowV4 } from "@vm0/api-contracts/contracts/chat-event-rows";
 import {
   chatThreadArtifactsContract,
   chatThreadByIdContract,
@@ -8,11 +9,13 @@ import {
   chatThreadsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroBrowserContract } from "@vm0/api-contracts/contracts/zero-browser";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { mockOrganization, mockUser } from "../../../__tests__/mock-auth.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {
+  CHAT_EVENT_ROWS_STORE,
   CHAT_MESSAGES_STORE,
   CHAT_THREAD_EVENTS_STORE,
   CHAT_THREAD_EVENT_SYNC_STORE,
@@ -112,7 +115,9 @@ async function primeRuntimeChatDb(): Promise<
   return await context.store.get(chatIdb$);
 }
 
-function setupChatPage(): void {
+function setupChatPage(
+  featureSwitches?: Partial<Record<FeatureSwitchKey, boolean>>,
+): void {
   detachedSetupPage({
     context,
     path: `/chats/${THREAD_ID}`,
@@ -121,6 +126,7 @@ function setupChatPage(): void {
       activeOrg: { id: IDB_ORG_ID, name: "Default Org" },
       memberships: [{ id: IDB_ORG_ID }],
     },
+    featureSwitches,
   });
 }
 
@@ -129,6 +135,7 @@ async function clearCachedChatData(): Promise<void> {
   try {
     const tx = db.transaction(
       [
+        CHAT_EVENT_ROWS_STORE,
         CHAT_MESSAGES_STORE,
         CHAT_THREAD_SNAPSHOT_STORE,
         CHAT_THREAD_EVENTS_STORE,
@@ -136,10 +143,12 @@ async function clearCachedChatData(): Promise<void> {
       ],
       "readwrite",
     );
+    const eventRowsStore = tx.objectStore(CHAT_EVENT_ROWS_STORE);
     const messagesStore = tx.objectStore(CHAT_MESSAGES_STORE);
     const threadSnapshotStore = tx.objectStore(CHAT_THREAD_SNAPSHOT_STORE);
     const threadEventsStore = tx.objectStore(CHAT_THREAD_EVENTS_STORE);
     const threadEventSyncStore = tx.objectStore(CHAT_THREAD_EVENT_SYNC_STORE);
+    const clearEventRows = eventRowsStore.clear.bind(eventRowsStore);
     const clearMessages = messagesStore.clear.bind(messagesStore);
     const clearThreadSnapshot =
       threadSnapshotStore.clear.bind(threadSnapshotStore);
@@ -147,6 +156,7 @@ async function clearCachedChatData(): Promise<void> {
     const clearThreadEventSync =
       threadEventSyncStore.clear.bind(threadEventSyncStore);
     await Promise.all([
+      clearEventRows(),
       clearMessages(),
       clearThreadSnapshot(),
       clearThreadEvents(),
@@ -978,6 +988,112 @@ describe("okou chat thread IndexedDB fallback", () => {
     } finally {
       if (!initialMessageList.settled()) {
         initialMessageList.resolve();
+      }
+      runtimeDb.close();
+    }
+  });
+
+  it("keeps the skeleton visible through the snapshot render handoff", async () => {
+    prepareDefaultAgent();
+    mockCurrentThreadDetail();
+    mockSidebarThread();
+    const runtimeDb = await primeRuntimeChatDb();
+    const snapshotUrl =
+      "https://r2.example.com/chat-events/loading-handoff.ndjson.gz";
+    const snapshotBodyRequested = context.mocks.deferred<void>();
+    const releaseSnapshotBody = context.mocks.deferred<void>();
+    const snapshotRows = [
+      {
+        id: "00000000-0000-4000-8000-000000000201",
+        chatThreadId: THREAD_ID,
+        runId: null,
+        revokesEventId: null,
+        eventType: "input.prompt",
+        payload: {
+          userMessage: {
+            version: 1,
+            parts: [{ type: "text", text: USER_MESSAGE }],
+          },
+        },
+        contextType: "web",
+        contextId: null,
+        runEventSequenceNumber: null,
+        runEventId: null,
+        seqId: 1,
+        createdAt: "2026-08-12T06:22:00.000Z",
+      },
+      {
+        id: "00000000-0000-4000-8000-000000000202",
+        chatThreadId: THREAD_ID,
+        runId: null,
+        revokesEventId: null,
+        eventType: "output.message",
+        payload: { content: ASSISTANT_MESSAGE },
+        contextType: null,
+        contextId: null,
+        runEventSequenceNumber: null,
+        runEventId: null,
+        seqId: 2,
+        createdAt: "2026-08-12T06:22:01.000Z",
+      },
+    ] satisfies ChatEventRowV4[];
+
+    context.mocks.api(chatThreadEventsContract.snapshot, ({ respond }) => {
+      return respond(200, {
+        url: snapshotUrl,
+        expiresInSeconds: 900,
+        lastSeqId: 2,
+      });
+    });
+    context.mocks.http.get(snapshotUrl, async () => {
+      snapshotBodyRequested.resolve();
+      await releaseSnapshotBody.promise;
+      return new Response(
+        `${snapshotRows
+          .map((row) => {
+            return JSON.stringify(row);
+          })
+          .join("\n")}\n`,
+      );
+    });
+    context.mocks.api(chatThreadEventsContract.rows, ({ respond }) => {
+      return respond(200, { rows: [] });
+    });
+    context.mocks.api(chatThreadEventsContract.list, () => {
+      throw new Error("projected events endpoint must not be called");
+    });
+
+    let uncoveredLoadingGap = false;
+    const observer = new MutationObserver(() => {
+      if (
+        document.querySelector("[data-chat-skeleton]") === null &&
+        screen.queryByText(USER_MESSAGE) === null
+      ) {
+        uncoveredLoadingGap = true;
+      }
+    });
+    try {
+      setupChatPage({ [FeatureSwitchKey.ChatEventSnapshotRead]: true });
+      await snapshotBodyRequested.promise;
+
+      await waitFor(() => {
+        expect(document.querySelector("[data-chat-skeleton]")).not.toBeNull();
+      });
+      observer.observe(document.body, { childList: true, subtree: true });
+
+      releaseSnapshotBody.resolve();
+
+      await expect(
+        screen.findByText(USER_MESSAGE),
+      ).resolves.toBeInTheDocument();
+      await expect(
+        screen.findByText(ASSISTANT_MESSAGE),
+      ).resolves.toBeInTheDocument();
+      expect(uncoveredLoadingGap).toBeFalsy();
+    } finally {
+      observer.disconnect();
+      if (!releaseSnapshotBody.settled()) {
+        releaseSnapshotBody.resolve();
       }
       runtimeDb.close();
     }
