@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.731.0](https://github.com/vm0-ai/vm0/compare/app-v0.730.4...app-v0.731.0) (2026-08-12)
+
+
+### Features
+
+* cut first-party cli producers over to okou ([#26491](https://github.com/vm0-ai/vm0/issues/26491)) ([33c4c03](https://github.com/vm0-ai/vm0/commit/33c4c034b421249e220bb0f586a514d44ed78655))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.321.0
+    * @vm0/core bumped to 8.547.0
+
 ## [0.730.4](https://github.com/vm0-ai/vm0/compare/app-v0.730.3...app-v0.730.4) (2026-08-12)
 
 

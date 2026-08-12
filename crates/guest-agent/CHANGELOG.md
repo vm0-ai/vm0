@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.70.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.69.1...guest-agent-v0.70.0) (2026-08-12)
+
+
+### Features
+
+* cut first-party cli producers over to okou ([#26491](https://github.com/vm0-ai/vm0/issues/26491)) ([33c4c03](https://github.com/vm0-ai/vm0/commit/33c4c034b421249e220bb0f586a514d44ed78655))
+
 ## [0.69.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.69.0...guest-agent-v0.69.1) (2026-08-12)
 
 
