@@ -35,7 +35,7 @@ import { setupApp } from "../../../../__tests__/test-helpers";
 import { signSandboxJwtForTests } from "../../../auth/tokens";
 import type { ApiTestUser } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
-import { cronComputerUseScreenshotCleanupRoutes } from "../../cron-computer-use-screenshot-cleanup";
+import { cronComputerUseScreenshotCleanupRoutesForTest } from "../../cron-computer-use-screenshot-cleanup";
 import { zeroComputerUseRoutes } from "../../zero-computer-use";
 import { zeroComputerUseAuthorizationRoutes } from "../../zero-computer-use-authorization";
 
@@ -405,10 +405,10 @@ export function createComputerUseBddApi(context: TestContext) {
     );
   }
 
-  function cleanupCronClient() {
+  function cleanupCronClient(commandIds: readonly string[]) {
     return setupApp({
       context,
-      routes: cronComputerUseScreenshotCleanupRoutes,
+      routes: cronComputerUseScreenshotCleanupRoutesForTest(commandIds),
     })(cronComputerUseScreenshotCleanupContract);
   }
 
@@ -974,16 +974,9 @@ export function createComputerUseBddApi(context: TestContext) {
       );
     },
 
-    // Kept out of any shared safe-cron helper for the same shared-database
-    // reason as reconcileBillingCron in api-bdd-runs.ts: the
-    // screenshot-cleanup sweep is global (no org filter) and tombstones every
-    // screenshot row older than the 30-day retention window. Only
-    // computer-use.bdd.test.ts may invoke this cron, and only that file may
-    // create screenshot rows older than the retention window; sweep counts
-    // are asserted as `>=` on the first run because earlier aborted local
-    // runs can leave old rows behind.
     async runComputerUseScreenshotCleanupCron(
       auth: "valid" | "invalid" | "missing",
+      commandIds: readonly string[],
     ) {
       const headers =
         auth === "missing"
@@ -994,7 +987,10 @@ export function createComputerUseBddApi(context: TestContext) {
                   ? "Bearer test-cron-secret"
                   : "Bearer wrong-secret",
             };
-      return await accept(cleanupCronClient().cleanup({ headers }), [200, 401]);
+      return await accept(
+        cleanupCronClient(commandIds).cleanup({ headers }),
+        [200, 401],
+      );
     },
   };
 }

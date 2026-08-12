@@ -2566,6 +2566,18 @@
       "degraded": "Gli aggiornamenti in tempo reale hanno riscontrato un problema. Aggiorna la pagina."
     }
   },
+  "invitationRedirect": {
+    "accountMismatch": {
+      "title": "Invito accettato per un altro account"
+    },
+    "actions": {
+      "switchAccount": "Cambia account",
+      "switchWorkspace": "Cambia area di lavoro"
+    },
+    "success": {
+      "title": "Invito per {{workspace}} accettato"
+    }
+  },
   "lifecycle": {
     "emailUnsubscribe": {
       "action": "Annulla l'iscrizione",

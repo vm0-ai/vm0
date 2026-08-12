@@ -2566,6 +2566,18 @@
       "degraded": "Les mises à jour en direct ont rencontré un problème. Veuillez actualiser la page."
     }
   },
+  "invitationRedirect": {
+    "accountMismatch": {
+      "title": "Invitation acceptée pour un autre compte"
+    },
+    "actions": {
+      "switchAccount": "Changer de compte",
+      "switchWorkspace": "Changer d'espace de travail"
+    },
+    "success": {
+      "title": "Invitation à {{workspace}} acceptée"
+    }
+  },
   "lifecycle": {
     "emailUnsubscribe": {
       "action": "Se désabonner",

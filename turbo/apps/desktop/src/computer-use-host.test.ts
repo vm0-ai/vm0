@@ -722,19 +722,19 @@ describe("ComputerUseHostRuntime", () => {
     const events: string[] = [];
     let nextCalls = 0;
     const hostFetch = vi.fn<ComputerUseHostFetch>(async (url) => {
-      if (url.endsWith("/api/zero/computer-use/heartbeat")) {
+      if (url.endsWith("/api/okou/computer-use/heartbeat")) {
         return jsonResponse({ ok: true, hostId: "host-1" });
       }
-      if (url.endsWith("/api/zero/computer-use/host/commands/next")) {
+      if (url.endsWith("/api/okou/computer-use/host/commands/next")) {
         nextCalls += 1;
         events.push("claim");
         return jsonResponse({ status: "command", command });
       }
-      if (url.endsWith("/api/zero/computer-use/host/commands/cmd-1/complete")) {
+      if (url.endsWith("/api/okou/computer-use/host/commands/cmd-1/complete")) {
         events.push("complete");
         return jsonResponse({ ok: true });
       }
-      if (url.endsWith("/api/zero/computer-use/host/stop")) {
+      if (url.endsWith("/api/okou/computer-use/host/stop")) {
         events.push("stop");
         return jsonResponse({ ok: true });
       }

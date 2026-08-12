@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.165.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.164.6...runner-rs-v0.165.0) (2026-08-12)
+
+
+### Features
+
+* **protocol:** cut first-party clients over to okou ([#26549](https://github.com/vm0-ai/vm0/issues/26549)) ([8b1670c](https://github.com/vm0-ai/vm0/commit/8b1670c218fc1a1f326f720368eaa3a65b137ffa))
+
+
+### Refactoring
+
+* **rust:** centralize pre-sandbox run payload validation ([#26552](https://github.com/vm0-ai/vm0/issues/26552)) ([be7cf76](https://github.com/vm0-ai/vm0/commit/be7cf76888a94e7487ca6a849905234af1e212c0))
+
+
+### Performance Improvements
+
+* **python:** bound connector diagnostic query inspection ([#26607](https://github.com/vm0-ai/vm0/issues/26607)) ([8371053](https://github.com/vm0-ai/vm0/commit/8371053ed6bd3a90c9e8936c7e14e10771dfe7f8))
+
 ## [0.164.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.164.5...runner-rs-v0.164.6) (2026-08-12)
 
 

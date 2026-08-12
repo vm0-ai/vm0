@@ -2523,6 +2523,18 @@
       "degraded": "लाइव अपडेट में समस्या आई। कृपया पृष्ठ को ताज़ा करें."
     }
   },
+  "invitationRedirect": {
+    "accountMismatch": {
+      "title": "किसी अन्य खाते के लिए आमंत्रण स्वीकार किया गया"
+    },
+    "actions": {
+      "switchAccount": "खाता बदलें",
+      "switchWorkspace": "वर्कस्पेस बदलें"
+    },
+    "success": {
+      "title": "{{workspace}} का आमंत्रण स्वीकार किया गया"
+    }
+  },
   "lifecycle": {
     "emailUnsubscribe": {
       "action": "सदस्यता रद्द",

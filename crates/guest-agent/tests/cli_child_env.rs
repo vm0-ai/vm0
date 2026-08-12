@@ -70,9 +70,8 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
         std::env::set_var("HOME", tmp.path().join("stale-home"));
     }
 
-    let active_input = guest_agent::active_input::ActiveInputRuntime::new_with_initial_prompt(
+    let active_input = guest_agent::active_input::ActiveInputRuntime::new_disabled(
         &runtime.config.run_id,
-        false,
         &runtime.config.prompt,
     );
     let result = cli::execute_cli_with_active_input_for_config(

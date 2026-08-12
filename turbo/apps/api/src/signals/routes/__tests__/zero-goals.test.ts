@@ -469,13 +469,8 @@ describe("zero goals", () => {
       objectiveBrief: "coalesce goal triggers",
     });
 
-    if (first.kind !== "inserted") {
-      throw new Error("Expected the first goal queue event to be inserted");
-    }
-    expect(second).toStrictEqual({
-      kind: "coalesced",
-      eventId: first.eventId,
-    });
+    expect(first.kind).toBe("inserted");
+    expect(second).toStrictEqual({ kind: "coalesced" });
     expect(kms.generateDataKeyCalls).toBe(0);
     const state = await readGoalQueueStateFixture(fixture.threadId);
     expect(state.eventIds).toHaveLength(1);

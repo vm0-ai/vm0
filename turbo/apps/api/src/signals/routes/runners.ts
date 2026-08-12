@@ -32,7 +32,6 @@ import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { blobs } from "@vm0/db/schema/blob";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
 import {
   runnerState,
   type RunnerHeldSandboxState as PersistedRunnerHeldSandboxState,
@@ -59,7 +58,7 @@ import { runnerAuth$, type RunnerAuthContext } from "../auth/runner-auth";
 import { authorization$ } from "../context/hono";
 import { bodyResultOf, pathParamsOf } from "../context/request";
 import { waitUntil } from "../context/wait-until";
-import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
+import { db$, writeDb$, type Db } from "../external/db";
 import {
   generatePresignedGetUrl,
   publicS3DownloadSource,
@@ -73,7 +72,7 @@ import {
 import { recordSandboxOperations } from "../external/sandbox-op-log";
 import { now, nowDate } from "../../lib/time";
 import { env } from "../../lib/env";
-import { badRequestMessage, conflict, notFound } from "../../lib/error";
+import { badRequestMessage, notFound } from "../../lib/error";
 import { logger } from "../../lib/log";
 import { executeRawRows } from "../../lib/db-raw-rows";
 import {
@@ -86,16 +85,9 @@ import { decryptPersistentSecretsMap } from "../services/crypto.utils";
 import { dispatchCompleteSideEffects$ } from "../services/agent-webhook-complete.service";
 import { historyGenerationRunIdForStoredExecutionContext } from "../services/agent-run-queue-payload.service";
 import {
-  activeInputPromptFitsControlPayload,
-  materializePendingActiveInputPrompts,
-  pendingActiveInputRows,
-} from "../services/active-input-prompt.service";
-import {
   recordActiveInputDeliveryReceipt,
-  replacePendingActiveInputEvent,
   reserveActiveInputDelivery,
 } from "../services/active-input-delivery.service";
-import { lockChatQueueThread } from "../services/chat-event-queue.service";
 import { notifyRunningChatRunOfPendingInput } from "../services/chat-thread-queue-drain.service";
 import { loadConnectorRuntimeSnapshot } from "../services/connector-catalog-runtime.service";
 import { loadConnectorRunnerFirewallCatalog } from "../services/connector-runner-firewall-catalog.service";
@@ -2780,175 +2772,11 @@ const builtinFirewallsResolveInner$ = command(
   },
 );
 
-async function loadRunningActiveInputRun(
-  db: ReadonlyDb,
-  args: {
-    readonly runId: string;
-    readonly userId: string;
-    readonly orgId: string;
-  },
-) {
-  const [run] = await db
-    .select({ chatThreadId: zeroRuns.chatThreadId })
-    .from(agentRuns)
-    .innerJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
-    .where(
-      and(
-        eq(agentRuns.id, args.runId),
-        eq(agentRuns.userId, args.userId),
-        eq(agentRuns.orgId, args.orgId),
-        eq(agentRuns.status, "running"),
-      ),
-    )
-    .limit(1);
-  if (!run?.chatThreadId) {
-    return null;
-  }
-  return { chatThreadId: run.chatThreadId };
-}
-
-const activeInputClaimBody$ = bodyResultOf(runnersActiveInputsContract.claim);
 const activeInputReserveBody$ = bodyResultOf(
   runnersActiveInputsContract.reserve,
 );
 const activeInputReceiptBody$ = bodyResultOf(
   runnersActiveInputsContract.receipt,
-);
-
-const listActiveInputsInner$ = command(async ({ get }, signal: AbortSignal) => {
-  const auth = get(authContext$);
-  const { runId } = get(pathParamsOf(runnersActiveInputsContract.list));
-  if (auth.tokenType !== "sandbox" || auth.runId !== runId) {
-    return notFound("Run not found");
-  }
-  const db = get(db$);
-  const run = await loadRunningActiveInputRun(db, {
-    runId,
-    userId: auth.userId,
-    orgId: auth.orgId,
-  });
-  signal.throwIfAborted();
-  if (!run) {
-    return notFound("Run not found");
-  }
-  const rows = await pendingActiveInputRows(db, run.chatThreadId, runId);
-  signal.throwIfAborted();
-  return {
-    status: 200 as const,
-    body: {
-      eventIds: rows.map((row) => {
-        return row.id;
-      }),
-    },
-  };
-});
-
-const claimActiveInputsInner$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    const auth = get(authContext$);
-    const { runId } = get(pathParamsOf(runnersActiveInputsContract.claim));
-    if (auth.tokenType !== "sandbox" || auth.runId !== runId) {
-      return notFound("Run not found");
-    }
-    const body = await get(activeInputClaimBody$);
-    signal.throwIfAborted();
-    if (!body.ok) {
-      return body.response;
-    }
-    const uniqueEventIds = [...new Set(body.data.eventIds)];
-    if (uniqueEventIds.length !== body.data.eventIds.length) {
-      return badRequestMessage("Active input event IDs must be unique");
-    }
-
-    const db = set(writeDb$);
-    const run = await loadRunningActiveInputRun(db, {
-      runId,
-      userId: auth.userId,
-      orgId: auth.orgId,
-    });
-    signal.throwIfAborted();
-    if (!run) {
-      return notFound("Run not found");
-    }
-    const candidates = await pendingActiveInputRows(
-      db,
-      run.chatThreadId,
-      runId,
-      uniqueEventIds,
-    );
-    signal.throwIfAborted();
-    if (candidates.length !== uniqueEventIds.length) {
-      return conflict("One or more active inputs are no longer pending");
-    }
-    const materializedPrompts = await materializePendingActiveInputPrompts(
-      db,
-      candidates,
-      auth,
-      signal,
-    );
-    if (!materializedPrompts) {
-      return conflict("One or more active inputs cannot be materialized");
-    }
-    const promptParts: string[] = [];
-    for (const candidate of candidates) {
-      const prompt = materializedPrompts.get(candidate.id);
-      if (prompt === undefined) {
-        throw new Error("Active input prompt materialization is missing");
-      }
-      promptParts.push(prompt);
-    }
-    const materializedPrompt = promptParts.join("\n\n");
-    if (!activeInputPromptFitsControlPayload(materializedPrompt)) {
-      return conflict(
-        "Active input batch exceeds runner control payload limit",
-      );
-    }
-
-    const result = await db.transaction(async (tx) => {
-      if (!(await lockChatQueueThread(tx, run.chatThreadId))) {
-        return null;
-      }
-      const [lockedRun] = await tx
-        .select({ id: agentRuns.id })
-        .from(agentRuns)
-        .where(
-          and(
-            eq(agentRuns.id, runId),
-            eq(agentRuns.userId, auth.userId),
-            eq(agentRuns.orgId, auth.orgId),
-            eq(agentRuns.status, "running"),
-          ),
-        )
-        .for("update")
-        .limit(1);
-      if (!lockedRun) {
-        return null;
-      }
-      const events = await pendingActiveInputRows(
-        tx,
-        run.chatThreadId,
-        runId,
-        uniqueEventIds,
-      );
-      if (events.length !== uniqueEventIds.length) {
-        return null;
-      }
-      for (const event of events) {
-        await replacePendingActiveInputEvent(tx, event, runId);
-      }
-      return true;
-    });
-    signal.throwIfAborted();
-    if (!result) {
-      return conflict("One or more active inputs are no longer pending");
-    }
-    await publishChatThreadMessageCreatedSafely(auth.userId, run.chatThreadId);
-    signal.throwIfAborted();
-    return {
-      status: 200 as const,
-      body: { prompt: materializedPrompt },
-    };
-  },
 );
 
 const reserveActiveInputsInner$ = command(
@@ -2981,7 +2809,7 @@ const reserveActiveInputsInner$ = command(
         body: {
           outcome: result.outcome,
           deliveryId: result.deliveryId,
-          eventIds: [...result.eventIds],
+          eventIds: [result.sourceEventId],
           prompt: result.prompt,
         },
       };
@@ -2992,7 +2820,7 @@ const reserveActiveInputsInner$ = command(
         body: {
           outcome: result.outcome,
           deliveryId: result.deliveryId,
-          eventIds: [...result.eventIds],
+          eventIds: [result.sourceEventId],
         },
       };
     }
@@ -3055,20 +2883,6 @@ export const runnersRoutes: readonly RouteEntry[] = [
   {
     route: runnersJobClaimContract.claim,
     handler: claimInner$,
-  },
-  {
-    route: runnersActiveInputsContract.list,
-    handler: authRoute(
-      { accept: ["sandbox"], acceptAnySandboxCapability: true },
-      listActiveInputsInner$,
-    ),
-  },
-  {
-    route: runnersActiveInputsContract.claim,
-    handler: authRoute(
-      { accept: ["sandbox"], acceptAnySandboxCapability: true },
-      claimActiveInputsInner$,
-    ),
   },
   {
     route: runnersActiveInputsContract.reserve,
