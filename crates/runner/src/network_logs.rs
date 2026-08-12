@@ -696,6 +696,7 @@ fn parse_upload_rejection_body(body: &[u8], body_truncated: bool) -> UploadRejec
         error_message: api_error.error.message.map(truncate_log_field),
         body_truncated,
         body_read_error: None,
+        preview_error_summary: None,
     }
 }
 
