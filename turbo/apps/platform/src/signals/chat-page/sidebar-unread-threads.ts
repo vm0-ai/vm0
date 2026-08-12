@@ -8,8 +8,8 @@ import { now } from "../../lib/time.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { currentChatAgentId$ } from "../agent-chat.ts";
 import {
-  reloadChatUnreadState$,
-  reloadChatUnreadStateCounter$,
+  reloadChatIndicators$,
+  reloadChatIndicatorsCounter$,
 } from "../chat-thread-list-reload.ts";
 
 type UnreadSnapshot = readonly { threadId: string; unreadAt: string }[];
@@ -49,11 +49,11 @@ export const applyUnreadSnapshot$ = command(
 
 /**
  * Server unread snapshot for the current agent. Refetched alongside the
- * unread-state counter. Thread-list changes and read-cursor updates both
- * invalidate this counter through Ably.
+ * indicator counter. Thread-list changes and read-cursor updates both
+ * invalidate this shared counter through Ably.
  */
 const fetchedUnreads$ = computed(async (get): Promise<UnreadSnapshot> => {
-  get(reloadChatUnreadStateCounter$);
+  get(reloadChatIndicatorsCounter$);
   const agentId = await get(currentChatAgentId$);
   if (!agentId) {
     return [];
@@ -78,24 +78,6 @@ export const sidebarUnreadThreadIds$ = computed(
   },
 );
 
-export const unreadAgentIds$ = computed(
-  async (get): Promise<ReadonlySet<string>> => {
-    get(reloadChatUnreadStateCounter$);
-    const client = get(zeroClient$)(chatThreadsContract);
-    const result = await accept(client.unreadAgents(), [200]);
-    return new Set(result.body.agentIds);
-  },
-);
-
-export const allUnreadThreadIds$ = computed(
-  async (get): Promise<ReadonlySet<string>> => {
-    get(reloadChatUnreadStateCounter$);
-    const client = get(zeroClient$)(chatThreadsContract);
-    const result = await accept(client.unreadIds(), [200]);
-    return new Set(result.body.threadIds);
-  },
-);
-
 export const markAgentThreadsRead$ = command(
   async ({ get, set }, agentId: string, signal: AbortSignal) => {
     const client = get(zeroClient$)(chatThreadMarkAgentReadContract);
@@ -107,6 +89,6 @@ export const markAgentThreadsRead$ = command(
       [204],
     );
     signal.throwIfAborted();
-    set(reloadChatUnreadState$);
+    set(reloadChatIndicators$);
   },
 );

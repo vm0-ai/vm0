@@ -487,8 +487,8 @@ function mockTeamAPIs({
   context.mocks.api(chatThreadsContract.events, ({ respond }) => {
     return respond(200, { events: [], hasMore: false });
   });
-  context.mocks.api(chatThreadsContract.activeIds, ({ respond }) => {
-    return respond(200, { threadIds: [] });
+  context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
+    return respond(200, { agents: {}, threads: {} });
   });
   context.mocks.api(zeroAgentsByIdContract.get, ({ params, respond }) => {
     const agent = params.id === zeroAgentId ? "Zero" : "Research Agent";
@@ -1002,8 +1002,8 @@ describe("team page navigation", () => {
     context.mocks.api(chatThreadsContract.events, ({ respond }) => {
       return respond(200, { events: [], hasMore: false });
     });
-    context.mocks.api(chatThreadsContract.activeIds, ({ respond }) => {
-      return respond(200, { threadIds: [] });
+    context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
+      return respond(200, { agents: {}, threads: {} });
     });
     context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {

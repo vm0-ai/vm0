@@ -126,6 +126,13 @@ const chatThreadUnreadAgentsSchema = z.object({
   agentIds: z.array(z.string()),
 });
 
+export const zeroIndicatorSchema = z.enum(["active", "unread"]);
+
+const zeroIndicatorsSchema = z.object({
+  agents: z.record(z.string().uuid(), zeroIndicatorSchema),
+  threads: z.record(z.string().uuid(), zeroIndicatorSchema),
+});
+
 const chatThreadEventIdSchema = z.string().uuid();
 const codexServiceTierSchema = z.enum(["fast"]);
 export const chatThreadServiceTierSchema = z.enum(["priority"]);
@@ -897,6 +904,17 @@ const chatEventNormalSendBodySchema = z
  * Chat thread collection route contract.
  */
 export const chatThreadsContract = c.router({
+  indicators: {
+    method: "GET",
+    path: "/api/zero/indicators",
+    headers: authHeadersSchema,
+    responses: {
+      200: zeroIndicatorsSchema,
+      401: apiErrorSchema,
+    },
+    summary:
+      "Get active and unread indicators for the caller's agents and chat threads in the current organization.",
+  },
   snapshot: {
     method: "GET",
     path: "/api/zero/chat-threads/snapshot",
@@ -1705,6 +1723,8 @@ export type ChatThreadMetadata = z.infer<typeof chatThreadMetadataSchema>;
 export type ChatThreadDraft = z.infer<typeof chatThreadDraftSchema>;
 export type ChatEvent = z.infer<typeof chatEventSchema>;
 export type ChatEventSendBody = z.infer<typeof chatEventsContract.send.body>;
+export type ZeroIndicator = z.infer<typeof zeroIndicatorSchema>;
+export type ZeroIndicators = z.infer<typeof zeroIndicatorsSchema>;
 
 export function chatEventResponse(event: ChatEvent): ChatEvent {
   return chatEventSchema.parse(event);

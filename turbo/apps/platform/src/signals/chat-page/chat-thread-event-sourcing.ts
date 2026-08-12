@@ -18,7 +18,6 @@ import { updateDocumentTitle$ } from "../document-title.ts";
 import { createIdbChatThreadEventStores } from "../external/idb-chat-thread-event-store.ts";
 import { chatIdb$ } from "../external/chat-idb-store.ts";
 import { logger } from "../log.ts";
-import { reloadChatActiveRunIdsCounter$ } from "../chat-thread-list-reload.ts";
 import { setAblyLoop$ } from "../realtime.ts";
 import { rootSignal$ } from "../root-signal.ts";
 import { pathParams$ } from "../route.ts";
@@ -175,15 +174,6 @@ async function readChatThreadEventState(
     latestSeqId: eventLog.latestSeqId ?? snapshot?.latestSeqId ?? null,
   };
 }
-
-export const sidebarActiveThreadIds$ = computed(
-  async (get): Promise<ReadonlySet<string>> => {
-    get(reloadChatActiveRunIdsCounter$);
-    const client = get(zeroClient$)(chatThreadsContract);
-    const result = await accept(client.activeIds(), [200]);
-    return new Set(result.body.threadIds);
-  },
-);
 
 const chatThreadEventStores$ = computed((get): Stores => {
   const dbPromise = get(chatIdb$);

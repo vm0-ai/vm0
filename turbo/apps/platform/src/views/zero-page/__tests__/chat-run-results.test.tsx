@@ -1803,8 +1803,11 @@ describe("chat lifecycle", () => {
     const sinceSeqIds: number[] = [];
 
     mockSubagentThread(context, threadId);
-    context.mocks.api(chatThreadsContract.unreadIds, ({ respond }) => {
-      return respond(200, { threadIds: [threadId] });
+    context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
+      return respond(200, {
+        agents: {},
+        threads: { [threadId]: "unread" },
+      });
     });
     context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {

@@ -19,6 +19,7 @@ import {
 } from "../services/google-drive-artifact-sync.service";
 import {
   zeroChatSearch,
+  zeroChatIndicators,
   zeroChatThreadActiveRunThreadIds,
   zeroChatThreadArtifacts,
   zeroChatThreadDetail,
@@ -139,6 +140,18 @@ const listChatThreadActiveIdsInner$ = computed(async (get) => {
   );
 
   return { status: 200 as const, body: { threadIds: [...threadIds] } };
+});
+
+const listZeroIndicatorsInner$ = computed(async (get) => {
+  const auth = get(organizationAuthContext$);
+  const indicators = await get(
+    zeroChatIndicators({
+      userId: auth.userId,
+      orgId: auth.orgId,
+    }),
+  );
+
+  return { status: 200 as const, body: indicators };
 });
 
 const listChatEventsInner$ = computed(async (get) => {
@@ -355,6 +368,13 @@ const searchChatInner$ = computed(async (get) => {
 });
 
 export const zeroChatThreadRoutes: readonly RouteEntry[] = [
+  {
+    route: chatThreadsContract.indicators,
+    handler: authRoute(
+      { requireOrganization: true, missingOrganizationStatus: 401 },
+      listZeroIndicatorsInner$,
+    ),
+  },
   {
     route: chatThreadsContract.snapshot,
     handler: authRoute(

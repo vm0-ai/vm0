@@ -161,9 +161,13 @@ describe("agents page (redesign)", () => {
     context.mocks.data.team(agents);
     context.mocks.data.orgMembers({ members: [] });
 
-    context.mocks.api(chatThreadsContract.unreadAgents, ({ respond }) => {
+    context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
       return respond(200, {
-        agentIds: [agents[0].id, agents[1].id],
+        agents: {
+          [agents[0].id]: "unread",
+          [agents[1].id]: "unread",
+        },
+        threads: {},
       });
     });
 

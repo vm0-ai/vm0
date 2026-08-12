@@ -239,6 +239,11 @@ export const apiAgentsHandlers = [
     return respond(200, { results: [], hasMore: false });
   }),
 
+  // GET /api/zero/indicators
+  mockApi(chatThreadsContract.indicators, ({ respond }) => {
+    return respond(200, { agents: {}, threads: {} });
+  }),
+
   // GET /api/zero/chat-threads/active-ids
   mockApi(chatThreadsContract.activeIds, ({ respond }) => {
     return respond(200, { threadIds: [] });
