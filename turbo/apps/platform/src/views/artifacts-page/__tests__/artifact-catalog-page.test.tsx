@@ -771,62 +771,6 @@ describe("artifact catalog page", () => {
     });
   });
 
-  it("reloads the same artifact detail after a realtime catalog change", async () => {
-    const browser = context.mocks.browser.blobDownload();
-    let listRequests = 0;
-    const detailRequests: string[] = [];
-    context.mocks.api(artifactCatalogContract.list, ({ respond }) => {
-      listRequests += 1;
-      return respond(200, {
-        artifacts: [artifact({ title: "changing.bin" })],
-        nextCursor: null,
-      });
-    });
-    context.mocks.http.get("https://artifacts.example.com/changing.bin", () => {
-      return HttpResponse.text("binary");
-    });
-    context.mocks.api(artifactCatalogContract.get, ({ params, respond }) => {
-      detailRequests.push(params.artifactId);
-      return respond(200, {
-        ...artifact({ title: "changing.bin" }),
-        kind: "file",
-        file: {
-          id: "f0000000-0000-4000-a000-000000000003",
-          filename: "changing.bin",
-          contentType: "application/octet-stream",
-          size: 512,
-          url: "https://artifacts.example.com/changing.bin",
-          previewImageUrl: null,
-        },
-      });
-    });
-
-    setupArtifactCatalogPage();
-    const card = await findCard("changing.bin");
-    await waitFor(() => {
-      expect(
-        context.mocks.ably.hasSubscription("artifactCatalogChanged"),
-      ).toBeTruthy();
-    });
-
-    await click(card);
-    await waitFor(() => {
-      expect(detailRequests).toHaveLength(1);
-      expect(browser.downloads).toHaveLength(1);
-    });
-
-    context.mocks.ably.trigger("artifactCatalogChanged");
-    await waitFor(() => {
-      expect(listRequests).toBeGreaterThanOrEqual(2);
-    });
-
-    await click(await findCard("changing.bin"));
-    await waitFor(() => {
-      expect(detailRequests).toHaveLength(2);
-      expect(browser.downloads).toHaveLength(2);
-    });
-  });
-
   it("shows the empty state when the catalog has no artifacts", async () => {
     context.mocks.api(artifactCatalogContract.list, ({ respond }) => {
       return respond(200, { artifacts: [], nextCursor: null });

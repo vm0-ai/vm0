@@ -1,5 +1,4 @@
 import { command } from "ccstate";
-import { subscribeArtifactCatalogChanged$ } from "./artifacts-page/artifact-catalog-signals.ts";
 import { clerk$ } from "./auth.ts";
 import {
   subscribeChatThreadReadCursorUpdated$,
@@ -24,7 +23,6 @@ export const setupAuthenticatedDaemons$ = command(
 
     await Promise.all([
       set(setupRealtime$, signal),
-      set(subscribeArtifactCatalogChanged$, signal),
       set(subscribeThreadListChanged$, signal),
       set(subscribeChatThreadReadCursorUpdated$, signal),
       set(subscribeEventDrivenChatThreads$, signal),

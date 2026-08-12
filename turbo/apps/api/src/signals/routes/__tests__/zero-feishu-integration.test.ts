@@ -3893,11 +3893,6 @@ describe("Feishu integration", () => {
       `chatThreadMessageCreated:${thread.chatThreadId}`,
       null,
     );
-    expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
-      `chatThreadRunCreated:${thread.chatThreadId}`,
-      null,
-    );
-
     await postEvent(callbackUrl, queuedPayload, { encrypted: true });
     await flushWaitUntilForTest();
     expect(

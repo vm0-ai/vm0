@@ -14,7 +14,6 @@ import {
 } from "../../lib/shared-thread-artifact";
 import { db$, writeDb$ } from "../external/db";
 import { publishUserSignal } from "../external/realtime";
-import { publishArtifactCatalogChanged } from "./artifact-realtime.service";
 import { visibleChatEventCondition } from "./zero-chat-event-shared.service";
 import { chatEventTypeIn } from "./zero-chat-event-type.service";
 import { generateSharedThreadTitle } from "./zero-chat-title.service";
@@ -177,13 +176,10 @@ export const createSharedThread$ = command(
     });
     signal.throwIfAborted();
 
-    await Promise.all([
-      publishArtifactCatalogChanged([args.userId]),
-      publishUserSignal(
-        [args.userId],
-        `chatThreadArtifactsChanged:${args.threadId}`,
-      ),
-    ]);
+    await publishUserSignal(
+      [args.userId],
+      `chatThreadArtifactsChanged:${args.threadId}`,
+    );
     signal.throwIfAborted();
     return { kind: "created", id };
   },

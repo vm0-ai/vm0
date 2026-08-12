@@ -1843,9 +1843,6 @@ describe("chat lifecycle", () => {
           `chatThreadMessageCreated:${threadId}`,
         ),
       ).toBeFalsy();
-      expect(
-        context.mocks.ably.hasSubscription(`chatThreadRunCreated:${threadId}`),
-      ).toBeFalsy();
       sinceSeqIds.length = 0;
       burstEnabled = true;
       context.mocks.ably.triggerReconnect();

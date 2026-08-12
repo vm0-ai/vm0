@@ -11,6 +11,7 @@ import { createAppWithRoutes } from "../../../app-factory-core";
 import { testContext } from "../../../__tests__/test-context";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
+import { flushWaitUntilForTest } from "../../context/wait-until";
 import { testTeamsDispatchProbeRoutes } from "../test-teams-dispatch-probe";
 import { testTeamsStateRoutes } from "../test-teams-state";
 import { createFixtureTracker } from "./helpers/zero-route-test";
@@ -364,6 +365,7 @@ describe("POST /api/test/teams-dispatch-probe", () => {
       fixture,
       text: "dispatch despite realtime failure",
     });
+    await flushWaitUntilForTest();
 
     expect((await readTeamsState(fixture.tenantId)).recent_runs).toStrictEqual(
       expect.arrayContaining([
@@ -374,19 +376,9 @@ describe("POST /api/test/teams-dispatch-probe", () => {
         }),
       ]),
     );
-    expect(context.mocks.axiomLogging.warn).toHaveBeenCalledWith(
-      "Failed to publish thread list changed signal",
-      expect.objectContaining({
-        userId: fixture.userId,
-        error: publishError,
-      }),
-    );
-    expect(context.mocks.axiomLogging.warn).toHaveBeenCalledWith(
-      "Failed to publish chat thread run created signal",
-      expect.objectContaining({
-        threadId: expect.any(String),
-        error: publishError,
-      }),
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      "threadListChanged",
+      null,
     );
   });
 

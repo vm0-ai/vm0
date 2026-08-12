@@ -102,10 +102,7 @@ const updateOfficialBot$ = command(
       });
     signal.throwIfAborted();
 
-    await bestEffort(
-      publishUserSignal([args.auth.userId], "telegram:changed"),
-      signal,
-    );
+    await publishUserSignal([args.auth.userId], "telegram:changed");
     signal.throwIfAborted();
 
     const status = await get(

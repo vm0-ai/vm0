@@ -1775,5 +1775,5 @@ export const handleAgentPhoneMessage$ = command(
 export async function publishAgentPhoneUserChanged(
   userId: string,
 ): Promise<void> {
-  await bestEffort(publishUserSignal([userId], "agentphone:changed"));
+  await publishUserSignal([userId], "agentphone:changed");
 }

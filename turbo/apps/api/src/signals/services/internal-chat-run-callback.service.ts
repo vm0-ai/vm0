@@ -54,7 +54,6 @@ import {
 import {
   publishChatThreadDetailChangedSafely,
   publishChatThreadMessageCreatedSafely,
-  publishChatThreadRunCreatedSafely,
   publishThreadListChangedSafely,
 } from "../external/realtime";
 import {
@@ -3276,7 +3275,6 @@ async function publishAutoSentQueuedRunSignals(args: {
     "nested",
     async () => {
       await publishChatThreadMessageCreatedSafely(args.userId, args.threadId);
-      await publishChatThreadRunCreatedSafely(args.userId, args.threadId);
       await publishThreadListChangedSafely(args.userId);
     },
   );

@@ -14,7 +14,8 @@ import type { ZeroBuiltInGenerationRealtimeSubscription } from "@vm0/api-contrac
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { singleton } from "../../lib/singleton";
-import { tapError } from "../utils";
+import { waitUntil } from "../context/wait-until";
+import { bestEffort, tapError } from "../utils";
 
 const L = logger("Realtime");
 
@@ -71,20 +72,10 @@ export async function createRunnerGroupRealtimeToken(
   return tokenRequest;
 }
 
-/**
- * Publish a per-user invalidation/notification signal.
- *
- * Platform clients subscribe via the existing /api/zero/realtime/token
- * endpoint and receive events published by the API backend.
- *
- * NOT best-effort: rejections from Ably propagate to the caller. Use this
- * directly only when delivery failure should fail the operation. Post-commit
- * invalidations should use their post-commit dispatcher instead.
- */
-export async function publishUserSignal(
+async function publishUserSignalNow(
   userIds: readonly string[],
   topic: string,
-  payload: unknown = null,
+  payload: unknown,
 ): Promise<void> {
   const client = ablyClient();
   await Promise.all(
@@ -96,22 +87,30 @@ export async function publishUserSignal(
   L.debug(`Published "${topic}" to ${userIds.length} user(s)`);
 }
 
+/**
+ * Schedule a per-user invalidation/notification signal.
+ *
+ * Platform clients subscribe via the existing /api/zero/realtime/token
+ * endpoint and receive events published by the API backend. Ably delivery is
+ * best-effort: callers only wait for the background work to be registered, so
+ * a delayed or rejected publish cannot fail the business operation.
+ */
+export function publishUserSignal(
+  userIds: readonly string[],
+  topic: string,
+  payload: unknown = null,
+): Promise<void> {
+  waitUntil(bestEffort(publishUserSignalNow(userIds, topic, payload)));
+  return Promise.resolve();
+}
+
 export async function publishUserPreferenceChangedForUserSafely(
   userId: string,
   kinds: UserPreferenceChangedPayload["kinds"],
 ): Promise<void> {
-  await tapError(
-    publishUserSignal([userId], "userPreferenceChanged", {
-      kinds,
-    } satisfies UserPreferenceChangedPayload),
-    (error) => {
-      L.warn("Failed to publish user preference changed signal", {
-        userId,
-        kinds,
-        error,
-      });
-    },
-  );
+  await publishUserSignal([userId], "userPreferenceChanged", {
+    kinds,
+  } satisfies UserPreferenceChangedPayload);
 }
 
 /**
@@ -127,9 +126,7 @@ export async function publishThreadListChanged(userId: string): Promise<void> {
 export async function publishThreadListChangedSafely(
   userId: string,
 ): Promise<void> {
-  await tapError(publishThreadListChanged(userId), (error) => {
-    L.warn("Failed to publish thread list changed signal", { userId, error });
-  });
+  await publishThreadListChanged(userId);
 }
 
 /**
@@ -140,15 +137,7 @@ export async function publishChatThreadDetailChangedSafely(
   userId: string,
   threadId: string,
 ): Promise<void> {
-  await tapError(
-    publishUserSignal([userId], `chatThreadDetailChanged:${threadId}`),
-    (error) => {
-      L.warn("Failed to publish chat thread detail changed signal", {
-        threadId,
-        error,
-      });
-    },
-  );
+  await publishUserSignal([userId], `chatThreadDetailChanged:${threadId}`);
 }
 
 /**
@@ -168,38 +157,10 @@ export async function publishChatThreadMessageCreatedSafely(
   threadId: string,
   syncThroughSeqId?: number,
 ): Promise<void> {
-  await tapError(
-    publishUserSignal(
-      [userId],
-      `chatThreadMessageCreated:${threadId}`,
-      syncThroughSeqId === undefined ? null : { syncThroughSeqId },
-    ),
-    (error) => {
-      L.warn("Failed to publish chat thread message created signal", {
-        threadId,
-        error,
-      });
-    },
-  );
-}
-
-/**
- * Notify an open chat thread that a persisted run was created.
- *
- * Best-effort: a failed publish must not fail the committed run creation.
- */
-export async function publishChatThreadRunCreatedSafely(
-  userId: string,
-  threadId: string,
-): Promise<void> {
-  await tapError(
-    publishUserSignal([userId], `chatThreadRunCreated:${threadId}`),
-    (error) => {
-      L.warn("Failed to publish chat thread run created signal", {
-        threadId,
-        error,
-      });
-    },
+  await publishUserSignal(
+    [userId],
+    `chatThreadMessageCreated:${threadId}`,
+    syncThroughSeqId === undefined ? null : { syncThroughSeqId },
   );
 }
 
@@ -216,15 +177,7 @@ export async function publishChatThreadAutomationsChangedSafely(
   userId: string,
   threadId: string,
 ): Promise<void> {
-  await tapError(
-    publishUserSignal([userId], `chatThreadAutomationsChanged:${threadId}`),
-    (error) => {
-      L.warn("Failed to publish chat thread automations changed signal", {
-        threadId,
-        error,
-      });
-    },
-  );
+  await publishUserSignal([userId], `chatThreadAutomationsChanged:${threadId}`);
 }
 
 /**
@@ -241,14 +194,7 @@ export async function publishChatThreadAutomationsChangedSafely(
 export async function publishConnectorPermissionUpdatedSafely(
   userId: string,
 ): Promise<void> {
-  await tapError(
-    publishUserSignal([userId], "connectorPermissionUpdated"),
-    (error) => {
-      L.warn("Failed to publish connector permission updated signal", {
-        error,
-      });
-    },
-  );
+  await publishUserSignal([userId], "connectorPermissionUpdated");
 }
 
 /**
@@ -265,15 +211,7 @@ export async function publishBrowserSessionChangedSafely(
   },
 ): Promise<void> {
   const payload: BrowserSessionChangedPayload = browser;
-  await tapError(
-    publishUserSignal([userId], "browserSessionChanged", payload),
-    (error) => {
-      L.warn("Failed to publish browser session changed signal", {
-        threadId: browser.threadId,
-        error,
-      });
-    },
-  );
+  await publishUserSignal([userId], "browserSessionChanged", payload);
 }
 
 /**
@@ -288,15 +226,7 @@ export async function publishChatThreadWorkflowsChangedSafely(
   userId: string,
   threadId: string,
 ): Promise<void> {
-  await tapError(
-    publishUserSignal([userId], `chatThreadWorkflowsChanged:${threadId}`),
-    (error) => {
-      L.warn("Failed to publish chat thread workflows changed signal", {
-        threadId,
-        error,
-      });
-    },
-  );
+  await publishUserSignal([userId], `chatThreadWorkflowsChanged:${threadId}`);
 }
 
 export async function publishBuiltInGenerationChanged(

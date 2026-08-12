@@ -282,19 +282,17 @@ export const setupLeftThreadNotFound$ = command(
     threadId: string,
     parentSignal: AbortSignal,
   ): Promise<void> => {
-    await Promise.all([
-      set(syncMissingPrimaryThread$, parentSignal),
-      set(
-        setupPaneNotFound$,
-        {
-          setPane$: setCurrentLeftPane$,
-          resetSetupSignal$: resetLeftSetupSignal$,
-          onReady$: hideAppSkeleton$,
-        },
-        threadId,
-        parentSignal,
-      ),
-    ]);
+    set(syncMissingPrimaryThread$);
+    await set(
+      setupPaneNotFound$,
+      {
+        setPane$: setCurrentLeftPane$,
+        resetSetupSignal$: resetLeftSetupSignal$,
+        onReady$: hideAppSkeleton$,
+      },
+      threadId,
+      parentSignal,
+    );
   },
 );
 
