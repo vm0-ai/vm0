@@ -2,24 +2,25 @@ import { command, computed, type Computed } from "ccstate";
 import { randomUUID } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import { and, eq, gte, inArray, lt, sql } from "drizzle-orm";
-import type {
-  CreateCustomConnectorBody,
-  CustomConnectorAuthMode,
-  CustomConnectorField,
-  CustomConnectorFieldKind,
-  CustomConnectorHeaderInjection,
-  CustomConnectorHttpResponse,
-  CustomConnectorMcpResponse,
-  CustomConnectorMcpTransport,
-  CustomConnectorOAuthConfig,
-  CustomConnectorOAuthConfigInput,
-  CustomConnectorPermissionBundleRef,
-  CustomConnectorPermissionBundleResponse,
-  CustomConnectorProposal,
-  CustomConnectorQueryInjection,
-  CustomConnectorResponse,
-  CustomConnectorValueInput,
-  UpdateCustomConnectorBody,
+import {
+  CUSTOM_CONNECTOR_INJECTION_TEMPLATE_MAX_CHARS,
+  type CreateCustomConnectorBody,
+  type CustomConnectorAuthMode,
+  type CustomConnectorField,
+  type CustomConnectorFieldKind,
+  type CustomConnectorHeaderInjection,
+  type CustomConnectorHttpResponse,
+  type CustomConnectorMcpResponse,
+  type CustomConnectorMcpTransport,
+  type CustomConnectorOAuthConfig,
+  type CustomConnectorOAuthConfigInput,
+  type CustomConnectorPermissionBundleRef,
+  type CustomConnectorPermissionBundleResponse,
+  type CustomConnectorProposal,
+  type CustomConnectorQueryInjection,
+  type CustomConnectorResponse,
+  type CustomConnectorValueInput,
+  type UpdateCustomConnectorBody,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import {
   canonicalizeFirewallBaseUrl,
@@ -959,6 +960,22 @@ function validateTemplateReferences(args: {
   return null;
 }
 
+function canonicalizeInjectionTemplate(
+  template: string,
+  context: string,
+): string | BadRequestResponse {
+  const canonical = template.replaceAll(
+    LEGACY_SECRET_PLACEHOLDER,
+    `{{secrets.${LEGACY_SECRET_KEY}}}`,
+  );
+  if (canonical.length > CUSTOM_CONNECTOR_INJECTION_TEMPLATE_MAX_CHARS) {
+    return badRequestMessage(
+      `${context} value template must not exceed ${CUSTOM_CONNECTOR_INJECTION_TEMPLATE_MAX_CHARS} characters after canonicalization`,
+    );
+  }
+  return canonical;
+}
+
 function templateWithPlaceholders(template: string): string {
   return template.replaceAll(
     TEMPLATE_REFERENCE_REGEX,
@@ -1159,7 +1176,14 @@ function validateHeaderInjections(args: {
     if (templateError) {
       return templateError;
     }
-    headers.push({ name, valueTemplate: injection.valueTemplate });
+    const valueTemplate = canonicalizeInjectionTemplate(
+      injection.valueTemplate,
+      `Header ${name}`,
+    );
+    if (isBadRequest(valueTemplate)) {
+      return valueTemplate;
+    }
+    headers.push({ name, valueTemplate });
   }
   return headers;
 }
@@ -1191,7 +1215,14 @@ function validateQueryInjections(args: {
     if (templateError) {
       return templateError;
     }
-    queries.push({ name, valueTemplate: injection.valueTemplate });
+    const valueTemplate = canonicalizeInjectionTemplate(
+      injection.valueTemplate,
+      `Query ${name}`,
+    );
+    if (isBadRequest(valueTemplate)) {
+      return valueTemplate;
+    }
+    queries.push({ name, valueTemplate });
   }
   return queries;
 }

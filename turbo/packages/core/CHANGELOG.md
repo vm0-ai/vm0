@@ -1,5 +1,24 @@
 # Changelog
 
+## [8.551.0](https://github.com/vm0-ai/vm0/compare/core-v8.550.1...core-v8.551.0) (2026-08-12)
+
+
+### Features
+
+* **chat:** enable snapshot reads for all users ([#26718](https://github.com/vm0-ai/vm0/issues/26718)) ([72a4c1b](https://github.com/vm0-ai/vm0/commit/72a4c1b02eac7a392df03d309c817dc0b92bf90b))
+
+
+### Refactoring
+
+* **pi:** persist sandbox sessions in native sqlite ([#26555](https://github.com/vm0-ai/vm0/issues/26555)) ([9ed505e](https://github.com/vm0-ai/vm0/commit/9ed505e1c567ff019d521fac167700c2b390cffe))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.325.0
+
 ## [8.550.1](https://github.com/vm0-ai/vm0/compare/core-v8.550.0...core-v8.550.1) (2026-08-12)
 
 
