@@ -13,6 +13,7 @@ import {
   deleteOrgPlanEntitlementFixture,
   upsertOrgPlanEntitlementFixture,
 } from "../../../test-fixtures/org-plan-entitlement";
+import { createUniqueStaffOrgIdFixture } from "../../../test-fixtures/staff-org";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { createBddApi } from "./helpers/api-bdd";
@@ -31,7 +32,6 @@ const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
 const bdd = createBddApi(context);
-const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
 
 beforeEach(() => {
   mocks.s3.listObjects([]);
@@ -323,22 +323,26 @@ describe("POST /api/zero/uploads/prepare", () => {
 
   it("normalizes staff entitlement lifecycle statuses for suspension checks", async () => {
     const userId = `user_${randomUUID()}`;
+    const orgId = createUniqueStaffOrgIdFixture();
+    context.mocks.s3.getSignedUrl.mockResolvedValue(
+      "https://r2.example.com/upload?sig=staff-entitlement",
+    );
     const client = setupApp({ context, routes: zeroUploadsTestRoutes })(
       zeroUploadsContract,
     );
-    mocks.clerk.session(userId, STAFF_ORG_ID);
+    mocks.clerk.session(userId, orgId);
     onTestFinished(async () => {
-      await deleteOrgPlanEntitlementFixture(STAFF_ORG_ID);
+      await deleteOrgPlanEntitlementFixture(orgId);
     });
 
     await seedOrgMetadata({
-      orgId: STAFF_ORG_ID,
+      orgId,
       tier: "pro-suspend",
       credits: 0,
     });
     for (const status of ["trialing", "past_due"] as const) {
       await upsertOrgPlanEntitlementFixture({
-        orgId: STAFF_ORG_ID,
+        orgId,
         status,
       });
       await accept(
@@ -351,12 +355,12 @@ describe("POST /api/zero/uploads/prepare", () => {
     }
 
     await seedOrgMetadata({
-      orgId: STAFF_ORG_ID,
+      orgId,
       tier: "pro",
       credits: 1000,
     });
     await upsertOrgPlanEntitlementFixture({
-      orgId: STAFF_ORG_ID,
+      orgId,
       status: "canceled",
     });
     const response = await accept(
