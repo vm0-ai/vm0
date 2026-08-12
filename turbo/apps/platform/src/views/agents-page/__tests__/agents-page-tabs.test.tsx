@@ -52,12 +52,12 @@ function agentCard(name: string): HTMLElement {
   return card;
 }
 
-function tab(label: "Public" | "Private"): HTMLElement {
-  const found = queryAllByRoleFast("tab").find((element) => {
+function visibilitySegment(label: "Public" | "Private"): HTMLElement {
+  const found = queryAllByRoleFast("radio").find((element) => {
     return element.textContent === label;
   });
   if (!found) {
-    throw new Error(`Tab not found: ${label}`);
+    throw new Error(`Segment not found: ${label}`);
   }
   return found;
 }
@@ -108,11 +108,11 @@ describe("agents page (redesign)", () => {
     });
 
     await waitFor(() => {
-      expect(tab("Private")).toBeInTheDocument();
+      expect(visibilitySegment("Private")).toBeInTheDocument();
     });
 
     // Private tab: only private agents, no creator tooltip.
-    await user.click(tab("Private"));
+    await user.click(visibilitySegment("Private"));
     await waitFor(() => {
       expect(agentCard("Private Ops")).toBeInTheDocument();
     });
@@ -122,7 +122,7 @@ describe("agents page (redesign)", () => {
     ).not.toBeInTheDocument();
 
     // Public tab: only public agents, each surfacing the creator on hover.
-    await user.click(tab("Public"));
+    await user.click(visibilitySegment("Public"));
     await waitFor(() => {
       expect(agentCard("Research Agent")).toBeInTheDocument();
     });
@@ -148,9 +148,9 @@ describe("agents page (redesign)", () => {
     });
 
     await waitFor(() => {
-      expect(tab("Private")).toBeInTheDocument();
+      expect(visibilitySegment("Private")).toBeInTheDocument();
     });
-    await user.click(tab("Private"));
+    await user.click(visibilitySegment("Private"));
     await waitFor(() => {
       expect(screen.getByText("No private agents yet")).toBeInTheDocument();
     });
@@ -173,10 +173,10 @@ describe("agents page (redesign)", () => {
     });
 
     await waitFor(() => {
-      expect(tab("Private")).toBeInTheDocument();
+      expect(visibilitySegment("Private")).toBeInTheDocument();
     });
 
-    await user.click(tab("Private"));
+    await user.click(visibilitySegment("Private"));
     await waitFor(() => {
       expect(agentCard("Private Ops")).toBeInTheDocument();
     });
@@ -184,7 +184,7 @@ describe("agents page (redesign)", () => {
       within(agentCard("Private Ops")).getByLabelText("Unread"),
     ).toHaveClass("border-card");
 
-    await user.click(tab("Public"));
+    await user.click(visibilitySegment("Public"));
     await waitFor(() => {
       expect(agentCard("Research Agent")).toBeInTheDocument();
     });

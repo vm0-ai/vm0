@@ -277,6 +277,7 @@ function buildWebsiteTemplatePackagePrompt(
       "When you produce a website from the user's request:",
       `- Pull the package: okou resource pull ${pkg.resourceId} --dir ./generated/resources`,
       `- Work from ${packageDir}. Inspect the bundled package metadata and instructions before editing.`,
+      "- When generating images for a website, use `seedream4` by default unless the user specifies another image model.",
       `- Render with ${packageDir}/render.mjs after preparing the template content plan.`,
       "- Use this built-in R2-backed package; do not substitute generic Open Design website templates for the selected template.",
       "- Host the finished static website: okou host <output-dir> --site <slug>",

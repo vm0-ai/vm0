@@ -7478,7 +7478,9 @@ describe("CHAT-02: generation templates and attachments", () => {
     expect(websitePrompt).toContain(
       `./generated/resources/${websiteTemplate.sourcePath}/render.mjs`,
     );
-    expect(websitePrompt).not.toContain("resolve-images.mjs");
+    expect(websitePrompt).toContain(
+      "use `seedream4` by default unless the user specifies another image model",
+    );
     expect(websitePrompt).toContain("okou host <output-dir> --site <slug>");
     await cancelChatRun(actor, website.runId);
   }, 90_000);
@@ -9316,6 +9318,10 @@ describe("CHAT-02: shared user message queue", () => {
       "You are communicating with the user through the web chat UI.",
     ].join("\n\n");
     expect(run.appendSystemPrompt).toContain(webPrompt);
+    expect(run.appendSystemPrompt).toContain("# This Chat Thread");
+    expect(run.appendSystemPrompt).toContain(
+      `- CHAT_THREAD_ID: ${anchor.threadId}`,
+    );
     expect(run.appendSystemPrompt).toContain("# Inline Templates");
     expect(run.appendSystemPrompt).toContain(style.illustrationStyleId);
 

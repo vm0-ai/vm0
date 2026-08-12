@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.732.1](https://github.com/vm0-ai/vm0/compare/app-v0.732.0...app-v0.732.1) (2026-08-12)
+
+
+### Bug Fixes
+
+* **chat:** keep skeleton through snapshot hydration ([#26535](https://github.com/vm0-ai/vm0/issues/26535)) ([868596b](https://github.com/vm0-ai/vm0/commit/868596b841b50b0762865d8520b0859fd7f379cb))
+
+
+### CI
+
+* run bench jobs on every pr commit ([#26427](https://github.com/vm0-ai/vm0/issues/26427)) ([d780bc4](https://github.com/vm0-ai/vm0/commit/d780bc4c02a2eb3372444a381fd2084f81534f6a))
+
+
+### Refactoring
+
+* **platform:** join mail part previews onto draft lists ([#26493](https://github.com/vm0-ai/vm0/issues/26493)) ([1151227](https://github.com/vm0-ai/vm0/commit/11512278bffa29c4767fa474cf053911ea4d9ccf))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.321.2
+    * @vm0/core bumped to 8.548.2
+
 ## [0.732.0](https://github.com/vm0-ai/vm0/compare/app-v0.731.1...app-v0.732.0) (2026-08-12)
 
 

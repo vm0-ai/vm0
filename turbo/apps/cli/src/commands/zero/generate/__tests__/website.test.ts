@@ -81,6 +81,9 @@ describe("okou generate website command", () => {
       "Built-in website candidates have `source.archive`; candidates without it are Open Design templates.",
     );
     expect(stdout).toContain(
+      "use `seedream4` by default unless the user specifies another image model",
+    );
+    expect(stdout).toContain(
       "Write the artifact under `./generated/mockups/clearpath-demo/`.",
     );
     expect(stdout).toContain(

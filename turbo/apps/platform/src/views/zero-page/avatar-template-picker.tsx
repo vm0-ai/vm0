@@ -19,6 +19,8 @@ import {
   Popover,
   PopoverContent,
   PopoverTrigger,
+  SegmentControl,
+  SegmentControlItem,
   Select,
   SelectContent,
   SelectItem,
@@ -243,46 +245,21 @@ function AvatarAspectRatioPicker({
     return $.artifacts.templates.filters.aspectRatio;
   });
   return (
-    <div
-      role="group"
+    <SegmentControl
       aria-label={label}
-      className="inline-flex rounded-xl border border-border bg-muted/50 p-1"
+      size="sm"
+      value={value}
+      onValueChange={onChange}
     >
-      <button
-        type="button"
-        aria-label={`${label}: 9:16`}
-        aria-pressed={value === "portrait"}
-        className={cn(
-          "flex h-8 items-center gap-2 rounded-lg px-3 text-xs font-semibold transition-all",
-          value === "portrait"
-            ? "bg-background text-foreground shadow-sm"
-            : "text-muted-foreground hover:text-foreground",
-        )}
-        onClick={() => {
-          onChange("portrait");
-        }}
-      >
+      <SegmentControlItem value="portrait" aria-label={`${label}: 9:16`}>
         <span className="h-4 w-2.5 rounded-[2px] border-2 border-current" />
         9:16
-      </button>
-      <button
-        type="button"
-        aria-label={`${label}: 16:9`}
-        aria-pressed={value === "landscape"}
-        className={cn(
-          "flex h-8 items-center gap-2 rounded-lg px-3 text-xs font-semibold transition-all",
-          value === "landscape"
-            ? "bg-background text-foreground shadow-sm"
-            : "text-muted-foreground hover:text-foreground",
-        )}
-        onClick={() => {
-          onChange("landscape");
-        }}
-      >
+      </SegmentControlItem>
+      <SegmentControlItem value="landscape" aria-label={`${label}: 16:9`}>
         <span className="h-2.5 w-4 rounded-[2px] border-2 border-current" />
         16:9
-      </button>
-    </div>
+      </SegmentControlItem>
+    </SegmentControl>
   );
 }
 

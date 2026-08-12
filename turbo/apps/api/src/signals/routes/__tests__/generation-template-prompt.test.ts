@@ -370,8 +370,9 @@ describe("buildGenerationTemplatePrompt", () => {
     expect(result.prompt).toContain(
       `okou resource pull ${resourceId} --dir ./generated/resources`,
     );
-    expect(result.prompt).not.toContain("resolve-images.mjs");
-    expect(result.prompt).not.toContain("/api/presentation/images/resolve");
+    expect(result.prompt).toContain(
+      "use `seedream4` by default unless the user specifies another image model",
+    );
     expect(result.prompt).toContain(
       `./generated/resources/${item.sourcePath}/render.mjs`,
     );

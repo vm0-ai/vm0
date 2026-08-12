@@ -109,7 +109,7 @@ function buildCurrentThreadContext(
  * to do with them. What the run needs from the source thread depends on the
  * message, so the commands are listed and the choice is left to the run.
  */
-export function buildAgentRunSourceContext(
+function buildAgentRunSourceContext(
   source: ChatAgentRunSourceAnnotation,
   chatEventSnapshotReadEnabled = false,
 ): string {

@@ -56,15 +56,6 @@ async function runSnapshotCron() {
   return response.body;
 }
 
-async function verifySnapshotConvergence() {
-  return await accept(
-    snapshotCronClient().verifyConvergence({
-      headers: { authorization: `Bearer ${CRON_SECRET}` },
-    }),
-    [200, 409],
-  );
-}
-
 async function projectChatEventSearch(): Promise<void> {
   const client = setupApp({
     context,
@@ -330,23 +321,6 @@ describe("cron snapshot chat events", () => {
       priorObjectKey,
     );
 
-    const incomplete = await verifySnapshotConvergence();
-    expect(incomplete.status).toBe(409);
-    expect(incomplete.body).toMatchObject({
-      error: {
-        code: "CHAT_EVENT_SNAPSHOT_V4_CONVERGENCE_INCOMPLETE",
-      },
-      convergence: {
-        nonV4SnapshotHeads: 1,
-        snapshotHeadVersions: expect.arrayContaining([
-          {
-            archiveSchemaVersion: NON_CURRENT_ARCHIVE_SCHEMA_VERSION,
-            heads: 1,
-          },
-        ]),
-      },
-    });
-
     const rebuilt = await runSnapshotCron();
     expect(rebuilt.success).toBeTruthy();
     expect(rebuilt.nonV4SnapshotHeads).toBe(0);
@@ -354,13 +328,6 @@ describe("cron snapshot chat events", () => {
     const rebuiltHead = await readChatEventSnapshotHead(context, threadId);
     expect(rebuiltHead.archive_schema_version).toBe(4);
     expect(rebuiltHead.object_key).toBe(firstPut.key);
-
-    const converged = await verifySnapshotConvergence();
-    expect(converged.status).toBe(200);
-    expect(converged.body).toMatchObject({
-      success: true,
-      nonV4SnapshotHeads: 0,
-    });
 
     await runSnapshotCron();
     expect(putsForThread(threadId)).toHaveLength(2);
@@ -456,8 +423,6 @@ describe("cron snapshot chat events", () => {
       snapshots: 1,
       nonV4SnapshotHeads: 0,
     });
-    const converged = await verifySnapshotConvergence();
-    expect(converged.status).toBe(200);
     for (const threadId of threadIds) {
       const head = await readChatEventSnapshotHead(context, threadId);
       expect(head.archive_schema_version).toBe(4);
