@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 
+import { testBillingReconciliationStateContract } from "@vm0/api-contracts/contracts/test-billing-reconciliation-state";
 import type StripeSDK from "stripe";
 import { beforeEach, describe, expect, it, onTestFinished } from "vitest";
 
@@ -10,7 +11,7 @@ import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { clearMockNow, mockNow, now } from "../../../lib/time";
 import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import { mockStripeClient } from "../../external/stripe-client";
-import { cronReconcileBillingEntitlementsRoutes } from "../cron-reconcile-billing-entitlements";
+import { testBillingReconciliationStateRoutes } from "../test-billing-reconciliation-state";
 import {
   testUsagePackSubscriptionStateContract,
   testUsagePackSubscriptionStateRoutes,
@@ -235,17 +236,17 @@ async function postStripeEvent(
   expect(response.status).toBe(expectedStatus);
 }
 
-async function runBillingReconciliationCron(): Promise<unknown> {
-  mockEnv("CRON_SECRET", "usage-pack-cron-secret");
-  const response = await createApp({
-    signal: context.signal,
-    routes: cronReconcileBillingEntitlementsRoutes,
-  }).request("/api/cron/reconcile-billing-entitlements", {
-    method: "GET",
-    headers: { authorization: "Bearer usage-pack-cron-secret" },
-  });
-  expect(response.status).toBe(200);
-  return await response.json();
+async function reconcileBillingOrganization(orgId: string) {
+  const response = await accept(
+    setupApp({
+      context,
+      routes: testBillingReconciliationStateRoutes,
+    })(testBillingReconciliationStateContract).reconcile({
+      body: { orgIds: [orgId] },
+    }),
+    [200],
+  );
+  return response.body;
 }
 
 async function usagePackStateAction(
@@ -791,9 +792,9 @@ describe("usage pack subscription Stripe lifecycle", () => {
     );
     context.mocks.stripe.invoices.list.mockResolvedValue({ data: [] });
 
-    await expect(runBillingReconciliationCron()).resolves.toStrictEqual(
-      expect.objectContaining({ success: true }),
-    );
+    await expect(
+      reconcileBillingOrganization(fixture.orgId),
+    ).resolves.toStrictEqual(expect.objectContaining({ success: true }));
     const downgradedOrg = (await readUsagePackState(fixture)).org;
     expect(downgradedOrg).toStrictEqual(
       expect.objectContaining({
@@ -826,6 +827,16 @@ describe("usage pack subscription Stripe lifecycle", () => {
       usagePackSubscriptionId: fixture.usagePackSubscriptionId,
       updatedAt: new Date(now() - 10 * 60 * 1000).toISOString(),
     });
+    const sentinel = await seedUsagePackLifecycle([
+      { userId: `user_${randomUUID()}`, usagePackUsd: 20 },
+    ]);
+    await usagePackStateAction({
+      action: "set-updated-at",
+      orgId: sentinel.orgId,
+      usagePackSubscriptionId: sentinel.usagePackSubscriptionId,
+      updatedAt: new Date(now() - 10 * 60 * 1000).toISOString(),
+    });
+    const sentinelBefore = await readUsagePackState(sentinel);
     context.mocks.stripe.checkout.sessions.retrieve.mockImplementation(
       (sessionId) => {
         if (sessionId === fixture.checkoutSessionId) {
@@ -849,10 +860,9 @@ describe("usage pack subscription Stripe lifecycle", () => {
     context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(subscription);
     context.mocks.stripe.invoices.list.mockResolvedValue({ data: [invoice] });
 
-    await expect(runBillingReconciliationCron()).resolves.toStrictEqual({
-      success: true,
-      downgraded: 0,
-    });
+    await expect(
+      reconcileBillingOrganization(fixture.orgId),
+    ).resolves.toStrictEqual({ success: true, downgraded: 0 });
     await expect(grantRows(fixture)).resolves.toHaveLength(2);
     const reconciled = (await readUsagePackState(fixture)).subscription;
     expect(reconciled).toStrictEqual(
@@ -860,6 +870,9 @@ describe("usage pack subscription Stripe lifecycle", () => {
         stripeSubscriptionId: fixture.subscriptionId,
         currentPeriodEnd: new Date(paidPeriod.end * 1000).toISOString(),
       }),
+    );
+    await expect(readUsagePackState(sentinel)).resolves.toStrictEqual(
+      sentinelBefore,
     );
   });
 
