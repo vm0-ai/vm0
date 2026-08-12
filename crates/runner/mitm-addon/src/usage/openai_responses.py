@@ -206,7 +206,7 @@ _RESPONSES_CREATED_SCALAR_FIELDS = {
 
 def inspect_openai_responses_client_event_json(body: bytes) -> OpenAIResponsesClientEvent:
     """Inspect client event timing and exact non-generating request intent."""
-    observed_event_type = inspect_openai_responses_event_type_json(body)
+    observed_event_type = _inspect_openai_responses_event_type_json(body)
     extractor = JsonSelectiveExtractor(
         scalar_fields=_RESPONSES_CLIENT_SCALAR_FIELDS,
         max_work_units=_RESPONSES_MAX_WORK_UNITS,
@@ -239,7 +239,7 @@ def inspect_openai_responses_event_json(body: bytes) -> OpenAIResponsesEvent:
     )
 
 
-def inspect_openai_responses_event_type_json(body: bytes) -> str | None:
+def _inspect_openai_responses_event_type_json(body: bytes) -> str | None:
     """Probe one Responses frame for its top-level ``type`` without retaining it."""
     return _observed_responses_event_type(_probe_responses_event_type(body))
 

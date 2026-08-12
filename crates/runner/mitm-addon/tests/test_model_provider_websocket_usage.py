@@ -326,6 +326,14 @@ class TestModelProviderWebSocketPrewarmUsage:
                 prewarm_flow,
                 _openai_websocket_created_frame("shared-response-id"),
             )
+            feed_websocket_server_message(
+                prewarm_flow,
+                openai_websocket_usage_frame(
+                    "shared-response-id",
+                    input_tokens=5,
+                    output_tokens=0,
+                ),
+            )
 
             feed_websocket_client_message(
                 normal_flow,
@@ -343,6 +351,22 @@ class TestModelProviderWebSocketPrewarmUsage:
                     output_tokens=0,
                 ),
             )
+            feed_websocket_client_message(
+                normal_flow,
+                json.dumps({"type": "response.create", "generate": False}).encode(),
+            )
+            feed_websocket_server_message(
+                normal_flow,
+                _openai_websocket_created_frame("second-prewarm"),
+            )
+            feed_websocket_server_message(
+                normal_flow,
+                openai_websocket_usage_frame(
+                    "second-prewarm",
+                    input_tokens=6,
+                    output_tokens=0,
+                ),
+            )
             usage.flush_usage_events(trigger="test")
 
         expected_rows = [("gpt-5.5", "tokens.input", 7)]
@@ -352,6 +376,18 @@ class TestModelProviderWebSocketPrewarmUsage:
             "model",
             expected_rows,
         )
+        ignored_entries = [
+            entry
+            for entry in model_usage_source_entries(prewarm_flow)
+            if entry.get("disposition") == "ignored"
+        ]
+        assert {
+            (entry["flow_id"], entry["provider_response_id"], entry["usage"]["tokens.input"])
+            for entry in ignored_entries
+        } == {
+            (prewarm_flow.id, "shared-response-id", 5),
+            (normal_flow.id, "second-prewarm", 6),
+        }
 
 
 class TestModelProviderWebSocketUsageSourceRelease:

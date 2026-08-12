@@ -113,12 +113,12 @@ def json_nesting_within_limit(body: bytes, *, max_depth: int = _DEFAULT_MAX_DEPT
 class ScalarField:
     """Selected scalar field configuration.
 
-    ``kind`` must be ``"string"``, ``"int"``, or ``"bool"``. ``max_bytes`` is
-    the capture limit for selected string and integer tokens. ``overflow_policy`` defaults to
-    ``"error"``, which fails extraction with ``"string limit exceeded"`` or
-    ``"number limit exceeded"``. Selected strings may use ``"discard"`` to
-    stop retaining an oversized optional observation while continuing to
-    validate the document.
+    ``kind`` must be ``"string"``, ``"int"``, or ``"bool"``. ``max_bytes``
+    limits selected string and integer tokens; booleans use fixed JSON literals.
+    ``overflow_policy`` defaults to ``"error"``, which fails extraction with
+    ``"string limit exceeded"`` or ``"number limit exceeded"``. Selected
+    strings may use ``"discard"`` to stop retaining an oversized optional
+    observation while continuing to validate the document.
     """
 
     kind: ScalarKind
@@ -216,7 +216,7 @@ class JsonSelectiveExtractor:
 
     The extractor observes five kinds of data while parsing:
 
-    - ``scalar_fields`` captures selected string or integer values.
+    - ``scalar_fields`` captures selected string, integer, or boolean values.
     - ``array_count_paths`` counts arrays at exact paths.
     - ``wildcard_array_count_paths`` counts arrays at wildcard paths with one
       ``"*"`` segment, recording counts by the concrete wildcard key.

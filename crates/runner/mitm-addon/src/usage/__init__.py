@@ -69,7 +69,6 @@ from .openai_responses import (
     extract_openai_responses_usage_with_error_from_json,
     inspect_openai_responses_client_event_json,
     inspect_openai_responses_event_json,
-    inspect_openai_responses_event_type_json,
     inspect_openai_responses_server_lifecycle,
     merge_openai_responses_usage_result,
 )
@@ -122,7 +121,6 @@ __all__ = [
     "increment_in_flight_flows",
     "inspect_openai_responses_client_event_json",
     "inspect_openai_responses_event_json",
-    "inspect_openai_responses_event_type_json",
     "inspect_openai_responses_server_lifecycle",
     "is_model_provider_usage_observable",
     "log_ignored_model_provider_usage_source",
