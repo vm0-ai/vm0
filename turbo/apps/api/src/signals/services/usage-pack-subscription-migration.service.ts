@@ -38,6 +38,7 @@ import {
   type StripeSubscriptionUpdateItemParam,
 } from "../external/stripe-client";
 import { lockUsagePackBillingOrg } from "./usage-pack-allocation-change.service";
+import type { BillingReconciliationScope } from "./billing-reconciliation-scope";
 import {
   handleUsagePackInvoicePaid,
   handleUsagePackSubscriptionUpdated,
@@ -2478,6 +2479,7 @@ export async function handleUsagePackMigrationSubscriptionUpdated(
 
 export async function reconcileUsagePackSubscriptionMigrations(
   db: Db,
+  scope: BillingReconciliationScope | undefined,
   signal: AbortSignal,
 ): Promise<{
   readonly reconciled: number;
@@ -2497,6 +2499,9 @@ export async function reconcileUsagePackSubscriptionMigrations(
     })
     .where(
       and(
+        scope
+          ? inArray(usagePackSubscriptionMigrations.orgId, [...scope.orgIds])
+          : undefined,
         eq(usagePackSubscriptionMigrations.status, "previewed"),
         lte(usagePackSubscriptionMigrations.previewExpiresAt, at),
       ),
@@ -2507,17 +2512,22 @@ export async function reconcileUsagePackSubscriptionMigrations(
     .select()
     .from(usagePackSubscriptionMigrations)
     .where(
-      or(
-        and(
-          inArray(usagePackSubscriptionMigrations.status, [
-            "applying",
-            "revising",
-          ]),
-          lte(usagePackSubscriptionMigrations.updatedAt, staleBefore),
-        ),
-        and(
-          eq(usagePackSubscriptionMigrations.status, "scheduled"),
-          lte(usagePackSubscriptionMigrations.effectiveAt, at),
+      and(
+        scope
+          ? inArray(usagePackSubscriptionMigrations.orgId, [...scope.orgIds])
+          : undefined,
+        or(
+          and(
+            inArray(usagePackSubscriptionMigrations.status, [
+              "applying",
+              "revising",
+            ]),
+            lte(usagePackSubscriptionMigrations.updatedAt, staleBefore),
+          ),
+          and(
+            eq(usagePackSubscriptionMigrations.status, "scheduled"),
+            lte(usagePackSubscriptionMigrations.effectiveAt, at),
+          ),
         ),
       ),
     )

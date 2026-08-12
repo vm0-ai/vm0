@@ -169,7 +169,7 @@ import { previewAutomationBypass$ } from "../context/hono";
 import { writeDb$, type Db } from "../external/db";
 import { getDatasetName, ingestToAxiom } from "../external/axiom";
 import { now, nowDate } from "../../lib/time";
-import { generateBrandedRunTokens } from "../auth/tokens";
+import { generateZeroToken } from "../auth/tokens";
 import { onRejection, safeSync, settle, tapError } from "../utils";
 import {
   environmentRecordToEntries,
@@ -187,7 +187,6 @@ import {
   GATEWAY_RUNTIME_SECRET_NAME,
 } from "./model-provider-gateway-runtime";
 import {
-  CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_RUNTIME_KEY,
   CustomConnectorRuntimePrefixError,
   customConnectorInternalName,
   customConnectorManualAuthReferencesMemberField,
@@ -199,7 +198,6 @@ import {
   renderTemplateForRuntime,
   type StoredValueRow,
 } from "./zero-custom-connector.service";
-import { refreshCustomConnectorOAuth2ValuesIfNeeded } from "./custom-connector-oauth2.service";
 import {
   loadCustomConnectorPermissionBundle,
   type CustomConnectorPermissionBundle,
@@ -397,27 +395,21 @@ function buildMcpConnectorPrompt(
   ].join("\n");
 }
 
-function withZeroTokenSecret(
+function withOkouTokenSecret(
   body: CreateRunBody,
-  zeroToken: string,
   okouToken: string,
 ): CreateRunBody {
   return {
     ...body,
     secrets: {
-      ...body.secrets,
+      ...withoutLegacyZeroEntries(body.secrets),
       OKOU_TOKEN: okouToken,
-      ZERO_TOKEN: zeroToken,
     },
   };
 }
 
 function withPendingZeroTokenSecret(body: CreateRunBody): CreateRunBody {
-  return withZeroTokenSecret(
-    body,
-    "__pending_zero_token__",
-    "__pending_okou_token__",
-  );
+  return withOkouTokenSecret(body, "__pending_okou_token__");
 }
 
 function withFinalRunAppendSystemPrompt(args: {
@@ -1189,6 +1181,58 @@ function firstAgent(content: AgentComposeContent): AgentConfig | undefined {
   }
   const firstKey = Object.keys(content.agents)[0];
   return firstKey ? content.agents[firstKey] : undefined;
+}
+
+function canonicalOkouAgentConfig(config: AgentConfig): AgentConfig {
+  if (
+    !config.environment ||
+    !Object.keys(config.environment).some((key) => {
+      return key.startsWith("ZERO_");
+    })
+  ) {
+    return config;
+  }
+  const environment = withoutLegacyZeroEntries(config.environment);
+  if (environment) {
+    return { ...config, environment };
+  }
+  const { environment: _legacyEnvironment, ...configWithoutEnvironment } =
+    config;
+  return configWithoutEnvironment;
+}
+
+function canonicalOkouComposeContent(
+  content: AgentComposeContent,
+): AgentComposeContent {
+  if (content.agent) {
+    return { ...content, agent: canonicalOkouAgentConfig(content.agent) };
+  }
+  if (!content.agents) {
+    return content;
+  }
+  const firstKey = Object.keys(content.agents)[0];
+  const agent = firstKey ? content.agents[firstKey] : undefined;
+  if (!firstKey || !agent) {
+    return content;
+  }
+  return {
+    ...content,
+    agents: {
+      ...content.agents,
+      [firstKey]: canonicalOkouAgentConfig(agent),
+    },
+  };
+}
+
+// Content-addressed compose versions remain persisted unchanged. New branded
+// contexts interpret legacy versions through this runtime-only projection.
+function runtimeResolvedCompose(
+  resolved: ResolvedCompose,
+  canonicalOkouRuntime: boolean,
+): ResolvedCompose {
+  return canonicalOkouRuntime
+    ? { ...resolved, content: canonicalOkouComposeContent(resolved.content) }
+    : resolved;
 }
 
 function resolveFramework(
@@ -2802,6 +2846,21 @@ function mergeRecords<T>(
   return compactRecord(merged);
 }
 
+function withoutLegacyZeroEntries<T>(
+  values: Readonly<Record<string, T>> | undefined,
+): Record<string, T> | undefined {
+  if (!values) {
+    return undefined;
+  }
+  const canonical: Record<string, T> = {};
+  for (const [key, value] of Object.entries(values)) {
+    if (!key.startsWith("ZERO_")) {
+      canonical[key] = value;
+    }
+  }
+  return compactRecord(canonical);
+}
+
 function filterSecretConnectorMap(args: {
   readonly secretConnectorMap: Record<string, string> | undefined;
   readonly overriddenSecrets: readonly (
@@ -4231,22 +4290,10 @@ function customConnectorRuntimeSkill(
   };
 }
 
-function customConnectorRuntimeCredentialsAreComplete(
+function customConnectorRequiredMemberCredentialsAreComplete(
   row: CustomConnectorRuntimeDataRows[number],
 ): boolean {
-  const valueMarkers = new Set(
-    row.values.map((value) => {
-      return customConnectorValueMarkerKey(value);
-    }),
-  );
-  const oauthConnected = valueMarkers.has(
-    customConnectorValueMarkerKey({
-      kind: "secret",
-      key: CUSTOM_CONNECTOR_OAUTH_ACCESS_TOKEN_RUNTIME_KEY,
-    }),
-  );
   return (
-    (row.connector.authMode !== "oauth" || oauthConnected) &&
     customConnectorMissingRequiredFieldKeys({
       fields: row.connector.fields,
       markers: row.values,
@@ -4332,7 +4379,7 @@ async function buildCustomConnectorRuntimeRow(args: {
   };
   const skill = customConnectorRuntimeSkill(args.row);
   const missingRequiredStartedAt = now();
-  const missingRequired = !customConnectorRuntimeCredentialsAreComplete(
+  const missingRequired = !customConnectorRequiredMemberCredentialsAreComplete(
     args.row,
   );
   args.stats.recordPhaseDuration("assembleFirewalls", missingRequiredStartedAt);
@@ -4474,10 +4521,10 @@ async function buildNewRunCustomConnectorRuntimeContext(
     rows: args.rows.filter((row) => {
       return (
         row.credentialAccess.kind === "current" &&
-        row.credentialAccess.usable &&
+        row.credentialAccess.runtimeAvailable &&
         (row.connector.authMode !== "manual" ||
           customConnectorManualAuthReferencesMemberField(row.connector)) &&
-        customConnectorRuntimeCredentialsAreComplete(row)
+        customConnectorRequiredMemberCredentialsAreComplete(row)
       );
     }),
   });
@@ -4611,6 +4658,7 @@ async function loadCustomConnectorContext(
       skills: [],
     };
   }
+  signal.throwIfAborted();
   const newRunRows = rows.filter((row) => {
     return (
       row.connector.kind !== "mcp" ||
@@ -4620,33 +4668,13 @@ async function loadCustomConnectorContext(
       )
     );
   });
-  const refreshedRows: CustomConnectorRuntimeDataRows[number][] = [];
-  for (const row of newRunRows) {
-    refreshedRows.push({
-      connector: row.connector,
-      credentialAccess: row.credentialAccess,
-      values: await refreshCustomConnectorOAuth2ValuesIfNeeded(
-        {
-          db,
-          orgId: args.orgId,
-          userId: args.userId,
-          connector: row.connector,
-          values: row.values,
-          featureContext: args.featureSwitchContext,
-        },
-        signal,
-      ),
-    });
-    signal.throwIfAborted();
-  }
-
   return await measureApiDispatchTiming(
     timing,
     "api_dispatch_prepare_context_build_custom_connector_firewalls",
     "nested",
     async () => {
       return await buildNewRunCustomConnectorRuntimeContext({
-        rows: refreshedRows,
+        rows: newRunRows,
         featureSwitchContext: args.featureSwitchContext,
         connectorCatalogSnapshot: args.connectorCatalogSnapshot,
         grants: args.customConnectorGrants,
@@ -5876,6 +5904,7 @@ async function buildStoredExecutionContextDraft(args: {
   readonly extraEnvironment: Record<string, string> | undefined;
   readonly userTimezone: string | undefined;
   readonly featureSwitchContext: FeatureSwitchContext;
+  readonly includeZeroTokenSecret: boolean | undefined;
 }): Promise<BuiltStoredExecutionContextDraft> {
   const permissions = args.permissionManifest;
   const executionSecrets = buildStoredExecutionSecrets({
@@ -5894,7 +5923,7 @@ async function buildStoredExecutionContextDraft(args: {
     permissionManifest: permissions,
     customTargets: args.customConnectorContext.targets,
   });
-  const environment = {
+  const expandedEnvironment = {
     ...expandEnvironment({
       content: args.resolved.content,
       vars: args.body.vars,
@@ -5913,6 +5942,9 @@ async function buildStoredExecutionContextDraft(args: {
       ? "latest"
       : "previous",
   };
+  const environment = args.includeZeroTokenSecret
+    ? (withoutLegacyZeroEntries(expandedEnvironment) ?? {})
+    : expandedEnvironment;
   const environmentKeyByValue = new Map<string, string>();
   for (const [key, value] of Object.entries(environment)) {
     if (!environmentKeyByValue.has(value)) {
@@ -6496,12 +6528,13 @@ function preparedRunnerJobBody(
   if (!args.includeZeroTokenSecret) {
     return args.body;
   }
-  const { okouToken, zeroToken } = generateBrandedRunTokens(
+  const okouToken = generateZeroToken(
     args.userId,
     args.run.id,
     args.orgId,
     args.featureSwitchContext.overrides,
     {
+      scope: "okou",
       ...(args.zeroTokenComputerUseHostId
         ? { computerUseHostId: args.zeroTokenComputerUseHostId }
         : {}),
@@ -6509,16 +6542,15 @@ function preparedRunnerJobBody(
       imageRecognitionAvailable: args.imageRecognitionAvailable,
     },
   );
-  return withZeroTokenSecret(args.body, zeroToken, okouToken);
+  return withOkouTokenSecret(args.body, okouToken);
 }
 
 function zeroTokenEnvironment(body: CreateRunBody): Record<string, string> {
   const okouToken = body.secrets?.OKOU_TOKEN;
-  const zeroToken = body.secrets?.ZERO_TOKEN;
-  if (!okouToken || !zeroToken) {
-    throw new Error("Branded run tokens are missing from the run context");
+  if (!okouToken) {
+    throw new Error("The Okou run token is missing from the run context");
   }
-  return { OKOU_TOKEN: okouToken, ZERO_TOKEN: zeroToken };
+  return { OKOU_TOKEN: okouToken };
 }
 
 function piEdgeUsageConfig(
@@ -7898,6 +7930,7 @@ async function buildResolvedRunBody(
     readonly resolved: ResolvedCompose;
     readonly persistedEnvironment: PersistedRunEnvironmentSnapshot;
     readonly featureSwitchContext: FeatureSwitchContext;
+    readonly canonicalOkouRuntime: boolean;
   },
   signal: AbortSignal,
 ): Promise<CreateRunBody> {
@@ -7909,11 +7942,14 @@ async function buildResolvedRunBody(
     persistedEnvironment: args.persistedEnvironment,
     runVars,
   });
+  const vars = args.canonicalOkouRuntime
+    ? withoutLegacyZeroEntries(mergedVars)
+    : mergedVars;
   signal.throwIfAborted();
 
   const body: CreateRunBody = {
     ...args.initialBody,
-    vars: mergedVars,
+    vars,
     volumeVersions:
       args.initialBody.volumeVersions !== undefined
         ? args.initialBody.volumeVersions
@@ -7927,7 +7963,12 @@ async function buildResolvedRunBody(
   });
   signal.throwIfAborted();
 
-  return { ...body, secrets: mergedSecrets };
+  return {
+    ...body,
+    secrets: args.canonicalOkouRuntime
+      ? withoutLegacyZeroEntries(mergedSecrets)
+      : mergedSecrets,
+  };
 }
 
 function validateRunEnvironmentReferences(args: {
@@ -8140,6 +8181,34 @@ async function resolveEffectiveConnectorScope(
   };
 }
 
+async function loadPreparedRunFeatureSwitchContext(
+  args: {
+    readonly get: PrepareRunContextGet;
+    readonly createArgs: CreateAgentRunArgs;
+    readonly preloaded: FeatureSwitchContext | undefined;
+    readonly timing: ApiDispatchTimingCollector;
+  },
+  signal: AbortSignal,
+): Promise<FeatureSwitchContext> {
+  return await args.timing.measure(
+    "api_dispatch_prepare_context_feature_switches",
+    "nested",
+    async () => {
+      if (args.preloaded !== undefined) {
+        signal.throwIfAborted();
+        return args.preloaded;
+      }
+      return await args.get(
+        loadRunFeatureSwitchContext(args.createArgs, signal),
+      );
+    },
+    {
+      feature_switch_context_source:
+        args.preloaded === undefined ? "database" : "preloaded",
+    },
+  );
+}
+
 async function prepareRunBodyContext(
   args: {
     readonly get: PrepareRunContextGet;
@@ -8151,26 +8220,16 @@ async function prepareRunBodyContext(
   },
   signal: AbortSignal,
 ): Promise<PreparedRunBodyContext | CreateRunErrorResult> {
-  const featureSwitchContext = await args.timing.measure(
-    "api_dispatch_prepare_context_feature_switches",
-    "nested",
-    async () => {
-      if (args.preloadedFeatureSwitchContext !== undefined) {
-        signal.throwIfAborted();
-        return args.preloadedFeatureSwitchContext;
-      }
-      return await args.get(
-        loadRunFeatureSwitchContext(args.createArgs, signal),
-      );
-    },
+  const featureSwitchContext = await loadPreparedRunFeatureSwitchContext(
     {
-      feature_switch_context_source:
-        args.preloadedFeatureSwitchContext === undefined
-          ? "database"
-          : "preloaded",
+      get: args.get,
+      createArgs: args.createArgs,
+      preloaded: args.preloadedFeatureSwitchContext,
+      timing: args.timing,
     },
+    signal,
   );
-  const resolved = await args.timing.measure(
+  const persistedResolved = await args.timing.measure(
     "api_dispatch_prepare_context_resolve_compose",
     "nested",
     async () => {
@@ -8186,13 +8245,17 @@ async function prepareRunBodyContext(
     },
   );
   signal.throwIfAborted();
-  if (isRouteError(resolved)) {
-    return resolved;
+  if (isRouteError(persistedResolved)) {
+    return persistedResolved;
   }
+  const canonicalOkouRuntime = args.createArgs.includeZeroTokenSecret === true;
+  const resolved = runtimeResolvedCompose(
+    persistedResolved,
+    canonicalOkouRuntime,
+  );
   if (resolved.orgId !== args.createArgs.orgId) {
     return notFound("Resource not found");
   }
-
   const connectorScope = await args.timing.measure(
     "api_dispatch_prepare_context_resolve_connector_scope",
     "nested",
@@ -8211,7 +8274,6 @@ async function prepareRunBodyContext(
   if (isRouteError(connectorScope)) {
     return connectorScope;
   }
-
   const persistedEnvironment = await args.timing.measure(
     "api_dispatch_prepare_context_load_persisted_environment",
     "nested",
@@ -8234,6 +8296,7 @@ async function prepareRunBodyContext(
           resolved,
           persistedEnvironment,
           featureSwitchContext,
+          canonicalOkouRuntime,
         },
         signal,
       );

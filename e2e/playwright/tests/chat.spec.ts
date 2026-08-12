@@ -214,6 +214,68 @@ async function disableChatEventSnapshotRead(page: Page): Promise<void> {
   });
 }
 
+async function mockSelectedFastModel(page: Page): Promise<void> {
+  const policyId = "00000000-0000-4000-a000-000000000736";
+  await page.route("**/api/okou/feature-switches", async (route) => {
+    const response = await route.fetch();
+    const body: unknown = await response.json();
+    if (!isRecord(body) || !isRecord(body.effectiveSwitches)) {
+      throw new Error("Feature switches returned an unexpected response");
+    }
+    await route.fulfill({
+      response,
+      json: {
+        ...body,
+        effectiveSwitches: {
+          ...body.effectiveSwitches,
+          codexFastMode: true,
+        },
+      },
+    });
+  });
+  await page.route("**/api/okou/model-policies", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.continue();
+      return;
+    }
+    await route.fulfill({
+      json: {
+        policies: [
+          {
+            id: policyId,
+            model: "gpt-5.6-sol",
+            modelLabel: "GPT 5.6 Sol",
+            isDefault: true,
+            defaultProviderType: "vm0",
+            credentialScope: "org",
+            modelProviderId: null,
+            modelProviderSurfaceId: null,
+            routeStatus: "valid",
+            routeStatusReason: null,
+            createdAt: "2026-08-12T00:00:00.000Z",
+            updatedAt: "2026-08-12T00:00:00.000Z",
+          },
+        ],
+        workspaceDefaultModel: "gpt-5.6-sol",
+        workspaceDefaultPolicyId: policyId,
+      },
+    });
+  });
+  await page.route("**/api/okou/user-model-preference", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.continue();
+      return;
+    }
+    await route.fulfill({
+      json: {
+        selectedModel: "gpt-5.6-sol",
+        serviceTier: "priority",
+        updatedAt: "2026-08-12T00:00:00.000Z",
+      },
+    });
+  });
+}
+
 interface MockChatThreadOptions {
   readonly agentId: string;
   readonly createdAt: string;
@@ -815,6 +877,24 @@ test("chat page displays tagline after onboarding", async ({ page }) => {
   await expect(page.getByTestId("chat-tagline")).toBeVisible({
     timeout: 20_000,
   });
+});
+
+test("selected Fast model previews deactivation on icon hover", async ({
+  page,
+}) => {
+  await mockSelectedFastModel(page);
+  await page.goto(appUrl);
+  await page.waitForURL(/agents\/.*\/chat/, { timeout: 30_000 });
+
+  await page.getByRole("combobox", { name: "GPT 5.6 Sol Fast" }).click();
+  const fastOption = page.getByRole("option", {
+    name: "GPT 5.6 Sol Fast",
+  });
+  const fastIcon = fastOption.locator("svg.lucide-zap");
+  await expect(fastIcon).not.toHaveCSS("fill", "none");
+
+  await fastOption.hover();
+  await expect(fastIcon).toHaveCSS("fill", "none");
 });
 
 test("send a message through the deployed runner", async ({ page }) => {

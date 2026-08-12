@@ -115,8 +115,8 @@ async function seedBankingFixture(
         prompt: "banking automation precondition",
         modelProviderType: "anthropic-api-key",
         triggerSource: args.triggerSource,
-        vars: { ZERO_AGENT_ID: agent.agentId },
-        secrets: { ZERO_TOKEN: "bdd-banking-zero-token" },
+        vars: { OKOU_AGENT_ID: agent.agentId },
+        secrets: { OKOU_TOKEN: "bdd-banking-okou-token" },
       })
     : await api.createRun(actor, {
         agentId: agent.agentId,

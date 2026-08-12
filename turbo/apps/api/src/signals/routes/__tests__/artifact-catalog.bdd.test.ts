@@ -113,10 +113,10 @@ async function claimChatRun(
   };
 }
 
-function zeroTokenFromClaim(claim: RunnerClaim): string {
-  const token = claim.environment?.ZERO_TOKEN;
+function okouTokenFromClaim(claim: RunnerClaim): string {
+  const token = claim.environment?.OKOU_TOKEN;
   if (!token || !token.startsWith("vm0_sandbox_")) {
-    throw new Error("Expected the claim environment to carry a ZERO_TOKEN");
+    throw new Error("Expected the claim environment to carry an OKOU_TOKEN");
   }
   return token;
 }
@@ -297,7 +297,7 @@ async function uploadFile(args: {
     args.owner.runnerGroup,
     run.runId,
   );
-  const bearer = `Bearer ${zeroTokenFromClaim(claim)}`;
+  const bearer = `Bearer ${okouTokenFromClaim(claim)}`;
   const fileId = args.fileId ?? randomUUID();
   stageUploadObject(
     `artifacts/${args.owner.actor.userId}/${fileId}/${args.filename}`,
@@ -363,7 +363,7 @@ async function publishHostedSite(args: {
   const bearer =
     claimed === null
       ? `Bearer ${scopedZeroToken(args.owner, run.runId, ["host:write"])}`
-      : `Bearer ${zeroTokenFromClaim(claimed.claim)}`;
+      : `Bearer ${okouTokenFromClaim(claimed.claim)}`;
   const body = {
     site: args.site,
     artifactKind: args.artifactKind ?? ("hosted-site" as const),
@@ -412,8 +412,8 @@ async function publishHostedSiteFromDirectRun(args: {
         prompt: `publish ${args.site}`,
         modelProviderType: "anthropic-api-key",
         triggerSource: "automation-schedule",
-        vars: { ZERO_AGENT_ID: args.owner.agentId },
-        secrets: { ZERO_TOKEN: "bdd-artifact-catalog-token" },
+        vars: { OKOU_AGENT_ID: args.owner.agentId },
+        secrets: { OKOU_TOKEN: "bdd-artifact-catalog-token" },
       })
     ).runId;
   const bearer = `Bearer ${scopedZeroToken(args.owner, runId, ["host:write"])}`;
@@ -1016,8 +1016,8 @@ describe("GET /api/zero/artifacts/catalog", () => {
       prompt: "create a workflow artifact",
       modelProviderType: "anthropic-api-key",
       triggerSource: "automation-schedule",
-      vars: { ZERO_AGENT_ID: owner.agentId },
-      secrets: { ZERO_TOKEN: "bdd-artifact-catalog-token" },
+      vars: { OKOU_AGENT_ID: owner.agentId },
+      secrets: { OKOU_TOKEN: "bdd-artifact-catalog-token" },
     });
     const fileId = randomUUID();
     stageUploadObject(

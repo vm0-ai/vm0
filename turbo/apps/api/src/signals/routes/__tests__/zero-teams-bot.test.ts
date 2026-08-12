@@ -2873,12 +2873,12 @@ describe("POST /api/zero/teams/bot", () => {
     const firstRunId = await runIdForPrompt(actor, "authorize the browser");
     await runsApi.heartbeatRunner(runnerGroup);
     const firstClaim = await runsApi.claimRunnerJob(firstRunId);
-    const firstZeroToken = firstClaim.environment?.ZERO_TOKEN;
-    if (!firstZeroToken) {
-      throw new Error("Claimed Teams runner job did not include ZERO_TOKEN");
+    const firstOkouToken = firstClaim.environment?.OKOU_TOKEN;
+    if (!firstOkouToken) {
+      throw new Error("Claimed Teams runner job did not include OKOU_TOKEN");
     }
     const created = await computerUseApi.createComputerUseAuthorizationRequest({
-      bearer: firstZeroToken,
+      bearer: firstOkouToken,
     });
     const requestToken = requestTokenFromUrl(created.authorizationUrl);
     await computerUseApi.applyComputerUseAuthorizationRequest(
@@ -2905,13 +2905,13 @@ describe("POST /api/zero/teams/bot", () => {
     const secondRunId = await runIdForPrompt(actor, "use the browser");
     await runsApi.heartbeatRunner(runnerGroup);
     const secondClaim = await runsApi.claimRunnerJob(secondRunId);
-    const secondZeroToken = secondClaim.environment?.ZERO_TOKEN;
-    if (!secondZeroToken) {
-      throw new Error("Claimed Teams runner job did not include ZERO_TOKEN");
+    const secondOkouToken = secondClaim.environment?.OKOU_TOKEN;
+    if (!secondOkouToken) {
+      throw new Error("Claimed Teams runner job did not include OKOU_TOKEN");
     }
-    const zeroAuth = verifyZeroToken(secondZeroToken);
-    expect(zeroAuth).toMatchObject({ computerUseHostId: host.hostId });
-    expect(zeroAuth?.capabilities).toContain("computer-use:write");
+    const okouAuth = verifyZeroToken(secondOkouToken);
+    expect(okouAuth).toMatchObject({ computerUseHostId: host.hostId });
+    expect(okouAuth?.capabilities).toContain("computer-use:write");
 
     await runsApi.requestCancelRun(actor, secondRunId, [200]);
     await computerUseApi.stopComputerUseHost(host.hostToken);
