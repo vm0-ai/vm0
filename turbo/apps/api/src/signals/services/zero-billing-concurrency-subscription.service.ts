@@ -68,6 +68,7 @@ type PreviewConcurrencySubscriptionChangeResult =
       readonly reason:
         | "not_found"
         | "canceling"
+        | "invalid_quantity"
         | "no_change"
         | "pending_update";
     };
@@ -90,6 +91,7 @@ type StripeConcurrencySubscriptionChangeResult =
   | {
       readonly ok: true;
       readonly response: ConcurrencySubscriptionChangeResponse;
+      readonly subscription: StripeSubscription;
     }
   | {
       readonly ok: false;
@@ -216,6 +218,7 @@ export const addStripeConcurrencySubscriptionItem$ = command(
         ? {
             ok: true,
             response: appliedConcurrencyChangeResponse(subscription),
+            subscription,
           }
         : { ok: false, reason: "pending_update" };
     }
@@ -225,6 +228,7 @@ export const addStripeConcurrencySubscriptionItem$ = command(
       return {
         ok: true,
         response: { status: "completed", hostedInvoiceUrl: null },
+        subscription,
       };
     }
 
@@ -246,7 +250,48 @@ export const addStripeConcurrencySubscriptionItem$ = command(
     return {
       ok: true,
       response: appliedConcurrencyChangeResponse(updatedSubscription),
+      subscription: updatedSubscription,
     };
+  },
+);
+
+export const persistStripeConcurrencySubscription$ = command(
+  async (
+    { set },
+    orgId: string,
+    subscription: StripeSubscription,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const item = concurrencyPriceItem(subscription.items.data);
+    if (!item?.quantity) {
+      throw new Error("Stripe subscription has no active concurrency item");
+    }
+    const updatedAt = nowDate();
+    await set(writeDb$)
+      .insert(orgConcurrencySubscriptions)
+      .values({
+        orgId,
+        stripeSubscriptionId: subscription.id,
+        stripePriceId: item.price.id,
+        slots: item.quantity,
+        subscriptionStatus: subscription.status,
+        currentPeriodEnd: new Date(item.current_period_end * 1000),
+        cancelAtPeriodEnd: subscription.cancel_at_period_end,
+        updatedAt,
+      })
+      .onConflictDoUpdate({
+        target: orgConcurrencySubscriptions.stripeSubscriptionId,
+        set: {
+          orgId,
+          stripePriceId: item.price.id,
+          slots: item.quantity,
+          subscriptionStatus: subscription.status,
+          currentPeriodEnd: new Date(item.current_period_end * 1000),
+          cancelAtPeriodEnd: subscription.cancel_at_period_end,
+          updatedAt,
+        },
+      });
+    signal.throwIfAborted();
   },
 );
 
@@ -301,10 +346,17 @@ function immediateProrationAmount(
   return Math.max(0, amount);
 }
 
-const previewStripeConcurrencySubscriptionChange$ = command(
+interface StripeConcurrencySubscriptionPreviewArgs {
+  readonly subscriptionId: string;
+  readonly priceId?: string;
+  readonly quantity: number;
+  readonly mode: "absolute" | "increase";
+}
+
+export const previewStripeConcurrencySubscriptionChange$ = command(
   async (
     _,
-    args: ConcurrencySubscriptionChangeArgs,
+    args: StripeConcurrencySubscriptionPreviewArgs,
     signal: AbortSignal,
   ): Promise<PreviewConcurrencySubscriptionChangeResult> => {
     const stripe = getStripeClient();
@@ -312,8 +364,8 @@ const previewStripeConcurrencySubscriptionChange$ = command(
       args.subscriptionId,
     );
     signal.throwIfAborted();
-    const item = concurrencySubscriptionItem(subscription.items.data);
-    if (!item) {
+    const item = concurrencyPriceItem(subscription.items.data);
+    if (!item && !args.priceId) {
       throw new Error(
         "Concurrency subscription has no active concurrency item",
       );
@@ -321,12 +373,28 @@ const previewStripeConcurrencySubscriptionChange$ = command(
     if (subscription.pending_update) {
       return { ok: false, reason: "pending_update" };
     }
-    if (args.quantity === item.quantity) {
+    const currentQuantity = item?.quantity ?? 0;
+    const targetQuantity =
+      args.mode === "increase"
+        ? currentQuantity + args.quantity
+        : args.quantity;
+    if (
+      !Number.isSafeInteger(targetQuantity) ||
+      targetQuantity < 1 ||
+      targetQuantity > CONCURRENCY_SUBSCRIPTION_QUANTITY_MAX
+    ) {
+      return { ok: false, reason: "invalid_quantity" };
+    }
+    if (targetQuantity === currentQuantity) {
       return { ok: false, reason: "no_change" };
     }
 
     const prorationTimestamp = Math.floor(nowDate().getTime() / 1000);
-    const items = [{ id: item.id, quantity: args.quantity }];
+    const items = [
+      item
+        ? { id: item.id, quantity: targetQuantity }
+        : { price: args.priceId, quantity: targetQuantity },
+    ];
     const [immediatePreview, recurringPreview] = await Promise.all([
       stripe.invoices.createPreview({
         subscription: subscription.id,
@@ -353,8 +421,8 @@ const previewStripeConcurrencySubscriptionChange$ = command(
     return {
       ok: true,
       preview: {
-        currentQuantity: item.quantity,
-        targetQuantity: args.quantity,
+        currentQuantity,
+        targetQuantity,
         immediateAmountCents: immediateProrationAmount(
           immediatePreview,
           prorationTimestamp,
@@ -408,6 +476,7 @@ export const applyStripeConcurrencySubscriptionChange$ = command(
         ? {
             ok: true,
             response: appliedConcurrencyChangeResponse(subscription),
+            subscription,
           }
         : { ok: false, reason: "pending_update" };
     }
@@ -415,6 +484,7 @@ export const applyStripeConcurrencySubscriptionChange$ = command(
       return {
         ok: true,
         response: { status: "completed", hostedInvoiceUrl: null },
+        subscription,
       };
     }
 
@@ -432,6 +502,7 @@ export const applyStripeConcurrencySubscriptionChange$ = command(
     return {
       ok: true,
       response: appliedConcurrencyChangeResponse(updatedSubscription),
+      subscription: updatedSubscription,
     };
   },
 );
@@ -453,7 +524,11 @@ export const previewConcurrencySubscriptionChange$ = command(
     if (subscription.cancelAtPeriodEnd) {
       return { ok: false, reason: "canceling" };
     }
-    return await set(previewStripeConcurrencySubscriptionChange$, args, signal);
+    return await set(
+      previewStripeConcurrencySubscriptionChange$,
+      { ...args, mode: "absolute" },
+      signal,
+    );
   },
 );
 

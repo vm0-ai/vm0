@@ -30,6 +30,7 @@ import { isOrgAdmin$ } from "../../signals/org.ts";
 import {
   billingStatusAsync$,
   openConcurrencyChangeReview$,
+  openConcurrencyPurchaseReview$,
   startCheckout$,
   startConcurrencyCheckout$,
 } from "../../signals/zero-page/billing.ts";
@@ -555,6 +556,9 @@ function ConcurrencyPurchaseCardMount({
   const [reviewLoadable, openReview] = useLoadableSet(
     openConcurrencyChangeReview$,
   );
+  const [purchaseReviewLoadable, openPurchaseReview] = useLoadableSet(
+    openConcurrencyPurchaseReview$,
+  );
   const quantity = useGet(concurrencyQuantity$);
   const setQuantity = useSet(setConcurrencyQuantity$);
   const billingStatus = useLastResolved(billingStatusAsync$);
@@ -569,9 +573,16 @@ function ConcurrencyPurchaseCardMount({
   // Old API responses omit this during the ~2-day web/app client version-skew
   // window. Remove the legacy Checkout branch with #26152 after #26116 has
   // been deployed beyond that window.
-  const reviewingInApp = activeSubscription?.canChangeInApp === true;
+  const activeChangeReviewAvailable =
+    activeSubscription?.canChangeInApp === true;
+  const purchaseReviewAvailable =
+    !activeSubscription &&
+    billingStatus?.concurrencyPurchaseReviewAvailable === true;
+  const reviewingInApp = activeChangeReviewAvailable || purchaseReviewAvailable;
   const loading =
-    checkoutLoadable.state === "loading" || reviewLoadable.state === "loading";
+    checkoutLoadable.state === "loading" ||
+    reviewLoadable.state === "loading" ||
+    purchaseReviewLoadable.state === "loading";
 
   if (!canManageBilling || capabilities?.canBuyConcurrency !== true) {
     return null;
@@ -581,7 +592,7 @@ function ConcurrencyPurchaseCardMount({
     <ConcurrencyPurchaseCard
       loading={loading}
       onCheckout={(newTab) => {
-        if (reviewingInApp && activeSubscription) {
+        if (activeChangeReviewAvailable && activeSubscription) {
           detach(
             openReview(
               {
@@ -592,6 +603,13 @@ function ConcurrencyPurchaseCardMount({
               },
               pageSignal,
             ),
+            Reason.DomCallback,
+          );
+          return;
+        }
+        if (purchaseReviewAvailable) {
+          detach(
+            openPurchaseReview(quantity, newTab, pageSignal),
             Reason.DomCallback,
           );
           return;

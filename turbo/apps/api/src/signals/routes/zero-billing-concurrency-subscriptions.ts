@@ -70,6 +70,11 @@ const previewConcurrencySubscriptionChangeAuthed$ = command(
             "Restore the concurrency subscription before changing slots",
           );
         }
+        case "invalid_quantity": {
+          return badRequestMessage(
+            "Concurrency quantity cannot exceed 1000 slots",
+          );
+        }
         case "no_change": {
           return badRequestMessage(
             "New concurrency quantity must differ from the current quantity",

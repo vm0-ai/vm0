@@ -84,6 +84,7 @@ const billingStatusResponseSchema = z.object({
    */
   paymentMethodManagementAvailable: z.boolean().optional(),
   canBuyConcurrency: z.boolean().optional(),
+  concurrencyPurchaseReviewAvailable: z.boolean().optional(),
   canBuyCredits: z.boolean().optional(),
   memberInviteUsagePackRequired: z.boolean().optional(),
   memberInvitationAllowed: z.boolean().optional(),
@@ -400,6 +401,9 @@ const concurrencyCheckoutRequestSchema = z.object({
   cancelUrl: stripeRedirectUrlSchema,
 });
 
+const concurrencyCheckoutPreviewRequestSchema =
+  concurrencyCheckoutRequestSchema.pick({ quantity: true });
+
 const concurrencySubscriptionReduceRequestSchema = z.object({
   quantity: z.number().int().min(1).max(1000),
   successUrl: stripeRedirectUrlSchema,
@@ -411,7 +415,7 @@ const concurrencySubscriptionChangeRequestSchema = z.object({
 });
 
 const concurrencySubscriptionChangePreviewResponseSchema = z.object({
-  currentQuantity: z.number().int().min(1).max(1000),
+  currentQuantity: z.number().int().min(0).max(1000),
   targetQuantity: z.number().int().min(1).max(1000),
   immediateAmountCents: z.number().int().nonnegative(),
   nextRecurringAmountCents: z.number().int().nonnegative(),
@@ -820,6 +824,22 @@ export type ZeroBillingUsagePackMigrationContract =
  * Zero contract for POST /api/okou/billing/concurrency-checkout
  */
 export const zeroBillingConcurrencyCheckoutContract = c.router({
+  preview: {
+    method: "POST",
+    path: "/api/zero/billing/concurrency-checkout/preview",
+    headers: authHeadersSchema,
+    body: concurrencyCheckoutPreviewRequestSchema,
+    responses: {
+      200: concurrencySubscriptionChangePreviewResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      409: apiErrorSchema,
+      500: apiErrorSchema,
+      503: apiErrorSchema,
+    },
+    summary: "Preview a Stripe purchase for concurrency add-on slots",
+  },
   create: {
     method: "POST",
     path: "/api/okou/billing/concurrency-checkout",

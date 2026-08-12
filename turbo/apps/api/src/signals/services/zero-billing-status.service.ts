@@ -131,6 +131,7 @@ interface BillingOrgRow {
 interface BillingStatusResponse {
   tier: string;
   canBuyConcurrency: boolean;
+  concurrencyPurchaseReviewAvailable: boolean;
   canBuyCredits: boolean;
   memberInviteUsagePackRequired: boolean;
   memberInvitationAllowed: boolean;
@@ -600,6 +601,7 @@ function billingStatusResponse(args: {
   return {
     tier: org.tier,
     canBuyConcurrency: args.canBuyConcurrency,
+    concurrencyPurchaseReviewAvailable: true,
     canBuyCredits: args.canBuyCredits,
     memberInviteUsagePackRequired: args.memberInviteUsagePackRequired,
     memberInvitationAllowed: args.memberInvitationAllowed,

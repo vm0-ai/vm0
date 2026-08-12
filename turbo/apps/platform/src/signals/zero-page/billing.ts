@@ -237,7 +237,7 @@ const internalFormAmountOverride$ = state<string | null>(null);
 const internalConcurrencySubscriptionQuantity$ = state<number | null>(null);
 const internalConcurrencyPurchaseDialogOpen$ = state(false);
 
-export interface ConcurrencyConfirmDialogState {
+interface ConcurrencySubscriptionConfirmDialogState {
   readonly action: "change" | "restore";
   readonly subscriptionId: string;
   readonly currentQuantity: number;
@@ -247,6 +247,17 @@ export interface ConcurrencyConfirmDialogState {
   readonly targetQuantity: number | null;
   readonly preview: ConcurrencySubscriptionChangePreviewResponse | null;
 }
+
+interface ConcurrencyPurchaseConfirmDialogState {
+  readonly action: "purchase";
+  readonly newTab: boolean;
+  readonly quantity: number;
+  readonly preview: ConcurrencySubscriptionChangePreviewResponse;
+}
+
+export type ConcurrencyConfirmDialogState =
+  | ConcurrencyPurchaseConfirmDialogState
+  | ConcurrencySubscriptionConfirmDialogState;
 
 const internalConcurrencyConfirmDialog$ =
   state<ConcurrencyConfirmDialogState | null>(null);
@@ -858,7 +869,12 @@ export const startCreditCheckout$ = command(
 );
 
 export const startConcurrencyCheckout$ = command(
-  async ({ get }, quantity: number, newTab: boolean, signal: AbortSignal) => {
+  async (
+    { get, set },
+    quantity: number,
+    newTab: boolean,
+    signal: AbortSignal,
+  ) => {
     const successUrl = new URL("/", window.location.origin);
     successUrl.searchParams.set("concurrency", "purchased");
     const cancelUrl = checkoutReturnUrl();
@@ -878,11 +894,51 @@ export const startConcurrencyCheckout$ = command(
       [200],
     );
     signal.throwIfAborted();
+    if (result.body.url === successUrl.toString()) {
+      set(billingReload$, (value) => {
+        return value + 1;
+      });
+      set(internalConcurrencyConfirmDialog$, null);
+      set(internalConcurrencyPurchaseDialogOpen$, false);
+      toast.success(
+        i18n.t(($) => {
+          return $.billing.toasts.concurrencyAdded;
+        }),
+      );
+      return;
+    }
     if (newTab) {
       window.open(result.body.url, "_blank");
     } else {
       window.location.href = result.body.url;
     }
+  },
+);
+
+export const openConcurrencyPurchaseReview$ = command(
+  async (
+    { get, set },
+    quantity: number,
+    newTab: boolean,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroBillingConcurrencyCheckoutContract);
+    const result = await accept(
+      client.preview({
+        body: { quantity },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    set(internalConcurrencyPurchaseDialogOpen$, false);
+    set(internalConcurrencyConfirmDialog$, {
+      action: "purchase",
+      newTab,
+      quantity,
+      preview: result.body,
+    });
   },
 );
 
@@ -927,6 +983,7 @@ export const previewConcurrencySubscriptionChange$ = command(
     set(internalConcurrencyConfirmDialog$, (dialog) => {
       if (
         !dialog ||
+        dialog.action !== "change" ||
         dialog.subscriptionId !== args.subscriptionId ||
         dialog.targetQuantity !== args.quantity
       ) {
@@ -973,7 +1030,7 @@ export const openConcurrencyChangeReview$ = command(
 export const confirmConcurrencySubscriptionChange$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const dialog = get(internalConcurrencyConfirmDialog$);
-    if (!dialog?.preview) {
+    if (dialog?.action !== "change" || !dialog.preview) {
       throw new Error("Concurrency change preview is not available");
     }
     const createClient = get(zeroClient$);

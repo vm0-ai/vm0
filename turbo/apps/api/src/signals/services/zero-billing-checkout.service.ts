@@ -1,12 +1,15 @@
 import { command } from "ccstate";
-import type { UsagePackUsd } from "@vm0/api-contracts/contracts/zero-billing";
+import type {
+  ConcurrencySubscriptionChangePreviewResponse,
+  UsagePackUsd,
+} from "@vm0/api-contracts/contracts/zero-billing";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { orgPlanEntitlements } from "@vm0/db/schema/org-plan-entitlement";
 import { and, eq } from "drizzle-orm";
 
 import { env } from "../../lib/env";
 import { nowDate } from "../../lib/time";
-import { writeDb$ } from "../external/db";
+import { writeDb$, type ReadonlyDb } from "../external/db";
 import {
   getStripeClient,
   type StripeMetadataParam,
@@ -17,6 +20,8 @@ import { persistOrgAcquisitionAttribution$ } from "./acquisition-attribution.ser
 import {
   addStripeConcurrencySubscriptionItem$,
   applyStripeConcurrencySubscriptionChange$,
+  persistStripeConcurrencySubscription$,
+  previewStripeConcurrencySubscriptionChange$,
 } from "./zero-billing-concurrency-subscription.service";
 import { stripePreviewMetadata } from "./stripe-preview-metadata.service";
 
@@ -70,10 +75,40 @@ type StartConcurrencyPurchaseResult =
         | "pending_update";
     };
 
+type PreviewInitialConcurrencyPurchaseResult =
+  | {
+      readonly ok: true;
+      readonly preview: ConcurrencySubscriptionChangePreviewResponse;
+    }
+  | {
+      readonly ok: false;
+      readonly reason:
+        | "invalid_quantity"
+        | "missing_plan_subscription"
+        | "not_found"
+        | "canceling"
+        | "no_change"
+        | "pending_update";
+    };
+
 const CREDITS_PER_DOLLAR = 1000;
 const STRIPE_SUBSCRIPTION_PRICE_TIERS = ["pro", "team"] as const;
 export type SubscriptionCheckoutTier =
   (typeof STRIPE_SUBSCRIPTION_PRICE_TIERS)[number];
+
+async function orgPlanSubscriptionId(
+  db: ReadonlyDb,
+  orgId: string,
+): Promise<string | null> {
+  const [plan] = await db
+    .select({
+      stripeSubscriptionId: orgPlanEntitlements.stripeSubscriptionId,
+    })
+    .from(orgPlanEntitlements)
+    .where(eq(orgPlanEntitlements.orgId, orgId))
+    .limit(1);
+  return plan?.stripeSubscriptionId ?? null;
+}
 
 function legacyPriceIdsForTier(
   tier: SubscriptionCheckoutTier,
@@ -501,6 +536,37 @@ export const createCreditCheckoutSession$ = command(
   },
 );
 
+export const previewInitialConcurrencyPurchase$ = command(
+  async (
+    { set },
+    args: {
+      readonly orgId: string;
+      readonly priceId: string;
+      readonly quantity: number;
+    },
+    signal: AbortSignal,
+  ): Promise<PreviewInitialConcurrencyPurchaseResult> => {
+    const subscriptionId = await orgPlanSubscriptionId(
+      set(writeDb$),
+      args.orgId,
+    );
+    signal.throwIfAborted();
+    if (!subscriptionId) {
+      return { ok: false, reason: "missing_plan_subscription" };
+    }
+    return await set(
+      previewStripeConcurrencySubscriptionChange$,
+      {
+        subscriptionId,
+        priceId: args.priceId,
+        quantity: args.quantity,
+        mode: "absolute",
+      },
+      signal,
+    );
+  },
+);
+
 export const startConcurrencyPurchase$ = command(
   async (
     { set },
@@ -538,23 +604,19 @@ export const startConcurrencyPurchase$ = command(
       };
     }
 
-    const db = set(writeDb$);
-    const [plan] = await db
-      .select({
-        stripeSubscriptionId: orgPlanEntitlements.stripeSubscriptionId,
-      })
-      .from(orgPlanEntitlements)
-      .where(eq(orgPlanEntitlements.orgId, args.orgId))
-      .limit(1);
+    const subscriptionId = await orgPlanSubscriptionId(
+      set(writeDb$),
+      args.orgId,
+    );
     signal.throwIfAborted();
-    if (!plan?.stripeSubscriptionId) {
+    if (!subscriptionId) {
       return { ok: false, reason: "missing_plan_subscription" };
     }
 
     const result = await set(
       addStripeConcurrencySubscriptionItem$,
       {
-        subscriptionId: plan.stripeSubscriptionId,
+        subscriptionId,
         priceId: args.priceId,
         quantity: args.quantity,
       },
@@ -562,6 +624,14 @@ export const startConcurrencyPurchase$ = command(
     );
     if (!result.ok) {
       return result;
+    }
+    if (result.response.status !== "pending_payment") {
+      await set(
+        persistStripeConcurrencySubscription$,
+        args.orgId,
+        result.subscription,
+        signal,
+      );
     }
     return {
       ok: true,
