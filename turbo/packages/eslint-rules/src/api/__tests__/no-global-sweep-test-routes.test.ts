@@ -270,6 +270,35 @@ ruleTester.run("no-global-sweep-test-routes", noGlobalSweepTestRoutes, {
       errors: [{ messageId: "globalSweep" }],
     },
     {
+      name: "explicit undefined activates canonical factory property defaults",
+      filename: behaviorTest,
+      code: `
+        import { ROUTES } from "../../route";
+        import * as appFactory from "../../../app-factory";
+        function mount({ createApp: build = appFactory.createApp }) {
+          return build({ routes: ROUTES });
+        }
+        mount({ createApp: undefined });
+      `,
+      errors: [{ messageId: "globalSweep" }],
+    },
+    {
+      name: "canonical namespaces survive nested parameter member projections",
+      filename: behaviorTest,
+      code: `
+        import { ROUTES } from "../../route";
+        import * as appFactory from "../../../app-factory";
+        function mount(factory) {
+          return factory.createApp({ routes: ROUTES });
+        }
+        function forward({ options }) {
+          return mount(options.factory);
+        }
+        forward({ options: { factory: appFactory } });
+      `,
+      errors: [{ messageId: "globalSweep" }],
+    },
+    {
       name: "aggregate routes cannot flow through a local member projection",
       filename: behaviorTest,
       code: `

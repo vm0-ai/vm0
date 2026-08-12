@@ -611,6 +611,24 @@ export const noGlobalSweepTestRoutes = createRule({
       return resolutions.length > 0 ? "noncanonical" : "unknown";
     }
 
+    function isStaticallyUndefined(expression: TSESTree.Expression): boolean {
+      const current = unwrapExpression(expression);
+      if (
+        current.type === AST_NODE_TYPES.UnaryExpression &&
+        current.operator === "void"
+      ) {
+        return true;
+      }
+      if (
+        current.type !== AST_NODE_TYPES.Identifier ||
+        current.name !== "undefined"
+      ) {
+        return false;
+      }
+      const variable = variableInScope(context.sourceCode, current);
+      return !variable || variable.defs.length === 0;
+    }
+
     function factoryBindingResolution(
       source: TSESTree.Expression,
       binding: ObjectBinding,
@@ -644,18 +662,30 @@ export const noGlobalSweepTestRoutes = createRule({
       kind: FactoryValueKind,
       seen: ReadonlySet<TSESTree.Node> = new Set(),
     ): FactoryPropertyResolution {
-      if (path.length === 0) {
-        const isCanonical =
-          kind === "namespace"
-            ? isAppFactoryNamespace(expression, seen)
-            : isAppFactory(expression, seen);
-        return isCanonical ? "canonical" : "noncanonical";
-      }
       const current = unwrapExpression(expression);
       if (seen.has(current)) {
         return "unknown";
       }
       const nextSeen = new Set(seen).add(current);
+      if (path.length === 0) {
+        if (isStaticallyUndefined(current)) {
+          return "missing";
+        }
+        if (
+          current.type === AST_NODE_TYPES.MemberExpression &&
+          current.object.type !== AST_NODE_TYPES.Super
+        ) {
+          const name = memberName(current);
+          return name
+            ? factoryPathResolution(current.object, [name], kind, nextSeen)
+            : "unknown";
+        }
+        const isCanonical =
+          kind === "namespace"
+            ? isAppFactoryNamespace(current, seen)
+            : isAppFactory(current, seen);
+        return isCanonical ? "canonical" : "noncanonical";
+      }
       const [name, ...remainingPath] = path;
       if (
         name &&
