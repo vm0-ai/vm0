@@ -83,7 +83,26 @@ runner_chat_send() {
     local prompt="$2"
     local thread_id="$3"
     local selected_model="$4"
-    local client_event_id="${5:-}" payload
+    local client_event_id="${5:-}"
+    local parts
+
+    parts="$(jq -nc --arg prompt "$prompt" '[{type: "text", text: $prompt}]')"
+    runner_chat_send_parts \
+        "$agent_id" \
+        "$prompt" \
+        "$parts" \
+        "$thread_id" \
+        "$selected_model" \
+        "$client_event_id"
+}
+
+runner_chat_send_parts() {
+    local agent_id="$1"
+    local prompt="$2"
+    local parts="$3"
+    local thread_id="$4"
+    local selected_model="$5"
+    local client_event_id="${6:-}" payload
 
     if [[ -z "$client_event_id" ]]; then
         client_event_id="$(_runner_uuid)"
@@ -94,12 +113,13 @@ runner_chat_send() {
             --arg prompt "$prompt" \
             --arg threadId "$thread_id" \
             --arg clientEventId "$client_event_id" \
+            --argjson parts "$parts" \
             '{
                 agentId: $agentId,
                 prompt: $prompt,
                 threadId: $threadId,
                 clientEventId: $clientEventId,
-                userMessage: {version: 1, parts: [{type: "text", text: $prompt}]},
+                userMessage: {version: 1, parts: $parts},
                 hasTextContent: true
             }')"
     else
@@ -108,12 +128,13 @@ runner_chat_send() {
             --arg prompt "$prompt" \
             --arg model "$selected_model" \
             --arg clientEventId "$client_event_id" \
+            --argjson parts "$parts" \
             '{
                 agentId: $agentId,
                 prompt: $prompt,
                 model: $model,
                 clientEventId: $clientEventId,
-                userMessage: {version: 1, parts: [{type: "text", text: $prompt}]},
+                userMessage: {version: 1, parts: $parts},
                 hasTextContent: true
             }')"
     fi
@@ -213,6 +234,45 @@ _wait_for_runner_chat_output() {
     return 1
 }
 
+_wait_for_runner_chat_completion() {
+    local thread_id="$1"
+    local run_id="$2"
+    local timeout="${3:-30}"
+    local interval="${RUNNER_CHAT_EVENT_POLL_INTERVAL_SECONDS:-2}"
+    local start=$SECONDS
+    local response=""
+    local output_message=""
+
+    while (( SECONDS - start < timeout )); do
+        if response="$(runner_api_curl "/api/zero/chat-threads/$thread_id/events?limit=50" 2>&1)" &&
+            output_message="$(jq -er --arg runId "$run_id" '
+                [
+                    .events[]?
+                    | select(
+                        .eventType == "output.message" and
+                        .runId == $runId
+                    )
+                    | .content
+                    | select(type == "string" and test("\\S"))
+                ]
+                | last // empty
+            ' <<< "$response")" &&
+            jq -e --arg runId "$run_id" '
+                any(.events[]?;
+                    .eventType == "run.completed" and .runId == $runId
+                )
+            ' <<< "$response" >/dev/null; then
+            printf '%s\n' "$output_message"
+            return 0
+        fi
+        sleep "$interval"
+    done
+
+    echo "# Timed out (${timeout}s) waiting for completed chat output for run $run_id" >&2
+    echo "# Last chat event response: $response" >&2
+    return 1
+}
+
 _wait_for_runner_chat_steer_consumed() {
     local thread_id="$1"
     local run_id="$2"
@@ -264,7 +324,7 @@ _wait_for_runner_chat_steer_consumed() {
 
 _wait_for_runner_codex_events() {
     local run_id="$1"
-    local prompt="$2"
+    local expected_output="${2:-}"
     local timeout="${3:-30}"
     local interval="${RUNNER_EVENT_POLL_INTERVAL_SECONDS:-2}"
     local start=$SECONDS
@@ -272,14 +332,15 @@ _wait_for_runner_codex_events() {
 
     while (( SECONDS - start < timeout )); do
         if response="$(runner_api_curl "/api/zero/runs/$run_id/telemetry/agent?limit=100&order=asc" 2>&1)"; then
-            if jq -e --arg prompt "$prompt" '
+            if jq -e --arg expectedOutput "$expected_output" '
                 [.events[]?.eventData |
                     if type == "string" then . else tojson end
                 ] as $payloads |
                 .framework == "codex" and
                 any($payloads[]; contains("thread.started")) and
                 any($payloads[]; contains("turn.completed")) and
-                any($payloads[]; contains($prompt))
+                ($expectedOutput == "" or
+                    any($payloads[]; contains($expectedOutput)))
             ' <<< "$response" >/dev/null; then
                 printf '%s\n' "$response"
                 return 0

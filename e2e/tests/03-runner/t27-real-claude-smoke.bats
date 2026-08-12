@@ -1,9 +1,10 @@
 #!/usr/bin/env bats
 
-# Real Claude smoke test through supported billing, model, agent, and chat APIs.
+# Real Claude BYOK smoke test through supported model, agent, chat, and usage APIs.
 
 load '../../helpers/setup'
 load '../../helpers/runner-chat'
+load '../../helpers/runner-api'
 
 BATS_TEST_TIMEOUT=600
 
@@ -12,7 +13,7 @@ setup_file() {
     export E2E_API_TOKEN E2E_API_URL
     E2E_API_TOKEN="$(jq -er '.token | select(type == "string" and length > 0)' "$credentials")"
     E2E_API_URL="$(jq -er '.apiUrl | select(type == "string" and length > 0)' "$credentials")"
-    require_runner_api_credentials
+    runner_e2e_require_environment
 
     export RUNNER_AGENT_ID
     RUNNER_AGENT_ID="$(create_runner_agent \
@@ -166,8 +167,16 @@ run_real_claude_steer() {
     assert_output --partial "RESULT=579"
     assert_output --partial '"type":"result"'
     assert_output --partial '"subtype":"success"'
-    [[ -n "$(runner_chat_field "$output" '.runId')" ]]
+    local run_id thread_id
+    run_id="$(runner_chat_field "$output" '.runId')"
+    thread_id="$(runner_chat_field "$output" '.threadId')"
+    [[ -n "$run_id" ]]
     [[ -n "$(runner_chat_field "$output" '.sessionId')" ]]
+
+    run runner_e2e_assert_no_usage_for_thread "$thread_id" "$run_id"
+    echo "$output"
+    assert_success
+    assert_output --partial '"vm0UsageCredits":0'
 }
 
 @test "t27-2: real claude steers an active run then starts a successor" {
