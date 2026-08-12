@@ -237,7 +237,6 @@ import {
 } from "../../signals/zero-page/model-default-selection.ts";
 
 const MAX_FILE_SIZE = 1024 * 1024 * 1024; // 1 GB — keep in sync with web constants
-const FAST_MODE_ACTIVE_PRESS = Symbol("fast-mode-active-press");
 const COMPOSER_CONTROL_FOCUS_CLASS =
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
 
@@ -7411,67 +7410,37 @@ function ComposerFastModeButton({
     return $.settings.models.picker.fastImpact;
   });
   return (
-    <Popover
-      onOpenChange={(open, eventDetails) => {
-        if (
-          open &&
-          eventDetails.reason === "trigger-press" &&
-          Object.hasOwn(eventDetails.event, FAST_MODE_ACTIVE_PRESS)
-        ) {
-          eventDetails.cancel();
-        }
-      }}
-    >
-      <PopoverTrigger
-        asChild
-        openOnHover={!active}
-        delay={300}
-        closeDelay={120}
-      >
-        <Button
-          type="button"
-          variant="quiet"
-          size="icon-sm"
-          className={cn(
-            "shrink-0",
-            COMPOSER_CONTROL_ICON_CLASS,
-            active &&
-              "text-amber-600 hover:text-amber-700 dark:text-amber-300 dark:hover:text-amber-200",
-          )}
-          aria-label={label}
-          aria-pressed={active}
-          disabled={disabled}
-          onClickCapture={(event) => {
-            if (active) {
-              Object.defineProperty(event.nativeEvent, FAST_MODE_ACTIVE_PRESS, {
-                value: true,
+    <TooltipProvider delayDuration={800} skipDelayDuration={0}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            variant="quiet"
+            size="icon-sm"
+            className={cn(
+              "shrink-0",
+              COMPOSER_CONTROL_ICON_CLASS,
+              active &&
+                "text-amber-600 hover:text-amber-700 dark:text-amber-300 dark:hover:text-amber-200",
+            )}
+            aria-label={label}
+            aria-pressed={active}
+            disabled={disabled}
+            onClick={() => {
+              onChange({
+                selectedModel: value.selectedModel,
+                ...(active ? {} : { codexServiceTier: "fast" }),
               });
-            }
-          }}
-          onClick={() => {
-            onChange({
-              selectedModel: value.selectedModel,
-              ...(active ? {} : { codexServiceTier: "fast" }),
-            });
-          }}
-        >
-          <Zap fill={active ? "currentColor" : "none"} aria-hidden="true" />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent side="top" align="center" className="w-72 p-3">
-        <div className="flex items-center gap-2.5">
-          <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-300">
-            <Zap size={16} fill="currentColor" aria-hidden="true" />
-          </span>
-          <div className="min-w-0">
-            <p className="text-sm font-medium">{label}</p>
-            <p className="text-xs leading-relaxed text-muted-foreground">
-              {impact}
-            </p>
-          </div>
-        </div>
-      </PopoverContent>
-    </Popover>
+            }}
+          >
+            <Zap fill={active ? "currentColor" : "none"} aria-hidden="true" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="top">
+          {label} · {impact}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }
 

@@ -1,5 +1,45 @@
 # Changelog
 
+## [0.731.0](https://github.com/vm0-ai/vm0/compare/app-v0.730.4...app-v0.731.0) (2026-08-12)
+
+
+### Features
+
+* cut first-party cli producers over to okou ([#26491](https://github.com/vm0-ai/vm0/issues/26491)) ([33c4c03](https://github.com/vm0-ai/vm0/commit/33c4c034b421249e220bb0f586a514d44ed78655))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.321.0
+    * @vm0/core bumped to 8.547.0
+
+## [0.730.4](https://github.com/vm0-ai/vm0/compare/app-v0.730.3...app-v0.730.4) (2026-08-12)
+
+
+### Bug Fixes
+
+* show Fast details only on hover ([#26467](https://github.com/vm0-ai/vm0/issues/26467)) ([7df226c](https://github.com/vm0-ai/vm0/commit/7df226c0e92a8cad626254e6df4f3c301f5450a7))
+
+## [0.730.3](https://github.com/vm0-ai/vm0/compare/app-v0.730.2...app-v0.730.3) (2026-08-12)
+
+
+### Bug Fixes
+
+* **platform:** align auth logo CORS mode ([#26455](https://github.com/vm0-ai/vm0/issues/26455)) ([244f84a](https://github.com/vm0-ai/vm0/commit/244f84aeefdd45ade7a6a3168a62eefab1a3bb4b))
+* **platform:** restore artifact share and download actions ([#26454](https://github.com/vm0-ai/vm0/issues/26454)) ([390a702](https://github.com/vm0-ai/vm0/commit/390a702ac998e2de607aff8401a6c3eb92c8c5d1))
+
+## [0.730.2](https://github.com/vm0-ai/vm0/compare/app-v0.730.1...app-v0.730.2) (2026-08-12)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.320.0
+    * @vm0/core bumped to 8.546.4
+
 ## [0.730.1](https://github.com/vm0-ai/vm0/compare/app-v0.730.0...app-v0.730.1) (2026-08-12)
 
 

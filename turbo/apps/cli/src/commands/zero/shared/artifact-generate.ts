@@ -99,7 +99,7 @@ ${config.examples}
 
 Output:
   Prints a source-selection packet for the current agent. The
-  agent authors a static HTML artifact and hosts it with zero host. With no
+  agent authors a static HTML artifact and hosts it with okou host. With no
   --prompt and no piped input, prints the generation choices instead.
 
 Notes:

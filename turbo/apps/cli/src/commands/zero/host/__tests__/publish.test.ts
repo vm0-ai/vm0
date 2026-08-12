@@ -21,13 +21,13 @@ const ALIAS_URL = "https://demo-site.sites.example.com";
 const ARTIFACT_URL =
   "https://dpl-00000000-0000-4000-8000-000000000002.sites.example.com";
 const CHAT_SCOPE_CONFLICT_MESSAGE =
-  'Hosted site slug "demo-site" is owned outside this chat. Choose a different --site value and rerun the same zero host command.';
+  'Hosted site slug "demo-site" is owned outside this chat. Choose a different --site value and rerun the same okou host command.';
 
 function sha256(bytes: string): string {
   return createHash("sha256").update(bytes).digest("hex");
 }
 
-describe("zero host publish command", () => {
+describe("okou host publish command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);

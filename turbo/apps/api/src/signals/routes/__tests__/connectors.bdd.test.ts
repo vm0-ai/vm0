@@ -52,6 +52,7 @@ import { readUserSecrets } from "./helpers/user-config-state";
 import { mockClerkMembership } from "./helpers/api-bdd-clerk";
 import { createStoragesBddApi } from "./helpers/api-bdd-storages";
 import {
+  deleteCustomConnectorCredentialValues,
   readConnectorCredentialStorageState,
   readCustomConnectorCredentialStorageParent,
   readCustomConnectorOAuthStorageState,
@@ -3149,6 +3150,101 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       connected: true,
       configuredFieldKeys: ["api_key", "subdomain"],
       missingRequiredFields: [],
+    });
+
+    await connectorsApi.deleteCustomConnector(admin, created.id);
+  });
+
+  it("reads custom connector configured markers only from shared storage", async () => {
+    const admin = createBddApi(context).user({ orgRole: "org:admin" });
+    const orgId = requiredOrgId(admin);
+    const created = await connectorsApi.createCustomConnector(admin, {
+      displayName: "BDD Shared Credential Markers",
+      prefixTemplates: [
+        "https://{{variables.subdomain}}.shared-markers.example.test/v1/",
+      ],
+      fields: [
+        {
+          key: "api_key",
+          label: "API key",
+          kind: "secret",
+          required: true,
+        },
+        {
+          key: "subdomain",
+          label: "Subdomain",
+          kind: "variable",
+          required: true,
+        },
+      ],
+      headerInjections: [
+        {
+          name: "Authorization",
+          valueTemplate: "Bearer {{secrets.api_key}}",
+        },
+      ],
+      queryInjections: [],
+      authMode: "manual",
+    });
+    const values = [
+      { key: "api_key", kind: "secret" as const, value: "shared-secret" },
+      { key: "subdomain", kind: "variable" as const, value: "shared" },
+    ];
+    await connectorsApi.setCustomConnectorValues(admin, created.id, values);
+
+    await deleteCustomConnectorCredentialValues(context, {
+      orgId,
+      userId: admin.userId,
+      customConnectorId: created.id,
+      storage: "legacy",
+    });
+    await expect(
+      connectorsApi.readCustomConnector(admin, created.id),
+    ).resolves.toMatchObject({
+      connected: true,
+      configuredFieldKeys: ["api_key", "subdomain"],
+      missingRequiredFields: [],
+    });
+    await expect(
+      readCustomConnectorCredentialStorageParent(context, {
+        orgId,
+        userId: admin.userId,
+        customConnectorId: created.id,
+      }),
+    ).resolves.toMatchObject({
+      secrets: [{ name: "api_key" }],
+      variables: [{ name: "subdomain", value: "shared" }],
+      legacy_custom_values: [],
+      legacy_custom_secret_encrypted_value: null,
+    });
+
+    await connectorsApi.setCustomConnectorValues(admin, created.id, values);
+    await deleteCustomConnectorCredentialValues(context, {
+      orgId,
+      userId: admin.userId,
+      customConnectorId: created.id,
+      storage: "shared",
+    });
+    await expect(
+      readCustomConnectorCredentialStorageParent(context, {
+        orgId,
+        userId: admin.userId,
+        customConnectorId: created.id,
+      }),
+    ).resolves.toMatchObject({
+      secrets: [],
+      variables: [],
+      legacy_custom_values: [
+        { kind: "secret", key: "api_key" },
+        { kind: "variable", key: "subdomain" },
+      ],
+    });
+    await expect(
+      connectorsApi.readCustomConnector(admin, created.id),
+    ).resolves.toMatchObject({
+      connected: false,
+      configuredFieldKeys: [],
+      missingRequiredFields: ["api_key", "subdomain"],
     });
 
     await connectorsApi.deleteCustomConnector(admin, created.id);

@@ -36,7 +36,7 @@ const EXPECTED_WEBSITE_TEMPLATE_V2_SHA256: Record<string, string> = {
     "213197ef200b16738b51b5d6c4a90b6e6c12c86c63207ef6afc31456cdd0d2e1",
 };
 
-describe("zero resource pull registry resolver", () => {
+describe("okou resource pull registry resolver", () => {
   it("resolves a presentation color system archive", () => {
     expect(findRegistryResourceForPull("color-system:carnival")).toEqual(
       expect.objectContaining({
@@ -102,7 +102,7 @@ describe("zero resource pull registry resolver", () => {
   });
 });
 
-describe("zero resource pull command", () => {
+describe("okou resource pull command", () => {
   const downloadUrl = "https://r2.example.com/registry/vm0-illustration.tar.gz";
   const sha256 =
     "03e77d6968190b9f1888a900963135e92f75b40a6c37e1c1bae999ea49669a37";

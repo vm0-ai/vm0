@@ -47,8 +47,8 @@ export const downloadFileCommand = new Command()
     "after",
     `
 Examples:
-  Download to default temp path: zero github download-file https://github.com/user-attachments/assets/abc123 --filename screenshot.png
-  Download to explicit path:     zero github download-file https://github.com/user-attachments/assets/abc123 -o /tmp/screenshot.png
+  Download to default temp path: okou github download-file https://github.com/user-attachments/assets/abc123 --filename screenshot.png
+  Download to explicit path:     okou github download-file https://github.com/user-attachments/assets/abc123 -o /tmp/screenshot.png
 
 Output:
   Prints a JSON object to stdout on success:
@@ -57,7 +57,7 @@ Output:
 How to read the downloaded file:
   - Images (png/jpg/gif/webp/svg): open the file path with your image viewing tool
   - Videos (mp4/mov/webm): transcribe audio first with
-      zero video transcribe --url <download-url>
+      okou video transcribe --url <download-url>
     or extract frames with
       ffmpeg -i <path> -vf "fps=1" -q:v 2 /tmp/github_frame_%03d.jpg
   - PDF/text/csv/json/markdown: read the file directly

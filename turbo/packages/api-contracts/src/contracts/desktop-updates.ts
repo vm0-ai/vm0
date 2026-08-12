@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { initContract } from "./base";
+import { DESKTOP_PRODUCTS } from "./client-headers";
 import { apiErrorSchema } from "./errors";
 
 const c = initContract();
@@ -7,6 +8,7 @@ const c = initContract();
 const desktopUpdateChannelSchema = z.enum(["stable"]);
 const desktopUpdatePlatformSchema = z.enum(["darwin"]);
 const desktopUpdateArchitectureSchema = z.enum(["arm64"]);
+const desktopUpdateProductSchema = z.enum(DESKTOP_PRODUCTS);
 
 export type DesktopUpdateChannel = z.infer<typeof desktopUpdateChannelSchema>;
 export type DesktopUpdatePlatform = z.infer<typeof desktopUpdatePlatformSchema>;
@@ -75,5 +77,51 @@ export const desktopUpdatesContract = c.router({
       404: apiErrorSchema,
     },
     summary: "Get the desktop auto-update feed",
+  },
+  productReleasePage: {
+    method: "GET",
+    path: "/api/desktop/updates/:product/:channel/:platform/:arch/release",
+    pathParams: z.object({
+      product: desktopUpdateProductSchema,
+      channel: desktopUpdateChannelSchema,
+      platform: desktopUpdatePlatformSchema,
+      arch: desktopUpdateArchitectureSchema,
+    }),
+    responses: {
+      302: c.noBody(),
+      404: apiErrorSchema,
+    },
+    summary: "Redirect to a product-specific desktop release page",
+  },
+  productDmgDownload: {
+    method: "GET",
+    path: "/api/desktop/updates/:product/:channel/:platform/:arch/dmg",
+    pathParams: z.object({
+      product: desktopUpdateProductSchema,
+      channel: desktopUpdateChannelSchema,
+      platform: desktopUpdatePlatformSchema,
+      arch: desktopUpdateArchitectureSchema,
+    }),
+    responses: {
+      302: c.noBody(),
+      404: apiErrorSchema,
+    },
+    summary: "Redirect to a product-specific desktop DMG download",
+  },
+  productFeed: {
+    method: "GET",
+    path: "/api/desktop/updates/:product/:channel/:platform/:arch/RELEASES.json",
+    pathParams: z.object({
+      product: desktopUpdateProductSchema,
+      channel: desktopUpdateChannelSchema,
+      platform: desktopUpdatePlatformSchema,
+      arch: desktopUpdateArchitectureSchema,
+    }),
+    responses: {
+      200: squirrelMacReleasesSchema,
+      400: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Get a product-specific desktop auto-update feed",
   },
 });

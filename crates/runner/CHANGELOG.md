@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.164.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.164.2...runner-rs-v0.164.3) (2026-08-12)
+
+## [0.164.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.164.1...runner-rs-v0.164.2) (2026-08-12)
+
+
+### Bug Fixes
+
+* **python:** centralize firewall permission name validation ([#26469](https://github.com/vm0-ai/vm0/issues/26469)) ([050cfa5](https://github.com/vm0-ai/vm0/commit/050cfa5ca8240a61188730edd455846950d7f8cb))
+* **python:** preserve malformed base literal scope ([#26471](https://github.com/vm0-ai/vm0/issues/26471)) ([9a7ddfa](https://github.com/vm0-ai/vm0/commit/9a7ddfa9c07363b506be03c42613c4ed92ed8f0e))
+
+## [0.164.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.164.0...runner-rs-v0.164.1) (2026-08-12)
+
+
+### Documentation
+
+* **python:** clarify firewall auth error contract ([#26447](https://github.com/vm0-ai/vm0/issues/26447)) ([7e4536e](https://github.com/vm0-ai/vm0/commit/7e4536e33bb7f419568d3b69ef69de252c9ac83b))
+
+
+### Refactoring
+
+* **runner:** centralize setup directory trust walking ([#26452](https://github.com/vm0-ai/vm0/issues/26452)) ([8bad407](https://github.com/vm0-ai/vm0/commit/8bad407c14ff99234da695cef441bd34d5a9e41c))
+
 ## [0.164.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.163.6...runner-rs-v0.164.0) (2026-08-11)
 
 

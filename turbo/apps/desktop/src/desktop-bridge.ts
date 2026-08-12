@@ -2,6 +2,7 @@ import type {
   ComputerUseAutomationPermissionTarget,
   DesktopComputerUseState,
 } from "./computer-use-types";
+import type { DesktopIdentity } from "./config";
 
 export interface DesktopAuthUser {
   readonly userId: string;
@@ -92,11 +93,17 @@ export interface DesktopDeveloperToolsApi {
   readonly subscribe: (callback: () => void) => () => void;
 }
 
+export type DesktopIdentityInfo = Pick<
+  DesktopIdentity,
+  "brandName" | "displayName" | "product"
+>;
+
 declare global {
   interface Window {
     vm0DesktopAuth?: DesktopAuthApi;
     vm0DesktopComputerUse?: DesktopComputerUseApi;
     vm0DesktopDeveloperTools?: DesktopDeveloperToolsApi;
+    vm0DesktopIdentity?: DesktopIdentityInfo;
   }
 }
 

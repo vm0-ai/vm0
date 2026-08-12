@@ -37,7 +37,10 @@ import {
   getDatasetName,
   ingestToAxiom,
 } from "./signals/external/axiom";
-import type { RouteEntry } from "./signals/route-entry";
+import {
+  type RouteEntry,
+  withApiNamespaceAliases,
+} from "./signals/route-entry";
 import { configureChatRunFinishedEventDispatcher } from "./signals/services/chat-run-finished-event-registration.service";
 import { configurePiEdgeTurnDispatcher } from "./signals/services/pi-edge-turn-registration.service";
 import {
@@ -596,7 +599,7 @@ export function createAppWithRoutes({
     app.get(`${path}/*`, redirectToWeb);
   }
 
-  for (const { route, handler } of routes) {
+  for (const { route, handler } of withApiNamespaceAliases(routes)) {
     app.on(route.method, route.path, honoSignalHandler(handler, route, signal));
   }
 

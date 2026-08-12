@@ -222,11 +222,11 @@ jobs:
             fi
           done
 
-          if printf '%s\n' "$CHANGED_FILES" | grep -qE "^turbo/packages/db/src/(migrations|schema|jsonb-contracts)/"; then
-            echo "Migration, schema, or JSONB contract changes detected"
+          if printf '%s\n' "$CHANGED_FILES" | grep -qE '^turbo/packages/db/(src/(migrations|schema|jsonb-contracts)/|scripts/(migration-runner|test-migration-runner-timeouts)\.ts$)'; then
+            echo "Migration, schema, JSONB contract, or migration runner changes detected"
             echo "migration-changed=true" >> "$GITHUB_OUTPUT"
           else
-            echo "No migration, schema, or JSONB contract changes"
+            echo "No migration, schema, JSONB contract, or migration runner changes"
             echo "migration-changed=false" >> "$GITHUB_OUTPUT"
           fi
 
@@ -730,7 +730,7 @@ jobs:
       - uses: ./.github/actions/toolchain-init
       - name: Test CLI
         working-directory: turbo
-        run: pnpm vitest run --project=@vm0/zero-cli --coverage.enabled --coverage.reporter=json
+        run: pnpm vitest run --project=@vm0/okou-cli --coverage.enabled --coverage.reporter=json
       - name: Upload coverage to Codecov
         if: success() || failure()
         uses: codecov/codecov-action@v7
@@ -2035,10 +2035,10 @@ jobs:
 
       - name: Install CLI dependencies
         if: steps.existing.outputs.exists != 'true'
-        run: cd turbo && pnpm install --frozen-lockfile --filter @vm0/zero-cli...
+        run: cd turbo && pnpm install --frozen-lockfile --filter @vm0/okou-cli...
       - name: Build CLI
         if: steps.existing.outputs.exists != 'true'
-        run: cd turbo && pnpm --filter @vm0/zero-cli build
+        run: cd turbo && pnpm --filter @vm0/okou-cli build
         env:
           DEFAULT_SENTRY_DSN: ${{ vars.SENTRY_DSN_CLI }}
 
@@ -2114,9 +2114,8 @@ jobs:
           bash .github/scripts/verify-okou-cli-artifact.sh \
             /tmp/okou-cli-artifact \
             "$ARTIFACT_SHA"
-          npx --yes \
-            --package=/tmp/okou-cli-artifact/package.tgz \
-            zero --help
+          bash .github/scripts/smoke-okou-cli-artifact.sh \
+            /tmp/okou-cli-artifact/package.tgz
 
       - name: Verify CLI artifact through CDN
         env:
@@ -2136,6 +2135,8 @@ jobs:
           bash .github/scripts/verify-okou-cli-artifact.sh \
             "$cdn_dir" \
             "$ARTIFACT_SHA"
+          bash .github/scripts/smoke-okou-cli-artifact.sh \
+            "$cdn_dir/package.tgz"
 
       - name: Upload CLI artifact
         uses: actions/upload-artifact@v7
@@ -2190,13 +2191,16 @@ jobs:
           package_root="$(mktemp -d)"
           tar -xzf /tmp/cli-package/package.tgz -C "$package_root"
           node_prefix=$(dirname "$(dirname "$(command -v node)")")
-          cli_dir="$node_prefix/lib/node_modules/@vm0/zero-cli"
+          cli_dir="$node_prefix/lib/node_modules/@vm0/okou-cli"
           sudo rm -rf "$cli_dir"
           sudo mkdir -p "$node_prefix/lib/node_modules/@vm0"
           sudo cp -a "$package_root/package" "$cli_dir"
-          sudo chmod +x "$cli_dir/zero.js"
-          sudo ln -sf "$cli_dir/zero.js" "$node_prefix/bin/zero"
-          zero --help
+          sudo chmod +x "$cli_dir/okou.js"
+          sudo ln -sf "$cli_dir/okou.js" "$node_prefix/bin/okou"
+          sudo ln -sf "$cli_dir/okou.js" "$node_prefix/bin/zero"
+          okou --help
+          zero --help # okou-cutover-audit: compatibility-only
+          zero __agent-loop --help # okou-cutover-audit: compatibility-only
       - name: Run Serial E2E Tests
         run: |
           echo "=== Running Serial E2E Tests ==="

@@ -232,7 +232,7 @@ function trackActiveAgentError(): () => boolean {
   };
 }
 
-describe("zero chat thread IndexedDB fallback", () => {
+describe("okou chat thread IndexedDB fallback", () => {
   beforeEach(async () => {
     await clearCachedChatData();
   });

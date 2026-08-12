@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { COMPUTER_USE_CHANNELS } from "./computer-use-ipc-channels";
 import { DESKTOP_AUTH_CHANNELS } from "./desktop-auth-ipc-channels";
 import { DESKTOP_DEVELOPER_TOOLS_CHANNELS } from "./desktop-developer-tools-ipc-channels";
+import { DESKTOP_IDENTITY_CHANNEL } from "./desktop-identity-ipc-channels";
 import type {
   DesktopAuthApi,
   DesktopComputerUseApi,
@@ -13,6 +14,7 @@ type IpcInvoke = (channel: string, ...args: unknown[]) => Promise<unknown>;
 type IpcListener = (...args: unknown[]) => void;
 type IpcOn = (channel: string, listener: IpcListener) => void;
 type IpcOff = (channel: string, listener: IpcListener) => void;
+type IpcSendSync = (channel: string) => unknown;
 
 const electronMock = vi.hoisted(() => {
   const exposed = new Map<string, unknown>();
@@ -31,6 +33,11 @@ const electronMock = vi.hoisted(() => {
   const off = vi.fn<IpcOff>((channel, listener) => {
     listeners.get(channel)?.delete(listener);
   });
+  const sendSync = vi.fn<IpcSendSync>(() => ({
+    product: "zero",
+    brandName: "Zero",
+    displayName: "Zero Computer Use",
+  }));
 
   return {
     contextBridge: {
@@ -46,6 +53,7 @@ const electronMock = vi.hoisted(() => {
       invoke,
       off,
       on,
+      sendSync,
     },
     listeners,
   };
@@ -66,6 +74,7 @@ beforeEach(() => {
   electronMock.ipcRenderer.invoke.mockClear();
   electronMock.ipcRenderer.off.mockClear();
   electronMock.ipcRenderer.on.mockClear();
+  electronMock.ipcRenderer.sendSync.mockClear();
 });
 
 describe("Desktop preload bridge", () => {
@@ -80,6 +89,7 @@ describe("Desktop preload bridge", () => {
       "vm0DesktopAuth",
       "vm0DesktopComputerUse",
       "vm0DesktopDeveloperTools",
+      "vm0DesktopIdentity",
     ]);
     expect(exposedApi<DesktopAuthApi>("vm0DesktopAuth")).toBeTruthy();
     expect(
@@ -88,6 +98,14 @@ describe("Desktop preload bridge", () => {
     expect(
       exposedApi<DesktopDeveloperToolsApi>("vm0DesktopDeveloperTools"),
     ).toBeTruthy();
+    expect(exposedApi("vm0DesktopIdentity")).toStrictEqual({
+      product: "zero",
+      brandName: "Zero",
+      displayName: "Zero Computer Use",
+    });
+    expect(electronMock.ipcRenderer.sendSync).toHaveBeenCalledExactlyOnceWith(
+      DESKTOP_IDENTITY_CHANNEL,
+    );
   });
 
   it("routes desktop auth API calls through IPC channels", async () => {

@@ -1089,7 +1089,7 @@
     "storageId": "385d1ebf-af69-4530-9b7a-11fb9a47badf",
     "frontmatter": {
       "name": "computer-use",
-      "description": "Operate the user's connected desktop apps through Zero Computer Use. Use when a task explicitly asks for zero computer-use, desktop computer use, opening or inspecting a local app, reading a GUI, clicking UI elements, using Slack/Safari/Chrome/Arc/Notion/Finder or another desktop app, taking an app screenshot, or performing a UI workflow that cannot be completed through normal APIs alone."
+      "description": "Operate the user's connected desktop apps through Zero Computer Use. Use when a task explicitly asks for okou computer-use, desktop computer use, opening or inspecting a local app, reading a GUI, clicking UI elements, using Slack/Safari/Chrome/Arc/Notion/Finder or another desktop app, taking an app screenshot, or performing a UI workflow that cannot be completed through normal APIs alone."
     },
     "storageName": "agent-skills@vm0-ai/vm0-skills/tree/main/computer-use",
     "storageSize": 3397,
@@ -1991,7 +1991,7 @@
     "storageId": "a4c85458-994c-4b12-89b4-2abf3b3410f7",
     "frontmatter": {
       "name": "gen",
-      "description": "Use vm0 Zero generation pipelines via `zero generate` for images, videos, voice, presentations, websites, reports, posters, docs designs, dashboard designs, mobile app designs, and connector-backed text/code/document generation. Use when a user asks to generate an artifact and the right built-in pipeline, style, model, or connector should be discovered at runtime."
+      "description": "Use vm0 Okou generation pipelines via `okou generate` for images, videos, voice, presentations, websites, reports, posters, docs designs, dashboard designs, mobile app designs, and connector-backed text/code/document generation. Use when a user asks to generate an artifact and the right built-in pipeline, style, model, or connector should be discovered at runtime."
     },
     "storageName": "agent-skills@vm0-ai/vm0-skills/tree/main/gen",
     "storageSize": 2944,
@@ -3113,7 +3113,7 @@
     "storageId": "f5cd8a7d-86cd-40f4-bf30-9785d65d276c",
     "frontmatter": {
       "name": "local-agent",
-      "description": "VM0 local-agent CLI for delegating work to an already linked local Codex or Claude host. Use when an agent should list local-agent hosts or run tasks through `npx --yes --package=\"$CLI_PKG_URL\" zero local-agent`."
+      "description": "VM0 local-agent CLI for delegating work to an already linked local Codex or Claude host. Use when an agent should list local-agent hosts or run tasks through `npx --yes --package=\"$CLI_PKG_URL\" okou local-agent`."
     },
     "storageName": "agent-skills@vm0-ai/vm0-skills/tree/main/local-agent",
     "storageSize": 2011,
@@ -3135,7 +3135,7 @@
     "storageId": "7552a830-1a04-4c39-b2e7-fd1d1c71605f",
     "frontmatter": {
       "name": "local-browser",
-      "description": "VM0 Local Browser connector for using a user's paired browser extension. Use when a task needs current tabs, page snapshots, screenshots, selected text, page metadata, or user-approved browser actions through `npx --yes --package=\"$CLI_PKG_URL\" zero local-browser`."
+      "description": "VM0 Local Browser connector for using a user's paired browser extension. Use when a task needs current tabs, page snapshots, screenshots, selected text, page metadata, or user-approved browser actions through `npx --yes --package=\"$CLI_PKG_URL\" okou local-browser`."
     },
     "storageName": "agent-skills@vm0-ai/vm0-skills/tree/main/local-browser",
     "storageSize": 1413,

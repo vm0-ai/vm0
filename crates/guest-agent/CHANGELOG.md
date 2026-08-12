@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.70.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.69.1...guest-agent-v0.70.0) (2026-08-12)
+
+
+### Features
+
+* cut first-party cli producers over to okou ([#26491](https://github.com/vm0-ai/vm0/issues/26491)) ([33c4c03](https://github.com/vm0-ai/vm0/commit/33c4c034b421249e220bb0f586a514d44ed78655))
+
+## [0.69.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.69.0...guest-agent-v0.69.1) (2026-08-12)
+
+
+### Documentation
+
+* **guest-agent:** clarify secret length byte threshold ([#26448](https://github.com/vm0-ai/vm0/issues/26448)) ([274efbc](https://github.com/vm0-ai/vm0/commit/274efbca39310e71a0dc04e0f04374216ec03ef2))
+
 ## [0.69.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.68.0...guest-agent-v0.69.0) (2026-08-11)
 
 

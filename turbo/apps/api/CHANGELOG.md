@@ -1,5 +1,84 @@
 # Changelog
 
+## [1.431.0](https://github.com/vm0-ai/vm0/compare/api-v1.430.2...api-v1.431.0) (2026-08-12)
+
+
+### Features
+
+* cut first-party cli producers over to okou ([#26491](https://github.com/vm0-ai/vm0/issues/26491)) ([33c4c03](https://github.com/vm0-ai/vm0/commit/33c4c034b421249e220bb0f586a514d44ed78655))
+
+
+### Refactoring
+
+* **api:** reclaim unsupported chat event snapshots ([#26486](https://github.com/vm0-ai/vm0/issues/26486)) ([dff483a](https://github.com/vm0-ai/vm0/commit/dff483a95f1b315b2b5dc33a4304b0683c847b5d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.321.0
+    * @vm0/core bumped to 8.547.0
+    * @vm0/db bumped to 1.195.0
+    * @vm0/pi-agent-runtime bumped to 1.3.51
+
+## [1.430.2](https://github.com/vm0-ai/vm0/compare/api-v1.430.1...api-v1.430.2) (2026-08-12)
+
+
+### Bug Fixes
+
+* **connectors:** filter custom credential snapshot ([#26480](https://github.com/vm0-ai/vm0/issues/26480)) ([1b77900](https://github.com/vm0-ai/vm0/commit/1b77900ad7c6fb1dce9c23829e62845e81898ba9))
+
+## [1.430.1](https://github.com/vm0-ai/vm0/compare/api-v1.430.0...api-v1.430.1) (2026-08-12)
+
+
+### Bug Fixes
+
+* **connectors:** snapshot custom credential reads ([#26462](https://github.com/vm0-ai/vm0/issues/26462)) ([25b37e0](https://github.com/vm0-ai/vm0/commit/25b37e0832873cf0fdcd67c13a5f5516b6e76a9c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/db bumped to 1.194.7
+
+## [1.430.0](https://github.com/vm0-ai/vm0/compare/api-v1.429.2...api-v1.430.0) (2026-08-12)
+
+
+### Features
+
+* **desktop:** isolate okou updater and auth ([#26433](https://github.com/vm0-ai/vm0/issues/26433)) ([80425ee](https://github.com/vm0-ai/vm0/commit/80425ee6195ea235c6cc5f1690149b640918ab53))
+
+
+### Refactoring
+
+* **connectors:** read custom credentials from shared storage ([#26423](https://github.com/vm0-ai/vm0/issues/26423)) ([1c43592](https://github.com/vm0-ai/vm0/commit/1c4359263bcb85991742670fa13ff1bbbd156fb4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.320.0
+    * @vm0/core bumped to 8.546.4
+    * @vm0/db bumped to 1.194.6
+    * @vm0/pi-agent-runtime bumped to 1.3.50
+
+## [1.429.2](https://github.com/vm0-ai/vm0/compare/api-v1.429.1...api-v1.429.2) (2026-08-12)
+
+
+### Refactoring
+
+* **db:** contract legacy chat-event storage ([#26426](https://github.com/vm0-ai/vm0/issues/26426)) ([16c9c8c](https://github.com/vm0-ai/vm0/commit/16c9c8ce7f15c2ee964da2f5c87d1a6d67253de7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/db bumped to 1.194.5
+
 ## [1.429.1](https://github.com/vm0-ai/vm0/compare/api-v1.429.0...api-v1.429.1) (2026-08-12)
 
 

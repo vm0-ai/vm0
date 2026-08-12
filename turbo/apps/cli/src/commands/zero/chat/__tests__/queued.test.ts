@@ -32,7 +32,7 @@ function promptEvent(args: {
   };
 }
 
-describe("zero chat queued command", () => {
+describe("okou chat queued command", () => {
   const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
 
   beforeEach(() => {

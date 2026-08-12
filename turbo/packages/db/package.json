@@ -1,6 +1,6 @@
 {
   "name": "@vm0/db",
-  "version": "1.194.4",
+  "version": "1.195.0",
   "private": true,
   "type": "module",
   "exports": {
@@ -30,7 +30,8 @@
     "db:migrate": "tsx scripts/migrate.ts",
     "db:studio": "drizzle-kit studio",
     "db:reset": "tsx scripts/reset-db.ts",
-    "test:migration-consistency": "tsx scripts/test-migration-consistency-schema.ts",
+    "test:migration-consistency": "pnpm test:migration-runner && tsx scripts/test-migration-consistency-schema.ts",
+    "test:migration-runner": "tsx scripts/test-migration-runner-timeouts.ts",
     "lint:jsonb-contracts": "tsx scripts/check-jsonb-contracts.ts"
   },
   "dependencies": {

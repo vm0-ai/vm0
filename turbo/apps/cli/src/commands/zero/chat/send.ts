@@ -101,7 +101,7 @@ function readUserMessageDocument(path: string): UserMessageInputDocument {
     const message = error instanceof Error ? error.message : String(error);
     printChatUsageError(
       `Failed to read user message file "${path}": ${message}`,
-      "Pass a readable JSON file. Run: zero chat send --help",
+      "Pass a readable JSON file. Run: okou chat send --help",
     );
   }
 
@@ -112,7 +112,7 @@ function readUserMessageDocument(path: string): UserMessageInputDocument {
     const message = error instanceof Error ? error.message : String(error);
     printChatUsageError(
       `User message file "${path}" is not valid JSON: ${message}`,
-      "Run: zero chat send --help",
+      "Run: okou chat send --help",
     );
   }
 
@@ -176,17 +176,17 @@ export const sendCommand = new Command()
     "after",
     `
 Examples:
-  Send to this chat:  zero chat send --text "Continue the analysis"
-  Send to a thread:   zero chat send --thread-id <thread-id> --text "Continue"
-  Pipe a message:     printf "Continue" | zero chat send --thread-id <thread-id>
-  Send a document:    zero chat send --user-message-file ./message.json
-  Print JSON:         zero chat send --text "Continue" --json
+  Send to this chat:  okou chat send --text "Continue the analysis"
+  Send to a thread:   okou chat send --thread-id <thread-id> --text "Continue"
+  Pipe a message:     printf "Continue" | okou chat send --thread-id <thread-id>
+  Send a document:    okou chat send --user-message-file ./message.json
+  Print JSON:         okou chat send --text "Continue" --json
 ${USER_MESSAGE_JSON_HELP}
 
 Notes:
   - --text wraps the message in a version 1 UserMessageDocument with one text part
   - --user-message-file sends the document as written, validated before the request
-  - file parts reference an uploaded web file id (zero web upload-file)
+  - file parts reference an uploaded web file id (okou web upload-file)
   - The API derives the agent prompt and title state from the document itself
   - Every normal message enters the thread queue first; an idle queue may dispatch it immediately
   - Authenticates via ZERO_TOKEN (requires chat-thread:read and chat-event:write capabilities)`,

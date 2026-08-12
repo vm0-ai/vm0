@@ -158,8 +158,8 @@ Manual Streamable HTTP MCP connector example:
   }
 
 Examples:
-  zero connector custom create --file ./connector.json
-  zero connector custom create --file ./connector.json --json
+  okou connector custom create --file ./connector.json
+  okou connector custom create --file ./connector.json --json
 
 Notes:
   - This command only creates the connector definition; it does not store a

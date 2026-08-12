@@ -1,5 +1,5 @@
 /**
- * Tests for zero logs list command
+ * Tests for okou logs list command
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: listCommand.parseAsync()
@@ -34,7 +34,7 @@ const emptyFilters = {
   agents: [],
 };
 
-describe("zero logs list command", () => {
+describe("okou logs list command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);

@@ -1,5 +1,6 @@
 import { command } from "ccstate";
 import { and, asc, eq, gt, inArray, sql } from "drizzle-orm";
+import type { UserMessageDocument } from "@vm0/api-contracts/contracts/chat-threads";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import {
   chatEventSearchDocs,
@@ -66,7 +67,7 @@ function searchDocRole(eventType: string): SearchableRole | null {
 function searchDocText(row: {
   readonly eventType: (typeof chatEvents.$inferSelect)["eventType"];
   readonly content: string | null;
-  readonly userMessage: (typeof chatEvents.$inferSelect)["userMessage"];
+  readonly userMessage: UserMessageDocument | null;
 }): string | null {
   const userMessage = requiredUserMessageForEvent(
     row.eventType,

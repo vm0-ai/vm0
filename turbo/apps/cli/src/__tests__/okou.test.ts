@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { program, registerZeroCommands } from "../zero";
+import { program, registerZeroCommands } from "../okou";
 
-describe("zero CLI program", () => {
+describe("Okou CLI program", () => {
   registerZeroCommands(program);
   const commandNames = program.commands.map((cmd) => {
     return cmd.name();
@@ -10,11 +10,12 @@ describe("zero CLI program", () => {
     return !name.startsWith("__");
   });
 
-  it("should be named 'zero'", () => {
-    expect(program.name()).toBe("zero");
+  it("should use the canonical Okou product identity", () => {
+    expect(program.name()).toBe("okou");
+    expect(program.description()).toContain("Okou CLI");
   });
 
-  it("should register all expected zero commands", () => {
+  it("should register all expected Okou commands", () => {
     const expectedCommands = [
       "model",
       "model-provider",

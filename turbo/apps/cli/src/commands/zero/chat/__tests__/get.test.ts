@@ -1,5 +1,5 @@
 /**
- * Tests for zero chat get command
+ * Tests for okou chat get command
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
@@ -20,7 +20,7 @@ const OTHER_THREAD_ID = "00000000-0000-4000-8000-000000000002";
 const GET_URL = `http://localhost:3000/api/zero/chat-threads/${THREAD_ID}/metadata`;
 const OTHER_GET_URL = `http://localhost:3000/api/zero/chat-threads/${OTHER_THREAD_ID}/metadata`;
 
-describe("zero chat get command", () => {
+describe("okou chat get command", () => {
   const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
   const mockConsoleError = vi
     .spyOn(console, "error")

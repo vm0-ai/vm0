@@ -3625,7 +3625,7 @@ export function findPresentationRunbookPackage(
 
 /**
  * Resolve a runbook package archive by its pull resource id, shaped as a
- * RegistryEntry so the download route and `zero resource pull` can treat it like
+ * RegistryEntry so the download route and `okou resource pull` can treat it like
  * any other private archive.
  */
 export function findPresentationRunbookResource(
@@ -3862,7 +3862,7 @@ export function resolvePresentationRunbookColorToken(
 /**
  * Shared runbook authoring instructions for a selected presentation template.
  * Used by both the chat generation-template prompt (API) and
- * `zero generate presentation --template` (CLI) so the two never drift.
+ * `okou generate presentation --template` (CLI) so the two never drift.
  */
 export function buildPresentationRunbookInstructionLines(args: {
   readonly runbookPackage: PresentationRunbookPackage;
@@ -3874,12 +3874,12 @@ export function buildPresentationRunbookInstructionLines(args: {
     `Color system token: ${colorSystemToken}`,
     "",
     "To produce the presentation:",
-    `- Pull the package: zero resource pull ${pkg.resourceId} --dir ./generated/resources`,
+    `- Pull the package: okou resource pull ${pkg.resourceId} --dir ./generated/resources`,
     `- Follow ./generated/resources/${pkg.slug}/AGENT_RUNBOOK.md, running its commands from ./generated/resources. Set "colorSystem": "${colorSystemToken}" in the deck JSON.`,
     "- Use the slide count the user asks for; if unspecified, default to 8 pages.",
     "- Build the deck static-first: the final index.html must contain every slide element and all user-visible slide content, with the first slide visible before JavaScript runs.",
     "- Do not store slide content in JavaScript data or use JavaScript to create, inject, fetch, hydrate, or replace slide content. JavaScript may only progressively enhance the existing DOM for navigation, controls, themes, or animation.",
-    "- Host the finished deck: zero host <output-dir> --site <slug> --artifact-kind presentation-html",
+    "- Host the finished deck: okou host <output-dir> --site <slug> --artifact-kind presentation-html",
     "- Return only the generated HTML deck as the final deliverable.",
   ];
 }

@@ -46,7 +46,7 @@ export function addRequestedCallbackSearchParams(
   const threadId = currentChatThreadId(agentId);
   if (!threadId) {
     throw new Error(
-      "--callback-prompt can only target the current Zero web chat thread and agent",
+      "--callback-prompt can only target the current web chat thread and agent",
     );
   }
   addCallbackSearchParams(params, threadId, normalizedPrompt);
@@ -93,7 +93,7 @@ export function printCallbackActionUrlExample(
 
   console.log("");
   console.log(
-    "Or, if this is the only connector or permission action needed, use the callback URL below. After the user completes this action, Zero will automatically start the next round with the callback prompt:",
+    "Or, if this is the only connector or permission action needed, use the callback URL below. After the user completes this action, Okou will automatically start the next round with the callback prompt:",
   );
   console.log(callbackUrl);
 }
@@ -101,6 +101,6 @@ export function printCallbackActionUrlExample(
 export function printCallbackTurnInstruction(): void {
   console.log("");
   console.log(
-    "After sharing this callback URL, end the current turn. When the user completes the action, Zero will automatically start the next round with the callback prompt.",
+    "After sharing this callback URL, end the current turn. When the user completes the action, Okou will automatically start the next round with the callback prompt.",
   );
 }

@@ -51,9 +51,9 @@ export const uploadFileCommand = new Command()
     "after",
     `
 Examples:
-  Upload a file:          zero telegram upload-file -f /tmp/report.pdf --bot-id 123456789 -c -1001234567890
-  Upload to a topic:      zero telegram upload-file -f /tmp/log.txt --bot-id 123456789 -c -1001234567890 --message-thread-id 42
-  With a caption:         zero telegram upload-file -f /tmp/data.csv --bot-id 123456789 -c @channel --caption "Daily report"
+  Upload a file:          okou telegram upload-file -f /tmp/report.pdf --bot-id 123456789 -c -1001234567890
+  Upload to a topic:      okou telegram upload-file -f /tmp/log.txt --bot-id 123456789 -c -1001234567890 --message-thread-id 42
+  With a caption:         okou telegram upload-file -f /tmp/data.csv --bot-id 123456789 -c @channel --caption "Daily report"
 
 Output:
   Prints a JSON object to stdout on success:

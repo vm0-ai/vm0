@@ -1,5 +1,5 @@
 /**
- * Tests for zero web upload-file command
+ * Tests for okou web upload-file command
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
@@ -36,7 +36,7 @@ function requiredHeader(headers: Headers, name: string): string {
   return value;
 }
 
-describe("zero web upload-file command", () => {
+describe("okou web upload-file command", () => {
   vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);

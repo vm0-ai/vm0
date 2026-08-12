@@ -15,7 +15,7 @@ teardown() {
     runner_e2e_teardown_test
 }
 
-@test "t30-1: chat attachments remain available across continuation" {
+@test "dual-entry CLI and chat attachments work across continuation" {
     run create_runner_agent "e2e-chat-attachments-${TEST_ID}"
     echo "$output"
     assert_success
@@ -40,8 +40,15 @@ teardown() {
     first_marker="ATTACHMENTS_OK_${TEST_ID}"
     first_prompt=$(cat <<'EOF'
 set -euo pipefail
-npx --yes --package="${CLI_PKG_URL}" zero web download-file '__CONTENT_ID__' -o /tmp/runner-content.txt
-npx --yes --package="${CLI_PKG_URL}" zero web download-file '__EMPTY_ID__' -o /tmp/runner-empty.txt
+# Prove the dual-entry artifact supports the canonical executable and the old
+# guest-agent binary boundary before using Okou for attachment operations.
+okou_help="$(npx --yes --package="${CLI_PKG_URL}" okou --help)"
+zero_help="$(npx --yes --package="${CLI_PKG_URL}" zero --help)" # okou-cutover-audit: compatibility-only
+test "$okou_help" = "$zero_help"
+grep -F 'Usage: okou' <<<"$okou_help"
+npx --yes --package="${CLI_PKG_URL}" zero __agent-loop --help | grep -F -- '--standby' # okou-cutover-audit: compatibility-only
+npx --yes --package="${CLI_PKG_URL}" okou web download-file '__CONTENT_ID__' -o /tmp/runner-content.txt
+npx --yes --package="${CLI_PKG_URL}" okou web download-file '__EMPTY_ID__' -o /tmp/runner-empty.txt
 grep -F '__CONTENT_MARKER__' /tmp/runner-content.txt
 test ! -s /tmp/runner-empty.txt
 printf '__FIRST_MARKER__\n'

@@ -10,9 +10,11 @@ if (process.platform !== "darwin") {
   throw new Error("Packaged desktop smoke tests are only supported on macOS.");
 }
 
-const { executablePath, mainBundlePath, mcpBundlePath } = packagedAppPaths(
-  process.env.VM0_DESKTOP_PLATFORM_URL,
-);
+const { executablePath, mainBundlePath, mcpBundlePath } = packagedAppPaths({
+  appBundlePath: process.env.VM0_DESKTOP_SMOKE_APP_PATH,
+  platformUrl: process.env.VM0_DESKTOP_PLATFORM_URL,
+  product: process.env.VM0_DESKTOP_PRODUCT,
+});
 
 if (!fs.existsSync(executablePath)) {
   throw new Error(`Packaged app executable was not found at ${executablePath}`);

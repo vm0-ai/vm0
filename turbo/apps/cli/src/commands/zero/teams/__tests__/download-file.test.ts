@@ -1,5 +1,5 @@
 /**
- * Tests for zero teams download-file command.
+ * Tests for okou teams download-file command.
  */
 
 import { existsSync, mkdirSync, readFileSync, rmSync } from "fs";
@@ -14,7 +14,7 @@ import { downloadFileCommand } from "../download-file";
 const DOWNLOAD_URL =
   "http://localhost:3000/api/zero/integrations/teams/download-file";
 
-describe("zero teams download-file command", () => {
+describe("okou teams download-file command", () => {
   vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);

@@ -1,5 +1,5 @@
 /**
- * Tests for zero generate video command
+ * Tests for okou generate video command
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
@@ -84,7 +84,7 @@ function stubBillingStatus(
   });
 }
 
-describe("zero generate video command", () => {
+describe("okou generate video command", () => {
   vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -290,7 +290,7 @@ describe("zero generate video command", () => {
     const stdout = mockConsoleLog.mock.calls.flat().join("\n");
     expect(postVideo).not.toHaveBeenCalled();
     expect(stdout).toContain(
-      "# Zero generate video --template video-template:epic-grandeur",
+      "# Okou generate video --template video-template:epic-grandeur",
     );
     expect(stdout).toContain(
       "This is a federated generation source-selection packet",
@@ -393,7 +393,7 @@ describe("zero generate video command", () => {
 
     const stderr = mockConsoleError.mock.calls.flat().join("\n");
     expect(stderr).toContain("Paid plan required");
-    expect(stderr).toContain("zero upgrade pro");
+    expect(stderr).toContain("okou upgrade pro");
     expect(generationRequests).toBe(0);
   });
 });

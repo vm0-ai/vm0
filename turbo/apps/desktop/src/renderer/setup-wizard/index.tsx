@@ -33,6 +33,7 @@ import {
   signOutDesktop$,
 } from "../computer-use-state";
 import { IconButton, ZeroFace } from "../components";
+import { currentDesktopIdentity } from "../desktop-identity";
 
 const AUTOMATION_PERMISSION_STATUS_LABELS = {
   unknown: "Not tested",
@@ -70,6 +71,7 @@ export function AuthStepCard({
   readonly authLoading: boolean;
   readonly authState: DesktopAuthState | null;
 }) {
+  const identity = currentDesktopIdentity();
   const [signInLoadable, signIn] = useLoadableSet(openDesktopSignIn$);
   const [orgSelectionLoadable, selectOrg] = useLoadableSet(
     openDesktopOrgSelection$,
@@ -125,10 +127,10 @@ export function AuthStepCard({
       ? "Select a workspace"
       : signingIn
         ? "Finish signing in"
-        : "Sign in to Zero";
+        : `Sign in to ${identity.brandName}`;
   const description = signedInAuth
     ? "Choose the workspace that should receive this Mac as a Computer Use runtime."
-    : "Connect this Mac to a Zero account before Computer Use can register a runtime.";
+    : `Connect this Mac to a ${identity.brandName} account before Computer Use can register a runtime.`;
 
   return (
     <section className="step-card step-card-expanded">
@@ -255,6 +257,7 @@ function formatBrowserAutomationTargets(labels: readonly string[]): string {
 function browserAutomationMeta(
   automation: ReturnType<typeof computerUseAutomationPermissionState>,
 ): string {
+  const identity = currentDesktopIdentity();
   const readyLabels = browserAutomationReadyLabels(automation);
   if (readyLabels.length > 0) {
     return `${formatBrowserAutomationTargets(
@@ -262,7 +265,7 @@ function browserAutomationMeta(
     )} ready. Other browsers can be approved later.`;
   }
   if (browserAutomationHasDeniedTarget(automation)) {
-    return "Allow Zero to control the browser you use in System Settings";
+    return `Allow ${identity.brandName} to control the browser you use in System Settings`;
   }
   return "Optional for browser control. Test only the browser you use.";
 }
@@ -335,6 +338,7 @@ export function PermissionsStepCard({
   readonly authReady: boolean;
   readonly state: DesktopComputerUseState;
 }) {
+  const identity = currentDesktopIdentity();
   const [requestLoadable, requestPermission] = useLoadableSet(
     requestAccessibilityPermission$,
   );
@@ -379,8 +383,11 @@ export function PermissionsStepCard({
         <div className="step-heading">
           <h2>Allow Computer Use permissions</h2>
           <p>
-            Zero needs macOS permission to inspect the screen and control UI
-            elements on this Mac.
+            {identity.brandName} needs macOS permission to inspect the screen
+            and control UI elements on this Mac.
+            {identity.product === "okou"
+              ? " Okou is a separate app from Zero, so these permissions must be granted again."
+              : ""}
           </p>
         </div>
         <div className="permission-list">

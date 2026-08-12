@@ -36,8 +36,8 @@ OAuth updates may omit oauthConfig.clientSecret to preserve the encrypted
 current client secret. Never include an end-user token or values array.
 
 Examples:
-  zero connector custom update <connector-id> --file ./connector.json
-  zero connector custom update <connector-id> --file ./connector.json --json`,
+  okou connector custom update <connector-id> --file ./connector.json
+  okou connector custom update <connector-id> --file ./connector.json --json`,
   )
   .action(
     withErrorHandler(async (connectorId: string, options: UpdateOptions) => {

@@ -7,8 +7,8 @@ import { describe, expect, it } from "vitest";
 const SHOULD_RUN = process.env.ZERO_STARTUP_BENCH === "1";
 const RUNS = Number(process.env.ZERO_STARTUP_BENCH_RUNS ?? "15");
 const MAX_MEDIAN_MS = Number(process.env.ZERO_STARTUP_BENCH_MAX_MS ?? "550");
-const ZERO_DIST_PATH = fileURLToPath(
-  new URL("../../dist/zero.js", import.meta.url),
+const OKOU_DIST_PATH = fileURLToPath(
+  new URL("../../dist/okou.js", import.meta.url),
 );
 
 function percentile(sortedValues: number[], percentileValue: number): number {
@@ -41,7 +41,7 @@ function benchmarkEnv(): NodeJS.ProcessEnv {
 
 function measureStartupMs(env: NodeJS.ProcessEnv): number {
   const start = performance.now();
-  const result = spawnSync(process.execPath, [ZERO_DIST_PATH, "--help"], {
+  const result = spawnSync(process.execPath, [OKOU_DIST_PATH, "--help"], {
     env,
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],
@@ -49,15 +49,15 @@ function measureStartupMs(env: NodeJS.ProcessEnv): number {
   const duration = performance.now() - start;
 
   expect(result.status, result.stderr).toBe(0);
-  expect(result.stdout).toContain("Usage: zero");
+  expect(result.stdout).toContain("Usage: okou");
   return duration;
 }
 
-describe.skipIf(!SHOULD_RUN)("zero startup benchmark", () => {
-  it("keeps the built zero help path fast", () => {
+describe.skipIf(!SHOULD_RUN)("Okou startup benchmark", () => {
+  it("keeps the built Okou help path fast", () => {
     expect(
-      existsSync(ZERO_DIST_PATH),
-      "Run `pnpm -F @vm0/zero-cli build` before the startup benchmark.",
+      existsSync(OKOU_DIST_PATH),
+      "Run `pnpm -F @vm0/okou-cli build` before the startup benchmark.",
     ).toBe(true);
 
     const env = benchmarkEnv();
@@ -73,7 +73,7 @@ describe.skipIf(!SHOULD_RUN)("zero startup benchmark", () => {
     const p95 = percentile(timings, 95);
 
     console.info(
-      `zero startup: runs=${RUNS} median=${median.toFixed(
+      `okou startup: runs=${RUNS} median=${median.toFixed(
         1,
       )}ms p95=${p95.toFixed(1)}ms maxMedian=${MAX_MEDIAN_MS}ms`,
     );

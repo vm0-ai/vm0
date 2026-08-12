@@ -14,6 +14,8 @@ import type { DesktopMainModule } from "./desktop-main-module";
 
 const config = resolveDesktopConfig();
 const apiBaseUrl = resolveComputerUseApiBaseUrl(config.platformUrl);
+app.setName(config.identity.displayName);
+app.name = config.identity.displayName;
 
 type DesktopMainLoadResult =
   | { readonly ok: true; readonly main: DesktopMainModule }

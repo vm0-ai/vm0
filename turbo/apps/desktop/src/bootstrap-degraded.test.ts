@@ -67,6 +67,8 @@ function productionConfig(): DesktopConfig {
     webUrl: new URL("https://app.vm0.ai"),
     environment: "production",
     identity: {
+      product: "zero",
+      brandName: "Zero",
       displayName: "Zero Computer Use",
       bundleId: "ai.vm0.desktop",
       authProtocolName: "Zero Desktop",

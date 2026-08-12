@@ -45,7 +45,7 @@ RST='\033[0m'
 # ─── Helpers ─────────────────────────────────────────────────────────────────
 get_filter() {
   local file="$1"
-  if   [[ "$file" == */apps/cli/* ]];               then echo "@vm0/zero-cli"
+  if   [[ "$file" == */apps/cli/* ]];               then echo "@vm0/okou-cli"
   elif [[ "$file" == */apps/platform/* ]];          then echo "@vm0/app"
   elif [[ "$file" == */packages/core/* ]];          then echo "@vm0/core"
   else echo ""

@@ -150,6 +150,7 @@ interface NormalSendBody {
   readonly cloudBrowserEnabled?: boolean;
   readonly clientEventId?: string;
   readonly realAgentInPreview?: boolean;
+  readonly captureNetworkBodies?: boolean;
   readonly revokesEventId?: string;
 }
 
@@ -2859,6 +2860,7 @@ function buildCreateZeroRunArgs(params: {
         ? { modelProvider: providerAdmission.effectiveModelProvider }
         : {}),
       ...(params.realAgentInPreviewEnabled ? { realAgentInPreview: true } : {}),
+      ...(args.body.captureNetworkBodies ? { captureNetworkBodies: true } : {}),
     },
     triggerSource: prepared.triggerSource,
     dispatchFailedCallbacks: dispatchFailedRunCallbacks,

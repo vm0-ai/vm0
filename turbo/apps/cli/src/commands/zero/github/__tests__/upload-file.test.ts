@@ -13,7 +13,7 @@ const UPLOAD_COMPLETE_URL =
   "http://localhost:3000/api/zero/integrations/github/upload-file/complete";
 const R2_UPLOAD_URL = "https://mock-r2.test/github-upload";
 
-describe("zero github upload-file command", () => {
+describe("okou github upload-file command", () => {
   vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);

@@ -38,7 +38,7 @@ import {
 /*
  * RUN-03/RUN-04 read surfaces for agent runs (list/read/queue/cancel,
  * telemetry families, zero run detail reads, queue
- * position, and zero logs) plus the RUN-01/02 direct-run create arms that
+ * position, and okou logs) plus the RUN-01/02 direct-run create arms that
  * end in those reads (session continuation, memory root policies, volume
  * pinning, concurrency caps, and the production capture gate).
  *

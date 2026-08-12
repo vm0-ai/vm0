@@ -1,9 +1,10 @@
-# Zero CLI Testing
+# Okou CLI Testing
 
 ## Principle
 
-The CLI package publishes one binary: `zero`. Command tests are integration
-tests that enter through Commander with `command.parseAsync()`.
+The private CLI package exposes canonical `okou` and a temporary `zero`
+compatibility entry point backed by the same implementation. Command tests are
+integration tests that enter through Commander with `command.parseAsync()`.
 
 - Mock the Web API with MSW.
 - Keep command parsing, validation, formatting, and filesystem behavior real.
@@ -55,7 +56,7 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../mocks/server";
 import { zeroLogsCommand } from "../index";
 
-describe("zero logs", () => {
+describe("okou logs", () => {
   beforeEach(() => {
     vi.stubEnv("ZERO_TOKEN", "test-zero-token");
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
@@ -82,7 +83,7 @@ describe("zero logs", () => {
 
     await zeroLogsCommand.parseAsync([
       "node",
-      "zero",
+      "okou",
       "00000000-0000-4000-8000-000000000000",
       "--all",
     ]);
@@ -116,7 +117,7 @@ const previousCwd = process.cwd();
 process.chdir(tempDir);
 
 try {
-  await command.parseAsync(["node", "zero", "..."]);
+  await command.parseAsync(["node", "okou", "..."]);
 } finally {
   process.chdir(previousCwd);
   rmSync(tempDir, { recursive: true, force: true });
