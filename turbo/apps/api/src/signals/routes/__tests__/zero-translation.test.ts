@@ -7,22 +7,21 @@ import {
 } from "@vm0/api-contracts/contracts/zero-translation";
 import { zeroUsageRecordContract } from "@vm0/api-contracts/contracts/zero-usage-record";
 import { HttpResponse, http } from "msw";
+import { onTestFinished } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { mockOptionalEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import {
+  createUsagePricingFixture,
   deleteUsagePricingRows,
   seedOrgMetadata,
-  seedUsagePricingRows,
+  type UsagePricingFixture,
 } from "../../../test-fixtures/system-config-seeds";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createRunsApi } from "./helpers/api-bdd-runs";
-import {
-  createFixtureTracker,
-  createZeroRouteMocks,
-} from "./helpers/zero-route-test";
+import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { zeroTranslationRoutes } from "../zero-translation";
 import { zeroUsageRecordRoutes } from "../zero-usage-record";
 
@@ -115,6 +114,7 @@ function requestTranslation(args: {
   readonly targetLanguage?: string;
   readonly sourceLanguage?: string;
   readonly clientRequestId?: string;
+  readonly usagePricingResolution?: UsagePricingFixture["resolution"];
 }) {
   const headers = {
     ...(args.token ? { authorization: `Bearer ${args.token}` } : {}),
@@ -122,9 +122,11 @@ function requestTranslation(args: {
       ? { "x-vm0-client-request-id": args.clientRequestId }
       : {}),
   };
-  return setupApp({ context, routes: zeroTranslationRoutes })(
-    zeroTranslationContract,
-  ).translate({
+  return setupApp({
+    context,
+    routes: zeroTranslationRoutes,
+    usagePricingResolution: args.usagePricingResolution,
+  })(zeroTranslationContract).translate({
     headers,
     body: {
       text: args.text ?? "Hello, world",
@@ -136,13 +138,23 @@ function requestTranslation(args: {
   });
 }
 
-async function seedBilling(actor: TranslationActor): Promise<void> {
+async function createConfiguredTranslationPricing(): Promise<UsagePricingFixture> {
+  const pricing = await createUsagePricingFixture({
+    configured: TRANSLATION_PRICING_ROWS,
+  });
+  onTestFinished(pricing.cleanup);
+  return pricing;
+}
+
+async function seedBilling(
+  actor: TranslationActor,
+): Promise<UsagePricingFixture> {
   await seedOrgMetadata({
     orgId: actor.orgId,
     tier: "pro",
     credits: STARTING_CREDITS,
   });
-  await seedUsagePricingRows(TRANSLATION_PRICING_ROWS);
+  return await createConfiguredTranslationPricing();
 }
 
 async function readUsageRecord(actor: TranslationActor) {
@@ -171,20 +183,6 @@ async function expectNoUsage(actor: TranslationActor): Promise<void> {
 }
 
 describe("POST /api/zero/translate", () => {
-  const trackPricing = createFixtureTracker(
-    async (
-      rows: readonly {
-        readonly kind: string;
-        readonly provider: string;
-        readonly category: string;
-        readonly unitPrice: number;
-        readonly unitSize: number;
-      }[],
-    ) => {
-      await seedUsagePricingRows(rows);
-    },
-  );
-
   it("translates with fixed Qwen routing and settles each invocation", async () => {
     mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
     const requestBodies: unknown[] = [];
@@ -207,7 +205,7 @@ describe("POST /api/zero/translate", () => {
       }),
     );
     const actor = await seedActor();
-    await seedBilling(actor);
+    const pricing = await seedBilling(actor);
     const clientRequestId = randomUUID();
 
     for (let invocation = 0; invocation < 2; invocation += 1) {
@@ -217,6 +215,7 @@ describe("POST /api/zero/translate", () => {
         sourceLanguage: "English",
         targetLanguage: "Simplified Chinese",
         clientRequestId,
+        usagePricingResolution: pricing.resolution,
       });
       expect(response.status).toBe(200);
       expect(response.body).toStrictEqual({
@@ -271,12 +270,13 @@ describe("POST /api/zero/translate", () => {
       }),
     );
     const actor = await seedActor();
-    await seedBilling(actor);
+    const pricing = await seedBilling(actor);
 
     const response = await requestTranslation({
       token: zeroToken(actor),
       text: "Bonjour",
       targetLanguage: "English",
+      usagePricingResolution: pricing.resolution,
     });
 
     expect(response.status).toBe(200);
@@ -341,9 +341,12 @@ describe("POST /api/zero/translate", () => {
     );
     const actor = await seedActor();
     await seedOrgMetadata({ orgId: actor.orgId, tier: "pro", credits: 0 });
-    await seedUsagePricingRows(TRANSLATION_PRICING_ROWS);
+    const pricing = await createConfiguredTranslationPricing();
 
-    const noCredits = await requestTranslation({ token: zeroToken(actor) });
+    const noCredits = await requestTranslation({
+      token: zeroToken(actor),
+      usagePricingResolution: pricing.resolution,
+    });
     expect(noCredits.status).toBe(402);
 
     await seedOrgMetadata({
@@ -351,14 +354,14 @@ describe("POST /api/zero/translate", () => {
       tier: "pro",
       credits: STARTING_CREDITS,
     });
-    await trackPricing(
-      deleteUsagePricingRows({
-        kind: "translation",
-        provider: TRANSLATION_MODEL,
-        categories: ["tokens.input", "tokens.cache_read", "tokens.output"],
-      }),
-    );
-    const noPricing = await requestTranslation({ token: zeroToken(actor) });
+    const missingPricing = await createUsagePricingFixture({
+      missing: TRANSLATION_PRICING_ROWS,
+    });
+    onTestFinished(missingPricing.cleanup);
+    const noPricing = await requestTranslation({
+      token: zeroToken(actor),
+      usagePricingResolution: missingPricing.resolution,
+    });
     expect(noPricing.status).toBe(503);
     expect(providerCalled).toBeFalsy();
     await expectNoUsage(actor);
@@ -375,9 +378,12 @@ describe("POST /api/zero/translate", () => {
       }),
     );
     const actor = await seedActor();
-    await seedBilling(actor);
+    const pricing = await seedBilling(actor);
 
-    const response = await requestTranslation({ token: zeroToken(actor) });
+    const response = await requestTranslation({
+      token: zeroToken(actor),
+      usagePricingResolution: pricing.resolution,
+    });
 
     expect(response.status).toBe(503);
     const responseText = JSON.stringify(response.body);
@@ -415,10 +421,13 @@ describe("POST /api/zero/translate", () => {
       }),
     );
     const actor = await seedActor();
-    await seedBilling(actor);
+    const pricing = await seedBilling(actor);
 
     for (const _usage of usages) {
-      const response = await requestTranslation({ token: zeroToken(actor) });
+      const response = await requestTranslation({
+        token: zeroToken(actor),
+        usagePricingResolution: pricing.resolution,
+      });
       expect(response.status).toBe(502);
       expect(response.body).toMatchObject({
         error: { code: "MISSING_PROVIDER_USAGE" },
@@ -447,10 +456,13 @@ describe("POST /api/zero/translate", () => {
       }),
     );
     const actor = await seedActor();
-    await seedBilling(actor);
+    const pricing = await seedBilling(actor);
 
     for (let invocation = 0; invocation < 2; invocation += 1) {
-      const response = await requestTranslation({ token: zeroToken(actor) });
+      const response = await requestTranslation({
+        token: zeroToken(actor),
+        usagePricingResolution: pricing.resolution,
+      });
       expect(response.status).toBe(502);
       expect(response.body).toMatchObject({
         error: { code: "TRANSLATION_FAILED" },
@@ -462,15 +474,19 @@ describe("POST /api/zero/translate", () => {
 
   it("does not return text when settlement reports a billing error", async () => {
     mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
+    const actor = await seedActor();
+    const pricing = await seedBilling(actor);
+    const lookupProvider = pricing.resolution[0]?.lookupProvider;
+    if (!lookupProvider) {
+      throw new Error("Translation pricing fixture requires a lookup provider");
+    }
     server.use(
       http.post(OPENROUTER_URL, async () => {
-        await trackPricing(
-          deleteUsagePricingRows({
-            kind: "translation",
-            provider: TRANSLATION_MODEL,
-            categories: ["tokens.output"],
-          }),
-        );
+        await deleteUsagePricingRows({
+          kind: "translation",
+          provider: lookupProvider,
+          categories: ["tokens.output"],
+        });
         return HttpResponse.json({
           choices: [
             {
@@ -482,10 +498,11 @@ describe("POST /api/zero/translate", () => {
         });
       }),
     );
-    const actor = await seedActor();
-    await seedBilling(actor);
 
-    const response = await requestTranslation({ token: zeroToken(actor) });
+    const response = await requestTranslation({
+      token: zeroToken(actor),
+      usagePricingResolution: pricing.resolution,
+    });
 
     expect(response.status).toBe(500);
     expect(JSON.stringify(response.body)).not.toContain(
