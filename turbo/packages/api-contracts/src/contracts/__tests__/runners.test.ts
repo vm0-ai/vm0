@@ -13,7 +13,6 @@ import {
   heartbeatBodySchema,
   heldSandboxStateSchema,
   heldWorkspaceStateSchema,
-  immediateSuccessorIntentSignalSchema,
   jobSchema,
   RUNNER_CANCELLATION_RECOVERY_GRACE_MS,
   RUNNER_BUILTIN_FIREWALL_RESOLVE_NAMES_MAX,
@@ -1763,42 +1762,6 @@ describe("runner apiStartTime contract", () => {
     expect(elapsedSinceApiStartMs(1_700_000_000_000.5, 1_700_000_001_250)).toBe(
       undefined,
     );
-  });
-});
-
-describe("immediate successor intent contract", () => {
-  const signal = {
-    action: "arm",
-    predecessorRunId: "00000000-0000-4000-8000-000000000001",
-    intentId: "00000000-0000-4000-8000-000000000002",
-    runnerIdentity: {
-      runnerId: "00000000-0000-4000-8000-000000000003",
-      heartbeatGeneration: 7,
-    },
-    eventClass: "automation",
-    decidedAt: "2026-08-10T08:00:00.000Z",
-    expiresAt: "2026-08-10T08:00:01.500Z",
-  } as const;
-
-  it("accepts the bounded additive signal", () => {
-    expect(immediateSuccessorIntentSignalSchema.parse(signal)).toStrictEqual(
-      signal,
-    );
-  });
-
-  it("rejects unknown fields and malformed identities", () => {
-    expect(
-      immediateSuccessorIntentSignalSchema.safeParse({
-        ...signal,
-        opaqueReuseKey: "thread:secret",
-      }).success,
-    ).toBe(false);
-    expect(
-      immediateSuccessorIntentSignalSchema.safeParse({
-        ...signal,
-        intentId: "not-a-uuid",
-      }).success,
-    ).toBe(false);
   });
 });
 

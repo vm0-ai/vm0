@@ -5,7 +5,6 @@ import type {
 } from "@vm0/api-contracts/contracts/realtime";
 import type {
   ConnectorRuntimeTarget,
-  ImmediateSuccessorIntentSignal,
   PiExecutionMode,
   RunnerPreference,
 } from "@vm0/api-contracts/contracts/runners";
@@ -289,31 +288,6 @@ export async function publishActiveInputToRunnerGroup(
   const channel = ablyClient().channels.get(`runner-group:${group}`);
   await channel.publish("active-input", { runId });
   L.debug(`Published active input ${runId} to runner-group:${group}`);
-}
-
-export async function publishImmediateSuccessorIntentToRunnerGroup(args: {
-  readonly group: string;
-  readonly intent: ImmediateSuccessorIntentSignal;
-}): Promise<boolean> {
-  const published = await tapError(
-    (async () => {
-      const channel = ablyClient().channels.get(`runner-group:${args.group}`);
-      await channel.publish("immediate-successor-intent", args.intent);
-      L.debug(
-        `Published immediate successor ${args.intent.action} to runner-group:${args.group}`,
-      );
-      return true;
-    })(),
-    (error) => {
-      L.warn("Failed to publish immediate successor intent", {
-        action: args.intent.action,
-        eventClass: args.intent.eventClass,
-        predecessorRunId: args.intent.predecessorRunId,
-        error,
-      });
-    },
-  );
-  return published ?? false;
 }
 
 /** Wake the Pi standby runtime after the complete pending tool batch commits. */
