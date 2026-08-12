@@ -21,7 +21,10 @@ import { useLoadableSet } from "ccstate-react/experimental";
 import type { CSSProperties, ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 
-import type { MailDraftSignals } from "../../signals/chat-page/mail-draft.ts";
+import type {
+  MailDraftSignals,
+  MailInlineImagePreview,
+} from "../../signals/chat-page/mail-draft.ts";
 import { classifyChatAttachment } from "../../signals/chat-page/parse-body-blocks.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
@@ -732,20 +735,21 @@ function isElementNode(node: ChildNode): node is Element {
 function renderMailImage(args: {
   readonly element: Element;
   readonly key: string;
-  readonly inlineImages: ReadonlyMap<string, ZeroMailInlineImage>;
-  readonly inlineImageUrls: ReadonlyMap<string, string | null> | null;
-  readonly inlineImageUrlsLoading: boolean;
+  readonly inlineImages: ReadonlyMap<string, MailInlineImagePreview>;
+  readonly inlineImagesLoading: boolean;
 }): ReactNode {
   const source = args.element.getAttribute("src");
-  const image = source?.toLowerCase().startsWith("cid:")
+  const preview = source?.toLowerCase().startsWith("cid:")
     ? args.inlineImages.get(normalizedContentId(source))
     : undefined;
-  if (image) {
-    const imageUrl = args.inlineImageUrlsLoading
-      ? undefined
-      : (args.inlineImageUrls?.get(image.partId) ?? null);
+  if (preview) {
+    const imageUrl = args.inlineImagesLoading ? undefined : preview.url;
     return (
-      <MailDraftInlineImage key={args.key} image={image} imageUrl={imageUrl} />
+      <MailDraftInlineImage
+        key={args.key}
+        image={preview.image}
+        imageUrl={imageUrl}
+      />
     );
   }
   const remoteSource = safeMailImageSrc(source);
@@ -837,9 +841,8 @@ function renderAllowedMailElement(args: {
 function renderMailHtmlNode(args: {
   readonly node: ChildNode;
   readonly key: string;
-  readonly inlineImages: ReadonlyMap<string, ZeroMailInlineImage>;
-  readonly inlineImageUrls: ReadonlyMap<string, string | null> | null;
-  readonly inlineImageUrlsLoading: boolean;
+  readonly inlineImages: ReadonlyMap<string, MailInlineImagePreview>;
+  readonly inlineImagesLoading: boolean;
 }): ReactNode {
   if (args.node.nodeType === 3) {
     return args.node.textContent;
@@ -857,8 +860,7 @@ function renderMailHtmlNode(args: {
       element,
       key: args.key,
       inlineImages: args.inlineImages,
-      inlineImageUrls: args.inlineImageUrls,
-      inlineImageUrlsLoading: args.inlineImageUrlsLoading,
+      inlineImagesLoading: args.inlineImagesLoading,
     });
   }
   const children = Array.from(element.childNodes).map((child, index) => {
@@ -866,8 +868,7 @@ function renderMailHtmlNode(args: {
       node: child,
       key: `${args.key}-${index}`,
       inlineImages: args.inlineImages,
-      inlineImageUrls: args.inlineImageUrls,
-      inlineImageUrlsLoading: args.inlineImageUrlsLoading,
+      inlineImagesLoading: args.inlineImagesLoading,
     });
   });
   const allowedTag = allowedMailHtmlElement(tag);
@@ -891,13 +892,13 @@ function renderMailHtmlNode(args: {
 }
 
 function MailDraftRichMessage({
-  attachmentUrls,
-  attachmentUrlsLoading,
+  inlineImages,
+  inlineImagesLoading,
   draft,
   signals,
 }: {
-  readonly attachmentUrls: ReadonlyMap<string, string | null> | null;
-  readonly attachmentUrlsLoading: boolean;
+  readonly inlineImages: readonly MailInlineImagePreview[] | null;
+  readonly inlineImagesLoading: boolean;
   readonly draft: ZeroMailDraft;
   readonly signals: MailDraftSignals;
 }) {
@@ -905,9 +906,16 @@ function MailDraftRichMessage({
     return null;
   }
   const document = new DOMParser().parseFromString(draft.bodyHtml, "text/html");
-  const inlineImages = new Map(
-    (draft.inlineImages ?? []).map((image) => {
-      return [normalizedContentId(image.contentId), image] as const;
+  // While previews load, the draft's own list stands in so cid: images render
+  // their placeholders; the walk keys its own input by content id.
+  const inlineImagePreviews =
+    inlineImages ??
+    (draft.inlineImages ?? []).map((image): MailInlineImagePreview => {
+      return { image, url: null };
+    });
+  const inlineImagesByContentId = new Map(
+    inlineImagePreviews.map((preview) => {
+      return [normalizedContentId(preview.image.contentId), preview] as const;
     }),
   );
   return (
@@ -923,9 +931,8 @@ function MailDraftRichMessage({
         return renderMailHtmlNode({
           node,
           key: `mail-html-${index}`,
-          inlineImages,
-          inlineImageUrls: attachmentUrls,
-          inlineImageUrlsLoading: attachmentUrlsLoading,
+          inlineImages: inlineImagesByContentId,
+          inlineImagesLoading,
         });
       })}
     </div>
@@ -933,13 +940,13 @@ function MailDraftRichMessage({
 }
 
 function MailDraftMessage({
-  attachmentUrls,
-  attachmentUrlsLoading,
+  inlineImages,
+  inlineImagesLoading,
   draft,
   signals,
 }: {
-  readonly attachmentUrls: ReadonlyMap<string, string | null> | null;
-  readonly attachmentUrlsLoading: boolean;
+  readonly inlineImages: readonly MailInlineImagePreview[] | null;
+  readonly inlineImagesLoading: boolean;
   readonly draft: ZeroMailDraft;
   readonly signals: MailDraftSignals;
 }) {
@@ -947,8 +954,8 @@ function MailDraftMessage({
   if (draft.bodyHtml && typeof DOMParser !== "undefined") {
     return (
       <MailDraftRichMessage
-        attachmentUrls={attachmentUrls}
-        attachmentUrlsLoading={attachmentUrlsLoading}
+        inlineImages={inlineImages}
+        inlineImagesLoading={inlineImagesLoading}
         draft={draft}
         signals={signals}
       />
@@ -987,9 +994,15 @@ function MailDraftDetails({
     attachmentPreviewsLoadable.state === "hasData"
       ? attachmentPreviewsLoadable.data
       : null;
-  const attachmentUrls = attachmentPreviews?.urls ?? null;
-  const attachmentUrlsLoading = attachmentPreviewsLoadable.state === "loading";
+  const attachmentPreviewsLoading =
+    attachmentPreviewsLoadable.state === "loading";
   const attachments = draft.version === 3 ? draft.attachments : [];
+  // While previews load, the draft's own list stands in with loading tiles.
+  const previewedAttachments =
+    attachmentPreviews?.attachments ??
+    attachments.map((attachment) => {
+      return { attachment, url: undefined, text$: undefined };
+    });
   return (
     <div ref={setAttachmentScopeRef} className="flex min-h-0 flex-1 flex-col">
       <div className="shrink-0 px-5 pt-5">
@@ -998,8 +1011,8 @@ function MailDraftDetails({
       <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-5">
         <div className="py-5">
           <MailDraftMessage
-            attachmentUrls={attachmentUrls}
-            attachmentUrlsLoading={attachmentUrlsLoading}
+            inlineImages={attachmentPreviews?.inlineImages ?? null}
+            inlineImagesLoading={attachmentPreviewsLoading}
             draft={draft}
             signals={signals}
           />
@@ -1012,18 +1025,14 @@ function MailDraftDetails({
               })}
             </div>
             <div className="flex flex-wrap gap-3">
-              {attachments.map((attachment) => {
+              {previewedAttachments.map(({ attachment, text$, url }) => {
                 const key = `${attachment.filename}-${attachment.contentType}-${attachment.size}`;
                 return attachment.partId ? (
                   <MailAttachmentPreview
                     key={key}
                     attachment={attachment}
-                    text$={attachmentPreviews?.text.get(attachment.partId)}
-                    url={
-                      attachmentUrlsLoading
-                        ? undefined
-                        : (attachmentUrls?.get(attachment.partId) ?? null)
-                    }
+                    text$={text$}
+                    url={url}
                   />
                 ) : (
                   <AttachmentSummary key={key} attachment={attachment} />
