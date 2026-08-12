@@ -4054,7 +4054,7 @@
           "title": "Preference"
         },
         "usage": {
-          "balanceDescription": "Your team's credit balance and usage.",
+          "balanceDescription": "What your team has left to spend.",
           "balanceTitle": "Credit balance",
           "usageDescription": "Your credit usage across chats, automations, and channels.",
           "usageTitle": "Credit usage"

@@ -4053,7 +4053,7 @@
           "title": "好み"
         },
         "usage": {
-          "balanceDescription": "チームのクレジット残高と使用量。",
+          "balanceDescription": "チームが使える残高です。",
           "balanceTitle": "クレジット残高",
           "usageDescription": "チャット、オートメーション、チャネル全体でのクレジットの使用状況。",
           "usageTitle": "クレジット使用量"

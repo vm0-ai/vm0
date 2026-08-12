@@ -4053,7 +4053,7 @@
           "title": "환경설정"
         },
         "usage": {
-          "balanceDescription": "팀의 크레딧 잔액과 사용량입니다.",
+          "balanceDescription": "팀이 사용할 수 있는 잔액입니다.",
           "balanceTitle": "크레딧 잔액",
           "usageDescription": "채팅, 자동화, 채널에서의 크레딧 사용량입니다.",
           "usageTitle": "크레딧 사용량"

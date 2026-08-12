@@ -4053,7 +4053,7 @@
           "title": "Preferensi"
         },
         "usage": {
-          "balanceDescription": "Saldo kredit dan penggunaan tim Anda.",
+          "balanceDescription": "Sisa yang bisa dibelanjakan tim Anda.",
           "balanceTitle": "Saldo kredit",
           "usageDescription": "Penggunaan kredit Anda di seluruh chat, otomatisasi, dan channel.",
           "usageTitle": "Penggunaan kredit"

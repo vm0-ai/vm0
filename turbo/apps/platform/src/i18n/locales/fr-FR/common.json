@@ -4103,7 +4103,7 @@
           "title": "Préférences"
         },
         "usage": {
-          "balanceDescription": "Le solde de crédits et l'utilisation de votre équipe.",
+          "balanceDescription": "Ce qu'il reste à dépenser à votre équipe.",
           "balanceTitle": "Solde de crédits",
           "usageDescription": "Votre utilisation des crédits dans les conversations, automatisations et canaux.",
           "usageTitle": "Utilisation des crédits"

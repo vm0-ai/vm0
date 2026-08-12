@@ -4103,7 +4103,7 @@
           "title": "Preferenza"
         },
         "usage": {
-          "balanceDescription": "Il saldo e l'utilizzo del credito del tuo team.",
+          "balanceDescription": "Quanto resta da spendere al tuo team.",
           "balanceTitle": "Saldo del credito",
           "usageDescription": "Il tuo utilizzo del credito attraverso chat, automazioni e canali.",
           "usageTitle": "Utilizzo del credito"

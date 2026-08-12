@@ -4103,7 +4103,7 @@
           "title": "Preferencias"
         },
         "usage": {
-          "balanceDescription": "El saldo y el consumo de créditos de tu equipo.",
+          "balanceDescription": "Lo que le queda a tu equipo para gastar.",
           "balanceTitle": "Saldo de créditos",
           "usageDescription": "Tu consumo de créditos en conversaciones, automatizaciones y canales.",
           "usageTitle": "Consumo de créditos"

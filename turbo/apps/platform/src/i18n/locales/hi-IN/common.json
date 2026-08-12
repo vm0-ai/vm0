@@ -4054,7 +4054,7 @@
           "title": "वरीयता"
         },
         "usage": {
-          "balanceDescription": "आपकी टीम का क्रेडिट संतुलन और उपयोग।",
+          "balanceDescription": "आपकी टीम के पास खर्च करने के लिए कितना बचा है।",
           "balanceTitle": "क्रेडिट शेष",
           "usageDescription": "चैट, ऑटोमेशन और चैनलों पर आपका क्रेडिट उपयोग।",
           "usageTitle": "क्रेडिट उपयोग"
