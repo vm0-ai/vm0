@@ -45,6 +45,7 @@ fn restored_session_identity_session_id(
     match framework {
         EffectiveCliFramework::ClaudeCode => Some(session_id.to_owned()),
         EffectiveCliFramework::Codex => canonical_codex_thread_id(session_id),
+        EffectiveCliFramework::Pi => Some(session_id.to_owned()),
     }
 }
 
@@ -52,6 +53,7 @@ fn restored_session_framework(framework: EffectiveCliFramework) -> RestoredSessi
     match framework {
         EffectiveCliFramework::ClaudeCode => RestoredSessionFramework::ClaudeCode,
         EffectiveCliFramework::Codex => RestoredSessionFramework::Codex,
+        EffectiveCliFramework::Pi => RestoredSessionFramework::Pi,
     }
 }
 
@@ -164,7 +166,34 @@ pub(super) async fn restore_session(
         EffectiveCliFramework::Codex => {
             codex::restore_codex_session(sandbox, context, session).await
         }
+        EffectiveCliFramework::Pi => restore_pi_session(sandbox, context, session).await,
     }
+}
+
+/// Restore Pi's native SQLite session database at its versioned canonical path.
+async fn restore_pi_session(
+    sandbox: &dyn Sandbox,
+    context: &ExecutionContext,
+    session: &MaterializedResumeSession,
+) -> RunnerResult<SessionRestoreDiagnostics> {
+    let session_history = session.history_bytes();
+    let session_id = session.cli_agent_session_id();
+    let session_path =
+        api_contracts::generated::constants::runners::paths::CANONICAL_PI_SESSION_DATABASE_PATH;
+    write_session_history_file(sandbox, session_path, session_history).await?;
+    let diagnostics = SessionRestoreDiagnostics {
+        framework: "pi",
+        session_id: session_id.to_string(),
+        bytes_in: session_history.len(),
+    };
+    info!(
+        run_id = %context.run_id,
+        framework = diagnostics.framework,
+        session_id = %diagnostics.session_id,
+        bytes_in = diagnostics.bytes_in,
+        "restored session history"
+    );
+    Ok(diagnostics)
 }
 
 /// Write a Claude Code session history file at `~/.claude/projects/-{project}/{id}.jsonl`.

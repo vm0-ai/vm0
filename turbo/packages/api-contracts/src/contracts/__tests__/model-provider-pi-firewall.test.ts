@@ -9,9 +9,9 @@ import {
  * The sandbox never holds a real model credential. It runs with the firewall
  * placeholder and the mitm proxy substitutes the secret at egress, but only for
  * the base URLs a provider's firewall lists, and base matching is a prefix
- * match. So if the Pi standby loop's chat-completions URL falls outside every
+ * match. So if the Pi sandbox loop's chat-completions URL falls outside every
  * listed base, the placeholder is forwarded verbatim and the provider answers
- * 401. That is exactly what a live handoff hit before this coverage existed.
+ * 401. That is exactly what a live sandbox run hit before this coverage existed.
  */
 const PI_CAPABLE_PROVIDERS = [
   "deepseek",
@@ -58,7 +58,7 @@ function firewallAuthBases(provider: string): readonly string[] {
     });
 }
 
-describe("model provider firewall covers the Pi standby request", () => {
+describe("model provider firewall covers the Pi sandbox request", () => {
   it.each(PI_CAPABLE_PROVIDERS)("covers %s", (provider) => {
     const requestUrl = piRequestUrl(provider);
     expect(requestUrl).toBeDefined();

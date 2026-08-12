@@ -1,13 +1,30 @@
 import { defineConfig } from "tsup";
-import { readFileSync } from "fs";
+import { copyFileSync, mkdirSync, readFileSync } from "fs";
 import { execSync } from "child_process";
-import { resolve } from "path";
+import { dirname, resolve } from "path";
+import { fileURLToPath } from "url";
 
 const pkg = JSON.parse(readFileSync("./package.json", "utf-8")) as {
   version: string;
 };
 
 const isWatchMode = process.argv.includes("--watch");
+const piSqliteBackendEntryPath = fileURLToPath(
+  import.meta.resolve("@earendil-works/pi-session-backend-sqlite-node"),
+);
+const piSqliteMigrationSourcePath = resolve(
+  dirname(piSqliteBackendEntryPath),
+  "sqlite/migrations/001_initial.sql",
+);
+
+function copyPiSqliteMigration(): void {
+  const migrationDirectory = resolve("dist/migrations");
+  mkdirSync(migrationDirectory, { recursive: true });
+  copyFileSync(
+    piSqliteMigrationSourcePath,
+    resolve(migrationDirectory, "001_initial.sql"),
+  );
+}
 
 export default defineConfig({
   entry: ["src/okou.ts"],
@@ -18,6 +35,7 @@ export default defineConfig({
   sourcemap: true,
   clean: true,
   shims: true,
+  removeNodeProtocol: false,
   banner: {
     js: [
       "#!/usr/bin/env node",
@@ -39,16 +57,18 @@ export default defineConfig({
       process.env.DEFAULT_SENTRY_DSN ?? "",
     ),
   },
-  onSuccess: isWatchMode
-    ? async () => {
-        console.log("Uploading Okou CLI for local runners...");
-        execSync("pnpm --workspace-root deploy-cli:local", {
-          stdio: "inherit",
-        });
-        console.log("Okou CLI uploaded for local runners");
-        console.log("Installing Okou CLI globally...");
-        execSync("sudo npm link --local", { cwd: "dist", stdio: "inherit" });
-        console.log("Okou CLI installed globally");
-      }
-    : undefined,
+  onSuccess: async () => {
+    copyPiSqliteMigration();
+    if (!isWatchMode) {
+      return;
+    }
+    console.log("Uploading Okou CLI for local runners...");
+    execSync("pnpm --workspace-root deploy-cli:local", {
+      stdio: "inherit",
+    });
+    console.log("Okou CLI uploaded for local runners");
+    console.log("Installing Okou CLI globally...");
+    execSync("sudo npm link --local", { cwd: "dist", stdio: "inherit" });
+    console.log("Okou CLI installed globally");
+  },
 });

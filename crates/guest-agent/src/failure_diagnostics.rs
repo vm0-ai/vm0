@@ -47,6 +47,7 @@ pub fn base_failure_diagnostic_for_config(
     let framework = match config.framework {
         env::Framework::ClaudeCode => AgentFramework::ClaudeCode,
         env::Framework::Codex => AgentFramework::Codex,
+        env::Framework::Pi => AgentFramework::Pi,
     };
     FailureDiagnostic::new(
         failure_class,
@@ -158,6 +159,7 @@ pub fn diagnostic_session_history_status_for_config(
             claude_history_target_status_for_config(config, runtime_paths)
         }
         env::Framework::Codex => SessionHistoryStatus::NotApplicable,
+        env::Framework::Pi => SessionHistoryStatus::NotApplicable,
     }
 }
 

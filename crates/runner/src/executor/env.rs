@@ -125,6 +125,7 @@ pub(super) fn validate_execution_context_before_sandbox_with_host_env(
 ) -> Result<PreparedRunPayload, String> {
     validate_resume_session_id(context)?;
     validate_model_provider_env_placeholders(context)?;
+    validate_pi_execution_context(context)?;
     validate_user_environment_for_guest(context)?;
     let prepared_run_payload =
         prepare_run_payload_for_run(context).map_err(|error| match error {
@@ -136,6 +137,35 @@ pub(super) fn validate_execution_context_before_sandbox_with_host_env(
             .map_err(|error| error.to_string())?;
     validate_bootstrap_environment_for_guest(&bootstrap_env)?;
     Ok(prepared_run_payload)
+}
+
+fn validate_pi_execution_context(context: &ExecutionContext) -> Result<(), String> {
+    if effective_cli_framework(&context.cli_agent_type) != EffectiveCliFramework::Pi {
+        return Ok(());
+    }
+    let session_id = context
+        .pi_session_id
+        .as_deref()
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| "Pi execution context is missing pi_session_id".to_string())?;
+    uuid::Uuid::parse_str(session_id)
+        .map_err(|_| "Pi execution context has invalid pi_session_id".to_string())?;
+    if context
+        .pi_system_prompt
+        .as_deref()
+        .is_none_or(str::is_empty)
+    {
+        return Err("Pi execution context is missing pi_system_prompt".to_string());
+    }
+    if context.pi_model_config.is_none() {
+        return Err("Pi execution context is missing pi_model_config".to_string());
+    }
+    if let Some(resume) = &context.resume_session
+        && resume.cli_agent_session_id != session_id
+    {
+        return Err("Pi resume session id does not match pi_session_id".to_string());
+    }
+    Ok(())
 }
 
 fn validate_user_environment_for_guest(context: &ExecutionContext) -> Result<(), String> {
@@ -241,6 +271,13 @@ pub(crate) fn validate_resume_session_id(context: &ExecutionContext) -> Result<(
                 Ok(())
             } else {
                 Err("invalid session_id".to_string())
+            }
+        }
+        EffectiveCliFramework::Pi => {
+            if is_valid_cli_agent_session_id(&session.cli_agent_session_id) {
+                Ok(())
+            } else {
+                Err("invalid pi session_id".to_string())
             }
         }
     }
@@ -457,6 +494,7 @@ fn build_env_json_with_host_env_inner(
     match effective_cli_framework(&context.cli_agent_type) {
         EffectiveCliFramework::ClaudeCode => insert_claude_code_env(&mut env, context, host_env),
         EffectiveCliFramework::Codex => insert_codex_env(&mut env, context, host_env),
+        EffectiveCliFramework::Pi => {}
     }
 
     Ok(env)
@@ -516,7 +554,7 @@ pub(super) fn prepare_run_payload_for_run(
         codex_runtime_config: serialize_codex_runtime_config_payload(context)?,
         pi_system_prompt: context.pi_system_prompt.clone().unwrap_or_default(),
         pi_model_config: serialize_pi_model_config_payload(context)?,
-        run_skill_snapshot: serialize_run_skill_snapshot_payload(context)?,
+        pi_session_id: context.pi_session_id.clone().unwrap_or_default(),
     };
 
     validate_run_payload_for_guest(&payload).map_err(RunnerError::Internal)?;
@@ -600,14 +638,6 @@ fn serialize_pi_model_config_payload(context: &ExecutionContext) -> RunnerResult
     };
     serde_json::to_string(config)
         .map_err(|e| RunnerError::Internal(format!("serialize Pi model config: {e}")))
-}
-
-fn serialize_run_skill_snapshot_payload(context: &ExecutionContext) -> RunnerResult<String> {
-    let Some(snapshot) = &context.run_skill_snapshot else {
-        return Ok(String::new());
-    };
-    serde_json::to_string(snapshot)
-        .map_err(|e| RunnerError::Internal(format!("serialize run Skill snapshot: {e}")))
 }
 
 fn validate_run_payload_for_guest(

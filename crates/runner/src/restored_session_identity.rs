@@ -29,6 +29,7 @@ use crate::types::ResumeSessionHistoryRefKind;
 
 const CLAUDE_CODE_RESTORE_FORMAT_VERSION: u8 = 1;
 const CODEX_RESTORE_FORMAT_VERSION: u8 = 1;
+const PI_RESTORE_FORMAT_VERSION: u8 = 1;
 
 /// CLI framework namespace used by a restored-session identity.
 ///
@@ -38,6 +39,7 @@ const CODEX_RESTORE_FORMAT_VERSION: u8 = 1;
 pub(crate) enum RestoredSessionFramework {
     ClaudeCode,
     Codex,
+    Pi,
 }
 
 impl RestoredSessionFramework {
@@ -46,6 +48,7 @@ impl RestoredSessionFramework {
         match self {
             Self::ClaudeCode => CLAUDE_CODE_RESTORE_FORMAT_VERSION,
             Self::Codex => CODEX_RESTORE_FORMAT_VERSION,
+            Self::Pi => PI_RESTORE_FORMAT_VERSION,
         }
     }
 }
@@ -490,6 +493,7 @@ fn restored_session_framework_from_final(
     match framework {
         FinalSessionHistoryFramework::ClaudeCode => RestoredSessionFramework::ClaudeCode,
         FinalSessionHistoryFramework::Codex => RestoredSessionFramework::Codex,
+        FinalSessionHistoryFramework::Pi => RestoredSessionFramework::Pi,
     }
 }
 
@@ -499,6 +503,7 @@ fn final_session_history_framework(
     match framework {
         RestoredSessionFramework::ClaudeCode => FinalSessionHistoryFramework::ClaudeCode,
         RestoredSessionFramework::Codex => FinalSessionHistoryFramework::Codex,
+        RestoredSessionFramework::Pi => FinalSessionHistoryFramework::Pi,
     }
 }
 
