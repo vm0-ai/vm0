@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.429.2](https://github.com/vm0-ai/vm0/compare/api-v1.429.1...api-v1.429.2) (2026-08-12)
+
+
+### Refactoring
+
+* **db:** contract legacy chat-event storage ([#26426](https://github.com/vm0-ai/vm0/issues/26426)) ([16c9c8c](https://github.com/vm0-ai/vm0/commit/16c9c8ce7f15c2ee964da2f5c87d1a6d67253de7))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/db bumped to 1.194.5
+
 ## [1.429.1](https://github.com/vm0-ai/vm0/compare/api-v1.429.0...api-v1.429.1) (2026-08-12)
 
 
