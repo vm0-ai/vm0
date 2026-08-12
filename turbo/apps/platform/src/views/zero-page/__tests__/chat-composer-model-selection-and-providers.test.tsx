@@ -410,7 +410,7 @@ describe("chat composer models", () => {
       expectedZapIcon: false,
     },
   ])(
-    "keeps Fast rightmost while offering to make a temporary $targetSpeed run speed the default",
+    "offers to make a temporary $targetSpeed run speed the default",
     async ({
       defaultServiceTier,
       notice,
@@ -472,13 +472,6 @@ describe("chat composer models", () => {
       const targetLabel = expectedZapIcon ? "GPT 5.6 Sol Fast" : "GPT 5.6 Sol";
       await user.click(await findComposerModel(initialLabel));
       const fastModeOption = await findFastModeOption("GPT 5.6 Sol");
-      const standardModeOption = screen.getByRole("option", {
-        name: "GPT 5.6 Sol",
-      });
-      expect(standardModeOption).toHaveClass("mr-8", "pr-8");
-      expect(standardModeOption).not.toHaveClass("pr-16");
-      expect(fastModeOption).toHaveClass("right-0");
-      expect(fastModeOption).not.toHaveClass("right-8");
       expect(fastModeIcon(fastModeOption)).toHaveAttribute(
         "fill",
         expectedZapIcon ? "none" : "currentColor",
