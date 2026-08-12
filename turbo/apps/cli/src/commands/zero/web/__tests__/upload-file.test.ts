@@ -276,6 +276,8 @@ describe("okou web upload-file command", () => {
       ["image.avif", "image/avif"],
       ["clip.mp3", "audio/mpeg"],
       ["voice.wav", "audio/wav"],
+      ["network.har", "application/json"],
+      ["payload.vm0unknown", "application/octet-stream"],
     ])("should infer %s as %s", async (filename, expectedContentType) => {
       const filePath = join(tmpDir, basename(filename));
       writeFileSync(filePath, Buffer.from("fake bytes"));

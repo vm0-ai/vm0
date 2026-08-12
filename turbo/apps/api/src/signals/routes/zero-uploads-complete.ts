@@ -4,7 +4,7 @@ import { zeroUploadsContract } from "@vm0/api-contracts/contracts/zero-uploads";
 import { authContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
-import { isAllowedUploadType } from "../../lib/uploads-constants";
+import { normalizeWebUploadContentType } from "../../lib/uploads-constants";
 import { resolveArtifactObject$ } from "../services/artifact-storage.service";
 import { recordWebUploadedFile$ } from "../services/run-uploaded-files.service";
 import { rejectSuspendedOrg$ } from "../services/zero-org-suspension.service";
@@ -26,18 +26,6 @@ const completeInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
 
   const { id, contentType: requestedContentType } = body.data;
-
-  if (requestedContentType && !isAllowedUploadType(requestedContentType)) {
-    return {
-      status: 400 as const,
-      body: {
-        error: {
-          message: `Unsupported file type: ${requestedContentType}`,
-          code: "BAD_REQUEST",
-        },
-      },
-    };
-  }
 
   if (auth.orgId) {
     const suspended = await set(rejectSuspendedOrg$, auth.orgId, signal);
@@ -61,7 +49,9 @@ const completeInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
 
   const filename = s3Object.filename;
-  const contentType = requestedContentType ?? s3Object.contentType;
+  const contentType = requestedContentType
+    ? normalizeWebUploadContentType(requestedContentType)
+    : s3Object.contentType;
   const size = s3Object.size;
   const url = s3Object.url;
   const lastModified = s3Object.lastModified?.toISOString();
