@@ -12,6 +12,7 @@ const RUN_ID: &str = "codex-app-server-oversized-event-delivery-test";
 const MAX_REQUEST_BYTES: usize = 4 * 1024 * 1024;
 const SECRET: &str = "delivery-secret-value";
 const DELIVERY_MARKER: &str = "bytes truncated for delivery";
+const FALLBACK_MARKER: &str = "[event content truncated for delivery]";
 
 #[tokio::test]
 async fn codex_app_server_reduces_oversized_events_before_delivery()
@@ -87,6 +88,16 @@ async fn codex_app_server_reduces_oversized_events_before_delivery()
         })
         .collect::<Vec<_>>();
     assert_eq!(delivered.len(), 10);
+    assert!(
+        delivered
+            .iter()
+            .all(|event| event.get("vm0_delivery").is_none())
+    );
+    assert!(
+        requests
+            .iter()
+            .all(|request| !request.body.contains("[vm0:"))
+    );
     assert_eq!(
         delivered
             .iter()
@@ -104,7 +115,6 @@ async fn codex_app_server_reduces_oversized_events_before_delivery()
         "oversized-structure",
     ] {
         let event = delivered_item(&delivered, item_id)?;
-        assert_reduction_metadata(event)?;
         assert_eq!(event["item"]["id"], item_id);
         assert_eq!(event["type"], "item.completed");
     }
@@ -153,11 +163,6 @@ async fn codex_app_server_reduces_oversized_events_before_delivery()
                 && text.ends_with("-output-tail")
                 && text.contains(DELIVERY_MARKER))
     );
-    assert_eq!(
-        command["vm0_delivery"]["fields"],
-        serde_json::json!(["command", "command_output"])
-    );
-
     let file_change = delivered_item(&delivered, "oversized-file-change")?;
     assert_eq!(file_change["item"]["type"], "file_change");
     assert_eq!(file_change["item"]["status"], "completed");
@@ -173,15 +178,11 @@ async fn codex_app_server_reduces_oversized_events_before_delivery()
     let structure = delivered_item(&delivered, "oversized-structure")?;
     assert_eq!(structure["item"]["type"], "file_change");
     assert_eq!(structure["item"]["status"], "completed");
-    assert_eq!(structure["vm0_delivery"]["fallback"], true);
     assert_eq!(
         structure["item"]["changes"].as_array().map(Vec::len),
         Some(1)
     );
-    assert_eq!(
-        structure["item"]["changes"][0]["diff"],
-        "[vm0: event content truncated for delivery]"
-    );
+    assert_eq!(structure["item"]["changes"][0]["diff"], FALLBACK_MARKER);
     assert!(structure["item"]["changes"][0].get("kind").is_none());
 
     let warning = delivered
@@ -221,31 +222,6 @@ fn delivered_item<'a>(events: &'a [Value], item_id: &str) -> Result<&'a Value, S
         .iter()
         .find(|event| event.pointer("/item/id").and_then(Value::as_str) == Some(item_id))
         .ok_or_else(|| format!("missing item {item_id}"))
-}
-
-fn assert_reduction_metadata(event: &Value) -> Result<(), Box<dyn std::error::Error>> {
-    let metadata = event
-        .get("vm0_delivery")
-        .ok_or("reduced event omitted vm0_delivery")?;
-    assert_eq!(metadata["content_truncated"], true);
-    assert_eq!(
-        metadata["notice"],
-        "[vm0: event content truncated for delivery]"
-    );
-    let original = metadata["original_event_bytes"]
-        .as_u64()
-        .ok_or("missing original_event_bytes")?;
-    let delivered = metadata["delivered_event_bytes"]
-        .as_u64()
-        .ok_or("missing delivered_event_bytes")?;
-    assert!(original > delivered);
-    assert_eq!(delivered as usize, serde_json::to_vec(event)?.len());
-    assert!(
-        metadata["fields"]
-            .as_array()
-            .is_some_and(|fields| !fields.is_empty() && fields.len() <= 16)
-    );
-    Ok(())
 }
 
 fn read_jsonl(path: &str) -> Result<Vec<Value>, Box<dyn std::error::Error>> {

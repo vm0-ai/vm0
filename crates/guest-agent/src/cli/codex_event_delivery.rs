@@ -3,7 +3,7 @@
 //! The app-server backend writes the complete normalized event to the local
 //! agent log before this module sees the webhook copy. Normal events retain
 //! their existing serialization. Only events that cannot fit in one delivery
-//! request receive visible, metadata-backed content reduction.
+//! request receive visibly marked content reduction.
 
 use std::collections::BTreeSet;
 
@@ -11,11 +11,9 @@ use serde_json::{Map, Value, json};
 
 use crate::error::AgentError;
 
-const DELIVERY_METADATA_KEY: &str = "vm0_delivery";
-const DELIVERY_NOTICE: &str = "[vm0: event content truncated for delivery]";
+const DELIVERY_NOTICE: &str = "[event content truncated for delivery]";
 const MAX_REDUCTION_CANDIDATES: usize = 256;
 const MAX_REDUCED_FIELDS: usize = 16;
-const METADATA_SIZE_STABILIZATION_ATTEMPTS: usize = 8;
 const RETAINED_CONTENT_ADJUSTMENT_ATTEMPTS: usize = 4;
 
 pub(super) struct PreparedCodexEvent {
@@ -89,21 +87,13 @@ pub(super) fn prepare_for_delivery(
             original,
         });
 
-        let minimum_bytes = original_bytes
-            .saturating_sub(reducible_bytes)
-            .saturating_add(delivery_metadata_added_bytes(
-                original_bytes,
-                max_serialized_event_bytes,
-                &reduced_categories,
-                false,
-            )?);
+        let minimum_bytes = original_bytes.saturating_sub(reducible_bytes);
         if minimum_bytes > max_serialized_event_bytes {
             continue;
         }
 
         apply_retained_budget(&mut event, &selected, 0, 1)?;
-        let minimum =
-            serialize_with_metadata(&mut event, original_bytes, &reduced_categories, false)?;
+        let minimum = serde_json::to_vec(&event)?;
         if minimum.len() > max_serialized_event_bytes {
             continue;
         }
@@ -116,8 +106,7 @@ pub(super) fn prepare_for_delivery(
 
         for _ in 0..RETAINED_CONTENT_ADJUSTMENT_ATTEMPTS {
             apply_retained_budget(&mut event, &selected, retained_bytes, total_original_bytes)?;
-            let serialized =
-                serialize_with_metadata(&mut event, original_bytes, &reduced_categories, false)?;
+            let serialized = serde_json::to_vec(&event)?;
             if serialized.len() <= max_serialized_event_bytes {
                 return Ok(reduced_event(
                     serialized,
@@ -148,9 +137,8 @@ pub(super) fn prepare_for_delivery(
         .map(|candidate| candidate.category)
         .collect::<BTreeSet<_>>();
     fallback_categories.insert("event_structure");
-    let mut fallback = fallback_event(&event)?;
-    let serialized =
-        serialize_with_metadata(&mut fallback, original_bytes, &fallback_categories, true)?;
+    let fallback = fallback_event(&event)?;
+    let serialized = serde_json::to_vec(&fallback)?;
     if serialized.len() > max_serialized_event_bytes {
         return Err(AgentError::Execution(format!(
             "Codex event delivery fallback is {} bytes, exceeding the {max_serialized_event_bytes}-byte serialized event budget",
@@ -229,9 +217,6 @@ fn collect_value(
         }
         Value::Object(fields) => {
             for (key, value) in fields {
-                if key == DELIVERY_METADATA_KEY {
-                    continue;
-                }
                 path.push(PathSegment::Key(key.clone()));
                 collect_value(value, item_type, path, candidates);
                 path.pop();
@@ -389,7 +374,7 @@ fn truncated_text(original: &str, retained_bytes: usize) -> String {
     let preserved = head_end + original.len().saturating_sub(tail_start);
     let omitted = original.len().saturating_sub(preserved);
     format!(
-        "{}\n[vm0: {omitted} bytes truncated for delivery]\n{}",
+        "{}\n[{omitted} bytes truncated for delivery]\n{}",
         &original[..head_end],
         &original[tail_start..]
     )
@@ -409,87 +394,6 @@ fn ceil_char_boundary(value: &str, mut index: usize) -> usize {
         index += 1;
     }
     index
-}
-
-fn serialize_with_metadata(
-    event: &mut Value,
-    original_bytes: usize,
-    fields: &BTreeSet<&'static str>,
-    fallback: bool,
-) -> Result<Vec<u8>, AgentError> {
-    let event = event.as_object_mut().ok_or_else(|| {
-        AgentError::Execution("normalized Codex event is not an object".to_string())
-    })?;
-    event.insert(
-        DELIVERY_METADATA_KEY.to_string(),
-        delivery_metadata(original_bytes, 0, fields, fallback),
-    );
-
-    let mut expected_bytes = 0usize;
-    for _ in 0..METADATA_SIZE_STABILIZATION_ATTEMPTS {
-        let metadata = event
-            .get_mut(DELIVERY_METADATA_KEY)
-            .and_then(Value::as_object_mut)
-            .ok_or_else(|| {
-                AgentError::Execution("Codex event delivery metadata disappeared".to_string())
-            })?;
-        metadata.insert("delivered_event_bytes".to_string(), json!(expected_bytes));
-        let serialized = serde_json::to_vec(&*event)?;
-        if serialized.len() == expected_bytes {
-            return Ok(serialized);
-        }
-        expected_bytes = serialized.len();
-    }
-
-    Err(AgentError::Execution(
-        "Codex event delivery metadata size did not stabilize".to_string(),
-    ))
-}
-
-fn delivery_metadata(
-    original_bytes: usize,
-    delivered_bytes: usize,
-    fields: &BTreeSet<&'static str>,
-    fallback: bool,
-) -> Value {
-    let mut metadata = Map::new();
-    metadata.insert("content_truncated".to_string(), Value::Bool(true));
-    metadata.insert(
-        "notice".to_string(),
-        Value::String(DELIVERY_NOTICE.to_string()),
-    );
-    metadata.insert("original_event_bytes".to_string(), json!(original_bytes));
-    metadata.insert("delivered_event_bytes".to_string(), json!(delivered_bytes));
-    metadata.insert(
-        "fields".to_string(),
-        Value::Array(
-            fields
-                .iter()
-                .map(|field| Value::String((*field).to_string()))
-                .collect(),
-        ),
-    );
-    if fallback {
-        metadata.insert("fallback".to_string(), Value::Bool(true));
-    }
-    Value::Object(metadata)
-}
-
-fn delivery_metadata_added_bytes(
-    original_bytes: usize,
-    delivered_bytes: usize,
-    fields: &BTreeSet<&'static str>,
-    fallback: bool,
-) -> Result<usize, AgentError> {
-    let singleton = json!({
-        DELIVERY_METADATA_KEY: delivery_metadata(
-            original_bytes,
-            delivered_bytes,
-            fields,
-            fallback,
-        )
-    });
-    Ok(serde_json::to_vec(&singleton)?.len().saturating_sub(1))
 }
 
 fn fallback_event(source: &Value) -> Result<Value, AgentError> {
