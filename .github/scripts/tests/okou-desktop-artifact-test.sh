@@ -126,7 +126,7 @@ if (
 }
 if (
   !packagedAppPaths().appBundlePath.endsWith(
-    "Okou Computer Use-darwin-arm64/Okou Computer Use.app",
+    `Okou Computer Use-${process.platform}-${process.arch}/Okou Computer Use.app`,
   )
 ) {
   throw new Error("Okou packaged app path must be product scoped");
