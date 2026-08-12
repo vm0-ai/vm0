@@ -5,7 +5,6 @@ import {
 import {
   createUsagePricingFixture,
   deleteUsagePricingRows,
-  ensureUsagePricingRow,
   type UsagePricingFixture,
   type UsagePricingKey,
   type UsagePricingRow,
@@ -17,8 +16,4 @@ export type { UsagePricingFixture, UsagePricingKey, UsagePricingRow };
 export const seedOrgMetadata = upsertOrgMetadataFixture;
 export { setOnboardingPaymentPendingFixture };
 export const seedUsagePricingRows = upsertUsagePricingRows;
-export {
-  createUsagePricingFixture,
-  deleteUsagePricingRows,
-  ensureUsagePricingRow,
-};
+export { createUsagePricingFixture, deleteUsagePricingRows };

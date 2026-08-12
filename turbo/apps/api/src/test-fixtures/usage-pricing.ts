@@ -124,37 +124,6 @@ export async function upsertUsagePricingRows(
     });
 }
 
-export async function ensureUsagePricingRow(row: UsagePricingRow): Promise<{
-  readonly pricing: UsagePricingRow;
-  readonly inserted: boolean;
-}> {
-  const db = fixtureDb();
-  const [existing] = await db
-    .select({
-      kind: usagePricing.kind,
-      provider: usagePricing.provider,
-      category: usagePricing.category,
-      unitPrice: usagePricing.unitPrice,
-      unitSize: usagePricing.unitSize,
-    })
-    .from(usagePricing)
-    .where(
-      and(
-        eq(usagePricing.kind, row.kind),
-        eq(usagePricing.provider, row.provider),
-        eq(usagePricing.category, row.category),
-      ),
-    )
-    .limit(1);
-
-  if (existing) {
-    return { pricing: existing, inserted: false };
-  }
-
-  await db.insert(usagePricing).values(row);
-  return { pricing: row, inserted: true };
-}
-
 export async function deleteUsagePricingRows(filter: {
   readonly kind: string;
   readonly provider: string;
