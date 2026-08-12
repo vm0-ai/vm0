@@ -26,7 +26,7 @@ describe("withErrorHandler", () => {
     vi.unstubAllEnvs();
   });
 
-  it("should show ZERO_TOKEN setup guidance when it is missing", async () => {
+  it("should show OKOU_TOKEN setup guidance when it is missing", async () => {
     const handler = withErrorHandler(async () => {
       throw new ApiRequestError("Not authenticated", "UNAUTHORIZED", 401);
     });
@@ -43,8 +43,8 @@ describe("withErrorHandler", () => {
     expect(mockExit).toHaveBeenCalledWith(1);
   });
 
-  it("should show ZERO_TOKEN guidance for UNAUTHORIZED with ZERO_TOKEN set", async () => {
-    vi.stubEnv("ZERO_TOKEN", "some-token");
+  it("should show OKOU_TOKEN guidance for UNAUTHORIZED with OKOU_TOKEN set", async () => {
+    vi.stubEnv("OKOU_TOKEN", "some-token");
 
     const handler = withErrorHandler(async () => {
       throw new ApiRequestError("Not authenticated", "UNAUTHORIZED", 401);

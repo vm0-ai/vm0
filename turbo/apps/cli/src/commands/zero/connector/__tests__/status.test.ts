@@ -124,11 +124,11 @@ describe("okou connector status command", () => {
 
   beforeEach(() => {
     chalk.level = 0;
-    vi.stubEnv("ZERO_APP_URL", "");
+    vi.stubEnv("OKOU_APP_URL", "");
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("ZERO_TOKEN", "test-token");
-    vi.stubEnv("ZERO_AGENT_ID", "");
-    vi.stubEnv("ZERO_CHAT_THREAD_ID", "");
+    vi.stubEnv("OKOU_TOKEN", "test-token");
+    vi.stubEnv("OKOU_AGENT_ID", "");
+    vi.stubEnv("OKOU_CHAT_THREAD_ID", "");
   });
 
   afterEach(() => {
@@ -260,8 +260,8 @@ describe("okou connector status command", () => {
     });
 
     it("prints a callback URL example in the current web chat", async () => {
-      vi.stubEnv("ZERO_CHAT_THREAD_ID", "thread-abc-123");
-      vi.stubEnv("ZERO_AGENT_ID", AGENT_UUID);
+      vi.stubEnv("OKOU_CHAT_THREAD_ID", "thread-abc-123");
+      vi.stubEnv("OKOU_AGENT_ID", AGENT_UUID);
       server.use(
         stubConnector(connectedGithub),
         stubAgent(AGENT_UUID, "maya"),
@@ -313,6 +313,21 @@ describe("okou connector status command", () => {
       expect(logCalls).not.toContain("zero-app.example.test");
     });
 
+    it("ignores legacy Zero runtime context without canonical values", async () => {
+      vi.stubEnv("ZERO_APP_URL", "https://zero-app.example.test");
+      vi.stubEnv("ZERO_AGENT_ID", ALT_AGENT_UUID);
+      vi.stubEnv("ZERO_CHAT_THREAD_ID", "zero-thread-456");
+      server.use(stubConnector(connectedGithub));
+
+      await statusCommand.parseAsync(["node", "cli", "github"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).not.toContain("Authorized:");
+      expect(logCalls).not.toContain(ALT_AGENT_UUID);
+      expect(logCalls).not.toContain("zero-thread-456");
+      expect(logCalls).not.toContain("zero-app.example.test");
+    });
+
     it("uses the production app origin in authorization links", async () => {
       const apiOrigin = "https://api.vm0.ai";
       vi.stubEnv("APP_URL", "https://unrelated.example.test");
@@ -340,11 +355,11 @@ describe("okou connector status command", () => {
       );
     });
 
-    it("prefers ZERO_APP_URL in authorization links", async () => {
+    it("prefers OKOU_APP_URL in authorization links", async () => {
       const apiOrigin = "https://api.example.test";
       const appOrigin = "https://app.example.test";
       vi.stubEnv("VM0_API_BACKEND_URL", apiOrigin);
-      vi.stubEnv("ZERO_APP_URL", `${appOrigin}/ignored-path`);
+      vi.stubEnv("OKOU_APP_URL", `${appOrigin}/ignored-path`);
       server.use(
         stubConnectorCatalogStatus(
           [statusItemFromConnector(connectedGithub)],
@@ -458,8 +473,8 @@ describe("okou connector status command", () => {
       expect(logCalls).not.toContain("okou connector check");
     });
 
-    it("uses $ZERO_AGENT_ID when --agent flag is not provided", async () => {
-      vi.stubEnv("ZERO_AGENT_ID", AGENT_UUID);
+    it("uses $OKOU_AGENT_ID when --agent flag is not provided", async () => {
+      vi.stubEnv("OKOU_AGENT_ID", AGENT_UUID);
       server.use(
         stubConnector(connectedGithub),
         stubAgent(AGENT_UUID, "maya"),
@@ -474,8 +489,8 @@ describe("okou connector status command", () => {
       );
     });
 
-    it("--agent overrides $ZERO_AGENT_ID", async () => {
-      vi.stubEnv("ZERO_AGENT_ID", ALT_AGENT_UUID);
+    it("--agent overrides $OKOU_AGENT_ID", async () => {
+      vi.stubEnv("OKOU_AGENT_ID", ALT_AGENT_UUID);
       server.use(
         stubConnector(connectedGithub),
         stubAgent(AGENT_UUID, "maya"),
