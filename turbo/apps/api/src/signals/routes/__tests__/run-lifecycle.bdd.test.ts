@@ -7934,6 +7934,53 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
 });
 
 describe("RUN-02: custom connectors, grants, and network policies", () => {
+  it("admits an explicitly connected custom connector without stored values", async () => {
+    const api = createRunsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    const rand = randomUUID().replaceAll("-", "").slice(0, 8);
+
+    const custom = await connectors.createCustomConnector(actor, {
+      displayName: "BDD Empty Optional Custom Connection",
+      prefixTemplates: [`https://${rand}.empty-optional.test/v1/`],
+      fields: [
+        {
+          key: "api_key",
+          label: "API key",
+          kind: "secret",
+          required: false,
+        },
+      ],
+      headerInjections: [
+        {
+          name: "Authorization",
+          valueTemplate: "Bearer {{secrets.api_key}}",
+        },
+      ],
+      queryInjections: [],
+    });
+    await connectors.setCustomConnectorValues(actor, custom.id, []);
+    await connectors.updateAgentCustomConnectors(actor, agentId, [custom.id]);
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "use the explicitly connected custom connector",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+    const internalName = `custom_connector_${custom.id.replaceAll("-", "")}`;
+    expect(findFirewallEntry(claim.firewalls, internalName)).toBeDefined();
+    expect(claim.connectorRuntimeTargets).toContainEqual({
+      kind: "custom",
+      customConnectorId: custom.id,
+      baseUrlVars: {},
+    });
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    await connectors.deleteCustomConnector(actor, custom.id);
+  });
+
   it("admits overlapping custom and built-in connector targets", async () => {
     const api = createRunsApi(context);
     const connectors = createConnectorBddApi(context);
