@@ -559,7 +559,7 @@ function ModelFirstPolicyRow({
                 />
               </SelectItem>
             </TooltipTrigger>
-            <TooltipContent side="right" className="text-xs">
+            <TooltipContent side="top" className="text-xs">
               {fastLabel} · {fastImpact}
             </TooltipContent>
           </Tooltip>
