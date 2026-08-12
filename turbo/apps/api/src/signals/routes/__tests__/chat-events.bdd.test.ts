@@ -4649,16 +4649,8 @@ describe("CHAT-02: model-first provider policies", () => {
 });
 
 describe("CHAT-02: run-level model overrides", () => {
-  it("describes raw chat history sync when snapshot read is enabled", async () => {
-    const orgId = `org_${randomUUID()}`;
-    const { actor, agentId } = await entitledChatActor({ orgId });
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...actor, orgId },
-      {
-        [FeatureSwitchKey.ChatEventSnapshotRead]: true,
-      },
-    );
+  it("describes raw chat history sync by default", async () => {
+    const { actor, agentId } = await entitledChatActor();
 
     const run = await sendChatRun(actor, {
       agentId,

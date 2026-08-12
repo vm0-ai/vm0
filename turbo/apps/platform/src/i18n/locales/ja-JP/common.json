@@ -1389,7 +1389,7 @@
       "partsHeading_one": "返信の {{count}} 部分に関するフィードバック:",
       "partsHeading_other": "返信の {{count}} 部分に関するフィードバック:",
       "placeholder": "これについて何を変える必要がありますか?",
-      "provide": "フィードバックを提供する",
+      "quote": "引用",
       "remove": "フィードバックを削除する",
       "sentEmailDescription": "送信されたメール (メール ID: {{id}}{{sentIdSuffix}})",
       "sentIdSuffix": "、送信された ID: {{sentId}}",
