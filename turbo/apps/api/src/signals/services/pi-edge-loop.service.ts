@@ -218,7 +218,7 @@ export const runPiEdgeTurn$ = command(
     const priorMessages = parsePiAgentMessages(
       transcript.messages.map(transcriptMessagePayload),
     );
-    let sequenceNumber = 1;
+    let sequenceNumber = 0;
 
     await runPiAgentPrompt(
       {

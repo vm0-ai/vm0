@@ -132,19 +132,18 @@ function transcriptTail(
   transcript: FollowedTranscript,
   runId: string,
 ): TranscriptTail {
-  let lastRunSequence = 0;
+  let lastRunSequence: number | undefined;
   for (const message of transcript.messages) {
     if (message.runId === runId) {
       lastRunSequence = Math.max(
-        lastRunSequence,
+        lastRunSequence ?? -1,
         message.runEventSequenceNumber,
       );
     }
   }
   return {
-    nextSequence: lastRunSequence + 1,
-    lastAcknowledgedSequence:
-      lastRunSequence === 0 ? undefined : lastRunSequence,
+    nextSequence: (lastRunSequence ?? -1) + 1,
+    lastAcknowledgedSequence: lastRunSequence,
   };
 }
 

@@ -288,18 +288,18 @@ describe("internal Pi standby agent loop", () => {
       {
         type: "pi-transcript",
         requestId: "transcript-1",
-        transcript: transcriptPage([persistedMessage(3, 7, HANDOFF_ASSISTANT)]),
+        transcript: transcriptPage([persistedMessage(1, 0, HANDOFF_ASSISTANT)]),
       },
       { type: "pi-handoff" },
       {
         type: "pi-message-ack",
-        messageId: `${CONFIG.runId}/8`,
+        messageId: `${CONFIG.runId}/1`,
         status: 200,
       },
       { type: "pi-standby-release", reason: "api-complete" },
       {
         type: "pi-message-ack",
-        messageId: `${CONFIG.runId}/9`,
+        messageId: `${CONFIG.runId}/2`,
         status: 200,
       },
     ]);
@@ -331,19 +331,52 @@ describe("internal Pi standby agent loop", () => {
     expect(messageFrames).toHaveLength(2);
     expect(messageFrames[0]?.event).toMatchObject({
       type: "pi.message.completed",
-      sequenceNumber: 8,
-      messageId: `${CONFIG.runId}/8`,
+      sequenceNumber: 1,
+      messageId: `${CONFIG.runId}/1`,
     });
     expect(eventMessage(messageFrames[0]!)).toEqual(TOOL_RESULT);
     expect(messageFrames[1]?.event).toMatchObject({
-      sequenceNumber: 9,
-      messageId: `${CONFIG.runId}/9`,
+      sequenceNumber: 2,
+      messageId: `${CONFIG.runId}/2`,
     });
     expect(eventMessage(messageFrames[1]!)).toEqual(FINAL_ASSISTANT);
     expect(io.outputs.at(-1)).toMatchObject({
       type: "pi-complete",
       exitCode: 0,
-      lastEventSequence: 9,
+      lastEventSequence: 2,
+      skillSnapshotDigest: SNAPSHOT_DIGEST,
+    });
+  });
+
+  it("reports sequence zero when resume emits no additional messages", async () => {
+    const io = new FakeIo([
+      {
+        type: "pi-transcript",
+        requestId: "transcript-1",
+        transcript: transcriptPage([persistedMessage(1, 0, HANDOFF_ASSISTANT)]),
+      },
+    ]);
+    const executionEnv = createPiNodeExecutionEnv({ cwd: tmpdir() });
+
+    try {
+      await runPiStandbyAgentLoop(
+        {
+          io,
+          config: CONFIG,
+          executionEnv,
+          standbyTtlSeconds: 1,
+          resume: async () => {},
+        },
+        new AbortController().signal,
+      );
+    } finally {
+      await executionEnv.cleanup();
+    }
+
+    expect(io.outputs.at(-1)).toMatchObject({
+      type: "pi-complete",
+      exitCode: 0,
+      lastEventSequence: 0,
       skillSnapshotDigest: SNAPSHOT_DIGEST,
     });
   });
