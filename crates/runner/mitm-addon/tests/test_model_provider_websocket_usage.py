@@ -311,6 +311,38 @@ class TestModelProviderWebSocketPrewarmUsage:
             expected_rows,
         )
 
+    def test_model_websocket_conflicting_terminal_ids_fail_open(self, tmp_path, real_flow):
+        flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
+        mitm_addon.responseheaders(flow)
+
+        with self._usage_webhook_api() as webhook:
+            feed_websocket_client_message(
+                flow,
+                json.dumps({"type": "response.create", "generate": False}).encode(),
+            )
+            feed_websocket_server_message(
+                flow,
+                _openai_websocket_created_frame("warm-ambiguous"),
+            )
+            feed_websocket_server_message(
+                flow,
+                b'{"type":"response.completed","response":'
+                b'{"id":"other","id":"warm-ambiguous","model":"gpt-5.5",'
+                b'"usage":{"input_tokens":13,"output_tokens":0}}}',
+            )
+            usage.flush_usage_events(trigger="test")
+
+        expected_rows = [("gpt-5.5", "tokens.input", 13)]
+        _assert_usage_event_rows(webhook.usage_events(), "provider", expected_rows)
+        _assert_usage_event_rows(
+            webhook.model_usage_observation_events(),
+            "model",
+            expected_rows,
+        )
+        assert not any(
+            entry.get("disposition") == "ignored" for entry in model_usage_source_entries(flow)
+        )
+
     def test_model_websocket_malformed_client_frame_retires_unbound_prewarm(
         self,
         tmp_path,

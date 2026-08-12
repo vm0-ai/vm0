@@ -271,7 +271,7 @@ def inspect_openai_responses_server_lifecycle(
         return OpenAIResponsesServerLifecycle(event.event_type, None)
     response_id = result.values.get(("response", "id"))
     if (
-        event_type != _RESPONSES_CREATED_EVENT
+        event_type not in relevant_event_types
         or not extractor.selected_scalar_values_are_consistent(("response", "id"))
         or not isinstance(response_id, str)
         or not response_id

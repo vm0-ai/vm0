@@ -649,18 +649,21 @@ def feed_model_websocket_usage(
             isinstance(prewarm_state, _OpenAIResponsesPrewarmState)
             and prewarm_state.response_id == message_id
         ):
-            if not prewarm_state.diagnostic_emitted and usage.has_positive_model_provider_usage(
-                usage_result
-            ):
-                usage.log_ignored_model_provider_usage_source(
-                    flow,
-                    flow_metadata.run_id(flow.metadata),
-                    message_id,
-                    usage_result,
-                    reason="responses_generate_false",
-                )
-                prewarm_state.diagnostic_emitted = True
-            return
+            lifecycle = usage.inspect_openai_responses_server_lifecycle(event)
+            if lifecycle.is_terminal and lifecycle.response_id == message_id:
+                if not prewarm_state.diagnostic_emitted and usage.has_positive_model_provider_usage(
+                    usage_result
+                ):
+                    usage.log_ignored_model_provider_usage_source(
+                        flow,
+                        flow_metadata.run_id(flow.metadata),
+                        message_id,
+                        usage_result,
+                        reason="responses_generate_false",
+                    )
+                    prewarm_state.diagnostic_emitted = True
+                return
+            prewarm_state.response_id = None
         usage_sources = flow.metadata.get(metadata_keys.MODEL_PROVIDER_USAGE_SOURCES)
         if not isinstance(usage_sources, dict):
             usage_sources = {}
