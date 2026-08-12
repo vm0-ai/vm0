@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.33.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.32.0...desktop-v0.33.0) (2026-08-12)
+
+
+### Features
+
+* **desktop:** publish signed okou releases ([#26450](https://github.com/vm0-ai/vm0/issues/26450)) ([5990968](https://github.com/vm0-ai/vm0/commit/5990968a3834a2377abb42e48eef49e9a42bb66c))
+
 ## [0.32.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.31.0...desktop-v0.32.0) (2026-08-12)
 
 
