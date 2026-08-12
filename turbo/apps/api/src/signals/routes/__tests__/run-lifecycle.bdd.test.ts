@@ -8304,6 +8304,49 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       expiresAt: null,
     });
 
+    if (!actor.orgId) {
+      throw new Error("Expected a custom connector actor with an organization");
+    }
+    await setCustomConnectorCredentialStorageState(context, {
+      orgId: actor.orgId,
+      userId: actor.userId,
+      customConnectorId: custom.id,
+      authMethod: "manual",
+      storageVersion: 1,
+      needsReconnect: true,
+    });
+    const reconnectRequiredAuth = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      currentAuthBody,
+      [502],
+    );
+    if (reconnectRequiredAuth.status !== 502) {
+      throw new Error("Expected manual custom connector reconnect failure");
+    }
+    expect(reconnectRequiredAuth.body.error).toMatchObject({
+      code: "TOKEN_REFRESH_FAILED",
+      connectors: [custom.id],
+      failureReason: "reconnect_required",
+    });
+    expect(JSON.stringify(reconnectRequiredAuth.body)).not.toContain(
+      "updated-custom-secret-value",
+    );
+
+    await connectors.setCustomConnectorSecret(
+      actor,
+      custom.id,
+      "recovered-custom-secret-value",
+    );
+    const recoveredAuth = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      currentAuthBody,
+      [200],
+    );
+    expect(recoveredAuth.body).toMatchObject({
+      headers: { Authorization: "Bearer recovered-custom-secret-value" },
+      expiresAt: null,
+    });
+
     const [updatedRuntime] = await api.syncConnectorRuntime(run.runId, {
       targets: [target],
     });
@@ -8319,7 +8362,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       [200],
     );
     expect(updatedCurrentAuth.body).toMatchObject({
-      headers: { Authorization: "Bearer updated-custom-secret-value" },
+      headers: { Authorization: "Bearer recovered-custom-secret-value" },
     });
 
     await connectors.disconnectCustomConnector(actor, custom.id);
@@ -8405,9 +8448,6 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       state: "available",
     });
 
-    if (!actor.orgId) {
-      throw new Error("Expected a custom connector actor with an organization");
-    }
     await setCustomConnectorCredentialStorageState(context, {
       orgId: actor.orgId,
       userId: actor.userId,
@@ -9570,6 +9610,26 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     mockNow(firstRefreshAt);
     onTestFinished(() => {
       clearMockNow();
+    });
+    await seedOrgMetadata({
+      orgId: actor.orgId,
+      tier: "pro-suspend",
+      credits: 20_000,
+    });
+    const deniedRefresh = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      { ...currentAuthBody, firewallBillable: true },
+      [402],
+    );
+    if (deniedRefresh.status !== 402) {
+      throw new Error("Expected billable custom OAuth auth to be denied");
+    }
+    expect(deniedRefresh.body.error.code).toBe("INSUFFICIENT_CREDITS");
+    expect(provider.tokenBodies).toHaveLength(1);
+    await seedOrgMetadata({
+      orgId: actor.orgId,
+      tier: "pro",
+      credits: 20_000,
     });
     const [firstResolved, secondResolved] = await Promise.all([
       fw.requestFirewallAuth(
