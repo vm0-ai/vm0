@@ -906,8 +906,9 @@
         "tenConcurrentRuns": "10 個の同時実行",
         "twoConcurrentRuns": "2つの同時実行",
         "unlimitedAgents": "無制限の合計エージェント",
-        "voiceInput": "音声入力",
-        "voiceInputLifetime": "音声入力 (メンバーごとに生涯 10 回まで使用可能)"
+        "voiceInputFree": "音声入力（メンバーごとに累計10リクエスト・1日10分）",
+        "voiceInputPro": "音声入力（メンバーごとに1日300リクエスト・200分）",
+        "voiceInputTeam": "音声入力（メンバーごとに1日500リクエスト・500分）"
       },
       "free": {
         "description": "既存のワークスペースへの従来の無料アクセス。",

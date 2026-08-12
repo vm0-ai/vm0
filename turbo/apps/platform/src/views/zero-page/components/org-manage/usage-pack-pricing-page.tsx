@@ -209,9 +209,13 @@ function planFeatures(tier: UsagePackPlanTier): readonly string[] {
     i18n.t(($) => {
       return $.billing.plans.features.byok;
     }),
-    i18n.t(($) => {
-      return $.billing.plans.features.voiceInput;
-    }),
+    tier === "pro"
+      ? i18n.t(($) => {
+          return $.billing.plans.features.voiceInputPro;
+        })
+      : i18n.t(($) => {
+          return $.billing.plans.features.voiceInputTeam;
+        }),
     tier === "pro"
       ? i18n.t(($) => {
           return $.billing.plans.features.emailSupport;
