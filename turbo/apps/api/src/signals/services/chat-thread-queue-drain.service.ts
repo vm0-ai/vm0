@@ -207,9 +207,15 @@ export const drainChatThreadQueueForRun$ = command(
 export const drainStaleChatThreadQueues$ = command(
   async (
     { set },
-    input: { readonly dispatchFailedCallbacks: DispatchFailedRunCallbacks },
+    input: {
+      readonly dispatchFailedCallbacks: DispatchFailedRunCallbacks;
+      readonly chatThreadIds?: readonly string[];
+    },
     signal: AbortSignal,
   ): Promise<number> => {
+    if (input.chatThreadIds?.length === 0) {
+      return 0;
+    }
     const db = set(writeDb$);
     const currentTime = nowDate().getTime();
     const staleBefore = new Date(currentTime - STALE_QUEUE_ITEM_AGE_MS);
@@ -220,10 +226,12 @@ export const drainStaleChatThreadQueues$ = command(
       expiredCancellationRecoveryThreads(db, {
         expiredBefore: recoveryExpiredBefore,
         limit: DRAIN_SWEEP_LIMIT,
+        chatThreadIds: input.chatThreadIds,
       }),
       staleChatThreadQueueThreadIds(db, {
         staleBefore,
         limit: DRAIN_SWEEP_LIMIT,
+        chatThreadIds: input.chatThreadIds,
       }),
     ]);
     signal.throwIfAborted();

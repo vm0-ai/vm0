@@ -8,6 +8,7 @@ import {
   and,
   asc,
   eq,
+  inArray,
   isNull,
   lt,
   notExists,
@@ -224,6 +225,7 @@ export async function staleChatEventQueueThreadIds(
   args: {
     readonly staleBefore: Date;
     readonly limit: number;
+    readonly chatThreadIds?: readonly string[];
   },
 ): Promise<readonly string[]> {
   const rows = await db
@@ -233,6 +235,9 @@ export async function staleChatEventQueueThreadIds(
       and(
         pendingChatQueueEventCondition(db),
         lt(chatEvents.createdAt, args.staleBefore),
+        args.chatThreadIds === undefined
+          ? undefined
+          : inArray(chatEvents.chatThreadId, args.chatThreadIds),
       ),
     )
     .limit(args.limit);

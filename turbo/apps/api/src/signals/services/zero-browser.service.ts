@@ -2727,6 +2727,7 @@ export const stopThreadZeroBrowsers$ = command(
 async function releaseStrandedBrowserStarts(
   db: Db,
   limit: number,
+  chatThreadIds: readonly string[] | null,
   signal: AbortSignal,
 ): Promise<number> {
   const stranded = await db
@@ -2744,6 +2745,9 @@ async function releaseStrandedBrowserStarts(
           browserSessions.updatedAt,
           new Date(nowDate().getTime() - STRANDED_START_GRACE_MS),
         ),
+        chatThreadIds === null
+          ? undefined
+          : inArray(browserSessions.chatThreadId, chatThreadIds),
       ),
     )
     .limit(limit);
@@ -2820,6 +2824,9 @@ async function releaseStrandedBrowserStarts(
               ),
             ),
         ),
+        chatThreadIds === null
+          ? undefined
+          : inArray(browserSessions.chatThreadId, chatThreadIds),
       ),
     )
     .returning({ chatThreadId: browserSessions.chatThreadId });
@@ -3077,6 +3084,7 @@ async function reconcileExpiredInactiveBrowsers(
   db: Db,
   limit: number,
   screenshotSchemaReady: boolean,
+  chatThreadIds: readonly string[] | null,
   signal: AbortSignal,
 ): Promise<{
   readonly checked: number;
@@ -3119,6 +3127,9 @@ async function reconcileExpiredInactiveBrowsers(
               ),
             ),
         ),
+        chatThreadIds === null
+          ? undefined
+          : inArray(browserSessions.chatThreadId, chatThreadIds),
       ),
     )
     .orderBy(browserSessions.updatedAt)
@@ -3158,6 +3169,7 @@ async function reconcileExpiredInactiveBrowsers(
 async function purgeExpiredStoppedBrowserInstances(
   db: Db,
   limit: number,
+  chatThreadIds: readonly string[] | null,
   signal: AbortSignal,
 ): Promise<{ readonly checked: number; readonly cleaned: number }> {
   const cutoff = new Date(nowDate().getTime() - INACTIVE_BROWSER_RETENTION_MS);
@@ -3170,6 +3182,9 @@ async function purgeExpiredStoppedBrowserInstances(
       and(
         eq(browserSessionInstances.status, "stopped"),
         lte(browserSessionInstances.finishedAt, cutoff),
+        chatThreadIds === null
+          ? undefined
+          : inArray(browserSessionInstances.chatThreadId, chatThreadIds),
       ),
     )
     .orderBy(browserSessionInstances.finishedAt)
@@ -3184,6 +3199,9 @@ async function purgeExpiredStoppedBrowserInstances(
       and(
         eq(browserSessionInstances.status, "stopped"),
         lte(browserSessionInstances.finishedAt, cutoff),
+        chatThreadIds === null
+          ? undefined
+          : inArray(browserSessionInstances.chatThreadId, chatThreadIds),
         inArray(
           browserSessionInstances.providerSessionId,
           rows.map((row) => {
@@ -3226,6 +3244,7 @@ interface BrowserReconcileOutcome {
 async function reconcileOrphanedBrowserProfiles(
   db: Db,
   limit: number,
+  chatThreadIds: readonly string[] | null,
   signal: AbortSignal,
 ): Promise<{
   readonly checked: number;
@@ -3242,7 +3261,14 @@ async function reconcileOrphanedBrowserProfiles(
       chatThreads,
       eq(chatThreads.id, browserThreadProfiles.chatThreadId),
     )
-    .where(isNull(chatThreads.id))
+    .where(
+      and(
+        isNull(chatThreads.id),
+        chatThreadIds === null
+          ? undefined
+          : inArray(browserThreadProfiles.chatThreadId, chatThreadIds),
+      ),
+    )
     .orderBy(browserThreadProfiles.updatedAt)
     .limit(limit);
   signal.throwIfAborted();
@@ -3272,6 +3298,7 @@ async function reconcileOrphanedBrowserScreenshots(
   db: Db,
   deleteObjects: (keys: readonly string[]) => Promise<void>,
   limit: number,
+  chatThreadIds: readonly string[] | null,
   signal: AbortSignal,
 ): Promise<{
   readonly checked: number;
@@ -3288,7 +3315,14 @@ async function reconcileOrphanedBrowserScreenshots(
       chatThreads,
       eq(chatThreads.id, browserSessionScreenshots.chatThreadId),
     )
-    .where(isNull(chatThreads.id))
+    .where(
+      and(
+        isNull(chatThreads.id),
+        chatThreadIds === null
+          ? undefined
+          : inArray(browserSessionScreenshots.chatThreadId, chatThreadIds),
+      ),
+    )
     .orderBy(browserSessionScreenshots.updatedAt)
     .limit(limit);
   signal.throwIfAborted();
@@ -3332,6 +3366,7 @@ async function reconcileQueuedBrowserScreenshotDeletions(
   db: Db,
   deleteObjects: (keys: readonly string[]) => Promise<void>,
   limit: number,
+  chatThreadIds: readonly string[] | null,
   signal: AbortSignal,
 ): Promise<{
   readonly checked: number;
@@ -3344,6 +3379,14 @@ async function reconcileQueuedBrowserScreenshotDeletions(
       objectKey: browserSessionScreenshotDeletions.objectKey,
     })
     .from(browserSessionScreenshotDeletions)
+    .where(
+      chatThreadIds === null
+        ? undefined
+        : inArray(
+            browserSessionScreenshotDeletions.chatThreadId,
+            chatThreadIds,
+          ),
+    )
     .orderBy(browserSessionScreenshotDeletions.createdAt)
     .limit(limit);
   signal.throwIfAborted();
@@ -3444,11 +3487,15 @@ const reconcileBrowserInstance$ = command(
   },
 );
 
-export const reconcileZeroBrowsers$ = command(
+const reconcileZeroBrowsersWithScope$ = command(
   async (
     { get, set },
+    chatThreadIds: readonly string[] | null,
     signal: AbortSignal,
   ): Promise<BrowserReconcileResult> => {
+    if (chatThreadIds !== null && chatThreadIds.length === 0) {
+      return { checked: 0, stopped: 0, errors: 0, healthy: 0 };
+    }
     const db = set(writeDb$);
     const rows = await db
       .select({
@@ -3465,7 +3512,14 @@ export const reconcileZeroBrowsers$ = command(
         chatThreads,
         eq(chatThreads.id, browserSessionInstances.chatThreadId),
       )
-      .where(eq(browserSessionInstances.status, "active"))
+      .where(
+        and(
+          eq(browserSessionInstances.status, "active"),
+          chatThreadIds === null
+            ? undefined
+            : inArray(browserSessionInstances.chatThreadId, chatThreadIds),
+        ),
+      )
       .orderBy(browserSessionInstances.updatedAt)
       .limit(RECONCILE_BATCH_SIZE);
     signal.throwIfAborted();
@@ -3483,6 +3537,7 @@ export const reconcileZeroBrowsers$ = command(
     const releasedStarts = await releaseStrandedBrowserStarts(
       db,
       RECONCILE_BATCH_SIZE,
+      chatThreadIds,
       signal,
     );
     const screenshotSchemaReady = await browserScreenshotSchemaAvailable(db);
@@ -3491,16 +3546,19 @@ export const reconcileZeroBrowsers$ = command(
       db,
       RECONCILE_BATCH_SIZE,
       screenshotSchemaReady,
+      chatThreadIds,
       signal,
     );
     const expiredInstanceCleanup = await purgeExpiredStoppedBrowserInstances(
       db,
       RECONCILE_BATCH_SIZE,
+      chatThreadIds,
       signal,
     );
     const profileCleanup = await reconcileOrphanedBrowserProfiles(
       db,
       RECONCILE_BATCH_SIZE,
+      chatThreadIds,
       signal,
     );
     const deleteScreenshotObjects = async (keys: readonly string[]) => {
@@ -3511,6 +3569,7 @@ export const reconcileZeroBrowsers$ = command(
           db,
           deleteScreenshotObjects,
           RECONCILE_BATCH_SIZE,
+          chatThreadIds,
           signal,
         )
       : { checked: 0, cleaned: 0, errors: 0 };
@@ -3519,6 +3578,7 @@ export const reconcileZeroBrowsers$ = command(
           db,
           deleteScreenshotObjects,
           RECONCILE_BATCH_SIZE,
+          chatThreadIds,
           signal,
         )
       : { checked: 0, cleaned: 0, errors: 0 };
@@ -3547,5 +3607,22 @@ export const reconcileZeroBrowsers$ = command(
         orphanedScreenshotCleanup.errors,
       healthy,
     };
+  },
+);
+
+export const reconcileZeroBrowsers$ = command(
+  async ({ set }, signal: AbortSignal): Promise<BrowserReconcileResult> => {
+    return await set(reconcileZeroBrowsersWithScope$, null, signal);
+  },
+);
+
+/** Reconcile only browser resources owned by explicit test fixture threads. */
+export const reconcileZeroBrowserFixtures$ = command(
+  async (
+    { set },
+    chatThreadIds: readonly string[],
+    signal: AbortSignal,
+  ): Promise<BrowserReconcileResult> => {
+    return await set(reconcileZeroBrowsersWithScope$, chatThreadIds, signal);
   },
 );
