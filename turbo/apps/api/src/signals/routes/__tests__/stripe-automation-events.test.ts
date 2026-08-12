@@ -665,7 +665,8 @@ describe("Stripe automation event webhook", () => {
         },
       }),
     );
-    expect((await executeCron()).executed).toBeGreaterThanOrEqual(2);
+    expect((await executeAutomation(current)).body.executed).toBe(1);
+    expect((await executeAutomation(legacy)).body.executed).toBe(1);
 
     const currentClaim = await claimScenarioRun(current);
     const legacyClaim = await claimScenarioRun(legacy);

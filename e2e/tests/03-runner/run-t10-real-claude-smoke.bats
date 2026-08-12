@@ -29,49 +29,10 @@ teardown_file() {
     fi
 }
 
-wait_for_real_claude_events() {
-    local run_id="$1"
-    local timeout="${2:-30}"
-    local interval="${RUNNER_EVENT_POLL_INTERVAL_SECONDS:-2}"
-    local start=$SECONDS
-    local response=""
-
-    while (( SECONDS - start < timeout )); do
-        if response="$(runner_api_curl \
-            "/api/okou/runs/$run_id/telemetry/agent?limit=100&order=asc" \
-            2>&1)"; then
-            if jq -e '
-                [.events[]?.eventData |
-                    . as $eventData |
-                    if type == "string" then
-                        try fromjson catch $eventData
-                    else
-                        .
-                    end
-                ] as $payloads |
-                .framework == "claude-code" and
-                any($payloads[];
-                    type == "object" and
-                    .type == "result" and
-                    .subtype == "success"
-                )
-            ' <<< "$response" >/dev/null; then
-                printf '%s\n' "$response"
-                return 0
-            fi
-        fi
-        sleep "$interval"
-    done
-
-    echo "# Timed out (${timeout}s) waiting for real Claude events for run $run_id" >&2
-    echo "# Last event response: $response" >&2
-    return 1
-}
-
 run_real_claude_chat() {
     local prompt="$1"
     local expected_output="$2"
-    local send_response run_id thread_id run_response events_response
+    local send_response run_id thread_id run_response chat_output
 
     send_response="$(runner_chat_send \
         "$RUNNER_AGENT_ID" \
@@ -84,28 +45,26 @@ run_real_claude_chat() {
         <<< "$send_response")" || return 1
 
     run_response="$(runner_wait_for_run "$run_id" 150)" || return 1
-    _wait_for_runner_chat_output \
+    chat_output="$(_wait_for_runner_chat_completion \
         "$thread_id" \
         "$run_id" \
-        "$expected_output" \
-        30 || return 1
-    events_response="$(wait_for_real_claude_events "$run_id")" || return 1
+        30)" || return 1
+    if [[ "$chat_output" != *"$expected_output"* ]]; then
+        echo "# Completed chat output did not contain ${expected_output@Q}: $chat_output" >&2
+        return 1
+    fi
 
     jq -cn \
         --arg runId "$run_id" \
         --arg threadId "$thread_id" \
         --arg sessionId "$(jq -er '.result.agentSessionId' <<< "$run_response")" \
-        --arg framework "$(jq -er '.framework' <<< "$events_response")" \
         '{
             runId: $runId,
             threadId: $threadId,
             sessionId: $sessionId,
-            framework: $framework,
             status: "completed"
         }'
-    jq -r '.events[].eventData |
-        if type == "string" then . else tojson end
-    ' <<< "$events_response"
+    printf '%s\n' "$chat_output"
 }
 
 run_real_claude_steer() {
@@ -114,7 +73,8 @@ run_real_claude_steer() {
     local initial_prompt='Run `sleep 10` with Bash, then read the follow-up message received during this run. Reply only RESULT=claude-initial-5k2+FOLLOWUP, replacing FOLLOWUP with its exact text. If no follow-up is received, reply only RESULT=missing.'
     local expected_output="RESULT=claude-initial-5k2+$steer_prompt"
     local after_complete_output="RESULT=claude-after-complete+$after_complete_prompt"
-    local steer_result run_id events_response successor_result successor_run_id successor_events_response
+    local steer_result run_id thread_id steer_output successor_result
+    local successor_run_id successor_output
 
     steer_result="$(runner_chat_steer \
         "$RUNNER_AGENT_ID" \
@@ -124,37 +84,35 @@ run_real_claude_steer() {
         "$expected_output" \
         150)" || return 1
     run_id="$(jq -er '.runId' <<< "$steer_result")" || return 1
-    events_response="$(wait_for_real_claude_events "$run_id" 45)" || return 1
+    thread_id="$(jq -er '.threadId' <<< "$steer_result")" || return 1
+    steer_output="$(_wait_for_runner_chat_completion \
+        "$thread_id" \
+        "$run_id" \
+        45)" || return 1
     successor_result="$(runner_chat_send_after_completion \
         "$RUNNER_AGENT_ID" \
-        "$(jq -er '.threadId' <<< "$steer_result")" \
+        "$thread_id" \
         "$run_id" \
         "Reply only $after_complete_output" \
         "$after_complete_output" \
         150)" || return 1
     successor_run_id="$(jq -er '.runId' <<< "$successor_result")" || return 1
-    successor_events_response="$(wait_for_real_claude_events \
+    successor_output="$(_wait_for_runner_chat_completion \
+        "$thread_id" \
         "$successor_run_id" \
         45)" || return 1
 
     jq -c \
-        --arg framework "$(jq -er '.framework' <<< "$events_response")" \
         --arg successorRunId "$successor_run_id" \
         --arg successorThreadId "$(jq -er '.threadId' <<< "$successor_result")" \
         --arg successorSessionId "$(jq -er '.sessionId' <<< "$successor_result")" \
         '. + {
-            framework: $framework,
             successorRunId: $successorRunId,
             successorThreadId: $successorThreadId,
             successorSessionId: $successorSessionId
         }' \
         <<< "$steer_result"
-    jq -r '.events[].eventData |
-        if type == "string" then . else tojson end
-    ' <<< "$events_response"
-    jq -r '.events[].eventData |
-        if type == "string" then . else tojson end
-    ' <<< "$successor_events_response"
+    printf '%s\n%s\n' "$steer_output" "$successor_output"
 }
 
 @test "real claude returns a successful answer" {
@@ -163,10 +121,8 @@ run_real_claude_steer() {
         "RESULT=579"
 
     assert_success
-    assert_output --partial '"framework":"claude-code"'
+    assert_output --partial '"status":"completed"'
     assert_output --partial "RESULT=579"
-    assert_output --partial '"type":"result"'
-    assert_output --partial '"subtype":"success"'
     local run_id thread_id
     run_id="$(runner_chat_field "$output" '.runId')"
     thread_id="$(runner_chat_field "$output" '.threadId')"
@@ -189,11 +145,9 @@ run_real_claude_steer() {
     run run_real_claude_steer "$steer_prompt" "$after_complete_prompt"
 
     assert_success
-    assert_output --partial '"framework":"claude-code"'
     assert_output --partial "RESULT=claude-initial-5k2+$steer_prompt"
     assert_output --partial "RESULT=claude-after-complete+$after_complete_prompt"
-    assert_output --partial '"type":"result"'
-    assert_output --partial '"subtype":"success"'
+    assert_output --partial '"status":"completed"'
     [[ -n "$(runner_chat_field "$output" '.runId')" ]]
     [[ -n "$(runner_chat_field "$output" '.steerEventId')" ]]
     [[ -n "$(runner_chat_field "$output" '.sessionId')" ]]

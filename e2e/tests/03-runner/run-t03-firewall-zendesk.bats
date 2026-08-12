@@ -50,7 +50,7 @@ EOF
     echo "$output"
     assert_success
 
-    run runner_e2e_wait_for_agent_text "$RUN_ID" ZENDESK_REQUEST_SENT
+    run runner_e2e_wait_for_chat_text "$THREAD_ID" "$RUN_ID" ZENDESK_REQUEST_SENT
     echo "$output"
     assert_success
     assert_output --partial "ZENDESK_API_TOKEN=zkTkn_CoffeeSafeLocalCoffeeSafeLocalCoffeeSa"

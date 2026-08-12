@@ -26,9 +26,8 @@ teardown_file() {
     run runner_chat_start "$RUNNER_AGENT_ID" "first turn"
 
     assert_success
-    assert_output --partial '"type":"thread.started"'
+    assert_output --partial '"status":"completed"'
     assert_output --partial "first turn"
-    assert_output --partial '"type":"turn.completed"'
 
     local first_output="$output"
     local thread_id first_session_id
@@ -38,9 +37,8 @@ teardown_file() {
     run runner_chat_continue "$RUNNER_AGENT_ID" "$thread_id" "second turn"
 
     assert_success
-    assert_output --partial '"type":"thread.started"'
+    assert_output --partial '"status":"completed"'
     assert_output --partial "second turn"
-    assert_output --partial '"type":"turn.completed"'
 
     local second_thread_id second_session_id
     second_thread_id="$(runner_chat_field "$output" '.threadId')"

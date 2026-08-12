@@ -7,8 +7,6 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { http, HttpResponse } from "msw";
-import { server } from "../../../../mocks/server";
 import { zeroSearchCommand, SEARCH_EXPLAINER } from "../index";
 
 describe("okou search command (scaffold)", () => {
@@ -39,9 +37,9 @@ describe("okou search command (scaffold)", () => {
     expect(mockExit).not.toHaveBeenCalled();
     const logs = mockConsoleLog.mock.calls.flat().join("\n");
     expect(logs).toContain("Available sources:");
-    expect(logs).toContain("logs   full agent event stream");
-    expect(logs).toContain("chat   user/assistant text messages");
-    expect(logs).toContain("slack  returns a recipe");
+    expect(logs).toContain("agent-session  locates local Claude Code");
+    expect(logs).toContain("chat           user/assistant text messages");
+    expect(logs).toContain("slack          returns a recipe");
   });
 
   it("rejects multiple --source flags", async () => {
@@ -51,7 +49,7 @@ describe("okou search command (scaffold)", () => {
         "cli",
         "hello",
         "--source",
-        "logs",
+        "agent-session",
         "--source",
         "chat",
       ]),
@@ -74,30 +72,21 @@ describe("okou search command (scaffold)", () => {
 
     const errors = mockConsoleError.mock.calls.flat().join("\n");
     expect(errors).toContain('Unknown --source "nope"');
-    expect(errors).toContain("logs, chat, slack");
+    expect(errors).toContain("agent-session, chat, slack");
   });
 
-  it("routes --source logs to the logs-search backend", async () => {
-    vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("OKOU_TOKEN", "test-token");
-
-    let called = false;
-    server.use(
-      http.get("http://localhost:3000/api/okou/logs/search", () => {
-        called = true;
-        return HttpResponse.json({ results: [], hasMore: false });
-      }),
-    );
-
+  it("routes --source agent-session to local file guidance", async () => {
     await zeroSearchCommand.parseAsync([
       "node",
       "cli",
       "hello",
       "--source",
-      "logs",
+      "agent-session",
     ]);
 
-    expect(called).toBe(true);
+    const logs = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(logs).toContain("/home/user/.claude/projects/");
+    expect(logs).toContain("/home/user/.codex/sessions/");
   });
 
   it("--help output includes the three source descriptions", () => {
@@ -111,14 +100,18 @@ describe("okou search command (scaffold)", () => {
       },
     });
     zeroSearchCommand.outputHelp();
-    expect(captured).toContain("logs   full agent event stream");
-    expect(captured).toContain("chat   user/assistant text messages");
-    expect(captured).toContain("slack  returns a recipe");
+    expect(captured).toContain("agent-session  locates local Claude Code");
+    expect(captured).toContain("chat           user/assistant text messages");
+    expect(captured).toContain("slack          returns a recipe");
   });
 
   it("SEARCH_EXPLAINER is the single source of truth for source descriptions", () => {
-    expect(SEARCH_EXPLAINER).toContain("logs   full agent event stream");
-    expect(SEARCH_EXPLAINER).toContain("chat   user/assistant text messages");
-    expect(SEARCH_EXPLAINER).toContain("slack  returns a recipe");
+    expect(SEARCH_EXPLAINER).toContain(
+      "agent-session  locates local Claude Code",
+    );
+    expect(SEARCH_EXPLAINER).toContain(
+      "chat           user/assistant text messages",
+    );
+    expect(SEARCH_EXPLAINER).toContain("slack          returns a recipe");
   });
 });

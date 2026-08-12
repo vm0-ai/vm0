@@ -80,7 +80,10 @@ EOF
         '.result.agentSessionId | select(type == "string" and length > 0)' \
         <<<"$first_run_response")
 
-    run runner_e2e_wait_for_agent_text "$first_run_id" "$first_output_marker"
+    run runner_e2e_wait_for_chat_text \
+        "$THREAD_ID" \
+        "$first_run_id" \
+        "$first_output_marker"
     echo "$output"
     assert_success
     local first_agent_text="$output"
@@ -91,11 +94,6 @@ EOF
     refute_output --partial "BENTOML_ENDPOINT_SHA256=${updated_endpoint_digest}"
 
     run runner_api_curl "/api/okou/runs/${first_run_id}/context"
-    echo "$output"
-    assert_success
-    public_surfaces+="$output"$'\n'
-
-    run runner_e2e_agent_events "$first_run_id"
     echo "$output"
     assert_success
     public_surfaces+="$output"$'\n'
@@ -161,7 +159,10 @@ EOF
         <<<"$updated_run_response")
     [[ "$updated_session_id" == "$first_session_id" ]]
 
-    run runner_e2e_wait_for_agent_text "$RUN_ID" "$updated_output_marker"
+    run runner_e2e_wait_for_chat_text \
+        "$THREAD_ID" \
+        "$RUN_ID" \
+        "$updated_output_marker"
     echo "$output"
     assert_success
     local updated_agent_text="$output"
@@ -172,11 +173,6 @@ EOF
     refute_output --partial "BENTOML_ENDPOINT_SHA256=${initial_endpoint_digest}"
 
     run runner_api_curl "/api/okou/runs/${RUN_ID}/context"
-    echo "$output"
-    assert_success
-    public_surfaces+="$output"$'\n'
-
-    run runner_e2e_agent_events "$RUN_ID"
     echo "$output"
     assert_success
     public_surfaces+="$output"$'\n'

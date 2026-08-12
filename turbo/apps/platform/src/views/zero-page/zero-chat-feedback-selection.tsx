@@ -11,7 +11,6 @@ import {
 } from "@vm0/ui";
 import { rootSignal$ } from "../../signals/root-signal.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
-import { setChatListQuery$ } from "../../signals/zero-page/zero-sidebar-state.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import type {
   ChatThreadFeedbackSelection,
@@ -84,40 +83,42 @@ function FeedbackToolbar({
           <ShortcutHint shortcut="c" />
         </button>
         <div className="h-4 w-px bg-border" />
+        <button
+          type="button"
+          onClick={onProvideFeedback}
+          aria-keyshortcuts="q"
+          className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors hover:bg-state-hover hover:text-accent-foreground"
+        >
+          <MessageCircle size={14} />
+          {t(($) => {
+            return $.chat.feedback.quote;
+          })}
+          <ShortcutHint shortcut="q" />
+        </button>
         {onForward ? (
           <>
+            <div className="h-4 w-px bg-border" />
             <button
               type="button"
               onClick={onForward}
+              aria-keyshortcuts="f"
               className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors hover:bg-state-hover hover:text-accent-foreground"
             >
               <Forward size={14} />
               {t(($) => {
                 return $.chat.forward.action;
               })}
+              <ShortcutHint shortcut="f" />
             </button>
-            <div className="h-4 w-px bg-border" />
           </>
         ) : null}
-        <button
-          type="button"
-          onClick={onProvideFeedback}
-          aria-keyshortcuts="f"
-          className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors hover:bg-state-hover hover:text-accent-foreground"
-        >
-          <MessageCircle size={14} />
-          {t(($) => {
-            return $.chat.feedback.provide;
-          })}
-          <ShortcutHint shortcut="f" />
-        </button>
       </div>
     </PopoverContent>
   );
 }
 
-// Mounts the selection listeners and the floating Copy / Forward / Provide
-// toolbar anchored to the selected passage. Picking "Provide feedback"
+// Mounts the selection listeners and the floating Copy / Quote / Forward
+// toolbar anchored to the selected passage. Picking "Quote"
 // drops the quoted passage straight into the composer (see ComposerFeedbackRows
 // in zero-chat-composer.tsx) — there is no separate feedback panel.
 export function ChatFeedbackSelection({
@@ -140,10 +141,9 @@ export function ChatFeedbackSelection({
   const startFeedback = useSet(feedback.start$);
   const closeSelectionToolbar = useSet(feedback.close$);
   const copy = useSet(feedback.copy$);
-  const openForward = useSet(feedback.openForward$);
+  const startForward = useSet(feedback.startForward$);
   const setForwardComposerState = useSet(feedback.setForwardComposerState$);
   const closeForward = useSet(feedback.closeForward$);
-  const setForwardQuery = useSet(setChatListQuery$);
 
   return (
     <>
@@ -168,19 +168,7 @@ export function ChatFeedbackSelection({
             onProvideFeedback={startFeedback}
             onForward={
               forwardEnabled && selection.threadId && selection.runId
-                ? () => {
-                    const threadId = selection.threadId;
-                    const runId = selection.runId;
-                    if (!threadId || !runId) {
-                      return;
-                    }
-                    openForward({
-                      text: selection.text,
-                      threadId,
-                      runId,
-                    });
-                    setForwardQuery("");
-                  }
+                ? startForward
                 : undefined
             }
           />
@@ -195,7 +183,6 @@ export function ChatFeedbackSelection({
           onComposerStateChange={setForwardComposerState}
           onDismiss={() => {
             closeForward();
-            setForwardQuery("");
           }}
         />
       ) : null}

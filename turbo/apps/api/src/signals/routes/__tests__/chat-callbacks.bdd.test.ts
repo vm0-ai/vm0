@@ -3996,7 +3996,7 @@ describe("CHAT-02: drain-time admission failure", () => {
 });
 
 describe("CHAT-02: failed chat callbacks", () => {
-  it("formats failed-run errors with escalation and notifies, without auto-sending", async () => {
+  it("formats failed-run errors and notifies, without auto-sending", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
     await chatCallbacks.registerPushSubscription(actor);
@@ -4037,8 +4037,7 @@ describe("CHAT-02: failed chat callbacks", () => {
         null,
       );
     }
-    const reportRunId = runIds[2];
-    if (!threadId || !reportRunId) {
+    if (!threadId) {
       throw new Error("Expected four failed chat rounds");
     }
 
@@ -4080,7 +4079,7 @@ describe("CHAT-02: failed chat callbacks", () => {
     ).toStrictEqual([
       actionableError,
       "Oops, something went wrong. Please try again later.",
-      `An unexpected error occurred. [Report this issue](/runs/${reportRunId}/report-error)`,
+      "Oops, something went wrong. Please try again later.",
       usageLimitError,
     ]);
     expect(

@@ -54,45 +54,31 @@ the resulting guidance. Keep focused protocol coverage that sets only
 
 ```typescript
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { http, HttpResponse } from "msw";
-import { server } from "../../../mocks/server";
-import { zeroLogsCommand } from "../index";
+import { zeroSearchCommand } from "../index";
 
-describe("okou logs", () => {
+describe("okou search --source agent-session", () => {
+  const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
+
   beforeEach(() => {
-    vi.stubEnv("OKOU_TOKEN", "test-okou-token");
-    vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
+    zeroSearchCommand.setOptionValue("source", []);
   });
 
   afterEach(() => {
-    vi.unstubAllEnvs();
+    mockConsoleLog.mockClear();
   });
 
-  it("renders returned agent events", async () => {
-    server.use(
-      http.get(
-        "http://localhost:3000/api/okou/runs/:id/telemetry/agent",
-        () => {
-          return HttpResponse.json({
-            events: [],
-            hasMore: false,
-            nextCursor: null,
-            framework: "claude-code",
-          });
-        },
-      ),
-    );
-
-    await zeroLogsCommand.parseAsync([
+  it("prints both local agent session locations", async () => {
+    await zeroSearchCommand.parseAsync([
       "node",
       "okou",
-      "00000000-0000-4000-8000-000000000000",
-      "--all",
+      "find the failed tool call",
+      "--source",
+      "agent-session",
     ]);
 
-    expect(console.log).toHaveBeenCalledWith(
-      expect.stringContaining("No agent events"),
-    );
+    const output = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(output).toContain("/home/user/.claude/projects/");
+    expect(output).toContain("/home/user/.codex/sessions/");
   });
 });
 ```

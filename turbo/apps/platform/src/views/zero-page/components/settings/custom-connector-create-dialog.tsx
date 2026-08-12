@@ -698,7 +698,7 @@ function connectorHasSimpleApiDefinition(
   const field = connector.fields[0];
   const injection = connector.headerInjections[0];
   return (
-    (connector.authMode ?? "manual") === "manual" &&
+    connector.authMode === "manual" &&
     connector.fields.length === 1 &&
     field?.key === "secret" &&
     field.kind === "secret" &&
@@ -721,7 +721,7 @@ function manualDefinitionFromForm(
 ): CustomConnectorDefinitionParts {
   const preserveAdvancedDefinition =
     connector !== undefined &&
-    (connector.authMode ?? "manual") === "manual" &&
+    connector.authMode === "manual" &&
     !connectorHasSimpleApiDefinition(connector);
   if (preserveAdvancedDefinition) {
     return {
@@ -891,7 +891,7 @@ function updateChangesCredentialContract(
   connector: CustomConnectorResponse,
   body: UpdateCustomConnectorBody,
 ): boolean {
-  const currentAuthMode = connector.authMode ?? "manual";
+  const currentAuthMode = connector.authMode;
   const nextAuthMode = body.authMode ?? "manual";
   if (
     currentAuthMode !== nextAuthMode ||
@@ -1002,7 +1002,7 @@ function formCanSubmit(
   }
   const advancedApiDefinition =
     connector !== undefined &&
-    (connector.authMode ?? "manual") === "manual" &&
+    connector.authMode === "manual" &&
     !connectorHasSimpleApiDefinition(connector);
   if (
     form.authMethodTypes.includes("api") &&
@@ -1230,7 +1230,7 @@ export function CustomConnectorCreateDialog({
   const canSubmit = !submitting && formCanSubmit(form, connector, mcpEnabled);
   const advancedApiDefinition =
     connector !== undefined &&
-    (connector.authMode ?? "manual") === "manual" &&
+    connector.authMode === "manual" &&
     !connectorHasSimpleApiDefinition(connector);
 
   const close = () => {

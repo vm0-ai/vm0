@@ -252,6 +252,33 @@ describe("custom connector response contracts", () => {
     }).toThrow();
   });
 
+  it("parses canonical OAuth HTTP responses", () => {
+    const payload = {
+      ...customHttpConnectorPayload,
+      authMode: "oauth",
+      oauthConfig: {
+        providerAdapter: "standard",
+        clientId: "oauth-client-id",
+        authorizationUrl: "https://example.test/oauth/authorize",
+        tokenUrl: "https://example.test/oauth/token",
+        tokenEndpointAuthMethod: "client_secret_post",
+        pkceMethod: "S256",
+        scopes: ["read"],
+        authorizationParams: {},
+      },
+    } as const;
+
+    expect(customConnectorResponseSchema.parse(payload)).toStrictEqual(payload);
+  });
+
+  it("rejects responses without an auth mode", () => {
+    const { authMode: _authMode, ...payload } = customHttpConnectorPayload;
+
+    expect(() => {
+      return customConnectorResponseSchema.parse(payload);
+    }).toThrow();
+  });
+
   it("parses canonical MCP responses", () => {
     const payload = {
       id: "00000000-0000-4000-a000-000000000006",

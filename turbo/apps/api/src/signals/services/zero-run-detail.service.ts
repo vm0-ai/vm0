@@ -154,64 +154,6 @@ export function zeroRunContext(
   });
 }
 
-export function zeroRunNetworkLogs(
-  params: NetworkLogsParams,
-): Computed<Promise<NetworkLogsResponse | null>> {
-  return computed(async (get): Promise<NetworkLogsResponse | null> => {
-    const db = get(db$);
-
-    const owned = await verifyRunOwnership(
-      db,
-      params.runId,
-      params.userId,
-      params.orgId,
-    );
-    if (!owned) {
-      return null;
-    }
-
-    const { limit, order } = params;
-    const previousCursorBoundary = timeCursorBoundary(params.cursor, order);
-
-    const dataset = getDatasetName("sandbox-telemetry-network");
-    const apl = `['${dataset}']
-| where runId == "${escapeAplString(params.runId)}"
-${buildTimePaginationFilters(params)}
-${buildTimePaginationOrder(order)}
-${buildTimeCursorProjection()}
-| limit ${limit + 1}`;
-
-    const events = (
-      await get(
-        queryAxiom(
-          apl,
-          previousCursorBoundary
-            ? { cursor: previousCursorBoundary.tieBreaker }
-            : undefined,
-        ),
-      )
-    ).slice();
-
-    const pageHasMore = events.length > limit;
-    const records = pageHasMore ? events.slice(0, limit) : events;
-    const networkLogs = sanitizeAxiomNetworkEvents(records);
-    const timedRecords = filterTimedAxiomRecords(records);
-    const nextCursor = nextTimeCursor(
-      timedRecords,
-      pageHasMore,
-      order,
-      previousCursorBoundary,
-    );
-    const hasMore = nextCursor !== null;
-
-    return {
-      networkLogs,
-      hasMore,
-      ...(nextCursor ? { nextCursor } : {}),
-    };
-  });
-}
-
 interface AgentEventsParams {
   runId: string;
   userId: string;
@@ -277,6 +219,7 @@ export function zeroRunAgentEvents(
     const [runWithCompose] = await db
       .select({
         id: agentRuns.id,
+        createdAt: agentRuns.createdAt,
         lastEventSequence: agentRuns.lastEventSequence,
         composeContent: agentComposeVersions.content,
       })
@@ -314,7 +257,9 @@ export function zeroRunAgentEvents(
       order,
     );
     if (watermarkTarget !== null) {
-      await waitForRunEventWatermarkVisible(params.runId, watermarkTarget);
+      await waitForRunEventWatermarkVisible(params.runId, watermarkTarget, {
+        sinceTime: runWithCompose.createdAt.getTime(),
+      });
     }
 
     const dataset = getDatasetName("agent-run-events");
@@ -324,6 +269,7 @@ export function zeroRunAgentEvents(
     const paginationFilter = buildAgentEventPaginationFilters(params);
     const apl = `['${dataset}']
 | where runId == "${escapeAplString(params.runId)}"
+| where _time >= datetime("${runWithCompose.createdAt.toISOString()}")
 ${paginationFilter}
 | order by sequenceNumber ${order}
 | limit ${limit + 1}`;
@@ -359,6 +305,64 @@ ${paginationFilter}
       hasMore,
       ...(nextCursor ? { nextCursor } : {}),
       framework,
+    };
+  });
+}
+
+export function zeroRunNetworkLogs(
+  params: NetworkLogsParams,
+): Computed<Promise<NetworkLogsResponse | null>> {
+  return computed(async (get): Promise<NetworkLogsResponse | null> => {
+    const db = get(db$);
+
+    const owned = await verifyRunOwnership(
+      db,
+      params.runId,
+      params.userId,
+      params.orgId,
+    );
+    if (!owned) {
+      return null;
+    }
+
+    const { limit, order } = params;
+    const previousCursorBoundary = timeCursorBoundary(params.cursor, order);
+
+    const dataset = getDatasetName("sandbox-telemetry-network");
+    const apl = `['${dataset}']
+| where runId == "${escapeAplString(params.runId)}"
+${buildTimePaginationFilters(params)}
+${buildTimePaginationOrder(order)}
+${buildTimeCursorProjection()}
+| limit ${limit + 1}`;
+
+    const events = (
+      await get(
+        queryAxiom(
+          apl,
+          previousCursorBoundary
+            ? { cursor: previousCursorBoundary.tieBreaker }
+            : undefined,
+        ),
+      )
+    ).slice();
+
+    const pageHasMore = events.length > limit;
+    const records = pageHasMore ? events.slice(0, limit) : events;
+    const networkLogs = sanitizeAxiomNetworkEvents(records);
+    const timedRecords = filterTimedAxiomRecords(records);
+    const nextCursor = nextTimeCursor(
+      timedRecords,
+      pageHasMore,
+      order,
+      previousCursorBoundary,
+    );
+    const hasMore = nextCursor !== null;
+
+    return {
+      networkLogs,
+      hasMore,
+      ...(nextCursor ? { nextCursor } : {}),
     };
   });
 }

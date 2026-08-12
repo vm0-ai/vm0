@@ -34,7 +34,8 @@ run_real_codex_steer() {
     local initial_prompt='Run `sleep 10` with Bash, then read the follow-up message received during this run. Reply only RESULT=codex-initial-8m6+FOLLOWUP, replacing FOLLOWUP with its exact text. If no follow-up is received, reply only RESULT=missing.'
     local expected_output="RESULT=codex-initial-8m6+$steer_prompt"
     local after_complete_output="RESULT=codex-after-complete+$after_complete_prompt"
-    local steer_result run_id events_response successor_result successor_run_id successor_events_response
+    local steer_result run_id thread_id steer_output successor_result
+    local successor_run_id successor_output
 
     steer_result="$(runner_chat_steer \
         "$RUNNER_AGENT_ID" \
@@ -44,41 +45,35 @@ run_real_codex_steer() {
         "$expected_output" \
         150)" || return 1
     run_id="$(jq -er '.runId' <<< "$steer_result")" || return 1
-    events_response="$(_wait_for_runner_codex_events \
+    thread_id="$(jq -er '.threadId' <<< "$steer_result")" || return 1
+    steer_output="$(_wait_for_runner_chat_completion \
+        "$thread_id" \
         "$run_id" \
-        "$expected_output" \
         45)" || return 1
     successor_result="$(runner_chat_send_after_completion \
         "$RUNNER_AGENT_ID" \
-        "$(jq -er '.threadId' <<< "$steer_result")" \
+        "$thread_id" \
         "$run_id" \
         "Reply only $after_complete_output" \
         "$after_complete_output" \
         150)" || return 1
     successor_run_id="$(jq -er '.runId' <<< "$successor_result")" || return 1
-    successor_events_response="$(_wait_for_runner_codex_events \
+    successor_output="$(_wait_for_runner_chat_completion \
+        "$thread_id" \
         "$successor_run_id" \
-        "$after_complete_output" \
         45)" || return 1
 
     jq -c \
-        --arg framework "$(jq -er '.framework' <<< "$events_response")" \
         --arg successorRunId "$successor_run_id" \
         --arg successorThreadId "$(jq -er '.threadId' <<< "$successor_result")" \
         --arg successorSessionId "$(jq -er '.sessionId' <<< "$successor_result")" \
         '. + {
-            framework: $framework,
             successorRunId: $successorRunId,
             successorThreadId: $successorThreadId,
             successorSessionId: $successorSessionId
         }' \
         <<< "$steer_result"
-    jq -r '.events[].eventData |
-        if type == "string" then . else tojson end
-    ' <<< "$events_response"
-    jq -r '.events[].eventData |
-        if type == "string" then . else tojson end
-    ' <<< "$successor_events_response"
+    printf '%s\n%s\n' "$steer_output" "$successor_output"
 }
 
 @test "real codex steers an active run then starts a successor" {
@@ -91,11 +86,9 @@ run_real_codex_steer() {
     run run_real_codex_steer "$steer_prompt" "$after_complete_prompt"
 
     assert_success
-    assert_output --partial '"framework":"codex"'
     assert_output --partial "RESULT=codex-initial-8m6+$steer_prompt"
     assert_output --partial "RESULT=codex-after-complete+$after_complete_prompt"
-    assert_output --partial '"type":"thread.started"'
-    assert_output --partial '"type":"turn.completed"'
+    assert_output --partial '"status":"completed"'
     [[ -n "$(runner_chat_field "$output" '.runId')" ]]
     [[ -n "$(runner_chat_field "$output" '.steerEventId')" ]]
     [[ -n "$(runner_chat_field "$output" '.sessionId')" ]]

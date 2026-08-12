@@ -34,6 +34,7 @@ const log = logger("service:diagnostic-bundle");
 
 const DOWNLOAD_EXPIRY_SECONDS = 72 * 60 * 60;
 const AGENT_EVENT_WATERMARK_WAIT_CONCURRENCY = 4;
+const AXIOM_RUN_TIME_PADDING_MS = 5 * 60 * 1000;
 
 type ServiceDb = Pick<Db, "select">;
 
@@ -70,6 +71,24 @@ interface RunMeta {
 }
 
 type DiagnosticRunRecord = RunMeta;
+
+function axiomRunTimeFilter(runs: readonly RunMeta[]): string {
+  const earliest = Math.min(
+    ...runs.map((run) => {
+      return run.createdAt.getTime();
+    }),
+  );
+  const latest = Math.max(
+    ...runs.map((run) => {
+      return (run.completedAt ?? nowDate()).getTime();
+    }),
+  );
+  return `| where _time >= datetime("${new Date(
+    earliest - AXIOM_RUN_TIME_PADDING_MS,
+  ).toISOString()}") and _time <= datetime("${new Date(
+    latest + AXIOM_RUN_TIME_PADDING_MS,
+  ).toISOString()}")`;
+}
 
 interface AgentMeta {
   readonly displayName?: string | null;
@@ -186,8 +205,8 @@ export function submitDiagnosticBundle(
     });
     const [agentEvents, systemLogText, networkLogEntries] = await Promise.all([
       get(collectAgentEvents(sessionRuns)),
-      get(collectSystemLog(sessionRunIds)),
-      get(collectNetworkLog(sessionRunIds)),
+      get(collectSystemLog(sessionRuns)),
+      get(collectNetworkLog(sessionRuns)),
     ]);
     const promptEvents = buildPromptEvents(sessionRuns);
     const chatHistory = sortChatHistory(promptEvents, agentEvents);
@@ -549,21 +568,22 @@ function collectSessionRuns(
 }
 
 function collectSystemLog(
-  sessionRunIds: readonly string[],
+  sessionRuns: readonly RunMeta[],
 ): Computed<Promise<string>> {
   return computed(async (get): Promise<string> => {
-    if (sessionRunIds.length === 0) {
+    if (sessionRuns.length === 0) {
       return "";
     }
 
-    const runIdList = sessionRunIds
-      .map((id) => {
-        return `"${escapeAplString(id)}"`;
+    const runIdList = sessionRuns
+      .map((run) => {
+        return `"${escapeAplString(run.id)}"`;
       })
       .join(", ");
     const dataset = getDatasetName("sandbox-telemetry-system");
     const apl = `['${dataset}']
 | where runId in (${runIdList})
+${axiomRunTimeFilter(sessionRuns)}
 | order by _time asc`;
 
     return (
@@ -587,21 +607,22 @@ function collectSystemLog(
 }
 
 function collectNetworkLog(
-  sessionRunIds: readonly string[],
+  sessionRuns: readonly RunMeta[],
 ): Computed<Promise<Record<string, unknown>[]>> {
   return computed(async (get): Promise<Record<string, unknown>[]> => {
-    if (sessionRunIds.length === 0) {
+    if (sessionRuns.length === 0) {
       return [];
     }
 
-    const runIdList = sessionRunIds
-      .map((id) => {
-        return `"${escapeAplString(id)}"`;
+    const runIdList = sessionRuns
+      .map((run) => {
+        return `"${escapeAplString(run.id)}"`;
       })
       .join(", ");
     const dataset = getDatasetName("sandbox-telemetry-network");
     const apl = `['${dataset}']
 | where runId in (${runIdList})
+${axiomRunTimeFilter(sessionRuns)}
 | order by _time asc`;
 
     const networkLogs =
@@ -646,6 +667,7 @@ function collectAgentEvents(
     const dataset = getDatasetName("agent-run-events");
     const apl = `['${dataset}']
 | where runId in (${runIdList})
+${axiomRunTimeFilter(sessionRuns)}
 | order by _time asc, sequenceNumber asc
 | limit 2000`;
 
@@ -681,7 +703,9 @@ async function waitForAgentEventWatermarks(
     );
     await Promise.all(
       batch.map((run) => {
-        return waitForRunEventWatermarkVisible(run.id, run.lastEventSequence);
+        return waitForRunEventWatermarkVisible(run.id, run.lastEventSequence, {
+          sinceTime: run.createdAt.getTime() - AXIOM_RUN_TIME_PADDING_MS,
+        });
       }),
     );
   }
@@ -700,14 +724,8 @@ function assembleActivityLog(
     const waitForAgentEventWatermark =
       options.waitForAgentEventWatermark ?? true;
     const [events, networkLogs, runContext] = await Promise.all([
-      get(
-        queryAgentEvents(
-          run.id,
-          run.lastEventSequence,
-          waitForAgentEventWatermark,
-        ),
-      ),
-      get(queryNetworkLogs(run.id)),
+      get(queryAgentEvents(run, waitForAgentEventWatermark)),
+      get(queryNetworkLogs(run)),
       tapError(get(queryRunContext(run)), (error) => {
         log.warn("Failed to collect run context", { error: String(error) });
       }),
@@ -779,18 +797,20 @@ function runSessionId(run: RunMeta): string | null {
 }
 
 function queryAgentEvents(
-  runId: string,
-  lastEventSequence: number | null,
+  run: RunMeta,
   waitForAgentEventWatermark: boolean,
 ): Computed<Promise<AxiomAgentEvent[]>> {
   return computed(async (get): Promise<AxiomAgentEvent[]> => {
-    if (waitForAgentEventWatermark && lastEventSequence !== null) {
-      await waitForRunEventWatermarkVisible(runId, lastEventSequence);
+    if (waitForAgentEventWatermark && run.lastEventSequence !== null) {
+      await waitForRunEventWatermarkVisible(run.id, run.lastEventSequence, {
+        sinceTime: run.createdAt.getTime() - AXIOM_RUN_TIME_PADDING_MS,
+      });
     }
 
     const dataset = getDatasetName("agent-run-events");
     const apl = `['${dataset}']
-| where runId == "${escapeAplString(runId)}"
+| where runId == "${escapeAplString(run.id)}"
+${axiomRunTimeFilter([run])}
 | order by _time asc, sequenceNumber asc
 | limit 5000`;
 
@@ -815,12 +835,13 @@ function queryAgentEvents(
 }
 
 function queryNetworkLogs(
-  runId: string,
+  run: RunMeta,
 ): Computed<Promise<AxiomNetworkEvent[]>> {
   return computed(async (get): Promise<AxiomNetworkEvent[]> => {
     const dataset = getDatasetName("sandbox-telemetry-network");
     const apl = `['${dataset}']
-| where runId == "${escapeAplString(runId)}"
+| where runId == "${escapeAplString(run.id)}"
+${axiomRunTimeFilter([run])}
 | order by _time asc
 | limit 5000`;
 

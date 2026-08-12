@@ -59,7 +59,10 @@ EOF
     echo "$output"
     assert_success
 
-    run runner_e2e_wait_for_agent_text "$RUN_ID" "$output_marker"
+    run runner_e2e_wait_for_chat_text \
+        "$THREAD_ID" \
+        "$RUN_ID" \
+        "$output_marker"
     echo "$output"
     assert_success
     assert_output --regexp 'GH_VERSION_OK=gh version [0-9]+\.[0-9]+\.[0-9]+'

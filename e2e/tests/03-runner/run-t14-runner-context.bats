@@ -97,7 +97,10 @@ EOF
     echo "$output"
     assert_success
 
-    run runner_e2e_wait_for_agent_text "$RUN_ID" "$output_marker"
+    run runner_e2e_wait_for_chat_text \
+        "$THREAD_ID" \
+        "$RUN_ID" \
+        "$output_marker"
     echo "$output"
     assert_success
     assert_output --partial "$instruction_marker"
@@ -148,7 +151,10 @@ EOF
     echo "$output"
     assert_success
 
-    run runner_e2e_wait_for_agent_text "$RUN_ID" "$continuation_marker"
+    run runner_e2e_wait_for_chat_text \
+        "$THREAD_ID" \
+        "$RUN_ID" \
+        "$continuation_marker"
     echo "$output"
     assert_success
     assert_output --partial "$updated_workflow_marker"

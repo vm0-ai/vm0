@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.37.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.36.0...desktop-v0.37.0) (2026-08-12)
+
+
+### Features
+
+* **desktop:** add staged zero migration controls ([#26731](https://github.com/vm0-ai/vm0/issues/26731)) ([c821025](https://github.com/vm0-ai/vm0/commit/c821025b83d05e9bb100777a35b76112b93a114a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.325.0
+
 ## [0.36.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.35.1...desktop-v0.36.0) (2026-08-12)
 
 

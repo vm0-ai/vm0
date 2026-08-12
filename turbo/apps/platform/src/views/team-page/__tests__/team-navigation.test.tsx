@@ -247,6 +247,7 @@ function createCustomConnector(): CustomConnectorHttpResponse {
       },
     ],
     queryInjections: [],
+    authMode: "manual",
     connected: true,
     missingRequiredFields: [],
     configuredFieldKeys: ["secret"],

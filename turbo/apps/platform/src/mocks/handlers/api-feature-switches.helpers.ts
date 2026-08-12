@@ -24,6 +24,7 @@ export function setMockFeatureSwitches(
       return respond(200, {
         switches: sanitized,
         effectiveSwitches: sanitized,
+        apiCapabilities: { feedbackLocationV1: true },
       });
     }),
   );

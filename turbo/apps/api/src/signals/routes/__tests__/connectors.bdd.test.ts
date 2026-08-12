@@ -12,6 +12,7 @@ import { randomInt, randomUUID } from "node:crypto";
 
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import {
+  CUSTOM_CONNECTOR_INJECTION_TEMPLATE_MAX_CHARS,
   zeroCustomConnectorsContract,
   type CreateCustomConnectorBody,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
@@ -2664,6 +2665,199 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     expectNoVisibleSecret(listed, "must-not-be-stored");
 
     await connectorsApi.deleteCustomConnector(admin, original.id);
+  });
+
+  it("canonicalizes legacy manual secret placeholders on create and update", async () => {
+    const admin = createBddApi(context).user({ orgRole: "org:admin" });
+    const rand = randomUUID().replace(/-/g, "").slice(0, 8);
+    const fields = [
+      {
+        key: "secret",
+        label: "Legacy secret",
+        kind: "secret" as const,
+        required: true,
+      },
+      {
+        key: "api_key",
+        label: "API key",
+        kind: "secret" as const,
+        required: true,
+      },
+      {
+        key: "region",
+        label: "Region",
+        kind: "variable" as const,
+        required: true,
+      },
+    ];
+    const created = await connectorsApi.createCustomConnector(admin, {
+      displayName: "BDD Legacy Placeholder Create",
+      prefixTemplates: [`https://${rand}.legacy-create.test/v1/`],
+      fields,
+      headerInjections: [
+        {
+          name: "Authorization",
+          valueTemplate: "Bearer {{secret}}/{{secret}}/{{secrets.api_key}}",
+        },
+      ],
+      queryInjections: [
+        {
+          name: "token",
+          valueTemplate: "{{secret}}:{{variables.region}}",
+        },
+      ],
+      authMode: "manual",
+    });
+    const createdInjections = {
+      headerInjections: [
+        {
+          name: "Authorization",
+          valueTemplate:
+            "Bearer {{secrets.secret}}/{{secrets.secret}}/{{secrets.api_key}}",
+        },
+      ],
+      queryInjections: [
+        {
+          name: "token",
+          valueTemplate: "{{secrets.secret}}:{{variables.region}}",
+        },
+      ],
+    };
+    expect(created).toMatchObject(createdInjections);
+    await expect(
+      connectorsApi.readCustomConnector(admin, created.id),
+    ).resolves.toMatchObject(createdInjections);
+
+    const updated = await connectorsApi.updateCustomConnector(
+      admin,
+      created.id,
+      {
+        displayName: "BDD Legacy Placeholder Update",
+        prefixTemplates: created.prefixTemplates,
+        fields,
+        headerInjections: [
+          {
+            name: "Authorization",
+            valueTemplate: "Token {{secret}}/{{secrets.api_key}}",
+          },
+        ],
+        queryInjections: [
+          {
+            name: "token",
+            valueTemplate: "{{secret}}:{{secrets.secret}}",
+          },
+        ],
+        authMode: "manual",
+      },
+    );
+    const updatedInjections = {
+      headerInjections: [
+        {
+          name: "Authorization",
+          valueTemplate: "Token {{secrets.secret}}/{{secrets.api_key}}",
+        },
+      ],
+      queryInjections: [
+        {
+          name: "token",
+          valueTemplate: "{{secrets.secret}}:{{secrets.secret}}",
+        },
+      ],
+    };
+    expect(updated.storageVersion).toBe(created.storageVersion);
+    expect(updated).toMatchObject(updatedInjections);
+    await expect(
+      connectorsApi.readCustomConnector(admin, created.id),
+    ).resolves.toMatchObject(updatedInjections);
+
+    await connectorsApi.deleteCustomConnector(admin, created.id);
+  });
+
+  it("rejects invalid legacy manual secret placeholder writes before persistence", async () => {
+    const admin = createBddApi(context).user({ orgRole: "org:admin" });
+    const rand = randomUUID().replace(/-/g, "").slice(0, 8);
+    const undeclaredDisplayName = "BDD Undeclared Legacy Placeholder";
+    const undeclared = await connectorsApi.requestCreateCustomConnector(
+      admin,
+      {
+        displayName: undeclaredDisplayName,
+        prefixTemplates: [`https://${rand}.undeclared-legacy.test/v1/`],
+        fields: [
+          {
+            key: "api_key",
+            label: "API key",
+            kind: "secret",
+            required: true,
+          },
+        ],
+        headerInjections: [
+          {
+            name: "Authorization",
+            valueTemplate: "Bearer {{secret}}",
+          },
+        ],
+        queryInjections: [],
+        authMode: "manual",
+      },
+      [400],
+    );
+    expectApiError(undeclared.body);
+    expect(undeclared.body.error.message).toContain(
+      "unsupported {{secret}} placeholder",
+    );
+
+    const legacyPlaceholder = "{{secret}}";
+    const expandedTemplate = `${"x".repeat(
+      CUSTOM_CONNECTOR_INJECTION_TEMPLATE_MAX_CHARS - legacyPlaceholder.length,
+    )}${legacyPlaceholder}`;
+    const rejectedDisplayNames: string[] = [undeclaredDisplayName];
+    for (const injectionKind of ["header", "query"] as const) {
+      const displayName = `BDD Expanded Legacy ${injectionKind}`;
+      rejectedDisplayNames.push(displayName);
+      const rejected = await connectorsApi.requestCreateCustomConnector(
+        admin,
+        {
+          displayName,
+          prefixTemplates: [
+            `https://${rand}.${injectionKind}-legacy-limit.test/v1/`,
+          ],
+          fields: [
+            {
+              key: "secret",
+              label: "Legacy secret",
+              kind: "secret",
+              required: true,
+            },
+          ],
+          headerInjections:
+            injectionKind === "header"
+              ? [{ name: "Authorization", valueTemplate: expandedTemplate }]
+              : [
+                  {
+                    name: "Authorization",
+                    valueTemplate: "Bearer {{secrets.secret}}",
+                  },
+                ],
+          queryInjections:
+            injectionKind === "query"
+              ? [{ name: "token", valueTemplate: expandedTemplate }]
+              : [],
+          authMode: "manual",
+        },
+        [400],
+      );
+      expectApiError(rejected.body);
+      expect(rejected.body.error.message).toContain(
+        `${CUSTOM_CONNECTOR_INJECTION_TEMPLATE_MAX_CHARS} characters after canonicalization`,
+      );
+    }
+
+    const listed = await connectorsApi.listCustomConnectors(admin);
+    expect(
+      listed.some((connector) => {
+        return rejectedDisplayNames.includes(connector.displayName);
+      }),
+    ).toBeFalsy();
   });
 
   it("creates, patches, secrets, enables for an agent, rejects cross-org ids, and deletes through APIs", async () => {

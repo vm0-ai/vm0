@@ -37,8 +37,8 @@ import {
 
 /*
  * RUN-03/RUN-04 read surfaces for agent runs (list/read/queue/cancel,
- * telemetry families, zero run detail reads, queue
- * position, and okou logs) plus the RUN-01/02 direct-run create arms that
+ * telemetry families, zero run detail reads, queue position, and temporary
+ * legacy log-read compatibility) plus the RUN-01/02 direct-run create arms that
  * end in those reads (session continuation, memory root policies, volume
  * pinning, concurrency caps, and the production capture gate).
  *
@@ -1786,13 +1786,20 @@ function expectRunContextFrameworkQuery(start: number, runId: string): void {
 
 function expectTimeCursorAxiomResume(
   call: readonly unknown[],
-  expected: { readonly cursor: string; readonly order: "asc" | "desc" },
+  expected: {
+    readonly cursor: string;
+    readonly order: "asc" | "desc";
+    readonly hasCreatedAtBound?: boolean;
+  },
 ): void {
   const apl = call[0];
   expect(call[1]).toStrictEqual({ cursor: expected.cursor });
   expect(apl).toContain(`| order by _time ${expected.order}`);
-  expect(apl).not.toContain("_time >");
-  expect(apl).not.toContain("_time <");
+  if (expected.hasCreatedAtBound) {
+    expect(apl).toContain("| where _time >= datetime(");
+  }
+  expect(apl).not.toContain("| where _time > datetime(");
+  expect(apl).not.toContain("| where _time < datetime(");
   expect(apl).not.toContain("_vm0Cursor >");
   expect(apl).not.toContain("_vm0Cursor <");
 }
@@ -2446,6 +2453,7 @@ describe("RUN-04: agent run telemetry families", () => {
     expectTimeCursorAxiomResume(secondPageCall, {
       cursor: "system-a",
       order: "asc",
+      hasCreatedAtBound: true,
     });
 
     const metricsFirst = await reads.requestRunMetrics(
@@ -2500,6 +2508,7 @@ describe("RUN-04: agent run telemetry families", () => {
     expectTimeCursorAxiomResume(metricsSecondCall, {
       cursor: "metrics-a",
       order: "asc",
+      hasCreatedAtBound: true,
     });
 
     const zeroNetworkFirst = await reads.requestZeroRunNetworkLogs(
@@ -2621,6 +2630,7 @@ describe("RUN-04: agent run telemetry families", () => {
     expectTimeCursorAxiomResume(descSecondCall, {
       cursor: "desc-a",
       order: "desc",
+      hasCreatedAtBound: true,
     });
   });
 
@@ -3855,7 +3865,11 @@ describe("RUN-04/OPS-01: zero run logs", () => {
       return Promise.resolve([]);
     });
 
-    const searched = await misc.searchLogs(actor, "shared");
+    const searched = await misc.requestSearchLogs(
+      actor,
+      { keyword: "shared", before: 1 },
+      [200],
+    );
     expect(searched.body.results).toContainEqual(
       expect.objectContaining({
         runId: sharedRun.runId,
@@ -3863,6 +3877,8 @@ describe("RUN-04/OPS-01: zero run logs", () => {
         framework: "claude-code",
       }),
     );
+    const contextApl = context.mocks.axiom.query.mock.calls.at(-1)?.[0];
+    expect(contextApl).toContain("| where _time > datetime(");
   });
 
   it("splits multi-run log searches into a bounded run-id filter", async () => {

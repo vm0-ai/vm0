@@ -1417,7 +1417,7 @@
       "partsHeading_many": "Feedback su {{count}} parti della tua risposta:",
       "partsHeading_other": "Feedback su {{count}} parti della tua risposta:",
       "placeholder": "Cosa dovrebbe cambiare in questo senso?",
-      "provide": "Fornisci feedback",
+      "quote": "Cita",
       "remove": "Rimuovi feedback",
       "sentEmailDescription": "un'e-mail inviata (mail ID: {{id}}{{sentIdSuffix}})",
       "sentIdSuffix": ", inviato ID: {{sentId}}",
@@ -3996,40 +3996,6 @@
       "recommended": "Consigliato",
       "teamDescription": "Fai crescere il tuo team con 10 esecuzioni parallele e più crediti."
     }
-  },
-  "reportError": {
-    "description": "Invia informazioni diagnostiche per questa esecuzione non riuscita al team di sviluppatori. Indagheremo e seguiremo a breve.",
-    "disclosure": {
-      "agentConfiguration": "Configurazione dell'agente",
-      "agentTelemetry": "Telemetria dell'agente e registri di esecuzione",
-      "chatHistory": "Cronologia chat ed eventi dell'agente",
-      "connectedServices": "Servizi connessi (nessuna credenziale)",
-      "networkLogs": "Registri delle richieste di rete",
-      "runContext": "Esegui contesto e ambiente",
-      "title": "Cosa verrà inviato"
-    },
-    "documentTitle": "Segnala errore",
-    "error": {
-      "loadFailed": "Impossibile caricare i dettagli dell'esecuzione",
-      "notFailed": "Questa esecuzione non ha avuto esito negativo e non può essere segnalata",
-      "title": "Errore",
-      "tryAgain": "Riprova"
-    },
-    "fields": {
-      "description": "Descrizione",
-      "descriptionPlaceholder": "Cosa è successo? Cosa ti aspettavi?",
-      "title": "Titolo",
-      "titlePlaceholder": "Breve riassunto della questione"
-    },
-    "loading": "Caricamento dei dettagli dell'esecuzione",
-    "send": "Invia rapporto",
-    "sending": "Invio...",
-    "success": {
-      "description": "La tua segnalazione di errori è stata inviata al team di sviluppatori. Investigheranno e seguiranno.",
-      "reference": "Riferimento: {{reference}}",
-      "title": "Rapporto inviato"
-    },
-    "title": "Segnala l'errore allo sviluppatore"
   },
   "settings": {
     "accountMenu": {
