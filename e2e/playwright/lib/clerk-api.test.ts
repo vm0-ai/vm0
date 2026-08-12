@@ -387,6 +387,17 @@ test("collects all pages before generation cleanup and isolates roles", async ()
         alreadyAbsentUsers: 0,
         skippedUsers: 500,
       });
+      const listRequests = requests.filter(
+        (request) =>
+          request.method === "GET" &&
+          (request.url.startsWith("/v1/users?") ||
+            request.url.startsWith("/v1/organizations?")),
+      );
+      assert.ok(listRequests.length >= 4);
+      for (const request of listRequests) {
+        const listUrl = new URL(request.url, "http://clerk.test");
+        assert.equal(listUrl.searchParams.get("order_by"), "+created_at");
+      }
       assert.equal(
         countRequests(requests, "DELETE", "/v1/organizations/org_playwright"),
         2,
@@ -461,6 +472,14 @@ test("job-ref cleanup rejects fuzzy lookalikes and deletes organizations first",
       const result = await cleanupClerkTestJobRef("pr-123");
       assert.equal(result.selectedOrganizations, 1);
       assert.equal(result.selectedUsers, 1);
+      const userListRequest = requests.find(
+        (request) =>
+          request.method === "GET" && request.url.startsWith("/v1/users?"),
+      );
+      assert.ok(userListRequest);
+      const userListUrl = new URL(userListRequest.url, "http://clerk.test");
+      assert.equal(userListUrl.searchParams.has("query"), false);
+      assert.deepEqual(userListUrl.searchParams.getAll("email_address[]"), []);
       assert.deepEqual(
         requests
           .filter((request) => request.method === "DELETE")
