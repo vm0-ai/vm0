@@ -15,7 +15,7 @@ teardown() {
     runner_e2e_teardown_test
 }
 
-@test "t30-1: dual-entry CLI and chat attachments work across continuation" {
+@test "dual-entry CLI and chat attachments work across continuation" {
     run create_runner_agent "e2e-chat-attachments-${TEST_ID}"
     echo "$output"
     assert_success

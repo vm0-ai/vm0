@@ -15,7 +15,7 @@ teardown() {
     runner_e2e_teardown_test
 }
 
-@test "t29-1: public run API cancels a running sandbox" {
+@test "public run API cancels a running sandbox" {
     run create_runner_agent "e2e-run-cancel-${TEST_ID}"
     echo "$output"
     assert_success
