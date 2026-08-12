@@ -7792,6 +7792,7 @@ describe("CHAT-02: queued attachments on auto-send", () => {
 
     chatCallbacks.mockChatOutputEvents([]);
     await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders);
+    await flushWaitUntilForTest();
     const messages = await waitForThreadMessages(
       actor,
       anchor.threadId,
@@ -7886,6 +7887,7 @@ describe("CHAT-02: queued attachments on auto-send", () => {
     // run whose prompt carries the resolved attachment references.
     chatCallbacks.mockChatOutputEvents([]);
     await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders);
+    await flushWaitUntilForTest();
     const messages = await waitForThreadMessages(
       actor,
       anchor.threadId,
