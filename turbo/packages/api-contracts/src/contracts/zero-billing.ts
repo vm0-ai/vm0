@@ -420,6 +420,7 @@ const concurrencySubscriptionChangePreviewResponseSchema = z.object({
   immediateAmountCents: z.number().int().nonnegative(),
   nextRecurringAmountCents: z.number().int().nonnegative(),
   currency: z.string().length(3),
+  effectiveAt: z.iso.datetime().optional(),
 });
 
 const concurrencySubscriptionChangeResponseSchema = z.discriminatedUnion(
@@ -428,14 +429,17 @@ const concurrencySubscriptionChangeResponseSchema = z.discriminatedUnion(
     z.object({
       status: z.literal("processing"),
       hostedInvoiceUrl: z.null(),
+      effectiveAt: z.iso.datetime().optional(),
     }),
     z.object({
       status: z.literal("pending_payment"),
       hostedInvoiceUrl: z.string().url(),
+      effectiveAt: z.iso.datetime().optional(),
     }),
     z.object({
       status: z.literal("completed"),
       hostedInvoiceUrl: z.null(),
+      effectiveAt: z.iso.datetime().optional(),
     }),
   ],
 );

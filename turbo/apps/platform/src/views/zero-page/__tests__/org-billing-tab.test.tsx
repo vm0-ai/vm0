@@ -3056,6 +3056,7 @@ describe("organization billing settings", () => {
           immediateAmountCents: 0,
           nextRecurringAmountCents: body.quantity * 10_000,
           currency: "usd",
+          effectiveAt: "2026-06-01T00:00:00Z",
         });
       },
     );
@@ -3064,8 +3065,9 @@ describe("organization billing settings", () => {
       ({ body, respond }) => {
         confirmedQuantity = body.quantity;
         return respond(200, {
-          status: "processing",
+          status: "completed",
           hostedInvoiceUrl: null,
+          effectiveAt: "2026-06-01T00:00:00Z",
         });
       },
     );
@@ -3094,6 +3096,14 @@ describe("organization billing settings", () => {
     });
     expect(previewedQuantity).toBe(3);
     expect(within(reviewDialog).queryByText("Due now")).not.toBeInTheDocument();
+    expect(
+      within(reviewDialog).getByText(
+        "Your current slots stay active through this billing period. The lower quantity starts at renewal with no refund or account credit.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(reviewDialog).getByText("Scheduled for Jun 1, 2026"),
+    ).toBeInTheDocument();
     expect(within(reviewDialog).getByText("$300.00/month")).toBeInTheDocument();
 
     click(buttonByText("Confirm", reviewDialog));

@@ -20,7 +20,6 @@ import { persistOrgAcquisitionAttribution$ } from "./acquisition-attribution.ser
 import {
   addStripeConcurrencySubscriptionItem$,
   applyStripeConcurrencySubscriptionChange$,
-  persistStripeConcurrencySubscription$,
   previewStripeConcurrencySubscriptionChange$,
 } from "./zero-billing-concurrency-subscription.service";
 import { stripePreviewMetadata } from "./stripe-preview-metadata.service";
@@ -624,14 +623,6 @@ export const startConcurrencyPurchase$ = command(
     );
     if (!result.ok) {
       return result;
-    }
-    if (result.response.status !== "pending_payment") {
-      await set(
-        persistStripeConcurrencySubscription$,
-        args.orgId,
-        result.subscription,
-        signal,
-      );
     }
     return {
       ok: true,

@@ -3978,6 +3978,30 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
       cancelAtPeriodEnd: false,
     });
 
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
+      id: subscriptionId,
+      customer: granted.customerId,
+      status: "active",
+      cancel_at_period_end: false,
+      items: { data: [] },
+    });
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "customer.subscription.updated",
+        object: {
+          id: subscriptionId,
+          status: "active",
+          cancel_at_period_end: false,
+          items: { data: [] },
+        },
+      }),
+      [200],
+    );
+    billingStatus = await billing.readBillingStatus(actor);
+    expect(billingStatus.concurrencySubscriptions).toStrictEqual([]);
+    const afterItemRemoved = await runs.readRunQueue(actor);
+    expect(afterItemRemoved.body.concurrency.limit).toBe(2);
+
     await api.postStripeEvent(
       stripeEvent({
         type: "customer.subscription.deleted",

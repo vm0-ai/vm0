@@ -1497,6 +1497,7 @@ interface ConcurrencyConfirmCopy {
 function concurrencyConfirmCopy(
   action: "change" | "restore",
   reviewing: boolean,
+  scheduled: boolean,
 ): ConcurrencyConfirmCopy {
   if (reviewing) {
     return {
@@ -1504,7 +1505,9 @@ function concurrencyConfirmCopy(
         return $.billing.concurrency.reviewTitle;
       }),
       description: i18n.t(($) => {
-        return $.billing.concurrency.reviewDescription;
+        return scheduled
+          ? $.billing.concurrency.scheduledReviewDescription
+          : $.billing.concurrency.reviewDescription;
       }),
     };
   }
@@ -1775,6 +1778,16 @@ function ConcurrencyChangeReview({
           </p>
         </div>
       )}
+      {preview.effectiveAt ? (
+        <p className="border-y border-border/70 py-3 text-sm text-muted-foreground">
+          {i18n.t(
+            ($) => {
+              return $.billing.plans.usagePacks.management.scheduledFor;
+            },
+            { date: formatBillingDate(preview.effectiveAt) },
+          )}
+        </p>
+      ) : null}
       <div className="pt-4">
         <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
           {i18n.t(($) => {
@@ -1865,7 +1878,11 @@ function ConcurrencyConfirmDialogContent({
     dialog.currentQuantity,
     dialog.canReduce,
   );
-  const copy = concurrencyConfirmCopy(action, reviewing);
+  const copy = concurrencyConfirmCopy(
+    action,
+    reviewing,
+    preview?.effectiveAt !== undefined,
+  );
 
   const handleConfirm = () => {
     if (action === "restore") {

@@ -86,6 +86,10 @@ export interface StripeSubscriptionPreviousAttributes {
 export interface StripeSchedulePhase {
   readonly start_date: number;
   readonly end_date: number;
+  readonly items?: readonly {
+    readonly price: StripeRef;
+    readonly quantity?: number;
+  }[];
 }
 
 export interface StripeSubscriptionSchedule {

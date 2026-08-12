@@ -1054,7 +1054,9 @@ export const confirmConcurrencySubscriptionChange$ = command(
     set(internalConcurrencyConfirmDialog$, null);
     toast.success(
       i18n.t(($) => {
-        return $.billing.toasts.concurrencyChanged;
+        return result.body.effectiveAt
+          ? $.billing.toasts.concurrencyReduced
+          : $.billing.toasts.concurrencyChanged;
       }),
     );
   },

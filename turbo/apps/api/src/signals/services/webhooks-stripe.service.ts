@@ -3427,6 +3427,7 @@ async function handleConcurrencySubscriptionUpdated(
       .select({
         orgId: orgConcurrencySubscriptions.orgId,
         slots: orgConcurrencySubscriptions.slots,
+        cancelAtPeriodEnd: orgConcurrencySubscriptions.cancelAtPeriodEnd,
       })
       .from(orgConcurrencySubscriptions)
       .where(
@@ -3437,21 +3438,27 @@ async function handleConcurrencySubscriptionUpdated(
       return [];
     }
 
-    const eventItem = concurrencySubscriptionItem(subscription);
     const eventState = concurrencySubscriptionState(subscription);
-    if (eventItem && !eventState) {
-      return [existing.orgId];
-    }
     const state =
       eventState?.slots === existing.slots
         ? eventState
         : await retrieveConcurrencySubscriptionState(subscription.id);
     if (!state) {
-      L.warn("updated subscription has no concurrency item", {
-        subscriptionId: subscription.id,
-        orgId: existing.orgId,
+      const rows = await tx
+        .update(orgConcurrencySubscriptions)
+        .set({
+          subscriptionStatus: "canceled",
+          cancelAtPeriodEnd: false,
+          currentPeriodEnd: nowDate(),
+          updatedAt: nowDate(),
+        })
+        .where(
+          eq(orgConcurrencySubscriptions.stripeSubscriptionId, subscription.id),
+        )
+        .returning({ orgId: orgConcurrencySubscriptions.orgId });
+      return rows.map((row) => {
+        return row.orgId;
       });
-      return [];
     }
 
     const rows = await tx
@@ -3461,7 +3468,11 @@ async function handleConcurrencySubscriptionUpdated(
         slots: state.slots,
         subscriptionStatus: state.subscriptionStatus,
         currentPeriodEnd: state.currentPeriodEnd,
-        cancelAtPeriodEnd: state.cancelAtPeriodEnd,
+        cancelAtPeriodEnd:
+          state.cancelAtPeriodEnd ||
+          (existing.cancelAtPeriodEnd &&
+            subscription.schedule !== null &&
+            subscription.schedule !== undefined),
         updatedAt: nowDate(),
       })
       .where(
