@@ -52,6 +52,10 @@ pub const CONTROL_CPU_RESERVE_US: u64 = 10_000;
 pub const MATERIAL_CPU_THROTTLED_USEC: u64 = 1_000_000;
 
 /// Memory kept outside the workload hard limit for Guest control services.
+///
+/// Cgroup v2 limits effective `memory.min` protection by every ancestor. The
+/// exec base, controlled operation, and control leaf must therefore all use
+/// this value so concurrent operation siblings cannot reclaim the reservation.
 pub const CONTROL_MEMORY_RESERVE_BYTES: u64 = 384 * 1024 * 1024;
 
 /// Additional distance between workload `memory.high` and `memory.max`.

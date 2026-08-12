@@ -35,8 +35,9 @@ use std::os::unix::ffi::OsStrExt;
 use std::path::{Component, Path, PathBuf};
 
 use guest_contracts::process_containment::{
-    CGROUP_V2_MOUNT_PATH, CONTROL_CGROUP_NAME, EXEC_CGROUP_BASE_PATH, EXEC_CGROUP_NAME_PREFIX,
-    REQUIRED_CGROUP_CONTROLLERS, WORKLOAD_CGROUP_NAME, WorkloadResourcePolicy,
+    CGROUP_V2_MOUNT_PATH, CONTROL_CGROUP_NAME, CONTROL_MEMORY_RESERVE_BYTES, EXEC_CGROUP_BASE_PATH,
+    EXEC_CGROUP_NAME_PREFIX, REQUIRED_CGROUP_CONTROLLERS, WORKLOAD_CGROUP_NAME,
+    WorkloadResourcePolicy,
 };
 use guest_contracts::reuse_preparation::{
     REUSE_PREPARATION_EXIT_CLEANUP_FAILED, REUSE_PREPARATION_EXIT_CONTAINMENT_FAILED,
@@ -55,6 +56,7 @@ const CGROUP_SUBTREE_CONTROL_FILE: &str = "cgroup.subtree_control";
 const CPU_MAX_FILE: &str = "cpu.max";
 const MEMORY_HIGH_FILE: &str = "memory.high";
 const MEMORY_MAX_FILE: &str = "memory.max";
+const MEMORY_MIN_FILE: &str = "memory.min";
 const MEMORY_OOM_GROUP_FILE: &str = "memory.oom.group";
 const PIDS_MAX_FILE: &str = "pids.max";
 #[cfg(debug_assertions)]
@@ -273,6 +275,7 @@ fn verify_process_containment() -> io::Result<()> {
         CGROUP_EVENTS_FILE,
         CGROUP_KILL_FILE,
         CGROUP_SUBTREE_CONTROL_FILE,
+        MEMORY_MIN_FILE,
     ] {
         if !std::fs::metadata(paths.base.join(filename))?.is_file() {
             return Err(io::Error::new(
@@ -286,6 +289,14 @@ fn verify_process_containment() -> io::Result<()> {
         &std::fs::read_to_string(paths.base.join(CGROUP_SUBTREE_CONTROL_FILE))?,
         "exec cgroup base",
     )?;
+    if std::fs::read_to_string(paths.base.join(MEMORY_MIN_FILE))?.trim()
+        != CONTROL_MEMORY_RESERVE_BYTES.to_string()
+    {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "exec cgroup base does not preserve control memory",
+        ));
+    }
 
     let base_procs = std::fs::read_to_string(paths.base.join(CGROUP_PROCS_FILE))?;
     if !base_procs.trim().is_empty() {

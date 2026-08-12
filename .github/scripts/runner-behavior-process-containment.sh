@@ -103,6 +103,10 @@ for controller in cpu memory pids; do
   grep -qw "$controller" "$base/cgroup.subtree_control"
   grep -qw "$controller" "$parent/cgroup.subtree_control"
 done
+expected_control_memory_min=$((384 * 1024 * 1024))
+test "$(cat "$base/memory.min")" = "$expected_control_memory_min"
+test "$(cat "$parent/memory.min")" = "$expected_control_memory_min"
+test "$(cat "$parent/control/memory.min")" = "$expected_control_memory_min"
 grep -Eq '^[0-9]+ [0-9]+$' "$parent/workload/cpu.max"
 grep -Eq '^[0-9]+$' "$parent/workload/memory.high"
 grep -Eq '^[0-9]+$' "$parent/workload/memory.max"

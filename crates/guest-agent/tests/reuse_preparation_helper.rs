@@ -333,6 +333,21 @@ fn prepare_for_reuse_rejects_missing_controller() -> TestResult {
 }
 
 #[test]
+fn prepare_for_reuse_rejects_missing_ancestor_memory_protection() -> TestResult {
+    let (request, _runtime) = reusable_request()?;
+    let containment = ContainmentFixture::new()?;
+    std::fs::write(containment.base.join("memory.min"), b"0\n")?;
+
+    let output = run_helper_with_containment(&request, &containment)?;
+
+    assert_eq!(
+        output.status.code(),
+        Some(REUSE_PREPARATION_EXIT_CONTAINMENT_FAILED)
+    );
+    Ok(())
+}
+
+#[test]
 fn prepare_for_reuse_rejects_direct_processes_in_operation_parent() -> TestResult {
     let (request, _runtime) = reusable_request()?;
     let containment = ContainmentFixture::new()?;
@@ -434,6 +449,10 @@ impl ContainmentFixture {
         ] {
             std::fs::write(base.join(filename), content)?;
         }
+        std::fs::write(
+            base.join("memory.min"),
+            guest_contracts::process_containment::CONTROL_MEMORY_RESERVE_BYTES.to_string(),
+        )?;
         let operation = base.join("exec-current");
         std::fs::create_dir(&operation)?;
         for (filename, content) in [

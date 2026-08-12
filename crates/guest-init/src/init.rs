@@ -17,8 +17,8 @@ use std::io;
 use std::path::Path;
 
 use guest_contracts::process_containment::{
-    CGROUP_V2_MOUNT_PATH, EXEC_CGROUP_BASE_PATH, REQUIRED_CGROUP_CONTROLLERS,
-    REQUIRED_CGROUP_SUBTREE_CONTROL,
+    CGROUP_V2_MOUNT_PATH, CONTROL_MEMORY_RESERVE_BYTES, EXEC_CGROUP_BASE_PATH,
+    REQUIRED_CGROUP_CONTROLLERS, REQUIRED_CGROUP_SUBTREE_CONTROL,
 };
 
 const CGROUP_CONTROLLERS_FILE: &str = "cgroup.controllers";
@@ -159,9 +159,11 @@ impl std::error::Error for InitError {}
 /// Mount cgroup v2 and validate the canonical exec process-containment base.
 ///
 /// Cgroup v2 is mounted at `CGROUP_V2_MOUNT_PATH`. The exec base at
-/// `EXEC_CGROUP_BASE_PATH` must be empty and distribute the `cpu`, `memory`,
-/// and `pids` controllers. `vsock-guest` creates an empty operation parent and
-/// two controlled leaves beneath it for each exec operation.
+/// `EXEC_CGROUP_BASE_PATH` must be empty, distribute the `cpu`, `memory`, and
+/// `pids` controllers, and carry the ancestor `memory.min` required for
+/// effective control-process protection. `vsock-guest` creates an empty
+/// operation parent and two controlled leaves beneath it for each exec
+/// operation.
 fn initialize_process_containment() -> Result<(), InitError> {
     create_dir_all(Path::new(CGROUP_V2_MOUNT_PATH))?;
     mount(
@@ -182,6 +184,16 @@ fn initialize_process_containment() -> Result<(), InitError> {
     let base = Path::new(EXEC_CGROUP_BASE_PATH);
     create_dir_all(base)?;
     enable_required_controllers(base)?;
+    let memory_min_path = base.join(MEMORY_MIN_FILE);
+    fs::write(
+        &memory_min_path,
+        CONTROL_MEMORY_RESERVE_BYTES.to_string().as_bytes(),
+    )
+    .map_err(|source| InitError::Filesystem {
+        operation: "configure control memory protection in",
+        path: memory_min_path.display().to_string(),
+        source,
+    })?;
     verify_process_containment_base(base)?;
     eprintln!("[guest-init] Exec process containment initialized");
     Ok(())
@@ -287,6 +299,17 @@ fn verify_process_containment_base(base: &Path) -> Result<(), InitError> {
             "exec cgroup base contains direct processes".into(),
         ));
     }
+    let memory_min =
+        fs::read_to_string(base.join(MEMORY_MIN_FILE)).map_err(|source| InitError::Filesystem {
+            operation: "read",
+            path: base.join(MEMORY_MIN_FILE).display().to_string(),
+            source,
+        })?;
+    if memory_min.trim() != CONTROL_MEMORY_RESERVE_BYTES.to_string() {
+        return Err(InitError::InvalidProcessContainment(format!(
+            "exec cgroup base {MEMORY_MIN_FILE} does not preserve control memory"
+        )));
+    }
     Ok(())
 }
 
@@ -341,11 +364,15 @@ mod tests {
             (CGROUP_KILL_FILE, ""),
             (CGROUP_SUBTREE_CONTROL_FILE, subtree_control),
             (CPU_WEIGHT_FILE, "100\n"),
-            (MEMORY_MIN_FILE, "0\n"),
             (PIDS_MAX_FILE, "max\n"),
         ] {
             fs::write(base.join(filename), content).unwrap();
         }
+        fs::write(
+            base.join(MEMORY_MIN_FILE),
+            CONTROL_MEMORY_RESERVE_BYTES.to_string(),
+        )
+        .unwrap();
     }
 
     #[test]
@@ -457,5 +484,16 @@ mod tests {
         let error = verify_process_containment_base(dir.path()).unwrap_err();
 
         assert!(error.to_string().contains("direct processes"));
+    }
+
+    #[test]
+    fn process_containment_base_rejects_missing_ancestor_memory_protection() {
+        let dir = tempfile::tempdir().unwrap();
+        write_cgroup_core_files(dir.path(), "cpu memory pids\n");
+        fs::write(dir.path().join(MEMORY_MIN_FILE), "0\n").unwrap();
+
+        let error = verify_process_containment_base(dir.path()).unwrap_err();
+
+        assert!(error.to_string().contains("preserve control memory"));
     }
 }
