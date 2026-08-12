@@ -1422,6 +1422,7 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
         testCronCleanupSandboxesStateContract,
       ).cleanup({
         body: {
+          chatThreadIds: [],
           runIds: [main.runId, sibling.runId],
           orgIds: [],
           exportJobIds: [],

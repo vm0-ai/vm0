@@ -4,6 +4,7 @@ import {
   chatEventsContract,
   chatThreadEventsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import { testCronCleanupSandboxesStateContract } from "@vm0/api-contracts/contracts/test-cron-cleanup-sandboxes-state";
 import { testWorkflowAutomationExecutionContract } from "@vm0/api-contracts/contracts/test-workflow-automation-execution";
 import { zeroModelProvidersByTypeContract } from "@vm0/api-contracts/contracts/zero-model-providers";
 import { zeroWorkflowAutomationsContract } from "@vm0/api-contracts/contracts/zero-workflows";
@@ -51,11 +52,10 @@ import { zeroChatEventsRoutes } from "../zero-chat-events";
 import { zeroChatThreadRoutes } from "../zero-chat-threads";
 import { zeroModelProvidersRoutes } from "../zero-model-providers";
 import { zeroWorkflowAutomationsRoutes } from "../zero-workflow-automations";
-import { cronCleanupSandboxesRoutes } from "../cron-cleanup-sandboxes";
+import { testCronCleanupSandboxesStateRoutes } from "../test-cron-cleanup-sandboxes-state";
 import { webhooksWorkflowAutomationsRoutes } from "../webhooks-workflow-automations";
 
 const TEST_APP_ROUTES = Object.freeze([
-  ...cronCleanupSandboxesRoutes,
   ...testWorkflowAutomationExecutionRoutes,
   ...webhooksWorkflowAutomationsRoutes,
   ...zeroChatEventsRoutes,
@@ -72,8 +72,6 @@ const webhooksApi = createWebhookCallbackApi(context);
 const chatCallbacks = createChatCallbacksApi(context);
 
 const WORKFLOW_NAME = "workflow-queue-workflow";
-const CRON_CLEANUP_SANDBOXES_ROUTE = "/api/cron/cleanup-sandboxes";
-const CRON_SECRET = "test-cron-secret";
 
 function it(name: string, test: () => Promise<void>, timeout?: number): void {
   vitestTest(
@@ -100,6 +98,13 @@ function workflowAutomationExecutionClient() {
     context,
     routes: testWorkflowAutomationExecutionRoutes,
   })(testWorkflowAutomationExecutionContract);
+}
+
+function cleanupSandboxesClient() {
+  return setupApp({
+    context,
+    routes: testCronCleanupSandboxesStateRoutes,
+  })(testCronCleanupSandboxesStateContract);
 }
 
 function chatEventsClient() {
@@ -131,7 +136,6 @@ interface Scenario {
 
 async function setup(): Promise<Scenario> {
   const runnerGroup = runsApi.configureRunnerGroup();
-  mockEnv("CRON_SECRET", CRON_SECRET);
   mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
   const { actor } = await wf.setupWorkflowOrg({ tier: "team" });
   if (!actor.orgId) {
@@ -454,25 +458,34 @@ async function executeDueWorkflowAutomations(
   expect(response.body.success).toBeTruthy();
 }
 
-async function cleanupSandboxes(): Promise<void> {
-  const response = await createApp({
-    signal: context.signal,
-    routes: TEST_APP_ROUTES,
-  }).request(CRON_CLEANUP_SANDBOXES_ROUTE, {
-    headers: { authorization: `Bearer ${CRON_SECRET}` },
-  });
-  expect(response.status).toBe(200);
+async function cleanupWorkflowQueueFixtures(args: {
+  readonly threadId: string;
+  readonly orgId: string;
+  readonly runIds: readonly string[];
+}): Promise<void> {
+  await accept(
+    cleanupSandboxesClient().cleanup({
+      body: {
+        chatThreadIds: [args.threadId],
+        runIds: [...args.runIds],
+        orgIds: [args.orgId],
+        exportJobIds: [],
+      },
+    }),
+    [200],
+  );
 }
 
 /**
  * Product-visible proof that the stale sweep admitted nothing on this thread
  * while a request is still blocked on the org admission lock.
  *
- * The sweep runs inline in the cron request, so `cleanupSandboxes()` returning
- * at all already shows it never reached that lock — any attempt would block on
- * the hold this test owns. This asserts the outcome half through the queue API:
- * the pending events are exactly the ones queued before the sweep, and no
- * queued item was drained into a run.
+ * The sweep runs inline in the fixture-scoped cleanup request, so
+ * `cleanupWorkflowQueueFixtures()` returning at all already shows it never
+ * reached that lock — any attempt would block on the hold this test owns. This
+ * asserts the outcome half through the queue API: the pending events are
+ * exactly the ones queued before the sweep, and no queued item was drained into
+ * a run.
  *
  * Deliberately not asserted through `admissionLock.waiterCount()`: that counter
  * is a cluster-wide `pg_locks` observation of one `hashtext(orgId)` key shared
@@ -673,7 +686,11 @@ describe("workflow queue", () => {
 
     // The business assertion: the stale sweep must not race the freshly
     // admitted event that is still blocked on org admission.
-    await cleanupSandboxes();
+    await cleanupWorkflowQueueFixtures({
+      threadId: automation.threadId,
+      orgId: scenario.orgId,
+      runIds: [],
+    });
     await expectSweepLeftQueueUntouched(automation.threadId, [event.id]);
 
     admissionLock.release();
@@ -739,7 +756,11 @@ describe("workflow queue", () => {
     // The business assertion: the stale sweep must leave the fresh user message
     // queued and must not drain it ahead of the stale automation event that is
     // still blocked on org admission.
-    await cleanupSandboxes();
+    await cleanupWorkflowQueueFixtures({
+      threadId: automation.threadId,
+      orgId: scenario.orgId,
+      runIds: [],
+    });
     await expectSweepLeftQueueUntouched(automation.threadId, [event.id]);
 
     admissionLock.release();
@@ -776,7 +797,11 @@ describe("workflow queue", () => {
     await runsApi.claimRunnerJob(firstRunId);
     await completeRunWithoutCallbacksFixture({ runId: firstRunId });
 
-    await cleanupSandboxes();
+    await cleanupWorkflowQueueFixtures({
+      threadId: automation.threadId,
+      orgId: scenario.orgId,
+      runIds: [firstRunId],
+    });
 
     await expect(
       pendingAutomationEvents(automation.threadId),
@@ -820,7 +845,11 @@ describe("workflow queue", () => {
     await runsApi.claimRunnerJob(firstRunId);
     await completeRunWithoutCallbacksFixture({ runId: firstRunId });
 
-    await cleanupSandboxes();
+    await cleanupWorkflowQueueFixtures({
+      threadId: automation.threadId,
+      orgId: scenario.orgId,
+      runIds: [firstRunId],
+    });
 
     const messages = await wf.readThreadEvents(automation.threadId);
     expect(messages).toContainEqual(
