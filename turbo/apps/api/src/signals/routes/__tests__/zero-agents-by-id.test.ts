@@ -1,8 +1,10 @@
 import { randomUUID } from "node:crypto";
 
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
+import type { BrandedApiNamespace } from "@vm0/api-contracts/contracts/api-namespaces";
 import { zeroAgentsByIdContract } from "@vm0/api-contracts/contracts/zero-agents";
 
+import { createApp } from "../../../app-factory";
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { now } from "../../../lib/time";
@@ -34,6 +36,40 @@ function agentsClient() {
 
 function bearerHeaders(token: string): { readonly authorization: string } {
   return { authorization: `Bearer ${token}` };
+}
+
+async function requestAgentThroughNamespace(
+  namespace: BrandedApiNamespace,
+  agentId: string,
+  headers: { readonly authorization?: string },
+): Promise<{
+  readonly status: number;
+  readonly body: unknown;
+  readonly contentType: string | null;
+}> {
+  const app = createApp({
+    signal: context.signal,
+    routes: zeroAgentsRoutes,
+  });
+  const response = await app.request(`/api/${namespace}/agents/${agentId}`, {
+    headers,
+  });
+  return {
+    status: response.status,
+    body: await response.json(),
+    contentType: response.headers.get("content-type"),
+  };
+}
+
+async function expectNamespaceParity(
+  agentId: string,
+  headers: { readonly authorization?: string },
+): Promise<unknown> {
+  const zero = await requestAgentThroughNamespace("zero", agentId, headers);
+  const okou = await requestAgentThroughNamespace("okou", agentId, headers);
+  expect(okou).toStrictEqual(zero);
+  expect(zero.status).toBe(200);
+  return zero.body;
 }
 
 function commandInput(command: unknown): Record<string, unknown> {
@@ -112,6 +148,39 @@ function zeroTokenFor(
 }
 
 describe("GET /api/zero/agents/:id", () => {
+  it("keeps session, PAT, and run-capability auth in parity across namespaces", async () => {
+    const actor = bdd.user({ orgRole: "org:member" });
+    const agent = await createAgent(actor, {
+      displayName: "Namespace Parity Agent",
+      visibility: "private",
+    });
+
+    const sessionBody = await expectNamespaceParity(agent.agentId, {
+      authorization: "Bearer clerk-session",
+    });
+
+    const patBody = await expectNamespaceParity(
+      agent.agentId,
+      await apiKeyHeaders(actor, "org:member"),
+    );
+
+    const capabilityBody = await expectNamespaceParity(
+      agent.agentId,
+      bearerHeaders(zeroTokenFor(actor, ["agent:read"])),
+    );
+
+    expect(patBody).toStrictEqual(sessionBody);
+    expect(capabilityBody).toStrictEqual(sessionBody);
+  });
+
+  it("keeps path validation responses in parity across namespaces", async () => {
+    const zero = await requestAgentThroughNamespace("zero", "not-a-uuid", {});
+    const okou = await requestAgentThroughNamespace("okou", "not-a-uuid", {});
+
+    expect(okou).toStrictEqual(zero);
+    expect(zero.status).toBe(400);
+  });
+
   it("returns 401 when the request is unauthenticated", async () => {
     const response = await bdd.requestReadAgent(null, randomUUID(), [401]);
     expect(response.body).toStrictEqual({
