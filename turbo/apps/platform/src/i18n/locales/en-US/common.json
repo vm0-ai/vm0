@@ -1665,6 +1665,7 @@
       "checkingLimit": "Checking voice input limit",
       "input": "Voice input",
       "inputLimitReached": "Voice input limit reached. Upgrade to Pro or Team for higher limits.",
+      "inputLimitReachedMember": "Voice input limit reached. Ask a workspace admin to upgrade for higher limits.",
       "microphoneAccessDenied": "Microphone access was denied. Allow microphone access and try again.",
       "openingMicrophone": "Opening microphone...",
       "starting": "Starting voice input",

@@ -6,6 +6,7 @@ import {
 } from "@vm0/api-contracts/contracts/zero-voice-io-quota";
 import { fetch$ } from "../fetch.ts";
 import { pageSignal$ } from "../page-signal.ts";
+import { isOrgAdmin$ } from "../org.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { setBillingSubPage$ } from "../zero-page/settings/workspace-settings-state.ts";
 import { openSettingsDialogAt$ } from "../zero-page/settings/settings-dialog.ts";
@@ -490,15 +491,24 @@ const refreshAudioInputQuota$ = command(({ set }) => {
 export const openAudioInputQuotaRecovery$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     signal.throwIfAborted();
+    const isAdmin = await get(isOrgAdmin$);
+    signal.throwIfAborted();
     toast.error(
-      i18n.t(($) => {
-        return $.chat.voice.inputLimitReached;
-      }),
+      isAdmin
+        ? i18n.t(($) => {
+            return $.chat.voice.inputLimitReached;
+          })
+        : i18n.t(($) => {
+            return $.chat.voice.inputLimitReachedMember;
+          }),
       {
         id: AUDIO_INPUT_QUOTA_TOAST_ID,
       },
     );
     set(refreshAudioInputQuota$);
+    if (!isAdmin) {
+      return;
+    }
     set(setBillingSubPage$, true);
     await set(openSettingsDialogAt$, "billing", get(pageSignal$));
   },
