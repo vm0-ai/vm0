@@ -41,6 +41,14 @@ _URL_PATH_SAFE_CHARS = "/%:@!$&'()*+,;="
 _URL_QUERY_SAFE_CHARS = "/?%:@!$&'()*+,;="
 _VALID_AUTH_BASE_SCHEME = "https"
 _DEFAULT_HTTPS_PORT = 443
+# This matches the runner's existing managed-query work scale while retaining
+# ample room for ordinary connector URLs. Count every segment that auth.base
+# materializes, including empty segments separated by either ``&`` or ``;``.
+MAX_AUTH_BASE_QUERY_PAIRS = 8 * 1024
+
+
+class AuthBaseQueryTooManyPairsError(ValueError):
+    """The aggregate auth.base rewrite query exceeds its pair work budget."""
 
 
 @dataclass(frozen=True)
@@ -380,6 +388,34 @@ def _encode_query_pairs(query: dict[str, str] | None) -> list[_QueryPair]:
     return _split_query_pairs(urllib.parse.urlencode(query))
 
 
+def _consume_query_pair_budget(query: str, remaining_pairs: int) -> int:
+    if not query:
+        return remaining_pairs
+
+    remaining_pairs -= 1
+    if remaining_pairs < 0:
+        raise AuthBaseQueryTooManyPairsError("auth.base rewritten query has too many pairs")
+    for char in query:
+        if char in ("&", ";"):
+            remaining_pairs -= 1
+            if remaining_pairs < 0:
+                raise AuthBaseQueryTooManyPairsError("auth.base rewritten query has too many pairs")
+    return remaining_pairs
+
+
+def _validate_rewrite_query_pair_count(
+    base_query: str,
+    orig_query: str,
+    resolved_query: dict[str, str] | None,
+) -> None:
+    remaining_pairs = MAX_AUTH_BASE_QUERY_PAIRS - len(resolved_query or {})
+    if remaining_pairs < 0:
+        raise AuthBaseQueryTooManyPairsError("auth.base rewritten query has too many pairs")
+
+    remaining_pairs = _consume_query_pair_budget(orig_query, remaining_pairs)
+    _consume_query_pair_budget(base_query, remaining_pairs)
+
+
 def _merge_rewrite_query(
     base_query: str,
     orig_query: str,
@@ -388,6 +424,7 @@ def _merge_rewrite_query(
     if not base_query and not resolved_query:
         return orig_query
 
+    _validate_rewrite_query_pair_count(base_query, orig_query, resolved_query)
     base_pairs = _split_query_pairs(base_query)
     orig_pairs = _split_query_pairs(orig_query)
     auth_keys = set(resolved_query or {})
@@ -491,7 +528,14 @@ def build_rewrite_url(
     Unsafe path syntax in ``rel_path`` is rejected as an invariant; firewall
     matching should already have blocked it before auth is applied.
 
+    Trusted-query rewrites accept at most ``MAX_AUTH_BASE_QUERY_PAIRS``
+    aggregate query segments across the resolved base, original request, and
+    resolved auth data. Query-free trusted sources retain the original query
+    without segment inspection.
+
     Raises:
+        AuthBaseQueryTooManyPairsError: If a trusted-query rewrite exceeds the
+            aggregate query pair work budget.
         ValueError: If ``resolved_base`` is not a safe absolute HTTPS URL,
             ``rel_path`` has unsafe path syntax, or a URL component contains
             Unicode that cannot be safely encoded.
