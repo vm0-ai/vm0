@@ -46,9 +46,21 @@ function findInlineTemplate(): HTMLElement {
   return inlineTemplate;
 }
 
-function selectTextRangeForInlineFeedback(element: HTMLElement): void {
+function selectTextRangeForInlineFeedback(
+  element: HTMLElement,
+  offsets?: { readonly start: number; readonly end: number },
+): void {
   const range = document.createRange();
-  range.selectNodeContents(element);
+  if (offsets) {
+    const textNode = element.firstChild;
+    if (!(textNode instanceof Text)) {
+      throw new Error("Selection source must start with a text node");
+    }
+    range.setStart(textNode, offsets.start);
+    range.setEnd(textNode, offsets.end);
+  } else {
+    range.selectNodeContents(element);
+  }
   Object.defineProperty(range, "getBoundingClientRect", {
     configurable: true,
     value: () => {
@@ -64,9 +76,12 @@ function selectTextRangeForInlineFeedback(element: HTMLElement): void {
   selection.addRange(range);
 }
 
-function selectTextForInlineFeedback(element: HTMLElement): void {
+function selectTextForInlineFeedback(
+  element: HTMLElement,
+  offsets?: { readonly start: number; readonly end: number },
+): void {
   element.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
-  selectTextRangeForInlineFeedback(element);
+  selectTextRangeForInlineFeedback(element, offsets);
   document.dispatchEvent(new Event("selectionchange"));
   element.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
 }
@@ -400,6 +415,8 @@ describe("chat inline feedback", () => {
         {
           type: "feedback",
           quote: assistantReply,
+          eventId: "msg-feedback-assistant",
+          range: { start: 0, end: assistantReply.length },
           note: [{ type: "text", text: "Make the dates explicit." }],
         },
       ],
@@ -413,6 +430,11 @@ describe("chat inline feedback", () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "b0000000-0000-4000-a000-000000000707";
     const assistantReply = "The release summary needs a clearer owner.";
+    const selectedQuote = "release summary";
+    const selectedRange = {
+      start: assistantReply.indexOf(selectedQuote),
+      end: assistantReply.indexOf(selectedQuote) + selectedQuote.length,
+    };
     const sentMessages: RunCreateCapture[] = [];
 
     mockChatLifecycle(context, {
@@ -444,7 +466,10 @@ describe("chat inline feedback", () => {
       path: `/chats/${threadId}`,
     });
 
-    selectTextForInlineFeedback(await screen.findByText(assistantReply));
+    selectTextForInlineFeedback(
+      await screen.findByText(assistantReply),
+      selectedRange,
+    );
     await user.click(await screen.findByText("Provide feedback"));
     pastePlainText(await findFeedbackNote(), "Name the owner.");
     await user.click(screen.getByLabelText("Send"));
@@ -455,14 +480,16 @@ describe("chat inline feedback", () => {
     expect(sentMessages[0]?.prompt).toContain(
       "Feedback on this part of your reply:",
     );
-    expect(sentMessages[0]?.prompt).toContain(`> ${assistantReply}`);
+    expect(sentMessages[0]?.prompt).toContain(`> ${selectedQuote}`);
     expect(sentMessages[0]?.prompt).toContain("Name the owner.");
     expect(sentMessages[0]?.userMessage).toStrictEqual({
       version: 1,
       parts: [
         {
           type: "feedback",
-          quote: assistantReply,
+          quote: selectedQuote,
+          eventId: "msg-legacy-feedback-assistant",
+          range: selectedRange,
           note: [{ type: "text", text: "Name the owner." }],
         },
       ],
@@ -656,6 +683,8 @@ describe("chat inline feedback", () => {
           {
             type: "feedback",
             quote: assistantReply,
+            eventId: "msg-mail-feedback-assistant",
+            range: { start: 0, end: assistantReply.length },
             note: [{ type: "text", text: "Rewrite this paragraph." }],
             source: {
               type: "mail",

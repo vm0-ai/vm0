@@ -13,6 +13,7 @@ import { i18n } from "../../i18n/index.ts";
 import {
   clearComposerFeedbackHighlights$,
   type ComposerFeedbackSignals,
+  type FeedbackRange,
   type FeedbackSource,
 } from "../zero-page/chat-feedback.ts";
 import { writeToClipboard } from "../zero-page/clipboard.ts";
@@ -23,6 +24,7 @@ import { onDomEventFn, onRef, resetSignal } from "../utils.ts";
 const FEEDBACK_SOURCE_SELECTOR =
   ".zero-chat-bubble-assistant, [data-feedback-source]";
 const ASSISTANT_GROUP_SELECTOR = '[data-role="assistant"]';
+const CHAT_EVENT_SELECTOR = "[data-chat-scroll-anchor-event-id]";
 const THREAD_CONTAINER_SELECTOR = "[data-chat-thread-container-id]";
 const CHAT_COMPOSER_SELECTOR = "[data-chat-composer]";
 
@@ -39,7 +41,9 @@ interface CapturedFeedbackSelection {
   readonly text: string;
   readonly rect: ChatThreadFeedbackSelection["rect"];
   readonly threadId: string | null;
-  readonly range: Range;
+  readonly sourceRange: Range;
+  readonly eventId?: string;
+  readonly range?: FeedbackRange;
   readonly source?: FeedbackSource;
 }
 
@@ -110,6 +114,42 @@ function resolveFeedbackSource(source: Element): FeedbackSource | undefined {
   return { type, id, status, ...(sentId ? { sentId } : {}) };
 }
 
+function closestChatEvent(node: Node): HTMLElement | null {
+  const element = node instanceof Element ? node : node.parentElement;
+  const event = element?.closest(CHAT_EVENT_SELECTOR);
+  return event instanceof HTMLElement ? event : null;
+}
+
+function resolveFeedbackLocation(
+  range: Range,
+): { readonly eventId: string; readonly range: FeedbackRange } | undefined {
+  const startEvent = closestChatEvent(range.startContainer);
+  const endEvent = closestChatEvent(range.endContainer);
+  if (!startEvent || startEvent !== endEvent) {
+    return undefined;
+  }
+  const eventId = startEvent.dataset.chatScrollAnchorEventId;
+  if (!eventId) {
+    return undefined;
+  }
+
+  const prefixRange = startEvent.ownerDocument.createRange();
+  prefixRange.selectNodeContents(startEvent);
+  prefixRange.setEnd(range.startContainer, range.startOffset);
+  const prefixLength = prefixRange.toString().length;
+  const selectedText = range.toString();
+  const leadingWhitespace =
+    selectedText.length - selectedText.trimStart().length;
+  const trailingWhitespace =
+    selectedText.length - selectedText.trimEnd().length;
+  const start = prefixLength + leadingWhitespace;
+  const end = prefixLength + selectedText.length - trailingWhitespace;
+  if (end <= start) {
+    return undefined;
+  }
+  return { eventId, range: { start, end } };
+}
+
 function hasVisibleArea(rect: DOMRectReadOnly): boolean {
   return rect.width > 0 && rect.height > 0;
 }
@@ -164,11 +204,13 @@ function readFeedbackSelection(): CapturedFeedbackSelection | null {
     return null;
   }
   const source = resolveFeedbackSource(sourceElement);
+  const location = resolveFeedbackLocation(range);
   return {
     text,
     rect: rectFromRange(range),
     threadId: resolveSelectionThreadId(sourceElement),
-    range: range.cloneRange(),
+    sourceRange: range.cloneRange(),
+    ...location,
     ...(source ? { source } : {}),
   };
 }
@@ -247,7 +289,10 @@ function createStartFeedback(
     }
     set(feedback.add$, {
       quote: selection.text,
-      sourceRange: selection.range,
+      sourceRange: selection.sourceRange,
+      ...(selection.eventId !== undefined && selection.range !== undefined
+        ? { eventId: selection.eventId, range: selection.range }
+        : {}),
       ...(selection.source ? { source: selection.source } : {}),
     });
     set(close$);

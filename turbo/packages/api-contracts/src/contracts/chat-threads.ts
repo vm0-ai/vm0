@@ -341,6 +341,21 @@ const feedbackNotePartSchema = z.discriminatedUnion("type", [
   userMessageTemplatePartSchema,
 ]);
 
+const feedbackRangeSchema = z
+  .object({
+    /** UTF-16 code-unit offset, compatible with JavaScript String.slice. */
+    start: z.number().int().nonnegative(),
+    /** Exclusive UTF-16 code-unit offset. */
+    end: z.number().int().positive(),
+  })
+  .strict()
+  .refine(
+    (range) => {
+      return range.end > range.start;
+    },
+    { path: ["end"], message: "Feedback range end must be after start" },
+  );
+
 const userMessageExternalSourcePartSchema = z
   .object({
     type: z.literal("source"),
@@ -412,6 +427,8 @@ const userMessageInputPartSchema = z.discriminatedUnion("type", [
       type: z.literal("feedback"),
       quote: z.string().min(1),
       note: z.array(feedbackNotePartSchema).min(1),
+      eventId: z.string().min(1).optional(),
+      range: feedbackRangeSchema.optional(),
       source: z
         .object({
           type: z.literal("mail"),
@@ -422,7 +439,17 @@ const userMessageInputPartSchema = z.discriminatedUnion("type", [
         .strict()
         .optional(),
     })
-    .strict(),
+    .strict()
+    .refine(
+      (feedback) => {
+        return (
+          (feedback.eventId === undefined) === (feedback.range === undefined)
+        );
+      },
+      {
+        message: "Feedback eventId and range must be provided together",
+      },
+    ),
 ]);
 
 const userMessageModelPartSchema = z
