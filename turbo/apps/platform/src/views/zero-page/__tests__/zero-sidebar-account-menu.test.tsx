@@ -1093,7 +1093,7 @@ describe("zero sidebar account menu", () => {
     let modelProviderRequests = 0;
     let forcedTokenRefreshes = 0;
     const authRecoveryCompleted = context.mocks.deferred<void>();
-    context.mocks.http.get("*/api/zero/me/model-providers", () => {
+    context.mocks.http.get("*/api/okou/me/model-providers", () => {
       modelProviderRequests += 1;
       if (modelProviderRequests === 1) {
         return HttpResponse.json(

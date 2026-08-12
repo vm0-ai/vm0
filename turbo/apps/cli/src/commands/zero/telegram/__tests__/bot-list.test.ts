@@ -9,7 +9,7 @@ import { listCommand } from "../bot/list";
 import chalk from "chalk";
 
 const TELEGRAM_BOTS_URL =
-  "http://localhost:3000/api/zero/integrations/telegram/bots";
+  "http://localhost:3000/api/okou/integrations/telegram/bots";
 
 describe("okou telegram bot list command", () => {
   vi.spyOn(process, "exit").mockImplementation((() => {

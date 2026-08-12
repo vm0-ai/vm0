@@ -755,7 +755,7 @@ function ChatThreadHeader({ thread }: { thread: ChatPanelSignals }) {
             </Tooltip>
           </TooltipProvider>
         ) : null}
-        <AutomationMenuButton key={thread.threadId} thread={thread} />
+        <AutomationMenuButton thread={thread} />
         <BrowserMenuButton thread={thread} />
         <ArtifactsButton thread={thread} />
       </div>
@@ -2945,7 +2945,6 @@ export function ZeroChatThreadPage() {
           activeThreadSidebar ? (
             activeThreadSidebar.target.type === "automations" ? (
               <ThreadAutomationsSidebarSlot
-                key={activeThreadSidebar.thread.threadId}
                 thread={activeThreadSidebar.thread}
               />
             ) : (
@@ -4338,16 +4337,10 @@ function ChatThreadEventsPane({ thread }: { thread: ChatPanelSignals }) {
           standalonePwa && "overscroll-contain",
         )}
       >
-        <ChatThreadEventsMain key={thread.threadId} thread={thread} />
+        <ChatThreadEventsMain thread={thread} />
       </div>
-      <ChatThreadSkeletonOverlay
-        key={`skeleton:${thread.threadId}`}
-        thread={thread}
-      />
-      <ScrollToBottomButton
-        key={`scroll-button:${thread.threadId}`}
-        thread={thread}
-      />
+      <ChatThreadSkeletonOverlay thread={thread} />
+      <ScrollToBottomButton thread={thread} />
     </div>
   );
 }
@@ -4401,9 +4394,7 @@ function ChatThreadContent({ thread }: { thread: ChatPanelSignals }) {
       <div className="relative min-h-0 flex-1">
         <div className="flex h-full min-w-0 flex-col">
           <ChatThreadEventsPane thread={thread} />
-          {/* Command loadables are hook-owned, so keep their identity boundary
-              narrower than the persistent thread and event owners. */}
-          <ChatThreadBottomBar key={thread.threadId} thread={thread} />
+          <ChatThreadBottomBar thread={thread} />
         </div>
       </div>
 

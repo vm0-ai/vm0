@@ -1,5 +1,5 @@
 import { clerk } from "@clerk/testing/playwright";
-import { errors, type Page } from "@playwright/test";
+import { errors, type Page, type Route } from "@playwright/test";
 
 const CLERK_BOOTSTRAP_TIMEOUTS_MS = [15_000, 30_000] as const;
 
@@ -57,22 +57,11 @@ export async function signInWithClerkTestingHelper(
     timeout: 30_000,
   });
   if (options.activeOrganizationId) {
-    // Activating the organization lets the skeleton route redirect to the app.
-    // Observe that redirect before setActive so it cannot race the token read.
-    await Promise.all([
-      page.waitForURL(
-        (url) =>
-          url.origin === helperUrl.origin &&
-          url.pathname !== helperUrl.pathname,
-        {
-          timeout: 30_000,
-          waitUntil: "domcontentloaded",
-        },
-      ),
-      page.evaluate(async (organizationId) => {
-        await window.Clerk?.setActive({ organization: organizationId });
-      }, options.activeOrganizationId),
-    ]);
+    await activateClerkOrganization(
+      page,
+      helperUrl,
+      options.activeOrganizationId,
+    );
     await page.waitForFunction(
       () => Boolean(window.Clerk?.loaded && window.Clerk?.session),
       undefined,
@@ -104,6 +93,62 @@ export async function signInWithClerkTestingHelper(
 
   await gotoAboutBlankAfterClerkNavigation(page);
   return token;
+}
+
+async function activateClerkOrganization(
+  page: Page,
+  helperUrl: URL,
+  organizationId: string,
+): Promise<void> {
+  let resolveActivationFinished!: () => void;
+  const activationFinished = new Promise<void>((resolve) => {
+    resolveActivationFinished = resolve;
+  });
+  const routePattern = `${helperUrl.origin}/**`;
+  const holdPostActivationNavigation = async (route: Route): Promise<void> => {
+    const request = route.request();
+    const url = new URL(request.url());
+    if (
+      request.isNavigationRequest() &&
+      request.frame() === page.mainFrame() &&
+      url.origin === helperUrl.origin &&
+      url.pathname !== helperUrl.pathname
+    ) {
+      // The app reloads after the Clerk organization event. Keep the old
+      // document alive until Playwright receives the setActive result.
+      await activationFinished;
+    }
+    await route.continue();
+  };
+
+  await page.route(routePattern, holdPostActivationNavigation);
+  try {
+    await Promise.all([
+      page.waitForURL(
+        (url) =>
+          url.origin === helperUrl.origin &&
+          url.pathname !== helperUrl.pathname,
+        {
+          timeout: 30_000,
+          waitUntil: "domcontentloaded",
+        },
+      ),
+      (async () => {
+        try {
+          await page.evaluate(async (targetOrganizationId) => {
+            await window.Clerk?.setActive({
+              organization: targetOrganizationId,
+            });
+          }, organizationId);
+        } finally {
+          resolveActivationFinished();
+        }
+      })(),
+    ]);
+  } finally {
+    resolveActivationFinished();
+    await page.unroute(routePattern, holdPostActivationNavigation);
+  }
 }
 
 async function navigateToLoadedClerk(

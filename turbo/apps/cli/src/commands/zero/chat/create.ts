@@ -32,7 +32,7 @@ async function resolveAgentId(
   const currentThreadId = getOkouChatThreadId()?.trim();
   if (!currentThreadId) {
     printChatUsageError(
-      "ZERO_CHAT_THREAD_ID is not set",
+      "OKOU_CHAT_THREAD_ID is not set",
       "Pass --agent <agent-id> or run inside a web chat thread.",
     );
   }
@@ -80,11 +80,11 @@ Examples:
 
 Notes:
   - Creates an empty thread; send its first message with okou chat send
-  - Defaults --agent to the agent of ZERO_CHAT_THREAD_ID
-  - Defaults --model to the model of the run that owns ZERO_TOKEN
+  - Defaults --agent to the agent of OKOU_CHAT_THREAD_ID
+  - Defaults --model to the model of the run that owns OKOU_TOKEN
   - Defaults priority to the priority of the current chat thread
   - The new thread never inherits this chat's history, so the first message must be self-contained
-  - Authenticates via ZERO_TOKEN (requires chat-thread:write, and chat-thread:read to default --agent)`,
+  - Authenticates via OKOU_TOKEN (requires chat-thread:write, and chat-thread:read to default --agent)`,
   )
   .action(
     withErrorHandler(async (titleParts: string[], options: CreateOptions) => {

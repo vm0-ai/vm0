@@ -9,10 +9,10 @@ const CURRENT_THREAD_ID = "00000000-0000-4000-8000-000000000001";
 const NEW_THREAD_ID = "00000000-0000-4000-8000-000000000002";
 const AGENT_ID = "00000000-0000-4000-8000-000000000010";
 const OTHER_AGENT_ID = "00000000-0000-4000-8000-000000000011";
-const CREATE_URL = "http://localhost:3000/api/zero/chat-threads";
+const CREATE_URL = "http://localhost:3000/api/okou/chat-threads";
 
 function metadataUrl(threadId: string): string {
-  return `http://localhost:3000/api/zero/chat-threads/${threadId}/metadata`;
+  return `http://localhost:3000/api/okou/chat-threads/${threadId}/metadata`;
 }
 
 describe("okou chat create command", () => {
@@ -190,7 +190,7 @@ describe("okou chat create command", () => {
     }).rejects.toThrow("process.exit called");
 
     const stderr = mockConsoleError.mock.calls.flat().join("\n");
-    expect(stderr).toContain("ZERO_CHAT_THREAD_ID is not set");
+    expect(stderr).toContain("OKOU_CHAT_THREAD_ID is not set");
     expect(stderr).toContain("Pass --agent <agent-id>");
     expect(mockExit).toHaveBeenCalledWith(1);
   });

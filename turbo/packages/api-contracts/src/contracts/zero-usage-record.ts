@@ -109,7 +109,7 @@ const usageRecordResponseSchema = z.object({
 export const zeroUsageRecordContract = c.router({
   get: {
     method: "GET",
-    path: "/api/zero/usage/record",
+    path: "/api/okou/usage/record",
     headers: authHeadersSchema,
     query: z.object({
       page: z.coerce.number().int().positive().default(1),

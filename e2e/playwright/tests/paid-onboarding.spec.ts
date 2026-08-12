@@ -3,7 +3,7 @@ import { signInWithClerkTestingHelper } from "../lib/auth";
 import {
   createOrganization,
   createUser,
-  deleteUserByEmail,
+  deleteClerkTestOwnerResources,
   generateTestEmail,
 } from "../lib/clerk-api";
 import {
@@ -20,14 +20,19 @@ test("paid onboarding completes through the video workflow", async ({
 
   const apiUrl = process.env.VM0_API_BACKEND_URL!;
   const appUrl = deriveAppUrl(apiUrl);
-  const email = generateTestEmail();
+  const email = generateTestEmail("paid-onboarding");
+  let organizationId: string | undefined;
 
   try {
     const userId = await createUser(email);
-    const orgId = await createOrganization("E2E Paid Onboarding Org", userId);
+    organizationId = await createOrganization(
+      "E2E Paid Onboarding Org",
+      userId,
+      "paid-onboarding",
+    );
 
     await signInWithClerkTestingHelper(page, email, appUrl, {
-      activeOrganizationId: orgId,
+      activeOrganizationId: organizationId,
     });
 
     await startVideoOnboardingCheckout(page, { appUrl });
@@ -40,6 +45,10 @@ test("paid onboarding completes through the video workflow", async ({
       /^\/(?:prompt|agents\/[^/]+\/chat|chats\/[^/]+)$/,
     );
   } finally {
-    await deleteUserByEmail(email);
+    await deleteClerkTestOwnerResources(
+      email,
+      organizationId,
+      "paid-onboarding",
+    );
   }
 });

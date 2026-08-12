@@ -1685,7 +1685,7 @@ describe("CHAT-01 chat thread read state", () => {
 
     // A completed run's thread must not appear in the active list. Run it
     // first so the pro-tier concurrency slots stay free for the runs below.
-    await completeChatRunInThread(owner, runnerGroup, {
+    const completedRun = await completeChatRunInThread(owner, runnerGroup, {
       agentId: ownerAgent,
       prompt: "terminal completed thread",
     });
@@ -1715,14 +1715,37 @@ describe("CHAT-01 chat thread read state", () => {
     expect(new Set(await chat.listActiveChatThreadIds(owner))).toStrictEqual(
       new Set([runningRun.threadId, queuedRun.threadId]),
     );
+    await expect(chat.listIndicators(owner)).resolves.toStrictEqual({
+      agents: { [ownerAgent]: "active" },
+      threads: {
+        [completedRun.threadId]: "unread",
+        [runningRun.threadId]: "active",
+        [queuedRun.threadId]: "active",
+      },
+    });
 
     chatCallbacks.mockChatOutputEvents([]);
     await completeChatRunOk(runningRun.runId, runningClaim.sandboxHeaders);
-    await waitForRunStatus(owner, runningRun.runId, "completed");
+    await waitForThreadEvents(owner, runningRun.threadId, (events) => {
+      return events.some((event) => {
+        return (
+          event.runId === runningRun.runId &&
+          event.eventType === "run.completed"
+        );
+      });
+    });
 
     expect(new Set(await chat.listActiveChatThreadIds(owner))).toStrictEqual(
       new Set([queuedRun.threadId]),
     );
+    await expect(chat.listIndicators(owner)).resolves.toStrictEqual({
+      agents: { [ownerAgent]: "active" },
+      threads: {
+        [completedRun.threadId]: "unread",
+        [runningRun.threadId]: "unread",
+        [queuedRun.threadId]: "active",
+      },
+    });
   }, 120_000);
 
   it("excludes unread chat threads that have active runs or goals", async () => {
@@ -1762,6 +1785,14 @@ describe("CHAT-01 chat thread read state", () => {
         }),
       ),
     ).toStrictEqual(new Set([completedRun.threadId, completeGoalRun.threadId]));
+    await expect(chat.listIndicators(owner)).resolves.toStrictEqual({
+      agents: { [agentId]: "active" },
+      threads: {
+        [runningRun.threadId]: "active",
+        [completedRun.threadId]: "unread",
+        [completeGoalRun.threadId]: "unread",
+      },
+    });
 
     chatCallbacks.mockChatOutputEvents([]);
     await completeChatRunOk(runningRun.runId, runningClaim.sandboxHeaders);
@@ -1786,6 +1817,14 @@ describe("CHAT-01 chat thread read state", () => {
         completeGoalRun.threadId,
       ]),
     );
+    await expect(chat.listIndicators(owner)).resolves.toStrictEqual({
+      agents: { [agentId]: "unread" },
+      threads: {
+        [runningRun.threadId]: "unread",
+        [completedRun.threadId]: "unread",
+        [completeGoalRun.threadId]: "unread",
+      },
+    });
   }, 120_000);
 
   it("marks all unread chat threads for one agent", async () => {

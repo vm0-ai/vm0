@@ -90,7 +90,7 @@ export async function completeTelegramFileUpload(
 
 /**
  * Download a Telegram file to a local path, streaming the response body to disk.
- * Uses the bot token on the server side; the CLI authenticates via ZERO_TOKEN.
+ * Uses the bot token on the server side; the CLI authenticates via OKOU_TOKEN.
  */
 export async function downloadTelegramFile(
   fileId: string,
@@ -103,7 +103,7 @@ export async function downloadTelegramFile(
     throw new ApiRequestError("Not authenticated", "UNAUTHORIZED", 401);
   }
 
-  const url = new URL("/api/zero/integrations/telegram/download-file", baseUrl);
+  const url = new URL("/api/okou/integrations/telegram/download-file", baseUrl);
   url.searchParams.set("file_id", fileId);
   url.searchParams.set("bot_id", botId);
 

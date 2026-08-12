@@ -9,7 +9,6 @@ import { settle } from "../utils";
 import type { DispatchFailedRunCallbacks } from "./agent-run-create.service";
 import { admitGoalQueueEvent } from "./chat-goal-queue.service";
 import { drainChatThreadQueueForThread$ } from "./chat-thread-queue-drain.service";
-import { scheduleImmediateSuccessorIntent } from "./immediate-successor-intent.service";
 import {
   loadActiveGoalForThread,
   pauseActiveGoalForThread,
@@ -85,7 +84,6 @@ const enqueueGoalContinuation$ = command(
     args: {
       readonly db: Db;
       readonly goal: GoalBootstrap;
-      readonly immediateSuccessorPredecessorRunId?: string;
       readonly dispatchFailedCallbacks: DispatchFailedRunCallbacks;
     },
     signal: AbortSignal,
@@ -118,23 +116,10 @@ const enqueueGoalContinuation$ = command(
       };
     }
 
-    const immediateSuccessorIntent = scheduleImmediateSuccessorIntent({
-      db: args.db,
-      predecessorRunId: args.immediateSuccessorPredecessorRunId,
-      chatThreadId: args.goal.threadId,
-      orgId: args.goal.orgId,
-      intentId: admission.value.eventId,
-      eventClass: "goal",
-      decisionPoint: "queue_admission",
-    });
-
     await set(
       drainChatThreadQueueForThread$,
       {
         chatThreadId: args.goal.threadId,
-        goalImmediateSuccessorIntent: immediateSuccessorIntent,
-        immediateSuccessorPredecessorRunId:
-          args.immediateSuccessorPredecessorRunId,
         dispatchFailedCallbacks: args.dispatchFailedCallbacks,
       },
       signal,
@@ -206,7 +191,6 @@ export const continueGoalIfIdle$ = command(
           threadId: goal.chatThreadId,
           objectiveBrief: goal.objectiveBrief,
         },
-        immediateSuccessorPredecessorRunId: args.runId,
         dispatchFailedCallbacks: args.dispatchFailedCallbacks,
       },
       signal,

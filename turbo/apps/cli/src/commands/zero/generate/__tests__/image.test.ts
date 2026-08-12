@@ -14,9 +14,9 @@ import { server } from "../../../../mocks/server";
 import { generateCommand } from "../index";
 import { imageCommand } from "../image";
 
-const IMAGE_URL = "http://localhost:3000/api/zero/image-io/generate";
+const IMAGE_URL = "http://localhost:3000/api/okou/image-io/generate";
 const IMAGE_GENERATION_ID = "00000000-0000-4000-8000-000000000001";
-const IMAGE_STATUS_URL = `http://localhost:3000/api/zero/built-in-generations/${IMAGE_GENERATION_ID}`;
+const IMAGE_STATUS_URL = `http://localhost:3000/api/okou/built-in-generations/${IMAGE_GENERATION_ID}`;
 const IMAGE_RESULT = {
   id: "image-file-id",
   filename: "image-image-fi.png",

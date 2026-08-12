@@ -39,7 +39,7 @@ describe("withErrorHandler", () => {
       })
       .join("\n");
     expect(output).toContain("Not authenticated");
-    expect(output).toContain("Set ZERO_TOKEN to a valid run token");
+    expect(output).toContain("Set OKOU_TOKEN to a valid run token");
     expect(mockExit).toHaveBeenCalledWith(1);
   });
 
@@ -58,7 +58,7 @@ describe("withErrorHandler", () => {
       })
       .join("\n");
     expect(output).toContain("Authentication failed");
-    expect(output).toContain("ZERO_TOKEN is invalid or expired");
+    expect(output).toContain("OKOU_TOKEN is invalid or expired");
     expect(mockExit).toHaveBeenCalledWith(1);
   });
 

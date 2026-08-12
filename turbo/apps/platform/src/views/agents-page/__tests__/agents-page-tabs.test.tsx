@@ -2,6 +2,7 @@ import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { chatThreadsContract } from "@vm0/api-contracts/contracts/chat-threads";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -161,15 +162,20 @@ describe("agents page (redesign)", () => {
     context.mocks.data.team(agents);
     context.mocks.data.orgMembers({ members: [] });
 
-    context.mocks.api(chatThreadsContract.unreadAgents, ({ respond }) => {
+    context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
       return respond(200, {
-        agentIds: [agents[0].id, agents[1].id],
+        agents: {
+          [agents[0].id]: "unread",
+          [agents[1].id]: "unread",
+        },
+        threads: {},
       });
     });
 
     detachedSetupPage({
       context,
       path: "/agents",
+      featureSwitches: { [FeatureSwitchKey.UnifiedIndicatorApi]: true },
     });
 
     await waitFor(() => {

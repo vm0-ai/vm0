@@ -47,7 +47,7 @@ describe("okou maps command", () => {
     let requestBody: unknown;
     server.use(
       http.post(
-        "http://localhost:3000/api/zero/maps/directions",
+        "http://localhost:3000/api/okou/maps/directions",
         async ({ request }) => {
           requestBody = await request.json();
           return HttpResponse.json({
@@ -92,7 +92,7 @@ describe("okou maps command", () => {
     let requestBody: unknown;
     server.use(
       http.post(
-        "http://localhost:3000/api/zero/maps/places/search",
+        "http://localhost:3000/api/okou/maps/places/search",
         async ({ request }) => {
           requestBody = await request.json();
           return HttpResponse.json({
@@ -126,7 +126,7 @@ describe("okou maps command", () => {
     let requestBody: unknown;
     server.use(
       http.post(
-        "http://localhost:3000/api/zero/maps/places/search",
+        "http://localhost:3000/api/okou/maps/places/search",
         async ({ request }) => {
           requestBody = await request.json();
           return HttpResponse.json({
@@ -163,7 +163,7 @@ describe("okou maps command", () => {
     let requestBody: unknown;
     server.use(
       http.post(
-        "http://localhost:3000/api/zero/maps/places/details",
+        "http://localhost:3000/api/okou/maps/places/details",
         async ({ request }) => {
           requestBody = await request.json();
           return HttpResponse.json({
@@ -200,7 +200,7 @@ describe("okou maps command", () => {
     let requestBody: unknown;
     server.use(
       http.post(
-        "http://localhost:3000/api/zero/maps/osm/download",
+        "http://localhost:3000/api/okou/maps/osm/download",
         async ({ request }) => {
           requestBody = await request.json();
           return HttpResponse.json({
@@ -276,7 +276,7 @@ describe("okou maps command", () => {
     let requestBody: unknown;
     server.use(
       http.post(
-        "http://localhost:3000/api/zero/maps/osm/render",
+        "http://localhost:3000/api/okou/maps/osm/render",
         async ({ request }) => {
           requestBody = await request.json();
           return HttpResponse.json({
@@ -374,7 +374,7 @@ describe("okou maps command", () => {
 
   it("renders credit metadata in human output", async () => {
     server.use(
-      http.post("http://localhost:3000/api/zero/maps/geocode", () => {
+      http.post("http://localhost:3000/api/okou/maps/geocode", () => {
         return HttpResponse.json({
           operation: "geocode",
           provider: "google-maps",
@@ -420,6 +420,6 @@ describe("okou maps command", () => {
 
     const errors = mockConsoleError.mock.calls.flat().join("\n");
     expect(errors).toContain("✗ Not authenticated");
-    expect(errors).toContain("Set ZERO_TOKEN to a valid run token");
+    expect(errors).toContain("Set OKOU_TOKEN to a valid run token");
   });
 });

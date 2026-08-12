@@ -6,7 +6,7 @@ import { appendCapturedPreviewBypassToUrl } from "../../lib/preview-bypass-cooki
 import { resolveApiBase } from "../api-base.ts";
 
 export function canonicalUserMessageFileUrl(fileId: string): string {
-  const url = new URL("/api/zero/web/download-file", resolveApiBase());
+  const url = new URL("/api/okou/web/download-file", resolveApiBase());
   url.searchParams.set("file_id", fileId);
   appendCapturedPreviewBypassToUrl(url);
   return url.toString();

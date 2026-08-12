@@ -50,7 +50,7 @@ export const apiOrgHandlers = [
     return respond(200, { message: "Org deleted" });
   }),
 
-  http.get("*/api/zero/org/logo", () => {
+  http.get("*/api/okou/org/logo", () => {
     return HttpResponse.json({ logoUrl: mockLogoUrl, hasImage: !!mockLogoUrl });
   }),
 ];

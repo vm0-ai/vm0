@@ -13,8 +13,8 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../../mocks/server";
 import { transcribeCommand } from "../transcribe";
 
-const STT_URL = "http://localhost:3000/api/zero/voice-io/stt";
-const DOWNLOAD_URL = "http://localhost:3000/api/zero/web/download-file";
+const STT_URL = "http://localhost:3000/api/okou/voice-io/stt";
+const DOWNLOAD_URL = "http://localhost:3000/api/okou/web/download-file";
 
 vi.mock("child_process", async () => {
   const { writeFileSync } = await vi.importActual<typeof import("fs")>("fs");

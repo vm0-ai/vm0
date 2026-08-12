@@ -53,7 +53,7 @@ Output:
   provider menu instead.
 
 Notes:
-  - Authenticates via ZERO_TOKEN (requires file:write capability)
+  - Authenticates via OKOU_TOKEN (requires file:write capability)
   - Charges org credits after successful audio generation
   - Uses gpt-4o-mini-tts with WAV output`,
     )

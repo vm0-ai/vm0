@@ -44,7 +44,7 @@ describe("okou agent create command", () => {
   describe("successful create", () => {
     it("should create agent with display name", async () => {
       server.use(
-        http.post("http://localhost:3000/api/zero/agents", () => {
+        http.post("http://localhost:3000/api/okou/agents", () => {
           return HttpResponse.json(mockAgent, { status: 201 });
         }),
       );
@@ -74,7 +74,7 @@ describe("okou agent create command", () => {
       let capturedBody: Record<string, unknown> | undefined;
       server.use(
         http.post(
-          "http://localhost:3000/api/zero/agents",
+          "http://localhost:3000/api/okou/agents",
           async ({ request }) => {
             capturedBody = (await request.json()) as Record<string, unknown>;
             return HttpResponse.json(mockAgent, { status: 201 });
@@ -96,7 +96,7 @@ describe("okou agent create command", () => {
       let capturedBody: Record<string, unknown> | undefined;
       server.use(
         http.post(
-          "http://localhost:3000/api/zero/agents",
+          "http://localhost:3000/api/okou/agents",
           async ({ request }) => {
             capturedBody = (await request.json()) as Record<string, unknown>;
             return HttpResponse.json(mockAgent, { status: 201 });
@@ -120,7 +120,7 @@ describe("okou agent create command", () => {
       let capturedBody: Record<string, unknown> | undefined;
       server.use(
         http.post(
-          "http://localhost:3000/api/zero/agents",
+          "http://localhost:3000/api/okou/agents",
           async ({ request }) => {
             capturedBody = (await request.json()) as Record<string, unknown>;
             return HttpResponse.json(mockAgent, { status: 201 });
@@ -159,11 +159,11 @@ describe("okou agent create command", () => {
       it("should create agent and upload instructions content from file", async () => {
         let capturedInstructionsContent: string | undefined;
         server.use(
-          http.post("http://localhost:3000/api/zero/agents", () => {
+          http.post("http://localhost:3000/api/okou/agents", () => {
             return HttpResponse.json(mockAgent, { status: 201 });
           }),
           http.put(
-            "http://localhost:3000/api/zero/agents/comp_xyz789/instructions",
+            "http://localhost:3000/api/okou/agents/comp_xyz789/instructions",
             async ({ request }) => {
               const body = (await request.json()) as { content: string };
               capturedInstructionsContent = body.content;
@@ -248,7 +248,7 @@ describe("okou agent create command", () => {
 
     it("should handle authentication error", async () => {
       server.use(
-        http.post("http://localhost:3000/api/zero/agents", () => {
+        http.post("http://localhost:3000/api/okou/agents", () => {
           return HttpResponse.json(
             { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
             { status: 401 },

@@ -8,7 +8,7 @@ import { downloadFileCommand } from "../download-file";
 import chalk from "chalk";
 
 const DOWNLOAD_URL =
-  "http://localhost:3000/api/zero/integrations/github/download-file";
+  "http://localhost:3000/api/okou/integrations/github/download-file";
 
 describe("okou github download-file command", () => {
   vi.spyOn(process, "exit").mockImplementation((() => {

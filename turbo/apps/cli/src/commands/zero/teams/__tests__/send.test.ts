@@ -9,7 +9,7 @@ import { server } from "../../../../mocks/server";
 import { sendCommand } from "../message/send";
 
 const TEAMS_MESSAGE_URL =
-  "http://localhost:3000/api/zero/integrations/teams/message";
+  "http://localhost:3000/api/okou/integrations/teams/message";
 
 describe("okou teams message send command", () => {
   vi.spyOn(process, "exit").mockImplementation((() => {

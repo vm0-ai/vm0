@@ -6,12 +6,12 @@ import { composeListItemSchema } from "./composes";
 const c = initContract();
 
 /**
- * Zero composes list contract (GET /api/zero/composes/list)
+ * Zero composes list contract (GET /api/okou/composes/list)
  */
 export const zeroComposesListContract = c.router({
   list: {
     method: "GET",
-    path: "/api/zero/composes/list",
+    path: "/api/okou/composes/list",
     headers: authHeadersSchema,
     query: z.object({}),
     responses: {

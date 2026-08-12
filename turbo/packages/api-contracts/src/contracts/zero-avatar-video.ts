@@ -158,7 +158,7 @@ export type ZeroAvatarVideoVoice = z.infer<typeof zeroAvatarVideoVoiceSchema>;
 export const zeroAvatarVideoContract = c.router({
   generate: {
     method: "POST",
-    path: "/api/zero/avatar-video/generate",
+    path: "/api/okou/avatar-video/generate",
     headers: authHeadersSchema,
     body: zeroAvatarVideoGenerateRequestSchema,
     responses: {
@@ -177,7 +177,7 @@ export const zeroAvatarVideoContract = c.router({
   },
   avatars: {
     method: "GET",
-    path: "/api/zero/avatar-video/avatars",
+    path: "/api/okou/avatar-video/avatars",
     headers: authHeadersSchema,
     query: zeroAvatarVideoAvatarsQuerySchema,
     responses: {
@@ -191,7 +191,7 @@ export const zeroAvatarVideoContract = c.router({
   },
   voices: {
     method: "GET",
-    path: "/api/zero/avatar-video/voices",
+    path: "/api/okou/avatar-video/voices",
     headers: authHeadersSchema,
     query: zeroAvatarVideoVoicesQuerySchema,
     responses: {

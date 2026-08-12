@@ -44,7 +44,7 @@ describe("okou agent list command", () => {
   describe("successful list", () => {
     it("should display agents in table format", async () => {
       server.use(
-        http.get("http://localhost:3000/api/zero/agents", () => {
+        http.get("http://localhost:3000/api/okou/agents", () => {
           return HttpResponse.json([mockAgent]);
         }),
       );
@@ -58,7 +58,7 @@ describe("okou agent list command", () => {
 
     it("should display empty state message when no agents", async () => {
       server.use(
-        http.get("http://localhost:3000/api/zero/agents", () => {
+        http.get("http://localhost:3000/api/okou/agents", () => {
           return HttpResponse.json([]);
         }),
       );
@@ -73,7 +73,7 @@ describe("okou agent list command", () => {
   describe("error handling", () => {
     it("should handle authentication error", async () => {
       server.use(
-        http.get("http://localhost:3000/api/zero/agents", () => {
+        http.get("http://localhost:3000/api/okou/agents", () => {
           return HttpResponse.json(
             { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
             { status: 401 },

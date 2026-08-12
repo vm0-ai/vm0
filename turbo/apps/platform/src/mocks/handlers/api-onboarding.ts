@@ -30,12 +30,12 @@ export function resetMockOnboardingStatus(): void {
 }
 
 export const apiOnboardingHandlers = [
-  // GET /api/zero/onboarding/status
+  // GET /api/okou/onboarding/status
   mockApi(onboardingStatusContract.getStatus, ({ respond }) => {
     return respond(200, mockOnboardingStatus);
   }),
 
-  // POST /api/zero/onboarding/complete
+  // POST /api/okou/onboarding/complete
   mockApi(onboardingCompleteContract.complete, ({ respond }) => {
     mockOnboardingStatus = {
       ...mockOnboardingStatus,

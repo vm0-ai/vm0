@@ -17,7 +17,7 @@ const reportErrorResponseSchema = z.object({
 export const zeroReportErrorContract = c.router({
   submit: {
     method: "POST",
-    path: "/api/zero/report-error",
+    path: "/api/okou/report-error",
     headers: authHeadersSchema,
     body: reportErrorBodySchema,
     responses: {

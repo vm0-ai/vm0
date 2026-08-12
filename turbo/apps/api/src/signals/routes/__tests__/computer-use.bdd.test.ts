@@ -39,9 +39,8 @@ import { createFixtureTracker } from "./helpers/zero-route-test";
  *   calls refreshing lastSeenAt (#15750) to bring a stale host back online.
  * - The screenshot retention chain builds >30-day-old rows by running the
  *   full command flow under mockNow(now - 40d), then clears the mock before
- *   invoking the cleanup cron so the retention cutoff is computed at real
- *   time. The cleanup cron is a global sweep; see the single-file-ownership
- *   comment on runComputerUseScreenshotCleanupCron.
+ *   invoking fixture-scoped cleanup so the retention cutoff is computed at
+ *   real time.
  */
 
 const context = testContext();
@@ -1365,7 +1364,9 @@ describe("FILE-03 desktop computer-use runtime", () => {
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;
     const actor = bdd.user({ orgId, userId });
-    const peer = bdd.user();
+    const peerOrgId = `org_${randomUUID()}`;
+    const peerUserId = `user_${randomUUID()}`;
+    const peer = bdd.user({ orgId: peerOrgId, userId: peerUserId });
 
     mockNow(now() - 40 * 24 * 60 * 60 * 1000);
     const host = await api.startComputerUseHost(actor);
@@ -1454,6 +1455,31 @@ describe("FILE-03 desktop computer-use runtime", () => {
     expectApiError(legacyScreenshot.body);
     expect(legacyScreenshot.body.error.code).toBe("NOT_FOUND");
 
+    const sentinelHost = await api.startComputerUseHost(peer);
+    const sentinel = await api.createComputerUseReadCommand(peer, {
+      kind: "app.state",
+      app: "Safari",
+    });
+    const claimedSentinel = await api.claimNextComputerUseCommand(
+      sentinelHost.hostToken,
+    );
+    expect(claimedSentinel.status).toBe("command");
+    const sentinelBytes = Buffer.from("bdd-expired-sentinel-png-bytes");
+    await api.completeComputerUseCommandWith(
+      sentinelHost.hostToken,
+      sentinel.commandId,
+      {
+        status: "succeeded",
+        result: {
+          snapshotId: "snap_bdd_expired_sentinel",
+          screenshot: `data:image/png;base64,${sentinelBytes.toString("base64")}`,
+          screenshotWidth: 1024,
+          screenshotHeight: 768,
+        },
+      },
+    );
+    const sentinelKey = `computer-use/${peerOrgId}/${peerUserId}/${sentinel.commandId}/screenshot.png`;
+
     // Back to real time: the retention cutoff must be computed against the
     // wall clock so only the 40-day-old rows above fall outside the window.
     clearMockNow();
@@ -1476,24 +1502,33 @@ describe("FILE-03 desktop computer-use runtime", () => {
       },
     });
     const thirdKey = `computer-use/${orgId}/${userId}/${third.commandId}/screenshot.png`;
+    const ownedCommandIds = [first.commandId, second.commandId];
 
-    const invalidCron =
-      await api.runComputerUseScreenshotCleanupCron("invalid");
+    const invalidCron = await api.runComputerUseScreenshotCleanupCron(
+      "invalid",
+      ownedCommandIds,
+    );
     expect(invalidCron.status).toBe(401);
     expectApiError(invalidCron.body);
     expect(invalidCron.body.error.message).toBe("Invalid cron secret");
 
-    const missingCron =
-      await api.runComputerUseScreenshotCleanupCron("missing");
+    const missingCron = await api.runComputerUseScreenshotCleanupCron(
+      "missing",
+      ownedCommandIds,
+    );
     expect(missingCron.status).toBe(401);
 
-    const swept = await api.runComputerUseScreenshotCleanupCron("valid");
+    const swept = await api.runComputerUseScreenshotCleanupCron(
+      "valid",
+      ownedCommandIds,
+    );
     if (swept.status !== 200) {
       throw new Error("Expected the screenshot cleanup cron to run");
     }
-    expect(swept.body.cleaned).toBeGreaterThanOrEqual(2);
+    expect(swept.body.cleaned).toBe(2);
     expect(fake.deletedKeys).toContain(firstKey);
     expect(fake.deletedKeys).not.toContain(thirdKey);
+    expect(fake.deletedKeys).not.toContain(sentinelKey);
 
     const expiredPointer = await api.readComputerUseCommand(
       actor,
@@ -1511,8 +1546,16 @@ describe("FILE-03 desktop computer-use runtime", () => {
     });
     const keptRecent = await api.readComputerUseCommand(actor, third.commandId);
     expect(keptRecent.result?.screenshot).toMatchObject({ type: "s3" });
+    const keptSentinel = await api.readComputerUseCommand(
+      peer,
+      sentinel.commandId,
+    );
+    expect(keptSentinel.result?.screenshot).toMatchObject({ type: "s3" });
 
-    const resweep = await api.runComputerUseScreenshotCleanupCron("valid");
+    const resweep = await api.runComputerUseScreenshotCleanupCron(
+      "valid",
+      ownedCommandIds,
+    );
     if (resweep.status !== 200) {
       throw new Error("Expected the second cleanup sweep to run");
     }

@@ -43,6 +43,7 @@ import {
 } from "./signals/route-entry";
 import { configureChatRunFinishedEventDispatcher } from "./signals/services/chat-run-finished-event-registration.service";
 import { configurePiEdgeTurnDispatcher } from "./signals/services/pi-edge-turn-registration.service";
+import type { UsagePricingResolution } from "./signals/context/usage-pricing-resolution";
 import {
   isAbortError,
   normalizeThrown,
@@ -549,11 +550,13 @@ function handleError(error: unknown, context: Context): Response {
 interface CreateAppWithRoutesOptions {
   readonly signal: AbortSignal;
   readonly routes: readonly RouteEntry[];
+  readonly usagePricingResolution?: UsagePricingResolution;
 }
 
 export function createAppWithRoutes({
   routes,
   signal,
+  usagePricingResolution,
 }: CreateAppWithRoutesOptions): Hono {
   configureChatRunFinishedEventDispatcher();
   configurePiEdgeTurnDispatcher();
@@ -565,7 +568,7 @@ export function createAppWithRoutes({
   });
 
   // OpenTelemetry: each request gets a SERVER span named after its matched
-  // route template (e.g. `GET /api/zero/chat-threads/:threadId`). Child spans
+  // route template (e.g. `GET /api/okou/chat-threads/:threadId`). Child spans
   // (db queries, outbound fetches) parent to it via standard context
   // propagation; correlate them to a route by their `trace_id`, not by
   // copying `http.route` onto each child span.
@@ -600,7 +603,11 @@ export function createAppWithRoutes({
   }
 
   for (const { route, handler } of withApiNamespaceAliases(routes)) {
-    app.on(route.method, route.path, honoSignalHandler(handler, route, signal));
+    app.on(
+      route.method,
+      route.path,
+      honoSignalHandler(handler, route, signal, usagePricingResolution),
+    );
   }
 
   app.notFound((context) => {

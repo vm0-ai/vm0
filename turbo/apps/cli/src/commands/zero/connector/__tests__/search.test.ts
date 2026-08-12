@@ -90,7 +90,7 @@ function stubConnectors(connectors: Array<Record<string, unknown>>) {
 }
 
 function stubAgent(id: string, displayName: string | null) {
-  return http.get(`http://localhost:3000/api/zero/agents/${id}`, () => {
+  return http.get(`http://localhost:3000/api/okou/agents/${id}`, () => {
     return HttpResponse.json({
       agentId: id,
       ownerId: "owner-1",
@@ -104,7 +104,7 @@ function stubAgent(id: string, displayName: string | null) {
 
 function stubUserConnectors(id: string, enabledConnectorSlugs: string[]) {
   return http.get(
-    `http://localhost:3000/api/zero/agents/${id}/user-connectors`,
+    `http://localhost:3000/api/okou/agents/${id}/user-connectors`,
     () => {
       return HttpResponse.json({
         enabledConnectorSlugs: enabledConnectorSlugs,
@@ -545,7 +545,7 @@ describe("okou connector search command", () => {
     it("surfaces auth errors from public connector catalog status", async () => {
       server.use(
         http.get(
-          "http://localhost:3000/api/zero/connector-catalog/status",
+          "http://localhost:3000/api/okou/connector-catalog/status",
           () => {
             return HttpResponse.json(
               {

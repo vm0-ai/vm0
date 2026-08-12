@@ -24,13 +24,11 @@ fn payload(text: &str) -> Result<Vec<u8>, serde_json::Error> {
 }
 
 #[tokio::test]
-async fn explicit_null_delivery_id_is_rejected_instead_of_using_legacy_delivery()
--> Result<(), Box<dyn std::error::Error>> {
+async fn explicit_null_delivery_id_is_rejected() -> Result<(), Box<dyn std::error::Error>> {
     let server = MockServer::start();
     let tmp = tempfile::tempdir()?;
     let runtime = ActiveInputRuntime::new_with_receipts(
         RUN_ID,
-        true,
         "initial",
         tmp.path().join("active-input-receipts.json"),
         receipt_http(&server.base_url())?,
@@ -71,7 +69,6 @@ async fn accepted_input_is_deduplicated_reported_and_compacted()
     let journal_path = tmp.path().join("active-input-receipts.json");
     let runtime = ActiveInputRuntime::new_with_receipts(
         RUN_ID,
-        true,
         "initial",
         &journal_path,
         receipt_http(&server.base_url())?,
@@ -100,7 +97,7 @@ async fn accepted_input_is_deduplicated_reported_and_compacted()
         .await
         .expect("accepted input should reach the sink");
     assert_eq!(frame.uuid, DELIVERY_ID);
-    assert_eq!(frame.delivery_id(), Some(DELIVERY_ID));
+    assert_eq!(frame.delivery_id(), DELIVERY_ID);
     assert_eq!(frame.text, PROMPT);
     writer.mark_writing(&frame.uuid);
     writer.mark_backend_accepted_without_replay(&frame)?;
@@ -155,7 +152,6 @@ async fn failed_input_creates_no_receipt_or_completion_evidence()
     let journal_path = tmp.path().join("active-input-receipts.json");
     let runtime = ActiveInputRuntime::new_with_receipts(
         RUN_ID,
-        true,
         "initial",
         &journal_path,
         receipt_http(&server.base_url())?,
@@ -210,7 +206,6 @@ async fn rejected_receipt_is_retained_without_a_finalization_retry()
     let journal_path = tmp.path().join("active-input-receipts.json");
     let runtime = ActiveInputRuntime::new_with_receipts(
         RUN_ID,
-        true,
         "initial",
         &journal_path,
         receipt_http(&server.base_url())?,
@@ -263,7 +258,6 @@ async fn transport_failure_gets_only_one_finalization_retry()
     let journal_path = tmp.path().join("active-input-receipts.json");
     let runtime = ActiveInputRuntime::new_with_receipts(
         RUN_ID,
-        true,
         "initial",
         &journal_path,
         receipt_http(&server.base_url())?,
@@ -325,7 +319,6 @@ async fn journal_publication_failure_is_terminal_after_backend_acceptance()
     let journal_path = tmp.path().join("run/active-input-receipts.json");
     let runtime = ActiveInputRuntime::new_with_receipts(
         RUN_ID,
-        true,
         "initial",
         &journal_path,
         receipt_http(&server.base_url())?,
@@ -372,7 +365,6 @@ async fn unacknowledged_journal_recovers_without_requeueing_the_backend()
     });
     let runtime = ActiveInputRuntime::new_with_receipts(
         RUN_ID,
-        true,
         "initial",
         &journal_path,
         receipt_http(&failed_server.base_url())?,
@@ -417,7 +409,6 @@ async fn unacknowledged_journal_recovers_without_requeueing_the_backend()
     });
     let recovered = ActiveInputRuntime::new_with_receipts(
         RUN_ID,
-        true,
         "initial",
         &journal_path,
         receipt_http(&server.base_url())?,

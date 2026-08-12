@@ -1,6 +1,6 @@
 import { StrictMode } from "react";
 import type { Store } from "ccstate";
-import { StoreProvider, useSet } from "ccstate-react";
+import { StoreProvider, useGet, useSet } from "ccstate-react";
 import { Toaster } from "@vm0/ui/components/ui/sonner";
 import { ErrorBoundary } from "./error-boundary.tsx";
 import { AppSkeletonOverlay, Router } from "./router.tsx";
@@ -10,6 +10,7 @@ import { InspectLogFileInput } from "./inspect-log-file-input.tsx";
 import { listenForceUpgradeDialog$ } from "../signals/force-upgrade.ts";
 import { setupAuthenticatedDaemons$ } from "../signals/authenticated-daemons.ts";
 import { rootSignal$ } from "../signals/root-signal.ts";
+import { handleInvitationRedirect$ } from "../signals/invitation-redirect.ts";
 import { handleBillingRedirect$ } from "../signals/zero-page/billing.ts";
 import { detach, Reason } from "../signals/utils.ts";
 import {
@@ -19,15 +20,26 @@ import {
 import { IN_VITEST } from "../env.ts";
 import "./css/index.css";
 
-function BillingToaster() {
+function AppToaster() {
+  const signal = useGet(rootSignal$);
   const handleBillingRedirect = useSet(handleBillingRedirect$);
+  const handleInvitationRedirect = useSet(handleInvitationRedirect$);
+
+  const handleReady = () => {
+    handleBillingRedirect();
+    detach(
+      handleInvitationRedirect(signal),
+      Reason.DomCallback,
+      "invitation-redirect",
+    );
+  };
 
   return (
     <Toaster
       position="top-center"
       visibleToasts={1}
       duration={IN_VITEST ? Infinity : undefined}
-      onReady={handleBillingRedirect}
+      onReady={handleReady}
     />
   );
 }
@@ -60,7 +72,7 @@ export const setupRouter = (
           <InspectLogFileInput />
           <ForceUpgradeDialog />
         </ErrorBoundary>
-        <BillingToaster />
+        <AppToaster />
       </StoreProvider>
     </StrictMode>,
   );

@@ -272,7 +272,7 @@ export default {
       } catch {
         return gatewayResponse(503);
       }
-      const metaUrl = `${origin}/api/zero/shared-threads/${match[1]}/meta`;
+      const metaUrl = `${origin}/api/okou/shared-threads/${match[1]}/meta`;
       let metaResponse;
       try {
         metaResponse = await fetch(metaUrl, {

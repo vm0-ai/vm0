@@ -33,7 +33,7 @@ describe("okou goal command", () => {
 
   it("creates a goal and prints the JSON response", async () => {
     server.use(
-      http.post("http://localhost:3000/api/zero/goal", async ({ request }) => {
+      http.post("http://localhost:3000/api/okou/goal", async ({ request }) => {
         await expect(request.json()).resolves.toStrictEqual({
           objective: "ship goal workflows",
         });
@@ -61,7 +61,7 @@ describe("okou goal command", () => {
       status: "active",
     };
     server.use(
-      http.patch("http://localhost:3000/api/zero/goal", async ({ request }) => {
+      http.patch("http://localhost:3000/api/okou/goal", async ({ request }) => {
         await expect(request.json()).resolves.toStrictEqual({
           objective: "ship goal workflows v2",
         });
@@ -84,7 +84,7 @@ describe("okou goal command", () => {
 
   it("gets the current goal", async () => {
     server.use(
-      http.get("http://localhost:3000/api/zero/goal", () => {
+      http.get("http://localhost:3000/api/okou/goal", () => {
         return HttpResponse.json(ACTIVE_GOAL);
       }),
     );
@@ -99,12 +99,12 @@ describe("okou goal command", () => {
   it.each([
     [
       "complete",
-      "/api/zero/goal/complete",
+      "/api/okou/goal/complete",
       { ...ACTIVE_GOAL, status: "complete" },
     ],
-    ["block", "/api/zero/goal/block", { ...ACTIVE_GOAL, status: "blocked" }],
-    ["pause", "/api/zero/goal/pause", { ...ACTIVE_GOAL, status: "paused" }],
-    ["resume", "/api/zero/goal/resume", ACTIVE_GOAL],
+    ["block", "/api/okou/goal/block", { ...ACTIVE_GOAL, status: "blocked" }],
+    ["pause", "/api/okou/goal/pause", { ...ACTIVE_GOAL, status: "paused" }],
+    ["resume", "/api/okou/goal/resume", ACTIVE_GOAL],
   ] as const)(
     "runs %s and prints the JSON response",
     async (command, path, body) => {
@@ -124,7 +124,7 @@ describe("okou goal command", () => {
 
   it("clears the current goal", async () => {
     server.use(
-      http.delete("http://localhost:3000/api/zero/goal", () => {
+      http.delete("http://localhost:3000/api/okou/goal", () => {
         return HttpResponse.json({ cleared: true });
       }),
     );

@@ -90,7 +90,7 @@ describe("okou search --source logs parity with okou logs search", () => {
 
   it("produces identical output for the same query and flags", async () => {
     server.use(
-      http.get("http://localhost:3000/api/zero/logs/search", stubResponse),
+      http.get("http://localhost:3000/api/okou/logs/search", stubResponse),
     );
 
     const viaSearch = await capture(zeroSearchCommand, [
@@ -128,7 +128,7 @@ describe("okou search --source logs parity with okou logs search", () => {
   it("forwards filter flags to the API identically", async () => {
     const captured: URL[] = [];
     server.use(
-      http.get("http://localhost:3000/api/zero/logs/search", ({ request }) => {
+      http.get("http://localhost:3000/api/okou/logs/search", ({ request }) => {
         captured.push(new URL(request.url));
         return HttpResponse.json({ results: [], hasMore: false });
       }),

@@ -23,8 +23,8 @@ import {
 
 /**
  * Detect if running inside an agent sandbox.
- * Uses ZERO_AGENT_ID (not VM0_RUN_ID) because the Okou CLI operates in the
- * okou agent context where ZERO_AGENT_ID is the canonical sandbox indicator.
+ * Uses OKOU_AGENT_ID (not VM0_RUN_ID) because the Okou CLI operates in the
+ * okou agent context where OKOU_AGENT_ID is the canonical sandbox indicator.
  */
 function isInsideSandbox(): boolean {
   return !!getOkouAgentId();
@@ -204,12 +204,12 @@ async function showLocalInfo(): Promise<void> {
   if (!token) {
     console.log(`  Status:     ${chalk.dim("Not authenticated")}`);
   } else if (!payload) {
-    console.log(`  Status:     ${chalk.red("Invalid ZERO_TOKEN")}`);
+    console.log(`  Status:     ${chalk.red("Invalid OKOU_TOKEN")}`);
   } else if (isExpired) {
-    console.log(`  Status:     ${chalk.red("Expired ZERO_TOKEN")}`);
+    console.log(`  Status:     ${chalk.red("Expired OKOU_TOKEN")}`);
   } else {
     console.log(
-      `  Status:     ${chalk.green("Authenticated")} (via ZERO_TOKEN env var)`,
+      `  Status:     ${chalk.green("Authenticated")} (via OKOU_TOKEN env var)`,
     );
   }
   console.log(`  API:        ${apiUrl}`);
@@ -236,7 +236,7 @@ Examples:
 Notes:
   - Inside sandbox: shows agent ID, run ID, org ID, and granted capabilities
   - Use --permissions to see detailed permission breakdown per connector
-  - Your agent ID is also available as $ZERO_AGENT_ID`,
+  - Your agent ID is also available as $OKOU_AGENT_ID`,
   )
   .action(
     withErrorHandler(async (options: { permissions?: boolean }) => {

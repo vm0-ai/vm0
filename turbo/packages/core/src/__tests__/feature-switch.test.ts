@@ -101,6 +101,7 @@ describe("getAllFeatureStates", () => {
     ).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.PiLoop]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatEventSnapshotRead]).toBe(true);
+    expect(staffOrgStates[FeatureSwitchKey.UnifiedIndicatorApi]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.NewChatDefaultModelAction]).toBe(
       true,
     );

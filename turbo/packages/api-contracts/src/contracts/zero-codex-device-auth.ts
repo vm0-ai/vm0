@@ -44,7 +44,7 @@ const codexDeviceAuthCancelResponseSchema = z.object({
 export const zeroCodexDeviceAuthContract = c.router({
   start: {
     method: "POST",
-    path: "/api/zero/model-providers/codex/device-auth/sessions",
+    path: "/api/okou/model-providers/codex/device-auth/sessions",
     headers: authHeadersSchema,
     body: z.object({
       scope: codexDeviceAuthScopeSchema,
@@ -62,7 +62,7 @@ export const zeroCodexDeviceAuthContract = c.router({
   },
   complete: {
     method: "POST",
-    path: "/api/zero/model-providers/codex/device-auth/sessions/complete",
+    path: "/api/okou/model-providers/codex/device-auth/sessions/complete",
     headers: authHeadersSchema,
     body: z.object({ sessionToken: z.string().min(1) }),
     responses: {
@@ -77,7 +77,7 @@ export const zeroCodexDeviceAuthContract = c.router({
   },
   cancel: {
     method: "POST",
-    path: "/api/zero/model-providers/codex/device-auth/sessions/cancel",
+    path: "/api/okou/model-providers/codex/device-auth/sessions/cancel",
     headers: authHeadersSchema,
     body: z.object({ sessionToken: z.string().min(1) }),
     responses: {

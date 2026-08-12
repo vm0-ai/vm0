@@ -39,10 +39,8 @@ import {
   setAgentPinned$,
   pinnedAgents$,
 } from "../../signals/zero-page/zero-pinned-agents.ts";
-import {
-  markAgentThreadsRead$,
-  unreadAgentIds$,
-} from "../../signals/chat-page/sidebar-unread-threads.ts";
+import { unreadAgentIds$ } from "../../signals/chat-page/chat-thread-indicators.ts";
+import { markAgentThreadsRead$ } from "../../signals/chat-page/sidebar-unread-threads.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { equalSets } from "../../lib/equality.ts";

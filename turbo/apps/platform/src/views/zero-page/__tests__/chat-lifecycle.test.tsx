@@ -467,7 +467,7 @@ describe("chat lifecycle", () => {
     const pushBrowser = mockPushBrowserSupport();
     let capturedSubscription: unknown;
     context.mocks.http.post(
-      "*/api/zero/push-subscriptions",
+      "*/api/okou/push-subscriptions",
       async ({ request }) => {
         capturedSubscription = await request.json();
         return new Response(null, { status: 204 });

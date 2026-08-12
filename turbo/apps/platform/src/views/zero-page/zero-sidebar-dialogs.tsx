@@ -33,9 +33,10 @@ import {
   setAgentPinned$,
 } from "../../signals/zero-page/zero-pinned-agents.ts";
 import {
-  sidebarUnreadThreadIds$,
+  sidebarActiveThreadIds$,
   unreadAgentIds$,
-} from "../../signals/chat-page/sidebar-unread-threads.ts";
+} from "../../signals/chat-page/chat-thread-indicators.ts";
+import { sidebarUnreadThreadIds$ } from "../../signals/chat-page/sidebar-unread-threads.ts";
 import {
   agentListDialogChatMessages$,
   agentListDialogChatThreadMap$,
@@ -44,7 +45,6 @@ import {
   rankAgentListDialogAgents,
   type AgentListDialogChatThread,
 } from "../../signals/zero-page/agent-list-dialog-chat-threads.ts";
-import { sidebarActiveThreadIds$ } from "../../signals/chat-page/chat-thread-event-sourcing.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { equalSets } from "../../lib/equality.ts";

@@ -7,7 +7,7 @@ import { CLIENT_HEADER_NAMES } from "@vm0/api-contracts/contracts/client-headers
 import { safeUrlParse } from "../signals/utils";
 import { env } from "./env";
 
-// Hono owns CORS for /api/zero/* directly. Responses from registered routes
+// Hono owns CORS for /api/okou/* directly. Responses from registered routes
 // need their own CORS headers because they no longer fall through a Next proxy.
 const STATIC_ALLOWED_ORIGINS = Object.freeze(
   new Set([

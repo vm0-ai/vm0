@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.34.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.33.4...desktop-v0.34.0) (2026-08-12)
+
+
+### Features
+
+* **desktop:** add zero migration bridge ([#26605](https://github.com/vm0-ai/vm0/issues/26605)) ([3d95326](https://github.com/vm0-ai/vm0/commit/3d95326fd4cc8774ff96eac3a05239ff44284173))
+* **protocol:** cut first-party clients over to okou ([#26549](https://github.com/vm0-ai/vm0/issues/26549)) ([8b1670c](https://github.com/vm0-ai/vm0/commit/8b1670c218fc1a1f326f720368eaa3a65b137ffa))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.322.0
+
 ## [0.33.4](https://github.com/vm0-ai/vm0/compare/desktop-v0.33.3...desktop-v0.33.4) (2026-08-12)
 
 

@@ -24,8 +24,10 @@ import {
   listRowsAfter$,
 } from "./remote-chat-event-row-data-source.ts";
 import { receiveActiveChatEvents$ } from "./chat-event-signal-registry.ts";
-import { sidebarActiveThreadIds$ } from "./chat-thread-event-sourcing.ts";
-import { allUnreadThreadIds$ } from "./sidebar-unread-threads.ts";
+import {
+  allUnreadThreadIds$,
+  sidebarActiveThreadIds$,
+} from "./chat-thread-indicators.ts";
 import {
   chatEventDebugSummaries,
   chatEventTraceTime,

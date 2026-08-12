@@ -32,7 +32,7 @@ function isSuccessfulAgentDraftClear(response: Response): boolean {
   if (
     !response.ok() ||
     request.method() !== "PATCH" ||
-    !/^\/api\/zero\/agents\/[^/]+\/draft$/.test(
+    !/^\/api\/okou\/agents\/[^/]+\/draft$/.test(
       new URL(response.url()).pathname,
     )
   ) {
@@ -64,7 +64,7 @@ function isInitialChatThreadEventsResponse(
   return (
     response.ok() &&
     request.method() === "GET" &&
-    url.pathname === `/api/zero/chat-threads/${threadId}/events` &&
+    url.pathname === `/api/okou/chat-threads/${threadId}/events` &&
     !url.searchParams.has("sinceSeqId") &&
     !url.searchParams.has("beforeSeqId")
   );
@@ -111,7 +111,7 @@ async function mockComposerConnectorState(page: Page): Promise<void> {
       contentType: "image/svg+xml",
     });
   });
-  await page.route("**/api/zero/connector-catalog/status", async (route) => {
+  await page.route("**/api/okou/connector-catalog/status", async (route) => {
     const response = await route.fetch();
     const body: unknown = await response.json();
     if (!isConnectorCatalogStatusResponse(body)) {
@@ -145,7 +145,7 @@ async function mockComposerConnectorState(page: Page): Promise<void> {
       },
     });
   });
-  await page.route("**/api/zero/agents/*/user-connectors", async (route) => {
+  await page.route("**/api/okou/agents/*/user-connectors", async (route) => {
     if (route.request().method() !== "GET") {
       await route.continue();
       return;
@@ -157,7 +157,7 @@ async function mockComposerConnectorState(page: Page): Promise<void> {
 }
 
 async function enableResponsiveFollowupCards(page: Page): Promise<void> {
-  await page.route("**/api/zero/feature-switches", async (route) => {
+  await page.route("**/api/okou/feature-switches", async (route) => {
     const response = await route.fetch();
     const body: unknown = await response.json();
     if (!isRecord(body) || !isRecord(body.effectiveSwitches)) {
@@ -178,7 +178,7 @@ async function enableResponsiveFollowupCards(page: Page): Promise<void> {
 }
 
 async function disableChatEventSnapshotRead(page: Page): Promise<void> {
-  await page.route("**/api/zero/feature-switches", async (route) => {
+  await page.route("**/api/okou/feature-switches", async (route) => {
     const response = await route.fetch();
     const body: unknown = await response.json();
     if (!isRecord(body) || !isRecord(body.effectiveSwitches)) {
@@ -213,7 +213,7 @@ async function mockChatThread(
   const createdEventId = `d${options.threadId.slice(1)}`;
   let createdEventSeqId: number | null = null;
 
-  await page.route("**/api/zero/chat-threads/snapshot", async (route) => {
+  await page.route("**/api/okou/chat-threads/snapshot", async (route) => {
     await route.fulfill({
       json: {
         chatThreads: [],
@@ -223,7 +223,7 @@ async function mockChatThread(
     });
   });
   await page.route(
-    (url) => url.pathname === "/api/zero/chat-threads/events",
+    (url) => url.pathname === "/api/okou/chat-threads/events",
     async (route) => {
       const requestUrl = new URL(route.request().url());
       const rawSinceSeqId = requestUrl.searchParams.get("sinceSeqId");
@@ -260,7 +260,7 @@ async function mockChatThread(
   );
   await page.route(
     (url) =>
-      url.pathname === `/api/zero/chat-threads/${options.threadId}/events`,
+      url.pathname === `/api/okou/chat-threads/${options.threadId}/events`,
     async (route) => {
       const requestUrl = new URL(route.request().url());
       const isIncremental =
@@ -273,7 +273,7 @@ async function mockChatThread(
   );
   await page.route(
     (url) =>
-      url.pathname === `/api/zero/chat-threads/${options.threadId}/draft`,
+      url.pathname === `/api/okou/chat-threads/${options.threadId}/draft`,
     async (route) => {
       await route.fulfill({
         json: { draftUserMessage: null, draftAttachments: null },
@@ -282,7 +282,7 @@ async function mockChatThread(
   );
   await page.route(
     (url) =>
-      url.pathname === `/api/zero/chat-threads/${options.threadId}/mark-read`,
+      url.pathname === `/api/okou/chat-threads/${options.threadId}/mark-read`,
     async (route) => {
       await route.fulfill({
         json: { lastReadAt: options.createdAt, unreads: [] },
@@ -292,7 +292,7 @@ async function mockChatThread(
   await page.route(
     (url) =>
       url.pathname ===
-      `/api/zero/chat-threads/${options.threadId}/event-snapshot`,
+      `/api/okou/chat-threads/${options.threadId}/event-snapshot`,
     async (route) => {
       await route.fulfill({
         status: 404,
@@ -301,7 +301,7 @@ async function mockChatThread(
     },
   );
   await page.route(
-    (url) => url.pathname === `/api/zero/chat-threads/${options.threadId}`,
+    (url) => url.pathname === `/api/okou/chat-threads/${options.threadId}`,
     async (route) => {
       await route.fulfill({
         json: {
@@ -822,7 +822,7 @@ test("image lightbox centers and pans across the full viewer", async ({
   const imageUrl = new URL("/playwright/lightbox-geometry.svg", appUrl).href;
   const uploadUrl = new URL("/playwright/lightbox-upload", appUrl).href;
 
-  await page.route("**/api/zero/uploads/prepare", async (route) => {
+  await page.route("**/api/okou/uploads/prepare", async (route) => {
     await route.fulfill({
       json: {
         id: "playwright-lightbox-geometry",
@@ -933,7 +933,7 @@ test("image lightbox centers and pans across the full viewer", async ({
 test("avatar catalog surfaces stay stable while scrolling and selecting", async ({
   page,
 }) => {
-  await page.route("**/api/zero/feature-switches", async (route) => {
+  await page.route("**/api/okou/feature-switches", async (route) => {
     await route.fulfill({
       json: {
         switches: {},
@@ -941,7 +941,7 @@ test("avatar catalog surfaces stay stable while scrolling and selecting", async 
       },
     });
   });
-  await page.route("**/api/zero/avatar-video/avatars**", async (route) => {
+  await page.route("**/api/okou/avatar-video/avatars**", async (route) => {
     await route.fulfill({
       json: {
         avatars: [
@@ -958,7 +958,7 @@ test("avatar catalog surfaces stay stable while scrolling and selecting", async 
       },
     });
   });
-  await page.route("**/api/zero/avatar-video/voices**", async (route) => {
+  await page.route("**/api/okou/avatar-video/voices**", async (route) => {
     await route.fulfill({
       json: {
         voices: [

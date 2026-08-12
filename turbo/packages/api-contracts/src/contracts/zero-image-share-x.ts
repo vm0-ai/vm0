@@ -25,7 +25,7 @@ export type ZeroImageShareXResponse = z.infer<
 export const zeroImageShareXContract = c.router({
   post: {
     method: "POST",
-    path: "/api/zero/image-share/x",
+    path: "/api/okou/image-share/x",
     headers: authHeadersSchema,
     body: zeroImageShareXRequestSchema,
     responses: {

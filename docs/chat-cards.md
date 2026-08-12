@@ -277,7 +277,7 @@ canonical resource key: each thread owns at most one logical browser, and every
 provider instance for that browser carries the same thread attribution. The card
 never accepts a Browser Use `liveUrl` or CDP URL from message content. Instead,
 its thread-scoped computed reads the browser through
-`/api/zero/chat-threads/:threadId/browser`. A copied card therefore cannot
+`/api/okou/chat-threads/:threadId/browser`. A copied card therefore cannot
 resolve a browser owned by a different thread.
 
 The message card follows the presentation and website preview treatment. It

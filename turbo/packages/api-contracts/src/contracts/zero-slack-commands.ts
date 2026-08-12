@@ -7,7 +7,7 @@ const c = initContract();
 export const zeroSlackCommandsContract = c.router({
   post: {
     method: "POST",
-    path: "/api/zero/slack/commands",
+    path: "/api/okou/slack/commands",
     body: c.type<string>(),
     responses: {
       200: z.unknown(),

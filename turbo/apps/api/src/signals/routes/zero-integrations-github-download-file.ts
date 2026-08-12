@@ -16,7 +16,7 @@ const MAX_FILE_SIZE_BYTES = 100 * 1024 * 1024;
 const githubDownloadFileContract = c.router({
   download: {
     method: "GET",
-    path: "/api/zero/integrations/github/download-file",
+    path: "/api/okou/integrations/github/download-file",
     headers: authHeadersSchema,
     query: z.object({
       url: z.string().url("url must be a GitHub file URL"),

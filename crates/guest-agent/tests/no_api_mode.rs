@@ -111,7 +111,6 @@ async fn no_api_mode_drains_background_webhook_users_without_network_client()
     let receipt_log_guard = SystemLogOverrideGuard::set(&receipt_log_path);
     let active_input = ActiveInputRuntime::new_with_receipts(
         &runtime.config.run_id,
-        true,
         &runtime.config.prompt,
         tmp.path().join("active-input-receipts.json"),
         http.clone(),
@@ -144,11 +143,8 @@ async fn no_api_mode_drains_background_webhook_users_without_network_client()
         "local active input must not attempt an API receipt: {receipt_log}",
     );
 
-    let active_input = ActiveInputRuntime::new_with_initial_prompt(
-        &runtime.config.run_id,
-        false,
-        &runtime.config.prompt,
-    );
+    let active_input =
+        ActiveInputRuntime::new_disabled(&runtime.config.run_id, &runtime.config.prompt);
     let cli_result = tokio::time::timeout(
         Duration::from_secs(5),
         guest_agent::cli::execute_cli_with_active_input_for_config(

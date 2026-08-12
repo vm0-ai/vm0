@@ -331,6 +331,42 @@ describe("queue drawer", () => {
     expect(screen.getByText("Buy $100/month")).toBeInTheDocument();
   });
 
+  it("refreshes the concurrency limit when billing changes in realtime", async () => {
+    let concurrencyLimit = 5;
+    mockConcurrencyCapability(true);
+    context.mocks.api(zeroRunsQueueContract.getQueue, ({ respond }) => {
+      return respond(
+        200,
+        queueResponse({
+          concurrency: {
+            tier: "team",
+            limit: concurrencyLimit,
+            active: 3,
+            available: concurrencyLimit - 3,
+            memberUsage: [],
+          },
+        }),
+      );
+    });
+
+    await openDrawer();
+
+    await waitFor(() => {
+      expect(screen.getByText(/3 of 5 slots/)).toBeInTheDocument();
+      expect(
+        context.mocks.ably.hasSubscription("billing:changed"),
+      ).toBeTruthy();
+    });
+
+    concurrencyLimit = 6;
+    context.mocks.ably.trigger("billing:changed");
+
+    await waitFor(() => {
+      expect(screen.getByText(/3 of 6 slots/)).toBeInTheDocument();
+      expect(screen.getByText("3 slots available")).toBeInTheDocument();
+    });
+  });
+
   it("shows additional concurrency checkout for Custom admins without plan upgrade", async () => {
     mockConcurrencyCapability(true);
     context.mocks.api(zeroRunsQueueContract.getQueue, ({ respond }) => {

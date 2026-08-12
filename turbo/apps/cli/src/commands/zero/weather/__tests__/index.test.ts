@@ -51,7 +51,7 @@ describe("okou weather command", () => {
     let requestBody: unknown;
     server.use(
       http.post(
-        "http://localhost:3000/api/zero/weather/current",
+        "http://localhost:3000/api/okou/weather/current",
         async ({ request }) => {
           requestBody = await request.json();
           return HttpResponse.json({
@@ -99,7 +99,7 @@ describe("okou weather command", () => {
     let requestBody: unknown;
     server.use(
       http.post(
-        "http://localhost:3000/api/zero/weather/forecast/daily",
+        "http://localhost:3000/api/okou/weather/forecast/daily",
         async ({ request }) => {
           requestBody = await request.json();
           return HttpResponse.json({
@@ -188,7 +188,7 @@ describe("okou weather command", () => {
     let requestBody: unknown;
     server.use(
       http.post(
-        "http://localhost:3000/api/zero/weather/forecast/hourly",
+        "http://localhost:3000/api/okou/weather/forecast/hourly",
         async ({ request }) => {
           requestBody = await request.json();
           return HttpResponse.json({
@@ -256,7 +256,7 @@ describe("okou weather command", () => {
     let requestBody: unknown;
     server.use(
       http.post(
-        "http://localhost:3000/api/zero/weather/air-quality/current",
+        "http://localhost:3000/api/okou/weather/air-quality/current",
         async ({ request }) => {
           requestBody = await request.json();
           return HttpResponse.json({
@@ -301,7 +301,7 @@ describe("okou weather command", () => {
     let requestBody: unknown;
     server.use(
       http.post(
-        "http://localhost:3000/api/zero/weather/forecast/daily",
+        "http://localhost:3000/api/okou/weather/forecast/daily",
         async ({ request }) => {
           requestBody = await request.json();
           return HttpResponse.json({
@@ -347,7 +347,7 @@ describe("okou weather command", () => {
     let requestBody: unknown;
     server.use(
       http.post(
-        "http://localhost:3000/api/zero/weather/history/hourly",
+        "http://localhost:3000/api/okou/weather/history/hourly",
         async ({ request }) => {
           requestBody = await request.json();
           return HttpResponse.json({
