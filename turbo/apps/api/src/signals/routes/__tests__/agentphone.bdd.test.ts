@@ -734,9 +734,9 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     expect(sends.messages).toHaveLength(sendsAfterCompletion);
   });
 
-  it("renders media prompts, provider recent history, and restarts sessions when the model route changes", async () => {
+  it("renders media prompts", async () => {
     const ap = createAgentPhoneBddApi(context);
-    const { actor, phone, runnerGroup, sends } = await entitledLinkedActor();
+    const { phone, runnerGroup } = await entitledLinkedActor();
 
     // A media DM walks both percent-decode branches of the filename.
     const mediaMessageId = await ap.postAgentPhoneInboundMessage({
@@ -752,10 +752,23 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
         `[AgentPhone file] photo one+final%2zraw.png (image/png)\n   [ID] ${mediaMessageId}`,
       ].join("\n\n"),
     );
+    await completeSandboxRun(run1.sandboxToken, run1.runId, 0);
+  });
+
+  it("renders provider recent history and reuses the linked session", async () => {
+    const ap = createAgentPhoneBddApi(context);
+    const { actor, phone, runnerGroup, sends } = await entitledLinkedActor();
+
+    await ap.postAgentPhoneInboundMessage({
+      channel: "sms",
+      from: phone,
+      body: "establish history session",
+    });
+    const run1 = await claimDispatchedRun(runnerGroup);
     const beforeRun1Completion = sends.messages.length;
     await completeSandboxRun(run1.sandboxToken, run1.runId, 0);
     await waitForSendCount(sends, beforeRun1Completion + 1);
-    const mediaSession = await waitForRunSessionIdPresent(actor, run1.runId);
+    const historySession = await waitForRunSessionIdPresent(actor, run1.runId);
 
     // Provider-sent recent history wins over stored context: full entries
     // keep channel and timestamp lines, media-only entries become file
@@ -795,7 +808,21 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
     const beforeRun2Completion = sends.messages.length;
     await completeSandboxRun(run2.sandboxToken, run2.runId, 0);
     await waitForSendCount(sends, beforeRun2Completion + 1);
-    await waitForRunSessionId(actor, run2.runId, mediaSession);
+    await waitForRunSessionId(actor, run2.runId, historySession);
+  });
+
+  it("restarts linked sessions when the model route changes", async () => {
+    const ap = createAgentPhoneBddApi(context);
+    const { actor, phone, runnerGroup } = await entitledLinkedActor();
+
+    await ap.postAgentPhoneInboundMessage({
+      channel: "sms",
+      from: phone,
+      body: "establish model session",
+    });
+    const run1 = await claimDispatchedRun(runnerGroup);
+    await completeSandboxRun(run1.sandboxToken, run1.runId, 0);
+    const originalSession = await waitForRunSessionIdPresent(actor, run1.runId);
 
     // Re-pointing the default model policy at an incompatible provider
     // forces the next DM onto a fresh session.
@@ -805,10 +832,10 @@ describe("INT-03: AgentPhone linked-run lifecycle through public APIs", () => {
       from: phone,
       body: "after provider switch",
     });
-    const run3 = await claimDispatchedRun(runnerGroup);
-    await completeSandboxRun(run3.sandboxToken, run3.runId, 0);
-    await expect(ap.readRunSessionId(actor, run3.runId)).resolves.not.toBe(
-      mediaSession,
+    const run2 = await claimDispatchedRun(runnerGroup);
+    await completeSandboxRun(run2.sandboxToken, run2.runId, 0);
+    await expect(ap.readRunSessionId(actor, run2.runId)).resolves.not.toBe(
+      originalSession,
     );
   });
 
