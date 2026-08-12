@@ -77,7 +77,7 @@ async function waitForAgentDraftClear(
   await draftCleared;
 }
 
-function isInitialChatThreadEventsResponse(
+function isInitialChatThreadRowsResponse(
   response: Response,
   threadId: string,
 ): boolean {
@@ -86,9 +86,8 @@ function isInitialChatThreadEventsResponse(
   return (
     response.ok() &&
     request.method() === "GET" &&
-    url.pathname === `/api/okou/chat-threads/${threadId}/events` &&
-    !url.searchParams.has("sinceSeqId") &&
-    !url.searchParams.has("beforeSeqId")
+    url.pathname === `/api/okou/chat-threads/${threadId}/event-rows` &&
+    url.searchParams.get("sinceSeqId") === "0"
   );
 }
 
@@ -96,11 +95,11 @@ async function navigateToMockChatThread(
   page: Page,
   threadId: string,
 ): Promise<void> {
-  const initialEventsLoaded = page.waitForResponse((response) => {
-    return isInitialChatThreadEventsResponse(response, threadId);
+  const initialRowsLoaded = page.waitForResponse((response) => {
+    return isInitialChatThreadRowsResponse(response, threadId);
   });
   await page.goto(new URL(`/chats/${threadId}`, appUrl).href);
-  await initialEventsLoaded;
+  await initialRowsLoaded;
 }
 
 async function clearComposerEditor(editor: Locator): Promise<void> {
@@ -294,12 +293,57 @@ interface MockChatThreadOptions {
   readonly title: string;
 }
 
+function mockChatEventRows(
+  events: readonly Readonly<Record<string, unknown>>[],
+  threadId: string,
+): readonly Readonly<Record<string, unknown>>[] {
+  return events.map((event) => {
+    const id = event.id;
+    const eventType = event.eventType;
+    const seqId = event.seqId;
+    const createdAt = event.createdAt;
+    if (
+      typeof id !== "string" ||
+      typeof eventType !== "string" ||
+      typeof seqId !== "number" ||
+      typeof createdAt !== "string"
+    ) {
+      throw new Error("Mock chat event is missing canonical row fields");
+    }
+    const payload = Object.fromEntries(
+      ["content", "userMessage", "thinking", "error", "usage"].flatMap(
+        (name) => {
+          const value = event[name];
+          return value === undefined || value === null ? [] : [[name, value]];
+        },
+      ),
+    );
+    return {
+      id,
+      chatThreadId: threadId,
+      runId: typeof event.runId === "string" ? event.runId : null,
+      revokesEventId:
+        typeof event.revokesEventId === "string" ? event.revokesEventId : null,
+      eventType,
+      payload: Object.keys(payload).length === 0 ? null : payload,
+      contextType: null,
+      contextId: null,
+      runEventSequenceNumber: null,
+      runEventId:
+        typeof event.runEventId === "string" ? event.runEventId : null,
+      seqId,
+      createdAt,
+    };
+  });
+}
+
 async function mockChatThread(
   page: Page,
   options: MockChatThreadOptions,
 ): Promise<void> {
   const createdEventId = `d${options.threadId.slice(1)}`;
   let createdEventSeqId: number | null = null;
+  const rows = mockChatEventRows(options.events, options.threadId);
 
   await page.route("**/api/okou/chat-threads/snapshot", async (route) => {
     await route.fulfill({
@@ -344,6 +388,26 @@ async function mockChatThread(
             ]
           : [];
       await route.fulfill({ json: { events, hasMore: false } });
+    },
+  );
+  await page.route(
+    (url) =>
+      url.pathname === `/api/okou/chat-threads/${options.threadId}/event-rows`,
+    async (route) => {
+      const rawSinceSeqId = new URL(route.request().url()).searchParams.get(
+        "sinceSeqId",
+      );
+      const sinceSeqId = rawSinceSeqId === null ? 0 : Number(rawSinceSeqId);
+      if (!Number.isSafeInteger(sinceSeqId) || sinceSeqId < 0) {
+        throw new Error("Chat event row cursor is invalid");
+      }
+      await route.fulfill({
+        json: {
+          rows: rows.filter((row) => {
+            return typeof row.seqId === "number" && row.seqId > sinceSeqId;
+          }),
+        },
+      });
     },
   );
   await page.route(
@@ -1090,13 +1154,13 @@ test("image preview frames stay fixed while delayed images load", async ({
   const routes = await setupDelayedImageRoutes(page);
   await mockDelayedImageLayoutThread(page, agentId, routes);
 
-  const initialEventsLoaded = page.waitForResponse((response) => {
-    return isInitialChatThreadEventsResponse(response, imageLayoutThreadId);
+  const initialRowsLoaded = page.waitForResponse((response) => {
+    return isInitialChatThreadRowsResponse(response, imageLayoutThreadId);
   });
   await page.goto(new URL(`/chats/${imageLayoutThreadId}`, appUrl).href, {
     waitUntil: "domcontentloaded",
   });
-  await initialEventsLoaded;
+  await initialRowsLoaded;
 
   const user = delayedImagePreview(
     page,
