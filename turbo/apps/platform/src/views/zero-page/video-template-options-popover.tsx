@@ -12,6 +12,7 @@ import {
   PopoverAnchor,
   PopoverContent,
 } from "@vm0/ui/components/ui/popover";
+import { Slider } from "@vm0/ui/components/ui/slider";
 import { Switch } from "@vm0/ui/components/ui/switch";
 import { cn } from "@vm0/ui";
 import type {
@@ -58,9 +59,6 @@ function toVideoOptionsPatch(
 const PUBLIC_VIDEO_MODELS = VIDEO_MODELS.filter((candidate) => {
   return VIDEO_MODEL_CONFIGS[candidate].public;
 });
-
-/** Half of the slider thumb, in px — see `durationFillWidth`. */
-const SLIDER_THUMB_RADIUS = 7;
 
 /**
  * Groups the settings so the pane reads as blocks rather than a run of loose
@@ -116,8 +114,9 @@ function AspectRatioGlyph({ ratio }: { readonly ratio: string }) {
 
 /**
  * A value chip, following the segmented-control language TabsTrigger already
- * uses: the selected value carries the neutral state layer, hover carries the
- * lighter one. A white card was invisible against the panel it sits on.
+ * uses: hover carries the neutral state layer, and the selected value takes
+ * the neutral-dark fill. Tints of the panel colour sat too close to it to
+ * read; the dark fill is unambiguous in both themes.
  */
 function OptionChip({
   label,
@@ -141,7 +140,7 @@ function OptionChip({
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         glyph ? "flex flex-col items-center gap-1 py-1.5" : "h-7 px-2",
         selected
-          ? "bg-state-selected font-medium text-primary hover:bg-state-selected-hover"
+          ? "bg-foreground font-medium text-background hover:bg-foreground-hover"
           : "text-muted-foreground hover:bg-state-hover hover:text-foreground",
       )}
     >
@@ -219,26 +218,14 @@ function VideoOptionField({
 }
 
 /**
- * The thumb travels between its own two half-widths, not the full track, so the
- * fill has to start half a thumb in and shrink by the same amount by the end or
- * it drifts away from the handle at the extremes.
- */
-function durationFillWidth(percent: number): string {
-  const offset =
-    SLIDER_THUMB_RADIUS - (SLIDER_THUMB_RADIUS * 2 * percent) / 100;
-  return `calc(${String(percent)}% + ${offset.toFixed(2)}px)`;
-}
-
-/**
  * Duration is the one setting whose values are a scale rather than a set: they
  * are consecutive seconds, and how far the scale runs is the clearest single
  * difference between two models. So it reads as a ruler — the track length is
  * the model's range, the ticks are the steps it accepts, and the filled portion
  * is the answer to "how long", which no grid of chips can show at a glance.
  *
- * Built on a native range input so dragging, clicking anywhere on the track,
- * arrow keys, and Home/End all come from the platform rather than from
- * hand-rolled pointer maths.
+ * The slider itself is the shared component, so drag, click-anywhere-on-track,
+ * arrow keys and Home/End all come from it rather than from this file.
  */
 function VideoDurationField({
   label,
@@ -261,7 +248,6 @@ function VideoDurationField({
       return candidate === value;
     }),
   );
-  const percent = (index / last) * 100;
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-baseline justify-between gap-3">
@@ -270,71 +256,28 @@ function VideoDurationField({
           {value}
         </span>
       </div>
-      <div className="flex flex-col gap-1">
-        {/* Ticks sit above the track and share its inset so each one lines up
-            with the thumb position that snaps to it. They stay uniform: the
-            fill below already carries the value, and tinting them too turns
-            the two rows into one smear. */}
-        <div
-          aria-hidden="true"
-          className="flex items-end justify-between px-[7px]"
-        >
-          {values.map((option) => {
-            return (
-              <span
-                key={option}
-                className="h-1 w-px rounded-full bg-gray-400"
-              />
-            );
-          })}
-        </div>
-        <div className="group relative h-4">
-          <div className="absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-muted" />
-          <div
-            className="absolute left-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-primary transition-[width] duration-150 ease-out motion-reduce:transition-none"
-            style={{ width: durationFillWidth(percent) }}
-          />
-          <input
-            type="range"
-            min={0}
-            max={last}
-            step={1}
-            value={index}
-            aria-label={label}
-            aria-valuetext={value}
-            onChange={(event) => {
-              const next = values[Number(event.target.value)];
-              if (next !== undefined) {
-                onChange(next);
-              }
-            }}
-            className={cn(
-              "absolute inset-0 m-0 w-full cursor-pointer appearance-none bg-transparent focus:outline-none",
-              "[&::-webkit-slider-runnable-track]:h-4 [&::-webkit-slider-runnable-track]:bg-transparent",
-              // Chrome top-aligns the thumb in the runnable track box rather
-              // than centring it, so it needs half the height difference back.
-              "[&::-webkit-slider-thumb]:mt-px [&::-webkit-slider-thumb]:size-3.5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full",
-              "[&::-webkit-slider-thumb]:border [&::-webkit-slider-thumb]:border-primary [&::-webkit-slider-thumb]:bg-card",
-              "[&::-webkit-slider-thumb]:shadow-sm [&::-webkit-slider-thumb]:transition-transform",
-              "[&::-webkit-slider-thumb]:duration-150 [&::-webkit-slider-thumb]:ease-out",
-              "hover:[&::-webkit-slider-thumb]:scale-110 active:[&::-webkit-slider-thumb]:scale-125",
-              "focus-visible:[&::-webkit-slider-thumb]:ring-2 focus-visible:[&::-webkit-slider-thumb]:ring-primary/30",
-              "motion-reduce:[&::-webkit-slider-thumb]:transition-none",
-              "[&::-moz-range-track]:h-4 [&::-moz-range-track]:bg-transparent",
-              "[&::-moz-range-thumb]:size-3.5 [&::-moz-range-thumb]:appearance-none [&::-moz-range-thumb]:rounded-full",
-              "[&::-moz-range-thumb]:border [&::-moz-range-thumb]:border-primary [&::-moz-range-thumb]:bg-card",
-              "[&::-moz-range-thumb]:shadow-sm [&::-moz-range-thumb]:transition-transform",
-              "hover:[&::-moz-range-thumb]:scale-110 active:[&::-moz-range-thumb]:scale-125",
-              "motion-reduce:[&::-moz-range-thumb]:transition-none",
-            )}
-          />
-        </div>
-        {/* The two ends state the model's range, which is what actually differs
-            from one model to the next. */}
-        <div className="flex justify-between text-[11px] tabular-nums text-muted-foreground">
-          <span>{values[0]}</span>
-          <span>{values[last]}</span>
-        </div>
+      <Slider
+        ticks
+        min={0}
+        max={last}
+        step={1}
+        value={index}
+        aria-label={label}
+        getAriaValueText={(_formatted, current) => {
+          return values[current] ?? value;
+        }}
+        onValueChange={(next) => {
+          const duration = values[typeof next === "number" ? next : 0];
+          if (duration !== undefined) {
+            onChange(duration);
+          }
+        }}
+      />
+      {/* The two ends state the model's range, which is what actually differs
+          from one model to the next. */}
+      <div className="flex justify-between text-[11px] tabular-nums text-muted-foreground">
+        <span>{values[0]}</span>
+        <span>{values[last]}</span>
       </div>
     </div>
   );

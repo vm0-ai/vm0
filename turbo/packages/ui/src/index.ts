@@ -91,6 +91,7 @@ export {
   type RunningIndicatorProps,
 } from "./components/ui/running-indicator";
 export { Skeleton } from "./components/ui/skeleton";
+export { Slider } from "./components/ui/slider";
 export { Switch } from "./components/ui/switch";
 export {
   Table,
