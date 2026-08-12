@@ -10,11 +10,12 @@
 //! treated as secret material by this module.
 //!
 //! The wrapper depends on build mode and `sudo`. Production non-`sudo` commands
-//! run through a non-login `/bin/sh` as the sandbox user, production `sudo`
-//! commands run as root, and debug/test-support builds run as the current user
-//! unless `sudo` requests the local `sudo sh -c` wrapper. The production
-//! wrapper must stay non-login: sandbox-owned profile files may persist across
-//! VM reuse and must never run before the trusted command bootstrap.
+//! run through a non-login `/bin/sh` as the sandbox user after explicitly
+//! loading the root-owned system profile, production `sudo` commands run as
+//! root, and debug/test-support builds run as the current user unless `sudo`
+//! requests the local `sudo sh -c` wrapper. The production wrapper must stay
+//! non-login: sandbox-owned profile files may persist across VM reuse and must
+//! never run before the trusted command bootstrap.
 //!
 //! The env-script path is one security boundary. Env keys must be shell
 //! identifiers, command/env values reject NUL bytes, the parent directory must
@@ -95,8 +96,9 @@ fn shell_escape_value(val: &str) -> String {
 ///
 /// In production-style builds, non-sudo commands run through a non-login
 /// `/bin/sh` selected explicitly rather than the sandbox user's login shell.
-/// This prevents persisted sandbox-owned profile files from executing before
-/// a root-owned env script and from observing inherited bootstrap capabilities.
+/// The command sources only `/etc/profile` so rootfs-provided runtime
+/// environment such as `RUSTUP_HOME` remains available without executing
+/// persisted sandbox-owned profile files before the trusted command bootstrap.
 /// In debug/test-support builds, local tests run as the current user unless
 /// `sudo` explicitly requests elevation through `sudo sh -c`.
 pub(crate) fn build_shell_command(command: &str, sudo: bool) -> io::Result<Command> {
@@ -118,6 +120,7 @@ fn build_shell_command_for_user(command: &str, sudo: bool, user: Option<(&str, &
                 c.arg("-c").arg(command);
                 c
             } else {
+                let command = format!(". /etc/profile\n{command}");
                 let mut c = Command::new("su");
                 c.arg("--shell")
                     .arg("/bin/sh")
@@ -1091,7 +1094,13 @@ mod tests {
         assert_command(
             command,
             "su",
-            &["--shell", "/bin/sh", "--command", "echo hello", "sandbox"],
+            &[
+                "--shell",
+                "/bin/sh",
+                "--command",
+                ". /etc/profile\necho hello",
+                "sandbox",
+            ],
         );
     }
 
