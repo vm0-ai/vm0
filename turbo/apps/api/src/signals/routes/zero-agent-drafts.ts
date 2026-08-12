@@ -9,6 +9,10 @@ import { bodyResultOf, pathParamsOf } from "../context/request";
 import { db$, writeDb$ } from "../external/db";
 import { nowDate } from "../../lib/time";
 import { notFound } from "../../lib/error";
+import {
+  legacyFeedbackLocationAppClient$,
+  projectLegacyUserMessageInputDocument,
+} from "../services/chat-feedback-location-compatibility.service";
 import { zeroAgentExists } from "../services/zero-agent-data.service";
 import type { RouteEntry } from "../route-entry";
 
@@ -52,10 +56,16 @@ const getAgentDraftInner$ = computed(async (get) => {
     )
     .limit(1);
 
+  const draftUserMessage = draft?.draftUserMessage ?? null;
+  const projectedDraftUserMessage =
+    get(legacyFeedbackLocationAppClient$) && draftUserMessage !== null
+      ? projectLegacyUserMessageInputDocument(draftUserMessage)
+      : draftUserMessage;
+
   return {
     status: 200 as const,
     body: {
-      draftUserMessage: draft?.draftUserMessage ?? null,
+      draftUserMessage: projectedDraftUserMessage,
       draftAttachments: draft?.draftAttachments ?? null,
     },
   };

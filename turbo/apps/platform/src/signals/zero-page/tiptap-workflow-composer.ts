@@ -438,10 +438,43 @@ interface FeedbackItemNodeAttributes {
   readonly quote: string;
   readonly showDivider: boolean;
   readonly fill: boolean;
+  readonly eventId: string | null;
+  readonly rangeStart: number | null;
+  readonly rangeEnd: number | null;
   readonly sourceType: "mail" | null;
   readonly sourceId: string | null;
   readonly sourceStatus: "draft" | "sent" | null;
   readonly sourceSentId: string | null;
+}
+
+interface FeedbackItemLocationAttributes {
+  readonly eventId: string | null;
+  readonly rangeStart: number | null;
+  readonly rangeEnd: number | null;
+}
+
+function feedbackItemLocationAttributes(
+  node: ProseMirrorNode,
+): FeedbackItemLocationAttributes {
+  const eventId: unknown = node.attrs.eventId;
+  const rangeStart: unknown = node.attrs.rangeStart;
+  const rangeEnd: unknown = node.attrs.rangeEnd;
+  if (eventId === null && rangeStart === null && rangeEnd === null) {
+    return { eventId, rangeStart, rangeEnd };
+  }
+  if (
+    typeof eventId !== "string" ||
+    eventId.length === 0 ||
+    typeof rangeStart !== "number" ||
+    !Number.isInteger(rangeStart) ||
+    rangeStart < 0 ||
+    typeof rangeEnd !== "number" ||
+    !Number.isInteger(rangeEnd) ||
+    rangeEnd <= rangeStart
+  ) {
+    throw new Error("Feedback item node attributes are invalid");
+  }
+  return { eventId, rangeStart, rangeEnd };
 }
 
 function feedbackItemNodeAttributes(
@@ -451,6 +484,7 @@ function feedbackItemNodeAttributes(
   const quote: unknown = node.attrs.quote;
   const showDivider: unknown = node.attrs.showDivider;
   const fill: unknown = node.attrs.fill;
+  const location = feedbackItemLocationAttributes(node);
   const sourceType: unknown = node.attrs.sourceType;
   const sourceId: unknown = node.attrs.sourceId;
   const sourceStatus: unknown = node.attrs.sourceStatus;
@@ -477,6 +511,7 @@ function feedbackItemNodeAttributes(
     quote,
     showDivider,
     fill,
+    ...location,
     sourceType,
     sourceId,
     sourceStatus,
@@ -1058,6 +1093,40 @@ function feedbackNoteFromNode(node: ProseMirrorNode): string {
   return nodeText(node);
 }
 
+function feedbackItemFromNode(node: ProseMirrorNode): FeedbackItem {
+  const attributes = feedbackItemNodeAttributes(node);
+  return {
+    id: attributes.feedbackId,
+    quote: attributes.quote,
+    note: feedbackNoteFromNode(node),
+    ...(attributes.eventId !== null &&
+    attributes.rangeStart !== null &&
+    attributes.rangeEnd !== null
+      ? {
+          eventId: attributes.eventId,
+          range: {
+            start: attributes.rangeStart,
+            end: attributes.rangeEnd,
+          },
+        }
+      : {}),
+    ...(attributes.sourceType === "mail" &&
+    attributes.sourceId !== null &&
+    attributes.sourceStatus !== null
+      ? {
+          source: {
+            type: attributes.sourceType,
+            id: attributes.sourceId,
+            status: attributes.sourceStatus,
+            ...(attributes.sourceSentId !== null
+              ? { sentId: attributes.sourceSentId }
+              : {}),
+          },
+        }
+      : {}),
+  };
+}
+
 function feedbackItemNode(editor: Editor, item: FeedbackItem): ProseMirrorNode {
   return editor.schema.nodeFromJSON({
     type: FEEDBACK_ITEM_NODE_NAME,
@@ -1066,6 +1135,9 @@ function feedbackItemNode(editor: Editor, item: FeedbackItem): ProseMirrorNode {
       quote: item.quote,
       showDivider: false,
       fill: false,
+      eventId: item.eventId ?? null,
+      rangeStart: item.range?.start ?? null,
+      rangeEnd: item.range?.end ?? null,
       sourceType: item.source?.type ?? null,
       sourceId: item.source?.id ?? null,
       sourceStatus: item.source?.status ?? null,
@@ -1160,26 +1232,7 @@ function feedbackItemsFromWorkflowComposer(
     if (node.type.name !== FEEDBACK_ITEM_NODE_NAME) {
       continue;
     }
-    const attributes = feedbackItemNodeAttributes(node);
-    items.push({
-      id: attributes.feedbackId,
-      quote: attributes.quote,
-      note: feedbackNoteFromNode(node),
-      ...(attributes.sourceType === "mail" &&
-      attributes.sourceId !== null &&
-      attributes.sourceStatus !== null
-        ? {
-            source: {
-              type: attributes.sourceType,
-              id: attributes.sourceId,
-              status: attributes.sourceStatus,
-              ...(attributes.sourceSentId !== null
-                ? { sentId: attributes.sourceSentId }
-                : {}),
-            },
-          }
-        : {}),
-    });
+    items.push(feedbackItemFromNode(node));
   }
   return items;
 }
@@ -1392,26 +1445,7 @@ function workflowComposerDocToString(editor: Editor): string {
     }
     if (node.type.name === FEEDBACK_ITEM_NODE_NAME) {
       flushTextBlocks();
-      const attributes = feedbackItemNodeAttributes(node);
-      feedbackItems.push({
-        id: attributes.feedbackId,
-        quote: attributes.quote,
-        note: feedbackNoteFromNode(node),
-        ...(attributes.sourceType === "mail" &&
-        attributes.sourceId !== null &&
-        attributes.sourceStatus !== null
-          ? {
-              source: {
-                type: attributes.sourceType,
-                id: attributes.sourceId,
-                status: attributes.sourceStatus,
-                ...(attributes.sourceSentId !== null
-                  ? { sentId: attributes.sourceSentId }
-                  : {}),
-              },
-            }
-          : {}),
-      });
+      feedbackItems.push(feedbackItemFromNode(node));
       continue;
     }
     flushFeedbackItems();
@@ -1699,6 +1733,9 @@ function createFeedbackItemNode(
         quote: { default: "" },
         showDivider: { default: false },
         fill: { default: false },
+        eventId: { default: null },
+        rangeStart: { default: null },
+        rangeEnd: { default: null },
         sourceType: { default: null },
         sourceId: { default: null },
         sourceStatus: { default: null },

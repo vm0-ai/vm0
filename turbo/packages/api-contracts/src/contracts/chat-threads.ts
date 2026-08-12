@@ -348,6 +348,21 @@ const feedbackNotePartSchema = z.discriminatedUnion("type", [
   userMessageTemplatePartSchema,
 ]);
 
+const feedbackRangeSchema = z
+  .object({
+    /** UTF-16 code-unit offset, compatible with JavaScript String.slice. */
+    start: z.number().int().nonnegative(),
+    /** Exclusive UTF-16 code-unit offset. */
+    end: z.number().int().positive(),
+  })
+  .strict()
+  .refine(
+    (range) => {
+      return range.end > range.start;
+    },
+    { path: ["end"], message: "Feedback range end must be after start" },
+  );
+
 const userMessageExternalSourcePartSchema = z
   .object({
     type: z.literal("source"),
@@ -419,6 +434,8 @@ const userMessageInputPartSchema = z.discriminatedUnion("type", [
       type: z.literal("feedback"),
       quote: z.string().min(1),
       note: z.array(feedbackNotePartSchema).min(1),
+      eventId: z.string().min(1).optional(),
+      range: feedbackRangeSchema.optional(),
       source: z
         .object({
           type: z.literal("mail"),
@@ -429,7 +446,17 @@ const userMessageInputPartSchema = z.discriminatedUnion("type", [
         .strict()
         .optional(),
     })
-    .strict(),
+    .strict()
+    .refine(
+      (feedback) => {
+        return (
+          (feedback.eventId === undefined) === (feedback.range === undefined)
+        );
+      },
+      {
+        message: "Feedback eventId and range must be provided together",
+      },
+    ),
 ]);
 
 const userMessageModelPartSchema = z
@@ -1342,74 +1369,83 @@ export const chatThreadComputerUseHostContract = c.router({
   },
 });
 
+const chatEventSendRoute = {
+  method: "POST",
+  path: "/api/okou/chat/events",
+  headers: authHeadersSchema,
+  body: z.union([
+    chatEventNormalSendBodySchema,
+    z
+      .object({
+        agentId: z.string().min(1),
+        threadId: z.string().min(1),
+        revokesEventId: z.string().min(1),
+        clientEventId: z.string().uuid().optional(),
+        prompt: z.undefined().optional(),
+        clientThreadId: z.undefined().optional(),
+        chatThreadEventId: z.undefined().optional(),
+        chatThreadSortEventId: z.undefined().optional(),
+        sourceRunId: z.undefined().optional(),
+        model: z.undefined().optional(),
+        runOptions: z.undefined().optional(),
+        userMessage: z.undefined().optional(),
+        computerUseHostId: z.undefined().optional(),
+        hasTextContent: z.undefined().optional(),
+        realAgentInPreview: z.undefined().optional(),
+        captureNetworkBodies: z.undefined().optional(),
+        interruptsRunId: z.undefined().optional(),
+      })
+      .strict(),
+    z
+      .object({
+        agentId: z.string().min(1),
+        threadId: z.string().min(1),
+        interruptsRunId: z.string().uuid(),
+        clientEventId: z.string().uuid().optional(),
+        prompt: z.undefined().optional(),
+        clientThreadId: z.undefined().optional(),
+        chatThreadEventId: z.undefined().optional(),
+        chatThreadSortEventId: z.undefined().optional(),
+        sourceRunId: z.undefined().optional(),
+        model: z.undefined().optional(),
+        runOptions: z.undefined().optional(),
+        userMessage: z.undefined().optional(),
+        computerUseHostId: z.undefined().optional(),
+        hasTextContent: z.undefined().optional(),
+        realAgentInPreview: z.undefined().optional(),
+        captureNetworkBodies: z.undefined().optional(),
+        revokesEventId: z.undefined().optional(),
+      })
+      .strict(),
+  ]),
+  responses: {
+    201: z.object({
+      runId: z.string().nullable(),
+      threadId: z.string(),
+      status: runStatusSchema.optional(),
+      createdAt: z.string().optional(),
+    }),
+    400: apiErrorSchema,
+    401: apiErrorSchema,
+    402: apiErrorSchema,
+    403: apiErrorSchema,
+    404: apiErrorSchema,
+    409: apiErrorSchema,
+    422: apiErrorSchema,
+    429: apiErrorSchema,
+  },
+  summary: "Append a chat event and dispatch input when applicable",
+} as const;
+
 /** Canonical ChatEvent write contract. */
-export const chatEventsContract = c.router({
+export const chatEventsContract = c.router({ send: chatEventSendRoute });
+
+/** Versioned write boundary for user messages containing feedback locations. */
+export const chatFeedbackLocationEventsContract = c.router({
   send: {
-    method: "POST",
-    path: "/api/okou/chat/events",
-    headers: authHeadersSchema,
-    body: z.union([
-      chatEventNormalSendBodySchema,
-      z
-        .object({
-          agentId: z.string().min(1),
-          threadId: z.string().min(1),
-          revokesEventId: z.string().min(1),
-          clientEventId: z.string().uuid().optional(),
-          prompt: z.undefined().optional(),
-          clientThreadId: z.undefined().optional(),
-          chatThreadEventId: z.undefined().optional(),
-          chatThreadSortEventId: z.undefined().optional(),
-          sourceRunId: z.undefined().optional(),
-          model: z.undefined().optional(),
-          runOptions: z.undefined().optional(),
-          userMessage: z.undefined().optional(),
-          computerUseHostId: z.undefined().optional(),
-          hasTextContent: z.undefined().optional(),
-          realAgentInPreview: z.undefined().optional(),
-          captureNetworkBodies: z.undefined().optional(),
-          interruptsRunId: z.undefined().optional(),
-        })
-        .strict(),
-      z
-        .object({
-          agentId: z.string().min(1),
-          threadId: z.string().min(1),
-          interruptsRunId: z.string().uuid(),
-          clientEventId: z.string().uuid().optional(),
-          prompt: z.undefined().optional(),
-          clientThreadId: z.undefined().optional(),
-          chatThreadEventId: z.undefined().optional(),
-          chatThreadSortEventId: z.undefined().optional(),
-          sourceRunId: z.undefined().optional(),
-          model: z.undefined().optional(),
-          runOptions: z.undefined().optional(),
-          userMessage: z.undefined().optional(),
-          computerUseHostId: z.undefined().optional(),
-          hasTextContent: z.undefined().optional(),
-          realAgentInPreview: z.undefined().optional(),
-          captureNetworkBodies: z.undefined().optional(),
-          revokesEventId: z.undefined().optional(),
-        })
-        .strict(),
-    ]),
-    responses: {
-      201: z.object({
-        runId: z.string().nullable(),
-        threadId: z.string(),
-        status: runStatusSchema.optional(),
-        createdAt: z.string().optional(),
-      }),
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      402: apiErrorSchema,
-      403: apiErrorSchema,
-      404: apiErrorSchema,
-      409: apiErrorSchema,
-      422: apiErrorSchema,
-      429: apiErrorSchema,
-    },
-    summary: "Append a chat event and dispatch input when applicable",
+    ...chatEventSendRoute,
+    path: "/api/okou/chat/events/feedback-location-v1",
+    summary: "Append a chat event with feedback locations",
   },
 });
 

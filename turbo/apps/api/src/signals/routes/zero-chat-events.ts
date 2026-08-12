@@ -1,6 +1,9 @@
 /** Canonical ChatEvent route adapter. */
 import { command } from "ccstate";
-import { chatEventsContract } from "@vm0/api-contracts/contracts/chat-threads";
+import {
+  chatEventsContract,
+  chatFeedbackLocationEventsContract,
+} from "@vm0/api-contracts/contracts/chat-threads";
 
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
@@ -23,6 +26,17 @@ const sendChatEventInner$ = command(
 export const zeroChatEventsRoutes: readonly RouteEntry[] = [
   {
     route: chatEventsContract.send,
+    handler: authRoute(
+      {
+        requireOrganization: true,
+        missingOrganizationStatus: 401,
+        requiredCapability: "chat-event:write",
+      },
+      sendChatEventInner$,
+    ),
+  },
+  {
+    route: chatFeedbackLocationEventsContract.send,
     handler: authRoute(
       {
         requireOrganization: true,
