@@ -8,6 +8,7 @@ import {
 } from "@vm0/api-contracts/contracts/trpc-contract";
 
 import { createAppWithRoutes } from "../app-factory-core";
+import type { UsagePricingResolution } from "../signals/context/usage-pricing-resolution";
 import type { RouteEntry } from "../signals/route-entry";
 import type { TestContext } from "./test-context";
 
@@ -15,6 +16,7 @@ interface SetupAppWithRoutesOptions {
   readonly context: TestContext;
   readonly routes: readonly RouteEntry[];
   readonly signal?: AbortSignal;
+  readonly usagePricingResolution?: UsagePricingResolution;
 }
 
 function parseResponseBody(response: Response): Promise<unknown> | undefined {
@@ -56,10 +58,12 @@ function createAppFetcher(
   context: TestContext,
   routes: readonly RouteEntry[],
   signal?: AbortSignal,
+  usagePricingResolution?: UsagePricingResolution,
 ): ApiFetcher {
   const app = createAppWithRoutes({
     signal: signal ?? context.signal,
     routes,
+    usagePricingResolution,
   });
 
   return (args) => {
@@ -71,8 +75,9 @@ export function setupAppWithRoutes({
   context,
   routes,
   signal,
+  usagePricingResolution,
 }: SetupAppWithRoutesOptions) {
-  const app = createAppFetcher(context, routes, signal);
+  const app = createAppFetcher(context, routes, signal, usagePricingResolution);
 
   return <TContract extends AppRouter>(
     contract: TContract,

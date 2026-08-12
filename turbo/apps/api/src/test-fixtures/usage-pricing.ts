@@ -3,26 +3,105 @@
  *
  * Usage pricing is operator-managed global configuration with no product API
  * (rows are written by ops tooling/migrations in production), so tests cannot
- * construct or clear pricing state through any product endpoint. This module
- * is the narrow test-boundary exception for that state: it only upserts,
- * ensures, and deletes pricing rows keyed by (kind, provider, category).
+ * construct pricing state through any product endpoint. New route tests use
+ * `createUsagePricingFixture` to own unique lookup providers. The raw helpers
+ * remain while their existing callers migrate to the scoped model.
  */
+import { randomUUID } from "node:crypto";
+
 import { createStore } from "ccstate";
 import { usagePricing } from "@vm0/db/schema/usage-pricing";
 import { and, eq, inArray, sql } from "drizzle-orm";
 
 import { writeDb$, type Db } from "../signals/external/db";
+import {
+  resolveUsagePricingProvider,
+  type UsagePricingProviderResolution,
+  type UsagePricingResolution,
+} from "../signals/context/usage-pricing-resolution";
 
-export interface UsagePricingRow {
+export interface UsagePricingKey {
   readonly kind: string;
   readonly provider: string;
   readonly category: string;
+}
+
+export interface UsagePricingRow extends UsagePricingKey {
   readonly unitPrice: number;
   readonly unitSize: number;
 }
 
+export interface UsagePricingFixture {
+  readonly resolution: UsagePricingResolution;
+  readonly cleanup: () => Promise<void>;
+}
+
+export interface CreateUsagePricingFixtureOptions {
+  readonly configured?: readonly UsagePricingRow[];
+  readonly missing?: readonly UsagePricingKey[];
+}
+
 function fixtureDb(): Db {
   return createStore().set(writeDb$);
+}
+
+function usagePricingResolution(
+  keys: readonly UsagePricingKey[],
+): UsagePricingProviderResolution[] {
+  const resolution: UsagePricingProviderResolution[] = [];
+  for (const key of keys) {
+    if (
+      resolution.some((entry) => {
+        return entry.kind === key.kind && entry.provider === key.provider;
+      })
+    ) {
+      continue;
+    }
+    resolution.push({
+      kind: key.kind,
+      provider: key.provider,
+      lookupProvider: `pricing-fixture-${randomUUID()}`,
+    });
+  }
+  return resolution;
+}
+
+export async function createUsagePricingFixture({
+  configured = [],
+  missing = [],
+}: CreateUsagePricingFixtureOptions): Promise<UsagePricingFixture> {
+  const db = fixtureDb();
+  const resolution = usagePricingResolution([...configured, ...missing]);
+  if (configured.length > 0) {
+    await db.insert(usagePricing).values(
+      configured.map((row) => {
+        return {
+          ...row,
+          provider: resolveUsagePricingProvider(
+            resolution,
+            row.kind,
+            row.provider,
+          ),
+        };
+      }),
+    );
+  }
+
+  return {
+    resolution,
+    cleanup: async () => {
+      for (const entry of resolution) {
+        await db
+          .delete(usagePricing)
+          .where(
+            and(
+              eq(usagePricing.kind, entry.kind),
+              eq(usagePricing.provider, entry.lookupProvider),
+            ),
+          );
+      }
+    },
+  };
 }
 
 export async function upsertUsagePricingRows(

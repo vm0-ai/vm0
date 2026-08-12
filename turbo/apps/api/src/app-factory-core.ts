@@ -43,6 +43,7 @@ import {
 } from "./signals/route-entry";
 import { configureChatRunFinishedEventDispatcher } from "./signals/services/chat-run-finished-event-registration.service";
 import { configurePiEdgeTurnDispatcher } from "./signals/services/pi-edge-turn-registration.service";
+import type { UsagePricingResolution } from "./signals/context/usage-pricing-resolution";
 import {
   isAbortError,
   normalizeThrown,
@@ -549,11 +550,13 @@ function handleError(error: unknown, context: Context): Response {
 interface CreateAppWithRoutesOptions {
   readonly signal: AbortSignal;
   readonly routes: readonly RouteEntry[];
+  readonly usagePricingResolution?: UsagePricingResolution;
 }
 
 export function createAppWithRoutes({
   routes,
   signal,
+  usagePricingResolution,
 }: CreateAppWithRoutesOptions): Hono {
   configureChatRunFinishedEventDispatcher();
   configurePiEdgeTurnDispatcher();
@@ -600,7 +603,11 @@ export function createAppWithRoutes({
   }
 
   for (const { route, handler } of withApiNamespaceAliases(routes)) {
-    app.on(route.method, route.path, honoSignalHandler(handler, route, signal));
+    app.on(
+      route.method,
+      route.path,
+      honoSignalHandler(handler, route, signal, usagePricingResolution),
+    );
   }
 
   app.notFound((context) => {

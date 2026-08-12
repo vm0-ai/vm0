@@ -11,6 +11,11 @@ import { nowDate } from "../../lib/time";
 import { logger } from "../../lib/log";
 import { usageUnderbillingFields } from "../usage-underbilling";
 import { tapError } from "../utils";
+import {
+  resolveUsagePricingProvider,
+  usagePricingResolution$,
+  type UsagePricingResolution,
+} from "../context/usage-pricing-resolution";
 import { maybeEmitRunUsageEvent$ } from "./zero-chat-usage-event.service";
 import {
   enqueueCreditLowBalanceAlert$,
@@ -223,6 +228,7 @@ function priceUsageEvents(
   records: readonly UsageEventRecord[],
   pricingRecords: readonly UsagePricingRecord[],
   orgId: string,
+  pricingResolution: UsagePricingResolution,
 ): PricedUsageEvent[] {
   const pricingByKey = new Map(
     pricingRecords.map((pricing) => {
@@ -234,12 +240,17 @@ function priceUsageEvents(
   );
   const pricedEvents: PricedUsageEvent[] = [];
   for (const record of records) {
+    const lookupProvider = resolveUsagePricingProvider(
+      pricingResolution,
+      record.kind,
+      record.provider,
+    );
     const exactPricing = pricingByKey.get(
-      `${record.kind}|${record.provider}|${record.category}`,
+      `${record.kind}|${lookupProvider}|${record.category}`,
     );
     const pricing =
       exactPricing ??
-      pricingByKey.get(`${record.kind}|${record.provider}|__fallback__`);
+      pricingByKey.get(`${record.kind}|${lookupProvider}|__fallback__`);
 
     if (!pricing) {
       L.error("Missing usage_pricing — charged zero", {
@@ -332,6 +343,7 @@ async function markUsageEventsProcessed(
 async function processOrgUsageEventsInTransaction(
   tx: WriteTx,
   orgId: string,
+  pricingResolution: UsagePricingResolution,
   signal: AbortSignal,
 ): Promise<ProcessOrgUsageEventsResult> {
   // Same advisory key as web: 'credit_' prefix + orgId.
@@ -370,7 +382,12 @@ async function processOrgUsageEventsInTransaction(
   ];
 
   const pricingRecords = await tx.select().from(usagePricing);
-  const pricedEvents = priceUsageEvents(pendingRecords, pricingRecords, orgId);
+  const pricedEvents = priceUsageEvents(
+    pendingRecords,
+    pricingRecords,
+    orgId,
+    pricingResolution,
+  );
 
   const allowanceByUsageEvent =
     await applyUsageAllowanceToUsageEventsInLockedTransaction(tx, {
@@ -470,12 +487,18 @@ async function processOrgUsageEventsInTransaction(
  * envelope. Low-balance alert failures are logged without affecting billing.
  */
 export const processOrgUsageEvents$ = command(
-  async ({ set }, orgId: string, signal: AbortSignal): Promise<void> => {
+  async ({ get, set }, orgId: string, signal: AbortSignal): Promise<void> => {
     const writeDb = set(writeDb$);
+    const pricingResolution = get(usagePricingResolution$);
 
     const { sharedCreditsCharged, runIds, lowBalanceAlert } =
       await writeDb.transaction((tx) => {
-        return processOrgUsageEventsInTransaction(tx, orgId, signal);
+        return processOrgUsageEventsInTransaction(
+          tx,
+          orgId,
+          pricingResolution,
+          signal,
+        );
       });
     signal.throwIfAborted();
 

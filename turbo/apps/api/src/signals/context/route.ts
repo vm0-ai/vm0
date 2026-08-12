@@ -7,6 +7,10 @@ import type { Handler } from "hono";
 import type { ContentfulStatusCode, StatusCode } from "hono/utils/http-status";
 
 import { now } from "../../lib/time";
+import {
+  setUsagePricingResolution$,
+  type UsagePricingResolution,
+} from "./usage-pricing-resolution";
 import { initHono$ } from "./hono";
 import { requestValidation$ } from "./request";
 import { setRootSignal$ } from "./root";
@@ -96,12 +100,16 @@ export function honoSignalHandler(
   handler$: SignalRouteHandler<unknown>,
   contract: AppRoute,
   signal: AbortSignal,
+  usagePricingResolution?: UsagePricingResolution,
 ): Handler {
   return async (context) => {
     const apiStartTime = now();
     const store = createStore();
     store.set(setRootSignal$, signal);
     store.set(initHono$, context, contract, apiStartTime);
+    if (usagePricingResolution) {
+      store.set(setUsagePricingResolution$, usagePricingResolution);
+    }
 
     // Mirror the contract client order: path/query validation
     // precedes auth and downstream services, so a malformed request returns

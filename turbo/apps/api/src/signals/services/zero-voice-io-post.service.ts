@@ -9,6 +9,10 @@ import { parseBuffer } from "music-metadata";
 
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
+import {
+  resolveUsagePricingProvider,
+  usagePricingResolution$,
+} from "../context/usage-pricing-resolution";
 import { db$, writeDb$ } from "../external/db";
 import { checkBillableOperationCredits$ } from "./billable-operation-admission.service";
 import { nowDate } from "../../lib/time";
@@ -875,6 +879,11 @@ export async function getAudioDuration(file: File): Promise<number | null> {
 export const speechPricing$: Computed<Promise<SpeechPricing | null>> = computed(
   async (get): Promise<SpeechPricing | null> => {
     const db = get(db$);
+    const provider = resolveUsagePricingProvider(
+      get(usagePricingResolution$),
+      USAGE_KIND,
+      USAGE_PROVIDER,
+    );
     const [pricing] = await db
       .select({
         unitPrice: usagePricing.unitPrice,
@@ -884,7 +893,7 @@ export const speechPricing$: Computed<Promise<SpeechPricing | null>> = computed(
       .where(
         and(
           eq(usagePricing.kind, USAGE_KIND),
-          eq(usagePricing.provider, USAGE_PROVIDER),
+          eq(usagePricing.provider, provider),
           eq(usagePricing.category, USAGE_CATEGORY),
         ),
       )

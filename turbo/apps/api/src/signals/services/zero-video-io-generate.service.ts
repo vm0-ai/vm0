@@ -25,6 +25,12 @@ import {
 import { and, eq, inArray } from "drizzle-orm";
 
 import { logger } from "../../lib/log";
+import {
+  canonicalUsagePricingProvider,
+  resolveUsagePricingProvider,
+  usagePricingResolution$,
+  type UsagePricingResolution,
+} from "../context/usage-pricing-resolution";
 import { db$, writeDb$ } from "../external/db";
 import { checkBillableOperationCredits$ } from "./billable-operation-admission.service";
 import { storeGeneratedArtifactObject$ } from "./artifact-storage.service";
@@ -1008,10 +1014,13 @@ function mapPricingRows(
     readonly unitPrice: number;
     readonly unitSize: number;
   }[],
+  resolution: UsagePricingResolution,
 ): VideoPricing {
   const pricing = new Map<string, VideoPricingRow>();
   for (const row of rows) {
-    const model = normalizeVideoModel(row.provider);
+    const model = normalizeVideoModel(
+      canonicalUsagePricingProvider(resolution, USAGE_KIND, row.provider),
+    );
     if (model && includesString(VIDEO_PRICING_CATEGORIES, row.category)) {
       pricing.set(videoPricingKey(model, row.category), {
         provider: model,
@@ -1097,6 +1106,10 @@ export function getMissingVideoPricing(
 export const videoPricing$: Computed<Promise<VideoPricing>> = computed(
   async (get): Promise<VideoPricing> => {
     const db = get(db$);
+    const resolution = get(usagePricingResolution$);
+    const lookupProviders = VIDEO_MODELS.map((provider) => {
+      return resolveUsagePricingProvider(resolution, USAGE_KIND, provider);
+    });
     const rows = await db
       .select({
         provider: usagePricing.provider,
@@ -1108,12 +1121,12 @@ export const videoPricing$: Computed<Promise<VideoPricing>> = computed(
       .where(
         and(
           eq(usagePricing.kind, USAGE_KIND),
-          inArray(usagePricing.provider, [...VIDEO_MODELS]),
+          inArray(usagePricing.provider, lookupProviders),
           inArray(usagePricing.category, [...VIDEO_PRICING_CATEGORIES]),
         ),
       );
 
-    return mapPricingRows(rows);
+    return mapPricingRows(rows, resolution);
   },
 );
 
