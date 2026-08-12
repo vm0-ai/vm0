@@ -1,12 +1,8 @@
 import { and, eq } from "drizzle-orm";
 import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 
-import { logger } from "../../lib/log";
 import type { Db } from "../external/db";
 import { publishUserSignal } from "../external/realtime";
-import { tapError } from "../utils";
-
-const L = logger("ZeroFeishuRealtime");
 
 export async function publishFeishuOrgChanged(
   db: Db,
@@ -34,7 +30,5 @@ export async function publishFeishuOrgChanged(
   if (userIds.size === 0) {
     return;
   }
-  await tapError(publishUserSignal([...userIds], "feishu:changed"), (error) => {
-    L.warn("Failed to publish Feishu org change", { error, orgId });
-  });
+  await publishUserSignal([...userIds], "feishu:changed");
 }

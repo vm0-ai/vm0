@@ -395,28 +395,11 @@ async function publishPromotedQueueSideEffects(args: {
   readonly queueMarkerNotification: QueueMarkerRevokeNotification | null;
 }): Promise<void> {
   if (args.queueMarkerNotification) {
-    await tapError(
-      publishUserSignal(
-        [args.queueMarkerNotification.userId],
-        `chatThreadMessageCreated:${args.queueMarkerNotification.chatThreadId}`,
-      ),
-      (error) => {
-        L.error("Failed to publish queued marker notification", {
-          userId: args.queueMarkerNotification?.userId,
-          chatThreadId: args.queueMarkerNotification?.chatThreadId,
-          error,
-        });
-      },
+    await publishUserSignal(
+      [args.queueMarkerNotification.userId],
+      `chatThreadMessageCreated:${args.queueMarkerNotification.chatThreadId}`,
     );
-    await tapError(
-      publishThreadListChanged(args.queueMarkerNotification.userId),
-      (error) => {
-        L.error("Failed to publish thread list changed after queue promotion", {
-          userId: args.queueMarkerNotification?.userId,
-          error,
-        });
-      },
-    );
+    await publishThreadListChanged(args.queueMarkerNotification.userId);
   }
 }
 

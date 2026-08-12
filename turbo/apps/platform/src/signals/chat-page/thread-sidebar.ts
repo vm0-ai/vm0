@@ -10,7 +10,6 @@ import {
   isTextPreviewKind,
   type TextPreviewComputed,
 } from "../text-preview.ts";
-import { resetSignal } from "../utils.ts";
 import {
   createMarkdownPreviewTree,
   type MarkdownPreviewTreeComputed,
@@ -119,12 +118,6 @@ export interface ThreadSidebarSignals {
   readonly artifactCatalog: ArtifactCatalogSignals;
   readonly selectedArtifactText$: Computed<Promise<string>>;
   readonly selectedArtifactMarkdownTree$: MarkdownPreviewTreeComputed;
-  /**
-   * Session resources for an open artifacts list: refresh the first page in
-   * the background and follow realtime catalog changes. `close$` aborts the
-   * session without touching the cached list.
-   */
-  readonly setupArtifactsSession$: Command<Promise<void>, [AbortSignal]>;
 }
 
 function attachmentObjectUrlRelease(
@@ -144,7 +137,6 @@ export function createThreadSidebarSignals(
   const internalFullscreen$ = state(false);
   const internalEditingAutomationId$ = state<string | null>(null);
   const internalClaimedAutoOpenCandidateKey$ = state<string | null>(null);
-  const resetSession$ = resetSignal();
 
   const artifactCatalog = createArtifactCatalogSignals({
     chatThreadId: threadId,
@@ -187,9 +179,6 @@ export function createThreadSidebarSignals(
   });
 
   const close$ = command(({ get, set }) => {
-    // Abort session resources (realtime subscription, background refresh)
-    // while keeping the cached catalog pages for the next open.
-    set(resetSession$);
     const objectUrlRelease = attachmentObjectUrlRelease(get(internalTarget$));
     set(internalTarget$, null);
     set(internalAnimateEntry$, false);
@@ -205,14 +194,6 @@ export function createThreadSidebarSignals(
       }
       set(internalClaimedAutoOpenCandidateKey$, candidateKey);
       return true;
-    },
-  );
-
-  const setupArtifactsSession$ = command(
-    async ({ set }, parentSignal: AbortSignal): Promise<void> => {
-      const signal = set(resetSession$, parentSignal);
-      set(artifactCatalog.reload$);
-      await set(artifactCatalog.subscribeCatalogChanged$, signal);
     },
   );
 
@@ -246,6 +227,5 @@ export function createThreadSidebarSignals(
     artifactCatalog,
     selectedArtifactText$,
     selectedArtifactMarkdownTree$,
-    setupArtifactsSession$,
   };
 }

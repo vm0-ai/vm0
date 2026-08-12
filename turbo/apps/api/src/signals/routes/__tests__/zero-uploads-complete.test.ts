@@ -8,6 +8,7 @@ import { now } from "../../../lib/time";
 import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import { deleteAgentRunFixture } from "../../../test-fixtures/chat-events";
 import { signSandboxJwtForTests } from "../../auth/tokens";
+import { flushWaitUntilForTest } from "../../context/wait-until";
 import {
   createBddApi,
   expectApiError,
@@ -144,6 +145,35 @@ describe("POST /api/zero/uploads/complete", () => {
       contentType: "application/pdf",
       size: 1234,
     });
+  });
+
+  it("keeps a completed upload successful when realtime invalidation fails", async () => {
+    const fixture = await createRunUploadFixture();
+    const fileId = randomUUID();
+    addUploadObject(fixture, fileId, "realtime-independent.pdf");
+    await flushWaitUntilForTest();
+    context.mocks.ably.publish.mockClear();
+    context.mocks.ably.publish.mockRejectedValue(
+      new Error("realtime publication failed"),
+    );
+
+    const response = await chat.completeUploadWithBearer(
+      fixture.bearer,
+      { id: fileId },
+      [200],
+    );
+    await flushWaitUntilForTest();
+
+    expect(response.body).toMatchObject({
+      id: fileId,
+      filename: "realtime-independent.pdf",
+      contentType: "application/pdf",
+      size: 1234,
+    });
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      expect.stringMatching(/^chatThreadArtifactsChanged:/u),
+      null,
+    );
   });
 
   it("completes an ordinary session upload without a run artifact association", async () => {

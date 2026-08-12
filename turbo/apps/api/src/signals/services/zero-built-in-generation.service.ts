@@ -8,13 +8,9 @@ import {
 } from "@vm0/db/schema/built-in-generation-job";
 import type { ZeroBuiltInGenerationResponse } from "@vm0/api-contracts/contracts/zero-built-in-generation";
 
-import { logger } from "../../lib/log";
 import { nowDate } from "../../lib/time";
 import { writeDb$ } from "../external/db";
 import { publishBuiltInGenerationChanged } from "../external/realtime";
-import { tapError } from "../utils";
-
-const L = logger("ZeroBuiltInGeneration");
 
 const ACTIVE_BUILT_IN_GENERATION_STATUSES = ["queued", "running"] as const;
 
@@ -194,15 +190,7 @@ function isStuckBuiltInGenerationJob(
 
 async function publishJobSafely(job: BuiltInGenerationJobRow): Promise<void> {
   const payload = serializeBuiltInGenerationJob(job);
-  await tapError(
-    publishBuiltInGenerationChanged(job.userId, job.id, payload),
-    (error) => {
-      L.warn("Failed to publish built-in generation status", {
-        generationId: job.id,
-        error,
-      });
-    },
-  );
+  await publishBuiltInGenerationChanged(job.userId, job.id, payload);
 }
 
 export const createBuiltInGenerationJob$ = command(
