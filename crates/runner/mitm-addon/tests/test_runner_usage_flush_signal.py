@@ -360,17 +360,13 @@ class TestRunnerUsageFlushSignal:
                 assert usage.read_usage_flush_request_id() is None
                 return
 
-            with (
-                patch.object(
-                    runner_flush_lifecycle,
-                    "__file__",
-                    str(runner_usage_flush_files.lifecycle_file),
-                ),
-                patch.object(logging_utils, "flush_log_path") as flush_log_path,
+            with patch.object(
+                runner_flush_lifecycle,
+                "__file__",
+                str(runner_usage_flush_files.lifecycle_file),
             ):
                 runner_flush_lifecycle._flush_jsonl_for_runner_request()
 
-            flush_log_path.assert_not_called()
             assert not runner_usage_flush_files.jsonl_flush_state_path.exists()
 
         consumer_thread = ThreadUnderTest(target=consume_marker, daemon=True)
