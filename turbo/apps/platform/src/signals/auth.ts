@@ -18,6 +18,7 @@ import {
 } from "../lib/platform-host.ts";
 import { bestEffort, onDomEventFn } from "./utils.ts";
 import { createAuthRecovery, setupAuthCatchUp$ } from "./auth-retry.ts";
+import { sessionStorageSignals } from "./external/session-storage.ts";
 import { rootSignal$ } from "./root-signal.ts";
 
 const reload$ = state(0);
@@ -440,58 +441,61 @@ export const setupClerk$ = command(
  * Returns undefined if no user is authenticated.
  */
 const ORG_ID_KEY = "clerk-active-org-id";
+const activeOrgIdStorage = sessionStorageSignals(ORG_ID_KEY);
 
-function persistOrgId(orgId: string | undefined) {
+const persistOrgId$ = command(({ set }, orgId: string | undefined) => {
   if (orgId) {
-    sessionStorage.setItem(ORG_ID_KEY, orgId);
+    set(activeOrgIdStorage.set$, orgId);
   } else {
-    sessionStorage.removeItem(ORG_ID_KEY);
+    set(activeOrgIdStorage.clear$);
   }
-}
+});
 
 /**
  * Command that monitors the active Clerk organization and reloads
  * the page when it changes. Persists the active org ID to session storage.
  */
-export const watchOrgSwitch$ = command(async ({ get }, signal: AbortSignal) => {
-  const clerk = await get(clerk$);
-  signal.throwIfAborted();
+export const watchOrgSwitch$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const clerk = await get(clerk$);
+    signal.throwIfAborted();
 
-  let prevOrgId = sessionStorage.getItem(ORG_ID_KEY) ?? undefined;
-  const currentOrgId = clerk.organization?.id ?? undefined;
-  prevOrgId = currentOrgId;
-  persistOrgId(currentOrgId);
-  setPostHogOrganization(currentOrgId);
+    let prevOrgId = get(activeOrgIdStorage.get$) ?? undefined;
+    const currentOrgId = clerk.organization?.id ?? undefined;
+    prevOrgId = currentOrgId;
+    set(persistOrgId$, currentOrgId);
+    setPostHogOrganization(currentOrgId);
 
-  // Listener stays `() => void`: Clerk's `ListenerCallback` signature
-  // is not awaited, and returning a promise from it would trip
-  // `typescript/no-misused-promises`. `onDomEventFn` detaches the async
-  // work, and `bestEffort` keeps reload behavior even when token rotation
-  // rejects.
-  const unsubscribe = clerk.addListener(
-    onDomEventFn(async () => {
-      const newOrgId = clerk.organization?.id ?? undefined;
-      // On mobile, Clerk can transiently clear clerk.organization to
-      // undefined during a background token refresh before restoring it on
-      // the next event. Keep the previous concrete org so that restoration
-      // is recognized as unchanged rather than as an org switch.
-      if (!newOrgId || newOrgId === prevOrgId) {
-        return;
-      }
-      prevOrgId = newOrgId;
-      persistOrgId(newOrgId);
-      setPostHogOrganization(newOrgId);
+    // Listener stays `() => void`: Clerk's `ListenerCallback` signature
+    // is not awaited, and returning a promise from it would trip
+    // `typescript/no-misused-promises`. `onDomEventFn` detaches the async
+    // work, and `bestEffort` keeps reload behavior even when token rotation
+    // rejects.
+    const unsubscribe = clerk.addListener(
+      onDomEventFn(async () => {
+        const newOrgId = clerk.organization?.id ?? undefined;
+        // On mobile, Clerk can transiently clear clerk.organization to
+        // undefined during a background token refresh before restoring it on
+        // the next event. Keep the previous concrete org so that restoration
+        // is recognized as unchanged rather than as an org switch.
+        if (!newOrgId || newOrgId === prevOrgId) {
+          return;
+        }
+        prevOrgId = newOrgId;
+        set(persistOrgId$, newOrgId);
+        setPostHogOrganization(newOrgId);
 
-      await bestEffort(
-        (async () => {
-          return await clerk.session?.getToken({ skipCache: true });
-        })(),
-      );
-      location.href = "/";
-    }),
-  );
-  signal.addEventListener("abort", unsubscribe);
-});
+        await bestEffort(
+          (async () => {
+            return await clerk.session?.getToken({ skipCache: true });
+          })(),
+        );
+        location.href = "/";
+      }),
+    );
+    signal.addEventListener("abort", unsubscribe);
+  },
+);
 
 export const user$ = computed(async (get) => {
   get(reload$);

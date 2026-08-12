@@ -1,4 +1,5 @@
 class LocationOverrides {
+  ownerSignal: AbortSignal | undefined = undefined;
   pathname: string | undefined = undefined;
   search: string | undefined = undefined;
   pushState: typeof window.history.pushState | undefined = undefined;
@@ -7,11 +8,40 @@ class LocationOverrides {
 
 const overrides = new LocationOverrides();
 
-export const setPathname = (pathname: string) => {
+function clearOverrideValues(): void {
+  overrides.pathname = undefined;
+  overrides.search = undefined;
+  overrides.pushState = undefined;
+  overrides.replaceState = undefined;
+}
+
+function ownOverrides(signal: AbortSignal): void {
+  if (overrides.ownerSignal === signal) {
+    return;
+  }
+  signal.throwIfAborted();
+  clearOverrideValues();
+  overrides.ownerSignal = signal;
+  signal.addEventListener(
+    "abort",
+    () => {
+      if (overrides.ownerSignal !== signal) {
+        return;
+      }
+      overrides.ownerSignal = undefined;
+      clearOverrideValues();
+    },
+    { once: true },
+  );
+}
+
+export const setPathname = (pathname: string, signal: AbortSignal) => {
+  ownOverrides(signal);
   overrides.pathname = pathname;
 };
 
-export const setSearch = (search: string) => {
+export const setSearch = (search: string, signal: AbortSignal) => {
+  ownOverrides(signal);
   overrides.search = search;
 };
 
@@ -39,10 +69,8 @@ export function mockPushState(
   fn: typeof window.history.pushState | undefined,
   signal: AbortSignal,
 ) {
+  ownOverrides(signal);
   overrides.pushState = fn;
-  signal.addEventListener("abort", () => {
-    overrides.pushState = undefined;
-  });
 }
 
 export const replaceState = (
@@ -61,8 +89,6 @@ export function mockReplaceState(
   fn: typeof window.history.replaceState | undefined,
   signal: AbortSignal,
 ) {
+  ownOverrides(signal);
   overrides.replaceState = fn;
-  signal.addEventListener("abort", () => {
-    overrides.replaceState = undefined;
-  });
 }

@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, onTestFinished, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { animationFrame, timeout } from "signal-timers";
 
 import { testContext } from "../../signals/__tests__/test-helpers.ts";
@@ -8,10 +8,6 @@ import { setupVisualViewportKeyboardState } from "../visual-viewport-keyboard.ts
 const VIEWPORT_SETTLE_WAIT_MS = 75;
 const context = testContext();
 const resetViewportSettleSignal$ = resetSignal();
-const originalMatchMediaDescriptor = Object.getOwnPropertyDescriptor(
-  window,
-  "matchMedia",
-);
 
 class MockVisualViewport extends EventTarget {
   height: number;
@@ -31,29 +27,32 @@ class MockVisualViewport extends EventTarget {
 }
 
 function installVisualViewport(viewport: MockVisualViewport): void {
-  Object.defineProperty(window, "visualViewport", {
-    configurable: true,
-    value: viewport,
-  });
+  vi.stubGlobal("visualViewport", viewport);
 }
 
 function setInnerHeight(height: number): void {
-  Object.defineProperty(window, "innerHeight", {
-    configurable: true,
-    value: height,
-  });
+  vi.stubGlobal("innerHeight", height);
 }
 
 function setStandalone(matches: boolean): void {
-  Object.defineProperty(window, "matchMedia", {
-    configurable: true,
-    value: vi.fn().mockReturnValue({ matches }),
-  });
+  vi.stubGlobal("matchMedia", vi.fn().mockReturnValue({ matches }));
+}
+
+function appendTextEntry(): HTMLTextAreaElement {
+  const textarea = document.createElement("textarea");
+  document.body.append(textarea);
+  context.signal.addEventListener(
+    "abort",
+    () => {
+      textarea.remove();
+    },
+    { once: true },
+  );
+  return textarea;
 }
 
 function focusTextEntry(): HTMLTextAreaElement {
-  const textarea = document.createElement("textarea");
-  document.body.append(textarea);
+  const textarea = appendTextEntry();
   textarea.focus();
   return textarea;
 }
@@ -83,6 +82,13 @@ function focusComposer(inExistingThread: boolean): {
   composer.append(editor);
   container.append(composer);
   document.body.append(container);
+  context.signal.addEventListener(
+    "abort",
+    () => {
+      container.remove();
+    },
+    { once: true },
+  );
   editor.focus();
 
   return { editor, scrollIntoView };
@@ -115,26 +121,10 @@ async function resizeAndSettle(
 }
 
 function startViewportKeyboardState(): () => void {
-  const cleanup = setupVisualViewportKeyboardState(context.signal, () => {
+  return setupVisualViewportKeyboardState(context.signal, () => {
     return context.store.set(resetViewportSettleSignal$, context.signal);
   });
-  onTestFinished(cleanup);
-  return cleanup;
 }
-
-afterEach(() => {
-  document.body.replaceChildren();
-  delete document.documentElement.dataset.keyboardOpen;
-  Object.defineProperty(window, "visualViewport", {
-    configurable: true,
-    value: undefined,
-  });
-  if (originalMatchMediaDescriptor) {
-    Object.defineProperty(window, "matchMedia", originalMatchMediaDescriptor);
-  } else {
-    Reflect.deleteProperty(window, "matchMedia");
-  }
-});
 
 describe("visual viewport keyboard state", () => {
   it("keeps the keyboard closed when focus does not shrink the viewport", async () => {
@@ -268,8 +258,7 @@ describe("visual viewport keyboard state", () => {
     setInnerHeight(844);
     installVisualViewport(viewport);
     const firstEntry = focusTextEntry();
-    const secondEntry = document.createElement("textarea");
-    document.body.append(secondEntry);
+    const secondEntry = appendTextEntry();
 
     startViewportKeyboardState();
     await resizeAndSettle(viewport, 520, 100);

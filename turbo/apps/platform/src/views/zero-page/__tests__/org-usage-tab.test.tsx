@@ -6,15 +6,15 @@ import {
 import { zeroOrgMembersContract } from "@vm0/api-contracts/contracts/zero-org-members";
 import { zeroUsageMembersContract } from "@vm0/api-contracts/contracts/zero-usage";
 import { screen, waitFor } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
 import {
   click,
   detachedSetupPage,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
+import { mockNow } from "../../../__tests__/time.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { clearMockNow, mockNow } from "../../../lib/time.ts";
 
 const context = testContext();
 const MOCK_NOW = "2026-03-01T01:00:00Z";
@@ -191,11 +191,7 @@ async function openCreditUsage(): Promise<void> {
 
 describe("organization usage settings", () => {
   beforeEach(() => {
-    mockNow(new Date(MOCK_NOW));
-  });
-
-  afterEach(() => {
-    clearMockNow();
+    mockNow(context.signal, new Date(MOCK_NOW));
   });
 
   it("shows the credit balance, allowance, and credit additions", async () => {

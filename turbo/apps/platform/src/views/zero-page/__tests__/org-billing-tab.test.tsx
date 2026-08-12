@@ -18,7 +18,7 @@ import {
 import { FeatureSwitchKey } from "@vm0/core";
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { toast } from "@vm0/ui/components/ui/sonner";
-import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
+import { describe, expect, it, vi, type Mock } from "vitest";
 
 import {
   click,
@@ -28,14 +28,8 @@ import {
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { createDeferredPromise } from "../../../signals/utils.ts";
-import { i18n } from "../../../i18n/index.ts";
 
 const context = testContext();
-
-afterEach(async () => {
-  await i18n.changeLanguage("en-US");
-  document.documentElement.lang = "en-US";
-});
 
 function queryButtonByText(
   text: string,
@@ -3139,24 +3133,33 @@ describe("organization billing settings", () => {
     expect(screen.queryByText("Downgrade plan")).not.toBeInTheDocument();
   });
 
-  it("redirects to checkout when restoring a cancelled plan requires payment confirmation", async () => {
+  it("redirects for restore confirmation and shows success after realtime catches up", async () => {
     const locationAssign = context.mocks.browser.locationAssign();
+    const successToast = vi.spyOn(toast, "success");
+    let restored = false;
+    let billingStatusRequests = 0;
 
     context.mocks.data.org({
       id: "org_1",
-      name: "Restore Confirm Org",
+      name: "Restore Realtime Org",
       role: "admin",
     });
     context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
-      return respond(200, {
-        ...activeProBillingStatus(),
-        cancelAtPeriodEnd: true,
-        scheduledChange: {
-          type: "cancel",
-          targetTier: "limited-free-1",
-          effectiveDate: "2026-04-01T00:00:00Z",
-        },
-      });
+      billingStatusRequests += 1;
+      return respond(
+        200,
+        restored
+          ? activeProBillingStatus()
+          : {
+              ...activeProBillingStatus(),
+              cancelAtPeriodEnd: true,
+              scheduledChange: {
+                type: "cancel",
+                targetTier: "limited-free-1",
+                effectiveDate: "2026-04-01T00:00:00Z",
+              },
+            },
+      );
     });
     context.mocks.api(zeroBillingRestoreContract.create, ({ respond }) => {
       return respond(200, {
@@ -3170,8 +3173,8 @@ describe("organization billing settings", () => {
     await waitFor(() => {
       expect(screen.getByText("Restore plan")).toBeInTheDocument();
       expect(
-        screen.getByText(/has been cancelled and will end on Apr 1, 2026/),
-      ).toBeInTheDocument();
+        context.mocks.ably.hasSubscription("billing:changed"),
+      ).toBeTruthy();
     });
 
     click(screen.getByText("Restore plan"));
@@ -3186,6 +3189,21 @@ describe("organization billing settings", () => {
       ]);
     });
     expect(screen.queryByText("Restore Pro plan?")).not.toBeInTheDocument();
+    expect(successToast).not.toHaveBeenCalledWith(
+      "Plan restored. Your subscription will renew normally.",
+    );
+
+    const requestsBeforeRealtime = billingStatusRequests;
+    restored = true;
+    context.mocks.ably.trigger("billing:changed");
+
+    await waitFor(() => {
+      expect(billingStatusRequests).toBeGreaterThan(requestsBeforeRealtime);
+      expect(successToast).toHaveBeenCalledWith(
+        "Plan restored. Your subscription will renew normally.",
+      );
+    });
+    expect(successToast).toHaveBeenCalledTimes(1);
   });
 
   it("manages plan changes, credit purchases, and auto-recharge settings", async () => {

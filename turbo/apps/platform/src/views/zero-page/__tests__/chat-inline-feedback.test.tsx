@@ -709,7 +709,6 @@ describe("chat inline feedback", () => {
       expect(screen.queryByText("Quote")).not.toBeInTheDocument();
     });
     expect(successToast).toHaveBeenCalledWith("Copied");
-    successToast.mockRestore();
 
     selectTextForInlineFeedback(assistantReplyElement);
     await waitFor(() => {

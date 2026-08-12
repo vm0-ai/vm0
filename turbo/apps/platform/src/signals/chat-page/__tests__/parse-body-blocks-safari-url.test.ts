@@ -1,4 +1,5 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
+import { testContext } from "../../__tests__/test-helpers.ts";
 import { parseBodyBlocks } from "../parse-body-blocks.ts";
 
 // Regression for https://vm0.sentry.io/issues/7662000470/ — Mobile Safari 16.6
@@ -8,19 +9,23 @@ import { parseBodyBlocks } from "../parse-body-blocks.ts";
 // behavior-identical) when URL.canParse is unavailable.
 
 const ORIGINAL_CAN_PARSE = URL.canParse;
+const context = testContext();
 
 function withoutCanParse(): void {
+  context.signal.addEventListener(
+    "abort",
+    () => {
+      if (typeof URL.canParse !== "function" && ORIGINAL_CAN_PARSE) {
+        Object.defineProperty(URL, "canParse", {
+          value: ORIGINAL_CAN_PARSE,
+          configurable: true,
+          writable: true,
+        });
+      }
+    },
+    { once: true },
+  );
   delete (URL as { canParse?: typeof URL.canParse }).canParse;
-}
-
-function restoreCanParse(): void {
-  if (typeof URL.canParse !== "function" && ORIGINAL_CAN_PARSE) {
-    Object.defineProperty(URL, "canParse", {
-      value: ORIGINAL_CAN_PARSE,
-      configurable: true,
-      writable: true,
-    });
-  }
 }
 
 const SAMPLES: readonly string[] = [
@@ -43,10 +48,6 @@ const SAMPLES: readonly string[] = [
 ];
 
 describe("parseBodyBlocks with URL.canParse availability", () => {
-  afterEach(() => {
-    restoreCanParse();
-  });
-
   it("produces identical output whether or not URL.canParse exists", () => {
     const withCanParse = SAMPLES.map((content) => {
       return parseBodyBlocks(content, { previews: true });

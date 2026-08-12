@@ -1,5 +1,5 @@
 import { waitFor } from "@testing-library/react";
-import { describe, expect, it, onTestFinished } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { context, detachedSetupPage } from "./chat-lifecycle-test-helpers.ts";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
 
@@ -39,36 +39,34 @@ function stubLabelTextMeasurement(): void {
       return { width };
     },
   };
-  HTMLCanvasElement.prototype.getContext = function stubbedGetContext(
-    this: HTMLCanvasElement,
-    contextId: string,
-    ...rest: unknown[]
-  ) {
-    if (contextId === "2d") {
-      return measuringContext;
-    }
-    return (
-      originalGetContext as unknown as (
-        this: HTMLCanvasElement,
-        id: string,
-        ...args: unknown[]
-      ) => unknown
-    ).call(this, contextId, ...rest);
-  } as typeof HTMLCanvasElement.prototype.getContext;
+  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockImplementation(
+    function stubbedGetContext(
+      this: HTMLCanvasElement,
+      contextId: string,
+      ...rest: unknown[]
+    ) {
+      if (contextId === "2d") {
+        return measuringContext;
+      }
+      return (
+        originalGetContext as unknown as (
+          this: HTMLCanvasElement,
+          id: string,
+          ...args: unknown[]
+        ) => unknown
+      ).call(this, contextId, ...rest);
+    } as typeof HTMLCanvasElement.prototype.getContext,
+  );
 
   const originalRect = HTMLParagraphElement.prototype.getBoundingClientRect;
-  HTMLParagraphElement.prototype.getBoundingClientRect = function stubbedRect(
-    this: HTMLParagraphElement,
-  ) {
+  vi.spyOn(
+    HTMLParagraphElement.prototype,
+    "getBoundingClientRect",
+  ).mockImplementation(function stubbedRect(this: HTMLParagraphElement) {
     if (this.classList.contains("zero-shimmer-text")) {
       return new DOMRect(0, 0, LABEL_WIDTH_PX, 20);
     }
     return originalRect.call(this);
-  };
-
-  onTestFinished(() => {
-    HTMLCanvasElement.prototype.getContext = originalGetContext;
-    HTMLParagraphElement.prototype.getBoundingClientRect = originalRect;
   });
 }
 
@@ -97,9 +95,13 @@ function recordRenderedLabelText(): string[] {
     childList: true,
     characterData: true,
   });
-  onTestFinished(() => {
-    observer.disconnect();
-  });
+  context.signal.addEventListener(
+    "abort",
+    () => {
+      observer.disconnect();
+    },
+    { once: true },
+  );
   return rendered;
 }
 

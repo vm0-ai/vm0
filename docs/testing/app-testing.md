@@ -301,9 +301,11 @@ Features:
 
 - Creates fresh store for each test
 - Provides AbortSignal for cleanup
+- Tracks long-running promises until their test signal aborts
 - Provides `context.mocks` for API, browser, upload, Ably, and test data mocks
 - Automatically resets mock handlers after each test
-- Cleans up localStorage mocks
+- Cleans up localStorage and sessionStorage keys written through their signal
+  abstractions
 
 ## setupPage Options
 
@@ -335,3 +337,12 @@ detachedSetupPage({
 4. **Use factories for complex mock data** - Create helper functions for repetitive mock responses
 5. **Test user flows, not implementation** - Focus on what users see and do
 6. **Capture request data when needed** - Verify correct data is sent to APIs
+7. **Use the Storage signal abstractions** - Do not write browser Storage
+   directly or remove keys in test cleanup hooks
+8. **Do not add file-level `afterEach` cleanup** - Bind external resources to
+   `context.signal` when they are created, and pass long-running promises to
+   `context.track()`. Vitest configuration owns spy, mock, global stub, and
+   environment stub restoration.
+9. **Use the Platform clock abstraction** - Production code reads time through
+   `lib/time.ts`'s `now()`. Tests call `mockNow(context.signal, value)` so the
+   override is released by the owning test signal; do not spy on `Date.now()`.

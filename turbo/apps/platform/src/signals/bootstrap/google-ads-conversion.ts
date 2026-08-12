@@ -25,20 +25,17 @@ type WindowWithGoogleTag = Window & {
 };
 
 /**
- * Fire a Google Ads conversion at most once per (`dedupeKey`, `dedupeValue`)
- * pair in this session. `dedupeValue` is the identity the conversion is scoped
- * to: a user id for per-user conversions, or a constant for once-per-session
- * ones.
+ * Fire a Google Ads conversion unless the caller already persisted the same
+ * dedupe value. Returns whether the event fired so the caller can persist it.
  */
 export function fireGoogleAdsConversion(args: {
   readonly sendTo: string;
-  readonly dedupeKey: string;
   readonly dedupeValue: string;
   readonly value: number;
-  readonly storage: Storage | null;
-}): void {
-  if (args.storage?.getItem(args.dedupeKey) === args.dedupeValue) {
-    return;
+  readonly storedDedupeValue: string | null;
+}): boolean {
+  if (args.storedDedupeValue === args.dedupeValue) {
+    return false;
   }
 
   const gtag =
@@ -46,7 +43,7 @@ export function fireGoogleAdsConversion(args: {
       ? undefined
       : (window as WindowWithGoogleTag).gtag;
   if (typeof gtag !== "function") {
-    return;
+    return false;
   }
 
   gtag("event", "conversion", {
@@ -54,5 +51,5 @@ export function fireGoogleAdsConversion(args: {
     value: args.value,
     currency: "USD",
   });
-  args.storage?.setItem(args.dedupeKey, args.dedupeValue);
+  return true;
 }

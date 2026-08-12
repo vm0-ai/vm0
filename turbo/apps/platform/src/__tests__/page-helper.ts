@@ -1,10 +1,11 @@
 import { fireEvent, render } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { toast } from "@vm0/ui/components/ui/sonner";
 import { command } from "ccstate";
 
 import type { TestContext } from "../signals/__tests__/test-helpers";
 import {
-  clearMockedAuth,
+  clearMockedAuthOnAbort,
   type MockedClientSession,
   type MockedInvitation,
   type MockedMembership,
@@ -108,6 +109,10 @@ export async function setupPage(options: {
   withoutRender?: boolean;
 }) {
   ensureTestLocalStorage();
+  // setupPage exercises the shared MSW fixture data even when a test does not
+  // customize a handler. Start the lazy mock lifecycle so abort resets any
+  // fixture mutations made by the application during this test.
+  void options.context.mocks;
   createPushStateMock(options.context.signal);
   pushState({}, "", options.path);
 
@@ -166,9 +171,14 @@ export async function setupPage(options: {
       memberships: [{ id: defaultOrgId }],
     });
   }
-  options.context.signal.addEventListener("abort", () => {
-    clearMockedAuth();
-  });
+  clearMockedAuthOnAbort(options.context.signal);
+  options.context.signal.addEventListener(
+    "abort",
+    () => {
+      toast.dismiss();
+    },
+    { once: true },
+  );
 
   // Not wrapped in act() — background polling loops would cause act() to
   // hang indefinitely waiting for them to settle. React "not wrapped in
@@ -221,8 +231,8 @@ function createPushStateMock(signal: AbortSignal) {
   };
 
   const updateLocation = (entry: HistoryEntry) => {
-    setPathname(entry.url.pathname);
-    setSearch(entry.url.search);
+    setPathname(entry.url.pathname, signal);
+    setSearch(entry.url.search, signal);
   };
 
   const fn = vi.fn<typeof window.history.pushState>(
@@ -250,7 +260,7 @@ function createPushStateMock(signal: AbortSignal) {
   );
   mockReplaceState(replaceFn, signal);
 
-  const backMock = vi.spyOn(window.history, "back").mockImplementation(() => {
+  vi.spyOn(window.history, "back").mockImplementation(() => {
     if (currentEntryIndex <= 0) {
       return;
     }
@@ -262,14 +272,6 @@ function createPushStateMock(signal: AbortSignal) {
     updateLocation(entry);
     window.dispatchEvent(new PopStateEvent("popstate", { state: entry.data }));
   });
-  signal.addEventListener(
-    "abort",
-    () => {
-      backMock.mockRestore();
-    },
-    { once: true },
-  );
-
   return fn;
 }
 

@@ -15,7 +15,7 @@ import { zeroStrapiIntegrationsContract } from "@vm0/api-contracts/contracts/zer
 import { integrationsGithubContract } from "@vm0/api-contracts/contracts/integrations-github";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { screen, waitFor, within } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   click,
@@ -24,17 +24,10 @@ import {
   holdElementAnimations,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
-import { initializeI18n } from "../../../i18n/index.ts";
-import { DEFAULT_LOCALE } from "../../../i18n/resources.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
 const AGENT_PHONE_HANDLE = "+15555550123";
-
-afterEach(async () => {
-  document.documentElement.lang = DEFAULT_LOCALE;
-  await initializeI18n(DEFAULT_LOCALE);
-});
 
 function queryRole(role: "button" | "link", name: string): HTMLElement | null {
   return (

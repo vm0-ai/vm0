@@ -1,5 +1,5 @@
 import { act, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { mockedClerk } from "../../../__tests__/mock-auth.ts";
@@ -14,7 +14,18 @@ import { getClerkLocalization } from "../clerk-localization.ts";
 const context = testContext();
 
 function setBrowserUrl(url: string): void {
-  window.location.href = url;
+  context.mocks.browser.url(url);
+}
+
+function disableUrlCanParse(): void {
+  const urlWithoutCanParse = new Proxy(URL, {
+    get(target, property, receiver) {
+      return property === "canParse"
+        ? undefined
+        : Reflect.get(target, property, receiver);
+    },
+  });
+  vi.stubGlobal("URL", urlWithoutCanParse);
 }
 
 function useLocale(locale: SupportedLocale): void {
@@ -372,68 +383,46 @@ describe("app auth pages", () => {
   });
 
   it("renders the app-hosted sign-in route when URL.canParse is unavailable", async () => {
-    const originalCanParse = URL.canParse;
-    Object.defineProperty(URL, "canParse", {
-      configurable: true,
-      value: undefined,
+    disableUrlCanParse();
+
+    const redirectUrl = "https://app.vm0.ai/_/skeleton";
+    const path = `/sign-in?redirect_url=${encodeURIComponent(redirectUrl)}`;
+    setBrowserUrl(`https://app.vm0.ai${path}`);
+
+    detachedSetupPage({ context, path });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("clerk-sign-in")).toBeInTheDocument();
     });
 
-    try {
-      const redirectUrl = "https://app.vm0.ai/_/skeleton";
-      const path = `/sign-in?redirect_url=${encodeURIComponent(redirectUrl)}`;
-      setBrowserUrl(`https://app.vm0.ai${path}`);
-
-      detachedSetupPage({ context, path });
-
-      await waitFor(() => {
-        expect(screen.getByTestId("clerk-sign-in")).toBeInTheDocument();
-      });
-
-      expect(screen.getByTestId("clerk-sign-in")).toHaveAttribute(
-        "data-clerk-fallback-redirect-url",
-        redirectUrl,
-      );
-      expect(screen.getByTestId("clerk-sign-in")).toHaveAttribute(
-        "data-clerk-force-redirect-url",
-        redirectUrl,
-      );
-    } finally {
-      Object.defineProperty(URL, "canParse", {
-        configurable: true,
-        value: originalCanParse,
-      });
-    }
+    expect(screen.getByTestId("clerk-sign-in")).toHaveAttribute(
+      "data-clerk-fallback-redirect-url",
+      redirectUrl,
+    );
+    expect(screen.getByTestId("clerk-sign-in")).toHaveAttribute(
+      "data-clerk-force-redirect-url",
+      redirectUrl,
+    );
   });
 
   it("ignores malformed sign-in redirect URLs when URL.canParse is unavailable", async () => {
-    const originalCanParse = URL.canParse;
-    Object.defineProperty(URL, "canParse", {
-      configurable: true,
-      value: undefined,
+    disableUrlCanParse();
+
+    const path = `/sign-in?redirect_url=${encodeURIComponent("https://[")}`;
+    setBrowserUrl(`https://app.vm0.ai${path}`);
+
+    detachedSetupPage({ context, path });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("clerk-sign-in")).toBeInTheDocument();
     });
 
-    try {
-      const path = `/sign-in?redirect_url=${encodeURIComponent("https://[")}`;
-      setBrowserUrl(`https://app.vm0.ai${path}`);
-
-      detachedSetupPage({ context, path });
-
-      await waitFor(() => {
-        expect(screen.getByTestId("clerk-sign-in")).toBeInTheDocument();
-      });
-
-      expect(
-        screen.getByTestId("clerk-sign-in").dataset.clerkFallbackRedirectUrl,
-      ).toBe("https://app.vm0.ai");
-      expect(
-        screen.getByTestId("clerk-sign-in").dataset.clerkForceRedirectUrl,
-      ).toBe("https://app.vm0.ai");
-    } finally {
-      Object.defineProperty(URL, "canParse", {
-        configurable: true,
-        value: originalCanParse,
-      });
-    }
+    expect(
+      screen.getByTestId("clerk-sign-in").dataset.clerkFallbackRedirectUrl,
+    ).toBe("https://app.vm0.ai");
+    expect(
+      screen.getByTestId("clerk-sign-in").dataset.clerkForceRedirectUrl,
+    ).toBe("https://app.vm0.ai");
   });
 
   it("renders the app-hosted sign-up route with an allowed redirect URL", async () => {

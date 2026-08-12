@@ -1,6 +1,6 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, onTestFinished } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { fillComposer, mockChatLifecycle } from "./chat-test-helpers.ts";
@@ -12,10 +12,9 @@ const SOFTWARE_KEYBOARD_HEIGHT_PX = 336;
 // A software keyboard shrinks the visual viewport while the layout viewport
 // keeps its height.
 function occludeVisualViewport(): void {
-  const original = Object.getOwnPropertyDescriptor(window, "visualViewport");
-  Object.defineProperty(window, "visualViewport", {
-    configurable: true,
-    value: Object.assign(new EventTarget(), {
+  vi.stubGlobal(
+    "visualViewport",
+    Object.assign(new EventTarget(), {
       height: window.innerHeight - SOFTWARE_KEYBOARD_HEIGHT_PX,
       offsetLeft: 0,
       offsetTop: 0,
@@ -24,14 +23,7 @@ function occludeVisualViewport(): void {
       scale: 1,
       width: window.innerWidth,
     }),
-  });
-  onTestFinished(() => {
-    if (original) {
-      Object.defineProperty(window, "visualViewport", original);
-      return;
-    }
-    Reflect.deleteProperty(window, "visualViewport");
-  });
+  );
 }
 
 async function openComposer(sendMode: "enter" | "cmd-enter") {

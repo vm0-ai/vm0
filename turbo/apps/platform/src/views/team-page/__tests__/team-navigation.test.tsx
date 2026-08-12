@@ -1523,7 +1523,7 @@ describe("team page navigation", () => {
   });
 
   it("ignores expired allow grants when opening connector permissions", async () => {
-    mockNow();
+    mockNow(context.signal);
     mockTeamAPIs();
     context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
       return respond(200, [
@@ -1574,7 +1574,7 @@ describe("team page navigation", () => {
   });
 
   it("shows aggregate persisted durations on permission category headers", async () => {
-    mockNow();
+    mockNow(context.signal);
     mockTeamAPIs();
     const metadata = testConnectorPermissionDetails.get("slack");
     if (!metadata?.categories) {
@@ -1659,7 +1659,7 @@ describe("team page navigation", () => {
   });
 
   it("saves permission duration changes from an agent page", async () => {
-    mockNow();
+    mockNow(context.signal);
     mockTeamAPIs();
     const capturedApplies: ApplyUserPermissionGrantsRequest[] = [];
     let grants: UserPermissionGrantResponse[] = [

@@ -69,7 +69,7 @@ describe("permission allow page", () => {
   });
 
   it("lets a user grant an expiring connector permission and continue the callback", async () => {
-    mockNow();
+    mockNow(context.signal);
     const agentId = "c0000000-0000-4000-a000-000000000001";
     const threadId = "c0000000-0000-4000-a000-000000000101";
     const callbackPrompt = "Re-check Slack access, then continue";
@@ -327,7 +327,7 @@ describe("permission allow page", () => {
   });
 
   it("shows already allowed when the permission is already granted with a different expiry", async () => {
-    mockNow();
+    mockNow(context.signal);
     const agentId = "c0000000-0000-4000-a000-000000000003";
 
     context.mocks.api(zeroAgentsByIdContract.get, ({ respond }) => {
@@ -379,7 +379,7 @@ describe("permission allow page", () => {
   });
 
   it("shows the confirmation flow when an existing allow grant is expired", async () => {
-    mockNow();
+    mockNow(context.signal);
     const agentId = "c0000000-0000-4000-a000-000000000009";
 
     context.mocks.api(zeroAgentsByIdContract.get, ({ respond }) => {
@@ -429,7 +429,7 @@ describe("permission allow page", () => {
   });
 
   it("shows the confirmation flow when an existing allow grant has an invalid expiration", async () => {
-    mockNow();
+    mockNow(context.signal);
     const agentId = "c0000000-0000-4000-a000-000000000011";
 
     context.mocks.api(zeroAgentsByIdContract.get, ({ respond }) => {
@@ -479,7 +479,7 @@ describe("permission allow page", () => {
   });
 
   it("does not show expired grant text when the default policy already allows the permission", async () => {
-    mockNow();
+    mockNow(context.signal);
     const agentId = "c0000000-0000-4000-a000-000000000010";
 
     context.mocks.api(zeroAgentsByIdContract.get, ({ respond }) => {
@@ -600,7 +600,7 @@ describe("permission allow page", () => {
   });
 
   it("lets a user grant unknown endpoints to an agent", async () => {
-    mockNow();
+    mockNow(context.signal);
     const agentId = "c0000000-0000-4000-a000-000000000004";
     let grants: UserPermissionGrantResponse[] = [];
 

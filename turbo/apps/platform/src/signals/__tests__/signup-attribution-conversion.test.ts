@@ -1,8 +1,11 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { zeroAttributionContract } from "@vm0/api-contracts/contracts/zero-attribution";
+import { describe, expect, it, vi } from "vitest";
+import {
+  zeroAttributionContract,
+  type AdAttributionMetadata,
+} from "@vm0/api-contracts/contracts/zero-attribution";
 
 import {
-  clearMockedAuth,
+  clearMockedAuthOnAbort,
   mockOrganization,
   mockUser,
 } from "../../__tests__/mock-auth.ts";
@@ -13,20 +16,22 @@ import {
   nowDate,
 } from "../../__tests__/time.ts";
 import { recordSignupAttribution$ } from "../bootstrap/signup-attribution.ts";
+import { sessionStorageSignals } from "../external/session-storage.ts";
 import { testContext } from "./test-helpers.ts";
 
 const context = testContext();
 const STORED_AD_ATTRIBUTION_KEY = "vm0.adAttribution";
-const SIGNUP_ATTRIBUTION_RECORDED_KEY = "vm0.signupAttributionRecorded";
-const SIGNUP_CONVERSION_RECORDED_KEY = "vm0.googleAdsSignupConversionRecorded";
 const SIGNUP_SEND_TO = "AW-18144854014/OlLBCNXGgqwcEP7_kcxD";
+const storedAdAttributionStorage = sessionStorageSignals(
+  STORED_AD_ATTRIBUTION_KEY,
+);
 
 type WindowWithGtag = Window & {
   gtag?: (...args: unknown[]) => void;
 };
 
 function mockSignedInUser(options: { readonly createdAt?: Date } = {}): void {
-  mockNow();
+  mockNow(context.signal);
   mockUser(
     {
       id: "test-user-123",
@@ -42,9 +47,7 @@ function mockSignedInUser(options: { readonly createdAt?: Date } = {}): void {
     activeOrg: { id: "org_default", name: "Default Org" },
     memberships: [{ id: "org_default" }],
   });
-  context.signal.addEventListener("abort", () => {
-    clearMockedAuth();
-  });
+  clearMockedAuthOnAbort(context.signal);
 }
 
 function installGtagMock() {
@@ -73,8 +76,8 @@ function installGtagMock() {
 }
 
 function storePaidSignupAttribution(): void {
-  window.sessionStorage.setItem(
-    STORED_AD_ATTRIBUTION_KEY,
+  context.store.set(
+    storedAdAttributionStorage.set$,
     new URLSearchParams({
       source_type: "paid",
       gclid: "click-123",
@@ -86,20 +89,37 @@ function storePaidSignupAttribution(): void {
   );
 }
 
-describe("signup attribution Google Ads conversion", () => {
-  afterEach(() => {
-    window.sessionStorage.removeItem(STORED_AD_ATTRIBUTION_KEY);
-    window.sessionStorage.removeItem(SIGNUP_ATTRIBUTION_RECORDED_KEY);
-    window.sessionStorage.removeItem(SIGNUP_CONVERSION_RECORDED_KEY);
-  });
+function setGoogleAnalyticsCookie(value: string): void {
+  context.mocks.browser.cookie(`_ga=${encodeURIComponent(value)}`);
+}
 
+describe("signup attribution Google Ads conversion", () => {
   it("fires the Signup conversion after first-time signup attribution is recorded", async () => {
     const gtag = installGtagMock();
+    let recordedAttribution: AdAttributionMetadata | undefined;
     mockSignedInUser();
     storePaidSignupAttribution();
+    setGoogleAnalyticsCookie("GA1.1.123456789.987654321");
+    context.mocks.api(
+      zeroAttributionContract.recordSignup,
+      ({ body, respond }) => {
+        recordedAttribution = body.attribution;
+        return respond(200, { recorded: true });
+      },
+    );
 
     await context.store.set(recordSignupAttribution$, context.signal);
 
+    expect(recordedAttribution).toStrictEqual({
+      source_type: "paid",
+      gclid: "click-123",
+      gclid_present: "true",
+      utm_source: "google",
+      utm_medium: "cpc",
+      utm_campaign: "signup-campaign",
+      vm0_source: "homepage",
+      ga_client_id: "123456789.987654321",
+    });
     expect(gtag).toHaveBeenCalledWith(
       "event",
       "conversion",
@@ -115,12 +135,24 @@ describe("signup attribution Google Ads conversion", () => {
     expect(gtag).toHaveBeenCalledTimes(1);
   });
 
-  it("fires the Signup conversion for a recent signup without stored ad attribution", async () => {
+  it("records the GA4 client ID for a recent signup without stored ad attribution", async () => {
     const gtag = installGtagMock();
+    let recordedAttribution: AdAttributionMetadata | undefined;
     mockSignedInUser();
+    setGoogleAnalyticsCookie("GA1.1.123456789.987654321");
+    context.mocks.api(
+      zeroAttributionContract.recordSignup,
+      ({ body, respond }) => {
+        recordedAttribution = body.attribution;
+        return respond(200, { recorded: true });
+      },
+    );
 
     await context.store.set(recordSignupAttribution$, context.signal);
 
+    expect(recordedAttribution).toStrictEqual({
+      ga_client_id: "123456789.987654321",
+    });
     expect(gtag).toHaveBeenCalledWith(
       "event",
       "conversion",
@@ -139,6 +171,22 @@ describe("signup attribution Google Ads conversion", () => {
 
     await context.store.set(recordSignupAttribution$, context.signal);
 
+    expect(gtag).not.toHaveBeenCalled();
+  });
+
+  it("ignores a malformed analytics cookie when no other attribution exists", async () => {
+    const gtag = installGtagMock();
+    let attributionRequests = 0;
+    mockSignedInUser({ createdAt: dateFromIso(isoFromNowMs(-31 * 60 * 1000)) });
+    setGoogleAnalyticsCookie("not-a-ga-cookie");
+    context.mocks.api(zeroAttributionContract.recordSignup, ({ respond }) => {
+      attributionRequests += 1;
+      return respond(200, { recorded: true });
+    });
+
+    await context.store.set(recordSignupAttribution$, context.signal);
+
+    expect(attributionRequests).toBe(0);
     expect(gtag).not.toHaveBeenCalled();
   });
 

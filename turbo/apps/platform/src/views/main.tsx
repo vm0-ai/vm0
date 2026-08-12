@@ -26,7 +26,11 @@ function AppToaster() {
   const handleInvitationRedirect = useSet(handleInvitationRedirect$);
 
   const handleReady = () => {
-    handleBillingRedirect();
+    detach(
+      handleBillingRedirect(signal),
+      Reason.DomCallback,
+      "handle-billing-redirect",
+    );
     detach(
       handleInvitationRedirect(signal),
       Reason.DomCallback,

@@ -3,10 +3,8 @@ import { zeroCustomConnectorOAuth2Contract } from "@vm0/api-contracts/contracts/
 import type { PublicConnectorCatalogIcon } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { CONNECTOR_APP_OAUTH_CALLBACK_METADATA_STORAGE_KEY } from "@vm0/connectors/app-oauth-callback";
 import { screen, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
-import { initializeI18n } from "../../../i18n/index.ts";
-import { DEFAULT_LOCALE } from "../../../i18n/resources.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { localStorageSignals } from "../../../signals/external/local-storage.ts";
 import { pathname, search } from "../../../signals/location.ts";
@@ -22,11 +20,6 @@ function createGithubIcon(): PublicConnectorCatalogIcon {
     invertInDarkMode: true,
   };
 }
-
-afterEach(async () => {
-  document.documentElement.lang = DEFAULT_LOCALE;
-  await initializeI18n(DEFAULT_LOCALE);
-});
 
 describe("connector callback page", () => {
   it("completes a custom connector callback through the API", async () => {

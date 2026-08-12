@@ -1,31 +1,35 @@
-// Shared clock override used by platform tests that need deterministic time.
-function testOverride<T>(factory: () => T): {
-  readonly get: () => T;
-  readonly set: (value: T) => void;
-  readonly clear: () => void;
+interface NowOverride {
+  readonly value: number;
+}
+
+function createNowOverride(): {
+  readonly get: () => number | undefined;
+  readonly set: (value: number, signal: AbortSignal) => void;
 } {
-  let init = factory();
+  let current: NowOverride | undefined;
 
   return {
     get: () => {
-      return init;
+      return current?.value;
     },
-    set: (value: T) => {
-      init = value;
-    },
-    clear: () => {
-      init = factory();
+    set: (value, signal) => {
+      signal.throwIfAborted();
+      const override = { value };
+      current = override;
+      signal.addEventListener(
+        "abort",
+        () => {
+          if (current === override) {
+            current = undefined;
+          }
+        },
+        { once: true },
+      );
     },
   };
 }
 
-const {
-  get: getMockedNow,
-  set: setMockedNow,
-  clear: clearMockedNow,
-} = testOverride<number | undefined>(() => {
-  return undefined;
-});
+const { get: getMockedNow, set: setMockedNow } = createNowOverride();
 
 export function now(): number {
   return getMockedNow() ?? Date.now();
@@ -35,10 +39,6 @@ export function nowDate(): Date {
   return new Date(now());
 }
 
-export function mockNow(value: Date | number): void {
-  setMockedNow(value instanceof Date ? value.getTime() : value);
-}
-
-export function clearMockNow(): void {
-  clearMockedNow();
+export function mockNow(value: Date | number, signal: AbortSignal): void {
+  setMockedNow(value instanceof Date ? value.getTime() : value, signal);
 }

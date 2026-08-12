@@ -1,5 +1,5 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
-import { afterAll, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
 import {
   chatThreadByIdContract,
@@ -13,6 +13,9 @@ const context = testContext();
 
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 const THREAD_ID = "b0000000-0000-4000-a000-000000000001";
+const MAC_USER_AGENT =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 " +
+  "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
 interface SidebarThread {
   readonly id: string;
   readonly title: string | null;
@@ -23,46 +26,8 @@ interface SidebarThread {
   readonly renamedAt?: string | null;
 }
 
-const restoreNavigator = vi.hoisted(() => {
-  const macUserAgent =
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 " +
-    "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36";
-  const maxTouchPoints = Object.getOwnPropertyDescriptor(
-    navigator,
-    "maxTouchPoints",
-  );
-  const platform = Object.getOwnPropertyDescriptor(navigator, "platform");
-  const userAgent = Object.getOwnPropertyDescriptor(navigator, "userAgent");
-
-  function restoreProperty(
-    property: "maxTouchPoints" | "platform" | "userAgent",
-    descriptor: PropertyDescriptor | undefined,
-  ): void {
-    if (descriptor) {
-      Object.defineProperty(navigator, property, descriptor);
-    } else {
-      delete (navigator as Partial<Record<typeof property, unknown>>)[property];
-    }
-  }
-
-  Object.defineProperty(navigator, "userAgent", {
-    configurable: true,
-    value: macUserAgent,
-  });
-  Object.defineProperty(navigator, "platform", {
-    configurable: true,
-    value: "MacIntel",
-  });
-  Object.defineProperty(navigator, "maxTouchPoints", {
-    configurable: true,
-    value: 0,
-  });
-
-  return () => {
-    restoreProperty("userAgent", userAgent);
-    restoreProperty("platform", platform);
-    restoreProperty("maxTouchPoints", maxTouchPoints);
-  };
+beforeEach(() => {
+  context.mocks.browser.userAgent(MAC_USER_AGENT);
 });
 
 function prepareDefaultAgent(): void {
@@ -130,11 +95,6 @@ function mockSidebarThreadStory(threads: readonly SidebarThread[]): void {
     });
   });
 }
-
-afterAll(() => {
-  restoreNavigator();
-  vi.resetModules();
-});
 
 describe("zero sidebar mac shortcuts", () => {
   it("toggles the sidebar with cmd+b while the chat composer is focused", async () => {

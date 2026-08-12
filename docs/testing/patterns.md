@@ -316,7 +316,7 @@ Key points:
 4. **Prefer page tests over signal tests**. Signal-only tests are reserved for
    behavior with no user-visible page surface.
 5. **Let `testContext()` own cleanup**. It aborts the test signal and resets
-   handlers, local storage state, and logger state after each test.
+   handlers, local and session storage state, and logger state after each test.
 
 ---
 
