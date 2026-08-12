@@ -20,7 +20,7 @@ import type {
   ChatForwardSelection,
   ChatForwardTarget,
 } from "../../signals/chat-page/chat-forward.ts";
-import { createChatForwardComposerState } from "../../signals/chat-page/chat-forward-composer.ts";
+import { createChatForwardComposerState$ } from "../../signals/chat-page/chat-forward-composer.ts";
 import {
   defaultAgentId$,
   defaultAgentName$,
@@ -236,8 +236,9 @@ export function ChatForwardDialog({
   readonly onDismiss: () => void;
 }) {
   const { t } = useTranslation();
+  const createForwardComposerState = useSet(createChatForwardComposerState$);
   const target = composerState?.target ?? null;
-  const onTargetSelect = (nextTarget: ChatForwardTarget) => {
+  const handleTargetSelect = (nextTarget: ChatForwardTarget) => {
     const forward = createForwardContext(
       selection,
       sourceAgentId,
@@ -252,7 +253,7 @@ export function ChatForwardDialog({
       );
     };
     onComposerStateChange(
-      createChatForwardComposerState(nextTarget, forward, onOptimisticSend),
+      createForwardComposerState(nextTarget, forward, onOptimisticSend),
     );
   };
   return (
@@ -307,7 +308,7 @@ export function ChatForwardDialog({
             <ForwardComposer state={composerState} />
           </>
         ) : (
-          <ForwardTargetPicker onSelect={onTargetSelect} />
+          <ForwardTargetPicker onSelect={handleTargetSelect} />
         )}
       </DialogContent>
     </Dialog>
