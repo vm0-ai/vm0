@@ -101,13 +101,21 @@ const readPublicModelRankingsRoute$ = command(
   },
 );
 
-export const modelStatsRoutes: readonly RouteEntry[] = [
+const aggregateModelStatsRoutes: readonly RouteEntry[] = [
   {
     route: cronAggregateModelStatsContract.aggregate,
     handler: aggregateModelStatsRoute$,
   },
+];
+
+export const modelStatsPublicRoutes: readonly RouteEntry[] = [
   {
     route: modelStatsContract.rankings,
     handler: readPublicModelRankingsRoute$,
   },
+];
+
+export const modelStatsRoutes: readonly RouteEntry[] = [
+  ...aggregateModelStatsRoutes,
+  ...modelStatsPublicRoutes,
 ];

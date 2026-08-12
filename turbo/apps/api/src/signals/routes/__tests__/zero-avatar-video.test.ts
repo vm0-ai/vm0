@@ -5,7 +5,7 @@ import { PutObjectCommand } from "@aws-sdk/client-s3";
 import { createStore } from "ccstate";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { HttpResponse, http } from "msw";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, onTestFinished } from "vitest";
 
 import { createAppWithRoutes } from "../../../app-factory-core";
 import { testContext } from "../../../__tests__/test-context";
@@ -14,8 +14,10 @@ import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import {
+  createUsagePricingFixture,
   seedOrgMetadata,
-  seedUsagePricingRows,
+  type UsagePricingFixture,
+  type UsagePricingRow,
 } from "../../../test-fixtures/system-config-seeds";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createDeferredPromise } from "../../utils";
@@ -39,9 +41,19 @@ const JOGGAI_VOICES_URL = "https://api.jogg.ai/v2/voices";
 const JOGGAI_WEBHOOK_SECRET = randomUUID();
 const GENERATED_VIDEO_URL = "https://res.jogg.ai/avatar-video.mp4";
 const VIDEO_BYTES = Buffer.from("generated avatar video");
+const AVATAR_VIDEO_PRICING_ROWS = [
+  {
+    kind: "video",
+    provider: "joggai-talking-avatar",
+    category: "output_video_joggai_credits",
+    unitPrice: 623,
+    unitSize: 1,
+  },
+] as const satisfies readonly UsagePricingRow[];
 
 interface AvatarVideoFixture {
   readonly orgId: string;
+  readonly usagePricingResolution: UsagePricingFixture["resolution"];
   readonly userId: string;
 }
 
@@ -49,7 +61,9 @@ function authHeaders() {
   return { authorization: "Bearer clerk-session" };
 }
 
-function createAvatarVideoTestApp() {
+function createAvatarVideoTestApp(
+  usagePricingResolution?: UsagePricingFixture["resolution"],
+) {
   return createAppWithRoutes({
     signal: context.signal,
     routes: [
@@ -59,6 +73,7 @@ function createAvatarVideoTestApp() {
       ...webhooksBuiltInGenerationRoutes,
       ...zeroBillingStatusRoutes,
     ],
+    usagePricingResolution,
   });
 }
 
@@ -83,8 +98,15 @@ async function seedAvatarVideoFixture(options?: {
   readonly featureEnabled?: boolean;
   readonly withPricing?: boolean;
 }): Promise<AvatarVideoFixture> {
+  const pricing = await createUsagePricingFixture(
+    (options?.withPricing ?? true)
+      ? { configured: AVATAR_VIDEO_PRICING_ROWS }
+      : { missing: AVATAR_VIDEO_PRICING_ROWS },
+  );
+  onTestFinished(pricing.cleanup);
   const fixture = {
     orgId: `org_${randomUUID()}`,
+    usagePricingResolution: pricing.resolution,
     userId: `user_${randomUUID()}`,
   };
   await seedOrgMetadata({
@@ -101,17 +123,6 @@ async function seedAvatarVideoFixture(options?: {
     await updateFeatureSwitchesForUser(context, fixture, {
       [FeatureSwitchKey.JoggAiBuiltIn]: options.featureEnabled,
     });
-  }
-  if (options?.withPricing ?? true) {
-    await seedUsagePricingRows([
-      {
-        kind: "video",
-        provider: "joggai-talking-avatar",
-        category: "output_video_joggai_credits",
-        unitPrice: 623,
-        unitSize: 1,
-      },
-    ]);
   }
   mocks.clerk.session(fixture.userId, fixture.orgId);
   return fixture;
@@ -143,10 +154,9 @@ function readGenerationId(value: unknown, userId: string): string {
 
 async function orgCredits(fixture: AvatarVideoFixture): Promise<number> {
   mocks.clerk.session(fixture.userId, fixture.orgId);
-  const response = await createAvatarVideoTestApp().request(
-    "/api/zero/billing/status",
-    { headers: authHeaders() },
-  );
+  const response = await createAvatarVideoTestApp(
+    fixture.usagePricingResolution,
+  ).request("/api/zero/billing/status", { headers: authHeaders() });
   expect(response.status).toBe(200);
   const body = asRecord(await response.json());
   if (typeof body.credits !== "number") {
@@ -179,18 +189,17 @@ describe("JoggAI built-in avatar video routes", () => {
   it("keeps the built-in capability behind its feature switch", async () => {
     const fixture = await seedAvatarVideoFixture({ featureEnabled: false });
     mocks.clerk.session(fixture.userId, fixture.orgId);
-    const response = await createAvatarVideoTestApp().request(
-      "/api/zero/avatar-video/generate",
-      {
-        method: "POST",
-        headers: authHeaders(),
-        body: JSON.stringify({
-          avatarId: 81,
-          voiceId: "en-US-ChristopherNeural",
-          script: "Hello",
-        }),
-      },
-    );
+    const response = await createAvatarVideoTestApp(
+      fixture.usagePricingResolution,
+    ).request("/api/zero/avatar-video/generate", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({
+        avatarId: 81,
+        voiceId: "en-US-ChristopherNeural",
+        script: "Hello",
+      }),
+    });
 
     expect(response.status).toBe(403);
     await expect(response.json()).resolves.toStrictEqual({
@@ -253,7 +262,7 @@ describe("JoggAI built-in avatar video routes", () => {
       }),
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
-    const app = createAvatarVideoTestApp();
+    const app = createAvatarVideoTestApp(fixture.usagePricingResolution);
 
     const avatars = await app.request(
       "/api/zero/avatar-video/avatars?page=2&pageSize=20&aspectRatio=portrait&style=professional",
@@ -335,7 +344,7 @@ describe("JoggAI built-in avatar video routes", () => {
       }),
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
-    const app = createAvatarVideoTestApp();
+    const app = createAvatarVideoTestApp(fixture.usagePricingResolution);
 
     const avatarResponse = await app.request(
       "/api/zero/avatar-video/avatars?page=2&pageSize=10",
@@ -451,7 +460,7 @@ describe("JoggAI built-in avatar video routes", () => {
       }),
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
-    const app = createAvatarVideoTestApp();
+    const app = createAvatarVideoTestApp(fixture.usagePricingResolution);
     const response = await app.request("/api/zero/avatar-video/generate", {
       method: "POST",
       headers: { authorization: `Bearer ${token}` },
@@ -626,18 +635,17 @@ describe("JoggAI built-in avatar video routes", () => {
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
-    const response = await createAvatarVideoTestApp().request(
-      "/api/zero/avatar-video/generate",
-      {
-        method: "POST",
-        headers: authHeaders(),
-        body: JSON.stringify({
-          avatarId: 82,
-          voiceId: "en-US-AvaNeural",
-          audioUrl: "https://example.com/voice.mp3",
-        }),
-      },
-    );
+    const response = await createAvatarVideoTestApp(
+      fixture.usagePricingResolution,
+    ).request("/api/zero/avatar-video/generate", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({
+        avatarId: 82,
+        voiceId: "en-US-AvaNeural",
+        audioUrl: "https://example.com/voice.mp3",
+      }),
+    });
 
     expect(response.status).toBe(202);
     expect(observedBody).toMatchObject({

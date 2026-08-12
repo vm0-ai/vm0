@@ -11,7 +11,7 @@ import { z } from "zod";
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { createApp } from "../../../app-factory";
-import { mockEnv, mockOptionalEnv } from "../../../lib/env";
+import { mockOptionalEnv } from "../../../lib/env";
 import { mockNow, now } from "../../../lib/time";
 import { mockStripeWebhookEventConstructor } from "../../external/stripe-client";
 import type { ApiTestUser } from "./helpers/api-bdd";
@@ -23,7 +23,6 @@ import { createRunsApi } from "./helpers/api-bdd-runs";
 import { createWorkflowsBddApi } from "./helpers/api-bdd-workflows";
 import { chatEventDisplayText } from "./helpers/chat-event";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
-import { cronExecuteWorkflowAutomationsRoutes } from "../cron-execute-workflow-automations";
 import { testStripeAutomationEventRoutes } from "../test-stripe-automation-events";
 import { testWorkflowAutomationExecutionRoutes } from "../test-workflow-automation-execution";
 import { webhooksStripeAutomationEventsRoutes } from "../webhooks-stripe-automation-events";
@@ -36,12 +35,17 @@ const workflows = createWorkflowsBddApi(context);
 const mocks = createZeroRouteMocks(context);
 
 const AUTOMATION_WEBHOOK_SECRET = "whsec_stripe_automation_events";
-const CRON_SECRET = "stripe-workflow-cron-secret";
 const STRIPE_ACCOUNT_ID = "acct_stripe_workflow_live";
-const cronResultSchema = z.object({
-  executed: z.number().int().nonnegative(),
-  skipped: z.number().int().nonnegative(),
-});
+const EXECUTED_EXECUTION = {
+  success: true,
+  executed: 1,
+  skipped: 0,
+} as const;
+const NO_EXECUTION = {
+  success: true,
+  executed: 0,
+  skipped: 0,
+} as const;
 const TERMINALLY_SKIPPED_EXECUTION = {
   success: true,
   executed: 0,
@@ -259,21 +263,6 @@ async function postStripeAutomationEvent(
   return response;
 }
 
-async function executeCron(): Promise<{
-  readonly executed: number;
-  readonly skipped: number;
-}> {
-  const response = await createApp({
-    signal: context.signal,
-    routes: cronExecuteWorkflowAutomationsRoutes,
-  }).request("/api/cron/execute-workflow-automations", {
-    method: "GET",
-    headers: { authorization: `Bearer ${CRON_SECRET}` },
-  });
-  expect(response.status).toBe(200);
-  return cronResultSchema.parse(await response.json());
-}
-
 async function executeAutomation(scenario: Scenario) {
   return await accept(
     workflowAutomationExecutionClient().execute({
@@ -414,7 +403,6 @@ beforeEach(() => {
     "STRIPE_AUTOMATION_WEBHOOK_SECRET",
     AUTOMATION_WEBHOOK_SECRET,
   );
-  mockEnv("CRON_SECRET", CRON_SECRET);
 });
 
 describe("Stripe automation event webhook", () => {
@@ -523,12 +511,19 @@ describe("Stripe automation event webhook", () => {
       lastDeliveryStatusAt: "2026-08-07T08:00:00.000Z",
       warning: null,
     });
-    const cronResults = await Promise.all([executeCron(), executeCron()]);
+    const executionResults = await Promise.all([
+      executeAutomation(scenario),
+      executeAutomation(scenario),
+    ]);
     expect(
-      cronResults.reduce((total, cron) => {
-        return total + cron.executed;
-      }, 0),
-    ).toBeGreaterThanOrEqual(1);
+      executionResults
+        .map((result) => {
+          return result.body;
+        })
+        .sort((left, right) => {
+          return left.executed - right.executed;
+        }),
+    ).toStrictEqual([NO_EXECUTION, EXECUTED_EXECUTION]);
     expect((await readStripeAutomation(scenario)).health).toMatchObject({
       lastDeliveryStatus: "delivered",
       warning: null,
@@ -756,7 +751,12 @@ describe("Stripe automation event webhook", () => {
     await postStripeAutomationEvent(
       invoicePaidEvent({ eventId: "evt_cross_tenant_seed" }),
     );
-    expect((await executeCron()).executed).toBeGreaterThanOrEqual(2);
+    expect((await executeAutomation(first)).body).toStrictEqual(
+      EXECUTED_EXECUTION,
+    );
+    expect((await executeAutomation(second)).body).toStrictEqual(
+      EXECUTED_EXECUTION,
+    );
     await expect(automationInputEvents(first)).resolves.toHaveLength(1);
     await expect(automationInputEvents(second)).resolves.toHaveLength(1);
 
@@ -775,7 +775,12 @@ describe("Stripe automation event webhook", () => {
 
     await applyDeliveryFixture(second, "clear-forced-failures");
     await postStripeAutomationEvent(retryEvent);
-    expect((await executeCron()).executed).toBeGreaterThanOrEqual(2);
+    expect((await executeAutomation(first)).body).toStrictEqual(
+      EXECUTED_EXECUTION,
+    );
+    expect((await executeAutomation(second)).body).toStrictEqual(
+      EXECUTED_EXECUTION,
+    );
     await expect(automationInputEvents(first)).resolves.toHaveLength(2);
     await expect(automationInputEvents(second)).resolves.toHaveLength(2);
   });
@@ -790,7 +795,9 @@ describe("Stripe automation event webhook", () => {
       "fail-next-queue-admission-for-automation",
     );
 
-    expect((await executeCron()).skipped).toBeGreaterThanOrEqual(1);
+    expect((await executeAutomation(scenario)).body).toStrictEqual(
+      TERMINALLY_SKIPPED_EXECUTION,
+    );
     await expect(automationInputEvents(scenario)).resolves.toHaveLength(0);
     expect((await readStripeAutomation(scenario)).health).toMatchObject({
       lastDeliveryStatus: "pending",
@@ -799,7 +806,9 @@ describe("Stripe automation event webhook", () => {
 
     await applyDeliveryFixture(scenario, "clear-forced-failures");
     await applyDeliveryFixture(scenario, "make-latest-due");
-    expect((await executeCron()).executed).toBeGreaterThanOrEqual(1);
+    expect((await executeAutomation(scenario)).body).toStrictEqual(
+      EXECUTED_EXECUTION,
+    );
     await expect(automationInputEvents(scenario)).resolves.toHaveLength(1);
     expect((await readStripeAutomation(scenario)).health).toMatchObject({
       lastDeliveryStatus: "delivered",
@@ -820,7 +829,9 @@ describe("Stripe automation event webhook", () => {
     );
     await applyDeliveryFixture(scenario, "hold-latest-claim");
 
-    expect((await executeCron()).executed).toBeGreaterThanOrEqual(1);
+    expect((await executeAutomation(scenario)).body).toStrictEqual(
+      EXECUTED_EXECUTION,
+    );
     await expect(automationInputEvents(scenario)).resolves.toHaveLength(1);
     expect((await readStripeAutomation(scenario)).health).toStrictEqual({
       lastMatchingEventReceivedAt: "2026-08-07T09:01:00.000Z",
@@ -830,7 +841,9 @@ describe("Stripe automation event webhook", () => {
     });
 
     mockNow(firstReceipt + 420_000);
-    expect((await executeCron()).executed).toBeGreaterThanOrEqual(1);
+    expect((await executeAutomation(scenario)).body).toStrictEqual(
+      EXECUTED_EXECUTION,
+    );
     await expect(automationInputEvents(scenario)).resolves.toHaveLength(2);
     expect((await readStripeAutomation(scenario)).health).toMatchObject({
       lastDeliveryStatus: "delivered",
@@ -930,8 +943,9 @@ describe("Stripe automation event webhook", () => {
     await connectors.updateFeatureSwitches(scenario.actor, {
       [FeatureSwitchKey.StripeInvoicePaidWorkflowAutomations]: false,
     });
-    const cron = await executeCron();
-    expect(cron.skipped).toBeGreaterThanOrEqual(1);
+    expect((await executeAutomation(scenario)).body).toStrictEqual(
+      TERMINALLY_SKIPPED_EXECUTION,
+    );
     expect((await readStripeAutomation(scenario)).health).toMatchObject({
       lastDeliveryStatus: "skipped",
       warning: null,
@@ -1043,7 +1057,9 @@ describe("Stripe automation event webhook", () => {
       enabled: true,
     });
 
-    await executeCron();
+    expect((await executeAutomation(affected)).body).toStrictEqual(
+      TERMINALLY_SKIPPED_EXECUTION,
+    );
     expect((await readStripeAutomation(affected)).health).toMatchObject({
       lastDeliveryStatus: "skipped",
     });
@@ -1057,13 +1073,17 @@ describe("Stripe automation event webhook", () => {
       invoicePaidEvent({ eventId: "evt_recoverable_claim" }),
     );
     await applyDeliveryFixture(recoverable, "hold-latest-claim");
-    await executeCron();
+    expect((await executeAutomation(recoverable)).body).toStrictEqual(
+      NO_EXECUTION,
+    );
     expect((await readStripeAutomation(recoverable)).health).toMatchObject({
       lastDeliveryStatus: "pending",
     });
 
     mockNow(startedAt + 360_000);
-    expect((await executeCron()).executed).toBeGreaterThanOrEqual(1);
+    expect((await executeAutomation(recoverable)).body).toStrictEqual(
+      EXECUTED_EXECUTION,
+    );
     expect((await readStripeAutomation(recoverable)).health).toMatchObject({
       lastDeliveryStatus: "delivered",
     });
@@ -1078,23 +1098,35 @@ describe("Stripe automation event webhook", () => {
       }),
     );
     await applyDeliveryFixture(exhausted, "corrupt-latest-snapshot");
-    expect((await executeCron()).skipped).toBeGreaterThanOrEqual(1);
+    expect((await executeAutomation(exhausted)).body).toStrictEqual(
+      TERMINALLY_SKIPPED_EXECUTION,
+    );
     expect((await readStripeAutomation(exhausted)).health).toMatchObject({
       lastDeliveryStatus: "pending",
       warning: null,
     });
 
     mockNow(startedAt + 390_000);
-    expect((await executeCron()).skipped).toBe(0);
+    expect((await executeAutomation(exhausted)).body).toStrictEqual(
+      NO_EXECUTION,
+    );
     mockNow(startedAt + 420_000);
-    expect((await executeCron()).skipped).toBeGreaterThanOrEqual(1);
+    expect((await executeAutomation(exhausted)).body).toStrictEqual(
+      TERMINALLY_SKIPPED_EXECUTION,
+    );
     mockNow(startedAt + 480_000);
-    expect((await executeCron()).skipped).toBe(0);
+    expect((await executeAutomation(exhausted)).body).toStrictEqual(
+      NO_EXECUTION,
+    );
     mockNow(startedAt + 540_000);
-    expect((await executeCron()).skipped).toBeGreaterThanOrEqual(1);
+    expect((await executeAutomation(exhausted)).body).toStrictEqual(
+      TERMINALLY_SKIPPED_EXECUTION,
+    );
 
     await applyDeliveryFixture(exhausted, "expire-latest-retry-window");
-    expect((await executeCron()).skipped).toBeGreaterThanOrEqual(1);
+    expect((await executeAutomation(exhausted)).body).toStrictEqual(
+      TERMINALLY_SKIPPED_EXECUTION,
+    );
     expect((await readStripeAutomation(exhausted)).health).toMatchObject({
       lastDeliveryStatus: "failed",
       warning: "delivery_failed",

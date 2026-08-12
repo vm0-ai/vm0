@@ -429,7 +429,7 @@ describe("RUN-01..04 and CHAIN-RUN: run admission, runner, and visible reads", (
 
 // Workflow schedule lifecycle and execution coverage lives in
 // zero-workflow-automations.test.ts and zero-workflow-automation-scheduler.test.ts.
-// Shared cron authorization remains covered here.
+// Shared cron authorization is covered in global-sweep-contracts.test.ts.
 
 describe("SCHED-02: cron routes", () => {
   it("rejects invalid cron auth on shared cron routes", async () => {
@@ -445,13 +445,6 @@ describe("SCHED-02: cron routes", () => {
 });
 
 describe("SCHED-02 and OPS-01: email outbox drain cron", () => {
-  it("rejects unauthorized drain requests", async () => {
-    const email = createEmailApi(context);
-
-    const unauthorizedDrain = await email.requestEmailOutboxCronWithoutAuth();
-    expect(unauthorizedDrain.status).toBe(401);
-  });
-
   it("drains a data-export email once at its UTC retry boundary", async () => {
     const email = createEmailApi(context);
     const actor = createBddApi(context).user();

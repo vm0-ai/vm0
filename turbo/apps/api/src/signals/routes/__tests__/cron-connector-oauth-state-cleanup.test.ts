@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 
-import { cronConnectorOauthStateCleanupContract } from "@vm0/api-contracts/contracts/cron";
 import { zeroConnectorOauthStartContract } from "@vm0/api-contracts/contracts/zero-connectors";
 import {
   afterEach,
@@ -22,12 +21,10 @@ import {
   testCronDeleteCleanupsStateContract,
   testCronDeleteCleanupsStateRoutes,
 } from "../test-cron-delete-cleanups-state";
-import { cronConnectorOauthStateCleanupRoutes } from "../cron-connector-oauth-state-cleanup";
 import { zeroConnectorsRoutes } from "../zero-connectors";
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
-const CRON_SECRET = "test-connector-oauth-state-cleanup-secret";
 const API_ORIGIN = "https://api.vm0.ai";
 
 function mockAuthenticatedSession(marker: string): void {
@@ -75,7 +72,6 @@ function registerFixtureCleanup(marker: string): void {
 
 describe("connector OAuth state cleanup cron", () => {
   beforeEach(() => {
-    mockEnv("CRON_SECRET", CRON_SECRET);
     mockEnv("VM0_API_BACKEND_URL", API_ORIGIN);
     mockEnv("VM0_WEB_URL", "https://www.vm0.ai");
     mockOptionalEnv("GH_OAUTH_CLIENT_ID", "test-client-id");
@@ -84,21 +80,6 @@ describe("connector OAuth state cleanup cron", () => {
 
   afterEach(() => {
     clearMockNow();
-  });
-
-  it("requires the cron secret", async () => {
-    const response = await accept(
-      setupApp({ context, routes: cronConnectorOauthStateCleanupRoutes })(
-        cronConnectorOauthStateCleanupContract,
-      ).cleanup({
-        headers: {},
-      }),
-      [401],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: { code: "UNAUTHORIZED", message: "Invalid cron secret" },
-    });
   });
 
   it("deletes expired states while preserving unexpired states", async () => {

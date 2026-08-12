@@ -1,25 +1,18 @@
 import { randomUUID } from "node:crypto";
 
-import { cronDrainEmailOutboxContract } from "@vm0/api-contracts/contracts/cron";
 import type { TestEmailOutboxStateItem } from "@vm0/api-contracts/contracts/test-email-outbox-state";
 import { userExportContract } from "@vm0/api-contracts/contracts/user-export";
 
 import { accept, type TestContext } from "../../../../__tests__/test-context";
 import { setupApp } from "../../../../__tests__/test-helpers";
 import { flushWaitUntilForTest } from "../../../context/wait-until";
-import { cronDrainEmailOutboxRoutes } from "../../cron-drain-email-outbox";
 import { userExportRoutes } from "../../user-export";
 import type { ApiTestUser } from "./api-bdd";
 import { createEmailOutboxStateApi } from "./email-outbox-state";
 import { createZeroRouteMocks } from "./zero-route-test";
 
-const EMAIL_ROUTES = Object.freeze([
-  ...cronDrainEmailOutboxRoutes,
-  ...userExportRoutes,
-]);
-
 function emailApp(context: TestContext) {
-  return setupApp({ context, routes: EMAIL_ROUTES });
+  return setupApp({ context, routes: userExportRoutes });
 }
 
 function authenticate(context: TestContext, actor: ApiTestUser) {
@@ -99,15 +92,6 @@ export function createEmailApi(context: TestContext) {
 
     async drainEmailOutboxItems(itemIds: readonly string[]): Promise<number> {
       return await outbox.drainItems(itemIds);
-    },
-
-    async requestEmailOutboxCronWithoutAuth() {
-      return await accept(
-        emailApp(context)(cronDrainEmailOutboxContract).drain({
-          headers: {},
-        }),
-        [401],
-      );
     },
   };
 }

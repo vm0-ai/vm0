@@ -326,6 +326,21 @@ export default [
     },
   },
   {
+    files: [
+      "src/**/__tests__/**/*.ts",
+      "src/**/*.test.ts",
+      "src/test-fixtures/**/*.ts",
+      "src/signals/routes/test-*.ts",
+    ],
+    rules: {
+      "api/no-cross-test-time-staggering": "error",
+      "api/no-global-sweep-test-routes": "error",
+      "api/no-legacy-shared-state-markers": "error",
+      "api/no-production-staff-entitlement-mutation": "error",
+      "api/no-unowned-usage-pricing": "error",
+    },
+  },
+  {
     ignores: ["**/dist/**", ".vercel/**"],
   },
   ...oxlint.buildFromOxlintConfigFile("./.oxlintrc.json"),
