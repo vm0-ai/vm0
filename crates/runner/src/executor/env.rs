@@ -462,7 +462,6 @@ fn build_env_json_with_host_env_inner(
     Ok(env)
 }
 
-#[derive(Debug)]
 pub(super) struct PreparedRunPayload {
     payload: guest_contracts::env::RunPayload,
 }
