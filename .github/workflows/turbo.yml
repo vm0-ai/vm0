@@ -3333,6 +3333,7 @@ jobs:
           ROOTFS_HASH_MAP: ${{ needs.deploy-runner-prepare.outputs.rootfs-hash-map }}
           SNAPSHOT_HASH_MAP: ${{ needs.deploy-runner-prepare.outputs.snapshot-hash-map }}
           RUNNER_API_URL: ${{ matrix.runtime == 'vercel' && needs.deploy-api-vercel.outputs.preview-url || needs.deploy-api.outputs.preview-url }}
+          RUNNER_RUNTIME: ${{ matrix.runtime }}
           CF_ACCESS_CLIENT_ID: ${{ matrix.runtime == 'cloudflare' && secrets.CF_API_PREVIEW_ACCESS_CLIENT_ID || '' }}
           CF_ACCESS_CLIENT_SECRET: ${{ matrix.runtime == 'cloudflare' && secrets.CF_API_PREVIEW_ACCESS_CLIENT_SECRET || '' }}
           VERCEL_BYPASS: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
@@ -3403,16 +3404,30 @@ jobs:
             # shellcheck disable=SC2029
             ssh "$REMOTE" "sudo rm -f ${RUNNER_CONFIG_DIR}/status.json"
 
-            # Start as systemd transient service
-            # shellcheck disable=SC2029
-            ssh "$REMOTE" "sudo ${BIN_DIR}/runner service start \
-              --name ${RUNNER_NAME} \
-              --config ${RUNNER_CONFIG_DIR}/runner.yaml \
-              --env CF_ACCESS_CLIENT_ID=${CF_ACCESS_CLIENT_ID} \
-              --env CF_ACCESS_CLIENT_SECRET=${CF_ACCESS_CLIENT_SECRET} \
-              --env VERCEL_AUTOMATION_BYPASS_SECRET=${VERCEL_BYPASS} \
-              --env USE_MOCK_CLAUDE=true \
-              --env USE_MOCK_CODEX=true"
+            # Start as systemd transient service. Vercel runners must not
+            # receive empty Access variables because the runner deliberately
+            # rejects partial or empty credential pairs.
+            if [[ "$RUNNER_RUNTIME" == "cloudflare" ]]; then
+              : "${CF_ACCESS_CLIENT_ID:?Cloudflare Access client ID is required}"
+              : "${CF_ACCESS_CLIENT_SECRET:?Cloudflare Access client secret is required}"
+              # shellcheck disable=SC2029
+              ssh "$REMOTE" "sudo ${BIN_DIR}/runner service start \
+                --name ${RUNNER_NAME} \
+                --config ${RUNNER_CONFIG_DIR}/runner.yaml \
+                --env CF_ACCESS_CLIENT_ID=${CF_ACCESS_CLIENT_ID} \
+                --env CF_ACCESS_CLIENT_SECRET=${CF_ACCESS_CLIENT_SECRET} \
+                --env VERCEL_AUTOMATION_BYPASS_SECRET=${VERCEL_BYPASS} \
+                --env USE_MOCK_CLAUDE=true \
+                --env USE_MOCK_CODEX=true"
+            else
+              # shellcheck disable=SC2029
+              ssh "$REMOTE" "sudo ${BIN_DIR}/runner service start \
+                --name ${RUNNER_NAME} \
+                --config ${RUNNER_CONFIG_DIR}/runner.yaml \
+                --env VERCEL_AUTOMATION_BYPASS_SECRET=${VERCEL_BYPASS} \
+                --env USE_MOCK_CLAUDE=true \
+                --env USE_MOCK_CODEX=true"
+            fi
 
             # Wait for the runner to become job-admitting before health checks.
             # systemd-run returns once the process starts, but startup
