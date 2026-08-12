@@ -15,6 +15,7 @@ import {
   type StripeCreditNoteParams,
   type StripeRefund,
 } from "../external/stripe-client";
+import type { BillingReconciliationScope } from "./billing-reconciliation-scope";
 
 const CREDITS_PER_CENT = 10;
 const RECONCILIATION_LIMIT = 100;
@@ -588,6 +589,7 @@ export async function refundUsagePackMemberCredits(
 
 export async function reconcileUsagePackCreditRefunds(
   db: Db,
+  scope: BillingReconciliationScope | undefined,
   signal: AbortSignal,
 ): Promise<number> {
   if (!(await usagePackCreditRefundSchemaAvailable(db))) {
@@ -597,7 +599,14 @@ export async function reconcileUsagePackCreditRefunds(
   const refunds = await db
     .select()
     .from(usagePackCreditRefunds)
-    .where(inArray(usagePackCreditRefunds.status, ["pending", "processing"]))
+    .where(
+      and(
+        scope
+          ? inArray(usagePackCreditRefunds.orgId, [...scope.orgIds])
+          : undefined,
+        inArray(usagePackCreditRefunds.status, ["pending", "processing"]),
+      ),
+    )
     .orderBy(asc(usagePackCreditRefunds.updatedAt))
     .limit(RECONCILIATION_LIMIT);
   signal.throwIfAborted();

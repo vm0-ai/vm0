@@ -42,6 +42,7 @@ import {
   type UsagePackAllocationAdditionPreview,
 } from "./usage-pack-allocation-change.service";
 import { createUsagePackCreditGrant } from "./usage-pack-credit.service";
+import type { BillingReconciliationScope } from "./billing-reconciliation-scope";
 import { loadUsagePackCatalog } from "./usage-pack-subscription.service";
 import {
   isCurrentStripePreviewMetadata,
@@ -1558,6 +1559,7 @@ export async function revokeUsagePackInvitationPurchase(
 export async function reconcileUsagePackInvitationPurchases(
   db: Db,
   clerk: ClerkClient,
+  scope: BillingReconciliationScope | undefined,
   signal: AbortSignal,
 ): Promise<number> {
   if (!(await usagePackInvitationPurchaseSchemaAvailable(db))) {
@@ -1574,6 +1576,9 @@ export async function reconcileUsagePackInvitationPurchases(
     })
     .where(
       and(
+        scope
+          ? inArray(usagePackInvitationPurchases.orgId, [...scope.orgIds])
+          : undefined,
         eq(usagePackInvitationPurchases.status, "checkout_pending"),
         lte(usagePackInvitationPurchases.stripeCheckoutExpiresAt, at),
       ),
@@ -1582,15 +1587,20 @@ export async function reconcileUsagePackInvitationPurchases(
     .select()
     .from(usagePackInvitationPurchases)
     .where(
-      inArray(usagePackInvitationPurchases.status, [
-        "payment_succeeded",
-        "creating_invitation",
-        "invitation_pending",
-        "accepted_pending_activation",
-        "activating",
-        "refund_pending",
-        "refunding",
-      ]),
+      and(
+        scope
+          ? inArray(usagePackInvitationPurchases.orgId, [...scope.orgIds])
+          : undefined,
+        inArray(usagePackInvitationPurchases.status, [
+          "payment_succeeded",
+          "creating_invitation",
+          "invitation_pending",
+          "accepted_pending_activation",
+          "activating",
+          "refund_pending",
+          "refunding",
+        ]),
+      ),
     );
   signal.throwIfAborted();
   let reconciled = 0;
