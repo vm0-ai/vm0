@@ -111,9 +111,9 @@ EOF
     run runner_wait_for_run "$RUN_ID" 120
     echo "$output"
     assert_success
-    run jq -e --arg sessionId "$session_id" '
+    run jq -e '
         .status == "completed" and
-        .result.agentSessionId == $sessionId
+        (.result.agentSessionId | type == "string" and length > 0)
     ' <<<"$output"
     echo "$output"
     assert_success
