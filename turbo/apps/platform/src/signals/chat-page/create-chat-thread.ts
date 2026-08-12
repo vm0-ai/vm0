@@ -11,7 +11,7 @@ import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { isSupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
 import { IN_VITEST } from "../../env.ts";
 import { i18n } from "../../i18n/index.ts";
-import { onRef, onRejection, resetSignal, setLoop } from "../utils.ts";
+import { onRef, onRejection, resetSignal, setLoop, settle } from "../utils.ts";
 import { createHeaderAutomationSignals } from "./header-automation-menu.ts";
 import { createThreadSidebarSignals } from "./thread-sidebar.ts";
 import {
@@ -2002,6 +2002,7 @@ function createEventChangeEffects(
     projections,
     scroll,
     syncVisibleEventTrees$,
+    initialEventsReady$,
   }: {
     readonly threadId: string;
     readonly chatEvents: ChatEventSignals;
@@ -2011,6 +2012,7 @@ function createEventChangeEffects(
     >;
     readonly scroll: ChatThreadScrollSignals;
     readonly syncVisibleEventTrees$: Command<Promise<void>, [AbortSignal]>;
+    readonly initialEventsReady$: State<boolean>;
   },
   ownerSignal: AbortSignal,
 ) {
@@ -2048,6 +2050,21 @@ function createEventChangeEffects(
       set(sidebar.open$, { type: "browser" });
     },
   );
+  const updateEventPresentation$ = command(
+    async (
+      { set },
+      scrollPosition: ThreadScrollPosition | null,
+      signal: AbortSignal,
+    ): Promise<void> => {
+      await Promise.all([
+        set(syncVisibleEventTrees$, signal),
+        set(autoOpenSidebar$, signal),
+      ]);
+      signal.throwIfAborted();
+      set(initialEventsReady$, true);
+      await set(scroll.autoScroll$, scrollPosition, signal);
+    },
+  );
   const afterEventsChange$ = command(
     async ({ get, set }, signal: AbortSignal): Promise<void> => {
       const hasOptimisticUserMessage = get(
@@ -2072,15 +2089,55 @@ function createEventChangeEffects(
         ),
       });
       await Promise.all([
-        set(syncVisibleEventTrees$, signal),
-        set(autoOpenSidebar$, signal),
-        set(scroll.autoScroll$, scrollPosition, signal),
+        set(updateEventPresentation$, scrollPosition, signal),
         set(markThreadReadIfNeeded$, signal),
       ]);
       signal.throwIfAborted();
     },
   );
   return { sidebar, afterEventsChange$ };
+}
+
+function createChatEventPresentationLifecycle({
+  chatEvents,
+  afterEventsChange$,
+  syncVisibleEventTrees$,
+  enableSidebarEntryAnimations$,
+  initialEventsReady$,
+}: {
+  readonly chatEvents: ChatEventSignals;
+  readonly afterEventsChange$: Command<Promise<void>, [AbortSignal]>;
+  readonly syncVisibleEventTrees$: Command<Promise<void>, [AbortSignal]>;
+  readonly enableSidebarEntryAnimations$: Command<void, []>;
+  readonly initialEventsReady$: State<boolean>;
+}) {
+  const setup$ = command(
+    async ({ set }, signal: AbortSignal): Promise<void> => {
+      set(
+        registerChatEventChangeHandler$,
+        chatEvents.chatEvents$,
+        afterEventsChange$,
+        signal,
+      );
+      await set(syncVisibleEventTrees$, signal);
+      set(enableSidebarEntryAnimations$);
+      const result = await settle(set(chatEvents.setup$, signal), signal);
+      if (!result.ok) {
+        set(initialEventsReady$, true);
+        throw result.error;
+      }
+    },
+  );
+  const catchUp$ = command(
+    async ({ set }, signal: AbortSignal): Promise<void> => {
+      const result = await settle(set(chatEvents.catchUp$, signal), signal);
+      set(initialEventsReady$, true);
+      if (!result.ok) {
+        throw result.error;
+      }
+    },
+  );
+  return { setup$, catchUp$ };
 }
 
 function createReadyScrollAfterRenderRequest(
@@ -2170,27 +2227,28 @@ function createChatThreadMessagePipeline(
     position,
     renderWindow.ensureVisibleEventTrees$,
   );
+  const initialEventsReady$ = state(false);
   const effects = createEventChangeEffects(
-    { threadId, chatEvents, projections, scroll, syncVisibleEventTrees$ },
+    {
+      threadId,
+      chatEvents,
+      projections,
+      scroll,
+      syncVisibleEventTrees$,
+      initialEventsReady$,
+    },
     ownerSignal,
   );
   const chatSkeletonVisible$ = computed((get): boolean => {
-    return !get(chatEvents.initialEventsReady$);
+    return !get(initialEventsReady$);
   });
-  const setup$ = command(
-    async ({ set }, signal: AbortSignal): Promise<void> => {
-      set(
-        registerChatEventChangeHandler$,
-        chatEvents.chatEvents$,
-        effects.afterEventsChange$,
-        signal,
-      );
-      await set(syncVisibleEventTrees$, signal);
-      set(effects.sidebar.enableEntryAnimations$);
-      await set(chatEvents.setup$, signal);
-      signal.throwIfAborted();
-    },
-  );
+  const lifecycle = createChatEventPresentationLifecycle({
+    chatEvents,
+    afterEventsChange$: effects.afterEventsChange$,
+    syncVisibleEventTrees$,
+    enableSidebarEntryAnimations$: effects.sidebar.enableEntryAnimations$,
+    initialEventsReady$,
+  });
   const assistantErrorRecovery = createAssistantErrorRecoverySignals({
     threadId,
     chatEvents,
@@ -2219,7 +2277,7 @@ function createChatThreadMessagePipeline(
   return {
     scroll,
     sidebar: effects.sidebar,
-    setup$,
+    ...lifecycle,
     chatSkeletonVisible$,
     ...assistantErrorRecovery,
     ...projections,
@@ -3748,7 +3806,7 @@ function createChatPanelSignalsWithDraft(
   const runTracking = createRunTracking({
     threadId,
     setupChatEvents$: messages.setup$,
-    catchUpChatEvents$: chatEvents.catchUp$,
+    catchUpChatEvents$: messages.catchUp$,
     reloadArtifacts$: messages.reloadArtifacts$,
     subscribeBrowserSessions$: messages.subscribeBrowserSessions$,
     automationSignals: threadOwned,

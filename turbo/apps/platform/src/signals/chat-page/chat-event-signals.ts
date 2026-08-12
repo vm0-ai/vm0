@@ -1,4 +1,4 @@
-import { command, computed, type Command, type Computed } from "ccstate";
+import { command, type Command, type Computed } from "ccstate";
 import type {
   ChatRunOptionsRequest,
   UserMessageInputDocument,
@@ -393,7 +393,6 @@ export interface ChatEventSignals {
   readonly threadId: string;
   readonly chatEvents$: Computed<ChatEvent[]>;
   readonly hasOptimisticUserMessage$: Computed<boolean>;
-  readonly initialEventsReady$: Computed<boolean>;
   readonly setup$: Command<Promise<void>, [AbortSignal]>;
   readonly catchUp$: Command<Promise<void>, [AbortSignal]>;
   readonly sendEvent$: Command<
@@ -422,14 +421,10 @@ export function createChatEventSignals(threadId: string): ChatEventSignals {
     mergePersistentEvents$: events.mergePersistentEvents$,
     syncRemoteEvents$: events.syncRemoteEvents$,
   });
-  const initialEventsReady$ = computed((get): boolean => {
-    return get(events.initialEventsReady$);
-  });
   return {
     threadId,
     chatEvents$: events.chatEvents$,
     hasOptimisticUserMessage$: events.hasOptimisticUserMessage$,
-    initialEventsReady$,
     ...setup,
     sendEvent$,
   };
