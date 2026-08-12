@@ -1615,6 +1615,8 @@
       "removeVideo": "Videovorlage {{title}} entfernen",
       "removeWebsite": "Website-Vorlage {{title}} entfernen",
       "removeWorkflow": "Workflow-Vorlage {{title}} entfernen",
+      "videoModelLabel": "Videomodell {{model}}",
+      "videoModelUpTo": "Bis zu {{duration}}",
       "videoOptions": "Videooptionen",
       "videoOptionsAudio": "Audio erzeugen",
       "videoOptionsDuration": "Dauer",

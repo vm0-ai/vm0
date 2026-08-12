@@ -1615,6 +1615,8 @@
       "removeVideo": "वीडियो टेम्प्लेट {{title}} हटाएं",
       "removeWebsite": "वेबसाइट टेम्पलेट {{title}} हटाएँ",
       "removeWorkflow": "वर्कफ़्लो टेम्पलेट {{title}} हटाएँ",
+      "videoModelLabel": "वीडियो मॉडल {{model}}",
+      "videoModelUpTo": "{{duration}} तक",
       "videoOptions": "वीडियो विकल्प",
       "videoOptionsAudio": "ऑडियो बनाएँ",
       "videoOptionsDuration": "अवधि",

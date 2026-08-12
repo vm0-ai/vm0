@@ -1655,6 +1655,8 @@
       "removeVideo": "Remover template de vídeo {{title}}",
       "removeWebsite": "Remover template de site {{title}}",
       "removeWorkflow": "Remover template de fluxo de trabalho {{title}}",
+      "videoModelLabel": "Modelo de vídeo {{model}}",
+      "videoModelUpTo": "Até {{duration}}",
       "videoOptions": "Opções de vídeo",
       "videoOptionsAudio": "Gerar áudio",
       "videoOptionsDuration": "Duração",

@@ -83,10 +83,11 @@ import { reloadWorkflowData$ } from "../workflows-page/workflow-reload.ts";
 import { i18n } from "../../i18n/index.ts";
 import { videoTemplateOptionsEnabled$ } from "../external/feature-switch.ts";
 import {
+  videoTemplateSettingsText,
   videoTemplateSpec,
-  videoTemplateSpecText,
   type VideoTemplateSpec,
 } from "./video-template-spec.ts";
+import type { VideoTemplateOptionsPane } from "./video-template-options-pane.ts";
 
 type AgentIdValue = string | null | Promise<string | null>;
 type WorkflowNamesSyncCommand = Command<
@@ -315,13 +316,19 @@ const INLINE_TEMPLATE_NAME_ZONE_CLASS =
   "focus-visible:ring-inset focus-visible:ring-orange-500/40 " +
   "dark:hover:bg-orange-400/20 dark:focus-visible:ring-orange-300/40";
 
-const INLINE_TEMPLATE_SPEC_ZONE_CLASS =
-  "flex h-full shrink-0 items-center gap-1 border-l border-orange-500/25 " +
-  "pl-2 pr-1.5 text-[12px] font-normal text-orange-600/75 transition-colors " +
+const INLINE_TEMPLATE_ZONE_CLASS =
+  "h-full shrink-0 items-center gap-1 border-l border-orange-500/25 " +
+  "text-[12px] font-normal text-orange-600/75 transition-colors " +
   "hover:bg-orange-500/15 focus-visible:outline-none focus-visible:ring-1 " +
   "focus-visible:ring-inset focus-visible:ring-orange-500/40 " +
   "dark:border-orange-300/25 dark:text-orange-300/75 " +
   "dark:hover:bg-orange-400/20 dark:focus-visible:ring-orange-300/40";
+
+// The model name is dropped on narrow viewports so the chip stays readable
+// inside a prompt sentence; its settings stay reachable either way.
+const INLINE_TEMPLATE_MODEL_ZONE_CLASS = `hidden sm:flex px-2 ${INLINE_TEMPLATE_ZONE_CLASS}`;
+
+const INLINE_TEMPLATE_SPEC_ZONE_CLASS = `flex pl-2 pr-1.5 ${INLINE_TEMPLATE_ZONE_CLASS}`;
 
 interface ChatThreadMentionAttributes {
   readonly threadId: string;
@@ -892,7 +899,10 @@ function createTemplateAttachmentNodeView(
 
 interface InlineTemplateNodeActions {
   readonly openTemplate: (category: string) => void;
-  readonly openOptions: (anchor: DOMRect) => void;
+  readonly openOptions: (
+    anchor: DOMRect,
+    pane: VideoTemplateOptionsPane,
+  ) => void;
   /** Read per render so a chip picks the switch up on its next update. */
   readonly optionsEnabled: () => boolean;
 }
@@ -902,6 +912,39 @@ function inlineTemplateSpec(node: ProseMirrorNode): VideoTemplateSpec | null {
   return parsed.success ? videoTemplateSpec(parsed.data) : null;
 }
 
+/**
+ * The model and the parameters it accepts are two separate decisions, so the
+ * chip gives each its own zone and its own popover instead of stacking one
+ * dropdown inside another.
+ */
+function createInlineTemplateModelZone(): {
+  readonly zone: HTMLButtonElement;
+  readonly render: (spec: VideoTemplateSpec) => void;
+} {
+  const zone = document.createElement("button");
+  zone.type = "button";
+  zone.className = INLINE_TEMPLATE_MODEL_ZONE_CLASS;
+  const model = document.createElement("span");
+  const chevron = createComposerIcon(11, 1.7, ["M6 9l6 6 6 -6"]);
+  chevron.setAttribute("class", "shrink-0 opacity-70");
+  zone.append(model, chevron);
+  return {
+    zone,
+    render(spec) {
+      model.textContent = spec.model;
+      zone.setAttribute(
+        "aria-label",
+        i18n.t(
+          ($) => {
+            return $.chat.templates.videoModelLabel;
+          },
+          { model: spec.model },
+        ),
+      );
+    },
+  };
+}
+
 function createInlineTemplateSpecZone(): {
   readonly zone: HTMLButtonElement;
   readonly render: (spec: VideoTemplateSpec) => void;
@@ -909,20 +952,17 @@ function createInlineTemplateSpecZone(): {
   const zone = document.createElement("button");
   zone.type = "button";
   zone.className = INLINE_TEMPLATE_SPEC_ZONE_CLASS;
-  // The model name and everything after the duration are dropped on narrow
-  // viewports so the chip stays readable inside a prompt sentence.
-  const model = document.createElement("span");
-  model.className = "hidden sm:inline";
+  // Everything after the duration is dropped on narrow viewports so the chip
+  // stays readable inside a prompt sentence.
   const core = document.createElement("span");
   const rest = document.createElement("span");
   rest.className = "hidden sm:inline";
   const chevron = createComposerIcon(11, 1.7, ["M6 9l6 6 6 -6"]);
   chevron.setAttribute("class", "shrink-0 opacity-70");
-  zone.append(model, core, rest, chevron);
+  zone.append(core, rest, chevron);
   return {
     zone,
     render(spec) {
-      model.textContent = `${spec.model} \u00b7 `;
       core.textContent = spec.core.join(" \u00b7 ");
       rest.textContent = spec.rest
         .map((segment) => {
@@ -935,7 +975,7 @@ function createInlineTemplateSpecZone(): {
           ($) => {
             return $.chat.templates.videoOptionsLabel;
           },
-          { spec: videoTemplateSpecText(spec) },
+          { spec: videoTemplateSettingsText(spec) },
         ),
       );
     },
@@ -972,6 +1012,7 @@ function createInlineTemplateNodeView(
     "dark:text-orange-300";
   openButton.append(icon, title);
   dom.append(openButton);
+  const model = createInlineTemplateModelZone();
   const spec = createInlineTemplateSpecZone();
 
   let currentNode = node;
@@ -986,15 +1027,17 @@ function createInlineTemplateNodeView(
       ? inlineTemplateSpec(nextNode)
       : null;
     if (nextSpec) {
+      model.render(nextSpec);
       spec.render(nextSpec);
-      if (spec.zone.parentNode === null) {
-        dom.append(spec.zone);
+      if (model.zone.parentNode === null) {
+        dom.append(model.zone, spec.zone);
       }
     } else {
+      model.zone.remove();
       spec.zone.remove();
     }
   }
-  // The audio segment is localized, so a locale switch has to re-render the
+  // The zone labels are localized, so a locale switch has to re-render the
   // chip rather than only refresh its labels.
   function localize(): void {
     render(currentNode);
@@ -1007,12 +1050,18 @@ function createInlineTemplateNodeView(
       templateAttachmentNodeAttributes(currentNode).category,
     );
   });
-  spec.zone.addEventListener("mousedown", (event) => {
-    event.preventDefault();
-  });
-  spec.zone.addEventListener("click", () => {
-    actions.openOptions(dom.getBoundingClientRect());
-  });
+  for (const [zone, pane] of [
+    [model.zone, "model"],
+    [spec.zone, "settings"],
+  ] as const) {
+    zone.addEventListener("mousedown", (event) => {
+      event.preventDefault();
+    });
+    zone.addEventListener("click", () => {
+      // Anchored to the zone, so each popover opens under the words it edits.
+      actions.openOptions(zone.getBoundingClientRect(), pane);
+    });
+  }
   localizedUi.add(localize);
   render(currentNode);
 
@@ -1536,7 +1585,11 @@ interface WorkflowComposerRuntime {
   openTemplate(category: string): void;
   /** Resolved when the lifecycle bridge mounts; false until then. */
   videoOptionsEnabled: boolean;
-  openTemplateOptions(anchor: DOMRect, position: number): void;
+  openTemplateOptions(
+    anchor: DOMRect,
+    position: number,
+    pane: VideoTemplateOptionsPane,
+  ): void;
   removeTemplate(): void;
   templateRemoved(): void;
   replaceFeedbackItems(items: readonly FeedbackItem[]): void;
@@ -1666,10 +1719,10 @@ function createInlineTemplateNode(
                 runtime.openTemplate(category);
               }
             },
-            openOptions: (anchor) => {
+            openOptions: (anchor, pane) => {
               const position = getPos();
               if (typeof position === "number" && selectSelf()) {
-                runtime.openTemplateOptions(anchor, position);
+                runtime.openTemplateOptions(anchor, position, pane);
               }
             },
             optionsEnabled: () => {
@@ -2519,7 +2572,11 @@ function createWorkflowComposerRuntime(): WorkflowComposerRuntime {
     templateAttachment: undefined,
     openTemplate(_category: string): void {},
     videoOptionsEnabled: false,
-    openTemplateOptions(_anchor: DOMRect, _position: number): void {},
+    openTemplateOptions(
+      _anchor: DOMRect,
+      _position: number,
+      _pane: VideoTemplateOptionsPane,
+    ): void {},
     removeTemplate(): void {},
     templateRemoved(): void {},
     replaceFeedbackItems(_items: readonly FeedbackItem[]): void {},
@@ -2553,7 +2610,7 @@ function createTemplateAttachmentControls(
         element.click();
       };
       runtime.videoOptionsEnabled = get(videoTemplateOptionsEnabled$);
-      runtime.openTemplateOptions = (anchor, position) => {
+      runtime.openTemplateOptions = (anchor, position, pane) => {
         element.dataset.templateAction = "options";
         element.dataset.templateAnchor = [
           anchor.left,
@@ -2562,6 +2619,7 @@ function createTemplateAttachmentControls(
           anchor.height,
         ].join(",");
         element.dataset.templatePosition = String(position);
+        element.dataset.templatePane = pane;
         element.click();
       };
       runtime.templateRemoved = () => {

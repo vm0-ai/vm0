@@ -1614,6 +1614,8 @@
       "removeVideo": "비디오 템플릿 삭제 {{title}}",
       "removeWebsite": "웹사이트 템플릿 삭제 {{title}}",
       "removeWorkflow": "워크플로 템플릿 삭제 {{title}}",
+      "videoModelLabel": "동영상 모델 {{model}}",
+      "videoModelUpTo": "최대 {{duration}}",
       "videoOptions": "동영상 옵션",
       "videoOptionsAudio": "오디오 생성",
       "videoOptionsDuration": "길이",

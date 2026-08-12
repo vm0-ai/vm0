@@ -1614,6 +1614,8 @@
       "removeVideo": "ビデオ テンプレート {{title}} を削除します",
       "removeWebsite": "Web サイト テンプレート {{title}} を削除します",
       "removeWorkflow": "ワークフロー テンプレート {{title}} を削除します",
+      "videoModelLabel": "動画モデル {{model}}",
+      "videoModelUpTo": "最長 {{duration}}",
       "videoOptions": "動画オプション",
       "videoOptionsAudio": "音声を生成",
       "videoOptionsDuration": "長さ",

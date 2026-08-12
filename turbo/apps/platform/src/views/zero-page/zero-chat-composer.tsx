@@ -227,6 +227,7 @@ import {
   AvatarTemplatePickerToolbar,
 } from "./avatar-template-picker.tsx";
 import { VideoTemplateOptionsPopover } from "./video-template-options-popover.tsx";
+import { parseVideoTemplateOptionsPane } from "../../signals/zero-page/video-template-options-pane.ts";
 import {
   avatarTemplateSelection,
   toAvatarGenerationTemplate,
@@ -5644,12 +5645,15 @@ function ComposerTemplateAttachmentSync({
             const position = Number(
               event.currentTarget.dataset.templatePosition,
             );
+            const pane = parseVideoTemplateOptionsPane(
+              event.currentTarget.dataset.templatePane,
+            );
             const selected = readSelectedTemplate();
-            if (anchor && selected && Number.isInteger(position)) {
+            if (anchor && selected && pane && Number.isInteger(position)) {
               // Base UI dismisses a popover mounted during the same external
               // click as an outside press. Mount after that click dispatches.
               queueMicrotask(() => {
-                openVideoOptions(anchor, selected, position);
+                openVideoOptions(anchor, selected, position, pane);
               });
             }
           }

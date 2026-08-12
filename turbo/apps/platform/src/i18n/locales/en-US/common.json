@@ -1615,6 +1615,8 @@
       "removeVideo": "Remove video template {{title}}",
       "removeWebsite": "Remove website template {{title}}",
       "removeWorkflow": "Remove workflow template {{title}}",
+      "videoModelLabel": "Video model {{model}}",
+      "videoModelUpTo": "Up to {{duration}}",
       "videoOptions": "Video options",
       "videoOptionsAudio": "Generate audio",
       "videoOptionsDuration": "Duration",

@@ -369,7 +369,7 @@ describe("chat composer templates", () => {
     });
   });
 
-  it("edits video parameters from the second half of an inline chip", async () => {
+  it("edits the model and the settings from separate zones of an inline chip", async () => {
     const user = userEvent.setup({ delay: null });
     const template = VIDEO_TEMPLATE_ITEMS[0]!;
     let submittedUserMessage: UserMessageDocument | undefined;
@@ -402,52 +402,68 @@ describe("chat composer templates", () => {
     );
 
     // Every parameter is shown, with catalog defaults filled in even though
-    // nothing is stored yet.
-    const spec = await screen.findByLabelText(
-      "Video options Seedance 2.0 fast \u00b7 16:9 \u00b7 8s \u00b7 720p \u00b7 Audio",
+    // nothing is stored yet. Audio is left to the settings popover so the chip
+    // stays readable inside a prompt sentence.
+    const model = await screen.findByLabelText(
+      "Video model Seedance 2.0 fast",
+    );
+    await screen.findByLabelText(
+      "Video options 16:9 \u00b7 8s \u00b7 720p",
     );
     const chip = document.querySelector("[data-composer-inline-template]");
-    expect(chip?.querySelectorAll("button")).toHaveLength(2);
+    expect(chip?.querySelectorAll("button")).toHaveLength(3);
 
-    spec.focus();
+    // The model has its own popover: one list, no nested dropdown, and the
+    // options each model accepts are summarized next to it.
+    model.focus();
     await user.keyboard("{Enter}");
     expect(
       queryAllByRoleFast("button").some((button) => {
         return button.textContent === "Reset to default";
       }),
     ).toBeFalsy();
-    await user.click(await screen.findByRole("combobox", { name: "Model" }));
+    const modelOption = await screen.findByRole("radio", {
+      name: "Seedance 2.0",
+    });
+    expect(modelOption).toHaveTextContent("Up to 15s \u00b7 480p, 720p, 1080p");
+    await user.click(modelOption);
+
+    // Picking a model closes its popover; the settings zone opens the other.
+    await waitFor(() => {
+      expect(screen.queryByRole("radio", { name: "Seedance 2.0" })).toBeNull();
+    });
+    const spec = await screen.findByLabelText(
+      "Video options 16:9 \u00b7 8s \u00b7 720p",
+    );
+    spec.focus();
+    await user.keyboard("{Enter}");
+
+    // Every value is expanded in place, so changing one is a single click.
     await user.click(
-      await screen.findByRole("option", { name: "Seedance 2.0" }),
+      within(await screen.findByRole("radiogroup", { name: "Ratio" })).getByRole(
+        "radio",
+        { name: "9:16" },
+      ),
     );
 
     await waitFor(() => {
-      expect(screen.getByRole("combobox", { name: "Model" })).toHaveTextContent(
-        /^Seedance 2\.0$/,
-      );
-    });
-
-    await user.click(await screen.findByRole("combobox", { name: "Ratio" }));
-    await user.click(await screen.findByRole("option", { name: "9:16" }));
-
-    await waitFor(() => {
       expect(
-        screen.getByLabelText(
-          "Video options Seedance 2.0 \u00b7 9:16 \u00b7 8s \u00b7 720p \u00b7 Audio",
-        ),
+        screen.getByLabelText("Video options 9:16 \u00b7 8s \u00b7 720p"),
       ).toBeInTheDocument();
     });
 
     // A second edit has to land in place too: setNodeMarkup drops the node
     // selection, so a selection-based update would insert another chip here.
-    await user.click(await screen.findByRole("combobox", { name: "Duration" }));
-    await user.click(await screen.findByRole("option", { name: "6s" }));
+    // The popover also stays open, so no reopening between two edits.
+    await user.click(
+      within(
+        await screen.findByRole("radiogroup", { name: "Duration" }),
+      ).getByRole("radio", { name: "6s" }),
+    );
 
     await waitFor(() => {
       expect(
-        screen.getByLabelText(
-          "Video options Seedance 2.0 \u00b7 9:16 \u00b7 6s \u00b7 720p \u00b7 Audio",
-        ),
+        screen.getByLabelText("Video options 9:16 \u00b7 6s \u00b7 720p"),
       ).toBeInTheDocument();
     });
     expect(

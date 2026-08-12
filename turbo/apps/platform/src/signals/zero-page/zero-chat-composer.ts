@@ -11,6 +11,7 @@ import {
 } from "../../views/zero-page/presentation-html-preview.ts";
 import { readableAttachmentResourceUrl } from "../../views/zero-page/zero-attachment-url.ts";
 import { createAvatarTemplatePickerSignals } from "./avatar-template-picker.ts";
+import type { VideoTemplateOptionsPane } from "./video-template-options-pane.ts";
 
 // ---------------------------------------------------------------------------
 // Composer UI state — search, dialogs, loading indicators
@@ -310,6 +311,7 @@ function createTemplatePickerDialogSignals() {
     null,
   );
   const internalVideoOptionsPosition$ = state<number | null>(null);
+  const internalVideoOptionsPane$ = state<VideoTemplateOptionsPane>("settings");
   const videoTemplateOptionsAnchor$ = computed((get) => {
     return get(internalVideoOptionsAnchor$);
   });
@@ -319,15 +321,20 @@ function createTemplatePickerDialogSignals() {
   const videoTemplateOptionsPosition$ = computed((get) => {
     return get(internalVideoOptionsPosition$);
   });
+  const videoTemplateOptionsPane$ = computed((get) => {
+    return get(internalVideoOptionsPane$);
+  });
   const openVideoTemplateOptions$ = command(
     (
       { set },
       anchor: VideoTemplateOptionsAnchor,
       value: GenerationTemplateRequest,
       position: number,
+      pane: VideoTemplateOptionsPane,
     ) => {
       set(internalVideoOptionsValue$, value);
       set(internalVideoOptionsPosition$, position);
+      set(internalVideoOptionsPane$, pane);
       set(internalVideoOptionsAnchor$, anchor);
     },
   );
@@ -372,6 +379,7 @@ function createTemplatePickerDialogSignals() {
     videoTemplateOptionsAnchor$,
     videoTemplateOptionsValue$,
     videoTemplateOptionsPosition$,
+    videoTemplateOptionsPane$,
     openVideoTemplateOptions$,
     setVideoTemplateOptionsValue$,
     closeVideoTemplateOptions$,
