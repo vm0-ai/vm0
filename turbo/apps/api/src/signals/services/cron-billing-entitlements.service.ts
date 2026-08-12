@@ -21,6 +21,7 @@ import { nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
 import { clerk$ } from "../external/clerk";
 import { getStripeClient } from "../external/stripe-client";
+import type { BillingReconciliationScope } from "./billing-reconciliation-scope";
 import {
   CONCURRENCY_SUBSCRIPTION_PAYMENT_FAILED_STATUSES,
   isConcurrencyPriceId,
@@ -929,6 +930,7 @@ async function loadReconcileCandidateRows(
   db: Db,
   now: Date,
   staleBefore: Date,
+  scope: BillingReconciliationScope | undefined,
 ): Promise<ReconcileCandidateRows> {
   const [
     candidates,
@@ -944,6 +946,7 @@ async function loadReconcileCandidateRows(
       .from(orgMetadata)
       .where(
         and(
+          scope ? inArray(orgMetadata.orgId, [...scope.orgIds]) : undefined,
           inArray(orgMetadata.tier, PAID_TIERS),
           isNotNull(orgMetadata.stripeSubscriptionId),
           inArray(orgMetadata.subscriptionStatus, [
@@ -965,6 +968,7 @@ async function loadReconcileCandidateRows(
       .from(orgMetadata)
       .where(
         and(
+          scope ? inArray(orgMetadata.orgId, [...scope.orgIds]) : undefined,
           inArray(orgMetadata.tier, PAID_TIERS),
           isNull(orgMetadata.stripeSubscriptionId),
           eq(orgMetadata.subscriptionStatus, ATOM_GRANT_SUBSCRIPTION_STATUS),
@@ -980,6 +984,9 @@ async function loadReconcileCandidateRows(
       .from(orgConcurrencySubscriptions)
       .where(
         and(
+          scope
+            ? inArray(orgConcurrencySubscriptions.orgId, [...scope.orgIds])
+            : undefined,
           inArray(orgConcurrencySubscriptions.subscriptionStatus, [
             ...CONCURRENCY_SUBSCRIPTION_PAYMENT_FAILED_STATUSES,
           ]),
@@ -1001,6 +1008,9 @@ async function loadReconcileCandidateRows(
       .from(orgUsageAllowanceEntitlements)
       .where(
         and(
+          scope
+            ? inArray(orgUsageAllowanceEntitlements.orgId, [...scope.orgIds])
+            : undefined,
           isNotNull(orgUsageAllowanceEntitlements.stripeSubscriptionId),
           inArray(orgUsageAllowanceEntitlements.status, [
             ...USAGE_ALLOWANCE_RECONCILE_STATUSES,
@@ -1019,9 +1029,10 @@ async function loadReconcileCandidateRows(
   };
 }
 
-export const reconcileBillingEntitlements$ = command(
+const reconcileBillingEntitlementsForScope$ = command(
   async (
     { get, set },
+    scope: BillingReconciliationScope | undefined,
     signal: AbortSignal,
   ): Promise<{ readonly downgraded: number }> => {
     const db = set(writeDb$);
@@ -1032,17 +1043,19 @@ export const reconcileBillingEntitlements$ = command(
     );
 
     const usagePackMigrationReconciliation =
-      await reconcileUsagePackSubscriptionMigrations(db, signal);
+      await reconcileUsagePackSubscriptionMigrations(db, scope, signal);
     signal.throwIfAborted();
     const usagePackReconciliation = await reconcileUsagePackSubscriptions(
       db,
+      scope,
       signal,
     );
     signal.throwIfAborted();
-    await reconcileUsagePackCreditRefunds(db, signal);
+    await reconcileUsagePackCreditRefunds(db, scope, signal);
     signal.throwIfAborted();
+    const clerk = get(clerk$);
     const invitationPurchasesReconciled =
-      await reconcileUsagePackInvitationPurchases(db, get(clerk$), signal);
+      await reconcileUsagePackInvitationPurchases(db, clerk, scope, signal);
     signal.throwIfAborted();
 
     const {
@@ -1050,7 +1063,7 @@ export const reconcileBillingEntitlements$ = command(
       atomGrantCandidates,
       concurrencyCandidates,
       usageAllowanceCandidates,
-    } = await loadReconcileCandidateRows(db, now, staleBefore);
+    } = await loadReconcileCandidateRows(db, now, staleBefore, scope);
     signal.throwIfAborted();
 
     const downgraded: DowngradedSubscription[] = [];
@@ -1149,5 +1162,17 @@ export const reconcileBillingEntitlements$ = command(
       });
     }
     return { downgraded: downgraded.length };
+  },
+);
+
+export const reconcileBillingEntitlements$ = command(
+  async ({ set }, signal: AbortSignal) => {
+    return await set(reconcileBillingEntitlementsForScope$, undefined, signal);
+  },
+);
+
+export const reconcileBillingEntitlementsForOrganizations$ = command(
+  async ({ set }, orgIds: readonly string[], signal: AbortSignal) => {
+    return await set(reconcileBillingEntitlementsForScope$, { orgIds }, signal);
   },
 );
