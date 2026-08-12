@@ -45,6 +45,26 @@ ruleTester.run("no-cross-test-time-staggering", noCrossTestTimeStaggering, {
   ],
   invalid: [
     {
+      name: "canonical namespace mockNow remains rejected",
+      code: `
+        import * as time from "../../../lib/time";
+        let index = 0;
+        beforeEach(() => time.mockNow(1_000 + index++ * 60_000));
+      `,
+      errors: [{ messageId: "sharedTime" }],
+    },
+    {
+      name: "multi-hop local mockNow aliases remain rejected",
+      code: `
+        import { mockNow } from "../../../lib/time";
+        const first = mockNow;
+        const second = first;
+        let index = 0;
+        beforeEach(() => second(1_000 + index++ * 60_000));
+      `,
+      errors: [{ messageId: "sharedTime" }],
+    },
+    {
       name: "module counter incremented after a beforeEach mock is rejected",
       code: `
         import { mockNow } from "../../../lib/time";

@@ -1,6 +1,12 @@
 import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 
-import { importReference } from "../syntax.ts";
+import {
+  importReference,
+  memberName,
+  propertyName,
+  unwrapExpression,
+  variableInScope,
+} from "../syntax.ts";
 import { createRule } from "../utils.ts";
 
 interface GlobalSweepBoundary {
@@ -67,9 +73,30 @@ const UNAUTHORIZED_HELPERS = new Set([
   "expectGlobalSweepMissingAuth",
   "expectGlobalSweepWrongAuth",
 ]);
+const APP_FACTORIES = new Set(["createApp", "createAppWithRoutes", "setupApp"]);
 
 function normalizedFilename(filename: string): string {
   return filename.replaceAll("\\", "/");
+}
+
+function resolvesToProductionRoute(filename: string, source: string): boolean {
+  const normalizedSource = source.replace(/\.(?:[cm]?[jt]s)$/u, "");
+  if (!normalizedSource.startsWith(".")) {
+    return normalizedSource.endsWith("/src/signals/route");
+  }
+  const segments = normalizedFilename(filename).split("/");
+  segments.pop();
+  for (const segment of normalizedSource.split("/")) {
+    if (segment === "." || segment === "") {
+      continue;
+    }
+    if (segment === "..") {
+      segments.pop();
+    } else {
+      segments.push(segment);
+    }
+  }
+  return segments.join("/").endsWith("/src/signals/route");
 }
 
 function moduleName(source: string): string {
@@ -172,6 +199,7 @@ export const noGlobalSweepTestRoutes = createRule({
       readonly boundary: GlobalSweepBoundary;
       readonly specifier: TSESTree.ImportSpecifier;
     }[] = [];
+    const calls: TSESTree.CallExpression[] = [];
 
     function report(node: TSESTree.Node, boundary: GlobalSweepBoundary): void {
       context.report({
@@ -179,6 +207,151 @@ export const noGlobalSweepTestRoutes = createRule({
         messageId: "globalSweep",
         data: { routeName: boundary.exportName },
       });
+    }
+
+    function isAggregateRoutes(
+      expression: TSESTree.Expression,
+      seen: ReadonlySet<TSESTree.Node> = new Set(),
+    ): boolean {
+      const current = unwrapExpression(expression);
+      if (seen.has(current)) {
+        return false;
+      }
+      const nextSeen = new Set(seen).add(current);
+      if (current.type === AST_NODE_TYPES.Identifier) {
+        const imported = importReference(context.sourceCode, current);
+        if (
+          imported?.importedName === "ROUTES" &&
+          resolvesToProductionRoute(filename, imported.source)
+        ) {
+          return true;
+        }
+        const definition = variableInScope(context.sourceCode, current)
+          ?.defs[0];
+        return Boolean(
+          definition?.node.type === AST_NODE_TYPES.VariableDeclarator &&
+          definition.node.init &&
+          isAggregateRoutes(definition.node.init, nextSeen),
+        );
+      }
+      if (
+        current.type === AST_NODE_TYPES.MemberExpression &&
+        memberName(current) === "ROUTES" &&
+        current.object.type === AST_NODE_TYPES.Identifier
+      ) {
+        const imported = importReference(context.sourceCode, current.object);
+        return Boolean(
+          imported?.importedName === "*" &&
+          resolvesToProductionRoute(filename, imported.source),
+        );
+      }
+      if (current.type === AST_NODE_TYPES.ArrayExpression) {
+        return current.elements.some((element) => {
+          return Boolean(
+            element &&
+            isAggregateRoutes(
+              element.type === AST_NODE_TYPES.SpreadElement
+                ? element.argument
+                : element,
+              nextSeen,
+            ),
+          );
+        });
+      }
+      return false;
+    }
+
+    function isAppFactory(
+      expression: TSESTree.CallExpression["callee"],
+      seen: ReadonlySet<TSESTree.Node> = new Set(),
+    ): boolean {
+      if (
+        seen.has(expression) ||
+        expression.type !== AST_NODE_TYPES.Identifier
+      ) {
+        return false;
+      }
+      const nextSeen = new Set(seen).add(expression);
+      const imported = importReference(context.sourceCode, expression);
+      if (
+        (imported && APP_FACTORIES.has(imported.importedName)) ||
+        APP_FACTORIES.has(expression.name)
+      ) {
+        return true;
+      }
+      const definition = variableInScope(context.sourceCode, expression)
+        ?.defs[0];
+      return Boolean(
+        definition?.node.type === AST_NODE_TYPES.VariableDeclarator &&
+        definition.node.init &&
+        isAppFactory(definition.node.init, nextSeen),
+      );
+    }
+
+    function mountedAggregateRoutes(
+      expression: TSESTree.Expression,
+      seen: ReadonlySet<TSESTree.Node> = new Set(),
+    ): boolean {
+      const current = unwrapExpression(expression);
+      if (seen.has(current)) {
+        return false;
+      }
+      const nextSeen = new Set(seen).add(current);
+      if (current.type === AST_NODE_TYPES.Identifier) {
+        const definition = variableInScope(context.sourceCode, current)
+          ?.defs[0];
+        return Boolean(
+          definition?.node.type === AST_NODE_TYPES.VariableDeclarator &&
+          definition.node.init &&
+          mountedAggregateRoutes(definition.node.init, nextSeen),
+        );
+      }
+      if (current.type !== AST_NODE_TYPES.CallExpression) {
+        return false;
+      }
+      if (isAppFactory(current.callee)) {
+        const options = current.arguments[0];
+        if (!options || options.type !== AST_NODE_TYPES.ObjectExpression) {
+          return false;
+        }
+        return options.properties.some((property) => {
+          return (
+            property.type === AST_NODE_TYPES.Property &&
+            propertyName(property) === "routes" &&
+            property.value.type !== AST_NODE_TYPES.AssignmentPattern &&
+            isAggregateRoutes(property.value as TSESTree.Expression)
+          );
+        });
+      }
+      return (
+        current.callee.type === AST_NODE_TYPES.CallExpression &&
+        mountedAggregateRoutes(current.callee, nextSeen)
+      );
+    }
+
+    function aggregateSweepBoundary(
+      call: TSESTree.CallExpression,
+    ): GlobalSweepBoundary | null {
+      if (
+        call.callee.type !== AST_NODE_TYPES.MemberExpression ||
+        memberName(call.callee) !== "request" ||
+        call.callee.object.type === AST_NODE_TYPES.Super ||
+        !mountedAggregateRoutes(call.callee.object)
+      ) {
+        return null;
+      }
+      const pathArgument = call.arguments[0];
+      if (!pathArgument || pathArgument.type === AST_NODE_TYPES.SpreadElement) {
+        return null;
+      }
+      const path = staticString(pathArgument);
+      return (
+        GLOBAL_SWEEP_BOUNDARIES.find((boundary) => {
+          return (
+            path === boundary.path || path?.startsWith(`${boundary.path}?`)
+          );
+        }) ?? null
+      );
     }
 
     return {
@@ -256,7 +429,16 @@ export const noGlobalSweepTestRoutes = createRule({
           report(node, boundary);
         }
       },
+      CallExpression(node: TSESTree.CallExpression) {
+        calls.push(node);
+      },
       "Program:exit"() {
+        for (const call of calls) {
+          const boundary = aggregateSweepBoundary(call);
+          if (boundary) {
+            report(call, boundary);
+          }
+        }
         for (const { boundary, specifier } of harnessBindings) {
           const variables = context.sourceCode.getDeclaredVariables(specifier);
           for (const variable of variables) {

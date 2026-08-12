@@ -90,6 +90,20 @@ ruleTester.run("no-global-sweep-test-routes", noGlobalSweepTestRoutes, {
   ],
   invalid: [
     {
+      name: "aggregate production routes cannot become a behavior-test sweep",
+      filename: behaviorTest,
+      code: `
+        import { ROUTES } from "../../route";
+        import { createApp } from "../../../app-factory";
+        const aggregateRoutes = ROUTES;
+        const app = createApp({ signal, routes: aggregateRoutes });
+        await app.request("/api/cron/execute-workflow-automations", {
+          headers: { authorization: "Bearer test-cron-secret" },
+        });
+      `,
+      errors: [{ messageId: "globalSweep" }],
+    },
+    {
       name: "old behavior helper cannot wrap the production-global sweep",
       filename: behaviorTest,
       code: `${routeImport}

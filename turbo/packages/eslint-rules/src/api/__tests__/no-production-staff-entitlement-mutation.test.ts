@@ -57,6 +57,27 @@ ruleTester.run(
     ],
     invalid: [
       {
+        name: "namespace fixture mutation of fixed staff is rejected",
+        code: `
+          import * as entitlement from "${fixtureModule}";
+          const STAFF_ORG_ID = "${staffOrgId}";
+          await entitlement.upsertOrgPlanEntitlementFixture({ orgId: STAFF_ORG_ID });
+        `,
+        errors: [{ messageId: "productionStaffMutation" }],
+      },
+      {
+        name: "destructured options wrapper propagation is rejected",
+        code: `
+          import { upsertOrgPlanEntitlementFixture } from "${fixtureModule}";
+          const STAFF_ORG_ID = "${staffOrgId}";
+          async function writeEntitlement({ orgId }) {
+            await upsertOrgPlanEntitlementFixture({ orgId });
+          }
+          await writeEntitlement({ orgId: STAFF_ORG_ID });
+        `,
+        errors: [{ messageId: "productionStaffMutation" }],
+      },
+      {
         name: "direct fixed entitlement upsert is rejected",
         code: `
           import { upsertOrgPlanEntitlementFixture } from "${fixtureModule}";

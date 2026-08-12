@@ -38,6 +38,7 @@ ruleTester.run("no-unowned-usage-pricing", noUnownedUsagePricing, {
     {
       name: "actual run-owned and fixture lookup-provider rows are allowed",
       code: `
+        import { createAppWithRoutes } from "../../../app-factory-core";
         import { createUsagePricingFixture, seedUsagePricingRows, deleteUsagePricingRows } from "${fixtureModule}";
         import { createRunsApi } from "../../routes/__tests__/helpers/api-bdd-runs";
         import { testCronCleanupSandboxesStateRoutes } from "../../routes/test-cron-cleanup-sandboxes-state";
@@ -100,6 +101,26 @@ ruleTester.run("no-unowned-usage-pricing", noUnownedUsagePricing, {
     },
   ],
   invalid: [
+    {
+      name: "discarded scoped response cannot bless a fixed returned run id",
+      code: `
+        import { createAppWithRoutes } from "../../../app-factory-core";
+        import { seedUsagePricingRows } from "${fixtureModule}";
+        import { testCronCleanupSandboxesStateRoutes } from "../../routes/test-cron-cleanup-sandboxes-state";
+        async function requestState(body) {
+          void createAppWithRoutes({ routes: testCronCleanupSandboxesStateRoutes })
+            .request("/state", { body: JSON.stringify(body) });
+          return { run_id: "google-maps" };
+        }
+        async function insertRunFixture() {
+          const response = await requestState({ action: "seed-run" });
+          return { runId: stringField(response, "run_id") };
+        }
+        const run = await insertRunFixture();
+        await seedUsagePricingRows([{ kind: "generation", provider: run.runId, category: "maps", unitPrice: 1, unitSize: 1 }]);
+      `,
+      errors: [{ messageId: "unownedPricing" }],
+    },
     {
       name: "raw canonical overwrite is rejected",
       code: `

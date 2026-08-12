@@ -15,6 +15,10 @@ type FunctionNode =
 
 const TIME_FUNCTIONS = new Set(["mockNow", "withMockNowForTest"]);
 
+function isTimeModule(source: string): boolean {
+  return source.endsWith("/lib/time") || source.endsWith("/lib/time.ts");
+}
+
 function enclosingFunction(node: TSESTree.Node): FunctionNode | null {
   let current = node.parent;
   while (current) {
@@ -295,38 +299,71 @@ export const noCrossTestTimeStaggering = createRule({
       return false;
     }
 
-    function isTimeCall(node: TSESTree.CallExpression): boolean {
-      if (node.callee.type === AST_NODE_TYPES.Identifier) {
-        const imported = importReference(context.sourceCode, node.callee);
+    function isTimeNamespace(
+      expression: TSESTree.Expression,
+      seen: ReadonlySet<TSESTree.Node> = new Set(),
+    ): boolean {
+      const current = unwrapExpression(expression);
+      if (seen.has(current) || current.type !== AST_NODE_TYPES.Identifier) {
+        return false;
+      }
+      const nextSeen = new Set(seen).add(current);
+      const imported = importReference(context.sourceCode, current);
+      if (imported?.importedName === "*" && isTimeModule(imported.source)) {
+        return true;
+      }
+      const definition = variableInScope(context.sourceCode, current)?.defs[0];
+      return Boolean(
+        definition?.node.type === AST_NODE_TYPES.VariableDeclarator &&
+        definition.node.init &&
+        isTimeNamespace(definition.node.init, nextSeen),
+      );
+    }
+
+    function isTimeFunction(
+      expression: TSESTree.CallExpression["callee"],
+      seen: ReadonlySet<TSESTree.Node> = new Set(),
+    ): boolean {
+      if (seen.has(expression)) {
+        return false;
+      }
+      const nextSeen = new Set(seen).add(expression);
+      if (expression.type === AST_NODE_TYPES.Identifier) {
+        const imported = importReference(context.sourceCode, expression);
         if (
           imported &&
-          imported.source.endsWith("/lib/time") &&
+          isTimeModule(imported.source) &&
           TIME_FUNCTIONS.has(imported.importedName)
         ) {
           return true;
         }
-        const definition = variableInScope(context.sourceCode, node.callee)
+        const definition = variableInScope(context.sourceCode, expression)
           ?.defs[0];
         return Boolean(
           definition?.node.type === AST_NODE_TYPES.VariableDeclarator &&
-          definition.node.init?.type === AST_NODE_TYPES.Identifier &&
-          (() => {
-            const source = importReference(
-              context.sourceCode,
-              definition.node.init,
-            );
-            return Boolean(
-              source &&
-              source.source.endsWith("/lib/time") &&
-              TIME_FUNCTIONS.has(source.importedName),
-            );
-          })(),
+          definition.node.init &&
+          isTimeFunction(definition.node.init, nextSeen),
         );
       }
-      return (
-        node.callee.type === AST_NODE_TYPES.MemberExpression &&
-        memberName(node.callee) === "setSystemTime"
-      );
+      if (
+        expression.type === AST_NODE_TYPES.MemberExpression &&
+        expression.object.type !== AST_NODE_TYPES.Super
+      ) {
+        const name = memberName(expression);
+        return (
+          name === "setSystemTime" ||
+          Boolean(
+            name &&
+            TIME_FUNCTIONS.has(name) &&
+            isTimeNamespace(expression.object),
+          )
+        );
+      }
+      return false;
+    }
+
+    function isTimeCall(node: TSESTree.CallExpression): boolean {
+      return isTimeFunction(node.callee);
     }
 
     return {

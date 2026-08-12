@@ -14,6 +14,12 @@ type FunctionNode =
   | TSESTree.FunctionDeclaration
   | TSESTree.FunctionExpression;
 
+interface CallFrame {
+  readonly call: TSESTree.CallExpression;
+  readonly functionNode: FunctionNode;
+  readonly parent: CallFrame | null;
+}
+
 type MutationName =
   | "deleteUsagePricingRows"
   | "seedUsagePricingRows"
@@ -67,6 +73,28 @@ function isApprovedScopedRunStateRoute(
     exportName === "testCronCleanupSandboxesStateRoutes" &&
     (source.endsWith("/test-cron-cleanup-sandboxes-state") ||
       source.endsWith("/test-cron-cleanup-sandboxes-state.ts"))
+  );
+}
+
+function isApprovedScopedAppFactory(
+  source: string,
+  exportName: string,
+): boolean {
+  if (exportName === "createAppWithRoutes") {
+    return (
+      source.endsWith("/app-factory-core") ||
+      source.endsWith("/app-factory-core.ts")
+    );
+  }
+  if (exportName === "createApp") {
+    return (
+      source.endsWith("/app-factory") || source.endsWith("/app-factory.ts")
+    );
+  }
+  return (
+    exportName === "setupApp" &&
+    (source.endsWith("/__tests__/test-helpers") ||
+      source.endsWith("/__tests__/test-helpers.ts"))
   );
 }
 
@@ -150,7 +178,6 @@ export const noUnownedUsagePricing = createRule({
     const fixtureNamespaces = new Set<string>();
     const calls: TSESTree.CallExpression[] = [];
     const functionReturns = new Map<FunctionNode, TSESTree.Expression[]>();
-    const scopedRunStateRouteFunctions = new Set<FunctionNode>();
 
     function addReturn(
       node: FunctionNode,
@@ -254,28 +281,216 @@ export const noUnownedUsagePricing = createRule({
       });
     }
 
-    function reachesScopedRunStateRoute(
-      node: FunctionNode,
-      seen: ReadonlySet<FunctionNode> = new Set(),
+    function argumentForParameter(
+      identifier: TSESTree.Identifier,
+      frame: CallFrame | null,
+    ): {
+      readonly expression: TSESTree.Expression;
+      readonly frame: CallFrame | null;
+    } | null {
+      const owner = definingParameterFunction(context.sourceCode, identifier);
+      if (!owner) {
+        return null;
+      }
+      let ownerFrame = frame;
+      while (ownerFrame && ownerFrame.functionNode !== owner) {
+        ownerFrame = ownerFrame.parent;
+      }
+      if (!ownerFrame) {
+        return null;
+      }
+      const index = parameterIndex(owner, identifier.name);
+      const argument = ownerFrame.call.arguments[index];
+      if (!argument || argument.type === AST_NODE_TYPES.SpreadElement) {
+        return null;
+      }
+      return { expression: argument, frame: ownerFrame.parent };
+    }
+
+    function isScopedRunStateRoutes(
+      expression: TSESTree.Expression,
+      seen: ReadonlySet<TSESTree.Node> = new Set(),
     ): boolean {
-      if (seen.has(node)) {
+      const current = unwrapExpression(expression);
+      if (seen.has(current)) {
         return false;
       }
-      if (scopedRunStateRouteFunctions.has(node)) {
+      const nextSeen = new Set(seen).add(current);
+      if (current.type !== AST_NODE_TYPES.Identifier) {
+        return false;
+      }
+      const imported = importReference(context.sourceCode, current);
+      if (
+        imported &&
+        isApprovedScopedRunStateRoute(imported.source, imported.importedName)
+      ) {
         return true;
       }
-      const nextSeen = new Set(seen).add(node);
-      return calls.some((call) => {
+      const definition = variableInScope(context.sourceCode, current)?.defs[0];
+      return Boolean(
+        definition?.node.type === AST_NODE_TYPES.VariableDeclarator &&
+        definition.node.init &&
+        isScopedRunStateRoutes(definition.node.init, nextSeen),
+      );
+    }
+
+    function isScopedAppFactory(
+      expression: TSESTree.CallExpression["callee"],
+      seen: ReadonlySet<TSESTree.Node> = new Set(),
+    ): boolean {
+      if (
+        seen.has(expression) ||
+        expression.type !== AST_NODE_TYPES.Identifier
+      ) {
+        return false;
+      }
+      const nextSeen = new Set(seen).add(expression);
+      const imported = importReference(context.sourceCode, expression);
+      if (
+        imported &&
+        isApprovedScopedAppFactory(imported.source, imported.importedName)
+      ) {
+        return true;
+      }
+      const definition = variableInScope(context.sourceCode, expression)
+        ?.defs[0];
+      return Boolean(
+        definition?.node.type === AST_NODE_TYPES.VariableDeclarator &&
+        definition.node.init &&
+        isScopedAppFactory(definition.node.init, nextSeen),
+      );
+    }
+
+    function isScopedRunStateApp(
+      expression: TSESTree.Expression,
+      frame: CallFrame | null,
+      seen: ReadonlySet<TSESTree.Node> = new Set(),
+    ): boolean {
+      const current = unwrapExpression(expression);
+      if (seen.has(current)) {
+        return false;
+      }
+      const nextSeen = new Set(seen).add(current);
+      if (current.type === AST_NODE_TYPES.Identifier) {
+        const definition = variableInScope(context.sourceCode, current)
+          ?.defs[0];
+        if (
+          definition?.node.type === AST_NODE_TYPES.VariableDeclarator &&
+          definition.node.init
+        ) {
+          return isScopedRunStateApp(definition.node.init, frame, nextSeen);
+        }
+        if (definition?.type === "Parameter") {
+          const argument = argumentForParameter(current, frame);
+          return Boolean(
+            argument &&
+            isScopedRunStateApp(argument.expression, argument.frame, nextSeen),
+          );
+        }
+        return false;
+      }
+      if (current.type !== AST_NODE_TYPES.CallExpression) {
+        return false;
+      }
+      if (!isScopedAppFactory(current.callee)) {
+        return false;
+      }
+      const options = current.arguments[0];
+      if (!options || options.type !== AST_NODE_TYPES.ObjectExpression) {
+        return false;
+      }
+      return options.properties.some((property) => {
         return (
-          enclosingFunction(call) === node &&
-          (() => {
-            const called = localFunctionCalledBy(call);
-            return Boolean(
-              called && reachesScopedRunStateRoute(called, nextSeen),
-            );
-          })()
+          property.type === AST_NODE_TYPES.Property &&
+          propertyName(property) === "routes" &&
+          property.value.type !== AST_NODE_TYPES.AssignmentPattern &&
+          isScopedRunStateRoutes(property.value as TSESTree.Expression)
         );
       });
+    }
+
+    function isScopedRunStateResponse(
+      expression: TSESTree.Expression,
+      frame: CallFrame | null,
+      seen: ReadonlySet<TSESTree.Node> = new Set(),
+    ): boolean {
+      const current = unwrapExpression(expression);
+      if (seen.has(current)) {
+        return false;
+      }
+      const nextSeen = new Set(seen).add(current);
+      if (current.type === AST_NODE_TYPES.Identifier) {
+        const definition = variableInScope(context.sourceCode, current)
+          ?.defs[0];
+        if (
+          definition?.node.type === AST_NODE_TYPES.VariableDeclarator &&
+          definition.node.init
+        ) {
+          return isScopedRunStateResponse(
+            definition.node.init,
+            frame,
+            nextSeen,
+          );
+        }
+        if (definition?.type === "Parameter") {
+          const argument = argumentForParameter(current, frame);
+          return Boolean(
+            argument &&
+            isScopedRunStateResponse(
+              argument.expression,
+              argument.frame,
+              nextSeen,
+            ),
+          );
+        }
+        return false;
+      }
+      if (current.type === AST_NODE_TYPES.AwaitExpression) {
+        return isScopedRunStateResponse(current.argument, frame, nextSeen);
+      }
+      if (current.type !== AST_NODE_TYPES.CallExpression) {
+        return false;
+      }
+      if (
+        current.callee.type === AST_NODE_TYPES.MemberExpression &&
+        current.callee.object.type !== AST_NODE_TYPES.Super
+      ) {
+        const name = memberName(current.callee);
+        if (name === "request") {
+          return isScopedRunStateApp(current.callee.object, frame);
+        }
+        if (name === "json") {
+          return isScopedRunStateResponse(
+            current.callee.object,
+            frame,
+            nextSeen,
+          );
+        }
+        if (name === "resolve") {
+          const value = current.arguments[0];
+          return Boolean(
+            value &&
+            value.type !== AST_NODE_TYPES.SpreadElement &&
+            isScopedRunStateResponse(value, frame, nextSeen),
+          );
+        }
+      }
+      const called = localFunctionCalledBy(current);
+      if (!called) {
+        return false;
+      }
+      const returns = functionReturns.get(called) ?? [];
+      const calledFrame: CallFrame = {
+        call: current,
+        functionNode: called,
+        parent: frame,
+      };
+      return (
+        returns.length > 0 &&
+        returns.every((returned) => {
+          return isScopedRunStateResponse(returned, calledFrame, nextSeen);
+        })
+      );
     }
 
     function isScopedSeedRunResult(
@@ -303,10 +518,20 @@ export const noUnownedUsagePricing = createRule({
         return false;
       }
       const called = localFunctionCalledBy(current);
-      return Boolean(
-        called &&
-        callHasSeedRunAction(current) &&
-        reachesScopedRunStateRoute(called),
+      if (!called || !callHasSeedRunAction(current)) {
+        return false;
+      }
+      const returns = functionReturns.get(called) ?? [];
+      const frame: CallFrame = {
+        call: current,
+        functionNode: called,
+        parent: null,
+      };
+      return (
+        returns.length > 0 &&
+        returns.every((returned) => {
+          return isScopedRunStateResponse(returned, frame, nextSeen);
+        })
       );
     }
 
@@ -913,17 +1138,6 @@ export const noUnownedUsagePricing = createRule({
       },
       CallExpression(node: TSESTree.CallExpression) {
         calls.push(node);
-      },
-      Identifier(node: TSESTree.Identifier) {
-        const imported = importReference(context.sourceCode, node);
-        const owner = enclosingFunction(node);
-        if (
-          owner &&
-          imported &&
-          isApprovedScopedRunStateRoute(imported.source, imported.importedName)
-        ) {
-          scopedRunStateRouteFunctions.add(owner);
-        }
       },
       "Program:exit"() {
         for (const call of calls) {
