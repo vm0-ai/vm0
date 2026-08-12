@@ -8,6 +8,11 @@ import { fetch$ } from "../fetch.ts";
 import { pageSignal$ } from "../page-signal.ts";
 import { isOrgAdmin$ } from "../org.ts";
 import { zeroClient$ } from "../api-client.ts";
+import {
+  apiTierToBillingTier,
+  billingStatusAsync$,
+  type BillingTier,
+} from "../zero-page/billing.ts";
 import { setBillingSubPage$ } from "../zero-page/settings/workspace-settings-state.ts";
 import { openSettingsDialogAt$ } from "../zero-page/settings/settings-dialog.ts";
 import { logger } from "../log.ts";
@@ -142,6 +147,33 @@ function microphoneAccessDeniedMessage(): string {
   return i18n.t(($) => {
     return $.chat.voice.microphoneAccessDenied;
   });
+}
+
+function audioInputQuotaLimitMessage(
+  tier: BillingTier,
+  isAdmin: boolean,
+): string {
+  if (tier === "team" || tier === "custom") {
+    return i18n.t(($) => {
+      return $.chat.voice.inputLimitReachedReset;
+    });
+  }
+  if (tier === "pro") {
+    return isAdmin
+      ? i18n.t(($) => {
+          return $.chat.voice.inputLimitReachedPro;
+        })
+      : i18n.t(($) => {
+          return $.chat.voice.inputLimitReachedProMember;
+        });
+  }
+  return isAdmin
+    ? i18n.t(($) => {
+        return $.chat.voice.inputLimitReached;
+      })
+    : i18n.t(($) => {
+        return $.chat.voice.inputLimitReachedMember;
+      });
 }
 
 interface VoiceActivity {
@@ -493,20 +525,15 @@ export const openAudioInputQuotaRecovery$ = command(
     signal.throwIfAborted();
     const isAdmin = await get(isOrgAdmin$);
     signal.throwIfAborted();
-    toast.error(
-      isAdmin
-        ? i18n.t(($) => {
-            return $.chat.voice.inputLimitReached;
-          })
-        : i18n.t(($) => {
-            return $.chat.voice.inputLimitReachedMember;
-          }),
-      {
-        id: AUDIO_INPUT_QUOTA_TOAST_ID,
-      },
-    );
+    const billingStatus = await get(billingStatusAsync$);
+    signal.throwIfAborted();
+    const tier = apiTierToBillingTier(billingStatus.tier);
+    const waitsForReset = tier === "team" || tier === "custom";
+    toast.error(audioInputQuotaLimitMessage(tier, isAdmin), {
+      id: AUDIO_INPUT_QUOTA_TOAST_ID,
+    });
     set(refreshAudioInputQuota$);
-    if (!isAdmin) {
+    if (!isAdmin || waitsForReset) {
       return;
     }
     set(setBillingSubPage$, true);

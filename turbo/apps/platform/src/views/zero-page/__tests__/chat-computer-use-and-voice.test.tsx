@@ -4,6 +4,7 @@ import { toast } from "@vm0/ui/components/ui/sonner";
 import { describe, expect, it, vi } from "vitest";
 import { zeroVoiceIoQuotaContract } from "@vm0/api-contracts/contracts/zero-voice-io-quota";
 import { zeroComputerUseHostsContract } from "@vm0/api-contracts/contracts/zero-computer-use";
+import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
 import { fill } from "../../../__tests__/page-helper.ts";
 import {
   mockChatLifecycle,
@@ -25,6 +26,7 @@ import {
   queryLinkByText,
   chatComposerTextarea,
 } from "./chat-lifecycle-test-helpers.ts";
+import { billingStatus } from "./chat-composer-test-helpers.ts";
 
 function computerUseRow(switchName: string): HTMLElement {
   const row = screen
@@ -1585,6 +1587,107 @@ describe("chat lifecycle", () => {
       toastError.mockRestore();
     }
   });
+
+  it("opens billing with Team upgrade guidance for a Pro workspace admin", async () => {
+    const user = userEvent.setup({ delay: null });
+    const toastError = vi.spyOn(toast, "error");
+    const threadId = "e2000000-0000-4000-a000-000000000018";
+    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+      return respond(200, billingStatus("pro"));
+    });
+    context.mocks.api(zeroVoiceIoQuotaContract.get, ({ respond }) => {
+      return respond(200, { allowed: false, count: 10, limit: 10 });
+    });
+    mockChatLifecycle(context, { threadId });
+
+    try {
+      detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+      await user.click(await screen.findByLabelText("Voice input"));
+
+      await waitFor(() => {
+        expect(toastError).toHaveBeenCalledWith(
+          "Voice input limit reached. Upgrade to Team for higher limits.",
+          { id: "voice-input-quota-limit" },
+        );
+        expect(screen.getByRole("dialog")).toBeInTheDocument();
+        expect(
+          screen.getByRole("heading", { name: "Compare plans" }),
+        ).toBeInTheDocument();
+      });
+    } finally {
+      toastError.mockRestore();
+    }
+  });
+
+  it("shows Team upgrade guidance without opening billing for a Pro workspace member", async () => {
+    const user = userEvent.setup({ delay: null });
+    const toastError = vi.spyOn(toast, "error");
+    const threadId = "e2000000-0000-4000-a000-000000000019";
+    context.mocks.data.org({
+      id: "org_1",
+      name: "Test Org",
+      role: "member",
+    });
+    context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+      return respond(200, billingStatus("pro"));
+    });
+    context.mocks.api(zeroVoiceIoQuotaContract.get, ({ respond }) => {
+      return respond(200, { allowed: false, count: 10, limit: 10 });
+    });
+    mockChatLifecycle(context, { threadId });
+
+    try {
+      detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+      await user.click(await screen.findByLabelText("Voice input"));
+
+      await waitFor(() => {
+        expect(toastError).toHaveBeenCalledWith(
+          "Voice input limit reached. Ask a workspace admin to upgrade to Team for higher limits.",
+          { id: "voice-input-quota-limit" },
+        );
+      });
+      expect(screen.queryByRole("dialog")).toBeNull();
+    } finally {
+      toastError.mockRestore();
+    }
+  });
+
+  it.each(["team", "custom"] as const)(
+    "shows reset guidance without opening billing for a %s workspace admin",
+    async (tier) => {
+      const user = userEvent.setup({ delay: null });
+      const toastError = vi.spyOn(toast, "error");
+      const threadId =
+        tier === "team"
+          ? "e2000000-0000-4000-a000-000000000020"
+          : "e2000000-0000-4000-a000-000000000021";
+      context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
+        return respond(200, billingStatus(tier));
+      });
+      context.mocks.api(zeroVoiceIoQuotaContract.get, ({ respond }) => {
+        return respond(200, { allowed: false, count: 10, limit: 10 });
+      });
+      mockChatLifecycle(context, { threadId });
+
+      try {
+        detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+        await user.click(await screen.findByLabelText("Voice input"));
+
+        await waitFor(() => {
+          expect(toastError).toHaveBeenCalledWith(
+            "Voice input limit reached. Please wait for your limit to reset.",
+            { id: "voice-input-quota-limit" },
+          );
+        });
+        expect(screen.queryByRole("dialog")).toBeNull();
+      } finally {
+        toastError.mockRestore();
+      }
+    },
+  );
 
   it("opens billing recovery when voice input daily request limit is reached", async () => {
     const user = userEvent.setup({ delay: null });
