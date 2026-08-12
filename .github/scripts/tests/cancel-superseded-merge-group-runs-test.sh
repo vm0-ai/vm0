@@ -77,9 +77,9 @@ JSON
 ]}]
 JSON
     ;;
-  repos/vm0-ai/vm0/actions/runs/*/cancel)
+  repos/vm0-ai/vm0/actions/runs/*/force-cancel)
     [ "$method" = "POST" ] || exit 1
-    run_id=${endpoint%/cancel}
+    run_id=${endpoint%/force-cancel}
     run_id=${run_id##*/}
     printf '%s\n' "$run_id" >>"$MOCK_CANCEL_LOG"
     case " ${MOCK_WEDGED_RUN_IDS:-} " in
@@ -88,6 +88,9 @@ JSON
         exit 1
         ;;
     esac
+    if [ "${MOCK_FORCE_CANCEL_COMPLETION:-0}" = "1" ]; then
+      touch "$MOCK_RUNS_RELEASED"
+    fi
     ;;
   repos/vm0-ai/vm0/actions/runs/*/jobs)
     run_id=${endpoint%/jobs}
@@ -177,6 +180,20 @@ grep -q "Waiting for superseded CI runs" <<<"$output" ||
   fail "expected an explicit completion barrier"
 [ "$(wc -l <"${tmp_dir}/sleep.log")" -eq 1 ] ||
   fail "expected one poll before superseded runs completed"
+
+: >"${tmp_dir}/gh.log"
+: >"${tmp_dir}/cancel.log"
+: >"${tmp_dir}/sleep.log"
+rm -f "${tmp_dir}/runs-released"
+output=$(
+  run_cancel \
+    MOCK_DELAY_COMPLETION=1 \
+    MOCK_FORCE_CANCEL_COMPLETION=1
+)
+grep -q "All superseded CI runs completed" <<<"$output" ||
+  fail "expected force cancellation to terminate otherwise-active runs"
+[ ! -s "${tmp_dir}/sleep.log" ] ||
+  fail "force-cancelled runs must not need a completion poll"
 
 : >"${tmp_dir}/gh.log"
 : >"${tmp_dir}/cancel.log"
