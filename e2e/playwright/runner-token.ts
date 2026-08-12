@@ -19,6 +19,7 @@ import {
   startVideoOnboardingCheckout,
   waitForPaidOnboardingCompletion,
 } from "./lib/onboarding";
+import { LIMITED_FREE_RUNNER_ORGANIZATION_COUNT } from "./lib/runner-account-config";
 import { fillStripeCheckout } from "./lib/stripe-checkout";
 
 interface RunnerCredentialTarget {
@@ -39,13 +40,27 @@ async function main(): Promise<void> {
   }
 
   const accounts = runnerTestAccounts();
+  const previewHeaders = apiPreviewHeaders();
+  const vercelAutomationBypassSecret =
+    previewHeaders["x-vercel-protection-bypass"];
+
+  await mkdir(outputDirectory, { recursive: true });
+  await clerkSetup();
+  const runnerOrganizationIds = requiredStringArrayEnvironmentVariable(
+    "E2E_RUNNER_ORGANIZATION_IDS",
+  );
+  if (runnerOrganizationIds.length !== LIMITED_FREE_RUNNER_ORGANIZATION_COUNT) {
+    throw new Error(
+      `E2E_RUNNER_ORGANIZATION_IDS must contain ${LIMITED_FREE_RUNNER_ORGANIZATION_COUNT} organizations`,
+    );
+  }
   const targets: readonly RunnerCredentialTarget[] = [
-    {
+    ...runnerOrganizationIds.map((organizationId, index) => ({
       email: accounts.runner,
-      fileName: "e2e-api-credentials-runner.json",
-      organizationId: requiredEnvironmentVariable("E2E_RUNNER_ORGANIZATION_ID"),
+      fileName: `e2e-api-credentials-runner-${index + 1}.json`,
+      organizationId,
       upgradeToPro: false,
-    },
+    })),
     {
       email: accounts.codex,
       fileName: "e2e-api-credentials-runner-real-codex.json",
@@ -71,12 +86,6 @@ async function main(): Promise<void> {
       upgradeToPro: true,
     },
   ];
-  const previewHeaders = apiPreviewHeaders();
-  const vercelAutomationBypassSecret =
-    previewHeaders["x-vercel-protection-bypass"];
-
-  await mkdir(outputDirectory, { recursive: true });
-  await clerkSetup();
   const browser = await chromium.launch();
   try {
     for (const target of targets) {
@@ -141,6 +150,19 @@ function requiredEnvironmentVariable(name: string): string {
     throw new Error(`${name} environment variable is required`);
   }
   return value;
+}
+
+function requiredStringArrayEnvironmentVariable(
+  name: string,
+): readonly string[] {
+  const parsed: unknown = JSON.parse(requiredEnvironmentVariable(name));
+  if (
+    !Array.isArray(parsed) ||
+    !parsed.every((item) => typeof item === "string" && item.length > 0)
+  ) {
+    throw new Error(`${name} must be a JSON array of non-empty strings`);
+  }
+  return parsed;
 }
 
 void main().catch((error: unknown) => {

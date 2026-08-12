@@ -3,7 +3,13 @@ import { relative, resolve, sep } from "node:path";
 
 const DEFAULT_MAX_SHARDS = 12;
 
-type CredentialLane = "limited-free" | "paid";
+type CredentialLane = "limited-free" | "codex" | "claude";
+
+const MAX_SHARDS_BY_LANE = {
+  "limited-free": 4,
+  codex: 2,
+  claude: 1,
+} satisfies Record<CredentialLane, number>;
 
 interface WeightedTestFile {
   readonly credentialLane: CredentialLane;
@@ -13,6 +19,7 @@ interface WeightedTestFile {
 
 interface RunnerShard {
   readonly credentialLane: CredentialLane;
+  readonly credentialIndex: number;
   readonly files: string[];
   readonly index: number;
   weight: number;
@@ -60,9 +67,13 @@ async function discoverTestFiles(
         throw new Error(`Runner E2E test file has no tests: ${filePath}`);
       }
       return {
-        credentialLane: source.includes("e2e-api-credentials-runner-real-")
-          ? "paid"
-          : "limited-free",
+        credentialLane: source.includes(
+          "e2e-api-credentials-runner-real-claude",
+        )
+          ? "claude"
+          : source.includes("e2e-api-credentials-runner-real-codex")
+            ? "codex"
+            : "limited-free",
         path: relative(process.cwd(), filePath).split(sep).join("/"),
         weight,
       };
@@ -76,18 +87,26 @@ function buildMatrix(
 ): {
   readonly include: readonly RunnerShard[];
 } {
-  const shardCount = Math.min(maxShards, files.length);
   const laneFiles = {
     "limited-free": files.filter((file) => {
       return file.credentialLane === "limited-free";
     }),
-    paid: files.filter((file) => {
-      return file.credentialLane === "paid";
+    codex: files.filter((file) => {
+      return file.credentialLane === "codex";
+    }),
+    claude: files.filter((file) => {
+      return file.credentialLane === "claude";
     }),
   } satisfies Record<CredentialLane, readonly WeightedTestFile[]>;
-  const activeLanes = (["limited-free", "paid"] as const).filter((lane) => {
-    return laneFiles[lane].length > 0;
-  });
+  const activeLanes = (["limited-free", "codex", "claude"] as const).filter(
+    (lane) => {
+      return laneFiles[lane].length > 0;
+    },
+  );
+  const shardCapacity = activeLanes.reduce((total, lane) => {
+    return total + Math.min(laneFiles[lane].length, MAX_SHARDS_BY_LANE[lane]);
+  }, 0);
+  const shardCount = Math.min(maxShards, files.length, shardCapacity);
   if (shardCount < activeLanes.length) {
     throw new Error(
       `Runner E2E requires at least ${activeLanes.length} shards to isolate credential lanes`,
@@ -101,7 +120,10 @@ function buildMatrix(
     const lane = activeLanes.reduce<CredentialLane | undefined>(
       (selected, candidate) => {
         const candidateCount = laneShardCounts.get(candidate) ?? 0;
-        if (candidateCount >= laneFiles[candidate].length) {
+        if (
+          candidateCount >=
+          Math.min(laneFiles[candidate].length, MAX_SHARDS_BY_LANE[candidate])
+        ) {
           return selected;
         }
         if (selected === undefined) {
@@ -126,6 +148,7 @@ function buildMatrix(
     const count = laneShardCounts.get(lane) ?? 0;
     const laneShards = Array.from({ length: count }, (_, index) => ({
       credentialLane: lane,
+      credentialIndex: lane === "limited-free" ? index + 1 : 1,
       files: [],
       index: shards.length + index + 1,
       weight: 0,

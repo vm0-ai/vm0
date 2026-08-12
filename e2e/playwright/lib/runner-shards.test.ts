@@ -9,7 +9,8 @@ import { promisify } from "node:util";
 const execFileAsync = promisify(execFile);
 
 interface RunnerShard {
-  readonly credentialLane: "limited-free" | "paid";
+  readonly credentialLane: "limited-free" | "codex" | "claude";
+  readonly credentialIndex: number;
   readonly files: readonly string[];
   readonly index: number;
   readonly weight: number;
@@ -41,19 +42,23 @@ test("discovers and deterministically balances non-empty runner shards", async (
     const second = await runShardPlanner(testDirectory);
 
     assert.deepEqual(first, second);
-    assert.equal(first.include.length, 12);
+    assert.equal(first.include.length, 4);
     assert.deepEqual(
       first.include.map((shard) => shard.index),
-      Array.from({ length: 12 }, (_, index) => index + 1),
+      [1, 2, 3, 4],
+    );
+    assert.deepEqual(
+      first.include.map((shard) => shard.credentialIndex),
+      [1, 2, 3, 4],
     );
     assert(first.include.every((shard) => shard.files.length > 0));
     assert.deepEqual(
       first.include.flatMap((shard) => shard.files).sort(),
       expectedFiles.sort(),
     );
-    assert.deepEqual(
-      first.include.map((shard) => shard.weight),
-      [5, 2, 2, 2, 2, 2, 2, 1, 1, 1, 1, 1],
+    assert.equal(
+      first.include.reduce((total, shard) => total + shard.weight, 0),
+      22,
     );
   } finally {
     await rm(testRoot, { recursive: true, force: true });
@@ -100,9 +105,11 @@ test("isolates paid tests from the limited-free concurrency lane", async () => {
     for (let index = 1; index <= 6; index += 1) {
       const path = join(testDirectory, `runner-${index}.bats`);
       const credential =
-        index >= 5
+        index === 5
           ? 'credentials="e2e-api-credentials-runner-real-codex.json"\n'
-          : "";
+          : index === 6
+            ? 'credentials="e2e-api-credentials-runner-real-claude.json"\n'
+            : "";
       await writeFile(
         path,
         `#!/usr/bin/env bats\n${credential}\n@test "case" {\n  true\n}\n`,
@@ -110,15 +117,15 @@ test("isolates paid tests from the limited-free concurrency lane", async () => {
       );
     }
 
-    const matrix = await runShardPlanner(testDirectory, 2);
+    const matrix = await runShardPlanner(testDirectory, 3);
 
     assert.deepEqual(
       matrix.include.map((shard) => shard.credentialLane),
-      ["limited-free", "paid"],
+      ["limited-free", "codex", "claude"],
     );
     assert.deepEqual(
       matrix.include.map((shard) => shard.files.length),
-      [4, 2],
+      [4, 1, 1],
     );
   } finally {
     await rm(testRoot, { recursive: true, force: true });
@@ -187,7 +194,11 @@ function parseShard(value: unknown): RunnerShard {
     !("weight" in value) ||
     typeof value.weight !== "number" ||
     !("credentialLane" in value) ||
-    (value.credentialLane !== "limited-free" && value.credentialLane !== "paid")
+    (value.credentialLane !== "limited-free" &&
+      value.credentialLane !== "codex" &&
+      value.credentialLane !== "claude") ||
+    !("credentialIndex" in value) ||
+    typeof value.credentialIndex !== "number"
   ) {
     throw new Error("Runner shard planner returned an invalid shard");
   }
@@ -199,6 +210,7 @@ function parseShard(value: unknown): RunnerShard {
   });
   return {
     credentialLane: value.credentialLane,
+    credentialIndex: value.credentialIndex,
     files,
     index: value.index,
     weight: value.weight,

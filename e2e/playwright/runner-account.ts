@@ -8,6 +8,7 @@ import {
   type ClerkTestRole,
   type RunnerTestAccounts,
 } from "./lib/clerk-api";
+import { LIMITED_FREE_RUNNER_ORGANIZATION_COUNT } from "./lib/runner-account-config";
 
 const RUNNER_TEST_ROLES = [
   "runner",
@@ -38,11 +39,20 @@ async function prepareRunnerAccounts(
 ): Promise<void> {
   try {
     const runnerUserId = await createUser(runnerAccounts.runner);
-    const runnerOrganizationId = await createOrganization(
-      `e2e-runner-${jobRef}`,
-      runnerUserId,
-      "runner",
-    );
+    const runnerOrganizationIds: string[] = [];
+    for (
+      let index = 1;
+      index <= LIMITED_FREE_RUNNER_ORGANIZATION_COUNT;
+      index += 1
+    ) {
+      runnerOrganizationIds.push(
+        await createOrganization(
+          `e2e-runner-${index}-${jobRef}`,
+          runnerUserId,
+          "runner",
+        ),
+      );
+    }
     const codexUserId = await createUser(runnerAccounts.codex);
     const codexOrganizationId = await createOrganization(
       `e2e-runner-real-codex-${jobRef}`,
@@ -65,7 +75,7 @@ async function prepareRunnerAccounts(
     await appendFile(
       requiredEnvironmentVariable("GITHUB_OUTPUT"),
       [
-        `runner-organization-id=${runnerOrganizationId}`,
+        `runner-organization-ids=${JSON.stringify(runnerOrganizationIds)}`,
         `codex-organization-id=${codexOrganizationId}`,
         `claude-organization-id=${claudeOrganizationId}`,
         `mock-claude-organization-id=${mockClaudeOrganizationId}`,
@@ -79,7 +89,7 @@ async function prepareRunnerAccounts(
     );
 
     console.log("Prepared runner E2E accounts", {
-      runnerOrganizationId,
+      runnerOrganizationIds,
       codexOrganizationId,
       claudeOrganizationId,
       mockClaudeOrganizationId,

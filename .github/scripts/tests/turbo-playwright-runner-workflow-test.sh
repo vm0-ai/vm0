@@ -164,11 +164,11 @@ end
 raise "missing runner E2E shard generation" unless shard_generation_step
 shard_generation_script = shard_generation_step.fetch("run")
 unless shard_generation_step["id"] == "shards" &&
-    shard_generation_script.include?("playwright/runner-shards.ts tests/03-runner 2") &&
+    shard_generation_script.include?("playwright/runner-shards.ts tests/03-runner 7") &&
     shard_generation_script.include?('["cloudflare", "vercel"][] as $runtime') &&
-    shard_generation_script.include?('length == 4') &&
-    shard_generation_script.include?('.total | type == "number" and . == 2') &&
-    shard_generation_script.include?('.credentialLane == "limited-free" or .credentialLane == "paid"') &&
+    shard_generation_script.include?('length == 14') &&
+    shard_generation_script.include?('.total | type == "number" and . == 7') &&
+    shard_generation_script.include?('.credentialLane == "limited-free" or .credentialLane == "codex" or .credentialLane == "claude"') &&
     shard_generation_script.include?('echo "matrix=$matrix" >> "$GITHUB_OUTPUT"')
   raise "runner E2E shard generation must respect both runtime concurrency limits"
 end
@@ -208,7 +208,10 @@ unless upload_step.dig("with", "name") == "e2e-tokens-${{ matrix.runtime }}" &&
   raise "runner E2E token artifact must be isolated by runtime"
 end
 %w[
-  e2e-api-credentials-runner.json
+  e2e-api-credentials-runner-1.json
+  e2e-api-credentials-runner-2.json
+  e2e-api-credentials-runner-3.json
+  e2e-api-credentials-runner-4.json
   e2e-api-credentials-runner-real-codex.json
   e2e-api-credentials-runner-real-claude.json
   e2e-api-credentials-runner-mock-claude.json
@@ -358,6 +361,7 @@ shard_step = runner.fetch("steps").find do |step|
 end
 raise "missing runner E2E shard scaffold" unless shard_step
 unless runner.dig("env", "E2E_RUNNER_RUNTIME") == "${{ matrix.runtime }}" &&
+    runner.dig("env", "E2E_RUNNER_CREDENTIAL_INDEX") == "${{ matrix.credentialIndex }}" &&
     runner.dig("env", "E2E_RUNNER_TEST_FILES_JSON") == "${{ toJSON(matrix.files) }}" &&
     runner.dig("env", "E2E_RUNNER_SHARD_TOTAL") == "${{ matrix.total }}"
   raise "runner E2E shards must receive their runtime, exact files, and per-runtime total"
@@ -423,7 +427,7 @@ unless account_cleanup.dig("strategy", "matrix", "runtime") == expected_runtimes
   raise "runner E2E cleanup must cover both runtime identity namespaces"
 end
 %w[
-  E2E_RUNNER_ORGANIZATION_ID
+  E2E_RUNNER_ORGANIZATION_IDS
   E2E_RUNNER_CODEX_ORGANIZATION_ID
   E2E_RUNNER_CLAUDE_ORGANIZATION_ID
   E2E_RUNNER_MOCK_CLAUDE_ORGANIZATION_ID

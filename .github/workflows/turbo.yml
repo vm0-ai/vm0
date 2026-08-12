@@ -3590,7 +3590,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          base_matrix="$(cd e2e && pnpm exec tsx playwright/runner-shards.ts tests/03-runner 2)"
+          base_matrix="$(cd e2e && pnpm exec tsx playwright/runner-shards.ts tests/03-runner 7)"
           matrix="$(jq -c '
             .include as $shards |
             ($shards | length) as $total |
@@ -3602,13 +3602,20 @@ jobs:
           ' <<<"$base_matrix")"
           jq -e '
             .include | type == "array" and
-            length == 4 and
-            (map(select(.runtime == "cloudflare")) | length) ==
-              (map(select(.runtime == "vercel")) | length) and
+            length == 14 and
+            (map(select(.runtime == "cloudflare")) | length) == 7 and
+            (map(select(.runtime == "vercel")) | length) == 7 and
+            (map(select(.runtime == "cloudflare" and .credentialLane == "limited-free")) | length) == 4 and
+            (map(select(.runtime == "vercel" and .credentialLane == "limited-free")) | length) == 4 and
+            (map(select(.runtime == "cloudflare" and .credentialLane == "codex")) | length) == 2 and
+            (map(select(.runtime == "vercel" and .credentialLane == "codex")) | length) == 2 and
+            (map(select(.runtime == "cloudflare" and .credentialLane == "claude")) | length) == 1 and
+            (map(select(.runtime == "vercel" and .credentialLane == "claude")) | length) == 1 and
             all(.[];
               (.runtime == "cloudflare" or .runtime == "vercel") and
-              (.total | type == "number" and . == 2) and
-              (.credentialLane == "limited-free" or .credentialLane == "paid") and
+              (.total | type == "number" and . == 7) and
+              (.credentialLane == "limited-free" or .credentialLane == "codex" or .credentialLane == "claude") and
+              (.credentialIndex | type == "number" and . >= 1 and . <= 4) and
               (.files | type == "array" and length > 0)
             )
           ' <<<"$matrix" >/dev/null
@@ -3671,7 +3678,7 @@ jobs:
           CLERK_PUBLISHABLE_KEY: ${{ vars.CLERK_PUBLISHABLE_KEY }}
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
           JOB_REF: ${{ matrix.runtime == 'vercel' && format('{0}-vercel', needs.prepare.outputs.job-ref) || needs.prepare.outputs.job-ref }}
-          E2E_RUNNER_ORGANIZATION_ID: ${{ steps.account.outputs.runner-organization-id }}
+          E2E_RUNNER_ORGANIZATION_IDS: ${{ steps.account.outputs.runner-organization-ids }}
           E2E_RUNNER_CODEX_ORGANIZATION_ID: ${{ steps.account.outputs.codex-organization-id }}
           E2E_RUNNER_CLAUDE_ORGANIZATION_ID: ${{ steps.account.outputs.claude-organization-id }}
           E2E_RUNNER_MOCK_CLAUDE_ORGANIZATION_ID: ${{ steps.account.outputs.mock-claude-organization-id }}
@@ -3680,7 +3687,7 @@ jobs:
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
       - name: Create runner E2E account manifest
         env:
-          RUNNER_ORGANIZATION_ID: ${{ steps.account.outputs.runner-organization-id }}
+          RUNNER_ORGANIZATION_IDS: ${{ steps.account.outputs.runner-organization-ids }}
           CODEX_ORGANIZATION_ID: ${{ steps.account.outputs.codex-organization-id }}
           CLAUDE_ORGANIZATION_ID: ${{ steps.account.outputs.claude-organization-id }}
           RUNNER_EMAIL: ${{ steps.account.outputs.runner-email }}
@@ -3688,20 +3695,23 @@ jobs:
           CLAUDE_EMAIL: ${{ steps.account.outputs.claude-email }}
         run: |
           jq -n \
-            --arg runnerOrganizationId "$RUNNER_ORGANIZATION_ID" \
+            --argjson runnerOrganizationIds "$RUNNER_ORGANIZATION_IDS" \
             --arg codexOrganizationId "$CODEX_ORGANIZATION_ID" \
             --arg claudeOrganizationId "$CLAUDE_ORGANIZATION_ID" \
             --arg runnerEmail "$RUNNER_EMAIL" \
             --arg codexEmail "$CODEX_EMAIL" \
             --arg claudeEmail "$CLAUDE_EMAIL" \
-            '{runnerOrganizationId: $runnerOrganizationId, codexOrganizationId: $codexOrganizationId, claudeOrganizationId: $claudeOrganizationId, runnerEmail: $runnerEmail, codexEmail: $codexEmail, claudeEmail: $claudeEmail}' \
+            '{runnerOrganizationIds: $runnerOrganizationIds, codexOrganizationId: $codexOrganizationId, claudeOrganizationId: $claudeOrganizationId, runnerEmail: $runnerEmail, codexEmail: $codexEmail, claudeEmail: $claudeEmail}' \
             > /tmp/e2e-runner-accounts.json
       - name: Upload runner E2E API tokens
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: e2e-tokens-${{ matrix.runtime }}
           path: |
-            /tmp/e2e-api-credentials-runner.json
+            /tmp/e2e-api-credentials-runner-1.json
+            /tmp/e2e-api-credentials-runner-2.json
+            /tmp/e2e-api-credentials-runner-3.json
+            /tmp/e2e-api-credentials-runner-4.json
             /tmp/e2e-api-credentials-runner-real-codex.json
             /tmp/e2e-api-credentials-runner-real-claude.json
             /tmp/e2e-api-credentials-runner-mock-claude.json
@@ -3741,30 +3751,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          token=$(jq -er '.token | select(type == "string" and length > 0)' /tmp/e2e-api-credentials-runner.json)
-          api_url=$(jq -er '.apiUrl | select(type == "string" and length > 0)' /tmp/e2e-api-credentials-runner.json)
-          echo "::add-mask::$token"
-          echo "E2E_API_TOKEN=$token" >> "$GITHUB_ENV"
-          echo "E2E_API_URL=$api_url" >> "$GITHUB_ENV"
+          for index in 1 2 3 4; do
+            credential_file="/tmp/e2e-api-credentials-runner-${index}.json"
+            token=$(jq -er '.token | select(type == "string" and length > 0)' "$credential_file")
+            jq -er '.apiUrl | select(type == "string" and length > 0)' "$credential_file" >/dev/null
+            echo "::add-mask::$token"
+          done
       - name: Reset runner model defaults
         shell: bash
         run: |
           set -euo pipefail
-          headers=(-H "Authorization: Bearer ${E2E_API_TOKEN}" -H "Content-Type: application/json")
-          if [[ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then
-            headers+=(-H "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}")
-          fi
-          if [[ -n "${CF_ACCESS_CLIENT_ID:-}" || -n "${CF_ACCESS_CLIENT_SECRET:-}" ]]; then
-            : "${CF_ACCESS_CLIENT_ID:?Cloudflare Access client ID is required}"
-            : "${CF_ACCESS_CLIENT_SECRET:?Cloudflare Access client secret is required}"
-            headers+=(
-              -H "CF-Access-Client-Id: ${CF_ACCESS_CLIENT_ID}"
-              -H "CF-Access-Client-Secret: ${CF_ACCESS_CLIENT_SECRET}"
-            )
-          fi
-
-          # The standard runner organization stays on limited-free-1, so the
-          # deterministic policy must stay within that plan's catalog.
           payload="$(jq -nc '{
             policies: [
               {model: "deepseek-v4-flash", isDefault: true, defaultProviderType: "vm0", credentialScope: "org", modelProviderId: null},
@@ -3772,8 +3768,37 @@ jobs:
             ]
           }')"
 
-          curl -fsS "${headers[@]}" -X PUT -d "$payload" "${E2E_API_URL}/api/okou/model-policies" >/dev/null
-          curl -fsS "${headers[@]}" -X PUT -d '{"selectedModel":null,"serviceTier":null}' "${E2E_API_URL}/api/okou/user-model-preference" >/dev/null
+          reset_model_defaults() {
+            local credential_file="$1" token api_url
+            local -a headers
+            token=$(jq -er '.token' "$credential_file")
+            api_url=$(jq -er '.apiUrl' "$credential_file")
+            headers=(-H "Authorization: Bearer ${token}" -H "Content-Type: application/json")
+            if [[ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then
+              headers+=(-H "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}")
+            fi
+            if [[ -n "${CF_ACCESS_CLIENT_ID:-}" || -n "${CF_ACCESS_CLIENT_SECRET:-}" ]]; then
+              : "${CF_ACCESS_CLIENT_ID:?Cloudflare Access client ID is required}"
+              : "${CF_ACCESS_CLIENT_SECRET:?Cloudflare Access client secret is required}"
+              headers+=(
+                -H "CF-Access-Client-Id: ${CF_ACCESS_CLIENT_ID}"
+                -H "CF-Access-Client-Secret: ${CF_ACCESS_CLIENT_SECRET}"
+              )
+            fi
+            curl -fsS "${headers[@]}" -X PUT -d "$payload" "${api_url}/api/okou/model-policies" >/dev/null
+            curl -fsS "${headers[@]}" -X PUT -d '{"selectedModel":null,"serviceTier":null}' "${api_url}/api/okou/user-model-preference" >/dev/null
+          }
+
+          # Each limited-free organization keeps one concurrency slot. Set up
+          # their independent policies in parallel without changing plan limits.
+          pids=()
+          for index in 1 2 3 4; do
+            reset_model_defaults "/tmp/e2e-api-credentials-runner-${index}.json" &
+            pids+=("$!")
+          done
+          for pid in "${pids[@]}"; do
+            wait "$pid"
+          done
         env:
           CF_ACCESS_CLIENT_ID: ${{ matrix.runtime == 'cloudflare' && secrets.CF_API_PREVIEW_ACCESS_CLIENT_ID || '' }}
           CF_ACCESS_CLIENT_SECRET: ${{ matrix.runtime == 'cloudflare' && secrets.CF_API_PREVIEW_ACCESS_CLIENT_SECRET || '' }}
@@ -3782,22 +3807,37 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          headers=(-H "Authorization: Bearer ${E2E_API_TOKEN}" -H "Content-Type: application/json")
-          if [[ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then
-            headers+=(-H "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}")
-          fi
-          if [[ -n "${CF_ACCESS_CLIENT_ID:-}" || -n "${CF_ACCESS_CLIENT_SECRET:-}" ]]; then
-            : "${CF_ACCESS_CLIENT_ID:?Cloudflare Access client ID is required}"
-            : "${CF_ACCESS_CLIENT_SECRET:?Cloudflare Access client secret is required}"
-            headers+=(
-              -H "CF-Access-Client-Id: ${CF_ACCESS_CLIENT_ID}"
-              -H "CF-Access-Client-Secret: ${CF_ACCESS_CLIENT_SECRET}"
-            )
-          fi
-          curl -fsS "${headers[@]}" \
-            -X POST \
-            -d '{"type":"claude-code-oauth-token","secret":"mock-oauth-token-for-e2e"}' \
-            "${E2E_API_URL}/api/okou/model-providers" >/dev/null
+          bootstrap_mock_provider() {
+            local credential_file="$1" token api_url
+            local -a headers
+            token=$(jq -er '.token' "$credential_file")
+            api_url=$(jq -er '.apiUrl' "$credential_file")
+            headers=(-H "Authorization: Bearer ${token}" -H "Content-Type: application/json")
+            if [[ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then
+              headers+=(-H "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}")
+            fi
+            if [[ -n "${CF_ACCESS_CLIENT_ID:-}" || -n "${CF_ACCESS_CLIENT_SECRET:-}" ]]; then
+              : "${CF_ACCESS_CLIENT_ID:?Cloudflare Access client ID is required}"
+              : "${CF_ACCESS_CLIENT_SECRET:?Cloudflare Access client secret is required}"
+              headers+=(
+                -H "CF-Access-Client-Id: ${CF_ACCESS_CLIENT_ID}"
+                -H "CF-Access-Client-Secret: ${CF_ACCESS_CLIENT_SECRET}"
+              )
+            fi
+            curl -fsS "${headers[@]}" \
+              -X POST \
+              -d '{"type":"claude-code-oauth-token","secret":"mock-oauth-token-for-e2e"}' \
+              "${api_url}/api/okou/model-providers" >/dev/null
+          }
+
+          pids=()
+          for index in 1 2 3 4; do
+            bootstrap_mock_provider "/tmp/e2e-api-credentials-runner-${index}.json" &
+            pids+=("$!")
+          done
+          for pid in "${pids[@]}"; do
+            wait "$pid"
+          done
         env:
           CF_ACCESS_CLIENT_ID: ${{ matrix.runtime == 'cloudflare' && secrets.CF_API_PREVIEW_ACCESS_CLIENT_ID || '' }}
           CF_ACCESS_CLIENT_SECRET: ${{ matrix.runtime == 'cloudflare' && secrets.CF_API_PREVIEW_ACCESS_CLIENT_SECRET || '' }}
@@ -3985,6 +4025,7 @@ jobs:
       matrix: ${{ fromJSON(needs.cli-e2e-03-runner-shards.outputs.matrix) }}
     env:
       E2E_RUNNER_RUNTIME: ${{ matrix.runtime }}
+      E2E_RUNNER_CREDENTIAL_INDEX: ${{ matrix.credentialIndex }}
       E2E_RUNNER_SHARD_INDEX: ${{ matrix.index }}
       E2E_RUNNER_SHARD_TOTAL: ${{ matrix.total }}
       E2E_RUNNER_TEST_FILES_JSON: ${{ toJSON(matrix.files) }}
@@ -4009,20 +4050,26 @@ jobs:
         run: |
           set -euo pipefail
           for credential_file in \
-            /tmp/e2e-api-credentials-runner.json \
+            /tmp/e2e-api-credentials-runner-1.json \
+            /tmp/e2e-api-credentials-runner-2.json \
+            /tmp/e2e-api-credentials-runner-3.json \
+            /tmp/e2e-api-credentials-runner-4.json \
             /tmp/e2e-api-credentials-runner-real-codex.json \
             /tmp/e2e-api-credentials-runner-real-claude.json \
             /tmp/e2e-api-credentials-runner-mock-claude.json; do
             jq -er '.token | select(type == "string" and length > 0)' "$credential_file" >/dev/null
             jq -er '.apiUrl | select(type == "string" and length > 0)' "$credential_file" >/dev/null
           done
-          token=$(jq -er '.token' /tmp/e2e-api-credentials-runner.json)
-          api_url=$(jq -er '.apiUrl' /tmp/e2e-api-credentials-runner.json)
+          : "${E2E_RUNNER_CREDENTIAL_INDEX:?runner credential index is required}"
+          credential_file="/tmp/e2e-api-credentials-runner-${E2E_RUNNER_CREDENTIAL_INDEX}.json"
+          token=$(jq -er '.token' "$credential_file")
+          api_url=$(jq -er '.apiUrl' "$credential_file")
+          organization_index=$((E2E_RUNNER_CREDENTIAL_INDEX - 1))
           echo "::add-mask::$token"
           {
             echo "E2E_API_TOKEN=$token"
             echo "E2E_API_URL=$api_url"
-            echo "E2E_CLERK_ORG_ID=$(jq -er '.runnerOrganizationId' /tmp/e2e-runner-accounts.json)"
+            echo "E2E_CLERK_ORG_ID=$(jq -er --argjson index "$organization_index" '.runnerOrganizationIds[$index]' /tmp/e2e-runner-accounts.json)"
             echo "E2E_RUNNER_CODEX_ORG_ID=$(jq -er '.codexOrganizationId' /tmp/e2e-runner-accounts.json)"
             echo "E2E_RUNNER_CLAUDE_ORG_ID=$(jq -er '.claudeOrganizationId' /tmp/e2e-runner-accounts.json)"
             echo "E2E_RUNNER_EMAIL=$(jq -er '.runnerEmail' /tmp/e2e-runner-accounts.json)"
@@ -4044,6 +4091,7 @@ jobs:
           : "${E2E_API_TOKEN:?runner E2E API token is required}"
           : "${E2E_API_URL:?runner E2E API URL is required}"
           : "${E2E_RUNNER_RUNTIME:?runner E2E runtime is required}"
+          : "${E2E_RUNNER_CREDENTIAL_INDEX:?runner credential index is required}"
           jq -e '
             type == "array" and length > 0 and
             all(.[]; type == "string" and length > 0)

@@ -64,7 +64,10 @@ test("prepares and cleans one generation of runner accounts", async () => {
     await runRunnerAccount("prepare", environment);
 
     assert.deepEqual(fixture.state.organizationRequests, [
-      organizationRequest("user_1", "e2e-runner-pr-123", "runner"),
+      organizationRequest("user_1", "e2e-runner-1-pr-123", "runner"),
+      organizationRequest("user_1", "e2e-runner-2-pr-123", "runner"),
+      organizationRequest("user_1", "e2e-runner-3-pr-123", "runner"),
+      organizationRequest("user_1", "e2e-runner-4-pr-123", "runner"),
       organizationRequest(
         "user_2",
         "e2e-runner-real-codex-pr-123",
@@ -84,10 +87,10 @@ test("prepares and cleans one generation of runner accounts", async () => {
     assert.equal(
       await readFile(githubOutput, "utf8"),
       [
-        "runner-organization-id=org_1",
-        "codex-organization-id=org_2",
-        "claude-organization-id=org_3",
-        "mock-claude-organization-id=org_4",
+        'runner-organization-ids=["org_1","org_2","org_3","org_4"]',
+        "codex-organization-id=org_5",
+        "claude-organization-id=org_6",
+        "mock-claude-organization-id=org_7",
         "runner-email=pr-123+clerk_test+9001-3+runner@vm0-e2e.ai",
         "codex-email=pr-123+clerk_test+9001-3+runner-real-codex@vm0-e2e.ai",
         "claude-email=pr-123+clerk_test+9001-3+runner-real-claude@vm0-e2e.ai",
@@ -122,6 +125,9 @@ test("prepares and cleans one generation of runner accounts", async () => {
       "organization:org_2",
       "organization:org_3",
       "organization:org_4",
+      "organization:org_5",
+      "organization:org_6",
+      "organization:org_7",
       "user:user_1",
       "user:user_2",
       "user:user_3",
@@ -163,6 +169,9 @@ test("partial runner preparation cleans resources without outputs", async () => 
     assert.deepEqual(fixture.state.organizations, []);
     assert.deepEqual(fixture.state.deletionEvents, [
       "organization:org_1",
+      "organization:org_2",
+      "organization:org_3",
+      "organization:org_4",
       "user:user_1",
     ]);
   } finally {
