@@ -152,12 +152,13 @@ rollout. Existing Zero installations keep using
 `/api/desktop/updates/stable/darwin/arm64` and the `desktop-updates` manifest.
 Final `ai.okou.desktop` installations use
 `/api/desktop/updates/ai-okou-desktop/stable/darwin/arm64` and the separate
-`ai-okou-desktop-updates` manifest. The pre-adoption Okou feed remains frozen
-until the signed/notarized final identity passes release acceptance, then it is
-retired without receiving a final-identity artifact. Each manifest identifies
-its product, and the API rejects ZIP assets whose product filename does not
-match the requested feed. A Zero feed must never publish an Okou artifact, and
-the pre-adoption Okou feed must never publish a final-identity archive.
+`ai-okou-desktop-updates` manifest. The stable branded Okou download route also
+resolves through this final-identity manifest. The pre-adoption Okou manifest
+remains frozen without a final-identity artifact, and its explicit product
+routes return `404`. Each manifest identifies its product, and the API rejects
+ZIP assets whose product filename does not match the requested feed. A Zero
+feed must never publish an Okou artifact, and the pre-adoption Okou feed must
+never publish a final-identity archive.
 
 The release systems may deploy independently. The API therefore preserves the
 legacy Zero routes and accepts both Zero callback schemes
