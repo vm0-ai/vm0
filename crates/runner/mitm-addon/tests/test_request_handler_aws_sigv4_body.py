@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import json
 import threading
+import urllib.parse
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
@@ -18,7 +19,7 @@ import flow_metadata_keys as metadata_keys
 import mitm_addon
 import request_classification
 import request_streaming
-from aws_sigv4 import AwsSigV4BodyHash, hash_request_body
+from aws_sigv4 import MAX_AWS_SIGV4_QUERY_PAIRS, AwsSigV4BodyHash, hash_request_body
 from body_limits import STREAM_BUFFER_LIMIT
 from tests.aws_sigv4_helpers import (
     RESOLVED_AWS_ACCESS_KEY_ID,
@@ -157,6 +158,15 @@ def _header_auth_flow(
             )
         ),
     )
+
+
+def _s3_presigned_query_path_with_pair_count(pair_count: int) -> str:
+    base_path = aws_sigv4_presigned_query_path(service="s3", leading_query="")
+    base_query = urllib.parse.urlsplit(base_path).query
+    base_pair_count = len(base_query.split("&"))
+    assert pair_count >= base_pair_count
+    leading_query = "&".join(("a=",) * (pair_count - base_pair_count))
+    return aws_sigv4_presigned_query_path(service="s3", leading_query=leading_query)
 
 
 def _raw_header_list_size(request_headers: http.Headers) -> int:
@@ -327,6 +337,73 @@ async def test_sigv4_request_target_inspection_boundary(
 
         assert metadata_keys.AWS_SIGV4_REQUEST_INSPECTION not in flow.metadata
         mitm_addon.response(flow)
+
+    get_headers.assert_awaited_once()
+    assert aws_sigv4_body_admission.state_for_tests() == (0, 0)
+
+
+@pytest.mark.parametrize(
+    ("pair_count", "accepted"),
+    [
+        (MAX_AWS_SIGV4_QUERY_PAIRS, True),
+        (MAX_AWS_SIGV4_QUERY_PAIRS + 1, False),
+    ],
+    ids=["exact-limit", "over-limit"],
+)
+async def test_presigned_s3_query_pair_count_inspection_boundary(
+    tmp_path,
+    real_flow,
+    headers,
+    mitm_ctx,
+    pair_count: int,
+    accepted: bool,
+) -> None:
+    host = "bucket.s3.amazonaws.com"
+    registry_path = _write_aws_registry(tmp_path, base=f"https://{host}")
+    path = _s3_presigned_query_path_with_pair_count(pair_count)
+    assert len(path.encode()) < auth.MAX_AWS_SIGV4_REQUEST_TARGET_BYTES
+    flow = real_flow(
+        with_response=False,
+        client_ip=_CLIENT_IP,
+        host=host,
+        method="GET",
+        path=path,
+        request_headers=headers(
+            ("Host", host),
+            ("Content-Length", "0"),
+        ),
+    )
+    original_url = flow.request.url
+    get_headers = AsyncMock(return_value=_resolved_token_meta())
+
+    with (
+        mitm_ctx(registry_path=str(registry_path), api_url="https://api.vm0.ai"),
+        patch.object(auth, "get_firewall_headers", get_headers),
+    ):
+        requestheaders_result = mitm_addon.requestheaders(flow)
+        if accepted:
+            await await_requestheaders_result(requestheaders_result)
+            assert flow.response is None
+            assert callable(flow.request.stream)
+            assert f"X-Amz-Credential={RESOLVED_AWS_ACCESS_KEY_ID}%2F" in flow.request.url
+            signed_query = urllib.parse.urlsplit(flow.request.url).query
+            assert len(signed_query.split("&")) == MAX_AWS_SIGV4_QUERY_PAIRS + 1
+            flow.response = http.Response.make(200, b"ok")
+        else:
+            assert requestheaders_result is None
+            assert metadata_keys.AWS_SIGV4_REQUEST_INSPECTION in flow.metadata
+            await mitm_addon.request(flow)
+
+            assert flow.response is not None
+            assert flow.response.status_code == 502
+            assert flow.response.json()["error"] == "aws_sigv4_auth_failed"
+            assert flow.response.json()["message"] == ("AWS request has too many query parameters")
+            assert flow.request.url == original_url
+            assert RESOLVED_AWS_ACCESS_KEY_ID not in flow.request.url
+
+        assert metadata_keys.AWS_SIGV4_REQUEST_INSPECTION not in flow.metadata
+        mitm_addon.response(flow)
+        assert metadata_keys.AWS_SIGV4_BODY_ADMISSION not in flow.metadata
 
     get_headers.assert_awaited_once()
     assert aws_sigv4_body_admission.state_for_tests() == (0, 0)

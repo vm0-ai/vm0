@@ -7,6 +7,7 @@ import pytest
 
 import runtime_url_parsing
 from aws_sigv4 import (
+    MAX_AWS_SIGV4_QUERY_PAIRS,
     AwsSigV4Credentials,
     AwsSigV4SigningError,
     hash_request_body,
@@ -134,6 +135,15 @@ def _presigned_url(
     timestamp: str = DEFAULT_SIGV4_TIMESTAMP,
 ) -> str:
     return aws_sigv4_presigned_url(host, date=timestamp[:8], timestamp=timestamp)
+
+
+def _presigned_url_with_query_pair_count(pair_count: int) -> str:
+    base_url = aws_sigv4_presigned_url(STS_HOST, leading_query="")
+    base_query = urllib.parse.urlsplit(base_url).query
+    base_pair_count = len(base_query.split("&"))
+    assert pair_count >= base_pair_count
+    leading_query = "&".join(("a=",) * (pair_count - base_pair_count))
+    return aws_sigv4_presigned_url(STS_HOST, leading_query=leading_query)
 
 
 _REJECTED_SIGNING_CONTEXTS = (
@@ -414,6 +424,67 @@ def test_presigned_query_preserves_ordinary_pairs() -> None:
         "&X-Amz-SignedHeaders=host"
         "&X-Amz-Signature=9245f52c735ed2e7286981a0013837d6c69b227b74cee0a9611b3f0257fc1c68"
     )
+
+
+@pytest.mark.parametrize(
+    ("pair_count", "accepted"),
+    [
+        (MAX_AWS_SIGV4_QUERY_PAIRS, True),
+        (MAX_AWS_SIGV4_QUERY_PAIRS + 1, False),
+    ],
+    ids=["exact-limit", "over-limit"],
+)
+def test_query_pair_count_boundary(pair_count: int, accepted: bool) -> None:
+    url = _presigned_url_with_query_pair_count(pair_count)
+    parts = urllib.parse.urlsplit(url)
+    assert len(f"{parts.path}?{parts.query}".encode()) < 64 * 1024
+    headers = [("Host", STS_HOST)]
+
+    if accepted:
+        inspection = inspect_request(url=url, headers=headers)
+        signed_url, _signed_headers = sign_request(
+            method="GET",
+            url=url,
+            headers=headers,
+            body=None,
+            credentials=_credentials(),
+            inspection=inspection,
+        )
+        signed_query = urllib.parse.urlsplit(signed_url).query
+        assert len(signed_query.split("&")) == MAX_AWS_SIGV4_QUERY_PAIRS
+        return
+
+    with patch("aws_sigv4._unquote_query_component") as unquote_query_component:
+        with pytest.raises(
+            AwsSigV4SigningError,
+            match=r"^AWS request has too many query parameters$",
+        ):
+            inspect_request(url=url, headers=headers)
+        with pytest.raises(
+            AwsSigV4SigningError,
+            match=r"^AWS request has too many query parameters$",
+        ):
+            sign_request(
+                method="GET",
+                url=url,
+                headers=headers,
+                body=None,
+                credentials=_credentials(),
+            )
+
+    unquote_query_component.assert_not_called()
+
+
+def test_query_pair_count_ignores_empty_segments() -> None:
+    url = aws_sigv4_presigned_url(
+        STS_HOST,
+        leading_query="&" * (MAX_AWS_SIGV4_QUERY_PAIRS + 1),
+    )
+    raw_query = urllib.parse.urlsplit(url).query
+    assert raw_query.count("&") > MAX_AWS_SIGV4_QUERY_PAIRS
+
+    inspection = inspect_request(url=url, headers=[("Host", STS_HOST)])
+    assert inspection.requires_body is True
 
 
 @pytest.mark.parametrize(
