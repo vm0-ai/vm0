@@ -101,9 +101,6 @@ importers:
       prettier:
         specifier: ^3.6.2
         version: 3.8.1
-      tar:
-        specifier: '>=7.5.21'
-        version: 7.5.22
       tsx:
         specifier: ^4.21.0
         version: 4.21.0
