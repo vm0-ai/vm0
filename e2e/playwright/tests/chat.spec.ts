@@ -233,6 +233,21 @@ async function mockSelectedFastModel(page: Page): Promise<void> {
       },
     });
   });
+  await page.route("**/api/okou/billing/status", async (route) => {
+    const response = await route.fetch();
+    const body: unknown = await response.json();
+    if (!isRecord(body)) {
+      throw new Error("Billing status returned an unexpected response");
+    }
+    await route.fulfill({
+      response,
+      json: {
+        ...body,
+        supportByok: true,
+        restrictedVm0Models: false,
+      },
+    });
+  });
   await page.route("**/api/okou/model-policies", async (route) => {
     if (route.request().method() !== "GET") {
       await route.continue();
