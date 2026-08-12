@@ -321,13 +321,16 @@ end
 unless cleanup_step.fetch("run").end_with?("runner-account.ts cleanup")
   raise "runner E2E account cleanup must use the shared lifecycle entry point"
 end
+if account_cleanup.fetch("if").include?("!= 'cancelled'")
+  raise "runner E2E cleanup must run after cancelled account preparation"
+end
 %w[
   E2E_RUNNER_ORGANIZATION_ID
   E2E_RUNNER_CODEX_ORGANIZATION_ID
   E2E_RUNNER_CLAUDE_ORGANIZATION_ID
 ].each do |environment_name|
-  unless cleanup_step.fetch("env").key?(environment_name)
-    raise "runner E2E cleanup must receive #{environment_name}"
+  if cleanup_step.fetch("env", {}).key?(environment_name)
+    raise "runner E2E cleanup must not depend on #{environment_name}"
   end
 end
 
