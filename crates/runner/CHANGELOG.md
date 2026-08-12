@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.165.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.165.0...runner-rs-v0.165.1) (2026-08-12)
+
+
+### Bug Fixes
+
+* **python:** preserve unbalanced base literal scope ([#26638](https://github.com/vm0-ai/vm0/issues/26638)) ([5417209](https://github.com/vm0-ai/vm0/commit/5417209967ad103cf9bb3b8f6b1e51203c5b5d52))
+
+
+### Refactoring
+
+* **chat:** remove active input rollout compatibility ([#26625](https://github.com/vm0-ai/vm0/issues/26625)) ([8d1be07](https://github.com/vm0-ai/vm0/commit/8d1be07f2d1665a02d86cb2ef550fa9a1f1e212a))
+* **python:** centralize model json usage protocol dispatch ([#26641](https://github.com/vm0-ai/vm0/issues/26641)) ([122a18f](https://github.com/vm0-ai/vm0/commit/122a18f98550bfc5f658c35ce1db1b3b353fad36))
+
+
+### Performance Improvements
+
+* **python:** bound auth.base trusted query rewrites ([#26618](https://github.com/vm0-ai/vm0/issues/26618)) ([5af78da](https://github.com/vm0-ai/vm0/commit/5af78da6e1bb77b715a0182a752de987a5d40529))
+* **runner:** avoid connector runtime sync head-of-line blocking ([#26539](https://github.com/vm0-ai/vm0/issues/26539)) ([67c483b](https://github.com/vm0-ai/vm0/commit/67c483b15c4ee9846e790891bc0ad9504d63b044))
+
 ## [0.165.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.164.6...runner-rs-v0.165.0) (2026-08-12)
 
 

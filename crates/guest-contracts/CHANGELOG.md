@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.1](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.9.0...guest-contracts-v0.9.1) (2026-08-12)
+
+
+### Refactoring
+
+* **rust:** centralize guest stdout framing limits ([#26648](https://github.com/vm0-ai/vm0/issues/26648)) ([962e753](https://github.com/vm0-ai/vm0/commit/962e7532f4e8d319fb05b096bdbfca85431731ed))
+
 ## [0.9.0](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.8.0...guest-contracts-v0.9.0) (2026-08-11)
 
 
