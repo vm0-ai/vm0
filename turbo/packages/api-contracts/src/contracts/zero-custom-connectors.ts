@@ -5,6 +5,8 @@ import { apiErrorSchema } from "./errors";
 
 const c = initContract();
 
+export const CUSTOM_CONNECTOR_INJECTION_TEMPLATE_MAX_CHARS = 2_048;
+
 export const customConnectorSlugSchema = z
   .string()
   .regex(/^_[a-z0-9][a-z0-9-]{0,60}[a-z0-9]$/u);
@@ -26,7 +28,10 @@ export type CustomConnectorField = z.infer<typeof customConnectorFieldSchema>;
 
 export const customConnectorHeaderInjectionSchema = z.object({
   name: z.string().min(1).max(128),
-  valueTemplate: z.string().min(1).max(2048),
+  valueTemplate: z
+    .string()
+    .min(1)
+    .max(CUSTOM_CONNECTOR_INJECTION_TEMPLATE_MAX_CHARS),
 });
 export type CustomConnectorHeaderInjection = z.infer<
   typeof customConnectorHeaderInjectionSchema
@@ -34,7 +39,10 @@ export type CustomConnectorHeaderInjection = z.infer<
 
 export const customConnectorQueryInjectionSchema = z.object({
   name: z.string().min(1).max(128),
-  valueTemplate: z.string().min(1).max(2048),
+  valueTemplate: z
+    .string()
+    .min(1)
+    .max(CUSTOM_CONNECTOR_INJECTION_TEMPLATE_MAX_CHARS),
 });
 export type CustomConnectorQueryInjection = z.infer<
   typeof customConnectorQueryInjectionSchema
@@ -122,7 +130,7 @@ const customConnectorResponseBaseSchema = z.object({
   fields: z.array(customConnectorFieldSchema),
   headerInjections: z.array(customConnectorHeaderInjectionSchema),
   queryInjections: z.array(customConnectorQueryInjectionSchema),
-  authMode: customConnectorAuthModeSchema.optional(),
+  authMode: customConnectorAuthModeSchema,
   oauthConfig: customConnectorOAuthConfigSchema.optional(),
   permissionBundleRef: customConnectorPermissionBundleRefSchema
     .nullable()

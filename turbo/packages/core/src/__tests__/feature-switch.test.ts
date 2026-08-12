@@ -13,6 +13,9 @@ describe("isFeatureEnabled", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.Dummy, {})).toBe(true);
     expect(isFeatureEnabled(FeatureSwitchKey.TeamsIntegration, {})).toBe(true);
     expect(isFeatureEnabled(FeatureSwitchKey.JoggAiBuiltIn, {})).toBe(true);
+    expect(isFeatureEnabled(FeatureSwitchKey.ChatEventSnapshotRead, {})).toBe(
+      true,
+    );
   });
 
   it("should return true for globally enabled switch even with context", () => {
@@ -101,7 +104,6 @@ describe("getAllFeatureStates", () => {
       staffOrgStates[FeatureSwitchKey.ChatRunContinuationPresentation],
     ).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.PiLoop]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.ChatEventSnapshotRead]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.UnifiedIndicatorApi]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.NewChatDefaultModelAction]).toBe(
       true,
@@ -132,7 +134,6 @@ describe("getAllFeatureStates", () => {
       otherOrgStates[FeatureSwitchKey.ChatRunContinuationPresentation],
     ).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.PiLoop]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.ChatEventSnapshotRead]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.NewChatDefaultModelAction]).toBe(
       false,
     );

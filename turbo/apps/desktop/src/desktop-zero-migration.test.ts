@@ -22,7 +22,11 @@ function createController(options: {
   readonly drainAndStopZero?: () => Promise<void>;
   readonly startZero?: () => Promise<void>;
   readonly openDownload?: (url: string) => Promise<void>;
+  readonly fetchPolicy?: (signal: AbortSignal) => Promise<Response>;
+  readonly quitZero?: () => void;
   readonly onChange?: () => void;
+  readonly onAttention?: () => void;
+  readonly logPolicyError?: (error: unknown) => void;
 }) {
   return new DesktopZeroMigrationController({
     enabled: options.enabled ?? true,
@@ -32,7 +36,15 @@ function createController(options: {
     drainAndStopZero: options.drainAndStopZero ?? vi.fn(async () => {}),
     startZero: options.startZero ?? vi.fn(async () => {}),
     openDownload: options.openDownload ?? vi.fn(async () => {}),
+    fetchPolicy:
+      options.fetchPolicy ??
+      vi.fn(async () => {
+        return Response.json({ schemaVersion: 1, mode: "soft" });
+      }),
+    quitZero: options.quitZero ?? vi.fn(),
     onChange: options.onChange,
+    onAttention: options.onAttention,
+    logPolicyError: options.logPolicyError,
     now: options.now,
   });
 }
@@ -161,5 +173,105 @@ describe("DesktopZeroMigrationController", () => {
       unknown
     >;
     expect(persisted.zeroMigration).toBeUndefined();
+  });
+
+  it("applies a hard stop only after draining the current command", async () => {
+    const filePath = await preferencesPath();
+    let finishDrain!: () => void;
+    const drainAndStopZero = vi.fn(async () => {
+      await new Promise<void>((resolve) => {
+        finishDrain = resolve;
+      });
+    });
+    const onAttention = vi.fn();
+    const quitZero = vi.fn();
+    const controller = createController({
+      filePath,
+      drainAndStopZero,
+      onAttention,
+      quitZero,
+      fetchPolicy: vi.fn(async () => {
+        return Response.json({ schemaVersion: 1, mode: "hard" });
+      }),
+    });
+
+    const refresh = controller.refreshPolicy();
+    await vi.waitFor(() => {
+      expect(controller.getState().mode).toBe("hard_stop_waiting");
+    });
+    expect(controller.shouldSuppressAutoStart()).toBe(true);
+    expect(controller.allowUserInitiatedStart()).toBe(false);
+    expect(onAttention).toHaveBeenCalledOnce();
+
+    finishDrain();
+    await refresh;
+    expect(controller.getState().mode).toBe("hard_stop");
+    expect(controller.remindLater().mode).toBe("hard_stop");
+    expect((await controller.resumeZero()).mode).toBe("hard_stop");
+
+    controller.quitZero();
+    expect(quitZero).toHaveBeenCalledOnce();
+  });
+
+  it("opens the Okou download without offering Zero recovery in hard mode", async () => {
+    const filePath = await preferencesPath();
+    const drainAndStopZero = vi.fn(async () => {});
+    const openDownload = vi.fn(async () => {});
+    const controller = createController({
+      filePath,
+      drainAndStopZero,
+      openDownload,
+      fetchPolicy: vi.fn(async () => {
+        return Response.json({ schemaVersion: 1, mode: "hard" });
+      }),
+    });
+    await controller.refreshPolicy();
+
+    const state = await controller.beginMigration();
+
+    expect(state.mode).toBe("hard_stop");
+    expect(openDownload).toHaveBeenCalledWith(
+      ZERO_MIGRATION_BRIDGE_CONFIG.downloadUrl,
+    );
+    expect(drainAndStopZero).toHaveBeenCalledTimes(2);
+  });
+
+  it("falls back to soft coexistence and restarts Zero when policy refresh fails", async () => {
+    const filePath = await preferencesPath();
+    const fetchPolicy = vi
+      .fn<(signal: AbortSignal) => Promise<Response>>()
+      .mockResolvedValueOnce(Response.json({ schemaVersion: 1, mode: "hard" }))
+      .mockRejectedValueOnce(new Error("Policy unavailable"));
+    const startZero = vi.fn(async () => {});
+    const logPolicyError = vi.fn();
+    const controller = createController({
+      filePath,
+      fetchPolicy,
+      startZero,
+      logPolicyError,
+    });
+    await controller.refreshPolicy();
+
+    await controller.refreshPolicy();
+
+    expect(controller.getState().mode).toBe("soft_reminder");
+    expect(controller.shouldSuppressAutoStart()).toBe(false);
+    expect(startZero).toHaveBeenCalledOnce();
+    expect(logPolicyError).toHaveBeenCalledOnce();
+  });
+
+  it("hides the reminder when the remote policy is off", async () => {
+    const filePath = await preferencesPath();
+    const controller = createController({
+      filePath,
+      fetchPolicy: vi.fn(async () => {
+        return Response.json({ schemaVersion: 1, mode: "off" });
+      }),
+    });
+
+    await controller.refreshPolicy();
+
+    expect(controller.getState().mode).toBe("hidden");
+    expect(controller.shouldSuppressAutoStart()).toBe(false);
   });
 });

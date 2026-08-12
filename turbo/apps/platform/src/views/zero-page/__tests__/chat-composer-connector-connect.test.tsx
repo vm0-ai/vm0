@@ -107,6 +107,7 @@ function customConnector(
       },
     ],
     queryInjections: [],
+    authMode: "manual",
     connected: false,
     missingRequiredFields: ["secret"],
     configuredFieldKeys: [],

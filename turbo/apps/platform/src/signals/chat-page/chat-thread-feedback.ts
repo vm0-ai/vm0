@@ -7,24 +7,29 @@ import {
   type State,
 } from "ccstate";
 import { delay } from "signal-timers";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { isEditableTarget, matchShortcut } from "@vm0/ui";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { i18n } from "../../i18n/index.ts";
+import {
+  featureSwitch$,
+  feedbackLocationApiSupported$,
+} from "../external/feature-switch.ts";
 import type {
   ComposerFeedbackSignals,
   FeedbackRange,
   FeedbackSource,
 } from "../zero-page/chat-feedback.ts";
 import { writeToClipboard } from "../zero-page/clipboard.ts";
+import { setChatListQuery$ } from "../zero-page/zero-sidebar-state.ts";
 import { onDomEventFn, onRef, resetSignal } from "../utils.ts";
 import type {
   ChatForwardComposerState,
   ChatForwardSelection,
 } from "./chat-forward.ts";
-import { feedbackLocationApiSupported$ } from "../external/feature-switch.ts";
 
 // Assistant messages and other agent-produced content, such as linked email
-// drafts, opt into the shared Copy / Provide feedback interaction.
+// drafts, opt into the shared Copy / Quote interaction.
 const FEEDBACK_SOURCE_SELECTOR =
   ".zero-chat-bubble-assistant, [data-feedback-source]";
 const ASSISTANT_GROUP_SELECTOR = '[data-role="assistant"]';
@@ -62,7 +67,7 @@ export interface ChatThreadFeedbackSignals {
   readonly copy$: Command<Promise<void>, [AbortSignal]>;
   readonly forwardSelection$: Computed<ChatForwardSelection | null>;
   readonly forwardComposerState$: Computed<ChatForwardComposerState | null>;
-  readonly openForward$: Command<void, [ChatForwardSelection]>;
+  readonly startForward$: Command<boolean, []>;
   readonly setForwardComposerState$: Command<
     void,
     [ChatForwardComposerState | null]
@@ -345,6 +350,7 @@ function createForwardState(closeSelection$: Command<void, []>) {
   });
   const openForward$ = command(
     ({ set }, selection: ChatForwardSelection): void => {
+      set(setChatListQuery$, "");
       set(internalForwardSelection$, selection);
       set(internalForwardComposerState$, null);
       set(closeSelection$);
@@ -356,6 +362,7 @@ function createForwardState(closeSelection$: Command<void, []>) {
     },
   );
   const closeForward$ = command(({ set }): void => {
+    set(setChatListQuery$, "");
     set(internalForwardSelection$, null);
     set(internalForwardComposerState$, null);
   });
@@ -368,16 +375,39 @@ function createForwardState(closeSelection$: Command<void, []>) {
   };
 }
 
+function createStartForward(
+  selection$: State<CapturedFeedbackSelection | null>,
+  openForward$: Command<void, [ChatForwardSelection]>,
+) {
+  return command(({ get, set }): boolean => {
+    if (!(get(featureSwitch$)[FeatureSwitchKey.ChatForward] ?? false)) {
+      return false;
+    }
+    const selection = get(selection$);
+    if (!selection?.threadId || !selection.runId) {
+      return false;
+    }
+    set(openForward$, {
+      text: selection.text,
+      threadId: selection.threadId,
+      runId: selection.runId,
+    });
+    return true;
+  });
+}
+
 function createToolbarRef({
   resetToolbarSignal$,
   close$,
   copy$,
   start$,
+  startForward$,
 }: {
   resetToolbarSignal$: ReturnType<typeof resetSignal>;
   close$: Command<void, []>;
   copy$: Command<Promise<void>, [AbortSignal]>;
   start$: Command<void, []>;
+  startForward$: Command<boolean, []>;
 }) {
   return onRef(
     command(({ set }, el: HTMLElement, signal: AbortSignal) => {
@@ -409,9 +439,13 @@ function createToolbarRef({
             await set(copy$, signal);
             return;
           }
-          if (matchShortcut("f", event)) {
+          if (matchShortcut("q", event)) {
             event.preventDefault();
             set(start$);
+            return;
+          }
+          if (matchShortcut("f", event) && set(startForward$)) {
+            event.preventDefault();
           }
         }),
         { signal: toolbarSignal },
@@ -512,11 +546,16 @@ export function createChatThreadFeedbackSignals(
     selection.close$,
     feedback,
   );
+  const startForward$ = createStartForward(
+    selection.internalSelection$,
+    forward.openForward$,
+  );
   const setToolbarRef$ = createToolbarRef({
     resetToolbarSignal$: selection.resetToolbarSignal$,
     close$: selection.close$,
     copy$: selection.copy$,
     start$,
+    startForward$,
   });
   const setListenersRef$ = createListenersRef({
     selection$: selection.internalSelection$,
@@ -531,7 +570,7 @@ export function createChatThreadFeedbackSignals(
     copy$: selection.copy$,
     forwardSelection$: forward.forwardSelection$,
     forwardComposerState$: forward.forwardComposerState$,
-    openForward$: forward.openForward$,
+    startForward$,
     setForwardComposerState$: forward.setForwardComposerState$,
     closeForward$: forward.closeForward$,
     setListenersRef$,

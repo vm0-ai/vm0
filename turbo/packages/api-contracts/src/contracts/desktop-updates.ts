@@ -13,6 +13,15 @@ const desktopUpdateChannelSchema = z.enum(["stable"]);
 const desktopUpdatePlatformSchema = z.enum(["darwin"]);
 const desktopUpdateArchitectureSchema = z.enum(["arm64"]);
 const desktopUpdateLineSchema = z.enum(DESKTOP_UPDATE_LINES);
+export const desktopZeroMigrationRolloutModeSchema = z.enum([
+  "off",
+  "soft",
+  "hard",
+]);
+export const desktopZeroMigrationPolicySchema = z.object({
+  schemaVersion: z.literal(1),
+  mode: desktopZeroMigrationRolloutModeSchema,
+});
 
 export type DesktopUpdateChannel = z.infer<typeof desktopUpdateChannelSchema>;
 export type DesktopUpdatePlatform = z.infer<typeof desktopUpdatePlatformSchema>;
@@ -20,6 +29,12 @@ export type DesktopUpdateArchitecture = z.infer<
   typeof desktopUpdateArchitectureSchema
 >;
 export type DesktopUpdateLine = z.infer<typeof desktopUpdateLineSchema>;
+export type DesktopZeroMigrationRolloutMode = z.infer<
+  typeof desktopZeroMigrationRolloutModeSchema
+>;
+export type DesktopZeroMigrationPolicy = z.infer<
+  typeof desktopZeroMigrationPolicySchema
+>;
 
 const squirrelMacReleaseSchema = z.object({
   version: z.string(),
@@ -40,6 +55,14 @@ const squirrelMacReleasesSchema = z.object({
 export type SquirrelMacReleases = z.infer<typeof squirrelMacReleasesSchema>;
 
 export const desktopUpdatesContract = c.router({
+  migrationPolicy: {
+    method: "GET",
+    path: "/api/desktop/migration-policy",
+    responses: {
+      200: desktopZeroMigrationPolicySchema,
+    },
+    summary: "Get the remotely controlled Zero Desktop migration policy",
+  },
   releasePage: {
     method: "GET",
     path: "/api/okou/desktop/updates/:channel/:platform/:arch/release",

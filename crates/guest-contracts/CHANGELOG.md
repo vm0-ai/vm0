@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.2](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.9.1...guest-contracts-v0.9.2) (2026-08-12)
+
+
+### Refactoring
+
+* **pi:** persist sandbox sessions in native sqlite ([#26555](https://github.com/vm0-ai/vm0/issues/26555)) ([9ed505e](https://github.com/vm0-ai/vm0/commit/9ed505e1c567ff019d521fac167700c2b390cffe))
+
 ## [0.9.1](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.9.0...guest-contracts-v0.9.1) (2026-08-12)
 
 

@@ -1389,7 +1389,7 @@
       "partsHeading_one": "Feedback on {{count}} part of your reply:",
       "partsHeading_other": "Feedback on {{count}} parts of your reply:",
       "placeholder": "What should change about this?",
-      "provide": "Provide feedback",
+      "quote": "Quote",
       "remove": "Remove feedback",
       "sentEmailDescription": "a sent email (mail ID: {{id}}{{sentIdSuffix}})",
       "sentIdSuffix": ", sent ID: {{sentId}}",
@@ -1674,7 +1674,8 @@
       "pickEmoji": "Pick an emoji",
       "scrollToBottom": "Scroll to bottom",
       "searchEmoji": "Search emoji",
-      "steerMessageExplanation": "Sent while the agent was working to direct its behavior"
+      "steerAcknowledgement_one": "Picked this up mid-run — earlier work kept",
+      "steerAcknowledgement_other": "All {{count}} messages picked up mid-run — earlier work kept"
     },
     "threadSidebar": {
       "resize": "Resize sidebar"

@@ -1389,7 +1389,7 @@
       "partsHeading_one": "Masukan untuk {{count}} bagian balasan Anda:",
       "partsHeading_other": "Masukan untuk {{count}} bagian balasan Anda:",
       "placeholder": "Apa yang harus diubah dari ini?",
-      "provide": "Berikan masukan",
+      "quote": "Kutip",
       "remove": "Hapus masukan",
       "sentEmailDescription": "email yang telah dikirim (ID mail: {{id}}{{sentIdSuffix}})",
       "sentIdSuffix": ", ID terkirim: {{sentId}}",
@@ -1673,7 +1673,8 @@
       "pickEmoji": "Pilih emoji",
       "scrollToBottom": "Gulir ke bawah",
       "searchEmoji": "Cari emoji",
-      "steerMessageExplanation": "Dikirim saat agen sedang bekerja untuk mengarahkan perilakunya"
+      "steerAcknowledgement_one": "Diterima saat proses berjalan — pekerjaan sebelumnya tetap ada",
+      "steerAcknowledgement_other": "Semua {{count}} pesan diterima saat proses berjalan — pekerjaan sebelumnya tetap ada"
     },
     "threadSidebar": {
       "resize": "Ubah ukuran sidebar"

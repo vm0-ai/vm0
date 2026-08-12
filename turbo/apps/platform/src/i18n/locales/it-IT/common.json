@@ -1417,7 +1417,7 @@
       "partsHeading_many": "Feedback su {{count}} parti della tua risposta:",
       "partsHeading_other": "Feedback su {{count}} parti della tua risposta:",
       "placeholder": "Cosa dovrebbe cambiare in questo senso?",
-      "provide": "Fornisci feedback",
+      "quote": "Cita",
       "remove": "Rimuovi feedback",
       "sentEmailDescription": "un'e-mail inviata (mail ID: {{id}}{{sentIdSuffix}})",
       "sentIdSuffix": ", inviato ID: {{sentId}}",
@@ -1714,7 +1714,9 @@
       "pickEmoji": "Scegli un'emoji",
       "scrollToBottom": "Scorri fino in fondo",
       "searchEmoji": "Cerca emoji",
-      "steerMessageExplanation": "Inviato mentre l'agente lavorava per orientarne il comportamento"
+      "steerAcknowledgement_one": "Preso in carico durante l'esecuzione: il lavoro precedente è mantenuto",
+      "steerAcknowledgement_many": "Tutti i {{count}} messaggi presi in carico durante l'esecuzione: il lavoro precedente è mantenuto",
+      "steerAcknowledgement_other": "Tutti i {{count}} messaggi presi in carico durante l'esecuzione: il lavoro precedente è mantenuto"
     },
     "threadSidebar": {
       "resize": "Ridimensiona la barra laterale"

@@ -173,7 +173,9 @@ function buttonByText(text: string): HTMLElement {
       label === `${text}C` ||
       label === `${text} C` ||
       label === `${text}F` ||
-      label === `${text} F`
+      label === `${text} F` ||
+      label === `${text}Q` ||
+      label === `${text} Q`
     );
   });
   if (!button) {
@@ -313,7 +315,7 @@ describe("chat inline feedback", () => {
 
     const assistantReplyElement = await screen.findByText(assistantReply);
     selectTextForInlineFeedback(assistantReplyElement);
-    await user.click(await screen.findByText("Provide feedback"));
+    await user.click(await screen.findByText("Quote"));
     await findFeedbackNote();
     await waitForDeferredSelectionCapture();
 
@@ -498,6 +500,61 @@ describe("chat inline feedback", () => {
     successToast.mockRestore();
   });
 
+  it("opens the forward dialog from the keyboard shortcut", async () => {
+    const sourceRunId = "d0000000-0000-4000-a000-000000000705";
+    const selectedContent = "Quote the approved launch checklist.";
+
+    mockChatLifecycle(context, {
+      threadId: FEEDBACK_THREAD_ID,
+      threadTitle: "Forward shortcut source",
+      chatEvents: [
+        {
+          id: "msg-forward-shortcut-user",
+          role: "user",
+          content: "Review launch readiness",
+          runId: sourceRunId,
+          createdAt: "2026-08-12T11:00:00Z",
+        },
+        {
+          id: "msg-forward-shortcut-assistant",
+          role: "assistant",
+          content: selectedContent,
+          runId: sourceRunId,
+          createdAt: "2026-08-12T11:00:01Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${FEEDBACK_THREAD_ID}`,
+      featureSwitches: { [FeatureSwitchKey.ChatForward]: true },
+    });
+
+    selectTextForInlineFeedback(await screen.findByText(selectedContent));
+    await screen.findByText("Forward");
+    const copyButton = buttonByText("Copy");
+    const quoteButton = buttonByText("Quote");
+    const forwardButton = buttonByText("Forward");
+    expect(forwardButton).toHaveAttribute("aria-keyshortcuts", "f");
+    expect(quoteButton).toHaveAttribute("aria-keyshortcuts", "q");
+    const toolbar = copyButton.parentElement;
+    if (!(toolbar instanceof HTMLElement)) {
+      throw new Error("Selection toolbar is not available");
+    }
+    expect(queryAllByRoleFast("button", toolbar)).toStrictEqual([
+      copyButton,
+      quoteButton,
+      forwardButton,
+    ]);
+
+    const event = dispatchDocumentShortcut("f");
+    expect(event.defaultPrevented).toBeTruthy();
+
+    const dialog = await screen.findByRole("dialog", { name: "Forward to" });
+    expect(within(dialog).getByText(selectedContent)).toBeInTheDocument();
+  });
+
   it("inserts a template node inside a feedback note", async () => {
     const user = userEvent.setup({ delay: null });
     const assistantReply = "The illustration direction is too generic.";
@@ -534,7 +591,7 @@ describe("chat inline feedback", () => {
 
     const assistantReplyElement = await screen.findByText(assistantReply);
     selectTextForInlineFeedback(assistantReplyElement);
-    await user.click(await screen.findByText("Provide feedback"));
+    await user.click(await screen.findByText("Quote"));
     const feedbackNote = await findFeedbackNote();
     await user.click(feedbackNote);
 
@@ -626,23 +683,27 @@ describe("chat inline feedback", () => {
     selectTextForInlineFeedback(assistantReplyElement);
 
     await waitFor(() => {
-      expect(screen.getByText("Provide feedback")).toBeInTheDocument();
+      expect(screen.getByText("Quote")).toBeInTheDocument();
       expect(screen.queryByText("Forward")).not.toBeInTheDocument();
     });
+
+    const forwardEvent = dispatchDocumentShortcut("f");
+    expect(forwardEvent.defaultPrevented).toBeFalsy();
+    expect(screen.getByText("Quote")).toBeInTheDocument();
 
     await user.click(buttonByText("Copy"));
 
     await waitFor(() => {
-      expect(screen.queryByText("Provide feedback")).not.toBeInTheDocument();
+      expect(screen.queryByText("Quote")).not.toBeInTheDocument();
     });
     expect(successToast).toHaveBeenCalledWith("Copied");
     successToast.mockRestore();
 
     selectTextForInlineFeedback(assistantReplyElement);
     await waitFor(() => {
-      expect(screen.getByText("Provide feedback")).toBeInTheDocument();
+      expect(screen.getByText("Quote")).toBeInTheDocument();
     });
-    await user.click(buttonByText("Provide feedback"));
+    await user.click(buttonByText("Quote"));
 
     const feedbackComment = await findFeedbackNote();
     await expect(findComposerEditor()).resolves.toBe(composerEditor);
@@ -730,7 +791,7 @@ describe("chat inline feedback", () => {
       await screen.findByText(assistantReply),
       selectedRange,
     );
-    await user.click(await screen.findByText("Provide feedback"));
+    await user.click(await screen.findByText("Quote"));
     pastePlainText(await findFeedbackNote(), "Name the owner.");
     await user.click(screen.getByLabelText("Send"));
 
@@ -773,8 +834,10 @@ describe("chat inline feedback", () => {
     context.mocks.api(zeroFeatureSwitchesContract.get, ({ respond }) => {
       capabilityReads += 1;
       return respond(200, {
-        switches: {},
-        effectiveSwitches: {},
+        switches: { [FeatureSwitchKey.ChatEventSnapshotRead]: false },
+        effectiveSwitches: {
+          [FeatureSwitchKey.ChatEventSnapshotRead]: false,
+        },
         apiCapabilities: { feedbackLocationV1: true },
       });
     });
@@ -821,7 +884,7 @@ describe("chat inline feedback", () => {
     });
     apiRolledBack = true;
     selectTextForInlineFeedback(assistantReplyElement, selectedRange);
-    await user.click(await screen.findByText("Provide feedback"));
+    await user.click(await screen.findByText("Quote"));
     pastePlainText(await findFeedbackNote(), "Assign the owner.");
     await user.click(screen.getByLabelText("Send"));
 
@@ -1022,7 +1085,7 @@ describe("chat inline feedback", () => {
       }
 
       selectTextForInlineFeedback(assistantReplyElement);
-      await user.click(await screen.findByText("Provide feedback"));
+      await user.click(await screen.findByText("Quote"));
       const feedbackNote = await findFeedbackNote();
       pastePlainText(feedbackNote, "Rewrite this paragraph.");
       await user.click(screen.getByLabelText("Send"));
@@ -1108,7 +1171,7 @@ describe("chat inline feedback", () => {
     });
 
     selectTextForInlineFeedback(await screen.findByText(assistantReply));
-    await user.click(await screen.findByText("Provide feedback"));
+    await user.click(await screen.findByText("Quote"));
     const feedbackNote = await findFeedbackNote();
     await user.click(feedbackNote);
     await user.keyboard("/");
@@ -1160,7 +1223,7 @@ describe("chat inline feedback", () => {
     });
 
     selectTextForInlineFeedback(await screen.findByText(assistantReply));
-    await user.click(await screen.findByText("Provide feedback"));
+    await user.click(await screen.findByText("Quote"));
 
     await findFeedbackNote();
     await user.keyboard("Mention the dates before the risk summary.");
@@ -1236,7 +1299,7 @@ describe("chat inline feedback", () => {
     });
 
     selectTextForInlineFeedback(await screen.findByText(assistantReply));
-    await user.click(await screen.findByText("Provide feedback"));
+    await user.click(await screen.findByText("Quote"));
 
     await findFeedbackNote();
     await user.keyboard("Mention the dates before the risk summary.");
@@ -1288,7 +1351,7 @@ describe("chat inline feedback", () => {
 
     const composerEditor = await findComposerEditor();
     selectTextForInlineFeedback(await screen.findByText(assistantReply));
-    await user.click(await screen.findByText("Provide feedback"));
+    await user.click(await screen.findByText("Quote"));
 
     const feedbackComment = await findFeedbackNote();
     await user.keyboard("补充具体日期");
@@ -1343,7 +1406,7 @@ describe("chat inline feedback", () => {
     });
 
     selectTextForInlineFeedback(await screen.findByText(assistantReply));
-    await user.click(await screen.findByText("Provide feedback"));
+    await user.click(await screen.findByText("Quote"));
 
     const feedbackComment = await findFeedbackNote();
     await user.click(feedbackComment);
@@ -1412,14 +1475,14 @@ describe("chat inline feedback", () => {
     document.dispatchEvent(new Event("selectionchange"));
     await waitForDeferredSelectionCapture();
 
-    expect(screen.queryByText("Provide feedback")).not.toBeInTheDocument();
+    expect(screen.queryByText("Quote")).not.toBeInTheDocument();
 
     assistantReplyElement.dispatchEvent(
       new MouseEvent("mouseup", { bubbles: true }),
     );
 
     await waitFor(() => {
-      expect(screen.getByText("Provide feedback")).toBeInTheDocument();
+      expect(screen.getByText("Quote")).toBeInTheDocument();
     });
   });
 
@@ -1466,7 +1529,7 @@ describe("chat inline feedback", () => {
     document.dispatchEvent(new Event("selectionchange"));
 
     await waitFor(() => {
-      expect(screen.getByText("Provide feedback")).toBeInTheDocument();
+      expect(screen.getByText("Quote")).toBeInTheDocument();
     });
   });
 
@@ -1504,7 +1567,7 @@ describe("chat inline feedback", () => {
     selectTextForInlineFeedback(assistantReplyElement);
 
     await waitFor(() => {
-      expect(screen.getByText("Provide feedback")).toBeInTheDocument();
+      expect(screen.getByText("Quote")).toBeInTheDocument();
     });
 
     const composerEditor = await findComposerEditor();
@@ -1512,7 +1575,7 @@ describe("chat inline feedback", () => {
     expect(composerEditor).toHaveFocus();
 
     await waitFor(() => {
-      expect(screen.queryByText("Provide feedback")).not.toBeInTheDocument();
+      expect(screen.queryByText("Quote")).not.toBeInTheDocument();
     });
     await waitForDeferredSelectionCapture();
 
@@ -1550,7 +1613,7 @@ describe("chat inline feedback", () => {
 
     selectTextForInlineFeedback(await screen.findByText(assistantReply));
     await waitFor(() => {
-      expect(screen.getByText("Provide feedback")).toBeInTheDocument();
+      expect(screen.getByText("Quote")).toBeInTheDocument();
     });
     expect(window.getSelection()?.toString()).toBe(assistantReply);
 
@@ -1558,14 +1621,14 @@ describe("chat inline feedback", () => {
     expect(event.defaultPrevented).toBeFalsy();
 
     await waitFor(() => {
-      expect(screen.queryByText("Provide feedback")).not.toBeInTheDocument();
+      expect(screen.queryByText("Quote")).not.toBeInTheDocument();
     });
     expect(window.getSelection()?.toString()).toBe(assistantReply);
 
     dispatchDocumentShortcut("c", { ctrlKey: true }, "keyup");
     await waitForDeferredSelectionCapture();
 
-    expect(screen.queryByText("Provide feedback")).not.toBeInTheDocument();
+    expect(screen.queryByText("Quote")).not.toBeInTheDocument();
     expect(window.getSelection()?.toString()).toBe(assistantReply);
   });
 
@@ -1602,10 +1665,13 @@ describe("chat inline feedback", () => {
     selectTextForInlineFeedback(assistantReplyElement);
 
     await waitFor(() => {
-      expect(screen.getByText("Provide feedback")).toBeInTheDocument();
+      expect(screen.getByText("Quote")).toBeInTheDocument();
     });
 
-    const event = dispatchDocumentShortcut("f");
+    const quoteButton = buttonByText("Quote");
+    expect(quoteButton).toHaveAttribute("aria-keyshortcuts", "q");
+
+    const event = dispatchDocumentShortcut("q");
     expect(event.defaultPrevented).toBeTruthy();
 
     await findFeedbackNote();
@@ -1656,7 +1722,7 @@ describe("chat inline feedback", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText("Provide feedback")).toBeInTheDocument();
+      expect(screen.getByText("Quote")).toBeInTheDocument();
     });
   });
 
@@ -1692,7 +1758,7 @@ describe("chat inline feedback", () => {
     const assistantReplyElement = await screen.findByText(assistantReply);
     selectTextForInlineFeedback(assistantReplyElement);
     await waitFor(() => {
-      expect(screen.getByText("Provide feedback")).toBeInTheDocument();
+      expect(screen.getByText("Quote")).toBeInTheDocument();
     });
 
     // A real browser emits selectionchange after the selection collapses.
@@ -1700,7 +1766,7 @@ describe("chat inline feedback", () => {
     document.dispatchEvent(new Event("selectionchange"));
 
     await waitFor(() => {
-      expect(screen.queryByText("Provide feedback")).not.toBeInTheDocument();
+      expect(screen.queryByText("Quote")).not.toBeInTheDocument();
     });
   });
 
@@ -1796,9 +1862,9 @@ describe("chat inline feedback", () => {
 
     selectTextForInlineFeedback(assistantReplyElement);
     await waitFor(() => {
-      expect(screen.getByText("Provide feedback")).toBeInTheDocument();
+      expect(screen.getByText("Quote")).toBeInTheDocument();
     });
-    click(buttonByText("Provide feedback"));
+    click(buttonByText("Quote"));
 
     pastePlainText(
       await findFeedbackNote(),
@@ -1874,9 +1940,9 @@ describe("chat inline feedback", () => {
     const assistantReplyElement = await screen.findByText(assistantReply);
     selectTextForInlineFeedback(assistantReplyElement);
     await waitFor(() => {
-      expect(screen.getByText("Provide feedback")).toBeInTheDocument();
+      expect(screen.getByText("Quote")).toBeInTheDocument();
     });
-    await user.click(buttonByText("Provide feedback"));
+    await user.click(buttonByText("Quote"));
 
     const firstComment = await findFeedbackNote();
     await user.keyboard("Assign each risk to an owner.");
@@ -1886,9 +1952,9 @@ describe("chat inline feedback", () => {
 
     selectTextForInlineFeedback(assistantReplyElement);
     await waitFor(() => {
-      expect(screen.getByText("Provide feedback")).toBeInTheDocument();
+      expect(screen.getByText("Quote")).toBeInTheDocument();
     });
-    await user.click(buttonByText("Provide feedback"));
+    await user.click(buttonByText("Quote"));
 
     const comments = await findFeedbackNotes(2);
     expect(comments).toHaveLength(2);
@@ -1948,9 +2014,9 @@ describe("chat inline feedback", () => {
 
     selectTextForInlineFeedback(assistantReplyElement);
     await waitFor(() => {
-      expect(screen.getByText("Provide feedback")).toBeInTheDocument();
+      expect(screen.getByText("Quote")).toBeInTheDocument();
     });
-    await user.click(buttonByText("Provide feedback"));
+    await user.click(buttonByText("Quote"));
 
     const firstComment = await findFeedbackNote();
     await user.keyboard("Add owners.");
@@ -1960,9 +2026,9 @@ describe("chat inline feedback", () => {
 
     selectTextForInlineFeedback(assistantReplyElement);
     await waitFor(() => {
-      expect(screen.getByText("Provide feedback")).toBeInTheDocument();
+      expect(screen.getByText("Quote")).toBeInTheDocument();
     });
-    await user.click(buttonByText("Provide feedback"));
+    await user.click(buttonByText("Quote"));
 
     const comments = await findFeedbackNotes(2);
     await user.keyboard("Add dates.");

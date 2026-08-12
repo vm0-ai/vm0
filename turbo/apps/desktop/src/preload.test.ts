@@ -206,12 +206,14 @@ describe("Desktop preload bridge", () => {
     await zeroMigration.remindLater();
     await zeroMigration.beginMigration();
     await zeroMigration.resumeZero();
+    await zeroMigration.quitZero();
 
     expect(electronMock.ipcRenderer.invoke.mock.calls).toStrictEqual([
       [DESKTOP_ZERO_MIGRATION_CHANNELS.getState],
       [DESKTOP_ZERO_MIGRATION_CHANNELS.remindLater],
       [DESKTOP_ZERO_MIGRATION_CHANNELS.beginMigration],
       [DESKTOP_ZERO_MIGRATION_CHANNELS.resumeZero],
+      [DESKTOP_ZERO_MIGRATION_CHANNELS.quitZero],
     ]);
   });
 

@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.737.0](https://github.com/vm0-ai/vm0/compare/app-v0.736.0...app-v0.737.0) (2026-08-12)
+
+
+### Features
+
+* acknowledge steered messages once per burst ([#26725](https://github.com/vm0-ai/vm0/issues/26725)) ([0576ffd](https://github.com/vm0-ai/vm0/commit/0576ffd5b998581aeebfbb4a700405016add88ba))
+* **chat:** enable snapshot reads for all users ([#26718](https://github.com/vm0-ai/vm0/issues/26718)) ([72a4c1b](https://github.com/vm0-ai/vm0/commit/72a4c1b02eac7a392df03d309c817dc0b92bf90b))
+
+
+### Bug Fixes
+
+* **platform:** double thinking line hold time ([#26719](https://github.com/vm0-ai/vm0/issues/26719)) ([78b66a7](https://github.com/vm0-ai/vm0/commit/78b66a7f575ec36b6dc8546692aa46825720397a))
+
+
+### Refactoring
+
+* **connectors:** require tagged custom responses ([#26716](https://github.com/vm0-ai/vm0/issues/26716)) ([740c8c4](https://github.com/vm0-ai/vm0/commit/740c8c48851b8de77f55a1a8c0d3b422984a97f7))
+* **pi:** persist sandbox sessions in native sqlite ([#26555](https://github.com/vm0-ai/vm0/issues/26555)) ([9ed505e](https://github.com/vm0-ai/vm0/commit/9ed505e1c567ff019d521fac167700c2b390cffe))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.325.0
+    * @vm0/core bumped to 8.551.0
+
 ## [0.736.0](https://github.com/vm0-ai/vm0/compare/app-v0.735.1...app-v0.736.0) (2026-08-12)
 
 

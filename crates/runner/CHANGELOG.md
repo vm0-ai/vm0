@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.165.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.165.2...runner-rs-v0.165.3) (2026-08-12)
+
+
+### Refactoring
+
+* **pi:** persist sandbox sessions in native sqlite ([#26555](https://github.com/vm0-ai/vm0/issues/26555)) ([9ed505e](https://github.com/vm0-ai/vm0/commit/9ed505e1c567ff019d521fac167700c2b390cffe))
+
 ## [0.165.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.165.1...runner-rs-v0.165.2) (2026-08-12)
 
 
