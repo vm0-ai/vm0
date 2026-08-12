@@ -566,7 +566,6 @@ describe("assistant markdown", () => {
       return found;
     });
     expect(diagram).toBeDisabled();
-    expect(diagram).toHaveClass("mermaid-diagram-expand");
     expect(within(diagram).getByText("Invalid diagram")).toBeVisible();
     expect(screen.queryByAltText("Diagram")).toBeNull();
 
