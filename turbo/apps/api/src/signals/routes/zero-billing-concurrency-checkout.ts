@@ -115,17 +115,28 @@ const concurrencyCheckoutAuthed$ = command(
         priceId: target.priceId,
         existingSubscriptionId: target.existingSubscription?.id,
         successUrl,
-        cancelUrl,
       },
       signal,
     );
     signal.throwIfAborted();
     if (!purchase.ok) {
-      return badRequestMessage(
-        purchase.reason === "invalid_quantity"
-          ? "Concurrency quantity cannot exceed 1000 slots"
-          : "Complete the pending concurrency update before adding slots",
-      );
+      switch (purchase.reason) {
+        case "invalid_quantity": {
+          return badRequestMessage(
+            "Concurrency quantity cannot exceed 1000 slots",
+          );
+        }
+        case "missing_plan_subscription": {
+          return badRequestMessage(
+            "An active Plan subscription is required to buy concurrency",
+          );
+        }
+        case "pending_update": {
+          return badRequestMessage(
+            "Complete the pending concurrency update before adding slots",
+          );
+        }
+      }
     }
 
     return { status: 200 as const, body: { url: purchase.url } };

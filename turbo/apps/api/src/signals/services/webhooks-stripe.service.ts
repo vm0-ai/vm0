@@ -2829,6 +2829,7 @@ function concurrencyInvoiceLines(
     const priceId = invoiceLinePriceId(line);
     return priceId &&
       isConcurrencyPriceId(priceId) &&
+      invoiceLineQuantity(line) !== null &&
       !invoiceLineCreditsPreviousItems(line) &&
       (line.amount === undefined || line.amount === null || line.amount >= 0)
       ? [{ line, index }]
@@ -2839,9 +2840,13 @@ function concurrencyInvoiceLines(
 function subscriptionPeriodEndFromInvoice(
   invoice: InvoiceInput,
   orgId: string,
+  planPriceId: string,
 ): Date {
   const subscriptionLine = invoice.lines.data.find((line) => {
-    return line.parent?.type === "subscription_item_details";
+    return (
+      line.parent?.type === "subscription_item_details" &&
+      invoiceLinePriceId(line) === planPriceId
+    );
   });
   const periodEndUnix = subscriptionLine?.period.end;
   if (!periodEndUnix) {
@@ -2854,9 +2859,13 @@ function subscriptionPeriodEndFromInvoice(
 
 function subscriptionPeriodStartFromInvoice(
   invoice: InvoiceInput,
+  planPriceId: string,
 ): Date | null {
   const periodStartUnix = invoice.lines.data.find((line) => {
-    return line.parent?.type === "subscription_item_details";
+    return (
+      line.parent?.type === "subscription_item_details" &&
+      invoiceLinePriceId(line) === planPriceId
+    );
   })?.period.start;
   return typeof periodStartUnix === "number"
     ? new Date(periodStartUnix * 1000)
@@ -2883,6 +2892,16 @@ async function subscriptionInvoiceDetails(
     return null;
   }
 
+  const hasPlanInvoiceLine = invoice.lines.data.some((line) => {
+    return (
+      line.parent?.type === "subscription_item_details" &&
+      invoiceLinePriceId(line) === priceId
+    );
+  });
+  if (!hasPlanInvoiceLine) {
+    return null;
+  }
+
   const tier = tierFromPriceId(priceId);
   const credits = monthlyCreditsForTier(tier);
   if (credits <= 0) {
@@ -2894,7 +2913,11 @@ async function subscriptionInvoiceDetails(
     return null;
   }
 
-  const periodEndDate = subscriptionPeriodEndFromInvoice(invoice, args.orgId);
+  const periodEndDate = subscriptionPeriodEndFromInvoice(
+    invoice,
+    args.orgId,
+    priceId,
+  );
   const scheduledEndDate =
     (await subscriptionScheduledEnd(stripe, subscription)) ??
     (subscriptionWillCancel(subscription) ? periodEndDate : null);
@@ -2903,7 +2926,7 @@ async function subscriptionInvoiceDetails(
     tier,
     priceId,
     credits,
-    periodStartDate: subscriptionPeriodStartFromInvoice(invoice),
+    periodStartDate: subscriptionPeriodStartFromInvoice(invoice, priceId),
     periodEndDate,
     scheduledEndDate,
     expiresAt: subscriptionCreditExpiresAt(subscription, periodEndDate),
@@ -3341,22 +3364,19 @@ async function handleInvoicePaid(
     getClerk,
     invoice,
   );
-  if (concurrencyResult.handled) {
-    return concurrencyResult.drainOrgId;
-  }
 
   const subscriptionId = subscriptionIdFromInvoice(invoice);
   if (!subscriptionId) {
     L.warn("invoice.paid without subscription; skipping", {
       invoiceId: invoice.id,
     });
-    return null;
+    return concurrencyResult.drainOrgId;
   }
 
   const customerId = customerIdFromInvoice(invoice);
   if (!customerId) {
     L.warn("invoice.paid without customer ID", { invoiceId: invoice.id });
-    return null;
+    return concurrencyResult.drainOrgId;
   }
 
   const org = await invoicePaidOrgForCustomerOrMetadata(db, getClerk, {
@@ -3368,7 +3388,13 @@ async function handleInvoicePaid(
       customerId,
       invoiceId: invoice.id,
     });
-    return null;
+    return concurrencyResult.drainOrgId;
+  }
+  if (
+    concurrencyResult.handled &&
+    org.stripeSubscriptionId !== subscriptionId
+  ) {
+    return concurrencyResult.drainOrgId;
   }
 
   const details = await subscriptionInvoiceDetails(invoice, {
@@ -3376,7 +3402,7 @@ async function handleInvoicePaid(
     orgId: org.orgId,
   });
   if (!details) {
-    return null;
+    return concurrencyResult.drainOrgId;
   }
 
   const processed = await db.transaction(async (tx) => {
@@ -3388,7 +3414,7 @@ async function handleInvoicePaid(
       details,
     });
   });
-  return processed ? org.orgId : null;
+  return processed ? org.orgId : concurrencyResult.drainOrgId;
 }
 
 async function handleConcurrencySubscriptionUpdated(
@@ -3411,7 +3437,11 @@ async function handleConcurrencySubscriptionUpdated(
       return [];
     }
 
+    const eventItem = concurrencySubscriptionItem(subscription);
     const eventState = concurrencySubscriptionState(subscription);
+    if (eventItem && !eventState) {
+      return [existing.orgId];
+    }
     const state =
       eventState?.slots === existing.slots
         ? eventState
@@ -3676,12 +3706,6 @@ async function handleSubscriptionUpdatedLegacy(
     db,
     subscription,
   );
-  if (concurrencyOrgIds.length > 0) {
-    return concurrencyOrgIds;
-  }
-  if (concurrencySubscriptionItem(subscription)) {
-    return [];
-  }
 
   const stripe = getStripeClient();
   const periodEnd = await subscriptionScheduledEnd(stripe, subscription);
@@ -3703,7 +3727,7 @@ async function handleSubscriptionUpdatedLegacy(
     previousTrialEnd !== null &&
     trialEnd < previousTrialEnd;
 
-  return await db.transaction(async (tx) => {
+  const planOrgIds = await db.transaction(async (tx) => {
     const rows = await tx
       .update(orgMetadata)
       .set({
@@ -3753,6 +3777,7 @@ async function handleSubscriptionUpdatedLegacy(
       return row.orgId;
     });
   });
+  return [...new Set([...concurrencyOrgIds, ...planOrgIds])];
 }
 
 async function handleSubscriptionUpdated(
@@ -3885,13 +3910,8 @@ async function handleSubscriptionDeletedLegacy(
       eq(orgConcurrencySubscriptions.stripeSubscriptionId, subscription.id),
     )
     .returning({ orgId: orgConcurrencySubscriptions.orgId });
-  if (concurrencyRows.length > 0) {
-    return concurrencyRows.map((row) => {
-      return row.orgId;
-    });
-  }
 
-  const rows = await db.transaction(async (tx) => {
+  const planRows = await db.transaction(async (tx) => {
     const downgraded = await writeOrgMetadataWithPlanEntitlements(tx, {
       writeOrgMetadata: async (writeTx) => {
         return await writeTx
@@ -3959,9 +3979,16 @@ async function handleSubscriptionDeletedLegacy(
       return { orgId };
     });
   });
-  return rows.map((row) => {
-    return row.orgId;
-  });
+  return [
+    ...new Set([
+      ...concurrencyRows.map((row) => {
+        return row.orgId;
+      }),
+      ...planRows.map((row) => {
+        return row.orgId;
+      }),
+    ]),
+  ];
 }
 
 async function handleSubscriptionDeleted(

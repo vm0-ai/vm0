@@ -513,9 +513,7 @@ export interface StripeCheckoutSessionCreateParams {
   readonly expires_at?: number;
   readonly metadata?: StripeMetadataParam;
   readonly subscription_data?: {
-    readonly billing_cycle_anchor?: number;
     readonly metadata?: StripeMetadataParam;
-    readonly proration_behavior?: "create_prorations" | "none";
     readonly trial_period_days?: number;
   };
   readonly invoice_creation?: {

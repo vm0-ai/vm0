@@ -415,6 +415,9 @@ export function createRunsApi(context: TestContext) {
               has_more: false,
               data: [
                 {
+                  price: {
+                    id: tier === "team" ? "price_bdd_team" : "price_bdd_pro",
+                  },
                   parent: { type: "subscription_item_details" },
                   period: {
                     start: periodEndUnix - 30 * 86_400,

@@ -4,6 +4,7 @@ import type {
   ConcurrencySubscriptionChangeResponse,
 } from "@vm0/api-contracts/contracts/zero-billing";
 import { orgConcurrencySubscriptions } from "@vm0/db/schema/org-concurrency-subscription";
+import { orgPlanEntitlements } from "@vm0/db/schema/org-plan-entitlement";
 import { and, eq } from "drizzle-orm";
 
 import {
@@ -39,6 +40,12 @@ interface StripeConcurrencySubscriptionChangeArgs {
   readonly subscriptionId: string;
   readonly quantity: number;
   readonly mode: "absolute" | "increase" | "reduce";
+}
+
+interface AddStripeConcurrencySubscriptionItemArgs {
+  readonly subscriptionId: string;
+  readonly priceId: string;
+  readonly quantity: number;
 }
 
 type CancelConcurrencySubscriptionResult =
@@ -118,16 +125,39 @@ async function findActiveConcurrencySubscription(
   );
 }
 
+async function isPlanSubscription(
+  db: ReadonlyDb,
+  args: ConcurrencySubscriptionArgs,
+): Promise<boolean> {
+  const [plan] = await db
+    .select({ orgId: orgPlanEntitlements.orgId })
+    .from(orgPlanEntitlements)
+    .where(
+      and(
+        eq(orgPlanEntitlements.orgId, args.orgId),
+        eq(orgPlanEntitlements.stripeSubscriptionId, args.subscriptionId),
+      ),
+    )
+    .limit(1);
+  return plan !== undefined;
+}
+
 function concurrencySubscriptionItem(
   items: readonly StripeSubscriptionItem[],
 ): { readonly id: string; readonly quantity: number } | null {
-  const item = items.find((candidate) => {
-    return isConcurrencyPriceId(candidate.price.id);
-  });
+  const item = concurrencyPriceItem(items);
   if (!item || !item.quantity) {
     return null;
   }
   return { id: item.id, quantity: item.quantity };
+}
+
+function concurrencyPriceItem(
+  items: readonly StripeSubscriptionItem[],
+): StripeSubscriptionItem | undefined {
+  return items.find((candidate) => {
+    return isConcurrencyPriceId(candidate.price.id);
+  });
 }
 
 function expandedLatestInvoice(
@@ -156,6 +186,69 @@ function appliedConcurrencyChangeResponse(
     hostedInvoiceUrl: invoice.hosted_invoice_url,
   };
 }
+
+export const addStripeConcurrencySubscriptionItem$ = command(
+  async (
+    _,
+    args: AddStripeConcurrencySubscriptionItemArgs,
+    signal: AbortSignal,
+  ): Promise<StripeConcurrencySubscriptionChangeResult> => {
+    if (
+      !Number.isSafeInteger(args.quantity) ||
+      args.quantity < 1 ||
+      args.quantity > CONCURRENCY_SUBSCRIPTION_QUANTITY_MAX
+    ) {
+      return { ok: false, reason: "invalid_quantity" };
+    }
+
+    const stripe = getStripeClient();
+    const subscription = await stripe.subscriptions.retrieve(
+      args.subscriptionId,
+      { expand: ["latest_invoice"] },
+    );
+    signal.throwIfAborted();
+
+    if (subscription.pending_update) {
+      const pendingItem = concurrencyPriceItem(
+        subscription.pending_update.subscription_items ?? [],
+      );
+      return pendingItem?.quantity === args.quantity
+        ? {
+            ok: true,
+            response: appliedConcurrencyChangeResponse(subscription),
+          }
+        : { ok: false, reason: "pending_update" };
+    }
+
+    const currentItem = concurrencyPriceItem(subscription.items.data);
+    if (currentItem?.quantity === args.quantity) {
+      return {
+        ok: true,
+        response: { status: "completed", hostedInvoiceUrl: null },
+      };
+    }
+
+    const updatedSubscription = await stripe.subscriptions.update(
+      subscription.id,
+      {
+        items: [
+          currentItem
+            ? { id: currentItem.id, quantity: args.quantity }
+            : { price: args.priceId, quantity: args.quantity },
+        ],
+        payment_behavior: "pending_if_incomplete",
+        proration_behavior: "always_invoice",
+        proration_date: Math.floor(nowDate().getTime() / 1000),
+        expand: ["latest_invoice"],
+      },
+    );
+    signal.throwIfAborted();
+    return {
+      ok: true,
+      response: appliedConcurrencyChangeResponse(updatedSubscription),
+    };
+  },
+);
 
 function invoiceAmount(invoice: StripeInvoice, description: string): number {
   if (
@@ -408,9 +501,24 @@ export const cancelConcurrencySubscription$ = command(
       return { ok: false, reason: "not_found" };
     }
     const stripe = getStripeClient();
-    await stripe.subscriptions.update(args.subscriptionId, {
-      cancel_at_period_end: true,
-    });
+    if (await isPlanSubscription(get(db$), args)) {
+      const stripeSubscription = await stripe.subscriptions.retrieve(
+        args.subscriptionId,
+      );
+      signal.throwIfAborted();
+      const item = concurrencyPriceItem(stripeSubscription.items.data);
+      if (!item) {
+        throw new Error("Plan subscription has no concurrency item");
+      }
+      await stripe.subscriptions.update(args.subscriptionId, {
+        items: [{ id: item.id, quantity: 0 }],
+        proration_behavior: "none",
+      });
+    } else {
+      await stripe.subscriptions.update(args.subscriptionId, {
+        cancel_at_period_end: true,
+      });
+    }
     signal.throwIfAborted();
 
     await set(writeDb$)
@@ -502,9 +610,24 @@ export const restoreConcurrencySubscription$ = command(
     }
 
     const stripe = getStripeClient();
-    await stripe.subscriptions.update(args.subscriptionId, {
-      cancel_at_period_end: false,
-    });
+    if (await isPlanSubscription(get(db$), args)) {
+      const stripeSubscription = await stripe.subscriptions.retrieve(
+        args.subscriptionId,
+      );
+      signal.throwIfAborted();
+      const item = concurrencyPriceItem(stripeSubscription.items.data);
+      if (!item) {
+        throw new Error("Plan subscription has no concurrency item");
+      }
+      await stripe.subscriptions.update(args.subscriptionId, {
+        items: [{ id: item.id, quantity: subscription.quantity }],
+        proration_behavior: "none",
+      });
+    } else {
+      await stripe.subscriptions.update(args.subscriptionId, {
+        cancel_at_period_end: false,
+      });
+    }
     signal.throwIfAborted();
 
     await set(writeDb$)

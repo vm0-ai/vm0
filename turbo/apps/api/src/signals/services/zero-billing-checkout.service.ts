@@ -14,9 +14,11 @@ import {
 } from "../external/stripe-client";
 import { getOrCreateStripeCustomer$ } from "./billing-customer.service";
 import { persistOrgAcquisitionAttribution$ } from "./acquisition-attribution.service";
-import { applyStripeConcurrencySubscriptionChange$ } from "./zero-billing-concurrency-subscription.service";
+import {
+  addStripeConcurrencySubscriptionItem$,
+  applyStripeConcurrencySubscriptionChange$,
+} from "./zero-billing-concurrency-subscription.service";
 import { stripePreviewMetadata } from "./stripe-preview-metadata.service";
-import { CONCURRENCY_SUBSCRIPTION_PURPOSE } from "./org-concurrency-entitlements.service";
 
 interface CreateCheckoutSessionArgs {
   readonly orgId: string;
@@ -56,14 +58,16 @@ interface StartConcurrencyPurchaseArgs {
   readonly priceId: string;
   readonly existingSubscriptionId?: string;
   readonly successUrl: string;
-  readonly cancelUrl: string;
 }
 
 type StartConcurrencyPurchaseResult =
   | { readonly ok: true; readonly url: string }
   | {
       readonly ok: false;
-      readonly reason: "invalid_quantity" | "pending_update";
+      readonly reason:
+        | "invalid_quantity"
+        | "missing_plan_subscription"
+        | "pending_update";
     };
 
 const CREDITS_PER_DOLLAR = 1000;
@@ -287,19 +291,6 @@ function stripeObjectId(
 
 function subscriptionWillCancel(subscription: StripeSubscription): boolean {
   return subscription.cancel_at_period_end || subscription.cancel_at !== null;
-}
-
-function futureBillingCycleAnchor(
-  periodEnd: Date | null | undefined,
-): number | undefined {
-  if (!periodEnd) {
-    return undefined;
-  }
-  const anchor = Math.floor(periodEnd.getTime() / 1000);
-  const currentSecond = Math.floor(nowDate().getTime() / 1000);
-  return Number.isSafeInteger(anchor) && anchor > currentSecond
-    ? anchor
-    : undefined;
 }
 
 /**
@@ -549,51 +540,35 @@ export const startConcurrencyPurchase$ = command(
 
     const db = set(writeDb$);
     const [plan] = await db
-      .select({ currentPeriodEnd: orgPlanEntitlements.currentPeriodEnd })
+      .select({
+        stripeSubscriptionId: orgPlanEntitlements.stripeSubscriptionId,
+      })
       .from(orgPlanEntitlements)
       .where(eq(orgPlanEntitlements.orgId, args.orgId))
       .limit(1);
     signal.throwIfAborted();
-    const billingCycleAnchor = futureBillingCycleAnchor(plan?.currentPeriodEnd);
+    if (!plan?.stripeSubscriptionId) {
+      return { ok: false, reason: "missing_plan_subscription" };
+    }
 
-    const stripe = getStripeClient();
-    const customerId = await set(
-      getOrCreateStripeCustomer$,
-      { orgId: args.orgId },
+    const result = await set(
+      addStripeConcurrencySubscriptionItem$,
+      {
+        subscriptionId: plan.stripeSubscriptionId,
+        priceId: args.priceId,
+        quantity: args.quantity,
+      },
       signal,
     );
-    signal.throwIfAborted();
-
-    const metadata: StripeMetadataParam = {
-      purpose: CONCURRENCY_SUBSCRIPTION_PURPOSE,
-      orgId: args.orgId,
-      priceId: args.priceId,
-      quantity: String(args.quantity),
-      ...stripePreviewMetadata(),
-    };
-    const session = await stripe.checkout.sessions.create({
-      mode: "subscription",
-      customer: customerId,
-      line_items: [{ price: args.priceId, quantity: args.quantity }],
-      allow_promotion_codes: true,
-      success_url: args.successUrl,
-      cancel_url: args.cancelUrl,
-      metadata,
-      subscription_data: {
-        metadata,
-        ...(billingCycleAnchor === undefined
-          ? {}
-          : {
-              billing_cycle_anchor: billingCycleAnchor,
-              proration_behavior: "create_prorations",
-            }),
-      },
-    });
-    signal.throwIfAborted();
-
-    if (!session.url) {
-      throw new Error("Stripe checkout session did not return a URL");
+    if (!result.ok) {
+      return result;
     }
-    return { ok: true, url: session.url };
+    return {
+      ok: true,
+      url:
+        result.response.status === "pending_payment"
+          ? result.response.hostedInvoiceUrl
+          : args.successUrl,
+    };
   },
 );
