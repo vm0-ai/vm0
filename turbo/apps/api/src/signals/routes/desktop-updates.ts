@@ -1,6 +1,7 @@
 import { brandedApiNamespace } from "@vm0/api-contracts/contracts/api-namespaces";
 import {
   DESKTOP_UPDATE_LINE_LEGACY_OKOU,
+  DESKTOP_UPDATE_LINE_OKOU,
   DESKTOP_UPDATE_LINE_ZERO,
   desktopUpdatesContract,
   type DesktopUpdateLine,
@@ -32,7 +33,7 @@ function desktopUpdateLineFromRequestUrl(
   requestUrl: string,
 ): DesktopUpdateLine {
   return brandedApiNamespace(new URL(requestUrl).pathname) === "okou"
-    ? DESKTOP_UPDATE_LINE_LEGACY_OKOU
+    ? DESKTOP_UPDATE_LINE_OKOU
     : DESKTOP_UPDATE_LINE_ZERO;
 }
 
@@ -102,6 +103,9 @@ const getDesktopDmgDownload$ = command(async ({ get }, signal: AbortSignal) => {
 const getProductDesktopReleasePage$ = command(
   async ({ get }, signal: AbortSignal) => {
     const { product, ...params } = get(productReleasePageParams$);
+    if (product === DESKTOP_UPDATE_LINE_LEGACY_OKOU) {
+      return notFound("This desktop update line is retired.");
+    }
     const url = await loadDesktopReleasePageUrl(
       { line: product, ...params },
       signal,
@@ -125,6 +129,9 @@ const getProductDesktopReleasePage$ = command(
 const getProductDesktopUpdateFeed$ = command(
   async ({ get }, signal: AbortSignal) => {
     const { product, ...params } = get(productFeedParams$);
+    if (product === DESKTOP_UPDATE_LINE_LEGACY_OKOU) {
+      return notFound("This desktop update line is retired.");
+    }
     const feed = await loadDesktopUpdateFeed(
       { line: product, ...params },
       signal,
@@ -145,6 +152,9 @@ const getProductDesktopUpdateFeed$ = command(
 const getProductDesktopDmgDownload$ = command(
   async ({ get }, signal: AbortSignal) => {
     const { product, ...params } = get(productDmgDownloadParams$);
+    if (product === DESKTOP_UPDATE_LINE_LEGACY_OKOU) {
+      return notFound("This desktop update line is retired.");
+    }
     const url = await loadDesktopDmgDownloadUrl(
       { line: product, ...params },
       signal,

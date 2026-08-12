@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.36.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.35.1...desktop-v0.36.0) (2026-08-12)
+
+
+### Features
+
+* **desktop:** cut over okou downloads to final identity ([#26710](https://github.com/vm0-ai/vm0/issues/26710)) ([b7068ad](https://github.com/vm0-ai/vm0/commit/b7068adac6d08a2f0343f34090cdb0523196b327))
+
+
+### Bug Fixes
+
+* **desktop:** make packaged smoke exit atomic ([#26706](https://github.com/vm0-ai/vm0/issues/26706)) ([2bf2de2](https://github.com/vm0-ai/vm0/commit/2bf2de20815ed801a2657f402c812d40631ad201))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.324.0
+
 ## [0.35.1](https://github.com/vm0-ai/vm0/compare/desktop-v0.35.0...desktop-v0.35.1) (2026-08-12)
 
 
