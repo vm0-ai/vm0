@@ -225,6 +225,38 @@ ruleTester.run("no-global-sweep-test-routes", noGlobalSweepTestRoutes, {
       errors: [{ messageId: "globalSweep" }],
     },
     {
+      name: "canonical factory options cannot flow through plain helper parameters",
+      filename: behaviorTest,
+      code: `
+        import { ROUTES } from "../../route";
+        import * as appFactory from "../../../app-factory";
+        function mount({ createApp: build }) {
+          return build({ routes: ROUTES });
+        }
+        function forward(options) {
+          return mount(options);
+        }
+        forward({ createApp: appFactory.createApp });
+      `,
+      errors: [{ messageId: "globalSweep" }],
+    },
+    {
+      name: "wrapped canonical namespaces cannot flow through object helper parameters",
+      filename: behaviorTest,
+      code: `
+        import { ROUTES } from "../../route";
+        import * as appFactory from "../../../app-factory";
+        function mount(factory) {
+          return factory.createApp({ routes: ROUTES });
+        }
+        function forward({ factory }) {
+          return mount(factory);
+        }
+        forward({ factory: appFactory });
+      `,
+      errors: [{ messageId: "globalSweep" }],
+    },
+    {
       name: "aggregate routes cannot flow through a local member projection",
       filename: behaviorTest,
       code: `

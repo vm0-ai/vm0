@@ -34,6 +34,7 @@ type FactoryPropertyResolution =
   | "missing"
   | "noncanonical"
   | "unknown";
+type FactoryValueKind = "factory" | "namespace";
 
 interface GlobalSweepBoundary {
   readonly exportName: string;
@@ -572,7 +573,13 @@ export const noGlobalSweepTestRoutes = createRule({
         const sources = parameterSources(current);
         return sources.some(({ binding, source }) => {
           return (
-            binding.property === null && isAppFactoryNamespace(source, nextSeen)
+            factoryBindingResolution(
+              source,
+              binding,
+              [],
+              "namespace",
+              nextSeen,
+            ) === "canonical"
           );
         });
       }
@@ -583,17 +590,77 @@ export const noGlobalSweepTestRoutes = createRule({
       );
     }
 
-    function appFactoryProperty(
+    function combineFactoryResolutions(
+      resolutions: readonly FactoryPropertyResolution[],
+    ): FactoryPropertyResolution {
+      if (resolutions.some((resolution) => resolution === "canonical")) {
+        return "canonical";
+      }
+      if (
+        resolutions.length > 0 &&
+        resolutions.every((resolution) => resolution === "missing")
+      ) {
+        return "missing";
+      }
+      if (resolutions.some((resolution) => resolution === "unknown")) {
+        return "unknown";
+      }
+      return resolutions.length > 0 ? "noncanonical" : "unknown";
+    }
+
+    function factoryBindingResolution(
+      source: TSESTree.Expression,
+      binding: ObjectBinding,
+      remainingPath: readonly string[],
+      kind: FactoryValueKind,
+      seen: ReadonlySet<TSESTree.Node>,
+    ): FactoryPropertyResolution {
+      if (binding.property === null) {
+        return factoryPathResolution(source, remainingPath, kind, seen);
+      }
+      const resolution = factoryPathResolution(
+        source,
+        [binding.property, ...remainingPath],
+        kind,
+        seen,
+      );
+      if (resolution !== "missing" || !binding.defaultValue) {
+        return resolution;
+      }
+      return factoryPathResolution(
+        binding.defaultValue,
+        remainingPath,
+        kind,
+        seen,
+      );
+    }
+
+    function factoryPathResolution(
       expression: TSESTree.Expression,
-      name: string,
+      path: readonly string[],
+      kind: FactoryValueKind,
       seen: ReadonlySet<TSESTree.Node> = new Set(),
     ): FactoryPropertyResolution {
+      if (path.length === 0) {
+        const isCanonical =
+          kind === "namespace"
+            ? isAppFactoryNamespace(expression, seen)
+            : isAppFactory(expression, seen);
+        return isCanonical ? "canonical" : "noncanonical";
+      }
       const current = unwrapExpression(expression);
       if (seen.has(current)) {
         return "unknown";
       }
       const nextSeen = new Set(seen).add(current);
-      if (isAppFactoryNamespace(current, seen)) {
+      const [name, ...remainingPath] = path;
+      if (
+        name &&
+        remainingPath.length === 0 &&
+        kind === "factory" &&
+        APP_FACTORIES.has(name) &&
+        isAppFactoryNamespace(current, seen)
+      ) {
         return "canonical";
       }
       if (current.type === AST_NODE_TYPES.Identifier) {
@@ -603,7 +670,38 @@ export const noGlobalSweepTestRoutes = createRule({
           definition?.node.type === AST_NODE_TYPES.VariableDeclarator &&
           definition.node.init
         ) {
-          return appFactoryProperty(definition.node.init, name, nextSeen);
+          if (definition.node.id.type === AST_NODE_TYPES.ObjectPattern) {
+            const binding = objectBinding(definition.node.id, current.name);
+            return binding
+              ? factoryBindingResolution(
+                  definition.node.init,
+                  binding,
+                  path,
+                  kind,
+                  nextSeen,
+                )
+              : "unknown";
+          }
+          return factoryPathResolution(
+            definition.node.init,
+            path,
+            kind,
+            nextSeen,
+          );
+        }
+        if (definition?.type === "Parameter") {
+          const resolutions = parameterSources(current).map(
+            ({ binding, source }) => {
+              return factoryBindingResolution(
+                source,
+                binding,
+                path,
+                kind,
+                nextSeen,
+              );
+            },
+          );
+          return combineFactoryResolutions(resolutions);
         }
         return importReference(context.sourceCode, current)
           ? "noncanonical"
@@ -614,7 +712,12 @@ export const noGlobalSweepTestRoutes = createRule({
       }
       for (const property of [...current.properties].reverse()) {
         if (property.type === AST_NODE_TYPES.SpreadElement) {
-          const spread = appFactoryProperty(property.argument, name, nextSeen);
+          const spread = factoryPathResolution(
+            property.argument,
+            path,
+            kind,
+            nextSeen,
+          );
           if (spread !== "missing") {
             return spread;
           }
@@ -624,31 +727,15 @@ export const noGlobalSweepTestRoutes = createRule({
           propertyName(property) === name &&
           property.value.type !== AST_NODE_TYPES.AssignmentPattern
         ) {
-          return isAppFactory(property.value as TSESTree.Expression, nextSeen)
-            ? "canonical"
-            : "noncanonical";
+          return factoryPathResolution(
+            property.value as TSESTree.Expression,
+            remainingPath,
+            kind,
+            nextSeen,
+          );
         }
       }
       return "missing";
-    }
-
-    function isAppFactoryObjectBinding(
-      source: TSESTree.Expression,
-      binding: ObjectBinding,
-      seen: ReadonlySet<TSESTree.Node>,
-    ): boolean {
-      if (!binding.property || !APP_FACTORIES.has(binding.property)) {
-        return false;
-      }
-      const resolution = appFactoryProperty(source, binding.property, seen);
-      if (resolution === "canonical") {
-        return true;
-      }
-      return Boolean(
-        resolution === "missing" &&
-        binding.defaultValue &&
-        isAppFactory(binding.defaultValue, seen),
-      );
     }
 
     function isAppFactory(
@@ -683,9 +770,15 @@ export const noGlobalSweepTestRoutes = createRule({
       if (definition?.type === "Parameter") {
         const sources = parameterSources(expression);
         return sources.some(({ binding, source }) => {
-          return binding.property === null
-            ? isAppFactory(source, nextSeen)
-            : isAppFactoryObjectBinding(source, binding, nextSeen);
+          return (
+            factoryBindingResolution(
+              source,
+              binding,
+              [],
+              "factory",
+              nextSeen,
+            ) === "canonical"
+          );
         });
       }
       if (
@@ -695,9 +788,14 @@ export const noGlobalSweepTestRoutes = createRule({
       ) {
         const binding = objectBinding(definition.node.id, expression.name);
         if (
-          binding?.property &&
-          APP_FACTORIES.has(binding.property) &&
-          isAppFactoryNamespace(definition.node.init, nextSeen)
+          binding &&
+          factoryBindingResolution(
+            definition.node.init,
+            binding,
+            [],
+            "factory",
+            nextSeen,
+          ) === "canonical"
         ) {
           return true;
         }
