@@ -62,7 +62,6 @@ from .openai_chat_completions import (
 from .openai_responses import (
     OpenAIResponsesClientEvent,
     OpenAIResponsesEvent,
-    OpenAIResponsesServerLifecycle,
     create_openai_responses_json_usage_extractor,
     create_openai_responses_sse_usage_extractor,
     extract_openai_responses_usage_from_event,
@@ -94,7 +93,6 @@ __all__ = [
     "BufferedReportLease",
     "OpenAIResponsesClientEvent",
     "OpenAIResponsesEvent",
-    "OpenAIResponsesServerLifecycle",
     "admit_buffered_report",
     "buffer_model_usage_observations",
     "buffer_source_model_usage_observations",

@@ -198,7 +198,7 @@ _RESPONSES_CLIENT_SCALAR_FIELDS = {
     ("type",): ScalarField("string", max_bytes=1024, overflow_policy="discard"),
     ("generate",): ScalarField("bool"),
 }
-_RESPONSES_CREATED_SCALAR_FIELDS = {
+_RESPONSES_LIFECYCLE_SCALAR_FIELDS = {
     ("type",): ScalarField("string", max_bytes=1024, overflow_policy="discard"),
     ("response", "id"): ScalarField("string", max_bytes=1024),
 }
@@ -250,13 +250,13 @@ def _inspect_openai_responses_event_type_json(body: bytes) -> str | None:
 def inspect_openai_responses_server_lifecycle(
     event: OpenAIResponsesEvent,
 ) -> OpenAIResponsesServerLifecycle:
-    """Inspect an exact created or terminal event while correlation is pending."""
+    """Inspect an exact created or terminal event for WebSocket correlation."""
     relevant_event_types = _RESPONSES_TERMINAL_USAGE_EVENTS | {_RESPONSES_CREATED_EVENT}
     if event.event_type is not None and event.event_type not in relevant_event_types:
         return OpenAIResponsesServerLifecycle(event.event_type, None)
 
     extractor = JsonSelectiveExtractor(
-        scalar_fields=_RESPONSES_CREATED_SCALAR_FIELDS,
+        scalar_fields=_RESPONSES_LIFECYCLE_SCALAR_FIELDS,
         scalar_consistency_paths={("type",), ("response", "id")},
         max_work_units=_RESPONSES_MAX_WORK_UNITS,
     )
