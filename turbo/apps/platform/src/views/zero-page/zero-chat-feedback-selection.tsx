@@ -2,6 +2,7 @@ import type { CSSProperties } from "react";
 import { Copy, Forward, MessageCircle } from "lucide-react";
 import { useGet, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
   getShortcutParts,
   Popover,
@@ -9,6 +10,7 @@ import {
   PopoverContent,
 } from "@vm0/ui";
 import { rootSignal$ } from "../../signals/root-signal.ts";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { setChatListQuery$ } from "../../signals/zero-page/zero-sidebar-state.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import type {
@@ -130,6 +132,8 @@ export function ChatFeedbackSelection({
   const selection = useGet(feedback.selection$);
   const forwardSelection = useGet(feedback.forwardSelection$);
   const forwardComposerState = useGet(feedback.forwardComposerState$);
+  const forwardEnabled =
+    useGet(featureSwitch$)[FeatureSwitchKey.ChatForward] ?? false;
   const rootSignal = useGet(rootSignal$);
   const setFeedbackSelectionListenersRef = useSet(feedback.setListenersRef$);
   const setFeedbackSelectionToolbarRef = useSet(feedback.setToolbarRef$);
@@ -163,7 +167,7 @@ export function ChatFeedbackSelection({
             }}
             onProvideFeedback={startFeedback}
             onForward={
-              selection.threadId && selection.runId
+              forwardEnabled && selection.threadId && selection.runId
                 ? () => {
                     const threadId = selection.threadId;
                     const runId = selection.runId;

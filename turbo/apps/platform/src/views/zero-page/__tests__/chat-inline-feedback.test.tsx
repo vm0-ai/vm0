@@ -9,6 +9,7 @@ import type { OrgModelPolicy } from "@vm0/api-contracts/contracts/model-provider
 import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero-model-policies";
 import { zeroWorkflowsCollectionContract } from "@vm0/api-contracts/contracts/zero-workflows";
 import { PRESENTATION_TEMPLATE_PICKER_ITEMS } from "@vm0/core";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {
@@ -276,7 +277,11 @@ describe("chat inline feedback", () => {
       },
     });
 
-    detachedSetupPage({ context, path: `/chats/${FEEDBACK_THREAD_ID}` });
+    detachedSetupPage({
+      context,
+      path: `/chats/${FEEDBACK_THREAD_ID}`,
+      featureSwitches: { [FeatureSwitchKey.ChatForward]: true },
+    });
 
     selectTextForInlineFeedback(await screen.findByText(selectedContent));
     await user.click(await screen.findByText("Forward"));
@@ -372,7 +377,11 @@ describe("chat inline feedback", () => {
       },
     ]);
 
-    detachedSetupPage({ context, path: `/chats/${FEEDBACK_THREAD_ID}` });
+    detachedSetupPage({
+      context,
+      path: `/chats/${FEEDBACK_THREAD_ID}`,
+      featureSwitches: { [FeatureSwitchKey.ChatForward]: true },
+    });
 
     selectTextForInlineFeedback(await screen.findByText(selectedContent));
     await user.click(await screen.findByText("Forward"));
@@ -542,6 +551,7 @@ describe("chat inline feedback", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Provide feedback")).toBeInTheDocument();
+      expect(screen.queryByText("Forward")).not.toBeInTheDocument();
     });
 
     await user.click(buttonByText("Copy"));
