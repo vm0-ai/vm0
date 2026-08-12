@@ -43,6 +43,9 @@ grep -Fq 'startVideoOnboardingCheckout' "$RUNNER_TOKEN" ||
   fail "real runner accounts must upgrade through public paid onboarding"
 grep -Fq 'fillStripeCheckout' "$RUNNER_TOKEN" ||
   fail "real runner accounts must complete the public Stripe checkout"
+if grep -Fq 'runnerTestAccounts' "$RUNNER_TOKEN"; then
+  fail "runner token generation must reuse the identities created by account preparation"
+fi
 if [[ "$(grep -Fc 'upgradeToPro: true' "$RUNNER_TOKEN")" -ne 3 ]]; then
   fail "real Codex, real Claude, and mock Claude runner accounts must upgrade to Pro"
 fi
@@ -219,6 +222,17 @@ expected_access_environment.each do |name, value|
     raise "runner E2E token generation must receive #{name}"
   end
 end
+expected_account_environment = {
+  "E2E_RUNNER_EMAILS" => "${{ steps.account.outputs.runner-emails }}",
+  "E2E_RUNNER_CODEX_EMAIL" => "${{ steps.account.outputs.codex-email }}",
+  "E2E_RUNNER_CLAUDE_EMAIL" => "${{ steps.account.outputs.claude-email }}",
+  "E2E_RUNNER_MOCK_CLAUDE_EMAIL" => "${{ steps.account.outputs.mock-claude-email }}",
+}
+expected_account_environment.each do |name, value|
+  unless token_step.dig("env", name) == value
+    raise "runner E2E token generation must consume prepared #{name}"
+  end
+end
 
 upload_step = account_prepare.fetch("steps").find do |step|
   step["name"] == "Upload runner E2E API tokens"
@@ -388,11 +402,13 @@ unless runner.dig("env", "E2E_RUNNER_RUNTIME") == "${{ matrix.runtime }}" &&
     runner.dig("env", "E2E_RUNNER_SHARD_TOTAL") == "${{ matrix.total }}"
   raise "runner E2E shards must receive their runtime, exact files, and per-runtime total"
 end
-unless runner.dig("env", "E2E_RUNNER_MOCK_CLAUDE_ORG_ID") ==
-    "${{ needs.cli-e2e-03-runner-prepare.outputs.mock-claude-organization-id }}" &&
-    runner.dig("env", "E2E_RUNNER_MOCK_CLAUDE_EMAIL") ==
-      "${{ needs.cli-e2e-03-runner-prepare.outputs.mock-claude-email }}"
-  raise "runner E2E shards must receive the mock Claude identity"
+credential_step = runner.fetch("steps").find do |step|
+  step["name"] == "Setup runner E2E API credentials"
+end
+raise "missing runner E2E credential setup" unless credential_step
+unless credential_step.fetch("run").include?(".mockClaudeOrganizationId") &&
+    credential_step.fetch("run").include?(".mockClaudeEmail")
+  raise "runner E2E shards must load the mock Claude identity from the runtime artifact"
 end
 
 run_step = runner.fetch("steps").find do |step|

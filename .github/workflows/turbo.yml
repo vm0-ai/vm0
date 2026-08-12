@@ -3708,6 +3708,10 @@ jobs:
           E2E_RUNNER_CODEX_ORGANIZATION_ID: ${{ steps.account.outputs.codex-organization-id }}
           E2E_RUNNER_CLAUDE_ORGANIZATION_ID: ${{ steps.account.outputs.claude-organization-id }}
           E2E_RUNNER_MOCK_CLAUDE_ORGANIZATION_ID: ${{ steps.account.outputs.mock-claude-organization-id }}
+          E2E_RUNNER_EMAILS: ${{ steps.account.outputs.runner-emails }}
+          E2E_RUNNER_CODEX_EMAIL: ${{ steps.account.outputs.codex-email }}
+          E2E_RUNNER_CLAUDE_EMAIL: ${{ steps.account.outputs.claude-email }}
+          E2E_RUNNER_MOCK_CLAUDE_EMAIL: ${{ steps.account.outputs.mock-claude-email }}
           CF_ACCESS_CLIENT_ID: ${{ secrets.CF_API_PREVIEW_ACCESS_CLIENT_ID }}
           CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_API_PREVIEW_ACCESS_CLIENT_SECRET }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}

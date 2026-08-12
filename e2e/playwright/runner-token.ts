@@ -13,7 +13,6 @@ import {
   installApiPreviewHeadersForUrl,
 } from "./lib/api-preview-auth";
 import { issueCliToken } from "./lib/cli-token";
-import { runnerTestAccounts } from "./lib/clerk-api";
 import {
   ensureOnboardingBootstrap,
   startVideoOnboardingCheckout,
@@ -39,7 +38,6 @@ async function main(): Promise<void> {
     throw new Error("Usage: runner-token.ts <output-directory>");
   }
 
-  const accounts = runnerTestAccounts();
   const previewHeaders = apiPreviewHeaders();
   const vercelAutomationBypassSecret =
     previewHeaders["x-vercel-protection-bypass"];
@@ -54,15 +52,30 @@ async function main(): Promise<void> {
       `E2E_RUNNER_ORGANIZATION_IDS must contain ${LIMITED_FREE_RUNNER_ORGANIZATION_COUNT} organizations`,
     );
   }
-  const targets: readonly RunnerCredentialTarget[] = [
-    ...runnerOrganizationIds.map((organizationId, index) => ({
-      email: accounts.runners[index],
+  const runnerEmails =
+    requiredStringArrayEnvironmentVariable("E2E_RUNNER_EMAILS");
+  if (runnerEmails.length !== LIMITED_FREE_RUNNER_ORGANIZATION_COUNT) {
+    throw new Error(
+      `E2E_RUNNER_EMAILS must contain ${LIMITED_FREE_RUNNER_ORGANIZATION_COUNT} emails`,
+    );
+  }
+  const runnerTargets: RunnerCredentialTarget[] = [];
+  for (const [index, organizationId] of runnerOrganizationIds.entries()) {
+    const email = runnerEmails[index];
+    if (!email) {
+      throw new Error(`Missing runner email at index ${index}`);
+    }
+    runnerTargets.push({
+      email,
       fileName: `e2e-api-credentials-runner-${index + 1}.json`,
       organizationId,
       upgradeToPro: false,
-    })),
+    });
+  }
+  const targets: readonly RunnerCredentialTarget[] = [
+    ...runnerTargets,
     {
-      email: accounts.codex,
+      email: requiredEnvironmentVariable("E2E_RUNNER_CODEX_EMAIL"),
       fileName: "e2e-api-credentials-runner-real-codex.json",
       organizationId: requiredEnvironmentVariable(
         "E2E_RUNNER_CODEX_ORGANIZATION_ID",
@@ -70,7 +83,7 @@ async function main(): Promise<void> {
       upgradeToPro: true,
     },
     {
-      email: accounts.claude,
+      email: requiredEnvironmentVariable("E2E_RUNNER_CLAUDE_EMAIL"),
       fileName: "e2e-api-credentials-runner-real-claude.json",
       organizationId: requiredEnvironmentVariable(
         "E2E_RUNNER_CLAUDE_ORGANIZATION_ID",
@@ -78,7 +91,7 @@ async function main(): Promise<void> {
       upgradeToPro: true,
     },
     {
-      email: accounts.mockClaude,
+      email: requiredEnvironmentVariable("E2E_RUNNER_MOCK_CLAUDE_EMAIL"),
       fileName: "e2e-api-credentials-runner-mock-claude.json",
       organizationId: requiredEnvironmentVariable(
         "E2E_RUNNER_MOCK_CLAUDE_ORGANIZATION_ID",
