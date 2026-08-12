@@ -233,6 +233,21 @@ async function mockSelectedFastModel(page: Page): Promise<void> {
       },
     });
   });
+  await page.route("**/api/okou/billing/status", async (route) => {
+    const response = await route.fetch();
+    const body: unknown = await response.json();
+    if (!isRecord(body)) {
+      throw new Error("Billing status returned an unexpected response");
+    }
+    await route.fulfill({
+      response,
+      json: {
+        ...body,
+        supportByok: true,
+        restrictedVm0Models: false,
+      },
+    });
+  });
   await page.route("**/api/okou/model-policies", async (route) => {
     if (route.request().method() !== "GET") {
       await route.continue();
@@ -262,7 +277,21 @@ async function mockSelectedFastModel(page: Page): Promise<void> {
     });
   });
   await page.route("**/api/okou/user-model-preference", async (route) => {
-    if (route.request().method() !== "GET") {
+    const request = route.request();
+    if (request.method() === "PUT") {
+      const update: unknown = request.postDataJSON();
+      if (!isRecord(update)) {
+        throw new Error("Model preference update was not a record");
+      }
+      await route.fulfill({
+        json: {
+          ...update,
+          updatedAt: "2026-08-12T00:00:00.000Z",
+        },
+      });
+      return;
+    }
+    if (request.method() !== "GET") {
       await route.continue();
       return;
     }
@@ -714,6 +743,41 @@ async function expectRightAlignedDivider(label: Locator): Promise<void> {
   ).toBeLessThan(tolerance);
 }
 
+async function expectFastActionRightmost(page: Page): Promise<void> {
+  const standardOption = page.getByRole("option", {
+    name: "GPT 5.6 Sol",
+    exact: true,
+  });
+  const fastOption = page.getByRole("option", {
+    name: "GPT 5.6 Sol Fast",
+    exact: true,
+  });
+  const selectedCheck = standardOption.locator("svg.lucide-check");
+  const row = standardOption.locator("..");
+  await expect(standardOption).toBeVisible();
+  await expect(fastOption).toBeVisible();
+  await expect(selectedCheck).toBeVisible();
+  const [standardBox, fastBox, checkBox, rowBox] = await Promise.all([
+    standardOption.boundingBox(),
+    fastOption.boundingBox(),
+    selectedCheck.boundingBox(),
+    row.boundingBox(),
+  ]);
+  if (!standardBox || !fastBox || !checkBox || !rowBox) {
+    throw new Error("Model picker option geometry unavailable");
+  }
+  const tolerance = 1;
+  expect(standardBox.x + standardBox.width).toBeLessThanOrEqual(
+    fastBox.x + tolerance,
+  );
+  expect(checkBox.x + checkBox.width).toBeLessThanOrEqual(
+    fastBox.x + tolerance,
+  );
+  expect(
+    Math.abs(fastBox.x + fastBox.width - (rowBox.x + rowBox.width)),
+  ).toBeLessThan(tolerance);
+}
+
 async function expectInside(inner: Locator, outer: Locator): Promise<void> {
   await expect(inner).toBeVisible();
   await expect(outer).toBeVisible();
@@ -879,22 +943,32 @@ test("chat page displays tagline after onboarding", async ({ page }) => {
   });
 });
 
-test("selected Fast model previews deactivation on icon hover", async ({
+test("Fast action stays rightmost across selection states and previews deactivation", async ({
   page,
 }) => {
   await mockSelectedFastModel(page);
   await page.goto(appUrl);
   await page.waitForURL(/agents\/.*\/chat/, { timeout: 30_000 });
 
-  await page.getByRole("combobox", { name: "GPT 5.6 Sol Fast" }).click();
+  await page
+    .getByRole("combobox", { name: "GPT 5.6 Sol Fast", exact: true })
+    .click();
+  await expectFastActionRightmost(page);
   const fastOption = page.getByRole("option", {
     name: "GPT 5.6 Sol Fast",
+    exact: true,
   });
   const fastIcon = fastOption.locator("svg.lucide-zap");
   await expect(fastIcon).not.toHaveCSS("fill", "none");
 
   await fastOption.hover();
   await expect(fastIcon).toHaveCSS("fill", "none");
+
+  await fastOption.click();
+  await page
+    .getByRole("combobox", { name: "GPT 5.6 Sol", exact: true })
+    .click();
+  await expectFastActionRightmost(page);
 });
 
 test("send a message through the deployed runner", async ({ page }) => {
