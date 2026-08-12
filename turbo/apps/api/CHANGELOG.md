@@ -1,5 +1,32 @@
 # Changelog
 
+## [1.433.0](https://github.com/vm0-ai/vm0/compare/api-v1.432.0...api-v1.433.0) (2026-08-12)
+
+
+### Features
+
+* **platform:** default desktop downloads to okou ([#26524](https://github.com/vm0-ai/vm0/issues/26524)) ([a12e60e](https://github.com/vm0-ai/vm0/commit/a12e60ea0bfc84c0d9090a76bd00345414f3811c))
+
+
+### Bug Fixes
+
+* allow arbitrary file uploads in the composer ([#26511](https://github.com/vm0-ai/vm0/issues/26511)) ([aba11e7](https://github.com/vm0-ai/vm0/commit/aba11e781c8abb8ef86a863dfd5b81b88c2f8ee5))
+
+
+### Refactoring
+
+* **connectors:** remove legacy credential compatibility ([#26523](https://github.com/vm0-ai/vm0/issues/26523)) ([acf5b6a](https://github.com/vm0-ai/vm0/commit/acf5b6ab1d7be0b0a27e27eba17652006e5f6224))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.321.1
+    * @vm0/core bumped to 8.548.1
+    * @vm0/db bumped to 1.195.2
+    * @vm0/pi-agent-runtime bumped to 1.3.53
+
 ## [1.432.0](https://github.com/vm0-ai/vm0/compare/api-v1.431.0...api-v1.432.0) (2026-08-12)
 
 

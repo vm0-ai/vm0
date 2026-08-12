@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.732.0](https://github.com/vm0-ai/vm0/compare/app-v0.731.1...app-v0.732.0) (2026-08-12)
+
+
+### Features
+
+* **platform:** default desktop downloads to okou ([#26524](https://github.com/vm0-ai/vm0/issues/26524)) ([a12e60e](https://github.com/vm0-ai/vm0/commit/a12e60ea0bfc84c0d9090a76bd00345414f3811c))
+
+
+### Bug Fixes
+
+* allow arbitrary file uploads in the composer ([#26511](https://github.com/vm0-ai/vm0/issues/26511)) ([aba11e7](https://github.com/vm0-ai/vm0/commit/aba11e781c8abb8ef86a863dfd5b81b88c2f8ee5))
+* **platform:** keep invalid mermaid diagrams in fixed cards ([#26512](https://github.com/vm0-ai/vm0/issues/26512)) ([c6dd23f](https://github.com/vm0-ai/vm0/commit/c6dd23f97a9e057f791b32f094656d918b1bd9fe))
+* **platform:** keep square thumbnail radius proportional across sizes ([#26525](https://github.com/vm0-ai/vm0/issues/26525)) ([1a41c87](https://github.com/vm0-ai/vm0/commit/1a41c87c6b561a004a67dba9dc9238f6dda1c5a1))
+
+
+### Refactoring
+
+* **connectors:** remove legacy credential compatibility ([#26523](https://github.com/vm0-ai/vm0/issues/26523)) ([acf5b6a](https://github.com/vm0-ai/vm0/commit/acf5b6ab1d7be0b0a27e27eba17652006e5f6224))
+* **ui:** rely on portal ownership for floating layers ([#26482](https://github.com/vm0-ai/vm0/issues/26482)) ([f4ee0e5](https://github.com/vm0-ai/vm0/commit/f4ee0e505967bad1c767cdc37babe9fd23184a9d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.321.1
+    * @vm0/core bumped to 8.548.1
+
 ## [0.731.1](https://github.com/vm0-ai/vm0/compare/app-v0.731.0...app-v0.731.1) (2026-08-12)
 
 
