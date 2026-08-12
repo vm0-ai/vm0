@@ -13,9 +13,6 @@ describe("isFeatureEnabled", () => {
     expect(isFeatureEnabled(FeatureSwitchKey.Dummy, {})).toBe(true);
     expect(isFeatureEnabled(FeatureSwitchKey.TeamsIntegration, {})).toBe(true);
     expect(isFeatureEnabled(FeatureSwitchKey.JoggAiBuiltIn, {})).toBe(true);
-    expect(isFeatureEnabled(FeatureSwitchKey.ChatEventSnapshotRead, {})).toBe(
-      true,
-    );
   });
 
   it("should return true for globally enabled switch even with context", () => {

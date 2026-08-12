@@ -28,7 +28,10 @@ import {
   readClipboardItemText,
   readSingleRichClipboardWrite,
 } from "./chat-lifecycle-test-helpers.ts";
-import { normalizeMockChatEvents } from "./chat-event-test-helpers.ts";
+import {
+  mockChatEventRows,
+  normalizeMockChatEvents,
+} from "./chat-event-test-helpers.ts";
 
 interface TouchPoint {
   readonly x: number;
@@ -793,14 +796,14 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("renders the optimistic new chat message without skeleton when the initial message list is blocked", async () => {
+  it("renders the optimistic new chat message without skeleton when the initial event rows are blocked", async () => {
     const user = userEvent.setup({ delay: null });
     const prompt = "Show this while the initial list is blocked";
-    const initialMessageList = context.mocks.deferred<void>();
+    const initialEventRows = context.mocks.deferred<void>();
     mockChatLifecycle(context);
-    context.mocks.api(chatThreadEventsContract.list, async ({ respond }) => {
-      await initialMessageList.promise;
-      return respond(200, { events: [] });
+    context.mocks.api(chatThreadEventsContract.rows, async ({ respond }) => {
+      await initialEventRows.promise;
+      return respond(200, { rows: [] });
     });
 
     detachedSetupPage({ context, path: AGENT_CHAT_PATH });
@@ -860,38 +863,35 @@ describe("chat lifecycle", () => {
       },
     ]);
     context.mocks.api(
-      chatThreadEventsContract.list,
+      chatThreadEventsContract.rows,
       async ({ params, query, respond }) => {
-        if (query.sinceSeqId || query.beforeSeqId) {
-          return respond(200, { events: [] });
-        }
+        let events;
         if (params.threadId === otherThreadId) {
-          await otherThreadMessagesGate.promise;
-          return respond(200, {
-            events: normalizeMockChatEvents([
-              {
-                id: "msg-other-user",
-                threadId: params.threadId,
-                seqId: 1,
-                role: "user",
-                runId: "run-other",
-                content: "Other thread context",
-                createdAt: "2026-03-10T00:00:00Z",
-              },
-              {
-                id: "msg-other-assistant",
-                threadId: params.threadId,
-                seqId: 2,
-                role: "assistant",
-                runId: "run-other",
-                content: "Other thread answer",
-                createdAt: "2026-03-10T00:00:01Z",
-              },
-            ]),
-          });
-        }
-        return respond(200, {
-          events: normalizeMockChatEvents([
+          if (query.sinceSeqId === 0) {
+            await otherThreadMessagesGate.promise;
+          }
+          events = normalizeMockChatEvents([
+            {
+              id: "msg-other-user",
+              threadId: params.threadId,
+              seqId: 1,
+              role: "user",
+              runId: "run-other",
+              content: "Other thread context",
+              createdAt: "2026-03-10T00:00:00Z",
+            },
+            {
+              id: "msg-other-assistant",
+              threadId: params.threadId,
+              seqId: 2,
+              role: "assistant",
+              runId: "run-other",
+              content: "Other thread answer",
+              createdAt: "2026-03-10T00:00:01Z",
+            },
+          ]);
+        } else {
+          events = normalizeMockChatEvents([
             {
               id: "msg-existing-user",
               threadId: params.threadId,
@@ -910,7 +910,12 @@ describe("chat lifecycle", () => {
               content: "Existing assistant answer",
               createdAt: "2026-03-10T00:00:01Z",
             },
-          ]),
+          ]);
+        }
+        return respond(200, {
+          rows: mockChatEventRows(events).filter((row) => {
+            return row.seqId > query.sinceSeqId;
+          }),
         });
       },
     );

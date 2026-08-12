@@ -270,9 +270,19 @@ export const apiAgentsHandlers = [
     });
   }),
 
-  // GET /api/okou/chat-threads/:threadId/events (paged events)
-  mockApi(chatThreadEventsContract.list, ({ respond }) => {
-    return respond(200, { events: [] });
+  // GET /api/okou/chat-threads/:threadId/event-snapshot
+  mockApi(chatThreadEventsContract.snapshot, ({ respond }) => {
+    return respond(404, {
+      error: {
+        message: "Chat event snapshot not found",
+        code: "CHAT_EVENT_SNAPSHOT_NOT_FOUND",
+      },
+    });
+  }),
+
+  // GET /api/okou/chat-threads/:threadId/event-rows
+  mockApi(chatThreadEventsContract.rows, ({ respond }) => {
+    return respond(200, { rows: [] });
   }),
 
   // GET /api/okou/chat-threads/:threadId/artifacts

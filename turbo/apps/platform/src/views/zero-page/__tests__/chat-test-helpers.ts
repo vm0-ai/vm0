@@ -25,10 +25,9 @@ import {
 } from "@vm0/api-contracts/contracts/zero-runs";
 import { zeroComputerUseHostsContract } from "@vm0/api-contracts/contracts/zero-computer-use";
 import { zeroQueuePositionContract } from "@vm0/api-contracts/contracts/zero-queue-position";
-import { zeroTeamContract } from "@vm0/api-contracts/contracts/zero-team";
-import { zeroAgentsByIdContract } from "@vm0/api-contracts/contracts/zero-agents";
 import type { RunStatus } from "@vm0/api-contracts/contracts/runs";
 import {
+  mockChatEventRows,
   normalizeMockChatEvents,
   type MockChatEventInput,
 } from "./chat-event-test-helpers.ts";
@@ -39,9 +38,7 @@ import type { TestContext } from "../../../signals/__tests__/test-helpers.ts";
 
 export const PLACEHOLDER = "Ask me to automate workflows, manage tasks...";
 
-const DEFAULT_AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 const MOCK_RUN_ID = "d0000000-0000-4000-a000-000000000001";
-const SUB_AGENT_ID = "a1111111-0000-4000-a000-000000000001";
 
 interface ModelSelectionRequest {
   readonly modelProviderId: string;
@@ -62,139 +59,6 @@ function modelSelectionFromBody(body: {
     return undefined;
   }
   return body.model === null ? null : modelFirstSelection(body.model);
-}
-
-export function mockSubagentThread(context: TestContext, threadId: string) {
-  context.mocks.api(chatThreadsContract.snapshot, ({ respond }) => {
-    return respond(200, {
-      chatThreads: [
-        {
-          id: threadId,
-          agentId: DEFAULT_AGENT_ID,
-          title: "Subagent thread",
-          sortAt: "2026-03-10T00:00:00Z",
-          createdAt: "2026-03-10T00:00:00Z",
-          updatedAt: "2026-03-10T00:00:00Z",
-          pinnedAt: null,
-          renamedAt: null,
-          selectedModel: null,
-          serviceTier: null,
-          computerUseHostId: null,
-        },
-      ],
-      latestEventId: null,
-      latestSeqId: null,
-    });
-  });
-  context.mocks.api(chatThreadsContract.events, ({ respond }) => {
-    return respond(200, { events: [], hasMore: false });
-  });
-  context.mocks.data.team([
-    {
-      id: DEFAULT_AGENT_ID,
-      displayName: null,
-      description: null,
-      sound: null,
-      avatarUrl: null,
-      headVersionId: "version_1",
-      updatedAt: "2024-01-01T00:00:00Z",
-    },
-    {
-      id: SUB_AGENT_ID,
-      displayName: "Assistant",
-      description: null,
-      sound: null,
-      avatarUrl: "https://example.com/avatar.png",
-      headVersionId: "version_2",
-      updatedAt: "2024-01-01T00:00:00Z",
-    },
-  ]);
-  context.mocks.api(zeroTeamContract.list, ({ respond }) => {
-    return respond(200, [
-      {
-        id: DEFAULT_AGENT_ID,
-        displayName: null,
-        description: null,
-        sound: null,
-        avatarUrl: null,
-        headVersionId: "version_1",
-        updatedAt: "2024-01-01T00:00:00Z",
-      },
-      {
-        id: SUB_AGENT_ID,
-        displayName: "Assistant",
-        description: null,
-        sound: null,
-        avatarUrl: "https://example.com/avatar.png",
-        headVersionId: "version_2",
-        updatedAt: "2024-01-01T00:00:00Z",
-      },
-    ]);
-  });
-  context.mocks.api(chatThreadEventsContract.list, ({ respond }) => {
-    return respond(200, { events: [] });
-  });
-  context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
-    return respond(200, {
-      lastReadAt: null,
-      cancellationRecoveryPending: false,
-    });
-  });
-  context.mocks.api(chatThreadDraftContract.get, ({ respond }) => {
-    return respond(200, {
-      draftUserMessage: null,
-      draftAttachments: null,
-    });
-  });
-  context.mocks.api(zeroAgentsByIdContract.get, ({ params, respond }) => {
-    const agents: Record<
-      string,
-      {
-        agentId: string;
-        displayName: string | null;
-        ownerId: string;
-        description: null;
-        sound: null;
-        avatarUrl: string | null;
-        modelProviderId: string | null;
-        selectedModel: string | null;
-        preferPersonalProvider: boolean;
-      }
-    > = {
-      [DEFAULT_AGENT_ID]: {
-        agentId: DEFAULT_AGENT_ID,
-        ownerId: "test-user",
-        displayName: null,
-        description: null,
-        sound: null,
-        avatarUrl: null,
-        modelProviderId: null,
-        selectedModel: null,
-        preferPersonalProvider: false,
-      },
-      [SUB_AGENT_ID]: {
-        agentId: SUB_AGENT_ID,
-        ownerId: "test-user",
-        displayName: "Assistant",
-        description: null,
-        sound: null,
-        avatarUrl: "https://example.com/avatar.png",
-        modelProviderId: null,
-        selectedModel: null,
-        preferPersonalProvider: false,
-      },
-    };
-    const agent = agents[params.id];
-    if (!agent) {
-      return respond(404, {
-        error: { message: "Not found", code: "NOT_FOUND" },
-      });
-    }
-    return respond(200, agent);
-  });
-  context.mocks.api(zeroComputerUseHostsContract.list, ({ respond }) => {
-    return respond(200, { hosts: [] });
-  });
 }
 
 function mountedComposerEditor(): HTMLElement {
@@ -477,11 +341,6 @@ export function mockChatLifecycle(
      */
     sendGate?: Promise<void> | (() => Promise<void>);
     /**
-     * Promise the paged history handler awaits before responding to beforeSeqId.
-     * Lets tests prove the latest-event view renders before silent backfill.
-     */
-    beforeHistoryGate?: Promise<void>;
-    /**
      * Promise the thread metadata handler awaits before responding. Lets tests
      * prove event-derived UI does not wait for activeRunIds metadata.
      */
@@ -553,7 +412,6 @@ export function mockChatLifecycle(
   // subsequent polls discover a "new" assistant event row (simulating the
   // real server inserting event-backed rows on run completion).
   let assistantVersion = 0;
-  let lastDeliveredVersion = -1;
 
   const rememberRunUserEventId = (clientEventId: string | undefined) => {
     if (clientEventId !== undefined) {
@@ -653,7 +511,7 @@ export function mockChatLifecycle(
     id: string;
     seqId: number;
   })[] => {
-    const assistantId = `msg-assistant-run-v${assistantVersion}`;
+    const assistantId = "msg-assistant-run";
     const historicalEvents = historyEvents.map((event, i) => {
       return {
         id: `msg-history-${i}`,
@@ -710,7 +568,7 @@ export function mockChatLifecycle(
       });
       if (runStatus === "completed") {
         pagedEvents.push({
-          id: `msg-assistant-run-marker-v${assistantVersion}`,
+          id: "msg-assistant-run-marker",
           role: "assistant",
           content: null,
           runId: MOCK_RUN_ID,
@@ -721,7 +579,11 @@ export function mockChatLifecycle(
     }
 
     return pagedEvents.map((event, index) => {
-      return { ...event, seqId: index + 1 };
+      const versionOffset =
+        event.id === assistantId || event.id === "msg-assistant-run-marker"
+          ? assistantVersion
+          : 0;
+      return { ...event, seqId: index + 1 + versionOffset };
     });
   };
 
@@ -800,70 +662,26 @@ export function mockChatLifecycle(
     };
   };
 
-  // Paged events endpoint — cursor-aware, version-aware mock.
-  context.mocks.api(chatThreadEventsContract.list, ({ query, respond }) => {
-    const sinceSeqId = query.sinceSeqId;
-    const beforeSeqId = query.beforeSeqId;
-    const limit = query.limit ?? 50;
-    const beforeHistoryGate = options?.beforeHistoryGate ?? Promise.resolve();
-    const pagedEvents = buildCanonicalEvents();
-
-    if (beforeSeqId) {
-      return beforeHistoryGate.then(() => {
-        const beforeIndex = pagedEvents.findIndex((event) => {
-          return event.seqId === beforeSeqId;
-        });
-        if (beforeIndex <= 0) {
-          return respond(200, { events: [] });
-        }
-        const olderEvents = pagedEvents.slice(
-          Math.max(0, beforeIndex - limit),
-          beforeIndex,
-        );
-        return respond(200, {
-          events: normalizeMockChatEvents(olderEvents.map(cloneMockChatEvent)),
-        });
-      });
+  context.mocks.api(chatThreadEventsContract.snapshot, ({ respond }) => {
+    return respond(404, {
+      error: {
+        message: "Chat event snapshot not found",
+        code: "CHAT_EVENT_SNAPSHOT_NOT_FOUND",
+      },
+    });
+  });
+  context.mocks.api(chatThreadEventsContract.rows, ({ query, respond }) => {
+    const rows = mockChatEventRows(
+      normalizeMockChatEvents(buildCanonicalEvents().map(cloneMockChatEvent)),
+    )
+      .filter((row) => {
+        return row.seqId > query.sinceSeqId;
+      })
+      .slice(0, query.limit ?? 50);
+    if (query.sinceSeqId === 0) {
+      options?.afterInitialEventsList?.();
     }
-
-    if (sinceSeqId) {
-      const appendedEvents = pagedEvents.filter((event) => {
-        return event.seqId > sinceSeqId;
-      });
-      if (appendedEvents.length > 0) {
-        return respond(200, {
-          events: normalizeMockChatEvents(
-            appendedEvents.map(cloneMockChatEvent),
-          ),
-        });
-      }
-      // If the assistant version bumped since the client's cursor, return
-      // the updated assistant event as a "new" row. Otherwise return
-      // empty to avoid duplicate keys.
-      if (assistantVersion > lastDeliveredVersion && runAssociated) {
-        lastDeliveredVersion = assistantVersion;
-        const events =
-          runStatus === "completed"
-            ? pagedEvents.slice(Math.max(0, pagedEvents.length - 2))
-            : [pagedEvents[pagedEvents.length - 1]!];
-        return respond(200, {
-          events: normalizeMockChatEvents(events.map(cloneMockChatEvent)),
-        });
-      }
-      return respond(200, { events: [] });
-    }
-
-    lastDeliveredVersion = assistantVersion;
-    const latestEvents = pagedEvents.slice(historyEvents.length);
-    const body = {
-      events: normalizeMockChatEvents(
-        latestEvents
-          .slice(Math.max(0, latestEvents.length - limit))
-          .map(cloneMockChatEvent),
-      ),
-    };
-    options?.afterInitialEventsList?.();
-    return respond(200, body);
+    return respond(200, { rows });
   });
   context.mocks.api(chatThreadByIdContract.get, async ({ respond }) => {
     if (options?.threadGate) {

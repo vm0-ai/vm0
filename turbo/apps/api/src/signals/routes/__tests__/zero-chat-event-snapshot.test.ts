@@ -11,7 +11,6 @@ import {
   cronProjectChatEventSearchContract,
   cronSnapshotChatEventsContract,
 } from "@vm0/api-contracts/contracts/cron";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";
@@ -40,7 +39,6 @@ import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
-import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 
 const context = testContext();
 const bdd = createBddApi(context);
@@ -390,34 +388,6 @@ describe("chat event snapshot read endpoints", () => {
     expect(queued.body.runId).toBeNull();
     const threadId = active.body.threadId;
 
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...owner, orgId },
-      {
-        [FeatureSwitchKey.ChatEventSnapshotRead]: false,
-      },
-    );
-    const disabled = await accept(
-      eventsClient().queued({
-        headers: authenticate(owner),
-        params: { threadId },
-      }),
-      [403],
-    );
-    expect(disabled.body).toStrictEqual({
-      error: {
-        message: "Chat event snapshot read is not enabled",
-        code: "FORBIDDEN",
-      },
-    });
-
-    await updateFeatureSwitchesForUser(
-      context,
-      { ...owner, orgId },
-      {
-        [FeatureSwitchKey.ChatEventSnapshotRead]: true,
-      },
-    );
     const response = await accept(
       eventsClient().queued({
         headers: authenticate(owner),

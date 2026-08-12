@@ -10,15 +10,9 @@
  */
 
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-
 import { mockApi } from "../msw-contract.ts";
 
-const DEFAULT_SWITCH_OVERRIDES = {
-  // Shared fixtures keep the projected-event reader available as the rollback
-  // baseline. Snapshot-specific tests opt into the globally enabled path.
-  [FeatureSwitchKey.ChatEventSnapshotRead]: false,
-};
+const DEFAULT_SWITCH_OVERRIDES = {};
 
 export const apiFeatureSwitchesHandlers = [
   mockApi(zeroFeatureSwitchesContract.get, ({ respond }) => {

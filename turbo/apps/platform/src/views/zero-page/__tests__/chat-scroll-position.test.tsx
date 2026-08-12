@@ -2,7 +2,6 @@ import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import {
-  chatEventResponse,
   chatThreadEventsContract,
   chatThreadsContract,
   type ChatEvent,
@@ -11,6 +10,7 @@ import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { click, queryAllByRoleFast } from "../../../__tests__/page-helper.ts";
 import { mockChatLifecycle, sendMessageInUI } from "./chat-test-helpers.ts";
 import {
+  mockChatEventRows,
   normalizeMockChatEvents,
   type MockChatEventInput,
 } from "./chat-event-test-helpers.ts";
@@ -420,13 +420,13 @@ function mockLiveThread({
   publishAppendedEvents: () => Promise<void>;
   publishAppendedEventsOnReconnect: () => Promise<void>;
 } {
-  const events = normalizeMockChatEvents(
-    [...initialEvents, ...appendedEvents].map((event) => {
-      return { ...event, threadId };
-    }),
-  );
-  const initialCount = initialEvents.length;
-  const initialLastSeqId = events[initialCount - 1]?.seqId ?? 0;
+  const inputs = [...initialEvents, ...appendedEvents].map((event) => {
+    return { ...event, threadId };
+  });
+  const events = normalizeMockChatEvents(inputs);
+  const initialCount = normalizeMockChatEvents(
+    inputs.slice(0, initialEvents.length),
+  ).length;
   let appendedEventsPublished = false;
 
   mockChatLifecycle(context, {
@@ -434,29 +434,14 @@ function mockLiveThread({
     threadTitle: `Scroll position ${threadId}`,
     chatEvents: [...initialEvents],
   });
-  context.mocks.api(chatThreadEventsContract.list, ({ query, respond }) => {
-    if (query.beforeSeqId !== undefined) {
-      return respond(200, { events: [] });
-    }
-    if (query.sinceSeqId === undefined) {
-      return respond(200, {
-        events: events.slice(0, initialCount).map(chatEventResponse),
-      });
-    }
-    if (
-      !appendedEventsPublished ||
-      query.sinceSeqId < initialLastSeqId ||
-      query.sinceSeqId >= (events.at(-1)?.seqId ?? 0)
-    ) {
-      return respond(200, { events: [] });
-    }
-    const sinceSeqId = query.sinceSeqId;
+  context.mocks.api(chatThreadEventsContract.rows, ({ query, respond }) => {
+    const availableEvents = appendedEventsPublished
+      ? events
+      : events.slice(0, initialCount);
     return respond(200, {
-      events: events
-        .filter((event) => {
-          return (event.seqId ?? 0) > sinceSeqId;
-        })
-        .map(chatEventResponse),
+      rows: mockChatEventRows(availableEvents).filter((row) => {
+        return row.seqId > query.sinceSeqId;
+      }),
     });
   });
 
@@ -536,78 +521,6 @@ function mockLateGrowingThread({
   };
 }
 
-function mockBackfilledHistoryScroll({
-  threadId,
-  finalScrollHeight,
-}: {
-  readonly threadId: string;
-  readonly finalScrollHeight: number;
-}): {
-  readonly historyGate: ReturnType<typeof context.mocks.deferred<void>>;
-  readonly historyMessage: string;
-  readonly currentMessage: string;
-} {
-  const clientHeight = 300;
-  const currentMessageHeight = 80;
-  const historyGate = context.mocks.deferred<void>();
-  const historyMessage = `Backfilled history ${threadId}`;
-  const currentMessage = `Current tail ${threadId}`;
-  const currentEventId = `backfill-tail-current-${threadId}`;
-  mockChatLifecycle(context, {
-    threadId,
-    threadTitle: "Backfill tail",
-    historyEvents: [
-      {
-        id: `backfill-tail-history-${threadId}`,
-        role: "user",
-        content: historyMessage,
-        runId: `backfill-tail-history-run-${threadId}`,
-        createdAt: "2026-07-30T09:00:00Z",
-      },
-    ],
-    chatEvents: [
-      {
-        id: currentEventId,
-        role: "user",
-        content: currentMessage,
-        runId: `backfill-tail-current-run-${threadId}`,
-        createdAt: "2026-07-30T10:00:00Z",
-      },
-    ],
-    beforeHistoryGate: historyGate.promise,
-  });
-  const historyRendered = () => {
-    return document.body.textContent?.includes(historyMessage) ?? false;
-  };
-  installChatLayout(
-    new Map([
-      [
-        threadId,
-        {
-          clientHeight: () => {
-            return clientHeight;
-          },
-          scrollHeight: () => {
-            return historyRendered() ? finalScrollHeight : 160;
-          },
-          eventRect: (eventId) => {
-            if (eventId !== currentEventId) {
-              return undefined;
-            }
-            return {
-              top: historyRendered()
-                ? finalScrollHeight - currentMessageHeight
-                : 80,
-              height: currentMessageHeight,
-            };
-          },
-        },
-      ],
-    ]),
-  );
-  return { historyGate, historyMessage, currentMessage };
-}
-
 function mockKeyboardThreadScrollLayout({
   currentThreadTop,
   currentScrollHeight = () => {
@@ -659,7 +572,7 @@ function mockKeyboardThreadScrollLayout({
     [KEYBOARD_PREV_THREAD_ID, previousThreadEvents],
   ]);
   context.mocks.api(
-    chatThreadEventsContract.list,
+    chatThreadEventsContract.rows,
     ({ params, query, respond }) => {
       const events = eventsByThreadId.get(params.threadId) ?? [];
       const filteredEvents = events.filter((event) => {
@@ -671,16 +584,10 @@ function mockKeyboardThreadScrollLayout({
         ) {
           return false;
         }
-        if (query.beforeSeqId !== undefined) {
-          return event.seqId < query.beforeSeqId;
-        }
-        if (query.sinceSeqId !== undefined) {
-          return event.seqId > query.sinceSeqId;
-        }
-        return true;
+        return event.seqId > query.sinceSeqId;
       });
       return respond(200, {
-        events: filteredEvents.map(chatEventResponse),
+        rows: mockChatEventRows(filteredEvents),
       });
     },
   );
@@ -769,59 +676,6 @@ describe("chat scroll position", () => {
       screen.findByText("Send a message to start the conversation"),
     ).resolves.toBeInTheDocument();
     expect(chatScrollContainer().scrollTop).toBe(0);
-  });
-
-  it("keeps scrollTop at zero when backfilled history does not fill the viewport", async () => {
-    const threadId = "b0000000-0000-4000-a000-000000000807";
-    const { historyGate, historyMessage, currentMessage } =
-      mockBackfilledHistoryScroll({ threadId, finalScrollHeight: 260 });
-    detachedSetupPage({ context, path: `/chats/${threadId}` });
-    const container = await waitFor(() => {
-      expect(screen.getByText(currentMessage)).toBeInTheDocument();
-      expect(
-        document.querySelector("[data-history-backfill-skeleton]"),
-      ).not.toBeNull();
-      const current = chatScrollContainer();
-      expect(current.scrollTop).toBe(0);
-      return current;
-    });
-    historyGate.resolve();
-    await waitFor(() => {
-      expect(screen.getByText(historyMessage)).toBeInTheDocument();
-      expect(
-        document.querySelector("[data-history-backfill-skeleton]"),
-      ).toBeNull();
-      expect(container.scrollHeight).toBeLessThan(container.clientHeight);
-      expect(container.scrollTop).toBe(0);
-    });
-  });
-
-  it("scrolls to the bottom when backfilled history fills beyond the viewport", async () => {
-    const threadId = "b0000000-0000-4000-a000-000000000808";
-    const { historyGate, historyMessage, currentMessage } =
-      mockBackfilledHistoryScroll({ threadId, finalScrollHeight: 700 });
-    detachedSetupPage({ context, path: `/chats/${threadId}` });
-    const container = await waitFor(() => {
-      expect(screen.getByText(currentMessage)).toBeInTheDocument();
-      expect(
-        document.querySelector("[data-history-backfill-skeleton]"),
-      ).not.toBeNull();
-      const current = chatScrollContainer();
-      expect(current.scrollTop).toBe(0);
-      return current;
-    });
-    historyGate.resolve();
-    await waitFor(() => {
-      expect(screen.getByText(historyMessage)).toBeInTheDocument();
-      expect(
-        document.querySelector("[data-history-backfill-skeleton]"),
-      ).toBeNull();
-      expect(container.scrollHeight).toBeGreaterThan(container.clientHeight);
-      expect(container.scrollTop).toBeGreaterThan(0);
-      expect(container.scrollTop).toBe(
-        container.scrollHeight - container.clientHeight,
-      );
-    });
   });
 
   it("follows the tail when a new message arrives while at the bottom", async () => {

@@ -46,6 +46,7 @@ import { isoFromNowMs, mockNow } from "../../../__tests__/time.ts";
 import { triggerAblyEvent, hasSubscription } from "../../../mocks/ably.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { PLACEHOLDER, mockChatLifecycle } from "./chat-test-helpers.ts";
+import { mockChatEventRows } from "./chat-event-test-helpers.ts";
 
 const context = testContext();
 
@@ -1066,17 +1067,13 @@ describe("chat event action cards", () => {
       },
     ]);
     context.mocks.api(
-      chatThreadEventsContract.list,
+      chatThreadEventsContract.rows,
       ({ params, query, respond }) => {
-        if (
-          params.threadId !== rightThreadId ||
-          query.beforeSeqId ||
-          query.sinceSeqId
-        ) {
-          return respond(200, { events: [] });
+        if (params.threadId !== rightThreadId || query.sinceSeqId >= 1) {
+          return respond(200, { rows: [] });
         }
         return respond(200, {
-          events: [
+          rows: mockChatEventRows([
             {
               id: "c0000000-0000-4000-a000-000000000034",
               threadId: rightThreadId,
@@ -1085,7 +1082,7 @@ describe("chat event action cards", () => {
               content: `https://app.vm0.ai/mail/drafts/${mailDraftId}`,
               createdAt,
             },
-          ],
+          ]),
         });
       },
     );

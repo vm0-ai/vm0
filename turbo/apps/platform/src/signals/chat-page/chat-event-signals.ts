@@ -7,13 +7,8 @@ import type {
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { ChatEvent } from "./chat-event-types.ts";
 import {
-  listEventsAfter$,
-  listEventsBefore$,
-} from "./remote-chat-event-data-source.ts";
-import {
   createChatEventStorageSignals,
   type AppendOptimisticEventCommand,
-  type ChatEventDataSource,
 } from "./chat-event-storage-signals.ts";
 import { nowDate } from "../../lib/time.ts";
 import { zeroClient$ } from "../api-client.ts";
@@ -445,14 +440,7 @@ export interface ChatEventSignals {
 }
 
 export function createChatEventSignals(threadId: string): ChatEventSignals {
-  const dataSource: ChatEventDataSource = {
-    listEventsAfter$,
-    listEventsBefore$,
-  };
-  const events = createChatEventStorageSignals({
-    threadId,
-    dataSource,
-  });
+  const events = createChatEventStorageSignals({ threadId });
   const sendEvent$ = createSendChatEvent({
     threadId,
     appendOptimisticEvent$: events.appendOptimisticEvent$,

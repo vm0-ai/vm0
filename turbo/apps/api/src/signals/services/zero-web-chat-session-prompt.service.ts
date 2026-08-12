@@ -60,7 +60,6 @@ export interface WebChatSessionPromptContext {
   readonly generationTemplatePrompt: string;
   readonly computerUseHostDisplayName: string | null;
   readonly agentRunSource: ChatAgentRunSourceAnnotation | null;
-  readonly chatEventSnapshotReadEnabled: boolean;
 }
 
 function buildWebChatPrompt(): string {
@@ -75,26 +74,15 @@ function buildWebChatPrompt(): string {
  * only replayed when the CLI session cannot carry it, so this block is what
  * lets a run reach the rest of the conversation on demand instead.
  */
-function buildCurrentThreadContext(
-  threadId: string,
-  chatEventSnapshotReadEnabled: boolean,
-): string {
-  const historyCommands = chatEventSnapshotReadEnabled
-    ? [
-        `- \`okou chat messages --thread-id ${threadId} --output-dir threads\` synchronizes the raw snapshot and hot events into \`threads/${threadId}/\` (chat-event:read)`,
-        `- \`rg -n '"seqId":<SEQ_ID>' threads/${threadId}/\` finds an event in the synchronized history`,
-      ]
-    : [
-        "- `okou chat messages` prints this thread's user and assistant messages, oldest first (chat-event:read)",
-        "- `okou chat messages --limit <n>` prints only the most recent n messages",
-      ];
+function buildCurrentThreadContext(threadId: string): string {
   return [
     "# This Chat Thread",
     "",
     `- CHAT_THREAD_ID: ${threadId}`,
     "",
     "Reading this thread, each through OKOU_TOKEN:",
-    ...historyCommands,
+    `- \`okou chat messages --thread-id ${threadId} --output-dir threads\` synchronizes the raw snapshot and hot events into \`threads/${threadId}/\` (chat-event:read)`,
+    `- \`rg -n '"seqId":<SEQ_ID>' threads/${threadId}/\` finds an event in the synchronized history`,
     '- `okou search "<query>" --source agent-session` prints both the Claude Code and Codex session-file locations so you can analyze those files directly',
   ].join("\n");
 }
@@ -111,11 +99,7 @@ function buildCurrentThreadContext(
  */
 function buildAgentRunSourceContext(
   source: ChatAgentRunSourceAnnotation,
-  chatEventSnapshotReadEnabled: boolean,
 ): string {
-  const historyCommand = chatEventSnapshotReadEnabled
-    ? `- \`okou chat messages --thread-id ${source.threadId} --output-dir threads\` synchronizes the source thread's raw snapshot and hot events into \`threads/${source.threadId}/\`; use \`rg -n '"seqId":<SEQ_ID>' threads/${source.threadId}/\` to inspect an event (chat-event:read)`
-    : `- \`okou chat messages --thread-id ${source.threadId}\` prints the source thread's user and assistant messages (chat-event:read)`;
   return [
     "# This Run's Trigger",
     "",
@@ -129,7 +113,7 @@ function buildAgentRunSourceContext(
     "The message text is everything that run chose to carry across the thread boundary. Its own instructions, the conversation it came from, and whatever it already found stayed in the source thread and are not included above.",
     "",
     "Reading the source, each through OKOU_TOKEN:",
-    historyCommand,
+    `- \`okou chat messages --thread-id ${source.threadId} --output-dir threads\` synchronizes the source thread's raw snapshot and hot events into \`threads/${source.threadId}/\`; use \`rg -n '"seqId":<SEQ_ID>' threads/${source.threadId}/\` to inspect an event (chat-event:read)`,
     `- \`okou chat get --thread-id ${source.threadId}\` prints its title, agent, and model (chat-thread:read)`,
     `- \`okou search "${source.runId}" --source agent-session\` prints both the Claude Code and Codex session-file locations so you can analyze those files directly`,
     "",
@@ -154,15 +138,9 @@ export function buildWebChatAppendSystemPrompt(args: {
 }): string {
   return [
     buildWebChatPrompt(),
-    buildCurrentThreadContext(
-      args.threadId,
-      args.context.chatEventSnapshotReadEnabled,
-    ),
+    buildCurrentThreadContext(args.threadId),
     args.context.agentRunSource
-      ? buildAgentRunSourceContext(
-          args.context.agentRunSource,
-          args.context.chatEventSnapshotReadEnabled,
-        )
+      ? buildAgentRunSourceContext(args.context.agentRunSource)
       : "",
     args.priorContext,
     args.incompleteContext,

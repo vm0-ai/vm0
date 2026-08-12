@@ -115,7 +115,7 @@ import {
   patchChatThreadModelSelection$,
   subscribeChatThreadRealtime$,
 } from "./chat-thread-remote-signals.ts";
-import { markChatThreadRead$ } from "./remote-chat-event-data-source.ts";
+import { markChatThreadRead$ } from "./chat-thread-mark-read.ts";
 import {
   cardSlotUrl,
   classifyChatAttachment,

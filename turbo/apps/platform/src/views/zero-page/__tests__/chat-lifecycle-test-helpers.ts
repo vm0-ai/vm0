@@ -27,6 +27,7 @@ import {
 } from "../../../__tests__/page-helper.ts";
 import { mockChatLifecycle, threadListSnapshot } from "./chat-test-helpers.ts";
 import {
+  mockChatEventRows,
   normalizeMockChatEvents,
   type MockChatEventInput,
 } from "./chat-event-test-helpers.ts";
@@ -387,14 +388,11 @@ export function mockKeyboardNavigationThreads({
     });
   });
   context.mocks.api(
-    chatThreadEventsContract.list,
+    chatThreadEventsContract.rows,
     ({ params, query, respond }) => {
-      if (query.sinceSeqId) {
-        return respond(200, { events: [] });
-      }
       const thread = byId.get(params.threadId);
-      return respond(200, {
-        events: normalizeMockChatEvents(
+      const rows = mockChatEventRows(
+        normalizeMockChatEvents(
           thread
             ? [
                 {
@@ -406,6 +404,11 @@ export function mockKeyboardNavigationThreads({
               ]
             : [],
         ),
+      ).filter((row) => {
+        return row.seqId > query.sinceSeqId;
+      });
+      return respond(200, {
+        rows,
       });
     },
   );
@@ -586,15 +589,15 @@ export function mockServerQueuedThreadStories(): void {
     });
   });
   context.mocks.api(
-    chatThreadEventsContract.list,
+    chatThreadEventsContract.rows,
     ({ params, query, respond }) => {
-      if (query.sinceSeqId || query.beforeSeqId) {
-        return respond(200, { events: [] });
-      }
+      const rows = mockChatEventRows(
+        normalizeMockChatEvents(byId.get(params.threadId)?.messages ?? []),
+      ).filter((row) => {
+        return row.seqId > query.sinceSeqId;
+      });
       return respond(200, {
-        events: normalizeMockChatEvents(
-          byId.get(params.threadId)?.messages ?? [],
-        ),
+        rows,
       });
     },
   );

@@ -1,20 +1,12 @@
 import {
   chatFeedbackLocationEventsContract,
   chatEventsContract,
-  chatThreadEventsContract,
-  type ChatEvent,
   type ChatEventSendBody,
   type UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
 
 import { accept } from "../../lib/accept.ts";
 import type { ZeroClientFactory } from "../api-client.ts";
-
-interface ChatEventListQuery {
-  readonly sinceSeqId?: number;
-  readonly beforeSeqId?: number;
-  readonly limit?: number;
-}
 
 function projectPreviousApiFeedbackDocument(
   document: UserMessageDocument,
@@ -90,22 +82,4 @@ export async function sendChatEvent(
     signal,
   );
   return result.body;
-}
-
-export async function listChatEvents(
-  createClient: ZeroClientFactory,
-  threadId: string,
-  query: ChatEventListQuery,
-  signal: AbortSignal,
-): Promise<ChatEvent[]> {
-  const result = await accept(
-    createClient(chatThreadEventsContract).list({
-      params: { threadId },
-      query,
-      fetchOptions: { signal },
-    }),
-    [200],
-    signal,
-  );
-  return result.body.events;
 }

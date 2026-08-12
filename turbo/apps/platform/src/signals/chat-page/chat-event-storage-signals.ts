@@ -10,14 +10,8 @@ import type { ChatEventRowV4 } from "@vm0/api-contracts/contracts/chat-event-row
 import { chatEventFromRow } from "@vm0/api-contracts/contracts/chat-event-row-projection";
 import type { ChatEvent as PersistedChatEvent } from "@vm0/api-contracts/contracts/chat-threads";
 import { captureTaskCompletedSuccessfully } from "../../lib/posthog.ts";
-import { chatEventSnapshotReadEnabled$ } from "../external/feature-switch.ts";
-import { logger } from "../log.ts";
 import { settle } from "../utils.ts";
 import { notifyChatEventsChanged$ } from "./chat-event-change-registry.ts";
-import {
-  loadIndexedDbChatEvents$,
-  writeIndexedDbChatEvents$,
-} from "./chat-event-indexed-db.ts";
 import {
   clearIndexedDbChatEventRows$,
   loadIndexedDbChatEventRowsAfter$,
@@ -37,22 +31,8 @@ import {
   type OptimisticChatEventEntry,
   type OptimisticChatEventInput,
 } from "./optimistic-chat-events.ts";
-import {
-  CHAT_EVENTS_PAGE_LIMIT,
-  listEventsAfter$,
-  listEventsBefore$,
-} from "./remote-chat-event-data-source.ts";
-
-const L = logger("ChatEventStorageSignals");
-const HISTORY_BACKFILL_MERGE_BATCH_SIZE = 300;
-const FIRST_CHAT_EVENT_SEQ_ID = 1;
 /** Cursor that reads a thread from its very first event. */
 const THREAD_START_SEQ_ID = 0;
-
-export interface ChatEventDataSource {
-  readonly listEventsAfter$: typeof listEventsAfter$;
-  readonly listEventsBefore$: typeof listEventsBefore$;
-}
 
 export type AppendOptimisticEventCommand = Command<
   Promise<void>,
@@ -139,150 +119,6 @@ function createStoredChatEventsComputed({
   });
 }
 
-function createIndexedDbEventCacheSignals(
-  threadId: string,
-  persistentEvents$: PersistentChatEvents$,
-) {
-  const loadIndexedDbEventsIntoPersistentEvents$ = command(
-    async ({ set }, signal: AbortSignal): Promise<void> => {
-      const result = await settle(
-        set(loadIndexedDbChatEvents$, threadId, signal),
-        signal,
-      );
-      if (!result.ok) {
-        throw result.error;
-      }
-      if (result.value.length > 0) {
-        set(persistentEvents$, (previous) => {
-          return mergePersistentEvents([previous, result.value]);
-        });
-      }
-      signal.throwIfAborted();
-    },
-  );
-
-  return { loadIndexedDbEventsIntoPersistentEvents$ };
-}
-
-interface RemoteSyncDependencies {
-  readonly threadId: string;
-  readonly persistentEvents$: PersistentChatEvents$;
-  readonly hasReachedOldestEvent$: Computed<boolean>;
-  readonly mergePersistentEvents$: Command<
-    Promise<void>,
-    [PersistedChatEvent[], AbortSignal]
-  >;
-  readonly dataSource: ChatEventDataSource;
-}
-
-function createSyncRemoteEventsCommand({
-  threadId,
-  persistentEvents$,
-  hasReachedOldestEvent$,
-  mergePersistentEvents$,
-  dataSource,
-}: RemoteSyncDependencies): Command<Promise<void>, [AbortSignal]> {
-  return command(async ({ get, set }, signal: AbortSignal): Promise<void> => {
-    const mergeEvents = async (events: PersistedChatEvent[]): Promise<void> => {
-      await set(mergePersistentEvents$, events, signal);
-      signal.throwIfAborted();
-    };
-    const persistentEvents = get(persistentEvents$);
-    const accumulatedEvents: PersistedChatEvent[] = [];
-    let mergedEventCount = 0;
-    let sinceSeqId = persistentEvents.at(-1)?.seqId;
-    let initialPageOldestEvent: PersistedChatEvent | undefined;
-
-    async function syncEventsAfter(): Promise<void> {
-      const requestedSinceSeqId = sinceSeqId;
-      const isInitialPage = requestedSinceSeqId === undefined;
-      const events = await set(
-        dataSource.listEventsAfter$,
-        { threadId, sinceSeqId: requestedSinceSeqId },
-        signal,
-      );
-      signal.throwIfAborted();
-      L.debug("sync remote events after", {
-        threadId,
-        sinceSeqId: requestedSinceSeqId ?? null,
-        count: events.length,
-      });
-      if (events.length === 0) {
-        return;
-      }
-      await set(writeIndexedDbChatEvents$, threadId, events, signal);
-      signal.throwIfAborted();
-      if (isInitialPage) {
-        initialPageOldestEvent = events[0]!;
-        await mergeEvents(events);
-        signal.throwIfAborted();
-      } else {
-        accumulatedEvents.push(...events);
-      }
-      sinceSeqId = events.at(-1)!.seqId;
-      if (
-        requestedSinceSeqId !== undefined &&
-        events.length < CHAT_EVENTS_PAGE_LIMIT
-      ) {
-        return;
-      }
-      await syncEventsAfter();
-    }
-
-    await syncEventsAfter();
-    signal.throwIfAborted();
-    await mergeEvents(accumulatedEvents.slice(mergedEventCount));
-    signal.throwIfAborted();
-    mergedEventCount = accumulatedEvents.length;
-
-    if (!get(hasReachedOldestEvent$)) {
-      const oldestEvent =
-        persistentEvents[0] ?? initialPageOldestEvent ?? accumulatedEvents[0];
-      if (oldestEvent !== undefined) {
-        let beforeSeqId = oldestEvent.seqId;
-        async function syncEventsBefore(): Promise<void> {
-          const events = await set(
-            dataSource.listEventsBefore$,
-            { threadId, beforeSeqId },
-            signal,
-          );
-          signal.throwIfAborted();
-          L.debug("sync remote events before", {
-            threadId,
-            beforeSeqId,
-            count: events.length,
-          });
-          const oldestInPage = events[0];
-          if (oldestInPage !== undefined) {
-            accumulatedEvents.push(...events);
-            await set(writeIndexedDbChatEvents$, threadId, events, signal);
-            signal.throwIfAborted();
-            if (
-              accumulatedEvents.length - mergedEventCount >=
-              HISTORY_BACKFILL_MERGE_BATCH_SIZE
-            ) {
-              await mergeEvents(accumulatedEvents.slice(mergedEventCount));
-              signal.throwIfAborted();
-              mergedEventCount = accumulatedEvents.length;
-            }
-          }
-          if (
-            oldestInPage === undefined ||
-            oldestInPage.seqId <= FIRST_CHAT_EVENT_SEQ_ID
-          ) {
-            return;
-          }
-          beforeSeqId = oldestInPage.seqId;
-          await syncEventsBefore();
-        }
-        await syncEventsBefore();
-      }
-    }
-    signal.throwIfAborted();
-    await mergeEvents(accumulatedEvents.slice(mergedEventCount));
-  });
-}
-
 interface RowSyncDependencies {
   readonly threadId: string;
   readonly persistentEvents$: PersistentChatEvents$;
@@ -293,10 +129,11 @@ interface RowSyncDependencies {
 }
 
 /**
- * Snapshot-read pipeline: the raw-row cache is the source of truth and rows
- * project into ChatEvents only at this merge boundary. Cold start downloads
- * the full-thread archive object; afterwards the /event-rows tail keeps the
- * cache current, and a 410 (cursor reclaimed) rebuilds from a fresh snapshot.
+ * Snapshot-backed canonical-row pipeline: the raw-row cache is the source of
+ * truth and rows project into ChatEvents only at this merge boundary. Cold
+ * start downloads the full-thread archive object; afterwards the /event-rows
+ * tail keeps the cache current, and a 410 (cursor reclaimed) rebuilds from a
+ * fresh snapshot.
  */
 function createSyncRemoteRowsCommand({
   threadId,
@@ -418,10 +255,8 @@ function createRowCacheSignals(
 
 export function createChatEventStorageSignals({
   threadId,
-  dataSource,
 }: {
   threadId: string;
-  dataSource: ChatEventDataSource;
 }) {
   const persistentChatEvents$ = state<PersistedChatEvent[]>([]);
   const optimisticEvents$ = createOptimisticChatEventsForThread(threadId);
@@ -445,10 +280,6 @@ export function createChatEventStorageSignals({
       signal.throwIfAborted();
     },
   );
-  const indexedDbEventCache = createIndexedDbEventCacheSignals(
-    threadId,
-    persistentChatEvents$,
-  );
   const mergePersistentEvents$ = command(
     async (
       { get, set },
@@ -470,40 +301,16 @@ export function createChatEventStorageSignals({
       signal.throwIfAborted();
     },
   );
-  const hasReachedOldestEvent$ = computed((get): boolean => {
-    return get(persistentChatEvents$)[0]?.seqId === FIRST_CHAT_EVENT_SEQ_ID;
-  });
-  const syncLegacyRemoteEvents$ = createSyncRemoteEventsCommand({
-    threadId,
-    persistentEvents$: persistentChatEvents$,
-    hasReachedOldestEvent$,
-    mergePersistentEvents$,
-    dataSource,
-  });
-  const syncRemoteRows$ = createSyncRemoteRowsCommand({
+  const syncRemoteEvents$ = createSyncRemoteRowsCommand({
     threadId,
     persistentEvents$: persistentChatEvents$,
     mergePersistentEvents$,
   });
-  const syncRemoteEvents$ = command(
-    async ({ get, set }, signal: AbortSignal): Promise<void> => {
-      if (get(chatEventSnapshotReadEnabled$)) {
-        await set(syncRemoteRows$, signal);
-        return;
-      }
-      await set(syncLegacyRemoteEvents$, signal);
-    },
-  );
   const rowCache = createRowCacheSignals(threadId, persistentChatEvents$);
   const initializeIndexedDbEvents$ = command(
     async ({ get, set }, signal: AbortSignal): Promise<void> => {
       const result = await settle(
-        get(chatEventSnapshotReadEnabled$)
-          ? set(rowCache.loadRowCacheIntoPersistentEvents$, signal)
-          : set(
-              indexedDbEventCache.loadIndexedDbEventsIntoPersistentEvents$,
-              signal,
-            ),
+        set(rowCache.loadRowCacheIntoPersistentEvents$, signal),
         signal,
       );
       if (!result.ok) {

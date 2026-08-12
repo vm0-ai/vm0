@@ -33,6 +33,7 @@ import { click, queryAllByRoleFast } from "../../../__tests__/page-helper.ts";
 import { composerOverflowConnectorSlugs } from "../../../mocks/handlers/connector-catalog-fixtures.ts";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
 import {
+  mockChatEventRows,
   normalizeMockChatEvents,
   type MockChatEventInput,
 } from "./chat-event-test-helpers.ts";
@@ -412,12 +413,13 @@ export function mockThread(options?: {
           : [],
     });
   });
-  context.mocks.api(chatThreadEventsContract.list, ({ query, respond }) => {
-    if (query.sinceSeqId || query.beforeSeqId) {
-      return respond(200, { events: [] });
-    }
+  context.mocks.api(chatThreadEventsContract.rows, ({ query, respond }) => {
     return respond(200, {
-      events: normalizeMockChatEvents(options?.messages ?? []),
+      rows: mockChatEventRows(
+        normalizeMockChatEvents(options?.messages ?? []),
+      ).filter((row) => {
+        return row.seqId > query.sinceSeqId;
+      }),
     });
   });
 }

@@ -21,6 +21,7 @@ import { initializeI18n } from "../../../i18n/index.ts";
 import { DEFAULT_LOCALE } from "../../../i18n/resources.ts";
 import { canonicalUserMessageFileUrl } from "../../../signals/chat-page/user-message-files.ts";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
+import { mockChatEventRows } from "./chat-event-test-helpers.ts";
 
 const context = testContext();
 const PLACEHOLDER = "Ask me to automate workflows, manage tasks...";
@@ -1005,19 +1006,16 @@ describe("zero attachment chips", () => {
       },
     ]);
     context.mocks.api(
-      chatThreadEventsContract.list,
+      chatThreadEventsContract.rows,
       ({ params, query, respond }) => {
-        if (query.beforeSeqId !== undefined || query.sinceSeqId !== undefined) {
-          return respond(200, { events: [] });
-        }
         if (
           params.threadId !== leftThreadId &&
           params.threadId !== rightThreadId
         ) {
-          return respond(200, { events: [] });
+          return respond(200, { rows: [] });
         }
         return respond(200, {
-          events: [
+          rows: mockChatEventRows([
             {
               id: `msg-${params.threadId}`,
               threadId: params.threadId,
@@ -1038,7 +1036,9 @@ describe("zero attachment chips", () => {
               seqId: 1,
               createdAt: "2026-03-10T00:00:00Z",
             },
-          ],
+          ]).filter((row) => {
+            return row.seqId > query.sinceSeqId;
+          }),
         });
       },
     );
@@ -1894,14 +1894,8 @@ describe("zero attachment chips", () => {
       },
     ]);
     context.mocks.api(
-      chatThreadEventsContract.list,
+      chatThreadEventsContract.rows,
       ({ params, query, respond }) => {
-        if (query.beforeSeqId !== undefined) {
-          return respond(200, { events: [] });
-        }
-        if (query.sinceSeqId !== undefined) {
-          return respond(200, { events: [] });
-        }
         const secondImageUrl =
           params.threadId === leftThreadId
             ? leftSecondImageUrl
@@ -1909,10 +1903,10 @@ describe("zero attachment chips", () => {
               ? rightSecondImageUrl
               : undefined;
         if (!secondImageUrl) {
-          return respond(200, { events: [] });
+          return respond(200, { rows: [] });
         }
         return respond(200, {
-          events: [
+          rows: mockChatEventRows([
             {
               id: `msg-${params.threadId}`,
               threadId: params.threadId,
@@ -1922,7 +1916,9 @@ describe("zero attachment chips", () => {
               seqId: 1,
               createdAt: "2026-03-10T00:00:00Z",
             },
-          ],
+          ]).filter((row) => {
+            return row.seqId > query.sinceSeqId;
+          }),
         });
       },
     );

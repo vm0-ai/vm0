@@ -18,6 +18,7 @@ import {
   warmMermaidParser,
 } from "../../../signals/__tests__/test-helpers.ts";
 import { Markdown } from "../markdown.tsx";
+import { mockChatEventRows } from "../../zero-page/__tests__/chat-event-test-helpers.ts";
 
 const context = testContext();
 warmMermaidParser();
@@ -57,14 +58,14 @@ function mockThread(
     return respond(200, { events: [], hasMore: false });
   });
   context.mocks.api(
-    chatThreadEventsContract.list,
+    chatThreadEventsContract.rows,
     ({ params, query, respond }) => {
-      if (query.sinceSeqId !== undefined || query.beforeSeqId !== undefined) {
-        return respond(200, { events: [] });
+      if (query.sinceSeqId >= 1) {
+        return respond(200, { rows: [] });
       }
 
       return respond(200, {
-        events: [
+        rows: mockChatEventRows([
           {
             id: `msg-${params.threadId}`,
             threadId: params.threadId,
@@ -73,7 +74,7 @@ function mockThread(
             seqId: 1,
             createdAt: "2026-01-01T00:00:00Z",
           },
-        ],
+        ]),
       });
     },
   );

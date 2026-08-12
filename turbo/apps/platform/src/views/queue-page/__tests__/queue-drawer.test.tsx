@@ -25,6 +25,7 @@ import {
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { mockChatEventRows } from "../../zero-page/__tests__/chat-event-test-helpers.ts";
 
 const context = testContext();
 
@@ -129,17 +130,13 @@ function mockQueuedThread(): void {
   context.mocks.api(chatThreadsContract.events, ({ respond }) => {
     return respond(200, { events: [], hasMore: false });
   });
-  context.mocks.api(chatThreadEventsContract.list, ({ query, respond }) => {
-    if (query.sinceSeqId !== undefined || query.beforeSeqId !== undefined) {
-      return respond(200, { events: [] });
-    }
-
+  context.mocks.api(chatThreadEventsContract.rows, ({ query, respond }) => {
     return respond(200, {
-      events: [
+      rows: mockChatEventRows([
         {
           id: "msg-previous-user",
           threadId: THREAD_ID,
-          eventType: "input.prompt" as const,
+          eventType: "input.prompt",
           content: null,
           userMessage: {
             version: 1,
@@ -152,24 +149,35 @@ function mockQueuedThread(): void {
         {
           id: "msg-previous-assistant",
           threadId: THREAD_ID,
-          eventType: "run.completed" as const,
+          eventType: "output.message",
           content: "Previous answer",
           runId: "run-completed",
-          runLifecycleEvent: "completed",
           seqId: 2,
+          createdAt: "2026-01-01T00:00:01Z",
+        },
+        {
+          id: "msg-previous-completed",
+          threadId: THREAD_ID,
+          eventType: "run.completed",
+          content: null,
+          runId: "run-completed",
+          runLifecycleEvent: "completed",
+          seqId: 3,
           createdAt: "2026-01-01T00:00:01Z",
         },
         {
           id: "msg-queued-marker",
           threadId: THREAD_ID,
-          eventType: "run.queued" as const,
+          eventType: "run.queued",
           content: "Waiting in queue...",
           runId: "run-queued",
           runEventId: "queue:queued",
-          seqId: 3,
+          seqId: 4,
           createdAt: "2026-01-01T00:00:02Z",
         },
-      ],
+      ]).filter((row) => {
+        return row.seqId > query.sinceSeqId;
+      }),
     });
   });
   context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
