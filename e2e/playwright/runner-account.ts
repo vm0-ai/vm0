@@ -8,7 +8,6 @@ import {
   type ClerkTestRole,
   type RunnerTestAccounts,
 } from "./lib/clerk-api";
-import { LIMITED_FREE_RUNNER_ORGANIZATION_COUNT } from "./lib/runner-account-config";
 
 const RUNNER_TEST_ROLES = [
   "runner",
@@ -38,16 +37,12 @@ async function prepareRunnerAccounts(
   jobRef: string,
 ): Promise<void> {
   try {
-    const runnerUserId = await createUser(runnerAccounts.runner);
     const runnerOrganizationIds: string[] = [];
-    for (
-      let index = 1;
-      index <= LIMITED_FREE_RUNNER_ORGANIZATION_COUNT;
-      index += 1
-    ) {
+    for (const [index, email] of runnerAccounts.runners.entries()) {
+      const runnerUserId = await createUser(email);
       runnerOrganizationIds.push(
         await createOrganization(
-          `e2e-runner-${index}-${jobRef}`,
+          `e2e-runner-${index + 1}-${jobRef}`,
           runnerUserId,
           "runner",
         ),
@@ -79,7 +74,7 @@ async function prepareRunnerAccounts(
         `codex-organization-id=${codexOrganizationId}`,
         `claude-organization-id=${claudeOrganizationId}`,
         `mock-claude-organization-id=${mockClaudeOrganizationId}`,
-        `runner-email=${runnerAccounts.runner}`,
+        `runner-emails=${JSON.stringify(runnerAccounts.runners)}`,
         `codex-email=${runnerAccounts.codex}`,
         `claude-email=${runnerAccounts.claude}`,
         `mock-claude-email=${runnerAccounts.mockClaude}`,
@@ -93,7 +88,10 @@ async function prepareRunnerAccounts(
       codexOrganizationId,
       claudeOrganizationId,
       mockClaudeOrganizationId,
-      ...runnerAccounts,
+      runnerEmails: runnerAccounts.runners,
+      codexEmail: runnerAccounts.codex,
+      claudeEmail: runnerAccounts.claude,
+      mockClaudeEmail: runnerAccounts.mockClaude,
     });
   } catch (cause) {
     await cleanupRunnerAccounts();

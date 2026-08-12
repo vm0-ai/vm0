@@ -65,39 +65,51 @@ test("prepares and cleans one generation of runner accounts", async () => {
 
     assert.deepEqual(fixture.state.organizationRequests, [
       organizationRequest("user_1", "e2e-runner-1-pr-123", "runner"),
-      organizationRequest("user_1", "e2e-runner-2-pr-123", "runner"),
-      organizationRequest("user_1", "e2e-runner-3-pr-123", "runner"),
-      organizationRequest("user_1", "e2e-runner-4-pr-123", "runner"),
+      organizationRequest("user_2", "e2e-runner-2-pr-123", "runner"),
+      organizationRequest("user_3", "e2e-runner-3-pr-123", "runner"),
+      organizationRequest("user_4", "e2e-runner-4-pr-123", "runner"),
       organizationRequest(
-        "user_2",
+        "user_5",
         "e2e-runner-real-codex-pr-123",
         "runner-real-codex",
       ),
       organizationRequest(
-        "user_3",
+        "user_6",
         "e2e-runner-real-claude-pr-123",
         "runner-real-claude",
       ),
       organizationRequest(
-        "user_4",
+        "user_7",
         "e2e-runner-mock-claude-pr-123",
         "runner-mock-claude",
       ),
     ]);
-    assert.equal(
-      await readFile(githubOutput, "utf8"),
-      [
-        'runner-organization-ids=["org_1","org_2","org_3","org_4"]',
-        "codex-organization-id=org_5",
-        "claude-organization-id=org_6",
-        "mock-claude-organization-id=org_7",
-        "runner-email=pr-123+clerk_test+9001-3+runner@vm0-e2e.ai",
-        "codex-email=pr-123+clerk_test+9001-3+runner-real-codex@vm0-e2e.ai",
-        "claude-email=pr-123+clerk_test+9001-3+runner-real-claude@vm0-e2e.ai",
-        "mock-claude-email=pr-123+clerk_test+9001-3+runner-mock-claude@vm0-e2e.ai",
-        "",
-      ].join("\n"),
+    const outputLines = (await readFile(githubOutput, "utf8"))
+      .trimEnd()
+      .split("\n");
+    assert.deepEqual(outputLines.slice(0, 4), [
+      'runner-organization-ids=["org_1","org_2","org_3","org_4"]',
+      "codex-organization-id=org_5",
+      "claude-organization-id=org_6",
+      "mock-claude-organization-id=org_7",
+    ]);
+    const runnerEmails = parseStringArrayOutput(
+      outputLines[4],
+      "runner-emails",
     );
+    assert.equal(runnerEmails.length, 4);
+    assert.equal(new Set(runnerEmails).size, 4);
+    for (const email of runnerEmails) {
+      assert.match(
+        email,
+        /^pr-123\+clerk_test\+9001-3\+runner-[0-9a-f]{8}@vm0-e2e\.ai$/,
+      );
+    }
+    assert.deepEqual(outputLines.slice(5), [
+      "codex-email=pr-123+clerk_test+9001-3+runner-real-codex@vm0-e2e.ai",
+      "claude-email=pr-123+clerk_test+9001-3+runner-real-claude@vm0-e2e.ai",
+      "mock-claude-email=pr-123+clerk_test+9001-3+runner-mock-claude@vm0-e2e.ai",
+    ]);
 
     fixture.state.users.push({
       id: "user_foreign",
@@ -132,6 +144,9 @@ test("prepares and cleans one generation of runner accounts", async () => {
       "user:user_2",
       "user:user_3",
       "user:user_4",
+      "user:user_5",
+      "user:user_6",
+      "user:user_7",
     ]);
     assert.deepEqual(fixture.state.users, [
       {
@@ -169,9 +184,6 @@ test("partial runner preparation cleans resources without outputs", async () => 
     assert.deepEqual(fixture.state.organizations, []);
     assert.deepEqual(fixture.state.deletionEvents, [
       "organization:org_1",
-      "organization:org_2",
-      "organization:org_3",
-      "organization:org_4",
       "user:user_1",
     ]);
   } finally {
@@ -427,6 +439,28 @@ async function closeServer(server: Server): Promise<void> {
 function sendJson(response: ServerResponse, body: unknown, status = 200): void {
   response.writeHead(status, { "content-type": "application/json" });
   response.end(JSON.stringify(body));
+}
+
+function parseStringArrayOutput(
+  line: string | undefined,
+  key: string,
+): readonly string[] {
+  const prefix = `${key}=`;
+  if (!line?.startsWith(prefix)) {
+    throw new Error(`Missing ${key} output`);
+  }
+  const parsed: unknown = JSON.parse(line.slice(prefix.length));
+  if (!isStringArray(parsed)) {
+    throw new Error(`Invalid ${key} output`);
+  }
+  return parsed;
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return (
+    Array.isArray(value) &&
+    value.every((entry: unknown) => typeof entry === "string")
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

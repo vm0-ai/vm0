@@ -56,7 +56,7 @@ async function main(): Promise<void> {
   }
   const targets: readonly RunnerCredentialTarget[] = [
     ...runnerOrganizationIds.map((organizationId, index) => ({
-      email: accounts.runner,
+      email: accounts.runners[index],
       fileName: `e2e-api-credentials-runner-${index + 1}.json`,
       organizationId,
       upgradeToPro: false,

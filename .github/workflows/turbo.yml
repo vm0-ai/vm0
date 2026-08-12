@@ -3690,18 +3690,22 @@ jobs:
           RUNNER_ORGANIZATION_IDS: ${{ steps.account.outputs.runner-organization-ids }}
           CODEX_ORGANIZATION_ID: ${{ steps.account.outputs.codex-organization-id }}
           CLAUDE_ORGANIZATION_ID: ${{ steps.account.outputs.claude-organization-id }}
-          RUNNER_EMAIL: ${{ steps.account.outputs.runner-email }}
+          MOCK_CLAUDE_ORGANIZATION_ID: ${{ steps.account.outputs.mock-claude-organization-id }}
+          RUNNER_EMAILS: ${{ steps.account.outputs.runner-emails }}
           CODEX_EMAIL: ${{ steps.account.outputs.codex-email }}
           CLAUDE_EMAIL: ${{ steps.account.outputs.claude-email }}
+          MOCK_CLAUDE_EMAIL: ${{ steps.account.outputs.mock-claude-email }}
         run: |
           jq -n \
             --argjson runnerOrganizationIds "$RUNNER_ORGANIZATION_IDS" \
             --arg codexOrganizationId "$CODEX_ORGANIZATION_ID" \
             --arg claudeOrganizationId "$CLAUDE_ORGANIZATION_ID" \
-            --arg runnerEmail "$RUNNER_EMAIL" \
+            --arg mockClaudeOrganizationId "$MOCK_CLAUDE_ORGANIZATION_ID" \
+            --argjson runnerEmails "$RUNNER_EMAILS" \
             --arg codexEmail "$CODEX_EMAIL" \
             --arg claudeEmail "$CLAUDE_EMAIL" \
-            '{runnerOrganizationIds: $runnerOrganizationIds, codexOrganizationId: $codexOrganizationId, claudeOrganizationId: $claudeOrganizationId, runnerEmail: $runnerEmail, codexEmail: $codexEmail, claudeEmail: $claudeEmail}' \
+            --arg mockClaudeEmail "$MOCK_CLAUDE_EMAIL" \
+            '{runnerOrganizationIds: $runnerOrganizationIds, codexOrganizationId: $codexOrganizationId, claudeOrganizationId: $claudeOrganizationId, mockClaudeOrganizationId: $mockClaudeOrganizationId, runnerEmails: $runnerEmails, codexEmail: $codexEmail, claudeEmail: $claudeEmail, mockClaudeEmail: $mockClaudeEmail}' \
             > /tmp/e2e-runner-accounts.json
       - name: Upload runner E2E API tokens
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -4072,9 +4076,11 @@ jobs:
             echo "E2E_CLERK_ORG_ID=$(jq -er --argjson index "$organization_index" '.runnerOrganizationIds[$index]' /tmp/e2e-runner-accounts.json)"
             echo "E2E_RUNNER_CODEX_ORG_ID=$(jq -er '.codexOrganizationId' /tmp/e2e-runner-accounts.json)"
             echo "E2E_RUNNER_CLAUDE_ORG_ID=$(jq -er '.claudeOrganizationId' /tmp/e2e-runner-accounts.json)"
-            echo "E2E_RUNNER_EMAIL=$(jq -er '.runnerEmail' /tmp/e2e-runner-accounts.json)"
+            echo "E2E_RUNNER_MOCK_CLAUDE_ORG_ID=$(jq -er '.mockClaudeOrganizationId' /tmp/e2e-runner-accounts.json)"
+            echo "E2E_RUNNER_EMAIL=$(jq -er --argjson index "$organization_index" '.runnerEmails[$index]' /tmp/e2e-runner-accounts.json)"
             echo "E2E_RUNNER_CODEX_EMAIL=$(jq -er '.codexEmail' /tmp/e2e-runner-accounts.json)"
             echo "E2E_RUNNER_CLAUDE_EMAIL=$(jq -er '.claudeEmail' /tmp/e2e-runner-accounts.json)"
+            echo "E2E_RUNNER_MOCK_CLAUDE_EMAIL=$(jq -er '.mockClaudeEmail' /tmp/e2e-runner-accounts.json)"
           } >> "$GITHUB_ENV"
       - name: Initialize runner E2E shard
         shell: bash

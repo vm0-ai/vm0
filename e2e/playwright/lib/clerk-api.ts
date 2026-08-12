@@ -29,7 +29,7 @@ export interface ClerkTestOwner {
 }
 
 export interface RunnerTestAccounts {
-  readonly runner: string;
+  readonly runners: readonly [string, string, string, string];
   readonly codex: string;
   readonly claude: string;
   readonly mockClaude: string;
@@ -155,7 +155,12 @@ export function generateTestEmail(role: ClerkTestRole): string {
 
 export function runnerTestAccounts(): RunnerTestAccounts {
   return {
-    runner: generateTestEmail("runner"),
+    runners: [
+      generateTestEmail("runner"),
+      generateTestEmail("runner"),
+      generateTestEmail("runner"),
+      generateTestEmail("runner"),
+    ],
     codex: generateTestEmail("runner-real-codex"),
     claude: generateTestEmail("runner-real-claude"),
     mockClaude: generateTestEmail("runner-mock-claude"),
@@ -771,7 +776,9 @@ function parseRolePart(rolePart: string): ClerkTestRole | null {
 }
 
 function roleSupportsNonce(role: ClerkTestRole): boolean {
-  return role === "playwright" || role === "paid-onboarding";
+  return (
+    role === "playwright" || role === "paid-onboarding" || role === "runner"
+  );
 }
 
 function isNonce(value: string): boolean {

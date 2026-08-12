@@ -51,13 +51,32 @@ test("creates and parses generation-scoped test identities", () => {
         generateTestEmail("playwright"),
         /^pr-123\+clerk_test\+31500000000-2\+playwright-[0-9a-f]{8}@vm0-e2e\.ai$/,
       );
-      assert.deepEqual(runnerTestAccounts(), {
-        runner: "pr-123+clerk_test+31500000000-2+runner@vm0-e2e.ai",
-        codex: "pr-123+clerk_test+31500000000-2+runner-real-codex@vm0-e2e.ai",
-        claude: "pr-123+clerk_test+31500000000-2+runner-real-claude@vm0-e2e.ai",
-        mockClaude:
-          "pr-123+clerk_test+31500000000-2+runner-mock-claude@vm0-e2e.ai",
-      });
+      const accounts = runnerTestAccounts();
+      assert.equal(accounts.runners.length, 4);
+      assert.equal(new Set(accounts.runners).size, 4);
+      for (const email of accounts.runners) {
+        assert.match(
+          email,
+          /^pr-123\+clerk_test\+31500000000-2\+runner-[0-9a-f]{8}@vm0-e2e\.ai$/,
+        );
+        assert.deepEqual(parseClerkTestEmail(email), {
+          jobRef: "pr-123",
+          generation: "31500000000-2",
+          role: "runner",
+        });
+      }
+      assert.equal(
+        accounts.codex,
+        "pr-123+clerk_test+31500000000-2+runner-real-codex@vm0-e2e.ai",
+      );
+      assert.equal(
+        accounts.claude,
+        "pr-123+clerk_test+31500000000-2+runner-real-claude@vm0-e2e.ai",
+      );
+      assert.equal(
+        accounts.mockClaude,
+        "pr-123+clerk_test+31500000000-2+runner-mock-claude@vm0-e2e.ai",
+      );
     },
   );
 
