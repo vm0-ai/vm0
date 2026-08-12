@@ -45,7 +45,7 @@ runs:
           --retry-delay 2 \
           --retry-max-time 60 \
           --retry-all-errors \
-          "https://github.com/cloudflare/cloudflared/releases/download/${CLOUDFLARED_VERSION}/cloudflared-linux-${cloudflared_arch}.deb" \
+          "https://pkg.cloudflare.com/cloudflared/pool/main/c/cloudflared/cloudflared_${CLOUDFLARED_VERSION}_${cloudflared_arch}.deb" \
           -o /tmp/cloudflared.deb
         if command -v sudo &>/dev/null; then
           sudo dpkg -i /tmp/cloudflared.deb

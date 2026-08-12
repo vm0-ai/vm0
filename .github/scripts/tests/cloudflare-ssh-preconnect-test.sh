@@ -362,6 +362,8 @@ assert_contains "$SSH_ACTION" "ANSIBLE_SSH_CONTROL_PATH=%s"
 assert_contains "$SSH_ACTION" "\$HOME/.ssh/vm0-ssh-%%C"
 assert_contains "$SSH_ACTION" "ServerAliveInterval 15"
 assert_contains "$SSH_ACTION" "ServerAliveCountMax 20"
+assert_contains "$SSH_ACTION" 'https://pkg.cloudflare.com/cloudflared/pool/main/c/cloudflared/cloudflared_${CLOUDFLARED_VERSION}_${cloudflared_arch}.deb'
+assert_not_contains "$SSH_ACTION" "github.com/cloudflare/cloudflared/releases/download"
 assert_contains "$ANSIBLE_CONFIG" 'control_path = ~/.ssh/vm0-ssh-%%C'
 assert_contains "$ANSIBLE_CONFIG" "ServerAliveInterval=15"
 assert_contains "$ANSIBLE_CONFIG" "ServerAliveCountMax=20"
