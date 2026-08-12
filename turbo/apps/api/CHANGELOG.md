@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.434.1](https://github.com/vm0-ai/vm0/compare/api-v1.434.0...api-v1.434.1) (2026-08-12)
+
+
+### Bug Fixes
+
+* **api:** preserve thread context for queued web runs ([#26560](https://github.com/vm0-ai/vm0/issues/26560)) ([2458558](https://github.com/vm0-ai/vm0/commit/2458558e8195a65e7560e18939459943d12e440f))
+
 ## [1.434.0](https://github.com/vm0-ai/vm0/compare/api-v1.433.0...api-v1.434.0) (2026-08-12)
 
 
