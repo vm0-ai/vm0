@@ -16,6 +16,7 @@ import {
 import type { CreateCustomConnectorBody } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import { testCustomConnectorSkillVersionAssociationContract } from "@vm0/api-contracts/contracts/test-custom-connector-skill-version-association";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV } from "@vm0/core/resource-registry";
 import {
   getCustomConnectorSkillStorageName,
   getCustomSkillStorageName,
@@ -12008,7 +12009,31 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     expect(r2Claim.environment?.CLI_PKG_URL).toBe(
       "https://static.vm0.io/okou-cli/test-commit/package.tgz",
     );
+    expect(r2Claim.environment?.[WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV]).toBe(
+      "previous",
+    );
     await api.requestCancelRun(actor, r2Run.runId, [200]);
+  });
+
+  it("pins the latest Website template release into opted-in run contexts", async () => {
+    const api = createRunsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    await connectors.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.LatestWebsiteTemplates]: true,
+    });
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "use the latest Website template release",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+    expect(claim.environment?.[WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV]).toBe(
+      "latest",
+    );
+    await api.requestCancelRun(actor, run.runId, [200]);
   });
 
   it("projects immutable legacy compose templates only for new Okou contexts", async () => {

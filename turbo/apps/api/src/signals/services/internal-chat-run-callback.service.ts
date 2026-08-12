@@ -3022,6 +3022,7 @@ function resolveQueuedMessageGenerationTemplatePrompt(args: {
   readonly userMessageProjection:
     | ReturnType<typeof projectUserMessage>
     | undefined;
+  readonly latestWebsiteTemplatesEnabled: boolean;
 }) {
   return measureChatCallbackPreCreateTiming(
     args.input.timing,
@@ -3031,6 +3032,7 @@ function resolveQueuedMessageGenerationTemplatePrompt(args: {
       return resolveThreadGenerationTemplatePrompt({
         explicit: args.userMessageProjection?.primaryTemplate,
         explicitTemplates: args.userMessageProjection?.templates,
+        latestWebsiteTemplatesEnabled: args.latestWebsiteTemplatesEnabled,
       });
     },
   );
@@ -3137,6 +3139,10 @@ async function buildCreateQueuedChatRunInput(
     await resolveQueuedMessageGenerationTemplatePrompt({
       input: args,
       userMessageProjection,
+      latestWebsiteTemplatesEnabled: isFeatureEnabled(
+        FeatureSwitchKey.LatestWebsiteTemplates,
+        featureSwitchContext,
+      ),
     });
   const computerUseHostGrant = await measureChatCallbackPreCreateTiming(
     args.timing,
