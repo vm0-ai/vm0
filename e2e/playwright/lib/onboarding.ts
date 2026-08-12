@@ -1,5 +1,5 @@
 import { expect, type Page } from "@playwright/test";
-import { apiPreviewHeaders } from "./api-preview-auth";
+import { apiPreviewHeaders, type ApiPreviewHeaders } from "./api-preview-auth";
 
 type AuthHeaders = Readonly<
   Record<"Authorization", string> & ReturnType<typeof apiPreviewHeaders>
@@ -9,11 +9,46 @@ interface OnboardingFlowOptions {
   readonly appUrl: string;
 }
 
-export function authHeadersForToken(token: string): AuthHeaders {
+export function authHeadersForToken(
+  token: string,
+  previewHeaders: ApiPreviewHeaders = apiPreviewHeaders(),
+): AuthHeaders {
   return {
     Authorization: `Bearer ${token}`,
-    ...apiPreviewHeaders(),
+    ...previewHeaders,
   };
+}
+
+export async function ensureOnboardingBootstrap(options: {
+  readonly apiPreviewHeaders: ApiPreviewHeaders;
+  readonly apiUrl: string;
+  readonly clerkSessionToken: string;
+}): Promise<void> {
+  const response = await fetch(
+    new URL("/api/zero/onboarding/status", options.apiUrl),
+    {
+      headers: authHeadersForToken(
+        options.clerkSessionToken,
+        options.apiPreviewHeaders,
+      ),
+    },
+  );
+  if (!response.ok) {
+    await response.body?.cancel();
+    throw new Error(`Onboarding bootstrap failed with HTTP ${response.status}`);
+  }
+
+  const body: unknown = await response.json();
+  if (
+    !isRecord(body) ||
+    body.isAdmin !== true ||
+    body.hasOrg !== true ||
+    body.hasDefaultAgent !== true ||
+    typeof body.defaultAgentId !== "string" ||
+    body.defaultAgentId.length === 0
+  ) {
+    throw new Error("Onboarding bootstrap did not create a default agent");
+  }
 }
 
 export async function completeExploreOnboarding(
@@ -135,4 +170,8 @@ function isChatUrl(url: URL): boolean {
 
 function isPromptOrChatUrl(url: URL): boolean {
   return url.pathname === "/prompt" || isChatUrl(url);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }

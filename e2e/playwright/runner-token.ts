@@ -15,6 +15,7 @@ import {
 import { issueCliToken } from "./lib/cli-token";
 import { runnerTestAccounts } from "./lib/clerk-api";
 import {
+  ensureOnboardingBootstrap,
   startVideoOnboardingCheckout,
   waitForPaidOnboardingCompletion,
 } from "./lib/onboarding";
@@ -97,6 +98,11 @@ async function main(): Promise<void> {
           appUrl,
           { activeOrganizationId: target.organizationId },
         );
+        await ensureOnboardingBootstrap({
+          apiPreviewHeaders: previewHeaders,
+          apiUrl,
+          clerkSessionToken,
+        });
         if (target.upgradeToPro) {
           await startVideoOnboardingCheckout(page, { appUrl });
           await fillStripeCheckout(page);

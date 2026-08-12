@@ -3565,8 +3565,8 @@ jobs:
 
           RUNNER_START_SUCCEEDED=1
 
-  # Generate one file-balanced shard per API runtime. The standard runner test
-  # organization uses limited-free-1 and therefore has one concurrency slot.
+  # Keep tests for the limited-free organization serial while running the paid
+  # credential lane in parallel. Both lanes run against both API runtimes.
   cli-e2e-03-runner-shards:
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -3590,7 +3590,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          base_matrix="$(cd e2e && pnpm exec tsx playwright/runner-shards.ts tests/03-runner 1)"
+          base_matrix="$(cd e2e && pnpm exec tsx playwright/runner-shards.ts tests/03-runner 2)"
           matrix="$(jq -c '
             .include as $shards |
             ($shards | length) as $total |
@@ -3602,12 +3602,13 @@ jobs:
           ' <<<"$base_matrix")"
           jq -e '
             .include | type == "array" and
-            length > 0 and length <= 2 and
+            length == 4 and
             (map(select(.runtime == "cloudflare")) | length) ==
               (map(select(.runtime == "vercel")) | length) and
             all(.[];
               (.runtime == "cloudflare" or .runtime == "vercel") and
-              (.total | type == "number" and . == 1) and
+              (.total | type == "number" and . == 2) and
+              (.credentialLane == "limited-free" or .credentialLane == "paid") and
               (.files | type == "array" and length > 0)
             )
           ' <<<"$matrix" >/dev/null

@@ -9,6 +9,7 @@ import { promisify } from "node:util";
 const execFileAsync = promisify(execFile);
 
 interface RunnerShard {
+  readonly credentialLane: "limited-free" | "paid";
   readonly files: readonly string[];
   readonly index: number;
   readonly weight: number;
@@ -91,6 +92,39 @@ test("honors an explicit runner shard concurrency limit", async () => {
   }
 });
 
+test("isolates paid tests from the limited-free concurrency lane", async () => {
+  const testRoot = await mkdtemp(join(tmpdir(), "runner-shards-lanes-test-"));
+  const testDirectory = join(testRoot, "03-runner");
+  await mkdir(testDirectory);
+  try {
+    for (let index = 1; index <= 6; index += 1) {
+      const path = join(testDirectory, `runner-${index}.bats`);
+      const credential =
+        index >= 5
+          ? 'credentials="e2e-api-credentials-runner-real-codex.json"\n'
+          : "";
+      await writeFile(
+        path,
+        `#!/usr/bin/env bats\n${credential}\n@test "case" {\n  true\n}\n`,
+        "utf8",
+      );
+    }
+
+    const matrix = await runShardPlanner(testDirectory, 2);
+
+    assert.deepEqual(
+      matrix.include.map((shard) => shard.credentialLane),
+      ["limited-free", "paid"],
+    );
+    assert.deepEqual(
+      matrix.include.map((shard) => shard.files.length),
+      [4, 2],
+    );
+  } finally {
+    await rm(testRoot, { recursive: true, force: true });
+  }
+});
+
 test("rejects a runner test directory without executable BATS files", async () => {
   const testRoot = await mkdtemp(join(tmpdir(), "runner-shards-empty-test-"));
   try {
@@ -151,7 +185,9 @@ function parseShard(value: unknown): RunnerShard {
     !("index" in value) ||
     typeof value.index !== "number" ||
     !("weight" in value) ||
-    typeof value.weight !== "number"
+    typeof value.weight !== "number" ||
+    !("credentialLane" in value) ||
+    (value.credentialLane !== "limited-free" && value.credentialLane !== "paid")
   ) {
     throw new Error("Runner shard planner returned an invalid shard");
   }
@@ -161,7 +197,12 @@ function parseShard(value: unknown): RunnerShard {
     }
     return file;
   });
-  return { files, index: value.index, weight: value.weight };
+  return {
+    credentialLane: value.credentialLane,
+    files,
+    index: value.index,
+    weight: value.weight,
+  };
 }
 
 function relativeToWorkingDirectory(path: string): string {
