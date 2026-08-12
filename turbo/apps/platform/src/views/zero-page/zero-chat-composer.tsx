@@ -184,6 +184,7 @@ import {
   customConnectorMcpEnabled$,
   avatarTemplatesEnabled$,
   imageRecognitionAvailable$,
+  videoTemplateOptionsEnabled$,
 } from "../../signals/external/feature-switch.ts";
 import {
   computerUseHosts$,
@@ -226,8 +227,14 @@ import {
   AvatarTemplatePickerContent,
   AvatarTemplatePickerToolbar,
 } from "./avatar-template-picker.tsx";
-import { VideoTemplateOptionsPopover } from "./video-template-options-popover.tsx";
-import { parseVideoTemplateOptionsPane } from "../../signals/zero-page/video-template-options-pane.ts";
+import {
+  VideoModelPickerRow,
+  VideoTemplateOptionsPopover,
+} from "./video-template-options-popover.tsx";
+import {
+  DEFAULT_VIDEO_MODEL,
+  type VideoModel,
+} from "@vm0/core/video-model-catalog";
 import {
   avatarTemplateSelection,
   toAvatarGenerationTemplate,
@@ -871,10 +878,16 @@ function isSelectedVideoTemplate(
 
 function toVideoGenerationTemplate(
   item: VideoTemplateItem,
+  model: VideoModel,
 ): GenerationTemplateRequest {
   return {
     type: "video",
-    selection: { stylePresetId: item.id },
+    selection: {
+      stylePresetId: item.id,
+      // Only a non-default model is worth storing; the rest follows the
+      // catalog so a later change of default is picked up.
+      ...(model === DEFAULT_VIDEO_MODEL ? {} : { videoOptions: { model } }),
+    },
   };
 }
 
@@ -4872,6 +4885,9 @@ function TemplatePickerDialog({
     signals.template.openWebsiteTemplatePreview$,
   );
   const cardThemeIdBySlug = useGet(signals.template.templateCardThemeIdBySlug$);
+  const videoModel = useGet(signals.template.videoTemplateModel$);
+  const setVideoModel = useSet(signals.template.setVideoTemplateModel$);
+  const videoOptionsEnabled = useGet(videoTemplateOptionsEnabled$);
   const illustrationVariantIndex = useGet(
     signals.template.illustrationVariantIndex$,
   );
@@ -4962,7 +4978,7 @@ function TemplatePickerDialog({
   };
 
   const handleSelectVideo = (item: VideoTemplateItem) => {
-    onChange(toVideoGenerationTemplate(item));
+    onChange(toVideoGenerationTemplate(item, videoModel));
     closeTemplatePicker();
   };
 
@@ -5211,6 +5227,9 @@ function TemplatePickerDialog({
                   onSelectIllustration={handleSelectIllustration}
                   onIllustrationVariantChange={setIllustrationVariantIndex}
                   onSelectVideo={handleSelectVideo}
+                  videoModel={videoModel}
+                  videoOptionsEnabled={videoOptionsEnabled}
+                  onVideoModelChange={setVideoModel}
                   onSelectAvatar={handleSelectAvatar}
                   onWorkflowCategoryChange={setWorkflowCategoryFilter}
                   onSelectWorkflow={handleSelectWorkflow}
@@ -5248,6 +5267,9 @@ function TemplatePickerCategoryContent({
   onSelectIllustration,
   onIllustrationVariantChange,
   onSelectVideo,
+  videoModel,
+  videoOptionsEnabled,
+  onVideoModelChange,
   onSelectAvatar,
   onWorkflowCategoryChange,
   onSelectWorkflow,
@@ -5281,6 +5303,9 @@ function TemplatePickerCategoryContent({
   onSelectIllustration: (item: IllustrationTemplateItem) => void;
   onIllustrationVariantChange: (slug: string, index: number) => void;
   onSelectVideo: (item: VideoTemplateItem) => void;
+  videoModel: VideoModel;
+  videoOptionsEnabled: boolean;
+  onVideoModelChange: (model: VideoModel) => void;
   onSelectAvatar: (
     avatar: ZeroAvatarVideoAvatar,
     voice: ZeroAvatarVideoVoice,
@@ -5372,6 +5397,12 @@ function TemplatePickerCategoryContent({
         data-video-template-grid-scroll=""
         className="flex min-h-0 flex-1 flex-col overflow-y-auto px-6 pb-6 pt-0.5"
       >
+        {videoOptionsEnabled && (
+          <VideoModelPickerRow
+            model={videoModel}
+            onChange={onVideoModelChange}
+          />
+        )}
         {videoItems.length > 0 ? (
           <VideoTemplateGrid
             items={videoItems}
@@ -5645,15 +5676,12 @@ function ComposerTemplateAttachmentSync({
             const position = Number(
               event.currentTarget.dataset.templatePosition,
             );
-            const pane = parseVideoTemplateOptionsPane(
-              event.currentTarget.dataset.templatePane,
-            );
             const selected = readSelectedTemplate();
-            if (anchor && selected && pane && Number.isInteger(position)) {
+            if (anchor && selected && Number.isInteger(position)) {
               // Base UI dismisses a popover mounted during the same external
               // click as an outside press. Mount after that click dispatches.
               queueMicrotask(() => {
-                openVideoOptions(anchor, selected, position, pane);
+                openVideoOptions(anchor, selected, position);
               });
             }
           }

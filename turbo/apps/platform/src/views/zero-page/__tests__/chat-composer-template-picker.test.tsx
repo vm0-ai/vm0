@@ -369,7 +369,7 @@ describe("chat composer templates", () => {
     });
   });
 
-  it("edits the model and the settings from separate zones of an inline chip", async () => {
+  it("picks the video model above the templates and the rest from the chip", async () => {
     const user = userEvent.setup({ delay: null });
     const template = VIDEO_TEMPLATE_ITEMS[0]!;
     let submittedUserMessage: UserMessageDocument | undefined;
@@ -397,28 +397,13 @@ describe("chat composer templates", () => {
       expect(screen.getByRole("dialog")).toBeInTheDocument();
     });
     await user.click(tabByText("Video"));
+
+    // Video generation is the expensive decision, so the model is chosen above
+    // the templates rather than inside the chip afterwards. Each row states
+    // what that model accepts, before the switch rather than after.
     await user.click(
-      await screen.findByLabelText(`Select video template ${template.title}`),
+      await screen.findByLabelText("Video model Seedance 2.0 fast"),
     );
-
-    // Every parameter is shown, with catalog defaults filled in even though
-    // nothing is stored yet. Audio is left to the settings popover so the chip
-    // stays readable inside a prompt sentence.
-    const model = await screen.findByLabelText("Video model Seedance 2.0 fast");
-    await screen.findByLabelText("Video options 16:9 \u00b7 8s \u00b7 720p");
-    const chip = document.querySelector("[data-composer-inline-template]");
-    expect(chip?.querySelectorAll("button")).toHaveLength(3);
-
-    // The model is a menu built on the shared DropdownMenu, so its rows are
-    // menu items rather than a hand-styled list, and each carries what that
-    // model accepts.
-    model.focus();
-    await user.keyboard("{Enter}");
-    expect(
-      queryAllByRoleFast("button").some((button) => {
-        return button.textContent === "Reset to default";
-      }),
-    ).toBeFalsy();
     const modelOption = await waitFor(() => {
       const found = queryAllByRoleFast("menuitem").find((item) => {
         return item.getAttribute("aria-label") === "Seedance 2.0";
@@ -429,13 +414,19 @@ describe("chat composer templates", () => {
     expect(modelOption).toHaveTextContent("Up to 15s \u00b7 480p, 720p, 1080p");
     await user.click(modelOption);
 
-    // Picking a model closes the menu; the settings zone opens the other one.
-    await waitFor(() => {
-      expect(queryAllByRoleFast("menuitem")).toHaveLength(0);
-    });
+    await user.click(
+      await screen.findByLabelText(`Select video template ${template.title}`),
+    );
+
+    // The chip carries the parameters only; catalog defaults are filled in even
+    // though nothing but the model is stored yet. Audio is left to the popover
+    // so the chip stays readable inside a prompt sentence.
     const spec = await screen.findByLabelText(
       "Video options 16:9 \u00b7 8s \u00b7 720p",
     );
+    const chip = document.querySelector("[data-composer-inline-template]");
+    expect(chip?.querySelectorAll("button")).toHaveLength(2);
+
     spec.focus();
     await user.keyboard("{Enter}");
 
@@ -3251,7 +3242,15 @@ describe("chat composer templates", () => {
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
-    await expectInlineTemplateInComposer(videoStyle.title);
+    // The chip appends its parameters when the video options switch is on, so
+    // this asserts the title is there rather than that it is all there is.
+    await waitFor(() => {
+      expect(
+        composerInlineTemplates().map((node) => {
+          return node.textContent;
+        }),
+      ).toStrictEqual([expect.stringContaining(videoStyle.title)]);
+    });
   });
 
   it("selects and sends a workflow template from the picker", async () => {

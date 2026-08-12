@@ -87,7 +87,6 @@ import {
   videoTemplateSpec,
   type VideoTemplateSpec,
 } from "./video-template-spec.ts";
-import type { VideoTemplateOptionsPane } from "./video-template-options-pane.ts";
 
 type AgentIdValue = string | null | Promise<string | null>;
 type WorkflowNamesSyncCommand = Command<
@@ -323,10 +322,6 @@ const INLINE_TEMPLATE_ZONE_CLASS =
   "focus-visible:ring-inset focus-visible:ring-orange-500/40 " +
   "dark:border-orange-300/25 dark:text-orange-300/75 " +
   "dark:hover:bg-orange-400/20 dark:focus-visible:ring-orange-300/40";
-
-// The model name is dropped on narrow viewports so the chip stays readable
-// inside a prompt sentence; its settings stay reachable either way.
-const INLINE_TEMPLATE_MODEL_ZONE_CLASS = `hidden sm:flex px-2 ${INLINE_TEMPLATE_ZONE_CLASS}`;
 
 const INLINE_TEMPLATE_SPEC_ZONE_CLASS = `flex pl-2 pr-1.5 ${INLINE_TEMPLATE_ZONE_CLASS}`;
 
@@ -899,10 +894,7 @@ function createTemplateAttachmentNodeView(
 
 interface InlineTemplateNodeActions {
   readonly openTemplate: (category: string) => void;
-  readonly openOptions: (
-    anchor: DOMRect,
-    pane: VideoTemplateOptionsPane,
-  ) => void;
+  readonly openOptions: (anchor: DOMRect) => void;
   /** Read per render so a chip picks the switch up on its next update. */
   readonly optionsEnabled: () => boolean;
 }
@@ -910,39 +902,6 @@ interface InlineTemplateNodeActions {
 function inlineTemplateSpec(node: ProseMirrorNode): VideoTemplateSpec | null {
   const parsed = generationTemplateRequestSchema.safeParse(node.attrs.template);
   return parsed.success ? videoTemplateSpec(parsed.data) : null;
-}
-
-/**
- * The model and the parameters it accepts are two separate decisions, so the
- * chip gives each its own zone and its own popover instead of stacking one
- * dropdown inside another.
- */
-function createInlineTemplateModelZone(): {
-  readonly zone: HTMLButtonElement;
-  readonly render: (spec: VideoTemplateSpec) => void;
-} {
-  const zone = document.createElement("button");
-  zone.type = "button";
-  zone.className = INLINE_TEMPLATE_MODEL_ZONE_CLASS;
-  const model = document.createElement("span");
-  const chevron = createComposerIcon(11, 1.7, ["M6 9l6 6 6 -6"]);
-  chevron.setAttribute("class", "shrink-0 opacity-70");
-  zone.append(model, chevron);
-  return {
-    zone,
-    render(spec) {
-      model.textContent = spec.model;
-      zone.setAttribute(
-        "aria-label",
-        i18n.t(
-          ($) => {
-            return $.chat.templates.videoModelLabel;
-          },
-          { model: spec.model },
-        ),
-      );
-    },
-  };
 }
 
 function createInlineTemplateSpecZone(): {
@@ -1012,7 +971,6 @@ function createInlineTemplateNodeView(
     "dark:text-orange-300";
   openButton.append(icon, title);
   dom.append(openButton);
-  const model = createInlineTemplateModelZone();
   const spec = createInlineTemplateSpecZone();
 
   let currentNode = node;
@@ -1027,13 +985,11 @@ function createInlineTemplateNodeView(
       ? inlineTemplateSpec(nextNode)
       : null;
     if (nextSpec) {
-      model.render(nextSpec);
       spec.render(nextSpec);
-      if (model.zone.parentNode === null) {
-        dom.append(model.zone, spec.zone);
+      if (spec.zone.parentNode === null) {
+        dom.append(spec.zone);
       }
     } else {
-      model.zone.remove();
       spec.zone.remove();
     }
   }
@@ -1050,18 +1006,13 @@ function createInlineTemplateNodeView(
       templateAttachmentNodeAttributes(currentNode).category,
     );
   });
-  for (const [zone, pane] of [
-    [model.zone, "model"],
-    [spec.zone, "settings"],
-  ] as const) {
-    zone.addEventListener("mousedown", (event) => {
-      event.preventDefault();
-    });
-    zone.addEventListener("click", () => {
-      // Anchored to the zone, so each popover opens under the words it edits.
-      actions.openOptions(zone.getBoundingClientRect(), pane);
-    });
-  }
+  spec.zone.addEventListener("mousedown", (event) => {
+    event.preventDefault();
+  });
+  spec.zone.addEventListener("click", () => {
+    // Anchored to the zone, so the popover opens under the words it edits.
+    actions.openOptions(spec.zone.getBoundingClientRect());
+  });
   localizedUi.add(localize);
   render(currentNode);
 
@@ -1585,11 +1536,7 @@ interface WorkflowComposerRuntime {
   openTemplate(category: string): void;
   /** Resolved when the lifecycle bridge mounts; false until then. */
   videoOptionsEnabled: boolean;
-  openTemplateOptions(
-    anchor: DOMRect,
-    position: number,
-    pane: VideoTemplateOptionsPane,
-  ): void;
+  openTemplateOptions(anchor: DOMRect, position: number): void;
   removeTemplate(): void;
   templateRemoved(): void;
   replaceFeedbackItems(items: readonly FeedbackItem[]): void;
@@ -1719,10 +1666,10 @@ function createInlineTemplateNode(
                 runtime.openTemplate(category);
               }
             },
-            openOptions: (anchor, pane) => {
+            openOptions: (anchor) => {
               const position = getPos();
               if (typeof position === "number" && selectSelf()) {
-                runtime.openTemplateOptions(anchor, position, pane);
+                runtime.openTemplateOptions(anchor, position);
               }
             },
             optionsEnabled: () => {
@@ -2572,11 +2519,7 @@ function createWorkflowComposerRuntime(): WorkflowComposerRuntime {
     templateAttachment: undefined,
     openTemplate(_category: string): void {},
     videoOptionsEnabled: false,
-    openTemplateOptions(
-      _anchor: DOMRect,
-      _position: number,
-      _pane: VideoTemplateOptionsPane,
-    ): void {},
+    openTemplateOptions(_anchor: DOMRect, _position: number): void {},
     removeTemplate(): void {},
     templateRemoved(): void {},
     replaceFeedbackItems(_items: readonly FeedbackItem[]): void {},
@@ -2610,7 +2553,7 @@ function createTemplateAttachmentControls(
         element.click();
       };
       runtime.videoOptionsEnabled = get(videoTemplateOptionsEnabled$);
-      runtime.openTemplateOptions = (anchor, position, pane) => {
+      runtime.openTemplateOptions = (anchor, position) => {
         element.dataset.templateAction = "options";
         element.dataset.templateAnchor = [
           anchor.left,
@@ -2619,7 +2562,6 @@ function createTemplateAttachmentControls(
           anchor.height,
         ].join(",");
         element.dataset.templatePosition = String(position);
-        element.dataset.templatePane = pane;
         element.click();
       };
       runtime.templateRemoved = () => {

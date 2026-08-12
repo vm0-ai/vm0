@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { useGet, useSet } from "ccstate-react";
-import { Check } from "lucide-react";
+import { Check, ChevronDown } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -29,7 +29,6 @@ import {
 } from "@vm0/core/video-model-catalog";
 import { useTranslation } from "react-i18next";
 import type { ComposerSignals } from "../../signals/zero-page/composer-signals.ts";
-import type { VideoTemplateOptionsAnchor } from "../../signals/zero-page/zero-chat-composer.ts";
 
 /**
  * Only the values the user actually chose are persisted, so a template written
@@ -64,29 +63,71 @@ const PUBLIC_VIDEO_MODELS = VIDEO_MODELS.filter((candidate) => {
 const SLIDER_THUMB_RADIUS = 7;
 
 /**
- * Groups the multi-value settings so the pane reads as a few blocks rather than
- * a run of loose rows. Concentric corners: the popover is 12px with `p-1`
- * (4px), so a panel sitting against its inner edge is `rounded-lg` (8px).
+ * Groups the settings so the pane reads as blocks rather than a run of loose
+ * rows. Concentric corners: the popover is 12px and the gap between panels
+ * matches its padding at 6px, so a panel is `rounded-md` (12 − 6).
+ *
+ * The fill is the lightest grey in the scale — `gray-50` was heavy enough that
+ * the panels read as the subject rather than as grouping.
  */
 function SettingsPanel({ children }: { readonly children: ReactNode }) {
   return (
-    <div className="flex flex-col gap-2 rounded-lg bg-gray-50 px-2.5 py-2 dark:bg-gray-0">
+    <div className="flex flex-col gap-2 rounded-md bg-gray-0 px-2.5 py-2 dark:bg-gray-50">
       {children}
     </div>
   );
 }
 
+/** Longest side of an aspect-ratio glyph inside its 24px box. */
+const RATIO_GLYPH_SPAN = 20;
+
+/**
+ * The ratio drawn at its true proportion. Numbers alone make the user do the
+ * arithmetic; the outline answers "which way up, and how wide" before the label
+ * is read. Lucide's rectangles are a single fixed shape, so the rect is sized
+ * here instead.
+ */
+function AspectRatioGlyph({ ratio }: { readonly ratio: string }) {
+  const [rawWidth, rawHeight] = ratio.split(":").map(Number);
+  const width = rawWidth ?? 1;
+  const height = rawHeight ?? 1;
+  const longest = Math.max(width, height);
+  const boxWidth = (width / longest) * RATIO_GLYPH_SPAN;
+  const boxHeight = (height / longest) * RATIO_GLYPH_SPAN;
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      className="size-6 shrink-0"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      aria-hidden="true"
+    >
+      <rect
+        x={(24 - boxWidth) / 2}
+        y={(24 - boxHeight) / 2}
+        width={boxWidth}
+        height={boxHeight}
+        rx={2.5}
+      />
+    </svg>
+  );
+}
+
 /**
  * A value chip, following the segmented-control language TabsTrigger already
- * sets: the group recedes into the panel and the selected value lifts onto the
- * card surface, rather than every value carrying its own outline.
+ * sets: the group recedes into the panel and the selected value sits one step
+ * brighter than it. No raised card — a drop shadow on a 28px cell inside a
+ * popover reads as clutter at this size.
  */
 function OptionChip({
   label,
+  glyph,
   selected,
   onSelect,
 }: {
   readonly label: string;
+  readonly glyph?: ReactNode;
   readonly selected: boolean;
   readonly onSelect: () => void;
 }) {
@@ -97,13 +138,15 @@ function OptionChip({
       aria-checked={selected}
       onClick={onSelect}
       className={cn(
-        "h-7 w-full rounded-md px-2 text-[13px] leading-none transition-all",
+        "w-full rounded-md text-[13px] leading-none transition-colors",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        glyph ? "flex flex-col items-center gap-1 py-1.5" : "h-7 px-2",
         selected
-          ? "bg-card font-medium text-primary shadow"
+          ? "bg-card font-medium text-primary"
           : "text-muted-foreground hover:bg-state-hover hover:text-foreground",
       )}
     >
+      {glyph}
       {label}
     </button>
   );
@@ -135,11 +178,13 @@ function VideoOptionField({
   label,
   value,
   values,
+  renderGlyph,
   onChange,
 }: {
   readonly label: string;
   readonly value: string;
   readonly values: readonly string[];
+  readonly renderGlyph?: (option: string) => ReactNode;
   readonly onChange: (next: string) => void;
 }) {
   if (values.length <= 1) {
@@ -161,6 +206,7 @@ function VideoOptionField({
             <OptionChip
               key={option}
               label={option}
+              glyph={renderGlyph?.(option)}
               selected={option === value}
               onSelect={() => {
                 onChange(option);
@@ -315,106 +361,121 @@ function videoModelSummary(
     .join(" · ");
 }
 
-/**
- * The model list is a menu, so it is the app's DropdownMenu rather than a
- * hand-styled list: item radius, padding, text size, hover state layer and
- * keyboard navigation all come from the component instead of being restated
- * here. It is anchored to the chip zone through an invisible trigger, because
- * the chip itself lives in the ProseMirror document rather than in React.
- */
-function VideoModelMenu({
-  anchor,
-  model,
-  onChange,
-  onClose,
-}: {
-  readonly anchor: VideoTemplateOptionsAnchor;
-  readonly model: VideoModel;
-  readonly onChange: (next: VideoModel) => void;
-  readonly onClose: () => void;
-}) {
+/** "Up to 15s · 480p, 720p · Audio" — what a model gives you, before switching. */
+function useVideoModelSummary(): (config: VideoModelConfig) => string {
   const { t } = useTranslation();
   const audio = t(($) => {
     return $.chat.templates.videoSpecAudioOn;
   });
+  return (config) => {
+    return videoModelSummary(
+      config,
+      (duration) => {
+        return t(
+          ($) => {
+            return $.chat.templates.videoModelUpTo;
+          },
+          { duration },
+        );
+      },
+      audio,
+    );
+  };
+}
+
+/**
+ * Model choice for the whole video tab. Video generation is the most expensive
+ * thing the composer can start, so the decision sits above the templates as its
+ * own labelled control rather than hiding inside a chip the user edits after
+ * committing to a template.
+ *
+ * It is the app's DropdownMenu, so item radius, padding, text size, the state
+ * layer hover and keyboard navigation all come from the component.
+ */
+export function VideoModelPickerRow({
+  model,
+  onChange,
+}: {
+  readonly model: VideoModel;
+  readonly onChange: (next: VideoModel) => void;
+}) {
+  const { t } = useTranslation();
+  const summarize = useVideoModelSummary();
+  const config: VideoModelConfig = VIDEO_MODEL_CONFIGS[model];
   return (
-    <DropdownMenu
-      open
-      onOpenChange={(open) => {
-        if (!open) {
-          onClose();
-        }
-      }}
-    >
-      <DropdownMenuTrigger asChild>
-        {/* The chip lives in the ProseMirror document, so the menu is anchored
-            to an invisible stand-in placed over the zone that opened it. */}
-        <button
-          type="button"
-          tabIndex={-1}
-          aria-hidden="true"
-          className="pointer-events-none fixed"
-          style={{
-            left: `${String(anchor.left)}px`,
-            top: `${String(anchor.top)}px`,
-            width: `${String(anchor.width)}px`,
-            height: `${String(anchor.height)}px`,
-          }}
-        />
-      </DropdownMenuTrigger>
-      <DropdownMenuContent
-        align="start"
-        side="bottom"
-        sideOffset={6}
-        className="w-[17.5rem]"
-        aria-label={t(($) => {
+    <div className="flex items-center justify-between gap-3 pb-4">
+      <span className="text-sm font-medium text-foreground">
+        {t(($) => {
           return $.chat.templates.videoOptionsModel;
         })}
-      >
-        {PUBLIC_VIDEO_MODELS.map((candidate) => {
-          const config: VideoModelConfig = VIDEO_MODEL_CONFIGS[candidate];
-          const selected = candidate === model;
-          return (
-            <DropdownMenuItem
-              key={candidate}
-              aria-label={config.label}
-              className="pr-8"
-              onClick={() => {
-                onChange(candidate);
-              }}
-            >
-              <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-                <span
-                  className={cn(
-                    "truncate leading-none",
-                    selected && "font-medium text-primary",
-                  )}
-                >
-                  {config.label}
+      </span>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button
+            type="button"
+            aria-label={t(
+              ($) => {
+                return $.chat.templates.videoModelLabel;
+              },
+              { model: config.label },
+            )}
+            className={cn(
+              "flex h-9 items-center gap-2 rounded-lg border-[0.7px] border-[hsl(var(--gray-400))]",
+              "bg-input px-3 text-sm text-foreground outline-none transition-colors",
+              "hover:bg-input-hover focus-visible:ring-2 focus-visible:ring-ring",
+            )}
+          >
+            <span className="font-medium">{config.label}</span>
+            <span className="text-[11px] text-muted-foreground">
+              {summarize(config)}
+            </span>
+            <ChevronDown className="size-4 shrink-0 text-muted-foreground" />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent
+          align="end"
+          side="bottom"
+          sideOffset={6}
+          className="w-[17.5rem]"
+        >
+          {PUBLIC_VIDEO_MODELS.map((candidate) => {
+            const candidateConfig: VideoModelConfig =
+              VIDEO_MODEL_CONFIGS[candidate];
+            const selected = candidate === model;
+            return (
+              <DropdownMenuItem
+                key={candidate}
+                aria-label={candidateConfig.label}
+                className="pr-8"
+                onClick={() => {
+                  onChange(candidate);
+                }}
+              >
+                <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                  <span
+                    className={cn(
+                      "truncate leading-none",
+                      selected && "font-medium text-primary",
+                    )}
+                  >
+                    {candidateConfig.label}
+                  </span>
+                  <span className="truncate text-[11px] leading-none text-muted-foreground">
+                    {summarize(candidateConfig)}
+                  </span>
                 </span>
-                <span className="truncate text-[11px] leading-none text-muted-foreground">
-                  {videoModelSummary(
-                    config,
-                    (duration) => {
-                      return t(
-                        ($) => {
-                          return $.chat.templates.videoModelUpTo;
-                        },
-                        { duration },
-                      );
-                    },
-                    audio,
-                  )}
-                </span>
-              </span>
-              {selected && (
-                <Check className="absolute right-2 text-primary" aria-hidden />
-              )}
-            </DropdownMenuItem>
-          );
-        })}
-      </DropdownMenuContent>
-    </DropdownMenu>
+                {selected && (
+                  <Check
+                    className="absolute right-2 text-primary"
+                    aria-hidden
+                  />
+                )}
+              </DropdownMenuItem>
+            );
+          })}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </div>
   );
 }
 
@@ -432,7 +493,7 @@ function VideoSettingsPane({
     <div className="flex flex-col gap-1.5">
       {/* The model stays visible here as context — it is edited from its own
           zone on the chip, so this pane never nests a second picker. */}
-      <div className="flex items-baseline justify-between gap-3 px-2.5 pt-1">
+      <div className="flex items-baseline justify-between gap-3 px-2.5 pb-0.5 pt-1">
         <span className="text-[13px] text-muted-foreground">
           {t(($) => {
             return $.chat.templates.videoOptionsModel;
@@ -449,6 +510,9 @@ function VideoSettingsPane({
           })}
           value={resolved.aspectRatio}
           values={config.aspectRatios}
+          renderGlyph={(option) => {
+            return <AspectRatioGlyph ratio={option} />;
+          }}
           onChange={(next) => {
             const aspectRatio = config.aspectRatios.find((candidate) => {
               return candidate === next;
@@ -492,23 +556,25 @@ function VideoSettingsPane({
         />
       </SettingsPanel>
       {config.supportsGenerateAudio && (
-        <div className="flex items-center justify-between gap-3 px-2.5 py-1">
-          <span className="text-[13px] text-muted-foreground">
-            {t(($) => {
-              return $.chat.templates.videoOptionsAudio;
-            })}
-          </span>
-          <Switch
-            size="compact"
-            checked={resolved.generateAudio}
-            aria-label={t(($) => {
-              return $.chat.templates.videoOptionsAudio;
-            })}
-            onCheckedChange={(checked) => {
-              onChange({ ...resolved, generateAudio: checked });
-            }}
-          />
-        </div>
+        <SettingsPanel>
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-[13px] text-muted-foreground">
+              {t(($) => {
+                return $.chat.templates.videoOptionsAudio;
+              })}
+            </span>
+            <Switch
+              size="compact"
+              checked={resolved.generateAudio}
+              aria-label={t(($) => {
+                return $.chat.templates.videoOptionsAudio;
+              })}
+              onCheckedChange={(checked) => {
+                onChange({ ...resolved, generateAudio: checked });
+              }}
+            />
+          </div>
+        </SettingsPanel>
       )}
     </div>
   );
@@ -524,7 +590,6 @@ export function VideoTemplateOptionsPopover({
   const { t } = useTranslation();
   const anchor = useGet(signals.template.videoTemplateOptionsAnchor$);
   const value = useGet(signals.template.videoTemplateOptionsValue$);
-  const pane = useGet(signals.template.videoTemplateOptionsPane$);
   const close = useSet(signals.template.closeVideoTemplateOptions$);
 
   if (!anchor || !value || value.type !== "video") {
@@ -548,19 +613,6 @@ export function VideoTemplateOptionsPopover({
       },
     });
   };
-
-  if (pane === "model") {
-    return (
-      <VideoModelMenu
-        anchor={anchor}
-        model={resolved.model}
-        onChange={(model) => {
-          apply({ ...resolved, model });
-        }}
-        onClose={close}
-      />
-    );
-  }
 
   return (
     <Popover
@@ -587,9 +639,9 @@ export function VideoTemplateOptionsPopover({
         align="start"
         side="bottom"
         sideOffset={6}
-        // `p-1` against the 12px surface is what makes the inner panels
-        // `rounded-lg`; see SettingsPanel.
-        className="w-[17.5rem] p-1"
+        // The gap between panels matches this padding, so the pane is evenly
+        // spaced on every side; that 6px is also what sets the panel radius.
+        className="w-[17.5rem] p-1.5"
         aria-label={t(($) => {
           return $.chat.templates.videoOptions;
         })}

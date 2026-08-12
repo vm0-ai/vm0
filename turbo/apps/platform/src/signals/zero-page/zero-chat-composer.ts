@@ -11,7 +11,10 @@ import {
 } from "../../views/zero-page/presentation-html-preview.ts";
 import { readableAttachmentResourceUrl } from "../../views/zero-page/zero-attachment-url.ts";
 import { createAvatarTemplatePickerSignals } from "./avatar-template-picker.ts";
-import type { VideoTemplateOptionsPane } from "./video-template-options-pane.ts";
+import {
+  DEFAULT_VIDEO_MODEL,
+  type VideoModel,
+} from "@vm0/core/video-model-catalog";
 
 // ---------------------------------------------------------------------------
 // Composer UI state — search, dialogs, loading indicators
@@ -304,6 +307,19 @@ function createTemplatePickerDialogSignals() {
     },
   );
 
+  /**
+   * The video model the next template pick will use. Video generation is the
+   * most expensive thing the composer can start, so the choice is made up
+   * front on the template picker rather than inside the chip after the fact.
+   */
+  const internalVideoTemplateModel$ = state<VideoModel>(DEFAULT_VIDEO_MODEL);
+  const videoTemplateModel$ = computed((get) => {
+    return get(internalVideoTemplateModel$);
+  });
+  const setVideoTemplateModel$ = command(({ set }, model: VideoModel) => {
+    set(internalVideoTemplateModel$, model);
+  });
+
   const internalVideoOptionsAnchor$ = state<VideoTemplateOptionsAnchor | null>(
     null,
   );
@@ -311,7 +327,6 @@ function createTemplatePickerDialogSignals() {
     null,
   );
   const internalVideoOptionsPosition$ = state<number | null>(null);
-  const internalVideoOptionsPane$ = state<VideoTemplateOptionsPane>("settings");
   const videoTemplateOptionsAnchor$ = computed((get) => {
     return get(internalVideoOptionsAnchor$);
   });
@@ -321,20 +336,15 @@ function createTemplatePickerDialogSignals() {
   const videoTemplateOptionsPosition$ = computed((get) => {
     return get(internalVideoOptionsPosition$);
   });
-  const videoTemplateOptionsPane$ = computed((get) => {
-    return get(internalVideoOptionsPane$);
-  });
   const openVideoTemplateOptions$ = command(
     (
       { set },
       anchor: VideoTemplateOptionsAnchor,
       value: GenerationTemplateRequest,
       position: number,
-      pane: VideoTemplateOptionsPane,
     ) => {
       set(internalVideoOptionsValue$, value);
       set(internalVideoOptionsPosition$, position);
-      set(internalVideoOptionsPane$, pane);
       set(internalVideoOptionsAnchor$, anchor);
     },
   );
@@ -376,10 +386,11 @@ function createTemplatePickerDialogSignals() {
     setTemplatePickerOpen$,
     templatePickerReferenceValue$,
     setTemplatePickerReferenceValue$,
+    videoTemplateModel$,
+    setVideoTemplateModel$,
     videoTemplateOptionsAnchor$,
     videoTemplateOptionsValue$,
     videoTemplateOptionsPosition$,
-    videoTemplateOptionsPane$,
     openVideoTemplateOptions$,
     setVideoTemplateOptionsValue$,
     closeVideoTemplateOptions$,
