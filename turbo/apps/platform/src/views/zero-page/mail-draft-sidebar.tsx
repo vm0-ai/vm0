@@ -48,16 +48,17 @@ interface MailDraftSidebarProps {
 function SidebarCloseButton({ close }: { readonly close: () => void }) {
   const { t } = useTranslation();
   return (
-    <button
+    <Button
       type="button"
       onClick={close}
       aria-label={t(($) => {
         return $.chat.mail.closeDetails;
       })}
-      className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-state-hover hover:text-foreground"
+      variant="quiet"
+      size="icon-sm"
     >
       <X size={16} />
-    </button>
+    </Button>
   );
 }
 

@@ -1,5 +1,149 @@
 # Changelog
 
+## [0.33.3](https://github.com/vm0-ai/vm0/compare/desktop-v0.33.2...desktop-v0.33.3) (2026-08-12)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.321.1
+
+## [0.33.2](https://github.com/vm0-ai/vm0/compare/desktop-v0.33.1...desktop-v0.33.2) (2026-08-12)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.321.0
+
+## [0.33.1](https://github.com/vm0-ai/vm0/compare/desktop-v0.33.0...desktop-v0.33.1) (2026-08-12)
+
+
+### Bug Fixes
+
+* **desktop:** restore packaged preload bridge ([#26478](https://github.com/vm0-ai/vm0/issues/26478)) ([d584312](https://github.com/vm0-ai/vm0/commit/d58431243e6ab41a55a6200e493773d60152d8a5))
+
+## [0.33.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.32.0...desktop-v0.33.0) (2026-08-12)
+
+
+### Features
+
+* **desktop:** publish signed okou releases ([#26450](https://github.com/vm0-ai/vm0/issues/26450)) ([5990968](https://github.com/vm0-ai/vm0/commit/5990968a3834a2377abb42e48eef49e9a42bb66c))
+
+## [0.32.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.31.0...desktop-v0.32.0) (2026-08-12)
+
+
+### Features
+
+* **desktop:** add okou package identity ([#26437](https://github.com/vm0-ai/vm0/issues/26437)) ([a9da541](https://github.com/vm0-ai/vm0/commit/a9da541ed84a4b362258546d0159978e426f14e4))
+
+## [0.31.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.30.6...desktop-v0.31.0) (2026-08-12)
+
+
+### Features
+
+* **desktop:** isolate okou updater and auth ([#26433](https://github.com/vm0-ai/vm0/issues/26433)) ([80425ee](https://github.com/vm0-ai/vm0/commit/80425ee6195ea235c6cc5f1690149b640918ab53))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.320.0
+
+## [0.30.6](https://github.com/vm0-ai/vm0/compare/desktop-v0.30.5...desktop-v0.30.6) (2026-08-12)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.319.1
+
+## [0.30.5](https://github.com/vm0-ai/vm0/compare/desktop-v0.30.4...desktop-v0.30.5) (2026-08-11)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.319.0
+
+## [0.30.4](https://github.com/vm0-ai/vm0/compare/desktop-v0.30.3...desktop-v0.30.4) (2026-08-11)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.318.0
+
+## [0.30.3](https://github.com/vm0-ai/vm0/compare/desktop-v0.30.2...desktop-v0.30.3) (2026-08-11)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.317.0
+
+## [0.30.2](https://github.com/vm0-ai/vm0/compare/desktop-v0.30.1...desktop-v0.30.2) (2026-08-11)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.316.0
+
+## [0.30.1](https://github.com/vm0-ai/vm0/compare/desktop-v0.30.0...desktop-v0.30.1) (2026-08-11)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.315.0
+
+## [0.30.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.29.67...desktop-v0.30.0) (2026-08-11)
+
+
+### Features
+
+* **desktop:** add product identity observability ([#26377](https://github.com/vm0-ai/vm0/issues/26377)) ([7de4612](https://github.com/vm0-ai/vm0/commit/7de4612ec7d2cd6e09e561c49e3be7b0d2689315))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.314.0
+
+## [0.29.67](https://github.com/vm0-ai/vm0/compare/desktop-v0.29.66...desktop-v0.29.67) (2026-08-11)
+
+
+### Bug Fixes
+
+* **desktop:** defer active background updates ([#26352](https://github.com/vm0-ai/vm0/issues/26352)) ([ef7babf](https://github.com/vm0-ai/vm0/commit/ef7babfdb8a7ad18cecf824fe700276b2a2c94d3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.313.1
+
+## [0.29.66](https://github.com/vm0-ai/vm0/compare/desktop-v0.29.65...desktop-v0.29.66) (2026-08-11)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.313.0
+
 ## [0.29.65](https://github.com/vm0-ai/vm0/compare/desktop-v0.29.64...desktop-v0.29.65) (2026-08-11)
 
 

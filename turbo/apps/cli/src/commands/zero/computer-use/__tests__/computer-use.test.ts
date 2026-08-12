@@ -24,7 +24,7 @@ import {
   formatComputerUseResultForConsole,
   zeroComputerUseCommand,
 } from "../index";
-import { registerZeroCommands } from "../../../../zero";
+import { registerZeroCommands } from "../../../../okou";
 
 let testOutputDir = "";
 
@@ -199,9 +199,9 @@ describe("computer-use command visibility", () => {
     zeroComputerUseCommand.outputHelp();
 
     expect(helpOutput).toContain("Workflow:");
-    expect(helpOutput).toContain("zero computer-use list-apps");
+    expect(helpOutput).toContain("okou computer-use list-apps");
     expect(helpOutput).toContain(
-      "zero computer-use get-app-state --app <bundleId>",
+      "okou computer-use get-app-state --app <bundleId>",
     );
     expect(helpOutput).toContain("--snapshot-id desktop_abc --element-index 7");
     expect(helpOutput).toContain("/tmp/vm0/computer-use");
@@ -235,7 +235,7 @@ describe("computer-use command visibility", () => {
     const errorOutput = mockConsoleError.mock.calls.flat().join("\n");
     expect(errorOutput).toContain("Computer Use authorization required");
     expect(errorOutput).toContain(
-      "zero connector permission-request computer-use --permission computer-use:write",
+      "okou connector permission-request computer-use --permission computer-use:write",
     );
     expect(errorOutput).toContain(
       "Existing run tokens cannot be upgraded in place",

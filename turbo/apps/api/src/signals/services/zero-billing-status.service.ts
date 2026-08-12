@@ -28,7 +28,10 @@ import {
   totalConcurrencyLimit,
   type ActiveConcurrencySubscription,
 } from "./org-concurrency-entitlements.service";
-import { loadOrgPlanCapabilities } from "./org-plan-entitlement-read.service";
+import {
+  loadOrgPlanCapabilities,
+  type OrgPlanCapabilities,
+} from "./org-plan-entitlement-read.service";
 
 const TIER_MONTHLY_CREDITS = Object.freeze<Record<PlanCreditTier, number>>({
   pro: 20_000,
@@ -129,6 +132,8 @@ interface BillingStatusResponse {
   tier: string;
   canBuyConcurrency: boolean;
   canBuyCredits: boolean;
+  memberInviteUsagePackRequired: boolean;
+  memberInvitationAllowed: boolean;
   autoRechargeAllowed: boolean;
   supportByok: boolean;
   restrictedVm0Models: boolean;
@@ -566,6 +571,8 @@ function billingStatusResponse(args: {
   org: BillingOrgRow | undefined;
   canBuyConcurrency: boolean;
   canBuyCredits: boolean;
+  memberInviteUsagePackRequired: boolean;
+  memberInvitationAllowed: boolean;
   autoRechargeAllowed: boolean;
   supportByok: boolean;
   restrictedVm0Models: boolean;
@@ -594,6 +601,8 @@ function billingStatusResponse(args: {
     tier: org.tier,
     canBuyConcurrency: args.canBuyConcurrency,
     canBuyCredits: args.canBuyCredits,
+    memberInviteUsagePackRequired: args.memberInviteUsagePackRequired,
+    memberInvitationAllowed: args.memberInvitationAllowed,
     autoRechargeAllowed: args.autoRechargeAllowed,
     supportByok: args.supportByok,
     restrictedVm0Models: args.restrictedVm0Models,
@@ -646,6 +655,18 @@ function billingStatusResponse(args: {
     ),
     usageAllowance: args.usageAllowance?.status ?? null,
   };
+}
+
+function memberInviteUsagePackRequired(
+  capabilities: OrgPlanCapabilities | null,
+): boolean {
+  return capabilities?.memberInviteUsagePackRequired ?? false;
+}
+
+function memberInvitationAllowed(
+  capabilities: OrgPlanCapabilities | null,
+): boolean {
+  return capabilities?.memberInvitationAllowed ?? false;
 }
 
 export function zeroBillingStatus(
@@ -726,6 +747,9 @@ export function zeroBillingStatus(
       org: org[0],
       canBuyConcurrency: capabilities?.canBuyConcurrency ?? false,
       canBuyCredits: capabilities?.canBuyCredits ?? false,
+      memberInviteUsagePackRequired:
+        memberInviteUsagePackRequired(capabilities),
+      memberInvitationAllowed: memberInvitationAllowed(capabilities),
       autoRechargeAllowed: capabilities?.autoRechargeAllowed ?? false,
       supportByok: capabilities?.supportByok ?? false,
       restrictedVm0Models: capabilities?.restrictedVm0Models ?? false,

@@ -5,6 +5,7 @@ import {
   chatThreadByIdContract,
   chatThreadMarkReadContract,
   chatThreadEventsContract,
+  chatThreadsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
@@ -154,7 +155,7 @@ describe("chat lifecycle", () => {
         1,
       );
       expect(screen.getAllByText("24,234").length).toBeGreaterThanOrEqual(1);
-      expect(screen.getAllByText("Kimi K2.5").length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText("kimi-k2.5").length).toBeGreaterThanOrEqual(1);
       expect(screen.getAllByText("1,234").length).toBeGreaterThanOrEqual(1);
       expect(screen.getAllByText("GPT Image 2").length).toBeGreaterThanOrEqual(
         1,
@@ -178,7 +179,7 @@ describe("chat lifecycle", () => {
       expect(screen.getAllByText("Credit usage").length).toBeGreaterThanOrEqual(
         1,
       );
-      expect(screen.getAllByText("Kimi K2.5").length).toBeGreaterThanOrEqual(1);
+      expect(screen.getAllByText("kimi-k2.5").length).toBeGreaterThanOrEqual(1);
       expect(screen.getAllByText("1,234").length).toBeGreaterThanOrEqual(1);
     });
   });
@@ -279,7 +280,7 @@ describe("chat lifecycle", () => {
           runId: "run-generation-usage",
           usage: {
             version: 1,
-            totalCredits: 1976,
+            totalCredits: 2076,
             settledAt: "2026-06-09T10:00:02Z",
             breakdown: [
               {
@@ -289,11 +290,15 @@ describe("chat lifecycle", () => {
               },
               {
                 kind: "video",
-                credits: 1880,
+                credits: 1980,
                 providers: [
                   {
                     provider: "dreamina-seedance-2-0-260128",
                     credits: 1880,
+                  },
+                  {
+                    provider: "joggai-talking-avatar",
+                    credits: 100,
                   },
                 ],
               },
@@ -309,7 +314,7 @@ describe("chat lifecycle", () => {
       path: "/chats/e7000000-0000-4000-a000-000000000004",
     });
 
-    const credit = await screen.findByLabelText("Credit usage 1,976");
+    const credit = await screen.findByLabelText("Credit usage 2,076");
     click(credit);
 
     await waitFor(() => {
@@ -324,8 +329,14 @@ describe("chat lifecycle", () => {
         1,
       );
       expect(screen.getAllByText("1,880").length).toBeGreaterThanOrEqual(1);
+      expect(
+        screen.getAllByText("Avatar").some((element) => {
+          return element.parentElement?.textContent === "Avatar100";
+        }),
+      ).toBeTruthy();
       expect(screen.queryByText(/fal\.? ?ai/iu)).not.toBeInTheDocument();
       expect(screen.queryByText(/dreamina/iu)).not.toBeInTheDocument();
+      expect(screen.queryByText(/joggai/iu)).not.toBeInTheDocument();
     });
   });
 
@@ -950,7 +961,7 @@ describe("chat lifecycle", () => {
       threadId: "e7000000-0000-4000-a000-000000000024",
       sequence: ["U1", "A2", "U2"],
       visibleOrder: ["U1", "A2", "U2"],
-      usageAssistant: "A2",
+      usageAssistant: null,
       folds: [],
     },
     {
@@ -959,7 +970,7 @@ describe("chat lifecycle", () => {
       threadId: "e7000000-0000-4000-a000-000000000025",
       sequence: ["U1", "A2", "A3", "U2"],
       visibleOrder: ["U1", "Worked for 20s", "A3", "U2"],
-      usageAssistant: "A3",
+      usageAssistant: null,
       folds: [
         {
           label: "Worked for 20s",
@@ -1039,6 +1050,9 @@ describe("chat lifecycle", () => {
       detachedSetupPage({
         context,
         path: `/chats/${threadId}`,
+        featureSwitches: {
+          [FeatureSwitchKey.ChatRunContinuationPresentation]: true,
+        },
       });
 
       await screen.findByText(visibleOrder[0]!);
@@ -1081,6 +1095,10 @@ describe("chat lifecycle", () => {
       }
 
       const usageButtons = screen.queryAllByLabelText("Credit usage 12");
+      if (usageAssistant === null) {
+        expect(usageButtons).toHaveLength(0);
+        return;
+      }
       expect(usageButtons).toHaveLength(1);
       const usageAssistantGroup = usageButtons[0]!.closest(
         '[data-role="assistant"]',
@@ -1785,6 +1803,9 @@ describe("chat lifecycle", () => {
     const sinceSeqIds: number[] = [];
 
     mockSubagentThread(context, threadId);
+    context.mocks.api(chatThreadsContract.unreadIds, ({ respond }) => {
+      return respond(200, { threadIds: [threadId] });
+    });
     context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
       return respond(200, {
         lastReadAt: null,
@@ -1831,9 +1852,6 @@ describe("chat lifecycle", () => {
         context.mocks.ably.hasSubscription(
           `chatThreadMessageCreated:${threadId}`,
         ),
-      ).toBeFalsy();
-      expect(
-        context.mocks.ably.hasSubscription(`chatThreadRunCreated:${threadId}`),
       ).toBeFalsy();
       sinceSeqIds.length = 0;
       burstEnabled = true;
@@ -2183,8 +2201,8 @@ describe("chat lifecycle", () => {
       }),
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000977",
-        model: "claude-opus-4-7",
-        modelLabel: "Claude Opus 4.7",
+        model: "claude-opus-4-8",
+        modelLabel: "Claude Opus 4.8",
       }),
       buildModelPolicy({
         id: "00000000-0000-4000-a000-000000000978",
@@ -2230,7 +2248,7 @@ describe("chat lifecycle", () => {
     const card = await screen.findByTestId("assistant-error-recovery");
     click(within(card).getByRole("combobox", { name: "Switch model" }));
     const claudeOption = await screen.findByRole("option", {
-      name: /Claude Opus 4\.7/u,
+      name: /Claude Opus 4.8/u,
     });
     expect(claudeOption).toBeInTheDocument();
     expect(

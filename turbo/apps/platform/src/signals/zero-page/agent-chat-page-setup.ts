@@ -120,7 +120,7 @@ export const setupAgentChatPage$ = command(
       set(updateSearchParams$, next);
     }
     if (queue === "1") {
-      set(openQueueDrawer$, signal);
+      set(openQueueDrawer$);
     }
   },
 );

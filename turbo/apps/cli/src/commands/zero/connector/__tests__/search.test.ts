@@ -1,5 +1,5 @@
 /**
- * Tests for zero connector search command
+ * Tests for okou connector search command
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
@@ -138,7 +138,7 @@ function findDataRows(lines: readonly string[]): string[] {
   });
 }
 
-describe("zero connector search command", () => {
+describe("okou connector search command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -262,7 +262,6 @@ describe("zero connector search command", () => {
         connected: true,
         missingRequiredFields: [],
         configuredFieldKeys: ["secret:apiKey"],
-        hasSecret: true,
       });
       server.use(stubCustomConnectors([connector]));
 

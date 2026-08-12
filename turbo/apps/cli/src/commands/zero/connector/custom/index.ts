@@ -9,6 +9,7 @@ import {
   listZeroCustomConnectors,
 } from "../../../../lib/api/domains/zero-connectors";
 import { withErrorHandler } from "../../../../lib/command/with-error-handler";
+import { getOkouAgentId } from "../../../../lib/okou-env";
 import { createCustomConnectorCommand } from "./create";
 import { updateCustomConnectorCommand } from "./update";
 
@@ -32,7 +33,7 @@ async function resolveCustomAgentContext(agentId: string | undefined): Promise<{
   readonly displayName: string;
   readonly authorizedIds: Set<string>;
 } | null> {
-  const resolvedAgentId = agentId ?? process.env.ZERO_AGENT_ID;
+  const resolvedAgentId = agentId ?? getOkouAgentId();
   if (!resolvedAgentId) {
     return null;
   }
@@ -186,5 +187,5 @@ export const customConnectorCommand = new Command()
     "after",
     `
 To add a custom connector:
-  Run "zero connector custom create -h" and follow the definition-only creation workflow.`,
+  Run "okou connector custom create -h" and follow the definition-only creation workflow.`,
   );

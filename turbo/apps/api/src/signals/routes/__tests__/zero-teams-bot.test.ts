@@ -1493,7 +1493,7 @@ describe("POST /api/zero/teams/bot", () => {
     const claim = await runsApi.claimRunnerJob(runId);
     expect(claim.prompt).toContain("please inspect this");
     expect(claim.prompt).toContain(canonicalFilePrompt);
-    expect(claim.appendSystemPrompt).toContain("zero teams download-file -h");
+    expect(claim.appendSystemPrompt).toContain("okou teams download-file -h");
 
     const fileIdMatch = claim.prompt.match(/ {3}\[ID\] ([^\n]+)/u);
     const fileId = fileIdMatch?.[1];
@@ -2707,10 +2707,10 @@ describe("POST /api/zero/teams/bot", () => {
       "You are currently running inside: Microsoft Teams",
     );
     expect(appendSystemPrompt).toContain("Microsoft Teams messaging and files");
-    expect(appendSystemPrompt).toContain("zero teams --help");
-    expect(appendSystemPrompt).toContain("zero teams message send -h");
-    expect(appendSystemPrompt).toContain("zero teams download-file -h");
-    expect(appendSystemPrompt).toContain("zero teams upload-file -h");
+    expect(appendSystemPrompt).toContain("okou teams --help");
+    expect(appendSystemPrompt).toContain("okou teams message send -h");
+    expect(appendSystemPrompt).toContain("okou teams download-file -h");
+    expect(appendSystemPrompt).toContain("okou teams upload-file -h");
     expect(currentIntegrationPrompt).toContain(
       `Tenant ID: ${fixture.teamsTenantId}`,
     );

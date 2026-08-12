@@ -640,47 +640,35 @@ describe("GET/PUT /api/zero/model-policies", () => {
     });
   });
 
-  it("rejects retired model policy writes with the replacement", async () => {
+  it("keeps recently active GPT 5.5 and Claude Sonnet 4.6 selectable", async () => {
     const fixture = await seedFixture();
     useSession(fixture);
-    const openRouterProviderId = await createOrgProvider(
-      fixture,
-      "openrouter-api-key",
-    );
     const client = apiClient();
     const listResponse = await accept(
       client.list({ headers: authHeaders() }),
       [200],
     );
-    const updates = [
-      ...toUpdate(listResponse.body),
-      makeVm0Policy("glm-5.2"),
-    ].map((policy) => {
-      if (policy.model !== "glm-5.2") {
-        return policy;
-      }
-      return {
-        ...policy,
-        defaultProviderType: "openrouter-api-key" as const,
-        credentialScope: "org" as const,
-        modelProviderId: openRouterProviderId,
-      };
-    });
 
     const response = await accept(
       client.update({
         headers: authHeaders(),
-        body: { policies: updates },
+        body: {
+          policies: [
+            ...toUpdate(listResponse.body),
+            makeVm0Policy("gpt-5.5"),
+            makeVm0Policy("claude-sonnet-4-6"),
+          ],
+        },
       }),
-      [400],
+      [200],
     );
-    expect(response.body).toStrictEqual({
-      error: {
-        code: "MODEL_RETIRED",
-        message:
-          'Model "glm-5.2" has been retired. Use "deepseek-v4-flash" instead.',
-      },
-    });
+
+    expect(response.body.policies).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ model: "gpt-5.5" }),
+        expect.objectContaining({ model: "claude-sonnet-4-6" }),
+      ]),
+    );
   });
 
   it("allows compatible GPT 5.6 OpenAI org provider routes", async () => {

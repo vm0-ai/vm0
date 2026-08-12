@@ -21,7 +21,7 @@ use sandbox::{
 };
 use shell_quote::quote_shell_arg;
 use tokio_util::sync::CancellationToken;
-use tracing::{debug, info, warn};
+use tracing::{info, warn};
 
 use super::codex_model_catalog_prefetch::{
     StartedCodexModelCatalogPrefetch, is_eligible as is_codex_model_catalog_prefetch_eligible,
@@ -467,24 +467,12 @@ async fn verify_restored_session_identity_for_reuse(
     identity: RestoredSessionIdentity,
 ) -> Result<RestoredSessionIdentity, SessionHistoryIdentityReason> {
     let Some(requested_identity) = RestoredSessionIdentity::from_context(context) else {
-        debug!(
-            run_id = %context.run_id,
-            "restored session identity cannot be verified without a valid hash-backed resume request"
-        );
         return Err(SessionHistoryIdentityReason::VerifyRequestMissing);
     };
     if identity != requested_identity {
-        debug!(
-            run_id = %context.run_id,
-            "restored session identity invalidated because it does not match the resume request"
-        );
         return Err(SessionHistoryIdentityReason::VerifyRequestMismatch);
     }
     let Some(verification) = identity.final_metadata_verification() else {
-        debug!(
-            run_id = %context.run_id,
-            "restored session identity cannot be verified without a final metadata verifier"
-        );
         return Err(SessionHistoryIdentityReason::VerifyMissingVerifier);
     };
     if !identity.is_verified_match_for_request(&requested_identity) {
@@ -511,12 +499,11 @@ async fn verify_restored_session_identity_for_reuse(
         history_hash,
         history_size_bytes,
     );
-    verify_final_identity_metadata(sandbox, context, identity, command, &runtime_dir).await
+    verify_final_identity_metadata(sandbox, identity, command, &runtime_dir).await
 }
 
 async fn verify_final_identity_metadata(
     sandbox: &dyn Sandbox,
-    context: &ExecutionContext,
     identity: RestoredSessionIdentity,
     command: String,
     runtime_dir: &str,
@@ -539,21 +526,8 @@ async fn verify_final_identity_metadata(
         .await
     {
         Ok(result) if helper_exec_succeeded(&result) => Ok(identity),
-        Ok(result) => {
-            debug!(
-                run_id = %context.run_id,
-                termination = %helper_exec_termination_label(&result),
-                "restored session identity final metadata verification failed"
-            );
-            Err(session_history_identity_reason_from_helper_result(&result))
-        }
-        Err(_) => {
-            debug!(
-                run_id = %context.run_id,
-                "restored session identity final metadata verification errored"
-            );
-            Err(SessionHistoryIdentityReason::VerifyHelperExecError)
-        }
+        Ok(result) => Err(session_history_identity_reason_from_helper_result(&result)),
+        Err(_) => Err(SessionHistoryIdentityReason::VerifyHelperExecError),
     }
 }
 
@@ -626,23 +600,13 @@ async fn read_final_session_history_identity(
         guest_contracts::runtime_paths::final_session_history_identity_file,
     ) {
         Ok(path) => path,
-        Err(error) => {
-            debug!(
-                run_id = %context.run_id,
-                error = %error,
-                "final session history identity path could not be resolved"
-            );
+        Err(_) => {
             return Err(SessionHistoryIdentityReason::FinalizeMetadataPathUnresolved);
         }
     };
     let runtime_dir = match guest_runtime_dir(context.run_id) {
         Ok(path) => path,
-        Err(error) => {
-            debug!(
-                run_id = %context.run_id,
-                error = %error,
-                "guest runtime dir could not be resolved for final session history identity"
-            );
+        Err(_) => {
             return Err(SessionHistoryIdentityReason::FinalizeRuntimeDirUnresolved);
         }
     };
@@ -652,22 +616,11 @@ async fn read_final_session_history_identity(
     {
         Ok(Some(bytes)) => bytes,
         Ok(None) => return Err(SessionHistoryIdentityReason::FinalizeMissingMetadata),
-        Err(_) => {
-            debug!(
-                run_id = %context.run_id,
-                "final session history identity metadata read failed"
-            );
-            return Err(SessionHistoryIdentityReason::FinalizeMetadataReadFailed);
-        }
+        Err(_) => return Err(SessionHistoryIdentityReason::FinalizeMetadataReadFailed),
     };
     let metadata = match FinalSessionHistoryIdentity::from_json_slice(&bytes) {
         Ok(metadata) => metadata,
         Err(error) => {
-            debug!(
-                run_id = %context.run_id,
-                error = %error,
-                "final session history identity metadata was invalid"
-            );
             return Err(SessionHistoryIdentityReason::from_final_metadata_error(
                 error,
             ));
@@ -689,6 +642,7 @@ pub(super) struct AgentExecutionResult {
     pub(super) sandbox_reuse_disposition: SandboxReuseDisposition,
     pub(super) stdout_stream_diagnostics: AgentStdoutStreamDiagnostics,
     pub(super) reusable_session_identity: Option<RestoredSessionIdentity>,
+    pub(super) active_input_delivery_ids: Vec<String>,
 }
 
 impl AgentExecutionResult {
@@ -702,6 +656,7 @@ impl AgentExecutionResult {
             sandbox_reuse_disposition: SandboxReuseDisposition::default(),
             stdout_stream_diagnostics: AgentStdoutStreamDiagnostics::default(),
             reusable_session_identity: None,
+            active_input_delivery_ids: Vec::new(),
         }
     }
 
@@ -715,7 +670,13 @@ impl AgentExecutionResult {
             sandbox_reuse_disposition: SandboxReuseDisposition::default(),
             stdout_stream_diagnostics: AgentStdoutStreamDiagnostics::default(),
             reusable_session_identity: None,
+            active_input_delivery_ids: Vec::new(),
         }
+    }
+
+    pub(super) fn with_active_input_delivery_ids(mut self, delivery_ids: Vec<String>) -> Self {
+        self.active_input_delivery_ids = delivery_ids;
+        self
     }
 
     pub(super) fn with_stdout_stream_diagnostics(
@@ -2322,9 +2283,10 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
     // Stop locally owned post-spawn work before interpreting terminal process
     // state. Join active input and model prefetch; drain or abort stdout based
     // on the wait outcome.
-    if let Some(forwarder) = active_input_forwarder {
-        forwarder.stop().await;
-    }
+    let active_input_delivery_ids = match active_input_forwarder {
+        Some(forwarder) => forwarder.stop(sandbox).await,
+        None => Vec::new(),
+    };
     if let Some(forwarder) = pi_standby_forwarder {
         forwarder.stop().await;
     }
@@ -2377,7 +2339,8 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                 telemetry.record("agent_execute", t.elapsed(), false, Some(&error));
                 return Ok(AgentExecutionResult::failure(1, error, None)
                     .with_resource_failure_kind(ResourceFailureKind::HostMemoryOomKilled)
-                    .with_stdout_stream_diagnostics(stdout_stream_diagnostics_on_wait_error));
+                    .with_stdout_stream_diagnostics(stdout_stream_diagnostics_on_wait_error)
+                    .with_active_input_delivery_ids(active_input_delivery_ids));
             }
             let error = e.to_string();
             telemetry.record("agent_execute", t.elapsed(), false, Some(&error));
@@ -2396,6 +2359,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                     ),
                     stdout_stream_diagnostics: stdout_stream_diagnostics_on_wait_error,
                     reusable_session_identity: None,
+                    active_input_delivery_ids,
                 });
             }
             let resource_diagnostics = if explicit_enospc_evidence([error.as_str()]) {
@@ -2412,7 +2376,8 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
             };
             return Ok(AgentExecutionResult::failure_from_error(error)
                 .with_resource_diagnostics(resource_diagnostics)
-                .with_stdout_stream_diagnostics(stdout_stream_diagnostics_on_wait_error));
+                .with_stdout_stream_diagnostics(stdout_stream_diagnostics_on_wait_error)
+                .with_active_input_delivery_ids(active_input_delivery_ids));
         }
     };
     if exit.stream_overflowed {
@@ -2475,7 +2440,8 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                 telemetry.record("agent_execute", t.elapsed(), false, Some(error));
                 return Ok(AgentExecutionResult::failure(1, error, None)
                     .with_resource_failure_kind(ResourceFailureKind::GuestMemoryOomKilled)
-                    .with_stdout_stream_diagnostics(stdout_stream_diagnostics));
+                    .with_stdout_stream_diagnostics(stdout_stream_diagnostics)
+                    .with_active_input_delivery_ids(active_input_delivery_ids));
             }
             Err(e) => {
                 warn!(run_id = %context.run_id, error = %e, "failed to exec dmesg for OOM check");
@@ -2641,12 +2607,14 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
             sandbox_reuse_disposition,
             stdout_stream_diagnostics,
             reusable_session_identity: None,
+            active_input_delivery_ids,
         },
         None => AgentExecutionResult {
             failure: None,
             sandbox_reuse_disposition,
             stdout_stream_diagnostics,
             reusable_session_identity,
+            active_input_delivery_ids,
         },
     };
     telemetry.record(

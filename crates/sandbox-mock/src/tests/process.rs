@@ -209,6 +209,42 @@ async fn queued_process_control_errors_are_consumed_fifo() {
 }
 
 #[tokio::test]
+async fn queued_structured_process_control_outcomes_are_preserved() {
+    let overrides = Arc::new(MockSandboxOverrides::new());
+    overrides.push_process_control_outcome(ProcessControlOutcome::GuestStatus {
+        status: ProcessControlGuestStatus::QueueFull,
+        diagnostic: "guest queue is full".to_string(),
+    });
+    let sandbox = MockSandbox::with_overrides("test", Arc::clone(&overrides));
+    let handle = sandbox
+        .start_process(&StartProcessRequest {
+            cmd: "agent",
+            timeout: Duration::from_secs(5),
+            env: &[],
+            sudo: false,
+            output: ProcessOutputMode::buffered(EXEC_OUTPUT_LIMIT_1_MIB),
+            control: ProcessControlMode::Enabled,
+        })
+        .await
+        .unwrap();
+    let control = handle
+        .control_handle()
+        .expect("enabled control should expose a handle");
+
+    let outcome = control
+        .control_outcome("msg-1", b"payload", Duration::from_secs(1))
+        .await;
+
+    assert!(matches!(
+        outcome,
+        ProcessControlOutcome::GuestStatus {
+            status: ProcessControlGuestStatus::QueueFull,
+            diagnostic,
+        } if diagnostic == "guest queue is full"
+    ));
+}
+
+#[tokio::test]
 async fn structured_process_control_distinguishes_timeout_write_state() {
     for write_state in [
         ProcessControlWriteState::NotWritten,

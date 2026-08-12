@@ -74,7 +74,7 @@ const SheetOverlay = React.forwardRef<
     <SheetPrimitive.Backdrop
       ref={ref}
       data-slot="sheet-overlay"
-      className={cn("fixed inset-0 z-50", className)}
+      className={cn("fixed inset-0", className)}
       {...props}
     />
   );
@@ -84,6 +84,7 @@ SheetOverlay.displayName = "SheetOverlay";
 interface SheetContentProps extends SheetPrimitive.Popup.Props {
   onCloseAutoFocus?: LegacyAutoFocusHandler;
   onOpenAutoFocus?: LegacyAutoFocusHandler;
+  overlayClassName?: string;
   side?: "top" | "bottom" | "left" | "right";
 }
 
@@ -96,6 +97,7 @@ const SheetContent = React.forwardRef<HTMLDivElement, SheetContentProps>(
       initialFocus,
       onCloseAutoFocus,
       onOpenAutoFocus,
+      overlayClassName,
       side = "right",
       ...props
     },
@@ -103,13 +105,13 @@ const SheetContent = React.forwardRef<HTMLDivElement, SheetContentProps>(
   ) => {
     return (
       <SheetPortal>
-        <SheetOverlay />
+        <SheetOverlay className={overlayClassName} forceRender />
         <SheetPrimitive.Popup
           ref={ref}
           data-slot="sheet-content"
           data-side={side}
           className={cn(
-            "sheet-content fixed z-50 flex flex-col gap-4 overflow-x-hidden bg-card p-6 outline-none",
+            "sheet-content fixed flex flex-col gap-4 overflow-x-hidden bg-card p-6 outline-none",
             side === "right" &&
               "inset-y-0 right-0 h-full w-3/4 shadow-[-8px_0_24px_-12px_rgba(0,0,0,0.1)] sm:max-w-lg dark:shadow-[-16px_0_48px_-8px_rgba(0,0,0,0.5)]",
             side === "left" &&

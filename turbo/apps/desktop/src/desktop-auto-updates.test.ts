@@ -11,6 +11,7 @@ import {
 const mocks = vi.hoisted(() => {
   type AutoUpdaterListener = (...args: readonly unknown[]) => void;
   const autoUpdaterListeners = new Map<string, Set<AutoUpdaterListener>>();
+  const autoUpdaterOnceListeners = new Map<string, Set<AutoUpdaterListener>>();
 
   function addAutoUpdaterListener(
     eventName: string,
@@ -21,11 +22,21 @@ const mocks = vi.hoisted(() => {
     autoUpdaterListeners.set(eventName, listeners);
   }
 
+  function addAutoUpdaterOnceListener(
+    eventName: string,
+    listener: AutoUpdaterListener,
+  ): void {
+    const listeners = autoUpdaterOnceListeners.get(eventName) ?? new Set();
+    listeners.add(listener);
+    autoUpdaterOnceListeners.set(eventName, listeners);
+  }
+
   function removeAutoUpdaterListener(
     eventName: string,
     listener: AutoUpdaterListener,
   ): void {
     autoUpdaterListeners.get(eventName)?.delete(listener);
+    autoUpdaterOnceListeners.get(eventName)?.delete(listener);
   }
 
   return {
@@ -33,10 +44,12 @@ const mocks = vi.hoisted(() => {
     autoUpdater: {
       checkForUpdates: vi.fn<() => void>(),
       quitAndInstall: vi.fn(),
-      once: vi.fn(addAutoUpdaterListener),
+      on: vi.fn(addAutoUpdaterListener),
+      once: vi.fn(addAutoUpdaterOnceListener),
       removeListener: vi.fn(removeAutoUpdaterListener),
     },
     autoUpdaterListeners,
+    autoUpdaterOnceListeners,
     dialog: {
       showMessageBox: vi.fn<() => Promise<{ response: number }>>(),
     },
@@ -65,6 +78,8 @@ const productionConfig: DesktopConfig = {
   webUrl: new URL("https://www.vm0.ai"),
   environment: "production",
   identity: {
+    product: "zero",
+    brandName: "Zero",
     displayName: "Zero Computer Use",
     bundleId: "ai.vm0.desktop",
     authProtocolName: "Zero Computer Use",
@@ -131,8 +146,11 @@ function emitAutoUpdaterEvent(
   ...args: readonly unknown[]
 ): void {
   const listeners = [...(mocks.autoUpdaterListeners.get(eventName) ?? [])];
-  mocks.autoUpdaterListeners.delete(eventName);
-  listeners.forEach((listener) => {
+  const onceListeners = [
+    ...(mocks.autoUpdaterOnceListeners.get(eventName) ?? []),
+  ];
+  mocks.autoUpdaterOnceListeners.delete(eventName);
+  [...listeners, ...onceListeners].forEach((listener) => {
     listener(...args);
   });
 }
@@ -146,6 +164,7 @@ describe("desktop auto-updates", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.autoUpdaterListeners.clear();
+    mocks.autoUpdaterOnceListeners.clear();
     mocks.app.isPackaged = true;
     mocks.dialog.showMessageBox.mockResolvedValue({ response: 1 });
     stubDesktopAutoUpdatePlatform();
@@ -189,14 +208,45 @@ describe("desktop auto-updates", () => {
     expect(mocks.updateElectronApp).not.toHaveBeenCalled();
   });
 
+  it("selects the isolated Okou update feed for an Okou identity", () => {
+    const okouConfig: DesktopConfig = {
+      ...productionConfig,
+      identity: {
+        product: "okou",
+        brandName: "Okou",
+        displayName: "Okou Computer Use",
+        bundleId: "ai.okou.computer-use",
+        authProtocolName: "Okou Desktop Auth",
+        authScheme: "ai.okou.computer-use",
+      },
+    };
+
+    expect(
+      installDesktopAutoUpdates({
+        config: okouConfig,
+        apiBaseUrl: "https://api.okou.ai",
+        getComputerUseHostState: () => OFFLINE_COMPUTER_USE_HOST_STATE,
+        prepareForQuitAndInstall: vi.fn(async () => {}),
+      }),
+    ).toBe(true);
+    expect(mocks.updateElectronApp).toHaveBeenCalledWith(
+      expect.objectContaining({
+        updateSource: expect.objectContaining({
+          baseUrl:
+            "https://api.okou.ai/api/desktop/updates/okou/stable/darwin/arm64",
+        }),
+      }),
+    );
+  });
+
   it("checks for updates on request", () => {
-    expect(checkForDesktopUpdates()).toBe(true);
+    expect(checkForDesktopUpdates("Zero Computer Use")).toBe(true);
 
     expect(mocks.autoUpdater.checkForUpdates).toHaveBeenCalledTimes(1);
   });
 
   it("shows when requested update checks find no update", async () => {
-    expect(checkForDesktopUpdates()).toBe(true);
+    expect(checkForDesktopUpdates("Zero Computer Use")).toBe(true);
 
     emitAutoUpdaterEvent("update-not-available");
     await flushDownloadedUpdateCallback();
@@ -218,7 +268,7 @@ describe("desktop auto-updates", () => {
       throw error;
     });
 
-    expect(checkForDesktopUpdates()).toBe(false);
+    expect(checkForDesktopUpdates("Zero Computer Use")).toBe(false);
     await flushDownloadedUpdateCallback();
 
     expect(consoleError).toHaveBeenCalledWith(
@@ -236,7 +286,7 @@ describe("desktop auto-updates", () => {
     consoleError.mockRestore();
   });
 
-  it("prompts instead of silently restarting during recent command activity", async () => {
+  it("defers without prompting during recent command activity", async () => {
     const { updateOptions, prepareForQuitAndInstall } =
       installAndCaptureUpdateOptions(() => ({
         ...OFFLINE_COMPUTER_USE_HOST_STATE,
@@ -246,20 +296,66 @@ describe("desktop auto-updates", () => {
     updateOptions.onNotifyUser({ releaseName: "Zero 1.2.3" });
     await flushDownloadedUpdateCallback();
 
-    expect(mocks.dialog.showMessageBox).toHaveBeenCalledWith(
-      expect.objectContaining({
-        message: "Zero 1.2.3",
-      }),
-    );
+    expect(mocks.dialog.showMessageBox).not.toHaveBeenCalled();
     expect(prepareForQuitAndInstall).not.toHaveBeenCalled();
     expect(mocks.autoUpdater.quitAndInstall).not.toHaveBeenCalled();
   });
 
-  it("prompts when Computer Use activity inspection fails", async () => {
+  it("installs a deferred update on the next check after activity stops", async () => {
+    let hostState: ComputerUseHostRuntimeState = {
+      ...OFFLINE_COMPUTER_USE_HOST_STATE,
+      lastCommandAt: new Date().toISOString(),
+    };
+    const { updateOptions, prepareForQuitAndInstall } =
+      installAndCaptureUpdateOptions(() => hostState);
+
+    updateOptions.onNotifyUser({ releaseName: "Zero 1.2.3" });
+    await flushDownloadedUpdateCallback();
+
+    hostState = OFFLINE_COMPUTER_USE_HOST_STATE;
+    emitAutoUpdaterEvent("checking-for-update");
+
+    await vi.waitFor(() => {
+      expect(prepareForQuitAndInstall).toHaveBeenCalledTimes(1);
+      expect(mocks.autoUpdater.quitAndInstall).toHaveBeenCalledTimes(1);
+    });
+    expect(mocks.dialog.showMessageBox).not.toHaveBeenCalled();
+  });
+
+  it("keeps a downloaded update pending across active checks", async () => {
+    let hostState: ComputerUseHostRuntimeState = {
+      ...OFFLINE_COMPUTER_USE_HOST_STATE,
+      lastCommandAt: new Date().toISOString(),
+    };
+    const { updateOptions, prepareForQuitAndInstall } =
+      installAndCaptureUpdateOptions(() => hostState);
+
+    updateOptions.onNotifyUser({ releaseName: "Zero 1.2.3" });
+    emitAutoUpdaterEvent("checking-for-update");
+    emitAutoUpdaterEvent("checking-for-update");
+    await flushDownloadedUpdateCallback();
+
+    expect(prepareForQuitAndInstall).not.toHaveBeenCalled();
+    expect(mocks.autoUpdater.quitAndInstall).not.toHaveBeenCalled();
+
+    hostState = OFFLINE_COMPUTER_USE_HOST_STATE;
+    emitAutoUpdaterEvent("checking-for-update");
+
+    await vi.waitFor(() => {
+      expect(prepareForQuitAndInstall).toHaveBeenCalledTimes(1);
+      expect(mocks.autoUpdater.quitAndInstall).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("defers when Computer Use activity inspection fails", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    let inspectionFails = true;
     const { updateOptions, prepareForQuitAndInstall } =
       installAndCaptureUpdateOptions(() => {
-        throw new Error("state unavailable");
+        if (inspectionFails) {
+          throw new Error("state unavailable");
+        }
+        return OFFLINE_COMPUTER_USE_HOST_STATE;
       });
 
     updateOptions.onNotifyUser({ releaseName: "Zero 1.2.3" });
@@ -269,14 +365,52 @@ describe("desktop auto-updates", () => {
       "Unable to inspect Computer Use activity for update",
       expect.any(Error),
     );
-    expect(mocks.dialog.showMessageBox).toHaveBeenCalledWith(
-      expect.objectContaining({
-        message: "Zero 1.2.3",
-      }),
-    );
+    expect(mocks.dialog.showMessageBox).not.toHaveBeenCalled();
     expect(prepareForQuitAndInstall).not.toHaveBeenCalled();
     expect(mocks.autoUpdater.quitAndInstall).not.toHaveBeenCalled();
 
+    inspectionFails = false;
+    emitAutoUpdaterEvent("checking-for-update");
+
+    await vi.waitFor(() => {
+      expect(prepareForQuitAndInstall).toHaveBeenCalledTimes(1);
+      expect(mocks.autoUpdater.quitAndInstall).toHaveBeenCalledTimes(1);
+    });
+
     warn.mockRestore();
+  });
+
+  it("starts only one install while an update restart is in progress", async () => {
+    const { updateOptions, prepareForQuitAndInstall } =
+      installAndCaptureUpdateOptions(() => OFFLINE_COMPUTER_USE_HOST_STATE);
+    let finishPreparation: (() => void) | undefined;
+    prepareForQuitAndInstall.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finishPreparation = resolve;
+        }),
+    );
+
+    updateOptions.onNotifyUser({ releaseName: "Zero 1.2.3" });
+    await vi.waitFor(() => {
+      expect(prepareForQuitAndInstall).toHaveBeenCalledTimes(1);
+    });
+
+    emitAutoUpdaterEvent("checking-for-update");
+    updateOptions.onNotifyUser({ releaseName: "Zero 1.2.3" });
+    await flushDownloadedUpdateCallback();
+
+    expect(prepareForQuitAndInstall).toHaveBeenCalledTimes(1);
+    expect(mocks.autoUpdater.quitAndInstall).not.toHaveBeenCalled();
+
+    finishPreparation?.();
+    await vi.waitFor(() => {
+      expect(mocks.autoUpdater.quitAndInstall).toHaveBeenCalledTimes(1);
+    });
+
+    emitAutoUpdaterEvent("checking-for-update");
+    await flushDownloadedUpdateCallback();
+    expect(prepareForQuitAndInstall).toHaveBeenCalledTimes(1);
+    expect(mocks.autoUpdater.quitAndInstall).toHaveBeenCalledTimes(1);
   });
 });

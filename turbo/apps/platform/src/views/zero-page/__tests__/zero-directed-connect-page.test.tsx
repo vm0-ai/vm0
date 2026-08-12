@@ -15,7 +15,9 @@ import {
   zeroCustomConnectorValuesContract,
   zeroCustomConnectorsContract,
   type CustomConnectorHttpResponse,
+  type CustomConnectorMcpResponse,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import {
   zeroConnectorCatalogContract,
@@ -236,10 +238,44 @@ function customConnector(
     connected: false,
     missingRequiredFields: ["secret"],
     configuredFieldKeys: [],
-    hasSecret: false,
     createdAt: "2026-01-01T00:00:00Z",
     updatedAt: "2026-01-01T00:00:00Z",
     ...overrides,
+  };
+}
+
+function mcpCustomConnector(): CustomConnectorMcpResponse {
+  return {
+    kind: "mcp",
+    id: "44444444-4444-4444-8444-444444444444",
+    storageVersion: 1,
+    slug: "_deepwiki",
+    displayName: "DeepWiki",
+    endpoint: "https://mcp.deepwiki.com/mcp",
+    transport: "streamable-http",
+    prefixTemplates: [],
+    fields: [
+      {
+        key: "secret",
+        label: "Secret",
+        kind: "secret",
+        required: true,
+      },
+    ],
+    headerInjections: [
+      {
+        name: "X-VM0-Test-Token",
+        valueTemplate: "{{secrets.secret}}",
+      },
+    ],
+    queryInjections: [],
+    authMode: "manual",
+    permissionBundleRef: null,
+    connected: false,
+    missingRequiredFields: ["secret"],
+    configuredFieldKeys: [],
+    createdAt: "2026-08-11T00:00:00Z",
+    updatedAt: "2026-08-11T00:00:00Z",
   };
 }
 
@@ -347,7 +383,7 @@ function getButtonByText(text: string): HTMLElement {
 }
 
 describe("directed connector connect page", () => {
-  it("connects and authorizes a manual custom connector", async () => {
+  it("connects and authorizes a manual MCP custom connector", async () => {
     let connected = false;
     let grants: AgentCustomConnectorGrant[] = [];
     let submittedValues: readonly {
@@ -355,14 +391,13 @@ describe("directed connector connect page", () => {
       readonly kind: "secret" | "variable";
       readonly value: string;
     }[] = [];
-    const connector = customConnector();
+    const connector = mcpCustomConnector();
     context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
       return respond(200, {
         connectors: [
           {
             ...connector,
             connected,
-            hasSecret: connected,
             missingRequiredFields: connected ? [] : ["secret"],
             configuredFieldKeys: connected ? ["secret"] : [],
           },
@@ -378,7 +413,6 @@ describe("directed connector connect page", () => {
         return respond(200, {
           ...connector,
           connected: true,
-          hasSecret: true,
           missingRequiredFields: [],
           configuredFieldKeys: ["secret"],
         });
@@ -388,29 +422,22 @@ describe("directed connector connect page", () => {
       zeroAgentCustomConnectorsContract.update,
       ({ body, params, respond }) => {
         expect(params.id).toBe(AGENT_ID);
-        if (!("grants" in body)) {
-          throw new Error("Expected canonical custom connector grants");
-        }
         grants = body.grants;
-        return respond(200, {
-          enabledIds: grants.map((grant) => {
-            return grant.customConnectorId;
-          }),
-          grants,
-        });
+        return respond(200, { grants });
       },
     );
 
     detachedSetupPage({
       context,
       path: `/connectors/${connector.slug}/connect?agentId=${AGENT_ID}`,
+      featureSwitches: { [FeatureSwitchKey.CustomConnectorMcp]: true },
     });
 
-    const heading = await screen.findByText("Zero needs Acme API to proceed");
+    const heading = await screen.findByText("Zero needs DeepWiki to proceed");
     expect(heading).toBeInTheDocument();
     click(getButtonByText("Connect"));
     const dialog = await screen.findByRole("dialog", {
-      name: "Connect Acme API",
+      name: "Connect DeepWiki",
     });
     await fill(within(dialog).getByLabelText("Secret"), "acme-secret");
     click(getButtonByText("Save"));
@@ -422,7 +449,7 @@ describe("directed connector connect page", () => {
       expect(grants).toStrictEqual([
         { customConnectorId: connector.id, permissionNames: [] },
       ]);
-      expect(screen.getByText("Acme API connected")).toBeInTheDocument();
+      expect(screen.getByText("DeepWiki connected")).toBeInTheDocument();
     });
   });
 
@@ -454,7 +481,7 @@ describe("directed connector connect page", () => {
     });
     context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
       return respond(200, {
-        connectors: [{ ...connector, connected, hasSecret: connected }],
+        connectors: [{ ...connector, connected }],
       });
     });
     context.mocks.api(
@@ -471,16 +498,8 @@ describe("directed connector connect page", () => {
       zeroAgentCustomConnectorsContract.update,
       ({ body, params, respond }) => {
         expect(params.id).toBe(AGENT_ID);
-        if (!("grants" in body)) {
-          throw new Error("Expected canonical custom connector grants");
-        }
         grants = body.grants;
-        return respond(200, {
-          enabledIds: grants.map((grant) => {
-            return grant.customConnectorId;
-          }),
-          grants,
-        });
+        return respond(200, { grants });
       },
     );
     const authWindow = context.mocks.browser.authWindow();
@@ -544,7 +563,7 @@ describe("directed connector connect page", () => {
     });
     context.mocks.api(zeroCustomConnectorsContract.list, ({ respond }) => {
       return respond(200, {
-        connectors: [{ ...connector, connected, hasSecret: connected }],
+        connectors: [{ ...connector, connected }],
       });
     });
     context.mocks.api(
@@ -569,14 +588,14 @@ describe("directed connector connect page", () => {
             permissionNames: ["messages:send-as-user"],
           },
         ];
-        return respond(200, { enabledIds: [connector.id], grants });
+        return respond(200, { grants });
       },
     );
     context.mocks.api(
       zeroAgentCustomConnectorsContract.update,
       ({ respond }) => {
         authorizationUpdates += 1;
-        return respond(200, { enabledIds: [], grants: [] });
+        return respond(200, { grants: [] });
       },
     );
     const authWindow = context.mocks.browser.authWindow();

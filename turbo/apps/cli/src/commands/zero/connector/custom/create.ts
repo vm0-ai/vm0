@@ -1,12 +1,13 @@
 import { readFile } from "node:fs/promises";
 
-import type { CustomConnectorClientResponse } from "@vm0/api-contracts/contracts/zero-custom-connectors";
+import type { CustomConnectorResponse } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import chalk from "chalk";
 import { Command } from "commander";
 
 import { createZeroCustomConnector } from "../../../../lib/api/domains/zero-connectors";
 import { decodeZeroTokenPayload } from "../../../../lib/api/zero-token";
 import { withErrorHandler } from "../../../../lib/command/with-error-handler";
+import { getOkouAgentId } from "../../../../lib/okou-env";
 import {
   connectorActionUrl,
   printCallbackActionUrlExample,
@@ -29,7 +30,7 @@ function requireCustomConnectorWriteCapability(): void {
 }
 
 async function printCreateResult(
-  connector: CustomConnectorClientResponse,
+  connector: CustomConnectorResponse,
   json: boolean,
 ): Promise<void> {
   if (json) {
@@ -45,7 +46,7 @@ async function printCreateResult(
   console.log(chalk.dim(`  Authentication: ${connector.authMode ?? "manual"}`));
   console.log(chalk.dim("  Status:         awaiting connection"));
   console.log();
-  const agentId = process.env.ZERO_AGENT_ID?.trim() || undefined;
+  const agentId = getOkouAgentId()?.trim() || undefined;
   const origin = await getPlatformOrigin();
   const url = connectorActionUrl({
     origin,
@@ -158,8 +159,8 @@ Manual Streamable HTTP MCP connector example:
   }
 
 Examples:
-  zero connector custom create --file ./connector.json
-  zero connector custom create --file ./connector.json --json
+  okou connector custom create --file ./connector.json
+  okou connector custom create --file ./connector.json --json
 
 Notes:
   - This command only creates the connector definition; it does not store a

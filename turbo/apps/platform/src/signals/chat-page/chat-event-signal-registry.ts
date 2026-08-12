@@ -1,4 +1,4 @@
-import { command, computed, state, type Command } from "ccstate";
+import { command, state, type Command } from "ccstate";
 import type { ChatEvent } from "@vm0/api-contracts/contracts/chat-threads";
 
 type ReceiveChatEventsCommand = Command<
@@ -14,10 +14,6 @@ interface ActiveChatEventSignals {
 const activeChatEventSignals$ = state(
   new Map<string, readonly ActiveChatEventSignals[]>(),
 );
-
-export const activeChatEventThreadIds$ = computed((get): string[] => {
-  return Array.from(get(activeChatEventSignals$).keys());
-});
 
 const unregisterActiveChatEventSignals$ = command(
   ({ get, set }, threadId: string, id: string): void => {

@@ -1,10 +1,4 @@
-import {
-  command,
-  computed,
-  type Command,
-  type Computed,
-  type State,
-} from "ccstate";
+import { command, computed, type Command, type Computed } from "ccstate";
 import type {
   ChatRunOptionsRequest,
   UserMessageInputDocument,
@@ -341,13 +335,11 @@ function createSendChatEvent(
 
 function createChatEventSetup({
   threadId,
-  initialRemoteEventsResolved$,
   initializeIndexedDbEvents$,
   mergePersistentEvents$,
   syncRemoteEvents$,
 }: {
   readonly threadId: string;
-  readonly initialRemoteEventsResolved$: State<boolean>;
   readonly initializeIndexedDbEvents$: Command<Promise<void>, [AbortSignal]>;
   readonly mergePersistentEvents$: Command<
     Promise<void>,
@@ -388,7 +380,6 @@ function createChatEventSetup({
     async ({ get, set }, signal: AbortSignal): Promise<void> => {
       signal.throwIfAborted();
       if (get(optimisticCreateUnsettled$)) {
-        set(initialRemoteEventsResolved$, true);
         return;
       }
       await set(syncRemoteEvents$, signal);
@@ -402,7 +393,7 @@ export interface ChatEventSignals {
   readonly threadId: string;
   readonly chatEvents$: Computed<ChatEvent[]>;
   readonly hasOptimisticUserMessage$: Computed<boolean>;
-  readonly initialRemoteEventsResolved$: Computed<boolean>;
+  readonly initialEventsReady$: Computed<boolean>;
   readonly setup$: Command<Promise<void>, [AbortSignal]>;
   readonly catchUp$: Command<Promise<void>, [AbortSignal]>;
   readonly sendEvent$: Command<
@@ -427,19 +418,18 @@ export function createChatEventSignals(threadId: string): ChatEventSignals {
   });
   const setup = createChatEventSetup({
     threadId,
-    initialRemoteEventsResolved$: events.initialRemoteEventsResolved$,
     initializeIndexedDbEvents$: events.initializeIndexedDbEvents$,
     mergePersistentEvents$: events.mergePersistentEvents$,
     syncRemoteEvents$: events.syncRemoteEvents$,
   });
-  const initialRemoteEventsResolved$ = computed((get): boolean => {
-    return get(events.initialRemoteEventsResolved$);
+  const initialEventsReady$ = computed((get): boolean => {
+    return get(events.initialEventsReady$);
   });
   return {
     threadId,
     chatEvents$: events.chatEvents$,
     hasOptimisticUserMessage$: events.hasOptimisticUserMessage$,
-    initialRemoteEventsResolved$,
+    initialEventsReady$,
     ...setup,
     sendEvent$,
   };

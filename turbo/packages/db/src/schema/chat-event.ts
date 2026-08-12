@@ -14,11 +14,7 @@ import {
   type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 import { chatThreads } from "./chat-thread";
-import type {
-  ChatEventPayload,
-  ChatEventUserMessage,
-  ChatEventUsagePayload,
-} from "@vm0/db/jsonb-contracts/chat-event";
+import type { ChatEventPayload } from "@vm0/db/jsonb-contracts/chat-event";
 export type {
   ChatEventAttachFileMetadata,
   ChatEventAttachFileMetadataList,
@@ -77,16 +73,12 @@ export const chatEvents = pgTable(
     // Attribution only: identifies the run that consumed or produced this row.
     // A null value on an unrevoked input identifies pending queue or active-input state.
     runId: uuid("run_id"),
-    usagePayload: jsonb("usage_payload").$type<ChatEventUsagePayload>(),
     revokesEventId: uuid("revokes_event_id").references(
       (): AnyPgColumn => {
         return chatEvents.id;
       },
       { onDelete: "no action" },
     ),
-    interruptsRunId: uuid("interrupts_run_id"),
-    // Stable grouping key for autonomous goal continuations rendered in chat.
-    runGroupId: uuid("run_group_id"),
     eventType: text("event_type").$type<ChatEventType>().notNull(),
     payload: jsonb("payload").$type<ChatEventPayload>(),
     /**
@@ -114,11 +106,6 @@ export const chatEvents = pgTable(
       | "agent_run"
     >(),
     contextId: uuid("context_id"),
-    content: text("content"),
-    /** Canonical rich user-message document for user input events. */
-    userMessage: jsonb("user_message").$type<ChatEventUserMessage>(),
-    thinking: text("thinking"),
-    error: text("error"),
     runEventSequenceNumber: integer("run_event_sequence_number"),
     /**
      * Upstream run-event ID or a deterministic seed for synthesized rows.
@@ -141,15 +128,9 @@ export const chatEvents = pgTable(
         .on(table.chatThreadId, table.createdAt.desc())
         .where(chatEventTerminalPredicate(table.eventType)),
       index("idx_chat_events_run_id").on(table.runId),
-      index("chat_events_usage_run_id_idx")
-        .on(table.runId)
-        .where(sql`${table.usagePayload} IS NOT NULL`),
       uniqueIndex("chat_events_revokes_event_id_not_null_unique")
         .on(table.revokesEventId)
         .where(sql`${table.revokesEventId} IS NOT NULL`),
-      uniqueIndex("chat_events_interrupts_run_id_not_null_unique")
-        .on(table.interruptsRunId)
-        .where(sql`${table.interruptsRunId} IS NOT NULL`),
       index("chat_events_input_automation_context_idx")
         .on(table.contextId)
         .where(sql`${table.eventType} = 'input.automation'`),
@@ -169,12 +150,13 @@ export const chatEvents = pgTable(
       uniqueIndex("chat_events_run_terminal_unique")
         .on(table.runId)
         .where(chatEventTerminalPredicate(table.eventType)),
-      uniqueIndex("chat_events_run_thinking_unique")
+      uniqueIndex("chat_events_output_thinking_run_id_unique")
         .on(table.runId)
-        .where(sql`${table.thinking} IS NOT NULL`),
-      // Canonical twin of chat_events_interrupts_run_id_not_null_unique: after
-      // the canonical backfill, control.interrupt rows carry their target run
-      // in run_id, so the one-interrupt-per-run guarantee must hold there too.
+        .where(
+          sql`${table.eventType} = 'output.thinking' AND ${table.runId} IS NOT NULL`,
+        ),
+      // control.interrupt rows carry their target run in run_id, so only one
+      // interrupt may target a run.
       uniqueIndex("chat_events_control_interrupt_run_id_unique")
         .on(table.runId)
         .where(
@@ -207,42 +189,43 @@ export const chatEvents = pgTable(
         )`,
       ),
       check(
-        "chat_events_input_user_message_check",
+        "chat_events_input_user_message_payload_check",
         sql`${table.eventType} NOT IN ('input.prompt', 'input.budget', 'input.rejected')
-          OR ${table.userMessage} IS NOT NULL`,
-      ),
-      check(
-        "chat_events_input_content_check",
-        sql`${table.eventType} NOT IN ('input.prompt', 'input.budget', 'input.rejected')
-          OR ${table.content} IS NULL`,
-      ),
-      check(
-        "chat_events_goal_open_content_check",
-        sql`${table.eventType} <> 'goal.open'
           OR (
-            ${table.content} IS NOT NULL
-            AND ${table.content} = btrim(${table.content})
-            AND char_length(${table.content}) > 0
+            ${table.payload} IS NOT NULL
+            AND ${table.payload} ? 'userMessage'
           )`,
       ),
       check(
-        "chat_events_goal_close_content_check",
-        sql`${table.eventType} <> 'goal.close' OR ${table.content} IS NULL`,
+        "chat_events_input_payload_content_check",
+        sql`${table.eventType} NOT IN ('input.prompt', 'input.budget', 'input.rejected')
+          OR ${table.payload} IS NULL
+          OR NOT (${table.payload} ? 'content')`,
+      ),
+      check(
+        "chat_events_goal_open_payload_check",
+        sql`${table.eventType} <> 'goal.open'
+          OR (
+            ${table.payload} IS NOT NULL
+            AND ${table.payload} ? 'content'
+            AND jsonb_typeof(${table.payload} -> 'content') = 'string'
+            AND ${table.payload} ->> 'content' = btrim(${table.payload} ->> 'content')
+            AND char_length(${table.payload} ->> 'content') > 0
+            AND ${table.payload} - 'content' = '{}'::jsonb
+          )`,
+      ),
+      check(
+        "chat_events_goal_close_payload_check",
+        sql`${table.eventType} <> 'goal.close' OR ${table.payload} IS NULL`,
       ),
       check(
         "chat_events_goal_marker_payload_check",
         sql`${table.eventType} NOT IN ('goal.open', 'goal.close')
           OR (
             ${table.runId} IS NULL
-            AND ${table.usagePayload} IS NULL
             AND ${table.revokesEventId} IS NULL
-            AND ${table.interruptsRunId} IS NULL
-            AND ${table.runGroupId} IS NULL
             AND ${table.contextType} IS NULL
             AND ${table.contextId} IS NULL
-            AND ${table.userMessage} IS NULL
-            AND ${table.thinking} IS NULL
-            AND ${table.error} IS NULL
             AND ${table.runEventSequenceNumber} IS NULL
             AND ${table.runEventId} IS NULL
           )`,

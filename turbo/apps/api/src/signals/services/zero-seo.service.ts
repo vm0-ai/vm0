@@ -59,7 +59,7 @@ interface AuthedSeoArgs {
   readonly request: SeoRequest;
 }
 
-type ErrorStatus = 502 | 503;
+type ErrorStatus = 400 | 502 | 503;
 
 interface SeoErrorResponse {
   readonly status: ErrorStatus;
@@ -89,6 +89,10 @@ type DataForSeoBodyResult =
       readonly billingQuantity: number;
     };
 
+type DataForSeoAttemptResult =
+  | DataForSeoBodyResult
+  | { readonly kind: "empty" };
+
 type ZeroSeoCommandResponse =
   | { readonly status: 200; readonly body: ZeroSeoResponse }
   | SeoErrorResponse
@@ -104,6 +108,7 @@ const dataForSeoResponseSchema = z.object({
   status_code: z.number().int(),
   status_message: z.string(),
   cost: z.number().finite().nonnegative(),
+  tasks_count: z.number().int().nonnegative(),
   tasks_error: z.number().int().nonnegative(),
   tasks: z.array(dataForSeoTaskSchema).max(1),
 });
@@ -117,6 +122,13 @@ function badGateway(
   code = "SEO_PROVIDER_ERROR",
 ): SeoErrorResponse {
   return { status: 502, body: errorBody(message, code) };
+}
+
+function invalidDataForSeoRequest(message: string): SeoErrorResponse {
+  return {
+    status: 400,
+    body: errorBody(message, "DATAFORSEO_INVALID_REQUEST"),
+  };
 }
 
 function serviceUnavailable(message: string): SeoErrorResponse {
@@ -168,6 +180,59 @@ function dataForSeoProviderStatus(body: unknown): {
   };
 }
 
+function dataForSeoFailure(
+  statusCode: number | undefined,
+  statusMessage: string | undefined,
+  httpStatus?: number,
+): SeoErrorResponse {
+  if (statusCode === 40_104) {
+    return badGateway(
+      "DataForSEO account requires verification",
+      "DATAFORSEO_ACCOUNT_UNVERIFIED",
+    );
+  }
+  if (statusCode === 40_100) {
+    return badGateway(
+      "DataForSEO authentication failed",
+      "DATAFORSEO_AUTH_ERROR",
+    );
+  }
+  if (statusCode === 40_202 || httpStatus === 429) {
+    return badGateway(
+      "DataForSEO is temporarily rate limited",
+      "SEO_PROVIDER_RATE_LIMITED",
+    );
+  }
+  if (
+    statusCode !== undefined &&
+    statusCode >= 40_501 &&
+    statusCode <= 40_506
+  ) {
+    return invalidDataForSeoRequest(
+      statusMessage ?? "DataForSEO rejected the request parameters",
+    );
+  }
+  if (
+    (statusCode !== undefined && statusCode >= 40_200 && statusCode < 40_300) ||
+    httpStatus === 402
+  ) {
+    return badGateway(
+      "DataForSEO account cannot process requests",
+      "DATAFORSEO_ACCOUNT_ERROR",
+    );
+  }
+  if (httpStatus === 401 || httpStatus === 403) {
+    return badGateway(
+      "DataForSEO authentication failed",
+      "DATAFORSEO_AUTH_ERROR",
+    );
+  }
+  return badGateway(
+    "DataForSEO upstream request failed",
+    "DATAFORSEO_UPSTREAM_ERROR",
+  );
+}
+
 async function fetchDataForSeoJson(
   url: URL,
   init: RequestInit,
@@ -212,15 +277,17 @@ async function fetchDataForSeoJson(
         });
       }
       if (response.status === 429) {
-        return errorResult(
-          badGateway(
-            "DataForSEO is temporarily rate limited",
-            "SEO_PROVIDER_RATE_LIMITED",
-          ),
-        );
+        return errorResult(dataForSeoFailure(undefined, undefined, 429));
       }
       if (!response.ok) {
-        return errorResult(badGateway("DataForSEO request failed"));
+        const providerStatus = dataForSeoProviderStatus(body);
+        return errorResult(
+          dataForSeoFailure(
+            providerStatus.providerStatusCode,
+            providerStatus.providerStatusMessage,
+            response.status,
+          ),
+        );
       }
       return { kind: "body" as const, body };
     })(),
@@ -247,7 +314,12 @@ async function fetchDataForSeoJson(
         badGateway("DataForSEO request timed out", "SEO_TIMEOUT"),
       );
     }
-    return errorResult(badGateway("DataForSEO request failed"));
+    return errorResult(
+      badGateway(
+        "DataForSEO upstream request failed",
+        "DATAFORSEO_UPSTREAM_ERROR",
+      ),
+    );
   }
   return result.value;
 }
@@ -274,7 +346,7 @@ function dataForSeoTask(request: DataForSeoRequest): Record<string, unknown> {
     case "serp": {
       return {
         keyword: request.body.query,
-        location_name: request.body.location,
+        location_name: normalizeDataForSeoLocation(request.body.location),
         language_code: request.body.languageCode,
         ...(request.body.engine === "google_news"
           ? {}
@@ -285,7 +357,7 @@ function dataForSeoTask(request: DataForSeoRequest): Record<string, unknown> {
     case "keyword-ideas": {
       return {
         keywords: [request.body.keyword],
-        location_name: request.body.location,
+        location_name: normalizeDataForSeoLocation(request.body.location),
         language_code: request.body.languageCode,
         limit: request.body.limit,
       };
@@ -293,7 +365,7 @@ function dataForSeoTask(request: DataForSeoRequest): Record<string, unknown> {
     case "ranked-keywords": {
       return {
         target: request.body.target,
-        location_name: request.body.location,
+        location_name: normalizeDataForSeoLocation(request.body.location),
         language_code: request.body.languageCode,
         limit: request.body.limit,
       };
@@ -305,6 +377,10 @@ function dataForSeoTask(request: DataForSeoRequest): Record<string, unknown> {
       };
     }
   }
+}
+
+function normalizeDataForSeoLocation(location: string): string {
+  return location.replace(/\s*,\s*/g, ",");
 }
 
 function dataForSeoPreflightQuantity(request: DataForSeoRequest): number {
@@ -328,12 +404,12 @@ function providerCostMicros(costUsd: number): number | undefined {
   return Number.isSafeInteger(quantity) ? quantity : undefined;
 }
 
-async function fetchDataForSeo(
+async function fetchDataForSeoOnce(
   login: string,
   password: string,
   request: DataForSeoRequest,
   signal: AbortSignal,
-): Promise<DataForSeoBodyResult> {
+): Promise<DataForSeoAttemptResult> {
   const endpoint = dataForSeoPath(request);
   const result = await fetchDataForSeoJson(
     new URL(endpoint, DATAFORSEO_BASE_URL),
@@ -350,6 +426,24 @@ async function fetchDataForSeo(
   );
   if (result.kind === "error") {
     return result;
+  }
+
+  const providerStatus = dataForSeoProviderStatus(result.body);
+  if (
+    providerStatus.providerStatusCode !== undefined &&
+    providerStatus.providerStatusCode !== 20_000
+  ) {
+    L.warn("DataForSEO request failed", {
+      operation: request.operation,
+      endpoint,
+      ...providerStatus,
+    });
+    return errorResult(
+      dataForSeoFailure(
+        providerStatus.providerStatusCode,
+        providerStatus.providerStatusMessage,
+      ),
+    );
   }
 
   const parsed = dataForSeoResponseSchema.safeParse(result.body);
@@ -371,32 +465,45 @@ async function fetchDataForSeo(
       ),
     );
   }
-  const task = parsed.data.tasks[0];
   if (
-    parsed.data.status_code !== 20_000 ||
-    parsed.data.tasks_error !== 0 ||
-    !task ||
-    task.status_code !== 20_000
+    parsed.data.status_code === 20_000 &&
+    parsed.data.cost === 0 &&
+    parsed.data.tasks_count === 0 &&
+    parsed.data.tasks_error === 0 &&
+    parsed.data.tasks.length === 0
   ) {
+    return { kind: "empty" };
+  }
+  const task = parsed.data.tasks[0];
+  if (!task || (parsed.data.tasks_error !== 0 && task.status_code === 20_000)) {
+    L.warn("DataForSEO API returned an invalid task response", {
+      operation: request.operation,
+      endpoint,
+      tasksCount: parsed.data.tasks_count,
+      tasksError: parsed.data.tasks_error,
+      returnedTasks: parsed.data.tasks.length,
+    });
+    return errorResult(
+      badGateway(
+        "DataForSEO returned an invalid response",
+        "DATAFORSEO_INVALID_RESPONSE",
+      ),
+    );
+  }
+  if (parsed.data.tasks_error !== 0 || task.status_code !== 20_000) {
     L.warn("DataForSEO task failed", {
       operation: request.operation,
       endpoint,
       providerStatusCode: parsed.data.status_code,
       providerStatusMessage: sanitizedErrorMessage(parsed.data.status_message),
       tasksError: parsed.data.tasks_error,
-      ...(task
-        ? {
-            taskStatusCode: task.status_code,
-            taskStatusMessage: sanitizedErrorMessage(task.status_message),
-          }
-        : {}),
+      taskStatusCode: task.status_code,
+      taskStatusMessage: sanitizedErrorMessage(task.status_message),
     });
     return errorResult(
-      badGateway(
-        sanitizedErrorMessage(
-          task?.status_message ?? parsed.data.status_message,
-        ),
-        "DATAFORSEO_ERROR",
+      dataForSeoFailure(
+        task.status_code,
+        sanitizedErrorMessage(task.status_message),
       ),
     );
   }
@@ -422,6 +529,46 @@ async function fetchDataForSeo(
   };
 }
 
+async function fetchDataForSeo(
+  login: string,
+  password: string,
+  request: DataForSeoRequest,
+  signal: AbortSignal,
+): Promise<DataForSeoBodyResult> {
+  const firstResult = await fetchDataForSeoOnce(
+    login,
+    password,
+    request,
+    signal,
+  );
+  if (firstResult.kind !== "empty") {
+    return firstResult;
+  }
+
+  L.warn("DataForSEO returned an empty task list; retrying", {
+    operation: request.operation,
+    endpoint: dataForSeoPath(request),
+  });
+  signal.throwIfAborted();
+  const retryResult = await fetchDataForSeoOnce(
+    login,
+    password,
+    request,
+    signal,
+  );
+  if (retryResult.kind !== "empty") {
+    return retryResult;
+  }
+
+  L.warn("DataForSEO returned an empty task list after retry", {
+    operation: request.operation,
+    endpoint: dataForSeoPath(request),
+  });
+  return errorResult(
+    badGateway("DataForSEO returned no task", "DATAFORSEO_EMPTY_TASKS"),
+  );
+}
+
 function runIdForUsage(auth: AuthContext): string | undefined {
   return auth.tokenType === "zero" || auth.tokenType === "sandbox"
     ? auth.runId
@@ -443,8 +590,8 @@ const runDataForSeo$ = command(
     args: AuthedSeoArgs,
     signal: AbortSignal,
   ): Promise<ZeroSeoCommandResponse> => {
-    const login = env("ZERO_SEO_DATAFORSEO_LOGIN");
-    const password = env("ZERO_SEO_DATAFORSEO_PASSWORD");
+    const login = env("OKOU_SEO_DATAFORSEO_LOGIN");
+    const password = env("OKOU_SEO_DATAFORSEO_PASSWORD");
     if (!login || !password) {
       return serviceUnavailable(
         "Zero SEO DataForSEO provider is not configured",

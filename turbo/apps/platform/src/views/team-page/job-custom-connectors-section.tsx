@@ -8,10 +8,7 @@ import {
 import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
 import { toast } from "@vm0/ui/components/ui/sonner";
-import {
-  isHttpCustomConnectorClientResponse,
-  type CustomConnectorHttpClientResponse,
-} from "@vm0/api-contracts/contracts/zero-custom-connectors";
+import type { CustomConnectorResponse } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import type { AgentCustomConnectorGrant } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 import { customConnectors$ } from "../../signals/zero-page/settings/custom-connectors.ts";
 import {
@@ -32,6 +29,8 @@ import { detach, Reason } from "../../signals/utils.ts";
 import { CustomConnectorIcon } from "../zero-page/components/settings/custom-connector-icon.tsx";
 import { ConnectorPermissionRow } from "../zero-page/components/settings/connector-permission-row.tsx";
 import { CustomConnectorPermissionsDrawer } from "../zero-page/components/settings/custom-connector-permissions-drawer.tsx";
+import { customConnectorTarget } from "../zero-page/components/settings/custom-connector-display.ts";
+import { customConnectorMcpEnabled$ } from "../../signals/external/feature-switch.ts";
 
 function JobCustomConnectorRow({
   connector,
@@ -43,7 +42,7 @@ function JobCustomConnectorRow({
   isLast,
   onToggle,
 }: {
-  readonly connector: CustomConnectorHttpClientResponse;
+  readonly connector: CustomConnectorResponse;
   readonly enabled: boolean;
   readonly loading: boolean;
   readonly agentId: string | undefined;
@@ -53,6 +52,8 @@ function JobCustomConnectorRow({
   readonly onToggle: (id: string, checked: boolean) => void;
 }) {
   const openPermissions = useSet(openCustomConnectorPermissions$);
+  const hasPermissionBundle =
+    connector.kind === "http" && Boolean(connector.permissionBundleRef);
   const permissionNames =
     grants?.find((grant) => {
       return grant.customConnectorId === connector.id;
@@ -82,22 +83,20 @@ function JobCustomConnectorRow({
       }
       label={connector.displayName}
       description={
-        <span className="font-mono">{connector.prefixTemplates[0]}</span>
+        <span className="font-mono">{customConnectorTarget(connector)}</span>
       }
       enabled={enabled}
-      loading={
-        loading || (Boolean(connector.permissionBundleRef) && grantsLoading)
-      }
-      disabled={Boolean(connector.permissionBundleRef) && grants === null}
+      loading={loading || (hasPermissionBundle && grantsLoading)}
+      disabled={hasPermissionBundle && grants === null}
       showManage={
         enabled &&
-        Boolean(connector.permissionBundleRef) &&
+        hasPermissionBundle &&
         grants !== null &&
         agentId !== undefined
       }
       isLast={isLast}
       onToggle={(checked) => {
-        if (checked && connector.permissionBundleRef) {
+        if (checked && hasPermissionBundle) {
           if (grants !== null && agentId) {
             openPermissionDrawer(false);
           }
@@ -114,27 +113,26 @@ function JobCustomConnectorRow({
 
 export function JobCustomConnectorsSection() {
   const connectors = useLastResolved(customConnectors$);
-  const connectedHttpConnectors = connectors
-    ?.filter(isHttpCustomConnectorClientResponse)
-    .filter((connector) => {
-      return connector.connected;
-    });
+  const connectedConnectors = connectors?.filter((connector) => {
+    return connector.connected;
+  });
 
-  if (!connectedHttpConnectors || connectedHttpConnectors.length === 0) {
+  if (!connectedConnectors || connectedConnectors.length === 0) {
     return null;
   }
 
   return (
-    <ConnectedJobCustomConnectorsSection connectors={connectedHttpConnectors} />
+    <ConnectedJobCustomConnectorsSection connectors={connectedConnectors} />
   );
 }
 
 function ConnectedJobCustomConnectorsSection({
   connectors,
 }: {
-  readonly connectors: readonly CustomConnectorHttpClientResponse[];
+  readonly connectors: readonly CustomConnectorResponse[];
 }) {
   const { t } = useTranslation("agents");
+  const mcpEnabled = useGet(customConnectorMcpEnabled$);
   const addedLoadable = useLastLoadable(agentAddedCustomConnectors$);
   const added = addedLoadable.state === "hasData" ? addedLoadable.data : [];
   const addedSet = new Set(added);
@@ -148,6 +146,11 @@ function ConnectedJobCustomConnectorsSection({
   );
   const grantsLoadable = useLastLoadable(agentCustomConnectorGrants$);
   const detail = useLastResolved(agentDetail$);
+  const visibleConnectors = connectors.filter((connector) => {
+    return (
+      connector.kind === "http" || mcpEnabled || addedSet.has(connector.id)
+    );
+  });
 
   const handleToggle = (id: string, checked: boolean) => {
     if (saving) {
@@ -190,6 +193,10 @@ function ConnectedJobCustomConnectorsSection({
       ? permissionBundleLoadable.data
       : null;
 
+  if (visibleConnectors.length === 0) {
+    return null;
+  }
+
   return (
     <div className="zero-card">
       <div className="px-5 pt-4 pb-3 text-sm text-muted-foreground border-b border-border/50">
@@ -197,7 +204,7 @@ function ConnectedJobCustomConnectorsSection({
           return $.authorization.customConnectors.description;
         })}
       </div>
-      {connectors.map((connector, index) => {
+      {visibleConnectors.map((connector, index) => {
         return (
           <JobCustomConnectorRow
             key={connector.id}
@@ -209,7 +216,7 @@ function ConnectedJobCustomConnectorsSection({
               grantsLoadable.state === "hasData" ? grantsLoadable.data : null
             }
             grantsLoading={grantsLoadable.state === "loading"}
-            isLast={index === connectors.length - 1}
+            isLast={index === visibleConnectors.length - 1}
             onToggle={handleToggle}
           />
         );

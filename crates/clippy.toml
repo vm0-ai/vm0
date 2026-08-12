@@ -2,3 +2,7 @@ allow-unwrap-in-tests = true
 allow-expect-in-tests = true
 allow-panic-in-tests = true
 allow-indexing-slicing-in-tests = true
+disallowed-macros = [
+    { path = "tracing::debug", reason = "DEBUG events have no configured production sink; remove the event or use an operationally visible level", allow-invalid = true },
+    { path = "tracing::trace", reason = "TRACE events have no configured production sink; remove the event or use an operationally visible level", allow-invalid = true },
+]

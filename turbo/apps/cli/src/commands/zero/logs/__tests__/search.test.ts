@@ -1,5 +1,5 @@
 /**
- * Tests for zero logs search command
+ * Tests for okou logs search command
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: searchCommand.parseAsync()
@@ -92,7 +92,7 @@ function makeCodexCommandCompletedEvent(
   };
 }
 
-describe("zero logs search command", () => {
+describe("okou logs search command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -453,7 +453,7 @@ describe("zero logs search command", () => {
 
     let errorCalls = mockConsoleError.mock.calls.flat().join("\n");
     expect(errorCalls).toContain("Invalid run ID");
-    expect(errorCalls).toContain("zero logs list");
+    expect(errorCalls).toContain("okou logs list");
 
     mockConsoleError.mockClear();
 
@@ -463,7 +463,7 @@ describe("zero logs search command", () => {
 
     errorCalls = mockConsoleError.mock.calls.flat().join("\n");
     expect(errorCalls).toContain("Invalid run ID");
-    expect(errorCalls).toContain("zero logs list");
+    expect(errorCalls).toContain("okou logs list");
   });
 
   it("should reject non-UUID --agent value", async () => {
@@ -479,7 +479,7 @@ describe("zero logs search command", () => {
 
     let errorCalls = mockConsoleError.mock.calls.flat().join("\n");
     expect(errorCalls).toContain("Invalid agent ID");
-    expect(errorCalls).toContain("zero logs list");
+    expect(errorCalls).toContain("okou logs list");
 
     mockConsoleError.mockClear();
 
@@ -489,7 +489,7 @@ describe("zero logs search command", () => {
 
     errorCalls = mockConsoleError.mock.calls.flat().join("\n");
     expect(errorCalls).toContain("Invalid agent ID");
-    expect(errorCalls).toContain("zero logs list");
+    expect(errorCalls).toContain("okou logs list");
   });
 
   it("should reject malformed UUID-like --run value", async () => {
@@ -505,7 +505,7 @@ describe("zero logs search command", () => {
 
     const errorCalls = mockConsoleError.mock.calls.flat().join("\n");
     expect(errorCalls).toContain("Invalid run ID");
-    expect(errorCalls).toContain("zero logs list");
+    expect(errorCalls).toContain("okou logs list");
   });
 
   it("should handle authentication error", async () => {

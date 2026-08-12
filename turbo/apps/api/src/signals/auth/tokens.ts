@@ -27,7 +27,6 @@ const SANDBOX_TOKEN_TTL_SECONDS = 3 * 60 * 60;
 
 const CONDITIONAL_CAPABILITIES = [
   ["banking:read", FeatureSwitchKey.Banking],
-  ["seo:read", FeatureSwitchKey.SeoBuiltIn],
 ] as const satisfies readonly (readonly [ZeroCapability, FeatureSwitchKey])[];
 
 const AGENT_EXCLUDED_CAPABILITIES = [
@@ -35,6 +34,7 @@ const AGENT_EXCLUDED_CAPABILITIES = [
 ] as const satisfies readonly ZeroCapability[];
 
 interface ZeroTokenOptions {
+  readonly scope?: "zero" | "okou";
   readonly computerUseHostId?: string;
   readonly cloudBrowserEnabled?: boolean;
   readonly imageRecognitionAvailable?: boolean;
@@ -70,7 +70,7 @@ const zeroCapabilitiesSchema = z
   .readonly();
 
 const zeroTokenPayloadSchema = jwtBaseSchema.extend({
-  scope: z.literal("zero"),
+  scope: z.enum(["zero", "okou"]),
   runId: z.string().min(1),
   orgId: z.string().min(1),
   capabilities: zeroCapabilitiesSchema,
@@ -331,7 +331,7 @@ export function generateZeroToken(
     }
   }
   const payload: z.infer<typeof zeroTokenPayloadSchema> = {
-    scope: "zero",
+    scope: options?.scope ?? "zero",
     userId,
     runId,
     orgId,

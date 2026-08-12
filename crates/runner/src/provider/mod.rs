@@ -14,7 +14,7 @@ mod local;
 #[cfg(test)]
 pub mod mock;
 
-pub(crate) use api::ApiClient;
+pub(crate) use api::{ApiClient, ReserveActiveInputResult};
 pub use api::{ApiProvider, ApiProviderConfig, BuiltinFirewallCatalogCachePaths};
 pub(crate) use connector_runtime_sync::{
     ConnectorRuntimeSyncHandle, ConnectorRuntimeSyncRegistration,
@@ -210,6 +210,12 @@ where
 pub(crate) enum JobDiscoverySource {
     Ably,
     Poll,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum CompletionReportTiming {
+    ConcurrentWithFinalization,
+    AfterFinalization,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -798,6 +804,17 @@ pub trait JobProvider: Send + Sync {
     /// inside a `select!` branch handler) to guarantee that a successful
     /// claim is always paired with a later [`complete()`](JobProvider::complete).
     async fn claim(&self, candidate: JobCandidate) -> Option<ClaimedJob>;
+
+    /// Controls when reporting completion may make the terminal result
+    /// externally observable.
+    ///
+    /// API-backed providers can report while finalization runs because the API
+    /// coordinates immediate successors with finalizing runner state. Providers
+    /// whose completion result directly releases a local caller can require
+    /// finalization first so a following reuse-dependent submission is safe.
+    fn completion_report_timing(&self) -> CompletionReportTiming {
+        CompletionReportTiming::AfterFinalization
+    }
 
     /// Report job completion. Called concurrently from spawned executor tasks.
     ///

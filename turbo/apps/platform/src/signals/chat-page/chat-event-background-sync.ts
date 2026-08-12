@@ -1,6 +1,7 @@
 import { command } from "ccstate";
 import { chatEventFromRow } from "@vm0/api-contracts/contracts/chat-event-row-projection";
 import type { ChatEvent } from "@vm0/api-contracts/contracts/chat-threads";
+import { foregroundReady$ } from "../auth-retry.ts";
 import { chatEventSnapshotReadEnabled$ } from "../external/feature-switch.ts";
 import { logger } from "../log.ts";
 import { setAblyMessageLoop$ } from "../realtime.ts";
@@ -19,12 +20,10 @@ import {
 } from "./remote-chat-event-data-source.ts";
 import {
   CHAT_EVENT_ROWS_PAGE_LIMIT,
+  fetchChatEventSnapshotRows$,
   listRowsAfter$,
 } from "./remote-chat-event-row-data-source.ts";
-import {
-  activeChatEventThreadIds$,
-  receiveActiveChatEvents$,
-} from "./chat-event-signal-registry.ts";
+import { receiveActiveChatEvents$ } from "./chat-event-signal-registry.ts";
 import { sidebarActiveThreadIds$ } from "./chat-thread-event-sourcing.ts";
 import { allUnreadThreadIds$ } from "./sidebar-unread-threads.ts";
 import {
@@ -34,6 +33,7 @@ import {
 
 const L = logger("ChatEventBackgroundSync");
 const CHAT_THREAD_MESSAGE_CREATED_PREFIX = "chatThreadMessageCreated:";
+const THREAD_START_SEQ_ID = 0;
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -70,10 +70,33 @@ function createdMessageSyncThroughSeqId(message: unknown): number | null {
   return message.data.syncThroughSeqId;
 }
 
+const coldStartChatThreadRows$ = command(
+  async (
+    { set },
+    threadId: string,
+    signal: AbortSignal,
+  ): Promise<{
+    readonly events: readonly ChatEvent[];
+    readonly lastSeqId: number;
+  }> => {
+    const snapshot = await set(fetchChatEventSnapshotRows$, threadId, signal);
+    if (snapshot === null) {
+      return { events: [], lastSeqId: THREAD_START_SEQ_ID };
+    }
+    await set(writeIndexedDbChatEventRows$, snapshot.rows, signal);
+    return {
+      events: snapshot.rows.map((row) => {
+        return chatEventFromRow(row);
+      }),
+      lastSeqId: snapshot.lastSeqId,
+    };
+  },
+);
+
 /**
- * Snapshot-read variant: tails the raw-row cache. A thread without cached
- * rows is left to its foreground pane, which owns the snapshot cold start; a
- * 410 clears the cache so the next foreground sync rebuilds it.
+ * Snapshot-read variant: cold-starts an empty raw-row cache from the archive,
+ * then tails it through the raw-row endpoint. An expired cursor rebuilds the
+ * cache in the same pass.
  */
 const syncChatThreadRowsToIndexedDb$ = command(
   async (
@@ -93,11 +116,11 @@ const syncChatThreadRowsToIndexedDb$ = command(
       signal,
     );
     signal.throwIfAborted();
-    if (lastSeqId === null) {
-      L.debug("skipped background row sync: no cached rows", { threadId });
-      return [];
-    }
-    if (syncThroughSeqId !== null && lastSeqId >= syncThroughSeqId) {
+    if (
+      lastSeqId !== null &&
+      syncThroughSeqId !== null &&
+      lastSeqId >= syncThroughSeqId
+    ) {
       L.debug("skipped background row sync: seq watermark already cached", {
         threadId,
         syncThroughSeqId,
@@ -106,18 +129,33 @@ const syncChatThreadRowsToIndexedDb$ = command(
     }
 
     const syncedEvents: ChatEvent[] = [];
-    let sinceSeqId = lastSeqId;
+    let cursorFromServer = false;
+    let sinceSeqId: number;
+    if (lastSeqId === null) {
+      const coldStart = await set(coldStartChatThreadRows$, threadId, signal);
+      syncedEvents.push(...coldStart.events);
+      sinceSeqId = coldStart.lastSeqId;
+      cursorFromServer = true;
+    } else {
+      sinceSeqId = lastSeqId;
+    }
+
     let shouldLoadNextPage = true;
     while (shouldLoadNextPage) {
       const page = await set(listRowsAfter$, { threadId, sinceSeqId }, signal);
       signal.throwIfAborted();
       if (page.kind === "expired") {
+        if (cursorFromServer) {
+          throw new Error(
+            "chat event rows cursor expired right after a background cold start",
+          );
+        }
         await set(clearIndexedDbChatEventRows$, threadId, signal);
-        signal.throwIfAborted();
-        L.debug("background row sync cursor expired; cache cleared", {
-          threadId,
-        });
-        return syncedEvents;
+        const coldStart = await set(coldStartChatThreadRows$, threadId, signal);
+        syncedEvents.push(...coldStart.events);
+        sinceSeqId = coldStart.lastSeqId;
+        cursorFromServer = true;
+        continue;
       }
       if (page.rows.length === 0) {
         return syncedEvents;
@@ -238,17 +276,21 @@ const handleUserChannelMessage$ = command(
   },
 );
 
-const catchUpVisibleChatThreadEvents$ = command(
+const catchUpUnreadChatThreadEvents$ = command(
   async ({ get, set }, signal: AbortSignal): Promise<boolean> => {
+    const foregroundReady = get(foregroundReady$);
+    await foregroundReady.promise;
+    signal.throwIfAborted();
+
+    const unreadThreadIds = await get(allUnreadThreadIds$);
+    signal.throwIfAborted();
     await Promise.all(
-      get(activeChatEventThreadIds$).map(async (threadId) => {
-        const events = await set(
-          syncChatThreadEventsToIndexedDb$,
-          { threadId, syncThroughSeqId: null },
+      Array.from(unreadThreadIds, (threadId) => {
+        return set(
+          handleUserChannelMessage$,
+          { name: `${CHAT_THREAD_MESSAGE_CREATED_PREFIX}${threadId}` },
           signal,
         );
-        signal.throwIfAborted();
-        await set(receiveActiveChatEvents$, threadId, events, signal);
       }),
     );
     signal.throwIfAborted();
@@ -262,7 +304,7 @@ const subscribeChatEventBackgroundSync$ = command(
       setAblyMessageLoop$,
       {
         loopCommand$: handleUserChannelMessage$,
-        catchUpCommand$: catchUpVisibleChatThreadEvents$,
+        catchUpCommand$: catchUpUnreadChatThreadEvents$,
       },
       signal,
     );

@@ -69,6 +69,26 @@ fn validate_journal(
     Ok(journal.delivery_ids)
 }
 
+/// Parse and validate a bounded active-input receipt journal snapshot.
+///
+/// This entry point is used when the caller already obtained bytes through a
+/// bounded sandbox file boundary. Local callers should prefer
+/// [`read_active_input_receipt_journal`] so private-file metadata is validated
+/// before parsing.
+pub fn parse_active_input_receipt_journal(
+    bytes: &[u8],
+    expected_run_id: &str,
+) -> io::Result<Vec<String>> {
+    if bytes.len() > MAX_ACTIVE_INPUT_RECEIPT_JOURNAL_BYTES {
+        return Err(invalid_data(format!(
+            "receipt journal exceeds {MAX_ACTIVE_INPUT_RECEIPT_JOURNAL_BYTES} bytes"
+        )));
+    }
+    let journal = serde_json::from_slice::<ActiveInputReceiptJournal>(bytes)
+        .map_err(|error| invalid_data(format!("invalid active-input receipt journal: {error}")))?;
+    validate_journal(journal, expected_run_id)
+}
+
 /// Read and validate the outstanding acceptance receipts for one run.
 ///
 /// A missing journal is equivalent to an empty outstanding set. The file is
@@ -83,9 +103,7 @@ pub fn read_active_input_receipt_journal(
         validate_run_id(expected_run_id)?;
         return Ok(Vec::new());
     };
-    let journal = serde_json::from_slice::<ActiveInputReceiptJournal>(&bytes)
-        .map_err(|error| invalid_data(format!("invalid active-input receipt journal: {error}")))?;
-    validate_journal(journal, expected_run_id)
+    parse_active_input_receipt_journal(&bytes, expected_run_id)
 }
 
 /// Atomically publish the outstanding acceptance receipts for one run.
@@ -227,6 +245,28 @@ mod tests {
             read_active_input_receipt_journal(&path, RUN_ID)
                 .unwrap_err()
                 .kind(),
+            io::ErrorKind::InvalidData
+        );
+    }
+
+    #[test]
+    fn bounded_snapshot_parser_validates_sandbox_read_bytes() {
+        assert_eq!(
+            parse_active_input_receipt_journal(
+                format!(r#"{{"runId":"{RUN_ID}","deliveryIds":["{FIRST_ID}","{SECOND_ID}"]}}"#)
+                    .as_bytes(),
+                RUN_ID,
+            )
+            .unwrap(),
+            vec![FIRST_ID.to_owned(), SECOND_ID.to_owned()]
+        );
+        assert_eq!(
+            parse_active_input_receipt_journal(
+                &vec![b'x'; MAX_ACTIVE_INPUT_RECEIPT_JOURNAL_BYTES + 1],
+                RUN_ID,
+            )
+            .unwrap_err()
+            .kind(),
             io::ErrorKind::InvalidData
         );
     }

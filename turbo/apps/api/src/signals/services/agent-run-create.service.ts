@@ -18,7 +18,6 @@ import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
 import type { CodexServiceTier } from "@vm0/api-contracts/contracts/chat-threads";
 import type { RunContextResponse } from "@vm0/api-contracts/contracts/zero-runs";
 import type { AgentCustomConnectorGrant } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
-import { ZERO_CUSTOM_CONNECTOR_IDS_ENV_KEY } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import {
   connectorSlugSchema,
   type ConnectorAuthMethodId,
@@ -27,7 +26,6 @@ import {
 import { modelProviderSurfaceProtocolSchema } from "@vm0/api-contracts/contracts/zero-model-provider-gateways";
 import {
   getDefaultModel,
-  getRetiredRunModelReplacement,
   getModelProviderCodexRuntimeConfig,
   getModelProviderEnvBindings,
   getModelImageInputSupport,
@@ -38,9 +36,7 @@ import {
   getVm0ConcreteProviderType,
   getVm0Vendor,
   hasAuthMethods,
-  isModelSupportedByProvider,
   isSupportedRunModel,
-  isRetiredRunModel,
   MODEL_PROVIDER_TYPES,
   normalizeRunModelId,
   type ModelProviderCodexRuntimeConfig,
@@ -164,7 +160,6 @@ import {
 } from "../../lib/db-structured-result";
 import {
   badRequestMessage,
-  modelRetired,
   notFound,
   providerUnavailable,
 } from "../../lib/error";
@@ -172,10 +167,6 @@ import { VERCEL_AUTOMATION_BYPASS_ENV } from "../../lib/preview-automation-bypas
 import { previewAutomationBypass$ } from "../context/hono";
 import { writeDb$, type Db } from "../external/db";
 import { getDatasetName, ingestToAxiom } from "../external/axiom";
-import {
-  publishOrgSignal,
-  publishRunChangedForUserSafely,
-} from "../external/realtime";
 import { now, nowDate } from "../../lib/time";
 import { generateZeroToken } from "../auth/tokens";
 import { onRejection, safeSync, settle, tapError } from "../utils";
@@ -202,10 +193,10 @@ import {
   customConnectorMissingRequiredFieldKeys,
   customConnectorPrefixTemplateVariableKeys,
   customConnectorValueMarkerKey,
-  decryptCustomConnectorValues,
   loadCustomConnectorRuntimeData,
   renderCustomConnectorRuntimePrefix,
   renderTemplateForRuntime,
+  type StoredValueRow,
 } from "./zero-custom-connector.service";
 import { refreshCustomConnectorOAuth2ValuesIfNeeded } from "./custom-connector-oauth2.service";
 import {
@@ -363,9 +354,9 @@ type CreateRunBody = Omit<
 type DbTransaction = Tx;
 
 const CODEX_WEB_IMAGE_GENERATION_UPLOAD_PROMPT =
-  "If you use the built-in image generation tool and it saves generated output image file(s) to local paths, upload each output file you intend to show with `zero web upload-file -f <path>` before telling the web chat user the image is available. Quote the path when needed. Do not provide only sandbox-local paths, because users cannot open local files.";
+  "If you use the built-in image generation tool and it saves generated output image file(s) to local paths, upload each output file you intend to show with `okou web upload-file -f <path>` before telling the web chat user the image is available. Quote the path when needed. Do not provide only sandbox-local paths, because users cannot open local files.";
 const ZERO_IMAGE_RECOGNITION_PROMPT =
-  '# Image Recognition Fallback\n\nThis run\'s selected model cannot inspect images directly. To inspect one local PNG, JPEG, or WebP image up to 20 MB, run `zero recognize --file <image-path> --prompt "<instruction>"`.';
+  '# Image Recognition Fallback\n\nThis run\'s selected model cannot inspect images directly. To inspect one local PNG, JPEG, or WebP image up to 20 MB, run `okou recognize --file <image-path> --prompt "<instruction>"`.';
 
 function withZeroTokenSecret(
   body: CreateRunBody,
@@ -800,7 +791,6 @@ type ApiErrorResponse<Status extends number, Code extends string> = {
 type CreateRunRouteResult =
   | CreateRunSuccessResult
   | ApiErrorResponse<400, "BAD_REQUEST">
-  | ApiErrorResponse<400, "MODEL_RETIRED">
   | ApiErrorResponse<403, "FORBIDDEN">
   | ApiErrorResponse<404, "NOT_FOUND">
   | ApiErrorResponse<402, "INSUFFICIENT_CREDITS">
@@ -827,7 +817,6 @@ export interface CreateAgentRunArgs {
   readonly modelProviderCredentialScope?: ModelProviderCredentialScope;
   readonly modelProviderType?: string;
   readonly selectedModelOverride?: string;
-  readonly reconcileRetiredPersistedModel?: boolean;
   readonly codexServiceTier?: "fast";
   readonly callbacks?: readonly RunCallback[];
   readonly chatThreadId?: string;
@@ -3832,16 +3821,11 @@ export type CustomConnectorRuntimeDataRows = Awaited<
 >;
 
 type CustomConnectorRuntimeBuildPhase =
-  | "decryptValues"
   | "renderAuthTemplates"
   | "renderPrefixes"
   | "assembleFirewalls";
 
 const CUSTOM_CONNECTOR_RUNTIME_BUILD_PHASE_TIMINGS = [
-  {
-    phase: "decryptValues",
-    actionType: "api_dispatch_prepare_context_decrypt_custom_connector_values",
-  },
   {
     phase: "renderAuthTemplates",
     actionType:
@@ -3866,7 +3850,6 @@ class CustomConnectorRuntimeBuildStats {
     CustomConnectorRuntimeBuildPhase,
     number
   > = {
-    decryptValues: 0,
     renderAuthTemplates: 0,
     renderPrefixes: 0,
     assembleFirewalls: 0,
@@ -3875,7 +3858,6 @@ class CustomConnectorRuntimeBuildStats {
   private readonly connectorCount: number;
   private readonly configuredValueCount: number;
   private readonly prefixTemplateCount: number;
-  private decryptedValueCount = 0;
   private renderedApiCount = 0;
   private missingRequiredCount = 0;
   private noAuthInjectionCount = 0;
@@ -3904,10 +3886,6 @@ class CustomConnectorRuntimeBuildStats {
     finishedAt: number = now(),
   ): void {
     this.phaseDurationsMs[phase] += Math.max(0, finishedAt - startedAt);
-  }
-
-  recordDecryptedValues(count: number): void {
-    this.decryptedValueCount += count;
   }
 
   recordRenderedApi(): void {
@@ -3967,9 +3945,6 @@ class CustomConnectorRuntimeBuildStats {
       ),
       custom_connector_runtime_configured_value_count_bucket: countBucket(
         this.configuredValueCount,
-      ),
-      custom_connector_runtime_decrypted_value_count_bucket: countBucket(
-        this.decryptedValueCount,
       ),
       custom_connector_runtime_prefix_template_count_bucket: countBucket(
         this.prefixTemplateCount,
@@ -4054,7 +4029,7 @@ function buildCustomConnectorRuntimeApis(args: {
         serviceName: "MCP custom connector",
         hostPolicy: { kind: "publicDestination" },
       });
-      return endpoint;
+      return canonicalEndpoint;
     });
     if ("error" in endpointResult) {
       args.stats.recordInvalidPrefix();
@@ -4062,24 +4037,13 @@ function buildCustomConnectorRuntimeApis(args: {
       return [];
     }
     const endpoint = endpointResult.ok;
-    const endpointPath = endpoint.pathname;
     args.stats.recordRenderedApi();
     args.stats.recordPhaseDuration("renderPrefixes", prefixStartedAt);
     return [
       {
-        base: endpoint.origin,
+        base: endpoint,
         hostPolicy: { kind: "publicDestination" },
         auth: { headers: args.headers, query: args.query },
-        permissions: [
-          {
-            name: "mcp-endpoint",
-            rules: [
-              `POST ${endpointPath}`,
-              `GET ${endpointPath}`,
-              `DELETE ${endpointPath}`,
-            ],
-          },
-        ],
       },
     ];
   }
@@ -4113,13 +4077,11 @@ function buildCustomConnectorRuntimeApis(args: {
   return apis;
 }
 
-async function resolveCustomConnectorBaseUrlVars(args: {
+function resolveCustomConnectorBaseUrlVars(args: {
   readonly row: CustomConnectorRuntimeDataRows[number];
-  readonly featureSwitchContext: FeatureSwitchContext;
   readonly provided: Readonly<Record<string, string>> | undefined;
   readonly hasProvided: boolean;
-  readonly stats: CustomConnectorRuntimeBuildStats;
-}): Promise<Readonly<Record<string, string>> | undefined> {
+}): Readonly<Record<string, string>> | undefined {
   if (args.row.connector.kind === "mcp") {
     if (!args.hasProvided) {
       return {};
@@ -4141,23 +4103,24 @@ async function resolveCustomConnectorBaseUrlVars(args: {
   if (variableKeys.length === 0) {
     return {};
   }
-  const prefixValues = args.row.values.filter((value) => {
-    return value.kind === "variable" && variableKeys.includes(value.key);
-  });
+  const prefixValues = args.row.values.filter(
+    (
+      value,
+    ): value is Extract<StoredValueRow, { readonly kind: "variable" }> => {
+      return value.kind === "variable" && variableKeys.includes(value.key);
+    },
+  );
   if (prefixValues.length !== variableKeys.length) {
     return undefined;
   }
-  const decryptStartedAt = now();
-  const decryptedValues = await decryptCustomConnectorValues({
-    values: prefixValues,
-    featureSwitchContext: args.featureSwitchContext,
-  });
-  args.stats.recordPhaseDuration("decryptValues", decryptStartedAt);
-  args.stats.recordDecryptedValues(prefixValues.length);
+  const valuesByKey = new Map(
+    prefixValues.map((value) => {
+      return [value.key, value.value] as const;
+    }),
+  );
   const baseUrlVars: Record<string, string> = {};
   for (const key of variableKeys) {
-    const value =
-      decryptedValues[customConnectorValueMarkerKey({ kind: "variable", key })];
+    const value = valuesByKey.get(key);
     if (value === undefined) {
       return undefined;
     }
@@ -4203,12 +4166,9 @@ interface BuiltCustomConnectorRuntimeRow {
 function customConnectorRuntimeSkill(
   row: CustomConnectorRuntimeDataRows[number],
 ): CustomConnectorRuntimeContext["skills"][number] | undefined {
-  const { skillMarkdown, skillStorageVersionId } = row.connector;
-  if (skillMarkdown === null && skillStorageVersionId === null) {
+  const { skillStorageVersionId } = row.connector;
+  if (skillStorageVersionId === null) {
     return undefined;
-  }
-  if (skillMarkdown === null || skillStorageVersionId === null) {
-    throw new Error("Custom connector skill registration is unavailable");
   }
   return {
     connectorId: row.connector.id,
@@ -4303,12 +4263,10 @@ async function buildCustomConnectorRuntimeRow(args: {
 }): Promise<BuiltCustomConnectorRuntimeRow> {
   const hasProvidedBaseUrlVars =
     args.context.baseUrlVarsByConnectorId?.has(args.row.connector.id) ?? false;
-  const baseUrlVars = await resolveCustomConnectorBaseUrlVars({
+  const baseUrlVars = resolveCustomConnectorBaseUrlVars({
     row: args.row,
-    featureSwitchContext: args.context.featureSwitchContext,
     provided: args.context.baseUrlVarsByConnectorId?.get(args.row.connector.id),
     hasProvided: hasProvidedBaseUrlVars,
-    stats: args.stats,
   });
   const targetIdentity = {
     kind: "custom" as const,
@@ -4374,18 +4332,12 @@ async function buildCustomConnectorRuntimeRow(args: {
       description: args.row.connector.displayName,
       apis,
     },
-    permissionPolicy:
-      args.row.connector.kind === "mcp"
-        ? {
-            policies: { "mcp-endpoint": "allow" },
-            unknownPolicy: "deny",
-          }
-        : permissionBundle
-          ? buildCustomConnectorPermissionPolicy({
-              bundle: permissionBundle,
-              selectedPermissionNames: args.selectedPermissionNames,
-            })
-          : undefined,
+    permissionPolicy: permissionBundle
+      ? buildCustomConnectorPermissionPolicy({
+          bundle: permissionBundle,
+          selectedPermissionNames: args.selectedPermissionNames,
+        })
+      : undefined,
   };
 }
 
@@ -5799,7 +5751,6 @@ function launchZeroRunValues(
     triggerSource: args.body.triggerSource,
     workflowAutomationId: metadata.workflowAutomationId ?? null,
     triggerBrief: metadata.triggerBrief ?? null,
-    runGroupId: metadata.goalId ?? null,
     goalId: metadata.goalId ?? null,
     ...(metadata.autonomyBudget === undefined
       ? {}
@@ -5879,13 +5830,6 @@ async function buildStoredExecutionContextDraft(args: {
     permissionManifest: permissions,
     customTargets: args.customConnectorContext.targets,
   });
-  const customConnectorIds = [
-    ...new Set(
-      connectorRuntimeTargets.flatMap((target) => {
-        return target.kind === "custom" ? [target.customConnectorId] : [];
-      }),
-    ),
-  ].sort();
   const environment = {
     ...expandEnvironment({
       content: args.resolved.content,
@@ -5898,7 +5842,6 @@ async function buildStoredExecutionContextDraft(args: {
     }),
     ...args.extraEnvironment,
     CLI_PKG_URL: env("CLI_PKG_URL"),
-    [ZERO_CUSTOM_CONNECTOR_IDS_ENV_KEY]: JSON.stringify(customConnectorIds),
   };
   const environmentKeyByValue = new Map<string, string>();
   for (const [key, value] of Object.entries(environment)) {
@@ -6153,19 +6096,6 @@ export function recordThreadSessionBindingRetryTelemetry(
       error: result.error,
     });
   }
-}
-
-async function publishQueueChangedSafely(args: {
-  readonly orgId: string;
-  readonly runId: string;
-}): Promise<void> {
-  await tapError(publishOrgSignal(args.orgId, "queue:changed"), (error) => {
-    L.warn("Failed to publish queue changed signal after queued launch", {
-      orgId: args.orgId,
-      runId: args.runId,
-      error,
-    });
-  });
 }
 
 function buildStoredExecutionSecrets(args: {
@@ -6504,6 +6434,7 @@ function preparedRunnerJobBody(
       args.orgId,
       args.featureSwitchContext.overrides,
       {
+        scope: "zero",
         ...(args.zeroTokenComputerUseHostId
           ? { computerUseHostId: args.zeroTokenComputerUseHostId }
           : {}),
@@ -7145,13 +7076,6 @@ async function commitFailedLaunch(args: {
     });
   }
 
-  await publishRunChangedForUserSafely(
-    args.createArgs.userId,
-    args.identity.runId,
-    {
-      status: "failed",
-    },
-  );
   if (args.createArgs.dispatchFailedCallbacks) {
     await tapError(
       args.createArgs.dispatchFailedCallbacks(
@@ -8317,7 +8241,7 @@ async function resolvePreparedRunModelProvider(
 ): Promise<ResolvedModelProviderEnvironment | null | CreateRunErrorResult> {
   const { resolved, requestedFramework, featureSwitchContext } =
     args.bodyContext;
-  const result = await args.timing.measure(
+  return await args.timing.measure(
     "api_dispatch_prepare_context_resolve_model_provider",
     "nested",
     async () => {
@@ -8332,172 +8256,6 @@ async function resolvePreparedRunModelProvider(
         signal,
       );
     },
-  );
-  if (!isRouteError(result) || !shouldReconcileRetiredModel(args.createArgs)) {
-    return result;
-  }
-  const fallback = await resolveImplicitRetiredModelProvider(
-    args,
-    null,
-    signal,
-  );
-  return fallback ?? result;
-}
-
-function shouldReconcileRetiredModel(args: CreateAgentRunArgs): boolean {
-  return (
-    args.reconcileRetiredPersistedModel === true ||
-    (args.selectedModelOverride === undefined &&
-      args.modelProviderType === undefined)
-  );
-}
-
-function replacementRouteIsCompatible(
-  provider: ResolvedModelProviderEnvironment,
-  replacement: SupportedRunModel,
-): boolean {
-  return (
-    provider.selectedModel === replacement &&
-    (provider.type === "vm0" ||
-      provider.inlineFirewall === true ||
-      isModelSupportedByProvider(replacement, provider.type))
-  );
-}
-
-async function resolveReplacementOnCurrentRoute(
-  args: {
-    readonly db: Db;
-    readonly createArgs: CreateAgentRunArgs;
-    readonly bodyContext: PreparedRunBodyContext;
-  },
-  provider: ResolvedModelProviderEnvironment,
-  replacement: SupportedRunModel,
-): Promise<ResolvedModelProviderEnvironment | null> {
-  const resolved = await resolveModelProviderEnvironment(args.db, {
-    orgId: args.createArgs.orgId,
-    userId: args.createArgs.userId,
-    framework: modelProviderFramework(provider),
-    modelProviderId: provider.id ?? args.createArgs.modelProviderId,
-    modelProviderCredentialScope: args.createArgs.modelProviderCredentialScope,
-    modelProviderType: provider.type,
-    selectedModelOverride: replacement,
-    featureSwitchContext: args.bodyContext.featureSwitchContext,
-    resolvePiEdgeCredentials: false,
-  });
-  return resolved && replacementRouteIsCompatible(resolved, replacement)
-    ? resolved
-    : null;
-}
-
-/**
- * Rollout compatibility for runs whose model route was persisted by the
- * previous API during the observed ~102-minute DB/API exposure window. Remove
- * with #26314 after Stage 2 migrates every implicit selection, production
- * shows none remain, and the previous API is outside its rollback/drain window.
- */
-async function resolveImplicitRetiredModelProvider(
-  args: {
-    readonly db: Db;
-    readonly createArgs: CreateAgentRunArgs;
-    readonly bodyContext: PreparedRunBodyContext;
-  },
-  provider: ResolvedModelProviderEnvironment | null,
-  signal: AbortSignal,
-): Promise<ResolvedModelProviderEnvironment | null> {
-  if (!shouldReconcileRetiredModel(args.createArgs)) {
-    return provider;
-  }
-  const selectedModel =
-    provider?.selectedModel ?? args.createArgs.selectedModelOverride;
-  const providerType = provider?.type ?? args.createArgs.modelProviderType;
-  if (!isRetiredRunModel(selectedModel, providerType)) {
-    return provider;
-  }
-  const capabilities = await loadOrgPlanCapabilities(
-    args.db,
-    args.createArgs.orgId,
-  );
-  signal.throwIfAborted();
-  const replacement = getRetiredRunModelReplacement(selectedModel, {
-    restrictedVm0Models:
-      capabilities?.status === "active" && capabilities.restrictedVm0Models,
-    modelProviderType: providerType,
-  });
-  if (!replacement) {
-    return provider;
-  }
-  const preserved = provider
-    ? await resolveReplacementOnCurrentRoute(args, provider, replacement)
-    : null;
-  signal.throwIfAborted();
-  return (
-    preserved ??
-    (await vm0ModelProviderEnvironment(args.db, replacement)) ??
-    provider
-  );
-}
-
-async function retiredResolvedModelError(
-  args: {
-    readonly db: Db;
-    readonly createArgs: CreateAgentRunArgs;
-  },
-  modelProvider: ResolvedModelProviderEnvironment | null,
-  signal: AbortSignal,
-): Promise<ReturnType<typeof modelRetired> | undefined> {
-  const selectedModel =
-    modelProvider?.selectedModel ?? args.createArgs.selectedModelOverride;
-  const modelProviderType =
-    modelProvider?.type ?? args.createArgs.modelProviderType;
-  if (!isRetiredRunModel(selectedModel, modelProviderType)) {
-    return undefined;
-  }
-  const capabilities = await loadOrgPlanCapabilities(
-    args.db,
-    args.createArgs.orgId,
-  );
-  signal.throwIfAborted();
-  const replacement = getRetiredRunModelReplacement(selectedModel, {
-    restrictedVm0Models:
-      capabilities?.status === "active" && capabilities.restrictedVm0Models,
-    modelProviderType,
-  });
-  return replacement
-    ? modelRetired(selectedModel ?? "Z.AI", replacement)
-    : undefined;
-}
-
-async function resolveAdmittedPreparedRunModelProvider(
-  args: {
-    readonly db: Db;
-    readonly createArgs: CreateAgentRunArgs;
-    readonly timing: ApiDispatchTimingCollector;
-    readonly bodyContext: PreparedRunBodyContext;
-  },
-  signal: AbortSignal,
-): Promise<ResolvedModelProviderEnvironment | null | CreateRunErrorResult> {
-  if (!shouldReconcileRetiredModel(args.createArgs)) {
-    const explicitRetiredModelError = await retiredResolvedModelError(
-      args,
-      null,
-      signal,
-    );
-    if (explicitRetiredModelError) {
-      return explicitRetiredModelError;
-    }
-  }
-  let modelProvider = await resolvePreparedRunModelProvider(args, signal);
-  if (isRouteError(modelProvider)) {
-    return modelProvider;
-  }
-  modelProvider = await resolveImplicitRetiredModelProvider(
-    args,
-    modelProvider,
-    signal,
-  );
-  return (
-    (await retiredResolvedModelError(args, modelProvider, signal)) ??
-    modelProvider
   );
 }
 
@@ -8520,10 +8278,7 @@ async function prepareRunRuntimeContext(
     args.connectorScope,
     connectorCatalogSnapshot,
   );
-  const modelProvider = await resolveAdmittedPreparedRunModelProvider(
-    args,
-    signal,
-  );
+  const modelProvider = await resolvePreparedRunModelProvider(args, signal);
   if (isRouteError(modelProvider)) {
     return modelProvider;
   }
@@ -8854,12 +8609,12 @@ function prepareRunContext(
   );
 }
 
-async function committedAtomicLaunchResponse(args: {
+function committedAtomicLaunchResponse(args: {
   readonly createArgs: CreateAgentRunArgs;
   readonly committed: CommittedAtomicLaunchResult;
   readonly timing: ApiDispatchTimingCollector;
   readonly launch: PreparedRunnerLaunch;
-}): Promise<Extract<CreateRunRouteResult, { readonly status: 201 }>> {
+}): Extract<CreateRunRouteResult, { readonly status: 201 }> {
   if (args.committed.threadSessionBinding) {
     recordThreadSessionBindingTelemetry({
       binding: args.committed.threadSessionBinding,
@@ -8873,10 +8628,6 @@ async function committedAtomicLaunchResponse(args: {
       timestamp: args.committed.telemetryTimestamp,
     });
     ingestRunContextSnapshot(args.committed.runContextSnapshot);
-    await publishQueueChangedSafely({
-      orgId: args.createArgs.orgId,
-      runId: args.committed.run.id,
-    });
     args.timing.flush({
       runId: args.committed.run.id,
       runnerGroup: args.committed.runnerJobPayload.runnerGroup,
@@ -8996,7 +8747,7 @@ function isQueuePayloadRequiredResult(
   );
 }
 
-async function finalizeAtomicLaunchCommit(
+function finalizeAtomicLaunchCommit(
   args: {
     readonly input: AtomicLaunchRunInput;
     readonly identity: LaunchRunIdentity;
@@ -9004,7 +8755,7 @@ async function finalizeAtomicLaunchCommit(
     readonly committed: AtomicLaunchCommitAttempt;
   },
   signal: AbortSignal,
-): Promise<QueueFirstAgentRunResult | QueuePayloadRequiredResult> {
+): QueueFirstAgentRunResult | QueuePayloadRequiredResult {
   if (isReturnableRouteError(args.committed, signal)) {
     return args.committed;
   }
@@ -9023,7 +8774,7 @@ async function finalizeAtomicLaunchCommit(
   if (args.committed.kind === "queue-payload-required") {
     return args.committed;
   }
-  return await committedAtomicLaunchResponse({
+  return committedAtomicLaunchResponse({
     createArgs: args.input.args,
     committed: args.committed,
     timing: args.input.timing,
@@ -9052,7 +8803,7 @@ async function completeQueuePayloadLaunch(
 
   if (!encryptedQueuedParams.ok) {
     const retried = await args.commitLaunch(undefined);
-    const finalizedRetry = await finalizeAtomicLaunchCommit(
+    const finalizedRetry = finalizeAtomicLaunchCommit(
       {
         input: args.input,
         identity: args.identity,
@@ -9077,7 +8828,7 @@ async function completeQueuePayloadLaunch(
   }
 
   const committed = await args.commitLaunch(encryptedQueuedParams.value);
-  const finalized = await finalizeAtomicLaunchCommit(
+  const finalized = finalizeAtomicLaunchCommit(
     {
       input: args.input,
       identity: args.identity,
@@ -9178,7 +8929,7 @@ function createAtomicLaunchRun(
     };
 
     const committed = await commitLaunch(undefined);
-    const finalized = await finalizeAtomicLaunchCommit(
+    const finalized = finalizeAtomicLaunchCommit(
       {
         input,
         identity,

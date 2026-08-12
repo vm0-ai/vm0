@@ -37,4 +37,8 @@ grep -Fq '      - name: Initialize pnpm cache directory' <<<"$deploy_cli" ||
 grep -Fq "        run: mkdir -p \"\$(pnpm store path --silent)\"" <<<"$deploy_cli" ||
   fail "deploy-cli must create the pnpm store before setup-node saves it"
 
+smoke_count="$(grep -Fc 'bash .github/scripts/smoke-okou-cli-artifact.sh' <<<"$deploy_cli" || true)"
+[[ "$smoke_count" == "2" ]] ||
+  fail "deploy-cli must smoke both the local and CDN CLI artifacts"
+
 echo "deploy-cli-workflow tests passed"

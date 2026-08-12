@@ -30,7 +30,7 @@ import {
 import { authContract } from "@vm0/api-contracts/contracts/auth";
 import {
   zeroAgentCustomConnectorsContract,
-  type AgentCustomConnectorResponse,
+  type AgentCustomConnectorGrants,
 } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 import {
   zeroAgentsByIdContract,
@@ -42,7 +42,8 @@ import {
 import { zeroComposesListContract } from "@vm0/api-contracts/contracts/zero-composes";
 import {
   zeroCustomConnectorByIdContract,
-  zeroCustomConnectorSecretContract,
+  zeroCustomConnectorConnectionContract,
+  zeroCustomConnectorValuesContract,
   zeroCustomConnectorsContract,
   type CreateCustomConnectorBody,
   type CustomConnectorResponse,
@@ -90,7 +91,7 @@ import { zeroCustomConnectorsCreateRoutes } from "../../zero-custom-connectors-c
 import { zeroCustomConnectorsDeleteRoutes } from "../../zero-custom-connectors-delete";
 import { zeroCustomConnectorsGetRoutes } from "../../zero-custom-connectors-get";
 import { zeroCustomConnectorDisconnectRoutes } from "../../zero-custom-connectors-disconnect";
-import { zeroCustomConnectorsSecretSetRoutes } from "../../zero-custom-connectors-secret-set";
+import { zeroCustomConnectorsValuesSetRoutes } from "../../zero-custom-connectors-values-set";
 import { zeroOnboardingCompleteRoutes } from "../../zero-onboarding-complete";
 import { zeroOnboardingStatusRoutes } from "../../zero-onboarding-status";
 import { zeroOrgDeleteRoutes } from "../../zero-org-delete";
@@ -223,7 +224,7 @@ const authOrgRoutes = [
   ...zeroCustomConnectorsCreateRoutes,
   ...zeroCustomConnectorsGetRoutes,
   ...zeroCustomConnectorsDeleteRoutes,
-  ...zeroCustomConnectorsSecretSetRoutes,
+  ...zeroCustomConnectorsValuesSetRoutes,
   ...zeroCustomConnectorDisconnectRoutes,
 ] as const;
 
@@ -1540,15 +1541,15 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       value: string,
     ): Promise<void> {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroCustomConnectorSecretContract,
+        zeroCustomConnectorValuesContract,
       );
       await accept(
         client.set({
           headers: authenticate(actor),
           params: { id: connectorId },
-          body: { value },
+          body: { values: [{ key: "secret", kind: "secret", value }] },
         }),
-        [204],
+        [200],
       );
     },
 
@@ -1557,7 +1558,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       connectorId: string,
     ): Promise<void> {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroCustomConnectorSecretContract,
+        zeroCustomConnectorConnectionContract,
       );
       await accept(
         client.disconnect({
@@ -1587,7 +1588,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
     async readAgentCustomConnectors(
       actor: ApiTestUser,
       agentId: string,
-    ): Promise<AgentCustomConnectorResponse> {
+    ): Promise<AgentCustomConnectorGrants> {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
         zeroAgentCustomConnectorsContract,
       );
@@ -1605,7 +1606,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       actor: ApiTestUser,
       agentId: string,
       connectorIds: readonly string[],
-    ): Promise<AgentCustomConnectorResponse> {
+    ): Promise<AgentCustomConnectorGrants> {
       const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
         zeroAgentCustomConnectorsContract,
       );

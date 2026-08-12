@@ -4,6 +4,7 @@ import { useGet, useLastLoadable, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
 
 import type { BrowserSessionSignals } from "../../signals/chat-page/browser-session-block.ts";
+import type { ImageLoadSignals } from "../../signals/image-load.ts";
 import {
   activeSidebarBrowserThreadId$,
   openThreadBrowserSession$,
@@ -57,12 +58,19 @@ function BrowserSessionPreviewPlaceholder() {
   );
 }
 
-function BrowserSessionPreview({ screenshotUrl }: { screenshotUrl?: string }) {
+function BrowserSessionPreview({
+  screenshotUrl,
+  load,
+}: {
+  screenshotUrl?: string;
+  load?: ImageLoadSignals;
+}) {
   return (
     <span className="relative block aspect-[16/10] w-full overflow-hidden bg-muted/30">
-      {screenshotUrl ? (
+      {screenshotUrl && load ? (
         <ArtifactThumbnailImage
           src={screenshotUrl}
+          load={load}
           testId="browser-session-thumbnail"
           className="absolute inset-0 h-full w-full object-cover object-top"
           fallback={<BrowserSessionPreviewPlaceholder />}
@@ -193,6 +201,7 @@ export function BrowserSessionCard({ signals }: BrowserSessionCardProps) {
       </span>
       <BrowserSessionPreview
         screenshotUrl={session.screenshotUrl ?? undefined}
+        load={signals.screenshotImageLoad}
       />
     </button>
   );

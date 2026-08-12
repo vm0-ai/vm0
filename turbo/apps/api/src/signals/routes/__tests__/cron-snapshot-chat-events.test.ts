@@ -23,6 +23,7 @@ import {
   type RecordedChatEventPut,
 } from "./helpers/fake-chat-event-r2";
 import {
+  advanceChatEventSequenceAsPreviousApi,
   readChatEventSnapshotHead,
   setChatEventSnapshotHeadVersion,
 } from "./helpers/runtime-state";
@@ -33,6 +34,7 @@ const api = createRunsApi(context);
 const chat = createChatFilesBddApi(context);
 
 const CRON_SECRET = "test-cron-secret";
+const NON_CURRENT_ARCHIVE_SCHEMA_VERSION = 1;
 const OBJECT_KEY_PATTERN =
   /^chat-events\/([0-9a-f-]{36})\/(\d+)-([0-9a-f]{64})\.ndjson\.gz$/;
 
@@ -128,6 +130,7 @@ function archivedLines(body: Buffer): readonly ArchivedLine[] {
 function expectArchiveInvariants(
   put: RecordedPut,
   threadId: string,
+  lastPhysicalSeqId?: number,
 ): readonly ArchivedLine[] {
   const match = OBJECT_KEY_PATTERN.exec(put.key);
   expect(match?.[1]).toBe(threadId);
@@ -139,7 +142,7 @@ function expectArchiveInvariants(
   const lines = archivedLines(put.body);
   expect(lines.length).toBeGreaterThan(0);
   const lastLine = lines[lines.length - 1];
-  expect(String(lastLine?.seqId)).toBe(match?.[2]);
+  expect(lastLine?.seqId).toBe(lastPhysicalSeqId ?? Number(match?.[2]));
   for (const [index, line] of lines.entries()) {
     expect(Object.keys(line).sort()).toStrictEqual(ARCHIVE_V4_KEYS);
     expect(line.chatThreadId).toBe(threadId);
@@ -253,7 +256,55 @@ describe("cron snapshot chat events", () => {
     expect(putsForThread(threadId)).toHaveLength(2);
   }, 60_000);
 
-  it("rebuilds an idle retained v3 head and reports convergence", async () => {
+  it("publishes sparse indexed coverage and tails later rows", async () => {
+    const owner = bdd.user({ orgId: `org_${randomUUID()}` });
+    const agent = await bdd.createAgent(owner, {
+      displayName: "Sparse snapshot agent",
+    });
+    const threadId = await sendNoCreditMessage(owner, {
+      agentId: agent.agentId,
+      prompt: `sparse-snapshot-${randomUUID()}`,
+    });
+    const initialRows = await chat.listThreadEventRows(owner, threadId);
+    const lastPhysicalRow = initialRows.at(-1);
+    if (lastPhysicalRow === undefined) {
+      throw new Error("Expected a physical chat event before the sparse tail");
+    }
+    const coveredSeqId = lastPhysicalRow.seqId + 1;
+
+    await advanceChatEventSequenceAsPreviousApi(context, threadId, 1);
+    await projectChatEventSearch();
+    const result = await runSnapshotCron();
+    expect(result.success).toBeTruthy();
+
+    const put = putsForThread(threadId)[0];
+    if (put === undefined) {
+      throw new Error("Expected a sparse-coverage snapshot object");
+    }
+    expectArchiveInvariants(put, threadId, lastPhysicalRow.seqId);
+    expect(OBJECT_KEY_PATTERN.exec(put.key)?.[2]).toBe(coveredSeqId.toString());
+    const head = await readChatEventSnapshotHead(context, threadId);
+    expect(head.last_seq_id).toBe(coveredSeqId);
+
+    await sendNoCreditMessage(owner, {
+      agentId: agent.agentId,
+      threadId,
+      prompt: `sparse-snapshot-tail-${randomUUID()}`,
+    });
+    const tail = await chat.listThreadEventRows(owner, threadId, coveredSeqId);
+    expect(tail.length).toBeGreaterThan(0);
+    expect(
+      tail.map((row) => {
+        return row.seqId;
+      }),
+    ).toStrictEqual(
+      tail.map((_, index) => {
+        return coveredSeqId + index + 1;
+      }),
+    );
+  }, 60_000);
+
+  it("rebuilds an idle non-v4 head and reports convergence", async () => {
     const owner = bdd.user({ orgId: `org_${randomUUID()}` });
     const agent = await bdd.createAgent(owner, {
       displayName: "Version-only snapshot agent",
@@ -270,13 +321,13 @@ describe("cron snapshot chat events", () => {
     if (firstPut === undefined) {
       throw new Error("Expected a first-generation snapshot object");
     }
-    const legacyObjectKey = `chat-events/${threadId}/retained-v3-${randomUUID()}.ndjson.gz`;
-    writeFakeChatEventObject(legacyObjectKey, firstPut.body);
+    const priorObjectKey = `chat-events/${threadId}/non-v4-${randomUUID()}.ndjson.gz`;
+    writeFakeChatEventObject(priorObjectKey, firstPut.body);
     await setChatEventSnapshotHeadVersion(
       context,
       threadId,
-      3,
-      legacyObjectKey,
+      NON_CURRENT_ARCHIVE_SCHEMA_VERSION,
+      priorObjectKey,
     );
 
     const incomplete = await verifySnapshotConvergence();
@@ -288,7 +339,10 @@ describe("cron snapshot chat events", () => {
       convergence: {
         nonV4SnapshotHeads: 1,
         snapshotHeadVersions: expect.arrayContaining([
-          { archiveSchemaVersion: 3, heads: 1 },
+          {
+            archiveSchemaVersion: NON_CURRENT_ARCHIVE_SCHEMA_VERSION,
+            heads: 1,
+          },
         ]),
       },
     });
@@ -350,7 +404,7 @@ describe("cron snapshot chat events", () => {
     expect(rebuiltHead.object_key).not.toBe(headPut.key);
   }, 60_000);
 
-  it("resumes a bounded v3 rebuild until every head converges", async () => {
+  it("reclaims retired heads while a bounded rebuild resumes", async () => {
     const owner = bdd.user({ orgId: `org_${randomUUID()}` });
     const agent = await bdd.createAgent(owner, {
       displayName: "Resumable snapshot agent",
@@ -366,30 +420,42 @@ describe("cron snapshot chat events", () => {
     await projectChatEventSearch();
     await runSnapshotCron();
 
+    const retiredObjectKeys: string[] = [];
     for (const threadId of threadIds) {
       const head = await readChatEventSnapshotHead(context, threadId);
-      const legacyObjectKey = `chat-events/${threadId}/retained-v3-${randomUUID()}.ndjson.gz`;
+      const priorObjectKey = `chat-events/${threadId}/non-v4-${randomUUID()}.ndjson.gz`;
       const body = readFakeChatEventObject(head.object_key);
       if (body === undefined) {
         throw new Error("Expected the v4 fixture object");
       }
-      writeFakeChatEventObject(legacyObjectKey, body);
+      writeFakeChatEventObject(priorObjectKey, body);
+      retiredObjectKeys.push(priorObjectKey);
       await setChatEventSnapshotHeadVersion(
         context,
         threadId,
-        3,
-        legacyObjectKey,
+        NON_CURRENT_ARCHIVE_SCHEMA_VERSION,
+        priorObjectKey,
       );
     }
 
     mockOptionalEnv("CHAT_EVENT_SNAPSHOT_BATCH_SIZE", "1");
     const firstPass = await runSnapshotCron();
-    expect(firstPass.nonV4SnapshotHeads).toBe(1);
-    const incomplete = await verifySnapshotConvergence();
-    expect(incomplete.status).toBe(409);
+    expect(firstPass).toMatchObject({
+      snapshots: 1,
+      nonV4SnapshotHeads: 0,
+    });
+    expect(firstPass.retiredSnapshotReferencesDeleted).toBeGreaterThanOrEqual(
+      2,
+    );
+    for (const objectKey of retiredObjectKeys) {
+      expect(readFakeChatEventObject(objectKey)).toBeUndefined();
+    }
 
     const secondPass = await runSnapshotCron();
-    expect(secondPass.nonV4SnapshotHeads).toBe(0);
+    expect(secondPass).toMatchObject({
+      snapshots: 1,
+      nonV4SnapshotHeads: 0,
+    });
     const converged = await verifySnapshotConvergence();
     expect(converged.status).toBe(200);
     for (const threadId of threadIds) {

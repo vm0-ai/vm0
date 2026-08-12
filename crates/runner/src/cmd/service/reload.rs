@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use tracing::{debug, info, warn};
+use tracing::{info, warn};
 
 use crate::error::{RunnerError, RunnerResult};
 use crate::paths::HomePaths;
@@ -135,10 +135,6 @@ async fn coordinate_systemd_reload_with_ops(
     };
 
     if !should_reload {
-        debug!(
-            unit = %unit.unit_name(),
-            "systemd reload skipped because the unit mutation is already effective"
-        );
         return Ok(false);
     }
 

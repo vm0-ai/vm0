@@ -17,6 +17,7 @@ import {
 } from "./computer-use-state";
 import { Panel, ZeroFace } from "./components";
 import { ReadyExperience } from "./hero";
+import { currentDesktopIdentity } from "./desktop-identity";
 import {
   AuthStepCard,
   PermissionAutoRefresh,
@@ -158,10 +159,11 @@ function ComputerUsePage() {
 }
 
 function Header() {
+  const identity = currentDesktopIdentity();
   return (
     <header className="app-header">
       <div className="titlebar-title">
-        <h1>Zero Computer Use</h1>
+        <h1>{identity.displayName}</h1>
       </div>
     </header>
   );

@@ -654,7 +654,7 @@ async function browserUseRequest(
   signal: AbortSignal,
   acceptedStatuses: readonly number[] = [],
 ): Promise<unknown> {
-  const apiKey = env("ZERO_BROWSER_USE_API_KEY");
+  const apiKey = env("OKOU_BROWSER_USE_API_KEY");
   if (!apiKey) {
     throw new BrowserUseProviderError(
       503,

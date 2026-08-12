@@ -14,8 +14,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@vm0/ui";
-import type { CustomConnectorClientResponse } from "@vm0/api-contracts/contracts/zero-custom-connectors";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import type { CustomConnectorResponse } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import {
   disconnectCustomConnector$,
   closeCustomConnectorDialog$,
@@ -29,7 +28,7 @@ import {
   openCustomConnectorEditDialog$,
 } from "../../../../signals/zero-page/settings/custom-connectors.ts";
 import { isOrgAdmin$ } from "../../../../signals/org.ts";
-import { featureSwitch$ } from "../../../../signals/external/feature-switch.ts";
+import { customConnectorMcpEnabled$ } from "../../../../signals/external/feature-switch.ts";
 import { detach, Reason } from "../../../../signals/utils.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import { CustomConnectorIcon } from "./custom-connector-icon.tsx";
@@ -40,15 +39,16 @@ import { CustomConnectorAccessManagementDialog } from "./connector-access-manage
 import { ConnectorAgentAccessButton } from "./connector-agent-access-button.tsx";
 import { DropdownMenuModalItem } from "../../../components/dropdown-menu-modal-item.tsx";
 import { noConnectorImg } from "../../platform-assets.ts";
+import { customConnectorTarget } from "./custom-connector-display.ts";
 
 function connectsDirectlyWithOAuth(
-  connector: CustomConnectorClientResponse,
+  connector: CustomConnectorResponse,
 ): boolean {
   return connector.authMode === "oauth";
 }
 
 interface CustomConnectorRowProps {
-  readonly connector: CustomConnectorClientResponse;
+  readonly connector: CustomConnectorResponse;
   readonly isAdmin: boolean;
   readonly mcpEnabled: boolean;
   readonly onConnect: () => void;
@@ -63,7 +63,7 @@ function CustomConnectorAgentAccess({
   allowAccessIncrease,
   onManageAccess,
 }: {
-  readonly connector: CustomConnectorClientResponse;
+  readonly connector: CustomConnectorResponse;
   readonly allowAccessIncrease: boolean;
   readonly onManageAccess: () => void;
 }) {
@@ -97,7 +97,7 @@ function CustomConnectorCardContent({
   onConnect,
   onManageAccess,
 }: {
-  readonly connector: CustomConnectorClientResponse;
+  readonly connector: CustomConnectorResponse;
   readonly hasActions: boolean;
   readonly canConnect: boolean;
   readonly allowAccessIncrease: boolean;
@@ -105,6 +105,15 @@ function CustomConnectorCardContent({
   readonly onManageAccess: () => void;
 }) {
   const { t } = useTranslation();
+  const connectorType =
+    connector.kind === "mcp"
+      ? t(($) => {
+          return $.connectors.custom.mcpType;
+        })
+      : t(($) => {
+          return $.connectors.custom.create.httpType;
+        });
+  const connectorTarget = customConnectorTarget(connector);
   const headerContent = (
     <>
       <CustomConnectorIcon
@@ -119,20 +128,16 @@ function CustomConnectorCardContent({
         >
           {connector.displayName}
         </span>
-        {connector.kind === "mcp" ? (
-          <span className="block truncate text-xs text-muted-foreground">
-            {t(($) => {
-              return $.connectors.custom.mcpStreamableHttp;
-            })}
-          </span>
-        ) : !connector.connected ? (
+        <span className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground">
+          <span className="shrink-0">{connectorType}</span>
+          <span aria-hidden="true">·</span>
           <span
-            className="block truncate font-mono text-xs text-muted-foreground/60"
-            title={connector.prefixTemplates[0]}
+            className="min-w-0 truncate font-mono text-muted-foreground/60"
+            title={connectorTarget}
           >
-            {connector.prefixTemplates[0]}
+            {connectorTarget}
           </span>
-        ) : null}
+        </span>
       </span>
     </>
   );
@@ -162,28 +167,20 @@ function CustomConnectorCardContent({
           hasActions ? "pr-12" : "pr-2"
         }`}
       >
-        {connector.kind === "mcp" ? (
+        <span className="flex shrink-0 items-center gap-2 truncate text-xs text-muted-foreground">
           <span
-            className="min-w-0 truncate font-mono text-xs text-muted-foreground/60"
-            title={connector.endpoint}
-          >
-            {connector.endpoint}
-          </span>
-        ) : connector.connected ? (
-          <span className="flex shrink-0 items-center gap-2 truncate text-xs text-muted-foreground">
-            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" />
-            {t(($) => {
-              return $.connectors.custom.statusConnected;
-            })}
-          </span>
-        ) : connector.kind === "http" ? (
-          <span className="flex shrink-0 items-center gap-2 truncate text-xs text-muted-foreground">
-            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-muted-foreground/50" />
-            {t(($) => {
-              return $.connectors.catalog.filters.notConnected;
-            })}
-          </span>
-        ) : null}
+            className={`h-1.5 w-1.5 shrink-0 rounded-full ${
+              connector.connected ? "bg-emerald-500" : "bg-muted-foreground/50"
+            }`}
+          />
+          {connector.connected
+            ? t(($) => {
+                return $.connectors.custom.statusConnected;
+              })
+            : t(($) => {
+                return $.connectors.catalog.filters.notConnected;
+              })}
+        </span>
         {connector.connected ? (
           <CustomConnectorAgentAccess
             connector={connector}
@@ -327,8 +324,7 @@ export function CustomConnectorsPanel() {
   const { t } = useTranslation();
   const connectors = useLastResolved(customConnectors$);
   const isAdmin = useLastResolved(isOrgAdmin$) ?? false;
-  const mcpEnabled =
-    useGet(featureSwitch$)[FeatureSwitchKey.CustomConnectorMcp] ?? false;
+  const mcpEnabled = useGet(customConnectorMcpEnabled$);
   const openEdit = useSet(openCustomConnectorEditDialog$);
   const openAccess = useSet(openCustomConnectorAccessDialog$);
   const openConnect = useSet(openCustomConnectorConnectDialog$);
@@ -337,11 +333,11 @@ export function CustomConnectorsPanel() {
   const disconnect = useSet(disconnectCustomConnector$);
   const signal = useGet(pageSignal$);
 
-  const handleDisconnect = (connector: CustomConnectorClientResponse) => {
+  const handleDisconnect = (connector: CustomConnectorResponse) => {
     detach(disconnect(connector.id, signal), Reason.DomCallback);
   };
 
-  const handleConnect = (connector: CustomConnectorClientResponse) => {
+  const handleConnect = (connector: CustomConnectorResponse) => {
     if (connectsDirectlyWithOAuth(connector)) {
       detach(connectOAuth2(connector.id, signal), Reason.DomCallback);
       return;

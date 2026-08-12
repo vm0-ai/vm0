@@ -97,7 +97,7 @@ export const zeroRecognizeCommand = new Command()
     "after",
     `
 Example:
-  zero recognize --file ./screenshot.png --prompt "Describe the error shown"
+  okou recognize --file ./screenshot.png --prompt "Describe the error shown"
 
 Notes:
   - Available only in runs whose selected model does not support image input

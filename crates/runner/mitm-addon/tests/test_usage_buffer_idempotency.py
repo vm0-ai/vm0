@@ -54,6 +54,46 @@ def test_rejected_events_do_not_leave_empty_destination_buckets(tmp_path):
     assert enqueue.last_call.payload["runId"] == "run-1"
 
 
+def test_aggregate_buffer_collects_only_accepted_source_keys(tmp_path):
+    enqueue = RecordingEnqueue()
+    usage.reset_usage_buffer_for_tests(enqueue_webhook=enqueue)
+    proxy_log_path = str(tmp_path / "proxy.jsonl")
+    accepted_source_keys: set[str] = set()
+
+    accepted_count = usage.buffer_usage_events(
+        "https://api.test/api/webhooks/agent/usage-event",
+        "token-a",
+        "run-1",
+        [
+            event(source_key="source-1", quantity=10),
+            event(source_key="source-1", quantity=100),
+            event(source_key="source-2", quantity=5),
+        ],
+        proxy_log_path,
+        accepted_source_keys=accepted_source_keys,
+    )
+
+    assert accepted_count == 2
+    assert accepted_source_keys == {"source-1", "source-2"}
+
+    duplicate_keys: set[str] = set()
+    assert (
+        usage.buffer_usage_events(
+            "https://api.test/api/webhooks/agent/usage-event",
+            "token-a",
+            "run-1",
+            [event(source_key="source-1", quantity=200)],
+            proxy_log_path,
+            accepted_source_keys=duplicate_keys,
+        )
+        == 0
+    )
+    assert duplicate_keys == set()
+
+    assert usage.flush_usage_events(trigger="test") == 1
+    assert enqueue.last_call.payload["events"][0]["quantity"] == 15
+
+
 def test_aggregate_idempotency_key_changes_between_flush_batches(tmp_path):
     enqueue = RecordingEnqueue()
     usage.reset_usage_buffer_for_tests(enqueue_webhook=enqueue)

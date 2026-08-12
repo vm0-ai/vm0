@@ -1,4 +1,5 @@
 import { useLoadable } from "ccstate-react";
+import { Button } from "@vm0/ui";
 import { useTranslation } from "react-i18next";
 import type { OrgMember } from "@vm0/api-contracts/contracts/org-members";
 import type { BillingStatusResponse } from "@vm0/api-contracts/contracts/zero-billing";
@@ -13,6 +14,7 @@ import {
 import { billingStatusAsync$ } from "../../../../signals/zero-page/billing.ts";
 import { currentLocale, i18n } from "../../../../i18n/index.ts";
 import { formatLocalizedNumber } from "../../../../i18n/format.ts";
+import { UserAvatar } from "../../../components/avatar.tsx";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -540,9 +542,11 @@ function CreditBalanceChart({
               return $.billing.usage.upgradeDescription;
             })}
           </p>
-          <button
+          <Button
             type="button"
-            className="mt-3 inline-flex h-8 items-center rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary-hover"
+            variant="default"
+            size="sm"
+            className="mt-3 text-xs"
             onClick={() => {
               onComparePlans();
             }}
@@ -550,7 +554,7 @@ function CreditBalanceChart({
             {t(($) => {
               return $.billing.plans.compare;
             })}
-          </button>
+          </Button>
         </div>
       ) : null}
 
@@ -682,29 +686,6 @@ export function CreditBalanceCard({
 // Sub-components
 // ---------------------------------------------------------------------------
 
-function MemberAvatar({
-  imageUrl,
-  initial,
-  name,
-}: {
-  imageUrl: string;
-  initial: string;
-  name: string;
-}) {
-  if (imageUrl) {
-    return (
-      <div className="h-8 w-8 shrink-0 rounded-lg overflow-hidden">
-        <img src={imageUrl} alt={name} className="h-full w-full object-cover" />
-      </div>
-    );
-  }
-  return (
-    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted/50 text-xs font-medium text-muted-foreground">
-      {initial}
-    </div>
-  );
-}
-
 export function MemberUsageTable({
   members,
   memberMap,
@@ -739,7 +720,7 @@ export function MemberUsageTable({
             <div className="h-0 zero-border-t mx-5" />
             <div className="grid grid-cols-[1fr_7rem] gap-x-4 items-center px-5 py-3">
               <div className="flex items-center gap-3 min-w-0">
-                <MemberAvatar
+                <UserAvatar
                   imageUrl={orgMember?.imageUrl ?? ""}
                   initial={initial}
                   name={label}

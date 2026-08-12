@@ -191,6 +191,8 @@ describe("resolveDesktopConfig", () => {
     expect(config.webUrl.toString()).toBe("https://www.vm0.ai/");
     expect(config.environment).toBe("production");
     expect(config.identity).toMatchObject({
+      product: "zero",
+      brandName: "Zero",
       displayName: "Zero Computer Use",
       bundleId: "ai.vm0.zero.desktop",
       authScheme: "ai.vm0.zero.desktop",
@@ -209,6 +211,8 @@ describe("resolveDesktopConfig", () => {
     expect(config.environment).toBe("staging");
     expect(config.webUrl.toString()).toBe("https://staging-www.omby.ai/");
     expect(config.identity).toMatchObject({
+      product: "zero",
+      brandName: "Zero",
       displayName: "Zero CU Dev",
       bundleId: "ai.vm0.zero.desktop.dev",
       authScheme: "ai.vm0.zero.desktop.dev",
@@ -231,6 +235,8 @@ describe("resolveDesktopConfig", () => {
     expect(config.environment).toBe("development");
     expect(config.webUrl.toString()).toBe("https://www.vm7.ai:8443/");
     expect(config.identity).toMatchObject({
+      product: "zero",
+      brandName: "Zero",
       displayName: "Zero CU Dev",
       bundleId: "ai.vm0.zero.desktop.dev",
       authScheme: "ai.vm0.zero.desktop.dev",
@@ -247,6 +253,8 @@ describe("resolveDesktopConfig", () => {
     expect(config.environment).toBe("development");
     expect(config.webUrl.toString()).toBe("https://pr-123-www.omby.ai/");
     expect(config.identity).toMatchObject({
+      product: "zero",
+      brandName: "Zero",
       displayName: "Zero CU Dev",
       bundleId: "ai.vm0.zero.desktop.dev",
       authScheme: "ai.vm0.zero.desktop.dev",
@@ -256,6 +264,39 @@ describe("resolveDesktopConfig", () => {
       "https://pr-123-app.omby.ai",
       "https://pr-123-www.omby.ai",
     ]);
+  });
+
+  it("resolves the independent Okou production identity", () => {
+    const config = resolveDesktopConfig(undefined, "okou");
+
+    expect(config.platformUrl.toString()).toBe("https://app.okou.ai/");
+    expect(config.webUrl.toString()).toBe("https://www.vm0.ai/");
+    expect(config.environment).toBe("production");
+    expect(config.identity).toMatchObject({
+      product: "okou",
+      brandName: "Okou",
+      displayName: "Okou Computer Use",
+      bundleId: "ai.okou.computer-use",
+      authScheme: "ai.okou.computer-use",
+    });
+    expect(config.sessionPartition).toBe("persist:vm0-desktop-production");
+    expect([...config.allowedAppOrigins].sort()).toStrictEqual([
+      "https://api.vm0.ai",
+      "https://app.okou.ai",
+      "https://www.vm0.ai",
+    ]);
+  });
+
+  it("resolves the independent Okou development identity", () => {
+    const config = resolveDesktopConfig("https://pr-123-app.omby.ai/", "okou");
+
+    expect(config.identity).toMatchObject({
+      product: "okou",
+      brandName: "Okou",
+      displayName: "Okou CU Dev",
+      bundleId: "ai.okou.computer-use.dev",
+      authScheme: "ai.okou.computer-use.dev",
+    });
   });
 
   it("derives localhost companion origins from the app port", () => {
@@ -390,6 +431,17 @@ describe("desktop auth", () => {
     );
   });
 
+  it("builds the Okou system-browser desktop auth start URL", () => {
+    expect(
+      buildDesktopAuthStartUrl(
+        new URL("https://www.okou.ai"),
+        "ai.okou.computer-use",
+      ),
+    ).toBe(
+      "https://www.okou.ai/desktop-auth/start?callbackScheme=ai.okou.computer-use",
+    );
+  });
+
   it("deduplicates repeated desktop auth start attempts", () => {
     let now = 1_000;
     const gate = createDesktopAuthStartGate(() => now);
@@ -447,6 +499,18 @@ describe("desktop auth", () => {
       parseDesktopAuthCallback(
         `ai.vm0.zero.desktop.dev://auth/callback?code=${code}`,
         "ai.vm0.zero.desktop.dev",
+      ),
+    ).toStrictEqual({ code, handoffId: null });
+    expect(
+      parseDesktopAuthCallback(
+        `ai.okou.computer-use://auth/callback?code=${code}`,
+        "ai.okou.computer-use",
+      ),
+    ).toStrictEqual({ code, handoffId: null });
+    expect(
+      parseDesktopAuthCallback(
+        `ai.okou.computer-use.dev://auth/callback?code=${code}`,
+        "ai.okou.computer-use.dev",
       ),
     ).toStrictEqual({ code, handoffId: null });
     expect(
@@ -612,6 +676,9 @@ describe("desktop auth", () => {
 describe("computer use desktop runtime", () => {
   it("derives the API backend URL from platform URLs", () => {
     expect(resolveComputerUseApiBaseUrl(new URL("https://app.vm0.ai"))).toBe(
+      "https://api.vm0.ai",
+    );
+    expect(resolveComputerUseApiBaseUrl(new URL("https://app.okou.ai"))).toBe(
       "https://api.vm0.ai",
     );
     expect(resolveComputerUseApiBaseUrl(new URL("https://app.vm7.ai"))).toBe(

@@ -17,7 +17,7 @@ from tests.registry_builtin_helpers import (
     write_catalog_cache,
     write_registry_with_cache,
 )
-from tests.registry_helpers import builtin_vm, write_multi_vm_registry
+from tests.registry_helpers import builtin_vm, inline_vm, write_multi_vm_registry
 
 
 class TestRegistryBuiltinCatalogResolution:
@@ -44,6 +44,123 @@ class TestRegistryBuiltinCatalogResolution:
             registry_firewalls.ResolvedFirewallEntries([inline_firewall], None)
         with pytest.raises(ValueError, match="align with resolved firewalls"):
             registry_firewalls.ResolvedFirewallEntries([inline_firewall], ())
+
+    @pytest.mark.parametrize(
+        ("connector_runtime_targets", "expected_message"),
+        [
+            pytest.param({}, "connectorRuntimeTargets must be a list", id="non-list"),
+            pytest.param(
+                [None],
+                "connector runtime targets must be objects",
+                id="non-object-entry",
+            ),
+            pytest.param(
+                [{"kind": "builtin"}],
+                "builtin connector runtime target must have a connector slug",
+                id="builtin-missing-slug",
+            ),
+            pytest.param(
+                [{"kind": "builtin", "connectorSlug": ""}],
+                "builtin connector runtime target must have a connector slug",
+                id="builtin-empty-slug",
+            ),
+            pytest.param(
+                [{"kind": "builtin", "connectorSlug": 1}],
+                "builtin connector runtime target must have a connector slug",
+                id="builtin-non-string-slug",
+            ),
+            pytest.param(
+                [
+                    {"kind": "builtin", "connectorSlug": "github"},
+                    {"kind": "builtin", "connectorSlug": "github"},
+                ],
+                "builtin connector runtime targets must be unique",
+                id="duplicate-builtin-slug",
+            ),
+            pytest.param(
+                [{"kind": "custom"}],
+                "custom connector runtime target must have a UUID",
+                id="custom-missing-uuid",
+            ),
+            pytest.param(
+                [{"kind": "custom", "customConnectorId": 1}],
+                "custom connector runtime target must have a UUID",
+                id="custom-non-string-uuid",
+            ),
+            pytest.param(
+                [{"kind": "custom", "customConnectorId": "not-a-uuid"}],
+                "custom connector runtime target must have a UUID",
+                id="custom-invalid-uuid",
+            ),
+            pytest.param(
+                [
+                    {
+                        "kind": "custom",
+                        "customConnectorId": "550e8400-e29b-41d4-a716-446655440000",
+                    },
+                    {
+                        "kind": "custom",
+                        "customConnectorId": "550e8400-e29b-41d4-a716-446655440000",
+                    },
+                ],
+                "custom connector runtime targets must be unique",
+                id="duplicate-custom-uuid",
+            ),
+            pytest.param(
+                [{}],
+                "connector runtime targets must use a supported kind",
+                id="missing-kind",
+            ),
+            pytest.param(
+                [{"kind": "unsupported"}],
+                "connector runtime targets must use a supported kind",
+                id="unsupported-kind",
+            ),
+        ],
+    )
+    def test_malformed_connector_runtime_targets_raise(
+        self,
+        connector_runtime_targets,
+        expected_message,
+    ):
+        with pytest.raises(registry_firewalls.FirewallEntryResolutionError) as error:
+            registry_firewalls.resolve_firewall_entries(
+                {
+                    "runId": "run-malformed-targets",
+                    "connectorRuntimeTargets": connector_runtime_targets,
+                    "firewalls": [],
+                }
+            )
+
+        assert str(error.value) == expected_message
+
+    def test_malformed_connector_runtime_targets_reject_only_affected_vm(self, tmp_path, mitm_ctx):
+        registry_path = tmp_path / "registry.json"
+        malformed_vm = inline_vm("run-malformed")
+        malformed_vm["connectorRuntimeTargets"] = [{"kind": "unsupported"}]
+        write_multi_vm_registry(
+            registry_path,
+            {
+                "10.200.0.1": malformed_vm,
+                "10.200.0.2": inline_vm("run-valid"),
+            },
+        )
+
+        with mitm_ctx():
+            state = registry.load_registry_state(str(registry_path))
+            malformed_context = registry.get_vm_context("10.200.0.1", str(registry_path))
+            valid_context = registry.get_vm_context("10.200.0.2", str(registry_path))
+
+        assert not isinstance(state, registry.RegistryUnavailable)
+        assert set(state.vms) == {"10.200.0.2"}
+        assert set(state.invalid_vms) == {"10.200.0.1"}
+        invalid_vm = state.invalid_vms["10.200.0.1"]
+        assert invalid_vm.reason == "invalid_firewalls"
+        assert invalid_vm.message == "connector runtime targets must use a supported kind"
+        assert malformed_context is None
+        assert valid_context is not None
+        _, compiled_firewalls, _ = valid_context
+        assert compiled_firewalls is not None
 
     def test_builtin_firewall_entry_resolves_from_catalog_cache(self, tmp_path, mitm_ctx):
         registry_path, cache_path = write_registry_with_cache(

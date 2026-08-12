@@ -1,9 +1,6 @@
 /** Typed append-only commands for the canonical ChatEvent stream. */
 import { randomUUID } from "node:crypto";
-import {
-  isValidChatEventRevocation,
-  type ChatEventType,
-} from "@vm0/api-contracts/contracts/chat-events";
+import { isValidChatEventRevocation } from "@vm0/api-contracts/contracts/chat-events";
 import type { ChatFeishuMessageFiles } from "@vm0/db/jsonb-contracts/chat-feishu-context";
 import type {
   ChatSlackMentionDisplayNames,
@@ -11,6 +8,7 @@ import type {
   ChatSlackMessageFiles,
 } from "@vm0/db/jsonb-contracts/chat-slack-context";
 import type { ChatTeamsMessageFiles } from "@vm0/db/jsonb-contracts/chat-teams-context";
+import type { ChatEventPayload } from "@vm0/db/jsonb-contracts/chat-event";
 import { chatAgentRunContext } from "@vm0/db/schema/chat-agent-run-context";
 import { chatAgentphoneContext } from "@vm0/db/schema/chat-agentphone-context";
 import { chatAutomationContext } from "@vm0/db/schema/chat-automation-context";
@@ -18,11 +16,6 @@ import {
   chatEventTerminalPredicate,
   chatEvents,
 } from "@vm0/db/schema/chat-event";
-import type {
-  ChatEventPayload,
-  ChatEventUsagePayload,
-  ChatEventUserMessage,
-} from "@vm0/db/jsonb-contracts/chat-event";
 import { chatFeishuContext } from "@vm0/db/schema/chat-feishu-context";
 import { chatGithubContext } from "@vm0/db/schema/chat-github-context";
 import { chatMorningBriefContext } from "@vm0/db/schema/chat-morning-brief-context";
@@ -31,16 +24,6 @@ import { chatTeamsContext } from "@vm0/db/schema/chat-teams-context";
 import { chatTelegramContext } from "@vm0/db/schema/chat-telegram-context";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { eq, sql } from "drizzle-orm";
-import {
-  bigint,
-  integer,
-  jsonb,
-  pgTable,
-  text,
-  timestamp,
-  uuid,
-} from "drizzle-orm/pg-core";
-import { pgBooleanDecoder } from "../../lib/db-structured-result";
 import { nowDate } from "../../lib/time";
 import type {
   WorkflowAutomationEventPayload,
@@ -48,58 +31,14 @@ import type {
 } from "./workflow-automation-context.service";
 import type { Tx } from "../../lib/db-types";
 
-// Drizzle emits every column declared by an insert table, even when a value is
-// omitted. This runtime-only table shape keeps INSERT statements issued before
-// the payload column is available from naming it during the DB/API rollout
-// window (observed maximum: about 102 minutes); it is intentionally outside the
-// generated DB schema export. Remove it with the capability probe after the
-// payload column is guaranteed everywhere and rollback closes. Follow-up:
-// #26158.
-const chatEventsBeforePayload = pgTable("chat_events", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  chatThreadId: uuid("chat_thread_id").notNull(),
-  runId: uuid("run_id"),
-  usagePayload: jsonb("usage_payload").$type<ChatEventUsagePayload>(),
-  revokesEventId: uuid("revokes_event_id"),
-  interruptsRunId: uuid("interrupts_run_id"),
-  runGroupId: uuid("run_group_id"),
-  eventType: text("event_type").$type<ChatEventType>().notNull(),
-  contextType: text("context_type").$type<
-    | "web"
-    | "slack"
-    | "feishu"
-    | "teams"
-    | "telegram"
-    | "github"
-    | "agentphone"
-    | "automation"
-    | "goal"
-    | "morning_brief"
-    | "agent_run"
-  >(),
-  contextId: uuid("context_id"),
-  content: text("content"),
-  userMessage: jsonb("user_message").$type<ChatEventUserMessage>(),
-  thinking: text("thinking"),
-  error: text("error"),
-  runEventSequenceNumber: integer("run_event_sequence_number"),
-  runEventId: text("run_event_id"),
-  seqId: bigint("seq_id", { mode: "number" }).notNull(),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
-
-type ChatEventInsert = typeof chatEvents.$inferInsert;
+type CanonicalChatEventInsert = typeof chatEvents.$inferInsert;
 type ChatEventWriteTransaction = Tx;
 
-type ChatEventLegacyPayloadLeaves = Pick<
-  ChatEventInsert,
-  "content" | "userMessage" | "thinking" | "error" | "usagePayload"
->;
-
-type ChatEventIdentity = Pick<
-  ChatEventInsert,
-  "id" | "chatThreadId" | "runId" | "runGroupId"
-> & {
+type ChatEventIdentity = {
+  readonly id?: string;
+  readonly chatThreadId: string;
+  readonly runId?: string | null;
+  readonly runGroupId?: string | null;
   readonly createdAt?: Date;
 };
 
@@ -265,7 +204,7 @@ type ChatEventDisplayContext =
     };
 
 type ChatEventInputPayload = {
-  readonly userMessage: NonNullable<ChatEventInsert["userMessage"]>;
+  readonly userMessage: NonNullable<ChatEventPayload["userMessage"]>;
 };
 
 interface ChatAgentRunDisplayContext {
@@ -277,7 +216,7 @@ interface ChatAgentRunDisplayContext {
 }
 
 type ChatEventOutputSequence = Pick<
-  ChatEventInsert,
+  CanonicalChatEventInsert,
   "runEventSequenceNumber" | "runEventId"
 >;
 
@@ -319,7 +258,7 @@ type InputBudgetEvent = ChatEventIdentity &
 type InputRejectedEvent = ChatEventIdentity &
   ChatEventDisplayContext &
   ChatEventInputPayload &
-  Pick<ChatEventInsert, "runEventSequenceNumber"> & {
+  Pick<CanonicalChatEventInsert, "runEventSequenceNumber"> & {
     readonly eventType: "input.rejected";
     readonly content?: null;
     readonly error: string;
@@ -334,14 +273,14 @@ type OutputMessageEvent = ChatEventIdentity &
   };
 
 type OutputErrorEvent = ChatEventIdentity &
-  Pick<ChatEventInsert, "runEventSequenceNumber"> & {
+  Pick<CanonicalChatEventInsert, "runEventSequenceNumber"> & {
     readonly eventType: "output.error";
     readonly content: string | null;
     readonly error: string;
   };
 
 type OutputThinkingEvent = ChatEventIdentity &
-  Pick<ChatEventInsert, "runEventId"> & {
+  Pick<CanonicalChatEventInsert, "runEventId"> & {
     readonly eventType: "output.thinking";
     readonly content?: null;
     readonly thinking: string;
@@ -425,7 +364,7 @@ type UsageRecordedEvent = ChatEventIdentity & {
   readonly eventType: "usage.recorded";
   readonly runId: string;
   readonly content?: null;
-  readonly usagePayload: NonNullable<ChatEventInsert["usagePayload"]>;
+  readonly usagePayload: NonNullable<ChatEventPayload["usage"]>;
 };
 
 export type NewChatEvent =
@@ -470,18 +409,17 @@ interface ChatEventBatchCommandResult {
 
 type InsertChatEventConflict = "none" | "any" | "id" | "run-lifecycle";
 
-type PersistedChatEvent = Omit<
-  ChatEventInsert,
-  "role" | "runLifecycleEvent" | "seqId"
->;
+type PersistedChatEvent = Omit<CanonicalChatEventInsert, "seqId">;
 
 type ChatEventContextPointer = Pick<
-  ChatEventInsert,
+  CanonicalChatEventInsert,
   "contextType" | "contextId"
 >;
 
 interface StoredChatEventContextPointer {
-  readonly contextType: NonNullable<ChatEventInsert["contextType"]> | null;
+  readonly contextType: NonNullable<
+    CanonicalChatEventInsert["contextType"]
+  > | null;
   readonly contextId: string | null;
 }
 
@@ -489,7 +427,7 @@ export interface LoadedChatEventReplacementTarget extends StoredChatEventContext
   readonly id: string;
   readonly chatThreadId: string;
   readonly createdAt: Date;
-  readonly eventType: NonNullable<ChatEventInsert["eventType"]>;
+  readonly eventType: NonNullable<CanonicalChatEventInsert["eventType"]>;
 }
 
 type NewDisplayContext =
@@ -1001,9 +939,14 @@ async function insertDisplayContext(
 }
 
 function canonicalChatEventPayload(
-  leaves: ChatEventLegacyPayloadLeaves,
+  values: NewChatEvent,
 ): ChatEventPayload | null {
-  const { content, userMessage, thinking, error, usagePayload } = leaves;
+  const content = "content" in values ? values.content : undefined;
+  const userMessage = "userMessage" in values ? values.userMessage : undefined;
+  const thinking = "thinking" in values ? values.thinking : undefined;
+  const error = "error" in values ? values.error : undefined;
+  const usagePayload =
+    "usagePayload" in values ? values.usagePayload : undefined;
   const payload: ChatEventPayload = {
     ...(content === null || content === undefined ? {} : { content }),
     ...(userMessage === null || userMessage === undefined
@@ -1018,92 +961,43 @@ function canonicalChatEventPayload(
   return Object.keys(payload).length === 0 ? null : payload;
 }
 
-async function chatEventPayloadSchemaAvailable(
-  tx: ChatEventWriteTransaction,
-): Promise<boolean> {
-  // A new API can deploy before the payload column during the DB/API rollout
-  // window (observed maximum: about 102 minutes). Keep legacy-only writes legal
-  // until the column exists; remove this probe after the column is guaranteed
-  // everywhere and rollback closes. Follow-up: #26158.
-  const [state] = await tx
-    .select({
-      available: sql`
-        EXISTS (
-          SELECT 1
-          FROM pg_catalog.pg_attribute
-          WHERE attrelid = to_regclass('chat_events')
-            AND attname = 'payload'
-            AND NOT attisdropped
-        )
-      `.mapWith(pgBooleanDecoder),
-    })
-    .from(sql`(SELECT 1) AS schema_probe`)
-    .limit(1);
-  if (!state) {
-    throw new Error("chat event payload schema probe returned no row");
-  }
-  return state.available;
-}
-
-/**
- * Build the transitional storage row at the central persistence boundary.
- * Once the payload column is present, payload is written alongside every
- * legacy leaf; interrupt and goal pointers likewise keep their canonical and
- * legacy columns in sync. The legacy writes protect the deployed v3
- * API/Platform and old clients while readers remain authoritative on the old
- * columns. Remove these dual writes only after canonical readers land and the
- * relevant DB/API (observed maximum: about 102 minutes) and client (about two
- * days) rollback windows close. Follow-up: #26158.
- */
-function persistedChatEventValues(
+/** Map the public event command into its canonical storage representation. */
+function canonicalChatEventValues(
   values: NewChatEvent,
-  payloadSchemaAvailable: boolean,
   overrides?: Partial<
-    Pick<ChatEventInsert, "id" | "contextType" | "contextId">
+    Pick<CanonicalChatEventInsert, "id" | "contextType" | "contextId">
   >,
 ): PersistedChatEvent {
-  const content = "content" in values ? values.content : undefined;
-  const userMessage = "userMessage" in values ? values.userMessage : undefined;
-  const thinking = "thinking" in values ? values.thinking : undefined;
-  const error = "error" in values ? values.error : undefined;
-  const usagePayload =
-    "usagePayload" in values ? values.usagePayload : undefined;
   const runGroupId = "runGroupId" in values ? values.runGroupId : undefined;
-  const canonicalInterruptRunId =
-    values.eventType === "control.interrupt"
-      ? { runId: values.interruptsRunId }
-      : {};
-  const canonicalGoalContext = runGroupId
-    ? {
-        runGroupId,
-        contextType: "goal" as const,
-        contextId: runGroupId,
-      }
-    : {};
+  const contextType =
+    runGroupId === null || runGroupId === undefined
+      ? (overrides?.contextType ??
+        ("contextType" in values ? values.contextType : undefined))
+      : "goal";
+  const contextId =
+    runGroupId === null || runGroupId === undefined
+      ? overrides?.contextId
+      : runGroupId;
 
   return {
-    ...values,
-    ...overrides,
-    ...(values.eventType === "input.prompt" ||
-    values.eventType === "input.rejected" ||
-    values.eventType === "input.automation" ||
-    values.eventType === "input.goal" ||
-    values.eventType === "input.budget"
-      ? { content: null }
-      : {}),
-    ...(payloadSchemaAvailable
-      ? {
-          payload: canonicalChatEventPayload({
-            content,
-            userMessage,
-            thinking,
-            error,
-            usagePayload,
-          }),
-        }
-      : {}),
-    ...canonicalInterruptRunId,
-    ...canonicalGoalContext,
+    id: overrides?.id ?? values.id,
+    chatThreadId: values.chatThreadId,
+    runId:
+      values.eventType === "control.interrupt"
+        ? values.interruptsRunId
+        : "runId" in values
+          ? values.runId
+          : undefined,
+    eventType: values.eventType,
+    payload: canonicalChatEventPayload(values),
+    contextType,
+    contextId,
+    runEventSequenceNumber:
+      "runEventSequenceNumber" in values
+        ? values.runEventSequenceNumber
+        : undefined,
+    runEventId: "runEventId" in values ? values.runEventId : undefined,
+    createdAt: values.createdAt,
   };
 }
 
@@ -1129,14 +1023,19 @@ async function reserveChatEventSeqIds(
   return thread.lastSeqId - count + 1;
 }
 
-async function releaseChatEventSeqId(
+async function releaseChatEventSeqIds(
   tx: ChatEventWriteTransaction,
   chatThreadId: string,
+  count: number,
 ): Promise<void> {
+  if (!Number.isInteger(count) || count <= 0) {
+    throw new Error("chat event seq_id release count must be positive");
+  }
+
   const [thread] = await tx
     .update(chatThreads)
     .set({
-      lastChatEventSeqId: sql`${chatThreads.lastChatEventSeqId} - 1`,
+      lastChatEventSeqId: sql`${chatThreads.lastChatEventSeqId} - ${count}`,
     })
     .where(eq(chatThreads.id, chatThreadId))
     .returning({ id: chatThreads.id });
@@ -1182,9 +1081,8 @@ export async function insertChatEvent(
 ): Promise<ChatEventCommandResult | null> {
   const eventId = values.id ?? randomUUID();
   const displayContext = newDisplayContext(eventId, values);
-  const payloadSchemaAvailable = await chatEventPayloadSchemaAvailable(tx);
   const [valueWithSeqId] = await addSeqIdsToEvents(tx, [
-    persistedChatEventValues(values, payloadSchemaAvailable, {
+    canonicalChatEventValues(values, {
       id: eventId,
       ...displayContextPointer(displayContext),
     }),
@@ -1193,46 +1091,41 @@ export async function insertChatEvent(
     throw new Error("chat event seq_id was not assigned");
   }
 
-  const insertTable = payloadSchemaAvailable
-    ? chatEvents
-    : chatEventsBeforePayload;
-  const query = tx.insert(insertTable).values(valueWithSeqId);
+  const query = tx.insert(chatEvents).values(valueWithSeqId);
   const rows =
     conflict === "any"
       ? await query.onConflictDoNothing().returning({
-          id: insertTable.id,
-          createdAt: insertTable.createdAt,
-          seqId: insertTable.seqId,
+          id: chatEvents.id,
+          createdAt: chatEvents.createdAt,
+          seqId: chatEvents.seqId,
         })
       : conflict === "id"
-        ? await query
-            .onConflictDoNothing({ target: insertTable.id })
-            .returning({
-              id: insertTable.id,
-              createdAt: insertTable.createdAt,
-              seqId: insertTable.seqId,
-            })
+        ? await query.onConflictDoNothing({ target: chatEvents.id }).returning({
+            id: chatEvents.id,
+            createdAt: chatEvents.createdAt,
+            seqId: chatEvents.seqId,
+          })
         : conflict === "run-lifecycle"
           ? await query
               .onConflictDoNothing({
-                target: insertTable.runId,
-                where: chatEventTerminalPredicate(insertTable.eventType),
+                target: chatEvents.runId,
+                where: chatEventTerminalPredicate(chatEvents.eventType),
               })
               .returning({
-                id: insertTable.id,
-                createdAt: insertTable.createdAt,
-                seqId: insertTable.seqId,
+                id: chatEvents.id,
+                createdAt: chatEvents.createdAt,
+                seqId: chatEvents.seqId,
               })
           : await query.returning({
-              id: insertTable.id,
-              createdAt: insertTable.createdAt,
-              seqId: insertTable.seqId,
+              id: chatEvents.id,
+              createdAt: chatEvents.createdAt,
+              seqId: chatEvents.seqId,
             });
 
   if (rows.length === 0) {
     // A rejected idempotent write is not part of the canonical stream, so it
     // must not consume the thread's next cursor.
-    await releaseChatEventSeqId(tx, values.chatThreadId);
+    await releaseChatEventSeqIds(tx, values.chatThreadId, 1);
   } else {
     const inserted = rows[0];
     if (!inserted) {
@@ -1258,26 +1151,71 @@ export async function insertChatEvents(
     return [];
   }
 
-  const payloadSchemaAvailable = await chatEventPayloadSchemaAvailable(tx);
   const valuesWithSeqIds = await addSeqIdsToEvents(
     tx,
     values.map((value) => {
-      return persistedChatEventValues(value, payloadSchemaAvailable);
+      return canonicalChatEventValues(value);
     }),
   );
-  const insertTable = payloadSchemaAvailable
-    ? chatEvents
-    : chatEventsBeforePayload;
-  return await tx
-    .insert(insertTable)
+  const rows = await tx
+    .insert(chatEvents)
     .values([...valuesWithSeqIds])
     .onConflictDoNothing()
     .returning({
-      id: insertTable.id,
-      createdAt: insertTable.createdAt,
-      seqId: insertTable.seqId,
-      sequenceNumber: insertTable.runEventSequenceNumber,
+      id: chatEvents.id,
+      chatThreadId: chatEvents.chatThreadId,
+      createdAt: chatEvents.createdAt,
+      seqId: chatEvents.seqId,
+      sequenceNumber: chatEvents.runEventSequenceNumber,
     });
+
+  if (rows.length < valuesWithSeqIds.length) {
+    const reservedRangeByThread = new Map<
+      string,
+      { readonly firstSeqId: number; lastSeqId: number }
+    >();
+    for (const value of valuesWithSeqIds) {
+      const range = reservedRangeByThread.get(value.chatThreadId);
+      if (range === undefined) {
+        reservedRangeByThread.set(value.chatThreadId, {
+          firstSeqId: value.seqId,
+          lastSeqId: value.seqId,
+        });
+      } else {
+        range.lastSeqId = value.seqId;
+      }
+    }
+
+    const acceptedLastSeqIdByThread = new Map<string, number>();
+    for (const row of rows) {
+      const acceptedLastSeqId = acceptedLastSeqIdByThread.get(row.chatThreadId);
+      if (acceptedLastSeqId === undefined || row.seqId > acceptedLastSeqId) {
+        acceptedLastSeqIdByThread.set(row.chatThreadId, row.seqId);
+      }
+    }
+
+    for (const [chatThreadId, range] of [...reservedRangeByThread].sort(
+      ([left], [right]) => {
+        return left.localeCompare(right);
+      },
+    )) {
+      const acceptedLastSeqId =
+        acceptedLastSeqIdByThread.get(chatThreadId) ?? range.firstSeqId - 1;
+      const unusedSuffixCount = range.lastSeqId - acceptedLastSeqId;
+      if (unusedSuffixCount > 0) {
+        await releaseChatEventSeqIds(tx, chatThreadId, unusedSuffixCount);
+      }
+    }
+  }
+
+  return rows.map((row) => {
+    return {
+      id: row.id,
+      createdAt: row.createdAt,
+      seqId: row.seqId,
+      sequenceNumber: row.sequenceNumber,
+    };
+  });
 }
 
 /** Append a replacement event after validating its immutable revoke edge. */
@@ -1334,17 +1272,12 @@ export async function replaceLoadedChatEvent(
     replacementId,
     replacement,
   );
-  const payloadSchemaAvailable = await chatEventPayloadSchemaAvailable(tx);
-  const insertTable = payloadSchemaAvailable
-    ? chatEvents
-    : chatEventsBeforePayload;
   const seqId = await reserveChatEventSeqIds(tx, replacement.chatThreadId, 1);
   const rows = await tx
-    .insert(insertTable)
+    .insert(chatEvents)
     .values({
-      ...persistedChatEventValues(
+      ...canonicalChatEventValues(
         { ...replacement, createdAt },
-        payloadSchemaAvailable,
         {
           id: replacementId,
           ...contextPointer,
@@ -1355,12 +1288,13 @@ export async function replaceLoadedChatEvent(
     })
     .onConflictDoNothing()
     .returning({
-      id: insertTable.id,
-      createdAt: insertTable.createdAt,
-      seqId: insertTable.seqId,
+      id: chatEvents.id,
+      createdAt: chatEvents.createdAt,
+      seqId: chatEvents.seqId,
     });
   const inserted = rows[0];
   if (!inserted) {
+    await releaseChatEventSeqIds(tx, replacement.chatThreadId, 1);
     return null;
   }
 

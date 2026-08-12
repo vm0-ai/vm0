@@ -746,15 +746,6 @@ async function expectQueuedPiEdgePromotion(args: {
   );
   expect(modelStarted.settled()).toBeFalsy();
 
-  const promotionController = new AbortController();
-  context.mocks.ably.publish.mockImplementation((topic: unknown) => {
-    if (topic === "queue:changed" && !promotionController.signal.aborted) {
-      const error = new Error("abort after queued run promotion commit");
-      error.name = "AbortError";
-      promotionController.abort(error);
-    }
-    return Promise.resolve(undefined);
-  });
   const completed = await webhooks.requestAgentComplete(
     {
       runId: occupyingRun.runId,
@@ -769,11 +760,9 @@ async function expectQueuedPiEdgePromotion(args: {
       )}`,
     },
     [200],
-    promotionController.signal,
   );
   expect(completed.status).toBe(200);
   await modelStarted.promise;
-  expect(promotionController.signal.aborted).toBeTruthy();
 
   expect((await api.readRun(args.fixture.actor, queuedRun.runId)).status).toBe(
     "pending",
@@ -1020,13 +1009,13 @@ describe("PiLoop edge turn", () => {
         return (
           event?.runId === edge.runId &&
           event?.eventType === "pi.message.completed" &&
-          eventData?.messageId === `${edge.runId}/2`
+          eventData?.messageId === `${edge.runId}/1`
         );
       });
     const handoffEventData = recordOf(handoffTelemetry?.eventData);
     expect(handoffEventData).toMatchObject({
       source: "api",
-      messageId: `${edge.runId}/2`,
+      messageId: `${edge.runId}/1`,
       role: "assistant",
       handoff: { from: "api", to: "sandbox" },
     });
@@ -1045,8 +1034,8 @@ describe("PiLoop edge turn", () => {
       events: [
         {
           type: "pi.message.completed",
-          sequenceNumber: 3,
-          messageId: `${edge.runId}/3`,
+          sequenceNumber: 2,
+          messageId: `${edge.runId}/2`,
           message: {
             role: "toolResult",
             toolCallId: deepseekToolCallId("read_skill_1"),
@@ -1064,8 +1053,8 @@ describe("PiLoop edge turn", () => {
         },
         {
           type: "pi.message.completed",
-          sequenceNumber: 4,
-          messageId: `${edge.runId}/4`,
+          sequenceNumber: 3,
+          messageId: `${edge.runId}/3`,
           message: {
             role: "assistant",
             content: [
@@ -1096,8 +1085,9 @@ describe("PiLoop edge turn", () => {
       ],
     };
     await webhooks.requestAgentEvents(resumeEvents, sandboxHeaders, [200]);
+    context.mocks.axiomLogging.warn.mockClear();
     await webhooks.requestAgentComplete(
-      { runId: edge.runId, exitCode: 0, lastEventSequence: 4 },
+      { runId: edge.runId, exitCode: 0, lastEventSequence: 3 },
       { authorization: `Bearer ${standbyContext.sandboxToken}` },
       [200],
     );
@@ -1110,9 +1100,9 @@ describe("PiLoop edge turn", () => {
       messages: [
         {
           ordinal: 1,
-          messageId: `${edge.runId}/1`,
+          messageId: `${edge.runId}/0`,
           runId: edge.runId,
-          runEventSequenceNumber: 1,
+          runEventSequenceNumber: 0,
           role: "user",
           payload: {
             role: "user",
@@ -1121,9 +1111,9 @@ describe("PiLoop edge turn", () => {
         },
         {
           ordinal: 2,
-          messageId: `${edge.runId}/2`,
+          messageId: `${edge.runId}/1`,
           runId: edge.runId,
-          runEventSequenceNumber: 2,
+          runEventSequenceNumber: 1,
           role: "assistant",
           payload: {
             role: "assistant",
@@ -1146,9 +1136,9 @@ describe("PiLoop edge turn", () => {
         },
         {
           ordinal: 3,
-          messageId: `${edge.runId}/3`,
+          messageId: `${edge.runId}/2`,
           runId: edge.runId,
-          runEventSequenceNumber: 3,
+          runEventSequenceNumber: 2,
           role: "toolResult",
           payload: {
             role: "toolResult",
@@ -1167,9 +1157,9 @@ describe("PiLoop edge turn", () => {
         },
         {
           ordinal: 4,
-          messageId: `${edge.runId}/4`,
+          messageId: `${edge.runId}/3`,
           runId: edge.runId,
-          runEventSequenceNumber: 4,
+          runEventSequenceNumber: 3,
           role: "assistant",
           payload: {
             role: "assistant",
@@ -1183,6 +1173,15 @@ describe("PiLoop edge turn", () => {
       ],
     });
     expect(JSON.stringify(transcript)).not.toContain(legacyPrompt);
+    expect(
+      context.mocks.axiomLogging.warn.mock.calls.some(([message, fields]) => {
+        return (
+          message ===
+            "Run output projection is incomplete at terminal callback" &&
+          recordOf(fields)?.runId === edge.runId
+        );
+      }),
+    ).toBeFalsy();
 
     const projected = await outputMessages(fixture.actor, edge.threadId);
     expect(projected).toHaveLength(1);
@@ -1261,13 +1260,13 @@ describe("PiLoop edge turn", () => {
         expect.objectContaining({
           ordinal: 5,
           runId: followUp.runId,
-          messageId: `${followUp.runId}/1`,
+          messageId: `${followUp.runId}/0`,
           role: "user",
         }),
         expect.objectContaining({
           ordinal: 6,
           runId: followUp.runId,
-          messageId: `${followUp.runId}/2`,
+          messageId: `${followUp.runId}/1`,
           role: "assistant",
           payload: expect.objectContaining({
             content: [
@@ -1375,8 +1374,8 @@ describe("PiLoop edge turn", () => {
       events: [
         {
           type: "pi.message.completed",
-          sequenceNumber: 3,
-          messageId: `${run.runId}/3`,
+          sequenceNumber: 2,
+          messageId: `${run.runId}/2`,
           message: {
             role: "toolResult",
             toolCallId: deepseekToolCallId("read_memory_1"),
@@ -1388,8 +1387,8 @@ describe("PiLoop edge turn", () => {
         },
         {
           type: "pi.message.completed",
-          sequenceNumber: 4,
-          messageId: `${run.runId}/4`,
+          sequenceNumber: 3,
+          messageId: `${run.runId}/3`,
           message: {
             role: "assistant",
             content: [
@@ -1404,7 +1403,7 @@ describe("PiLoop edge turn", () => {
     };
     await webhooks.requestAgentEvents(resumeEvents, sandboxHeaders, [200]);
     await webhooks.requestAgentComplete(
-      { runId: run.runId, exitCode: 0, lastEventSequence: 4 },
+      { runId: run.runId, exitCode: 0, lastEventSequence: 3 },
       { authorization: `Bearer ${standbyContext.sandboxToken}` },
       [200],
     );
@@ -1474,8 +1473,8 @@ describe("PiLoop edge turn", () => {
       events: [
         {
           type: "pi.message.completed",
-          sequenceNumber: 3,
-          messageId: `${run.runId}/3`,
+          sequenceNumber: 2,
+          messageId: `${run.runId}/2`,
           message: {
             role: "toolResult",
             toolCallId: deepseekToolCallId("read_billing_1"),
@@ -1487,8 +1486,8 @@ describe("PiLoop edge turn", () => {
         },
         {
           type: "pi.message.completed",
-          sequenceNumber: 4,
-          messageId: `${run.runId}/4`,
+          sequenceNumber: 3,
+          messageId: `${run.runId}/3`,
           message: {
             role: "assistant",
             content: [
@@ -1503,7 +1502,7 @@ describe("PiLoop edge turn", () => {
     };
     await webhooks.requestAgentEvents(resumeEvents, sandboxHeaders, [200]);
     await webhooks.requestAgentComplete(
-      { runId: run.runId, exitCode: 0, lastEventSequence: 4 },
+      { runId: run.runId, exitCode: 0, lastEventSequence: 3 },
       { authorization: `Bearer ${standbyContext.sandboxToken}` },
       [200],
     );
@@ -1522,7 +1521,7 @@ describe("PiLoop edge turn", () => {
     expect((await billing.readBillingStatus(fixture.actor)).credits).toBe(
       creditsBefore - 111,
     );
-    const observationKeys = [piEdgeUsageObservationKey(run.runId, 2)];
+    const observationKeys = [piEdgeUsageObservationKey(run.runId, 1)];
     const observations = await readModelStatsObservations(
       context,
       observationKeys,
@@ -1564,6 +1563,7 @@ describe("PiLoop edge turn", () => {
       }),
     );
 
+    context.mocks.axiomLogging.warn.mockClear();
     const run = await sendChatRun(fixture, "do not charge vm0 for BYOK");
     await flushWaitUntilForTest();
 
@@ -1576,7 +1576,31 @@ describe("PiLoop edge turn", () => {
     expect((await billing.readBillingStatus(fixture.actor)).credits).toBe(
       creditsBefore,
     );
-    const idempotencyKey = piEdgeUsageObservationKey(run.runId, 2);
+    await expect(readTranscript(run.runId)).resolves.toMatchObject({
+      lastOrdinal: 2,
+      messages: [
+        {
+          messageId: `${run.runId}/0`,
+          runEventSequenceNumber: 0,
+          role: "user",
+        },
+        {
+          messageId: `${run.runId}/1`,
+          runEventSequenceNumber: 1,
+          role: "assistant",
+        },
+      ],
+    });
+    expect(
+      context.mocks.axiomLogging.warn.mock.calls.some(([message, fields]) => {
+        return (
+          message ===
+            "Run output projection is incomplete at terminal callback" &&
+          recordOf(fields)?.runId === run.runId
+        );
+      }),
+    ).toBeFalsy();
+    const idempotencyKey = piEdgeUsageObservationKey(run.runId, 1);
     await expect(
       readModelStatsObservations(context, [idempotencyKey]),
     ).resolves.toStrictEqual([{ idempotencyKey, aggregatedAt: null }]);
@@ -1627,7 +1651,7 @@ describe("PiLoop edge turn", () => {
         runId: run.runId,
         exitCode: 1,
         error: "the Sandbox failed after the handoff",
-        lastEventSequence: 2,
+        lastEventSequence: 1,
       },
       { authorization: `Bearer ${standbyContext.sandboxToken}` },
       [200],
@@ -1673,7 +1697,7 @@ describe("PiLoop edge turn", () => {
         runId: run.runId,
         exitCode: 1,
         error: "Pi standby timed out waiting for a persisted tool call",
-        lastEventSequence: 1,
+        lastEventSequence: 0,
       },
       { authorization: `Bearer ${standbyContext.sandboxToken}` },
       [200],
@@ -1818,7 +1842,7 @@ describe("PiLoop edge turn", () => {
         runId: run.runId,
         exitCode: 1,
         error: "Pi standby timed out waiting for a persisted tool call",
-        lastEventSequence: 2,
+        lastEventSequence: 1,
       },
       { authorization: `Bearer ${standbyContext.sandboxToken}` },
       [200],
@@ -1833,7 +1857,7 @@ describe("PiLoop edge turn", () => {
       messages: [
         {
           ordinal: 1,
-          messageId: `${run.runId}/1`,
+          messageId: `${run.runId}/0`,
           role: "user",
           payload: {
             role: "user",
@@ -1842,7 +1866,7 @@ describe("PiLoop edge turn", () => {
         },
         {
           ordinal: 2,
-          messageId: `${run.runId}/2`,
+          messageId: `${run.runId}/1`,
           role: "assistant",
           payload: {
             role: "assistant",
@@ -1898,12 +1922,12 @@ describe("PiLoop edge turn", () => {
       messages: [
         {
           ordinal: 1,
-          messageId: `${run.runId}/1`,
+          messageId: `${run.runId}/0`,
           role: "user",
         },
         {
           ordinal: 2,
-          messageId: `${run.runId}/2`,
+          messageId: `${run.runId}/1`,
           role: "assistant",
           payload: {
             role: "assistant",
@@ -1962,8 +1986,8 @@ describe("PiLoop edge turn", () => {
       events: [
         {
           type: "pi.message.completed",
-          sequenceNumber: 3,
-          messageId: `${run.runId}/3`,
+          sequenceNumber: 2,
+          messageId: `${run.runId}/2`,
           message: {
             role: "toolResult",
             toolCallId: deepseekToolCallId("bash_handoff_1"),
@@ -1976,8 +2000,8 @@ describe("PiLoop edge turn", () => {
         },
         {
           type: "pi.message.completed",
-          sequenceNumber: 4,
-          messageId: `${run.runId}/4`,
+          sequenceNumber: 3,
+          messageId: `${run.runId}/3`,
           message: {
             role: "assistant",
             content: [
@@ -2026,7 +2050,7 @@ describe("PiLoop edge turn", () => {
     await webhooks.requestAgentUsageEvent(runnerUsage, usageHeaders, [200]);
     await webhooks.requestAgentUsageEvent(runnerUsage, usageHeaders, [200]);
     await webhooks.requestAgentComplete(
-      { runId: run.runId, exitCode: 0, lastEventSequence: 4 },
+      { runId: run.runId, exitCode: 0, lastEventSequence: 3 },
       { authorization: `Bearer ${standbyContext.sandboxToken}` },
       [200],
     );
@@ -2040,14 +2064,14 @@ describe("PiLoop edge turn", () => {
       lastOrdinal: 4,
       hasMore: false,
       messages: [
+        expect.objectContaining({ messageId: `${run.runId}/0` }),
         expect.objectContaining({ messageId: `${run.runId}/1` }),
-        expect.objectContaining({ messageId: `${run.runId}/2` }),
         expect.objectContaining({
-          messageId: `${run.runId}/3`,
+          messageId: `${run.runId}/2`,
           role: "toolResult",
         }),
         expect.objectContaining({
-          messageId: `${run.runId}/4`,
+          messageId: `${run.runId}/3`,
           role: "assistant",
           payload: expect.objectContaining({
             stopReason: "stop",

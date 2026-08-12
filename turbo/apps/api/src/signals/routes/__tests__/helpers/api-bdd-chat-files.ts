@@ -105,6 +105,7 @@ type BddSendEventBody =
       readonly clientEventId?: string;
       readonly chatThreadSortEventId?: string;
       readonly realAgentInPreview?: boolean;
+      readonly captureNetworkBodies?: boolean;
       readonly revokesEventId?: string;
     }
   | {
@@ -1220,6 +1221,9 @@ export function createChatFilesBddApi(context: TestContext) {
                 ...(body.realAgentInPreview === undefined
                   ? {}
                   : { realAgentInPreview: body.realAgentInPreview }),
+                ...(body.captureNetworkBodies === undefined
+                  ? {}
+                  : { captureNetworkBodies: body.captureNetworkBodies }),
                 ...(body.revokesEventId === undefined
                   ? {}
                   : { revokesEventId: body.revokesEventId }),

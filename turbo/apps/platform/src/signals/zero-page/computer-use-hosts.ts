@@ -1,4 +1,5 @@
 import { command, computed, state } from "ccstate";
+import { desktopProductFromClientHeader } from "@vm0/api-contracts/contracts/client-headers";
 import {
   zeroComputerUseHostsContract,
   type ComputerUseHost,
@@ -9,22 +10,22 @@ import { zeroClient$ } from "../api-client.ts";
 import { setAblyLoop$ } from "../realtime.ts";
 import { onRef, tapError } from "../utils.ts";
 
-const ZERO_DESKTOP_DMG_DOWNLOAD_PATH =
-  "/api/zero/desktop/updates/stable/darwin/arm64/dmg";
+const OKOU_DESKTOP_DMG_DOWNLOAD_PATH =
+  "/api/okou/desktop/updates/stable/darwin/arm64/dmg";
 
-export const ZERO_DESKTOP_DOWNLOAD_URL = new URL(
-  ZERO_DESKTOP_DMG_DOWNLOAD_PATH,
+export const OKOU_DESKTOP_DOWNLOAD_URL = new URL(
+  OKOU_DESKTOP_DMG_DOWNLOAD_PATH,
   resolveApiBaseForNavigation("api"),
 ).toString();
 
-type ZeroDesktopDownloadSupportStatus = "available" | "unsupported-intel-mac";
+type DesktopDownloadSupportStatus = "available" | "unsupported-intel-mac";
 
 interface UserAgentDataValues {
   readonly architecture?: string;
   readonly platform?: string;
 }
 
-interface ZeroDesktopNavigator {
+interface DesktopNavigator {
   readonly platform?: string;
   readonly userAgent?: string;
   readonly userAgentData?: {
@@ -55,8 +56,8 @@ function isIntelArchitecture(architecture: string | undefined): boolean {
   );
 }
 
-async function isUnsupportedIntelMacForZeroDesktop(
-  navigatorRef: ZeroDesktopNavigator | null | undefined = typeof navigator ===
+async function isUnsupportedIntelMacForDesktop(
+  navigatorRef: DesktopNavigator | null | undefined = typeof navigator ===
   "undefined"
     ? undefined
     : navigator,
@@ -83,9 +84,9 @@ async function isUnsupportedIntelMacForZeroDesktop(
   );
 }
 
-export const zeroDesktopDownloadSupportStatus$ = computed(
-  async (): Promise<ZeroDesktopDownloadSupportStatus> => {
-    return (await isUnsupportedIntelMacForZeroDesktop())
+export const desktopDownloadSupportStatus$ = computed(
+  async (): Promise<DesktopDownloadSupportStatus> => {
+    return (await isUnsupportedIntelMacForDesktop())
       ? "unsupported-intel-mac"
       : "available";
   },
@@ -130,6 +131,7 @@ interface ListedComputerUseHost extends Pick<
   ComputerUseHost,
   "id" | "displayName" | "lastSeenAt" | "status"
 > {
+  readonly product: NonNullable<ComputerUseHost["product"]>;
   readonly hostName: string;
 }
 
@@ -172,6 +174,7 @@ export const computerUseHosts$ = computed(
     return result.body.hosts.map((host) => {
       return {
         id: host.id,
+        product: desktopProductFromClientHeader(host.product),
         hostName: host.hostName ?? host.displayName,
         displayName: host.displayName,
         lastSeenAt: host.lastSeenAt,

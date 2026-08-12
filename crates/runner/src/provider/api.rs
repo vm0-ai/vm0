@@ -13,6 +13,10 @@ use api_contracts::generated::{
         CONNECTOR_RUNTIME_SYNC_RUN_TERMINAL_ERROR_CODE, RUNNER_POLL_EXCLUDED_RUN_IDS_MAX,
     },
     routes,
+    types::runners::runs::active_inputs::{
+        receipt::Response as ActiveInputReceiptResponse,
+        reserve::Response as ActiveInputReserveResponse,
+    },
 };
 use reqwest::{Response, StatusCode};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
@@ -30,8 +34,9 @@ use super::builtin_firewall_catalog::{
 };
 use super::connector_runtime_sync::ConnectorRuntimeSyncHandle;
 use super::{
-    ClaimedJob, CompletionAuth, CompletionAuthError, JobCandidate, JobDiscoverySource, JobProvider,
-    RunnerPreference, RunnerPreferenceClaimState, parse_runner_preference,
+    ClaimedJob, CompletionAuth, CompletionAuthError, CompletionReportTiming, JobCandidate,
+    JobDiscoverySource, JobProvider, RunnerPreference, RunnerPreferenceClaimState,
+    parse_runner_preference,
 };
 use crate::active_input::{ActiveInputNotifications, ActiveInputSource};
 use crate::duration::duration_ms;
@@ -766,6 +771,10 @@ impl JobProvider for ApiProvider {
         self.builtin_firewall_catalog_refresh.shutdown().await;
     }
 
+    fn completion_report_timing(&self) -> CompletionReportTiming {
+        CompletionReportTiming::ConcurrentWithFinalization
+    }
+
     async fn complete(&self, request: CompleteRequest, completion_auth: CompletionAuth) {
         let run_id = request.run_id;
         let token = match completion_auth.into_sandbox_token(run_id) {
@@ -968,6 +977,14 @@ pub(crate) struct ApiClient {
     token: String,
 }
 
+pub(crate) enum ReserveActiveInputResult {
+    RouteUnavailable,
+    Response(ActiveInputReserveResponse),
+}
+
+#[derive(Serialize)]
+struct EmptyRequest {}
+
 impl ApiClient {
     pub(crate) fn new(http: HttpClient, token: String) -> Self {
         Self { http, token }
@@ -1000,6 +1017,60 @@ impl ApiClient {
         let resp = check_api_status(resp, "list active inputs").await?;
         let body: ListResponse = decode_api_json(resp, "list active inputs").await?;
         Ok(body.event_ids)
+    }
+
+    pub(crate) async fn reserve_active_inputs(
+        &self,
+        run_id: RunId,
+        sandbox_token: &str,
+    ) -> RunnerResult<ReserveActiveInputResult> {
+        let run_id = run_id.to_string();
+        let resp = send_api(
+            self.http
+                .request_resolved_route(
+                    routes::runners::runs::by_run_id::active_inputs::reserve::route(
+                        routes::runners::runs::by_run_id::active_inputs::reserve::Params {
+                            run_id: run_id.as_str(),
+                        },
+                    ),
+                    sandbox_token,
+                )
+                .json(&EmptyRequest {}),
+            "reserve active inputs",
+        )
+        .await?;
+        if resp.status() == StatusCode::NOT_FOUND {
+            return Ok(ReserveActiveInputResult::RouteUnavailable);
+        }
+        let resp = check_api_status(resp, "reserve active inputs").await?;
+        let body = decode_api_json(resp, "reserve active inputs").await?;
+        Ok(ReserveActiveInputResult::Response(body))
+    }
+
+    pub(crate) async fn record_active_input_delivery(
+        &self,
+        run_id: RunId,
+        sandbox_token: &str,
+        delivery_id: &str,
+    ) -> RunnerResult<ActiveInputReceiptResponse> {
+        let run_id = run_id.to_string();
+        let resp = send_api(
+            self.http
+                .request_resolved_route(
+                    routes::runners::runs::by_run_id::active_inputs::deliveries::by_delivery_id::receipt::route(
+                        routes::runners::runs::by_run_id::active_inputs::deliveries::by_delivery_id::receipt::Params {
+                            run_id: run_id.as_str(),
+                            delivery_id,
+                        },
+                    ),
+                    sandbox_token,
+                )
+                .json(&EmptyRequest {}),
+            "record active input delivery",
+        )
+        .await?;
+        let resp = check_api_status(resp, "record active input delivery").await?;
+        decode_api_json(resp, "record active input delivery").await
     }
 
     pub(crate) async fn claim_active_inputs(
@@ -2090,6 +2161,7 @@ mod tests {
             sandbox_id: None,
             sandbox_reuse_result: None,
             workspace_reuse_result: None,
+            active_input_delivery_ids: Vec::new(),
         }
     }
 
@@ -3860,6 +3932,7 @@ mod tests {
                     sandbox_id: None,
                     sandbox_reuse_result: None,
                     workspace_reuse_result: None,
+                    active_input_delivery_ids: Vec::new(),
                 },
             )
             .await
@@ -3903,6 +3976,7 @@ mod tests {
                 sandbox_id: None,
                 sandbox_reuse_result: Some(SandboxReuseResult::NoReuseKey),
                 workspace_reuse_result: Some(WorkspaceReuseResult::NoReuseKey),
+                active_input_delivery_ids: Vec::new(),
             },
         )
         .await

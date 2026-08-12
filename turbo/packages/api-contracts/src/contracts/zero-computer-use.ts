@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
+import { DESKTOP_PRODUCTS } from "./client-headers";
 import { apiErrorSchema } from "./errors";
 import {
   COMPUTER_USE_PLUGIN_CALL_KIND,
@@ -9,6 +10,7 @@ import {
 const c = initContract();
 
 export const computerUseHostStatusSchema = z.enum(["online", "offline"]);
+const desktopProductSchema = z.enum(DESKTOP_PRODUCTS);
 
 export const computerUseReadCommandKindSchema = z.enum([
   "apps.list",
@@ -416,6 +418,7 @@ export function isExpiredPluginContentPointer(
 
 export const computerUseHostSchema = z.object({
   id: z.string(),
+  product: desktopProductSchema.optional(),
   hostName: z.string().optional(),
   displayName: z.string(),
   appVersion: z.string(),

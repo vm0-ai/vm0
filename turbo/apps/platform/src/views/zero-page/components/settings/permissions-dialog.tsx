@@ -23,6 +23,7 @@ import {
   DropdownMenuTrigger,
   DropdownMenuContent,
   DropdownMenuItem,
+  Input,
 } from "@vm0/ui";
 import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
 import type { PublicConnectorCatalogIcon } from "@vm0/api-contracts/contracts/zero-connector-catalog";
@@ -1500,7 +1501,7 @@ function LoadedPermissionsDrawerContent({
               size={15}
               className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2"
             />
-            <input
+            <Input
               value={search}
               onChange={(event) => {
                 handleSearchChange(event.currentTarget.value);
@@ -1511,7 +1512,7 @@ function LoadedPermissionsDrawerContent({
               placeholder={t(($) => {
                 return $.connectors.permissions.findPlaceholder;
               })}
-              className="h-9 w-full rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-input pl-9 pr-9 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-[3px] focus:ring-primary/10"
+              className="pl-9 pr-9"
             />
             {search && (
               <button

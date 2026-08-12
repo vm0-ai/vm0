@@ -40,7 +40,7 @@ function writeLine(message: string): void {
  *   DEV_MODEL_{VENDOR_UPPER}_KEY (e.g., DEV_MODEL_ANTHROPIC_KEY, DEV_MODEL_OPENAI_KEY)
  * Anthropic and OpenAI also fall back to their provider env names because
  * CI and local dev already use them for real model smoke tests.
- * DeepSeek and Moonshot also fall back to their provider env names.
+ * DeepSeek also falls back to its provider env name.
  */
 
 /** 1 USD = 1000 credits */
@@ -136,26 +136,19 @@ const GPT_5_6_LUNA_PRICING: readonly UsagePricingRow[] = [
   ["tokens.output", usd(1.2), 1_000_000],
 ];
 
-// OpenRouter MiMo-V2.5 base pricing retrieved 2026-08-05 from:
+// OpenRouter MiMo-V2.5 recognition pricing retrieved 2026-08-05 from:
 // https://openrouter.ai/xiaomi/mimo-v2.5
-const MIMO_V2_5_MODEL_PRICING = usageGroup("model", "mimo-v2.5", [
+const MIMO_V2_5_RECOGNITION_PRICING: readonly UsagePricingRow[] = [
   ["tokens.input", usd(0.14), 1_000_000],
   ["tokens.output", usd(0.28), 1_000_000],
   ["tokens.cache_read", usd(0.0028), 1_000_000],
   ["tokens.cache_creation", 0, 1_000_000],
-]);
+];
 
 const GPT_5_5_PRICING: readonly UsagePricingRow[] = [
   ["tokens.input", usd(5), 1_000_000],
   ["tokens.cache_read", usd(0.5), 1_000_000],
   ["tokens.output", usd(30), 1_000_000],
-];
-
-const MINIMAX_M3_PRICING: readonly UsagePricingRow[] = [
-  ["tokens.input", usd(0.3), 1_000_000],
-  ["tokens.cache_read", usd(0.06), 1_000_000],
-  ["tokens.cache_creation", 0, 1_000_000],
-  ["tokens.output", usd(1.2), 1_000_000],
 ];
 
 function withLongContextPricing(
@@ -389,18 +382,6 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
     ["tokens.cache_read", usd(0.2), 1_000_000],
     ["tokens.cache_creation", usd(2.5), 1_000_000],
   ]),
-  ...usageGroup("model", "claude-opus-4-6", [
-    ["tokens.input", usd(15), 1_000_000],
-    ["tokens.output", usd(75), 1_000_000],
-    ["tokens.cache_read", usd(1.5), 1_000_000],
-    ["tokens.cache_creation", usd(18.75), 1_000_000],
-  ]),
-  ...usageGroup("model", "claude-opus-4-7", [
-    ["tokens.input", usd(5), 1_000_000],
-    ["tokens.output", usd(25), 1_000_000],
-    ["tokens.cache_read", usd(0.5), 1_000_000],
-    ["tokens.cache_creation", usd(6.25), 1_000_000],
-  ]),
   ...usageGroup("model", "claude-opus-5", [
     ["tokens.input", usd(5), 1_000_000],
     ["tokens.output", usd(25), 1_000_000],
@@ -419,44 +400,6 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
     ["tokens.cache_read", usd(1), 1_000_000],
     ["tokens.cache_creation", usd(12.5), 1_000_000],
   ]),
-  ...usageGroup("model", "kimi-k2.6", [
-    ["tokens.input", usd(0.6), 1_000_000],
-    ["tokens.output", usd(3), 1_000_000],
-    ["tokens.cache_read", usd(0.1), 1_000_000],
-    ["tokens.cache_creation", usd(0.6), 1_000_000],
-  ]),
-  ...usageGroup("model", "kimi-k2.5", [
-    ["tokens.input", usd(0.6), 1_000_000],
-    ["tokens.output", usd(3), 1_000_000],
-    ["tokens.cache_read", usd(0.1), 1_000_000],
-    ["tokens.cache_creation", usd(0.6), 1_000_000],
-  ]),
-  ...usageGroup("model", "glm-5.2", [
-    ["tokens.input", usd(1.4), 1_000_000],
-    ["tokens.output", usd(4.4), 1_000_000],
-    ["tokens.cache_read", usd(0.26), 1_000_000],
-    ["tokens.cache_creation", usd(1.4), 1_000_000],
-  ]),
-  ...usageGroup("model", "glm-5.1", [
-    ["tokens.input", usd(1.4), 1_000_000],
-    ["tokens.output", usd(4.4), 1_000_000],
-    ["tokens.cache_read", usd(0.26), 1_000_000],
-    ["tokens.cache_creation", usd(1.4), 1_000_000],
-  ]),
-  ...MIMO_V2_5_MODEL_PRICING,
-  ...usageGroup("model", "hy3-preview", [
-    ["tokens.input", usd(0.063), 1_000_000],
-    ["tokens.output", usd(0.21), 1_000_000],
-    ["tokens.cache_read", usd(0.021), 1_000_000],
-    ["tokens.cache_creation", 0, 1_000_000],
-  ]),
-  // MiniMax API pricing retrieved 2026-07-31 from:
-  // https://platform.minimax.io/subscribe/token-plan?tab=api-enterprise
-  ...usageGroup(
-    "model",
-    "MiniMax-M3",
-    withLongContextPricing(MINIMAX_M3_PRICING, 2, 2),
-  ),
   // DeepSeek API pricing retrieved 2026-07-31 from:
   // https://api-docs.deepseek.com/quick_start/pricing/
   ...usageGroup("model", "deepseek-v4-flash", [
@@ -503,15 +446,11 @@ const USAGE_PRICING: readonly (typeof usagePricing.$inferInsert)[] = [
 
   // Local development pricing for managed image tasks, billed under
   // task-scoped kinds at the backing model's token rates.
-  ...MIMO_V2_5_MODEL_PRICING.map(({ category, unitPrice, unitSize }) => {
-    return {
-      kind: "image-recognition",
-      provider: "xiaomi/mimo-v2.5",
-      category,
-      unitPrice,
-      unitSize,
-    };
-  }),
+  ...usageGroup(
+    "image-recognition",
+    "xiaomi/mimo-v2.5",
+    MIMO_V2_5_RECOGNITION_PRICING,
+  ),
   ...usageGroup("image-recognition", "google/gemini-3.5-flash", [
     ["tokens.input", usd(1.5), 1_000_000],
     ["tokens.cache_read", usd(0.15), 1_000_000],
@@ -720,9 +659,6 @@ function getVendorApiKeyEnvVars(vendor: string): string[] {
   }
   if (vendor === "deepseek") {
     return [envVar, "DEEPSEEK_API_KEY"];
-  }
-  if (vendor === "moonshot") {
-    return [envVar, "MOONSHOT_API_KEY"];
   }
   return [envVar];
 }

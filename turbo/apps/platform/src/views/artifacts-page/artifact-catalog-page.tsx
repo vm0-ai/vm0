@@ -1,8 +1,5 @@
 import type { UIEvent as ReactUIEvent } from "react";
-import type {
-  ArtifactCatalogKind,
-  ArtifactSummary,
-} from "@vm0/api-contracts/contracts/artifact-catalog";
+import type { ArtifactCatalogKind } from "@vm0/api-contracts/contracts/artifact-catalog";
 import {
   AlertTriangle,
   ChevronRight,
@@ -28,6 +25,7 @@ import {
   selectedArtifactCatalogKind$,
   setArtifactCatalogKind$,
 } from "../../signals/artifacts-page/artifact-catalog-signals.ts";
+import type { CatalogArtifact } from "../../signals/artifacts-page/create-artifact-catalog-signals.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
@@ -122,7 +120,7 @@ function ArtifactKindIcon({ kind }: { readonly kind: ArtifactCatalogKind }) {
 function ArtifactCatalogFallbackPreview({
   artifact,
 }: {
-  readonly artifact: ArtifactSummary;
+  readonly artifact: CatalogArtifact;
 }) {
   return (
     <div
@@ -147,7 +145,7 @@ function ArtifactCatalogCard({
   artifact,
   onOpen,
 }: {
-  readonly artifact: ArtifactSummary;
+  readonly artifact: CatalogArtifact;
   readonly onOpen: (artifactId: string) => void;
 }) {
   const { t } = useTranslation();
@@ -185,6 +183,7 @@ function ArtifactCatalogCard({
               width: ARTIFACT_CARD_THUMBNAIL_WIDTH_PX,
               fit: "scale-down",
             })}
+            load={artifact.thumbnailLoad}
             className="h-full w-full object-cover"
             fallback={<ArtifactCatalogFallbackPreview artifact={artifact} />}
             testId="artifact-catalog-thumbnail"
@@ -212,7 +211,7 @@ function ArtifactSharedConversationList({
   artifacts,
   onOpen,
 }: {
-  readonly artifacts: readonly ArtifactSummary[];
+  readonly artifacts: readonly CatalogArtifact[];
   readonly onOpen: (artifactId: string) => void;
 }) {
   const { t } = useTranslation();
@@ -260,7 +259,7 @@ export function ArtifactCatalogGrid({
   artifacts,
   onOpen,
 }: {
-  readonly artifacts: readonly ArtifactSummary[];
+  readonly artifacts: readonly CatalogArtifact[];
   readonly onOpen: (artifactId: string) => void;
 }) {
   return (

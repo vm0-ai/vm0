@@ -2,9 +2,8 @@ const os = require("node:os");
 const path = require("node:path");
 
 const packageMetadata = require("./package.json");
-const desktopIdentities = require("./src/desktop-identities.json");
+const { resolveDesktopBuildConfig } = require("./scripts/desktop-build-config");
 
-const PRODUCTION_PLATFORM_HOSTNAME = "app.vm0.ai";
 const MINIMUM_MACOS_VERSION = "14.0";
 const DEFAULT_NOTARIZE_KEYCHAIN_PROFILE = "vm0-desktop-notary";
 const DEFAULT_NOTARIZE_KEYCHAIN = path.join(
@@ -55,23 +54,7 @@ function desktopNotarizeOptions() {
   };
 }
 
-function platformHostname(rawUrl) {
-  if (!rawUrl || !rawUrl.trim()) {
-    return PRODUCTION_PLATFORM_HOSTNAME;
-  }
-  return new URL(rawUrl).hostname;
-}
-
-function desktopIdentityForPlatformUrl(rawUrl) {
-  if (platformHostname(rawUrl) === PRODUCTION_PLATFORM_HOSTNAME) {
-    return desktopIdentities.production;
-  }
-  return desktopIdentities.development;
-}
-
-const desktopIdentity = desktopIdentityForPlatformUrl(
-  process.env.VM0_DESKTOP_PLATFORM_URL,
-);
+const { identity: desktopIdentity } = resolveDesktopBuildConfig();
 const osxNotarize = desktopNotarizeOptions();
 
 // Forge 7 bundles Packager 18, whose CommonJS signing adapter cannot call osx-sign v2.

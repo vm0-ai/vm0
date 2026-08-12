@@ -15,10 +15,8 @@ import { createApp } from "../../../app-factory";
 import {
   readConnectorCredentialStorageState,
   requestSetConnectorVariableOwner,
-  requestUpsertLegacyConnectorVariable,
   seedConnectorStorageRow,
   seedOwnedConnectorSecret,
-  upsertLegacyConnectorVariable,
 } from "./helpers/connector-credential-storage-state";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { zeroConnectorsRoutes } from "../zero-connectors";
@@ -340,61 +338,6 @@ describe("POST /api/zero/connectors/:connectorSlug/manual-grant", () => {
         { name: "ZENDESK_SUBDOMAIN", connector_id: response.body.id },
       ]),
     );
-  });
-
-  it("keeps legacy connector variable upserts valid without moving ownership", async () => {
-    const fixture = await seedFixture();
-    const connectorId = await seedConnectorStorageRow(context, {
-      orgId: fixture.orgId,
-      userId: fixture.userId,
-      connectorSlug: "github",
-      authMethod: "oauth",
-      storageVersion: 1,
-    });
-    const args = {
-      connectorId,
-      description: "legacy compatibility variable",
-      name: "LEGACY_COMPAT_VARIABLE",
-      orgId: fixture.orgId,
-      userId: fixture.userId,
-    };
-
-    const insertedId = await upsertLegacyConnectorVariable(context, {
-      ...args,
-      value: "before",
-    });
-    const updatedId = await upsertLegacyConnectorVariable(context, {
-      ...args,
-      value: "after",
-    });
-    const conflictingConnectorId = await seedConnectorStorageRow(context, {
-      orgId: fixture.orgId,
-      userId: fixture.userId,
-      connectorSlug: "notion",
-      authMethod: "oauth",
-      storageVersion: 1,
-    });
-    const conflictResponse = await requestUpsertLegacyConnectorVariable(
-      context,
-      {
-        ...args,
-        connectorId: conflictingConnectorId,
-        value: "conflicting",
-      },
-    );
-
-    expect(updatedId).toBe(insertedId);
-    expect(conflictResponse.status).toBe(500);
-    await expect(
-      readConnectorCredentialStorageState(context, {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        connectorSlug: "github",
-        variableNames: [args.name],
-      }),
-    ).resolves.toMatchObject({
-      variables: [{ name: args.name, connector_id: connectorId }],
-    });
   });
 
   it("rejects connector variable owners from another organization or user", async () => {

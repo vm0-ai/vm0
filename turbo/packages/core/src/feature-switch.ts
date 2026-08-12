@@ -111,14 +111,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.JoggAiBuiltIn]: {
     maintainer: "yuma@vm0.ai",
     description: "Enable vm0-managed JoggAI talking-avatar video generation",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.SeoBuiltIn]: {
-    maintainer: "yuma@vm0.ai",
-    description: "Enable vm0-managed DataForSEO access",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.MercuryConnector]: {
     maintainer: "yuma@vm0.ai",
@@ -320,20 +313,19 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Cold-start chat threads from R2 snapshot objects plus the raw-row tail endpoint instead of paging the full history from Postgres.",
     enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.PresentationTemplates]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Enable owner-scoped presentation template imports and catalog APIs.",
+    enabled: false,
   },
   [FeatureSwitchKey.UsagePackPlans]: {
     maintainer: "yuma@vm0.ai",
     description:
       "Show the new Pro and Team plan UI with required monthly usage packs.",
     enabled: false,
-  },
-  [FeatureSwitchKey.PaymentMethodManagement]: {
-    maintainer: "yuma@vm0.ai",
-    description:
-      "Show payment method management without requiring an active subscription.",
-    // Remove the switch and disabled paths with #25716 after the app/API
-    // rollout and the roughly two-day stale-client window are complete.
-    enabled: true,
   },
   [FeatureSwitchKey.ZapierConnector]: {
     maintainer: "yuma@vm0.ai",
@@ -355,6 +347,20 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.ChatRunContinuationPresentation]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Distinguish mid-run steer messages and show run actions only after the latest user message.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.EmojiPickerCategoryRail]: {
+    maintainer: "tongx@vm0.ai",
+    description:
+      "Add a category icon rail, pinned section titles, jump-to-category scrolling, and a hovered-emoji name bar to the thread emoji picker.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.ResponsiveFollowupCards]: {
     maintainer: "ethan@vm0.ai",
     description:
@@ -371,8 +377,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   },
   [FeatureSwitchKey.ConnectorCatalogCount]: {
     maintainer: "ethan@vm0.ai",
-    description:
-      "Show the exact connector catalog size with a pending count animation.",
+    description: "Show an approximate connector catalog size.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },

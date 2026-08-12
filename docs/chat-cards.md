@@ -262,7 +262,7 @@ permission cards refresh without replacing their signals identities.
 A vm0 mail link matches `/mail/drafts/:vm0DraftId`. The vm0 UUID is the stable
 resource key; Gmail draft, thread, and message IDs remain provider metadata and
 are not inferred from Gmail Web URLs. The thread-scoped signals read the Gmail
-draft through one reloadable Zero Mail API computed. Repeated card occurrences
+draft through one reloadable Okou Mail API computed. Repeated card occurrences
 and the detail sidebar share that computed, while Send and Delete invalidate it
 after their mutations complete.
 
@@ -293,11 +293,11 @@ would otherwise shift the transcript.
 A provider instance outlives the run that opened it. Every terminal run callback
 only extends the instance's idle lease, so the user can keep working in the same
 window and a later run in the same thread attaches to it with
-`zero browser use`. The reconciler reclaims an instance once its lease expires,
+`okou browser use`. The reconciler reclaims an instance once its lease expires,
 its hard timeout is reached, or the provider ends it. Deleting a chat thread
 also reclaims its browser. While the sidebar or full-page viewer is open
 and its page is visible, it refreshes the lease on a timer; the CLI can do the
-same with `zero browser lease`. Each lease is a fixed window from now and cannot
+same with `okou browser lease`. Each lease is a fixed window from now and cannot
 be stacked. The once-per-minute reconciler captures the foreground tab of each
 healthy active browser as a `640px`-wide WebP, preserves its aspect ratio, and
 replaces the thread's previous immutable preview object. Viewer lease
@@ -323,7 +323,7 @@ half-transparent blurred mask, so the small preview fills the available surface
 without being presented as a live browser.
 
 Once an instance is reclaimed, the viewer keeps the stable
-`/browsers/:threadId` link. Its Start action, and `zero browser use` in a later
+`/browsers/:threadId` link. Its Start action, and `okou browser use` in a later
 run, create a new provider instance from the thread's saved profile: cookies and
 storage come back, and saved HTTP(S) tab URLs are reopened on a best-effort
 basis. Provider state changes publish a user-scoped realtime event carrying the
@@ -338,7 +338,7 @@ first profile creation so concurrent first use still creates one provider
 profile for that thread.
 
 The same universal link also has an authenticated full-page route. The browser
-provider's CDP URL is reserved for the Zero CLI to connect `agent-browser` and
+provider's CDP URL is reserved for the Okou CLI to connect `agent-browser` and
 is never returned by the card read, lease, or resume endpoints, nor printed in
 CLI output.
 

@@ -15,7 +15,6 @@ import { signSandboxJwtForTests } from "../../auth/tokens";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createRunsApi } from "./helpers/api-bdd-runs";
-import { setThreadModelSelectionAsPreviousApi } from "./helpers/runtime-state";
 import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 import { zeroChatThreadGetRoutes } from "../zero-chat-threads-get";
 import { zeroChatThreadModelSelectionRoutes } from "../zero-chat-threads-model-selection";
@@ -108,66 +107,6 @@ function metadataClient() {
 }
 
 describe("POST /api/zero/chat-threads/:id/model-selection", () => {
-  it("maps a retired persisted thread model to its configured replacement", async () => {
-    const fixture = await seedChatThread("Retired default");
-    await setThreadModelSelectionAsPreviousApi(
-      context,
-      fixture.threadId,
-      "claude-sonnet-4-6",
-    );
-    await chat.requestSendEvent(
-      fixture.actor,
-      {
-        agentId: fixture.agentId,
-        threadId: fixture.threadId,
-        prompt: "Reconcile the retired thread model",
-      },
-      [201],
-    );
-    const token = zeroToken({
-      userId: fixture.userId,
-      orgId: fixture.orgId,
-      capabilities: ["chat-thread:read"],
-    });
-
-    const response = await accept(
-      metadataClient().get({
-        headers: { authorization: `Bearer ${token}` },
-        params: { id: fixture.threadId },
-      }),
-      [200],
-    );
-
-    expect(response.body.selectedModel).toBe("claude-sonnet-5");
-    expect(response.body.serviceTier).toBeNull();
-  });
-
-  it("rejects an explicit retired model with its replacement", async () => {
-    const fixture = await seedChatThread("Retired selection");
-    const token = zeroToken({
-      userId: fixture.userId,
-      orgId: fixture.orgId,
-      capabilities: ["chat-thread:write"],
-    });
-
-    const response = await accept(
-      modelSelectionClient().update({
-        headers: { authorization: `Bearer ${token}` },
-        params: { id: fixture.threadId },
-        body: { model: "claude-sonnet-4-6" },
-      }),
-      [400],
-    );
-
-    expect(response.body).toStrictEqual({
-      error: {
-        code: "MODEL_RETIRED",
-        message:
-          'Model "claude-sonnet-4-6" has been retired. Use "claude-sonnet-5" instead.',
-      },
-    });
-  });
-
   it("updates thread model selection with ZERO_TOKEN chat-thread:write capability", async () => {
     const fixture = await seedChatThread("Launch plan");
     const token = zeroToken({

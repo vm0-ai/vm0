@@ -60,13 +60,15 @@ from .openai_chat_completions import (
     extract_openai_chat_completions_usage_with_error_from_json,
 )
 from .openai_responses import (
+    OpenAIResponsesClientEvent,
     OpenAIResponsesEvent,
     create_openai_responses_json_usage_extractor,
     create_openai_responses_sse_usage_extractor,
     extract_openai_responses_usage_from_event,
     extract_openai_responses_usage_with_error_from_json,
+    inspect_openai_responses_client_event_json,
     inspect_openai_responses_event_json,
-    inspect_openai_responses_event_type_json,
+    inspect_openai_responses_server_lifecycle,
     merge_openai_responses_usage_result,
 )
 from .providers.connectors import (
@@ -78,6 +80,8 @@ from .providers.connectors import (
 from .providers.model_provider import (
     has_positive_model_provider_usage,
     is_model_provider_usage_observable,
+    log_ignored_model_provider_usage_source,
+    log_terminal_model_provider_usage_sources,
     release_model_provider_usage_tiers,
     report_model_provider_usage,
     report_model_provider_usage_observation,
@@ -87,6 +91,7 @@ from .providers.model_provider import (
 __all__ = [
     "DEFAULT_FLUSH_INTERVAL_SECONDS",
     "BufferedReportLease",
+    "OpenAIResponsesClientEvent",
     "OpenAIResponsesEvent",
     "admit_buffered_report",
     "buffer_model_usage_observations",
@@ -112,9 +117,12 @@ __all__ = [
     "has_connector_response_parser",
     "has_positive_model_provider_usage",
     "increment_in_flight_flows",
+    "inspect_openai_responses_client_event_json",
     "inspect_openai_responses_event_json",
-    "inspect_openai_responses_event_type_json",
+    "inspect_openai_responses_server_lifecycle",
     "is_model_provider_usage_observable",
+    "log_ignored_model_provider_usage_source",
+    "log_terminal_model_provider_usage_sources",
     "merge_openai_responses_usage_result",
     "needs_connector_response_buffer_fallback",
     "read_usage_flush_request_id",

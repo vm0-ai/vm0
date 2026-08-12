@@ -1231,7 +1231,12 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       model: "deepseek-v4-flash",
       title: "limited free model pin",
     });
-    for (const selectedModel of ["gpt-5.6-sol", "claude-sonnet-5"] as const) {
+    for (const selectedModel of [
+      "gpt-5.6-sol",
+      "gpt-5.5",
+      "claude-sonnet-5",
+      "claude-sonnet-4-6",
+    ] as const) {
       const restrictedSelection = await chat.requestUpdateThreadModelSelection(
         actor,
         thread.id,
@@ -1243,24 +1248,6 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
         message:
           "Insufficient credits. Add credits or configure your own API key to continue.",
         code: "INSUFFICIENT_CREDITS",
-      });
-
-      await expect(
-        chat.readThread(actor, thread.id),
-      ).resolves.not.toHaveProperty("selectedModel");
-    }
-
-    for (const selectedModel of ["gpt-5.5", "MiniMax-M3"] as const) {
-      const retiredSelection = await chat.requestUpdateThreadModelSelection(
-        actor,
-        thread.id,
-        selectedModel,
-        [400],
-      );
-      expectApiError(retiredSelection.body);
-      expect(retiredSelection.body.error).toStrictEqual({
-        message: `Model "${selectedModel}" has been retired. Use "deepseek-v4-flash" instead.`,
-        code: "MODEL_RETIRED",
       });
 
       await expect(

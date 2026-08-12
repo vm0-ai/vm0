@@ -8,9 +8,8 @@ import { connectorOauthStates } from "@vm0/db/schema/connector-oauth-state";
 import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
 import { secrets } from "@vm0/db/schema/secret";
 import { variables } from "@vm0/db/schema/variable";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 
-import { nowDate } from "../../lib/time";
 import { request$ } from "../context/hono";
 import { bodyResultOf } from "../context/request";
 import { writeDb$, type Db } from "../external/db";
@@ -150,6 +149,31 @@ async function readCustomParent(
     )
     .limit(1);
   signal.throwIfAborted();
+  const secretRows = connector
+    ? await db
+        .select({
+          name: secrets.name,
+          connectorId: secrets.connectorId,
+          encryptedValue: secrets.encryptedValue,
+          description: secrets.description,
+        })
+        .from(secrets)
+        .where(eq(secrets.connectorId, connector.id))
+        .orderBy(asc(secrets.name))
+    : [];
+  signal.throwIfAborted();
+  const variableRows = connector
+    ? await db
+        .select({
+          name: variables.name,
+          connectorId: variables.connectorId,
+          value: variables.value,
+        })
+        .from(variables)
+        .where(eq(variables.connectorId, connector.id))
+        .orderBy(asc(variables.name))
+    : [];
+  signal.throwIfAborted();
   return actionOk({
     connector: connector
       ? {
@@ -157,6 +181,21 @@ async function readCustomParent(
           storage_version: connector.storageVersion,
         }
       : null,
+    secrets: secretRows.map((row) => {
+      return {
+        name: row.name,
+        connector_id: requiredConnectorCredentialOwnerId(row.connectorId),
+        encrypted_value: row.encryptedValue,
+        description: row.description,
+      };
+    }),
+    variables: variableRows.map((row) => {
+      return {
+        name: row.name,
+        connector_id: requiredConnectorCredentialOwnerId(row.connectorId),
+        value: row.value,
+      };
+    }),
   });
 }
 
@@ -187,6 +226,55 @@ async function readCustomOAuthState(
       context_storage_version: context.storageVersion ?? null,
     },
   });
+}
+
+async function deleteCustomCredentialValues(
+  db: Db,
+  body: ConnectorCredentialStorageAction<"delete-custom-credential-values">,
+  signal: AbortSignal,
+) {
+  const [connector] = await db
+    .select({ id: connectors.id })
+    .from(connectors)
+    .where(
+      and(
+        eq(connectors.orgId, body.org_id),
+        eq(connectors.userId, body.user_id),
+        eq(connectors.customConnectorId, body.custom_connector_id),
+      ),
+    )
+    .limit(1);
+  signal.throwIfAborted();
+  if (!connector) {
+    return {
+      status: 400 as const,
+      body: { error: "Custom connector storage test fixture was not found" },
+    };
+  }
+  await db.transaction(async (tx) => {
+    await tx
+      .delete(secrets)
+      .where(
+        and(
+          eq(secrets.connectorId, connector.id),
+          eq(secrets.orgId, body.org_id),
+          eq(secrets.userId, body.user_id),
+          eq(secrets.type, "connector"),
+        ),
+      );
+    await tx
+      .delete(variables)
+      .where(
+        and(
+          eq(variables.connectorId, connector.id),
+          eq(variables.orgId, body.org_id),
+          eq(variables.userId, body.user_id),
+          eq(variables.type, "connector"),
+        ),
+      );
+  });
+  signal.throwIfAborted();
+  return actionOk();
 }
 
 async function seedOwnedSecret(
@@ -243,45 +331,6 @@ async function seedConnector(
     throw new Error("Expected connector storage test fixture");
   }
   return actionOk({ connector_id: connector.id });
-}
-
-async function upsertLegacyVariable(
-  db: Db,
-  body: ConnectorCredentialStorageAction<"upsert-legacy-variable">,
-  signal: AbortSignal,
-) {
-  const [variable] = await db
-    .insert(variables)
-    .values({
-      connectorId: body.connector_id,
-      orgId: body.org_id,
-      userId: body.user_id,
-      name: body.name,
-      value: body.value,
-      description: body.description,
-      type: "connector",
-    })
-    .onConflictDoUpdate({
-      target: [
-        variables.orgId,
-        variables.userId,
-        variables.type,
-        variables.name,
-      ],
-      set: {
-        connectorId: body.connector_id,
-        value: body.value,
-        description: body.description,
-        updatedAt: nowDate(),
-      },
-      setWhere: eq(variables.connectorId, body.connector_id),
-    })
-    .returning({ id: variables.id });
-  signal.throwIfAborted();
-  if (!variable) {
-    throw new Error(`Connector variable ${body.name} is owned by another row`);
-  }
-  return actionOk({ variable_id: variable.id });
 }
 
 async function seedCustomRuntimeConnectors(
@@ -477,14 +526,14 @@ const mutateConnectorCredentialStorageState$ = command(
       case "read-custom-oauth-state": {
         return await readCustomOAuthState(db, body, signal);
       }
+      case "delete-custom-credential-values": {
+        return await deleteCustomCredentialValues(db, body, signal);
+      }
       case "seed-owned-secret": {
         return await seedOwnedSecret(db, body, signal);
       }
       case "seed-connector": {
         return await seedConnector(db, body, signal);
-      }
-      case "upsert-legacy-variable": {
-        return await upsertLegacyVariable(db, body, signal);
       }
       case "seed-custom-runtime-connectors": {
         return await seedCustomRuntimeConnectors(db, body, signal);

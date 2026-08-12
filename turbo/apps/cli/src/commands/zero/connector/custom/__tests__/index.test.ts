@@ -14,7 +14,7 @@ import { customConnectorCommand } from "../index";
 const CONNECTOR_ID = "33333333-3333-4333-8333-333333333333";
 const AGENT_ID = "44444444-4444-4444-8444-444444444444";
 
-describe("zero connector custom readers", () => {
+describe("okou connector custom readers", () => {
   const consoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
 
   beforeEach(() => {
@@ -28,17 +28,17 @@ describe("zero connector custom readers", () => {
     vi.unstubAllEnvs();
   });
 
-  it("normalizes an older kind-less HTTP list response without hasSecret", async () => {
+  it("normalizes an older kind-less HTTP list response", async () => {
     const connector = customConnector();
     server.use(
       http.get("http://localhost:3000/api/zero/custom-connectors", () => {
         return HttpResponse.json({
-          connectors: [{ ...connector, kind: undefined, hasSecret: undefined }],
+          connectors: [{ ...connector, kind: undefined }],
         });
       }),
     );
 
-    await customConnectorCommand.parseAsync(["node", "zero", "list"]);
+    await customConnectorCommand.parseAsync(["node", "okou", "list"]);
 
     const output = consoleLog.mock.calls.flat().join("\n");
     expect(output).toContain("KIND");
@@ -70,7 +70,7 @@ describe("zero connector custom readers", () => {
 
     await customConnectorCommand.parseAsync([
       "node",
-      "zero",
+      "okou",
       "list",
       "--agent",
       AGENT_ID,
@@ -99,7 +99,7 @@ describe("zero connector custom readers", () => {
 
     await customConnectorCommand.parseAsync([
       "node",
-      "zero",
+      "okou",
       "status",
       CONNECTOR_ID,
     ]);
@@ -141,7 +141,6 @@ describe("zero connector custom readers", () => {
       configuredFieldKeys: ["secret"],
       createdAt: "2026-08-10T00:00:00.000Z",
       updatedAt: "2026-08-10T00:00:00.000Z",
-      hasSecret: true,
     } satisfies CustomConnectorMcpResponse;
     server.use(
       http.get(
@@ -154,7 +153,7 @@ describe("zero connector custom readers", () => {
 
     await customConnectorCommand.parseAsync([
       "node",
-      "zero",
+      "okou",
       "status",
       CONNECTOR_ID,
     ]);

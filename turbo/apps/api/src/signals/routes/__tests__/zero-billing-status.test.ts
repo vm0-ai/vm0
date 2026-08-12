@@ -2,7 +2,6 @@ import { randomUUID } from "node:crypto";
 
 import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { createStore } from "ccstate";
 import { onTestFinished } from "vitest";
 
@@ -30,7 +29,6 @@ import {
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
 import { createBddApi } from "./helpers/api-bdd";
-import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { zeroBillingStatusRoutes } from "../zero-billing-status";
 
@@ -131,6 +129,7 @@ describe("GET /api/zero/billing/status", () => {
     );
 
     expect(response.body.tier).toBe("limited-free-1");
+    expect(response.body.memberInvitationAllowed).toBeFalsy();
     expect(response.body.supportByok).toBeFalsy();
     expect(response.body.restrictedVm0Models).toBeTruthy();
     expect(response.body.videoGenerationAllowed).toBeFalsy();
@@ -140,25 +139,6 @@ describe("GET /api/zero/billing/status", () => {
     expect(response.body.hasSubscription).toBeFalsy();
     expect(response.body.subscriptionStatus).toBeNull();
     expect(response.body.currentPeriodEnd).toBeNull();
-  });
-
-  it("reports payment method management as unavailable when disabled", async () => {
-    const fixture = await track(
-      store.set(seedBillingStatusOrg$, { credits: 100_000 }, context.signal),
-    );
-    await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.PaymentMethodManagement]: false,
-    });
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const response = await accept(
-      setupApp({ context, routes: zeroBillingStatusRoutes })(
-        zeroBillingStatusContract,
-      ).get({ headers: { authorization: "Bearer clerk-session" } }),
-      [200],
-    );
-
-    expect(response.body.paymentMethodManagementAvailable).toBeFalsy();
   });
 
   it("returns billing status for zero tokens with billing read capability", async () => {
@@ -236,6 +216,7 @@ describe("GET /api/zero/billing/status", () => {
     );
 
     expect(response.body.tier).toBe("pro");
+    expect(response.body.memberInvitationAllowed).toBeTruthy();
     expect(response.body.credits).toBe(100_000);
     expect(response.body.subscriptionStatus).toBe("active");
     expect(response.body.currentPeriodEnd).toBe(periodEnd.toISOString());
@@ -299,6 +280,7 @@ describe("GET /api/zero/billing/status", () => {
     );
 
     expect(response.body.tier).toBe("custom");
+    expect(response.body.memberInvitationAllowed).toBeTruthy();
     expect(response.body.hasSubscription).toBeFalsy();
     expect(response.body.currentPeriodEnd).toBeNull();
     expect(response.body.concurrencyLimit).toBe(10);
@@ -429,6 +411,8 @@ describe("GET /api/zero/billing/status", () => {
       baseConcurrencyLimit: 10,
       canBuyConcurrency: true,
       canBuyCredits: false,
+      memberInviteUsagePackRequired: true,
+      memberInvitationAllowed: false,
       autoRechargeAllowed: false,
       supportByok: false,
       restrictedVm0Models: true,
@@ -449,6 +433,8 @@ describe("GET /api/zero/billing/status", () => {
     expect(response.body.tier).toBe("pro");
     expect(response.body.canBuyConcurrency).toBeTruthy();
     expect(response.body.canBuyCredits).toBeFalsy();
+    expect(response.body.memberInviteUsagePackRequired).toBeTruthy();
+    expect(response.body.memberInvitationAllowed).toBeFalsy();
     expect(response.body.autoRechargeAllowed).toBeFalsy();
     expect(response.body.supportByok).toBeFalsy();
     expect(response.body.restrictedVm0Models).toBeTruthy();
@@ -457,7 +443,7 @@ describe("GET /api/zero/billing/status", () => {
     expect(response.body.concurrencyLimit).toBe(3);
   });
 
-  it("keeps credit purchase capability accurate for legacy rollout writes", async () => {
+  it("keeps plan capabilities accurate for legacy rollout writes", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
     onTestFinished(async () => {
@@ -480,6 +466,7 @@ describe("GET /api/zero/billing/status", () => {
       [200],
     );
     expect(initialResponse.body.canBuyCredits).toBeFalsy();
+    expect(initialResponse.body.memberInvitationAllowed).toBeFalsy();
 
     await updateOrgPlanKeyAsLegacyWriterFixture({ orgId, planKey: "pro" });
 
@@ -491,6 +478,7 @@ describe("GET /api/zero/billing/status", () => {
     );
     expect(updatedResponse.body.tier).toBe("limited-free-1");
     expect(updatedResponse.body.canBuyCredits).toBeTruthy();
+    expect(updatedResponse.body.memberInvitationAllowed).toBeTruthy();
   });
 
   it("includes active concurrency subscription slots", async () => {
@@ -1245,6 +1233,7 @@ describe("GET /api/zero/billing/status", () => {
     );
 
     expect(response.body.tier).toBe("pro-suspend");
+    expect(response.body.memberInvitationAllowed).toBeFalsy();
     expect(response.body.credits).toBe(0);
     expect(response.body.hasSubscription).toBeFalsy();
   });

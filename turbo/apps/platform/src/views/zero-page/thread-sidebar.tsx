@@ -2,7 +2,7 @@ import type { UIEvent as ReactUIEvent } from "react";
 import { createPortal } from "react-dom";
 import { ArrowLeft, ExternalLink, Maximize, Minimize, X } from "lucide-react";
 import { useGet, useLastLoadable, useSet } from "ccstate-react";
-import { cn } from "@vm0/ui";
+import { Button, cn } from "@vm0/ui";
 import { useTranslation } from "react-i18next";
 
 import { pageSignal$ } from "../../signals/page-signal.ts";
@@ -25,6 +25,7 @@ import {
 } from "../artifacts-page/artifact-catalog-page.tsx";
 import { BrowserSessionSidebar } from "./browser-session-sidebar.tsx";
 import { MailDraftSidebar } from "./mail-draft-sidebar.tsx";
+import type { MailDraftSignals } from "../../signals/chat-page/mail-draft.ts";
 import { ArtifactSidebar } from "./zero-artifact-sidebar.tsx";
 
 // ---------------------------------------------------------------------------
@@ -41,21 +42,15 @@ const THREAD_SIDEBAR_FULLSCREEN_CLASSNAME =
   "fixed inset-0 z-[100] flex min-h-0 flex-col bg-background pt-[var(--sat)] pb-[var(--sab)]";
 
 /**
- * Open the thread's artifacts list and start its sidebar session (background
- * first-page refresh plus realtime catalog updates). Entry buttons and the
- * detail's Back action share this hook so the session always starts.
+ * Open the thread's artifacts list and refresh its first page. Entry buttons
+ * and the detail's Back action share this hook so the list is current on open.
  */
 export function useOpenThreadArtifacts(thread: ChatPanelSignals): () => void {
   const open = useSet(openThreadArtifacts$);
-  const setupSession = useSet(thread.sidebar.setupArtifactsSession$);
-  const pageSignal = useGet(pageSignal$);
+  const reloadArtifacts = useSet(thread.sidebar.artifactCatalog.reload$);
   return () => {
     open(thread);
-    detach(
-      setupSession(pageSignal),
-      Reason.DomCallback,
-      "thread artifacts sidebar session",
-    );
+    reloadArtifacts();
   };
 }
 
@@ -76,22 +71,23 @@ function ThreadSidebarHeader({
   return (
     <div className="flex min-h-14 shrink-0 items-center gap-1 border-b border-border/60 px-4">
       {onBack ? (
-        <button
+        <Button
           type="button"
           onClick={onBack}
           aria-label={t(($) => {
             return $.artifacts.actions.backToArtifacts;
           })}
-          className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-state-hover hover:text-foreground"
+          variant="quiet"
+          size="icon-sm"
         >
           <ArrowLeft size={16} />
-        </button>
+        </Button>
       ) : null}
       <span className="min-w-0 flex-1 truncate text-sm font-medium">
         {title}
       </span>
       {onToggleFullscreen ? (
-        <button
+        <Button
           type="button"
           onClick={onToggleFullscreen}
           aria-label={
@@ -104,12 +100,14 @@ function ThreadSidebarHeader({
                 })
           }
           data-testid="thread-sidebar-fullscreen-toggle"
-          className="hidden xl:inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-state-hover hover:text-foreground"
+          variant="quiet"
+          size="icon-sm"
+          className="hidden xl:inline-flex"
         >
           {fullscreen ? <Minimize size={16} /> : <Maximize size={16} />}
-        </button>
+        </Button>
       ) : null}
-      <button
+      <Button
         type="button"
         onClick={onClose}
         aria-label={t(
@@ -122,10 +120,11 @@ function ThreadSidebarHeader({
             ),
           },
         )}
-        className="inline-flex size-8 items-center justify-center rounded-md text-muted-foreground hover:bg-state-hover hover:text-foreground"
+        variant="quiet"
+        size="icon-sm"
       >
         <X size={16} />
-      </button>
+      </Button>
     </div>
   );
 }
@@ -213,9 +212,12 @@ function ThreadArtifactsPanel({ thread }: { thread: ChatPanelSignals }) {
       </div>
     </aside>
   );
-  return fullscreen && typeof document !== "undefined"
-    ? createPortal(panel, document.body)
-    : panel;
+  // This is an app-local fullscreen surface, not a modal. Keep it inside the
+  // isolated app stack so body-level Base UI portals remain above it by
+  // structure rather than by competing z-index values.
+  const appRoot =
+    typeof document === "undefined" ? null : document.getElementById("root");
+  return fullscreen && appRoot ? createPortal(panel, appRoot) : panel;
 }
 
 function ThreadArtifactUnavailable({
@@ -358,6 +360,7 @@ function ThreadArtifactDetail({
       }}
       thread={thread}
       text$={sidebar.selectedArtifactText$}
+      markdownTree$={sidebar.selectedArtifactMarkdownTree$}
       fullscreenState={fullscreenState}
       onBack={backToArtifacts}
       onClose={close}
@@ -368,16 +371,12 @@ function ThreadArtifactDetail({
 
 function ThreadMailDraftPanel({
   thread,
-  mailDraftId,
+  signals,
 }: {
   readonly thread: ChatPanelSignals;
-  readonly mailDraftId: string;
+  readonly signals: MailDraftSignals;
 }) {
   const close = useSet(thread.sidebar.close$);
-  const signals = useGet(thread.mailDraftCardSignalsById$).get(mailDraftId);
-  if (!signals) {
-    return null;
-  }
   return <MailDraftSidebar signals={signals} onClose={close} />;
 }
 
@@ -415,12 +414,7 @@ export function ThreadSidebarSlot({
       return null;
     }
     case "email-draft": {
-      return (
-        <ThreadMailDraftPanel
-          thread={thread}
-          mailDraftId={target.mailDraftId}
-        />
-      );
+      return <ThreadMailDraftPanel thread={thread} signals={target.signals} />;
     }
     case "browser": {
       return <ThreadBrowserSessionPanel thread={thread} />;

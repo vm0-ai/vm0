@@ -4,11 +4,14 @@ import { httpInstrumentationMiddleware } from "@hono/otel";
 import * as Sentry from "@sentry/node";
 import {
   CLIENT_FORCE_UPGRADE_STATUS,
+  CLIENT_PRODUCT_HEADER,
   CLIENT_REQUEST_ID_HEADER,
   CLIENT_SESSION_ID_HEADER,
   CLIENT_TYPE_APP,
+  CLIENT_TYPE_DESKTOP,
   CLIENT_TYPE_HEADER,
   CLIENT_VERSION_HEADER,
+  desktopProductFromClientHeader,
 } from "@vm0/api-contracts/contracts/client-headers";
 import { serializeError } from "@vm0/core/log-utils";
 // oxlint-disable-next-line no-restricted-imports -- app factory owns the Hono instance, confirmed by ethan@vm0.ai
@@ -34,7 +37,10 @@ import {
   getDatasetName,
   ingestToAxiom,
 } from "./signals/external/axiom";
-import type { RouteEntry } from "./signals/route-entry";
+import {
+  type RouteEntry,
+  withApiNamespaceAliases,
+} from "./signals/route-entry";
 import { configureChatRunFinishedEventDispatcher } from "./signals/services/chat-run-finished-event-registration.service";
 import { configurePiEdgeTurnDispatcher } from "./signals/services/pi-edge-turn-registration.service";
 import {
@@ -67,6 +73,7 @@ interface UnhandledRequestErrorLogFields {
 interface ClientHeaderLogFields {
   readonly x_client_version?: string;
   readonly x_client_type?: string;
+  readonly x_client_product?: string;
   readonly x_client_session_id?: string;
   readonly x_client_request_id?: string;
 }
@@ -390,12 +397,19 @@ async function previewAutomationBypassMiddleware(
 function clientHeaderLogFields(context: Context): ClientHeaderLogFields {
   const clientVersion = requestHeader(context, CLIENT_VERSION_HEADER);
   const clientType = requestHeader(context, CLIENT_TYPE_HEADER);
+  const clientProduct =
+    clientType === CLIENT_TYPE_DESKTOP
+      ? desktopProductFromClientHeader(
+          requestHeader(context, CLIENT_PRODUCT_HEADER),
+        )
+      : undefined;
   const clientSessionId = requestHeader(context, CLIENT_SESSION_ID_HEADER);
   const clientRequestId = requestHeader(context, CLIENT_REQUEST_ID_HEADER);
 
   return {
     ...(clientVersion ? { x_client_version: clientVersion } : {}),
     ...(clientType ? { x_client_type: clientType } : {}),
+    ...(clientProduct ? { x_client_product: clientProduct } : {}),
     ...(clientSessionId ? { x_client_session_id: clientSessionId } : {}),
     ...(clientRequestId ? { x_client_request_id: clientRequestId } : {}),
   };
@@ -585,7 +599,7 @@ export function createAppWithRoutes({
     app.get(`${path}/*`, redirectToWeb);
   }
 
-  for (const { route, handler } of routes) {
+  for (const { route, handler } of withApiNamespaceAliases(routes)) {
     app.on(route.method, route.path, honoSignalHandler(handler, route, signal));
   }
 

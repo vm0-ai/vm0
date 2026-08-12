@@ -19,7 +19,6 @@ export enum FeatureSwitchKey {
   FigmaConnector = "figmaConnector",
   ExpensifyConnector = "expensifyConnector",
   JoggAiBuiltIn = "joggAiBuiltIn",
-  SeoBuiltIn = "seoBuiltIn",
   MercuryConnector = "mercuryConnector",
   NeonConnector = "neonConnector",
   NetSuiteConnector = "netSuiteConnector",
@@ -53,11 +52,11 @@ export enum FeatureSwitchKey {
   NewChatDefaultModelAction = "newChatDefaultModelAction",
   RealAgentInPreview = "realAgentInPreview",
   UsagePackPlans = "usagePackPlans",
-  PaymentMethodManagement = "paymentMethodManagement",
 
   ZapierConnector = "zapierConnector",
   ComputerUseDesktopPlugins = "computerUseDesktopPlugins",
   ChatErrorRecovery = "chatErrorRecovery",
+  ChatRunContinuationPresentation = "chatRunContinuationPresentation",
   ResponsiveFollowupCards = "responsiveFollowupCards",
   ConnectorDiscovery = "connectorDiscovery",
   ConnectorCatalogCount = "connectorCatalogCount",
@@ -75,4 +74,6 @@ export enum FeatureSwitchKey {
   PiLoop = "piLoop",
   VideoTemplateOptions = "videoTemplateOptions",
   ChatEventSnapshotRead = "chatEventSnapshotRead",
+  EmojiPickerCategoryRail = "emojiPickerCategoryRail",
+  PresentationTemplates = "presentationTemplates",
 }

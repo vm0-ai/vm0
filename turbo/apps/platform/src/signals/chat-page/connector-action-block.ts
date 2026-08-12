@@ -5,7 +5,7 @@ import {
 } from "@vm0/api-contracts/contracts/connector-identity";
 import {
   customConnectorSlugSchema,
-  type CustomConnectorClientResponse,
+  type CustomConnectorResponse,
   type CustomConnectorSlug,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import type { PlatformConnectorCatalogStatusItem } from "../connector-domain.ts";
@@ -31,8 +31,8 @@ import {
   type ChatActionCallback,
 } from "./action-callback.ts";
 import {
-  getOrCreateCardSignals,
-  registeredCardSignals,
+  createCardSignalsRegistry,
+  type CardSignalsRegistry,
 } from "./card-signal-map.ts";
 
 interface ConnectorActionDescriptorBase {
@@ -73,17 +73,15 @@ export type CatalogConnectorSignals = CatalogConnectorActionDescriptor &
 
 export type CustomConnectorSignals = CustomConnectorActionDescriptor &
   ConnectorSignalState & {
-    readonly connector$: Computed<
-      Promise<CustomConnectorClientResponse | null>
-    >;
+    readonly connector$: Computed<Promise<CustomConnectorResponse | null>>;
   };
 
 export type ConnectorSignals = CatalogConnectorSignals | CustomConnectorSignals;
 
-export interface ConnectorCardSignalsRegistry {
-  register(descriptor: ConnectorActionDescriptor): ConnectorSignals;
-  resolve(resourceKey: string): ConnectorSignals;
-}
+type ConnectorCardSignalsRegistry = CardSignalsRegistry<
+  ConnectorActionDescriptor,
+  ConnectorSignals
+>;
 
 type ActiveChatConnectorAction =
   | (CatalogConnectorActionDescriptor & {
@@ -410,19 +408,7 @@ function createConnectorSignals(
 }
 
 export function createConnectorCardSignalsRegistry(): ConnectorCardSignalsRegistry {
-  const signalsByResourceKey = new Map<string, ConnectorSignals>();
-  return {
-    register(descriptor) {
-      return getOrCreateCardSignals(
-        signalsByResourceKey,
-        descriptor.originalUrl,
-        () => {
-          return createConnectorSignals(descriptor);
-        },
-      );
-    },
-    resolve(resourceKey) {
-      return registeredCardSignals(signalsByResourceKey, resourceKey);
-    },
-  };
+  return createCardSignalsRegistry((descriptor: ConnectorActionDescriptor) => {
+    return descriptor.originalUrl;
+  }, createConnectorSignals);
 }

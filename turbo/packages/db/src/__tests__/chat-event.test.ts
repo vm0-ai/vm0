@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import { schema } from "../index";
 import { chatAgentRunContext } from "../schema/chat-agent-run-context";
 import { chatEvents } from "../schema/chat-event";
+import { zeroRuns } from "../schema/zero-run";
 
 describe("chatAgentRunContext schema", () => {
   it("exports durable source-run provenance without live-entity references", () => {
@@ -28,7 +29,7 @@ describe("chatAgentRunContext schema", () => {
 });
 
 describe("chatEvents schema", () => {
-  it("exposes the additive canonical rollout shape", () => {
+  it("exposes only canonical physical storage", () => {
     const config = getTableConfig(chatEvents);
 
     expect(schema.chatEvents).toBe(chatEvents);
@@ -40,18 +41,11 @@ describe("chatEvents schema", () => {
       "id",
       "chat_thread_id",
       "run_id",
-      "usage_payload",
       "revokes_event_id",
-      "interrupts_run_id",
-      "run_group_id",
       "event_type",
       "payload",
       "context_type",
       "context_id",
-      "content",
-      "user_message",
-      "thinking",
-      "error",
       "run_event_sequence_number",
       "run_event_id",
       "seq_id",
@@ -68,18 +62,36 @@ describe("chatEvents schema", () => {
     ).toStrictEqual([
       "chat_events_control_interrupt_run_id_unique",
       "chat_events_input_automation_context_idx",
-      "chat_events_interrupts_run_id_not_null_unique",
+      "chat_events_output_thinking_run_id_unique",
       "chat_events_pending_queue_idx",
       "chat_events_revokes_event_id_not_null_unique",
       "chat_events_run_event_seq_unique",
       "chat_events_run_terminal_unique",
-      "chat_events_run_thinking_unique",
       "chat_events_thread_seq_unique",
-      "chat_events_usage_run_id_idx",
       "idx_chat_events_run_id",
       "idx_chat_events_thread_created",
       "idx_chat_events_thread_run_terminal_created",
     ]);
+    const checkNames = config.checks.map((check) => {
+      return check.name;
+    });
+    expect(checkNames).toEqual(
+      expect.arrayContaining([
+        "chat_events_input_user_message_payload_check",
+        "chat_events_input_payload_content_check",
+        "chat_events_goal_open_payload_check",
+        "chat_events_goal_close_payload_check",
+        "chat_events_goal_marker_payload_check",
+      ]),
+    );
+    expect(checkNames).not.toEqual(
+      expect.arrayContaining([
+        "chat_events_input_user_message_check",
+        "chat_events_input_content_check",
+        "chat_events_goal_open_content_check",
+        "chat_events_goal_close_content_check",
+      ]),
+    );
   });
 
   it("keeps run references after runs are deleted", () => {
@@ -108,5 +120,23 @@ describe("chatEvents schema", () => {
         onDelete: "no action",
       },
     ]);
+  });
+});
+
+describe("zeroRuns schema", () => {
+  it("keeps canonical goal provenance without the legacy run group", () => {
+    const config = getTableConfig(zeroRuns);
+    const columnNames = config.columns.map((column) => {
+      return column.name;
+    });
+    const indexNames = config.indexes.map((index) => {
+      return index.config.name;
+    });
+
+    expect(schema.zeroRuns).toBe(zeroRuns);
+    expect(columnNames).toContain("goal_id");
+    expect(columnNames).not.toContain("run_group_id");
+    expect(indexNames).toContain("idx_zero_runs_goal");
+    expect(indexNames).not.toContain("idx_zero_runs_run_group");
   });
 });

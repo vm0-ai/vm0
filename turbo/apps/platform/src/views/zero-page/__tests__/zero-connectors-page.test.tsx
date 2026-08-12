@@ -13,7 +13,7 @@ import {
 import {
   zeroAgentCustomConnectorsContract,
   type AgentCustomConnectorGrant,
-  type AgentCustomConnectorResponse,
+  type AgentCustomConnectorGrants,
   type AgentCustomConnectorUpdate,
 } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 import {
@@ -304,7 +304,6 @@ function customConnector(
     connected: false,
     missingRequiredFields: ["secret"],
     configuredFieldKeys: [],
-    hasSecret: false,
     createdAt: "2026-02-01T00:00:00Z",
     updatedAt: "2026-02-01T00:00:00Z",
     ...overrides,
@@ -343,7 +342,6 @@ function mcpCustomConnector(
     connected: true,
     missingRequiredFields: [],
     configuredFieldKeys: ["secret"],
-    hasSecret: true,
     createdAt: "2026-08-10T00:00:00.000Z",
     updatedAt: "2026-08-10T00:00:00.000Z",
     ...overrides,
@@ -436,7 +434,7 @@ function mockCustomConnectorStory(): {
     zeroCustomConnectorsContract.create,
     ({ body, respond }) => {
       createBodies.push(body);
-      const prefixTemplates = body.prefixTemplates ?? body.prefixes ?? [];
+      const prefixTemplates = body.prefixTemplates ?? [];
       const fields = body.fields ?? [];
       const headerInjections = body.headerInjections ?? [];
       const created = customConnector({
@@ -466,9 +464,6 @@ function mockCustomConnectorStory(): {
           configuredFieldKeys: body.values.map((value) => {
             return value.key;
           }),
-          hasSecret: body.values.some((value) => {
-            return value.kind === "secret";
-          }),
         };
         return updated;
       });
@@ -488,7 +483,6 @@ function mockCustomConnectorStory(): {
               connected: false,
               missingRequiredFields: ["secret"],
               configuredFieldKeys: [],
-              hasSecret: false,
             }
           : connector;
       });
@@ -677,7 +671,7 @@ describe("connectors page", () => {
       screen.findByTestId("connector-card-label"),
     ).resolves.toHaveTextContent("GitHub");
     await expect(
-      screen.findByLabelText("Connect 347 services for your agents to use."),
+      screen.findByText("Connect 700+ services for your agents to use."),
     ).resolves.toBeInTheDocument();
 
     await fill(await screen.findByPlaceholderText("Find connectors"), "Slack");
@@ -689,7 +683,7 @@ describe("connectors page", () => {
     expect(legacyStatusRequests).toBe(0);
   });
 
-  it("shows the exact connector catalog size in the page description", async () => {
+  it("shows the static connector catalog size in the page description", async () => {
     mockConnectors([]);
     mockPublicConnectorStatus([
       publicStatusItem({
@@ -711,7 +705,7 @@ describe("connectors page", () => {
     });
 
     await expect(
-      screen.findByLabelText("Connect 2 services for your agents to use."),
+      screen.findByText("Connect 700+ services for your agents to use."),
     ).resolves.toBeInTheDocument();
   });
 
@@ -740,7 +734,7 @@ describe("connectors page", () => {
       screen.findByText("Connect third-party services for your agents to use."),
     ).resolves.toBeInTheDocument();
     expect(
-      screen.queryByLabelText("Connect 2 services for your agents to use."),
+      screen.queryByText("Connect 700+ services for your agents to use."),
     ).not.toBeInTheDocument();
   });
 
@@ -3595,12 +3589,7 @@ describe("connectors page", () => {
           params.id === researchAgentId
             ? [{ customConnectorId: connector.id, permissionNames: [] }]
             : [];
-        return respond(200, {
-          enabledIds: grants.map((grant) => {
-            return grant.customConnectorId;
-          }),
-          grants,
-        });
+        return respond(200, { grants });
       },
     );
 
@@ -3608,6 +3597,7 @@ describe("connectors page", () => {
 
     await waitFor(() => {
       const card = connectorCardByLabel("Acme Search");
+      expect(within(card).getByText("HTTP API")).toBeInTheDocument();
       expect(within(card).getByText("Not connected")).toBeInTheDocument();
       expect(
         within(card).getByText("https://api.acme.test/v1/"),
@@ -3634,12 +3624,11 @@ describe("connectors page", () => {
       connected: true,
       missingRequiredFields: [],
       configuredFieldKeys: ["secret"],
-      hasSecret: true,
       permissionBundleRef: "builtin:feishu@1",
     });
-    const accessByAgentId = new Map<string, AgentCustomConnectorResponse>([
-      [researchAgentId, { enabledIds: [], grants: [] }],
-      [supportAgentId, { enabledIds: [], grants: [] }],
+    const accessByAgentId = new Map<string, AgentCustomConnectorGrants>([
+      [researchAgentId, { grants: [] }],
+      [supportAgentId, { grants: [] }],
     ]);
     const updates: {
       readonly agentId: string;
@@ -3683,10 +3672,7 @@ describe("connectors page", () => {
     context.mocks.api(
       zeroAgentCustomConnectorsContract.get,
       ({ params, respond }) => {
-        return respond(
-          200,
-          accessByAgentId.get(params.id) ?? { enabledIds: [], grants: [] },
-        );
+        return respond(200, accessByAgentId.get(params.id) ?? { grants: [] });
       },
     );
     context.mocks.api(
@@ -3694,39 +3680,21 @@ describe("connectors page", () => {
       ({ params, body, respond }) => {
         updates.push({ agentId: params.id, body });
         const current = accessByAgentId.get(params.id) ?? {
-          enabledIds: [],
           grants: [],
         };
-        let next: AgentCustomConnectorResponse;
-        if ("grants" in body) {
-          const requestedIds = new Set(
-            body.grants.map((grant) => {
-              return grant.customConnectorId;
-            }),
-          );
-          next = {
-            grants:
-              body.operation === "remove"
-                ? current.grants.filter((grant) => {
-                    return !requestedIds.has(grant.customConnectorId);
-                  })
-                : body.grants,
-            enabledIds:
-              body.operation === "remove"
-                ? current.grants
-                    .filter((grant) => {
-                      return !requestedIds.has(grant.customConnectorId);
-                    })
-                    .map((grant) => {
-                      return grant.customConnectorId;
-                    })
-                : body.grants.map((grant) => {
-                    return grant.customConnectorId;
-                  }),
-          };
-        } else {
-          throw new Error("Expected canonical custom connector grants");
-        }
+        const requestedIds = new Set(
+          body.grants.map((grant) => {
+            return grant.customConnectorId;
+          }),
+        );
+        const next: AgentCustomConnectorGrants = {
+          grants:
+            body.operation === "remove"
+              ? current.grants.filter((grant) => {
+                  return !requestedIds.has(grant.customConnectorId);
+                })
+              : body.grants,
+        };
         accessByAgentId.set(params.id, next);
         return respond(200, next);
       },
@@ -3753,6 +3721,9 @@ describe("connectors page", () => {
     ) {
       throw new Error("Custom connector permission drawer not found");
     }
+    expect(document.querySelector('[data-slot="sheet-overlay"]')).toHaveClass(
+      "bg-overlay/45",
+    );
     expect(
       within(permissionDrawer).queryByText("standard:use"),
     ).not.toBeInTheDocument();
@@ -3784,6 +3755,7 @@ describe("connectors page", () => {
           "connector-card-agent-access",
         ),
       ).toHaveTextContent("Used by Support");
+      expect(accessDialog).toBeVisible();
     });
 
     click(
@@ -3878,7 +3850,6 @@ describe("connectors page", () => {
             ...connector,
             connected,
             configuredFieldKeys: connected ? ["secret"] : [],
-            hasSecret: connected,
             missingRequiredFields: connected ? [] : ["secret"],
           },
         ],
@@ -3886,7 +3857,6 @@ describe("connectors page", () => {
     });
     context.mocks.api(zeroAgentCustomConnectorsContract.get, ({ respond }) => {
       return respond(200, {
-        enabledIds: [connector.id],
         grants: [
           {
             customConnectorId: connector.id,
@@ -3900,7 +3870,6 @@ describe("connectors page", () => {
       ({ respond }) => {
         authorizationUpdates += 1;
         return respond(200, {
-          enabledIds: [connector.id],
           grants: [
             {
               customConnectorId: connector.id,
@@ -3919,7 +3888,6 @@ describe("connectors page", () => {
           ...connector,
           connected: true,
           configuredFieldKeys: ["secret"],
-          hasSecret: true,
           missingRequiredFields: [],
         });
       },
@@ -4013,7 +3981,6 @@ describe("connectors page", () => {
           connected: true,
           missingRequiredFields: [],
           configuredFieldKeys: ["api_token", "account_id", "backup_token"],
-          hasSecret: true,
         });
       },
     );
@@ -4092,7 +4059,7 @@ describe("connectors page", () => {
       context.mocks.api(
         zeroAgentCustomConnectorsContract.get,
         ({ respond }) => {
-          return respond(200, { enabledIds: [], grants: [] });
+          return respond(200, { grants: [] });
         },
       );
       context.mocks.api(
@@ -4100,7 +4067,6 @@ describe("connectors page", () => {
         ({ respond }) => {
           authorizationUpdates += 1;
           return respond(200, {
-            enabledIds: [connector.id],
             grants: [
               {
                 customConnectorId: connector.id,
@@ -4123,7 +4089,6 @@ describe("connectors page", () => {
                 connected: false,
                 missingRequiredFields: [],
                 configuredFieldKeys: ["secret"],
-                hasSecret: true,
               });
         },
       );
@@ -4217,7 +4182,6 @@ describe("connectors page", () => {
           connected: false,
           missingRequiredFields: ["secret"],
           configuredFieldKeys: [],
-          hasSecret: false,
         });
         return respond(201, connector);
       },
@@ -4254,7 +4218,6 @@ describe("connectors page", () => {
           connected: true,
           missingRequiredFields: [],
           configuredFieldKeys: ["secret"],
-          hasSecret: true,
         };
         return respond(200, connector);
       },
@@ -4271,7 +4234,6 @@ describe("connectors page", () => {
           connected: false,
           missingRequiredFields: ["secret"],
           configuredFieldKeys: [],
-          hasSecret: false,
         };
         return respond(204);
       },
@@ -4280,20 +4242,12 @@ describe("connectors page", () => {
       zeroAgentCustomConnectorsContract.get,
       ({ params, respond }) => {
         const grants = grantsByAgentId.get(params.id) ?? [];
-        return respond(200, {
-          enabledIds: grants.map((grant) => {
-            return grant.customConnectorId;
-          }),
-          grants,
-        });
+        return respond(200, { grants });
       },
     );
     context.mocks.api(
       zeroAgentCustomConnectorsContract.update,
       ({ params, body, respond }) => {
-        if (!("grants" in body)) {
-          throw new Error("Expected canonical custom connector grants");
-        }
         authorizationUpdates.push({ agentId: params.id, body });
         const current = grantsByAgentId.get(params.id) ?? [];
         const requestedIds = new Set(
@@ -4308,12 +4262,7 @@ describe("connectors page", () => {
               })
             : body.grants;
         grantsByAgentId.set(params.id, grants);
-        return respond(200, {
-          enabledIds: grants.map((grant) => {
-            return grant.customConnectorId;
-          }),
-          grants,
-        });
+        return respond(200, { grants });
       },
     );
 
@@ -4353,7 +4302,12 @@ describe("connectors page", () => {
     click(buttonByText("Create", createDialog));
 
     await waitFor(() => {
-      expect(connectorCardByLabel("Acme MCP")).toBeInTheDocument();
+      const card = connectorCardByLabel("Acme MCP");
+      expect(within(card).getByText("MCP")).toBeInTheDocument();
+      expect(
+        within(card).getByText("https://mcp.acme.test/server"),
+      ).toBeInTheDocument();
+      expect(within(card).getByText("Not connected")).toBeInTheDocument();
     });
     expect(createBodies).toStrictEqual([
       {
@@ -4397,6 +4351,9 @@ describe("connectors page", () => {
           "connector-card-agent-access",
         ),
       ).toHaveTextContent("Used by Research, Support");
+      expect(
+        within(connectorCardByLabel("Acme MCP")).getByText("Connected"),
+      ).toBeInTheDocument();
     });
 
     click(
@@ -4431,11 +4388,7 @@ describe("connectors page", () => {
     });
     expect(
       authorizationUpdates.some(({ agentId, body }) => {
-        return (
-          agentId === supportAgentId &&
-          "grants" in body &&
-          body.operation === "remove"
-        );
+        return agentId === supportAgentId && body.operation === "remove";
       }),
     ).toBeTruthy();
     click(within(accessDialog).getByLabelText("Close"));
@@ -4529,7 +4482,6 @@ describe("connectors page", () => {
           connected: false,
           missingRequiredFields: ["oauth"],
           configuredFieldKeys: [],
-          hasSecret: false,
         });
         return respond(201, connector);
       },
@@ -4566,7 +4518,6 @@ describe("connectors page", () => {
           ...connector,
           connected: true,
           missingRequiredFields: [],
-          hasSecret: true,
         };
         authWindow.close();
         return respond(200, {
@@ -4667,7 +4618,6 @@ describe("connectors page", () => {
     const supportAgentId = "c0000000-0000-4000-a000-000000000064";
     let connector = mcpCustomConnector({
       connected: true,
-      hasSecret: true,
     });
     const grantsByAgentId = new Map<string, AgentCustomConnectorGrant[]>([
       [
@@ -4699,18 +4649,13 @@ describe("connectors page", () => {
       zeroAgentCustomConnectorsContract.get,
       ({ params, respond }) => {
         const grants = grantsByAgentId.get(params.id) ?? [];
-        return respond(200, {
-          enabledIds: grants.map((grant) => {
-            return grant.customConnectorId;
-          }),
-          grants,
-        });
+        return respond(200, { grants });
       },
     );
     context.mocks.api(
       zeroAgentCustomConnectorsContract.update,
       ({ params, body, respond }) => {
-        if (!("grants" in body) || body.operation !== "remove") {
+        if (body.operation !== "remove") {
           throw new Error("Expected only MCP authorization removal");
         }
         authorizationUpdates.push(body);
@@ -4724,12 +4669,7 @@ describe("connectors page", () => {
           return !requestedIds.has(grant.customConnectorId);
         });
         grantsByAgentId.set(params.id, grants);
-        return respond(200, {
-          enabledIds: grants.map((grant) => {
-            return grant.customConnectorId;
-          }),
-          grants,
-        });
+        return respond(200, { grants });
       },
     );
     context.mocks.api(
@@ -4739,7 +4679,6 @@ describe("connectors page", () => {
         connector = {
           ...connector,
           connected: false,
-          hasSecret: false,
         };
         return respond(204);
       },
@@ -4766,10 +4705,11 @@ describe("connectors page", () => {
     const card = await waitFor(() => {
       return connectorCardByLabel("Acme MCP");
     });
-    expect(within(card).getByText("MCP · Streamable HTTP")).toBeInTheDocument();
+    expect(within(card).getByText("MCP")).toBeInTheDocument();
     expect(
       within(card).getByText("https://mcp.acme.test/server"),
     ).toBeInTheDocument();
+    expect(within(card).getByText("Connected")).toBeInTheDocument();
     expect(screen.queryByLabelText("Connect Acme MCP")).not.toBeInTheDocument();
     expect(
       within(card).getByTestId("connector-card-agent-access"),
@@ -4875,7 +4815,6 @@ describe("connectors page", () => {
       connected: true,
       missingRequiredFields: [],
       configuredFieldKeys: ["secret"],
-      hasSecret: true,
     });
     context.mocks.data.org({
       id: "org_1",
@@ -4889,7 +4828,6 @@ describe("connectors page", () => {
     });
     context.mocks.api(zeroAgentCustomConnectorsContract.get, ({ respond }) => {
       return respond(200, {
-        enabledIds: [connector.id],
         grants: [{ customConnectorId: connector.id, permissionNames: [] }],
       });
     });
@@ -4981,7 +4919,6 @@ describe("connectors page", () => {
     context.mocks.api(zeroAgentCustomConnectorsContract.get, ({ respond }) => {
       authorizationReads += 1;
       return respond(200, {
-        enabledIds: [connector.id],
         grants: [
           {
             customConnectorId: connector.id,
@@ -4995,7 +4932,6 @@ describe("connectors page", () => {
       ({ respond }) => {
         authorizationUpdates += 1;
         return respond(200, {
-          enabledIds: [connector.id],
           grants: [
             {
               customConnectorId: connector.id,
@@ -5015,7 +4951,6 @@ describe("connectors page", () => {
         connector = {
           ...connector,
           connected: true,
-          hasSecret: true,
           missingRequiredFields: [],
         };
         authWindow.close();
@@ -5146,7 +5081,6 @@ describe("connectors page", () => {
         connector = {
           ...connector,
           connected: true,
-          hasSecret: true,
           missingRequiredFields: [],
         };
         authWindow.close();
@@ -5477,8 +5411,10 @@ describe("connectors page", () => {
       ),
     ).toHaveAttribute("title", "Zero, Research, Support");
     expect(
-      screen.queryByText("https://api.acme.test/v1/"),
-    ).not.toBeInTheDocument();
+      within(connectorCardByLabel("Acme API")).getByText(
+        "https://api.acme.test/v1/",
+      ),
+    ).toBeInTheDocument();
 
     click(screen.getByLabelText("More options"));
     click(await screen.findByText("Edit"));

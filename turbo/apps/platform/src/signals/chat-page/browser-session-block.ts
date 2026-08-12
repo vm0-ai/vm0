@@ -20,6 +20,10 @@ import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";
 import { pageSignal$ } from "../page-signal.ts";
 import { setAblyPayloadLoop$ } from "../realtime.ts";
 import { onRef, settle, setLoop, withCleanup } from "../utils.ts";
+import {
+  createImageLoadSignals,
+  type ImageLoadSignals,
+} from "../image-load.ts";
 import { parseTrustedPlatformActionUrl } from "./platform-action-url.ts";
 
 // One heartbeat per minute keeps a viewed browser comfortably inside its
@@ -32,6 +36,8 @@ export interface BrowserSessionDescriptor {
 }
 
 export interface BrowserSessionSignals extends BrowserSessionDescriptor {
+  /** Load state of the session's screenshot thumbnail. */
+  readonly screenshotImageLoad: ImageLoadSignals;
   readonly session$: Computed<Promise<ZeroBrowserSession | null>>;
   readonly panelSession$: Computed<Promise<ZeroBrowserSession | null>>;
   readonly starting$: Computed<boolean>;
@@ -436,6 +442,7 @@ export function createBrowserSessionSignals(
     href: `/browsers/${threadId}`,
   };
   const reloadVersion$ = state(0);
+  const screenshotImageLoad = createImageLoadSignals();
   const sessionOverride$ = state<ZeroBrowserSession | null | undefined>(
     undefined,
   );
@@ -524,6 +531,7 @@ export function createBrowserSessionSignals(
 
   return {
     ...descriptor,
+    screenshotImageLoad,
     session$,
     panelSession$: session$,
     ...startSignals,

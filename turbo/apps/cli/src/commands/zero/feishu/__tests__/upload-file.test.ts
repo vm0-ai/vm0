@@ -16,7 +16,7 @@ const UPLOAD_COMPLETE_URL =
 const STORAGE_UPLOAD_URL = "https://storage.test/feishu-upload";
 const FILE_CONTENT = "feishu pdf content";
 
-describe("zero feishu upload-file command", () => {
+describe("okou feishu upload-file command", () => {
   vi.spyOn(process, "exit").mockImplementation((): never => {
     throw new Error("process.exit called");
   });
@@ -90,7 +90,7 @@ describe("zero feishu upload-file command", () => {
 
     await uploadFileCommand.parseAsync([
       "node",
-      "zero",
+      "okou",
       "--file",
       filePath,
       "--installation",
@@ -120,7 +120,7 @@ describe("zero feishu upload-file command", () => {
     await expect(
       uploadFileCommand.parseAsync([
         "node",
-        "zero",
+        "okou",
         "--file",
         filePath,
         "--chat",
@@ -144,7 +144,7 @@ describe("zero feishu upload-file command", () => {
     await expect(
       uploadFileCommand.parseAsync([
         "node",
-        "zero",
+        "okou",
         "--file",
         largeFilePath,
         "--chat",

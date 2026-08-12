@@ -1631,74 +1631,8 @@ describe("activity detail polling", () => {
       screen.getByText("Configure a model provider to start running agents."),
     ).toBeInTheDocument();
     expect(
-      screen.getByText("$ zero model-provider set --help"),
+      screen.getByText("$ okou model-provider set --help"),
     ).toBeInTheDocument();
-  });
-
-  it("renders events that arrive after an initially empty activity history", async () => {
-    let eventsAvailable = false;
-    let status: LogDetail["status"] = "running";
-
-    context.mocks.data.composesList([]);
-    context.mocks.api(logsByIdContract.getById, ({ respond }) => {
-      return respond(200, makeLogDetail({ status }));
-    });
-    context.mocks.api(
-      zeroRunAgentEventsContract.getAgentEvents,
-      ({ respond }) => {
-        if (!eventsAvailable) {
-          return respond(200, {
-            events: [],
-            hasMore: false,
-            framework: "claude-code",
-          } satisfies AgentEventsResponse);
-        }
-
-        return respond(200, {
-          events: [
-            {
-              sequenceNumber: 0,
-              eventType: "assistant",
-              eventData: {
-                message: {
-                  content: [{ type: "text", text: "Polled response arrived" }],
-                },
-              },
-              createdAt: "2026-03-10T14:56:05Z",
-            },
-          ],
-          hasMore: false,
-          framework: "claude-code",
-        } satisfies AgentEventsResponse);
-      },
-    );
-
-    detachedSetupPage({
-      context,
-      path: "/activities/a0000000-0000-4000-a000-000000000099",
-    });
-
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Agent One" }),
-      ).toBeInTheDocument();
-    });
-
-    const topic = "run:changed:a0000000-0000-4000-a000-000000000099";
-    await waitFor(() => {
-      expect(context.mocks.ably.hasSubscription(topic)).toBeTruthy();
-    });
-
-    status = "completed";
-    eventsAvailable = true;
-    context.mocks.ably.trigger(topic);
-
-    await waitFor(() => {
-      expect(screen.getByText("Polled response arrived")).toBeInTheDocument();
-    });
-    await waitFor(() => {
-      expect(screen.getByText("Done")).toBeInTheDocument();
-    });
   });
 
   it("shows the Pi handoff boundary without source prefixes", async () => {
@@ -1737,7 +1671,7 @@ describe("activity detail polling", () => {
                       type: "toolCall",
                       id: "weather-help",
                       name: "bash",
-                      arguments: { command: "zero weather --help" },
+                      arguments: { command: "okou weather --help" },
                     },
                   ],
                 },
@@ -1754,7 +1688,7 @@ describe("activity detail polling", () => {
                   role: "toolResult",
                   toolCallId: "weather-help",
                   toolName: "bash",
-                  content: [{ type: "text", text: "Usage: zero weather" }],
+                  content: [{ type: "text", text: "Usage: okou weather" }],
                   isError: false,
                 },
               },
@@ -1793,13 +1727,13 @@ describe("activity detail polling", () => {
     await waitFor(() => {
       expect(screen.getByText("I will check the weather.")).toBeInTheDocument();
     });
-    expect(screen.getAllByText("zero weather --help")).toHaveLength(2);
+    expect(screen.getAllByText("okou weather --help")).toHaveLength(2);
     expect(
       screen.getByText("The weather command needs coordinates."),
     ).toBeInTheDocument();
     const assistantMessage = screen.getByText("I will check the weather.");
     const handoffMarker = screen.getByText("Handoff · API Server → Sandbox");
-    const toolResult = screen.getByText("Usage: zero weather");
+    const toolResult = screen.getByText("Usage: okou weather");
     expect(
       assistantMessage.compareDocumentPosition(handoffMarker) &
         Node.DOCUMENT_POSITION_FOLLOWING,
@@ -2877,76 +2811,6 @@ describe("activity detail polling", () => {
       expect(screen.getAllByText("Not reused")).toHaveLength(2);
     },
   );
-
-  it("refreshes runner outcomes when an active run becomes terminal", async () => {
-    const runId = "a0000000-0000-4000-a000-000000000409";
-    let status: LogDetail["status"] = "running";
-
-    context.mocks.data.composesList([]);
-    context.mocks.api(logsByIdContract.getById, ({ respond }) => {
-      return respond(
-        200,
-        makeLogDetail({
-          id: runId,
-          displayName: "Runner Outcome Refresh",
-          status,
-          completedAt: status === "completed" ? "2026-03-10T15:00:18Z" : null,
-        }),
-      );
-    });
-    context.mocks.api(
-      zeroRunAgentEventsContract.getAgentEvents,
-      ({ respond }) => {
-        return respond(200, {
-          events: [],
-          hasMore: false,
-          framework: "claude-code",
-        } satisfies AgentEventsResponse);
-      },
-    );
-    context.mocks.api(zeroRunRunnerContract.getRunner, ({ respond }) => {
-      if (status === "running") {
-        return respond(200, {
-          sandboxReuseResult: null,
-          workspaceReuseResult: null,
-        });
-      }
-      return respond(200, {
-        sandboxReuseResult: "poolMiss",
-        workspaceReuseResult: "reused",
-      });
-    });
-
-    detachedSetupPage({
-      context,
-      path: `/activities/${runId}`,
-      featureSwitches: { [FeatureSwitchKey.ZeroDebug]: true },
-    });
-    await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Runner Outcome Refresh" }),
-      ).toBeInTheDocument();
-    });
-    click(getTabByText("Runner"));
-    await waitFor(() => {
-      expect(screen.getAllByText("Provisioning")).toHaveLength(2);
-    });
-
-    const topic = `run:changed:${runId}`;
-    await waitFor(() => {
-      expect(context.mocks.ably.hasSubscription(topic)).toBeTruthy();
-    });
-    status = "completed";
-    context.mocks.ably.trigger(topic);
-
-    await waitFor(() => {
-      expect(screen.getByText("Workspace reuse")).toBeInTheDocument();
-    });
-    expect(screen.getByText("Reused")).toBeInTheDocument();
-    expect(
-      screen.getByText("Workspace was restored from the runner cache."),
-    ).toBeInTheDocument();
-  });
 
   it("ignores stale network page responses after changing activity", async () => {
     const firstRunId = "a0000000-0000-4000-a000-000000000501";

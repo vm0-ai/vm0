@@ -80,11 +80,13 @@ function computerUsePermissions() {
 
 function computerUseHost(args: {
   readonly id: string;
+  readonly product?: "zero" | "okou";
   readonly displayName: string;
   readonly status: "online" | "offline";
 }) {
   return {
     id: args.id,
+    product: args.product ?? "zero",
     displayName: args.displayName,
     appVersion: "1.0.0",
     osVersion: "macOS 15.0",
@@ -113,6 +115,7 @@ describe("computer use authorization page", () => {
           hosts: [
             computerUseHost({
               id: "00000000-0000-4000-a000-000000000001",
+              product: "okou",
               displayName: "Studio Mac",
               status: "online",
             }),
@@ -157,6 +160,7 @@ describe("computer use authorization page", () => {
       ),
     ).toBeInTheDocument();
     await expect(screen.findByText("Studio Mac")).resolves.toBeInTheDocument();
+    expect(screen.getByText("Okou")).toBeInTheDocument();
     expect(screen.getByText("Travel Mac")).toBeInTheDocument();
     expect(screen.queryByText("Offline Desktop")).not.toBeInTheDocument();
 
@@ -266,10 +270,54 @@ describe("computer use authorization page", () => {
     expect(downloadLink).toHaveAttribute(
       "href",
       expect.stringContaining(
-        "/api/zero/desktop/updates/stable/darwin/arm64/dmg",
+        "/api/okou/desktop/updates/stable/darwin/arm64/dmg",
       ),
     );
     expect(screen.queryByText("Offline Desktop")).not.toBeInTheDocument();
+  });
+
+  it("shows Okou desktop guidance on an Okou host", async () => {
+    const previousUrl = window.location.href;
+    window.location.href = "https://app.okou.ai/";
+    context.signal.addEventListener(
+      "abort",
+      () => {
+        window.location.href = previousUrl;
+      },
+      { once: true },
+    );
+    context.mocks.api(
+      zeroComputerUseAuthorizationRequestsContract.get,
+      ({ respond }) => {
+        return respond(200, {
+          source: "slack",
+          expiresAt: "2026-06-25T12:00:00Z",
+          completedAt: null,
+          computerUseHostId: null,
+          hosts: [],
+        });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/computer-use/authorize/vm0_computer_use_authorization_request_okou",
+    });
+
+    await expect(
+      screen.findByText(
+        "Open Okou Computer Use on your Mac and refresh this page when it comes online.",
+      ),
+    ).resolves.toBeInTheDocument();
+    const downloadLink = await waitFor(() => {
+      return linkByText("Download for macOS");
+    });
+    expect(downloadLink).toHaveAttribute(
+      "href",
+      expect.stringContaining(
+        "/api/okou/desktop/updates/stable/darwin/arm64/dmg",
+      ),
+    );
   });
 
   it("blocks the desktop download when the browser identifies an Intel Mac", async () => {

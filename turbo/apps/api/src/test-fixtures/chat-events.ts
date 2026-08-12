@@ -1,10 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import type { ChatFeishuMessageFiles } from "@vm0/db/jsonb-contracts/chat-feishu-context";
-import type {
-  ChatEventPayload,
-  ChatEventUserMessage,
-} from "@vm0/db/jsonb-contracts/chat-event";
+import type { ChatEventPayload } from "@vm0/db/jsonb-contracts/chat-event";
 import type {
   ChatSlackMentionDisplayNames,
   ChatSlackMessageAssets,
@@ -40,6 +37,7 @@ import {
   insertChatEvents,
   replaceChatEvent,
 } from "../signals/services/zero-chat-event.service";
+import { canonicalChatEventUserMessage } from "../signals/services/canonical-chat-event-read.service";
 import {
   chatInputPromptDispatchCondition,
   runOwnedChatEventForRunCondition,
@@ -679,7 +677,7 @@ async function findOwnedChatEventByPrompt(args: {
   const rows = await db()
     .select({
       eventId: chatEvents.id,
-      userMessage: chatEvents.userMessage,
+      userMessage: canonicalChatEventUserMessage(),
     })
     .from(chatEvents)
     .innerJoin(chatThreads, eq(chatThreads.id, chatEvents.chatThreadId))
@@ -774,7 +772,7 @@ export async function replayPendingChatInputQueueEventFixture(args: {
     const [event] = await tx
       .select({
         chatThreadId: chatEvents.chatThreadId,
-        userMessage: chatEvents.userMessage,
+        userMessage: canonicalChatEventUserMessage(),
       })
       .from(chatEvents)
       .where(
@@ -2030,14 +2028,7 @@ interface CanonicalChatEventStorageRow {
   readonly id: string;
   readonly eventType: string;
   readonly payload: ChatEventPayload | null;
-  readonly content: string | null;
-  readonly userMessage: typeof chatEvents.$inferSelect.userMessage;
-  readonly thinking: string | null;
-  readonly error: string | null;
-  readonly usagePayload: typeof chatEvents.$inferSelect.usagePayload;
   readonly runId: string | null;
-  readonly interruptsRunId: string | null;
-  readonly runGroupId: string | null;
   readonly contextType: string | null;
   readonly contextId: string | null;
   readonly revokesEventId: string | null;
@@ -2072,10 +2063,9 @@ async function insertCanonicalSingleWrites(
   threadId: string,
   single: CanonicalChatEventWriteFixture["single"],
 ): Promise<void> {
-  const inputUserMessage = {
-    ...createUserMessageDocument({ text: "rejected canonical input" }),
-    compatibilityProbe: { nested: null },
-  } as unknown as ChatEventUserMessage;
+  const inputUserMessage = createUserMessageDocument({
+    text: "rejected canonical input",
+  });
   await insertChatEvent(tx, {
     id: single.inputRejectedId,
     chatThreadId: threadId,
@@ -2192,10 +2182,7 @@ async function insertCanonicalReplacementWrite(
   });
 }
 
-/**
- * Exercise the three production persistence paths while keeping the canonical
- * storage assertions out of public API contracts until the reader cutover.
- */
+/** Exercise the three production canonical persistence paths. */
 export async function insertCanonicalChatEventWritesFixture(args: {
   readonly threadId: string;
   readonly orgId: string;
@@ -2282,14 +2269,7 @@ export async function readCanonicalChatEventStorageFixture(
       id: chatEvents.id,
       eventType: chatEvents.eventType,
       payload: chatEvents.payload,
-      content: chatEvents.content,
-      userMessage: chatEvents.userMessage,
-      thinking: chatEvents.thinking,
-      error: chatEvents.error,
-      usagePayload: chatEvents.usagePayload,
       runId: chatEvents.runId,
-      interruptsRunId: chatEvents.interruptsRunId,
-      runGroupId: chatEvents.runGroupId,
       contextType: chatEvents.contextType,
       contextId: chatEvents.contextId,
       revokesEventId: chatEvents.revokesEventId,
@@ -2308,94 +2288,6 @@ export async function isVisibleChatEventFixture(
     .where(and(eq(chatEvents.id, eventId), visibleChatEventCondition(database)))
     .limit(1);
   return event !== undefined;
-}
-
-export async function insertChatEventAgainstPrePayloadSchemaFixture(): Promise<
-  {
-    readonly content: string | null;
-    readonly error: string | null;
-    readonly eventType: string;
-    readonly seqId: number;
-  }[]
-> {
-  const threadId = randomUUID();
-  const eventId = randomUUID();
-  const batchEventId = randomUUID();
-  const replacementTargetId = randomUUID();
-  const replacementId = randomUUID();
-  return await db().transaction(async (tx) => {
-    await tx.execute(sql`SET LOCAL search_path = pg_temp, public`);
-    await tx.execute(sql`
-      CREATE TEMP TABLE chat_threads (
-        id uuid PRIMARY KEY,
-        last_chat_event_seq_id bigint NOT NULL DEFAULT 0
-      ) ON COMMIT DROP
-    `);
-    await tx.execute(sql`
-      CREATE TEMP TABLE chat_events
-      (LIKE public.chat_events INCLUDING DEFAULTS)
-      ON COMMIT DROP
-    `);
-    await tx.execute(sql`ALTER TABLE chat_events DROP COLUMN payload`);
-    await tx.execute(
-      sql`INSERT INTO chat_threads (id) VALUES (${threadId}::uuid)`,
-    );
-    await insertChatEvent(tx, {
-      id: eventId,
-      chatThreadId: threadId,
-      eventType: "goal.open",
-      content: "pre-payload compatibility",
-    });
-    await insertChatEvents(tx, [
-      {
-        id: batchEventId,
-        chatThreadId: threadId,
-        eventType: "output.message",
-        content: "pre-payload batch compatibility",
-        runId: randomUUID(),
-      },
-    ]);
-    const userMessage = createUserMessageDocument({
-      text: "pre-payload replacement target",
-    });
-    await insertChatEvent(tx, {
-      id: replacementTargetId,
-      chatThreadId: threadId,
-      eventType: "input.prompt",
-      contextType: "web",
-      userMessage,
-      runId: null,
-    });
-    await replaceChatEvent(tx, replacementTargetId, {
-      id: replacementId,
-      chatThreadId: threadId,
-      eventType: "input.rejected",
-      userMessage,
-      runId: null,
-      error: "pre-payload replacement compatibility",
-    });
-    const rows = await tx
-      .select({
-        content: chatEvents.content,
-        error: chatEvents.error,
-        eventType: chatEvents.eventType,
-        seqId: chatEvents.seqId,
-      })
-      .from(chatEvents)
-      .where(
-        inArray(chatEvents.id, [
-          eventId,
-          batchEventId,
-          replacementTargetId,
-          replacementId,
-        ]),
-      )
-      .orderBy(chatEvents.seqId);
-    if (rows.length !== 4) {
-      throw new Error("Expected every pre-payload chat event write path");
-    }
-    return rows;
-  });
 }
 
 /**

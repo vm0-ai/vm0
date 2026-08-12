@@ -7,6 +7,7 @@ import {
   zeroBillingUsagePackCatalogContract,
   zeroBillingUsagePackCheckoutContract,
   zeroBillingUsagePackManagementContract,
+  zeroBillingUsagePackMigrationContract,
   zeroBillingConcurrencyCheckoutContract,
   zeroBillingConcurrencySubscriptionContract,
   zeroBillingCreditCheckoutContract,
@@ -19,6 +20,7 @@ import {
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 import type { OrgTier } from "@vm0/api-contracts/contracts/orgs";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { isStaffOrg } from "@vm0/core/staff-org";
 import {
   webhookClerkContract,
   webhookStripeContract,
@@ -342,6 +344,7 @@ async function createSubscriptionOrg(args: {
           },
         },
         lines: {
+          has_more: false,
           data: [
             {
               price: { id: priceId },
@@ -410,6 +413,7 @@ async function createConcurrencySubscriptionOrg(args: {
           },
         },
         lines: {
+          has_more: false,
           data: [
             {
               id: `il_${randomUUID().slice(0, 8)}`,
@@ -630,6 +634,9 @@ describe("POST /api/zero/billing/checkout", () => {
   });
 
   it("returns checkout URL on success", async () => {
+    const okouPricePro = "price_okou_pro";
+    mockEnv("OKOU_PRICE_PRO", okouPricePro);
+    mockEnv("ZERO_PRICE_PRO", "price_ignored_zero_pro");
     const fixture = await trackedSeed();
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
@@ -665,20 +672,20 @@ describe("POST /api/zero/billing/checkout", () => {
     expect(context.mocks.stripe.checkout.sessions.create).toHaveBeenCalledWith({
       mode: "subscription",
       customer: customerId,
-      line_items: [{ price: TEST_PRICE_PRO, quantity: 1 }],
+      line_items: [{ price: okouPricePro, quantity: 1 }],
       allow_promotion_codes: true,
       success_url: `${APP_ORIGIN}/billing?billing=success`,
       cancel_url: `${APP_ORIGIN}/billing?billing=canceled`,
       metadata: {
         orgId: fixture.orgId,
         tier: "pro",
-        priceId: TEST_PRICE_PRO,
+        priceId: okouPricePro,
       },
       subscription_data: {
         metadata: {
           orgId: fixture.orgId,
           tier: "pro",
-          priceId: TEST_PRICE_PRO,
+          priceId: okouPricePro,
         },
       },
     });
@@ -1521,6 +1528,1456 @@ describe("POST /api/zero/billing/usage-pack-checkout", () => {
   });
 });
 
+describe("legacy subscription usage pack migration", () => {
+  interface LegacyMigrationFixture extends SubscriptionFixture {
+    readonly tier: "pro" | "team";
+    readonly legacyPriceId: string;
+    readonly legacyItemId: string;
+    readonly period: { readonly start: number; readonly end: number };
+    readonly legacyCreditInvoiceId: string;
+    readonly invitation?: {
+      readonly id: string;
+      readonly email: string;
+      readonly role: "org:admin" | "org:member";
+    };
+  }
+
+  interface MigrationStripeController {
+    readonly invoice: () => object;
+    readonly cancelSubscription: () => MigrationSubscriptionMock;
+    readonly cancelSchedule: () => void;
+    readonly startScheduledPhase: () => void;
+  }
+
+  interface MigrationSubscriptionMock {
+    readonly id: string;
+    readonly customer: string;
+    readonly status: string;
+    readonly cancel_at: number | null;
+    readonly cancel_at_period_end: boolean;
+    readonly schedule: string | null;
+    readonly pending_update: null;
+    readonly latest_invoice: string | null;
+    readonly metadata: Readonly<Record<string, string>>;
+    readonly items: {
+      readonly data: readonly {
+        readonly id: string;
+        readonly price: {
+          readonly id: string;
+          readonly recurring: {
+            readonly interval: "month";
+            readonly interval_count: 1;
+          };
+        };
+        readonly quantity: number;
+        readonly current_period_start: number;
+        readonly current_period_end: number;
+      }[];
+    };
+  }
+
+  function isStringRecord(
+    value: unknown,
+  ): value is Readonly<Record<string, string>> {
+    return (
+      typeof value === "object" &&
+      value !== null &&
+      Object.values(value).every((entry) => {
+        return typeof entry === "string";
+      })
+    );
+  }
+
+  function stringMetadata(
+    value: unknown,
+  ): Readonly<Record<string, string>> | null {
+    if (typeof value !== "object" || value === null || !("metadata" in value)) {
+      return null;
+    }
+    return isStringRecord(value.metadata) ? value.metadata : null;
+  }
+
+  function migrationPreviewItems(value: unknown): readonly unknown[] {
+    if (
+      typeof value !== "object" ||
+      value === null ||
+      !("subscription_details" in value)
+    ) {
+      throw new Error("Expected migration subscription preview details");
+    }
+    const details = value.subscription_details;
+    if (
+      typeof details !== "object" ||
+      details === null ||
+      !("items" in details) ||
+      !Array.isArray(details.items)
+    ) {
+      throw new Error("Expected migration subscription preview items");
+    }
+    const items: readonly unknown[] = details.items;
+    return items;
+  }
+
+  function migrationPreviewPriceIds(value: unknown): readonly string[] {
+    return migrationPreviewItems(value).flatMap((item) => {
+      if (
+        typeof item !== "object" ||
+        item === null ||
+        !("price" in item) ||
+        typeof item.price !== "string"
+      ) {
+        return [];
+      }
+      return [item.price];
+    });
+  }
+
+  function paidMigrationTimestamp(): number | null {
+    return currentSecond();
+  }
+
+  async function clearMigrationFixture(
+    orgId = TEST_STAFF_ORG_ID,
+  ): Promise<void> {
+    await usagePackStateAction({
+      action: "cleanup-migration",
+      orgId,
+    });
+  }
+
+  async function seedLegacyMigrationFixture(args: {
+    readonly tier: "pro" | "team";
+    readonly invitation?: boolean;
+    readonly orgId?: string;
+  }): Promise<LegacyMigrationFixture> {
+    const orgId = args.orgId ?? TEST_STAFF_ORG_ID;
+    await clearMigrationFixture(orgId);
+    const fixture = createOrgFixture(orgId);
+    const customerId = `cus_migration_${randomUUID()}`;
+    const subscriptionId = `sub_migration_${randomUUID()}`;
+    const legacyPriceId =
+      args.tier === "team" ? TEST_PRICE_TEAM : TEST_PRICE_PRO;
+    const legacyItemId = `si_legacy_${randomUUID()}`;
+    const period = {
+      start: currentSecond() - 15 * 86_400,
+      end: currentSecond() + 15 * 86_400,
+    };
+    const legacyCreditInvoiceId = `in_legacy_${randomUUID()}`;
+    const invitation = args.invitation
+      ? {
+          id: `inv_migration_${randomUUID()}`,
+          email: `pending-${randomUUID()}@example.test`,
+          role: "org:member" as const,
+        }
+      : undefined;
+    await seedOrgMetadata({
+      orgId: fixture.orgId,
+      tier: args.tier,
+      credits: 12_345,
+    });
+    await usagePackStateAction({
+      action: "seed-legacy-migration",
+      orgId: fixture.orgId,
+      tier: args.tier,
+      stripeCustomerId: customerId,
+      stripeSubscriptionId: subscriptionId,
+      currentPeriodEnd: new Date(period.end * 1000).toISOString(),
+      legacyCreditInvoiceId,
+      credits: 12_345,
+    });
+    authenticateOrg(fixture);
+    mockClerkOrganization(fixture);
+    context.mocks.clerk.organizations.getOrganizationMembershipList.mockResolvedValue(
+      {
+        data: [
+          {
+            role: "org:admin",
+            publicUserData: { userId: fixture.userId },
+            createdAt: now(),
+          },
+        ],
+      },
+    );
+    context.mocks.clerk.organizations.getOrganizationInvitationList.mockResolvedValue(
+      {
+        data: invitation
+          ? [
+              {
+                id: invitation.id,
+                emailAddress: invitation.email,
+                role: invitation.role,
+                createdAt: now(),
+              },
+            ]
+          : [],
+      },
+    );
+    onTestFinished(() => {
+      return clearMigrationFixture(orgId);
+    });
+    return {
+      ...fixture,
+      customerId,
+      subscriptionId,
+      tier: args.tier,
+      legacyPriceId,
+      legacyItemId,
+      period,
+      legacyCreditInvoiceId,
+      ...(invitation ? { invitation } : {}),
+    };
+  }
+
+  function legacyMigrationSubscription(
+    fixture: LegacyMigrationFixture,
+  ): MigrationSubscriptionMock {
+    return {
+      id: fixture.subscriptionId,
+      customer: fixture.customerId,
+      status: "active",
+      cancel_at: null,
+      cancel_at_period_end: false,
+      schedule: null,
+      pending_update: null,
+      latest_invoice: null,
+      metadata: { orgId: fixture.orgId },
+      items: {
+        data: [
+          {
+            id: fixture.legacyItemId,
+            price: {
+              id: fixture.legacyPriceId,
+              recurring: { interval: "month", interval_count: 1 },
+            },
+            quantity: 1,
+            current_period_start: fixture.period.start,
+            current_period_end: fixture.period.end,
+          },
+        ],
+      },
+    };
+  }
+
+  function mockMigrationStripe(args: {
+    readonly fixture: LegacyMigrationFixture;
+    readonly targetTier?: "pro" | "team";
+    readonly packageQuantity: number;
+    readonly currentRecurringAmountCents: number;
+    readonly amountDueCents: number;
+    readonly amountPaidCents: number;
+  }): MigrationStripeController {
+    const targetTier = args.targetTier ?? args.fixture.tier;
+    const planPriceId =
+      targetTier === "team"
+        ? TEST_PRICE_USAGE_PACK_PLAN_TEAM
+        : TEST_PRICE_USAGE_PACK_PLAN_PRO;
+    const invoiceId = `in_migration_${randomUUID()}`;
+    const paymentIntentId = `pi_migration_${randomUUID()}`;
+    const scheduleId = `sub_sched_migration_${randomUUID()}`;
+    const packageLineAmount = 2000 * args.packageQuantity;
+    const renewedPeriod = {
+      start: args.fixture.period.end,
+      end: args.fixture.period.end + 30 * 86_400,
+    };
+    const paidInvoice = () => {
+      return {
+        id: invoiceId,
+        customer: args.fixture.customerId,
+        metadata: { orgId: args.fixture.orgId },
+        status: "paid",
+        paid: true,
+        amount_due: args.amountDueCents,
+        amount_paid: args.amountPaidCents,
+        currency: "usd",
+        hosted_invoice_url: `https://invoice.stripe.test/${invoiceId}`,
+        status_transitions: { paid_at: paidMigrationTimestamp() },
+        payments: {
+          data:
+            args.amountPaidCents > 0
+              ? [
+                  {
+                    status: "paid",
+                    amount_paid: args.amountPaidCents,
+                    payment: {
+                      type: "payment_intent",
+                      payment_intent: paymentIntentId,
+                    },
+                  },
+                ]
+              : [],
+        },
+        parent: {
+          subscription_details: {
+            subscription: args.fixture.subscriptionId,
+            metadata: { orgId: args.fixture.orgId },
+          },
+        },
+        lines: {
+          data: [
+            {
+              id: `il_migration_plan_${randomUUID()}`,
+              amount: Math.max(args.amountDueCents - packageLineAmount, 0),
+              subtotal: Math.max(args.amountDueCents - packageLineAmount, 0),
+              quantity: 1,
+              price: { id: planPriceId },
+              pricing: { price_details: { price: planPriceId } },
+              proration: false,
+              period: renewedPeriod,
+              parent: {
+                type: "subscription_item_details",
+                subscription_item_details: { proration: false },
+              },
+            },
+            {
+              id: `il_migration_${randomUUID()}`,
+              amount: packageLineAmount,
+              subtotal: packageLineAmount,
+              quantity: args.packageQuantity,
+              price: { id: TEST_PRICE_USAGE_PACK_20 },
+              pricing: {
+                price_details: { price: TEST_PRICE_USAGE_PACK_20 },
+              },
+              proration: false,
+              period: renewedPeriod,
+              parent: {
+                type: "subscription_item_details",
+                subscription_item_details: { proration: false },
+              },
+            },
+          ],
+        },
+      };
+    };
+    const openInvoice = () => {
+      return {
+        ...paidInvoice(),
+        status: "open",
+        paid: false,
+        amount_paid: 0,
+        status_transitions: { paid_at: null },
+        payments: { data: [] },
+      };
+    };
+    const appliedSubscription = (): MigrationSubscriptionMock => {
+      return {
+        ...legacyMigrationSubscription(args.fixture),
+        schedule: scheduleId,
+        latest_invoice: invoiceId,
+        items: {
+          data: [
+            {
+              id: `si_plan_${targetTier}`,
+              price: {
+                id: planPriceId,
+                recurring: { interval: "month", interval_count: 1 },
+              },
+              quantity: 1,
+              current_period_start: renewedPeriod.start,
+              current_period_end: renewedPeriod.end,
+            },
+            {
+              id: "si_pack_20",
+              price: {
+                id: TEST_PRICE_USAGE_PACK_20,
+                recurring: { interval: "month", interval_count: 1 },
+              },
+              quantity: args.packageQuantity,
+              current_period_start: renewedPeriod.start,
+              current_period_end: renewedPeriod.end,
+            },
+          ],
+        },
+      };
+    };
+    let invoice = paidInvoice();
+    let subscription: MigrationSubscriptionMock = legacyMigrationSubscription(
+      args.fixture,
+    );
+    const syncRetrievalMocks = () => {
+      context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(
+        subscription,
+      );
+      context.mocks.stripe.invoices.retrieve.mockResolvedValue(invoice);
+    };
+    syncRetrievalMocks();
+    context.mocks.stripe.invoices.createPreview.mockImplementation((params) => {
+      const targetPreview = migrationPreviewItems(params).some((item) => {
+        return (
+          typeof item === "object" &&
+          item !== null &&
+          "price" in item &&
+          item.price === planPriceId
+        );
+      });
+      return Promise.resolve({
+        amount_due: targetPreview
+          ? args.amountDueCents
+          : args.currentRecurringAmountCents,
+        currency: "usd",
+      });
+    });
+    context.mocks.stripe.subscriptionSchedules.create.mockImplementation(() => {
+      subscription = { ...subscription, schedule: scheduleId };
+      syncRetrievalMocks();
+      return Promise.resolve({ id: scheduleId, phases: [] });
+    });
+    context.mocks.stripe.subscriptionSchedules.update.mockResolvedValue({
+      id: scheduleId,
+      phases: [],
+    });
+    context.mocks.stripe.subscriptions.update.mockImplementation(
+      (_subscriptionId, params) => {
+        const metadata = stringMetadata(params);
+        if (metadata) {
+          subscription = {
+            ...subscription,
+            metadata: {
+              ...subscription.metadata,
+              ...metadata,
+            },
+          };
+          syncRetrievalMocks();
+          return Promise.resolve(subscription);
+        }
+        throw new Error(
+          "Migration must not replace subscription items directly",
+        );
+      },
+    );
+    return {
+      invoice: () => {
+        return invoice;
+      },
+      cancelSubscription: () => {
+        subscription = {
+          ...subscription,
+          cancel_at: args.fixture.period.end,
+          cancel_at_period_end: true,
+        };
+        syncRetrievalMocks();
+        return subscription;
+      },
+      startScheduledPhase: () => {
+        invoice = paidInvoice();
+        subscription = appliedSubscription();
+        syncRetrievalMocks();
+      },
+      cancelSchedule: () => {
+        invoice = { ...openInvoice(), status: "void" };
+        subscription = legacyMigrationSubscription(args.fixture);
+        syncRetrievalMocks();
+      },
+    };
+  }
+
+  function migrationClient() {
+    return setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+      zeroBillingUsagePackMigrationContract,
+    );
+  }
+
+  async function enableMigration(fixture: BillingOrgFixture): Promise<void> {
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.UsagePackPlans]: true,
+    });
+  }
+
+  async function postMigrationInvoice(invoice: object): Promise<void> {
+    const event = {
+      id: `evt_migration_${randomUUID()}`,
+      type: "invoice.paid",
+      created: currentSecond(),
+      data: { object: invoice },
+    };
+    context.mocks.stripe.webhooks.constructEvent.mockReturnValueOnce(event);
+    await accept(
+      setupApp({ context, routes: webhooksStripeRoutes })(
+        webhookStripeContract,
+      ).post({
+        body: JSON.stringify(event),
+        extraHeaders: { "stripe-signature": "t=1,v1=migration-test" },
+      }),
+      [200],
+    );
+  }
+
+  async function postMigrationSubscription(
+    subscription: object,
+  ): Promise<void> {
+    const event = {
+      id: `evt_migration_${randomUUID()}`,
+      type: "customer.subscription.updated",
+      created: currentSecond(),
+      data: { object: subscription },
+    };
+    context.mocks.stripe.webhooks.constructEvent.mockReturnValueOnce(event);
+    await accept(
+      setupApp({ context, routes: webhooksStripeRoutes })(
+        webhookStripeContract,
+      ).post({
+        body: JSON.stringify(event),
+        extraHeaders: { "stripe-signature": "t=1,v1=migration-test" },
+      }),
+      [200],
+    );
+  }
+
+  async function postMigrationInvitationAccepted(args: {
+    readonly fixture: LegacyMigrationFixture;
+    readonly purchaseId: string;
+    readonly userId: string;
+  }): Promise<void> {
+    if (!args.fixture.invitation) {
+      throw new Error("Expected a pending invitation fixture");
+    }
+    const event = {
+      type: "organizationInvitation.accepted",
+      data: {
+        object: "organization_invitation",
+        id: args.fixture.invitation.id,
+        email_address: args.fixture.invitation.email,
+        organization_id: args.fixture.orgId,
+        role: args.fixture.invitation.role,
+        role_name: "Member",
+        status: "accepted",
+        user_id: args.userId,
+        public_metadata: {},
+        private_metadata: {
+          usagePackInvitationPurchaseId: args.purchaseId,
+        },
+        url: null,
+        created_at: now() - 1000,
+        updated_at: now(),
+        expires_at: args.fixture.period.end * 1000,
+      },
+    };
+    context.mocks.clerk.verifyWebhook.mockResolvedValueOnce(event);
+    await accept(
+      setupApp({ context, routes: webhooksClerkRoutes })(
+        webhookClerkContract,
+      ).post({
+        body: JSON.stringify(event),
+      }),
+      [200],
+    );
+    await flushWaitUntilForTest();
+  }
+
+  async function previewMigration(
+    fixture: LegacyMigrationFixture,
+    targetTier: "pro" | "team" = fixture.tier,
+  ): Promise<{ readonly migrationId: string }> {
+    const memberUsagePacks = [
+      { memberId: fixture.userId, usagePackUsd: 20 as const },
+      ...(fixture.invitation
+        ? [{ memberId: fixture.invitation.id, usagePackUsd: 20 as const }]
+        : []),
+    ];
+    const response = await accept(
+      migrationClient().preview({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { targetTier, memberUsagePacks },
+      }),
+      [200],
+    );
+    expect(response.body).toMatchObject({
+      tier: fixture.tier,
+      targetTier,
+      currency: "usd",
+      purchasedCredits: 20_000 * memberUsagePacks.length,
+      bonusCredits: 400 * memberUsagePacks.length,
+      totalCredits: 20_400 * memberUsagePacks.length,
+    });
+    return { migrationId: response.body.migrationId };
+  }
+
+  beforeEach(() => {
+    mockStripeClient(context.mocks.stripe as unknown as StripeSDK);
+    setZeroPrice();
+    setUsagePackPrices();
+    mockUsagePackCatalog();
+    mockEnv("SECRETS_ENCRYPTION_KEY", "a".repeat(64));
+    mockOptionalEnv("STRIPE_WEBHOOK_SECRET", STRIPE_WEBHOOK_SECRET);
+  });
+
+  it("hides legacy migration while UsagePackPlans is disabled", async () => {
+    const fixture = await seedLegacyMigrationFixture({ tier: "pro" });
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(
+      legacyMigrationSubscription(fixture),
+    );
+
+    const response = await accept(
+      migrationClient().get({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [403],
+    );
+
+    expect(response.body.error.message).toBe(
+      "Usage pack management is not enabled",
+    );
+    expect(context.mocks.stripe.subscriptions.retrieve).not.toHaveBeenCalled();
+  });
+
+  it("rejects a Stripe subscription scheduled for cancellation", async () => {
+    const fixture = await seedLegacyMigrationFixture({ tier: "pro" });
+    await enableMigration(fixture);
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
+      ...legacyMigrationSubscription(fixture),
+      cancel_at_period_end: true,
+    });
+
+    const response = await accept(
+      migrationClient().get({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [404],
+    );
+
+    expect(response.body.error.message).toBe(
+      "Legacy subscription migration is not available",
+    );
+  });
+
+  it("prevents an active legacy subscription from bypassing migration", async () => {
+    const fixture = await seedLegacyMigrationFixture({ tier: "pro" });
+    await enableMigration(fixture);
+
+    const response = await accept(
+      setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+        zeroBillingUsagePackCheckoutContract,
+      ).create({
+        body: {
+          tier: "team",
+          memberUsagePacks: [{ memberId: fixture.userId, usagePackUsd: 20 }],
+          successUrl: `${APP_ORIGIN}/billing?billing=success`,
+          cancelUrl: `${APP_ORIGIN}/billing?billing=canceled`,
+        },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [400],
+    );
+
+    expect(response.body.error.message).toBe(
+      "Existing subscriptions must migrate before starting usage pack checkout",
+    );
+    expect(
+      context.mocks.stripe.checkout.sessions.create,
+    ).not.toHaveBeenCalled();
+  });
+
+  it("keeps legacy state when the legacy item changes after preview", async () => {
+    const fixture = await seedLegacyMigrationFixture({ tier: "pro" });
+    await enableMigration(fixture);
+    mockMigrationStripe({
+      fixture,
+      packageQuantity: 1,
+      currentRecurringAmountCents: 2000,
+      amountDueCents: 2000,
+      amountPaidCents: 2000,
+    });
+    const preview = await previewMigration(fixture);
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue({
+      ...legacyMigrationSubscription(fixture),
+      items: {
+        data: [
+          {
+            ...legacyMigrationSubscription(fixture).items.data[0],
+            quantity: 2,
+          },
+        ],
+      },
+    });
+
+    const response = await accept(
+      migrationClient().confirm({
+        params: { migrationId: preview.migrationId },
+        body: {},
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [409],
+    );
+
+    expect(response.body.error.message).toBe(
+      "Usage pack migration is no longer available",
+    );
+    expect(
+      context.mocks.stripe.subscriptionSchedules.create,
+    ).not.toHaveBeenCalled();
+    expect(context.mocks.stripe.subscriptions.update).not.toHaveBeenCalled();
+    const persisted = await readUsagePackState(fixture.orgId);
+    expect(persisted.migrations).toStrictEqual([
+      expect.objectContaining({
+        id: preview.migrationId,
+        status: "failed",
+        failureReason: "subscription_changed",
+      }),
+    ]);
+    expect(persisted.subscriptionCount).toBe(0);
+  });
+
+  it("schedules a legacy Pro-to-Team conversion at the billing boundary", async () => {
+    const fixture = await seedLegacyMigrationFixture({ tier: "pro" });
+    await enableMigration(fixture);
+    const stripe = mockMigrationStripe({
+      fixture,
+      targetTier: "team",
+      packageQuantity: 1,
+      currentRecurringAmountCents: 2000,
+      amountDueCents: 18_000,
+      amountPaidCents: 18_000,
+    });
+    const state = await accept(
+      migrationClient().get({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(state.body).toMatchObject({ tier: "pro", status: "eligible" });
+    const preview = await previewMigration(fixture, "team");
+
+    const confirmation = await accept(
+      migrationClient().confirm({
+        params: { migrationId: preview.migrationId },
+        body: {},
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(confirmation.body).toMatchObject({
+      status: "scheduled",
+      effectiveAt: new Date(fixture.period.end * 1000).toISOString(),
+    });
+    expect(
+      context.mocks.stripe.checkout.sessions.create,
+    ).not.toHaveBeenCalled();
+    expect(
+      context.mocks.stripe.subscriptionSchedules.create,
+    ).toHaveBeenCalledWith(
+      { from_subscription: fixture.subscriptionId },
+      {
+        idempotencyKey: `usage-pack-migration:${preview.migrationId}:schedule-create`,
+      },
+    );
+    expect(
+      context.mocks.stripe.subscriptionSchedules.update,
+    ).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        end_behavior: "release",
+        proration_behavior: "none",
+        phases: [
+          expect.objectContaining({
+            start_date: fixture.period.start,
+            end_date: fixture.period.end,
+            items: [{ price: fixture.legacyPriceId, quantity: 1 }],
+          }),
+          expect.objectContaining({
+            start_date: fixture.period.end,
+            items: expect.arrayContaining([
+              { price: TEST_PRICE_USAGE_PACK_PLAN_TEAM, quantity: 1 },
+              { price: TEST_PRICE_USAGE_PACK_20, quantity: 1 },
+            ]),
+          }),
+        ],
+      }),
+      {
+        idempotencyKey: `usage-pack-migration:${preview.migrationId}:schedule-update`,
+      },
+    );
+    expect(context.mocks.stripe.subscriptions.update).not.toHaveBeenCalled();
+    const scheduledState = await readUsagePackState(
+      fixture.orgId,
+      preview.migrationId,
+    );
+    expect(scheduledState.migrations).toStrictEqual([
+      expect.objectContaining({ status: "scheduled" }),
+    ]);
+    expect(scheduledState.subscriptionCount).toBe(0);
+    expect(scheduledState.allocations).toStrictEqual([]);
+    expect(scheduledState.grants).toStrictEqual([]);
+    expect(scheduledState.legacyCredits).toStrictEqual([
+      expect.objectContaining({
+        stripeInvoiceId: fixture.legacyCreditInvoiceId,
+        amount: 12_345,
+        remaining: 12_345,
+      }),
+    ]);
+
+    stripe.startScheduledPhase();
+    await postMigrationInvoice(stripe.invoice());
+    const usageState = await readUsagePackState(
+      fixture.orgId,
+      preview.migrationId,
+    );
+    expect(usageState.allocations).toStrictEqual([
+      expect.objectContaining({
+        userId: fixture.userId,
+        status: "active",
+        usagePackUsd: 20,
+      }),
+    ]);
+    expect(usageState.org?.tier).toBe("team");
+    expect(usageState.grants).toHaveLength(2);
+    expect(usageState.legacyCredits).toStrictEqual([
+      expect.objectContaining({
+        stripeInvoiceId: fixture.legacyCreditInvoiceId,
+        amount: 12_345,
+        remaining: 12_345,
+      }),
+    ]);
+
+    await postMigrationInvoice(stripe.invoice());
+    const duplicateState = await readUsagePackState(
+      fixture.orgId,
+      preview.migrationId,
+    );
+    expect(duplicateState.grants).toHaveLength(2);
+
+    await postMigrationSubscription(legacyMigrationSubscription(fixture));
+    const delayedState = await readUsagePackState(
+      fixture.orgId,
+      preview.migrationId,
+    );
+    expect(delayedState.subscription?.subscriptionStatus).toBe("active");
+    expect(delayedState.grants).toHaveLength(2);
+  });
+
+  it("revises a scheduled migration and exposes its current configuration", async () => {
+    const fixture = await seedLegacyMigrationFixture({ tier: "pro" });
+    await enableMigration(fixture);
+    mockMigrationStripe({
+      fixture,
+      targetTier: "team",
+      packageQuantity: 1,
+      currentRecurringAmountCents: 2000,
+      amountDueCents: 18_000,
+      amountPaidCents: 18_000,
+    });
+    const preview = await previewMigration(fixture, "team");
+    await accept(
+      migrationClient().confirm({
+        params: { migrationId: preview.migrationId },
+        body: {},
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    const scheduled = await accept(
+      migrationClient().get({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(scheduled.body).toMatchObject({
+      status: "scheduled",
+      configuration: {
+        tier: "team",
+        memberUsagePacks: [{ memberId: fixture.userId, usagePackUsd: 20 }],
+        recurringAmountCents: 18_000,
+        currency: "usd",
+      },
+    });
+
+    context.mocks.stripe.invoices.createPreview.mockImplementation((params) => {
+      const priceIds = migrationPreviewPriceIds(params);
+      return Promise.resolve({
+        amount_due: priceIds.includes(TEST_PRICE_USAGE_PACK_50) ? 7000 : 18_000,
+        currency: "usd",
+      });
+    });
+    context.mocks.stripe.subscriptionSchedules.update.mockClear();
+    const memberUsagePacks = [
+      { memberId: fixture.userId, usagePackUsd: 50 as const },
+    ];
+    const revisionPreview = await accept(
+      migrationClient().previewRevision({
+        params: { migrationId: preview.migrationId },
+        body: { targetTier: "pro", memberUsagePacks },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(revisionPreview.body).toMatchObject({
+      migrationId: preview.migrationId,
+      tier: "team",
+      targetTier: "pro",
+      currentRecurringAmountCents: 18_000,
+      nextRecurringAmountCents: 7000,
+      recurringDifferenceCents: -11_000,
+      purchasedCredits: 50_000,
+      bonusCredits: 2600,
+      totalCredits: 52_600,
+    });
+    expect(
+      context.mocks.stripe.invoices.createPreview,
+    ).toHaveBeenLastCalledWith(
+      expect.objectContaining({ subscription: fixture.subscriptionId }),
+    );
+
+    const confirmation = await accept(
+      migrationClient().confirmRevision({
+        params: { migrationId: preview.migrationId },
+        body: {
+          targetTier: "pro",
+          memberUsagePacks,
+          previewToken: revisionPreview.body.previewToken,
+        },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(confirmation.body).toMatchObject({ status: "scheduled" });
+    expect(
+      context.mocks.stripe.subscriptionSchedules.update,
+    ).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        phases: [
+          expect.any(Object),
+          expect.objectContaining({
+            items: expect.arrayContaining([
+              { price: TEST_PRICE_USAGE_PACK_PLAN_PRO, quantity: 1 },
+              { price: TEST_PRICE_USAGE_PACK_50, quantity: 1 },
+            ]),
+          }),
+        ],
+      }),
+      {
+        idempotencyKey: expect.stringMatching(
+          new RegExp(
+            `^usage-pack-migration:${preview.migrationId}:schedule-revision:[a-f0-9]{64}$`,
+          ),
+        ),
+      },
+    );
+    const scheduleUpdateCount =
+      context.mocks.stripe.subscriptionSchedules.update.mock.calls.length;
+    await accept(
+      migrationClient().confirmRevision({
+        params: { migrationId: preview.migrationId },
+        body: {
+          targetTier: "pro",
+          memberUsagePacks,
+          previewToken: revisionPreview.body.previewToken,
+        },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(
+      context.mocks.stripe.subscriptionSchedules.update.mock.calls,
+    ).toHaveLength(scheduleUpdateCount);
+
+    const revised = await accept(
+      migrationClient().get({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(revised.body).toMatchObject({
+      status: "scheduled",
+      targetTier: "pro",
+      configuration: {
+        tier: "pro",
+        memberUsagePacks,
+        recurringAmountCents: 7000,
+        currency: "usd",
+      },
+    });
+  });
+
+  it("rejects tampered and stale migration revision previews", async () => {
+    const fixture = await seedLegacyMigrationFixture({ tier: "pro" });
+    await enableMigration(fixture);
+    mockMigrationStripe({
+      fixture,
+      packageQuantity: 1,
+      currentRecurringAmountCents: 2000,
+      amountDueCents: 4000,
+      amountPaidCents: 4000,
+    });
+    const preview = await previewMigration(fixture);
+    await accept(
+      migrationClient().confirm({
+        params: { migrationId: preview.migrationId },
+        body: {},
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    context.mocks.stripe.invoices.createPreview.mockImplementation((params) => {
+      const priceIds = migrationPreviewPriceIds(params);
+      const amountDue = priceIds.includes(TEST_PRICE_USAGE_PACK_100)
+        ? 28_000
+        : 7000;
+      return Promise.resolve({ amount_due: amountDue, currency: "usd" });
+    });
+    const firstMemberUsagePacks = [
+      { memberId: fixture.userId, usagePackUsd: 50 as const },
+    ];
+    const secondMemberUsagePacks = [
+      { memberId: fixture.userId, usagePackUsd: 100 as const },
+    ];
+    const firstPreview = await accept(
+      migrationClient().previewRevision({
+        params: { migrationId: preview.migrationId },
+        body: { targetTier: "pro", memberUsagePacks: firstMemberUsagePacks },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    const secondPreview = await accept(
+      migrationClient().previewRevision({
+        params: { migrationId: preview.migrationId },
+        body: { targetTier: "team", memberUsagePacks: secondMemberUsagePacks },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    await accept(
+      migrationClient().confirmRevision({
+        params: { migrationId: preview.migrationId },
+        body: {
+          targetTier: "pro",
+          memberUsagePacks: firstMemberUsagePacks,
+          previewToken: `${firstPreview.body.previewToken}tampered`,
+        },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [400],
+    );
+    await accept(
+      migrationClient().confirmRevision({
+        params: { migrationId: preview.migrationId },
+        body: {
+          targetTier: "pro",
+          memberUsagePacks: firstMemberUsagePacks,
+          previewToken: firstPreview.body.previewToken,
+        },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    const stale = await accept(
+      migrationClient().confirmRevision({
+        params: { migrationId: preview.migrationId },
+        body: {
+          targetTier: "team",
+          memberUsagePacks: secondMemberUsagePacks,
+          previewToken: secondPreview.body.previewToken,
+        },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [409],
+    );
+    expect(stale.body.error.message).toBe(
+      "Usage pack migration configuration changed",
+    );
+
+    const state = await accept(
+      migrationClient().get({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(state.body.configuration).toMatchObject({
+      tier: "pro",
+      memberUsagePacks: firstMemberUsagePacks,
+    });
+  });
+
+  it("keeps Team legacy state intact when its migration schedule is canceled", async () => {
+    mockNow(new Date("2020-01-01T00:00:00.000Z"));
+    onTestFinished(() => {
+      clearMockNow();
+    });
+    const preservedFixture = await seedLegacyMigrationFixture({
+      tier: "team",
+      orgId: `org_migration_preserved_${randomUUID()}`,
+    });
+    await enableMigration(preservedFixture);
+    mockMigrationStripe({
+      fixture: preservedFixture,
+      packageQuantity: 1,
+      currentRecurringAmountCents: 20_000,
+      amountDueCents: 18_000,
+      amountPaidCents: 18_000,
+    });
+    const preservedPreview = await previewMigration(preservedFixture);
+    await accept(
+      migrationClient().confirm({
+        params: { migrationId: preservedPreview.migrationId },
+        body: {},
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    const fixture = await seedLegacyMigrationFixture({ tier: "team" });
+    await enableMigration(fixture);
+    const stripe = mockMigrationStripe({
+      fixture,
+      packageQuantity: 1,
+      currentRecurringAmountCents: 20_000,
+      amountDueCents: 18_000,
+      amountPaidCents: 18_000,
+    });
+    const preview = await previewMigration(fixture);
+    const confirmation = await accept(
+      migrationClient().confirm({
+        params: { migrationId: preview.migrationId },
+        body: {},
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(confirmation.body.status).toBe("scheduled");
+    expect((await readUsagePackState(fixture.orgId)).subscriptionCount).toBe(0);
+
+    context.mocks.clerk.organizations.getOrganizationMembershipList.mockResolvedValue(
+      { data: [] },
+    );
+    const retry = await accept(
+      migrationClient().confirm({
+        params: { migrationId: preview.migrationId },
+        body: {},
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(retry.body.status).toBe("scheduled");
+
+    stripe.cancelSchedule();
+    mockNow(fixture.period.end * 1000 + 10 * 60 * 1000);
+    mockEnv("CRON_SECRET", "migration-cron-secret");
+    const cronResponse = await createApp({
+      signal: context.signal,
+      routes: cronReconcileBillingEntitlementsRoutes,
+    }).request("/api/cron/reconcile-billing-entitlements", {
+      headers: { authorization: "Bearer migration-cron-secret" },
+    });
+    expect(cronResponse.status).toBe(200);
+
+    const preserved = await readUsagePackState(preservedFixture.orgId);
+    expect(preserved.migrations).toStrictEqual([
+      expect.objectContaining({
+        id: preservedPreview.migrationId,
+        status: "scheduled",
+      }),
+    ]);
+
+    const persisted = await readUsagePackState(fixture.orgId);
+    expect(persisted.migrations).toStrictEqual([
+      expect.objectContaining({ id: preview.migrationId, status: "failed" }),
+    ]);
+    expect(persisted.subscriptionCount).toBe(0);
+    expect(persisted.org).toMatchObject({
+      tier: "team",
+      stripeSubscriptionId: fixture.subscriptionId,
+      credits: 12_345,
+    });
+  });
+
+  it("syncs legacy cancellation when a subscription update invalidates migration", async () => {
+    const fixture = await seedLegacyMigrationFixture({ tier: "team" });
+    await enableMigration(fixture);
+    const stripe = mockMigrationStripe({
+      fixture,
+      packageQuantity: 1,
+      currentRecurringAmountCents: 20_000,
+      amountDueCents: 18_000,
+      amountPaidCents: 18_000,
+    });
+    const preview = await previewMigration(fixture);
+    await accept(
+      migrationClient().confirm({
+        params: { migrationId: preview.migrationId },
+        body: {},
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    await postMigrationSubscription(stripe.cancelSubscription());
+
+    const state = await readUsagePackState(fixture.orgId);
+    expect(state.migrations).toStrictEqual([
+      expect.objectContaining({
+        id: preview.migrationId,
+        status: "failed",
+        failureReason: "subscription_changed",
+      }),
+    ]);
+    expect(state.org).toMatchObject({
+      tier: "team",
+      stripeSubscriptionId: fixture.subscriptionId,
+      subscriptionStatus: "active",
+      cancelAtPeriodEnd: true,
+      currentPeriodEnd: new Date(fixture.period.end * 1000).toISOString(),
+    });
+  });
+
+  it("refunds only a pending invitation's share of a migration payment", async () => {
+    const fixture = await seedLegacyMigrationFixture({
+      tier: "team",
+      invitation: true,
+    });
+    if (!fixture.invitation) {
+      throw new Error("Expected a pending invitation fixture");
+    }
+    await enableMigration(fixture);
+    const stripe = mockMigrationStripe({
+      fixture,
+      packageQuantity: 2,
+      currentRecurringAmountCents: 20_000,
+      amountDueCents: 20_000,
+      amountPaidCents: 20_000,
+    });
+    const preview = await previewMigration(fixture);
+    const confirmation = await accept(
+      migrationClient().confirm({
+        params: { migrationId: preview.migrationId },
+        body: {},
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(confirmation.body.status).toBe("scheduled");
+    stripe.startScheduledPhase();
+    await postMigrationInvoice(stripe.invoice());
+
+    const [purchase] = (
+      await readUsagePackState(fixture.orgId, preview.migrationId)
+    ).invitationPurchases;
+    expect(purchase).toMatchObject({
+      status: "invitation_pending",
+      expectedAmountCents: 2000,
+      amountPaidCents: 2000,
+    });
+    context.mocks.clerk.organizations.getOrganizationInvitationList.mockResolvedValue(
+      { data: [{ id: fixture.invitation.id }] },
+    );
+    context.mocks.stripe.refunds.create.mockResolvedValue({
+      id: `re_${randomUUID()}`,
+      status: "succeeded",
+    });
+
+    await accept(
+      setupApp({ context, routes: zeroOrgInviteRoutes })(
+        zeroOrgInviteContract,
+      ).revoke({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { invitationId: fixture.invitation.id },
+      }),
+      [200],
+    );
+
+    expect(context.mocks.stripe.refunds.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        payment_intent: purchase?.stripePaymentIntentId,
+        amount: 2000,
+      }),
+      expect.any(Object),
+    );
+    expect(
+      context.mocks.stripe.subscriptionSchedules.update,
+    ).toHaveBeenLastCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        phases: expect.arrayContaining([
+          expect.objectContaining({
+            items: expect.arrayContaining([
+              { price: TEST_PRICE_USAGE_PACK_20, quantity: 1 },
+            ]),
+          }),
+        ]),
+      }),
+      expect.objectContaining({
+        idempotencyKey: expect.stringContaining(
+          `usage-pack-projection:invitation:${purchase?.id}:refund:`,
+        ),
+      }),
+    );
+  });
+
+  it("activates a migrated invitation without adding a second Stripe seat", async () => {
+    const fixture = await seedLegacyMigrationFixture({
+      tier: "team",
+      invitation: true,
+    });
+    if (!fixture.invitation) {
+      throw new Error("Expected a pending invitation fixture");
+    }
+    await enableMigration(fixture);
+    const stripe = mockMigrationStripe({
+      fixture,
+      packageQuantity: 2,
+      currentRecurringAmountCents: 20_000,
+      amountDueCents: 20_000,
+      amountPaidCents: 20_000,
+    });
+    const preview = await previewMigration(fixture);
+    const confirmation = await accept(
+      migrationClient().confirm({
+        params: { migrationId: preview.migrationId },
+        body: {},
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(confirmation.body.status).toBe("scheduled");
+    stripe.startScheduledPhase();
+    await postMigrationInvoice(stripe.invoice());
+    const [purchase] = (
+      await readUsagePackState(fixture.orgId, preview.migrationId)
+    ).invitationPurchases;
+    if (!purchase) {
+      throw new Error("Expected a migrated invitation purchase");
+    }
+
+    context.mocks.stripe.subscriptions.update.mockClear();
+    const acceptedUserId = `user_migration_invited_${randomUUID()}`;
+    await postMigrationInvitationAccepted({
+      fixture,
+      purchaseId: purchase.id,
+      userId: acceptedUserId,
+    });
+    await postMigrationInvitationAccepted({
+      fixture,
+      purchaseId: purchase.id,
+      userId: acceptedUserId,
+    });
+
+    const accepted = await readUsagePackState(
+      fixture.orgId,
+      preview.migrationId,
+    );
+    expect(accepted.invitationPurchases).toStrictEqual([
+      expect.objectContaining({
+        id: purchase.id,
+        status: "accepted",
+        acceptedUserId,
+      }),
+    ]);
+    expect(
+      accepted.allocations.filter((allocation) => {
+        return allocation.userId === acceptedUserId;
+      }),
+    ).toStrictEqual([
+      expect.objectContaining({
+        invitationId: null,
+        status: "active",
+        usagePackUsd: 20,
+      }),
+    ]);
+    expect(
+      accepted.grants.filter((grant) => {
+        return grant.userId === acceptedUserId;
+      }),
+    ).toStrictEqual([
+      expect.objectContaining({
+        grantType: "bonus",
+        originalAmount: 400,
+      }),
+      expect.objectContaining({
+        grantType: "purchased",
+        originalAmount: 20_000,
+      }),
+    ]);
+    expect(context.mocks.stripe.subscriptions.update).not.toHaveBeenCalled();
+  });
+
+  it("finishes a zero-amount Team conversion and invitation lifecycle after switch-off", async () => {
+    const fixture = await seedLegacyMigrationFixture({
+      tier: "team",
+      invitation: true,
+    });
+    if (!fixture.invitation) {
+      throw new Error("Expected a pending invitation fixture");
+    }
+    await enableMigration(fixture);
+    const stripe = mockMigrationStripe({
+      fixture,
+      packageQuantity: 2,
+      currentRecurringAmountCents: 20_000,
+      amountDueCents: 0,
+      amountPaidCents: 0,
+    });
+    const preview = await previewMigration(fixture);
+    const confirmation = await accept(
+      migrationClient().confirm({
+        params: { migrationId: preview.migrationId },
+        body: {},
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(confirmation.body.status).toBe("scheduled");
+
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.UsagePackPlans]: false,
+    });
+    stripe.startScheduledPhase();
+    await postMigrationInvoice(stripe.invoice());
+
+    const state = await readUsagePackState(fixture.orgId, preview.migrationId);
+    const [purchase] = state.invitationPurchases;
+    expect(purchase).toMatchObject({
+      status: "invitation_pending",
+      amountPaidCents: 0,
+      stripePaymentIntentId: null,
+    });
+    expect(state.allocations).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          invitationId: fixture.invitation.id,
+          status: "pending_invitation",
+        }),
+      ]),
+    );
+
+    const revokeResponse = await accept(
+      setupApp({ context, routes: zeroOrgInviteRoutes })(
+        zeroOrgInviteContract,
+      ).revoke({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { invitationId: fixture.invitation.id },
+      }),
+      [200],
+    );
+    expect(revokeResponse.body.message).toBe(
+      "Invitation revoked and refund initiated",
+    );
+    const [refunded] = (
+      await readUsagePackState(fixture.orgId, preview.migrationId)
+    ).invitationPurchases;
+    expect(refunded?.status).toBe("refunded");
+    expect(context.mocks.stripe.refunds.create).not.toHaveBeenCalled();
+    expect(
+      context.mocks.stripe.subscriptionSchedules.update,
+    ).toHaveBeenLastCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        phases: expect.arrayContaining([
+          expect.objectContaining({
+            items: expect.arrayContaining([
+              { price: TEST_PRICE_USAGE_PACK_20, quantity: 1 },
+            ]),
+          }),
+        ]),
+      }),
+      expect.objectContaining({
+        idempotencyKey: expect.stringContaining(
+          `usage-pack-projection:invitation:${purchase?.id}:refund:`,
+        ),
+      }),
+    );
+  });
+});
+
 describe("usage pack allocation management", () => {
   interface ManagedUsagePackFixture extends BillingOrgFixture {
     readonly customerId: string;
@@ -1621,6 +3078,7 @@ describe("usage pack allocation management", () => {
         },
       },
       lines: {
+        has_more: false,
         data: [...args.quantities].map(([priceId, quantity]) => {
           const configuration = usagePackPriceConfiguration(priceId);
           return {
@@ -1680,6 +3138,7 @@ describe("usage pack allocation management", () => {
         },
       },
       lines: {
+        has_more: false,
         data: [line(args.sourcePriceId, -1000), line(args.targetPriceId, 2500)],
       },
     };
@@ -1707,6 +3166,7 @@ describe("usage pack allocation management", () => {
         },
       },
       lines: {
+        has_more: false,
         data: [
           {
             id: `il_${randomUUID()}`,
@@ -1973,7 +3433,10 @@ describe("usage pack allocation management", () => {
             ? immediateAmountCents + 2000
             : recurringPlanAmountCents + 2000,
         currency: "usd",
-        lines: { data: lines },
+        lines: {
+          has_more: false,
+          data: lines,
+        },
       });
     });
   }
@@ -2015,7 +3478,10 @@ describe("usage pack allocation management", () => {
         return Promise.resolve({
           amount_due: args.nextRecurringAmountCents,
           currency: "usd",
-          lines: { data: [] },
+          lines: {
+            has_more: false,
+            data: [],
+          },
         });
       }
       if (
@@ -2040,6 +3506,7 @@ describe("usage pack allocation management", () => {
         amount_due: args.immediateAmountCents,
         currency: "usd",
         lines: {
+          has_more: false,
           data: [
             line(args.sourcePriceId, -1000),
             line(args.targetPriceId, args.immediateAmountCents + 1000),
@@ -2246,7 +3713,10 @@ describe("usage pack allocation management", () => {
         return Promise.resolve({
           amount_due: args.nextRecurringAmountCents,
           currency: "usd",
-          lines: { data: [] },
+          lines: {
+            has_more: false,
+            data: [],
+          },
         });
       }
       const subscriptionDetails =
@@ -2264,6 +3734,7 @@ describe("usage pack allocation management", () => {
         amount_due: args.immediateAmountCents,
         currency: "usd",
         lines: {
+          has_more: false,
           data: [
             {
               id: `il_${randomUUID()}`,
@@ -2286,6 +3757,34 @@ describe("usage pack allocation management", () => {
     context.mocks.stripe.invoices.list.mockResolvedValue({ data: [] });
     mockOptionalEnv("STRIPE_SECRET_KEY", "sk_usage_pack_change");
     mockOptionalEnv("STRIPE_WEBHOOK_SECRET", STRIPE_WEBHOOK_SECRET);
+  });
+
+  it("keeps invitation state safe before entitlement migrations", async () => {
+    const response = await usagePackStateAction({
+      action: "validate-pre-migration-compatibility",
+    });
+    expect(response).toStrictEqual({
+      action: "pre-migration-compatibility",
+      memberInviteUsagePackRequired: false,
+      preMemberInvitationMigration: {
+        memberInviteUsagePackRequired: true,
+        memberInvitationAllowed: true,
+      },
+      bonusPreparedRefunds: 0,
+    });
+  });
+
+  it("preserves purchased credits until migration 0898 is available", async () => {
+    const response = await accept(
+      setupApp({
+        context,
+        routes: testUsagePackSubscriptionStateRoutes,
+      })(testUsagePackSubscriptionStateContract).action({
+        body: { action: "prepare-pre-migration-purchased-refund" },
+      }),
+      [500],
+    );
+    expect(response.body).toStrictEqual({ error: "Internal server error" });
   });
 
   it("previews a Team upgrade by replacing only the base plan item", async () => {
@@ -3141,6 +4640,190 @@ describe("usage pack allocation management", () => {
     expect(management.body.allocations[0]?.pendingChange).toBeNull();
   });
 
+  it("replaces a scheduled package downgrade on the existing schedule", async () => {
+    const userId = `user_${randomUUID()}`;
+    const fixture = await seedManagedUsagePack([{ userId, usagePackUsd: 200 }]);
+    const currentSubscription = managedUsagePackSubscription(
+      fixture,
+      new Map([[TEST_PRICE_USAGE_PACK_200, 1]]),
+    );
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(
+      currentSubscription,
+    );
+    mockUsagePackSubscriptionPackagePreviews({
+      immediateAmountCents: 0,
+      nextRecurringAmountCents: 5000,
+      sourcePriceId: TEST_PRICE_USAGE_PACK_200,
+      targetPriceId: TEST_PRICE_USAGE_PACK_50,
+    });
+    const scheduleId = "sub_sched_usage_pack_replace";
+    context.mocks.stripe.subscriptionSchedules.create.mockResolvedValue({
+      id: scheduleId,
+    });
+    context.mocks.stripe.subscriptionSchedules.update.mockResolvedValue({
+      id: scheduleId,
+    });
+    const client = setupApp({ context, routes: zeroBillingCheckoutRoutes })(
+      zeroBillingUsagePackManagementContract,
+    );
+    const downgradePreview = await accept(
+      client.previewSubscriptionChange({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          targetTier: "pro",
+          memberUsagePacks: [{ memberId: userId, usagePackUsd: 50 }],
+        },
+      }),
+      [200],
+    );
+    await accept(
+      client.confirmSubscriptionChange({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { changeId: downgradePreview.body.changeId },
+      }),
+      [200],
+    );
+
+    const scheduledSubscription = managedUsagePackSubscription(
+      fixture,
+      new Map([[TEST_PRICE_USAGE_PACK_200, 1]]),
+      fixture.billingPeriod,
+      { scheduleId },
+    );
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(
+      scheduledSubscription,
+    );
+    mockUsagePackSubscriptionPackagePreviews({
+      immediateAmountCents: 0,
+      nextRecurringAmountCents: 10_000,
+      sourcePriceId: TEST_PRICE_USAGE_PACK_200,
+      targetPriceId: TEST_PRICE_USAGE_PACK_100,
+      rejectScheduledSubscriptionRecurringPreview: true,
+    });
+    context.mocks.stripe.invoices.createPreview.mockClear();
+    const replacementPreview = await accept(
+      client.previewSubscriptionChange({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          targetTier: "pro",
+          memberUsagePacks: [{ memberId: userId, usagePackUsd: 100 }],
+        },
+      }),
+      [200],
+    );
+    expect(replacementPreview.body).toStrictEqual(
+      expect.objectContaining({
+        immediateAmountCents: 0,
+        nextRecurringAmountCents: 10_000,
+      }),
+    );
+    expect(context.mocks.stripe.invoices.createPreview).toHaveBeenCalledWith({
+      customer: fixture.customerId,
+      preview_mode: "recurring",
+      subscription_details: {
+        items: [
+          { price: TEST_PRICE_USAGE_PACK_PLAN_PRO, quantity: 1 },
+          { price: TEST_PRICE_USAGE_PACK_100, quantity: 1 },
+        ],
+      },
+    });
+    const beforeConfirmation = await accept(
+      client.get({ headers: { authorization: "Bearer clerk-session" } }),
+      [200],
+    );
+    expect(
+      beforeConfirmation.body.allocations[0]?.pendingChange?.targetUsagePackUsd,
+    ).toBe(50);
+
+    const replacement = await accept(
+      client.confirmSubscriptionChange({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { changeId: replacementPreview.body.changeId },
+      }),
+      [200],
+    );
+    expect(replacement.body.status).toBe("scheduled");
+    expect(
+      context.mocks.stripe.subscriptionSchedules.create,
+    ).toHaveBeenCalledTimes(1);
+    expect(
+      context.mocks.stripe.subscriptionSchedules.update,
+    ).toHaveBeenLastCalledWith(
+      scheduleId,
+      expect.objectContaining({
+        phases: expect.arrayContaining([
+          expect.objectContaining({
+            start_date: fixture.billingPeriod.end,
+            items: expect.arrayContaining([
+              { price: TEST_PRICE_USAGE_PACK_100, quantity: 1 },
+            ]),
+          }),
+        ]),
+      }),
+      {
+        idempotencyKey: `usage-pack-subscription-change:${replacementPreview.body.changeId}:schedule-update`,
+      },
+    );
+    const state = await readUsagePackState(
+      fixture.orgId,
+      fixture.usagePackSubscriptionId,
+    );
+    expect(state.changes).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          status: "failed",
+          sourceUsagePackUsd: 200,
+          targetUsagePackUsd: 50,
+        }),
+        expect.objectContaining({
+          status: "scheduled",
+          sourceUsagePackUsd: 200,
+          targetUsagePackUsd: 100,
+        }),
+      ]),
+    );
+    const management = await accept(
+      client.get({ headers: { authorization: "Bearer clerk-session" } }),
+      [200],
+    );
+    expect(
+      management.body.allocations[0]?.pendingChange?.targetUsagePackUsd,
+    ).toBe(100);
+
+    mockUsagePackSubscriptionPackagePreviews({
+      immediateAmountCents: 0,
+      nextRecurringAmountCents: 20_000,
+      sourcePriceId: TEST_PRICE_USAGE_PACK_200,
+      targetPriceId: TEST_PRICE_USAGE_PACK_200,
+      rejectScheduledSubscriptionRecurringPreview: true,
+    });
+    const restorePreview = await accept(
+      client.previewSubscriptionChange({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          targetTier: "pro",
+          memberUsagePacks: [{ memberId: userId, usagePackUsd: 200 }],
+        },
+      }),
+      [200],
+    );
+    context.mocks.stripe.subscriptionSchedules.release.mockResolvedValue({
+      id: scheduleId,
+    });
+    await accept(
+      client.confirmSubscriptionChange({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { changeId: restorePreview.body.changeId },
+      }),
+      [200],
+    );
+    const restoredManagement = await accept(
+      client.get({ headers: { authorization: "Bearer clerk-session" } }),
+      [200],
+    );
+    expect(restoredManagement.body.allocations[0]?.pendingChange).toBeNull();
+  });
+
   it("expires an unpaid pending subscription update", async () => {
     const initialNow = new Date("2035-02-16T00:00:00.000Z");
     mockNow(initialNow);
@@ -3517,6 +5200,14 @@ describe("usage pack allocation management", () => {
       ]),
     );
     expect(upgraded.grants).toHaveLength(4);
+    expect(upgraded.refunds).toContainEqual(
+      expect.objectContaining({
+        userId: sourceUserId,
+        sourceType: "invoice",
+        sourceAmountCents: 1500,
+        status: "available",
+      }),
+    );
     expect(upgraded.fulfillmentInvoiceIds).toHaveLength(2);
     expect(upgraded.changes).toStrictEqual([
       expect.objectContaining({
@@ -3866,7 +5557,7 @@ describe("usage pack allocation management", () => {
     ).toHaveBeenCalledTimes(2);
   });
 
-  it("makes removed-member credits unusable and schedules its quantity removal", async () => {
+  it("refunds a removed member exactly once across admin and Clerk removal ingress", async () => {
     mockNow(new Date("2035-04-16T00:00:00.000Z"));
     onTestFinished(() => {
       clearMockNow();
@@ -3877,6 +5568,13 @@ describe("usage pack allocation management", () => {
       { userId: `user_${randomUUID()}`, usagePackUsd: 20 },
       { userId: targetUserId, usagePackUsd: 50 },
     ]);
+    await usagePackStateAction({
+      action: "set-grant-remaining",
+      orgId: fixture.orgId,
+      userId: targetUserId,
+      grantType: "purchased",
+      remainingAmount: 25_000,
+    });
     const adminUserId =
       (
         await readUsagePackState(fixture.orgId, fixture.usagePackSubscriptionId)
@@ -3919,11 +5617,31 @@ describe("usage pack allocation management", () => {
     context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(
       currentSubscription,
     );
-    context.mocks.stripe.subscriptionSchedules.create.mockResolvedValue({
-      id: "sub_sched_usage_pack_removal",
+    context.mocks.stripe.subscriptions.update.mockResolvedValue(
+      currentSubscription,
+    );
+    context.mocks.stripe.creditNotes.preview.mockResolvedValue({
+      id: "cn_preview_usage_pack_removal",
+      status: "issued",
+      pre_payment_amount: 0,
+      post_payment_amount: 2500,
+      refunds: [],
     });
-    context.mocks.stripe.subscriptionSchedules.update.mockResolvedValue({
-      id: "sub_sched_usage_pack_removal",
+    context.mocks.stripe.creditNotes.create.mockResolvedValue({
+      id: "cn_usage_pack_removal",
+      status: "issued",
+      pre_payment_amount: 0,
+      post_payment_amount: 2500,
+      refunds: [
+        {
+          amount_refunded: 2500,
+          refund: "re_usage_pack_removal",
+        },
+      ],
+    });
+    context.mocks.stripe.refunds.retrieve.mockResolvedValue({
+      id: "re_usage_pack_removal",
+      status: "succeeded",
     });
 
     const responsePromise = setupApp({ context, routes: zeroOrgMembersRoutes })(
@@ -3953,6 +5671,24 @@ describe("usage pack allocation management", () => {
 
     const response = await accept(responsePromise, [200]);
     expect(response.body.message).toBe(`Removed ${targetEmail} from org`);
+    const duplicateEvent = {
+      type: "organizationMembership.deleted",
+      data: {
+        id: `mem_removed_${randomUUID()}`,
+        organization: { id: fixture.orgId },
+        publicUserData: { userId: targetUserId },
+        role: "org:member",
+      },
+    };
+    context.mocks.clerk.verifyWebhook.mockResolvedValueOnce(duplicateEvent);
+    await accept(
+      setupApp({ context, routes: webhooksClerkRoutes })(
+        webhookClerkContract,
+      ).post({ body: JSON.stringify(duplicateEvent) }),
+      [200],
+    );
+    await flushWaitUntilForTest();
+
     const removed = await readUsagePackState(
       fixture.orgId,
       fixture.usagePackSubscriptionId,
@@ -3961,37 +5697,115 @@ describe("usage pack allocation management", () => {
       userId: targetUserId,
       amount: 0,
     });
+    expect(removed.refunds).toContainEqual(
+      expect.objectContaining({
+        userId: targetUserId,
+        sourceType: "invoice",
+        sourceAmountCents: 5000,
+        status: "succeeded",
+        refundCredits: 25_000,
+        requestedAmountCents: 2500,
+        refundedAmountCents: 2500,
+        stripeCreditNoteId: "cn_usage_pack_removal",
+        stripeRefundId: "re_usage_pack_removal",
+      }),
+    );
     expect(removed.changes).toContainEqual(
       expect.objectContaining({
         userId: targetUserId,
         kind: "removal",
-        status: "scheduled",
+        status: "completed",
       }),
     );
     expect(
       removed.allocations.find((allocation) => {
         return allocation.userId === targetUserId;
       })?.status,
-    ).toBe("active");
-    expect(
-      context.mocks.stripe.subscriptionSchedules.update,
-    ).toHaveBeenCalledWith(
-      "sub_sched_usage_pack_removal",
-      expect.objectContaining({
-        phases: expect.arrayContaining([
-          expect.objectContaining({
-            start_date: fixture.billingPeriod.end,
-            items: expect.arrayContaining([
-              { price: TEST_PRICE_USAGE_PACK_20, quantity: 1 },
-            ]),
-          }),
+    ).toBe("inactive");
+    expect(context.mocks.stripe.subscriptions.update).toHaveBeenCalledWith(
+      fixture.subscriptionId,
+      {
+        items: expect.arrayContaining([
+          { id: `si_${TEST_PRICE_USAGE_PACK_20}`, quantity: 1 },
+          { id: `si_${TEST_PRICE_USAGE_PACK_50}`, deleted: true },
         ]),
+        proration_behavior: "none",
+      },
+      expect.objectContaining({
+        idempotencyKey: expect.stringContaining("member-removal"),
       }),
-      expect.any(Object),
+    );
+    expect(
+      context.mocks.stripe.subscriptionSchedules.create,
+    ).not.toHaveBeenCalled();
+    expect(context.mocks.stripe.subscriptions.update).toHaveBeenCalledTimes(1);
+    expect(context.mocks.stripe.creditNotes.create).toHaveBeenCalledTimes(1);
+    expect(context.mocks.stripe.creditNotes.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        invoice: expect.stringMatching(/^in_/u),
+        lines: [
+          expect.objectContaining({
+            type: "invoice_line_item",
+            invoice_line_item: expect.stringMatching(/^il_/u),
+            amount: 2500,
+          }),
+        ],
+        refund_amount: 2500,
+      }),
+      expect.objectContaining({
+        idempotencyKey: expect.stringMatching(
+          /^usage-pack-credit-refund:[0-9a-f-]+:1$/u,
+        ),
+      }),
+    );
+
+    await updateFeatureSwitchesForUser(
+      context,
+      { orgId: fixture.orgId, userId: adminUserId },
+      { [FeatureSwitchKey.UsagePackPlans]: true },
+    );
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(
+      managedUsagePackSubscription(
+        fixture,
+        new Map([[TEST_PRICE_USAGE_PACK_20, 1]]),
+      ),
+    );
+    mockUsagePackSubscriptionPackagePreviews({
+      immediateAmountCents: 1500,
+      nextRecurringAmountCents: 5000,
+      sourcePriceId: TEST_PRICE_USAGE_PACK_20,
+      targetPriceId: TEST_PRICE_USAGE_PACK_50,
+    });
+    const billingClient = setupApp({
+      context,
+      routes: zeroBillingCheckoutRoutes,
+    })(zeroBillingUsagePackManagementContract);
+    const management = await accept(
+      billingClient.get({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(management.body.allocations).toStrictEqual([
+      expect.objectContaining({
+        memberId: adminUserId,
+        usagePackUsd: 20,
+        pendingChange: null,
+      }),
+    ]);
+    await accept(
+      billingClient.previewSubscriptionChange({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          targetTier: "pro",
+          memberUsagePacks: [{ memberId: adminUserId, usagePackUsd: 50 }],
+        },
+      }),
+      [200],
     );
   });
 
-  it("uses normal cancellation when a removed member owns the last package", async () => {
+  it("infers a legacy invoice refund when the removed member owns the last package", async () => {
     mockNow(new Date("2035-04-20T00:00:00.000Z"));
     onTestFinished(() => {
       clearMockNow();
@@ -4001,6 +5815,11 @@ describe("usage pack allocation management", () => {
     const fixture = await seedManagedUsagePack([
       { userId: targetUserId, usagePackUsd: 20 },
     ]);
+    await usagePackStateAction({
+      action: "delete-refund-source",
+      orgId: fixture.orgId,
+      userId: targetUserId,
+    });
     await updateFeatureSwitchesForUser(context, fixture, {
       [FeatureSwitchKey.UsagePackPlans]: false,
     });
@@ -4030,6 +5849,29 @@ describe("usage pack allocation management", () => {
     );
     context.mocks.stripe.subscriptions.update.mockClear();
     context.mocks.stripe.subscriptionSchedules.create.mockClear();
+    context.mocks.stripe.creditNotes.preview.mockResolvedValue({
+      id: "cn_preview_last_usage_pack_removal",
+      status: "issued",
+      pre_payment_amount: 0,
+      post_payment_amount: 2000,
+      refunds: [],
+    });
+    context.mocks.stripe.creditNotes.create.mockResolvedValue({
+      id: "cn_last_usage_pack_removal",
+      status: "issued",
+      pre_payment_amount: 0,
+      post_payment_amount: 2000,
+      refunds: [
+        {
+          amount_refunded: 2000,
+          refund: "re_last_usage_pack_removal",
+        },
+      ],
+    });
+    context.mocks.stripe.refunds.retrieve.mockResolvedValue({
+      id: "re_last_usage_pack_removal",
+      status: "succeeded",
+    });
 
     await accept(
       setupApp({ context, routes: zeroOrgMembersRoutes })(
@@ -4056,6 +5898,30 @@ describe("usage pack allocation management", () => {
       userId: targetUserId,
       amount: 0,
     });
+    expect(state.refunds).toContainEqual(
+      expect.objectContaining({
+        userId: targetUserId,
+        sourceType: "invoice",
+        sourceAmountCents: 2000,
+        status: "succeeded",
+        requestedAmountCents: 2000,
+        refundedAmountCents: 2000,
+        stripeCreditNoteId: "cn_last_usage_pack_removal",
+        stripeRefundId: "re_last_usage_pack_removal",
+      }),
+    );
+    expect(context.mocks.stripe.creditNotes.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        invoice: expect.stringMatching(/^in_/u),
+        amount: 2000,
+        refund_amount: 2000,
+      }),
+      expect.objectContaining({
+        idempotencyKey: expect.stringMatching(
+          /^usage-pack-credit-refund:[0-9a-f-]+:1$/u,
+        ),
+      }),
+    );
     expect(state.changes[0]).toStrictEqual(
       expect.objectContaining({ kind: "removal", status: "scheduled" }),
     );
@@ -4063,7 +5929,60 @@ describe("usage pack allocation management", () => {
     expect(state.org?.cancelAtPeriodEnd).toBeTruthy();
   });
 
-  it("blocks package-free invites only while usage pack enrollment is enabled", async () => {
+  it.each(["pro", "team"] as const)(
+    "requires a usage pack for managed %s invitation entitlements",
+    async (tier) => {
+      const fixture = await seedManagedUsagePack(
+        [{ userId: `user_${randomUUID()}`, usagePackUsd: 20 }],
+        tier,
+      );
+      const billing = await readBillingStatus(fixture);
+      expect(billing.memberInviteUsagePackRequired).toBeTruthy();
+
+      const client = setupApp({ context, routes: zeroOrgInviteRoutes })(
+        zeroOrgInviteContract,
+      );
+      const blocked = await accept(
+        client.invite({
+          headers: { authorization: "Bearer clerk-session" },
+          body: { email: "paid@example.test", role: "member" },
+        }),
+        [409],
+      );
+      expect(blocked.body.error.code).toBe("CONFLICT");
+      expect(
+        context.mocks.clerk.organizations.createOrganizationInvitation,
+      ).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(["pro", "team"] as const)(
+    "keeps legacy %s invitation entitlements package-free",
+    async (tier) => {
+      const fixture = await createSubscriptionOrg({ tier });
+      const billing = await readBillingStatus(fixture);
+      expect(billing.memberInviteUsagePackRequired).toBeFalsy();
+
+      await updateFeatureSwitchesForUser(context, fixture, {
+        [FeatureSwitchKey.UsagePackPlans]: true,
+      });
+      context.mocks.clerk.organizations.createOrganizationInvitation.mockResolvedValueOnce(
+        { id: `inv_${randomUUID()}` },
+      );
+      const invited = await accept(
+        setupApp({ context, routes: zeroOrgInviteRoutes })(
+          zeroOrgInviteContract,
+        ).invite({
+          headers: { authorization: "Bearer clerk-session" },
+          body: { email: `legacy-${tier}@example.test`, role: "member" },
+        }),
+        [200],
+      );
+      expect(invited.body.message).toContain(`legacy-${tier}@example.test`);
+    },
+  );
+
+  it("keeps package-free invites available when usage pack enrollment is disabled", async () => {
     const fixture = await seedManagedUsagePack([
       { userId: `user_${randomUUID()}`, usagePackUsd: 20 },
     ]);
@@ -4081,6 +6000,9 @@ describe("usage pack allocation management", () => {
     expect(
       context.mocks.clerk.organizations.createOrganizationInvitation,
     ).not.toHaveBeenCalled();
+    expect(
+      (await readBillingStatus(fixture)).memberInviteUsagePackRequired,
+    ).toBeTruthy();
 
     await updateFeatureSwitchesForUser(context, fixture, {
       [FeatureSwitchKey.UsagePackPlans]: false,
@@ -4096,6 +6018,76 @@ describe("usage pack allocation management", () => {
       [200],
     );
     expect(legacy.body.message).toContain("legacy@example.test");
+  });
+
+  it("blocks free plans only while usage pack plans are enabled", async () => {
+    const fixture = await seedManagedUsagePack([
+      { userId: `user_${randomUUID()}`, usagePackUsd: 20 },
+    ]);
+    const client = setupApp({ context, routes: zeroOrgInviteRoutes })(
+      zeroOrgInviteContract,
+    );
+
+    for (const tier of ["free", "limited-free-1", "pro-suspend"] as const) {
+      await seedOrgMetadata({ orgId: fixture.orgId, tier, credits: 0 });
+      const blocked = await accept(
+        client.invite({
+          headers: { authorization: "Bearer clerk-session" },
+          body: { email: `${tier}@example.test`, role: "member" },
+        }),
+        [403],
+      );
+      expect(blocked.body.error).toStrictEqual({
+        message: "Upgrade to Pro to invite members",
+        code: "FORBIDDEN",
+      });
+    }
+    expect(
+      context.mocks.clerk.organizations.createOrganizationInvitation,
+    ).not.toHaveBeenCalled();
+
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.UsagePackPlans]: false,
+    });
+    context.mocks.clerk.organizations.createOrganizationInvitation.mockResolvedValueOnce(
+      { id: `inv_${randomUUID()}` },
+    );
+    const legacy = await accept(
+      client.invite({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { email: "suspended@example.test", role: "member" },
+      }),
+      [200],
+    );
+    expect(legacy.body.message).toContain("suspended@example.test");
+  });
+
+  it("honors the invitation feature switch for a non-staff org", async () => {
+    const fixture = createOrgFixture();
+    expect(isStaffOrg(fixture.orgId)).toBeFalsy();
+    authenticateOrg(fixture);
+    await seedOrgMetadata({ orgId: fixture.orgId, tier: "pro", credits: 0 });
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.UsagePackPlans]: true,
+    });
+
+    const response = await accept(
+      setupApp({ context, routes: zeroOrgInviteRoutes })(
+        zeroOrgInviteContract,
+      ).purchase({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          email: "non-staff@example.test",
+          role: "member",
+          usagePackUsd: 20,
+          successUrl: `${APP_ORIGIN}/settings?invitation=success`,
+          cancelUrl: `${APP_ORIGIN}/settings`,
+        },
+      }),
+      [404],
+    );
+
+    expect(response.body.error.code).toBe("NOT_FOUND");
   });
 
   it("creates no Clerk invitation when invitation checkout expires", async () => {
@@ -4298,6 +6290,244 @@ describe("usage pack allocation management", () => {
       expect.objectContaining({
         idempotencyKey: expect.stringContaining(purchase.purchaseId),
       }),
+    );
+  });
+
+  it("infers a legacy invitation grant's refund source when Clerk removes the member", async () => {
+    const purchase = await beginInvitationPurchase();
+    const invitationId = `inv_removed_${randomUUID()}`;
+    const acceptedUserId = `user_removed_${randomUUID()}`;
+    await payInvitationPurchase(purchase, invitationId);
+    context.mocks.stripe.subscriptions.update.mockResolvedValue({});
+    await postClerkInvitationAccepted({
+      purchase,
+      invitationId,
+      userId: acceptedUserId,
+    });
+    context.mocks.stripe.subscriptions.update.mockClear();
+    await usagePackStateAction({
+      action: "set-grant-remaining",
+      orgId: purchase.fixture.orgId,
+      userId: acceptedUserId,
+      grantType: "purchased",
+      remainingAmount: 5000,
+    });
+    const sourced = await readUsagePackState(
+      purchase.fixture.orgId,
+      purchase.fixture.usagePackSubscriptionId,
+    );
+    expect(sourced.refunds).toContainEqual(
+      expect.objectContaining({
+        userId: acceptedUserId,
+        sourceType: "payment_intent",
+        status: "available",
+      }),
+    );
+    await usagePackStateAction({
+      action: "delete-refund-source",
+      orgId: purchase.fixture.orgId,
+      userId: acceptedUserId,
+    });
+
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(
+      managedUsagePackSubscription(
+        purchase.fixture,
+        new Map([[TEST_PRICE_USAGE_PACK_20, 2]]),
+      ),
+    );
+    context.mocks.stripe.refunds.create
+      .mockResolvedValueOnce({
+        id: `re_removed_failed_${randomUUID()}`,
+        status: "failed",
+      })
+      .mockResolvedValueOnce({
+        id: `re_removed_succeeded_${randomUUID()}`,
+        status: "succeeded",
+      });
+    const event = {
+      type: "organizationMembership.deleted",
+      data: {
+        id: `mem_removed_${randomUUID()}`,
+        organization: { id: purchase.fixture.orgId },
+        publicUserData: { userId: acceptedUserId },
+        role: "org:member",
+      },
+    };
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      context.mocks.clerk.verifyWebhook.mockResolvedValueOnce(event);
+      await accept(
+        setupApp({ context, routes: webhooksClerkRoutes })(
+          webhookClerkContract,
+        ).post({ body: JSON.stringify(event) }),
+        [200],
+      );
+      await flushWaitUntilForTest();
+    }
+
+    const removed = await readUsagePackState(
+      purchase.fixture.orgId,
+      purchase.fixture.usagePackSubscriptionId,
+    );
+    expect(removed.invitationPurchases[0]).toStrictEqual(
+      expect.objectContaining({
+        status: "accepted",
+        acceptedUserId,
+      }),
+    );
+    expect(
+      removed.allocations.find((allocation) => {
+        return allocation.userId === acceptedUserId;
+      })?.status,
+    ).toBe("inactive");
+    expect(removed.remainingCredits).toContainEqual({
+      userId: acceptedUserId,
+      amount: 0,
+    });
+    expect(removed.changes).toContainEqual(
+      expect.objectContaining({
+        userId: acceptedUserId,
+        kind: "removal",
+        status: "completed",
+      }),
+    );
+    expect(removed.refunds).toContainEqual(
+      expect.objectContaining({
+        userId: acceptedUserId,
+        sourceType: "payment_intent",
+        sourceAmountCents: 1000,
+        status: "succeeded",
+        refundCredits: 5000,
+        requestedAmountCents: 500,
+        refundedAmountCents: 500,
+      }),
+    );
+    expect(context.mocks.stripe.refunds.create).toHaveBeenCalledTimes(2);
+    expect(context.mocks.stripe.refunds.create).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        payment_intent: purchase.paymentIntentId,
+        amount: 500,
+      }),
+      expect.objectContaining({
+        idempotencyKey: expect.stringMatching(
+          /^usage-pack-credit-refund:[0-9a-f-]+:1$/u,
+        ),
+      }),
+    );
+    expect(context.mocks.stripe.refunds.create).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        payment_intent: purchase.paymentIntentId,
+        amount: 500,
+      }),
+      expect.objectContaining({
+        idempotencyKey: expect.stringMatching(
+          /^usage-pack-credit-refund:[0-9a-f-]+:2$/u,
+        ),
+      }),
+    );
+    expect(context.mocks.stripe.subscriptions.update).toHaveBeenCalledWith(
+      purchase.fixture.subscriptionId,
+      {
+        items: [{ id: `si_${TEST_PRICE_USAGE_PACK_20}`, quantity: 1 }],
+        proration_behavior: "none",
+      },
+      expect.objectContaining({
+        idempotencyKey: expect.stringContaining("member-removal"),
+      }),
+    );
+  });
+
+  it("reconciles an in-flight member refund without creating a duplicate Stripe refund", async () => {
+    const purchase = await beginInvitationPurchase();
+    const invitationId = `inv_processing_${randomUUID()}`;
+    const acceptedUserId = `user_processing_${randomUUID()}`;
+    await payInvitationPurchase(purchase, invitationId);
+    context.mocks.stripe.subscriptions.update.mockResolvedValue({});
+    await postClerkInvitationAccepted({
+      purchase,
+      invitationId,
+      userId: acceptedUserId,
+    });
+    context.mocks.stripe.subscriptions.update.mockClear();
+    await usagePackStateAction({
+      action: "set-grant-remaining",
+      orgId: purchase.fixture.orgId,
+      userId: acceptedUserId,
+      grantType: "purchased",
+      remainingAmount: 5000,
+    });
+
+    context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(
+      managedUsagePackSubscription(
+        purchase.fixture,
+        new Map([[TEST_PRICE_USAGE_PACK_20, 2]]),
+      ),
+    );
+    const stripeRefundId = `re_processing_${randomUUID()}`;
+    context.mocks.stripe.refunds.create.mockResolvedValue({
+      id: stripeRefundId,
+      status: "pending",
+    });
+    const event = {
+      type: "organizationMembership.deleted",
+      data: {
+        id: `mem_processing_${randomUUID()}`,
+        organization: { id: purchase.fixture.orgId },
+        publicUserData: { userId: acceptedUserId },
+        role: "org:member",
+      },
+    };
+    context.mocks.clerk.verifyWebhook.mockResolvedValueOnce(event);
+    await accept(
+      setupApp({ context, routes: webhooksClerkRoutes })(
+        webhookClerkContract,
+      ).post({ body: JSON.stringify(event) }),
+      [200],
+    );
+    await flushWaitUntilForTest();
+
+    const processing = await readUsagePackState(
+      purchase.fixture.orgId,
+      purchase.fixture.usagePackSubscriptionId,
+    );
+    expect(processing.refunds).toContainEqual(
+      expect.objectContaining({
+        userId: acceptedUserId,
+        status: "processing",
+        stripeRefundId,
+      }),
+    );
+
+    context.mocks.stripe.refunds.retrieve.mockResolvedValue({
+      id: stripeRefundId,
+      status: "succeeded",
+    });
+    mockEnv("CRON_SECRET", "usage-pack-refund-cron");
+    const cronResponse = await createApp({
+      signal: context.signal,
+      routes: cronReconcileBillingEntitlementsRoutes,
+    }).request("/api/cron/reconcile-billing-entitlements", {
+      headers: { authorization: "Bearer usage-pack-refund-cron" },
+    });
+    expect(cronResponse.status).toBe(200);
+
+    const reconciled = await readUsagePackState(
+      purchase.fixture.orgId,
+      purchase.fixture.usagePackSubscriptionId,
+    );
+    expect(reconciled.refunds).toContainEqual(
+      expect.objectContaining({
+        userId: acceptedUserId,
+        status: "succeeded",
+        refundedAmountCents: 500,
+        stripeRefundId,
+      }),
+    );
+    expect(context.mocks.stripe.refunds.create).toHaveBeenCalledTimes(1);
+    expect(context.mocks.stripe.refunds.retrieve).toHaveBeenCalledTimes(1);
+    expect(context.mocks.stripe.refunds.retrieve).toHaveBeenCalledWith(
+      stripeRefundId,
     );
   });
 
@@ -5273,6 +7503,7 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
           amount_due: 17_000,
           currency: "usd",
           lines: {
+            has_more: false,
             data: [
               {
                 id: `il_${randomUUID()}`,
@@ -5436,6 +7667,7 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
           amount_due: 0,
           currency: "usd",
           lines: {
+            has_more: false,
             data: [
               {
                 id: `il_${randomUUID()}`,
@@ -5645,6 +7877,7 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
             },
           },
           lines: {
+            has_more: false,
             data: [
               {
                 id: `il_${randomUUID().slice(0, 8)}`,

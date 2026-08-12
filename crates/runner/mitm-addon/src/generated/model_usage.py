@@ -11,5 +11,4 @@ MODEL_LONG_CONTEXT_MIN_TOTAL_INPUT_TOKENS: Final[dict[str, int]] = {
     "gpt-5.6-sol": 272_001,
     "gpt-5.6-terra": 272_001,
     "gpt-5.6-luna": 272_001,
-    "MiniMax-M3": 512_001,
 }

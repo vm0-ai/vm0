@@ -334,6 +334,7 @@
       "slack": "Slack",
       "teams": "Teams",
       "telegram": "Telegram",
+      "templateImport": "Template import",
       "test": "Test",
       "web": "Web",
       "webhook": "Webhook"
@@ -467,7 +468,6 @@
       "backToArtifacts": "Back to artifacts",
       "close": "Close",
       "closeArtifact": "Close artifact",
-      "closeDownloadMenu": "Close download menu",
       "closeNamed": "Close {{title}}",
       "closePreviewMenu": "Close preview menu",
       "download": "Download",
@@ -711,7 +711,7 @@
       "lastSeen": "Last seen {{date}}",
       "linkExpires": "Link expires {{date}}.",
       "macRequirement": "Requires an Apple silicon Mac with macOS 14 or newer. Intel Macs aren't supported.",
-      "noHostsDescription": "Open Zero Computer Use on your Mac and refresh this page when it comes online.",
+      "noHostsDescription": "Open {{desktopProductName}} Computer Use on your Mac and refresh this page when it comes online.",
       "noHostsTitle": "No online computers",
       "sources": {
         "chat": "this chat thread",
@@ -874,10 +874,6 @@
       "selectMonth": "Select month",
       "to": "To"
     },
-    "manage": {
-      "description": "Subscription, payment method, and invoices in Stripe.",
-      "title": "Manage billing"
-    },
     "paymentMethods": {
       "description": "Manage the payment methods used for billing in Stripe.",
       "title": "Payment methods"
@@ -917,6 +913,7 @@
         "description": "Legacy free access for existing workspaces.",
         "name": "Free"
       },
+      "legacy": "Legacy",
       "limitedFree": {
         "name": "Limited free"
       },
@@ -974,6 +971,22 @@
         "memberExclusive": "Each package belongs to one member and cannot be shared. When a package runs out, usage falls back to pay-as-you-go credits. You can upgrade to a new package later.",
         "memberPackages": "Member packages",
         "memberUsage": "Member usage",
+        "migration": {
+          "action": "Convert plan",
+          "confirmDescription": "Your current plan and entitlements stay active until this billing period ends. Stripe charges the new recurring total when the new plan starts.",
+          "convertPlan": "Convert plan",
+          "description": "Convert your legacy {{plan}} workspace to a new plan with an individual monthly usage package for every member.",
+          "error": "Could not migrate this subscription. Refresh and try again.",
+          "invoice": "View invoice",
+          "processing": "Scheduling the conversion with Stripe.",
+          "ready": "Choose one required monthly package for every member and pending invitation.",
+          "review": "Review conversion",
+          "reviewDescription": "Compare the current legacy plan with the new recurring plan before scheduling the conversion.",
+          "reviewTitle": "Review plan conversion",
+          "scheduled": "Conversion scheduled for {{date}}. Your current plan and entitlements remain active until then.",
+          "switchesOn": "Switches to {{plan}} on {{date}}",
+          "title": "Convert legacy plan"
+        },
         "minimumPackageBreakdown": "{{base}} plan + {{package}} required member package",
         "monthlyTotal": "Monthly total",
         "orderSummary": "Order summary",
@@ -1310,8 +1323,8 @@
       "cloudBrowser": "Cloud browser",
       "connectHost": "Connect {{hostName}}",
       "connectMyComputer": "Connect my computer",
-      "dialogDescription": "So Zero can work in your browser and apps for you, even ones with no connector like LinkedIn or Reddit.",
-      "dialogTitle": "Let Zero use your computer",
+      "dialogDescription": "So {{desktopProductName}} can work in your browser and apps for you, even ones with no connector like LinkedIn or Reddit.",
+      "dialogTitle": "Let {{desktopProductName}} use your computer",
       "disableCloudBrowser": "Disable Cloud browser",
       "disconnectHost": "Disconnect {{hostName}}",
       "downloadMacos": "Download for macOS",
@@ -1625,6 +1638,7 @@
         "waiting": "Waiting",
         "watching": "Watching"
       },
+      "emojiCategories": "Emoji categories",
       "empty": "Send a message to start the conversation",
       "frequentlyUsed": "Frequently used",
       "icon": "Chat thread icon",
@@ -1635,8 +1649,10 @@
       "openBrowser": "Open browser",
       "openNamedAgent": "Open agent {{name}}",
       "openNamedChat": "Open chat {{title}}",
+      "pickEmoji": "Pick an emoji",
       "scrollToBottom": "Scroll to bottom",
-      "searchEmoji": "Search emoji"
+      "searchEmoji": "Search emoji",
+      "steerMessageExplanation": "Sent while the agent was working to direct its behavior"
     },
     "threadSidebar": {
       "resize": "Resize sidebar"
@@ -1940,6 +1956,7 @@
       "emptyAdmin": "No custom connectors yet. Create one to register an API for every member to use.",
       "emptyMember": "Your org hasn't registered any custom connectors yet.",
       "mcpStreamableHttp": "MCP · Streamable HTTP",
+      "mcpType": "MCP",
       "moreOptions": "More options",
       "statusConnected": "Connected",
       "toasts": {
@@ -4181,15 +4198,14 @@
         "useAccount": "Use"
       },
       "picker": {
-        "balancedUse": "Balanced use",
         "builtInModel": "Built-in model",
         "byokHelp": "Uses your configured provider",
         "fast": "Fast",
+        "fastImpact": "1.5× model speed · 2.5× credit usage",
         "inheritDefault": "Inherit from org default",
         "loadError": "Unable to load models.",
         "loading": "Loading models...",
         "models": "Models",
-        "moreCodexCredits": "Uses more Codex credits.",
         "noConfiguredModels": "No configured models",
         "priceTiers": {
           "balanced": "Balanced cost and performance",
@@ -4197,14 +4213,12 @@
           "frontier": "Frontier flagship model",
           "premium": "Premium frontier model for the hardest tasks"
         },
-        "prioritizeSpeed": "Prioritize speed",
         "pro": "Pro",
         "providerLabels": {
           "azureFoundryPortal": "Azure foundry portal",
           "claudeCodeOauth": "Claude Code (OAuth token)",
           "deepseek": "Deepseek"
         },
-        "runSpeed": "Run speed",
         "standard": "Standard"
       },
       "policies": {
@@ -4405,6 +4419,7 @@
     "workspace": {
       "danger": {
         "delete": {
+          "billingDescription": "All active subscriptions, including usage packs and add-ons, will be canceled immediately. Unused prepaid subscription time will be refunded proportionally. One-time and other non-subscription purchases will not be refunded.",
           "button": "Delete workspace",
           "confirmDescription": "This will permanently delete this workspace and all its data. This action cannot be undone. Type confirm to continue.",
           "description": "Permanently delete this workspace and all its data. This action cannot be undone.",
@@ -4449,7 +4464,10 @@
           "action": "Remove from workspace",
           "confirmDescription": "{{email}} will be removed from this workspace and lose access to all resources.",
           "progress": "Removing...",
-          "title": "Remove member?"
+          "title": "Remove member?",
+          "usagePackImpactDescription": "Their remaining usage pack credits become unavailable immediately. The package is removed at the end of the current billing period. If this leaves the workspace without a usage pack, the workspace plan will also be canceled at the end of the billing period.",
+          "usagePackImpactTitle": "Usage pack impact",
+          "usagePackRefundDescription": "Refund: The unused purchased-credit portion is returned to its original payment method. Used credits and bonus credits are not refundable."
         },
         "revoke": {
           "action": "Revoke invitation",
@@ -4471,6 +4489,7 @@
           "progress": "Switching...",
           "title": "Switch to member?"
         },
+        "usagePack": "Usage pack",
         "user": "User",
         "you": "You"
       },
@@ -4525,6 +4544,7 @@
     "mermaid": {
       "diagramLabel": "Diagram",
       "expand": "Expand diagram",
+      "invalidDiagram": "Invalid diagram",
       "viewSource": "Diagram source"
     },
     "notFound": {
@@ -4540,6 +4560,7 @@
   },
   "usage": {
     "displayNames": {
+      "avatar": "Avatar",
       "finance": "Finance",
       "imageRecognize": "Image Recognize",
       "maps": "Maps",

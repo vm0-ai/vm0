@@ -29,7 +29,7 @@ vi.mock("os", async (importOriginal) => {
   };
 });
 
-describe("zero scrape command", () => {
+describe("okou scrape command", () => {
   const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
   const mockConsoleError = vi
     .spyOn(console, "error")

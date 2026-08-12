@@ -14,7 +14,7 @@
  * - computed-const-args-package-scope: Enforce package scope for constant functions
  * - no-store-in-params: Prevent Store type in function params
  * - no-side-effect-in-render: Prevent side-effect calls (set, detach) directly in render
- * - no-non-zero-api: Enforce that platform app only calls /api/zero/ endpoints
+ * - no-non-zero-api: Enforce that platform app only calls branded API endpoints
  * - command-async-signal: Async commands must accept AbortSignal as last param
  * - no-getter-setter-params: Functions must not accept ccstate Getter/Setter — use command()
  * - no-accessor-escape: ccstate get/set accessors must only be called directly
@@ -29,6 +29,7 @@
  * - no-get-by-role-name: Avoid *ByRole(role, { name }) for text-content roles — causes ~300ms/call slowdown in happy-dom
  * - no-raw-msw-http: Disallow raw http.* MSW handlers for internal /api/zero/* paths — use mockApi(contract.route, ...)
  * - no-react-class-component: Disallow React class components — use function components with hooks
+ * - prefer-ui-components: Disallow raw button/input/textarea styled like a @vm0/ui component
  */
 
 import signalDollarSuffix from "./rules/signal-dollar-suffix.ts";
@@ -66,6 +67,7 @@ import noDuplicateRouteParam from "./rules/no-duplicate-route-param.ts";
 import noRawMswHttp from "./rules/no-raw-msw-http.ts";
 import noMockApiRawAsync from "./rules/no-mockapi-raw-async.ts";
 import noReactClassComponent from "./rules/no-react-class-component.ts";
+import preferUiComponents from "./rules/prefer-ui-components.ts";
 
 const plugin = {
   meta: {
@@ -108,6 +110,7 @@ const plugin = {
     "no-raw-msw-http": noRawMswHttp,
     "no-mockapi-raw-async": noMockApiRawAsync,
     "no-react-class-component": noReactClassComponent,
+    "prefer-ui-components": preferUiComponents,
   },
 };
 

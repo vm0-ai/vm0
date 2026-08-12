@@ -24,10 +24,6 @@ export const ApiError = {
     status: 400 as const,
     code: "RUN_NOT_CANCELLABLE",
   },
-  MODEL_RETIRED: {
-    status: 400 as const,
-    code: "MODEL_RETIRED",
-  },
   INSUFFICIENT_CREDITS: {
     status: 402 as const,
     code: "INSUFFICIENT_CREDITS",
@@ -104,7 +100,7 @@ export type ApiErrorResponse = z.infer<typeof apiErrorSchema>;
 
 export const PLAN_UPGRADE_RUN_GUIDANCE =
   "Return the plan upgrade link to the user.";
-export const PLAN_UPGRADE_CLI_HINT = "zero upgrade pro";
+export const PLAN_UPGRADE_CLI_HINT = "okou upgrade pro";
 
 /**
  * Centralized guidance registry for run error codes.
@@ -121,23 +117,18 @@ export const RUN_ERROR_GUIDANCE: Record<
     guidance:
       "Request a delegated Computer Use authorization link, ask the user to select a Zero Desktop host for this chat or Slack thread, then start a new run. Existing run tokens cannot be upgraded in place.",
     cliHint:
-      "zero connector permission-request computer-use --permission computer-use:write",
+      "okou connector permission-request computer-use --permission computer-use:write",
   },
   NO_MODEL_PROVIDER: {
     title: "No model provider configured",
     guidance: "Configure a model provider to start running agents.",
-    cliHint: "zero model-provider set --help",
-  },
-  MODEL_RETIRED: {
-    title: "Model retired",
-    guidance:
-      "Use the replacement model named in the error, then retry the run.",
+    cliHint: "okou model-provider set --help",
   },
   INSUFFICIENT_CREDITS: {
     title: "Credits depleted",
     guidance:
       "Run credit diagnostics first. Buy credits only when the current plan allows it; otherwise return the plan upgrade link.",
-    cliHint: "zero doctor credit",
+    cliHint: "okou doctor credit",
   },
   PRO_REQUIRED: {
     title: "Paid plan required",
@@ -222,7 +213,6 @@ export const ACTIONABLE_RUN_ERROR_SNIPPETS = [
   "Invalid signature in thinking block",
   "Run cancelled",
   "Selected model is at capacity. Please try a different model.",
-  "MODEL_RETIRED",
   "model is not supported when using Codex with a ChatGPT account",
   // Upstream model usage/quota limits are shown verbatim (the CLI already
   // emits clean, user-friendly copy with reset time and upgrade links).

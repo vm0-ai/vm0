@@ -28,10 +28,12 @@ import { badRequestMessage, notFound } from "../../lib/error";
 import { now, nowDate } from "../../lib/time";
 import { onRejection, settle } from "../utils";
 import { cleanupOrgMemberResources } from "./org-member-cleanup.service";
+import { refundUsagePackMemberCredits } from "./usage-pack-credit-refund.service";
+import { cancelAndRefundOrgBillingForDeletion } from "./org-deletion-billing.service";
 import {
   cancelUsagePackMemberRemovalReservation,
   reserveUsagePackMemberRemoval,
-  scheduleUsagePackMemberRemoval,
+  removeUsagePackMemberAllocation,
 } from "./usage-pack-allocation-change.service";
 
 const clerkOrgIdentitySchema = z.object({
@@ -294,7 +296,9 @@ async function commitOrgMemberRemoval(
     await cancelUsagePackMemberRemovalReservation(db, reservationId);
   });
   commitSignal.throwIfAborted();
-  await scheduleUsagePackMemberRemoval(db, args, commitSignal);
+  await removeUsagePackMemberAllocation(db, args, commitSignal);
+  commitSignal.throwIfAborted();
+  await refundUsagePackMemberCredits(db, args, commitSignal);
   commitSignal.throwIfAborted();
   await cleanupOrgMemberResources(db, args, commitSignal);
   commitSignal.throwIfAborted();
@@ -534,6 +538,9 @@ export const deleteZeroOrg$ = command(
       .filter((userId): userId is string => {
         return Boolean(userId);
       });
+
+    await cancelAndRefundOrgBillingForDeletion(db, args.orgId, signal);
+    signal.throwIfAborted();
 
     for (const userId of memberUserIds) {
       const [installation] = await db

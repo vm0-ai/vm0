@@ -24,9 +24,8 @@ import {
 
 import { server } from "../../../../mocks/server";
 import {
-  customConnector,
-  mcpCustomConnector,
-  stubCustomConnectors,
+  runMcpConnector,
+  stubRunMcpConnectors,
 } from "../../__tests__/helpers/custom-connectors";
 import { zeroMcpCommand } from "../index";
 
@@ -200,16 +199,16 @@ function stubMcpServer(options: McpServerOptions): SeenMcpRequest[] {
 }
 
 function stubConnectorList(
-  overrides: Parameters<typeof mcpCustomConnector>[0] = {},
+  overrides: Parameters<typeof runMcpConnector>[0] = {},
 ): void {
-  server.use(stubCustomConnectors([mcpCustomConnector(overrides)]));
+  server.use(stubRunMcpConnectors([runMcpConnector(overrides)]));
 }
 
 function outputText(spy: ReturnType<typeof vi.spyOn>): string {
   return spy.mock.calls.flat().join("\n");
 }
 
-describe("zero mcp command", () => {
+describe("okou mcp command", () => {
   const exit = vi.spyOn(process, "exit").mockImplementation(processExit);
   const consoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
   const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -223,7 +222,6 @@ describe("zero mcp command", () => {
     chalk.level = 0;
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("ZERO_TOKEN", "test-zero-token");
-    vi.stubEnv("ZERO_CUSTOM_CONNECTOR_IDS", JSON.stringify([CONNECTOR_ID]));
   });
 
   afterEach(() => {
@@ -237,32 +235,22 @@ describe("zero mcp command", () => {
     await rm(inputDirectory, { recursive: true, force: true });
   });
 
-  it("lists only admitted MCP definitions in slug order with safe JSON fields", async () => {
+  it("lists server-authorized MCP definitions with safe JSON fields", async () => {
     const secondId = "55555555-5555-4555-8555-555555555555";
-    const httpId = "33333333-3333-4333-8333-333333333333";
-    vi.stubEnv(
-      "ZERO_CUSTOM_CONNECTOR_IDS",
-      JSON.stringify([secondId, CONNECTOR_ID, httpId]),
-    );
     server.use(
-      stubCustomConnectors([
-        mcpCustomConnector({ slug: "_zulu" }),
-        customConnector(),
-        mcpCustomConnector({
+      stubRunMcpConnectors([
+        runMcpConnector({
           id: secondId,
           slug: "_alpha",
           displayName: "Alpha MCP",
           endpoint: "https://alpha-mcp.example.test/server",
           connected: false,
         }),
-        mcpCustomConnector({
-          id: "66666666-6666-4666-8666-666666666666",
-          slug: "_not-admitted",
-        }),
+        runMcpConnector({ slug: "_zulu" }),
       ]),
     );
 
-    await zeroMcpCommand.parseAsync(["node", "zero", "list", "--json"]);
+    await zeroMcpCommand.parseAsync(["node", "okou", "list", "--json"]);
 
     expect(consoleLog).toHaveBeenCalledWith(
       JSON.stringify({
@@ -287,57 +275,6 @@ describe("zero mcp command", () => {
     const output = outputText(consoleLog);
     expect(output).not.toContain("Authorization");
     expect(output).not.toContain("secrets.secret");
-    expect(output).not.toContain(httpId);
-  });
-
-  it("rejects malformed run metadata before requesting connector definitions", async () => {
-    let apiCalls = 0;
-    vi.stubEnv("ZERO_CUSTOM_CONNECTOR_IDS", "x".repeat(128 * 1024 + 1));
-    server.use(
-      http.get("http://localhost:3000/api/zero/custom-connectors", () => {
-        apiCalls++;
-        return HttpResponse.json({ connectors: [] });
-      }),
-    );
-
-    await expect(
-      zeroMcpCommand.parseAsync(["node", "zero", "list"]),
-    ).rejects.toThrow("process.exit called");
-
-    expect(apiCalls).toBe(0);
-    expect(outputText(consoleError)).toContain("Start a new Agent Run");
-    expect(outputText(consoleError)).not.toContain("xxxx");
-  });
-
-  it("rejects duplicate run IDs without a broad fallback", async () => {
-    vi.stubEnv(
-      "ZERO_CUSTOM_CONNECTOR_IDS",
-      JSON.stringify([CONNECTOR_ID, CONNECTOR_ID.toUpperCase()]),
-    );
-    server.use(stubCustomConnectors([mcpCustomConnector()]));
-
-    await expect(
-      zeroMcpCommand.parseAsync(["node", "zero", "list"]),
-    ).rejects.toThrow("process.exit called");
-
-    expect(outputText(consoleError)).toContain("Start a new Agent Run");
-    expect(outputText(consoleLog)).not.toContain("Acme MCP");
-  });
-
-  it("does not apply the 256-item runtime-sync batch as a membership limit", async () => {
-    const ids = Array.from({ length: 257 }, (_, index) => {
-      return `00000000-0000-4000-8000-${index.toString(16).padStart(12, "0")}`;
-    });
-    vi.stubEnv("ZERO_CUSTOM_CONNECTOR_IDS", JSON.stringify(ids));
-    server.use(
-      stubCustomConnectors([
-        mcpCustomConnector({ id: ids[256], slug: "_after-batch" }),
-      ]),
-    );
-
-    await zeroMcpCommand.parseAsync(["node", "zero", "list", "--json"]);
-
-    expect(outputText(consoleLog)).toContain("_after-batch");
   });
 
   it("discovers modern tools page by page with exact intent and cleanup", async () => {
@@ -365,7 +302,7 @@ describe("zero mcp command", () => {
 
     await zeroMcpCommand.parseAsync([
       "node",
-      "zero",
+      "okou",
       "list-tools",
       "_acme-mcp",
       "--json",
@@ -409,7 +346,7 @@ describe("zero mcp command", () => {
 
     await zeroMcpCommand.parseAsync([
       "node",
-      "zero",
+      "okou",
       "call",
       "_acme-mcp",
       "search",
@@ -464,7 +401,7 @@ describe("zero mcp command", () => {
 
     await zeroMcpCommand.parseAsync([
       "node",
-      "zero",
+      "okou",
       "call",
       "_acme-mcp",
       "search",
@@ -508,7 +445,7 @@ describe("zero mcp command", () => {
     try {
       await zeroMcpCommand.parseAsync([
         "node",
-        "zero",
+        "okou",
         "call",
         "_acme-mcp",
         "search",
@@ -540,7 +477,7 @@ describe("zero mcp command", () => {
     await expect(
       zeroMcpCommand.parseAsync([
         "node",
-        "zero",
+        "okou",
         "call",
         "_acme-mcp",
         "search",
@@ -561,7 +498,7 @@ describe("zero mcp command", () => {
     await expect(
       zeroMcpCommand.parseAsync([
         "node",
-        "zero",
+        "okou",
         "call",
         "_acme-mcp",
         "search",
@@ -583,7 +520,7 @@ describe("zero mcp command", () => {
     await expect(
       zeroMcpCommand.parseAsync([
         "node",
-        "zero",
+        "okou",
         "call",
         "_acme-mcp",
         "search",
@@ -619,7 +556,7 @@ describe("zero mcp command", () => {
     await expect(
       zeroMcpCommand.parseAsync([
         "node",
-        "zero",
+        "okou",
         "call",
         "_acme-mcp",
         "side-effect",
@@ -656,7 +593,7 @@ describe("zero mcp command", () => {
     await expect(
       zeroMcpCommand.parseAsync([
         "node",
-        "zero",
+        "okou",
         "call",
         "_acme-mcp",
         "missing",
@@ -687,19 +624,52 @@ describe("zero mcp command", () => {
     );
 
     await expect(
-      zeroMcpCommand.parseAsync(["node", "zero", "list-tools", "_acme-mcp"]),
+      zeroMcpCommand.parseAsync(["node", "okou", "list-tools", "_acme-mcp"]),
     ).rejects.toThrow("process.exit called");
 
     expect(outputText(consoleError)).toContain("MCP server request failed");
   });
 
-  it("treats an empty fixed run set as an ordinary empty result", async () => {
-    vi.stubEnv("ZERO_CUSTOM_CONNECTOR_IDS", "[]");
-    server.use(stubCustomConnectors([mcpCustomConnector()]));
+  it("treats an empty discovery response as an ordinary empty result", async () => {
+    server.use(stubRunMcpConnectors([]));
 
-    await zeroMcpCommand.parseAsync(["node", "zero", "list", "--json"]);
+    await zeroMcpCommand.parseAsync(["node", "okou", "list", "--json"]);
 
     expect(consoleLog).toHaveBeenCalledWith('{"connectors":[]}');
+  });
+
+  it("reports a discovery server error", async () => {
+    server.use(
+      http.get("http://localhost:3000/api/zero/mcp-connectors", () => {
+        return HttpResponse.json(
+          {
+            error: {
+              code: "INTERNAL_SERVER_ERROR",
+              message: "Discovery failed",
+            },
+          },
+          { status: 500 },
+        );
+      }),
+    );
+
+    await expect(
+      zeroMcpCommand.parseAsync(["node", "okou", "list"]),
+    ).rejects.toThrow("process.exit called");
+
+    expect(outputText(consoleError)).toContain("Discovery failed");
+  });
+
+  it("rejects malformed discovery responses", async () => {
+    server.use(
+      http.get("http://localhost:3000/api/zero/mcp-connectors", () => {
+        return HttpResponse.json({ connectors: [{ id: CONNECTOR_ID }] });
+      }),
+    );
+
+    await expect(
+      zeroMcpCommand.parseAsync(["node", "okou", "list"]),
+    ).rejects.toThrow("process.exit called");
   });
 
   it("rejects an unknown slug before opening an MCP connection", async () => {
@@ -709,7 +679,7 @@ describe("zero mcp command", () => {
     await expect(
       zeroMcpCommand.parseAsync([
         "node",
-        "zero",
+        "okou",
         "list-tools",
         "_not-admitted",
       ]),
@@ -717,7 +687,7 @@ describe("zero mcp command", () => {
 
     expect(seen).toHaveLength(0);
     expect(outputText(consoleError)).toContain(
-      'MCP connector "_not-admitted" is not available in this run',
+      'MCP connector "_not-admitted" is not authorized for this Agent',
     );
   });
 
@@ -731,7 +701,7 @@ describe("zero mcp command", () => {
     await expect(
       zeroMcpCommand.parseAsync([
         "node",
-        "zero",
+        "okou",
         "call",
         "_acme-mcp",
         "search",
@@ -766,7 +736,7 @@ describe("zero mcp command", () => {
 
     await zeroMcpCommand.parseAsync([
       "node",
-      "zero",
+      "okou",
       "call",
       "_acme-mcp",
       "search",
@@ -802,7 +772,7 @@ describe("zero mcp command", () => {
 
     await zeroMcpCommand.parseAsync([
       "node",
-      "zero",
+      "okou",
       "call",
       "_acme-mcp",
       "side-effect",
@@ -839,7 +809,7 @@ describe("zero mcp command", () => {
     await expect(
       zeroMcpCommand.parseAsync([
         "node",
-        "zero",
+        "okou",
         "call",
         "_acme-mcp",
         "missing",
@@ -877,7 +847,7 @@ describe("zero mcp command", () => {
     });
 
     await expect(
-      zeroMcpCommand.parseAsync(["node", "zero", "list-tools", "_acme-mcp"]),
+      zeroMcpCommand.parseAsync(["node", "okou", "list-tools", "_acme-mcp"]),
     ).rejects.toThrow("process.exit called");
 
     expect(listRequests).toBe(2);
@@ -895,7 +865,7 @@ describe("zero mcp command", () => {
     stubMcpServer({ era: "modern", pages: [tools] });
 
     await expect(
-      zeroMcpCommand.parseAsync(["node", "zero", "list-tools", "_acme-mcp"]),
+      zeroMcpCommand.parseAsync(["node", "okou", "list-tools", "_acme-mcp"]),
     ).rejects.toThrow("process.exit called");
 
     expect(outputText(consoleError)).toContain("2,000 tool limit");
@@ -923,7 +893,7 @@ describe("zero mcp command", () => {
     });
 
     await expect(
-      zeroMcpCommand.parseAsync(["node", "zero", "list-tools", "_acme-mcp"]),
+      zeroMcpCommand.parseAsync(["node", "okou", "list-tools", "_acme-mcp"]),
     ).rejects.toThrow("process.exit called");
 
     expect(listRequests).toBe(100);
@@ -954,7 +924,7 @@ describe("zero mcp command", () => {
     });
 
     await expect(
-      zeroMcpCommand.parseAsync(["node", "zero", "list-tools", "_acme-mcp"]),
+      zeroMcpCommand.parseAsync(["node", "okou", "list-tools", "_acme-mcp"]),
     ).rejects.toThrow("process.exit called");
 
     expect(outputText(consoleError)).toContain("16 MiB aggregate limit");
@@ -979,7 +949,7 @@ describe("zero mcp command", () => {
     });
 
     await expect(
-      zeroMcpCommand.parseAsync(["node", "zero", "list-tools", "_acme-mcp"]),
+      zeroMcpCommand.parseAsync(["node", "okou", "list-tools", "_acme-mcp"]),
     ).rejects.toThrow("process.exit called");
 
     expect(outputText(consoleError)).toContain(
@@ -999,7 +969,7 @@ describe("zero mcp command", () => {
     await expect(
       zeroMcpCommand.parseAsync([
         "node",
-        "zero",
+        "okou",
         "call",
         "_acme-mcp",
         "search",

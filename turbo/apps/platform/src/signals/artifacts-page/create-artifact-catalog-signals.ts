@@ -15,17 +15,41 @@ import {
 
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
-import { setAblyLoop$ } from "../realtime.ts";
 import { onRejection } from "../utils.ts";
+import {
+  createImageLoadSignals,
+  type ImageLoadSignals,
+} from "../image-load.ts";
 
 // First screen and every scroll step request the same page size. The server
 // orders by `(createdAt, id)` and never reorders on update, so a cursor stays
 // valid for the whole scroll session.
 const ARTIFACT_CATALOG_PAGE_SIZE = 60;
 
+export type CatalogArtifact = ArtifactSummary & {
+  /**
+   * Load state of the thumbnail, created when the page's data arrives. A
+   * reload replaces the page and its signals; an already-broken thumbnail
+   * then reports its state again on the image's next load cycle.
+   */
+  readonly thumbnailLoad: ImageLoadSignals;
+};
+
 export interface ArtifactCatalogPage {
+  readonly artifacts: readonly CatalogArtifact[];
+  readonly nextCursor: string | null;
+}
+
+function withThumbnailLoad(page: {
   readonly artifacts: readonly ArtifactSummary[];
   readonly nextCursor: string | null;
+}): ArtifactCatalogPage {
+  return {
+    artifacts: page.artifacts.map((artifact) => {
+      return { ...artifact, thumbnailLoad: createImageLoadSignals() };
+    }),
+    nextCursor: page.nextCursor,
+  };
 }
 
 export interface ArtifactCatalogSignals {
@@ -36,7 +60,6 @@ export interface ArtifactCatalogSignals {
   readonly loadMore$: Command<Promise<void>, [AbortSignal]>;
   readonly selectArtifact$: Command<void, [string | null]>;
   readonly selectedArtifactDetail$: Computed<Promise<ArtifactDetail | null>>;
-  readonly subscribeCatalogChanged$: Command<Promise<void>, [AbortSignal]>;
 }
 
 interface CatalogPagingState {
@@ -68,7 +91,7 @@ function createCatalogPagingSignals(paging: CatalogPagingState): {
       }),
       [200],
     );
-    return result.body;
+    return withThumbnailLoad(result.body);
   });
 
   /**
@@ -138,7 +161,7 @@ function createCatalogPagingSignals(paging: CatalogPagingState): {
         return;
       }
       set(paging.pages$, (pages) => {
-        return [...pages, result.body];
+        return [...pages, withThumbnailLoad(result.body)];
       });
     },
   );
@@ -225,23 +248,6 @@ export function createArtifactCatalogSignals(
     },
   );
 
-  /**
-   * Reload the first page whenever the catalog changes for this user.
-   */
-  const subscribeCatalogChanged$ = command(
-    async ({ set }, signal: AbortSignal) => {
-      const onChanged$ = command(({ set }) => {
-        set(reload$);
-        return false;
-      });
-      await set(
-        setAblyLoop$,
-        { topic: "artifactCatalogChanged", loopCommand$: onChanged$ },
-        signal,
-      );
-    },
-  );
-
   return {
     selectedKind$: computed((get) => {
       return get(internalKind$);
@@ -252,6 +258,5 @@ export function createArtifactCatalogSignals(
     loadMore$,
     selectArtifact$,
     selectedArtifactDetail$,
-    subscribeCatalogChanged$,
   };
 }

@@ -1501,10 +1501,12 @@ function FeishuBotMenu({
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <button
+        <Button
           type="button"
           disabled={disconnecting}
-          className="shrink-0 rounded p-2 text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+          variant="quiet"
+          size="icon-sm"
+          className="shrink-0"
           aria-label={t(
             ($) => {
               return $.connectors.providerSettings.feishu.moreOptions;
@@ -1513,7 +1515,7 @@ function FeishuBotMenu({
           )}
         >
           <EllipsisVertical size={16} />
-        </button>
+        </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="flex w-40 flex-col gap-0.5 p-2">
         {isAdmin ? (
@@ -1599,7 +1601,7 @@ function FeishuBotRow({
   return (
     <div className="flex flex-col gap-4 px-4 py-4 sm:flex-row sm:items-center sm:px-5">
       <div className="flex min-w-0 flex-1 items-center gap-3">
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl">
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-[10px]">
           <img
             src={bot.botAvatarUrl ?? feishuIconImg}
             alt={t(
@@ -1609,7 +1611,9 @@ function FeishuBotRow({
               { bot: title },
             )}
             className={
-              bot.botAvatarUrl ? "h-10 w-10 rounded-xl object-cover" : "h-7 w-7"
+              bot.botAvatarUrl
+                ? "h-10 w-10 rounded-[10px] object-cover"
+                : "h-7 w-7"
             }
             onError={(event) => {
               event.currentTarget.src = feishuIconImg;
@@ -1842,7 +1846,7 @@ function FeishuSettingsSkeleton() {
           <div key={index}>
             <div className="flex flex-col gap-4 px-4 py-4 sm:flex-row sm:items-center sm:px-5">
               <div className="flex min-w-0 flex-1 items-center gap-3">
-                <Skeleton className="h-10 w-10 shrink-0 rounded-xl" />
+                <Skeleton className="h-10 w-10 shrink-0 rounded-[10px]" />
                 <div className="flex min-w-0 flex-1 items-center gap-2">
                   <Skeleton className="h-4 w-32" />
                   <Skeleton className="h-6 w-20 rounded-lg" />
@@ -2186,7 +2190,7 @@ export function ZeroFeishuSettingsPage() {
             </Button>
           </div>
           <div className="flex min-w-0 items-center gap-3">
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-muted/40">
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-[10px] bg-muted/40">
               <img src={feishuIconImg} alt="" className="h-7 w-7" />
             </span>
             <div className="min-w-0">

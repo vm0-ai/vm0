@@ -28,7 +28,7 @@ export async function createZeroAgent(
   const client = initClient(zeroAgentsMainContract, config);
   const result = await client.create({ body });
   if (result.status === 201) return result.body;
-  handleError(result, "Failed to create zero agent");
+  handleError(result, "Failed to create agent");
 }
 
 export async function listZeroAgents(): Promise<ZeroAgentResponse[]> {
@@ -36,7 +36,7 @@ export async function listZeroAgents(): Promise<ZeroAgentResponse[]> {
   const client = initClient(zeroAgentsMainContract, config);
   const result = await client.list({ headers: {} });
   if (result.status === 200) return result.body;
-  handleError(result, "Failed to list zero agents");
+  handleError(result, "Failed to list agents");
 }
 
 export async function getZeroAgent(id: string): Promise<ZeroAgentResponse> {
@@ -44,7 +44,7 @@ export async function getZeroAgent(id: string): Promise<ZeroAgentResponse> {
   const client = initClient(zeroAgentsByIdContract, config);
   const result = await client.get({ params: { id } });
   if (result.status === 200) return result.body;
-  handleError(result, `Zero agent "${id}" not found`);
+  handleError(result, `Agent "${id}" not found`);
 }
 
 export async function updateZeroAgent(
@@ -55,7 +55,7 @@ export async function updateZeroAgent(
   const client = initClient(zeroAgentsByIdContract, config);
   const result = await client.update({ params: { id }, body });
   if (result.status === 200) return result.body;
-  handleError(result, `Failed to update zero agent "${id}"`);
+  handleError(result, `Failed to update agent "${id}"`);
 }
 
 export async function deleteZeroAgent(id: string): Promise<void> {
@@ -63,7 +63,7 @@ export async function deleteZeroAgent(id: string): Promise<void> {
   const client = initClient(zeroAgentsByIdContract, config);
   const result = await client.delete({ params: { id } });
   if (result.status === 204) return;
-  handleError(result, `Zero agent "${id}" not found`);
+  handleError(result, `Agent "${id}" not found`);
 }
 
 export async function getZeroAgentInstructions(
@@ -73,7 +73,7 @@ export async function getZeroAgentInstructions(
   const client = initClient(zeroAgentInstructionsContract, config);
   const result = await client.get({ params: { id } });
   if (result.status === 200) return result.body;
-  handleError(result, `Failed to get instructions for zero agent "${id}"`);
+  handleError(result, `Failed to get instructions for agent "${id}"`);
 }
 
 export async function getZeroAgentUserConnectors(
@@ -85,10 +85,7 @@ export async function getZeroAgentUserConnectors(
   if (result.status === 200) {
     return result.body.enabledConnectorSlugs;
   }
-  handleError(
-    result,
-    `Failed to get connector permissions for zero agent "${id}"`,
-  );
+  handleError(result, `Failed to get connector permissions for agent "${id}"`);
 }
 
 export async function getZeroAgentCustomConnectorGrants(
@@ -100,7 +97,7 @@ export async function getZeroAgentCustomConnectorGrants(
   if (result.status === 200) return result.body.grants;
   handleError(
     result,
-    `Failed to get custom connector permissions for zero agent "${id}"`,
+    `Failed to get custom connector permissions for agent "${id}"`,
   );
 }
 
@@ -113,10 +110,7 @@ export async function listZeroUserPermissionGrants(
   if (result.status === 200) {
     return result.body;
   }
-  handleError(
-    result,
-    `Failed to get permission grants for zero agent "${agentId}"`,
-  );
+  handleError(result, `Failed to get permission grants for agent "${agentId}"`);
 }
 
 export async function updateZeroAgentInstructions(
@@ -130,5 +124,5 @@ export async function updateZeroAgentInstructions(
     body: { content },
   });
   if (result.status === 200) return;
-  handleError(result, `Failed to update instructions for zero agent "${id}"`);
+  handleError(result, `Failed to update instructions for agent "${id}"`);
 }

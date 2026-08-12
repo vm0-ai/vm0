@@ -22,13 +22,13 @@ export const getCommand = new Command()
     "after",
     `
 Examples:
-  Show this chat:    zero chat get
-  Show another chat: zero chat get --thread-id <thread-id>
-  Print JSON:        zero chat get --json
+  Show this chat:    okou chat get
+  Show another chat: okou chat get --thread-id <thread-id>
+  Print JSON:        okou chat get --json
 
 Notes:
   - Defaults --thread-id to ZERO_CHAT_THREAD_ID from the current web chat thread
-  - Prints thread metadata; zero chat messages prints the messages
+  - Prints thread metadata; okou chat messages prints the messages
   - Authenticates via ZERO_TOKEN (requires chat-thread:read capability)`,
   )
   .action(

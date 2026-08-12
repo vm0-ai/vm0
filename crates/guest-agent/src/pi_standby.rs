@@ -17,7 +17,7 @@
 //!
 //! # Lifecycle
 //!
-//! The TypeScript `zero __agent-loop --standby` child and guest-agent follow
+//! The TypeScript `okou __agent-loop --standby` child and guest-agent follow
 //! this sequence:
 //!
 //! 1. The child emits `pi-ready` with its run id, system-prompt digest, and

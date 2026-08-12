@@ -1,8 +1,8 @@
 {
-  "name": "@vm0/zero-cli",
+  "name": "@vm0/okou-cli",
   "version": "9.279.4",
   "private": true,
-  "description": "Zero command-line interface for vm0",
+  "description": "Okou command-line interface for vm0",
   "repository": {
     "type": "git",
     "url": "https://github.com/vm0-ai/vm0",
@@ -10,7 +10,8 @@
   },
   "type": "module",
   "bin": {
-    "zero": "./dist/zero.js"
+    "okou": "./dist/okou.js",
+    "zero": "./dist/okou.js"
   },
   "engines": {
     "node": ">=22.19.0"
@@ -20,9 +21,9 @@
   ],
   "scripts": {
     "build": "tsup",
-    "postbuild": "cp package.json dist/ && pnpm json -I -f dist/package.json -e 'this.name=\"@vm0/zero-cli\"; delete this.scripts; delete this.devDependencies; this.bin[\"zero\"]=\"zero.js\"; this.files=[\"*.js\",\"*.js.map\"]'",
+    "postbuild": "cp package.json dist/ && pnpm json -I -f dist/package.json -e 'this.name=\"@vm0/okou-cli\"; delete this.scripts; delete this.devDependencies; this.bin={okou:\"okou.js\",zero:\"okou.js\"}; this.files=[\"*.js\",\"*.js.map\"]'",
     "dev": "tsup --watch",
-    "bench:startup": "pnpm build && ZERO_STARTUP_BENCH=1 vitest run src/__tests__/zero-startup.bench.test.ts",
+    "bench:startup": "pnpm build && ZERO_STARTUP_BENCH=1 vitest run src/__tests__/okou-startup.bench.test.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "oxlint && oxlint --type-aware -c ../../.oxlintrc.typeaware.json && eslint . --max-warnings 0",

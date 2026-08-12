@@ -89,6 +89,7 @@ async function setVariable(
         variables.type,
         variables.name,
       ],
+      targetWhere: isNull(variables.connectorId),
       set: {
         value: body.value,
         description: body.description ?? null,

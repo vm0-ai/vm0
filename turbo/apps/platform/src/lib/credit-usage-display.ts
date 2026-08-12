@@ -2,6 +2,11 @@ import { getModelDisplayName } from "@vm0/core/model-display-name";
 import { i18n } from "../i18n/index.ts";
 
 const USAGE_DISPLAY_NAMES = {
+  avatar(): string {
+    return i18n.t(($) => {
+      return $.usage.displayNames.avatar;
+    });
+  },
   finance(): string {
     return i18n.t(($) => {
       return $.usage.displayNames.finance;
@@ -57,6 +62,7 @@ const MANAGED_USAGE_KIND_DISPLAY_NAMES: Readonly<Record<string, () => string>> =
   };
 
 const MODEL_DISPLAY_NAMES: Readonly<Record<string, () => string>> = {
+  "joggai-talking-avatar": USAGE_DISPLAY_NAMES.avatar,
   // Rows recorded before image tasks moved to task-scoped kinds carry
   // kind "model" with this provider; nothing else runs it as a chat model.
   "google/gemini-3.5-flash": USAGE_DISPLAY_NAMES.imageRecognize,
@@ -102,7 +108,10 @@ function stripUsageProviderPrefix(value: string): string {
   return normalized;
 }
 
-function usageModelDisplayName(model: string): string {
+function usageModelDisplayName(
+  model: string,
+  preserveUnknownModelId: boolean,
+): string {
   const usageDisplayName = MODEL_DISPLAY_NAMES[model];
   if (usageDisplayName) {
     return usageDisplayName();
@@ -119,7 +128,9 @@ function usageModelDisplayName(model: string): string {
     return strippedDisplayName;
   }
 
-  return formatUsageDisplayName(strippedModel);
+  return preserveUnknownModelId
+    ? strippedModel
+    : formatUsageDisplayName(strippedModel);
 }
 
 function usageKindBase(kind: string): string {
@@ -142,7 +153,7 @@ export function getCreditUsageDisplayName(
 
   const normalizedProvider = provider.trim();
   if (baseKind === "model" || baseKind === "image" || baseKind === "video") {
-    return usageModelDisplayName(normalizedProvider);
+    return usageModelDisplayName(normalizedProvider, baseKind === "model");
   }
 
   return formatUsageDisplayName(normalizedProvider);

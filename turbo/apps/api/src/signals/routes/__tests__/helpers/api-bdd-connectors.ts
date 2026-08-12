@@ -30,7 +30,6 @@ import {
   zeroCustomConnectorConnectionContract,
   zeroCustomConnectorOAuth2Contract,
   zeroCustomConnectorProposalContract,
-  zeroCustomConnectorSecretContract,
   zeroCustomConnectorValuesContract,
   zeroCustomConnectorsContract,
   type CreateCustomConnectorBody,
@@ -79,7 +78,6 @@ import { zeroCustomConnectorsGetRoutes } from "../../zero-custom-connectors-get"
 import { zeroCustomConnectorOAuth2Routes } from "../../zero-custom-connectors-oauth2";
 import { zeroCustomConnectorProposalRoutes } from "../../zero-custom-connectors-proposal";
 import { zeroCustomConnectorDisconnectRoutes } from "../../zero-custom-connectors-disconnect";
-import { zeroCustomConnectorsSecretSetRoutes } from "../../zero-custom-connectors-secret-set";
 import { zeroCustomConnectorsUpdateRoutes } from "../../zero-custom-connectors-update";
 import { zeroCustomConnectorsValuesSetRoutes } from "../../zero-custom-connectors-values-set";
 import { zeroFeatureSwitchesRoutes } from "../../zero-feature-switches";
@@ -88,11 +86,6 @@ const zeroCustomConnectorByIdTestRoutes = Object.freeze([
   ...zeroCustomConnectorsDeleteRoutes,
   ...zeroCustomConnectorsGetRoutes,
   ...zeroCustomConnectorsUpdateRoutes,
-]);
-
-const zeroCustomConnectorSecretTestRoutes = Object.freeze([
-  ...zeroCustomConnectorDisconnectRoutes,
-  ...zeroCustomConnectorsSecretSetRoutes,
 ]);
 
 const TEST_APP_ROUTES = Object.freeze([
@@ -2022,17 +2015,17 @@ export function createConnectorBddApi(context: TestContext) {
       actor: ApiTestUser | null,
       connectorId: string,
       value: string,
-      statuses: readonly (204 | 400 | 401 | 404 | 500)[],
+      statuses: readonly (200 | 400 | 401 | 403 | 404 | 500)[],
     ) {
       const client = setupApp({
         context,
-        routes: zeroCustomConnectorSecretTestRoutes,
-      })(zeroCustomConnectorSecretContract);
+        routes: zeroCustomConnectorsValuesSetRoutes,
+      })(zeroCustomConnectorValuesContract);
       return await accept(
         client.set({
           params: { id: connectorId },
           headers: authenticate(actor),
-          body: { value },
+          body: { values: [{ key: "secret", kind: "secret", value }] },
         }),
         statuses,
       );
@@ -2042,7 +2035,7 @@ export function createConnectorBddApi(context: TestContext) {
       actor: ApiTestUser,
       connectorId: string,
       value: string,
-      statuses: readonly (204 | 400 | 401 | 404 | 500)[] = [204],
+      statuses: readonly (200 | 400 | 401 | 403 | 404 | 500)[] = [200],
     ): Promise<void> {
       await api.requestSetCustomConnectorSecret(
         actor,
@@ -2128,23 +2121,6 @@ export function createConnectorBddApi(context: TestContext) {
           headers: { authorization: `Bearer ${token}` },
         }),
         statuses,
-      );
-    },
-
-    async disconnectCustomConnectorLegacy(
-      actor: ApiTestUser,
-      connectorId: string,
-    ): Promise<void> {
-      const client = setupApp({
-        context,
-        routes: zeroCustomConnectorDisconnectRoutes,
-      })(zeroCustomConnectorSecretContract);
-      await accept(
-        client.disconnect({
-          params: { id: connectorId },
-          headers: authenticate(actor),
-        }),
-        [204],
       );
     },
 
@@ -2279,27 +2255,25 @@ export function createConnectorBddApi(context: TestContext) {
       );
     },
 
-    async requestLegacyAgentCustomConnectorIdsUpdate(
+    async requestUpdateAgentCustomConnectorsRaw(
       actor: ApiTestUser | null,
       agentId: string,
-      enabledIds: readonly string[],
-      statuses: readonly (200 | 400 | 401 | 403 | 404)[],
-      operation?: "replace" | "add" | "remove",
-    ) {
-      const client = setupApp({ context, routes: zeroAgentsRoutes })(
-        zeroAgentCustomConnectorsContract,
-      );
-      const body =
-        operation === undefined
-          ? { enabledIds: [...enabledIds] }
-          : { enabledIds: [...enabledIds], operation };
-      return await accept(
-        client.update({
-          params: { id: agentId },
-          headers: authenticate(actor),
-          body,
-        }),
-        statuses,
+      body: unknown,
+    ): Promise<Response> {
+      const app = createApp({
+        signal: context.signal,
+        routes: zeroAgentsRoutes,
+      });
+      return await app.request(
+        `/api/zero/agents/${agentId}/custom-connectors`,
+        {
+          method: "PUT",
+          headers: {
+            ...authenticate(actor),
+            "content-type": "application/json",
+          },
+          body: JSON.stringify(body),
+        },
       );
     },
 

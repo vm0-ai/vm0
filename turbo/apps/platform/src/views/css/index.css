@@ -88,6 +88,10 @@ body {
 
 #root {
   box-sizing: border-box;
+  /* Base UI appends top-level portals after #root and nests descendant portals
+     under their owning portal. Isolating the app lets that DOM order define
+     floating-layer priority without global z-index values on every primitive. */
+  isolation: isolate;
   position: fixed;
   top: 0;
   right: 0;
@@ -352,6 +356,7 @@ body {
   display: block;
   width: 166.666667%;
   overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
   background-color: hsl(var(--foreground));
   -webkit-background-clip: text;
@@ -522,6 +527,12 @@ body {
 }
 .zero-border-dashed-t {
   border-top: 0.7px dashed hsl(var(--gray-400));
+}
+
+/* Avatar / logo thumbnails: a hairline lighter than zero-border, so the edge of
+   a picture stays readable without the stroke reading as a frame. */
+.zero-thumb-border {
+  border: 0.5px solid hsl(var(--gray-400));
 }
 
 /* Role / status badge: pill with 0.7px border on neutral background */
@@ -1184,20 +1195,14 @@ body {
   cursor: default;
 }
 
-/* A source that mermaid cannot render shows as source instead of an empty box. */
-.wmde-markdown
-  .mermaid-block[data-mermaid-status="error"]
-  .mermaid-diagram-expand {
-  display: none;
-}
-
-/* Both children are taken out of flow so neither can size the box: the diagram
-   is serialized at lightbox scale, and an in-flow image that wide would win
-   over `aspect-ratio` through its content-based minimum size. Letterboxed
-   rather than stretched, since a single box can only hold diagrams of
-   different aspect ratios undistorted by leaving margins. */
+/* The image and state indicators are taken out of flow so none can size the
+   box: the diagram is serialized at lightbox scale, and an in-flow image that
+   wide would win over `aspect-ratio` through its content-based minimum size.
+   Letterboxed rather than stretched, since a single box can only hold diagrams
+   of different aspect ratios undistorted by leaving margins. */
 .wmde-markdown .mermaid-diagram-image,
-.wmde-markdown .mermaid-diagram-pending {
+.wmde-markdown .mermaid-diagram-pending,
+.wmde-markdown .mermaid-diagram-invalid {
   /* Inset by the box's own padding: an absolutely positioned child is placed
      against the padding box, which the padding would otherwise not clear. */
   position: absolute;
@@ -1218,11 +1223,16 @@ body {
   background: none;
 }
 
-.wmde-markdown .mermaid-diagram-pending {
+.wmde-markdown .mermaid-diagram-pending,
+.wmde-markdown .mermaid-diagram-invalid {
   display: flex;
   align-items: center;
   justify-content: center;
   color: hsl(var(--muted-foreground));
+}
+
+.wmde-markdown .mermaid-diagram-invalid {
+  font-size: 0.875rem;
 }
 
 .wmde-markdown .mermaid-diagram-source > summary {
@@ -1875,4 +1885,23 @@ details[open] > summary > span:first-child {
   text-overflow: ellipsis;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
+}
+
+/* A dialog scrim blurs the page behind it, and that blur only stays cached
+   while the page holds still — one moving pixel re-blurs the whole viewport,
+   every frame, for as long as the dialog is open. These are the app's
+   always-on animations, so park them while a scrim is mounted. Anything
+   rendered inside the dialog keeps running. */
+html:has(.zero-dialog-overlay)
+  :is(
+    .speaker-notes-dot-1,
+    .speaker-notes-dot-2,
+    .speaker-notes-dot-3,
+    .zero-shimmer-window,
+    .zero-shimmer-highlight,
+    .zero-blocks span,
+    .mic-starting-spinner,
+    .owf-diagram-beam
+  ):not(.zero-dialog-content *) {
+  animation-play-state: paused;
 }

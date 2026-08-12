@@ -757,6 +757,63 @@ describe("realtime signals", () => {
     await expect(loopPromise).rejects.toMatchObject({ name: "AbortError" });
   });
 
+  it("waits for the next reconnect after user-channel catch-up fails", async () => {
+    mockSignedInUser();
+    const subscriber = new AbortController();
+    const handledMessages: unknown[] = [];
+    const toastError = vi.spyOn(toast, "error").mockReturnValue("toast-id");
+    let catchUps = 0;
+    const loop$ = command(
+      (_ctx, message: unknown, _signal: AbortSignal): boolean => {
+        handledMessages.push(message);
+        return false;
+      },
+    );
+    const catchUp$ = command((_ctx, _signal: AbortSignal): boolean => {
+      catchUps += 1;
+      if (catchUps === 1) {
+        throw new Error("catch-up failed");
+      }
+      return false;
+    });
+
+    await setupAuthAndRealtime();
+    const loopPromise = context.store.set(
+      setAblyMessageLoop$,
+      {
+        loopCommand$: loop$,
+        catchUpCommand$: catchUp$,
+      },
+      subscriber.signal,
+    );
+
+    try {
+      await waitFor(() => {
+        expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
+      });
+      context.mocks.ably.triggerReconnect();
+
+      await waitFor(() => {
+        expect(toastError).toHaveBeenCalledTimes(1);
+      });
+      expect(catchUps).toBe(1);
+
+      context.mocks.ably.trigger("chatThreadMessageCreated:thread-1");
+      await waitFor(() => {
+        expect(handledMessages).toHaveLength(1);
+      });
+
+      context.mocks.ably.triggerReconnect();
+      await waitFor(() => {
+        expect(catchUps).toBe(2);
+      });
+    } finally {
+      subscriber.abort(abortError("test done"));
+      await expect(loopPromise).rejects.toMatchObject({ name: "AbortError" });
+      toastError.mockRestore();
+    }
+  });
+
   it("retries a payload notification after a transient handler error", async () => {
     mockSignedInUser();
     const topic = "test:transient-payload-error";

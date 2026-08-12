@@ -222,11 +222,11 @@ jobs:
             fi
           done
 
-          if printf '%s\n' "$CHANGED_FILES" | grep -qE "^turbo/packages/db/src/(migrations|schema|jsonb-contracts)/"; then
-            echo "Migration, schema, or JSONB contract changes detected"
+          if printf '%s\n' "$CHANGED_FILES" | grep -qE '^turbo/packages/db/(src/(migrations|schema|jsonb-contracts)/|scripts/(migration-runner|test-migration-runner-timeouts)\.ts$)'; then
+            echo "Migration, schema, JSONB contract, or migration runner changes detected"
             echo "migration-changed=true" >> "$GITHUB_OUTPUT"
           else
-            echo "No migration, schema, or JSONB contract changes"
+            echo "No migration, schema, JSONB contract, or migration runner changes"
             echo "migration-changed=false" >> "$GITHUB_OUTPUT"
           fi
 
@@ -578,6 +578,39 @@ jobs:
             turbo/apps/api/bench-results-p90.json
           if-no-files-found: warn
 
+  bench-app:
+    needs: [detect-turbo-ts-checks, prepare]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Run on perf branches, on PRs labeled `bench`, or on pushes to main (baseline).
+    if: |
+      needs.detect-turbo-ts-checks.outputs.turbo-ts-checks-needed == 'true' && (
+        startsWith(github.head_ref, 'perf/') ||
+        contains(github.event.pull_request.labels.*.name, 'bench') ||
+        (github.event_name == 'push' && github.ref == 'refs/heads/main')
+      )
+    container:
+      image: ghcr.io/vm0-ai/vm0-toolchain:20260622
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: ./.github/actions/toolchain-init
+      - name: Bench App
+        working-directory: turbo
+        run: pnpm -F @vm0/app exec vitest bench --run --outputJson bench-results.json
+      - name: Print bench summary
+        if: success() || failure()
+        working-directory: turbo/apps/platform
+        run: node scripts/print-bench-summary.mjs bench-results-p90.json
+      - name: Upload bench results
+        if: success() || failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: bench-app-results
+          path: |
+            turbo/apps/platform/bench-results.json
+            turbo/apps/platform/bench-results-p90.json
+          if-no-files-found: warn
+
   test-migrate:
     needs: prepare
     runs-on: ubuntu-latest
@@ -697,7 +730,7 @@ jobs:
       - uses: ./.github/actions/toolchain-init
       - name: Test CLI
         working-directory: turbo
-        run: pnpm vitest run --project=@vm0/zero-cli --coverage.enabled --coverage.reporter=json
+        run: pnpm vitest run --project=@vm0/okou-cli --coverage.enabled --coverage.reporter=json
       - name: Upload coverage to Codecov
         if: success() || failure()
         uses: codecov/codecov-action@v7
@@ -816,6 +849,9 @@ jobs:
       - name: Test Connectors
         working-directory: turbo
         run: pnpm -F @vm0/connectors exec vitest run --reporter=default
+      - name: Test ESLint Config
+        working-directory: turbo
+        run: pnpm -F @vm0/eslint-config test
       - name: Upload coverage to Codecov
         if: success() || failure()
         uses: codecov/codecov-action@v7
@@ -1636,21 +1672,19 @@ jobs:
     concurrency:
       group: deploy-stripe-listener-${{ needs.prepare.outputs.job-ref }}
       cancel-in-progress: true
-    # Runs in parallel with deploy-api: the forward URL is the deterministic
+    # Runs in parallel with deploy-api whenever a deployed E2E consumer may
+    # exercise a payment flow. The forward URL is the deterministic
     # prepare.outputs.api-preview-url (a stable alias, not a deploy-api output),
-    # and Stripe webhooks only fire during e2e payment tests, which run after
-    # deploy-api has succeeded — so the listener never forwards to a dead API.
+    # and Stripe webhooks only fire after deploy-api has succeeded — so the
+    # listener never forwards to a dead API.
     needs: [prepare]
     if: |
       always() &&
       github.event_name != 'push' &&
       (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) &&
       needs.prepare.outputs.job-ref != '' && (
-        needs.prepare.outputs.api-changed == 'true' ||
-        needs.prepare.outputs.cli-changed == 'true' ||
-        needs.prepare.outputs.platform-changed == 'true' ||
-        needs.prepare.outputs.ci-changed == 'true' ||
-        needs.prepare.outputs.e2e-changed == 'true'
+        needs.prepare.outputs.turbo-runner-consumer-needed == 'true' ||
+        needs.prepare.outputs.playwright-runner-consumer-needed == 'true'
       )
     steps:
       - uses: actions/checkout@v7.0.1
@@ -2001,10 +2035,10 @@ jobs:
 
       - name: Install CLI dependencies
         if: steps.existing.outputs.exists != 'true'
-        run: cd turbo && pnpm install --frozen-lockfile --filter @vm0/zero-cli...
+        run: cd turbo && pnpm install --frozen-lockfile --filter @vm0/okou-cli...
       - name: Build CLI
         if: steps.existing.outputs.exists != 'true'
-        run: cd turbo && pnpm --filter @vm0/zero-cli build
+        run: cd turbo && pnpm --filter @vm0/okou-cli build
         env:
           DEFAULT_SENTRY_DSN: ${{ vars.SENTRY_DSN_CLI }}
 
@@ -2080,9 +2114,8 @@ jobs:
           bash .github/scripts/verify-okou-cli-artifact.sh \
             /tmp/okou-cli-artifact \
             "$ARTIFACT_SHA"
-          npx --yes \
-            --package=/tmp/okou-cli-artifact/package.tgz \
-            zero --help
+          bash .github/scripts/smoke-okou-cli-artifact.sh \
+            /tmp/okou-cli-artifact/package.tgz
 
       - name: Verify CLI artifact through CDN
         env:
@@ -2102,6 +2135,8 @@ jobs:
           bash .github/scripts/verify-okou-cli-artifact.sh \
             "$cdn_dir" \
             "$ARTIFACT_SHA"
+          bash .github/scripts/smoke-okou-cli-artifact.sh \
+            "$cdn_dir/package.tgz"
 
       - name: Upload CLI artifact
         uses: actions/upload-artifact@v7
@@ -2156,13 +2191,16 @@ jobs:
           package_root="$(mktemp -d)"
           tar -xzf /tmp/cli-package/package.tgz -C "$package_root"
           node_prefix=$(dirname "$(dirname "$(command -v node)")")
-          cli_dir="$node_prefix/lib/node_modules/@vm0/zero-cli"
+          cli_dir="$node_prefix/lib/node_modules/@vm0/okou-cli"
           sudo rm -rf "$cli_dir"
           sudo mkdir -p "$node_prefix/lib/node_modules/@vm0"
           sudo cp -a "$package_root/package" "$cli_dir"
-          sudo chmod +x "$cli_dir/zero.js"
-          sudo ln -sf "$cli_dir/zero.js" "$node_prefix/bin/zero"
-          zero --help
+          sudo chmod +x "$cli_dir/okou.js"
+          sudo ln -sf "$cli_dir/okou.js" "$node_prefix/bin/okou"
+          sudo ln -sf "$cli_dir/okou.js" "$node_prefix/bin/zero"
+          okou --help
+          zero --help # okou-cutover-audit: compatibility-only
+          zero __agent-loop --help # okou-cutover-audit: compatibility-only
       - name: Run Serial E2E Tests
         run: |
           echo "=== Running Serial E2E Tests ==="
@@ -2509,22 +2547,22 @@ jobs:
           RUNNER_START_SUCCEEDED=1
 
   # Prepare the runner identities and API credentials once, then fan runner
-  # coverage across the same twelve independent shards used by the retired
-  # runner suite.
+  # coverage across no more than twelve non-empty file-balanced shards.
   cli-e2e-03-runner-prepare:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 12
     concurrency:
       group: cli-e2e-03-runner-prepare-${{ needs.prepare.outputs.job-ref }}
       cancel-in-progress: true
-    needs: [prepare, deploy-api, deploy-app]
+    needs: [prepare, deploy-api, deploy-app, deploy-stripe-listener]
     if: |
       always() &&
       needs.prepare.outputs.job-ref != '' &&
       (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) &&
       needs.prepare.outputs.turbo-runner-consumer-needed == 'true' &&
       needs.deploy-api.result == 'success' &&
-      needs.deploy-app.result == 'success'
+      needs.deploy-app.result == 'success' &&
+      (github.event_name == 'push' || needs.deploy-stripe-listener.result == 'success')
     outputs:
       runner-organization-id: ${{ steps.account.outputs.runner-organization-id }}
       codex-organization-id: ${{ steps.account.outputs.codex-organization-id }}
@@ -2532,6 +2570,7 @@ jobs:
       runner-email: ${{ steps.account.outputs.runner-email }}
       codex-email: ${{ steps.account.outputs.codex-email }}
       claude-email: ${{ steps.account.outputs.claude-email }}
+      runner-shard-matrix: ${{ steps.shards.outputs.matrix }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
@@ -2541,6 +2580,18 @@ jobs:
         run: corepack enable pnpm
       - name: Install E2E dependencies
         run: cd e2e && pnpm install --frozen-lockfile
+      - name: Generate runner E2E shard matrix
+        id: shards
+        shell: bash
+        run: |
+          set -euo pipefail
+          matrix="$(cd e2e && pnpm exec tsx playwright/runner-shards.ts tests/03-runner)"
+          jq -e '
+            .include | type == "array" and
+            length > 0 and length <= 12 and
+            all(.[]; (.files | type == "array" and length > 0))
+          ' <<<"$matrix" >/dev/null
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
       - name: Prepare runner E2E accounts
         id: account
         run: cd e2e && pnpm exec tsx playwright/runner-account.ts prepare
@@ -2638,6 +2689,132 @@ jobs:
             "${E2E_API_URL}/api/zero/model-providers" >/dev/null
         env:
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+      - name: Bootstrap real Codex account
+        shell: bash
+        run: |
+          set -euo pipefail
+          token=$(jq -er '.token | select(type == "string" and length > 0)' /tmp/e2e-api-credentials-runner-real-codex.json)
+          api_url=$(jq -er '.apiUrl | select(type == "string" and length > 0)' /tmp/e2e-api-credentials-runner-real-codex.json)
+          echo "::add-mask::$token"
+
+          headers=(-H "Authorization: Bearer ${token}" -H "Content-Type: application/json")
+          if [[ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then
+            headers+=(-H "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}")
+          fi
+
+          provider_payload=$(jq -nc \
+            --arg secret "$OPENAI_API_KEY" \
+            '{type: "openai-api-key", secret: $secret}')
+          provider_response=$(curl -fsS "${headers[@]}" \
+            -X POST \
+            -d "$provider_payload" \
+            "${api_url}/api/zero/model-providers")
+          provider_id=$(jq -er '.provider.id | select(type == "string" and length > 0)' \
+            <<< "$provider_response")
+
+          policies=$(curl -fsS "${headers[@]}" "${api_url}/api/zero/model-policies")
+          policy_payload=$(jq -c --arg providerId "$provider_id" '
+            {
+              policies: (
+                [.policies[] |
+                  select(.model != "gpt-5.6-luna") |
+                  {
+                    model,
+                    isDefault,
+                    defaultProviderType,
+                    credentialScope,
+                    modelProviderId
+                  }
+                ] + [
+                  {
+                    model: "gpt-5.6-luna",
+                    isDefault: false,
+                    defaultProviderType: "openai-api-key",
+                    credentialScope: "org",
+                    modelProviderId: $providerId
+                  }
+                ]
+              )
+            }
+          ' <<< "$policies")
+          curl -fsS "${headers[@]}" \
+            -X PUT \
+            -d "$policy_payload" \
+            "${api_url}/api/zero/model-policies" \
+            >/dev/null
+
+          curl -fsS "${headers[@]}" \
+            -X POST \
+            -d '{"switches":{"realAgentInPreview":true}}' \
+            "${api_url}/api/zero/feature-switches" \
+            | jq -e '.effectiveSwitches.realAgentInPreview == true' \
+            >/dev/null
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+      - name: Bootstrap real Claude account
+        shell: bash
+        run: |
+          set -euo pipefail
+          token=$(jq -er '.token | select(type == "string" and length > 0)' /tmp/e2e-api-credentials-runner-real-claude.json)
+          api_url=$(jq -er '.apiUrl | select(type == "string" and length > 0)' /tmp/e2e-api-credentials-runner-real-claude.json)
+          echo "::add-mask::$token"
+
+          headers=(-H "Authorization: Bearer ${token}" -H "Content-Type: application/json")
+          if [[ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then
+            headers+=(-H "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}")
+          fi
+
+          provider_payload=$(jq -nc \
+            --arg secret "$ANTHROPIC_API_KEY" \
+            '{type: "anthropic-api-key", secret: $secret}')
+          provider_response=$(curl -fsS "${headers[@]}" \
+            -X POST \
+            -d "$provider_payload" \
+            "${api_url}/api/zero/model-providers")
+          provider_id=$(jq -er '.provider.id | select(type == "string" and length > 0)' \
+            <<< "$provider_response")
+
+          policies=$(curl -fsS "${headers[@]}" "${api_url}/api/zero/model-policies")
+          policy_payload=$(jq -c --arg providerId "$provider_id" '
+            {
+              policies: (
+                [.policies[] |
+                  select(.model != "claude-sonnet-4-6") |
+                  {
+                    model,
+                    isDefault,
+                    defaultProviderType,
+                    credentialScope,
+                    modelProviderId
+                  }
+                ] + [
+                  {
+                    model: "claude-sonnet-4-6",
+                    isDefault: false,
+                    defaultProviderType: "anthropic-api-key",
+                    credentialScope: "org",
+                    modelProviderId: $providerId
+                  }
+                ]
+              )
+            }
+          ' <<< "$policies")
+          curl -fsS "${headers[@]}" \
+            -X PUT \
+            -d "$policy_payload" \
+            "${api_url}/api/zero/model-policies" \
+            >/dev/null
+
+          curl -fsS "${headers[@]}" \
+            -X POST \
+            -d '{"switches":{"realAgentInPreview":true}}' \
+            "${api_url}/api/zero/feature-switches" \
+            | jq -e '.effectiveSwitches.realAgentInPreview == true' \
+            >/dev/null
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.CI_ANTHROPIC_API_KEY }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
 
   cli-e2e-03-runner:
     runs-on: ubuntu-latest
@@ -2663,8 +2840,7 @@ jobs:
       needs.cli-e2e-03-runner-bootstrap.result == 'success'
     strategy:
       fail-fast: false
-      matrix:
-        index: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+      matrix: ${{ fromJSON(needs.cli-e2e-03-runner-prepare.outputs.runner-shard-matrix) }}
     env:
       E2E_CLERK_ORG_ID: ${{ needs.cli-e2e-03-runner-prepare.outputs.runner-organization-id }}
       E2E_RUNNER_CODEX_ORG_ID: ${{ needs.cli-e2e-03-runner-prepare.outputs.codex-organization-id }}
@@ -2673,7 +2849,8 @@ jobs:
       E2E_RUNNER_CODEX_EMAIL: ${{ needs.cli-e2e-03-runner-prepare.outputs.codex-email }}
       E2E_RUNNER_CLAUDE_EMAIL: ${{ needs.cli-e2e-03-runner-prepare.outputs.claude-email }}
       E2E_RUNNER_SHARD_INDEX: ${{ matrix.index }}
-      E2E_RUNNER_SHARD_TOTAL: 12
+      E2E_RUNNER_SHARD_TOTAL: ${{ strategy.job-total }}
+      E2E_RUNNER_TEST_FILES_JSON: ${{ toJSON(matrix.files) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -2718,37 +2895,61 @@ jobs:
           : "${E2E_RUNNER_CLAUDE_EMAIL:?runner Claude E2E account is required}"
           : "${E2E_API_TOKEN:?runner E2E API token is required}"
           : "${E2E_API_URL:?runner E2E API URL is required}"
-          echo "Runner E2E shard ${E2E_RUNNER_SHARD_INDEX}/${E2E_RUNNER_SHARD_TOTAL} is ready"
+          jq -e '
+            type == "array" and length > 0 and
+            all(.[]; type == "string" and length > 0)
+          ' <<<"$E2E_RUNNER_TEST_FILES_JSON" >/dev/null
+          test_count="$(jq 'length' <<<"$E2E_RUNNER_TEST_FILES_JSON")"
+          echo "Runner E2E shard ${E2E_RUNNER_SHARD_INDEX}/${E2E_RUNNER_SHARD_TOTAL} has ${test_count} file(s)"
       - name: Run runner E2E tests (shard ${{ matrix.index }})
         shell: bash
         run: |
           set -euo pipefail
-          mapfile -t runner_tests < <(
-            find e2e/tests/03-runner -maxdepth 1 -type f -name '*.bats' -print | LC_ALL=C sort
-          )
+          mapfile -t test_files < <(jq -er '.[]' <<<"$E2E_RUNNER_TEST_FILES_JSON")
+          if (( ${#test_files[@]} == 0 )); then
+            echo "::error::Runner E2E shard has no test files"
+            exit 1
+          fi
 
-          shard_tests=()
-          for test_index in "${!runner_tests[@]}"; do
-            assigned_shard=$((test_index % E2E_RUNNER_SHARD_TOTAL + 1))
-            if (( assigned_shard == E2E_RUNNER_SHARD_INDEX )); then
-              shard_tests+=("${runner_tests[$test_index]}")
+          cd e2e
+          for test_file in "${test_files[@]}"; do
+            if [[ ! -f "$test_file" ]]; then
+              echo "::error::Runner E2E test file does not exist: $test_file"
+              exit 1
             fi
           done
 
-          if (( ${#shard_tests[@]} == 0 )); then
-            echo "No runner E2E tests assigned to shard ${E2E_RUNNER_SHARD_INDEX}"
-            exit 0
-          fi
-
-          echo "Runner E2E shard ${E2E_RUNNER_SHARD_INDEX} files: ${shard_tests[*]}"
-          mkdir -p e2e/results
-          BATS_TEST_TIMEOUT=240 ./e2e/test/libs/bats/bin/bats \
+          result_directory="results/runner-${E2E_RUNNER_SHARD_INDEX}"
+          mkdir -p "$result_directory"
+          BATS_TEST_TIMEOUT=240 ./test/libs/bats/bin/bats \
             -T \
             --report-formatter junit \
-            --output e2e/results \
-            "${shard_tests[@]}"
+            --output "$result_directory" \
+            "${test_files[@]}"
         env:
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+      - name: Print runner E2E trace log
+        if: always()
+        shell: bash
+        run: |
+          if [[ -f /tmp/e2e-trace.log ]]; then
+            cat /tmp/e2e-trace.log
+          fi
+      - name: Upload runner E2E test results to Codecov
+        if: ${{ !cancelled() }}
+        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          flags: e2e-runner
+          files: e2e/results/runner-${{ matrix.index }}/*.xml
+          report_type: test_results
+      - name: Upload runner E2E JUnit XML
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: e2e-runner-junit-${{ matrix.index }}
+          path: e2e/results/runner-${{ matrix.index }}/
+          retention-days: 7
 
   cli-e2e-03-runner-cleanup:
     runs-on: ubuntu-latest

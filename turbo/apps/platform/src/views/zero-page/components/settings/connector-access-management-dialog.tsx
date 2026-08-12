@@ -5,11 +5,13 @@ import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
 import { SlidersHorizontal, Loader2, Search, X } from "lucide-react";
 import {
+  Button,
   Dialog,
   DialogContent,
   DialogDescription,
   DialogHeader,
   DialogTitle,
+  Input,
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -18,7 +20,7 @@ import {
 } from "@vm0/ui";
 import type { ConnectorSlug } from "@vm0/api-contracts/contracts/connector-identity";
 import type {
-  CustomConnectorClientResponse,
+  CustomConnectorResponse,
   CustomConnectorPermissionBundleResponse,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import type { PlatformConnectorPermissionMetadata } from "../../../../signals/connector-domain.ts";
@@ -106,7 +108,7 @@ function ConnectorAccessSearch({
         size={15}
         className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2"
       />
-      <input
+      <Input
         value={value}
         onChange={(event) => {
           onChange(event.currentTarget.value);
@@ -117,7 +119,7 @@ function ConnectorAccessSearch({
         placeholder={t(($) => {
           return $.connectors.access.search;
         })}
-        className="h-9 w-full rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-input pl-9 pr-9 text-sm text-foreground outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-[3px] focus:ring-primary/10"
+        className="pl-9 pr-9"
       />
       {value && (
         <button
@@ -175,7 +177,7 @@ function AgentAccessRow({
         <TooltipProvider delayDuration={200}>
           <Tooltip>
             <TooltipTrigger asChild>
-              <button
+              <Button
                 type="button"
                 onClick={() => {
                   onManage(row);
@@ -186,10 +188,12 @@ function AgentAccessRow({
                   },
                   { connector: connectorLabel, agent: name },
                 )}
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
+                variant="quiet"
+                size="icon-sm"
+                className="shrink-0"
               >
                 <SlidersHorizontal size={16} />
-              </button>
+              </Button>
             </TooltipTrigger>
             <TooltipContent>
               {t(($) => {
@@ -587,7 +591,7 @@ function CustomConnectorAccessPermissionsDrawer({
 }: {
   readonly draft: CustomConnectorPermissionDraft | null;
   readonly agent: TeamComposeItem | undefined;
-  readonly connector: CustomConnectorClientResponse;
+  readonly connector: CustomConnectorResponse;
   readonly bundle: CustomConnectorPermissionBundleResponse | null;
   readonly loading: boolean;
   readonly loadError: boolean;
@@ -605,6 +609,7 @@ function CustomConnectorAccessPermissionsDrawer({
       bundle={bundle}
       loading={loading}
       loadError={loadError}
+      overlayClassName="bg-overlay/45 backdrop-blur-sm dark:bg-overlay/55"
       onClose={() => {
         onClose(draft);
       }}
@@ -613,7 +618,7 @@ function CustomConnectorAccessPermissionsDrawer({
 }
 
 function useCustomConnectorAuthorization(
-  connector: CustomConnectorClientResponse,
+  connector: CustomConnectorResponse,
   onPermissionRequired: (row: ConnectorAgentAccessRow) => void,
 ) {
   const { t } = useTranslation();
@@ -681,7 +686,7 @@ export function CustomConnectorAccessManagementDialog({
   allowAccessIncrease,
   onClose,
 }: {
-  readonly connector: CustomConnectorClientResponse;
+  readonly connector: CustomConnectorResponse;
   readonly allowAccessIncrease: boolean;
   readonly onClose: () => void;
 }) {

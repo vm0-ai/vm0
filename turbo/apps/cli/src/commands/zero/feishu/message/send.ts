@@ -56,12 +56,12 @@ export const sendCommand = new Command()
     "after",
     `
 Examples:
-  Chat message:          zero feishu message send -c oc_xxx -t "Hello!"
-  Direct message:        zero feishu message send -u ou_xxx -t "Hello!"
-  DM yourself:           zero feishu message send -u me -t "Hello!"
-  Thread reply:          zero feishu message send -r om_xxx --thread -t "Reply"
-  Interactive card:      zero feishu message send -c oc_xxx --card '{"schema":"2.0","body":{"elements":[]}}'
-  Select a custom app:   zero feishu message send -i <installation-id> -c oc_xxx -t "Hello!"
+  Chat message:          okou feishu message send -c oc_xxx -t "Hello!"
+  Direct message:        okou feishu message send -u ou_xxx -t "Hello!"
+  DM yourself:           okou feishu message send -u me -t "Hello!"
+  Thread reply:          okou feishu message send -r om_xxx --thread -t "Reply"
+  Interactive card:      okou feishu message send -c oc_xxx --card '{"schema":"2.0","body":{"elements":[]}}'
+  Select a custom app:   okou feishu message send -i <installation-id> -c oc_xxx -t "Hello!"
 
 Notes:
   - Exactly one of --chat, --user, or --reply is required

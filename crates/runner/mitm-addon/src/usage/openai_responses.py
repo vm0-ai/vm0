@@ -11,11 +11,11 @@ model-provider usage billing:
   ``mitm_addon.py`` fallback used by legacy/test flows without
   response-streaming parser state.
 - Single-frame WebSocket event JSON via
-  ``inspect_openai_responses_event_type_json``,
+  ``inspect_openai_responses_client_event_json``,
   ``inspect_openai_responses_event_json``, and
   ``extract_openai_responses_usage_from_event``, consumed by
-  ``mitm_addon.py`` and ``response_streaming.py`` for client event-type timing
-  and server usage events received over upgrades.
+  ``mitm_addon.py`` and ``response_streaming.py`` for client request intent,
+  event-type timing, and server usage events received over upgrades.
 - Per-event usage aggregation via ``merge_openai_responses_usage_result``,
   used by ``response_streaming.py`` to fold terminal SSE and WebSocket event
   usage into a per-flow accumulator.
@@ -136,6 +136,28 @@ _RESPONSES_EVENT_PREFILTER_MAX_BYTES = 4096
 # parser's bulk-scan path for ordinary large content strings.
 _RESPONSES_MAX_WORK_UNITS = 65_536
 _RESPONSES_WEBSOCKET_WORK_LIMIT_ERROR = "work_limit_exceeded"
+_RESPONSES_CREATE_EVENT = "response.create"
+_RESPONSES_CREATED_EVENT = "response.created"
+
+
+@dataclass(frozen=True)
+class OpenAIResponsesClientEvent:
+    """Bounded observations from one client-originated Responses frame."""
+
+    event_type: str | None
+    is_prewarm: bool
+
+
+@dataclass(frozen=True)
+class OpenAIResponsesServerLifecycle:
+    """Bounded lifecycle observations needed before WebSocket settlement."""
+
+    event_type: str | None
+    response_id: str | None
+
+    @property
+    def is_terminal(self) -> bool:
+        return self.event_type in _RESPONSES_TERMINAL_USAGE_EVENTS
 
 
 @dataclass(frozen=True)
@@ -172,6 +194,36 @@ _RESPONSES_SSE_SCALAR_FIELDS = {
     ("type",): ScalarField("string", max_bytes=1024, overflow_policy="discard"),
     **_RESPONSES_SSE_RESPONSE_SCALAR_FIELDS,
 }
+_RESPONSES_CLIENT_SCALAR_FIELDS = {
+    ("type",): ScalarField("string", max_bytes=1024, overflow_policy="discard"),
+    ("generate",): ScalarField("bool"),
+}
+_RESPONSES_LIFECYCLE_SCALAR_FIELDS = {
+    ("type",): ScalarField("string", max_bytes=1024, overflow_policy="discard"),
+    ("response", "id"): ScalarField("string", max_bytes=1024),
+}
+
+
+def inspect_openai_responses_client_event_json(body: bytes) -> OpenAIResponsesClientEvent:
+    """Inspect client event timing and exact non-generating request intent."""
+    observed_event_type = _inspect_openai_responses_event_type_json(body)
+    extractor = JsonSelectiveExtractor(
+        scalar_fields=_RESPONSES_CLIENT_SCALAR_FIELDS,
+        scalar_consistency_paths={("type",), ("generate",)},
+        max_work_units=_RESPONSES_MAX_WORK_UNITS,
+    )
+    extractor.feed(body)
+    result = extractor.finish()
+    if not result.complete:
+        return OpenAIResponsesClientEvent(observed_event_type, False)
+
+    return OpenAIResponsesClientEvent(
+        observed_event_type,
+        extractor.selected_scalar_values_are_consistent(("type",))
+        and extractor.selected_scalar_values_are_consistent(("generate",))
+        and result.values.get(("type",)) == _RESPONSES_CREATE_EVENT
+        and result.values.get(("generate",)) is False,
+    )
 
 
 def inspect_openai_responses_event_json(body: bytes) -> OpenAIResponsesEvent:
@@ -190,9 +242,42 @@ def inspect_openai_responses_event_json(body: bytes) -> OpenAIResponsesEvent:
     )
 
 
-def inspect_openai_responses_event_type_json(body: bytes) -> str | None:
+def _inspect_openai_responses_event_type_json(body: bytes) -> str | None:
     """Probe one Responses frame for its top-level ``type`` without retaining it."""
     return _observed_responses_event_type(_probe_responses_event_type(body))
+
+
+def inspect_openai_responses_server_lifecycle(
+    event: OpenAIResponsesEvent,
+) -> OpenAIResponsesServerLifecycle:
+    """Inspect an exact created or terminal event for WebSocket correlation."""
+    relevant_event_types = _RESPONSES_TERMINAL_USAGE_EVENTS | {_RESPONSES_CREATED_EVENT}
+    if event.event_type is not None and event.event_type not in relevant_event_types:
+        return OpenAIResponsesServerLifecycle(event.event_type, None)
+
+    extractor = JsonSelectiveExtractor(
+        scalar_fields=_RESPONSES_LIFECYCLE_SCALAR_FIELDS,
+        scalar_consistency_paths={("type",), ("response", "id")},
+        max_work_units=_RESPONSES_MAX_WORK_UNITS,
+    )
+    extractor.feed(event._body)
+    result = extractor.finish()
+    if not result.complete:
+        return OpenAIResponsesServerLifecycle(event.event_type, None)
+    if not extractor.selected_scalar_values_are_consistent(("type",)):
+        return OpenAIResponsesServerLifecycle(event.event_type, None)
+    event_type = result.values.get(("type",))
+    if not isinstance(event_type, str):
+        return OpenAIResponsesServerLifecycle(event.event_type, None)
+    response_id = result.values.get(("response", "id"))
+    if (
+        event_type not in relevant_event_types
+        or not extractor.selected_scalar_values_are_consistent(("response", "id"))
+        or not isinstance(response_id, str)
+        or not response_id
+    ):
+        response_id = None
+    return OpenAIResponsesServerLifecycle(event_type, response_id)
 
 
 def _probe_responses_event_type(body: bytes) -> TopLevelStringFieldProbeResult:

@@ -35,7 +35,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Client } from "pg";
-import { chatEvents } from "../src/schema/chat-event";
+import {
+  chatEventTerminalPredicate,
+  chatEvents,
+} from "../src/schema/chat-event";
 import { NON_TRANSACTIONAL_MIGRATION_MARKER } from "./migration-runner";
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -356,7 +359,7 @@ async function assertChatEventsAppendOnlyProtection(
   ]);
   await expectAppendOnlyUpdateRejected(client, {
     tableName: "chat_events",
-    query: `UPDATE "chat_events" SET "content" = 'mutated' WHERE "id" = $1`,
+    query: `UPDATE "chat_events" SET "event_type" = "event_type" WHERE "id" = $1`,
     rowId,
   });
 }
@@ -382,66 +385,69 @@ async function validateCanonicalChatMessageStorage(
     parts: [{ type: "text", text: "canonical API migration test" }],
   };
   const message = await client.query<{
-    content: string | null;
     contextType: string | null;
     id: string;
+    payload: unknown;
     seqId: string;
-    userMessage: unknown;
   }>(
     `
       INSERT INTO "chat_events" (
         "chat_thread_id",
-        "content",
         "context_type",
         "event_type",
-        "seq_id",
-        "user_message"
+        "payload",
+        "seq_id"
       )
       VALUES (
         $1,
-        NULL,
         'web',
         'input.prompt',
-        $2,
-        $3::jsonb
+        $3::jsonb,
+        $2
       )
       RETURNING
         "id",
         "seq_id" AS "seqId",
-        "content",
         "context_type" AS "contextType",
-        "user_message" AS "userMessage"
+        "payload"
     `,
-    [threadId, firstSeqId, JSON.stringify(userMessage)],
+    [threadId, firstSeqId, JSON.stringify({ userMessage })],
   );
   const messageRow = message.rows[0];
   if (!messageRow) {
     throw new Error("Failed to create append-only chat message fixture");
   }
   assert.equal(messageRow.seqId, String(firstSeqId));
-  assert.equal(messageRow.content, null);
   assert.equal(messageRow.contextType, "web");
-  assert.deepEqual(messageRow.userMessage, userMessage);
+  assert.deepEqual(messageRow.payload, { userMessage });
 
-  const nextMessage = await client.query<{ seqId: string }>(
+  const nextMessage = await client.query<{
+    payload: unknown;
+    seqId: string;
+  }>(
     `
       INSERT INTO "chat_events" (
         "chat_thread_id",
-        "content",
         "event_type",
+        "payload",
         "seq_id"
       )
       VALUES (
         $1,
-        'second typed API migration test',
         'output.message',
+        '{"content":"second typed API migration test"}'::jsonb,
         $2
       )
-      RETURNING "seq_id" AS "seqId"
+      RETURNING
+        "seq_id" AS "seqId",
+        "payload"
     `,
     [threadId, lastSeqId],
   );
   assert.equal(nextMessage.rows[0]?.seqId, String(lastSeqId));
+  assert.deepEqual(nextMessage.rows[0]?.payload, {
+    content: "second typed API migration test",
+  });
 
   const sequenceState = await client.query<{ lastSeqId: string }>(
     `
@@ -617,7 +623,7 @@ async function validateChatEventSourcesAreAppendOnly(
 
     await expectAppendOnlyUpdateRejected(client, {
       tableName: "chat_events",
-      query: `UPDATE "chat_events" SET "content" = 'mutated' WHERE "id" = $1`,
+      query: `UPDATE "chat_events" SET "event_type" = "event_type" WHERE "id" = $1`,
       rowId: messageId,
     });
     await expectAppendOnlyUpdateRejected(client, {
@@ -702,7 +708,7 @@ async function validateChatEventContextPointerConstraints(
           "event_type",
           "context_type",
           "context_id",
-          "user_message",
+          "payload",
           "seq_id"
         )
         VALUES
@@ -730,7 +736,7 @@ async function validateChatEventContextPointerConstraints(
             'input.prompt',
             'web',
             NULL,
-            '{"version":1,"parts":[{"type":"text","text":"web discriminator"}]}'::jsonb,
+            '{"userMessage":{"version":1,"parts":[{"type":"text","text":"web discriminator"}]}}'::jsonb,
             3
           ),
           (
@@ -739,7 +745,7 @@ async function validateChatEventContextPointerConstraints(
             'input.rejected',
             NULL,
             NULL,
-            '{"version":1,"parts":[{"type":"text","text":"rejected input"}]}'::jsonb,
+            '{"userMessage":{"version":1,"parts":[{"type":"text","text":"rejected input"}]}}'::jsonb,
             4
           )
         RETURNING
@@ -812,7 +818,7 @@ async function validateChatEventContextPointerConstraints(
           "event_type",
           "context_type",
           "context_id",
-          "user_message",
+          "payload",
           "seq_id"
         )
         VALUES (
@@ -821,7 +827,7 @@ async function validateChatEventContextPointerConstraints(
           'input.prompt',
           NULL,
           NULL,
-          '{"version":1,"parts":[{"type":"text","text":"missing discriminator"}]}'::jsonb,
+          '{"userMessage":{"version":1,"parts":[{"type":"text","text":"missing discriminator"}]}}'::jsonb,
           5
         )
       `,
@@ -1082,6 +1088,381 @@ const MCP_CUSTOM_CONNECTOR_READERS_PREVIOUS_MIGRATION =
   "0872_curious_yellow_claw";
 const MCP_CUSTOM_CONNECTOR_READERS_MIGRATION =
   "0873_prepare_mcp_custom_connector_readers";
+const CUSTOM_CONNECTOR_DEFINITION_CONTRACTION_PREVIOUS_MIGRATION =
+  "0897_bizarre_kid_colt";
+const CUSTOM_CONNECTOR_DEFINITION_CONTRACTION_MIGRATION =
+  "0902_colorful_mandrill";
+
+const CONNECTION_SCOPED_VARIABLE_PREVIOUS_MIGRATION =
+  "0900_replace_scheduled_usage_pack_change";
+const CONNECTION_SCOPED_VARIABLE_MIGRATION = "0901_parallel_energizer";
+const CONNECTION_SCOPED_VARIABLE_SHADOW_INDEX =
+  "idx_variables_org_user_type_name_0901";
+
+async function assertConnectionScopedVariableIndexes(
+  client: Client,
+): Promise<void> {
+  const indexes = await client.query<{
+    definition: string;
+    isUnique: boolean;
+    isValid: boolean;
+    name: string;
+    predicate: string | null;
+  }>(`
+    SELECT
+      "index_class"."relname" AS "name",
+      "index"."indisunique" AS "isUnique",
+      "index"."indisvalid" AS "isValid",
+      pg_get_indexdef("index"."indexrelid") AS "definition",
+      pg_get_expr("index"."indpred", "index"."indrelid") AS "predicate"
+    FROM "pg_index" AS "index"
+    INNER JOIN "pg_class" AS "index_class"
+      ON "index_class"."oid" = "index"."indexrelid"
+    INNER JOIN "pg_class" AS "table_class"
+      ON "table_class"."oid" = "index"."indrelid"
+    WHERE "table_class"."relname" = 'variables'
+      AND "index_class"."relname" IN (
+        'idx_variables_org_user_type_name',
+        'idx_variables_connector_name',
+        '${CONNECTION_SCOPED_VARIABLE_SHADOW_INDEX}'
+      )
+    ORDER BY "index_class"."relname"
+  `);
+  assert.deepEqual(
+    indexes.rows.map((index) => {
+      return {
+        isUnique: index.isUnique,
+        isValid: index.isValid,
+        name: index.name,
+      };
+    }),
+    [
+      {
+        isUnique: true,
+        isValid: true,
+        name: "idx_variables_connector_name",
+      },
+      {
+        isUnique: true,
+        isValid: true,
+        name: "idx_variables_org_user_type_name",
+      },
+    ],
+  );
+  const connectorIndex = indexes.rows[0];
+  const userIndex = indexes.rows[1];
+  assert.match(
+    connectorIndex?.definition ?? "",
+    /\(connector_id, name\).*WHERE \(connector_id IS NOT NULL\)$/u,
+  );
+  assert.match(connectorIndex?.predicate ?? "", /connector_id IS NOT NULL/u);
+  assert.match(
+    userIndex?.definition ?? "",
+    /\(org_id, user_id, type, name\).*WHERE \(connector_id IS NULL\)$/u,
+  );
+  assert.match(userIndex?.predicate ?? "", /connector_id IS NULL/u);
+
+  const ownerConstraint = await client.query<{
+    definition: string;
+    isValidated: boolean;
+  }>(`
+    SELECT
+      pg_get_constraintdef("constraint"."oid") AS "definition",
+      "constraint"."convalidated" AS "isValidated"
+    FROM "pg_constraint" AS "constraint"
+    WHERE "constraint"."conrelid" = 'public.variables'::regclass
+      AND "constraint"."conname" = 'fk_variables_connector_owner'
+  `);
+  assert.equal(ownerConstraint.rows.length, 1);
+  assert.equal(ownerConstraint.rows[0]?.isValidated, true);
+  assert.match(
+    ownerConstraint.rows[0]?.definition ?? "",
+    /FOREIGN KEY \(connector_id, org_id, user_id\) REFERENCES connectors\(id, org_id, user_id\) ON DELETE CASCADE/u,
+  );
+}
+
+function connectionScopedVariableMigrationStatements(
+  migrationSql: string,
+): readonly [string, string, string] {
+  const statements = migrationSql
+    .split("--> statement-breakpoint")
+    .map((statement) => {
+      return statement.trim();
+    })
+    .filter((statement) => {
+      return statement.length > 0;
+    });
+  assert.equal(statements.length, 3);
+  const dropShadowIndex = statements.at(0);
+  const createShadowIndex = statements.at(1);
+  const swapIndexes = statements.at(2);
+  assert.ok(dropShadowIndex);
+  assert.ok(createShadowIndex);
+  assert.ok(swapIndexes);
+  return [dropShadowIndex, createShadowIndex, swapIndexes];
+}
+
+async function rerunConnectionScopedVariableMigration(
+  client: Client,
+  statements: readonly string[],
+): Promise<void> {
+  for (const statement of statements) {
+    await client.query(statement);
+  }
+}
+
+async function validateConnectionScopedVariableUniqueness(): Promise<void> {
+  console.log(
+    "=== Validate connection-scoped variable uniqueness contraction ===\n",
+  );
+  const testDb = "migration_connection_scoped_variable_uniqueness_test";
+  const migrationSql = await fs.readFile(
+    path.join(MIGRATIONS_DIR, `${CONNECTION_SCOPED_VARIABLE_MIGRATION}.sql`),
+    "utf8",
+  );
+  const migrationStatements =
+    connectionScopedVariableMigrationStatements(migrationSql);
+  assert.ok(migrationSql.startsWith(NON_TRANSACTIONAL_MIGRATION_MARKER));
+  assert.match(
+    migrationSql,
+    new RegExp(
+      `CREATE UNIQUE INDEX CONCURRENTLY "${CONNECTION_SCOPED_VARIABLE_SHADOW_INDEX}"`,
+      "u",
+    ),
+  );
+  assert.match(
+    migrationSql,
+    /DROP INDEX "idx_variables_org_user_type_name"[\s\S]*ALTER INDEX "idx_variables_org_user_type_name_0901"[\s\S]*RENAME TO "idx_variables_org_user_type_name"/u,
+  );
+
+  await createDatabase(testDb);
+  const client = new Client({ connectionString: createTestDbUrl(testDb) });
+  await client.connect();
+
+  const orgId = "migration-variable-org";
+  const userId = "migration-variable-user";
+  const firstConnectorId = "26233000-0000-4000-8000-000000000001";
+  const secondConnectorId = "26233000-0000-4000-8000-000000000002";
+  const connectorVariableName = "SHARED_CONNECTOR_VARIABLE";
+  const userVariableName = "USER_VARIABLE";
+
+  try {
+    await applyMigrationsUpToTag(
+      client,
+      CONNECTION_SCOPED_VARIABLE_PREVIOUS_MIGRATION,
+    );
+    await client.query(
+      `
+        INSERT INTO "connectors" (
+          "id",
+          "connector_slug",
+          "auth_method",
+          "storage_version",
+          "org_id",
+          "user_id"
+        )
+        VALUES
+          ($1, 'migration-variable-first', 'manual', 1, $3, $4),
+          ($2, 'migration-variable-second', 'manual', 1, $3, $4)
+      `,
+      [firstConnectorId, secondConnectorId, orgId, userId],
+    );
+    await client.query(
+      `
+        INSERT INTO "variables" (
+          "connector_id",
+          "org_id",
+          "user_id",
+          "type",
+          "name",
+          "value"
+        )
+        VALUES ($1, $2, $3, 'connector', $4, 'first')
+      `,
+      [firstConnectorId, orgId, userId, connectorVariableName],
+    );
+    await client.query(
+      `
+        INSERT INTO "variables" (
+          "org_id",
+          "user_id",
+          "type",
+          "name",
+          "value"
+        )
+        VALUES ($1, $2, 'user', $3, 'user-first')
+      `,
+      [orgId, userId, userVariableName],
+    );
+    await expectDatabaseError(client, {
+      code: "23505",
+      messageIncludes: "idx_variables_org_user_type_name",
+      query: `
+        INSERT INTO "variables" (
+          "connector_id",
+          "org_id",
+          "user_id",
+          "type",
+          "name",
+          "value"
+        )
+        VALUES ($1, $2, $3, 'connector', $4, 'blocked-before-migration')
+      `,
+      values: [secondConnectorId, orgId, userId, connectorVariableName],
+    });
+
+    await client.query(migrationStatements[0]);
+    await client.query(migrationStatements[1]);
+    const interruptedIndexes = await client.query<{
+      isValid: boolean;
+      name: string;
+      predicate: string | null;
+    }>(`
+      SELECT
+        "index_class"."relname" AS "name",
+        "index"."indisvalid" AS "isValid",
+        pg_get_expr("index"."indpred", "index"."indrelid") AS "predicate"
+      FROM "pg_index" AS "index"
+      INNER JOIN "pg_class" AS "index_class"
+        ON "index_class"."oid" = "index"."indexrelid"
+      INNER JOIN "pg_class" AS "table_class"
+        ON "table_class"."oid" = "index"."indrelid"
+      WHERE "table_class"."relname" = 'variables'
+        AND "index_class"."relname" IN (
+          'idx_variables_org_user_type_name',
+          '${CONNECTION_SCOPED_VARIABLE_SHADOW_INDEX}'
+        )
+      ORDER BY "index_class"."relname"
+    `);
+    assert.deepEqual(interruptedIndexes.rows, [
+      {
+        isValid: true,
+        name: "idx_variables_org_user_type_name",
+        predicate: null,
+      },
+      {
+        isValid: true,
+        name: CONNECTION_SCOPED_VARIABLE_SHADOW_INDEX,
+        predicate: "(connector_id IS NULL)",
+      },
+    ]);
+    await rerunConnectionScopedVariableMigration(client, migrationStatements);
+    await client.query(
+      `
+        INSERT INTO "variables" (
+          "connector_id",
+          "org_id",
+          "user_id",
+          "type",
+          "name",
+          "value"
+        )
+        VALUES ($1, $2, $3, 'connector', $4, 'second')
+      `,
+      [secondConnectorId, orgId, userId, connectorVariableName],
+    );
+    await expectDatabaseError(client, {
+      code: "23505",
+      messageIncludes: "idx_variables_connector_name",
+      query: `
+        INSERT INTO "variables" (
+          "connector_id",
+          "org_id",
+          "user_id",
+          "type",
+          "name",
+          "value"
+        )
+        VALUES ($1, $2, $3, 'connector', $4, 'duplicate-first')
+      `,
+      values: [firstConnectorId, orgId, userId, connectorVariableName],
+    });
+    await expectDatabaseError(client, {
+      code: "23505",
+      messageIncludes: "idx_variables_org_user_type_name",
+      query: `
+        INSERT INTO "variables" (
+          "org_id",
+          "user_id",
+          "type",
+          "name",
+          "value"
+        )
+        VALUES ($1, $2, 'user', $3, 'user-duplicate')
+      `,
+      values: [orgId, userId, userVariableName],
+    });
+    await client.query(
+      `
+        INSERT INTO "variables" (
+          "connector_id",
+          "org_id",
+          "user_id",
+          "type",
+          "name",
+          "value"
+        )
+        VALUES ($1, $2, $3, 'connector', $4, 'first-updated')
+        ON CONFLICT ("connector_id", "name")
+          WHERE "connector_id" IS NOT NULL
+        DO UPDATE SET "value" = EXCLUDED."value"
+      `,
+      [firstConnectorId, orgId, userId, connectorVariableName],
+    );
+    await expectDatabaseError(client, {
+      code: "42P10",
+      query: `
+        INSERT INTO "variables" (
+          "connector_id",
+          "org_id",
+          "user_id",
+          "type",
+          "name",
+          "value"
+        )
+        VALUES ($1, $2, $3, 'connector', 'LEGACY_TARGET', 'legacy')
+        ON CONFLICT ("org_id", "user_id", "type", "name")
+        DO UPDATE SET "value" = EXCLUDED."value"
+      `,
+      values: [firstConnectorId, orgId, userId],
+    });
+
+    const connectorVariables = await client.query<{
+      connectorId: string;
+      value: string;
+    }>(
+      `
+        SELECT "connector_id" AS "connectorId", "value"
+        FROM "variables"
+        WHERE "org_id" = $1
+          AND "user_id" = $2
+          AND "type" = 'connector'
+          AND "name" = $3
+        ORDER BY "connector_id"
+      `,
+      [orgId, userId, connectorVariableName],
+    );
+    assert.deepEqual(connectorVariables.rows, [
+      { connectorId: firstConnectorId, value: "first-updated" },
+      { connectorId: secondConnectorId, value: "second" },
+    ]);
+    await assertConnectionScopedVariableIndexes(client);
+
+    await rerunConnectionScopedVariableMigration(client, migrationStatements);
+    await assertConnectionScopedVariableIndexes(client);
+
+    console.log("   ✅ old global uniqueness rejects cross-connection names");
+    console.log("   ✅ final indexes split user and connection uniqueness");
+    console.log("   ✅ current upserts retain exact connection ownership");
+    console.log("   ✅ old connector conflict inference is removed");
+    console.log(
+      "   ✅ concurrent shadow interruption and full rerun recover cleanly\n",
+    );
+  } finally {
+    await client.end();
+    await dropDatabase(testDb);
+  }
+}
 
 async function validateMcpCustomConnectorReaderPreparation(): Promise<void> {
   console.log("=== Validate MCP Custom Connector reader preparation ===\n");
@@ -1315,6 +1696,188 @@ async function validateMcpCustomConnectorReaderPreparation(): Promise<void> {
     console.log("   ✅ legacy MCP state aborts instead of being cleared");
     console.log("   ✅ existing HTTP definitions remain valid");
     console.log("   ✅ only exhaustive MCP definition rows are accepted\n");
+  } finally {
+    await client.end();
+    await dropDatabase(testDb);
+  }
+}
+
+async function validateCustomConnectorDefinitionContraction(): Promise<void> {
+  console.log("=== Validate Custom Connector definition contraction ===\n");
+  const testDb = "migration_custom_connector_definition_contraction_test";
+  await createDatabase(testDb);
+  const client = new Client({ connectionString: createTestDbUrl(testDb) });
+  await client.connect();
+
+  const httpConnectorId = "26216000-0000-4000-8000-000000000001";
+  const mcpConnectorId = "26216000-0000-4000-8000-000000000002";
+
+  try {
+    await applyMigrationsUpToTag(
+      client,
+      CUSTOM_CONNECTOR_DEFINITION_CONTRACTION_PREVIOUS_MIGRATION,
+    );
+
+    await client.query(
+      `
+        INSERT INTO "org_custom_connectors" (
+          "id",
+          "org_id",
+          "slug",
+          "display_name",
+          "prefix_templates",
+          "fields",
+          "header_injections",
+          "query_injections",
+          "created_by"
+        ) VALUES (
+          $1,
+          'issue-26216-org',
+          '_canonical-http',
+          'Canonical HTTP',
+          '["https://api.example.test/"]'::jsonb,
+          '[{"key":"secret","label":"Secret","kind":"secret","required":true}]'::jsonb,
+          '[{"name":"Authorization","valueTemplate":"Bearer {{secrets.secret}}"}]'::jsonb,
+          '[]'::jsonb,
+          'issue-26216-user'
+        )
+      `,
+      [httpConnectorId],
+    );
+    await client.query(
+      `
+        INSERT INTO "org_custom_connectors" (
+          "id",
+          "org_id",
+          "slug",
+          "display_name",
+          "prefix_templates",
+          "fields",
+          "header_injections",
+          "query_injections",
+          "mcp_endpoint",
+          "mcp_transport",
+          "created_by"
+        ) VALUES (
+          $1,
+          'issue-26216-org',
+          '_canonical-mcp',
+          'Canonical MCP',
+          '[]'::jsonb,
+          '[{"key":"secret","label":"Secret","kind":"secret","required":true}]'::jsonb,
+          '[{"name":"Authorization","valueTemplate":"Bearer {{secrets.secret}}"}]'::jsonb,
+          '[]'::jsonb,
+          'https://mcp.example.test/server',
+          'streamable-http',
+          'issue-26216-user'
+        )
+      `,
+      [mcpConnectorId],
+    );
+
+    const outgoingWriterRows = await client.query<{
+      headerName: string | null;
+      headerTemplate: string | null;
+      prefixes: string[];
+    }>(
+      `
+        SELECT
+          "prefixes",
+          "header_name" AS "headerName",
+          "header_template" AS "headerTemplate"
+        FROM "org_custom_connectors"
+        WHERE "id" IN ($1, $2)
+        ORDER BY "id"
+      `,
+      [httpConnectorId, mcpConnectorId],
+    );
+    assert.deepEqual(outgoingWriterRows.rows, [
+      { prefixes: [], headerName: null, headerTemplate: null },
+      { prefixes: [], headerName: null, headerTemplate: null },
+    ]);
+
+    await client.query(`
+      CREATE VIEW "custom_connector_legacy_definition_dependency" AS
+      SELECT "id", "header_template"
+      FROM "org_custom_connectors"
+    `);
+    await assert.rejects(
+      applyMigrationsUpToTag(
+        client,
+        CUSTOM_CONNECTOR_DEFINITION_CONTRACTION_MIGRATION,
+      ),
+      /cannot drop column header_template .* because other objects depend on it/u,
+    );
+    const columnsAfterRejectedContraction = await client.query<{
+      columnName: string;
+    }>(`
+      SELECT "column_name" AS "columnName"
+      FROM "information_schema"."columns"
+      WHERE "table_schema" = 'public'
+        AND "table_name" = 'org_custom_connectors'
+        AND "column_name" IN ('prefixes', 'header_name', 'header_template')
+      ORDER BY "column_name"
+    `);
+    assert.deepEqual(
+      columnsAfterRejectedContraction.rows.map((row) => {
+        return row.columnName;
+      }),
+      ["header_name", "header_template", "prefixes"],
+    );
+
+    await client.query(
+      `DROP VIEW "custom_connector_legacy_definition_dependency"`,
+    );
+    await applyMigrationsUpToTag(
+      client,
+      CUSTOM_CONNECTOR_DEFINITION_CONTRACTION_MIGRATION,
+    );
+
+    const remainingLegacyColumns = await client.query<{ count: string }>(`
+      SELECT count(*)::text AS "count"
+      FROM "information_schema"."columns"
+      WHERE "table_schema" = 'public'
+        AND "table_name" = 'org_custom_connectors'
+        AND "column_name" IN ('prefixes', 'header_name', 'header_template')
+    `);
+    assert.equal(remainingLegacyColumns.rows[0]?.count, "0");
+
+    const canonicalRows = await client.query<{
+      id: string;
+      mcpEndpoint: string | null;
+      prefixTemplates: string[];
+    }>(
+      `
+        SELECT
+          "id",
+          "prefix_templates" AS "prefixTemplates",
+          "mcp_endpoint" AS "mcpEndpoint"
+        FROM "org_custom_connectors"
+        WHERE "id" IN ($1, $2)
+        ORDER BY "id"
+      `,
+      [httpConnectorId, mcpConnectorId],
+    );
+    assert.deepEqual(canonicalRows.rows, [
+      {
+        id: httpConnectorId,
+        prefixTemplates: ["https://api.example.test/"],
+        mcpEndpoint: null,
+      },
+      {
+        id: mcpConnectorId,
+        prefixTemplates: [],
+        mcpEndpoint: "https://mcp.example.test/server",
+      },
+    ]);
+
+    console.log("   ✅ outgoing canonical-only writes survive contraction");
+    console.log(
+      "   ✅ unexpected dependencies abort the contraction atomically",
+    );
+    console.log(
+      "   ✅ retired columns are absent after the dependency is removed\n",
+    );
   } finally {
     await client.end();
     await dropDatabase(testDb);
@@ -1662,20 +2225,6 @@ type PermanentFunction = {
 const EXPECTED_PERMANENT_TRIGGERS = [
   {
     definition:
-      "CREATE TRIGGER bridge_invalidated_goal_continuation_0829 BEFORE INSERT ON public.chat_events FOR EACH ROW WHEN (((new.event_type = 'input.rejected'::text) AND (new.error = 'Goal continuation no longer matches the active goal'::text))) EXECUTE FUNCTION bridge_invalidated_goal_continuation_0829()",
-    schemaName: "public",
-    tableName: "chat_events",
-    triggerName: "bridge_invalidated_goal_continuation_0829",
-  },
-  {
-    definition:
-      "CREATE TRIGGER bridge_goal_only_chat_event_run_group_0810 BEFORE INSERT ON public.chat_events FOR EACH ROW EXECUTE FUNCTION bridge_goal_only_chat_event_run_group_0810()",
-    schemaName: "public",
-    tableName: "chat_events",
-    triggerName: "bridge_goal_only_chat_event_run_group_0810",
-  },
-  {
-    definition:
       "CREATE TRIGGER chat_events_reject_update BEFORE UPDATE ON public.chat_events FOR EACH ROW EXECUTE FUNCTION reject_chat_event_source_update()",
     schemaName: "public",
     tableName: "chat_events",
@@ -1708,6 +2257,13 @@ const EXPECTED_PERMANENT_TRIGGERS = [
     schemaName: "public",
     tableName: "chat_threads",
     triggerName: "chat_threads_normalize_computer_access",
+  },
+  {
+    definition:
+      "CREATE TRIGGER connectors_delete_legacy_custom_credentials_0911 AFTER DELETE ON public.connectors FOR EACH ROW EXECUTE FUNCTION delete_legacy_custom_credentials_0911()",
+    schemaName: "public",
+    tableName: "connectors",
+    triggerName: "connectors_delete_legacy_custom_credentials_0911",
   },
   {
     definition:
@@ -1767,6 +2323,13 @@ const EXPECTED_PERMANENT_TRIGGERS = [
   },
   {
     definition:
+      "CREATE TRIGGER sync_legacy_org_plan_entitlement_member_invitation_allowed BEFORE INSERT OR UPDATE OF plan_key ON public.org_plan_entitlements FOR EACH ROW EXECUTE FUNCTION sync_legacy_org_plan_entitlement_member_invitation_allowed()",
+    schemaName: "public",
+    tableName: "org_plan_entitlements",
+    triggerName: "sync_legacy_org_plan_entitlement_member_invitation_allowed",
+  },
+  {
+    definition:
       "CREATE TRIGGER presentation_artifacts_delete_artifact_registry AFTER DELETE ON public.presentation_artifacts FOR EACH ROW EXECUTE FUNCTION delete_artifact_registry_entity('presentation')",
     schemaName: "public",
     tableName: "presentation_artifacts",
@@ -1793,13 +2356,6 @@ const EXPECTED_PERMANENT_TRIGGERS = [
     tableName: "video_artifacts",
     triggerName: "video_artifacts_delete_artifact_registry",
   },
-  {
-    definition:
-      "CREATE TRIGGER bridge_goal_only_zero_run_group_0810 BEFORE INSERT OR UPDATE OF run_group_id, goal_id ON public.zero_runs FOR EACH ROW EXECUTE FUNCTION bridge_goal_only_zero_run_group_0810()",
-    schemaName: "public",
-    tableName: "zero_runs",
-    triggerName: "bridge_goal_only_zero_run_group_0810",
-  },
 ] as const satisfies readonly PermanentTrigger[];
 
 const EXPECTED_PERMANENT_FUNCTIONS = [
@@ -1818,27 +2374,6 @@ const EXPECTED_PERMANENT_FUNCTIONS = [
     schemaName: "public",
   },
   {
-    bodyHash: "d222c803fed6a784bf53288dd866f2a2",
-    functionName: "bridge_goal_only_chat_event_run_group_0810",
-    identityArguments: "",
-    kind: "f",
-    schemaName: "public",
-  },
-  {
-    bodyHash: "14663ff71eec325962f2784692c96937",
-    functionName: "bridge_invalidated_goal_continuation_0829",
-    identityArguments: "",
-    kind: "f",
-    schemaName: "public",
-  },
-  {
-    bodyHash: "24620b451e6c4d3c61ca9e449f5faa19",
-    functionName: "bridge_goal_only_zero_run_group_0810",
-    identityArguments: "",
-    kind: "f",
-    schemaName: "public",
-  },
-  {
     bodyHash: "28abc81d6fe2975374d21c68ee6ac1a7",
     functionName: "canonicalize_hosted_site_scope_0753",
     identityArguments: "",
@@ -1848,6 +2383,13 @@ const EXPECTED_PERMANENT_FUNCTIONS = [
   {
     bodyHash: "7f12cb6026b4e6d6638aaa22e0a93514",
     functionName: "chat_threads_normalize_computer_access",
+    identityArguments: "",
+    kind: "f",
+    schemaName: "public",
+  },
+  {
+    bodyHash: "541497190da201b22f7dc7c3679c9c06",
+    functionName: "delete_legacy_custom_credentials_0911",
     identityArguments: "",
     kind: "f",
     schemaName: "public",
@@ -1904,6 +2446,13 @@ const EXPECTED_PERMANENT_FUNCTIONS = [
   {
     bodyHash: "daf97695043bdbafd864f7ff7a8f8d5d",
     functionName: "sync_legacy_org_plan_entitlement_can_buy_credits",
+    identityArguments: "",
+    kind: "f",
+    schemaName: "public",
+  },
+  {
+    bodyHash: "71b2b16ba3c75c485a4f01091ea02454",
+    functionName: "sync_legacy_org_plan_entitlement_member_invitation_allowed",
     identityArguments: "",
     kind: "f",
     schemaName: "public",
@@ -2013,6 +2562,211 @@ async function validatePermanentTriggerAndFunctionInventory(
 
     console.log("   ✅ Permanent trigger and function inventories match\n");
   } finally {
+    await client.end();
+  }
+}
+
+async function validateLegacyCustomCredentialDeleteBridge(
+  dbUrl: string,
+): Promise<void> {
+  console.log(
+    "=== Phase 2.5.2: Validate legacy Custom credential deletion bridge ===\n",
+  );
+  const client = new Client({ connectionString: dbUrl });
+  await client.connect();
+
+  const fixture = {
+    firstCustomConnectorId: "00000000-0000-4000-8000-000000262211",
+    secondCustomConnectorId: "00000000-0000-4000-8000-000000262212",
+    targetConnectionId: "00000000-0000-4000-8000-000000262213",
+    otherUserConnectionId: "00000000-0000-4000-8000-000000262214",
+    otherDefinitionConnectionId: "00000000-0000-4000-8000-000000262215",
+    builtinConnectionId: "00000000-0000-4000-8000-000000262216",
+    orgId: "legacy-custom-credential-delete-bridge-org",
+    targetUserId: "legacy-custom-credential-delete-bridge-target-user",
+    otherUserId: "legacy-custom-credential-delete-bridge-other-user",
+  } as const;
+
+  try {
+    await client.query("BEGIN");
+    await client.query(
+      `INSERT INTO "org_custom_connectors" (
+         "id", "org_id", "slug", "display_name", "prefix_templates",
+         "fields", "header_injections", "query_injections", "auth_mode",
+         "storage_version", "created_by"
+       )
+       VALUES
+         ($1, $3, '_delete-bridge-one', 'Delete bridge one',
+          '["https://delete-bridge-one.example.test/"]'::jsonb,
+          '[{"key":"secret","label":"Secret","kind":"secret","required":true}]'::jsonb,
+          '[{"name":"Authorization","valueTemplate":"Bearer {{secrets.secret}}"}]'::jsonb,
+          '[]'::jsonb, 'manual', 1, $4),
+         ($2, $3, '_delete-bridge-two', 'Delete bridge two',
+          '["https://delete-bridge-two.example.test/"]'::jsonb,
+          '[{"key":"secret","label":"Secret","kind":"secret","required":true}]'::jsonb,
+          '[{"name":"Authorization","valueTemplate":"Bearer {{secrets.secret}}"}]'::jsonb,
+          '[]'::jsonb, 'manual', 1, $4)`,
+      [
+        fixture.firstCustomConnectorId,
+        fixture.secondCustomConnectorId,
+        fixture.orgId,
+        fixture.targetUserId,
+      ],
+    );
+    await client.query(
+      `INSERT INTO "connectors" (
+         "id", "connector_slug", "custom_connector_id", "auth_method",
+         "storage_version", "user_id", "org_id"
+       )
+       VALUES
+         ($1, NULL, $5, 'manual', 1, $7, $9),
+         ($2, NULL, $5, 'manual', 1, $8, $9),
+         ($3, NULL, $6, 'manual', 1, $7, $9),
+         ($4, 'github', NULL, 'oauth', 1, $7, $9)`,
+      [
+        fixture.targetConnectionId,
+        fixture.otherUserConnectionId,
+        fixture.otherDefinitionConnectionId,
+        fixture.builtinConnectionId,
+        fixture.firstCustomConnectorId,
+        fixture.secondCustomConnectorId,
+        fixture.targetUserId,
+        fixture.otherUserId,
+        fixture.orgId,
+      ],
+    );
+    await client.query(
+      `INSERT INTO "org_custom_connector_values" (
+         "connector_id", "user_id", "org_id", "kind", "key",
+         "encrypted_value"
+       )
+       VALUES
+         ($1, $3, $5, 'secret', 'secret', 'encrypted-target-value'),
+         ($1, $4, $5, 'secret', 'secret', 'encrypted-other-user-value'),
+         ($2, $3, $5, 'secret', 'secret', 'encrypted-other-definition-value')`,
+      [
+        fixture.firstCustomConnectorId,
+        fixture.secondCustomConnectorId,
+        fixture.targetUserId,
+        fixture.otherUserId,
+        fixture.orgId,
+      ],
+    );
+    await client.query(
+      `INSERT INTO "org_custom_connector_secrets" (
+         "connector_id", "user_id", "org_id", "encrypted_value"
+       )
+       VALUES
+         ($1, $3, $5, 'encrypted-target-secret'),
+         ($1, $4, $5, 'encrypted-other-user-secret'),
+         ($2, $3, $5, 'encrypted-other-definition-secret')`,
+      [
+        fixture.firstCustomConnectorId,
+        fixture.secondCustomConnectorId,
+        fixture.targetUserId,
+        fixture.otherUserId,
+        fixture.orgId,
+      ],
+    );
+
+    await client.query(`DELETE FROM "connectors" WHERE "id" = $1`, [
+      fixture.targetConnectionId,
+    ]);
+    const afterTargetDelete = await client.query<{
+      legacySecrets: number;
+      legacyValues: number;
+      targetSecrets: number;
+      targetValues: number;
+    }>(`
+      SELECT
+        (
+          SELECT count(*)::int FROM "org_custom_connector_secrets"
+          WHERE "org_id" = '${fixture.orgId}'
+        )
+          AS "legacySecrets",
+        (
+          SELECT count(*)::int FROM "org_custom_connector_values"
+          WHERE "org_id" = '${fixture.orgId}'
+        )
+          AS "legacyValues",
+        (
+          SELECT count(*)::int FROM "org_custom_connector_secrets"
+          WHERE "connector_id" = '${fixture.firstCustomConnectorId}'
+            AND "org_id" = '${fixture.orgId}'
+            AND "user_id" = '${fixture.targetUserId}'
+        ) AS "targetSecrets",
+        (
+          SELECT count(*)::int FROM "org_custom_connector_values"
+          WHERE "connector_id" = '${fixture.firstCustomConnectorId}'
+            AND "org_id" = '${fixture.orgId}'
+            AND "user_id" = '${fixture.targetUserId}'
+        ) AS "targetValues"
+    `);
+    assert.deepEqual(afterTargetDelete.rows, [
+      {
+        legacySecrets: 2,
+        legacyValues: 2,
+        targetSecrets: 0,
+        targetValues: 0,
+      },
+    ]);
+
+    await client.query(`DELETE FROM "connectors" WHERE "id" = $1`, [
+      fixture.builtinConnectionId,
+    ]);
+    const afterBuiltinDelete = await client.query<{
+      legacySecrets: number;
+      legacyValues: number;
+    }>(`
+      SELECT
+        (
+          SELECT count(*)::int FROM "org_custom_connector_secrets"
+          WHERE "org_id" = '${fixture.orgId}'
+        )
+          AS "legacySecrets",
+        (
+          SELECT count(*)::int FROM "org_custom_connector_values"
+          WHERE "org_id" = '${fixture.orgId}'
+        )
+          AS "legacyValues"
+    `);
+    assert.deepEqual(afterBuiltinDelete.rows, [
+      { legacySecrets: 2, legacyValues: 2 },
+    ]);
+
+    await client.query(`DELETE FROM "org_custom_connectors" WHERE "id" = $1`, [
+      fixture.secondCustomConnectorId,
+    ]);
+    const afterDefinitionDelete = await client.query<{
+      customConnections: number;
+      legacySecrets: number;
+      legacyValues: number;
+    }>(`
+      SELECT
+        (
+          SELECT count(*)::int FROM "connectors"
+          WHERE "custom_connector_id" = '${fixture.secondCustomConnectorId}'
+        ) AS "customConnections",
+        (
+          SELECT count(*)::int FROM "org_custom_connector_secrets"
+          WHERE "org_id" = '${fixture.orgId}'
+        )
+          AS "legacySecrets",
+        (
+          SELECT count(*)::int FROM "org_custom_connector_values"
+          WHERE "org_id" = '${fixture.orgId}'
+        )
+          AS "legacyValues"
+    `);
+    assert.deepEqual(afterDefinitionDelete.rows, [
+      { customConnections: 0, legacySecrets: 1, legacyValues: 1 },
+    ]);
+
+    console.log("   ✅ Custom disconnect deletes only its legacy copies");
+    console.log("   ✅ Builtin disconnect leaves legacy Custom rows unchanged");
+    console.log("   ✅ Custom definition deletion still cascades cleanly\n");
+  } finally {
+    await client.query("ROLLBACK");
     await client.end();
   }
 }
@@ -2562,9 +3316,6 @@ async function validateCustomConnectorOauthModeConstraints(
       "org_id",
       "slug",
       "display_name",
-      "prefixes",
-      "header_name",
-      "header_template",
       "prefix_templates",
       "fields",
       "header_injections",
@@ -2577,9 +3328,6 @@ async function validateCustomConnectorOauthModeConstraints(
       $2,
       $3,
       $4,
-      '["https://api.example.test/"]'::jsonb,
-      'Authorization',
-      'Bearer {{secret}}',
       '["https://api.example.test/"]'::jsonb,
       CASE
         WHEN $5 = 'manual' THEN '[{"key":"secret","label":"Secret","kind":"secret","required":true}]'::jsonb
@@ -2718,6 +3466,131 @@ async function validateCustomConnectorOauthModeConstraints(
 
   console.log(
     "   ✅ Deferred constraints accept complete modes and reject mismatched OAuth configuration\n",
+  );
+}
+
+async function validateCustomConnectorSkillVersionPair(
+  dbUrl: string,
+): Promise<void> {
+  console.log(
+    "=== Phase 2.8: Validate custom connector skill version pair ===\n",
+  );
+  const fixture = {
+    connectorId: "73000000-0000-4000-8000-000000000001",
+    orgId: "migration-custom-connector-skill-org",
+    storageId: "73000000-0000-4000-8000-000000000002",
+    userId: "migration-custom-connector-skill-user",
+    versionId: "7".repeat(64),
+  } as const;
+  const client = new Client({ connectionString: dbUrl });
+  await client.connect();
+
+  try {
+    await client.query(
+      `
+        INSERT INTO "storages" (
+          "id", "user_id", "name", "org_id", "s3_prefix"
+        ) VALUES ($1, '__org__', '_migration_skill_storage', $2, $3)
+      `,
+      [
+        fixture.storageId,
+        fixture.orgId,
+        `${fixture.orgId}/volume/_migration_skill_storage`,
+      ],
+    );
+    await client.query(
+      `
+        INSERT INTO "storage_versions" (
+          "id", "storage_id", "s3_key", "archive_size", "created_by"
+        ) VALUES ($1, $2, $3, 1, $4)
+      `,
+      [
+        fixture.versionId,
+        fixture.storageId,
+        `${fixture.orgId}/volume/_migration_skill_storage/${fixture.versionId}`,
+        fixture.userId,
+      ],
+    );
+    await client.query(
+      `
+        INSERT INTO "org_custom_connectors" (
+          "id",
+          "org_id",
+          "slug",
+          "display_name",
+          "prefix_templates",
+          "fields",
+          "header_injections",
+          "query_injections",
+          "auth_mode",
+          "created_by"
+        ) VALUES (
+          $1,
+          $2,
+          '_migration_skill_pair',
+          'Migration Skill Pair',
+          '["https://api.example.test/"]'::jsonb,
+          '[{"key":"secret","label":"Secret","kind":"secret","required":true}]'::jsonb,
+          '[{"name":"Authorization","valueTemplate":"Bearer {{secrets.secret}}"}]'::jsonb,
+          '[]'::jsonb,
+          'manual',
+          $3
+        )
+      `,
+      [fixture.connectorId, fixture.orgId, fixture.userId],
+    );
+    await client.query(
+      `
+        UPDATE "org_custom_connectors"
+        SET
+          "skill_markdown" = 'Use the migration skill.',
+          "skill_storage_version_id" = $2
+        WHERE "id" = $1
+      `,
+      [fixture.connectorId, fixture.versionId],
+    );
+
+    await expectDatabaseError(client, {
+      code: "23514",
+      messageIncludes: "chk_org_custom_connectors_skill_version_pair",
+      query: `
+        UPDATE "org_custom_connectors"
+        SET "skill_markdown" = NULL
+        WHERE "id" = $1
+      `,
+      values: [fixture.connectorId],
+    });
+    await expectDatabaseError(client, {
+      code: "23514",
+      messageIncludes: "chk_org_custom_connectors_skill_version_pair",
+      query: `
+        UPDATE "org_custom_connectors"
+        SET "skill_storage_version_id" = NULL
+        WHERE "id" = $1
+      `,
+      values: [fixture.connectorId],
+    });
+
+    await client.query(
+      `
+        UPDATE "org_custom_connectors"
+        SET "skill_markdown" = NULL, "skill_storage_version_id" = NULL
+        WHERE "id" = $1
+      `,
+      [fixture.connectorId],
+    );
+    await client.query(`DELETE FROM "org_custom_connectors" WHERE "id" = $1`, [
+      fixture.connectorId,
+    ]);
+    await client.query(`DELETE FROM "storages" WHERE "id" = $1`, [
+      fixture.storageId,
+    ]);
+  } finally {
+    await client.end();
+  }
+
+  console.log(
+    "   ✅ Custom connector skill columns accept complete pairs and reject mixed state\n",
   );
 }
 
@@ -5123,7 +5996,6 @@ async function validateChatEventContractionFinalization(): Promise<void> {
           id: fixture.currentInsertId,
           chatThreadId: fixture.threadId,
           eventType: "output.message",
-          content: "Current ORM insert",
           payload: { content: "Current ORM insert" },
           seqId: 4,
         })
@@ -5131,7 +6003,7 @@ async function validateChatEventContractionFinalization(): Promise<void> {
       const currentInsertSql = currentInsert.toSQL();
       assert.doesNotMatch(
         currentInsertSql.sql,
-        /active_input_sequence|goal_event|attach_files|generation_template|recommended_followups/u,
+        /content|user_message|thinking|error|usage_payload|interrupts_run_id|run_group_id|active_input_sequence|goal_event|attach_files|generation_template|recommended_followups/u,
       );
       assert.match(currentInsertSql.sql, /"payload"/u);
       assert.deepEqual(await currentInsert, [{ id: fixture.currentInsertId }]);
@@ -5867,6 +6739,563 @@ async function validateCanonicalChatEventStorageBackfill(): Promise<void> {
   }
 }
 
+const CHAT_EVENT_PHYSICAL_CONTRACTION_PREVIOUS_MIGRATION =
+  "0909_canonical_chat_event_writes";
+const CHAT_EVENT_PHYSICAL_CONTRACTION_MIGRATION =
+  "0910_contract_legacy_chat_event_storage";
+
+interface CanonicalChatEventWriterProbe {
+  readonly batch: string;
+  readonly idConflict: string;
+  readonly insert: string;
+  readonly replacementConflict: string;
+  readonly runLifecycleConflict: string;
+}
+
+async function exerciseCanonicalChatEventWriter(
+  client: Client,
+  args: {
+    readonly ids: {
+      readonly batchA: string;
+      readonly batchB: string;
+      readonly insert: string;
+      readonly replacement: string;
+      readonly replacementConflict: string;
+      readonly replacementTarget: string;
+      readonly terminal: string;
+      readonly terminalConflict: string;
+      readonly terminalRun: string;
+    };
+    readonly seqId: number;
+    readonly threadId: string;
+  },
+): Promise<CanonicalChatEventWriterProbe> {
+  const database = drizzle(client);
+  const insert = database
+    .insert(chatEvents)
+    .values({
+      id: args.ids.insert,
+      chatThreadId: args.threadId,
+      eventType: "output.message",
+      payload: { content: "canonical insert" },
+      seqId: args.seqId,
+    })
+    .returning({ id: chatEvents.id });
+  const insertSql = insert.toSQL().sql;
+  assert.deepEqual(await insert, [{ id: args.ids.insert }]);
+
+  const idConflict = database
+    .insert(chatEvents)
+    .values({
+      id: args.ids.insert,
+      chatThreadId: args.threadId,
+      eventType: "output.message",
+      payload: { content: "id conflict" },
+      seqId: args.seqId + 1,
+    })
+    .onConflictDoNothing({ target: chatEvents.id })
+    .returning({ id: chatEvents.id });
+  const idConflictSql = idConflict.toSQL().sql;
+  assert.deepEqual(await idConflict, []);
+
+  await database.insert(chatEvents).values({
+    id: args.ids.terminal,
+    chatThreadId: args.threadId,
+    runId: args.ids.terminalRun,
+    eventType: "run.completed",
+    payload: { content: "completed" },
+    seqId: args.seqId + 2,
+  });
+  const runLifecycleConflict = database
+    .insert(chatEvents)
+    .values({
+      id: args.ids.terminalConflict,
+      chatThreadId: args.threadId,
+      runId: args.ids.terminalRun,
+      eventType: "run.failed",
+      payload: { content: "failed", error: "late failure" },
+      seqId: args.seqId + 3,
+    })
+    .onConflictDoNothing({
+      target: chatEvents.runId,
+      where: chatEventTerminalPredicate(chatEvents.eventType),
+    })
+    .returning({ id: chatEvents.id });
+  const runLifecycleConflictSql = runLifecycleConflict.toSQL().sql;
+  assert.deepEqual(await runLifecycleConflict, []);
+
+  const batch = database
+    .insert(chatEvents)
+    .values([
+      {
+        id: args.ids.batchA,
+        chatThreadId: args.threadId,
+        eventType: "browser.open",
+        seqId: args.seqId + 4,
+      },
+      {
+        id: args.ids.batchB,
+        chatThreadId: args.threadId,
+        eventType: "browser.close",
+        seqId: args.seqId + 4,
+      },
+    ])
+    .onConflictDoNothing()
+    .returning({ id: chatEvents.id });
+  const batchSql = batch.toSQL().sql;
+  assert.equal((await batch).length, 1);
+
+  const userMessage = {
+    version: 1 as const,
+    parts: [{ type: "text" as const, text: "replacement target" }],
+  };
+  await database.insert(chatEvents).values({
+    id: args.ids.replacementTarget,
+    chatThreadId: args.threadId,
+    eventType: "input.prompt",
+    payload: { userMessage },
+    contextType: "web",
+    seqId: args.seqId + 5,
+  });
+  await database.insert(chatEvents).values({
+    id: args.ids.replacement,
+    chatThreadId: args.threadId,
+    revokesEventId: args.ids.replacementTarget,
+    eventType: "input.rejected",
+    payload: { userMessage, error: "replacement rejected" },
+    contextType: "web",
+    seqId: args.seqId + 6,
+  });
+  const replacementConflict = database
+    .insert(chatEvents)
+    .values({
+      id: args.ids.replacementConflict,
+      chatThreadId: args.threadId,
+      revokesEventId: args.ids.replacementTarget,
+      eventType: "input.rejected",
+      payload: { userMessage, error: "duplicate replacement" },
+      contextType: "web",
+      seqId: args.seqId + 7,
+    })
+    .onConflictDoNothing()
+    .returning({ id: chatEvents.id });
+  const replacementConflictSql = replacementConflict.toSQL().sql;
+  assert.deepEqual(await replacementConflict, []);
+
+  const statements = {
+    batch: batchSql,
+    idConflict: idConflictSql,
+    insert: insertSql,
+    replacementConflict: replacementConflictSql,
+    runLifecycleConflict: runLifecycleConflictSql,
+  };
+  for (const statement of Object.values(statements)) {
+    assert.doesNotMatch(
+      statement,
+      /content|user_message|thinking|error|usage_payload|interrupts_run_id|run_group_id/u,
+    );
+  }
+  return statements;
+}
+
+async function validateChatEventPhysicalContraction(): Promise<void> {
+  console.log("=== Validate physical chat-event storage contraction ===\n");
+  const testDb = "migration_chat_event_physical_contraction_test";
+  const testDbUrl = createTestDbUrl(testDb);
+  const fixture = {
+    composeId: "00000000-0000-4000-8000-000000091001",
+    threadId: "00000000-0000-4000-8000-000000091002",
+    goalId: "00000000-0000-4000-8000-000000091003",
+    sessionId: "00000000-0000-4000-8000-000000091004",
+    zeroRunId: "00000000-0000-4000-8000-000000091005",
+    legacyEventId: "00000000-0000-4000-8000-000000091006",
+    interruptEventId: "00000000-0000-4000-8000-000000091007",
+    interruptRunId: "00000000-0000-4000-8000-000000091008",
+    goalOpenId: "00000000-0000-4000-8000-000000091009",
+    divergentEventId: "00000000-0000-4000-8000-000000091010",
+    validGoalCloseId: "00000000-0000-4000-8000-000000091011",
+    invalidGoalOpenId: "00000000-0000-4000-8000-000000091012",
+    before: {
+      batchA: "00000000-0000-4000-8000-000000091020",
+      batchB: "00000000-0000-4000-8000-000000091021",
+      insert: "00000000-0000-4000-8000-000000091022",
+      replacement: "00000000-0000-4000-8000-000000091023",
+      replacementConflict: "00000000-0000-4000-8000-000000091024",
+      replacementTarget: "00000000-0000-4000-8000-000000091025",
+      terminal: "00000000-0000-4000-8000-000000091026",
+      terminalConflict: "00000000-0000-4000-8000-000000091027",
+      terminalRun: "00000000-0000-4000-8000-000000091028",
+    },
+    after: {
+      batchA: "00000000-0000-4000-8000-000000091030",
+      batchB: "00000000-0000-4000-8000-000000091031",
+      insert: "00000000-0000-4000-8000-000000091032",
+      replacement: "00000000-0000-4000-8000-000000091033",
+      replacementConflict: "00000000-0000-4000-8000-000000091034",
+      replacementTarget: "00000000-0000-4000-8000-000000091035",
+      terminal: "00000000-0000-4000-8000-000000091036",
+      terminalConflict: "00000000-0000-4000-8000-000000091037",
+      terminalRun: "00000000-0000-4000-8000-000000091038",
+    },
+  } as const;
+  const userMessage = {
+    version: 1,
+    parts: [{ type: "text", text: "legacy payload" }],
+  };
+  const usage = {
+    version: 1,
+    totalCredits: 1,
+    settledAt: "2026-08-12T00:00:00.000Z",
+    breakdown: [],
+  };
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpToTag(
+      testDbUrl,
+      CHAT_EVENT_PHYSICAL_CONTRACTION_PREVIOUS_MIGRATION,
+    );
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+    try {
+      await client.query(
+        `
+          INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
+          VALUES ($1, 'physical-contract-user', 'physical-contract', 'physical-contract-org')
+        `,
+        [fixture.composeId],
+      );
+      await client.query(
+        `
+          INSERT INTO "zero_agents" ("id", "org_id", "owner", "name")
+          VALUES ($1, 'physical-contract-org', 'physical-contract-user', 'physical-contract')
+        `,
+        [fixture.composeId],
+      );
+      await client.query(
+        `
+          INSERT INTO "chat_threads" (
+            "id", "user_id", "agent_compose_id", "title", "last_chat_event_seq_id"
+          ) VALUES ($1, 'physical-contract-user', $2, 'physical contract', 100)
+        `,
+        [fixture.threadId, fixture.composeId],
+      );
+      await client.query(
+        `
+          INSERT INTO "thread_goals" (
+            "id", "org_id", "owner_user_id", "agent_id", "chat_thread_id",
+            "status", "objective", "objective_brief"
+          ) VALUES (
+            $1, 'physical-contract-org', 'physical-contract-user', $2, $3,
+            'active', 'Physical contraction goal', 'Physical contraction goal'
+          )
+        `,
+        [fixture.goalId, fixture.composeId, fixture.threadId],
+      );
+      await client.query(
+        `
+          INSERT INTO "agent_sessions" (
+            "id", "user_id", "org_id", "agent_compose_id"
+          ) VALUES (
+            $1, 'physical-contract-user', 'physical-contract-org', $2
+          )
+        `,
+        [fixture.sessionId, fixture.composeId],
+      );
+      await client.query(
+        `
+          INSERT INTO "agent_runs" (
+            "id", "user_id", "session_id", "status", "prompt", "org_id"
+          ) VALUES (
+            $1, 'physical-contract-user', $2, 'completed',
+            'physical contraction goal run', 'physical-contract-org'
+          )
+        `,
+        [fixture.zeroRunId, fixture.sessionId],
+      );
+      await client.query(
+        `
+          INSERT INTO "zero_runs" (
+            "id", "trigger_source", "chat_thread_id", "run_group_id", "goal_id"
+          ) VALUES ($1, 'goal', $2, $3, $3)
+        `,
+        [fixture.zeroRunId, fixture.threadId, fixture.goalId],
+      );
+
+      await client.query(
+        `
+          INSERT INTO "chat_events" (
+            "id", "chat_thread_id", "run_id", "usage_payload",
+            "interrupts_run_id", "run_group_id", "event_type", "payload",
+            "context_type", "context_id", "content", "user_message",
+            "thinking", "error", "seq_id"
+          ) VALUES (
+            $1, $2, NULL, $3::jsonb, NULL, $4, 'output.message', $5::jsonb,
+            'goal', $4, 'legacy content', $6::jsonb,
+            'legacy thinking', 'legacy error', 1
+          )
+        `,
+        [
+          fixture.legacyEventId,
+          fixture.threadId,
+          JSON.stringify(usage),
+          fixture.goalId,
+          JSON.stringify({
+            content: "legacy content",
+            userMessage,
+            thinking: "legacy thinking",
+            error: "legacy error",
+            usage,
+          }),
+          JSON.stringify(userMessage),
+        ],
+      );
+      await client.query(
+        `
+          INSERT INTO "chat_events" (
+            "id", "chat_thread_id", "run_id", "interrupts_run_id",
+            "event_type", "seq_id"
+          ) VALUES ($1, $2, $3, $3, 'control.interrupt', 2)
+        `,
+        [fixture.interruptEventId, fixture.threadId, fixture.interruptRunId],
+      );
+      await client.query(
+        `
+          INSERT INTO "chat_events" (
+            "id", "chat_thread_id", "event_type", "payload", "content", "seq_id"
+          ) VALUES (
+            $1, $2, 'goal.open', '{"content":"Canonical objective"}'::jsonb,
+            'Canonical objective', 3
+          )
+        `,
+        [fixture.goalOpenId, fixture.threadId],
+      );
+
+      const beforeWriterSql = await exerciseCanonicalChatEventWriter(client, {
+        ids: fixture.before,
+        seqId: 10,
+        threadId: fixture.threadId,
+      });
+
+      await client.query(
+        `
+          INSERT INTO "chat_events" (
+            "id", "chat_thread_id", "event_type", "payload", "content", "seq_id"
+          ) VALUES (
+            $1, $2, 'output.message', '{"content":"canonical"}'::jsonb,
+            'divergent', 30
+          )
+        `,
+        [fixture.divergentEventId, fixture.threadId],
+      );
+      await assert.rejects(
+        applyMigrationsUpToTag(
+          client,
+          CHAT_EVENT_PHYSICAL_CONTRACTION_MIGRATION,
+        ),
+        /legacy payload leaves lack canonical values/u,
+      );
+      await client.query(`DELETE FROM "chat_events" WHERE "id" = $1`, [
+        fixture.divergentEventId,
+      ]);
+
+      await applyMigrationsUpToTag(
+        client,
+        CHAT_EVENT_PHYSICAL_CONTRACTION_MIGRATION,
+      );
+
+      const retained = await client.query<{ row: Record<string, unknown> }>(
+        `
+          SELECT to_jsonb("event") AS "row"
+          FROM "chat_events" AS "event"
+          WHERE "id" = $1
+        `,
+        [fixture.legacyEventId],
+      );
+      const retainedRow = retained.rows[0]?.row;
+      assert.ok(retainedRow);
+      assert.deepEqual(Object.keys(retainedRow).sort(), [
+        "chat_thread_id",
+        "context_id",
+        "context_type",
+        "created_at",
+        "event_type",
+        "id",
+        "payload",
+        "revokes_event_id",
+        "run_event_id",
+        "run_event_sequence_number",
+        "run_id",
+        "seq_id",
+      ]);
+      assert.deepEqual(retainedRow.payload, {
+        content: "legacy content",
+        userMessage,
+        thinking: "legacy thinking",
+        error: "legacy error",
+        usage,
+      });
+      assert.equal(retainedRow.context_type, "goal");
+      assert.equal(retainedRow.context_id, fixture.goalId);
+
+      const catalog = await client.query<{
+        bridgeFunctionCount: number;
+        bridgeTriggerCount: number;
+        legacyColumnCount: number;
+        legacyIndexCount: number;
+        zeroRunGoalId: string | null;
+      }>(
+        `
+          SELECT
+            (
+              SELECT count(*)::integer
+              FROM "information_schema"."columns"
+              WHERE ("table_name", "column_name") IN (
+                ('chat_events', 'content'),
+                ('chat_events', 'user_message'),
+                ('chat_events', 'thinking'),
+                ('chat_events', 'error'),
+                ('chat_events', 'usage_payload'),
+                ('chat_events', 'interrupts_run_id'),
+                ('chat_events', 'run_group_id'),
+                ('zero_runs', 'run_group_id')
+              )
+            ) AS "legacyColumnCount",
+            (
+              SELECT count(*)::integer
+              FROM "pg_indexes"
+              WHERE "indexname" IN (
+                'chat_events_usage_run_id_idx',
+                'chat_events_interrupts_run_id_not_null_unique',
+                'chat_events_run_thinking_unique',
+                'idx_zero_runs_run_group'
+              )
+            ) AS "legacyIndexCount",
+            (
+              SELECT count(*)::integer
+              FROM "pg_trigger"
+              WHERE NOT "tgisinternal"
+                AND "tgname" IN (
+                  'bridge_goal_only_chat_event_run_group_0810',
+                  'bridge_goal_only_zero_run_group_0810',
+                  'bridge_invalidated_goal_continuation_0829'
+                )
+            ) AS "bridgeTriggerCount",
+            (
+              SELECT count(*)::integer
+              FROM "pg_proc"
+              WHERE "proname" IN (
+                'bridge_goal_only_chat_event_run_group_0810',
+                'bridge_goal_only_zero_run_group_0810',
+                'bridge_invalidated_goal_continuation_0829'
+              )
+            ) AS "bridgeFunctionCount",
+            (
+              SELECT "goal_id"::text
+              FROM "zero_runs"
+              WHERE "id" = $1
+            ) AS "zeroRunGoalId"
+        `,
+        [fixture.zeroRunId],
+      );
+      assert.deepEqual(catalog.rows, [
+        {
+          bridgeFunctionCount: 0,
+          bridgeTriggerCount: 0,
+          legacyColumnCount: 0,
+          legacyIndexCount: 0,
+          zeroRunGoalId: fixture.goalId,
+        },
+      ]);
+
+      const goalMarker = await client.query<{
+        columns: string[];
+        definition: string;
+        validated: boolean;
+      }>(`
+        SELECT
+          to_jsonb(ARRAY(
+            SELECT "attribute"."attname"
+            FROM unnest("constraint"."conkey") AS "key"("attnum")
+            INNER JOIN "pg_attribute" AS "attribute"
+              ON "attribute"."attrelid" = "constraint"."conrelid"
+              AND "attribute"."attnum" = "key"."attnum"
+            ORDER BY "attribute"."attname"
+          )) AS "columns",
+          pg_get_constraintdef("constraint"."oid", true) AS "definition",
+          "constraint"."convalidated" AS "validated"
+        FROM "pg_constraint" AS "constraint"
+        WHERE "constraint"."conrelid" = 'public.chat_events'::regclass
+          AND "constraint"."conname" = 'chat_events_goal_marker_payload_check'
+      `);
+      assert.deepEqual(goalMarker.rows[0]?.columns, [
+        "context_id",
+        "context_type",
+        "event_type",
+        "revokes_event_id",
+        "run_event_id",
+        "run_event_sequence_number",
+        "run_id",
+      ]);
+      assert.equal(goalMarker.rows[0]?.validated, true);
+      assert.doesNotMatch(
+        goalMarker.rows[0]?.definition ?? "",
+        /content|user_message|thinking|error|usage_payload|interrupts_run_id|run_group_id/u,
+      );
+
+      await client.query(
+        `
+          INSERT INTO "chat_events" (
+            "id", "chat_thread_id", "event_type", "seq_id"
+          ) VALUES ($1, $2, 'goal.close', 60)
+        `,
+        [fixture.validGoalCloseId, fixture.threadId],
+      );
+      await expectDatabaseError(client, {
+        code: "23514",
+        messageIncludes: "chat_events_goal_marker_payload_check",
+        query: `
+          INSERT INTO "chat_events" (
+            "id", "chat_thread_id", "run_id", "event_type", "payload", "seq_id"
+          ) VALUES (
+            $1, $2, $3, 'goal.open', '{"content":"Invalid objective"}'::jsonb, 61
+          )
+        `,
+        values: [
+          fixture.invalidGoalOpenId,
+          fixture.threadId,
+          fixture.interruptRunId,
+        ],
+      });
+
+      const afterWriterSql = await exerciseCanonicalChatEventWriter(client, {
+        ids: fixture.after,
+        seqId: 70,
+        threadId: fixture.threadId,
+      });
+      assert.deepEqual(afterWriterSql, beforeWriterSql);
+      await assertChatEventsAppendOnlyProtection(client, fixture.legacyEventId);
+
+      console.log(
+        "   ✅ legacy columns, indexes, and bridge objects are absent",
+      );
+      console.log(
+        "   ✅ canonical payload, interrupt, goal, and zero-run data survive",
+      );
+      console.log(
+        "   ✅ canonical insert and conflict SQL is unchanged across the drop",
+      );
+      console.log(
+        "   ✅ canonical goal-marker and append-only invariants remain\n",
+      );
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+}
+
 const CHAT_RUN_SERVICE_TIER_PREVIOUS_MIGRATION = "0889_thankful_crusher_hogan";
 const CHAT_RUN_SERVICE_TIER_MIGRATION =
   "0893_backfill_chat_run_service_tier_annotations";
@@ -6551,6 +7980,1523 @@ async function validateChatRunServiceTierAnnotationBackfill(): Promise<void> {
   }
 }
 
+const RETIRED_RUN_MODEL_STATE_PREVIOUS_MIGRATION = "0902_colorful_mandrill";
+const RETIRED_RUN_MODEL_STATE_MIGRATION = "0905_retire_legacy_run_model_state";
+
+async function validateRetiredRunModelStateMigration(): Promise<void> {
+  console.log("=== Validate retired run-model state migration ===\n");
+  const testDb = "migration_retired_run_model_state_test";
+  const testDbUrl = createTestDbUrl(testDb);
+  const providerIds = {
+    openRouter: "00000000-0000-4000-8000-000000089801",
+    openAi: "00000000-0000-4000-8000-000000089802",
+    deepSeek: "00000000-0000-4000-8000-000000089803",
+    zai: "00000000-0000-4000-8000-000000089804",
+  } as const;
+  const composeIds = {
+    unrestricted: "00000000-0000-4000-8000-000000089811",
+    restricted: "00000000-0000-4000-8000-000000089812",
+    zai: "00000000-0000-4000-8000-000000089813",
+  } as const;
+  const customSurfaceId = "00000000-0000-4000-8000-000000089821";
+
+  await createDatabase(testDb);
+  try {
+    await runMigrationsUpToTag(
+      testDbUrl,
+      RETIRED_RUN_MODEL_STATE_PREVIOUS_MIGRATION,
+    );
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+    try {
+      await client.query(
+        `
+          INSERT INTO "org_plan_entitlements" (
+            "org_id",
+            "plan_key",
+            "plan_rank",
+            "source",
+            "status",
+            "restricted_vm0_models"
+          ) VALUES
+            ('migration-model-unrestricted', 'pro', 2, 'fixture', 'active', false),
+            ('migration-model-restricted', 'limited', 0, 'fixture', 'suspended', true),
+            ('migration-model-custom', 'pro', 2, 'fixture', 'active', false),
+            ('migration-model-zai', 'pro', 2, 'fixture', 'active', false)
+        `,
+      );
+      await client.query(
+        `
+          INSERT INTO "model_providers" (
+            "id",
+            "type",
+            "is_default",
+            "selected_model",
+            "user_id",
+            "org_id"
+          ) VALUES
+            ($1, 'openrouter-api-key', true, 'anthropic/claude-opus-4.7', '__org__', 'migration-model-unrestricted'),
+            ($2, 'openai-api-key', true, 'openai/gpt-5.5', '__org__', 'migration-model-restricted'),
+            ($3, 'deepseek', false, 'deepseek-v4-flash', '__org__', 'migration-model-restricted'),
+            ($4, 'zai-api-key', true, 'glm-4.7', '__org__', 'migration-model-zai')
+        `,
+        Object.values(providerIds),
+      );
+      await client.query(
+        `
+          INSERT INTO "secrets" (
+            "id",
+            "name",
+            "encrypted_value",
+            "type",
+            "user_id",
+            "org_id"
+          ) VALUES (
+            '00000000-0000-4000-8000-000000089822',
+            'migration-model-custom',
+            'fixture',
+            'user',
+            '__org__',
+            'migration-model-custom'
+          );
+          INSERT INTO "model_provider_connections" (
+            "id",
+            "org_id",
+            "display_name",
+            "secret_id"
+          ) VALUES (
+            '00000000-0000-4000-8000-000000089823',
+            'migration-model-custom',
+            'Migration gateway',
+            '00000000-0000-4000-8000-000000089822'
+          );
+          INSERT INTO "model_provider_surfaces" (
+            "id",
+            "connection_id",
+            "protocol",
+            "api_base_url",
+            "auth_header_name",
+            "auth_header_template",
+            "model_mappings"
+          ) VALUES (
+            '${customSurfaceId}',
+            '00000000-0000-4000-8000-000000089823',
+            'openai-responses',
+            'https://example.test/v1',
+            'Authorization',
+            'Bearer {{secret}}',
+            '{"gpt-5.5":"vendor/old","gpt-5.6-sol":"vendor/new"}'::jsonb
+          )
+        `,
+      );
+      await client.query(
+        `
+          INSERT INTO "org_model_policies" (
+            "org_id",
+            "model",
+            "is_default",
+            "default_provider_type",
+            "credential_scope",
+            "model_provider_id",
+            "model_provider_surface_id"
+          ) VALUES
+            ('migration-model-unrestricted', 'claude-opus-4-7', true, 'openrouter-api-key', 'org', $1, NULL),
+            ('migration-model-unrestricted', 'claude-opus-4-8', false, 'vm0', 'org', NULL, NULL),
+            ('migration-model-restricted', 'gpt-5.5', true, 'openai-api-key', 'org', $2, NULL),
+            ('migration-model-restricted', 'deepseek-v4-flash', false, 'deepseek', 'org', $3, NULL),
+            ('migration-model-custom', 'gpt-5.5', true, 'vercel-ai-gateway-codex', 'org', NULL, $4),
+            ('migration-model-zai', 'glm-5.2', true, 'vm0', 'org', NULL, NULL)
+        `,
+        [
+          providerIds.openRouter,
+          providerIds.openAi,
+          providerIds.deepSeek,
+          customSurfaceId,
+        ],
+      );
+      await client.query(
+        `
+          INSERT INTO "org_members_metadata" (
+            "org_id",
+            "user_id",
+            "selected_model",
+            "service_tier"
+          ) VALUES
+            ('migration-model-unrestricted', 'migration-member-unrestricted', 'claude-opus-4-7', 'priority'),
+            ('migration-model-restricted', 'migration-member-restricted', 'gpt-5.5', 'priority')
+        `,
+      );
+      await client.query(
+        `
+          INSERT INTO "agent_composes" ("id", "user_id", "name", "org_id")
+          VALUES
+            ($1, 'migration-member-unrestricted', 'migration-unrestricted-agent', 'migration-model-unrestricted'),
+            ($2, 'migration-member-restricted', 'migration-restricted-agent', 'migration-model-restricted'),
+            ($3, 'migration-member-zai', 'migration-zai-agent', 'migration-model-zai')
+        `,
+        [composeIds.unrestricted, composeIds.restricted, composeIds.zai],
+      );
+      await client.query(
+        `
+          INSERT INTO "zero_agents" (
+            "id",
+            "org_id",
+            "owner",
+            "name",
+            "model_provider_id",
+            "selected_model"
+          ) VALUES
+            ($1, 'migration-model-unrestricted', 'migration-member-unrestricted', 'migration-unrestricted-agent', $4, 'claude-opus-4-7'),
+            ($2, 'migration-model-restricted', 'migration-member-restricted', 'migration-restricted-agent', $5, 'gpt-5.5'),
+            ($3, 'migration-model-zai', 'migration-member-zai', 'migration-zai-agent', $6, NULL)
+        `,
+        [
+          composeIds.unrestricted,
+          composeIds.restricted,
+          composeIds.zai,
+          providerIds.openRouter,
+          providerIds.openAi,
+          providerIds.zai,
+        ],
+      );
+      await client.query(
+        `
+          INSERT INTO "chat_threads" (
+            "id",
+            "user_id",
+            "agent_compose_id",
+            "selected_model",
+            "codex_service_tier"
+          ) VALUES (
+            $1,
+            'migration-member-restricted',
+            $2,
+            'gpt-5.5',
+            'priority'
+          )
+        `,
+        ["00000000-0000-4000-8000-000000089831", composeIds.restricted],
+      );
+
+      await applyMigrationsUpToTag(client, RETIRED_RUN_MODEL_STATE_MIGRATION);
+
+      const policies = await client.query<{
+        orgId: string;
+        model: string;
+        isDefault: boolean;
+        providerType: string;
+        providerId: string | null;
+        surfaceId: string | null;
+      }>(`
+        SELECT
+          "org_id" AS "orgId",
+          "model",
+          "is_default" AS "isDefault",
+          "default_provider_type" AS "providerType",
+          "model_provider_id" AS "providerId",
+          "model_provider_surface_id" AS "surfaceId"
+        FROM "org_model_policies"
+        ORDER BY "org_id", "model"
+      `);
+      assert.deepEqual(policies.rows, [
+        {
+          orgId: "migration-model-custom",
+          model: "gpt-5.6-sol",
+          isDefault: true,
+          providerType: "vercel-ai-gateway-codex",
+          providerId: null,
+          surfaceId: customSurfaceId,
+        },
+        {
+          orgId: "migration-model-restricted",
+          model: "deepseek-v4-flash",
+          isDefault: true,
+          providerType: "vm0",
+          providerId: null,
+          surfaceId: null,
+        },
+        {
+          orgId: "migration-model-unrestricted",
+          model: "claude-opus-4-8",
+          isDefault: true,
+          providerType: "vm0",
+          providerId: null,
+          surfaceId: null,
+        },
+        {
+          orgId: "migration-model-zai",
+          model: "deepseek-v4-flash",
+          isDefault: true,
+          providerType: "vm0",
+          providerId: null,
+          surfaceId: null,
+        },
+      ]);
+
+      const members = await client.query<{
+        orgId: string;
+        selectedModel: string;
+        serviceTier: string | null;
+      }>(`
+        SELECT
+          "org_id" AS "orgId",
+          "selected_model" AS "selectedModel",
+          "service_tier" AS "serviceTier"
+        FROM "org_members_metadata"
+        ORDER BY "org_id"
+      `);
+      assert.deepEqual(members.rows, [
+        {
+          orgId: "migration-model-restricted",
+          selectedModel: "deepseek-v4-flash",
+          serviceTier: null,
+        },
+        {
+          orgId: "migration-model-unrestricted",
+          selectedModel: "claude-opus-4-8",
+          serviceTier: null,
+        },
+      ]);
+
+      const providers = await client.query<{
+        type: string;
+        isDefault: boolean;
+        selectedModel: string | null;
+      }>(`
+        SELECT
+          "type",
+          "is_default" AS "isDefault",
+          "selected_model" AS "selectedModel"
+        FROM "model_providers"
+        ORDER BY "type"
+      `);
+      assert.deepEqual(providers.rows, [
+        {
+          type: "deepseek",
+          isDefault: false,
+          selectedModel: "deepseek-v4-flash",
+        },
+        { type: "openai-api-key", isDefault: false, selectedModel: null },
+        {
+          type: "openrouter-api-key",
+          isDefault: true,
+          selectedModel: "anthropic/claude-opus-4.8",
+        },
+        { type: "zai-api-key", isDefault: false, selectedModel: null },
+      ]);
+
+      const agents = await client.query<{
+        name: string;
+        selectedModel: string | null;
+        providerId: string | null;
+      }>(`
+        SELECT
+          "name",
+          "selected_model" AS "selectedModel",
+          "model_provider_id" AS "providerId"
+        FROM "zero_agents"
+        ORDER BY "name"
+      `);
+      assert.deepEqual(agents.rows, [
+        {
+          name: "migration-restricted-agent",
+          selectedModel: null,
+          providerId: null,
+        },
+        {
+          name: "migration-unrestricted-agent",
+          selectedModel: "claude-opus-4-8",
+          providerId: providerIds.openRouter,
+        },
+        {
+          name: "migration-zai-agent",
+          selectedModel: null,
+          providerId: null,
+        },
+      ]);
+
+      const thread = await client.query<{
+        selectedModel: string;
+        serviceTier: string;
+      }>(`
+        SELECT
+          "selected_model" AS "selectedModel",
+          "codex_service_tier" AS "serviceTier"
+        FROM "chat_threads"
+        WHERE "id" = '00000000-0000-4000-8000-000000089831'
+      `);
+      assert.deepEqual(thread.rows, [
+        { selectedModel: "gpt-5.5", serviceTier: "priority" },
+      ]);
+
+      console.log("   ✅ replacement policies merge and transfer defaults");
+      console.log("   ✅ restricted and incompatible routes fall back safely");
+      console.log(
+        "   ✅ current preferences and agents migrate without rewriting threads\n",
+      );
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+}
+
+const USAGE_PACK_REFUND_SCHEMA_MIGRATION = "0898_usage_pack_credit_refunds";
+const USAGE_PACK_INVITE_BACKFILL_MIGRATION =
+  "0899_backfill_member_invite_usage_pack_required";
+const USAGE_PACK_CHANGE_INDEX_MIGRATION =
+  "0900_replace_scheduled_usage_pack_change";
+
+async function validateUsagePackInviteLifecycleMigrations(): Promise<void> {
+  console.log("=== Validate usage-pack invite lifecycle migrations ===\n");
+  const testDb = "migration_usage_pack_invite_lifecycle_test";
+  const testDbUrl = createTestDbUrl(testDb);
+  await createDatabase(testDb);
+
+  try {
+    await runMigrationsUpToTag(testDbUrl, USAGE_PACK_REFUND_SCHEMA_MIGRATION);
+    const client = new Client({ connectionString: testDbUrl });
+    await client.connect();
+
+    try {
+      await client.query(`
+        INSERT INTO "org_plan_entitlements" (
+          "org_id",
+          "plan_key",
+          "plan_rank",
+          "source",
+          "stripe_subscription_id"
+        )
+        VALUES
+          ('org_usage_pack_active_pro', 'pro', 1, 'stripe', 'sub_active_pro'),
+          ('org_usage_pack_active_team', 'team', 2, 'stripe', 'sub_active_team'),
+          ('org_usage_pack_free', 'limited-free-1', 0, 'stripe', 'sub_free'),
+          ('org_usage_pack_canceled', 'pro', 1, 'stripe', 'sub_canceled'),
+          ('org_usage_pack_expired', 'team', 2, 'stripe', 'sub_expired'),
+          ('org_usage_pack_invalid', 'pro', 1, 'stripe', 'sub_invalid'),
+          ('org_usage_pack_mismatch', 'pro', 1, 'stripe', 'sub_entitlement')
+      `);
+      await client.query(`
+        INSERT INTO "usage_pack_subscriptions" (
+          "id",
+          "org_id",
+          "tier",
+          "stripe_plan_price_id",
+          "stripe_customer_id",
+          "stripe_subscription_id",
+          "subscription_status"
+        )
+        VALUES
+          (
+            '00000000-0000-4000-8000-000000090001',
+            'org_usage_pack_active_pro',
+            'pro',
+            'price_plan_pro',
+            'cus_active_pro',
+            'sub_active_pro',
+            'active'
+          ),
+          (
+            '00000000-0000-4000-8000-000000090002',
+            'org_usage_pack_active_team',
+            'team',
+            'price_plan_team',
+            'cus_active_team',
+            'sub_active_team',
+            'trialing'
+          ),
+          (
+            '00000000-0000-4000-8000-000000090003',
+            'org_usage_pack_free',
+            'pro',
+            'price_plan_pro',
+            'cus_free',
+            'sub_free',
+            'active'
+          ),
+          (
+            '00000000-0000-4000-8000-000000090004',
+            'org_usage_pack_canceled',
+            'pro',
+            'price_plan_pro',
+            'cus_canceled',
+            'sub_canceled',
+            'canceled'
+          ),
+          (
+            '00000000-0000-4000-8000-000000090005',
+            'org_usage_pack_expired',
+            'team',
+            'price_plan_team',
+            'cus_expired',
+            'sub_expired',
+            'incomplete_expired'
+          ),
+          (
+            '00000000-0000-4000-8000-000000090006',
+            'org_usage_pack_invalid',
+            'pro',
+            'price_plan_pro',
+            'cus_invalid',
+            'sub_invalid',
+            'invalid'
+          ),
+          (
+            '00000000-0000-4000-8000-000000090007',
+            'org_usage_pack_mismatch',
+            'pro',
+            'price_plan_pro',
+            'cus_mismatch',
+            'sub_usage_pack',
+            'active'
+          )
+      `);
+
+      await applyMigrationsUpToTag(
+        client,
+        USAGE_PACK_INVITE_BACKFILL_MIGRATION,
+      );
+      const entitlements = await client.query<{
+        memberInviteUsagePackRequired: boolean;
+        orgId: string;
+      }>(`
+        SELECT
+          "org_id" AS "orgId",
+          "member_invite_usage_pack_required" AS "memberInviteUsagePackRequired"
+        FROM "org_plan_entitlements"
+        WHERE "org_id" LIKE 'org_usage_pack_%'
+        ORDER BY "org_id"
+      `);
+      assert.deepEqual(entitlements.rows, [
+        {
+          memberInviteUsagePackRequired: true,
+          orgId: "org_usage_pack_active_pro",
+        },
+        {
+          memberInviteUsagePackRequired: true,
+          orgId: "org_usage_pack_active_team",
+        },
+        {
+          memberInviteUsagePackRequired: false,
+          orgId: "org_usage_pack_canceled",
+        },
+        {
+          memberInviteUsagePackRequired: false,
+          orgId: "org_usage_pack_expired",
+        },
+        {
+          memberInviteUsagePackRequired: false,
+          orgId: "org_usage_pack_free",
+        },
+        {
+          memberInviteUsagePackRequired: false,
+          orgId: "org_usage_pack_invalid",
+        },
+        {
+          memberInviteUsagePackRequired: false,
+          orgId: "org_usage_pack_mismatch",
+        },
+      ]);
+
+      await client.query(`
+        INSERT INTO "usage_pack_subscription_changes" (
+          "id",
+          "usage_pack_subscription_id",
+          "org_id",
+          "source_tier",
+          "target_tier",
+          "status",
+          "proration_timestamp",
+          "immediate_amount_cents",
+          "next_recurring_amount_cents",
+          "currency",
+          "preview_expires_at",
+          "effective_at"
+        )
+        VALUES
+          (
+            '00000000-0000-4000-8000-000000090011',
+            '00000000-0000-4000-8000-000000090001',
+            'org_usage_pack_active_pro',
+            'pro',
+            'pro',
+            'completed',
+            1,
+            0,
+            0,
+            'usd',
+            '2035-01-01',
+            '2035-02-01'
+          ),
+          (
+            '00000000-0000-4000-8000-000000090012',
+            '00000000-0000-4000-8000-000000090001',
+            'org_usage_pack_active_pro',
+            'pro',
+            'pro',
+            'completed',
+            2,
+            0,
+            0,
+            'usd',
+            '2035-01-01',
+            '2035-02-01'
+          )
+      `);
+      await applyMigrationsUpToTag(client, USAGE_PACK_CHANGE_INDEX_MIGRATION);
+
+      await client.query(`
+        INSERT INTO "usage_pack_allocation_changes" (
+          "id",
+          "usage_pack_subscription_id",
+          "subscription_change_id",
+          "org_id",
+          "user_id",
+          "kind",
+          "status",
+          "target_usage_pack_usd",
+          "target_stripe_price_id"
+        )
+        VALUES
+          (
+            '00000000-0000-4000-8000-000000090021',
+            '00000000-0000-4000-8000-000000090001',
+            '00000000-0000-4000-8000-000000090011',
+            'org_usage_pack_active_pro',
+            'user_grouped_preview',
+            'addition',
+            'previewed',
+            20,
+            'price_usage_pack_20'
+          ),
+          (
+            '00000000-0000-4000-8000-000000090022',
+            '00000000-0000-4000-8000-000000090001',
+            '00000000-0000-4000-8000-000000090012',
+            'org_usage_pack_active_pro',
+            'user_grouped_preview',
+            'addition',
+            'previewed',
+            50,
+            'price_usage_pack_50'
+          ),
+          (
+            '00000000-0000-4000-8000-000000090023',
+            '00000000-0000-4000-8000-000000090001',
+            NULL,
+            'org_usage_pack_active_pro',
+            'user_grouped_preview',
+            'addition',
+            'previewed',
+            100,
+            'price_usage_pack_100'
+          ),
+          (
+            '00000000-0000-4000-8000-000000090024',
+            '00000000-0000-4000-8000-000000090001',
+            '00000000-0000-4000-8000-000000090011',
+            'org_usage_pack_active_pro',
+            'user_scheduled',
+            'addition',
+            'scheduled',
+            20,
+            'price_usage_pack_20'
+          )
+      `);
+      await expectDatabaseError(client, {
+        code: "23505",
+        messageIncludes: "uq_usage_pack_changes_current_user",
+        query: `
+          INSERT INTO "usage_pack_allocation_changes" (
+            "usage_pack_subscription_id",
+            "subscription_change_id",
+            "org_id",
+            "user_id",
+            "kind",
+            "status",
+            "target_usage_pack_usd",
+            "target_stripe_price_id"
+          )
+          VALUES (
+            '00000000-0000-4000-8000-000000090001',
+            '00000000-0000-4000-8000-000000090012',
+            'org_usage_pack_active_pro',
+            'user_scheduled',
+            'addition',
+            'scheduled',
+            50,
+            'price_usage_pack_50'
+          )
+        `,
+      });
+
+      console.log(
+        "   ✅ Active Pro and Team usage-pack subscriptions require invite packages",
+      );
+      console.log(
+        "   ✅ Terminal, free, and mismatched subscriptions remain unchanged",
+      );
+      console.log(
+        "   ✅ Grouped previews coexist while scheduled replacements remain unique\n",
+      );
+    } finally {
+      await client.end();
+    }
+  } finally {
+    await dropDatabase(testDb);
+  }
+}
+
+const FINALIZE_INACTIVE_RUN_MODELS_PREVIOUS_MIGRATION =
+  "0905_retire_legacy_run_model_state";
+const FINALIZE_INACTIVE_RUN_MODELS_MIGRATION =
+  "0908_finalize_inactive_run_model_stage_two";
+
+async function validateInactiveRunModelFinalization(): Promise<void> {
+  console.log("=== Validate inactive run-model Stage 2 finalization ===\n");
+  const testDb = "migration_inactive_run_model_finalization_test";
+  const testDbUrl = createTestDbUrl(testDb);
+
+  await createDatabase(testDb);
+  const client = new Client({ connectionString: testDbUrl });
+  await client.connect();
+
+  try {
+    await applyMigrationsUpToTag(
+      client,
+      FINALIZE_INACTIVE_RUN_MODELS_PREVIOUS_MIGRATION,
+    );
+
+    await client.query(`
+      INSERT INTO "org_plan_entitlements" (
+        "org_id",
+        "plan_key",
+        "plan_rank",
+        "source",
+        "support_byok",
+        "restricted_vm0_models"
+      ) VALUES
+        (
+          'org-migration-0905-unrestricted',
+          'pro',
+          20,
+          'migration-test',
+          true,
+          false
+        ),
+        (
+          'org-migration-0905-restricted',
+          'free',
+          0,
+          'migration-test',
+          true,
+          true
+        );
+
+      INSERT INTO "secrets" (
+        "id",
+        "name",
+        "encrypted_value",
+        "type",
+        "user_id",
+        "org_id"
+      ) VALUES
+        (
+          '00000000-0000-4000-8000-000000090521',
+          'anthropic-retained',
+          'encrypted-anthropic',
+          'org',
+          '__org__',
+          'org-migration-0905-unrestricted'
+        ),
+        (
+          '00000000-0000-4000-8000-000000090522',
+          'moonshot-deleted',
+          'encrypted-moonshot',
+          'org',
+          '__org__',
+          'org-migration-0905-restricted'
+        ),
+        (
+          '00000000-0000-4000-8000-000000090523',
+          'unrelated-retained',
+          'encrypted-unrelated',
+          'org',
+          '__org__',
+          'org-migration-0905-restricted'
+        ),
+        (
+          '00000000-0000-4000-8000-000000090524',
+          'minimax-deleted',
+          'encrypted-minimax',
+          'org',
+          '__org__',
+          'org-migration-0905-unrestricted'
+        ),
+        (
+          '00000000-0000-4000-8000-000000090525',
+          'zai-deleted',
+          'encrypted-zai',
+          'org',
+          'user-migration-0905-zai',
+          'org-migration-0905-unrestricted'
+        );
+
+      INSERT INTO "model_providers" (
+        "id",
+        "type",
+        "secret_id",
+        "is_default",
+        "selected_model",
+        "user_id",
+        "org_id"
+      ) VALUES
+        (
+          '00000000-0000-4000-8000-000000090511',
+          'anthropic-api-key',
+          '00000000-0000-4000-8000-000000090521',
+          true,
+          'anthropic/claude-opus-4.8',
+          '__org__',
+          'org-migration-0905-unrestricted'
+        ),
+        (
+          '00000000-0000-4000-8000-000000090512',
+          'moonshot-api-key',
+          '00000000-0000-4000-8000-000000090522',
+          false,
+          NULL,
+          '__org__',
+          'org-migration-0905-restricted'
+        ),
+        (
+          '00000000-0000-4000-8000-000000090513',
+          'vm0',
+          NULL,
+          true,
+          'deepseek-v4-flash',
+          '__org__',
+          'org-migration-0905-restricted'
+        ),
+        (
+          '00000000-0000-4000-8000-000000090514',
+          'minimax-api-key',
+          '00000000-0000-4000-8000-000000090524',
+          true,
+          NULL,
+          'user-migration-0905-minimax',
+          'org-migration-0905-unrestricted'
+        ),
+        (
+          '00000000-0000-4000-8000-000000090515',
+          'vm0',
+          NULL,
+          false,
+          'MiniMax-M3',
+          'user-migration-0905-minimax',
+          'org-migration-0905-unrestricted'
+        ),
+        (
+          '00000000-0000-4000-8000-000000090516',
+          'zai-api-key',
+          '00000000-0000-4000-8000-000000090525',
+          true,
+          NULL,
+          'user-migration-0905-zai',
+          'org-migration-0905-unrestricted'
+        ),
+        (
+          '00000000-0000-4000-8000-000000090517',
+          'vm0',
+          NULL,
+          false,
+          'glm-5.2',
+          'user-migration-0905-zai',
+          'org-migration-0905-unrestricted'
+        ),
+        (
+          '00000000-0000-4000-8000-000000090518',
+          'minimax-api-key',
+          '00000000-0000-4000-8000-000000090524',
+          false,
+          NULL,
+          '__org__',
+          'org-migration-0905-unrestricted'
+        );
+
+      INSERT INTO "org_model_policies" (
+        "id",
+        "org_id",
+        "model",
+        "is_default",
+        "default_provider_type",
+        "credential_scope",
+        "model_provider_id"
+      ) VALUES
+        (
+          '00000000-0000-4000-8000-000000090531',
+          'org-migration-0905-unrestricted',
+          'claude-opus-4-8',
+          true,
+          'anthropic-api-key',
+          'org',
+          '00000000-0000-4000-8000-000000090511'
+        ),
+        (
+          '00000000-0000-4000-8000-000000090532',
+          'org-migration-0905-unrestricted',
+          'gpt-5.6-sol',
+          false,
+          'vm0',
+          'org',
+          NULL
+        ),
+        (
+          '00000000-0000-4000-8000-000000090533',
+          'org-migration-0905-restricted',
+          'deepseek-v4-flash',
+          true,
+          'vm0',
+          'org',
+          NULL
+        ),
+        (
+          '00000000-0000-4000-8000-000000090534',
+          'org-migration-0905-unrestricted',
+          'claude-sonnet-5',
+          false,
+          'vm0',
+          'org',
+          NULL
+        ),
+        (
+          '00000000-0000-4000-8000-000000090535',
+          'org-migration-0905-unrestricted',
+          'claude-fable-5',
+          false,
+          'minimax-api-key',
+          'org',
+          '00000000-0000-4000-8000-000000090518'
+        );
+
+      INSERT INTO "org_members_metadata" (
+        "org_id",
+        "user_id",
+        "selected_model",
+        "service_tier"
+      ) VALUES
+        (
+          'org-migration-0905-unrestricted',
+          'user-migration-0905-unrestricted',
+          'claude-opus-4-8',
+          NULL
+        ),
+        (
+          'org-migration-0905-restricted',
+          'user-migration-0905-restricted',
+          'deepseek-v4-flash',
+          NULL
+        ),
+        (
+          'org-migration-0905-unrestricted',
+          'user-migration-0905-active-model',
+          'claude-sonnet-5',
+          NULL
+        ),
+        (
+          'org-migration-0905-unrestricted',
+          'user-migration-0905-gpt-successor',
+          'gpt-5.6-sol',
+          'priority'
+        ),
+        (
+          'org-migration-0905-unrestricted',
+          'user-migration-0905-unset',
+          NULL,
+          NULL
+        );
+
+      INSERT INTO "agent_composes" (
+        "id",
+        "user_id",
+        "name",
+        "org_id"
+      ) VALUES
+        (
+          '00000000-0000-4000-8000-000000090501',
+          'user-migration-0905-unrestricted',
+          'migration-0905-unrestricted',
+          'org-migration-0905-unrestricted'
+        ),
+        (
+          '00000000-0000-4000-8000-000000090502',
+          'user-migration-0905-restricted',
+          'migration-0905-restricted',
+          'org-migration-0905-restricted'
+        ),
+        (
+          '00000000-0000-4000-8000-000000090503',
+          'user-migration-0905-minimax',
+          'migration-0905-minimax',
+          'org-migration-0905-unrestricted'
+        );
+
+      INSERT INTO "chat_threads" (
+        "id",
+        "user_id",
+        "agent_compose_id",
+        "model_provider_id",
+        "model_provider_type",
+        "model_provider_credential_scope",
+        "selected_model",
+        "codex_service_tier",
+        "updated_at"
+      ) VALUES
+        (
+          '00000000-0000-4000-8000-000000090541',
+          'user-migration-0905-unrestricted',
+          '00000000-0000-4000-8000-000000090501',
+          '00000000-0000-4000-8000-000000090511',
+          'anthropic-api-key',
+          'org',
+          'claude-opus-4-7',
+          'flex',
+          '2026-08-01 00:00:00'
+        ),
+        (
+          '00000000-0000-4000-8000-000000090542',
+          'user-migration-0905-restricted',
+          '00000000-0000-4000-8000-000000090502',
+          '00000000-0000-4000-8000-000000090512',
+          'moonshot-api-key',
+          'org',
+          'claude-opus-4-7',
+          'priority',
+          '2026-08-02 00:00:00'
+        ),
+        (
+          '00000000-0000-4000-8000-000000090543',
+          'user-migration-0905-minimax',
+          '00000000-0000-4000-8000-000000090503',
+          '00000000-0000-4000-8000-000000090514',
+          NULL,
+          'org',
+          NULL,
+          'flex',
+          '2026-08-03 00:00:00'
+        ),
+        (
+          '00000000-0000-4000-8000-000000090544',
+          'user-migration-0905-unrestricted',
+          '00000000-0000-4000-8000-000000090501',
+          NULL,
+          'openai-api-key',
+          'org',
+          'gpt-5.5',
+          'priority',
+          '2026-08-04 00:00:00'
+        ),
+        (
+          '00000000-0000-4000-8000-000000090545',
+          'user-migration-0905-unrestricted',
+          '00000000-0000-4000-8000-000000090501',
+          '00000000-0000-4000-8000-000000090511',
+          'anthropic-api-key',
+          'org',
+          'claude-sonnet-4-6',
+          NULL,
+          '2026-08-05 00:00:00'
+        );
+
+      INSERT INTO "zero_agents" (
+        "id",
+        "org_id",
+        "owner",
+        "name",
+        "model_provider_id",
+        "selected_model"
+      ) VALUES
+        (
+          '00000000-0000-4000-8000-000000090501',
+          'org-migration-0905-unrestricted',
+          'user-migration-0905-unrestricted',
+          'migration-0905-unrestricted',
+          '00000000-0000-4000-8000-000000090511',
+          'claude-opus-4-8'
+        ),
+        (
+          '00000000-0000-4000-8000-000000090502',
+          'org-migration-0905-restricted',
+          'user-migration-0905-restricted',
+          'migration-0905-restricted',
+          NULL,
+          'deepseek-v4-flash'
+        ),
+        (
+          '00000000-0000-4000-8000-000000090503',
+          'org-migration-0905-unrestricted',
+          'user-migration-0905-minimax',
+          'migration-0905-minimax',
+          '00000000-0000-4000-8000-000000090514',
+          NULL
+        );
+
+      INSERT INTO "agent_sessions" (
+        "id",
+        "user_id",
+        "org_id",
+        "agent_compose_id"
+      ) VALUES (
+        '00000000-0000-4000-8000-000000090551',
+        'user-migration-0905-unrestricted',
+        'org-migration-0905-unrestricted',
+        '00000000-0000-4000-8000-000000090501'
+      );
+
+      INSERT INTO "agent_runs" (
+        "id",
+        "user_id",
+        "session_id",
+        "status",
+        "prompt",
+        "org_id",
+        "completed_at"
+      ) VALUES (
+        '00000000-0000-4000-8000-000000090561',
+        'user-migration-0905-unrestricted',
+        '00000000-0000-4000-8000-000000090551',
+        'completed',
+        'Historical run remains immutable',
+        'org-migration-0905-unrestricted',
+        '2026-07-01 00:00:00'
+      );
+
+      INSERT INTO "zero_runs" (
+        "id",
+        "trigger_source",
+        "model_provider",
+        "model_provider_id",
+        "model_provider_credential_scope",
+        "selected_model"
+      ) VALUES (
+        '00000000-0000-4000-8000-000000090561',
+        'web',
+        'moonshot-api-key',
+        '00000000-0000-4000-8000-000000090512',
+        'org',
+        'kimi-k3'
+      );
+
+      INSERT INTO "chat_events" (
+        "id",
+        "chat_thread_id",
+        "event_type",
+        "content",
+        "seq_id"
+      ) VALUES (
+        '00000000-0000-4000-8000-000000090571',
+        '00000000-0000-4000-8000-000000090541',
+        'output.message',
+        'Historical claude-opus-4-7 display payload',
+        1
+      );
+
+      INSERT INTO "usage_pricing" (
+        "id",
+        "kind",
+        "provider",
+        "category",
+        "unit_price",
+        "unit_size"
+      ) VALUES
+        (
+          '00000000-0000-4000-8000-000000090581',
+          'model',
+          'claude-opus-4-7',
+          'tokens.input',
+          1,
+          1000000
+        ),
+        (
+          '00000000-0000-4000-8000-000000090582',
+          'model',
+          'MiniMax-M3',
+          'tokens.input',
+          1,
+          1000000
+        ),
+        (
+          '00000000-0000-4000-8000-000000090583',
+          'model',
+          'gpt-5.5',
+          'tokens.input',
+          1,
+          1000000
+        ),
+        (
+          '00000000-0000-4000-8000-000000090584',
+          'model',
+          'claude-sonnet-4-6',
+          'tokens.input',
+          1,
+          1000000
+        ),
+        (
+          '00000000-0000-4000-8000-000000090585',
+          'image-recognition',
+          'xiaomi/mimo-v2.5',
+          'tokens.input',
+          1,
+          1000000
+        ),
+        (
+          '00000000-0000-4000-8000-000000090586',
+          'model',
+          'glm-4.7',
+          'tokens.input',
+          1,
+          1000000
+        );
+    `);
+
+    await applyMigrationsUpToTag(
+      client,
+      FINALIZE_INACTIVE_RUN_MODELS_MIGRATION,
+    );
+
+    const assertMigratedState = async (): Promise<void> => {
+      const policies = await client.query<{
+        defaultProviderType: string;
+        isDefault: boolean;
+        model: string;
+        modelProviderId: string | null;
+        orgId: string;
+      }>(`
+        SELECT
+          "org_id" AS "orgId",
+          "model",
+          "is_default" AS "isDefault",
+          "default_provider_type" AS "defaultProviderType",
+          "model_provider_id"::text AS "modelProviderId"
+        FROM "org_model_policies"
+        ORDER BY "org_id", "model"
+      `);
+      assert.deepEqual(
+        policies.rows,
+        [
+          {
+            defaultProviderType: "vm0",
+            isDefault: true,
+            model: "deepseek-v4-flash",
+            modelProviderId: null,
+            orgId: "org-migration-0905-restricted",
+          },
+          {
+            defaultProviderType: "vm0",
+            isDefault: false,
+            model: "claude-fable-5",
+            modelProviderId: null,
+            orgId: "org-migration-0905-unrestricted",
+          },
+          {
+            defaultProviderType: "anthropic-api-key",
+            isDefault: true,
+            model: "claude-opus-4-8",
+            modelProviderId: "00000000-0000-4000-8000-000000090511",
+            orgId: "org-migration-0905-unrestricted",
+          },
+          {
+            defaultProviderType: "vm0",
+            isDefault: false,
+            model: "claude-sonnet-4-6",
+            modelProviderId: null,
+            orgId: "org-migration-0905-unrestricted",
+          },
+          {
+            defaultProviderType: "vm0",
+            isDefault: false,
+            model: "claude-sonnet-5",
+            modelProviderId: null,
+            orgId: "org-migration-0905-unrestricted",
+          },
+          {
+            defaultProviderType: "vm0",
+            isDefault: false,
+            model: "gpt-5.5",
+            modelProviderId: null,
+            orgId: "org-migration-0905-unrestricted",
+          },
+          {
+            defaultProviderType: "vm0",
+            isDefault: false,
+            model: "gpt-5.6-sol",
+            modelProviderId: null,
+            orgId: "org-migration-0905-unrestricted",
+          },
+        ].sort((left, right) => {
+          return (
+            left.orgId.localeCompare(right.orgId) ||
+            left.model.localeCompare(right.model)
+          );
+        }),
+      );
+
+      const members = await client.query<{
+        selectedModel: string | null;
+        serviceTier: string | null;
+        userId: string;
+      }>(`
+        SELECT
+          "user_id" AS "userId",
+          "selected_model" AS "selectedModel",
+          "service_tier" AS "serviceTier"
+        FROM "org_members_metadata"
+        ORDER BY "user_id"
+      `);
+      assert.deepEqual(members.rows, [
+        {
+          selectedModel: "claude-sonnet-5",
+          serviceTier: null,
+          userId: "user-migration-0905-active-model",
+        },
+        {
+          selectedModel: "gpt-5.6-sol",
+          serviceTier: "priority",
+          userId: "user-migration-0905-gpt-successor",
+        },
+        {
+          selectedModel: "deepseek-v4-flash",
+          serviceTier: null,
+          userId: "user-migration-0905-restricted",
+        },
+        {
+          selectedModel: "claude-opus-4-8",
+          serviceTier: null,
+          userId: "user-migration-0905-unrestricted",
+        },
+        {
+          selectedModel: null,
+          serviceTier: null,
+          userId: "user-migration-0905-unset",
+        },
+      ]);
+
+      const threads = await client.query<{
+        codexServiceTier: string | null;
+        modelProviderCredentialScope: string | null;
+        modelProviderId: string | null;
+        modelProviderType: string | null;
+        selectedModel: string;
+        updatedAt: string;
+      }>(`
+        SELECT
+          "selected_model" AS "selectedModel",
+          "model_provider_id"::text AS "modelProviderId",
+          "model_provider_type" AS "modelProviderType",
+          "model_provider_credential_scope" AS "modelProviderCredentialScope",
+          "codex_service_tier" AS "codexServiceTier",
+          to_char("updated_at", 'YYYY-MM-DD HH24:MI:SS') AS "updatedAt"
+        FROM "chat_threads"
+        ORDER BY "id"
+      `);
+      assert.deepEqual(threads.rows, [
+        {
+          codexServiceTier: null,
+          modelProviderCredentialScope: null,
+          modelProviderId: null,
+          modelProviderType: null,
+          selectedModel: "claude-opus-4-8",
+          updatedAt: "2026-08-01 00:00:00",
+        },
+        {
+          codexServiceTier: null,
+          modelProviderCredentialScope: null,
+          modelProviderId: null,
+          modelProviderType: null,
+          selectedModel: "deepseek-v4-flash",
+          updatedAt: "2026-08-02 00:00:00",
+        },
+        {
+          codexServiceTier: null,
+          modelProviderCredentialScope: null,
+          modelProviderId: null,
+          modelProviderType: null,
+          selectedModel: "deepseek-v4-flash",
+          updatedAt: "2026-08-03 00:00:00",
+        },
+        {
+          codexServiceTier: "priority",
+          modelProviderCredentialScope: "org",
+          modelProviderId: null,
+          modelProviderType: "openai-api-key",
+          selectedModel: "gpt-5.5",
+          updatedAt: "2026-08-04 00:00:00",
+        },
+        {
+          codexServiceTier: null,
+          modelProviderCredentialScope: "org",
+          modelProviderId: "00000000-0000-4000-8000-000000090511",
+          modelProviderType: "anthropic-api-key",
+          selectedModel: "claude-sonnet-4-6",
+          updatedAt: "2026-08-05 00:00:00",
+        },
+      ]);
+
+      const agents = await client.query<{
+        modelProviderId: string | null;
+        selectedModel: string;
+      }>(`
+        SELECT
+          "selected_model" AS "selectedModel",
+          "model_provider_id"::text AS "modelProviderId"
+        FROM "zero_agents"
+        ORDER BY "id"
+      `);
+      assert.deepEqual(agents.rows, [
+        {
+          modelProviderId: "00000000-0000-4000-8000-000000090511",
+          selectedModel: "claude-opus-4-8",
+        },
+        {
+          modelProviderId: null,
+          selectedModel: "deepseek-v4-flash",
+        },
+        {
+          modelProviderId: null,
+          selectedModel: "deepseek-v4-flash",
+        },
+      ]);
+
+      const providers = await client.query<{
+        id: string;
+        isDefault: boolean;
+        selectedModel: string;
+        type: string;
+      }>(`
+        SELECT
+          "id"::text AS "id",
+          "type",
+          "is_default" AS "isDefault",
+          "selected_model" AS "selectedModel"
+        FROM "model_providers"
+        ORDER BY "id"
+      `);
+      assert.deepEqual(providers.rows, [
+        {
+          id: "00000000-0000-4000-8000-000000090511",
+          isDefault: true,
+          selectedModel: "anthropic/claude-opus-4.8",
+          type: "anthropic-api-key",
+        },
+        {
+          id: "00000000-0000-4000-8000-000000090513",
+          isDefault: true,
+          selectedModel: "deepseek-v4-flash",
+          type: "vm0",
+        },
+        {
+          id: "00000000-0000-4000-8000-000000090515",
+          isDefault: true,
+          selectedModel: "deepseek-v4-flash",
+          type: "vm0",
+        },
+        {
+          id: "00000000-0000-4000-8000-000000090517",
+          isDefault: true,
+          selectedModel: "deepseek-v4-flash",
+          type: "vm0",
+        },
+      ]);
+
+      const secretNames = await client.query<{ name: string }>(`
+        SELECT "name"
+        FROM "secrets"
+        ORDER BY "name"
+      `);
+      assert.deepEqual(secretNames.rows, [
+        { name: "anthropic-retained" },
+        { name: "unrelated-retained" },
+      ]);
+
+      const historicalRun = await client.query<{
+        modelProviderId: string;
+        selectedModel: string;
+      }>(`
+        SELECT
+          "model_provider_id"::text AS "modelProviderId",
+          "selected_model" AS "selectedModel"
+        FROM "zero_runs"
+        WHERE "id" = '00000000-0000-4000-8000-000000090561'
+      `);
+      assert.deepEqual(historicalRun.rows, [
+        {
+          modelProviderId: "00000000-0000-4000-8000-000000090512",
+          selectedModel: "kimi-k3",
+        },
+      ]);
+
+      const historicalEvent = await client.query<{ content: string }>(`
+        SELECT "content"
+        FROM "chat_events"
+        WHERE "id" = '00000000-0000-4000-8000-000000090571'
+      `);
+      assert.deepEqual(historicalEvent.rows, [
+        { content: "Historical claude-opus-4-7 display payload" },
+      ]);
+
+      const pricing = await client.query<{
+        kind: string;
+        provider: string;
+      }>(`
+        SELECT "kind", "provider"
+        FROM "usage_pricing"
+        WHERE "id" IN (
+          '00000000-0000-4000-8000-000000090581',
+          '00000000-0000-4000-8000-000000090582',
+          '00000000-0000-4000-8000-000000090583',
+          '00000000-0000-4000-8000-000000090584',
+          '00000000-0000-4000-8000-000000090585',
+          '00000000-0000-4000-8000-000000090586'
+        )
+        ORDER BY "kind", "provider"
+      `);
+      assert.deepEqual(pricing.rows, [
+        { kind: "image-recognition", provider: "xiaomi/mimo-v2.5" },
+        { kind: "model", provider: "claude-sonnet-4-6" },
+        { kind: "model", provider: "gpt-5.5" },
+      ]);
+    };
+
+    await assertMigratedState();
+
+    const migrationSql = await fs.readFile(
+      path.join(
+        MIGRATIONS_DIR,
+        `${FINALIZE_INACTIVE_RUN_MODELS_MIGRATION}.sql`,
+      ),
+      "utf8",
+    );
+    await client.query(migrationSql);
+    await assertMigratedState();
+
+    console.log("   ✅ reopened models regain non-default workspace policies");
+    console.log(
+      "   ✅ aggressive thread pins and direct agent routes converge eagerly",
+    );
+    console.log(
+      "   ✅ incompatible direct providers transfer defaults and are removed",
+    );
+    console.log(
+      "   ✅ reopened models, historical rows, and task pricing stay intact",
+    );
+    console.log("   ✅ rerunning the data migration is idempotent\n");
+  } finally {
+    await client.end();
+    await dropDatabase(testDb);
+  }
+}
+
 async function main(): Promise<void> {
   console.log("🧪 Testing Migration Consistency (Schema Comparison)\n");
 
@@ -6573,12 +9519,18 @@ async function main(): Promise<void> {
     await validateTeamsMessageFileScopeBackfill();
     await validateInvalidatedGoalContinuationCleanup();
     await validateMcpCustomConnectorReaderPreparation();
+    await validateCustomConnectorDefinitionContraction();
     await validateCustomCredentialStorageGenerationBackfill();
     await validateChatEventContractCutover();
     await validateChatEventContractionPreparation();
     await validateChatEventContractionFinalization();
     await validateCanonicalChatEventStorageBackfill();
+    await validateChatEventPhysicalContraction();
     await validateChatRunServiceTierAnnotationBackfill();
+    await validateUsagePackInviteLifecycleMigrations();
+    await validateRetiredRunModelStateMigration();
+    await validateConnectionScopedVariableUniqueness();
+    await validateInactiveRunModelFinalization();
 
     // Step 1.5: Validate latest snapshot accuracy (NEW)
     await validateLatestSnapshotAccuracy();
@@ -6597,12 +9549,14 @@ async function main(): Promise<void> {
     console.log("   ✅ Consecutive database resets completed successfully\n");
 
     await validatePermanentTriggerAndFunctionInventory(dbUrl1);
+    await validateLegacyCustomCredentialDeleteBridge(dbUrl1);
     await validatePermanentArtifactTriggerBehavior(dbUrl1);
     await validateExpandedBrowserSchema(dbUrl1);
     await validateChatEventSourcesAreAppendOnly(dbUrl1);
     await validateChatEventContextPointerConstraints(dbUrl1);
     await validateConnectorCatalogFinalConstraints(dbUrl1);
     await validateCustomConnectorOauthModeConstraints(dbUrl1);
+    await validateCustomConnectorSkillVersionPair(dbUrl1);
 
     // Step 2: Backup and regenerate migrations
     console.log("=== Phase 3: Test regenerated migrations ===\n");
@@ -6640,11 +9594,17 @@ async function main(): Promise<void> {
       console.log(
         "   ✅ Custom connector OAuth mode constraints reject mismatched configuration",
       );
+      console.log(
+        "   ✅ Custom connector skill columns reject mixed version state",
+      );
       console.log("   ✅ Legacy Teams message file scope is backfilled");
       console.log(
         "   ✅ Zero-run Codex tier readers survive the pre-expansion schema",
       );
       console.log("   ✅ Permanent trigger and function inventories match");
+      console.log(
+        "   ✅ Legacy Custom credential copies follow shared connection deletion",
+      );
       console.log(
         "   ✅ Permanent artifact triggers preserve cascade, queue, and scope behavior",
       );

@@ -664,7 +664,7 @@ export function buildFeishuSystemPrompt(args: {
   const typeLabel = isDirectMessage ? "Direct message" : "Group mention";
   const groupIdLine = isDirectMessage
     ? ""
-    : `Group ID: ${args.chatId} (same as Chat ID; use it directly as the \`--chat\` value for \`zero feishu message send\`)`;
+    : `Group ID: ${args.chatId} (same as Chat ID; use it directly as the \`--chat\` value for \`okou feishu message send\`)`;
   return [
     "# Current Integration",
     "You are currently running inside: Feishu",
@@ -1040,7 +1040,7 @@ const handleModelCommand$ = command(
       );
       return;
     }
-    const updateResult = await set(
+    await set(
       updateUserModelPreference$,
       {
         orgId: args.installation.orgId,
@@ -1050,19 +1050,6 @@ const handleModelCommand$ = command(
       signal,
     );
     signal.throwIfAborted();
-    if ("status" in updateResult) {
-      await replyNotice(
-        {
-          db: args.db,
-          message: args.message,
-          title: "Model unavailable",
-          text: updateResult.body.error.message,
-          kind: "error",
-        },
-        signal,
-      );
-      return;
-    }
     await replyNotice(
       {
         db: args.db,

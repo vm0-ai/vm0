@@ -19,7 +19,7 @@ use super::factory_lifecycle::SharedFactory;
 use super::heartbeat::WorkspaceCacheStateSnapshot;
 use super::idle_lifecycle::SharedIdlePool;
 use super::job_lifecycle::{
-    ActiveBudgetLease, CompletionPayload, CompletionReady, RunCleanupDisposition, RunCleanupState,
+    ActiveBudgetLease, CompletionPayload, FinalizationReady, RunCleanupDisposition, RunCleanupState,
 };
 use super::job_terminal_log::log_terminal_job_outcome;
 use super::orphan_reap::OrphanedActiveRuns;
@@ -38,7 +38,7 @@ use crate::idle_pool::{ParkingGate, ReusableIdleSandbox};
 use crate::ids::RunId;
 use crate::network_log_drain::NetworkLogDrainCoordinator;
 use crate::network_logs;
-use crate::provider::{ClaimedJob, CompletionAuth, JobProvider};
+use crate::provider::{ClaimedJob, CompletionReportTiming, JobProvider};
 use crate::resource_budget::{BudgetLease, ResourceBudget};
 use crate::run_cancellation::{
     RunCancellationHandle, RunCancellationRegistration, RunCancellationSignals,
@@ -224,6 +224,7 @@ impl ExecutorInvocation {
                 ExecutorPhaseOutcome {
                     outcome: executor::ExecuteOutcome {
                         failure: Some(failure),
+                        active_input_delivery_ids: Vec::new(),
                         sandbox_reuse_disposition: executor::SandboxReuseDisposition::default(),
                         sandbox: None,
                         source_ip: String::new(),
@@ -246,7 +247,6 @@ struct FinalizationPhase {
     run_id: RunId,
     sandbox_id: SandboxId,
     runner_id: String,
-    completion_auth: CompletionAuth,
     active_lease: BudgetLease,
     reuse_result: SandboxReuseResult,
     workspace_disk_mb: u32,
@@ -274,7 +274,7 @@ struct FinalizationPhase {
 }
 
 struct FinalizedJob {
-    completion_ready: CompletionReady,
+    finalization_ready: FinalizationReady,
     telemetry: JobTelemetry,
     immediate_successor_receipt: Option<ImmediateSuccessorReceiptTelemetry>,
 }
@@ -299,7 +299,6 @@ impl FinalizationPhase {
             run_id,
             sandbox_id,
             runner_id,
-            completion_auth,
             active_lease,
             reuse_result,
             workspace_disk_mb,
@@ -328,17 +327,18 @@ impl FinalizationPhase {
         let ExecutorPhaseOutcome {
             outcome,
             exit_code,
-            err,
+            err: _,
             mut telemetry,
         } = executor_result;
         let executor::ExecuteOutcome {
             failure: _,
+            active_input_delivery_ids: _,
             sandbox_reuse_disposition,
             sandbox,
             source_ip,
             network_log_session,
             workspace_image,
-            workspace_reuse_result,
+            workspace_reuse_result: _,
             discovered_cli_agent_session_id,
             restored_session_identity,
         } = outcome;
@@ -349,15 +349,6 @@ impl FinalizationPhase {
             should_track_immediate_successor_intents(reuse_key.as_deref());
         let cleanup_state_after_finalize = cleanup_state.clone();
 
-        let completion_payload = CompletionPayload::new(
-            run_id,
-            exit_code,
-            err,
-            sandbox_id,
-            reuse_result,
-            completion_auth,
-        )
-        .with_workspace_reuse_result(workspace_reuse_result);
         // Cancellation can arrive after terminal logging or while
         // `sandbox.park()` is in flight. Pass the live handle so finalization
         // can synchronize the final idle-pool ownership transfer.
@@ -368,10 +359,9 @@ impl FinalizationPhase {
             true,
             None,
         );
-        let completion_ready = finalize_sandbox_for_completion_with_telemetry(
+        let finalization_ready = finalize_sandbox_for_completion_with_telemetry(
             sandbox,
             ActiveBudgetLease::new(active_lease),
-            completion_payload,
             &mut telemetry,
             FinalizeContext {
                 run_id,
@@ -415,7 +405,7 @@ impl FinalizationPhase {
         }
         let finalization_duration = finalization_started.elapsed();
         let disposition = cleanup_state_after_finalize.disposition();
-        let reuse_state_changed = completion_ready.reuse_state_changed();
+        let reuse_state_changed = finalization_ready.reuse_state_changed();
         if had_sandbox {
             telemetry.record(
                 sandbox_reuse_disposition.telemetry_action(),
@@ -454,7 +444,7 @@ impl FinalizationPhase {
         );
 
         FinalizedJob {
-            completion_ready,
+            finalization_ready,
             telemetry,
             immediate_successor_receipt: track_immediate_successor_intents.then_some(
                 ImmediateSuccessorReceiptTelemetry {
@@ -482,38 +472,32 @@ fn record_session_history_identity_park_telemetry(
     telemetry.record(action_type, Duration::ZERO, true, None);
 }
 
-struct CompletionPhase {
+struct CompletionSettlementPhase {
     run_id: RunId,
-    provider: Arc<dyn JobProvider>,
+    sandbox_id: SandboxId,
     status: Arc<StatusTracker>,
-    usage_flush_tx: mpsc::Sender<()>,
     active_run_guard: ActiveRunGuard,
     cleanup_state: RunCleanupState,
 }
 
-impl CompletionPhase {
-    async fn complete(self, completion_ready: CompletionReady, telemetry: &mut JobTelemetry) {
+impl CompletionSettlementPhase {
+    async fn settle(self, finalization_ready: FinalizationReady, telemetry: &mut JobTelemetry) {
         let Self {
             run_id,
-            provider,
+            sandbox_id,
             status,
-            usage_flush_tx,
             active_run_guard,
             cleanup_state,
         } = self;
 
-        // Structural guarantee: claim (in provider) is always paired with complete.
-        signal_usage_flush(run_id, &usage_flush_tx);
         let ownership = OwnershipTransitions::new(status.as_ref());
-        let provider_completion_duration = completion_ready
-            .complete_and_release(provider.as_ref(), &ownership, &cleanup_state)
+        finalization_ready
+            .settle(
+                RunSandbox::new(run_id, sandbox_id),
+                &ownership,
+                &cleanup_state,
+            )
             .await;
-        telemetry.record(
-            "runner_host_completion_fallback",
-            provider_completion_duration,
-            true,
-            None,
-        );
         if active_run_guard.release() {
             telemetry.record(
                 "runner_active_reuse_key_released",
@@ -590,11 +574,11 @@ impl DeferredUploadPhase {
 /// active, and a reuse key is available. Park failure, hard cancellation before
 /// idle-pool transfer, or pool rejection falls back to destruction.
 ///
-/// The completion state returned by finalization carries
+/// The ownership state returned by finalization carries
 /// [`BudgetOwnership`](super::job_lifecycle::BudgetOwnership). Non-accepted paths
-/// keep the active lease through provider completion and active-status removal,
-/// then release it. An accepted idle entry owns and retains the lease until reuse
-/// or destruction.
+/// keep the active lease until provider completion and active-status settlement
+/// have both finished, then release it. An accepted idle entry owns and retains
+/// the lease until reuse or destruction.
 pub(super) fn spawn_job(
     mut request: SpawnJobRequest,
     ctx: &SpawnContext,
@@ -723,7 +707,6 @@ pub(super) async fn run_job(
         run_id,
         sandbox_id,
         runner_id,
-        completion_auth,
         active_lease,
         reuse_result,
         workspace_disk_mb,
@@ -749,6 +732,13 @@ pub(super) async fn run_job(
         #[cfg(test)]
         test_observer,
     };
+    let completion_settlement = CompletionSettlementPhase {
+        run_id,
+        sandbox_id,
+        status,
+        active_run_guard,
+        cleanup_state: cleanup_state_for_body,
+    };
     let deferred_upload = DeferredUploadPhase {
         run_id,
         sandbox_token,
@@ -762,7 +752,7 @@ pub(super) async fn run_job(
         #[cfg(test)]
         maybe_panic_outer_job(outer_job_panic, OuterJobPanicPoint::ActiveOrUnknown, run_id);
 
-        let executor_result = executor.execute().await;
+        let mut executor_result = executor.execute().await;
         let cancelled_for_log = job_cancel.is_cancelled();
         log_terminal_job_outcome(
             run_id,
@@ -772,21 +762,40 @@ pub(super) async fn run_job(
             executor_result.outcome.failure.as_ref(),
         );
 
+        let completion_payload = CompletionPayload::new(
+            run_id,
+            executor_result.exit_code,
+            executor_result.err.take(),
+            sandbox_id,
+            reuse_result,
+            completion_auth,
+        )
+        .with_active_input_delivery_ids(std::mem::take(
+            &mut executor_result.outcome.active_input_delivery_ids,
+        ))
+        .with_workspace_reuse_result(executor_result.outcome.workspace_reuse_result);
+        // Structural guarantee: claim (in provider) is always paired with complete.
+        signal_usage_flush(run_id, &usage_flush_tx);
+        let (completion_report, finalized) = match provider.completion_report_timing() {
+            CompletionReportTiming::ConcurrentWithFinalization => tokio::join!(
+                completion_payload.report(provider.as_ref()),
+                finalization.finalize(executor_result),
+            ),
+            CompletionReportTiming::AfterFinalization => {
+                let finalized = finalization.finalize(executor_result).await;
+                let completion_report = completion_payload.report(provider.as_ref()).await;
+                (completion_report, finalized)
+            }
+        };
         let FinalizedJob {
-            completion_ready,
+            finalization_ready,
             mut telemetry,
             immediate_successor_receipt,
-        } = finalization.finalize(executor_result).await;
-        CompletionPhase {
-            run_id,
-            provider,
-            status,
-            usage_flush_tx,
-            active_run_guard,
-            cleanup_state: cleanup_state_for_body,
-        }
-        .complete(completion_ready, &mut telemetry)
-        .await;
+        } = finalized;
+        completion_report.record(&mut telemetry);
+        completion_settlement
+            .settle(finalization_ready, &mut telemetry)
+            .await;
         // The API acknowledges `/complete` before its detached terminal
         // callback publishes the advisory signal. Start the bounded settlement
         // window only after completion has been acknowledged, otherwise a
@@ -1013,7 +1022,6 @@ mod tests {
                 run_id,
                 sandbox_id,
                 runner_id: "runner-test".into(),
-                completion_auth: CompletionAuth::local(),
                 active_lease,
                 reuse_result: SandboxReuseResult::PoolMiss,
                 workspace_disk_mb: 0,
@@ -1060,6 +1068,7 @@ mod tests {
         ExecutorPhaseOutcome {
             outcome: executor::ExecuteOutcome {
                 failure: None,
+                active_input_delivery_ids: Vec::new(),
                 sandbox_reuse_disposition: executor::SandboxReuseDisposition::Eligible(
                     executor::SandboxReuseTerminal::Success,
                 ),
@@ -1081,6 +1090,7 @@ mod tests {
         ExecutorPhaseOutcome {
             outcome: executor::ExecuteOutcome {
                 failure: None,
+                active_input_delivery_ids: Vec::new(),
                 sandbox_reuse_disposition: executor::SandboxReuseDisposition::default(),
                 sandbox: None,
                 source_ip: String::new(),

@@ -334,6 +334,7 @@
       "slack": "Slack",
       "teams": "Teams",
       "telegram": "Telegram",
+      "templateImport": "템플릿 가져오기",
       "test": "테스트",
       "web": "웹",
       "webhook": "Webhook"
@@ -467,7 +468,6 @@
       "backToArtifacts": "아티팩트로 돌아가기",
       "close": "닫기",
       "closeArtifact": "아티팩트 닫기",
-      "closeDownloadMenu": "다운로드 메뉴 닫기",
       "closeNamed": "{{title}} 닫기",
       "closePreviewMenu": "미리보기 메뉴 닫기",
       "download": "다운로드",
@@ -711,7 +711,7 @@
       "lastSeen": "마지막 접속 {{date}}",
       "linkExpires": "링크는 {{date}}에 만료됩니다.",
       "macRequirement": "Apple 실리콘 Mac과 macOS 14 이상 필요합니다. Intel Mac은 지원되지 않습니다.",
-      "noHostsDescription": "Mac에서 Zero 컴퓨터 사용을 열고 온라인 상태가 되면 이 페이지를 새로고침하세요.",
+      "noHostsDescription": "Mac에서 {{desktopProductName}} 컴퓨터 사용을 열고 온라인 상태가 되면 이 페이지를 새로고침하세요.",
       "noHostsTitle": "온라인 컴퓨터 없음",
       "sources": {
         "chat": "이 채팅 스레드",
@@ -874,10 +874,6 @@
       "selectMonth": "월 선택",
       "to": "종료"
     },
-    "manage": {
-      "description": "Stripe에서 구독, 결제 수단 및 청구서 관리.",
-      "title": "청구 관리"
-    },
     "paymentMethods": {
       "description": "Stripe에서 청구에 사용되는 결제 수단을 관리합니다.",
       "title": "결제 수단"
@@ -917,6 +913,7 @@
         "description": "기존 워크스페이스용 레거시 무료 액세스.",
         "name": "무료"
       },
+      "legacy": "기존",
       "limitedFree": {
         "name": "제한된 무료"
       },
@@ -974,6 +971,22 @@
         "memberExclusive": "각 패키지는 한 구성원에게만 속하며 공유할 수 없습니다. 패키지를 모두 사용하면 종량제 크레딧으로 전환됩니다. 나중에 새 패키지로 업그레이드할 수 있습니다.",
         "memberPackages": "구성원 패키지",
         "memberUsage": "구성원 사용량",
+        "migration": {
+          "action": "플랜 전환",
+          "confirmDescription": "현재 플랜과 권한은 이번 결제 기간이 끝날 때까지 유지됩니다. 새 플랜이 시작되면 Stripe가 새로운 정기 결제 합계를 청구합니다.",
+          "convertPlan": "플랜 전환",
+          "description": "기존 {{plan}} 워크스페이스를 각 구성원의 개별 월간 사용량 패키지가 포함된 새 플랜으로 전환합니다.",
+          "error": "이 구독을 마이그레이션하지 못했습니다. 페이지를 새로고침한 후 다시 시도하세요.",
+          "invoice": "청구서 보기",
+          "processing": "Stripe에서 전환을 예약하고 있습니다.",
+          "ready": "각 구성원과 대기 중인 초대에 필수 월간 패키지를 하나씩 선택하세요.",
+          "review": "전환 검토",
+          "reviewDescription": "전환을 예약하기 전에 현재 기존 플랜과 새로운 정기 플랜을 비교하세요.",
+          "reviewTitle": "플랜 전환 검토",
+          "scheduled": "전환은 {{date}}로 예약되었습니다. 그때까지 현재 플랜과 권한이 유지됩니다.",
+          "switchesOn": "{{date}}에 {{plan}} 플랜으로 전환됩니다",
+          "title": "기존 플랜 전환"
+        },
         "minimumPackageBreakdown": "{{base}} 플랜 + {{package}} 필수 구성원 패키지",
         "monthlyTotal": "월간 합계",
         "orderSummary": "주문 요약",
@@ -1310,8 +1323,8 @@
       "cloudBrowser": "클라우드 브라우저",
       "connectHost": "{{hostName}} 연결",
       "connectMyComputer": "내 컴퓨터 연결",
-      "dialogDescription": "Zero가 LinkedIn이나 Reddit 같은 커넥터가 없는 브라우저와 앱에서도 작업할 수 있도록 허용하세요.",
-      "dialogTitle": "Zero가 컴퓨터를 사용하도록 허용",
+      "dialogDescription": "{{desktopProductName}}가 LinkedIn이나 Reddit 같은 커넥터가 없는 브라우저와 앱에서도 작업할 수 있도록 허용하세요.",
+      "dialogTitle": "{{desktopProductName}}가 컴퓨터를 사용하도록 허용",
       "disableCloudBrowser": "클라우드 브라우저 비활성화",
       "disconnectHost": "{{hostName}} 연결 해제",
       "downloadMacos": "macOS용 다운로드",
@@ -1624,6 +1637,7 @@
         "waiting": "대기 중",
         "watching": "관찰 중"
       },
+      "emojiCategories": "이모지 카테고리",
       "empty": "대화를 시작하려면 메시지를 보내세요",
       "frequentlyUsed": "자주 사용하는 항목",
       "icon": "채팅 스레드 아이콘",
@@ -1634,8 +1648,10 @@
       "openBrowser": "브라우저 열기",
       "openNamedAgent": "에이전트 {{name}} 열기",
       "openNamedChat": "채팅 {{title}} 열기",
+      "pickEmoji": "이모지 선택",
       "scrollToBottom": "맨 아래로 스크롤",
-      "searchEmoji": "이모지 검색"
+      "searchEmoji": "이모지 검색",
+      "steerMessageExplanation": "에이전트가 작업하는 동안 동작을 조정하기 위해 보낸 메시지입니다"
     },
     "threadSidebar": {
       "resize": "사이드바 크기 조절"
@@ -1939,6 +1955,7 @@
       "emptyAdmin": "아직 커스텀 커넥터가 없습니다. 모든 멤버가 사용할 API를 등록하려면 새로 만드세요.",
       "emptyMember": "조직에 등록된 커스텀 커넥터가 없습니다.",
       "mcpStreamableHttp": "MCP · Streamable HTTP",
+      "mcpType": "MCP",
       "moreOptions": "추가 옵션",
       "statusConnected": "연결됨",
       "toasts": {
@@ -4180,15 +4197,14 @@
         "useAccount": "사용"
       },
       "picker": {
-        "balancedUse": "균형 잡힌 사용",
         "builtInModel": "내장 모델",
         "byokHelp": "구성된 공급자 사용",
         "fast": "빠름",
+        "fastImpact": "모델 속도 1.5× · 크레딧 사용량 2.5×",
         "inheritDefault": "조직 기본값 상속",
         "loadError": "모델을 불러올 수 없습니다.",
         "loading": "모델 불러오는 중...",
         "models": "모델",
-        "moreCodexCredits": "Codex 크레딧을 더 많이 사용합니다.",
         "noConfiguredModels": "구성된 모델 없음",
         "priceTiers": {
           "balanced": "비용과 성능의 균형",
@@ -4196,14 +4212,12 @@
           "frontier": "최첨단 프런티어 모델",
           "premium": "가장 어려운 작업용 프리미엄 프런티어 모델"
         },
-        "prioritizeSpeed": "속도 우선",
         "pro": "프로",
         "providerLabels": {
           "azureFoundryPortal": "Azure 파운드리 포털",
           "claudeCodeOauth": "Claude Code (OAuth 토큰)",
           "deepseek": "Deepseek"
         },
-        "runSpeed": "실행 속도",
         "standard": "표준"
       },
       "policies": {
@@ -4404,6 +4418,7 @@
     "workspace": {
       "danger": {
         "delete": {
+          "billingDescription": "사용량 패키지와 추가 기능을 포함한 모든 활성 구독이 즉시 취소됩니다. 사용하지 않은 선불 구독 기간은 비례 계산하여 환불됩니다. 일회성 구매 및 기타 비구독 구매는 환불되지 않습니다.",
           "button": "워크스페이스 삭제",
           "confirmDescription": "이 워크스페이스와 모든 데이터를 영구 삭제합니다. 이 작업은 되돌릴 수 없습니다. 계속하려면 confirm을 입력하세요.",
           "description": "이 워크스페이스와 모든 데이터를 영구 삭제합니다. 이 작업은 되돌릴 수 없습니다.",
@@ -4448,7 +4463,10 @@
           "action": "워크스페이스에서 제거",
           "confirmDescription": "{{email}}가 이 워크스페이스에서 제거되어 모든 리소스 접근 권한을 잃게 됩니다.",
           "progress": "제거 중...",
-          "title": "멤버를 제거하시겠습니까?"
+          "title": "멤버를 제거하시겠습니까?",
+          "usagePackImpactDescription": "이 멤버의 사용량 패키지에 남아 있는 크레딧은 즉시 사용할 수 없게 됩니다. 패키지는 현재 청구 기간이 끝날 때 제거됩니다. 이로 인해 워크스페이스에 사용량 패키지가 하나도 남지 않으면 워크스페이스 플랜도 청구 기간 종료 시 취소됩니다.",
+          "usagePackImpactTitle": "사용량 패키지에 미치는 영향",
+          "usagePackRefundDescription": "환불: 구매한 크레딧 중 사용하지 않은 부분은 원래 결제 수단으로 환불됩니다. 사용한 크레딧과 보너스 크레딧은 환불되지 않습니다."
         },
         "revoke": {
           "action": "초대 취소",
@@ -4470,6 +4488,7 @@
           "progress": "전환 중...",
           "title": "멤버로 전환하시겠습니까?"
         },
+        "usagePack": "사용량 패키지",
         "user": "사용자",
         "you": "나"
       },
@@ -4524,6 +4543,7 @@
     "mermaid": {
       "diagramLabel": "다이어그램",
       "expand": "다이어그램 확대",
+      "invalidDiagram": "유효하지 않은 다이어그램",
       "viewSource": "다이어그램 소스"
     },
     "notFound": {
@@ -4539,6 +4559,7 @@
   },
   "usage": {
     "displayNames": {
+      "avatar": "아바타",
       "finance": "금융",
       "imageRecognize": "이미지 인식",
       "maps": "지도",

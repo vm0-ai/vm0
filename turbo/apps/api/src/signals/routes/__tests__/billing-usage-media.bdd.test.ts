@@ -28,6 +28,22 @@ import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 
 const context = testContext();
 const appUrl = "http://localhost:3002";
+const RESTRICTED_PORTAL_CONFIGURATION = {
+  id: "bpc_payment_methods",
+  active: true,
+  features: {
+    customer_update: { enabled: false },
+    invoice_history: { enabled: false },
+    payment_method_update: { enabled: true },
+    subscription_cancel: { enabled: false },
+    subscription_update: { enabled: false },
+  },
+  login_page: { enabled: false },
+  metadata: {
+    managed_by: "vm0",
+    purpose: "payment_method_management",
+  },
+} as const;
 const BYTEPLUS_ASR_FLASH_URL =
   "https://byteplus-proxy.vm0.ai/api/v3/auc/bigmodel/recognize/flash";
 type ApiUuid = `${string}-${string}-${string}-${string}-${string}`;
@@ -177,6 +193,9 @@ describe("BILL-01: billing status and Stripe-backed actions through public API",
       "Credit purchases are not available for this workspace",
     );
 
+    context.mocks.stripe.billingPortal.configurations.list.mockResolvedValue({
+      data: [RESTRICTED_PORTAL_CONFIGURATION],
+    });
     context.mocks.stripe.billingPortal.sessions.create.mockResolvedValue({
       url: "https://billing.stripe.test/session",
     });
@@ -186,6 +205,14 @@ describe("BILL-01: billing status and Stripe-backed actions through public API",
     expect(portal.body).toStrictEqual({
       url: "https://billing.stripe.test/session",
     });
+    expect(
+      context.mocks.stripe.billingPortal.sessions.create,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        configuration: RESTRICTED_PORTAL_CONFIGURATION.id,
+        return_url: `${appUrl}/settings/billing`,
+      }),
+    );
 
     context.mocks.stripe.invoices.list.mockResolvedValue({
       data: [
@@ -360,7 +387,10 @@ describe("BILL-01: billing status and Stripe-backed actions through public API",
             creditsAmount: "3000",
           },
           subtotal: null,
-          lines: { data: [] },
+          lines: {
+            has_more: false,
+            data: [],
+          },
           parent: null,
         },
       },
@@ -388,7 +418,10 @@ describe("BILL-01: billing status and Stripe-backed actions through public API",
             creditsAmount: "3000",
           },
           subtotal: null,
-          lines: { data: [] },
+          lines: {
+            has_more: false,
+            data: [],
+          },
           parent: null,
         },
       },
@@ -416,7 +449,10 @@ describe("BILL-01: billing status and Stripe-backed actions through public API",
             orgId: admin.orgId,
           },
           subtotal: 1200,
-          lines: { data: [] },
+          lines: {
+            has_more: false,
+            data: [],
+          },
           parent: null,
         },
       },
@@ -443,7 +479,10 @@ describe("BILL-01: billing status and Stripe-backed actions through public API",
             orgId: admin.orgId,
           },
           subtotal: 1200,
-          lines: { data: [] },
+          lines: {
+            has_more: false,
+            data: [],
+          },
           parent: null,
         },
       },

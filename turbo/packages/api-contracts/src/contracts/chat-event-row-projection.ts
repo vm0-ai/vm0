@@ -13,14 +13,12 @@ function requiredRowField<T>(
 }
 
 /**
- * Projects one canonical row into the v3 ChatEvent response shape. Raw rows
- * from either generation normalize into the canonical model first
- * (canonicalChatEventRow); this projection must stay field-for-field
- * equivalent to the API's own row projection, and the API test suite pins
- * that parity by comparing this function's output for /event-rows against the
- * /events response of the same thread. control.interrupt rows keep the v3
- * masking: their canonical runId is emitted as interruptsRunId, never as run
- * ownership.
+ * Projects one canonical row into the public ChatEvent response shape. This
+ * projection must stay field-for-field equivalent to the API's own row
+ * projection, and the API test suite pins that parity by comparing this
+ * function's output for /event-rows against the /events response of the same
+ * thread. A control.interrupt target is emitted as interruptsRunId, never as
+ * run ownership.
  */
 export function chatEventFromRow(row: ChatEventRowV4): ChatEvent {
   const payload = row.payload;

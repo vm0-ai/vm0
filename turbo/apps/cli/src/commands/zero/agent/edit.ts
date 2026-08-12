@@ -69,7 +69,7 @@ async function applyAgentUpdate(
 
 export const editCommand = new Command()
   .name("edit")
-  .description("Edit a zero agent")
+  .description("Edit an agent")
   .argument("<agent-id>", "Agent ID")
   .option("--display-name <name>", "New display name")
   .option("--description <text>", "New description")
@@ -119,17 +119,17 @@ Avatar:
   Note: --avatar and --avatar-* cannot be used together.
 
 Examples:
-  Update description:      zero agent edit <agent-id> --description "new role"
-  Update tone:             zero agent edit <agent-id> --sound friendly
-  Quick preset avatar:     zero agent edit <agent-id> --avatar preset:2
-  Custom avatar:           zero agent edit <agent-id> --avatar-skin dark --avatar-hair-color teal --avatar-intensity hyped
-  Update instructions:     zero agent edit <agent-id> --instructions-file ./instructions.md
-  Update yourself:         zero agent edit $ZERO_AGENT_ID --description "new role"
+  Update description:      okou agent edit <agent-id> --description "new role"
+  Update tone:             okou agent edit <agent-id> --sound friendly
+  Quick preset avatar:     okou agent edit <agent-id> --avatar preset:2
+  Custom avatar:           okou agent edit <agent-id> --avatar-skin dark --avatar-hair-color teal --avatar-intensity hyped
+  Update instructions:     okou agent edit <agent-id> --instructions-file ./instructions.md
+  Update yourself:         okou agent edit $ZERO_AGENT_ID --description "new role"
 
 Notes:
   - At least one option is required
   - Unspecified fields are preserved (not cleared)
-  - To attach workflows to agents, use: zero workflow attach --help`,
+  - To attach workflows to agents, use: okou workflow attach --help`,
   )
   .action(
     withErrorHandler(async (agentId: string, options: AgentEditOptions) => {

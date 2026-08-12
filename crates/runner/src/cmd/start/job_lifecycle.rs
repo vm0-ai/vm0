@@ -1,7 +1,9 @@
-use sandbox::SandboxId;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::time::{Duration, Instant};
+
+use chrono::{DateTime, Utc};
+use sandbox::SandboxId;
 
 use crate::ids::RunId;
 use crate::provider::{CompletionAuth, JobProvider};
@@ -88,16 +90,16 @@ impl ActiveBudgetLease {
     }
 }
 
-/// Budget ownership after sandbox finalization but before completion is reported.
+/// Budget ownership after sandbox finalization but before runner-local settlement.
 ///
-/// This distinguishes a lease that completion must release from one already
+/// This distinguishes a lease that settlement must release from one already
 /// transferred to an accepted idle-pool entry.
 #[must_use]
 pub(super) enum BudgetOwnership {
-    /// The active job retains the lease through provider completion and active-status
-    /// removal, after which completion releases it.
+    /// The active job retains the lease until provider completion and active-status
+    /// settlement have both finished, after which settlement releases it.
     Active(ActiveBudgetLease),
-    /// The idle pool accepted the sandbox and its lease, so completion performs no
+    /// The idle pool accepted the sandbox and its lease, so settlement performs no
     /// release. Reuse transfers the lease; idle destruction drops it.
     IdleOwned,
 }
@@ -127,7 +129,26 @@ pub(super) struct CompletionPayload {
     sandbox_id: SandboxId,
     reuse_result: SandboxReuseResult,
     workspace_reuse_result: Option<WorkspaceReuseResult>,
+    active_input_delivery_ids: Vec<String>,
     completion_auth: CompletionAuth,
+}
+
+#[must_use]
+pub(super) struct CompletionReportObservation {
+    duration: Duration,
+    completed_at: DateTime<Utc>,
+}
+
+impl CompletionReportObservation {
+    pub(super) fn record(self, telemetry: &mut crate::telemetry::JobTelemetry) {
+        telemetry.record_at(
+            "runner_host_completion_fallback",
+            self.duration,
+            true,
+            None,
+            self.completed_at,
+        );
+    }
 }
 
 impl CompletionPayload {
@@ -146,6 +167,7 @@ impl CompletionPayload {
             sandbox_id,
             reuse_result,
             workspace_reuse_result: None,
+            active_input_delivery_ids: Vec::new(),
             completion_auth,
         }
     }
@@ -157,20 +179,58 @@ impl CompletionPayload {
         self.workspace_reuse_result = workspace_reuse_result;
         self
     }
+
+    pub(super) fn with_active_input_delivery_ids(
+        mut self,
+        active_input_delivery_ids: Vec<String>,
+    ) -> Self {
+        self.active_input_delivery_ids = active_input_delivery_ids;
+        self
+    }
+
+    pub(super) async fn report(self, provider: &dyn JobProvider) -> CompletionReportObservation {
+        let Self {
+            run_id,
+            exit_code,
+            error,
+            sandbox_id,
+            reuse_result,
+            workspace_reuse_result,
+            active_input_delivery_ids,
+            completion_auth,
+        } = self;
+        let provider_completion_started = Instant::now();
+        provider
+            .complete(
+                CompleteRequest {
+                    run_id,
+                    exit_code,
+                    error,
+                    sandbox_id: Some(sandbox_id),
+                    sandbox_reuse_result: Some(reuse_result),
+                    workspace_reuse_result,
+                    active_input_delivery_ids,
+                },
+                completion_auth,
+            )
+            .await;
+        CompletionReportObservation {
+            duration: provider_completion_started.elapsed(),
+            completed_at: Utc::now(),
+        }
+    }
 }
 
-/// Sandbox cleanup/parking has finished; completion can now be reported.
+/// Sandbox finalization has resolved resource ownership.
 #[must_use]
-pub(super) struct CompletionReady {
-    payload: CompletionPayload,
+pub(super) struct FinalizationReady {
     budget: BudgetOwnership,
     reuse_state_changed: bool,
 }
 
-impl CompletionReady {
-    pub(super) fn new(payload: CompletionPayload, budget: BudgetOwnership) -> Self {
+impl FinalizationReady {
+    pub(super) fn new(budget: BudgetOwnership) -> Self {
         Self {
-            payload,
             budget,
             reuse_state_changed: false,
         }
@@ -185,51 +245,15 @@ impl CompletionReady {
         self.reuse_state_changed
     }
 
-    #[cfg(test)]
-    pub(super) fn result_for_test(&self) -> (i32, Option<&str>) {
-        (self.payload.exit_code, self.payload.error.as_deref())
-    }
-
-    pub(super) async fn complete_and_release(
+    pub(super) async fn settle(
         self,
-        provider: &dyn JobProvider,
+        completed_run: RunSandbox,
         ownership: &OwnershipTransitions<'_>,
         cleanup_state: &RunCleanupState,
-    ) -> Duration {
-        let Self {
-            payload, budget, ..
-        } = self;
-        let CompletionPayload {
-            run_id,
-            exit_code,
-            error,
-            sandbox_id,
-            reuse_result,
-            workspace_reuse_result,
-            completion_auth,
-        } = payload;
-
-        let provider_completion_started = Instant::now();
-        provider
-            .complete(
-                CompleteRequest {
-                    run_id,
-                    exit_code,
-                    error,
-                    sandbox_id: Some(sandbox_id),
-                    sandbox_reuse_result: Some(reuse_result),
-                    workspace_reuse_result,
-                },
-                completion_auth,
-            )
-            .await;
-        let provider_completion_duration = provider_completion_started.elapsed();
-        ownership
-            .active_completed(RunSandbox::new(run_id, sandbox_id))
-            .await;
+    ) {
+        ownership.active_completed(completed_run).await;
         cleanup_state.mark_status_removed();
-        budget.release();
-        provider_completion_duration
+        self.budget.release();
     }
 }
 
@@ -237,7 +261,7 @@ impl CompletionReady {
 mod tests {
     use super::*;
     use std::sync::Arc;
-    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+    use std::sync::atomic::{AtomicBool, Ordering};
 
     use async_trait::async_trait;
     use sandbox::SandboxId;
@@ -255,17 +279,6 @@ mod tests {
         let lease = ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap();
         (budget, lease)
     }
-    fn test_completion_payload(run_id: RunId, sandbox_id: SandboxId) -> CompletionPayload {
-        CompletionPayload::new(
-            run_id,
-            0,
-            None,
-            sandbox_id,
-            SandboxReuseResult::PoolMiss,
-            CompletionAuth::local(),
-        )
-    }
-
     async fn status_active_run_count(path: &std::path::Path) -> usize {
         let raw = tokio::fs::read_to_string(path).await.unwrap();
         let status: serde_json::Value = serde_json::from_str(&raw).unwrap();
@@ -288,39 +301,9 @@ mod tests {
         records.sort_unstable();
         records
     }
-    struct CompletionOrderProvider {
-        budget: Arc<ResourceBudget>,
-        budget_count_at_complete: Arc<AtomicUsize>,
-        active_runs_at_complete: Arc<AtomicUsize>,
-        status_path: std::path::PathBuf,
-    }
-
     struct CompletionAuthProvider {
         auth_matches: Arc<AtomicBool>,
-    }
-
-    #[async_trait]
-    impl JobProvider for CompletionOrderProvider {
-        async fn discover(&self) -> Option<JobCandidate> {
-            None
-        }
-
-        async fn claim(&self, _candidate: JobCandidate) -> Option<ClaimedJob> {
-            None
-        }
-
-        async fn complete(&self, _request: CompleteRequest, _completion_auth: CompletionAuth) {
-            self.budget_count_at_complete
-                .store(self.budget.allocated().2, Ordering::SeqCst);
-            self.active_runs_at_complete.store(
-                status_active_run_count(&self.status_path).await,
-                Ordering::SeqCst,
-            );
-        }
-
-        async fn heartbeat(&self, _state: &HeartbeatState) {}
-
-        async fn shutdown(&self) {}
+        active_input_delivery_ids: Arc<std::sync::Mutex<Vec<String>>>,
     }
 
     #[async_trait]
@@ -338,6 +321,7 @@ mod tests {
                 completion_auth.matches_sandbox_token_for_test(request.run_id, "completion-token"),
                 Ordering::SeqCst,
             );
+            *self.active_input_delivery_ids.lock().unwrap() = request.active_input_delivery_ids;
         }
 
         async fn heartbeat(&self, _state: &HeartbeatState) {}
@@ -346,42 +330,25 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn completion_ready_complete_and_release_orders_completion_status_and_budget() {
+    async fn finalization_ready_settles_active_status_and_budget() {
         let (budget, lease) = test_budget_lease();
-        let budget_count_at_complete = Arc::new(AtomicUsize::new(usize::MAX));
-        let active_runs_at_complete = Arc::new(AtomicUsize::new(usize::MAX));
         let dir = tempfile::tempdir().unwrap();
         let status_path = dir.path().join("status.json");
         let status = StatusTracker::new(status_path.clone(), 4, None, None);
         let ownership = OwnershipTransitions::new(&status);
-        let provider = CompletionOrderProvider {
-            budget: Arc::clone(&budget),
-            budget_count_at_complete: Arc::clone(&budget_count_at_complete),
-            active_runs_at_complete: Arc::clone(&active_runs_at_complete),
-            status_path: status_path.clone(),
-        };
         let cleanup_state = RunCleanupState::new();
         let run_id = RunId::new_v4();
         let sandbox_id = SandboxId::new_v4();
         status.add_run(run_id, sandbox_id).await;
 
-        let _ = CompletionReady::new(
-            test_completion_payload(run_id, sandbox_id),
-            BudgetOwnership::active(ActiveBudgetLease::new(lease)),
-        )
-        .complete_and_release(&provider, &ownership, &cleanup_state)
-        .await;
+        FinalizationReady::new(BudgetOwnership::active(ActiveBudgetLease::new(lease)))
+            .settle(
+                RunSandbox::new(run_id, sandbox_id),
+                &ownership,
+                &cleanup_state,
+            )
+            .await;
 
-        assert_eq!(
-            budget_count_at_complete.load(Ordering::SeqCst),
-            1,
-            "active budget must still be held while provider.complete runs",
-        );
-        assert_eq!(
-            active_runs_at_complete.load(Ordering::SeqCst),
-            1,
-            "active status removal must happen after provider.complete",
-        );
         assert_eq!(
             status_active_run_count(&status_path).await,
             0,
@@ -395,67 +362,58 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn completion_ready_forwards_completion_auth() {
-        let (_budget, lease) = test_budget_lease();
+    async fn completion_payload_forwards_completion_auth() {
         let auth_matches = Arc::new(AtomicBool::new(false));
-        let dir = tempfile::tempdir().unwrap();
-        let status = StatusTracker::new(dir.path().join("status.json"), 4, None, None);
-        let ownership = OwnershipTransitions::new(&status);
+        let active_input_delivery_ids = Arc::new(std::sync::Mutex::new(Vec::new()));
         let provider = CompletionAuthProvider {
             auth_matches: Arc::clone(&auth_matches),
+            active_input_delivery_ids: Arc::clone(&active_input_delivery_ids),
         };
-        let cleanup_state = RunCleanupState::new();
         let run_id = RunId::new_v4();
         let sandbox_id = SandboxId::new_v4();
-        status.add_run(run_id, sandbox_id).await;
 
-        let _ = CompletionReady::new(
-            CompletionPayload::new(
-                run_id,
-                0,
-                None,
-                sandbox_id,
-                SandboxReuseResult::PoolMiss,
-                CompletionAuth::sandbox_token(run_id, "completion-token".to_string()),
-            ),
-            BudgetOwnership::active(ActiveBudgetLease::new(lease)),
+        let _ = CompletionPayload::new(
+            run_id,
+            0,
+            None,
+            sandbox_id,
+            SandboxReuseResult::PoolMiss,
+            CompletionAuth::sandbox_token(run_id, "completion-token".to_string()),
         )
-        .complete_and_release(&provider, &ownership, &cleanup_state)
+        .with_active_input_delivery_ids(vec!["b1e2ad6d-930a-4d51-aa40-7952d54f978b".to_string()])
+        .report(&provider)
         .await;
 
         assert!(
             auth_matches.load(Ordering::SeqCst),
             "completion payload auth must be forwarded to provider.complete"
         );
+        assert_eq!(
+            *active_input_delivery_ids.lock().unwrap(),
+            vec!["b1e2ad6d-930a-4d51-aa40-7952d54f978b".to_string()]
+        );
     }
 
     #[tokio::test]
-    async fn completion_ready_idle_owned_does_not_release_idle_park_budget() {
+    async fn finalization_ready_idle_owned_does_not_release_idle_park_budget() {
         let (budget, lease) = test_budget_lease();
         let idle_park_lease = ActiveBudgetLease::new(lease).into_idle_park_lease();
-        let budget_count_at_complete = Arc::new(AtomicUsize::new(usize::MAX));
-        let active_runs_at_complete = Arc::new(AtomicUsize::new(usize::MAX));
         let dir = tempfile::tempdir().unwrap();
         let status_path = dir.path().join("status.json");
         let status = StatusTracker::new(status_path.clone(), 4, None, None);
         let ownership = OwnershipTransitions::new(&status);
-        let provider = CompletionOrderProvider {
-            budget: Arc::clone(&budget),
-            budget_count_at_complete,
-            active_runs_at_complete,
-            status_path,
-        };
         let cleanup_state = RunCleanupState::new();
         let run_id = RunId::new_v4();
         let sandbox_id = SandboxId::new_v4();
         status.add_run(run_id, sandbox_id).await;
 
-        let _ = CompletionReady::new(
-            test_completion_payload(run_id, sandbox_id),
-            BudgetOwnership::idle_owned(),
-        )
-        .complete_and_release(&provider, &ownership, &cleanup_state)
-        .await;
+        FinalizationReady::new(BudgetOwnership::idle_owned())
+            .settle(
+                RunSandbox::new(run_id, sandbox_id),
+                &ownership,
+                &cleanup_state,
+            )
+            .await;
 
         assert_eq!(
             budget.allocated().2,
@@ -471,20 +429,12 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn completion_ready_does_not_remove_reinserted_active_run() {
+    async fn finalization_ready_does_not_remove_reinserted_active_run() {
         let (budget, lease) = test_budget_lease();
-        let budget_count_at_complete = Arc::new(AtomicUsize::new(usize::MAX));
-        let active_runs_at_complete = Arc::new(AtomicUsize::new(usize::MAX));
         let dir = tempfile::tempdir().unwrap();
         let status_path = dir.path().join("status.json");
         let status = StatusTracker::new(status_path.clone(), 4, None, None);
         let ownership = OwnershipTransitions::new(&status);
-        let provider = CompletionOrderProvider {
-            budget: Arc::clone(&budget),
-            budget_count_at_complete,
-            active_runs_at_complete,
-            status_path: status_path.clone(),
-        };
         let cleanup_state = RunCleanupState::new();
         let run_id = RunId::new_v4();
         let completed_sandbox_id = SandboxId::new_v4();
@@ -492,12 +442,13 @@ mod tests {
         status.add_run(run_id, completed_sandbox_id).await;
         status.add_run(run_id, current_sandbox_id).await;
 
-        let _ = CompletionReady::new(
-            test_completion_payload(run_id, completed_sandbox_id),
-            BudgetOwnership::active(ActiveBudgetLease::new(lease)),
-        )
-        .complete_and_release(&provider, &ownership, &cleanup_state)
-        .await;
+        FinalizationReady::new(BudgetOwnership::active(ActiveBudgetLease::new(lease)))
+            .settle(
+                RunSandbox::new(run_id, completed_sandbox_id),
+                &ownership,
+                &cleanup_state,
+            )
+            .await;
 
         assert_eq!(
             status_active_run_records(&status_path).await,
@@ -511,37 +462,27 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn rejected_park_budget_is_recovered_as_active_and_released_after_completion() {
+    async fn rejected_park_budget_is_recovered_as_active_and_released_after_settlement() {
         let (budget, lease) = test_budget_lease();
-        let budget_count_at_complete = Arc::new(AtomicUsize::new(usize::MAX));
-        let active_runs_at_complete = Arc::new(AtomicUsize::new(usize::MAX));
         let dir = tempfile::tempdir().unwrap();
         let status_path = dir.path().join("status.json");
         let status = StatusTracker::new(status_path.clone(), 4, None, None);
         let ownership = OwnershipTransitions::new(&status);
-        let provider = CompletionOrderProvider {
-            budget: Arc::clone(&budget),
-            budget_count_at_complete: Arc::clone(&budget_count_at_complete),
-            active_runs_at_complete,
-            status_path,
-        };
         let cleanup_state = RunCleanupState::new();
         let run_id = RunId::new_v4();
         let sandbox_id = SandboxId::new_v4();
         status.add_run(run_id, sandbox_id).await;
 
-        let _ = CompletionReady::new(
-            test_completion_payload(run_id, sandbox_id),
-            BudgetOwnership::active(ActiveBudgetLease::from_idle_park_lease(lease)),
+        FinalizationReady::new(BudgetOwnership::active(
+            ActiveBudgetLease::from_idle_park_lease(lease),
+        ))
+        .settle(
+            RunSandbox::new(run_id, sandbox_id),
+            &ownership,
+            &cleanup_state,
         )
-        .complete_and_release(&provider, &ownership, &cleanup_state)
         .await;
 
-        assert_eq!(
-            budget_count_at_complete.load(Ordering::SeqCst),
-            1,
-            "rejected park must retain active budget through provider.complete",
-        );
         assert_eq!(budget.allocated().2, 0);
     }
 

@@ -1,21 +1,31 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import {
   orgCustomConnectors,
   type OrgCustomConnectorAuthMode,
 } from "@vm0/db/schema/org-custom-connector";
-import { orgCustomConnectorSecrets } from "@vm0/db/schema/org-custom-connector-secret";
-import { orgCustomConnectorValues } from "@vm0/db/schema/org-custom-connector-value";
 import { connectors } from "@vm0/db/schema/connector";
 import { secrets } from "@vm0/db/schema/secret";
-import { alias } from "drizzle-orm/pg-core";
+import { variables } from "@vm0/db/schema/variable";
+import { alias, unionAll } from "drizzle-orm/pg-core";
+import { z } from "zod";
 
+import {
+  pgTextDecoder,
+  zodEnumDriverValueDecoder,
+} from "../../lib/db-structured-result";
 import { nowDate } from "../../lib/time";
 import type { ReadonlyDb } from "../external/db";
 import { connectorCredentialStatusForAccess } from "./connector-credential-status.service";
 
-const LEGACY_SECRET_KEY = "secret";
 const OAUTH_ACCESS_TOKEN_SECRET_NAME = "access_token";
 const OAUTH_REFRESH_TOKEN_SECRET_NAME = "refresh_token";
+const customConnectorRuntimeStorageKindSchema = z.enum(["secret", "variable"]);
+type CustomConnectorRuntimeStorageKind = z.output<
+  typeof customConnectorRuntimeStorageKindSchema
+>;
+const customConnectorRuntimeStorageKindDecoder = zodEnumDriverValueDecoder(
+  customConnectorRuntimeStorageKindSchema,
+);
 
 const customConnectorAccessTokenSecret = alias(
   secrets,
@@ -33,6 +43,20 @@ export interface CustomConnectorCredentialValueMarker {
   readonly kind: "secret" | "variable";
   readonly key: string;
 }
+
+export type CustomConnectorStoredValue =
+  | {
+      readonly connectorId: string;
+      readonly kind: "secret";
+      readonly key: string;
+      readonly encryptedValue: string;
+    }
+  | {
+      readonly connectorId: string;
+      readonly kind: "variable";
+      readonly key: string;
+      readonly value: string;
+    };
 
 interface CustomConnectorCredentialDefinition {
   readonly id: string;
@@ -76,29 +100,57 @@ export type CustomConnectorCredentialAccess =
       readonly definitionStorageVersion: number;
     };
 
-async function loadCustomConnectorStoredConnections(
+interface CustomConnectorRuntimeStorageSnapshot {
+  readonly accesses: ReadonlyMap<string, CustomConnectorCredentialAccess>;
+  readonly values: readonly CustomConnectorStoredValue[];
+}
+
+interface CustomConnectorRuntimeStorageRow extends CustomConnectorStoredConnection {
+  readonly kind: CustomConnectorRuntimeStorageKind | null;
+  readonly key: string | null;
+  readonly storedValue: string | null;
+}
+
+function customConnectorStoredConnectionsQuery(
   db: Pick<ReadonlyDb, "select">,
   args: {
     readonly orgId: string;
     readonly userId: string;
     readonly connectorIds?: readonly string[];
   },
-): Promise<readonly CustomConnectorStoredConnection[]> {
-  if (args.connectorIds?.length === 0) {
-    return [];
-  }
-  return await db
+) {
+  return db
     .select({
-      id: connectors.id,
-      customConnectorId: orgCustomConnectors.id,
-      storedAuthMethod: connectors.authMethod,
-      storedStorageVersion: connectors.storageVersion,
-      storedNeedsReconnect: connectors.needsReconnect,
-      tokenExpiresAt: connectors.tokenExpiresAt,
-      definitionAuthMethod: orgCustomConnectors.authMode,
-      definitionStorageVersion: orgCustomConnectors.storageVersion,
-      oauthAccessTokenId: customConnectorAccessTokenSecret.id,
-      oauthRefreshTokenId: customConnectorRefreshTokenSecret.id,
+      id: sql`${connectors.id}`
+        .mapWith(connectors.id)
+        .as("member_connector_id"),
+      customConnectorId: sql`${orgCustomConnectors.id}`
+        .mapWith(orgCustomConnectors.id)
+        .as("custom_connector_id"),
+      storedAuthMethod: sql`${connectors.authMethod}`
+        .mapWith(connectors.authMethod)
+        .as("stored_auth_method"),
+      storedStorageVersion: sql`${connectors.storageVersion}`
+        .mapWith(connectors.storageVersion)
+        .as("stored_storage_version"),
+      storedNeedsReconnect: sql`${connectors.needsReconnect}`
+        .mapWith(connectors.needsReconnect)
+        .as("stored_needs_reconnect"),
+      tokenExpiresAt: sql`${connectors.tokenExpiresAt}`
+        .mapWith(connectors.tokenExpiresAt)
+        .as("token_expires_at"),
+      definitionAuthMethod: sql`${orgCustomConnectors.authMode}`
+        .mapWith(orgCustomConnectors.authMode)
+        .as("definition_auth_method"),
+      definitionStorageVersion: sql`${orgCustomConnectors.storageVersion}`
+        .mapWith(orgCustomConnectors.storageVersion)
+        .as("definition_storage_version"),
+      oauthAccessTokenId: sql`${customConnectorAccessTokenSecret.id}`
+        .mapWith(customConnectorAccessTokenSecret.id)
+        .as("oauth_access_token_id"),
+      oauthRefreshTokenId: sql`${customConnectorRefreshTokenSecret.id}`
+        .mapWith(customConnectorRefreshTokenSecret.id)
+        .as("oauth_refresh_token_id"),
     })
     .from(connectors)
     .innerJoin(
@@ -139,6 +191,20 @@ async function loadCustomConnectorStoredConnections(
     );
 }
 
+async function loadCustomConnectorStoredConnections(
+  db: Pick<ReadonlyDb, "select">,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly connectorIds?: readonly string[];
+  },
+): Promise<readonly CustomConnectorStoredConnection[]> {
+  if (args.connectorIds?.length === 0) {
+    return [];
+  }
+  return await customConnectorStoredConnectionsQuery(db, args);
+}
+
 function customConnectorStoredConnectionIsCurrent(
   connection: CustomConnectorStoredConnection,
 ): boolean {
@@ -171,25 +237,10 @@ function customConnectorStoredConnectionIsUsable(
   );
 }
 
-export async function loadCustomConnectorCredentialAccesses(
-  db: Pick<ReadonlyDb, "select">,
-  args: {
-    readonly orgId: string;
-    readonly userId: string;
-    readonly definitions: readonly CustomConnectorCredentialDefinition[];
-  },
-): Promise<ReadonlyMap<string, CustomConnectorCredentialAccess>> {
-  if (args.definitions.length === 0) {
-    return new Map();
-  }
-
-  const rows = await loadCustomConnectorStoredConnections(db, {
-    orgId: args.orgId,
-    userId: args.userId,
-    connectorIds: args.definitions.map((definition) => {
-      return definition.id;
-    }),
-  });
+function customConnectorCredentialAccesses(
+  definitions: readonly CustomConnectorCredentialDefinition[],
+  rows: readonly CustomConnectorStoredConnection[],
+): ReadonlyMap<string, CustomConnectorCredentialAccess> {
   const memberByConnectorId = new Map<
     string,
     CustomConnectorStoredConnection
@@ -200,7 +251,7 @@ export async function loadCustomConnectorCredentialAccesses(
 
   const accesses = new Map<string, CustomConnectorCredentialAccess>();
   const now = nowDate();
-  for (const definition of args.definitions) {
+  for (const definition of definitions) {
     const member = memberByConnectorId.get(definition.id);
     if (!member) {
       accesses.set(definition.id, { kind: "absent" });
@@ -230,6 +281,59 @@ export async function loadCustomConnectorCredentialAccesses(
   return accesses;
 }
 
+function customConnectorRuntimeStorageSnapshot(
+  definitions: readonly CustomConnectorCredentialDefinition[],
+  rows: readonly CustomConnectorRuntimeStorageRow[],
+): CustomConnectorRuntimeStorageSnapshot {
+  const connectionsById = new Map<string, CustomConnectorStoredConnection>();
+  for (const row of rows) {
+    connectionsById.set(row.id, row);
+  }
+  const accesses = customConnectorCredentialAccesses(definitions, [
+    ...connectionsById.values(),
+  ]);
+  const expectedByMemberConnectorId = new Map(
+    definitions.flatMap((definition) => {
+      const access = accesses.get(definition.id);
+      return access?.kind === "current"
+        ? ([[access.memberConnectorId, definition]] as const)
+        : [];
+    }),
+  );
+  const values: CustomConnectorStoredValue[] = [];
+  for (const row of rows) {
+    const expected = expectedByMemberConnectorId.get(row.id);
+    if (
+      !expected ||
+      row.kind === null ||
+      row.customConnectorId !== expected.id ||
+      row.definitionAuthMethod !== expected.authMode ||
+      row.definitionStorageVersion !== expected.storageVersion
+    ) {
+      continue;
+    }
+    if (row.key === null || row.storedValue === null) {
+      throw new Error("Expected a complete custom connector stored value row");
+    }
+    if (row.kind === "secret") {
+      values.push({
+        connectorId: row.customConnectorId,
+        kind: "secret",
+        key: row.key,
+        encryptedValue: row.storedValue,
+      });
+    } else {
+      values.push({
+        connectorId: row.customConnectorId,
+        kind: "variable",
+        key: row.key,
+        value: row.storedValue,
+      });
+    }
+  }
+  return { accesses, values };
+}
+
 export async function loadCurrentCustomConnectorValueMarkers(
   db: Pick<ReadonlyDb, "select">,
   args: {
@@ -241,83 +345,81 @@ export async function loadCurrentCustomConnectorValueMarkers(
   if (args.connectorIds?.length === 0) {
     return [];
   }
-  const [valueRows, legacyRows] = await Promise.all([
-    db
-      .select({
-        connectorId: orgCustomConnectorValues.connectorId,
-        authMode: orgCustomConnectors.authMode,
-        storageVersion: orgCustomConnectors.storageVersion,
-        kind: orgCustomConnectorValues.kind,
-        key: orgCustomConnectorValues.key,
-      })
-      .from(orgCustomConnectorValues)
-      .innerJoin(
-        orgCustomConnectors,
-        and(
-          eq(orgCustomConnectors.id, orgCustomConnectorValues.connectorId),
-          eq(orgCustomConnectors.orgId, orgCustomConnectorValues.orgId),
-        ),
-      )
-      .innerJoin(
-        connectors,
-        and(
-          eq(connectors.customConnectorId, orgCustomConnectors.id),
-          eq(connectors.orgId, args.orgId),
-          eq(connectors.userId, args.userId),
-          eq(connectors.authMethod, orgCustomConnectors.authMode),
-          eq(connectors.storageVersion, orgCustomConnectors.storageVersion),
-        ),
-      )
-      .where(
-        and(
-          eq(orgCustomConnectorValues.orgId, args.orgId),
-          eq(orgCustomConnectorValues.userId, args.userId),
-          args.connectorIds
-            ? inArray(orgCustomConnectorValues.connectorId, [
-                ...args.connectorIds,
-              ])
-            : undefined,
-        ),
+  const secretQuery = db
+    .select({
+      connectorId: orgCustomConnectors.id,
+      authMode: orgCustomConnectors.authMode,
+      storageVersion: orgCustomConnectors.storageVersion,
+      kind: sql`'secret'`.mapWith(pgTextDecoder).as("kind"),
+      key: secrets.name,
+    })
+    .from(secrets)
+    .innerJoin(
+      connectors,
+      and(
+        eq(connectors.id, secrets.connectorId),
+        eq(connectors.orgId, secrets.orgId),
+        eq(connectors.userId, secrets.userId),
       ),
-    db
-      .select({
-        connectorId: orgCustomConnectorSecrets.connectorId,
-        authMode: orgCustomConnectors.authMode,
-        storageVersion: orgCustomConnectors.storageVersion,
-      })
-      .from(orgCustomConnectorSecrets)
-      .innerJoin(
-        orgCustomConnectors,
-        and(
-          eq(orgCustomConnectors.id, orgCustomConnectorSecrets.connectorId),
-          eq(orgCustomConnectors.orgId, orgCustomConnectorSecrets.orgId),
-          eq(orgCustomConnectors.authMode, "manual"),
-        ),
-      )
-      .innerJoin(
-        connectors,
-        and(
-          eq(connectors.customConnectorId, orgCustomConnectors.id),
-          eq(connectors.orgId, args.orgId),
-          eq(connectors.userId, args.userId),
-          eq(connectors.authMethod, orgCustomConnectors.authMode),
-          eq(connectors.storageVersion, orgCustomConnectors.storageVersion),
-        ),
-      )
-      .where(
-        and(
-          eq(orgCustomConnectorSecrets.orgId, args.orgId),
-          eq(orgCustomConnectorSecrets.userId, args.userId),
-          args.connectorIds
-            ? inArray(orgCustomConnectorSecrets.connectorId, [
-                ...args.connectorIds,
-              ])
-            : undefined,
-        ),
+    )
+    .innerJoin(
+      orgCustomConnectors,
+      and(
+        eq(orgCustomConnectors.id, connectors.customConnectorId),
+        eq(orgCustomConnectors.orgId, connectors.orgId),
+        eq(orgCustomConnectors.authMode, connectors.authMethod),
+        eq(orgCustomConnectors.storageVersion, connectors.storageVersion),
       ),
-  ]);
-  const markers: CustomConnectorCredentialValueMarker[] = valueRows.flatMap(
-    (row) => {
+    )
+    .where(
+      and(
+        eq(secrets.type, "connector"),
+        eq(secrets.orgId, args.orgId),
+        eq(secrets.userId, args.userId),
+        args.connectorIds
+          ? inArray(orgCustomConnectors.id, [...args.connectorIds])
+          : undefined,
+      ),
+    );
+  const variableQuery = db
+    .select({
+      connectorId: orgCustomConnectors.id,
+      authMode: orgCustomConnectors.authMode,
+      storageVersion: orgCustomConnectors.storageVersion,
+      kind: sql`'variable'`.mapWith(pgTextDecoder).as("kind"),
+      key: variables.name,
+    })
+    .from(variables)
+    .innerJoin(
+      connectors,
+      and(
+        eq(connectors.id, variables.connectorId),
+        eq(connectors.orgId, variables.orgId),
+        eq(connectors.userId, variables.userId),
+      ),
+    )
+    .innerJoin(
+      orgCustomConnectors,
+      and(
+        eq(orgCustomConnectors.id, connectors.customConnectorId),
+        eq(orgCustomConnectors.orgId, connectors.orgId),
+        eq(orgCustomConnectors.authMode, connectors.authMethod),
+        eq(orgCustomConnectors.storageVersion, connectors.storageVersion),
+      ),
+    )
+    .where(
+      and(
+        eq(variables.type, "connector"),
+        eq(variables.orgId, args.orgId),
+        eq(variables.userId, args.userId),
+        args.connectorIds
+          ? inArray(orgCustomConnectors.id, [...args.connectorIds])
+          : undefined,
+      ),
+    );
+  const rows = await secretQuery.unionAll(variableQuery);
+  return rows.flatMap(
+    (row): readonly CustomConnectorCredentialValueMarker[] => {
       return row.kind === "secret" || row.kind === "variable"
         ? [
             {
@@ -331,25 +433,112 @@ export async function loadCurrentCustomConnectorValueMarkers(
         : [];
     },
   );
-  const markerKeys = new Set(
-    markers.map((marker) => {
-      return `${marker.connectorId}:${marker.authMode}:${marker.storageVersion}:${marker.kind}:${marker.key}`;
+}
+
+export async function loadCurrentCustomConnectorStoredValues(
+  db: ReadonlyDb,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly definitions: readonly CustomConnectorCredentialDefinition[];
+  },
+): Promise<CustomConnectorRuntimeStorageSnapshot> {
+  if (args.definitions.length === 0) {
+    return { accesses: new Map(), values: [] };
+  }
+
+  const connectorIds = args.definitions.map((definition) => {
+    return definition.id;
+  });
+  const storedConnections = db.$with("custom_connector_runtime_connections").as(
+    customConnectorStoredConnectionsQuery(db, {
+      orgId: args.orgId,
+      userId: args.userId,
+      connectorIds,
     }),
   );
-  for (const row of legacyRows) {
-    const markerKey = `${row.connectorId}:${row.authMode}:${row.storageVersion}:secret:${LEGACY_SECRET_KEY}`;
-    if (!markerKeys.has(markerKey)) {
-      markers.push({
-        connectorId: row.connectorId,
-        authMode: row.authMode,
-        storageVersion: row.storageVersion,
-        kind: "secret",
-        key: LEGACY_SECRET_KEY,
-      });
-      markerKeys.add(markerKey);
-    }
-  }
-  return markers;
+  const secretQuery = db
+    .select({
+      memberConnectorId: sql`${storedConnections.id}`
+        .mapWith(pgTextDecoder)
+        .as("value_member_connector_id"),
+      kind: sql`'secret'`
+        .mapWith(customConnectorRuntimeStorageKindDecoder)
+        .as("kind"),
+      key: secrets.name,
+      storedValue: secrets.encryptedValue,
+    })
+    .from(storedConnections)
+    .innerJoin(secrets, eq(secrets.connectorId, storedConnections.id))
+    .where(
+      and(
+        eq(secrets.type, "connector"),
+        eq(secrets.orgId, args.orgId),
+        eq(secrets.userId, args.userId),
+        eq(
+          storedConnections.storedAuthMethod,
+          storedConnections.definitionAuthMethod,
+        ),
+        eq(
+          storedConnections.storedStorageVersion,
+          storedConnections.definitionStorageVersion,
+        ),
+      ),
+    );
+  const variableQuery = db
+    .select({
+      memberConnectorId: sql`${storedConnections.id}`
+        .mapWith(pgTextDecoder)
+        .as("value_member_connector_id"),
+      kind: sql`'variable'`
+        .mapWith(customConnectorRuntimeStorageKindDecoder)
+        .as("kind"),
+      key: variables.name,
+      storedValue: variables.value,
+    })
+    .from(storedConnections)
+    .innerJoin(variables, eq(variables.connectorId, storedConnections.id))
+    .where(
+      and(
+        eq(variables.type, "connector"),
+        eq(variables.orgId, args.orgId),
+        eq(variables.userId, args.userId),
+        eq(
+          storedConnections.storedAuthMethod,
+          storedConnections.definitionAuthMethod,
+        ),
+        eq(
+          storedConnections.storedStorageVersion,
+          storedConnections.definitionStorageVersion,
+        ),
+      ),
+    );
+  const storedValues = db
+    .$with("custom_connector_runtime_values")
+    .as(unionAll(secretQuery, variableQuery));
+  const rows = await db
+    .with(storedConnections, storedValues)
+    .select({
+      id: storedConnections.id,
+      customConnectorId: storedConnections.customConnectorId,
+      storedAuthMethod: storedConnections.storedAuthMethod,
+      storedStorageVersion: storedConnections.storedStorageVersion,
+      storedNeedsReconnect: storedConnections.storedNeedsReconnect,
+      tokenExpiresAt: storedConnections.tokenExpiresAt,
+      definitionAuthMethod: storedConnections.definitionAuthMethod,
+      definitionStorageVersion: storedConnections.definitionStorageVersion,
+      oauthAccessTokenId: storedConnections.oauthAccessTokenId,
+      oauthRefreshTokenId: storedConnections.oauthRefreshTokenId,
+      kind: storedValues.kind,
+      key: storedValues.key,
+      storedValue: storedValues.storedValue,
+    })
+    .from(storedConnections)
+    .leftJoin(
+      storedValues,
+      eq(storedValues.memberConnectorId, storedConnections.id),
+    );
+  return customConnectorRuntimeStorageSnapshot(args.definitions, rows);
 }
 
 export async function loadUsableCustomConnectorConnections(

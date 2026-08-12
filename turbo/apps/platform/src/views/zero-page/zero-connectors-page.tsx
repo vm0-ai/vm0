@@ -25,7 +25,6 @@ import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import { agents$ } from "../../signals/agent.ts";
 import { CustomConnectorsPanel } from "./components/settings/custom-connectors-panel.tsx";
-import { ConnectorCatalogDescription } from "./components/settings/connector-catalog-description.tsx";
 import {
   connectorCatalogDiscovery$,
   connectConnectorOAuthAuthCode$,
@@ -82,6 +81,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
+  Input,
 } from "@vm0/ui";
 import { i18n } from "../../i18n/index.ts";
 
@@ -598,7 +598,7 @@ function ConnectorsToolbarActions({
             size={15}
             className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/60"
           />
-          <input
+          <Input
             type="text"
             placeholder={t(($) => {
               return $.connectors.catalog.search;
@@ -607,7 +607,7 @@ function ConnectorsToolbarActions({
             onChange={(e) => {
               return setSearch(e.target.value);
             }}
-            className="h-9 w-full rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-input pl-9 pr-3 text-sm text-foreground outline-none placeholder:text-muted-foreground transition-colors focus:border-primary focus:ring-[3px] focus:ring-primary/10"
+            className="pl-9 pr-3"
           />
         </div>
       )}
@@ -1034,14 +1034,14 @@ export function ZeroConnectorsPage() {
               })}
             </h1>
             {connectorCatalogCountEnabled ? (
-              <ConnectorCatalogDescription
-                connectorCount={
-                  catalogStatusLoadable.state === "hasData"
-                    ? (catalogStatusLoadable.data.totalConnectorCount ??
-                      catalogStatusLoadable.data.connectors.length)
-                    : null
-                }
-              />
+              <p className="mt-0.5 text-sm text-muted-foreground">
+                {t(
+                  ($) => {
+                    return $.connectors.catalog.descriptionWithCount;
+                  },
+                  { value: "700+" },
+                )}
+              </p>
             ) : (
               <p className="mt-0.5 text-sm text-muted-foreground">
                 {t(($) => {

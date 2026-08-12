@@ -115,7 +115,6 @@ export type ApiDispatchTimingActionType =
   | "api_dispatch_prepare_context_load_custom_connector_rows"
   | "api_dispatch_prepare_context_load_custom_connector_value_rows"
   | "api_dispatch_prepare_context_build_custom_connector_firewalls"
-  | "api_dispatch_prepare_context_decrypt_custom_connector_values"
   | "api_dispatch_prepare_context_render_custom_connector_auth_templates"
   | "api_dispatch_prepare_context_render_custom_connector_prefixes"
   | "api_dispatch_prepare_context_assemble_custom_connector_firewalls"

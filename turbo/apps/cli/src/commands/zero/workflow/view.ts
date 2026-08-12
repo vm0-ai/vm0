@@ -17,8 +17,8 @@ export const viewCommand = new Command()
     "after",
     `
 Examples:
-  zero workflow view tell-a-joke --agent <agent-id>
-  zero workflow view <workflow-id>`,
+  okou workflow view tell-a-joke --agent <agent-id>
+  okou workflow view <workflow-id>`,
   )
   .action(
     withErrorHandler(

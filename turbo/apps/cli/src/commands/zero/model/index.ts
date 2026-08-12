@@ -75,7 +75,7 @@ const listCommand = new Command()
       console.log();
       console.log(
         chalk.dim(
-          "Use `zero model-provider set --help` to see how to switch each model between built-in and BYOK.",
+          "Use `okou model-provider set --help` to see how to switch each model between built-in and BYOK.",
         ),
       );
     }),

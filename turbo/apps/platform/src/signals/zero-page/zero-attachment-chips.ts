@@ -1,6 +1,10 @@
 import { command, computed, state } from "ccstate";
 import { timeout } from "signal-timers";
 import { openArtifactInOpenSidebar$ } from "../chat-page/thread-sidebar-coordinator.ts";
+import {
+  createMarkdownPreviewTree,
+  type MarkdownPreviewTreeComputed,
+} from "../markdown-preview-tree.ts";
 import type { ArtifactRefInput } from "../chat-page/thread-sidebar.ts";
 import { previewAttachmentFromUrl } from "../chat-page/parse-body-blocks.ts";
 import {
@@ -72,8 +76,14 @@ type AttachmentImageLightboxInput = {
 
 export type AttachmentDocumentLightboxState =
   | (AttachmentDocumentLightboxBase & {
-      readonly kind: TextPreviewKind;
+      readonly kind: Exclude<TextPreviewKind, "markdown">;
       readonly text$: TextPreviewComputed;
+    })
+  | (AttachmentDocumentLightboxBase & {
+      readonly kind: "markdown";
+      readonly text$: TextPreviewComputed;
+      /** Prepared render tree, diagram signals embedded. */
+      readonly markdownTree$: MarkdownPreviewTreeComputed;
     })
   | AttachmentFramedDocumentLightboxInput;
 
@@ -201,6 +211,7 @@ type AttachmentSidebarPreviewInput = {
   readonly contentType?: string;
   readonly shareAvailable?: boolean;
   readonly splitViewAvailable?: boolean;
+  readonly text$?: TextPreviewComputed;
 };
 
 export function attachmentSidebarRef(
@@ -221,6 +232,9 @@ export function attachmentSidebarRef(
       url: value.url,
       filename: value.filename,
       ...(contentType ? { contentType } : {}),
+      // The caller's preview content rides along, so the sidebar reuses the
+      // already-fetched text instead of fetching its own copy.
+      ...(value.text$ ? { text$: value.text$ } : {}),
       ...share,
     };
   }
@@ -309,10 +323,17 @@ export const openDocumentLightbox$ = command(
     set(internalLightboxDialogVisible$, true);
     set(internalLightboxDialogFullscreen$, false);
     if (isAttachmentTextDocumentLightboxInput(value)) {
-      set(internalLightboxState$, {
-        ...value,
-        text$: value.text$ ?? createTextPreviewComputed(value.url),
-      });
+      const text$ = value.text$ ?? createTextPreviewComputed(value.url);
+      if (value.kind === "markdown") {
+        set(internalLightboxState$, {
+          ...value,
+          kind: "markdown",
+          text$,
+          markdownTree$: createMarkdownPreviewTree(text$),
+        });
+        return;
+      }
+      set(internalLightboxState$, { ...value, kind: value.kind, text$ });
       return;
     }
     set(internalLightboxState$, value);
@@ -368,11 +389,11 @@ export const openAudioLightbox$ = command(
 );
 
 // ---------------------------------------------------------------------------
-// Escape-key handler for global attachment preview — closes on Escape
+// Global attachment preview mount owner — releases resources on route unmount
 // ---------------------------------------------------------------------------
 
-const closeLightboxOnEscape$ = command(
-  ({ get, set }, el: HTMLDivElement, signal: AbortSignal) => {
+const ownLightboxDialogMount$ = command(
+  ({ get, set }, _element: HTMLDivElement, signal: AbortSignal) => {
     const mountToken = get(internalLightboxDialogMountToken$) + 1;
     set(internalLightboxDialogMountToken$, mountToken);
     signal.addEventListener(
@@ -387,20 +408,7 @@ const closeLightboxOnEscape$ = command(
       },
       { once: true },
     );
-    document.addEventListener(
-      "keydown",
-      (e: KeyboardEvent) => {
-        if (e.key === "Escape") {
-          e.preventDefault();
-          e.stopPropagation();
-          e.stopImmediatePropagation();
-          set(closeLightboxWithDialogExit$, signal);
-        }
-      },
-      { capture: true, signal },
-    );
-    el.focus({ preventScroll: true });
   },
 );
 
-export const lightboxDialogRef$ = onRef(closeLightboxOnEscape$);
+export const lightboxDialogMountRef$ = onRef(ownLightboxDialogMount$);

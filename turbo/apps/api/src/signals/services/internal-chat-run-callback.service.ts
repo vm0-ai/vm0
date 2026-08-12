@@ -10,10 +10,7 @@ import {
   serializeChatFollowupsContent,
   type ChatRecommendedFollowup,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import {
-  isRetiredRunModel,
-  modelProviderCredentialScopeSchema,
-} from "@vm0/api-contracts/contracts/model-providers";
+import { modelProviderCredentialScopeSchema } from "@vm0/api-contracts/contracts/model-providers";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
@@ -57,7 +54,6 @@ import {
 import {
   publishChatThreadDetailChangedSafely,
   publishChatThreadMessageCreatedSafely,
-  publishChatThreadRunCreatedSafely,
   publishThreadListChangedSafely,
 } from "../external/realtime";
 import {
@@ -177,7 +173,6 @@ import { loadComputerUseHostGrantForAutoSend } from "./zero-chat-computer-use-ho
 import { resolveRunChatThreadModelContext } from "./zero-chat-run-event.service";
 import { releaseThreadBrowsersForRun$ } from "./zero-browser.service";
 import {
-  resolvePersistedModelFirstRoute,
   resolveModelFirstProviderAdmission,
   type ModelFirstPin,
 } from "./zero-model-selection.service";
@@ -2265,7 +2260,7 @@ function buildComputerUseSystemPrompt(displayName: string): string {
   return [
     "# Computer Use",
     `Computer Use is enabled for this run on ${displayName}.`,
-    "Use Zero CLI computer-use commands to inspect apps, read app state, and perform desktop actions.",
+    "Use Okou CLI computer-use commands to inspect apps, read app state, and perform desktop actions.",
     "The computer may go offline while this run is active. If a command reports that the computer is unavailable or offline, ask the user to reconnect Zero Computer Use on that computer, then retry.",
   ].join("\n");
 }
@@ -2353,7 +2348,7 @@ function buildChatPriorRunsContext(
       `## Recent Run ${index + 1}`,
       `- RUN_ID: ${run.runId}`,
       `- RUN_STATUS: ${run.status}`,
-      `- LOG_COMMAND: zero logs ${run.runId} --all`,
+      `- LOG_COMMAND: okou logs ${run.runId} --all`,
       "",
       transcript,
     ].join("\n");
@@ -2557,12 +2552,6 @@ function persistedModelProviderCredentialScope(
   return parsed.success ? parsed.data : null;
 }
 
-/**
- * Rollout compatibility for unpinned Slack follow-ups whose first-run route
- * was persisted by the previous API during the observed ~102-minute DB/API
- * exposure window. Remove with #26314 after Stage 2 migrates these selections,
- * production shows none remain, and the previous API is outside rollback/drain.
- */
 async function resolveUnpinnedSlackQueuedMessageModelRoute(args: {
   readonly db: Db;
   readonly threadId: string;
@@ -2597,40 +2586,21 @@ async function resolveUnpinnedSlackQueuedMessageModelRoute(args: {
     )
     .orderBy(asc(chatEvents.seqId))
     .limit(1);
-  const replacementRoute =
-    firstRun &&
-    isRetiredRunModel(firstRun.selectedModel, firstRun.modelProviderType)
-      ? await resolvePersistedModelFirstRoute({
-          db: args.db,
-          orgId: args.orgId,
-          userId: args.userId,
-          selectedModel: firstRun.selectedModel,
-          modelProviderType: firstRun.modelProviderType,
-        })
-      : null;
-  const modelPin: ModelFirstPin = replacementRoute?.route
+  const modelPin: ModelFirstPin = firstRun
     ? {
-        modelProviderId: replacementRoute.route.modelProviderId,
-        modelProviderType: replacementRoute.route.modelProviderType,
-        modelProviderCredentialScope:
-          replacementRoute.route.modelProviderCredentialScope,
-        selectedModel: replacementRoute.route.selectedModel,
+        modelProviderId: firstRun.modelProviderId,
+        modelProviderType: firstRun.modelProviderType,
+        modelProviderCredentialScope: persistedModelProviderCredentialScope(
+          firstRun.modelProviderCredentialScope,
+        ),
+        selectedModel: firstRun.selectedModel,
       }
-    : firstRun
-      ? {
-          modelProviderId: firstRun.modelProviderId,
-          modelProviderType: firstRun.modelProviderType,
-          modelProviderCredentialScope: persistedModelProviderCredentialScope(
-            firstRun.modelProviderCredentialScope,
-          ),
-          selectedModel: firstRun.selectedModel,
-        }
-      : {
-          modelProviderId: null,
-          modelProviderType: null,
-          modelProviderCredentialScope: null,
-          selectedModel: null,
-        };
+    : {
+        modelProviderId: null,
+        modelProviderType: null,
+        modelProviderCredentialScope: null,
+        selectedModel: null,
+      };
   const providerAdmission = await resolveModelFirstProviderAdmission({
     db: args.db,
     orgId: args.orgId,
@@ -3305,7 +3275,6 @@ async function publishAutoSentQueuedRunSignals(args: {
     "nested",
     async () => {
       await publishChatThreadMessageCreatedSafely(args.userId, args.threadId);
-      await publishChatThreadRunCreatedSafely(args.userId, args.threadId);
       await publishThreadListChangedSafely(args.userId);
     },
   );

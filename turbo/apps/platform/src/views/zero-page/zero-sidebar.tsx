@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
+  Button,
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -21,7 +22,6 @@ import {
   cn,
 } from "@vm0/ui";
 import { settingsIconAssetUrl } from "./components/settings/settings-icon-assets.ts";
-import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   sidebarOff$,
   toggleSidebarOff$,
@@ -165,9 +165,8 @@ function useResolvedNavItems() {
 function useNavSelect() {
   const rawOnSelect = useSet(handleZeroNavSelect$);
   const setExpanded = useSet(setSidebarExpanded$);
-  const pageSignal = useGet(pageSignal$);
   return (id: SidebarNavId) => {
-    rawOnSelect(id, pageSignal);
+    rawOnSelect(id);
     setExpanded(false);
   };
 }
@@ -227,14 +226,17 @@ function CollapsedExpandButton() {
       <TooltipProvider delayDuration={200}>
         <Tooltip>
           <TooltipTrigger asChild>
-            <button
+            <Button
               type="button"
-              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sidebar-foreground transition-colors hover:bg-state-hover hover:text-sidebar-foreground"
+              variant="quiet"
+              size="icon-sm"
+              iconSize="md"
+              className="shrink-0"
               onClick={onCollapse}
               aria-label={expandLabel}
             >
               <PanelLeftClose size={18} className="rotate-180 opacity-50" />
-            </button>
+            </Button>
           </TooltipTrigger>
           <TooltipContent side="right">
             <p className="text-xs">{expandLabel}</p>
@@ -375,14 +377,17 @@ function ExpandedHeader() {
         <TooltipProvider delayDuration={200}>
           <Tooltip>
             <TooltipTrigger asChild>
-              <button
+              <Button
                 type="button"
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-sidebar-foreground hover:text-sidebar-foreground hover:bg-state-hover transition-colors"
+                variant="quiet"
+                size="icon-sm"
+                iconSize="md"
+                className="shrink-0"
                 onClick={onCollapse}
                 aria-label={collapseLabel}
               >
                 <PanelLeftClose className="opacity-50" size={18} />
-              </button>
+              </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom">
               <p className="text-xs">{collapseLabel}</p>
@@ -401,7 +406,7 @@ function ExpandedMainNav() {
       aria-label={t(($) => {
         return $.appShell.sidebar.ariaLabel;
       })}
-      className="flex-1 flex flex-col min-h-0 overflow-hidden p-2 pt-1"
+      className="flex-1 flex flex-col min-h-0 overflow-hidden px-2 pt-1"
     >
       <ExpandedManageSection />
       <ExpandedSidebarSections />
@@ -483,8 +488,10 @@ function ExpandedSidebarSections() {
 }
 
 function ExpandedUpgradeSection() {
+  // The nav above has no bottom padding, so the card carries its own top gap.
+  // Collapses to nothing when SidebarUpgradeCard renders null.
   return (
-    <div className="px-2">
+    <div className="px-2 pt-2 empty:hidden">
       <SidebarUpgradeCard />
     </div>
   );
@@ -749,16 +756,17 @@ function ChatListColumn() {
         <TooltipProvider delayDuration={200}>
           <Tooltip>
             <TooltipTrigger asChild>
-              <button
+              <Button
                 type="button"
                 onClick={() => {
                   openAgentList();
                 }}
                 aria-label={searchLabel}
-                className="flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground transition-colors hover:bg-state-hover hover:text-sidebar-foreground"
+                variant="quiet"
+                size="icon-sm"
               >
                 <Search className="opacity-50" size={17} />
-              </button>
+              </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom">
               <p className="text-xs">{searchLabel}</p>

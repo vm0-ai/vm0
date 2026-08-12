@@ -29,6 +29,9 @@ function presignedFileUrl(fileId: string): string {
   return `https://r2.example.com/artifacts/${fileId}?sig=test`;
 }
 
+/** Matches presignedFileUrl so a preview body can be served from that URL. */
+const PRESIGNED_FILE_PATTERN = "https://r2.example.com/artifacts/:fileId";
+
 function artifactFile(
   url: string,
   overrides: Partial<ChatThreadArtifactFile> = {},
@@ -1198,10 +1201,8 @@ describe("zero attachment chips", () => {
   });
 
   it("opens persisted canonical audio, video, and document attachments", async () => {
-    context.mocks.http.get("/api/zero/web/download-file", ({ request }) => {
-      expect(new URL(request.url).searchParams.get("file_id")).toBe(
-        "attachment-json",
-      );
+    context.mocks.http.get(PRESIGNED_FILE_PATTERN, ({ params }) => {
+      expect(params.fileId).toBe("attachment-json");
       return new Response(JSON.stringify({ status: "ready" }), {
         headers: { "Content-Type": "application/json" },
       });
@@ -1297,10 +1298,8 @@ describe("zero attachment chips", () => {
   });
 
   it("opens persisted canonical csv, pdf, and html document previews", async () => {
-    context.mocks.http.get("/api/zero/web/download-file", ({ request }) => {
-      expect(new URL(request.url).searchParams.get("file_id")).toBe(
-        "attachment-csv",
-      );
+    context.mocks.http.get(PRESIGNED_FILE_PATTERN, ({ params }) => {
+      expect(params.fileId).toBe("attachment-csv");
       return new Response("metric,value\nsignups,42\nactivation,87", {
         headers: { "Content-Type": "text/csv" },
       });
@@ -1385,24 +1384,46 @@ describe("zero attachment chips", () => {
     expect(documentFrame).toHaveClass("h-full", "min-h-0");
     expect(iframe).toHaveAttribute(
       "src",
-      `${canonicalUserMessageFileUrl("attachment-pdf")}#navpanes=0`,
+      `${presignedFileUrl("attachment-pdf")}#navpanes=0`,
     );
     expect(iframe).toHaveClass("h-full", "min-h-0", "border-0");
 
-    click(screen.getByLabelText("Close"));
+    // The split view reads the same document, so it must resolve the same
+    // loadable URL rather than falling back to the canonical route.
+    click(screen.getByLabelText("Open in split view"));
 
     await waitFor(() => {
       expect(
         screen.queryByTestId("attachment-lightbox"),
       ).not.toBeInTheDocument();
+      expect(screen.getByTestId("artifact-sidebar-body-pdf")).toHaveAttribute(
+        "src",
+        `${presignedFileUrl("attachment-pdf")}#navpanes=0`,
+      );
+    });
+
+    click(screen.getByLabelText("Close artifact"));
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("artifact-sidebar")).not.toBeInTheDocument();
     });
 
     click(screen.getByLabelText("Open html preview for launch-site.html"));
 
     await waitFor(() => {
-      expect(
-        screen.getByTestId("artifact-dialog-body-html"),
-      ).toBeInTheDocument();
+      expect(screen.getByTestId("artifact-dialog-body-html")).toHaveAttribute(
+        "src",
+        presignedFileUrl("attachment-html"),
+      );
+    });
+
+    click(screen.getByLabelText("Open in split view"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("artifact-sidebar-body-html")).toHaveAttribute(
+        "src",
+        presignedFileUrl("attachment-html"),
+      );
     });
   });
 
@@ -2799,11 +2820,12 @@ describe("zero attachment chips", () => {
     expect(screen.queryByAltText("1280x720")).toBeNull();
   });
 
-  it("opens canonical markdown and text previews, shares a document link, and reports download failures", async () => {
+  it("opens canonical text previews and downloads a private presentation from its presigned url", async () => {
     const releaseNotesUrl = canonicalUserMessageFileUrl("attachment-markdown");
+    const browser = context.mocks.browser.blobDownload();
     context.mocks.browser.clipboardWriteText();
-    context.mocks.http.get("/api/zero/web/download-file", ({ request }) => {
-      const fileId = new URL(request.url).searchParams.get("file_id");
+    context.mocks.http.get(PRESIGNED_FILE_PATTERN, ({ params }) => {
+      const fileId = params.fileId;
       if (fileId === "attachment-markdown") {
         return new Response("# Release notes\n\nThe rollout is ready.", {
           headers: { "Content-Type": "text/markdown" },
@@ -2814,6 +2836,19 @@ describe("zero attachment chips", () => {
           headers: { "Content-Type": "text/plain" },
         });
       }
+      if (fileId === "attachment-presentation") {
+        return new Response("presentation bytes", {
+          headers: {
+            "Content-Type":
+              "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+          },
+        });
+      }
+      return new Response(null, { status: 500 });
+    });
+    // Guard against regressing to the canonical route, which needs an
+    // Authorization header that the download fetch does not carry.
+    context.mocks.http.get("/api/zero/web/download-file", () => {
       return new Response(null, { status: 500 });
     });
     mockChatLifecycle(context, {
@@ -2838,9 +2873,10 @@ describe("zero attachment chips", () => {
             },
             {
               type: "file",
-              fileId: "attachment-file",
-              filenameSnapshot: "archive.bin",
-              contentType: "application/octet-stream",
+              fileId: "attachment-presentation",
+              filenameSnapshot: "quarterly-plan.pptx",
+              contentType:
+                "application/vnd.openxmlformats-officedocument.presentationml.presentation",
             },
           ],
           createdAt: "2026-03-10T00:00:00Z",
@@ -2860,7 +2896,9 @@ describe("zero attachment chips", () => {
       expect(
         screen.getByLabelText("Open text preview for transcript.txt"),
       ).toBeInTheDocument();
-      expect(screen.getByLabelText("Download archive.bin")).toBeInTheDocument();
+      expect(
+        screen.getByLabelText("Download quarterly-plan.pptx"),
+      ).toBeInTheDocument();
     });
 
     click(screen.getByLabelText("Open markdown preview for release-notes.md"));
@@ -2903,10 +2941,15 @@ describe("zero attachment chips", () => {
       ).not.toBeInTheDocument();
     });
 
-    click(screen.getByLabelText("Download archive.bin"));
+    click(screen.getByLabelText("Download quarterly-plan.pptx"));
 
     await waitFor(() => {
-      expect(screen.getByText("Download failed")).toBeInTheDocument();
+      expect(browser.downloads).toHaveLength(1);
     });
+    expect(browser.downloads[0]).toMatchObject({
+      filename: "quarterly-plan.pptx",
+      blob: expect.any(Blob),
+    });
+    expect(screen.queryByText("Download failed")).not.toBeInTheDocument();
   });
 });

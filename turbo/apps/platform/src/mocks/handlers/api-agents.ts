@@ -150,12 +150,7 @@ export const apiAgentsHandlers = [
   // GET /api/zero/agents/:id/custom-connectors
   mockApi(zeroAgentCustomConnectorsContract.get, ({ params, respond }) => {
     const grants = mockCustomConnectorGrantsByAgent.get(params.id) ?? [];
-    return respond(200, {
-      enabledIds: grants.map((grant) => {
-        return grant.customConnectorId;
-      }),
-      grants,
-    });
+    return respond(200, { grants });
   }),
 
   // PUT /api/zero/agents/:id/user-connectors
@@ -176,28 +171,13 @@ export const apiAgentsHandlers = [
     zeroAgentCustomConnectorsContract.update,
     ({ body, params, respond }) => {
       const current = mockCustomConnectorGrantsByAgent.get(params.id) ?? [];
-      const requestedGrants =
-        "grants" in body
-          ? body.grants
-          : body.enabledIds.map((customConnectorId) => {
-              return (
-                current.find((grant) => {
-                  return grant.customConnectorId === customConnectorId;
-                }) ?? { customConnectorId, permissionNames: [] }
-              );
-            });
       const grants = mockCustomConnectorGrantUpdateResponse(
         current,
-        requestedGrants,
+        body.grants,
         body.operation,
       );
       mockCustomConnectorGrantsByAgent.set(params.id, grants);
-      return respond(200, {
-        enabledIds: grants.map((grant) => {
-          return grant.customConnectorId;
-        }),
-        grants,
-      });
+      return respond(200, { grants });
     },
   ),
 

@@ -348,6 +348,7 @@
       "slack": "Slack",
       "teams": "Teams",
       "telegram": "Telegram",
+      "templateImport": "Importação de modelo",
       "test": "Teste",
       "web": "Web",
       "webhook": "Webhook"
@@ -481,7 +482,6 @@
       "backToArtifacts": "Voltar aos artefatos",
       "close": "Fechar",
       "closeArtifact": "Fechar artefato",
-      "closeDownloadMenu": "Fechar menu de download",
       "closeNamed": "Fechar {{title}}",
       "closePreviewMenu": "Fechar menu de visualização",
       "download": "Baixar",
@@ -728,7 +728,7 @@
       "lastSeen": "Visto pela última vez em {{date}}",
       "linkExpires": "O link expira em {{date}}.",
       "macRequirement": "Requer um Mac com Apple silicon e macOS 14 ou mais recente. Macs com Intel não são compatíveis.",
-      "noHostsDescription": "Abra o Zero Computer Use no Mac e atualize esta página quando ele ficar online.",
+      "noHostsDescription": "Abra o {{desktopProductName}} Computer Use no Mac e atualize esta página quando ele ficar online.",
       "noHostsTitle": "Nenhum computador online",
       "sources": {
         "chat": "nesta conversa",
@@ -895,10 +895,6 @@
       "selectMonth": "Selecionar mês",
       "to": "Até"
     },
-    "manage": {
-      "description": "Assinatura, forma de pagamento e faturas no Stripe.",
-      "title": "Gerenciar cobrança"
-    },
     "paymentMethods": {
       "description": "Gerencie os métodos de pagamento usados para cobrança no Stripe.",
       "title": "Métodos de pagamento"
@@ -938,6 +934,7 @@
         "description": "Acesso gratuito legado para workspaces existentes.",
         "name": "Grátis"
       },
+      "legacy": "Legado",
       "limitedFree": {
         "name": "Grátis limitado"
       },
@@ -995,6 +992,22 @@
         "memberExclusive": "Cada pacote pertence a um membro e não pode ser compartilhado. Quando um pacote acaba, o uso volta para créditos pagos conforme o uso. Você pode fazer upgrade para um novo pacote depois.",
         "memberPackages": "Pacotes dos membros",
         "memberUsage": "Uso do membro",
+        "migration": {
+          "action": "Converter plano",
+          "confirmDescription": "Seu plano e seus direitos atuais permanecem ativos até o fim deste período de cobrança. A Stripe cobra o novo total recorrente quando o novo plano começa.",
+          "convertPlan": "Converter plano",
+          "description": "Converta seu workspace {{plan}} legado em um novo plano com um pacote de uso mensal individual para cada membro.",
+          "error": "Não foi possível migrar esta assinatura. Atualize a página e tente novamente.",
+          "invoice": "Ver fatura",
+          "processing": "Agendando a conversão com a Stripe.",
+          "ready": "Escolha um pacote mensal obrigatório para cada membro e convite pendente.",
+          "review": "Revisar conversão",
+          "reviewDescription": "Compare o plano legado atual com o novo plano recorrente antes de agendar a conversão.",
+          "reviewTitle": "Revisar conversão do plano",
+          "scheduled": "A conversão está agendada para {{date}}. Seu plano e seus direitos atuais permanecem ativos até lá.",
+          "switchesOn": "Muda para o plano {{plan}} em {{date}}",
+          "title": "Converter plano legado"
+        },
         "minimumPackageBreakdown": "Plano de {{base}} + pacote obrigatório de {{package}} para um membro",
         "monthlyTotal": "Total mensal",
         "orderSummary": "Resumo do pedido",
@@ -1336,8 +1349,8 @@
       "cloudBrowser": "Navegador na nuvem",
       "connectHost": "Conectar {{hostName}}",
       "connectMyComputer": "Conectar meu computador",
-      "dialogDescription": "Assim, o Zero pode trabalhar por você no navegador e nos aplicativos, inclusive naqueles sem conector, como LinkedIn ou Reddit.",
-      "dialogTitle": "Permita que o Zero use seu computador",
+      "dialogDescription": "Assim, o {{desktopProductName}} pode trabalhar por você no navegador e nos aplicativos, inclusive naqueles sem conector, como LinkedIn ou Reddit.",
+      "dialogTitle": "Permita que o {{desktopProductName}} use seu computador",
       "disableCloudBrowser": "Desativar navegador na nuvem",
       "disconnectHost": "Desconectar {{hostName}}",
       "downloadMacos": "Baixar para macOS",
@@ -1665,6 +1678,7 @@
         "waiting": "Aguardando",
         "watching": "Monitorando"
       },
+      "emojiCategories": "Categorias de emoji",
       "empty": "Envie uma mensagem para iniciar a conversa",
       "frequentlyUsed": "Usados com frequência",
       "icon": "Ícone da conversa",
@@ -1675,8 +1689,10 @@
       "openBrowser": "Abrir navegador",
       "openNamedAgent": "Abrir agente {{name}}",
       "openNamedChat": "Abrir conversa {{title}}",
+      "pickEmoji": "Escolha um emoji",
       "scrollToBottom": "Rolar até o final",
-      "searchEmoji": "Buscar emoji"
+      "searchEmoji": "Buscar emoji",
+      "steerMessageExplanation": "Enviada enquanto o agente trabalhava para orientar o comportamento dele"
     },
     "threadSidebar": {
       "resize": "Redimensionar barra lateral"
@@ -1980,6 +1996,7 @@
       "emptyAdmin": "Ainda não há conectores personalizados. Crie um para registrar uma API que todos os membros possam usar.",
       "emptyMember": "Sua organização ainda não registrou conectores personalizados.",
       "mcpStreamableHttp": "MCP · Streamable HTTP",
+      "mcpType": "MCP",
       "moreOptions": "Mais opções",
       "statusConnected": "Conectado",
       "toasts": {
@@ -4230,15 +4247,14 @@
         "useAccount": "Usar"
       },
       "picker": {
-        "balancedUse": "Uso equilibrado",
         "builtInModel": "Modelo integrado",
         "byokHelp": "Usa seu provedor configurado",
         "fast": "Rápido",
+        "fastImpact": "Velocidade do modelo 1,5× · uso de créditos 2,5×",
         "inheritDefault": "Herdar o padrão da organização",
         "loadError": "Não foi possível carregar os modelos.",
         "loading": "Carregando modelos...",
         "models": "Modelos",
-        "moreCodexCredits": "Usa mais créditos do Codex.",
         "noConfiguredModels": "Nenhum modelo configurado",
         "priceTiers": {
           "balanced": "Custo e desempenho equilibrados",
@@ -4246,14 +4262,12 @@
           "frontier": "Modelo principal de ponta",
           "premium": "Modelo premium de ponta para as tarefas mais difíceis"
         },
-        "prioritizeSpeed": "Prioriza a velocidade",
         "pro": "Pro",
         "providerLabels": {
           "azureFoundryPortal": "Portal do Azure Foundry",
           "claudeCodeOauth": "Claude Code (token OAuth)",
           "deepseek": "Deepseek"
         },
-        "runSpeed": "Velocidade de execução",
         "standard": "Padrão"
       },
       "policies": {
@@ -4456,6 +4470,7 @@
     "workspace": {
       "danger": {
         "delete": {
+          "billingDescription": "Todas as assinaturas ativas, incluindo pacotes de uso e complementos, serão canceladas imediatamente. O período de assinatura pré-pago não utilizado será reembolsado proporcionalmente. Compras avulsas e outras compras sem assinatura não serão reembolsadas.",
           "button": "Excluir espaço de trabalho",
           "confirmDescription": "Isso excluirá permanentemente este espaço de trabalho e todos os dados dele. Esta ação não pode ser desfeita. Digite confirm para continuar.",
           "description": "Exclua permanentemente este espaço de trabalho e todos os dados dele. Esta ação não pode ser desfeita.",
@@ -4500,7 +4515,10 @@
           "action": "Remover do espaço de trabalho",
           "confirmDescription": "{{email}} será removido deste espaço de trabalho e perderá o acesso a todos os recursos.",
           "progress": "Removendo...",
-          "title": "Remover membro?"
+          "title": "Remover membro?",
+          "usagePackImpactDescription": "Os créditos restantes do pacote de uso dessa pessoa ficarão indisponíveis imediatamente. O pacote será removido no fim do período de cobrança atual. Se isso deixar o espaço de trabalho sem nenhum pacote de uso, o plano do espaço de trabalho também será cancelado no fim do período de cobrança.",
+          "usagePackImpactTitle": "Impacto no pacote de uso",
+          "usagePackRefundDescription": "Reembolso: a parte não utilizada dos créditos comprados é devolvida ao método de pagamento original. Créditos consumidos e créditos bônus não são reembolsáveis."
         },
         "revoke": {
           "action": "Revogar convite",
@@ -4522,6 +4540,7 @@
           "progress": "Alterando...",
           "title": "Mudar para membro?"
         },
+        "usagePack": "Pacote de uso",
         "user": "Usuário",
         "you": "Você"
       },
@@ -4576,6 +4595,7 @@
     "mermaid": {
       "diagramLabel": "Diagrama",
       "expand": "Ampliar diagrama",
+      "invalidDiagram": "Diagrama inválido",
       "viewSource": "Código do diagrama"
     },
     "notFound": {
@@ -4591,6 +4611,7 @@
   },
   "usage": {
     "displayNames": {
+      "avatar": "Avatar",
       "finance": "Finanças",
       "imageRecognize": "Reconhecimento de imagem",
       "maps": "Mapas",

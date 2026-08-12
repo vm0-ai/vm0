@@ -334,6 +334,7 @@
       "slack": "Slack",
       "teams": "Teams",
       "telegram": "Telegram",
+      "templateImport": "Impor templat",
       "test": "Tes",
       "web": "Web",
       "webhook": "Webhook"
@@ -467,7 +468,6 @@
       "backToArtifacts": "Kembali ke artefak",
       "close": "Tutup",
       "closeArtifact": "Tutup artefak",
-      "closeDownloadMenu": "Tutup menu unduhan",
       "closeNamed": "Tutup {{title}}",
       "closePreviewMenu": "Tutup menu pratinjau",
       "download": "Unduh",
@@ -711,7 +711,7 @@
       "lastSeen": "Terakhir terlihat {{date}}",
       "linkExpires": "Tautan kedaluwarsa pada {{date}}.",
       "macRequirement": "Memerlukan Mac Apple silicon dengan macOS 14 atau yang lebih baru. Mac Intel tidak didukung.",
-      "noHostsDescription": "Buka Zero Computer Use di Mac Anda dan muat ulang halaman ini saat sudah online.",
+      "noHostsDescription": "Buka {{desktopProductName}} Computer Use di Mac Anda dan muat ulang halaman ini saat sudah online.",
       "noHostsTitle": "Tidak ada komputer online",
       "sources": {
         "chat": "thread chat ini",
@@ -874,10 +874,6 @@
       "selectMonth": "Pilih bulan",
       "to": "Ke"
     },
-    "manage": {
-      "description": "Langganan, metode pembayaran, dan faktur di Stripe.",
-      "title": "Kelola penagihan"
-    },
     "paymentMethods": {
       "description": "Kelola metode pembayaran yang digunakan untuk penagihan di Stripe.",
       "title": "Metode pembayaran"
@@ -917,6 +913,7 @@
         "description": "Akses gratis lama untuk ruang kerja yang sudah ada.",
         "name": "Gratis"
       },
+      "legacy": "Lama",
       "limitedFree": {
         "name": "Gratis terbatas"
       },
@@ -974,6 +971,22 @@
         "memberExclusive": "Setiap paket hanya untuk satu anggota dan tidak dapat dibagikan. Saat paket habis, penggunaan kembali memakai kredit bayar sesuai pemakaian. Anda dapat meningkatkan ke paket baru nanti.",
         "memberPackages": "Paket anggota",
         "memberUsage": "Penggunaan anggota",
+        "migration": {
+          "action": "Konversi paket",
+          "confirmDescription": "Paket dan hak Anda saat ini tetap aktif hingga periode penagihan ini berakhir. Stripe menagih total berulang baru saat paket baru dimulai.",
+          "convertPlan": "Konversi paket",
+          "description": "Konversikan ruang kerja {{plan}} lama ke paket baru dengan paket penggunaan bulanan individual untuk setiap anggota.",
+          "error": "Langganan ini tidak dapat dimigrasikan. Muat ulang halaman dan coba lagi.",
+          "invoice": "Lihat faktur",
+          "processing": "Menjadwalkan konversi dengan Stripe.",
+          "ready": "Pilih satu paket bulanan wajib untuk setiap anggota dan undangan yang tertunda.",
+          "review": "Tinjau konversi",
+          "reviewDescription": "Bandingkan paket lama saat ini dengan paket berulang baru sebelum menjadwalkan konversi.",
+          "reviewTitle": "Tinjau konversi paket",
+          "scheduled": "Konversi dijadwalkan pada {{date}}. Paket dan hak Anda saat ini tetap aktif hingga saat itu.",
+          "switchesOn": "Beralih ke paket {{plan}} pada {{date}}",
+          "title": "Konversi paket lama"
+        },
         "minimumPackageBreakdown": "Paket {{base}} + paket anggota wajib {{package}}",
         "monthlyTotal": "Total bulanan",
         "orderSummary": "Ringkasan pesanan",
@@ -1310,8 +1323,8 @@
       "cloudBrowser": "Browser cloud",
       "connectHost": "Hubungkan {{hostName}}",
       "connectMyComputer": "Hubungkan komputer saya",
-      "dialogDescription": "Agar Zero bisa bekerja di browser dan aplikasi Anda, bahkan yang tidak punya konektor seperti LinkedIn atau Reddit.",
-      "dialogTitle": "Izinkan Zero menggunakan komputer Anda",
+      "dialogDescription": "Agar {{desktopProductName}} bisa bekerja di browser dan aplikasi Anda, bahkan yang tidak punya konektor seperti LinkedIn atau Reddit.",
+      "dialogTitle": "Izinkan {{desktopProductName}} menggunakan komputer Anda",
       "disableCloudBrowser": "Nonaktifkan Cloud browser",
       "disconnectHost": "Putuskan {{hostName}}",
       "downloadMacos": "Unduh untuk macOS",
@@ -1624,6 +1637,7 @@
         "waiting": "Menunggu",
         "watching": "Dipantau"
       },
+      "emojiCategories": "Kategori emoji",
       "empty": "Kirim pesan untuk memulai percakapan",
       "frequentlyUsed": "Sering digunakan",
       "icon": "Ikon thread chat",
@@ -1634,8 +1648,10 @@
       "openBrowser": "Buka browser",
       "openNamedAgent": "Buka agen {{name}}",
       "openNamedChat": "Buka chat {{title}}",
+      "pickEmoji": "Pilih emoji",
       "scrollToBottom": "Gulir ke bawah",
-      "searchEmoji": "Cari emoji"
+      "searchEmoji": "Cari emoji",
+      "steerMessageExplanation": "Dikirim saat agen sedang bekerja untuk mengarahkan perilakunya"
     },
     "threadSidebar": {
       "resize": "Ubah ukuran sidebar"
@@ -1939,6 +1955,7 @@
       "emptyAdmin": "Belum ada konektor kustom. Buat satu untuk mendaftarkan API agar bisa digunakan semua anggota.",
       "emptyMember": "Org Anda belum mendaftarkan konektor kustom apa pun.",
       "mcpStreamableHttp": "MCP · Streamable HTTP",
+      "mcpType": "MCP",
       "moreOptions": "Opsi lainnya",
       "statusConnected": "Terhubung",
       "toasts": {
@@ -4180,15 +4197,14 @@
         "useAccount": "Gunakan"
       },
       "picker": {
-        "balancedUse": "Penggunaan seimbang",
         "builtInModel": "Model bawaan",
         "byokHelp": "Menggunakan provider yang Anda atur",
         "fast": "Cepat",
+        "fastImpact": "Kecepatan model 1,5× · penggunaan kredit 2,5×",
         "inheritDefault": "Warisi dari default organisasi",
         "loadError": "Tidak dapat memuat model.",
         "loading": "Memuat model...",
         "models": "Model",
-        "moreCodexCredits": "Menggunakan lebih banyak kredit Codex.",
         "noConfiguredModels": "Tidak ada model yang dikonfigurasi",
         "priceTiers": {
           "balanced": "Biaya dan performa seimbang",
@@ -4196,14 +4212,12 @@
           "frontier": "Model andalan terdepan",
           "premium": "Model terdepan premium untuk tugas tersulit"
         },
-        "prioritizeSpeed": "Prioritaskan kecepatan",
         "pro": "Pro",
         "providerLabels": {
           "azureFoundryPortal": "portal Azure foundry",
           "claudeCodeOauth": "Claude Code (token OAuth)",
           "deepseek": "Deepseek"
         },
-        "runSpeed": "Kecepatan jalankan",
         "standard": "Standar"
       },
       "policies": {
@@ -4404,6 +4418,7 @@
     "workspace": {
       "danger": {
         "delete": {
+          "billingDescription": "Semua langganan aktif, termasuk paket penggunaan dan add-on, akan segera dibatalkan. Waktu langganan prabayar yang belum digunakan akan dikembalikan secara prorata. Pembelian satu kali dan pembelian non-langganan lainnya tidak akan dikembalikan.",
           "button": "Hapus ruang kerja",
           "confirmDescription": "Ini akan menghapus ruang kerja ini dan semua datanya secara permanen. Tindakan ini tidak dapat dibatalkan. Ketik confirm untuk melanjutkan.",
           "description": "Hapus ruang kerja ini dan semua datanya secara permanen. Tindakan ini tidak dapat dibatalkan.",
@@ -4448,7 +4463,10 @@
           "action": "Hapus dari ruang kerja",
           "confirmDescription": "{{email}} akan dihapus dari ruang kerja ini dan kehilangan akses ke semua sumber daya.",
           "progress": "Menghapus...",
-          "title": "Hapus anggota?"
+          "title": "Hapus anggota?",
+          "usagePackImpactDescription": "Sisa kredit paket penggunaan mereka akan langsung tidak tersedia. Paket akan dihapus pada akhir periode penagihan saat ini. Jika ruang kerja tidak lagi memiliki paket penggunaan, paket ruang kerja juga akan dibatalkan pada akhir periode penagihan.",
+          "usagePackImpactTitle": "Dampak paket penggunaan",
+          "usagePackRefundDescription": "Pengembalian dana: Bagian kredit yang dibeli tetapi belum digunakan dikembalikan ke metode pembayaran awal. Kredit yang sudah digunakan dan kredit bonus tidak dapat dikembalikan."
         },
         "revoke": {
           "action": "Cabut undangan",
@@ -4470,6 +4488,7 @@
           "progress": "Mengalihkan...",
           "title": "Alihkan ke anggota?"
         },
+        "usagePack": "Paket penggunaan",
         "user": "Pengguna",
         "you": "Anda"
       },
@@ -4524,6 +4543,7 @@
     "mermaid": {
       "diagramLabel": "Diagram",
       "expand": "Perbesar diagram",
+      "invalidDiagram": "Diagram tidak valid",
       "viewSource": "Sumber diagram"
     },
     "notFound": {
@@ -4539,6 +4559,7 @@
   },
   "usage": {
     "displayNames": {
+      "avatar": "Avatar",
       "finance": "Keuangan",
       "imageRecognize": "Pengenalan Gambar",
       "maps": "Peta",

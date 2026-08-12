@@ -53,9 +53,9 @@ export const OTHER_AGENT_THREAD_ID = "b1000000-0000-4000-a000-000000000104";
 
 const ANTHROPIC_PROVIDER_ID = "00000000-0000-4000-a000-000000000001";
 
-export const MOONSHOT_PROVIDER_ID = "00000000-0000-4000-a000-000000000002";
+export const OPENROUTER_PROVIDER_ID = "00000000-0000-4000-a000-000000000002";
 
-const ZAI_PROVIDER_ID = "00000000-0000-4000-a000-000000000003";
+const VERCEL_PROVIDER_ID = "00000000-0000-4000-a000-000000000003";
 
 export function applyUserConnectorUpdate(
   current: readonly string[],
@@ -209,7 +209,7 @@ export function buildModelPolicy(
 ): OrgModelPolicy {
   return {
     id: "00000000-0000-4000-a000-000000000101",
-    modelLabel: "Claude Opus 4.7",
+    modelLabel: "Claude Opus 4.8",
     isDefault: false,
     defaultProviderType: "claude-code-oauth-token",
     credentialScope: "member",
@@ -225,9 +225,9 @@ export function buildModelPolicy(
 export function mockOrgModelRoutes(defaultSelectedModel: string): void {
   context.mocks.data.orgModelProviders([
     buildProvider({
-      id: MOONSHOT_PROVIDER_ID,
-      type: "moonshot-api-key",
-      secretName: "MOONSHOT_API_KEY",
+      id: OPENROUTER_PROVIDER_ID,
+      type: "openrouter-api-key",
+      secretName: "OPENROUTER_API_KEY",
     }),
     buildProvider({
       id: ANTHROPIC_PROVIDER_ID,
@@ -235,20 +235,20 @@ export function mockOrgModelRoutes(defaultSelectedModel: string): void {
       secretName: "ANTHROPIC_API_KEY",
     }),
     buildProvider({
-      id: ZAI_PROVIDER_ID,
-      type: "zai-api-key",
-      secretName: "ZAI_API_KEY",
+      id: VERCEL_PROVIDER_ID,
+      type: "vercel-ai-gateway",
+      secretName: "VERCEL_AI_GATEWAY_API_KEY",
     }),
   ]);
   context.mocks.data.orgModelPolicies([
     buildModelPolicy({
       id: "00000000-0000-4000-a000-000000000201",
-      model: "kimi-k2.7-code",
-      modelLabel: "Kimi K2.7 Code",
-      isDefault: defaultSelectedModel === "kimi-k2.7-code",
-      defaultProviderType: "moonshot-api-key",
+      model: "claude-fable-5",
+      modelLabel: "Claude Fable 5",
+      isDefault: defaultSelectedModel === "claude-fable-5",
+      defaultProviderType: "openrouter-api-key",
       credentialScope: "org",
-      modelProviderId: MOONSHOT_PROVIDER_ID,
+      modelProviderId: OPENROUTER_PROVIDER_ID,
     }),
     buildModelPolicy({
       id: "00000000-0000-4000-a000-000000000202",
@@ -261,20 +261,20 @@ export function mockOrgModelRoutes(defaultSelectedModel: string): void {
     }),
     buildModelPolicy({
       id: "00000000-0000-4000-a000-000000000203",
-      model: "claude-opus-4-7",
-      modelLabel: "Claude Opus 4.7",
+      model: "claude-opus-4-8",
+      modelLabel: "Claude Opus 4.8",
       defaultProviderType: "anthropic-api-key",
       credentialScope: "org",
       modelProviderId: ANTHROPIC_PROVIDER_ID,
     }),
     buildModelPolicy({
       id: "00000000-0000-4000-a000-000000000204",
-      model: "glm-5.1",
-      modelLabel: "GLM-5.1",
-      isDefault: defaultSelectedModel === "glm-5.1",
-      defaultProviderType: "zai-api-key",
+      model: "claude-opus-5",
+      modelLabel: "Claude Opus 5",
+      isDefault: defaultSelectedModel === "claude-opus-5",
+      defaultProviderType: "vercel-ai-gateway",
       credentialScope: "org",
-      modelProviderId: ZAI_PROVIDER_ID,
+      modelProviderId: VERCEL_PROVIDER_ID,
     }),
   ]);
 }

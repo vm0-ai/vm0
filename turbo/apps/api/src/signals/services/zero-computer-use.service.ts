@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from "node:crypto";
 
 import { command, computed, type Computed } from "ccstate";
+import type { DesktopProduct } from "@vm0/api-contracts/contracts/client-headers";
 import {
   and,
   asc,
@@ -908,6 +909,7 @@ function timeoutErrorForCommand(
 function serializeHost(row: ComputerUseHostRow, now: Date) {
   return {
     id: row.id,
+    product: row.clientProduct,
     hostName: row.displayName,
     displayName: row.displayName,
     appVersion: row.appVersion,
@@ -1116,6 +1118,7 @@ export const startComputerUseHost$ = command(
     params: {
       readonly orgId: string;
       readonly userId: string;
+      readonly clientProduct: DesktopProduct;
       readonly installationId?: string;
       readonly hostName: string;
       readonly appVersion: string;
@@ -1142,6 +1145,7 @@ export const startComputerUseHost$ = command(
         installationId: params.installationId ?? null,
         displayName,
         tokenHash,
+        clientProduct: params.clientProduct,
         appVersion,
         osVersion,
         supportedCapabilities,
@@ -1168,6 +1172,7 @@ export const startComputerUseHost$ = command(
               set: {
                 displayName,
                 tokenHash,
+                clientProduct: params.clientProduct,
                 appVersion,
                 osVersion,
                 supportedCapabilities,
@@ -1202,6 +1207,7 @@ export const heartbeatComputerUseHost$ = command(
     { set },
     params: {
       readonly hostToken: string;
+      readonly clientProduct: DesktopProduct;
       readonly hostName: string;
       readonly appVersion: string;
       readonly osVersion: string;
@@ -1231,6 +1237,7 @@ export const heartbeatComputerUseHost$ = command(
         const publishChanged =
           !computerUseHostIsOnline(lockedHost, now) ||
           lockedHost.displayName !== displayName ||
+          lockedHost.clientProduct !== params.clientProduct ||
           lockedHost.appVersion !== appVersion ||
           lockedHost.osVersion !== osVersion ||
           !sameStringArray(
@@ -1243,6 +1250,7 @@ export const heartbeatComputerUseHost$ = command(
           .update(computerUseHosts)
           .set({
             displayName,
+            clientProduct: params.clientProduct,
             appVersion,
             osVersion,
             supportedCapabilities,

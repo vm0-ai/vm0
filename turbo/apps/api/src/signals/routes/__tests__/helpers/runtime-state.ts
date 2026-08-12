@@ -435,6 +435,18 @@ export async function setChatEventSnapshotHeadVersion(
   });
 }
 
+export async function advanceChatEventSequenceAsPreviousApi(
+  context: TestContext,
+  threadId: string,
+  count: number,
+): Promise<void> {
+  await postAction(context, {
+    action: "advance-chat-event-sequence-as-previous-api",
+    thread_id: threadId,
+    count,
+  });
+}
+
 export async function readChatEventSnapshotHead(
   context: TestContext,
   threadId: string,
@@ -578,56 +590,6 @@ export async function setComputerUseHostAsPreviousApi(
     thread_id: args.threadId,
     computer_use_host_id: args.computerUseHostId,
   });
-}
-
-export async function setAgentModelSelectionAsPreviousApi(
-  context: TestContext,
-  agentId: string,
-  selectedModel: string,
-): Promise<void> {
-  await postAction(context, {
-    action: "set-agent-model-selection-as-previous-api",
-    agent_id: agentId,
-    selected_model: selectedModel,
-  });
-}
-
-export async function setRunModelSelectionAsPreviousApi(
-  context: TestContext,
-  runId: string,
-  selectedModel: string,
-): Promise<void> {
-  await postAction(context, {
-    action: "set-run-model-selection-as-previous-api",
-    run_id: runId,
-    selected_model: selectedModel,
-  });
-}
-
-export async function setThreadModelSelectionAsPreviousApi(
-  context: TestContext,
-  threadId: string,
-  selectedModel: string,
-): Promise<void> {
-  await postAction(context, {
-    action: "set-thread-model-selection-as-previous-api",
-    thread_id: threadId,
-    selected_model: selectedModel,
-  });
-}
-
-export async function readRunModelSelectionFixture(
-  context: TestContext,
-  runId: string,
-): Promise<NonNullable<TestRuntimeStateActionResponse["run_model_selection"]>> {
-  const response = await postAction(context, {
-    action: "read-run-model-selection-fixture",
-    run_id: runId,
-  });
-  if (!response.run_model_selection) {
-    throw new Error("readRunModelSelectionFixture missing model selection");
-  }
-  return response.run_model_selection;
 }
 
 export async function setBrowserTabSnapshotAsPreviousApi(

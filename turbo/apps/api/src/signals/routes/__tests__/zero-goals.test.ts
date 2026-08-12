@@ -438,7 +438,6 @@ describe("zero goals", () => {
     expect(state.runIds).toHaveLength(1);
     expect(state.runs).toContainEqual({
       id: goalRunId,
-      runGroupId: goal.goalId,
       goalId: goal.goalId,
     });
 

@@ -24,7 +24,10 @@ from tests.jsonl_log_helpers import (
     jsonl_exists_after_flush,
     read_jsonl_entries_after_flush,
 )
-from tests.model_provider_flow_helpers import make_model_provider_sse_flow
+from tests.model_provider_flow_helpers import (
+    make_model_provider_sse_flow,
+    model_usage_source_entries,
+)
 from tests.pending_helpers import assert_current_pending, assert_pending
 from tests.usage_buffer_helpers import event as usage_event
 from tests.usage_helpers import (
@@ -249,40 +252,6 @@ class TestModelProviderSseUsage:
             "tokens.cache_creation": 2_001,
         }
 
-    def test_full_pipeline_minimax_sse_reports_long_context_items(self, tmp_path, real_flow):
-        flow = _model_provider_sse_flow(
-            tmp_path,
-            real_flow,
-            host="api.minimax.io",
-            original_url="https://api.minimax.io/anthropic/v1/messages",
-            firewall_name="model-provider:minimax-api-key",
-            model_usage_provider="MiniMax-M3",
-        )
-        mitm_addon.responseheaders(flow)
-        response_stream(flow)(
-            b"event: message_start\n"
-            b'data: {"type":"message_start","message":'
-            b'{"id":"msg_minimax_long_context","model":"MiniMax-M3",'
-            b'"usage":{"input_tokens":500000,"output_tokens":1,'
-            b'"cache_read_input_tokens":12001,"cache_creation_input_tokens":0}}}\n\n'
-            b"event: message_delta\n"
-            b'data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},'
-            b'"usage":{"output_tokens":20}}\n\n'
-        )
-
-        webhook = self._run_response(flow)
-
-        assert {event["category"]: event["quantity"] for event in webhook.usage_events()} == {
-            "tokens.input.long_context": 500_000,
-            "tokens.output.long_context": 20,
-            "tokens.cache_read.long_context": 12_001,
-        }
-        assert compact_observation_quantities(webhook.model_usage_observation_events()) == {
-            "tokens.input": 500_000,
-            "tokens.output": 20,
-            "tokens.cache_read": 12_001,
-        }
-
     def test_full_pipeline_openai_sse_reports_usage_with_oversized_type(self, tmp_path, real_flow):
         flow = _openai_responses_sse_flow(tmp_path, real_flow)
         mitm_addon.responseheaders(flow)
@@ -387,6 +356,29 @@ class TestModelProviderSseUsage:
             event["category"]: event["quantity"] for event in webhook.usage_events()
         } == expected
         assert compact_observation_quantities(webhook.model_usage_observation_events()) == expected
+        [source_entry] = model_usage_source_entries(flow)
+        assert source_entry["source_id"] == flow.id
+        assert source_entry["provider_response_id"] == "resp_sse_1"
+        assert source_entry["transport"] == "http"
+        assert source_entry["buffer_mode"] == "aggregate"
+        assert source_entry["usage"] == expected
+        assert all(event["buffer_accepted"] is True for event in source_entry["usage_events"])
+        assert all(
+            observation["buffer_accepted"] is True
+            for observation in source_entry["model_usage_observations"]
+        )
+        assert {
+            event["source_idempotency_key"] for event in source_entry["usage_events"]
+        }.isdisjoint({event["idempotencyKey"] for event in webhook.usage_events()})
+        assert {
+            observation["source_idempotency_key"]
+            for observation in source_entry["model_usage_observations"]
+        }.isdisjoint(
+            {
+                observation["idempotencyKey"]
+                for observation in webhook.model_usage_observation_events()
+            }
+        )
         _assert_single_model_sse_parse_warning(
             flow,
             usage_protocol="openai_responses_sse",

@@ -758,7 +758,7 @@ describe("GET /api/zero/artifacts/catalog", () => {
     expectApiError(rejected.body);
     expect(rejected.body.error).toStrictEqual({
       code: "CONFLICT",
-      message: `Hosted site slug "${site}" is owned outside this chat. Choose a different --site value and rerun the same zero host command.`,
+      message: `Hosted site slug "${site}" is owned outside this chat. Choose a different --site value and rerun the same okou host command.`,
     });
     expect(organizationRedeploy).toMatchObject({
       siteId: organizationSite.siteId,

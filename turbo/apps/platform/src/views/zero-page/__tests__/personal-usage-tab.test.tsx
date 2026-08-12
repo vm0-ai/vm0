@@ -385,6 +385,60 @@ describe("personal usage settings", () => {
     expect(screen.queryByTestId("usage-pack-credit-card")).toBeNull();
   });
 
+  it("hides member balances when the admin is the only member", async () => {
+    mockPersonalUsageStory(usageRows(), "pro", false, "admin");
+    context.mocks.data.orgMembers({
+      name: "Test Org",
+      role: "admin",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      members: [
+        {
+          userId: "test-user-123",
+          email: "linghan@example.com",
+          firstName: "Linghan",
+          lastName: "Hu",
+          imageUrl: "",
+          role: "admin",
+          joinedAt: "2026-01-01T00:00:00.000Z",
+        },
+      ],
+      pendingInvitations: [],
+      membershipRequests: [],
+    });
+    context.mocks.api(
+      zeroBillingUsagePackCreditsContract.get,
+      ({ respond }) => {
+        return respond(200, {
+          totalCredits: 20_000,
+          purchasedCredits: 20_000,
+          bonusCredits: 0,
+          creditGrants: [],
+          hasUsagePack: true,
+          memberCredits: [
+            {
+              memberId: "test-user-123",
+              totalCredits: 20_000,
+              purchasedCredits: 20_000,
+              bonusCredits: 0,
+              creditGrants: [],
+            },
+          ],
+        });
+      },
+    );
+
+    await openUsageSettings(true);
+
+    const card = await screen.findByTestId("usage-pack-credit-card");
+    await waitFor(() => {
+      expect(
+        queryAllByRoleFast("button", card).some((button) => {
+          return button.getAttribute("aria-label") === "View member balances";
+        }),
+      ).toBeFalsy();
+    });
+  });
+
   it("shows every member's usage pack balance to an admin", async () => {
     const user = userEvent.setup();
     mockPersonalUsageStory(usageRows(), "pro", false, "admin");
@@ -633,6 +687,39 @@ describe("personal usage settings", () => {
       expect(screen.getAllByText("GPT 5.6 Luna").length).toBeGreaterThanOrEqual(
         1,
       );
+    });
+  });
+
+  it("hides the vendor name for talking avatar usage", async () => {
+    const user = userEvent.setup();
+    const row = usageRow({
+      title: "Talking avatar usage",
+      credits: 100,
+      runId: "run-talking-avatar",
+    });
+    mockPersonalUsageStory([
+      {
+        ...row,
+        breakdown: [
+          {
+            kind: "video",
+            credits: 100,
+            providers: [{ provider: "joggai-talking-avatar", credits: 100 }],
+          },
+        ],
+      },
+    ]);
+    await openUsageSettings();
+
+    await user.hover(screen.getByTestId("usage-kind-segment-video"));
+
+    await waitFor(() => {
+      expect(
+        screen.getAllByText("Avatar").some((element) => {
+          return element.parentElement?.textContent === "Avatar100";
+        }),
+      ).toBeTruthy();
+      expect(screen.queryByText(/joggai/iu)).not.toBeInTheDocument();
     });
   });
 

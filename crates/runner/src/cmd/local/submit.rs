@@ -15,7 +15,9 @@ use clap::Args;
 use tokio::signal::unix::{Signal, SignalKind, signal};
 use uuid::Uuid;
 
-use crate::active_input::{ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES, active_input_payload_len};
+use crate::active_input::{
+    ACTIVE_INPUT_CONTROL_PAYLOAD_MAX_BYTES, identified_active_input_payload_len,
+};
 use crate::error::{RunnerError, RunnerResult};
 use crate::ids::RunId;
 use crate::local_queue::{self, JobRequest, JobResponse};
@@ -470,7 +472,7 @@ impl SubmitPlan {
                 "invalid --active-input value: text must not contain NUL characters".to_string(),
             ));
         }
-        let payload_len = active_input_payload_len(text).map_err(|e| {
+        let payload_len = identified_active_input_payload_len(text).map_err(|e| {
             RunnerError::Internal(format!(
                 "serialize active-input payload for validation: {e}"
             ))

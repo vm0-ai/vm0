@@ -41,6 +41,7 @@ type ComputedGetter = <T>(computedValue: Computed<T>) => T;
 interface ChatEventSnapshotStats {
   readonly snapshots: number;
   readonly archivedEvents: number;
+  readonly retiredSnapshotReferencesDeleted: number;
   readonly r2ObjectsScanned: number;
   readonly r2ObjectsMeasured: number;
   readonly r2ObjectsDeleted: number;
@@ -80,19 +81,26 @@ interface SnapshotCandidate {
  * so browser downloads are transparently decompressed.
  */
 export const ARCHIVE_SCHEMA_VERSION = 4;
+/**
+ * Old archive contracts below this version are no longer supported. Raise
+ * this only after the App force-upgrade floor requires a reader that supports
+ * the new minimum; changing the constant intentionally starts reclamation.
+ */
+const MIN_SUPPORTED_ARCHIVE_SCHEMA_VERSION = 4;
 const ARCHIVE_CONTENT_TYPE = "application/x-ndjson";
 const ARCHIVE_CONTENT_ENCODING = "gzip";
 /**
- * At the 10-minute cron cadence this cap permits 72k changed threads per day.
+ * At the 10-minute cron cadence this cap permits 144k changed threads per day.
  * Normal traffic re-archives roughly 700 active threads per day, so the cap
  * leaves ample room for bursts while keeping each invocation bounded.
  */
-const DEFAULT_THREAD_BATCH_SIZE = 500;
+const DEFAULT_THREAD_BATCH_SIZE = 1000;
 const EVENT_PAGE_SIZE = 1000;
 const DEFAULT_R2_GC_GRACE_HOURS = 24 * 7;
 const R2_GC_SHARDS_PER_RUN = 16;
 const R2_GC_SHARD_COUNT = 16 ** 3;
 const R2_GC_PAGE_SIZE = 1000;
+const SNAPSHOT_GC_DELETE_QUOTA = 1000;
 /**
  * Matches the cron cadence so every invocation advances to the next shard
  * window; the 4096 shards are swept in about 1.8 days.
@@ -167,8 +175,8 @@ function encodeArchiveLine(line: ChatEventRowV4): Buffer {
 /**
  * One canonical archived chat event, one NDJSON line. Fields are listed
  * explicitly so a chat_events schema change cannot silently alter the durable
- * wire shape. The legacy payload leaves and pointer columns remain in
- * Postgres for rollback, but never enter a v4 object.
+ * wire shape. Physically retained rollout columns remain outside the v4
+ * object until a later migration-order-safe contraction.
  */
 export function chatEventRowFromDbRow(row: ArchiveEventRow): ChatEventRowV4 {
   return chatEventRowV4Schema.parse({
@@ -249,12 +257,12 @@ async function readCanonicalEvents(
       cursor = lastRow.seqId;
     }
     if (rows.length < EVENT_PAGE_SIZE) {
-      if (count === 0 || cursor !== candidate.indexedSeqId) {
+      if (count === 0) {
         throw new Error(
-          `chat event snapshot rebuild for ${candidate.chatThreadId} ended at ${cursor.toString()} instead of indexed seq ${candidate.indexedSeqId.toString()}`,
+          `chat event snapshot rebuild for ${candidate.chatThreadId} contained no events through indexed seq ${candidate.indexedSeqId.toString()}`,
         );
       }
-      return { lines, count, lastSeqId: cursor };
+      return { lines, count, lastSeqId: candidate.indexedSeqId };
     }
   }
 }
@@ -321,9 +329,8 @@ async function archiveThread(
 ): Promise<number | null> {
   const archive = await readCanonicalEvents(db, candidate);
   signal.throwIfAborted();
-  // Every generation is rebuilt from canonical Postgres rows. Retained v3 R2
-  // objects are immutable rollback/read-fallback inputs and are never
-  // transformed into a v4 object in place.
+  // Every generation is rebuilt from canonical Postgres rows. Existing R2
+  // objects are never read or transformed in place.
   const compressed = gzipSync(Buffer.concat(archive.lines));
   const objectKey = chatEventSnapshotObjectKey(
     candidate.chatThreadId,
@@ -393,6 +400,71 @@ interface R2GcStats {
   readonly subpartitionedShards: number;
 }
 
+interface RetiredSnapshotVersionGcStats {
+  readonly selected: number;
+  readonly referencesDeleted: number;
+}
+
+const deleteRetiredSnapshotVersions$ = command(
+  async (
+    { get },
+    db: Db,
+    bucket: string,
+    deleteQuota: number,
+    signal: AbortSignal,
+  ): Promise<RetiredSnapshotVersionGcStats> => {
+    const candidates = await db
+      .select({
+        id: chatEventSnapshots.id,
+        objectKey: chatEventSnapshots.objectKey,
+      })
+      .from(chatEventSnapshots)
+      .where(
+        lt(
+          chatEventSnapshots.archiveSchemaVersion,
+          MIN_SUPPORTED_ARCHIVE_SCHEMA_VERSION,
+        ),
+      )
+      .limit(deleteQuota);
+    signal.throwIfAborted();
+    if (candidates.length === 0) {
+      return { selected: 0, referencesDeleted: 0 };
+    }
+
+    const candidateIds = candidates.map((candidate) => {
+      return candidate.id;
+    });
+    const objectKeys = candidates.map((candidate) => {
+      return candidate.objectKey;
+    });
+    const referenceDeletion = db
+      .delete(chatEventSnapshots)
+      .where(
+        and(
+          inArray(chatEventSnapshots.id, candidateIds),
+          lt(
+            chatEventSnapshots.archiveSchemaVersion,
+            MIN_SUPPORTED_ARCHIVE_SCHEMA_VERSION,
+          ),
+        ),
+      )
+      .returning({ id: chatEventSnapshots.id });
+    // R2 cleanup is deliberately best-effort. Running it beside the database
+    // delete keeps either system's failure from preventing the other attempt;
+    // failed object deletes become ordinary unreferenced-object GC candidates.
+    const objectDeletion = settle(get(deleteS3Objects(bucket, objectKeys)));
+    const [deletedReferences] = await Promise.all([
+      referenceDeletion,
+      objectDeletion,
+    ]);
+    signal.throwIfAborted();
+    return {
+      selected: candidates.length,
+      referencesDeleted: deletedReferences.length,
+    };
+  },
+);
+
 function chatEventSnapshotGcPrefixes(now: Date): readonly string[] {
   const override = optionalEnv("CHAT_EVENT_SNAPSHOT_GC_SHARD");
   if (override !== undefined) {
@@ -439,6 +511,7 @@ async function collectR2SnapshotGarbage(
   get: ComputedGetter,
   db: Db,
   bucket: string,
+  deleteQuota: number,
   signal: AbortSignal,
 ): Promise<R2GcStats> {
   const now = nowDate();
@@ -457,8 +530,21 @@ async function collectR2SnapshotGarbage(
   let bytesDeleted = 0;
   let shardsScanned = 0;
   let subpartitionedShards = 0;
+  let remainingDeleteQuota = deleteQuota;
 
-  for (const prefix of chatEventSnapshotGcPrefixes(now)) {
+  if (remainingDeleteQuota === 0) {
+    return {
+      scanned,
+      measured,
+      deleted,
+      bytesMeasured,
+      bytesDeleted,
+      shardsScanned,
+      subpartitionedShards,
+    };
+  }
+
+  gcPrefixes: for (const prefix of chatEventSnapshotGcPrefixes(now)) {
     const pages = await boundedGcObjectPages(get, bucket, prefix);
     signal.throwIfAborted();
     shardsScanned += 1;
@@ -505,10 +591,11 @@ async function collectR2SnapshotGarbage(
         continue;
       }
 
-      const garbageKeys = garbage.map((object) => {
+      const deletionBatch = garbage.slice(0, remainingDeleteQuota);
+      const garbageKeys = deletionBatch.map((object) => {
         return object.key;
       });
-      await db
+      const referenceDeletion = db
         .delete(chatEventSnapshots)
         .where(
           and(
@@ -517,32 +604,22 @@ async function collectR2SnapshotGarbage(
             lt(chatEventSnapshots.createdAt, olderThan),
           ),
         );
-      const stillReferenced = await db
-        .select({ objectKey: chatEventSnapshots.objectKey })
-        .from(chatEventSnapshots)
-        .where(inArray(chatEventSnapshots.objectKey, garbageKeys));
+      const objectDeletion = settle(get(deleteS3Objects(bucket, garbageKeys)));
+      const [, objectDeletionResult] = await Promise.all([
+        referenceDeletion,
+        objectDeletion,
+      ]);
       signal.throwIfAborted();
-      const protectedKeys = new Set(
-        stillReferenced.map((reference) => {
-          return reference.objectKey;
-        }),
-      );
-      const deletable = garbage.filter((object) => {
-        return !protectedKeys.has(object.key);
-      });
-      await get(
-        deleteS3Objects(
-          bucket,
-          deletable.map((object) => {
-            return object.key;
-          }),
-        ),
-      );
-      signal.throwIfAborted();
-      deleted += deletable.length;
-      bytesDeleted += deletable.reduce((total, object) => {
-        return total + object.size;
-      }, 0);
+      remainingDeleteQuota -= deletionBatch.length;
+      if (objectDeletionResult.ok) {
+        deleted += deletionBatch.length;
+        bytesDeleted += deletionBatch.reduce((total, object) => {
+          return total + object.size;
+        }, 0);
+      }
+      if (remainingDeleteQuota === 0) {
+        break gcPrefixes;
+      }
     }
   }
   return {
@@ -561,7 +638,7 @@ async function collectR2SnapshotGarbage(
  * Each bounded pass picks both retired-version heads and threads whose search
  * watermark advanced. It rebuilds from Postgres through that watermark,
  * uploads content-addressed v4 bytes, and publishes with an exact parent CAS.
- * Existing v3 objects remain immutable. Repeated or interrupted ticks are
+ * Existing objects remain immutable. Repeated or interrupted ticks are
  * idempotent; a lost race can only leave a collectable orphan object.
  */
 export const snapshotChatEvents$ = command(
@@ -631,13 +708,28 @@ export const snapshotChatEvents$ = command(
         archivedEvents += archived;
       }
     }
+    const retiredSnapshots = await set(
+      deleteRetiredSnapshotVersions$,
+      db,
+      bucket,
+      SNAPSHOT_GC_DELETE_QUOTA,
+      signal,
+    );
+    signal.throwIfAborted();
     const convergence = await chatEventSnapshotConvergence(db);
     signal.throwIfAborted();
-    const r2Gc = await collectR2SnapshotGarbage(get, db, bucket, signal);
+    const r2Gc = await collectR2SnapshotGarbage(
+      get,
+      db,
+      bucket,
+      SNAPSHOT_GC_DELETE_QUOTA - retiredSnapshots.selected,
+      signal,
+    );
     signal.throwIfAborted();
     return {
       snapshots,
       archivedEvents,
+      retiredSnapshotReferencesDeleted: retiredSnapshots.referencesDeleted,
       r2ObjectsScanned: r2Gc.scanned,
       r2ObjectsMeasured: r2Gc.measured,
       r2ObjectsDeleted: r2Gc.deleted,

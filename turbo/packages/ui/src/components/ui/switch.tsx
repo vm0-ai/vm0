@@ -10,6 +10,12 @@ const SIZES = {
     root: "h-6 w-11",
     thumb: "h-5 w-5 data-checked:translate-x-5 data-unchecked:translate-x-0",
   },
+  // The size settings rows align to, so a toggle sits on the same baseline as
+  // a 20px label line without stretching the row.
+  compact: {
+    root: "h-5 w-9",
+    thumb: "h-4 w-4 data-checked:translate-x-4 data-unchecked:translate-x-0",
+  },
   sm: {
     root: "h-4 w-7",
     thumb: "h-3 w-3 data-checked:translate-x-3 data-unchecked:translate-x-0",

@@ -15,7 +15,7 @@ import {
 import { dispatchGenerate } from "./lib/dispatch";
 
 const WEBSITE_TARGET = "website";
-const WEBSITE_USAGE_COMMAND = "zero generate website";
+const WEBSITE_USAGE_COMMAND = "okou generate website";
 
 interface WebsiteOptions {
   readonly prompt?: string;
@@ -34,7 +34,7 @@ function selectedTemplateDetails(
   const details = [`Selected template: ${template.id} (${template.name})`];
   if (template.source.archive) {
     details.push(
-      `Selected template package: zero resource pull ${template.id} --dir ./generated/resources`,
+      `Selected template package: okou resource pull ${template.id} --dir ./generated/resources`,
     );
   }
   return details;
@@ -91,12 +91,12 @@ export const websiteCommand = new Command()
     const templates = listTemplates(WEBSITE_TARGET);
     return `
 Examples:
-  Generate site:         zero generate website --prompt "A launch site for a developer observability tool"
-  Pick template:         zero generate website --template black-slabs --prompt "Launch site for a billing API"
-  Pick design system:    zero generate website --design-system stripe --prompt "Pricing page for a SaaS"
-  Custom site slug:      zero generate website --site-slug api-migration-demo --prompt "An internal migration microsite"
-  Pipe prompt:           cat brief.txt | zero generate website
-  Show choices:          zero generate website
+  Generate site:         okou generate website --prompt "A launch site for a developer observability tool"
+  Pick template:         okou generate website --template black-slabs --prompt "Launch site for a billing API"
+  Pick design system:    okou generate website --design-system stripe --prompt "Pricing page for a SaaS"
+  Custom site slug:      okou generate website --site-slug api-migration-demo --prompt "An internal migration microsite"
+  Pipe prompt:           cat brief.txt | okou generate website
+  Show choices:          okou generate website
 
 Output:
   Prints a source-selection packet for the current agent.
@@ -104,7 +104,7 @@ Output:
 
 Notes:
   - Authenticates via ZERO_TOKEN
-  - The agent authors the HTML artifact and hosts it with zero host
+  - The agent authors the HTML artifact and hosts it with okou host
 
 Design Systems:
 ${formatRegistryListing(designSystems, "design systems")}

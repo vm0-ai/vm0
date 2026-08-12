@@ -2,8 +2,11 @@ import type { MouseEvent as ReactMouseEvent, ReactNode } from "react";
 import { Download, Eye, FileMusic, Play, Video } from "lucide-react";
 import { useGet, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
+import { downloadAttachment$ } from "../../signals/attachment-download.ts";
+import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import type { TextPreviewComputed } from "../../signals/text-preview.ts";
+import type { ImageLoadSignals } from "../../signals/image-load.ts";
 import {
   lightboxUrl$,
   openAudioLightbox$,
@@ -15,10 +18,7 @@ import {
   FilePreviewIcon,
   getFilePreviewAccentClass,
 } from "./zero-file-preview-icon.tsx";
-import {
-  downloadAttachmentUrl,
-  publicAttachmentUrl,
-} from "./zero-attachment-url";
+import { publicAttachmentUrl } from "./zero-attachment-url";
 import { ArtifactThumbnailImage } from "./zero-artifact-thumbnail.tsx";
 
 interface ChatAttachmentDescriptor {
@@ -264,11 +264,13 @@ function fallbackHtmlPreviewTitle(filename: string, url: string): string {
 
 function HtmlSitePreviewCard({
   filename,
+  previewImageLoad,
   previewImagePending,
   previewImageUrl,
   url,
 }: {
   filename: string;
+  previewImageLoad?: ImageLoadSignals;
   previewImagePending?: boolean;
   previewImageUrl?: string;
   url: string;
@@ -310,9 +312,10 @@ function HtmlSitePreviewCard({
         </span>
       </div>
       <div className="relative aspect-[16/10] overflow-hidden bg-muted/30">
-        {previewImageUrl ? (
+        {previewImageUrl && previewImageLoad ? (
           <ArtifactThumbnailImage
             src={previewImageUrl}
+            load={previewImageLoad}
             testId="attachment-preview-thumbnail"
             className="absolute inset-0 h-full w-full object-cover"
             fallback={
@@ -366,6 +369,7 @@ function HtmlSitePreviewViewport({
 function DocumentThumbnailPreview({
   filename,
   kind,
+  previewImageLoad,
   previewImagePending,
   previewImageUrl,
   text$,
@@ -373,6 +377,7 @@ function DocumentThumbnailPreview({
 }: {
   filename: string;
   kind: "markdown" | "csv" | "pdf" | "html";
+  previewImageLoad?: ImageLoadSignals;
   previewImagePending?: boolean;
   previewImageUrl?: string;
   text$?: TextPreviewComputed;
@@ -382,6 +387,7 @@ function DocumentThumbnailPreview({
     return (
       <HtmlSitePreviewCard
         filename={filename}
+        previewImageLoad={previewImageLoad}
         previewImagePending={previewImagePending}
         previewImageUrl={previewImageUrl}
         url={url}
@@ -410,16 +416,17 @@ function FileThumbnailPreview({
 }) {
   const { t } = useTranslation();
   const accentClass = getFilePreviewAccentClass(filename, contentType);
+  const downloadAttachment = useSet(downloadAttachment$);
+  const pageSignal = useGet(pageSignal$);
 
   return (
     <button
       type="button"
       onClick={() => {
         detach(
-          downloadAttachmentUrl(
-            normalizePlatformFileUrl(url),
-            undefined,
-            filename,
+          downloadAttachment(
+            { filename, url: normalizePlatformFileUrl(url) },
+            pageSignal,
           ),
           Reason.DomCallback,
           "attachment download",
@@ -614,9 +621,11 @@ function VideoThumbnailPreview({
 
 export function AttachmentPreview({
   attachment,
+  previewImageLoad,
   text$,
 }: {
   attachment: ChatAttachmentDescriptor;
+  previewImageLoad?: ImageLoadSignals;
   text$?: TextPreviewComputed;
 }) {
   const kind = classifyChatAttachment(attachment);
@@ -675,6 +684,7 @@ export function AttachmentPreview({
       return (
         <DocumentThumbnailPreview
           filename={attachment.filename}
+          previewImageLoad={previewImageLoad}
           previewImagePending={attachment.previewImagePending}
           previewImageUrl={attachment.previewImageUrl}
           url={attachment.url}

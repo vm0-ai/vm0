@@ -1,4 +1,5 @@
 import { listWorkflows } from "../../../lib/api/domains/zero-workflows";
+import { getOkouAgentId } from "../../../lib/okou-env";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -26,7 +27,7 @@ export async function resolveWorkflowRef(
     );
   }
 
-  const agentId = options.agent ?? process.env.ZERO_AGENT_ID;
+  const agentId = options.agent ?? getOkouAgentId();
   if (!agentId) {
     throw new Error(
       "Workflow name refs require an agent scope. Pass --agent <agent-id>, set ZERO_AGENT_ID, or use a workflow ID",

@@ -9,11 +9,9 @@ import {
   getCanonicalModelDisplayName,
   getDefaultOrgModelPolicySeed,
   getFrameworkForType,
-  getRetiredRunModelReplacement,
   getVm0ConcreteProviderType,
   isModelSupportedByProvider,
   isLimitedFree1RestrictedRunModel,
-  isRetiredRunModel,
   type ModelProviderCredentialScope,
   type OrgModelPoliciesResponse,
   type OrgModelPolicy,
@@ -33,7 +31,7 @@ import {
 } from "@vm0/db/schema/model-provider-gateway";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
-import { insufficientCredits, modelRetired } from "../../lib/error";
+import { insufficientCredits } from "../../lib/error";
 import { nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
 import {
@@ -65,9 +63,7 @@ type ServiceResult<T> =
   | { readonly ok: false; readonly message: string }
   | {
       readonly ok: false;
-      readonly response:
-        | ReturnType<typeof insufficientCredits>
-        | ReturnType<typeof modelRetired>;
+      readonly response: ReturnType<typeof insufficientCredits>;
     };
 
 const ORG_SENTINEL_USER_ID = "__org__";
@@ -82,13 +78,6 @@ function bad<T>(message: string): ServiceResult<T> {
 
 function planRestricted<T>(): ServiceResult<T> {
   return { ok: false, response: insufficientCredits() };
-}
-
-function retired<T>(
-  model: string,
-  replacement: SupportedRunModel,
-): ServiceResult<T> {
-  return { ok: false, response: modelRetired(model, replacement) };
 }
 
 function isOAuthMemberProviderType(type: ModelProviderType): boolean {
@@ -237,14 +226,6 @@ function sortRowsByCatalog(rows: OrgModelPolicyRow[]): OrgModelPolicyRow[] {
   });
 }
 
-function isLimitedFreeReplaceableStandardDefaultModel(model: string): boolean {
-  // MiniMax-M3 was the previous VM0-managed default; limited-free orgs seeded
-  // before this change still need to converge to the current built-in route.
-  return (
-    model === DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL || model === "MiniMax-M3"
-  );
-}
-
 function getSeedDefaultModelForPlan(
   capabilities: Pick<OrgPlanCapabilities, "restrictedVm0Models">,
 ): SupportedRunModel {
@@ -269,7 +250,7 @@ function shouldReplaceExistingDefaultForPlan(
   const shouldReplaceModel =
     capabilities.restrictedVm0Models &&
     existingDefault.model !== LIMITED_FREE1_DEFAULT_RUN_MODEL &&
-    (isLimitedFreeReplaceableStandardDefaultModel(existingDefault.model) ||
+    (existingDefault.model === DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL ||
       isLimitedFree1RestrictedRunModel(existingDefault.model));
   return (
     shouldReplaceModel ||
@@ -391,8 +372,16 @@ export async function ensureOrgModelPolicies(
     return sortRowsByCatalog(existing);
   }
 
+  // A retired default can be the only persisted policy while the new API is
+  // deployed ahead of the Stage 2 migration. Transfer the org-wide default
+  // slot before inserting the rest of the active seed so the hidden row does
+  // not collide with the partial unique default index.
+  await setDefaultModelPolicy(db, orgId, userId, seedDefaultModel, {
+    resetRouteToBuiltIn: true,
+  });
+  const initialized = await loadRows(db, orgId);
   const existingModels = new Set(
-    existing.map((policy) => {
+    initialized.map((policy) => {
       return policy.model;
     }),
   );
@@ -410,7 +399,7 @@ export async function ensureOrgModelPolicies(
     });
 
   if (missing.length === 0) {
-    return existing;
+    return sortRowsByCatalog(initialized);
   }
 
   await db
@@ -581,13 +570,6 @@ async function validateUpdatePolicies(
   let defaultCount = 0;
 
   for (const policy of policies) {
-    const replacement = getRetiredRunModelReplacement(policy.model, {
-      restrictedVm0Models: capabilities.restrictedVm0Models,
-      modelProviderType: policy.defaultProviderType,
-    });
-    if (replacement) {
-      return retired(policy.model, replacement);
-    }
     if (!parseSupportedModel(policy.model)) {
       return bad(`Unknown model "${policy.model}"`);
     }
@@ -648,13 +630,6 @@ function getRouteStatus(params: {
     providersById,
     surfacesById,
   } = params;
-
-  if (isRetiredRunModel(model, providerType)) {
-    return {
-      status: "invalid",
-      reason: "This model has been retired.",
-    };
-  }
 
   if (modelProviderSurfaceId) {
     const surface = surfacesById.get(modelProviderSurfaceId);

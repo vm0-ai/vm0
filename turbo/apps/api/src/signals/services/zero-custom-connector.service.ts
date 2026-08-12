@@ -36,8 +36,6 @@ import {
   type OrgCustomConnectorOAuthTokenEndpointAuthMethod,
 } from "@vm0/db/schema/org-custom-connector-oauth-config";
 import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
-import { orgCustomConnectorSecrets } from "@vm0/db/schema/org-custom-connector-secret";
-import { orgCustomConnectorValues } from "@vm0/db/schema/org-custom-connector-value";
 
 import { clerk$ } from "../external/clerk";
 import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
@@ -45,10 +43,7 @@ import { badRequestMessage, notFound } from "../../lib/error";
 import { logger } from "../../lib/log";
 import { nowDate } from "../../lib/time";
 import { safeSync } from "../utils";
-import {
-  encryptStoredSecretValue,
-  decryptStoredSecretValue,
-} from "./crypto.utils";
+import { encryptStoredSecretValue } from "./crypto.utils";
 import { userFeatureSwitchContext } from "./feature-switches.service";
 import { addUserCustomConnector } from "./user-connectors.service";
 import { loadConnectorRuntimeSnapshot } from "./connector-catalog-runtime.service";
@@ -58,16 +53,18 @@ import {
 } from "./custom-connector-definition-selection";
 import {
   deleteCustomConnectorMemberConnection,
-  deleteCustomConnectorStoredValues,
+  type PreparedCustomConnectorValue,
+  upsertCustomConnectorStoredValues,
 } from "./custom-connector-credential-storage.service";
 import { loadCustomConnectorPermissionBundle } from "./custom-connector-permission-bundle.service";
 import {
   customConnectorDefinitionHasUsableConnection,
-  loadCustomConnectorCredentialAccesses,
+  loadCurrentCustomConnectorStoredValues,
   loadCurrentCustomConnectorValueMarkers,
   loadUsableCustomConnectorConnections,
   type CustomConnectorCredentialAccess,
   type CustomConnectorCredentialValueMarker,
+  type CustomConnectorStoredValue,
 } from "./custom-connector-credential-access.service";
 import { effectiveCustomConnectorPermissionBundleRef } from "./feishu-custom-connector-permissions";
 import {
@@ -85,7 +82,11 @@ import {
   type CapturedConnectorClientInvalidationAbort,
 } from "./connector-client-invalidation.service";
 import { isCustomConnectorMcpEnabled } from "./custom-connector-mcp-feature.service";
-import { replaceConnectorConnection } from "./connector-connection-write.service";
+import {
+  replaceConnectorConnection,
+  type UpsertConnectorConnectionMetadataArgs,
+  upsertConnectorConnectionMetadata,
+} from "./connector-connection-write.service";
 import type { Tx } from "../../lib/db-types";
 
 const L = logger("CustomConnectorService");
@@ -277,13 +278,6 @@ interface ValueMarker {
   readonly key: string;
 }
 
-type EncryptedCustomConnectorValue = Omit<
-  CustomConnectorValueInput,
-  "value"
-> & {
-  readonly encryptedValue: string;
-};
-
 export class CustomConnectorRuntimePrefixError extends Error {
   constructor(connectorName: string | undefined) {
     super(
@@ -295,11 +289,9 @@ export class CustomConnectorRuntimePrefixError extends Error {
   }
 }
 
-export interface StoredValueRow extends ValueMarker {
-  readonly encryptedValue: string;
-}
+export type StoredValueRow = CustomConnectorStoredValue;
 
-type FeatureSwitchContextArg = Parameters<typeof decryptStoredSecretValue>[1];
+type FeatureSwitchContextArg = Parameters<typeof encryptStoredSecretValue>[1];
 
 function isBadRequest(value: unknown): value is BadRequestResponse {
   return (
@@ -384,13 +376,6 @@ function queryInjectionArray(
       typeof candidate.valueTemplate === "string"
     );
   });
-}
-
-function legacyHeaderTemplateFromCanonical(template: string): string {
-  return template.replaceAll(
-    `{{secrets.${LEGACY_SECRET_KEY}}}`,
-    LEGACY_SECRET_PLACEHOLDER,
-  );
 }
 
 type PersistedHttpDefinitionRow = CustomConnectorDefinitionRow & {
@@ -782,7 +767,6 @@ export function serialiseCustomConnector(args: {
     configuredFieldKeys: [...configured],
     createdAt: args.row.createdAt.toISOString(),
     updatedAt: args.row.updatedAt.toISOString(),
-    hasSecret: connected,
   };
 
   if (args.row.kind === "mcp") {
@@ -791,22 +775,14 @@ export function serialiseCustomConnector(args: {
       kind: "mcp",
       endpoint: args.row.endpoint,
       transport: args.row.transport,
-      prefixes: [],
-      headerName: "",
-      headerTemplate: "",
       prefixTemplates: [],
       permissionBundleRef: null,
     } satisfies CustomConnectorMcpResponse;
   }
 
-  const legacy = legacyResponseAliases(args.row);
-
   return {
     ...common,
     kind: "http",
-    prefixes: [...legacy.prefixes],
-    headerName: legacy.headerName,
-    headerTemplate: legacy.headerTemplate,
     prefixTemplates: [...args.row.prefixTemplates],
     permissionBundleRef: effectivePermissionBundleRef(args.row),
   } satisfies CustomConnectorHttpResponse;
@@ -1597,21 +1573,6 @@ function definitionFromUpdateInput(
   };
 }
 
-function legacyResponseAliases(definition: ValidatedHttpDefinition): {
-  readonly prefixes: readonly string[];
-  readonly headerName: string;
-  readonly headerTemplate: string;
-} {
-  const firstHeader = definition.headerInjections[0];
-  return {
-    prefixes: [...definition.prefixTemplates],
-    headerName: firstHeader?.name ?? "X-VM0-Custom-Connector",
-    headerTemplate: firstHeader
-      ? legacyHeaderTemplateFromCanonical(firstHeader.valueTemplate)
-      : LEGACY_SECRET_PLACEHOLDER,
-  };
-}
-
 function protocolColumns(definition: ValidatedDefinition): {
   readonly prefixTemplates: string[];
   readonly permissionBundleRef: CustomConnectorPermissionBundleRef | null;
@@ -2393,12 +2354,6 @@ export const deleteCustomConnector$ = command(
         return false;
       }
       await tx
-        .delete(orgCustomConnectorValues)
-        .where(eq(orgCustomConnectorValues.connectorId, args.id));
-      await tx
-        .delete(orgCustomConnectorSecrets)
-        .where(eq(orgCustomConnectorSecrets.connectorId, args.id));
-      await tx
         .delete(orgCustomConnectors)
         .where(
           and(
@@ -2630,27 +2585,35 @@ function validateValueInputs(args: {
   });
 }
 
-async function encryptCustomConnectorValues(
+async function prepareCustomConnectorValues(
   args: {
     readonly values: readonly CustomConnectorValueInput[];
     readonly featureSwitchContext: FeatureSwitchContextArg;
   },
   signal: AbortSignal,
-): Promise<readonly EncryptedCustomConnectorValue[]> {
-  const encryptedValues: EncryptedCustomConnectorValue[] = [];
+): Promise<readonly PreparedCustomConnectorValue[]> {
+  const preparedValues: PreparedCustomConnectorValue[] = [];
   for (const value of args.values) {
-    const encryptedValue = await encryptStoredSecretValue(
-      value.value,
-      args.featureSwitchContext,
-    );
-    signal.throwIfAborted();
-    encryptedValues.push({
+    if (value.kind === "secret") {
+      const encryptedValue = await encryptStoredSecretValue(
+        value.value,
+        args.featureSwitchContext,
+      );
+      signal.throwIfAborted();
+      preparedValues.push({
+        key: value.key,
+        kind: value.kind,
+        encryptedValue,
+      });
+      continue;
+    }
+    preparedValues.push({
       key: value.key,
       kind: value.kind,
-      encryptedValue,
+      value: value.value,
     });
   }
-  return encryptedValues;
+  return preparedValues;
 }
 
 interface SetCustomConnectorValuesArgs {
@@ -2658,46 +2621,12 @@ interface SetCustomConnectorValuesArgs {
   readonly userId: string;
   readonly connectorId: string;
   readonly values: readonly CustomConnectorValueInput[];
-  readonly syncLegacySecret?: boolean;
 }
 
 interface CustomConnectorValueWriteState {
   readonly connector: CustomConnectorRow;
-  readonly replacingStoredValues: boolean;
-  readonly establishesCurrentCredentials: boolean;
+  readonly preservesStoredValues: boolean;
   readonly runtimeRecovered: boolean;
-}
-
-async function hasUnversionedCustomConnectorValues(
-  tx: Tx,
-  args: SetCustomConnectorValuesArgs,
-): Promise<boolean> {
-  const [storedValue] = await tx
-    .select({ id: orgCustomConnectorValues.id })
-    .from(orgCustomConnectorValues)
-    .where(
-      and(
-        eq(orgCustomConnectorValues.connectorId, args.connectorId),
-        eq(orgCustomConnectorValues.userId, args.userId),
-        eq(orgCustomConnectorValues.orgId, args.orgId),
-      ),
-    )
-    .limit(1);
-  if (storedValue) {
-    return true;
-  }
-  const [storedLegacySecret] = await tx
-    .select({ connectorId: orgCustomConnectorSecrets.connectorId })
-    .from(orgCustomConnectorSecrets)
-    .where(
-      and(
-        eq(orgCustomConnectorSecrets.connectorId, args.connectorId),
-        eq(orgCustomConnectorSecrets.userId, args.userId),
-        eq(orgCustomConnectorSecrets.orgId, args.orgId),
-      ),
-    )
-    .limit(1);
-  return storedLegacySecret !== undefined;
 }
 
 async function prepareCustomConnectorValueWrite(args: {
@@ -2746,6 +2675,7 @@ async function prepareCustomConnectorValueWrite(args: {
 
   const [storedConnector] = await args.tx
     .select({
+      id: connectors.id,
       authMethod: connectors.authMethod,
       storageVersion: connectors.storageVersion,
     })
@@ -2763,86 +2693,31 @@ async function prepareCustomConnectorValueWrite(args: {
     fields: connector.fields,
     markers: currentValues,
   });
+  if (storedConnector === undefined && missingRequired.length > 0) {
+    return badRequestMessage(
+      `All required fields must be provided when connecting or restoring this connector: ${missingRequired.join(
+        ", ",
+      )}`,
+    );
+  }
   const replacingIncompatibleValues =
     storedConnector !== undefined &&
     (storedConnector.authMethod !== connector.authMode ||
       storedConnector.storageVersion !== connector.storageVersion);
-  const replacingUnversionedValues =
-    storedConnector === undefined &&
-    (await hasUnversionedCustomConnectorValues(args.tx, args.request));
-  const replacingStoredValues =
-    replacingIncompatibleValues || replacingUnversionedValues;
-  if (replacingStoredValues && missingRequired.length > 0) {
+  if (replacingIncompatibleValues && missingRequired.length > 0) {
     return badRequestMessage(
       `All required fields must be provided when restoring this connector: ${missingRequired.join(
         ", ",
       )}`,
     );
   }
-  const establishesCurrentCredentials =
-    storedConnector !== undefined || missingRequired.length === 0;
+  const preservesStoredValues =
+    storedConnector !== undefined && !replacingIncompatibleValues;
   return {
     connector,
-    replacingStoredValues,
-    establishesCurrentCredentials,
-    runtimeRecovered:
-      replacingStoredValues ||
-      (storedConnector === undefined && establishesCurrentCredentials),
+    preservesStoredValues,
+    runtimeRecovered: !preservesStoredValues,
   };
-}
-
-async function upsertEncryptedCustomConnectorValues(
-  args: {
-    readonly tx: Tx;
-    readonly request: SetCustomConnectorValuesArgs;
-    readonly values: readonly EncryptedCustomConnectorValue[];
-  },
-  signal: AbortSignal,
-): Promise<void> {
-  for (const value of args.values) {
-    await args.tx
-      .insert(orgCustomConnectorValues)
-      .values({
-        connectorId: args.request.connectorId,
-        userId: args.request.userId,
-        orgId: args.request.orgId,
-        kind: value.kind,
-        key: value.key,
-        encryptedValue: value.encryptedValue,
-      })
-      .onConflictDoUpdate({
-        target: [
-          orgCustomConnectorValues.connectorId,
-          orgCustomConnectorValues.userId,
-          orgCustomConnectorValues.kind,
-          orgCustomConnectorValues.key,
-        ],
-        set: { encryptedValue: value.encryptedValue, updatedAt: nowDate() },
-      });
-    signal.throwIfAborted();
-
-    if (
-      args.request.syncLegacySecret &&
-      value.kind === "secret" &&
-      value.key === LEGACY_SECRET_KEY
-    ) {
-      await args.tx
-        .insert(orgCustomConnectorSecrets)
-        .values({
-          connectorId: args.request.connectorId,
-          userId: args.request.userId,
-          orgId: args.request.orgId,
-          encryptedValue: value.encryptedValue,
-        })
-        .onConflictDoUpdate({
-          target: [
-            orgCustomConnectorSecrets.connectorId,
-            orgCustomConnectorSecrets.userId,
-          ],
-          set: { encryptedValue: value.encryptedValue, updatedAt: nowDate() },
-        });
-    }
-  }
 }
 
 async function persistCustomConnectorValues(
@@ -2851,7 +2726,7 @@ async function persistCustomConnectorValues(
     readonly request: SetCustomConnectorValuesArgs;
     readonly expectedConnector: CustomConnectorRow;
     readonly expectedValues: readonly CustomConnectorValueInput[];
-    readonly encryptedValues: readonly EncryptedCustomConnectorValue[];
+    readonly preparedValues: readonly PreparedCustomConnectorValue[];
   },
   signal: AbortSignal,
 ): Promise<
@@ -2867,45 +2742,57 @@ async function persistCustomConnectorValues(
   if ("status" in state) {
     return state;
   }
-  if (state.replacingStoredValues) {
-    await deleteCustomConnectorStoredValues(args.tx, args.request, signal);
-  }
-  const writeValues = async (tx: Tx, writeSignal: AbortSignal) => {
-    await upsertEncryptedCustomConnectorValues(
+  const writeValues = async (
+    tx: Tx,
+    connectionId: string,
+    writeSignal: AbortSignal,
+  ) => {
+    await upsertCustomConnectorStoredValues(
+      tx,
       {
-        tx,
-        request: args.request,
-        values: args.encryptedValues,
+        connectionId,
+        fields: state.connector.fields,
+        orgId: args.request.orgId,
+        userId: args.request.userId,
+        values: args.preparedValues,
       },
       writeSignal,
     );
   };
-  if (state.establishesCurrentCredentials) {
+  const connectionArgs: UpsertConnectorConnectionMetadataArgs = {
+    orgId: args.request.orgId,
+    userId: args.request.userId,
+    authMethod: "manual",
+    storageVersion: state.connector.storageVersion,
+    tokenExpiresAt: null,
+    target: {
+      kind: "custom",
+      customConnectorId: args.request.connectorId,
+    },
+  };
+  if (state.preservesStoredValues) {
+    const connection = await upsertConnectorConnectionMetadata(
+      args.tx,
+      connectionArgs,
+    );
+    signal.throwIfAborted();
+    await writeValues(args.tx, connection.id, signal);
+  } else {
     await replaceConnectorConnection(
       args.tx,
       {
-        orgId: args.request.orgId,
-        userId: args.request.userId,
-        authMethod: "manual",
-        storageVersion: state.connector.storageVersion,
-        tokenExpiresAt: null,
-        target: {
-          kind: "custom",
-          customConnectorId: args.request.connectorId,
-        },
-        writeCredentials: async ({ db }, writeSignal) => {
-          await writeValues(db, writeSignal);
+        ...connectionArgs,
+        writeCredentials: async ({ db, connectorId }, writeSignal) => {
+          await writeValues(db, connectorId, writeSignal);
         },
       },
       signal,
     );
-  } else {
-    await writeValues(args.tx, signal);
   }
   return {
     connector: state.connector,
     runtimeRecovered: state.runtimeRecovered,
-    usableConnection: state.establishesCurrentCredentials,
+    usableConnection: true,
   };
 }
 
@@ -2917,7 +2804,6 @@ export const setCustomConnectorValues$ = command(
       readonly userId: string;
       readonly connectorId: string;
       readonly values: readonly CustomConnectorValueInput[];
-      readonly syncLegacySecret?: boolean;
     },
     signal: AbortSignal,
   ): Promise<
@@ -2956,9 +2842,9 @@ export const setCustomConnectorValues$ = command(
       return values;
     }
     const writeDb = set(writeDb$);
-    const encryptionInput = { values, featureSwitchContext };
-    const encryptedValues = await encryptCustomConnectorValues(
-      encryptionInput,
+    const preparationInput = { values, featureSwitchContext };
+    const preparedValues = await prepareCustomConnectorValues(
+      preparationInput,
       signal,
     );
     const valueWrite = writeDb.transaction(async (tx) => {
@@ -2968,7 +2854,7 @@ export const setCustomConnectorValues$ = command(
           request: args,
           expectedConnector: connector,
           expectedValues: values,
-          encryptedValues,
+          preparedValues,
         },
         signal,
       );
@@ -3100,126 +2986,6 @@ export const disconnectCustomConnector$ = command(
     return undefined;
   },
 );
-
-async function loadStoredValuesForConnector(args: {
-  readonly db: ReadonlyDb;
-  readonly orgId: string;
-  readonly userId: string;
-  readonly connectorId: string;
-  readonly authMode: CustomConnectorAuthMode;
-  readonly storageVersion: number;
-}): Promise<readonly StoredValueRow[]> {
-  const [valueRows, legacyRows] = await Promise.all([
-    args.db
-      .select({
-        connectorId: orgCustomConnectorValues.connectorId,
-        kind: orgCustomConnectorValues.kind,
-        key: orgCustomConnectorValues.key,
-        encryptedValue: orgCustomConnectorValues.encryptedValue,
-      })
-      .from(orgCustomConnectorValues)
-      .innerJoin(
-        orgCustomConnectors,
-        and(
-          eq(orgCustomConnectors.id, orgCustomConnectorValues.connectorId),
-          eq(orgCustomConnectors.orgId, orgCustomConnectorValues.orgId),
-          eq(orgCustomConnectors.authMode, args.authMode),
-          eq(orgCustomConnectors.storageVersion, args.storageVersion),
-        ),
-      )
-      .innerJoin(
-        connectors,
-        and(
-          eq(connectors.customConnectorId, orgCustomConnectors.id),
-          eq(connectors.orgId, args.orgId),
-          eq(connectors.userId, args.userId),
-          eq(connectors.authMethod, orgCustomConnectors.authMode),
-          eq(connectors.storageVersion, orgCustomConnectors.storageVersion),
-        ),
-      )
-      .where(
-        and(
-          eq(orgCustomConnectorValues.orgId, args.orgId),
-          eq(orgCustomConnectorValues.userId, args.userId),
-          eq(orgCustomConnectorValues.connectorId, args.connectorId),
-        ),
-      ),
-    args.db
-      .select({
-        connectorId: orgCustomConnectorSecrets.connectorId,
-        encryptedValue: orgCustomConnectorSecrets.encryptedValue,
-      })
-      .from(orgCustomConnectorSecrets)
-      .innerJoin(
-        orgCustomConnectors,
-        and(
-          eq(orgCustomConnectors.id, orgCustomConnectorSecrets.connectorId),
-          eq(orgCustomConnectors.orgId, orgCustomConnectorSecrets.orgId),
-          eq(orgCustomConnectors.authMode, "manual"),
-          eq(orgCustomConnectors.authMode, args.authMode),
-          eq(orgCustomConnectors.storageVersion, args.storageVersion),
-        ),
-      )
-      .innerJoin(
-        connectors,
-        and(
-          eq(connectors.customConnectorId, orgCustomConnectors.id),
-          eq(connectors.orgId, args.orgId),
-          eq(connectors.userId, args.userId),
-          eq(connectors.authMethod, orgCustomConnectors.authMode),
-          eq(connectors.storageVersion, orgCustomConnectors.storageVersion),
-        ),
-      )
-      .where(
-        and(
-          eq(orgCustomConnectorSecrets.orgId, args.orgId),
-          eq(orgCustomConnectorSecrets.userId, args.userId),
-          eq(orgCustomConnectorSecrets.connectorId, args.connectorId),
-        ),
-      ),
-  ]);
-  const rows: StoredValueRow[] = valueRows
-    .filter((row): row is StoredValueRow => {
-      return row.kind === "secret" || row.kind === "variable";
-    })
-    .map((row) => {
-      return {
-        connectorId: row.connectorId,
-        kind: row.kind,
-        key: row.key,
-        encryptedValue: row.encryptedValue,
-      };
-    });
-  const hasLegacySecret = rows.some((row) => {
-    return row.kind === "secret" && row.key === LEGACY_SECRET_KEY;
-  });
-  for (const row of legacyRows) {
-    if (!hasLegacySecret) {
-      rows.push({
-        connectorId: row.connectorId,
-        kind: "secret",
-        key: LEGACY_SECRET_KEY,
-        encryptedValue: row.encryptedValue,
-      });
-    }
-  }
-  return rows;
-}
-
-export async function decryptCustomConnectorValues(args: {
-  readonly values: readonly StoredValueRow[];
-  readonly featureSwitchContext: FeatureSwitchContextArg;
-}): Promise<Record<string, string>> {
-  const result: Record<string, string> = {};
-  for (const value of args.values) {
-    result[customConnectorValueMarkerKey(value)] =
-      await decryptStoredSecretValue(
-        value.encryptedValue,
-        args.featureSwitchContext,
-      );
-  }
-  return result;
-}
 
 export function customConnectorInternalName(connectorId: string): string {
   return `custom_connector_${connectorId.replaceAll("-", "")}`;
@@ -3451,41 +3217,45 @@ export async function loadCustomConnectorRuntimeData(
   }
 
   return await measure("connectorValueRows", async () => {
-    const credentialAccesses = await loadCustomConnectorCredentialAccesses(db, {
+    const definitions = connectorRows.map((row) => {
+      return {
+        id: row.connector.id,
+        authMode: row.connector.authMode,
+        storageVersion: row.connector.storageVersion,
+      };
+    });
+    const runtimeStorage = await loadCurrentCustomConnectorStoredValues(db, {
       orgId: args.orgId,
       userId: args.userId,
-      definitions: connectorRows.map((row) => {
-        return {
-          id: row.connector.id,
-          authMode: row.connector.authMode,
-          storageVersion: row.connector.storageVersion,
-        };
-      }),
+      definitions,
     });
-    return await Promise.all(
-      connectorRows.map(async (row) => {
-        const connector = normaliseCustomConnectorRow(
-          row.connector,
-          row.oauthConfig,
-        );
-        const credentialAccess = credentialAccesses.get(connector.id);
-        if (!credentialAccess) {
-          throw new Error("Expected custom connector credential access");
-        }
-        const values =
-          credentialAccess.kind === "current"
-            ? await loadStoredValuesForConnector({
-                db,
-                orgId: args.orgId,
-                userId: args.userId,
-                connectorId: connector.id,
-                authMode: connector.authMode,
-                storageVersion: connector.storageVersion,
-              })
-            : [];
-        return { connector, values, credentialAccess };
-      }),
-    );
+    const valuesByConnectorId = new Map<string, StoredValueRow[]>();
+    for (const value of runtimeStorage.values) {
+      const values = valuesByConnectorId.get(value.connectorId) ?? [];
+      values.push(value);
+      valuesByConnectorId.set(value.connectorId, values);
+    }
+    return connectorRows.map((row) => {
+      const connector = normaliseCustomConnectorRow(
+        row.connector,
+        row.oauthConfig,
+      );
+      const credentialAccess = runtimeStorage.accesses.get(connector.id);
+      if (!credentialAccess) {
+        throw new Error("Expected custom connector credential access");
+      }
+      const declaredFields = new Set(
+        connector.fields.map((field) => {
+          return customConnectorValueMarkerKey(field);
+        }),
+      );
+      const values = (valuesByConnectorId.get(connector.id) ?? []).filter(
+        (value) => {
+          return declaredFields.has(customConnectorValueMarkerKey(value));
+        },
+      );
+      return { connector, values, credentialAccess };
+    });
   });
 }
 
@@ -3633,19 +3403,25 @@ export const saveCustomConnectorProposal$ = command(
       return connector;
     }
 
-    const valueResult = await set(
-      setCustomConnectorValues$,
-      {
-        orgId: args.orgId,
-        userId: args.userId,
-        connectorId: connector.id,
-        values: args.values,
-        syncLegacySecret: true,
-      },
-      signal,
-    );
-    if ("status" in valueResult) {
-      return valueResult;
+    const missingRequiredProposalValues =
+      customConnectorMissingRequiredFieldKeys({
+        fields: proposalDefinition.fields,
+        markers: proposalValues,
+      });
+    if (args.values.length > 0 || missingRequiredProposalValues.length === 0) {
+      const valueResult = await set(
+        setCustomConnectorValues$,
+        {
+          orgId: args.orgId,
+          userId: args.userId,
+          connectorId: connector.id,
+          values: args.values,
+        },
+        signal,
+      );
+      if ("status" in valueResult) {
+        return valueResult;
+      }
     }
 
     const authorizedAgentId = await set(

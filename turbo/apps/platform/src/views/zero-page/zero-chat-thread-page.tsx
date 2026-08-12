@@ -1,24 +1,22 @@
 import type {
   CSSProperties,
   FormEvent,
+  KeyboardEvent as ReactKeyboardEvent,
   MouseEvent as ReactMouseEvent,
   ReactNode,
   UIEvent as ReactUIEvent,
 } from "react";
 import {
   useGet,
+  useLoadable,
   useSet,
   useLastLoadable,
   useLastResolved,
-  useLoadable,
 } from "ccstate-react";
 import type { TFunction } from "i18next";
 import { equalArrays } from "../../lib/equality.ts";
-import { now } from "../../lib/time.ts";
-import { useLoadableSet } from "ccstate-react/experimental";
 import { useTranslation } from "react-i18next";
 import { resolvedAppLocale } from "../../i18n/format.ts";
-import { i18n } from "../../i18n/index.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   runUsagePopoverOpenRunId$,
@@ -26,21 +24,29 @@ import {
 } from "../../signals/chat-page/run-usage-popover.ts";
 import {
   AlertCircle,
+  Coffee,
+  Flag,
   Hand,
+  Heart,
+  Leaf,
+  Lightbulb,
+  Plane,
+  Smile,
+  Trophy,
   Image,
   ChartLine,
   Globe,
-  Play,
   Video,
   Copy,
-  Monitor,
   Check,
   SwatchBook,
   ArrowDown,
   ArrowUpRight,
   ChevronRight,
   Link as LinkIcon,
+  Coins,
   Loader2,
+  Play,
   MessageCircle,
   SmilePlus,
   Package,
@@ -50,9 +56,10 @@ import {
   Target,
   X,
   Clock,
-  Coins,
   Hourglass,
   Share2,
+  CornerLeftUp,
+  type LucideIcon,
 } from "lucide-react";
 import {
   cn,
@@ -83,7 +90,6 @@ import {
   BrandSlack,
 } from "@vm0/ui";
 import { RUN_ERROR_GUIDANCE } from "@vm0/api-contracts/contracts/errors";
-import { isHttpCustomConnectorClientResponse } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import type {
   ChatEventUsagePayload,
   ChatRecommendedFollowup,
@@ -106,20 +112,24 @@ import type {
   ChatThreadWorkflowAutomation,
   ZeroWorkflowSchedule,
 } from "@vm0/api-contracts/contracts/zero-workflows";
-import { r2ImageTransformUrl } from "@vm0/core";
 import { getModelDisplayName } from "@vm0/core/model-display-name";
-import type { UserPermissionGrantExpiresIn } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
-import type {
-  PlatformConnectorPermissionMetadata,
-  PlatformUserPermissionGrant,
-} from "../../signals/connector-domain.ts";
 import { emptyChatImg } from "./platform-assets.ts";
-import type { FirewallPolicyValue } from "@vm0/connectors/firewall-types";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { isMobileTextInputDevice } from "../../lib/visual-viewport-keyboard.ts";
-import { Markdown } from "../components/markdown.tsx";
+import { Markdown, MarkdownEventBody } from "../components/markdown.tsx";
+import { hasChatEventBodyContent } from "../../signals/chat-page/chat-event-body-blocks.ts";
+import { i18n } from "../../i18n/index.ts";
+import { runChatActionCallback$ } from "../../signals/chat-page/action-callback.ts";
+import { useLoadableSet } from "ccstate-react/experimental";
+import {
+  CHAT_INLINE_IMAGE_PREVIEW_CLASS,
+  CHAT_INLINE_VIDEO_ATTACHMENT_PREVIEW_CLASS,
+  ChatImagePreviewLink,
+  ChatVideoPreviewButton,
+} from "./chat-body-cards.tsx";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
+  customConnectorMcpEnabled$,
   featureSwitch$,
   videoTemplateOptionsEnabled$,
 } from "../../signals/external/feature-switch.ts";
@@ -142,22 +152,12 @@ import {
   PreviewableAudioAttachmentChip,
   PreviewableFileAttachmentChip,
 } from "./zero-attachment-chips.tsx";
-import { publicAttachmentUrl } from "./zero-attachment-url";
-import { MailDraftCard } from "./mail-draft-card.tsx";
-import { BrowserSessionCard } from "./browser-session-card.tsx";
 import { settingsIconAssetUrl } from "./components/settings/settings-icon-assets.ts";
-import {
-  classifyChatAttachment,
-  contentTypeForBodyPreviewKind,
-  type BodyRenderBlock,
-} from "../../signals/chat-page/parse-body-blocks.ts";
+import { classifyChatAttachment } from "../../signals/chat-page/parse-body-blocks.ts";
 import type { ArtifactSignals } from "../../signals/chat-page/artifact-card-signals.ts";
 import {
   activeChatConnectorAction$,
   closeChatConnectorActionConnectDialog$,
-  type CatalogConnectorSignals,
-  type ConnectorSignals,
-  type CustomConnectorSignals,
 } from "../../signals/chat-page/connector-action-block.ts";
 import {
   completedWorkExpandedKeys$,
@@ -171,36 +171,19 @@ import {
   type RunGroupFold,
   type RunGroupFolding,
 } from "../../signals/chat-page/run-group-folding.ts";
-import { runChatActionCallback$ } from "../../signals/chat-page/action-callback.ts";
 import {
   activeGoalDialogGoal$,
   activeGoalDialogThreadId$,
   closeChatThreadGoalDialog$,
 } from "../../signals/chat-page/chat-goal.ts";
-import type { ComputerUseAuthorizationSignals } from "../../signals/chat-page/computer-use-authorization-block.ts";
-import type { PlanUpgradeSignals } from "../../signals/chat-page/plan-upgrade-block.ts";
-import type { PermissionSignals } from "../../signals/chat-page/permission-card-signals.ts";
-import { AttachmentPreview } from "./zero-attachment-preview.tsx";
-import { ArtifactThumbnailImage } from "./zero-artifact-thumbnail.tsx";
-import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
-import { ConnectorCard } from "./components/settings/connector-card.tsx";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
-import { CustomConnectorIcon } from "./components/settings/custom-connector-icon.tsx";
 import { CustomConnectorConnectDialog } from "./components/settings/custom-connector-connect-dialog.tsx";
-import { connectorCurrentConnectionStatus } from "../../signals/zero-page/settings/connectors.ts";
 import { customConnectors$ } from "../../signals/zero-page/settings/custom-connectors.ts";
-import { PermissionGrantDurationSelect } from "../components/permission-grant-duration-select.tsx";
 import {
   lightboxUrl$ as attachmentLightboxUrl$,
   openImageLightbox$ as openAttachmentImageLightbox$,
   openVideoLightbox$ as openAttachmentVideoLightbox$,
 } from "../../signals/zero-page/zero-attachment-chips.ts";
-import {
-  DEFAULT_USER_PERMISSION_GRANT_EXPIRES_IN,
-  permissionGrantExpiresInByScope$,
-  setPermissionGrantExpiresIn$,
-} from "../../signals/permission-allow/permission-grant-expiration.ts";
-import { isActiveUserPermissionGrant } from "../../signals/user-permission-grants.ts";
 import {
   writeToClipboard,
   type ChatClipboardAttachment,
@@ -273,9 +256,15 @@ import {
   CHAT_THREAD_EMOJI_OPTIONS,
 } from "../../signals/chat-page/chat-thread-title.ts";
 import {
+  chatThreadEmojiActiveCategory$,
   chatThreadEmojiGroups$,
+  chatThreadEmojiPendingJump$,
+  chatThreadEmojiPreview$,
   chatThreadEmojiQuery$,
   filterChatThreadEmojiGroups,
+  setChatThreadEmojiActiveCategory$,
+  setChatThreadEmojiPendingJump$,
+  setChatThreadEmojiPreview$,
   setChatThreadEmojiQuery$,
   type ChatThreadEmojiItem,
 } from "../../signals/chat-page/chat-thread-emoji.ts";
@@ -292,22 +281,12 @@ import { setBillingSubPage$ } from "../../signals/zero-page/settings/workspace-s
 import { openSettingsDialogAt$ } from "../../signals/zero-page/settings/settings-dialog.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import {
-  applyUserPermissionGrant$,
-  findPermissionInMetadata,
-  resolveUserPermissionGrantPolicy,
-} from "../../signals/permission-allow/permission-allow-signals.ts";
-import {
   billingStatusAsync$,
   type CreditCheckoutSelection,
   startCheckout$,
   startCreditCheckout$,
 } from "../../signals/zero-page/billing.ts";
 import { orgPlanCapabilitiesFromBilling } from "../../signals/zero-page/org-plan-capabilities.ts";
-import {
-  imageLoadStatusByKey$,
-  imageLoadStatusRef$,
-  setImageLoadStatus$,
-} from "../../signals/view-component-state.ts";
 import {
   currentLeftPane$,
   currentRightPane$,
@@ -392,11 +371,7 @@ function modelChangeRunKey(
   if (inputEvent.runId !== undefined) {
     return `run:${inputEvent.runId}`;
   }
-  // Old web/app clients can persist model annotations on steer inputs for up
-  // to about two days. Keep persisted events from looking like run starts
-  // until their stored rows and snapshots are migrated; remove the seqId
-  // check after #25879 confirms no runless model annotations remain.
-  if (inputEvent.seqId === undefined && modelSelection !== undefined) {
+  if (modelSelection !== undefined) {
     return `event:${inputEvent.id}`;
   }
   return undefined;
@@ -537,25 +512,26 @@ function ArtifactsButtonInner({ thread }: { thread: ChatPanelSignals }) {
     <TooltipProvider delayDuration={300}>
       <Tooltip>
         <TooltipTrigger asChild>
-          <button
+          <Button
             type="button"
             onClick={() => {
               reloadArtifacts();
               openThreadArtifacts();
             }}
+            variant="quiet"
+            size="icon-sm"
+            iconSize="md"
             className={cn(
-              "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors duration-150",
-              open
-                ? "bg-primary/10 text-primary"
-                : "text-muted-foreground/70 hover:bg-state-hover hover:text-foreground",
+              "shrink-0 duration-150",
+              open && "bg-primary/10 text-primary hover:text-primary",
             )}
             aria-label={t(($) => {
               return $.chat.thread.openArtifacts;
             })}
             aria-pressed={open}
           >
-            <Package size={17} />
-          </button>
+            <Package size={18} />
+          </Button>
         </TooltipTrigger>
         <TooltipContent side="bottom">
           {t(($) => {
@@ -598,13 +574,14 @@ export function AutomationMenuButton({
     <TooltipProvider delayDuration={300}>
       <Tooltip>
         <TooltipTrigger asChild>
-          <button
+          <Button
             type="button"
+            variant="quiet"
+            size="icon-sm"
+            iconSize="md"
             className={cn(
-              "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors duration-150",
-              open
-                ? "bg-primary/10 text-primary"
-                : "text-muted-foreground/70 hover:bg-state-hover hover:text-foreground",
+              "shrink-0 duration-150",
+              open && "bg-primary/10 text-primary hover:text-primary",
             )}
             aria-label={
               ariaLabel ??
@@ -619,7 +596,7 @@ export function AutomationMenuButton({
             }}
           >
             <Clock size={18} />
-          </button>
+          </Button>
         </TooltipTrigger>
         <TooltipContent side="bottom">
           {t(($) => {
@@ -641,13 +618,14 @@ function BrowserMenuButton({ thread }: { thread: ChatPanelSignals }) {
     <TooltipProvider delayDuration={300}>
       <Tooltip>
         <TooltipTrigger asChild>
-          <button
+          <Button
             type="button"
+            variant="quiet"
+            size="icon-sm"
+            iconSize="md"
             className={cn(
-              "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors duration-150",
-              open
-                ? "bg-primary/10 text-primary"
-                : "text-muted-foreground/70 hover:bg-state-hover hover:text-foreground",
+              "shrink-0 duration-150",
+              open && "bg-primary/10 text-primary hover:text-primary",
             )}
             aria-label={t(($) => {
               return $.chat.thread.openBrowser;
@@ -658,7 +636,7 @@ function BrowserMenuButton({ thread }: { thread: ChatPanelSignals }) {
             }}
           >
             <Globe size={18} />
-          </button>
+          </Button>
         </TooltipTrigger>
         <TooltipContent side="bottom">
           {t(($) => {
@@ -749,7 +727,7 @@ function ChatThreadHeader({ thread }: { thread: ChatPanelSignals }) {
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
-                <button
+                <Button
                   type="button"
                   onClick={() => {
                     detach(
@@ -758,13 +736,16 @@ function ChatThreadHeader({ thread }: { thread: ChatPanelSignals }) {
                       "start shared thread selection",
                     );
                   }}
-                  className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted-foreground/70 transition-colors duration-150 hover:bg-state-hover hover:text-foreground"
+                  variant="quiet"
+                  size="icon-sm"
+                  iconSize="md"
+                  className="shrink-0 duration-150"
                   aria-label={t(($) => {
                     return $.chat.sharing.start;
                   })}
                 >
                   <Share2 size={18} />
-                </button>
+                </Button>
               </TooltipTrigger>
               <TooltipContent side="bottom">
                 {t(($) => {
@@ -866,6 +847,9 @@ function ChatThreadEmojiMenuButton({
   const { open, openChatThreadEmojiMenu, closeMenu, selectEmoji, clearEmoji } =
     useChatThreadEmojiMenuActions({ threadId, title });
   const setEmojiQuery = useSet(setChatThreadEmojiQuery$);
+  const setEmojiActiveCategory = useSet(setChatThreadEmojiActiveCategory$);
+  const setEmojiPendingJump = useSet(setChatThreadEmojiPendingJump$);
+  const setEmojiPreview = useSet(setChatThreadEmojiPreview$);
 
   return (
     <TooltipProvider delayDuration={200}>
@@ -874,6 +858,9 @@ function ChatThreadEmojiMenuButton({
         onOpenChange={(nextOpen) => {
           if (nextOpen) {
             setEmojiQuery("");
+            setEmojiActiveCategory(null);
+            setEmojiPendingJump(null);
+            setEmojiPreview(null);
             openChatThreadEmojiMenu({ threadId, title });
           } else {
             closeMenu();
@@ -883,12 +870,15 @@ function ChatThreadEmojiMenuButton({
         <Tooltip>
           <TooltipTrigger asChild>
             <PopoverTrigger asChild>
-              <button
+              <Button
                 type="button"
                 aria-label={t(($) => {
                   return $.chat.thread.changeIcon;
                 })}
-                className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-state-hover hover:text-foreground"
+                variant="quiet"
+                size="icon-xs"
+                iconSize="md"
+                className="shrink-0"
               >
                 {emoji ? (
                   <span
@@ -900,7 +890,7 @@ function ChatThreadEmojiMenuButton({
                 ) : (
                   <SmilePlus size={18} aria-hidden="true" />
                 )}
-              </button>
+              </Button>
             </PopoverTrigger>
           </TooltipTrigger>
           <TooltipContent side="bottom">
@@ -963,6 +953,222 @@ function useFrequentlyUsedEmoji(): ChatThreadEmojiItem[] {
   });
 }
 
+// unicode-emoji-json ships the CLDR group names, so key the rail icons off the
+// same strings the sections are titled with.
+function chatThreadEmojiCategoryIcon(group: string): LucideIcon {
+  switch (group) {
+    case "People & Body": {
+      return Hand;
+    }
+    case "Animals & Nature": {
+      return Leaf;
+    }
+    case "Food & Drink": {
+      return Coffee;
+    }
+    case "Travel & Places": {
+      return Plane;
+    }
+    case "Activities": {
+      return Trophy;
+    }
+    case "Objects": {
+      return Lightbulb;
+    }
+    case "Symbols": {
+      return Heart;
+    }
+    case "Flags": {
+      return Flag;
+    }
+    default: {
+      return Smile;
+    }
+  }
+}
+
+const CHAT_THREAD_EMOJI_FREQUENT_CATEGORY = "frequently-used";
+
+interface ChatThreadEmojiCategory {
+  key: string;
+  label: string;
+  icon: LucideIcon;
+  items: ChatThreadEmojiItem[];
+  showShortcutDigits: boolean;
+  // The emoji dataset names an emoji the way a shortcode does; the frequently
+  // used row names it the way this product does ("Done", "Urgent"), which is
+  // translated and must not be dressed up as a shortcode.
+  shortcodeNames: boolean;
+}
+
+function chatThreadEmojiDisplayName(
+  name: string,
+  shortcodeNames: boolean,
+): string {
+  return shortcodeNames ? `:${name.replace(/\s+/g, "_")}:` : name;
+}
+
+function chatThreadEmojiSectionId(key: string): string {
+  return `chat-thread-emoji-section-${key}`;
+}
+
+// The category whose title is pinned right now: the last section that has
+// already reached the top of the feed.
+function pinnedChatThreadEmojiCategory(feed: HTMLElement): string | null {
+  const sections = Array.from(
+    feed.querySelectorAll<HTMLElement>("[data-chat-thread-emoji-section]"),
+  );
+  let pinned: string | null = null;
+  for (const section of sections) {
+    if (section.offsetTop > feed.scrollTop + 1) {
+      break;
+    }
+    pinned = section.dataset.chatThreadEmojiSection ?? null;
+  }
+  return pinned;
+}
+
+// Where the feed lands when it jumps to a section. A short final category
+// cannot scroll all the way to its own offset, so clamp to the last reachable
+// position: the jump and the arrival check have to agree on the same number.
+function chatThreadEmojiScrollTarget(
+  feed: HTMLElement,
+  section: HTMLElement,
+): number {
+  return Math.min(section.offsetTop, feed.scrollHeight - feed.clientHeight);
+}
+
+// Returns whether the feed will actually move. A jump that scrolls nowhere
+// emits no scroll event, so the caller must not wait for one.
+function scrollChatThreadEmojiCategoryIntoView(key: string): boolean {
+  const section = document.getElementById(chatThreadEmojiSectionId(key));
+  const feed = section?.closest<HTMLElement>("[data-chat-thread-emoji-feed]");
+  if (!section || !feed || typeof feed.scrollTo !== "function") {
+    return false;
+  }
+  const top = chatThreadEmojiScrollTarget(feed, section);
+  if (Math.abs(top - feed.scrollTop) <= 1) {
+    return false;
+  }
+  feed.scrollTo({ top, behavior: "smooth" });
+  return true;
+}
+
+function chatThreadEmojiCategories(
+  frequentLabel: string,
+  frequentItems: ChatThreadEmojiItem[],
+  groups: { name: string; emojis: ChatThreadEmojiItem[] }[] | null,
+): ChatThreadEmojiCategory[] {
+  return [
+    {
+      key: CHAT_THREAD_EMOJI_FREQUENT_CATEGORY,
+      label: frequentLabel,
+      icon: Clock,
+      items: frequentItems,
+      showShortcutDigits: true,
+      shortcodeNames: false,
+    },
+    ...(groups ?? []).map((group) => {
+      return {
+        key: group.name,
+        label: group.name,
+        icon: chatThreadEmojiCategoryIcon(group.name),
+        items: group.emojis,
+        showShortcutDigits: false,
+        shortcodeNames: true,
+      };
+    }),
+  ];
+}
+
+function ChatThreadEmojiCategoryRail({
+  categories,
+  onSelect,
+}: {
+  categories: ChatThreadEmojiCategory[];
+  onSelect: (key: string) => void;
+}) {
+  const { t } = useTranslation();
+  // Held here rather than in the picker so that following the feed re-renders
+  // the rail alone, not the ~1,900 emoji buttons below it.
+  const activeCategory = useGet(chatThreadEmojiActiveCategory$);
+  const selectedCategory =
+    activeCategory ?? CHAT_THREAD_EMOJI_FREQUENT_CATEGORY;
+
+  // A tablist takes one tab stop, and the arrow keys move between the tabs
+  // inside it.
+  function handleKeyDown(event: ReactKeyboardEvent<HTMLDivElement>): void {
+    const step =
+      event.key === "ArrowRight" ? 1 : event.key === "ArrowLeft" ? -1 : 0;
+    if (step === 0) {
+      return;
+    }
+    const tabs = Array.from(
+      event.currentTarget.querySelectorAll<HTMLElement>('[role="tab"]'),
+    );
+    const current = tabs.findIndex((tab) => {
+      return tab === document.activeElement;
+    });
+    if (current === -1) {
+      return;
+    }
+    event.preventDefault();
+    const next = (current + step + tabs.length) % tabs.length;
+    tabs[next]?.focus();
+    const nextCategory = categories[next];
+    if (nextCategory) {
+      onSelect(nextCategory.key);
+    }
+  }
+
+  return (
+    <div
+      role="tablist"
+      aria-label={t(($) => {
+        return $.chat.thread.emojiCategories;
+      })}
+      // 7px top and bottom keeps the buttons clear of the popover edge and of
+      // the divider; the active bar then sits inside the bottom gap.
+      className="flex gap-0.5 border-b border-border px-2 py-[7px]"
+      onKeyDown={handleKeyDown}
+    >
+      {categories.map((category) => {
+        const CategoryIcon = category.icon;
+        const selected = category.key === selectedCategory;
+        return (
+          <button
+            key={category.key}
+            type="button"
+            role="tab"
+            aria-selected={selected}
+            aria-controls={chatThreadEmojiSectionId(category.key)}
+            aria-label={category.label}
+            title={category.label}
+            tabIndex={selected ? 0 : -1}
+            className={cn(
+              "relative flex h-8 flex-1 items-center justify-center rounded-lg transition-colors hover:bg-state-hover hover:text-foreground",
+              selected ? "text-foreground" : "text-muted-foreground",
+            )}
+            onClick={() => {
+              onSelect(category.key);
+            }}
+          >
+            <CategoryIcon size={16} aria-hidden="true" />
+            {selected && (
+              <span
+                aria-hidden="true"
+                // -8px == the row's 7px bottom padding plus its 1px border, so
+                // the bar seats on the divider instead of floating above it.
+                className="absolute -bottom-2 h-0.5 w-4 rounded-t-sm bg-primary"
+              />
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function ChatThreadEmojiPicker({
   hasEmoji,
   onSelect,
@@ -977,14 +1183,53 @@ function ChatThreadEmojiPicker({
   const setQuery = useSet(setChatThreadEmojiQuery$);
   const groups = useLastResolved(chatThreadEmojiGroups$) ?? null;
   const frequentlyUsedEmoji = useFrequentlyUsedEmoji();
+  const railEnabled =
+    useGet(featureSwitch$)[FeatureSwitchKey.EmojiPickerCategoryRail] ?? false;
+  const setActiveCategory = useSet(setChatThreadEmojiActiveCategory$);
+  const setPendingJump = useSet(setChatThreadEmojiPendingJump$);
 
   const isSearching = query.trim().length > 0;
   const searchResults =
     isSearching && groups ? filterChatThreadEmojiGroups(groups, query) : [];
 
+  const categories = chatThreadEmojiCategories(
+    t(($) => {
+      return $.chat.thread.frequentlyUsed;
+    }),
+    frequentlyUsedEmoji,
+    groups,
+  );
+  function jumpToCategory(key: string): void {
+    if (isSearching) {
+      setQuery("");
+    }
+    setActiveCategory(key);
+    // The sections may only mount once the query clears, so scroll on the next
+    // frame rather than against the pre-clear layout. Only hold the highlight
+    // when the feed really moves — otherwise no scroll event would arrive to
+    // release the hold and the rail would stop following the feed for good.
+    window.requestAnimationFrame(() => {
+      setPendingJump(scrollChatThreadEmojiCategoryIntoView(key) ? key : null);
+    });
+  }
+
   return (
     <div className="flex flex-col">
-      <div className="flex items-center gap-2 p-2">
+      {railEnabled && (
+        <ChatThreadEmojiCategoryRail
+          categories={categories}
+          onSelect={jumpToCategory}
+        />
+      )}
+      <div
+        className={cn(
+          "flex items-center gap-2 px-2 pt-2",
+          // Pull the first section title up towards the search field. The title
+          // keeps its own box height so the fade under it is unchanged; only
+          // the gap above it closes.
+          railEnabled ? "pb-1" : "pb-2",
+        )}
+      >
         <div className="relative flex-1">
           <Search
             size={15}
@@ -1018,54 +1263,179 @@ function ChatThreadEmojiPicker({
           </button>
         )}
       </div>
-      <div className="max-h-72 overflow-y-auto px-2 pb-2">
-        {isSearching ? (
-          searchResults.length > 0 ? (
-            <ChatThreadEmojiGrid items={searchResults} onSelect={onSelect} />
-          ) : (
-            <p className="px-1 py-6 text-center text-xs text-muted-foreground">
-              {t(($) => {
-                return $.chat.thread.noEmojiFound;
-              })}
-            </p>
-          )
+      <ChatThreadEmojiFeed
+        categories={categories}
+        searchResults={isSearching ? searchResults : null}
+        onSelect={onSelect}
+        railEnabled={railEnabled}
+      />
+      {railEnabled && <ChatThreadEmojiPreview />}
+    </div>
+  );
+}
+
+// Names whichever emoji the pointer or keyboard is on, so the grid stays a
+// grid of glyphs and the reader still gets a label for the one in question.
+function ChatThreadEmojiPreview() {
+  const { t } = useTranslation();
+  const preview = useGet(chatThreadEmojiPreview$);
+
+  return (
+    <div className="flex h-10 shrink-0 items-center gap-2 border-t border-border px-3">
+      {preview ? (
+        <>
+          <span aria-hidden="true" className="zero-emoji text-lg leading-none">
+            {preview.emoji}
+          </span>
+          <span className="truncate text-xs font-medium text-muted-foreground">
+            {preview.name}
+          </span>
+        </>
+      ) : (
+        <span className="text-xs text-muted-foreground/70">
+          {t(($) => {
+            return $.chat.thread.pickEmoji;
+          })}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function ChatThreadEmojiFeed({
+  categories,
+  searchResults,
+  onSelect,
+  railEnabled,
+}: {
+  categories: ChatThreadEmojiCategory[];
+  searchResults: ChatThreadEmojiItem[] | null;
+  onSelect: (emoji: string) => void;
+  railEnabled: boolean;
+}) {
+  const { t } = useTranslation();
+  const setActiveCategory = useSet(setChatThreadEmojiActiveCategory$);
+  const pendingJump = useGet(chatThreadEmojiPendingJump$);
+  const setPendingJump = useSet(setChatThreadEmojiPendingJump$);
+  const setPreview = useSet(setChatThreadEmojiPreview$);
+
+  // One delegated listener on the feed rather than a pair on each of the ~1,900
+  // buttons. Pointer and keyboard both report through it.
+  function previewEmojiUnder(target: EventTarget): void {
+    if (!(target instanceof Element)) {
+      return;
+    }
+    const button = target.closest<HTMLElement>("[data-chat-thread-emoji]");
+    const emoji = button?.dataset.chatThreadEmoji;
+    const name = button?.dataset.chatThreadEmojiName;
+    setPreview(emoji && name ? { emoji, name } : null);
+  }
+
+  function handleScroll(event: ReactUIEvent<HTMLDivElement>): void {
+    const feed = event.currentTarget;
+    if (pendingJump !== null) {
+      const target = feed.querySelector<HTMLElement>(
+        `[data-chat-thread-emoji-section="${pendingJump}"]`,
+      );
+      // Release the hold once the jump lands, and also when its section is no
+      // longer around to land on, so the hold can never outlive the jump.
+      if (
+        !target ||
+        Math.abs(chatThreadEmojiScrollTarget(feed, target) - feed.scrollTop) <=
+          1
+      ) {
+        setPendingJump(null);
+      }
+      return;
+    }
+    setActiveCategory(pinnedChatThreadEmojiCategory(feed));
+  }
+
+  // Scrolling by hand aborts an in-flight smooth scroll, so the jump will never
+  // reach its target: hand the feed back the highlight immediately.
+  function releasePendingJump(): void {
+    if (pendingJump !== null) {
+      setPendingJump(null);
+    }
+  }
+
+  return (
+    <div
+      data-chat-thread-emoji-feed=""
+      // relative so each section's offsetTop is measured against the feed.
+      className="relative max-h-72 overflow-y-auto px-2 pb-2"
+      onScroll={railEnabled ? handleScroll : undefined}
+      onWheel={railEnabled ? releasePendingJump : undefined}
+      onTouchStart={railEnabled ? releasePendingJump : undefined}
+      onPointerDown={railEnabled ? releasePendingJump : undefined}
+      onMouseOver={
+        railEnabled
+          ? (event) => {
+              previewEmojiUnder(event.target);
+            }
+          : undefined
+      }
+      onFocus={
+        railEnabled
+          ? (event) => {
+              previewEmojiUnder(event.target);
+            }
+          : undefined
+      }
+      onMouseLeave={
+        railEnabled
+          ? () => {
+              setPreview(null);
+            }
+          : undefined
+      }
+    >
+      {searchResults !== null ? (
+        searchResults.length > 0 ? (
+          <ChatThreadEmojiGrid items={searchResults} onSelect={onSelect} />
         ) : (
-          <>
-            <ChatThreadEmojiSection
-              label={t(($) => {
-                return $.chat.thread.frequentlyUsed;
-              })}
-              items={frequentlyUsedEmoji}
-              onSelect={onSelect}
-              showShortcutDigits
-            />
-            {groups?.map((group) => {
-              return (
-                <ChatThreadEmojiSection
-                  key={group.name}
-                  label={group.name}
-                  items={group.emojis}
-                  onSelect={onSelect}
-                />
-              );
+          <p className="px-1 py-6 text-center text-xs text-muted-foreground">
+            {t(($) => {
+              return $.chat.thread.noEmojiFound;
             })}
-          </>
-        )}
-      </div>
+          </p>
+        )
+      ) : (
+        categories.map((category) => {
+          return (
+            <ChatThreadEmojiSection
+              key={category.key}
+              categoryKey={category.key}
+              label={category.label}
+              items={category.items}
+              onSelect={onSelect}
+              showShortcutDigits={category.showShortcutDigits}
+              shortcodeNames={category.shortcodeNames}
+              pinnedTitle={railEnabled}
+            />
+          );
+        })
+      )}
     </div>
   );
 }
 
 function ChatThreadEmojiSection({
+  categoryKey,
   label,
   items,
   onSelect,
   showShortcutDigits = false,
+  shortcodeNames = true,
+  pinnedTitle = false,
 }: {
+  categoryKey: string;
   label: string;
   items: ChatThreadEmojiItem[];
   onSelect: (emoji: string) => void;
   showShortcutDigits?: boolean;
+  shortcodeNames?: boolean;
+  pinnedTitle?: boolean;
 }) {
   const { t } = useTranslation();
   // Ctrl+Shift is a shared prefix for every digit shortcut, so surface it once
@@ -1077,8 +1447,22 @@ function ChatThreadEmojiSection({
       })}`
     : null;
   return (
-    <div>
-      <div className="flex items-baseline justify-between gap-2 px-1 pb-1 pt-2">
+    <div
+      id={chatThreadEmojiSectionId(categoryKey)}
+      data-chat-thread-emoji-section={categoryKey}
+    >
+      <div
+        className={cn(
+          "flex items-baseline justify-between gap-2 px-1 pb-1 pt-2",
+          // Fade to transparent at the lower edge so emoji dissolve as they
+          // scroll under the pinned title instead of colliding with it.
+          // pt-1/pb-3 shifts the label up towards the search field while
+          // keeping the box — and so the painted fade — the same 32px tall as
+          // the pt-2/pb-2 it replaces.
+          pinnedTitle &&
+            "sticky top-0 z-10 bg-gradient-to-b from-popover from-60% to-transparent pb-3 pt-1",
+        )}
+      >
         <span className="text-xs font-medium text-muted-foreground">
           {label}
         </span>
@@ -1092,6 +1476,7 @@ function ChatThreadEmojiSection({
         items={items}
         onSelect={onSelect}
         showShortcutDigits={showShortcutDigits}
+        shortcodeNames={shortcodeNames}
       />
     </div>
   );
@@ -1108,10 +1493,12 @@ function ChatThreadEmojiGrid({
   items,
   onSelect,
   showShortcutDigits = false,
+  shortcodeNames = true,
 }: {
   items: ChatThreadEmojiItem[];
   onSelect: (emoji: string) => void;
   showShortcutDigits?: boolean;
+  shortcodeNames?: boolean;
 }) {
   // Nine columns so the nine frequently-used digit shortcuts sit on a single
   // row; every other emoji group uses the same width to stay aligned.
@@ -1132,6 +1519,11 @@ function ChatThreadEmojiGrid({
             key={`${item.name}-${item.emoji}`}
             type="button"
             aria-label={item.name}
+            data-chat-thread-emoji={item.emoji}
+            data-chat-thread-emoji-name={chatThreadEmojiDisplayName(
+              item.name,
+              shortcodeNames,
+            )}
             title={shortcutLabel}
             className="relative flex aspect-square items-center justify-center rounded-md text-xl leading-none transition-colors hover:bg-state-hover"
             onClick={() => {
@@ -1163,209 +1555,6 @@ function formatChatTimestamp(value: string): string {
     hour: "numeric",
     minute: "2-digit",
   });
-}
-
-type ChatImagePreviewLinkProps = {
-  alt: string;
-  ariaLabel: string;
-  imageClassName: string;
-  linkClassName: string;
-  onPreview: () => void;
-  placeholderClassName: string;
-  resourceUrl$: ArtifactSignals["resourceUrl$"];
-  url: string;
-};
-
-const CHAT_INLINE_MEDIA_PREVIEW_CHROME_CLASS = cn(
-  "border border-foreground/10 shadow-sm transition-all duration-200",
-  "hover:scale-[1.015] hover:border-foreground/20 hover:shadow-lg hover:shadow-black/10 dark:hover:shadow-black/30",
-);
-const CHAT_INLINE_MEDIA_THUMBNAIL_PREVIEW_CLASS = cn(
-  "aspect-[10/9] w-[50px] max-w-full cursor-pointer rounded-lg",
-  CHAT_INLINE_MEDIA_PREVIEW_CHROME_CLASS,
-);
-const CHAT_INLINE_IMAGE_PREVIEW_CLASS = cn(
-  CHAT_INLINE_MEDIA_THUMBNAIL_PREVIEW_CLASS,
-  "bg-muted/30",
-);
-const CHAT_INLINE_VIDEO_ATTACHMENT_PREVIEW_CLASS = cn(
-  CHAT_INLINE_MEDIA_THUMBNAIL_PREVIEW_CLASS,
-  "bg-black",
-);
-const CHAT_INLINE_VIDEO_BODY_PREVIEW_CLASS = cn(
-  "aspect-[16/10] w-[min(100%,400px)] max-w-full cursor-pointer rounded-lg",
-  CHAT_INLINE_MEDIA_PREVIEW_CHROME_CLASS,
-  "bg-black",
-);
-
-function ChatImagePreviewLink({
-  alt,
-  ariaLabel,
-  imageClassName,
-  linkClassName,
-  onPreview,
-  placeholderClassName,
-  resourceUrl$,
-  url,
-}: ChatImagePreviewLinkProps) {
-  const imageLoadStatuses = useGet(imageLoadStatusByKey$);
-  const imageLoadStatusRef = useSet(imageLoadStatusRef$);
-  const setImageLoadStatus = useSet(setImageLoadStatus$);
-  const imageUrl = publicAttachmentUrl(url);
-  const resourceUrl = useLastResolved(resourceUrl$) ?? null;
-  const previewImageUrl =
-    resourceUrl === null
-      ? null
-      : r2ImageTransformUrl(resourceUrl, {
-          width: 800,
-          height: 720,
-        });
-  const imageLoadKey = `chat-image-preview:${previewImageUrl ?? imageUrl}`;
-  const imageStatus = imageLoadStatuses[imageLoadKey] ?? "loading";
-
-  const showPlaceholder = imageStatus !== "loaded";
-
-  const openPreview = (event: ReactMouseEvent<HTMLAnchorElement>) => {
-    if (
-      event.metaKey ||
-      event.ctrlKey ||
-      event.shiftKey ||
-      event.altKey ||
-      event.button !== 0
-    ) {
-      return;
-    }
-    event.preventDefault();
-    onPreview();
-  };
-
-  return (
-    <a
-      href={resourceUrl ?? imageUrl}
-      onClick={openPreview}
-      className={cn(
-        "group/image-preview relative inline-flex self-start items-center justify-center overflow-hidden",
-        linkClassName,
-      )}
-      aria-label={ariaLabel}
-    >
-      {/* Preserve one flex item so the inline baseline cannot change on load. */}
-      <span aria-hidden="true" className="block h-full w-full" />
-      {showPlaceholder && (
-        <span
-          data-testid="chat-image-preview-loading"
-          className={cn(
-            "absolute inset-0 flex items-center justify-center bg-muted/70 text-muted-foreground",
-            placeholderClassName,
-          )}
-        >
-          {imageStatus === "loading" ? (
-            <Loader2 size={18} className="animate-spin" />
-          ) : (
-            <Image size={18} />
-          )}
-        </span>
-      )}
-      {previewImageUrl !== null ? (
-        <img
-          key={imageLoadKey}
-          ref={imageLoadStatusRef}
-          src={previewImageUrl}
-          alt={alt}
-          data-image-load-key={imageLoadKey}
-          loading="lazy"
-          onLoad={() => {
-            setImageLoadStatus(imageLoadKey, "loaded");
-          }}
-          onError={() => {
-            setImageLoadStatus(imageLoadKey, "error");
-          }}
-          className={cn(
-            "absolute inset-0",
-            imageClassName,
-            showPlaceholder && "opacity-0",
-          )}
-        />
-      ) : null}
-    </a>
-  );
-}
-
-type ChatVideoPreviewButtonProps = {
-  ariaLabel: string;
-  buttonClassName: string;
-  filename: string;
-  onPreview: () => void;
-  posterClassName: string;
-  previewImagePending?: boolean;
-  previewImageUrl?: string;
-  url: string;
-  videoClassName: string;
-};
-
-function videoPosterFrameUrl(url: string): string {
-  const hashIndex = url.indexOf("#");
-  const urlWithoutHash = hashIndex === -1 ? url : url.slice(0, hashIndex);
-  return `${urlWithoutHash}#t=0.001`;
-}
-
-function ChatVideoPreviewButton({
-  ariaLabel,
-  buttonClassName,
-  filename,
-  onPreview,
-  posterClassName,
-  previewImagePending,
-  previewImageUrl,
-  url,
-  videoClassName,
-}: ChatVideoPreviewButtonProps) {
-  const videoUrl = publicAttachmentUrl(url);
-  const posterVideoUrl = videoPosterFrameUrl(videoUrl);
-  const videoFallback = (
-    <video
-      src={posterVideoUrl}
-      preload="metadata"
-      muted
-      playsInline
-      aria-hidden="true"
-      className={cn("absolute inset-0", videoClassName)}
-      data-testid="chat-video-preview-fallback"
-    />
-  );
-
-  return (
-    <button
-      type="button"
-      onClick={onPreview}
-      title={filename}
-      aria-label={ariaLabel}
-      className={cn(
-        "group/video-preview relative inline-flex items-center justify-center overflow-hidden",
-        buttonClassName,
-      )}
-    >
-      <span
-        data-testid="chat-video-preview-poster"
-        className={cn("block bg-black", posterClassName)}
-      />
-      {previewImageUrl ? (
-        <ArtifactThumbnailImage
-          src={previewImageUrl}
-          testId="chat-video-preview-thumbnail"
-          className={cn("absolute inset-0", videoClassName)}
-          fallback={videoFallback}
-        />
-      ) : previewImagePending ? null : (
-        videoFallback
-      )}
-      <span className="absolute inset-0 flex items-center justify-center bg-black/10 transition-colors group-hover/video-preview:bg-black/35">
-        <span className="flex h-9 w-9 items-center justify-center rounded-full bg-black/55 text-white shadow-lg transition-transform group-hover/video-preview:scale-105">
-          <Play size={17} />
-        </span>
-      </span>
-    </button>
-  );
 }
 
 function formatHeaderWorkflowAutomationRun(value: string | null): string {
@@ -2601,16 +2790,17 @@ function HeaderAutomationSidebar({
             })}
           </div>
         </div>
-        <button
+        <Button
           type="button"
           onClick={onClose}
           aria-label={t(($) => {
             return $.chat.automations.close;
           })}
-          className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-state-hover hover:text-foreground"
+          variant="quiet"
+          size="icon-sm"
         >
           <X size={16} />
-        </button>
+        </Button>
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
@@ -3065,6 +3255,90 @@ function ChatThreadNextRunModelNotice({
   return <RunSectionDividerRow label={label} announce />;
 }
 
+interface ChatRunPresentation {
+  readonly actionOwnerEventIds: ReadonlySet<string>;
+  readonly steerEventIds: ReadonlySet<string>;
+}
+
+const EMPTY_CHAT_EVENT_IDS: ReadonlySet<string> = new Set();
+
+function isSteerPromptEvent(
+  event: EnrichedChatEvent,
+  seenUserRunIds: ReadonlySet<string>,
+  actionOwnerEventIdByRunId: ReadonlyMap<string, string>,
+  lastAssociatedRunId: string | undefined,
+): boolean {
+  if (event.eventType !== "input.prompt") {
+    return false;
+  }
+  if (event.runId !== undefined) {
+    return (
+      seenUserRunIds.has(event.runId) ||
+      actionOwnerEventIdByRunId.has(event.runId)
+    );
+  }
+  return (
+    event.optimisticUserMessageAssociation !== "run" &&
+    lastAssociatedRunId !== undefined
+  );
+}
+
+function chatRunPresentationForGroups(
+  groups: readonly ChatEventGroup[],
+): ChatRunPresentation {
+  const actionOwnerEventIdByRunId = new Map<string, string>();
+  const runlessAssistantOwnerEventIds = new Set<string>();
+  const seenUserRunIds = new Set<string>();
+  const steerEventIds = new Set<string>();
+  let lastAssociatedRunId: string | undefined;
+
+  for (const group of groups) {
+    for (const event of group.events) {
+      const role = chatEventCompatibilityRole(event.eventType);
+      const runId = event.runId;
+      if (role === "user") {
+        const isSteer = isSteerPromptEvent(
+          event,
+          seenUserRunIds,
+          actionOwnerEventIdByRunId,
+          lastAssociatedRunId,
+        );
+        if (isSteer) {
+          steerEventIds.add(event.id);
+        }
+        if (runId !== undefined) {
+          actionOwnerEventIdByRunId.delete(runId);
+          seenUserRunIds.add(runId);
+          lastAssociatedRunId = runId;
+        } else if (isSteer && lastAssociatedRunId !== undefined) {
+          actionOwnerEventIdByRunId.delete(lastAssociatedRunId);
+        }
+        continue;
+      }
+
+      if (runId !== undefined) {
+        lastAssociatedRunId = runId;
+      }
+      if (!isRenderableAssistantEvent(event)) {
+        continue;
+      }
+      if (runId === undefined) {
+        runlessAssistantOwnerEventIds.add(event.id);
+      } else {
+        actionOwnerEventIdByRunId.set(runId, event.id);
+      }
+    }
+  }
+
+  return {
+    actionOwnerEventIds: new Set([
+      ...actionOwnerEventIdByRunId.values(),
+      ...runlessAssistantOwnerEventIds,
+    ]),
+    steerEventIds,
+  };
+}
+
 function ChatThreadEventGroups({
   thread,
   groups,
@@ -3090,6 +3364,11 @@ function ChatThreadEventGroups({
       runGroupFolding,
       onToggleRunGroup,
     });
+  const continuationPresentationEnabled =
+    useGet(featureSwitch$)[FeatureSwitchKey.ChatRunContinuationPresentation];
+  const runPresentation = continuationPresentationEnabled
+    ? chatRunPresentationForGroups(groups)
+    : null;
 
   return (
     <>
@@ -3119,6 +3398,15 @@ function ChatThreadEventGroups({
               group={group}
               thread={thread}
               modelChanges={modelChanges}
+              showActions={
+                runPresentation === null ||
+                group.events.some((event) => {
+                  return runPresentation.actionOwnerEventIds.has(event.id);
+                })
+              }
+              steerEventIds={
+                runPresentation?.steerEventIds ?? EMPTY_CHAT_EVENT_IDS
+              }
               runGroupFolds={embeddedFolds}
               completedWorkFold={
                 completedWorkFold !== null
@@ -3422,7 +3710,7 @@ function isRenderableAssistantEvent(event: EnrichedChatEvent): boolean {
     chatEventCompatibilityRole(event.eventType) === "assistant" &&
     ((isChatEventContentTextType(event.eventType) && Boolean(event.content)) ||
       Boolean(chatEventError(event)) ||
-      event.blocks.length > 0 ||
+      hasChatEventBodyContent(event) ||
       Boolean(chatEventAttachments(event)?.length))
   );
 }
@@ -4248,6 +4536,7 @@ function ScrollToBottomButton({ thread }: { thread: ChatPanelSignals }) {
   const { t } = useTranslation();
   const awayFromBottom = useGet(thread.awayFromBottom$);
   const scrollToBottom = useSet(thread.scrollToBottom$);
+  const pageSignal = useGet(pageSignal$);
   const renderedGroupsReadyLoadable = useLastLoadable(
     thread.visibleRenderedChatGroupsReady$,
   );
@@ -4266,7 +4555,7 @@ function ScrollToBottomButton({ thread }: { thread: ChatPanelSignals }) {
         return $.chat.thread.scrollToBottom;
       })}
       onClick={() => {
-        scrollToBottom();
+        detach(scrollToBottom(pageSignal), Reason.DomCallback);
       }}
       className="absolute bottom-4 left-1/2 z-20 flex h-9 w-9 -translate-x-1/2 items-center justify-center rounded-full border border-border bg-background text-muted-foreground shadow-md transition-colors hover:bg-background-hover hover:text-foreground"
     >
@@ -4663,7 +4952,7 @@ function ShimmerText({
     >
       <p
         ref={setRef}
-        className="zero-shimmer-text h-5 w-full overflow-hidden whitespace-nowrap"
+        className="zero-shimmer-text h-5 w-full truncate"
         aria-label={ariaLabel}
       >
         {children}
@@ -4692,7 +4981,6 @@ function ThinkingLabel({
 }) {
   const { t } = useTranslation();
   const openQueueDrawer = useSet(openQueueDrawer$);
-  const pageSignal = useGet(pageSignal$);
 
   if (isQueued) {
     const waitingIn = t(($) => {
@@ -4716,7 +5004,7 @@ function ThinkingLabel({
         <button
           type="button"
           onClick={() => {
-            openQueueDrawer(pageSignal);
+            openQueueDrawer();
           }}
           className="cursor-pointer underline underline-offset-2"
         >
@@ -4994,1137 +5282,9 @@ function ThinkingIndicator({ thread }: { thread: ChatPanelSignals }) {
   );
 }
 
-function BodyContentBlocks({
-  blocks,
-  mermaidScope,
-  openLightbox,
-  hardBreaks,
-  escapeMarkdownHtml = false,
-  markdownMediaPreview = true,
-}: {
-  blocks: BodyRenderBlock[];
-  mermaidScope: string;
-  openLightbox: (url: string) => void;
-  hardBreaks: boolean;
-  escapeMarkdownHtml?: boolean;
-  markdownMediaPreview?: boolean;
-}) {
-  const cardOccurrences = new Map<string, number>();
-  const openVideoLightbox = useSet(openAttachmentVideoLightbox$);
-  return (
-    <div className="flex flex-col gap-3">
-      {blocks.map((block) => {
-        return (
-          <BodyRenderBlockView
-            key={bodyRenderBlockKey(block, cardOccurrences)}
-            block={block}
-            mermaidScope={mermaidScope}
-            openLightbox={openLightbox}
-            openVideoLightbox={openVideoLightbox}
-            hardBreaks={hardBreaks}
-            escapeMarkdownHtml={escapeMarkdownHtml}
-            markdownMediaPreview={markdownMediaPreview}
-          />
-        );
-      })}
-    </div>
-  );
-}
-
-function bodyRenderBlockKey(
-  block: BodyRenderBlock,
-  cardOccurrences: Map<string, number>,
-): string {
-  if (block.type === "markdown") {
-    return block.id;
-  }
-  const resourceKey = `${block.type}:${block.resourceKey}`;
-  const occurrence = (cardOccurrences.get(resourceKey) ?? 0) + 1;
-  cardOccurrences.set(resourceKey, occurrence);
-  return `${resourceKey}:${String(occurrence)}`;
-}
-
-function BodyRenderBlockView({
-  block,
-  mermaidScope,
-  openLightbox,
-  openVideoLightbox,
-  hardBreaks,
-  escapeMarkdownHtml,
-  markdownMediaPreview,
-}: {
-  block: BodyRenderBlock;
-  mermaidScope: string;
-  openLightbox: (url: string) => void;
-  openVideoLightbox: (value: { url: string; filename: string }) => void;
-  hardBreaks: boolean;
-  escapeMarkdownHtml: boolean;
-  markdownMediaPreview: boolean;
-}) {
-  switch (block.type) {
-    case "markdown": {
-      return (
-        <Markdown
-          mermaidScope={mermaidScope}
-          source={
-            hardBreaks ? block.content.replace(/\n/g, "  \n") : block.content
-          }
-          mediaPreview={markdownMediaPreview}
-          mathEnabled
-          escapeHtml={escapeMarkdownHtml}
-          style={{ fontSize: "inherit", lineHeight: "inherit" }}
-        />
-      );
-    }
-    case "connector-action": {
-      return <ConnectorActionCard signals={block.signals} />;
-    }
-    case "permission-action": {
-      return <PermissionActionCard signals={block.signals} />;
-    }
-    case "computer-use-authorization": {
-      return <ComputerUseAuthorizationCard signals={block.signals} />;
-    }
-    case "plan-upgrade": {
-      return <PlanUpgradeCard signals={block.signals} />;
-    }
-    case "mail-draft": {
-      return <MailDraftCard signals={block.signals} />;
-    }
-    case "browser-session": {
-      return <BrowserSessionCard signals={block.signals} />;
-    }
-    case "artifact": {
-      return (
-        <ArtifactBodyRenderBlockView
-          signals={block.signals}
-          openLightbox={openLightbox}
-          openVideoLightbox={openVideoLightbox}
-        />
-      );
-    }
-  }
-}
-
-function ArtifactBodyRenderBlockView({
-  signals,
-  openLightbox,
-  openVideoLightbox,
-}: {
-  signals: ArtifactSignals;
-  openLightbox: (url: string) => void;
-  openVideoLightbox: (value: { url: string; filename: string }) => void;
-}) {
-  const { t } = useTranslation();
-  const previewImageLoadable = useLastLoadable(signals.previewImageUrl$);
-  const previewImagePending = previewImageLoadable.state === "loading";
-  const previewImageUrl =
-    previewImageLoadable.state === "hasData"
-      ? previewImageLoadable.data
-      : undefined;
-
-  if (signals.kind === "image") {
-    return (
-      <ChatImagePreviewLink
-        alt={signals.filename}
-        ariaLabel={t(
-          ($) => {
-            return $.chat.attachments.previewFile;
-          },
-          {
-            filename: signals.filename,
-          },
-        )}
-        imageClassName="block h-full w-full object-contain"
-        linkClassName={CHAT_INLINE_IMAGE_PREVIEW_CLASS}
-        onPreview={() => {
-          openLightbox(signals.url);
-        }}
-        placeholderClassName="h-full w-full"
-        resourceUrl$={signals.resourceUrl$}
-        url={signals.url}
-      />
-    );
-  }
-  if (signals.kind === "video") {
-    return (
-      <ChatVideoPreviewButton
-        ariaLabel={t(
-          ($) => {
-            return $.chat.attachments.previewFile;
-          },
-          {
-            filename: signals.filename,
-          },
-        )}
-        buttonClassName={CHAT_INLINE_VIDEO_BODY_PREVIEW_CLASS}
-        filename={signals.filename}
-        onPreview={() => {
-          openVideoLightbox({
-            url: signals.url,
-            filename: signals.filename,
-          });
-        }}
-        posterClassName="h-full w-full"
-        previewImagePending={previewImagePending}
-        previewImageUrl={previewImageUrl}
-        url={signals.url}
-        videoClassName="h-full w-full object-contain"
-      />
-    );
-  }
-  return (
-    <AttachmentPreview
-      attachment={{
-        filename: signals.filename,
-        url: signals.url,
-        contentType: contentTypeForBodyPreviewKind(signals.kind),
-        ...(previewImagePending ? { previewImagePending: true } : {}),
-        ...(previewImageUrl ? { previewImageUrl } : {}),
-      }}
-      text$={signals.text$}
-    />
-  );
-}
-
-const CHAT_CONNECTOR_ACTION_CARD_HEIGHT_CLASS = "h-[136px] sm:h-[88px]";
-
-function ConnectorActionCardSkeleton() {
-  return (
-    <Skeleton
-      data-testid="connector-action-card-loading"
-      className={cn(
-        "w-full rounded-[var(--zero-card-radius)]",
-        CHAT_CONNECTOR_ACTION_CARD_HEIGHT_CLASS,
-      )}
-    />
-  );
-}
-
-function CatalogConnectorActionCard({
-  signals,
-}: {
-  signals: CatalogConnectorSignals;
-}) {
-  const pageSignal = useGet(pageSignal$);
-  const catalogItemLoadable = useLastLoadable(signals.catalogItem$);
-  const catalogItem = useLastResolved(signals.catalogItem$);
-  const connected = useLastResolved(signals.connected$) ?? false;
-  const completeLoadable = useLoadable(signals.complete$);
-  const complete =
-    completeLoadable.state === "hasData" && completeLoadable.data;
-  const [activateLoadable, activate] = useLoadableSet(signals.activate$);
-  const loading =
-    completeLoadable.state === "loading" ||
-    activateLoadable.state === "loading";
-  if (!catalogItem && catalogItemLoadable.state === "loading") {
-    return <ConnectorActionCardSkeleton />;
-  }
-  if (!catalogItem) {
-    return null;
-  }
-
-  return (
-    <ConnectorCard
-      variant="action"
-      className={cn(
-        "justify-between overflow-hidden",
-        CHAT_CONNECTOR_ACTION_CARD_HEIGHT_CLASS,
-      )}
-      icon={<ConnectorIcon icon={catalogItem.icon} size={22} />}
-      label={catalogItem.label}
-      description={catalogItem.description}
-      connected={connected}
-      complete={complete}
-      reconnectRequired={
-        connectorCurrentConnectionStatus(catalogItem) === "reconnect-required"
-      }
-      busy={loading}
-      onActivate={() => {
-        detach(activate(pageSignal), Reason.DomCallback);
-      }}
-    />
-  );
-}
-
-function CustomConnectorActionCard({
-  signals,
-}: {
-  signals: CustomConnectorSignals;
-}) {
-  const { t } = useTranslation();
-  const pageSignal = useGet(pageSignal$);
-  const connectorLoadable = useLastLoadable(signals.connector$);
-  const connector = useLastResolved(signals.connector$);
-  const connected = useLastResolved(signals.connected$) ?? false;
-  const completeLoadable = useLoadable(signals.complete$);
-  const complete =
-    completeLoadable.state === "hasData" && completeLoadable.data;
-  const [activateLoadable, activate] = useLoadableSet(signals.activate$);
-  const loading =
-    completeLoadable.state === "loading" ||
-    activateLoadable.state === "loading";
-  if (!connector && connectorLoadable.state === "loading") {
-    return <ConnectorActionCardSkeleton />;
-  }
-  if (!connector) {
-    return null;
-  }
-
-  return (
-    <ConnectorCard
-      variant="action"
-      className={cn(
-        "justify-between overflow-hidden",
-        CHAT_CONNECTOR_ACTION_CARD_HEIGHT_CLASS,
-      )}
-      icon={
-        <CustomConnectorIcon
-          id={connector.id}
-          displayName={connector.displayName}
-          size={22}
-        />
-      }
-      label={connector.displayName}
-      description={t(($) => {
-        return $.chat.connectors.customAuthorizeDescription;
-      })}
-      connected={connected}
-      complete={complete}
-      reconnectRequired={false}
-      busy={loading}
-      onActivate={() => {
-        detach(activate(pageSignal), Reason.DomCallback);
-      }}
-    />
-  );
-}
-
-function ConnectorActionCard({ signals }: { signals: ConnectorSignals }) {
-  return signals.kind === "catalog" ? (
-    <CatalogConnectorActionCard signals={signals} />
-  ) : (
-    <CustomConnectorActionCard signals={signals} />
-  );
-}
-
-function ComputerUseAuthorizationCard({
-  signals,
-}: {
-  signals: ComputerUseAuthorizationSignals;
-}) {
-  const { t } = useTranslation();
-  return (
-    <div
-      data-testid="computer-use-authorization-card"
-      className="flex min-h-[88px] w-full flex-col gap-3 rounded-lg border border-border/70 bg-background/85 p-3 text-left shadow-sm sm:flex-row sm:items-center sm:justify-between"
-    >
-      <div className="flex min-w-0 items-center gap-3">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-muted/40">
-          <Monitor size={22} />
-        </div>
-        <div className="min-w-0">
-          <div className="truncate text-[0.9375rem] font-medium text-foreground">
-            {t(($) => {
-              return $.chat.computerUse.authorization;
-            })}
-          </div>
-          <div className="mt-0.5 line-clamp-2 text-sm leading-5 text-muted-foreground">
-            {t(($) => {
-              return $.chat.computerUse.authorizationDescription;
-            })}
-          </div>
-        </div>
-      </div>
-      <a
-        href={signals.href}
-        target="_blank"
-        rel="noreferrer"
-        className="inline-flex h-9 w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-[0.9375rem] font-medium text-foreground transition-colors hover:bg-state-hover sm:w-auto"
-      >
-        {t(($) => {
-          return $.chat.actions.authorize;
-        })}
-        <ArrowUpRight size={15} />
-      </a>
-    </div>
-  );
-}
-
-function PlanUpgradeCard({ signals }: { signals: PlanUpgradeSignals }) {
-  const { t } = useTranslation();
-  return (
-    <div
-      data-testid="plan-upgrade-card"
-      className="flex min-h-[88px] w-full flex-col gap-3 rounded-lg border border-border/70 bg-background/85 p-3 text-left shadow-sm sm:flex-row sm:items-center sm:justify-between"
-    >
-      <div className="flex min-w-0 items-center gap-3">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-muted/40">
-          <Coins size={22} />
-        </div>
-        <div className="min-w-0">
-          <div className="truncate text-[0.9375rem] font-medium text-foreground">
-            {t(($) => {
-              return $.chat.billing.upgradeWorkspace;
-            })}
-          </div>
-          <div className="mt-0.5 line-clamp-2 text-sm leading-5 text-muted-foreground">
-            {t(($) => {
-              return $.chat.billing.comparePlansDescription;
-            })}
-          </div>
-        </div>
-      </div>
-      <a
-        href={signals.href}
-        target="_blank"
-        rel="noreferrer"
-        className="inline-flex h-9 w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-[0.9375rem] font-medium text-foreground transition-colors hover:bg-state-hover sm:w-auto"
-      >
-        {t(($) => {
-          return $.chat.billing.comparePlans;
-        })}
-        <ArrowUpRight size={15} />
-      </a>
-    </div>
-  );
-}
-
-type PermissionAction = "allow" | "deny";
-
-type PermissionActionUserGrant = PlatformUserPermissionGrant;
-
-type PermissionActionCardStatus =
-  | { kind: "loading" }
-  | { kind: "load-error" }
-  | { kind: "save-error" }
-  | { kind: "ready" }
-  | { kind: "saving" }
-  | { kind: "saved" }
-  | { kind: "already-applied" }
-  | { kind: "missing-target" }
-  | { kind: "missing-permission" };
-
-interface LoadableLike<T> {
-  state: string;
-  data?: T;
-}
-
-type ApplyUserPermissionGrantFn = (
-  params: {
-    agentId?: string;
-    workflowId?: string;
-    connectorSlug: string;
-    permission: string;
-    action: PermissionAction;
-    expiresIn?: UserPermissionGrantExpiresIn;
-  },
-  signal: AbortSignal,
-) => Promise<PlatformUserPermissionGrant>;
-
-function loadableData<T>(loadable: LoadableLike<T>): T | undefined {
-  return loadable.state === "hasData" ? loadable.data : undefined;
-}
-
-function permissionActionVerb(action: PermissionAction): string {
-  return action === "allow"
-    ? i18n.t(($) => {
-        return $.chat.permissions.allow;
-      })
-    : i18n.t(($) => {
-        return $.chat.permissions.deny;
-      });
-}
-
-function permissionActionStatusText(
-  status: PermissionActionCardStatus,
-  action: "allow" | "deny",
-): { label: string; className: string } | null {
-  if (status.kind === "saved") {
-    return action === "allow"
-      ? {
-          label: i18n.t(($) => {
-            return $.chat.permissions.updated;
-          }),
-          className: "text-green-600",
-        }
-      : {
-          label: i18n.t(($) => {
-            return $.chat.permissions.denied;
-          }),
-          className: "text-destructive",
-        };
-  }
-  if (status.kind === "already-applied") {
-    return action === "allow"
-      ? {
-          label: i18n.t(($) => {
-            return $.chat.permissions.alreadyAllowed;
-          }),
-          className: "text-green-600",
-        }
-      : {
-          label: i18n.t(($) => {
-            return $.chat.permissions.alreadyDenied;
-          }),
-          className: "text-destructive",
-        };
-  }
-  return null;
-}
-
-function PermissionActionButton({
-  status,
-  onClick,
-}: {
-  status: PermissionActionCardStatus;
-  onClick: () => void;
-}) {
-  const { t } = useTranslation();
-  if (
-    status.kind !== "ready" &&
-    status.kind !== "saving" &&
-    status.kind !== "save-error"
-  ) {
-    return null;
-  }
-
-  const saving = status.kind === "saving";
-  return (
-    <button
-      type="button"
-      disabled={saving}
-      onClick={onClick}
-      className="inline-flex h-9 w-full min-w-0 flex-1 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-[0.9375rem] font-medium text-foreground transition-colors hover:bg-state-hover sm:w-auto sm:flex-none"
-    >
-      {saving && <Loader2 size={15} className="animate-spin" />}
-      {saving
-        ? t(($) => {
-            return $.chat.actions.saving;
-          })
-        : t(($) => {
-            return $.chat.actions.confirm;
-          })}
-    </button>
-  );
-}
-
-function PermissionActionTerminalStatus({
-  status,
-  action,
-}: {
-  status: PermissionActionCardStatus;
-  action: "allow" | "deny";
-}) {
-  const text = permissionActionStatusText(status, action);
-  if (!text) {
-    return null;
-  }
-  return (
-    <span className={`shrink-0 text-[0.9375rem] font-medium ${text.className}`}>
-      {text.label}
-    </span>
-  );
-}
-
-function PermissionActionInlineStatus({
-  status,
-}: {
-  status: PermissionActionCardStatus;
-}) {
-  const { t } = useTranslation();
-  switch (status.kind) {
-    case "loading": {
-      return (
-        <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-          <Loader2 size={13} className="animate-spin" />
-          <span>
-            {t(($) => {
-              return $.chat.permissions.checking;
-            })}
-          </span>
-        </div>
-      );
-    }
-    case "load-error": {
-      return (
-        <div className="mt-1 flex items-center gap-1.5 text-xs font-medium text-destructive">
-          <AlertCircle size={13} />
-          <span>
-            {t(($) => {
-              return $.chat.permissions.loadFailed;
-            })}
-          </span>
-        </div>
-      );
-    }
-    case "save-error": {
-      return (
-        <div className="mt-1 flex items-center gap-1.5 text-xs font-medium text-destructive">
-          <AlertCircle size={13} />
-          <span>
-            {t(($) => {
-              return $.chat.permissions.updateFailed;
-            })}
-          </span>
-        </div>
-      );
-    }
-    case "missing-target": {
-      return (
-        <div className="mt-1 flex items-center gap-1.5 text-xs font-medium text-destructive">
-          <AlertCircle size={13} />
-          <span>
-            {t(($) => {
-              return $.chat.permissions.agentNotFound;
-            })}
-          </span>
-        </div>
-      );
-    }
-    case "missing-permission": {
-      return (
-        <div className="mt-1 flex items-center gap-1.5 text-xs font-medium text-destructive">
-          <AlertCircle size={13} />
-          <span>
-            {t(($) => {
-              return $.chat.permissions.unknown;
-            })}
-          </span>
-        </div>
-      );
-    }
-    case "ready":
-    case "saving":
-    case "saved":
-    case "already-applied": {
-      return null;
-    }
-  }
-}
-
-function permissionActionHasControls(
-  status: PermissionActionCardStatus,
-): boolean {
-  switch (status.kind) {
-    case "loading":
-    case "save-error":
-    case "ready":
-    case "saving":
-    case "saved":
-    case "already-applied": {
-      return true;
-    }
-    case "load-error":
-    case "missing-target":
-    case "missing-permission": {
-      return false;
-    }
-  }
-}
-
-function isPermissionActionLoading(params: {
-  agentLoading: boolean;
-  permissionMetadataLoading: boolean;
-  userGrantsLoading: boolean;
-}): boolean {
-  return (
-    params.agentLoading ||
-    params.permissionMetadataLoading ||
-    params.userGrantsLoading
-  );
-}
-
-function isPermissionActionSaving(params: { grantLoading: boolean }): boolean {
-  return params.grantLoading;
-}
-
-function isPermissionActionLoadError(params: {
-  agentError: boolean;
-  permissionMetadataError: boolean;
-  userGrantsError: boolean;
-}): boolean {
-  return (
-    params.agentError ||
-    params.permissionMetadataError ||
-    params.userGrantsError
-  );
-}
-
-function isPermissionActionAlreadyApplied(params: {
-  hasAgent: boolean;
-  userGrantPolicy: FirewallPolicyValue | undefined;
-  action: "allow" | "deny";
-}): boolean {
-  if (!params.hasAgent) {
-    return false;
-  }
-  return params.userGrantPolicy === params.action;
-}
-
-function findPermissionActionPermission(
-  block: PermissionSignals,
-  metadata: PlatformConnectorPermissionMetadata | undefined,
-) {
-  return metadata
-    ? (findPermissionInMetadata(metadata, block.permission) ?? undefined)
-    : undefined;
-}
-
-function permissionActionUserGrantPolicy(
-  loadable: LoadableLike<readonly PermissionActionUserGrant[]>,
-  block: PermissionSignals,
-  metadata: PlatformConnectorPermissionMetadata | undefined,
-): FirewallPolicyValue | undefined {
-  const grants = loadableData(loadable);
-  if (!grants || !metadata) {
-    return undefined;
-  }
-  return resolveUserPermissionGrantPolicy(grants, metadata, block.permission);
-}
-
-function permissionActionUserGrant(
-  loadable: LoadableLike<readonly PermissionActionUserGrant[]>,
-  block: PermissionSignals,
-): PermissionActionUserGrant | undefined {
-  const grants = loadableData(loadable);
-  if (!grants) {
-    return undefined;
-  }
-  return grants.find((grant) => {
-    return (
-      grant.connectorSlug === block.connectorSlug &&
-      grant.permission === block.permission &&
-      grant.action === block.action
-    );
-  });
-}
-
-function permissionActionGrantExpiresAt({
-  savedGrant,
-  savedGrantActive,
-  existingGrant,
-  existingGrantActive,
-  status,
-}: {
-  savedGrant: PermissionActionUserGrant | null;
-  savedGrantActive: boolean;
-  existingGrant: PermissionActionUserGrant | undefined;
-  existingGrantActive: boolean;
-  status: PermissionActionCardStatus;
-}): string | null {
-  if (savedGrantActive) {
-    return savedGrant?.expiresAt ?? null;
-  }
-  if (existingGrantActive) {
-    return existingGrant?.expiresAt ?? null;
-  }
-  if (status.kind !== "ready") {
-    return null;
-  }
-  return savedGrant?.expiresAt ?? existingGrant?.expiresAt ?? null;
-}
-
-function createPermissionActionCardStatus(params: {
-  hasAgent: boolean;
-  hasPermission: boolean;
-  loading: boolean;
-  loadError: boolean;
-  saving: boolean;
-  saveDone: boolean;
-  saveError: boolean;
-  alreadyApplied: boolean;
-}): PermissionActionCardStatus {
-  if (params.saving) {
-    return { kind: "saving" };
-  }
-  if (params.saveDone) {
-    return { kind: "saved" };
-  }
-  if (params.loading) {
-    return { kind: "loading" };
-  }
-  if (params.loadError) {
-    return { kind: "load-error" };
-  }
-  if (!params.hasAgent) {
-    return { kind: "missing-target" };
-  }
-  if (!params.hasPermission) {
-    return { kind: "missing-permission" };
-  }
-  if (params.alreadyApplied) {
-    return { kind: "already-applied" };
-  }
-  if (params.saveError) {
-    return { kind: "save-error" };
-  }
-  return { kind: "ready" };
-}
-
-function createPermissionActionCardViewState(params: {
-  block: PermissionSignals;
-  hasAgent: boolean;
-  agentLoadableState: string;
-  permissionMetadataLoadable: LoadableLike<PlatformConnectorPermissionMetadata | null>;
-  userGrantsLoadable: LoadableLike<readonly PermissionActionUserGrant[]>;
-  grantLoadableState: string;
-  savedGrantActive: boolean;
-}) {
-  const permissionMetadata =
-    params.permissionMetadataLoadable.state === "hasData"
-      ? (params.permissionMetadataLoadable.data ?? undefined)
-      : undefined;
-  const focusedPermission = findPermissionActionPermission(
-    params.block,
-    permissionMetadata,
-  );
-  const actionLabel = permissionActionVerb(params.block.action);
-  const loading = isPermissionActionLoading({
-    agentLoading: params.agentLoadableState === "loading",
-    permissionMetadataLoading:
-      params.permissionMetadataLoadable.state === "loading",
-    userGrantsLoading: params.userGrantsLoadable.state === "loading",
-  });
-  const loadError = isPermissionActionLoadError({
-    agentError: params.agentLoadableState === "hasError",
-    permissionMetadataError:
-      params.permissionMetadataLoadable.state === "hasError",
-    userGrantsError: params.userGrantsLoadable.state === "hasError",
-  });
-  const saving = isPermissionActionSaving({
-    grantLoading: params.grantLoadableState === "loading",
-  });
-  const saveError = params.grantLoadableState === "hasError";
-  const userGrantPolicy = permissionActionUserGrantPolicy(
-    params.userGrantsLoadable,
-    params.block,
-    permissionMetadata,
-  );
-  const alreadyApplied = isPermissionActionAlreadyApplied({
-    hasAgent: params.hasAgent,
-    userGrantPolicy,
-    action: params.block.action,
-  });
-  const saveDone =
-    params.grantLoadableState === "hasData" && params.savedGrantActive;
-  const status = createPermissionActionCardStatus({
-    hasAgent: params.hasAgent,
-    hasPermission: Boolean(focusedPermission),
-    loading,
-    loadError,
-    saving,
-    saveDone,
-    saveError,
-    alreadyApplied,
-  });
-  return {
-    actionLabel,
-    status,
-    focusedPermission,
-  };
-}
-
-function runPermissionAction(params: {
-  status: PermissionActionCardStatus;
-  runUserGrant: () => void;
-}): void {
-  if (params.status.kind !== "ready" && params.status.kind !== "save-error") {
-    return;
-  }
-
-  params.runUserGrant();
-}
-
-function createPermissionActionHandler(
-  params: {
-    block: PermissionSignals;
-    focusedPermission:
-      | {
-          name: string;
-        }
-      | undefined;
-    status: PermissionActionCardStatus;
-    expirationAvailable: boolean;
-    expiresIn: UserPermissionGrantExpiresIn;
-    applyGrant: ApplyUserPermissionGrantFn;
-    runCallback: (
-      args: {
-        readonly threadId: string;
-        readonly agentId: string;
-        readonly callbackPrompt: string;
-      },
-      signal: AbortSignal,
-    ) => Promise<void>;
-  },
-  pageSignal: AbortSignal,
-): () => void {
-  return () => {
-    const permissionName =
-      params.focusedPermission?.name ?? params.block.permission;
-    runPermissionAction({
-      status: params.status,
-      runUserGrant: () => {
-        detach(
-          (async () => {
-            await params.applyGrant(
-              {
-                agentId: params.block.agentId,
-                connectorSlug: params.block.connectorSlug,
-                permission: permissionName,
-                action: params.block.action,
-                ...(params.expirationAvailable
-                  ? { expiresIn: params.expiresIn }
-                  : {}),
-              },
-              pageSignal,
-            );
-            if (params.block.callbackPrompt && params.block.threadId) {
-              await params.runCallback(
-                {
-                  threadId: params.block.threadId,
-                  agentId: params.block.agentId,
-                  callbackPrompt: params.block.callbackPrompt,
-                },
-                pageSignal,
-              );
-            }
-          })(),
-          Reason.DomCallback,
-        );
-      },
-    });
-  };
-}
-
-function PermissionActionCardContent({
-  signals,
-  icon,
-  connectorLabel,
-  actionLabel,
-  permissionName,
-  status,
-  expirationAvailable,
-  expiresIn,
-  onExpiresInChange,
-  expiresAt,
-  onClick,
-}: {
-  signals: PermissionSignals;
-  icon: PlatformConnectorPermissionMetadata["icon"] | undefined;
-  connectorLabel: string;
-  actionLabel: string;
-  permissionName: string;
-  status: PermissionActionCardStatus;
-  expirationAvailable: boolean;
-  expiresIn: UserPermissionGrantExpiresIn;
-  onExpiresInChange: (value: UserPermissionGrantExpiresIn) => void;
-  expiresAt: string | null;
-  onClick: () => void;
-}) {
-  const { t } = useTranslation();
-  const expiresAtMs = expiresAt ? Date.parse(expiresAt) : Number.NaN;
-  const remainingMs = expiresAtMs - now();
-  const hourCount = Math.ceil(remainingMs / (60 * 60 * 1000));
-  const dayCount = Math.ceil(remainingMs / (24 * 60 * 60 * 1000));
-  const expiryText =
-    !expirationAvailable || !Number.isFinite(expiresAtMs)
-      ? null
-      : remainingMs <= 0
-        ? t(($) => {
-            return $.chat.permissions.expired;
-          })
-        : remainingMs >= 24 * 60 * 60 * 1000
-          ? t(
-              ($) => {
-                return $.chat.permissions.expiresInDays;
-              },
-              { count: dayCount },
-            )
-          : remainingMs < 59 * 60 * 1000 || hourCount === 1
-            ? null
-            : t(
-                ($) => {
-                  return $.chat.permissions.expiresInHours;
-                },
-                {
-                  count: hourCount,
-                },
-              );
-  const showDurationSelect =
-    expirationAvailable &&
-    (status.kind === "ready" ||
-      status.kind === "saving" ||
-      status.kind === "save-error");
-  return (
-    <div
-      data-testid="permission-action-card"
-      className="flex min-h-[88px] w-full flex-col gap-3 rounded-lg border border-border/70 bg-background/85 p-3 text-left shadow-sm sm:flex-row sm:items-center sm:justify-between"
-    >
-      <div className="flex min-w-0 items-center gap-3">
-        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-border/70 bg-muted/40">
-          <ConnectorIcon icon={icon} size={22} />
-        </div>
-        <div className="min-w-0">
-          <div className="truncate text-[0.9375rem] font-medium text-foreground">
-            {t(
-              ($) => {
-                return $.chat.permissions.connectorTitle;
-              },
-              {
-                connectorName: connectorLabel,
-              },
-            )}
-          </div>
-          <div className="mt-0.5 line-clamp-2 text-sm leading-5 text-muted-foreground">
-            {t(
-              ($) => {
-                return $.chat.permissions.actionDescription;
-              },
-              {
-                action: actionLabel,
-                permissionName,
-              },
-            )}
-          </div>
-          {status.kind !== "loading" && (
-            <PermissionActionInlineStatus status={status} />
-          )}
-          {expiryText && (
-            <div className="mt-0.5 text-xs font-medium text-amber-700 dark:text-amber-400">
-              {expiryText}
-            </div>
-          )}
-        </div>
-      </div>
-      {permissionActionHasControls(status) && (
-        <div
-          data-testid="permission-action-card-controls"
-          className="flex min-h-9 w-full shrink-0 flex-row items-center gap-2 sm:w-auto"
-        >
-          {status.kind === "loading" && (
-            <PermissionActionInlineStatus status={status} />
-          )}
-          {showDurationSelect && (
-            <PermissionGrantDurationSelect
-              value={expiresIn}
-              onValueChange={onExpiresInChange}
-              disabled={status.kind === "saving"}
-              ariaLabel={t(($) => {
-                return $.chat.permissions.duration;
-              })}
-            />
-          )}
-          <PermissionActionTerminalStatus
-            status={status}
-            action={signals.action}
-          />
-          <PermissionActionButton status={status} onClick={onClick} />
-        </div>
-      )}
-    </div>
-  );
-}
-
-function PermissionActionCardForTarget({
-  signals,
-  hasTarget,
-  targetLoadableState,
-  userGrantsLoadable,
-}: {
-  signals: PermissionSignals;
-  hasTarget: boolean;
-  targetLoadableState: string;
-  userGrantsLoadable: LoadableLike<readonly PermissionActionUserGrant[]>;
-}) {
-  const pageSignal = useGet(pageSignal$);
-  const expirationAvailable = signals.action === "allow";
-  const durationScope = `${signals.href}\u0000${signals.expiresIn ?? ""}`;
-  const expiresInByScope = useGet(permissionGrantExpiresInByScope$);
-  const setExpiresInForScope = useSet(setPermissionGrantExpiresIn$);
-  const expiresIn =
-    expiresInByScope[durationScope] ??
-    signals.expiresIn ??
-    DEFAULT_USER_PERMISSION_GRANT_EXPIRES_IN;
-  const permissionMetadataLoadable = useLoadable(signals.metadata$);
-  const [grantLoadable, applyGrant] = useLoadableSet(applyUserPermissionGrant$);
-  const runCallback = useSet(runChatActionCallback$);
-  const savedGrant =
-    grantLoadable.state === "hasData" ? grantLoadable.data : null;
-  const savedGrantActive = savedGrant
-    ? isActiveUserPermissionGrant(savedGrant)
-    : false;
-  const existingGrant = permissionActionUserGrant(userGrantsLoadable, signals);
-  const existingGrantActive = existingGrant
-    ? isActiveUserPermissionGrant(existingGrant)
-    : false;
-  const actionState = createPermissionActionCardViewState({
-    block: signals,
-    hasAgent: hasTarget,
-    agentLoadableState: targetLoadableState,
-    permissionMetadataLoadable,
-    userGrantsLoadable,
-    grantLoadableState: grantLoadable.state,
-    savedGrantActive,
-  });
-  const permissionMetadata =
-    permissionMetadataLoadable.state === "hasData"
-      ? permissionMetadataLoadable.data
-      : null;
-  const grantExpiresAt = permissionActionGrantExpiresAt({
-    savedGrant,
-    savedGrantActive,
-    existingGrant,
-    existingGrantActive,
-    status: actionState.status,
-  });
-
-  return (
-    <PermissionActionCardContent
-      signals={signals}
-      icon={permissionMetadata?.icon}
-      connectorLabel={permissionMetadata?.label ?? signals.connectorSlug}
-      actionLabel={actionState.actionLabel}
-      permissionName={actionState.focusedPermission?.name ?? signals.permission}
-      status={actionState.status}
-      expirationAvailable={expirationAvailable}
-      expiresIn={expiresIn}
-      onExpiresInChange={(value) => {
-        setExpiresInForScope(durationScope, value);
-      }}
-      expiresAt={grantExpiresAt}
-      onClick={createPermissionActionHandler(
-        {
-          block: signals,
-          focusedPermission: actionState.focusedPermission,
-          status: actionState.status,
-          expirationAvailable,
-          expiresIn,
-          applyGrant,
-          runCallback,
-        },
-        pageSignal,
-      )}
-    />
-  );
-}
-
-function PermissionActionCard({ signals }: { signals: PermissionSignals }) {
-  const agentLoadable = useLastLoadable(signals.agent$);
-  const userGrantsLoadable = useLoadable(signals.grants$);
-  const agent = agentLoadable.state === "hasData" ? agentLoadable.data : null;
-  return (
-    <PermissionActionCardForTarget
-      signals={signals}
-      hasTarget={Boolean(agent)}
-      targetLoadableState={agentLoadable.state}
-      userGrantsLoadable={userGrantsLoadable}
-    />
-  );
-}
-
 function ChatConnectorActionConnectModal() {
   const active = useGet(activeChatConnectorAction$);
+  const mcpEnabled = useGet(customConnectorMcpEnabled$);
   const close = useSet(closeChatConnectorActionConnectDialog$);
   const runCallback = useSet(runChatActionCallback$);
   const pageSignal = useGet(pageSignal$);
@@ -6148,11 +5308,12 @@ function ChatConnectorActionConnectModal() {
   };
 
   if (active.kind === "custom") {
-    const connector = customConnectors
-      ?.filter(isHttpCustomConnectorClientResponse)
-      .find((candidate) => {
-        return candidate.slug === active.connectorSlug;
-      });
+    const connector = customConnectors?.find((candidate) => {
+      return (
+        candidate.slug === active.connectorSlug &&
+        (candidate.kind === "http" || mcpEnabled)
+      );
+    });
     return connector ? (
       <CustomConnectorConnectDialog
         connector={connector}
@@ -6298,17 +5459,19 @@ function PaidCreditCheckoutActions({
       <div className="flex flex-wrap gap-2">
         {CREDIT_TOP_UP_OPTIONS.map((credits) => {
           return (
-            <button
+            <Button
               key={credits}
               type="button"
               onClick={(event) => {
                 handleCreditClick({ credits }, event);
               }}
               disabled={redirecting}
-              className="inline-flex h-8 items-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-hover disabled:opacity-60"
+              variant="default"
+              size="sm"
+              className="disabled:opacity-60"
             >
               {formatCreditsUsd(credits)}
-            </button>
+            </Button>
           );
         })}
         <details>
@@ -6322,7 +5485,7 @@ function PaidCreditCheckoutActions({
           </summary>
           <form className="mt-2 flex flex-wrap items-center gap-2">
             <span className="text-sm text-muted-foreground">$</span>
-            <input
+            <Input
               type="text"
               inputMode="numeric"
               name="customUsd"
@@ -6336,13 +5499,15 @@ function PaidCreditCheckoutActions({
               aria-label={t(($) => {
                 return $.chat.billing.customDollarAmount;
               })}
-              className="h-8 w-24 rounded-md border border-input bg-background px-2 text-sm text-foreground outline-none transition-colors focus:border-ring"
+              className="h-8 w-24 px-2"
             />
-            <button
+            <Button
               type="button"
               onClick={handleCustomCreditClick}
               disabled={redirecting}
-              className="inline-flex h-8 items-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-hover disabled:opacity-60"
+              variant="default"
+              size="sm"
+              className="disabled:opacity-60"
             >
               {redirecting
                 ? t(($) => {
@@ -6351,7 +5516,7 @@ function PaidCreditCheckoutActions({
                 : t(($) => {
                     return $.chat.billing.buy;
                   })}
-            </button>
+            </Button>
           </form>
         </details>
       </div>
@@ -6424,11 +5589,13 @@ function InsufficientCreditsCard() {
       <p className="text-[0.9375rem] font-medium text-foreground">{headline}</p>
       <p className="mt-1 text-sm text-muted-foreground">{helper}</p>
       {!canShowBillingAction ? null : shouldStartProCheckout ? (
-        <button
+        <Button
           type="button"
           onClick={handleUpgradeClick}
           disabled={redirecting}
-          className="mt-3 inline-flex h-8 items-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary-hover disabled:opacity-60"
+          variant="default"
+          size="sm"
+          className="mt-3 disabled:opacity-60"
         >
           {redirecting
             ? t(($) => {
@@ -6437,7 +5604,7 @@ function InsufficientCreditsCard() {
             : t(($) => {
                 return $.chat.billing.upgradeToPro;
               })}
-        </button>
+        </Button>
       ) : (
         <PaidCreditCheckoutActions
           redirecting={redirecting}
@@ -6795,12 +5962,16 @@ function PagedGroupRow({
   group,
   thread,
   modelChanges,
+  showActions,
+  steerEventIds,
   runGroupFolds,
   completedWorkFold,
 }: {
   group: ChatEventGroup;
   thread: ChatPanelSignals;
   modelChanges: ReadonlyMap<string, RunModelChange>;
+  showActions: boolean;
+  steerEventIds: ReadonlySet<string>;
   runGroupFolds?: readonly RunGroupFoldControl[];
   completedWorkFold?: {
     groups: readonly ChatEventGroup[];
@@ -6815,6 +5986,7 @@ function PagedGroupRow({
         group={group}
         thread={thread}
         modelChanges={modelChanges}
+        steerEventIds={steerEventIds}
         runGroupFolds={runGroupFolds}
       />
     );
@@ -6823,6 +5995,7 @@ function PagedGroupRow({
     <PagedAssistantGroup
       group={group}
       thread={thread}
+      showActions={showActions}
       runGroupFolds={runGroupFolds}
       completedWorkFold={completedWorkFold}
     />
@@ -6874,6 +6047,8 @@ function SelectablePagedGroupRow({
   group,
   thread,
   modelChanges,
+  showActions,
+  steerEventIds,
   runGroupFolds,
   completedWorkFold,
 }: Parameters<typeof PagedGroupRow>[0]) {
@@ -6891,6 +6066,8 @@ function SelectablePagedGroupRow({
         group={group}
         thread={thread}
         modelChanges={modelChanges}
+        showActions={showActions}
+        steerEventIds={steerEventIds}
         runGroupFolds={runGroupFolds}
         completedWorkFold={completedWorkFold}
       />
@@ -6934,6 +6111,8 @@ function SelectablePagedGroupRow({
         group={group}
         thread={thread}
         modelChanges={modelChanges}
+        showActions={showActions}
+        steerEventIds={steerEventIds}
         runGroupFolds={runGroupFolds}
         completedWorkFold={completedWorkFold}
       />
@@ -6959,11 +6138,13 @@ function PagedUserGroup({
   group,
   thread,
   modelChanges,
+  steerEventIds,
   runGroupFolds,
 }: {
   group: ChatEventGroup;
   thread: ChatPanelSignals;
   modelChanges: ReadonlyMap<string, RunModelChange>;
+  steerEventIds: ReadonlySet<string>;
   runGroupFolds?: readonly RunGroupFoldControl[];
 }) {
   return (
@@ -6975,7 +6156,11 @@ function PagedUserGroup({
             {modelChange === undefined ? null : (
               <ModelChangeDividerRow change={modelChange} />
             )}
-            <PagedUserMessage event={event} thread={thread} />
+            <PagedUserMessage
+              event={event}
+              thread={thread}
+              steer={steerEventIds.has(event.id)}
+            />
           </div>
         );
       })}
@@ -7075,6 +6260,7 @@ function MessageAttachment({
             filename: a.filename,
           },
         )}
+        load={a.signals.previewImageLoad}
         imageClassName="block h-full w-full object-contain"
         linkClassName={CHAT_INLINE_IMAGE_PREVIEW_CLASS}
         onPreview={() => {
@@ -7089,6 +6275,7 @@ function MessageAttachment({
   if (a.kind === "video") {
     return (
       <ChatVideoPreviewButton
+        posterLoad={a.signals.previewImageLoad}
         ariaLabel={t(
           ($) => {
             return $.chat.attachments.previewFile;
@@ -7599,6 +6786,7 @@ function UserMessageFileReference({
   if (signals.kind === "video") {
     reference = (
       <ChatVideoPreviewButton
+        posterLoad={signals.previewImageLoad}
         ariaLabel={t(
           ($) => {
             return $.chat.attachments.previewFile;
@@ -8015,14 +7203,63 @@ function isElevatedUserMessagePart(
   );
 }
 
+function SteerMessageIndicator() {
+  const { t } = useTranslation();
+  const explanation = t(($) => {
+    return $.chat.thread.steerMessageExplanation;
+  });
+
+  return (
+    <TooltipProvider delayDuration={300}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span
+            data-testid="chat-steer-indicator"
+            role="img"
+            aria-label={explanation}
+            className="flex h-7 w-5 shrink-0 cursor-help items-center justify-center text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <CornerLeftUp size={14} strokeWidth={1.8} />
+          </span>
+        </TooltipTrigger>
+        <TooltipContent side="top">{explanation}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
+function UserMessageBubble({
+  children,
+  steer,
+}: {
+  children: ReactNode;
+  steer: boolean;
+}) {
+  const bubble = (
+    <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-[0.9375rem] leading-[1.7] [overflow-wrap:anywhere] overflow-hidden">
+      {children}
+    </div>
+  );
+  return steer ? (
+    <div className="flex w-full items-center justify-end gap-1.5">
+      <SteerMessageIndicator />
+      {bubble}
+    </div>
+  ) : (
+    bubble
+  );
+}
+
 function UserMessageContent({
   document,
   attachments,
   onImageClick,
+  steer,
 }: {
   document: UserMessageRenderDocument;
   attachments: ReturnType<typeof userMessageRenderAttachments>;
   onImageClick: OpenMessageImagePreview;
+  steer: boolean;
 }) {
   // Attachments read as their own object, so they all sit above the bubble
   // instead of interrupting the sentence they were dropped into. Attachments
@@ -8049,14 +7286,14 @@ function UserMessageContent({
         onImageClick={onImageClick}
       />
       {hasBody ? (
-        <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-[0.9375rem] leading-[1.7] [overflow-wrap:anywhere] overflow-hidden">
+        <UserMessageBubble steer={steer}>
           <div className="px-4 py-3">
             <UserMessageView
               document={document}
               elevatedFileIds={elevatedFileIds}
             />
           </div>
-        </div>
+        </UserMessageBubble>
       ) : null}
     </>
   );
@@ -8209,9 +7446,11 @@ function messageImageLightboxTarget(
 function PagedUserMessage({
   event,
   thread,
+  steer,
 }: {
   event: EnrichedChatEvent;
   thread: ChatPanelSignals;
+  steer: boolean;
 }) {
   const inputEvent = asInputChatEvent(event);
   const renderDocument = event.userMessageRenderDocument;
@@ -8219,7 +7458,6 @@ function PagedUserMessage({
     resolvePagedUserMessageRendering({
       renderDocument,
     });
-  const bodyBlocks = event.blocks;
   const pageSignal = useGet(pageSignal$);
   const openImageLightbox = useSet(openAttachmentImageLightbox$);
   const openLightbox: OpenMessageImagePreview = (url, filename) => {
@@ -8292,6 +7530,7 @@ function PagedUserMessage({
               document={renderDocument}
               attachments={allAttachments}
               onImageClick={openLightbox}
+              steer={steer}
             />
           ) : (
             <>
@@ -8299,19 +7538,12 @@ function PagedUserMessage({
                 attachments={allAttachments}
                 onImageClick={openLightbox}
               />
-              {bodyBlocks.length > 0 && (
-                <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-[0.9375rem] leading-[1.7] [overflow-wrap:anywhere] overflow-hidden">
+              {event.tree !== undefined && (
+                <UserMessageBubble steer={steer}>
                   <div className="px-4 py-3">
-                    <BodyContentBlocks
-                      blocks={bodyBlocks}
-                      mermaidScope={thread.threadId}
-                      openLightbox={openLightbox}
-                      hardBreaks
-                      escapeMarkdownHtml
-                      markdownMediaPreview={false}
-                    />
+                    <MarkdownEventBody tree={event.tree} mediaPreview={false} />
                   </div>
-                </div>
+                </UserMessageBubble>
               )}
             </>
           )}
@@ -8329,11 +7561,13 @@ function PagedUserMessage({
 function PagedAssistantGroup({
   group,
   thread,
+  showActions,
   runGroupFolds,
   completedWorkFold,
 }: {
   group: ChatEventGroup;
   thread: ChatPanelSignals;
+  showActions: boolean;
   runGroupFolds?: readonly RunGroupFoldControl[];
   completedWorkFold?: {
     groups: readonly ChatEventGroup[];
@@ -8412,7 +7646,13 @@ function PagedAssistantGroup({
           })}
         </div>
       </div>
-      <PagedGroupActions group={group} content={fullContent} thread={thread} />
+      {showActions ? (
+        <PagedGroupActions
+          group={group}
+          content={fullContent}
+          thread={thread}
+        />
+      ) : null}
     </div>
   );
 }
@@ -8426,12 +7666,6 @@ function PagedAssistantEventItem({
   compactTop?: boolean;
   thread: ChatPanelSignals;
 }) {
-  const openImageLightbox = useSet(openAttachmentImageLightbox$);
-  const openLightbox: OpenMessageImagePreview = (url, filename) => {
-    openImageLightbox(
-      messageImageLightboxTarget(thread.threadId, url, filename),
-    );
-  };
   const error = chatEventError(event);
   if (error) {
     return (
@@ -8453,9 +7687,8 @@ function PagedAssistantEventItem({
 
   if (
     (isChatEventContentTextType(event.eventType) && event.content) ||
-    event.blocks.length > 0
+    hasChatEventBodyContent(event)
   ) {
-    const { blocks } = event;
     return (
       <div
         data-chat-scroll-anchor-event-id={event.id}
@@ -8464,13 +7697,8 @@ function PagedAssistantEventItem({
           compactTop ? "@[900px]:pt-0" : "@[900px]:pt-2.5",
         )}
       >
-        {blocks.length > 0 ? (
-          <BodyContentBlocks
-            blocks={blocks}
-            mermaidScope={thread.threadId}
-            openLightbox={openLightbox}
-            hardBreaks={false}
-          />
+        {event.tree !== undefined ? (
+          <MarkdownEventBody tree={event.tree} mediaPreview />
         ) : null}
       </div>
     );

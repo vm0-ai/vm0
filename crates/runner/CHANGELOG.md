@@ -1,5 +1,67 @@
 # Changelog
 
+## [0.164.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.164.4...runner-rs-v0.164.5) (2026-08-12)
+
+
+### Refactoring
+
+* **python:** use bounded reads for runner flush markers ([#26527](https://github.com/vm0-ai/vm0/issues/26527)) ([f60e02c](https://github.com/vm0-ai/vm0/commit/f60e02cd5539ab1e3f43a0181acbef2b6f4c22ae))
+
+## [0.164.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.164.3...runner-rs-v0.164.4) (2026-08-12)
+
+## [0.164.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.164.2...runner-rs-v0.164.3) (2026-08-12)
+
+## [0.164.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.164.1...runner-rs-v0.164.2) (2026-08-12)
+
+
+### Bug Fixes
+
+* **python:** centralize firewall permission name validation ([#26469](https://github.com/vm0-ai/vm0/issues/26469)) ([050cfa5](https://github.com/vm0-ai/vm0/commit/050cfa5ca8240a61188730edd455846950d7f8cb))
+* **python:** preserve malformed base literal scope ([#26471](https://github.com/vm0-ai/vm0/issues/26471)) ([9a7ddfa](https://github.com/vm0-ai/vm0/commit/9a7ddfa9c07363b506be03c42613c4ed92ed8f0e))
+
+## [0.164.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.164.0...runner-rs-v0.164.1) (2026-08-12)
+
+
+### Documentation
+
+* **python:** clarify firewall auth error contract ([#26447](https://github.com/vm0-ai/vm0/issues/26447)) ([7e4536e](https://github.com/vm0-ai/vm0/commit/7e4536e33bb7f419568d3b69ef69de252c9ac83b))
+
+
+### Refactoring
+
+* **runner:** centralize setup directory trust walking ([#26452](https://github.com/vm0-ai/vm0/issues/26452)) ([8bad407](https://github.com/vm0-ai/vm0/commit/8bad407c14ff99234da695cef441bd34d5a9e41c))
+
+## [0.164.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.163.6...runner-rs-v0.164.0) (2026-08-11)
+
+
+### Features
+
+* **runner:** enable durable active-input delivery ([#26392](https://github.com/vm0-ai/vm0/issues/26392)) ([6225b5e](https://github.com/vm0-ai/vm0/commit/6225b5e85da2833f011830d21498744893b2f625))
+
+
+### Refactoring
+
+* remove retired model rollout compatibility ([#26413](https://github.com/vm0-ai/vm0/issues/26413)) ([42dfddf](https://github.com/vm0-ai/vm0/commit/42dfddfd80d393d7794868c0469c8e843f09660f))
+
+## [0.163.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.163.5...runner-rs-v0.163.6) (2026-08-11)
+
+
+### Bug Fixes
+
+* **runner:** preserve completion telemetry timestamp ([#26395](https://github.com/vm0-ai/vm0/issues/26395)) ([434bdad](https://github.com/vm0-ai/vm0/commit/434bdad7a497168f023e8a5040dad3987c15f2ab))
+
+## [0.163.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.163.4...runner-rs-v0.163.5) (2026-08-11)
+
+
+### Bug Fixes
+
+* **runner:** validate h1 absolute-form authorities ([#26323](https://github.com/vm0-ai/vm0/issues/26323)) ([1c7edb2](https://github.com/vm0-ai/vm0/commit/1c7edb237e43afeb838c8478004333c7467bc39d))
+
+
+### Refactoring
+
+* **python:** centralize counter underbilling emission ([#26336](https://github.com/vm0-ai/vm0/issues/26336)) ([da94429](https://github.com/vm0-ai/vm0/commit/da94429af94c1c2ec8ab7c0069d85dd569bcdab2))
+
 ## [0.163.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.163.3...runner-rs-v0.163.4) (2026-08-11)
 
 

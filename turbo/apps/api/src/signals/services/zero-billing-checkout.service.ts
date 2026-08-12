@@ -75,10 +75,10 @@ function legacyPriceIdsForTier(
 ): readonly string[] | undefined {
   switch (tier) {
     case "pro": {
-      return env("ZERO_PRICE_PRO");
+      return env("OKOU_PRICE_PRO");
     }
     case "team": {
-      return env("ZERO_PRICE_TEAM");
+      return env("OKOU_PRICE_TEAM");
     }
   }
 }
@@ -88,10 +88,10 @@ function usagePackPlanPriceIdsForTier(
 ): readonly string[] | undefined {
   switch (tier) {
     case "pro": {
-      return env("ZERO_PRICE_USAGE_PACK_PLAN_PRO");
+      return env("OKOU_PRICE_USAGE_PACK_PLAN_PRO");
     }
     case "team": {
-      return env("ZERO_PRICE_USAGE_PACK_PLAN_TEAM");
+      return env("OKOU_PRICE_USAGE_PACK_PLAN_TEAM");
     }
   }
 }
@@ -121,16 +121,16 @@ export function activeUsagePackPlanPriceId(
 function usagePackPriceIds(usagePackUsd: UsagePackUsd): readonly string[] {
   switch (usagePackUsd) {
     case 20: {
-      return env("ZERO_PRICE_USAGE_PACK_20") ?? [];
+      return env("OKOU_PRICE_USAGE_PACK_20") ?? [];
     }
     case 50: {
-      return env("ZERO_PRICE_USAGE_PACK_50") ?? [];
+      return env("OKOU_PRICE_USAGE_PACK_50") ?? [];
     }
     case 100: {
-      return env("ZERO_PRICE_USAGE_PACK_100") ?? [];
+      return env("OKOU_PRICE_USAGE_PACK_100") ?? [];
     }
     case 200: {
-      return env("ZERO_PRICE_USAGE_PACK_200") ?? [];
+      return env("OKOU_PRICE_USAGE_PACK_200") ?? [];
     }
   }
 }
@@ -250,7 +250,7 @@ export function checkoutTierConflictMessage(args: {
 }
 
 export function activeCustomCreditUnitPriceId(): string | undefined {
-  return env("ZERO_PRICE_CUSTOM_CREDIT_UNIT");
+  return env("OKOU_PRICE_CUSTOM_CREDIT_UNIT");
 }
 
 function checkoutSessionMetadata(args: {

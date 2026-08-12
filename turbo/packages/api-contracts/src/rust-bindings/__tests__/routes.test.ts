@@ -28,6 +28,18 @@ const expectedBindings = [
   },
   {
     method: "POST",
+    path: "/api/runners/runs/:runId/active-inputs/reserve",
+    rustModulePath: [
+      "runners",
+      "runs",
+      "by_run_id",
+      "active_inputs",
+      "reserve",
+    ],
+    rustConstName: "RESERVE",
+  },
+  {
+    method: "POST",
     path: "/api/runners/runs/:runId/active-inputs/deliveries/:deliveryId/receipt",
     rustModulePath: [
       "runners",

@@ -12,6 +12,10 @@ API_PORT=3001
 TUNNEL_PORT=3043
 ENV_LOCAL_FILE="$API_APP_DIR/.env.local"
 STRIPE_PIDFILE="/tmp/stripe-listen-api.pid"
+CLERK_PIDFILE="/tmp/clerk-listen-api.pid"
+CLERK_LOG_FILE="/tmp/clerk-listen-api.log"
+CLERK_RELAY_TOKEN_FILE="$REPO_ROOT/turbo/.dev-clerk-webhook-token"
+CLERK_RELAY_URL_FILE="$REPO_ROOT/turbo/.dev-clerk-webhook-url"
 TUNNEL_PIDFILE="/tmp/cloudflared-${TUNNEL_PORT}.pid"
 LEGACY_API_TUNNEL_PIDFILE="/tmp/cloudflared-${API_PORT}.pid"
 
@@ -71,8 +75,62 @@ start_stripe_webhook_forwarding() {
   echo "[stripe] Webhook forwarding -> localhost:${API_PORT}/api/webhooks/stripe"
 }
 
+start_clerk_webhook_forwarding() {
+  local clerk_bin clerk_pid relay_token relay_url
+
+  clerk_bin="$API_APP_DIR/node_modules/.bin/clerk"
+  if [[ ! -x "$clerk_bin" ]]; then
+    echo "[clerk] Clerk CLI not found; skipping local webhook forwarding."
+    return 0
+  fi
+
+  kill_stale "$CLERK_PIDFILE" "clerk webhooks listen .*--forward-to http://localhost:${API_PORT}/api/webhooks/clerk"
+  rm -f "$CLERK_RELAY_URL_FILE"
+
+  if [[ -s "$CLERK_RELAY_TOKEN_FILE" ]]; then
+    relay_token="$(cat "$CLERK_RELAY_TOKEN_FILE")"
+  else
+    relay_token="$("$clerk_bin" webhooks token)"
+    printf "%s\n" "$relay_token" > "$CLERK_RELAY_TOKEN_FILE"
+  fi
+
+  : > "$CLERK_LOG_FILE"
+  "$clerk_bin" webhooks listen \
+    --json \
+    --token "$relay_token" \
+    --forward-to "http://localhost:${API_PORT}/api/webhooks/clerk" \
+    > "$CLERK_LOG_FILE" 2>&1 &
+  clerk_pid="$!"
+  echo "$clerk_pid" > "$CLERK_PIDFILE"
+
+  for _ in {1..50}; do
+    if ! kill -0 "$clerk_pid" 2>/dev/null; then
+      echo "[clerk] Webhook relay stopped before it became ready; continuing without Clerk forwarding." >&2
+      tail -20 "$CLERK_LOG_FILE" >&2
+      rm -f "$CLERK_PIDFILE"
+      return 0
+    fi
+
+    relay_url="$(sed -n 's/.*"relay_url"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$CLERK_LOG_FILE" | head -1)"
+    if [[ -n "$relay_url" ]]; then
+      printf "%s\n" "$relay_url" > "$CLERK_RELAY_URL_FILE"
+      echo "[clerk] Webhook relay URL=${relay_url}"
+      echo "[clerk] Webhook forwarding -> localhost:${API_PORT}/api/webhooks/clerk"
+      if ! grep -q '^CLERK_WEBHOOK_SIGNING_SECRET=.' "$ENV_LOCAL_FILE"; then
+        echo "[clerk] CLERK_WEBHOOK_SIGNING_SECRET is missing; add the relay URL as a Clerk endpoint and copy its signing secret into apps/api/.env.local." >&2
+      fi
+      return 0
+    fi
+    sleep 0.1
+  done
+
+  echo "[clerk] Webhook relay did not become ready; see ${CLERK_LOG_FILE}." >&2
+}
+
 cleanup() {
   kill_stale "$STRIPE_PIDFILE" ""
+  kill_stale "$CLERK_PIDFILE" ""
+  rm -f "$CLERK_RELAY_URL_FILE"
   if [[ "${API_KEEP_TUNNEL_ON_EXIT:-}" != "1" ]]; then
     kill_stale "$TUNNEL_PIDFILE" ""
     kill_stale "$LEGACY_API_TUNNEL_PIDFILE" ""
@@ -129,6 +187,7 @@ TUNNEL_URL="$(start_api_tunnel)"
 echo "[api:dev] Tunnel URL=${TUNNEL_URL}"
 
 start_stripe_webhook_forwarding
+start_clerk_webhook_forwarding
 
 cd "$API_APP_DIR"
 env \

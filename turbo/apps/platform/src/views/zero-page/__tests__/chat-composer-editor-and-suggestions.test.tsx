@@ -80,7 +80,7 @@ describe("chat composer models", () => {
   it("does not autofocus the agent chat composer on iPadOS", async () => {
     const restoreNavigator = mockIPadOSNavigator();
     try {
-      mockOrgModelRoutes("kimi-k2.7-code");
+      mockOrgModelRoutes("claude-fable-5");
       mockAgent();
 
       detachedSetupPage({
@@ -95,7 +95,7 @@ describe("chat composer models", () => {
   });
 
   it("keeps the agent chat composer at three-line height", async () => {
-    mockOrgModelRoutes("kimi-k2.7-code");
+    mockOrgModelRoutes("claude-fable-5");
     mockAgent();
 
     detachedSetupPage({
@@ -109,7 +109,7 @@ describe("chat composer models", () => {
   });
 
   it("uses the mobile two-line height in chat thread composers", async () => {
-    mockOrgModelRoutes("kimi-k2.7-code");
+    mockOrgModelRoutes("claude-fable-5");
     mockAgent();
     mockThread();
 
@@ -123,7 +123,7 @@ describe("chat composer models", () => {
   });
 
   it("keeps the agent chat slash composer at three-line height", async () => {
-    mockOrgModelRoutes("kimi-k2.7-code");
+    mockOrgModelRoutes("claude-fable-5");
     mockAgent();
     context.mocks.api(zeroWorkflowsCollectionContract.list, ({ respond }) => {
       return respond(200, []);
@@ -140,7 +140,7 @@ describe("chat composer models", () => {
   });
 
   it("uses the mobile two-line height in chat thread slash composers", async () => {
-    mockOrgModelRoutes("kimi-k2.7-code");
+    mockOrgModelRoutes("claude-fable-5");
     mockAgent();
     mockThread();
     context.mocks.api(zeroWorkflowsCollectionContract.list, ({ respond }) => {
@@ -158,7 +158,7 @@ describe("chat composer models", () => {
 
   it("selects from the slash workflow menu with a visual viewport offset", async () => {
     const user = userEvent.setup({ delay: null });
-    mockOrgModelRoutes("kimi-k2.7-code");
+    mockOrgModelRoutes("claude-fable-5");
     mockAgent();
     context.mocks.api(zeroWorkflowsCollectionContract.list, ({ respond }) => {
       return respond(200, [
@@ -233,7 +233,7 @@ describe("chat composer models", () => {
 
   it("suggests current agent workflows from slash input and highlights inserted workflow tokens", async () => {
     const user = userEvent.setup({ delay: null });
-    mockOrgModelRoutes("kimi-k2.7-code");
+    mockOrgModelRoutes("claude-fable-5");
     mockAgent();
     context.mocks.api(zeroWorkflowsCollectionContract.list, ({ respond }) => {
       return respond(200, [
@@ -310,7 +310,7 @@ describe("chat composer models", () => {
 
   it("matches slash skills by substring while prioritizing prefixes", async () => {
     const user = userEvent.setup({ delay: null });
-    mockOrgModelRoutes("kimi-k2.7-code");
+    mockOrgModelRoutes("claude-fable-5");
     mockAgent();
     context.mocks.api(zeroWorkflowsCollectionContract.list, ({ respond }) => {
       return respond(200, [
@@ -371,7 +371,7 @@ describe("chat composer models", () => {
 
   it("does not highlight workflow names inside URLs", async () => {
     const user = userEvent.setup({ delay: null });
-    mockOrgModelRoutes("kimi-k2.7-code");
+    mockOrgModelRoutes("claude-fable-5");
     mockAgent();
     context.mocks.api(zeroWorkflowsCollectionContract.list, ({ respond }) => {
       return respond(200, [
@@ -404,7 +404,7 @@ describe("chat composer models", () => {
       "https://example.com/current-agent-avatar.png";
     const otherAgentAvatarUrl = "https://example.com/other-agent-avatar.png";
     const user = userEvent.setup({ delay: null });
-    mockOrgModelRoutes("kimi-k2.7-code");
+    mockOrgModelRoutes("claude-fable-5");
     mockAgent();
     mockThread();
     context.mocks.data.team([
@@ -490,7 +490,7 @@ describe("chat composer models", () => {
     const zetaAvatarUrl = "https://example.com/zeta-avatar.png";
     const draftPatches: Record<string, unknown>[] = [];
     const user = userEvent.setup({ delay: null });
-    mockOrgModelRoutes("kimi-k2.7-code");
+    mockOrgModelRoutes("claude-fable-5");
     mockAgent();
     mockThread();
     context.mocks.data.team([
@@ -613,7 +613,7 @@ describe("chat composer models", () => {
     const mentionedAgentAvatarUrl =
       "https://example.com/restored-agent-avatar.png";
     const mention = `[Restored Agent](/agents/${mentionedAgentId}/chat)`;
-    mockOrgModelRoutes("kimi-k2.7-code");
+    mockOrgModelRoutes("claude-fable-5");
     mockAgent();
     mockThread();
     context.mocks.data.team([
@@ -654,7 +654,7 @@ describe("chat composer models", () => {
 
   it("hides @ suggestions when no titled thread matches", async () => {
     const user = userEvent.setup({ delay: null });
-    mockOrgModelRoutes("kimi-k2.7-code");
+    mockOrgModelRoutes("claude-fable-5");
     mockAgent();
     mockThread();
     mockComposerThreadSnapshot([
@@ -692,7 +692,7 @@ describe("chat composer models", () => {
   it("reloads workflow suggestions and highlights without remounting the composer", async () => {
     const user = userEvent.setup({ delay: null });
     let workflows: ReturnType<typeof workflowSummary>[] = [];
-    mockOrgModelRoutes("kimi-k2.7-code");
+    mockOrgModelRoutes("claude-fable-5");
     mockAgent();
     mockThread();
     context.mocks.api(zeroWorkflowsCollectionContract.list, ({ respond }) => {
@@ -768,7 +768,7 @@ describe("chat composer models", () => {
     let staleRequestCount = 0;
     let freshRequestCount = 0;
     let barrierRequestCount = 0;
-    mockOrgModelRoutes("kimi-k2.7-code");
+    mockOrgModelRoutes("claude-fable-5");
     mockAgent();
     mockThread();
     mockComposerThreadSnapshot([
@@ -905,7 +905,7 @@ describe("chat composer models", () => {
 
   it("closes the slash workflow menu when focus leaves the composer input", async () => {
     const user = userEvent.setup({ delay: null });
-    mockOrgModelRoutes("kimi-k2.7-code");
+    mockOrgModelRoutes("claude-fable-5");
     mockAgent();
     context.mocks.api(zeroWorkflowsCollectionContract.list, ({ respond }) => {
       return respond(200, [
@@ -942,7 +942,7 @@ describe("chat composer models", () => {
 
   it("closes the slash workflow menu with Escape after a non-empty query", async () => {
     const user = userEvent.setup({ delay: null });
-    mockOrgModelRoutes("kimi-k2.7-code");
+    mockOrgModelRoutes("claude-fable-5");
     mockAgent();
     context.mocks.api(zeroWorkflowsCollectionContract.list, ({ respond }) => {
       return respond(200, [
@@ -980,7 +980,7 @@ describe("chat composer models", () => {
 
   it("does not suggest workflows that are not attached to the current agent", async () => {
     const user = userEvent.setup({ delay: null });
-    mockOrgModelRoutes("kimi-k2.7-code");
+    mockOrgModelRoutes("claude-fable-5");
     mockAgent();
     context.mocks.api(zeroWorkflowsCollectionContract.list, ({ respond }) => {
       return respond(200, [
@@ -1015,7 +1015,7 @@ describe("chat composer models", () => {
 
   it("links to the workflows page from the slash workflow menu footer", async () => {
     const user = userEvent.setup({ delay: null });
-    mockOrgModelRoutes("kimi-k2.7-code");
+    mockOrgModelRoutes("claude-fable-5");
     mockAgent();
     context.mocks.api(zeroWorkflowsCollectionContract.list, ({ respond }) => {
       return respond(200, [
@@ -1054,7 +1054,7 @@ describe("chat composer models", () => {
       configurable: true,
       value: scrollIntoView,
     });
-    mockOrgModelRoutes("kimi-k2.7-code");
+    mockOrgModelRoutes("claude-fable-5");
     const customWorkflows = Array.from({ length: 12 }, (_, index) => {
       return `custom-workflow-${index + 1}`;
     });
@@ -1098,7 +1098,7 @@ describe("chat composer models", () => {
     );
     try {
       const user = userEvent.setup({ delay: null });
-      mockOrgModelRoutes("kimi-k2.7-code");
+      mockOrgModelRoutes("claude-fable-5");
       mockAgent();
       context.mocks.api(zeroWorkflowsCollectionContract.list, ({ respond }) => {
         return respond(200, []);

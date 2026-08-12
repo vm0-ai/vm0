@@ -9,6 +9,7 @@ from mitmproxy.test import tutils
 import flow_metadata_keys as metadata_keys
 import http_network_log
 from tests.flow_helpers import header_map
+from tests.jsonl_log_helpers import jsonl_exists_after_flush, read_jsonl_entries_after_flush
 
 RealFlowFactory = Callable[..., http.HTTPFlow]
 _WEBSOCKET_KEY = "dGhlIHNhbXBsZSBub25jZQ=="
@@ -153,3 +154,14 @@ def model_provider_usage_sources(flow: http.HTTPFlow) -> dict:
     sources = flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE_SOURCES]
     assert isinstance(sources, dict)
     return sources
+
+
+def model_usage_source_entries(flow: http.HTTPFlow) -> list[dict]:
+    proxy_log = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
+    if not jsonl_exists_after_flush(proxy_log):
+        return []
+    return [
+        entry
+        for entry in read_jsonl_entries_after_flush(proxy_log)
+        if entry.get("type") == "model_usage_source"
+    ]

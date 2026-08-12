@@ -405,6 +405,164 @@ fn app_server_turn_steer_can_complete_runtime_turn_after_success() -> std::io::R
 }
 
 #[test]
+fn app_server_shell_prompt_executes_inherited_environment() -> std::io::Result<()> {
+    let dir = TempDir::new().unwrap();
+    let mut server = spawn_app_server_with_env(
+        dir.path(),
+        &["app-server", "--listen", "stdio://"],
+        Some("runtime-turn-complete"),
+        &[("MOCK_SHELL_VALUE", "inherited-value")],
+    )?;
+
+    server.request(1, "initialize", initialize_params())?;
+    server.send(&json!({
+        "id": 2,
+        "method": "thread/start",
+        "params": { "cwd": "/tmp" }
+    }))?;
+    let thread_started = server.read_required()?;
+    assert_eq!(thread_started["method"], "thread/started");
+    let started = server.read_required()?;
+    let thread_id = started["result"]["thread"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    server.request(
+        3,
+        "turn/start",
+        json!({
+            "threadId": thread_id,
+            "input": [text_input("@shell@\nprintf 'shell:%s' \"$MOCK_SHELL_VALUE\"")]
+        }),
+    )?;
+
+    loop {
+        let notification = server.read_required()?;
+        if notification["method"] == "item/completed" {
+            assert_eq!(
+                notification["params"]["item"]["text"],
+                "shell:inherited-value"
+            );
+        }
+        if notification["method"] == "turn/completed" {
+            break;
+        }
+    }
+
+    assert_eq!(server.close_and_wait()?, 0);
+    Ok(())
+}
+
+#[test]
+fn app_server_shell_prompt_reports_stderr_and_failure() -> std::io::Result<()> {
+    let dir = TempDir::new().unwrap();
+    let mut server = spawn_app_server(
+        dir.path(),
+        &["app-server", "--listen", "stdio://"],
+        Some("runtime-turn-complete"),
+    )?;
+
+    server.request(1, "initialize", initialize_params())?;
+    server.send(&json!({
+        "id": 2,
+        "method": "thread/start",
+        "params": { "cwd": "/tmp" }
+    }))?;
+    let thread_started = server.read_required()?;
+    assert_eq!(thread_started["method"], "thread/started");
+    let started = server.read_required()?;
+    let thread_id = started["result"]["thread"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    server.request(
+        3,
+        "turn/start",
+        json!({
+            "threadId": thread_id,
+            "input": [text_input(
+                "@shell@\nprintf stdout; printf stderr >&2; exit 7"
+            )]
+        }),
+    )?;
+
+    loop {
+        let notification = server.read_required()?;
+        if notification["method"] == "item/completed" {
+            assert_eq!(
+                notification["params"]["item"]["text"],
+                "stdout\nstderr\nmock shell exited with exit status: 7"
+            );
+        }
+        if notification["method"] == "turn/completed" {
+            break;
+        }
+    }
+
+    assert_eq!(server.close_and_wait()?, 0);
+    Ok(())
+}
+
+#[test]
+fn app_server_checkpointed_shell_emits_output_before_continuing() -> std::io::Result<()> {
+    let dir = TempDir::new().unwrap();
+    let release_file = dir.path().join("continue-shell");
+    let release_file_value = release_file.to_string_lossy().into_owned();
+    let mut server = spawn_app_server_with_env(
+        dir.path(),
+        &["app-server", "--listen", "stdio://"],
+        Some("runtime-turn-complete"),
+        &[("MOCK_CHECKPOINT_RELEASE_FILE", &release_file_value)],
+    )?;
+
+    server.request(1, "initialize", initialize_params())?;
+    server.send(&json!({
+        "id": 2,
+        "method": "thread/start",
+        "params": { "cwd": "/tmp" }
+    }))?;
+    let thread_started = server.read_required()?;
+    assert_eq!(thread_started["method"], "thread/started");
+    let started = server.read_required()?;
+    let thread_id = started["result"]["thread"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    server.request(
+        3,
+        "turn/start",
+        json!({
+            "threadId": thread_id,
+            "input": [text_input(
+                "@shell-checkpoint@\nprintf checkpoint-ready\n@continue@\nwhile [[ ! -f \"$MOCK_CHECKPOINT_RELEASE_FILE\" ]]; do sleep 0.01; done\nprintf continuation-finished"
+            )]
+        }),
+    )?;
+
+    loop {
+        let notification = server.read_required()?;
+        if notification["method"] != "item/completed" {
+            continue;
+        }
+        assert_eq!(notification["params"]["item"]["text"], "checkpoint-ready");
+        break;
+    }
+
+    std::fs::write(release_file, "continue")?;
+    let completed_item = server.read_required()?;
+    let completed_turn = server.read_required()?;
+    assert_eq!(completed_item["method"], "item/completed");
+    assert_eq!(
+        completed_item["params"]["item"]["text"],
+        "continuation-finished"
+    );
+    assert_eq!(completed_turn["method"], "turn/completed");
+
+    assert_eq!(server.close_and_wait()?, 0);
+    Ok(())
+}
+
+#[test]
 fn app_server_can_start_runtime_turn_before_steer_completion() -> std::io::Result<()> {
     let dir = TempDir::new().unwrap();
     let mut server = spawn_app_server(

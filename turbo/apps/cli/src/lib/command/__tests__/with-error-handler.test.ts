@@ -97,7 +97,7 @@ describe("withErrorHandler", () => {
       .join("\n");
     expect(output).toContain("Paid plan required");
     expect(output).toContain("Return the plan upgrade link");
-    expect(output).toContain("zero upgrade pro");
+    expect(output).toContain("okou upgrade pro");
     expect(mockExit).toHaveBeenCalledWith(1);
   });
 

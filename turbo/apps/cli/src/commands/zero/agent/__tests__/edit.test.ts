@@ -1,5 +1,5 @@
 /**
- * Tests for zero agent edit command
+ * Tests for okou agent edit command
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
@@ -24,7 +24,7 @@ const mockAgent = {
   avatarUrl: null,
 };
 
-describe("zero agent edit command", () => {
+describe("okou agent edit command", () => {
   let mockExit: ReturnType<typeof vi.spyOn>;
   let mockConsoleLog: ReturnType<typeof vi.spyOn>;
   let mockConsoleError: ReturnType<typeof vi.spyOn>;
@@ -276,7 +276,7 @@ describe("zero agent edit command", () => {
       expect(mockExit).toHaveBeenCalledWith(1);
     });
 
-    it("should reject retired model edit flags", async () => {
+    it("should reject unsupported model edit flags", async () => {
       await expect(async () => {
         await editCommand.parseAsync([
           "node",

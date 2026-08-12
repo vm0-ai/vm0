@@ -1256,18 +1256,11 @@ describe("CHAT-02: completed chat callback", () => {
       expect.arrayContaining([queued.id, claimed.id]),
     );
     // The auto-send publishes happen in background callback processing, so
-    // poll until each expected channel has been published before asserting.
+    // poll until the message channel has been published before asserting.
     await expect
       .poll(() => {
         return context.mocks.ably.publish.mock.calls.some((call) => {
           return call[0] === `chatThreadMessageCreated:${first.threadId}`;
-        });
-      })
-      .toBe(true);
-    await expect
-      .poll(() => {
-        return context.mocks.ably.publish.mock.calls.some((call) => {
-          return call[0] === `chatThreadRunCreated:${first.threadId}`;
         });
       })
       .toBe(true);
@@ -1288,11 +1281,6 @@ describe("CHAT-02: completed chat callback", () => {
       `chatThreadMessageCreated:${first.threadId}`,
       null,
     );
-    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
-      `chatThreadRunCreated:${first.threadId}`,
-      null,
-    );
-
     const autoContext = await waitForRunContext(actor, claimed.runId);
     expect(autoContext.body.prompt).toBe(
       `[Template #1: ${template.title} (presentation)]queued next turn`,
@@ -1308,11 +1296,11 @@ describe("CHAT-02: completed chat callback", () => {
     expect(appended).not.toContain("Selected design system");
     // Runbook flow, not the retired multi-resource flow.
     expect(appended).toContain(
-      `zero resource pull ${template.templateId}-runbook --dir ./generated/resources`,
+      `okou resource pull ${template.templateId}-runbook --dir ./generated/resources`,
     );
     expect(appended).toContain("--artifact-kind presentation-html");
     expect(appended).not.toContain(
-      "zero generate presentation --design-system",
+      "okou generate presentation --design-system",
     );
     expect(Object.keys(autoContext.body.environment)).toContain(
       "ANTHROPIC_API_KEY",
@@ -3544,7 +3532,7 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
     ).toBeFalsy();
   }, 30_000);
 
-  it("keeps repeated at-least-once event batches idempotent", async () => {
+  it("reclaims only unused suffixes from repeated event batches", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     const run = await startChatRun(actor, {
       agentId,
@@ -3552,41 +3540,106 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
     });
     const sandboxHeaders = await claimChatRun(runnerGroup, run.runId);
 
-    for (let attempt = 0; attempt < 2; attempt += 1) {
-      await webhooks.requestAgentEvents(
-        {
-          runId: run.runId,
-          events: [
-            {
-              type: "assistant",
-              sequenceNumber: 0,
-              message: {
-                id: "msg_repeated_event_batch",
-                content: [{ type: "text", text: "Store this output once." }],
-              },
+    const sequenceOne = {
+      type: "assistant" as const,
+      sequenceNumber: 1,
+      message: {
+        id: "msg_repeated_event_batch_1",
+        content: [{ type: "text" as const, text: "Stored sequence one." }],
+      },
+    };
+    const sequenceZero = {
+      type: "assistant" as const,
+      sequenceNumber: 0,
+      message: {
+        id: "msg_repeated_event_batch_0",
+        content: [{ type: "text" as const, text: "Stored sequence zero." }],
+      },
+    };
+    await webhooks.requestAgentEvents(
+      { runId: run.runId, events: [sequenceOne] },
+      sandboxHeaders,
+      [200],
+    );
+    // The existing sequence-one row is the rejected suffix of this batch.
+    await webhooks.requestAgentEvents(
+      { runId: run.runId, events: [sequenceZero, sequenceOne] },
+      sandboxHeaders,
+      [200],
+    );
+    // A fully repeated batch releases its entire reservation.
+    await webhooks.requestAgentEvents(
+      { runId: run.runId, events: [sequenceZero] },
+      sandboxHeaders,
+      [200],
+    );
+    // This time the rejected sequence-one row is an interior gap before a
+    // newly accepted row and must not cause the accepted row to be renumbered.
+    await webhooks.requestAgentEvents(
+      {
+        runId: run.runId,
+        events: [
+          sequenceOne,
+          {
+            type: "assistant",
+            sequenceNumber: 2,
+            message: {
+              id: "msg_repeated_event_batch_2",
+              content: [
+                { type: "text", text: "Stored sequence two after a gap." },
+              ],
             },
-          ],
-        },
-        sandboxHeaders,
-        [200],
-      );
-    }
+          },
+        ],
+      },
+      sandboxHeaders,
+      [200],
+    );
+    await webhooks.requestAgentEvents(
+      {
+        runId: run.runId,
+        events: [
+          {
+            type: "assistant",
+            sequenceNumber: 3,
+            message: {
+              id: "msg_repeated_event_batch_3",
+              content: [{ type: "text", text: "Stored sequence three." }],
+            },
+          },
+        ],
+      },
+      sandboxHeaders,
+      [200],
+    );
     await flushWaitUntilForTest();
 
     const messages = await chat.listThreadEvents(actor, run.threadId);
-    expect(
+    const outputByRunSequence = new Map(
       eventBackedContents(messages.events, run.runId).map((message) => {
-        return {
-          content: message.content,
-          sequenceNumber: message.sequenceNumber,
-        };
+        return [message.sequenceNumber, message] as const;
       }),
-    ).toStrictEqual([
-      {
-        content: "Store this output once.",
-        sequenceNumber: 0,
-      },
-    ]);
+    );
+    expect(
+      [...outputByRunSequence.keys()].sort((left, right) => {
+        return (left ?? 0) - (right ?? 0);
+      }),
+    ).toStrictEqual([0, 1, 2, 3]);
+    const sequenceZeroRow = outputByRunSequence.get(0);
+    const sequenceOneRow = outputByRunSequence.get(1);
+    const sequenceTwoRow = outputByRunSequence.get(2);
+    const sequenceThreeRow = outputByRunSequence.get(3);
+    if (
+      sequenceZeroRow === undefined ||
+      sequenceOneRow === undefined ||
+      sequenceTwoRow === undefined ||
+      sequenceThreeRow === undefined
+    ) {
+      throw new Error("Expected every canonical repeated-batch output");
+    }
+    expect(sequenceZeroRow.seqId).toBe(sequenceOneRow.seqId + 1);
+    expect(sequenceTwoRow.seqId).toBe(sequenceZeroRow.seqId + 2);
+    expect(sequenceThreeRow.seqId).toBe(sequenceTwoRow.seqId + 1);
     expect(firstAssistantEventsForRun(run.runId)).toHaveLength(1);
   });
 
@@ -3739,16 +3792,6 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
       .poll(() => {
         return context.mocks.ably.publish.mock.calls.some((call) => {
           return call[0] === `chatThreadMessageCreated:${first.threadId}`;
-        });
-      })
-      .toBe(true);
-    await expect
-      .poll(() => {
-        return context.mocks.ably.publish.mock.calls.some((call) => {
-          return (
-            call[0] === `chatThreadRunCreated:${first.threadId}` &&
-            call[1] === null
-          );
         });
       })
       .toBe(true);
@@ -4038,11 +4081,6 @@ describe("CHAT-02: drain-time admission failure", () => {
       "threadListChanged",
       null,
     );
-    expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
-      `chatThreadRunCreated:${anchor.threadId}`,
-      null,
-    );
-
     mockNow(startedAt + CANCELLATION_RECOVERY_STALE_AFTER_MS + 1);
     await accept(
       cancellationRecoveryCronClient().reconcile({
@@ -4121,22 +4159,14 @@ describe("CHAT-02: failed chat callbacks", () => {
       const sandboxHeaders = await claimChatRun(runnerGroup, run.runId);
       // Isolate failed-callback notifications from send-side background work.
       await flushWaitUntilForTest();
-      expect(context.mocks.ably.publish).toHaveBeenCalledWith(
-        `chatThreadRunCreated:${run.threadId}`,
-        null,
-      );
       context.mocks.ably.publish.mockClear();
       await failChatRun(run.runId, sandboxHeaders, round.error);
       // The complete webhook acknowledges before terminal callback work
-      // finishes. Drain its tracked waitUntil work so both realtime assertions
-      // cover the complete failed-run callback instead of a one-second window.
+      // finishes. Drain its tracked waitUntil work so the realtime assertion
+      // covers the complete failed-run callback instead of a one-second window.
       await flushWaitUntilForTest();
       expect(context.mocks.ably.publish).toHaveBeenCalledWith(
         `chatThreadMessageCreated:${run.threadId}`,
-        null,
-      );
-      expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
-        `chatThreadRunCreated:${run.threadId}`,
         null,
       );
     }
@@ -4768,14 +4798,6 @@ describe("CHAT-02: auto-send after failures", () => {
         filenameSnapshot: "queued-notes.txt",
       }),
     );
-    await expect
-      .poll(() => {
-        return context.mocks.ably.publish.mock.calls.some((call) => {
-          return call[0] === `chatThreadRunCreated:${first.threadId}`;
-        });
-      })
-      .toBe(true);
-
     const autoContext = await waitForRunContext(actor, claimed.runId);
     expect(autoContext.body.prompt).toContain("queued with files");
     expect(autoContext.body.prompt).toContain(
@@ -5208,14 +5230,6 @@ describe("CHAT-02: thread deletion while a run is active", () => {
         });
       })
       .toBe(true);
-    await expect
-      .poll(() => {
-        return context.mocks.ably.publish.mock.calls.some((call) => {
-          return call[0] === `chatThreadRunCreated:${run.threadId}`;
-        });
-      })
-      .toBe(true);
-
     context.mocks.axiom.query.mockClear();
     context.mocks.ably.publish.mockClear();
     await chat.deleteThread(actor, run.threadId);

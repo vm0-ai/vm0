@@ -7,20 +7,6 @@ import type { Db } from "../external/db";
 import { publishUserSignal } from "../external/realtime";
 import { runOwnedChatEventForRunCondition } from "./zero-chat-event-type.service";
 
-/**
- * Fire the user-level "artifact catalog changed" signal. The artifacts page
- * subscribes to it and re-reads only its first page, because new artifacts
- * always sort to the head.
- */
-export async function publishArtifactCatalogChanged(
-  authorUserIds: readonly string[],
-): Promise<void> {
-  await publishUserSignal(
-    [...new Set(authorUserIds)],
-    "artifactCatalogChanged",
-  );
-}
-
 export async function publishArtifactsChangedForRun(
   writeDb: Db,
   runId: string,

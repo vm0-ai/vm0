@@ -69,7 +69,6 @@ import {
 import {
   createRunnerGroupRealtimeToken,
   publishChatThreadMessageCreatedSafely,
-  publishRunChangedForUserSafely,
 } from "../external/realtime";
 import { recordSandboxOperations } from "../external/sandbox-op-log";
 import { now, nowDate } from "../../lib/time";
@@ -97,6 +96,7 @@ import {
   reserveActiveInputDelivery,
 } from "../services/active-input-delivery.service";
 import { lockChatQueueThread } from "../services/chat-event-queue.service";
+import { notifyRunningChatRunOfPendingInput } from "../services/chat-thread-queue-drain.service";
 import { loadConnectorRuntimeSnapshot } from "../services/connector-catalog-runtime.service";
 import { loadConnectorRunnerFirewallCatalog } from "../services/connector-runner-firewall-catalog.service";
 import { resolveConnectorRuntimeTargets } from "../services/connector-runtime-sync.service";
@@ -161,7 +161,6 @@ function mergeClaimVars(args: {
 
 interface ClaimFailedSideEffectArgs {
   readonly runId: string;
-  readonly userId: string;
   readonly orgId: string;
   readonly error: string;
 }
@@ -2054,7 +2053,6 @@ function scheduleSuccessfulClaimSideEffects(args: {
   });
   scheduleClaimSucceededSideEffects({
     runId: run.id,
-    userId: run.userId,
     runnerGroup: job.runnerGroup,
     profile: job.profile,
     authType: args.authType,
@@ -2106,7 +2104,6 @@ function scheduleSuccessfulClaimSideEffects(args: {
 
 function scheduleClaimSucceededSideEffects(args: {
   readonly runId: string;
-  readonly userId: string;
   readonly runnerGroup: string;
   readonly profile: string;
   readonly authType: RunnerAuthContext["type"];
@@ -2133,12 +2130,6 @@ function scheduleClaimSucceededSideEffects(args: {
   readonly historyGenerationRunId: string | undefined;
   readonly claimRouteTiming: ClaimRouteTimingCollector;
 }): void {
-  waitUntil(
-    publishRunChangedForUserSafely(args.userId, args.runId, {
-      status: "running",
-    }),
-  );
-
   waitUntil(
     tapError(recordClaimTimingMetrics(args), (error) => {
       L.warn("recordSandboxOperation failed", { runId: args.runId, error });
@@ -2347,11 +2338,6 @@ const scheduleClaimFailedSideEffects$ = command(
   ({ set }, args: ClaimFailedSideEffectArgs): void => {
     const backgroundSignal = new AbortController().signal;
     waitUntil(
-      publishRunChangedForUserSafely(args.userId, args.runId, {
-        status: "failed",
-      }),
-    );
-    waitUntil(
       tapError(
         set(
           dispatchCompleteSideEffects$,
@@ -2379,7 +2365,6 @@ async function failClaimForResumeSessionHistoryLoad(
   args: {
     readonly db: Db;
     readonly runId: string;
-    readonly userId: string;
     readonly orgId: string;
     readonly hash: string;
     readonly errorMessage: string;
@@ -2407,7 +2392,6 @@ async function failClaimForResumeSessionHistoryLoad(
   }
   args.scheduleFailedSideEffects({
     runId: args.runId,
-    userId: args.userId,
     orgId: args.orgId,
     error: args.errorMessage,
   });
@@ -2418,7 +2402,6 @@ async function failClaimForInvalidStoredExecutionContext(
   args: {
     readonly db: Db;
     readonly runId: string;
-    readonly userId: string;
     readonly orgId: string;
     readonly scheduleFailedSideEffects: (
       args: ClaimFailedSideEffectArgs,
@@ -2437,7 +2420,6 @@ async function failClaimForInvalidStoredExecutionContext(
   }
   args.scheduleFailedSideEffects({
     runId: args.runId,
-    userId: args.userId,
     orgId: args.orgId,
     error: INVALID_EXECUTION_CONTEXT_ERROR,
   });
@@ -2464,7 +2446,6 @@ async function claimResponseBuildErrorResponse(
       db: args.db,
       runId: args.runId,
       hash: args.error.hash,
-      userId: args.run.userId,
       orgId: args.run.orgId,
       errorMessage: args.error.message,
       cause: args.error.cause,
@@ -2512,7 +2493,6 @@ const claimAuthorizedJob$ = command(
         {
           db,
           runId,
-          userId: run.userId,
           orgId: run.orgId,
           scheduleFailedSideEffects(failedArgs) {
             set(scheduleClaimFailedSideEffects$, failedArgs);
@@ -3050,6 +3030,11 @@ const recordActiveInputDeliveryReceiptInner$ = command(
     if (result.replacementsAppended) {
       await publishChatThreadMessageCreatedSafely(
         auth.userId,
+        result.chatThreadId,
+      );
+      signal.throwIfAborted();
+      await notifyRunningChatRunOfPendingInput(
+        set(writeDb$),
         result.chatThreadId,
       );
       signal.throwIfAborted();

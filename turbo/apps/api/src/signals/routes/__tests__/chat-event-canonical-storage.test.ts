@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 
 import { testContext } from "../../../__tests__/test-context";
 import {
-  insertChatEventAgainstPrePayloadSchemaFixture,
   insertCanonicalChatEventWritesFixture,
   isVisibleChatEventFixture,
   readCanonicalChatEventStorageFixture,
@@ -18,7 +17,7 @@ const chat = createChatFilesBddApi(context);
 const runs = createRunsApi(context);
 
 describe("canonical chat event storage", () => {
-  it("dual-writes canonical payloads and pointers through every persistence path", async () => {
+  it("writes only canonical payloads and pointers through every persistence path", async () => {
     const actor = bdd.user();
     bdd.acceptAgentStorageWrites();
     await runs.ensureOrgModelProvider(actor);
@@ -53,21 +52,15 @@ describe("canonical chat event storage", () => {
 
     const inputRejected = row(fixture.single.inputRejectedId);
     expect(inputRejected.payload).toStrictEqual({
-      userMessage: inputRejected.userMessage,
+      userMessage: {
+        version: 1,
+        parts: [{ type: "text", text: "rejected canonical input" }],
+      },
       error: "input rejected",
     });
-    expect(inputRejected.payload).toHaveProperty(
-      "userMessage.compatibilityProbe.nested",
-      null,
-    );
-    expect(inputRejected.error).toBe("input rejected");
 
     const outputError = row(fixture.single.outputErrorId);
     expect(outputError.payload).toStrictEqual({
-      content: "output failed",
-      error: "output error",
-    });
-    expect(outputError).toMatchObject({
       content: "output failed",
       error: "output error",
     });
@@ -76,7 +69,6 @@ describe("canonical chat event storage", () => {
     expect(interrupt).toMatchObject({
       payload: null,
       runId: fixture.single.interruptTargetRunId,
-      interruptsRunId: fixture.single.interruptTargetRunId,
     });
     await expect(
       isVisibleChatEventFixture(fixture.single.interruptId),
@@ -97,7 +89,6 @@ describe("canonical chat event storage", () => {
 
     expect(row(fixture.single.goalContextEventId)).toMatchObject({
       payload: { content: "goal output" },
-      runGroupId: fixture.single.goalId,
       contextType: "goal",
       contextId: fixture.single.goalId,
     });
@@ -105,30 +96,44 @@ describe("canonical chat event storage", () => {
       content: "goal opened",
     });
 
-    expect(row(fixture.batch.thinkingId)).toMatchObject({
+    expect(row(fixture.batch.thinkingId).payload).toStrictEqual({
       thinking: "canonical thinking",
-      payload: { thinking: "canonical thinking" },
     });
     expect(row(fixture.batch.runFailedId)).toMatchObject({
-      content: "run failed",
-      error: "runner error",
       payload: { content: "run failed", error: "runner error" },
     });
     expect(row(fixture.batch.browserCloseId).payload).toBeNull();
     expect(row(fixture.batch.goalCloseId).payload).toBeNull();
     const usage = row(fixture.batch.usageId);
-    expect(usage.payload).toStrictEqual({ usage: usage.usagePayload });
-
+    expect(usage.payload).toStrictEqual({
+      usage: {
+        version: 1,
+        totalCredits: 9,
+        settledAt: "2026-08-10T00:00:00.000Z",
+        breakdown: [
+          {
+            kind: "model",
+            credits: 9,
+            providers: [{ provider: "test", credits: 9 }],
+          },
+        ],
+      },
+    });
     const replacementTarget = row(fixture.replacement.targetId);
     expect(replacementTarget.payload).toStrictEqual({
-      userMessage: replacementTarget.userMessage,
+      userMessage: {
+        version: 1,
+        parts: [{ type: "text", text: "replacement canonical input" }],
+      },
     });
     const replacement = row(fixture.replacement.replacementId);
     expect(replacement).toMatchObject({
       revokesEventId: fixture.replacement.targetId,
-      error: "replacement rejected",
       payload: {
-        userMessage: replacement.userMessage,
+        userMessage: {
+          version: 1,
+          parts: [{ type: "text", text: "replacement canonical input" }],
+        },
         error: "replacement rejected",
       },
     });
@@ -151,36 +156,5 @@ describe("canonical chat event storage", () => {
       payload: { content: "goal output" },
     });
     expect(v4GoalOutput).not.toHaveProperty("runGroupId");
-  });
-
-  it("keeps central legacy writes legal before the payload column exists", async () => {
-    await expect(
-      insertChatEventAgainstPrePayloadSchemaFixture(),
-    ).resolves.toStrictEqual([
-      {
-        content: "pre-payload compatibility",
-        error: null,
-        eventType: "goal.open",
-        seqId: 1,
-      },
-      {
-        content: "pre-payload batch compatibility",
-        error: null,
-        eventType: "output.message",
-        seqId: 2,
-      },
-      {
-        content: null,
-        error: null,
-        eventType: "input.prompt",
-        seqId: 3,
-      },
-      {
-        content: null,
-        error: "pre-payload replacement compatibility",
-        eventType: "input.rejected",
-        seqId: 4,
-      },
-    ]);
   });
 });

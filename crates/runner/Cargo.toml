@@ -1,6 +1,6 @@
 [package]
 name = "runner"
-version = "0.163.4"
+version = "0.164.5"
 edition.workspace = true
 
 [dependencies]
@@ -41,7 +41,7 @@ tar = { workspace = true }
 tempfile = { workspace = true }
 unicode-normalization = { workspace = true }
 url = { workspace = true }
-uuid = { workspace = true, features = ["v4", "serde"] }
+uuid = { workspace = true, features = ["v4", "v5", "serde"] }
 sentry = { workspace = true, features = ["panic"] }
 which = { workspace = true }
 zstd = { workspace = true, features = ["zstdmt"] }

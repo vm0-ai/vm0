@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { Command, Help } from "commander";
-import { buildZeroHelpText, registerZeroCommands } from "../zero";
+import { buildZeroHelpText, registerZeroCommands } from "../okou";
 import { decodeZeroTokenPayload } from "../lib/api/zero-token";
 
 function buildZeroToken(payload: Record<string, unknown>): string {
@@ -19,6 +19,7 @@ function buildCommands(): Command[] {
     new Command("agent"),
     new Command("connector"),
     new Command("mcp"),
+    new Command("presentation-template"),
     new Command("credit"),
     new Command("upgrade"),
     new Command("logs"),
@@ -107,6 +108,24 @@ describe("decodeZeroTokenPayload", () => {
     });
   });
 
+  it("should decode payload from a valid okou-scoped token", () => {
+    const token = buildZeroToken({
+      userId: "user-okou",
+      runId: "run-okou",
+      orgId: "org-okou",
+      scope: "okou",
+      capabilities: ["agent:read"],
+      iat: 1000,
+      exp: 2000,
+    });
+
+    expect(decodeZeroTokenPayload(token)).toMatchObject({
+      userId: "user-okou",
+      scope: "okou",
+      capabilities: ["agent:read"],
+    });
+  });
+
   it("should return undefined for token without vm0_sandbox_ prefix", () => {
     expect(decodeZeroTokenPayload("some-other-token")).toBeUndefined();
   });
@@ -147,7 +166,12 @@ describe("registerZeroCommands", () => {
     vi.stubEnv("ZERO_TOKEN", undefined);
 
     const prog = buildProgram();
-    expect(hiddenCommandNames(prog)).toEqual(["mcp", "recognize", "translate"]);
+    expect(hiddenCommandNames(prog)).toEqual([
+      "mcp",
+      "presentation-template",
+      "recognize",
+      "translate",
+    ]);
     expect(registeredCommandNames(prog)).toContain("upgrade");
     expect(visibleCommandNames(prog)).toContain("browser");
   });
@@ -165,6 +189,7 @@ describe("registerZeroCommands", () => {
       "model",
       "model-provider",
       "agent",
+      "presentation-template",
       "upgrade",
       "resource",
       "whoami",
@@ -201,12 +226,33 @@ describe("registerZeroCommands", () => {
     ]);
   });
 
+  it("prefers OKOU_TOKEN when both token names are present", () => {
+    vi.stubEnv(
+      "OKOU_TOKEN",
+      buildZeroToken({ scope: "okou", capabilities: ["agent:read"] }),
+    );
+    vi.stubEnv(
+      "ZERO_TOKEN",
+      buildZeroToken({ scope: "zero", capabilities: ["connector:read"] }),
+    );
+
+    const prog = buildProgram();
+
+    expect(visibleCommandNames(prog)).toContain("agent");
+    expect(visibleCommandNames(prog)).not.toContain("connector");
+  });
+
   it("should hide run-only commands and keep global commands visible with malformed token", () => {
     vi.stubEnv("ZERO_TOKEN", "not-a-valid-token");
 
     const prog = buildProgram();
 
-    expect(hiddenCommandNames(prog)).toEqual(["mcp", "recognize", "translate"]);
+    expect(hiddenCommandNames(prog)).toEqual([
+      "mcp",
+      "presentation-template",
+      "recognize",
+      "translate",
+    ]);
     expect(registeredCommandNames(prog)).toContain("upgrade");
     expect(visibleCommandNames(prog)).toContain("browser");
   });
@@ -220,7 +266,12 @@ describe("registerZeroCommands", () => {
 
     const prog = buildProgram();
 
-    expect(hiddenCommandNames(prog)).toEqual(["mcp", "recognize", "translate"]);
+    expect(hiddenCommandNames(prog)).toEqual([
+      "mcp",
+      "presentation-template",
+      "recognize",
+      "translate",
+    ]);
     expect(registeredCommandNames(prog)).toContain("upgrade");
     expect(visibleCommandNames(prog)).toContain("browser");
   });
@@ -237,6 +288,7 @@ describe("registerZeroCommands", () => {
     expect(visibleCommandNames(prog)).toEqual([
       "model",
       "model-provider",
+      "presentation-template",
       "upgrade",
       "resource",
       "whoami",
@@ -795,7 +847,7 @@ describe("registerZeroCommands", () => {
     const help = buildZeroHelpText(decodeZeroTokenPayload(token));
 
     expect(help).toContain("Check credits?");
-    expect(help).toContain("zero credit");
+    expect(help).toContain("okou credit");
     expect(help).not.toContain("Buy credits?");
     expect(help).toContain("Upgrade plan?");
   });
@@ -1119,6 +1171,7 @@ describe("registerZeroCommands", () => {
       "model-provider",
       "connector",
       "mcp",
+      "presentation-template",
       "upgrade",
       "resource",
       "whoami",
@@ -1183,7 +1236,7 @@ describe("registerZeroCommands", () => {
   });
 });
 
-describe("zero generate command visibility", () => {
+describe("okou generate command visibility", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
     vi.resetModules();

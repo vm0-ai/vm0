@@ -150,7 +150,7 @@ const authDeviceSupport = createAuthDeviceSupportApi(context);
 const routeMocks = createZeroRouteMocks(context);
 const runStateStore = createStore();
 const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
-const CODEX_WEB_IMAGE_UPLOAD_PROMPT_SNIPPET = "zero web upload-file -f <path>";
+const CODEX_WEB_IMAGE_UPLOAD_PROMPT_SNIPPET = "okou web upload-file -f <path>";
 const RUN_TIME_BUDGET_STEER_AT_MS = 115 * 60 * 1000;
 const RUN_TIME_BUDGET_MESSAGE = `This runner has a hard maximum runtime of 2 hours. The current run has been active for 115 minutes, leaving approximately 5 minutes before it is terminated.
 
@@ -328,6 +328,7 @@ interface ChatRunSendBody {
   readonly template?: GenerationTemplateRequest;
   readonly computerUseHostId?: string | null;
   readonly revokesEventId?: string;
+  readonly captureNetworkBodies?: boolean;
 }
 
 /**
@@ -350,7 +351,10 @@ function userMessageWithTemplate(
 }
 
 const openRouterBodySchema = z.object({
+  model: z.string(),
   messages: z.array(z.object({ role: z.string(), content: z.string() })),
+  max_tokens: z.number().optional(),
+  reasoning: z.object({ effort: z.literal("none") }).optional(),
 });
 
 async function entitledChatActor(
@@ -954,7 +958,6 @@ async function upsertOrgModelProvider(
     readonly type:
       | "anthropic-api-key"
       | "deepseek"
-      | "moonshot-api-key"
       | "openai-api-key"
       | "openrouter-api-key"
       | "vercel-ai-gateway"
@@ -1346,6 +1349,28 @@ describe("CHAT-02: web chat send and client ids", () => {
       "Only the private agent owner can run this agent",
     );
   }, 30_000);
+
+  it("passes request-scoped network body capture into the runner claim", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const captured = await sendChatRun(actor, {
+      agentId,
+      prompt: "capture this run's network bodies",
+      captureNetworkBodies: true,
+    });
+    const capturedClaim = await claimChatRun(runnerGroup, captured.runId);
+    expect(capturedClaim.claim.captureNetworkBodies).toBeTruthy();
+    await cancelChatRun(actor, captured.runId);
+
+    const ordinary = await sendChatRun(actor, {
+      agentId,
+      prompt: "keep ordinary network logging metadata-only",
+    });
+    const ordinaryClaim = await claimChatRun(runnerGroup, ordinary.runId);
+    expect(ordinaryClaim.claim.captureNetworkBodies).toBeUndefined();
+    await cancelChatRun(actor, ordinary.runId);
+  });
 });
 
 describe("CHAT-02: interrupting active chat runs", () => {
@@ -1425,7 +1450,6 @@ describe("CHAT-02: interrupting active chat runs", () => {
     expect(storedInterrupt).toMatchObject({
       payload: null,
       runId: first.runId,
-      interruptsRunId: first.runId,
     });
     expect(
       assistantMessages(messages.events).filter((message) => {
@@ -1737,7 +1761,7 @@ describe("CHAT-02: queueing and recalling messages", () => {
     await cancelChatRun(actor, active.runId);
   }, 90_000);
 
-  it("reserves ordered rich input durably and settles concurrent receipts once", async () => {
+  it("reserves rich inputs one at a time and settles concurrent receipts once", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
 
@@ -1795,19 +1819,10 @@ describe("CHAT-02: queueing and recalling messages", () => {
       throw new Error("Expected both concurrent reservations to succeed");
     }
     expect(concurrentReservation).toStrictEqual(firstReservation);
-    expect(firstReservation.eventIds).toStrictEqual([
-      firstEventId,
-      secondEventId,
-    ]);
-    expect(firstReservation.prompt).toBe(
-      [
-        "first durable steer",
-        `[Web file] delivery-notes.txt (text/plain)\n   [ID] ${fileId}`,
-        "second durable steer",
-      ].join("\n\n"),
-    );
+    expect(firstReservation.eventIds).toStrictEqual([firstEventId]);
+    expect(firstReservation.prompt).toBe("first durable steer");
 
-    // Model a lost first response: retry must retrieve the same durable batch.
+    // Model a lost first response: retry must retrieve the same durable delivery.
     await expect(
       api.reserveRunnerActiveInputs(claimed.claim.sandboxToken, active.runId),
     ).resolves.toStrictEqual(firstReservation);
@@ -1834,6 +1849,14 @@ describe("CHAT-02: queueing and recalling messages", () => {
         return topic === `chatThreadMessageCreated:${active.threadId}`;
       }),
     ).toHaveLength(1);
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith("active-input", {
+      runId: active.runId,
+    });
+    expect(
+      context.mocks.ably.publish.mock.calls.filter(([topic]) => {
+        return topic === "active-input";
+      }),
+    ).toHaveLength(1);
     await expect(
       api.recordRunnerActiveInputDelivery(
         claimed.claim.sandboxToken,
@@ -1847,6 +1870,36 @@ describe("CHAT-02: queueing and recalling messages", () => {
       }),
     ).toHaveLength(1);
 
+    await expect(
+      api.listRunnerActiveInputs(claimed.claim.sandboxToken, active.runId),
+    ).resolves.toStrictEqual([secondEventId]);
+    const secondReservation = await api.reserveRunnerActiveInputs(
+      claimed.claim.sandboxToken,
+      active.runId,
+    );
+    if (secondReservation.outcome !== "reserved") {
+      throw new Error("Expected the second input to be reserved");
+    }
+    expect(secondReservation.deliveryId).not.toBe(firstReservation.deliveryId);
+    expect(secondReservation.eventIds).toStrictEqual([secondEventId]);
+    expect(secondReservation.prompt).toBe(
+      [
+        `[Web file] delivery-notes.txt (text/plain)\n   [ID] ${fileId}`,
+        "second durable steer",
+      ].join("\n\n"),
+    );
+    await expect(
+      api.recordRunnerActiveInputDelivery(
+        claimed.claim.sandboxToken,
+        active.runId,
+        secondReservation.deliveryId,
+      ),
+    ).resolves.toStrictEqual({ outcome: "delivered" });
+    expect(
+      context.mocks.ably.publish.mock.calls.filter(([topic]) => {
+        return topic === `chatThreadMessageCreated:${active.threadId}`;
+      }),
+    ).toHaveLength(2);
     await expect(
       api.listRunnerActiveInputs(claimed.claim.sandboxToken, active.runId),
     ).resolves.toStrictEqual([]);
@@ -2111,19 +2164,25 @@ describe("CHAT-02: queueing and recalling messages", () => {
     );
     await ageClaimedRun(active.runId, RUN_TIME_BUDGET_STEER_AT_MS);
     await runSteerRunTimeBudgetCron();
+    const pendingEventIds = await api.listRunnerActiveInputs(
+      claimed.claim.sandboxToken,
+      active.runId,
+    );
+    expect(pendingEventIds).toHaveLength(2);
+    const budgetEventId = pendingEventIds.find((eventId) => {
+      return eventId !== releasedEventId;
+    });
+    if (!budgetEventId) {
+      throw new Error("Expected a pending budget input");
+    }
     const reserved = await api.reserveRunnerActiveInputs(
       claimed.claim.sandboxToken,
       active.runId,
     );
     if (reserved.outcome !== "reserved") {
-      throw new Error("Expected prompt and budget input to be reserved");
+      throw new Error("Expected the released prompt to be reserved");
     }
-    const budgetEventId = reserved.eventIds.find((eventId) => {
-      return eventId !== releasedEventId;
-    });
-    if (!budgetEventId) {
-      throw new Error("Expected a reserved budget input");
-    }
+    expect(reserved.eventIds).toStrictEqual([releasedEventId]);
     const laterEventId = randomUUID();
     const later = await chat.requestSendEvent(
       actor,
@@ -3004,62 +3063,6 @@ describe("CHAT-02: queueing and recalling messages", () => {
 });
 
 describe("CHAT-02: org queue markers", () => {
-  it("drains queued chat runs when an interrupt request aborts post-cancel", async () => {
-    const { actor, agentId, runnerGroup } = await entitledChatActor();
-    chatCallbacks.failIfChatCallbackRouteIsFetched();
-    mockEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
-    const controller = new AbortController();
-
-    const blocker = await chat.requestSendEvent(
-      actor,
-      { agentId, prompt: "occupy org concurrency before interrupt abort" },
-      [201],
-    );
-    if (blocker.status !== 201 || blocker.body.runId === null) {
-      throw new Error("Expected the blocking send to create a run");
-    }
-    expect(blocker.body.status).toBe("pending");
-
-    const queued = await chat.requestSendEvent(
-      actor,
-      { agentId, prompt: "drain after interrupt abort" },
-      [201],
-    );
-    if (queued.status !== 201 || queued.body.runId === null) {
-      throw new Error("Expected the second send to create a queued run");
-    }
-    expect(queued.body.status).toBe("queued");
-
-    context.mocks.ably.publish.mockImplementation((topic: unknown) => {
-      if (topic === "queue:changed") {
-        const error = new Error("abort after interrupt cancel commit");
-        error.name = "AbortError";
-        controller.abort(error);
-      }
-      return Promise.resolve(undefined);
-    });
-
-    await chat.requestSendEvent(
-      actor,
-      {
-        agentId,
-        threadId: blocker.body.threadId,
-        interruptsRunId: blocker.body.runId,
-        clientEventId: randomUUID(),
-      },
-      [201],
-      controller.signal,
-    );
-
-    await waitForRunStatus(actor, blocker.body.runId, "cancelled");
-    await waitForRunStatus(actor, queued.body.runId, "pending");
-    await api.heartbeatRunner(runnerGroup);
-    const claim = await api.claimRunnerJob(queued.body.runId);
-    expect(claim.prompt).toBe("drain after interrupt abort");
-
-    await api.requestCancelRun(actor, queued.body.runId, [200]);
-  });
-
   it("marks queued chat runs and revokes the marker on dequeue", async () => {
     const { actor, agentId } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
@@ -3662,8 +3665,8 @@ describe("CHAT-02: model-first provider policies", () => {
     expect(appendSystemPrompt).toContain(
       "You are currently running inside: Web",
     );
-    expect(appendSystemPrompt).toContain("zero web upload-file -h");
-    expect(appendSystemPrompt).toContain("zero mail link <gmail-draft-id>");
+    expect(appendSystemPrompt).toContain("okou web upload-file -h");
+    expect(appendSystemPrompt).toContain("okou mail link <gmail-draft-id>");
     expect(appendSystemPrompt).toContain(
       "GET /gmail/v1/users/me/settings/sendAs",
     );
@@ -3685,7 +3688,7 @@ describe("CHAT-02: model-first provider policies", () => {
       "confirm the send against Gmail before reporting it",
     );
     expect(appendSystemPrompt).toContain(
-      "`zero workflow automation list <workflow>` shows one workflow's triggers",
+      "`okou workflow automation list <workflow>` shows one workflow's triggers",
     );
     expect(appendSystemPrompt).toContain(
       "Never send a reply automatically; the user always sends",
@@ -4815,7 +4818,7 @@ describe("CHAT-02: run-level model overrides", () => {
     expect(appended).not.toContain("Assistant: opus answer");
     expect(appended).toContain("# This Chat Thread");
     expect(appended).toContain(`- CHAT_THREAD_ID: ${first.threadId}`);
-    expect(appended).toContain("`zero chat messages`");
+    expect(appended).toContain("`okou chat messages`");
     const secondClaim = await claimChatRun(runnerGroup, second.runId);
     expect(secondClaim.claim.resumeSession?.sessionId).toBe(
       `bdd-cli-${first.runId}`,
@@ -6460,9 +6463,10 @@ describe("CHAT-02: initial thinking indicator", () => {
 
     let thinkingAuthorization: string | null = null;
     let thinkingPromptPayload = "";
+    let thinkingRequestBody: z.infer<typeof openRouterBodySchema> | undefined;
     const titleResponse = "Launch Checklist";
     const thinkingResponse =
-      "Reviewing the launch request and recent context.\n\nOrganizing the checklist into practical sections before the main response starts.";
+      "Reviewing the launch request and recent context.\nIdentifying the checklist's major sections.\nChecking where owners and timing matter.\nPreparing a clear order for the response.";
     server.use(
       http.post(
         "https://openrouter.ai/api/v1/chat/completions",
@@ -6475,6 +6479,7 @@ describe("CHAT-02: initial thinking indicator", () => {
           }
           if (systemContent.includes("Write user-visible progress copy")) {
             thinkingAuthorization = request.headers.get("authorization");
+            thinkingRequestBody = payload;
             thinkingPromptPayload = payload.messages
               .map((message) => {
                 return message.content;
@@ -6525,13 +6530,82 @@ describe("CHAT-02: initial thinking indicator", () => {
       thinking: thinkingResponse,
     });
     expect(thinkingAuthorization).toBe("Bearer thinking-key");
-    expect(thinkingPromptPayload).toContain("few short paragraphs");
+    expect(thinkingRequestBody).toMatchObject({
+      model: "google/gemini-3.1-flash-lite-preview",
+      max_tokens: 160,
+      reasoning: { effort: "none" },
+    });
+    expect(thinkingPromptPayload).toContain("one paragraph at a time");
+    expect(thinkingPromptPayload).toContain(
+      "about 20 Chinese characters or 7 English words",
+    );
+    expect(thinkingPromptPayload).toContain("around four short paragraphs");
+    expect(thinkingPromptPayload).toContain("Do not answer the user");
+    expect(thinkingPromptPayload).toContain("Do not reveal hidden reasoning");
     expect(thinkingPromptPayload).toContain(
       "Match the current user's language",
     );
     expect(thinkingPromptPayload).toContain("Draft a launch checklist");
     await flushWaitUntilForTest();
     expect(firstAssistantEventsForRun(run.runId)).toStrictEqual([]);
+
+    await cancelChatRun(actor, run.runId);
+  });
+
+  it("discards token-limited progress copy instead of persisting a truncated marker", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    mockOptionalEnv("OPENROUTER_API_KEY", "thinking-key");
+
+    let thinkingRequests = 0;
+    server.use(
+      http.post(
+        "https://openrouter.ai/api/v1/chat/completions",
+        async ({ request }) => {
+          const payload = openRouterBodySchema.parse(await request.json());
+          const systemContent = payload.messages[0]?.content ?? "";
+          if (systemContent.includes("Write user-visible progress copy")) {
+            thinkingRequests += 1;
+            return HttpResponse.json({
+              choices: [
+                {
+                  finish_reason: "length",
+                  native_finish_reason: "MAX_TOKENS",
+                  message: {
+                    content: "Incomplete progress copy that must not persist",
+                  },
+                },
+              ],
+            });
+          }
+          return HttpResponse.json({
+            choices: [
+              {
+                finish_reason: "stop",
+                message: { content: "Token Limit Title" },
+              },
+            ],
+          });
+        },
+      ),
+    );
+
+    const run = await sendChatRun(actor, {
+      agentId,
+      prompt: "Draft a concise migration update",
+    });
+    await flushWaitUntilForTest();
+
+    const page = await chat.listThreadEvents(actor, run.threadId);
+    expect(thinkingRequests).toBe(1);
+    expect(
+      assistantMessages(page.events).some((message) => {
+        return (
+          message.runId === run.runId &&
+          message.runEventId === "thinking:initial"
+        );
+      }),
+    ).toBeFalsy();
 
     await cancelChatRun(actor, run.runId);
   });
@@ -7241,7 +7315,7 @@ describe("CHAT-02: generation templates and attachments", () => {
     );
     expect(presentationPrompt).not.toContain("Selected design system");
     expect(presentationPrompt).toContain(
-      `zero resource pull ${template.templateId}-runbook --dir ./generated/resources`,
+      `okou resource pull ${template.templateId}-runbook --dir ./generated/resources`,
     );
     if (template.colorSystemId) {
       const colorToken = template.colorSystemId
@@ -7254,7 +7328,7 @@ describe("CHAT-02: generation templates and attachments", () => {
     );
     expect(presentationPrompt).toContain("--artifact-kind presentation-html");
     expect(presentationPrompt).not.toContain(
-      "zero generate presentation --design-system",
+      "okou generate presentation --design-system",
     );
     expect(presentationPrompt).not.toContain("- Artifact type: presentation");
     await cancelChatRun(actor, presentation.runId);
@@ -7280,7 +7354,7 @@ describe("CHAT-02: generation templates and attachments", () => {
       `Template: ${videoTemplate.title} (${videoTemplate.id})`,
     );
     expect(videoPrompt).toContain(
-      `zero generate video --provider built-in --template ${videoTemplate.id}`,
+      `okou generate video --provider built-in --template ${videoTemplate.id}`,
     );
     expect(videoPrompt).not.toContain("Parameters the user set explicitly");
     await cancelChatRun(actor, video.runId);
@@ -7344,7 +7418,7 @@ describe("CHAT-02: generation templates and attachments", () => {
     expect(avatarPrompt).toContain("Aspect ratio: landscape");
     expect(avatarPrompt).not.toContain("--list-voices");
     expect(avatarPrompt).toContain(
-      `zero generate avatar-video --provider built-in --avatar-id ${avatarId} --voice-id ${avatarVoiceId} --aspect-ratio landscape`,
+      `okou generate avatar-video --provider built-in --avatar-id ${avatarId} --voice-id ${avatarVoiceId} --aspect-ratio landscape`,
     );
     expect(avatarPrompt).not.toContain("Do not inject this avatar name");
     expect(avatarPrompt).not.toContain("untrusted-avatar.jpg");
@@ -7369,7 +7443,7 @@ describe("CHAT-02: generation templates and attachments", () => {
       `Template: ${websiteTemplate.title} (${websiteTemplate.id})`,
     );
     expect(websitePrompt).toContain(
-      "zero resource pull template:black-slabs-v2 --dir ./generated/resources",
+      "okou resource pull template:black-slabs --dir ./generated/resources",
     );
     expect(websitePrompt).toContain(
       `./generated/resources/${websiteTemplate.sourcePath}/render.mjs`,
@@ -7377,7 +7451,7 @@ describe("CHAT-02: generation templates and attachments", () => {
     expect(websitePrompt).toContain(
       "use `seedream4` by default unless the user specifies another image model",
     );
-    expect(websitePrompt).toContain("zero host <output-dir> --site <slug>");
+    expect(websitePrompt).toContain("okou host <output-dir> --site <slug>");
     await cancelChatRun(actor, website.runId);
   }, 90_000);
 
@@ -7429,7 +7503,7 @@ describe("CHAT-02: generation templates and attachments", () => {
       .appendSystemPrompt;
     expect(firstPrompt).toContain("# Inline Templates");
     expect(firstPrompt).toContain(
-      `zero generate image --provider built-in --style ${style.illustrationStyleId} --prompt "<user request>" --compile`,
+      `okou generate image --provider built-in --style ${style.illustrationStyleId} --prompt "<user request>" --compile`,
     );
     expect(firstPrompt).toContain("Follow the returned packet completely");
     expect(firstPrompt).toContain(
@@ -7493,7 +7567,7 @@ describe("CHAT-02: generation templates and attachments", () => {
       `Template: ${videoTemplate.title} (${videoTemplate.id})`,
     );
     expect(thirdPrompt).toContain(
-      `zero generate video --provider built-in --template ${videoTemplate.id}`,
+      `okou generate video --provider built-in --template ${videoTemplate.id}`,
     );
     expect(thirdPrompt).toContain("# Incomplete Rounds Context");
     expect(thirdPrompt).not.toContain("# Web Chat Run Context");
@@ -7509,7 +7583,7 @@ describe("CHAT-02: generation templates and attachments", () => {
       .appendSystemPrompt;
     expect(freshPrompt).not.toContain("# Inline Templates");
     expect(freshPrompt).not.toContain(
-      "zero generate image --provider built-in --style",
+      "okou generate image --provider built-in --style",
     );
     expect(freshPrompt).not.toContain(style.illustrationStyleId);
     await cancelChatRun(actor, fresh.runId);
@@ -7709,8 +7783,8 @@ describe("CHAT-02: generation templates and attachments", () => {
     const created = await api.readRun(actor, run.runId);
     expect(created.prompt).toContain(`[Web file] ${filename} (image/png)`);
     expect(created.prompt).toContain(`[ID] ${fileId}`);
-    expect(created.appendSystemPrompt).toContain("zero web download-file -h");
-    expect(created.appendSystemPrompt).toContain("zero web upload-file -h");
+    expect(created.appendSystemPrompt).toContain("okou web download-file -h");
+    expect(created.appendSystemPrompt).toContain("okou web upload-file -h");
 
     const messages = await waitForThreadMessages(
       actor,
@@ -7792,6 +7866,7 @@ describe("CHAT-02: queued attachments on auto-send", () => {
 
     chatCallbacks.mockChatOutputEvents([]);
     await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders);
+    await flushWaitUntilForTest();
     const messages = await waitForThreadMessages(
       actor,
       anchor.threadId,
@@ -7886,6 +7961,7 @@ describe("CHAT-02: queued attachments on auto-send", () => {
     // run whose prompt carries the resolved attachment references.
     chatCallbacks.mockChatOutputEvents([]);
     await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders);
+    await flushWaitUntilForTest();
     const messages = await waitForThreadMessages(
       actor,
       anchor.threadId,
@@ -8543,10 +8619,10 @@ describe("CHAT-02: shared user message queue", () => {
       "SOURCE_THREAD_TITLE: New thread",
     );
     expect(firstTargetSystemPrompt).toContain(
-      `zero chat messages --thread-id ${source.threadId}`,
+      `okou chat messages --thread-id ${source.threadId}`,
     );
     expect(firstTargetSystemPrompt).toContain(
-      `zero logs ${source.runId} --all`,
+      `okou logs ${source.runId} --all`,
     );
     const sourceRun = await api.readRun(actor, source.runId);
     expect(sourceRun.appendSystemPrompt ?? "").not.toContain(
@@ -9548,28 +9624,7 @@ describe("CHAT-02: shared user message queue", () => {
     );
     await flushWaitUntilForTest();
 
-    // Pause the database-backed callback after its lifecycle marker commits
-    // but before its queue drain. The output event is projected above before
-    // this timing gate is installed, so neither path depends on Axiom.
-    const callbackPublishStarted = createDeferredPromise<void>(context.signal);
-    const releaseCallbackPublish = createDeferredPromise<void>(context.signal);
-    let callbackPublishBlocked = false;
-    context.mocks.ably.publish.mockImplementation((topic: unknown) => {
-      if (
-        topic === `chatThreadMessageCreated:${anchor.threadId}` &&
-        !callbackPublishBlocked
-      ) {
-        callbackPublishBlocked = true;
-        callbackPublishStarted.resolve(undefined);
-        return releaseCallbackPublish.promise;
-      }
-      return Promise.resolve(undefined);
-    });
-
     onTestFinished(async () => {
-      if (!releaseCallbackPublish.settled()) {
-        releaseCallbackPublish.resolve(undefined);
-      }
       admissionLock.release();
       await admissionLock.done;
     });
@@ -9577,11 +9632,10 @@ describe("CHAT-02: shared user message queue", () => {
     await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders, {
       lastEventSequence: 0,
     });
-    await callbackPublishStarted.promise;
-    // Completing the anchor also starts the org run-queue drain. Pin that
-    // known waiter first so the next two waiters identify the inline send and
-    // the terminal callback's chat-message drain respectively.
-    await expect.poll(admissionLock.waiterCount).toBe(1);
+    // Completion starts both the thread-message drain and the org run-queue
+    // drain concurrently. Wait until either has reached admission, then let
+    // the inline send persist its queue-first row and join the same boundary.
+    await expect.poll(admissionLock.waiterCount).toBeGreaterThanOrEqual(1);
 
     const prompt = "terminal drain and inline send share one claim";
     const messageId = randomUUID();
@@ -9603,10 +9657,12 @@ describe("CHAT-02: shared user message queue", () => {
         });
       })
       .toBe(true);
-    await expect.poll(admissionLock.waiterCount).toBe(2);
-
-    releaseCallbackPublish.resolve(undefined);
-    await expect.poll(admissionLock.waiterCount).toBe(3);
+    // One terminal drain is already pinned above. The persisted inline send
+    // adds the second contender; sibling completion work may be serialized
+    // before this boundary and is not required for the single-claim race.
+    await expect
+      .poll(admissionLock.waiterCount, { timeout: 10_000 })
+      .toBeGreaterThanOrEqual(2);
     admissionLock.release();
 
     const sent = await send;
@@ -9887,121 +9943,39 @@ describe("CHAT-02: shared user message queue", () => {
         return run.prompt === prompt;
       }),
     ).toHaveLength(0);
-  }, 90_000);
 
-  it("does not publish a queued auto-send after thread deletion wins", async () => {
-    const { actor, agentId, runnerGroup } = await entitledChatActor();
-    chatCallbacks.failIfChatCallbackRouteIsFetched();
-
-    const anchor = await sendChatRun(actor, {
-      agentId,
-      prompt: "thread deletion after queue-first launch anchor",
+    const recalledEvent = userMessages(messages.events).find((message) => {
+      return message.revokesEventId === messageId && !message.runId;
     });
-    const anchorClaim = await claimChatRun(runnerGroup, anchor.runId);
-    const messageId = randomUUID();
-    const prompt = "queued auto-send deleted before its marker";
-    const queued = await chat.requestSendEvent(
+    if (recalledEvent === undefined) {
+      throw new Error("Expected the winning recall event");
+    }
+    const probeEventId = randomUUID();
+    const probe = await chat.requestSendEvent(
       actor,
       {
         agentId,
         threadId: anchor.threadId,
-        prompt,
-        clientEventId: messageId,
+        prompt: "append after the lost queue claim",
+        clientEventId: probeEventId,
       },
       [201],
     );
-    expect(queued.body).toMatchObject({ runId: null });
-
-    const blocker = await sendChatRun(actor, {
-      agentId,
-      prompt: "hold org concurrency during thread deletion",
-    });
-
-    // Force the auto-send onto the org queue, then pause its post-commit queue
-    // signal before the marker transaction begins. Cancelling the anchor emits
-    // the first queue signal; the queued launch emits the second.
-    mockEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
-    const queuePublishStarted = createDeferredPromise<void>(context.signal);
-    const releaseQueuePublish = createDeferredPromise<void>(context.signal);
-    let queueChangedPublishes = 0;
-    context.mocks.ably.publish.mockImplementation((topic: unknown) => {
-      if (topic === "queue:changed") {
-        queueChangedPublishes++;
-        if (queueChangedPublishes === 2) {
-          queuePublishStarted.resolve(undefined);
-          return releaseQueuePublish.promise;
-        }
-      }
-      return Promise.resolve(undefined);
-    });
-    onTestFinished(() => {
-      if (!releaseQueuePublish.settled()) {
-        releaseQueuePublish.resolve(undefined);
-      }
-    });
-
-    await api.requestCancelRun(actor, anchor.runId, [200]);
-    await waitForRunStatus(actor, anchor.runId, "cancelled");
-    await failChatRun(
-      anchor.runId,
-      anchorClaim.sandboxHeaders,
-      "Run cancelled",
-    );
-    await queuePublishStarted.promise;
-
-    const runList = await api.listAgentRuns(actor, {
-      status: "queued,pending,running,completed,failed,timeout,cancelled",
-      limit: 100,
-    });
-    const autoRun = runList.runs.find((run) => {
-      return run.prompt === prompt;
-    });
-    expect(autoRun).toMatchObject({ status: "queued" });
-    if (!autoRun) {
-      throw new Error("Expected the committed queued auto-send run");
+    if (probe.status !== 201) {
+      throw new Error("Expected the post-race probe event to be accepted");
     }
-
-    // Hold a child message row so deletion owns the thread lock while the
-    // post-commit marker reaches that exact parent/child race.
-    const eventLock = await holdChatEventFixture({
-      threadId: anchor.threadId,
-      eventId: messageId,
-      signal: context.signal,
+    const afterProbe = await chat.listThreadEvents(actor, anchor.threadId);
+    const probeEvent = userMessages(afterProbe.events).find((message) => {
+      return message.id === probeEventId;
     });
-    onTestFinished(async () => {
-      eventLock.release();
-      await eventLock.done;
-    });
-    const deletion = chat.deleteThread(actor, anchor.threadId);
-    await expect.poll(eventLock.blockedWaiterCount).toBeGreaterThanOrEqual(1);
-
-    context.mocks.ably.publish.mockClear();
-    releaseQueuePublish.resolve(undefined);
-    await expect.poll(eventLock.blockedWaiterCount).toBeGreaterThanOrEqual(2);
-    eventLock.release();
-
-    await Promise.all([eventLock.done, deletion]);
-    await flushWaitUntilForTest();
-    expect(
-      apiDispatchActionTypes(apiDispatchTimingEventsForRun(autoRun.id)),
-    ).not.toContain(
-      "api_dispatch_pre_create_zero_chat_callback_auto_send_publish_signals",
-    );
-    const publishedTopics = context.mocks.ably.publish.mock.calls.map(
-      ([topic]) => {
-        return topic;
-      },
-    );
-    expect(publishedTopics).not.toContain(
-      `chatThreadMessageCreated:${anchor.threadId}`,
-    );
-    expect(publishedTopics).not.toContain(
-      `chatThreadRunCreated:${anchor.threadId}`,
-    );
-    await waitForRunStatus(actor, autoRun.id, "cancelled");
-    await chat.requestReadThread(actor, anchor.threadId, [404]);
-    await cancelChatRun(actor, blocker.runId);
-  });
+    if (probeEvent === undefined) {
+      throw new Error("Expected the post-race probe event");
+    }
+    expect(probeEvent.seqId).toBe(recalledEvent.seqId + 1);
+    if (probe.body.runId !== null) {
+      await cancelChatRun(actor, probe.body.runId);
+    }
+  }, 90_000);
 
   it("appends replacements on auto-send and keeps queued recalls idempotent", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();

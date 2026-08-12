@@ -54,7 +54,7 @@ const MODEL_POLICIES_RESPONSE = {
   ],
 };
 
-describe("zero model-provider command", () => {
+describe("okou model-provider command", () => {
   const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
 
   beforeEach(() => {

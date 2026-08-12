@@ -85,6 +85,22 @@ export async function readCustomConnectorOAuthStorageState(
   });
 }
 
+export async function deleteCustomConnectorCredentialValues(
+  context: TestContext,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly customConnectorId: string;
+  },
+): Promise<void> {
+  await postAction(context, {
+    action: "delete-custom-credential-values",
+    org_id: args.orgId,
+    user_id: args.userId,
+    custom_connector_id: args.customConnectorId,
+  });
+}
+
 export async function seedOwnedConnectorSecret(
   context: TestContext,
   args: {
@@ -137,56 +153,6 @@ export async function seedConnectorStorageRow(
     throw new Error("Connector storage test fixture id was not returned");
   }
   return response.connector_id;
-}
-
-export async function upsertLegacyConnectorVariable(
-  context: TestContext,
-  args: {
-    readonly connectorId: string;
-    readonly description: string | null;
-    readonly name: string;
-    readonly orgId: string;
-    readonly userId: string;
-    readonly value: string;
-  },
-): Promise<string> {
-  const response = await postAction(context, {
-    action: "upsert-legacy-variable",
-    connector_id: args.connectorId,
-    description: args.description,
-    name: args.name,
-    org_id: args.orgId,
-    user_id: args.userId,
-    value: args.value,
-  });
-  if (!response.variable_id) {
-    throw new Error(
-      "Connector storage test fixture variable id was not returned",
-    );
-  }
-  return response.variable_id;
-}
-
-export async function requestUpsertLegacyConnectorVariable(
-  context: TestContext,
-  args: {
-    readonly connectorId: string;
-    readonly description: string | null;
-    readonly name: string;
-    readonly orgId: string;
-    readonly userId: string;
-    readonly value: string;
-  },
-): Promise<Response> {
-  return await requestAction(context, {
-    action: "upsert-legacy-variable",
-    connector_id: args.connectorId,
-    description: args.description,
-    name: args.name,
-    org_id: args.orgId,
-    user_id: args.userId,
-    value: args.value,
-  });
 }
 
 export async function seedCustomConnectorRuntimeConnectors(

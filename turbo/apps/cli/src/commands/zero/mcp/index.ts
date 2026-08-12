@@ -30,7 +30,7 @@ function printCleanupWarning(cleanupWarning: boolean): void {
 
 const listCommand = new Command()
   .name("list")
-  .description("List MCP Custom Connectors admitted to this run")
+  .description("List MCP Custom Connectors authorized for this Agent")
   .option("--json", "Print compact JSON")
   .action(
     withErrorHandler(async (options: JsonOptions) => {
@@ -49,7 +49,9 @@ const listCommand = new Command()
         return;
       }
       if (connectors.length === 0) {
-        console.log(chalk.dim("No MCP connectors are available in this run"));
+        console.log(
+          chalk.dim("No MCP connectors are authorized for this Agent"),
+        );
         return;
       }
 
@@ -86,7 +88,7 @@ const listCommand = new Command()
 
 const listToolsCommand = new Command()
   .name("list-tools")
-  .description("List tools exposed by an admitted MCP connector")
+  .description("List tools exposed by an authorized MCP connector")
   .argument("<connector-slug>", "MCP Custom Connector slug")
   .option("--json", "Print compact JSON")
   .action(
@@ -139,7 +141,7 @@ const inputFileOption = new Option(
 
 const callCommand = new Command()
   .name("call")
-  .description("Call one tool on an admitted MCP connector")
+  .description("Call one tool on an authorized MCP connector")
   .argument("<connector-slug>", "MCP Custom Connector slug")
   .argument("<tool-name>", "Exact MCP tool name")
   .addOption(inputOption)
@@ -172,7 +174,7 @@ const callCommand = new Command()
 
 export const zeroMcpCommand = new Command()
   .name("mcp")
-  .description("Use MCP Custom Connectors admitted to this Agent Run")
+  .description("Use MCP Custom Connectors authorized for this Agent")
   .addCommand(listCommand)
   .addCommand(listToolsCommand)
   .addCommand(callCommand)
@@ -180,13 +182,14 @@ export const zeroMcpCommand = new Command()
     "after",
     `
 Examples:
-  List admitted MCP connectors:  zero mcp list
-  List connector tools:          zero mcp list-tools _acme-mcp --json
-  Call a tool:                   zero mcp call _acme-mcp search --input '{"query":"vm0"}' --json
-  Pipe tool input:               printf '{"query":"vm0"}' | zero mcp call _acme-mcp search
+  List authorized MCP connectors: okou mcp list
+  List connector tools:          okou mcp list-tools _acme-mcp --json
+  Call a tool:                   okou mcp call _acme-mcp search --input '{"query":"vm0"}' --json
+  Pipe tool input:               printf '{"query":"vm0"}' | okou mcp call _acme-mcp search
 
 Notes:
-  - Available only inside an Agent Run that admitted the connector
+  - Available only inside an Agent Run and scoped to its Agent's current authorization
+  - Runner remains execution authority; authorization changes may require a new Run
   - Runner applies endpoint policy and injects connector credentials
   - Tool calls are never automatically retried`,
   );

@@ -366,7 +366,7 @@ async fn create_factory_or_shutdown_runtime(
     }
 }
 
-/// Create, register, start, exec, stop, unregister, destroy.
+/// Create, register, run, unregister, stop, destroy.
 /// Timing is always returned even on error.
 /// Caller is responsible for `factory.shutdown()`.
 async fn run_sandbox(
@@ -489,7 +489,18 @@ mod tests {
 
     use async_trait::async_trait;
     use clap::CommandFactory;
-    use sandbox::{Sandbox, SandboxError, SandboxInitializationPhase};
+    use sandbox::{
+        Sandbox, SandboxError, SandboxInitializationPhase, SandboxOperation, SandboxOperationReason,
+    };
+    use sandbox_mock::{MockLifecycleGate, MockSandboxFactory, MockSandboxOverrides};
+    use tracing::instrument::WithSubscriber;
+    use tracing_subscriber::prelude::*;
+    use tracing_test_support::{CapturedEvent, CapturedEvents};
+
+    const BENCHMARK_LIFECYCLE_COMMAND: &str = "benchmark-lifecycle-command";
+    const BENCHMARK_LIFECYCLE_TEST_TIMEOUT: Duration = Duration::from_secs(5);
+    const FIRST_STOP_ERROR: &str = "first benchmark stop cleanup failure";
+    const SECOND_STOP_ERROR: &str = "second benchmark stop cleanup failure";
 
     #[test]
     fn benchmark_help_describes_required_guest_zoneinfo() {
@@ -688,6 +699,335 @@ mod tests {
         assert_eq!(shutdowns.load(Ordering::SeqCst), 0);
     }
 
+    struct BenchmarkProxyHarness {
+        proxy: proxy::MitmProxy,
+        registry_path: PathBuf,
+        _dir: tempfile::TempDir,
+    }
+
+    impl BenchmarkProxyHarness {
+        async fn new() -> Self {
+            let dir = tempfile::tempdir().unwrap();
+            let registry_path = dir.path().join("proxy-registry.json");
+            let (proxy, _crash_rx) = proxy::MitmProxy::new(proxy::ProxyConfig {
+                mitmdump_bin: dir.path().join("unused-mitmdump"),
+                ca_dir: dir.path().join("ca"),
+                ca_lock_path: dir.path().join("ca.lock"),
+                addon_dir: dir.path().join("addon"),
+                registry_path: registry_path.clone(),
+                registry_lock_path: dir.path().join("proxy-registry.json.lock"),
+                builtin_firewall_catalog_cache_path: dir
+                    .path()
+                    .join("builtin-firewall-catalog-cache.json"),
+                runtime_dir: dir.path().join("mitmdump-runtime"),
+                runtime_lock_path: dir.path().join("mitmdump-runtime.lock"),
+                api_url: None,
+                client_session_id: "benchmark-lifecycle-test".to_string(),
+            })
+            .await
+            .unwrap();
+            Self {
+                proxy,
+                registry_path,
+                _dir: dir,
+            }
+        }
+    }
+
+    #[derive(Clone, Copy, Debug)]
+    enum BenchmarkLifecycleCase {
+        Success,
+        StartFailure,
+        WorkspaceMountFailure,
+        GuestRestoreFailure,
+        ExecFailure,
+    }
+
+    impl BenchmarkLifecycleCase {
+        const ALL: [Self; 5] = [
+            Self::Success,
+            Self::StartFailure,
+            Self::WorkspaceMountFailure,
+            Self::GuestRestoreFailure,
+            Self::ExecFailure,
+        ];
+
+        fn configure(self, overrides: &MockSandboxOverrides) {
+            match self {
+                Self::Success => {}
+                Self::StartFailure => {
+                    overrides.push_start_result(Err(SandboxError::Start {
+                        message: self.primary_error().unwrap().to_string(),
+                    }));
+                }
+                Self::WorkspaceMountFailure => overrides.add_exec_error_matcher(
+                    "workspace_device='/dev/vdb'",
+                    sandbox_exec_error(self.primary_error().unwrap()),
+                ),
+                Self::GuestRestoreFailure => overrides.add_exec_error_matcher(
+                    "guest-reseed",
+                    sandbox_exec_error(self.primary_error().unwrap()),
+                ),
+                Self::ExecFailure => overrides.add_exec_error_matcher(
+                    BENCHMARK_LIFECYCLE_COMMAND,
+                    sandbox_exec_error(self.primary_error().unwrap()),
+                ),
+            }
+        }
+
+        const fn primary_error(self) -> Option<&'static str> {
+            match self {
+                Self::Success => None,
+                Self::StartFailure => Some("benchmark start primary failure"),
+                Self::WorkspaceMountFailure => Some("benchmark workspace primary failure"),
+                Self::GuestRestoreFailure => Some("benchmark guest restore primary failure"),
+                Self::ExecFailure => Some("benchmark exec primary failure"),
+            }
+        }
+    }
+
+    fn sandbox_exec_error(message: impl Into<String>) -> SandboxError {
+        SandboxError::Operation {
+            operation: SandboxOperation::Exec,
+            reason: SandboxOperationReason::Guest,
+            message: message.into(),
+        }
+    }
+
+    fn benchmark_lifecycle_args() -> BenchmarkArgs {
+        BenchmarkArgs {
+            command: BENCHMARK_LIFECYCLE_COMMAND.to_string(),
+            config: PathBuf::from("/unused/runner.yaml"),
+            timeout_secs: 1,
+            env: Vec::new(),
+            timezone: DEFAULT_BENCHMARK_TIMEZONE.to_string(),
+            sudo: false,
+            profile: "vm0/test".to_string(),
+        }
+    }
+
+    fn benchmark_lifecycle_sandbox_config() -> SandboxConfig {
+        SandboxConfig {
+            id: SandboxId::new_v4(),
+            resources: sandbox::ResourceLimits {
+                cpu_count: 2,
+                memory_mb: 4096,
+            },
+            device_rate_limits: None,
+            workspace_drive: Some(sandbox::WorkspaceDriveConfig {
+                size_mb: 1024,
+                seed_image: None,
+            }),
+        }
+    }
+
+    fn queue_stop_failures(overrides: &MockSandboxOverrides) {
+        overrides.push_stop_result(Err(sandbox_exec_error(FIRST_STOP_ERROR)));
+        overrides.push_stop_result(Err(sandbox_exec_error(SECOND_STOP_ERROR)));
+    }
+
+    fn event_positions(events: &[CapturedEvent], message: &str) -> Vec<usize> {
+        events
+            .iter()
+            .enumerate()
+            .filter_map(|(index, event)| {
+                (event.fields.get("message").map(String::as_str) == Some(message)).then_some(index)
+            })
+            .collect()
+    }
+
+    fn assert_cleanup_event_order(
+        events: &[CapturedEvent],
+        case: impl std::fmt::Debug,
+        unregister_message: &str,
+    ) {
+        let register = event_positions(events, "registered VM in proxy registry");
+        let unregister = event_positions(events, unregister_message);
+        let stop = event_positions(events, "sandbox stop failed");
+
+        assert_eq!(register.len(), 1, "case={case:?}; events={events:#?}");
+        assert_eq!(unregister.len(), 1, "case={case:?}; events={events:#?}");
+        assert_eq!(stop.len(), 1, "case={case:?}; events={events:#?}");
+        assert!(
+            register[0] < unregister[0] && unregister[0] < stop[0],
+            "case={case:?}; events={events:#?}"
+        );
+    }
+
+    fn assert_primary_result(case: BenchmarkLifecycleCase, result: RunnerResult<ExecResult>) {
+        match (case.primary_error(), result) {
+            (None, Ok(exec_result)) => assert!(matches!(
+                exec_result.termination,
+                ExecTermination::Exited { exit_code: 0 }
+            )),
+            (Some(expected), Err(error)) => assert!(
+                error.to_string().contains(expected),
+                "case={case:?}; error={error}"
+            ),
+            (None, Err(error)) => panic!("case={case:?} unexpectedly failed: {error}"),
+            (Some(expected), Ok(_)) => {
+                panic!("case={case:?} unexpectedly succeeded instead of returning {expected:?}")
+            }
+        }
+    }
+
+    async fn assert_lifecycle_case(proxy: &proxy::MitmProxy, case: BenchmarkLifecycleCase) {
+        let overrides = Arc::new(MockSandboxOverrides::new());
+        case.configure(&overrides);
+        queue_stop_failures(&overrides);
+        let destroy_gate = MockLifecycleGate::new();
+        overrides.set_destroy_lifecycle_gate(destroy_gate.clone());
+        let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+        let args = benchmark_lifecycle_args();
+        let captured = CapturedEvents::default();
+        let subscriber = tracing_subscriber::registry().with(captured.clone());
+
+        let run = run_sandbox(
+            &args,
+            &[],
+            &factory,
+            proxy,
+            benchmark_lifecycle_sandbox_config(),
+        )
+        .with_subscriber(subscriber);
+        let observe_destroy = async {
+            let entered = destroy_gate
+                .wait_entered(1, BENCHMARK_LIFECYCLE_TEST_TIMEOUT)
+                .await;
+            let destroy_calls = overrides.destroy_call_count();
+            let events = captured.entries();
+            destroy_gate.release_one();
+            (entered, destroy_calls, events)
+        };
+
+        let (run_output, observation) =
+            tokio::time::timeout(BENCHMARK_LIFECYCLE_TEST_TIMEOUT, async {
+                tokio::join!(run, observe_destroy)
+            })
+            .await
+            .unwrap_or_else(|_| panic!("case={case:?} timed out"));
+        let (result, _timing) = run_output;
+        let (destroy_entry, destroy_calls, events_at_destroy) = observation;
+
+        assert_eq!(
+            destroy_entry.unwrap_or_else(|error| panic!("case={case:?}; {error}")),
+            1
+        );
+        assert_eq!(destroy_calls, 1, "case={case:?}");
+        assert_eq!(overrides.destroy_call_count(), 1, "case={case:?}");
+        assert_cleanup_event_order(
+            &events_at_destroy,
+            case,
+            "unregistered VM from proxy registry",
+        );
+        assert_cleanup_event_order(
+            &captured.entries(),
+            case,
+            "unregistered VM from proxy registry",
+        );
+        assert_primary_result(case, result);
+    }
+
+    #[tokio::test]
+    async fn run_sandbox_preserves_ordered_cleanup_for_post_create_outcomes() {
+        let proxy = BenchmarkProxyHarness::new().await;
+
+        for case in BenchmarkLifecycleCase::ALL {
+            assert_lifecycle_case(&proxy.proxy, case).await;
+        }
+    }
+
+    #[tokio::test]
+    async fn run_sandbox_preserves_primary_error_when_registry_and_stop_cleanup_fail() {
+        const PRIMARY_ERROR: &str = "benchmark cleanup-case primary failure";
+
+        let proxy = BenchmarkProxyHarness::new().await;
+        let overrides = Arc::new(MockSandboxOverrides::new());
+        overrides.add_exec_error_matcher(
+            "workspace_device='/dev/vdb'",
+            sandbox_exec_error(PRIMARY_ERROR),
+        );
+        queue_stop_failures(&overrides);
+        let exec_gate = MockLifecycleGate::new();
+        overrides.set_exec_lifecycle_gate(exec_gate.clone());
+        let destroy_gate = MockLifecycleGate::new();
+        overrides.set_destroy_lifecycle_gate(destroy_gate.clone());
+        let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+        let args = benchmark_lifecycle_args();
+        let captured = CapturedEvents::default();
+        let subscriber = tracing_subscriber::registry().with(captured.clone());
+
+        let run = run_sandbox(
+            &args,
+            &[],
+            &factory,
+            &proxy.proxy,
+            benchmark_lifecycle_sandbox_config(),
+        )
+        .with_subscriber(subscriber);
+        let corrupt_registry_and_observe_destroy = async {
+            let exec_seen = overrides
+                .wait_exec_call_count(1, BENCHMARK_LIFECYCLE_TEST_TIMEOUT)
+                .await;
+            let corrupt_result = tokio::fs::write(&proxy.registry_path, b"{invalid-json").await;
+            exec_gate.release_one();
+
+            let destroy_entry = destroy_gate
+                .wait_entered(1, BENCHMARK_LIFECYCLE_TEST_TIMEOUT)
+                .await;
+            let destroy_calls = overrides.destroy_call_count();
+            let events = captured.entries();
+            destroy_gate.release_one();
+            (
+                exec_seen,
+                corrupt_result,
+                destroy_entry,
+                destroy_calls,
+                events,
+            )
+        };
+
+        let (run_output, observation) =
+            tokio::time::timeout(BENCHMARK_LIFECYCLE_TEST_TIMEOUT, async {
+                tokio::join!(run, corrupt_registry_and_observe_destroy)
+            })
+            .await
+            .expect("benchmark cleanup failure scenario timed out");
+        let (result, _timing) = run_output;
+        let (exec_seen, corrupt_result, destroy_entry, destroy_calls, events_at_destroy) =
+            observation;
+
+        assert!(exec_seen, "workspace setup exec was not observed");
+        corrupt_result.expect("corrupt temporary proxy registry");
+        assert_eq!(destroy_entry.unwrap(), 1);
+        assert_eq!(destroy_calls, 1);
+        assert_eq!(overrides.destroy_call_count(), 1);
+        assert_cleanup_event_order(
+            &events_at_destroy,
+            "cleanup failures",
+            "failed to unregister VM from proxy",
+        );
+        let final_events = captured.entries();
+        assert_cleanup_event_order(
+            &final_events,
+            "cleanup failures",
+            "failed to unregister VM from proxy",
+        );
+        assert!(
+            event_positions(&final_events, "unregistered VM from proxy registry").is_empty(),
+            "events={final_events:#?}"
+        );
+
+        let error = match result {
+            Ok(_) => panic!("workspace setup unexpectedly succeeded"),
+            Err(error) => error,
+        };
+        let message = error.to_string();
+        assert!(message.contains(PRIMARY_ERROR), "error={error}");
+        assert!(!message.contains(FIRST_STOP_ERROR), "error={error}");
+        assert!(!message.contains("parse registry"), "error={error}");
+    }
+
     struct SuccessfulFactoryRuntime {
         shutdowns: Arc<AtomicUsize>,
     }
@@ -743,7 +1083,7 @@ mod tests {
             &self,
             _config: sandbox::SandboxConfig,
         ) -> sandbox::Result<Box<dyn Sandbox>> {
-            panic!("benchmark lifecycle tests do not create sandboxes")
+            panic!("benchmark initialization tests do not create sandboxes")
         }
 
         async fn destroy(&self, _sandbox: Box<dyn Sandbox>) {}
