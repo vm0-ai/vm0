@@ -197,7 +197,7 @@ export async function ingestAxiomDirect(
 
   const response = await fetch(axiomIngestUrl(dataset), {
     method: "POST",
-    redirect: "error",
+    redirect: "manual",
     headers: {
       accept: "application/json",
       authorization: `Bearer ${token}`,

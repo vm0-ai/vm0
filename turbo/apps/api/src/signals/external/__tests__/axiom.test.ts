@@ -4,6 +4,37 @@ import { describe, expect, it, vi } from "vitest";
 import { getApiTestMocks } from "../../../__tests__/mocks";
 import { server } from "../../../mocks/server";
 
+describe("ingestAxiomDirect", () => {
+  it("uses the Worker-compatible manual redirect mode", async () => {
+    const { ingestAxiomDirect } =
+      await vi.importActual<typeof import("../axiom")>("../axiom");
+    const events = [{ runId: "run-test" }];
+    let redirect: string | undefined;
+    server.use(
+      http.post(
+        "https://api.axiom.co/v1/datasets/vm0-sandbox-telemetry-network-dev/ingest",
+        ({ request }) => {
+          redirect = request.redirect;
+          return HttpResponse.json({
+            ingested: events.length,
+            failed: 0,
+            processedBytes: 123,
+          });
+        },
+      ),
+    );
+
+    await expect(
+      ingestAxiomDirect(
+        "vm0-sandbox-telemetry-network-dev",
+        events,
+        AbortSignal.timeout(10_000),
+      ),
+    ).resolves.toStrictEqual({ configured: true });
+    expect(redirect).toBe("manual");
+  });
+});
+
 describe("queryAxiomDirect", () => {
   it("keeps the Axiom match timestamp when event data contains _time", async () => {
     const { queryAxiomDirect } =

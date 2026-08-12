@@ -46,7 +46,7 @@ const probeWorkerOutboundSafety$ = command(
     const dnsPrivateAddressBlocked = fetchHostHasBlockedAddress(addresses);
     const [privateFetch] = await Promise.allSettled([
       fetch(`https://${privateHostname}`, {
-        redirect: "error",
+        redirect: "manual",
         signal: AbortSignal.any([signal, AbortSignal.timeout(10_000)]),
       }),
     ]);

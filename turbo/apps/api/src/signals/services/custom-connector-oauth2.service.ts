@@ -174,7 +174,7 @@ async function postPublicHttpsForm(
         ...(authorization ? { authorization } : {}),
       },
       body,
-      redirect: "error",
+      redirect: "manual",
       signal,
     });
     const reader = response.body?.getReader();

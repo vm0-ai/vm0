@@ -63,8 +63,10 @@ describe("POST /api/test/worker-runtime/outbound-safety", () => {
     context.mocks.dns.lookupOverrides.set("localtest.me", [
       { address: "198.18.12.62", family: 4 },
     ]);
+    let redirect: string | undefined;
     server.use(
-      http.get("https://localtest.me/", () => {
+      http.get("https://localtest.me/", ({ request }) => {
+        redirect = request.redirect;
         return HttpResponse.error();
       }),
     );
@@ -80,5 +82,6 @@ describe("POST /api/test/worker-runtime/outbound-safety", () => {
       dns_private_address_blocked: true,
       native_private_fetch_blocked: true,
     });
+    expect(redirect).toBe("manual");
   });
 });

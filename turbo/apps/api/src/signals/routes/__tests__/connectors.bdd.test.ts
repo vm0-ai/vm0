@@ -2333,6 +2333,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
 
   it("reuses confidential OAuth for MCP and gates callback writes", async () => {
     mockEnv("APP_URL", "https://app.vm0.test");
+    context.mocks.runtime.setNavigatorUserAgent("Cloudflare-Workers");
     const provider = mockCustomConnectorOAuth2Provider(context);
     const bdd = createBddApi(context);
     bdd.acceptAgentStorageWrites();
@@ -2431,6 +2432,7 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
       });
     expect(callback.body).toStrictEqual({ status: "success", username: null });
     expect(provider.tokenBodies).toHaveLength(1);
+    expect(provider.redirects).toStrictEqual(["manual"]);
     expect(provider.tokenBodies[0]?.get("client_secret")).toBe(clientSecret);
     await expect(
       connectorsApi.readAgentCustomConnectors(member, agent.agentId),

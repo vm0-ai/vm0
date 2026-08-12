@@ -207,6 +207,7 @@ interface CustomConnectorOAuth2ProviderRecorder {
   readonly tokenUrl: string;
   readonly tokenBodies: URLSearchParams[];
   readonly authorizationHeaders: (string | null)[];
+  readonly redirects: string[];
 }
 
 interface CustomConnectorOAuth2ProviderOptions {
@@ -224,6 +225,7 @@ export function mockCustomConnectorOAuth2Provider(
   ]);
   const tokenBodies: URLSearchParams[] = [];
   const authorizationHeaders: (string | null)[] = [];
+  const redirects: string[] = [];
   const initialRefreshToken =
     options.initialRefreshToken === undefined
       ? "custom-oauth-refresh-token"
@@ -234,6 +236,7 @@ export function mockCustomConnectorOAuth2Provider(
       const body = new URLSearchParams(await request.text());
       tokenBodies.push(body);
       authorizationHeaders.push(request.headers.get("authorization"));
+      redirects.push(request.redirect);
       if (body.get("grant_type") === "refresh_token") {
         refreshAttempts += 1;
         if (options.refreshResponse) {
@@ -261,6 +264,7 @@ export function mockCustomConnectorOAuth2Provider(
     tokenUrl: CUSTOM_CONNECTOR_OAUTH2_TOKEN_URL,
     tokenBodies,
     authorizationHeaders,
+    redirects,
   };
 }
 
