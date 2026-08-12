@@ -5,12 +5,14 @@ const { resolveDesktopBuildConfig } = require("./desktop-build-config");
 function packagedAppPaths(options = {}) {
   const appRoot = path.resolve(__dirname, "..");
   const appName = resolveDesktopBuildConfig(options).identity.displayName;
-  const appBundlePath = path.join(
-    appRoot,
-    "out",
-    `${appName}-${process.platform}-${process.arch}`,
-    `${appName}.app`,
-  );
+  const appBundlePath = options.appBundlePath
+    ? path.resolve(options.appBundlePath)
+    : path.join(
+        appRoot,
+        "out",
+        `${appName}-${process.platform}-${process.arch}`,
+        `${appName}.app`,
+      );
 
   return {
     appBundlePath,

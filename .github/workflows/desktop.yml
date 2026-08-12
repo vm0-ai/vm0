@@ -593,26 +593,35 @@ jobs:
           : "${R2_BUCKET_NAME:?R2_STATIC_BUCKET_NAME variable is required}"
 
           r2_endpoint="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
-          ready_key="${ARTIFACT_PREFIX}/ready.json"
           error_log="$(mktemp)"
+          artifact_ready=true
 
-          set +e
-          aws s3api head-object \
-            --endpoint-url "$r2_endpoint" \
-            --bucket "$R2_BUCKET_NAME" \
-            --key "$ready_key" \
-            >/dev/null 2>"$error_log"
-          status=$?
-          set -e
+          for filename in ready.json okou-app.tar.gz; do
+            set +e
+            aws s3api head-object \
+              --endpoint-url "$r2_endpoint" \
+              --bucket "$R2_BUCKET_NAME" \
+              --key "${ARTIFACT_PREFIX}/${filename}" \
+              >/dev/null 2>"$error_log"
+            status=$?
+            set -e
 
-          if (( status == 0 )); then
-            echo "exists=true" >> "$GITHUB_OUTPUT"
-            echo "Artifact already ready: s3://${R2_BUCKET_NAME}/${ARTIFACT_PREFIX}/"
-          elif grep -Eq '404|NotFound|Not Found|NoSuchKey' "$error_log"; then
-            echo "exists=false" >> "$GITHUB_OUTPUT"
-          else
+            if (( status == 0 )); then
+              continue
+            fi
+            if grep -Eq '404|NotFound|Not Found|NoSuchKey' "$error_log"; then
+              artifact_ready=false
+              break
+            fi
             cat "$error_log" >&2
             exit "$status"
+          done
+
+          if [[ "$artifact_ready" == "true" ]]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Artifact already ready: s3://${R2_BUCKET_NAME}/${ARTIFACT_PREFIX}/"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
 
       - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
@@ -643,7 +652,12 @@ jobs:
           VM0_DESKTOP_SKIP_SIGNING: "true"
         working-directory: turbo
         run: |
-          rm -f apps/desktop/desktop-runtime-config.json
+          cleanup_runtime_config() {
+            rm -f apps/desktop/desktop-runtime-config.json
+          }
+          trap cleanup_runtime_config EXIT
+
+          cleanup_runtime_config
           rm -rf apps/desktop/out
 
           pnpm -F @vm0/desktop build
@@ -665,6 +679,49 @@ jobs:
 
           node apps/desktop/scripts/smoke-test-packaged-app.js
 
+          VM0_DESKTOP_PRODUCT=okou \
+          VM0_DESKTOP_PLATFORM_URL=https://app.okou.ai \
+          node <<'NODE'
+          const fs = require("node:fs");
+
+          fs.writeFileSync(
+            "apps/desktop/desktop-runtime-config.json",
+            `${JSON.stringify(
+              {
+                platformUrl: process.env.VM0_DESKTOP_PLATFORM_URL,
+                product: process.env.VM0_DESKTOP_PRODUCT,
+              },
+              null,
+              2,
+            )}\n`,
+          );
+          NODE
+
+          VM0_DESKTOP_PRODUCT=okou \
+          VM0_DESKTOP_PLATFORM_URL=https://app.okou.ai \
+          pnpm -F @vm0/desktop build
+          VM0_DESKTOP_PRODUCT=okou \
+          VM0_DESKTOP_PLATFORM_URL=https://app.okou.ai \
+          pnpm --dir apps/desktop exec electron-forge package \
+            --platform darwin \
+            --arch arm64
+
+          okou_app_dir="$PWD/apps/desktop/out/Okou Computer Use-darwin-arm64/Okou Computer Use.app"
+          if [ ! -d "$okou_app_dir" ]; then
+            echo "No packaged Okou app found: $okou_app_dir"
+            find apps/desktop/out -maxdepth 4 -type d -print || true
+            exit 1
+          fi
+          okou_runtime_config="$okou_app_dir/Contents/Resources/app/desktop-runtime-config.json"
+          if [ ! -f "$okou_runtime_config" ]; then
+            echo "Canonical Okou artifact must contain Desktop runtime config"
+            exit 1
+          fi
+
+          VM0_DESKTOP_PRODUCT=okou \
+          VM0_DESKTOP_PLATFORM_URL=https://app.okou.ai \
+          node apps/desktop/scripts/smoke-test-packaged-app.js
+
       - name: Create canonical Desktop artifact
         if: steps.existing.outputs.exists != 'true'
         env:
@@ -676,7 +733,8 @@ jobs:
             "$ARTIFACT_SHA" \
             "$DESKTOP_VERSION" \
             "turbo/apps/desktop/out/Zero Computer Use-darwin-arm64/Zero Computer Use.app" \
-            /tmp/okou-desktop-artifact
+            /tmp/okou-desktop-artifact \
+            "turbo/apps/desktop/out/Okou Computer Use-darwin-arm64/Okou Computer Use.app"
 
       - name: Upload canonical Desktop artifact
         if: steps.existing.outputs.exists != 'true'
@@ -698,6 +756,14 @@ jobs:
             --bucket "$R2_BUCKET_NAME" \
             --key "${ARTIFACT_PREFIX}/app.tar.gz" \
             --body /tmp/okou-desktop-artifact/app.tar.gz \
+            --content-type application/gzip \
+            --cache-control "$cache_control"
+
+          aws s3api put-object \
+            --endpoint-url "$r2_endpoint" \
+            --bucket "$R2_BUCKET_NAME" \
+            --key "${ARTIFACT_PREFIX}/okou-app.tar.gz" \
+            --body /tmp/okou-desktop-artifact/okou-app.tar.gz \
             --content-type application/gzip \
             --cache-control "$cache_control"
 
