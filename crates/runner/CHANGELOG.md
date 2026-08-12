@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.164.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.164.4...runner-rs-v0.164.5) (2026-08-12)
+
+
+### Refactoring
+
+* **python:** use bounded reads for runner flush markers ([#26527](https://github.com/vm0-ai/vm0/issues/26527)) ([f60e02c](https://github.com/vm0-ai/vm0/commit/f60e02cd5539ab1e3f43a0181acbef2b6f4c22ae))
+
 ## [0.164.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.164.3...runner-rs-v0.164.4) (2026-08-12)
 
 ## [0.164.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.164.2...runner-rs-v0.164.3) (2026-08-12)

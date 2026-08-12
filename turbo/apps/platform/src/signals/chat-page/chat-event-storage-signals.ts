@@ -168,7 +168,7 @@ interface RemoteSyncDependencies {
   readonly threadId: string;
   readonly persistentEvents$: PersistentChatEvents$;
   readonly hasReachedOldestEvent$: Computed<boolean>;
-  readonly initialRemoteEventsResolved$: State<boolean>;
+  readonly initialEventsReady$: State<boolean>;
   readonly mergePersistentEvents$: Command<
     Promise<void>,
     [PersistedChatEvent[], AbortSignal]
@@ -180,7 +180,7 @@ function createSyncRemoteEventsCommand({
   threadId,
   persistentEvents$,
   hasReachedOldestEvent$,
-  initialRemoteEventsResolved$,
+  initialEventsReady$,
   mergePersistentEvents$,
   dataSource,
 }: RemoteSyncDependencies): Command<Promise<void>, [AbortSignal]> {
@@ -198,22 +198,22 @@ function createSyncRemoteEventsCommand({
     async function syncEventsAfter(): Promise<void> {
       const requestedSinceSeqId = sinceSeqId;
       const isInitialPage = requestedSinceSeqId === undefined;
-      const resolvesInitialRemoteEvents = !get(initialRemoteEventsResolved$);
+      const resolvesInitialEvents = !get(initialEventsReady$);
       const events = await set(
         dataSource.listEventsAfter$,
         { threadId, sinceSeqId: requestedSinceSeqId },
         signal,
       );
       signal.throwIfAborted();
-      if (resolvesInitialRemoteEvents) {
-        set(initialRemoteEventsResolved$, true);
-      }
       L.debug("sync remote events after", {
         threadId,
         sinceSeqId: requestedSinceSeqId ?? null,
         count: events.length,
       });
       if (events.length === 0) {
+        if (resolvesInitialEvents) {
+          set(initialEventsReady$, true);
+        }
         return;
       }
       await set(writeIndexedDbChatEvents$, threadId, events, signal);
@@ -221,6 +221,10 @@ function createSyncRemoteEventsCommand({
       if (isInitialPage) {
         initialPageOldestEvent = events[0]!;
         await mergeEvents(events);
+        signal.throwIfAborted();
+        if (resolvesInitialEvents) {
+          set(initialEventsReady$, true);
+        }
       } else {
         accumulatedEvents.push(...events);
       }
@@ -291,7 +295,7 @@ function createSyncRemoteEventsCommand({
 interface RowSyncDependencies {
   readonly threadId: string;
   readonly persistentEvents$: PersistentChatEvents$;
-  readonly initialRemoteEventsResolved$: State<boolean>;
+  readonly initialEventsReady$: State<boolean>;
   readonly mergePersistentEvents$: Command<
     Promise<void>,
     [PersistedChatEvent[], AbortSignal]
@@ -307,7 +311,7 @@ interface RowSyncDependencies {
 function createSyncRemoteRowsCommand({
   threadId,
   persistentEvents$,
-  initialRemoteEventsResolved$,
+  initialEventsReady$,
   mergePersistentEvents$,
 }: RowSyncDependencies): Command<Promise<void>, [AbortSignal]> {
   return command(async ({ get, set }, signal: AbortSignal): Promise<void> => {
@@ -337,10 +341,10 @@ function createSyncRemoteRowsCommand({
         set(fetchChatEventSnapshotRows$, threadId, signal),
         signal,
       );
-      // The skeleton must resolve even when the snapshot request fails; the
-      // error surfaces through the normal toast path.
-      set(initialRemoteEventsResolved$, true);
       if (!snapshot.ok) {
+        // The skeleton must resolve even when the snapshot request fails; the
+        // error surfaces through the normal toast path.
+        set(initialEventsReady$, true);
         throw snapshot.error;
       }
       if (snapshot.value === null) {
@@ -349,6 +353,7 @@ function createSyncRemoteRowsCommand({
       await set(writeIndexedDbChatEventRows$, snapshot.value.rows, signal);
       signal.throwIfAborted();
       await mergeRows(snapshot.value.rows);
+      set(initialEventsReady$, true);
       return snapshot.value.lastSeqId;
     };
 
@@ -370,9 +375,9 @@ function createSyncRemoteRowsCommand({
     while (shouldLoadNextPage) {
       const page = await set(listRowsAfter$, { threadId, sinceSeqId }, signal);
       signal.throwIfAborted();
-      set(initialRemoteEventsResolved$, true);
       if (page.kind === "expired") {
         if (cursorFromServer) {
+          set(initialEventsReady$, true);
           throw new Error(
             "chat event rows cursor expired right after a cold start",
           );
@@ -388,6 +393,7 @@ function createSyncRemoteRowsCommand({
       signal.throwIfAborted();
       await mergeRows(page.rows);
       signal.throwIfAborted();
+      set(initialEventsReady$, true);
       const lastRow = page.rows.at(-1);
       if (lastRow !== undefined) {
         sinceSeqId = lastRow.seqId;
@@ -445,6 +451,9 @@ export function createChatEventStorageSignals({
     persistentEvents$: persistentChatEvents$,
     optimisticEvents$,
   });
+  // This is presentation readiness, not network readiness. Event-backed
+  // paths set it only after the durable cache and event projections finish.
+  const initialEventsReady$ = state(false);
   const appendOptimisticEvent$: AppendOptimisticEventCommand = command(
     async (
       { set },
@@ -453,6 +462,8 @@ export function createChatEventStorageSignals({
     ): Promise<void> => {
       set(appendOptimisticChatEvent$, createOptimisticChatEventEntry(input));
       await set(notifyChatEventsChanged$, chatEvents$, signal);
+      signal.throwIfAborted();
+      set(initialEventsReady$, true);
     },
   );
   const indexedDbEventCache = createIndexedDbEventCacheSignals(
@@ -483,19 +494,18 @@ export function createChatEventStorageSignals({
   const hasReachedOldestEvent$ = computed((get): boolean => {
     return get(persistentChatEvents$)[0]?.seqId === FIRST_CHAT_EVENT_SEQ_ID;
   });
-  const initialRemoteEventsResolved$ = state(false);
   const syncLegacyRemoteEvents$ = createSyncRemoteEventsCommand({
     threadId,
     persistentEvents$: persistentChatEvents$,
     hasReachedOldestEvent$,
-    initialRemoteEventsResolved$,
+    initialEventsReady$,
     mergePersistentEvents$,
     dataSource,
   });
   const syncRemoteRows$ = createSyncRemoteRowsCommand({
     threadId,
     persistentEvents$: persistentChatEvents$,
-    initialRemoteEventsResolved$,
+    initialEventsReady$,
     mergePersistentEvents$,
   });
   const syncRemoteEvents$ = command(
@@ -522,7 +532,11 @@ export function createChatEventStorageSignals({
       await set(notifyChatEventsChanged$, chatEvents$, signal);
       signal.throwIfAborted();
       if (!result.ok) {
+        set(initialEventsReady$, true);
         throw result.error;
+      }
+      if (get(chatEvents$).length > 0) {
+        set(initialEventsReady$, true);
       }
     },
   );
@@ -530,7 +544,7 @@ export function createChatEventStorageSignals({
   return {
     chatEvents$,
     hasOptimisticUserMessage$,
-    initialRemoteEventsResolved$,
+    initialEventsReady$,
     initializeIndexedDbEvents$,
     mergePersistentEvents$,
     appendOptimisticEvent$,

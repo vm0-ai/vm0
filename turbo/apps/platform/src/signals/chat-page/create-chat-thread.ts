@@ -2160,10 +2160,7 @@ function createChatThreadMessagePipeline(
     ownerSignal,
   );
   const chatSkeletonVisible$ = computed((get): boolean => {
-    return (
-      !get(chatEvents.initialRemoteEventsResolved$) &&
-      get(projections.rawEvents$).length === 0
-    );
+    return !get(chatEvents.initialEventsReady$);
   });
   const setup$ = command(
     async ({ set }, signal: AbortSignal): Promise<void> => {
