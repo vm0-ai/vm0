@@ -5,10 +5,10 @@ import type {
   DesktopDeveloperToolsApi,
   DesktopIdentityInfo,
 } from "./desktop-bridge";
-import { resolveDesktopConfig } from "./config";
 import { COMPUTER_USE_CHANNELS } from "./computer-use-ipc-channels";
 import { DESKTOP_AUTH_CHANNELS } from "./desktop-auth-ipc-channels";
 import { DESKTOP_DEVELOPER_TOOLS_CHANNELS } from "./desktop-developer-tools-ipc-channels";
+import { DESKTOP_IDENTITY_CHANNEL } from "./desktop-identity-ipc-channels";
 import type { DesktopComputerUseState } from "./computer-use-types";
 
 const desktopAuthApi: DesktopAuthApi = {
@@ -159,12 +159,9 @@ const desktopDeveloperToolsApi: DesktopDeveloperToolsApi = {
   },
 };
 
-const identity = resolveDesktopConfig().identity;
-const desktopIdentity: DesktopIdentityInfo = {
-  product: identity.product,
-  brandName: identity.brandName,
-  displayName: identity.displayName,
-};
+const desktopIdentity = ipcRenderer.sendSync(
+  DESKTOP_IDENTITY_CHANNEL,
+) as DesktopIdentityInfo;
 
 contextBridge.exposeInMainWorld("vm0DesktopAuth", desktopAuthApi);
 contextBridge.exposeInMainWorld("vm0DesktopComputerUse", desktopComputerUseApi);
