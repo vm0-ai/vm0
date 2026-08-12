@@ -931,6 +931,14 @@ describe("chat run queue", () => {
     ).toBeUndefined();
     expect(screen.getByText(NEXT_RUN_SONNET_MODEL_COPY)).toBeInTheDocument();
     expect(screen.queryByText(MODEL_CHANGED_COPY)).not.toBeInTheDocument();
+    // A rule marks something that stays in the transcript. This notice vanishes
+    // when the run ends, so it stays a plain caption.
+    expect(
+      screen
+        .getByText(NEXT_RUN_SONNET_MODEL_COPY)
+        .closest("div")
+        ?.querySelector('[role="separator"]'),
+    ).toBeNull();
 
     lifecycle.completeRun("Model A finished.");
     await waitFor(() => {
@@ -958,6 +966,13 @@ describe("chat run queue", () => {
     });
     expect(nextRunSendGate.settled()).toBeFalsy();
     expect(screen.getByText(MODEL_CHANGED_COPY)).toBeInTheDocument();
+    // The model change is a permanent mark on the transcript, so it keeps one.
+    expect(
+      screen
+        .getByText(MODEL_CHANGED_COPY)
+        .closest("div")
+        ?.querySelector('[role="separator"]'),
+    ).not.toBeNull();
     expectTextBefore("Model A finished.", MODEL_CHANGED_COPY);
     expectTextBefore(MODEL_CHANGED_COPY, "Start the model B run");
   });

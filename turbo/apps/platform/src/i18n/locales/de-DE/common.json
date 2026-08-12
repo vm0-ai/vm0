@@ -1675,7 +1675,8 @@
       "pickEmoji": "Ein Emoji auswählen",
       "scrollToBottom": "Nach unten scrollen",
       "searchEmoji": "Emoji suchen",
-      "steerMessageExplanation": "Gesendet, während der Agent arbeitete, um sein Verhalten zu steuern"
+      "steerAcknowledgement_one": "Mitten im Lauf übernommen – bisherige Arbeit bleibt erhalten",
+      "steerAcknowledgement_other": "Alle {{count}} Nachrichten mitten im Lauf übernommen – bisherige Arbeit bleibt erhalten"
     },
     "threadSidebar": {
       "resize": "Größe der Seitenleiste ändern"

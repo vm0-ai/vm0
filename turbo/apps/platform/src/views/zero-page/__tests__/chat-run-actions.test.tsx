@@ -1,5 +1,4 @@
 import { screen, waitFor, within } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
@@ -15,6 +14,8 @@ const RUN_ID = "run-active";
 const CONTINUATION_PRESENTATION_ENABLED = {
   [FeatureSwitchKey.ChatRunContinuationPresentation]: true,
 } as const;
+const STEER_ONE_COPY = "Picked this up mid-run — earlier work kept";
+const STEER_TWO_COPY = "All 2 messages picked up mid-run — earlier work kept";
 
 type TranscriptLabel = `U${number}` | `A${number}`;
 
@@ -24,7 +25,8 @@ interface RunActionCase {
   readonly unassociatedLabels: readonly TranscriptLabel[];
   readonly expectedActionBars: number;
   readonly actionOwner: TranscriptLabel | null;
-  readonly steerLabels: readonly TranscriptLabel[];
+  /** One acknowledgement per burst of consecutive steers, labelled by count. */
+  readonly steerAcknowledgements: readonly string[];
 }
 
 const RUN_ACTION_CASES = [
@@ -34,7 +36,7 @@ const RUN_ACTION_CASES = [
     unassociatedLabels: [],
     expectedActionBars: 0,
     actionOwner: null,
-    steerLabels: [],
+    steerAcknowledgements: [],
   },
   {
     name: "U1 A1 U2",
@@ -42,7 +44,7 @@ const RUN_ACTION_CASES = [
     unassociatedLabels: ["U2"],
     expectedActionBars: 0,
     actionOwner: null,
-    steerLabels: ["U2"],
+    steerAcknowledgements: [STEER_ONE_COPY],
   },
   {
     name: "U1 U2",
@@ -50,7 +52,15 @@ const RUN_ACTION_CASES = [
     unassociatedLabels: ["U2"],
     expectedActionBars: 0,
     actionOwner: null,
-    steerLabels: ["U2"],
+    steerAcknowledgements: [STEER_ONE_COPY],
+  },
+  {
+    name: "U1 U2 U3",
+    sequence: ["U1", "U2", "U3"],
+    unassociatedLabels: ["U2", "U3"],
+    expectedActionBars: 0,
+    actionOwner: null,
+    steerAcknowledgements: [STEER_TWO_COPY],
   },
   {
     name: "U1 U2 A1",
@@ -58,7 +68,7 @@ const RUN_ACTION_CASES = [
     unassociatedLabels: [],
     expectedActionBars: 1,
     actionOwner: "A1",
-    steerLabels: ["U2"],
+    steerAcknowledgements: [STEER_ONE_COPY],
   },
   {
     name: "U1 A1 U2 A2",
@@ -66,7 +76,7 @@ const RUN_ACTION_CASES = [
     unassociatedLabels: [],
     expectedActionBars: 1,
     actionOwner: "A2",
-    steerLabels: ["U2"],
+    steerAcknowledgements: [STEER_ONE_COPY],
   },
 ] as const satisfies readonly RunActionCase[];
 
@@ -97,7 +107,7 @@ describe("chat run actions", () => {
       unassociatedLabels,
       expectedActionBars,
       actionOwner,
-      steerLabels,
+      steerAcknowledgements,
     }) => {
       mockChatLifecycle(context, {
         threadId: THREAD_ID,
@@ -122,18 +132,14 @@ describe("chat run actions", () => {
         expect(rows).toHaveLength(expectedActionBars);
         return rows;
       });
-      expect(screen.queryAllByTestId("chat-steer-indicator")).toHaveLength(
-        steerLabels.length,
+      const acknowledgements = screen.queryAllByTestId(
+        "chat-steer-acknowledgement",
       );
-      for (const label of steerLabels) {
-        const steerMessage = screen
-          .getByText(label)
-          .closest<HTMLElement>('[data-role="user"]');
-        expect(steerMessage).not.toBeNull();
-        expect(
-          within(steerMessage!).getByTestId("chat-steer-indicator"),
-        ).toBeInTheDocument();
-      }
+      expect(
+        acknowledgements.map((element) => {
+          return element.textContent;
+        }),
+      ).toStrictEqual(steerAcknowledgements);
 
       if (actionOwner === null) {
         return;
@@ -149,8 +155,7 @@ describe("chat run actions", () => {
     },
   );
 
-  it("explains a steer message when its indicator is hovered", async () => {
-    const user = userEvent.setup({ delay: null });
+  it("acknowledges a steer without waiting for a hover", async () => {
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
       activeRunIds: [RUN_ID],
@@ -166,21 +171,73 @@ describe("chat run actions", () => {
       featureSwitches: CONTINUATION_PRESENTATION_ENABLED,
     });
 
-    const indicator = await screen.findByTestId("chat-steer-indicator");
-    expect(indicator).toHaveAccessibleName(
-      "Sent while the agent was working to direct its behavior",
-    );
-    await user.hover(indicator);
-
     await expect(
-      screen.findByText(
-        "Sent while the agent was working to direct its behavior",
-        { selector: "div" },
-      ),
+      screen.findByTestId("chat-steer-acknowledgement"),
+    ).resolves.toBeVisible();
+    await expect(screen.findByText(STEER_ONE_COPY)).resolves.toBeVisible();
+  });
+
+  it("acknowledges a burst of steers once, counting every message", async () => {
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      activeRunIds: [RUN_ID],
+      chatEvents: [
+        transcriptEvent("U1", 0, []),
+        transcriptEvent("U2", 1, ["U2", "U3", "U4"]),
+        transcriptEvent("U3", 2, ["U2", "U3", "U4"]),
+        transcriptEvent("U4", 3, ["U2", "U3", "U4"]),
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: CONTINUATION_PRESENTATION_ENABLED,
+    });
+
+    await expect(screen.findByText("U4")).resolves.toBeInTheDocument();
+    await waitFor(() => {
+      expect(
+        screen.queryAllByTestId("chat-steer-acknowledgement"),
+      ).toHaveLength(1);
+    });
+    await expect(
+      screen.findByText("All 3 messages picked up mid-run — earlier work kept"),
     ).resolves.toBeVisible();
   });
 
-  it("keeps legacy actions and hides steer indicators when the feature switch is disabled", async () => {
+  it("acknowledges each burst separately when Zero answers in between", async () => {
+    // Reconciled steers carry the run id, so the transcript keeps them in
+    // arrival order and Zero's reply genuinely separates the two bursts.
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      activeRunIds: [RUN_ID],
+      chatEvents: [
+        transcriptEvent("U1", 0, []),
+        transcriptEvent("U2", 1, []),
+        transcriptEvent("U3", 2, []),
+        transcriptEvent("A1", 3, []),
+        transcriptEvent("U4", 4, []),
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: CONTINUATION_PRESENTATION_ENABLED,
+    });
+
+    await expect(screen.findByText("U4")).resolves.toBeInTheDocument();
+    await waitFor(() => {
+      expect(
+        screen.queryAllByTestId("chat-steer-acknowledgement").map((element) => {
+          return element.textContent;
+        }),
+      ).toStrictEqual([STEER_TWO_COPY, STEER_ONE_COPY]);
+    });
+  });
+
+  it("keeps legacy actions and hides the acknowledgement when the feature switch is disabled", async () => {
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
       activeRunIds: [RUN_ID],
@@ -201,6 +258,6 @@ describe("chat run actions", () => {
 
     await expect(screen.findByText("U2")).resolves.toBeInTheDocument();
     expect(screen.queryAllByTestId("chat-event-actions")).toHaveLength(1);
-    expect(screen.queryByTestId("chat-steer-indicator")).toBeNull();
+    expect(screen.queryByTestId("chat-steer-acknowledgement")).toBeNull();
   });
 });

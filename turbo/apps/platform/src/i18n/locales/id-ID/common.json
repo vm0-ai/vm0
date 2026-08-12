@@ -1674,7 +1674,8 @@
       "pickEmoji": "Pilih emoji",
       "scrollToBottom": "Gulir ke bawah",
       "searchEmoji": "Cari emoji",
-      "steerMessageExplanation": "Dikirim saat agen sedang bekerja untuk mengarahkan perilakunya"
+      "steerAcknowledgement_one": "Diterima saat proses berjalan — pekerjaan sebelumnya tetap ada",
+      "steerAcknowledgement_other": "Semua {{count}} pesan diterima saat proses berjalan — pekerjaan sebelumnya tetap ada"
     },
     "threadSidebar": {
       "resize": "Ubah ukuran sidebar"

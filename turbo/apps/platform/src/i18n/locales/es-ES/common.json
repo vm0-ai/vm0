@@ -1715,7 +1715,9 @@
       "pickEmoji": "Elige un emoji",
       "scrollToBottom": "Desplázate hasta abajo",
       "searchEmoji": "Buscar emoji",
-      "steerMessageExplanation": "Enviado mientras el agente trabajaba para dirigir su comportamiento"
+      "steerAcknowledgement_one": "Recibido durante la ejecución: se conserva el trabajo anterior",
+      "steerAcknowledgement_many": "Los {{count}} mensajes recibidos durante la ejecución: se conserva el trabajo anterior",
+      "steerAcknowledgement_other": "Los {{count}} mensajes recibidos durante la ejecución: se conserva el trabajo anterior"
     },
     "threadSidebar": {
       "resize": "Cambiar el tamaño de la barra lateral"

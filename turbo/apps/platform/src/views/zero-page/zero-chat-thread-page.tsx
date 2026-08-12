@@ -58,7 +58,6 @@ import {
   Clock,
   Hourglass,
   Share2,
-  CornerLeftUp,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -108,6 +107,7 @@ import {
   messageDocumentToPrompt,
 } from "../../signals/zero-page/user-message-document-codec.ts";
 import { avatarTemplateSelection } from "../../signals/zero-page/avatar-template-selection.ts";
+import { steerAcknowledgementRef$ } from "../../signals/zero-page/steer-acknowledgement.ts";
 import type {
   ChatThreadWorkflowAutomation,
   ZeroWorkflowSchedule,
@@ -3253,7 +3253,17 @@ function ChatThreadNextRunModelNotice({
   } else {
     return null;
   }
-  return <RunSectionDividerRow label={label} announce />;
+  // A live status, not a transcript landmark. The rule and the serif italic are
+  // reserved for marks that stay in the transcript; this line disappears the
+  // moment the run ends, so it reads as a plain caption instead.
+  return (
+    <div role="status" aria-live="polite" className={RUN_SECTION_ROW_CLASS}>
+      <div className="hidden @[900px]:block" />
+      <p className="min-w-0 break-words text-right text-[13px] text-muted-foreground">
+        {label}
+      </p>
+    </div>
+  );
 }
 
 interface ChatRunPresentation {
@@ -3972,7 +3982,7 @@ function RunSectionDivider({
   label,
   labelPosition = "left",
 }: {
-  label: string;
+  label: ReactNode;
   labelPosition?: "left" | "right";
 }) {
   return (
@@ -3995,24 +4005,55 @@ function RunSectionDivider({
   );
 }
 
-function RunSectionDividerRow({
-  label,
-  announce = false,
-}: {
-  label: string;
-  announce?: boolean;
-}) {
+function RunSectionDividerRow({ label }: { label: ReactNode }) {
   return (
-    <div
-      role={announce ? "status" : undefined}
-      aria-live={announce ? "polite" : undefined}
-      className={RUN_SECTION_ROW_CLASS}
-    >
+    <div className={RUN_SECTION_ROW_CLASS}>
       <div className="hidden @[900px]:block" />
       <div className="min-w-0">
         <RunSectionDivider label={label} labelPosition="right" />
       </div>
     </div>
+  );
+}
+
+// One acknowledgement per burst of consecutive steers, not one per message.
+// What the user is actually asking after firing off three corrections is
+// whether all three landed, so the label counts them; repeating "this one
+// arrived" under each message answers a question nobody asked and chops the
+// burst into unrelated pieces.
+function SteerAcknowledgementRow({ count }: { count: number }) {
+  const { t } = useTranslation();
+  const sweepRef = useSet(steerAcknowledgementRef$);
+  const label = t(
+    ($) => {
+      return $.chat.thread.steerAcknowledgement;
+    },
+    { count },
+  );
+  return (
+    <RunSectionDividerRow
+      label={
+        // Remounting on every change is what tells the sweep to run. The
+        // outgoing layer stays empty here: the wording it erases is whatever
+        // this row said last, which only the row itself still knows.
+        <span
+          key={label}
+          ref={sweepRef}
+          data-testid="chat-steer-acknowledgement"
+          data-steer-acknowledgement-label={label}
+          className="zero-steer-ack"
+        >
+          <span
+            aria-hidden="true"
+            data-steer-acknowledgement-outgoing=""
+            className="zero-steer-ack-layer zero-steer-ack-outgoing"
+          />
+          <span className="zero-steer-ack-layer zero-steer-ack-incoming">
+            {label}
+          </span>
+        </span>
+      }
+    />
   );
 }
 
@@ -6150,6 +6191,12 @@ function PagedUserGroup({
   steerEventIds: ReadonlySet<string>;
   runGroupFolds?: readonly RunGroupFoldControl[];
 }) {
+  // Consecutive user events already arrive as one group, so the burst boundary
+  // is the group boundary — a run of steers separated by assistant output lands
+  // in a group of its own and gets its own acknowledgement.
+  const steerCount = group.events.filter((event) => {
+    return steerEventIds.has(event.id);
+  }).length;
   return (
     <>
       {group.events.map((event) => {
@@ -6159,14 +6206,11 @@ function PagedUserGroup({
             {modelChange === undefined ? null : (
               <ModelChangeDividerRow change={modelChange} />
             )}
-            <PagedUserMessage
-              event={event}
-              thread={thread}
-              steer={steerEventIds.has(event.id)}
-            />
+            <PagedUserMessage event={event} thread={thread} />
           </div>
         );
       })}
+      {steerCount > 0 ? <SteerAcknowledgementRow count={steerCount} /> : null}
       {runGroupFolds?.map((fold) => {
         return <RunGroupFoldRow key={fold.fold.key} control={fold} />;
       })}
@@ -7206,50 +7250,11 @@ function isElevatedUserMessagePart(
   );
 }
 
-function SteerMessageIndicator() {
-  const { t } = useTranslation();
-  const explanation = t(($) => {
-    return $.chat.thread.steerMessageExplanation;
-  });
-
+function UserMessageBubble({ children }: { children: ReactNode }) {
   return (
-    <TooltipProvider delayDuration={300}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span
-            data-testid="chat-steer-indicator"
-            role="img"
-            aria-label={explanation}
-            className="flex h-7 w-5 shrink-0 cursor-help items-center justify-center text-muted-foreground transition-colors hover:text-foreground"
-          >
-            <CornerLeftUp size={14} strokeWidth={1.8} />
-          </span>
-        </TooltipTrigger>
-        <TooltipContent side="top">{explanation}</TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
-  );
-}
-
-function UserMessageBubble({
-  children,
-  steer,
-}: {
-  children: ReactNode;
-  steer: boolean;
-}) {
-  const bubble = (
     <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-[0.9375rem] leading-[1.7] [overflow-wrap:anywhere] overflow-hidden">
       {children}
     </div>
-  );
-  return steer ? (
-    <div className="flex w-full items-center justify-end gap-1.5">
-      <SteerMessageIndicator />
-      {bubble}
-    </div>
-  ) : (
-    bubble
   );
 }
 
@@ -7257,12 +7262,10 @@ function UserMessageContent({
   document,
   attachments,
   onImageClick,
-  steer,
 }: {
   document: UserMessageRenderDocument;
   attachments: ReturnType<typeof userMessageRenderAttachments>;
   onImageClick: OpenMessageImagePreview;
-  steer: boolean;
 }) {
   // Attachments read as their own object, so they all sit above the bubble
   // instead of interrupting the sentence they were dropped into. Attachments
@@ -7289,7 +7292,7 @@ function UserMessageContent({
         onImageClick={onImageClick}
       />
       {hasBody ? (
-        <UserMessageBubble steer={steer}>
+        <UserMessageBubble>
           <div className="px-4 py-3">
             <UserMessageView
               document={document}
@@ -7449,11 +7452,9 @@ function messageImageLightboxTarget(
 function PagedUserMessage({
   event,
   thread,
-  steer,
 }: {
   event: EnrichedChatEvent;
   thread: ChatPanelSignals;
-  steer: boolean;
 }) {
   const inputEvent = asInputChatEvent(event);
   const renderDocument = event.userMessageRenderDocument;
@@ -7533,7 +7534,6 @@ function PagedUserMessage({
               document={renderDocument}
               attachments={allAttachments}
               onImageClick={openLightbox}
-              steer={steer}
             />
           ) : (
             <>
@@ -7542,7 +7542,7 @@ function PagedUserMessage({
                 onImageClick={openLightbox}
               />
               {event.tree !== undefined && (
-                <UserMessageBubble steer={steer}>
+                <UserMessageBubble>
                   <div className="px-4 py-3">
                     <MarkdownEventBody tree={event.tree} mediaPreview={false} />
                   </div>
