@@ -6,7 +6,10 @@ import {
   WEBSITE_TEMPLATE_ITEMS,
   WORKFLOW_TEMPLATE_ITEMS,
 } from "@vm0/core";
-import { findImageStyle } from "@vm0/core/resource-registry";
+import {
+  findImageStyle,
+  findWebsiteTemplatePackage,
+} from "@vm0/core/resource-registry";
 import {
   buildGenerationTemplatePrompt,
   buildGenerationTemplatesPrompt,
@@ -349,13 +352,20 @@ describe("buildGenerationTemplatePrompt", () => {
   it("builds website template package guidance", () => {
     const item = WEBSITE_TEMPLATE_ITEMS[0]!;
     const resourceId = item.resourceId;
+    const latestPackage = findWebsiteTemplatePackage(resourceId);
+    if (!latestPackage) {
+      throw new Error("Expected current Website template package");
+    }
 
-    const result = buildGenerationTemplatePrompt({
-      type: "website",
-      selection: {
-        websiteTemplateId: item.id,
+    const result = buildGenerationTemplatePrompt(
+      {
+        type: "website",
+        selection: {
+          websiteTemplateId: item.id,
+        },
       },
-    });
+      { latestWebsiteTemplatesEnabled: true },
+    );
 
     expect(result).toStrictEqual({
       status: "resolved",
@@ -367,6 +377,9 @@ describe("buildGenerationTemplatePrompt", () => {
     expect(result.prompt).toContain(`Template: ${item.title} (${item.id})`);
     expect(result.prompt).toContain(`Template package id: ${resourceId}`);
     expect(result.prompt).toContain(`Package resource: ${resourceId}`);
+    expect(result.prompt).toContain(
+      `Template archive SHA-256: ${latestPackage.source.archive.sha256}`,
+    );
     expect(result.prompt).toContain(
       `okou resource pull ${resourceId} --dir ./generated/resources`,
     );
@@ -384,12 +397,15 @@ describe("buildGenerationTemplatePrompt", () => {
   it("selects every current website template package", () => {
     for (const item of WEBSITE_TEMPLATE_ITEMS) {
       const resourceId = item.resourceId;
-      const result = buildGenerationTemplatePrompt({
-        type: "website",
-        selection: {
-          websiteTemplateId: item.id,
+      const result = buildGenerationTemplatePrompt(
+        {
+          type: "website",
+          selection: {
+            websiteTemplateId: item.id,
+          },
         },
-      });
+        { latestWebsiteTemplatesEnabled: true },
+      );
 
       expect(result).toStrictEqual({
         status: "resolved",
@@ -406,6 +422,36 @@ describe("buildGenerationTemplatePrompt", () => {
         `./generated/resources/${item.sourcePath}/render.mjs`,
       );
     }
+  });
+
+  it("keeps the pre-cutover website picker package outside the rollout", () => {
+    const item = WEBSITE_TEMPLATE_ITEMS[0]!;
+    const previousResourceId = `${item.resourceId}-v2`;
+    const previousPackage = findWebsiteTemplatePackage(previousResourceId);
+    if (!previousPackage) {
+      throw new Error("Expected pre-cutover Website template package");
+    }
+    const result = buildGenerationTemplatePrompt({
+      type: "website",
+      selection: {
+        websiteTemplateId: item.id,
+      },
+    });
+
+    expect(result).toStrictEqual({
+      status: "resolved",
+      prompt: expect.stringContaining(
+        `okou resource pull ${previousResourceId} --dir ./generated/resources`,
+      ),
+    });
+    if (result.status !== "resolved") {
+      return;
+    }
+    expect(result.prompt).toContain(
+      `Template archive SHA-256: ${previousPackage.source.archive.sha256}`,
+    );
+    expect(result.prompt).toContain("resolve-images.mjs");
+    expect(result.prompt).not.toContain("use `seedream4` by default");
   });
 
   it("rejects unknown workflow templates", () => {

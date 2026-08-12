@@ -32,13 +32,6 @@ import { bodyResultOf } from "../context/request";
 import { request$ } from "../context/hono";
 import { writeDb$, type Db } from "../external/db";
 import { nowDate } from "../../lib/time";
-import {
-  resetSecretKmsClientForTests,
-  setSecretKmsClientForTests,
-  type SecretKmsClient,
-  type SecretKmsDataKey,
-  type SecretKmsGenerateDataKeyRequest,
-} from "../../lib/secret-kms-client";
 import { testOverride } from "../../lib/singleton";
 import type { RouteEntry } from "../route-entry";
 import {
@@ -61,11 +54,7 @@ import {
 // Test-only support actions for generic infrastructure fixtures.
 
 const actionBody$ = bodyResultOf(testRuntimeStateContract.action);
-const fakeKmsDataKey = Buffer.from("0123456789abcdef0123456789abcdef", "utf8");
 const VM0_MANAGED_MODEL_KEY_FIXTURE_PREFIX = "vm0-key-runtime-fixture-";
-const fakeKmsDecryptCallCount = testOverride<number>(() => {
-  return 0;
-});
 
 interface OrgAdmissionLockGate {
   holderPid: number | null;
@@ -182,27 +171,6 @@ async function readOrgAdmissionLockState(
     throw new Error("Failed to read org admission lock state");
   }
   return state;
-}
-
-function fakeSecretKmsClient(): SecretKmsClient {
-  return {
-    generateDataKey(
-      request: SecretKmsGenerateDataKeyRequest,
-    ): Promise<SecretKmsDataKey> {
-      return Promise.resolve({
-        keyId: request.keyId,
-        plaintext: fakeKmsDataKey,
-        encryptedDataKey: Buffer.from(
-          `encrypted-data-key:${request.keyId}`,
-          "utf8",
-        ),
-      });
-    },
-    decrypt(): Promise<Uint8Array> {
-      fakeKmsDecryptCallCount.set(fakeKmsDecryptCallCount.get() + 1);
-      return Promise.resolve(fakeKmsDataKey);
-    },
-  };
 }
 
 async function seedVm0ManagedDefaultModelKey(
@@ -1454,25 +1422,6 @@ const postRuntimeStateAction$ = command(
       );
     }
     switch (body.action) {
-      case "enable-fake-kms": {
-        fakeKmsDecryptCallCount.set(0);
-        setSecretKmsClientForTests(fakeSecretKmsClient());
-        return { status: 200 as const, body: { ok: true as const } };
-      }
-      case "reset-fake-kms": {
-        resetSecretKmsClientForTests();
-        fakeKmsDecryptCallCount.set(0);
-        return { status: 200 as const, body: { ok: true as const } };
-      }
-      case "read-fake-kms-state": {
-        return {
-          status: 200 as const,
-          body: {
-            ok: true as const,
-            decrypt_call_count: fakeKmsDecryptCallCount.get(),
-          },
-        };
-      }
       case "mutate-runner-job-secret-value-environment-keys": {
         await mutateRunnerJobSecretValueEnvironmentKeys(
           db,

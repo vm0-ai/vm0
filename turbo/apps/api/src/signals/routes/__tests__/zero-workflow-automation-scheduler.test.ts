@@ -89,12 +89,12 @@ function expectOk(response: Response, operation: string): void {
   throw new Error(`${operation} failed with ${response.status}`);
 }
 
-function zeroTokenFromClaim(
+function okouTokenFromClaim(
   claim: Awaited<ReturnType<typeof runsApi.claimRunnerJob>>,
 ): string {
-  const token = claim.environment?.ZERO_TOKEN;
+  const token = claim.environment?.OKOU_TOKEN;
   if (!token || !token.startsWith("vm0_sandbox_")) {
-    throw new Error("Expected the claim environment to carry a ZERO_TOKEN");
+    throw new Error("Expected the claim environment to carry an OKOU_TOKEN");
   }
   return token;
 }
@@ -335,7 +335,7 @@ describe("okou workflow automation scheduler", () => {
     await runsApi.heartbeatRunner(scenario.runnerGroup);
     const claim = await runsApi.claimRunnerJob(run.runId);
     await computerUseApi.requestCreateComputerUseWriteCommand(
-      { bearer: zeroTokenFromClaim(claim) },
+      { bearer: okouTokenFromClaim(claim) },
       [200],
     );
     const createdRun = await runsApi.readRun(scenario.actor, run.runId);
@@ -355,7 +355,7 @@ describe("okou workflow automation scheduler", () => {
     await runsApi.heartbeatRunner(scenario.runnerGroup);
     const claim = await runsApi.claimRunnerJob(run.runId);
     const denied = await computerUseApi.requestCreateComputerUseWriteCommand(
-      { bearer: zeroTokenFromClaim(claim) },
+      { bearer: okouTokenFromClaim(claim) },
       [403],
     );
     expect(denied.body).toMatchObject({

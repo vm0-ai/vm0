@@ -4,6 +4,7 @@ import { presentationTemplates } from "@vm0/db/schema/presentation-template";
 import { eq } from "drizzle-orm";
 
 import { conflict, badRequestMessage, notFound } from "../../lib/error";
+import { env } from "../../lib/env";
 import { isUniqueViolation } from "../../lib/pg-errors";
 import { templateImportPrompt } from "../../lib/template-import-prompt";
 import { now, nowDate } from "../../lib/time";
@@ -185,7 +186,10 @@ export const createPresentationTemplate$ = command(
             agentComposeId: metadata.defaultAgentId,
             prompt: templateImportPrompt(inserted.row.id),
             triggerSource: "template-import",
-            vars: { PRESENTATION_TEMPLATE_ID: inserted.row.id },
+            vars: {
+              PRESENTATION_TEMPLATE_ID: inserted.row.id,
+              OKOU_AGENT_ID: metadata.defaultAgentId,
+            },
           },
           apiStartTime: now(),
           callbacks: [
@@ -196,6 +200,10 @@ export const createPresentationTemplate$ = command(
           ],
           dispatchFailedCallbacks: dispatchFailedRunCallbacks,
           includeZeroTokenSecret: true,
+          extraEnvironment: {
+            OKOU_APP_URL: env("APP_URL"),
+            OKOU_AGENT_ID: metadata.defaultAgentId,
+          },
           connectorScope: {
             allowedConnectorSlugs: [],
             allowedCustomConnectorIds: [],

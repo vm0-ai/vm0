@@ -1427,9 +1427,13 @@ if (!hasSingleInstanceLock) {
         app.exit(1);
         return;
       }
-      console.log(DESKTOP_SMOKE_TEST_READY_MARKER);
-      quitConfirmation.allowQuitWithoutConfirmation();
-      app.quit();
+      await new Promise<void>((resolve) => {
+        process.stdout.write(`${DESKTOP_SMOKE_TEST_READY_MARKER}\n`, () => {
+          resolve();
+        });
+      });
+      app.exit(0);
+      return;
     }
   });
 

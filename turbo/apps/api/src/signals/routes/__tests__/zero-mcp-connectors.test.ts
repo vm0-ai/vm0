@@ -72,8 +72,8 @@ async function createRunForAgent(actor: ApiTestUser, agentId: string) {
     agentComposeId: agentId,
     prompt: "Discover MCP connectors",
     modelProviderType: "anthropic-api-key",
-    vars: { ZERO_AGENT_ID: agentId },
-    secrets: { ZERO_TOKEN: "mcp-discovery-zero-token" },
+    vars: { OKOU_AGENT_ID: agentId },
+    secrets: { OKOU_TOKEN: "mcp-discovery-okou-token" },
   });
 }
 

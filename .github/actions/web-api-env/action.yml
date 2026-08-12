@@ -128,7 +128,6 @@ runs:
           local value
           value="$(first_non_empty "$(repo_var "OKOU_${suffix}")" "$(repo_var "ZERO_${suffix}")")"
           add_env "OKOU_${suffix}" "$value"
-          add_env "ZERO_${suffix}" "$value"
         }
 
         add_okou_secret() {
@@ -136,7 +135,6 @@ runs:
           local value
           value="$(first_non_empty "$(repo_secret "OKOU_${suffix}")" "$(repo_secret "ZERO_${suffix}")")"
           add_env "OKOU_${suffix}" "$value"
-          add_env "ZERO_${suffix}" "$value"
         }
 
         add_oauth_client_config_key() {

@@ -38,6 +38,26 @@ const STORAGE_BUCKET = "test-user-storages";
 const PPTX_CONTENT_TYPE =
   "application/vnd.openxmlformats-officedocument.presentationml.presentation";
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function runTokenPayload(token: string): Record<string, unknown> {
+  const payload = token.slice("vm0_sandbox_".length).split(".")[1];
+  if (!payload) {
+    throw new Error("Expected the presentation run token to contain a payload");
+  }
+  const parsed: unknown = JSON.parse(
+    Buffer.from(payload, "base64url").toString(),
+  );
+  if (!isRecord(parsed)) {
+    throw new Error(
+      "Expected the presentation run token payload to be an object",
+    );
+  }
+  return parsed;
+}
+
 interface StoredObject {
   readonly body: Buffer;
   readonly contentType: string | undefined;
@@ -620,8 +640,8 @@ describe("presentation template imports", () => {
       agentComposeId: ownerAgentId,
       prompt: "Unrelated owner run",
       triggerSource: "test",
-      vars: { ZERO_AGENT_ID: ownerAgentId },
-      secrets: { ZERO_TOKEN: "unrelated-test-token" },
+      vars: { OKOU_AGENT_ID: ownerAgentId },
+      secrets: { OKOU_TOKEN: "unrelated-test-token" },
     });
 
     const wrongRunHeaders = [
@@ -680,7 +700,9 @@ describe("presentation template imports", () => {
 
   it("creates, compiles, renames, reads, and deletes an owned template", async () => {
     const actor = bdd.user();
-    await prepareImportActor(actor);
+    const appUrl = "https://app.presentation-writer-stop.example.test";
+    mockEnv("APP_URL", appUrl);
+    const defaultAgentId = await prepareImportActor(actor);
 
     const fixture = installS3Fixture();
     const source = await prepareSource(fixture, {
@@ -709,6 +731,34 @@ describe("presentation template imports", () => {
     });
 
     const runId = await importRunId(actor, created.body.id);
+    await runs.heartbeatRunner();
+    const claim = await runs.claimRunnerJob(runId);
+    const okouToken = claim.environment?.OKOU_TOKEN;
+    if (!okouToken) {
+      throw new Error("Expected the presentation import to expose OKOU_TOKEN");
+    }
+    expect(claim.environment).toMatchObject({
+      OKOU_APP_URL: appUrl,
+      OKOU_AGENT_ID: defaultAgentId,
+      OKOU_TOKEN: okouToken,
+    });
+    expect(
+      Object.keys(claim.environment ?? {}).filter((key) => {
+        return key.startsWith("ZERO_");
+      }),
+    ).toStrictEqual([]);
+    expect(
+      Object.values(claim.environment ?? {}).some((value) => {
+        return value.includes("${{");
+      }),
+    ).toBeFalsy();
+    expect(claim.secretValues).toContain(okouToken);
+    expect(runTokenPayload(okouToken)).toMatchObject({
+      scope: "okou",
+      userId: actor.userId,
+      orgId: actor.orgId,
+      runId,
+    });
     const runHeaders = sandboxHeaders(actor, runId);
     const sourceDownload = await accept(
       client.source({

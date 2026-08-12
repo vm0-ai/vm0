@@ -517,19 +517,13 @@ function buildZeroRunExtraEnvironment(args: {
 }): Record<string, string> {
   return {
     OKOU_APP_URL: env("APP_URL"),
-    ZERO_APP_URL: env("APP_URL"),
     OKOU_AGENT_ID: args.agentId,
-    ZERO_AGENT_ID: args.agentId,
-    // Keep the retired rollout marker for older guest CLIs until the CLI
-    // released with this cleanup is the oldest supported guest CLI version.
-    ZERO_CONNECTOR_ACTION_CALLBACK_ENABLED: "1",
     // Chat-mode automation (and web) runs carry their thread id so the
     // in-sandbox CLI can bind a newly created automation to it (the create
     // flow reads $OKOU_CHAT_THREAD_ID when no thread is given).
     ...(args.chatThreadId
       ? {
           OKOU_CHAT_THREAD_ID: args.chatThreadId,
-          ZERO_CHAT_THREAD_ID: args.chatThreadId,
         }
       : {}),
     ...(args.codexServiceTier
@@ -650,7 +644,6 @@ function createRunBody(args: {
     disallowedTools: [...DISALLOWED_TOOLS],
     vars: {
       OKOU_AGENT_ID: args.agent.id,
-      ZERO_AGENT_ID: args.agent.id,
     },
   };
 }

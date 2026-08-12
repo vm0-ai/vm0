@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { cronDrainEmailOutboxContract } from "@vm0/api-contracts/contracts/cron";
+import type { TestEmailOutboxStateItem } from "@vm0/api-contracts/contracts/test-email-outbox-state";
 import { userExportContract } from "@vm0/api-contracts/contracts/user-export";
 
 import { accept, type TestContext } from "../../../../__tests__/test-context";
@@ -9,9 +10,9 @@ import { flushWaitUntilForTest } from "../../../context/wait-until";
 import { cronDrainEmailOutboxRoutes } from "../../cron-drain-email-outbox";
 import { userExportRoutes } from "../../user-export";
 import type { ApiTestUser } from "./api-bdd";
+import { createEmailOutboxStateApi } from "./email-outbox-state";
 import { createZeroRouteMocks } from "./zero-route-test";
 
-const CRON_AUTHORIZATION = "Bearer test-cron-secret";
 const EMAIL_ROUTES = Object.freeze([
   ...cronDrainEmailOutboxRoutes,
   ...userExportRoutes,
@@ -43,6 +44,8 @@ function authenticate(context: TestContext, actor: ApiTestUser) {
 }
 
 export function createEmailApi(context: TestContext) {
+  const outbox = createEmailOutboxStateApi(context);
+
   return {
     async enqueueDataExportEmail(
       actor: ApiTestUser,
@@ -70,15 +73,40 @@ export function createEmailApi(context: TestContext) {
       ) {
         throw new Error("Expected the data export email job to complete");
       }
-      return { to: actor.email, subject: "Your data export is ready" };
+      const subject = "Your data export is ready";
+      return { to: actor.email, subject };
     },
 
-    async drainEmailOutboxCron(validAuth: boolean) {
+    async findEmailOutboxItems(options: {
+      readonly to: string;
+      readonly subject: string;
+    }): Promise<readonly TestEmailOutboxStateItem[]> {
+      return await outbox.findItems({
+        toAddress: options.to,
+        subject: options.subject,
+      });
+    },
+
+    async findEmailOutboxItem(options: {
+      readonly to: string;
+      readonly subject: string;
+    }): Promise<TestEmailOutboxStateItem> {
+      return await outbox.findItem({
+        toAddress: options.to,
+        subject: options.subject,
+      });
+    },
+
+    async drainEmailOutboxItems(itemIds: readonly string[]): Promise<number> {
+      return await outbox.drainItems(itemIds);
+    },
+
+    async requestEmailOutboxCronWithoutAuth() {
       return await accept(
         emailApp(context)(cronDrainEmailOutboxContract).drain({
-          headers: validAuth ? { authorization: CRON_AUTHORIZATION } : {},
+          headers: {},
         }),
-        [200, 401],
+        [401],
       );
     },
   };

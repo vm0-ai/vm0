@@ -16,6 +16,7 @@ import {
 import type { CreateCustomConnectorBody } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import { testCustomConnectorSkillVersionAssociationContract } from "@vm0/api-contracts/contracts/test-custom-connector-skill-version-association";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV } from "@vm0/core/resource-registry";
 import {
   getCustomConnectorSkillStorageName,
   getCustomSkillStorageName,
@@ -37,7 +38,7 @@ import { setupApp } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createDeferredPromise } from "../../utils";
-import { verifyZeroToken } from "../../auth/tokens";
+import { generateZeroToken, verifyZeroToken } from "../../auth/tokens";
 import {
   deleteUsagePricingRows,
   seedOrgMetadata,
@@ -101,24 +102,22 @@ import {
 } from "./helpers/connector-credential-storage-state";
 import {
   clearRunApiStart,
-  enableFakeKms,
   holdOrgAdmissionLock,
   mutateRunnerJobConnectorPermissionBaseline,
   mutateRunnerJobSecretValueEnvironmentKeys,
   removeRunCanonicalStorageState,
-  readFakeKmsDecryptCallCount,
   readOrgAdmissionLockState,
   readRunApiStart,
   readRunClaimOwner,
   readRunnerJobStorageState,
   readStoragePersistenceState,
   releaseOrgAdmissionLock,
-  resetFakeKms,
   seedVm0ManagedDefaultModelKey as seedVm0ManagedDefaultModelKeyState,
   seedVm0ManagedModelKey as seedVm0ManagedModelKeyState,
   setCustomConnectorAuthTemplateFixture,
   setRunnerJobContextProfileAsPreviousApi,
 } from "./helpers/runtime-state";
+import { useSecretKmsProbe } from "./helpers/secret-kms-probe";
 import {
   setSecretKmsClientForTests,
   type SecretKmsClient,
@@ -724,35 +723,64 @@ function sandboxTokenPayload(token: string): Record<string, unknown> {
   return parsed;
 }
 
-function expectBrandedRunEnvironment(args: {
+function expectCanonicalOkouRunEnvironment(args: {
   readonly environment: Readonly<Record<string, string>> | null | undefined;
   readonly secretValues: readonly string[] | null | undefined;
   readonly appUrl: string;
   readonly agentId: string;
+  readonly userId: string;
+  readonly orgId: string;
+  readonly runId: string;
+  readonly chatThreadId?: string;
 }): void {
   expect(args.environment?.OKOU_APP_URL).toBe(args.appUrl);
-  expect(args.environment?.ZERO_APP_URL).toBe(args.appUrl);
   expect(args.environment?.OKOU_AGENT_ID).toBe(args.agentId);
-  expect(args.environment?.ZERO_AGENT_ID).toBe(args.agentId);
+  if (args.chatThreadId) {
+    expect(args.environment?.OKOU_CHAT_THREAD_ID).toBe(args.chatThreadId);
+  }
+  expect(
+    Object.keys(args.environment ?? {}).filter((key) => {
+      return key.startsWith("ZERO_");
+    }),
+  ).toStrictEqual([]);
   const okouToken = args.environment?.OKOU_TOKEN;
-  const zeroToken = args.environment?.ZERO_TOKEN;
-  if (!okouToken || !zeroToken) {
-    throw new Error("Expected the claim to expose both branded run tokens");
+  if (!okouToken) {
+    throw new Error(
+      "Expected the claim to expose the canonical Okou run token",
+    );
   }
   expect(okouToken.startsWith("vm0_sandbox_")).toBeTruthy();
-  expect(zeroToken.startsWith("vm0_sandbox_")).toBeTruthy();
-  expect(okouToken.localeCompare(zeroToken)).not.toBe(0);
   expect(args.secretValues?.includes(okouToken) ?? false).toBeTruthy();
-  expect(args.secretValues?.includes(zeroToken) ?? false).toBeTruthy();
   const okouClaims = sandboxTokenPayload(okouToken);
-  const zeroClaims = sandboxTokenPayload(zeroToken);
-  expect(okouClaims).toMatchObject({ scope: "okou" });
-  expect(zeroClaims).toMatchObject({ scope: "zero" });
-  expect({ ...okouClaims, scope: "zero" }).toStrictEqual(zeroClaims);
+  expect(okouClaims).toMatchObject({
+    scope: "okou",
+    userId: args.userId,
+    orgId: args.orgId,
+    runId: args.runId,
+    capabilities: expect.any(Array),
+    iat: expect.any(Number),
+    exp: expect.any(Number),
+  });
+  expect(Number(okouClaims.exp)).toBeGreaterThan(Number(okouClaims.iat));
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function runContextSnapshotForRun(runId: string): Record<string, unknown> {
+  for (const [dataset, events] of context.mocks.axiom.ingest.mock.calls) {
+    if (dataset !== "run-context" || !Array.isArray(events)) {
+      continue;
+    }
+    const snapshot = events.find((event) => {
+      return isRecord(event) && event.runId === runId;
+    });
+    if (isRecord(snapshot)) {
+      return snapshot;
+    }
+  }
+  throw new Error(`Expected a run-context snapshot for ${runId}`);
 }
 
 function sandboxOperationEventsForRun(
@@ -1220,8 +1248,8 @@ function zeroBackedDirectRunBody(args: {
       : { agentComposeId: args.agentId }),
     prompt: args.prompt,
     modelProviderType: "anthropic-api-key" as const,
-    vars: { ZERO_AGENT_ID: args.agentId },
-    secrets: { ZERO_TOKEN: "bdd-zero-direct-token" },
+    vars: { OKOU_AGENT_ID: args.agentId },
+    secrets: { OKOU_TOKEN: "bdd-okou-direct-token" },
   };
 }
 
@@ -1283,6 +1311,12 @@ async function setupSameThreadReuseScenario(sourceRunnerIdentity?: {
     first.runId,
     sourceRunnerIdentity ? { runnerIdentity: sourceRunnerIdentity } : {},
   );
+  expect(firstClaim.environment?.OKOU_CHAT_THREAD_ID).toBe(first.threadId);
+  expect(
+    Object.keys(firstClaim.environment ?? {}).filter((key) => {
+      return key.startsWith("ZERO_");
+    }),
+  ).toStrictEqual([]);
   const cliAgentSessionId = `bdd-reuse-cli-${first.runId}`;
   const reuseKey = `thread:${first.threadId}`;
   const reuseRunnerId = randomUUID();
@@ -5335,10 +5369,7 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
   it("queues runs over the concurrency limit and promotes them after cancellation", async () => {
     const api = createRunsApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
-    await enableFakeKms(context);
-    onTestFinished(async () => {
-      await resetFakeKms(context);
-    });
+    const kms = useSecretKmsProbe();
 
     const first = await api.createRun(actor, {
       agentId,
@@ -5390,15 +5421,16 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
         },
       }),
     );
-    const decryptCountBeforeClaim = await readFakeKmsDecryptCallCount(context);
+    const decryptCountBeforeClaim = kms.decryptCalls;
     await api.heartbeatRunner(runnerGroup);
     const thirdClaim = await api.claimRunnerJob(third.runId);
     expect(thirdClaim.prompt).toBe("queued run three");
-    const zeroToken = thirdClaim.environment?.ZERO_TOKEN;
-    if (!zeroToken) {
-      throw new Error("Expected the promoted claim to expose the zero token");
+    const okouToken = thirdClaim.environment?.OKOU_TOKEN;
+    if (!okouToken) {
+      throw new Error("Expected the promoted claim to expose the Okou token");
     }
-    expect(thirdClaim.secretValues).toContain(zeroToken);
+    expect(thirdClaim.secretValues).toContain(okouToken);
+    expect(thirdClaim.environment ?? {}).not.toHaveProperty("ZERO_TOKEN");
     expect(thirdClaim).not.toHaveProperty("secretValueEnvironmentKeys");
     expect(thirdClaim).not.toHaveProperty("runContextStorage");
     expectClaimNetworkPolicyRefreshPath(third.runId, "baseline_empty");
@@ -5453,9 +5485,7 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
         "api_to_claim_request",
       )[0],
     ).not.toHaveProperty("history_generation_run_id");
-    await expect(readFakeKmsDecryptCallCount(context)).resolves.toBe(
-      decryptCountBeforeClaim,
-    );
+    expect(kms.decryptCalls).toBe(decryptCountBeforeClaim);
 
     await api.requestCancelRun(actor, second.runId, [200]);
     await api.requestCancelRun(actor, third.runId, [200]);
@@ -6242,10 +6272,10 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     }
 
     const unsupported = await claimModel(unsupportedModel);
-    const unsupportedToken = unsupported.claim.environment?.ZERO_TOKEN;
+    const unsupportedToken = unsupported.claim.environment?.OKOU_TOKEN;
     if (!unsupportedToken) {
       throw new Error(
-        "Expected the unsupported-model run to expose ZERO_TOKEN",
+        "Expected the unsupported-model run to expose OKOU_TOKEN",
       );
     }
     expect(unsupported.claim.appendSystemPrompt ?? "").toContain(
@@ -6257,9 +6287,9 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     await api.requestCancelRun(actor, unsupported.runId, [200]);
 
     const supported = await claimModel(supportedModel);
-    const supportedToken = supported.claim.environment?.ZERO_TOKEN;
+    const supportedToken = supported.claim.environment?.OKOU_TOKEN;
     if (!supportedToken) {
-      throw new Error("Expected the supported-model run to expose ZERO_TOKEN");
+      throw new Error("Expected the supported-model run to expose OKOU_TOKEN");
     }
     expect(supported.claim.appendSystemPrompt ?? "").not.toContain(
       "okou recognize",
@@ -6270,9 +6300,9 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     await api.requestCancelRun(actor, supported.runId, [200]);
 
     const unknown = await claimModel(unknownModel);
-    const unknownToken = unknown.claim.environment?.ZERO_TOKEN;
+    const unknownToken = unknown.claim.environment?.OKOU_TOKEN;
     if (!unknownToken) {
-      throw new Error("Expected the unknown-model run to expose ZERO_TOKEN");
+      throw new Error("Expected the unknown-model run to expose OKOU_TOKEN");
     }
     expect(unknown.claim.appendSystemPrompt ?? "").not.toContain(
       "okou recognize",
@@ -6415,8 +6445,8 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
       prompt: "generate an image from slack",
       modelProviderType: "codex-oauth-token",
       triggerSource: "slack",
-      vars: { ZERO_AGENT_ID: agentId },
-      secrets: { ZERO_TOKEN: "bdd-zero-direct-token" },
+      vars: { OKOU_AGENT_ID: agentId },
+      secrets: { OKOU_TOKEN: "bdd-okou-direct-token" },
     });
     await api.heartbeatRunner(runnerGroup);
     const codexSlackClaim = await api.claimRunnerJob(codexSlackRun.runId);
@@ -7101,17 +7131,14 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
       },
     });
 
-    await enableFakeKms(context);
-    onTestFinished(async () => {
-      await resetFakeKms(context);
-    });
+    const kms = useSecretKmsProbe();
 
     const run = await api.createDirectRun(actor, {
       agentComposeId: compose.composeId,
       prompt: "use overridden x connector secret",
       secrets: { X_TOKEN: "body-x-token" },
     });
-    await expect(readFakeKmsDecryptCallCount(context)).resolves.toBe(0);
+    expect(kms.decryptCalls).toBe(0);
 
     const timingEvents = apiDispatchTimingEventsForRun(run.runId);
     expectApiDispatchActions(
@@ -7206,16 +7233,13 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
       },
     });
 
-    await enableFakeKms(context);
-    onTestFinished(async () => {
-      await resetFakeKms(context);
-    });
+    const kms = useSecretKmsProbe();
 
     const run = await api.createDirectRun(actor, {
       agentComposeId: compose.composeId,
       prompt: "use compose-overridden gitlab token",
     });
-    await expect(readFakeKmsDecryptCallCount(context)).resolves.toBe(0);
+    expect(kms.decryptCalls).toBe(0);
     const timingEvents = apiDispatchTimingEventsForRun(run.runId);
     expectNoApiDispatchActions(timingEvents, [
       "api_dispatch_prepare_context_decrypt_stored_connector_secrets",
@@ -7509,17 +7533,14 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     });
     await api.enableAgentConnectors(actor, agentId, ["x", "gitlab", "figma"]);
 
-    await enableFakeKms(context);
-    onTestFinished(async () => {
-      await resetFakeKms(context);
-    });
+    const kms = useSecretKmsProbe();
 
     const run = await api.createRun(actor, {
       agentId,
       prompt: "use lazy connector auth credentials",
       modelProvider: "anthropic-api-key",
     });
-    await expect(readFakeKmsDecryptCallCount(context)).resolves.toBe(0);
+    expect(kms.decryptCalls).toBe(0);
 
     await api.requestCancelRun(actor, run.runId, [200]);
     const cancelled = await api.readRun(actor, run.runId);
@@ -7733,7 +7754,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
         prompt: "use google ads with explicit developer token",
       }),
       secrets: {
-        ZERO_TOKEN: "bdd-zero-direct-token",
+        OKOU_TOKEN: "bdd-okou-direct-token",
         GOOGLE_ADS_DEVELOPER_TOKEN: "body-developer-token",
       },
     });
@@ -7826,10 +7847,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     api.acceptTelemetryIngest();
     api.configureRunnerGroup();
     await api.grantProEntitlement(actor);
-    await enableFakeKms(context);
-    onTestFinished(async () => {
-      await resetFakeKms(context);
-    });
+    const kms = useSecretKmsProbe();
     const composeName = `bdd-secret-refs-${randomUUID().slice(0, 8)}`;
     const compose = await api.createCompose(actor, {
       version: "1",
@@ -7855,7 +7873,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
         UNUSED_TOKEN: "unused-secret-value",
       },
     });
-    const decryptCountBeforeClaim = await readFakeKmsDecryptCallCount(context);
+    const decryptCountBeforeClaim = kms.decryptCalls;
     const claim = await api.claimRunnerJob(run.runId);
     expect(claim.environment?.FIRST_TOKEN).toBe("first-secret-value");
     expect(claim.environment?.SECOND_TOKEN).toBe("second-secret-value");
@@ -7864,9 +7882,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
       "second-secret-value",
       "first-secret-value",
     ]);
-    await expect(readFakeKmsDecryptCallCount(context)).resolves.toBe(
-      decryptCountBeforeClaim,
-    );
+    expect(kms.decryptCalls).toBe(decryptCountBeforeClaim);
     expect(claim).not.toHaveProperty("secretValueEnvironmentKeys");
     const claimActionTypes = new Set(
       claimRouteTimingEventsForRun(run.runId).map((event) => {
@@ -7894,10 +7910,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     api.configureRunnerGroup();
     await api.grantProEntitlement(actor);
 
-    await enableFakeKms(context);
-    onTestFinished(async () => {
-      await resetFakeKms(context);
-    });
+    const kms = useSecretKmsProbe();
     const composeName = `bdd-secret-fallback-${randomUUID().slice(0, 8)}`;
     const compose = await api.createCompose(actor, {
       version: "1",
@@ -7926,8 +7939,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
       missingRun.runId,
       "remove",
     );
-    const decryptCountBeforeMissingClaim =
-      await readFakeKmsDecryptCallCount(context);
+    const decryptCountBeforeMissingClaim = kms.decryptCalls;
 
     const missingClaim = await api.requestClaimRunnerJob(
       true,
@@ -7938,9 +7950,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     expect(missingClaim.body.error.message).toBe(
       "Job missing execution context",
     );
-    await expect(readFakeKmsDecryptCallCount(context)).resolves.toBe(
-      decryptCountBeforeMissingClaim,
-    );
+    expect(kms.decryptCalls).toBe(decryptCountBeforeMissingClaim);
     const failedMissingRun = await api.readRun(actor, missingRun.runId);
     expect(failedMissingRun.status).toBe("failed");
     expect(failedMissingRun.error).toBe(
@@ -7959,8 +7969,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
       invalidRun.runId,
       "invalid",
     );
-    const decryptCountBeforeInvalidClaim =
-      await readFakeKmsDecryptCallCount(context);
+    const decryptCountBeforeInvalidClaim = kms.decryptCalls;
 
     const claim = await api.claimRunnerJob(invalidRun.runId);
 
@@ -7968,9 +7977,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
       "first-fallback-secret",
       "second-fallback-secret",
     ]);
-    await expect(readFakeKmsDecryptCallCount(context)).resolves.toBe(
-      decryptCountBeforeInvalidClaim + 1,
-    );
+    expect(kms.decryptCalls).toBe(decryptCountBeforeInvalidClaim + 1);
     expect(claim).not.toHaveProperty("secretValueEnvironmentKeys");
     const materializationEvent = singleSandboxOperationEvent(
       claimRouteTimingEventsForRun(invalidRun.runId),
@@ -10099,17 +10106,14 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       ],
       agentId,
     });
-    await enableFakeKms(context);
-    onTestFinished(async () => {
-      await resetFakeKms(context);
-    });
+    const kms = useSecretKmsProbe();
 
     const run = await api.createRun(actor, {
       agentId,
       prompt: "use the proposed custom connector",
       modelProvider: "anthropic-api-key",
     });
-    await expect(readFakeKmsDecryptCallCount(context)).resolves.toBe(0);
+    expect(kms.decryptCalls).toBe(0);
     const timingEvents = apiDispatchTimingEventsForRun(run.runId);
     expectApiDispatchActions(
       timingEvents,
@@ -10184,7 +10188,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       tenant: "münich",
       scope: "initial-scope",
     });
-    await expect(readFakeKmsDecryptCallCount(context)).resolves.toBe(1);
+    expect(kms.decryptCalls).toBe(1);
 
     context.mocks.ably.publish.mockClear();
     await connectors.setCustomConnectorValues(actor, saved.connector.id, [
@@ -12005,7 +12009,131 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     expect(r2Claim.environment?.CLI_PKG_URL).toBe(
       "https://static.vm0.io/okou-cli/test-commit/package.tgz",
     );
+    expect(r2Claim.environment?.[WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV]).toBe(
+      "previous",
+    );
     await api.requestCancelRun(actor, r2Run.runId, [200]);
+  });
+
+  it("pins the latest Website template release into opted-in run contexts", async () => {
+    const api = createRunsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    await connectors.updateFeatureSwitches(actor, {
+      [FeatureSwitchKey.LatestWebsiteTemplates]: true,
+    });
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "use the latest Website template release",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+    expect(claim.environment?.[WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV]).toBe(
+      "latest",
+    );
+    await api.requestCancelRun(actor, run.runId, [200]);
+  });
+
+  it("projects immutable legacy compose templates only for new Okou contexts", async () => {
+    const appUrl = "https://app.writer-stop.example.test";
+    mockEnv("APP_URL", appUrl);
+    const api = createRunsApi(context);
+    const composes = createComposesBddApi(context);
+    const { actor, agentId, runnerGroup } = await zeroBackedDirectRunActor();
+    if (!actor.orgId) {
+      throw new Error("The legacy compose fixture requires an organization");
+    }
+
+    const canonicalCompose = await composes.requestReadComposeById(
+      actor,
+      agentId,
+      [200],
+    );
+    const canonicalAgent = Object.values(
+      canonicalCompose.body.content?.agents ?? {},
+    )[0];
+    expect(canonicalAgent?.environment).toStrictEqual({
+      OKOU_AGENT_ID: `\${{ vars.OKOU_AGENT_ID }}`,
+      OKOU_TOKEN: `\${{ secrets.OKOU_TOKEN }}`,
+    });
+
+    const legacyEnvironment = {
+      ZERO_AGENT_ID: `\${{ vars.ZERO_AGENT_ID }}`,
+      ZERO_TOKEN: `\${{ secrets.ZERO_TOKEN }}`,
+    };
+    const legacyCompose = await api.createCompose(actor, {
+      version: "1",
+      agents: {
+        [canonicalCompose.body.name]: {
+          framework: "claude-code",
+          environment: legacyEnvironment,
+        },
+      },
+    });
+    expect(legacyCompose.composeId).toBe(agentId);
+
+    const historicalZeroToken = generateZeroToken(
+      actor.userId,
+      "historical-context-fixture",
+      actor.orgId,
+    );
+    const historical = await api.createDirectRun(actor, {
+      agentComposeVersionId: legacyCompose.versionId,
+      prompt: "consume an immutable legacy Zero context",
+      modelProviderType: "anthropic-api-key",
+      vars: { ZERO_AGENT_ID: agentId },
+      secrets: { ZERO_TOKEN: historicalZeroToken },
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const historicalClaim = await api.claimRunnerJob(historical.runId);
+    expect(historicalClaim.agentComposeVersionId).toBe(legacyCompose.versionId);
+    expect(historicalClaim.environment).toMatchObject({
+      ZERO_AGENT_ID: agentId,
+      ZERO_TOKEN: historicalZeroToken,
+    });
+    expect(historicalClaim.environment ?? {}).not.toHaveProperty("OKOU_TOKEN");
+    expect(sandboxTokenPayload(historicalZeroToken)).toMatchObject({
+      scope: "zero",
+    });
+    expect(historicalClaim.secretValues).toContain(historicalZeroToken);
+    await api.requestCancelRun(actor, historical.runId, [200]);
+
+    const current = await api.createRun(actor, {
+      agentId,
+      prompt: "build a canonical context from a legacy compose version",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.heartbeatRunner(runnerGroup);
+    const currentClaim = await api.claimRunnerJob(current.runId);
+    expect(currentClaim.agentComposeVersionId).toBe(legacyCompose.versionId);
+    expectCanonicalOkouRunEnvironment({
+      environment: currentClaim.environment,
+      secretValues: currentClaim.secretValues,
+      appUrl,
+      agentId,
+      userId: actor.userId,
+      orgId: actor.orgId,
+      runId: current.runId,
+    });
+    expect(
+      Object.values(currentClaim.environment ?? {}).some((value) => {
+        return value.includes("${{");
+      }),
+    ).toBeFalsy();
+    await api.requestCancelRun(actor, current.runId, [200]);
+
+    const unchangedCompose = await composes.requestReadComposeById(
+      actor,
+      agentId,
+      [200],
+    );
+    expect(unchangedCompose.body.headVersionId).toBe(legacyCompose.versionId);
+    expect(
+      Object.values(unchangedCompose.body.content?.agents ?? {})[0]
+        ?.environment,
+    ).toStrictEqual(legacyEnvironment);
   });
 
   it("injects agent identity, tool hints, and user info into the runner context", async () => {
@@ -12255,18 +12383,26 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       EXPECTED_ZERO_RUN_DISALLOWED_TOOLS,
     );
     expect(claim.disallowedTools).not.toContain("WebFetch");
-    expectBrandedRunEnvironment({
+    expectCanonicalOkouRunEnvironment({
       environment: claim.environment,
       secretValues: claim.secretValues,
       appUrl,
       agentId: agent.agentId,
+      userId: actor.userId,
+      orgId: actor.orgId,
+      runId: run.runId,
     });
+    const runContextSnapshot = runContextSnapshotForRun(run.runId);
+    expect(runContextSnapshot.secretNames).toContain("OKOU_TOKEN");
+    expect(runContextSnapshot.secretNames).not.toContain("ZERO_TOKEN");
     expect(claim.environment?.CLI_PKG_URL).toBe(
       "https://static.vm0.io/okou-cli/test-commit/package.tgz",
     );
     expect(claim.environment?.VM0_APP_URL).toBeUndefined();
     expect(claim.environment?.APP_URL).toBeUndefined();
-    expect(claim.environment?.ZERO_CONNECTOR_ACTION_CALLBACK_ENABLED).toBe("1");
+    expect(claim.environment ?? {}).not.toHaveProperty(
+      "ZERO_CONNECTOR_ACTION_CALLBACK_ENABLED",
+    );
     expect(findFirewallEntry(claim.firewalls, "slack")).toStrictEqual({
       kind: "builtin",
       name: "slack",
@@ -12496,15 +12632,15 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     });
     expect(claim.apiStartTime).toBe(promotedAt);
 
-    // A run-scoped zero token issued without a host binding cannot reach
+    // A run-scoped Okou token issued without a host binding cannot reach
     // computer-use write routes.
-    const zeroToken = claim.environment?.ZERO_TOKEN;
-    if (!zeroToken) {
-      throw new Error("Expected the promoted claim to expose the zero token");
+    const okouToken = claim.environment?.OKOU_TOKEN;
+    if (!okouToken) {
+      throw new Error("Expected the promoted claim to expose the Okou token");
     }
     const writeRejected =
       await computerUse.requestCreateComputerUseWriteCommand(
-        { bearer: zeroToken },
+        { bearer: okouToken },
         [403],
       );
     expectApiError(writeRejected.body);
@@ -13185,10 +13321,7 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
     api.acceptTelemetryIngest();
     api.configureRunnerGroup();
     await api.grantProEntitlement(actor);
-    await enableFakeKms(context);
-    onTestFinished(async () => {
-      await resetFakeKms(context);
-    });
+    const kms = useSecretKmsProbe();
 
     // A plain compose carries inline environment values but no body, model
     // provider, or connector secrets, so no encrypted secrets map is stored
@@ -13210,15 +13343,12 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
     });
     expect(run.status).toBe("pending");
 
-    const decryptCountBeforeNullClaim =
-      await readFakeKmsDecryptCallCount(context);
+    const decryptCountBeforeNullClaim = kms.decryptCalls;
     const claim = await api.claimRunnerJob(run.runId);
     expect(claim.secretValues).toBeNull();
     expect(claim.prompt).toBe("claim without stored secrets");
     expect(claim).not.toHaveProperty("secretValueEnvironmentKeys");
-    await expect(readFakeKmsDecryptCallCount(context)).resolves.toBe(
-      decryptCountBeforeNullClaim,
-    );
+    expect(kms.decryptCalls).toBe(decryptCountBeforeNullClaim);
 
     await api.requestCancelRun(actor, run.runId, [200]);
     const cancelled = await api.readRun(actor, run.runId);
@@ -13229,14 +13359,11 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
       prompt: "claim without matching environment secrets",
       secrets: { UNUSED_TOKEN: "unused-secret-value" },
     });
-    const decryptCountBeforeEmptyClaim =
-      await readFakeKmsDecryptCallCount(context);
+    const decryptCountBeforeEmptyClaim = kms.decryptCalls;
     const emptyClaim = await api.claimRunnerJob(emptyRun.runId);
     expect(emptyClaim.secretValues).toStrictEqual([]);
     expect(emptyClaim).not.toHaveProperty("secretValueEnvironmentKeys");
-    await expect(readFakeKmsDecryptCallCount(context)).resolves.toBe(
-      decryptCountBeforeEmptyClaim,
-    );
+    expect(kms.decryptCalls).toBe(decryptCountBeforeEmptyClaim);
     await api.requestCancelRun(actor, emptyRun.runId, [200]);
 
     // A compose pinned to a non-vm0 runner group fails dispatch at creation.
