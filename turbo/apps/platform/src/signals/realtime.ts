@@ -47,7 +47,7 @@ interface StableRealtimeChannel {
   readonly subscribe: (
     topic: string | null,
     callback: ChannelCallback,
-  ) => Promise<void>;
+  ) => Promise<unknown>;
   readonly unsubscribe: (
     topic: string | null,
     callback: ChannelCallback,
@@ -458,15 +458,14 @@ interface ActiveChannelSubscription {
   readonly channels: Set<RealtimeChannel>;
 }
 
-async function subscribeToRealtimeChannel(
+function subscribeToRealtimeChannel(
   channel: RealtimeChannel,
   subscription: ActiveChannelSubscription,
-): Promise<void> {
+): Promise<unknown> {
   if (subscription.topic === null) {
-    await channel.subscribe(subscription.callback);
-    return;
+    return channel.subscribe(subscription.callback);
   }
-  await channel.subscribe(subscription.topic, subscription.callback);
+  return channel.subscribe(subscription.topic, subscription.callback);
 }
 
 function unsubscribeFromRealtimeChannel(
@@ -505,7 +504,7 @@ function createStableRealtimeChannel(
   };
 
   return {
-    subscribe: async (topic, callback) => {
+    subscribe: (topic, callback) => {
       const subscription: ActiveChannelSubscription = {
         topic,
         callback,
@@ -513,23 +512,20 @@ function createStableRealtimeChannel(
       };
       subscriptions.set(callback, subscription);
 
-      while (subscriptions.get(callback) === subscription) {
-        const activeReplacement = replacement;
-        if (activeReplacement) {
-          await activeReplacement;
-          continue;
-        }
-
+      const activeReplacement = replacement;
+      if (!activeReplacement) {
         const channel = currentChannel;
-        await attach(channel, subscription);
-        if (
-          subscriptions.get(callback) === subscription &&
-          channel === currentChannel &&
-          replacement === null
-        ) {
+        subscription.channels.add(channel);
+        return subscribeToRealtimeChannel(channel, subscription);
+      }
+
+      return (async () => {
+        await activeReplacement;
+        if (subscriptions.get(callback) !== subscription) {
           return;
         }
-      }
+        await attach(currentChannel, subscription);
+      })();
     },
     unsubscribe: (_topic, callback) => {
       const subscription = subscriptions.get(callback);
