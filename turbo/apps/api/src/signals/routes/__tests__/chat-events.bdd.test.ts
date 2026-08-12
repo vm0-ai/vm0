@@ -4520,6 +4520,36 @@ describe("CHAT-02: model-first provider policies", () => {
 });
 
 describe("CHAT-02: run-level model overrides", () => {
+  it("describes raw chat history sync when snapshot read is enabled", async () => {
+    const orgId = `org_${randomUUID()}`;
+    const { actor, agentId } = await entitledChatActor({ orgId });
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId },
+      {
+        [FeatureSwitchKey.ChatEventSnapshotRead]: true,
+      },
+    );
+
+    const run = await sendChatRun(actor, {
+      agentId,
+      prompt: "inspect raw thread history",
+    });
+    const stored = await api.readRun(actor, run.runId);
+    const appended = stored.appendSystemPrompt ?? "";
+    expect(appended).toContain(
+      `okou chat messages --thread-id ${run.threadId} --output-dir threads`,
+    );
+    expect(appended).toContain(
+      `rg -n '"seqId":<SEQ_ID>' threads/${run.threadId}/`,
+    );
+    expect(appended).not.toContain(
+      "`okou chat messages` prints this thread's user and assistant messages",
+    );
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+  }, 60_000);
+
   it("uses send model overrides without mutating the thread model while preserving same-family sessions", async () => {
     const { actor, agentId, runnerGroup, providerId } =
       await entitledChatActor();
