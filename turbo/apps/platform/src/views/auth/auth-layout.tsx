@@ -398,6 +398,7 @@ export function AuthLayout({ children }: AuthLayoutProps) {
             alt={t(($) => {
               return $.appShell.logoAlt;
             })}
+            crossOrigin="anonymous"
             width={82}
             height={20}
           />
