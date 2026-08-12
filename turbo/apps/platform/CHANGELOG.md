@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.730.4](https://github.com/vm0-ai/vm0/compare/app-v0.730.3...app-v0.730.4) (2026-08-12)
+
+
+### Bug Fixes
+
+* show Fast details only on hover ([#26467](https://github.com/vm0-ai/vm0/issues/26467)) ([7df226c](https://github.com/vm0-ai/vm0/commit/7df226c0e92a8cad626254e6df4f3c301f5450a7))
+
 ## [0.730.3](https://github.com/vm0-ai/vm0/compare/app-v0.730.2...app-v0.730.3) (2026-08-12)
 
 

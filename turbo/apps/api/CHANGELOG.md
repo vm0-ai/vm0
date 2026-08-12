@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.430.2](https://github.com/vm0-ai/vm0/compare/api-v1.430.1...api-v1.430.2) (2026-08-12)
+
+
+### Bug Fixes
+
+* **connectors:** filter custom credential snapshot ([#26480](https://github.com/vm0-ai/vm0/issues/26480)) ([1b77900](https://github.com/vm0-ai/vm0/commit/1b77900ad7c6fb1dce9c23829e62845e81898ba9))
+
 ## [1.430.1](https://github.com/vm0-ai/vm0/compare/api-v1.430.0...api-v1.430.1) (2026-08-12)
 
 
