@@ -322,6 +322,7 @@ async fn execute_new_sandbox_notifies_after_successful_prepare() {
         &mut telemetry,
         NewSandboxHooks {
             controls: RunControls::new(tokio_util::sync::CancellationToken::new(), None),
+            prepared_run_payload: prepare_run_payload_for_run(&ctx).unwrap(),
             sandbox_prepared: Some(&notifier),
         },
     )
@@ -368,6 +369,7 @@ async fn execute_new_sandbox_replaces_one_dns_unready_attachment_before_workload
         &mut telemetry,
         NewSandboxHooks {
             controls: RunControls::new(tokio_util::sync::CancellationToken::new(), None),
+            prepared_run_payload: prepare_run_payload_for_run(&ctx).unwrap(),
             sandbox_prepared: Some(&notifier),
         },
     ))
@@ -731,6 +733,7 @@ async fn execute_new_sandbox_does_not_notify_before_start_failure() {
         &mut telemetry,
         NewSandboxHooks {
             controls: RunControls::new(tokio_util::sync::CancellationToken::new(), None),
+            prepared_run_payload: prepare_run_payload_for_run(&ctx).unwrap(),
             sandbox_prepared: Some(&notifier),
         },
     )
@@ -776,6 +779,7 @@ async fn execute_new_sandbox_does_not_notify_after_post_start_prepare_failure() 
         &mut telemetry,
         NewSandboxHooks {
             controls: RunControls::new(tokio_util::sync::CancellationToken::new(), None),
+            prepared_run_payload: prepare_run_payload_for_run(&ctx).unwrap(),
             sandbox_prepared: Some(&notifier),
         },
     )
@@ -1347,6 +1351,42 @@ async fn execute_job_claude_tool_validation_failure_skips_sandbox_create() {
     assert!(
         overrides.create_configs().is_empty(),
         "fresh sandbox must not be created after tool validation failure"
+    );
+}
+
+#[tokio::test]
+async fn execute_job_pi_system_prompt_validation_failure_skips_sandbox_create() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
+    let secret = "Pi prompt before\0Pi prompt after";
+    let mut ctx = minimal_context();
+    ctx.pi_system_prompt = Some(secret.into());
+
+    let cancel = tokio_util::sync::CancellationToken::new();
+    let (outcome, _telemetry) = execute_job(
+        &factory,
+        ctx,
+        NewSandboxDispatch {
+            id: SandboxId::new_v4(),
+            reuse_result: SandboxReuseResult::NoReuseKey,
+        },
+        &config,
+        &default_params(),
+        cancel,
+    )
+    .await;
+
+    assert_ne!(outcome.exit_code(), 0);
+    let error = outcome.error().unwrap();
+    assert!(error.contains("VM0_PI_SYSTEM_PROMPT"));
+    assert!(error.contains("NUL"));
+    assert!(!error.contains(secret));
+    assert!(outcome.sandbox.is_none());
+    assert!(
+        overrides.create_configs().is_empty(),
+        "fresh sandbox must not be created after Pi prompt validation failure"
     );
 }
 

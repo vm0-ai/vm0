@@ -91,7 +91,10 @@ async fn execute_prepared_marks_stdout_incomplete_when_process_cancel_send_fails
                 prev_storage: None,
             },
             &mut telemetry,
-            RunControls::new(run_cancel, None),
+            PreparedRunInputs::new(
+                RunControls::new(run_cancel, None),
+                prepare_run_payload_for_run(&ctx).unwrap(),
+            ),
             ProcessCancelTimeouts {
                 write: Duration::from_secs(1),
                 terminal_grace: Duration::ZERO,
@@ -158,7 +161,10 @@ async fn execute_prepared_marks_stdout_incomplete_when_terminal_grace_expires() 
                 prev_storage: None,
             },
             &mut telemetry,
-            RunControls::new(run_cancel, None),
+            PreparedRunInputs::new(
+                RunControls::new(run_cancel, None),
+                prepare_run_payload_for_run(&ctx).unwrap(),
+            ),
             ProcessCancelTimeouts {
                 write: Duration::from_secs(1),
                 terminal_grace: Duration::ZERO,
@@ -295,7 +301,10 @@ async fn execute_inner_preserves_system_stream_log_after_nonzero_exit_guest_copy
             prev_storage: None,
         },
         &mut telemetry,
-        RunControls::new(tokio_util::sync::CancellationToken::new(), None),
+        PreparedRunInputs::new(
+            RunControls::new(tokio_util::sync::CancellationToken::new(), None),
+            prepare_run_payload_for_run(&ctx).unwrap(),
+        ),
     ))
     .await;
 
@@ -348,7 +357,10 @@ async fn execute_prepared_sandbox_run_logs_discovered_guest_session_id() {
             prev_storage: None,
         },
         &mut telemetry,
-        RunControls::new(tokio_util::sync::CancellationToken::new(), None),
+        PreparedRunInputs::new(
+            RunControls::new(tokio_util::sync::CancellationToken::new(), None),
+            prepare_run_payload_for_run(&ctx).unwrap(),
+        ),
     ))
     .await;
 
@@ -396,7 +408,10 @@ async fn execute_prepared_sandbox_run_discovers_guest_session_id_after_nonzero_e
             prev_storage: None,
         },
         &mut telemetry,
-        RunControls::new(tokio_util::sync::CancellationToken::new(), None),
+        PreparedRunInputs::new(
+            RunControls::new(tokio_util::sync::CancellationToken::new(), None),
+            prepare_run_payload_for_run(&ctx).unwrap(),
+        ),
     ))
     .await;
 
@@ -450,7 +465,10 @@ async fn execute_prepared_sandbox_run_canonicalizes_codex_discovered_cli_agent_s
             prev_storage: None,
         },
         &mut telemetry,
-        RunControls::new(tokio_util::sync::CancellationToken::new(), None),
+        PreparedRunInputs::new(
+            RunControls::new(tokio_util::sync::CancellationToken::new(), None),
+            prepare_run_payload_for_run(&ctx).unwrap(),
+        ),
     ))
     .await;
 
@@ -498,7 +516,10 @@ async fn execute_prepared_sandbox_run_ignores_non_uuid_codex_discovered_cli_agen
             prev_storage: None,
         },
         &mut telemetry,
-        RunControls::new(tokio_util::sync::CancellationToken::new(), None),
+        PreparedRunInputs::new(
+            RunControls::new(tokio_util::sync::CancellationToken::new(), None),
+            prepare_run_payload_for_run(&ctx).unwrap(),
+        ),
     ))
     .await;
 
