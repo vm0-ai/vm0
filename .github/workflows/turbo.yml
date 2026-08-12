@@ -222,11 +222,11 @@ jobs:
             fi
           done
 
-          if printf '%s\n' "$CHANGED_FILES" | grep -qE "^turbo/packages/db/src/(migrations|schema|jsonb-contracts)/"; then
-            echo "Migration, schema, or JSONB contract changes detected"
+          if printf '%s\n' "$CHANGED_FILES" | grep -qE '^turbo/packages/db/(src/(migrations|schema|jsonb-contracts)/|scripts/(migration-runner|test-migration-runner-timeouts)\.ts$)'; then
+            echo "Migration, schema, JSONB contract, or migration runner changes detected"
             echo "migration-changed=true" >> "$GITHUB_OUTPUT"
           else
-            echo "No migration, schema, or JSONB contract changes"
+            echo "No migration, schema, JSONB contract, or migration runner changes"
             echo "migration-changed=false" >> "$GITHUB_OUTPUT"
           fi
 
