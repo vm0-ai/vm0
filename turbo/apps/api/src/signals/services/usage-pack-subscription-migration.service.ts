@@ -20,7 +20,6 @@ import {
 import { and, desc, eq, inArray, lte, or, sql } from "drizzle-orm";
 import { z } from "zod";
 
-import { pgBooleanDecoder } from "../../lib/db-structured-result";
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { nowDate } from "../../lib/time";
