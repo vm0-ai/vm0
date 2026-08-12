@@ -189,6 +189,7 @@ export interface WorkflowComposerSignals {
   readonly focus$: Command<void, []>;
   readonly hasInput$: Computed<boolean>;
   readonly hasTemplateAttachment$: Computed<boolean>;
+  readonly hasInlineVideoTemplate$: Computed<boolean>;
   readonly activeSlashRange$: Computed<SlashWorkflowRange | null>;
   readonly activeChatThreadSuggestionRange$: Computed<ChatThreadSuggestionRange | null>;
   readonly chatThreadSuggestions$: Computed<
@@ -1988,6 +1989,7 @@ interface MountEditorOptions {
   caretIndex$: State<number>;
   editorFocusedState$: State<boolean>;
   selectedSuggestionIndexState$: State<number>;
+  inlineVideoTemplateState$: State<boolean>;
   feedback: ComposerFeedbackModel;
   compositionGate: CompositionGate;
   syncWorkflowNames$: WorkflowNamesSyncCommand;
@@ -1999,6 +2001,23 @@ interface MountEditorOptions {
 interface WorkflowComposerMountOptions {
   readonly autoFocus?: boolean;
   readonly singleLineOnMobile?: boolean;
+}
+
+function hasInlineVideoTemplate(editor: Editor): boolean {
+  let found = false;
+  editor.state.doc.descendants((node) => {
+    if (node.type.name !== INLINE_TEMPLATE_NODE_NAME) {
+      return true;
+    }
+    const template = generationTemplateRequestSchema.safeParse(
+      node.attrs.template,
+    );
+    if (template.success && template.data.type === "video") {
+      found = true;
+    }
+    return false;
+  });
+  return found;
 }
 
 function focusMountedEditorAtEnd(editor: Editor): void {
@@ -2016,6 +2035,7 @@ function createMountEditorCommand({
   caretIndex$,
   editorFocusedState$,
   selectedSuggestionIndexState$,
+  inlineVideoTemplateState$,
   feedback,
   compositionGate,
   syncWorkflowNames$,
@@ -2035,6 +2055,7 @@ function createMountEditorCommand({
           createEditorDocumentSnapshot(updatedEditor.state.doc),
         );
         set(selectedSuggestionIndexState$, 0);
+        set(inlineVideoTemplateState$, hasInlineVideoTemplate(updatedEditor));
         set(caretIndex$, updatedEditor.state.selection.head);
         compositionGate.notifySettled();
         // Forward TipTap updates through the React-owned DOM boundary.
@@ -2069,6 +2090,7 @@ function createMountEditorCommand({
         draft.setEditorDocument$,
         createEditorDocumentSnapshot(editor.state.doc),
       );
+      set(inlineVideoTemplateState$, hasInlineVideoTemplate(editor));
       editor.mount(element);
       mountLocalizationListener(editor, runtime, signal);
       mountCompositionListeners(editor, compositionGate, signal);
@@ -2089,6 +2111,7 @@ function createMountEditorCommand({
               draft.setEditorDocument$,
               createEditorDocumentSnapshot(editor.state.doc),
             );
+            set(inlineVideoTemplateState$, hasInlineVideoTemplate(editor));
           }
         },
         syncUserMessage(value) {
@@ -2109,6 +2132,7 @@ function createMountEditorCommand({
             draft.setEditorDocument$,
             createEditorDocumentSnapshot(editor.state.doc),
           );
+          set(inlineVideoTemplateState$, hasInlineVideoTemplate(editor));
         },
       });
       // Keep workflow decoration sync scoped to real editor mounts.
@@ -2126,6 +2150,7 @@ function createMountEditorCommand({
         resetMountedWorkflowRuntime(runtime);
         set(draft.setInputSyncTarget$, null);
         set(editorFocusedState$, false);
+        set(inlineVideoTemplateState$, false);
         editor.unmount();
       });
       await Promise.all([
@@ -2595,6 +2620,7 @@ export function createWorkflowComposerSignals<
   const caretIndex$ = state(-1);
   const editorFocusedState$ = state(false);
   const selectedSuggestionIndexState$ = state(0);
+  const inlineVideoTemplateState$ = state(false);
   const runtime = createWorkflowComposerRuntime();
   const agentMentionAvatarRuntime = createAgentMentionAvatarRuntime();
   const templatePreview = createTemplatePreviewRuntime();
@@ -2658,6 +2684,7 @@ export function createWorkflowComposerSignals<
     caretIndex$,
     editorFocusedState$,
     selectedSuggestionIndexState$,
+    inlineVideoTemplateState$,
     feedback,
     compositionGate,
     syncWorkflowNames$,
@@ -2680,6 +2707,9 @@ export function createWorkflowComposerSignals<
   const hasInput$ = computed((get) => {
     return get(draft.hasInput$) || get(feedback.active$);
   });
+  const hasInlineVideoTemplate$ = computed((get) => {
+    return get(inlineVideoTemplateState$);
+  });
 
   return {
     editor,
@@ -2688,6 +2718,7 @@ export function createWorkflowComposerSignals<
     focus$,
     hasInput$,
     hasTemplateAttachment$: templateAttachment.active$,
+    hasInlineVideoTemplate$,
     activeSlashRange$,
     activeChatThreadSuggestionRange$,
     chatThreadSuggestions$,

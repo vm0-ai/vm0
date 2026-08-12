@@ -378,6 +378,39 @@ function selectedVideoParameters(
   return parameters;
 }
 
+export function buildVideoGenerationSettingsPrompt(
+  options: VideoGenerationOptions | undefined,
+): string {
+  const parameters = selectedVideoParameters(options);
+  if (parameters.length === 0) {
+    return "";
+  }
+  const flags = parameters
+    .map((parameter) => {
+      return parameter.flag;
+    })
+    .filter((flag) => {
+      return flag.length > 0;
+    })
+    .join(" ");
+  return [
+    "# Video generation settings",
+    "",
+    "The user configured these defaults for video generation in this message:",
+    ...parameters.map((parameter) => {
+      return `- ${parameter.label}`;
+    }),
+    "",
+    "- These settings do not request a video by themselves; follow the user's prompt.",
+    "- An explicit value on an inline video template overrides the corresponding default above for that template.",
+    ...(flags.length > 0
+      ? [
+          `- For direct video generation without an inline template, pass \`${flags}\` verbatim.`,
+        ]
+      : []),
+  ].join("\n");
+}
+
 function buildVideoGenerationTemplatePrompt(
   generationTemplate: VideoGenerationTemplateInput,
 ): GenerationTemplatePromptResult {

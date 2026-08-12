@@ -21,7 +21,7 @@ export function withSelectedModelAnnotation(
     return document;
   }
   return {
-    version: 1,
+    ...document,
     parts: [
       ...document.parts,
       {

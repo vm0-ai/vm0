@@ -238,6 +238,15 @@ const videoGenerationOptionsSchema = z
   })
   .partial();
 
+const userMessageVideoOptionsSchema = videoGenerationOptionsSchema.refine(
+  (options) => {
+    return Object.values(options).some((value) => {
+      return value !== undefined;
+    });
+  },
+  { message: "Video settings must include at least one option" },
+);
+
 /**
  * Talking-avatar parameters. Unrelated to text-to-video despite sharing the
  * "video" envelope, which older bundles rely on to parse newer messages.
@@ -448,6 +457,7 @@ const userMessagePartSchema = z.discriminatedUnion("type", [
 const userMessageDocumentSchema = z
   .object({
     version: z.literal(1),
+    videoOptions: userMessageVideoOptionsSchema.optional(),
     parts: z
       .array(userMessagePartSchema)
       .min(1)
@@ -482,6 +492,7 @@ const userMessageDocumentSchema = z
 const userMessageInputDocumentSchema = z
   .object({
     version: z.literal(1),
+    videoOptions: userMessageVideoOptionsSchema.optional(),
     parts: z
       .array(userMessageInputPartSchema)
       .min(1)

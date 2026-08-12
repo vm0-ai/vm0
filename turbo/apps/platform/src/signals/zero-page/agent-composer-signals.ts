@@ -137,6 +137,7 @@ function createAgentComposerSignalsWithDraft(
           draft: agentDraft.draft,
           prompt: submission.prompt,
           generationTemplate: submission.generationTemplate,
+          videoOptions: submission.videoOptions,
           editorDocument: submission.editorDocument,
           ...(access.kind === "computerUse"
             ? { computerUseHostId: hostId }

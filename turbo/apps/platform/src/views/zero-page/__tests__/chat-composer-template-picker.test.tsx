@@ -12,6 +12,7 @@ import {
 import type {
   GenerationTemplateRequest,
   UserMessageDocument,
+  VideoGenerationOptions,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   zeroAvatarVideoContract,
@@ -19,6 +20,7 @@ import {
   type ZeroAvatarVideoVoicesQuery,
 } from "@vm0/api-contracts/contracts/zero-avatar-video";
 import { avatarTemplateStylePresetId } from "@vm0/core/avatar-template";
+import { DEFAULT_VIDEO_MODEL } from "@vm0/core/video-model-catalog";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createDeferredPromise } from "../../../signals/utils.ts";
 import {
@@ -60,6 +62,12 @@ function sentInlineTemplate(
     }
   }
   return undefined;
+}
+
+function sentVideoSettings(
+  userMessage: UserMessageDocument | undefined,
+): VideoGenerationOptions | undefined {
+  return userMessage?.videoOptions;
 }
 
 function createAvatarFirstPage() {
@@ -228,10 +236,14 @@ function mockVoiceCatalog({
 
 async function openAvatarPicker(
   user: ReturnType<typeof userEvent.setup>,
+  videoOptionsEnabled = false,
 ): Promise<HTMLElement> {
   detachedSetupPage({
     context,
-    featureSwitches: { [FeatureSwitchKey.JoggAiBuiltIn]: true },
+    featureSwitches: {
+      [FeatureSwitchKey.JoggAiBuiltIn]: true,
+      [FeatureSwitchKey.VideoTemplateOptions]: videoOptionsEnabled,
+    },
     path: `/chats/${THREAD_ID}`,
   });
 
@@ -369,6 +381,137 @@ describe("chat composer templates", () => {
     });
   });
 
+  it("reveals the inherited video model only after video intent is detected", async () => {
+    const user = userEvent.setup({ delay: null });
+    let submittedUserMessage: UserMessageDocument | undefined;
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      chatEvents: [
+        {
+          id: "prior-video-message",
+          threadId: THREAD_ID,
+          role: "user",
+          content: "Create the first video",
+          userMessage: {
+            version: 1,
+            videoOptions: {
+              model: "fal-ai/veo3.1/fast",
+              aspectRatio: "9:16",
+            },
+            parts: [{ type: "text", text: "Create the first video" }],
+          },
+          createdAt: "2026-08-11T00:00:00.000Z",
+        },
+      ],
+      onRunCreate(body) {
+        submittedUserMessage = body.userMessage;
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      featureSwitches: {
+        [FeatureSwitchKey.VideoTemplateOptions]: true,
+      },
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    expect(screen.queryByLabelText(/Video options:/)).not.toBeInTheDocument();
+    await fill(await findComposerEditor(), "Create another video");
+
+    const videoSettings = await screen.findByLabelText(/Video options:/);
+    expect(videoSettings).toHaveAttribute(
+      "aria-label",
+      "Video options: Veo 3.1 fast",
+    );
+    await user.click(videoSettings);
+    expect(screen.getByRole("combobox", { name: "Ratio" })).toHaveTextContent(
+      "16:9",
+    );
+    await user.click(screen.getByRole("combobox", { name: "Model" }));
+    await user.click(
+      await screen.findByRole("option", { name: "Seedance 2.0" }),
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText("Video options: Seedance 2.0"),
+      ).toBeInTheDocument();
+    });
+    await user.click(screen.getByLabelText("Send"));
+    await waitFor(() => {
+      expect(sentVideoSettings(submittedUserMessage)).toStrictEqual({
+        model: "dreamina-seedance-2-0-260128",
+      });
+    });
+  });
+
+  it("snapshots the default model on the first video prompt", async () => {
+    const user = userEvent.setup({ delay: null });
+    let submittedUserMessage: UserMessageDocument | undefined;
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      onRunCreate(body) {
+        submittedUserMessage = body.userMessage;
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      featureSwitches: {
+        [FeatureSwitchKey.VideoTemplateOptions]: true,
+      },
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    await fill(await findComposerEditor(), "生成一个产品视频");
+    await expect(
+      screen.findByLabelText("Video options: Seedance 2.0 fast"),
+    ).resolves.toBeInTheDocument();
+    await user.click(screen.getByLabelText("Send"));
+
+    await waitFor(() => {
+      expect(sentVideoSettings(submittedUserMessage)).toStrictEqual({
+        model: DEFAULT_VIDEO_MODEL,
+      });
+    });
+  });
+
+  it("drops video settings when video intent is removed", async () => {
+    const user = userEvent.setup({ delay: null });
+    let submittedUserMessage: UserMessageDocument | undefined;
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      onRunCreate(body) {
+        submittedUserMessage = body.userMessage;
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      featureSwitches: {
+        [FeatureSwitchKey.VideoTemplateOptions]: true,
+      },
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    const editor = await findComposerEditor();
+    await fill(editor, "Create a product video");
+    await user.click(await screen.findByLabelText(/Video options:/));
+    await user.click(screen.getByRole("combobox", { name: "Model" }));
+    await user.click(
+      await screen.findByRole("option", { name: "Seedance 2.0" }),
+    );
+
+    await fill(editor, "Write launch copy");
+    expect(screen.queryByLabelText(/Video options:/)).not.toBeInTheDocument();
+    await user.click(screen.getByLabelText("Send"));
+
+    await waitFor(() => {
+      expect(submittedUserMessage?.videoOptions).toBeUndefined();
+    });
+  });
+
   it("edits video parameters from the second half of an inline chip", async () => {
     const user = userEvent.setup({ delay: null });
     const template = VIDEO_TEMPLATE_ITEMS[0]!;
@@ -406,6 +549,7 @@ describe("chat composer templates", () => {
     const spec = await screen.findByLabelText(
       "Video options Seedance 2.0 fast \u00b7 16:9 \u00b7 8s \u00b7 720p \u00b7 Audio",
     );
+    expect(screen.queryByLabelText(/Video options:/)).not.toBeInTheDocument();
     const chip = document.querySelector("[data-composer-inline-template]");
     expect(chip?.querySelectorAll("button")).toHaveLength(2);
 
@@ -1123,14 +1267,16 @@ describe("chat composer templates", () => {
     });
     mockVoiceCatalog();
     let submittedTemplate: GenerationTemplateRequest | undefined;
+    let submittedUserMessage: UserMessageDocument | undefined;
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
       onRunCreate(body) {
         submittedTemplate = sentInlineTemplate(body.userMessage);
+        submittedUserMessage = body.userMessage;
       },
     });
 
-    const dialog = await openAvatarPicker(user);
+    const dialog = await openAvatarPicker(user, true);
     await within(dialog).findByLabelText("Select template Ada");
     await user.click(within(dialog).getByLabelText("Aspect ratio: 16:9"));
     await waitFor(() => {
@@ -1147,7 +1293,7 @@ describe("chat composer templates", () => {
     );
 
     await expectInlineTemplateInComposer("Ada");
-    await appendAndSend(user, "Introduce our new product");
+    await appendAndSend(user, "Introduce our new product in an avatar video");
 
     await waitFor(() => {
       expect(submittedTemplate).toStrictEqual({
@@ -1162,6 +1308,7 @@ describe("chat composer templates", () => {
           },
         },
       });
+      expect(submittedUserMessage?.videoOptions).toBeUndefined();
     });
   });
 

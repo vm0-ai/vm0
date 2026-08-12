@@ -135,6 +135,7 @@ function createAgentDraftSync(agentId: string, draft: DraftSignals) {
         input: get(draft.input$),
         editorDocument: set(draft.readEditorDocument$),
         generationTemplate: get(draft.generationTemplate$),
+        videoOptions: get(draft.videoOptions$),
         attachments,
       });
 

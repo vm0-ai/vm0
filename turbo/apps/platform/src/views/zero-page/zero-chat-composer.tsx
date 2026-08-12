@@ -145,6 +145,10 @@ import type { CustomConnectorResponse } from "@vm0/api-contracts/contracts/zero-
 import type { AgentCustomConnectorGrant } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 import { getModelDisplayName } from "@vm0/core/model-display-name";
 import {
+  VIDEO_MODEL_CONFIGS,
+  resolveVideoGenerationOptions,
+} from "@vm0/core/video-model-catalog";
+import {
   ModelProviderPicker,
   type ModelProviderSelection,
 } from "./components/model-provider-picker.tsx";
@@ -183,6 +187,7 @@ import {
   customConnectorMcpEnabled$,
   avatarTemplatesEnabled$,
   imageRecognitionAvailable$,
+  videoTemplateOptionsEnabled$,
 } from "../../signals/external/feature-switch.ts";
 import {
   computerUseHosts$,
@@ -227,6 +232,7 @@ import {
   AvatarTemplatePickerToolbar,
 } from "./avatar-template-picker.tsx";
 import { VideoTemplateOptionsPopover } from "./video-template-options-popover.tsx";
+import { VideoGenerationOptionsForm } from "./video-generation-options-form.tsx";
 import {
   avatarTemplateSelection,
   toAvatarGenerationTemplate,
@@ -7388,6 +7394,76 @@ function ModelConfigurationWarning({
   );
 }
 
+function ComposerVideoSettingsSlot({ signals }: { signals: ComposerSignals }) {
+  const { t } = useTranslation();
+  const enabled = useGet(videoTemplateOptionsEnabled$);
+  const intentDetected = useGet(signals.video.intentDetected$);
+  const effectiveOptions = useGet(signals.video.effectiveOptions$);
+  const hasInlineVideoTemplate = useGet(
+    signals.template.hasInlineVideoTemplate$,
+  );
+  const generationTemplate = useGet(signals.template.generationTemplate$);
+  const setOptions = useSet(signals.video.setOptions$);
+  const notifyDraftChanged = useComposerDraftChange(signals);
+  if (
+    !enabled ||
+    !intentDetected ||
+    hasInlineVideoTemplate ||
+    generationTemplate?.type === "video"
+  ) {
+    return null;
+  }
+
+  const resolved = resolveVideoGenerationOptions(effectiveOptions);
+  const modelLabel = VIDEO_MODEL_CONFIGS[resolved.model].label;
+  const videoLabel = t(($) => {
+    return $.chat.templates.categories.video;
+  });
+  const optionsLabel = t(($) => {
+    return $.chat.templates.videoOptions;
+  });
+
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="quiet"
+          size="sm"
+          className={cn(
+            "h-8 max-w-[13rem] shrink-0 gap-1.5 px-2 text-xs font-medium text-muted-foreground",
+            "hover:bg-state-hover hover:text-foreground data-popup-open:bg-state-hover data-popup-open:text-foreground",
+            COMPOSER_CONTROL_FOCUS_CLASS,
+          )}
+          aria-label={`${optionsLabel}: ${modelLabel}`}
+        >
+          <Video size={16} aria-hidden="true" />
+          <span className="hidden min-w-0 truncate sm:inline">
+            {videoLabel} · {modelLabel}
+          </span>
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="end"
+        side="top"
+        sideOffset={8}
+        className="w-[19rem] rounded-xl p-3"
+        aria-label={optionsLabel}
+      >
+        <p className="mb-1.5 text-sm font-medium">{optionsLabel}</p>
+        <VideoGenerationOptionsForm
+          value={effectiveOptions}
+          persistModel
+          onChange={(next) => {
+            setOptions(next);
+            notifyDraftChanged();
+          }}
+        />
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 function ComposerModelPickerSlot({ signals }: { signals: ComposerSignals }) {
   const { t } = useTranslation();
   const codexFastModeEnabled = useGet(codexFastModeEnabled$);
@@ -8197,6 +8273,7 @@ function ComposerCard({ signals }: { signals: ComposerSignals }) {
               <ComposerConnectorsSlot signals={signals} />
             </div>
             <div className="flex items-center gap-1 sm:gap-2">
+              <ComposerVideoSettingsSlot signals={signals} />
               <ComposerModelPickerSlot signals={signals} />
               <MicButton signals={signals} />
               <ComposerSendControl signals={signals} />

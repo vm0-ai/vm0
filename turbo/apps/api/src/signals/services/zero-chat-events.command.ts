@@ -9,6 +9,7 @@ import {
   type CodexServiceTier,
   type GenerationTemplateRequest,
   type UserMessageDocument,
+  type VideoGenerationOptions,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { SupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
 import { agentRuns } from "@vm0/db/schema/agent-run";
@@ -420,6 +421,7 @@ interface RuntimeNormalSendBody extends Omit<
   readonly agentPrompt: string;
   readonly primaryTemplate: GenerationTemplateRequest | undefined;
   readonly templates: readonly GenerationTemplateRequest[];
+  readonly videoOptions: VideoGenerationOptions | undefined;
   readonly hasTextContent: boolean;
 }
 
@@ -723,6 +725,7 @@ function resolveRuntimeNormalSendBody(
     userMessage: body.userMessage,
     primaryTemplate: projection.primaryTemplate,
     templates: projection.templates,
+    videoOptions: projection.videoOptions,
     agentPrompt: projection.agentPrompt,
     hasTextContent: projection.hasTextContent,
   };
@@ -2326,6 +2329,7 @@ const prepareNormalSend$ = command(
     const generationTemplatePrompt = resolveThreadGenerationTemplatePrompt({
       explicit: runtimeBody.primaryTemplate,
       explicitTemplates: runtimeBody.templates,
+      videoOptions: runtimeBody.videoOptions,
     });
     const persistedExplicitSelection =
       await maybePersistTimedExplicitModelFirstSelection(

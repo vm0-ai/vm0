@@ -60,6 +60,7 @@ import {
   type UserMessageDocument,
   type UserMessageInputDocument,
   type UserMessagePart,
+  type VideoGenerationOptions,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   chatEventCompatibilityRole,
@@ -83,6 +84,7 @@ import {
   writeChatMessageToClipboard,
   type ChatClipboardPayload,
 } from "../zero-page/clipboard.ts";
+import { withVideoSettingsMetadata } from "../zero-page/video-draft-settings.ts";
 import type {
   EnrichedChatEvent,
   ChatEventGroup,
@@ -818,6 +820,7 @@ function createDraftSync(threadId: string, draft: DraftSignals) {
         input: get(draft.input$),
         editorDocument: set(draft.readEditorDocument$),
         generationTemplate: get(draft.generationTemplate$),
+        videoOptions: get(draft.videoOptions$),
         attachments: persisted,
       });
 
@@ -2684,12 +2687,14 @@ function userMessageForSend({
   prompt,
   editorDocument,
   generationTemplate,
+  videoOptions,
   attachments,
   forward,
 }: {
   readonly prompt: string;
   readonly editorDocument: SendMessageOptions["editorDocument"];
   readonly generationTemplate: GenerationTemplateRequest | undefined;
+  readonly videoOptions: VideoGenerationOptions | undefined;
   readonly attachments: ResolvedAttachFile[] | undefined;
   readonly forward: ChatForwardContext | undefined;
 }): UserMessageInputDocument {
@@ -2705,7 +2710,7 @@ function userMessageForSend({
   if (!userMessage) {
     throw new Error("Failed to serialize user message");
   }
-  return userMessage;
+  return withVideoSettingsMetadata(userMessage, videoOptions);
 }
 
 function queueUserMessage(
@@ -2716,6 +2721,7 @@ function queueUserMessage(
     prompt: result.prompt,
     editorDocument: options.editorDocument,
     generationTemplate: options.generationTemplate,
+    videoOptions: options.videoOptions,
     attachments: result.attachments,
     forward: options.forward,
   });
@@ -2831,6 +2837,15 @@ function sendInputForRequest(args: {
   };
 }
 
+function videoOptionsForSend(
+  requestOptions: SendMessageOptions | undefined,
+  draftVideoOptions: VideoGenerationOptions | undefined,
+): VideoGenerationOptions | undefined {
+  return requestOptions?.editorDocument
+    ? requestOptions.videoOptions
+    : draftVideoOptions;
+}
+
 function createPerformSendMessage(deps: SendMessageDeps) {
   const { threadId, draft, cancelDraftSync$, flushDraftClear$, sendEvent$ } =
     deps;
@@ -2843,6 +2858,10 @@ function createPerformSendMessage(deps: SendMessageDeps) {
       const generationTemplate = generationTemplateForSend(
         request,
         get(draft.generationTemplate$),
+      );
+      const videoOptions = videoOptionsForSend(
+        request.options,
+        get(draft.videoOptions$),
       );
       const submissionPrompt = submissionPromptForSend(request);
       const result = await prepareSendMessageResult(
@@ -2873,6 +2892,7 @@ function createPerformSendMessage(deps: SendMessageDeps) {
         prompt: userMessagePromptForSend(request, result.prompt),
         editorDocument: request.options?.editorDocument,
         generationTemplate,
+        videoOptions,
         attachments: result.attachments,
         forward: request.options?.forward,
       });
@@ -3707,6 +3727,7 @@ function createThreadSubmitMessageSignal(
                 computerUseHostId: explicit ? computerUseHostId : undefined,
                 cloudBrowserEnabled: explicit ? cloudBrowserEnabled : undefined,
                 generationTemplate: submission.generationTemplate,
+                videoOptions: submission.videoOptions,
                 editorDocument: submission.editorDocument,
                 ...(options.forward ? { forward: options.forward } : {}),
                 ...(options.onOptimisticSend
@@ -3722,6 +3743,7 @@ function createThreadSubmitMessageSignal(
                 ...(explicit ? { computerUseHostId } : {}),
                 ...(explicit ? { cloudBrowserEnabled } : {}),
                 generationTemplate: submission.generationTemplate,
+                videoOptions: submission.videoOptions,
                 editorDocument: submission.editorDocument,
                 ...(options.forward ? { forward: options.forward } : {}),
                 ...(options.onOptimisticSend

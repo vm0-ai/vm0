@@ -275,6 +275,7 @@ async function materializeActiveInputPrompt(
   const generationTemplatePrompt = resolveThreadGenerationTemplatePrompt({
     explicit: projection.primaryTemplate,
     explicitTemplates: projection.templates,
+    videoOptions: projection.videoOptions,
   });
   const prompt = integration?.prompt ?? projection.agentPrompt;
   const parts = [

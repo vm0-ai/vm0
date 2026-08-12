@@ -6,6 +6,7 @@ import type {
   ChatThreadArtifactRun,
   ChatThreadDraft,
   UserMessageDocument,
+  VideoGenerationOptions,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { ChatClipboardPayload } from "../zero-page/clipboard.ts";
 import type { ChatEventGroup } from "./chat-event.ts";
@@ -102,6 +103,7 @@ export interface SendMessageOptions {
   readonly computerUseHostId?: string | null;
   readonly cloudBrowserEnabled?: boolean;
   readonly generationTemplate?: GenerationTemplateRequest;
+  readonly videoOptions?: VideoGenerationOptions;
   readonly editorDocument?: EditorDocumentSnapshot;
   readonly forward?: ChatForwardContext;
   readonly onOptimisticSend?: () => void;
@@ -111,6 +113,7 @@ export interface QueueMessageOptions {
   readonly computerUseHostId: string | null | undefined;
   readonly cloudBrowserEnabled: boolean | undefined;
   readonly generationTemplate: GenerationTemplateRequest | undefined;
+  readonly videoOptions: VideoGenerationOptions | undefined;
   readonly editorDocument: EditorDocumentSnapshot;
   readonly forward?: ChatForwardContext;
   readonly onOptimisticSend?: () => void;

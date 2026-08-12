@@ -1,9 +1,11 @@
 import type {
   GenerationTemplateRequest,
   PersistedAttachment,
+  VideoGenerationOptions,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { foldActiveChatGoalObjective } from "@vm0/api-contracts/contracts/chat-events";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { DEFAULT_VIDEO_MODEL } from "@vm0/core/video-model-catalog";
 import { command, computed, state, type Command, type Computed } from "ccstate";
 import { onRef, withCleanup } from "../utils.ts";
 import {
@@ -47,6 +49,11 @@ import {
   replaceWorkflowPromptDraftTarget$,
   setReplaceWorkflowPromptDraftTarget$,
 } from "../chat-page/workflow-prompt-action.ts";
+import {
+  draftMentionsVideo,
+  latestVideoSettingsFromChatEvents,
+  messageVideoTemplateContext,
+} from "./video-draft-settings.ts";
 
 type ComposerEditorSignals = Pick<
   WorkflowComposerSignals,
@@ -84,6 +91,7 @@ type ComposerTemplateEditorSignals = Pick<
   WorkflowComposerSignals,
   | "templatePreview"
   | "hasTemplateAttachment$"
+  | "hasInlineVideoTemplate$"
   | "insertTemplate$"
   | "updateTemplateAt$"
   | "readSelectedTemplate$"
@@ -97,6 +105,7 @@ type ComposerTemplateUiSignals = ComposerUiSignalGroups["template"];
 export interface ComposerSubmission {
   readonly prompt: string;
   readonly generationTemplate: GenerationTemplateRequest | undefined;
+  readonly videoOptions: VideoGenerationOptions | undefined;
   readonly editorDocument: WorkflowComposerSubmissionSnapshot["editorDocument"];
 }
 
@@ -212,6 +221,12 @@ interface ComposerTemplateSignals
   >;
 }
 
+interface ComposerVideoSignals {
+  readonly intentDetected$: Computed<boolean>;
+  readonly effectiveOptions$: Computed<VideoGenerationOptions | undefined>;
+  readonly setOptions$: Command<void, [VideoGenerationOptions | undefined]>;
+}
+
 export interface ComposerSignals {
   readonly agentId: string;
   readonly editor: ComposerEditorSignals;
@@ -226,6 +241,7 @@ export interface ComposerSignals {
   readonly queue: ComposerQueueSignals;
   readonly goal: ComposerGoalSignals;
   readonly template: ComposerTemplateSignals;
+  readonly video: ComposerVideoSignals;
 }
 
 interface CreateComposerSignalsOptions {
@@ -323,6 +339,7 @@ function composerTemplateSignals(
   return {
     templatePreview: composer.templatePreview,
     hasTemplateAttachment$: composer.hasTemplateAttachment$,
+    hasInlineVideoTemplate$: composer.hasInlineVideoTemplate$,
     insertTemplate$: composer.insertTemplate$,
     updateTemplateAt$: composer.updateTemplateAt$,
     readSelectedTemplate$: composer.readSelectedTemplate$,
@@ -439,6 +456,45 @@ function createRemoveQueuedMessage(
   );
 }
 
+function createComposerVideoSignals(
+  draft: DraftSignals,
+  eventSignals: ReturnType<typeof createComposerChatEventSignals>,
+): ComposerVideoSignals {
+  const intentDetected$ = computed((get): boolean => {
+    return draftMentionsVideo(get(draft.input$));
+  });
+  const effectiveOptions$ = computed((get) => {
+    const explicit = get(draft.videoOptions$);
+    const inherited = get(eventSignals.latestVideoOptions$);
+    return explicit || inherited ? { ...inherited, ...explicit } : undefined;
+  });
+  return {
+    intentDetected$,
+    effectiveOptions$,
+    setOptions$: draft.setVideoOptions$,
+  };
+}
+
+function videoOptionsForSubmission(args: {
+  readonly intentDetected: boolean;
+  readonly hasTextToVideoTemplate: boolean;
+  readonly hasAvatarTemplate: boolean;
+  readonly explicit: VideoGenerationOptions | undefined;
+  readonly inherited: VideoGenerationOptions | undefined;
+}): VideoGenerationOptions | undefined {
+  if (
+    (args.hasAvatarTemplate && !args.hasTextToVideoTemplate) ||
+    (!args.intentDetected && !args.hasTextToVideoTemplate)
+  ) {
+    return undefined;
+  }
+  return {
+    ...args.inherited,
+    ...args.explicit,
+    model: args.explicit?.model ?? args.inherited?.model ?? DEFAULT_VIDEO_MODEL,
+  };
+}
+
 export function createComposerSignals(
   options: CreateComposerSignalsOptions,
 ): ComposerSignals {
@@ -474,6 +530,7 @@ export function createComposerSignals(
     workflowComposer,
   );
   const ui = createComposerUiSignals();
+  const video = createComposerVideoSignals(draft, eventSignals);
 
   return {
     agentId: options.agentId,
@@ -538,6 +595,7 @@ export function createComposerSignals(
       generationTemplate$: draft.generationTemplate$,
       setGenerationTemplate$: draft.setGenerationTemplate$,
     },
+    video,
   };
 }
 
@@ -565,6 +623,9 @@ function createComposerChatEventSignals(chatEvents$: Computed<ChatEvent[]>) {
       );
     },
   );
+  const latestVideoOptions$ = computed((get) => {
+    return latestVideoSettingsFromChatEvents(get(chatEvents$));
+  });
   const sending$ = computed((get): Promise<boolean> => {
     const running = get(runIndicatorState$) !== null;
     const lastAssistantCancelled = lastAssistantCancelledFromGroups(
@@ -616,10 +677,47 @@ function createComposerChatEventSignals(chatEvents$: Computed<ChatEvent[]>) {
     actionsLoading$,
     sending$,
     runningModelSelection$,
+    latestVideoOptions$,
     pendingEvents$,
     activeGoalObjective$,
     hasEvents$,
   };
+}
+
+function createComposerPrimaryActionSignal(
+  options: CreateComposerSignalsOptions,
+  eventSignals: ReturnType<typeof createComposerChatEventSignals>,
+  draft: DraftSignals,
+  hasInput$: WorkflowComposerSignals["hasInput$"],
+  submissionPending$: Computed<boolean>,
+) {
+  return computed(async (get): Promise<ComposerPrimaryAction> => {
+    if (await get(eventSignals.actionsLoading$)) {
+      return "disabled";
+    }
+
+    const uploadsReady = get(draft.attachmentUploadsReady$);
+    const attachments = get(draft.attachments$);
+    let hasContent = options.implicitContent === true || get(hasInput$);
+    if (!hasContent && attachments.length > 0) {
+      const modelSelection = await get(options.modelSelection$);
+      const imageRecognitionEnabled = get(imageRecognitionAvailable$);
+      hasContent = hasVisibleAttachment(
+        modelSelection,
+        attachments,
+        imageRecognitionEnabled,
+      );
+    }
+    const canSend = uploadsReady && hasContent;
+    const sending = await get(eventSignals.sending$);
+    if (sending && !canSend) {
+      return "stop";
+    }
+    if (get(submissionPending$) || !canSend) {
+      return "disabled";
+    }
+    return sending ? "queue" : "send";
+  });
 }
 
 function createComposerSubmissionSignals(
@@ -632,41 +730,12 @@ function createComposerSubmissionSignals(
   const submissionPending$ = computed((get): boolean => {
     return get(internalSubmissionPending$);
   });
-  const primaryAction$ = computed(
-    async (get): Promise<ComposerPrimaryAction> => {
-      if (await get(eventSignals.actionsLoading$)) {
-        return "disabled";
-      }
-
-      const uploadsReady = get(draft.attachmentUploadsReady$);
-      const attachments = get(draft.attachments$);
-      let hasContent =
-        options.implicitContent === true || get(workflowComposer.hasInput$);
-      if (!hasContent && attachments.length > 0) {
-        const modelSelection = await get(options.modelSelection$);
-        const imageRecognitionEnabled = get(imageRecognitionAvailable$);
-        hasContent = hasVisibleAttachment(
-          modelSelection,
-          attachments,
-          imageRecognitionEnabled,
-        );
-      }
-      const canSend = uploadsReady && hasContent;
-      const sending = await get(eventSignals.sending$);
-      if (sending && !canSend) {
-        return "stop";
-      }
-      if (get(submissionPending$)) {
-        return "disabled";
-      }
-      if (!canSend) {
-        return "disabled";
-      }
-      if (!sending) {
-        return "send";
-      }
-      return "queue";
-    },
+  const primaryAction$ = createComposerPrimaryActionSignal(
+    options,
+    eventSignals,
+    draft,
+    workflowComposer.hasInput$,
+    submissionPending$,
   );
   const submitCurrentInput$ = command(
     async (
@@ -715,12 +784,27 @@ function createComposerSubmissionSignals(
           if (!get(draft.attachmentUploadsReady$)) {
             return false;
           }
+          const generationTemplate = get(draft.generationTemplate$);
+          const videoOptionsEnabled =
+            get(featureSwitch$)[FeatureSwitchKey.VideoTemplateOptions] ?? false;
+          const videoOptions = videoOptionsEnabled
+            ? videoOptionsForSubmission({
+                intentDetected: draftMentionsVideo(get(draft.input$)),
+                ...messageVideoTemplateContext(
+                  submission.editorDocument,
+                  generationTemplate,
+                ),
+                explicit: get(draft.videoOptions$),
+                inherited: get(eventSignals.latestVideoOptions$),
+              })
+            : undefined;
           return await set(
             options.submitMessage$,
             action,
             {
               prompt,
-              generationTemplate: get(draft.generationTemplate$),
+              generationTemplate,
+              videoOptions,
               editorDocument: submission.editorDocument,
             },
             signal,

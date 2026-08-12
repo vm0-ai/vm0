@@ -7,6 +7,7 @@ import {
   type ResolvedAttachFile,
   type UserMessageDocument,
   type UserMessageInputDocument,
+  type VideoGenerationOptions,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { OrgModelPoliciesResponse } from "@vm0/api-contracts/contracts/model-providers";
 import type { UserModelPreferenceResponse } from "@vm0/api-contracts/contracts/zero-user-model-preference";
@@ -61,6 +62,7 @@ import {
   type ChatForwardContext,
 } from "./chat-forward.ts";
 import { withOptimisticAgentRunSource } from "./chat-event-signals.ts";
+import { withVideoSettingsMetadata } from "../zero-page/video-draft-settings.ts";
 
 export type NewChatThreadPane = "main" | "sidebar";
 
@@ -77,6 +79,7 @@ interface SendNewThreadMessageRequest {
   draft?: DraftSignals;
   prompt: string;
   generationTemplate: GenerationTemplateRequest | undefined;
+  videoOptions?: VideoGenerationOptions;
   generationTemplateTitleSnapshot?: string;
   editorDocument?: EditorDocumentSnapshot;
   computerUseHostId?: string | null;
@@ -130,7 +133,7 @@ function userMessageForNewThread(
   if (!userMessage) {
     throw new Error("Failed to serialize user message");
   }
-  return userMessage;
+  return withVideoSettingsMetadata(userMessage, request.videoOptions);
 }
 
 function createNewThreadOptimisticEventEntry({

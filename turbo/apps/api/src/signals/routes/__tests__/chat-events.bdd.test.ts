@@ -7166,6 +7166,54 @@ describe("CHAT-02: generation templates and attachments", () => {
     await cancelChatRun(actor, sent.runId);
   }, 90_000);
 
+  it("keeps message-scoped video settings hidden from the visible prompt", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    const prompt = "make a vertical product video";
+    const sent = await sendChatRun(actor, {
+      agentId,
+      prompt,
+      userMessage: {
+        version: 1,
+        videoOptions: {
+          model: "fal-ai/veo3.1/fast",
+          aspectRatio: "9:16",
+          duration: "8s",
+          resolution: "1080p",
+        },
+        parts: [{ type: "text", text: prompt }],
+      },
+    });
+
+    const run = await api.readRun(actor, sent.runId);
+    expect(run.prompt).toBe(prompt);
+    const systemPrompt = run.appendSystemPrompt ?? "";
+    expect(systemPrompt).toContain("# Video generation settings");
+    expect(systemPrompt).toContain("- Model: veo3.1-fast");
+    expect(systemPrompt).toContain("- Aspect ratio: 9:16");
+    expect(systemPrompt).toContain("- Duration: 8s");
+    expect(systemPrompt).toContain("- Resolution: 1080p");
+    expect(systemPrompt).toContain(
+      "`--model veo3.1-fast --aspect-ratio 9:16 --duration 8s --resolution 1080p` verbatim",
+    );
+
+    const messages = await chat.listThreadEvents(actor, sent.threadId);
+    const message = userMessages(messages.events).find((event) => {
+      return event.eventType === "input.prompt" && event.runId === sent.runId;
+    });
+    expect(message).toMatchObject({
+      userMessage: {
+        videoOptions: {
+          model: "fal-ai/veo3.1/fast",
+          aspectRatio: "9:16",
+          duration: "8s",
+          resolution: "1080p",
+        },
+      },
+    });
+    await cancelChatRun(actor, sent.runId);
+  }, 90_000);
+
   it("renders generation template guidance into the run system prompt", async () => {
     const { actor, agentId } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();

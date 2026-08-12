@@ -3031,6 +3031,7 @@ function resolveQueuedMessageGenerationTemplatePrompt(args: {
       return resolveThreadGenerationTemplatePrompt({
         explicit: args.userMessageProjection?.primaryTemplate,
         explicitTemplates: args.userMessageProjection?.templates,
+        videoOptions: args.userMessageProjection?.videoOptions,
       });
     },
   );

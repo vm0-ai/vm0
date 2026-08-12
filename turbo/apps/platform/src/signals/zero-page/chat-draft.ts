@@ -19,11 +19,13 @@ import type {
   GenerationTemplateRequest,
   PersistedAttachment,
   UserMessageDocument,
+  VideoGenerationOptions,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroUploadsContract } from "@vm0/api-contracts/contracts/zero-uploads";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import type { EditorDocumentSnapshot } from "./user-message-document-codec.ts";
 import { i18n } from "../../i18n/index.ts";
+import { videoSettingsFromMessage } from "./video-draft-settings.ts";
 
 // ---------------------------------------------------------------------------
 // Attachment types (moved from zero-chat.ts)
@@ -391,6 +393,8 @@ export interface DraftSignals {
     void,
     [GenerationTemplateRequest | undefined]
   >;
+  videoOptions$: Computed<VideoGenerationOptions | undefined>;
+  setVideoOptions$: Command<void, [VideoGenerationOptions | undefined]>;
   attachments$: Computed<ZeroChatAttachment[]>;
   attachmentUploadsReady$: Computed<boolean>;
   uploadAttachment$: Command<Promise<void>, [File, AbortSignal]>;
@@ -537,12 +541,14 @@ function createDraftLifecycleSignals({
   draftInput,
   draftDocument,
   internalGenerationTemplate$,
+  internalVideoOptions$,
   internalAttachments$,
   internalDragOver$,
 }: {
   draftInput: ReturnType<typeof createDraftInputSignals>;
   draftDocument: ReturnType<typeof createDraftDocumentSignals>;
   internalGenerationTemplate$: State<GenerationTemplateRequest | undefined>;
+  internalVideoOptions$: State<VideoGenerationOptions | undefined>;
   internalAttachments$: State<ZeroChatAttachment[]>;
   internalDragOver$: State<boolean>;
 }) {
@@ -551,6 +557,7 @@ function createDraftLifecycleSignals({
     set(draftDocument.setRestoredUserMessage$, null);
     set(draftDocument.setEditorDocument$, null);
     set(internalGenerationTemplate$, undefined);
+    set(internalVideoOptions$, undefined);
     const attachments = get(internalAttachments$);
     for (const attachment of attachments) {
       set(attachment.cancel$);
@@ -565,6 +572,7 @@ function createDraftLifecycleSignals({
     set(draftDocument.setEditorDocument$, null);
     set(draftDocument.setRestoredUserMessage$, value.userMessage);
     set(internalGenerationTemplate$, value.generationTemplate);
+    set(internalVideoOptions$, videoSettingsFromMessage(value.userMessage));
     set(internalAttachments$, value.attachments);
     set(draftInput.setInput$, value.content);
     if (
@@ -584,6 +592,9 @@ export function createDraftSignals(): DraftSignals {
   const internalGenerationTemplate$ = state<
     GenerationTemplateRequest | undefined
   >(undefined);
+  const internalVideoOptions$ = state<VideoGenerationOptions | undefined>(
+    undefined,
+  );
   const internalAttachments$ = state<ZeroChatAttachment[]>([]);
   const internalDragOver$ = state(false);
 
@@ -593,6 +604,14 @@ export function createDraftSignals(): DraftSignals {
   const setGenerationTemplate$ = command(
     ({ set }, value: GenerationTemplateRequest | undefined) => {
       set(internalGenerationTemplate$, value);
+    },
+  );
+  const videoOptions$ = computed((get) => {
+    return get(internalVideoOptions$);
+  });
+  const setVideoOptions$ = command(
+    ({ set }, value: VideoGenerationOptions | undefined) => {
+      set(internalVideoOptions$, value);
     },
   );
 
@@ -666,6 +685,7 @@ export function createDraftSignals(): DraftSignals {
     draftInput,
     draftDocument,
     internalGenerationTemplate$,
+    internalVideoOptions$,
     internalAttachments$,
     internalDragOver$,
   });
@@ -677,6 +697,8 @@ export function createDraftSignals(): DraftSignals {
     setEditorDocument$: draftDocument.setEditorDocument$,
     generationTemplate$,
     setGenerationTemplate$,
+    videoOptions$,
+    setVideoOptions$,
     attachments$,
     attachmentUploadsReady$,
     uploadAttachment$,

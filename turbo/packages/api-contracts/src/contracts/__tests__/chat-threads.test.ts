@@ -363,6 +363,32 @@ describe("chat thread generation template contract", () => {
     ).toMatchObject({ success: false });
   });
 
+  it("accepts non-empty video settings metadata", () => {
+    const userMessage = {
+      version: 1,
+      videoOptions: {
+        model: "fal-ai/veo3.1/fast",
+        aspectRatio: "9:16",
+        duration: "8s",
+      },
+      parts: [{ type: "text", text: "Make a vertical product video" }],
+    };
+
+    expect(userMessageInputDocumentSchema.safeParse(userMessage)).toMatchObject(
+      { success: true },
+    );
+    expect(userMessageDocumentSchema.safeParse(userMessage)).toMatchObject({
+      success: true,
+    });
+    expect(
+      userMessageInputDocumentSchema.safeParse({
+        version: 1,
+        videoOptions: {},
+        parts: [{ type: "text", text: "Make a video" }],
+      }),
+    ).toMatchObject({ success: false });
+  });
+
   it("accepts template parts inside feedback notes", () => {
     const parsed = userMessageDocumentSchema.safeParse({
       version: 1,

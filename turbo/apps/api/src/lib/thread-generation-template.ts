@@ -1,8 +1,37 @@
-import type { GenerationTemplateRequest } from "@vm0/api-contracts/contracts/chat-threads";
+import type {
+  GenerationTemplateRequest,
+  VideoGenerationOptions,
+} from "@vm0/api-contracts/contracts/chat-threads";
+import { parseAvatarTemplateStylePresetId } from "@vm0/core/avatar-template";
 import {
   buildGenerationTemplatePrompt,
   buildGenerationTemplatesPrompt,
+  buildVideoGenerationSettingsPrompt,
 } from "./generation-template-prompt";
+
+function withVideoSettingsDefaults(
+  template: GenerationTemplateRequest,
+  videoOptions: VideoGenerationOptions | undefined,
+): GenerationTemplateRequest {
+  if (
+    template.type !== "video" ||
+    videoOptions === undefined ||
+    parseAvatarTemplateStylePresetId(template.selection.stylePresetId) !==
+      undefined
+  ) {
+    return template;
+  }
+  return {
+    ...template,
+    selection: {
+      ...template.selection,
+      videoOptions: {
+        ...videoOptions,
+        ...template.selection.videoOptions,
+      },
+    },
+  };
+}
 
 /**
  * Resolve the generation-template system prompt for a chat run.
@@ -14,14 +43,27 @@ import {
 export function resolveThreadGenerationTemplatePrompt(args: {
   readonly explicit: GenerationTemplateRequest | null | undefined;
   readonly explicitTemplates?: readonly GenerationTemplateRequest[];
+  readonly videoOptions?: VideoGenerationOptions;
 }): string {
+  const videoSettingsPrompt = buildVideoGenerationSettingsPrompt(
+    args.videoOptions,
+  );
+  let templatePrompt = "";
   if (args.explicitTemplates && args.explicitTemplates.length > 0) {
-    const built = buildGenerationTemplatesPrompt(args.explicitTemplates);
-    return built.status === "resolved" ? built.prompt : "";
+    const templates = args.explicitTemplates.map((template) => {
+      return withVideoSettingsDefaults(template, args.videoOptions);
+    });
+    const built = buildGenerationTemplatesPrompt(templates);
+    templatePrompt = built.status === "resolved" ? built.prompt : "";
+  } else if (args.explicit) {
+    const built = buildGenerationTemplatePrompt(
+      withVideoSettingsDefaults(args.explicit, args.videoOptions),
+    );
+    templatePrompt = built.status === "resolved" ? built.prompt : "";
   }
-  if (!args.explicit) {
-    return "";
-  }
-  const built = buildGenerationTemplatePrompt(args.explicit);
-  return built.status === "resolved" ? built.prompt : "";
+  return [videoSettingsPrompt, templatePrompt]
+    .filter((part) => {
+      return part.length > 0;
+    })
+    .join("\n\n");
 }

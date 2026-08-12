@@ -6,6 +6,7 @@ import type {
   UserMessageInputDocument,
   UserMessageInputPart,
   UserMessagePart,
+  VideoGenerationOptions,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   isChatUserMessageEventType,
@@ -18,6 +19,7 @@ interface UserMessageProjection {
   readonly displayText: string;
   readonly primaryTemplate: GenerationTemplateRequest | undefined;
   readonly templates: readonly GenerationTemplateRequest[];
+  readonly videoOptions: VideoGenerationOptions | undefined;
   readonly hasTextContent: boolean;
 }
 
@@ -104,7 +106,7 @@ export function withAgentRunSourceAnnotation(
     );
   });
   return {
-    version: 1,
+    ...document,
     parts: [
       ...contentParts,
       {
@@ -127,7 +129,7 @@ export function withRunModelAnnotation(
   serviceTier?: ChatThreadServiceTier,
 ): UserMessageDocument {
   return {
-    version: 1,
+    ...document,
     parts: [
       ...document.parts.filter((part) => {
         return part.type !== "model";
@@ -326,6 +328,8 @@ export function projectUserMessage(
   let feedbackParts: Extract<UserMessagePart, { type: "feedback" }>[] = [];
   let primaryTemplate: GenerationTemplateRequest | undefined;
   const templates: GenerationTemplateRequest[] = [];
+  const videoOptions: VideoGenerationOptions | undefined =
+    document.videoOptions;
   let hasTextContent = false;
 
   const registerInlineTemplate = (part: {
@@ -415,6 +419,7 @@ export function projectUserMessage(
     displayText: displayBlocks.join("\n\n"),
     primaryTemplate,
     templates,
+    videoOptions,
     hasTextContent,
   };
 }

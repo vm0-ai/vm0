@@ -2,11 +2,13 @@ import type {
   GenerationTemplateRequest,
   PersistedAttachment,
   UserMessageInputDocument,
+  VideoGenerationOptions,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   textToMessageDocument,
   type EditorDocumentSnapshot,
 } from "./user-message-document-codec.ts";
+import { withVideoSettingsMetadata } from "./video-draft-settings.ts";
 
 export interface DraftPersistencePayload {
   readonly userMessage: UserMessageInputDocument | null;
@@ -17,6 +19,7 @@ interface DraftPersistenceSource {
   readonly input: string;
   readonly editorDocument: EditorDocumentSnapshot | null;
   readonly generationTemplate: GenerationTemplateRequest | undefined;
+  readonly videoOptions: VideoGenerationOptions | undefined;
   readonly attachments: readonly PersistedAttachment[];
 }
 
@@ -42,6 +45,7 @@ export function buildDraftPersistencePayload(
     if (!userMessage) {
       throw new Error("Failed to serialize user-message draft");
     }
+    userMessage = withVideoSettingsMetadata(userMessage, source.videoOptions);
   }
 
   return { userMessage, attachments };
