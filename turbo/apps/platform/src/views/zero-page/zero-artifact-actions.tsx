@@ -1,4 +1,9 @@
-import type { ComponentPropsWithoutRef, MouseEvent, ReactNode } from "react";
+import {
+  forwardRef,
+  type ComponentPropsWithoutRef,
+  type MouseEvent,
+  type ReactElement,
+} from "react";
 import { Download, Loader2, Share2 } from "lucide-react";
 import {
   cn,
@@ -280,14 +285,14 @@ export function ArtifactActionTooltip({
   label,
   side = "bottom",
 }: {
-  children: ReactNode;
+  children: ReactElement;
   label: string;
   side?: "top" | "right" | "bottom" | "left";
 }) {
   return (
     <TooltipProvider delayDuration={200}>
       <Tooltip>
-        <TooltipTrigger asChild>{children}</TooltipTrigger>
+        <TooltipTrigger render={children} />
         <TooltipContent
           side={side}
           className={ARTIFACT_FLOATING_TRANSITION_CLASS}
@@ -508,20 +513,22 @@ function GoogleDriveMenuItem({
   return (
     <TooltipProvider delayDuration={200}>
       <Tooltip>
-        <TooltipTrigger asChild>
-          <DropdownMenuItem
-            disabled={
-              !googleDriveConnected &&
-              (!googleDriveConnector || !googleDriveAuthMethod)
-            }
-            onClick={syncOrConnect}
-          >
-            <BrandGoogleDrive size={14} />
-            {t(($) => {
-              return $.artifacts.googleDrive.connect;
-            })}
-          </DropdownMenuItem>
-        </TooltipTrigger>
+        <TooltipTrigger
+          render={
+            <DropdownMenuItem
+              disabled={
+                !googleDriveConnected &&
+                (!googleDriveConnector || !googleDriveAuthMethod)
+              }
+              onClick={syncOrConnect}
+            >
+              <BrandGoogleDrive size={14} />
+              {t(($) => {
+                return $.artifacts.googleDrive.connect;
+              })}
+            </DropdownMenuItem>
+          }
+        />
         <TooltipContent
           side="left"
           className={ARTIFACT_FLOATING_TRANSITION_CLASS}
@@ -547,22 +554,22 @@ type ArtifactDownloadMenuProps = {
   url: string;
 };
 
-function ArtifactDownloadTrigger({
-  ariaLabel,
-  className,
-  downloadPending,
-  iconSize,
-  open,
-  ...props
-}: ComponentPropsWithoutRef<"button"> & {
-  ariaLabel: string;
-  downloadPending: boolean;
-  iconSize: number;
-  open: boolean;
-}) {
+const ArtifactDownloadTrigger = forwardRef<
+  HTMLButtonElement,
+  ComponentPropsWithoutRef<"button"> & {
+    ariaLabel: string;
+    downloadPending: boolean;
+    iconSize: number;
+    open: boolean;
+  }
+>(function ArtifactDownloadTrigger(
+  { ariaLabel, className, downloadPending, iconSize, open, ...props },
+  ref,
+) {
   return (
     <button
       {...props}
+      ref={ref}
       type="button"
       aria-label={ariaLabel}
       aria-busy={downloadPending ? "true" : undefined}
@@ -583,7 +590,7 @@ function ArtifactDownloadTrigger({
       )}
     </button>
   );
-}
+});
 
 function setArtifactDownloadMenuOpen(params: {
   readonly closeMenu: () => void;
@@ -657,15 +664,17 @@ export function ArtifactDownloadMenu({
       }}
     >
       <ArtifactActionTooltip label={label}>
-        <DropdownMenuTrigger asChild>
-          <ArtifactDownloadTrigger
-            ariaLabel={label}
-            className={className}
-            downloadPending={downloadPending}
-            iconSize={iconSize}
-            open={open}
-          />
-        </DropdownMenuTrigger>
+        <DropdownMenuTrigger
+          render={
+            <ArtifactDownloadTrigger
+              ariaLabel={label}
+              className={className}
+              downloadPending={downloadPending}
+              iconSize={iconSize}
+              open={open}
+            />
+          }
+        />
       </ArtifactActionTooltip>
       <DropdownMenuContent
         align={align}

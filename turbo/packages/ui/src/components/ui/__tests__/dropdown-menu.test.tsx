@@ -84,6 +84,34 @@ describe("DropdownMenu", () => {
     expect(trigger).toHaveFocus();
   });
 
+  it("opens when its trigger is composed with a tooltip", async () => {
+    render(
+      <DropdownMenu>
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <DropdownMenuTrigger
+                  render={<button type="button">Download options</button>}
+                />
+              }
+            />
+            <TooltipContent>Download artifact</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+        <DropdownMenuContent>
+          <DropdownMenuItem>Download</DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Download options" }));
+
+    expect(
+      await screen.findByRole("menuitem", { name: "Download" }),
+    ).toBeVisible();
+  });
+
   it("opens a submenu when its trigger is clicked", async () => {
     render(
       <DropdownMenu>
