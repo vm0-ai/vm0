@@ -124,7 +124,7 @@ Examples:
   Quick preset avatar:     okou agent edit <agent-id> --avatar preset:2
   Custom avatar:           okou agent edit <agent-id> --avatar-skin dark --avatar-hair-color teal --avatar-intensity hyped
   Update instructions:     okou agent edit <agent-id> --instructions-file ./instructions.md
-  Update yourself:         okou agent edit $ZERO_AGENT_ID --description "new role"
+  Update yourself:         okou agent edit $OKOU_AGENT_ID --description "new role"
 
 Notes:
   - At least one option is required

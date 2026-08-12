@@ -7,7 +7,7 @@ const c = initContract();
 export const zeroFeishuEventsContract = c.router({
   post: {
     method: "POST",
-    path: "/api/zero/feishu/events/:installationId",
+    path: "/api/okou/feishu/events/:installationId",
     pathParams: z.object({ installationId: z.string().uuid() }),
     body: c.type<string>(),
     responses: {

@@ -28,7 +28,7 @@ export const zeroSlackOauthCallbackQuerySchema = z.object({
 export const zeroSlackOauthContract = c.router({
   install: {
     method: "GET",
-    path: "/api/zero/slack/oauth/install",
+    path: "/api/okou/slack/oauth/install",
     query: zeroSlackOauthInstallQuerySchema,
     responses: {
       307: c.noBody(),
@@ -38,7 +38,7 @@ export const zeroSlackOauthContract = c.router({
   },
   connect: {
     method: "GET",
-    path: "/api/zero/slack/oauth/connect",
+    path: "/api/okou/slack/oauth/connect",
     query: zeroSlackOauthConnectQuerySchema,
     responses: {
       307: c.noBody(),
@@ -50,7 +50,7 @@ export const zeroSlackOauthContract = c.router({
   },
   callback: {
     method: "GET",
-    path: "/api/zero/slack/oauth/callback",
+    path: "/api/okou/slack/oauth/callback",
     query: zeroSlackOauthCallbackQuerySchema,
     responses: {
       307: c.noBody(),

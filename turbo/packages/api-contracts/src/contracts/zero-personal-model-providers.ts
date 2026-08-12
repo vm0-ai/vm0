@@ -26,7 +26,7 @@ export type ResetPersonalModelProviderSubscriptionUsageResponse = z.infer<
 >;
 
 /**
- * Zero personal (user-level) model providers main contract for /api/zero/me/model-providers
+ * Zero personal (user-level) model providers main contract for /api/okou/me/model-providers
  *
  * Personal-tier per Epic #11868: providers scoped to the authenticated user
  * within an org, no admin gate. List/upsert are gated on model-first provider
@@ -38,7 +38,7 @@ export type ResetPersonalModelProviderSubscriptionUsageResponse = z.infer<
 export const zeroPersonalModelProvidersMainContract = c.router({
   list: {
     method: "GET",
-    path: "/api/zero/me/model-providers",
+    path: "/api/okou/me/model-providers",
     headers: authHeadersSchema,
     responses: {
       200: modelProviderListResponseSchema,
@@ -50,7 +50,7 @@ export const zeroPersonalModelProvidersMainContract = c.router({
   },
   upsert: {
     method: "POST",
-    path: "/api/zero/me/model-providers",
+    path: "/api/okou/me/model-providers",
     headers: authHeadersSchema,
     body: upsertModelProviderRequestSchema,
     responses: {
@@ -70,14 +70,14 @@ export type ZeroPersonalModelProvidersMainContract =
   typeof zeroPersonalModelProvidersMainContract;
 
 /**
- * Zero personal model providers by type contract for /api/zero/me/model-providers/:type
+ * Zero personal model providers by type contract for /api/okou/me/model-providers/:type
  *
  * DELETE: Delete one of the requesting user's personal model providers
  */
 export const zeroPersonalModelProvidersByTypeContract = c.router({
   delete: {
     method: "DELETE",
-    path: "/api/zero/me/model-providers/:type",
+    path: "/api/okou/me/model-providers/:type",
     headers: authHeadersSchema,
     pathParams: z.object({
       type: modelProviderTypeSchema,
@@ -92,7 +92,7 @@ export const zeroPersonalModelProvidersByTypeContract = c.router({
   },
   resetSubscriptionUsage: {
     method: "POST",
-    path: "/api/zero/me/model-providers/:type/subscription-reset",
+    path: "/api/okou/me/model-providers/:type/subscription-reset",
     headers: authHeadersSchema,
     pathParams: z.object({
       type: modelProviderTypeSchema,
@@ -116,7 +116,7 @@ export type ZeroPersonalModelProvidersByTypeContract =
 export const zeroPersonalModelProviderAccountsByIdContract = c.router({
   activate: {
     method: "POST",
-    path: "/api/zero/me/model-provider-accounts/:id/activate",
+    path: "/api/okou/me/model-provider-accounts/:id/activate",
     headers: authHeadersSchema,
     pathParams: z.object({ id: z.uuid() }),
     body: z.object({}),
@@ -130,7 +130,7 @@ export const zeroPersonalModelProviderAccountsByIdContract = c.router({
   },
   delete: {
     method: "DELETE",
-    path: "/api/zero/me/model-provider-accounts/:id",
+    path: "/api/okou/me/model-provider-accounts/:id",
     headers: authHeadersSchema,
     pathParams: z.object({ id: z.uuid() }),
     responses: {
@@ -143,7 +143,7 @@ export const zeroPersonalModelProviderAccountsByIdContract = c.router({
   },
   resetSubscriptionUsage: {
     method: "POST",
-    path: "/api/zero/me/model-provider-accounts/:id/subscription-reset",
+    path: "/api/okou/me/model-provider-accounts/:id/subscription-reset",
     headers: authHeadersSchema,
     pathParams: z.object({ id: z.uuid() }),
     body: resetPersonalModelProviderSubscriptionUsageRequestSchema,

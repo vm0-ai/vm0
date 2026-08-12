@@ -23,7 +23,7 @@ type StrapiIntegrationRow = typeof strapiIntegrations.$inferSelect;
 
 function strapiWebhookUrl(integrationId: string): string {
   return new URL(
-    `/api/zero/strapi/events/${encodeURIComponent(integrationId)}`,
+    `/api/okou/strapi/events/${encodeURIComponent(integrationId)}`,
     env("VM0_WEB_URL"),
   ).toString();
 }

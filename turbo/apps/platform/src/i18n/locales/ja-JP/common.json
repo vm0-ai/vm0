@@ -2522,6 +2522,18 @@
       "degraded": "ライブアップデートで問題が発生しました。ページを更新してください。"
     }
   },
+  "invitationRedirect": {
+    "accountMismatch": {
+      "title": "別のアカウントで招待を承諾しました"
+    },
+    "actions": {
+      "switchAccount": "アカウントを切り替える",
+      "switchWorkspace": "ワークスペースを切り替える"
+    },
+    "success": {
+      "title": "{{workspace}} への招待を承諾しました"
+    }
+  },
   "lifecycle": {
     "emailUnsubscribe": {
       "action": "購読を解除する",

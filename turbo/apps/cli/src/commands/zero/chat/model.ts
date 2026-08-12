@@ -140,7 +140,7 @@ export const modelCommand = new Command()
   .description("Show or switch the current web chat thread model")
   .argument("[model]", "Model id to use for this chat thread")
   .helpOption(false)
-  .option("--thread <id>", "Chat thread ID (defaults to ZERO_CHAT_THREAD_ID)")
+  .option("--thread <id>", "Chat thread ID (defaults to OKOU_CHAT_THREAD_ID)")
   .option("-h, --help", "Show help with switchable models")
   .addHelpText(
     "after",
@@ -152,8 +152,8 @@ Examples:
   Switch another model:     okou chat model --thread <thread-id> claude-sonnet-5
 
 Notes:
-  - Defaults --thread to ZERO_CHAT_THREAD_ID
-  - Authenticates via ZERO_TOKEN (requires chat-thread:write capability to switch)`,
+  - Defaults --thread to OKOU_CHAT_THREAD_ID
+  - Authenticates via OKOU_TOKEN (requires chat-thread:write capability to switch)`,
   )
   .action(
     withErrorHandler(
@@ -166,7 +166,7 @@ Notes:
         const threadId = options.thread?.trim() || getCurrentChatThreadId();
         if (!threadId) {
           printUsageError(
-            "ZERO_CHAT_THREAD_ID is not set",
+            "OKOU_CHAT_THREAD_ID is not set",
             "Pass --thread <thread-id> or run inside a web chat thread.",
           );
         }

@@ -77,7 +77,7 @@ export type UpdateUserPreferencesRequest = z.infer<
 >;
 
 /**
- * Zero user preferences contract for /api/zero/user-preferences
+ * Zero user preferences contract for /api/okou/user-preferences
  *
  * GET: Get current user's preferences
  * POST: Update user preferences
@@ -85,7 +85,7 @@ export type UpdateUserPreferencesRequest = z.infer<
 export const zeroUserPreferencesContract = c.router({
   get: {
     method: "GET",
-    path: "/api/zero/user-preferences",
+    path: "/api/okou/user-preferences",
     headers: authHeadersSchema,
     responses: {
       200: userPreferencesResponseSchema,
@@ -96,7 +96,7 @@ export const zeroUserPreferencesContract = c.router({
   },
   update: {
     method: "POST",
-    path: "/api/zero/user-preferences",
+    path: "/api/okou/user-preferences",
     headers: authHeadersSchema,
     body: updateUserPreferencesRequestSchema,
     responses: {

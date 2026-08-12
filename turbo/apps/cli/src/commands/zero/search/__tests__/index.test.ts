@@ -83,7 +83,7 @@ describe("okou search command (scaffold)", () => {
 
     let called = false;
     server.use(
-      http.get("http://localhost:3000/api/zero/logs/search", () => {
+      http.get("http://localhost:3000/api/okou/logs/search", () => {
         called = true;
         return HttpResponse.json({ results: [], hasMore: false });
       }),

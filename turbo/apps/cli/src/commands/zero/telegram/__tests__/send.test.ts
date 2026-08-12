@@ -9,7 +9,7 @@ import { sendCommand } from "../message/send";
 import chalk from "chalk";
 
 const TELEGRAM_MESSAGE_URL =
-  "http://localhost:3000/api/zero/integrations/telegram/message";
+  "http://localhost:3000/api/okou/integrations/telegram/message";
 
 describe("okou telegram message send command", () => {
   vi.spyOn(process, "exit").mockImplementation((() => {

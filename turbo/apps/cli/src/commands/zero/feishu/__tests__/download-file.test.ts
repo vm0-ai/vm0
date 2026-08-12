@@ -9,7 +9,7 @@ import { server } from "../../../../mocks/server";
 import { downloadFileCommand } from "../download-file";
 
 const DOWNLOAD_URL =
-  "http://localhost:3000/api/zero/integrations/feishu/download-file";
+  "http://localhost:3000/api/okou/integrations/feishu/download-file";
 
 describe("okou feishu download-file command", () => {
   vi.spyOn(process, "exit").mockImplementation((): never => {

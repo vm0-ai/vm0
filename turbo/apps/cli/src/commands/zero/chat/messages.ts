@@ -251,7 +251,7 @@ export const messagesCommand = new Command()
   .description("Read the messages in a web chat thread")
   .option(
     "--thread-id <id>",
-    "Chat thread ID (defaults to ZERO_CHAT_THREAD_ID)",
+    "Chat thread ID (defaults to OKOU_CHAT_THREAD_ID)",
   )
   .option(
     "--limit <n>",
@@ -270,7 +270,7 @@ Examples:
 Notes:
   - Prints user and assistant messages oldest first, the order the chat UI shows
   - Reads a thread the current user owns, including one another agent run wrote into
-  - Authenticates via ZERO_TOKEN (requires chat-event:read capability)`,
+  - Authenticates via OKOU_TOKEN (requires chat-event:read capability)`,
   )
   .action(
     withErrorHandler(async (options: MessagesOptions) => {

@@ -169,7 +169,7 @@ import { previewAutomationBypass$ } from "../context/hono";
 import { writeDb$, type Db } from "../external/db";
 import { getDatasetName, ingestToAxiom } from "../external/axiom";
 import { now, nowDate } from "../../lib/time";
-import { generateZeroToken } from "../auth/tokens";
+import { generateBrandedRunTokens } from "../auth/tokens";
 import { onRejection, safeSync, settle, tapError } from "../utils";
 import {
   environmentRecordToEntries,
@@ -399,18 +399,24 @@ function buildMcpConnectorPrompt(
 function withZeroTokenSecret(
   body: CreateRunBody,
   zeroToken: string,
+  okouToken: string,
 ): CreateRunBody {
   return {
     ...body,
     secrets: {
       ...body.secrets,
+      OKOU_TOKEN: okouToken,
       ZERO_TOKEN: zeroToken,
     },
   };
 }
 
 function withPendingZeroTokenSecret(body: CreateRunBody): CreateRunBody {
-  return withZeroTokenSecret(body, "__pending_zero_token__");
+  return withZeroTokenSecret(
+    body,
+    "__pending_zero_token__",
+    "__pending_okou_token__",
+  );
 }
 
 function withFinalRunAppendSystemPrompt(args: {
@@ -6483,23 +6489,29 @@ function preparedRunnerJobBody(
   if (!args.includeZeroTokenSecret) {
     return args.body;
   }
-  return withZeroTokenSecret(
-    args.body,
-    generateZeroToken(
-      args.userId,
-      args.run.id,
-      args.orgId,
-      args.featureSwitchContext.overrides,
-      {
-        scope: "zero",
-        ...(args.zeroTokenComputerUseHostId
-          ? { computerUseHostId: args.zeroTokenComputerUseHostId }
-          : {}),
-        cloudBrowserEnabled: args.zeroTokenCloudBrowserEnabled === true,
-        imageRecognitionAvailable: args.imageRecognitionAvailable,
-      },
-    ),
+  const { okouToken, zeroToken } = generateBrandedRunTokens(
+    args.userId,
+    args.run.id,
+    args.orgId,
+    args.featureSwitchContext.overrides,
+    {
+      ...(args.zeroTokenComputerUseHostId
+        ? { computerUseHostId: args.zeroTokenComputerUseHostId }
+        : {}),
+      cloudBrowserEnabled: args.zeroTokenCloudBrowserEnabled === true,
+      imageRecognitionAvailable: args.imageRecognitionAvailable,
+    },
   );
+  return withZeroTokenSecret(args.body, zeroToken, okouToken);
+}
+
+function zeroTokenEnvironment(body: CreateRunBody): Record<string, string> {
+  const okouToken = body.secrets?.OKOU_TOKEN;
+  const zeroToken = body.secrets?.ZERO_TOKEN;
+  if (!okouToken || !zeroToken) {
+    throw new Error("Branded run tokens are missing from the run context");
+  }
+  return { OKOU_TOKEN: okouToken, ZERO_TOKEN: zeroToken };
 }
 
 function piEdgeUsageConfig(
@@ -6527,6 +6539,9 @@ function buildRunnerJobPayload(
   return computed(async (get): Promise<PreparedRunnerLaunch> => {
     const group = preparedRunnerGroup(args.resolved.content);
     const body = preparedRunnerJobBody(args);
+    const extraEnvironment = args.includeZeroTokenSecret
+      ? { ...args.extraEnvironment, ...zeroTokenEnvironment(body) }
+      : args.extraEnvironment;
     const storageManifestStats = args.timing
       ? new StorageManifestBuildStats()
       : undefined;
@@ -6566,6 +6581,7 @@ function buildRunnerJobPayload(
         return await buildStoredExecutionContextDraft({
           ...args,
           body,
+          extraEnvironment,
           runId: args.run.id,
         });
       },

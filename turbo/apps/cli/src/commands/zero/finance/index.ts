@@ -166,7 +166,7 @@ Examples:
   Historical chart:   okou finance chart AAPL --range 1y --interval 1d
 
 Notes:
-  - Authenticates via ZERO_TOKEN (requires finance:read capability) or a CLI token
+  - Authenticates via OKOU_TOKEN (requires finance:read capability) or a CLI token
   - Each successful command consumes 1 credit
   - Data is returned from APIDojo's Yahoo Finance API on RapidAPI without Okou-side caching`,
   );

@@ -82,7 +82,7 @@ describe("okou workflow copy command", () => {
       let capturedBody: Record<string, unknown> | undefined;
       server.use(
         http.post(
-          `http://localhost:3000/api/zero/workflows/${SOURCE_ID}/copy`,
+          `http://localhost:3000/api/okou/workflows/${SOURCE_ID}/copy`,
           async ({ request }) => {
             capturedBody = (await request.json()) as Record<string, unknown>;
             return HttpResponse.json(
@@ -104,7 +104,7 @@ describe("okou workflow copy command", () => {
           },
         ),
         http.get(
-          "http://localhost:3000/api/zero/workflows/:workflowId/automations",
+          "http://localhost:3000/api/okou/workflows/:workflowId/automations",
           ({ params }) => {
             expect(params.workflowId).toBe(NEW_ID);
             return HttpResponse.json([copiedAutomation]);
@@ -139,11 +139,11 @@ describe("okou workflow copy command", () => {
     it("should resolve a source workflow name before copying", async () => {
       let copiedWorkflowId: string | undefined;
       server.use(
-        http.get("http://localhost:3000/api/zero/workflows", () => {
+        http.get("http://localhost:3000/api/okou/workflows", () => {
           return HttpResponse.json([workflowSummary()]);
         }),
         http.post(
-          "http://localhost:3000/api/zero/workflows/:workflowId/copy",
+          "http://localhost:3000/api/okou/workflows/:workflowId/copy",
           ({ params }) => {
             copiedWorkflowId = params.workflowId as string;
             return HttpResponse.json(
@@ -165,7 +165,7 @@ describe("okou workflow copy command", () => {
           },
         ),
         http.get(
-          "http://localhost:3000/api/zero/workflows/:workflowId/automations",
+          "http://localhost:3000/api/okou/workflows/:workflowId/automations",
           ({ params }) => {
             expect(params.workflowId).toBe(NEW_ID);
             return HttpResponse.json([]);
@@ -194,7 +194,7 @@ describe("okou workflow copy command", () => {
     it("should handle workflow not found", async () => {
       server.use(
         http.post(
-          `http://localhost:3000/api/zero/workflows/${SOURCE_ID}/copy`,
+          `http://localhost:3000/api/okou/workflows/${SOURCE_ID}/copy`,
           () => {
             return HttpResponse.json(
               { error: { message: "Workflow not found", code: "NOT_FOUND" } },

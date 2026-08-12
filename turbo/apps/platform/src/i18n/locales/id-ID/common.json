@@ -2522,6 +2522,18 @@
       "degraded": "Pembaruan langsung mengalami masalah. Segarkan halaman."
     }
   },
+  "invitationRedirect": {
+    "accountMismatch": {
+      "title": "Undangan diterima untuk akun lain"
+    },
+    "actions": {
+      "switchAccount": "Ganti akun",
+      "switchWorkspace": "Ganti ruang kerja"
+    },
+    "success": {
+      "title": "Undangan untuk {{workspace}} diterima"
+    }
+  },
   "lifecycle": {
     "emailUnsubscribe": {
       "action": "Berhenti berlangganan",

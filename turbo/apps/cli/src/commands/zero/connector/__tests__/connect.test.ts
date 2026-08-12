@@ -60,7 +60,7 @@ describe("okou connector connect command", () => {
     let receivedBody: unknown;
     server.use(
       http.post(
-        "http://localhost:3000/api/zero/connectors/:connectorSlug/manual-grant",
+        "http://localhost:3000/api/okou/connectors/:connectorSlug/manual-grant",
         async ({ params, request }) => {
           receivedBody = await request.json();
           return HttpResponse.json(
@@ -100,7 +100,7 @@ describe("okou connector connect command", () => {
     let receivedBody: unknown;
     server.use(
       http.post(
-        "http://localhost:3000/api/zero/connectors/:connectorSlug/manual-grant",
+        "http://localhost:3000/api/okou/connectors/:connectorSlug/manual-grant",
         async ({ params, request }) => {
           receivedBody = await request.json();
           return HttpResponse.json(
@@ -142,7 +142,7 @@ describe("okou connector connect command", () => {
         }),
       ]),
       http.post(
-        "http://localhost:3000/api/zero/connectors/:connectorSlug/manual-grant",
+        "http://localhost:3000/api/okou/connectors/:connectorSlug/manual-grant",
         async ({ params, request }) => {
           receivedType = String(params.connectorSlug);
           receivedBody = await request.json();
@@ -171,7 +171,7 @@ describe("okou connector connect command", () => {
   it("prints JSON output when requested", async () => {
     server.use(
       http.post(
-        "http://localhost:3000/api/zero/connectors/:connectorSlug/manual-grant",
+        "http://localhost:3000/api/okou/connectors/:connectorSlug/manual-grant",
         ({ params }) => {
           return HttpResponse.json(
             connectorResponse(String(params.connectorSlug)),
@@ -212,7 +212,7 @@ describe("okou connector connect command", () => {
     let requestCalled = false;
     server.use(
       http.post(
-        "http://localhost:3000/api/zero/connectors/:connectorSlug/manual-grant",
+        "http://localhost:3000/api/okou/connectors/:connectorSlug/manual-grant",
         () => {
           requestCalled = true;
           return HttpResponse.json(connectorResponse("openai"));
@@ -234,7 +234,7 @@ describe("okou connector connect command", () => {
     let requestCalled = false;
     server.use(
       http.post(
-        "http://localhost:3000/api/zero/connectors/:connectorSlug/manual-grant",
+        "http://localhost:3000/api/okou/connectors/:connectorSlug/manual-grant",
         () => {
           requestCalled = true;
           return HttpResponse.json(connectorResponse("github"));
@@ -266,7 +266,7 @@ describe("okou connector connect command", () => {
     let requestCalled = false;
     server.use(
       http.post(
-        "http://localhost:3000/api/zero/connectors/:connectorSlug/manual-grant",
+        "http://localhost:3000/api/okou/connectors/:connectorSlug/manual-grant",
         () => {
           requestCalled = true;
           return HttpResponse.json(connectorResponse("stripe"));
@@ -297,7 +297,7 @@ describe("okou connector connect command", () => {
   it("surfaces API validation errors without printing secret values", async () => {
     server.use(
       http.post(
-        "http://localhost:3000/api/zero/connectors/:connectorSlug/manual-grant",
+        "http://localhost:3000/api/okou/connectors/:connectorSlug/manual-grant",
         () => {
           return HttpResponse.json(
             {
@@ -330,7 +330,7 @@ describe("okou connector connect command", () => {
   it("surfaces unavailable connector errors without printing secret values", async () => {
     server.use(
       http.post(
-        "http://localhost:3000/api/zero/connectors/:connectorSlug/manual-grant",
+        "http://localhost:3000/api/okou/connectors/:connectorSlug/manual-grant",
         () => {
           return HttpResponse.json(
             {

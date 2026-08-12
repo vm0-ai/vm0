@@ -150,7 +150,7 @@ function connectorResponse(
 }
 
 function diagnosticEndpoint(baseUrl = API_BASE_URL): string {
-  return `${baseUrl}/api/zero/connectors/diagnostics/check`;
+  return `${baseUrl}/api/okou/connectors/diagnostics/check`;
 }
 
 function stubDiagnostic(
@@ -174,7 +174,7 @@ function stubConnector(
   baseUrl = API_BASE_URL,
 ): void {
   server.use(
-    http.get(`${baseUrl}/api/zero/connectors/${connectorSlug}`, () => {
+    http.get(`${baseUrl}/api/okou/connectors/${connectorSlug}`, () => {
       onRequest?.();
       if (response === null) {
         return HttpResponse.json(
@@ -193,7 +193,7 @@ function stubAgentConnectors(
   baseUrl = API_BASE_URL,
 ): void {
   server.use(
-    http.get(`${baseUrl}/api/zero/agents/${AGENT_ID}/user-connectors`, () => {
+    http.get(`${baseUrl}/api/okou/agents/${AGENT_ID}/user-connectors`, () => {
       onRequest?.();
       return HttpResponse.json({
         enabledConnectorSlugs: enabledConnectorSlugs,

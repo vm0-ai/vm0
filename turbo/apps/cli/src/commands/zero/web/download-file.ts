@@ -43,7 +43,7 @@ How to read the downloaded file:
   - PDF/text/csv/json/markdown: read the file directly
 
 Notes:
-  - Authenticates via ZERO_TOKEN
+  - Authenticates via OKOU_TOKEN
   - Streams the file bytes directly to disk`,
   )
   .action(

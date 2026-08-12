@@ -39,7 +39,7 @@ describe("okou workflow list command", () => {
   describe("successful list", () => {
     it("should display workflows in table format", async () => {
       server.use(
-        http.get("http://localhost:3000/api/zero/workflows", () => {
+        http.get("http://localhost:3000/api/okou/workflows", () => {
           return HttpResponse.json([
             {
               id: "22222222-2222-2222-2222-222222222222",
@@ -86,7 +86,7 @@ describe("okou workflow list command", () => {
     it("should pass agentId query when --agent is provided", async () => {
       let capturedUrl: string | undefined;
       server.use(
-        http.get("http://localhost:3000/api/zero/workflows", ({ request }) => {
+        http.get("http://localhost:3000/api/okou/workflows", ({ request }) => {
           capturedUrl = request.url;
           return HttpResponse.json([]);
         }),
@@ -99,7 +99,7 @@ describe("okou workflow list command", () => {
 
     it("should show empty state when no workflows", async () => {
       server.use(
-        http.get("http://localhost:3000/api/zero/workflows", () => {
+        http.get("http://localhost:3000/api/okou/workflows", () => {
           return HttpResponse.json([]);
         }),
       );
@@ -114,7 +114,7 @@ describe("okou workflow list command", () => {
   describe("error handling", () => {
     it("should handle authentication error", async () => {
       server.use(
-        http.get("http://localhost:3000/api/zero/workflows", () => {
+        http.get("http://localhost:3000/api/okou/workflows", () => {
           return HttpResponse.json(
             { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
             { status: 401 },

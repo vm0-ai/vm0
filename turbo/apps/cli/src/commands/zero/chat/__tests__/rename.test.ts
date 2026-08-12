@@ -16,8 +16,8 @@ import { zeroChatCommand } from "../index";
 
 const THREAD_ID = "00000000-0000-4000-8000-000000000001";
 const OTHER_THREAD_ID = "00000000-0000-4000-8000-000000000002";
-const RENAME_URL = `http://localhost:3000/api/zero/chat-threads/${THREAD_ID}/rename`;
-const OTHER_RENAME_URL = `http://localhost:3000/api/zero/chat-threads/${OTHER_THREAD_ID}/rename`;
+const RENAME_URL = `http://localhost:3000/api/okou/chat-threads/${THREAD_ID}/rename`;
+const OTHER_RENAME_URL = `http://localhost:3000/api/okou/chat-threads/${OTHER_THREAD_ID}/rename`;
 
 describe("okou chat rename command", () => {
   const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
@@ -150,7 +150,7 @@ describe("okou chat rename command", () => {
     }).rejects.toThrow("process.exit called");
 
     const stderr = mockConsoleError.mock.calls.flat().join("\n");
-    expect(stderr).toContain("ZERO_CHAT_THREAD_ID is not set");
+    expect(stderr).toContain("OKOU_CHAT_THREAD_ID is not set");
     expect(stderr).toContain("Pass --thread <thread-id>");
     expect(mockExit).toHaveBeenCalledWith(1);
   });

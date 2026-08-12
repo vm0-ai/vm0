@@ -19,7 +19,7 @@ Output:
     {"id":"...","filename":"...","contentType":"...","size":N,"url":"https://..."}
 
 Notes:
-  - Authenticates via ZERO_TOKEN (requires file:write capability)
+  - Authenticates via OKOU_TOKEN (requires file:write capability)
   - Returned URL is permanent (serves a short-lived signed redirect on access)
   - Safe to persist in chat messages or share over external channels
   - Max file size: 1 GB

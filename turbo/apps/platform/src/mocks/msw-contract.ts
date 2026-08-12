@@ -118,10 +118,10 @@ const methodMap = {
 } as const;
 
 function routePattern(route: AppRoute): string | RegExp {
-  if (route.path === "/api/zero/chat-threads/:id") {
+  if (route.path === "/api/okou/chat-threads/:id") {
     // Keep thread detail mocks from swallowing static sibling routes while
     // still accepting the descriptive non-UUID thread ids used by UI tests.
-    return /\/api\/zero\/chat-threads\/(?!snapshot$|events$|active-ids$|unread-ids$)([^/]+)$/;
+    return /\/api\/okou\/chat-threads\/(?!snapshot$|events$|active-ids$|unread-ids$)([^/]+)$/;
   }
   return `*${route.path}`;
 }
@@ -131,7 +131,7 @@ function routeParamsForRequest<R extends AppRoute>(
   params: PathParams,
   url: URL,
 ): InferParams<R> {
-  if (route.path === "/api/zero/chat-threads/:id") {
+  if (route.path === "/api/okou/chat-threads/:id") {
     return {
       ...params,
       id: url.pathname.split("/").pop() ?? "",

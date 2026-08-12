@@ -13,7 +13,7 @@ import chalk from "chalk";
 import { server } from "../../../../mocks/server";
 import { generateCommand } from "../index";
 
-const SPEECH_URL = "http://localhost:3000/api/zero/voice-io/speech";
+const SPEECH_URL = "http://localhost:3000/api/okou/voice-io/speech";
 const VOICE_RESULT = {
   id: "voice-file-id",
   filename: "voice-voice-fi.wav",

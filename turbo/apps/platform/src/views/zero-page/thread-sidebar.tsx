@@ -403,7 +403,7 @@ export function ThreadSidebarSlot({
 }) {
   switch (target.type) {
     case "artifacts": {
-      return <ThreadArtifactsPanel key={thread.threadId} thread={thread} />;
+      return <ThreadArtifactsPanel thread={thread} />;
     }
     case "artifact": {
       return <ThreadArtifactDetail thread={thread} source={target.source} />;

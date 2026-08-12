@@ -113,7 +113,7 @@ const scrapeResponses = {
 export const zeroScrapeContract = c.router({
   scrape: {
     method: "POST",
-    path: "/api/zero/scrape",
+    path: "/api/okou/scrape",
     headers: authHeadersSchema,
     body: zeroScrapeRequestSchema,
     responses: scrapeResponses,

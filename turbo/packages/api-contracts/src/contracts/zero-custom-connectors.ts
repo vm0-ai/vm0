@@ -321,14 +321,14 @@ export type SaveCustomConnectorProposalResponse = z.infer<
 >;
 
 /**
- * Zero custom connectors contract for /api/zero/custom-connectors
+ * Zero custom connectors contract for /api/okou/custom-connectors
  * GET: list all org custom connectors with per-user connection state
  * POST: create a new custom connector (admin only)
  */
 export const zeroCustomConnectorsContract = c.router({
   list: {
     method: "GET",
-    path: "/api/zero/custom-connectors",
+    path: "/api/okou/custom-connectors",
     headers: authHeadersSchema,
     responses: {
       200: customConnectorListResponseSchema,
@@ -339,7 +339,7 @@ export const zeroCustomConnectorsContract = c.router({
   },
   create: {
     method: "POST",
-    path: "/api/zero/custom-connectors",
+    path: "/api/okou/custom-connectors",
     headers: authHeadersSchema,
     body: createCustomConnectorBodySchema,
     responses: {
@@ -355,14 +355,14 @@ export const zeroCustomConnectorsContract = c.router({
 export type ZeroCustomConnectorsContract = typeof zeroCustomConnectorsContract;
 
 /**
- * Zero custom connector by id contract for /api/zero/custom-connectors/[id]
+ * Zero custom connector by id contract for /api/okou/custom-connectors/[id]
  * DELETE: delete a custom connector (admin only — cascades secrets)
  * PUT: update a custom connector definition (admin only)
  */
 export const zeroCustomConnectorByIdContract = c.router({
   get: {
     method: "GET",
-    path: "/api/zero/custom-connectors/:id",
+    path: "/api/okou/custom-connectors/:id",
     headers: authHeadersSchema,
     pathParams: z.object({ id: z.string().uuid() }),
     responses: {
@@ -376,7 +376,7 @@ export const zeroCustomConnectorByIdContract = c.router({
   },
   delete: {
     method: "DELETE",
-    path: "/api/zero/custom-connectors/:id",
+    path: "/api/okou/custom-connectors/:id",
     headers: authHeadersSchema,
     pathParams: z.object({ id: z.string().uuid() }),
     responses: {
@@ -390,7 +390,7 @@ export const zeroCustomConnectorByIdContract = c.router({
   },
   update: {
     method: "PUT",
-    path: "/api/zero/custom-connectors/:id",
+    path: "/api/okou/custom-connectors/:id",
     headers: authHeadersSchema,
     pathParams: z.object({ id: z.string().uuid() }),
     body: updateCustomConnectorBodySchema,
@@ -406,7 +406,7 @@ export const zeroCustomConnectorByIdContract = c.router({
   },
   permissions: {
     method: "GET",
-    path: "/api/zero/custom-connectors/:id/permissions",
+    path: "/api/okou/custom-connectors/:id/permissions",
     headers: authHeadersSchema,
     pathParams: z.object({ id: z.string().uuid() }),
     responses: {
@@ -425,7 +425,7 @@ export type ZeroCustomConnectorByIdContract =
 export const zeroCustomConnectorConnectionContract = c.router({
   disconnect: {
     method: "DELETE",
-    path: "/api/zero/custom-connectors/:id/connection",
+    path: "/api/okou/custom-connectors/:id/connection",
     headers: authHeadersSchema,
     pathParams: z.object({ id: z.string().uuid() }),
     responses: {
@@ -444,7 +444,7 @@ export type ZeroCustomConnectorConnectionContract =
 export const zeroCustomConnectorValuesContract = c.router({
   set: {
     method: "PUT",
-    path: "/api/zero/custom-connectors/:id/values",
+    path: "/api/okou/custom-connectors/:id/values",
     headers: authHeadersSchema,
     pathParams: z.object({ id: z.string().uuid() }),
     body: setCustomConnectorValuesBodySchema,
@@ -465,7 +465,7 @@ export type ZeroCustomConnectorValuesContract =
 export const zeroCustomConnectorOAuth2Contract = c.router({
   start: {
     method: "POST",
-    path: "/api/zero/custom-connectors/:id/oauth2/start",
+    path: "/api/okou/custom-connectors/:id/oauth2/start",
     headers: authHeadersSchema,
     pathParams: z.object({ id: z.string().uuid() }),
     body: startCustomConnectorOAuth2BodySchema,
@@ -481,7 +481,7 @@ export const zeroCustomConnectorOAuth2Contract = c.router({
   },
   callback: {
     method: "GET",
-    path: "/api/zero/custom-connectors/oauth2/callback",
+    path: "/api/okou/custom-connectors/oauth2/callback",
     query: z
       .object({
         code: z.string().optional(),
@@ -504,7 +504,7 @@ export type ZeroCustomConnectorOAuth2Contract =
 export const zeroCustomConnectorProposalContract = c.router({
   save: {
     method: "POST",
-    path: "/api/zero/custom-connectors/proposals/save",
+    path: "/api/okou/custom-connectors/proposals/save",
     headers: authHeadersSchema,
     body: saveCustomConnectorProposalBodySchema,
     responses: {

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 import {
+  generateBrandedRunTokens,
   generateZeroToken,
   isPatToken,
   isSandboxToken,
@@ -19,12 +20,16 @@ function currentSecond(): number {
   return Math.floor(now() / 1000);
 }
 
-function decodeZeroTokenPayloadForTest(token: string): unknown {
+function decodeZeroTokenPayloadForTest(token: string): Record<string, unknown> {
   const payload = token.slice("vm0_sandbox_".length).split(".")[1];
   if (!payload) {
     throw new Error("Expected a signed Zero token payload");
   }
-  return safeJsonParse(Buffer.from(payload, "base64url").toString());
+  const parsed = safeJsonParse(Buffer.from(payload, "base64url").toString());
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    throw new Error("Expected a signed Zero token object payload");
+  }
+  return Object.fromEntries(Object.entries(parsed));
 }
 
 describe("auth tokens", () => {
@@ -120,6 +125,30 @@ describe("auth tokens", () => {
       runId: "run_okou",
       orgId: "org_okou",
     });
+  });
+
+  it("generates distinct scope-specific tokens with equivalent run claims", () => {
+    const { okouToken, zeroToken } = generateBrandedRunTokens(
+      "user_shared",
+      "run_shared",
+      "org_shared",
+      { [FeatureSwitchKey.Banking]: true },
+      {
+        computerUseHostId: "00000000-0000-4000-8000-000000000001",
+        cloudBrowserEnabled: true,
+        imageRecognitionAvailable: true,
+      },
+    );
+
+    expect(okouToken.localeCompare(zeroToken)).not.toBe(0);
+    const okouPayload = decodeZeroTokenPayloadForTest(okouToken);
+    const zeroPayload = decodeZeroTokenPayloadForTest(zeroToken);
+    expect(okouPayload).toMatchObject({ scope: "okou" });
+    expect(zeroPayload).toMatchObject({ scope: "zero" });
+    expect({ ...okouPayload, scope: "zero" }).toStrictEqual(zeroPayload);
+    expect(verifyZeroToken(okouToken)).toStrictEqual(
+      verifyZeroToken(zeroToken),
+    );
   });
 
   it("ignores unknown zero capabilities while preserving known capabilities", () => {

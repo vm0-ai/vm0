@@ -129,12 +129,12 @@ beforeEach(() => {
     updatedAt: "2026-03-10T00:00:00Z",
   });
   context.mocks.browser.blobDownload();
-  context.mocks.http.get("/api/zero/web/download-file", () => {
+  context.mocks.http.get("/api/okou/web/download-file", () => {
     return new Response(new Uint8Array([137, 80, 78, 71]), {
       headers: { "Content-Type": "image/png" },
     });
   });
-  context.mocks.http.get("/api/zero/web/file-url", ({ request }) => {
+  context.mocks.http.get("/api/okou/web/file-url", ({ request }) => {
     const fileId = new URL(request.url).searchParams.get("file_id") ?? "";
     return HttpResponse.json({ url: presignedFileUrl(fileId) });
   });
@@ -908,7 +908,7 @@ describe("zero attachment chips", () => {
   });
 
   it("shows user image attachments before the text bubble in chat history", async () => {
-    context.mocks.http.get("/api/zero/web/file-url", ({ request }) => {
+    context.mocks.http.get("/api/okou/web/file-url", ({ request }) => {
       expect(request.credentials).toBe("include");
       expect(request.headers.get("authorization")).toMatch(/^Bearer /);
       expect(new URL(request.url).searchParams.get("file_id")).toBe(
@@ -2860,7 +2860,7 @@ describe("zero attachment chips", () => {
     });
     // Guard against regressing to the canonical route, which needs an
     // Authorization header that the download fetch does not carry.
-    context.mocks.http.get("/api/zero/web/download-file", () => {
+    context.mocks.http.get("/api/okou/web/download-file", () => {
       return new Response(null, { status: 500 });
     });
     mockChatLifecycle(context, {

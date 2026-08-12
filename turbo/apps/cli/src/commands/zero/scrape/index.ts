@@ -103,7 +103,7 @@ Examples:
   Enhanced scrape:  okou scrape https://example.com --mode enhanced --json
 
 Notes:
-  - Authenticates via ZERO_TOKEN (requires scrape:read capability) or a CLI token
+  - Authenticates via OKOU_TOKEN (requires scrape:read capability) or a CLI token
   - Firecrawl calls and credit billing happen on the vm0 API server
   - Enhanced mode is explicit because it uses a higher billing category`,
   );

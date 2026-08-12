@@ -2523,6 +2523,18 @@
       "degraded": "Live updates ran into a problem. Please refresh the page."
     }
   },
+  "invitationRedirect": {
+    "accountMismatch": {
+      "title": "Invitation accepted for another account"
+    },
+    "actions": {
+      "switchAccount": "Switch account",
+      "switchWorkspace": "Switch workspace"
+    },
+    "success": {
+      "title": "Invitation accepted for {{workspace}}"
+    }
+  },
   "lifecycle": {
     "emailUnsubscribe": {
       "action": "Unsubscribe",
