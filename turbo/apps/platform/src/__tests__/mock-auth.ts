@@ -186,7 +186,7 @@ export function mockOrganization(options: {
   internalMockedInvitations = options.pendingInvitations ?? [];
 }
 
-export function clearMockedAuth() {
+function clearMockedAuth() {
   internalMockedUser = null;
   internalMockedSession = null;
   internalMockedOrganization = null;
