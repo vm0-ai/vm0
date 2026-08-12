@@ -516,17 +516,17 @@ function ModelFirstPolicyRow({
     return (
       <div
         className={cn(
-          "flex overflow-hidden rounded-lg border-[0.7px] border-[hsl(var(--gray-400))]",
-          selected && "bg-state-selected",
+          "flex overflow-hidden rounded-lg transition-colors hover:bg-state-hover has-[[data-highlighted]]:bg-state-hover",
+          selected &&
+            "bg-state-selected hover:bg-state-selected-hover has-[[data-highlighted]]:bg-state-selected-hover",
         )}
       >
         <SelectItem
           value={policy.model}
           aria-label={modelLabel}
           className={cn(
-            "min-w-0 flex-1 rounded-r-none",
+            "min-w-0 flex-1 rounded-r-none hover:bg-transparent data-highlighted:bg-transparent",
             fastSelected && "pr-2",
-            selected && !fastSelected && "bg-state-selected-hover",
           )}
         >
           <ModelFirstPolicyRowContent
@@ -543,14 +543,18 @@ function ModelFirstPolicyRow({
                 value={codexFastOptionValue(policy.model)}
                 aria-label={`${modelLabel} ${fastLabel}`}
                 className={cn(
-                  "w-10 shrink-0 justify-center rounded-l-none border-l-[0.7px] border-[hsl(var(--gray-400))] px-0 text-muted-foreground",
+                  "group/fast-option w-10 shrink-0 justify-center rounded-l-none px-0 text-muted-foreground hover:bg-transparent data-highlighted:bg-transparent",
                   fastSelected &&
-                    "bg-state-selected-hover text-amber-600 hover:text-amber-700 dark:text-amber-300 dark:hover:text-amber-200",
+                    "text-amber-600 hover:text-amber-700 dark:text-amber-300 dark:hover:text-amber-200",
                 )}
               >
                 <Zap
                   size={18}
                   fill={fastSelected ? "currentColor" : "none"}
+                  className={cn(
+                    !fastSelected &&
+                      "group-hover/fast-option:fill-current group-data-[highlighted]/fast-option:fill-current",
+                  )}
                   aria-hidden="true"
                 />
               </SelectItem>

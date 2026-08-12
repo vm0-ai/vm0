@@ -674,6 +674,25 @@ describe("chat composer models", () => {
     expect(standardOption.querySelector("svg.lucide-check")).not.toBeNull();
     expect(fastModeOption.querySelector("svg.lucide-check")).toBeNull();
 
+    await user.hover(fastModeOption);
+    fireEvent.mouseMove(fastModeOption);
+    expect(
+      screen.queryByText("Fast · 1.5× model speed · 2.5× credit usage"),
+    ).not.toBeInTheDocument();
+    const activeFastModeTooltip = await screen.findByText(
+      "Fast · 1.5× model speed · 2.5× credit usage",
+      {},
+      { timeout: 2000 },
+    );
+    expect(activeFastModeTooltip).toBeInTheDocument();
+
+    await user.unhover(fastModeOption);
+    await waitFor(() => {
+      expect(
+        screen.queryByText("Fast · 1.5× model speed · 2.5× credit usage"),
+      ).not.toBeInTheDocument();
+    });
+
     await user.click(standardOption);
     await expectComposerModel("GPT 5.6 Sol");
 
