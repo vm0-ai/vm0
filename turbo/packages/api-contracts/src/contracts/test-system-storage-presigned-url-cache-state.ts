@@ -38,11 +38,38 @@ const storageVersionStateSchema = z.object({
   created_by: z.string(),
 });
 
+const ownedStorageSeedSchema = z.object({
+  storage_id: z.string().uuid(),
+  org_id: z.string(),
+  user_id: z.string(),
+  storage_name: z.string(),
+  s3_prefix: z.string(),
+});
+
 export const testSystemStoragePresignedUrlCacheStateActionBodySchema =
   z.discriminatedUnion("action", [
     z.object({
       action: z.literal("cleanup"),
       object_key_prefix: z.string(),
+    }),
+    z.object({
+      action: z.literal("claim-owned-storages"),
+      storages: z.array(ownedStorageSeedSchema).min(1),
+    }),
+    z.object({
+      action: z.literal("cleanup-owned-storages"),
+      storage_ids: z.array(z.string().uuid()).min(1),
+    }),
+    z.object({
+      action: z.literal("read-owned-storage-state"),
+      storage_id: z.string().uuid(),
+    }),
+    z.object({
+      action: z.literal("seed-owned-storage-version"),
+      storage_id: z.string().uuid(),
+      version_id: z.string(),
+      s3_key: z.string(),
+      archive_size: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
     }),
     z.object({
       action: z.literal("read-storage-state"),

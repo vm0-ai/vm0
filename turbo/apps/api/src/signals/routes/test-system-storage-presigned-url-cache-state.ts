@@ -5,7 +5,7 @@ import {
 import { systemStoragePresignedUrlCache } from "@vm0/db/schema/system-storage-presigned-url-cache";
 import { storages, storageVersions } from "@vm0/db/schema/storage";
 import { command } from "ccstate";
-import { and, eq, like, sql } from "drizzle-orm";
+import { and, eq, inArray, like, sql } from "drizzle-orm";
 
 import { bodyResultOf } from "../context/request";
 import { request$ } from "../context/hono";
@@ -67,6 +67,99 @@ async function cleanupForAction(
     .delete(systemStoragePresignedUrlCache)
     .where(objectKeyPrefixCondition(body.object_key_prefix));
   signal.throwIfAborted();
+  return actionOk();
+}
+
+async function claimOwnedStoragesForAction(
+  db: Db,
+  body: CacheStateAction<"claim-owned-storages">,
+  signal: AbortSignal,
+) {
+  await db.insert(storages).values(
+    body.storages.map((storage) => {
+      return {
+        id: storage.storage_id,
+        orgId: storage.org_id,
+        userId: storage.user_id,
+        name: storage.storage_name,
+        s3Prefix: storage.s3_prefix,
+        size: 0,
+        fileCount: 0,
+      };
+    }),
+  );
+  signal.throwIfAborted();
+  return actionOk();
+}
+
+async function cleanupOwnedStoragesForAction(
+  db: Db,
+  body: CacheStateAction<"cleanup-owned-storages">,
+  signal: AbortSignal,
+) {
+  await db.delete(storages).where(inArray(storages.id, body.storage_ids));
+  signal.throwIfAborted();
+  return actionOk();
+}
+
+async function readOwnedStorageStateForAction(
+  db: Db,
+  body: CacheStateAction<"read-owned-storage-state">,
+  signal: AbortSignal,
+) {
+  const [storage] = await db
+    .select({
+      s3Prefix: storages.s3Prefix,
+      size: storages.size,
+      fileCount: storages.fileCount,
+      headVersionId: storages.headVersionId,
+    })
+    .from(storages)
+    .where(eq(storages.id, body.storage_id))
+    .limit(1);
+  signal.throwIfAborted();
+  return actionOk({
+    storage_state: storage
+      ? {
+          s3_prefix: storage.s3Prefix,
+          size: storage.size,
+          file_count: storage.fileCount,
+          head_version_id: storage.headVersionId,
+        }
+      : null,
+  });
+}
+
+async function seedOwnedStorageVersionForAction(
+  db: Db,
+  body: CacheStateAction<"seed-owned-storage-version">,
+  signal: AbortSignal,
+) {
+  await db.insert(storageVersions).values({
+    id: body.version_id,
+    storageId: body.storage_id,
+    s3Key: body.s3_key,
+    size: 1,
+    archiveSize: body.archive_size,
+    fileCount: 1,
+    message: "Seeded by owned system storage route test fixture",
+    createdBy: "test",
+  });
+  signal.throwIfAborted();
+
+  const updated = await db
+    .update(storages)
+    .set({
+      size: 1,
+      fileCount: 1,
+      headVersionId: body.version_id,
+    })
+    .where(eq(storages.id, body.storage_id))
+    .returning({ id: storages.id });
+  signal.throwIfAborted();
+  if (updated.length !== 1) {
+    throw new Error("Owned storage is unavailable");
+  }
   return actionOk();
 }
 
@@ -400,6 +493,18 @@ const mutateSystemStoragePresignedUrlCacheState$ = command(
     switch (body.action) {
       case "cleanup": {
         return await cleanupForAction(db, body, signal);
+      }
+      case "claim-owned-storages": {
+        return await claimOwnedStoragesForAction(db, body, signal);
+      }
+      case "cleanup-owned-storages": {
+        return await cleanupOwnedStoragesForAction(db, body, signal);
+      }
+      case "read-owned-storage-state": {
+        return await readOwnedStorageStateForAction(db, body, signal);
+      }
+      case "seed-owned-storage-version": {
+        return await seedOwnedStorageVersionForAction(db, body, signal);
       }
       case "read-storage-state": {
         return await readStorageStateForAction(db, body, signal);
