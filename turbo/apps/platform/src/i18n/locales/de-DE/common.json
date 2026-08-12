@@ -1040,14 +1040,15 @@
       "allowance": {
         "day": "{{value}}d",
         "hour": "{{value}}h",
+        "left": "{{value}} übrig",
         "minute": "{{value}}m",
-        "remaining": "{{remaining}} / {{total}} Credits",
         "remainingAria": "Verbleibendes Nutzungskontingent für {{label}}",
         "resets": "Wird am {{date}} zurückgesetzt",
         "resetsRaw": "Wird in {{value}} zurückgesetzt",
         "title": "Nutzungskontingent",
         "week": "{{value}}w"
       },
+      "autoRechargeOn": "Automatische Aufladung aktiv",
       "breakdown": {
         "currentPlanDescription": "Monatliche Tarif-Credits; werden in jedem Abrechnungszeitraum zurückgesetzt",
         "freeDescription": "Startguthaben; verfügbar, bis es aufgebraucht ist",
@@ -1064,10 +1065,18 @@
       "creditsRemaining_one": "{{value}} verbleibender Credit",
       "creditsRemaining_other": "Es verbleiben noch {{value}} Credits",
       "expires": "Verfällt am {{date}}",
+      "grantsTable": {
+        "added": "Hinzugefügt",
+        "amount": "Betrag",
+        "expires": "Läuft ab",
+        "left": "Übrig",
+        "source": "Quelle"
+      },
       "left": "{{value}} übrig",
       "member": "Mitglied",
       "neverExpires": "Läuft nie ab",
       "orgCredits": "Organisationsguthaben",
+      "seeUsageRecords": "Sehen, wofür diese Credits ausgegeben wurden",
       "unavailable": "Credit-Guthaben nicht verfügbar.",
       "upgradeDescription": "Pro beinhaltet monatliche Credits und schaltet zusätzliche Credit-Optionen frei.",
       "upgradeTitle": "Upgraden Sie auf Pro, um mehr Credits zu erhalten",

@@ -1061,14 +1061,15 @@
       "allowance": {
         "day": "{{value}}d",
         "hour": "{{value}}h",
+        "left": "{{value}} rimanenti",
         "minute": "{{value}}m",
-        "remaining": "{{remaining}} / {{total}} crediti",
         "remainingAria": "Limite di utilizzo {{label}} rimanente",
         "resets": "Ripristina {{date}}",
         "resetsRaw": "Ripristina {{value}}",
         "title": "Limite di utilizzo",
         "week": "{{value}}w"
       },
+      "autoRechargeOn": "Ricarica automatica attiva",
       "breakdown": {
         "currentPlanDescription": "Crediti del piano mensile, reimposta ogni ciclo di fatturazione",
         "freeDescription": "Crediti iniziali, da utilizzare fino ad esaurimento",
@@ -1086,10 +1087,18 @@
       "creditsRemaining_many": "{{value}} crediti rimanenti",
       "creditsRemaining_other": "{{value}} crediti rimanenti",
       "expires": "Scadenza {{date}}",
+      "grantsTable": {
+        "added": "Aggiunto",
+        "amount": "Importo",
+        "expires": "Scade",
+        "left": "Rimanenti",
+        "source": "Origine"
+      },
       "left": "{{value}} rimanenti",
       "member": "Membro",
       "neverExpires": "Non scade mai",
       "orgCredits": "Crediti dell'organizzazione",
+      "seeUsageRecords": "Vedi dove sono finiti questi crediti",
       "unavailable": "Saldo del credito non disponibile.",
       "upgradeDescription": "Pro include crediti mensili e sblocca opzioni di credito aggiuntive.",
       "upgradeTitle": "Passa a Pro per ottenere più crediti",

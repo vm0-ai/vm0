@@ -1061,14 +1061,15 @@
       "allowance": {
         "day": "{{value}}d",
         "hour": "{{value}}h",
+        "left": "{{value}} restantes",
         "minute": "{{value}}m",
-        "remaining": "{{remaining}} / {{total}} créditos",
         "remainingAria": "Límite de uso {{label}} restante",
         "resets": "Se restablece el {{date}}",
         "resetsRaw": "Se restablece {{value}}",
         "title": "Asignación de uso",
         "week": "{{value}} sem"
       },
+      "autoRechargeOn": "Recarga automática activada",
       "breakdown": {
         "currentPlanDescription": "Los créditos mensuales del plan se restablecen en cada ciclo de facturación",
         "freeDescription": "Créditos iniciales disponibles hasta que se agoten",
@@ -1086,10 +1087,18 @@
       "creditsRemaining_many": "{{value}} créditos restantes",
       "creditsRemaining_other": "{{value}} créditos restantes",
       "expires": "Caduca {{date}}",
+      "grantsTable": {
+        "added": "Añadido",
+        "amount": "Importe",
+        "expires": "Caduca",
+        "left": "Restante",
+        "source": "Origen"
+      },
       "left": "{{value}} restante",
       "member": "Miembro",
       "neverExpires": "Nunca caduca",
       "orgCredits": "Créditos de la organización",
+      "seeUsageRecords": "Ver en qué se gastaron estos créditos",
       "unavailable": "Saldo de crédito no disponible.",
       "upgradeDescription": "Pro incluye créditos mensuales y desbloquea opciones adicionales de crédito.",
       "upgradeTitle": "Actualiza a Pro para conseguir más créditos",

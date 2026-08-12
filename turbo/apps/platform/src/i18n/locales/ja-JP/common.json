@@ -1040,14 +1040,15 @@
       "allowance": {
         "day": "{{value}}日",
         "hour": "{{value}}時間",
+        "left": "残り {{value}}",
         "minute": "{{value}}分",
-        "remaining": "{{remaining}} / {{total}} クレジット",
         "remainingAria": "使用許容量 {{label}} が残っています",
         "resets": "{{date}}にリセット",
         "resetsRaw": "リセット: {{value}}",
         "title": "使用枠",
         "week": "{{value}}週間"
       },
+      "autoRechargeOn": "自動チャージ オン",
       "breakdown": {
         "currentPlanDescription": "請求サイクルごとにリセットされる月間プランクレジット",
         "freeDescription": "残高がなくなるまで利用できるスタータークレジット",
@@ -1064,10 +1065,18 @@
       "creditsRemaining_one": "{{value}} クレジットが残っています",
       "creditsRemaining_other": "{{value}} クレジットが残っています",
       "expires": "{{date}}に期限切れ",
+      "grantsTable": {
+        "added": "追加日",
+        "amount": "金額",
+        "expires": "有効期限",
+        "left": "残り",
+        "source": "種別"
+      },
       "left": "{{value}} 残り",
       "member": "メンバー",
       "neverExpires": "有効期限はありません",
       "orgCredits": "組織クレジット",
+      "seeUsageRecords": "クレジットの使い道を見る",
       "unavailable": "クレジット残高が利用できません。",
       "upgradeDescription": "Pro には毎月のクレジットが含まれており、追加のクレジット オプションのロックが解除されます。",
       "upgradeTitle": "Pro にアップグレードしてより多くのクレジットを獲得",

@@ -12,8 +12,10 @@ import {
   TooltipTrigger,
 } from "@vm0/ui/components/ui/tooltip";
 import { billingStatusAsync$ } from "../../../../signals/zero-page/billing.ts";
+import { orgPlanCapabilitiesFromBilling } from "../../../../signals/zero-page/org-plan-capabilities.ts";
 import { currentLocale, i18n } from "../../../../i18n/index.ts";
 import { formatLocalizedNumber } from "../../../../i18n/format.ts";
+import { now } from "../../../../lib/time.ts";
 import { UserAvatar } from "../../../components/avatar.tsx";
 
 // ---------------------------------------------------------------------------
@@ -239,14 +241,16 @@ function formatAllowanceReset(window: UsageAllowanceWindow): string {
       { value: text },
     );
   }
-  const formatted = new Intl.DateTimeFormat(currentLocale(), {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    timeZoneName: "short",
-  }).format(date);
+  // A window that resets today only needs the clock, and one that resets later
+  // only needs the day. Printing the full timestamp with the zone made the row
+  // read as a log line next to the number it belongs to.
+  const resetsToday = date.toDateString() === new Date(now()).toDateString();
+  const formatted = new Intl.DateTimeFormat(
+    currentLocale(),
+    resetsToday
+      ? { hour: "numeric", minute: "2-digit" }
+      : { month: "short", day: "numeric" },
+  ).format(date);
   return i18n.t(
     ($) => {
       return $.billing.usage.allowance.resets;
@@ -271,15 +275,12 @@ function UsageAllowanceWindowRow({ window }: { window: UsageAllowanceWindow }) {
             {formatAllowanceReset(window)}
           </div>
         </div>
-        <div className="shrink-0 text-right text-xs font-medium tabular-nums text-muted-foreground">
+        <div className="shrink-0 text-right text-sm tabular-nums text-foreground">
           {t(
             ($) => {
-              return $.billing.usage.allowance.remaining;
+              return $.billing.usage.allowance.left;
             },
-            {
-              remaining: formatLocalizedNumber(window.remainingUnits),
-              total: formatLocalizedNumber(window.unitLimit),
-            },
+            { value: formatLocalizedNumber(window.remainingUnits) },
           )}
         </div>
       </div>
@@ -294,7 +295,7 @@ function UsageAllowanceWindowRow({ window }: { window: UsageAllowanceWindow }) {
         aria-valuemin={0}
         aria-valuemax={window.unitLimit}
         aria-valuenow={window.remainingUnits}
-        className={`h-2.5 overflow-hidden rounded-full ${tone.trackClassName}`}
+        className={`h-2 overflow-hidden rounded-full ${tone.trackClassName}`}
       >
         <span
           className={`block h-full rounded-full transition-[width] ${tone.barClassName}`}
@@ -490,16 +491,106 @@ export function CreditAdditionList({
   );
 }
 
+// Every credit addition row shares this grid, so the amount and the remaining
+// balance keep one right edge across the header and the rows. Narrow widths
+// drop the middle columns instead of wrapping them.
+const GRANT_ROW_GRID =
+  "grid grid-cols-[minmax(0,1fr)_5.75rem] items-center gap-x-4 sm:grid-cols-[minmax(0,1fr)_6.5rem_8.5rem_5.75rem_5.75rem]";
+
+function CreditAdditionTable({
+  grants,
+  testIdPrefix = "credit-grants",
+}: {
+  grants: readonly CreditAddition[];
+  testIdPrefix?: string;
+}) {
+  const { t } = useTranslation();
+  if (grants.length === 0) {
+    return null;
+  }
+
+  return (
+    <div
+      data-testid={`${testIdPrefix}-section`}
+      className="mt-4 border-t border-border pt-3"
+    >
+      <p className="text-xs font-medium text-muted-foreground">
+        {t(($) => {
+          return $.billing.usage.creditAdditions;
+        })}
+      </p>
+      <div
+        className={`${GRANT_ROW_GRID} pb-2 pt-2.5 text-xs text-muted-foreground`}
+      >
+        <span>
+          {t(($) => {
+            return $.billing.usage.grantsTable.source;
+          })}
+        </span>
+        <span className="hidden sm:block">
+          {t(($) => {
+            return $.billing.usage.grantsTable.added;
+          })}
+        </span>
+        <span className="hidden sm:block">
+          {t(($) => {
+            return $.billing.usage.grantsTable.expires;
+          })}
+        </span>
+        <span className="hidden text-right sm:block">
+          {t(($) => {
+            return $.billing.usage.grantsTable.amount;
+          })}
+        </span>
+        <span className="text-right">
+          {t(($) => {
+            return $.billing.usage.grantsTable.left;
+          })}
+        </span>
+      </div>
+      {grants.map((grant) => {
+        return (
+          <div
+            key={grant.id}
+            data-testid={`${testIdPrefix}-${grant.id}`}
+            className={`${GRANT_ROW_GRID} border-t border-border/50 py-2.5`}
+          >
+            <span className="truncate text-sm text-foreground">
+              {grant.label}
+            </span>
+            <span className="hidden text-xs text-muted-foreground sm:block">
+              {formatCreditDate(grant.createdAt)}
+            </span>
+            <span className="hidden truncate text-xs text-muted-foreground sm:block">
+              {grant.neverExpires
+                ? t(($) => {
+                    return $.billing.usage.neverExpires;
+                  })
+                : formatCreditDate(grant.expiresAt)}
+            </span>
+            <span className="hidden text-right text-sm font-medium tabular-nums text-foreground sm:block">
+              {`+${formatLocalizedNumber(grant.amount)}`}
+            </span>
+            <span className="text-right text-sm tabular-nums text-muted-foreground">
+              {formatLocalizedNumber(grant.remaining)}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function OrgCreditHeader({ total }: { total: number }) {
   const { t } = useTranslation();
   return (
-    <div className="flex items-center justify-between gap-3">
+    <div className="flex items-baseline justify-between gap-3">
       <p className="text-sm font-medium text-foreground">
         {t(($) => {
           return $.billing.usage.orgCredits;
         })}
       </p>
-      <p className="text-sm font-medium tabular-nums text-foreground">
+      <p className="text-xl font-semibold tabular-nums text-foreground">
         {formatLocalizedNumber(total)}
       </p>
     </div>
@@ -508,9 +599,11 @@ function OrgCreditHeader({ total }: { total: number }) {
 
 function CreditBalanceChart({
   billing,
+  onBuyCredits,
   onComparePlans,
 }: {
   billing: BillingStatusResponse;
+  onBuyCredits: () => void;
   onComparePlans: () => void;
 }) {
   const { t } = useTranslation();
@@ -559,68 +652,45 @@ function CreditBalanceChart({
       ) : null}
 
       {total > 0 && segments.length > 0 && (
-        <div className="mt-3 flex flex-col gap-2">
-          {/* Bar */}
-          <TooltipProvider delayDuration={100}>
-            <div className="flex h-2.5 w-full rounded-full bg-muted/40">
-              {segments.map((s) => {
-                const color = colorForSegment(s);
-                const desc = descriptionForSegment(s, billing.tier);
-                return (
-                  <Tooltip key={segmentKey(s)}>
-                    <TooltipTrigger asChild>
-                      <div
-                        data-testid={`credit-balance-segment-${segmentKey(s)}`}
-                        className={`h-2.5 ${color} cursor-default first:rounded-l-full last:rounded-r-full ring-0 hover:ring-2 hover:ring-foreground/30 hover:z-10 transition-shadow`}
-                        style={{
-                          width: `${(s.credits / total) * 100}%`,
-                        }}
-                      />
-                    </TooltipTrigger>
-                    <TooltipContent
-                      side="top"
-                      sideOffset={8}
-                      style={{
-                        backgroundColor: "hsl(var(--popover))",
-                        color: "hsl(var(--popover-foreground))",
-                      }}
-                      className="border shadow-md"
-                    >
-                      <div className="font-medium text-foreground">
-                        {labelForSegment(s)} —{" "}
-                        {formatLocalizedNumber(s.credits)}
-                      </div>
-                      <div className="text-muted-foreground mt-0.5">{desc}</div>
-                    </TooltipContent>
-                  </Tooltip>
-                );
-              })}
-            </div>
-          </TooltipProvider>
-
-          {/* Legend */}
-          <div className="flex flex-wrap gap-x-4 gap-y-1">
+        // Gapped segments so the composition never reads as the filled progress
+        // meter the usage allowance rows use right above it.
+        <TooltipProvider delayDuration={100}>
+          <div className="mt-4 flex h-2 w-full gap-[3px]">
             {segments.map((s) => {
               const color = colorForSegment(s);
+              const desc = descriptionForSegment(s, billing.tier);
               return (
-                <div
-                  key={segmentKey(s)}
-                  className="flex items-center gap-1.5 text-xs text-muted-foreground"
-                >
-                  <span
-                    className={`inline-block h-2 w-2 shrink-0 rounded-full ${color}`}
-                  />
-                  <span>{labelForSegment(s)}</span>
-                  <span className="tabular-nums">
-                    {formatLocalizedNumber(s.credits)}
-                  </span>
-                </div>
+                <Tooltip key={segmentKey(s)}>
+                  <TooltipTrigger asChild>
+                    <div
+                      data-testid={`credit-balance-segment-${segmentKey(s)}`}
+                      className={`h-2 rounded-[2px] ${color} cursor-default ring-0 hover:ring-2 hover:ring-foreground/30 hover:z-10 transition-shadow`}
+                      style={{
+                        width: `${(s.credits / total) * 100}%`,
+                      }}
+                    />
+                  </TooltipTrigger>
+                  <TooltipContent
+                    side="top"
+                    sideOffset={8}
+                    style={{
+                      backgroundColor: "hsl(var(--popover))",
+                      color: "hsl(var(--popover-foreground))",
+                    }}
+                    className="border shadow-md"
+                  >
+                    <div className="font-medium text-foreground">
+                      {labelForSegment(s)} — {formatLocalizedNumber(s.credits)}
+                    </div>
+                    <div className="text-muted-foreground mt-0.5">{desc}</div>
+                  </TooltipContent>
+                </Tooltip>
               );
             })}
           </div>
-        </div>
+        </TooltipProvider>
       )}
-      <CreditAdditionList
+      <CreditAdditionTable
         grants={billing.creditGrants.map((grant: CreditGrant) => {
           return {
             ...grant,
@@ -628,6 +698,49 @@ function CreditBalanceChart({
           };
         })}
       />
+      <CreditBalanceActions billing={billing} onBuyCredits={onBuyCredits} />
+    </div>
+  );
+}
+
+/**
+ * The single action row of the org credit card: what keeps the balance topped
+ * up on the left, what tops it up manually on the right.
+ */
+function CreditBalanceActions({
+  billing,
+  onBuyCredits,
+}: {
+  billing: BillingStatusResponse;
+  onBuyCredits: () => void;
+}) {
+  const { t } = useTranslation();
+  const canBuyCredits = orgPlanCapabilitiesFromBilling(billing).canBuyCredits;
+  if (!canBuyCredits) {
+    return null;
+  }
+  return (
+    <div className="-mx-5 -mb-4 mt-4 flex items-center justify-between gap-3 border-t border-border px-5 py-3">
+      <p className="text-xs text-muted-foreground">
+        {billing.autoRecharge.enabled
+          ? t(($) => {
+              return $.billing.usage.autoRechargeOn;
+            })
+          : ""}
+      </p>
+      <Button
+        type="button"
+        variant="default"
+        size="sm"
+        data-testid="credit-balance-buy-credits"
+        onClick={() => {
+          onBuyCredits();
+        }}
+      >
+        {t(($) => {
+          return $.billing.credits.title;
+        })}
+      </Button>
     </div>
   );
 }
@@ -637,13 +750,15 @@ function CreditBalanceChart({
 // ---------------------------------------------------------------------------
 
 /**
- * The org credit balance summary card (total, breakdown bar, grants). Lives at
- * the top of the Credit balance section — above the Mine/Team tabs — so it stays
- * visible regardless of the active tab.
+ * The org credit balance summary card: what refills on its own (the usage
+ * allowance) above what does not (the org credit wallet, its additions, and the
+ * action that tops it up).
  */
 export function CreditBalanceCard({
+  onBuyCredits,
   onComparePlans,
 }: {
+  onBuyCredits: () => void;
   onComparePlans: () => void;
 }) {
   const { t } = useTranslation();
@@ -653,7 +768,7 @@ export function CreditBalanceCard({
   const billingLoading = billingLoadable.state === "loading";
 
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-4">
       {billing ? (
         <UsageAllowanceCard allowance={billing.usageAllowance} />
       ) : null}
@@ -666,6 +781,7 @@ export function CreditBalanceCard({
         ) : billing ? (
           <CreditBalanceChart
             billing={billing}
+            onBuyCredits={onBuyCredits}
             onComparePlans={onComparePlans}
           />
         ) : (
