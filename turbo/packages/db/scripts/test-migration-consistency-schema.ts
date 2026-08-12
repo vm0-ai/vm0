@@ -2411,6 +2411,42 @@ async function validateCustomCredentialStorageContraction(): Promise<void> {
 
       await assertPreContractionState();
       await client.query(`
+        ALTER TABLE "connectors"
+        DISABLE TRIGGER "connectors_delete_legacy_custom_credentials_0911"
+      `);
+      await assert.rejects(
+        applyMigrationsUpToTag(
+          client,
+          CUSTOM_CREDENTIAL_STORAGE_CONTRACTION_MIGRATION,
+        ),
+        /Expected one enabled legacy Custom credential delete bridge, found 0/u,
+      );
+      await assertPreContractionState();
+      await client.query(`
+        ALTER TABLE "connectors"
+        ENABLE TRIGGER "connectors_delete_legacy_custom_credentials_0911"
+      `);
+
+      await client.query(`
+        CREATE TRIGGER "unexpected_legacy_custom_credential_trigger_0912"
+        AFTER DELETE ON "org_custom_connector_values"
+        FOR EACH ROW
+        EXECUTE FUNCTION "delete_legacy_custom_credentials_0911"()
+      `);
+      await assert.rejects(
+        applyMigrationsUpToTag(
+          client,
+          CUSTOM_CREDENTIAL_STORAGE_CONTRACTION_MIGRATION,
+        ),
+        /Expected no user triggers on legacy Custom credential tables, found 1/u,
+      );
+      await assertPreContractionState();
+      await client.query(`
+        DROP TRIGGER "unexpected_legacy_custom_credential_trigger_0912"
+        ON "org_custom_connector_values"
+      `);
+
+      await client.query(`
         CREATE FUNCTION "unexpected_legacy_custom_credential_reader_0912"()
         RETURNS bigint
         LANGUAGE plpgsql
@@ -2515,6 +2551,8 @@ async function validateCustomCredentialStorageContraction(): Promise<void> {
         },
       ]);
 
+      console.log("   ✅ Bridge drift aborts atomically");
+      console.log("   ✅ Untracked table triggers abort atomically");
       console.log("   ✅ Untracked routine references abort atomically");
       console.log("   ✅ Tracked dependencies abort without CASCADE");
       console.log("   ✅ Legacy tables and bridge objects are removed");
