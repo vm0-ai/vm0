@@ -283,12 +283,15 @@ function githubAutomationRuleLabel(
     { readonly kind: "event" }
   >,
 ): string | null {
-  if (automation.eventType === "github-label-applied") {
+  if (automation.eventType === "github-pull-request") {
     return i18n.t(
       ($) => {
-        return $.workflows.automations.github.labelAppliedRule;
+        return $.workflows.automations.github.pullRequestRule;
       },
-      { label: quote(automation.eventConfig.labelName) },
+      {
+        action: automation.eventConfig.action,
+        repository: automation.eventConfig.repository,
+      },
     );
   }
   if (automation.eventType === "github-workflow-run-completed") {
@@ -556,7 +559,7 @@ export function automationTypeLabel(
     });
   }
   if (
-    automation.eventType === "github-label-applied" ||
+    automation.eventType === "github-pull-request" ||
     automation.eventType === "github-deployment-status-created" ||
     automation.eventType === "github-issue-comment-created" ||
     automation.eventType === "github-pull-request-review-submitted" ||
@@ -655,7 +658,7 @@ export function AutomationListIcon({
       return BrandStripe;
     }
     if (
-      automation.eventType === "github-label-applied" ||
+      automation.eventType === "github-pull-request" ||
       automation.eventType === "github-deployment-status-created" ||
       automation.eventType === "github-issue-comment-created" ||
       automation.eventType === "github-pull-request-review-submitted" ||

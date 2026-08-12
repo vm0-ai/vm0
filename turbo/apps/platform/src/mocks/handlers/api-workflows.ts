@@ -647,17 +647,8 @@ function createWorkflowAutomationSummaryForRequest(
       scheduleSummary: null,
     };
   }
-  if (body.eventType === "github-label-applied") {
-    return {
-      ...base,
-      kind: "event",
-      eventType: "github-label-applied",
-      eventConfig: body.eventConfig,
-      schedule: null,
-      scheduleSummary: null,
-    };
-  }
   if (
+    body.eventType === "github-pull-request" ||
     body.eventType === "github-workflow-run-completed" ||
     body.eventType === "github-workflow-job-completed" ||
     body.eventType === "github-pull-request-review-submitted" ||

@@ -123,9 +123,9 @@ function workflowAutomationSummary(
         return $.chat.automations.events.gmailLabelApplied;
       });
     }
-    if (automation.eventType === "github-label-applied") {
+    if (automation.eventType === "github-pull-request") {
       return i18n.t(($) => {
-        return $.chat.automations.events.githubLabelApplied;
+        return $.chat.automations.events.githubPullRequest;
       });
     }
     if (automation.eventType === "github-workflow-job-completed") {

@@ -56,7 +56,8 @@ const CHECKLIST_WORKFLOW_ID = "d0000000-0000-4000-a000-000000000204";
 const COPIED_WORKFLOW_ID = "d0000000-0000-4000-a000-000000000205";
 const GMAIL_AUTOMATION_ID = "workflow-automation-gmail-new-message";
 const GMAIL_LABEL_AUTOMATION_ID = "workflow-automation-gmail-label-applied";
-const GITHUB_LABEL_AUTOMATION_ID = "workflow-automation-github-label-applied";
+const GITHUB_PULL_REQUEST_AUTOMATION_ID =
+  "workflow-automation-github-pull-request";
 const GOOGLE_CALENDAR_AUTOMATION_ID =
   "workflow-automation-google-calendar-created";
 const GOOGLE_MEET_AUTOMATION_ID = "workflow-automation-google-meet-transcript";
@@ -163,9 +164,9 @@ type WorkflowGmailLabelAppliedAutomationSummary = Extract<
   ZeroWorkflowAutomationSummary,
   { kind: "event"; eventType: "gmail-label-applied" }
 >;
-type WorkflowGithubLabelAppliedAutomationSummary = Extract<
+type WorkflowGithubPullRequestAutomationSummary = Extract<
   ZeroWorkflowAutomationSummary,
-  { kind: "event"; eventType: "github-label-applied" }
+  { kind: "event"; eventType: "github-pull-request" }
 >;
 type WorkflowGoogleCalendarEventCreatedAutomationSummary = Extract<
   ZeroWorkflowAutomationSummary,
@@ -270,25 +271,24 @@ function gmailLabelWorkflowAutomation(): WorkflowGmailLabelAppliedAutomationSumm
   };
 }
 
-function githubLabelWorkflowAutomation(): WorkflowGithubLabelAppliedAutomationSummary {
+function githubPullRequestWorkflowAutomation(): WorkflowGithubPullRequestAutomationSummary {
   return {
-    id: GITHUB_LABEL_AUTOMATION_ID,
+    id: GITHUB_PULL_REQUEST_AUTOMATION_ID,
     kind: "event",
-    eventType: "github-label-applied",
+    eventType: "github-pull-request",
     eventConfig: {
       provider: "github",
-      event: "label_applied",
-      labelName: "triage",
-      filters: {
-        subject: "both",
-        actor: { type: "me" },
-      },
+      event: "pull_request",
+      repository: "vm0-ai/vm0",
+      action: "closed",
+      merged: true,
+      filters: {},
     },
     schedule: null,
     scheduleSummary: null,
     ownerUserId: CURRENT_USER_ID,
     enabled: true,
-    chatThreadId: "thread_github_label_applied",
+    chatThreadId: "thread_github_pull_request",
     nextRunAt: null,
     lastRunAt: null,
   };
@@ -1027,15 +1027,15 @@ function mockCreateWorkflowAutomation(
           eventConfig: body.eventConfig,
         });
       }
-      if (body.eventType === "github-label-applied") {
+      if (body.eventType === "github-pull-request") {
         return respond(201, {
-          ...githubLabelWorkflowAutomation(),
+          ...githubPullRequestWorkflowAutomation(),
           eventConfig: body.eventConfig,
         });
       }
       if (body.eventType === "github-workflow-run-completed") {
         return respond(201, {
-          ...githubLabelWorkflowAutomation(),
+          ...githubPullRequestWorkflowAutomation(),
           eventType: "github-workflow-run-completed",
           eventConfig: body.eventConfig,
         });
@@ -1141,15 +1141,15 @@ function mockUpdateWorkflowAutomation(
         if (body.eventConfig.provider === "github") {
           if (body.eventConfig.event === "workflow_run_completed") {
             return respond(200, {
-              ...githubLabelWorkflowAutomation(),
+              ...githubPullRequestWorkflowAutomation(),
               id: params.id,
               eventType: "github-workflow-run-completed",
               eventConfig: body.eventConfig,
             });
           }
-          if (body.eventConfig.event !== "label_applied") {
+          if (body.eventConfig.event !== "pull_request") {
             return respond(200, {
-              ...githubLabelWorkflowAutomation(),
+              ...githubPullRequestWorkflowAutomation(),
               id: params.id,
               eventType:
                 body.eventConfig.event === "workflow_job_completed"
@@ -1163,7 +1163,7 @@ function mockUpdateWorkflowAutomation(
             } as ZeroWorkflowAutomationSummary);
           }
           return respond(200, {
-            ...githubLabelWorkflowAutomation(),
+            ...githubPullRequestWorkflowAutomation(),
             id: params.id,
             eventConfig: body.eventConfig,
           });

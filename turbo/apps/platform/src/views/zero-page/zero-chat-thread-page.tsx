@@ -1933,8 +1933,7 @@ function headerWorkflowAutomationMatchSummary(
     return null;
   }
   switch (automation.eventType) {
-    case "gmail-label-applied":
-    case "github-label-applied": {
+    case "gmail-label-applied": {
       return i18n.t(
         ($) => {
           return $.chat.automations.matchSummary.label;
@@ -1943,6 +1942,9 @@ function headerWorkflowAutomationMatchSummary(
           value: quotedAutomationValue(automation.eventConfig.labelName),
         },
       );
+    }
+    case "github-pull-request": {
+      return `${automation.eventConfig.repository} · ${automation.eventConfig.action}`;
     }
     case "gmail-new-message": {
       return headerGmailMatchSummary(automation.eventConfig);

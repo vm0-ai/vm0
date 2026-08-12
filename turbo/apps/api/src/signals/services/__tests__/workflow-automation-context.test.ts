@@ -109,16 +109,16 @@ const cases: readonly WorkflowAutomationContextCase[] = [
     policy: eventPolicy,
   },
   {
-    eventType: "github-label-applied",
+    eventType: "github-pull-request",
     payload: {
-      deliveryId: "delivery-label",
-      labelName: "bug",
-      subject: { type: "pull_request", number: 24_480 },
+      deliveryId: "delivery-pr-merged",
+      action: "closed",
+      pullRequest: { number: 24_480, merged: true, baseBranch: "main" },
     },
     trigger:
-      'GitHub label "bug" was applied to pull request #24480 (GitHub webhook delivery delivery-label).',
+      'GitHub pull request #24480 was merged into "main" (GitHub webhook delivery delivery-pr-merged).',
     notes: [
-      "Not included below: the issue or pull request body, comments, files, and diffs. Connected GitHub tools and the GitHub API return them.",
+      "Not included below: the pull request body, comments, files, and diffs. Connected GitHub tools and the GitHub API return them.",
     ],
     policy: eventPolicy,
   },
@@ -350,6 +350,22 @@ const cases: readonly WorkflowAutomationContextCase[] = [
 ];
 
 describe("workflow automation context lookup contracts", () => {
+  it("renders label actions of the github-pull-request trigger", () => {
+    expect(
+      workflowAutomationTrigger({
+        eventType: "github-pull-request",
+        eventPayload: {
+          deliveryId: "delivery-pr-labeled",
+          action: "labeled",
+          pullRequest: { number: 24_481 },
+          label: { name: "ready-to-merge" },
+        },
+      }),
+    ).toBe(
+      'GitHub label "ready-to-merge" was applied to pull request #24481 (GitHub webhook delivery delivery-pr-labeled).',
+    );
+  });
+
   it("covers every trigger renderer exactly once", () => {
     expect(
       cases

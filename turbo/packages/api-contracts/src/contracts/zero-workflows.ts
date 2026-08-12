@@ -104,9 +104,9 @@ export const zeroAutomationEventTypeSchema = z.enum([
   "chat-run-finished",
   "gmail-new-message",
   "gmail-label-applied",
-  "github-label-applied",
   "github-deployment-status-created",
   "github-issue-comment-created",
+  "github-pull-request",
   "github-pull-request-review-submitted",
   "github-workflow-job-completed",
   "github-workflow-run-completed",
@@ -230,42 +230,6 @@ export const webhookReceivedEventConfigSchema = z
   .strict();
 export type WebhookReceivedEventConfig = z.infer<
   typeof webhookReceivedEventConfigSchema
->;
-
-export const githubLabelAppliedSubjectFilterSchema = z.enum([
-  "both",
-  "issues",
-  "pull_requests",
-]);
-export type GithubLabelAppliedSubjectFilter = z.infer<
-  typeof githubLabelAppliedSubjectFilterSchema
->;
-
-export const githubLabelAppliedActorFilterSchema = z
-  .object({
-    type: z.enum(["me", "anyone"]),
-  })
-  .strict();
-export type GithubLabelAppliedActorFilter = z.infer<
-  typeof githubLabelAppliedActorFilterSchema
->;
-
-export const githubLabelAppliedEventConfigSchema = z
-  .object({
-    provider: z.literal("github"),
-    event: z.literal("label_applied"),
-    labelName: z.string().trim().min(1).max(255),
-    filters: z
-      .object({
-        subject: githubLabelAppliedSubjectFilterSchema.default("both"),
-        actor: githubLabelAppliedActorFilterSchema.default({ type: "me" }),
-      })
-      .strict()
-      .default({ subject: "both", actor: { type: "me" } }),
-  })
-  .strict();
-export type GithubLabelAppliedEventConfig = z.infer<
-  typeof githubLabelAppliedEventConfigSchema
 >;
 
 export const githubWorkflowRunConclusionSchema = z.enum([
@@ -442,10 +406,62 @@ export type GithubIssueCommentCreatedEventConfig = z.infer<
   typeof githubIssueCommentCreatedEventConfigSchema
 >;
 
+export const githubPullRequestActionSchema = z.enum([
+  "opened",
+  "reopened",
+  "closed",
+  "ready_for_review",
+  "converted_to_draft",
+  "synchronize",
+  "enqueued",
+  "dequeued",
+  "labeled",
+  "unlabeled",
+]);
+export type GithubPullRequestAction = z.infer<
+  typeof githubPullRequestActionSchema
+>;
+
+/**
+ * Fires on one native `pull_request` webhook action in one repository.
+ *
+ * `merged` narrows the `closed` action: `true` fires only for merged pull
+ * requests, `false` only for ones closed without merging, unset for both.
+ * `filters.labels` matches the added/removed label for the `labeled` and
+ * `unlabeled` actions and any current pull request label otherwise.
+ */
+export const githubPullRequestEventConfigSchema = z
+  .object({
+    provider: z.literal("github"),
+    event: z.literal("pull_request"),
+    repository: z.string().trim().min(1).max(255),
+    action: githubPullRequestActionSchema,
+    merged: z.boolean().optional(),
+    filters: z
+      .object({
+        baseBranches: githubFilterValuesSchema.optional(),
+        authors: githubFilterValuesSchema.optional(),
+        pullRequestNumbers: githubFilterValuesSchema.optional(),
+        labels: githubFilterValuesSchema.optional(),
+      })
+      .strict()
+      .default({}),
+  })
+  .strict()
+  .refine(
+    (value) => {
+      return value.merged === undefined || value.action === "closed";
+    },
+    { message: "merged only applies to the closed action" },
+  );
+export type GithubPullRequestEventConfig = z.infer<
+  typeof githubPullRequestEventConfigSchema
+>;
+
 export const githubAutomationEventConfigSchema = z.discriminatedUnion("event", [
-  githubLabelAppliedEventConfigSchema,
   githubDeploymentStatusCreatedEventConfigSchema,
   githubIssueCommentCreatedEventConfigSchema,
+  githubPullRequestEventConfigSchema,
   githubPullRequestReviewSubmittedEventConfigSchema,
   githubWorkflowJobCompletedEventConfigSchema,
   githubWorkflowRunCompletedEventConfigSchema,
@@ -799,11 +815,11 @@ export const zeroWorkflowGmailLabelAppliedAutomationSummarySchema =
     scheduleSummary: z.null(),
   });
 
-export const zeroWorkflowGithubLabelAppliedAutomationSummarySchema =
+export const zeroWorkflowGithubPullRequestAutomationSummarySchema =
   zeroWorkflowAutomationSummaryBaseSchema.extend({
     kind: z.literal("event"),
-    eventType: z.literal("github-label-applied"),
-    eventConfig: githubLabelAppliedEventConfigSchema,
+    eventType: z.literal("github-pull-request"),
+    eventConfig: githubPullRequestEventConfigSchema,
     schedule: z.null(),
     scheduleSummary: z.null(),
   });
@@ -977,9 +993,9 @@ export const zeroEventAutomationSummarySchema = z.discriminatedUnion(
     zeroWorkflowChatRunFinishedAutomationSummarySchema,
     zeroWorkflowGmailNewMessageAutomationSummarySchema,
     zeroWorkflowGmailLabelAppliedAutomationSummarySchema,
-    zeroWorkflowGithubLabelAppliedAutomationSummarySchema,
     zeroWorkflowGithubDeploymentStatusCreatedAutomationSummarySchema,
     zeroWorkflowGithubIssueCommentCreatedAutomationSummarySchema,
+    zeroWorkflowGithubPullRequestAutomationSummarySchema,
     zeroWorkflowGithubPullRequestReviewSubmittedAutomationSummarySchema,
     zeroWorkflowGithubWorkflowJobCompletedAutomationSummarySchema,
     zeroWorkflowGithubWorkflowRunCompletedAutomationSummarySchema,
@@ -1054,11 +1070,11 @@ export const chatThreadWorkflowGmailLabelAppliedAutomationSchema =
     scheduleSummary: z.null(),
   });
 
-export const chatThreadWorkflowGithubLabelAppliedAutomationSchema =
+export const chatThreadWorkflowGithubPullRequestAutomationSchema =
   chatThreadWorkflowAutomationBaseSchema.extend({
     kind: z.literal("event"),
-    eventType: z.literal("github-label-applied"),
-    eventConfig: githubLabelAppliedEventConfigSchema,
+    eventType: z.literal("github-pull-request"),
+    eventConfig: githubPullRequestEventConfigSchema,
     schedule: z.null(),
     scheduleSummary: z.null(),
   });
@@ -1211,9 +1227,9 @@ export const chatThreadWorkflowAutomationSchema = z.union([
   chatThreadWorkflowChatRunFinishedAutomationSchema,
   chatThreadWorkflowGmailNewMessageAutomationSchema,
   chatThreadWorkflowGmailLabelAppliedAutomationSchema,
-  chatThreadWorkflowGithubLabelAppliedAutomationSchema,
   chatThreadWorkflowGithubDeploymentStatusCreatedAutomationSchema,
   chatThreadWorkflowGithubIssueCommentCreatedAutomationSchema,
+  chatThreadWorkflowGithubPullRequestAutomationSchema,
   chatThreadWorkflowGithubPullRequestReviewSubmittedAutomationSchema,
   chatThreadWorkflowGithubWorkflowJobCompletedAutomationSchema,
   chatThreadWorkflowGithubWorkflowRunCompletedAutomationSchema,
@@ -1263,11 +1279,11 @@ export const zeroWorkflowGmailLabelAppliedAutomationCreateRequestSchema =
     enabled: z.boolean().optional(),
   });
 
-export const zeroWorkflowGithubLabelAppliedAutomationCreateRequestSchema =
+export const zeroWorkflowGithubPullRequestAutomationCreateRequestSchema =
   z.object({
     kind: z.literal("event"),
-    eventType: z.literal("github-label-applied"),
-    eventConfig: githubLabelAppliedEventConfigSchema,
+    eventType: z.literal("github-pull-request"),
+    eventConfig: githubPullRequestEventConfigSchema,
     enabled: z.boolean().optional(),
   });
 
@@ -1428,9 +1444,9 @@ export const zeroWorkflowAutomationCreateRequestSchema = z.union([
   zeroWorkflowChatRunFinishedAutomationCreateRequestSchema,
   zeroWorkflowGmailNewMessageAutomationCreateRequestSchema,
   zeroWorkflowGmailLabelAppliedAutomationCreateRequestSchema,
-  zeroWorkflowGithubLabelAppliedAutomationCreateRequestSchema,
   zeroWorkflowGithubDeploymentStatusCreatedAutomationCreateRequestSchema,
   zeroWorkflowGithubIssueCommentCreatedAutomationCreateRequestSchema,
+  zeroWorkflowGithubPullRequestAutomationCreateRequestSchema,
   zeroWorkflowGithubPullRequestReviewSubmittedAutomationCreateRequestSchema,
   zeroWorkflowGithubWorkflowJobCompletedAutomationCreateRequestSchema,
   zeroWorkflowGithubWorkflowRunCompletedAutomationCreateRequestSchema,
