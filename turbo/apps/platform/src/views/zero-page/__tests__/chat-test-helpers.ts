@@ -2,7 +2,6 @@ import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect } from "vitest";
 import { createChatEvent } from "../../../mocks/mock-helpers.ts";
-import type { AgentEvent } from "../../../signals/zero-page/log-types.ts";
 import {
   chatThreadsContract,
   chatThreadByIdContract,
@@ -19,7 +18,6 @@ import {
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { logsByIdContract } from "@vm0/api-contracts/contracts/logs";
 import {
-  zeroRunAgentEventsContract,
   zeroRunsCancelContract,
   zeroRunsByIdContract,
 } from "@vm0/api-contracts/contracts/zero-runs";
@@ -300,7 +298,6 @@ export function threadListSnapshot(threads: readonly ThreadListItem[]) {
 interface MockLifecycleControl {
   setRunStatus: (status: RunStatus) => void;
   setQueuePosition: (n: number) => void;
-  setEvents: (e: AgentEvent[]) => void;
   setRunOutput: (content: string) => void;
   setThreadList: (list: ThreadListItem[]) => void;
   setCodexServiceTier: (tier: CodexServiceTier | null) => void;
@@ -533,7 +530,6 @@ export function mockChatLifecycle(
 
   let runStatus: RunStatus = "running";
   let runError: string | null = null;
-  let events: AgentEvent[] = [];
   let queuePosition = 0;
   let resultContent = "";
   let threadListOverride: ThreadListItem[] | null = null;
@@ -1012,16 +1008,6 @@ export function mockChatLifecycle(
       artifact: { name: null, version: null },
     });
   });
-  context.mocks.api(
-    zeroRunAgentEventsContract.getAgentEvents,
-    ({ respond }) => {
-      return respond(200, {
-        events,
-        hasMore: false,
-        framework: "claude-code",
-      });
-    },
-  );
   context.mocks.api(zeroRunsCancelContract.cancel, ({ respond }) => {
     return respond(200, {
       id: "a0000000-0000-4000-a000-000000000001",
@@ -1054,9 +1040,6 @@ export function mockChatLifecycle(
     setQueuePosition: (n) => {
       queuePosition = n;
     },
-    setEvents: (e) => {
-      events = e;
-    },
     setRunOutput: (content) => {
       resultContent = content;
       assistantVersion++;
@@ -1075,19 +1058,6 @@ export function mockChatLifecycle(
       resultContent = content ?? "";
       threadTitle = threadTitle ?? runPrompt;
       assistantVersion++;
-      if (content) {
-        events = [
-          ...events,
-          {
-            sequenceNumber: events.length + 1,
-            eventType: "assistant",
-            eventData: {
-              message: { content: [{ type: "text", text: content }] },
-            },
-            createdAt: "2026-03-10T00:01:00Z",
-          },
-        ];
-      }
       createChatEvent(threadId);
     },
     failRun: (error: string) => {

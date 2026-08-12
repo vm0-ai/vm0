@@ -1,7 +1,6 @@
 import { Command } from "commander";
 import chalk from "chalk";
 import { withErrorHandler } from "../../../lib/command/with-error-handler";
-import { runLogsSearch, type LogsSearchCliOptions } from "./logs-source";
 import { searchZeroChat } from "../../../lib/api/domains/zero-chat";
 import type {
   ChatSearchMessage,
@@ -13,19 +12,29 @@ import { parseBoundedLogCount } from "../../../lib/utils/log-pagination";
 import { parseSearchQuery } from "../../../lib/utils/search-query";
 import { isUuid } from "../../../lib/utils/uuid";
 
-const SUPPORTED_SOURCES = ["logs", "chat", "slack"] as const;
+const SUPPORTED_SOURCES = ["agent-session", "chat", "slack"] as const;
 type Source = (typeof SUPPORTED_SOURCES)[number];
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
 export const SEARCH_EXPLAINER = `
 Available sources:
-  logs   full agent event stream (tool calls, tokens, system events) from agent runs
-  chat   user/assistant text messages as shown in the web chat UI
-  slack  returns a recipe for calling the Slack API directly; requires the Slack connector
+  agent-session  locates local Claude Code and Codex session files for direct analysis
+  chat           user/assistant text messages as shown in the web chat UI
+  slack          returns a recipe for calling the Slack API directly; requires the Slack connector
 
-Usage: okou search <query> --source <logs|chat|slack> [flags]
+Usage: okou search <query> --source <agent-session|chat|slack> [flags]
 Run 'okou search --help' for all flags.`;
+
+function buildAgentSessionGuidance(query: string): string {
+  return `Agent session files are available at both locations:
+
+  Claude Code: /home/user/.claude/projects/-home-user-workspace/
+  Codex:       /home/user/.codex/sessions/
+
+A single thread may use both Claude Code and Codex, so inspect both locations.
+You can analyze these session files directly for: ${query}`;
+}
 
 export function buildSlackRecipe(query: string): string {
   const encoded = encodeURIComponent(query);
@@ -51,7 +60,6 @@ query parameters instead.`;
 interface SearchOptions {
   source: string[];
   agent?: string;
-  run?: string;
   since?: string;
   limit?: string;
   afterContext?: string;
@@ -86,22 +94,6 @@ function parseContextOptions(options: SearchOptions): {
 function parseLimit(value: string | undefined): number | undefined {
   if (value === undefined) return undefined;
   return parseBoundedLogCount(value, "--limit", 1, 50);
-}
-
-async function runLogsSource(
-  query: string,
-  options: SearchOptions,
-): Promise<void> {
-  const logsOptions: LogsSearchCliOptions = {
-    afterContext: options.afterContext,
-    beforeContext: options.beforeContext,
-    context: options.context,
-    agentId: options.agent,
-    run: options.run,
-    since: options.since,
-    limit: options.limit,
-  };
-  await runLogsSearch(query, logsOptions);
 }
 
 function formatTimestamp(iso: string): string {
@@ -149,14 +141,10 @@ async function runChatSource(
   query: string,
   options: SearchOptions,
 ): Promise<void> {
-  if (options.run !== undefined) {
-    throw new Error("--run is not supported with --source chat");
-  }
   if (options.agent !== undefined && !isUuid(options.agent)) {
     console.error(
       chalk.red(`✗ Invalid agent ID "${options.agent}" — expected a UUID`),
     );
-    console.error(chalk.dim("  Run: okou logs list    to find agent IDs"));
     process.exit(1);
   }
 
@@ -196,18 +184,24 @@ async function runSlackSource(
   console.log(buildSlackRecipe(query));
 }
 
+async function runAgentSessionSource(
+  query: string,
+  _options: SearchOptions,
+): Promise<void> {
+  console.log(buildAgentSessionGuidance(query));
+}
+
 export const zeroSearchCommand = new Command()
   .name("search")
-  .description("Search logs, chat, or get a recipe for external sources")
+  .description("Search chat or locate sources for direct analysis")
   .argument("<query>", "Search query")
   .option(
     "--source <type>",
-    "Source to search: logs | chat | slack (pass once)",
+    "Source to search: agent-session | chat | slack (pass once)",
     collectSource,
     [] as string[],
   )
   .option("--agent <id>", "Filter by agent ID")
-  .option("--run <id>", "Filter by run ID")
   .option("--since <time>", "Time window (e.g., 7d, 2h)")
   .option("--limit <n>", "Maximum number of matches")
   .option("-A, --after-context <n>", "Show n items after each match")
@@ -236,8 +230,8 @@ export const zeroSearchCommand = new Command()
       }
 
       switch (source as Source) {
-        case "logs":
-          await runLogsSource(searchQuery, options);
+        case "agent-session":
+          await runAgentSessionSource(searchQuery, options);
           return;
         case "chat":
           await runChatSource(searchQuery, options);

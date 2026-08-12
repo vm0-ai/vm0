@@ -3939,40 +3939,6 @@
       "teamDescription": "Scale your team with 10 parallel runs and more credits."
     }
   },
-  "reportError": {
-    "description": "Send diagnostic information for this failed run to the developer team. We will investigate and follow up shortly.",
-    "disclosure": {
-      "agentConfiguration": "Agent configuration",
-      "agentTelemetry": "Agent telemetry and run logs",
-      "chatHistory": "Chat history and agent events",
-      "connectedServices": "Connected services (no credentials)",
-      "networkLogs": "Network request logs",
-      "runContext": "Run context and environment",
-      "title": "What will be sent"
-    },
-    "documentTitle": "Report Error",
-    "error": {
-      "loadFailed": "Failed to load run details",
-      "notFailed": "This run did not fail and cannot be reported",
-      "title": "Error",
-      "tryAgain": "Try Again"
-    },
-    "fields": {
-      "description": "Description",
-      "descriptionPlaceholder": "What happened? What did you expect?",
-      "title": "Title",
-      "titlePlaceholder": "Brief summary of the issue"
-    },
-    "loading": "Loading run details",
-    "send": "Send Report",
-    "sending": "Sending...",
-    "success": {
-      "description": "Your error report has been sent to the developer team. They will investigate and follow up.",
-      "reference": "Reference: {{reference}}",
-      "title": "Report sent"
-    },
-    "title": "Report error to developer"
-  },
   "settings": {
     "accountMenu": {
       "addAccount": "Add account",

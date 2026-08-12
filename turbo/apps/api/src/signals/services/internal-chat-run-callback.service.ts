@@ -2333,7 +2333,7 @@ function buildChatPriorRunsContext(
       `## Recent Run ${index + 1}`,
       `- RUN_ID: ${run.runId}`,
       `- RUN_STATUS: ${run.status}`,
-      `- LOG_COMMAND: okou logs ${run.runId} --all`,
+      `- AGENT_SESSION_COMMAND: okou search "${run.runId}" --source agent-session`,
       "",
       transcript,
     ].join("\n");

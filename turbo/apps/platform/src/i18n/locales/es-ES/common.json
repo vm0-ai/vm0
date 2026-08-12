@@ -3987,40 +3987,6 @@
       "teamDescription": "Amplía tu equipo con 10 ejecuciones paralelas y más créditos."
     }
   },
-  "reportError": {
-    "description": "Envía la información diagnóstica de esta ejecución fallida al equipo de desarrollo. Investigaremos y haremos seguimiento en breve.",
-    "disclosure": {
-      "agentConfiguration": "Configuración del agente",
-      "agentTelemetry": "Telemetría de agentes y registros de ejecución",
-      "chatHistory": "Historial de chat y eventos de agentes",
-      "connectedServices": "Servicios conectados (sin credenciales)",
-      "networkLogs": "Registros de solicitudes de red",
-      "runContext": "Contexto de ejecución y entorno",
-      "title": "¿Qué se enviará?"
-    },
-    "documentTitle": "Informar de un error",
-    "error": {
-      "loadFailed": "No se han cargado los detalles de la ejecución",
-      "notFailed": "Esta ejecución no falló y no se puede informar de ella",
-      "title": "Error",
-      "tryAgain": "Inténtalo de nuevo"
-    },
-    "fields": {
-      "description": "Descripción",
-      "descriptionPlaceholder": "¿Qué ha pasado? ¿Qué esperabas?",
-      "title": "Título",
-      "titlePlaceholder": "Breve resumen del asunto"
-    },
-    "loading": "Cargando los detalles de la ejecución",
-    "send": "Enviar informe",
-    "sending": "Enviando...",
-    "success": {
-      "description": "Tu informe de error ha sido enviado al equipo de desarrolladores. Ellos investigarán y harán seguimiento.",
-      "reference": "Referencia: {{reference}}",
-      "title": "Informe enviado"
-    },
-    "title": "Informar del error al equipo de desarrollo"
-  },
   "settings": {
     "accountMenu": {
       "addAccount": "Añadir cuenta",

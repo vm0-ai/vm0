@@ -3939,40 +3939,6 @@
       "teamDescription": "Skalieren Sie Ihr Team mit 10 parallelen Ausführungen und mehr Credits."
     }
   },
-  "reportError": {
-    "description": "Senden Sie Diagnoseinformationen für diese fehlgeschlagene Ausführung an das Entwicklerteam. Wir werden die Angelegenheit in Kürze untersuchen und weiterverfolgen.",
-    "disclosure": {
-      "agentConfiguration": "Agentenkonfiguration",
-      "agentTelemetry": "Agententelemetrie und Ausführungsprotokolle",
-      "chatHistory": "Chatverlauf und Agentenereignisse",
-      "connectedServices": "Verbundene Dienste (keine Anmeldeinformationen)",
-      "networkLogs": "Netzwerkanforderungsprotokolle",
-      "runContext": "Kontext und Umgebung ausführen",
-      "title": "Was wird verschickt?"
-    },
-    "documentTitle": "Fehler melden",
-    "error": {
-      "loadFailed": "Ausführungsdetails konnten nicht geladen werden",
-      "notFailed": "Diese Ausführung ist nicht fehlgeschlagen und kann nicht gemeldet werden",
-      "title": "Fehler",
-      "tryAgain": "Versuchen Sie es erneut"
-    },
-    "fields": {
-      "description": "Beschreibung",
-      "descriptionPlaceholder": "Was ist passiert? Was haben Sie erwartet?",
-      "title": "Titel",
-      "titlePlaceholder": "Kurze Zusammenfassung des Problems"
-    },
-    "loading": "Ausführungsdetails werden geladen",
-    "send": "Bericht senden",
-    "sending": "Senden...",
-    "success": {
-      "description": "Ihr Fehlerbericht wurde an das Entwicklerteam gesendet. Sie werden Nachforschungen anstellen und weiterverfolgen.",
-      "reference": "Referenz: {{reference}}",
-      "title": "Bericht gesendet"
-    },
-    "title": "Fehler dem Entwickler melden"
-  },
   "settings": {
     "accountMenu": {
       "addAccount": "Konto hinzufügen",

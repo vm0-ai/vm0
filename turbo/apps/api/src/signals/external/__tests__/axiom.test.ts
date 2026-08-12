@@ -1,12 +1,13 @@
 import { HttpResponse, http } from "msw";
 import { describe, expect, it, vi } from "vitest";
+import { createStore } from "ccstate";
 
 import { getApiTestMocks } from "../../../__tests__/mocks";
 import { server } from "../../../mocks/server";
 
-describe("queryAxiomDirect", () => {
+describe("queryAxiom", () => {
   it("keeps the Axiom match timestamp when event data contains _time", async () => {
-    const { queryAxiomDirect } =
+    const { queryAxiom } =
       await vi.importActual<typeof import("../axiom")>("../axiom");
     const mocks = getApiTestMocks();
     mocks.axiom.query.mockResolvedValue({
@@ -21,8 +22,8 @@ describe("queryAxiomDirect", () => {
       ],
     });
 
-    const rows = await queryAxiomDirect(
-      "['vm0-sandbox-telemetry-network-dev']",
+    const rows = await createStore().get(
+      queryAxiom("['vm0-sandbox-telemetry-network-dev']"),
     );
 
     expect(rows).toStrictEqual([
@@ -34,7 +35,7 @@ describe("queryAxiomDirect", () => {
   });
 
   it("sends the pagination cursor in the documented Axiom request body", async () => {
-    const { queryAxiomDirect } =
+    const { queryAxiom } =
       await vi.importActual<typeof import("../axiom")>("../axiom");
     const mocks = getApiTestMocks();
     const apl = "['vm0-agent-run-events-dev'] | limit 1";
@@ -69,10 +70,11 @@ describe("queryAxiomDirect", () => {
       ),
     );
 
-    const rows = await queryAxiomDirect(apl, {
-      cursor: "cursor-next-page",
-      noCache: true,
-    });
+    const rows = await createStore().get(
+      queryAxiom(apl, {
+        cursor: "cursor-next-page",
+      }),
+    );
 
     expect(mocks.axiom.query).not.toHaveBeenCalled();
     expect(requests).toStrictEqual([
@@ -82,7 +84,7 @@ describe("queryAxiomDirect", () => {
           apl,
           cursor: "cursor-next-page",
         },
-        url: "https://api.axiom.co/v1/datasets/_apl?format=legacy&nocache=true",
+        url: "https://api.axiom.co/v1/datasets/_apl?format=legacy",
       },
     ]);
     expect(rows).toStrictEqual([

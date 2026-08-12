@@ -55,7 +55,6 @@ export const ROUTES = {
   morningBriefUnsubscribe: "/email/morning-brief/unsubscribe",
   lab: "/_/lab",
   exportData: "/export",
-  reportError: "/runs/:runId/report-error",
   redeemCampaign: "/redeem/:campaign",
   emailUnsubscribe: "/email/unsubscribe",
   skeleton: "/_/skeleton",

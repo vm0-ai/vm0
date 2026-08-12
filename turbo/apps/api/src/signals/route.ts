@@ -90,7 +90,6 @@ import { zeroConnectorsExternalCodeRoutes } from "./routes/zero-connectors-exter
 import { zeroConnectorsOauthDeviceAuthRoutes } from "./routes/zero-connectors-oauth-device-auth";
 import { zeroConnectorsRoutes } from "./routes/zero-connectors";
 import { zeroCustomConnectorsRoutes } from "./routes/zero-custom-connectors";
-import { zeroDeveloperSupportRoutes } from "./routes/zero-developer-support";
 import { zeroEmailInboundRoutes } from "./routes/zero-email-inbound";
 import { zeroFeatureSwitchesRoutes } from "./routes/zero-feature-switches";
 import { zeroFinanceRoutes } from "./routes/zero-finance";
@@ -121,7 +120,6 @@ import { zeroQueuePositionRoutes } from "./routes/zero-queue-position";
 import { zeroRealtimeTokenRoutes } from "./routes/zero-realtime-token";
 import { zeroRecognitionRoutes } from "./routes/zero-recognition";
 import { zeroTranslationRoutes } from "./routes/zero-translation";
-import { zeroReportErrorRoutes } from "./routes/zero-report-error";
 import { zeroRunDetailRoutes } from "./routes/zero-run-detail";
 import { zeroRunsRoutes } from "./routes/zero-runs";
 import { zeroRunsCancelRoutes } from "./routes/zero-runs-cancel";
@@ -285,7 +283,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroConnectorsOauthDeviceAuthRoutes,
   ...zeroConnectorsRoutes,
   ...zeroCustomConnectorsRoutes,
-  ...zeroDeveloperSupportRoutes,
   ...zeroEmailInboundRoutes,
   ...zeroFeatureSwitchesRoutes,
   ...zeroFinanceRoutes,
@@ -324,7 +321,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroRealtimeTokenRoutes,
   ...zeroRecognitionRoutes,
   ...zeroTranslationRoutes,
-  ...zeroReportErrorRoutes,
   ...zeroRunDetailRoutes,
   ...zeroRunsRoutes,
   ...zeroRunsCancelRoutes,

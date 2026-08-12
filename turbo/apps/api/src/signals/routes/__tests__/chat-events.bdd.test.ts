@@ -8594,7 +8594,7 @@ describe("CHAT-02: shared user message queue", () => {
       `okou chat messages --thread-id ${source.threadId}`,
     );
     expect(firstTargetSystemPrompt).toContain(
-      `okou logs ${source.runId} --all`,
+      `okou search "${source.runId}" --source agent-session`,
     );
     const sourceRun = await api.readRun(actor, source.runId);
     expect(sourceRun.appendSystemPrompt ?? "").not.toContain(

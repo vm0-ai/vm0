@@ -6,10 +6,9 @@ import {
   useLastLoadable,
   useLastResolved,
 } from "ccstate-react";
-import { Search, Loader2, Download, ChartLine } from "lucide-react";
+import { Loader2, Download, ChartLine } from "lucide-react";
 import {
   Button,
-  Input,
   Tabs,
   TabsList,
   TabsTrigger,
@@ -44,17 +43,12 @@ import {
 import { StatusBadge } from "./components/log-views/status-badge.tsx";
 import {
   zeroActivityDetail$,
-  zeroActivityEvents$,
-  zeroActivityVisibleGroups$,
-  zeroActivityStepSearch$,
-  setZeroActivityStepSearch$,
   formatLogTime,
   formatDuration,
   currentRunId$,
 } from "../../signals/activity-page/activity-signals.ts";
 import {
   eventGroupKey,
-  eventGroupMatchesSearch,
   type EventGroup,
 } from "../../signals/activity-page/log-detail-utils";
 import { EventGroupCard } from "./components/log-views/event-group-card.tsx";
@@ -66,12 +60,10 @@ import {
   loadNetworkLogsNextPage$,
 } from "../../signals/activity-page/activity-network-signals.ts";
 import { detach, Reason } from "../../signals/utils.ts";
-import { setActivityDetailScrollContainer$ } from "../../signals/activity-page/activity-detail-scroll.ts";
 import { ContextContent } from "./components/context-content.tsx";
 import { NetworkContent } from "./components/network-content.tsx";
 import { Markdown } from "../components/markdown.tsx";
 import { ZeroNoPermissionIllustration } from "./components/zero-no-permission-illustration.tsx";
-import { formatAppNumber } from "../../i18n/format.ts";
 
 // ---------------------------------------------------------------------------
 // Error Banner
@@ -454,28 +446,6 @@ export function ActivityHeaderCard({
   );
 }
 
-function prepareRenderData(
-  detail: {
-    prompt: string | null;
-    appendSystemPrompt: string | null;
-    framework: string | null;
-  },
-  features: Record<FeatureSwitchKey, boolean> | undefined,
-) {
-  const showModelDetail = true;
-  const prompt = detail.prompt ?? "";
-  const appendSystemPrompt = detail.appendSystemPrompt ?? "";
-  const showSystemPrompt =
-    (features?.[FeatureSwitchKey.ZeroDebug] ?? false) &&
-    appendSystemPrompt.trim().length > 0;
-  return {
-    showModelDetail,
-    prompt,
-    appendSystemPrompt,
-    showSystemPrompt,
-  };
-}
-
 function resolveDisplayName(
   detail: { displayName: string | null; agentId: string | null } | null,
   isStale: boolean,
@@ -487,95 +457,7 @@ function resolveDisplayName(
   return detail.displayName ?? detail.agentId ?? fallback;
 }
 
-type ActivityTab = "steps" | "context" | "runner" | "network";
-
-function ActivityStepsContent({
-  detail,
-  features,
-}: {
-  detail: LogDetail;
-  features: Record<FeatureSwitchKey, boolean> | undefined;
-}) {
-  const { t } = useTranslation();
-  const stepSearch = useGet(zeroActivityStepSearch$);
-  const setStepSearch = useSet(setZeroActivityStepSearch$);
-  const visibleGroupsLoadable = useLastLoadable(zeroActivityVisibleGroups$);
-  const visibleGroupsData =
-    visibleGroupsLoadable.state === "hasData" &&
-    visibleGroupsLoadable.data.runId === detail.id
-      ? visibleGroupsLoadable.data
-      : null;
-  const visibleGroups =
-    visibleGroupsData === null ? [] : visibleGroupsData.groups;
-  const visibleGroupsLoading =
-    visibleGroupsLoadable.state === "loading" ||
-    (visibleGroupsLoadable.state === "hasData" &&
-      visibleGroupsLoadable.data.runId !== detail.id);
-  const { prompt, showSystemPrompt, appendSystemPrompt } = prepareRenderData(
-    detail,
-    features,
-  );
-  const searchTerm = stepSearch.trim();
-  const groups = visibleGroups.filter((group) => {
-    return eventGroupMatchesSearch(group, searchTerm);
-  });
-
-  return (
-    <div className="flex flex-col gap-4 pb-8 min-w-0">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <span className="text-base font-medium text-foreground whitespace-nowrap">
-            {t(($) => {
-              return $.activity.detail.steps.title;
-            })}
-          </span>
-          <span className="text-sm text-muted-foreground whitespace-nowrap">
-            {stepSearch.trim()
-              ? t(
-                  ($) => {
-                    return $.activity.detail.steps.matched;
-                  },
-                  {
-                    matched: formatAppNumber(groups.length),
-                    total: formatAppNumber(visibleGroups.length),
-                  },
-                )
-              : t(
-                  ($) => {
-                    return $.activity.detail.steps.total;
-                  },
-                  { total: formatAppNumber(visibleGroups.length) },
-                )}
-          </span>
-        </div>
-        <div className="flex items-center gap-2 sm:gap-3">
-          <div className="relative flex-1 sm:flex-none sm:w-44">
-            <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder={t(($) => {
-                return $.activity.detail.steps.search;
-              })}
-              value={stepSearch}
-              onChange={(e) => {
-                return setStepSearch(e.target.value);
-              }}
-              className="pl-9"
-            />
-          </div>
-        </div>
-      </div>
-
-      <StepsList
-        prompt={prompt}
-        appendSystemPrompt={showSystemPrompt ? appendSystemPrompt : ""}
-        groups={groups}
-        stepSearch={stepSearch}
-        isLoading={visibleGroupsLoading}
-        startedAt={detail.startedAt}
-      />
-    </div>
-  );
-}
+type ActivityTab = "context" | "runner" | "network";
 
 function ActivityContextTab({ detailId }: { detailId: string }) {
   const { t } = useTranslation();
@@ -932,15 +814,10 @@ function ActivityNetworkTab({ detailId }: { detailId: string }) {
 function ActivityTabContent({
   activeTab,
   detail,
-  features,
 }: {
   activeTab: ActivityTab;
   detail: LogDetail;
-  features: Record<FeatureSwitchKey, boolean> | undefined;
 }) {
-  if (activeTab === "steps") {
-    return <ActivityStepsContent detail={detail} features={features} />;
-  }
   if (activeTab === "context") {
     return <ActivityContextTab detailId={detail.id} />;
   }
@@ -953,12 +830,10 @@ function ActivityTabContent({
 function ActivityDetailContent({
   detail,
   displayName,
-  eventsData,
   features,
 }: {
   detail: LogDetail;
   displayName: string;
-  eventsData: AgentEvent[];
   features: Record<FeatureSwitchKey, boolean> | undefined;
 }) {
   const { t } = useTranslation();
@@ -967,13 +842,10 @@ function ActivityDetailContent({
   const showDebugTabs = features?.[FeatureSwitchKey.ZeroDebug] ?? false;
   const rawTab = params.get("tab");
   const activeTab: ActivityTab =
-    showDebugTabs &&
-    (rawTab === "context" || rawTab === "runner" || rawTab === "network")
-      ? rawTab
-      : "steps";
+    rawTab === "runner" || rawTab === "network" ? rawTab : "context";
   const setActiveTab = (tab: ActivityTab) => {
     const next = new URLSearchParams(params);
-    if (tab === "steps") {
+    if (tab === "context") {
       next.delete("tab");
     } else {
       next.set("tab", tab);
@@ -982,20 +854,14 @@ function ActivityDetailContent({
   };
   const fetchExtra = useSet(fetchDownloadExtra$);
   const pageSignal = useGet(pageSignal$);
-  const setScrollContainer = useSet(setActivityDetailScrollContainer$);
 
-  const events: AgentEvent[] = eventsData;
-  const { showModelDetail } = prepareRenderData(detail, features);
   const status: LogStatus = detail.status;
   const time = formatLogTime(detail.createdAt);
   const duration = formatDuration(detail.startedAt, detail.completedAt);
 
   return (
     <div className="h-full flex flex-col min-h-0 overflow-hidden">
-      <div
-        ref={setScrollContainer}
-        className="flex-1 flex flex-col min-h-0 overflow-auto"
-      >
+      <div className="flex-1 flex flex-col min-h-0 overflow-auto">
         <nav className="hidden md:flex shrink-0 items-center gap-1 px-4 pt-4 text-sm text-muted-foreground">
           {features?.[FeatureSwitchKey.ZeroDebug] && (
             <>
@@ -1016,13 +882,13 @@ function ActivityDetailContent({
             logDetail={detail}
             duration={duration}
             time={time}
-            events={events}
-            showModelDetail={showModelDetail}
+            events={[]}
+            showModelDetail
             onDownload={() => {
               detach(
                 (async () => {
                   const extra = await fetchExtra(detail.id, pageSignal);
-                  downloadJson(events, detail.id, detail, extra);
+                  downloadJson([], detail.id, detail, extra);
                 })(),
                 Reason.DomCallback,
               );
@@ -1038,11 +904,6 @@ function ActivityDetailContent({
                 }}
               >
                 <TabsList>
-                  <TabsTrigger value="steps">
-                    {t(($) => {
-                      return $.activity.detail.tabs.steps;
-                    })}
-                  </TabsTrigger>
                   <TabsTrigger value="context">
                     {t(($) => {
                       return $.activity.detail.tabs.context;
@@ -1063,13 +924,11 @@ function ActivityDetailContent({
             </div>
           )}
 
-          <div className="mt-6">
-            <ActivityTabContent
-              activeTab={activeTab}
-              detail={detail}
-              features={features}
-            />
-          </div>
+          {showDebugTabs && (
+            <div className="mt-6">
+              <ActivityTabContent activeTab={activeTab} detail={detail} />
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -1080,7 +939,6 @@ export function ZeroActivityDetailPage() {
   const { t } = useTranslation();
   const currentRunId = useGet(currentRunId$);
   const detailLoadable = useLastLoadable(zeroActivityDetail$);
-  const eventsLoadable = useLastLoadable(zeroActivityEvents$);
   // Resolve agent display name from the detail response
   const detail =
     detailLoadable.state === "hasData" ? detailLoadable.data : null;
@@ -1095,17 +953,7 @@ export function ZeroActivityDetailPage() {
   );
 
   const features = useLastResolved(featureSwitch$);
-  const eventsData =
-    eventsLoadable.state === "hasData" &&
-    eventsLoadable.data !== null &&
-    eventsLoadable.data.runId === currentRunId
-      ? eventsLoadable.data.events
-      : null;
-
-  // Skeleton until both detail and initial events are loaded for this run.
-  // useLastLoadable keeps stale data while refetching, so the events payload
-  // carries its run id and must match the current route before rendering.
-  if (!detail || isStale || eventsData === null) {
+  if (!detail || isStale) {
     if (detailLoadable.state === "hasError") {
       return <ActivityNotFound />;
     }
@@ -1116,7 +964,6 @@ export function ZeroActivityDetailPage() {
     <ActivityDetailContent
       detail={detail}
       displayName={displayName}
-      eventsData={eventsData}
       features={features}
     />
   );
@@ -1274,8 +1121,10 @@ function downloadJson(
       agentId: detail.agentId,
       sessionId: detail.sessionId,
     },
-    events,
   };
+  if (events.length > 0) {
+    data.events = events;
+  }
   if (extra?.context) {
     data.context = extra.context;
   }
@@ -1287,7 +1136,7 @@ function downloadJson(
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `${logId}-logs.json`;
+  a.download = `${logId}-activity.json`;
   a.click();
   URL.revokeObjectURL(url);
 }

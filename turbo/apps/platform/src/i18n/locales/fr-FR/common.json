@@ -3987,40 +3987,6 @@
       "teamDescription": "Développez votre équipe avec 10 exécutions parallèles et plus de crédits."
     }
   },
-  "reportError": {
-    "description": "Envoyez les informations de diagnostic pour cette exécution échouée à l'équipe de développeurs. Nous enquêterons et ferons un suivi rapidement.",
-    "disclosure": {
-      "agentConfiguration": "Configuration de l'agent",
-      "agentTelemetry": "Télémétrie de l'agent et journaux d'exécution",
-      "chatHistory": "Historique des discussions et événements de l'agent",
-      "connectedServices": "Services connectés (sans identifiants)",
-      "networkLogs": "Journaux des requêtes réseau",
-      "runContext": "Contexte et environnement d'exécution",
-      "title": "Ce qui sera envoyé"
-    },
-    "documentTitle": "Signaler une erreur",
-    "error": {
-      "loadFailed": "Échec du chargement des détails de l'exécution",
-      "notFailed": "Cette exécution n'a pas échoué et ne peut pas être signalée",
-      "title": "Erreur",
-      "tryAgain": "Réessayer"
-    },
-    "fields": {
-      "description": "Description",
-      "descriptionPlaceholder": "Que s'est-il passé ? Qu'attendiez-vous ?",
-      "title": "Titre",
-      "titlePlaceholder": "Bref résumé du problème"
-    },
-    "loading": "Chargement des détails de l'exécution",
-    "send": "Envoyer le rapport",
-    "sending": "Envoi...",
-    "success": {
-      "description": "Votre rapport d'erreur a été envoyé à l'équipe de développement. Ils enquêteront et donneront un suivi.",
-      "reference": "Référence : {{reference}}",
-      "title": "Rapport envoyé"
-    },
-    "title": "Signaler une erreur au développeur"
-  },
   "settings": {
     "accountMenu": {
       "addAccount": "Ajouter un compte",

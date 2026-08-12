@@ -3938,40 +3938,6 @@
       "teamDescription": "Kembangkan tim Anda dengan 10 eksekusi paralel dan lebih banyak kredit."
     }
   },
-  "reportError": {
-    "description": "Kirim informasi diagnostik untuk eksekusi yang gagal ini ke tim pengembang. Kami akan menyelidiki dan menindaklanjuti segera.",
-    "disclosure": {
-      "agentConfiguration": "Konfigurasi agen",
-      "agentTelemetry": "Telemetry agen dan log eksekusi",
-      "chatHistory": "Riwayat chat dan event agen",
-      "connectedServices": "Layanan yang terhubung (tanpa kredensial)",
-      "networkLogs": "Log permintaan jaringan",
-      "runContext": "Konteks eksekusi dan lingkungan",
-      "title": "Apa yang akan dikirim"
-    },
-    "documentTitle": "Laporkan Kesalahan",
-    "error": {
-      "loadFailed": "Gagal memuat detail eksekusi",
-      "notFailed": "Eksekusi ini tidak gagal dan tidak dapat dilaporkan",
-      "title": "Kesalahan",
-      "tryAgain": "Coba Lagi"
-    },
-    "fields": {
-      "description": "Deskripsi",
-      "descriptionPlaceholder": "Apa yang terjadi? Apa yang Anda harapkan?",
-      "title": "Judul",
-      "titlePlaceholder": "Ringkasan singkat masalah"
-    },
-    "loading": "Memuat detail eksekusi",
-    "send": "Kirim Laporan",
-    "sending": "Mengirim...",
-    "success": {
-      "description": "Laporan kesalahan Anda telah dikirim ke tim developer. Mereka akan menyelidiki dan menindaklanjuti.",
-      "reference": "Referensi: {{reference}}",
-      "title": "Laporan terkirim"
-    },
-    "title": "Laporkan kesalahan ke developer"
-  },
   "settings": {
     "accountMenu": {
       "addAccount": "Tambah akun",

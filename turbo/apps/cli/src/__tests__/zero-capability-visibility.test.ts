@@ -22,7 +22,6 @@ function buildCommands(): Command[] {
     new Command("presentation-template"),
     new Command("credit"),
     new Command("upgrade"),
-    new Command("logs"),
     new Command("chat"),
     new Command("resource"),
     new Command("schedule"),
@@ -201,7 +200,6 @@ describe("registerZeroCommands", () => {
       "connector",
       "mcp",
       "credit",
-      "logs",
       "chat",
       "schedule",
       "github",
@@ -1130,31 +1128,6 @@ describe("registerZeroCommands", () => {
     expect(buildZeroHelpText(decodeZeroTokenPayload(token))).toContain(
       "Download Teams?",
     );
-  });
-
-  it("should show logs when agent-run:read capability is present", () => {
-    const token = buildZeroToken({
-      scope: "zero",
-      capabilities: ["agent-run:read"],
-    });
-    vi.stubEnv("ZERO_TOKEN", token);
-
-    const prog = buildProgram();
-
-    expect(visibleCommandNames(prog)).toContain("logs");
-    expect(visibleCommandNames(prog)).toContain("whoami");
-  });
-
-  it("should hide logs when agent-run:read capability is missing", () => {
-    const token = buildZeroToken({
-      scope: "zero",
-      capabilities: ["agent:read"],
-    });
-    vi.stubEnv("ZERO_TOKEN", token);
-
-    const prog = buildProgram();
-
-    expect(hiddenCommandNames(prog)).toContain("logs");
   });
 
   it("should hide agent when agent:read capability is missing", () => {
