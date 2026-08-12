@@ -27,7 +27,7 @@
 //!   branches do not restart polling;
 //! - heartbeat work is pinned and single-flight so its I/O does not stall the
 //!   main reactor or overlap a newer snapshot;
-//! - the first heartbeat and idle-cleanup ticks are deferred;
+//! - the first routine heartbeat and idle-cleanup ticks are deferred;
 //! - teardown drains heartbeat work and drops discovery before provider
 //!   shutdown.
 
@@ -72,6 +72,7 @@ use crate::resource_budget::ResourceBudget;
 use crate::retry::{RetryState, recv_retry, sleep_until_retry};
 use crate::run_cancellation::{RunCancellationRegistration, RunCancellationRegistry};
 use crate::status::{StatusTracker, remove_stale_status_file};
+use crate::workspace_image_cache::WorkspaceCacheWatcher;
 use crate::workspace_image_cache::WorkspaceImageCache;
 
 mod active_runs;
@@ -95,7 +96,7 @@ use factory_lifecycle::{shutdown_factory_instances, shutdown_runtime, start_fact
 use heartbeat::{
     HEARTBEAT_PERIOD, HeartbeatContext, HeartbeatContextInit, HeartbeatController,
     HeartbeatSnapshotMetadata, WorkspaceCacheStateSnapshot, collect_heartbeat_state,
-    refresh_workspace_cache_snapshot,
+    refresh_initial_workspace_cache_snapshot,
 };
 use identity::{load_or_generate_runner_id, next_heartbeat_generation};
 use idle_lifecycle::{
@@ -151,6 +152,15 @@ fn retain_finalizing_candidate(
 async fn sleep_until_optional_instant(deadline: Option<Instant>) {
     match deadline {
         Some(deadline) => tokio::time::sleep_until(deadline.into()).await,
+        None => std::future::pending().await,
+    }
+}
+
+async fn next_workspace_cache_change(
+    watcher: &mut Option<WorkspaceCacheWatcher>,
+) -> RunnerResult<crate::workspace_image_cache::WorkspaceCacheChange> {
+    match watcher {
+        Some(watcher) => watcher.next_change().await,
         None => std::future::pending().await,
     }
 }
@@ -1501,6 +1511,16 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     );
     orphan_reap_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
+    let mut workspace_cache_watcher = match exec_config.workspace_cache.clone() {
+        Some(cache) => match WorkspaceCacheWatcher::new(cache) {
+            Ok(watcher) => Some(watcher),
+            Err(error) => {
+                warn!(error = %error, "workspace cache watcher unavailable; using routine reconciliation");
+                None
+            }
+        },
+        None => None,
+    };
     let hb_ctx = HeartbeatContext::new(HeartbeatContextInit {
         idle_pool: &shared.idle_pool,
         runner_id: &runner.id,
@@ -1514,7 +1534,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         active_runs: &active_runs,
         workspace_cache_snapshot: workspace_cache_snapshot.clone(),
     });
-    refresh_workspace_cache_snapshot(
+    let initial_workspace_cache = refresh_initial_workspace_cache_snapshot(
         &workspace_cache_snapshot,
         exec_config.workspace_cache.as_ref(),
         &runner.profiles,
@@ -1522,6 +1542,21 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     .await;
     debug_assert!(workspace_cache_snapshot.workspace_cache_loaded());
     let mut heartbeat = HeartbeatController::new(hb_ctx);
+    if startup_mode == RunnerMode::Running {
+        if initial_workspace_cache.locked_commit_keys.is_empty() {
+            if !initial_workspace_cache.states.is_empty() {
+                heartbeat.request(startup_mode)?;
+            }
+        } else {
+            heartbeat.request_initial_workspace_cache(
+                startup_mode,
+                crate::workspace_image_cache::WorkspaceCacheChange {
+                    observed_at: tokio::time::Instant::now(),
+                    committed_cache_keys: initial_workspace_cache.locked_commit_keys,
+                },
+            )?;
+        }
+    }
 
     // Pin the discover future so it survives cancellation by other select!
     // branches (heartbeat, idle cleanup, etc.). Without pinning, heartbeat
@@ -1738,6 +1773,20 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                 result?;
                 let live_mode = *mode_rx.borrow();
                 heartbeat.finish_send(live_mode)?;
+            }
+            result = next_workspace_cache_change(&mut workspace_cache_watcher) => {
+                match result {
+                    Ok(change) => {
+                        let live_mode = *mode_rx.borrow();
+                        if live_mode == RunnerMode::Running {
+                            heartbeat.request_workspace_cache(live_mode, change)?;
+                        }
+                    }
+                    Err(error) => {
+                        warn!(error = %error, "workspace cache watcher failed; using routine reconciliation");
+                        workspace_cache_watcher = None;
+                    }
+                }
             }
             // Mode changes (signals)
             _ = mode_rx.changed() => {}

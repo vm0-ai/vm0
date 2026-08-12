@@ -2,8 +2,8 @@ use super::super::super::*;
 use super::super::support::{
     WorkspacePromotionSeedSpec, context_with_session, mock_run_config,
     mock_run_config_with_overrides, push_job, seed_idle_pool_with_overrides,
-    seed_idle_pool_with_workspace_promotion, shutdown, test_profiles, wait_budget_count,
-    wait_discover_entered, wait_idle_pool_reuse_keys,
+    seed_idle_pool_with_workspace_promotion, seed_workspace_cache_state, shutdown, test_profiles,
+    wait_budget_count, wait_discover_entered, wait_idle_pool_reuse_keys,
 };
 
 use crate::idle_reuse_preparation::add_healthy_reuse_preparation_matcher;
@@ -43,6 +43,155 @@ async fn wait_heartbeat_matching_after(
             return false;
         }
     }
+}
+
+#[tokio::test]
+async fn external_workspace_cache_publication_and_removal_trigger_immediate_heartbeats() {
+    let mut profiles = test_profiles();
+    profiles.get_mut("vm0/default").unwrap().workspace_disk_mb = 16;
+    let (mut config, env) = mock_run_config(profiles, 8, 32768, 4);
+    let home = config.paths.home.clone();
+    let group = config.runner.group.clone();
+    let observer_paths = RunnerPaths::new(config.paths.base_dir.clone());
+    let observer_cache = WorkspaceImageCache::shared(observer_paths, &home, &group);
+    Arc::get_mut(&mut config.exec_config)
+        .unwrap()
+        .workspace_cache = Some(observer_cache);
+
+    let publisher_paths = RunnerPaths::new(env._temp_dir.path().join("publisher"));
+    tokio::fs::create_dir_all(publisher_paths.base_dir())
+        .await
+        .unwrap();
+    let publisher_cache = WorkspaceImageCache::shared(publisher_paths.clone(), &home, &group);
+    let run_handle = tokio::spawn(run(config));
+    wait_discover_entered(&env, Duration::from_secs(5)).await;
+    let before_publication = env.handle.heartbeat_count();
+
+    let reuse_key = "thread:external-workspace-cache";
+    let expected_workspace = WorkspaceCacheCapability {
+        profile: "vm0/default".to_string(),
+        workspace_affinity_version: WORKSPACE_AFFINITY_VERSION,
+    };
+    seed_workspace_cache_state(
+        &publisher_cache,
+        &publisher_paths,
+        reuse_key,
+        "vm0/default",
+        16 * 1024 * 1024,
+    )
+    .await;
+
+    assert!(
+        wait_heartbeat_matching_after(
+            &env.handle,
+            before_publication,
+            Duration::from_secs(5),
+            |heartbeat| {
+                heartbeat.held_workspace_states.iter().any(|state| {
+                    state.reuse_key == reuse_key
+                        && state.workspace_caches.contains(&expected_workspace)
+                })
+            },
+        )
+        .await,
+        "external publication should be advertised without the routine heartbeat tick",
+    );
+
+    let before_removal = env.handle.heartbeat_count();
+    let held = publisher_cache.held_workspace_states().await;
+    assert_eq!(held.len(), 1);
+    let cache_key = crate::paths::scoped_workspace_image_cache_key(
+        &group,
+        "vm0/default",
+        reuse_key,
+        api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR,
+        16 * 1024 * 1024,
+    );
+    tokio::fs::remove_file(
+        home.workspace_image_cache_dir()
+            .join(cache_key)
+            .join("metadata.json"),
+    )
+    .await
+    .unwrap();
+
+    assert!(
+        wait_heartbeat_matching_after(
+            &env.handle,
+            before_removal,
+            Duration::from_secs(5),
+            |heartbeat| {
+                heartbeat
+                    .held_workspace_states
+                    .iter()
+                    .all(|state| state.reuse_key != reuse_key)
+            },
+        )
+        .await,
+        "external removal should promptly withdraw the advertised capability",
+    );
+
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test]
+async fn non_empty_initial_workspace_cache_is_heartbeated_before_the_routine_tick() {
+    let mut profiles = test_profiles();
+    profiles.get_mut("vm0/default").unwrap().workspace_disk_mb = 16;
+    let (mut config, env) = mock_run_config(profiles, 8, 32768, 4);
+    let runner_paths = RunnerPaths::new(config.paths.base_dir.clone());
+    let workspace_cache = WorkspaceImageCache::shared(
+        runner_paths.clone(),
+        &config.paths.home,
+        &config.runner.group,
+    );
+    seed_workspace_cache_state(
+        &workspace_cache,
+        &runner_paths,
+        "thread:initial-workspace-cache",
+        "vm0/default",
+        16 * 1024 * 1024,
+    )
+    .await;
+    Arc::get_mut(&mut config.exec_config)
+        .unwrap()
+        .workspace_cache = Some(workspace_cache);
+
+    let run_handle = tokio::spawn(run(config));
+    assert!(
+        wait_heartbeat_matching_after(&env.handle, 0, Duration::from_secs(5), |heartbeat| {
+            heartbeat
+                .held_workspace_states
+                .iter()
+                .any(|state| state.reuse_key == "thread:initial-workspace-cache")
+        })
+        .await,
+        "non-empty initial cache should be published before the deferred routine tick",
+    );
+
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test]
+async fn unavailable_workspace_cache_watcher_does_not_block_discovery() {
+    let (mut config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
+    let cache_root = config.paths.home.workspace_image_cache_dir();
+    tokio::fs::write(&cache_root, b"not a directory")
+        .await
+        .unwrap();
+    let workspace_cache = WorkspaceImageCache::shared(
+        RunnerPaths::new(config.paths.base_dir.clone()),
+        &config.paths.home,
+        &config.runner.group,
+    );
+    Arc::get_mut(&mut config.exec_config)
+        .unwrap()
+        .workspace_cache = Some(workspace_cache);
+
+    let run_handle = tokio::spawn(run(config));
+    wait_discover_entered(&env, Duration::from_secs(5)).await;
+
+    shutdown(&env, run_handle).await;
 }
 
 #[tokio::test]

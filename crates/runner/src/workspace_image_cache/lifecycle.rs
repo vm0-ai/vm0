@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
 
@@ -594,30 +594,108 @@ impl WorkspaceImageCache {
         &self,
         profile_image_sizes_bytes: &BTreeMap<&str, u64>,
     ) -> Vec<HeldWorkspaceState> {
-        self.held_workspace_states_matching_profiles(Some(profile_image_sizes_bytes))
+        self.held_workspace_states_matching_profiles(Some(profile_image_sizes_bytes), None, false)
             .await
+            .states
+    }
+
+    /// Performs the startup scan and returns committed entries skipped for locking.
+    pub(crate) async fn initial_held_workspace_states_for_profiles(
+        &self,
+        profile_image_sizes_bytes: &BTreeMap<&str, u64>,
+    ) -> (Vec<HeldWorkspaceState>, BTreeSet<String>) {
+        let scan = self
+            .held_workspace_states_matching_profiles(Some(profile_image_sizes_bytes), None, true)
+            .await;
+        (scan.states, scan.locked_commit_keys)
+    }
+
+    /// Waits for metadata-commit entry locks before performing the complete scan.
+    ///
+    /// The event-provided keys select locks only. Each hinted entry is validated
+    /// under its acquired guard with the same rules as the complete scan, and
+    /// the validated observation is merged into that scan's bounded result.
+    pub(crate) async fn held_workspace_states_for_profiles_after_commits(
+        &self,
+        profile_image_sizes_bytes: &BTreeMap<&str, u64>,
+        committed_cache_keys: &BTreeSet<String>,
+        deadline: tokio::time::Instant,
+    ) -> Vec<HeldWorkspaceState> {
+        self.held_workspace_states_matching_profiles(
+            Some(profile_image_sizes_bytes),
+            Some((committed_cache_keys, deadline)),
+            false,
+        )
+        .await
+        .states
     }
 
     /// Inspect cache state without a running profile configuration in tests.
     #[cfg(test)]
     pub(crate) async fn held_workspace_states(&self) -> Vec<HeldWorkspaceState> {
-        self.held_workspace_states_matching_profiles(None).await
+        self.held_workspace_states_matching_profiles(None, None, false)
+            .await
+            .states
     }
 
     async fn held_workspace_states_matching_profiles(
         &self,
         profile_image_sizes_bytes: Option<&BTreeMap<&str, u64>>,
-    ) -> Vec<HeldWorkspaceState> {
+        committed_cache_keys: Option<(&BTreeSet<String>, tokio::time::Instant)>,
+        collect_locked_commits: bool,
+    ) -> HeldWorkspaceStateScan {
+        let mut states = Vec::new();
+        let mut validated_cache_keys = BTreeSet::new();
+        if let Some((committed_cache_keys, deadline)) = committed_cache_keys {
+            for cache_key in committed_cache_keys {
+                if !is_cache_key_name(cache_key) {
+                    continue;
+                }
+                let lock = match tokio::time::timeout_at(
+                    deadline,
+                    crate::lock::acquire(self.entry_lock_path(cache_key)),
+                )
+                .await
+                {
+                    Ok(Ok(lock)) => lock,
+                    Ok(Err(_)) => continue,
+                    Err(_) => {
+                        info!(
+                            commit_keys = committed_cache_keys.len(),
+                            "workspace cache commit lock wait timed out"
+                        );
+                        break;
+                    }
+                };
+                if let Some(state) = self
+                    .publishable_held_workspace_state(cache_key, profile_image_sizes_bytes, &lock)
+                    .await
+                {
+                    states.push(state);
+                    validated_cache_keys.insert(cache_key.clone());
+                }
+                drop(lock);
+            }
+        }
+
+        let mut locked_commit_keys = BTreeSet::new();
         let root = self.workspace_image_cache_dir().to_path_buf();
         let mut entries = match fs::read_dir(&root).await {
             Ok(entries) => entries,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Vec::new(),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                return HeldWorkspaceStateScan {
+                    states: cap_held_workspace_states(states),
+                    locked_commit_keys,
+                };
+            }
             Err(e) => {
                 warn!(path = %root.display(), error = %e, "failed to scan workspace image cache");
-                return Vec::new();
+                return HeldWorkspaceStateScan {
+                    states: cap_held_workspace_states(states),
+                    locked_commit_keys,
+                };
             }
         };
-        let mut states = Vec::new();
         while let Ok(Some(entry)) = entries.next_entry().await {
             let path = entry.path();
             let Ok(file_type) = entry.file_type().await else {
@@ -632,33 +710,30 @@ impl WorkspaceImageCache {
             if !is_cache_key_name(cache_key) {
                 continue;
             }
-            let Ok(lock) = crate::lock::try_acquire(self.entry_lock_path(cache_key)).await else {
+            if validated_cache_keys.contains(cache_key) {
                 continue;
-            };
-            let metadata_path = self.workspace_image_cache_metadata(cache_key);
-            let metadata = match self.read_metadata_file(&metadata_path).await {
-                Ok(metadata) => metadata,
-                Err(_) => {
-                    drop(lock);
+            }
+            let lock = match crate::lock::try_acquire_or_busy(self.entry_lock_path(cache_key)).await
+            {
+                Ok(crate::lock::TryLock::Acquired(lock)) => lock,
+                Ok(crate::lock::TryLock::Busy) => {
+                    if collect_locked_commits
+                        && locked_commit_keys.len() < MAX_HELD_WORKSPACE_STATES
+                        && fs::symlink_metadata(self.workspace_image_cache_metadata(cache_key))
+                            .await
+                            .is_ok()
+                    {
+                        locked_commit_keys.insert(cache_key.to_owned());
+                    }
                     continue;
                 }
+                Err(_) => continue,
             };
-            if self
-                .metadata_is_publishable_held_workspace_state(
-                    cache_key,
-                    &metadata,
-                    profile_image_sizes_bytes,
-                )
+            if let Some(state) = self
+                .publishable_held_workspace_state(cache_key, profile_image_sizes_bytes, &lock)
                 .await
             {
-                states.push(HeldWorkspaceState {
-                    reuse_key: metadata.reuse_key,
-                    last_completed_at: metadata.last_completed_at,
-                    workspace_caches: vec![WorkspaceCacheCapability {
-                        profile: metadata.profile_name,
-                        workspace_affinity_version: WORKSPACE_AFFINITY_VERSION,
-                    }],
-                });
+                states.push(state);
             }
             drop(lock);
         }
@@ -679,7 +754,36 @@ impl WorkspaceImageCache {
                 "workspace cache state truncated"
             );
         }
-        states
+        HeldWorkspaceStateScan {
+            states,
+            locked_commit_keys,
+        }
+    }
+
+    async fn publishable_held_workspace_state(
+        &self,
+        cache_key: &str,
+        profile_image_sizes_bytes: Option<&BTreeMap<&str, u64>>,
+        _lock: &Flock<std::fs::File>,
+    ) -> Option<HeldWorkspaceState> {
+        let metadata = self
+            .read_metadata_file(&self.workspace_image_cache_metadata(cache_key))
+            .await
+            .ok()?;
+        self.metadata_is_publishable_held_workspace_state(
+            cache_key,
+            &metadata,
+            profile_image_sizes_bytes,
+        )
+        .await
+        .then(|| HeldWorkspaceState {
+            reuse_key: metadata.reuse_key,
+            last_completed_at: metadata.last_completed_at,
+            workspace_caches: vec![WorkspaceCacheCapability {
+                profile: metadata.profile_name,
+                workspace_affinity_version: WORKSPACE_AFFINITY_VERSION,
+            }],
+        })
     }
 
     async fn metadata_is_publishable_held_workspace_state(
@@ -1026,6 +1130,11 @@ impl WorkspaceImageCache {
         }
         Ok(WorkspaceImagePromotionOutcome::Promoted)
     }
+}
+
+struct HeldWorkspaceStateScan {
+    states: Vec<HeldWorkspaceState>,
+    locked_commit_keys: BTreeSet<String>,
 }
 impl WorkspaceImageLease {
     #[cfg(test)]

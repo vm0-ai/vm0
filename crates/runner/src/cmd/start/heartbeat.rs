@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
@@ -16,11 +16,14 @@ use crate::types::{
     HeartbeatState, HeldSandboxState, HeldWorkspaceState, MAX_HELD_SANDBOX_STATES,
     MAX_WORKSPACE_CACHES_PER_REUSE_KEY,
 };
-use crate::workspace_image_cache::{WorkspaceImageCache, cap_held_workspace_states};
+use crate::workspace_image_cache::{
+    WorkspaceCacheChange, WorkspaceImageCache, cap_held_workspace_states,
+};
 
 /// Period between routine heartbeat ticks sent to the server. First tick is
 /// deferred by one period via `interval_at`.
 pub(super) const HEARTBEAT_PERIOD: Duration = Duration::from_secs(10);
+const WORKSPACE_CACHE_COMMIT_WAIT: Duration = Duration::from_secs(2);
 
 /// References needed to collect and send a heartbeat.
 ///
@@ -81,8 +84,42 @@ impl<'a> HeartbeatContext<'a> {
 pub(super) struct HeartbeatController<'a> {
     context: HeartbeatContext<'a>,
     in_flight: Option<BoxFuture<'a, ()>>,
-    pending: bool,
+    pending: Option<HeartbeatRequest>,
     next_snapshot_sequence: u64,
+}
+
+struct HeartbeatRequest {
+    force_send: bool,
+    workspace_cache_change: Option<WorkspaceCacheChange>,
+}
+
+impl HeartbeatRequest {
+    fn ordinary() -> Self {
+        Self {
+            force_send: true,
+            workspace_cache_change: None,
+        }
+    }
+
+    fn workspace_cache(change: WorkspaceCacheChange) -> Self {
+        Self {
+            force_send: false,
+            workspace_cache_change: Some(change),
+        }
+    }
+
+    fn merge(mut self, other: Self) -> Self {
+        self.force_send |= other.force_send;
+        match (
+            self.workspace_cache_change.as_mut(),
+            other.workspace_cache_change,
+        ) {
+            (Some(existing), Some(incoming)) => existing.merge(incoming),
+            (None, Some(incoming)) => self.workspace_cache_change = Some(incoming),
+            (Some(_) | None, None) => {}
+        }
+        self
+    }
 }
 
 impl<'a> HeartbeatController<'a> {
@@ -90,16 +127,41 @@ impl<'a> HeartbeatController<'a> {
         Self {
             context,
             in_flight: None,
-            pending: false,
+            pending: None,
             next_snapshot_sequence: 1,
         }
     }
 
     pub(super) fn request(&mut self, mode: RunnerMode) -> RunnerResult<()> {
+        self.request_inner(mode, HeartbeatRequest::ordinary())
+    }
+
+    pub(super) fn request_workspace_cache(
+        &mut self,
+        mode: RunnerMode,
+        change: WorkspaceCacheChange,
+    ) -> RunnerResult<()> {
+        self.request_inner(mode, HeartbeatRequest::workspace_cache(change))
+    }
+
+    pub(super) fn request_initial_workspace_cache(
+        &mut self,
+        mode: RunnerMode,
+        change: WorkspaceCacheChange,
+    ) -> RunnerResult<()> {
+        let mut request = HeartbeatRequest::workspace_cache(change);
+        request.force_send = true;
+        self.request_inner(mode, request)
+    }
+
+    fn request_inner(&mut self, mode: RunnerMode, request: HeartbeatRequest) -> RunnerResult<()> {
         if self.in_flight.is_some() {
-            self.pending = true;
+            self.pending = Some(match self.pending.take() {
+                Some(pending) => pending.merge(request),
+                None => request,
+            });
         } else {
-            self.start(mode)?;
+            self.start(mode, request)?;
         }
         Ok(())
     }
@@ -121,8 +183,8 @@ impl<'a> HeartbeatController<'a> {
     pub(super) fn finish_send(&mut self, live_mode: RunnerMode) -> RunnerResult<()> {
         debug_assert!(self.in_flight.is_some());
         self.in_flight = None;
-        if std::mem::take(&mut self.pending) {
-            self.start(live_mode)?;
+        if let Some(request) = self.pending.take() {
+            self.start(live_mode, request)?;
         }
         Ok(())
     }
@@ -136,8 +198,8 @@ impl<'a> HeartbeatController<'a> {
         loop {
             self.wait_for_send().await?;
             self.in_flight = None;
-            if std::mem::take(&mut self.pending) {
-                self.start(mode)?;
+            if let Some(request) = self.pending.take() {
+                self.start(mode, request)?;
             } else {
                 break;
             }
@@ -154,7 +216,7 @@ impl<'a> HeartbeatController<'a> {
         if let Some(send) = self.in_flight.take() {
             send.await;
         }
-        self.pending = false;
+        self.pending = None;
     }
 
     pub(super) fn into_next_snapshot_sequence(self) -> u64 {
@@ -162,7 +224,7 @@ impl<'a> HeartbeatController<'a> {
         self.next_snapshot_sequence
     }
 
-    fn start(&mut self, mode: RunnerMode) -> RunnerResult<()> {
+    fn start(&mut self, mode: RunnerMode, request: HeartbeatRequest) -> RunnerResult<()> {
         debug_assert!(self.in_flight.is_none());
         let snapshot_sequence = self.next_snapshot_sequence;
         let next_snapshot_sequence = snapshot_sequence.checked_add(1).ok_or_else(|| {
@@ -171,7 +233,7 @@ impl<'a> HeartbeatController<'a> {
         self.next_snapshot_sequence = next_snapshot_sequence;
         let context = self.context.clone();
         self.in_flight = Some(Box::pin(async move {
-            send_heartbeat(&context, mode, snapshot_sequence).await;
+            send_heartbeat(&context, mode, snapshot_sequence, request).await;
         }));
         Ok(())
     }
@@ -209,6 +271,16 @@ struct WorkspaceCacheStateSnapshotInner {
 #[derive(Clone, Copy)]
 pub(super) struct WorkspaceCacheSnapshotRefresh {
     revision: u64,
+}
+
+pub(super) struct WorkspaceCacheRefreshOutcome {
+    pub(super) states: Vec<HeldWorkspaceState>,
+    pub(super) changed: bool,
+}
+
+pub(super) struct InitialWorkspaceCacheRefreshOutcome {
+    pub(super) states: Vec<HeldWorkspaceState>,
+    pub(super) locked_commit_keys: BTreeSet<String>,
 }
 
 impl WorkspaceCacheStateSnapshot {
@@ -249,17 +321,22 @@ impl WorkspaceCacheStateSnapshot {
         &self,
         refresh: WorkspaceCacheSnapshotRefresh,
         states: Vec<HeldWorkspaceState>,
-    ) -> Vec<HeldWorkspaceState> {
+    ) -> WorkspaceCacheRefreshOutcome {
         let mut inner = self.lock_inner();
-        inner.workspace_cache_states = if inner.workspace_cache_revision == refresh.revision {
+        let mut next = if inner.workspace_cache_revision == refresh.revision {
             states
         } else {
             merge_workspace_cache_snapshot_states(inner.workspace_cache_states.clone(), states)
         };
-        cap_workspace_cache_snapshot_states(&mut inner.workspace_cache_states);
+        cap_workspace_cache_snapshot_states(&mut next);
+        let changed = inner.workspace_cache_states != next;
+        inner.workspace_cache_states = next;
         inner.workspace_cache_loaded = true;
         inner.workspace_cache_revision = inner.workspace_cache_revision.wrapping_add(1);
-        inner.workspace_cache_states.clone()
+        WorkspaceCacheRefreshOutcome {
+            changed,
+            states: inner.workspace_cache_states.clone(),
+        }
     }
 
     /// Incorporates a successful workspace-cache promotion into the snapshot.
@@ -325,10 +402,11 @@ impl WorkspaceCacheStateSnapshot {
 
 /// Collect current runner state, refresh the local workspace-cache snapshot, and
 /// send a heartbeat to the server.
-pub(super) async fn send_heartbeat(
+async fn send_heartbeat(
     hb: &HeartbeatContext<'_>,
     mode: RunnerMode,
     snapshot_sequence: u64,
+    request: HeartbeatRequest,
 ) {
     let pool = hb.idle_pool.lock().await;
     let mut state = collect_heartbeat_state(
@@ -345,16 +423,36 @@ pub(super) async fn send_heartbeat(
         mode,
     );
     drop(pool);
-    let workspace_cache_states = refresh_workspace_cache_snapshot(
+    let cache_change = request.workspace_cache_change.as_ref();
+    let previous_workspace_states = cache_change.map(|_| {
+        hb.workspace_cache_snapshot
+            .current_held_workspace_states(hb.active_runs, None)
+    });
+    let refresh = refresh_workspace_cache_snapshot_after_change(
         &hb.workspace_cache_snapshot,
         hb.workspace_cache.as_ref(),
         hb.profiles,
+        cache_change,
     )
     .await;
     state.held_sandbox_states =
         filter_current_held_sandbox_states(state.held_sandbox_states, hb.active_runs, None);
     state.held_workspace_states =
-        filter_current_held_workspace_states(workspace_cache_states, hb.active_runs, None);
+        filter_current_held_workspace_states(refresh.states, hb.active_runs, None);
+    if let Some(change) = cache_change
+        && !request.force_send
+        && previous_workspace_states
+            .as_ref()
+            .is_some_and(|previous| *previous == state.held_workspace_states)
+    {
+        info!(
+            changed = false,
+            snapshot_changed = refresh.changed,
+            elapsed_ms = crate::duration::duration_ms(change.observed_at.elapsed()),
+            "workspace cache change reconciled"
+        );
+        return;
+    }
     info!(
         mode = ?mode,
         running = state.running_count,
@@ -363,6 +461,14 @@ pub(super) async fn send_heartbeat(
         "heartbeat"
     );
     hb.provider.heartbeat(&state).await;
+    if let Some(change) = cache_change {
+        info!(
+            changed = true,
+            snapshot_changed = refresh.changed,
+            elapsed_ms = crate::duration::duration_ms(change.observed_at.elapsed()),
+            "workspace cache change heartbeat completed"
+        );
+    }
 }
 
 /// Scans the workspace cache and commits the result to the shared snapshot.
@@ -370,25 +476,81 @@ pub(super) async fn send_heartbeat(
 /// The revision is captured before the asynchronous scan, and no snapshot
 /// mutex is held across the await. The returned value is the committed
 /// snapshot, which may also contain updates merged from concurrent promotions.
-pub(super) async fn refresh_workspace_cache_snapshot(
+pub(super) async fn refresh_initial_workspace_cache_snapshot(
     snapshot: &WorkspaceCacheStateSnapshot,
     workspace_cache: Option<&WorkspaceImageCache>,
     profiles: &BTreeMap<String, ProfileConfig>,
-) -> Vec<HeldWorkspaceState> {
+) -> InitialWorkspaceCacheRefreshOutcome {
     let refresh = snapshot.begin_workspace_cache_refresh();
-    let states = workspace_cache_states(workspace_cache, profiles).await;
+    let Some(cache) = workspace_cache else {
+        let outcome = snapshot.finish_workspace_cache_refresh(refresh, Vec::new());
+        return InitialWorkspaceCacheRefreshOutcome {
+            states: outcome.states,
+            locked_commit_keys: BTreeSet::new(),
+        };
+    };
+    let profile_image_sizes_bytes = profile_image_sizes_bytes(profiles);
+    let (states, locked_commit_keys) = cache
+        .initial_held_workspace_states_for_profiles(&profile_image_sizes_bytes)
+        .await;
+    let outcome = snapshot.finish_workspace_cache_refresh(refresh, states);
+    InitialWorkspaceCacheRefreshOutcome {
+        states: outcome.states,
+        locked_commit_keys,
+    }
+}
+
+async fn refresh_workspace_cache_snapshot_after_change(
+    snapshot: &WorkspaceCacheStateSnapshot,
+    workspace_cache: Option<&WorkspaceImageCache>,
+    profiles: &BTreeMap<String, ProfileConfig>,
+    change: Option<&WorkspaceCacheChange>,
+) -> WorkspaceCacheRefreshOutcome {
+    let refresh = snapshot.begin_workspace_cache_refresh();
+    let states = workspace_cache_states(
+        workspace_cache,
+        profiles,
+        change.map(|change| {
+            (
+                &change.committed_cache_keys,
+                tokio::time::Instant::now() + WORKSPACE_CACHE_COMMIT_WAIT,
+            )
+        }),
+    )
+    .await;
     snapshot.finish_workspace_cache_refresh(refresh, states)
 }
 
 async fn workspace_cache_states(
     workspace_cache: Option<&WorkspaceImageCache>,
     profiles: &BTreeMap<String, ProfileConfig>,
+    commits: Option<(&BTreeSet<String>, tokio::time::Instant)>,
 ) -> Vec<HeldWorkspaceState> {
     let Some(cache) = workspace_cache else {
         return Vec::new();
     };
 
-    let profile_image_sizes_bytes = profiles
+    let profile_image_sizes_bytes = profile_image_sizes_bytes(profiles);
+    match commits {
+        Some((committed_cache_keys, deadline)) if !committed_cache_keys.is_empty() => {
+            cache
+                .held_workspace_states_for_profiles_after_commits(
+                    &profile_image_sizes_bytes,
+                    committed_cache_keys,
+                    deadline,
+                )
+                .await
+        }
+        Some(_) | None => {
+            cache
+                .held_workspace_states_for_profiles(&profile_image_sizes_bytes)
+                .await
+        }
+    }
+}
+
+fn profile_image_sizes_bytes(profiles: &BTreeMap<String, ProfileConfig>) -> BTreeMap<&str, u64> {
+    profiles
         .iter()
         .map(|(name, profile)| {
             (
@@ -396,10 +558,7 @@ async fn workspace_cache_states(
                 u64::from(profile.workspace_disk_mb) * 1024 * 1024,
             )
         })
-        .collect::<BTreeMap<_, _>>();
-    cache
-        .held_workspace_states_for_profiles(&profile_image_sizes_bytes)
-        .await
+        .collect()
 }
 
 fn filter_current_held_sandbox_states(
@@ -918,8 +1077,13 @@ mod tests {
             workspace_cache_snapshot: workspace_cache_snapshot.clone(),
         });
 
-        let ((), events) =
-            capture_heartbeat_events(send_heartbeat(&hb, RunnerMode::Running, 42)).await;
+        let ((), events) = capture_heartbeat_events(send_heartbeat(
+            &hb,
+            RunnerMode::Running,
+            42,
+            HeartbeatRequest::ordinary(),
+        ))
+        .await;
 
         let heartbeat_event = captured_event(&events, "heartbeat");
         assert_eq!(heartbeat_event.level, tracing::Level::INFO);
@@ -966,7 +1130,7 @@ mod tests {
             .await;
         let active_runs = test_active_runs();
         let profiles = test_profiles();
-        let cache_states = workspace_cache_states(Some(&cache), &profiles).await;
+        let cache_states = workspace_cache_states(Some(&cache), &profiles, None).await;
         let states =
             filter_current_held_workspace_states(cache_states, &active_runs, Some("sess-claimed"));
 
@@ -1100,7 +1264,11 @@ mod tests {
             "2026-06-01T00:00:02.000Z",
             &["vm0/default", "vm0/large"],
         );
-        assert_eq!(refreshed, vec![merged.clone()]);
+        assert_eq!(refreshed.states, vec![merged.clone()]);
+        assert!(
+            !refreshed.changed,
+            "the concurrent upsert already installed the merged snapshot before refresh commit"
+        );
 
         let active_runs = test_active_runs();
         let states = snapshot.current_held_workspace_states(&active_runs, None);
