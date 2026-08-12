@@ -529,6 +529,7 @@ describe("sandbox cleanup", () => {
   }> {
     return {
       body: await cleanupScopedSandboxes({
+        chatThreadIds: [],
         runIds: [...registeredRunIds],
         orgIds: [...registeredOrgIds],
         exportJobIds: [...registeredExportJobIds],

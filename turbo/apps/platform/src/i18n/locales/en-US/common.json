@@ -1039,14 +1039,15 @@
       "allowance": {
         "day": "{{value}}d",
         "hour": "{{value}}h",
+        "left": "{{value}} left",
         "minute": "{{value}}m",
-        "remaining": "{{remaining}} / {{total}} credits",
         "remainingAria": "Usage allowance {{label}} remaining",
         "resets": "Resets {{date}}",
         "resetsRaw": "Resets {{value}}",
         "title": "Usage allowance",
         "week": "{{value}}w"
       },
+      "autoRechargeOn": "Auto-recharge on",
       "breakdown": {
         "currentPlanDescription": "Monthly plan credits, resets each billing cycle",
         "freeDescription": "Starter credits, use until depleted",
@@ -1063,10 +1064,18 @@
       "creditsRemaining_one": "{{value}} credit remaining",
       "creditsRemaining_other": "{{value}} credits remaining",
       "expires": "Expires {{date}}",
+      "grantsTable": {
+        "added": "Added",
+        "amount": "Amount",
+        "expires": "Expires",
+        "left": "Left",
+        "source": "Source"
+      },
       "left": "{{value}} left",
       "member": "Member",
       "neverExpires": "Never expires",
       "orgCredits": "Org credits",
+      "seeUsageRecords": "See where these credits went",
       "unavailable": "Credit balance unavailable.",
       "upgradeDescription": "Pro includes monthly credits and unlocks additional credit options.",
       "upgradeTitle": "Upgrade to Pro to get more credits",
@@ -4044,7 +4053,7 @@
           "title": "Preference"
         },
         "usage": {
-          "balanceDescription": "Your team's credit balance and usage.",
+          "balanceDescription": "What your team has left to spend.",
           "balanceTitle": "Credit balance",
           "usageDescription": "Your credit usage across chats, automations, and channels.",
           "usageTitle": "Credit usage"

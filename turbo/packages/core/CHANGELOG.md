@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.550.0](https://github.com/vm0-ai/vm0/compare/core-v8.549.0...core-v8.550.0) (2026-08-12)
+
+
+### Features
+
+* gate latest website templates ([#26686](https://github.com/vm0-ai/vm0/issues/26686)) ([3089b1d](https://github.com/vm0-ai/vm0/commit/3089b1da9f93faec1bc5a9a1889c292f3bb7d8e8))
+
 ## [8.549.0](https://github.com/vm0-ai/vm0/compare/core-v8.548.3...core-v8.549.0) (2026-08-12)
 
 

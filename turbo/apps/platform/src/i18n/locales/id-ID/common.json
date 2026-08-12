@@ -1039,14 +1039,15 @@
       "allowance": {
         "day": "{{value}} hari",
         "hour": "{{value}} jam",
+        "left": "sisa {{value}}",
         "minute": "{{value}} m",
-        "remaining": "{{remaining}} / {{total}} kredit",
         "remainingAria": "Sisa jatah penggunaan {{label}}",
         "resets": "Diatur ulang {{date}}",
         "resetsRaw": "Diatur ulang {{value}}",
         "title": "Jatah penggunaan",
         "week": "{{value}} minggu"
       },
+      "autoRechargeOn": "Isi ulang otomatis aktif",
       "breakdown": {
         "currentPlanDescription": "Kredit paket bulanan, direset setiap siklus tagihan",
         "freeDescription": "Kredit starter, gunakan sampai habis",
@@ -1063,10 +1064,18 @@
       "creditsRemaining_one": "{{value}} kredit tersisa",
       "creditsRemaining_other": "{{value}} kredit tersisa",
       "expires": "Kedaluwarsa {{date}}",
+      "grantsTable": {
+        "added": "Ditambahkan",
+        "amount": "Jumlah",
+        "expires": "Kedaluwarsa",
+        "left": "Sisa",
+        "source": "Sumber"
+      },
       "left": "Sisa {{value}}",
       "member": "Anggota",
       "neverExpires": "Tidak pernah kedaluwarsa",
       "orgCredits": "Kredit organisasi",
+      "seeUsageRecords": "Lihat ke mana kredit ini digunakan",
       "unavailable": "Saldo kredit tidak tersedia.",
       "upgradeDescription": "Pro mencakup kredit bulanan dan membuka opsi kredit tambahan.",
       "upgradeTitle": "Tingkatkan ke Pro untuk mendapatkan lebih banyak kredit",
@@ -4043,7 +4052,7 @@
           "title": "Preferensi"
         },
         "usage": {
-          "balanceDescription": "Saldo kredit dan penggunaan tim Anda.",
+          "balanceDescription": "Sisa yang bisa dibelanjakan tim Anda.",
           "balanceTitle": "Saldo kredit",
           "usageDescription": "Penggunaan kredit Anda di seluruh chat, otomatisasi, dan channel.",
           "usageTitle": "Penggunaan kredit"
