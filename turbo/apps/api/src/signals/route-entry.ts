@@ -13,7 +13,9 @@ function routeRegistrationKey(entry: RouteEntry): string {
   return `${entry.route.method} ${entry.route.path}`;
 }
 
-function assertUniqueRouteRegistrations(routes: readonly RouteEntry[]): void {
+export function assertUniqueRouteRegistrations(
+  routes: readonly RouteEntry[],
+): void {
   const keys = new Set<string>();
   for (const entry of routes) {
     const key = routeRegistrationKey(entry);
@@ -43,11 +45,9 @@ function routeEntryWithPath(entry: RouteEntry, path: string): RouteEntry {
 export function withApiNamespaceAliases(
   routes: readonly RouteEntry[],
 ): readonly RouteEntry[] {
-  const aliasedRoutes = routes.flatMap((entry) => {
+  return routes.flatMap((entry) => {
     return apiNamespaceAliasPaths(entry.route.path).map((path) => {
       return routeEntryWithPath(entry, path);
     });
   });
-  assertUniqueRouteRegistrations(aliasedRoutes);
-  return aliasedRoutes;
 }

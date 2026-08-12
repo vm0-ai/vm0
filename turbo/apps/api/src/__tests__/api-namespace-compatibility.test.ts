@@ -2,6 +2,7 @@ import { apiNamespaceAliasPaths } from "@vm0/api-contracts/contracts/api-namespa
 
 import { ROUTES } from "../signals/route";
 import {
+  assertUniqueRouteRegistrations,
   type RouteEntry,
   withApiNamespaceAliases,
 } from "../signals/route-entry";
@@ -53,6 +54,9 @@ describe("API namespace compatibility", () => {
         return count !== 1;
       }),
     ).toStrictEqual([]);
+    expect(() => {
+      assertUniqueRouteRegistrations(registeredRoutes);
+    }).not.toThrow();
   });
 
   it("keeps neutral health, webhook, and product-scoped Desktop routes single", () => {
@@ -90,8 +94,11 @@ describe("API namespace compatibility", () => {
 
   it("rejects duplicate method and path registrations", () => {
     const source = requireBrandedRoute();
+    const composedRouteSlice = withApiNamespaceAliases([source, source]);
+
+    expect(composedRouteSlice).toHaveLength(4);
     expect(() => {
-      withApiNamespaceAliases([source, source]);
+      assertUniqueRouteRegistrations(composedRouteSlice);
     }).toThrow(`Duplicate API route registration: ${routeKey(source)}`);
   });
 });
