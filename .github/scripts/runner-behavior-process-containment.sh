@@ -109,10 +109,12 @@ fixture_fail() {
 
 launcher_is_alive() {
   local pid=$1
-  local state
-  if ! state=$(awk '{sub(/^.*\) /, ""); print $1}' "/proc/$pid/stat" 2>/dev/null); then
+  local stat state
+  if ! IFS= read -r stat 2>/dev/null < "/proc/$pid/stat"; then
     return 1
   fi
+  stat=${stat##*) }
+  state=${stat%% *}
   case "$state" in
     Z|X|x) return 1 ;;
     *) return 0 ;;
