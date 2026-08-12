@@ -7,6 +7,8 @@
 //! a target generation and schedule immediate work; API deadlines and retries
 //! continue the generation they belong to. Nearby due targets for one run are
 //! coalesced and split to the shared API contract limit.
+//! Initial custom targets are synchronized before proxy registration returns;
+//! scheduled and realtime refreshes continue through the bounded dispatcher.
 //!
 //! A sync response must contain each requested target exactly once. Valid
 //! builtin policy and custom firewall updates are prepared independently, then
@@ -301,18 +303,19 @@ impl ConnectorRuntimeSyncCore {
         }
         abort_tasks(old_tasks);
 
-        for target in runtime_targets
+        let initial_custom_targets = runtime_targets
             .iter()
             .map(ConnectorRuntimeTargetRegistration::target)
             .filter(|target| matches!(target, ConnectorRuntimeTarget::Custom { .. }))
-        {
-            self.replace_sync_deadline_for_registration(
+            .map(|target| ConnectorSyncTarget {
+                target,
+                generation: 0,
+            })
+            .collect::<Vec<_>>();
+        if !initial_custom_targets.is_empty() {
+            self.sync_connector_runtime_targets_now(
                 registration.run_id,
-                &ConnectorSyncTarget {
-                    target,
-                    generation: 0,
-                },
-                Some(tokio::time::Instant::now()),
+                initial_custom_targets,
                 &run_cancel,
             )
             .await;
@@ -3455,14 +3458,11 @@ mod tests {
             refreshes: None,
         })
         .await;
-        let request = recv_sync_request(&mut requests).await;
-        assert_eq!(request.targets[0].target, target);
-
-        assert!(
-            core.sync_connector_runtime_batch_now(run_id, &request.targets)
-                .await
-        );
         absent_sync.assert_calls(1);
+        assert!(matches!(
+            requests.try_recv(),
+            Err(tokio::sync::mpsc::error::TryRecvError::Empty)
+        ));
         let absent_registry: serde_json::Value = serde_json::from_str(
             &tokio::fs::read_to_string(&registry_path)
                 .await
@@ -3538,7 +3538,7 @@ mod tests {
     #[tokio::test]
     async fn custom_target_rejects_builtin_unresolved_reason() {
         let server = MockServer::start();
-        let (core, mut requests) = core_without_worker(&server);
+        let (core, _requests) = core_without_worker(&server);
         let run_id = RunId::nil();
         let custom_connector_id = "550e8400-e29b-41d4-a716-446655440000";
         let target = custom_target(custom_connector_id);
@@ -3579,12 +3579,6 @@ mod tests {
             refreshes: None,
         })
         .await;
-        let request = recv_sync_request(&mut requests).await;
-
-        assert!(
-            core.sync_connector_runtime_batch_now(run_id, &request.targets)
-                .await
-        );
 
         runtime_sync.assert_calls(1);
         assert_eq!(
@@ -3648,11 +3642,6 @@ mod tests {
             refreshes: None,
         })
         .await;
-        let request = recv_sync_request(&mut requests).await;
-        assert!(
-            core.sync_connector_runtime_batch_now(run_id, &request.targets)
-                .await
-        );
 
         first_sync.assert_calls(1);
         assert_eq!(
@@ -3717,7 +3706,7 @@ mod tests {
     #[tokio::test]
     async fn custom_target_rejects_routing_value_replacement() {
         let server = MockServer::start();
-        let (core, mut requests) = core_without_worker(&server);
+        let (core, _requests) = core_without_worker(&server);
         let run_id = RunId::nil();
         let custom_connector_id = "550e8400-e29b-41d4-a716-446655440000";
         let target = custom_target(custom_connector_id);
@@ -3780,11 +3769,6 @@ mod tests {
             refreshes: None,
         })
         .await;
-        let request = recv_sync_request(&mut requests).await;
-        assert!(
-            core.sync_connector_runtime_batch_now(run_id, &request.targets)
-                .await
-        );
 
         assert_eq!(
             tokio::fs::read(&registry_path).await.unwrap(),
@@ -3805,7 +3789,7 @@ mod tests {
     #[tokio::test]
     async fn invalid_custom_response_retains_last_known_good_and_retries() {
         let server = MockServer::start();
-        let (core, mut requests) = core_without_worker(&server);
+        let (core, _requests) = core_without_worker(&server);
         let run_id = RunId::nil();
         let custom_connector_id = "550e8400-e29b-41d4-a716-446655440000";
         let target = custom_target(custom_connector_id);
@@ -3853,12 +3837,6 @@ mod tests {
             refreshes: None,
         })
         .await;
-        let request = recv_sync_request(&mut requests).await;
-
-        assert!(
-            core.sync_connector_runtime_batch_now(run_id, &request.targets)
-                .await
-        );
 
         assert_eq!(
             tokio::fs::read(&registry_path).await.unwrap(),
@@ -3933,7 +3911,7 @@ mod tests {
     #[tokio::test]
     async fn runtime_sync_http_failure_retains_custom_last_known_good_and_retries() {
         let server = MockServer::start();
-        let (core, mut requests) = core_without_worker(&server);
+        let (core, _requests) = core_without_worker(&server);
         let run_id = RunId::nil();
         let custom_connector_id = "550e8400-e29b-41d4-a716-446655440000";
         let target = custom_target(custom_connector_id);
@@ -3966,12 +3944,6 @@ mod tests {
             refreshes: None,
         })
         .await;
-        let request = recv_sync_request(&mut requests).await;
-
-        assert!(
-            core.sync_connector_runtime_batch_now(run_id, &request.targets)
-                .await
-        );
 
         route.assert_calls(1);
         assert_eq!(
