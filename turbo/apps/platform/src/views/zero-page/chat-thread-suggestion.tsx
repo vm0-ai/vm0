@@ -96,6 +96,7 @@ export function ComposerMentionSuggestionMenu({
           const selected = agents.length + index === selectedIndex;
           return (
             <button
+              key={chatThread.id}
               ref={selected ? scrollSelectedSuggestionIntoView : undefined}
               type="button"
               className={cn(

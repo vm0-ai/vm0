@@ -613,6 +613,7 @@ function VirtualizedChatThreads({ threadCount }: { threadCount: number }) {
         const index = startIndex + visibleOffset;
         return (
           <div
+            key={signals.threadId}
             data-index={index}
             data-testid="sidebar-chat-thread-virtual-row"
             className="absolute left-0 top-0 w-full pb-1"
