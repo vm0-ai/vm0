@@ -9,7 +9,6 @@ export const WORKER_CRON_ROUTES: Readonly<Record<string, readonly string[]>> = {
     "/api/cron/drain-email-outbox",
     "/api/cron/sync-skills",
     "/api/cron/sync-connector-catalog",
-    "/api/cron/repair-custom-connector-skill-versions",
     "/api/cron/process-usage-events",
     "/api/cron/refresh-storage-presigned-urls",
     "/api/cron/reconcile-browsers",
