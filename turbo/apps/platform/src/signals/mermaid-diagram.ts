@@ -4,6 +4,7 @@ import type { Element, Root } from "hast";
 import { createObjectUrlResource } from "./object-url-resource.ts";
 import { rootSignal$ } from "./root-signal.ts";
 import { theme$ } from "./theme.ts";
+import { settle } from "./utils.ts";
 
 /**
  * Mermaid diagrams render through a pull model. Each unique diagram source
@@ -108,6 +109,17 @@ async function renderDiagramSvg(
   return svg;
 }
 
+// `mermaid.initialize` mutates module-global configuration, so an
+// initialize+render pair must not interleave with another pair: a theme flip
+// mid-render would otherwise re-initialize mermaid and the in-flight render
+// would produce — and permanently cache — the other theme's SVG under its own
+// theme key. The queue holds the tail of one render chain; each render settles
+// the pair before it (a failed render must not break the chain) and becomes
+// the new tail.
+const mermaidRenderQueue$ = computed((): { tail: Promise<unknown> } => {
+  return { tail: Promise.resolve() };
+});
+
 /**
  * Intrinsic width of the serialized copy. Expanded preview surfaces fit an
  * image into their stage but never scale it above 100%, so a diagram serialized
@@ -181,35 +193,44 @@ export function createMermaidDiagramSignals(
       return existing;
     }
     const mermaidModule = get(mermaidModule$);
+    const renderQueue = get(mermaidRenderQueue$);
     const image = (async (): Promise<MermaidDiagramImage | null> => {
       const { default: mermaid } = await mermaidModule;
-      mermaid.initialize({
-        startOnLoad: false,
-        // "strict" makes mermaid sanitize the generated SVG with DOMPurify and
-        // disables click handlers declared inside diagram sources.
-        securityLevel: "strict",
-        // Without this mermaid injects its own error diagram into the document.
-        suppressErrorRendering: true,
-        theme: theme === "dark" ? "redux-dark" : "redux",
-        // Resolved to a concrete stack rather than passed as `var(...)`: the same
-        // SVG is also shown inside an <img> in the lightbox, where page-level CSS
-        // custom properties do not resolve.
-        fontFamily: getComputedStyle(document.documentElement)
-          .getPropertyValue("--font-family-sans")
-          .trim(),
-        // mermaid's defaults are sized for a standalone page: 16px labels and
-        // 50px rank spacing make a five-node flowchart taller than the message
-        // around it. These match the chat body text and cut roughly a third of
-        // the height.
-        themeVariables: { fontSize: "14px" },
-        flowchart: { nodeSpacing: 30, rankSpacing: 32, padding: 8 },
-      });
-
-      const markup = await renderDiagramSvg(
-        mermaid,
-        diagramRenderId(`${theme}:${code}`),
-        code,
-      );
+      // Read the tail and replace it in the same synchronous block, so two
+      // resuming renders cannot both chain onto the same predecessor.
+      const previousRender = renderQueue.tail;
+      const render = (async (): Promise<string | undefined> => {
+        await settle(previousRender);
+        mermaid.initialize({
+          startOnLoad: false,
+          // "strict" makes mermaid sanitize the generated SVG with DOMPurify
+          // and disables click handlers declared inside diagram sources.
+          securityLevel: "strict",
+          // Without this mermaid injects its own error diagram into the
+          // document.
+          suppressErrorRendering: true,
+          theme: theme === "dark" ? "redux-dark" : "redux",
+          // Resolved to a concrete stack rather than passed as `var(...)`: the
+          // same SVG is also shown inside an <img> in the lightbox, where
+          // page-level CSS custom properties do not resolve.
+          fontFamily: getComputedStyle(document.documentElement)
+            .getPropertyValue("--font-family-sans")
+            .trim(),
+          // mermaid's defaults are sized for a standalone page: 16px labels
+          // and 50px rank spacing make a five-node flowchart taller than the
+          // message around it. These match the chat body text and cut roughly
+          // a third of the height.
+          themeVariables: { fontSize: "14px" },
+          flowchart: { nodeSpacing: 30, rankSpacing: 32, padding: 8 },
+        });
+        return renderDiagramSvg(
+          mermaid,
+          diagramRenderId(`${theme}:${code}`),
+          code,
+        );
+      })();
+      renderQueue.tail = render;
+      const markup = await render;
       if (markup === undefined) {
         return null;
       }
