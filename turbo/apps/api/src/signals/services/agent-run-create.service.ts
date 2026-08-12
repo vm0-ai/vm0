@@ -216,7 +216,10 @@ import {
 } from "./agent-run-queue-payload.service";
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV } from "@vm0/core/resource-registry";
+import {
+  WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV,
+  type WebsiteTemplateArchiveVersion,
+} from "@vm0/core/resource-registry";
 import {
   isPiEdgeCompatibleProviderType,
   piSandboxModelConfig,
@@ -5885,6 +5888,17 @@ function storedConnectorRuntimeTargets(args: {
   ];
 }
 
+function websiteTemplateArchiveVersionForRun(
+  featureSwitchContext: FeatureSwitchContext,
+): WebsiteTemplateArchiveVersion {
+  return isFeatureEnabled(
+    FeatureSwitchKey.LatestWebsiteTemplates,
+    featureSwitchContext,
+  )
+    ? "latest"
+    : "previous";
+}
+
 async function buildStoredExecutionContextDraft(args: {
   readonly runId: string;
   readonly userId: string;
@@ -5935,12 +5949,9 @@ async function buildStoredExecutionContextDraft(args: {
     }),
     ...args.extraEnvironment,
     CLI_PKG_URL: env("CLI_PKG_URL"),
-    [WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV]: isFeatureEnabled(
-      FeatureSwitchKey.LatestWebsiteTemplates,
+    [WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV]: websiteTemplateArchiveVersionForRun(
       args.featureSwitchContext,
-    )
-      ? "latest"
-      : "previous",
+    ),
   };
   const environment = args.includeZeroTokenSecret
     ? (withoutLegacyZeroEntries(expandedEnvironment) ?? {})
