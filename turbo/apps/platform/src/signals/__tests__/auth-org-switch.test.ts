@@ -14,7 +14,7 @@ const activeOrgIdStorage = sessionStorageSignals("clerk-active-org-id");
 
 describe("organization auth lifecycle", () => {
   it("keeps the active organization through a transient Clerk refresh", async () => {
-    window.location.href = "http://localhost/error";
+    context.mocks.browser.url("http://localhost/error");
 
     await setupPage({
       context,

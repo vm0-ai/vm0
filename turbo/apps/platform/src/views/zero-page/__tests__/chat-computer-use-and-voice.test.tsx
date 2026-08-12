@@ -503,15 +503,7 @@ describe("chat lifecycle", () => {
   });
 
   it("uses Okou copy on an Okou host", async () => {
-    const previousUrl = window.location.href;
-    window.location.href = "https://app.okou.ai/";
-    context.signal.addEventListener(
-      "abort",
-      () => {
-        window.location.href = previousUrl;
-      },
-      { once: true },
-    );
+    context.mocks.browser.url("https://app.okou.ai/");
     const user = userEvent.setup({ delay: null });
     const threadId = "e2000000-0000-4000-a000-000000000005";
     mockChatLifecycle(context, { threadId });

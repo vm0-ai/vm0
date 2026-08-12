@@ -277,15 +277,7 @@ describe("computer use authorization page", () => {
   });
 
   it("shows Okou desktop guidance on an Okou host", async () => {
-    const previousUrl = window.location.href;
-    window.location.href = "https://app.okou.ai/";
-    context.signal.addEventListener(
-      "abort",
-      () => {
-        window.location.href = previousUrl;
-      },
-      { once: true },
-    );
+    context.mocks.browser.url("https://app.okou.ai/");
     context.mocks.api(
       zeroComputerUseAuthorizationRequestsContract.get,
       ({ respond }) => {

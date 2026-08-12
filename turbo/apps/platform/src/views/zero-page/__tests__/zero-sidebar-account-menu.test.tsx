@@ -884,15 +884,7 @@ describe("zero sidebar account menu", () => {
   });
 
   it("links the production satellite to the primary hosted user profile", async () => {
-    const previousUrl = window.location.href;
-    window.location.href = "https://app.okou.ai/";
-    context.signal.addEventListener(
-      "abort",
-      () => {
-        window.location.href = previousUrl;
-      },
-      { once: true },
-    );
+    context.mocks.browser.url("https://app.okou.ai/");
     prepareDefaultAgent();
 
     detachedSetupPage({
@@ -1052,7 +1044,7 @@ describe("zero sidebar account menu", () => {
 
   it("preserves satellite session sync after signing out", async () => {
     prepareDefaultAgent();
-    window.location.href = "https://app.okou.ai/";
+    context.mocks.browser.url("https://app.okou.ai/");
 
     detachedSetupPage({
       context,

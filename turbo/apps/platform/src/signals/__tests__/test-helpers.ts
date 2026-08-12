@@ -28,9 +28,18 @@ export function testContext(): TestContext {
 
   const context: TestContext = {
     get mocks(): TestMocks {
-      mocks ??= createTestMocks(() => {
-        return context.signal;
-      });
+      if (!mocks) {
+        mocks = createTestMocks(() => {
+          return context.signal;
+        });
+        context.signal.addEventListener(
+          "abort",
+          () => {
+            resetAllMockHandlers();
+          },
+          { once: true },
+        );
+      }
       return mocks;
     },
     get resourceId(): string {
@@ -48,7 +57,6 @@ export function testContext(): TestContext {
           store?.set(resetLocalStorageForTest$);
           store?.set(resetSessionStorageForTest$);
           resetLoggerForTest();
-          resetAllMockHandlers();
 
           store = null;
         });

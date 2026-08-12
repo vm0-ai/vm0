@@ -224,8 +224,8 @@ function createPushStateMock(signal: AbortSignal) {
   };
 
   const updateLocation = (entry: HistoryEntry) => {
-    setPathname(entry.url.pathname);
-    setSearch(entry.url.search);
+    setPathname(entry.url.pathname, signal);
+    setSearch(entry.url.search, signal);
   };
 
   const fn = vi.fn<typeof window.history.pushState>(

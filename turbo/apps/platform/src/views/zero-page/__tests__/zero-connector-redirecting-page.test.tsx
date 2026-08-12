@@ -141,8 +141,9 @@ describe("connector redirecting page", () => {
   });
 
   it("uses Okou copy on an Okou host", async () => {
-    window.location.href =
-      "https://app.okou.ai/connectors/github/redirecting?label=GitHub";
+    context.mocks.browser.url(
+      "https://app.okou.ai/connectors/github/redirecting?label=GitHub",
+    );
     detachedSetupPage({
       context,
       path: "/connectors/github/redirecting?label=GitHub",

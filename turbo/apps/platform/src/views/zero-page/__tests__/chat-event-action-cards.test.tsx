@@ -942,16 +942,8 @@ describe("chat event action cards", () => {
   });
 
   it("renders canonical user text literally and assistant actions on alternate origins", async () => {
-    const previousUrl = window.location.href;
     const threadId = "e4000000-0000-4000-a000-000000000004";
-    window.location.href = `https://app.okou.ai/chats/${threadId}`;
-    context.signal.addEventListener(
-      "abort",
-      () => {
-        window.location.href = previousUrl;
-      },
-      { once: true },
-    );
+    context.mocks.browser.url(`https://app.okou.ai/chats/${threadId}`);
 
     const canonicalUrl = `https://app.vm0.ai/connectors/slack/authorize?agentId=${AGENT_ID}`;
     const untrustedUrl = `https://evil.example.test/connectors/slack/authorize?agentId=${AGENT_ID}`;
