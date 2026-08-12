@@ -6,16 +6,14 @@
 
 mod artifacts;
 
-use std::ffi::{OsStr, OsString};
+use std::ffi::OsString;
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
-use std::os::fd::{AsFd, AsRawFd, OwnedFd};
+use std::os::fd::AsRawFd;
 use std::os::unix::fs::OpenOptionsExt;
-use std::path::{Component, Path, PathBuf};
+use std::path::Path;
 use std::time::Duration;
 
-use nix::fcntl::{OFlag, open, openat};
-use nix::sys::stat::{Mode, SFlag, fstat, mkdirat};
 use sha2::{Digest, Sha256};
 use tempfile::TempPath;
 use tokio::io::AsyncWriteExt;
@@ -24,7 +22,6 @@ use crate::deps::{FIRECRACKER_VERSION, MITMPROXY_VERSION, SYSTEM_CA_BUNDLE};
 use crate::error::{RunnerError, RunnerResult};
 use crate::paths::HomePaths;
 
-const SETUP_SHARED_DIR_MODE: u32 = 0o755;
 const SETUP_TEMP_ARTIFACT_MODE: u32 = 0o600;
 const SETUP_EXECUTABLE_ARTIFACT_MODE: u32 = 0o755;
 const SETUP_KERNEL_ARTIFACT_MODE: u32 = 0o644;
@@ -34,7 +31,6 @@ const SETUP_READ_TIMEOUT: Duration = Duration::from_secs(60);
 const SETUP_REQUEST_TIMEOUT: Duration = Duration::from_secs(15 * 60);
 const GROUP_OR_OTHER_WRITE_BITS: u32 = 0o022;
 const ROOT_UID: u32 = 0;
-const STICKY_BIT: u32 = 0o1000;
 const START_SYSTEM_DEPENDENCIES: [&str; 11] = [
     "ip",
     "iptables",
@@ -157,228 +153,12 @@ async fn create_directories(paths: &HomePaths) -> RunnerResult<()> {
 }
 
 fn ensure_setup_shared_dir(path: &Path) -> RunnerResult<()> {
-    if path.as_os_str().is_empty() {
-        return Err(RunnerError::Internal(
-            "empty setup directory path is not supported".into(),
-        ));
-    }
-
-    let expected_uid = nix::unistd::geteuid().as_raw();
-    let start = if path.is_absolute() {
-        Path::new("/")
-    } else {
-        Path::new(".")
-    };
-    let mut current = open(start, setup_dir_open_flags(), Mode::empty()).map_err(|e| {
-        RunnerError::Internal(format!(
-            "open setup directory root for {}: {e}",
-            path.display()
-        ))
-    })?;
-    let mut current_path = start.to_path_buf();
-    let mut components = path.components().peekable();
-    let mut saw_normal_component = false;
-
-    while let Some(component) = components.next() {
-        match component {
-            Component::RootDir | Component::CurDir => {}
-            Component::ParentDir => {
-                return Err(RunnerError::Internal(format!(
-                    "{} contains a parent directory segment",
-                    path.display()
-                )));
-            }
-            Component::Normal(name) => {
-                saw_normal_component = true;
-                let is_final = components.peek().is_none();
-                current = open_or_create_setup_dir_component(
-                    &current,
-                    name,
-                    &current_path,
-                    path,
-                    expected_uid,
-                    is_final,
-                )?;
-                current_path = path_component(&current_path, name);
-            }
-            Component::Prefix(prefix) => {
-                return Err(RunnerError::Internal(format!(
-                    "{} contains unsupported path prefix {}",
-                    path.display(),
-                    prefix.as_os_str().to_string_lossy()
-                )));
-            }
-        }
-    }
-
-    if !saw_normal_component {
-        secure_setup_dir_component(&current, &current_path, path, expected_uid, true, false)?;
-    }
-
-    Ok(())
-}
-
-fn open_or_create_setup_dir_component(
-    parent: &(impl AsFd + AsRawFd),
-    name: &OsStr,
-    parent_path: &Path,
-    full_path: &Path,
-    expected_uid: u32,
-    is_final: bool,
-) -> RunnerResult<OwnedFd> {
-    ensure_setup_parent_not_replaceable(parent, parent_path, full_path, expected_uid)?;
-    let component_path = path_component(parent_path, name);
-
-    match openat(parent, name, setup_dir_open_flags(), Mode::empty()) {
-        Ok(fd) => {
-            secure_setup_dir_component(
-                &fd,
-                &component_path,
-                full_path,
-                expected_uid,
-                is_final,
-                false,
-            )?;
-            Ok(fd)
-        }
-        Err(nix::errno::Errno::ENOENT) => {
-            match mkdirat(
-                parent,
-                name,
-                Mode::from_bits_truncate(SETUP_SHARED_DIR_MODE),
-            ) {
-                Ok(()) | Err(nix::errno::Errno::EEXIST) => {}
-                Err(e) => {
-                    return Err(RunnerError::Internal(format!(
-                        "create setup directory component {} for {}: {e}",
-                        name.to_string_lossy(),
-                        full_path.display()
-                    )));
-                }
-            }
-
-            let fd = openat(parent, name, setup_dir_open_flags(), Mode::empty())
-                .map_err(|e| setup_dir_component_error("open", name, full_path, e))?;
-            secure_setup_dir_component(
-                &fd,
-                &component_path,
-                full_path,
-                expected_uid,
-                is_final,
-                true,
-            )?;
-            Ok(fd)
-        }
-        Err(e) => Err(setup_dir_component_error("open", name, full_path, e)),
-    }
-}
-
-fn ensure_setup_parent_not_replaceable(
-    parent: &(impl AsFd + AsRawFd),
-    parent_path: &Path,
-    full_path: &Path,
-    expected_uid: u32,
-) -> RunnerResult<()> {
-    let stat = fstat(parent).map_err(|e| {
-        RunnerError::Internal(format!(
-            "stat setup directory parent {} for {}: {e}",
-            parent_path.display(),
-            full_path.display()
-        ))
-    })?;
-    let mode = (stat.st_mode as u32) & 0o7777;
-    if stat.st_uid != ROOT_UID && stat.st_uid != expected_uid {
-        return Err(RunnerError::Internal(format!(
-            "setup directory parent {} is owned by untrusted uid {}",
-            parent_path.display(),
-            stat.st_uid
-        )));
-    }
-    if mode & GROUP_OR_OTHER_WRITE_BITS != 0 && mode & STICKY_BIT == 0 {
-        return Err(RunnerError::Internal(format!(
-            "setup directory parent {} is group/other writable without the sticky bit",
-            parent_path.display()
-        )));
-    }
-    Ok(())
-}
-
-fn secure_setup_dir_component(
-    fd: &(impl AsFd + AsRawFd),
-    component_path: &Path,
-    full_path: &Path,
-    expected_uid: u32,
-    is_final: bool,
-    created: bool,
-) -> RunnerResult<()> {
-    let stat = fstat(fd).map_err(|e| {
-        RunnerError::Internal(format!(
-            "stat setup directory component {} for {}: {e}",
-            component_path.display(),
-            full_path.display()
-        ))
-    })?;
-    let file_type = SFlag::from_bits_truncate(stat.st_mode & SFlag::S_IFMT.bits());
-    if file_type != SFlag::S_IFDIR {
-        return Err(RunnerError::Internal(format!(
-            "{} is not a directory",
-            component_path.display()
-        )));
-    }
-    if stat.st_uid != ROOT_UID && stat.st_uid != expected_uid {
-        return Err(RunnerError::Internal(format!(
-            "setup directory component {} is owned by untrusted uid {}",
-            component_path.display(),
-            stat.st_uid
-        )));
-    }
-
-    let mode = (stat.st_mode as u32) & 0o7777;
-    if mode & GROUP_OR_OTHER_WRITE_BITS != 0 && (is_final || mode & STICKY_BIT == 0) {
-        return Err(RunnerError::Internal(format!(
-            "setup directory component {} is group/other writable",
-            component_path.display()
-        )));
-    }
-
-    if (created || is_final) && stat.st_uid == expected_uid && mode != SETUP_SHARED_DIR_MODE {
-        chmod_fd(fd, component_path, SETUP_SHARED_DIR_MODE, "setup directory")?;
-    }
-
-    Ok(())
-}
-
-fn setup_dir_component_error(
-    operation: &str,
-    name: &OsStr,
-    full_path: &Path,
-    error: nix::errno::Errno,
-) -> RunnerError {
-    match error {
-        nix::errno::Errno::ELOOP => RunnerError::Internal(format!(
-            "{} contains symlink component {}",
-            full_path.display(),
-            name.to_string_lossy()
-        )),
-        nix::errno::Errno::ENOTDIR => {
-            RunnerError::Internal(format!("{} is not a directory", full_path.display()))
-        }
-        _ => RunnerError::Internal(format!(
-            "{operation} setup directory component {} for {}: {error}",
-            name.to_string_lossy(),
-            full_path.display()
-        )),
-    }
-}
-
-fn path_component(parent_path: &Path, name: &OsStr) -> PathBuf {
-    let mut path = parent_path.to_path_buf();
-    path.push(Path::new(name));
-    path
-}
-
-fn setup_dir_open_flags() -> OFlag {
-    OFlag::O_RDONLY | OFlag::O_DIRECTORY | OFlag::O_NOFOLLOW | OFlag::O_CLOEXEC
+    crate::host_file::ensure_dir(
+        path,
+        crate::host_file::DirMode::SharedTrusted,
+        "setup directory",
+    )
+    .map_err(|e| RunnerError::Internal(format!("ensure setup directory {}: {e}", path.display())))
 }
 
 fn create_setup_temp_file(target: &Path, kind: &str) -> RunnerResult<(TempPath, File)> {
@@ -1143,6 +923,7 @@ mod tests {
 
     use flate2::Compression;
     use flate2::write::GzEncoder;
+    use nix::sys::stat::Mode;
     use tokio::sync::oneshot;
 
     fn mode(path: &Path) -> u32 {
@@ -1264,8 +1045,41 @@ mod tests {
 
         ensure_setup_shared_dir(&path).unwrap();
 
-        assert_eq!(mode(&path), SETUP_SHARED_DIR_MODE);
+        assert_eq!(mode(&path), crate::host_file::SHARED_TRUSTED_DIR_MODE);
         assert!(path.is_dir());
+    }
+
+    #[test]
+    fn ensure_setup_shared_dir_normalizes_existing_directory() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("setup");
+        std::fs::create_dir(&path).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o700)).unwrap();
+
+        ensure_setup_shared_dir(&path).unwrap();
+
+        assert_eq!(mode(&path), crate::host_file::SHARED_TRUSTED_DIR_MODE);
+    }
+
+    #[test]
+    fn ensure_setup_shared_dir_rejects_parent_segment_before_creating_missing_prefix() {
+        let dir = tempfile::tempdir().unwrap();
+        let base = dir.path().join("base");
+        std::fs::create_dir(&base).unwrap();
+
+        let error =
+            ensure_setup_shared_dir(&base.join("missing").join("..").join("leaf")).unwrap_err();
+
+        assert!(
+            matches!(error, RunnerError::Internal(_)),
+            "unexpected error: {error}"
+        );
+        assert!(
+            error.to_string().contains("parent directory segment"),
+            "unexpected error: {error}"
+        );
+        assert!(!base.join("missing").exists());
+        assert!(!base.join("leaf").exists());
     }
 
     #[test]
