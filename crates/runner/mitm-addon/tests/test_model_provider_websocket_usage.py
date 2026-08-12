@@ -623,28 +623,66 @@ class TestModelProviderWebSocketUsage:
 
         assert metadata_keys.MODEL_PROVIDER_USAGE_TIERS not in flow.metadata
 
+    @pytest.mark.parametrize(
+        (
+            "input_tokens",
+            "cached_tokens",
+            "cache_write_tokens",
+            "service_tier",
+            "category_suffix",
+        ),
+        [
+            pytest.param(100, 20, 30, None, "", id="base"),
+            pytest.param(
+                300_000,
+                20_000,
+                30_000,
+                None,
+                ".long_context",
+                id="long-context",
+            ),
+            pytest.param(100, 20, 30, "priority", ".fast", id="fast"),
+            pytest.param(
+                300_000,
+                20_000,
+                30_000,
+                "priority",
+                ".long_context.fast",
+                id="long-context-fast",
+            ),
+        ],
+    )
     def test_model_websocket_late_same_id_snapshot_does_not_mix_input_partition(
-        self, tmp_path, real_flow
+        self,
+        tmp_path,
+        real_flow,
+        input_tokens,
+        cached_tokens,
+        cache_write_tokens,
+        service_tier,
+        category_suffix,
     ):
         flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
         flow.metadata[metadata_keys.MODEL_USAGE_PROVIDER] = "gpt-5.6-sol"
         mitm_addon.responseheaders(flow)
+        first_response = {
+            "id": "resp_ws_partition",
+            "model": "gpt-5.6-sol",
+            "usage": {
+                "input_tokens": input_tokens,
+                "output_tokens": 0,
+                "input_tokens_details": {"cached_tokens": cached_tokens},
+            },
+        }
+        if service_tier is not None:
+            first_response["service_tier"] = service_tier
 
         webhook = self._run_websocket_messages_and_end(
             flow,
             json.dumps(
                 {
                     "type": "response.completed",
-                    "response": {
-                        "id": "resp_ws_partition",
-                        "model": "gpt-5.6-sol",
-                        "service_tier": "priority",
-                        "usage": {
-                            "input_tokens": 300_000,
-                            "output_tokens": 0,
-                            "input_tokens_details": {"cached_tokens": 20_000},
-                        },
-                    },
+                    "response": first_response,
                 }
             ).encode(),
             json.dumps(
@@ -654,11 +692,11 @@ class TestModelProviderWebSocketUsage:
                         "id": "resp_ws_partition",
                         "model": "gpt-5.6-sol",
                         "usage": {
-                            "input_tokens": 300_000,
+                            "input_tokens": input_tokens,
                             "output_tokens": 40,
                             "input_tokens_details": {
-                                "cached_tokens": 20_000,
-                                "cache_write_tokens": 30_000,
+                                "cached_tokens": cached_tokens,
+                                "cache_write_tokens": cache_write_tokens,
                             },
                         },
                     },
@@ -671,19 +709,23 @@ class TestModelProviderWebSocketUsage:
         assert len(events) == len(by_category) == 3
         assert len({event["idempotencyKey"] for event in events}) == 3
         assert by_category == {
-            "tokens.input.long_context.fast": 280_000,
-            "tokens.output.long_context.fast": 40,
-            "tokens.cache_read.long_context.fast": 20_000,
+            f"tokens.input{category_suffix}": input_tokens - cached_tokens,
+            f"tokens.output{category_suffix}": 40,
+            f"tokens.cache_read{category_suffix}": cached_tokens,
         }
+        for event in events:
+            uuid.UUID(event["idempotencyKey"])
         observation_events = webhook.model_usage_observation_events()
         observations_by_category = compact_observation_quantities(observation_events)
         assert len(observation_events) == 2
         assert len({event["idempotencyKey"] for event in observation_events}) == 2
         assert observations_by_category == {
-            "tokens.input": 280_000,
+            "tokens.input": input_tokens - cached_tokens,
             "tokens.output": 40,
-            "tokens.cache_read": 20_000,
+            "tokens.cache_read": cached_tokens,
         }
+        for event in observation_events:
+            uuid.UUID(event["idempotencyKey"])
         assert flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] == {}
         assert model_provider_usage_sources(flow) == {}
 

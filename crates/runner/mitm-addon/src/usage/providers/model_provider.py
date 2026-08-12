@@ -88,22 +88,34 @@ _MODEL_USAGE_LONG_CONTEXT_CATEGORY_BY_BASE = {
     MODEL_USAGE_CATEGORY_CACHE_READ: _MODEL_USAGE_CATEGORY_CACHE_READ_LONG_CONTEXT,
     MODEL_USAGE_CATEGORY_CACHE_CREATION: _MODEL_USAGE_CATEGORY_CACHE_CREATION_LONG_CONTEXT,
 }
+_MODEL_INPUT_PARTITION_BASE_CATEGORIES = (
+    MODEL_USAGE_CATEGORY_INPUT,
+    MODEL_USAGE_CATEGORY_CACHE_READ,
+    MODEL_USAGE_CATEGORY_CACHE_CREATION,
+)
+
+
+def _billable_model_usage_category(
+    category: str,
+    billing_tier: _ModelUsageTier,
+    fast: bool,
+) -> str:
+    billable_category = (
+        _MODEL_USAGE_LONG_CONTEXT_CATEGORY_BY_BASE[category]
+        if billing_tier == _MODEL_USAGE_TIER_LONG_CONTEXT
+        else category
+    )
+    if fast:
+        return f"{billable_category}{_MODEL_USAGE_FAST_CATEGORY_SUFFIX}"
+    return billable_category
+
+
 _MODEL_PROVIDER_USAGE_TIER_SOURCE_LIMIT = 100
 _MODEL_INPUT_PARTITION_CATEGORIES = frozenset(
-    (
-        MODEL_USAGE_CATEGORY_INPUT,
-        MODEL_USAGE_CATEGORY_CACHE_READ,
-        MODEL_USAGE_CATEGORY_CACHE_CREATION,
-        _MODEL_USAGE_CATEGORY_INPUT_LONG_CONTEXT,
-        _MODEL_USAGE_CATEGORY_CACHE_READ_LONG_CONTEXT,
-        _MODEL_USAGE_CATEGORY_CACHE_CREATION_LONG_CONTEXT,
-        f"{MODEL_USAGE_CATEGORY_INPUT}{_MODEL_USAGE_FAST_CATEGORY_SUFFIX}",
-        f"{MODEL_USAGE_CATEGORY_CACHE_READ}{_MODEL_USAGE_FAST_CATEGORY_SUFFIX}",
-        f"{MODEL_USAGE_CATEGORY_CACHE_CREATION}{_MODEL_USAGE_FAST_CATEGORY_SUFFIX}",
-        f"{_MODEL_USAGE_CATEGORY_INPUT_LONG_CONTEXT}{_MODEL_USAGE_FAST_CATEGORY_SUFFIX}",
-        f"{_MODEL_USAGE_CATEGORY_CACHE_READ_LONG_CONTEXT}{_MODEL_USAGE_FAST_CATEGORY_SUFFIX}",
-        f"{_MODEL_USAGE_CATEGORY_CACHE_CREATION_LONG_CONTEXT}{_MODEL_USAGE_FAST_CATEGORY_SUFFIX}",
-    )
+    _billable_model_usage_category(category, billing_tier, fast)
+    for category in _MODEL_INPUT_PARTITION_BASE_CATEGORIES
+    for billing_tier in (_MODEL_USAGE_TIER_BASE, _MODEL_USAGE_TIER_LONG_CONTEXT)
+    for fast in (False, True)
 )
 
 
@@ -705,13 +717,11 @@ def _build_usage_events(
         quantity = usage.get(category)
         if not _is_positive_int(quantity):
             continue
-        billable_category = (
-            _MODEL_USAGE_LONG_CONTEXT_CATEGORY_BY_BASE[category]
-            if billing_tier == _MODEL_USAGE_TIER_LONG_CONTEXT
-            else category
+        billable_category = _billable_model_usage_category(
+            category,
+            billing_tier,
+            fast,
         )
-        if fast:
-            billable_category = f"{billable_category}{_MODEL_USAGE_FAST_CATEGORY_SUFFIX}"
         event: UsageEvent = {
             "idempotencyKey": derive_usage_idempotency_key(
                 namespace,
