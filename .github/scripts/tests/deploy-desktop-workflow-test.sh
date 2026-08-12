@@ -35,7 +35,7 @@ ruby -e '
   raise "Okou CI build must package runtime product identity" unless okou_build.fetch("run").include?("product: process.env.VM0_DESKTOP_PRODUCT")
 
   okou_verify = build.fetch("steps").find { |step| step["name"] == "Verify Okou production artifact" }.fetch("run")
-  raise "Okou artifact must verify its bundle ID" unless okou_verify.include?("ai.okou.computer-use")
+  raise "Okou artifact must verify its bundle ID" unless okou_verify.include?("ai.okou.desktop")
   raise "Okou artifact must verify side-by-side installation" unless okou_verify.include?("Zero and Okou should remain installable side by side")
 
   artifact_step = deploy.fetch("steps").find { |step| step["id"] == "artifact" }
@@ -44,11 +44,11 @@ ruby -e '
 
   build_step = deploy.fetch("steps").find { |step| step["name"] == "Build canonical unsigned Desktop app" }
   raise "canonical Desktop build must skip signing" unless build_step.fetch("env").fetch("VM0_DESKTOP_SKIP_SIGNING") == "true"
-  raise "canonical Desktop build must package Okou" unless build_step.fetch("run").include?("Okou Computer Use.app")
+  raise "canonical Desktop build must package Okou" unless build_step.fetch("run").include?("Okou.app")
   raise "canonical Okou build must target app.okou.ai" unless build_step.fetch("run").include?("VM0_DESKTOP_PLATFORM_URL=https://app.okou.ai")
 
   artifact_build = deploy.fetch("steps").find { |step| step["name"] == "Create canonical Desktop artifact" }.fetch("run")
-  raise "canonical artifact must contain the Okou app" unless artifact_build.include?("Okou Computer Use-darwin-arm64/Okou Computer Use.app")
+  raise "canonical artifact must contain the Okou app" unless artifact_build.include?("Okou-darwin-arm64/Okou.app")
 
   artifact_upload = deploy.fetch("steps").find { |step| step["name"] == "Upload canonical Desktop artifact" }.fetch("run")
   raise "canonical artifact must upload the Okou archive" unless artifact_upload.include?("okou-app.tar.gz")
@@ -77,8 +77,8 @@ ruby -e '
   raise "Desktop manifest must wait for promotion" unless Array(publish.fetch("needs")).include?("promote-desktop-release")
   publish_text = publish.fetch("steps").find { |step| step["name"] == "Publish Desktop update manifest" }.fetch("run")
   raise "Desktop manifests must preserve the Zero feed" unless publish_text.include?("desktop-update-manifest.json")
-  raise "Desktop manifests must publish the Okou feed" unless publish_text.include?("okou-desktop-update-manifest.json")
-  raise "Desktop manifests must publish under the Okou mutable tag" unless publish_text.include?("okou-desktop-updates")
+  raise "Desktop manifests must publish the Okou feed" unless publish_text.include?("ai-okou-desktop-update-manifest.json")
+  raise "Desktop manifests must publish under the Okou mutable tag" unless publish_text.include?("ai-okou-desktop-updates")
 ' \
   "$desktop_workflow" \
   "$release_workflow" \

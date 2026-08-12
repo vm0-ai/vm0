@@ -119,7 +119,7 @@ where
     Run: Future<Output = Result<CliExecutionResult, AgentError>>,
 {
     active_input.close_terminal();
-    if !active_input.durable_sink_in_flight() {
+    if !active_input.sink_in_flight() {
         return stopped;
     }
 
@@ -127,7 +127,7 @@ where
         tokio::select! {
             biased;
             result = run.as_mut() => Ok(Some(result)),
-            idle = active_input.wait_for_durable_sink_idle() => idle.map(|()| None),
+            idle = active_input.wait_for_sink_idle() => idle.map(|()| None),
         }
     };
     match tokio::time::timeout(

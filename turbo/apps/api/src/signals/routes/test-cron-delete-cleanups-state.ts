@@ -2,13 +2,14 @@ import { initContract } from "@vm0/api-contracts/contracts/trpc-contract";
 import { connectorOauthStates } from "@vm0/db/schema/connector-oauth-state";
 import { telegramMessages } from "@vm0/db/schema/telegram-message";
 import { command } from "ccstate";
-import { asc, eq, like } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { z } from "zod";
 
 import { request$ } from "../context/hono";
 import { bodyResultOf } from "../context/request";
 import { type Db, writeDb$ } from "../external/db";
 import type { RouteEntry } from "../route-entry";
+import { cleanupConnectorOauthStatesForTest$ } from "../services/cron-connector-oauth-state-cleanup.service";
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
@@ -34,6 +35,10 @@ const actionBodySchema = z.discriminatedUnion("action", [
     marker: markerSchema,
   }),
   z.object({
+    action: z.literal("cleanup-connector"),
+    marker: markerSchema,
+  }),
+  z.object({
     action: z.literal("seed-telegram"),
     marker: markerSchema,
     cutoff: z.iso.datetime(),
@@ -52,6 +57,7 @@ const actionBodySchema = z.discriminatedUnion("action", [
 export const testCronDeleteCleanupsStateResponseSchema = z.object({
   ok: z.literal(true),
   remaining: z.array(z.string()),
+  deleted: z.number().int().nonnegative().optional(),
 });
 
 const c = initContract();
@@ -155,7 +161,12 @@ async function readConnectorStates(
   const rows = await db
     .select({ state: connectorOauthStates.state })
     .from(connectorOauthStates)
-    .where(like(connectorOauthStates.state, `${marker}:%`))
+    .where(
+      and(
+        eq(connectorOauthStates.userId, marker),
+        eq(connectorOauthStates.orgId, marker),
+      ),
+    )
     .orderBy(asc(connectorOauthStates.state));
   signal.throwIfAborted();
   return rows.map((row) => {
@@ -170,7 +181,12 @@ async function deleteConnectorStates(
 ): Promise<void> {
   await db
     .delete(connectorOauthStates)
-    .where(like(connectorOauthStates.state, `${marker}:%`));
+    .where(
+      and(
+        eq(connectorOauthStates.userId, marker),
+        eq(connectorOauthStates.orgId, marker),
+      ),
+    );
   signal.throwIfAborted();
 }
 
@@ -260,6 +276,13 @@ function actionOk(remaining: string[] = []) {
   };
 }
 
+function cleanupActionOk(deleted: number) {
+  return {
+    status: 200 as const,
+    body: { ok: true as const, remaining: [], deleted },
+  };
+}
+
 const mutateTestCronDeleteCleanupsState$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     if (!isTestEndpointAllowed(get(request$))) {
@@ -284,6 +307,11 @@ const mutateTestCronDeleteCleanupsState$ = command(
       case "delete-connector": {
         await deleteConnectorStates(db, body.marker, signal);
         return actionOk();
+      }
+      case "cleanup-connector": {
+        return cleanupActionOk(
+          await set(cleanupConnectorOauthStatesForTest$, body.marker, signal),
+        );
       }
       case "seed-telegram": {
         await seedTelegramMessages(db, body, signal);

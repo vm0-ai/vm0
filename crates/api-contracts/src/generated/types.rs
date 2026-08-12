@@ -136,6 +136,14 @@ pub mod webhooks {
     pub mod agent {
         /// DTOs for creating recoverable agent checkpoints.
         pub mod checkpoints {
+            /// Reason a checkpoint intentionally omits resumable CLI agent session history.
+            #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+            pub enum RequestCliAgentSessionHistoryDisposition {
+                /// The native history was oversized and had no safe bounded generation.
+                #[serde(rename = "discarded_oversized")]
+                DiscardedOversized,
+            }
+
             /// Artifact version captured by an agent checkpoint.
             #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
             #[serde(rename_all = "camelCase")]
@@ -171,8 +179,13 @@ pub mod webhooks {
                 pub cli_agent_type: String,
                 /// CLI agent session identifier being checkpointed.
                 pub cli_agent_session_id: String,
-                /// SHA-256 hash of the uploaded CLI agent session history.
-                pub cli_agent_session_history_hash: String,
+                /// Optional SHA-256 hash of the uploaded CLI agent session history.
+                #[serde(default, skip_serializing_if = "Option::is_none")]
+                pub cli_agent_session_history_hash: Option<String>,
+                /// Optional reason resumable CLI agent session history was intentionally omitted.
+                #[serde(default, skip_serializing_if = "Option::is_none")]
+                pub cli_agent_session_history_disposition:
+                    Option<RequestCliAgentSessionHistoryDisposition>,
                 /// Optional artifact versions captured by the checkpoint.
                 #[serde(default, skip_serializing_if = "Option::is_none")]
                 pub artifact_snapshots: Option<Vec<RequestArtifactSnapshot>>,

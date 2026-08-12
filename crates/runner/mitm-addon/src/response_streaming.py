@@ -20,7 +20,7 @@ Lifecycle:
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Literal, NamedTuple
+from typing import NamedTuple
 
 from mitmproxy import http
 from wsproto.utilities import generate_accept_token
@@ -58,12 +58,6 @@ _OPENAI_RESPONSES_SSE_PROTOCOL = "openai_responses_sse"
 _ANTHROPIC_USAGE_EVENTS = frozenset(("message_start", "message_delta"))
 _ANTHROPIC_MESSAGE_STOP_EVENT = "message_stop"
 
-ModelUsageProtocol = Literal[
-    "anthropic_messages",
-    "openai_chat_completions",
-    "openai_responses",
-]
-
 _ResponseChunkParser = Callable[[bytes], None]
 _SseUsageParseErrorLogger = Callable[[str, str], None]
 _AnthropicLifecycleObserver = Callable[[str, str | None], None]
@@ -100,7 +94,7 @@ class _OpenAIResponsesPrewarmState:
     diagnostic_emitted: bool = False
 
 
-def model_usage_protocol(flow: http.HTTPFlow) -> ModelUsageProtocol:
+def model_usage_protocol(flow: http.HTTPFlow) -> usage.ModelUsageProtocol:
     """Classify model usage from the observed request and CLI fallback."""
     request_target = flow_metadata.original_url(flow.metadata) or flow.request.path
     request_path = runtime_url_parsing.strip_url_query_and_fragment(request_target).rstrip("/")
@@ -275,7 +269,7 @@ def _configure_response_usage_stream(flow: http.HTTPFlow) -> _ResponseUsageStrea
         return _ResponseUsageStreamSetup(None, False)
     if not _response_can_have_body(flow, response):
         return _ResponseUsageStreamSetup(None, False)
-    if is_observable_model_provider:
+    if model_protocol is not None:
         if _response_has_event_stream_media_type(response):
             lifecycle_observer: _AnthropicLifecycleObserver | None = None
             anthropic_accounting_events: set[str] = set()
@@ -359,12 +353,7 @@ def _configure_response_usage_stream(flow: http.HTTPFlow) -> _ResponseUsageStrea
             flow.metadata[_MODEL_SSE_USAGE_FINISH] = finish_sse_usage
             return _ResponseUsageStreamSetup(decode_session.feed, False)
 
-        if model_protocol == "openai_responses":
-            extractor = usage.create_openai_responses_json_usage_extractor()
-        elif model_protocol == "openai_chat_completions":
-            extractor = usage.create_openai_chat_completions_json_usage_extractor()
-        else:
-            extractor = usage.create_anthropic_messages_json_usage_extractor()
+        extractor = usage.create_model_json_usage_extractor(model_protocol)
         decode_session = _make_response_decode_session(
             extractor.feed,
             response.headers,

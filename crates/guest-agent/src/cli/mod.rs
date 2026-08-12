@@ -60,6 +60,7 @@ use guest_contracts::diagnostics::{
     CliObservedExitDiagnostic, CliTerminationDiagnostic, EventDeliveryDiagnostic,
     FailureDetailSource, FailureReason,
 };
+use guest_contracts::stdout_framing::ORDINARY_CLI_STDOUT_MAX_LINE_BYTES;
 use process_group::ChildProcessGroup;
 use std::borrow::Cow;
 use std::collections::HashMap;
@@ -89,10 +90,6 @@ const CODEX_FIXED_STARTUP_CONFIGS: [&str; 4] = [
 const CODEX_FAST_MODE_STARTUP_CONFIGS: [&str; 2] =
     ["features.fast_mode=true", r#"service_tier="fast""#];
 const CODEX_WEB_SEARCH_DISABLED_CONFIG: &str = r#"web_search="disabled""#;
-/// Maximum retained bytes for one Claude Code stdout record before parsing.
-///
-/// LF is excluded. A preceding CR counts before CRLF normalization.
-const STDOUT_MAX_LINE_BYTES: usize = 16 * 1024 * 1024;
 
 #[derive(serde::Serialize)]
 struct ClaudeUserFrame<'a> {
@@ -1105,7 +1102,7 @@ async fn execute_cli_inner(
             line_result = line_reader::read_bounded_utf8_line(
                 &mut reader,
                 &mut stdout_partial_line,
-                STDOUT_MAX_LINE_BYTES,
+                ORDINARY_CLI_STDOUT_MAX_LINE_BYTES,
             ), if !stdout_closed => {
                 match line_result {
                     Ok(Some(line)) => {
@@ -1271,7 +1268,7 @@ async fn execute_cli_inner(
                             line_reader::BoundedLineError::Io(error) => AgentError::Io(error),
                             line_reader::BoundedLineError::TooLong => AgentError::Execution(
                                 format!(
-                                    "CLI stdout line exceeded {STDOUT_MAX_LINE_BYTES} bytes"
+                                    "CLI stdout line exceeded {ORDINARY_CLI_STDOUT_MAX_LINE_BYTES} bytes"
                                 ),
                             ),
                             line_reader::BoundedLineError::InvalidUtf8 {
@@ -1480,7 +1477,7 @@ async fn execute_cli_inner(
                         LOG_TAG,
                         "Claude stdin writer finished after CLI loop with error: {error}"
                     );
-                    if active_input_controller.has_durable_activity() {
+                    if active_input_controller.has_activity() {
                         active_input_error = Some(error);
                     }
                 }
@@ -1489,14 +1486,14 @@ async fn execute_cli_inner(
                         LOG_TAG,
                         "Claude stdin writer failed after CLI loop: {error}"
                     );
-                    if active_input_controller.has_durable_activity() {
+                    if active_input_controller.has_activity() {
                         active_input_error = Some(AgentError::Execution(format!(
                             "Claude stdin writer task failed during active-input quiescence: {error}"
                         )));
                     }
                 }
             }
-        } else if active_input_controller.has_durable_activity() {
+        } else if active_input_controller.has_activity() {
             let mut handle = handle;
             match tokio::time::timeout(
                 Duration::from_secs(constants::ACTIVE_INPUT_SINK_QUIESCENCE_TIMEOUT_SECS),
@@ -2121,7 +2118,7 @@ mod tests {
     #[cfg(unix)]
     #[tokio::test]
     async fn cli_exit_observation_distinguishes_stdout_drain_from_loop_completion() {
-        let active_input = ActiveInputRuntime::new_disabled("run-exit-observation");
+        let active_input = ActiveInputRuntime::new_disabled("run-exit-observation", "");
         let controller = active_input.controller();
         let termination_deadline = tokio::time::sleep(Duration::MAX);
         tokio::pin!(termination_deadline);

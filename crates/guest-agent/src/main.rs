@@ -267,7 +267,6 @@ async fn run(runtime: GuestRuntime) -> i32 {
             );
         match guest_agent::active_input::ActiveInputRuntime::new_with_receipts(
             &runtime.config.run_id,
-            true,
             &runtime.config.prompt,
             receipt_journal_path,
             http.clone(),
@@ -284,9 +283,8 @@ async fn run(runtime: GuestRuntime) -> i32 {
             }
         }
     } else {
-        guest_agent::active_input::ActiveInputRuntime::new_with_initial_prompt(
+        guest_agent::active_input::ActiveInputRuntime::new_disabled(
             &runtime.config.run_id,
-            false,
             &runtime.config.prompt,
         )
     };

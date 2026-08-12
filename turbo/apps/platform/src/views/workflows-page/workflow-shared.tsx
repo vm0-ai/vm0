@@ -486,9 +486,9 @@ export function gmailAutomationTitle(
       return $.workflows.automations.gmail.newMessageTitle;
     });
   }
-  if (automation.eventType === "github-label-applied") {
+  if (automation.eventType === "github-pull-request") {
     return i18n.t(($) => {
-      return $.workflows.automations.github.labelAppliedTitle;
+      return $.workflows.automations.github.pullRequestTitle;
     });
   }
   if (automation.eventType === "github-workflow-job-completed") {
@@ -573,13 +573,9 @@ function githubAutomationSummary(
   >,
 ): string | null {
   switch (automation.eventType) {
-    case "github-label-applied": {
-      return i18n.t(
-        ($) => {
-          return $.workflows.automations.github.labelOnlySummary;
-        },
-        { label: quote(automation.eventConfig.labelName) },
-      );
+    case "github-pull-request": {
+      const config = automation.eventConfig;
+      return [config.repository, config.action].join(" · ");
     }
     case "github-workflow-run-completed":
     case "github-workflow-job-completed": {

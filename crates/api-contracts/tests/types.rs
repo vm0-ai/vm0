@@ -44,7 +44,8 @@ fn generated_checkpoint_request_omits_absent_snapshots() {
         run_id: "run-1".to_string(),
         cli_agent_type: "claude-code".to_string(),
         cli_agent_session_id: "session-1".to_string(),
-        cli_agent_session_history_hash: history_hash.clone(),
+        cli_agent_session_history_hash: Some(history_hash.clone()),
+        cli_agent_session_history_disposition: None,
         artifact_snapshots: None,
         volume_versions_snapshot: None,
     };
@@ -69,7 +70,8 @@ fn generated_checkpoint_request_round_trips_preserve_parent_snapshot() {
         run_id: "run-1".to_string(),
         cli_agent_type: "codex".to_string(),
         cli_agent_session_id: "session-1".to_string(),
-        cli_agent_session_history_hash: "b".repeat(64),
+        cli_agent_session_history_hash: Some("b".repeat(64)),
+        cli_agent_session_history_disposition: None,
         artifact_snapshots: Some(vec![checkpoints::RequestArtifactSnapshot {
             name: "memory".to_string(),
             version: "version-1".to_string(),
@@ -100,6 +102,31 @@ fn generated_checkpoint_request_round_trips_preserve_parent_snapshot() {
 
     let round_trip: checkpoints::Request = serde_json::from_value(value).unwrap();
     assert_eq!(round_trip, request);
+}
+
+#[test]
+fn generated_checkpoint_request_serializes_discarded_oversized_history() {
+    let request = checkpoints::Request {
+        run_id: "run-1".to_string(),
+        cli_agent_type: "codex".to_string(),
+        cli_agent_session_id: "session-1".to_string(),
+        cli_agent_session_history_hash: None,
+        cli_agent_session_history_disposition: Some(
+            checkpoints::RequestCliAgentSessionHistoryDisposition::DiscardedOversized,
+        ),
+        artifact_snapshots: None,
+        volume_versions_snapshot: None,
+    };
+
+    assert_eq!(
+        serde_json::to_value(request).unwrap(),
+        json!({
+            "runId": "run-1",
+            "cliAgentType": "codex",
+            "cliAgentSessionId": "session-1",
+            "cliAgentSessionHistoryDisposition": "discarded_oversized",
+        })
+    );
 }
 
 #[test]

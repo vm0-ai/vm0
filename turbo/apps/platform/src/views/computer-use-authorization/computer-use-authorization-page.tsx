@@ -119,6 +119,8 @@ function HostOption({
 function EmptyHosts() {
   const { t } = useTranslation();
   const computerUseProductName = useGet(computerUseProductName$);
+  const desktopApplicationName =
+    computerUseProductName === "Okou" ? "Okou" : "Zero Computer Use";
   const downloadSupportLoadable = useLoadable(desktopDownloadSupportStatus$);
   const downloadSupportStatus =
     downloadSupportLoadable.state === "hasData"
@@ -145,7 +147,7 @@ function EmptyHosts() {
             ($) => {
               return $.authorization.computerUse.noHostsDescription;
             },
-            { desktopProductName: computerUseProductName },
+            { desktopApplicationName },
           )}
         </p>
         <p className="text-sm leading-5 text-muted-foreground">

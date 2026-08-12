@@ -1,4 +1,5 @@
 import "@uiw/react-markdown-preview/markdown.css";
+import { CopyButton, cn } from "@vm0/ui";
 import { useGet, useSet } from "ccstate-react";
 import type { Element, Root } from "hast";
 import { toJsxRuntime } from "hast-util-to-jsx-runtime";
@@ -15,9 +16,7 @@ import { theme$ } from "../../signals/theme.ts";
 import type { ImageLoadSignals } from "../../signals/image-load.ts";
 import { isImageUrl, isSafeMediaUrl, isVideoUrl } from "../../lib/media-url.ts";
 import { MarkdownCardView } from "../zero-page/chat-body-cards.tsx";
-import { CodeCopyButton } from "./code-copy-button.tsx";
 import { MermaidDiagramView } from "./mermaid-diagram.tsx";
-import { cn } from "@vm0/ui";
 
 type MarkdownNodeProp = { node?: Element };
 type MarkdownAnchorProps = ComponentPropsWithoutRef<"a"> & MarkdownNodeProp;
@@ -200,7 +199,15 @@ function MarkdownDivRenderer(props: MarkdownDivProps) {
     return <MarkdownCardView card={data.card} />;
   }
   if (typeof data?.copyCode === "string") {
-    return <CodeCopyButton code={data.copyCode} />;
+    return (
+      <CopyButton
+        type="button"
+        text={data.copyCode}
+        showTooltip={false}
+        className="copied"
+        data-code={data.copyCode}
+      />
+    );
   }
   if (data?.mermaidSignals) {
     return <MermaidDiagramView signals={data.mermaidSignals} />;

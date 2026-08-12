@@ -48,6 +48,7 @@ import {
   readOrgPlanEntitlementFixture,
   upsertOrgPlanEntitlementFixture,
 } from "../../../test-fixtures/org-plan-entitlement";
+import { createUniqueStaffOrgIdFixture } from "../../../test-fixtures/staff-org";
 import {
   API_TEST_CONNECTOR_FIREWALL_CONFIGS,
   apiTestConnectorCatalogValidationAuthority,
@@ -137,7 +138,6 @@ import { testCustomConnectorSkillVersionAssociationRoutes } from "../test-custom
 const context = testContext();
 const callbackStore = createStore();
 const fixtureStore = createStore();
-const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
 const ASSISTANT_EVENT_ID_NAMESPACE = "bfec4fb6-d5b8-43e4-a72a-9f58f87d7e01";
 const TEST_DATA_KEY = Buffer.from("0123456789abcdef0123456789abcdef", "utf8");
 
@@ -2527,7 +2527,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     await api.requestCancelRun(actor, canonicalRun.runId, [200]);
   });
 
-  it("persists canonical mounts across session continuation", async () => {
+  it("persists canonical mounts across historyless session continuation", async () => {
     const api = createRunsApi(context);
     const storages = createStoragesBddApi(context);
     const webhooks = createWebhookCallbackApi(context);
@@ -2685,15 +2685,12 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       versionId: preparedMemory.versionId,
       files: [memoryFile],
     });
-    const historyHash = createHash("sha256")
-      .update(`canonical storage history ${initialRun.runId}`)
-      .digest("hex");
     const checkpoint = await webhooks.requestAgentCheckpoint(
       {
         runId: initialRun.runId,
         cliAgentType: "claude-code",
         cliAgentSessionId: `bdd-storage-cli-${initialRun.runId}`,
-        cliAgentSessionHistoryHash: historyHash,
+        cliAgentSessionHistoryDisposition: "discarded_oversized",
         artifactSnapshots: [
           {
             name: initialMemory.name,
@@ -2795,6 +2792,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       prompt: "continue canonical storage session",
     });
     const sessionClaim = await api.claimRunnerJob(sessionRun.runId);
+    expect(sessionClaim.resumeSession).toBeNull();
     const sessionManifest = sessionClaim.storageManifest;
     if (!sessionManifest || !("storageMounts" in sessionManifest)) {
       throw new Error("Expected canonical mounts from session persistence");
@@ -5766,9 +5764,10 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
   it("enforces staff entitlement status at final run admission", async () => {
     const bdd = createBddApi(context);
     const api = createRunsApi(context);
-    const actor = bdd.user({ orgId: STAFF_ORG_ID });
+    const orgId = createUniqueStaffOrgIdFixture();
+    const actor = bdd.user({ orgId });
     onTestFinished(async () => {
-      await deleteOrgPlanEntitlementFixture(STAFF_ORG_ID);
+      await deleteOrgPlanEntitlementFixture(orgId);
     });
     bdd.acceptAgentStorageWrites();
     api.acceptStorageDownloads();
@@ -5776,7 +5775,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     const runnerGroup = api.configureRunnerGroup();
 
     await upsertOrgPlanEntitlementFixture({
-      orgId: STAFF_ORG_ID,
+      orgId,
       status: "active",
       supportByok: true,
       restrictedVm0Models: false,
@@ -5784,7 +5783,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     const completed = await bdd.completeOnboarding(actor);
     expect(completed.status).toBe(200);
     await upsertOrgPlanEntitlementFixture({
-      orgId: STAFF_ORG_ID,
+      orgId,
       status: "active",
       supportByok: true,
       restrictedVm0Models: false,
@@ -5795,14 +5794,14 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
       visibility: "private",
     });
     await seedOrgMetadata({
-      orgId: STAFF_ORG_ID,
+      orgId,
       tier: "limited-free-1",
       credits: 20_000,
     });
     // The metadata fixture keeps the production tier/entitlement invariant.
     // Restore the deliberate staff-only divergence exercised by this test.
     await upsertOrgPlanEntitlementFixture({
-      orgId: STAFF_ORG_ID,
+      orgId,
       status: "active",
       supportByok: true,
       restrictedVm0Models: false,
@@ -5825,7 +5824,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
     await api.requestCancelRun(actor, run.runId, [200]);
 
     await upsertOrgPlanEntitlementFixture({
-      orgId: STAFF_ORG_ID,
+      orgId,
       status: "suspended",
       supportByok: true,
       restrictedVm0Models: false,

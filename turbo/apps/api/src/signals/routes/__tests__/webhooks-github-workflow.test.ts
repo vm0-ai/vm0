@@ -111,22 +111,34 @@ async function setupFixture(): Promise<{
   return { fixture, actor, agentId: agent.agentId, workflowId };
 }
 
-function githubPayload(
-  action: "labeled" | "opened",
-  installationId: string,
-): string {
+function githubPullRequestPayload(args: {
+  readonly action: string;
+  readonly installationId: string;
+  readonly merged?: boolean;
+  readonly number?: number;
+  readonly label?: { readonly id: number; readonly name: string };
+}): string {
+  const merged = args.merged ?? false;
+  const number = args.number ?? 42;
   return JSON.stringify({
-    action,
-    issue: {
-      number: 42,
-      title: "Needs triage",
-      body: null,
+    action: args.action,
+    pull_request: {
+      number,
+      title: "Ship chat snapshots",
+      html_url: `https://github.com/vm0-ai/vm0/pull/${number}`,
+      draft: false,
+      merged,
+      merged_at: merged ? "2026-08-12T00:00:00Z" : null,
+      merge_commit_sha: merged ? "abc123" : null,
+      merged_by: merged ? { id: 101, login: "lancy", type: "User" } : null,
+      user: { id: 202, login: "pr-author", type: "User" },
+      base: { ref: "main" },
+      head: { ref: "feat/chat-snapshots", sha: "def456" },
       labels: [{ id: 1001, name: "triage" }],
-      user: { id: 202, login: "issue-author", type: "User" },
     },
-    ...(action === "labeled" ? { label: { id: 1001, name: "triage" } } : {}),
-    repository: { full_name: "vm0-ai/vm0" },
-    installation: { id: Number(installationId) },
+    ...(args.label ? { label: args.label } : {}),
+    repository: { id: 456, full_name: "vm0-ai/vm0" },
+    installation: { id: Number(args.installationId) },
     sender: { id: 101, login: "lancy", type: "User" },
   });
 }
@@ -166,7 +178,6 @@ async function postGithubWebhook(args: {
   readonly event:
     | "deployment_status"
     | "issue_comment"
-    | "issues"
     | "pull_request"
     | "pull_request_review"
     | "workflow_job"
@@ -202,6 +213,7 @@ type GithubWebhookAutomationCase = {
   readonly event:
     | "deployment_status"
     | "issue_comment"
+    | "pull_request"
     | "pull_request_review"
     | "workflow_job";
   readonly payload: (installationId: string) => string;
@@ -212,6 +224,36 @@ type GithubWebhookAutomationCase = {
 };
 
 const githubWebhookAutomationCases: readonly GithubWebhookAutomationCase[] = [
+  {
+    name: "pull request merged",
+    body: {
+      kind: "event",
+      eventType: "github-pull-request",
+      eventConfig: {
+        provider: "github",
+        event: "pull_request",
+        repository: "VM0-AI/VM0",
+        action: "closed",
+        merged: true,
+        filters: {
+          baseBranches: ["main"],
+          authors: ["PR-AUTHOR"],
+          pullRequestNumbers: ["42"],
+          labels: ["TRIAGE"],
+        },
+      },
+    },
+    event: "pull_request",
+    payload: (installationId) => {
+      return githubPullRequestPayload({
+        action: "closed",
+        merged: true,
+        installationId,
+      });
+    },
+    expectedTrigger: 'GitHub pull request #42 was merged into "main"',
+    expectedPrompt: ['"merged": true', '"mergeCommitSha"'],
+  },
   {
     name: "workflow job completed",
     body: {
@@ -495,34 +537,29 @@ describe("POST /api/webhooks/github for workflow automations", () => {
     },
   );
 
-  it("dispatches matching label events and de-duplicates deliveries", async () => {
+  it("dispatches matching pull request events and de-duplicates deliveries", async () => {
     const { fixture, actor, agentId, workflowId } = await setupFixture();
-    const installed = await gh.installGithubApp(actor, agentId, {
-      oauthCode: {
-        code: `gh-workflow-${randomUUID().slice(0, 8)}`,
-        githubUserId: "101",
-      },
-    });
+    const installed = await gh.installGithubApp(actor, agentId);
     mockOptionalEnv("GITHUB_APP_WEBHOOK_SECRET", GITHUB_WEBHOOK_SECRET);
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
 
+    const mergedAutomationBody: ZeroWorkflowAutomationCreateRequest = {
+      kind: "event",
+      eventType: "github-pull-request",
+      eventConfig: {
+        provider: "github",
+        event: "pull_request",
+        repository: "vm0-ai/vm0",
+        action: "closed",
+        merged: true,
+        filters: {},
+      },
+    };
     const created = await accept(
       automationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
-        body: {
-          kind: "event",
-          eventType: "github-label-applied",
-          eventConfig: {
-            provider: "github",
-            event: "label_applied",
-            labelName: "TriAge",
-            filters: {
-              subject: "both",
-              actor: { type: "me" },
-            },
-          },
-        },
+        body: mergedAutomationBody,
       }),
       [201],
     );
@@ -530,52 +567,67 @@ describe("POST /api/webhooks/github for workflow automations", () => {
       automationsClient().create({
         headers: authHeaders(),
         params: { workflowId },
-        body: {
-          kind: "event",
-          eventType: "github-label-applied",
-          eventConfig: {
-            provider: "github",
-            event: "label_applied",
-            labelName: "TriAge",
-            filters: {
-              subject: "both",
-              actor: { type: "me" },
-            },
-          },
-        },
+        body: mergedAutomationBody,
       }),
       [201],
     );
 
-    const labeledDeliveryId = `delivery-${randomUUID()}`;
-    const openedDeliveryId = `delivery-${randomUUID()}`;
-    const labeled = await postGithubWebhook({
-      event: "issues",
-      deliveryId: labeledDeliveryId,
-      rawBody: githubPayload("labeled", installed.remoteInstallationId),
+    const mergedDeliveryId = `delivery-${randomUUID()}`;
+    const secondMergedDeliveryId = `delivery-${randomUUID()}`;
+    const merged = await postGithubWebhook({
+      event: "pull_request",
+      deliveryId: mergedDeliveryId,
+      rawBody: githubPullRequestPayload({
+        action: "closed",
+        merged: true,
+        installationId: installed.remoteInstallationId,
+      }),
     });
-    expect(labeled).toStrictEqual({ status: 200, text: "OK" });
+    expect(merged).toStrictEqual({ status: 200, text: "OK" });
     await flushWaitUntilForTest();
 
     const duplicate = await postGithubWebhook({
-      event: "issues",
-      deliveryId: labeledDeliveryId,
-      rawBody: githubPayload("labeled", installed.remoteInstallationId),
+      event: "pull_request",
+      deliveryId: mergedDeliveryId,
+      rawBody: githubPullRequestPayload({
+        action: "closed",
+        merged: true,
+        installationId: installed.remoteInstallationId,
+      }),
     });
     expect(duplicate).toStrictEqual({ status: 200, text: "OK" });
     await flushWaitUntilForTest();
 
-    const opened = await postGithubWebhook({
-      event: "issues",
-      deliveryId: openedDeliveryId,
-      rawBody: githubPayload("opened", installed.remoteInstallationId),
+    const secondMerged = await postGithubWebhook({
+      event: "pull_request",
+      deliveryId: secondMergedDeliveryId,
+      rawBody: githubPullRequestPayload({
+        action: "closed",
+        merged: true,
+        number: 43,
+        installationId: installed.remoteInstallationId,
+      }),
     });
-    expect(opened).toStrictEqual({ status: 200, text: "OK" });
+    expect(secondMerged).toStrictEqual({ status: 200, text: "OK" });
+    await flushWaitUntilForTest();
+
+    const closedWithoutMerge = await postGithubWebhook({
+      event: "pull_request",
+      deliveryId: `delivery-${randomUUID()}`,
+      rawBody: githubPullRequestPayload({
+        action: "closed",
+        merged: false,
+        number: 44,
+        installationId: installed.remoteInstallationId,
+      }),
+    });
+    expect(closedWithoutMerge).toStrictEqual({ status: 200, text: "OK" });
     await flushWaitUntilForTest();
     await flushWaitUntilForTest();
 
-    // Two deliveries matched two automations each; the duplicate redelivery
-    // was recorded as processed and added nothing. Under the per-thread
+    // Two merged deliveries matched two automations each; the duplicate
+    // redelivery was recorded as processed and added nothing, and the
+    // closed-without-merge delivery never matched. Under the per-thread
     // workflow queue, the first matched event creates the only admitted run
     // and the remaining three wait as pending workflow queue events.
     await runsApi.heartbeatRunner();
@@ -611,7 +663,6 @@ describe("POST /api/webhooks/github for workflow automations", () => {
         "api_dispatch_pre_create_zero_automation_event_load_automations",
         "api_dispatch_pre_create_zero_automation_event_match_automations",
         "api_dispatch_pre_create_zero_automation_event_record_processed_event",
-        "api_dispatch_pre_create_zero_automation_event_build_run_input",
         "api_dispatch_pre_create_zero_automation_event_handoff_run",
       ]) {
         expect(actionTypes).toContain(actionType);
@@ -629,11 +680,11 @@ describe("POST /api/webhooks/github for workflow automations", () => {
         ]),
       );
       const serializedTiming = JSON.stringify(timingEvents);
-      expect(serializedTiming).not.toContain(labeledDeliveryId);
+      expect(serializedTiming).not.toContain(mergedDeliveryId);
       expect(serializedTiming).not.toContain("vm0-ai/vm0");
-      expect(serializedTiming).not.toContain("Needs triage");
+      expect(serializedTiming).not.toContain("Ship chat snapshots");
       expect(serializedTiming).not.toContain("lancy");
-      expect(serializedTiming).not.toContain("triage");
+      expect(serializedTiming).not.toContain("pr-author");
       expect(serializedTiming).not.toContain(created.body.id);
       expect(serializedTiming).not.toContain(createdSecond.body.id);
       expect(serializedTiming).not.toContain(WORKFLOW_NAME);

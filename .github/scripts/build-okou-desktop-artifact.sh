@@ -25,8 +25,8 @@ if [[ ! -d "$app_dir" || "$(basename "$app_dir")" != "Zero Computer Use.app" ]];
   echo "Desktop artifact requires a Zero Computer Use.app directory: $app_dir" >&2
   exit 1
 fi
-if [[ -n "$okou_app_dir" && (! -d "$okou_app_dir" || "$(basename "$okou_app_dir")" != "Okou Computer Use.app") ]]; then
-  echo "Desktop artifact requires an Okou Computer Use.app directory: $okou_app_dir" >&2
+if [[ -n "$okou_app_dir" && (! -d "$okou_app_dir" || "$(basename "$okou_app_dir")" != "Okou.app") ]]; then
+  echo "Desktop artifact requires an Okou.app directory: $okou_app_dir" >&2
   exit 1
 fi
 
@@ -75,7 +75,7 @@ jq -n \
     }
   }
   | if $okou_archive_sha256 == "" then . else . + {
-      okouAppName: "Okou Computer Use.app",
+      okouAppName: "Okou.app",
       okouArchive: {
         path: "okou-app.tar.gz",
         sha256: $okou_archive_sha256,

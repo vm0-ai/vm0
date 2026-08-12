@@ -1,4 +1,4 @@
-//! Durable active-input acceptance persistence and direct receipt delivery.
+//! Active-input acceptance persistence and direct receipt delivery.
 
 use std::collections::HashSet;
 use std::io;
@@ -92,6 +92,8 @@ pub(crate) struct ActiveInputReceiptRuntime {
     upload_tx: mpsc::UnboundedSender<String>,
     finalize_tx: watch::Sender<bool>,
     worker: Mutex<Option<JoinHandle<()>>>,
+    #[cfg(test)]
+    _test_directory: Option<tempfile::TempDir>,
 }
 
 impl std::fmt::Debug for ActiveInputReceiptRuntime {
@@ -132,6 +134,31 @@ impl ActiveInputReceiptRuntime {
                 upload_tx,
                 finalize_tx,
                 worker: Mutex::new(Some(worker)),
+                #[cfg(test)]
+                _test_directory: None,
+            },
+            recovered,
+        ))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn start_for_test(run_id: &str) -> io::Result<(Self, Vec<String>)> {
+        let directory = tempfile::tempdir()?;
+        let journal = Arc::new(ReceiptJournal::load(
+            run_id,
+            directory.path().join("active-input-receipts.json"),
+        )?);
+        let recovered = journal.outstanding();
+        let (upload_tx, upload_rx) = mpsc::unbounded_channel();
+        drop(upload_rx);
+        let (finalize_tx, _) = watch::channel(false);
+        Ok((
+            Self {
+                journal,
+                upload_tx,
+                finalize_tx,
+                worker: Mutex::new(None),
+                _test_directory: Some(directory),
             },
             recovered,
         ))

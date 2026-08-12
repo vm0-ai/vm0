@@ -81,9 +81,6 @@ pub const CLI_STDERR_RESULT_MAX_LINES: usize = 200;
 /// Documented maximum byte length for one returned stderr line after CRLF normalization.
 pub const CLI_STDERR_RESULT_MAX_LINE_BYTES: usize = 16 * 1024;
 
-/// Integration contract for one accepted Claude Code stdout record.
-pub const CLI_STDOUT_MAX_LINE_BYTES: usize = 16 * 1024 * 1024;
-
 /// Documented replacement for a stderr line that exceeds the diagnostic limit.
 pub const CLI_STDERR_OMITTED_LONG_LINE: &str =
     "[stderr line omitted: exceeded diagnostic size limit]";
@@ -981,8 +978,24 @@ pub unsafe fn setup_codex_app_server_env(
 pub fn active_input_payload(text: &str) -> Result<Vec<u8>, serde_json::Error> {
     serde_json::to_vec(&json!({
         "type": "active-input",
+        "deliveryId": "223f8797-a456-4eea-98f7-f7ab88c43c00",
         "text": text,
     }))
+}
+
+pub fn active_input_runtime(
+    runtime: &guest_agent::run_context::GuestRuntime,
+) -> Result<guest_agent::active_input::ActiveInputRuntime, guest_agent::error::AgentError> {
+    let journal_path = guest_contracts::runtime_paths::active_input_receipt_journal_file(
+        runtime.paths.runtime_dir(),
+    );
+    guest_agent::active_input::ActiveInputRuntime::new_with_receipts(
+        &runtime.config.run_id,
+        &runtime.config.prompt,
+        journal_path,
+        guest_agent::http::HttpClient::new()?,
+    )
+    .map_err(guest_agent::error::AgentError::Io)
 }
 
 pub fn read_codex_session_history_events_for_paths(
@@ -1121,9 +1134,8 @@ pub async fn execute_cli_for_runtime(
     masker: &guest_agent::masker::SecretMasker,
     heartbeat: guest_agent::cli::HeartbeatMonitor,
 ) -> Result<guest_agent::cli::CliExecutionResult, guest_agent::error::AgentError> {
-    let active_input = guest_agent::active_input::ActiveInputRuntime::new_with_initial_prompt(
+    let active_input = guest_agent::active_input::ActiveInputRuntime::new_disabled(
         &runtime.config.run_id,
-        false,
         &runtime.config.prompt,
     );
     execute_cli_with_active_input_for_runtime(
@@ -1158,9 +1170,8 @@ pub async fn execute_cli_with_cancellation_for_runtime(
     heartbeat: guest_agent::cli::HeartbeatMonitor,
     cancellation: tokio_util::sync::CancellationToken,
 ) -> Result<guest_agent::cli::CliExecutionResult, guest_agent::error::AgentError> {
-    let active_input = guest_agent::active_input::ActiveInputRuntime::new_with_initial_prompt(
+    let active_input = guest_agent::active_input::ActiveInputRuntime::new_disabled(
         &runtime.config.run_id,
-        false,
         &runtime.config.prompt,
     );
     guest_agent::cli::execute_cli_with_controls_for_config_started_at(

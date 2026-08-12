@@ -16,6 +16,9 @@ import {
   type ChatSearchResponse,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { isSupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
+import type { ChatEventRowV4 } from "@vm0/api-contracts/contracts/chat-event-rows";
+import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { getClientConfig, handleError } from "../core/client-factory";
 
 export interface ZeroChatThreadSnapshot {
@@ -25,6 +28,20 @@ export interface ZeroChatThreadSnapshot {
 }
 
 export type ZeroChatThreadEvent = ChatThreadEvent;
+
+interface ZeroChatEventSnapshotDownload {
+  readonly url: string;
+  readonly lastSeqId: number;
+}
+
+type ZeroChatEventRowsPage =
+  | { readonly kind: "rows"; readonly rows: readonly ChatEventRowV4[] }
+  | { readonly kind: "expired" };
+
+interface ZeroQueuedChatEvent {
+  readonly eventId: string;
+  readonly seqId: number;
+}
 
 function requireSupportedModel(model: string) {
   if (!isSupportedRunModel(model)) {
@@ -215,6 +232,69 @@ export async function listZeroChatEvents(options: {
     return result.body.events;
   }
   handleError(result, "Failed to list chat events");
+}
+
+export async function isZeroChatEventSnapshotReadEnabled(): Promise<boolean> {
+  const config = await getClientConfig();
+  const client = initClient(zeroFeatureSwitchesContract, config);
+  const result = await client.get();
+  if (result.status === 200) {
+    return Boolean(
+      result.body.effectiveSwitches[FeatureSwitchKey.ChatEventSnapshotRead],
+    );
+  }
+  handleError(result, "Failed to get feature switches");
+}
+
+export async function getZeroChatEventSnapshot(options: {
+  readonly threadId: string;
+}): Promise<ZeroChatEventSnapshotDownload | null> {
+  const config = await getClientConfig();
+  const client = initClient(chatThreadEventsContract, config);
+  const result = await client.snapshot({
+    params: { threadId: options.threadId },
+  });
+  if (result.status === 200) {
+    return { url: result.body.url, lastSeqId: result.body.lastSeqId };
+  }
+  if (result.status === 404) {
+    return null;
+  }
+  handleError(result, "Failed to get chat event snapshot");
+}
+
+export async function listZeroChatEventRows(options: {
+  readonly threadId: string;
+  readonly sinceSeqId: number;
+  readonly limit: number;
+}): Promise<ZeroChatEventRowsPage> {
+  const config = await getClientConfig();
+  const client = initClient(chatThreadEventsContract, config);
+  const result = await client.rows({
+    params: { threadId: options.threadId },
+    query: { sinceSeqId: options.sinceSeqId, limit: options.limit },
+  });
+  if (result.status === 200) {
+    return { kind: "rows", rows: result.body.rows };
+  }
+  if (result.status === 410) {
+    return { kind: "expired" };
+  }
+  handleError(result, "Failed to list chat event rows");
+}
+
+export async function listZeroQueuedChatEvents(options: {
+  readonly threadId: string;
+}): Promise<readonly ZeroQueuedChatEvent[]> {
+  const config = await getClientConfig();
+  const client = initClient(chatThreadEventsContract, config);
+  const result = await client.queued({
+    params: { threadId: options.threadId },
+  });
+  if (result.status === 200) {
+    return result.body.events;
+  }
+  handleError(result, "Failed to list queued chat events");
 }
 
 export async function updateZeroChatThreadModelSelection(options: {

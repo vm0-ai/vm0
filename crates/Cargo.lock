@@ -1353,6 +1353,7 @@ version = "0.7.1"
 dependencies = [
  "chrono",
  "clap",
+ "guest-contracts",
  "libc",
  "serde_json",
  "tempfile",

@@ -50,13 +50,15 @@ function createAttachmentResourceUrl$(url: string): Computed<Promise<string>> {
   });
 }
 
+export type AttachmentResourceUrlResolver = (
+  url: string,
+) => Computed<Promise<string>>;
+
 /**
- * Every preview kind resolves through this resolver, so a component can ask for
- * a loadable URL during render: the computed it hands back is memoized per
- * source URL and therefore stable across renders, instead of signing the same
- * attachment again on every pass.
+ * Create the URL join owned by one thread or page. The returned map is private:
+ * consumers only receive the resolved item's computed, never the keyed store.
  */
-export const attachmentResourceUrlResolver$ = computed(() => {
+export function createAttachmentResourceUrlResolver(): AttachmentResourceUrlResolver {
   const resourceUrlByUrl = new Map<string, Computed<Promise<string>>>();
   return (url: string): Computed<Promise<string>> => {
     const existing = resourceUrlByUrl.get(url);
@@ -67,4 +69,14 @@ export const attachmentResourceUrlResolver$ = computed(() => {
     resourceUrlByUrl.set(url, resourceUrl$);
     return resourceUrl$;
   };
+}
+
+/**
+ * Preview components that do not already receive thread-owned signals share a
+ * resolver for the current page. Replacing the page signal replaces the whole
+ * resolver, so URLs from a previous page are no longer retained.
+ */
+export const pageAttachmentResourceUrlResolver$ = computed((get) => {
+  get(pageSignal$);
+  return createAttachmentResourceUrlResolver();
 });

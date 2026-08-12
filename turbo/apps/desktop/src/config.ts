@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { DesktopProduct } from "@vm0/api-contracts/contracts/client-headers";
+import type { DesktopUpdateLine } from "@vm0/api-contracts/contracts/desktop-updates";
 import desktopIdentities from "./desktop-identities.json";
 import { rewriteDesktopServiceHostname } from "./desktop-api-base-url";
 
@@ -13,6 +14,8 @@ export interface DesktopIdentity {
   readonly product: DesktopProduct;
   readonly brandName: "Zero" | "Okou";
   readonly displayName: string;
+  readonly userDataDirectoryName: string;
+  readonly updateLine: DesktopUpdateLine;
   readonly bundleId: string;
   readonly authProtocolName: string;
   readonly authScheme: string;
@@ -46,6 +49,13 @@ function desktopBrandName(value: string): "Zero" | "Okou" {
   throw new Error(`Unsupported desktop brand: ${value}`);
 }
 
+function desktopUpdateLine(value: string): DesktopUpdateLine {
+  if (value === "zero" || value === "okou" || value === "ai-okou-desktop") {
+    return value;
+  }
+  throw new Error(`Unsupported desktop update line: ${value}`);
+}
+
 function desktopIdentity(
   product: DesktopProduct,
   kind: DesktopIdentityKind,
@@ -55,6 +65,7 @@ function desktopIdentity(
     ...identity,
     product: desktopProduct(identity.product),
     brandName: desktopBrandName(identity.brandName),
+    updateLine: desktopUpdateLine(identity.updateLine),
   };
 }
 

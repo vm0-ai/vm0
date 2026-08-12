@@ -100,14 +100,14 @@ verify_archive \
 has_okou_archive="$(jq -r 'has("okouAppName") or has("okouArchive")' "$manifest_path")"
 if [[ "$has_okou_archive" == "true" ]]; then
   jq -e \
-    '.okouAppName == "Okou Computer Use.app"
+    '.okouAppName == "Okou.app"
       and .okouArchive.path == "okou-app.tar.gz"
       and (.okouArchive.sha256 | type == "string" and test("^[0-9a-f]{64}$"))
       and (.okouArchive.size | type == "number" and . > 0)' \
     "$manifest_path" >/dev/null
   verify_archive \
     "$artifact_dir/okou-app.tar.gz" \
-    "Okou Computer Use.app" \
+    "Okou.app" \
     '.okouArchive'
 elif [[ "$require_okou" == "--require-okou" ]]; then
   echo "Desktop artifact does not contain the required Okou app archive" >&2

@@ -71,9 +71,9 @@ function automationConnectorDependency(
         reason: "This workflow has a Gmail event automation.",
       };
     }
-    case "github-label-applied":
     case "github-deployment-status-created":
     case "github-issue-comment-created":
+    case "github-pull-request":
     case "github-pull-request-review-submitted":
     case "github-workflow-job-completed":
     case "github-workflow-run-completed": {

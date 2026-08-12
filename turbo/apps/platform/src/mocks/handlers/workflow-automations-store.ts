@@ -8,9 +8,9 @@ type MockWorkflowAutomationOverrides = Partial<
   readonly eventType?:
     | "gmail-new-message"
     | "gmail-label-applied"
-    | "github-label-applied"
     | "github-deployment-status-created"
     | "github-issue-comment-created"
+    | "github-pull-request"
     | "github-pull-request-review-submitted"
     | "github-workflow-job-completed"
     | "github-workflow-run-completed"
@@ -123,31 +123,6 @@ function createMockGmailLabelAutomation(
   } as ChatThreadWorkflowAutomation;
 }
 
-function createMockGithubLabelAutomation(
-  base: MockWorkflowAutomationBase,
-  overrides: MockWorkflowAutomationOverrides,
-  workflow: ChatThreadWorkflowAutomation["workflow"],
-): ChatThreadWorkflowAutomation {
-  return {
-    ...base,
-    kind: "event",
-    eventType: "github-label-applied",
-    eventConfig: {
-      provider: "github",
-      event: "label_applied",
-      labelName: "triage",
-      filters: {
-        subject: "both",
-        actor: { type: "me" },
-      },
-    },
-    schedule: null,
-    scheduleSummary: null,
-    ...overrides,
-    workflow,
-  } as ChatThreadWorkflowAutomation;
-}
-
 function createMockGithubWorkflowRunAutomation(
   base: MockWorkflowAutomationBase,
   overrides: MockWorkflowAutomationOverrides,
@@ -176,29 +151,38 @@ function createMockGithubWebhookAutomation(
 ): ChatThreadWorkflowAutomation {
   const eventType = overrides.eventType ?? "github-workflow-job-completed";
   const eventConfig =
-    eventType === "github-pull-request-review-submitted"
+    eventType === "github-pull-request"
       ? {
           provider: "github",
-          event: "pull_request_review_submitted",
+          event: "pull_request",
+          repository: "vm0-ai/vm0",
+          action: "closed",
+          merged: true,
           filters: {},
         }
-      : eventType === "github-deployment-status-created"
+      : eventType === "github-pull-request-review-submitted"
         ? {
             provider: "github",
-            event: "deployment_status_created",
+            event: "pull_request_review_submitted",
             filters: {},
           }
-        : eventType === "github-issue-comment-created"
+        : eventType === "github-deployment-status-created"
           ? {
               provider: "github",
-              event: "issue_comment_created",
-              filters: { subject: "both" },
-            }
-          : {
-              provider: "github",
-              event: "workflow_job_completed",
+              event: "deployment_status_created",
               filters: {},
-            };
+            }
+          : eventType === "github-issue-comment-created"
+            ? {
+                provider: "github",
+                event: "issue_comment_created",
+                filters: { subject: "both" },
+              }
+            : {
+                provider: "github",
+                event: "workflow_job_completed",
+                filters: {},
+              };
   return {
     ...base,
     kind: "event",
@@ -262,13 +246,11 @@ export function createMockWorkflowAutomation(
     if (overrides.eventType === "gmail-label-applied") {
       return createMockGmailLabelAutomation(base, overrides, workflow);
     }
-    if (overrides.eventType === "github-label-applied") {
-      return createMockGithubLabelAutomation(base, overrides, workflow);
-    }
     if (overrides.eventType === "github-workflow-run-completed") {
       return createMockGithubWorkflowRunAutomation(base, overrides, workflow);
     }
     if (
+      overrides.eventType === "github-pull-request" ||
       overrides.eventType === "github-workflow-job-completed" ||
       overrides.eventType === "github-pull-request-review-submitted" ||
       overrides.eventType === "github-deployment-status-created" ||

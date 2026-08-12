@@ -35,7 +35,7 @@ import {
   orgMembers$,
   type OrgMember,
 } from "../../signals/external/org-members.ts";
-import { unreadAgentIds$ } from "../../signals/chat-page/sidebar-unread-threads.ts";
+import { unreadAgentIds$ } from "../../signals/chat-page/chat-thread-indicators.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { onDomEventFn } from "../../signals/utils.ts";
 import { Link } from "../router/link.tsx";

@@ -43,6 +43,7 @@ import {
 } from "./signals/route-entry";
 import { configureChatRunFinishedEventDispatcher } from "./signals/services/chat-run-finished-event-registration.service";
 import { configurePiEdgeTurnDispatcher } from "./signals/services/pi-edge-turn-registration.service";
+import type { UsagePricingResolution } from "./signals/context/usage-pricing-resolution";
 import {
   isAbortError,
   normalizeThrown,
@@ -52,7 +53,7 @@ import {
 
 const L = logger("App");
 
-const WEB_AUTH_PATHS = ["/sign-in", "/sign-up"] as const;
+const AUTH_PATHS = ["/sign-in", "/sign-up"] as const;
 const PREVIEW_AUTOMATION_BYPASS_ERROR = "Preview automation bypass required";
 const BYPASS_FINGERPRINT_LENGTH = 12;
 const UNHANDLED_REQUEST_ERROR_TYPE = "unhandled_request_error" as const;
@@ -103,11 +104,11 @@ function captureError(error: unknown): void {
   }
 }
 
-function redirectToWeb(context: Context): Response {
+function redirectToApp(context: Context): Response {
   const incoming = new URL(context.req.url);
   const target = new URL(
     `${incoming.pathname}${incoming.search}`,
-    env("VM0_WEB_URL"),
+    env("APP_URL"),
   );
   return context.redirect(target.toString());
 }
@@ -549,11 +550,13 @@ function handleError(error: unknown, context: Context): Response {
 interface CreateAppWithRoutesOptions {
   readonly signal: AbortSignal;
   readonly routes: readonly RouteEntry[];
+  readonly usagePricingResolution?: UsagePricingResolution;
 }
 
 export function createAppWithRoutes({
   routes,
   signal,
+  usagePricingResolution,
 }: CreateAppWithRoutesOptions): Hono {
   configureChatRunFinishedEventDispatcher();
   configurePiEdgeTurnDispatcher();
@@ -594,13 +597,17 @@ export function createAppWithRoutes({
 
   app.use("*", webClientCompatibilityMiddleware);
 
-  for (const path of WEB_AUTH_PATHS) {
-    app.get(path, redirectToWeb);
-    app.get(`${path}/*`, redirectToWeb);
+  for (const path of AUTH_PATHS) {
+    app.get(path, redirectToApp);
+    app.get(`${path}/*`, redirectToApp);
   }
 
   for (const { route, handler } of withApiNamespaceAliases(routes)) {
-    app.on(route.method, route.path, honoSignalHandler(handler, route, signal));
+    app.on(
+      route.method,
+      route.path,
+      honoSignalHandler(handler, route, signal, usagePricingResolution),
+    );
   }
 
   app.notFound((context) => {

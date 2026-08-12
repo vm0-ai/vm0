@@ -225,24 +225,39 @@ async fn create_checkpoint_impl(
         artifact::snapshot_artifact_entries(http, inputs.run_id, inputs.artifact_entries),
         session_history::prepare_and_upload_session_history(http, inputs.run_id, history_inputs),
     );
-    let session_history::CheckpointSessionHistory {
-        cli_agent_session_id,
-        history_marker_payload,
-        history_hash,
-        history_size,
-        live_history,
-    } = checkpoint_history?;
+    let checkpoint_history = checkpoint_history?;
     let artifact_snapshots = artifact_snapshots?;
 
-    // Build and send checkpoint payload (session history hash only, content uploaded to S3)
     let cli_agent_type = inputs.framework.agent_type();
-    let payload = checkpoints::Request {
-        run_id: inputs.run_id.to_string(),
-        cli_agent_type: cli_agent_type.to_string(),
-        cli_agent_session_id,
-        cli_agent_session_history_hash: history_hash,
-        artifact_snapshots,
-        volume_versions_snapshot: None,
+    let (payload, uploaded_history) = match checkpoint_history {
+        session_history::CheckpointSessionHistory::Uploaded(history) => {
+            let payload = checkpoints::Request {
+                run_id: inputs.run_id.to_string(),
+                cli_agent_type: cli_agent_type.to_string(),
+                cli_agent_session_id: history.cli_agent_session_id.clone(),
+                cli_agent_session_history_hash: Some(history.history_hash.clone()),
+                cli_agent_session_history_disposition: None,
+                artifact_snapshots,
+                volume_versions_snapshot: None,
+            };
+            (payload, Some(history))
+        }
+        session_history::CheckpointSessionHistory::DiscardedOversized {
+            cli_agent_session_id,
+        } => {
+            let payload = checkpoints::Request {
+                run_id: inputs.run_id.to_string(),
+                cli_agent_type: cli_agent_type.to_string(),
+                cli_agent_session_id,
+                cli_agent_session_history_hash: None,
+                cli_agent_session_history_disposition: Some(
+                    checkpoints::RequestCliAgentSessionHistoryDisposition::DiscardedOversized,
+                ),
+                artifact_snapshots,
+                volume_versions_snapshot: None,
+            };
+            (payload, None)
+        }
     };
 
     log_info!(LOG_TAG, "Calling checkpoint API...");
@@ -266,13 +281,17 @@ async fn create_checkpoint_impl(
         .and_then(|v| v.as_str());
 
     if let Some(id) = checkpoint_id {
-        if session_history::reconcile_live_history_after_checkpoint(live_history) {
+        if let Some(uploaded_history) = uploaded_history
+            && session_history::reconcile_live_history_after_checkpoint(
+                uploaded_history.live_history,
+            )
+        {
             session_history::write_final_session_history_identity(
                 mode,
-                &payload.cli_agent_session_id,
-                &payload.cli_agent_session_history_hash,
-                history_size,
-                &history_marker_payload,
+                &uploaded_history.cli_agent_session_id,
+                &uploaded_history.history_hash,
+                uploaded_history.history_size,
+                &uploaded_history.history_marker_payload,
                 inputs.framework,
                 inputs.final_session_history_identity_file.as_ref(),
             );

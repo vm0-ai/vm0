@@ -113,6 +113,36 @@ describe("artifact catalog page", () => {
     );
   });
 
+  it("keeps the kind filter outside the scrolling catalog region", async () => {
+    context.mocks.api(artifactCatalogContract.list, ({ respond }) => {
+      return respond(200, {
+        artifacts: [artifact({ kind: "presentation", title: "launch-deck" })],
+        nextCursor: null,
+      });
+    });
+
+    setupArtifactCatalogPage();
+
+    const card = await findCard("launch-deck");
+    const filter = buttonByLabel(
+      i18n.t(($) => {
+        return $.artifacts.catalog.filters.presentationAria;
+      }),
+    );
+    if (!filter) {
+      throw new Error("Expected the presentation kind filter to render");
+    }
+    const viewport = document.querySelector("main");
+    if (!viewport) {
+      throw new Error("Expected the artifacts page to render a scroll region");
+    }
+
+    // The filter stays pinned only while it lives outside the scroll
+    // container; moving it back inside would silently scroll it away.
+    expect(viewport.contains(filter)).toBeFalsy();
+    expect(viewport.contains(card)).toBeTruthy();
+  });
+
   it("defaults to presentations and uses the requested filter order", async () => {
     const requestedKinds: (string | undefined)[] = [];
     context.mocks.api(artifactCatalogContract.list, ({ query, respond }) => {

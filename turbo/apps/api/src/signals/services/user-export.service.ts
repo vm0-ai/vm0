@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { ZipArchive } from "archiver";
 import { command, computed, type Computed } from "ccstate";
-import { and, asc, desc, eq, gt, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, isNotNull, or } from "drizzle-orm";
 import { chatEventCompatibilityRole } from "@vm0/api-contracts/contracts/chat-events";
 import type { UserMessageDocument } from "@vm0/api-contracts/contracts/chat-threads";
 import { RESUME_SESSION_HISTORY_MAX_BYTES } from "@vm0/api-contracts/contracts/runners";
@@ -822,7 +822,15 @@ async function collectConversationMessages(
       eq(conversations.id, agentSessions.conversationId),
     )
     .leftJoin(blobs, eq(conversations.cliAgentSessionHistoryHash, blobs.hash))
-    .where(eq(agentSessions.userId, userId))
+    .where(
+      and(
+        eq(agentSessions.userId, userId),
+        or(
+          isNotNull(conversations.cliAgentSessionHistory),
+          isNotNull(conversations.cliAgentSessionHistoryHash),
+        ),
+      ),
+    )
     .orderBy(asc(agentSessions.createdAt), asc(agentSessions.id));
   signal.throwIfAborted();
 

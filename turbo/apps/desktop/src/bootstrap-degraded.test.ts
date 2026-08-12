@@ -70,6 +70,8 @@ function productionConfig(): DesktopConfig {
       product: "zero",
       brandName: "Zero",
       displayName: "Zero Computer Use",
+      userDataDirectoryName: "Zero Computer Use",
+      updateLine: "zero",
       bundleId: "ai.vm0.desktop",
       authProtocolName: "Zero Desktop",
       authScheme: "vm0-desktop",

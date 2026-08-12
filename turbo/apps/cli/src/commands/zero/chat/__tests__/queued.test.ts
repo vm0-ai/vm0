@@ -11,6 +11,15 @@ const REVOKE_EVENT_ID = "00000000-0000-4000-8000-000000000012";
 const QUEUED_EVENT_ID = "00000000-0000-4000-8000-000000000013";
 const AUTOMATION_EVENT_ID = "00000000-0000-4000-8000-000000000014";
 const EVENTS_URL = `http://localhost:3000/api/okou/chat-threads/${THREAD_ID}/events`;
+const QUEUED_EVENTS_URL = `http://localhost:3000/api/okou/chat-threads/${THREAD_ID}/queued-events`;
+const FEATURE_SWITCHES_URL = "http://localhost:3000/api/okou/feature-switches";
+
+function featureSwitches(enabled: boolean) {
+  return {
+    switches: {},
+    effectiveSwitches: { chatEventSnapshotRead: enabled },
+  };
+}
 
 function promptEvent(args: {
   id: string;
@@ -40,6 +49,11 @@ describe("okou chat queued command", () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("ZERO_TOKEN", "test-zero-token");
     vi.stubEnv("ZERO_CHAT_THREAD_ID", THREAD_ID);
+    server.use(
+      http.get(FEATURE_SWITCHES_URL, () => {
+        return HttpResponse.json(featureSwitches(false));
+      }),
+    );
   });
 
   afterEach(() => {
@@ -147,5 +161,40 @@ describe("okou chat queued command", () => {
     await zeroChatCommand.parseAsync(["node", "cli", "queued"]);
 
     expect(mockConsoleLog).toHaveBeenCalledWith("No queued chat events");
+  });
+
+  it("reads the authoritative queue and guides raw history inspection when snapshot read is enabled", async () => {
+    server.use(
+      http.get(FEATURE_SWITCHES_URL, () => {
+        return HttpResponse.json(featureSwitches(true));
+      }),
+      http.get(EVENTS_URL, () => {
+        throw new Error("Projected events endpoint must not be called");
+      }),
+      http.get(QUEUED_EVENTS_URL, ({ request }) => {
+        expect(request.headers.get("authorization")).toBe(
+          "Bearer test-zero-token",
+        );
+        return HttpResponse.json({
+          events: [
+            { eventId: QUEUED_EVENT_ID, seqId: 344 },
+            { eventId: AUTOMATION_EVENT_ID, seqId: 345 },
+          ],
+        });
+      }),
+    );
+
+    await zeroChatCommand.parseAsync(["node", "cli", "queued"]);
+
+    const output = mockConsoleLog.mock.calls.flat().join("\n");
+    expect(output).toContain(QUEUED_EVENT_ID);
+    expect(output).toContain(AUTOMATION_EVENT_ID);
+    expect(output).toContain("344");
+    expect(output).toContain("345");
+    expect(output).toContain(
+      `okou chat messages --thread-id ${THREAD_ID} --output-dir threads`,
+    );
+    expect(output).toContain(`rg -n '"seqId":344' threads/${THREAD_ID}/`);
+    expect(output).toContain(`rg -n '"seqId":345' threads/${THREAD_ID}/`);
   });
 });

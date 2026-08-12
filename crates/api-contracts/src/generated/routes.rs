@@ -99,69 +99,6 @@ pub mod runners {
         pub mod by_run_id {
             /// Generated route bindings under `runners::runs::by_run_id::active_inputs`.
             pub mod active_inputs {
-                /// List pending input prompts for a running agent run.
-                /// Route contract: `GET /api/runners/runs/:runId/active-inputs`.
-                pub const LIST: crate::RouteTemplate = crate::RouteTemplate {
-                    method: crate::Method::Get,
-                    path: "/api/runners/runs/:runId/active-inputs",
-                };
-
-                /// Path parameters for `GET /api/runners/runs/:runId/active-inputs`.
-                #[derive(Debug, Clone, Copy)]
-                pub struct Params<'a> {
-                    /// Value for the `:runId` path parameter.
-                    pub run_id: &'a str,
-                }
-
-                /// Build the concrete path for `GET /api/runners/runs/:runId/active-inputs`.
-                /// Percent-encodes each path parameter as a URL path segment.
-                #[must_use]
-                pub fn path(params: Params<'_>) -> String {
-                    format!(
-                        "/api/runners/runs/{}/active-inputs",
-                        crate::route::encode_path_segment(params.run_id),
-                    )
-                }
-
-                /// Build a resolved route for `GET /api/runners/runs/:runId/active-inputs`.
-                #[must_use]
-                pub fn route(params: Params<'_>) -> crate::ResolvedRoute {
-                    crate::ResolvedRoute::new(LIST.method, path(params))
-                }
-
-                /// Generated route bindings under `runners::runs::by_run_id::active_inputs::claim`.
-                pub mod claim {
-                    /// Claim pending input prompts for a running agent run.
-                    /// Route contract: `POST /api/runners/runs/:runId/active-inputs/claim`.
-                    pub const CLAIM: crate::RouteTemplate = crate::RouteTemplate {
-                        method: crate::Method::Post,
-                        path: "/api/runners/runs/:runId/active-inputs/claim",
-                    };
-
-                    /// Path parameters for `POST /api/runners/runs/:runId/active-inputs/claim`.
-                    #[derive(Debug, Clone, Copy)]
-                    pub struct Params<'a> {
-                        /// Value for the `:runId` path parameter.
-                        pub run_id: &'a str,
-                    }
-
-                    /// Build the concrete path for `POST /api/runners/runs/:runId/active-inputs/claim`.
-                    /// Percent-encodes each path parameter as a URL path segment.
-                    #[must_use]
-                    pub fn path(params: Params<'_>) -> String {
-                        format!(
-                            "/api/runners/runs/{}/active-inputs/claim",
-                            crate::route::encode_path_segment(params.run_id),
-                        )
-                    }
-
-                    /// Build a resolved route for `POST /api/runners/runs/:runId/active-inputs/claim`.
-                    #[must_use]
-                    pub fn route(params: Params<'_>) -> crate::ResolvedRoute {
-                        crate::ResolvedRoute::new(CLAIM.method, path(params))
-                    }
-                }
-
                 /// Generated route bindings under `runners::runs::by_run_id::active_inputs::deliveries`.
                 pub mod deliveries {
                     /// Generated route bindings under `runners::runs::by_run_id::active_inputs::deliveries::by_delivery_id`.

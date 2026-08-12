@@ -231,6 +231,7 @@ interface PreparedNormalSend {
     | undefined;
   readonly triggerSource: "web" | "agent";
   readonly agentRunSource: ChatAgentRunSourceAnnotation | null;
+  readonly chatEventSnapshotReadEnabled: boolean;
 }
 
 function normalSendTriggerSource(
@@ -367,6 +368,7 @@ function shouldTouchThreadSortFromNormalSend(
 
 interface NormalSendFeatureSwitches {
   readonly codexFastModeEnabled: boolean;
+  readonly chatEventSnapshotReadEnabled: boolean;
 }
 
 interface RuntimeNormalSendBody extends Omit<
@@ -874,6 +876,10 @@ async function resolveNormalSendFeatureSwitches(
   return {
     codexFastModeEnabled: isFeatureEnabled(
       FeatureSwitchKey.CodexFastMode,
+      context,
+    ),
+    chatEventSnapshotReadEnabled: isFeatureEnabled(
+      FeatureSwitchKey.ChatEventSnapshotRead,
       context,
     ),
   };
@@ -2317,6 +2323,8 @@ const prepareNormalSend$ = command(
       preflightClientEventConflict: preflightClientEventResponse,
       triggerSource: normalSendTriggerSource(args.auth),
       agentRunSource,
+      chatEventSnapshotReadEnabled:
+        featureSwitches.chatEventSnapshotReadEnabled,
     };
   },
 );
@@ -2801,6 +2809,7 @@ function buildCreateZeroRunArgs(params: {
     computerUseHostDisplayName:
       prepared.computerUseHostGrant?.displayName ?? null,
     agentRunSource: prepared.agentRunSource,
+    chatEventSnapshotReadEnabled: prepared.chatEventSnapshotReadEnabled,
   };
   return {
     auth: args.auth,

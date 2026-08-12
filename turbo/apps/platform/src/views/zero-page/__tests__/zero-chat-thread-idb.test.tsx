@@ -6,6 +6,7 @@ import {
   chatThreadArtifactsContract,
   chatThreadByIdContract,
   chatThreadEventsContract,
+  chatThreadMarkReadContract,
   chatThreadsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { zeroBrowserContract } from "@vm0/api-contracts/contracts/zero-browser";
@@ -15,6 +16,7 @@ import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { mockOrganization, mockUser } from "../../../__tests__/mock-auth.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {
+  CHAT_EVENT_ROWS_STORE,
   CHAT_MESSAGES_STORE,
   CHAT_THREAD_SNAPSHOT_STORE,
 } from "../../../signals/external/chat-idb-schema.ts";
@@ -43,6 +45,36 @@ const ASSISTANT_MESSAGE = "Here is the result";
 const CHAT_VIEWPORT_HEIGHT = 300;
 const CHAT_SCROLL_HEIGHT = 1000;
 const PAGE_LOAD_TIMEOUT_MS = 5000;
+const EMPTY_THREAD_MESSAGE = "Send a message to start the conversation";
+
+function observeEmptyThreadMessage(): {
+  readonly wasShown: () => boolean;
+} {
+  let wasShown = false;
+  const record = () => {
+    if (
+      document.querySelector("[data-chat-skeleton]") === null &&
+      document.body.textContent?.includes(EMPTY_THREAD_MESSAGE)
+    ) {
+      wasShown = true;
+    }
+  };
+  const observer = new MutationObserver(record);
+  observer.observe(document.body, { childList: true, subtree: true });
+  context.signal.addEventListener(
+    "abort",
+    () => {
+      observer.disconnect();
+    },
+    { once: true },
+  );
+  record();
+  return {
+    wasShown: () => {
+      return wasShown;
+    },
+  };
+}
 
 function idbUserId(): string {
   return `zero-chat-thread-idb-user-${context.resourceId}`;
@@ -848,6 +880,80 @@ describe("okou chat thread IndexedDB fallback", () => {
     });
   });
 
+  it("renders IndexedDB rows without an empty state while mark-read is blocked", async () => {
+    prepareDefaultAgent();
+    mockCurrentThreadDetail();
+    mockSidebarThread();
+    const runtimeDb = await primeRuntimeChatDb();
+    const runId = "run-cached-mark-read";
+    const cachedMessage = "Cached while mark-read is pending";
+    const cachedRows = [
+      {
+        id: "00000000-0000-4000-8000-000000000151",
+        chatThreadId: THREAD_ID,
+        runId,
+        revokesEventId: null,
+        eventType: "output.message",
+        payload: { content: cachedMessage },
+        contextType: null,
+        contextId: null,
+        runEventSequenceNumber: null,
+        runEventId: null,
+        seqId: 1,
+        createdAt: "2026-03-10T00:00:01Z",
+      },
+      {
+        id: "00000000-0000-4000-8000-000000000152",
+        chatThreadId: THREAD_ID,
+        runId,
+        revokesEventId: null,
+        eventType: "run.completed",
+        payload: null,
+        contextType: null,
+        contextId: null,
+        runEventSequenceNumber: null,
+        runEventId: null,
+        seqId: 2,
+        createdAt: "2026-03-10T00:00:02Z",
+      },
+    ] satisfies ChatEventRowV4[];
+    await Promise.all(
+      cachedRows.map((row) => {
+        return runtimeDb.put(CHAT_EVENT_ROWS_STORE, row);
+      }),
+    );
+
+    const markReadStarted = context.mocks.deferred<void>();
+    const releaseMarkRead = context.mocks.deferred<void>();
+    context.mocks.api(
+      chatThreadMarkReadContract.markRead,
+      async ({ respond }) => {
+        markReadStarted.resolve();
+        await releaseMarkRead.promise;
+        return respond(200, {
+          lastReadAt: "2026-03-10T00:00:02Z",
+          unreads: [],
+        });
+      },
+    );
+    context.mocks.api(chatThreadEventsContract.rows, ({ respond }) => {
+      return respond(200, { rows: [] });
+    });
+    context.mocks.api(chatThreadEventsContract.list, () => {
+      throw new Error("projected events endpoint must not be called");
+    });
+    const emptyThread = observeEmptyThreadMessage();
+
+    setupChatPage({ [FeatureSwitchKey.ChatEventSnapshotRead]: true });
+    await markReadStarted.promise;
+
+    await expect(screen.findByText(cachedMessage)).resolves.toBeInTheDocument();
+    expect(document.querySelector("[data-chat-skeleton]")).toBeNull();
+    expect(screen.queryByText(EMPTY_THREAD_MESSAGE)).not.toBeInTheDocument();
+    expect(emptyThread.wasShown()).toBeFalsy();
+    expect(releaseMarkRead.settled()).toBeFalsy();
+  });
+
   it("shows the message skeleton until the initial remote event request resolves", async () => {
     prepareDefaultAgent();
     mockCurrentThreadDetail();
@@ -879,7 +985,7 @@ describe("okou chat thread IndexedDB fallback", () => {
     });
   });
 
-  it("keeps the skeleton visible through the snapshot render handoff", async () => {
+  it("renders remote rows without an empty state while mark-read is blocked", async () => {
     prepareDefaultAgent();
     mockCurrentThreadDetail();
     mockSidebarThread();
@@ -888,6 +994,9 @@ describe("okou chat thread IndexedDB fallback", () => {
       "https://r2.example.com/chat-events/loading-handoff.ndjson.gz";
     const snapshotBodyRequested = context.mocks.deferred<void>();
     const releaseSnapshotBody = context.mocks.deferred<void>();
+    const markReadStarted = context.mocks.deferred<void>();
+    const releaseMarkRead = context.mocks.deferred<void>();
+    const runId = "run-remote-mark-read";
     const snapshotRows = [
       {
         id: "00000000-0000-4000-8000-000000000201",
@@ -911,7 +1020,7 @@ describe("okou chat thread IndexedDB fallback", () => {
       {
         id: "00000000-0000-4000-8000-000000000202",
         chatThreadId: THREAD_ID,
-        runId: null,
+        runId,
         revokesEventId: null,
         eventType: "output.message",
         payload: { content: ASSISTANT_MESSAGE },
@@ -922,13 +1031,27 @@ describe("okou chat thread IndexedDB fallback", () => {
         seqId: 2,
         createdAt: "2026-08-12T06:22:01.000Z",
       },
+      {
+        id: "00000000-0000-4000-8000-000000000203",
+        chatThreadId: THREAD_ID,
+        runId,
+        revokesEventId: null,
+        eventType: "run.completed",
+        payload: null,
+        contextType: null,
+        contextId: null,
+        runEventSequenceNumber: null,
+        runEventId: null,
+        seqId: 3,
+        createdAt: "2026-08-12T06:22:02.000Z",
+      },
     ] satisfies ChatEventRowV4[];
 
     context.mocks.api(chatThreadEventsContract.snapshot, ({ respond }) => {
       return respond(200, {
         url: snapshotUrl,
         expiresInSeconds: 900,
-        lastSeqId: 2,
+        lastSeqId: 3,
       });
     });
     context.mocks.http.get(snapshotUrl, async () => {
@@ -948,6 +1071,17 @@ describe("okou chat thread IndexedDB fallback", () => {
     context.mocks.api(chatThreadEventsContract.list, () => {
       throw new Error("projected events endpoint must not be called");
     });
+    context.mocks.api(
+      chatThreadMarkReadContract.markRead,
+      async ({ respond }) => {
+        markReadStarted.resolve();
+        await releaseMarkRead.promise;
+        return respond(200, {
+          lastReadAt: "2026-08-12T06:22:02.000Z",
+          unreads: [],
+        });
+      },
+    );
 
     let uncoveredLoadingGap = false;
     const observer = new MutationObserver(() => {
@@ -965,6 +1099,7 @@ describe("okou chat thread IndexedDB fallback", () => {
       },
       { once: true },
     );
+    const emptyThread = observeEmptyThreadMessage();
     setupChatPage({ [FeatureSwitchKey.ChatEventSnapshotRead]: true });
     await snapshotBodyRequested.promise;
 
@@ -974,11 +1109,16 @@ describe("okou chat thread IndexedDB fallback", () => {
     observer.observe(document.body, { childList: true, subtree: true });
 
     releaseSnapshotBody.resolve();
+    await markReadStarted.promise;
 
     await expect(screen.findByText(USER_MESSAGE)).resolves.toBeInTheDocument();
     await expect(
       screen.findByText(ASSISTANT_MESSAGE),
     ).resolves.toBeInTheDocument();
+    expect(document.querySelector("[data-chat-skeleton]")).toBeNull();
+    expect(screen.queryByText(EMPTY_THREAD_MESSAGE)).not.toBeInTheDocument();
+    expect(emptyThread.wasShown()).toBeFalsy();
     expect(uncoveredLoadingGap).toBeFalsy();
+    expect(releaseMarkRead.settled()).toBeFalsy();
   });
 });

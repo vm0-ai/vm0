@@ -273,6 +273,17 @@ export const rustTypeBindings = [
         },
       },
       {
+        rustTypeName: "RequestCliAgentSessionHistoryDisposition",
+        rustDoc: [
+          "Reason a checkpoint intentionally omits resumable CLI agent session history.",
+        ],
+        variants: {
+          discarded_oversized: [
+            "The native history was oversized and had no safe bounded generation.",
+          ],
+        },
+      },
+      {
         rustTypeName: "Request",
         rustDoc: ["Request body for creating a recoverable agent checkpoint."],
         fields: {
@@ -282,7 +293,10 @@ export const rustTypeBindings = [
             "CLI agent session identifier being checkpointed.",
           ],
           cliAgentSessionHistoryHash: [
-            "SHA-256 hash of the uploaded CLI agent session history.",
+            "Optional SHA-256 hash of the uploaded CLI agent session history.",
+          ],
+          cliAgentSessionHistoryDisposition: [
+            "Optional reason resumable CLI agent session history was intentionally omitted.",
           ],
           artifactSnapshots: [
             "Optional artifact versions captured by the checkpoint.",

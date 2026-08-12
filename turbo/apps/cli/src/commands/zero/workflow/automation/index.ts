@@ -3,7 +3,8 @@ import chalk from "chalk";
 import type {
   ChatRunFinishedRunStatus,
   GithubDeploymentState,
-  GithubLabelAppliedSubjectFilter,
+  GithubIssueCommentSubjectFilter,
+  GithubPullRequestAction,
   GithubPullRequestReviewState,
   GithubWorkflowRunConclusion,
   StripeInvoiceBillingReason,
@@ -59,6 +60,10 @@ interface AddOptions extends GmailAutomationOptions {
   readonly agent?: string;
   readonly subject?: string;
   readonly actor?: string;
+  readonly action?: string;
+  readonly merged?: string;
+  readonly author?: string;
+  readonly prNumber?: string;
   readonly repository?: string;
   readonly workflow?: string;
   readonly job?: string;
@@ -99,6 +104,10 @@ interface UpdateOptions extends GmailAutomationOptions {
   readonly timezone?: string;
   readonly subject?: string;
   readonly actor?: string;
+  readonly action?: string;
+  readonly merged?: string;
+  readonly author?: string;
+  readonly prNumber?: string;
   readonly repository?: string;
   readonly workflow?: string;
   readonly job?: string;
@@ -124,7 +133,6 @@ const SCHEDULE_KINDS = ["cron", "once", "loop"] as const;
 const EVENT_KINDS = [
   "gmail-new-message",
   "gmail-label-applied",
-  "github-label-applied",
   "github-workflow-run-completed",
   "google-calendar-event-created",
   "google-calendar-event-updated",
@@ -138,6 +146,7 @@ const EVENT_KINDS = [
   "chat-run-finished",
 ] as const;
 const GITHUB_WEBHOOK_EVENT_KINDS = [
+  "github-pull-request",
   "github-workflow-job-completed",
   "github-pull-request-review-submitted",
   "github-deployment-status-created",
@@ -301,11 +310,27 @@ function addGithubAutomationOptions(command: Command): Command {
   return command
     .option(
       "--subject <subject>",
-      "GitHub subject filter for label/comment automations: both | issues | pull-requests",
+      "GitHub subject filter for issue comment automations: both | issues | pull-requests",
     )
     .option(
-      "--actor <actor>",
-      "GitHub actor filter: me | anyone for labels, or comma-separated logins for workflow runs",
+      "--actor <actors>",
+      "GitHub workflow run actors, comma-separated logins",
+    )
+    .option(
+      "--action <action>",
+      "GitHub pull request action for github-pull-request automations",
+    )
+    .option(
+      "--merged <merged>",
+      "GitHub pull request merged filter for the closed action: yes | no | any",
+    )
+    .option(
+      "--author <authors>",
+      "GitHub pull request authors, comma-separated logins",
+    )
+    .option(
+      "--pr-number <numbers>",
+      "GitHub pull request numbers, comma-separated",
     )
     .option(
       "--repository <repositories>",
@@ -542,27 +567,13 @@ function hasScheduleAddOptions(options: AddOptions): boolean {
   );
 }
 
-function hasGithubLabelAutomationOptions(
-  options: AddOptions | UpdateOptions,
-): boolean {
-  return options.subject !== undefined || options.actor !== undefined;
-}
-
-function hasGithubWorkflowRunSpecificOptions(
-  options: AddOptions | UpdateOptions,
-): boolean {
-  return (
-    options.repository !== undefined ||
-    options.workflow !== undefined ||
-    options.conclusion !== undefined ||
-    options.branch !== undefined ||
-    options.triggeringEvent !== undefined
-  );
-}
-
 type GithubAutomationOptionKey =
   | "subject"
   | "actor"
+  | "action"
+  | "merged"
+  | "author"
+  | "prNumber"
   | "repository"
   | "workflow"
   | "job"
@@ -586,6 +597,10 @@ type GithubAutomationOptionKey =
 const GITHUB_AUTOMATION_OPTION_KEYS: readonly GithubAutomationOptionKey[] = [
   "subject",
   "actor",
+  "action",
+  "merged",
+  "author",
+  "prNumber",
   "repository",
   "workflow",
   "job",
@@ -623,11 +638,7 @@ function hasGithubWebhookOptions(options: AddOptions | UpdateOptions): boolean {
 function hasGithubAutomationOptions(
   options: AddOptions | UpdateOptions,
 ): boolean {
-  return (
-    hasGithubLabelAutomationOptions(options) ||
-    hasGithubWorkflowRunSpecificOptions(options) ||
-    hasGithubWebhookOptions(options)
-  );
+  return hasGithubWebhookOptions(options);
 }
 
 function assertOnlyGithubAutomationOptions(
@@ -763,8 +774,8 @@ function hasScheduleUpdateOptions(options: UpdateOptions): boolean {
 
 function parseGithubSubject(
   value: string | undefined,
-  fallback: GithubLabelAppliedSubjectFilter = "both",
-): GithubLabelAppliedSubjectFilter {
+  fallback: GithubIssueCommentSubjectFilter = "both",
+): GithubIssueCommentSubjectFilter {
   if (value === undefined) {
     return fallback;
   }
@@ -779,52 +790,6 @@ function parseGithubSubject(
         `Invalid --subject "${value}". Use one of: both, issues, pull-requests`,
       );
   }
-}
-
-function parseGithubActor(
-  value: string | undefined,
-  fallback: "me" | "anyone" = "me",
-): "me" | "anyone" {
-  if (value === undefined) {
-    return fallback;
-  }
-  if (value === "me" || value === "anyone") {
-    return value;
-  }
-  throw new Error(`Invalid --actor "${value}". Use one of: me, anyone`);
-}
-
-function buildGithubLabelAppliedEventConfig(
-  options: AddOptions | UpdateOptions,
-  existing?: Extract<
-    ZeroWorkflowAutomationSummary,
-    { readonly kind: "event"; readonly eventType: "github-label-applied" }
-  >,
-) {
-  const labelName = options.label?.trim() ?? existing?.eventConfig.labelName;
-  if (!labelName) {
-    throw new Error(
-      'github-label-applied automations require --label "Label name"',
-    );
-  }
-
-  return {
-    provider: "github" as const,
-    event: "label_applied" as const,
-    labelName,
-    filters: {
-      subject: parseGithubSubject(
-        options.subject,
-        existing?.eventConfig.filters.subject ?? "both",
-      ),
-      actor: {
-        type: parseGithubActor(
-          options.actor,
-          existing?.eventConfig.filters.actor.type ?? "me",
-        ),
-      },
-    },
-  };
 }
 
 const GITHUB_WORKFLOW_RUN_CONCLUSIONS: readonly GithubWorkflowRunConclusion[] =
@@ -886,6 +851,115 @@ function parseGithubWorkflowRunConclusions(
       `Invalid --conclusion "${conclusion}". Use one of: ${GITHUB_WORKFLOW_RUN_CONCLUSIONS.join(", ")}, any`,
     );
   });
+}
+
+const GITHUB_PULL_REQUEST_ACTIONS: readonly GithubPullRequestAction[] = [
+  "opened",
+  "reopened",
+  "closed",
+  "ready_for_review",
+  "converted_to_draft",
+  "synchronize",
+  "enqueued",
+  "dequeued",
+  "labeled",
+  "unlabeled",
+];
+
+function parseGithubPullRequestAction(
+  value: string | undefined,
+  fallback: GithubPullRequestAction | undefined,
+): GithubPullRequestAction {
+  if (value === undefined) {
+    if (fallback !== undefined) {
+      return fallback;
+    }
+    throw new Error(
+      `github-pull-request automations require --action <action>. Use one of: ${GITHUB_PULL_REQUEST_ACTIONS.join(", ")}`,
+    );
+  }
+  const action = GITHUB_PULL_REQUEST_ACTIONS.find((candidate) => {
+    return candidate === value.trim();
+  });
+  if (!action) {
+    throw new Error(
+      `Invalid --action "${value}". Use one of: ${GITHUB_PULL_REQUEST_ACTIONS.join(", ")}`,
+    );
+  }
+  return action;
+}
+
+function parseGithubPullRequestMerged(
+  value: string | undefined,
+  fallback: boolean | undefined,
+): boolean | undefined {
+  if (value === undefined) {
+    return fallback;
+  }
+  switch (value.trim().toLowerCase()) {
+    case "any":
+      return undefined;
+    case "yes":
+    case "true":
+      return true;
+    case "no":
+    case "false":
+      return false;
+    default:
+      throw new Error(`Invalid --merged "${value}". Use yes, no, or any`);
+  }
+}
+
+function buildGithubPullRequestEventConfig(
+  options: AddOptions | UpdateOptions,
+  existing?: Extract<
+    ZeroWorkflowAutomationSummary,
+    { readonly kind: "event"; readonly eventType: "github-pull-request" }
+  >,
+) {
+  const repository =
+    options.repository?.trim() ?? existing?.eventConfig.repository;
+  if (!repository) {
+    throw new Error(
+      'github-pull-request automations require --repository "owner/name"',
+    );
+  }
+  if (repository.includes(",")) {
+    throw new Error(
+      "github-pull-request automations accept exactly one --repository",
+    );
+  }
+  const action = parseGithubPullRequestAction(
+    options.action,
+    existing?.eventConfig.action,
+  );
+  const merged = parseGithubPullRequestMerged(
+    options.merged,
+    existing?.eventConfig.merged,
+  );
+  if (merged !== undefined && action !== "closed") {
+    throw new Error("--merged only applies to the closed action");
+  }
+  const filters = existing?.eventConfig.filters;
+  return {
+    provider: "github" as const,
+    event: "pull_request" as const,
+    repository,
+    action,
+    ...(merged === undefined ? {} : { merged }),
+    filters: {
+      baseBranches: parseGithubWorkflowRunFilter(
+        options.baseBranch,
+        filters?.baseBranches,
+      ),
+      authors: parseGithubWorkflowRunFilter(options.author, filters?.authors),
+      pullRequestNumbers: parseGithubWorkflowRunFilter(
+        options.prNumber,
+        filters?.pullRequestNumbers,
+      ),
+      labels: parseGithubWorkflowRunFilter(options.label, filters?.labels),
+    },
+  };
 }
 
 const GITHUB_PULL_REQUEST_REVIEW_STATES: readonly GithubPullRequestReviewState[] =
@@ -1193,7 +1267,7 @@ function buildGmailLabelAppliedCreateRequest(
   };
 }
 
-function buildGithubLabelAppliedCreateRequest(
+function buildGithubPullRequestCreateRequest(
   options: AddOptions,
 ): ZeroWorkflowAutomationCreateRequest {
   assertNoScheduleAddOptions(options);
@@ -1206,16 +1280,18 @@ function buildGithubLabelAppliedCreateRequest(
   assertNoGoogleFormsAutomationOptions(options);
   assertNoNotionAutomationOptions(options);
   assertNoStrapiAutomationOptions(options);
-  if (hasGithubWorkflowRunSpecificOptions(options)) {
-    throw new Error(
-      "Workflow run filter flags only apply to github-workflow-run-completed automations",
-    );
-  }
-  assertOnlyGithubAutomationOptions(options, ["subject", "actor"]);
+  assertOnlyGithubAutomationOptions(options, [
+    "repository",
+    "action",
+    "merged",
+    "baseBranch",
+    "author",
+    "prNumber",
+  ]);
   return {
     kind: "event",
-    eventType: "github-label-applied",
-    eventConfig: buildGithubLabelAppliedEventConfig(options),
+    eventType: "github-pull-request",
+    eventConfig: buildGithubPullRequestEventConfig(options),
   };
 }
 
@@ -1230,7 +1306,7 @@ function buildGithubWorkflowRunCompletedCreateRequest(
   }
   if (options.subject !== undefined) {
     throw new Error(
-      "--subject only applies to github-label-applied automations",
+      "--subject only applies to github-issue-comment-created automations",
     );
   }
   assertOnlyGithubAutomationOptions(options, [
@@ -1782,8 +1858,8 @@ function buildNonStripeCreateRequest(
       return buildGmailNewMessageCreateRequest(options);
     case "gmail-label-applied":
       return buildGmailLabelAppliedCreateRequest(options);
-    case "github-label-applied":
-      return buildGithubLabelAppliedCreateRequest(options);
+    case "github-pull-request":
+      return buildGithubPullRequestCreateRequest(options);
     case "github-workflow-run-completed":
       return buildGithubWorkflowRunCompletedCreateRequest(options);
     case "github-workflow-job-completed":
@@ -1841,6 +1917,33 @@ function buildGithubAutomationEventUpdate(
   existing: Extract<ZeroWorkflowAutomationSummary, { readonly kind: "event" }>,
 ): ZeroWorkflowAutomationUpdateRequest | undefined {
   switch (existing.eventType) {
+    case "github-pull-request": {
+      if (hasGmailAutomationOptions(options)) {
+        throw new Error(
+          "Gmail match flags only apply to Gmail event automations",
+        );
+      }
+      const allowed = [
+        "repository",
+        "action",
+        "merged",
+        "baseBranch",
+        "author",
+        "prNumber",
+      ] as const;
+      assertOnlyGithubAutomationOptions(options, allowed);
+      if (
+        !hasAnyGithubAutomationOption(options, allowed) &&
+        !hasGmailLabelOption(options)
+      ) {
+        throw new Error(
+          "Provide a github-pull-request filter flag; use any to clear a filter",
+        );
+      }
+      return {
+        eventConfig: buildGithubPullRequestEventConfig(options, existing),
+      };
+    }
     case "github-workflow-run-completed": {
       if (
         hasGmailAutomationOptions(options) ||
@@ -1989,28 +2092,6 @@ function buildEventUpdate(
     throw new Error(
       "Stripe billing reasons cannot be updated; delete and recreate the automation",
     );
-  }
-
-  if (existing.eventType === "github-label-applied") {
-    if (hasGmailOptions) {
-      throw new Error(
-        "Gmail match flags only apply to Gmail event automations",
-      );
-    }
-    if (hasGithubWorkflowRunSpecificOptions(options)) {
-      throw new Error(
-        "Workflow run filter flags only apply to github-workflow-run-completed automations",
-      );
-    }
-    assertOnlyGithubAutomationOptions(options, ["subject", "actor"]);
-    if (!hasLabelOption && !hasGithubOptions) {
-      throw new Error(
-        "Provide --label, --subject, or --actor for github-label-applied automations",
-      );
-    }
-    return {
-      eventConfig: buildGithubLabelAppliedEventConfig(options, existing),
-    };
   }
 
   const githubWorkflowUpdate = buildGithubAutomationEventUpdate(
@@ -2202,7 +2283,8 @@ Examples:
   okou workflow automation add triage --agent <agent-id> gmail-new-message --from-contains "@example.com"
   okou workflow automation add triage --agent <agent-id> gmail-new-message --config ./gmail-automation.json
   okou workflow automation add triage --agent <agent-id> gmail-label-applied --label "Support"
-  okou workflow automation add triage --agent <agent-id> github-label-applied --label "triage" --subject both --actor me
+  okou workflow automation add merge-follow-up --agent <agent-id> github-pull-request --repository vm0-ai/vm0 --action closed --merged yes --base-branch main
+  okou workflow automation add pr-triage --agent <agent-id> github-pull-request --repository vm0-ai/vm0 --action labeled --label "triage"
   okou workflow automation add ci-triage --agent <agent-id> github-workflow-run-completed --repository vm0-ai/vm0 --workflow Turbo --conclusion failure,timed_out --branch main --triggering-event push --actor dependabot[bot]
   okou workflow automation add triage --agent <agent-id> google-calendar-event-created
   okou workflow automation add triage --agent <agent-id> google-calendar-event-updated

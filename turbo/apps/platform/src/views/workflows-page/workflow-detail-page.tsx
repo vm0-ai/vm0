@@ -13,8 +13,9 @@ import type {
   GithubDeploymentState,
   GithubDeploymentStatusCreatedEventConfig,
   GithubIssueCommentCreatedEventConfig,
-  GithubLabelAppliedEventConfig,
-  GithubLabelAppliedSubjectFilter,
+  GithubIssueCommentSubjectFilter,
+  GithubPullRequestAction,
+  GithubPullRequestEventConfig,
   GithubPullRequestReviewState,
   GithubPullRequestReviewSubmittedEventConfig,
   GithubWorkflowJobCompletedEventConfig,
@@ -110,7 +111,6 @@ import {
   checkWorkflowConnectorReadiness$,
   createNotionPageContentUpdatedScope$,
   createWorkflowChatRunFinishedAutomation$,
-  createWorkflowGithubLabelAppliedAutomation$,
   createWorkflowGithubWebhookAutomation$,
   createWorkflowGithubWorkflowRunCompletedAutomation$,
   createWorkflowGoogleCalendarEventAutomation$,
@@ -124,7 +124,7 @@ import {
   createWorkflowNotionPageContentUpdatedAutomation$,
   createWorkflowStrapiEntryPublishedAutomation$,
   createWorkflowWebhookAutomation$,
-  createGithubLabelActor$,
+  createGithubPullRequestAction$,
   createScheduleCronFields$,
   createWorkflowScheduleAutomation$,
   createWorkflowStripeInvoicePaidAutomation$,
@@ -135,7 +135,7 @@ import {
   deleteWorkflow$,
   deleteWorkflowAutomation$,
   editingScheduleCronFields$,
-  editingGithubLabelActors$,
+  editingGithubPullRequestAction$,
   editingGmailMatchConditions$,
   editingWorkflowAutomationId$,
   patchWorkflowMetadataForm$,
@@ -147,14 +147,14 @@ import {
   resetWorkflowMetadataForm$,
   runWorkflowAutomationNow$,
   selectedWorkflowFilePath$,
-  setCreateGithubLabelActor$,
+  setCreateGithubPullRequestAction$,
   setCreateGmailMatchConditions$,
   setCreateNotionPageContentUpdatedScope$,
   createStrapiIntegrationId$,
   setCreateStrapiIntegrationId$,
   setCreateScheduleCronFields$,
   setCreatedWorkflowWebhookAutomation$,
-  setEditingGithubLabelActor$,
+  setEditingGithubPullRequestAction$,
   setEditingGmailMatchConditions$,
   setEditingScheduleCronFields$,
   setEditingWorkflowAutomationId$,
@@ -166,7 +166,6 @@ import {
   setWorkflowCopyForm$,
   setWorkflowAutomationCreateDialog$,
   setWorkflowAutomationEnabled$,
-  updateWorkflowGithubLabelAppliedAutomation$,
   updateWorkflowGithubWebhookAutomation$,
   updateWorkflowGithubWorkflowRunCompletedAutomation$,
   updateWorkflowGmailNewMessageAutomation$,
@@ -212,7 +211,6 @@ import { writeToClipboard } from "../../signals/zero-page/clipboard.ts";
 import { orgPlanCapabilities$ } from "../../signals/zero-page/org-plan-capabilities.ts";
 import { strapiIntegrations$ } from "../../signals/zero-page/zero-strapi.ts";
 import {
-  connectGithubInstallation$,
   githubIntegrationData$,
   type GithubIntegrationData,
 } from "../../signals/zero-page/zero-github.ts";
@@ -452,9 +450,9 @@ type GithubWorkflowAutomationSummary = Extract<
   {
     readonly kind: "event";
     readonly eventType:
-      | "github-label-applied"
       | "github-deployment-status-created"
       | "github-issue-comment-created"
+      | "github-pull-request"
       | "github-pull-request-review-submitted"
       | "github-workflow-job-completed"
       | "github-workflow-run-completed";
@@ -466,6 +464,7 @@ type GithubWebhookWorkflowAutomationSummary = Extract<
     readonly eventType:
       | "github-deployment-status-created"
       | "github-issue-comment-created"
+      | "github-pull-request"
       | "github-pull-request-review-submitted"
       | "github-workflow-job-completed";
   }
@@ -585,7 +584,7 @@ const GMAIL_TEXT_OPERATORS: readonly (GmailMatchOperatorOption & {
   },
 ];
 const GITHUB_SUBJECT_OPTIONS: readonly {
-  readonly value: GithubLabelAppliedSubjectFilter;
+  readonly value: GithubIssueCommentSubjectFilter;
   readonly label: string;
 }[] = [
   {
@@ -614,23 +613,87 @@ const GITHUB_SUBJECT_OPTIONS: readonly {
   },
 ];
 
-const GITHUB_ACTOR_OPTIONS: readonly {
-  readonly value: "me" | "anyone";
+const GITHUB_PULL_REQUEST_ACTION_OPTIONS: readonly {
+  readonly value: GithubPullRequestAction;
   readonly label: string;
 }[] = [
   {
-    value: "me",
+    value: "opened",
     get label() {
       return i18n.t(($) => {
-        return $.workflows.automations.github.actorMe;
+        return $.workflows.automations.github.pullRequestActionOpened;
       });
     },
   },
   {
-    value: "anyone",
+    value: "reopened",
     get label() {
       return i18n.t(($) => {
-        return $.workflows.automations.github.actorAnyone;
+        return $.workflows.automations.github.pullRequestActionReopened;
+      });
+    },
+  },
+  {
+    value: "closed",
+    get label() {
+      return i18n.t(($) => {
+        return $.workflows.automations.github.pullRequestActionClosed;
+      });
+    },
+  },
+  {
+    value: "ready_for_review",
+    get label() {
+      return i18n.t(($) => {
+        return $.workflows.automations.github.pullRequestActionReadyForReview;
+      });
+    },
+  },
+  {
+    value: "converted_to_draft",
+    get label() {
+      return i18n.t(($) => {
+        return $.workflows.automations.github.pullRequestActionConvertedToDraft;
+      });
+    },
+  },
+  {
+    value: "synchronize",
+    get label() {
+      return i18n.t(($) => {
+        return $.workflows.automations.github.pullRequestActionSynchronize;
+      });
+    },
+  },
+  {
+    value: "enqueued",
+    get label() {
+      return i18n.t(($) => {
+        return $.workflows.automations.github.pullRequestActionEnqueued;
+      });
+    },
+  },
+  {
+    value: "dequeued",
+    get label() {
+      return i18n.t(($) => {
+        return $.workflows.automations.github.pullRequestActionDequeued;
+      });
+    },
+  },
+  {
+    value: "labeled",
+    get label() {
+      return i18n.t(($) => {
+        return $.workflows.automations.github.pullRequestActionLabeled;
+      });
+    },
+  },
+  {
+    value: "unlabeled",
+    get label() {
+      return i18n.t(($) => {
+        return $.workflows.automations.github.pullRequestActionUnlabeled;
       });
     },
   },
@@ -910,9 +973,9 @@ function isGithubWorkflowAutomation(
 ): automation is GithubWorkflowAutomationSummary {
   return (
     automation.kind === "event" &&
-    (automation.eventType === "github-label-applied" ||
-      automation.eventType === "github-deployment-status-created" ||
+    (automation.eventType === "github-deployment-status-created" ||
       automation.eventType === "github-issue-comment-created" ||
+      automation.eventType === "github-pull-request" ||
       automation.eventType === "github-pull-request-review-submitted" ||
       automation.eventType === "github-workflow-job-completed" ||
       automation.eventType === "github-workflow-run-completed")
@@ -926,6 +989,7 @@ function isGithubWebhookWorkflowAutomation(
     automation.kind === "event" &&
     (automation.eventType === "github-deployment-status-created" ||
       automation.eventType === "github-issue-comment-created" ||
+      automation.eventType === "github-pull-request" ||
       automation.eventType === "github-pull-request-review-submitted" ||
       automation.eventType === "github-workflow-job-completed")
   );
@@ -1232,7 +1296,6 @@ function AutomationCreateAction() {
         }
         setCreateDialog(kind);
       }}
-      githubLabelAutomationsEnabled
       githubWebhookAutomationsEnabled={githubWebhookAutomationsEnabled}
       googleCalendarAutomationsEnabled
       googleFormsWorkflowAutomationsEnabled={
@@ -3578,49 +3641,22 @@ function googleCalendarIdFromForm(form: FormData): string {
 
 function githubSubjectFilterValue(
   value: FormDataEntryValue | null,
-  fallback: GithubLabelAppliedSubjectFilter,
-): GithubLabelAppliedSubjectFilter {
+  fallback: GithubIssueCommentSubjectFilter,
+): GithubIssueCommentSubjectFilter {
   if (value === "both" || value === "issues" || value === "pull_requests") {
     return value;
   }
   return fallback;
 }
 
-function githubActorFilterValue(
+function githubPullRequestActionValue(
   value: FormDataEntryValue | null,
-  fallback: "me" | "anyone",
-): "me" | "anyone" {
-  if (value === "me" || value === "anyone") {
-    return value;
-  }
-  return fallback;
-}
-
-function buildGithubLabelAppliedEventConfig(
-  form: FormData,
-  baseConfig?: GithubLabelAppliedEventConfig,
-): GithubLabelAppliedEventConfig | null {
-  const labelName = formTextValue(form, "labelName") ?? baseConfig?.labelName;
-  if (!labelName) {
-    return null;
-  }
-  return {
-    provider: "github",
-    event: "label_applied",
-    labelName,
-    filters: {
-      subject: githubSubjectFilterValue(
-        form.get("subject"),
-        baseConfig?.filters.subject ?? "both",
-      ),
-      actor: {
-        type: githubActorFilterValue(
-          form.get("actor"),
-          baseConfig?.filters.actor.type ?? "me",
-        ),
-      },
-    },
-  };
+  fallback: GithubPullRequestAction,
+): GithubPullRequestAction {
+  const option = GITHUB_PULL_REQUEST_ACTION_OPTIONS.find((candidate) => {
+    return candidate.value === value;
+  });
+  return option?.value ?? fallback;
 }
 
 function githubWorkflowRunFilterValues(
@@ -3678,12 +3714,14 @@ function buildGithubWorkflowRunCompletedEventConfig(
 }
 
 type GithubWebhookAutomationEventType =
+  | "github-pull-request"
   | "github-workflow-job-completed"
   | "github-pull-request-review-submitted"
   | "github-deployment-status-created"
   | "github-issue-comment-created";
 
 type GithubWebhookAutomationEventConfig =
+  | GithubPullRequestEventConfig
   | GithubWorkflowJobCompletedEventConfig
   | GithubPullRequestReviewSubmittedEventConfig
   | GithubDeploymentStatusCreatedEventConfig
@@ -3709,6 +3747,28 @@ function buildGithubWebhookEventConfig(
   eventType: GithubWebhookAutomationEventType,
   form: FormData,
 ): GithubWebhookAutomationEventConfig {
+  if (eventType === "github-pull-request") {
+    const action = githubPullRequestActionValue(form.get("action"), "closed");
+    const merged = form.get("merged");
+    return {
+      provider: "github",
+      event: "pull_request",
+      repository: formTextValue(form, "repository") ?? "",
+      action,
+      ...(action === "closed" && (merged === "true" || merged === "false")
+        ? { merged: merged === "true" }
+        : {}),
+      filters: {
+        baseBranches: githubWorkflowRunFilterValues(form, "baseBranches"),
+        authors: githubWorkflowRunFilterValues(form, "authors"),
+        pullRequestNumbers: githubWorkflowRunFilterValues(
+          form,
+          "pullRequestNumbers",
+        ),
+        labels: githubWorkflowRunFilterValues(form, "labels"),
+      },
+    };
+  }
   if (eventType === "github-workflow-job-completed") {
     return {
       provider: "github",
@@ -3884,9 +3944,9 @@ function workflowAutomationTitle(
       return $.workflows.automations.gmail.labelAppliedTitle;
     });
   }
-  if (automation.eventType === "github-label-applied") {
+  if (automation.eventType === "github-pull-request") {
     return i18n.t(($) => {
-      return $.workflows.automations.github.labelAppliedTitle;
+      return $.workflows.automations.github.pullRequestTitle;
     });
   }
   if (automation.eventType === "github-workflow-job-completed") {
@@ -4136,32 +4196,28 @@ function githubWorkflowAutomationSummary(
   >,
 ): string | null {
   switch (automation.eventType) {
-    case "github-label-applied": {
-      const subject =
-        GITHUB_SUBJECT_OPTIONS.find((option) => {
-          return option.value === automation.eventConfig.filters.subject;
-        })?.label ??
-        i18n.t(($) => {
-          return $.workflows.automations.github.issuesAndPullRequests;
-        });
-      const actor = GITHUB_ACTOR_OPTIONS.find((option) => {
-        return option.value === automation.eventConfig.filters.actor.type;
-      })?.label;
-      if (!actor) {
-        throw new Error(
-          `Unknown GitHub actor filter: ${automation.eventConfig.filters.actor.type}`,
-        );
-      }
-      return i18n.t(
-        ($) => {
-          return $.workflows.automations.github.labelSummary;
-        },
-        {
-          label: quote(automation.eventConfig.labelName),
-          subject,
-          actor,
-        },
-      );
+    case "github-pull-request": {
+      const config = automation.eventConfig;
+      const action =
+        GITHUB_PULL_REQUEST_ACTION_OPTIONS.find((option) => {
+          return option.value === config.action;
+        })?.label ?? config.action;
+      return [
+        config.repository,
+        action,
+        ...(config.merged === undefined
+          ? []
+          : [
+              config.merged
+                ? i18n.t(($) => {
+                    return $.workflows.automations.github.pullRequestMergedOnly;
+                  })
+                : i18n.t(($) => {
+                    return $.workflows.automations.github
+                      .pullRequestClosedWithoutMergeOnly;
+                  }),
+            ]),
+      ].join(" · ");
     }
     case "github-workflow-run-completed": {
       return githubWorkflowRunAutomationSummary(automation.eventConfig);
@@ -4390,7 +4446,7 @@ type AutomationCreateDialogKind =
   | "once"
   | "gmail"
   | "gmail-label"
-  | "github-label"
+  | "github-pull-request"
   | "github-workflow-job"
   | "github-pull-request-review"
   | "github-deployment-status"
@@ -4451,13 +4507,11 @@ function buildStripeInvoicePaidAutomationOptions(
 }
 
 function buildIntegrationAutomationOptions({
-  githubLabelAutomationsEnabled,
   githubWebhookAutomationsEnabled,
   stripeInvoicePaidAutomationsEnabled,
   strapiIntegrationEnabled,
   webhookTierEligible,
 }: {
-  readonly githubLabelAutomationsEnabled: boolean;
   readonly githubWebhookAutomationsEnabled: boolean;
   readonly stripeInvoicePaidAutomationsEnabled: boolean;
   readonly strapiIntegrationEnabled: boolean;
@@ -4475,18 +4529,6 @@ function buildIntegrationAutomationOptions({
       icon: MessageCircle,
     },
   ];
-  if (githubLabelAutomationsEnabled) {
-    integrationOptions.push({
-      kind: "github-label",
-      title: i18n.t(($) => {
-        return $.workflows.automations.github.labelAppliedTitle;
-      }),
-      description: i18n.t(($) => {
-        return $.workflows.automations.github.labelAppliedDescription;
-      }),
-      icon: BrandGithub,
-    });
-  }
   integrationOptions.push({
     kind: "github-workflow-run",
     title: i18n.t(($) => {
@@ -4499,6 +4541,16 @@ function buildIntegrationAutomationOptions({
   });
   if (githubWebhookAutomationsEnabled) {
     integrationOptions.push(
+      {
+        kind: "github-pull-request",
+        title: i18n.t(($) => {
+          return $.workflows.automations.github.pullRequestTitle;
+        }),
+        description: i18n.t(($) => {
+          return $.workflows.automations.github.pullRequestDescription;
+        }),
+        icon: BrandGithub,
+      },
       {
         kind: "github-workflow-job",
         title: i18n.t(($) => {
@@ -4766,7 +4818,6 @@ function buildEmailAutomationOptions(): AutomationCreateOption[] {
 }
 
 function buildAutomationCreateCategories({
-  githubLabelAutomationsEnabled,
   githubWebhookAutomationsEnabled,
   googleCalendarAutomationsEnabled,
   googleFormsWorkflowAutomationsEnabled,
@@ -4776,7 +4827,6 @@ function buildAutomationCreateCategories({
   strapiIntegrationEnabled,
   webhookTierEligible,
 }: {
-  readonly githubLabelAutomationsEnabled: boolean;
   readonly githubWebhookAutomationsEnabled: boolean;
   readonly googleCalendarAutomationsEnabled: boolean;
   readonly googleFormsWorkflowAutomationsEnabled: boolean;
@@ -4794,7 +4844,6 @@ function buildAutomationCreateCategories({
     googleFormsWorkflowAutomationsEnabled,
   );
   const integrationOptions = buildIntegrationAutomationOptions({
-    githubLabelAutomationsEnabled,
     githubWebhookAutomationsEnabled,
     stripeInvoicePaidAutomationsEnabled,
     strapiIntegrationEnabled,
@@ -4931,7 +4980,6 @@ function AutomationCreateOptionCard({
 
 function AutomationCreateMenu({
   onSelect,
-  githubLabelAutomationsEnabled,
   githubWebhookAutomationsEnabled,
   googleCalendarAutomationsEnabled,
   googleFormsWorkflowAutomationsEnabled,
@@ -4942,7 +4990,6 @@ function AutomationCreateMenu({
   webhookTierEligible,
 }: {
   readonly onSelect: (kind: AutomationCreateDialogKind) => void;
-  readonly githubLabelAutomationsEnabled: boolean;
   readonly githubWebhookAutomationsEnabled: boolean;
   readonly googleCalendarAutomationsEnabled: boolean;
   readonly googleFormsWorkflowAutomationsEnabled: boolean;
@@ -4957,7 +5004,6 @@ function AutomationCreateMenu({
   const activeKey = useGet(workflowAutomationPickerCategory$);
   const setActiveKey = useSet(setWorkflowAutomationPickerCategory$);
   const categories = buildAutomationCreateCategories({
-    githubLabelAutomationsEnabled,
     githubWebhookAutomationsEnabled,
     googleCalendarAutomationsEnabled,
     googleFormsWorkflowAutomationsEnabled,
@@ -6032,13 +6078,6 @@ function WorkflowAutomationCreateDialogs({
         createDialog={createDialog}
         setCreateDialog={setCreateDialog}
       />
-      <CreateGithubLabelAppliedAutomationDialog
-        workflowId={workflowId}
-        open={createDialog === "github-label"}
-        onOpenChange={(open) => {
-          setCreateDialog(open ? "github-label" : null);
-        }}
-      />
       <CreateGithubWorkflowRunCompletedAutomationDialog
         workflowId={workflowId}
         open={createDialog === "github-workflow-run"}
@@ -6131,6 +6170,14 @@ function GithubWebhookAutomationCreateDialogs({
 }) {
   return (
     <>
+      <CreateGithubWebhookAutomationDialog
+        workflowId={workflowId}
+        eventType="github-pull-request"
+        open={createDialog === "github-pull-request"}
+        onOpenChange={(open) => {
+          setCreateDialog(open ? "github-pull-request" : null);
+        }}
+      />
       <CreateGithubWebhookAutomationDialog
         workflowId={workflowId}
         eventType="github-workflow-job-completed"
@@ -7737,99 +7784,6 @@ function CreateGmailLabelAppliedAutomationDialog({
   );
 }
 
-function GithubLabelAutomationFields({
-  disabled,
-  actor,
-  defaultConfig,
-  onActorChange,
-}: {
-  readonly disabled: boolean;
-  readonly actor: "me" | "anyone";
-  readonly defaultConfig?: GithubLabelAppliedEventConfig;
-  readonly onActorChange: (actor: "me" | "anyone") => void;
-}) {
-  return (
-    <div className="flex flex-col gap-3">
-      <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-        {i18n.t(($) => {
-          return $.workflows.automations.github.labelName;
-        })}
-        <Input
-          name="labelName"
-          aria-label={i18n.t(($) => {
-            return $.workflows.automations.github.labelName;
-          })}
-          required
-          disabled={disabled}
-          defaultValue={defaultConfig?.labelName ?? ""}
-          placeholder={i18n.t(($) => {
-            return $.workflows.automations.github.labelPlaceholder;
-          })}
-        />
-      </label>
-      <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-        {i18n.t(($) => {
-          return $.workflows.automations.github.subject;
-        })}
-        <Select
-          name="subject"
-          defaultValue={defaultConfig?.filters.subject ?? "both"}
-          disabled={disabled}
-        >
-          <SelectTrigger
-            className="h-9 w-full"
-            aria-label={i18n.t(($) => {
-              return $.workflows.automations.github.subject;
-            })}
-          >
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {GITHUB_SUBJECT_OPTIONS.map((option) => {
-              return (
-                <SelectItem key={option.value} value={option.value}>
-                  {option.label}
-                </SelectItem>
-              );
-            })}
-          </SelectContent>
-        </Select>
-      </label>
-      <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-        {i18n.t(($) => {
-          return $.workflows.automations.github.startedBy;
-        })}
-        <Select
-          name="actor"
-          value={actor}
-          disabled={disabled}
-          onValueChange={(value) => {
-            onActorChange(value === "anyone" ? "anyone" : "me");
-          }}
-        >
-          <SelectTrigger
-            className="h-9 w-full"
-            aria-label={i18n.t(($) => {
-              return $.workflows.automations.github.startedBy;
-            })}
-          >
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {GITHUB_ACTOR_OPTIONS.map((option) => {
-              return (
-                <SelectItem key={option.value} value={option.value}>
-                  {option.label}
-                </SelectItem>
-              );
-            })}
-          </SelectContent>
-        </Select>
-      </label>
-    </div>
-  );
-}
-
 function GithubWorkflowRunAutomationFields({
   disabled,
   defaultConfig,
@@ -8333,12 +8287,199 @@ function GithubCommentAutomationFields({
   );
 }
 
+function GithubPullRequestMergedSelect({
+  disabled,
+  config,
+}: {
+  readonly disabled: boolean;
+  readonly config?: GithubPullRequestEventConfig;
+}) {
+  return (
+    <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+      {i18n.t(($) => {
+        return $.workflows.automations.github.pullRequestMerged;
+      })}
+      <Select
+        name="merged"
+        defaultValue={
+          config?.merged === undefined ? "any" : String(config.merged)
+        }
+        disabled={disabled}
+      >
+        <SelectTrigger
+          className="h-9 w-full"
+          aria-label={i18n.t(($) => {
+            return $.workflows.automations.github.pullRequestMerged;
+          })}
+        >
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="any">
+            {i18n.t(($) => {
+              return $.workflows.automations.github.any;
+            })}
+          </SelectItem>
+          <SelectItem value="true">
+            {i18n.t(($) => {
+              return $.workflows.automations.github.pullRequestMergedOnly;
+            })}
+          </SelectItem>
+          <SelectItem value="false">
+            {i18n.t(($) => {
+              return $.workflows.automations.github
+                .pullRequestClosedWithoutMergeOnly;
+            })}
+          </SelectItem>
+        </SelectContent>
+      </Select>
+    </label>
+  );
+}
+
+function GithubPullRequestFilterFields({
+  disabled,
+  config,
+}: {
+  readonly disabled: boolean;
+  readonly config?: GithubPullRequestEventConfig;
+}) {
+  return (
+    <>
+      <GithubFilterInput
+        name="baseBranches"
+        label={i18n.t(($) => {
+          return $.workflows.automations.github.baseBranches;
+        })}
+        placeholder={i18n.t(($) => {
+          return $.workflows.automations.github.branchesPlaceholder;
+        })}
+        defaultValues={config?.filters.baseBranches}
+        disabled={disabled}
+      />
+      <GithubFilterInput
+        name="authors"
+        label={i18n.t(($) => {
+          return $.workflows.automations.github.pullRequestAuthors;
+        })}
+        placeholder={i18n.t(($) => {
+          return $.workflows.automations.github.authorsPlaceholder;
+        })}
+        defaultValues={config?.filters.authors}
+        disabled={disabled}
+      />
+      <GithubFilterInput
+        name="pullRequestNumbers"
+        label={i18n.t(($) => {
+          return $.workflows.automations.github.pullRequestNumbers;
+        })}
+        placeholder={i18n.t(($) => {
+          return $.workflows.automations.github.pullRequestNumbersPlaceholder;
+        })}
+        defaultValues={config?.filters.pullRequestNumbers}
+        disabled={disabled}
+      />
+      <GithubFilterInput
+        name="labels"
+        label={i18n.t(($) => {
+          return $.workflows.automations.github.pullRequestLabels;
+        })}
+        placeholder={i18n.t(($) => {
+          return $.workflows.automations.github.pullRequestLabelsPlaceholder;
+        })}
+        defaultValues={config?.filters.labels}
+        disabled={disabled}
+      />
+    </>
+  );
+}
+
+function GithubPullRequestAutomationFields({
+  disabled,
+  config,
+}: {
+  readonly disabled: boolean;
+  readonly config?: GithubPullRequestEventConfig;
+}) {
+  const createAction = useGet(createGithubPullRequestAction$);
+  const editingAction = useGet(editingGithubPullRequestAction$);
+  const setCreateAction = useSet(setCreateGithubPullRequestAction$);
+  const setEditingAction = useSet(setEditingGithubPullRequestAction$);
+  const action = config ? (editingAction ?? config.action) : createAction;
+  const setAction = config ? setEditingAction : setCreateAction;
+  return (
+    <>
+      <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+        {i18n.t(($) => {
+          return $.workflows.automations.github.repository;
+        })}
+        <Input
+          name="repository"
+          aria-label={i18n.t(($) => {
+            return $.workflows.automations.github.repository;
+          })}
+          required
+          disabled={disabled}
+          defaultValue={config?.repository ?? ""}
+          placeholder={i18n.t(($) => {
+            return $.workflows.automations.github.repositoryPlaceholder;
+          })}
+        />
+      </label>
+      <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+        {i18n.t(($) => {
+          return $.workflows.automations.github.pullRequestAction;
+        })}
+        <Select
+          name="action"
+          value={action}
+          disabled={disabled}
+          onValueChange={(value) => {
+            setAction(githubPullRequestActionValue(value, "closed"));
+          }}
+        >
+          <SelectTrigger
+            className="h-9 w-full"
+            aria-label={i18n.t(($) => {
+              return $.workflows.automations.github.pullRequestAction;
+            })}
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {GITHUB_PULL_REQUEST_ACTION_OPTIONS.map((option) => {
+              return (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              );
+            })}
+          </SelectContent>
+        </Select>
+      </label>
+      {action === "closed" ? (
+        <GithubPullRequestMergedSelect disabled={disabled} config={config} />
+      ) : null}
+      <GithubPullRequestFilterFields disabled={disabled} config={config} />
+    </>
+  );
+}
 function githubWebhookAutomationSpecificFields(
   eventType: GithubWebhookAutomationEventType,
   disabled: boolean,
   defaultConfig: GithubWebhookAutomationEventConfig | undefined,
 ): ReactNode {
   switch (eventType) {
+    case "github-pull-request": {
+      const config =
+        defaultConfig?.event === "pull_request" ? defaultConfig : undefined;
+      return (
+        <GithubPullRequestAutomationFields
+          disabled={disabled}
+          config={config}
+        />
+      );
+    }
     case "github-workflow-job-completed": {
       const config =
         defaultConfig?.event === "workflow_job_completed"
@@ -8397,54 +8538,26 @@ function GithubWebhookAutomationFields({
           return $.workflows.automations.github.filterHelp;
         })}
       </p>
-      <GithubFilterInput
-        name="repositories"
-        label={i18n.t(($) => {
-          return $.workflows.automations.github.repositories;
-        })}
-        placeholder={i18n.t(($) => {
-          return $.workflows.automations.github.repositoriesPlaceholder;
-        })}
-        defaultValues={defaultConfig?.filters.repositories}
-        disabled={disabled}
-      />
+      {eventType !== "github-pull-request" &&
+      defaultConfig?.event !== "pull_request" ? (
+        <GithubFilterInput
+          name="repositories"
+          label={i18n.t(($) => {
+            return $.workflows.automations.github.repositories;
+          })}
+          placeholder={i18n.t(($) => {
+            return $.workflows.automations.github.repositoriesPlaceholder;
+          })}
+          defaultValues={defaultConfig?.filters.repositories}
+          disabled={disabled}
+        />
+      ) : null}
       {githubWebhookAutomationSpecificFields(
         eventType,
         disabled,
         defaultConfig,
       )}
     </div>
-  );
-}
-
-function GithubLabelAutomationAvailabilityMessages({
-  githubLoaded,
-  githubData,
-  needsConnection,
-  githubLoadError,
-  connecting,
-  onConnect,
-}: {
-  readonly githubLoaded: boolean;
-  readonly githubData: GithubIntegrationData | null;
-  readonly needsConnection: boolean;
-  readonly githubLoadError: boolean;
-  readonly connecting: boolean;
-  readonly onConnect: () => void;
-}) {
-  return (
-    <>
-      {githubLoaded && !githubData?.isInstalled ? (
-        <GithubNotInstalledNotice githubData={githubData} />
-      ) : null}
-      {needsConnection ? (
-        <GithubAccountConnectionNotice
-          connecting={connecting}
-          onConnect={onConnect}
-        />
-      ) : null}
-      {githubLoadError ? <GithubLoadErrorNotice /> : null}
-    </>
   );
 }
 
@@ -8487,33 +8600,6 @@ function GithubNotInstalledNotice({
   );
 }
 
-function GithubAccountConnectionNotice({
-  connecting,
-  onConnect,
-}: {
-  readonly connecting: boolean;
-  readonly onConnect: () => void;
-}) {
-  return (
-    <div className="rounded-lg border border-border/60 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-      {i18n.t(($) => {
-        return $.workflows.automations.github.accountRequired;
-      })}
-      <Button
-        type="button"
-        variant="link"
-        disabled={connecting}
-        className="ml-1 h-auto p-0 text-xs"
-        onClick={onConnect}
-      >
-        {i18n.t(($) => {
-          return $.workflows.automations.github.accountConnect;
-        })}
-      </Button>
-    </div>
-  );
-}
-
 function GithubLoadErrorNotice() {
   return (
     <div className="rounded-lg border border-border/60 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
@@ -8521,139 +8607,6 @@ function GithubLoadErrorNotice() {
         return $.workflows.automations.github.loadError;
       })}
     </div>
-  );
-}
-
-function githubLabelAddActionLabel(): string {
-  return i18n.t(($) => {
-    return $.workflows.automations.github.addLabelAction;
-  });
-}
-
-function CreateGithubLabelAppliedAutomationDialog({
-  workflowId,
-  open,
-  onOpenChange,
-}: {
-  readonly workflowId: string;
-  readonly open: boolean;
-  readonly onOpenChange: (open: boolean) => void;
-}) {
-  const actionCopy = automationActionCopy();
-  const pageSignal = useGet(pageSignal$);
-  const githubLoadable = useLoadable(githubIntegrationData$);
-  const githubData =
-    githubLoadable.state === "hasData" ? githubLoadable.data : null;
-  const actor = useGet(createGithubLabelActor$);
-  const setActor = useSet(setCreateGithubLabelActor$);
-  const [createLoadable, createGithubLabelAutomation] = useLoadableSet(
-    createWorkflowGithubLabelAppliedAutomation$,
-  );
-  const [connectLoadable, connectGithub] = useLoadableSet(
-    connectGithubInstallation$,
-  );
-  const creating = createLoadable.state === "loading";
-  const connecting = connectLoadable.state === "loading";
-  const loadingGithub = githubLoadable.state === "loading";
-  const githubLoadError = githubLoadable.state === "hasError";
-  const isInstalled = githubData?.isInstalled ?? false;
-  const needsConnection =
-    isInstalled && actor === "me" && !githubData?.isConnected;
-  const submitDisabled =
-    creating ||
-    loadingGithub ||
-    githubLoadError ||
-    !isInstalled ||
-    needsConnection;
-  const connectCurrentGithubAccount = () => {
-    if (!githubData) {
-      return;
-    }
-    detach(
-      connectGithub(githubData.connectUrl, pageSignal),
-      Reason.DomCallback,
-    );
-  };
-
-  return (
-    <Dialog
-      open={open}
-      onOpenChange={(nextOpen) => {
-        if (nextOpen) {
-          setActor("me");
-        }
-        onOpenChange(nextOpen);
-      }}
-    >
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>
-            {i18n.t(($) => {
-              return $.workflows.automations.github.addLabelTitle;
-            })}
-          </DialogTitle>
-          <DialogDescription>
-            {i18n.t(($) => {
-              return $.workflows.automations.github.addLabelDescription;
-            })}
-          </DialogDescription>
-        </DialogHeader>
-        <form
-          aria-label={i18n.t(($) => {
-            return $.workflows.automations.github.addLabelAria;
-          })}
-          className="flex flex-col gap-4"
-          onSubmit={(event) => {
-            event.preventDefault();
-            const form = new FormData(event.currentTarget);
-            const eventConfig = buildGithubLabelAppliedEventConfig(form);
-            if (!eventConfig) {
-              return;
-            }
-            detach(
-              (async () => {
-                await createGithubLabelAutomation(
-                  { workflowId, eventConfig },
-                  pageSignal,
-                );
-                onOpenChange(false);
-              })(),
-              Reason.DomCallback,
-            );
-          }}
-        >
-          <GithubLabelAutomationFields
-            disabled={creating || loadingGithub || githubLoadError}
-            actor={actor}
-            onActorChange={setActor}
-          />
-          <GithubLabelAutomationAvailabilityMessages
-            githubLoaded={githubLoadable.state === "hasData"}
-            githubData={githubData}
-            needsConnection={needsConnection}
-            githubLoadError={githubLoadError}
-            connecting={connecting}
-            onConnect={connectCurrentGithubAccount}
-          />
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              disabled={creating}
-              onClick={() => {
-                onOpenChange(false);
-              }}
-            >
-              {actionCopy.cancel}
-            </Button>
-            <Button type="submit" disabled={submitDisabled}>
-              {creating ? <Loader2 size={14} className="animate-spin" /> : null}
-              {githubLabelAddActionLabel()}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
   );
 }
 
@@ -8754,6 +8707,11 @@ function githubWebhookAutomationTitle(
   eventType: GithubWebhookAutomationEventType,
 ): string {
   switch (eventType) {
+    case "github-pull-request": {
+      return i18n.t(($) => {
+        return $.workflows.automations.github.pullRequestTitle;
+      });
+    }
     case "github-workflow-job-completed": {
       return i18n.t(($) => {
         return $.workflows.automations.github.workflowJobTitle;
@@ -8843,6 +8801,14 @@ function CreateGithubWebhookAutomationDialog({
             detach(
               (async () => {
                 if (
+                  eventType === "github-pull-request" &&
+                  eventConfig.event === "pull_request"
+                ) {
+                  await createGithubWebhookAutomation(
+                    { workflowId, eventType, eventConfig },
+                    pageSignal,
+                  );
+                } else if (
                   eventType === "github-workflow-job-completed" &&
                   eventConfig.event === "workflow_job_completed"
                 ) {
@@ -10104,13 +10070,6 @@ function EditWorkflowAutomationDialog({
           />
         ) : null}
         {automation.kind === "event" &&
-        automation.eventType === "github-label-applied" ? (
-          <UpdateGithubLabelAppliedAutomationForm
-            automation={automation}
-            onCancel={close}
-          />
-        ) : null}
-        {automation.kind === "event" &&
         automation.eventType === "github-workflow-run-completed" ? (
           <UpdateGithubWorkflowRunCompletedAutomationForm
             automation={automation}
@@ -10450,132 +10409,6 @@ function UpdateGmailLabelAppliedAutomationForm({
             <Loader2 size={13} className="animate-spin" />
           ) : (
             <Mail size={13} />
-          )}
-          <span>
-            {i18n.t(($) => {
-              return $.workflows.automations.gmail.saveLabel;
-            })}
-          </span>
-        </Button>
-      </DialogFooter>
-    </form>
-  );
-}
-
-function UpdateGithubLabelAppliedAutomationForm({
-  automation,
-  onCancel,
-}: {
-  readonly automation: Extract<
-    ZeroWorkflowAutomationSummary,
-    { eventType: "github-label-applied" }
-  >;
-  readonly onCancel: () => void;
-}) {
-  const pageSignal = useGet(pageSignal$);
-  const githubLoadable = useLoadable(githubIntegrationData$);
-  const githubData =
-    githubLoadable.state === "hasData" ? githubLoadable.data : null;
-  const editingGithubLabelActors = useGet(editingGithubLabelActors$);
-  const setEditingGithubLabelActor = useSet(setEditingGithubLabelActor$);
-  const actor =
-    editingGithubLabelActors[automation.id] ??
-    automation.eventConfig.filters.actor.type;
-  const [updateLoadable, updateGithubLabelAutomation] = useLoadableSet(
-    updateWorkflowGithubLabelAppliedAutomation$,
-  );
-  const [connectLoadable, connectGithub] = useLoadableSet(
-    connectGithubInstallation$,
-  );
-  const saving = updateLoadable.state === "loading";
-  const connecting = connectLoadable.state === "loading";
-  const loadingGithub = githubLoadable.state === "loading";
-  const githubLoadError = githubLoadable.state === "hasError";
-  const isInstalled = githubData?.isInstalled ?? false;
-  const needsConnection =
-    isInstalled && actor === "me" && !githubData?.isConnected;
-  const submitDisabled =
-    saving ||
-    loadingGithub ||
-    githubLoadError ||
-    !isInstalled ||
-    needsConnection;
-  const connectCurrentGithubAccount = () => {
-    if (!githubData) {
-      return;
-    }
-    detach(
-      connectGithub(githubData.connectUrl, pageSignal),
-      Reason.DomCallback,
-    );
-  };
-
-  return (
-    <form
-      aria-label={i18n.t(($) => {
-        return $.workflows.automations.github.updateLabelAria;
-      })}
-      className="flex flex-col gap-4"
-      onSubmit={(event) => {
-        event.preventDefault();
-        const form = new FormData(event.currentTarget);
-        const eventConfig = buildGithubLabelAppliedEventConfig(
-          form,
-          automation.eventConfig,
-        );
-        if (!eventConfig) {
-          return;
-        }
-        detach(
-          (async () => {
-            await updateGithubLabelAutomation(
-              {
-                automationId: automation.id,
-                eventConfig,
-              },
-              pageSignal,
-            );
-            onCancel();
-          })(),
-          Reason.DomCallback,
-        );
-      }}
-    >
-      <GithubLabelAutomationFields
-        disabled={saving || loadingGithub || githubLoadError}
-        actor={actor}
-        defaultConfig={automation.eventConfig}
-        onActorChange={(nextActor) => {
-          setEditingGithubLabelActor({
-            automationId: automation.id,
-            actor: nextActor,
-          });
-        }}
-      />
-      <GithubLabelAutomationAvailabilityMessages
-        githubLoaded={githubLoadable.state === "hasData"}
-        githubData={githubData}
-        needsConnection={needsConnection}
-        githubLoadError={githubLoadError}
-        connecting={connecting}
-        onConnect={connectCurrentGithubAccount}
-      />
-      <DialogFooter>
-        <Button
-          type="button"
-          variant="outline"
-          disabled={saving}
-          onClick={onCancel}
-        >
-          {i18n.t(($) => {
-            return $.workflows.automations.common.cancel;
-          })}
-        </Button>
-        <Button type="submit" disabled={submitDisabled}>
-          {saving ? (
-            <Loader2 size={13} className="animate-spin" />
-          ) : (
-            <BrandGithub size={13} />
           )}
           <span>
             {i18n.t(($) => {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  githubPullRequestEventConfigSchema,
   googleCalendarEventCancelledEventConfigSchema,
   googleCalendarEventCreatedEventConfigSchema,
   googleCalendarEventUpdatedEventConfigSchema,
@@ -75,6 +76,53 @@ describe("Gmail label applied workflow automation contract", () => {
         provider: "gmail",
         event: "label_applied",
         labelName: "Support",
+      },
+    });
+
+    expect(parsed.success).toBe(true);
+  });
+});
+
+describe("GitHub pull request workflow automation contract", () => {
+  it("accepts a merged filter on the closed action", () => {
+    const parsed = githubPullRequestEventConfigSchema.safeParse({
+      provider: "github",
+      event: "pull_request",
+      repository: "vm0-ai/vm0",
+      action: "closed",
+      merged: true,
+      filters: {
+        baseBranches: ["main"],
+        pullRequestNumbers: ["42"],
+      },
+    });
+
+    expect(parsed.success).toBe(true);
+  });
+
+  it("rejects a merged filter on non-closed actions", () => {
+    const parsed = githubPullRequestEventConfigSchema.safeParse({
+      provider: "github",
+      event: "pull_request",
+      repository: "vm0-ai/vm0",
+      action: "opened",
+      merged: true,
+      filters: {},
+    });
+
+    expect(parsed.success).toBe(false);
+  });
+
+  it("accepts pull request automation create requests", () => {
+    const parsed = zeroWorkflowAutomationCreateRequestSchema.safeParse({
+      kind: "event",
+      eventType: "github-pull-request",
+      eventConfig: {
+        provider: "github",
+        event: "pull_request",
+        repository: "vm0-ai/vm0",
+        action: "labeled",
+        filters: { labels: ["ready-to-merge"] },
       },
     });
 

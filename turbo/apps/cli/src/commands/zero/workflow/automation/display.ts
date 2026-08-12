@@ -361,11 +361,12 @@ function formatWorkflowAutomationEntry(
   }
   if (
     automation.kind === "event" &&
-    automation.eventType === "github-label-applied"
+    automation.eventType === "github-pull-request"
   ) {
-    return `GitHub label applied: ${quote(automation.eventConfig.labelName)} (${formatGithubSubject(
-      automation.eventConfig.filters.subject,
-    )}, actor ${automation.eventConfig.filters.actor.type})`;
+    const { action, merged, repository } = automation.eventConfig;
+    const mergedSuffix =
+      merged === undefined ? "" : merged ? ", merged" : ", not merged";
+    return `GitHub pull request ${action}: ${repository}${mergedSuffix}`;
   }
   const googleEntry = formatGoogleAutomationEntry(automation);
   if (googleEntry !== null) {
@@ -414,8 +415,8 @@ function workflowAutomationKindLabel(
       return "Gmail new message";
     case "gmail-label-applied":
       return "Gmail label applied";
-    case "github-label-applied":
-      return "GitHub label applied";
+    case "github-pull-request":
+      return "GitHub pull request";
     case "github-deployment-status-created":
       return "GitHub deployment status created";
     case "github-issue-comment-created":
@@ -549,6 +550,14 @@ function printGithubFilters(automation: ZeroWorkflowAutomationSummary): void {
     console.log(`${`${label}:`.padEnd(14)}${values?.join(", ") ?? "any"}`);
   };
   switch (automation.eventType) {
+    case "github-pull-request": {
+      const { filters } = automation.eventConfig;
+      printFilter("Base branches", filters.baseBranches);
+      printFilter("Authors", filters.authors);
+      printFilter("PR numbers", filters.pullRequestNumbers);
+      printFilter("Labels", filters.labels);
+      return;
+    }
     case "github-workflow-run-completed": {
       const { filters } = automation.eventConfig;
       printFilter("Repositories", filters.repositories);
@@ -782,6 +791,30 @@ function printGoogleFormsAutomationDetails(
   }
 }
 
+function printGithubPullRequestDetails(
+  automation: ZeroWorkflowAutomationSummary,
+): void {
+  if (
+    automation.kind !== "event" ||
+    automation.eventType !== "github-pull-request"
+  ) {
+    return;
+  }
+  console.log(
+    `${"Repository:".padEnd(14)}${automation.eventConfig.repository}`,
+  );
+  console.log(`${"Action:".padEnd(14)}${automation.eventConfig.action}`);
+  console.log(
+    `${"Merged:".padEnd(14)}${
+      automation.eventConfig.merged === undefined
+        ? "any"
+        : automation.eventConfig.merged
+          ? "yes"
+          : "no"
+    }`,
+  );
+}
+
 export function printWorkflowAutomationDetails(
   automation: ZeroWorkflowAutomationSummary,
   options: WorkflowAutomationDetailsOptions = {},
@@ -813,20 +846,7 @@ export function printWorkflowAutomationDetails(
   ) {
     console.log(`${"Label:".padEnd(14)}${automation.eventConfig.labelName}`);
   }
-  if (
-    automation.kind === "event" &&
-    automation.eventType === "github-label-applied"
-  ) {
-    console.log(`${"Label:".padEnd(14)}${automation.eventConfig.labelName}`);
-    console.log(
-      `${"Subject:".padEnd(14)}${formatGithubSubject(
-        automation.eventConfig.filters.subject,
-      )}`,
-    );
-    console.log(
-      `${"Actor:".padEnd(14)}${automation.eventConfig.filters.actor.type}`,
-    );
-  }
+  printGithubPullRequestDetails(automation);
   printGithubFilters(automation);
   if (isGoogleCalendarAutomation(automation)) {
     console.log(

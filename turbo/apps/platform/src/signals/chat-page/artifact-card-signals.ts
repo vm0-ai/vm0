@@ -7,7 +7,7 @@ import {
   createTextPreviewComputed,
   isTextPreviewKind,
 } from "../text-preview.ts";
-import { attachmentResourceUrlResolver$ } from "../attachment-resource-url.ts";
+import type { AttachmentResourceUrlResolver } from "../attachment-resource-url.ts";
 import {
   createImageLoadSignals,
   type ImageLoadSignals,
@@ -51,10 +51,9 @@ function needsTextPreview(kind: ArtifactKind): boolean {
 function createArtifactSignals(
   descriptor: ArtifactDescriptor,
   previewImageUrlsByUrl$: Computed<Promise<ReadonlyMap<string, string>>>,
+  resolveResourceUrl: AttachmentResourceUrlResolver,
 ): ArtifactSignals {
-  const resourceUrl$ = computed((get) => {
-    return get(get(attachmentResourceUrlResolver$)(descriptor.url));
-  });
+  const resourceUrl$ = resolveResourceUrl(descriptor.url);
   const previewImageLoad = createImageLoadSignals();
   const previewImageUrl$ = computed(async (get) => {
     if (descriptor.kind !== "html" && descriptor.kind !== "video") {
@@ -71,19 +70,24 @@ function createArtifactSignals(
     previewImageLoad,
     previewImageUrl$,
     resourceUrl$,
-    text$: createTextPreviewComputed(descriptor.url),
+    text$: createTextPreviewComputed(descriptor.url, resourceUrl$),
   };
 }
 
 export function createArtifactCardSignalsRegistry(
   previewImageUrlsByUrl$: Computed<Promise<ReadonlyMap<string, string>>>,
+  resolveResourceUrl: AttachmentResourceUrlResolver,
 ): ArtifactCardSignalsRegistry {
   return createCardSignalsRegistry(
     (descriptor: ArtifactDescriptor) => {
       return descriptor.url;
     },
     (descriptor) => {
-      return createArtifactSignals(descriptor, previewImageUrlsByUrl$);
+      return createArtifactSignals(
+        descriptor,
+        previewImageUrlsByUrl$,
+        resolveResourceUrl,
+      );
     },
   );
 }

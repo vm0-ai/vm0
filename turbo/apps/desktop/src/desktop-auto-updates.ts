@@ -75,7 +75,7 @@ export function installDesktopAutoUpdates(
 
   const baseUrl = desktopUpdateFeedBaseUrl(
     options.apiBaseUrl,
-    options.config.identity.product,
+    options.config.identity.updateLine,
   );
   if (new URL(baseUrl).protocol !== "https:") {
     console.warn("Desktop auto-updates require an HTTPS feed URL");

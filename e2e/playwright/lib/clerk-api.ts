@@ -17,6 +17,7 @@ export const CLERK_TEST_ROLES = [
   "runner",
   "runner-real-codex",
   "runner-real-claude",
+  "runner-mock-claude",
 ] as const;
 
 export type ClerkTestRole = (typeof CLERK_TEST_ROLES)[number];
@@ -31,6 +32,7 @@ export interface RunnerTestAccounts {
   readonly runner: string;
   readonly codex: string;
   readonly claude: string;
+  readonly mockClaude: string;
 }
 
 export interface ClerkCleanupOptions {
@@ -156,6 +158,7 @@ export function runnerTestAccounts(): RunnerTestAccounts {
     runner: generateTestEmail("runner"),
     codex: generateTestEmail("runner-real-codex"),
     claude: generateTestEmail("runner-real-claude"),
+    mockClaude: generateTestEmail("runner-mock-claude"),
   };
 }
 

@@ -290,7 +290,7 @@ jobs:
           ready_key="okou-desktop/${ARTIFACT_SHA}/ready.json"
           artifact_dir="$(mktemp -d)"
           zero_package_dir="$PWD/apps/desktop/out/Zero Computer Use-darwin-arm64"
-          okou_package_dir="$PWD/apps/desktop/out/Okou Computer Use-darwin-arm64"
+          okou_package_dir="$PWD/apps/desktop/out/Okou-darwin-arm64"
           error_log="$(mktemp)"
 
           for attempt in $(seq 1 60); do
@@ -333,13 +333,13 @@ jobs:
           tar -xzf "$artifact_dir/app.tar.gz" -C "$zero_package_dir"
           tar -xzf "$artifact_dir/okou-app.tar.gz" -C "$okou_package_dir"
           zero_app_dir="$zero_package_dir/Zero Computer Use.app"
-          okou_app_dir="$okou_package_dir/Okou Computer Use.app"
+          okou_app_dir="$okou_package_dir/Okou.app"
           if [ ! -d "$zero_app_dir" ]; then
             echo "Canonical Desktop artifact did not contain Zero Computer Use.app" >&2
             exit 1
           fi
           if [ ! -d "$okou_app_dir" ]; then
-            echo "Canonical Desktop artifact did not contain Okou Computer Use.app" >&2
+            echo "Canonical Desktop artifact did not contain Okou.app" >&2
             exit 1
           fi
           {
@@ -455,7 +455,7 @@ jobs:
             okou \
             "${{ steps.desktop-app.outputs.okou_app_dir }}" \
             Okou \
-            "Okou Computer Use" \
+            "Okou" \
             apps/desktop/assets/dmg-background-okou.svg
 
           {
@@ -573,7 +573,7 @@ jobs:
 
               if [ "$product" = "okou" ]; then
                 install_dir="$RUNNER_TEMP/okou-install-smoke/Applications"
-                installed_app="$install_dir/Okou Computer Use.app"
+                installed_app="$install_dir/Okou.app"
                 update_dir="$RUNNER_TEMP/okou-update-smoke"
                 rm -rf "$install_dir" "$update_dir"
                 mkdir -p "$install_dir" "$update_dir"
@@ -586,7 +586,7 @@ jobs:
 
                 unzip -q "$zip_artifact_path" -d "$update_dir"
                 rm -rf "$installed_app"
-                ditto "$update_dir/Okou Computer Use.app" "$installed_app"
+                ditto "$update_dir/Okou.app" "$installed_app"
                 VM0_DESKTOP_PRODUCT=okou \
                 VM0_DESKTOP_PLATFORM_URL=https://app.okou.ai \
                 VM0_DESKTOP_SMOKE_APP_PATH="$installed_app" \
@@ -603,10 +603,10 @@ jobs:
             ai.vm0.zero.desktop
           verify_product_artifacts \
             okou \
-            "Okou Computer Use" \
+            "Okou" \
             Okou \
-            ai.okou.computer-use \
-            ai.okou.computer-use
+            ai.okou.desktop \
+            ai.okou.desktop
 
           zero_bundle_id=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "${{ steps.desktop-app.outputs.zero_app_dir }}/Contents/Info.plist")
           okou_bundle_id=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "${{ steps.desktop-app.outputs.okou_app_dir }}/Contents/Info.plist")
@@ -632,8 +632,8 @@ jobs:
             gh release create "$OKOU_RELEASE_TAG" \
               --repo "${{ github.repository }}" \
               --target "$RELEASE_TARGET" \
-              --title "Okou Computer Use $DESKTOP_VERSION" \
-              --notes "Signed and notarized Okou Computer Use release for Apple silicon Macs." \
+              --title "Okou $DESKTOP_VERSION" \
+              --notes "Signed and notarized Okou release for Apple silicon Macs." \
               --latest=false
           fi
 
@@ -774,7 +774,7 @@ jobs:
               gh release create "$manifest_tag" \
                 --repo "${{ github.repository }}" \
                 --title "$manifest_title" \
-                --notes "Mutable manifest used by the $artifact_name Computer Use auto-update feed." \
+                --notes "Mutable manifest used by the $artifact_name desktop auto-update feed." \
                 --latest=false
             fi
 
@@ -804,8 +804,8 @@ jobs:
             okou \
             Okou \
             "$OKOU_RELEASE_TAG" \
-            okou-desktop-updates \
-            okou-desktop-update-manifest.json \
+            ai-okou-desktop-updates \
+            ai-okou-desktop-update-manifest.json \
             "Okou Desktop Updates"
 
   detect-host-worker-deploy-inputs:

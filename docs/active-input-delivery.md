@@ -23,8 +23,8 @@ statuses retry the same identity.
 
 The delivery becomes settled through one of two proof-bearing paths:
 
-- A direct receipt confirms that the Guest accepted the batch. Each source is
-  replaced by a run-attributed event and every item becomes `delivered`.
+- A direct receipt confirms that the Guest accepted the input. Its source is
+  replaced by a run-attributed event and the item becomes `delivered`.
 - `/api/webhooks/agent/complete` proves that the Guest has quiesced, or that the
   Runner observed process exit, stopped forwarding, and recovered the receipt
   journal. Completion may overlap sandbox finalization after that boundary.
@@ -78,40 +78,25 @@ thread without replaying the run's ordinary terminal callbacks or billing work.
 ## Compatibility
 
 `activeInputDeliveryIds` is optional, contains at most 1,024 unique canonical
-UUIDs, and carries no prompt content. Older callers can continue to omit it.
-Runs without durable delivery rows retain the legacy completion behavior; no
-protocol version or feature discriminator is persisted.
+UUIDs, and carries no prompt content. A Guest or Runner omits it when the run
+accepted no active input. The API normalizes omission to an empty set, so the
+immediately preceding Runner remains compatible during an adjacent deployment.
+No protocol version or feature discriminator is persisted.
 
-On its first active-input read, a Runner probes the reserve route. Only an
-immediate route-level `404` selects the legacy list/claim protocol for that run.
-Any response or ambiguous failure selects durable reserve mode permanently, so
-a committed reservation can never later fall through to destructive legacy
-claim. Legacy payloads omit the delivery UUID; durable API and local Runner
-payloads include a stable UUID. Older Runners continue to use the retained
-legacy routes against a newer API.
+The Runner always calls the reserve endpoint. A `404` or transport failure is
+an ordinary retryable API error and cannot select another delivery path. Both
+API and local Runner inputs send a stable `deliveryId`; the Guest rejects a
+payload without a canonical delivery ID before queue admission.
 
-The cutover Runner must run with a receipt-capable Guest from #26058. A legacy
-Guest treats process-control acceptance as queue admission and has no durable
-receipt, so it is not a compatible execution peer for a Runner that reserves a
-delivery. Deploy the Guest capability and drain any sandboxes that can still
-start that legacy Guest before enabling the cutover Runner. This is a rollout
-gate rather than a permanent protocol-negotiation branch.
+Runner and Guest ship in the same artifact, so their internal control payload
+does not require cross-version negotiation. Independently deployed API and
+Runner versions remain compatible through the stable reserve response shape:
+`eventIds` is a one-element array, and empty completion receipts may be omitted.
 
 The browser remains event-oriented: optimistic input is reconciled by its chat
 event ID, and receipt/completion replacements use the existing realtime chat
 event projection. Delivery IDs remain internal to API, Runner, and Guest, so
 activation does not introduce a frontend protocol or deployment dependency.
-
-Durable delivery is active as of
-[#26060](https://github.com/vm0-ai/vm0/issues/26060). The legacy compatibility
-routes and optional Guest payload shape remain until the post-deployment
-contraction in [#26061](https://github.com/vm0-ai/vm0/issues/26061).
-
-During rollout, the legacy list/claim endpoint still accepts multiple event IDs
-for old Runners. Current Runners claim only the oldest listed event and
-immediately recheck when more are pending. The legacy batch shape can be removed
-under [#26061](https://github.com/vm0-ai/vm0/issues/26061) after old Runners and
-their claimed runs drain.
 
 Deleting a thread or run cascades its delivery state, so an abandoned delivery
 cannot block an unrelated thread.

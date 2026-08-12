@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
 import {
@@ -8,8 +9,8 @@ import {
   revokeInvitationRequestSchema,
   membershipRequestActionSchema,
   orgMessageResponseSchema,
-  orgInvitationCheckoutResponseSchema,
-  purchaseOrgInvitationRequestSchema,
+  orgInvitationPurchasePreviewResponseSchema,
+  previewOrgInvitationPurchaseRequestSchema,
 } from "./org-members";
 
 const c = initContract();
@@ -88,13 +89,13 @@ export const zeroOrgInviteContract = c.router({
     },
     summary: "Invite a member to the org (zero proxy)",
   },
-  purchase: {
+  previewPurchase: {
     method: "POST",
-    path: "/api/okou/org/invite/checkout",
+    path: "/api/okou/org/invite/purchase/preview",
     headers: authHeadersSchema,
-    body: purchaseOrgInvitationRequestSchema,
+    body: previewOrgInvitationPurchaseRequestSchema,
     responses: {
-      200: orgInvitationCheckoutResponseSchema,
+      200: orgInvitationPurchasePreviewResponseSchema,
       400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
@@ -103,7 +104,25 @@ export const zeroOrgInviteContract = c.router({
       503: apiErrorSchema,
       500: apiErrorSchema,
     },
-    summary: "Purchase a prorated usage pack for an org invitation",
+    summary: "Preview a prorated usage pack purchase for an org invitation",
+  },
+  confirmPurchase: {
+    method: "POST",
+    path: "/api/okou/org/invite/purchase/:purchaseId/confirm",
+    pathParams: z.object({ purchaseId: z.uuid() }),
+    headers: authHeadersSchema,
+    body: z.object({}),
+    responses: {
+      200: orgMessageResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      409: apiErrorSchema,
+      503: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Confirm an org invitation usage pack purchase",
   },
   revoke: {
     method: "DELETE",

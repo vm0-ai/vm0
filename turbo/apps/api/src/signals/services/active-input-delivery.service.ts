@@ -36,7 +36,12 @@ interface ActiveInputDeliveryScope {
 
 interface ActiveInputDeliveryReference {
   readonly deliveryId: string;
-  readonly eventIds: readonly string[];
+  readonly sourceEventId: string;
+}
+
+interface LockedOpenActiveInputDelivery {
+  readonly deliveryId: string;
+  readonly items: LockedActiveInputDeliveryReceipt["items"];
 }
 
 interface ActiveInputDeliveryIdentity {
@@ -82,7 +87,7 @@ type PreparedReservation =
   | {
       readonly kind: "ready";
       readonly deliveryId: string;
-      readonly eventIds: readonly string[];
+      readonly sourceEventId: string;
       readonly prompt: string;
     };
 
@@ -144,19 +149,15 @@ async function loadActiveInputDeliveryScope(
   };
 }
 
-function combinedPrompt(
-  rows: readonly PendingActiveInputRow[],
+function materializedPrompt(
+  row: PendingActiveInputRow,
   prompts: ReadonlyMap<string, string>,
 ): string {
-  return rows
-    .map((row) => {
-      const prompt = prompts.get(row.id);
-      if (prompt === undefined) {
-        throw new Error("Active input prompt materialization is missing");
-      }
-      return prompt;
-    })
-    .join("\n\n");
+  const prompt = prompts.get(row.id);
+  if (prompt === undefined) {
+    throw new Error("Active input prompt materialization is missing");
+  }
+  return prompt;
 }
 
 async function prepareReservation(
@@ -170,7 +171,8 @@ async function prepareReservation(
     scope.runId,
   ).limit(1);
   signal.throwIfAborted();
-  if (rows.length === 0) {
+  const [row] = rows;
+  if (!row) {
     return { kind: "empty" };
   }
   const prompts = await materializePendingActiveInputPrompts(
@@ -182,7 +184,7 @@ async function prepareReservation(
   if (!prompts) {
     throw new Error("Pending active input cannot be materialized");
   }
-  const prompt = combinedPrompt(rows, prompts);
+  const prompt = materializedPrompt(row, prompts);
   const deliveryId = randomUUID();
   if (!activeInputDeliveryPromptFitsControlPayload(deliveryId, prompt)) {
     return { kind: "rejected", reason: "payload_too_large" };
@@ -190,9 +192,7 @@ async function prepareReservation(
   return {
     kind: "ready",
     deliveryId,
-    eventIds: rows.map((row) => {
-      return row.id;
-    }),
+    sourceEventId: row.id,
     prompt,
   };
 }
@@ -200,7 +200,7 @@ async function prepareReservation(
 async function lockOpenDelivery(
   tx: ActiveInputDeliveryTransaction,
   scope: ActiveInputDeliveryIdentity,
-): Promise<ActiveInputDeliveryReference | null> {
+): Promise<LockedOpenActiveInputDelivery | null> {
   const [delivery] = await tx
     .select({
       id: activeInputDeliveries.id,
@@ -240,9 +240,7 @@ async function lockOpenDelivery(
   }
   return {
     deliveryId: delivery.id,
-    eventIds: items.map((item) => {
-      return item.sourceEventId;
-    }),
+    items,
   };
 }
 
@@ -272,9 +270,17 @@ async function transitionReservation(
   const status = runStatusSchema.parse(run.status);
   const openDelivery = await lockOpenDelivery(tx, scope);
   if (openDelivery) {
+    const [item] = openDelivery.items;
+    if (!item || openDelivery.items.length !== 1) {
+      throw new Error("Open active input reservation has invalid cardinality");
+    }
+    const reference = {
+      deliveryId: openDelivery.deliveryId,
+      sourceEventId: item.sourceEventId,
+    };
     return status === "running"
-      ? { outcome: "retrieve", ...openDelivery }
-      : { outcome: "held", ...openDelivery };
+      ? { outcome: "retrieve", ...reference }
+      : { outcome: "held", ...reference };
   }
   if (isTerminalRunStatus(status)) {
     return { outcome: "terminal" };
@@ -292,13 +298,11 @@ async function transitionReservation(
     tx,
     scope.chatThreadId,
     scope.runId,
-    prepared.eventIds,
+    [prepared.sourceEventId],
   );
   if (
-    currentRows.length !== prepared.eventIds.length ||
-    currentRows.some((row, index) => {
-      return row.id !== prepared.eventIds[index];
-    })
+    currentRows.length !== 1 ||
+    currentRows[0]?.id !== prepared.sourceEventId
   ) {
     return { outcome: "retry" };
   }
@@ -308,19 +312,15 @@ async function transitionReservation(
     chatThreadId: scope.chatThreadId,
     status: "open",
   });
-  await tx.insert(activeInputDeliveryItems).values(
-    prepared.eventIds.map((sourceEventId, position) => {
-      return {
-        deliveryId: prepared.deliveryId,
-        sourceEventId,
-        position,
-      };
-    }),
-  );
+  await tx.insert(activeInputDeliveryItems).values({
+    deliveryId: prepared.deliveryId,
+    sourceEventId: prepared.sourceEventId,
+    position: 0,
+  });
   return {
     outcome: "created",
     deliveryId: prepared.deliveryId,
-    eventIds: prepared.eventIds,
+    sourceEventId: prepared.sourceEventId,
     prompt: prepared.prompt,
   };
 }
@@ -331,18 +331,12 @@ async function materializeDelivery(
   delivery: ActiveInputDeliveryReference,
   signal: AbortSignal,
 ): Promise<string> {
-  const rows = await activeInputRowsByIds(
-    db,
-    scope.chatThreadId,
-    delivery.eventIds,
-  );
+  const rows = await activeInputRowsByIds(db, scope.chatThreadId, [
+    delivery.sourceEventId,
+  ]);
   signal.throwIfAborted();
-  if (
-    rows.length !== delivery.eventIds.length ||
-    rows.some((row, index) => {
-      return row.id !== delivery.eventIds[index];
-    })
-  ) {
+  const [row] = rows;
+  if (!row || rows.length !== 1 || row.id !== delivery.sourceEventId) {
     throw new Error("Active input delivery source membership is invalid");
   }
   const prompts = await materializePendingActiveInputPrompts(
@@ -354,7 +348,7 @@ async function materializeDelivery(
   if (!prompts) {
     throw new Error("Active input delivery cannot be rematerialized");
   }
-  const prompt = combinedPrompt(rows, prompts);
+  const prompt = materializedPrompt(row, prompts);
   if (
     !activeInputDeliveryPromptFitsControlPayload(delivery.deliveryId, prompt)
   ) {
@@ -392,7 +386,7 @@ export async function reserveActiveInputDelivery(
       return {
         outcome: "reserved",
         deliveryId: result.deliveryId,
-        eventIds: result.eventIds,
+        sourceEventId: result.sourceEventId,
         prompt: result.prompt,
       };
     }
@@ -400,7 +394,7 @@ export async function reserveActiveInputDelivery(
       return {
         outcome: "reserved",
         deliveryId: result.deliveryId,
-        eventIds: result.eventIds,
+        sourceEventId: result.sourceEventId,
         prompt: await materializeDelivery(db, scope, result, signal),
       };
     }
@@ -408,7 +402,7 @@ export async function reserveActiveInputDelivery(
   }
 }
 
-export async function replacePendingActiveInputEvent(
+async function replacePendingActiveInputEvent(
   tx: ActiveInputDeliveryTransaction,
   event: PendingActiveInputRow,
   runId: string,
@@ -860,15 +854,12 @@ export async function finalizeActiveInputDeliveryForCompletion(
       chatEventsAppended: pendingBudgetExpired,
     };
   }
-  const items = delivery.eventIds.map((sourceEventId) => {
-    return { sourceEventId, disposition: null };
-  });
   if (!args.deliveredDeliveryIds.has(delivery.deliveryId)) {
     const finalization = await settleOpenActiveInputDeliveryAsUndelivered(
       tx,
       args,
       delivery.deliveryId,
-      items,
+      delivery.items,
     );
     return {
       ...finalization,
@@ -880,7 +871,7 @@ export async function finalizeActiveInputDeliveryForCompletion(
     tx,
     args,
     delivery.deliveryId,
-    items,
+    delivery.items,
   );
   if (!settlement) {
     throw new Error("Delivered active input source is no longer valid");

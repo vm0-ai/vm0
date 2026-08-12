@@ -55,6 +55,7 @@ export interface EventImageGroupProjection {
  */
 export interface MessageListSignals {
   readonly setup$: Command<Promise<void>, [AbortSignal]>;
+  readonly catchUp$: Command<Promise<void>, [AbortSignal]>;
   readonly scroll: ReturnType<typeof createChatThreadScrollSignals>;
   readonly sidebar: ThreadSidebarSignals;
   readonly latestRunFinishCreatedAt$: Computed<Promise<string | undefined>>;

@@ -2,9 +2,9 @@
 
 ## Principle
 
-The private CLI package exposes canonical `okou` and a temporary `zero`
-compatibility entry point backed by the same implementation. Command tests are
-integration tests that enter through Commander with `command.parseAsync()`.
+The private CLI package exposes only the canonical `okou` entry point. Command
+tests are integration tests that enter through Commander with
+`command.parseAsync()`.
 
 - Mock the Web API with MSW.
 - Keep command parsing, validation, formatting, and filesystem behavior real.
@@ -31,8 +31,8 @@ src/commands/zero/
 ## Authentication and routing
 
 Product CLI requests prefer `OKOU_TOKEN` and retain `ZERO_TOKEN` as a
-compatibility fallback. Current-command tests should set the canonical name
-explicitly together with the API URL:
+protocol fallback. Tests should set the canonical token explicitly together
+with the API URL unless they are covering that fallback:
 
 ```typescript
 beforeEach(() => {
@@ -47,7 +47,7 @@ afterEach(() => {
 
 Do not create `~/.vm0/config.json`, set `VM0_TOKEN`, or mock the config module.
 Tests for missing authentication should leave both token names unset and assert
-the resulting guidance. Keep focused compatibility coverage that sets only
+the resulting guidance. Keep focused protocol coverage that sets only
 `ZERO_TOKEN` and proves the fallback still reaches the canonical Okou path.
 
 ## Command integration pattern
@@ -114,7 +114,7 @@ HTTP request, and filesystem changes.
 Use the real filesystem under a temporary directory:
 
 ```typescript
-const tempDir = mkdtempSync(path.join(os.tmpdir(), "zero-cli-test-"));
+const tempDir = mkdtempSync(path.join(os.tmpdir(), "okou-cli-test-"));
 const previousCwd = process.cwd();
 process.chdir(tempDir);
 

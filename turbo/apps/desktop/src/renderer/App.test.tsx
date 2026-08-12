@@ -560,7 +560,7 @@ describe("Desktop renderer bridge integration", () => {
     window.vm0DesktopIdentity = {
       product: "okou",
       brandName: "Okou",
-      displayName: "Okou Computer Use",
+      displayName: "Okou",
     };
     installDesktopBridges({
       authState: { status: "signed_out", user: null, organization: null },
@@ -571,7 +571,7 @@ describe("Desktop renderer bridge integration", () => {
 
     renderDesktopApp();
 
-    expect(await screen.findByText("Okou Computer Use")).toBeTruthy();
+    expect(await screen.findByText("Okou")).toBeTruthy();
     expect(await screen.findByText("Sign in to Okou")).toBeTruthy();
   });
 

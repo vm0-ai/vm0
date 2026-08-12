@@ -81,9 +81,9 @@ type TextPreviewProps = {
 };
 
 const MEDIA_PREVIEW_CARD_CLASS =
-  "inline-flex w-[min(100%,400px)] overflow-hidden rounded-lg border border-foreground/10 bg-background text-left align-top text-foreground no-underline shadow-sm transition-all duration-200";
+  "inline-flex w-[min(100%,400px)] overflow-hidden rounded-lg border border-foreground/10 bg-background text-left align-top text-foreground no-underline transition-all duration-200";
 const MEDIA_PREVIEW_CARD_HOVER_CLASS =
-  "hover:scale-[1.015] hover:border-foreground/20 hover:shadow-lg hover:shadow-black/10 dark:hover:shadow-black/30";
+  "hover:scale-[1.015] hover:border-foreground/20";
 
 function TextPreview({ filename, kind, text$, url }: TextPreviewProps) {
   return (

@@ -195,7 +195,7 @@ describe("AUTH-02: desktop auth handoff", () => {
 
     const handoff = await authDevice.requestDesktopHandoff(
       bdd.user(),
-      { callbackScheme: "ai.okou.computer-use" },
+      { callbackScheme: "ai.okou.desktop" },
       [200],
     );
     if (handoff.status !== 200) {
@@ -205,7 +205,7 @@ describe("AUTH-02: desktop auth handoff", () => {
     }
 
     const callbackUrl = new URL(handoff.body.callbackUrl);
-    expect(callbackUrl.protocol).toBe("ai.okou.computer-use:");
+    expect(callbackUrl.protocol).toBe("ai.okou.desktop:");
     expect(callbackUrl.hostname).toBe("auth");
     expect(callbackUrl.pathname).toBe("/callback");
 

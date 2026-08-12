@@ -8,6 +8,7 @@ import {
 } from "../storages";
 import {
   ACTIVE_INPUT_DELIVERY_RECEIPT_MAX_IDS,
+  webhookCheckpointsContract,
   webhookCompleteContract,
   webhookStoragesCommitContract,
   webhookStoragesPrepareContract,
@@ -16,6 +17,50 @@ import {
 
 const storageId = "00000000-0000-4000-8000-000000000000";
 const manifestHash = "a".repeat(64);
+
+describe("agent checkpoint session history", () => {
+  const baseBody = {
+    runId: "00000000-0000-4000-8000-000000000000",
+    cliAgentType: "codex",
+    cliAgentSessionId: "00000000-0000-4000-8000-000000000001",
+  };
+
+  it("accepts exactly one uploaded hash or discarded disposition", () => {
+    expect(
+      webhookCheckpointsContract.create.body.safeParse({
+        ...baseBody,
+        cliAgentSessionHistoryHash: manifestHash,
+      }).success,
+    ).toBe(true);
+    expect(
+      webhookCheckpointsContract.create.body.safeParse({
+        ...baseBody,
+        cliAgentSessionHistoryDisposition: "discarded_oversized",
+      }).success,
+    ).toBe(true);
+  });
+
+  it("rejects missing, conflicting, and unknown history dispositions", () => {
+    const invalidBodies = [
+      baseBody,
+      {
+        ...baseBody,
+        cliAgentSessionHistoryHash: manifestHash,
+        cliAgentSessionHistoryDisposition: "discarded_oversized",
+      },
+      {
+        ...baseBody,
+        cliAgentSessionHistoryDisposition: "unknown",
+      },
+    ];
+
+    for (const body of invalidBodies) {
+      expect(
+        webhookCheckpointsContract.create.body.safeParse(body).success,
+      ).toBe(false);
+    }
+  });
+});
 
 function manifestFile(path: string) {
   return { path, hash: manifestHash, size: 0 };

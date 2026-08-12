@@ -7,11 +7,15 @@ import type {
   UserMessagePart,
 } from "@vm0/api-contracts/contracts/chat-threads";
 
-import { listZeroChatEvents } from "../../../lib/api/domains/zero-chat";
+import {
+  isZeroChatEventSnapshotReadEnabled,
+  listZeroChatEvents,
+} from "../../../lib/api/domains/zero-chat";
 import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import { formatIsoTimestamp } from "../../../lib/utils/time-format";
 import { parseBoundedLogCount } from "../../../lib/utils/log-pagination";
 import { resolveChatThreadId } from "./shared";
+import { syncRawChatHistory } from "./chat-event-history";
 
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 100;
@@ -24,6 +28,7 @@ interface MessagesOptions {
   readonly threadId?: string;
   readonly limit?: string;
   readonly json?: boolean;
+  readonly outputDir?: string;
 }
 
 interface ChatMessage {
@@ -248,7 +253,7 @@ async function loadRecentMessages(
 
 export const messagesCommand = new Command()
   .name("messages")
-  .description("Read the messages in a web chat thread")
+  .description("Read or synchronize history for a web chat thread")
   .option(
     "--thread-id <id>",
     "Chat thread ID (defaults to OKOU_CHAT_THREAD_ID)",
@@ -258,6 +263,10 @@ export const messagesCommand = new Command()
     `Maximum number of messages to print (default: ${DEFAULT_LIMIT}, max: ${MAX_LIMIT})`,
   )
   .option("--json", "Print machine-readable JSON")
+  .option(
+    "--output-dir <directory>",
+    "Synchronize raw snapshot and hot event files into this directory",
+  )
   .addHelpText(
     "after",
     `
@@ -266,15 +275,54 @@ Examples:
   Read another chat:  okou chat messages --thread-id <thread-id>
   Read the last 5:    okou chat messages --limit 5
   Print JSON:         okou chat messages --thread-id <thread-id> --json
+  Sync raw history:   okou chat messages --thread-id <thread-id> --output-dir threads
 
 Notes:
   - Prints user and assistant messages oldest first, the order the chat UI shows
+  - When snapshot read is enabled, --output-dir is required and writes grep-friendly raw history
   - Reads a thread the current user owns, including one another agent run wrote into
   - Authenticates via OKOU_TOKEN (requires chat-event:read capability)`,
   )
   .action(
     withErrorHandler(async (options: MessagesOptions) => {
       const threadId = resolveChatThreadId(options.threadId);
+      const snapshotReadEnabled = await isZeroChatEventSnapshotReadEnabled();
+      if (snapshotReadEnabled) {
+        if (!options.outputDir) {
+          throw new Error(
+            "--output-dir is required when chat event snapshot read is enabled",
+          );
+        }
+        if (options.limit !== undefined) {
+          throw new Error(
+            "--limit is not supported when synchronizing raw chat history",
+          );
+        }
+        const result = await syncRawChatHistory({
+          threadId,
+          outputDirectory: options.outputDir,
+        });
+        if (options.json) {
+          console.log(
+            JSON.stringify({
+              threadId,
+              directory: result.directory,
+              files: result.files,
+            }),
+          );
+          return;
+        }
+        console.log(`Synchronized chat history to ${result.directory}`);
+        for (const file of result.files) {
+          console.log(file);
+        }
+        return;
+      }
+      if (options.outputDir !== undefined) {
+        throw new Error(
+          "--output-dir requires chat event snapshot read to be enabled",
+        );
+      }
       const limit =
         options.limit === undefined
           ? DEFAULT_LIMIT

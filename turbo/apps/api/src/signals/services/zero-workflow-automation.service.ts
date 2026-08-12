@@ -10,7 +10,7 @@ import {
   googleMeetTranscriptGeneratedEventConfigSchema,
   githubDeploymentStatusCreatedEventConfigSchema,
   githubIssueCommentCreatedEventConfigSchema,
-  githubLabelAppliedEventConfigSchema,
+  githubPullRequestEventConfigSchema,
   githubPullRequestReviewSubmittedEventConfigSchema,
   githubWorkflowJobCompletedEventConfigSchema,
   githubWorkflowRunCompletedEventConfigSchema,
@@ -96,7 +96,6 @@ import {
   prepareGoogleFormsResponseEventConfigForPersist,
 } from "./google-forms-automation-event.service";
 import { ensureGoogleMeetTranscriptGeneratedSubscriptionForUser } from "./google-meet-automation-event.service";
-import { prepareGithubLabelEventConfigForPersist } from "./github-label-automation-event.service";
 import { prepareGithubWebhookEventConfigForPersist } from "./github-webhook-automation-event.service";
 import { prepareGithubWorkflowRunEventConfigForPersist } from "./github-workflow-run-event.service";
 import {
@@ -148,7 +147,7 @@ type GithubAutomationEventType = Extract<
   ZeroAutomationEventType,
   | "github-deployment-status-created"
   | "github-issue-comment-created"
-  | "github-label-applied"
+  | "github-pull-request"
   | "github-pull-request-review-submitted"
   | "github-workflow-job-completed"
   | "github-workflow-run-completed"
@@ -157,6 +156,7 @@ type GithubWebhookAutomationEventType = Extract<
   GithubAutomationEventType,
   | "github-deployment-status-created"
   | "github-issue-comment-created"
+  | "github-pull-request"
   | "github-pull-request-review-submitted"
   | "github-workflow-job-completed"
 >;
@@ -452,9 +452,9 @@ function supportedAutomationEventType(
     eventType === "chat-run-finished" ||
     eventType === "gmail-new-message" ||
     eventType === "gmail-label-applied" ||
-    eventType === "github-label-applied" ||
     eventType === "github-deployment-status-created" ||
     eventType === "github-issue-comment-created" ||
+    eventType === "github-pull-request" ||
     eventType === "github-pull-request-review-submitted" ||
     eventType === "github-workflow-job-completed" ||
     eventType === "github-workflow-run-completed" ||
@@ -490,9 +490,9 @@ function supportedGithubEventType(
   eventType: string | null,
 ): eventType is GithubAutomationEventType {
   return (
-    eventType === "github-label-applied" ||
     eventType === "github-deployment-status-created" ||
     eventType === "github-issue-comment-created" ||
+    eventType === "github-pull-request" ||
     eventType === "github-pull-request-review-submitted" ||
     eventType === "github-workflow-job-completed" ||
     eventType === "github-workflow-run-completed"
@@ -505,6 +505,7 @@ function supportedGithubWebhookEventType(
   return (
     eventType === "github-deployment-status-created" ||
     eventType === "github-issue-comment-created" ||
+    eventType === "github-pull-request" ||
     eventType === "github-pull-request-review-submitted" ||
     eventType === "github-workflow-job-completed"
   );
@@ -644,11 +645,11 @@ function githubEventRowToSummary(
     scheduleSummary: null,
   };
   switch (row.eventType) {
-    case "github-label-applied": {
+    case "github-pull-request": {
       return {
         ...summaryBase,
-        eventType: "github-label-applied",
-        eventConfig: githubLabelAppliedEventConfigSchema.parse(row.eventConfig),
+        eventType: "github-pull-request",
+        eventConfig: githubPullRequestEventConfigSchema.parse(row.eventConfig),
       };
     }
     case "github-workflow-run-completed": {
@@ -1339,10 +1340,10 @@ interface CreateGithubEventAutomationInputBase {
 }
 type CreateGithubEventAutomationInput =
   | (CreateGithubEventAutomationInputBase & {
-      readonly eventType: "github-label-applied";
+      readonly eventType: "github-pull-request";
       readonly eventConfig: Extract<
         GithubAutomationEventConfig,
-        { readonly event: "label_applied" }
+        { readonly event: "pull_request" }
       >;
     })
   | (CreateGithubEventAutomationInputBase & {
@@ -1902,42 +1903,6 @@ async function createWebhookEventAutomationForWorkflow(
   if (!summary) {
     return workflowWebhookTeamRequiredResult();
   }
-  return { kind: "ok", summary };
-}
-
-async function createGithubLabelEventAutomationForWorkflow(
-  args: {
-    readonly context: CreateEventAutomationWorkflowContext;
-    readonly input: Extract<
-      CreateGithubEventAutomationInput,
-      {
-        readonly eventType: "github-label-applied";
-      }
-    >;
-  },
-  signal: AbortSignal,
-): Promise<AutomationResult> {
-  const preparedConfig = await prepareGithubLabelEventConfigForPersist(
-    args.context.db,
-    {
-      orgId: args.input.orgId,
-      userId: args.input.member.userId,
-      eventConfig: args.input.eventConfig,
-    },
-  );
-  signal.throwIfAborted();
-  if (preparedConfig.kind !== "ok") {
-    return preparedConfig;
-  }
-
-  const summary = await insertEventAutomation(args.context.db, {
-    input: { ...args.input, eventConfig: preparedConfig.eventConfig },
-    workflowId: args.context.workflowId,
-    agentId: args.context.agentId,
-    workflowTitle: args.context.workflowTitle,
-    currentTime: nowDate(),
-  });
-  signal.throwIfAborted();
   return { kind: "ok", summary };
 }
 
@@ -2585,14 +2550,6 @@ const createEventAutomationForWorkflow$ = command(
       return await createWebhookEventAutomationForWorkflow(createArgs, signal);
     }
 
-    if (input.eventType === "github-label-applied") {
-      const createArgs = { context: args, input };
-      return await createGithubLabelEventAutomationForWorkflow(
-        createArgs,
-        signal,
-      );
-    }
-
     if (input.eventType === "github-workflow-run-completed") {
       const createArgs = { context: args, input };
       return await createGithubWorkflowRunEventAutomationForWorkflow(
@@ -2881,8 +2838,8 @@ function parseGithubAutomationEventConfig(
   eventConfig: unknown,
 ): GithubAutomationEventConfig | null {
   const result =
-    eventType === "github-label-applied"
-      ? githubLabelAppliedEventConfigSchema.safeParse(eventConfig)
+    eventType === "github-pull-request"
+      ? githubPullRequestEventConfigSchema.safeParse(eventConfig)
       : eventType === "github-workflow-run-completed"
         ? githubWorkflowRunCompletedEventConfigSchema.safeParse(eventConfig)
         : eventType === "github-workflow-job-completed"
@@ -2905,7 +2862,6 @@ async function prepareGithubAutomationEventConfig(
   db: Db,
   args: {
     readonly orgId: string;
-    readonly userId: string;
     readonly eventType: GithubAutomationEventType;
     readonly eventConfig: unknown;
   },
@@ -2920,13 +2876,6 @@ async function prepareGithubAutomationEventConfig(
       message: "eventConfig must match the GitHub automation type",
     };
   }
-  if (args.eventType === "github-label-applied") {
-    return await prepareGithubLabelEventConfigForPersist(db, {
-      orgId: args.orgId,
-      userId: args.userId,
-      eventConfig: githubLabelAppliedEventConfigSchema.parse(parsed),
-    });
-  }
   if (args.eventType === "github-workflow-run-completed") {
     return await prepareGithubWorkflowRunEventConfigForPersist(db, {
       orgId: args.orgId,
@@ -2935,13 +2884,15 @@ async function prepareGithubAutomationEventConfig(
   }
 
   const eventConfig =
-    args.eventType === "github-workflow-job-completed"
-      ? githubWorkflowJobCompletedEventConfigSchema.parse(parsed)
-      : args.eventType === "github-pull-request-review-submitted"
-        ? githubPullRequestReviewSubmittedEventConfigSchema.parse(parsed)
-        : args.eventType === "github-deployment-status-created"
-          ? githubDeploymentStatusCreatedEventConfigSchema.parse(parsed)
-          : githubIssueCommentCreatedEventConfigSchema.parse(parsed);
+    args.eventType === "github-pull-request"
+      ? githubPullRequestEventConfigSchema.parse(parsed)
+      : args.eventType === "github-workflow-job-completed"
+        ? githubWorkflowJobCompletedEventConfigSchema.parse(parsed)
+        : args.eventType === "github-pull-request-review-submitted"
+          ? githubPullRequestReviewSubmittedEventConfigSchema.parse(parsed)
+          : args.eventType === "github-deployment-status-created"
+            ? githubDeploymentStatusCreatedEventConfigSchema.parse(parsed)
+            : githubIssueCommentCreatedEventConfigSchema.parse(parsed);
   return await prepareGithubWebhookEventConfigForPersist(db, {
     orgId: args.orgId,
     eventType: args.eventType,
@@ -3003,7 +2954,6 @@ const updateEventAutomationForWorkflow$ = command(
     if (supportedGithubEventType(args.automation.eventType)) {
       const eventConfig = await prepareGithubAutomationEventConfig(args.db, {
         orgId: args.orgId,
-        userId: args.member.userId,
         eventType: args.automation.eventType,
         eventConfig: args.eventConfig,
       });
@@ -3345,7 +3295,6 @@ const ensureEventAutomationCanBeEnabled$ = command(
     if (supportedGithubEventType(args.automation.eventType)) {
       const preparedConfig = await prepareGithubAutomationEventConfig(args.db, {
         orgId: args.orgId,
-        userId: args.member.userId,
         eventType: args.automation.eventType,
         eventConfig: args.automation.eventConfig,
       });

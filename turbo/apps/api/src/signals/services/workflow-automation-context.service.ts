@@ -201,6 +201,19 @@ function nullableStringField(
   return value;
 }
 
+function booleanField(
+  payload: WorkflowAutomationEventPayload,
+  field: string,
+): boolean {
+  const value = payload[field];
+  if (typeof value !== "boolean") {
+    throw new Error(
+      `Workflow automation event payload field "${field}" must be a boolean`,
+    );
+  }
+  return value;
+}
+
 function githubWebhookDelivery(
   payload: WorkflowAutomationEventPayload,
 ): string {
@@ -237,6 +250,55 @@ function renderGithubIssueCommentCreated(
   return `GitHub user "${stringField(author, "login")}" created a comment (GitHub webhook delivery ${githubWebhookDelivery(payload)}).`;
 }
 
+function renderGithubPullRequest(
+  payload: WorkflowAutomationEventPayload,
+): string {
+  const action = stringField(payload, "action");
+  const pullRequest = objectField(payload, "pullRequest");
+  const subject = `pull request #${numberField(pullRequest, "number")}`;
+  const summary = (): string => {
+    switch (action) {
+      case "opened":
+      case "reopened": {
+        const author = objectField(pullRequest, "author");
+        return `GitHub user "${stringField(author, "login")}" ${action} ${subject}`;
+      }
+      case "closed": {
+        return booleanField(pullRequest, "merged")
+          ? `GitHub ${subject} was merged into "${stringField(pullRequest, "baseBranch")}"`
+          : `GitHub ${subject} was closed without merging`;
+      }
+      case "ready_for_review": {
+        return `GitHub ${subject} was marked ready for review`;
+      }
+      case "converted_to_draft": {
+        return `GitHub ${subject} was converted to a draft`;
+      }
+      case "synchronize": {
+        return `GitHub ${subject} was updated with new commits`;
+      }
+      case "enqueued": {
+        return `GitHub ${subject} was added to the merge queue`;
+      }
+      case "dequeued": {
+        return `GitHub ${subject} was removed from the merge queue`;
+      }
+      case "labeled": {
+        return `GitHub label "${stringField(objectField(payload, "label"), "name")}" was applied to ${subject}`;
+      }
+      case "unlabeled": {
+        return `GitHub label "${stringField(objectField(payload, "label"), "name")}" was removed from ${subject}`;
+      }
+      default: {
+        throw new Error(
+          `Unsupported GitHub pull request action "${action}" in workflow automation event payload`,
+        );
+      }
+    }
+  };
+  return `${summary()} (GitHub webhook delivery ${githubWebhookDelivery(payload)}).`;
+}
+
 function renderGoogleCalendarEvent(
   payload: WorkflowAutomationEventPayload,
   action: "was created" | "was updated" | "was cancelled",
@@ -265,16 +327,9 @@ export const TRIGGER_RENDERERS: Readonly<
   "gmail-label-applied": (payload) => {
     return `Gmail label "${stringField(payload, "labelName")}" was applied to a message on ${stringField(payload, "emailAddress")} (Gmail message ${stringField(payload, "messageId")}).`;
   },
-  "github-label-applied": (payload) => {
-    const subject = objectField(payload, "subject");
-    const subjectLabel =
-      stringField(subject, "type") === "pull_request"
-        ? "pull request"
-        : "issue";
-    return `GitHub label "${stringField(payload, "labelName")}" was applied to ${subjectLabel} #${numberField(subject, "number")} (GitHub webhook delivery ${githubWebhookDelivery(payload)}).`;
-  },
   "github-deployment-status-created": renderGithubDeploymentStatusCreated,
   "github-issue-comment-created": renderGithubIssueCommentCreated,
+  "github-pull-request": renderGithubPullRequest,
   "github-pull-request-review-submitted":
     renderGithubPullRequestReviewSubmitted,
   "github-workflow-job-completed": renderGithubWorkflowJobCompleted,
@@ -357,8 +412,8 @@ const GMAIL_NOTES = [
 const GITHUB_WEBHOOK_NOTES = [
   "Not included below: user-authored review and comment bodies, logs, and artifacts. Connected GitHub tools and the GitHub API return them.",
 ] as const;
-const GITHUB_LABEL_NOTES = [
-  "Not included below: the issue or pull request body, comments, files, and diffs. Connected GitHub tools and the GitHub API return them.",
+const GITHUB_PULL_REQUEST_NOTES = [
+  "Not included below: the pull request body, comments, files, and diffs. Connected GitHub tools and the GitHub API return them.",
 ] as const;
 const GITHUB_WORKFLOW_RUN_NOTES = [
   "Not included below: jobs, logs, artifacts, and pull request details. Connected GitHub tools and the GitHub API return them.",
@@ -393,9 +448,9 @@ export const EVENT_NOTES: Readonly<
   "chat-run-finished": CHAT_RUN_FINISHED_NOTES,
   "gmail-new-message": GMAIL_NOTES,
   "gmail-label-applied": GMAIL_NOTES,
-  "github-label-applied": GITHUB_LABEL_NOTES,
   "github-deployment-status-created": GITHUB_WEBHOOK_NOTES,
   "github-issue-comment-created": GITHUB_WEBHOOK_NOTES,
+  "github-pull-request": GITHUB_PULL_REQUEST_NOTES,
   "github-pull-request-review-submitted": GITHUB_WEBHOOK_NOTES,
   "github-workflow-job-completed": GITHUB_WEBHOOK_NOTES,
   "github-workflow-run-completed": GITHUB_WORKFLOW_RUN_NOTES,
@@ -438,9 +493,9 @@ export const EVENT_POLICY: Readonly<
   "chat-run-finished": EVENT_SOURCE_POLICY,
   "gmail-new-message": EVENT_SOURCE_POLICY,
   "gmail-label-applied": EVENT_SOURCE_POLICY,
-  "github-label-applied": EVENT_SOURCE_POLICY,
   "github-deployment-status-created": EVENT_SOURCE_POLICY,
   "github-issue-comment-created": EVENT_SOURCE_POLICY,
+  "github-pull-request": EVENT_SOURCE_POLICY,
   "github-pull-request-review-submitted": EVENT_SOURCE_POLICY,
   "github-workflow-job-completed": EVENT_SOURCE_POLICY,
   "github-workflow-run-completed": EVENT_SOURCE_POLICY,

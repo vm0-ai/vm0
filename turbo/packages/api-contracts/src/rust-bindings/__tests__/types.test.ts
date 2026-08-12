@@ -238,6 +238,9 @@ describe("Rust type bindings", () => {
     expect(firstRender).toContain(
       "pub volume_versions_snapshot: Option<RequestVolumeVersionsSnapshot>,",
     );
+    expect(firstRender).toMatch(
+      /pub cli_agent_session_history_disposition:\n\s+Option<RequestCliAgentSessionHistoryDisposition>,/,
+    );
     expect(firstRender).toContain(
       "pub versions: std::collections::BTreeMap<String, String>,",
     );

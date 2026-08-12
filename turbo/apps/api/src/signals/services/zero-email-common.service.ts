@@ -25,6 +25,10 @@ interface EmailOutboxDrainContext {
   readonly currentTimeMs: number;
 }
 
+interface EmailOutboxItemsContext extends EmailOutboxDrainContext {
+  readonly itemIds: readonly string[];
+}
+
 const log = logger("zero:email");
 const USER_CACHE_TTL_MS = 900_000;
 const MAX_ATTEMPTS = 3;
@@ -465,6 +469,7 @@ async function processOutboxItem(
 async function drainNextOutboxItem(
   db: Db,
   currentTimeMs: number,
+  itemIds?: readonly string[],
 ): Promise<boolean> {
   return await db.transaction(async (tx) => {
     const currentTime = new Date(currentTimeMs);
@@ -473,6 +478,9 @@ async function drainNextOutboxItem(
       .from(emailOutbox)
       .where(
         and(
+          itemIds === undefined
+            ? undefined
+            : inArray(emailOutbox.id, [...itemIds]),
           eq(emailOutbox.status, "pending"),
           or(
             isNull(emailOutbox.nextRetryAt),
@@ -490,38 +498,94 @@ async function drainNextOutboxItem(
   });
 }
 
+async function drainEmailOutboxBatch(
+  db: Db,
+  context: EmailOutboxDrainContext,
+  signal: AbortSignal,
+  itemIds?: readonly string[],
+): Promise<number> {
+  let processed = 0;
+
+  for (let index = 0; index < MAX_OUTBOX_BATCH_SIZE; index++) {
+    signal.throwIfAborted();
+    const hadItem = await drainNextOutboxItem(
+      db,
+      context.currentTimeMs,
+      itemIds,
+    );
+    signal.throwIfAborted();
+    if (!hadItem) {
+      break;
+    }
+
+    processed++;
+    if (index < MAX_OUTBOX_BATCH_SIZE - 1) {
+      const delayMs = outboxDrainDelayMs();
+      if (delayMs > 0) {
+        await delay(delayMs, { signal });
+      }
+    }
+  }
+
+  if (processed > 0) {
+    log.debug("Drained emails from outbox", { processed });
+  }
+  return processed;
+}
+
 export const drainEmailOutboxBatch$ = command(
   async (
     { set },
     context: EmailOutboxDrainContext,
     signal: AbortSignal,
   ): Promise<number> => {
-    const db = set(writeDb$);
-    let processed = 0;
-
-    for (let index = 0; index < MAX_OUTBOX_BATCH_SIZE; index++) {
-      signal.throwIfAborted();
-      const hadItem = await drainNextOutboxItem(db, context.currentTimeMs);
-      signal.throwIfAborted();
-      if (!hadItem) {
-        break;
-      }
-
-      processed++;
-      if (index < MAX_OUTBOX_BATCH_SIZE - 1) {
-        const delayMs = outboxDrainDelayMs();
-        if (delayMs > 0) {
-          await delay(delayMs, { signal });
-        }
-      }
-    }
-
-    if (processed > 0) {
-      log.debug("Drained emails from outbox", { processed });
-    }
-    return processed;
+    return await drainEmailOutboxBatch(set(writeDb$), context, signal);
   },
 );
+
+export const drainEmailOutboxItems$ = command(
+  async (
+    { set },
+    context: EmailOutboxItemsContext,
+    signal: AbortSignal,
+  ): Promise<number> => {
+    return await drainEmailOutboxBatch(
+      set(writeDb$),
+      context,
+      signal,
+      context.itemIds,
+    );
+  },
+);
+
+async function cleanupExpiredEmailOutbox(
+  db: Db,
+  context: EmailOutboxDrainContext,
+  signal: AbortSignal,
+  itemIds?: readonly string[],
+): Promise<number> {
+  const cutoff = new Date(context.currentTimeMs - OUTBOX_TTL_MS);
+  const deleted = await db
+    .delete(emailOutbox)
+    .where(
+      and(
+        itemIds === undefined
+          ? undefined
+          : inArray(emailOutbox.id, [...itemIds]),
+        lt(emailOutbox.createdAt, cutoff),
+        or(eq(emailOutbox.status, "pending"), eq(emailOutbox.status, "failed")),
+      ),
+    )
+    .returning({ id: emailOutbox.id });
+  signal.throwIfAborted();
+
+  if (deleted.length > 0) {
+    log.debug("Cleaned up expired email outbox items", {
+      cleaned: deleted.length,
+    });
+  }
+  return deleted.length;
+}
 
 export const cleanupExpiredEmailOutbox$ = command(
   async (
@@ -529,28 +593,22 @@ export const cleanupExpiredEmailOutbox$ = command(
     context: EmailOutboxDrainContext,
     signal: AbortSignal,
   ): Promise<number> => {
-    const db = set(writeDb$);
-    const cutoff = new Date(context.currentTimeMs - OUTBOX_TTL_MS);
-    const deleted = await db
-      .delete(emailOutbox)
-      .where(
-        and(
-          lt(emailOutbox.createdAt, cutoff),
-          or(
-            eq(emailOutbox.status, "pending"),
-            eq(emailOutbox.status, "failed"),
-          ),
-        ),
-      )
-      .returning({ id: emailOutbox.id });
-    signal.throwIfAborted();
+    return await cleanupExpiredEmailOutbox(set(writeDb$), context, signal);
+  },
+);
 
-    if (deleted.length > 0) {
-      log.debug("Cleaned up expired email outbox items", {
-        cleaned: deleted.length,
-      });
-    }
-    return deleted.length;
+export const cleanupExpiredEmailOutboxItems$ = command(
+  async (
+    { set },
+    context: EmailOutboxItemsContext,
+    signal: AbortSignal,
+  ): Promise<number> => {
+    return await cleanupExpiredEmailOutbox(
+      set(writeDb$),
+      context,
+      signal,
+      context.itemIds,
+    );
   },
 );
 

@@ -6,10 +6,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from urllib.parse import urlparse
 
 import pytest
+from mitmproxy import http
 
 import auth
 import auth_base_forwarder as forwarder
 import flow_metadata_keys as metadata_keys
+import url_utils
 from tests.auth_base_forwarder_helpers import fake_forwarder_upstream
 from tests.firewall_auth_helpers import handle_firewall_request_without_upstream_admission
 from tests.firewall_rewrite_helpers import make_safety_rewrite_inputs
@@ -164,6 +166,170 @@ class TestAuthBaseUrlRewriteSafety:
         assert "Firewall URL rewrite:" not in log_text
         assert "super-secret-token" not in log_text
         assert "real-token" not in log_text
+
+    @pytest.mark.parametrize(
+        ("extra_bytes", "accepted"),
+        [
+            pytest.param(0, True, id="exact-limit"),
+            pytest.param(1, False, id="over-limit"),
+        ],
+    )
+    async def test_request_target_size_boundary(
+        self,
+        real_flow,
+        mitm_ctx,
+        tmp_path,
+        extra_bytes: int,
+        accepted: bool,
+    ):
+        path_prefix = "/hook?"
+        request_path = path_prefix + "x" * (
+            auth.MAX_AUTH_BASE_REQUEST_TARGET_BYTES - len(path_prefix) + extra_bytes
+        )
+        flow, allow, vm_info, token_meta = make_safety_rewrite_inputs(
+            real_flow,
+            tmp_path,
+            path=request_path,
+            resolved_base="https://real.example.com/webhook/super-secret-token?base=trusted",
+        )
+        assert len(flow.request.data.path) == (
+            auth.MAX_AUTH_BASE_REQUEST_TARGET_BYTES + extra_bytes
+        )
+        get_headers = AsyncMock(return_value=token_meta)
+        mock_forward = AsyncMock(return_value=(200, b"", http.Headers()))
+        mock_log = MagicMock()
+
+        with (
+            patch.object(auth, "get_firewall_headers", get_headers),
+            patch.object(auth, "forward_request", mock_forward),
+            patch.object(auth, "log_proxy_entry", mock_log),
+            mitm_ctx(),
+        ):
+            result = await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
+
+        assert flow.request.path == request_path
+        if accepted:
+            assert result is auth.FirewallAuthHandlingResult.INLINE_PROVIDER_RESPONSE
+            get_headers.assert_awaited_once()
+            mock_forward.assert_awaited_once()
+            assert flow.response is not None
+            assert flow.response.status_code == 200
+            assert flow.metadata[metadata_keys.AUTH_URL_REWRITE] is True
+            assert metadata_keys.FIREWALL_ERROR not in flow.metadata
+            return
+
+        assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
+        get_headers.assert_not_awaited()
+        mock_forward.assert_not_awaited()
+        assert flow.response is not None
+        assert flow.response.status_code == 414
+        assert json.loads(flow.response.content)["error"] == "auth_base_request_target_too_large"
+        assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "auth_base_request_target_too_large"
+        assert metadata_keys.AUTH_URL_REWRITE not in flow.metadata
+        assert metadata_keys.AUTH_RESOLVED_SECRETS not in flow.metadata
+        [limit_log] = [
+            call
+            for call in mock_log.call_args_list
+            if call.args[2] == "auth.base request target too large"
+        ]
+        assert limit_log.kwargs["request_target_size_bytes"] == (
+            auth.MAX_AUTH_BASE_REQUEST_TARGET_BYTES + 1
+        )
+        assert limit_log.kwargs["request_target_limit_bytes"] == (
+            auth.MAX_AUTH_BASE_REQUEST_TARGET_BYTES
+        )
+        assert "super-secret-token" not in flow.response.text
+        assert "super-secret-token" not in json.dumps(mock_log.call_args_list)
+
+    @pytest.mark.parametrize(
+        ("client_segments", "separator", "raw_pair", "accepted"),
+        [
+            pytest.param(
+                url_utils.MAX_AUTH_BASE_QUERY_PAIRS - 2,
+                "&",
+                "x",
+                True,
+                id="exact-aggregate-limit",
+            ),
+            pytest.param(
+                url_utils.MAX_AUTH_BASE_QUERY_PAIRS - 1,
+                ";",
+                "",
+                False,
+                id="over-limit-empty-semicolon-segments",
+            ),
+        ],
+    )
+    async def test_trusted_query_pair_boundary(
+        self,
+        real_flow,
+        mitm_ctx,
+        tmp_path,
+        client_segments: int,
+        separator: str,
+        raw_pair: str,
+        accepted: bool,
+    ):
+        client_query = separator.join([raw_pair] * client_segments)
+        request_path = f"/hook?{client_query}"
+        flow, allow, vm_info, token_meta = make_safety_rewrite_inputs(
+            real_flow,
+            tmp_path,
+            path=request_path,
+            resolved_base="https://real.example.com/webhook/super-secret-token?base=trusted",
+            auth_overrides={
+                "headers": {"Authorization": "Bearer ${{ secrets.TOKEN }}"},
+                "query": {"api_key": "${{ secrets.API_KEY }}"},
+            },
+            token_overrides={
+                "headers": {"Authorization": "Bearer real-token"},
+                "query": {"api_key": "resolved-secret"},
+                "resolved_secrets": ["TOKEN", "API_KEY"],
+            },
+        )
+        get_headers = AsyncMock(return_value=token_meta)
+        mock_forward = AsyncMock(return_value=(200, b"", http.Headers()))
+        mock_log = MagicMock()
+
+        with (
+            patch.object(auth, "get_firewall_headers", get_headers),
+            patch.object(auth, "forward_request", mock_forward),
+            patch.object(auth, "log_proxy_entry", mock_log),
+            mitm_ctx(),
+        ):
+            result = await handle_firewall_request_without_upstream_admission(flow, allow, vm_info)
+
+        get_headers.assert_awaited_once()
+        assert flow.request.path == request_path
+        assert "Authorization" not in flow.request.headers
+        assert "api_key" not in flow.request.query
+        if accepted:
+            assert result is auth.FirewallAuthHandlingResult.INLINE_PROVIDER_RESPONSE
+            mock_forward.assert_awaited_once()
+            assert flow.response is not None
+            assert flow.response.status_code == 200
+            assert flow.metadata[metadata_keys.AUTH_URL_REWRITE] is True
+            assert metadata_keys.FIREWALL_ERROR not in flow.metadata
+            return
+
+        assert result is auth.FirewallAuthHandlingResult.LOCAL_RESPONSE
+        mock_forward.assert_not_awaited()
+        assert flow.response is not None
+        assert flow.response.status_code == 414
+        assert json.loads(flow.response.content)["error"] == "auth_base_query_too_many_pairs"
+        assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "auth_base_query_too_many_pairs"
+        assert metadata_keys.AUTH_URL_REWRITE not in flow.metadata
+        assert metadata_keys.AUTH_RESOLVED_SECRETS not in flow.metadata
+        [limit_log] = [
+            call
+            for call in mock_log.call_args_list
+            if call.args[2] == "auth.base rewritten query has too many pairs"
+        ]
+        assert limit_log.kwargs["query_pair_limit"] == url_utils.MAX_AUTH_BASE_QUERY_PAIRS
+        assert "super-secret-token" not in flow.response.text
+        assert "resolved-secret" not in flow.response.text
+        assert "super-secret-token" not in json.dumps(mock_log.call_args_list)
+        assert "resolved-secret" not in json.dumps(mock_log.call_args_list)
 
     async def test_truncated_upstream_response_returns_502_without_partial_body(
         self, headers, real_flow, mitm_ctx, tmp_path

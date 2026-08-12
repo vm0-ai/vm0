@@ -496,49 +496,6 @@ export function createRunsApi(context: TestContext) {
       return response.body;
     },
 
-    async listRunnerActiveInputs(sandboxToken: string, runId: string) {
-      const response = await accept(
-        runApp(context)(runnersActiveInputsContract).list({
-          headers: { authorization: `Bearer ${sandboxToken}` },
-          params: { runId },
-        }),
-        [200],
-      );
-      return response.body.eventIds;
-    },
-
-    async claimRunnerActiveInputs(
-      sandboxToken: string,
-      runId: string,
-      eventIds: string[],
-    ) {
-      const response = await accept(
-        runApp(context)(runnersActiveInputsContract).claim({
-          headers: { authorization: `Bearer ${sandboxToken}` },
-          params: { runId },
-          body: { eventIds },
-        }),
-        [200],
-      );
-      return response.body.prompt;
-    },
-
-    async claimRunnerActiveInputsConflict(
-      sandboxToken: string,
-      runId: string,
-      eventIds: string[],
-    ) {
-      const response = await accept(
-        runApp(context)(runnersActiveInputsContract).claim({
-          headers: { authorization: `Bearer ${sandboxToken}` },
-          params: { runId },
-          body: { eventIds },
-        }),
-        [409],
-      );
-      return response.body;
-    },
-
     async requestReserveRunnerActiveInputsAs<
       TStatus extends RunnerActiveInputDeliveryStatus,
     >(
