@@ -404,7 +404,7 @@ describe("cron snapshot chat events", () => {
     expect(rebuiltHead.object_key).not.toBe(headPut.key);
   }, 60_000);
 
-  it("resumes a bounded non-v4 rebuild until every head converges", async () => {
+  it("reclaims retired heads while a bounded rebuild resumes", async () => {
     const owner = bdd.user({ orgId: `org_${randomUUID()}` });
     const agent = await bdd.createAgent(owner, {
       displayName: "Resumable snapshot agent",
@@ -420,6 +420,7 @@ describe("cron snapshot chat events", () => {
     await projectChatEventSearch();
     await runSnapshotCron();
 
+    const retiredObjectKeys: string[] = [];
     for (const threadId of threadIds) {
       const head = await readChatEventSnapshotHead(context, threadId);
       const priorObjectKey = `chat-events/${threadId}/non-v4-${randomUUID()}.ndjson.gz`;
@@ -428,6 +429,7 @@ describe("cron snapshot chat events", () => {
         throw new Error("Expected the v4 fixture object");
       }
       writeFakeChatEventObject(priorObjectKey, body);
+      retiredObjectKeys.push(priorObjectKey);
       await setChatEventSnapshotHeadVersion(
         context,
         threadId,
@@ -438,12 +440,22 @@ describe("cron snapshot chat events", () => {
 
     mockOptionalEnv("CHAT_EVENT_SNAPSHOT_BATCH_SIZE", "1");
     const firstPass = await runSnapshotCron();
-    expect(firstPass.nonV4SnapshotHeads).toBe(1);
-    const incomplete = await verifySnapshotConvergence();
-    expect(incomplete.status).toBe(409);
+    expect(firstPass).toMatchObject({
+      snapshots: 1,
+      nonV4SnapshotHeads: 0,
+    });
+    expect(firstPass.retiredSnapshotReferencesDeleted).toBeGreaterThanOrEqual(
+      2,
+    );
+    for (const objectKey of retiredObjectKeys) {
+      expect(readFakeChatEventObject(objectKey)).toBeUndefined();
+    }
 
     const secondPass = await runSnapshotCron();
-    expect(secondPass.nonV4SnapshotHeads).toBe(0);
+    expect(secondPass).toMatchObject({
+      snapshots: 1,
+      nonV4SnapshotHeads: 0,
+    });
     const converged = await verifySnapshotConvergence();
     expect(converged.status).toBe(200);
     for (const threadId of threadIds) {
