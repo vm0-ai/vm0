@@ -277,7 +277,21 @@ async function mockSelectedFastModel(page: Page): Promise<void> {
     });
   });
   await page.route("**/api/okou/user-model-preference", async (route) => {
-    if (route.request().method() !== "GET") {
+    const request = route.request();
+    if (request.method() === "PUT") {
+      const update: unknown = request.postDataJSON();
+      if (!isRecord(update)) {
+        throw new Error("Model preference update was not a record");
+      }
+      await route.fulfill({
+        json: {
+          ...update,
+          updatedAt: "2026-08-12T00:00:00.000Z",
+        },
+      });
+      return;
+    }
+    if (request.method() !== "GET") {
       await route.continue();
       return;
     }
