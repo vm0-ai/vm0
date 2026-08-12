@@ -2128,7 +2128,6 @@ describe("Feishu integration", () => {
       {
         id: managedConnector.id,
         connected: true,
-        hasSecret: true,
       },
     ]);
     const welcome = outboundMessages.find((message) => {

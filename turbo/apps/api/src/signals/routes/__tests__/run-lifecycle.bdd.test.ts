@@ -9821,13 +9821,6 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       ],
       agentId,
     });
-    await deleteCustomConnectorCredentialValues(context, {
-      orgId: actor.orgId,
-      userId: actor.userId,
-      customConnectorId: saved.connector.id,
-      storage: "legacy",
-    });
-
     await enableFakeKms(context);
     onTestFinished(async () => {
       await resetFakeKms(context);
@@ -9966,7 +9959,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(cancelled.status).toBe("cancelled");
   });
 
-  it("does not admit legacy-only custom connector credentials", async () => {
+  it("does not admit a custom connector with missing shared credentials", async () => {
     const api = createRunsApi(context);
     const connectors = createConnectorBddApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
@@ -9985,7 +9978,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     await connectors.setCustomConnectorSecret(
       actor,
       connector.id,
-      "legacy-only-secret",
+      "missing-shared-secret",
     );
     await connectors.updateAgentCustomConnectors(actor, agentId, [
       connector.id,
@@ -9994,12 +9987,11 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       orgId: actor.orgId,
       userId: actor.userId,
       customConnectorId: connector.id,
-      storage: "shared",
     });
 
     const run = await api.createRun(actor, {
       agentId,
-      prompt: "do not use legacy-only custom credentials",
+      prompt: "do not use missing custom connector credentials",
       modelProvider: "anthropic-api-key",
     });
     await api.heartbeatRunner(runnerGroup);
@@ -10198,7 +10190,6 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     ).toMatchObject({
       connected: false,
       configuredFieldKeys: ["api_key"],
-      hasSecret: false,
     });
 
     const run = await api.createRun(actor, {

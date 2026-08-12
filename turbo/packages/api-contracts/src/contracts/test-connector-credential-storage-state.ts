@@ -22,12 +22,6 @@ const variableStateSchema = z.object({
   value: z.string().optional(),
 });
 
-const legacyCustomValueStateSchema = z.object({
-  kind: z.enum(["secret", "variable"]),
-  key: z.string(),
-  encrypted_value: z.string(),
-});
-
 const customOauthStateSchema = z.object({
   storage_version: z.number().int().positive().nullable(),
   context_storage_version: z.number().int().positive().nullable(),
@@ -58,7 +52,6 @@ export const testConnectorCredentialStorageStateActionBodySchema =
       org_id: z.string(),
       user_id: z.string(),
       custom_connector_id: z.uuid(),
-      storage: z.enum(["legacy", "shared"]),
     }),
     z.object({
       action: z.literal("seed-owned-secret"),
@@ -135,8 +128,6 @@ export const testConnectorCredentialStorageStateActionResponseSchema = z.object(
     custom_oauth_state: customOauthStateSchema.nullable().optional(),
     secrets: z.array(secretStateSchema).optional(),
     variables: z.array(variableStateSchema).optional(),
-    legacy_custom_values: z.array(legacyCustomValueStateSchema).optional(),
-    legacy_custom_secret_encrypted_value: z.string().nullable().optional(),
   },
 );
 

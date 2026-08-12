@@ -91,7 +91,6 @@ export async function deleteCustomConnectorCredentialValues(
     readonly orgId: string;
     readonly userId: string;
     readonly customConnectorId: string;
-    readonly storage: "legacy" | "shared";
   },
 ): Promise<void> {
   await postAction(context, {
@@ -99,7 +98,6 @@ export async function deleteCustomConnectorCredentialValues(
     org_id: args.orgId,
     user_id: args.userId,
     custom_connector_id: args.customConnectorId,
-    storage: args.storage,
   });
 }
 

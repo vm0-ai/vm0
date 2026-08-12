@@ -716,7 +716,6 @@ describe("AGENT-01 and AGENT-02", () => {
     expect(connector).toMatchObject({
       slug: connectorSlug,
       displayName: "BDD Custom Connector",
-      hasSecret: false,
     });
 
     await api.setCustomConnectorSecret(
@@ -729,7 +728,7 @@ describe("AGENT-01 and AGENT-02", () => {
       return candidate.id === connector.id;
     });
     expect(listedConnector).toBeDefined();
-    expect(listedConnector?.hasSecret).toBeTruthy();
+    expect(listedConnector?.connected).toBeTruthy();
     expect(JSON.stringify(connectorList)).not.toContain(
       "custom-connector-secret",
     );
@@ -775,7 +774,7 @@ describe("AGENT-01 and AGENT-02", () => {
     expect(
       afterDisconnect.connectors.find((candidate) => {
         return candidate.id === connector.id;
-      })?.hasSecret,
+      })?.connected,
     ).toBeFalsy();
     await api.deleteCustomConnector(admin, connector.id);
     const afterDelete = await api.listCustomConnectors(admin);
