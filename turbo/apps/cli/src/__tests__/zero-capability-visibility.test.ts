@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { Command, Help } from "commander";
-import { buildZeroHelpText, registerZeroCommands } from "../zero";
+import { buildZeroHelpText, registerZeroCommands } from "../okou";
 import { decodeZeroTokenPayload } from "../lib/api/zero-token";
 
 function buildZeroToken(payload: Record<string, unknown>): string {

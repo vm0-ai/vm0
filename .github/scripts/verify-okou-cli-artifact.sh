@@ -37,7 +37,7 @@ if [[ "$package_sha256" != "$manifest_package_sha256" ]]; then
   exit 1
 fi
 
-package_size="$(stat -c '%s' "$artifact_dir/package.tgz")"
+package_size="$(wc -c < "$artifact_dir/package.tgz" | tr -d '[:space:]')"
 manifest_package_size="$(jq -er '.package.size' "$artifact_dir/manifest.json")"
 if [[ "$package_size" != "$manifest_package_size" ]]; then
   echo "CLI package size does not match manifest" >&2
@@ -55,12 +55,25 @@ jq -e \
 
 package_json="$(tar -xOf "$artifact_dir/package.tgz" package/package.json)"
 jq -e '
-  .name == "@vm0/zero-cli"
+  .name == "@vm0/okou-cli"
   and .private == true
-  and .bin.zero == "zero.js"
+  and (.bin | type == "object")
+  and ((.bin | keys | sort) == ["okou", "zero"])
+  and .bin.okou == "okou.js"
+  and .bin.zero == "okou.js"
   and ((.dependencies // {}) | length == 0)
   and ((.optionalDependencies // {}) | length == 0)
   and ((.peerDependencies // {}) | length == 0)
 ' <<< "$package_json" >/dev/null
+
+package_contents="$(tar -tzf "$artifact_dir/package.tgz")"
+if ! grep -Fxq 'package/okou.js' <<<"$package_contents"; then
+  echo "CLI package is missing the canonical okou.js implementation" >&2
+  exit 1
+fi
+if grep -Fxq 'package/zero.js' <<<"$package_contents"; then
+  echo "CLI package contains an unexpected duplicate zero.js implementation" >&2
+  exit 1
+fi
 
 echo "Verified CLI artifact for $expected_commit_sha"

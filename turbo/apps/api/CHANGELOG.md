@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.430.0](https://github.com/vm0-ai/vm0/compare/api-v1.429.2...api-v1.430.0) (2026-08-12)
+
+
+### Features
+
+* **desktop:** isolate okou updater and auth ([#26433](https://github.com/vm0-ai/vm0/issues/26433)) ([80425ee](https://github.com/vm0-ai/vm0/commit/80425ee6195ea235c6cc5f1690149b640918ab53))
+
+
+### Refactoring
+
+* **connectors:** read custom credentials from shared storage ([#26423](https://github.com/vm0-ai/vm0/issues/26423)) ([1c43592](https://github.com/vm0-ai/vm0/commit/1c4359263bcb85991742670fa13ff1bbbd156fb4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.320.0
+    * @vm0/core bumped to 8.546.4
+    * @vm0/db bumped to 1.194.6
+    * @vm0/pi-agent-runtime bumped to 1.3.50
+
 ## [1.429.2](https://github.com/vm0-ai/vm0/compare/api-v1.429.1...api-v1.429.2) (2026-08-12)
 
 
