@@ -1417,6 +1417,19 @@
       "sourcePartsHeading_many": "Feedback su {{count}} parti di {{description}}:",
       "sourcePartsHeading_other": "Feedback su {{count}} parti di {{description}}:"
     },
+    "forward": {
+      "action": "Inoltra",
+      "agents": "Agenti",
+      "back": "Indietro",
+      "content": "Contenuto",
+      "description": "Inoltra il contenuto selezionato a un agente o a una chat.",
+      "noResults": "Nessun agente o chat trovato",
+      "search": "Cerca agenti e chat...",
+      "sent": "Inoltrato correttamente",
+      "threads": "Chat",
+      "title": "Inoltra a",
+      "to": "Inoltra a"
+    },
     "mail": {
       "bcc": "bcc",
       "cc": "cc",

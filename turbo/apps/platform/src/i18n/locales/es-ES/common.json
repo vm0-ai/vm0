@@ -1417,6 +1417,19 @@
       "sourcePartsHeading_many": "Comentarios sobre {{count}} partes de {{description}}:",
       "sourcePartsHeading_other": "Comentarios sobre {{count}} partes de {{description}}:"
     },
+    "forward": {
+      "action": "Reenviar",
+      "agents": "Agentes",
+      "back": "Atrás",
+      "content": "Contenido",
+      "description": "Reenvía el contenido seleccionado a un agente o una conversación.",
+      "noResults": "No se encontraron agentes ni conversaciones",
+      "search": "Buscar agentes y conversaciones...",
+      "sent": "Reenviado correctamente",
+      "threads": "Conversaciones",
+      "title": "Reenviar a",
+      "to": "Reenviar a"
+    },
     "mail": {
       "bcc": "BCC",
       "cc": "cc",

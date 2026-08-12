@@ -237,6 +237,7 @@ interface CreateComposerSignalsOptions {
   readonly chatEvents$: Computed<ChatEvent[]>;
   readonly threadId?: string;
   readonly singleLineOnMobile: boolean;
+  readonly implicitContent?: boolean;
   readonly modelSelection$: ComposerModelSignals["modelSelection$"];
   readonly selectedModelOauthAvailable$: ComposerModelSignals["selectedModelOauthAvailable$"];
   readonly setModelSelection$: ComposerModelSignals["setModelSelection$"];
@@ -639,7 +640,8 @@ function createComposerSubmissionSignals(
 
       const uploadsReady = get(draft.attachmentUploadsReady$);
       const attachments = get(draft.attachments$);
-      let hasContent = get(workflowComposer.hasInput$);
+      let hasContent =
+        options.implicitContent === true || get(workflowComposer.hasInput$);
       if (!hasContent && attachments.length > 0) {
         const modelSelection = await get(options.modelSelection$);
         const imageRecognitionEnabled = get(imageRecognitionAvailable$);
@@ -692,7 +694,7 @@ function createComposerSubmissionSignals(
           );
           signal.throwIfAborted();
           const prompt = submission.prompt.trim();
-          if (prompt.length === 0) {
+          if (prompt.length === 0 && options.implicitContent !== true) {
             const attachments = get(draft.attachments$);
             if (attachments.length === 0) {
               return false;

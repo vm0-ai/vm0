@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -14,13 +14,16 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {
   click,
   detachedSetupPage,
+  fill,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
+import { pathname } from "../../../signals/location.ts";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
 
 const context = testContext();
 
 const FEEDBACK_THREAD_ID = "b0000000-0000-4000-a000-000000000703";
+const DEFAULT_AGENT_ID = "c0000000-0000-4000-a000-000000000001";
 
 interface ModelSelectionRequest {
   readonly modelProviderId: string;
@@ -29,11 +32,14 @@ interface ModelSelectionRequest {
 
 interface RunCreateCapture {
   prompt?: string;
+  threadId?: string;
+  clientThreadId?: string;
   userMessage?: UserMessageDocument;
   hasTextContent?: boolean;
   modelSelection?: ModelSelectionRequest | null;
   computerUseHostId?: string | null;
   clientEventId?: string;
+  sourceRunId?: string;
 }
 
 function findInlineTemplate(): HTMLElement {
@@ -155,6 +161,20 @@ async function findComposerEditor(): Promise<HTMLElement> {
   });
 }
 
+async function findForwardComposerEditor(
+  dialog: HTMLElement,
+): Promise<HTMLElement> {
+  return await waitFor(() => {
+    const editor = dialog.querySelector(
+      '[data-chat-composer] .zero-composer [contenteditable="true"]',
+    );
+    if (!(editor instanceof HTMLElement)) {
+      throw new Error("Forward composer editor not found");
+    }
+    return editor;
+  });
+}
+
 function feedbackNotes(): HTMLElement[] {
   return Array.from(document.querySelectorAll("[data-feedback-note]")).filter(
     (element): element is HTMLElement => {
@@ -224,6 +244,175 @@ function dispatchDocumentShortcut(
 }
 
 describe("chat inline feedback", () => {
+  it("forwards selected assistant content to a new agent chat without navigating", async () => {
+    const user = userEvent.setup({ delay: null });
+    const sourceRunId = "d0000000-0000-4000-a000-000000000703";
+    const selectedContent = "Keep the migration window below fifteen minutes.";
+    const additionalContext = "Turn this into an operator checklist.";
+    const sentRequests: RunCreateCapture[] = [];
+    const successToast = vi.spyOn(toast, "success");
+
+    mockChatLifecycle(context, {
+      threadId: FEEDBACK_THREAD_ID,
+      threadTitle: "Forward source",
+      chatEvents: [
+        {
+          id: "msg-forward-agent-user",
+          role: "user",
+          content: "Review the migration plan",
+          runId: sourceRunId,
+          createdAt: "2026-08-12T09:00:00Z",
+        },
+        {
+          id: "msg-forward-agent-assistant",
+          role: "assistant",
+          content: selectedContent,
+          runId: sourceRunId,
+          createdAt: "2026-08-12T09:00:01Z",
+        },
+      ],
+      onSendRequest(body) {
+        sentRequests.push(body);
+      },
+    });
+
+    detachedSetupPage({ context, path: `/chats/${FEEDBACK_THREAD_ID}` });
+
+    selectTextForInlineFeedback(await screen.findByText(selectedContent));
+    await user.click(await screen.findByText("Forward"));
+
+    const dialog = await screen.findByRole("dialog", { name: "Forward to" });
+    expect(within(dialog).getByText(selectedContent)).toBeInTheDocument();
+    const search = within(dialog).getByPlaceholderText(
+      "Search agents and chats...",
+    );
+    await fill(search, "Zero");
+    await user.keyboard("{ArrowDown}{Enter}");
+
+    const editor = await findForwardComposerEditor(dialog);
+    expect(within(dialog).getByText("Zero")).toBeInTheDocument();
+    await fill(editor, additionalContext);
+    await user.click(within(dialog).getByLabelText("Send"));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "Forward to" }),
+      ).not.toBeInTheDocument();
+      expect(sentRequests).toHaveLength(1);
+    });
+    expect(pathname()).toBe(`/chats/${FEEDBACK_THREAD_ID}`);
+    expect(sentRequests[0]).toMatchObject({
+      threadId: expect.any(String),
+      sourceRunId,
+      prompt: `Forwarded content:\n\n> ${selectedContent}\n\nAdditional context:\n\n${additionalContext}`,
+    });
+    expect(sentRequests[0]?.threadId).not.toBe(FEEDBACK_THREAD_ID);
+    expect(sentRequests[0]?.userMessage?.parts).toStrictEqual(
+      expect.arrayContaining([
+        {
+          type: "text",
+          text: `Forwarded content:\n\n> ${selectedContent}\n\nAdditional context:\n\n`,
+        },
+        { type: "text", text: additionalContext },
+      ]),
+    );
+    expect(successToast).toHaveBeenCalledWith("Forwarded successfully");
+    successToast.mockRestore();
+  });
+
+  it("forwards selected assistant content to an existing chat with keyboard selection", async () => {
+    const user = userEvent.setup({ delay: null });
+    const sourceRunId = "d0000000-0000-4000-a000-000000000704";
+    const targetThreadId = "b0000000-0000-4000-a000-000000000704";
+    const selectedContent = "The launch owner is still unresolved.";
+    const sentRequests: RunCreateCapture[] = [];
+    let threadCreateCount = 0;
+    const successToast = vi.spyOn(toast, "success");
+
+    const lifecycle = mockChatLifecycle(context, {
+      threadId: FEEDBACK_THREAD_ID,
+      threadTitle: "Forward source",
+      chatEvents: [
+        {
+          id: "msg-forward-thread-user",
+          role: "user",
+          content: "Review launch readiness",
+          runId: sourceRunId,
+          createdAt: "2026-08-12T10:00:00Z",
+        },
+        {
+          id: "msg-forward-thread-assistant",
+          role: "assistant",
+          content: selectedContent,
+          runId: sourceRunId,
+          createdAt: "2026-08-12T10:00:01Z",
+        },
+      ],
+      onSendRequest(body) {
+        sentRequests.push(body);
+      },
+      onThreadCreate() {
+        threadCreateCount += 1;
+      },
+    });
+    lifecycle.setThreadList([
+      {
+        id: FEEDBACK_THREAD_ID,
+        title: "Forward source",
+        agent: { id: DEFAULT_AGENT_ID, avatarUrl: null },
+        createdAt: "2026-08-12T09:00:00Z",
+        updatedAt: "2026-08-12T10:00:00Z",
+      },
+      {
+        id: targetThreadId,
+        title: "Launch ownership",
+        agent: { id: DEFAULT_AGENT_ID, avatarUrl: null },
+        createdAt: "2026-08-12T08:00:00Z",
+        updatedAt: "2026-08-12T09:00:00Z",
+      },
+    ]);
+
+    detachedSetupPage({ context, path: `/chats/${FEEDBACK_THREAD_ID}` });
+
+    selectTextForInlineFeedback(await screen.findByText(selectedContent));
+    await user.click(await screen.findByText("Forward"));
+
+    const dialog = await screen.findByRole("dialog", { name: "Forward to" });
+    const search = within(dialog).getByPlaceholderText(
+      "Search agents and chats...",
+    );
+    await fill(search, "Launch ownership");
+    await user.keyboard("{ArrowDown}{Enter}");
+
+    await findForwardComposerEditor(dialog);
+    expect(within(dialog).getByText("Launch ownership")).toBeInTheDocument();
+    await user.click(within(dialog).getByLabelText("Send"));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "Forward to" }),
+      ).not.toBeInTheDocument();
+      expect(sentRequests).toHaveLength(1);
+    });
+    expect(pathname()).toBe(`/chats/${FEEDBACK_THREAD_ID}`);
+    expect(threadCreateCount).toBe(0);
+    expect(sentRequests[0]).toMatchObject({
+      threadId: targetThreadId,
+      sourceRunId,
+      prompt: `Forwarded content:\n\n> ${selectedContent}`,
+    });
+    expect(sentRequests[0]?.userMessage?.parts).toStrictEqual(
+      expect.arrayContaining([
+        {
+          type: "text",
+          text: `Forwarded content:\n\n> ${selectedContent}`,
+        },
+      ]),
+    );
+    expect(successToast).toHaveBeenCalledWith("Forwarded successfully");
+    successToast.mockRestore();
+  });
+
   it("inserts a template node inside a feedback note", async () => {
     const user = userEvent.setup({ delay: null });
     const assistantReply = "The illustration direction is too generic.";

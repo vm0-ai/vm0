@@ -856,6 +856,11 @@ const chatNormalSendBodyShape = {
   // Lets event-sourced clients reconcile optimistic sidebar recency by id.
   chatThreadSortEventId: chatThreadEventIdSchema.optional(),
   /**
+   * Run whose selected output the user is forwarding. The server resolves the
+   * run to authoritative thread and agent provenance before persisting it.
+   */
+  sourceRunId: z.string().uuid().optional(),
+  /**
    * Selected model id. The API resolves the effective provider from org
    * policy and available credentials. Existing threads may omit it to
    * reuse the thread's persisted model.
@@ -1337,6 +1342,7 @@ export const chatEventsContract = c.router({
           clientThreadId: z.undefined().optional(),
           chatThreadEventId: z.undefined().optional(),
           chatThreadSortEventId: z.undefined().optional(),
+          sourceRunId: z.undefined().optional(),
           model: z.undefined().optional(),
           runOptions: z.undefined().optional(),
           userMessage: z.undefined().optional(),
@@ -1357,6 +1363,7 @@ export const chatEventsContract = c.router({
           clientThreadId: z.undefined().optional(),
           chatThreadEventId: z.undefined().optional(),
           chatThreadSortEventId: z.undefined().optional(),
+          sourceRunId: z.undefined().optional(),
           model: z.undefined().optional(),
           runOptions: z.undefined().optional(),
           userMessage: z.undefined().optional(),
