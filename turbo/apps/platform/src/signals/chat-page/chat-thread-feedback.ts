@@ -21,6 +21,7 @@ import type {
   ChatForwardComposerState,
   ChatForwardSelection,
 } from "./chat-forward.ts";
+import { feedbackLocationApiSupported$ } from "../external/feature-switch.ts";
 
 // Assistant messages and other agent-produced content, such as linked email
 // drafts, opt into the shared Copy / Provide feedback interaction.
@@ -320,7 +321,9 @@ function createStartFeedback(
     }
     set(feedback.add$, {
       quote: selection.text,
-      ...(selection.eventId !== undefined && selection.range !== undefined
+      ...(get(feedbackLocationApiSupported$) &&
+      selection.eventId !== undefined &&
+      selection.range !== undefined
         ? { eventId: selection.eventId, range: selection.range }
         : {}),
       ...(selection.source ? { source: selection.source } : {}),

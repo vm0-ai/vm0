@@ -4,8 +4,10 @@ import { describe, expect, it, vi } from "vitest";
 import {
   chatThreadByIdContract,
   type UserMessageDocument,
+  userMessageDocumentSchema,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { OrgModelPolicy } from "@vm0/api-contracts/contracts/model-providers";
+import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero-model-policies";
 import { zeroWorkflowsCollectionContract } from "@vm0/api-contracts/contracts/zero-workflows";
 import { PRESENTATION_TEMPLATE_PICKER_ITEMS } from "@vm0/core";
@@ -25,6 +27,19 @@ const context = testContext();
 
 const FEEDBACK_THREAD_ID = "b0000000-0000-4000-a000-000000000703";
 const DEFAULT_AGENT_ID = "c0000000-0000-4000-a000-000000000001";
+// This pins the strict feedback object accepted by the previous API. The new
+// App must keep producing this shape until API capability negotiation succeeds.
+const previousApiUserMessageDocumentSchema = userMessageDocumentSchema.refine(
+  (document) => {
+    return document.parts.every((part) => {
+      return (
+        part.type !== "feedback" ||
+        (part.eventId === undefined && part.range === undefined)
+      );
+    });
+  },
+  { message: "Previous API rejects feedback location fields" },
+);
 
 interface ModelSelectionRequest {
   readonly modelProviderId: string;
@@ -734,6 +749,70 @@ describe("chat inline feedback", () => {
           eventId: "msg-legacy-feedback-assistant",
           range: selectedRange,
           note: [{ type: "text", text: "Name the owner." }],
+        },
+      ],
+    });
+  });
+
+  it("keeps feedback writes readable by the previous API until capability negotiation", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "b0000000-0000-4000-a000-000000000708";
+    const assistantReply = "The rollout needs a named owner.";
+    const selectedQuote = "named owner";
+    const selectedRange = {
+      start: assistantReply.indexOf(selectedQuote),
+      end: assistantReply.indexOf(selectedQuote) + selectedQuote.length,
+    };
+    const sentMessages: RunCreateCapture[] = [];
+
+    context.mocks.api(zeroFeatureSwitchesContract.get, ({ respond }) => {
+      return respond(200, {
+        switches: {},
+        effectiveSwitches: {},
+      });
+    });
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Previous API feedback",
+      chatEvents: [
+        {
+          id: "msg-previous-api-feedback-assistant",
+          role: "assistant",
+          content: assistantReply,
+          runId: "run-previous-api-feedback",
+          createdAt: "2026-08-12T11:00:00Z",
+        },
+      ],
+      onRunCreate: (body) => {
+        sentMessages.push(body);
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+    });
+
+    selectTextForInlineFeedback(
+      await screen.findByText(assistantReply),
+      selectedRange,
+    );
+    await user.click(await screen.findByText("Provide feedback"));
+    pastePlainText(await findFeedbackNote(), "Assign the owner.");
+    await user.click(screen.getByLabelText("Send"));
+
+    await waitFor(() => {
+      expect(sentMessages).toHaveLength(1);
+    });
+    expect(
+      previousApiUserMessageDocumentSchema.parse(sentMessages[0]?.userMessage),
+    ).toStrictEqual({
+      version: 1,
+      parts: [
+        {
+          type: "feedback",
+          quote: selectedQuote,
+          note: [{ type: "text", text: "Assign the owner." }],
         },
       ],
     });

@@ -201,6 +201,7 @@ function archiveLine(row: ArchiveEventRow): Buffer {
   // archive the previous strict feedback shape while keeping the canonical DB
   // row intact. Cleanup must remove this projection and bump
   // ARCHIVE_SCHEMA_VERSION so every existing head is rebuilt with locations.
+  // Follow-up: #26697.
   return encodeArchiveLine(
     projectLegacyChatEventRow(chatEventRowFromDbRow(row)),
   );

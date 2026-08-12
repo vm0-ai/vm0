@@ -9,6 +9,7 @@ export const CLIENT_FORCE_UPGRADE_STATUS = 426;
 // X-Client-Version. This avoids introducing a new CORS header while stale App
 // bundles still need feedback locations projected out of persisted documents.
 // Remove after the App rollout has exceeded the ~2-day stale-client window.
+// Follow-up: #26697.
 export const CLIENT_FEEDBACK_LOCATION_VERSION_TAG = "feedback-location-v1";
 
 export function clientVersionWithTag(version: string, tag: string): string {

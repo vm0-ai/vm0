@@ -30,7 +30,7 @@ function needsLegacyFeedbackLocationProjection(args: {
 // Old App bundles keep running for about two days and their strict v1 feedback
 // reader rejects eventId/range. Keep those bundles on the previous document
 // shape until the capability-tagged App rollout has exceeded that window, then
-// remove this signal and every projection that consumes it.
+// remove this signal and every projection that consumes it. Follow-up: #26697.
 export const legacyFeedbackLocationAppClient$ = computed((get) => {
   return needsLegacyFeedbackLocationProjection({
     clientType: get(clientType$),

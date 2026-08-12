@@ -1,4 +1,4 @@
-import { command, computed } from "ccstate";
+import { command, computed, state } from "ccstate";
 import { getAllFeatureStates } from "@vm0/core/feature-switch";
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
@@ -44,6 +44,17 @@ function applySwitches(
 
 export const featureSwitch$ = computed((get) => {
   return get(featureSwitchCacheState$);
+});
+
+const feedbackLocationApiSupportedState$ = state(false);
+
+// A new App can briefly reach an API version whose strict request schema
+// predates feedback locations. Keep location writes disabled until the API
+// bootstrap response advertises support. Remove this negotiation after the
+// accepting API version is outside the production rollback window. Follow-up:
+// #26697.
+export const feedbackLocationApiSupported$ = computed((get): boolean => {
+  return get(feedbackLocationApiSupportedState$);
 });
 
 export const imageRecognitionAvailable$ = computed((): boolean => {
@@ -100,6 +111,10 @@ export const reloadFeatureSwitch$ = command(
       combined,
       result.body.switches,
       result.body.effectiveSwitches,
+    );
+    set(
+      feedbackLocationApiSupportedState$,
+      result.body.apiCapabilities?.feedbackLocationV1 === true,
     );
     set(setFeatureSwitchLocalStorage$, JSON.stringify(combined));
   },
