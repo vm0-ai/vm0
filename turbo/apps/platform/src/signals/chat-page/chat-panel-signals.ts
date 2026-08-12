@@ -23,6 +23,7 @@ import type { AssistantErrorRecovery } from "./assistant-error-recovery.ts";
 import type { ComposerSignals } from "../zero-page/composer-signals.ts";
 import type { ChatThreadFeedbackSignals } from "./chat-thread-feedback.ts";
 import type { ChatThreadSharingSignals } from "./chat-thread-sharing.ts";
+import type { ChatForwardContext } from "./chat-forward.ts";
 
 type RecommendedFollowup = ChatRecommendedFollowup;
 
@@ -102,6 +103,8 @@ export interface SendMessageOptions {
   readonly cloudBrowserEnabled?: boolean;
   readonly generationTemplate?: GenerationTemplateRequest;
   readonly editorDocument?: EditorDocumentSnapshot;
+  readonly forward?: ChatForwardContext;
+  readonly onOptimisticSend?: () => void;
 }
 
 export interface QueueMessageOptions {
@@ -109,6 +112,8 @@ export interface QueueMessageOptions {
   readonly cloudBrowserEnabled: boolean | undefined;
   readonly generationTemplate: GenerationTemplateRequest | undefined;
   readonly editorDocument: EditorDocumentSnapshot;
+  readonly forward?: ChatForwardContext;
+  readonly onOptimisticSend?: () => void;
 }
 
 export interface ChatPanelSignals {

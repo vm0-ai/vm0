@@ -500,6 +500,7 @@ export function mockChatLifecycle(
       computerUseHostId?: string | null;
       cloudBrowserEnabled?: boolean;
       revokesEventId?: string;
+      sourceRunId?: string;
     }) => void;
     onSendRequest?: (body: {
       prompt: string;
@@ -510,6 +511,7 @@ export function mockChatLifecycle(
       modelSelection?: ModelSelectionRequest | null;
       computerUseHostId?: string | null;
       cloudBrowserEnabled?: boolean;
+      sourceRunId?: string;
     }) => void;
     onThreadCreate?: (body: {
       clientThreadId?: string;
@@ -767,6 +769,7 @@ export function mockChatLifecycle(
     computerUseHostId?: string | null;
     cloudBrowserEnabled?: boolean;
     revokesEventId?: string;
+    sourceRunId?: string;
   }) => {
     if (typeof options?.sendGate === "function") {
       await options.sendGate();
@@ -981,8 +984,9 @@ export function mockChatLifecycle(
       modelSelection: modelSelectionFromBody(body),
       computerUseHostId: body.computerUseHostId,
       cloudBrowserEnabled: body.cloudBrowserEnabled,
+      sourceRunId: body.sourceRunId,
     });
-    threadId = body.clientThreadId ?? threadId;
+    threadId = body.clientThreadId ?? body.threadId ?? threadId;
     const responseBody = hasActiveRun()
       ? await appendQueuedUserMessage(body)
       : await startRunFromUserMessage(body);

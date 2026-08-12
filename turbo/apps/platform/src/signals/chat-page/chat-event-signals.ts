@@ -1,6 +1,7 @@
 import { command, type Command, type Computed } from "ccstate";
 import type {
   ChatRunOptionsRequest,
+  UserMessageDocument,
   UserMessageInputDocument,
   ChatEvent as PersistedChatEvent,
 } from "@vm0/api-contracts/contracts/chat-threads";
@@ -32,6 +33,41 @@ import { withSelectedModelAnnotation } from "./model-selection-request.ts";
 
 const L = logger("ChatEventSignals");
 
+export interface ChatAgentRunSource {
+  readonly runId: string;
+  readonly threadId: string;
+  readonly agentId: string;
+  readonly titleSnapshot: string;
+}
+
+export function withOptimisticAgentRunSource(
+  document: UserMessageDocument,
+  source: ChatAgentRunSource,
+): UserMessageDocument {
+  return {
+    version: 1,
+    parts: [
+      ...document.parts.filter((part) => {
+        return (
+          part.type !== "source" &&
+          part.type !== "automation" &&
+          part.type !== "goal" &&
+          part.type !== "morning_brief"
+        );
+      }),
+      {
+        type: "source",
+        kind: "agent",
+        runId: source.runId,
+        threadId: source.threadId,
+        agentId: source.agentId,
+        titleSnapshot: source.titleSnapshot,
+        href: `/chats/${source.threadId}#run-${source.runId}`,
+      },
+    ],
+  };
+}
+
 export interface SendInputChatEvent {
   readonly kind: "input";
   readonly delivery: "run" | "queue";
@@ -45,6 +81,8 @@ export interface SendInputChatEvent {
   readonly computerUseHostId?: string | null;
   readonly cloudBrowserEnabled?: boolean;
   readonly revokesEventId?: string;
+  readonly source?: ChatAgentRunSource;
+  readonly onOptimisticSend?: () => void;
 }
 
 export interface SendRevokeChatEvent {
@@ -104,6 +142,9 @@ function createSendInputChatEvent({
                 : undefined,
             )
           : input.userMessage;
+      const optimisticUserMessage = input.source
+        ? withOptimisticAgentRunSource(userMessage, input.source)
+        : userMessage;
       L.debug("send input prepared", {
         traceTime: chatEventTraceTime(),
         threadId,
@@ -127,7 +168,7 @@ function createSendInputChatEvent({
             threadId,
             eventType: "input.prompt",
             content: null,
-            userMessage,
+            userMessage: optimisticUserMessage,
             ...(input.revokesEventId === undefined
               ? {}
               : { revokesEventId: input.revokesEventId }),
@@ -142,6 +183,7 @@ function createSendInputChatEvent({
         threadId,
         clientEventId,
       });
+      input.onOptimisticSend?.();
       const result = await sendChatEvent(
         get(zeroClient$),
         {
@@ -158,6 +200,7 @@ function createSendInputChatEvent({
             ? { realAgentInPreview: true }
             : {}),
           userMessage,
+          ...(input.source ? { sourceRunId: input.source.runId } : {}),
           ...(input.computerUseHostId === undefined
             ? {}
             : { computerUseHostId: input.computerUseHostId }),

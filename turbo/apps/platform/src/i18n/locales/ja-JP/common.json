@@ -1389,6 +1389,19 @@
       "sourcePartsHeading_one": "{{description}} の {{count}} 部分に関するフィードバック:",
       "sourcePartsHeading_other": "{{description}} の {{count}} 部分に関するフィードバック:"
     },
+    "forward": {
+      "action": "転送",
+      "agents": "エージェント",
+      "back": "戻る",
+      "content": "内容",
+      "description": "選択した内容をエージェントまたはチャットに転送します。",
+      "noResults": "エージェントまたはチャットが見つかりません",
+      "search": "エージェントとチャットを検索...",
+      "sent": "転送しました",
+      "threads": "チャット",
+      "title": "転送先",
+      "to": "転送先"
+    },
     "mail": {
       "bcc": "BCC",
       "cc": "cc",

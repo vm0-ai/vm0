@@ -1389,6 +1389,19 @@
       "sourcePartsHeading_one": "Feedback zu {{count}} Teil von {{description}}:",
       "sourcePartsHeading_other": "Feedback zu {{count}} Teilen von {{description}}:"
     },
+    "forward": {
+      "action": "Weiterleiten",
+      "agents": "Agenten",
+      "back": "Zurück",
+      "content": "Inhalt",
+      "description": "Ausgewählten Inhalt an einen Agenten oder Chat weiterleiten.",
+      "noResults": "Keine Agenten oder Chats gefunden",
+      "search": "Agenten und Chats suchen...",
+      "sent": "Erfolgreich weitergeleitet",
+      "threads": "Chats",
+      "title": "Weiterleiten an",
+      "to": "Weiterleiten an"
+    },
     "mail": {
       "bcc": "BCC",
       "cc": "CC",

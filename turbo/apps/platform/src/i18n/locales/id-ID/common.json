@@ -1389,6 +1389,19 @@
       "sourcePartsHeading_one": "Masukan untuk {{count}} bagian {{description}}:",
       "sourcePartsHeading_other": "Masukan untuk {{count}} bagian {{description}}:"
     },
+    "forward": {
+      "action": "Teruskan",
+      "agents": "Agen",
+      "back": "Kembali",
+      "content": "Konten",
+      "description": "Teruskan konten yang dipilih ke agen atau chat.",
+      "noResults": "Agen atau chat tidak ditemukan",
+      "search": "Cari agen dan chat...",
+      "sent": "Berhasil diteruskan",
+      "threads": "Chat",
+      "title": "Teruskan ke",
+      "to": "Teruskan ke"
+    },
     "mail": {
       "bcc": "bcc",
       "cc": "cc",

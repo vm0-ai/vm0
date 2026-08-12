@@ -17,6 +17,10 @@ import {
 } from "../zero-page/chat-feedback.ts";
 import { writeToClipboard } from "../zero-page/clipboard.ts";
 import { onDomEventFn, onRef, resetSignal } from "../utils.ts";
+import type {
+  ChatForwardComposerState,
+  ChatForwardSelection,
+} from "./chat-forward.ts";
 
 // Assistant messages and other agent-produced content, such as linked email
 // drafts, opt into the shared Copy / Provide feedback interaction.
@@ -25,6 +29,7 @@ const FEEDBACK_SOURCE_SELECTOR =
 const ASSISTANT_GROUP_SELECTOR = '[data-role="assistant"]';
 const THREAD_CONTAINER_SELECTOR = "[data-chat-thread-container-id]";
 const CHAT_COMPOSER_SELECTOR = "[data-chat-composer]";
+const RUN_GROUP_SELECTOR = "[data-chat-run-id]";
 
 export interface ChatThreadFeedbackSelection {
   readonly rect: {
@@ -33,12 +38,16 @@ export interface ChatThreadFeedbackSelection {
     readonly width: number;
     readonly height: number;
   };
+  readonly text: string;
+  readonly threadId: string | null;
+  readonly runId: string | null;
 }
 
 interface CapturedFeedbackSelection {
   readonly text: string;
   readonly rect: ChatThreadFeedbackSelection["rect"];
   readonly threadId: string | null;
+  readonly runId: string | null;
   readonly range: Range;
   readonly source?: FeedbackSource;
 }
@@ -48,6 +57,14 @@ export interface ChatThreadFeedbackSignals {
   readonly start$: Command<void, []>;
   readonly close$: Command<void, []>;
   readonly copy$: Command<Promise<void>, [AbortSignal]>;
+  readonly forwardSelection$: Computed<ChatForwardSelection | null>;
+  readonly forwardComposerState$: Computed<ChatForwardComposerState | null>;
+  readonly openForward$: Command<void, [ChatForwardSelection]>;
+  readonly setForwardComposerState$: Command<
+    void,
+    [ChatForwardComposerState | null]
+  >;
+  readonly closeForward$: Command<void, []>;
   readonly setListenersRef$: Command<
     (() => void) | undefined,
     [HTMLElement | null]
@@ -94,6 +111,14 @@ function resolveSelectionThreadId(source: Element): string | null {
     return null;
   }
   return container.dataset.chatThreadContainerId ?? null;
+}
+
+function resolveSelectionRunId(source: Element): string | null {
+  const runGroup = source.closest(RUN_GROUP_SELECTOR);
+  if (!(runGroup instanceof HTMLElement)) {
+    return null;
+  }
+  return runGroup.dataset.chatRunId ?? null;
 }
 
 function resolveFeedbackSource(source: Element): FeedbackSource | undefined {
@@ -168,6 +193,7 @@ function readFeedbackSelection(): CapturedFeedbackSelection | null {
     text,
     rect: rectFromRange(range),
     threadId: resolveSelectionThreadId(sourceElement),
+    runId: resolveSelectionRunId(sourceElement),
     range: range.cloneRange(),
     ...(source ? { source } : {}),
   };
@@ -188,7 +214,15 @@ function createSelectionState(threadId: string) {
   const internalSelection$ = state<CapturedFeedbackSelection | null>(null);
   const resetToolbarSignal$ = resetSignal();
   const selection$ = computed((get): ChatThreadFeedbackSelection | null => {
-    return get(internalSelection$);
+    const selection = get(internalSelection$);
+    return selection
+      ? {
+          rect: selection.rect,
+          text: selection.text,
+          threadId: selection.threadId,
+          runId: selection.runId,
+        }
+      : null;
   });
   const close$ = command(({ set }) => {
     set(resetToolbarSignal$);
@@ -252,6 +286,42 @@ function createStartFeedback(
     });
     set(close$);
   });
+}
+
+function createForwardState(closeSelection$: Command<void, []>) {
+  const internalForwardSelection$ = state<ChatForwardSelection | null>(null);
+  const internalForwardComposerState$ = state<ChatForwardComposerState | null>(
+    null,
+  );
+  const forwardSelection$ = computed((get) => {
+    return get(internalForwardSelection$);
+  });
+  const forwardComposerState$ = computed((get) => {
+    return get(internalForwardComposerState$);
+  });
+  const openForward$ = command(
+    ({ set }, selection: ChatForwardSelection): void => {
+      set(internalForwardSelection$, selection);
+      set(internalForwardComposerState$, null);
+      set(closeSelection$);
+    },
+  );
+  const setForwardComposerState$ = command(
+    ({ set }, composerState: ChatForwardComposerState | null): void => {
+      set(internalForwardComposerState$, composerState);
+    },
+  );
+  const closeForward$ = command(({ set }): void => {
+    set(internalForwardSelection$, null);
+    set(internalForwardComposerState$, null);
+  });
+  return {
+    forwardSelection$,
+    forwardComposerState$,
+    openForward$,
+    setForwardComposerState$,
+    closeForward$,
+  };
 }
 
 function createToolbarRef({
@@ -401,6 +471,7 @@ export function createChatThreadFeedbackSignals(
   feedback: ComposerFeedbackSignals,
 ): ChatThreadFeedbackSignals {
   const selection = createSelectionState(threadId);
+  const forward = createForwardState(selection.close$);
   const start$ = createStartFeedback(
     selection.internalSelection$,
     selection.close$,
@@ -424,6 +495,11 @@ export function createChatThreadFeedbackSignals(
     start$,
     close$: selection.close$,
     copy$: selection.copy$,
+    forwardSelection$: forward.forwardSelection$,
+    forwardComposerState$: forward.forwardComposerState$,
+    openForward$: forward.openForward$,
+    setForwardComposerState$: forward.setForwardComposerState$,
+    closeForward$: forward.closeForward$,
     setListenersRef$,
     setToolbarRef$,
   };

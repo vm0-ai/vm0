@@ -108,6 +108,7 @@ type BddSendEventBody =
       readonly realAgentInPreview?: boolean;
       readonly captureNetworkBodies?: boolean;
       readonly revokesEventId?: string;
+      readonly sourceRunId?: string;
     }
   | {
       readonly agentId: string;
@@ -1238,6 +1239,9 @@ export function createChatFilesBddApi(context: TestContext) {
                 ...(body.revokesEventId === undefined
                   ? {}
                   : { revokesEventId: body.revokesEventId }),
+                ...(body.sourceRunId === undefined
+                  ? {}
+                  : { sourceRunId: body.sourceRunId }),
               };
             })()
           : "interruptsRunId" in body

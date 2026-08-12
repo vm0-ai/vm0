@@ -1418,6 +1418,19 @@
       "sourcePartsHeading_many": "Feedback sobre {{count}} partes de {{description}}:",
       "sourcePartsHeading_other": "Feedback sobre {{count}} partes de {{description}}:"
     },
+    "forward": {
+      "action": "Encaminhar",
+      "agents": "Agentes",
+      "back": "Voltar",
+      "content": "Conteúdo",
+      "description": "Encaminhe o conteúdo selecionado para um agente ou uma conversa.",
+      "noResults": "Nenhum agente ou conversa foi encontrado",
+      "search": "Buscar agentes e conversas...",
+      "sent": "Encaminhado com sucesso",
+      "threads": "Conversas",
+      "title": "Encaminhar para",
+      "to": "Encaminhar para"
+    },
     "mail": {
       "bcc": "cco",
       "cc": "cc",
