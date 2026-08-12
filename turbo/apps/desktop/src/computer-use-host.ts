@@ -249,6 +249,7 @@ export class ComputerUseHostRuntime {
   private commandTimer: NodeJS.Timeout | null = null;
   private recoveryTimer: NodeJS.Timeout | null = null;
   private commandExecutionRunning = false;
+  private draining = false;
   private lastCommandActivityAtMs: number | null = null;
   private lastCommandCompletionAtMs: number | null = null;
   private hostToken: string | null = null;
@@ -290,6 +291,7 @@ export class ComputerUseHostRuntime {
       return;
     }
     this.running = true;
+    this.draining = false;
     try {
       const nextDelay = await this.startHost();
       if (nextDelay === null) {
@@ -305,6 +307,7 @@ export class ComputerUseHostRuntime {
 
   async stop(): Promise<void> {
     this.running = false;
+    this.draining = false;
     this.clearHeartbeatTimer();
     this.clearCommandTimer();
     this.clearRecoveryTimer();
@@ -326,6 +329,17 @@ export class ComputerUseHostRuntime {
     } catch (error) {
       this.setRuntimeErrorState("stop", error);
     }
+  }
+
+  async drainAndStop(): Promise<void> {
+    this.draining = true;
+    this.clearCommandTimer();
+    while (this.commandExecutionRunning) {
+      await new Promise<void>((resolve) => {
+        this.scheduleTimeout(resolve, 50);
+      });
+    }
+    await this.stop();
   }
 
   getState(): ComputerUseHostRuntimeState {
@@ -619,7 +633,7 @@ export class ComputerUseHostRuntime {
   }
 
   private scheduleCommandPoll(delayMs: number): void {
-    if (!this.running || this.commandTimer) {
+    if (!this.running || this.draining || this.commandTimer) {
       return;
     }
     this.commandTimer = this.scheduleTimeout(() => {
@@ -659,6 +673,7 @@ export class ComputerUseHostRuntime {
       if (
         scheduleNextPoll &&
         this.running &&
+        !this.draining &&
         this.hostToken &&
         this.state.recovery?.phase !== "command_poll"
       ) {

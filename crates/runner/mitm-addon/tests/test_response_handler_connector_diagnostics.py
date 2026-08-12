@@ -2,10 +2,10 @@
 
 import json
 import urllib.parse
-from unittest.mock import patch
 
 from mitmproxy.test import tutils
 
+import connector_diagnostics
 import flow_metadata_keys as metadata_keys
 import mitm_addon
 from tests.connector_diagnostic_helpers import (
@@ -315,9 +315,15 @@ async def test_streams_unauthenticated_connector_401_diagnostic_without_upstream
     assert sum(entry["type"] == "connector_diagnostic" for entry in proxy_entries) == 1
 
 
-def test_responseheaders_parses_large_connector_auth_query_once(tmp_path, real_flow, mitm_ctx):
+def test_responseheaders_preserves_upstream_for_query_over_inspection_limit(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+):
     reg_path = write_connector_diagnostic_capture_registry(tmp_path)
-    query = "&".join(["noise=x"] * 25_000)
+    query = "noise=" + "x" * (
+        connector_diagnostics.MAX_CONNECTOR_DIAGNOSTIC_QUERY_CHARACTERS - len("noise=") + 1
+    )
     flow = real_flow(
         with_response=False,
         client_ip="10.200.0.5",
@@ -338,23 +344,20 @@ def test_responseheaders_parses_large_connector_auth_query_once(tmp_path, real_f
         try:
             urllib.parse.urlsplit("https://stable-config.example.com")
             stable_cache = urllib.parse.urlsplit.cache_info()
-            real_parse_qsl = urllib.parse.parse_qsl
-            with patch.object(
-                urllib.parse,
-                "parse_qsl",
-                wraps=real_parse_qsl,
-            ) as parse_qsl:
-                mitm_addon.responseheaders(flow)
-
-            assert parse_qsl.call_count == 1
+            mitm_addon.responseheaders(flow)
             assert urllib.parse.urlsplit.cache_info() == stable_cache
         finally:
             urllib.parse.urlsplit.cache_clear()
 
-        diagnostic_body = _drain_connector_diagnostic_response_stream(flow)
+        assert metadata_keys.CONNECTOR_DIAGNOSTIC_SLUG not in flow.metadata
+        assert metadata_keys.CONNECTOR_DIAGNOSTIC_REASON not in flow.metadata
+        assert response_stream(flow)(b"upstream") == b"upstream"
         mitm_addon.response(flow)
 
-    assert flow.response.content == diagnostic_body
+    assert flow.response.status_code == 401
+    assert flow.response.content == b"upstream"
+    [entry] = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
+    assert "firewall_error" not in entry
 
 
 async def test_restores_connector_diagnostic_body_when_headers_end_stream(
