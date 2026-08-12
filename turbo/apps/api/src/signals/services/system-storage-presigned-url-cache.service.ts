@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 
 import { systemStoragePresignedUrlCache } from "@vm0/db/schema/system-storage-presigned-url-cache";
 import type { Computed } from "ccstate";
-import { and, asc, eq, gte, inArray, lte, sql } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, like, lte, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { executeRawRows } from "../../lib/db-raw-rows";
@@ -188,6 +188,22 @@ function activeCutoff(issuedAt: Date): Date {
   );
 }
 
+function escapedObjectKeyPrefix(value: string): string {
+  return `${value
+    .replaceAll("\\", String.raw`\\`)
+    .replaceAll("%", String.raw`\%`)
+    .replaceAll("_", String.raw`\_`)}%`;
+}
+
+function objectKeyPrefixCondition(objectKeyPrefix: string | undefined) {
+  return objectKeyPrefix === undefined
+    ? undefined
+    : sql`${like(
+        systemStoragePresignedUrlCache.objectKey,
+        escapedObjectKeyPrefix(objectKeyPrefix),
+      )} escape '\\'`;
+}
+
 function storagePresignedUrlCacheScope(
   value: string,
 ): StoragePresignedUrlCacheScope {
@@ -322,23 +338,26 @@ async function touchRecentlyUsedCacheRows(
 }
 
 async function pruneInactiveExpiredCacheRows(
-  db: Db,
-  scope: StoragePresignedUrlCacheScope,
-  issuedAt: Date,
-  limit: number,
+  args: {
+    readonly db: Db;
+    readonly scope: StoragePresignedUrlCacheScope;
+    readonly issuedAt: Date;
+    readonly limit: number;
+    readonly objectKeyPrefix: string | undefined;
+  },
   signal?: AbortSignal,
 ): Promise<number> {
-  const inactiveCutoff = activeCutoff(issuedAt);
-  const issuedAtTimestamp = timestampWithoutTimeZone(issuedAt);
+  const inactiveCutoff = activeCutoff(args.issuedAt);
+  const issuedAtTimestamp = timestampWithoutTimeZone(args.issuedAt);
   const inactiveCutoffTimestamp = timestampWithoutTimeZone(inactiveCutoff);
   const deletedRows = await executeRawRows(
-    db,
+    args.db,
     sql`
       WITH candidates AS (
       SELECT ${systemStoragePresignedUrlCache.cacheKey} AS "cacheKey"
       FROM ${systemStoragePresignedUrlCache}
       WHERE ${and(
-        eq(systemStoragePresignedUrlCache.scope, scope),
+        eq(systemStoragePresignedUrlCache.scope, args.scope),
         lte(
           systemStoragePresignedUrlCache.expiresAt,
           sql`${issuedAtTimestamp}::timestamp`,
@@ -347,12 +366,13 @@ async function pruneInactiveExpiredCacheRows(
           systemStoragePresignedUrlCache.lastRequestedAt,
           sql`${inactiveCutoffTimestamp}::timestamp`,
         ),
+        objectKeyPrefixCondition(args.objectKeyPrefix),
       )}
       ORDER BY
         ${systemStoragePresignedUrlCache.lastRequestedAt},
         ${systemStoragePresignedUrlCache.expiresAt},
         ${systemStoragePresignedUrlCache.cacheKey}
-      LIMIT ${limit}
+      LIMIT ${args.limit}
     ),
     locked AS (
       SELECT ${systemStoragePresignedUrlCache.cacheKey} AS "cacheKey"
@@ -363,7 +383,7 @@ async function pruneInactiveExpiredCacheRows(
           sql`candidates."cacheKey"`,
         )}
       WHERE ${and(
-        eq(systemStoragePresignedUrlCache.scope, scope),
+        eq(systemStoragePresignedUrlCache.scope, args.scope),
         lte(
           systemStoragePresignedUrlCache.expiresAt,
           sql`${issuedAtTimestamp}::timestamp`,
@@ -372,6 +392,7 @@ async function pruneInactiveExpiredCacheRows(
           systemStoragePresignedUrlCache.lastRequestedAt,
           sql`${inactiveCutoffTimestamp}::timestamp`,
         ),
+        objectKeyPrefixCondition(args.objectKeyPrefix),
       )}
       ORDER BY ${systemStoragePresignedUrlCache.cacheKey}
       FOR UPDATE OF ${systemStoragePresignedUrlCache}
@@ -501,6 +522,7 @@ async function refreshDueStoragePresignedUrls(
     readonly scope: StoragePresignedUrlCacheScope;
     readonly limit: number;
     readonly pruneLimit: number;
+    readonly objectKeyPrefix?: string;
   },
   signal?: AbortSignal,
 ): Promise<{
@@ -530,6 +552,7 @@ async function refreshDueStoragePresignedUrls(
           systemStoragePresignedUrlCache.lastRequestedAt,
           activeCutoff(issuedAt),
         ),
+        objectKeyPrefixCondition(args.objectKeyPrefix),
       ),
     )
     .orderBy(
@@ -566,10 +589,13 @@ async function refreshDueStoragePresignedUrls(
   signal?.throwIfAborted();
 
   const pruned = await pruneInactiveExpiredCacheRows(
-    args.db,
-    args.scope,
-    issuedAt,
-    args.pruneLimit,
+    {
+      db: args.db,
+      scope: args.scope,
+      issuedAt,
+      limit: args.pruneLimit,
+      objectKeyPrefix: args.objectKeyPrefix,
+    },
     signal,
   );
 
@@ -596,6 +622,7 @@ export async function refreshDueSystemStoragePresignedUrls(
     readonly get: ComputedGetter;
     readonly limit?: number;
     readonly pruneLimit?: number;
+    readonly objectKeyPrefix?: string;
   },
   signal?: AbortSignal,
 ): Promise<{
@@ -610,6 +637,7 @@ export async function refreshDueSystemStoragePresignedUrls(
       scope: "system_storage",
       limit: args.limit ?? SYSTEM_STORAGE_PRESIGNED_URL_REFRESH_LIMIT,
       pruneLimit: args.pruneLimit ?? SYSTEM_STORAGE_PRESIGNED_URL_PRUNE_LIMIT,
+      objectKeyPrefix: args.objectKeyPrefix,
     },
     signal,
   );
