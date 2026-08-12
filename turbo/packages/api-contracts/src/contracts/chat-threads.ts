@@ -869,6 +869,9 @@ const chatNormalSendBodyShape = {
   // Preview evaluation escape hatch: when enabled, the request asks the
   // runner to bypass preview mock CLIs and use the real agent runtime.
   realAgentInPreview: z.boolean().optional(),
+  // Internal diagnostic option: capture bounded request/response data in this
+  // run's network logs. Production authorization is enforced at run creation.
+  captureNetworkBodies: z.boolean().optional(),
 } as const;
 
 const chatEventNormalSendBodySchema = z
@@ -1340,6 +1343,7 @@ export const chatEventsContract = c.router({
           computerUseHostId: z.undefined().optional(),
           hasTextContent: z.undefined().optional(),
           realAgentInPreview: z.undefined().optional(),
+          captureNetworkBodies: z.undefined().optional(),
           interruptsRunId: z.undefined().optional(),
         })
         .strict(),
@@ -1359,6 +1363,7 @@ export const chatEventsContract = c.router({
           computerUseHostId: z.undefined().optional(),
           hasTextContent: z.undefined().optional(),
           realAgentInPreview: z.undefined().optional(),
+          captureNetworkBodies: z.undefined().optional(),
           revokesEventId: z.undefined().optional(),
         })
         .strict(),

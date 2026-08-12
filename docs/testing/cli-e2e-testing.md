@@ -17,6 +17,8 @@ entry points. The current suite covers:
   workflow files and agent instructions;
 - connector firewall placeholder and authentication behavior through the
   deployed preview API, runner, sandbox, and proxy.
+- raw network protocol, DNS, connector diagnostic, browser classification, and
+  opt-in body-capture telemetry through the deployed runner and public run API.
 
 An E2E test must not call `/api/test/*`, mint a test-only API token, write the
 database directly, or use an internal fixture endpoint to construct or inspect
@@ -94,6 +96,10 @@ For active-run connector refresh cases, coordinate through a run-scoped output
 message in the public chat-events API. Network telemetry is uploaded after the
 run completes, so use it only as the final ordered policy assertion, not as a
 live synchronization point.
+
+Body capture must be enabled on the individual chat run. Do not mutate the
+shared runner account's next-run capture preference: runner files execute in
+parallel, so user-scoped mutable preferences are not isolated between shards.
 
 The workflow discovers the checked-in BATS files, weighs each file by its test
 count, and assigns whole files to at most twelve non-empty shards. New files are

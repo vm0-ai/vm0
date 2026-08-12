@@ -84,6 +84,7 @@ runner_chat_send() {
     local thread_id="$3"
     local selected_model="$4"
     local client_event_id="${5:-}"
+    local capture_network_bodies="${6:-false}"
     local parts
 
     parts="$(jq -nc --arg prompt "$prompt" '[{type: "text", text: $prompt}]')"
@@ -93,7 +94,8 @@ runner_chat_send() {
         "$parts" \
         "$thread_id" \
         "$selected_model" \
-        "$client_event_id"
+        "$client_event_id" \
+        "$capture_network_bodies"
 }
 
 runner_chat_send_parts() {
@@ -102,7 +104,9 @@ runner_chat_send_parts() {
     local parts="$3"
     local thread_id="$4"
     local selected_model="$5"
-    local client_event_id="${6:-}" payload
+    local client_event_id="${6:-}"
+    local capture_network_bodies="${7:-false}"
+    local payload
 
     if [[ -z "$client_event_id" ]]; then
         client_event_id="$(_runner_uuid)"
@@ -114,6 +118,7 @@ runner_chat_send_parts() {
             --arg threadId "$thread_id" \
             --arg clientEventId "$client_event_id" \
             --argjson parts "$parts" \
+            --argjson captureNetworkBodies "$capture_network_bodies" \
             '{
                 agentId: $agentId,
                 prompt: $prompt,
@@ -121,7 +126,7 @@ runner_chat_send_parts() {
                 clientEventId: $clientEventId,
                 userMessage: {version: 1, parts: $parts},
                 hasTextContent: true
-            }')"
+            } + if $captureNetworkBodies then {captureNetworkBodies: true} else {} end')"
     else
         payload="$(jq -nc \
             --arg agentId "$agent_id" \
@@ -129,6 +134,7 @@ runner_chat_send_parts() {
             --arg model "$selected_model" \
             --arg clientEventId "$client_event_id" \
             --argjson parts "$parts" \
+            --argjson captureNetworkBodies "$capture_network_bodies" \
             '{
                 agentId: $agentId,
                 prompt: $prompt,
@@ -136,7 +142,7 @@ runner_chat_send_parts() {
                 clientEventId: $clientEventId,
                 userMessage: {version: 1, parts: $parts},
                 hasTextContent: true
-            }')"
+            } + if $captureNetworkBodies then {captureNetworkBodies: true} else {} end')"
     fi
 
     runner_api_curl "/api/zero/chat/events" -X POST -d "$payload"
