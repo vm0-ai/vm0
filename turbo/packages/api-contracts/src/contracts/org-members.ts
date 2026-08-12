@@ -91,16 +91,6 @@ export type InviteOrgMemberRequest = z.infer<
   typeof inviteOrgMemberRequestSchema
 >;
 
-export const purchaseOrgInvitationRequestSchema =
-  inviteOrgMemberRequestSchema.extend({
-    usagePackUsd: usagePackUsdSchema,
-    successUrl: z.string().url().max(5000),
-    cancelUrl: z.string().url().max(5000),
-  });
-export type PurchaseOrgInvitationRequest = z.infer<
-  typeof purchaseOrgInvitationRequestSchema
->;
-
 export const previewOrgInvitationPurchaseRequestSchema =
   inviteOrgMemberRequestSchema.extend({
     usagePackUsd: usagePackUsdSchema,
@@ -120,10 +110,6 @@ export const orgInvitationPurchasePreviewResponseSchema = z.object({
 export type OrgInvitationPurchasePreviewResponse = z.infer<
   typeof orgInvitationPurchasePreviewResponseSchema
 >;
-
-export const orgInvitationCheckoutResponseSchema = z.object({
-  url: z.string().url(),
-});
 
 /**
  * Remove member request schema

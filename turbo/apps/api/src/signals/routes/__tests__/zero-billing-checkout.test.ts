@@ -7,6 +7,7 @@ import {
   zeroBillingCheckoutContract,
   zeroBillingUsagePackCatalogContract,
   zeroBillingUsagePackCheckoutContract,
+  zeroBillingUsagePackCreditsContract,
   zeroBillingUsagePackManagementContract,
   zeroBillingUsagePackMigrationContract,
   zeroBillingConcurrencyCheckoutContract,
@@ -47,7 +48,10 @@ import { signSandboxJwtForTests } from "../../auth/tokens";
 import { createBddApi } from "./helpers/api-bdd";
 import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
-import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
+import {
+  deleteFeatureSwitchesForUser,
+  updateFeatureSwitchesForUser,
+} from "./helpers/zero-feature-switches";
 import { webhooksStripeRoutes } from "../webhooks-stripe";
 import { readOrgAcquisitionAttributionFixture } from "../../../test-fixtures/org-metadata";
 import { webhooksClerkRoutes } from "../webhooks-clerk";
@@ -56,6 +60,7 @@ import { zeroBillingCheckoutRoutes } from "../zero-billing-checkout";
 import { zeroBillingConcurrencyCheckoutRoutes } from "../zero-billing-concurrency-checkout";
 import { zeroBillingConcurrencySubscriptionRoutes } from "../zero-billing-concurrency-subscriptions";
 import { zeroBillingCreditCheckoutRoutes } from "../zero-billing-credit-checkout";
+import { zeroBillingUsagePackCreditsRoutes } from "../zero-billing-usage-pack-credits";
 import { zeroBillingStatusRoutes } from "../zero-billing-status";
 import { zeroOrgMembersRoutes } from "../zero-org-members";
 import { zeroOrgInviteRoutes } from "../zero-org-invite";
@@ -3524,20 +3529,16 @@ describe("usage pack allocation management", () => {
     readonly fixture: ManagedUsagePackFixture;
     readonly existingMemberUserId: string;
     readonly email: string;
-    readonly checkoutSessionId: string;
     readonly purchaseId: string;
     readonly paymentIntentId: string;
   }
 
-  async function beginInvitationPurchase(options?: {
-    readonly checkoutCreationError?: Error;
-  }): Promise<InvitationPurchaseFixture> {
+  async function beginInvitationPurchase(): Promise<InvitationPurchaseFixture> {
     const existingMemberUserId = `user_${randomUUID()}`;
     const fixture = await seedManagedUsagePack([
       { userId: existingMemberUserId, usagePackUsd: 20 },
     ]);
     const email = `invitee-${randomUUID()}@example.test`;
-    const checkoutSessionId = `cs_invite_${randomUUID()}`;
     const paymentIntentId = `pi_invite_${randomUUID()}`;
     context.mocks.clerk.organizations.getOrganizationMembershipList.mockResolvedValue(
       {
@@ -3556,59 +3557,28 @@ describe("usage pack allocation management", () => {
       { data: [] },
     );
     mockUsagePackChangePreviews(1000, 2000);
-    if (options?.checkoutCreationError) {
-      context.mocks.stripe.checkout.sessions.create.mockRejectedValueOnce(
-        options.checkoutCreationError,
-      );
-    } else {
-      context.mocks.stripe.checkout.sessions.create.mockResolvedValueOnce({
-        id: checkoutSessionId,
-        url: "https://checkout.stripe.test/member-invitation",
-        expires_at: Math.floor(now() / 1000) + 3600,
-      });
-    }
-
-    const responsePromise = setupApp({ context, routes: zeroOrgInviteRoutes })(
-      zeroOrgInviteContract,
-    ).purchase({
-      headers: { authorization: "Bearer clerk-session" },
-      body: {
-        email,
-        role: "member",
-        usagePackUsd: 20,
-        successUrl: `${APP_ORIGIN}/settings?invitation=success`,
-        cancelUrl: `${APP_ORIGIN}/settings`,
-      },
-    });
-    if (options?.checkoutCreationError) {
-      await accept(responsePromise, [500]);
-    } else {
-      const response = await accept(responsePromise, [200]);
-      expect(response.body.url).toBe(
-        "https://checkout.stripe.test/member-invitation",
-      );
-    }
-    const state = await readUsagePackState(
-      fixture.orgId,
-      fixture.usagePackSubscriptionId,
-    );
-    const purchase = state.invitationPurchases[0];
-    if (!purchase) {
-      throw new Error("Invitation checkout did not persist its purchase");
-    }
-    expect(purchase).toStrictEqual(
-      expect.objectContaining({
-        normalizedEmail: email,
-        status: options?.checkoutCreationError ? "failed" : "checkout_pending",
-        expectedAmountCents: 1000,
-        purchasedCredits: 10_000,
-        bonusCredits: 200,
-        stripeCheckoutSessionId: options?.checkoutCreationError
-          ? null
-          : checkoutSessionId,
-        clerkInvitationId: null,
+    const preview = await accept(
+      setupApp({ context, routes: zeroOrgInviteRoutes })(
+        zeroOrgInviteContract,
+      ).previewPurchase({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { email, role: "member", usagePackUsd: 20 },
       }),
+      [200],
     );
+    expect(preview.body).toStrictEqual({
+      purchaseId: expect.any(String),
+      usagePackUsd: 20,
+      immediateAmountCents: 1000,
+      currency: "usd",
+      purchasedCredits: 10_000,
+      bonusCredits: 200,
+      totalCredits: 10_200,
+      currentPeriodEnd: new Date(
+        fixture.billingPeriod.end * 1000,
+      ).toISOString(),
+      expiresAt: expect.any(String),
+    });
     expect(
       context.mocks.clerk.organizations.createOrganizationInvitation,
     ).not.toHaveBeenCalled();
@@ -3616,8 +3586,7 @@ describe("usage pack allocation management", () => {
       fixture,
       existingMemberUserId,
       email,
-      checkoutSessionId,
-      purchaseId: purchase.id,
+      purchaseId: preview.body.purchaseId,
       paymentIntentId,
     };
   }
@@ -6112,14 +6081,12 @@ describe("usage pack allocation management", () => {
     const response = await accept(
       setupApp({ context, routes: zeroOrgInviteRoutes })(
         zeroOrgInviteContract,
-      ).purchase({
+      ).previewPurchase({
         headers: { authorization: "Bearer clerk-session" },
         body: {
           email: "non-staff@example.test",
           role: "member",
           usagePackUsd: 20,
-          successUrl: `${APP_ORIGIN}/settings?invitation=success`,
-          cancelUrl: `${APP_ORIGIN}/settings`,
         },
       }),
       [404],
@@ -6226,19 +6193,16 @@ describe("usage pack allocation management", () => {
     );
     expect(replacedPreview.body.purchaseId).not.toBe(preview.body.purchaseId);
     const activePurchaseId = replacedPreview.body.purchaseId;
-    const replacedState = await readUsagePackState(
-      fixture.orgId,
-      fixture.usagePackSubscriptionId,
-    );
-    expect(
-      replacedState.invitationPurchases.find((purchase) => {
-        return purchase.id === preview.body.purchaseId;
+    const supersededConfirmation = await accept(
+      client.confirmPurchase({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { purchaseId: preview.body.purchaseId },
+        body: {},
       }),
-    ).toStrictEqual(
-      expect.objectContaining({
-        status: "failed",
-      }),
+      [409],
     );
+    expect(supersededConfirmation.body.error.code).toBe("CONFLICT");
+    expect(context.mocks.stripe.invoices.create).not.toHaveBeenCalled();
 
     const metadata = {
       purpose: "usage_pack_invitation_purchase",
@@ -6356,23 +6320,6 @@ describe("usage pack allocation management", () => {
     expect(
       context.mocks.clerk.organizations.createOrganizationInvitation,
     ).toHaveBeenCalledTimes(1);
-    const state = await readUsagePackState(
-      fixture.orgId,
-      fixture.usagePackSubscriptionId,
-    );
-    expect(
-      state.invitationPurchases.find((purchase) => {
-        return purchase.id === activePurchaseId;
-      }),
-    ).toStrictEqual(
-      expect.objectContaining({
-        id: activePurchaseId,
-        status: "invitation_pending",
-        stripeCheckoutSessionId: null,
-        stripePaymentIntentId: paymentIntentId,
-        clerkInvitationId: invitationId,
-      }),
-    );
 
     mockClerkOrganization(fixture);
     context.mocks.clerk.organizations.getOrganizationMembershipList.mockResolvedValue(
@@ -6415,72 +6362,6 @@ describe("usage pack allocation management", () => {
         usagePackUsd: 20,
       }),
     ]);
-  });
-
-  it("creates no Clerk invitation when invitation checkout expires", async () => {
-    const purchase = await beginInvitationPurchase();
-    await postManagedUsagePackEvent("checkout.session.expired", {
-      id: purchase.checkoutSessionId,
-      customer: purchase.fixture.customerId,
-      subscription: null,
-      metadata: {
-        purpose: "usage_pack_invitation_purchase",
-        usagePackInvitationPurchaseId: purchase.purchaseId,
-      },
-    });
-    const state = await readUsagePackState(
-      purchase.fixture.orgId,
-      purchase.fixture.usagePackSubscriptionId,
-    );
-    expect(state.invitationPurchases[0]?.status).toBe("failed");
-    expect(
-      context.mocks.clerk.organizations.createOrganizationInvitation,
-    ).not.toHaveBeenCalled();
-  });
-
-  it("recovers payment when the Checkout creation response is lost", async () => {
-    const purchase = await beginInvitationPurchase({
-      checkoutCreationError: new Error("Stripe response lost"),
-    });
-    const invitationId = `inv_checkout_recovery_${randomUUID()}`;
-    context.mocks.clerk.organizations.createOrganizationInvitation.mockResolvedValueOnce(
-      {
-        id: invitationId,
-        emailAddress: purchase.email,
-        organizationId: purchase.fixture.orgId,
-        status: "pending",
-        privateMetadata: {
-          usagePackInvitationPurchaseId: purchase.purchaseId,
-        },
-      },
-    );
-
-    await postManagedUsagePackEvent("checkout.session.completed", {
-      id: purchase.checkoutSessionId,
-      customer: purchase.fixture.customerId,
-      subscription: null,
-      payment_intent: purchase.paymentIntentId,
-      mode: "payment",
-      payment_status: "paid",
-      amount_total: 1000,
-      currency: "usd",
-      metadata: {
-        purpose: "usage_pack_invitation_purchase",
-        usagePackInvitationPurchaseId: purchase.purchaseId,
-      },
-    });
-    const state = await readUsagePackState(
-      purchase.fixture.orgId,
-      purchase.fixture.usagePackSubscriptionId,
-    );
-    expect(state.invitationPurchases[0]).toStrictEqual(
-      expect.objectContaining({
-        status: "invitation_pending",
-        stripeCheckoutSessionId: purchase.checkoutSessionId,
-        stripePaymentIntentId: purchase.paymentIntentId,
-        clerkInvitationId: invitationId,
-      }),
-    );
   });
 
   it("ignores invitation PaymentIntents from another preview job", async () => {
@@ -6636,41 +6517,50 @@ describe("usage pack allocation management", () => {
       userId: acceptedUserId,
     });
 
-    const accepted = await readUsagePackState(
-      purchase.fixture.orgId,
-      purchase.fixture.usagePackSubscriptionId,
+    const acceptedActor = {
+      orgId: purchase.fixture.orgId,
+      userId: acceptedUserId,
+    };
+    await updateFeatureSwitchesForUser(context, acceptedActor, {
+      [FeatureSwitchKey.UsagePackPlans]: true,
+    });
+    onTestFinished(async () => {
+      await deleteFeatureSwitchesForUser(context, acceptedActor);
+    });
+    authenticateOrg(acceptedActor, "org:member");
+    const credits = await accept(
+      setupApp({ context, routes: zeroBillingUsagePackCreditsRoutes })(
+        zeroBillingUsagePackCreditsContract,
+      ).get({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
     );
-    expect(accepted.invitationPurchases[0]).toStrictEqual(
-      expect.objectContaining({
-        status: "accepted",
-        acceptedUserId,
-      }),
-    );
-    expect(
-      accepted.allocations.filter((allocation) => {
-        return allocation.userId === acceptedUserId;
-      }),
-    ).toStrictEqual([
-      expect.objectContaining({
-        invitationId: null,
-        status: "active",
-        usagePackUsd: 20,
-      }),
-    ]);
-    expect(
-      accepted.grants.filter((grant) => {
-        return grant.userId === acceptedUserId;
-      }),
-    ).toStrictEqual([
-      expect.objectContaining({
-        grantType: "bonus",
-        originalAmount: 200,
-      }),
-      expect.objectContaining({
-        grantType: "purchased",
-        originalAmount: 10_000,
-      }),
-    ]);
+    expect(credits.body).toStrictEqual({
+      totalCredits: 10_200,
+      purchasedCredits: 10_000,
+      bonusCredits: 200,
+      hasUsagePack: true,
+      creditGrants: expect.arrayContaining([
+        expect.objectContaining({
+          grantType: "bonus",
+          amount: 200,
+          remaining: 200,
+          expiresAt: new Date(
+            purchase.fixture.billingPeriod.end * 1000,
+          ).toISOString(),
+        }),
+        expect.objectContaining({
+          grantType: "purchased",
+          amount: 10_000,
+          remaining: 10_000,
+          expiresAt: new Date(
+            purchase.fixture.billingPeriod.end * 1000,
+          ).toISOString(),
+        }),
+      ]),
+    });
+    expect(credits.body.creditGrants).toHaveLength(2);
     expect(context.mocks.stripe.subscriptions.update).toHaveBeenCalledTimes(1);
   });
 
@@ -7052,36 +6942,6 @@ describe("usage pack allocation management", () => {
       }),
       expect.any(Object),
     );
-  });
-
-  it("recovers a delayed payment after an asynchronous Checkout failure", async () => {
-    const purchase = await beginInvitationPurchase();
-    const invitationId = `inv_delayed_${randomUUID()}`;
-    await postManagedUsagePackEvent("checkout.session.async_payment_failed", {
-      id: purchase.checkoutSessionId,
-      customer: purchase.fixture.customerId,
-      subscription: null,
-      metadata: {
-        purpose: "usage_pack_invitation_purchase",
-        usagePackInvitationPurchaseId: purchase.purchaseId,
-      },
-    });
-
-    await payInvitationPurchase(purchase, invitationId);
-
-    const state = await readUsagePackState(
-      purchase.fixture.orgId,
-      purchase.fixture.usagePackSubscriptionId,
-    );
-    expect(state.invitationPurchases[0]).toStrictEqual(
-      expect.objectContaining({
-        status: "invitation_pending",
-        clerkInvitationId: invitationId,
-      }),
-    );
-    expect(
-      context.mocks.clerk.organizations.createOrganizationInvitation,
-    ).toHaveBeenCalledTimes(1);
   });
 
   it("honors acceptance just before expiration when reconciliation races the boundary", async () => {

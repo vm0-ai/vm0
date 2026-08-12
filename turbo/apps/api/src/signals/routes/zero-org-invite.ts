@@ -3,7 +3,6 @@ import { zeroOrgInviteContract } from "@vm0/api-contracts/contracts/zero-org-mem
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
-import { billingRedirectAllowed } from "../../lib/billing-redirect";
 import { env, optionalEnv } from "../../lib/env";
 import {
   badRequestMessage,
@@ -20,7 +19,6 @@ import { userFeatureSwitchOverrides } from "../services/feature-switches.service
 import { loadOrgPlanCapabilities } from "../services/org-plan-entitlement-read.service";
 import {
   confirmUsagePackInvitationPurchase,
-  createUsagePackInvitationCheckout,
   createUsagePackInvitationPreview,
   revokeUsagePackInvitationPurchase,
   usagePackInvitationPurchaseSchemaAvailable,
@@ -161,79 +159,9 @@ const revokeInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   };
 });
 
-const purchaseBody$ = bodyResultOf(zeroOrgInviteContract.purchase);
 const purchasePreviewBody$ = bodyResultOf(
   zeroOrgInviteContract.previewPurchase,
 );
-
-const purchaseInner$ = command(async ({ get, set }, signal: AbortSignal) => {
-  const auth = get(organizationAuthContext$);
-  if (auth.orgRole !== "admin") {
-    return adminRequired;
-  }
-  if (!optionalEnv("STRIPE_SECRET_KEY")) {
-    return providerUnavailable("Billing not configured");
-  }
-  if (!(await usagePackInvitationsEnabled(get, auth.orgId, auth.userId))) {
-    return {
-      status: 403 as const,
-      body: {
-        error: {
-          message: "Usage pack invitations are not enabled",
-          code: "FORBIDDEN",
-        },
-      },
-    };
-  }
-  signal.throwIfAborted();
-  const readDb = get(db$);
-  const capabilities = await loadOrgPlanCapabilities(readDb, auth.orgId);
-  signal.throwIfAborted();
-  if (!capabilities?.memberInvitationAllowed) {
-    return memberInvitationUpgradeRequired;
-  }
-  if (!(await usagePackInvitationPurchaseSchemaAvailable(readDb))) {
-    return providerUnavailable("Usage pack invitations are not ready");
-  }
-  signal.throwIfAborted();
-  const body = await get(purchaseBody$);
-  signal.throwIfAborted();
-  if (!body.ok) {
-    return body.response;
-  }
-  if (
-    !billingRedirectAllowed(body.data.successUrl) ||
-    !billingRedirectAllowed(body.data.cancelUrl)
-  ) {
-    return badRequestMessage(
-      "successUrl and cancelUrl must match the platform origin",
-    );
-  }
-  const result = await createUsagePackInvitationCheckout(
-    set(writeDb$),
-    get(clerk$),
-    {
-      orgId: auth.orgId,
-      inviterUserId: auth.userId,
-      email: body.data.email,
-      role: body.data.role,
-      usagePackUsd: body.data.usagePackUsd,
-      successUrl: body.data.successUrl,
-      cancelUrl: body.data.cancelUrl,
-    },
-    signal,
-  );
-  signal.throwIfAborted();
-  if (result.status === "not_found") {
-    return notFound("Usage pack subscription not found");
-  }
-  if (result.status === "conflict") {
-    return conflict(
-      "This invitation cannot be purchased in the current billing state",
-    );
-  }
-  return { status: 200 as const, body: { url: result.url } };
-});
 
 const purchasePreviewInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -365,13 +293,6 @@ export const zeroOrgInviteRoutes: readonly RouteEntry[] = [
     handler: authRoute(
       { requireOrganization: true, missingOrganizationStatus: 401 },
       revokeInner$,
-    ),
-  },
-  {
-    route: zeroOrgInviteContract.purchase,
-    handler: authRoute(
-      { requireOrganization: true, missingOrganizationStatus: 401 },
-      purchaseInner$,
     ),
   },
   {

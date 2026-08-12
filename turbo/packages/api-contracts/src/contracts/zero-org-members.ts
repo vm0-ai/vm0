@@ -9,10 +9,8 @@ import {
   revokeInvitationRequestSchema,
   membershipRequestActionSchema,
   orgMessageResponseSchema,
-  orgInvitationCheckoutResponseSchema,
   orgInvitationPurchasePreviewResponseSchema,
   previewOrgInvitationPurchaseRequestSchema,
-  purchaseOrgInvitationRequestSchema,
 } from "./org-members";
 
 const c = initContract();
@@ -90,24 +88,6 @@ export const zeroOrgInviteContract = c.router({
       500: apiErrorSchema,
     },
     summary: "Invite a member to the org (zero proxy)",
-  },
-  // Rollout compatibility for app builds that predate in-app confirmation.
-  purchase: {
-    method: "POST",
-    path: "/api/zero/org/invite/checkout",
-    headers: authHeadersSchema,
-    body: purchaseOrgInvitationRequestSchema,
-    responses: {
-      200: orgInvitationCheckoutResponseSchema,
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-      404: apiErrorSchema,
-      409: apiErrorSchema,
-      503: apiErrorSchema,
-      500: apiErrorSchema,
-    },
-    summary: "Purchase a prorated usage pack for an org invitation",
   },
   previewPurchase: {
     method: "POST",

@@ -37,10 +37,8 @@ import {
   type StripeClient,
   type StripeInvoice,
   type StripePaymentIntent,
-  type StripePrice,
   type StripeRefund,
 } from "../external/stripe-client";
-import { onRejection } from "../utils";
 import {
   lockUsagePackBillingOrg,
   previewUsagePackAllocationAddition,
@@ -98,16 +96,6 @@ interface PendingInvitationPurchaseArgs {
   readonly checkoutExpiresAt: number;
 }
 
-interface StripeInvitationCheckoutArgs {
-  readonly subscription: UsagePackSubscriptionRow;
-  readonly preview: UsagePackAllocationAdditionPreview;
-  readonly price: StripePrice;
-  readonly purchaseId: string;
-  readonly checkoutExpiresAt: number;
-  readonly successUrl: string;
-  readonly cancelUrl: string;
-}
-
 interface SuccessfulPaymentArgs {
   readonly purchaseId: string;
   readonly checkoutSessionId?: string;
@@ -138,11 +126,6 @@ interface UsagePackInvitationCheckoutSessionInput {
   readonly currency?: string | null;
 }
 
-type CreateUsagePackInvitationCheckoutResult =
-  | { readonly status: "ready"; readonly url: string }
-  | { readonly status: "not_found" }
-  | { readonly status: "conflict" };
-
 type CreateUsagePackInvitationPreviewResult =
   | {
       readonly status: "ready";
@@ -158,9 +141,7 @@ type ConfirmUsagePackInvitationPurchaseResult =
   | { readonly status: "conflict" };
 
 interface PreparedUsagePackInvitationPurchase {
-  readonly subscription: UsagePackSubscriptionRow;
   readonly preview: UsagePackAllocationAdditionPreview;
-  readonly price: StripePrice;
   readonly purchaseId: string;
   readonly purchasedCredits: number;
   readonly bonusCredits: number;
@@ -376,18 +357,6 @@ async function emailAlreadyBelongsToOrg(
   );
 }
 
-function stripeProductId(price: StripePrice): string {
-  if (typeof price.product === "string") {
-    return price.product;
-  }
-  if ("deleted" in price.product) {
-    throw new Error(
-      `Usage pack Price ${price.id} references a deleted Product`,
-    );
-  }
-  return price.product.id;
-}
-
 function checkoutMetadata(purchaseId: string): Record<string, string> {
   return {
     ...stripePreviewMetadata(),
@@ -479,19 +448,11 @@ async function reusablePendingInvitationPurchase(
   return purchase ?? null;
 }
 
-async function preparedInvitationPurchaseFromRow(
-  stripe: StripeClient,
-  subscription: UsagePackSubscriptionRow,
+function preparedInvitationPurchaseFromRow(
   purchase: UsagePackInvitationPurchaseRow,
   expiresAt: Date,
-  signal: AbortSignal,
-): Promise<PreparedUsagePackInvitationPurchase> {
-  const price = await stripe.prices.retrieve(purchase.stripePriceId, {
-    expand: ["product"],
-  });
-  signal.throwIfAborted();
+): PreparedUsagePackInvitationPurchase {
   return {
-    subscription,
     preview: {
       amountCents: purchase.expectedAmountCents,
       currency: purchase.currency,
@@ -499,79 +460,11 @@ async function preparedInvitationPurchaseFromRow(
       currentPeriodEnd: purchase.currentPeriodEnd,
       prorationTimestamp: purchase.prorationTimestamp,
     },
-    price,
     purchaseId: purchase.id,
     purchasedCredits: purchase.purchasedCredits,
     bonusCredits: purchase.bonusCredits,
     expiresAt,
   };
-}
-
-async function createStripeInvitationCheckoutSession(
-  db: Db,
-  args: StripeInvitationCheckoutArgs,
-  signal: AbortSignal,
-): Promise<string> {
-  const metadata = checkoutMetadata(args.purchaseId);
-  const session = await getStripeClient().checkout.sessions.create(
-    {
-      mode: "payment",
-      customer: args.subscription.stripeCustomerId,
-      line_items: [
-        {
-          quantity: 1,
-          price_data: {
-            currency: args.preview.currency,
-            product: stripeProductId(args.price),
-            unit_amount: args.preview.amountCents,
-          },
-        },
-      ],
-      success_url: args.successUrl,
-      cancel_url: args.cancelUrl,
-      expires_at: args.checkoutExpiresAt,
-      metadata,
-      payment_intent_data: { metadata },
-    },
-    { idempotencyKey: `usage-pack-invitation:${args.purchaseId}:checkout` },
-  );
-  signal.throwIfAborted();
-  if (!session.url) {
-    throw new Error("Stripe checkout session did not return a URL");
-  }
-  await db
-    .update(usagePackInvitationPurchases)
-    .set({
-      stripeCheckoutSessionId: session.id,
-      stripeCheckoutExpiresAt:
-        typeof session.expires_at === "number"
-          ? new Date(session.expires_at * 1000)
-          : new Date(args.checkoutExpiresAt * 1000),
-      updatedAt: nowDate(),
-    })
-    .where(eq(usagePackInvitationPurchases.id, args.purchaseId));
-  signal.throwIfAborted();
-  return session.url;
-}
-
-async function createStripeInvitationCheckout(
-  db: Db,
-  args: StripeInvitationCheckoutArgs,
-  signal: AbortSignal,
-): Promise<string> {
-  return await onRejection(
-    createStripeInvitationCheckoutSession(db, args, signal),
-    async () => {
-      await db
-        .update(usagePackInvitationPurchases)
-        .set({
-          status: "failed",
-          failureReason: "checkout_creation_failed",
-          updatedAt: nowDate(),
-        })
-        .where(eq(usagePackInvitationPurchases.id, args.purchaseId));
-    },
-  );
 }
 
 async function prepareUsagePackInvitationPurchase(
@@ -603,7 +496,6 @@ async function prepareUsagePackInvitationPurchase(
   if (!stripePriceId) {
     throw new Error(`Usage pack $${args.usagePackUsd} Price is not configured`);
   }
-  const stripe = getStripeClient();
   const reusablePurchase = await reusablePendingInvitationPurchase(db, {
     subscriptionId: subscription.id,
     orgId: args.orgId,
@@ -616,12 +508,9 @@ async function prepareUsagePackInvitationPurchase(
   if (reusablePurchase?.stripeCheckoutExpiresAt) {
     return {
       status: "ready",
-      purchase: await preparedInvitationPurchaseFromRow(
-        stripe,
-        subscription,
+      purchase: preparedInvitationPurchaseFromRow(
         reusablePurchase,
         reusablePurchase.stripeCheckoutExpiresAt,
-        signal,
       ),
     };
   }
@@ -643,6 +532,7 @@ async function prepareUsagePackInvitationPurchase(
   if (preview.amountCents <= 0) {
     return { status: "conflict" };
   }
+  const stripe = getStripeClient();
   const price = await stripe.prices.retrieve(stripePriceId, {
     expand: ["product"],
   });
@@ -690,9 +580,7 @@ async function prepareUsagePackInvitationPurchase(
   return {
     status: "ready",
     purchase: {
-      subscription,
       preview,
-      price,
       purchaseId,
       purchasedCredits,
       bonusCredits,
@@ -737,46 +625,6 @@ export async function createUsagePackInvitationPreview(
       expiresAt: purchase.expiresAt.toISOString(),
     },
   };
-}
-
-export async function createUsagePackInvitationCheckout(
-  db: Db,
-  clerk: ClerkClient,
-  args: {
-    readonly orgId: string;
-    readonly inviterUserId: string;
-    readonly email: string;
-    readonly role: OrgRole;
-    readonly usagePackUsd: UsagePackUsd;
-    readonly successUrl: string;
-    readonly cancelUrl: string;
-  },
-  signal: AbortSignal,
-): Promise<CreateUsagePackInvitationCheckoutResult> {
-  const result = await prepareUsagePackInvitationPurchase(
-    db,
-    clerk,
-    args,
-    signal,
-  );
-  if (result.status !== "ready") {
-    return result;
-  }
-  const { purchase } = result;
-  const url = await createStripeInvitationCheckout(
-    db,
-    {
-      subscription: purchase.subscription,
-      preview: purchase.preview,
-      price: purchase.price,
-      purchaseId: purchase.purchaseId,
-      checkoutExpiresAt: Math.floor(purchase.expiresAt.getTime() / 1000),
-      successUrl: args.successUrl,
-      cancelUrl: args.cancelUrl,
-    },
-    signal,
-  );
-  return { status: "ready", url };
 }
 
 async function loadPurchase(
