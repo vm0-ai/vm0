@@ -1,5 +1,5 @@
 import { HttpResponse, http } from "msw";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished } from "vitest";
 
 import {
   zeroScrapeContract,
@@ -13,9 +13,9 @@ import { server } from "../../../mocks/server";
 import { setupAppWithRoutes } from "../../../__tests__/test-app";
 import { accept, testContext } from "../../../__tests__/test-context";
 import {
-  deleteUsagePricingRows,
+  createUsagePricingFixture,
   seedOrgMetadata,
-  seedUsagePricingRows,
+  type UsagePricingFixture,
 } from "../../../test-fixtures/system-config-seeds";
 import { createDeferredPromise } from "../../utils";
 import { signSandboxJwtForTests } from "../../auth/tokens";
@@ -45,6 +45,7 @@ interface AuthHeaders {
 interface RawScrapeRequestOptions {
   readonly instanceSignal?: AbortSignal;
   readonly requestSignal?: AbortSignal;
+  readonly usagePricingResolution?: UsagePricingFixture["resolution"];
 }
 
 function authHeaders(actor: ApiTestUser | null): AuthHeaders {
@@ -67,10 +68,11 @@ function authenticate(actor: ApiTestUser | null): AuthHeaders {
   return authHeaders(actor);
 }
 
-function client() {
+function client(usagePricingResolution?: UsagePricingFixture["resolution"]) {
   return setupAppWithRoutes({
     context,
     routes: scrapeRoutes,
+    usagePricingResolution,
   });
 }
 
@@ -82,6 +84,7 @@ async function rawScrapeRequest(
   const app = createAppWithRoutes({
     signal: options.instanceSignal ?? context.signal,
     routes: scrapeRoutes,
+    usagePricingResolution: options.usagePricingResolution,
   });
   const request = new Request("http://api.test/api/zero/scrape", {
     method: "POST",
@@ -135,37 +138,43 @@ function configureProvider(): void {
   mockEnv("ZERO_SCRAPE_FIRECRAWL_TOKEN", "test-firecrawl-token");
 }
 
-async function seedScrapePricing(): Promise<void> {
-  await seedUsagePricingRows([
-    {
-      kind: "scrape",
-      provider: "firecrawl",
-      category: "standard.markdown",
-      unitPrice: 4,
-      unitSize: 1,
-    },
-    {
-      kind: "scrape",
-      provider: "firecrawl",
-      category: "standard.links",
-      unitPrice: 4,
-      unitSize: 1,
-    },
-    {
-      kind: "scrape",
-      provider: "firecrawl",
-      category: "enhanced.markdown",
-      unitPrice: 20,
-      unitSize: 1,
-    },
-    {
-      kind: "scrape",
-      provider: "firecrawl",
-      category: "enhanced.links",
-      unitPrice: 20,
-      unitSize: 1,
-    },
-  ]);
+async function createScrapePricingFixture(): Promise<UsagePricingFixture> {
+  const fixture = await createUsagePricingFixture({
+    configured: [
+      {
+        kind: "scrape",
+        provider: "firecrawl",
+        category: "standard.markdown",
+        unitPrice: 4,
+        unitSize: 1,
+      },
+      {
+        kind: "scrape",
+        provider: "firecrawl",
+        category: "standard.links",
+        unitPrice: 4,
+        unitSize: 1,
+      },
+      {
+        kind: "scrape",
+        provider: "firecrawl",
+        category: "enhanced.markdown",
+        unitPrice: 20,
+        unitSize: 1,
+      },
+      {
+        kind: "scrape",
+        provider: "firecrawl",
+        category: "enhanced.links",
+        unitPrice: 20,
+        unitSize: 1,
+      },
+    ],
+  });
+  onTestFinished(async () => {
+    await fixture.cleanup();
+  });
+  return fixture;
 }
 
 describe("okou scrape route", () => {
@@ -375,7 +384,7 @@ describe("okou scrape route", () => {
     let firecrawlRequests = 0;
     allowExampleDotCom();
     configureProvider();
-    await seedScrapePricing();
+    const pricing = await createScrapePricingFixture();
     await bootstrapOnboarding(actor);
     await setActorCredits(actor, 0);
     server.use(
@@ -386,7 +395,7 @@ describe("okou scrape route", () => {
     );
 
     const response = await accept(
-      client()(zeroScrapeContract).scrape({
+      client(pricing.resolution)(zeroScrapeContract).scrape({
         headers: authenticate(actor),
         body: {
           url: "https://example.com/page",
@@ -407,7 +416,7 @@ describe("okou scrape route", () => {
     let requestBody: unknown;
     allowExampleDotCom();
     configureProvider();
-    await seedScrapePricing();
+    const pricing = await createScrapePricingFixture();
     await fundActor(actor);
     const beforeCredits = await credits(actor);
 
@@ -427,7 +436,7 @@ describe("okou scrape route", () => {
     );
 
     const response = await accept(
-      client()(zeroScrapeContract).scrape({
+      client(pricing.resolution)(zeroScrapeContract).scrape({
         headers: authenticate(actor),
         body: {
           url: "https://example.com/page",
@@ -472,7 +481,7 @@ describe("okou scrape route", () => {
     abortError.name = "AbortError";
     allowExampleDotCom();
     configureProvider();
-    await seedScrapePricing();
+    const pricing = await createScrapePricingFixture();
     await fundActor(actor);
     const beforeCredits = await credits(actor);
     let providerCompleted = false;
@@ -503,7 +512,10 @@ describe("okou scrape route", () => {
         format: "markdown",
         mode: "standard",
       },
-      { requestSignal: controller.signal },
+      {
+        requestSignal: controller.signal,
+        usagePricingResolution: pricing.resolution,
+      },
     );
     const afterCredits = await credits(actor);
 
@@ -519,7 +531,7 @@ describe("okou scrape route", () => {
     abortError.name = "AbortError";
     let firecrawlRequests = 0;
     configureProvider();
-    await seedScrapePricing();
+    const pricing = await createScrapePricingFixture();
     await fundActor(actor);
     const beforeCredits = await credits(actor);
     context.mocks.dns.lookupOverrides.set("example.com", () => {
@@ -546,7 +558,10 @@ describe("okou scrape route", () => {
         format: "markdown",
         mode: "standard",
       },
-      { requestSignal: controller.signal },
+      {
+        requestSignal: controller.signal,
+        usagePricingResolution: pricing.resolution,
+      },
     );
     const afterCredits = await credits(actor);
 
@@ -565,7 +580,7 @@ describe("okou scrape route", () => {
     let providerSignalAborted = false;
     allowExampleDotCom();
     configureProvider();
-    await seedScrapePricing();
+    const pricing = await createScrapePricingFixture();
     await fundActor(actor);
     const beforeCredits = await credits(actor);
 
@@ -594,7 +609,10 @@ describe("okou scrape route", () => {
         format: "markdown",
         mode: "standard",
       },
-      { requestSignal: controller.signal },
+      {
+        requestSignal: controller.signal,
+        usagePricingResolution: pricing.resolution,
+      },
     );
     await providerStarted.promise;
     providerResponse.resolve(undefined);
@@ -614,7 +632,7 @@ describe("okou scrape route", () => {
     let providerSignalAborted = false;
     allowExampleDotCom();
     configureProvider();
-    await seedScrapePricing();
+    const pricing = await createScrapePricingFixture();
     await fundActor(actor);
     const beforeCredits = await credits(actor);
 
@@ -639,7 +657,10 @@ describe("okou scrape route", () => {
         format: "markdown",
         mode: "standard",
       },
-      { instanceSignal: controller.signal },
+      {
+        instanceSignal: controller.signal,
+        usagePricingResolution: pricing.resolution,
+      },
     );
     const afterCredits = await credits(actor);
 
@@ -653,7 +674,7 @@ describe("okou scrape route", () => {
     let firecrawlRequests = 0;
     allowExampleDotCom();
     configureProvider();
-    await seedScrapePricing();
+    const pricing = await createScrapePricingFixture();
     await fundActor(actor);
     const beforeCredits = await credits(actor);
 
@@ -673,7 +694,7 @@ describe("okou scrape route", () => {
       }),
     );
 
-    const scrapeClient = client();
+    const scrapeClient = client(pricing.resolution);
     const [first, second] = await Promise.all([
       accept(
         scrapeClient(zeroScrapeContract).scrape({
@@ -710,17 +731,13 @@ describe("okou scrape route", () => {
     const actor = createBddApi(context).user();
     allowExampleDotCom();
     configureProvider();
-    await seedScrapePricing();
+    const pricing = await createScrapePricingFixture();
     await fundActor(actor);
     const beforeCredits = await credits(actor);
 
     server.use(
       http.post(FIRECRAWL_SCRAPE_URL, async () => {
-        await deleteUsagePricingRows({
-          kind: "scrape",
-          provider: "firecrawl",
-          categories: ["standard.markdown"],
-        });
+        await pricing.cleanup();
         return HttpResponse.json({
           success: true,
           data: {
@@ -733,11 +750,15 @@ describe("okou scrape route", () => {
       }),
     );
 
-    const response = await rawScrapeRequest(actor, {
-      url: "https://example.com/page",
-      format: "markdown",
-      mode: "standard",
-    });
+    const response = await rawScrapeRequest(
+      actor,
+      {
+        url: "https://example.com/page",
+        format: "markdown",
+        mode: "standard",
+      },
+      { usagePricingResolution: pricing.resolution },
+    );
     const afterCredits = await credits(actor);
 
     expect(response.status).toBe(500);
@@ -751,7 +772,7 @@ describe("okou scrape route", () => {
     const actor = createBddApi(context).user();
     let requestBody: unknown;
     configureProvider();
-    await seedScrapePricing();
+    const pricing = await createScrapePricingFixture();
     await fundActor(actor);
     const beforeCredits = await credits(actor);
 
@@ -768,7 +789,7 @@ describe("okou scrape route", () => {
     );
 
     const response = await accept(
-      client()(zeroScrapeContract).scrape({
+      client(pricing.resolution)(zeroScrapeContract).scrape({
         headers: authenticate(actor),
         body: {
           url: "https://[2606:4700:4700::1111]/page",
@@ -795,7 +816,7 @@ describe("okou scrape route", () => {
     let authorization: string | null = null;
     allowExampleDotCom();
     configureProvider();
-    await seedScrapePricing();
+    const pricing = await createScrapePricingFixture();
     await fundActor(actor);
     const beforeCredits = await credits(actor);
 
@@ -819,7 +840,7 @@ describe("okou scrape route", () => {
     );
 
     const response = await accept(
-      client()(zeroScrapeContract).scrape({
+      client(pricing.resolution)(zeroScrapeContract).scrape({
         headers: authenticate(actor),
         body: {
           url: "https://example.com/page",
@@ -866,7 +887,7 @@ describe("okou scrape route", () => {
     const actor = createBddApi(context).user();
     allowExampleDotCom();
     configureProvider();
-    await seedScrapePricing();
+    const pricing = await createScrapePricingFixture();
     await fundActor(actor);
     const beforeCredits = await credits(actor);
     server.use(
@@ -885,7 +906,7 @@ describe("okou scrape route", () => {
     );
 
     const response = await accept(
-      client()(zeroScrapeContract).scrape({
+      client(pricing.resolution)(zeroScrapeContract).scrape({
         headers: authenticate(actor),
         body: {
           url: "https://example.com/page",
@@ -906,7 +927,7 @@ describe("okou scrape route", () => {
     const actor = createBddApi(context).user();
     allowExampleDotCom();
     configureProvider();
-    await seedScrapePricing();
+    const pricing = await createScrapePricingFixture();
     await fundActor(actor);
     const beforeCredits = await credits(actor);
     server.use(
@@ -919,7 +940,7 @@ describe("okou scrape route", () => {
     );
 
     const response = await accept(
-      client()(zeroScrapeContract).scrape({
+      client(pricing.resolution)(zeroScrapeContract).scrape({
         headers: authenticate(actor),
         body: {
           url: "https://example.com/page",
@@ -941,7 +962,7 @@ describe("okou scrape route", () => {
     const actor = createBddApi(context).user();
     allowExampleDotCom();
     configureProvider();
-    await seedScrapePricing();
+    const pricing = await createScrapePricingFixture();
     await fundActor(actor);
     const beforeCredits = await credits(actor);
     server.use(
@@ -954,7 +975,7 @@ describe("okou scrape route", () => {
     );
 
     const response = await accept(
-      client()(zeroScrapeContract).scrape({
+      client(pricing.resolution)(zeroScrapeContract).scrape({
         headers: authenticate(actor),
         body: {
           url: "https://example.com/page",
@@ -977,7 +998,7 @@ describe("okou scrape route", () => {
     const actor = createBddApi(context).user();
     allowExampleDotCom();
     configureProvider();
-    await seedScrapePricing();
+    const pricing = await createScrapePricingFixture();
     await fundActor(actor);
     const beforeCredits = await credits(actor);
     server.use(
@@ -998,7 +1019,7 @@ describe("okou scrape route", () => {
     );
 
     const response = await accept(
-      client()(zeroScrapeContract).scrape({
+      client(pricing.resolution)(zeroScrapeContract).scrape({
         headers: authenticate(actor),
         body: {
           url: "https://example.com/page",
@@ -1022,7 +1043,7 @@ describe("okou scrape route", () => {
     const actor = createBddApi(context).user();
     allowExampleDotCom();
     configureProvider();
-    await seedScrapePricing();
+    const pricing = await createScrapePricingFixture();
     await fundActor(actor);
     const beforeCredits = await credits(actor);
     server.use(
@@ -1032,7 +1053,7 @@ describe("okou scrape route", () => {
     );
 
     const response = await accept(
-      client()(zeroScrapeContract).scrape({
+      client(pricing.resolution)(zeroScrapeContract).scrape({
         headers: authenticate(actor),
         body: {
           url: "https://example.com/page",

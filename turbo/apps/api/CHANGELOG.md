@@ -1,5 +1,37 @@
 # Changelog
 
+## [1.436.0](https://github.com/vm0-ai/vm0/compare/api-v1.435.0...api-v1.436.0) (2026-08-12)
+
+
+### Features
+
+* add in-app paid member invitations ([#26567](https://github.com/vm0-ai/vm0/issues/26567)) ([f98cd50](https://github.com/vm0-ai/vm0/commit/f98cd507b249c8157d208f3b646cc4a60c83afb3))
+* add unified zero indicators api ([#26568](https://github.com/vm0-ai/vm0/issues/26568)) ([ccd1f4f](https://github.com/vm0-ai/vm0/commit/ccd1f4f044abc8012f5f2f13e881135db29207ab))
+* **chat:** sync raw history through snapshots ([#26545](https://github.com/vm0-ai/vm0/issues/26545)) ([9fb091e](https://github.com/vm0-ai/vm0/commit/9fb091e58780e5b2ead1c463ba09c30801ab87e8))
+* **desktop:** finalize okou application identity ([#26659](https://github.com/vm0-ai/vm0/issues/26659)) ([c605c1c](https://github.com/vm0-ai/vm0/commit/c605c1c09f2bdad29a98c3bb86602169085a3dc3))
+* **workflow:** replace github-label-applied trigger with github-pull-request automation ([#26630](https://github.com/vm0-ai/vm0/issues/26630)) ([b759ef9](https://github.com/vm0-ai/vm0/commit/b759ef9ab529e6913547f8ed86ede565d3537352))
+
+
+### Bug Fixes
+
+* discard oversized session history at checkpoint ([#26635](https://github.com/vm0-ai/vm0/issues/26635)) ([b449da7](https://github.com/vm0-ai/vm0/commit/b449da711810bebde8cf12f9a1b6c7acceefe2c9))
+* redirect auth fallbacks to the app ([#26677](https://github.com/vm0-ai/vm0/issues/26677)) ([f67abd1](https://github.com/vm0-ai/vm0/commit/f67abd13617d0d3001906712d4331c127240ed0d))
+
+
+### Refactoring
+
+* **chat:** remove active input rollout compatibility ([#26625](https://github.com/vm0-ai/vm0/issues/26625)) ([8d1be07](https://github.com/vm0-ai/vm0/commit/8d1be07f2d1665a02d86cb2ef550fa9a1f1e212a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.323.0
+    * @vm0/core bumped to 8.549.0
+    * @vm0/db bumped to 1.196.0
+    * @vm0/pi-agent-runtime bumped to 1.3.56
+
 ## [1.435.0](https://github.com/vm0-ai/vm0/compare/api-v1.434.1...api-v1.435.0) (2026-08-12)
 
 

@@ -1389,6 +1389,19 @@
       "sourcePartsHeading_one": "{{description}} {{count}}개 부분에 대한 피드백:",
       "sourcePartsHeading_other": "{{description}} {{count}}개 부분에 대한 피드백:"
     },
+    "forward": {
+      "action": "전달",
+      "agents": "에이전트",
+      "back": "뒤로",
+      "content": "내용",
+      "description": "선택한 내용을 에이전트 또는 채팅으로 전달합니다.",
+      "noResults": "에이전트 또는 채팅을 찾을 수 없습니다",
+      "search": "에이전트 및 채팅 검색...",
+      "sent": "전달했습니다",
+      "threads": "채팅",
+      "title": "전달 대상",
+      "to": "전달 대상"
+    },
     "mail": {
       "bcc": "숨은 참조",
       "cc": "참조",

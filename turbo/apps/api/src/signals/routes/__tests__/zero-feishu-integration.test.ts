@@ -2816,11 +2816,8 @@ describe("Feishu integration", () => {
     await runsApi.heartbeatRunner(runnerGroup);
     const claim = await runsApi.claimRunnerJob(run.id);
     expect(claim.prompt).toBe(run.prompt);
-    expect(oauthTokenGrantTypes).toStrictEqual([
-      "authorization_code",
-      "refresh_token",
-    ]);
-    expect(oauthRefreshTokens).toStrictEqual(["feishu-user-refresh-token"]);
+    expect(oauthTokenGrantTypes).toStrictEqual(["authorization_code"]);
+    expect(oauthRefreshTokens).toStrictEqual([]);
     const internalName = `custom_connector_${managedConnector.id.replaceAll(
       "-",
       "",

@@ -19,10 +19,12 @@ import {
   setAblyPayloadLoop$,
 } from "../realtime.ts";
 import { authRecovery$, setupClerk$ } from "../auth.ts";
+import { foregroundReady$ } from "../auth-retry.ts";
 import { setRootSignal$ } from "../root-signal.ts";
 import { subscribeChatThreadRealtime$ } from "../chat-page/chat-thread-remote-signals.ts";
 import { testContext } from "./test-helpers.ts";
 import { reloadFeatureSwitch$ } from "../external/feature-switch.ts";
+import { now } from "../../lib/time.ts";
 
 const context = testContext();
 
@@ -313,6 +315,180 @@ describe("realtime signals", () => {
     await waitFor(() => {
       expect(runs).toBe(2);
     });
+  });
+
+  it("rebuilds a failed realtime client after foreground auth and pokes once", async () => {
+    mockSignedInUser();
+    const loopTopic = "test:failed-foreground-loop";
+    const payloadTopic = "test:failed-foreground-payload";
+    const subscriber = new AbortController();
+    const touchCanFinish = context.mocks.deferred<void>();
+    mockedClerk.sessionTouch.mockReturnValue(touchCanFinish.promise);
+    const payloads: unknown[] = [];
+    let loopRuns = 0;
+    let payloadCatchUps = 0;
+    const loop$ = command((_ctx, _signal: AbortSignal) => {
+      loopRuns += 1;
+      return false;
+    });
+    const payloadLoop$ = command(
+      (_ctx, payload: unknown, _signal: AbortSignal) => {
+        payloads.push(payload);
+        return false;
+      },
+    );
+    const payloadCatchUp$ = command((_ctx, _signal: AbortSignal) => {
+      payloadCatchUps += 1;
+      return false;
+    });
+
+    await setupAuthAndRealtime();
+    const loopPromise = context.store.set(
+      setAblyLoop$,
+      { topic: loopTopic, loopCommand$: loop$ },
+      subscriber.signal,
+    );
+    const payloadLoopPromise = context.store.set(
+      setAblyPayloadLoop$,
+      {
+        topic: payloadTopic,
+        loopCommand$: payloadLoop$,
+        catchUpCommand$: payloadCatchUp$,
+      },
+      subscriber.signal,
+    );
+
+    try {
+      await waitFor(() => {
+        expect(context.mocks.ably.hasSubscription(loopTopic)).toBeTruthy();
+        expect(context.mocks.ably.hasSubscription(payloadTopic)).toBeTruthy();
+      });
+      context.mocks.ably.trigger(loopTopic);
+      context.mocks.ably.trigger(payloadTopic, { messageId: "before-failure" });
+      await waitFor(() => {
+        expect(loopRuns).toBe(1);
+        expect(payloads).toStrictEqual([{ messageId: "before-failure" }]);
+      });
+
+      context.mocks.ably.triggerFailure("terminal connection failure");
+      expect(context.mocks.ably.hasSubscription(loopTopic)).toBeFalsy();
+      expect(context.mocks.ably.hasSubscription(payloadTopic)).toBeFalsy();
+
+      document.dispatchEvent(new Event("visibilitychange"));
+      window.dispatchEvent(new Event("focus"));
+      await waitFor(() => {
+        expect(mockedClerk.sessionTouch).toHaveBeenCalledTimes(1);
+      });
+      expect(loopRuns).toBe(1);
+      expect(payloadCatchUps).toBe(0);
+
+      touchCanFinish.resolve();
+      await waitFor(() => {
+        expect(context.mocks.ably.hasSubscription(loopTopic)).toBeTruthy();
+        expect(context.mocks.ably.hasSubscription(payloadTopic)).toBeTruthy();
+        expect(loopRuns).toBe(2);
+        expect(payloadCatchUps).toBe(1);
+      });
+
+      context.mocks.ably.trigger(loopTopic);
+      context.mocks.ably.trigger(payloadTopic, { messageId: "after-recovery" });
+      await waitFor(() => {
+        expect(loopRuns).toBe(3);
+        expect(payloads).toStrictEqual([
+          { messageId: "before-failure" },
+          { messageId: "after-recovery" },
+        ]);
+      });
+      expect(payloadCatchUps).toBe(1);
+    } finally {
+      subscriber.abort(abortError("test done"));
+      await expect(loopPromise).rejects.toMatchObject({ name: "AbortError" });
+      await expect(payloadLoopPromise).rejects.toMatchObject({
+        name: "AbortError",
+      });
+    }
+  });
+
+  it("waits for the next foreground catch-up after rebuilding fails", async () => {
+    mockSignedInUser();
+    const topic = "test:failed-rebuild-retry";
+    const subscriber = new AbortController();
+    const failedTokenCanRespond = context.mocks.deferred<void>();
+    let tokenRequests = 0;
+    context.mocks.api(
+      platformRealtimeTokenContract.create,
+      async ({ respond }) => {
+        tokenRequests += 1;
+        if (tokenRequests === 2) {
+          await failedTokenCanRespond.promise;
+          return respond(500, {
+            error: {
+              message: "realtime token unavailable",
+              code: "INTERNAL_SERVER_ERROR",
+            },
+          });
+        }
+        return respond(200, {
+          keyName: "mock-key",
+          clientId: "test-user-123",
+          timestamp: now(),
+          capability: '{"*":["*"]}',
+          nonce: `mock-nonce-${tokenRequests}`,
+          mac: "mock-mac",
+        });
+      },
+    );
+    let runs = 0;
+    const loop$ = command((_ctx, _signal: AbortSignal) => {
+      runs += 1;
+      return false;
+    });
+
+    await setupAuthAndRealtime();
+    const loopPromise = context.store.set(
+      setAblyLoop$,
+      { topic, loopCommand$: loop$ },
+      subscriber.signal,
+    );
+
+    try {
+      await waitFor(() => {
+        expect(context.mocks.ably.hasSubscription(topic)).toBeTruthy();
+      });
+      context.mocks.ably.trigger(topic);
+      await waitFor(() => {
+        expect(runs).toBe(1);
+      });
+
+      context.mocks.ably.triggerFailure("terminal connection failure");
+      document.dispatchEvent(new Event("visibilitychange"));
+      await waitFor(() => {
+        expect(tokenRequests).toBe(2);
+      });
+      const foregroundReady = await context.store.get(foregroundReady$);
+      expect(foregroundReady.pending).toBeTruthy();
+
+      failedTokenCanRespond.resolve();
+      await expect(foregroundReady.promise).rejects.toThrow(
+        /Ably connection failed/,
+      );
+      expect(runs).toBe(1);
+      expect(context.mocks.ably.hasSubscription(topic)).toBeFalsy();
+
+      window.dispatchEvent(new Event("focus"));
+      await waitFor(() => {
+        expect(tokenRequests).toBe(3);
+        expect(context.mocks.ably.hasSubscription(topic)).toBeTruthy();
+        expect(runs).toBe(2);
+      });
+      context.mocks.ably.trigger(topic);
+      await waitFor(() => {
+        expect(runs).toBe(3);
+      });
+    } finally {
+      subscriber.abort(abortError("test done"));
+      await expect(loopPromise).rejects.toMatchObject({ name: "AbortError" });
+    }
   });
 
   it("keeps signed-out foreground recovery silent and skips catch-up", async () => {

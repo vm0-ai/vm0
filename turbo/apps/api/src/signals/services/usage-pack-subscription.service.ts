@@ -48,6 +48,7 @@ import {
   handleUsagePackSubscriptionChangeInvoicePaid,
   reconcileUsagePackSubscriptionChanges,
 } from "./usage-pack-plan-change.service";
+import type { BillingReconciliationScope } from "./billing-reconciliation-scope";
 import {
   activeUsagePackPriceId,
   isUsagePackPlanPriceId,
@@ -2000,6 +2001,7 @@ async function reconcileUsagePackSubscriptionCandidate(
 
 export async function reconcileUsagePackSubscriptions(
   db: Db,
+  scope: BillingReconciliationScope | undefined,
   signal: AbortSignal,
 ): Promise<ReconcileUsagePackSubscriptionResult> {
   if (!(await usagePackSubscriptionSchemaAvailable(db))) {
@@ -2009,10 +2011,12 @@ export async function reconcileUsagePackSubscriptions(
 
   const subscriptionChanges = await reconcileUsagePackSubscriptionChanges(
     db,
+    scope,
     signal,
   );
   const allocationChanges = await reconcileUsagePackAllocationChanges(
     db,
+    scope,
     signal,
   );
 
@@ -2024,30 +2028,35 @@ export async function reconcileUsagePackSubscriptions(
     .select()
     .from(usagePackSubscriptions)
     .where(
-      or(
-        and(
-          isNull(usagePackSubscriptions.stripeSubscriptionId),
-          isNotNull(usagePackSubscriptions.stripeCheckoutSessionId),
-          eq(usagePackSubscriptions.subscriptionStatus, "checkout_pending"),
-          lte(usagePackSubscriptions.updatedAt, staleBefore),
-        ),
-        and(
-          isNotNull(usagePackSubscriptions.stripeSubscriptionId),
-          notInArray(usagePackSubscriptions.subscriptionStatus, [
-            ...TERMINAL_USAGE_PACK_SUBSCRIPTION_STATUSES,
-          ]),
-          or(
-            and(
-              isNull(usagePackSubscriptions.currentPeriodEnd),
-              lte(usagePackSubscriptions.updatedAt, staleBefore),
-            ),
-            lte(usagePackSubscriptions.currentPeriodEnd, at),
-            and(
-              inArray(usagePackSubscriptions.subscriptionStatus, [
-                "past_due",
-                "unpaid",
-              ]),
-              lte(usagePackSubscriptions.updatedAt, staleBefore),
+      and(
+        scope
+          ? inArray(usagePackSubscriptions.orgId, [...scope.orgIds])
+          : undefined,
+        or(
+          and(
+            isNull(usagePackSubscriptions.stripeSubscriptionId),
+            isNotNull(usagePackSubscriptions.stripeCheckoutSessionId),
+            eq(usagePackSubscriptions.subscriptionStatus, "checkout_pending"),
+            lte(usagePackSubscriptions.updatedAt, staleBefore),
+          ),
+          and(
+            isNotNull(usagePackSubscriptions.stripeSubscriptionId),
+            notInArray(usagePackSubscriptions.subscriptionStatus, [
+              ...TERMINAL_USAGE_PACK_SUBSCRIPTION_STATUSES,
+            ]),
+            or(
+              and(
+                isNull(usagePackSubscriptions.currentPeriodEnd),
+                lte(usagePackSubscriptions.updatedAt, staleBefore),
+              ),
+              lte(usagePackSubscriptions.currentPeriodEnd, at),
+              and(
+                inArray(usagePackSubscriptions.subscriptionStatus, [
+                  "past_due",
+                  "unpaid",
+                ]),
+                lte(usagePackSubscriptions.updatedAt, staleBefore),
+              ),
             ),
           ),
         ),

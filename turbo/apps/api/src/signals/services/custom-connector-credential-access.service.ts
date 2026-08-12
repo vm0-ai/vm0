@@ -15,7 +15,10 @@ import {
 } from "../../lib/db-structured-result";
 import { nowDate } from "../../lib/time";
 import type { ReadonlyDb } from "../external/db";
-import { connectorCredentialStatusForAccess } from "./connector-credential-status.service";
+import {
+  connectorCredentialStatusForAccess,
+  connectorRuntimeCredentialStatusForAccess,
+} from "./connector-credential-status.service";
 
 const OAUTH_ACCESS_TOKEN_SECRET_NAME = "access_token";
 const OAUTH_REFRESH_TOKEN_SECRET_NAME = "refresh_token";
@@ -77,7 +80,7 @@ interface CustomConnectorStoredConnection {
   readonly oauthRefreshTokenId: string | null;
 }
 
-interface UsableCustomConnectorConnection {
+interface ConnectedCustomConnectorConnection {
   readonly authMode: OrgCustomConnectorAuthMode;
   readonly storageVersion: number;
 }
@@ -87,7 +90,7 @@ export type CustomConnectorCredentialAccess =
   | {
       readonly kind: "current";
       readonly memberConnectorId: string;
-      readonly usable: boolean;
+      readonly runtimeAvailable: boolean;
     }
   | {
       readonly kind: "incompatible";
@@ -214,7 +217,7 @@ function customConnectorStoredConnectionIsCurrent(
   );
 }
 
-function customConnectorStoredConnectionIsUsable(
+function customConnectorStoredConnectionIsConnected(
   connection: CustomConnectorStoredConnection,
   now: Date,
 ): boolean {
@@ -234,6 +237,23 @@ function customConnectorStoredConnectionIsUsable(
     credentialStatus === "available" &&
     (connection.definitionAuthMethod === "manual" ||
       connection.oauthAccessTokenId !== null)
+  );
+}
+
+function currentCustomConnectorStoredConnectionIsRuntimeAvailable(
+  connection: CustomConnectorStoredConnection,
+  now: Date,
+): boolean {
+  return (
+    connectorRuntimeCredentialStatusForAccess({
+      storedNeedsReconnect: connection.storedNeedsReconnect,
+      tokenExpiresAt:
+        connection.definitionAuthMethod === "oauth"
+          ? connection.tokenExpiresAt
+          : null,
+      now,
+      isRefreshable: connection.definitionAuthMethod === "oauth",
+    }) === "available"
   );
 }
 
@@ -263,7 +283,8 @@ function customConnectorCredentialAccesses(
       accesses.set(definition.id, {
         kind: "current",
         memberConnectorId: member.id,
-        usable: customConnectorStoredConnectionIsUsable(member, now),
+        runtimeAvailable:
+          currentCustomConnectorStoredConnectionIsRuntimeAvailable(member, now),
       });
     } else {
       accesses.set(definition.id, {
@@ -541,39 +562,42 @@ export async function loadCurrentCustomConnectorStoredValues(
   return customConnectorRuntimeStorageSnapshot(args.definitions, rows);
 }
 
-export async function loadUsableCustomConnectorConnections(
+export async function loadConnectedCustomConnectorConnections(
   db: Pick<ReadonlyDb, "select">,
   args: {
     readonly orgId: string;
     readonly userId: string;
     readonly connectorIds?: readonly string[];
   },
-): Promise<ReadonlyMap<string, UsableCustomConnectorConnection>> {
+): Promise<ReadonlyMap<string, ConnectedCustomConnectorConnection>> {
   if (args.connectorIds?.length === 0) {
     return new Map();
   }
   const rows = await loadCustomConnectorStoredConnections(db, args);
   const now = nowDate();
-  const usableConnections = new Map<string, UsableCustomConnectorConnection>();
+  const connectedConnections = new Map<
+    string,
+    ConnectedCustomConnectorConnection
+  >();
   for (const row of rows) {
-    if (customConnectorStoredConnectionIsUsable(row, now)) {
-      usableConnections.set(row.customConnectorId, {
+    if (customConnectorStoredConnectionIsConnected(row, now)) {
+      connectedConnections.set(row.customConnectorId, {
         authMode: row.definitionAuthMethod,
         storageVersion: row.definitionStorageVersion,
       });
     }
   }
-  return usableConnections;
+  return connectedConnections;
 }
 
-export function customConnectorDefinitionHasUsableConnection(args: {
-  readonly usableConnections: ReadonlyMap<
+export function customConnectorDefinitionHasConnectedConnection(args: {
+  readonly connectedConnections: ReadonlyMap<
     string,
-    UsableCustomConnectorConnection
+    ConnectedCustomConnectorConnection
   >;
   readonly definition: CustomConnectorCredentialDefinition;
 }): boolean {
-  const connection = args.usableConnections.get(args.definition.id);
+  const connection = args.connectedConnections.get(args.definition.id);
   return (
     connection?.authMode === args.definition.authMode &&
     connection.storageVersion === args.definition.storageVersion

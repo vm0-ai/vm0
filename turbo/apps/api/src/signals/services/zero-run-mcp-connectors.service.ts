@@ -11,9 +11,9 @@ import { and, eq } from "drizzle-orm";
 import { db$ } from "../external/db";
 import { customConnectorDefinitionSelection } from "./custom-connector-definition-selection";
 import {
-  customConnectorDefinitionHasUsableConnection,
+  customConnectorDefinitionHasConnectedConnection,
   loadCurrentCustomConnectorValueMarkers,
-  loadUsableCustomConnectorConnections,
+  loadConnectedCustomConnectorConnections,
 } from "./custom-connector-credential-access.service";
 import {
   normaliseCustomConnectorRow,
@@ -67,13 +67,13 @@ export function zeroRunMcpConnectorList(args: {
     const connectorIds = rows.map(({ connector }) => {
       return connector.id;
     });
-    const [valueMarkers, usableConnections] = await Promise.all([
+    const [valueMarkers, connectedConnections] = await Promise.all([
       loadCurrentCustomConnectorValueMarkers(db, {
         orgId: args.orgId,
         userId: args.userId,
         connectorIds,
       }),
-      loadUsableCustomConnectorConnections(db, {
+      loadConnectedCustomConnectorConnections(db, {
         orgId: args.orgId,
         userId: args.userId,
         connectorIds,
@@ -84,8 +84,8 @@ export function zeroRunMcpConnectorList(args: {
       const response = serialiseCustomConnector({
         row: normaliseCustomConnectorRow(connector),
         valueMarkers,
-        usableConnection: customConnectorDefinitionHasUsableConnection({
-          usableConnections,
+        connectedConnection: customConnectorDefinitionHasConnectedConnection({
+          connectedConnections,
           definition: connector,
         }),
       });

@@ -46,6 +46,7 @@ import {
   assertUsagePackMemberCreditRefundReady,
   prepareUsagePackMemberCreditRefunds,
 } from "./usage-pack-credit-refund.service";
+import type { BillingReconciliationScope } from "./billing-reconciliation-scope";
 import { downgradeSubscriptionForOrg } from "./zero-billing-downgrade.service";
 import {
   activeUsagePackPriceId,
@@ -3223,6 +3224,7 @@ async function usagePackChangeCandidateSubscriptionIds(
   db: Pick<Db, "select">,
   at: Date,
   staleBefore: Date,
+  scope: BillingReconciliationScope | undefined,
 ): Promise<readonly string[]> {
   const rows = await db
     .select({
@@ -3231,18 +3233,23 @@ async function usagePackChangeCandidateSubscriptionIds(
     })
     .from(usagePackAllocationChanges)
     .where(
-      or(
-        and(
-          inArray(usagePackAllocationChanges.status, [
-            "applying",
-            "pending_payment",
-          ]),
-          lte(usagePackAllocationChanges.updatedAt, staleBefore),
-        ),
-        eq(usagePackAllocationChanges.status, "applied"),
-        and(
-          eq(usagePackAllocationChanges.status, "scheduled"),
-          lte(usagePackAllocationChanges.effectiveAt, at),
+      and(
+        scope
+          ? inArray(usagePackAllocationChanges.orgId, [...scope.orgIds])
+          : undefined,
+        or(
+          and(
+            inArray(usagePackAllocationChanges.status, [
+              "applying",
+              "pending_payment",
+            ]),
+            lte(usagePackAllocationChanges.updatedAt, staleBefore),
+          ),
+          eq(usagePackAllocationChanges.status, "applied"),
+          and(
+            eq(usagePackAllocationChanges.status, "scheduled"),
+            lte(usagePackAllocationChanges.effectiveAt, at),
+          ),
         ),
       ),
     )
@@ -3258,6 +3265,7 @@ async function usagePackChangeCandidateSubscriptionIds(
 
 export async function reconcileUsagePackAllocationChanges(
   db: Db,
+  scope: BillingReconciliationScope | undefined,
   signal: AbortSignal,
 ): Promise<{
   readonly reconciled: number;
@@ -3279,6 +3287,9 @@ export async function reconcileUsagePackAllocationChanges(
     })
     .where(
       and(
+        scope
+          ? inArray(usagePackAllocationChanges.orgId, [...scope.orgIds])
+          : undefined,
         eq(usagePackAllocationChanges.status, "previewed"),
         lte(usagePackAllocationChanges.previewExpiresAt, at),
       ),
@@ -3290,6 +3301,7 @@ export async function reconcileUsagePackAllocationChanges(
     db,
     at,
     staleBefore,
+    scope,
   );
   signal.throwIfAborted();
   const orgIds = new Set<string>();

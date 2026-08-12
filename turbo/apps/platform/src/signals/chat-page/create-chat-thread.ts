@@ -51,6 +51,7 @@ import {
 import {
   chatThreadArtifactsContract,
   resolveChatEventRecommendedFollowups,
+  type ChatRunOptionsRequest,
   type GenerationTemplateRequest,
   type ChatEvent as PersistedChatEvent,
   type FeedbackNotePart,
@@ -212,14 +213,26 @@ import type {
   ChatEventSignals,
   SendChatEventInput,
   SendChatEventResult,
+  SendInputChatEvent,
 } from "./chat-event-signals.ts";
 import { registerChatEventChangeHandler$ } from "./chat-event-change-registry.ts";
 import {
   canonicalUserMessageFileUrl,
   userMessageFileAttachments,
 } from "./user-message-files.ts";
+import {
+  forwardSubmissionPrompt,
+  withForwardedContent,
+  type ChatForwardContext,
+} from "./chat-forward.ts";
 
 const L = logger("ChatThread");
+const noOpComposerDraftSave$ = command(
+  (_context, signal: AbortSignal): Promise<void> => {
+    signal.throwIfAborted();
+    return Promise.resolve();
+  },
+);
 
 function isInputChatEvent(
   event: ChatEvent,
@@ -2672,11 +2685,13 @@ function userMessageForSend({
   editorDocument,
   generationTemplate,
   attachments,
+  forward,
 }: {
   readonly prompt: string;
   readonly editorDocument: SendMessageOptions["editorDocument"];
   readonly generationTemplate: GenerationTemplateRequest | undefined;
   readonly attachments: ResolvedAttachFile[] | undefined;
+  readonly forward: ChatForwardContext | undefined;
 }): UserMessageInputDocument {
   const userMessage = editorDocument
     ? editorDocument.toMessageDocument({
@@ -2684,6 +2699,9 @@ function userMessageForSend({
         attachments,
       })
     : textToMessageDocument(prompt, undefined, attachments);
+  if (forward) {
+    return withForwardedContent(userMessage, forward);
+  }
   if (!userMessage) {
     throw new Error("Failed to serialize user message");
   }
@@ -2699,6 +2717,7 @@ function queueUserMessage(
     editorDocument: options.editorDocument,
     generationTemplate: options.generationTemplate,
     attachments: result.attachments,
+    forward: options.forward,
   });
 }
 
@@ -2739,6 +2758,79 @@ interface ValidatedSendMessageRequest {
   readonly modelSelection: ModelProviderSelection | null;
 }
 
+function generationTemplateForSend(
+  request: ValidatedSendMessageRequest,
+  draftGenerationTemplate: GenerationTemplateRequest | undefined,
+): GenerationTemplateRequest | undefined {
+  return request.options?.editorDocument
+    ? request.options.generationTemplate
+    : draftGenerationTemplate;
+}
+
+function submissionPromptForSend(request: ValidatedSendMessageRequest): string {
+  return request.options?.forward
+    ? forwardSubmissionPrompt(request.options.forward, request.prompt)
+    : request.prompt;
+}
+
+function prepareSendMessageResult(
+  textOnly: boolean,
+  prompt: string,
+  prepareFromDraft: () => Promise<PreparedSendMessageResult | null>,
+): Promise<PreparedSendMessageResult | null> {
+  return textOnly
+    ? Promise.resolve(prepareTextOnlyUserMessage(prompt))
+    : prepareFromDraft();
+}
+
+function userMessagePromptForSend(
+  request: ValidatedSendMessageRequest,
+  preparedPrompt: string,
+): string {
+  return request.options?.forward ? request.prompt : preparedPrompt;
+}
+
+function flushDraftForSend(
+  forward: ChatForwardContext | undefined,
+  flush: () => Promise<void>,
+): Promise<void> {
+  return forward ? Promise.resolve() : flush();
+}
+
+function sendInputForRequest(args: {
+  readonly request: ValidatedSendMessageRequest;
+  readonly result: PreparedSendMessageResult;
+  readonly userMessage: UserMessageInputDocument;
+  readonly runOptions: ChatRunOptionsRequest | undefined;
+  readonly realAgentInPreviewEnabled: boolean;
+}): SendInputChatEvent {
+  const { request, result } = args;
+  return {
+    kind: "input",
+    delivery: "run",
+    agentId: request.agentId,
+    prompt: result.prompt,
+    hasTextContent: result.hasTextContent,
+    userMessage: args.userMessage,
+    selectedModel: request.modelSelection?.selectedModel ?? null,
+    ...(args.runOptions === undefined ? {} : { runOptions: args.runOptions }),
+    ...(args.realAgentInPreviewEnabled ? { realAgentInPreview: true } : {}),
+    ...(request.options && "computerUseHostId" in request.options
+      ? { computerUseHostId: request.options.computerUseHostId ?? null }
+      : {}),
+    ...(request.options && "cloudBrowserEnabled" in request.options
+      ? { cloudBrowserEnabled: request.options.cloudBrowserEnabled ?? false }
+      : {}),
+    ...(request.options?.revokesEventId === undefined
+      ? {}
+      : { revokesEventId: request.options.revokesEventId }),
+    ...(request.options?.forward ? { source: request.options.forward } : {}),
+    ...(request.options?.onOptimisticSend
+      ? { onOptimisticSend: request.options.onOptimisticSend }
+      : {}),
+  };
+}
+
 function createPerformSendMessage(deps: SendMessageDeps) {
   const { threadId, draft, cancelDraftSync$, flushDraftClear$, sendEvent$ } =
     deps;
@@ -2748,35 +2840,41 @@ function createPerformSendMessage(deps: SendMessageDeps) {
       request: ValidatedSendMessageRequest,
       signal: AbortSignal,
     ): Promise<boolean> => {
-      const generationTemplate = request.options?.editorDocument
-        ? request.options.generationTemplate
-        : get(draft.generationTemplate$);
-      const result =
-        request.options?.includeDraftAttachments === false
-          ? prepareTextOnlyUserMessage(request.prompt)
-          : await set(
-              prepareUserMessageFromDraft$,
-              draft,
-              request.prompt,
-              {
-                excludeVisualAttachments:
-                  shouldExcludeVisualAttachmentsForModel(
-                    request.modelSelection?.selectedModel,
-                    get(imageRecognitionAvailable$),
-                  ),
-              },
-              signal,
-            );
+      const generationTemplate = generationTemplateForSend(
+        request,
+        get(draft.generationTemplate$),
+      );
+      const submissionPrompt = submissionPromptForSend(request);
+      const result = await prepareSendMessageResult(
+        request.options?.includeDraftAttachments === false,
+        submissionPrompt,
+        () => {
+          return set(
+            prepareUserMessageFromDraft$,
+            draft,
+            submissionPrompt,
+            {
+              excludeVisualAttachments: shouldExcludeVisualAttachmentsForModel(
+                request.modelSelection?.selectedModel,
+                get(imageRecognitionAvailable$),
+              ),
+            },
+            signal,
+          );
+        },
+      );
+      signal.throwIfAborted();
       if (!result) {
         L.debug("sendMessage$ prepare returned null, abort", { threadId });
         return false;
       }
       signal.throwIfAborted();
       const userMessage = userMessageForSend({
-        prompt: result.prompt,
+        prompt: userMessagePromptForSend(request, result.prompt),
         editorDocument: request.options?.editorDocument,
         generationTemplate,
         attachments: result.attachments,
+        forward: request.options?.forward,
       });
       set(cancelDraftSync$);
       set(draft.clear$);
@@ -2785,32 +2883,18 @@ function createPerformSendMessage(deps: SendMessageDeps) {
         request.modelSelection,
       );
       const [, sendResult] = await Promise.all([
-        set(flushDraftClear$, signal),
+        flushDraftForSend(request.options?.forward, () => {
+          return set(flushDraftClear$, signal);
+        }),
         set(
           sendEvent$,
-          {
-            kind: "input",
-            delivery: "run",
-            agentId: request.agentId,
-            prompt: result.prompt,
-            hasTextContent: result.hasTextContent,
+          sendInputForRequest({
+            request,
+            result,
             userMessage,
-            selectedModel: request.modelSelection?.selectedModel ?? null,
-            ...(runOptions === undefined ? {} : { runOptions }),
-            ...(realAgentInPreviewEnabled ? { realAgentInPreview: true } : {}),
-            ...(request.options && "computerUseHostId" in request.options
-              ? { computerUseHostId: request.options.computerUseHostId ?? null }
-              : {}),
-            ...(request.options && "cloudBrowserEnabled" in request.options
-              ? {
-                  cloudBrowserEnabled:
-                    request.options.cloudBrowserEnabled ?? false,
-                }
-              : {}),
-            ...(request.options?.revokesEventId === undefined
-              ? {}
-              : { revokesEventId: request.options.revokesEventId }),
-          },
+            runOptions,
+            realAgentInPreviewEnabled,
+          }),
           signal,
         ),
       ]);
@@ -2900,10 +2984,13 @@ function createQueueMessage(deps: QueueMessageDeps) {
       }
       const modelSelection = await set(modelSelectionForSend$, signal);
       signal.throwIfAborted();
+      const submissionPrompt = options.forward
+        ? forwardSubmissionPrompt(options.forward, prompt)
+        : prompt;
       const result = await set(
         prepareUserMessageFromDraft$,
         draft,
-        prompt,
+        submissionPrompt,
         {
           excludeVisualAttachments: shouldExcludeVisualAttachmentsForModel(
             modelSelection?.selectedModel,
@@ -2927,7 +3014,7 @@ function createQueueMessage(deps: QueueMessageDeps) {
         modelSelection,
       );
       await Promise.all([
-        set(flushDraftClear$, signal),
+        options.forward ? Promise.resolve() : set(flushDraftClear$, signal),
         set(
           sendEvent$,
           {
@@ -2946,6 +3033,10 @@ function createQueueMessage(deps: QueueMessageDeps) {
             ...(options.cloudBrowserEnabled === undefined
               ? {}
               : { cloudBrowserEnabled: options.cloudBrowserEnabled }),
+            ...(options.forward ? { source: options.forward } : {}),
+            ...(options.onOptimisticSend
+              ? { onOptimisticSend: options.onOptimisticSend }
+              : {}),
           },
           signal,
         ),
@@ -3576,12 +3667,16 @@ interface CreateChatThreadComposerSignalsOptions {
   >;
   readonly messageActions: ReturnType<typeof createThreadMessageActions>;
   readonly cancellationRecoveryPending$: Computed<Promise<boolean>>;
+  readonly forward?: ChatForwardContext;
+  readonly onOptimisticSend?: () => void;
 }
 
 interface ChatThreadComposerContext {
   readonly threadMeta$: Computed<ThreadMeta | null>;
   readonly agentId: string;
   readonly cancellationRecoveryPending$: Computed<Promise<boolean>>;
+  readonly forward?: ChatForwardContext;
+  readonly onOptimisticSend?: () => void;
 }
 
 function createThreadSubmitMessageSignal(
@@ -3613,6 +3708,10 @@ function createThreadSubmitMessageSignal(
                 cloudBrowserEnabled: explicit ? cloudBrowserEnabled : undefined,
                 generationTemplate: submission.generationTemplate,
                 editorDocument: submission.editorDocument,
+                ...(options.forward ? { forward: options.forward } : {}),
+                ...(options.onOptimisticSend
+                  ? { onOptimisticSend: options.onOptimisticSend }
+                  : {}),
               },
               signal,
             )
@@ -3624,6 +3723,10 @@ function createThreadSubmitMessageSignal(
                 ...(explicit ? { cloudBrowserEnabled } : {}),
                 generationTemplate: submission.generationTemplate,
                 editorDocument: submission.editorDocument,
+                ...(options.forward ? { forward: options.forward } : {}),
+                ...(options.onOptimisticSend
+                  ? { onOptimisticSend: options.onOptimisticSend }
+                  : {}),
               },
               signal,
             );
@@ -3685,11 +3788,12 @@ function createChatThreadComposerSignals(
     agentId: options.agentId,
     draft: {
       signals: options.draft,
-      save$: options.queueDraftSync$,
+      save$: options.forward ? noOpComposerDraftSave$ : options.queueDraftSync$,
     },
     chatEvents$: options.chatEvents.chatEvents$,
     threadId: options.chatEvents.threadId,
     singleLineOnMobile: true,
+    implicitContent: options.forward !== undefined,
     modelSelection$: composerModelSelection$,
     selectedModelOauthAvailable$: modelSelection.selectedModelOauthAvailable$,
     setModelSelection$: modelSelection.setModelSelection$,
@@ -3739,6 +3843,8 @@ function createThreadComposerSignalsWithContext(
     computerUseHostSelection,
     messageActions,
     cancellationRecoveryPending$: context.cancellationRecoveryPending$,
+    forward: context.forward,
+    onOptimisticSend: context.onOptimisticSend,
   });
 }
 
@@ -3751,6 +3857,10 @@ export function createThreadComposerSignals(
   threadId: string,
   agentId: string,
   chatEvents: ChatEventSignals,
+  options: {
+    readonly forward?: ChatForwardContext;
+    readonly onOptimisticSend?: () => void;
+  } = {},
 ): ComposerSignals {
   const threadMeta$ = createThreadMeta(threadId);
   const cancellationRecovery = createCancellationRecoverySignals(threadId);
@@ -3761,6 +3871,8 @@ export function createThreadComposerSignals(
       threadMeta$,
       agentId,
       cancellationRecoveryPending$: cancellationRecovery.pending$,
+      forward: options.forward,
+      onOptimisticSend: options.onOptimisticSend,
     },
     createDraftSignals(),
   );

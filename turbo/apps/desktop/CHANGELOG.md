@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.35.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.34.0...desktop-v0.35.0) (2026-08-12)
+
+
+### Features
+
+* **desktop:** finalize okou application identity ([#26659](https://github.com/vm0-ai/vm0/issues/26659)) ([c605c1c](https://github.com/vm0-ai/vm0/commit/c605c1c09f2bdad29a98c3bb86602169085a3dc3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.323.0
+
 ## [0.34.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.33.4...desktop-v0.34.0) (2026-08-12)
 
 

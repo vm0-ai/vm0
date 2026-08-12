@@ -1418,6 +1418,19 @@
       "sourcePartsHeading_many": "Commentaires sur {{count}} parties de {{description}} :",
       "sourcePartsHeading_other": "Commentaires sur {{count}} parties de {{description}} :"
     },
+    "forward": {
+      "action": "Transférer",
+      "agents": "Agents",
+      "back": "Retour",
+      "content": "Contenu",
+      "description": "Transférez le contenu sélectionné vers un agent ou un chat.",
+      "noResults": "Aucun agent ni chat trouvé",
+      "search": "Rechercher des agents et des chats...",
+      "sent": "Transfert réussi",
+      "threads": "Chats",
+      "title": "Transférer vers",
+      "to": "Transférer vers"
+    },
     "mail": {
       "bcc": "bcc",
       "cc": "cc",

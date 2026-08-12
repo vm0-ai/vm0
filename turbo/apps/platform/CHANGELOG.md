@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.735.0](https://github.com/vm0-ai/vm0/compare/app-v0.734.0...app-v0.735.0) (2026-08-12)
+
+
+### Features
+
+* add in-app paid member invitations ([#26567](https://github.com/vm0-ai/vm0/issues/26567)) ([f98cd50](https://github.com/vm0-ai/vm0/commit/f98cd507b249c8157d208f3b646cc4a60c83afb3))
+* add unified zero indicators api ([#26568](https://github.com/vm0-ai/vm0/issues/26568)) ([ccd1f4f](https://github.com/vm0-ai/vm0/commit/ccd1f4f044abc8012f5f2f13e881135db29207ab))
+* **desktop:** finalize okou application identity ([#26659](https://github.com/vm0-ai/vm0/issues/26659)) ([c605c1c](https://github.com/vm0-ai/vm0/commit/c605c1c09f2bdad29a98c3bb86602169085a3dc3))
+* **workflow:** replace github-label-applied trigger with github-pull-request automation ([#26630](https://github.com/vm0-ai/vm0/issues/26630)) ([b759ef9](https://github.com/vm0-ai/vm0/commit/b759ef9ab529e6913547f8ed86ede565d3537352))
+
+
+### Bug Fixes
+
+* **chat:** preserve Fast mode during thread creation ([#26651](https://github.com/vm0-ai/vm0/issues/26651)) ([0ac86b0](https://github.com/vm0-ai/vm0/commit/0ac86b03292d267ae85685ed7abc27ed1a0ddb0c))
+* flatten artifact cards and pin the artifacts kind filter ([#26547](https://github.com/vm0-ai/vm0/issues/26547)) ([b4a8e21](https://github.com/vm0-ai/vm0/commit/b4a8e21b6bfb38617acb8584a4d9e0e6b9f4ce78))
+* **platform:** scope attachment and copy lifecycles to owners ([#26542](https://github.com/vm0-ai/vm0/issues/26542)) ([27e905f](https://github.com/vm0-ai/vm0/commit/27e905ff3a1fe48bdb0097a47c89a16f4a5f0fa8))
+* **platform:** tailor voice input limit recovery by plan ([#26620](https://github.com/vm0-ai/vm0/issues/26620)) ([0443eba](https://github.com/vm0-ai/vm0/commit/0443eba04bce6fd8f33bde6bafab69a0605f2ea5))
+* refresh concurrency limit after billing changes ([#26626](https://github.com/vm0-ai/vm0/issues/26626)) ([a216521](https://github.com/vm0-ai/vm0/commit/a216521cc41e41e7cb0125fe0e0537af414ddf4b))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.323.0
+    * @vm0/core bumped to 8.549.0
+
 ## [0.734.0](https://github.com/vm0-ai/vm0/compare/app-v0.733.0...app-v0.734.0) (2026-08-12)
 
 

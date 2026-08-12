@@ -1389,6 +1389,19 @@
       "sourcePartsHeading_one": "Feedback on {{count}} part of {{description}}:",
       "sourcePartsHeading_other": "Feedback on {{count}} parts of {{description}}:"
     },
+    "forward": {
+      "action": "Forward",
+      "agents": "Agents",
+      "back": "Back",
+      "content": "Content",
+      "description": "Forward selected content to an agent or chat.",
+      "noResults": "No agents or chats found",
+      "search": "Search agents and chats...",
+      "sent": "Forwarded successfully",
+      "threads": "Chats",
+      "title": "Forward to",
+      "to": "Forward to"
+    },
     "mail": {
       "bcc": "bcc",
       "cc": "cc",

@@ -4382,6 +4382,7 @@ function ChatThreadNotFound() {
 }
 
 function ChatThreadContent({ thread }: { thread: ChatPanelSignals }) {
+  const { t } = useTranslation();
   const threadMeta = useGet(thread.threadMeta$);
   if (!threadMeta) {
     return <ChatThreadNotFound />;
@@ -4398,7 +4399,16 @@ function ChatThreadContent({ thread }: { thread: ChatPanelSignals }) {
         </div>
       </div>
 
-      <ChatFeedbackSelection feedback={thread.feedback} />
+      <ChatFeedbackSelection
+        feedback={thread.feedback}
+        sourceAgentId={threadMeta.agentId}
+        sourceThreadTitle={
+          threadMeta.title ??
+          t(($) => {
+            return $.chat.newChat;
+          })
+        }
+      />
     </>
   );
 }
@@ -7579,6 +7589,7 @@ function PagedAssistantGroup({
   }
 
   const groupElementId = `chat-event-group-${group.beginEventId}`;
+  const runId = firstRunIdForEvents(group.events);
   const fullContent = group.events
     .map((m) => {
       return m.content;
@@ -7606,6 +7617,7 @@ function PagedAssistantGroup({
     <div
       id={groupElementId}
       data-role="assistant"
+      data-chat-run-id={runId}
       className="flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300"
     >
       <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
@@ -7664,6 +7676,7 @@ function PagedAssistantEventItem({
     return (
       <div
         data-chat-scroll-anchor-event-id={event.id}
+        data-chat-run-id={event.runId}
         className={cn(
           "zero-chat-bubble-assistant px-0 text-[0.9375rem] leading-[1.7] min-w-0 [overflow-wrap:anywhere]",
           compactTop ? "@[900px]:pt-0" : "@[900px]:pt-2.5",
@@ -7685,6 +7698,7 @@ function PagedAssistantEventItem({
     return (
       <div
         data-chat-scroll-anchor-event-id={event.id}
+        data-chat-run-id={event.runId}
         className={cn(
           "zero-chat-bubble-assistant px-0 text-[0.9375rem] leading-[1.7] min-w-0 [overflow-wrap:anywhere]",
           compactTop ? "@[900px]:pt-0" : "@[900px]:pt-2.5",

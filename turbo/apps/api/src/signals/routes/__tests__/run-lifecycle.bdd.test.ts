@@ -9328,13 +9328,14 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     });
   });
 
-  it("admits an unrefreshable custom OAuth token only until it expires", async () => {
+  it("fails expired custom OAuth without a refresh token at matched auth", async () => {
     const provider = mockCustomConnectorOAuth2Provider(context, {
       initialExpiresIn: 30,
       initialRefreshToken: null,
     });
     const api = createRunsApi(context);
     const connectors = createConnectorBddApi(context);
+    const fw = createFirewallApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
     const connectedAt = now();
     mockNow(connectedAt);
@@ -9407,18 +9408,39 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     });
     const expiredRun = await api.createRun(actor, {
       agentId,
-      prompt: "do not use the expired unrefreshable custom connector",
+      prompt: "try the expired unrefreshable custom connector",
       modelProvider: "anthropic-api-key",
     });
     const expiredClaim = await api.claimRunnerJob(expiredRun.runId);
-    expect(expiredClaim.connectorRuntimeTargets).not.toContainEqual(target);
+    expect(expiredClaim.connectorRuntimeTargets).toContainEqual(target);
+    const [runtimeResult] = await api.syncConnectorRuntime(expiredRun.runId, {
+      targets: [{ kind: "custom", customConnectorId: custom.id }],
+    });
+    const runtime = availableCustomConnectorRuntime(runtimeResult);
+    const { body: authBody } = customConnectorRuntimeAuthBody(
+      runtime,
+      fw.encryptedSecretsBody({}),
+    );
+    const reconnectRequired = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${expiredClaim.sandboxToken}` },
+      authBody,
+      [502],
+    );
+    if (reconnectRequired.status !== 502) {
+      throw new Error("Expected missing custom OAuth refresh token");
+    }
+    expect(reconnectRequired.body.error).toMatchObject({
+      code: "TOKEN_REFRESH_FAILED",
+      connectors: [custom.id],
+      failureReason: "reconnect_required",
+    });
     expect(provider.tokenBodies).toHaveLength(1);
 
     await api.requestCancelRun(actor, expiredRun.runId, [200]);
     await connectors.deleteCustomConnector(actor, custom.id);
   });
 
-  it("serializes and injects custom connector OAuth 2.0 refreshes", async () => {
+  it("serializes reconnect-marked custom OAuth recovery", async () => {
     const provider = mockCustomConnectorOAuth2Provider(context, {
       initialExpiresIn: 3600,
       refreshResponse: (attempt) => {
@@ -9484,6 +9506,23 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       state,
     });
     await connectors.updateAgentCustomConnectors(actor, agentId, [custom.id]);
+    if (!actor.orgId) {
+      throw new Error("Expected a custom connector actor with an organization");
+    }
+    await setCustomConnectorCredentialStorageState(context, {
+      orgId: actor.orgId,
+      userId: actor.userId,
+      customConnectorId: custom.id,
+      authMethod: "oauth",
+      storageVersion: 1,
+      needsReconnect: true,
+    });
+    await expect(
+      connectors.readCustomConnector(actor, custom.id),
+    ).resolves.toMatchObject({
+      connected: false,
+      missingRequiredFields: ["oauth"],
+    });
 
     const run = await api.createRun(actor, {
       agentId,
@@ -9573,6 +9612,12 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       expectedBasicAuthorization,
       expectedBasicAuthorization,
     ]);
+    await expect(
+      connectors.readCustomConnector(actor, custom.id),
+    ).resolves.toMatchObject({
+      connected: true,
+      missingRequiredFields: [],
+    });
 
     const currentResolved = await fw.requestFirewallAuth(
       { authorization: `Bearer ${claim.sandboxToken}` },
@@ -9589,9 +9634,6 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     });
     expect(provider.tokenBodies).toHaveLength(2);
 
-    if (!actor.orgId) {
-      throw new Error("Expected a custom connector actor with an organization");
-    }
     await setCustomConnectorCredentialStorageState(context, {
       orgId: actor.orgId,
       userId: actor.userId,
@@ -9665,7 +9707,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     await api.requestCancelRun(actor, run.runId, [200]);
   });
 
-  it("marks a custom OAuth connection for reconnect after invalid_grant", async () => {
+  it("retries reconnect-marked custom OAuth after invalid_grant", async () => {
     const provider = mockCustomConnectorOAuth2Provider(context, {
       initialExpiresIn: 3600,
       refreshResponse: () => {
@@ -9753,19 +9795,6 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       connectors: [custom.id],
       failureReason: "reconnect_required",
     });
-    const stillReconnectRequired = await fw.requestFirewallAuth(
-      { authorization: `Bearer ${claim.sandboxToken}` },
-      currentAuthBody,
-      [502],
-    );
-    if (stillReconnectRequired.status !== 502) {
-      throw new Error("Expected persisted custom OAuth reconnect requirement");
-    }
-    expect(stillReconnectRequired.body.error).toMatchObject({
-      code: "TOKEN_REFRESH_FAILED",
-      connectors: [custom.id],
-      failureReason: "reconnect_required",
-    });
     const [reconnectRuntimeResult] = await api.syncConnectorRuntime(
       firstRun.runId,
       { targets: [{ kind: "custom", customConnectorId: custom.id }] },
@@ -9793,7 +9822,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
 
     const secondRun = await api.createRun(actor, {
       agentId,
-      prompt: "do not retry the revoked OAuth custom connector",
+      prompt: "retry the revoked OAuth custom connector",
       modelProvider: "anthropic-api-key",
     });
     expect(provider.tokenBodies).toHaveLength(2);
@@ -9801,14 +9830,41 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     const internalName = `custom_connector_${custom.id.replaceAll("-", "")}`;
     expect(
       findFirewallEntry(secondClaim.firewalls, internalName),
-    ).toBeUndefined();
-    expect(secondClaim.networkPolicies ?? {}).not.toHaveProperty(internalName);
-    expect(secondClaim.connectorRuntimeTargets).not.toContainEqual(
+    ).toBeDefined();
+    expect(secondClaim.networkPolicies ?? {}).toHaveProperty(internalName);
+    expect(secondClaim.connectorRuntimeTargets).toContainEqual(
       expect.objectContaining({
         kind: "custom",
         customConnectorId: custom.id,
       }),
     );
+    const [secondRuntimeResult] = await api.syncConnectorRuntime(
+      secondRun.runId,
+      { targets: [{ kind: "custom", customConnectorId: custom.id }] },
+    );
+    const secondRuntime = availableCustomConnectorRuntime(secondRuntimeResult);
+    const { body: secondAuthBody } = customConnectorRuntimeAuthBody(
+      secondRuntime,
+      fw.encryptedSecretsBody({}),
+    );
+    const retriedReconnectRequired = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${secondClaim.sandboxToken}` },
+      secondAuthBody,
+      [502],
+    );
+    if (retriedReconnectRequired.status !== 502) {
+      throw new Error("Expected retried custom OAuth reconnect requirement");
+    }
+    expect(retriedReconnectRequired.body.error).toMatchObject({
+      code: "TOKEN_REFRESH_FAILED",
+      connectors: [custom.id],
+      failureReason: "reconnect_required",
+    });
+    expect(
+      provider.tokenBodies.map((body) => {
+        return body.get("grant_type");
+      }),
+    ).toStrictEqual(["authorization_code", "refresh_token", "refresh_token"]);
 
     await api.requestCancelRun(actor, firstRun.runId, [200]);
     await api.requestCancelRun(actor, secondRun.runId, [200]);

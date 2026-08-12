@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.549.0](https://github.com/vm0-ai/vm0/compare/core-v8.548.3...core-v8.549.0) (2026-08-12)
+
+
+### Features
+
+* add unified zero indicators api ([#26568](https://github.com/vm0-ai/vm0/issues/26568)) ([ccd1f4f](https://github.com/vm0-ai/vm0/commit/ccd1f4f044abc8012f5f2f13e881135db29207ab))
+* **workflow:** replace github-label-applied trigger with github-pull-request automation ([#26630](https://github.com/vm0-ai/vm0/issues/26630)) ([b759ef9](https://github.com/vm0-ai/vm0/commit/b759ef9ab529e6913547f8ed86ede565d3537352))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.323.0
+
 ## [8.548.3](https://github.com/vm0-ai/vm0/compare/core-v8.548.2...core-v8.548.3) (2026-08-12)
 
 
