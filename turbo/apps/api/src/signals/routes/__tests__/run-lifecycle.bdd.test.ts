@@ -9166,7 +9166,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       fields: custom.fields,
       headerInjections: custom.headerInjections,
       queryInjections: custom.queryInjections,
-      authMode: custom.authMode ?? "manual",
+      authMode: custom.authMode,
       permissionBundleRef: custom.permissionBundleRef,
       skillMarkdown: "Use the updated Slack-compatible operations only.",
       storageVersion: custom.storageVersion,
