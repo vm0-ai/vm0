@@ -2805,7 +2805,7 @@ jobs:
           ZERO_APP_URL: ${{ matrix.runtime == 'vercel' && needs.deploy-app.outputs.vercel-preview-url || needs.deploy-app.outputs.preview-url }}
           CLERK_PUBLISHABLE_KEY: ${{ vars.CLERK_PUBLISHABLE_KEY }}
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
-          JOB_REF: ${{ matrix.runtime == 'vercel' && format('{0}-vercel', needs.prepare.outputs.job-ref) || needs.prepare.outputs.job-ref }}
+          JOB_REF: ${{ format('{0}-pw-{1}', matrix.runtime == 'vercel' && format('{0}-vercel', needs.prepare.outputs.job-ref) || needs.prepare.outputs.job-ref, matrix.shard) }}
           CF_ACCESS_CLIENT_ID: ${{ secrets.CF_API_PREVIEW_ACCESS_CLIENT_ID }}
           CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_API_PREVIEW_ACCESS_CLIENT_SECRET }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
