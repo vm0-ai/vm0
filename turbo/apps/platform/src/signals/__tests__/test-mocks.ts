@@ -66,6 +66,15 @@ interface LocationAssignMock {
   calls: string[];
 }
 
+interface StorageWrite {
+  readonly key: string;
+  readonly value: string;
+}
+
+interface StorageWriteMock {
+  readonly writes: StorageWrite[];
+}
+
 interface ClipboardWriteMock {
   writes: string[];
 }
@@ -272,6 +281,9 @@ export function createTestMocks(getSignal: () => AbortSignal) {
       cookie: (cookie: string): void => {
         vi.spyOn(document, "cookie", "get").mockReturnValue(cookie);
       },
+      localStorageWrites: (): StorageWriteMock => {
+        return mockLocalStorageWrites();
+      },
       clipboardWriteText: (): ClipboardWriteMock => {
         return mockClipboardWriteText();
       },
@@ -368,6 +380,17 @@ function createMockWindow(): MockWindow {
     },
   } as MockWindow;
   return mockWindow;
+}
+
+function mockLocalStorageWrites(): StorageWriteMock {
+  const writes: StorageWrite[] = [];
+  const storage = globalThis["localStorage"];
+  const setItem = storage.setItem.bind(storage);
+  vi.spyOn(storage, "setItem").mockImplementation((key, value) => {
+    writes.push({ key, value });
+    setItem(key, value);
+  });
+  return { writes };
 }
 
 function mockMatchMedia(matches: boolean | ((query: string) => boolean)): void {

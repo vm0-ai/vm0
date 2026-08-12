@@ -31,8 +31,13 @@ describe("global method", () => {
       throw new Error("GlobalMethod logger control was not registered");
     }
 
+    const storage = context.mocks.browser.localStorageWrites();
     loggerControl.debug = true;
 
     expect(window._vm0?.loggers.GlobalMethod?.debug).toBeTruthy();
+    expect(storage.writes).toContainEqual({
+      key: "debugLogger",
+      value: JSON.stringify(["GlobalMethod"]),
+    });
   });
 });
