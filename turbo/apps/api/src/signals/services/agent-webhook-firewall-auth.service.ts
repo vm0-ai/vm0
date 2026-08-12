@@ -2729,37 +2729,6 @@ async function refreshAccessTokenForSource(
   });
 }
 
-/**
- * Resolve the current Codex access token for API-owned model calls that bypass
- * the Sandbox firewall. This deliberately shares the firewall's locked refresh
- * path so token expiry, refresh rotation, and reconnect state have one owner.
- */
-export async function resolveLiveCodexModelProviderAccessToken(args: {
-  readonly db: Db;
-  readonly orgId: string;
-  readonly sourceUserId: string;
-  readonly sourceId?: string;
-  readonly featureSwitchContext: FeatureSwitchContext;
-}): Promise<string | undefined> {
-  const result = await refreshAccessTokenForSource({
-    db: args.db,
-    accessSourceKey: "codex-oauth-token",
-    orgId: args.orgId,
-    userId: args.sourceUserId,
-    sourceType: "model-provider",
-    sourceUserId: args.sourceUserId,
-    ...(args.sourceId ? { sourceId: args.sourceId } : {}),
-    metadataKey: "codex-oauth-token",
-    connectorSecrets: {},
-    accessEnvVars: ["CHATGPT_ACCESS_TOKEN"],
-    forceRefresh: false,
-    forceRefreshStartedAtMicros: null,
-    connectorAccessBySlug: new Map<string, ConnectorAccessState>(),
-    featureSwitchContext: args.featureSwitchContext,
-  });
-  return result.ok ? result.secrets.CHATGPT_ACCESS_TOKEN : undefined;
-}
-
 function buildMetadataByAccessSource(
   refreshable: Map<string, string>,
   secretConnectorMetadataMap:

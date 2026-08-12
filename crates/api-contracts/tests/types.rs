@@ -1,41 +1,11 @@
 use api_contracts::generated::types::{
     runners::storage as runner_storage,
     webhooks::agent::{
-        checkpoints, pi_transcript,
+        checkpoints,
         storages::{FileEntryWithHash, commit, prepare},
     },
 };
 use serde_json::json;
-
-#[test]
-fn generated_pi_transcript_response_preserves_native_message_payload() {
-    let response: pi_transcript::Response = serde_json::from_value(json!({
-        "lastOrdinal": 7,
-        "hasMore": false,
-        "messages": [{
-            "ordinal": 7,
-            "messageId": "run-1/4",
-            "runId": "run-1",
-            "runEventSequenceNumber": 4,
-            "role": "toolResult",
-            "payload": {
-                "role": "toolResult",
-                "toolCallId": "bash_1",
-                "content": [{ "type": "text", "text": "exact bytes" }]
-            },
-            "createdAt": "2026-08-07T00:00:00.000Z"
-        }]
-    }))
-    .unwrap();
-
-    assert_eq!(response.last_ordinal, 7);
-    assert!(!response.has_more);
-    assert_eq!(response.messages[0].payload["toolCallId"], "bash_1");
-    assert_eq!(
-        response.messages[0].payload["content"][0]["text"],
-        "exact bytes"
-    );
-}
 
 #[test]
 fn generated_checkpoint_request_omits_absent_snapshots() {

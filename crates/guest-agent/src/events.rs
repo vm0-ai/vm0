@@ -417,6 +417,7 @@ pub(crate) fn extract_claude_tool_info(event: &Value) -> Vec<ClaudeToolEvent<'_>
 /// JSONL stream:
 /// - Claude Code: `{type: system, subtype: init, session_id: <uuid>}`
 /// - Codex:       `{type: thread.started, thread_id: <uuid>}`
+/// - Pi:          `{type: system, subtype: init, session_id: <chat-thread-id>}`
 ///
 /// Checkpoint resolves missing markers when it consumes session metadata.
 ///
@@ -425,6 +426,7 @@ pub(crate) fn extract_claude_tool_info(event: &Value) -> Vec<ClaudeToolEvent<'_>
 /// - Codex: length-prefixed `CODEX_SEARCH:{dir_len}:{sessions_dir}:{thread_id}`
 ///   marker — codex doesn't write the session file until turn-completion, so
 ///   resolution is deferred to checkpoint time.
+/// - Pi: literal path to the native SQLite session database.
 pub(crate) struct SessionMetadataCapture {
     framework: Framework,
     home_dir: String,
@@ -451,6 +453,7 @@ impl SessionMetadataCapture {
         let session_id = match self.framework {
             Framework::ClaudeCode => extract_claude_session_id(event),
             Framework::Codex => extract_codex_thread_id(event),
+            Framework::Pi => extract_claude_session_id(event),
         };
         let Some(session_id) = session_id else {
             return;

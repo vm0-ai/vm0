@@ -45,11 +45,6 @@ const expectedBindings = [
     direction: "request",
   },
   {
-    rustModulePath: ["webhooks", "agent", "pi_transcript"],
-    rustTypeName: "Response",
-    direction: "response",
-  },
-  {
     rustModulePath: ["webhooks", "agent", "storages"],
     rustTypeName: "FileEntryWithHash",
     direction: "request",

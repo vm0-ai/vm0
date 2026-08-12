@@ -1,29 +1,16 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import { getEventListeners } from "node:events";
+import { copyFile, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { http } from "msw";
 import { setupServer } from "msw/node";
-import {
-  afterAll,
-  afterEach,
-  beforeAll,
-  describe,
-  expect,
-  it,
-  vi,
-} from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 
-import type { AgentEvent } from "@earendil-works/pi-agent-core";
 import { NodeExecutionEnv } from "@earendil-works/pi-agent-core/node";
-import type { AssistantMessage } from "@earendil-works/pi-ai";
 
-import {
-  resolvePiAgentModel,
-  runPiAgentPrompt,
-  runPiAgentResume,
-} from "./agent-loop";
+import { resolvePiAgentModel, runPiAgentPrompt } from "./agent-loop";
+import { runPiAgentSession } from "./session";
+import type { PiAgentModelConfig } from "./types";
 
 const CODEX_ACCOUNT_ID_CLAIM_PATH = "https://api.openai.com/auth";
 const CODEX_BASE_URL = "https://chatgpt.com/backend-api";
@@ -31,15 +18,6 @@ const CODEX_PLACEHOLDER_ACCOUNT_ID = "ws_VM0_PLACEHOLDER_DO_NOT_TRUST";
 const DEEPSEEK_BASE_URL = "https://api.deepseek.com/";
 const DEEPSEEK_RESPONSES_URL = "https://api.deepseek.com/responses";
 const server = setupServer();
-
-const ZERO_USAGE = {
-  input: 0,
-  output: 0,
-  cacheRead: 0,
-  cacheWrite: 0,
-  totalTokens: 0,
-  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-};
 
 beforeAll(() => {
   server.listen({ onUnhandledRequest: "error" });
@@ -137,147 +115,6 @@ function responsesTextSse(text: string): string {
     .join("");
 }
 
-function responsesToolSse(args: {
-  readonly id: string;
-  readonly name: string;
-  readonly arguments: Readonly<Record<string, unknown>>;
-}): string {
-  const serializedArguments = JSON.stringify(args.arguments);
-  const functionItem = {
-    type: "function_call",
-    id: `fc_${args.id}`,
-    call_id: args.id,
-    name: args.name,
-    arguments: serializedArguments,
-    status: "completed",
-  };
-  const events = [
-    {
-      type: "response.created",
-      response: {
-        id: "resp_pi_tool_test",
-        object: "response",
-        status: "in_progress",
-        output: [],
-        usage: null,
-      },
-    },
-    {
-      type: "response.output_item.added",
-      output_index: 0,
-      item: { ...functionItem, arguments: "", status: "in_progress" },
-    },
-    {
-      type: "response.function_call_arguments.delta",
-      output_index: 0,
-      delta: serializedArguments,
-    },
-    {
-      type: "response.function_call_arguments.done",
-      output_index: 0,
-      arguments: serializedArguments,
-    },
-    {
-      type: "response.output_item.done",
-      output_index: 0,
-      item: functionItem,
-    },
-    {
-      type: "response.completed",
-      response: {
-        id: "resp_pi_tool_test",
-        object: "response",
-        status: "completed",
-        output: [functionItem],
-        usage: {
-          input_tokens: 5,
-          output_tokens: 3,
-          total_tokens: 8,
-        },
-      },
-    },
-  ];
-  return events
-    .map((event) => {
-      return `data: ${JSON.stringify(event)}\n\n`;
-    })
-    .join("");
-}
-
-function assistantToolMessage(args: {
-  readonly id: string;
-  readonly name: string;
-  readonly arguments: Readonly<Record<string, unknown>>;
-}): AssistantMessage {
-  return {
-    role: "assistant",
-    content: [{ type: "toolCall", ...args }],
-    api: "openai-responses",
-    provider: "deepseek",
-    model: "deepseek-v4-flash",
-    usage: ZERO_USAGE,
-    stopReason: "toolUse",
-    timestamp: 1,
-  };
-}
-
-function isDeadlineCallback(value: unknown): value is () => void {
-  return typeof value === "function";
-}
-
-function fireScheduledDeadline(
-  call: readonly unknown[] | undefined,
-  expectedTimeoutMs: number,
-): void {
-  if (!call) {
-    throw new Error("Expected a scheduled Pi tool deadline");
-  }
-  const [callback, timeoutMs] = call;
-  if (!isDeadlineCallback(callback)) {
-    throw new Error("Expected the Pi tool deadline callback");
-  }
-  callback();
-  expect(timeoutMs).toBe(expectedTimeoutMs);
-}
-
-function waitForAbort(controller: AbortController): Promise<void> {
-  if (controller.signal.aborted) {
-    return Promise.resolve();
-  }
-  return new Promise((resolve) => {
-    controller.signal.addEventListener(
-      "abort",
-      () => {
-        resolve();
-      },
-      { once: true },
-    );
-  });
-}
-
-class LaterBashExecutionEnv extends NodeExecutionEnv {
-  readonly started = new AbortController();
-  readonly abortedCommands: string[] = [];
-
-  override exec(
-    command: string,
-    options?: Parameters<NodeExecutionEnv["exec"]>[1],
-  ): ReturnType<NodeExecutionEnv["exec"]> {
-    if (command !== "never-finish") {
-      return super.exec(command, options);
-    }
-    options?.abortSignal?.addEventListener(
-      "abort",
-      () => {
-        this.abortedCommands.push(command);
-      },
-      { once: true },
-    );
-    this.started.abort();
-    return new Promise<never>(() => {});
-  }
-}
-
 function sseResponse(body: string): Response {
   const stream = new ReadableStream<Uint8Array>({
     start(controller) {
@@ -318,7 +155,7 @@ describe("Pi Codex subscription provider", () => {
   });
 
   it("streams a Codex subscription turn with the real ChatGPT JWT", async () => {
-    const accessToken = codexJwt("ws_acct_pi_edge_real");
+    const accessToken = codexJwt("ws_acct_pi_sandbox_real");
     let requestUrl: string | undefined;
     let requestHeaders: Headers | undefined;
     server.use(
@@ -350,7 +187,7 @@ describe("Pi Codex subscription provider", () => {
         `Bearer ${accessToken}`,
       );
       expect(requestHeaders?.get("chatgpt-account-id")).toBe(
-        "ws_acct_pi_edge_real",
+        "ws_acct_pi_sandbox_real",
       );
       const text = messages
         .filter((message) => {
@@ -490,212 +327,70 @@ describe("Pi DeepSeek provider", () => {
     }
   });
 
-  it("returns a structured timeout from a later Pi tool batch", async () => {
-    const root = await mkdtemp(join(tmpdir(), "pi-later-timeout-"));
-    const initialPath = join(root, "initial.txt");
-    await writeFile(initialPath, "initial tool result\n");
-    const env = new LaterBashExecutionEnv({ cwd: root });
-    const timeoutSpy = vi.spyOn(globalThis, "setTimeout");
-    const controller = new AbortController();
+  it("resumes native SQLite history from the checkpointed database file", async () => {
+    const root = await mkdtemp(join(tmpdir(), "vm0-pi-session-"));
+    const originalDatabase = join(root, "original.sqlite");
+    const restoredDatabase = join(root, "restored.sqlite");
+    const sessionId = "11111111-1111-4111-8111-111111111111";
     const requestBodies: unknown[] = [];
-    const events: AgentEvent[] = [];
-    let firstEventAbortListener: unknown = null;
     server.use(
       http.post(DEEPSEEK_RESPONSES_URL, async ({ request }) => {
-        const body: unknown = await request.json();
-        requestBodies.push(body);
+        requestBodies.push(await request.json());
         return sseResponse(
-          requestBodies.length === 1
-            ? responsesToolSse({
-                id: "later-bash",
-                name: "bash",
-                arguments: { command: "never-finish", timeout: 60 },
-              })
-            : responsesTextSse("recovered after timeout"),
+          responsesTextSse(
+            requestBodies.length === 1 ? "first answer" : "second answer",
+          ),
         );
       }),
     );
+    const firstEnv = new NodeExecutionEnv({ cwd: root });
+    const secondEnv = new NodeExecutionEnv({ cwd: root });
+    const model: PiAgentModelConfig = {
+      provider: "deepseek",
+      baseUrl: DEEPSEEK_BASE_URL,
+      apiKey: "sk-deepseek-pi-session",
+      model: "deepseek-v4-flash",
+    };
 
     try {
-      const messagesPromise = runPiAgentResume(
+      await runPiAgentSession(
         {
-          model: {
-            provider: "deepseek",
-            baseUrl: DEEPSEEK_BASE_URL,
-            apiKey: "sk-deepseek-pi-responses",
-            model: "deepseek-v4-flash",
-          },
-          systemPrompt: "You are a test Pi agent.",
-          messages: [
-            assistantToolMessage({
-              id: "initial-read|fc_initial-read",
-              name: "read",
-              arguments: { path: initialPath },
-            }),
-          ],
-          executionEnv: env,
-          onEvent(event) {
-            if (events.length === 0) {
-              const listeners = getEventListeners(controller.signal, "abort");
-              expect(listeners).toHaveLength(1);
-              firstEventAbortListener = listeners[0];
-            }
-            events.push(event);
-          },
+          sessionId,
+          databasePath: originalDatabase,
+          model,
+          systemPrompt: "You are a persistent Pi agent.",
+          prompt: "first prompt",
+          executionEnv: firstEnv,
         },
-        controller.signal,
+        new AbortController().signal,
+      );
+      await copyFile(originalDatabase, restoredDatabase);
+      const resumed = await runPiAgentSession(
+        {
+          sessionId,
+          databasePath: restoredDatabase,
+          model,
+          systemPrompt: "You are a persistent Pi agent.",
+          prompt: "second prompt",
+          executionEnv: secondEnv,
+        },
+        new AbortController().signal,
       );
 
-      await waitForAbort(env.started);
-      const laterDeadline = timeoutSpy.mock.calls.find((call) => {
-        return call[1] === 60_000;
-      });
-      fireScheduledDeadline(laterDeadline, 60_000);
-      const messages = await messagesPromise;
-
-      expect(requestBodies).toHaveLength(2);
-      expect(JSON.stringify(requestBodies[0])).toContain(
-        "Timeout in seconds (optional; default 600, maximum 1800)",
-      );
-      expect(JSON.stringify(requestBodies[1])).toContain(
-        "Tool execution timed out after 60 seconds",
-      );
-      expect(messages).toContainEqual(
-        expect.objectContaining({
-          role: "toolResult",
-          toolName: "bash",
-          isError: true,
-          details: { code: "tool_timeout", timeoutMs: 60_000 },
-        }),
-      );
-      expect(events).toContainEqual(
-        expect.objectContaining({
-          type: "message_end",
-          message: expect.objectContaining({
-            role: "toolResult",
-            toolName: "bash",
-            isError: true,
-            details: { code: "tool_timeout", timeoutMs: 60_000 },
+      expect(resumed.finalAssistantMessage?.content).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            type: "text",
+            text: "second answer",
           }),
-        }),
+        ]),
       );
-      expect(messages.at(-1)).toMatchObject({
-        role: "assistant",
-        content: [{ type: "text", text: "recovered after timeout" }],
-      });
-      expect(env.abortedCommands).toEqual(["never-finish"]);
-      expect(firstEventAbortListener).not.toBeNull();
-      expect(getEventListeners(controller.signal, "abort")).not.toContain(
-        firstEventAbortListener,
-      );
+      expect(JSON.stringify(requestBodies[1])).toContain("first prompt");
+      expect(JSON.stringify(requestBodies[1])).toContain("first answer");
+      expect(JSON.stringify(requestBodies[1])).toContain("second prompt");
     } finally {
-      timeoutSpy.mockRestore();
-      await env.cleanup();
-      await rm(root, { recursive: true, force: true });
-    }
-  });
-
-  it("propagates parent cancellation from a later Pi tool batch", async () => {
-    const root = await mkdtemp(join(tmpdir(), "pi-later-cancel-"));
-    const initialPath = join(root, "initial.txt");
-    await writeFile(initialPath, "initial tool result\n");
-    const env = new LaterBashExecutionEnv({ cwd: root });
-    const controller = new AbortController();
-    server.use(
-      http.post(DEEPSEEK_RESPONSES_URL, () => {
-        return sseResponse(
-          responsesToolSse({
-            id: "later-bash-cancel",
-            name: "bash",
-            arguments: { command: "never-finish", timeout: 60 },
-          }),
-        );
-      }),
-    );
-
-    try {
-      const messagesPromise = runPiAgentResume(
-        {
-          model: {
-            provider: "deepseek",
-            baseUrl: DEEPSEEK_BASE_URL,
-            apiKey: "sk-deepseek-pi-responses",
-            model: "deepseek-v4-flash",
-          },
-          systemPrompt: "You are a test Pi agent.",
-          messages: [
-            assistantToolMessage({
-              id: "initial-read|fc_initial-read",
-              name: "read",
-              arguments: { path: initialPath },
-            }),
-          ],
-          executionEnv: env,
-          onEvent() {},
-        },
-        controller.signal,
-      );
-
-      await waitForAbort(env.started);
-      const reason = new Error("parent cancelled later Pi tool");
-      reason.name = "AbortError";
-      controller.abort(reason);
-
-      await expect(messagesPromise).rejects.toBe(reason);
-      expect(env.abortedCommands).toEqual(["never-finish"]);
-    } finally {
-      await env.cleanup();
-      await rm(root, { recursive: true, force: true });
-    }
-  });
-
-  it("propagates parent cancellation while result persistence is pending", async () => {
-    const root = await mkdtemp(join(tmpdir(), "pi-persistence-cancel-"));
-    const initialPath = join(root, "initial.txt");
-    await writeFile(initialPath, "initial tool result\n");
-    const env = new NodeExecutionEnv({ cwd: root });
-    const controller = new AbortController();
-    const persistenceStarted = new AbortController();
-
-    try {
-      const messagesPromise = runPiAgentResume(
-        {
-          model: {
-            provider: "deepseek",
-            baseUrl: DEEPSEEK_BASE_URL,
-            apiKey: "sk-deepseek-pi-responses",
-            model: "deepseek-v4-flash",
-          },
-          systemPrompt: "You are a test Pi agent.",
-          messages: [
-            assistantToolMessage({
-              id: "initial-read|fc_initial-read",
-              name: "read",
-              arguments: { path: initialPath },
-            }),
-          ],
-          executionEnv: env,
-          onEvent(event) {
-            if (
-              event.type === "message_end" &&
-              event.message.role === "toolResult"
-            ) {
-              persistenceStarted.abort();
-              return new Promise<never>(() => {});
-            }
-          },
-        },
-        controller.signal,
-      );
-
-      await waitForAbort(persistenceStarted);
-      const reason = new Error("parent cancelled pending persistence");
-      reason.name = "AbortError";
-      controller.abort(reason);
-
-      await expect(messagesPromise).rejects.toBe(reason);
-    } finally {
-      await env.cleanup();
+      await firstEnv.cleanup();
+      await secondEnv.cleanup();
       await rm(root, { recursive: true, force: true });
     }
   });

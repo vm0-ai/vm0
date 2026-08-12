@@ -1,5 +1,3 @@
-import type { PiExecutionMode } from "@vm0/api-contracts/contracts/runners";
-
 import { recordSandboxOperations } from "../external/sandbox-op-log";
 import { publishRunnerJobNotification } from "../external/realtime";
 import { now } from "../../lib/time";
@@ -22,7 +20,6 @@ export interface RunnerJobNotification {
   readonly reuseKey: string | null;
   readonly cliAgentSessionId: string | null;
   readonly historyGenerationRunId: string | undefined;
-  readonly piExecutionMode?: PiExecutionMode;
   readonly createdAt: Date;
 }
 
@@ -63,7 +60,6 @@ export async function notifyRunnerJob(
     group: args.runnerGroup,
     runId: args.runId,
     profile: args.profile,
-    piExecutionMode: args.piExecutionMode,
     runnerPreference,
     metadata: {
       reuseKey: args.reuseKey,
