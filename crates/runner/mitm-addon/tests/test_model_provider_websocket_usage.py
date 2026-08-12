@@ -246,6 +246,8 @@ class TestModelProviderWebSocketPrewarmUsage:
             b'{"type":"response.create"}',
             b'{"type":"response.create","generate":true}',
             b'{"type":"response.create","generate":"false"}',
+            b'{"type":"response.create","generate":true,"generate":false}',
+            b'{"type":"other","type":"response.create","generate":false}',
         ],
     )
     def test_model_websocket_non_prewarm_requests_retain_input_only_usage(
@@ -271,6 +273,37 @@ class TestModelProviderWebSocketPrewarmUsage:
             usage.flush_usage_events(trigger="test")
 
         expected_rows = [("gpt-5.5", "tokens.input", 9)]
+        _assert_usage_event_rows(webhook.usage_events(), "provider", expected_rows)
+        _assert_usage_event_rows(
+            webhook.model_usage_observation_events(),
+            "model",
+            expected_rows,
+        )
+
+    def test_model_websocket_conflicting_created_ids_fail_open(self, tmp_path, real_flow):
+        flow = make_openai_responses_websocket_flow(real_flow, tmp_path)
+        mitm_addon.responseheaders(flow)
+
+        with self._usage_webhook_api() as webhook:
+            feed_websocket_client_message(
+                flow,
+                json.dumps({"type": "response.create", "generate": False}).encode(),
+            )
+            feed_websocket_server_message(
+                flow,
+                b'{"type":"response.created","response":{"id":"first","id":"second"}}',
+            )
+            feed_websocket_server_message(
+                flow,
+                openai_websocket_usage_frame(
+                    "second",
+                    input_tokens=11,
+                    output_tokens=0,
+                ),
+            )
+            usage.flush_usage_events(trigger="test")
+
+        expected_rows = [("gpt-5.5", "tokens.input", 11)]
         _assert_usage_event_rows(webhook.usage_events(), "provider", expected_rows)
         _assert_usage_event_rows(
             webhook.model_usage_observation_events(),

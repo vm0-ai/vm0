@@ -209,6 +209,7 @@ def inspect_openai_responses_client_event_json(body: bytes) -> OpenAIResponsesCl
     observed_event_type = _inspect_openai_responses_event_type_json(body)
     extractor = JsonSelectiveExtractor(
         scalar_fields=_RESPONSES_CLIENT_SCALAR_FIELDS,
+        scalar_consistency_paths={("type",), ("generate",)},
         max_work_units=_RESPONSES_MAX_WORK_UNITS,
     )
     extractor.feed(body)
@@ -218,7 +219,9 @@ def inspect_openai_responses_client_event_json(body: bytes) -> OpenAIResponsesCl
 
     return OpenAIResponsesClientEvent(
         observed_event_type,
-        result.values.get(("type",)) == _RESPONSES_CREATE_EVENT
+        extractor.selected_scalar_values_are_consistent(("type",))
+        and extractor.selected_scalar_values_are_consistent(("generate",))
+        and result.values.get(("type",)) == _RESPONSES_CREATE_EVENT
         and result.values.get(("generate",)) is False,
     )
 
@@ -254,11 +257,14 @@ def inspect_openai_responses_server_lifecycle(
 
     extractor = JsonSelectiveExtractor(
         scalar_fields=_RESPONSES_CREATED_SCALAR_FIELDS,
+        scalar_consistency_paths={("type",), ("response", "id")},
         max_work_units=_RESPONSES_MAX_WORK_UNITS,
     )
     extractor.feed(event._body)
     result = extractor.finish()
     if not result.complete:
+        return OpenAIResponsesServerLifecycle(event.event_type, None)
+    if not extractor.selected_scalar_values_are_consistent(("type",)):
         return OpenAIResponsesServerLifecycle(event.event_type, None)
     event_type = result.values.get(("type",))
     if not isinstance(event_type, str):
@@ -266,6 +272,7 @@ def inspect_openai_responses_server_lifecycle(
     response_id = result.values.get(("response", "id"))
     if (
         event_type != _RESPONSES_CREATED_EVENT
+        or not extractor.selected_scalar_values_are_consistent(("response", "id"))
         or not isinstance(response_id, str)
         or not response_id
     ):
