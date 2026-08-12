@@ -117,6 +117,7 @@ const config = resolveDesktopConfig();
 const desktopApiBaseUrl = resolveComputerUseApiBaseUrl(config.platformUrl);
 const addDesktopClientHeaders = createDesktopClientHeaderInjector({
   clientVersion: app.getVersion(),
+  product: config.identity.product,
 });
 const desktopAuthStartUrl = buildDesktopAuthStartUrl(
   config.webUrl,
@@ -758,7 +759,7 @@ function requestDesktopUpdateCheck(): void {
     return;
   }
 
-  checkForDesktopUpdates();
+  checkForDesktopUpdates(config.identity.displayName);
 }
 
 function applyApplicationMenu(): void {

@@ -269,6 +269,80 @@ async function readCustomOAuthState(
   });
 }
 
+async function deleteCustomCredentialValues(
+  db: Db,
+  body: ConnectorCredentialStorageAction<"delete-custom-credential-values">,
+  signal: AbortSignal,
+) {
+  if (body.storage === "legacy") {
+    await db.transaction(async (tx) => {
+      await tx
+        .delete(orgCustomConnectorValues)
+        .where(
+          and(
+            eq(orgCustomConnectorValues.orgId, body.org_id),
+            eq(orgCustomConnectorValues.userId, body.user_id),
+            eq(orgCustomConnectorValues.connectorId, body.custom_connector_id),
+          ),
+        );
+      await tx
+        .delete(orgCustomConnectorSecrets)
+        .where(
+          and(
+            eq(orgCustomConnectorSecrets.orgId, body.org_id),
+            eq(orgCustomConnectorSecrets.userId, body.user_id),
+            eq(orgCustomConnectorSecrets.connectorId, body.custom_connector_id),
+          ),
+        );
+    });
+    signal.throwIfAborted();
+    return actionOk();
+  }
+
+  const [connector] = await db
+    .select({ id: connectors.id })
+    .from(connectors)
+    .where(
+      and(
+        eq(connectors.orgId, body.org_id),
+        eq(connectors.userId, body.user_id),
+        eq(connectors.customConnectorId, body.custom_connector_id),
+      ),
+    )
+    .limit(1);
+  signal.throwIfAborted();
+  if (!connector) {
+    return {
+      status: 400 as const,
+      body: { error: "Custom connector storage test fixture was not found" },
+    };
+  }
+  await db.transaction(async (tx) => {
+    await tx
+      .delete(secrets)
+      .where(
+        and(
+          eq(secrets.connectorId, connector.id),
+          eq(secrets.orgId, body.org_id),
+          eq(secrets.userId, body.user_id),
+          eq(secrets.type, "connector"),
+        ),
+      );
+    await tx
+      .delete(variables)
+      .where(
+        and(
+          eq(variables.connectorId, connector.id),
+          eq(variables.orgId, body.org_id),
+          eq(variables.userId, body.user_id),
+          eq(variables.type, "connector"),
+        ),
+      );
+  });
+  signal.throwIfAborted();
+  return actionOk();
+}
+
 async function seedOwnedSecret(
   db: Db,
   body: ConnectorCredentialStorageAction<"seed-owned-secret">,
@@ -517,6 +591,9 @@ const mutateConnectorCredentialStorageState$ = command(
       }
       case "read-custom-oauth-state": {
         return await readCustomOAuthState(db, body, signal);
+      }
+      case "delete-custom-credential-values": {
+        return await deleteCustomCredentialValues(db, body, signal);
       }
       case "seed-owned-secret": {
         return await seedOwnedSecret(db, body, signal);

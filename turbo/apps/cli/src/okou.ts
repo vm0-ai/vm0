@@ -1,4 +1,4 @@
-// Zero CLI entry point - standalone binary for zero platform commands
+// Okou CLI entry point - standalone binary for zero platform commands
 // Sentry must be initialized before any other imports
 import "./instrument.js";
 import { Command } from "commander";
@@ -621,9 +621,9 @@ const program = new Command();
 declare const __CLI_VERSION__: string;
 
 program
-  .name("zero")
+  .name("okou")
   .description(
-    "Zero CLI — interact with the zero platform from inside the sandbox",
+    "Okou CLI — interact with the zero platform from inside the sandbox",
   )
   .version(__CLI_VERSION__)
   .addHelpText("after", () => {
@@ -633,6 +633,9 @@ program
 export { program };
 
 if (
+  process.argv[1]?.endsWith("okou.js") ||
+  process.argv[1]?.endsWith("okou.ts") ||
+  process.argv[1]?.endsWith("okou") ||
   process.argv[1]?.endsWith("zero.js") ||
   process.argv[1]?.endsWith("zero.ts") ||
   process.argv[1]?.endsWith("zero")

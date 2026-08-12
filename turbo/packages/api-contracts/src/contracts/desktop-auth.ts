@@ -7,6 +7,8 @@ const c = initContract();
 export const desktopAuthCallbackSchemes = [
   "ai.vm0.zero.desktop",
   "ai.vm0.zero.desktop.dev",
+  "ai.okou.computer-use",
+  "ai.okou.computer-use.dev",
 ] as const;
 export const defaultDesktopAuthCallbackScheme = desktopAuthCallbackSchemes[0];
 export const desktopAuthCallbackSchemeSchema = z.enum(

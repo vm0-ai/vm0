@@ -39,7 +39,6 @@ export async function readGoalQueueStateFixture(threadId: string): Promise<{
   readonly runIds: readonly string[];
   readonly runs: readonly {
     readonly id: string;
-    readonly runGroupId: string | null;
     readonly goalId: string | null;
   }[];
 }> {
@@ -56,7 +55,6 @@ export async function readGoalQueueStateFixture(threadId: string): Promise<{
     db()
       .select({
         id: zeroRuns.id,
-        runGroupId: zeroRuns.runGroupId,
         goalId: zeroRuns.goalId,
       })
       .from(zeroRuns)

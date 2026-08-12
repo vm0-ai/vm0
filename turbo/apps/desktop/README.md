@@ -124,6 +124,24 @@ Use the DMG for manual installation. It opens with a styled Finder background,
 for drag-to-install. The update manifest continues to point at the ZIP artifact
 because the auto-update feed consumes ZIP releases.
 
+### Zero and Okou update compatibility
+
+Zero and Okou desktop releases are independent products during the rename
+rollout. Existing Zero installations keep using
+`/api/desktop/updates/stable/darwin/arm64` and the `desktop-updates` manifest.
+Okou installations use
+`/api/desktop/updates/okou/stable/darwin/arm64` and the separate
+`okou-desktop-updates` manifest. Each manifest identifies its product, and the
+API rejects ZIP assets whose product filename does not match the requested
+feed. A Zero feed must never publish an Okou artifact, or vice versa.
+
+The release systems may deploy independently. The API therefore preserves the
+legacy Zero routes and accepts both Zero callback schemes
+(`ai.vm0.zero.desktop` and `ai.vm0.zero.desktop.dev`) while also accepting the
+Okou schemes (`ai.okou.computer-use` and `ai.okou.computer-use.dev`). Desktop
+builds select exactly one product feed and one callback scheme from their
+packaged identity; they do not discover or switch products at runtime.
+
 This does not submit or publish the app to the Mac App Store. The App Store
 Connect API key is only used as notarytool authentication for Apple's
 notarization service.

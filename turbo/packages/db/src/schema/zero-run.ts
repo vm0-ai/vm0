@@ -41,8 +41,6 @@ export const zeroRuns = pgTable(
       },
       { onDelete: "set null" },
     ),
-    // Stable grouping key for autonomous goal continuations rendered in chat.
-    runGroupId: uuid("run_group_id"),
     // Run provenance for autonomous thread-goal continuation.
     goalId: uuid("goal_id").references(
       (): AnyPgColumn => {
@@ -86,9 +84,6 @@ export const zeroRuns = pgTable(
       index("idx_zero_runs_workflow_automation")
         .on(table.workflowAutomationId)
         .where(sql`workflow_automation_id IS NOT NULL`),
-      index("idx_zero_runs_run_group")
-        .on(table.runGroupId)
-        .where(sql`run_group_id IS NOT NULL`),
       index("idx_zero_runs_goal")
         .on(table.goalId)
         .where(sql`goal_id IS NOT NULL`),

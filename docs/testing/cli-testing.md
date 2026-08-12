@@ -1,9 +1,10 @@
-# Zero CLI Testing
+# Okou CLI Testing
 
 ## Principle
 
-The CLI package publishes one binary: `zero`. Command tests are integration
-tests that enter through Commander with `command.parseAsync()`.
+The private CLI package exposes canonical `okou` and a temporary `zero`
+compatibility entry point backed by the same implementation. Command tests are
+integration tests that enter through Commander with `command.parseAsync()`.
 
 - Mock the Web API with MSW.
 - Keep command parsing, validation, formatting, and filesystem behavior real.

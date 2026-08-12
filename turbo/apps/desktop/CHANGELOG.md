@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.31.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.30.6...desktop-v0.31.0) (2026-08-12)
+
+
+### Features
+
+* **desktop:** isolate okou updater and auth ([#26433](https://github.com/vm0-ai/vm0/issues/26433)) ([80425ee](https://github.com/vm0-ai/vm0/commit/80425ee6195ea235c6cc5f1690149b640918ab53))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.320.0
+
 ## [0.30.6](https://github.com/vm0-ai/vm0/compare/desktop-v0.30.5...desktop-v0.30.6) (2026-08-12)
 
 

@@ -639,6 +639,7 @@ jobs:
           zip_url="https://github.com/${{ github.repository }}/releases/download/$RELEASE_TAG/Zero-darwin-arm64-$DESKTOP_VERSION.zip"
           node apps/desktop/scripts/update-desktop-release-manifest.mjs \
             --manifest "$manifest_path" \
+            --product zero \
             --version "$DESKTOP_VERSION" \
             --zip-url "$zip_url" \
             --channel stable \
@@ -952,6 +953,8 @@ jobs:
           bash .github/scripts/verify-okou-cli-artifact.sh \
             "$artifact_dir" \
             "$ARTIFACT_SHA"
+          bash .github/scripts/smoke-okou-cli-artifact.sh \
+            "$artifact_dir/package.tgz"
           echo "package-url=${artifact_base_url}/package.tgz" >> "$GITHUB_OUTPUT"
 
       - name: Resolve API production environment

@@ -23,24 +23,27 @@ async function restartForUpdate(
   autoUpdater.quitAndInstall();
 }
 
-async function notifyNoDesktopUpdatesFound(): Promise<void> {
+async function notifyNoDesktopUpdatesFound(displayName: string): Promise<void> {
   await dialog.showMessageBox({
     type: "info",
     buttons: ["OK"],
     defaultId: 0,
     title: "No Updates Available",
-    message: "Zero Computer Use is up to date.",
+    message: `${displayName} is up to date.`,
   });
 }
 
-async function notifyDesktopUpdateCheckFailed(error: unknown): Promise<void> {
+async function notifyDesktopUpdateCheckFailed(
+  displayName: string,
+  error: unknown,
+): Promise<void> {
   console.error("Desktop update check failed", error);
   await dialog.showMessageBox({
     type: "error",
     buttons: ["OK"],
     defaultId: 0,
     title: "Unable to Check for Updates",
-    message: "Zero Computer Use could not check for updates.",
+    message: `${displayName} could not check for updates.`,
     detail: error instanceof Error ? error.message : undefined,
   });
 }
@@ -70,7 +73,10 @@ export function installDesktopAutoUpdates(
     return false;
   }
 
-  const baseUrl = desktopUpdateFeedBaseUrl(options.apiBaseUrl);
+  const baseUrl = desktopUpdateFeedBaseUrl(
+    options.apiBaseUrl,
+    options.config.identity.product,
+  );
   if (new URL(baseUrl).protocol !== "https:") {
     console.warn("Desktop auto-updates require an HTTPS feed URL");
     return false;
@@ -120,10 +126,10 @@ export function installDesktopAutoUpdates(
   return true;
 }
 
-export function checkForDesktopUpdates(): boolean {
+export function checkForDesktopUpdates(displayName: string): boolean {
   const handleNoUpdate = (): void => {
     cleanup();
-    void notifyNoDesktopUpdatesFound().catch((error) => {
+    void notifyNoDesktopUpdatesFound(displayName).catch((error) => {
       console.error("Desktop update status dialog failed", error);
     });
   };
@@ -132,9 +138,11 @@ export function checkForDesktopUpdates(): boolean {
   };
   const handleError = (error: Error): void => {
     cleanup();
-    void notifyDesktopUpdateCheckFailed(error).catch((dialogError) => {
-      console.error("Desktop update failure dialog failed", dialogError);
-    });
+    void notifyDesktopUpdateCheckFailed(displayName, error).catch(
+      (dialogError) => {
+        console.error("Desktop update failure dialog failed", dialogError);
+      },
+    );
   };
 
   function cleanup(): void {
@@ -152,9 +160,11 @@ export function checkForDesktopUpdates(): boolean {
     return true;
   } catch (error) {
     cleanup();
-    void notifyDesktopUpdateCheckFailed(error).catch((dialogError) => {
-      console.error("Desktop update failure dialog failed", dialogError);
-    });
+    void notifyDesktopUpdateCheckFailed(displayName, error).catch(
+      (dialogError) => {
+        console.error("Desktop update failure dialog failed", dialogError);
+      },
+    );
     return false;
   }
 }
