@@ -18,7 +18,7 @@ function buildJwt(payload: Record<string, unknown>, prefix: string): string {
 }
 
 /**
- * Build a valid ZERO_TOKEN for testing.
+ * Build a valid OKOU_TOKEN for testing.
  * Format: vm0_sandbox_<header>.<payload>.<signature>
  */
 function buildZeroToken(payload: Record<string, unknown>): string {
@@ -99,19 +99,19 @@ describe("okou whoami command", () => {
     await zeroWhoamiCommand.parseAsync(["node", "cli", ...args]);
   }
 
-  describe("sandbox mode (ZERO_AGENT_ID set)", () => {
+  describe("sandbox mode (OKOU_AGENT_ID set)", () => {
     it("should show agent ID, run context, and capabilities with full JWT", async () => {
       const token = buildZeroToken({
         userId: "user-1",
         runId: "run-abc",
         orgId: "org-xyz",
-        scope: "zero",
+        scope: "okou",
         capabilities: ["agent:read", "agent:write"],
         iat: 1000,
         exp: 2000,
       });
-      vi.stubEnv("ZERO_AGENT_ID", "agent-123");
-      vi.stubEnv("ZERO_TOKEN", token);
+      vi.stubEnv("OKOU_AGENT_ID", "agent-123");
+      vi.stubEnv("OKOU_TOKEN", token);
 
       await runWhoami();
 
@@ -159,14 +159,14 @@ describe("okou whoami command", () => {
     });
 
     it("should show the workspace name and tier", async () => {
-      vi.stubEnv("ZERO_AGENT_ID", "agent-123");
+      vi.stubEnv("OKOU_AGENT_ID", "agent-123");
       vi.stubEnv(
-        "ZERO_TOKEN",
+        "OKOU_TOKEN",
         buildZeroToken({
           userId: "user-1",
           runId: "run-abc",
           orgId: "org-xyz",
-          scope: "zero",
+          scope: "okou",
           capabilities: ["agent:read"],
           iat: 1000,
           exp: 2000,
@@ -190,14 +190,14 @@ describe("okou whoami command", () => {
     });
 
     it("should still print identity when the org lookup fails", async () => {
-      vi.stubEnv("ZERO_AGENT_ID", "agent-123");
+      vi.stubEnv("OKOU_AGENT_ID", "agent-123");
       vi.stubEnv(
-        "ZERO_TOKEN",
+        "OKOU_TOKEN",
         buildZeroToken({
           userId: "user-1",
           runId: "run-abc",
           orgId: "org-xyz",
-          scope: "zero",
+          scope: "okou",
           capabilities: ["agent:read"],
           iat: 1000,
           exp: 2000,
@@ -233,8 +233,8 @@ describe("okou whoami command", () => {
       ).toBe(true);
     });
 
-    it("should show unavailable when ZERO_TOKEN is missing", async () => {
-      vi.stubEnv("ZERO_AGENT_ID", "agent-no-token");
+    it("should show unavailable when OKOU_TOKEN is missing", async () => {
+      vi.stubEnv("OKOU_AGENT_ID", "agent-no-token");
 
       await runWhoami();
 
@@ -266,9 +266,9 @@ describe("okou whoami command", () => {
       ).toBe(false);
     });
 
-    it("should show unavailable when ZERO_TOKEN is malformed", async () => {
-      vi.stubEnv("ZERO_AGENT_ID", "agent-bad-token");
-      vi.stubEnv("ZERO_TOKEN", "not-a-valid-token");
+    it("should show unavailable when OKOU_TOKEN is malformed", async () => {
+      vi.stubEnv("OKOU_AGENT_ID", "agent-bad-token");
+      vi.stubEnv("OKOU_TOKEN", "not-a-valid-token");
 
       await runWhoami();
 
@@ -290,13 +290,13 @@ describe("okou whoami command", () => {
         userId: "user-1",
         runId: "run-abc",
         orgId: "org-xyz",
-        scope: "zero",
+        scope: "okou",
         capabilities: ["agent:read", "connector:read"],
         iat: 1000,
         exp: 2000,
       });
-      vi.stubEnv("ZERO_AGENT_ID", "agent-123");
-      vi.stubEnv("ZERO_TOKEN", token);
+      vi.stubEnv("OKOU_AGENT_ID", "agent-123");
+      vi.stubEnv("OKOU_TOKEN", token);
       vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
 
       server.use(
@@ -363,13 +363,13 @@ describe("okou whoami command", () => {
         userId: "user-1",
         runId: "run-abc",
         orgId: "org-xyz",
-        scope: "zero",
+        scope: "okou",
         capabilities: ["agent:read", "connector:read"],
         iat: 1000,
         exp: 2000,
       });
-      vi.stubEnv("ZERO_AGENT_ID", "agent-123");
-      vi.stubEnv("ZERO_TOKEN", token);
+      vi.stubEnv("OKOU_AGENT_ID", "agent-123");
+      vi.stubEnv("OKOU_TOKEN", token);
       vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
 
       server.use(
@@ -411,13 +411,13 @@ describe("okou whoami command", () => {
         userId: "user-1",
         runId: "run-abc",
         orgId: "org-xyz",
-        scope: "zero",
+        scope: "okou",
         capabilities: ["agent:read"],
         iat: 1000,
         exp: 2000,
       });
-      vi.stubEnv("ZERO_AGENT_ID", "agent-123");
-      vi.stubEnv("ZERO_TOKEN", token);
+      vi.stubEnv("OKOU_AGENT_ID", "agent-123");
+      vi.stubEnv("OKOU_TOKEN", token);
       vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
 
       server.use(
@@ -454,13 +454,13 @@ describe("okou whoami command", () => {
         userId: "user-1",
         runId: "run-abc",
         orgId: "org-xyz",
-        scope: "zero",
+        scope: "okou",
         capabilities: ["agent:read", "connector:read"],
         iat: 1000,
         exp: 2000,
       });
-      vi.stubEnv("ZERO_AGENT_ID", "agent-123");
-      vi.stubEnv("ZERO_TOKEN", token);
+      vi.stubEnv("OKOU_AGENT_ID", "agent-123");
+      vi.stubEnv("OKOU_TOKEN", token);
       vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
 
       server.use(
@@ -492,13 +492,13 @@ describe("okou whoami command", () => {
         userId: "user-1",
         runId: "run-abc",
         orgId: "org-xyz",
-        scope: "zero",
+        scope: "okou",
         capabilities: ["agent:read", "connector:read"],
         iat: 1000,
         exp: 2000,
       });
-      vi.stubEnv("ZERO_AGENT_ID", "agent-123");
-      vi.stubEnv("ZERO_TOKEN", token);
+      vi.stubEnv("OKOU_AGENT_ID", "agent-123");
+      vi.stubEnv("OKOU_TOKEN", token);
       vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
 
       server.use(
@@ -556,13 +556,13 @@ describe("okou whoami command", () => {
         userId: "user-1",
         runId: "run-abc",
         orgId: "org-xyz",
-        scope: "zero",
+        scope: "okou",
         capabilities: ["agent:read", "connector:read"],
         iat: 1000,
         exp: 2000,
       });
-      vi.stubEnv("ZERO_AGENT_ID", "agent-123");
-      vi.stubEnv("ZERO_TOKEN", token);
+      vi.stubEnv("OKOU_AGENT_ID", "agent-123");
+      vi.stubEnv("OKOU_TOKEN", token);
       vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
 
       server.use(
@@ -635,13 +635,13 @@ describe("okou whoami command", () => {
         userId: "user-1",
         runId: "run-abc",
         orgId: "org-xyz",
-        scope: "zero",
+        scope: "okou",
         capabilities: ["agent:read", "connector:read"],
         iat: 1000,
         exp: 2000,
       });
-      vi.stubEnv("ZERO_AGENT_ID", "agent-123");
-      vi.stubEnv("ZERO_TOKEN", token);
+      vi.stubEnv("OKOU_AGENT_ID", "agent-123");
+      vi.stubEnv("OKOU_TOKEN", token);
       vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
 
       const serverOnlyDetail = catalogPermissionDetail({
@@ -716,13 +716,13 @@ describe("okou whoami command", () => {
         userId: "user-1",
         runId: "run-abc",
         orgId: "org-xyz",
-        scope: "zero",
+        scope: "okou",
         capabilities: ["agent:read", "connector:read"],
         iat: 1000,
         exp: 2000,
       });
-      vi.stubEnv("ZERO_AGENT_ID", "agent-123");
-      vi.stubEnv("ZERO_TOKEN", token);
+      vi.stubEnv("OKOU_AGENT_ID", "agent-123");
+      vi.stubEnv("OKOU_TOKEN", token);
       vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
 
       server.use(
@@ -774,13 +774,13 @@ describe("okou whoami command", () => {
         userId: "user-1",
         runId: "run-abc",
         orgId: "org-xyz",
-        scope: "zero",
+        scope: "okou",
         capabilities: ["agent:read", "connector:read"],
         iat: 1000,
         exp: 2000,
       });
-      vi.stubEnv("ZERO_AGENT_ID", "agent-123");
-      vi.stubEnv("ZERO_TOKEN", token);
+      vi.stubEnv("OKOU_AGENT_ID", "agent-123");
+      vi.stubEnv("OKOU_TOKEN", token);
       vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
 
       server.use(
@@ -851,13 +851,13 @@ describe("okou whoami command", () => {
         userId: "user-1",
         runId: "run-abc",
         orgId: "org-xyz",
-        scope: "zero",
+        scope: "okou",
         capabilities: ["agent:read", "connector:read"],
         iat: 1000,
         exp: 2000,
       });
-      vi.stubEnv("ZERO_AGENT_ID", "agent-123");
-      vi.stubEnv("ZERO_TOKEN", token);
+      vi.stubEnv("OKOU_AGENT_ID", "agent-123");
+      vi.stubEnv("OKOU_TOKEN", token);
       vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
 
       server.use(
@@ -923,13 +923,13 @@ describe("okou whoami command", () => {
         userId: "user-1",
         runId: "run-abc",
         orgId: "org-xyz",
-        scope: "zero",
+        scope: "okou",
         capabilities: ["agent:read", "connector:read"],
         iat: 1000,
         exp: 2000,
       });
-      vi.stubEnv("ZERO_AGENT_ID", "agent-123");
-      vi.stubEnv("ZERO_TOKEN", token);
+      vi.stubEnv("OKOU_AGENT_ID", "agent-123");
+      vi.stubEnv("OKOU_TOKEN", token);
       vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
 
       server.use(
@@ -997,13 +997,13 @@ describe("okou whoami command", () => {
         userId: "user-1",
         runId: "run-abc",
         orgId: "org-xyz",
-        scope: "zero",
+        scope: "okou",
         capabilities: ["agent:read", "connector:read"],
         iat: 1000,
         exp: 2000,
       });
-      vi.stubEnv("ZERO_AGENT_ID", "agent-123");
-      vi.stubEnv("ZERO_TOKEN", token);
+      vi.stubEnv("OKOU_AGENT_ID", "agent-123");
+      vi.stubEnv("OKOU_TOKEN", token);
       vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
 
       server.use(
@@ -1061,16 +1061,16 @@ describe("okou whoami command", () => {
     });
   });
 
-  describe("local mode (no ZERO_AGENT_ID)", () => {
+  describe("local mode (no OKOU_AGENT_ID)", () => {
     beforeEach(() => {
-      vi.stubEnv("ZERO_AGENT_ID", "");
+      vi.stubEnv("OKOU_AGENT_ID", "");
     });
 
-    it("should show authenticated via ZERO_TOKEN env var", async () => {
+    it("should show authenticated via OKOU_TOKEN env var", async () => {
       vi.stubEnv(
-        "ZERO_TOKEN",
+        "OKOU_TOKEN",
         buildZeroToken({
-          scope: "zero",
+          scope: "okou",
           orgId: "test-org",
           userId: "user-1",
           runId: "run-1",
@@ -1105,19 +1105,19 @@ describe("okou whoami command", () => {
       ).toBe(true);
     });
 
-    it("should identify an invalid ZERO_TOKEN", async () => {
-      vi.stubEnv("ZERO_TOKEN", "not-a-zero-token");
+    it("should identify an invalid OKOU_TOKEN", async () => {
+      vi.stubEnv("OKOU_TOKEN", "not-a-zero-token");
 
       await runWhoami();
 
       expect(getAllOutput()).toContain("  Status:     Invalid OKOU_TOKEN");
     });
 
-    it("should identify an expired ZERO_TOKEN", async () => {
+    it("should identify an expired OKOU_TOKEN", async () => {
       vi.stubEnv(
-        "ZERO_TOKEN",
+        "OKOU_TOKEN",
         buildZeroToken({
-          scope: "zero",
+          scope: "okou",
           orgId: "test-org",
           userId: "user-1",
           runId: "run-1",
@@ -1131,16 +1131,16 @@ describe("okou whoami command", () => {
       expect(getAllOutput()).toContain("  Status:     Expired OKOU_TOKEN");
     });
 
-    it("should display active org from ZERO_TOKEN", async () => {
+    it("should display active org from OKOU_TOKEN", async () => {
       const zeroToken = buildZeroToken({
-        scope: "zero",
+        scope: "okou",
         orgId: "test-org-slug",
         userId: "user-1",
         runId: "run-1",
         capabilities: [],
         exp: Math.floor(Date.now() / 1000) + 3600,
       });
-      vi.stubEnv("ZERO_TOKEN", zeroToken);
+      vi.stubEnv("OKOU_TOKEN", zeroToken);
 
       await runWhoami();
 

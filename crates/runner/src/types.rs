@@ -29,12 +29,6 @@ pub struct PollResponse {
     pub job: Option<Job>,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
-#[serde(rename_all = "kebab-case")]
-pub(crate) enum PiExecutionMode {
-    Standby,
-}
-
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Job {
@@ -44,8 +38,6 @@ pub struct Job {
     pub reuse_key: Option<String>,
     #[serde(default)]
     pub history_generation_run_id: Option<RunId>,
-    #[serde(default)]
-    pub pi_execution_mode: Option<PiExecutionMode>,
     #[serde(default)]
     pub runner_preference: Option<serde_json::Value>,
 }
@@ -145,18 +137,15 @@ pub struct ExecutionContext {
     pub model_usage_provider: Option<String>,
     #[serde(default)]
     pub codex_runtime_config: Option<CodexRuntimeConfig>,
-    /// Claim-authoritative Pi lifecycle mode. Absence means ordinary execution.
-    #[serde(default)]
-    pub pi_execution_mode: Option<PiExecutionMode>,
     /// Complete Pi system prompt rendered once by the API for this run.
     #[serde(default)]
     pub pi_system_prompt: Option<String>,
     /// Non-secret model metadata for the Pi Sandbox runtime.
     #[serde(default)]
     pub pi_model_config: Option<PiModelConfig>,
-    /// Exact-version Skill resource view fixed before the first Pi model call.
+    /// Chat Thread id used as Pi's native SQLite session id.
     #[serde(default)]
-    pub run_skill_snapshot: Option<RunSkillSnapshot>,
+    pub pi_session_id: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -166,28 +155,6 @@ pub struct PiModelConfig {
     pub base_url: String,
     pub model: String,
     pub api_key_env: String,
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RunSkillSnapshot {
-    pub schema_version: u32,
-    pub policy_version: u32,
-    pub root: String,
-    pub digest: String,
-    pub entries: Vec<RunSkillSnapshotEntry>,
-}
-
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RunSkillSnapshotEntry {
-    pub logical_dir: String,
-    pub skill_file: String,
-    pub org_id: String,
-    pub user_id: String,
-    pub storage_name: String,
-    pub storage_id: String,
-    pub version_id: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -1577,15 +1544,17 @@ impl ExecutionContext {
         self.reuse_key.as_deref()
     }
 
-    /// Extract the Claude/Codex CLI agent session id from `resume_session`.
+    /// Extract the framework-native session id.
     ///
     /// Returns `Some` for continued sessions. For first runs this returns
     /// `None`; the executor reads the CLI-generated session id from the
     /// guest filesystem post-execution (see `read_guest_cli_agent_session_id`).
     pub fn cli_agent_session_id(&self) -> Option<&str> {
-        self.resume_session
-            .as_ref()
-            .map(|r| r.cli_agent_session_id.as_str())
+        self.pi_session_id.as_deref().or_else(|| {
+            self.resume_session
+                .as_ref()
+                .map(|r| r.cli_agent_session_id.as_str())
+        })
     }
 }
 
@@ -1848,7 +1817,6 @@ mod tests {
                 "runId": "550e8400-e29b-41d4-a716-446655440000",
                 "experimentalProfile": "browser",
                 "cliAgentSessionId": "session-id",
-                "piExecutionMode": "standby",
                 "runnerPreference": {
                     "kind": "preference",
                     "runnerIdentity": {
@@ -1869,35 +1837,8 @@ mod tests {
                 .unwrap()
         );
         assert_eq!(job.experimental_profile, "browser");
-        assert_eq!(job.pi_execution_mode, Some(PiExecutionMode::Standby));
         assert!(job.runner_preference.is_some());
         assert!(job.reuse_key().is_none());
-    }
-
-    #[test]
-    fn poll_response_without_pi_execution_mode_is_ordinary() {
-        let response: PollResponse = serde_json::from_value(json!({
-            "job": {
-                "runId": "550e8400-e29b-41d4-a716-446655440000",
-                "experimentalProfile": "vm0/default"
-            }
-        }))
-        .unwrap();
-
-        assert!(response.job.unwrap().pi_execution_mode.is_none());
-    }
-
-    #[test]
-    fn poll_response_rejects_unknown_pi_execution_mode() {
-        let result = serde_json::from_value::<PollResponse>(json!({
-            "job": {
-                "runId": "550e8400-e29b-41d4-a716-446655440000",
-                "experimentalProfile": "vm0/default",
-                "piExecutionMode": "future-mode"
-            }
-        }));
-
-        assert!(result.is_err());
     }
 
     #[test]
@@ -1916,13 +1857,13 @@ mod tests {
     }
 
     #[test]
-    fn execution_context_deserializes_pi_resources_without_expiring_urls() {
+    fn execution_context_deserializes_pi_sandbox_resources() {
         let json = serde_json::json!({
             "runId": "11111111-1111-4111-8111-111111111111",
             "prompt": "hello",
             "sandboxToken": "tok",
-            "cliAgentType": "codex",
-            "piExecutionMode": "standby",
+            "cliAgentType": "pi",
+            "piSessionId": "22222222-2222-4222-8222-222222222222",
             "piSystemPrompt": "fixed Pi prompt",
             "piModelConfig": {
                 "provider": "deepseek",
@@ -1930,27 +1871,15 @@ mod tests {
                 "model": "deepseek-v4-flash",
                 "apiKeyEnv": "OPENAI_API_KEY"
             },
-            "connectorRuntimeTargets": [],
-            "runSkillSnapshot": {
-                "schemaVersion": 1,
-                "policyVersion": 1,
-                "root": "/home/user/.pi/agent/skills",
-                "digest": format!("sha256:{}", "a".repeat(64)),
-                "entries": [{
-                    "logicalDir": "/home/user/.pi/agent/skills/demo",
-                    "skillFile": "/home/user/.pi/agent/skills/demo/SKILL.md",
-                    "orgId": "org-1",
-                    "userId": "user-1",
-                    "storageName": "skill-demo",
-                    "storageId": "storage-1",
-                    "versionId": "version-1"
-                }]
-            }
+            "connectorRuntimeTargets": []
         });
 
         let context: ExecutionContext = serde_json::from_value(json).unwrap();
 
-        assert_eq!(context.pi_execution_mode, Some(PiExecutionMode::Standby));
+        assert_eq!(
+            context.pi_session_id.as_deref(),
+            Some("22222222-2222-4222-8222-222222222222")
+        );
         assert_eq!(context.pi_system_prompt.as_deref(), Some("fixed Pi prompt"));
         assert_eq!(
             context
@@ -1959,10 +1888,6 @@ mod tests {
                 .map(|config| config.model.as_str()),
             Some("deepseek-v4-flash")
         );
-        let snapshot = context.run_skill_snapshot.as_ref().unwrap();
-        assert_eq!(snapshot.entries[0].version_id, "version-1");
-        let serialized = serde_json::to_string(snapshot).unwrap();
-        assert!(!serialized.contains("url"));
     }
 
     #[test]

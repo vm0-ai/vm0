@@ -9,15 +9,13 @@
 //! - `diagnostics`: bounded stderr tail collection.
 //! - `event_delivery`: event sender watermark state.
 //! - `claude`: Claude result parsing and tool tracking.
-//! - `pi_agent_loop`: Pi standby child and JSONL protocol bridge.
 //! - `termination`: process-group termination FSM.
 //!
 //! `execute_cli` owns the Claude Code subprocess orchestration, while
 //! `codex_app_server_backend` owns the Codex JSON-RPC lifecycle and
-//! `pi_agent_loop` owns the Pi standby child bridge. Each path retains
+//! Pi uses the same JSONL subprocess lifecycle as Claude Code. Each path retains
 //! ownership of its process, event delivery, heartbeat races, and child
-//! reaping until completion. See [`crate::pi_standby`] for the Pi lifecycle
-//! and cross-language protocol contract.
+//! reaping until completion.
 
 mod child_env;
 mod child_exit_notifier;
@@ -35,7 +33,6 @@ mod diagnostics;
 mod event_delivery;
 mod exec_boundary;
 mod line_reader;
-mod pi_agent_loop;
 mod process_group;
 mod termination;
 
@@ -80,6 +77,7 @@ const LOG_TAG: &str = "sandbox:guest-agent";
 const OPENAI_BASE_URL_ENV_KEY: &str = "OPENAI_BASE_URL";
 const ZERO_AGENT_ID_ENV_KEY: &str = "ZERO_AGENT_ID";
 const OKOU_AGENT_ID_ENV_KEY: &str = "OKOU_AGENT_ID";
+const CLI_PACKAGE_URL_ENV_KEY: &str = "CLI_PKG_URL";
 const WEB_SEARCH_TOOL_NAME: &str = "WebSearch";
 const CODEX_FIXED_STARTUP_CONFIGS: [&str; 4] = [
     "analytics.enabled=false",
@@ -160,6 +158,18 @@ async fn write_claude_stream_json_to_stdin(
         active_input.mark_backend_accepted_with_replay(&frame)?;
     }
 
+    active_input.close_terminal();
+    Ok(())
+}
+
+async fn write_pi_prompt_to_stdin(
+    mut stdin: tokio::process::ChildStdin,
+    run_id: &str,
+    prompt: &str,
+    active_input: ActiveInputWriter,
+) -> Result<(), AgentError> {
+    let initial_uuid = crate::active_input::claude_initial_prompt_uuid(run_id);
+    write_claude_user_frame_to_stdin(&mut stdin, &initial_uuid, prompt).await?;
     active_input.close_terminal();
     Ok(())
 }
@@ -264,40 +274,12 @@ pub struct CliExecutionResult {
     /// termination.
     pub cli_termination: Option<CliTerminationDiagnostic>,
 
-    /// Whether this child produced a terminal run result or only released an
-    /// unused Pi standby allocation.
-    pub completion_disposition: CliCompletionDisposition,
-
     /// Backend-accepted delivery identities settled or recoverable at completion.
     pub active_input_delivery_ids: Vec<String>,
 }
 
 /// How top-level guest-agent handling should settle a finished CLI execution.
 ///
-/// Pi distinguishes terminal model completion from releasing a standby
-/// allocation. See [`crate::pi_standby`] for the full lifecycle.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CliCompletionDisposition {
-    /// The standard terminal completion and checkpoint path used for Claude,
-    /// Codex, and CLI execution errors.
-    Terminal,
-    /// A terminal Pi result that completes the run but skips the normal
-    /// successful CLI checkpoint because acknowledged Pi events persisted its
-    /// output.
-    PiCompleted,
-    /// A Pi standby allocation released without checkpointing or calling
-    /// `/complete` from guest-agent.
-    PiStandbyReleased(PiStandbyReleaseReason),
-}
-
-/// Why a Pi standby allocation ended without terminal run completion.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PiStandbyReleaseReason {
-    /// API-side execution completed the run, so guest-agent exits successfully
-    /// without calling `/complete` again.
-    ApiComplete,
-}
-
 /// Heartbeat completion signal observed by CLI execution.
 ///
 /// The top-level guest-agent owns the heartbeat task handle so shutdown can
@@ -367,6 +349,9 @@ pub(super) struct CliRuntimeConfig<'a> {
     agent_log_file: Cow<'a, str>,
     session_id_file: Cow<'a, str>,
     session_history_path_file: Cow<'a, str>,
+    pi_session_id: Cow<'a, str>,
+    pi_system_prompt: Cow<'a, str>,
+    pi_model_config: Cow<'a, str>,
     user_env: &'a HashMap<String, String>,
 }
 
@@ -440,6 +425,9 @@ impl<'a> CliRuntimeConfig<'a> {
             agent_log_file: Cow::Borrowed(paths.agent_log_file()),
             session_id_file: Cow::Borrowed(paths.session_id_file()),
             session_history_path_file: Cow::Borrowed(paths.session_history_path_file()),
+            pi_session_id: Cow::Borrowed(&config.pi_session_id),
+            pi_system_prompt: Cow::Borrowed(&config.pi_system_prompt),
+            pi_model_config: Cow::Borrowed(&config.pi_model_config),
             user_env: &config.user_env,
         })
     }
@@ -497,6 +485,63 @@ fn codex_home_for_home_dir(home_dir: &str) -> String {
 
 fn user_env_value<'a>(user_env: &'a HashMap<String, String>, key: &str) -> &'a str {
     user_env.get(key).map(String::as_str).unwrap_or("")
+}
+
+const PI_NODE_OPTIONS: &str = "--disable-warning=ExperimentalWarning";
+
+fn build_pi_command_for_runtime(runtime: &CliRuntimeConfig<'_>) -> Result<Vec<String>, AgentError> {
+    for (name, value) in [
+        ("Pi session id", runtime.pi_session_id.as_ref()),
+        ("Pi system prompt", runtime.pi_system_prompt.as_ref()),
+        ("Pi model config", runtime.pi_model_config.as_ref()),
+    ] {
+        if value.is_empty() {
+            return Err(AgentError::Execution(format!(
+                "{name} is required for Pi execution"
+            )));
+        }
+    }
+    let package_url = runtime
+        .user_env
+        .get(CLI_PACKAGE_URL_ENV_KEY)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| {
+            AgentError::Execution(format!(
+                "{CLI_PACKAGE_URL_ENV_KEY} is required for Pi execution"
+            ))
+        })?;
+    Ok(vec![
+        "npx".to_string(),
+        "--yes".to_string(),
+        format!("--package={package_url}"),
+        "okou".to_string(),
+        "__agent-loop".to_string(),
+    ])
+}
+
+fn pi_child_env_values(runtime: &CliRuntimeConfig<'_>) -> [(String, String); 5] {
+    [
+        (
+            guest_contracts::env::RUN_ID_ENV.to_string(),
+            runtime.run_id.to_string(),
+        ),
+        (
+            guest_contracts::env::PI_SESSION_ID_ENV.to_string(),
+            runtime.pi_session_id.to_string(),
+        ),
+        (
+            guest_contracts::env::PI_SYSTEM_PROMPT_ENV.to_string(),
+            runtime.pi_system_prompt.to_string(),
+        ),
+        (
+            guest_contracts::env::PI_MODEL_CONFIG_ENV.to_string(),
+            runtime.pi_model_config.to_string(),
+        ),
+        // Pi 0.84.1 uses node:sqlite, which emits an experimental warning on
+        // the sandbox's Node 22 runtime. Keep stderr available for actionable
+        // diagnostics while suppressing only that warning category.
+        ("NODE_OPTIONS".to_string(), PI_NODE_OPTIONS.to_string()),
+    ]
 }
 
 fn disallowed_tools_with_builtin_web_search_disabled(
@@ -716,7 +761,6 @@ pub async fn execute_cli_with_active_input_for_config_started_at(
 /// Run-scoped controls observed while the inner CLI is executing.
 pub struct CliExecutionControls<'a> {
     active_input: ActiveInputWriter,
-    pi_standby: crate::pi_standby::PiStandbyReader,
     user_cancellation: CancellationToken,
     codex_startup: Option<&'a CodexStartupTiming>,
 }
@@ -731,30 +775,14 @@ impl<'a> CliExecutionControls<'a> {
     ) -> Self {
         Self {
             active_input,
-            pi_standby: crate::pi_standby::PiStandbyReader::closed(),
             user_cancellation,
             codex_startup,
         }
-    }
-
-    /// Supply the reader that connects runner handoff/release controls to the
-    /// Pi standby child.
-    ///
-    /// The default reader is closed. Non-Pi execution paths ignore this
-    /// control; see [`crate::pi_standby`] for the Pi lifecycle.
-    #[must_use]
-    pub fn with_pi_standby_reader(mut self, reader: crate::pi_standby::PiStandbyReader) -> Self {
-        self.pi_standby = reader;
-        self
     }
 }
 
 /// Execute the CLI while observing run-scoped controls.
 ///
-/// When the config contains a system prompt, model config, and Skill snapshot,
-/// this selects the Pi standby path described in [`crate::pi_standby`]. When
-/// all three are absent it selects the configured Claude or Codex path; a
-/// partial Pi configuration returns an execution error.
 pub async fn execute_cli_with_controls_for_config_started_at(
     masker: &SecretMasker,
     heartbeat_monitor: HeartbeatMonitor,
@@ -764,18 +792,6 @@ pub async fn execute_cli_with_controls_for_config_started_at(
     paths: &paths::GuestPaths,
     execution_started_at: Instant,
 ) -> Result<CliExecutionResult, AgentError> {
-    if pi_agent_loop::is_pi_standby_config(config)? {
-        return pi_agent_loop::execute_pi_standby(
-            masker,
-            heartbeat_monitor,
-            http,
-            controls,
-            config,
-            paths,
-            execution_started_at,
-        )
-        .await;
-    }
     let runtime = CliRuntimeConfig::from_config(config, paths, execution_started_at)?;
     execute_cli_inner(masker, heartbeat_monitor, http, controls, &runtime).await
 }
@@ -800,15 +816,23 @@ async fn execute_cli_inner(
 
     let CliExecutionControls {
         active_input,
-        pi_standby: _,
         user_cancellation,
         codex_startup: _,
     } = controls;
 
-    let replay_user_messages = active_input.is_enabled();
-    log_info!(LOG_TAG, "Starting claude-code execution...");
+    let replay_user_messages =
+        active_input.is_enabled() && matches!(runtime.framework, env::Framework::ClaudeCode);
+    log_info!(
+        LOG_TAG,
+        "Starting {} execution...",
+        runtime.framework.agent_type()
+    );
 
-    let cmd = command::build_claude_command_for_runtime(runtime, replay_user_messages);
+    let cmd = if matches!(runtime.framework, env::Framework::Pi) {
+        build_pi_command_for_runtime(runtime)?
+    } else {
+        command::build_claude_command_for_runtime(runtime, replay_user_messages)
+    };
     let (bin, args) = cmd
         .split_first()
         .ok_or_else(|| AgentError::Execution("empty command".into()))?;
@@ -823,6 +847,9 @@ async fn execute_cli_inner(
         .kill_on_drop(true);
 
     let mut child_env_values = child_env::values_for_runtime(runtime);
+    if matches!(runtime.framework, env::Framework::Pi) {
+        child_env_values.extend(pi_child_env_values(runtime));
+    }
     // Suppress Claude CLI features that are unnecessary or harmful in a
     // sandbox: startup network calls (statsig, Datadog, Segment, GCS update
     // check, GitHub) add ~2s latency, background tasks can keep a one-shot run
@@ -890,11 +917,17 @@ async fn execute_cli_inner(
         tokio::spawn(async move { diagnostics::collect_stderr_result_tail(stderr).await });
 
     let active_input_controller = active_input.controller();
+    let pi_execution = matches!(runtime.framework, env::Framework::Pi);
     let mut claude_stdin_write_handle = Some({
         let run_id = runtime.run_id.to_string();
         let prompt = runtime.prompt.to_string();
         tokio::spawn(async move {
-            write_claude_stream_json_to_stdin(claude_stdin, &run_id, &prompt, active_input).await
+            if pi_execution {
+                write_pi_prompt_to_stdin(claude_stdin, &run_id, &prompt, active_input).await
+            } else {
+                write_claude_stream_json_to_stdin(claude_stdin, &run_id, &prompt, active_input)
+                    .await
+            }
         })
     });
 
@@ -1157,7 +1190,7 @@ async fn execute_cli_inner(
                                     line.as_bytes(),
                                     &event,
                                     masker,
-                                    env::Framework::ClaudeCode,
+                                    runtime.framework,
                                 )
                                 .await?
                             {
@@ -1613,7 +1646,6 @@ async fn execute_cli_inner(
         failure_diagnostic: event_ingestor.failure_diagnostic(),
         control_error,
         cli_termination,
-        completion_disposition: CliCompletionDisposition::Terminal,
         active_input_delivery_ids,
     })
 }
@@ -1771,10 +1803,10 @@ fn with_carried_failure_reason(
 mod tests {
     use super::termination::{CliTerminationRuntime, PostResultCleanupPolicy};
     use super::{
-        CliExitObservation, CliFailureDiagnostic, CliRuntimeConfig, child_env,
+        CliExitObservation, CliFailureDiagnostic, CliRuntimeConfig, PI_NODE_OPTIONS, child_env,
         claude_initial_prompt_frame, cli_exit_summary_from_status, codex_home_for_home_dir,
-        codex_runtime_config, command, exec_boundary, record_cli_exit, select_failure_diagnostic,
-        set_cli_current_dir, with_carried_failure_reason,
+        codex_runtime_config, command, exec_boundary, pi_child_env_values, record_cli_exit,
+        select_failure_diagnostic, set_cli_current_dir, with_carried_failure_reason,
     };
     use crate::active_input::ActiveInputRuntime;
     use crate::{constants, env};
@@ -1816,7 +1848,7 @@ mod tests {
             codex_runtime_config: String::new(),
             pi_system_prompt: String::new(),
             pi_model_config: String::new(),
-            run_skill_snapshot: String::new(),
+            pi_session_id: String::new(),
             stuck_tool_timeout_secs: constants::STUCK_TOOL_TIMEOUT_SECS,
             post_result_sigterm_grace: Duration::from_secs(
                 constants::POST_RESULT_SIGTERM_GRACE_SECS,
@@ -1867,6 +1899,9 @@ mod tests {
             agent_log_file: Cow::Borrowed("/tmp/agent.log"),
             session_id_file: Cow::Borrowed("/tmp/session-id"),
             session_history_path_file: Cow::Borrowed("/tmp/session-history-path"),
+            pi_session_id: Cow::Borrowed(""),
+            pi_system_prompt: Cow::Borrowed(""),
+            pi_model_config: Cow::Borrowed(""),
             user_env,
         }
     }
@@ -1888,6 +1923,33 @@ mod tests {
             runtime
                 .codex_startup_config_overrides()
                 .contains(&super::CODEX_WEB_SEARCH_DISABLED_CONFIG.to_string())
+        );
+    }
+
+    #[test]
+    fn pi_child_env_uses_controlled_node_warning_filter() {
+        let user_env = HashMap::from([(
+            "NODE_OPTIONS".to_string(),
+            "--require /tmp/user-script.js".to_string(),
+        )]);
+        let runtime = runtime_for_command_test(env::Framework::Pi, "prompt", "", &user_env);
+        let mut values = child_env::values_for_runtime(&runtime);
+        values.extend(pi_child_env_values(&runtime));
+        let values = child_env::normalize_values(values);
+
+        assert_eq!(
+            values
+                .iter()
+                .find(|(key, _)| key == "NODE_OPTIONS")
+                .map(|(_, value)| value.as_str()),
+            Some(PI_NODE_OPTIONS)
+        );
+        assert_eq!(
+            values
+                .iter()
+                .filter(|(key, _)| key == "NODE_OPTIONS")
+                .count(),
+            1
         );
     }
 

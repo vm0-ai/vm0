@@ -3,9 +3,7 @@ function environmentValue(name: string): string | undefined {
 }
 
 function okouEnvironmentValue(suffix: string): string | undefined {
-  return (
-    environmentValue(`OKOU_${suffix}`) ?? environmentValue(`ZERO_${suffix}`)
-  );
+  return environmentValue(`OKOU_${suffix}`);
 }
 
 export function getOkouToken(): string | undefined {

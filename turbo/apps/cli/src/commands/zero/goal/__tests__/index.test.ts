@@ -23,9 +23,9 @@ describe("okou goal command", () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("OKOU_TOKEN", "test-okou-token");
     vi.stubEnv("ZERO_TOKEN", undefined);
-    vi.stubEnv("ZERO_APP_URL", undefined);
-    vi.stubEnv("ZERO_AGENT_ID", undefined);
-    vi.stubEnv("ZERO_CHAT_THREAD_ID", undefined);
+    vi.stubEnv("OKOU_APP_URL", undefined);
+    vi.stubEnv("OKOU_AGENT_ID", undefined);
+    vi.stubEnv("OKOU_CHAT_THREAD_ID", undefined);
     vi.stubEnv("ZERO_CONNECTOR_ACTION_CALLBACK_ENABLED", undefined);
   });
 
