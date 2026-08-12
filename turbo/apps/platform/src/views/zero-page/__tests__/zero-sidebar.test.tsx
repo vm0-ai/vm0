@@ -34,6 +34,8 @@ import { pathname } from "../../../signals/location.ts";
 import {
   CHAT_THREAD_VIRTUAL_ROW_HEIGHT,
   getChatThreadVirtualListScrollMargin,
+  renameDialogInput$,
+  renameDialogOpen$,
 } from "../../../signals/zero-page/zero-sidebar-state.ts";
 import { PLACEHOLDER } from "./chat-test-helpers.ts";
 import { i18n } from "../../../i18n/index.ts";
@@ -941,6 +943,51 @@ describe("zero sidebar", () => {
     expect(within(dialog).getByPlaceholderText("Chat title")).toHaveValue(
       "Incident notes",
     );
+  });
+
+  it("keeps the rename draft while closing and resets it on the next open", async () => {
+    prepareDefaultAgent();
+    mockSidebarThreadStory([
+      createThread(EXISTING_THREAD_ID, "Release plan"),
+      createThread(INCIDENT_THREAD_ID, "Incident notes"),
+    ]);
+
+    setupSidebarPage({
+      context,
+      path: `/chats/${EXISTING_THREAD_ID}`,
+    });
+
+    await waitFor(() => {
+      expect(within(sidebar()).getByText("Release plan")).toBeInTheDocument();
+      expect(within(sidebar()).getByText("Incident notes")).toBeInTheDocument();
+    });
+
+    openThreadMenu("Release plan");
+    click(menuItemByText("Rename chat"));
+
+    const dialog = await screen.findByRole("dialog", { name: "Rename chat" });
+    const titleInput = within(dialog).getByPlaceholderText("Chat title");
+    await fill(titleInput, "Unsaved title");
+    click(buttonByText("Cancel", dialog));
+
+    expect(context.store.get(renameDialogOpen$)).toBeFalsy();
+    expect(context.store.get(renameDialogInput$)).toBe("Unsaved title");
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "Rename chat" }),
+      ).not.toBeInTheDocument();
+    });
+
+    openThreadMenu("Incident notes");
+    click(menuItemByText("Rename chat"));
+
+    const reopenedDialog = await screen.findByRole("dialog", {
+      name: "Rename chat",
+    });
+    expect(
+      within(reopenedDialog).getByPlaceholderText("Chat title"),
+    ).toHaveValue("Incident notes");
   });
 
   it("renames a chat thread by double-clicking from the sidebar", async () => {

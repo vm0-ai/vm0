@@ -5,6 +5,7 @@ import {
   useSet,
 } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
+import type { ReactNode } from "react";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -62,6 +63,8 @@ import { isOrgAdmin$ } from "../../signals/org.ts";
 import {
   advanceTelegramAddSetupStep$,
   checkTelegramAddSetupStatus$,
+  completeTelegramAddDialogClose$,
+  completeTelegramReinstallDialogClose$,
   copyTelegramValue$,
   disconnectTelegramAccount$,
   goBackTelegramAddSetupStep$,
@@ -87,6 +90,7 @@ import {
   telegramCopiedValue$,
   telegramFailedAvatarKeys$,
   telegramReinstallDialogBotId$,
+  telegramReinstallDialogOpen$,
   telegramReinstallingBotId$,
   telegramReinstallTokenForm$,
   telegramSavingBotId$,
@@ -985,8 +989,17 @@ function AddTelegramBotDialogFrame({
   onAgentChange,
 }: AddTelegramBotDialogFrameProps) {
   const { t } = useTranslation();
+  const completeClose = useSet(completeTelegramAddDialogClose$);
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog
+      open={open}
+      onOpenChange={onOpenChange}
+      onOpenChangeComplete={(nextOpen) => {
+        if (!nextOpen) {
+          completeClose();
+        }
+      }}
+    >
       <DialogTrigger asChild>
         <Button type="button" size="sm" disabled={disabled}>
           <Plus size={16} />
@@ -1815,8 +1828,39 @@ function TelegramBotRow({
   );
 }
 
+function TelegramReinstallDialogRoot({
+  children,
+  open,
+  reinstalling,
+}: {
+  readonly children: ReactNode;
+  readonly open: boolean;
+  readonly reinstalling: boolean;
+}) {
+  const close = useSet(setTelegramReinstallDialogBotId$);
+  const completeClose = useSet(completeTelegramReinstallDialogClose$);
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen && !reinstalling) {
+          close(null);
+        }
+      }}
+      onOpenChangeComplete={(nextOpen) => {
+        if (!nextOpen) {
+          completeClose();
+        }
+      }}
+    >
+      {children}
+    </Dialog>
+  );
+}
+
 function TelegramReinstallDialog({ bot }: { bot: TelegramBot | null }) {
   const { t } = useTranslation();
+  const open = useGet(telegramReinstallDialogOpen$);
   const token = useGet(telegramReinstallTokenForm$);
   const reinstallingBotId = useGet(telegramReinstallingBotId$);
   const setToken = useSet(setTelegramReinstallTokenForm$);
@@ -1833,14 +1877,7 @@ function TelegramReinstallDialog({ bot }: { bot: TelegramBot | null }) {
       });
 
   return (
-    <Dialog
-      open={!!bot}
-      onOpenChange={(open) => {
-        if (!open && !reinstalling) {
-          setReinstallDialogBotId(null);
-        }
-      }}
-    >
+    <TelegramReinstallDialogRoot open={open} reinstalling={reinstalling}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>
@@ -1942,7 +1979,7 @@ function TelegramReinstallDialog({ bot }: { bot: TelegramBot | null }) {
           </DialogFooter>
         </form>
       </DialogContent>
-    </Dialog>
+    </TelegramReinstallDialogRoot>
   );
 }
 

@@ -22,7 +22,6 @@ import {
   CONCURRENCY_QUANTITY_MIN,
   concurrencyQuantity$,
   queueDrawerOpen$,
-  resetConcurrencyQuantity$,
   setConcurrencyQuantity$,
   setQueueDrawerOpen$,
 } from "../../signals/queue-page/queue-drawer-state.ts";
@@ -700,7 +699,6 @@ export function QueueDrawer() {
   const { t } = useTranslation();
   const open = useGet(queueDrawerOpen$);
   const setOpen = useSet(setQueueDrawerOpen$);
-  const resetConcurrencyQuantity = useSet(resetConcurrencyQuantity$);
 
   return (
     <Sheet
@@ -708,7 +706,6 @@ export function QueueDrawer() {
       onOpenChange={(v) => {
         if (!v) {
           setOpen(false);
-          resetConcurrencyQuantity();
         }
       }}
     >

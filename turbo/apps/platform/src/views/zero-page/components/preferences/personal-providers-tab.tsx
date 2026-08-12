@@ -640,9 +640,8 @@ function CodexResetDialogController({
       (async () => {
         await resetPromise;
         setResetDialog({
+          ...resetDialog,
           open: false,
-          resetCredits: null,
-          accountId: null,
         });
       })(),
       Reason.DomCallback,
@@ -656,9 +655,8 @@ function CodexResetDialogController({
       resetting={actionPending}
       onOpenChange={(open) => {
         setResetDialog({
+          ...resetDialog,
           open,
-          resetCredits: open ? resetDialog.resetCredits : null,
-          accountId: open && mode === "account" ? resetDialog.accountId : null,
         });
       }}
       onConfirm={confirmReset}

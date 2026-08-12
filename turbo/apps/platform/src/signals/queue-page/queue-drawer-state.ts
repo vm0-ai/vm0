@@ -27,11 +27,10 @@ export const setConcurrencyQuantity$ = command(({ set }, quantity: number) => {
   set(internalConcurrencyQuantity$, clampConcurrencyQuantity(quantity));
 });
 
-export const resetConcurrencyQuantity$ = command(({ set }) => {
-  set(internalConcurrencyQuantity$, CONCURRENCY_QUANTITY_MIN);
-});
-
 export const setQueueDrawerOpen$ = command(({ get, set }, open: boolean) => {
+  if (open) {
+    set(internalConcurrencyQuantity$, CONCURRENCY_QUANTITY_MIN);
+  }
   set(internalQueueDrawerOpen$, open);
 
   const params = get(searchParams$);
