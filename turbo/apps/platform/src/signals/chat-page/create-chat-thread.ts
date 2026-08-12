@@ -791,7 +791,7 @@ function createDraftSync(threadId: string, draft: DraftSignals) {
           id: r.info.id,
           url: r.info.url,
           filename: r.attachment.filename,
-          contentType: r.attachment.contentType,
+          contentType: r.info.contentType,
           size: r.attachment.size,
         };
       });
