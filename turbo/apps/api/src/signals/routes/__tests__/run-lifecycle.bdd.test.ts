@@ -75,7 +75,7 @@ import {
   manualHttpCustomConnectorCreateBody,
   mockCustomConnectorOAuth2Provider,
 } from "./helpers/api-bdd-connectors";
-import { createFirewallApi } from "./helpers/api-bdd-firewall";
+import { createFirewallApi, secretTemplate } from "./helpers/api-bdd-firewall";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import {
   createRunsApi,
@@ -8320,7 +8320,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       {
         ...currentAuthBody,
         authHeaders: {
-          Authorization: "Bearer ${{ secrets.UNKNOWN_CUSTOM_ALIAS }}",
+          Authorization: `Bearer ${secretTemplate("UNKNOWN_CUSTOM_ALIAS")}`,
         },
       },
       [424],
