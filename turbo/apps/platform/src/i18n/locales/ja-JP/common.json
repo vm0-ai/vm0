@@ -4543,6 +4543,7 @@
     "mermaid": {
       "diagramLabel": "図",
       "expand": "図を拡大",
+      "invalidDiagram": "無効な図",
       "viewSource": "図のソース"
     },
     "notFound": {

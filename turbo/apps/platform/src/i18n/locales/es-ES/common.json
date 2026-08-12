@@ -4595,6 +4595,7 @@
     "mermaid": {
       "diagramLabel": "Diagrama",
       "expand": "Ampliar diagrama",
+      "invalidDiagram": "Diagrama no válido",
       "viewSource": "Código del diagrama"
     },
     "notFound": {

@@ -1195,20 +1195,14 @@ body {
   cursor: default;
 }
 
-/* A source that mermaid cannot render shows as source instead of an empty box. */
-.wmde-markdown
-  .mermaid-block[data-mermaid-status="error"]
-  .mermaid-diagram-expand {
-  display: none;
-}
-
-/* Both children are taken out of flow so neither can size the box: the diagram
-   is serialized at lightbox scale, and an in-flow image that wide would win
-   over `aspect-ratio` through its content-based minimum size. Letterboxed
-   rather than stretched, since a single box can only hold diagrams of
-   different aspect ratios undistorted by leaving margins. */
+/* The image and state indicators are taken out of flow so none can size the
+   box: the diagram is serialized at lightbox scale, and an in-flow image that
+   wide would win over `aspect-ratio` through its content-based minimum size.
+   Letterboxed rather than stretched, since a single box can only hold diagrams
+   of different aspect ratios undistorted by leaving margins. */
 .wmde-markdown .mermaid-diagram-image,
-.wmde-markdown .mermaid-diagram-pending {
+.wmde-markdown .mermaid-diagram-pending,
+.wmde-markdown .mermaid-diagram-invalid {
   /* Inset by the box's own padding: an absolutely positioned child is placed
      against the padding box, which the padding would otherwise not clear. */
   position: absolute;
@@ -1229,11 +1223,16 @@ body {
   background: none;
 }
 
-.wmde-markdown .mermaid-diagram-pending {
+.wmde-markdown .mermaid-diagram-pending,
+.wmde-markdown .mermaid-diagram-invalid {
   display: flex;
   align-items: center;
   justify-content: center;
   color: hsl(var(--muted-foreground));
+}
+
+.wmde-markdown .mermaid-diagram-invalid {
+  font-size: 0.875rem;
 }
 
 .wmde-markdown .mermaid-diagram-source > summary {
