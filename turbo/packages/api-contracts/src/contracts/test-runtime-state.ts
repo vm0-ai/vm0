@@ -23,15 +23,6 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
     fixture_id: z.uuid(),
   }),
   z.object({
-    action: z.literal("enable-fake-kms"),
-  }),
-  z.object({
-    action: z.literal("reset-fake-kms"),
-  }),
-  z.object({
-    action: z.literal("read-fake-kms-state"),
-  }),
-  z.object({
     action: z.literal("read-browser-screenshot-schema-state"),
   }),
   z.object({
@@ -194,7 +185,6 @@ export const testRuntimeStateActionBodySchema = z.discriminatedUnion("action", [
 export const testRuntimeStateActionResponseSchema = z.object({
   ok: z.literal(true),
   selected_model: z.string().optional(),
-  decrypt_call_count: z.number().optional(),
   browser_screenshot_schema_available: z.boolean().optional(),
   usage_pack_invitation_schema_available: z.boolean().optional(),
   autonomy_budget: z.int().min(0).max(10).nullable().optional(),

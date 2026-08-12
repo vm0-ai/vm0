@@ -107,21 +107,6 @@ export async function seedVm0ManagedModelKey(
   return vm0ManagedModelKeyFixture(context, fixtureId, response.selected_model);
 }
 
-export async function enableFakeKms(context: TestContext): Promise<void> {
-  await postAction(context, { action: "enable-fake-kms" });
-}
-
-export async function resetFakeKms(context: TestContext): Promise<void> {
-  await postAction(context, { action: "reset-fake-kms" });
-}
-
-export async function readFakeKmsDecryptCallCount(
-  context: TestContext,
-): Promise<number> {
-  const response = await postAction(context, { action: "read-fake-kms-state" });
-  return response.decrypt_call_count ?? 0;
-}
-
 export async function readBrowserScreenshotSchemaAvailable(
   context: TestContext,
 ): Promise<boolean> {
