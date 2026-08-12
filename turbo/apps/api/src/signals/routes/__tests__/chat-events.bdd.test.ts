@@ -5618,6 +5618,11 @@ describe("CHAT-02: run-level model overrides", () => {
       .appendSystemPrompt;
     expect(appended).toContain("# Web Chat Run Context");
     expect(appended).toContain(`- RUN_ID: ${first.runId}`);
+    expect(appended).toContain(
+      `- AGENT_SESSION_COMMAND: okou search "${first.runId}" --source agent-session`,
+    );
+    expect(appended).toContain("Use the AGENT_SESSION_COMMAND for a run");
+    expect(appended).not.toContain("LOG_COMMAND");
     expect(appended).toContain(`User: ${firstPrompt}`);
     expect(appended).toContain(
       "Assistant: final answer with the migration plan",

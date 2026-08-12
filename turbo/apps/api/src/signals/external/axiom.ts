@@ -246,8 +246,13 @@ export async function flushAxiom(
   }
 }
 
-// Minimal options surface for Axiom-managed time pagination.
-interface QueryAxiomOptions {
+// Minimal options surface. `noCache` is used by the agent-event watermark wait
+// to bypass Axiom's per-request cache for freshly-completed runs; `cursor` is
+// used for Axiom-managed time pagination. Other options from web's queryAxiom
+// (maxRetries, streamingDuration, timeoutMs) intentionally NOT ported — see
+// leader guidance on issue #12424; add them when a caller actually needs them.
+export interface QueryAxiomOptions {
+  readonly noCache?: boolean;
   readonly cursor?: string;
 }
 
@@ -283,9 +288,12 @@ function isAxiomQueryResult(value: unknown): value is AxiomQueryResult {
   );
 }
 
-function axiomAplQueryUrl(): string {
+function axiomAplQueryUrl(options: QueryAxiomOptions): string {
   const url = new URL("/v1/datasets/_apl", AXIOM_API_ORIGIN);
   url.searchParams.set("format", "legacy");
+  if (options.noCache === true) {
+    url.searchParams.set("nocache", "true");
+  }
   return url.toString();
 }
 
@@ -301,7 +309,7 @@ async function queryAxiomDirectWithCursor<T>(
   apl: string,
   options: QueryAxiomOptions & { readonly cursor: string },
 ): Promise<readonly T[]> {
-  const response = await fetch(axiomAplQueryUrl(), {
+  const response = await fetch(axiomAplQueryUrl(options), {
     method: "POST",
     headers: {
       accept: "application/json",
@@ -327,7 +335,7 @@ async function queryAxiomDirectWithCursor<T>(
   return mapAxiomMatches<T>(payload);
 }
 
-async function queryAxiomDirect<T = Record<string, unknown>>(
+export async function queryAxiomDirect<T = Record<string, unknown>>(
   apl: string,
   options?: QueryAxiomOptions,
 ): Promise<readonly T[]> {
@@ -339,7 +347,13 @@ async function queryAxiomDirect<T = Record<string, unknown>>(
   }
 
   const client = axiomClientForApl(apl);
-  const result = await client.query(apl);
+  const axiomOptions =
+    options?.noCache !== undefined
+      ? {
+          ...(options.noCache !== undefined && { noCache: options.noCache }),
+        }
+      : undefined;
+  const result = await client.query(apl, axiomOptions);
   return mapAxiomMatches<T>(result);
 }
 

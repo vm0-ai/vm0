@@ -2342,7 +2342,7 @@ function buildChatPriorRunsContext(
     `# ${priorRunsContextLabel(contextType)} Run Context`,
     "The current CLI session is fresh, so recent visible chat rounds are provided here for continuity.",
     "- Treat the newest run below as the most recent prior round.",
-    "- Use the LOG_COMMAND for a run if you need more detailed agent log context.",
+    "- Use the AGENT_SESSION_COMMAND for a run if you need more detailed agent session context.",
     "",
     ...sections,
   ].join("\n");

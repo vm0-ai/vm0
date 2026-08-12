@@ -3,12 +3,17 @@ import {
   logsByIdContract,
   logsListContract,
 } from "@vm0/api-contracts/contracts/logs";
+import { zeroLogsSearchContract } from "@vm0/api-contracts/contracts/zero-runs";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { pathParamsOf, queryOf } from "../context/request";
 import { notFound } from "../../lib/error";
-import { zeroLogDetail, zeroLogsList } from "../services/zero-logs.service";
+import {
+  zeroLogDetail,
+  zeroLogsList,
+  zeroLogSearch,
+} from "../services/zero-logs.service";
 import type { RouteEntry } from "../route-entry";
 
 const runReadAuth = {
@@ -55,10 +60,39 @@ const getLogByIdInner$ = computed(async (get) => {
   return { status: 200 as const, body: detail };
 });
 
+const searchLogsInner$ = computed(async (get) => {
+  const auth = get(organizationAuthContext$);
+  const query = get(queryOf(zeroLogsSearchContract.searchLogs));
+  const result = await get(
+    zeroLogSearch({
+      userId: auth.userId,
+      orgId: auth.orgId,
+      keyword: query.keyword,
+      agentId: query.agentId,
+      runId: query.runId,
+      since: query.since,
+      limit: query.limit,
+      before: query.before,
+      after: query.after,
+    }),
+  );
+  return { status: 200 as const, body: result };
+});
+
 export const zeroLogsRoutes: readonly RouteEntry[] = [
   {
     route: logsListContract.list,
     handler: authRoute(runReadAuth, getLogsListInner$),
+  },
+  // Register the literal `/search` path before `/:id` so Hono matches the
+  // search endpoint instead of treating `search` as a log id.
+  // Temporary deployment compatibility: the current CLI no longer exposes
+  // log search, but immutable CLI_PKG_URL values captured before this release
+  // can still call this route. Remove it after every pre-deployment queued or
+  // active CLI context has completed and the rollback window has closed.
+  {
+    route: zeroLogsSearchContract.searchLogs,
+    handler: authRoute(runReadAuth, searchLogsInner$),
   },
   {
     route: logsByIdContract.getById,

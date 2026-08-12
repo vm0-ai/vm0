@@ -1,13 +1,12 @@
 import { HttpResponse, http } from "msw";
 import { describe, expect, it, vi } from "vitest";
-import { createStore } from "ccstate";
 
 import { getApiTestMocks } from "../../../__tests__/mocks";
 import { server } from "../../../mocks/server";
 
-describe("queryAxiom", () => {
+describe("queryAxiomDirect", () => {
   it("keeps the Axiom match timestamp when event data contains _time", async () => {
-    const { queryAxiom } =
+    const { queryAxiomDirect } =
       await vi.importActual<typeof import("../axiom")>("../axiom");
     const mocks = getApiTestMocks();
     mocks.axiom.query.mockResolvedValue({
@@ -22,8 +21,8 @@ describe("queryAxiom", () => {
       ],
     });
 
-    const rows = await createStore().get(
-      queryAxiom("['vm0-sandbox-telemetry-network-dev']"),
+    const rows = await queryAxiomDirect(
+      "['vm0-sandbox-telemetry-network-dev']",
     );
 
     expect(rows).toStrictEqual([
@@ -35,7 +34,7 @@ describe("queryAxiom", () => {
   });
 
   it("sends the pagination cursor in the documented Axiom request body", async () => {
-    const { queryAxiom } =
+    const { queryAxiomDirect } =
       await vi.importActual<typeof import("../axiom")>("../axiom");
     const mocks = getApiTestMocks();
     const apl = "['vm0-agent-run-events-dev'] | limit 1";
@@ -70,11 +69,10 @@ describe("queryAxiom", () => {
       ),
     );
 
-    const rows = await createStore().get(
-      queryAxiom(apl, {
-        cursor: "cursor-next-page",
-      }),
-    );
+    const rows = await queryAxiomDirect(apl, {
+      cursor: "cursor-next-page",
+      noCache: true,
+    });
 
     expect(mocks.axiom.query).not.toHaveBeenCalled();
     expect(requests).toStrictEqual([
@@ -84,7 +82,7 @@ describe("queryAxiom", () => {
           apl,
           cursor: "cursor-next-page",
         },
-        url: "https://api.axiom.co/v1/datasets/_apl?format=legacy",
+        url: "https://api.axiom.co/v1/datasets/_apl?format=legacy&nocache=true",
       },
     ]);
     expect(rows).toStrictEqual([

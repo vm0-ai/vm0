@@ -20,6 +20,7 @@ import {
 } from "./helpers/api-bdd";
 import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
 import { storageTextFile } from "./helpers/api-bdd-storage-files";
+import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import {
   createRunsApi,
   expectCanonicalStorageManifest,
@@ -36,8 +37,8 @@ import {
 
 /*
  * RUN-03/RUN-04 read surfaces for agent runs (list/read/queue/cancel,
- * telemetry families, zero run detail reads, queue
- * position and Activity metadata) plus the RUN-01/02 direct-run create arms that
+ * telemetry families, zero run detail reads, queue position, and temporary
+ * legacy log-read compatibility) plus the RUN-01/02 direct-run create arms that
  * end in those reads (session continuation, memory root policies, volume
  * pinning, concurrency caps, and the production capture gate).
  *
@@ -214,6 +215,9 @@ describe("RUN-03/RUN-04: run read surface auth matrix", () => {
       (await api.requestReadRunQueue(null, [401])).body,
       (await api.requestCancelRun(null, missingId, [401])).body,
       (await reads.requestQueuePosition(null, missingId, [401])).body,
+      (await reads.requestRunSystemLog(null, missingId, {}, [401])).body,
+      (await reads.requestRunMetrics(null, missingId, {}, [401])).body,
+      (await reads.requestZeroRunAgentEvents(null, missingId, {}, [401])).body,
       (await reads.requestZeroRunNetworkLogs(null, missingId, {}, [401])).body,
       (await reads.requestListLogs(null, {}, [401])).body,
       (await reads.requestReadLogById(null, missingId, [401])).body,
@@ -227,6 +231,8 @@ describe("RUN-03/RUN-04: run read surface auth matrix", () => {
       (await api.requestReadRunQueue(orgless, [401])).body,
       (await api.requestCancelRun(orgless, missingId, [401])).body,
       (await reads.requestListLogs(orgless, {}, [401])).body,
+      (await reads.requestZeroRunAgentEvents(orgless, missingId, {}, [401]))
+        .body,
       (await reads.requestZeroRunNetworkLogs(orgless, missingId, {}, [401]))
         .body,
     ];
@@ -1666,6 +1672,10 @@ describe("RUN-01: direct run admission boundaries", () => {
 });
 
 interface AxiomQueryRows {
+  readonly visibility?: readonly Record<string, unknown>[];
+  readonly events?: readonly Record<string, unknown>[];
+  readonly systemLogs?: readonly Record<string, unknown>[];
+  readonly metrics?: readonly Record<string, unknown>[];
   readonly network?: readonly unknown[];
   readonly runContext?: readonly Record<string, unknown>[];
 }
@@ -1690,6 +1700,18 @@ function dispatchAxiomQueries(
     if (!rows) {
       return Promise.resolve([]);
     }
+    if (apl.includes("| project sequenceNumber")) {
+      return Promise.resolve([...(rows.visibility ?? [])]);
+    }
+    if (apl.includes("['agent-run-events']")) {
+      return Promise.resolve([...(rows.events ?? [])]);
+    }
+    if (apl.includes("['sandbox-telemetry-system']")) {
+      return Promise.resolve(timeCursorRows(apl, rows.systemLogs ?? []));
+    }
+    if (apl.includes("['sandbox-telemetry-metrics']")) {
+      return Promise.resolve(timeCursorRows(apl, rows.metrics ?? []));
+    }
     if (apl.includes("['sandbox-telemetry-network']")) {
       return Promise.resolve(timeCursorRows(apl, rows.network ?? []));
     }
@@ -1702,6 +1724,14 @@ function dispatchAxiomQueries(
 
 function isAxiomRow(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function axiomCursorOption(value: unknown): string | undefined {
+  if (!isAxiomRow(value)) {
+    return undefined;
+  }
+
+  return typeof value.cursor === "string" ? value.cursor : undefined;
 }
 
 function timeCursorRows(
@@ -1734,6 +1764,60 @@ function axiomCallAt(index: number): readonly unknown[] {
     throw new Error(`Expected an Axiom query call at index ${index}`);
   }
   return call;
+}
+
+function axiomCallSince(start: number, pattern: string): readonly unknown[] {
+  const call = context.mocks.axiom.query.mock.calls
+    .slice(start)
+    .find(([apl]) => {
+      return typeof apl === "string" && apl.includes(pattern);
+    });
+  if (!call) {
+    throw new Error(`Expected an Axiom query containing ${pattern}`);
+  }
+  return call;
+}
+
+function expectRunContextFrameworkQuery(start: number, runId: string): void {
+  const call = axiomCallSince(start, "['run-context']");
+  expect(call[0]).toContain(`runId == "${runId}"`);
+  expect(call[0]).toContain("| limit 1");
+}
+
+function expectTimeCursorAxiomResume(
+  call: readonly unknown[],
+  expected: {
+    readonly cursor: string;
+    readonly order: "asc" | "desc";
+    readonly hasCreatedAtBound?: boolean;
+  },
+): void {
+  const apl = call[0];
+  expect(call[1]).toStrictEqual({ cursor: expected.cursor });
+  expect(apl).toContain(`| order by _time ${expected.order}`);
+  if (expected.hasCreatedAtBound) {
+    expect(apl).toContain("| where _time >= datetime(");
+  }
+  expect(apl).not.toContain("| where _time > datetime(");
+  expect(apl).not.toContain("| where _time < datetime(");
+  expect(apl).not.toContain("_vm0Cursor >");
+  expect(apl).not.toContain("_vm0Cursor <");
+}
+
+function agentEvent(
+  runId: string,
+  sequenceNumber: number,
+  text: string,
+  timestamp = "2026-06-10T10:30:00Z",
+): Record<string, unknown> {
+  return {
+    _time: timestamp,
+    runId,
+    userId: "bdd-run-reads",
+    sequenceNumber,
+    eventType: "assistant",
+    eventData: { type: "assistant", text },
+  };
 }
 
 function networkHardeningRows(
@@ -1832,7 +1916,309 @@ function timeLogCursor(
   )}`;
 }
 
+function timeLogQueryPath(
+  path: string,
+  query: {
+    readonly cursor: string;
+    readonly limit: number;
+    readonly order: "asc" | "desc";
+  },
+): string {
+  const params = new URLSearchParams({
+    cursor: query.cursor,
+    limit: String(query.limit),
+    order: query.order,
+  });
+  return `${path}?${params.toString()}`;
+}
+
 describe("RUN-04: agent run telemetry families", () => {
+  it("serves run events and telemetry families from axiom with watermark waits", async () => {
+    const actor = await entitledActor();
+    const member = bdd.user({ orgId: actor.orgId, orgRole: "org:member" });
+    const compose = await createClaudeCompose(actor, "bdd-telemetry");
+
+    const completedRun = await api.createDirectRun(actor, {
+      agentComposeId: compose.composeId,
+      prompt: "emit telemetry",
+    });
+    const claim = await api.claimRunnerJob(completedRun.runId);
+    await completeRun(completedRun.runId, claim.sandboxToken, {
+      lastEventSequence: 2,
+    });
+    const pendingRun = await api.createDirectRun(actor, {
+      agentComposeId: compose.composeId,
+      prompt: "never claimed",
+    });
+
+    const runId = completedRun.runId;
+    dispatchAxiomQueries({
+      [runId]: {
+        visibility: [
+          { sequenceNumber: 0 },
+          { sequenceNumber: 1 },
+          { sequenceNumber: 2 },
+        ],
+        events: [
+          agentEvent(runId, 0, "first"),
+          agentEvent(runId, 1, "second"),
+          agentEvent(runId, 3, "gapped"),
+        ],
+        systemLogs: [
+          { _time: "2026-06-10T10:30:00.123456Z", runId, log: "boot\n" },
+          { _time: "2026-06-10T10:31:00Z", runId, log: "ready\n" },
+        ],
+        metrics: [
+          {
+            _time: "2026-06-10T10:30:00Z",
+            runId,
+            userId: actor.userId,
+            cpu: 0.4,
+            mem_used: 40,
+            mem_total: 100,
+            disk_used: 50,
+            disk_total: 200,
+          },
+          {
+            _time: "2026-06-10T10:31:00Z",
+            runId,
+            userId: actor.userId,
+            cpu: 0.5,
+            mem_used: 41,
+            mem_total: 100,
+            disk_used: 51,
+            disk_total: 200,
+          },
+        ],
+        network: [
+          {
+            _time: "2026-06-10T10:30:00Z",
+            runId,
+            userId: actor.userId,
+            type: "http",
+            action: "ALLOW",
+            host: "example.com",
+            port: 443,
+            method: "GET",
+            url: "https://example.com/",
+            status: 200,
+            latency_ms: 12,
+            request_size: 10,
+            response_size: 20,
+            browser_user_agent: true,
+            dns_event: "resolve",
+            dns_query_type: "A",
+            dns_result: "1.2.3.4",
+            dns_serial: "dns-1",
+            firewall_base: "base",
+            firewall_name: "net",
+            firewall_permission: "github:read",
+            firewall_rule_match: "allow",
+            firewall_params: { owner: "vm0-ai", empty: null },
+            firewall_billable: true,
+            firewall_error: "none",
+            connector_diagnostic_slug: "fal",
+            connector_diagnostic_reason: "not_configured_for_run",
+            connector_diagnostic_env_names: ["FAL_TOKEN"],
+            connector_diagnostic_base: "https://fal.run",
+            connector_route_reason: "connector_intent_required",
+            connector_route_candidates: ["auditor", "primary"],
+            auth_resolved_secrets: ["TOKEN"],
+            auth_refreshed_connectors: ["github"],
+            auth_refreshed_secrets: ["TOKEN"],
+            auth_cache_hit: false,
+            auth_url_rewrite: true,
+            request_headers: { host: "example.com", authorization: null },
+            request_body: "abc",
+            request_body_encoding: "base64",
+            request_body_truncated: false,
+            response_headers: { server: "test", date: null },
+            response_body: "def",
+            response_body_encoding: "base64",
+            response_body_truncated: false,
+          },
+          {
+            _time: "2026-06-10T10:31:00Z",
+            runId,
+            userId: actor.userId,
+            type: "tcp",
+            action: "MAYBE",
+            host: null,
+            port: 0,
+            method: null,
+            url: null,
+            status: 0,
+            latency_ms: 0,
+            request_size: null,
+            response_size: null,
+            firewall_params: null,
+            auth_resolved_secrets: null,
+            request_headers: ["not", "a", "record"],
+            request_body_encoding: "not-valid",
+            response_headers: { ok: true },
+            error: null,
+          },
+          {
+            _time: "2026-06-10T10:32:00Z",
+            runId,
+            userId: actor.userId,
+            type: "http",
+            action: "BLOCK",
+            host: "blocked.example.com",
+            port: 443,
+            method: "POST",
+            url: "https://blocked.example.com/v1/connect",
+            status: 424,
+            firewall_error: "connector_not_configured",
+          },
+        ],
+        runContext: [{ runId, cliAgentType: "claude-code" }],
+      },
+    });
+
+    // System log pages.
+    const sinceMs = Date.parse("2026-06-10T10:29:00Z");
+    const systemAsc = await reads.requestRunSystemLog(
+      actor,
+      runId,
+      { limit: 1, order: "asc", since: sinceMs },
+      [200],
+    );
+    expect(systemAsc.body).toStrictEqual({
+      systemLog: "boot\n",
+      hasMore: true,
+      nextCursor: timeLogCursor(
+        "asc",
+        "2026-06-10T10:30:00.123456Z",
+        "cursor-0000",
+      ),
+    });
+    const systemApl = axiomCallAt(axiomCallCount() - 1)[0];
+    expect(systemApl).toContain("sandbox-telemetry-system");
+    expect(systemApl).toContain(new Date(sinceMs).toISOString());
+    expect(systemApl).toContain("| order by _time asc");
+
+    const highPrecisionSystemCursor = "2026-06-10T10:31:00.987654Z";
+    await reads.requestRunSystemLog(
+      actor,
+      runId,
+      {
+        cursor: timeLogCursor("desc", highPrecisionSystemCursor, "cursor-0001"),
+        limit: 1,
+        order: "desc",
+        sinceTime: sinceMs,
+      },
+      [200],
+    );
+    const systemCursorCall = axiomCallAt(axiomCallCount() - 1);
+    const systemCursorApl = systemCursorCall[0];
+    expect(systemCursorApl).toContain(new Date(sinceMs).toISOString());
+    expect(systemCursorApl).toContain("| order by _time desc");
+    expect(systemCursorApl).not.toContain(highPrecisionSystemCursor);
+    expect(systemCursorCall[1]).toStrictEqual({ cursor: "cursor-0001" });
+
+    const wrongSystemCursorOrder = await reads.requestRunSystemLog(
+      actor,
+      runId,
+      { cursor: "time:asc:1", limit: 1, order: "desc" },
+      [400],
+    );
+    expectApiError(wrongSystemCursorOrder.body);
+
+    const invalidSystemSince = await reads.requestRunSystemLog(
+      actor,
+      runId,
+      { since: 8_640_000_000_000_001, limit: 1, order: "asc" },
+      [400],
+    );
+    expectApiError(invalidSystemSince.body);
+
+    const invalidSystemSinceTime = await reads.requestRunSystemLog(
+      actor,
+      runId,
+      { sinceTime: 8_640_000_000_000_001, limit: 1, order: "asc" },
+      [400],
+    );
+    expectApiError(invalidSystemSinceTime.body);
+
+    const emptySystemSinceTime = await reads.rawApiRequest(
+      actor,
+      `/api/zero/runs/${runId}/telemetry/system-log?sinceTime=`,
+    );
+    expect(emptySystemSinceTime.status).toBe(400);
+    expectApiError(emptySystemSinceTime.body);
+
+    const invalidSystemCursor = await reads.requestRunSystemLog(
+      actor,
+      runId,
+      { cursor: "time:asc:8640000000000001", limit: 1, order: "asc" },
+      [400],
+    );
+    expectApiError(invalidSystemCursor.body);
+
+    const invalidCalendarSystemCursor = await reads.requestRunSystemLog(
+      actor,
+      runId,
+      {
+        cursor: timeLogCursor("asc", "2026-02-30T00:00:00Z", "cursor-0000"),
+        limit: 1,
+        order: "asc",
+      },
+      [400],
+    );
+    expectApiError(invalidCalendarSystemCursor.body);
+
+    const systemEmpty = await reads.requestRunSystemLog(
+      actor,
+      pendingRun.runId,
+      { limit: 10, order: "desc" },
+      [200],
+    );
+    expect(systemEmpty.body).toStrictEqual({ systemLog: "", hasMore: false });
+
+    const invalidSystemQuery = await reads.rawApiRequest(
+      actor,
+      `/api/zero/runs/${runId}/telemetry/system-log?limit=101`,
+    );
+    expect(invalidSystemQuery.status).toBe(400);
+
+    // Metric pages.
+    const metricsPage = await reads.requestRunMetrics(
+      actor,
+      runId,
+      { limit: 1, order: "desc", since: sinceMs },
+      [200],
+    );
+    expect(metricsPage.body).toStrictEqual({
+      metrics: [
+        {
+          ts: "2026-06-10T10:30:00Z",
+          cpu: 0.4,
+          mem_used: 40,
+          mem_total: 100,
+          disk_used: 50,
+          disk_total: 200,
+        },
+      ],
+      hasMore: true,
+      nextCursor: timeLogCursor("desc", "2026-06-10T10:30:00Z", "cursor-0000"),
+    });
+    const metricsApl = axiomCallAt(axiomCallCount() - 1)[0];
+    expect(metricsApl).toContain("sandbox-telemetry-metrics");
+    expect(metricsApl).toContain("| order by _time desc");
+
+    // Telemetry families hide other users' runs without leaking existence.
+    const memberSystem = await reads.requestRunSystemLog(
+      member,
+      runId,
+      {},
+      [404],
+    );
+    expectApiError(memberSystem.body);
+
+    await api.requestCancelRun(actor, pendingRun.runId, [200]);
+  });
+
   it("hardens network log rows in the zero read API", async () => {
     const actor = await entitledActor();
     const compose = await createClaudeCompose(actor, "bdd-network-hardening");
@@ -1911,6 +2297,457 @@ describe("RUN-04: agent run telemetry families", () => {
       networkLogs: expectedNetworkLogs,
       hasMore: true,
       nextCursor: expectedNextCursor,
+    });
+  });
+
+  it("keeps same-timestamp telemetry rows reachable across time cursor pages", async () => {
+    const actor = await entitledActor();
+    const compose = await createClaudeCompose(actor, "bdd-time-cursor-ties");
+    const run = await api.createDirectRun(actor, {
+      agentComposeId: compose.composeId,
+      prompt: "emit tied telemetry",
+    });
+    const runId = run.runId;
+    const timestamp = "2026-06-10T12:30:00Z";
+    const laterTimestamp = "2026-06-10T12:30:01Z";
+    const olderTimestamp = "2026-06-10T12:29:59Z";
+    const systemRows = [
+      { _time: timestamp, _vm0Cursor: "system-a", runId, log: "first\n" },
+      { _time: timestamp, _vm0Cursor: "system-b", runId, log: "second\n" },
+      {
+        _time: laterTimestamp,
+        _vm0Cursor: "system-c",
+        runId,
+        log: "third\n",
+      },
+    ];
+    const metricsRows = [
+      {
+        _time: timestamp,
+        _vm0Cursor: "metrics-a",
+        runId,
+        userId: actor.userId,
+        cpu: 0.1,
+        mem_used: 10,
+        mem_total: 100,
+        disk_used: 20,
+        disk_total: 200,
+      },
+      {
+        _time: timestamp,
+        _vm0Cursor: "metrics-b",
+        runId,
+        userId: actor.userId,
+        cpu: 0.2,
+        mem_used: 11,
+        mem_total: 100,
+        disk_used: 21,
+        disk_total: 200,
+      },
+      {
+        _time: laterTimestamp,
+        _vm0Cursor: "metrics-c",
+        runId,
+        userId: actor.userId,
+        cpu: 0.3,
+        mem_used: 12,
+        mem_total: 100,
+        disk_used: 22,
+        disk_total: 200,
+      },
+    ];
+    const networkRows = [
+      {
+        _time: timestamp,
+        _vm0Cursor: "network-a",
+        runId,
+        userId: actor.userId,
+        type: "http",
+        action: "ALLOW",
+        host: "first.example.com",
+      },
+      {
+        _time: timestamp,
+        _vm0Cursor: "network-b",
+        runId,
+        userId: actor.userId,
+        type: "http",
+        action: "ALLOW",
+        host: "second.example.com",
+      },
+      {
+        _time: laterTimestamp,
+        _vm0Cursor: "network-c",
+        runId,
+        userId: actor.userId,
+        type: "http",
+        action: "ALLOW",
+        host: "third.example.com",
+      },
+    ];
+
+    context.mocks.axiom.query.mockImplementation(
+      (apl: unknown, options: unknown) => {
+        if (typeof apl !== "string") {
+          return Promise.resolve([]);
+        }
+
+        const rows = apl.includes("['sandbox-telemetry-system']")
+          ? systemRows
+          : apl.includes("['sandbox-telemetry-metrics']")
+            ? metricsRows
+            : apl.includes("['sandbox-telemetry-network']")
+              ? networkRows
+              : [];
+
+        const limitMatch = /\| limit (\d+)/.exec(apl);
+        const limit = limitMatch?.[1] ? Number(limitMatch[1]) : rows.length;
+        const cursor = axiomCursorOption(options);
+        const cursorIndex =
+          cursor === undefined
+            ? -1
+            : rows.findIndex((row) => {
+                return row._vm0Cursor === cursor;
+              });
+        const startIndex =
+          cursor === undefined
+            ? 0
+            : cursorIndex === -1
+              ? rows.length
+              : cursorIndex + 1;
+
+        return Promise.resolve(rows.slice(startIndex, startIndex + limit));
+      },
+    );
+
+    const firstPage = await reads.requestRunSystemLog(
+      actor,
+      runId,
+      { limit: 1, order: "asc" },
+      [200],
+    );
+    expect(firstPage.body).toStrictEqual({
+      systemLog: "first\n",
+      hasMore: true,
+      nextCursor: timeLogCursor("asc", timestamp, "system-a"),
+    });
+
+    const cursor = firstPage.body.nextCursor;
+    if (!cursor) {
+      throw new Error("Expected the first tied page to return a cursor");
+    }
+
+    const secondPage = await reads.requestRunSystemLog(
+      actor,
+      runId,
+      { cursor, limit: 1, order: "asc" },
+      [200],
+    );
+    expect(secondPage.body).toStrictEqual({
+      systemLog: "second\n",
+      hasMore: true,
+      nextCursor: timeLogCursor("asc", timestamp, "system-b"),
+    });
+
+    const secondPageCall = axiomCallAt(axiomCallCount() - 1);
+    expectTimeCursorAxiomResume(secondPageCall, {
+      cursor: "system-a",
+      order: "asc",
+      hasCreatedAtBound: true,
+    });
+
+    const metricsFirst = await reads.requestRunMetrics(
+      actor,
+      runId,
+      { limit: 1, order: "asc" },
+      [200],
+    );
+    expect(metricsFirst.body).toStrictEqual({
+      metrics: [
+        {
+          ts: timestamp,
+          cpu: 0.1,
+          mem_used: 10,
+          mem_total: 100,
+          disk_used: 20,
+          disk_total: 200,
+        },
+      ],
+      hasMore: true,
+      nextCursor: timeLogCursor("asc", timestamp, "metrics-a"),
+    });
+
+    const metricsCursor = metricsFirst.body.nextCursor;
+    if (!metricsCursor) {
+      throw new Error(
+        "Expected the first tied metrics page to return a cursor",
+      );
+    }
+
+    const metricsSecond = await reads.requestRunMetrics(
+      actor,
+      runId,
+      { cursor: metricsCursor, limit: 1, order: "asc" },
+      [200],
+    );
+    expect(metricsSecond.body).toStrictEqual({
+      metrics: [
+        {
+          ts: timestamp,
+          cpu: 0.2,
+          mem_used: 11,
+          mem_total: 100,
+          disk_used: 21,
+          disk_total: 200,
+        },
+      ],
+      hasMore: true,
+      nextCursor: timeLogCursor("asc", timestamp, "metrics-b"),
+    });
+    const metricsSecondCall = axiomCallAt(axiomCallCount() - 1);
+    expectTimeCursorAxiomResume(metricsSecondCall, {
+      cursor: "metrics-a",
+      order: "asc",
+      hasCreatedAtBound: true,
+    });
+
+    const zeroNetworkFirst = await reads.requestZeroRunNetworkLogs(
+      actor,
+      runId,
+      { limit: 1, order: "asc" },
+      [200],
+    );
+    expect(zeroNetworkFirst.body).toStrictEqual({
+      networkLogs: [
+        {
+          timestamp,
+          type: "http",
+          action: "ALLOW",
+          host: "first.example.com",
+        },
+      ],
+      hasMore: true,
+      nextCursor: timeLogCursor("asc", timestamp, "network-a"),
+    });
+
+    const zeroNetworkCursor = zeroNetworkFirst.body.nextCursor;
+    if (!zeroNetworkCursor) {
+      throw new Error(
+        "Expected the first tied zero network page to return a cursor",
+      );
+    }
+
+    const zeroNetworkSecond = await reads.requestZeroRunNetworkLogs(
+      actor,
+      runId,
+      { cursor: zeroNetworkCursor, limit: 1, order: "asc" },
+      [200],
+    );
+    expect(zeroNetworkSecond.body).toStrictEqual({
+      networkLogs: [
+        {
+          timestamp,
+          type: "http",
+          action: "ALLOW",
+          host: "second.example.com",
+        },
+      ],
+      hasMore: true,
+      nextCursor: timeLogCursor("asc", timestamp, "network-b"),
+    });
+    const zeroNetworkSecondCall = axiomCallAt(axiomCallCount() - 1);
+    expectTimeCursorAxiomResume(zeroNetworkSecondCall, {
+      cursor: "network-a",
+      order: "asc",
+    });
+
+    const descRows = [
+      { _time: timestamp, _vm0Cursor: "desc-a", runId, log: "desc first\n" },
+      { _time: timestamp, _vm0Cursor: "desc-b", runId, log: "desc second\n" },
+      {
+        _time: olderTimestamp,
+        _vm0Cursor: "desc-c",
+        runId,
+        log: "desc third\n",
+      },
+    ];
+    context.mocks.axiom.query.mockImplementation(
+      (apl: unknown, options: unknown) => {
+        if (
+          typeof apl !== "string" ||
+          !apl.includes("['sandbox-telemetry-system']")
+        ) {
+          return Promise.resolve([]);
+        }
+
+        const limitMatch = /\| limit (\d+)/.exec(apl);
+        const limit = limitMatch?.[1] ? Number(limitMatch[1]) : descRows.length;
+        const cursor = axiomCursorOption(options);
+        const cursorIndex =
+          cursor === undefined
+            ? -1
+            : descRows.findIndex((row) => {
+                return row._vm0Cursor === cursor;
+              });
+        const startIndex =
+          cursor === undefined
+            ? 0
+            : cursorIndex === -1
+              ? descRows.length
+              : cursorIndex + 1;
+
+        return Promise.resolve(descRows.slice(startIndex, startIndex + limit));
+      },
+    );
+
+    const descFirst = await reads.requestRunSystemLog(
+      actor,
+      runId,
+      { limit: 1, order: "desc" },
+      [200],
+    );
+    expect(descFirst.body).toStrictEqual({
+      systemLog: "desc first\n",
+      hasMore: true,
+      nextCursor: timeLogCursor("desc", timestamp, "desc-a"),
+    });
+    const descCursor = descFirst.body.nextCursor;
+    if (!descCursor) {
+      throw new Error("Expected the first desc tied page to return a cursor");
+    }
+    const descSecond = await reads.requestRunSystemLog(
+      actor,
+      runId,
+      { cursor: descCursor, limit: 1, order: "desc" },
+      [200],
+    );
+    expect(descSecond.body).toStrictEqual({
+      systemLog: "desc second\n",
+      hasMore: true,
+      nextCursor: timeLogCursor("desc", timestamp, "desc-b"),
+    });
+    const descSecondCall = axiomCallAt(axiomCallCount() - 1);
+    expectTimeCursorAxiomResume(descSecondCall, {
+      cursor: "desc-a",
+      order: "desc",
+      hasCreatedAtBound: true,
+    });
+  });
+
+  it("fails visibly when a telemetry page cannot advance its cursor", async () => {
+    const actor = await entitledActor();
+    const compose = await createClaudeCompose(actor, "bdd-unpageable");
+    const run = await api.createDirectRun(actor, {
+      agentComposeId: compose.composeId,
+      prompt: "emit an unpageable boundary",
+    });
+    const runId = run.runId;
+    const boundaryTime = "2026-06-10T12:00:00Z";
+
+    dispatchAxiomQueries({
+      [runId]: {
+        events: [
+          agentEvent(runId, 0, "already returned", boundaryTime),
+          agentEvent(runId, 1, "later", "2026-06-10T12:00:01Z"),
+        ],
+        systemLogs: [
+          { _time: boundaryTime, runId, log: "already returned\n" },
+          { _time: "2026-06-10T12:00:01Z", runId, log: "later\n" },
+        ],
+        metrics: [
+          {
+            _time: boundaryTime,
+            runId,
+            userId: actor.userId,
+            cpu: 0.4,
+            mem_used: 40,
+            mem_total: 100,
+            disk_used: 50,
+            disk_total: 200,
+          },
+          {
+            _time: "2026-06-10T12:00:01Z",
+            runId,
+            userId: actor.userId,
+            cpu: 0.5,
+            mem_used: 41,
+            mem_total: 100,
+            disk_used: 51,
+            disk_total: 200,
+          },
+        ],
+        network: [
+          {
+            _time: boundaryTime,
+            runId,
+            userId: actor.userId,
+            type: "http",
+            action: "ALLOW",
+            host: "api.example.com",
+          },
+          {
+            _time: "2026-06-10T12:00:01Z",
+            runId,
+            userId: actor.userId,
+            type: "http",
+            action: "ALLOW",
+            host: "later.example.com",
+          },
+        ],
+      },
+    });
+
+    const telemetryCursor = timeLogCursor("asc", boundaryTime, "cursor-0000");
+    const systemLog = await reads.rawApiRequest(
+      actor,
+      timeLogQueryPath(`/api/zero/runs/${runId}/telemetry/system-log`, {
+        cursor: telemetryCursor,
+        limit: 1,
+        order: "asc",
+      }),
+    );
+    expect(systemLog).toStrictEqual({
+      status: 500,
+      body: { error: "Internal server error" },
+    });
+
+    const metrics = await reads.rawApiRequest(
+      actor,
+      timeLogQueryPath(`/api/zero/runs/${runId}/telemetry/metrics`, {
+        cursor: telemetryCursor,
+        limit: 1,
+        order: "asc",
+      }),
+    );
+    expect(metrics).toStrictEqual({
+      status: 500,
+      body: { error: "Internal server error" },
+    });
+
+    const zeroEvents = await reads.requestZeroRunAgentEvents(
+      actor,
+      runId,
+      { cursor: "sequence:asc:0", limit: 1, order: "asc" },
+      [200],
+    );
+    if (zeroEvents.status !== 200) {
+      throw new Error("Expected the zero agent events read to succeed");
+    }
+    expect(zeroEvents.body.events).toHaveLength(1);
+    expect(zeroEvents.body.hasMore).toBeFalsy();
+    expect(zeroEvents.body.nextCursor).toBeUndefined();
+
+    const zeroNetworkLogs = await reads.rawApiRequest(
+      actor,
+      timeLogQueryPath(`/api/zero/runs/${runId}/network`, {
+        cursor: telemetryCursor,
+        limit: 1,
+        order: "asc",
+      }),
+    );
+    expect(zeroNetworkLogs).toStrictEqual({
+      status: 500,
+      body: { error: "Internal server error" },
     });
   });
 
@@ -2036,7 +2873,7 @@ describe("RUN-04: agent run telemetry families", () => {
     });
   });
 
-  it("maps zero run context, network, and runner metadata from axiom snapshots", async () => {
+  it("maps zero run context, network, events, and runner metadata from axiom snapshots", async () => {
     const actor = await entitledActor();
     const member = bdd.user({ orgId: actor.orgId, orgRole: "org:member" });
     await api.ensureOrgModelProvider(actor);
@@ -2086,6 +2923,11 @@ describe("RUN-04: agent run telemetry families", () => {
     const runId = zeroRun.runId;
     dispatchAxiomQueries({
       [runId]: {
+        visibility: [{ sequenceNumber: 0 }, { sequenceNumber: 1 }],
+        events: [
+          agentEvent(runId, 0, "zero one"),
+          agentEvent(runId, 1, "zero two"),
+        ],
         network: [
           {
             _time: "2026-06-10T11:00:00Z",
@@ -2285,9 +3127,15 @@ describe("RUN-04: agent run telemetry families", () => {
     expectApiError(noSnapshot.body);
     expect(noSnapshot.body.error.message).toBe("Run context not available");
 
-    // Re-dispatch the full row set for the network reads.
+    // Re-dispatch the full row set for the network and event reads.
     dispatchAxiomQueries({
       [runId]: {
+        visibility: [{ sequenceNumber: 0 }, { sequenceNumber: 1 }],
+        events: [
+          agentEvent(runId, 0, "zero one"),
+          agentEvent(runId, 1, "zero two"),
+        ],
+        runContext: [{ runId, cliAgentType: "claude-code" }],
         network: [
           {
             _time: "2026-06-10T11:00:00Z",
@@ -2454,6 +3302,114 @@ describe("RUN-04: agent run telemetry families", () => {
       hasMore: false,
     });
 
+    // Zero agent events: desc waits for the watermark, a cursor at the
+    // watermark skips the wait, and asc pages cap the target.
+    const descStart = axiomCallCount();
+    const descEvents = await reads.requestZeroRunAgentEvents(
+      actor,
+      runId,
+      { limit: 10, order: "desc" },
+      [200],
+    );
+    if (descEvents.status !== 200) {
+      throw new Error("Expected the zero desc events read to succeed");
+    }
+    expect(descEvents.body.events).toHaveLength(2);
+    expect(descEvents.body.hasMore).toBeFalsy();
+    expect(descEvents.body.framework).toBe("claude-code");
+    expect(axiomCallCount()).toBe(descStart + 3);
+    expectRunContextFrameworkQuery(descStart, runId);
+    const descVisibilityCall = axiomCallSince(
+      descStart,
+      "| project sequenceNumber",
+    );
+    expect(descVisibilityCall[1]).toStrictEqual({ noCache: true });
+    expect(
+      axiomCallSince(descStart, "| order by sequenceNumber desc")[1],
+    ).toStrictEqual({ noCache: true });
+
+    const skipStart = axiomCallCount();
+    await reads.requestZeroRunAgentEvents(
+      actor,
+      runId,
+      { limit: 10, order: "desc", since: 5 },
+      [200],
+    );
+    expect(axiomCallCount()).toBe(skipStart + 2);
+    expect(
+      axiomCallSince(skipStart, "| order by sequenceNumber desc")[1],
+    ).toBeUndefined();
+    expectRunContextFrameworkQuery(skipStart, runId);
+
+    const ascPage = await reads.requestZeroRunAgentEvents(
+      actor,
+      runId,
+      { limit: 1, order: "asc", since: 0 },
+      [200],
+    );
+    if (ascPage.status !== 200) {
+      throw new Error("Expected the zero asc events read to succeed");
+    }
+    expect(ascPage.body.events).toHaveLength(1);
+    expect(ascPage.body.hasMore).toBeTruthy();
+    expect(ascPage.body.nextCursor).toBe("sequence:asc:0");
+
+    await reads.requestZeroRunAgentEvents(
+      actor,
+      runId,
+      { cursor: "sequence:desc:2", limit: 1, order: "desc" },
+      [200],
+    );
+    const zeroCursorApl = axiomCallAt(axiomCallCount() - 1)[0];
+    expect(zeroCursorApl).toContain("| where sequenceNumber < 2");
+    expect(zeroCursorApl).toContain("| order by sequenceNumber desc");
+
+    const zeroAgentSinceTime = Date.parse("2026-06-10T10:29:30Z");
+    await reads.requestZeroRunAgentEvents(
+      actor,
+      runId,
+      { sinceTime: zeroAgentSinceTime, limit: 1, order: "asc" },
+      [200],
+    );
+    const zeroAgentSinceTimeApl = axiomCallAt(axiomCallCount() - 1)[0];
+    expect(zeroAgentSinceTimeApl).toContain(
+      `| where _time > datetime("${new Date(zeroAgentSinceTime).toISOString()}")`,
+    );
+    expect(zeroAgentSinceTimeApl).toContain("| order by sequenceNumber asc");
+
+    const wrongZeroAgentCursorKind = await reads.requestZeroRunAgentEvents(
+      actor,
+      runId,
+      { cursor: "time:desc:1", limit: 1, order: "desc" },
+      [400],
+    );
+    expectApiError(wrongZeroAgentCursorKind.body);
+
+    const outOfRangeZeroAgentCursor = await reads.requestZeroRunAgentEvents(
+      actor,
+      runId,
+      { cursor: "sequence:asc:2147483648", limit: 1, order: "asc" },
+      [400],
+    );
+    expectApiError(outOfRangeZeroAgentCursor.body);
+
+    const invalidZeroAgentSinceTime = await reads.requestZeroRunAgentEvents(
+      actor,
+      runId,
+      { sinceTime: 8_640_000_000_000_001, limit: 1, order: "asc" },
+      [400],
+    );
+    expectApiError(invalidZeroAgentSinceTime.body);
+
+    const memberEvents = await reads.requestZeroRunAgentEvents(
+      member,
+      runId,
+      { limit: 10, order: "desc" },
+      [404],
+    );
+    expectApiError(memberEvents.body);
+    expect(memberEvents.body.error.message).toBe("Agent run not found");
+
     const memberNetwork = await reads.requestZeroRunNetworkLogs(
       member,
       runId,
@@ -2462,6 +3418,24 @@ describe("RUN-04: agent run telemetry families", () => {
     );
     expectApiError(memberNetwork.body);
     expect(memberNetwork.body.error.message).toBe("Agent run not found");
+
+    // A run without a recorded watermark reads events without any wait.
+    const noWatermarkStart = axiomCallCount();
+    const noWatermark = await reads.requestZeroRunAgentEvents(
+      actor,
+      bareRun.runId,
+      { limit: 10, order: "desc" },
+      [200],
+    );
+    if (noWatermark.status !== 200) {
+      throw new Error("Expected the watermark-less events read to succeed");
+    }
+    expect(noWatermark.body.events).toStrictEqual([]);
+    expect(axiomCallCount()).toBe(noWatermarkStart + 2);
+    expect(
+      axiomCallSince(noWatermarkStart, "['agent-run-events']")[1],
+    ).toBeUndefined();
+    expectRunContextFrameworkQuery(noWatermarkStart, bareRun.runId);
 
     // Runner metadata mirrors the final reuse outcomes from completion.
     const runner = await api.requestRunRunner(actor, runId, [200]);
@@ -2819,6 +3793,7 @@ describe("RUN-04/OPS-01: zero run logs", () => {
   });
 
   it("resolves zero log agent identity from the run session when compose versions are shared", async () => {
+    const misc = createMiscRoutesApi(context);
     const authOrg = createAuthOrgAgentsBddApi(context);
     const actor = await entitledActor();
     const foreignActor = bdd.user();
@@ -2880,5 +3855,74 @@ describe("RUN-04/OPS-01: zero run logs", () => {
       displayName: null,
       framework: "claude-code",
     });
+
+    context.mocks.axiom.query.mockImplementation((apl: unknown) => {
+      if (typeof apl === "string" && apl.includes(sharedRun.runId)) {
+        return Promise.resolve([
+          agentEvent(sharedRun.runId, 1, "shared match"),
+        ]);
+      }
+      return Promise.resolve([]);
+    });
+
+    const searched = await misc.requestSearchLogs(
+      actor,
+      { keyword: "shared", before: 1 },
+      [200],
+    );
+    expect(searched.body.results).toContainEqual(
+      expect.objectContaining({
+        runId: sharedRun.runId,
+        agentName: currentCompose.composeId,
+        framework: "claude-code",
+      }),
+    );
+    const contextApl = context.mocks.axiom.query.mock.calls.at(-1)?.[0];
+    expect(contextApl).toContain("| where _time > datetime(");
+  });
+
+  it("splits multi-run log searches into a bounded run-id filter", async () => {
+    const misc = createMiscRoutesApi(context);
+    const actor = await entitledActor();
+    await api.ensureOrgModelProvider(actor);
+    const agent = await bdd.createAgent(actor, {
+      displayName: "BDD search agent",
+      description: "Multi-run search chunking.",
+      visibility: "private",
+    });
+
+    const firstRun = await api.createRun(actor, {
+      agentId: agent.agentId,
+      prompt: "first searchable run",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.requestCancelRun(actor, firstRun.runId, [200]);
+    const secondRun = await api.createRun(actor, {
+      agentId: agent.agentId,
+      prompt: "second searchable run",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.requestCancelRun(actor, secondRun.runId, [200]);
+
+    context.mocks.axiom.query.mockImplementation((apl: unknown) => {
+      if (typeof apl === "string" && apl.includes("runId in (")) {
+        return Promise.resolve([
+          agentEvent(secondRun.runId, 7, "chunked match"),
+        ]);
+      }
+      return Promise.resolve([]);
+    });
+
+    const searched = await misc.searchLogs(actor, "chunked");
+    expect(searched.body.results).toHaveLength(1);
+    expect(searched.body.results[0]?.runId).toBe(secondRun.runId);
+
+    const searchApl = context.mocks.axiom.query.mock.calls.at(-1)?.[0];
+    if (typeof searchApl !== "string") {
+      throw new Error("Expected the search to query Axiom with an APL string");
+    }
+    expect(searchApl).toContain("runId in (");
+    expect(searchApl).toContain(firstRun.runId);
+    expect(searchApl).toContain(secondRun.runId);
   });
 });

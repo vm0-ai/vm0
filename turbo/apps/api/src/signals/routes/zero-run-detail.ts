@@ -1,7 +1,10 @@
 import { computed } from "ccstate";
 import {
+  zeroRunAgentEventsContract,
   zeroRunContextContract,
+  zeroRunMetricsContract,
   zeroRunNetworkLogsContract,
+  zeroRunSystemLogContract,
 } from "@vm0/api-contracts/contracts/zero-runs";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
@@ -9,9 +12,14 @@ import { authRoute } from "../auth/auth-route";
 import { pathParamsOf, queryOf } from "../context/request";
 import { notFound } from "../../lib/error";
 import {
+  zeroRunAgentEvents,
   zeroRunContext,
   zeroRunNetworkLogs,
 } from "../services/zero-run-detail.service";
+import {
+  agentRunMetrics,
+  agentRunSystemLog,
+} from "../services/agent-run-telemetry.service";
 import type { RouteEntry } from "../route-entry";
 
 const runReadAuth = {
@@ -57,6 +65,72 @@ const getNetworkLogsInner$ = computed(async (get) => {
   return { status: 200 as const, body: result };
 });
 
+const getAgentEventsInner$ = computed(async (get) => {
+  const auth = get(organizationAuthContext$);
+  const params = get(pathParamsOf(zeroRunAgentEventsContract.getAgentEvents));
+  const query = get(queryOf(zeroRunAgentEventsContract.getAgentEvents));
+  const result = await get(
+    zeroRunAgentEvents({
+      runId: params.id,
+      userId: auth.userId,
+      orgId: auth.orgId,
+      since: query.since,
+      sinceTime: query.sinceTime,
+      cursor: query.cursor,
+      limit: query.limit,
+      order: query.order,
+    }),
+  );
+  if (!result) {
+    return runNotFound;
+  }
+  return { status: 200 as const, body: result };
+});
+
+const getSystemLogInner$ = computed(async (get) => {
+  const auth = get(organizationAuthContext$);
+  const params = get(pathParamsOf(zeroRunSystemLogContract.getSystemLog));
+  const query = get(queryOf(zeroRunSystemLogContract.getSystemLog));
+  const result = await get(
+    agentRunSystemLog({
+      runId: params.id,
+      userId: auth.userId,
+      orgId: auth.orgId,
+      since: query.since,
+      sinceTime: query.sinceTime,
+      cursor: query.cursor,
+      limit: query.limit,
+      order: query.order,
+    }),
+  );
+  if (!result) {
+    return runNotFound;
+  }
+  return { status: 200 as const, body: result };
+});
+
+const getMetricsInner$ = computed(async (get) => {
+  const auth = get(organizationAuthContext$);
+  const params = get(pathParamsOf(zeroRunMetricsContract.getMetrics));
+  const query = get(queryOf(zeroRunMetricsContract.getMetrics));
+  const result = await get(
+    agentRunMetrics({
+      runId: params.id,
+      userId: auth.userId,
+      orgId: auth.orgId,
+      since: query.since,
+      sinceTime: query.sinceTime,
+      cursor: query.cursor,
+      limit: query.limit,
+      order: query.order,
+    }),
+  );
+  if (!result) {
+    return runNotFound;
+  }
+  return { status: 200 as const, body: result };
+});
+
 export const zeroRunDetailRoutes: readonly RouteEntry[] = [
   {
     route: zeroRunContextContract.getContext,
@@ -65,5 +139,21 @@ export const zeroRunDetailRoutes: readonly RouteEntry[] = [
   {
     route: zeroRunNetworkLogsContract.getNetworkLogs,
     handler: authRoute(runReadAuth, getNetworkLogsInner$),
+  },
+  // Temporary deployment compatibility: the current App and CLI no longer
+  // consume agent events, system logs, or metrics. Keep these routes until the
+  // previous App build is below the enforced compatibility floor and every
+  // pre-deployment CLI context has drained, then remove them in cleanup.
+  {
+    route: zeroRunAgentEventsContract.getAgentEvents,
+    handler: authRoute(runReadAuth, getAgentEventsInner$),
+  },
+  {
+    route: zeroRunSystemLogContract.getSystemLog,
+    handler: authRoute(runReadAuth, getSystemLogInner$),
+  },
+  {
+    route: zeroRunMetricsContract.getMetrics,
+    handler: authRoute(runReadAuth, getMetricsInner$),
   },
 ];

@@ -4,7 +4,12 @@ import {
   logsListContract,
 } from "@vm0/api-contracts/contracts/logs";
 import { zeroQueuePositionContract } from "@vm0/api-contracts/contracts/zero-queue-position";
-import { zeroRunNetworkLogsContract } from "@vm0/api-contracts/contracts/zero-runs";
+import {
+  zeroRunAgentEventsContract,
+  zeroRunMetricsContract,
+  zeroRunNetworkLogsContract,
+  zeroRunSystemLogContract,
+} from "@vm0/api-contracts/contracts/zero-runs";
 
 import { createApp } from "../../../../app-factory";
 import { accept, type TestContext } from "../../../../__tests__/test-context";
@@ -37,6 +42,12 @@ interface RunsListQuery {
   readonly until?: string;
   readonly limit?: number;
 }
+type PagedTelemetryQuery = z.input<
+  (typeof zeroRunSystemLogContract.getSystemLog)["query"]
+>;
+type ZeroAgentEventsQuery = z.input<
+  (typeof zeroRunAgentEventsContract.getAgentEvents)["query"]
+>;
 type ZeroNetworkLogsQuery = z.input<
   (typeof zeroRunNetworkLogsContract.getNetworkLogs)["query"]
 >;
@@ -144,6 +155,62 @@ export function createRunReadsApi(context: TestContext) {
             }
           : { status: 200 as const, body: result.body };
       return await accept(Promise.resolve(response), statuses);
+    },
+
+    async requestRunSystemLog<TStatus extends 200 | 400 | 401 | 403 | 404>(
+      actor: ApiTestUser | null,
+      runId: string,
+      query: PagedTelemetryQuery,
+      statuses: readonly TStatus[],
+    ) {
+      return await accept(
+        setupApp({ context, routes: zeroRunDetailRoutes })(
+          zeroRunSystemLogContract,
+        ).getSystemLog({
+          headers: authenticate(context, actor),
+          params: { id: runId },
+          query,
+        }),
+        statuses,
+      );
+    },
+
+    async requestRunMetrics<TStatus extends 200 | 400 | 401 | 403 | 404>(
+      actor: ApiTestUser | null,
+      runId: string,
+      query: PagedTelemetryQuery,
+      statuses: readonly TStatus[],
+    ) {
+      return await accept(
+        setupApp({ context, routes: zeroRunDetailRoutes })(
+          zeroRunMetricsContract,
+        ).getMetrics({
+          headers: authenticate(context, actor),
+          params: { id: runId },
+          query,
+        }),
+        statuses,
+      );
+    },
+
+    async requestZeroRunAgentEvents<
+      TStatus extends 200 | 400 | 401 | 403 | 404,
+    >(
+      actor: ApiTestUser | null,
+      runId: string,
+      query: ZeroAgentEventsQuery,
+      statuses: readonly TStatus[],
+    ) {
+      return await accept(
+        setupApp({ context, routes: zeroRunDetailRoutes })(
+          zeroRunAgentEventsContract,
+        ).getAgentEvents({
+          headers: authenticate(context, actor),
+          params: { id: runId },
+          query,
+        }),
+        statuses,
+      );
     },
 
     async requestZeroRunNetworkLogs<
@@ -257,7 +324,8 @@ export function createRunReadsApi(context: TestContext) {
       );
     },
 
-    // Raw GET for 400s the typed contracts cannot express.
+    // Raw GET for 400s the typed contracts cannot express (queue-position
+    // without runId, telemetry queries rejected by zod before the handler).
     async rawApiRequest(
       actor: ApiTestUser | null,
       path: string,

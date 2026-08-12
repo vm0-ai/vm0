@@ -70,6 +70,21 @@ function networkLog(): NetworkLogEntry {
 }
 
 describe("activity retained diagnostic data", () => {
+  it("renders not found when the activity is missing or inaccessible", async () => {
+    context.mocks.data.composesList([]);
+    context.mocks.api(logsByIdContract.getById, ({ respond }) => {
+      return respond(404, {
+        error: { code: "NOT_FOUND", message: "Log not found" },
+      });
+    });
+
+    detachedSetupPage({ context, path: `/activities/${RUN_ID}` });
+
+    await expect(
+      screen.findByRole("heading", { name: "Log not found" }),
+    ).resolves.toBeInTheDocument();
+  });
+
   it("downloads metadata, context, and network data without an event stream", async () => {
     const downloads = context.mocks.browser.blobDownload();
     context.mocks.data.composesList([]);

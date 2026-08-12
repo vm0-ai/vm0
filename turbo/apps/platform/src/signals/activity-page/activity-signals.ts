@@ -27,9 +27,9 @@ export const zeroActivityDetail$ = computed(async (get) => {
     get(zeroClient$)(logsByIdContract).getById({
       params: { id: runId },
     }),
-    [200, 404],
+    [200],
   );
-  return result.status === 200 ? result.body : null;
+  return result.body;
 });
 
 export function formatLogTime(createdAt: string): string {

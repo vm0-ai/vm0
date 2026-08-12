@@ -4,7 +4,10 @@
     "apps/cli": {
       "entry": [
         "src/**/__tests__/**/*.{test,spec}.ts",
-        "src/**/*.{test,spec}.ts"
+        "src/**/*.{test,spec}.ts",
+        "src/commands/zero/logs/index.ts",
+        "src/commands/zero/logs/list.ts",
+        "src/commands/zero/logs/search.ts"
       ],
       "project": ["src/**/*.ts"],
       "ignoreDependencies": ["@types/tar", "yaml"],

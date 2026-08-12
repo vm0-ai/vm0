@@ -246,7 +246,7 @@ function buildWebChatPriorRunsContext(
     "- Match the tone of the conversation -- casual messages deserve casual replies.",
     "- Only provide technical analysis when explicitly asked a technical question.",
     "- Keep responses proportional to the message length and complexity.",
-    "- Use the LOG_COMMAND for a run if you need more detailed agent log context.",
+    "- Use the AGENT_SESSION_COMMAND for a run if you need more detailed agent session context.",
     "",
     blocks.join("\n\n"),
     "",
