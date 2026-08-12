@@ -8,7 +8,6 @@ import {
 import { fileEntryWithHashSchema } from "../contracts/storages";
 import {
   webhookCheckpointsContract,
-  webhookPiTranscriptContract,
   webhookStoragesCommitContract,
   webhookStoragesPrepareContract,
 } from "../contracts/webhooks";
@@ -82,10 +81,6 @@ export const rustTypeModuleDocs = [
     rustDoc: ["DTOs for creating recoverable agent checkpoints."],
   },
   {
-    rustModulePath: ["webhooks", "agent", "pi_transcript"],
-    rustDoc: ["DTOs for incrementally following the persisted Pi transcript."],
-  },
-  {
     rustModulePath: ["webhooks", "agent", "storages"],
     rustDoc: [
       "Sandbox storage upload DTOs shared by guest agents and webhook handlers.",
@@ -149,41 +144,6 @@ export const rustTypeBindings = [
         variants: {
           delivered: ["The delivery receipt was accepted idempotently."],
           rejected: ["The delivery can no longer be accepted."],
-        },
-      },
-    ],
-  },
-  {
-    schema: webhookPiTranscriptContract.read.responses[200],
-    rustModulePath: ["webhooks", "agent", "pi_transcript"],
-    rustTypeName: "Response",
-    direction: "response",
-    fieldTypeOverrides: {
-      payload: "serde_json::Value",
-    },
-    declarations: [
-      {
-        rustTypeName: "ResponseMessage",
-        rustDoc: ["One persisted Pi message in canonical transcript order."],
-        fields: {
-          ordinal: ["One-based ordinal in the chat thread transcript."],
-          messageId: ["Stable idempotency key for the persisted message."],
-          runId: ["Run that originally emitted the message."],
-          runEventSequenceNumber: [
-            "Event sequence assigned by the message's originating run.",
-          ],
-          role: ["Canonical Pi message role."],
-          payload: ["Complete native Pi message payload."],
-          createdAt: ["Persisted message timestamp."],
-        },
-      },
-      {
-        rustTypeName: "Response",
-        rustDoc: ["Transcript page returned to a standby Pi agent."],
-        fields: {
-          lastOrdinal: ["Highest persisted transcript ordinal."],
-          hasMore: ["Whether another transcript page is available."],
-          messages: ["Canonical ordered Pi messages."],
         },
       },
     ],

@@ -67,8 +67,8 @@ describe("okou chat model command", () => {
     vi.clearAllMocks();
     chalk.level = 0;
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("ZERO_TOKEN", "test-zero-token");
-    vi.stubEnv("ZERO_CHAT_THREAD_ID", THREAD_ID);
+    vi.stubEnv("OKOU_TOKEN", "test-zero-token");
+    vi.stubEnv("OKOU_CHAT_THREAD_ID", THREAD_ID);
   });
 
   afterEach(() => {
@@ -79,7 +79,7 @@ describe("okou chat model command", () => {
   });
 
   it("shows dynamic help with switchable models", async () => {
-    vi.stubEnv("ZERO_CHAT_THREAD_ID", undefined);
+    vi.stubEnv("OKOU_CHAT_THREAD_ID", undefined);
     server.use(
       http.get(MODEL_POLICIES_URL, () => {
         return HttpResponse.json(MODEL_POLICIES_RESPONSE);
@@ -125,7 +125,7 @@ describe("okou chat model command", () => {
   });
 
   it("shows the model for --thread outside a web chat environment", async () => {
-    vi.stubEnv("ZERO_CHAT_THREAD_ID", undefined);
+    vi.stubEnv("OKOU_CHAT_THREAD_ID", undefined);
     server.use(
       http.get(OTHER_GET_URL, () => {
         return HttpResponse.json({
@@ -153,7 +153,7 @@ describe("okou chat model command", () => {
   });
 
   it("switches the model for --thread outside a web chat environment", async () => {
-    vi.stubEnv("ZERO_CHAT_THREAD_ID", undefined);
+    vi.stubEnv("OKOU_CHAT_THREAD_ID", undefined);
     server.use(
       http.get(MODEL_POLICIES_URL, () => {
         return HttpResponse.json(MODEL_POLICIES_RESPONSE);

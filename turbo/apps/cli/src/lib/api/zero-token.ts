@@ -4,16 +4,16 @@ export interface ZeroTokenPayload {
   userId: string;
   runId: string;
   orgId: string;
-  scope: "zero" | "okou";
+  scope: "okou";
   capabilities: string[];
   iat: number;
   exp: number;
 }
 
 /**
- * Decode an OKOU_TOKEN or ZERO_TOKEN JWT payload.
+ * Decode an OKOU_TOKEN JWT payload.
  * Only decodes — does NOT verify signature (server does that).
- * If no token is provided, reads OKOU_TOKEN with ZERO_TOKEN as a fallback.
+ * If no token is provided, reads OKOU_TOKEN.
  * Returns undefined if the token is missing, malformed, or has an unsupported scope.
  */
 export function decodeZeroTokenPayload(
@@ -33,10 +33,7 @@ export function decodeZeroTokenPayload(
     const payload = JSON.parse(
       Buffer.from(parts[1]!, "base64url").toString(),
     ) as ZeroTokenPayload;
-    if (
-      (payload.scope === "zero" || payload.scope === "okou") &&
-      Array.isArray(payload.capabilities)
-    ) {
+    if (payload.scope === "okou" && Array.isArray(payload.capabilities)) {
       return payload;
     }
   } catch {

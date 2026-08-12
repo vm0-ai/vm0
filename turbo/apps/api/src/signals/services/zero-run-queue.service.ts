@@ -1,13 +1,8 @@
 import { command } from "ccstate";
-import type { RunSkillSnapshot } from "@vm0/api-contracts/contracts/runners";
 import { agentRunQueue } from "@vm0/db/schema/agent-run-queue";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import {
-  createPiNoopExecutionEnv,
-  type ExecutionEnv,
-} from "@vm0/pi-agent-runtime";
 import {
   and,
   count,
@@ -46,7 +41,6 @@ import {
   activatePendingRun$,
   type PendingRunActivation,
 } from "./agent-run-activation.service";
-import type { PiEdgeModelConfig, PiEdgeUsageConfig } from "./pi-edge-config";
 
 const L = logger("ZeroRunQueue");
 
@@ -90,15 +84,6 @@ interface PromotedRunnerJob {
   readonly createdAt: Date;
   readonly apiStartedAt: number;
   readonly profile: string;
-}
-
-interface PreparedQueuedPiEdgeTurn {
-  readonly model: PiEdgeModelConfig;
-  readonly usage?: PiEdgeUsageConfig;
-  readonly prompt: string;
-  readonly systemPrompt: string;
-  readonly executionEnv: ExecutionEnv;
-  readonly skillSnapshot: RunSkillSnapshot;
 }
 
 type PromoteQueuedCandidateResult =
@@ -244,37 +229,12 @@ async function loadDrainCandidates(
   });
 }
 
-function prepareQueuedPiEdgeTurn(
-  row: QueueCandidate,
-  payload: QueuedRunnerJobPayload,
-): PreparedQueuedPiEdgeTurn | undefined {
-  if (payload.piEdge === undefined) {
-    return undefined;
-  }
-  const systemPrompt = payload.executionContext.piSystemPrompt;
-  const skillSnapshot = payload.executionContext.runSkillSnapshot;
-  if (systemPrompt === undefined || skillSnapshot === undefined) {
-    throw new Error(`Queued Pi run "${row.runId}" is missing launch context`);
-  }
-  return {
-    model: payload.piEdge.model,
-    ...(payload.piEdge.usage === undefined
-      ? {}
-      : { usage: payload.piEdge.usage }),
-    prompt: payload.piEdge.prompt,
-    systemPrompt,
-    executionEnv: createPiNoopExecutionEnv(),
-    skillSnapshot,
-  };
-}
-
 async function promoteQueuedCandidate(
   db: Db,
   args: {
     readonly orgId: string;
     readonly row: QueueCandidate;
     readonly payload: QueuedRunnerJobPayload | null;
-    readonly piEdgeTurn: PreparedQueuedPiEdgeTurn | undefined;
   },
 ): Promise<PromoteQueuedCandidateResult> {
   return await db.transaction(async (tx) => {
@@ -365,17 +325,6 @@ async function promoteQueuedCandidate(
       pendingActivation: {
         apiStartTime: runnerJob.apiStartedAt,
         chatThreadId: args.row.chatThreadId ?? undefined,
-        piEdgeTurn:
-          args.piEdgeTurn === undefined
-            ? undefined
-            : {
-                ...args.piEdgeTurn,
-                runId: args.row.runId,
-                userId: args.row.userId,
-                orgId: args.orgId,
-                runnerGroup: payload.runnerGroup,
-                apiStartTime: runnerJob.apiStartedAt,
-              },
         runnerNotification: {
           runId: args.row.runId,
           runnerGroup: payload.runnerGroup,
@@ -383,7 +332,6 @@ async function promoteQueuedCandidate(
           reuseKey: payload.reuseKey,
           cliAgentSessionId: payload.cliAgentSessionId,
           historyGenerationRunId: payload.historyGenerationRunId,
-          piExecutionMode: payload.executionContext.piExecutionMode,
           createdAt: runnerJob.createdAt,
         },
       },
@@ -409,7 +357,6 @@ async function promoteQueuedCandidateWithSideEffects(
     readonly orgId: string;
     readonly row: QueueCandidate;
     readonly payload: QueuedRunnerJobPayload | null;
-    readonly piEdgeTurn: PreparedQueuedPiEdgeTurn | undefined;
   },
 ): Promise<PromoteQueuedCandidateSideEffectResult> {
   const result = await promoteQueuedCandidate(db, args);
@@ -468,15 +415,10 @@ export const drainOrgQueue$ = command(
           ? await decryptQueuedRunnerJobPayload(row.encryptedParams)
           : null;
       signal.throwIfAborted();
-      const piEdgeTurn =
-        payload === null ? undefined : prepareQueuedPiEdgeTurn(row, payload);
-      signal.throwIfAborted();
-
       const result = await promoteQueuedCandidateWithSideEffects(writeDb, {
         orgId: args.orgId,
         row,
         payload,
-        piEdgeTurn,
       });
       // Promotion is durable now. Observe request cancellation for diagnostics,
       // but let the commit-owned activation finish independently.

@@ -87,8 +87,9 @@ grep -Fq "Okou CLI" "$tmp_dir/okou-help.stdout"
 assert_clean_success okou okou-version --version
 grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+' "$tmp_dir/okou-version.stdout"
 
-assert_clean_success okou okou-agent-loop-help __agent-loop --help
-grep -Fq -- "--standby" "$tmp_dir/okou-agent-loop-help.stdout"
+NODE_OPTIONS="--disable-warning=ExperimentalWarning" \
+  assert_clean_success okou okou-agent-loop-help __agent-loop --help
+grep -Fq "Internal sandbox Pi agent loop" "$tmp_dir/okou-agent-loop-help.stdout"
 
 okou_error_status=0
 run_cli \

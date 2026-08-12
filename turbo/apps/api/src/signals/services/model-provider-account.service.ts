@@ -64,6 +64,9 @@ interface EncryptedAccountSecret {
 
 type AccountRow = typeof modelProviderAccounts.$inferSelect;
 type ProviderRow = typeof modelProviders.$inferSelect;
+export type PersonalProviderAccountErrorResponse =
+  | ReturnType<typeof badRequestMessage>
+  | ReturnType<typeof notFound>;
 
 function normalizedText(value: string | null | undefined): string | null {
   const trimmed = value?.trim();

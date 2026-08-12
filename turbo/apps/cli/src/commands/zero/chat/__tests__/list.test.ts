@@ -31,7 +31,7 @@ function zeroToken(): string {
       userId: "user_test",
       runId: "00000000-0000-4000-8000-000000000401",
       orgId: "org_test",
-      scope: "zero",
+      scope: "okou",
       capabilities: ["chat-thread:read"],
       iat: 1,
       exp: 4_102_444_800,
@@ -85,8 +85,8 @@ describe("okou chat list command", () => {
     chalk.level = 0;
     cacheDirectory = await mkdtemp(join(tmpdir(), "zero-chat-list-"));
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("ZERO_TOKEN", zeroToken());
-    vi.stubEnv("ZERO_AGENT_ID", AGENT_ID);
+    vi.stubEnv("OKOU_TOKEN", zeroToken());
+    vi.stubEnv("OKOU_AGENT_ID", AGENT_ID);
     vi.stubEnv("XDG_CACHE_HOME", cacheDirectory);
   });
 
@@ -98,7 +98,7 @@ describe("okou chat list command", () => {
     await rm(cacheDirectory, { recursive: true, force: true });
   });
 
-  it("replays incremental events from the cache and defaults to ZERO_AGENT_ID", async () => {
+  it("replays incremental events from the cache and defaults to OKOU_AGENT_ID", async () => {
     let snapshotRequests = 0;
     let eventRequests = 0;
     server.use(
@@ -263,7 +263,7 @@ describe("okou chat list command", () => {
     expect(eventRequests).toBe(3);
   });
 
-  it("lets --agent override ZERO_AGENT_ID", async () => {
+  it("lets --agent override OKOU_AGENT_ID", async () => {
     server.use(
       http.get(SNAPSHOT_URL, () => {
         return HttpResponse.json({
@@ -315,8 +315,8 @@ describe("okou chat list command", () => {
     );
   });
 
-  it("requires an agent id from --agent or ZERO_AGENT_ID", async () => {
-    vi.stubEnv("ZERO_AGENT_ID", "");
+  it("requires an agent id from --agent or OKOU_AGENT_ID", async () => {
+    vi.stubEnv("OKOU_AGENT_ID", "");
 
     await expect(async () => {
       await zeroChatCommand.parseAsync(["node", "cli", "list"]);

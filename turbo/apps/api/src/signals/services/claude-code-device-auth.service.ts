@@ -32,6 +32,7 @@ import {
 import { fetchClaudeCodeSubscriptionMetadata } from "./claude-code-usage.service";
 import {
   upsertPersonalModelProviderAccount,
+  type PersonalProviderAccountErrorResponse,
   type PersonalProviderAccountMutation,
 } from "./model-provider-account.service";
 import { userFeatureSwitchContext } from "./feature-switches.service";
@@ -122,6 +123,10 @@ type ClaudeCodeDeviceAuthCompleteResult =
   | {
       readonly status: "forbidden";
       readonly message: string;
+    }
+  | {
+      readonly status: "auth_error";
+      readonly response: PersonalProviderAccountErrorResponse;
     }
   | {
       readonly status: "error";
@@ -749,10 +754,13 @@ const importClaudeCodeOAuthToken$ = command(
       readonly modelProviderId: string | undefined;
     },
     signal: AbortSignal,
-  ): Promise<{
-    readonly provider: ModelProviderResponse;
-    readonly created: boolean;
-  }> => {
+  ): Promise<
+    | {
+        readonly provider: ModelProviderResponse;
+        readonly created: boolean;
+      }
+    | PersonalProviderAccountErrorResponse
+  > => {
     const metadata = await tapError(
       fetchClaudeCodeSubscriptionMetadata(
         {
@@ -811,9 +819,6 @@ const importClaudeCodeOAuthToken$ = command(
         },
         signal,
       );
-      if ("status" in result) {
-        throw new Error(result.body.error.message);
-      }
       return result;
     }
 
@@ -1013,6 +1018,19 @@ const importClaimedClaudeCodeDeviceAuth$ = command(
         status: "error",
         code: "CLAUDE_CODE_DEVICE_AUTH_FAILED",
         message,
+      };
+    }
+
+    if ("status" in imported.value) {
+      await markSessionError({
+        writeDb: args.writeDb,
+        sessionId: args.session.id,
+        message: imported.value.body.error.message,
+      });
+      signal.throwIfAborted();
+      return {
+        status: "auth_error",
+        response: imported.value,
       };
     }
 

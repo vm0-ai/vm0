@@ -18,10 +18,6 @@ pub(crate) fn heartbeat_url(base_url: &str) -> String {
     routes::webhooks::agent::heartbeat::SEND.url(base_url)
 }
 
-pub(crate) fn pi_transcript_url(base_url: &str) -> String {
-    routes::webhooks::agent::pi_transcript::READ.url(base_url)
-}
-
 pub(crate) fn telemetry_url(base_url: &str) -> String {
     routes::webhooks::agent::telemetry::SEND.url(base_url)
 }

@@ -4,7 +4,6 @@ import {
   createReadTool,
   createWriteTool,
   type AgentContext,
-  type AgentMessage,
   type AgentToolResult,
   type BashToolInput,
   type EditToolInput,
@@ -242,7 +241,7 @@ function createPiEditTool(env: ExecutionEnv): PiAgentTool {
   };
 }
 
-/** The same native Pi execution tool surface used before and after handoff. */
+/** Native Pi tools backed by the Sandbox execution environment. */
 export function createPiExecutionTools(env: ExecutionEnv): PiExecutionTools {
   return [
     createPiReadTool(env),
@@ -250,19 +249,4 @@ export function createPiExecutionTools(env: ExecutionEnv): PiExecutionTools {
     createPiWriteTool(env),
     createPiEditTool(env),
   ] as const;
-}
-
-/**
- * Whether an assistant batch must leave the API-backed ExecutionEnv. The Pi
- * edge loop executes no tools, so the first batch that issues any tool call
- * hands off to the sandbox, which then runs it.
- */
-export function piMessageRequiresSandbox(message: AgentMessage): boolean {
-  return (
-    message.role === "assistant" &&
-    message.stopReason === "toolUse" &&
-    message.content.some((block) => {
-      return block.type === "toolCall";
-    })
-  );
 }
