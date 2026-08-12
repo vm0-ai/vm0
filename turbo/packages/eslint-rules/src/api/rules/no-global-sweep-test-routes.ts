@@ -336,6 +336,27 @@ export const noGlobalSweepTestRoutes = createRule({
         }
         const definition = variableInScope(context.sourceCode, current)
           ?.defs[0];
+        if (
+          definition?.node.type === AST_NODE_TYPES.VariableDeclarator &&
+          definition.node.init &&
+          definition.node.id.type === AST_NODE_TYPES.ObjectPattern
+        ) {
+          const destructured = definition.node.id.properties.find((entry) => {
+            return (
+              entry.type === AST_NODE_TYPES.Property &&
+              entry.value.type === AST_NODE_TYPES.Identifier &&
+              entry.value.name === current.name
+            );
+          });
+          if (
+            destructured?.type === AST_NODE_TYPES.Property &&
+            propertyName(destructured) === "routes"
+          ) {
+            return (
+              aggregateRoutesOption(definition.node.init, nextSeen) === true
+            );
+          }
+        }
         if (definition?.type === "Parameter") {
           return argumentsForParameter(current).some((argument) => {
             return isAggregateRoutes(argument, nextSeen);
@@ -347,16 +368,21 @@ export const noGlobalSweepTestRoutes = createRule({
           isAggregateRoutes(definition.node.init, nextSeen),
         );
       }
-      if (
-        current.type === AST_NODE_TYPES.MemberExpression &&
-        memberName(current) === "ROUTES" &&
-        current.object.type === AST_NODE_TYPES.Identifier
-      ) {
-        const imported = importReference(context.sourceCode, current.object);
-        return Boolean(
-          imported?.importedName === "*" &&
-          resolvesToProductionRoute(filename, imported.source),
-        );
+      if (current.type === AST_NODE_TYPES.MemberExpression) {
+        const name = memberName(current);
+        if (
+          name === "ROUTES" &&
+          current.object.type === AST_NODE_TYPES.Identifier
+        ) {
+          const imported = importReference(context.sourceCode, current.object);
+          return Boolean(
+            imported?.importedName === "*" &&
+            resolvesToProductionRoute(filename, imported.source),
+          );
+        }
+        if (name === "routes" && current.object.type !== AST_NODE_TYPES.Super) {
+          return aggregateRoutesOption(current.object, nextSeen) === true;
+        }
       }
       if (current.type === AST_NODE_TYPES.ArrayExpression) {
         return current.elements.some((element) => {

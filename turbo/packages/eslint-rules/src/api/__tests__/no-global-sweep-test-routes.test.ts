@@ -90,6 +90,29 @@ ruleTester.run("no-global-sweep-test-routes", noGlobalSweepTestRoutes, {
   ],
   invalid: [
     {
+      name: "aggregate routes cannot flow through a local member projection",
+      filename: behaviorTest,
+      code: `
+        import { ROUTES } from "../../route";
+        import { createApp } from "../../../app-factory";
+        const options = { routes: ROUTES };
+        createApp({ signal, routes: options.routes });
+      `,
+      errors: [{ messageId: "globalSweep" }],
+    },
+    {
+      name: "aggregate routes cannot flow through local object destructuring",
+      filename: behaviorTest,
+      code: `
+        import { ROUTES } from "../../route";
+        import { setupApp } from "../../../__tests__/test-helpers";
+        const options = { routes: ROUTES };
+        const { routes } = options;
+        setupApp({ context, routes })(contract);
+      `,
+      errors: [{ messageId: "globalSweep" }],
+    },
+    {
       name: "aggregate contract binder aliases remain rejected",
       filename: behaviorTest,
       code: `
