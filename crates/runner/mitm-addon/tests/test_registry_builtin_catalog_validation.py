@@ -388,8 +388,8 @@ class TestRegistryBuiltinCatalogValidation:
 
         _assert_cache_firewall_is_invalid(tmp_path, mitm_ctx, firewall)
 
-    @pytest.mark.parametrize("permission_name", ["all", "__unknown__"])
-    def test_reserved_permission_runner_catalog_cache_fails_closed(
+    @pytest.mark.parametrize("permission_name", ["", "all", "__unknown__"])
+    def test_invalid_permission_name_runner_catalog_cache_fails_closed(
         self, tmp_path, mitm_ctx, permission_name
     ):
         firewall = cache_firewall("fallback", "https://cache.example.com")
