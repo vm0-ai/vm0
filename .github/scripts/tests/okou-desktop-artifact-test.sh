@@ -10,33 +10,71 @@ trap 'rm -rf "$tmp_dir"' EXIT
 commit_sha="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 desktop_version="1.2.3"
 app_dir="${tmp_dir}/package/Zero Computer Use.app"
+okou_app_dir="${tmp_dir}/package/Okou Computer Use.app"
 artifact_dir="${tmp_dir}/artifact"
 mkdir -p \
   "$app_dir/Contents/MacOS" \
-  "$app_dir/Contents/Frameworks/Example.framework/Versions/A"
+  "$app_dir/Contents/Frameworks/Example.framework/Versions/A" \
+  "$okou_app_dir/Contents/MacOS"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$app_dir/Contents/MacOS/Zero Computer Use"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$okou_app_dir/Contents/MacOS/Okou Computer Use"
 chmod +x "$app_dir/Contents/MacOS/Zero Computer Use"
+chmod +x "$okou_app_dir/Contents/MacOS/Okou Computer Use"
 ln -s A "$app_dir/Contents/Frameworks/Example.framework/Versions/Current"
 
-bash "$build_script" "$commit_sha" "$desktop_version" "$app_dir" "$artifact_dir"
-bash "$verify_script" "$artifact_dir" "$commit_sha" "$desktop_version"
+bash "$build_script" \
+  "$commit_sha" \
+  "$desktop_version" \
+  "$app_dir" \
+  "$artifact_dir" \
+  "$okou_app_dir"
+bash "$verify_script" "$artifact_dir" "$commit_sha" "$desktop_version" --require-okou
 jq -e \
   --arg commit_sha "$commit_sha" \
   --arg desktop_version "$desktop_version" \
-  '.commitSha == $commit_sha and .desktopVersion == $desktop_version' \
+  '.commitSha == $commit_sha
+    and .desktopVersion == $desktop_version
+    and .okouAppName == "Okou Computer Use.app"
+    and .okouArchive.path == "okou-app.tar.gz"' \
   "$artifact_dir/manifest.json" >/dev/null
 
 extracted_dir="${tmp_dir}/extracted"
 mkdir -p "$extracted_dir"
 tar -xzf "$artifact_dir/app.tar.gz" -C "$extracted_dir"
+tar -xzf "$artifact_dir/okou-app.tar.gz" -C "$extracted_dir"
 test -x "$extracted_dir/Zero Computer Use.app/Contents/MacOS/Zero Computer Use"
+test -x "$extracted_dir/Okou Computer Use.app/Contents/MacOS/Okou Computer Use"
 test -L "$extracted_dir/Zero Computer Use.app/Contents/Frameworks/Example.framework/Versions/Current"
+
+legacy_artifact_dir="${tmp_dir}/legacy-artifact"
+bash "$build_script" \
+  "$commit_sha" \
+  "$desktop_version" \
+  "$app_dir" \
+  "$legacy_artifact_dir"
+bash "$verify_script" "$legacy_artifact_dir" "$commit_sha" "$desktop_version"
+if bash "$verify_script" \
+  "$legacy_artifact_dir" \
+  "$commit_sha" \
+  "$desktop_version" \
+  --require-okou >/dev/null 2>&1; then
+  echo "Expected a legacy Zero-only artifact to fail the Okou requirement" >&2
+  exit 1
+fi
 
 tampered_dir="${tmp_dir}/tampered"
 cp -a "$artifact_dir" "$tampered_dir"
 printf 'tampered\n' >> "$tampered_dir/app.tar.gz"
-if bash "$verify_script" "$tampered_dir" "$commit_sha" "$desktop_version" >/dev/null 2>&1; then
+if bash "$verify_script" "$tampered_dir" "$commit_sha" "$desktop_version" --require-okou >/dev/null 2>&1; then
   echo "Expected a tampered Desktop archive to fail" >&2
+  exit 1
+fi
+
+tampered_okou_dir="${tmp_dir}/tampered-okou"
+cp -a "$artifact_dir" "$tampered_okou_dir"
+printf 'tampered\n' >> "$tampered_okou_dir/okou-app.tar.gz"
+if bash "$verify_script" "$tampered_okou_dir" "$commit_sha" "$desktop_version" --require-okou >/dev/null 2>&1; then
+  echo "Expected a tampered Okou Desktop archive to fail" >&2
   exit 1
 fi
 
@@ -61,12 +99,12 @@ jq \
   --arg archive_sha "$unsafe_archive_sha" \
   --argjson archive_size "$unsafe_archive_size" \
   '.archive.sha256 = $archive_sha | .archive.size = $archive_size' \
-  "$artifact_dir/manifest.json" > "$unsafe_dir/manifest.json"
+  "$legacy_artifact_dir/manifest.json" > "$unsafe_dir/manifest.json"
 unsafe_manifest_sha="$(shasum -a 256 "$unsafe_dir/manifest.json" | cut -d ' ' -f 1)"
 jq \
   --arg manifest_sha "$unsafe_manifest_sha" \
   '.manifestSha256 = $manifest_sha' \
-  "$artifact_dir/ready.json" > "$unsafe_dir/ready.json"
+  "$legacy_artifact_dir/ready.json" > "$unsafe_dir/ready.json"
 if bash "$verify_script" "$unsafe_dir" "$commit_sha" "$desktop_version" >/dev/null 2>&1; then
   echo "Expected an archive with another top-level path to fail" >&2
   exit 1
@@ -130,6 +168,12 @@ if (
   )
 ) {
   throw new Error("Okou packaged app path must be product scoped");
+}
+if (
+  packagedAppPaths({ appBundlePath: "/tmp/Okou Computer Use.app" })
+    .appBundlePath !== "/tmp/Okou Computer Use.app"
+) {
+  throw new Error("Desktop smoke tests must support an installed app path");
 }
 NODE
 

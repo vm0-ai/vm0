@@ -44,6 +44,14 @@ ruby -e '
 
   build_step = deploy.fetch("steps").find { |step| step["name"] == "Build canonical unsigned Desktop app" }
   raise "canonical Desktop build must skip signing" unless build_step.fetch("env").fetch("VM0_DESKTOP_SKIP_SIGNING") == "true"
+  raise "canonical Desktop build must package Okou" unless build_step.fetch("run").include?("Okou Computer Use.app")
+  raise "canonical Okou build must target app.okou.ai" unless build_step.fetch("run").include?("VM0_DESKTOP_PLATFORM_URL=https://app.okou.ai")
+
+  artifact_build = deploy.fetch("steps").find { |step| step["name"] == "Create canonical Desktop artifact" }.fetch("run")
+  raise "canonical artifact must contain the Okou app" unless artifact_build.include?("Okou Computer Use-darwin-arm64/Okou Computer Use.app")
+
+  artifact_upload = deploy.fetch("steps").find { |step| step["name"] == "Upload canonical Desktop artifact" }.fetch("run")
+  raise "canonical artifact must upload the Okou archive" unless artifact_upload.include?("okou-app.tar.gz")
 
   promote = release.fetch("promote-desktop-release")
   raise "Desktop promotion must use production environment" unless promote.fetch("environment") == "production"
@@ -54,13 +62,23 @@ ruby -e '
   raise "Desktop promotion must fetch the canonical R2 artifact" unless download.include?("fetch-okou-desktop-artifact.sh")
   raise "Desktop promotion must verify the canonical R2 artifact" unless download.include?("verify-okou-desktop-artifact.sh")
   raise "Desktop promotion must address artifacts by release_target" unless download.include?(ARGV[5])
+  raise "Desktop promotion must require the Okou app archive" unless download.include?("--require-okou")
 
   promote_text = File.read(ARGV[1]).split("  promote-desktop-release:\n", 2).fetch(1).split(/\n  [a-zA-Z0-9_-]+:\n/, 2).first
   raise "Desktop promotion must not rebuild the app" if promote_text.include?("pnpm -F @vm0/desktop build")
   raise "Desktop promotion must sign the downloaded app" unless promote_text.include?("sign-and-notarize-packaged-app.mjs")
+  raise "Desktop promotion must select a product signing identity" unless promote_text.include?("--product")
+  raise "Desktop promotion must publish an independent Okou release" unless promote_text.include?("OKOU_RELEASE_TAG: okou-desktop-v")
+  raise "Desktop promotion must publish Okou artifacts" unless promote_text.include?("Okou-darwin-arm64-$DESKTOP_VERSION")
+  raise "Desktop promotion must smoke-test Okou installation" unless promote_text.include?("okou-install-smoke")
+  raise "Desktop promotion must smoke-test Okou updates" unless promote_text.include?("okou-update-smoke")
 
   publish = release.fetch("publish-desktop-update-manifest")
   raise "Desktop manifest must wait for promotion" unless Array(publish.fetch("needs")).include?("promote-desktop-release")
+  publish_text = publish.fetch("steps").find { |step| step["name"] == "Publish Desktop update manifest" }.fetch("run")
+  raise "Desktop manifests must preserve the Zero feed" unless publish_text.include?("desktop-update-manifest.json")
+  raise "Desktop manifests must publish the Okou feed" unless publish_text.include?("okou-desktop-update-manifest.json")
+  raise "Desktop manifests must publish under the Okou mutable tag" unless publish_text.include?("okou-desktop-updates")
 ' \
   "$desktop_workflow" \
   "$release_workflow" \

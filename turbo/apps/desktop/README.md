@@ -126,19 +126,24 @@ Desktop releases are versioned by release-please. Changes under
 `desktop-vX.Y.Z` GitHub Release.
 
 When a release-please merge group changes the Desktop package version, the
-`deploy-desktop` job builds the unsigned production `Zero Computer Use.app` for
-Apple silicon Macs and publishes it to R2 under
+`deploy-desktop` job builds the unsigned production `Zero Computer Use.app` and
+`Okou Computer Use.app` for Apple silicon Macs and publishes both to R2 under
 `okou-desktop/<commit-sha>/`. The matching release run resolves the same commit
-as `release_target`, downloads and verifies that immutable app artifact, signs
-it with the Developer ID Application certificate, notarizes it for direct
-distribution outside the Mac App Store, and uploads
-`Zero-darwin-arm64-X.Y.Z.zip` and `Zero-darwin-arm64-X.Y.Z.dmg` to the matching
-GitHub Release. The release workflow then updates the Desktop update manifest.
+as `release_target`, downloads and verifies those immutable app artifacts,
+signs them with the Developer ID Application certificate, notarizes them for
+direct distribution outside the Mac App Store, and publishes separate releases:
 
-Use the DMG for manual installation. It opens with a styled Finder background,
-`Zero Computer Use.app` on the left, and an `/Applications` symlink on the right
-for drag-to-install. The update manifest continues to point at the ZIP artifact
-because the auto-update feed consumes ZIP releases.
+- `desktop-vX.Y.Z` contains `Zero-darwin-arm64-X.Y.Z.zip` and `.dmg`.
+- `okou-desktop-vX.Y.Z` contains `Okou-darwin-arm64-X.Y.Z.zip` and `.dmg`.
+
+The release workflow then updates the independent Zero and Okou manifests.
+
+Use the product's DMG for manual installation. It opens with a product-specific
+Finder background, the app on the left, and an `/Applications` symlink on the
+right for drag-to-install. Update manifests continue to point at the ZIP
+artifacts because the auto-update feeds consume ZIP releases. Release smoke
+tests copy Okou from the DMG into an isolated Applications directory, launch it,
+replace it from the Okou update ZIP, and launch it again.
 
 ### Zero and Okou update compatibility
 
@@ -169,8 +174,8 @@ Zero, gets its own Electron `userData` root and installation ID, and does not
 copy Zero's Chromium profile. Users sign in again and grant Accessibility,
 Screen Recording, and browser Automation permissions again because macOS TCC
 associates those permissions with the application identity. The current
-release promotion remains on the Zero line until the signed Okou promotion
-workflow is enabled.
+release promotion signs and notarizes both product lines while publishing them
+under independent release tags and update manifests.
 
 This does not submit or publish the app to the Mac App Store. The App Store
 Connect API key is only used as notarytool authentication for Apple's
