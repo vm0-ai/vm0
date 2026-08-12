@@ -128,7 +128,7 @@ describe("marker node dispatch", () => {
 
     await waitFor(() => {
       expect(writeText).toHaveBeenCalledWith("const a = 1;\n");
-      expect(container.querySelector(".copied.active")).not.toBeNull();
+      expect(button).toHaveAccessibleName("Copied");
     });
   });
   // Markers live on the hast node's `data`, which `rehype-raw` cannot produce.

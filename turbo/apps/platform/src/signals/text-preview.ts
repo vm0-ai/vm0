@@ -1,5 +1,5 @@
 import { computed, type Computed } from "ccstate";
-import { attachmentResourceUrlResolver$ } from "./attachment-resource-url.ts";
+import { pageAttachmentResourceUrlResolver$ } from "./attachment-resource-url.ts";
 
 export type TextPreviewKind = "markdown" | "text" | "json" | "csv";
 export type TextPreviewComputed = Computed<Promise<string>>;
@@ -62,12 +62,17 @@ export async function fetchPreviewText(url: string): Promise<string> {
   return readLimitedText(response);
 }
 
-export function createTextPreviewComputed(url: string): TextPreviewComputed {
+export function createTextPreviewComputed(
+  url: string,
+  resourceUrl$?: Computed<Promise<string>>,
+): TextPreviewComputed {
   return computed(async (get) => {
     // The canonical attachment URL needs an Authorization header this fetch
     // does not carry, so read the presigned object URL instead.
-    const resolveResourceUrl = get(attachmentResourceUrlResolver$);
-    return fetchPreviewText(await get(resolveResourceUrl(url)));
+    const resourceUrl = resourceUrl$
+      ? await get(resourceUrl$)
+      : await get(get(pageAttachmentResourceUrlResolver$)(url));
+    return fetchPreviewText(resourceUrl);
   });
 }
 

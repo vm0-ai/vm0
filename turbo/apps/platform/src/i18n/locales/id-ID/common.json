@@ -711,7 +711,7 @@
       "lastSeen": "Terakhir terlihat {{date}}",
       "linkExpires": "Tautan kedaluwarsa pada {{date}}.",
       "macRequirement": "Memerlukan Mac Apple silicon dengan macOS 14 atau yang lebih baru. Mac Intel tidak didukung.",
-      "noHostsDescription": "Buka {{desktopProductName}} Computer Use di Mac Anda dan muat ulang halaman ini saat sudah online.",
+      "noHostsDescription": "Buka {{desktopApplicationName}} di Mac Anda dan muat ulang halaman ini saat sudah online.",
       "noHostsTitle": "Tidak ada komputer online",
       "sources": {
         "chat": "thread chat ini",

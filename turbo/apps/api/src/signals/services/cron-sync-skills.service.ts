@@ -49,6 +49,11 @@ interface SyncSkillsResult {
   readonly total: number;
 }
 
+interface SyncSkillsScope {
+  readonly skillNamePrefix: string | null;
+  readonly requiredSkillNames: readonly string[];
+}
+
 interface ExtractedFile {
   readonly path: string;
   readonly content: Buffer;
@@ -81,6 +86,7 @@ interface SkillArchiveUpload {
 const log = logger("skills:sync");
 const REPO_REFS_URL = `https://github.com/${DEFAULT_SKILLS_OWNER}/${DEFAULT_SKILLS_REPO}.git/info/refs?service=git-upload-pack`;
 const TARBALL_URL = `https://codeload.github.com/${DEFAULT_SKILLS_OWNER}/${DEFAULT_SKILLS_REPO}/tar.gz/refs/heads/${DEFAULT_SKILLS_BRANCH}`;
+const OFFICIAL_SKILL_URL_ROOT = `https://github.com/${DEFAULT_SKILLS_OWNER}/${DEFAULT_SKILLS_REPO}/tree/${DEFAULT_SKILLS_BRANCH}/`;
 const SYNC_BATCH_SIZE = 5;
 
 function parseHeadRef(pktLineText: string, branch: string): string {
@@ -596,6 +602,7 @@ function syncSingleSkill(
 function removeOrphanedSkills(
   db: Db,
   extractedSkills: readonly ExtractedSkill[],
+  urlPrefix: string,
   signal: AbortSignal,
 ): Computed<Promise<number>> {
   return computed(async (get): Promise<number> => {
@@ -604,7 +611,6 @@ function removeOrphanedSkills(
         return skillUrl(skill.skillName);
       }),
     );
-    const urlPrefix = `https://github.com/${DEFAULT_SKILLS_OWNER}/${DEFAULT_SKILLS_REPO}/tree/${DEFAULT_SKILLS_BRANCH}/`;
     const existingSkills = await db
       .select({ id: skills.id, url: skills.url, storageId: skills.storageId })
       .from(skills)
@@ -685,13 +691,16 @@ function removeOrphanedSkills(
   });
 }
 
-function validateSeedSkills(extractedSkills: readonly ExtractedSkill[]): void {
+function validateSeedSkills(
+  extractedSkills: readonly ExtractedSkill[],
+  requiredSkillNames: readonly string[],
+): void {
   const tarballNames = new Set(
     extractedSkills.map((skill) => {
       return skill.skillName;
     }),
   );
-  const missingSkills = SEED_SKILLS.filter((name) => {
+  const missingSkills = requiredSkillNames.filter((name) => {
     return !tarballNames.has(name);
   });
 
@@ -704,16 +713,25 @@ function validateSeedSkills(extractedSkills: readonly ExtractedSkill[]): void {
   }
 }
 
-export const syncSkills$ = command(
-  async ({ get, set }, signal: AbortSignal): Promise<SyncSkillsResult> => {
+export const syncSkillsForScope$ = command(
+  async (
+    { get, set },
+    scope: SyncSkillsScope,
+    signal: AbortSignal,
+  ): Promise<SyncSkillsResult> => {
     const db = set(writeDb$);
     const headSha = await fetchHeadCommitSha(signal);
     signal.throwIfAborted();
 
-    const [existing] = await db
-      .select({ commitSha: skills.commitSha })
-      .from(skills)
-      .limit(1);
+    const urlPrefix = `${OFFICIAL_SKILL_URL_ROOT}${scope.skillNamePrefix ?? ""}`;
+    const [existing] =
+      scope.skillNamePrefix === null
+        ? await db.select({ commitSha: skills.commitSha }).from(skills).limit(1)
+        : await db
+            .select({ commitSha: skills.commitSha })
+            .from(skills)
+            .where(like(skills.url, `${urlPrefix}%`))
+            .limit(1);
     signal.throwIfAborted();
 
     if (existing?.commitSha === headSha) {
@@ -727,7 +745,14 @@ export const syncSkills$ = command(
       };
     }
 
-    const extractedSkills = await downloadAndExtractSkills(signal);
+    const extractedSkills = (await downloadAndExtractSkills(signal)).filter(
+      (skill) => {
+        return (
+          scope.skillNamePrefix === null ||
+          skill.skillName.startsWith(scope.skillNamePrefix)
+        );
+      },
+    );
     signal.throwIfAborted();
 
     let synced = 0;
@@ -769,10 +794,10 @@ export const syncSkills$ = command(
     }
 
     const removed = await get(
-      removeOrphanedSkills(db, extractedSkills, signal),
+      removeOrphanedSkills(db, extractedSkills, urlPrefix, signal),
     );
     signal.throwIfAborted();
-    validateSeedSkills(extractedSkills);
+    validateSeedSkills(extractedSkills, scope.requiredSkillNames);
 
     log.debug("Skills sync completed", {
       commitSha: headSha,
@@ -791,5 +816,15 @@ export const syncSkills$ = command(
       removed,
       total: extractedSkills.length,
     };
+  },
+);
+
+export const syncSkills$ = command(
+  async ({ set }, signal: AbortSignal): Promise<SyncSkillsResult> => {
+    return await set(
+      syncSkillsForScope$,
+      { skillNamePrefix: null, requiredSkillNames: SEED_SKILLS },
+      signal,
+    );
   },
 );

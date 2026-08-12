@@ -9,6 +9,7 @@ import {
 } from "../../../lib/markdown/pipeline.ts";
 import { describe, expect, it } from "vitest";
 import { createArtifactCardSignalsRegistry } from "../../../signals/chat-page/artifact-card-signals.ts";
+import { createAttachmentResourceUrlResolver } from "../../../signals/attachment-resource-url.ts";
 import type { MarkdownCardRef } from "../../../signals/chat-page/markdown-card-ref.ts";
 import {
   cardSlotUrl,
@@ -45,6 +46,7 @@ const store = createStore();
 function assistantEvent({ content }: { content: string }): EventFixture {
   const artifactCardSignals = createArtifactCardSignalsRegistry(
     emptyArtifactPreviewImageUrls$,
+    createAttachmentResourceUrlResolver(),
   );
   const plan = eventBodyPlan(content, { previews: true });
   const cards = new Map<string, MarkdownCardRef>();

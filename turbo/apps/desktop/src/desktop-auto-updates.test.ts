@@ -81,6 +81,8 @@ const productionConfig: DesktopConfig = {
     product: "zero",
     brandName: "Zero",
     displayName: "Zero Computer Use",
+    userDataDirectoryName: "Zero Computer Use",
+    updateLine: "zero",
     bundleId: "ai.vm0.desktop",
     authProtocolName: "Zero Computer Use",
     authScheme: "vm0",
@@ -214,10 +216,12 @@ describe("desktop auto-updates", () => {
       identity: {
         product: "okou",
         brandName: "Okou",
-        displayName: "Okou Computer Use",
-        bundleId: "ai.okou.computer-use",
+        displayName: "Okou",
+        userDataDirectoryName: "Okou",
+        updateLine: "ai-okou-desktop",
+        bundleId: "ai.okou.desktop",
         authProtocolName: "Okou Desktop Auth",
-        authScheme: "ai.okou.computer-use",
+        authScheme: "ai.okou.desktop",
       },
     };
 
@@ -233,7 +237,7 @@ describe("desktop auto-updates", () => {
       expect.objectContaining({
         updateSource: expect.objectContaining({
           baseUrl:
-            "https://api.okou.ai/api/desktop/updates/okou/stable/darwin/arm64",
+            "https://api.okou.ai/api/desktop/updates/ai-okou-desktop/stable/darwin/arm64",
         }),
       }),
     );

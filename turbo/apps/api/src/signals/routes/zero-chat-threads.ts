@@ -6,6 +6,8 @@ import {
   chatThreadEventsContract,
   chatThreadsContract,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import { isFeatureEnabled } from "@vm0/core/feature-switch";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { z } from "zod";
 
 import { authContext$, organizationAuthContext$ } from "../auth/auth-context";
@@ -25,11 +27,13 @@ import {
   zeroChatThreadDetail,
   zeroChatThreadEventById,
   zeroChatThreadEventsPage,
+  zeroChatThreadQueuedEvents,
   zeroChatThreadDraftIds,
   zeroChatThreadUnreadAgentIds,
   zeroChatThreadUnreadThreadIds,
   zeroChatThreadUnreads,
 } from "../services/zero-chat-thread.service";
+import { userFeatureSwitchContext } from "../services/feature-switches.service";
 import {
   zeroChatThreadEventRows,
   zeroChatThreadEventSnapshot,
@@ -62,6 +66,22 @@ function chatThreadNotFound() {
 function isValidChatThreadId(id: string): boolean {
   return chatThreadIdSchema.safeParse(id).success;
 }
+
+const chatEventSnapshotReadDisabled = Object.freeze({
+  status: 403 as const,
+  body: Object.freeze({
+    error: Object.freeze({
+      message: "Chat event snapshot read is not enabled",
+      code: "FORBIDDEN" as const,
+    }),
+  }),
+});
+
+const chatEventSnapshotReadEnabled$ = computed(async (get) => {
+  const auth = get(organizationAuthContext$);
+  const context = await get(userFeatureSwitchContext(auth.orgId, auth.userId));
+  return isFeatureEnabled(FeatureSwitchKey.ChatEventSnapshotRead, context);
+});
 
 const getChatThreadInner$ = computed(async (get) => {
   const auth = get(authContext$);
@@ -241,6 +261,27 @@ const listChatEventRowsInner$ = computed(async (get) => {
   return {
     status: 200 as const,
     body: { rows: [...page.rows] },
+  };
+});
+
+const listQueuedChatEventsInner$ = computed(async (get) => {
+  if (!(await get(chatEventSnapshotReadEnabled$))) {
+    return chatEventSnapshotReadDisabled;
+  }
+  const auth = get(organizationAuthContext$);
+  const params = get(pathParamsOf(chatThreadEventsContract.queued));
+  const events = await get(
+    zeroChatThreadQueuedEvents({
+      threadId: params.threadId,
+      userId: auth.userId,
+    }),
+  );
+  if (!events) {
+    return chatThreadNotFound();
+  }
+  return {
+    status: 200 as const,
+    body: { events: [...events] },
   };
 });
 
@@ -457,6 +498,17 @@ export const zeroChatThreadRoutes: readonly RouteEntry[] = [
     handler: authRoute(
       { requiredCapability: "chat-event:read" },
       listChatEventRowsInner$,
+    ),
+  },
+  {
+    route: chatThreadEventsContract.queued,
+    handler: authRoute(
+      {
+        requireOrganization: true,
+        missingOrganizationStatus: 401,
+        requiredCapability: "chat-event:read",
+      },
+      listQueuedChatEventsInner$,
     ),
   },
   {

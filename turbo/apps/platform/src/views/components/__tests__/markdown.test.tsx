@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import {
   chatThreadByIdContract,
   chatThreadEventsContract,
@@ -133,6 +133,18 @@ function getLinkByText(container: ParentNode, text: string): HTMLElement {
   }
 
   return link;
+}
+
+function getCopyButton(code: string): HTMLButtonElement {
+  const button = Array.from(
+    document.querySelectorAll<HTMLButtonElement>(".copied"),
+  ).find((element) => {
+    return element.dataset.code === code;
+  });
+  if (!button) {
+    throw new Error(`Could not find copy button: ${code}`);
+  }
+  return button;
 }
 
 async function navigateToAgents(): Promise<void> {
@@ -270,6 +282,59 @@ describe("assistant markdown", () => {
       const video = document.querySelector(`video[src="${videoSrc}"]`);
       expect(video).toBeInTheDocument();
       expect(video).toHaveAttribute("controls");
+    });
+  });
+
+  it("keeps copy confirmations local to each mounted button", async () => {
+    const firstCode = "const first = 1;\n";
+    const secondCode = "const second = 2;\n";
+    const clipboard = context.mocks.browser.clipboardWriteText();
+    mockThread(
+      [
+        "```ts",
+        firstCode.trimEnd(),
+        "```",
+        "",
+        "```ts",
+        secondCode.trimEnd(),
+        "```",
+      ].join("\n"),
+    );
+    mockAgentsPage();
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    const first = await waitFor(() => {
+      return getCopyButton(firstCode);
+    });
+    const second = getCopyButton(secondCode);
+    click(first);
+    await waitFor(() => {
+      expect(first).toHaveAccessibleName("Copied");
+      expect(second).toHaveAccessibleName("Copy to clipboard");
+    });
+    click(second);
+    await waitFor(() => {
+      expect(first).toHaveAccessibleName("Copied");
+      expect(second).toHaveAccessibleName("Copied");
+    });
+    expect(clipboard.writes).toStrictEqual([firstCode, secondCode]);
+
+    await navigateToAgents();
+    act(() => {
+      window.history.back();
+    });
+
+    await waitFor(() => {
+      expect(getCopyButton(firstCode)).toHaveAccessibleName(
+        "Copy to clipboard",
+      );
+      expect(getCopyButton(secondCode)).toHaveAccessibleName(
+        "Copy to clipboard",
+      );
     });
   });
 

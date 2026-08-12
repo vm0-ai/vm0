@@ -16,10 +16,14 @@ export interface CopyButtonProps extends Omit<
 > {
   text: string;
   resetDelay?: number;
+  showTooltip?: boolean;
 }
 
 const CopyButton = React.forwardRef<HTMLButtonElement, CopyButtonProps>(
-  ({ text, resetDelay = 2000, className, ...props }, ref) => {
+  (
+    { text, resetDelay = 2000, showTooltip = true, className, ...props },
+    ref,
+  ) => {
     const [copied, setCopied] = React.useState(false);
 
     React.useEffect(() => {
@@ -45,27 +49,33 @@ const CopyButton = React.forwardRef<HTMLButtonElement, CopyButtonProps>(
       );
     };
 
+    const button = (
+      <button
+        ref={ref}
+        onClick={handleCopy}
+        className={cn(
+          "p-2 hover:bg-state-hover rounded-md transition-colors shrink-0 group",
+          className,
+        )}
+        aria-label={copied ? "Copied" : "Copy to clipboard"}
+        {...props}
+      >
+        {copied ? (
+          <Check className="h-4 w-4 text-green-500" />
+        ) : (
+          <Copy className="h-4 w-4 text-muted-foreground group-hover:text-foreground transition-colors" />
+        )}
+      </button>
+    );
+
+    if (!showTooltip) {
+      return button;
+    }
+
     return (
       <TooltipProvider>
         <Tooltip open={copied}>
-          <TooltipTrigger asChild>
-            <button
-              ref={ref}
-              onClick={handleCopy}
-              className={cn(
-                "p-2 hover:bg-state-hover rounded-md transition-colors shrink-0 group",
-                className,
-              )}
-              aria-label={copied ? "Copied" : "Copy to clipboard"}
-              {...props}
-            >
-              {copied ? (
-                <Check className="h-4 w-4 text-green-500" />
-              ) : (
-                <Copy className="h-4 w-4 text-muted-foreground group-hover:text-foreground transition-colors" />
-              )}
-            </button>
-          </TooltipTrigger>
+          <TooltipTrigger asChild>{button}</TooltipTrigger>
           <TooltipContent>
             <p>Copied!</p>
           </TooltipContent>

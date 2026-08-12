@@ -30,6 +30,7 @@ interface PendingChatQueueEvent {
   readonly id: string;
   readonly chatThreadId: string;
   readonly eventType: "input.prompt" | "input.automation" | "input.goal";
+  readonly seqId: number;
   readonly createdAt: Date;
 }
 
@@ -119,6 +120,7 @@ export async function listPendingChatQueueEvents(
       id: chatEvents.id,
       chatThreadId: chatEvents.chatThreadId,
       eventType: chatEvents.eventType,
+      seqId: chatEvents.seqId,
       createdAt: chatEvents.createdAt,
     })
     .from(chatEvents)
@@ -148,6 +150,7 @@ export async function listPendingChatQueueEvents(
         id: event.id,
         chatThreadId: event.chatThreadId,
         eventType: event.eventType,
+        seqId: event.seqId,
         createdAt: event.createdAt,
       },
     ];
@@ -166,6 +169,7 @@ export async function loadPendingChatQueueEvent(
       id: chatEvents.id,
       chatThreadId: chatEvents.chatThreadId,
       eventType: chatEvents.eventType,
+      seqId: chatEvents.seqId,
       createdAt: chatEvents.createdAt,
     })
     .from(chatEvents)
