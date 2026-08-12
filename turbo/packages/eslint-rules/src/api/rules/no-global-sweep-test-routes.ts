@@ -29,6 +29,12 @@ interface ParameterSource {
   readonly source: TSESTree.Expression;
 }
 
+type FactoryPropertyResolution =
+  | "canonical"
+  | "missing"
+  | "noncanonical"
+  | "unknown";
+
 interface GlobalSweepBoundary {
   readonly exportName: string;
   readonly moduleName: string;
@@ -562,10 +568,86 @@ export const noGlobalSweepTestRoutes = createRule({
         return true;
       }
       const definition = variableInScope(context.sourceCode, current)?.defs[0];
+      if (definition?.type === "Parameter") {
+        const sources = parameterSources(current);
+        return sources.some(({ binding, source }) => {
+          return (
+            binding.property === null && isAppFactoryNamespace(source, nextSeen)
+          );
+        });
+      }
       return Boolean(
         definition?.node.type === AST_NODE_TYPES.VariableDeclarator &&
         definition.node.init &&
         isAppFactoryNamespace(definition.node.init, nextSeen),
+      );
+    }
+
+    function appFactoryProperty(
+      expression: TSESTree.Expression,
+      name: string,
+      seen: ReadonlySet<TSESTree.Node> = new Set(),
+    ): FactoryPropertyResolution {
+      const current = unwrapExpression(expression);
+      if (seen.has(current)) {
+        return "unknown";
+      }
+      const nextSeen = new Set(seen).add(current);
+      if (isAppFactoryNamespace(current, seen)) {
+        return "canonical";
+      }
+      if (current.type === AST_NODE_TYPES.Identifier) {
+        const definition = variableInScope(context.sourceCode, current)
+          ?.defs[0];
+        if (
+          definition?.node.type === AST_NODE_TYPES.VariableDeclarator &&
+          definition.node.init
+        ) {
+          return appFactoryProperty(definition.node.init, name, nextSeen);
+        }
+        return importReference(context.sourceCode, current)
+          ? "noncanonical"
+          : "unknown";
+      }
+      if (current.type !== AST_NODE_TYPES.ObjectExpression) {
+        return "unknown";
+      }
+      for (const property of [...current.properties].reverse()) {
+        if (property.type === AST_NODE_TYPES.SpreadElement) {
+          const spread = appFactoryProperty(property.argument, name, nextSeen);
+          if (spread !== "missing") {
+            return spread;
+          }
+          continue;
+        }
+        if (
+          propertyName(property) === name &&
+          property.value.type !== AST_NODE_TYPES.AssignmentPattern
+        ) {
+          return isAppFactory(property.value as TSESTree.Expression, nextSeen)
+            ? "canonical"
+            : "noncanonical";
+        }
+      }
+      return "missing";
+    }
+
+    function isAppFactoryObjectBinding(
+      source: TSESTree.Expression,
+      binding: ObjectBinding,
+      seen: ReadonlySet<TSESTree.Node>,
+    ): boolean {
+      if (!binding.property || !APP_FACTORIES.has(binding.property)) {
+        return false;
+      }
+      const resolution = appFactoryProperty(source, binding.property, seen);
+      if (resolution === "canonical") {
+        return true;
+      }
+      return Boolean(
+        resolution === "missing" &&
+        binding.defaultValue &&
+        isAppFactory(binding.defaultValue, seen),
       );
     }
 
@@ -598,6 +680,14 @@ export const noGlobalSweepTestRoutes = createRule({
       }
       const definition = variableInScope(context.sourceCode, expression)
         ?.defs[0];
+      if (definition?.type === "Parameter") {
+        const sources = parameterSources(expression);
+        return sources.some(({ binding, source }) => {
+          return binding.property === null
+            ? isAppFactory(source, nextSeen)
+            : isAppFactoryObjectBinding(source, binding, nextSeen);
+        });
+      }
       if (
         definition?.node.type === AST_NODE_TYPES.VariableDeclarator &&
         definition.node.init &&

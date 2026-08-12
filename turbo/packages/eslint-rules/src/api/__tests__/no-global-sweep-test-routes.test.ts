@@ -199,6 +199,32 @@ ruleTester.run("no-global-sweep-test-routes", noGlobalSweepTestRoutes, {
       errors: [{ messageId: "globalSweep" }],
     },
     {
+      name: "canonical app factory namespaces cannot flow through helper parameters",
+      filename: behaviorTest,
+      code: `
+        import { ROUTES } from "../../route";
+        import * as appFactory from "../../../app-factory";
+        function mount(factory) {
+          return factory.createApp({ routes: ROUTES });
+        }
+        mount(appFactory);
+      `,
+      errors: [{ messageId: "globalSweep" }],
+    },
+    {
+      name: "destructured canonical app factories cannot flow through helper parameters",
+      filename: behaviorTest,
+      code: `
+        import { ROUTES } from "../../route";
+        import * as appFactory from "../../../app-factory";
+        function mount({ createApp: build }) {
+          return build({ routes: ROUTES });
+        }
+        mount(appFactory);
+      `,
+      errors: [{ messageId: "globalSweep" }],
+    },
+    {
       name: "aggregate routes cannot flow through a local member projection",
       filename: behaviorTest,
       code: `
