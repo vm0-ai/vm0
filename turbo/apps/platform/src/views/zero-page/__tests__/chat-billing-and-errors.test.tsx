@@ -4,6 +4,7 @@ import {
   chatThreadByIdContract,
   chatThreadEventsContract,
   chatThreadsContract,
+  type ChatEvent,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   zeroBillingCheckoutContract,
@@ -19,6 +20,7 @@ import {
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { mockChatLifecycle, threadListSnapshot } from "./chat-test-helpers.ts";
+import { mockChatEventRows } from "./chat-event-test-helpers.ts";
 import {
   context,
   detachedSetupPage,
@@ -481,46 +483,41 @@ describe("chat lifecycle", () => {
       });
     });
     context.mocks.api(
-      chatThreadEventsContract.list,
+      chatThreadEventsContract.rows,
       ({ params, query, respond }) => {
-        if (query.sinceSeqId) {
-          return respond(200, { events: [] });
-        }
+        let events: ChatEvent[];
         if (params.threadId === RUNNING_THREAD_ID) {
-          return respond(200, {
-            events: [
-              {
-                id: "msg-running-user",
-                threadId: RUNNING_THREAD_ID,
-                eventType: "input.prompt" as const,
-                content: null,
-                userMessage: {
-                  version: 1,
-                  parts: [{ type: "text", text: "Active task prompt" }],
-                },
-                runId: "run-active",
-                seqId: 1,
-                createdAt: "2026-03-10T00:00:00Z",
+          events = [
+            {
+              id: "msg-running-user",
+              threadId: RUNNING_THREAD_ID,
+              eventType: "input.prompt" as const,
+              content: null,
+              userMessage: {
+                version: 1,
+                parts: [{ type: "text", text: "Active task prompt" }],
               },
-              {
-                id: "msg-running-assistant",
-                threadId: RUNNING_THREAD_ID,
-                eventType: "output.thinking" as const,
-                thinking: "",
-                content: null,
-                runId: "run-active",
-                seqId: 2,
-                createdAt: "2026-03-10T00:00:01Z",
-              },
-            ],
-          });
-        }
-        return respond(200, {
-          events: [
+              runId: "run-active",
+              seqId: 1,
+              createdAt: "2026-03-10T00:00:00Z",
+            },
+            {
+              id: "msg-running-assistant",
+              threadId: RUNNING_THREAD_ID,
+              eventType: "output.thinking" as const,
+              thinking: "",
+              content: null,
+              runId: "run-active",
+              seqId: 2,
+              createdAt: "2026-03-10T00:00:01Z",
+            },
+          ];
+        } else {
+          events = [
             {
               id: "msg-completed-user",
               threadId: COMPLETED_THREAD_ID,
-              eventType: "input.prompt" as const,
+              eventType: "input.prompt",
               content: null,
               userMessage: {
                 version: 1,
@@ -532,12 +529,17 @@ describe("chat lifecycle", () => {
             {
               id: "msg-completed-assistant",
               threadId: COMPLETED_THREAD_ID,
-              eventType: "output.message" as const,
+              eventType: "output.message",
               content: "All done!",
               seqId: 2,
               createdAt: "2026-03-10T00:00:01Z",
             },
-          ],
+          ];
+        }
+        return respond(200, {
+          rows: mockChatEventRows(events).filter((row) => {
+            return row.seqId > query.sinceSeqId;
+          }),
         });
       },
     );

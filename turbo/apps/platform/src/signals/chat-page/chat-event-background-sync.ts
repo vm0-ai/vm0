@@ -2,22 +2,13 @@ import { command } from "ccstate";
 import { chatEventFromRow } from "@vm0/api-contracts/contracts/chat-event-row-projection";
 import type { ChatEvent } from "@vm0/api-contracts/contracts/chat-threads";
 import { foregroundReady$ } from "../auth-retry.ts";
-import { chatEventSnapshotReadEnabled$ } from "../external/feature-switch.ts";
 import { logger } from "../log.ts";
 import { setAblyMessageLoop$ } from "../realtime.ts";
-import {
-  loadIndexedDbChatEventBounds$,
-  writeIndexedDbChatEvents$,
-} from "./chat-event-indexed-db.ts";
 import {
   clearIndexedDbChatEventRows$,
   loadIndexedDbChatEventRowLastSeqId$,
   writeIndexedDbChatEventRows$,
 } from "./chat-event-row-indexed-db.ts";
-import {
-  CHAT_EVENTS_PAGE_LIMIT,
-  listEventsAfter$,
-} from "./remote-chat-event-data-source.ts";
 import {
   CHAT_EVENT_ROWS_PAGE_LIMIT,
   fetchChatEventSnapshotRows$,
@@ -96,9 +87,9 @@ const coldStartChatThreadRows$ = command(
 );
 
 /**
- * Snapshot-read variant: cold-starts an empty raw-row cache from the archive,
- * then tails it through the raw-row endpoint. An expired cursor rebuilds the
- * cache in the same pass.
+ * Canonical-row background sync: cold-starts an empty raw-row cache from the
+ * archive, then tails it through the raw-row endpoint. An expired cursor
+ * rebuilds the cache in the same pass.
  */
 const syncChatThreadRowsToIndexedDb$ = command(
   async (
@@ -176,76 +167,6 @@ const syncChatThreadRowsToIndexedDb$ = command(
   },
 );
 
-const syncChatThreadEventsToIndexedDb$ = command(
-  async (
-    { get, set },
-    {
-      threadId,
-      syncThroughSeqId,
-    }: {
-      readonly threadId: string;
-      readonly syncThroughSeqId: number | null;
-    },
-    signal: AbortSignal,
-  ): Promise<ChatEvent[]> => {
-    if (get(chatEventSnapshotReadEnabled$)) {
-      return await set(
-        syncChatThreadRowsToIndexedDb$,
-        { threadId, syncThroughSeqId },
-        signal,
-      );
-    }
-    const bounds = await set(loadIndexedDbChatEventBounds$, threadId, signal);
-    signal.throwIfAborted();
-
-    if (
-      syncThroughSeqId !== null &&
-      bounds.last !== null &&
-      bounds.last.seqId >= syncThroughSeqId
-    ) {
-      L.debug("skipped background sync: seq watermark already cached", {
-        threadId,
-        syncThroughSeqId,
-      });
-      return [];
-    }
-
-    const syncedEvents: ChatEvent[] = [];
-    let sinceSeqId = bounds.last?.seqId;
-
-    async function syncEventsAfter(): Promise<void> {
-      const requestedSinceSeqId = sinceSeqId;
-      const events = await set(
-        listEventsAfter$,
-        { threadId, sinceSeqId: requestedSinceSeqId },
-        signal,
-      );
-      signal.throwIfAborted();
-
-      if (events.length === 0) {
-        return;
-      }
-
-      await set(writeIndexedDbChatEvents$, threadId, events, signal);
-      signal.throwIfAborted();
-      syncedEvents.push(...events);
-      sinceSeqId = events[events.length - 1]!.seqId;
-      if (
-        requestedSinceSeqId !== undefined &&
-        events.length < CHAT_EVENTS_PAGE_LIMIT
-      ) {
-        return;
-      }
-      await syncEventsAfter();
-    }
-
-    await syncEventsAfter();
-    signal.throwIfAborted();
-    L.debug("synced chat events to IndexedDB", { threadId });
-    return syncedEvents;
-  },
-);
-
 const handleUserChannelMessage$ = command(
   async ({ set }, message: unknown, signal: AbortSignal): Promise<boolean> => {
     const threadId = createdMessageThreadId(message);
@@ -260,7 +181,7 @@ const handleUserChannelMessage$ = command(
       syncThroughSeqId,
     });
     const events = await set(
-      syncChatThreadEventsToIndexedDb$,
+      syncChatThreadRowsToIndexedDb$,
       { threadId, syncThroughSeqId },
       signal,
     );

@@ -57,6 +57,7 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { detachedNavigateTo$ } from "../../../signals/route.ts";
 import { ROUTES } from "../../../signals/route-paths.ts";
 import { testConnectorPermissionDetails } from "../../../mocks/handlers/connector-catalog-fixtures.ts";
+import { mockChatEventRows } from "../../zero-page/__tests__/chat-event-test-helpers.ts";
 
 const context = testContext();
 const zeroAgentId = "c0000000-0000-4000-a000-000000000001";
@@ -1013,13 +1014,10 @@ describe("team page navigation", () => {
       });
     });
     context.mocks.api(
-      chatThreadEventsContract.list,
+      chatThreadEventsContract.rows,
       ({ params, query, respond }) => {
-        if (query.sinceSeqId !== undefined || query.beforeSeqId !== undefined) {
-          return respond(200, { events: [] });
-        }
         return respond(200, {
-          events:
+          rows: mockChatEventRows(
             params.threadId === firstThreadId
               ? [
                   {
@@ -1041,6 +1039,9 @@ describe("team page navigation", () => {
                   },
                 ]
               : [],
+          ).filter((row) => {
+            return row.seqId > query.sinceSeqId;
+          }),
         });
       },
     );

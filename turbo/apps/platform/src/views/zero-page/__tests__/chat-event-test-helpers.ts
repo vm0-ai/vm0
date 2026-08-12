@@ -5,6 +5,7 @@ import {
   type ChatRecommendedFollowup,
   type UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import type { ChatEventRowV4 } from "@vm0/api-contracts/contracts/chat-event-rows";
 
 type UnionKeys<T> = T extends unknown ? keyof T : never;
 type UnionValue<T, K extends PropertyKey> = T extends unknown
@@ -273,6 +274,49 @@ export function normalizeMockChatEvents(
     const fallbackId = `mock-chat-event-${index.toString()}`;
     const seqId = message.seqId ?? nextSeqId;
     nextSeqId = Math.max(nextSeqId, seqId + 1);
+    if (message.runLifecycleEvent === "completed" && message.content !== null) {
+      const output = normalizeMockChatEvent(
+        {
+          ...message,
+          eventType: "output.message",
+          runLifecycleEvent: undefined,
+          followups: undefined,
+        },
+        fallbackId,
+        seqId,
+      );
+      const terminal = normalizeMockChatEvent(
+        {
+          ...message,
+          id: `${output.id}:completed`,
+          content: null,
+          eventType: "run.completed",
+          runLifecycleEvent: "completed",
+          followups: undefined,
+        },
+        `${fallbackId}:completed`,
+        seqId + 1,
+      );
+      nextSeqId = Math.max(nextSeqId, seqId + 2);
+      if (message.followups === undefined) {
+        return [output, terminal];
+      }
+      const followups = normalizeMockChatEvent(
+        {
+          ...message,
+          id: `${output.id}:followups`,
+          seqId: seqId + 2,
+          content: serializeChatFollowupsContent(message.followups),
+          error: undefined,
+          runLifecycleEvent: undefined,
+          eventType: "output.followups",
+        },
+        `${fallbackId}:followups`,
+        seqId + 2,
+      );
+      nextSeqId = Math.max(nextSeqId, seqId + 3);
+      return [output, terminal, followups];
+    }
     if (
       message.followups !== undefined &&
       message.runLifecycleEvent !== undefined
@@ -299,5 +343,83 @@ export function normalizeMockChatEvents(
       return [terminal, followups];
     }
     return [normalizeMockChatEvent(message, fallbackId, seqId)];
+  });
+}
+
+const NULL_PAYLOAD_EVENT_TYPES = [
+  "run.dequeued",
+  "run.completed",
+  "control.interrupt",
+  "control.revoke",
+  "browser.open",
+  "browser.close",
+  "goal.close",
+] as const satisfies readonly ChatEvent["eventType"][];
+
+function mockChatEventRowPayload(event: ChatEvent): ChatEventRowV4["payload"] {
+  if (
+    NULL_PAYLOAD_EVENT_TYPES.some((eventType) => {
+      return eventType === event.eventType;
+    })
+  ) {
+    return null;
+  }
+  switch (event.eventType) {
+    case "input.prompt":
+    case "input.goal":
+    case "input.budget": {
+      return { userMessage: event.userMessage };
+    }
+    case "input.automation": {
+      return event.userMessage ? { userMessage: event.userMessage } : null;
+    }
+    case "input.rejected": {
+      return { userMessage: event.userMessage, error: event.error };
+    }
+    case "output.message":
+    case "output.followups":
+    case "run.queued":
+    case "goal.open": {
+      return { content: event.content };
+    }
+    case "output.error": {
+      return { error: event.error };
+    }
+    case "output.thinking": {
+      return { thinking: event.thinking };
+    }
+    case "run.failed":
+    case "run.cancelled": {
+      return event.error === undefined ? null : { error: event.error };
+    }
+    case "usage.recorded": {
+      return { usage: event.usage };
+    }
+  }
+  return null;
+}
+
+export function mockChatEventRows(
+  events: readonly ChatEvent[],
+): ChatEventRowV4[] {
+  return events.map((event) => {
+    const goalContextId = event.runGroupId ?? null;
+    return {
+      id: event.id,
+      chatThreadId: event.threadId,
+      runId:
+        event.eventType === "control.interrupt"
+          ? event.interruptsRunId
+          : (event.runId ?? null),
+      revokesEventId: event.revokesEventId ?? null,
+      eventType: event.eventType,
+      payload: mockChatEventRowPayload(event),
+      contextType: goalContextId === null ? null : "goal",
+      contextId: goalContextId,
+      runEventSequenceNumber: event.sequenceNumber ?? null,
+      runEventId: event.runEventId ?? null,
+      seqId: event.seqId,
+      createdAt: event.createdAt,
+    };
   });
 }

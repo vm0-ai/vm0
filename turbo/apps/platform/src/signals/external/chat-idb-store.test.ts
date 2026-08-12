@@ -1,6 +1,6 @@
 import type { DBSchema, IDBPDatabase, OpenDBCallbacks, openDB } from "idb";
 import { describe, expect, it, vi, type Mock } from "vitest";
-import { CHAT_IDB_VERSION, CHAT_MESSAGES_STORE } from "./chat-idb-schema.ts";
+import { CHAT_EVENT_ROWS_STORE, CHAT_IDB_VERSION } from "./chat-idb-schema.ts";
 import { createChatIdbOpener } from "./chat-idb-store.ts";
 
 type VersionChangeListener = (event: IDBVersionChangeEvent) => void;
@@ -167,7 +167,7 @@ describe("openChatIdb", () => {
     );
 
     expect(schemaDb.createObjectStore).toHaveBeenCalledWith(
-      CHAT_MESSAGES_STORE,
+      CHAT_EVENT_ROWS_STORE,
       { keyPath: "id" },
     );
   });

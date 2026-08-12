@@ -3,7 +3,6 @@ import { computed } from "ccstate";
 import {
   chatThreadByIdContract,
   chatThreadDraftContract,
-  chatThreadEventsContract,
   chatThreadsContract,
   type ChatThreadEvent,
   type ChatThreadSnapshotProjection,
@@ -31,9 +30,7 @@ import {
   threadMeta,
   touchOptimisticChatThreadSort$,
 } from "../chat-thread-event-sourcing.ts";
-import { loadIndexedDbChatEvents$ } from "../chat-event-indexed-db.ts";
 import { createRemoteChatThreadDraft } from "../chat-thread-remote-signals.ts";
-import { listEventsAfter$ } from "../remote-chat-event-data-source.ts";
 import { openChatIdb } from "../../external/chat-idb-store.ts";
 import { createIdbChatThreadEventStores } from "../../external/idb-chat-thread-event-store.ts";
 import type { OptimisticChatThreadEvent } from "../chat-thread-event-types.ts";
@@ -687,7 +684,6 @@ describe("chat thread event sourcing local-first list", () => {
     });
 
     let threadDraftRequests = 0;
-    let initialEventsRequests = 0;
     context.mocks.api(chatThreadDraftContract.get, ({ params, respond }) => {
       threadDraftRequests += 1;
       expect(params.id).toBe(OPTIMISTIC_THREAD_ID);
@@ -696,23 +692,9 @@ describe("chat thread event sourcing local-first list", () => {
         draftAttachments: null,
       });
     });
-    context.mocks.api(chatThreadEventsContract.list, ({ params, respond }) => {
-      initialEventsRequests += 1;
-      expect(params.threadId).toBe(OPTIMISTIC_THREAD_ID);
-      return respond(200, { events: [] });
-    });
-
     const threadDraft$ = createRemoteChatThreadDraft(OPTIMISTIC_THREAD_ID);
     await expect(context.store.get(threadDraft$)).resolves.toBeNull();
-    await expect(
-      context.store.set(
-        loadIndexedDbChatEvents$,
-        OPTIMISTIC_THREAD_ID,
-        context.signal,
-      ),
-    ).resolves.toStrictEqual([]);
     expect(threadDraftRequests).toBe(0);
-    expect(initialEventsRequests).toBe(0);
 
     context.store.set(reconcileOptimisticChatThreadEvents$, {
       snapshot: [],
@@ -723,15 +705,7 @@ describe("chat thread event sourcing local-first list", () => {
       draftUserMessage: null,
       draftAttachments: null,
     });
-    await expect(
-      context.store.set(
-        listEventsAfter$,
-        { threadId: OPTIMISTIC_THREAD_ID, sinceSeqId: undefined },
-        context.signal,
-      ),
-    ).resolves.toStrictEqual([]);
     expect(threadDraftRequests).toBe(1);
-    expect(initialEventsRequests).toBe(1);
   });
 
   it("settles optimistic create events once the matching persisted event arrives", async () => {

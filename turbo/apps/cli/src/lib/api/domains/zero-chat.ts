@@ -1,6 +1,5 @@
 import { initClient } from "@vm0/api-contracts/contracts/trpc-contract";
 import {
-  type ChatEvent,
   type ChatEventSendBody,
   chatEventsContract,
   chatThreadEventsContract,
@@ -17,8 +16,6 @@ import {
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { isSupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
 import type { ChatEventRowV4 } from "@vm0/api-contracts/contracts/chat-event-rows";
-import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { getClientConfig, handleError } from "../core/client-factory";
 
 export interface ZeroChatThreadSnapshot {
@@ -212,38 +209,6 @@ export async function sendZeroChatEvent(
     return result.body;
   }
   handleError(result, "Failed to send chat event");
-}
-
-export async function listZeroChatEvents(options: {
-  threadId: string;
-  beforeSeqId?: number;
-  limit?: number;
-}): Promise<readonly ChatEvent[]> {
-  const config = await getClientConfig();
-  const client = initClient(chatThreadEventsContract, config);
-  const result = await client.list({
-    params: { threadId: options.threadId },
-    query: {
-      beforeSeqId: options.beforeSeqId,
-      limit: options.limit,
-    },
-  });
-  if (result.status === 200) {
-    return result.body.events;
-  }
-  handleError(result, "Failed to list chat events");
-}
-
-export async function isZeroChatEventSnapshotReadEnabled(): Promise<boolean> {
-  const config = await getClientConfig();
-  const client = initClient(zeroFeatureSwitchesContract, config);
-  const result = await client.get();
-  if (result.status === 200) {
-    return Boolean(
-      result.body.effectiveSwitches[FeatureSwitchKey.ChatEventSnapshotRead],
-    );
-  }
-  handleError(result, "Failed to get feature switches");
 }
 
 export async function getZeroChatEventSnapshot(options: {

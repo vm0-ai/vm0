@@ -32,27 +32,22 @@ const CHAT_IDB_CHAT_EVENT_CONTRACT_CUTOVER_VERSION = 28;
 // earlier raw-row store before it can reach the canonical reader; the next
 // sync re-fetches from snapshot plus tail.
 const CHAT_IDB_CANONICAL_EVENT_ROWS_VERSION = 30;
-const CHAT_IDB_SCHEMA_VERSION = CHAT_IDB_CANONICAL_EVENT_ROWS_VERSION;
+// Snapshot-backed canonical rows are now the only chat-event cache. Drop the
+// projected ChatEvent store left by the retired reader path.
+const CHAT_IDB_PROJECTED_EVENT_CACHE_REMOVAL_VERSION = 31;
+const CHAT_IDB_SCHEMA_VERSION = CHAT_IDB_PROJECTED_EVENT_CACHE_REMOVAL_VERSION;
 const LEGACY_CHAT_THREAD_META_STORE = "chat_thread_agents";
 const LEGACY_ARTIFACT_ITEMS_STORE = "artifact_items";
 const LEGACY_ARTIFACT_SYNC_STORE = "artifact_sync";
+const LEGACY_CHAT_MESSAGES_STORE = "chat_messages";
 
 export const CHAT_IDB_VERSION = CHAT_IDB_SCHEMA_VERSION;
-export const CHAT_MESSAGES_STORE = "chat_messages";
 export const CHAT_EVENT_ROWS_STORE = "chat_events";
 export const CHAT_EVENT_ROWS_ORDER_INDEX = "byThreadAndSeq";
 export const CHAT_THREAD_SNAPSHOT_STORE = "chat_thread_snapshot";
 export const CHAT_THREAD_EVENTS_STORE = "chat_thread_events";
 export const CHAT_THREAD_EVENT_SYNC_STORE = "chat_thread_event_sync";
-export const CHAT_MESSAGES_ORDER_INDEX = "byThreadAndOrder";
 export const CHAT_THREAD_EVENTS_ORDER_INDEX = "bySeqId";
-
-function createChatMessagesStore(db: IDBPDatabase): void {
-  const store = db.createObjectStore(CHAT_MESSAGES_STORE, { keyPath: "id" });
-  store.createIndex(CHAT_MESSAGES_ORDER_INDEX, ["threadId", "seqId"], {
-    unique: true,
-  });
-}
 
 function createChatEventRowsStore(db: IDBPDatabase): void {
   const store = db.createObjectStore(CHAT_EVENT_ROWS_STORE, { keyPath: "id" });
@@ -85,7 +80,7 @@ function deleteObjectStoreIfExists(db: IDBPDatabase, storeName: string): void {
 }
 
 function deleteLocalCacheStores(db: IDBPDatabase): void {
-  deleteObjectStoreIfExists(db, CHAT_MESSAGES_STORE);
+  deleteObjectStoreIfExists(db, LEGACY_CHAT_MESSAGES_STORE);
   deleteChatThreadEventStores(db);
   deleteArtifactCacheStores(db);
   deleteObjectStoreIfExists(db, LEGACY_CHAT_THREAD_META_STORE);
@@ -110,7 +105,7 @@ export function upgradeChatIdb(db: IDBPDatabase, oldVersion: number): void {
   }
 
   if (oldVersion < CHAT_IDB_CHAT_EVENT_RESET_VERSION) {
-    deleteObjectStoreIfExists(db, CHAT_MESSAGES_STORE);
+    deleteObjectStoreIfExists(db, LEGACY_CHAT_MESSAGES_STORE);
   }
 
   if (oldVersion < CHAT_IDB_THREAD_EVENT_SEQ_ID_RESET_VERSION) {
@@ -118,32 +113,32 @@ export function upgradeChatIdb(db: IDBPDatabase, oldVersion: number): void {
   }
 
   if (oldVersion < CHAT_IDB_USER_MESSAGE_READ_CUTOVER_VERSION) {
-    deleteObjectStoreIfExists(db, CHAT_MESSAGES_STORE);
+    deleteObjectStoreIfExists(db, LEGACY_CHAT_MESSAGES_STORE);
     deleteChatThreadEventStores(db);
   }
 
   if (oldVersion < CHAT_IDB_INPUT_CONTENT_REMOVAL_VERSION) {
-    deleteObjectStoreIfExists(db, CHAT_MESSAGES_STORE);
+    deleteObjectStoreIfExists(db, LEGACY_CHAT_MESSAGES_STORE);
     deleteChatThreadEventStores(db);
   }
 
   if (oldVersion < CHAT_IDB_ANNOTATION_CUTOVER_VERSION) {
-    deleteObjectStoreIfExists(db, CHAT_MESSAGES_STORE);
+    deleteObjectStoreIfExists(db, LEGACY_CHAT_MESSAGES_STORE);
     deleteChatThreadEventStores(db);
   }
 
   if (oldVersion < CHAT_IDB_USER_MESSAGE_PARTS_CUTOVER_VERSION) {
-    deleteObjectStoreIfExists(db, CHAT_MESSAGES_STORE);
+    deleteObjectStoreIfExists(db, LEGACY_CHAT_MESSAGES_STORE);
     deleteChatThreadEventStores(db);
   }
 
   if (oldVersion < CHAT_IDB_MORNING_BRIEF_PART_CUTOVER_VERSION) {
-    deleteObjectStoreIfExists(db, CHAT_MESSAGES_STORE);
+    deleteObjectStoreIfExists(db, LEGACY_CHAT_MESSAGES_STORE);
     deleteChatThreadEventStores(db);
   }
 
   if (oldVersion < CHAT_IDB_CHAT_EVENT_CONTRACT_CUTOVER_VERSION) {
-    deleteObjectStoreIfExists(db, CHAT_MESSAGES_STORE);
+    deleteObjectStoreIfExists(db, LEGACY_CHAT_MESSAGES_STORE);
     deleteChatThreadEventStores(db);
   }
 
@@ -151,8 +146,8 @@ export function upgradeChatIdb(db: IDBPDatabase, oldVersion: number): void {
     deleteObjectStoreIfExists(db, CHAT_EVENT_ROWS_STORE);
   }
 
-  if (!db.objectStoreNames.contains(CHAT_MESSAGES_STORE)) {
-    createChatMessagesStore(db);
+  if (oldVersion < CHAT_IDB_PROJECTED_EVENT_CACHE_REMOVAL_VERSION) {
+    deleteObjectStoreIfExists(db, LEGACY_CHAT_MESSAGES_STORE);
   }
   if (!db.objectStoreNames.contains(CHAT_EVENT_ROWS_STORE)) {
     createChatEventRowsStore(db);

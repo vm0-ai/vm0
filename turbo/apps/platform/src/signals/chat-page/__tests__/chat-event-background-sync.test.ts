@@ -1,11 +1,9 @@
 import { waitFor } from "@testing-library/react";
+import type { ChatEventRowV4 } from "@vm0/api-contracts/contracts/chat-event-rows";
 import {
-  chatEventResponse,
   chatThreadEventsContract,
   chatThreadsContract,
-  type ChatEvent,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import { getAllFeatureStates } from "@vm0/core/feature-switch";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { describe, expect, it, vi } from "vitest";
 
@@ -16,16 +14,12 @@ import {
 } from "../../../__tests__/mock-auth.ts";
 import { setupPage } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
-import { zeroClient$ } from "../../api-client.ts";
-import { CHAT_MESSAGES_STORE } from "../../external/chat-idb-schema.ts";
+import { CHAT_EVENT_ROWS_STORE } from "../../external/chat-idb-schema.ts";
 import { chatIdb$ } from "../../external/chat-idb-store.ts";
-import { FEATURE_SWITCH_CACHE_KEY } from "../../external/feature-switch-state.ts";
-import { localStorageSignals } from "../../external/local-storage.ts";
 import { setupRealtime$ } from "../../realtime.ts";
 import { resetSignal } from "../../utils.ts";
-import { writeIndexedDbChatEvents$ } from "../chat-event-indexed-db.ts";
+import { writeIndexedDbChatEventRows$ } from "../chat-event-row-indexed-db.ts";
 import { setupChatEventBackgroundSync$ } from "../chat-event-background-sync.ts";
-import { listChatEvents } from "../chat-event-api.ts";
 
 vi.mock("idb", async () => {
   return await vi.importActual<typeof import("idb")>("idb-real");
@@ -33,9 +27,6 @@ vi.mock("idb", async () => {
 
 const context = testContext();
 const resetSubscriberSignal$ = resetSignal();
-const { set$: setFeatureSwitchCache$ } = localStorageSignals(
-  FEATURE_SWITCH_CACHE_KEY,
-);
 
 const THREAD_ID = "b0000000-0000-4000-a000-000000000801";
 const OTHER_THREAD_ID = "b0000000-0000-4000-a000-000000000805";
@@ -43,7 +34,6 @@ const THIRD_THREAD_ID = "b0000000-0000-4000-a000-000000000809";
 const FIRST_CACHED_EVENT_ID = "00000000-0000-4000-8000-000000000802";
 const LAST_CACHED_EVENT_ID = "00000000-0000-4000-8000-000000000803";
 const NEW_EVENT_ID = "00000000-0000-4000-8000-000000000804";
-const CREATED_AT = "2026-07-23T10:00:00.000Z";
 
 function userId(): string {
   return `background-sync-user-${context.resourceId}`;
@@ -65,38 +55,44 @@ async function openTestChatDb() {
   return db;
 }
 
-function assistantEvent(
+function assistantRow(
   threadId: string,
   id: string,
   content: string,
   createdAt: string,
   seqId: number,
-): ChatEvent {
+): ChatEventRowV4 {
   return {
     id,
-    threadId,
-    eventType: "output.message" as const,
-    content,
-    createdAt,
+    chatThreadId: threadId,
+    runId: null,
+    revokesEventId: null,
+    eventType: "output.message",
+    payload: { content },
+    contextType: null,
+    contextId: null,
+    runEventSequenceNumber: null,
+    runEventId: null,
     seqId,
+    createdAt,
   };
 }
 
-const firstCachedEvent = assistantEvent(
+const firstCachedRow = assistantRow(
   THREAD_ID,
   FIRST_CACHED_EVENT_ID,
   "First cached message",
   "2026-07-23T10:01:00.000Z",
   1,
 );
-const lastCachedEvent = assistantEvent(
+const lastCachedRow = assistantRow(
   THREAD_ID,
   LAST_CACHED_EVENT_ID,
   "Last cached message",
   "2026-07-23T10:02:00.000Z",
   2,
 );
-const newEvent = assistantEvent(
+const newRow = assistantRow(
   THREAD_ID,
   NEW_EVENT_ID,
   "New remote message",
@@ -106,13 +102,6 @@ const newEvent = assistantEvent(
 
 function mockSignedInUser(): void {
   clearMockedAuthOnAbort(context.signal);
-  context.store.set(
-    setFeatureSwitchCache$,
-    JSON.stringify({
-      ...getAllFeatureStates({}),
-      [FeatureSwitchKey.ChatEventSnapshotRead]: false,
-    }),
-  );
   mockUser(
     {
       id: userId(),
@@ -142,10 +131,18 @@ async function setupAuthenticatedBackgroundSync(): Promise<void> {
       activeOrg: { id: orgId(), name: "Background Sync Org" },
       memberships: [{ id: orgId() }],
     },
-    featureSwitches: {
-      [FeatureSwitchKey.UnifiedIndicatorApi]: true,
-      [FeatureSwitchKey.ChatEventSnapshotRead]: false,
-    },
+    featureSwitches: { [FeatureSwitchKey.UnifiedIndicatorApi]: true },
+  });
+}
+
+function mockMissingSnapshots(): void {
+  context.mocks.api(chatThreadEventsContract.snapshot, ({ respond }) => {
+    return respond(404, {
+      error: {
+        message: "Chat event snapshot not found",
+        code: "CHAT_EVENT_SNAPSHOT_NOT_FOUND",
+      },
+    });
   });
 }
 
@@ -167,9 +164,10 @@ describe("chat event background sync", () => {
         },
       });
     });
-    context.mocks.api(chatThreadEventsContract.list, ({ params, respond }) => {
+    mockMissingSnapshots();
+    context.mocks.api(chatThreadEventsContract.rows, ({ params, respond }) => {
       requestedThreadIds.push(params.threadId);
-      return respond(200, { events: [] });
+      return respond(200, { rows: [] });
     });
 
     await setupAuthenticatedBackgroundSync();
@@ -207,9 +205,10 @@ describe("chat event background sync", () => {
         ]),
       });
     });
-    context.mocks.api(chatThreadEventsContract.list, ({ params, respond }) => {
+    mockMissingSnapshots();
+    context.mocks.api(chatThreadEventsContract.rows, ({ params, respond }) => {
       requestedThreadIds.push(params.threadId);
-      return respond(200, { events: [] });
+      return respond(200, { rows: [] });
     });
 
     await setupAuthenticatedBackgroundSync();
@@ -231,31 +230,22 @@ describe("chat event background sync", () => {
     });
   });
 
-  it("fills only messages after the cached thread end", async () => {
+  it("fills only rows after the cached thread end", async () => {
     mockSignedInUser();
     const appDb = await openTestChatDb();
     await context.store.set(
-      writeIndexedDbChatEvents$,
-      THREAD_ID,
-      [firstCachedEvent, lastCachedEvent],
+      writeIndexedDbChatEventRows$,
+      [firstCachedRow, lastCachedRow],
       context.signal,
     );
 
-    const requests: {
-      readonly sinceSeqId: number | undefined;
-      readonly beforeSeqId: number | undefined;
-    }[] = [];
-    context.mocks.api(chatThreadEventsContract.list, ({ query, respond }) => {
-      requests.push({
-        sinceSeqId: query.sinceSeqId,
-        beforeSeqId: query.beforeSeqId,
-      });
-      if (query.sinceSeqId === lastCachedEvent.seqId) {
-        return respond(200, {
-          events: [chatEventResponse(newEvent)],
-        });
+    const cursors: number[] = [];
+    context.mocks.api(chatThreadEventsContract.rows, ({ query, respond }) => {
+      cursors.push(query.sinceSeqId);
+      if (query.sinceSeqId === lastCachedRow.seqId) {
+        return respond(200, { rows: [newRow] });
       }
-      throw new Error(`Unexpected message cursor: ${JSON.stringify(query)}`);
+      throw new Error(`Unexpected row cursor: ${JSON.stringify(query)}`);
     });
 
     await context.store.set(setupRealtime$, context.signal);
@@ -278,37 +268,35 @@ describe("chat event background sync", () => {
 
     await waitFor(async () => {
       await expect(
-        appDb.get(CHAT_MESSAGES_STORE, NEW_EVENT_ID),
+        appDb.get(CHAT_EVENT_ROWS_STORE, NEW_EVENT_ID),
       ).resolves.toMatchObject({
         id: NEW_EVENT_ID,
-        threadId: THREAD_ID,
+        chatThreadId: THREAD_ID,
       });
     });
 
-    expect(requests).toStrictEqual([{ sinceSeqId: 2, beforeSeqId: undefined }]);
+    expect(cursors).toStrictEqual([2]);
   });
 
   it("skips a delayed created event whose sequence is already cached", async () => {
     mockSignedInUser();
     await context.store.set(
-      writeIndexedDbChatEvents$,
-      THREAD_ID,
-      [firstCachedEvent, lastCachedEvent],
+      writeIndexedDbChatEventRows$,
+      [firstCachedRow, lastCachedRow],
       context.signal,
     );
 
     let cachedThreadRequests = 0;
     const otherThreadRequested = context.mocks.deferred<void>();
-    context.mocks.api(chatThreadEventsContract.list, ({ params, respond }) => {
+    mockMissingSnapshots();
+    context.mocks.api(chatThreadEventsContract.rows, ({ params, respond }) => {
       if (params.threadId === THREAD_ID) {
         cachedThreadRequests += 1;
       }
       if (params.threadId === OTHER_THREAD_ID) {
         otherThreadRequested.resolve();
       }
-      return respond(200, {
-        events: [],
-      });
+      return respond(200, { rows: [] });
     });
 
     await context.store.set(setupRealtime$, context.signal);
@@ -327,71 +315,11 @@ describe("chat event background sync", () => {
     });
 
     context.mocks.ably.trigger(`chatThreadMessageCreated:${THREAD_ID}`, {
-      syncThroughSeqId: lastCachedEvent.seqId,
+      syncThroughSeqId: lastCachedRow.seqId,
     });
     context.mocks.ably.trigger(`chatThreadMessageCreated:${OTHER_THREAD_ID}`);
 
     await otherThreadRequested.promise;
     expect(cachedThreadRequests).toBe(0);
-  });
-
-  it("returns canonical API response events unchanged", async () => {
-    mockSignedInUser();
-    const inputEventId = "00000000-0000-4000-8000-000000000806";
-    const outputEventId = "00000000-0000-4000-8000-000000000807";
-    const userMessage = {
-      version: 1 as const,
-      parts: [{ type: "text" as const, text: "Canonical input" }],
-    };
-    context.mocks.http.get("*/api/okou/chat-threads/:threadId/events", () => {
-      return Response.json({
-        events: [
-          {
-            id: inputEventId,
-            threadId: THREAD_ID,
-            eventType: "input.prompt",
-            content: null,
-            userMessage,
-            seqId: 1,
-            createdAt: CREATED_AT,
-          },
-          {
-            id: outputEventId,
-            threadId: THREAD_ID,
-            eventType: "output.message",
-            content: "Canonical output",
-            seqId: 2,
-            createdAt: CREATED_AT,
-          },
-        ],
-      });
-    });
-
-    const events = await listChatEvents(
-      context.store.get(zeroClient$),
-      THREAD_ID,
-      {},
-      context.signal,
-    );
-
-    expect(events).toStrictEqual([
-      {
-        id: inputEventId,
-        threadId: THREAD_ID,
-        eventType: "input.prompt",
-        content: null,
-        userMessage,
-        seqId: 1,
-        createdAt: CREATED_AT,
-      },
-      {
-        id: outputEventId,
-        threadId: THREAD_ID,
-        eventType: "output.message",
-        content: "Canonical output",
-        seqId: 2,
-        createdAt: CREATED_AT,
-      },
-    ]);
   });
 });

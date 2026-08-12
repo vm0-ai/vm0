@@ -35,6 +35,7 @@ import {
 } from "../../../signals/__tests__/test-helpers.ts";
 import { CHAT_THREAD_SIDEBAR_SPLIT_VIEW_MEDIA_QUERY } from "../../../signals/chat-page/chat-thread-sidebar-layout.ts";
 import {
+  mockChatEventRows,
   normalizeMockChatEvents,
   type MockChatEventInput,
 } from "./chat-event-test-helpers.ts";
@@ -163,8 +164,6 @@ function setupArtifactCatalog(
 
 function setupChatThread({
   artifactFiles = [],
-  waitForHistoryResponse,
-  historyMessages = [],
   messages = [
     {
       id: "msg-sidebar-user",
@@ -193,8 +192,6 @@ function setupChatThread({
   ],
 }: {
   artifactFiles?: ChatThreadArtifactFile[];
-  waitForHistoryResponse?: () => Promise<void>;
-  historyMessages?: MockChatEventInput[];
   messages?: MockChatEventInput[];
 } = {}) {
   let servedMessages = [...messages];
@@ -239,40 +236,18 @@ function setupChatThread({
       latestSeqId: 1,
     });
   });
-  context.mocks.api(
-    chatThreadEventsContract.list,
-    async ({ query, respond }) => {
-      const beforeSeqId = query.beforeSeqId;
-      if (beforeSeqId !== undefined) {
-        await waitForHistoryResponse?.();
-        return respond(200, {
-          events: normalizeMockChatEvents(
-            historyMessages.map((message) => {
-              return { ...message, threadId: message.threadId ?? THREAD_ID };
-            }),
-          ).filter((event) => {
-            return event.seqId < beforeSeqId;
-          }),
-        });
-      }
-      const events = normalizeMockChatEvents(
-        servedMessages.map((message) => {
-          return { ...message, threadId: message.threadId ?? THREAD_ID };
-        }),
-      );
-      const sinceSeqId = query.sinceSeqId;
-      if (sinceSeqId !== undefined) {
-        return respond(200, {
-          events: events.filter((event) => {
-            return event.seqId > sinceSeqId;
-          }),
-        });
-      }
-      return respond(200, {
-        events,
-      });
-    },
-  );
+  context.mocks.api(chatThreadEventsContract.rows, ({ query, respond }) => {
+    const events = normalizeMockChatEvents(
+      servedMessages.map((message) => {
+        return { ...message, threadId: message.threadId ?? THREAD_ID };
+      }),
+    );
+    return respond(200, {
+      rows: mockChatEventRows(events).filter((row) => {
+        return row.seqId > query.sinceSeqId;
+      }),
+    });
+  });
   context.mocks.api(chatThreadArtifactsContract.list, ({ respond }) => {
     return respond(200, {
       runs: [{ runId: "run-sidebar", files: artifactFiles }],
@@ -1053,85 +1028,6 @@ describe("thread-owned utility sidebar", () => {
     for (const callback of pendingFrames.splice(0)) {
       callback(0);
     }
-  });
-
-  it("auto-opens from the first remote page while older history is still loading", async () => {
-    const historyRequestStarted = context.mocks.deferred<void>();
-    const releaseHistoryResponse = context.mocks.deferred<void>();
-    context.mocks.browser.matchMedia((query) => {
-      return query === CHAT_THREAD_SIDEBAR_SPLIT_VIEW_MEDIA_QUERY;
-    });
-    context.mocks.api(zeroBrowserContract.get, ({ respond }) => {
-      return respond(200, { browser: browserSession() });
-    });
-    context.mocks.api(zeroBrowserContract.leaseByThread, ({ respond }) => {
-      return respond(200, {
-        browser: browserSession({ liveUrl: null }),
-      });
-    });
-
-    setupChatThread({
-      waitForHistoryResponse: async () => {
-        historyRequestStarted.resolve();
-        await releaseHistoryResponse.promise;
-      },
-      messages: [
-        {
-          id: "c0000000-0000-4000-a000-000000000054",
-          eventType: "browser.open",
-          content: null,
-          seqId: 51,
-          createdAt: "2026-03-10T00:00:00Z",
-        },
-      ],
-    });
-
-    await historyRequestStarted.promise;
-    await expect(
-      screen.findByTitle("Live browser: Thread browser"),
-    ).resolves.toBeInTheDocument();
-    expect(releaseHistoryResponse.settled()).toBeFalsy();
-  });
-
-  it("auto-opens when older history contains the unmatched browser start", async () => {
-    context.mocks.browser.matchMedia((query) => {
-      return query === CHAT_THREAD_SIDEBAR_SPLIT_VIEW_MEDIA_QUERY;
-    });
-    context.mocks.api(zeroBrowserContract.get, ({ respond }) => {
-      return respond(200, { browser: browserSession() });
-    });
-    context.mocks.api(zeroBrowserContract.leaseByThread, ({ respond }) => {
-      return respond(200, {
-        browser: browserSession({ liveUrl: null }),
-      });
-    });
-
-    setupChatThread({
-      historyMessages: [
-        {
-          id: "c0000000-0000-4000-a000-000000000055",
-          eventType: "browser.open",
-          content: null,
-          seqId: 1,
-          createdAt: "2026-03-10T00:00:00Z",
-        },
-      ],
-      messages: Array.from({ length: 50 }, (_, index) => {
-        const seqId = index + 2;
-        return {
-          id: `msg-after-browser-start-${seqId.toString()}`,
-          eventType: "output.message" as const,
-          content: `Later message ${seqId.toString()}`,
-          runId: "run-after-browser-start",
-          seqId,
-          createdAt: new Date(Date.UTC(2026, 2, 10, 0, 0, seqId)).toISOString(),
-        };
-      }),
-    });
-
-    await expect(
-      screen.findByTitle("Live browser: Thread browser"),
-    ).resolves.toBeInTheDocument();
   });
 
   it("does not auto-open when the latest browser lifecycle event is close", async () => {

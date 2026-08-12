@@ -37,6 +37,7 @@ import {
   getChatThreadVirtualListScrollMargin,
 } from "../../../signals/zero-page/zero-sidebar-state.ts";
 import { PLACEHOLDER } from "./chat-test-helpers.ts";
+import { mockChatEventRows } from "./chat-event-test-helpers.ts";
 
 // The composer editor is mounted on first paint and mounted again once page
 // bootstrap settles, so an element captured too early is detached before a test
@@ -751,13 +752,10 @@ describe("zero sidebar", () => {
       });
     });
     context.mocks.api(
-      chatThreadEventsContract.list,
+      chatThreadEventsContract.rows,
       ({ params, query, respond }) => {
-        if (query.sinceSeqId || query.beforeSeqId) {
-          return respond(200, { events: [] });
-        }
         return respond(200, {
-          events:
+          rows: mockChatEventRows(
             params.threadId === INCIDENT_THREAD_ID
               ? [
                   {
@@ -765,13 +763,16 @@ describe("zero sidebar", () => {
                     threadId: INCIDENT_THREAD_ID,
                     eventType: "run.completed" as const,
                     runId: "mock-run",
-                    content: "Incident update",
-                    runLifecycleEvent: "completed",
+                    content: null,
+                    runLifecycleEvent: "completed" as const,
                     seqId: 1,
                     createdAt: "2026-03-10T00:05:00Z",
                   },
                 ]
               : [],
+          ).filter((row) => {
+            return row.seqId > query.sinceSeqId;
+          }),
         });
       },
     );

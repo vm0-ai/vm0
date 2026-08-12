@@ -845,10 +845,8 @@ describe("chat inline feedback", () => {
     context.mocks.api(zeroFeatureSwitchesContract.get, ({ respond }) => {
       capabilityReads += 1;
       return respond(200, {
-        switches: { [FeatureSwitchKey.ChatEventSnapshotRead]: false },
-        effectiveSwitches: {
-          [FeatureSwitchKey.ChatEventSnapshotRead]: false,
-        },
+        switches: {},
+        effectiveSwitches: {},
         apiCapabilities: { feedbackLocationV1: true },
       });
     });

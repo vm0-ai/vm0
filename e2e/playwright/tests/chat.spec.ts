@@ -186,28 +186,7 @@ async function enableResponsiveFollowupCards(page: Page): Promise<void> {
         ...body,
         effectiveSwitches: {
           ...body.effectiveSwitches,
-          chatEventSnapshotRead: false,
           responsiveFollowupCards: true,
-        },
-      },
-    });
-  });
-}
-
-async function disableChatEventSnapshotRead(page: Page): Promise<void> {
-  await page.route("**/api/okou/feature-switches", async (route) => {
-    const response = await route.fetch();
-    const body: unknown = await response.json();
-    if (!isRecord(body) || !isRecord(body.effectiveSwitches)) {
-      throw new Error("Feature switches returned an unexpected response");
-    }
-    await route.fulfill({
-      response,
-      json: {
-        ...body,
-        effectiveSwitches: {
-          ...body.effectiveSwitches,
-          chatEventSnapshotRead: false,
         },
       },
     });
@@ -1047,7 +1026,6 @@ test("chat composer keeps the Send button inside on narrow screens", async ({
 test("model change labels follow the divider at the right edge", async ({
   page,
 }) => {
-  await disableChatEventSnapshotRead(page);
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto(appUrl);
   await page.waitForURL(/agents\/.*\/chat/, { timeout: 30_000 });
@@ -1071,7 +1049,6 @@ test("model change labels follow the divider at the right edge", async ({
 test("image preview frames stay fixed while delayed images load", async ({
   page,
 }) => {
-  await disableChatEventSnapshotRead(page);
   await page.goto(appUrl);
   await page.waitForURL(/agents\/.*\/chat/, { timeout: 30_000 });
   const agentId = new URL(page.url()).pathname.match(

@@ -19,7 +19,10 @@ import {
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
-import { normalizeMockChatEvents } from "./chat-event-test-helpers.ts";
+import {
+  mockChatEventRows,
+  normalizeMockChatEvents,
+} from "./chat-event-test-helpers.ts";
 
 const context = testContext();
 
@@ -802,16 +805,16 @@ describe("user messages", () => {
       },
     ]);
     context.mocks.api(
-      chatThreadEventsContract.list,
+      chatThreadEventsContract.rows,
       ({ params, query, respond }) => {
-        if (
-          params.threadId !== threadId ||
-          query.beforeSeqId !== undefined ||
-          query.sinceSeqId !== undefined
-        ) {
-          return respond(200, { events: [] });
+        if (params.threadId !== threadId) {
+          return respond(200, { rows: [] });
         }
-        return respond(200, { events: sourceEvents });
+        return respond(200, {
+          rows: mockChatEventRows(sourceEvents).filter((row) => {
+            return row.seqId > query.sinceSeqId;
+          }),
+        });
       },
     );
 

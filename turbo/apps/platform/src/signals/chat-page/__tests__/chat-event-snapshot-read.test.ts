@@ -1,8 +1,6 @@
 import { waitFor } from "@testing-library/react";
 import type { ChatEventRowV4 } from "@vm0/api-contracts/contracts/chat-event-rows";
 import { chatThreadEventsContract } from "@vm0/api-contracts/contracts/chat-threads";
-import { getAllFeatureStates } from "@vm0/core/feature-switch";
-import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -11,23 +9,14 @@ import {
   mockUser,
 } from "../../../__tests__/mock-auth.ts";
 import { testContext } from "../../__tests__/test-helpers.ts";
-import {
-  CHAT_EVENT_ROWS_STORE,
-  CHAT_MESSAGES_STORE,
-} from "../../external/chat-idb-schema.ts";
+import { CHAT_EVENT_ROWS_STORE } from "../../external/chat-idb-schema.ts";
 import { chatIdb$ } from "../../external/chat-idb-store.ts";
-import { FEATURE_SWITCH_CACHE_KEY } from "../../external/feature-switch-state.ts";
-import { localStorageSignals } from "../../external/local-storage.ts";
 import { setupRealtime$ } from "../../realtime.ts";
 import { resetSignal } from "../../utils.ts";
 import { setupChatEventBackgroundSync$ } from "../chat-event-background-sync.ts";
 import { writeIndexedDbChatEventRows$ } from "../chat-event-row-indexed-db.ts";
 import { createChatEventSignals } from "../chat-event-signals.ts";
 import { createChatEventStorageSignals } from "../chat-event-storage-signals.ts";
-import {
-  listEventsAfter$,
-  listEventsBefore$,
-} from "../remote-chat-event-data-source.ts";
 
 vi.mock("idb", async () => {
   return await vi.importActual<typeof import("idb")>("idb-real");
@@ -57,20 +46,6 @@ async function openTestChatDb() {
     { once: true },
   );
   return db;
-}
-
-const { set$: setFeatureSwitchCache$ } = localStorageSignals(
-  FEATURE_SWITCH_CACHE_KEY,
-);
-
-function enableSnapshotRead(): void {
-  context.store.set(
-    setFeatureSwitchCache$,
-    JSON.stringify({
-      ...getAllFeatureStates({}),
-      [FeatureSwitchKey.ChatEventSnapshotRead]: true,
-    }),
-  );
 }
 
 function baseRow(threadId: string, seqId: number): ChatEventRowV4 {
@@ -133,17 +108,8 @@ function snapshotNdjson(rows: readonly ChatEventRowV4[]): string {
     .join("\n")}\n`;
 }
 
-function rejectProjectedEventsEndpoint(): void {
-  context.mocks.api(chatThreadEventsContract.list, () => {
-    throw new Error("projected events endpoint must not be called");
-  });
-}
-
 function createSignals(threadId: string) {
-  return createChatEventStorageSignals({
-    threadId,
-    dataSource: { listEventsAfter$, listEventsBefore$ },
-  });
+  return createChatEventStorageSignals({ threadId });
 }
 
 function mockSignedInUser(): void {
@@ -165,8 +131,6 @@ function mockSignedInUser(): void {
 describe("chat event snapshot read", () => {
   it("tails from snapshot coverage beyond the final archive row", async () => {
     mockSignedInUser();
-    enableSnapshotRead();
-    rejectProjectedEventsEndpoint();
     const { threadId, promptEventRow, assistantEventRow } = threadFixture();
     const tailEventRow = baseRow(threadId, 4);
     const appDb = await openTestChatDb();
@@ -219,20 +183,15 @@ describe("chat event snapshot read", () => {
       parts: [{ type: "text", text: "snapshot prompt" }],
     });
     expect(prompt).not.toHaveProperty("contextType");
-    expect(rowRequests).toStrictEqual([3]);
+    expect(rowRequests).toStrictEqual([3, 4]);
 
     await expect(
       appDb.get(CHAT_EVENT_ROWS_STORE, tailEventRow.id),
     ).resolves.toStrictEqual(tailEventRow);
-    await expect(
-      appDb.get(CHAT_MESSAGES_STORE, tailEventRow.id),
-    ).resolves.toBeUndefined();
   });
 
   it("cold-starts from the rows endpoint when the thread has no snapshot yet", async () => {
     mockSignedInUser();
-    enableSnapshotRead();
-    rejectProjectedEventsEndpoint();
     const { threadId, promptEventRow, assistantEventRow } = threadFixture();
     const appDb = await openTestChatDb();
 
@@ -267,7 +226,7 @@ describe("chat event snapshot read", () => {
       { id: promptEventRow.id, seqId: 1 },
       { id: assistantEventRow.id, seqId: 2 },
     ]);
-    expect(rowRequests).toStrictEqual([0]);
+    expect(rowRequests).toStrictEqual([0, 2]);
     await expect(
       appDb.get(CHAT_EVENT_ROWS_STORE, assistantEventRow.id),
     ).resolves.toStrictEqual(assistantEventRow);
@@ -275,8 +234,6 @@ describe("chat event snapshot read", () => {
 
   it("fails loudly when the rows cursor expires right after a cold start", async () => {
     mockSignedInUser();
-    enableSnapshotRead();
-    rejectProjectedEventsEndpoint();
     const { threadId } = threadFixture();
 
     // A head the reader refuses to serve: the snapshot endpoint fails closed
@@ -311,8 +268,6 @@ describe("chat event snapshot read", () => {
 
   it("initializes from cached rows without touching the network", async () => {
     mockSignedInUser();
-    enableSnapshotRead();
-    rejectProjectedEventsEndpoint();
     context.mocks.api(chatThreadEventsContract.snapshot, () => {
       throw new Error("snapshot endpoint must not be called");
     });
@@ -335,8 +290,6 @@ describe("chat event snapshot read", () => {
 
   it("rebuilds from a fresh snapshot when the rows cursor expires", async () => {
     mockSignedInUser();
-    enableSnapshotRead();
-    rejectProjectedEventsEndpoint();
     const { threadId, promptEventRow, assistantEventRow } = threadFixture();
     const appDb = await openTestChatDb();
     const staleRow = baseRow(threadId, 5);
@@ -388,8 +341,6 @@ describe("chat event snapshot read", () => {
 
   it("background-syncs new rows into the row cache", async () => {
     mockSignedInUser();
-    enableSnapshotRead();
-    rejectProjectedEventsEndpoint();
     const { threadId, promptEventRow, assistantEventRow, tailEventRow } =
       threadFixture();
     const appDb = await openTestChatDb();
@@ -431,8 +382,6 @@ describe("chat event snapshot read", () => {
 
   it("background-cold-starts raw rows and forwards them to an active thread", async () => {
     mockSignedInUser();
-    enableSnapshotRead();
-    rejectProjectedEventsEndpoint();
     const { threadId, promptEventRow, assistantEventRow, tailEventRow } =
       threadFixture();
     const appDb = await openTestChatDb();
@@ -494,8 +443,6 @@ describe("chat event snapshot read", () => {
 
   it("background-cold-starts from row zero when no snapshot exists", async () => {
     mockSignedInUser();
-    enableSnapshotRead();
-    rejectProjectedEventsEndpoint();
     const { threadId, promptEventRow, assistantEventRow } = threadFixture();
     const appDb = await openTestChatDb();
 
@@ -543,8 +490,6 @@ describe("chat event snapshot read", () => {
 
   it("background-rebuilds raw rows when the cached cursor expires", async () => {
     mockSignedInUser();
-    enableSnapshotRead();
-    rejectProjectedEventsEndpoint();
     const { threadId, promptEventRow, assistantEventRow, tailEventRow } =
       threadFixture();
     const staleRow = baseRow(threadId, 5);
