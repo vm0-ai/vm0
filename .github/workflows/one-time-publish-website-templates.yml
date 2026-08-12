@@ -24,12 +24,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Create read token for Template-artifact
         id: template-artifact-token
-        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2
-        with:
-          app-id: ${{ vars.VM0_GITHUB_APP_ID }}
-          private-key: ${{ secrets.VM0_GITHUB_APP_PRIVATE_KEY }}
-          owner: vm0-ai
-          repositories: Template-artifact
+        env:
+          GITHUB_APP_ID: ${{ vars.VM0_GITHUB_APP_ID }}
+          GITHUB_APP_PRIVATE_KEY: ${{ secrets.VM0_GITHUB_APP_PRIVATE_KEY }}
+        run: node .github/website-template-release/github-app-token.mjs
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: vm0-ai/Template-artifact
