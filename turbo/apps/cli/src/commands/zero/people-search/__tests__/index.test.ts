@@ -55,7 +55,7 @@ const responseBody = {
   ],
 } as const;
 
-describe("zero people-search command", () => {
+describe("okou people-search command", () => {
   const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
   const mockConsoleError = vi
     .spyOn(console, "error")

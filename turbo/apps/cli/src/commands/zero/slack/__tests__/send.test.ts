@@ -1,5 +1,5 @@
 /**
- * Tests for zero slack message send command
+ * Tests for okou slack message send command
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
@@ -16,7 +16,7 @@ import chalk from "chalk";
 const SLACK_MESSAGE_URL =
   "http://localhost:3000/api/zero/integrations/slack/message";
 
-describe("zero slack message send command", () => {
+describe("okou slack message send command", () => {
   vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);

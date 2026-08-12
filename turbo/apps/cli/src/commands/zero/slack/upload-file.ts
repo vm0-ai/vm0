@@ -256,9 +256,9 @@ export const uploadFileCommand = new Command()
     "after",
     `
 Examples:
-  Upload a file:           zero slack upload-file -f /tmp/report.pdf -c C01234
-  Upload to thread:        zero slack upload-file -f /tmp/log.txt -c C01234 --thread 1234567890.123456
-  With title and comment:  zero slack upload-file -f /tmp/data.csv -c C01234 --title "Daily Report" --comment "Here's the report"
+  Upload a file:           okou slack upload-file -f /tmp/report.pdf -c C01234
+  Upload to thread:        okou slack upload-file -f /tmp/log.txt -c C01234 --thread 1234567890.123456
+  With title and comment:  okou slack upload-file -f /tmp/data.csv -c C01234 --title "Daily Report" --comment "Here's the report"
 
 Notes:
   - Uses the bot token (not user SLACK_TOKEN), so no files:write permission is needed

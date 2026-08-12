@@ -68,7 +68,7 @@ describe("platform entrypoint safe area behavior", () => {
       /html,\s*body,\s*#root\s*{[\s\S]*overflow:\s*hidden;[\s\S]*overscroll-behavior:\s*none;/,
     );
     expect(globalCss).toMatch(
-      /#root\s*{[\s\S]*position:\s*fixed;[\s\S]*top:\s*0;[\s\S]*right:\s*0;[\s\S]*left:\s*0;/,
+      /#root\s*{[\s\S]*isolation:\s*isolate;[\s\S]*position:\s*fixed;[\s\S]*top:\s*0;[\s\S]*right:\s*0;[\s\S]*left:\s*0;/,
     );
     expect(globalCss).toMatch(
       /#root\s*{[\s\S]*box-sizing:\s*border-box;[\s\S]*background-color:\s*hsl\(var\(--background\)\);[\s\S]*padding:\s*var\(--sat\)\s+var\(--sar\)\s+var\(--sab-raw\)\s+var\(--sal\);/,

@@ -209,7 +209,7 @@ async function runMcpOperation<T>(
     maxStepUpRetries: 0,
   });
   const client = new Client(
-    { name: "zero-cli", version: __CLI_VERSION__ },
+    { name: "okou-cli", version: __CLI_VERSION__ },
     {
       versionNegotiation: {
         mode: "auto",

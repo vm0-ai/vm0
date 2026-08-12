@@ -482,7 +482,6 @@
       "backToArtifacts": "Volver a los artefactos",
       "close": "Cerrar",
       "closeArtifact": "Cerrar artefacto",
-      "closeDownloadMenu": "Cerrar menú de descarga",
       "closeNamed": "Cerrar {{title}}",
       "closePreviewMenu": "Cerrar menú de vista previa",
       "download": "Descargar",
@@ -729,7 +728,7 @@
       "lastSeen": "Última vez que se vio {{date}}",
       "linkExpires": "El enlace caduca {{date}}.",
       "macRequirement": "Requiere un Mac Apple Silicon con macOS 14 o más reciente. No se soportan Macs Intel.",
-      "noHostsDescription": "Abre Zero Uso del ordenador en tu Mac y actualiza esta página cuando esté en línea.",
+      "noHostsDescription": "Abre {{desktopProductName}} Uso del ordenador en tu Mac y actualiza esta página cuando esté en línea.",
       "noHostsTitle": "No hay ordenadores en línea",
       "sources": {
         "chat": "Este hilo de chat",
@@ -1350,8 +1349,8 @@
       "cloudBrowser": "Navegador en la nube",
       "connectHost": "Conectar {{hostName}}",
       "connectMyComputer": "Conectar mi ordenador",
-      "dialogDescription": "Así Zero puede funcionar en tu navegador y en aplicaciones, incluso en aquellos sin conector como LinkedIn o Reddit.",
-      "dialogTitle": "Permite que Zero use tu ordenador",
+      "dialogDescription": "Así {{desktopProductName}} puede funcionar en tu navegador y en aplicaciones, incluso en aquellos sin conector como LinkedIn o Reddit.",
+      "dialogTitle": "Permite que {{desktopProductName}} use tu ordenador",
       "disableCloudBrowser": "Desactivar el navegador de la nube",
       "disconnectHost": "Desconectar {{hostName}}",
       "downloadMacos": "Descargar para macOS",
@@ -4611,6 +4610,7 @@
   },
   "usage": {
     "displayNames": {
+      "avatar": "Avatar",
       "finance": "Finanzas",
       "imageRecognize": "Reconocimiento de imágenes",
       "maps": "Mapas",

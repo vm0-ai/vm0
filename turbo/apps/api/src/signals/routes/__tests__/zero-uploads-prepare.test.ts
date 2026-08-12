@@ -131,7 +131,7 @@ describe("POST /api/zero/uploads/prepare", () => {
     expect(response.body.error.message).toContain("File too large");
   });
 
-  it("rejects unsupported content types with 400", async () => {
+  it("falls back to a generic content type for unrecognized MIME values", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
     mocks.clerk.session(userId, orgId);
@@ -139,18 +139,24 @@ describe("POST /api/zero/uploads/prepare", () => {
     const client = setupApp({ context, routes: zeroUploadsTestRoutes })(
       zeroUploadsContract,
     );
-    const response = await accept(
-      client.prepare({
-        body: {
-          filename: "bad.exe",
-          contentType: "application/x-msdownload",
-          size: 10,
-        },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [400],
-    );
-    expect(response.body.error.message).toContain("Unsupported file type");
+    const response = await client.prepare({
+      body: {
+        filename: "capture.custom",
+        contentType: "Application/X-Custom; Version=1",
+        size: 10,
+      },
+      headers: { authorization: "Bearer clerk-session" },
+    });
+
+    expect(response.status).toBe(200);
+    if (response.status !== 200) {
+      return;
+    }
+    expect(response.body).toMatchObject({
+      filename: "capture.custom",
+      contentType: "application/octet-stream",
+      size: 10,
+    });
   });
 
   it("returns presigned upload URL and final CDN URL with full body shape", async () => {

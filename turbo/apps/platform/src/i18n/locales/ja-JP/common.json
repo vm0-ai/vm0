@@ -468,7 +468,6 @@
       "backToArtifacts": "アーティファクトに戻る",
       "close": "閉じる",
       "closeArtifact": "アーティファクトを閉じる",
-      "closeDownloadMenu": "ダウンロードメニューを閉じる",
       "closeNamed": "{{title}} を閉じる",
       "closePreviewMenu": "プレビューメニューを閉じる",
       "download": "ダウンロード",
@@ -712,7 +711,7 @@
       "lastSeen": "最後に表示されたのは {{date}}",
       "linkExpires": "リンクの有効期限が切れます {{date}}。",
       "macRequirement": "macOS 14 以降を搭載した Apple Silicon Mac が必要です。 Intel Mac はサポートされていません。",
-      "noHostsDescription": "Mac で Zero Computer Use を開き、オンラインになったらこのページを更新します。",
+      "noHostsDescription": "Mac で {{desktopProductName}} Computer Use を開き、オンラインになったらこのページを更新します。",
       "noHostsTitle": "オンラインコンピュータはありません",
       "sources": {
         "chat": "このチャットスレッド",
@@ -1324,8 +1323,8 @@
       "cloudBrowser": "クラウドブラウザ",
       "connectHost": "{{hostName}} を接続します",
       "connectMyComputer": "コンピューターを接続する",
-      "dialogDescription": "そのため、Zero は、LinkedIn や Reddit のようなコネクタを持たないブラウザやアプリでも動作します。",
-      "dialogTitle": "Zero にコンピュータを使用させます",
+      "dialogDescription": "そのため、{{desktopProductName}} は、LinkedIn や Reddit のようなコネクタを持たないブラウザやアプリでも動作します。",
+      "dialogTitle": "{{desktopProductName}} にコンピュータを使用させます",
       "disableCloudBrowser": "クラウドブラウザを無効にする",
       "disconnectHost": "{{hostName}} を切断します",
       "downloadMacos": "macOS をダウンロード",
@@ -4559,6 +4558,7 @@
   },
   "usage": {
     "displayNames": {
+      "avatar": "アバター",
       "finance": "金融",
       "imageRecognize": "画像認識",
       "maps": "地図",

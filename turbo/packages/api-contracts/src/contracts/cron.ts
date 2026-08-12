@@ -99,6 +99,7 @@ const cronSnapshotChatEventsResponseSchema =
     success: z.literal(true),
     snapshots: z.number(),
     archivedEvents: z.number(),
+    retiredSnapshotReferencesDeleted: z.number().int().nonnegative(),
     r2ObjectsScanned: z.number().int().nonnegative(),
     r2ObjectsMeasured: z.number().int().nonnegative(),
     r2ObjectsDeleted: z.number().int().nonnegative(),

@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
+import { Dialog, DialogContent, DialogTitle } from "../dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -10,6 +11,12 @@ import {
   DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "../dropdown-menu";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "../tooltip";
 
 function TestMenu({ keepOpen = false }: { keepOpen?: boolean }) {
   return (
@@ -77,6 +84,34 @@ describe("DropdownMenu", () => {
     expect(trigger).toHaveFocus();
   });
 
+  it("opens when its trigger is composed with a tooltip", async () => {
+    render(
+      <DropdownMenu>
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <DropdownMenuTrigger
+                  render={<button type="button">Download options</button>}
+                />
+              }
+            />
+            <TooltipContent>Download artifact</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+        <DropdownMenuContent>
+          <DropdownMenuItem>Download</DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Download options" }));
+
+    expect(
+      await screen.findByRole("menuitem", { name: "Download" }),
+    ).toBeVisible();
+  });
+
   it("opens a submenu when its trigger is clicked", async () => {
     render(
       <DropdownMenu>
@@ -102,5 +137,41 @@ describe("DropdownMenu", () => {
     expect(
       await screen.findByRole("menuitem", { name: "Archive" }),
     ).toBeVisible();
+  });
+
+  it("nests menu and tooltip portals in their owning dialog", () => {
+    render(
+      <Dialog open>
+        <DialogContent>
+          <DialogTitle>Artifact preview</DialogTitle>
+          <DropdownMenu open>
+            <DropdownMenuTrigger>Download options</DropdownMenuTrigger>
+            <DropdownMenuContent>
+              <TooltipProvider>
+                <Tooltip open>
+                  <TooltipTrigger asChild>
+                    <DropdownMenuItem>Download</DropdownMenuItem>
+                  </TooltipTrigger>
+                  <TooltipContent>Download artifact</TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </DialogContent>
+      </Dialog>,
+    );
+
+    const dialogPortal = screen
+      .getByRole("dialog", { name: "Artifact preview" })
+      .closest<HTMLElement>("[data-base-ui-portal]");
+    const menuPortal = screen
+      .getByRole("menu")
+      .closest<HTMLElement>("[data-base-ui-portal]");
+    const tooltipPortal = screen
+      .getByText("Download artifact")
+      .closest<HTMLElement>("[data-base-ui-portal]");
+
+    expect(dialogPortal).toContainElement(menuPortal);
+    expect(menuPortal).toContainElement(tooltipPortal);
   });
 });

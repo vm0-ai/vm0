@@ -22,6 +22,7 @@ import { setupRealtime$ } from "../../realtime.ts";
 import { resetSignal } from "../../utils.ts";
 import { setupChatEventBackgroundSync$ } from "../chat-event-background-sync.ts";
 import { writeIndexedDbChatEventRows$ } from "../chat-event-row-indexed-db.ts";
+import { createChatEventSignals } from "../chat-event-signals.ts";
 import { createChatEventStorageSignals } from "../chat-event-storage-signals.ts";
 import {
   listEventsAfter$,
@@ -452,6 +453,205 @@ describe("chat event snapshot read", () => {
           appDb.get(CHAT_EVENT_ROWS_STORE, tailEventRow.id),
         ).resolves.toStrictEqual(tailEventRow);
       });
+    } finally {
+      context.store.set(resetSubscriberSignal$, context.signal);
+      await expect(subscription).rejects.toMatchObject({ name: "AbortError" });
+      appDb.close();
+    }
+  });
+
+  it("background-cold-starts raw rows and forwards them to an active thread", async () => {
+    mockSignedInUser();
+    enableSnapshotRead();
+    rejectProjectedEventsEndpoint();
+    const { threadId, promptEventRow, assistantEventRow, tailEventRow } =
+      threadFixture();
+    const appDb = await context.store.get(chatIdb$);
+
+    context.mocks.api(chatThreadEventsContract.snapshot, ({ respond }) => {
+      return respond(200, {
+        url: SNAPSHOT_URL,
+        expiresInSeconds: 900,
+        lastSeqId: assistantEventRow.seqId,
+      });
+    });
+    context.mocks.http.get(SNAPSHOT_URL, () => {
+      return new Response(snapshotNdjson([promptEventRow, assistantEventRow]));
+    });
+    const rowRequests: number[] = [];
+    context.mocks.api(chatThreadEventsContract.rows, ({ query, respond }) => {
+      rowRequests.push(query.sinceSeqId);
+      if (query.sinceSeqId === assistantEventRow.seqId) {
+        return respond(200, { rows: [tailEventRow] });
+      }
+      return respond(200, { rows: [] });
+    });
+
+    const signals = createChatEventSignals(threadId);
+    await context.store.set(signals.setup$, context.signal);
+    await context.store.set(setupRealtime$, context.signal);
+    const subscriberSignal = context.store.set(
+      resetSubscriberSignal$,
+      context.signal,
+    );
+    const subscription = context.store.set(
+      setupChatEventBackgroundSync$,
+      subscriberSignal,
+    );
+
+    try {
+      await waitFor(() => {
+        expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
+      });
+
+      context.mocks.ably.trigger(`chatThreadMessageCreated:${threadId}`);
+
+      await waitFor(() => {
+        expect(
+          context.store.get(signals.chatEvents$).map((event) => {
+            return event.id;
+          }),
+        ).toStrictEqual([
+          promptEventRow.id,
+          assistantEventRow.id,
+          tailEventRow.id,
+        ]);
+      });
+      expect(rowRequests).toStrictEqual([assistantEventRow.seqId]);
+      await expect(
+        appDb.get(CHAT_EVENT_ROWS_STORE, tailEventRow.id),
+      ).resolves.toStrictEqual(tailEventRow);
+    } finally {
+      context.store.set(resetSubscriberSignal$, context.signal);
+      await expect(subscription).rejects.toMatchObject({ name: "AbortError" });
+      appDb.close();
+    }
+  });
+
+  it("background-cold-starts from row zero when no snapshot exists", async () => {
+    mockSignedInUser();
+    enableSnapshotRead();
+    rejectProjectedEventsEndpoint();
+    const { threadId, promptEventRow, assistantEventRow } = threadFixture();
+    const appDb = await context.store.get(chatIdb$);
+
+    context.mocks.api(chatThreadEventsContract.snapshot, ({ respond }) => {
+      return respond(404, {
+        error: {
+          code: "CHAT_EVENT_SNAPSHOT_NOT_FOUND",
+          message: "Chat event snapshot not found",
+        },
+      });
+    });
+    const rowRequests: number[] = [];
+    context.mocks.api(chatThreadEventsContract.rows, ({ query, respond }) => {
+      rowRequests.push(query.sinceSeqId);
+      if (query.sinceSeqId === 0) {
+        return respond(200, { rows: [promptEventRow, assistantEventRow] });
+      }
+      return respond(200, { rows: [] });
+    });
+
+    await context.store.set(setupRealtime$, context.signal);
+    const subscriberSignal = context.store.set(
+      resetSubscriberSignal$,
+      context.signal,
+    );
+    const subscription = context.store.set(
+      setupChatEventBackgroundSync$,
+      subscriberSignal,
+    );
+
+    try {
+      await waitFor(() => {
+        expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
+      });
+
+      context.mocks.ably.trigger(`chatThreadMessageCreated:${threadId}`);
+
+      await waitFor(async () => {
+        await expect(
+          appDb.get(CHAT_EVENT_ROWS_STORE, assistantEventRow.id),
+        ).resolves.toStrictEqual(assistantEventRow);
+      });
+      expect(rowRequests).toStrictEqual([0]);
+    } finally {
+      context.store.set(resetSubscriberSignal$, context.signal);
+      await expect(subscription).rejects.toMatchObject({ name: "AbortError" });
+      appDb.close();
+    }
+  });
+
+  it("background-rebuilds raw rows when the cached cursor expires", async () => {
+    mockSignedInUser();
+    enableSnapshotRead();
+    rejectProjectedEventsEndpoint();
+    const { threadId, promptEventRow, assistantEventRow, tailEventRow } =
+      threadFixture();
+    const staleRow = baseRow(threadId, 5);
+    const appDb = await context.store.get(chatIdb$);
+    await context.store.set(
+      writeIndexedDbChatEventRows$,
+      [staleRow],
+      context.signal,
+    );
+
+    context.mocks.api(chatThreadEventsContract.snapshot, ({ respond }) => {
+      return respond(200, {
+        url: SNAPSHOT_URL,
+        expiresInSeconds: 900,
+        lastSeqId: assistantEventRow.seqId,
+      });
+    });
+    context.mocks.http.get(SNAPSHOT_URL, () => {
+      return new Response(snapshotNdjson([promptEventRow, assistantEventRow]));
+    });
+    const rowRequests: number[] = [];
+    context.mocks.api(chatThreadEventsContract.rows, ({ query, respond }) => {
+      rowRequests.push(query.sinceSeqId);
+      if (query.sinceSeqId === staleRow.seqId) {
+        return respond(410, {
+          error: {
+            code: "CHAT_EVENTS_EXPIRED",
+            message: "Chat events cursor has expired",
+          },
+        });
+      }
+      return respond(200, { rows: [tailEventRow] });
+    });
+
+    await context.store.set(setupRealtime$, context.signal);
+    const subscriberSignal = context.store.set(
+      resetSubscriberSignal$,
+      context.signal,
+    );
+    const subscription = context.store.set(
+      setupChatEventBackgroundSync$,
+      subscriberSignal,
+    );
+
+    try {
+      await waitFor(() => {
+        expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
+      });
+
+      context.mocks.ably.trigger(`chatThreadMessageCreated:${threadId}`);
+
+      await waitFor(async () => {
+        await expect(
+          appDb.get(CHAT_EVENT_ROWS_STORE, tailEventRow.id),
+        ).resolves.toStrictEqual(tailEventRow);
+      });
+      expect(rowRequests).toStrictEqual([
+        staleRow.seqId,
+        assistantEventRow.seqId,
+      ]);
+      await expect(
+        appDb.get(CHAT_EVENT_ROWS_STORE, staleRow.id),
+      ).resolves.toBeUndefined();
+      await expect(
+        appDb.get(CHAT_EVENT_ROWS_STORE, promptEventRow.id),
+      ).resolves.toStrictEqual(promptEventRow);
     } finally {
       context.store.set(resetSubscriberSignal$, context.signal);
       await expect(subscription).rejects.toMatchObject({ name: "AbortError" });

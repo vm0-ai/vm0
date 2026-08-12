@@ -108,6 +108,24 @@ describe("decodeZeroTokenPayload", () => {
     });
   });
 
+  it("should decode payload from a valid okou-scoped token", () => {
+    const token = buildZeroToken({
+      userId: "user-okou",
+      runId: "run-okou",
+      orgId: "org-okou",
+      scope: "okou",
+      capabilities: ["agent:read"],
+      iat: 1000,
+      exp: 2000,
+    });
+
+    expect(decodeZeroTokenPayload(token)).toMatchObject({
+      userId: "user-okou",
+      scope: "okou",
+      capabilities: ["agent:read"],
+    });
+  });
+
   it("should return undefined for token without vm0_sandbox_ prefix", () => {
     expect(decodeZeroTokenPayload("some-other-token")).toBeUndefined();
   });
@@ -206,6 +224,22 @@ describe("registerZeroCommands", () => {
       "banking",
       "goal",
     ]);
+  });
+
+  it("prefers OKOU_TOKEN when both token names are present", () => {
+    vi.stubEnv(
+      "OKOU_TOKEN",
+      buildZeroToken({ scope: "okou", capabilities: ["agent:read"] }),
+    );
+    vi.stubEnv(
+      "ZERO_TOKEN",
+      buildZeroToken({ scope: "zero", capabilities: ["connector:read"] }),
+    );
+
+    const prog = buildProgram();
+
+    expect(visibleCommandNames(prog)).toContain("agent");
+    expect(visibleCommandNames(prog)).not.toContain("connector");
   });
 
   it("should hide run-only commands and keep global commands visible with malformed token", () => {
@@ -813,7 +847,7 @@ describe("registerZeroCommands", () => {
     const help = buildZeroHelpText(decodeZeroTokenPayload(token));
 
     expect(help).toContain("Check credits?");
-    expect(help).toContain("zero credit");
+    expect(help).toContain("okou credit");
     expect(help).not.toContain("Buy credits?");
     expect(help).toContain("Upgrade plan?");
   });
@@ -1202,7 +1236,7 @@ describe("registerZeroCommands", () => {
   });
 });
 
-describe("zero generate command visibility", () => {
+describe("okou generate command visibility", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
     vi.resetModules();

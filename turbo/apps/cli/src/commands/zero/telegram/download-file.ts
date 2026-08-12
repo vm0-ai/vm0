@@ -31,8 +31,8 @@ export const downloadFileCommand = new Command()
     "after",
     `
 Examples:
-  Download to default temp path: zero telegram download-file AgACAgUAAxkBAA --bot-id 123456789
-  Download to explicit path:     zero telegram download-file AgACAgUAAxkBAA --bot-id 123456789 -o /tmp/photo.jpg
+  Download to default temp path: okou telegram download-file AgACAgUAAxkBAA --bot-id 123456789
+  Download to explicit path:     okou telegram download-file AgACAgUAAxkBAA --bot-id 123456789 -o /tmp/photo.jpg
 
 Output:
   Prints a JSON object to stdout on success:
@@ -41,7 +41,7 @@ Output:
 How to read the downloaded file:
   - Images (png/jpg/gif/webp/svg): open the file path with your image viewing tool
   - Videos (mp4/mov/webm): transcribe audio first with
-      zero video transcribe --url <download-url>
+      okou video transcribe --url <download-url>
     or extract frames with
       ffmpeg -i <path> -vf "fps=1" -q:v 2 /tmp/<file-id>_frame_%03d.jpg
   - PDF/text/csv/json/markdown: read the file directly

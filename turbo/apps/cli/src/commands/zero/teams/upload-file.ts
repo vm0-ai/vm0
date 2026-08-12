@@ -43,9 +43,9 @@ export const uploadFileCommand = new Command()
     "after",
     `
 Examples:
-  Upload a file:     zero teams upload-file -f /tmp/report.pdf -c 19:thread@thread.tacv2
-  Upload to thread:  zero teams upload-file -f /tmp/log.txt -c 19:thread@thread.tacv2 --activity-id root-activity
-  With message text: zero teams upload-file -f /tmp/data.csv -c 19:thread@thread.tacv2 -t "Daily report"
+  Upload a file:     okou teams upload-file -f /tmp/report.pdf -c 19:thread@thread.tacv2
+  Upload to thread:  okou teams upload-file -f /tmp/log.txt -c 19:thread@thread.tacv2 --activity-id root-activity
+  With message text: okou teams upload-file -f /tmp/data.csv -c 19:thread@thread.tacv2 -t "Daily report"
 
 Output:
   Prints a JSON object to stdout on success:

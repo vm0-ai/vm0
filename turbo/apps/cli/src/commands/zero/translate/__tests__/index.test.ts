@@ -10,7 +10,7 @@ import { zeroTranslateCommand } from "../index";
 
 const TRANSLATE_URL = "http://localhost:3000/api/zero/translate";
 
-describe("zero translate command", () => {
+describe("okou translate command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation(() => {
     return undefined as never;
   });
@@ -51,7 +51,7 @@ describe("zero translate command", () => {
 
     await zeroTranslateCommand.parseAsync([
       "node",
-      "zero",
+      "okou",
       "  Hello, world  ",
       "--from",
       "  English  ",
@@ -81,7 +81,7 @@ describe("zero translate command", () => {
 
     await zeroTranslateCommand.parseAsync([
       "node",
-      "zero",
+      "okou",
       "Bonjour",
       "--to",
       "English",
@@ -115,7 +115,7 @@ describe("zero translate command", () => {
       mockConsoleError.mockClear();
       await zeroTranslateCommand.parseAsync([
         "node",
-        "zero",
+        "okou",
         input.text,
         "--to",
         input.to,
@@ -143,7 +143,7 @@ describe("zero translate command", () => {
 
     await zeroTranslateCommand.parseAsync([
       "node",
-      "zero",
+      "okou",
       "Hello",
       "--to",
       "Chinese",

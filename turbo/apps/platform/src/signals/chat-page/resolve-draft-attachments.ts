@@ -32,6 +32,7 @@ interface PreparedUserMessage {
 interface AttachmentFileInfo {
   id: string;
   url: string;
+  contentType: string;
 }
 
 interface ResolvedDraftAttachment {
@@ -172,7 +173,7 @@ export const prepareUserMessageFromDraft$ = command(
 
     // User prompt is clean text only — file description blocks are appended
     // server-side via buildFullPrompt so the agent gets the [Web file] [ID]
-    // format it knows how to download with `zero web download-file`.
+    // format it knows how to download with `okou web download-file`.
     const finalPrompt =
       trimmedPrompt || (ready.length > 0 ? ATTACH_ONLY_PLACEHOLDER : "");
 
@@ -182,7 +183,7 @@ export const prepareUserMessageFromDraft$ = command(
             return {
               id: r.info.id,
               filename: r.attachment.filename,
-              contentType: r.attachment.contentType,
+              contentType: r.info.contentType,
               size: r.attachment.size,
               url: r.info.url,
             };

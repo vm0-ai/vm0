@@ -24,7 +24,7 @@ import {
 import { sendMessage } from "../external/telegram-client";
 import { publishUserSignal } from "../external/realtime";
 import { logger } from "../../lib/log";
-import { bestEffort, tapError } from "../utils";
+import { tapError } from "../utils";
 import {
   formatTelegramUserDisplayName,
   linkOfficialTelegramUserToVm0User$,
@@ -192,7 +192,7 @@ function noLinkedTelegramAccountResponse() {
 }
 
 async function publishTelegramUserChanged(userId: string): Promise<void> {
-  await bestEffort(publishUserSignal([userId], "telegram:changed"));
+  await publishUserSignal([userId], "telegram:changed");
 }
 
 async function resolveOfficialConnectComposeId(

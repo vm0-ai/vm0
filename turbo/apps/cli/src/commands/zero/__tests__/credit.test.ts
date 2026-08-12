@@ -58,7 +58,7 @@ function stubBillingStatus(
   });
 }
 
-describe("zero credit command", () => {
+describe("okou credit command", () => {
   const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
 
   beforeEach(() => {

@@ -123,6 +123,22 @@ runs:
           add_env "$1" "$(repo_secret "$2")"
         }
 
+        add_okou_var() {
+          local suffix="$1"
+          local value
+          value="$(first_non_empty "$(repo_var "OKOU_${suffix}")" "$(repo_var "ZERO_${suffix}")")"
+          add_env "OKOU_${suffix}" "$value"
+          add_env "ZERO_${suffix}" "$value"
+        }
+
+        add_okou_secret() {
+          local suffix="$1"
+          local value
+          value="$(first_non_empty "$(repo_secret "OKOU_${suffix}")" "$(repo_secret "ZERO_${suffix}")")"
+          add_env "OKOU_${suffix}" "$value"
+          add_env "ZERO_${suffix}" "$value"
+        }
+
         add_oauth_client_config_key() {
           local key="$1"
           local value
@@ -234,8 +250,8 @@ runs:
         add_var R2_HOSTED_SITES_BUCKET_NAME R2_HOSTED_SITES_BUCKET_NAME
         add_secret R2_HOSTED_SITES_ACCESS_KEY_ID R2_HOSTED_SITES_ACCESS_KEY_ID
         add_secret R2_HOSTED_SITES_SECRET_ACCESS_KEY R2_HOSTED_SITES_SECRET_ACCESS_KEY
-        add_var ZERO_HOST_DOMAIN ZERO_HOST_DOMAIN
-        add_var ZERO_HOST_SCHEME ZERO_HOST_SCHEME
+        add_okou_var HOST_DOMAIN
+        add_okou_var HOST_SCHEME
         add_secret SECRETS_ENCRYPTION_KEY SECRETS_ENCRYPTION_KEY
         add_secret SECRETS_KMS_KEY_ID SECRETS_KMS_KEY_ID
         add_var AWS_REGION AWS_REGION
@@ -340,15 +356,20 @@ runs:
 
         add_secret GOOGLE_ADS_DEVELOPER_TOKEN GOOGLE_ADS_DEVELOPER_TOKEN
         add_secret GOOGLE_ADS_LOGIN_CUSTOMER_ID GOOGLE_ADS_LOGIN_CUSTOMER_ID
-        add_secret ZERO_MAPS_GOOGLE_MAPS_TOKEN ZERO_MAPS_GOOGLE_MAPS_TOKEN
-        add_secret ZERO_WEATHER_GOOGLE_WEATHER_TOKEN ZERO_WEATHER_GOOGLE_WEATHER_TOKEN
-        add_secret ZERO_SCRAPE_FIRECRAWL_TOKEN ZERO_SCRAPE_FIRECRAWL_TOKEN
-        add_secret ZERO_WEB_SEARCH_PERPLEXITY_TOKEN ZERO_WEB_SEARCH_PERPLEXITY_TOKEN
-        add_secret ZERO_FINANCE_APIDOJO_TOKEN ZERO_FINANCE_APIDOJO_TOKEN
+        okou_provider_secret_suffixes=(
+          MAPS_GOOGLE_MAPS_TOKEN
+          WEATHER_GOOGLE_WEATHER_TOKEN
+          SCRAPE_FIRECRAWL_TOKEN
+          WEB_SEARCH_PERPLEXITY_TOKEN
+          FINANCE_APIDOJO_TOKEN
+        )
+        for suffix in "${okou_provider_secret_suffixes[@]}"; do
+          add_okou_secret "$suffix"
+        done
         if [[ "$INPUT_APP" == "api" ]]; then
-          add_secret ZERO_SEO_DATAFORSEO_LOGIN ZERO_SEO_DATAFORSEO_LOGIN
-          add_secret ZERO_SEO_DATAFORSEO_PASSWORD ZERO_SEO_DATAFORSEO_PASSWORD
-          add_secret ZERO_BROWSER_USE_API_KEY ZERO_BROWSER_USE_API_KEY
+          add_okou_secret SEO_DATAFORSEO_LOGIN
+          add_okou_secret SEO_DATAFORSEO_PASSWORD
+          add_okou_secret BROWSER_USE_API_KEY
         fi
         add_secret STEAM_WEB_API_KEY STEAM_WEB_API_KEY
         add_secret FINICITY_APP_KEY FINICITY_APP_KEY
@@ -363,19 +384,24 @@ runs:
         add_secret STRIPE_WEBHOOK_SECRET STRIPE_WEBHOOK_SECRET
         add_secret STRIPE_AUTOMATION_WEBHOOK_SECRET STRIPE_AUTOMATION_WEBHOOK_SECRET
         add_secret CLERK_WEBHOOK_SIGNING_SECRET CLERK_WEBHOOK_SIGNING_SECRET
-        add_var ZERO_PRICE_PRO ZERO_PRICE_PRO
-        add_var ZERO_PRICE_TEAM ZERO_PRICE_TEAM
-        add_var ZERO_PRICE_USAGE_PACK_PLAN_PRO ZERO_PRICE_USAGE_PACK_PLAN_PRO
-        add_var ZERO_PRICE_USAGE_PACK_PLAN_TEAM ZERO_PRICE_USAGE_PACK_PLAN_TEAM
-        add_var ZERO_PRICE_USAGE_PACK_20 ZERO_PRICE_USAGE_PACK_20
-        add_var ZERO_PRICE_USAGE_PACK_50 ZERO_PRICE_USAGE_PACK_50
-        add_var ZERO_PRICE_USAGE_PACK_100 ZERO_PRICE_USAGE_PACK_100
-        add_var ZERO_PRICE_USAGE_PACK_200 ZERO_PRICE_USAGE_PACK_200
+        okou_price_var_suffixes=(
+          PRICE_PRO
+          PRICE_TEAM
+          PRICE_USAGE_PACK_PLAN_PRO
+          PRICE_USAGE_PACK_PLAN_TEAM
+          PRICE_USAGE_PACK_20
+          PRICE_USAGE_PACK_50
+          PRICE_USAGE_PACK_100
+          PRICE_USAGE_PACK_200
+          PRICE_CUSTOM_CREDITS
+          PRICE_CUSTOM_CREDIT_UNIT
+          PRICE_CONCURRENCY
+          ONE_TIME_CAMPAIGN
+        )
+        for suffix in "${okou_price_var_suffixes[@]}"; do
+          add_okou_var "$suffix"
+        done
         add_var ATOM_GRANT_PRICE ATOM_GRANT_PRICE
-        add_var ZERO_PRICE_CUSTOM_CREDITS ZERO_PRICE_CUSTOM_CREDITS
-        add_var ZERO_PRICE_CUSTOM_CREDIT_UNIT ZERO_PRICE_CUSTOM_CREDIT_UNIT
-        add_var ZERO_PRICE_CONCURRENCY ZERO_PRICE_CONCURRENCY
-        add_var ZERO_ONE_TIME_CAMPAIGN ZERO_ONE_TIME_CAMPAIGN
         add_secret AGENTPHONE_API_KEY AGENTPHONE_API_KEY
         add_var AGENTPHONE_API_BASE_URL AGENTPHONE_API_BASE_URL
         add_var AGENTPHONE_AGENT_ID AGENTPHONE_AGENT_ID

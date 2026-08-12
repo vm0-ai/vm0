@@ -2124,7 +2124,7 @@ export function createAutomationAddCommand(
       commandOptions.featureSwitchOverrides,
     );
   const stripeExample = stripeInvoicePaidEnabledForHelp
-    ? "  zero workflow automation add invoice-follow-up --agent <agent-id> stripe-invoice-paid --billing-reason subscription_create,subscription_cycle\n"
+    ? "  okou workflow automation add invoice-follow-up --agent <agent-id> stripe-invoice-paid --billing-reason subscription_create,subscription_cycle\n"
     : "";
 
   return addGithubAutomationOptions(
@@ -2196,26 +2196,26 @@ export function createAutomationAddCommand(
       "after",
       `
 Examples:
-  zero workflow automation add tell-a-joke --agent <agent-id> cron --expr "0 9 * * *" -z Asia/Shanghai
-  zero workflow automation add tell-a-joke --agent <agent-id> once --at "2026-06-10T09:00" -z Asia/Shanghai
-  zero workflow automation add tell-a-joke --agent <agent-id> loop --every 15m
-  zero workflow automation add triage --agent <agent-id> gmail-new-message --from-contains "@example.com"
-  zero workflow automation add triage --agent <agent-id> gmail-new-message --config ./gmail-automation.json
-  zero workflow automation add triage --agent <agent-id> gmail-label-applied --label "Support"
-  zero workflow automation add triage --agent <agent-id> github-label-applied --label "triage" --subject both --actor me
-  zero workflow automation add ci-triage --agent <agent-id> github-workflow-run-completed --repository vm0-ai/vm0 --workflow Turbo --conclusion failure,timed_out --branch main --triggering-event push --actor dependabot[bot]
-  zero workflow automation add triage --agent <agent-id> google-calendar-event-created
-  zero workflow automation add triage --agent <agent-id> google-calendar-event-updated
-  zero workflow automation add triage --agent <agent-id> google-calendar-event-cancelled
-  zero workflow trigger add triage --agent <agent-id> google-forms-response-submitted --form-url "https://docs.google.com/forms/d/<form-id>/edit"
-  zero workflow automation add meeting-notes --agent <agent-id> google-meet-transcript-generated
-  zero workflow automation add research-notes --agent <agent-id> notion-child-page-created --parent-page-url "https://www.notion.so/workspace/Page-title-1234567890abcdef1234567890abcdef"
-  zero workflow automation add research-notes --agent <agent-id> notion-database-item-created --database-url "https://www.notion.so/1234567890abcdef1234567890abcdef?v=abcdef1234567890abcdef1234567890"
-  zero workflow automation add research-notes --agent <agent-id> notion-page-content-updated --page-url "https://www.notion.so/workspace/Page-title-1234567890abcdef1234567890abcdef"
-  zero workflow automation add research-notes --agent <agent-id> notion-page-content-updated --database-url "https://www.notion.so/1234567890abcdef1234567890abcdef?v=abcdef1234567890abcdef1234567890"
-  zero workflow automation add deploy-blog --agent <agent-id> strapi-entry-published --integration-id <uuid> --content-type-uid api::article.article
-${stripeExample}  zero workflow automation add triage --agent <agent-id> webhook
-  zero workflow automation add follow-up --agent <agent-id> chat-run-finished --chat-thread-id <thread-uuid> --run-status completed,failed --output-pattern "*deploy failed*"
+  okou workflow automation add tell-a-joke --agent <agent-id> cron --expr "0 9 * * *" -z Asia/Shanghai
+  okou workflow automation add tell-a-joke --agent <agent-id> once --at "2026-06-10T09:00" -z Asia/Shanghai
+  okou workflow automation add tell-a-joke --agent <agent-id> loop --every 15m
+  okou workflow automation add triage --agent <agent-id> gmail-new-message --from-contains "@example.com"
+  okou workflow automation add triage --agent <agent-id> gmail-new-message --config ./gmail-automation.json
+  okou workflow automation add triage --agent <agent-id> gmail-label-applied --label "Support"
+  okou workflow automation add triage --agent <agent-id> github-label-applied --label "triage" --subject both --actor me
+  okou workflow automation add ci-triage --agent <agent-id> github-workflow-run-completed --repository vm0-ai/vm0 --workflow Turbo --conclusion failure,timed_out --branch main --triggering-event push --actor dependabot[bot]
+  okou workflow automation add triage --agent <agent-id> google-calendar-event-created
+  okou workflow automation add triage --agent <agent-id> google-calendar-event-updated
+  okou workflow automation add triage --agent <agent-id> google-calendar-event-cancelled
+  okou workflow trigger add triage --agent <agent-id> google-forms-response-submitted --form-url "https://docs.google.com/forms/d/<form-id>/edit"
+  okou workflow automation add meeting-notes --agent <agent-id> google-meet-transcript-generated
+  okou workflow automation add research-notes --agent <agent-id> notion-child-page-created --parent-page-url "https://www.notion.so/workspace/Page-title-1234567890abcdef1234567890abcdef"
+  okou workflow automation add research-notes --agent <agent-id> notion-database-item-created --database-url "https://www.notion.so/1234567890abcdef1234567890abcdef?v=abcdef1234567890abcdef1234567890"
+  okou workflow automation add research-notes --agent <agent-id> notion-page-content-updated --page-url "https://www.notion.so/workspace/Page-title-1234567890abcdef1234567890abcdef"
+  okou workflow automation add research-notes --agent <agent-id> notion-page-content-updated --database-url "https://www.notion.so/1234567890abcdef1234567890abcdef?v=abcdef1234567890abcdef1234567890"
+  okou workflow automation add deploy-blog --agent <agent-id> strapi-entry-published --integration-id <uuid> --content-type-uid api::article.article
+${stripeExample}  okou workflow automation add triage --agent <agent-id> webhook
+  okou workflow automation add follow-up --agent <agent-id> chat-run-finished --chat-thread-id <thread-uuid> --run-status completed,failed --output-pattern "*deploy failed*"
 
 Notes:
   - Workflow names resolve under --agent, then ZERO_AGENT_ID
@@ -2304,15 +2304,15 @@ const updateCommand = addGithubAutomationOptions(
     "after",
     `
 Examples:
-  zero workflow automation update 22222222-2222-4222-8222-222222222222 --expr "0 9 * * *" -z Asia/Shanghai
-  zero workflow automation update 22222222-2222-4222-8222-222222222222 --at "2026-06-10T09:00" -z UTC
-  zero workflow automation update 22222222-2222-4222-8222-222222222222 --every 10m
-  zero workflow automation update 22222222-2222-4222-8222-222222222222 --from-contains "@example.com"
-  zero workflow automation update 22222222-2222-4222-8222-222222222222 --config ./gmail-automation.json
-  zero workflow automation update 22222222-2222-4222-8222-222222222222 --label "Support"
-  zero workflow automation update 22222222-2222-4222-8222-222222222222 --actor anyone
-  zero workflow automation update 22222222-2222-4222-8222-222222222222 --conclusion failure,timed_out --branch main
-  zero workflow automation update 22222222-2222-4222-8222-222222222222 --actor any`,
+  okou workflow automation update 22222222-2222-4222-8222-222222222222 --expr "0 9 * * *" -z Asia/Shanghai
+  okou workflow automation update 22222222-2222-4222-8222-222222222222 --at "2026-06-10T09:00" -z UTC
+  okou workflow automation update 22222222-2222-4222-8222-222222222222 --every 10m
+  okou workflow automation update 22222222-2222-4222-8222-222222222222 --from-contains "@example.com"
+  okou workflow automation update 22222222-2222-4222-8222-222222222222 --config ./gmail-automation.json
+  okou workflow automation update 22222222-2222-4222-8222-222222222222 --label "Support"
+  okou workflow automation update 22222222-2222-4222-8222-222222222222 --actor anyone
+  okou workflow automation update 22222222-2222-4222-8222-222222222222 --conclusion failure,timed_out --branch main
+  okou workflow automation update 22222222-2222-4222-8222-222222222222 --actor any`,
   )
   .action(
     withErrorHandler(async (id: string, options: UpdateOptions) => {
@@ -2337,8 +2337,8 @@ const listCommand = new Command()
     "after",
     `
 Examples:
-  zero workflow automation list tell-a-joke --agent <agent-id>
-  zero workflow automation list <workflow-id>`,
+  okou workflow automation list tell-a-joke --agent <agent-id>
+  okou workflow automation list <workflow-id>`,
   )
   .action(
     withErrorHandler(
@@ -2350,7 +2350,7 @@ Examples:
           console.log(chalk.dim("No automations"));
           console.log(
             chalk.dim(
-              `  Add one with: zero workflow automation add ${workflowRef} cron --expr "0 9 * * *"`,
+              `  Add one with: okou workflow automation add ${workflowRef} cron --expr "0 9 * * *"`,
             ),
           );
           return;
@@ -2444,11 +2444,11 @@ export const automationCommand = new Command()
     "after",
     `
 Examples:
-  Add an automation:     zero workflow automation add <workflow-id> cron --expr "0 9 * * *"
-  Add a Notion page:     zero workflow automation add <workflow-id> notion-child-page-created --parent-page-url "https://www.notion.so/..."
-  Add a webhook:         zero workflow automation add <workflow-id> webhook
-  Update a schedule:     zero workflow automation update <automation-id> --every 10m
-  List automations:      zero workflow automation list <workflow-id>
-  Inspect an automation: zero workflow automation show <automation-id>
-  Pause one automation:  zero workflow automation disable <automation-id>`,
+  Add an automation:     okou workflow automation add <workflow-id> cron --expr "0 9 * * *"
+  Add a Notion page:     okou workflow automation add <workflow-id> notion-child-page-created --parent-page-url "https://www.notion.so/..."
+  Add a webhook:         okou workflow automation add <workflow-id> webhook
+  Update a schedule:     okou workflow automation update <automation-id> --every 10m
+  List automations:      okou workflow automation list <workflow-id>
+  Inspect an automation: okou workflow automation show <automation-id>
+  Pause one automation:  okou workflow automation disable <automation-id>`,
   );

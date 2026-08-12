@@ -468,7 +468,6 @@
       "backToArtifacts": "아티팩트로 돌아가기",
       "close": "닫기",
       "closeArtifact": "아티팩트 닫기",
-      "closeDownloadMenu": "다운로드 메뉴 닫기",
       "closeNamed": "{{title}} 닫기",
       "closePreviewMenu": "미리보기 메뉴 닫기",
       "download": "다운로드",
@@ -712,7 +711,7 @@
       "lastSeen": "마지막 접속 {{date}}",
       "linkExpires": "링크는 {{date}}에 만료됩니다.",
       "macRequirement": "Apple 실리콘 Mac과 macOS 14 이상 필요합니다. Intel Mac은 지원되지 않습니다.",
-      "noHostsDescription": "Mac에서 Zero 컴퓨터 사용을 열고 온라인 상태가 되면 이 페이지를 새로고침하세요.",
+      "noHostsDescription": "Mac에서 {{desktopProductName}} 컴퓨터 사용을 열고 온라인 상태가 되면 이 페이지를 새로고침하세요.",
       "noHostsTitle": "온라인 컴퓨터 없음",
       "sources": {
         "chat": "이 채팅 스레드",
@@ -1324,8 +1323,8 @@
       "cloudBrowser": "클라우드 브라우저",
       "connectHost": "{{hostName}} 연결",
       "connectMyComputer": "내 컴퓨터 연결",
-      "dialogDescription": "Zero가 LinkedIn이나 Reddit 같은 커넥터가 없는 브라우저와 앱에서도 작업할 수 있도록 허용하세요.",
-      "dialogTitle": "Zero가 컴퓨터를 사용하도록 허용",
+      "dialogDescription": "{{desktopProductName}}가 LinkedIn이나 Reddit 같은 커넥터가 없는 브라우저와 앱에서도 작업할 수 있도록 허용하세요.",
+      "dialogTitle": "{{desktopProductName}}가 컴퓨터를 사용하도록 허용",
       "disableCloudBrowser": "클라우드 브라우저 비활성화",
       "disconnectHost": "{{hostName}} 연결 해제",
       "downloadMacos": "macOS용 다운로드",
@@ -4559,6 +4558,7 @@
   },
   "usage": {
     "displayNames": {
+      "avatar": "아바타",
       "finance": "금융",
       "imageRecognize": "이미지 인식",
       "maps": "지도",

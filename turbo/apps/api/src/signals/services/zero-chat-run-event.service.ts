@@ -79,7 +79,6 @@ async function publishRunUserMessageSignals(
   threadId: string,
 ): Promise<void> {
   await publishUserSignal([userId], `chatThreadMessageCreated:${threadId}`);
-  await publishUserSignal([userId], `chatThreadRunCreated:${threadId}`);
   await publishThreadListChanged(userId);
 }
 

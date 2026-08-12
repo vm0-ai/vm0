@@ -189,9 +189,10 @@ import {
   computerUseHosts$,
   selectedComputerUseHostId,
   visibleComputerUseHosts,
-  ZERO_DESKTOP_DOWNLOAD_URL,
-  zeroDesktopDownloadSupportStatus$,
+  OKOU_DESKTOP_DOWNLOAD_URL,
+  desktopDownloadSupportStatus$,
 } from "../../signals/zero-page/computer-use-hosts.ts";
+import { computerUseProductName$ } from "../../signals/branding.ts";
 import type { ComposerConnectorAuthorizationState } from "../../signals/zero-page/zero-connectors.ts";
 import { applyUserPermissionGrants$ } from "../../signals/permission-allow/permission-allow-signals.ts";
 import { activeUserPermissionGrantSnapshot } from "../../signals/user-permission-grants.ts";
@@ -237,7 +238,6 @@ import {
 } from "../../signals/zero-page/model-default-selection.ts";
 
 const MAX_FILE_SIZE = 1024 * 1024 * 1024; // 1 GB — keep in sync with web constants
-const FAST_MODE_ACTIVE_PRESS = Symbol("fast-mode-active-press");
 const COMPOSER_CONTROL_FOCUS_CLASS =
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
 
@@ -6726,9 +6726,8 @@ function ComputerUseDownloadDialog({
   downloadUrl: string;
 }) {
   const { t } = useTranslation();
-  const downloadSupportLoadable = useLoadable(
-    zeroDesktopDownloadSupportStatus$,
-  );
+  const computerUseProductName = useGet(computerUseProductName$);
+  const downloadSupportLoadable = useLoadable(desktopDownloadSupportStatus$);
   const downloadSupportStatus =
     downloadSupportLoadable.state === "hasData"
       ? downloadSupportLoadable.data
@@ -6746,14 +6745,20 @@ function ComputerUseDownloadDialog({
         </div>
         <DialogHeader className="space-y-2 px-6 pt-5 text-left">
           <DialogTitle className="text-xl leading-7">
-            {t(($) => {
-              return $.chat.computerUse.dialogTitle;
-            })}
+            {t(
+              ($) => {
+                return $.chat.computerUse.dialogTitle;
+              },
+              { desktopProductName: computerUseProductName },
+            )}
           </DialogTitle>
           <DialogDescription className="leading-6">
-            {t(($) => {
-              return $.chat.computerUse.dialogDescription;
-            })}
+            {t(
+              ($) => {
+                return $.chat.computerUse.dialogDescription;
+              },
+              { desktopProductName: computerUseProductName },
+            )}
           </DialogDescription>
           <p className="text-sm leading-5 text-muted-foreground">
             {t(($) => {
@@ -7411,67 +7416,37 @@ function ComposerFastModeButton({
     return $.settings.models.picker.fastImpact;
   });
   return (
-    <Popover
-      onOpenChange={(open, eventDetails) => {
-        if (
-          open &&
-          eventDetails.reason === "trigger-press" &&
-          Object.hasOwn(eventDetails.event, FAST_MODE_ACTIVE_PRESS)
-        ) {
-          eventDetails.cancel();
-        }
-      }}
-    >
-      <PopoverTrigger
-        asChild
-        openOnHover={!active}
-        delay={300}
-        closeDelay={120}
-      >
-        <Button
-          type="button"
-          variant="quiet"
-          size="icon-sm"
-          className={cn(
-            "shrink-0",
-            COMPOSER_CONTROL_ICON_CLASS,
-            active &&
-              "text-amber-600 hover:text-amber-700 dark:text-amber-300 dark:hover:text-amber-200",
-          )}
-          aria-label={label}
-          aria-pressed={active}
-          disabled={disabled}
-          onClickCapture={(event) => {
-            if (active) {
-              Object.defineProperty(event.nativeEvent, FAST_MODE_ACTIVE_PRESS, {
-                value: true,
+    <TooltipProvider delayDuration={800} skipDelayDuration={0}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            variant="quiet"
+            size="icon-sm"
+            className={cn(
+              "shrink-0",
+              COMPOSER_CONTROL_ICON_CLASS,
+              active &&
+                "text-amber-600 hover:text-amber-700 dark:text-amber-300 dark:hover:text-amber-200",
+            )}
+            aria-label={label}
+            aria-pressed={active}
+            disabled={disabled}
+            onClick={() => {
+              onChange({
+                selectedModel: value.selectedModel,
+                ...(active ? {} : { codexServiceTier: "fast" }),
               });
-            }
-          }}
-          onClick={() => {
-            onChange({
-              selectedModel: value.selectedModel,
-              ...(active ? {} : { codexServiceTier: "fast" }),
-            });
-          }}
-        >
-          <Zap fill={active ? "currentColor" : "none"} aria-hidden="true" />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent side="top" align="center" className="w-72 p-3">
-        <div className="flex items-center gap-2.5">
-          <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-300">
-            <Zap size={16} fill="currentColor" aria-hidden="true" />
-          </span>
-          <div className="min-w-0">
-            <p className="text-sm font-medium">{label}</p>
-            <p className="text-xs leading-relaxed text-muted-foreground">
-              {impact}
-            </p>
-          </div>
-        </div>
-      </PopoverContent>
-    </Popover>
+            }}
+          >
+            <Zap fill={active ? "currentColor" : "none"} aria-hidden="true" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent side="top">
+          {label} · {impact}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }
 
@@ -7878,7 +7853,6 @@ function ComposerFileInput({ signals }: { signals: ComposerSignals }) {
       ref={setFileInput}
       type="file"
       className="hidden"
-      accept="image/*,audio/*,video/mp4,video/webm,video/quicktime,.pdf,.txt,.csv,.tsv,.md,.json,.xml,.yaml,.yml,.html,.htm,.doc,.docx,.docm,.dotx,.dotm,.odt,.rtf,.xls,.xlsx,.xlsm,.xlsb,.xltx,.xltm,.ods,.ppt,.pptx,.pptm,.potx,.potm,.ppsx,.ppsm,.odp,.zip,.rar,.7z,.tar,.tar.gz,.tgz,.gz,.bz2,.xz,.pages,.numbers,.key,.heic,.heif,.tif,.tiff,.bmp,.parquet,.sqlite,.sqlite3,.db,.epub,.psd,.ai"
       multiple
       onChange={(event) => {
         const files = event.target.files;
@@ -7965,7 +7939,7 @@ function ComposerConnectorsSlot({ signals }: { signals: ComposerSignals }) {
         Reason.DomCallback,
       );
     },
-    downloadUrl: ZERO_DESKTOP_DOWNLOAD_URL,
+    downloadUrl: OKOU_DESKTOP_DOWNLOAD_URL,
   };
 
   // Connectors: connected (org-level) + authorized (agent-level) → available

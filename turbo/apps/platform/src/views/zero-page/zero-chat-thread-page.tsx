@@ -4952,7 +4952,7 @@ function ShimmerText({
     >
       <p
         ref={setRef}
-        className="zero-shimmer-text h-5 w-full overflow-hidden whitespace-nowrap"
+        className="zero-shimmer-text h-5 w-full truncate"
         aria-label={ariaLabel}
       >
         {children}

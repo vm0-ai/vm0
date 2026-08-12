@@ -410,7 +410,7 @@ export const zeroWebSearch$ = command(
     args: AuthedWebSearchArgs,
     signal: AbortSignal,
   ): Promise<ZeroWebSearchCommandResponse> => {
-    const apiKey = env("ZERO_WEB_SEARCH_PERPLEXITY_TOKEN");
+    const apiKey = env("OKOU_WEB_SEARCH_PERPLEXITY_TOKEN");
     if (!apiKey) {
       return serviceUnavailable(
         "Zero Web Search Perplexity provider is not configured",

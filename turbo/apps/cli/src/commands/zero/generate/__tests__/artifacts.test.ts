@@ -4,7 +4,7 @@ import { generateCommand } from "../index";
 import { reportCommand } from "../artifacts";
 import { selectResourceCandidates } from "@vm0/core/resource-registry";
 
-describe("zero generate source-backed artifact commands", () => {
+describe("okou generate source-backed artifact commands", () => {
   vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -64,7 +64,7 @@ describe("zero generate source-backed artifact commands", () => {
       ]);
 
       const stdout = output();
-      expect(stdout).toContain(`# Zero generate ${command}`);
+      expect(stdout).toContain(`# Okou generate ${command}`);
       expect(stdout).toContain("generation source-selection packet");
       expect(stdout).not.toContain("federated");
       expect(stdout).toContain(prompt);
@@ -89,7 +89,7 @@ describe("zero generate source-backed artifact commands", () => {
         `Write the artifact under \`./generated/mockups/${command}-demo/\`.`,
       );
       expect(stdout).toContain(
-        `zero host ./generated/mockups/${command}-demo --site ${command}-demo`,
+        `okou host ./generated/mockups/${command}-demo --site ${command}-demo`,
       );
       expect(stdout).toContain(
         "The hosted URL is the preview and user-accessible view for this static HTML artifact.",

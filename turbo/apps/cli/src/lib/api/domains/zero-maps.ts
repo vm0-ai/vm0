@@ -35,7 +35,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 async function parseErrorBody(
   response: Response,
 ): Promise<{ message: string; code: string }> {
-  let message = `Zero Maps request failed (HTTP ${response.status})`;
+  let message = `Okou Maps request failed (HTTP ${response.status})`;
   let code = response.status === 404 ? "NOT_FOUND" : "UNKNOWN";
 
   try {
@@ -54,7 +54,7 @@ async function parseErrorBody(
 
   if (response.status === 404 && code === "NOT_FOUND") {
     message =
-      "Zero Maps API is not available on this server yet. Try again after the maps backend is deployed.";
+      "Okou Maps API is not available on this server yet. Try again after the maps backend is deployed.";
   }
 
   return { message, code };

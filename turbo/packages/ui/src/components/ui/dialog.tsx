@@ -75,7 +75,7 @@ const DialogOverlay = React.forwardRef<
       ref={ref}
       data-slot="dialog-overlay"
       className={cn(
-        "zero-dialog-overlay fixed inset-0 z-50 bg-overlay/45 dark:bg-overlay/55",
+        "zero-dialog-overlay fixed inset-0 bg-overlay/45 dark:bg-overlay/55",
         className,
       )}
       {...props}
@@ -89,6 +89,7 @@ interface DialogContentProps extends DialogPrimitive.Popup.Props {
   readonly onCloseAutoFocus?: LegacyAutoFocusHandler;
   readonly onOpenAutoFocus?: LegacyAutoFocusHandler;
   readonly overlayClassName?: string;
+  readonly showCloseButton?: boolean;
 }
 
 const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps>(
@@ -102,6 +103,7 @@ const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps>(
       onCloseAutoFocus,
       onOpenAutoFocus,
       overlayClassName,
+      showCloseButton = true,
       ...props
     },
     ref,
@@ -113,7 +115,7 @@ const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps>(
           ref={ref}
           data-slot="dialog-content"
           className={cn(
-            "zero-dialog-content fixed left-[50%] top-[50%] z-50 grid max-h-[90vh] w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 overflow-y-auto rounded-xl border-[0.7px] border-[hsl(var(--gray-400))] bg-card p-6 shadow-lg outline-none dialog-scrollable",
+            "zero-dialog-content fixed left-[50%] top-[50%] grid max-h-[90vh] w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 overflow-y-auto rounded-xl border-[0.7px] border-[hsl(var(--gray-400))] bg-card p-6 shadow-lg outline-none dialog-scrollable",
             className,
           )}
           finalFocus={withLegacyAutoFocus(
@@ -129,18 +131,20 @@ const DialogContent = React.forwardRef<HTMLDivElement, DialogContentProps>(
           {...props}
         >
           {children}
-          <DialogPrimitive.Close
-            data-slot="dialog-close"
-            render={
-              <button
-                type="button"
-                className="icon-button absolute right-4 top-4 opacity-70 hover:opacity-100"
-                aria-label={closeLabel}
-              />
-            }
-          >
-            <X size={20} className="text-foreground" />
-          </DialogPrimitive.Close>
+          {showCloseButton ? (
+            <DialogPrimitive.Close
+              data-slot="dialog-close"
+              render={
+                <button
+                  type="button"
+                  className="icon-button absolute right-4 top-4 opacity-70 hover:opacity-100"
+                  aria-label={closeLabel}
+                />
+              }
+            >
+              <X size={20} className="text-foreground" />
+            </DialogPrimitive.Close>
+          ) : null}
         </DialogPrimitive.Popup>
       </DialogPortal>
     );

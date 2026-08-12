@@ -86,7 +86,7 @@ describe("buildGenerationTemplatePrompt", () => {
       "Selected presentation template: Playful Launch Presentation (template:html-ppt-playful-launch)",
     );
     expect(result.prompt).toContain(
-      "zero resource pull template:html-ppt-playful-launch-runbook --dir ./generated/resources",
+      "okou resource pull template:html-ppt-playful-launch-runbook --dir ./generated/resources",
     );
     expect(result.prompt).toContain(
       "./generated/resources/playful-launch/AGENT_RUNBOOK.md",
@@ -99,11 +99,11 @@ describe("buildGenerationTemplatePrompt", () => {
       "Do not store slide content in JavaScript data",
     );
     expect(result.prompt).toContain(
-      "zero host <output-dir> --site <slug> --artifact-kind presentation-html",
+      "okou host <output-dir> --site <slug> --artifact-kind presentation-html",
     );
     expect(result.prompt).not.toContain("Design system:");
     expect(result.prompt).not.toContain("Selected design system");
-    expect(result.prompt).not.toContain("zero generate presentation");
+    expect(result.prompt).not.toContain("okou generate presentation");
   });
 
   it("falls back to the default color token when none is selected", () => {
@@ -144,7 +144,7 @@ describe("buildGenerationTemplatePrompt", () => {
       `- Style description: ${imageStyle.description}`,
     );
     expect(result.prompt).toContain(
-      `zero generate image --provider built-in --style ${item.illustrationStyleId} --prompt "<user request>" --compile --style-source r2`,
+      `okou generate image --provider built-in --style ${item.illustrationStyleId} --prompt "<user request>" --compile --style-source r2`,
     );
     expect(result.prompt).toContain(
       `Style source: private R2 registry resource ${imageStyle.id}`,
@@ -181,7 +181,7 @@ describe("buildGenerationTemplatePrompt", () => {
     );
     expect(result.prompt).not.toContain("nexu-io/open-design");
     expect(result.prompt).toContain(
-      `zero generate video --provider built-in --template ${item.id}`,
+      `okou generate video --provider built-in --template ${item.id}`,
     );
     expect(result.prompt).toContain(
       "Run once to fetch the locked video authoring packet",
@@ -346,9 +346,9 @@ describe("buildGenerationTemplatePrompt", () => {
     expect(result.prompt).not.toContain("# Artifact Template Context");
   });
 
-  it("builds website template v2 package guidance", () => {
+  it("builds website template package guidance", () => {
     const item = WEBSITE_TEMPLATE_ITEMS[0]!;
-    const resourceId = `${item.resourceId}-v2`;
+    const resourceId = item.resourceId;
 
     const result = buildGenerationTemplatePrompt({
       type: "website",
@@ -368,23 +368,21 @@ describe("buildGenerationTemplatePrompt", () => {
     expect(result.prompt).toContain(`Template package id: ${resourceId}`);
     expect(result.prompt).toContain(`Package resource: ${resourceId}`);
     expect(result.prompt).toContain(
-      `zero resource pull ${resourceId} --dir ./generated/resources`,
+      `okou resource pull ${resourceId} --dir ./generated/resources`,
     );
-    expect(result.prompt).toContain(
-      `./generated/resources/${item.sourcePath}/resolve-images.mjs`,
-    );
-    expect(result.prompt).toContain("/api/presentation/images/resolve");
+    expect(result.prompt).not.toContain("resolve-images.mjs");
+    expect(result.prompt).not.toContain("/api/presentation/images/resolve");
     expect(result.prompt).toContain(
       `./generated/resources/${item.sourcePath}/render.mjs`,
     );
-    expect(result.prompt).toContain("zero host <output-dir> --site <slug>");
+    expect(result.prompt).toContain("okou host <output-dir> --site <slug>");
     expect(result.prompt).toContain("built-in R2-backed package");
-    expect(result.prompt).not.toContain("zero generate website --template");
+    expect(result.prompt).not.toContain("okou generate website --template");
   });
 
-  it("selects every website template v2 package", () => {
+  it("selects every current website template package", () => {
     for (const item of WEBSITE_TEMPLATE_ITEMS) {
-      const resourceId = `${item.resourceId}-v2`;
+      const resourceId = item.resourceId;
       const result = buildGenerationTemplatePrompt({
         type: "website",
         selection: {
@@ -395,7 +393,7 @@ describe("buildGenerationTemplatePrompt", () => {
       expect(result).toStrictEqual({
         status: "resolved",
         prompt: expect.stringContaining(
-          `zero resource pull ${resourceId} --dir ./generated/resources`,
+          `okou resource pull ${resourceId} --dir ./generated/resources`,
         ),
       });
       if (result.status !== "resolved") {

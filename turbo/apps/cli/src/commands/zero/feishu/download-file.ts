@@ -33,9 +33,9 @@ export const downloadFileCommand = new Command()
     "after",
     `
 Examples:
-  Download a file:   zero feishu download-file om_xxx file_xxx --type file
-  Download an image: zero feishu download-file om_xxx img_xxx --type image -o /tmp/image.png
-  Select an app:     zero feishu download-file om_xxx file_xxx --type file -i <installation-id>
+  Download a file:   okou feishu download-file om_xxx file_xxx --type file
+  Download an image: okou feishu download-file om_xxx img_xxx --type image -o /tmp/image.png
+  Select an app:     okou feishu download-file om_xxx file_xxx --type file -i <installation-id>
 
 Output:
   Prints a JSON object to stdout on success:

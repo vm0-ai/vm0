@@ -56,6 +56,7 @@ const EXT_MIMETYPE_MAP: Readonly<Record<string, string>> = {
   md: "text/markdown",
   html: "text/html",
   htm: "text/html",
+  har: "application/json",
   json: "application/json",
 };
 const revoker = alias(chatEvents, "revoker");

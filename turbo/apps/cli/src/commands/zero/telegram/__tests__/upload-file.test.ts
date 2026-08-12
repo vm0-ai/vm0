@@ -1,5 +1,5 @@
 /**
- * Tests for zero telegram upload-file command.
+ * Tests for okou telegram upload-file command.
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -17,7 +17,7 @@ const UPLOAD_COMPLETE_URL =
   "http://localhost:3000/api/zero/integrations/telegram/upload-file/complete";
 const R2_UPLOAD_URL = "https://mock-r2.test/telegram-upload";
 
-describe("zero telegram upload-file command", () => {
+describe("okou telegram upload-file command", () => {
   vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);

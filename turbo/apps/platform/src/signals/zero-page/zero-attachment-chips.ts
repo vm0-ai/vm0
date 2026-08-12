@@ -389,11 +389,11 @@ export const openAudioLightbox$ = command(
 );
 
 // ---------------------------------------------------------------------------
-// Escape-key handler for global attachment preview — closes on Escape
+// Global attachment preview mount owner — releases resources on route unmount
 // ---------------------------------------------------------------------------
 
-const closeLightboxOnEscape$ = command(
-  ({ get, set }, el: HTMLDivElement, signal: AbortSignal) => {
+const ownLightboxDialogMount$ = command(
+  ({ get, set }, _element: HTMLDivElement, signal: AbortSignal) => {
     const mountToken = get(internalLightboxDialogMountToken$) + 1;
     set(internalLightboxDialogMountToken$, mountToken);
     signal.addEventListener(
@@ -408,20 +408,7 @@ const closeLightboxOnEscape$ = command(
       },
       { once: true },
     );
-    document.addEventListener(
-      "keydown",
-      (e: KeyboardEvent) => {
-        if (e.key === "Escape") {
-          e.preventDefault();
-          e.stopPropagation();
-          e.stopImmediatePropagation();
-          set(closeLightboxWithDialogExit$, signal);
-        }
-      },
-      { capture: true, signal },
-    );
-    el.focus({ preventScroll: true });
   },
 );
 
-export const lightboxDialogRef$ = onRef(closeLightboxOnEscape$);
+export const lightboxDialogMountRef$ = onRef(ownLightboxDialogMount$);

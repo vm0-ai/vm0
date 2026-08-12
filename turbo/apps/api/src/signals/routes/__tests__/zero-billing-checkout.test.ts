@@ -634,6 +634,9 @@ describe("POST /api/zero/billing/checkout", () => {
   });
 
   it("returns checkout URL on success", async () => {
+    const okouPricePro = "price_okou_pro";
+    mockEnv("OKOU_PRICE_PRO", okouPricePro);
+    mockEnv("ZERO_PRICE_PRO", "price_ignored_zero_pro");
     const fixture = await trackedSeed();
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
@@ -669,20 +672,20 @@ describe("POST /api/zero/billing/checkout", () => {
     expect(context.mocks.stripe.checkout.sessions.create).toHaveBeenCalledWith({
       mode: "subscription",
       customer: customerId,
-      line_items: [{ price: TEST_PRICE_PRO, quantity: 1 }],
+      line_items: [{ price: okouPricePro, quantity: 1 }],
       allow_promotion_codes: true,
       success_url: `${APP_ORIGIN}/billing?billing=success`,
       cancel_url: `${APP_ORIGIN}/billing?billing=canceled`,
       metadata: {
         orgId: fixture.orgId,
         tier: "pro",
-        priceId: TEST_PRICE_PRO,
+        priceId: okouPricePro,
       },
       subscription_data: {
         metadata: {
           orgId: fixture.orgId,
           tier: "pro",
-          priceId: TEST_PRICE_PRO,
+          priceId: okouPricePro,
         },
       },
     });

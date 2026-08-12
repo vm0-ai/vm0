@@ -1,5 +1,5 @@
 /**
- * Tests for zero chat model command
+ * Tests for okou chat model command
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
@@ -54,7 +54,7 @@ const MODEL_POLICIES_RESPONSE = {
   ],
 };
 
-describe("zero chat model command", () => {
+describe("okou chat model command", () => {
   const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
   const mockConsoleError = vi
     .spyOn(console, "error")
@@ -121,7 +121,7 @@ describe("zero chat model command", () => {
     expect(output).toContain("Chat thread loaded");
     expect(output).toContain("Model:  Claude Sonnet 5 (claude-sonnet-5)");
     expect(output).toContain("Switchable models:");
-    expect(output).toContain(`zero chat model --thread ${THREAD_ID} <model>`);
+    expect(output).toContain(`okou chat model --thread ${THREAD_ID} <model>`);
   });
 
   it("shows the model for --thread outside a web chat environment", async () => {
@@ -198,7 +198,7 @@ describe("zero chat model command", () => {
     const stderr = mockConsoleError.mock.calls.flat().join("\n");
     expect(stderr).toContain("Model is not switchable: gpt-5.5");
     expect(stderr).toContain("No personal subscription connected");
-    expect(stderr).toContain("Run: zero chat model --help");
+    expect(stderr).toContain("Run: okou chat model --help");
     expect(mockExit).toHaveBeenCalledWith(1);
   });
 });

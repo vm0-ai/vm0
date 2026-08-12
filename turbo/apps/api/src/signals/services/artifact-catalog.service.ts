@@ -42,7 +42,6 @@ import {
   SHARED_THREAD_ARTIFACT_LOGICAL_KEY_PREFIX,
 } from "../../lib/shared-thread-artifact";
 import { writeDb$, type Db } from "../external/db";
-import { publishArtifactCatalogChanged } from "./artifact-realtime.service";
 import { inferMimetype } from "./zero-chat-event-shared.service";
 import { runOwnedChatEventForRunCondition } from "./zero-chat-event-type.service";
 
@@ -401,11 +400,6 @@ async function upsertPresentationEntity(
   return entity?.id ?? null;
 }
 
-interface HostedArtifactSyncResult {
-  readonly complete: boolean;
-  readonly affectedAuthorUserIds: readonly string[];
-}
-
 async function syncHostedArtifact(
   args: {
     readonly db: Db;
@@ -415,10 +409,10 @@ async function syncHostedArtifact(
     readonly authorUserId: string;
   },
   signal: AbortSignal,
-): Promise<HostedArtifactSyncResult> {
+): Promise<boolean> {
   const siteId = metadataString(args.row.metadata, "siteId");
   if (!siteId) {
-    return { complete: true, affectedAuthorUserIds: [] };
+    return true;
   }
 
   return await args.db.transaction(async (tx) => {
@@ -438,15 +432,12 @@ async function syncHostedArtifact(
       .limit(1);
     signal.throwIfAborted();
     if (!site) {
-      return { complete: false, affectedAuthorUserIds: [] };
+      return false;
     }
 
     const logicalKey = `site:${site.id}`;
     const [existingArtifact] = await tx
-      .select({
-        id: artifacts.id,
-        authorUserId: artifacts.authorUserId,
-      })
+      .select({ id: artifacts.id })
       .from(artifacts)
       .where(
         and(
@@ -473,7 +464,7 @@ async function syncHostedArtifact(
           )
         : site.id;
     if (!entityId) {
-      return { complete: false, affectedAuthorUserIds: [] };
+      return false;
     }
 
     const values = {
@@ -497,13 +488,10 @@ async function syncHostedArtifact(
         createdAt: site.createdAt,
       });
       signal.throwIfAborted();
-      return {
-        complete: true,
-        affectedAuthorUserIds: [args.authorUserId],
-      };
+      return true;
     }
 
-    const [updated] = await tx
+    await tx
       .update(artifacts)
       .set({ ...values, updatedAt: nowDate() })
       .where(
@@ -514,19 +502,9 @@ async function syncHostedArtifact(
             sql`(${args.row.createdAt}::timestamp, ${args.row.id}::uuid)`,
           ),
         ),
-      )
-      .returning({ id: artifacts.id });
+      );
     signal.throwIfAborted();
-    if (!updated) {
-      return { complete: true, affectedAuthorUserIds: [] };
-    }
-
-    return {
-      complete: true,
-      affectedAuthorUserIds: [
-        ...new Set([existingArtifact.authorUserId, args.authorUserId]),
-      ],
-    };
+    return true;
   });
 }
 
@@ -611,11 +589,11 @@ async function syncArtifactCatalogFile(
   db: Db,
   fileId: string,
   signal: AbortSignal,
-): Promise<readonly string[]> {
+): Promise<void> {
   const row = await readCatalogFileRow(db, fileId, signal);
   if (!row?.url || !row.orgId) {
     await finishPendingArtifactFile(db, fileId, signal);
-    return [];
+    return;
   }
 
   const authorUserId = await resolveAuthorUserId(db, row, signal);
@@ -630,7 +608,7 @@ async function syncArtifactCatalogFile(
       },
       signal,
     );
-    const result = await syncHostedArtifact(
+    const complete = await syncHostedArtifact(
       {
         db,
         kind: hostedKind,
@@ -640,11 +618,11 @@ async function syncArtifactCatalogFile(
       },
       signal,
     );
-    if (!result.complete) {
-      return [];
+    if (!complete) {
+      return;
     }
     await finishPendingArtifactFile(db, fileId, signal);
-    return result.affectedAuthorUserIds;
+    return;
   }
 
   if (await runHasHostedProjection(db, row.runId, signal)) {
@@ -660,7 +638,7 @@ async function syncArtifactCatalogFile(
       );
     signal.throwIfAborted();
     await finishPendingArtifactFile(db, fileId, signal);
-    return [authorUserId];
+    return;
   }
 
   const kind = fileArtifactKind(row);
@@ -669,7 +647,7 @@ async function syncArtifactCatalogFile(
       ? row.id
       : await upsertGeneratedMediaEntity({ db, kind, row }, signal);
   if (!entityId) {
-    return [];
+    return;
   }
 
   const orgId = row.orgId;
@@ -704,10 +682,9 @@ async function syncArtifactCatalogFile(
   });
   signal.throwIfAborted();
   if (!synced) {
-    return [];
+    return;
   }
   await finishPendingArtifactFile(db, fileId, signal);
-  return [authorUserId];
 }
 
 /**
@@ -728,15 +705,7 @@ export const syncArtifactCatalogForFile$ = command(
       return;
     }
     const db = set(writeDb$);
-    const affectedAuthorUserIds = await syncArtifactCatalogFile(
-      db,
-      fileId,
-      signal,
-    );
-    if (affectedAuthorUserIds.length === 0) {
-      return;
-    }
-    await publishArtifactCatalogChanged(affectedAuthorUserIds);
+    await syncArtifactCatalogFile(db, fileId, signal);
     signal.throwIfAborted();
   },
 );
@@ -775,16 +744,8 @@ async function reconcilePendingArtifactCatalog(
     );
   signal.throwIfAborted();
 
-  const affectedAuthorUserIds = new Set<string>();
   for (const pending of pendingRows) {
-    const affected = await syncArtifactCatalogFile(db, pending.fileId, signal);
-    for (const authorUserId of affected) {
-      affectedAuthorUserIds.add(authorUserId);
-    }
-    signal.throwIfAborted();
-  }
-  if (affectedAuthorUserIds.size > 0) {
-    await publishArtifactCatalogChanged([...affectedAuthorUserIds]);
+    await syncArtifactCatalogFile(db, pending.fileId, signal);
     signal.throwIfAborted();
   }
 }

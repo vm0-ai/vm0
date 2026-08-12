@@ -468,7 +468,6 @@
       "backToArtifacts": "Kembali ke artefak",
       "close": "Tutup",
       "closeArtifact": "Tutup artefak",
-      "closeDownloadMenu": "Tutup menu unduhan",
       "closeNamed": "Tutup {{title}}",
       "closePreviewMenu": "Tutup menu pratinjau",
       "download": "Unduh",
@@ -712,7 +711,7 @@
       "lastSeen": "Terakhir terlihat {{date}}",
       "linkExpires": "Tautan kedaluwarsa pada {{date}}.",
       "macRequirement": "Memerlukan Mac Apple silicon dengan macOS 14 atau yang lebih baru. Mac Intel tidak didukung.",
-      "noHostsDescription": "Buka Zero Computer Use di Mac Anda dan muat ulang halaman ini saat sudah online.",
+      "noHostsDescription": "Buka {{desktopProductName}} Computer Use di Mac Anda dan muat ulang halaman ini saat sudah online.",
       "noHostsTitle": "Tidak ada komputer online",
       "sources": {
         "chat": "thread chat ini",
@@ -1324,8 +1323,8 @@
       "cloudBrowser": "Browser cloud",
       "connectHost": "Hubungkan {{hostName}}",
       "connectMyComputer": "Hubungkan komputer saya",
-      "dialogDescription": "Agar Zero bisa bekerja di browser dan aplikasi Anda, bahkan yang tidak punya konektor seperti LinkedIn atau Reddit.",
-      "dialogTitle": "Izinkan Zero menggunakan komputer Anda",
+      "dialogDescription": "Agar {{desktopProductName}} bisa bekerja di browser dan aplikasi Anda, bahkan yang tidak punya konektor seperti LinkedIn atau Reddit.",
+      "dialogTitle": "Izinkan {{desktopProductName}} menggunakan komputer Anda",
       "disableCloudBrowser": "Nonaktifkan Cloud browser",
       "disconnectHost": "Putuskan {{hostName}}",
       "downloadMacos": "Unduh untuk macOS",
@@ -4559,6 +4558,7 @@
   },
   "usage": {
     "displayNames": {
+      "avatar": "Avatar",
       "finance": "Keuangan",
       "imageRecognize": "Pengenalan Gambar",
       "maps": "Peta",

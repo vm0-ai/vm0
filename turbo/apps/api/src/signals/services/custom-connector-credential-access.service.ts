@@ -6,15 +6,26 @@ import {
 import { connectors } from "@vm0/db/schema/connector";
 import { secrets } from "@vm0/db/schema/secret";
 import { variables } from "@vm0/db/schema/variable";
-import { alias } from "drizzle-orm/pg-core";
+import { alias, unionAll } from "drizzle-orm/pg-core";
+import { z } from "zod";
 
-import { pgTextDecoder } from "../../lib/db-structured-result";
+import {
+  pgTextDecoder,
+  zodEnumDriverValueDecoder,
+} from "../../lib/db-structured-result";
 import { nowDate } from "../../lib/time";
 import type { ReadonlyDb } from "../external/db";
 import { connectorCredentialStatusForAccess } from "./connector-credential-status.service";
 
 const OAUTH_ACCESS_TOKEN_SECRET_NAME = "access_token";
 const OAUTH_REFRESH_TOKEN_SECRET_NAME = "refresh_token";
+const customConnectorRuntimeStorageKindSchema = z.enum(["secret", "variable"]);
+type CustomConnectorRuntimeStorageKind = z.output<
+  typeof customConnectorRuntimeStorageKindSchema
+>;
+const customConnectorRuntimeStorageKindDecoder = zodEnumDriverValueDecoder(
+  customConnectorRuntimeStorageKindSchema,
+);
 
 const customConnectorAccessTokenSecret = alias(
   secrets,
@@ -95,9 +106,9 @@ interface CustomConnectorRuntimeStorageSnapshot {
 }
 
 interface CustomConnectorRuntimeStorageRow extends CustomConnectorStoredConnection {
-  readonly kind: string;
-  readonly key: string;
-  readonly storedValue: string;
+  readonly kind: CustomConnectorRuntimeStorageKind | null;
+  readonly key: string | null;
+  readonly storedValue: string | null;
 }
 
 function customConnectorStoredConnectionsQuery(
@@ -294,12 +305,15 @@ function customConnectorRuntimeStorageSnapshot(
     const expected = expectedByMemberConnectorId.get(row.id);
     if (
       !expected ||
-      row.kind === "connection" ||
+      row.kind === null ||
       row.customConnectorId !== expected.id ||
       row.definitionAuthMethod !== expected.authMode ||
       row.definitionStorageVersion !== expected.storageVersion
     ) {
       continue;
+    }
+    if (row.key === null || row.storedValue === null) {
+      throw new Error("Expected a complete custom connector stored value row");
     }
     if (row.kind === "secret") {
       values.push({
@@ -308,15 +322,13 @@ function customConnectorRuntimeStorageSnapshot(
         key: row.key,
         encryptedValue: row.storedValue,
       });
-    } else if (row.kind === "variable") {
+    } else {
       values.push({
         connectorId: row.customConnectorId,
         kind: "variable",
         key: row.key,
         value: row.storedValue,
       });
-    } else {
-      throw new Error("Invalid custom connector stored value kind");
     }
   }
   return { accesses, values };
@@ -438,24 +450,21 @@ export async function loadCurrentCustomConnectorStoredValues(
   const connectorIds = args.definitions.map((definition) => {
     return definition.id;
   });
-  const storedConnections = customConnectorStoredConnectionsQuery(db, {
-    orgId: args.orgId,
-    userId: args.userId,
-    connectorIds,
-  }).as("custom_connector_runtime_connections");
+  const storedConnections = db.$with("custom_connector_runtime_connections").as(
+    customConnectorStoredConnectionsQuery(db, {
+      orgId: args.orgId,
+      userId: args.userId,
+      connectorIds,
+    }),
+  );
   const secretQuery = db
     .select({
-      id: storedConnections.id,
-      customConnectorId: storedConnections.customConnectorId,
-      storedAuthMethod: storedConnections.storedAuthMethod,
-      storedStorageVersion: storedConnections.storedStorageVersion,
-      storedNeedsReconnect: storedConnections.storedNeedsReconnect,
-      tokenExpiresAt: storedConnections.tokenExpiresAt,
-      definitionAuthMethod: storedConnections.definitionAuthMethod,
-      definitionStorageVersion: storedConnections.definitionStorageVersion,
-      oauthAccessTokenId: storedConnections.oauthAccessTokenId,
-      oauthRefreshTokenId: storedConnections.oauthRefreshTokenId,
-      kind: sql`'secret'`.mapWith(pgTextDecoder).as("kind"),
+      memberConnectorId: sql`${storedConnections.id}`
+        .mapWith(pgTextDecoder)
+        .as("value_member_connector_id"),
+      kind: sql`'secret'`
+        .mapWith(customConnectorRuntimeStorageKindDecoder)
+        .as("kind"),
       key: secrets.name,
       storedValue: secrets.encryptedValue,
     })
@@ -466,21 +475,24 @@ export async function loadCurrentCustomConnectorStoredValues(
         eq(secrets.type, "connector"),
         eq(secrets.orgId, args.orgId),
         eq(secrets.userId, args.userId),
+        eq(
+          storedConnections.storedAuthMethod,
+          storedConnections.definitionAuthMethod,
+        ),
+        eq(
+          storedConnections.storedStorageVersion,
+          storedConnections.definitionStorageVersion,
+        ),
       ),
     );
   const variableQuery = db
     .select({
-      id: storedConnections.id,
-      customConnectorId: storedConnections.customConnectorId,
-      storedAuthMethod: storedConnections.storedAuthMethod,
-      storedStorageVersion: storedConnections.storedStorageVersion,
-      storedNeedsReconnect: storedConnections.storedNeedsReconnect,
-      tokenExpiresAt: storedConnections.tokenExpiresAt,
-      definitionAuthMethod: storedConnections.definitionAuthMethod,
-      definitionStorageVersion: storedConnections.definitionStorageVersion,
-      oauthAccessTokenId: storedConnections.oauthAccessTokenId,
-      oauthRefreshTokenId: storedConnections.oauthRefreshTokenId,
-      kind: sql`'variable'`.mapWith(pgTextDecoder).as("kind"),
+      memberConnectorId: sql`${storedConnections.id}`
+        .mapWith(pgTextDecoder)
+        .as("value_member_connector_id"),
+      kind: sql`'variable'`
+        .mapWith(customConnectorRuntimeStorageKindDecoder)
+        .as("kind"),
       key: variables.name,
       storedValue: variables.value,
     })
@@ -491,9 +503,21 @@ export async function loadCurrentCustomConnectorStoredValues(
         eq(variables.type, "connector"),
         eq(variables.orgId, args.orgId),
         eq(variables.userId, args.userId),
+        eq(
+          storedConnections.storedAuthMethod,
+          storedConnections.definitionAuthMethod,
+        ),
+        eq(
+          storedConnections.storedStorageVersion,
+          storedConnections.definitionStorageVersion,
+        ),
       ),
     );
-  const connectionQuery = db
+  const storedValues = db
+    .$with("custom_connector_runtime_values")
+    .as(unionAll(secretQuery, variableQuery));
+  const rows = await db
+    .with(storedConnections, storedValues)
     .select({
       id: storedConnections.id,
       customConnectorId: storedConnections.customConnectorId,
@@ -505,14 +529,15 @@ export async function loadCurrentCustomConnectorStoredValues(
       definitionStorageVersion: storedConnections.definitionStorageVersion,
       oauthAccessTokenId: storedConnections.oauthAccessTokenId,
       oauthRefreshTokenId: storedConnections.oauthRefreshTokenId,
-      kind: sql`'connection'`.mapWith(pgTextDecoder).as("kind"),
-      key: sql`''`.mapWith(pgTextDecoder).as("key"),
-      storedValue: sql`''`.mapWith(pgTextDecoder).as("stored_value"),
+      kind: storedValues.kind,
+      key: storedValues.key,
+      storedValue: storedValues.storedValue,
     })
-    .from(storedConnections);
-  const rows = await connectionQuery
-    .unionAll(secretQuery)
-    .unionAll(variableQuery);
+    .from(storedConnections)
+    .leftJoin(
+      storedValues,
+      eq(storedValues.memberConnectorId, storedConnections.id),
+    );
   return customConnectorRuntimeStorageSnapshot(args.definitions, rows);
 }
 

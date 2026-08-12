@@ -37,7 +37,7 @@ default_cli_timeout() {
 
 CLI_TIMEOUT="${CLI_TIMEOUT:-$(default_cli_timeout)}"
 TAG="[${BATS_TEST_FILENAME##*/}] ${BATS_TEST_NAME}"
-echo "$(date +%T) $TAG: START $CLI_ENTRYPOINT $*" >> /tmp/e2e-trace.log 2>/dev/null
+echo "$(date +%T) $TAG: START $CLI_ENTRYPOINT" >> /tmp/e2e-trace.log 2>/dev/null
 START=$SECONDS
 if command -v timeout >/dev/null 2>&1; then
   timeout --kill-after=5 "$CLI_TIMEOUT" "$CLI_ENTRYPOINT" "$@"
@@ -45,5 +45,5 @@ else
   "$CLI_ENTRYPOINT" "$@"
 fi
 RC=$?
-echo "$(date +%T) $TAG: END(${RC}) $((SECONDS - START))s $CLI_ENTRYPOINT $*" >> /tmp/e2e-trace.log 2>/dev/null
+echo "$(date +%T) $TAG: END(${RC}) $((SECONDS - START))s $CLI_ENTRYPOINT" >> /tmp/e2e-trace.log 2>/dev/null
 exit $RC

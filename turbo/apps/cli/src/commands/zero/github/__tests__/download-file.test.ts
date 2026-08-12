@@ -10,7 +10,7 @@ import chalk from "chalk";
 const DOWNLOAD_URL =
   "http://localhost:3000/api/zero/integrations/github/download-file";
 
-describe("zero github download-file command", () => {
+describe("okou github download-file command", () => {
   vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);

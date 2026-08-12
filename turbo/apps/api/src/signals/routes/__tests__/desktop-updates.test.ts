@@ -257,11 +257,27 @@ describe("desktop update routes", () => {
       "https://github.com/vm0-ai/vm0/releases/tag/okou-desktop-v1.2.3",
     );
 
+    const brandedReleaseResponse = await appRequest(
+      "http://api.test/api/okou/desktop/updates/stable/darwin/arm64/release",
+    );
+    expect(brandedReleaseResponse.status).toBe(302);
+    expect(brandedReleaseResponse.headers.get("Location")).toBe(
+      "https://github.com/vm0-ai/vm0/releases/tag/okou-desktop-v1.2.3",
+    );
+
     const dmgResponse = await appRequest(
       "http://api.test/api/desktop/updates/okou/stable/darwin/arm64/dmg",
     );
     expect(dmgResponse.status).toBe(302);
     expect(dmgResponse.headers.get("Location")).toBe(
+      "https://github.com/vm0-ai/vm0/releases/download/okou-desktop-v1.2.3/Okou-darwin-arm64-1.2.3.dmg",
+    );
+
+    const brandedDmgResponse = await appRequest(
+      "http://api.test/api/okou/desktop/updates/stable/darwin/arm64/dmg",
+    );
+    expect(brandedDmgResponse.status).toBe(302);
+    expect(brandedDmgResponse.headers.get("Location")).toBe(
       "https://github.com/vm0-ai/vm0/releases/download/okou-desktop-v1.2.3/Okou-darwin-arm64-1.2.3.dmg",
     );
   });

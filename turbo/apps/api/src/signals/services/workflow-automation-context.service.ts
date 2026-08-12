@@ -348,7 +348,7 @@ export const TRIGGER_RENDERERS: Readonly<
 };
 
 const CHAT_RUN_FINISHED_NOTES = [
-  "Not included below: the finished run's full transcript, and its final output beyond the excerpt. `zero logs <runId>` returns the transcript.",
+  "Not included below: the finished run's full transcript, and its final output beyond the excerpt. `okou logs <runId>` returns the transcript.",
 ] as const;
 const GMAIL_NOTES = [
   "Not included below: the email body. Connected Gmail tools return the message and thread content.",

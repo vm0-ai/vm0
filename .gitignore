@@ -11,11 +11,11 @@ logs
 !**/app/api/app/logs/
 # Exception for logs search API folder
 !**/app/api/logs/
-# Exception for zero logs API folder
+# Exception for internal /api/zero/logs folder
 !**/app/api/zero/logs/
 # Exception for CLI logs command
 !**/commands/logs/
-# Exception for zero CLI logs command
+# Exception for internal commands/zero/logs folder
 !**/commands/zero/logs/
 *.log
 npm-debug.log*

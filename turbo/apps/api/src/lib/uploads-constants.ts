@@ -8,6 +8,7 @@
 
 export const MAX_UPLOAD_SIZE_BYTES = 1024 * 1024 * 1024;
 export const MAX_UPLOAD_SIZE_LABEL = "1 GB";
+const GENERIC_UPLOAD_CONTENT_TYPE = "application/octet-stream";
 
 const ALLOWED_UPLOAD_TYPES: Readonly<Set<string>> = new Set([
   "image/png",
@@ -104,4 +105,15 @@ const ALLOWED_UPLOAD_TYPES: Readonly<Set<string>> = new Set([
 
 export function isAllowedUploadType(contentType: string): boolean {
   return ALLOWED_UPLOAD_TYPES.has(contentType);
+}
+
+/**
+ * Keep recognized metadata and represent every other web upload as opaque
+ * bytes. Slack canonical assets use isAllowedUploadType as a separate gate.
+ */
+export function normalizeWebUploadContentType(contentType: string): string {
+  const normalized = contentType.split(";")[0]?.trim().toLowerCase() ?? "";
+  return isAllowedUploadType(normalized)
+    ? normalized
+    : GENERIC_UPLOAD_CONTENT_TYPE;
 }

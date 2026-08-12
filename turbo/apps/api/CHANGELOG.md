@@ -1,5 +1,56 @@
 # Changelog
 
+## [1.432.0](https://github.com/vm0-ai/vm0/compare/api-v1.431.0...api-v1.432.0) (2026-08-12)
+
+
+### Features
+
+* **protocol:** accept okou environment names and token scope ([#26505](https://github.com/vm0-ai/vm0/issues/26505)) ([6d4b0c7](https://github.com/vm0-ai/vm0/commit/6d4b0c7b08179e5d816af6d53208248bf79d3cd4))
+
+
+### Bug Fixes
+
+* **chat:** bound initial thinking generation ([#26484](https://github.com/vm0-ai/vm0/issues/26484)) ([6944010](https://github.com/vm0-ai/vm0/commit/6944010dfadff1b652324e06f863ffef1c8e9a46))
+* **realtime:** make user signals best effort ([#26495](https://github.com/vm0-ai/vm0/issues/26495)) ([6a6eb89](https://github.com/vm0-ai/vm0/commit/6a6eb89bf3a3e70bbf800de3d6944a06e276fc8c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.548.0
+    * @vm0/db bumped to 1.195.1
+    * @vm0/pi-agent-runtime bumped to 1.3.52
+
+## [1.431.0](https://github.com/vm0-ai/vm0/compare/api-v1.430.2...api-v1.431.0) (2026-08-12)
+
+
+### Features
+
+* cut first-party cli producers over to okou ([#26491](https://github.com/vm0-ai/vm0/issues/26491)) ([33c4c03](https://github.com/vm0-ai/vm0/commit/33c4c034b421249e220bb0f586a514d44ed78655))
+
+
+### Refactoring
+
+* **api:** reclaim unsupported chat event snapshots ([#26486](https://github.com/vm0-ai/vm0/issues/26486)) ([dff483a](https://github.com/vm0-ai/vm0/commit/dff483a95f1b315b2b5dc33a4304b0683c847b5d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.321.0
+    * @vm0/core bumped to 8.547.0
+    * @vm0/db bumped to 1.195.0
+    * @vm0/pi-agent-runtime bumped to 1.3.51
+
+## [1.430.2](https://github.com/vm0-ai/vm0/compare/api-v1.430.1...api-v1.430.2) (2026-08-12)
+
+
+### Bug Fixes
+
+* **connectors:** filter custom credential snapshot ([#26480](https://github.com/vm0-ai/vm0/issues/26480)) ([1b77900](https://github.com/vm0-ai/vm0/commit/1b77900ad7c6fb1dce9c23829e62845e81898ba9))
+
 ## [1.430.1](https://github.com/vm0-ai/vm0/compare/api-v1.430.0...api-v1.430.1) (2026-08-12)
 
 

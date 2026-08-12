@@ -299,7 +299,7 @@ async function reconcileBrowsers() {
   );
 }
 
-describe("zero browser route", () => {
+describe("okou browser route", () => {
   it("keeps managed browser access off for a default chat thread", async () => {
     const { runs, chat, actor, agent } = await setupBrowserScenario();
     const sent = await chat.requestSendEvent(
@@ -353,7 +353,7 @@ describe("zero browser route", () => {
     const claim = await runs.claimRunnerJob(sent.body.runId);
     const appendSystemPrompt = claim.appendSystemPrompt ?? "";
     expect(appendSystemPrompt).toContain(
-      "`zero browser use` creates, reuses, or resumes a remote browser",
+      "`okou browser use` creates, reuses, or resumes a remote browser",
     );
     expect(appendSystemPrompt).not.toContain(
       "Zero Browser is currently off for this chat thread",

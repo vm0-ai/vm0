@@ -108,7 +108,7 @@ export function createHtmlArtifactAuthoringPacket(
   const site =
     options.siteSlug ?? slugify(options.slugSource ?? options.prompt);
   const outputDir = outputDirForSite(site);
-  const hostCommand = `zero host ${outputDir} --site ${site}${
+  const hostCommand = `okou host ${outputDir} --site ${site}${
     options.kind === "website" ? " --spa" : ""
   }`;
   const title = titleForKind(options.kind);
@@ -140,7 +140,7 @@ export function createHtmlArtifactAuthoringPacket(
   const resolutionLines = [
     "## Stage 2: Resolve Selected Resources",
     "- Resolve and download only resources selected from the index. Do not fetch unselected resources.",
-    "- For a selected entry without `source.archive`, resolve its `source.path` from the index's pinned `source.repo@source.ref`. Do not run `zero resource pull` for it.",
+    "- For a selected entry without `source.archive`, resolve its `source.path` from the index's pinned `source.repo@source.ref`. Do not run `okou resource pull` for it.",
     ...(options.kind === "website"
       ? [
           "- For a selected entry with `source.archive`, run its exact `source.pull.command`, then use `source.pull.resolvedPath`. Do not construct or guess a direct R2 URL.",
@@ -184,10 +184,10 @@ export function createHtmlArtifactAuthoringPacket(
     outputDir,
   } as const;
   const instructions = [
-    `# Zero generate ${options.kind}`,
+    `# Okou generate ${options.kind}`,
     "",
     "This is a generation source-selection packet for the current agent.",
-    `Zero is not generating this ${title} on the server. You select resources, resolve them, and author the artifact.`,
+    `Okou is not generating this ${title} on the server. You select resources, resolve them, and author the artifact.`,
     "",
     "## User Prompt",
     options.prompt,

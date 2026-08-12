@@ -1,5 +1,5 @@
 /**
- * Tests for zero agent list command
+ * Tests for okou agent list command
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
@@ -20,7 +20,7 @@ const mockAgent = {
   sound: null,
 };
 
-describe("zero agent list command", () => {
+describe("okou agent list command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -66,7 +66,7 @@ describe("zero agent list command", () => {
       await listCommand.parseAsync(["node", "cli"]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("No zero agents found");
+      expect(logCalls).toContain("No agents found");
     });
   });
 

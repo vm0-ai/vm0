@@ -692,7 +692,7 @@ describe("initial thinking indicator", () => {
     threadGate.resolve();
   });
 
-  it("restarts on every follow-up line instead of sliding a short tail", async () => {
+  it("ellipsizes an overflowing thinking line without animating its remainder", async () => {
     const threadId = "e1000000-0000-4000-a000-000000000015";
     const thinking = "ABCDEFG";
     mockThinkingTypewriterLayout({
@@ -755,21 +755,21 @@ describe("initial thinking indicator", () => {
     });
 
     const label = await screen.findByLabelText(thinking);
-    const sawFollowUpLine = () => {
+    const sawEllipsis = () => {
       if (label.textContent) {
         displayedLabels.add(label.textContent);
       }
-      return Array.from(displayedLabels).some((value) => {
-        return value === "D" || value === "DE" || value === "DEF";
-      });
+      return displayedLabels.has("AB…");
     };
     await waitFor(() => {
-      expect(sawFollowUpLine()).toBeTruthy();
+      expect(sawEllipsis()).toBeTruthy();
     });
-    await waitFor(() => {
-      expect(label).toHaveTextContent(/^G$/);
-    });
-    expect(displayedLabels.has("...EFG")).toBeFalsy();
+    expect(label).toHaveTextContent(/^AB…$/);
+    expect(
+      Array.from(displayedLabels).some((value) => {
+        return /[D-G]/.test(value);
+      }),
+    ).toBeFalsy();
     expect(label).not.toHaveTextContent(thinking);
     expect(label.closest("[data-thinking-indicator]")).not.toBeNull();
   });

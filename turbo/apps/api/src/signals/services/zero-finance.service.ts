@@ -220,7 +220,7 @@ export const zeroFinance$ = command(
     args: AuthedFinanceArgs,
     signal: AbortSignal,
   ): Promise<ZeroFinanceCommandResponse> => {
-    const apiKey = env("ZERO_FINANCE_APIDOJO_TOKEN");
+    const apiKey = env("OKOU_FINANCE_APIDOJO_TOKEN");
     if (!apiKey) {
       return serviceUnavailable(
         "Zero Finance APIDojo provider is not configured",

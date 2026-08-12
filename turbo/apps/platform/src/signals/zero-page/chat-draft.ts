@@ -32,6 +32,14 @@ import { i18n } from "../../i18n/index.ts";
 interface FileInfo {
   id: string;
   url: string;
+  contentType: string;
+}
+
+function uploadFileInfo(
+  file: Pick<FileInfo, "id" | "url">,
+  contentType: string,
+): FileInfo {
+  return { id: file.id, url: file.url, contentType };
 }
 
 type AttachmentUploadState =
@@ -101,6 +109,7 @@ function uploadContentTypeByExtension(ext: string): string | undefined {
     flac: "audio/flac",
     gif: "image/gif",
     gz: "application/gzip",
+    har: "application/json",
     heic: "image/heic",
     heif: "image/heif",
     htm: "text/html",
@@ -249,7 +258,6 @@ function createChatAttachment(file: File): ZeroChatAttachment {
   const uploadPending$ = computed((get): boolean => {
     return get(internalUpload$).status === "pending";
   });
-
   const cancel$ = command(({ set }) => {
     set(resetSignal$);
   });
@@ -306,7 +314,7 @@ function createChatAttachment(file: File): ZeroChatAttachment {
               [200],
             );
             signal.throwIfAborted();
-            return completed.body;
+            return uploadFileInfo(completed.body, prepared.body.contentType);
           })(),
           async () => {
             const cleanupSignal = AbortSignal.timeout(
@@ -343,7 +351,7 @@ function createChatAttachment(file: File): ZeroChatAttachment {
         );
       }
 
-      return { id: prepared.body.id, url: prepared.body.url };
+      return uploadFileInfo(prepared.body, prepared.body.contentType);
     })();
 
     set(internalUpload$, { status: "pending", promise });
@@ -415,11 +423,13 @@ export interface DraftInputSyncTarget {
 export function createRestoredAttachment(
   persisted: PersistedAttachment,
 ): ZeroChatAttachment {
-  const fileInfo$ = computed(
-    (): Promise<{ id: string; url: string } | null> => {
-      return Promise.resolve({ id: persisted.id, url: persisted.url });
-    },
-  );
+  const fileInfo$ = computed((): Promise<FileInfo | null> => {
+    return Promise.resolve({
+      id: persisted.id,
+      url: persisted.url,
+      contentType: persisted.contentType,
+    });
+  });
 
   const cancel$ = command(() => {
     // no-op: already uploaded, nothing to cancel

@@ -776,17 +776,16 @@ describe("FILE-01 uploads, storage, and host APIs", () => {
     expectApiError(crossUserComplete.body);
     expect(crossUserComplete.body.error.code).toBe("NOT_FOUND");
 
-    const unsupported = await api.requestPrepareUpload(
-      actor,
-      {
-        filename: "malware.exe",
-        contentType: "application/x-msdownload",
-        size: 10,
-      },
-      [400],
-    );
-    expectApiError(unsupported.body);
-    expect(unsupported.body.error.message).toContain("Unsupported file type");
+    const generic = await api.prepareUpload(actor, {
+      filename: "capture.custom",
+      contentType: "application/x-custom",
+      size: 10,
+    });
+    expect(generic).toMatchObject({
+      filename: "capture.custom",
+      contentType: "application/octet-stream",
+      size: 10,
+    });
   });
 
   it("prepares and completes a hosted-site deployment through host APIs", async () => {

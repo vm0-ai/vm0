@@ -105,14 +105,14 @@ const loadPagedMessages$ = command(
       ),
       set(
         setAblyLoop$,
-        `chatThreadRunCreated:${thread.id}`,
-        onRunChanged$,
+        `chatThreadDetailChanged:${thread.id}`,
+        onThreadChanged$,
         signal,
       ),
       set(
         setAblyLoop$,
-        `chatThreadRunUpdated:${thread.id}`,
-        onRunChanged$,
+        `chatThreadArtifactsChanged:${thread.id}`,
+        onArtifactsChanged$,
         signal,
       ),
     ]);

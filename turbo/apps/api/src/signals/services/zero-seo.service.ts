@@ -590,8 +590,8 @@ const runDataForSeo$ = command(
     args: AuthedSeoArgs,
     signal: AbortSignal,
   ): Promise<ZeroSeoCommandResponse> => {
-    const login = env("ZERO_SEO_DATAFORSEO_LOGIN");
-    const password = env("ZERO_SEO_DATAFORSEO_PASSWORD");
+    const login = env("OKOU_SEO_DATAFORSEO_LOGIN");
+    const password = env("OKOU_SEO_DATAFORSEO_PASSWORD");
     if (!login || !password) {
       return serviceUnavailable(
         "Zero SEO DataForSEO provider is not configured",

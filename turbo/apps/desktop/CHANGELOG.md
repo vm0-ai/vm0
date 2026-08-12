@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.33.2](https://github.com/vm0-ai/vm0/compare/desktop-v0.33.1...desktop-v0.33.2) (2026-08-12)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.321.0
+
+## [0.33.1](https://github.com/vm0-ai/vm0/compare/desktop-v0.33.0...desktop-v0.33.1) (2026-08-12)
+
+
+### Bug Fixes
+
+* **desktop:** restore packaged preload bridge ([#26478](https://github.com/vm0-ai/vm0/issues/26478)) ([d584312](https://github.com/vm0-ai/vm0/commit/d58431243e6ab41a55a6200e493773d60152d8a5))
+
 ## [0.33.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.32.0...desktop-v0.33.0) (2026-08-12)
 
 

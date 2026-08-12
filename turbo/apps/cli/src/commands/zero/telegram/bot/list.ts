@@ -23,7 +23,7 @@ export const listCommand = new Command()
     "after",
     `
 Examples:
-  zero telegram bot list
+  okou telegram bot list
 
 Notes:
   - Use this to find the --bot-id value before sending Telegram messages.`,
