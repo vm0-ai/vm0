@@ -1,5 +1,30 @@
 # Changelog
 
+## [1.437.0](https://github.com/vm0-ai/vm0/compare/api-v1.436.0...api-v1.437.0) (2026-08-12)
+
+
+### Features
+
+* gate latest website templates ([#26686](https://github.com/vm0-ai/vm0/issues/26686)) ([3089b1d](https://github.com/vm0-ai/vm0/commit/3089b1da9f93faec1bc5a9a1889c292f3bb7d8e8))
+
+
+### Bug Fixes
+
+* **connectors:** align custom runtime credential recovery ([#26687](https://github.com/vm0-ai/vm0/issues/26687)) ([f7dd1c2](https://github.com/vm0-ai/vm0/commit/f7dd1c24cc905617d41c9118f17e32923150af15))
+
+
+### Refactoring
+
+* **protocol:** stop emitting Zero runtime credentials ([#26684](https://github.com/vm0-ai/vm0/issues/26684)) ([519ada9](https://github.com/vm0-ai/vm0/commit/519ada9b5f2dcded0a64f0e88265b58c78ce8ab6))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.550.0
+    * @vm0/db bumped to 1.197.0
+
 ## [1.436.0](https://github.com/vm0-ai/vm0/compare/api-v1.435.0...api-v1.436.0) (2026-08-12)
 
 

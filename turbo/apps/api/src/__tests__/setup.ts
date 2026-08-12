@@ -1,13 +1,12 @@
 import { resetApiTestMocks } from "./mocks";
-import { afterAll, afterEach, beforeAll, beforeEach } from "vitest";
+import { afterAll, afterEach, aroundEach, beforeAll, beforeEach } from "vitest";
 
 import { clearMockedEnv, mockEnv } from "../lib/env";
 import {
-  resetSecretKmsClientForTests,
-  setSecretKmsClientForTests,
   type SecretKmsClient,
   type SecretKmsDataKey,
   type SecretKmsGenerateDataKeyRequest,
+  withSecretKmsClientForTest,
 } from "../lib/secret-kms-client";
 import { clearMockNow } from "../lib/time";
 import { server } from "../mocks/server";
@@ -39,6 +38,10 @@ function createApiTestKmsClient(): SecretKmsClient {
   };
 }
 
+aroundEach(async (runTest) => {
+  await withSecretKmsClientForTest(createApiTestKmsClient(), runTest);
+});
+
 beforeAll(async () => {
   mockApiTestConnectorProviderConfiguration();
   await installApiTestConnectorCatalog();
@@ -48,13 +51,11 @@ beforeAll(async () => {
 beforeEach(() => {
   mockApiTestConnectorProviderConfiguration();
   mockEnv("SECRETS_KMS_KEY_ID", "alias/vm0-secrets-test");
-  setSecretKmsClientForTests(createApiTestKmsClient());
 });
 
 afterEach(async () => {
   await clearAllDetached();
   clearMockNow();
-  resetSecretKmsClientForTests();
   clearMockedEnv();
   resetApiTestMocks();
   server.resetHandlers();

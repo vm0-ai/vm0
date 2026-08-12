@@ -21,6 +21,7 @@ import {
   Coins,
   Cpu,
   CreditCard,
+  History,
   ReceiptText,
   Users,
 } from "lucide-react";
@@ -41,6 +42,7 @@ import { GeneralSection } from "./sections/general-section.tsx";
 import { PeopleSection } from "./sections/people-section.tsx";
 import { BillingSection } from "./sections/billing-section.tsx";
 import { CreditBalanceSection } from "./sections/credit-balance-section.tsx";
+import { UsageRecordsSection } from "./sections/usage-records-section.tsx";
 import { InvoicesSection } from "./sections/invoices-section.tsx";
 
 type NavIcon = (props: { size?: number; className?: string }) => ReactNode;
@@ -82,6 +84,9 @@ const SECTION_COMPONENTS = {
   },
   usage: () => {
     return <CreditBalanceSection />;
+  },
+  "usage-records": () => {
+    return <UsageRecordsSection />;
   },
   invoices: () => {
     return <InvoicesSection />;
@@ -161,6 +166,14 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
         return $.settings.dialog.sections.usage.balanceDescription;
       }),
     },
+    "usage-records": {
+      title: t(($) => {
+        return $.settings.dialog.sections.usage.usageTitle;
+      }),
+      description: t(($) => {
+        return $.settings.dialog.sections.usage.usageDescription;
+      }),
+    },
     invoices: {
       title: t(($) => {
         return $.settings.dialog.sections.invoices.title;
@@ -214,15 +227,16 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
         ? [
             {
               id: "usage" as const,
-              label: isAdmin
-                ? sectionMeta.usage.title
-                : t(($) => {
-                    return $.settings.dialog.sections.usage.usageTitle;
-                  }),
+              label: sectionMeta.usage.title,
               icon: Coins,
             },
           ]
         : []),
+      {
+        id: "usage-records" as const,
+        label: sectionMeta["usage-records"].title,
+        icon: History,
+      },
       ...(isAdmin
         ? [
             {
@@ -253,17 +267,7 @@ export function SettingsDialog({ open, onOpenChange }: SettingsDialogProps) {
     (!isAdmin && isAdminOnlySettingsSection(activeSection))
       ? "preference"
       : activeSection;
-  const meta =
-    resolvedSection === "usage" && !isAdmin
-      ? {
-          title: t(($) => {
-            return $.settings.dialog.sections.usage.usageTitle;
-          }),
-          description: t(($) => {
-            return $.settings.dialog.sections.usage.usageDescription;
-          }),
-        }
-      : sectionMeta[resolvedSection];
+  const meta = sectionMeta[resolvedSection];
 
   const handleSectionChange = (section: SettingsSection) => {
     setActiveSection(section);

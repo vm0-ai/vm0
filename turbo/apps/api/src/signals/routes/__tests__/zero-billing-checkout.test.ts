@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { HttpResponse, http } from "msw";
+import { testBillingReconciliationStateContract } from "@vm0/api-contracts/contracts/test-billing-reconciliation-state";
 import {
   type BillingStatusResponse,
   USAGE_PACKS_USD,
@@ -33,7 +34,6 @@ import { onTestFinished } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
-import { createApp } from "../../../app-factory";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import { clearMockNow, mockNow, now } from "../../../lib/time";
@@ -55,7 +55,7 @@ import {
 import { webhooksStripeRoutes } from "../webhooks-stripe";
 import { readOrgAcquisitionAttributionFixture } from "../../../test-fixtures/org-metadata";
 import { webhooksClerkRoutes } from "../webhooks-clerk";
-import { cronReconcileBillingEntitlementsRoutes } from "../cron-reconcile-billing-entitlements";
+import { testBillingReconciliationStateRoutes } from "../test-billing-reconciliation-state";
 import { zeroBillingCheckoutRoutes } from "../zero-billing-checkout";
 import { zeroBillingConcurrencyCheckoutRoutes } from "../zero-billing-concurrency-checkout";
 import { zeroBillingConcurrencySubscriptionRoutes } from "../zero-billing-concurrency-subscriptions";
@@ -102,6 +102,18 @@ async function readUsagePackState(
     throw new Error("Usage pack test state did not return a read response");
   }
   return response.state;
+}
+
+async function reconcileBillingOrganization(orgId: string): Promise<void> {
+  await accept(
+    setupApp({
+      context,
+      routes: testBillingReconciliationStateRoutes,
+    })(testBillingReconciliationStateContract).reconcile({
+      body: { orgIds: [orgId] },
+    }),
+    [200],
+  );
 }
 
 const APP_ORIGIN = "http://localhost:3002";
@@ -2624,6 +2636,7 @@ describe("legacy subscription usage pack migration", () => {
       }),
       [200],
     );
+    const preservedBefore = await readUsagePackState(preservedFixture.orgId);
 
     const fixture = await seedLegacyMigrationFixture({ tier: "team" });
     await enableMigration(fixture);
@@ -2661,16 +2674,10 @@ describe("legacy subscription usage pack migration", () => {
 
     stripe.cancelSchedule();
     mockNow(fixture.period.end * 1000 + 10 * 60 * 1000);
-    mockEnv("CRON_SECRET", "migration-cron-secret");
-    const cronResponse = await createApp({
-      signal: context.signal,
-      routes: cronReconcileBillingEntitlementsRoutes,
-    }).request("/api/cron/reconcile-billing-entitlements", {
-      headers: { authorization: "Bearer migration-cron-secret" },
-    });
-    expect(cronResponse.status).toBe(200);
+    await reconcileBillingOrganization(fixture.orgId);
 
     const preserved = await readUsagePackState(preservedFixture.orgId);
+    expect(preserved).toStrictEqual(preservedBefore);
     expect(preserved.migrations).toStrictEqual([
       expect.objectContaining({
         id: preservedPreview.migrationId,
@@ -3693,16 +3700,9 @@ describe("usage pack allocation management", () => {
     await flushWaitUntilForTest();
   }
 
-  async function runBillingReconciliation(): Promise<void> {
-    mockEnv("CRON_SECRET", "usage-pack-invitation-cron");
+  async function runBillingReconciliation(orgId: string): Promise<void> {
     context.mocks.stripe.invoices.list.mockResolvedValue({ data: [] });
-    const response = await createApp({
-      signal: context.signal,
-      routes: cronReconcileBillingEntitlementsRoutes,
-    }).request("/api/cron/reconcile-billing-entitlements", {
-      headers: { authorization: "Bearer usage-pack-invitation-cron" },
-    });
-    expect(response.status).toBe(200);
+    await reconcileBillingOrganization(orgId);
   }
 
   function mockUsagePackSubscriptionAdditionPreviews(args: {
@@ -4913,14 +4913,7 @@ describe("usage pack allocation management", () => {
     context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(
       expiredSubscription,
     );
-    mockEnv("CRON_SECRET", "usage-pack-change-cron");
-    const cronResponse = await createApp({
-      signal: context.signal,
-      routes: cronReconcileBillingEntitlementsRoutes,
-    }).request("/api/cron/reconcile-billing-entitlements", {
-      headers: { authorization: "Bearer usage-pack-change-cron" },
-    });
-    expect(cronResponse.status).toBe(200);
+    await reconcileBillingOrganization(fixture.orgId);
     expect(context.mocks.stripe.invoices.voidInvoice).toHaveBeenCalledWith(
       invoiceId,
       {},
@@ -5349,14 +5342,7 @@ describe("usage pack allocation management", () => {
     context.mocks.stripe.subscriptions.retrieve.mockResolvedValue(
       managedUsagePackSubscription(fixture, quantities),
     );
-    mockEnv("CRON_SECRET", "usage-pack-change-cron");
-    const cronResponse = await createApp({
-      signal: context.signal,
-      routes: cronReconcileBillingEntitlementsRoutes,
-    }).request("/api/cron/reconcile-billing-entitlements", {
-      headers: { authorization: "Bearer usage-pack-change-cron" },
-    });
-    expect(cronResponse.status).toBe(200);
+    await reconcileBillingOrganization(fixture.orgId);
 
     const failed = await readUsagePackState(
       fixture.orgId,
@@ -5545,14 +5531,7 @@ describe("usage pack allocation management", () => {
         scheduleId: "sub_sched_usage_pack_retry",
       }),
     );
-    mockEnv("CRON_SECRET", "usage-pack-change-cron");
-    const cronResponse = await createApp({
-      signal: context.signal,
-      routes: cronReconcileBillingEntitlementsRoutes,
-    }).request("/api/cron/reconcile-billing-entitlements", {
-      headers: { authorization: "Bearer usage-pack-change-cron" },
-    });
-    expect(cronResponse.status).toBe(200);
+    await reconcileBillingOrganization(fixture.orgId);
 
     const scheduled = await readUsagePackState(
       fixture.orgId,
@@ -6774,14 +6753,7 @@ describe("usage pack allocation management", () => {
       id: stripeRefundId,
       status: "succeeded",
     });
-    mockEnv("CRON_SECRET", "usage-pack-refund-cron");
-    const cronResponse = await createApp({
-      signal: context.signal,
-      routes: cronReconcileBillingEntitlementsRoutes,
-    }).request("/api/cron/reconcile-billing-entitlements", {
-      headers: { authorization: "Bearer usage-pack-refund-cron" },
-    });
-    expect(cronResponse.status).toBe(200);
+    await reconcileBillingOrganization(purchase.fixture.orgId);
 
     const reconciled = await readUsagePackState(
       purchase.fixture.orgId,
@@ -6867,7 +6839,7 @@ describe("usage pack allocation management", () => {
         return allocation.userId === acceptedUserId;
       })?.status,
     ).toBe("active");
-    await runBillingReconciliation();
+    await runBillingReconciliation(purchase.fixture.orgId);
 
     const accepted = await readUsagePackState(
       purchase.fixture.orgId,
@@ -6968,7 +6940,7 @@ describe("usage pack allocation management", () => {
       clearMockNow();
     });
 
-    await runBillingReconciliation();
+    await runBillingReconciliation(purchase.fixture.orgId);
 
     const state = await readUsagePackState(
       purchase.fixture.orgId,
@@ -7017,7 +6989,7 @@ describe("usage pack allocation management", () => {
       clearMockNow();
     });
 
-    await runBillingReconciliation();
+    await runBillingReconciliation(purchase.fixture.orgId);
     const retryPending = await readUsagePackState(
       purchase.fixture.orgId,
       purchase.fixture.usagePackSubscriptionId,
@@ -7026,7 +6998,7 @@ describe("usage pack allocation management", () => {
       expect.objectContaining({ status: "refund_pending", refundAttempt: 2 }),
     );
 
-    await runBillingReconciliation();
+    await runBillingReconciliation(purchase.fixture.orgId);
 
     const refunded = await readUsagePackState(
       purchase.fixture.orgId,

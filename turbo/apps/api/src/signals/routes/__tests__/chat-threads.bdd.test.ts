@@ -2,11 +2,11 @@ import { createHash, randomUUID } from "node:crypto";
 import { createStore } from "ccstate";
 import { HttpResponse, http } from "msw";
 import {
-  cronCleanupSandboxesContract,
   cronCompactChatThreadSnapshotsContract,
   cronProjectChatEventSearchContract,
 } from "@vm0/api-contracts/contracts/cron";
 import { CANCELLATION_RECOVERY_STALE_AFTER_MS } from "@vm0/api-contracts/contracts/runners";
+import { testCronCleanupSandboxesStateContract } from "@vm0/api-contracts/contracts/test-cron-cleanup-sandboxes-state";
 import {
   chatThreadsContract,
   type ChatEvent,
@@ -18,7 +18,7 @@ import {
   type SupportedRunModel,
 } from "@vm0/api-contracts/contracts/model-providers";
 import { zeroGoalsContract } from "@vm0/api-contracts/contracts/zero-goals";
-import { describe, expect, onTestFinished, test as vitestTest } from "vitest";
+import { describe, expect, it, onTestFinished } from "vitest";
 import { createApp } from "../../../app-factory";
 import { stubTestTimezone } from "../../../__tests__/env-stub";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
@@ -41,10 +41,7 @@ import {
   insertChatThreadEventTransactionFixture,
 } from "../../../test-fixtures/chat-thread-events";
 import { installApiTestConnectorCatalog } from "../../../test-fixtures/connector-catalog";
-import {
-  setAgentRunCreatedAtFixture,
-  withThreadlessRunCleanupTestLockFixture,
-} from "../../../test-fixtures/run-deletion";
+import { setAgentRunCreatedAtFixture } from "../../../test-fixtures/run-deletion";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import {
@@ -76,14 +73,13 @@ import {
   insertUsageEvent$,
   materializeHourlyUsage$,
 } from "./helpers/usage-state";
-import { cronCleanupSandboxesRoutes } from "../cron-cleanup-sandboxes";
 import { cronCompactChatThreadSnapshotsRoutes } from "../cron-compact-chat-thread-snapshots";
 import { cronProjectChatEventSearchRoutes } from "../cron-project-chat-event-search";
+import { testCronCleanupSandboxesStateRoutes } from "../test-cron-cleanup-sandboxes-state";
 import { zeroChatThreadRoutes } from "../zero-chat-threads";
 import { zeroGoalsRoutes } from "../zero-goals";
 
 const TEST_APP_ROUTES = Object.freeze([
-  ...cronCleanupSandboxesRoutes,
   ...cronCompactChatThreadSnapshotsRoutes,
   ...cronProjectChatEventSearchRoutes,
   ...zeroChatThreadRoutes,
@@ -114,7 +110,6 @@ const connectorsApi = createConnectorBddApi(context);
 const authOrg = createAuthOrgAgentsBddApi(context);
 const store = createStore();
 const CHAT_THREAD_SNAPSHOT_CRON_SECRET = "chat-thread-snapshot-cron-secret";
-const SANDBOX_CLEANUP_CRON_SECRET = "sandbox-cleanup-cron-secret";
 const DAY_MS = 24 * 60 * 60 * 1000;
 const FORWARD_CLEANUP_CUTOFF_MS = Date.parse("2026-08-03T05:40:26.000Z");
 const FORWARD_CLEANUP_TEST_CREATED_AT = "2026-08-03T05:40:26.001Z";
@@ -133,26 +128,6 @@ type UserMessage = Extract<
 >;
 type AssistantMessage = Exclude<ChatEvent, UserMessage>;
 type RunnerClaim = Awaited<ReturnType<typeof api.claimRunnerJob>>;
-
-function it(name: string, test: () => Promise<void>, timeout?: number): void {
-  vitestTest(
-    name,
-    async () => {
-      if (
-        name ===
-        "cancels in-flight runs and cascades schedules when a thread is deleted"
-      ) {
-        await withThreadlessRunCleanupTestLockFixture({
-          signal: context.signal,
-          run: test,
-        });
-        return;
-      }
-      await test();
-    },
-    timeout,
-  );
-}
 
 async function compactChatThreadSnapshots() {
   const client = setupApp({
@@ -1440,27 +1415,32 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       FORWARD_CLEANUP_CUTOFF_MS,
     );
     const cleanupAt = now() + CANCELLATION_RECOVERY_STALE_AFTER_MS;
-    mockEnv("CRON_SECRET", SANDBOX_CLEANUP_CRON_SECRET);
     mockNow(cleanupAt);
     onTestFinished(clearMockNow);
     const cleanup = await accept(
-      setupApp({ context, routes: cronCleanupSandboxesRoutes })(
-        cronCleanupSandboxesContract,
+      setupApp({ context, routes: testCronCleanupSandboxesStateRoutes })(
+        testCronCleanupSandboxesStateContract,
       ).cleanup({
-        headers: {
-          authorization: `Bearer ${SANDBOX_CLEANUP_CRON_SECRET}`,
+        body: {
+          chatThreadIds: [],
+          runIds: [main.runId, sibling.runId],
+          orgIds: [],
+          exportJobIds: [],
         },
       }),
       [200],
     );
-    expect(cleanup.body.threadlessRuns.discovered).toBeGreaterThanOrEqual(2);
-    expect(cleanup.body.threadlessRuns.deleted).toBeGreaterThanOrEqual(2);
+    expect(cleanup.body.threadlessRuns.discovered).toBe(2);
+    expect(cleanup.body.threadlessRuns.deleted).toBe(2);
     await expect(
       api.requestReadRun(actor, main.runId, [404]),
     ).resolves.toMatchObject({ status: 404 });
     await expect(
       api.requestReadRun(actor, sibling.runId, [404]),
     ).resolves.toMatchObject({ status: 404 });
+    await expect(api.readRun(actor, other.runId)).resolves.toMatchObject({
+      status: "pending",
+    });
 
     await cancelChatRun(actor, other.runId);
   }, 120_000);

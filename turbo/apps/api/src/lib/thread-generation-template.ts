@@ -14,14 +14,19 @@ import {
 export function resolveThreadGenerationTemplatePrompt(args: {
   readonly explicit: GenerationTemplateRequest | null | undefined;
   readonly explicitTemplates?: readonly GenerationTemplateRequest[];
+  readonly latestWebsiteTemplatesEnabled: boolean;
 }): string {
   if (args.explicitTemplates && args.explicitTemplates.length > 0) {
-    const built = buildGenerationTemplatesPrompt(args.explicitTemplates);
+    const built = buildGenerationTemplatesPrompt(args.explicitTemplates, {
+      latestWebsiteTemplatesEnabled: args.latestWebsiteTemplatesEnabled,
+    });
     return built.status === "resolved" ? built.prompt : "";
   }
   if (!args.explicit) {
     return "";
   }
-  const built = buildGenerationTemplatePrompt(args.explicit);
+  const built = buildGenerationTemplatePrompt(args.explicit, {
+    latestWebsiteTemplatesEnabled: args.latestWebsiteTemplatesEnabled,
+  });
   return built.status === "resolved" ? built.prompt : "";
 }

@@ -5,14 +5,13 @@ import type { ChatEvent } from "@vm0/api-contracts/contracts/chat-threads";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { HttpResponse, http } from "msw";
 import { createStore } from "ccstate";
-import { describe, expect, test as vitestTest } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import { testContext } from "../../../__tests__/test-context";
 import { env, mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { installApiTestConnectorCatalog } from "../../../test-fixtures/connector-catalog";
-import { withThreadlessRunCleanupTestLockFixture } from "../../../test-fixtures/run-deletion";
 import { readChatEventContextFixture } from "../../../test-fixtures/chat-events";
 import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import { flushWaitUntilForTest } from "../../context/wait-until";
@@ -387,29 +386,6 @@ async function pollSlackRun(runnerGroup: string): Promise<string> {
   return await pollRunnerRun(
     runnerGroup,
     "Expected a Slack-triggered run in the runner queue",
-  );
-}
-
-function it(name: string, test: () => Promise<void>, timeout?: number): void {
-  vitestTest(
-    name,
-    async () => {
-      if (
-        name ===
-        "delivers canonical Slack callbacks for progress, audit footers, failures, and Slack errors"
-      ) {
-        // The cron cleanup suite runs the global canonical-ingress sweep from
-        // another worker. Share its lock so it cannot claim this test's fresh
-        // Slack ingress outside the owning provider-mock lifetime.
-        await withThreadlessRunCleanupTestLockFixture({
-          signal: context.signal,
-          run: test,
-        });
-        return;
-      }
-      await test();
-    },
-    timeout,
   );
 }
 

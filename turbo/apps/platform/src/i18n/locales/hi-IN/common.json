@@ -1040,14 +1040,15 @@
       "allowance": {
         "day": "{{value}}d",
         "hour": "{{value}}h",
+        "left": "{{value}} शेष",
         "minute": "{{value}}m",
-        "remaining": "{{remaining}} / {{total}} क्रेडिट",
         "remainingAria": "उपयोग भत्ता {{label}} शेष है",
         "resets": "{{date}} रीसेट करता है",
         "resetsRaw": "{{value}} रीसेट करता है",
         "title": "उपयोग भत्ता",
         "week": "{{value}}w"
       },
+      "autoRechargeOn": "ऑटो-रिचार्ज चालू",
       "breakdown": {
         "currentPlanDescription": "मासिक योजना क्रेडिट, प्रत्येक बिलिंग चक्र को रीसेट करता है",
         "freeDescription": "स्टार्टर क्रेडिट, समाप्त होने तक उपयोग करें",
@@ -1064,10 +1065,18 @@
       "creditsRemaining_one": "{{value}} क्रेडिट शेष",
       "creditsRemaining_other": "{{value}} क्रेडिट शेष",
       "expires": "{{date}} समाप्त हो रहा है",
+      "grantsTable": {
+        "added": "जोड़ा गया",
+        "amount": "राशि",
+        "expires": "समाप्ति",
+        "left": "शेष",
+        "source": "स्रोत"
+      },
       "left": "{{value}} शेष",
       "member": "सदस्य",
       "neverExpires": "कभी समाप्त नहीं होता",
       "orgCredits": "संगठन क्रेडिट",
+      "seeUsageRecords": "देखें ये क्रेडिट कहाँ खर्च हुए",
       "unavailable": "क्रेडिट शेष अनुपलब्ध.",
       "upgradeDescription": "प्रो में मासिक क्रेडिट शामिल है और अतिरिक्त क्रेडिट विकल्प अनलॉक करता है।",
       "upgradeTitle": "अधिक क्रेडिट प्राप्त करने के लिए प्रो में अपग्रेड करें",
@@ -4011,7 +4020,7 @@
           "title": "वरीयता"
         },
         "usage": {
-          "balanceDescription": "आपकी टीम का क्रेडिट संतुलन और उपयोग।",
+          "balanceDescription": "आपकी टीम के पास खर्च करने के लिए कितना बचा है।",
           "balanceTitle": "क्रेडिट शेष",
           "usageDescription": "चैट, ऑटोमेशन और चैनलों पर आपका क्रेडिट उपयोग।",
           "usageTitle": "क्रेडिट उपयोग"
