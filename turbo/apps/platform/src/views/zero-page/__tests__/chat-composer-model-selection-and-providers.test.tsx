@@ -461,11 +461,7 @@ describe("chat composer models", () => {
         "fill",
         expectedZapIcon ? "none" : "currentColor",
       );
-      await user.click(
-        expectedZapIcon
-          ? fastModeOption
-          : screen.getByRole("option", { name: "GPT 5.6 Sol" }),
-      );
+      await user.click(fastModeOption);
       await expectComposerModel(targetLabel);
       await expect(screen.findByText(notice)).resolves.toBeInTheDocument();
       await user.click(buttonContainingText("Set as default", document.body));
@@ -671,6 +667,9 @@ describe("chat composer models", () => {
       "fill",
       "currentColor",
     );
+    expect(fastModeIcon(fastModeOption)).toHaveClass(
+      "group-hover/fast-option:fill-none",
+    );
     expect(standardOption.querySelector("svg.lucide-check")).not.toBeNull();
     expect(fastModeOption.querySelector("svg.lucide-check")).toBeNull();
 
@@ -694,6 +693,11 @@ describe("chat composer models", () => {
     });
 
     await user.click(standardOption);
+    await expectComposerModel("GPT 5.6 Sol Fast");
+
+    await user.click(await findComposerModel("GPT 5.6 Sol Fast"));
+    fastModeOption = await findFastModeOption("GPT 5.6 Sol");
+    await user.click(fastModeOption);
     await expectComposerModel("GPT 5.6 Sol");
 
     await user.click(await findComposerModel("GPT 5.6 Sol"));
