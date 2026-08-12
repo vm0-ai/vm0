@@ -830,6 +830,7 @@
       "reviewChange": "Tinjau perubahan",
       "reviewDescription": "Tinjau jumlah yang harus dibayar sekarang dan langganan bulanan Anda yang diperbarui.",
       "reviewTitle": "Tinjau perubahan kapasitas bersamaan",
+      "scheduledChange": "Berubah menjadi {{quantity}} pada {{date}}",
       "scheduledReviewDescription": "Slot saat ini tetap aktif hingga periode penagihan ini berakhir. Jumlah yang lebih rendah berlaku saat perpanjangan, tanpa pengembalian dana atau kredit akun.",
       "slot_one": "{{value}} slot",
       "slot_other": "{{value}} slot",

@@ -850,6 +850,7 @@
       "reviewChange": "Revisar cambio",
       "reviewDescription": "Revisa el importe a pagar ahora y tu suscripción mensual actualizada.",
       "reviewTitle": "Revisar cambio de concurrencia",
+      "scheduledChange": "Cambia a {{quantity}} el {{date}}",
       "scheduledReviewDescription": "Tus cupos actuales permanecen activos durante este periodo de facturación. La cantidad menor comienza al renovar, sin reembolso ni crédito en la cuenta.",
       "slot_one": "{{value}} cupo",
       "slot_many": "{{value}} cupos",

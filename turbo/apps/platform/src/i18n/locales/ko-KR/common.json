@@ -830,6 +830,7 @@
       "reviewChange": "변경 검토",
       "reviewDescription": "지금 결제할 금액과 업데이트된 월간 구독을 검토하세요.",
       "reviewTitle": "동시 실행 변경 검토",
+      "scheduledChange": "{{date}}에 {{quantity}}(으)로 변경",
       "scheduledReviewDescription": "현재 슬롯은 이번 결제 기간이 끝날 때까지 유지됩니다. 더 적은 수량은 갱신 시 적용되며 환불이나 계정 크레딧은 제공되지 않습니다.",
       "slot_one": "{{value}} 슬롯",
       "slot_other": "{{value}} 슬롯",

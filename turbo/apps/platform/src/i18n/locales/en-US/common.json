@@ -830,6 +830,7 @@
       "reviewChange": "Review change",
       "reviewDescription": "Review the amount due now and your updated monthly subscription.",
       "reviewTitle": "Review concurrency change",
+      "scheduledChange": "Changes to {{quantity}} on {{date}}",
       "scheduledReviewDescription": "Your current slots stay active through this billing period. The lower quantity starts at renewal with no refund or account credit.",
       "slot_one": "{{value}} slot",
       "slot_other": "{{value}} slots",

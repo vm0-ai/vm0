@@ -8591,6 +8591,166 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
     expect(context.mocks.stripe.subscriptions.update).not.toHaveBeenCalled();
   });
 
+  it("replaces an existing scheduled concurrency reduction", async () => {
+    const subscriptionId = `sub_${randomUUID()}`;
+    const subscriptionItemId = `si_${randomUUID()}`;
+    const scheduleId = `sub_sched_${randomUUID()}`;
+    const periodStartUnix = 4_075_660_800;
+    const periodEndUnix = 4_078_252_800;
+    const fixture = await createConcurrencySubscriptionOrg({
+      subscriptionId,
+      slots: 5,
+      periodEnd: new Date(periodEndUnix * 1000),
+      tier: "team",
+    });
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+    const currentItem = {
+      id: subscriptionItemId,
+      price: {
+        id: TEST_PRICE_CONCURRENCY,
+        recurring: { interval: "month" as const, interval_count: 1 },
+      },
+      quantity: 5,
+      current_period_start: periodStartUnix,
+      current_period_end: periodEndUnix,
+    };
+    const subscriptionWithoutSchedule = {
+      id: subscriptionId,
+      pending_update: null,
+      schedule: null,
+      items: { data: [currentItem] },
+    };
+    const subscriptionWithSchedule = {
+      ...subscriptionWithoutSchedule,
+      schedule: scheduleId,
+    };
+    context.mocks.stripe.subscriptions.retrieve
+      .mockResolvedValueOnce(subscriptionWithoutSchedule)
+      .mockResolvedValueOnce(subscriptionWithoutSchedule)
+      .mockResolvedValueOnce(subscriptionWithSchedule)
+      .mockResolvedValueOnce(subscriptionWithSchedule);
+    context.mocks.stripe.invoices.createPreview
+      .mockResolvedValueOnce({
+        id: `in_recurring_${randomUUID()}`,
+        amount_due: 30_000,
+        currency: "usd",
+      })
+      .mockResolvedValueOnce({
+        id: `in_recurring_${randomUUID()}`,
+        amount_due: 20_000,
+        currency: "usd",
+      });
+    context.mocks.stripe.subscriptionSchedules.create.mockResolvedValueOnce({
+      id: scheduleId,
+    });
+    context.mocks.stripe.subscriptionSchedules.retrieve.mockResolvedValue({
+      id: scheduleId,
+      phases: [
+        { start_date: periodStartUnix, end_date: periodEndUnix },
+        {
+          start_date: periodEndUnix,
+          end_date: periodEndUnix + 2_592_000,
+          items: [{ price: TEST_PRICE_CONCURRENCY, quantity: 3 }],
+        },
+      ],
+    });
+    context.mocks.stripe.subscriptionSchedules.update.mockResolvedValue({
+      id: scheduleId,
+    });
+    const client = setupApp({
+      context,
+      routes: zeroBillingConcurrencySubscriptionRoutes,
+    })(zeroBillingConcurrencySubscriptionContract);
+
+    await accept(
+      client.previewChange({
+        params: { subscriptionId },
+        body: { quantity: 3 },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    await accept(
+      client.confirmChange({
+        params: { subscriptionId },
+        body: { quantity: 3 },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    const statusAfterFirstChange = await readBillingStatus(fixture);
+    expect(statusAfterFirstChange.concurrencySubscriptions[0]).toMatchObject({
+      quantity: 5,
+      scheduledQuantity: 3,
+      scheduledChangeAt: new Date(periodEndUnix * 1000).toISOString(),
+    });
+
+    const replacementPreview = await accept(
+      client.previewChange({
+        params: { subscriptionId },
+        body: { quantity: 2 },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(replacementPreview.body).toStrictEqual({
+      currentQuantity: 5,
+      targetQuantity: 2,
+      immediateAmountCents: 0,
+      nextRecurringAmountCents: 20_000,
+      currency: "usd",
+      effectiveAt: new Date(periodEndUnix * 1000).toISOString(),
+    });
+    expect(
+      context.mocks.stripe.invoices.createPreview,
+    ).toHaveBeenLastCalledWith({
+      schedule: scheduleId,
+      preview_mode: "next",
+      schedule_details: {
+        end_behavior: "release",
+        proration_behavior: "none",
+        phases: [
+          {
+            start_date: periodStartUnix,
+            end_date: periodEndUnix,
+            items: [{ price: TEST_PRICE_CONCURRENCY, quantity: 5 }],
+            proration_behavior: "none",
+          },
+          {
+            start_date: periodEndUnix,
+            duration: { interval: "month", interval_count: 1 },
+            items: [{ price: TEST_PRICE_CONCURRENCY, quantity: 2 }],
+            proration_behavior: "none",
+          },
+        ],
+      },
+    });
+
+    await accept(
+      client.confirmChange({
+        params: { subscriptionId },
+        body: { quantity: 2 },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    expect(
+      context.mocks.stripe.subscriptionSchedules.create,
+    ).toHaveBeenCalledOnce();
+    expect(
+      context.mocks.stripe.subscriptionSchedules.update,
+    ).toHaveBeenCalledTimes(2);
+    const statusAfterReplacement = await readBillingStatus(fixture);
+    expect(statusAfterReplacement.concurrencySubscriptions[0]).toMatchObject({
+      quantity: 5,
+      scheduledQuantity: 2,
+      scheduledChangeAt: new Date(periodEndUnix * 1000).toISOString(),
+    });
+  });
+
   it("applies an increase immediately and updates a scheduled reduction", async () => {
     const subscriptionId = `sub_${randomUUID()}`;
     const subscriptionItemId = `si_${randomUUID()}`;

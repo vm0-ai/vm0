@@ -850,6 +850,7 @@
       "reviewChange": "Vérifier la modification",
       "reviewDescription": "Vérifiez le montant à payer maintenant et votre abonnement mensuel mis à jour.",
       "reviewTitle": "Vérifier la modification de concurrence",
+      "scheduledChange": "Passe à {{quantity}} le {{date}}",
       "scheduledReviewDescription": "Vos créneaux actuels restent actifs pendant cette période de facturation. La quantité réduite commence au renouvellement, sans remboursement ni crédit sur le compte.",
       "slot_one": "{{value}} créneau",
       "slot_many": "{{value}} créneaux",

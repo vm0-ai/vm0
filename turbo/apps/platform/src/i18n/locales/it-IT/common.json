@@ -850,6 +850,7 @@
       "reviewChange": "Rivedi modifica",
       "reviewDescription": "Controlla l'importo da pagare ora e l'abbonamento mensile aggiornato.",
       "reviewTitle": "Rivedi modifica della concorrenza",
+      "scheduledChange": "Passa a {{quantity}} il {{date}}",
       "scheduledReviewDescription": "Gli slot attuali restano attivi per questo periodo di fatturazione. La quantità inferiore inizia al rinnovo, senza rimborso né credito sull'account.",
       "slot_one": "{{value}} slot",
       "slot_many": "{{value}} slot",

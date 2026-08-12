@@ -850,6 +850,7 @@
       "reviewChange": "Revisar alteração",
       "reviewDescription": "Revise o valor a pagar agora e sua assinatura mensal atualizada.",
       "reviewTitle": "Revisar alteração de simultaneidade",
+      "scheduledChange": "Muda para {{quantity}} em {{date}}",
       "scheduledReviewDescription": "As vagas atuais permanecem ativas durante este período de cobrança. A quantidade menor começa na renovação, sem reembolso nem crédito na conta.",
       "slot_one": "{{value}} vaga",
       "slot_many": "{{value}} vagas",

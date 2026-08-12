@@ -3433,6 +3433,7 @@ async function handleConcurrencySubscriptionUpdated(
         orgId: orgConcurrencySubscriptions.orgId,
         slots: orgConcurrencySubscriptions.slots,
         cancelAtPeriodEnd: orgConcurrencySubscriptions.cancelAtPeriodEnd,
+        scheduledSlots: orgConcurrencySubscriptions.scheduledSlots,
       })
       .from(orgConcurrencySubscriptions)
       .where(
@@ -3454,6 +3455,8 @@ async function handleConcurrencySubscriptionUpdated(
         .set({
           subscriptionStatus: "canceled",
           cancelAtPeriodEnd: false,
+          scheduledSlots: null,
+          scheduledChangeAt: null,
           currentPeriodEnd: nowDate(),
           updatedAt: nowDate(),
         })
@@ -3478,6 +3481,9 @@ async function handleConcurrencySubscriptionUpdated(
           (existing.cancelAtPeriodEnd &&
             subscription.schedule !== null &&
             subscription.schedule !== undefined),
+        ...(existing.scheduledSlots === state.slots
+          ? { scheduledSlots: null, scheduledChangeAt: null }
+          : {}),
         updatedAt: nowDate(),
       })
       .where(

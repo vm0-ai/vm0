@@ -58,6 +58,10 @@ const concurrencySubscriptionSchema = z.object({
   // version-skew window. Remove the optional field with #26152 after #26116
   // has been deployed beyond that window.
   canChangeInApp: z.boolean().optional(),
+  // Optional while older API deployments can still serve an already-loaded
+  // web/app client during rollout.
+  scheduledQuantity: z.number().int().positive().nullable().optional(),
+  scheduledChangeAt: z.string().nullable().optional(),
 });
 
 const usageAllowanceWindowSchema = z.object({

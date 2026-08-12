@@ -1454,6 +1454,21 @@ function ConcurrencySubscriptionRow({
         >
           {concurrencySubscriptionPeriodLabel(subscription, canceled)}
         </p>
+        {subscription.scheduledQuantity !== null &&
+        subscription.scheduledQuantity !== undefined &&
+        subscription.scheduledChangeAt ? (
+          <p className="mt-0.5 text-[13px] text-amber-600 dark:text-amber-400">
+            {i18n.t(
+              ($) => {
+                return $.billing.concurrency.scheduledChange;
+              },
+              {
+                quantity: slotCountLabel(subscription.scheduledQuantity),
+                date: formatBillingDate(subscription.scheduledChangeAt),
+              },
+            )}
+          </p>
+        ) : null}
       </div>
       <Button
         variant={canceled ? "default" : "outline"}

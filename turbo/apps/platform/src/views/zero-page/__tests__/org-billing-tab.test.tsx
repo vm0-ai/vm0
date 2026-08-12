@@ -3024,6 +3024,22 @@ describe("organization billing settings", () => {
   it("lets an admin enter a lower concurrency subscription quantity", async () => {
     let previewedQuantity: number | null = null;
     let confirmedQuantity: number | null = null;
+    let billingStatus: BillingStatusResponse = {
+      ...activeTeamBillingStatus(),
+      concurrencyLimit: 15,
+      concurrencySubscriptions: [
+        {
+          id: "sub_concurrency_reduce",
+          quantity: 5,
+          currentPeriodEnd: "2026-06-01T00:00:00Z",
+          cancelAtPeriodEnd: false,
+          canReduce: true,
+          canChangeInApp: true,
+          scheduledQuantity: null,
+          scheduledChangeAt: null,
+        },
+      ],
+    };
 
     context.mocks.data.org({
       id: "org_1",
@@ -3031,20 +3047,7 @@ describe("organization billing settings", () => {
       role: "admin",
     });
     context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
-      return respond(200, {
-        ...activeTeamBillingStatus(),
-        concurrencyLimit: 15,
-        concurrencySubscriptions: [
-          {
-            id: "sub_concurrency_reduce",
-            quantity: 5,
-            currentPeriodEnd: "2026-06-01T00:00:00Z",
-            cancelAtPeriodEnd: false,
-            canReduce: true,
-            canChangeInApp: true,
-          },
-        ],
-      });
+      return respond(200, billingStatus);
     });
     context.mocks.api(
       zeroBillingConcurrencySubscriptionContract.previewChange,
@@ -3064,6 +3067,18 @@ describe("organization billing settings", () => {
       zeroBillingConcurrencySubscriptionContract.confirmChange,
       ({ body, respond }) => {
         confirmedQuantity = body.quantity;
+        billingStatus = {
+          ...billingStatus,
+          concurrencySubscriptions: billingStatus.concurrencySubscriptions.map(
+            (subscription) => {
+              return {
+                ...subscription,
+                scheduledQuantity: body.quantity,
+                scheduledChangeAt: "2026-06-01T00:00:00Z",
+              };
+            },
+          ),
+        };
         return respond(200, {
           status: "completed",
           hostedInvoiceUrl: null,
@@ -3111,6 +3126,9 @@ describe("organization billing settings", () => {
     await waitFor(() => {
       expect(confirmedQuantity).toBe(3);
       expect(window.location.href).toBe(locationBeforeChange);
+      expect(
+        screen.getByText("Changes to 3 slots on Jun 1, 2026"),
+      ).toBeInTheDocument();
     });
   });
 

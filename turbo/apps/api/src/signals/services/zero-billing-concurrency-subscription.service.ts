@@ -10,6 +10,7 @@ import { and, eq } from "drizzle-orm";
 import {
   getStripeClient,
   type StripeInvoice,
+  type StripeInvoiceCreatePreviewParams,
   type StripeInvoiceLine,
   type StripePriceRecurring,
   type StripeRef,
@@ -21,7 +22,7 @@ import {
   type StripeSubscriptionSchedule,
 } from "../external/stripe-client";
 import { nowDate } from "../../lib/time";
-import { db$, writeDb$, type ReadonlyDb } from "../external/db";
+import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import {
   activeConcurrencySubscriptions,
   isConcurrencyPriceId,
@@ -150,6 +151,33 @@ async function isPlanSubscription(
   return plan !== undefined;
 }
 
+async function writeScheduledConcurrencyChange(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly subscriptionId: string;
+    readonly quantity: number | null;
+    readonly effectiveAt: string | null;
+  },
+): Promise<void> {
+  await db
+    .update(orgConcurrencySubscriptions)
+    .set({
+      scheduledSlots: args.quantity,
+      scheduledChangeAt: args.effectiveAt ? new Date(args.effectiveAt) : null,
+      updatedAt: nowDate(),
+    })
+    .where(
+      and(
+        eq(orgConcurrencySubscriptions.orgId, args.orgId),
+        eq(
+          orgConcurrencySubscriptions.stripeSubscriptionId,
+          args.subscriptionId,
+        ),
+      ),
+    );
+}
+
 function concurrencySubscriptionItem(
   items: readonly StripeSubscriptionItem[],
 ): { readonly id: string; readonly quantity: number } | null {
@@ -254,6 +282,43 @@ function scheduleFutureItems(
   ];
 }
 
+function concurrencyScheduleUpdateParams(
+  subscription: StripeSubscription,
+  schedule: StripeSubscriptionSchedule | null,
+  targetQuantity: number,
+): NonNullable<StripeInvoiceCreatePreviewParams["schedule_details"]> {
+  const item = concurrencyPriceItem(subscription.items.data);
+  if (!item?.quantity) {
+    throw new Error("Concurrency subscription has no active concurrency item");
+  }
+  const period = concurrencyItemPeriod(item);
+  const discounts = subscriptionPhaseDiscounts(subscription);
+  return {
+    end_behavior: "release",
+    proration_behavior: "none",
+    phases: [
+      phaseWithDiscounts(
+        {
+          start_date: period.start,
+          end_date: period.end,
+          items: subscriptionPhaseItems(subscription),
+          proration_behavior: "none",
+        },
+        discounts,
+      ),
+      phaseWithDiscounts(
+        {
+          start_date: period.end,
+          duration: concurrencyRecurringDuration(item),
+          items: scheduleFutureItems(subscription, schedule, targetQuantity),
+          proration_behavior: "none",
+        },
+        discounts,
+      ),
+    ],
+  };
+}
+
 async function scheduleConcurrencyChange(
   subscription: StripeSubscription,
   targetQuantity: number,
@@ -283,37 +348,13 @@ async function scheduleConcurrencyChange(
   if (!scheduleId) {
     throw new Error("Stripe did not return a subscription schedule ID");
   }
-  const discounts = subscriptionPhaseDiscounts(subscription);
   await stripe.subscriptionSchedules.update(
     scheduleId,
-    {
-      end_behavior: "release",
-      proration_behavior: "none",
-      phases: [
-        phaseWithDiscounts(
-          {
-            start_date: period.start,
-            end_date: period.end,
-            items: subscriptionPhaseItems(subscription),
-            proration_behavior: "none",
-          },
-          discounts,
-        ),
-        phaseWithDiscounts(
-          {
-            start_date: period.end,
-            duration: concurrencyRecurringDuration(item),
-            items: scheduleFutureItems(
-              subscription,
-              existingSchedule,
-              targetQuantity,
-            ),
-            proration_behavior: "none",
-          },
-          discounts,
-        ),
-      ],
-    },
+    concurrencyScheduleUpdateParams(
+      subscription,
+      existingSchedule,
+      targetQuantity,
+    ),
     {
       idempotencyKey: `concurrency-change:${subscription.id}:${period.end}:${targetQuantity}:schedule-update`,
     },
@@ -505,7 +546,8 @@ export const previewStripeConcurrencySubscriptionChange$ = command(
     ) {
       return { ok: false, reason: "invalid_quantity" };
     }
-    const scheduledChange = stripeObjectId(subscription.schedule) !== null;
+    const scheduleId = stripeObjectId(subscription.schedule);
+    const scheduledChange = scheduleId !== null;
     if (targetQuantity === currentQuantity && !scheduledChange) {
       return { ok: false, reason: "no_change" };
     }
@@ -516,6 +558,26 @@ export const previewStripeConcurrencySubscriptionChange$ = command(
         ? { id: item.id, quantity: targetQuantity }
         : { price: args.priceId, quantity: targetQuantity },
     ];
+    const existingSchedule = scheduleId
+      ? await stripe.subscriptionSchedules.retrieve(scheduleId)
+      : null;
+    signal.throwIfAborted();
+    const recurringPreviewParams: StripeInvoiceCreatePreviewParams =
+      scheduleId && existingSchedule
+        ? {
+            schedule: scheduleId,
+            preview_mode: "next",
+            schedule_details: concurrencyScheduleUpdateParams(
+              subscription,
+              existingSchedule,
+              targetQuantity,
+            ),
+          }
+        : {
+            subscription: subscription.id,
+            preview_mode: "recurring",
+            subscription_details: { items },
+          };
     const deferred = targetQuantity <= currentQuantity;
     if (deferred) {
       if (!item) {
@@ -523,11 +585,9 @@ export const previewStripeConcurrencySubscriptionChange$ = command(
           "Deferred concurrency change has no active concurrency item",
         );
       }
-      const recurringPreview = await stripe.invoices.createPreview({
-        subscription: subscription.id,
-        preview_mode: "recurring",
-        subscription_details: { items },
-      });
+      const recurringPreview = await stripe.invoices.createPreview(
+        recurringPreviewParams,
+      );
       signal.throwIfAborted();
       return {
         ok: true,
@@ -557,11 +617,7 @@ export const previewStripeConcurrencySubscriptionChange$ = command(
           proration_date: prorationTimestamp,
         },
       }),
-      stripe.invoices.createPreview({
-        subscription: subscription.id,
-        preview_mode: "recurring",
-        subscription_details: { items },
-      }),
+      stripe.invoices.createPreview(recurringPreviewParams),
     ]);
     signal.throwIfAborted();
     if (immediatePreview.currency !== recurringPreview.currency) {
@@ -729,7 +785,7 @@ export const changeConcurrencySubscription$ = command(
     if (subscription.cancelAtPeriodEnd) {
       return { ok: false, reason: "canceling" };
     }
-    return await set(
+    const result = await set(
       applyStripeConcurrencySubscriptionChange$,
       {
         subscriptionId: args.subscriptionId,
@@ -738,6 +794,19 @@ export const changeConcurrencySubscription$ = command(
       },
       signal,
     );
+    if (result.ok) {
+      const scheduled =
+        args.quantity < subscription.quantity &&
+        result.response.effectiveAt !== undefined;
+      await writeScheduledConcurrencyChange(set(writeDb$), {
+        orgId: args.orgId,
+        subscriptionId: args.subscriptionId,
+        quantity: scheduled ? args.quantity : null,
+        effectiveAt: scheduled ? (result.response.effectiveAt ?? null) : null,
+      });
+      signal.throwIfAborted();
+    }
+    return result;
   },
 );
 
@@ -771,7 +840,12 @@ export const cancelConcurrencySubscription$ = command(
 
     await set(writeDb$)
       .update(orgConcurrencySubscriptions)
-      .set({ cancelAtPeriodEnd: true, updatedAt: nowDate() })
+      .set({
+        cancelAtPeriodEnd: true,
+        scheduledSlots: null,
+        scheduledChangeAt: null,
+        updatedAt: nowDate(),
+      })
       .where(
         and(
           eq(orgConcurrencySubscriptions.orgId, args.orgId),
@@ -832,6 +906,13 @@ export const reduceConcurrencySubscription$ = command(
             : "not_reduction",
       };
     }
+    await writeScheduledConcurrencyChange(set(writeDb$), {
+      orgId: args.orgId,
+      subscriptionId: args.subscriptionId,
+      quantity: args.quantity,
+      effectiveAt: result.response.effectiveAt ?? null,
+    });
+    signal.throwIfAborted();
     return {
       ok: true,
       url:
@@ -877,7 +958,12 @@ export const restoreConcurrencySubscription$ = command(
 
     await set(writeDb$)
       .update(orgConcurrencySubscriptions)
-      .set({ cancelAtPeriodEnd: false, updatedAt: nowDate() })
+      .set({
+        cancelAtPeriodEnd: false,
+        scheduledSlots: null,
+        scheduledChangeAt: null,
+        updatedAt: nowDate(),
+      })
       .where(
         and(
           eq(orgConcurrencySubscriptions.orgId, args.orgId),

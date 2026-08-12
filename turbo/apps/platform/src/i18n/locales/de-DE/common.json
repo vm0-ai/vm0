@@ -830,6 +830,7 @@
       "reviewChange": "Änderung prüfen",
       "reviewDescription": "Prüfen Sie den jetzt fälligen Betrag und Ihr aktualisiertes Monatsabonnement.",
       "reviewTitle": "Änderung der Parallelität prüfen",
+      "scheduledChange": "Änderung auf {{quantity}} am {{date}}",
       "scheduledReviewDescription": "Ihre aktuellen Slots bleiben bis zum Ende dieses Abrechnungszeitraums aktiv. Die niedrigere Anzahl gilt ab der Verlängerung, ohne Rückerstattung oder Kontogutschrift.",
       "slot_one": "{{value}} Slot",
       "slot_other": "{{value}} Slots",
