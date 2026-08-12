@@ -342,11 +342,7 @@ async function cleanupClerkTestResources(
   selection: ClerkCleanupSelection,
   options: ClerkCleanupOptions,
 ): Promise<ClerkCleanupResult> {
-  const userQuery =
-    selection.kind === "stale"
-      ? undefined
-      : `${selection.jobRef}+${CLERK_TEST_MARKER}+`;
-  const users = await listClerkUsers(userQuery);
+  const users = await listClerkUsers();
   const organizations = await listClerkOrganizations();
 
   const organizationsWithOwners = organizations.map((organization) => ({
@@ -452,7 +448,7 @@ function clerkTestOwnerKey(owner: ClerkTestOwner): string {
 }
 
 async function listClerkUsers(
-  query?: string,
+  emailAddress?: string,
 ): Promise<readonly ClerkUserSummary[]> {
   const users: ClerkUserSummary[] = [];
   let offset = 0;
@@ -460,9 +456,10 @@ async function listClerkUsers(
     const parameters = new URLSearchParams({
       limit: String(CLERK_PAGE_LIMIT),
       offset: String(offset),
+      order_by: "+created_at",
     });
-    if (query) {
-      parameters.set("query", query);
+    if (emailAddress) {
+      parameters.append("email_address[]", emailAddress);
     }
     const response = await requestClerkWithRetry(
       "list Clerk test users",
@@ -487,6 +484,7 @@ async function listClerkOrganizations(): Promise<
     const parameters = new URLSearchParams({
       limit: String(CLERK_PAGE_LIMIT),
       offset: String(offset),
+      order_by: "+created_at",
     });
     const response = await requestClerkWithRetry(
       "list Clerk test organizations",

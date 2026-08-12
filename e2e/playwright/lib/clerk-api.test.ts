@@ -588,7 +588,7 @@ test("retries exact deletion and surfaces permanent HTTP failures", async () => 
       }
       sendJson(response, 404, { errors: [] });
     },
-    async () => {
+    async (requests) => {
       const error = await captureError(async () => {
         await deleteUserByEmail(email);
       });
@@ -597,6 +597,16 @@ test("retries exact deletion and surfaces permanent HTTP failures", async () => 
         /delete Clerk test user failed with HTTP 400 \(json\)/,
       );
       assert.doesNotMatch(error.message, /must-not-be-logged/);
+      const lookup = requests.find(
+        (request) =>
+          request.method === "GET" && request.url.startsWith("/v1/users?"),
+      );
+      assert.ok(lookup);
+      const lookupUrl = new URL(lookup.url, "http://clerk.test");
+      assert.deepEqual(lookupUrl.searchParams.getAll("email_address[]"), [
+        email,
+      ]);
+      assert.equal(lookupUrl.searchParams.has("query"), false);
     },
   );
 
