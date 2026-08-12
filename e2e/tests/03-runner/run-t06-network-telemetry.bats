@@ -69,12 +69,22 @@ assert tcp_response[:2] == tcp_query[:2] and tcp_response[2] & 0x80
 print("TCP_DNS_PROBE_DONE")
 PY
 
-replicate_status=$(curl --silent --show-error --max-time 10 \
+curl --silent --show-error --max-time 10 \
     --output /tmp/replicate-diagnostic.json \
-    --write-out '%{http_code}' \
-    https://api.replicate.com/v1/models || true)
-cat /tmp/replicate-diagnostic.json 2>/dev/null || true
-printf '\nREPLICATE_STATUS=%s\n' "$replicate_status"
+    https://api.replicate.com/v1/models || true
+python3 - <<'PY'
+import json
+from pathlib import Path
+
+
+diagnostic = json.loads(Path("/tmp/replicate-diagnostic.json").read_text())
+assert diagnostic["error"] == "connector_not_configured_for_run"
+assert diagnostic["connector"] == "replicate"
+assert diagnostic["reason"] == "not_configured_for_run"
+assert diagnostic["envNames"] == ["REPLICATE_TOKEN"]
+assert diagnostic["base"] == "https://api.replicate.com"
+print("REPLICATE_DIAGNOSTIC_DONE")
+PY
 
 curl --silent --show-error --max-time 10 \
     --request GET \
@@ -104,7 +114,7 @@ EOF
     assert_output --partial "UDP_PROBE_DONE"
     assert_output --partial "UDP_DNS_PROBE_DONE"
     assert_output --partial "TCP_DNS_PROBE_DONE"
-    assert_output --partial "REPLICATE_STATUS=424"
+    assert_output --partial "REPLICATE_DIAGNOSTIC_DONE"
     assert_output --partial "BROWSER_REQUEST_DONE"
 
     local network_logs='[]'
@@ -134,7 +144,6 @@ EOF
                 any(.[];
                     .type == "http" and
                     .host == "api.replicate.com" and
-                    .status == 424 and
                     .connector_diagnostic_slug == "replicate" and
                     .connector_diagnostic_reason == "not_configured_for_run" and
                     .connector_diagnostic_env_names == ["REPLICATE_TOKEN"] and
