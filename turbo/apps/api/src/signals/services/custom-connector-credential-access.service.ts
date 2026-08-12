@@ -240,13 +240,10 @@ function customConnectorStoredConnectionIsConnected(
   );
 }
 
-function customConnectorStoredConnectionIsRuntimeAvailable(
+function currentCustomConnectorStoredConnectionIsRuntimeAvailable(
   connection: CustomConnectorStoredConnection,
   now: Date,
 ): boolean {
-  if (!customConnectorStoredConnectionIsCurrent(connection)) {
-    return false;
-  }
   return (
     connectorRuntimeCredentialStatusForAccess({
       storedNeedsReconnect: connection.storedNeedsReconnect,
@@ -286,10 +283,8 @@ function customConnectorCredentialAccesses(
       accesses.set(definition.id, {
         kind: "current",
         memberConnectorId: member.id,
-        runtimeAvailable: customConnectorStoredConnectionIsRuntimeAvailable(
-          member,
-          now,
-        ),
+        runtimeAvailable:
+          currentCustomConnectorStoredConnectionIsRuntimeAvailable(member, now),
       });
     } else {
       accesses.set(definition.id, {
