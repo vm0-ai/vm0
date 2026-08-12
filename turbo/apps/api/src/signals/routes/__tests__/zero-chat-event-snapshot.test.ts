@@ -21,6 +21,7 @@ import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import {
   ageFakeChatEventObject,
+  deleteFakeChatEventObject,
   FAKE_CHAT_EVENT_SNAPSHOT_URL,
   installFakeChatEventR2,
   readFakeChatEventObject,
@@ -30,12 +31,19 @@ import {
   readChatEventSnapshotHead,
   setChatEventSnapshotHeadVersion,
 } from "./helpers/runtime-state";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import {
+  createFixtureTracker,
+  createZeroRouteMocks,
+} from "./helpers/zero-route-test";
 
 const context = testContext();
 const bdd = createBddApi(context);
 const api = createRunsApi(context);
 const chat = createChatFilesBddApi(context);
+// Manual objects share the fake R2 directory, so each test owns its teardown.
+const trackFakeChatEventObject = createFixtureTracker(
+  deleteFakeChatEventObject,
+);
 
 const CRON_SECRET = "test-cron-secret";
 
@@ -102,6 +110,7 @@ async function replaceHeadWithRetiredVersion(
   }
   const retiredKey = `chat-events/${threadId}/retired-v3-${randomUUID()}.ndjson.gz`;
   writeFakeChatEventObject(retiredKey, body);
+  await trackFakeChatEventObject(Promise.resolve(retiredKey));
   await setChatEventSnapshotHeadVersion(context, threadId, 3, retiredKey);
   return retiredKey;
 }
@@ -357,6 +366,7 @@ describe("chat event snapshot read endpoints", () => {
 
     const orphanKey = `chat-events/${threadId.slice(0, 3)}-orphan.ndjson.gz`;
     writeFakeChatEventObject(orphanKey, Buffer.from("orphan"));
+    await trackFakeChatEventObject(Promise.resolve(orphanKey));
     ageFakeChatEventObject(
       orphanKey,
       new Date(future.getTime() - 8 * 24 * 60 * 60 * 1000),
@@ -399,6 +409,7 @@ describe("chat event snapshot read endpoints", () => {
     });
     for (const key of keys) {
       writeFakeChatEventObject(key, Buffer.from("orphan"));
+      await trackFakeChatEventObject(Promise.resolve(key));
     }
     mockNow(new Date(now() + 8 * 24 * 60 * 60 * 1000));
     mockOptionalEnv("CHAT_EVENT_SNAPSHOT_GC_SHARD", shard);
