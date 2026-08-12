@@ -20,7 +20,6 @@ import {
 import { and, desc, eq, inArray, lte, or, sql } from "drizzle-orm";
 import { z } from "zod";
 
-import { pgBooleanDecoder } from "../../lib/db-structured-result";
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { nowDate } from "../../lib/time";
@@ -419,24 +418,6 @@ function parseRevisionPreviewToken(
   );
   const result = revisionPreviewTokenPayloadSchema.safeParse(parsed);
   return result.success ? result.data : null;
-}
-
-export async function usagePackSubscriptionMigrationSchemaAvailable(
-  db: Pick<Db, "select">,
-): Promise<boolean> {
-  // Migration hooks run for ordinary Stripe events, so a new API can briefly
-  // precede migration 0907 during the DB/API rollout window (observed maximum:
-  // ~102 minutes). Remove after 0907 is outside the rollback window; #26388.
-  const [state] = await db
-    .select({
-      available:
-        sql`to_regclass('public.usage_pack_subscription_migrations') IS NOT NULL AND to_regclass('public.usage_pack_subscription_migration_selections') IS NOT NULL`.mapWith(
-          pgBooleanDecoder,
-        ),
-    })
-    .from(sql`(SELECT 1) AS schema_probe`)
-    .limit(1);
-  return state?.available ?? false;
 }
 
 async function loadOpenMigrationForOrg(
@@ -2384,9 +2365,6 @@ export async function handleUsagePackMigrationInvoicePaid(
   db: Db,
   invoice: UsagePackInvoiceInput,
 ): Promise<UsagePackMigrationLifecycleOutcome> {
-  if (!(await usagePackSubscriptionMigrationSchemaAvailable(db))) {
-    return { handled: false, orgId: null };
-  }
   const migration = await migrationForInvoice(db, invoice);
   if (!migration) {
     return { handled: false, orgId: null };
@@ -2432,9 +2410,6 @@ export async function handleUsagePackMigrationSubscriptionUpdated(
   db: Db,
   subscription: UsagePackSubscriptionInput,
 ): Promise<UsagePackMigrationLifecycleOutcome> {
-  if (!(await usagePackSubscriptionMigrationSchemaAvailable(db))) {
-    return { handled: false, orgId: null };
-  }
   const usagePackSubscriptionId = usagePackSubscriptionIdFromMetadata(
     subscription.metadata,
   );
@@ -2485,9 +2460,6 @@ export async function reconcileUsagePackSubscriptionMigrations(
   readonly reconciled: number;
   readonly orgIds: readonly string[];
 }> {
-  if (!(await usagePackSubscriptionMigrationSchemaAvailable(db))) {
-    return { reconciled: 0, orgIds: [] };
-  }
   const at = nowDate();
   await db
     .update(usagePackSubscriptionMigrations)

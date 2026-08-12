@@ -66,7 +66,6 @@ import {
   getUsagePackMigrationState,
   previewUsagePackSubscriptionMigration,
   previewUsagePackSubscriptionMigrationRevision,
-  usagePackSubscriptionMigrationSchemaAvailable,
   type UsagePackMigrationOwner,
 } from "../services/usage-pack-subscription-migration.service";
 import { usagePackInvitationPurchaseSchemaAvailable } from "../services/usage-pack-invitation-purchase.service";
@@ -706,13 +705,11 @@ const usagePackChangeConfirmAuthed$ = command(
 async function usagePackMigrationSchemasAvailable(
   db: Parameters<typeof usagePackSubscriptionSchemaAvailable>[0],
 ): Promise<boolean> {
-  const [subscriptionSchema, invitationSchema, migrationSchema] =
-    await Promise.all([
-      usagePackSubscriptionSchemaAvailable(db),
-      usagePackInvitationPurchaseSchemaAvailable(db),
-      usagePackSubscriptionMigrationSchemaAvailable(db),
-    ]);
-  return subscriptionSchema && invitationSchema && migrationSchema;
+  const [subscriptionSchema, invitationSchema] = await Promise.all([
+    usagePackSubscriptionSchemaAvailable(db),
+    usagePackInvitationPurchaseSchemaAvailable(db),
+  ]);
+  return subscriptionSchema && invitationSchema;
 }
 
 const usagePackMigrationGetAuthed$ = command(
