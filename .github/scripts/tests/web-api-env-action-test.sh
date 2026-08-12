@@ -226,7 +226,7 @@ fi
 
 success_dir="$(mktemp -d)"
 TEMP_DIRS+=("$success_dir")
-success_output="$(run_action "$(build_doppler_secrets_json)" "$success_dir")"
+success_output="$(run_action "$(build_doppler_secrets_json)" "$success_dir" 2>&1)"
 success_env_file="$(awk -F= '$1 == "file" { sub(/^[^=]*=/, ""); print }' "${success_dir}/github-output")"
 assert_contains "$success_output" "Rendered"
 assert_no_fixture_secret_values "$success_output"
@@ -299,7 +299,7 @@ assert_env_absent_value "$success_env_file" "github-artifact-preview-waf-secret"
 
 precedence_dir="$(mktemp -d)"
 TEMP_DIRS+=("$precedence_dir")
-precedence_output="$(run_action "$(build_doppler_secrets_json)" "$precedence_dir" api preview "https://static.vm0.io/okou-cli/test-sha/package.tgz" both)"
+precedence_output="$(run_action "$(build_doppler_secrets_json)" "$precedence_dir" api preview "https://static.vm0.io/okou-cli/test-sha/package.tgz" both 2>&1)"
 precedence_env_file="$(awk -F= '$1 == "file" { sub(/^[^=]*=/, ""); print }' "${precedence_dir}/github-output")"
 assert_contains "$precedence_output" "Rendered"
 assert_no_fixture_secret_values "$precedence_output"
@@ -314,7 +314,7 @@ assert_env_value "$precedence_env_file" OKOU_ONE_TIME_CAMPAIGN "okou-campaign"
 
 empty_dir="$(mktemp -d)"
 TEMP_DIRS+=("$empty_dir")
-empty_output="$(run_action "$(build_doppler_secrets_json)" "$empty_dir" api preview "https://static.vm0.io/okou-cli/test-sha/package.tgz" empty)"
+empty_output="$(run_action "$(build_doppler_secrets_json)" "$empty_dir" api preview "https://static.vm0.io/okou-cli/test-sha/package.tgz" empty 2>&1)"
 empty_env_file="$(awk -F= '$1 == "file" { sub(/^[^=]*=/, ""); print }' "${empty_dir}/github-output")"
 assert_contains "$empty_output" "Rendered"
 assert_no_fixture_secret_values "$empty_output"
@@ -327,7 +327,7 @@ assert_env_value "$empty_env_file" OKOU_ONE_TIME_CAMPAIGN ""
 
 production_web_dir="$(mktemp -d)"
 TEMP_DIRS+=("$production_web_dir")
-production_web_output="$(run_action "$(build_doppler_secrets_json)" "$production_web_dir" web production)"
+production_web_output="$(run_action "$(build_doppler_secrets_json)" "$production_web_dir" web production 2>&1)"
 production_web_env_file="$(awk -F= '$1 == "file" { sub(/^[^=]*=/, ""); print }' "${production_web_dir}/github-output")"
 assert_contains "$production_web_output" "Rendered"
 assert_no_fixture_secret_values "$production_web_output"
@@ -351,7 +351,7 @@ assert_env_absent_value "$production_web_env_file" "github-artifact-preview-waf-
 
 production_api_dir="$(mktemp -d)"
 TEMP_DIRS+=("$production_api_dir")
-production_api_output="$(run_action "$(build_doppler_secrets_json)" "$production_api_dir" api production)"
+production_api_output="$(run_action "$(build_doppler_secrets_json)" "$production_api_dir" api production 2>&1)"
 production_api_env_file="$(awk -F= '$1 == "file" { sub(/^[^=]*=/, ""); print }' "${production_api_dir}/github-output")"
 assert_contains "$production_api_output" "Rendered"
 assert_no_fixture_secret_values "$production_api_output"
