@@ -7,6 +7,7 @@ import { env } from "./env";
 import { testOverride } from "./singleton";
 
 const REMOTE_JWKS_TIMEOUT_MS = 15_000;
+const ACCESS_JWT_CLOCK_TOLERANCE_SECONDS = 60;
 
 const accessJwksSchema = z.object({
   keys: z
@@ -96,6 +97,7 @@ export async function verifyCloudflareAccessAssertion(
   const options = {
     algorithms: ["RS256"],
     audience,
+    clockTolerance: ACCESS_JWT_CLOCK_TOLERANCE_SECONDS,
     issuer: accessIssuer(),
   };
   const localJwks = localAccessJwks();

@@ -19,6 +19,7 @@ import { vi } from "vitest";
 import { createApp } from "../app-factory";
 import { mockEnv, mockOptionalEnv } from "../lib/env";
 import { runInvocation } from "../lib/invocation-context";
+import { now } from "../lib/time";
 import webClientCompatibility from "../lib/web-client-compatibility.json";
 import { flushWaitUntilForTest } from "../signals/context/wait-until";
 import { healthRoutes } from "../signals/routes/health";
@@ -900,13 +901,16 @@ describe("createApp", () => {
         }),
       );
 
-      async function assertionFor(tokenAudience: string): Promise<string> {
+      async function assertionFor(
+        tokenAudience: string,
+        expirationTime = Math.floor(now() / 1000) + 300,
+      ): Promise<string> {
         return await new SignJWT({})
           .setProtectedHeader({ alg: "RS256", kid: keyId })
           .setIssuer(issuer)
           .setAudience(tokenAudience)
           .setIssuedAt()
-          .setExpirationTime("5m")
+          .setExpirationTime(expirationTime)
           .sign(privateKey);
       }
 
@@ -914,6 +918,28 @@ describe("createApp", () => {
         "cf-access-jwt-assertion": await assertionFor(audience),
       });
       expect(accepted.status).toBe(200);
+
+      const acceptedWithinClockTolerance = await requestInWorkerInvocation(
+        "/health",
+        {
+          "cf-access-jwt-assertion": await assertionFor(
+            audience,
+            Math.floor(now() / 1000) - 30,
+          ),
+        },
+      );
+      expect(acceptedWithinClockTolerance.status).toBe(200);
+
+      const rejectedBeyondClockTolerance = await requestInWorkerInvocation(
+        "/health",
+        {
+          "cf-access-jwt-assertion": await assertionFor(
+            audience,
+            Math.floor(now() / 1000) - 90,
+          ),
+        },
+      );
+      expect(rejectedBeyondClockTolerance.status).toBe(401);
 
       const rejected = await requestInWorkerInvocation("/health", {
         "cf-access-jwt-assertion": await assertionFor("wrong-audience"),
