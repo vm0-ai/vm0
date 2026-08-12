@@ -12,6 +12,10 @@ import {
   nullableDriverValueDecoder,
   pgInt8ToBigIntDecoder,
 } from "../../lib/db-structured-result";
+import {
+  resolveUsagePricingProvider,
+  usagePricingResolution$,
+} from "../context/usage-pricing-resolution";
 import { writeDb$ } from "../external/db";
 import { resolveUsageAllowanceAvailability } from "./usage-allowance.service";
 import { getSpendableUsagePackCredits } from "./usage-pack-credit.service";
@@ -83,7 +87,7 @@ function estimatedCredits(
 
 export const checkManagedCredits$ = command(
   async (
-    { set },
+    { get, set },
     args: {
       readonly orgId: string;
       readonly userId: string;
@@ -93,6 +97,11 @@ export const checkManagedCredits$ = command(
     signal: AbortSignal,
   ): Promise<ManagedUsageErrorResponse | null> => {
     const writeDb = set(writeDb$);
+    const pricingProvider = resolveUsagePricingProvider(
+      get(usagePricingResolution$),
+      args.resource.kind,
+      args.resource.provider,
+    );
     const expired = writeDb.$with("expired").as(
       writeDb
         .select({
@@ -129,7 +138,7 @@ export const checkManagedCredits$ = command(
         usagePricing,
         and(
           eq(usagePricing.kind, args.resource.kind),
-          eq(usagePricing.provider, args.resource.provider),
+          eq(usagePricing.provider, pricingProvider),
           eq(usagePricing.category, args.resource.category),
         ),
       );

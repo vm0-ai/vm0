@@ -8,8 +8,11 @@ import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import {
+  createUsagePricingFixture,
   deleteUsagePricingRows,
   seedUsagePricingRows,
+  type UsagePricingFixture,
+  type UsagePricingKey,
 } from "../../../test-fixtures/system-config-seeds";
 import { testUsageSettlementRoutes } from "../test-usage-settlement";
 import {
@@ -25,10 +28,12 @@ import {
 const context = testContext();
 const store = createStore();
 
-function client() {
-  return setupApp({ context, routes: testUsageSettlementRoutes })(
-    testUsageSettlementContract,
-  );
+function client(usagePricingResolution?: UsagePricingFixture["resolution"]) {
+  return setupApp({
+    context,
+    routes: testUsageSettlementRoutes,
+    usagePricingResolution,
+  })(testUsageSettlementContract);
 }
 
 async function setupSettlementFixture(
@@ -126,8 +131,14 @@ async function insertCharge(args: {
   return idempotencyKey;
 }
 
-async function processSettlement(orgId: string): Promise<void> {
-  await accept(client().process({ body: { org_id: orgId } }), [200]);
+async function processSettlement(
+  orgId: string,
+  usagePricingResolution?: UsagePricingFixture["resolution"],
+): Promise<void> {
+  await accept(
+    client(usagePricingResolution).process({ body: { org_id: orgId } }),
+    [200],
+  );
 }
 
 async function readSettlementState(orgId: string) {
@@ -246,6 +257,82 @@ describe("POST /api/test/usage-settlement/process", () => {
       status: "processed",
       creditsCharged: 10,
       billingError: null,
+    });
+  });
+
+  it("isolates configured, custom, and missing pricing by fixture scope", async () => {
+    const pricingKey: UsagePricingKey = {
+      kind: "model",
+      provider: "deepseek-v4-flash",
+      category: "tokens.input",
+    };
+    const [configuredPricing, customPricing, missingPricing] =
+      await Promise.all([
+        createUsagePricingFixture({
+          configured: [{ ...pricingKey, unitPrice: 19, unitSize: 100 }],
+        }),
+        createUsagePricingFixture({
+          configured: [{ ...pricingKey, unitPrice: 7, unitSize: 1 }],
+        }),
+        createUsagePricingFixture({ missing: [pricingKey] }),
+      ]);
+    onTestFinished(async () => {
+      await Promise.all([
+        configuredPricing.cleanup(),
+        customPricing.cleanup(),
+        missingPricing.cleanup(),
+      ]);
+    });
+
+    const [configuredState, customState, missingState] = await Promise.all([
+      setupSettlementFixture(10_000),
+      setupSettlementFixture(10_000),
+      setupSettlementFixture(10_000),
+    ]);
+    const [configuredEvent, customEvent, missingEvent] = await Promise.all([
+      insertCharge({
+        fixture: configuredState,
+        provider: pricingKey.provider,
+        amount: 100,
+      }),
+      insertCharge({
+        fixture: customState,
+        provider: pricingKey.provider,
+        amount: 100,
+      }),
+      insertCharge({
+        fixture: missingState,
+        provider: pricingKey.provider,
+        amount: 100,
+      }),
+    ]);
+
+    await Promise.all([
+      processSettlement(configuredState.orgId, configuredPricing.resolution),
+      processSettlement(customState.orgId, customPricing.resolution),
+      processSettlement(missingState.orgId, missingPricing.resolution),
+    ]);
+
+    await expect(
+      store.set(readUsageEventState$, configuredEvent, context.signal),
+    ).resolves.toMatchObject({
+      status: "processed",
+      creditsCharged: 19,
+      billingError: null,
+    });
+    await expect(
+      store.set(readUsageEventState$, customEvent, context.signal),
+    ).resolves.toMatchObject({
+      status: "processed",
+      creditsCharged: 700,
+      billingError: null,
+    });
+    await expect(
+      store.set(readUsageEventState$, missingEvent, context.signal),
+    ).resolves.toMatchObject({
+      status: "processed",
+      creditsCharged: 0,
+      billingError: "missing_pricing",
     });
   });
 
