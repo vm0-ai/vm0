@@ -73,6 +73,7 @@ _VALID_RULE_METHODS = frozenset(
         "ANY",
     )
 )
+_RESERVED_DECLARED_FIREWALL_PERMISSION_NAMES = frozenset(("all", "__unknown__"))
 _VALID_AUTH_BASE_SCHEME = "https"
 _AUTH_TEMPLATE_START = "${{"
 _AUTH_TEMPLATE_URL_PLACEHOLDER = "placeholder"
@@ -777,6 +778,24 @@ def firewall_rule_is_valid(rule_str: str) -> bool:
     return _compile_rule(rule_str) is not None
 
 
+DeclaredFirewallPermissionNameInvalidReason = Literal["empty", "reserved"]
+
+
+def declared_firewall_permission_name_invalid_reason(
+    name: str,
+) -> DeclaredFirewallPermissionNameInvalidReason | None:
+    """Return why a declared permission name is invalid, or ``None`` when valid.
+
+    This validates permission definitions only. Network-policy grant storage may
+    use ``__unknown__`` as the unknown-endpoint sentinel.
+    """
+    if name == "":
+        return "empty"
+    if name in _RESERVED_DECLARED_FIREWALL_PERMISSION_NAMES:
+        return "reserved"
+    return None
+
+
 # Compiled matcher contract
 #
 # Registry loading stores these compiled objects and request handling later
@@ -881,7 +900,7 @@ def compile_firewall_core(fw_entry: object) -> CompiledFirewallCore | None:
                 if not isinstance(raw_name, str):
                     has_malformed_rules = True
                     continue
-                if raw_name in ("", "all"):
+                if declared_firewall_permission_name_invalid_reason(raw_name) is not None:
                     has_malformed_rules = True
                     continue
                 if raw_name in seen_permission_names:

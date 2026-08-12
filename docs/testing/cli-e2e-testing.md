@@ -80,6 +80,10 @@ public device-flow tokens prepared by the runner E2E workflow, then create and
 clean up their own agents, threads, and connector connections through public
 `/api/zero/*` endpoints.
 
+Name runner BATS files `run-tNN-<behavior>.bats`, using the next unused `NN`.
+The number is a stable file identifier, not an execution order. Test titles
+should describe behavior without repeating the file identifier.
+
 The workflow also prepares dedicated real-Codex and real-Claude identities.
 Use the Codex identity for vm0-managed model billing coverage and the Claude
 identity for BYOK coverage so provider policy and usage assertions remain

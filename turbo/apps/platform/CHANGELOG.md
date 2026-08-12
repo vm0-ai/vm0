@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.730.3](https://github.com/vm0-ai/vm0/compare/app-v0.730.2...app-v0.730.3) (2026-08-12)
+
+
+### Bug Fixes
+
+* **platform:** align auth logo CORS mode ([#26455](https://github.com/vm0-ai/vm0/issues/26455)) ([244f84a](https://github.com/vm0-ai/vm0/commit/244f84aeefdd45ade7a6a3168a62eefab1a3bb4b))
+* **platform:** restore artifact share and download actions ([#26454](https://github.com/vm0-ai/vm0/issues/26454)) ([390a702](https://github.com/vm0-ai/vm0/commit/390a702ac998e2de607aff8401a6c3eb92c8c5d1))
+
 ## [0.730.2](https://github.com/vm0-ai/vm0/compare/app-v0.730.1...app-v0.730.2) (2026-08-12)
 
 

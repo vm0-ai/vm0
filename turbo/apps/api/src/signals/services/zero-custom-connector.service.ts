@@ -62,7 +62,6 @@ import {
 import { loadCustomConnectorPermissionBundle } from "./custom-connector-permission-bundle.service";
 import {
   customConnectorDefinitionHasUsableConnection,
-  loadCustomConnectorCredentialAccesses,
   loadCurrentCustomConnectorStoredValues,
   loadCurrentCustomConnectorValueMarkers,
   loadUsableCustomConnectorConnections,
@@ -3282,19 +3281,13 @@ export async function loadCustomConnectorRuntimeData(
         storageVersion: row.connector.storageVersion,
       };
     });
-    const credentialAccesses = await loadCustomConnectorCredentialAccesses(db, {
+    const runtimeStorage = await loadCurrentCustomConnectorStoredValues(db, {
       orgId: args.orgId,
       userId: args.userId,
       definitions,
-    });
-    const storedValues = await loadCurrentCustomConnectorStoredValues(db, {
-      orgId: args.orgId,
-      userId: args.userId,
-      definitions,
-      accesses: credentialAccesses,
     });
     const valuesByConnectorId = new Map<string, StoredValueRow[]>();
-    for (const value of storedValues) {
+    for (const value of runtimeStorage.values) {
       const values = valuesByConnectorId.get(value.connectorId) ?? [];
       values.push(value);
       valuesByConnectorId.set(value.connectorId, values);
@@ -3304,7 +3297,7 @@ export async function loadCustomConnectorRuntimeData(
         row.connector,
         row.oauthConfig,
       );
-      const credentialAccess = credentialAccesses.get(connector.id);
+      const credentialAccess = runtimeStorage.accesses.get(connector.id);
       if (!credentialAccess) {
         throw new Error("Expected custom connector credential access");
       }

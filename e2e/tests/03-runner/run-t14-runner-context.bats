@@ -19,7 +19,7 @@ teardown() {
     runner_e2e_teardown_test
 }
 
-@test "t31-1: runner refreshes workflow files and mounts instructions" {
+@test "runner refreshes workflow files and mounts instructions" {
     run create_runner_agent "e2e-runner-context-${TEST_ID}"
     echo "$output"
     assert_success
