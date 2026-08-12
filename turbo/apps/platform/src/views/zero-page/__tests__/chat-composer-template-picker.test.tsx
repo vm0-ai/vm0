@@ -409,8 +409,9 @@ describe("chat composer templates", () => {
     const chip = document.querySelector("[data-composer-inline-template]");
     expect(chip?.querySelectorAll("button")).toHaveLength(3);
 
-    // The model has its own popover: one list, no nested dropdown, and the
-    // options each model accepts are summarized next to it.
+    // The model is a menu built on the shared DropdownMenu, so its rows are
+    // menu items rather than a hand-styled list, and each carries what that
+    // model accepts.
     model.focus();
     await user.keyboard("{Enter}");
     expect(
@@ -418,15 +419,19 @@ describe("chat composer templates", () => {
         return button.textContent === "Reset to default";
       }),
     ).toBeFalsy();
-    const modelOption = await screen.findByRole("radio", {
-      name: "Seedance 2.0",
+    const modelOption = await waitFor(() => {
+      const found = queryAllByRoleFast("menuitem").find((item) => {
+        return item.getAttribute("aria-label") === "Seedance 2.0";
+      });
+      expect(found).toBeDefined();
+      return found!;
     });
     expect(modelOption).toHaveTextContent("Up to 15s \u00b7 480p, 720p, 1080p");
     await user.click(modelOption);
 
-    // Picking a model closes its popover; the settings zone opens the other.
+    // Picking a model closes the menu; the settings zone opens the other one.
     await waitFor(() => {
-      expect(screen.queryByRole("radio", { name: "Seedance 2.0" })).toBeNull();
+      expect(queryAllByRoleFast("menuitem")).toHaveLength(0);
     });
     const spec = await screen.findByLabelText(
       "Video options 16:9 \u00b7 8s \u00b7 720p",
