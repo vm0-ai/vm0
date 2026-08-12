@@ -10,6 +10,14 @@ headers=(-H "Authorization: Bearer ${token}" -H "Content-Type: application/json"
 if [[ -n "${VERCEL_AUTOMATION_BYPASS_SECRET:-}" ]]; then
     headers+=(-H "x-vercel-protection-bypass: ${VERCEL_AUTOMATION_BYPASS_SECRET}")
 fi
+if [[ -n "${CF_ACCESS_CLIENT_ID:-}" || -n "${CF_ACCESS_CLIENT_SECRET:-}" ]]; then
+    : "${CF_ACCESS_CLIENT_ID:?Cloudflare Access client ID is required}"
+    : "${CF_ACCESS_CLIENT_SECRET:?Cloudflare Access client secret is required}"
+    headers+=(
+        -H "CF-Access-Client-Id: ${CF_ACCESS_CLIENT_ID}"
+        -H "CF-Access-Client-Secret: ${CF_ACCESS_CLIENT_SECRET}"
+    )
+fi
 
 provider_response=$(curl -fsS "${headers[@]}" \
     -X POST \
