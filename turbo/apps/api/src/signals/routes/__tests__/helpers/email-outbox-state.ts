@@ -1,0 +1,113 @@
+import {
+  testEmailOutboxStateContract,
+  type TestEmailOutboxStateActionBody,
+  type TestEmailOutboxStateActionResponse,
+  type TestEmailOutboxStateItem,
+} from "@vm0/api-contracts/contracts/test-email-outbox-state";
+
+import { setupAppWithRoutes } from "../../../../__tests__/test-app";
+import { accept, type TestContext } from "../../../../__tests__/test-context";
+import { testEmailOutboxStateRoutes } from "../../test-email-outbox-state";
+
+interface SeedEmailOutboxItemOptions {
+  readonly toAddress: string;
+  readonly subject: string;
+  readonly status: "pending" | "failed";
+  readonly createdAt: Date;
+}
+
+function stateClient(context: TestContext) {
+  return setupAppWithRoutes({
+    context,
+    routes: testEmailOutboxStateRoutes,
+  })(testEmailOutboxStateContract);
+}
+
+async function postAction(
+  context: TestContext,
+  body: TestEmailOutboxStateActionBody,
+): Promise<TestEmailOutboxStateActionResponse> {
+  const response = await accept(stateClient(context).action({ body }), [200]);
+  return response.body;
+}
+
+export function createEmailOutboxStateApi(context: TestContext) {
+  return {
+    async seedItem(
+      options: SeedEmailOutboxItemOptions,
+    ): Promise<TestEmailOutboxStateItem> {
+      const response = await postAction(context, {
+        action: "seed-item",
+        to_address: options.toAddress,
+        subject: options.subject,
+        status: options.status,
+        created_at: options.createdAt.toISOString(),
+      });
+      if (response.action !== "seed-item") {
+        throw new Error("Expected the email outbox seed response");
+      }
+      return response.item;
+    },
+
+    async findItem(options: {
+      readonly toAddress: string;
+      readonly subject: string;
+    }): Promise<TestEmailOutboxStateItem> {
+      const response = await postAction(context, {
+        action: "find-item",
+        to_address: options.toAddress,
+        subject: options.subject,
+      });
+      if (response.action !== "find-item" || response.items.length !== 1) {
+        throw new Error(
+          `Expected one email outbox item, found ${
+            response.action === "find-item" ? response.items.length : 0
+          }`,
+        );
+      }
+      const item = response.items[0];
+      if (!item) {
+        throw new Error("Expected the uniquely matched email outbox item");
+      }
+      return item;
+    },
+
+    async readItem(itemId: string): Promise<TestEmailOutboxStateItem | null> {
+      const response = await postAction(context, {
+        action: "read-items",
+        item_ids: [itemId],
+      });
+      if (response.action !== "read-items") {
+        throw new Error("Expected the email outbox read response");
+      }
+      return response.items[0] ?? null;
+    },
+
+    async deleteItems(itemIds: readonly string[]): Promise<number> {
+      const response = await postAction(context, {
+        action: "delete-items",
+        item_ids: [...itemIds],
+      });
+      if (response.action !== "delete-items") {
+        throw new Error("Expected the email outbox delete response");
+      }
+      return response.deleted;
+    },
+
+    async drainItems(itemIds: readonly string[]): Promise<number> {
+      const response = await accept(
+        stateClient(context).drain({ body: { item_ids: [...itemIds] } }),
+        [200],
+      );
+      return response.body.drained;
+    },
+
+    async cleanupExpiredItems(itemIds: readonly string[]): Promise<number> {
+      const response = await accept(
+        stateClient(context).cleanup({ body: { item_ids: [...itemIds] } }),
+        [200],
+      );
+      return response.body.cleaned;
+    },
+  };
+}
