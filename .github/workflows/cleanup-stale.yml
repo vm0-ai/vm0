@@ -338,147 +338,29 @@ jobs:
           echo "Cleaned: $CLEANED"
           echo "Failures: $FAILED"
 
-  cleanup-clerk-test-users:
+  cleanup-clerk-test-resources:
     runs-on: ubuntu-latest
     permissions:
-      pull-requests: read
+      contents: read
     steps:
-      - name: Find recently closed PRs
-        id: prs
-        uses: actions/github-script@v9
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          script: |
-            const since = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
-            const { data: pulls } = await github.rest.pulls.list({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              state: 'closed',
-              sort: 'updated',
-              direction: 'desc',
-              per_page: 100
-            });
-            const recent = pulls
-              .filter(pr => pr.closed_at && pr.closed_at >= since)
-              .map(pr => pr.number);
-            console.log(`Found ${recent.length} PRs closed since ${since}: ${recent.join(', ')}`);
-            core.setOutput('numbers', JSON.stringify(recent));
-            core.setOutput('has-prs', recent.length > 0 ? 'true' : 'false');
-
-      - name: Delete stale Clerk test users for closed PRs
-        if: steps.prs.outputs.has-prs == 'true'
-        env:
-          CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
-          PR_NUMBERS: ${{ steps.prs.outputs.numbers }}
-          DRY_RUN: ${{ env.DRY_RUN }}
-        run: |
-          set -eu
-
-          DELETED=0
-          SKIPPED=0
-
-          for PR_NUMBER in $(echo "$PR_NUMBERS" | jq -r '.[]'); do
-            JOB_REF="pr-${PR_NUMBER}"
-            echo "--- Searching for test users matching ${JOB_REF}+clerk_test ---"
-
-            USERS=$(curl -sS -X GET "https://api.clerk.com/v1/users?query=${JOB_REF}%2Bclerk_test&limit=100" \
-              -H "Authorization: Bearer ${CLERK_SECRET_KEY}" \
-              -H "Content-Type: application/json")
-
-            while read -r user; do
-              USER_ID=$(echo "$user" | jq -r '.id')
-              EMAIL=$(echo "$user" | jq -r '.email_addresses[0].email_address // "unknown"')
-
-              # Verify email actually matches this PR (Clerk query is fuzzy)
-              if [[ "$EMAIL" != "${JOB_REF}+clerk_test"* ]]; then
-                echo "Skipping $USER_ID ($EMAIL) — does not match ${JOB_REF}"
-                SKIPPED=$((SKIPPED + 1))
-                continue
-              fi
-
-              if [ "$DRY_RUN" = "true" ]; then
-                echo "[DRY-RUN] Would delete $USER_ID ($EMAIL)"
-              else
-                echo "Deleting $USER_ID ($EMAIL)"
-                if ! curl -sS -X DELETE "https://api.clerk.com/v1/users/${USER_ID}" \
-                  -H "Authorization: Bearer ${CLERK_SECRET_KEY}"; then
-                  echo "::warning::Failed to delete user $USER_ID ($EMAIL)"
-                fi
-              fi
-              DELETED=$((DELETED + 1))
-            done < <(echo "$USERS" | jq -c '.[]' 2>/dev/null)
-          done
-
-          echo ""
-          echo "=== Clerk Test User Cleanup Summary ==="
-          echo "Deleted: $DELETED"
-          echo "Skipped: $SKIPPED"
-
-  cleanup-clerk-empty-orgs:
-    runs-on: ubuntu-latest
-    needs: cleanup-clerk-test-users
-    steps:
-      - name: Delete Clerk organizations with no members
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 22
+      - name: Install pnpm
+        run: corepack enable pnpm
+      - name: Install E2E dependencies
+        run: cd e2e && pnpm install --frozen-lockfile
+      - name: Delete stale marked Clerk test resources
+        run: >-
+          cd e2e && pnpm exec tsx playwright/clerk-test-resources.ts
+          cleanup-stale --older-than-hours 6
         env:
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
           DRY_RUN: ${{ env.DRY_RUN }}
-        run: |
-          set -eu
-
-          DELETED=0
-          SKIPPED=0
-          OFFSET=0
-          LIMIT=100
-
-          # Collect all org IDs first
-          ORG_IDS=()
-          ORG_NAMES=()
-          TOTAL=$(curl -sS -X GET "https://api.clerk.com/v1/organizations?limit=1" \
-            -H "Authorization: Bearer ${CLERK_SECRET_KEY}" | jq '.total_count')
-
-          echo "Total organizations: $TOTAL"
-
-          while [ "$OFFSET" -lt "$TOTAL" ]; do
-            ORGS=$(curl -sS -X GET "https://api.clerk.com/v1/organizations?limit=${LIMIT}&offset=${OFFSET}" \
-              -H "Authorization: Bearer ${CLERK_SECRET_KEY}")
-
-            while read -r org; do
-              ORG_IDS+=("$(echo "$org" | jq -r '.id')")
-              ORG_NAMES+=("$(echo "$org" | jq -r '.name')")
-            done < <(echo "$ORGS" | jq -c '.data[]')
-
-            OFFSET=$((OFFSET + LIMIT))
-          done
-
-          echo "Fetched ${#ORG_IDS[@]} organizations, checking memberships..."
-
-          for i in "${!ORG_IDS[@]}"; do
-            ORG_ID="${ORG_IDS[$i]}"
-            ORG_NAME="${ORG_NAMES[$i]}"
-
-            MEMBER_COUNT=$(curl -sS -X GET "https://api.clerk.com/v1/organizations/${ORG_ID}/memberships?limit=1" \
-              -H "Authorization: Bearer ${CLERK_SECRET_KEY}" | jq '.total_count')
-
-            if [ "$MEMBER_COUNT" -gt 0 ]; then
-              SKIPPED=$((SKIPPED + 1))
-              continue
-            fi
-
-            if [ "$DRY_RUN" = "true" ]; then
-              echo "[DRY-RUN] Would delete org ${ORG_ID} (${ORG_NAME})"
-            else
-              echo "Deleting org ${ORG_ID} (${ORG_NAME})"
-              if ! curl -sS -X DELETE "https://api.clerk.com/v1/organizations/${ORG_ID}" \
-                -H "Authorization: Bearer ${CLERK_SECRET_KEY}" > /dev/null; then
-                echo "::warning::Failed to delete org ${ORG_ID} (${ORG_NAME})"
-              fi
-            fi
-            DELETED=$((DELETED + 1))
-          done
-
-          echo ""
-          echo "=== Clerk Empty Org Cleanup Summary ==="
-          echo "Deleted: $DELETED"
-          echo "Skipped (has members): $SKIPPED"
 
   cleanup-git-branches:
     runs-on: ubuntu-latest

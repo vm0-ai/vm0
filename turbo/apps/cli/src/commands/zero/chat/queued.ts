@@ -90,7 +90,7 @@ export const queuedCommand = new Command()
   .description("List events waiting in a web chat thread queue")
   .option(
     "--thread-id <id>",
-    "Chat thread ID (defaults to ZERO_CHAT_THREAD_ID)",
+    "Chat thread ID (defaults to OKOU_CHAT_THREAD_ID)",
   )
   .option("--json", "Print machine-readable JSON")
   .addHelpText(
@@ -105,7 +105,7 @@ Notes:
   - With snapshot read enabled, lists authoritative queued event IDs and sequence IDs
   - Otherwise lists the same unassociated user and automation events shown by Platform
   - Event IDs can be passed to okou chat cancel --event-id
-  - Authenticates via ZERO_TOKEN (requires chat-event:read capability)`,
+  - Authenticates via OKOU_TOKEN (requires chat-event:read capability)`,
   )
   .action(
     withErrorHandler(async (options: QueuedOptions) => {

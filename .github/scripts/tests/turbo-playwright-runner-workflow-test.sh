@@ -171,8 +171,9 @@ raise "missing runner E2E token generation" unless token_step
 unless token_step.fetch("run").end_with?("runner-token.ts /tmp")
   raise "runner E2E tokens must use the public device-flow entry point"
 end
-unless token_step.dig("env", "ZERO_APP_URL") == "${{ needs.deploy-app.outputs.preview-url }}"
-  raise "runner E2E token generation must use the app preview URL"
+unless token_step.dig("env", "OKOU_APP_URL") == "${{ needs.deploy-app.outputs.preview-url }}" &&
+    token_step.dig("env", "ZERO_APP_URL") == "${{ needs.deploy-app.outputs.preview-url }}"
+  raise "runner E2E token generation must emit both branded app preview URLs"
 end
 
 upload_step = account_prepare.fetch("steps").find do |step|
@@ -208,8 +209,8 @@ model_defaults_step = bootstrap_steps.find do |step|
 end
 raise "missing runner model policy bootstrap" unless model_defaults_step
 model_defaults_script = model_defaults_step.fetch("run")
-unless model_defaults_script.include?("/api/zero/model-policies") &&
-    model_defaults_script.include?("/api/zero/user-model-preference") &&
+unless model_defaults_script.include?("/api/okou/model-policies") &&
+    model_defaults_script.include?("/api/okou/user-model-preference") &&
     model_defaults_script.include?("deepseek-v4-flash") &&
     model_defaults_script.include?("gpt-5.6-luna") &&
     model_defaults_script.include?('{"selectedModel":null,"serviceTier":null}')
@@ -235,9 +236,9 @@ end
 raise "missing real Codex account bootstrap" unless codex_step
 codex_script = codex_step.fetch("run")
 %w[
-  /api/zero/model-providers
-  /api/zero/model-policies
-  /api/zero/feature-switches
+  /api/okou/model-providers
+  /api/okou/model-policies
+  /api/okou/feature-switches
   gpt-5.6-luna
   realAgentInPreview
 ].each do |required_fragment|
@@ -255,9 +256,9 @@ end
 raise "missing real Claude account bootstrap" unless claude_step
 claude_script = claude_step.fetch("run")
 %w[
-  /api/zero/model-providers
-  /api/zero/model-policies
-  /api/zero/feature-switches
+  /api/okou/model-providers
+  /api/okou/model-policies
+  /api/okou/feature-switches
   claude-sonnet-4-6
   realAgentInPreview
 ].each do |required_fragment|
@@ -321,13 +322,16 @@ end
 unless cleanup_step.fetch("run").end_with?("runner-account.ts cleanup")
   raise "runner E2E account cleanup must use the shared lifecycle entry point"
 end
+if account_cleanup.fetch("if").include?("!= 'cancelled'")
+  raise "runner E2E cleanup must run after cancelled account preparation"
+end
 %w[
   E2E_RUNNER_ORGANIZATION_ID
   E2E_RUNNER_CODEX_ORGANIZATION_ID
   E2E_RUNNER_CLAUDE_ORGANIZATION_ID
 ].each do |environment_name|
-  unless cleanup_step.fetch("env").key?(environment_name)
-    raise "runner E2E cleanup must receive #{environment_name}"
+  if cleanup_step.fetch("env", {}).key?(environment_name)
+    raise "runner E2E cleanup must not depend on #{environment_name}"
   end
 end
 

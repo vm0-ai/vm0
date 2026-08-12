@@ -48,7 +48,7 @@ Examples:
   Machine readable:      okou host clone my-site --json
 
 Notes:
-  - Authenticates via ZERO_TOKEN (requires host:read capability)
+  - Authenticates via OKOU_TOKEN (requires host:read capability)
   - Only hosted sites owned by the active org can be cloned
   - Downloads files directly from R2 and verifies size/hash
   - The destination directory must be empty or not exist`,

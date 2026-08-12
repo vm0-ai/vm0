@@ -30,7 +30,7 @@ export async function resolveWorkflowRef(
   const agentId = options.agent ?? getOkouAgentId();
   if (!agentId) {
     throw new Error(
-      "Workflow name refs require an agent scope. Pass --agent <agent-id>, set ZERO_AGENT_ID, or use a workflow ID",
+      "Workflow name refs require an agent scope. Pass --agent <agent-id>, set OKOU_AGENT_ID, or use a workflow ID",
     );
   }
   if (!UUID_RE.test(agentId)) {

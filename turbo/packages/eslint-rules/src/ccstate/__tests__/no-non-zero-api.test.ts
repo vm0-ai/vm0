@@ -10,14 +10,7 @@ const ruleTester = new RuleTester();
 
 ruleTester.run("no-non-zero-api", rule, {
   valid: [
-    // Zero API paths are allowed
-    {
-      code: 'const url = "/api/zero/billing/status"',
-    },
-    {
-      code: 'fetchFn("/api/zero/agents")',
-    },
-    // Okou API paths are also allowed without allowing arbitrary /api/ paths
+    // Current Platform calls use the canonical Okou namespace.
     {
       code: 'const url = "/api/okou/billing/status"',
     },
@@ -44,6 +37,10 @@ ruleTester.run("no-non-zero-api", rule, {
     },
   ],
   invalid: [
+    {
+      code: 'const url = "/api/zero/billing/status"',
+      errors: [{ messageId: "nonZeroApi" }],
+    },
     {
       code: 'fetchFn("/api/billing/status")',
       errors: [{ messageId: "nonZeroApi" }],

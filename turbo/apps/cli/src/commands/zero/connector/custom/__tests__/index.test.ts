@@ -31,7 +31,7 @@ describe("okou connector custom readers", () => {
   it("normalizes an older kind-less HTTP list response", async () => {
     const connector = customConnector();
     server.use(
-      http.get("http://localhost:3000/api/zero/custom-connectors", () => {
+      http.get("http://localhost:3000/api/okou/custom-connectors", () => {
         return HttpResponse.json({
           connectors: [{ ...connector, kind: undefined }],
         });
@@ -50,7 +50,7 @@ describe("okou connector custom readers", () => {
     const connector = customConnector();
     server.use(
       stubCustomConnectors([connector]),
-      http.get(`http://localhost:3000/api/zero/agents/${AGENT_ID}`, () => {
+      http.get(`http://localhost:3000/api/okou/agents/${AGENT_ID}`, () => {
         return HttpResponse.json({
           agentId: AGENT_ID,
           ownerId: "owner-1",
@@ -90,7 +90,7 @@ describe("okou connector custom readers", () => {
     const connector = customConnector();
     server.use(
       http.get(
-        `http://localhost:3000/api/zero/custom-connectors/${CONNECTOR_ID}`,
+        `http://localhost:3000/api/okou/custom-connectors/${CONNECTOR_ID}`,
         () => {
           return HttpResponse.json({ ...connector, kind: undefined });
         },
@@ -144,7 +144,7 @@ describe("okou connector custom readers", () => {
     } satisfies CustomConnectorMcpResponse;
     server.use(
       http.get(
-        `http://localhost:3000/api/zero/custom-connectors/${CONNECTOR_ID}`,
+        `http://localhost:3000/api/okou/custom-connectors/${CONNECTOR_ID}`,
         () => {
           return HttpResponse.json(connector);
         },

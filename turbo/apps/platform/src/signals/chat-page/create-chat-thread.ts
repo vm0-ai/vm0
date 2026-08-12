@@ -121,10 +121,15 @@ import {
   type CardDescriptorBlock,
 } from "./parse-body-blocks.ts";
 import {
+  createMermaidDiagramRegistry,
   embedMermaidSignals,
-  registerMermaidDiagram$,
+  type MermaidDiagramRegistry,
 } from "../mermaid-diagram.ts";
-import { embedImageLoadSignals, registerImageLoad$ } from "../image-load.ts";
+import {
+  createImageLoadRegistry,
+  embedImageLoadSignals,
+  type ImageLoadRegistry,
+} from "../image-load.ts";
 import {
   chatEventTreeContent,
   chatEventTreePlan,
@@ -1683,6 +1688,8 @@ interface EventTreeRegistries {
   readonly browserSessionSignals: ReturnType<
     typeof createBrowserSessionSignals
   >;
+  readonly mermaidDiagrams: MermaidDiagramRegistry;
+  readonly imageLoads: ImageLoadRegistry;
 }
 
 function createEventTreeSignals({
@@ -1694,6 +1701,8 @@ function createEventTreeSignals({
   planUpgradeCardSignals,
   mailDraftCardSignals,
   browserSessionSignals,
+  mermaidDiagrams,
+  imageLoads,
 }: EventTreeRegistries) {
   interface EventTree {
     readonly content: string;
@@ -1800,10 +1809,10 @@ function createEventTreeSignals({
           cards,
         });
         embedMermaidSignals(tree, (code) => {
-          return set(registerMermaidDiagram$, code);
+          return set(mermaidDiagrams.register$, code);
         });
         embedImageLoadSignals(tree, (url) => {
-          return set(registerImageLoad$, url);
+          return set(imageLoads.register$, url);
         });
         next ??= new Map(current);
         next.set(event.id, { content: plan.content, tree });
@@ -1822,6 +1831,7 @@ function createPagedEventResources(
   chatEvents$: Computed<ChatEvent[]>,
   previewImageUrlsByUrl$: Computed<Promise<ReadonlyMap<string, string>>>,
   browserLifecycleOptimisticEvents: BrowserLifecycleOptimisticEvents,
+  ownerSignal: AbortSignal,
 ) {
   const mailDraftCardSignals = createMailDraftCardSignalsRegistry(threadId);
   const browserSessionSignals = createBrowserSessionSignals(
@@ -1837,6 +1847,8 @@ function createPagedEventResources(
   const computerUseAuthorizationCardSignals =
     createComputerUseAuthorizationCardSignalsRegistry();
   const planUpgradeCardSignals = createPlanUpgradeCardSignalsRegistry();
+  const mermaidDiagrams = createMermaidDiagramRegistry(ownerSignal);
+  const imageLoads = createImageLoadRegistry();
 
   const registerChatEvent$ = command(
     ({ set }, event: ChatEvent): RegisteredChatEvent => {
@@ -1863,6 +1875,8 @@ function createPagedEventResources(
     planUpgradeCardSignals,
     mailDraftCardSignals,
     browserSessionSignals,
+    mermaidDiagrams,
+    imageLoads,
   });
 
   const registeredEvents$ = state<RegisteredChatEvent[]>([]);
@@ -1982,16 +1996,25 @@ function createMarkThreadReadIfNeeded({
 }
 
 function createEventChangeEffects(
-  threadId: string,
-  chatEvents: ChatEventSignals,
-  projections: Pick<
-    ReturnType<typeof createPagedEventProjections>,
-    "rawEvents$" | "latestRunFinishCreatedAt$"
-  >,
-  scroll: ChatThreadScrollSignals,
-  syncVisibleEventTrees$: Command<Promise<void>, [AbortSignal]>,
+  {
+    threadId,
+    chatEvents,
+    projections,
+    scroll,
+    syncVisibleEventTrees$,
+  }: {
+    readonly threadId: string;
+    readonly chatEvents: ChatEventSignals;
+    readonly projections: Pick<
+      ReturnType<typeof createPagedEventProjections>,
+      "rawEvents$" | "latestRunFinishCreatedAt$"
+    >;
+    readonly scroll: ChatThreadScrollSignals;
+    readonly syncVisibleEventTrees$: Command<Promise<void>, [AbortSignal]>;
+  },
+  ownerSignal: AbortSignal,
 ) {
-  const sidebar = createThreadSidebarSignals(threadId);
+  const sidebar = createThreadSidebarSignals(threadId, ownerSignal);
   const locallyMarkedReadAt$ = state<string | undefined>(undefined);
   const markThreadReadIfNeeded$ = createMarkThreadReadIfNeeded({
     threadId,
@@ -2085,15 +2108,18 @@ function createReadyScrollAfterRenderRequest(
   });
 }
 
-function createChatThreadMessagePipeline({
-  threadId,
-  chatEvents,
-  previewImageUrlsByUrl$,
-}: {
-  threadId: string;
-  chatEvents: ChatEventSignals;
-  previewImageUrlsByUrl$: Computed<Promise<ReadonlyMap<string, string>>>;
-}) {
+function createChatThreadMessagePipeline(
+  {
+    threadId,
+    chatEvents,
+    previewImageUrlsByUrl$,
+  }: {
+    threadId: string;
+    chatEvents: ChatEventSignals;
+    previewImageUrlsByUrl$: Computed<Promise<ReadonlyMap<string, string>>>;
+  },
+  ownerSignal: AbortSignal,
+) {
   const browserLifecycleOptimisticEvents: BrowserLifecycleOptimisticEvents = {
     append$: command(
       async (
@@ -2119,6 +2145,7 @@ function createChatThreadMessagePipeline({
     chatEvents.chatEvents$,
     previewImageUrlsByUrl$,
     browserLifecycleOptimisticEvents,
+    ownerSignal,
   );
   const projections = createPagedEventProjections({
     chatEvents$: chatEvents.chatEvents$,
@@ -2144,11 +2171,8 @@ function createChatThreadMessagePipeline({
     renderWindow.ensureVisibleEventTrees$,
   );
   const effects = createEventChangeEffects(
-    threadId,
-    chatEvents,
-    projections,
-    scroll,
-    syncVisibleEventTrees$,
+    { threadId, chatEvents, projections, scroll, syncVisibleEventTrees$ },
+    ownerSignal,
   );
   const chatSkeletonVisible$ = computed((get): boolean => {
     return !get(chatEvents.initialEventsReady$);
@@ -3708,13 +3732,16 @@ function createChatPanelSignalsWithDraft(
   );
   const feedback = createChatThreadFeedbackSignals(threadId, composer.feedback);
   const messages: MessageListSignals = {
-    ...createChatThreadMessagePipeline({
-      threadId,
-      chatEvents,
-      previewImageUrlsByUrl$: createArtifactPreviewImageUrls(
-        artifact.artifacts$,
-      ),
-    }),
+    ...createChatThreadMessagePipeline(
+      {
+        threadId,
+        chatEvents,
+        previewImageUrlsByUrl$: createArtifactPreviewImageUrls(
+          artifact.artifacts$,
+        ),
+      },
+      signal,
+    ),
     ...artifact,
   };
   const sharing = createChatThreadSharingSignals(threadId, messages.scroll);

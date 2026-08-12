@@ -883,7 +883,7 @@ const authHeaders = { authorization: "Bearer clerk-session" } as const;
 
 describe("bench side-effect-free GET API routes", () => {
   bench(
-    "GET /api/zero/chat-threads/:id",
+    "GET /api/okou/chat-threads/:id",
     async () => {
       const fixture = await ensureSeeded();
       const response = await chatThreadClient.get({
@@ -898,7 +898,7 @@ describe("bench side-effect-free GET API routes", () => {
   );
 
   bench(
-    "GET /api/zero/chat-threads/:threadId/events",
+    "GET /api/okou/chat-threads/:threadId/events",
     async () => {
       const fixture = await ensureSeeded();
       const response = await chatThreadEventsClient.list({
@@ -914,7 +914,7 @@ describe("bench side-effect-free GET API routes", () => {
   );
 
   bench(
-    "GET /api/zero/connectors",
+    "GET /api/okou/connectors",
     async () => {
       await ensureSeeded();
       const response = await connectorsClient.list({ headers: authHeaders });
@@ -926,7 +926,7 @@ describe("bench side-effect-free GET API routes", () => {
   );
 
   bench(
-    "GET /api/zero/user-preferences",
+    "GET /api/okou/user-preferences",
     async () => {
       await ensureSeeded();
       const response = await userPreferencesClient.get({
@@ -940,7 +940,7 @@ describe("bench side-effect-free GET API routes", () => {
   );
 
   bench(
-    "GET /api/zero/billing/status",
+    "GET /api/okou/billing/status",
     async () => {
       await ensureSeeded();
       const response = await billingStatusClient.get({ headers: authHeaders });
@@ -952,7 +952,7 @@ describe("bench side-effect-free GET API routes", () => {
   );
 
   bench(
-    "GET /api/zero/org",
+    "GET /api/okou/org",
     async () => {
       await ensureSeeded();
       const response = await orgClient.get({ headers: authHeaders });
@@ -964,7 +964,7 @@ describe("bench side-effect-free GET API routes", () => {
   );
 
   bench(
-    "GET /api/zero/me/model-providers",
+    "GET /api/okou/me/model-providers",
     async () => {
       await ensureSeeded();
       const response = await personalModelProvidersClient.list({

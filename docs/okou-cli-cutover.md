@@ -91,11 +91,12 @@ execution contexts are historical immutable content, not migration targets.
 - **Compatibility-only:** the packed `zero` alias, artifact/workflow smoke
   checks, serial CLI alias tests, old-Runner `zero __agent-loop` coverage, and <!-- okou-cutover-audit: compatibility-only -->
   compatibility documentation.
-- **Approved internal protocol:** `ZERO_*` environment variables, token scope,
-  `/api/zero/**`, `commands/zero`, database and backend domain identifiers, and
-  the Slack `/zero model` interaction. The separate Zero Computer Use Desktop
-  product identity is also outside this CLI cutover. These are not executable
-  CLI producers.
+- **Approved internal protocol:** canonical `OKOU_*` environment variables,
+  Okou token scope, and `/api/okou/**`; compatibility-only `ZERO_*`, Zero token
+  scope, and `/api/zero/**`; plus `commands/zero`, database and backend domain
+  identifiers, and the Slack `/zero model` interaction. The separate Zero
+  Computer Use Desktop product identity is also outside this CLI cutover.
+  These are not executable CLI producers.
 - **Historical:** changelogs, migration notes, retired `zero secret`, <!-- okou-cutover-audit: historical -->
   `zero variable`, `zero schedule`, and `zero automation` documentation, plus <!-- okou-cutover-audit: historical -->
   immutable old execution contexts.

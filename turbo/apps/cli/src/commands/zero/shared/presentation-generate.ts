@@ -100,7 +100,7 @@ Output:
   Prints a source-selection packet for the current agent.
 
 Notes:
-  - Authenticates via ZERO_TOKEN
+  - Authenticates via OKOU_TOKEN
   - The agent authors the HTML presentation artifact and hosts it with okou host
 
 Templates (presentation):

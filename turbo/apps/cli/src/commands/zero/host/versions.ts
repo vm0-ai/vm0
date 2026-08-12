@@ -26,7 +26,7 @@ Examples:
   Machine readable:  okou host versions my-product-demo --json
 
 Notes:
-  - Authenticates via ZERO_TOKEN and requires host:read
+  - Authenticates via OKOU_TOKEN and requires host:read
   - Requires hosted artifact versions to be enabled for the current user
   - The active marker identifies the version served by the site alias`,
   )

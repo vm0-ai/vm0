@@ -12,7 +12,7 @@ const triggerMorningBriefResponseSchema = z.object({
 });
 
 /**
- * Manual Morning Brief trigger for /api/zero/morning-brief/trigger
+ * Manual Morning Brief trigger for /api/okou/morning-brief/trigger
  *
  * Testing entry point gated by the manualMorningBrief feature switch:
  * immediately runs the collect → agent-run → email pipeline for the caller.
@@ -20,7 +20,7 @@ const triggerMorningBriefResponseSchema = z.object({
 export const zeroMorningBriefContract = c.router({
   trigger: {
     method: "POST",
-    path: "/api/zero/morning-brief/trigger",
+    path: "/api/okou/morning-brief/trigger",
     headers: authHeadersSchema,
     body: z.object({}),
     responses: {

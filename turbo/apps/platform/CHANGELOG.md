@@ -1,5 +1,37 @@
 # Changelog
 
+## [0.734.0](https://github.com/vm0-ai/vm0/compare/app-v0.733.0...app-v0.734.0) (2026-08-12)
+
+
+### Features
+
+* **protocol:** cut first-party clients over to okou ([#26549](https://github.com/vm0-ai/vm0/issues/26549)) ([8b1670c](https://github.com/vm0-ai/vm0/commit/8b1670c218fc1a1f326f720368eaa3a65b137ffa))
+
+
+### Refactoring
+
+* **platform:** scope markdown signal registries to their surfaces ([#26497](https://github.com/vm0-ai/vm0/issues/26497)) ([d22e940](https://github.com/vm0-ai/vm0/commit/d22e940ccfa5d74a5df5ea086c4df93e68276b05))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.322.0
+    * @vm0/core bumped to 8.548.3
+
+## [0.733.0](https://github.com/vm0-ai/vm0/compare/app-v0.732.1...app-v0.733.0) (2026-08-12)
+
+
+### Features
+
+* **ui:** add segment control and unify segmented controls ([#26543](https://github.com/vm0-ai/vm0/issues/26543)) ([43c5a04](https://github.com/vm0-ai/vm0/commit/43c5a0448b3eaed505d55dd62d8d250b68ea11d4))
+
+
+### Refactoring
+
+* **platform:** mermaid blob urls, code-block invalid fences, real parse in tests ([#26419](https://github.com/vm0-ai/vm0/issues/26419)) ([d1835f0](https://github.com/vm0-ai/vm0/commit/d1835f0a5731a9561b56a5f09839f2ff82ee42be))
+
 ## [0.732.1](https://github.com/vm0-ai/vm0/compare/app-v0.732.0...app-v0.732.1) (2026-08-12)
 
 

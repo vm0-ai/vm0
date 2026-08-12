@@ -147,7 +147,7 @@ Examples:
   Get transactions:   okou banking transactions --account-id <id> --from 2026-01-01 --to 2026-01-31 --json
 
 Notes:
-  - Authenticates via ZERO_TOKEN (requires banking:read capability)
+  - Authenticates via OKOU_TOKEN (requires banking:read capability)
   - Finicity credentials and app tokens stay on the vm0 API server
   - Access is limited to accounts enabled for the current agent`,
   );

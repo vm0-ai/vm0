@@ -456,7 +456,7 @@ function printAgentAuthorizationStatus(
   hasPermission: boolean,
 ): void {
   if (!ctx.agentId) {
-    console.log("ZERO_AGENT_ID is not set — cannot check agent authorization.");
+    console.log("OKOU_AGENT_ID is not set — cannot check agent authorization.");
   } else if (isExpired) {
     console.log(
       `Skipped — agent authorization can only be checked once the ${ctx.label} connector is reconnected (see 2a).`,

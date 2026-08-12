@@ -29,7 +29,7 @@ function stubBillingStatus(
     readonly videoGenerationAllowed?: boolean;
   } = {},
 ) {
-  return http.get("http://localhost:3000/api/zero/billing/status", () => {
+  return http.get("http://localhost:3000/api/okou/billing/status", () => {
     return HttpResponse.json({
       tier: overrides.tier ?? "pro",
       canBuyCredits: overrides.canBuyCredits ?? true,
@@ -101,7 +101,7 @@ describe("okou credit command", () => {
       .mockImplementation(() => {});
     server.use(
       http.post(
-        "http://localhost:3000/api/zero/billing/credit-checkout",
+        "http://localhost:3000/api/okou/billing/credit-checkout",
         () => {
           return HttpResponse.json(
             {
@@ -132,7 +132,7 @@ describe("okou credit command", () => {
     let capturedBody: unknown = null;
     server.use(
       http.post(
-        "http://localhost:3000/api/zero/billing/credit-checkout",
+        "http://localhost:3000/api/okou/billing/credit-checkout",
         async ({ request }) => {
           capturedBody = await request.json();
           return HttpResponse.json({
@@ -173,7 +173,7 @@ describe("okou credit command", () => {
         videoGenerationAllowed: false,
       }),
       http.post(
-        "http://localhost:3000/api/zero/billing/credit-checkout",
+        "http://localhost:3000/api/okou/billing/credit-checkout",
         () => {
           checkoutRequests += 1;
           return HttpResponse.json({

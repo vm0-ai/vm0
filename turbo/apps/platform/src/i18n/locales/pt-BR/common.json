@@ -2566,6 +2566,18 @@
       "degraded": "As atualizações em tempo real encontraram um problema. Atualize a página."
     }
   },
+  "invitationRedirect": {
+    "accountMismatch": {
+      "title": "Convite aceito para outra conta"
+    },
+    "actions": {
+      "switchAccount": "Trocar de conta",
+      "switchWorkspace": "Trocar de espaço de trabalho"
+    },
+    "success": {
+      "title": "Convite para {{workspace}} aceito"
+    }
+  },
   "lifecycle": {
     "emailUnsubscribe": {
       "action": "Cancelar inscrição",
@@ -4595,7 +4607,6 @@
     "mermaid": {
       "diagramLabel": "Diagrama",
       "expand": "Ampliar diagrama",
-      "invalidDiagram": "Diagrama inválido",
       "viewSource": "Código do diagrama"
     },
     "notFound": {

@@ -46,7 +46,7 @@ const c = initContract();
 const telegramDownloadFileContract = c.router({
   download: {
     method: "GET",
-    path: "/api/zero/integrations/telegram/download-file",
+    path: "/api/okou/integrations/telegram/download-file",
     headers: authHeadersSchema,
     query: z.object({
       file_id: z.string().min(1),

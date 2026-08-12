@@ -24,12 +24,12 @@ export function resetMockPersonalModelProviders(): void {
 }
 
 export const apiPersonalModelProvidersHandlers = [
-  // GET /api/zero/me/model-providers - List the user's personal model providers
+  // GET /api/okou/me/model-providers - List the user's personal model providers
   mockApi(zeroPersonalModelProvidersMainContract.list, ({ respond }) => {
     return respond(200, { modelProviders: mockPersonalModelProviders });
   }),
 
-  // POST /api/zero/me/model-providers - Create or update a personal model provider
+  // POST /api/okou/me/model-providers - Create or update a personal model provider
   mockApi(
     zeroPersonalModelProvidersMainContract.upsert,
     ({ body, respond }) => {
@@ -69,7 +69,7 @@ export const apiPersonalModelProvidersHandlers = [
     },
   ),
 
-  // DELETE /api/zero/me/model-providers/:type - Delete a personal model provider
+  // DELETE /api/okou/me/model-providers/:type - Delete a personal model provider
   mockApi(
     zeroPersonalModelProvidersByTypeContract.delete,
     ({ params, respond }) => {
@@ -90,7 +90,7 @@ export const apiPersonalModelProvidersHandlers = [
     },
   ),
 
-  // POST /api/zero/me/model-providers/:type/subscription-reset - Reset Codex usage
+  // POST /api/okou/me/model-providers/:type/subscription-reset - Reset Codex usage
   mockApi(
     zeroPersonalModelProvidersByTypeContract.resetSubscriptionUsage,
     ({ params, respond }) => {

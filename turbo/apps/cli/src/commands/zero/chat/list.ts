@@ -27,7 +27,7 @@ function resolveAgentId(flagAgentId: string | undefined): string {
   const agentId = flagAgentId?.trim() || getOkouAgentId()?.trim();
   if (!agentId) {
     printUsageError(
-      "ZERO_AGENT_ID is not set",
+      "OKOU_AGENT_ID is not set",
       "Pass --agent <agent-id> or run inside an agent sandbox.",
     );
   }
@@ -48,7 +48,7 @@ export const listCommand = new Command()
   .name("list")
   .alias("ls")
   .description("List web chat threads for an agent")
-  .option("--agent <id>", "Filter by agent ID (defaults to ZERO_AGENT_ID)")
+  .option("--agent <id>", "Filter by agent ID (defaults to OKOU_AGENT_ID)")
   .option(
     "--limit <n>",
     `Maximum number of threads to print (default: ${DEFAULT_LIMIT}, max: ${MAX_LIMIT})`,
@@ -64,8 +64,8 @@ Examples:
   Print JSON:               okou chat list --json
 
 Notes:
-  - Defaults --agent to ZERO_AGENT_ID
-  - Authenticates via ZERO_TOKEN (requires chat-thread:read capability)
+  - Defaults --agent to OKOU_AGENT_ID
+  - Authenticates via OKOU_TOKEN (requires chat-thread:read capability)
   - Replays cached snapshot and incremental chat thread events`,
   )
   .action(

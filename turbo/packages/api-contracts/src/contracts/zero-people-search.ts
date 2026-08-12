@@ -78,7 +78,7 @@ export type ZeroPeopleSearchResponse = z.infer<
 export const zeroPeopleSearchContract = c.router({
   search: {
     method: "POST",
-    path: "/api/zero/people-search",
+    path: "/api/okou/people-search",
     headers: authHeadersSchema,
     body: zeroPeopleSearchRequestSchema,
     responses: {

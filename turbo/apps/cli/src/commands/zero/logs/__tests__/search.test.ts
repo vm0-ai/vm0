@@ -123,7 +123,7 @@ describe("okou logs search command", () => {
 
   it("should render search results grouped by run", async () => {
     server.use(
-      http.get("http://localhost:3000/api/zero/logs/search", () => {
+      http.get("http://localhost:3000/api/okou/logs/search", () => {
         return HttpResponse.json({
           results: [
             {
@@ -149,7 +149,7 @@ describe("okou logs search command", () => {
 
   it("should tolerate invalid search result timestamps", async () => {
     server.use(
-      http.get("http://localhost:3000/api/zero/logs/search", () => {
+      http.get("http://localhost:3000/api/okou/logs/search", () => {
         return HttpResponse.json({
           results: [
             {
@@ -174,7 +174,7 @@ describe("okou logs search command", () => {
 
   it("should render codex search result events with the result framework", async () => {
     server.use(
-      http.get("http://localhost:3000/api/zero/logs/search", () => {
+      http.get("http://localhost:3000/api/okou/logs/search", () => {
         return HttpResponse.json({
           results: [
             {
@@ -200,7 +200,7 @@ describe("okou logs search command", () => {
 
   it("should tolerate unsupported search result framework values", async () => {
     server.use(
-      http.get("http://localhost:3000/api/zero/logs/search", () => {
+      http.get("http://localhost:3000/api/okou/logs/search", () => {
         return HttpResponse.json({
           results: [
             {
@@ -226,7 +226,7 @@ describe("okou logs search command", () => {
 
   it("should group paired codex tool events in search context", async () => {
     server.use(
-      http.get("http://localhost:3000/api/zero/logs/search", () => {
+      http.get("http://localhost:3000/api/okou/logs/search", () => {
         return HttpResponse.json({
           results: [
             {
@@ -252,7 +252,7 @@ describe("okou logs search command", () => {
 
   it("should handle no matches", async () => {
     server.use(
-      http.get("http://localhost:3000/api/zero/logs/search", () => {
+      http.get("http://localhost:3000/api/okou/logs/search", () => {
         return HttpResponse.json({ results: [], hasMore: false });
       }),
     );
@@ -267,7 +267,7 @@ describe("okou logs search command", () => {
   it("should pass context options to API", async () => {
     let capturedUrl: URL | undefined;
     server.use(
-      http.get("http://localhost:3000/api/zero/logs/search", ({ request }) => {
+      http.get("http://localhost:3000/api/okou/logs/search", ({ request }) => {
         capturedUrl = new URL(request.url);
         return HttpResponse.json({ results: [], hasMore: false });
       }),
@@ -283,7 +283,7 @@ describe("okou logs search command", () => {
   it("should send epoch --since instead of the default search window", async () => {
     let capturedUrl: URL | undefined;
     server.use(
-      http.get("http://localhost:3000/api/zero/logs/search", ({ request }) => {
+      http.get("http://localhost:3000/api/okou/logs/search", ({ request }) => {
         capturedUrl = new URL(request.url);
         return HttpResponse.json({ results: [], hasMore: false });
       }),
@@ -303,7 +303,7 @@ describe("okou logs search command", () => {
   it("should pass -A and -B independently", async () => {
     let capturedUrl: URL | undefined;
     server.use(
-      http.get("http://localhost:3000/api/zero/logs/search", ({ request }) => {
+      http.get("http://localhost:3000/api/okou/logs/search", ({ request }) => {
         capturedUrl = new URL(request.url);
         return HttpResponse.json({ results: [], hasMore: false });
       }),
@@ -362,7 +362,7 @@ describe("okou logs search command", () => {
   it("should pass agentId and run filters", async () => {
     let capturedUrl: URL | undefined;
     server.use(
-      http.get("http://localhost:3000/api/zero/logs/search", ({ request }) => {
+      http.get("http://localhost:3000/api/okou/logs/search", ({ request }) => {
         capturedUrl = new URL(request.url);
         return HttpResponse.json({ results: [], hasMore: false });
       }),
@@ -386,7 +386,7 @@ describe("okou logs search command", () => {
 
   it("should show hasMore hint when truncated", async () => {
     server.use(
-      http.get("http://localhost:3000/api/zero/logs/search", () => {
+      http.get("http://localhost:3000/api/okou/logs/search", () => {
         return HttpResponse.json({
           results: [
             {
@@ -410,7 +410,7 @@ describe("okou logs search command", () => {
 
   it("should render context events around matched event", async () => {
     server.use(
-      http.get("http://localhost:3000/api/zero/logs/search", () => {
+      http.get("http://localhost:3000/api/okou/logs/search", () => {
         return HttpResponse.json({
           results: [
             {
@@ -510,7 +510,7 @@ describe("okou logs search command", () => {
 
   it("should handle authentication error", async () => {
     server.use(
-      http.get("http://localhost:3000/api/zero/logs/search", () => {
+      http.get("http://localhost:3000/api/okou/logs/search", () => {
         return HttpResponse.json(
           { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
           { status: 401 },

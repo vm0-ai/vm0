@@ -3,10 +3,10 @@
  *
  * Enforces that the platform app only calls branded API endpoints.
  * Catches string literals and template literals containing /api/ paths
- * that do not start with /api/zero/ or /api/okou/.
+ * that do not start with the canonical /api/okou/ namespace.
  *
- * Good: "/api/zero/billing/status"
  * Good: "/api/okou/billing/status"
+ * Bad: "/api/zero/billing/status"
  * Bad: "/api/billing/status"
  */
 
@@ -20,8 +20,8 @@ const createRule = ESLintUtils.RuleCreator(
 type MessageIds = "nonZeroApi";
 
 /**
- * Check if a string contains a non-branded API path.
- * Matches /api/ followed by anything that is not zero/ or okou/.
+ * Check if a string contains a non-canonical API path.
+ * Matches /api/ followed by anything other than okou/.
  * Ignores external URLs (e.g. https://slack.com/api/...).
  */
 function containsNonZeroApiPath(value: string): boolean {
@@ -30,8 +30,8 @@ function containsNonZeroApiPath(value: string): boolean {
   if (/https?:\/\/[^/]+\/api\//.test(value)) {
     return false;
   }
-  // Match /api/ that is not followed by an approved branded namespace.
-  return /\/api\/(?!(?:zero|okou)\/)/.test(value);
+  // Match /api/ that is not followed by the canonical branded namespace.
+  return /\/api\/(?!okou\/)/.test(value);
 }
 
 export default createRule<[], MessageIds>({
@@ -40,12 +40,12 @@ export default createRule<[], MessageIds>({
     type: "problem",
     docs: {
       description:
-        "Enforce that platform app only calls /api/zero/ or /api/okou/ endpoints",
+        "Enforce that the current platform app only calls /api/okou/ endpoints",
     },
     schema: [],
     messages: {
       nonZeroApi:
-        "Platform app must only call /api/zero/ or /api/okou/ endpoints. Found unapproved API path: '{{path}}'. Use a branded contract + route instead.",
+        "Platform app must only call canonical /api/okou/ endpoints. Found unapproved API path: '{{path}}'. Use an Okou contract + route instead.",
     },
   },
   defaultOptions: [],

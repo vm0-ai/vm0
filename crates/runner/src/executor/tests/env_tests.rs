@@ -40,6 +40,7 @@ fn validate_context_for_test(ctx: &ExecutionContext) -> Result<(), String> {
         &sandbox_id,
         SandboxReuseResult::Reused,
     )
+    .map(drop)
 }
 
 fn codex_runtime_config_for_test(model_catalog: Option<serde_json::Value>) -> CodexRuntimeConfig {

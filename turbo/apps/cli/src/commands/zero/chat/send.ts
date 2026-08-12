@@ -164,7 +164,7 @@ export const sendCommand = new Command()
   .description("Send a message to a web chat thread")
   .option(
     "--thread-id <id>",
-    "Chat thread ID (defaults to ZERO_CHAT_THREAD_ID)",
+    "Chat thread ID (defaults to OKOU_CHAT_THREAD_ID)",
   )
   .option("-t, --text <message>", "Message text (or read it from stdin)")
   .option(
@@ -189,7 +189,7 @@ Notes:
   - file parts reference an uploaded web file id (okou web upload-file)
   - The API derives the agent prompt and title state from the document itself
   - Every normal message enters the thread queue first; an idle queue may dispatch it immediately
-  - Authenticates via ZERO_TOKEN (requires chat-thread:read and chat-event:write capabilities)`,
+  - Authenticates via OKOU_TOKEN (requires chat-thread:read and chat-event:write capabilities)`,
   )
   .action(
     withErrorHandler(async (options: SendOptions) => {

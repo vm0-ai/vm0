@@ -1,5 +1,5 @@
 import { createStore, type Store } from "ccstate";
-import { afterEach } from "vitest";
+import { afterEach, beforeAll } from "vitest";
 import { logger, resetLoggerForTest } from "../log";
 import { resetLocalStorageForTest$ } from "../external/local-storage";
 import { resetAllMockHandlers } from "../../mocks/handlers";
@@ -53,4 +53,17 @@ export function testContext(): TestContext {
   });
 
   return context;
+}
+
+/**
+ * Loads the real mermaid parser behind the test stub before a file's first
+ * test. The stub delegates `parse` to the real module, whose one-time
+ * transform is too slow for the first diagram assertion's waitFor budget, so
+ * files that render diagrams pay it in setup instead.
+ */
+export function warmMermaidParser(): void {
+  beforeAll(async () => {
+    const { default: mermaid } = await import("mermaid");
+    await mermaid.parse("flowchart TD\n  A --> B", { suppressErrors: true });
+  }, 30_000);
 }

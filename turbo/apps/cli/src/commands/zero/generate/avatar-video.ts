@@ -495,6 +495,6 @@ Notes:
   - Public avatar and voice IDs are discoverable with the list flags.
   - Built-in generation uses vm0-managed JoggAI credentials and charges org credits.
   - Connector generation uses the connected JoggAI account and provider credits.
-  - Authenticates via ZERO_TOKEN and requires file:write capability.`,
+  - Authenticates via OKOU_TOKEN and requires file:write capability.`,
   )
   .action(withErrorHandler(runAvatarVideoCommand));

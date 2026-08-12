@@ -84,6 +84,7 @@ import { setupSharedThreadPage$ } from "./shared-thread-page/shared-thread-page-
 import { setupGlobalKeyboardShortcuts$ } from "./zero-page/zero-nav.ts";
 import { reloadFeatureSwitch$ } from "./external/feature-switch.ts";
 import { checkUnifiedSettingsParam$ } from "./zero-page/settings/settings-dialog.ts";
+import { captureInvitationRedirect$ } from "./invitation-redirect.ts";
 
 const setupNotFoundPage$ = command(async ({ set }, signal: AbortSignal) => {
   set(updatePage$, createElement(NotFoundPage));
@@ -443,6 +444,7 @@ const setupNotificationListener$ = command(({ set }, signal: AbortSignal) => {
 
 export const bootstrap$ = command(
   async ({ set }, render: () => void, signal: AbortSignal) => {
+    set(captureInvitationRedirect$);
     await set(initLocale$, signal);
     signal.throwIfAborted();
     set(initTheme$);

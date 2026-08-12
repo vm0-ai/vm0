@@ -3,6 +3,7 @@ import type {
   DesktopComputerUseState,
 } from "./computer-use-types";
 import type { DesktopIdentity } from "./config";
+import type { DesktopZeroMigrationState } from "./desktop-zero-migration-types";
 
 export interface DesktopAuthUser {
   readonly userId: string;
@@ -93,6 +94,14 @@ export interface DesktopDeveloperToolsApi {
   readonly subscribe: (callback: () => void) => () => void;
 }
 
+export interface DesktopZeroMigrationApi {
+  readonly getState: () => Promise<DesktopZeroMigrationState>;
+  readonly remindLater: () => Promise<DesktopZeroMigrationState>;
+  readonly beginMigration: () => Promise<DesktopZeroMigrationState>;
+  readonly resumeZero: () => Promise<DesktopZeroMigrationState>;
+  readonly subscribe: (callback: () => void) => () => void;
+}
+
 export type DesktopIdentityInfo = Pick<
   DesktopIdentity,
   "brandName" | "displayName" | "product"
@@ -103,6 +112,7 @@ declare global {
     vm0DesktopAuth?: DesktopAuthApi;
     vm0DesktopComputerUse?: DesktopComputerUseApi;
     vm0DesktopDeveloperTools?: DesktopDeveloperToolsApi;
+    vm0DesktopZeroMigration?: DesktopZeroMigrationApi;
     vm0DesktopIdentity?: DesktopIdentityInfo;
   }
 }

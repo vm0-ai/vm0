@@ -1,20 +1,30 @@
 import { randomBytes } from "node:crypto";
 
 const DEFAULT_CLERK_API_BASE = "https://api.clerk.com/v1";
-const CLERK_RETRY_DELAYS_MS = [500, 1_500] as const;
-const CLERK_MAX_RETRY_AFTER_MS = 2_000;
+const CLERK_PAGE_LIMIT = 500;
+const CLERK_RETRY_DELAYS_MS = [500, 1_500, 3_500] as const;
+const CLERK_MAX_RETRY_AFTER_MS = 30_000;
+const CLERK_DELETE_PACE_MS = 110;
+const CLERK_TEST_DOMAIN = "vm0-e2e.ai";
+const CLERK_TEST_MARKER = "clerk_test";
+const LOCAL_JOB_REF = "local";
+const LOCAL_GENERATION = "local-1";
 
-interface ClerkEmailAddress {
-  readonly email_address: string;
-}
+export const CLERK_TEST_ROLES = [
+  "browser",
+  "playwright",
+  "paid-onboarding",
+  "runner",
+  "runner-real-codex",
+  "runner-real-claude",
+] as const;
 
-interface ClerkUserSummary {
-  readonly id: string;
-  readonly email_addresses: readonly ClerkEmailAddress[];
-}
+export type ClerkTestRole = (typeof CLERK_TEST_ROLES)[number];
 
-interface RetryableClerkRequestInit extends RequestInit {
-  readonly method: "GET" | "DELETE" | "PATCH";
+export interface ClerkTestOwner {
+  readonly jobRef: string;
+  readonly generation: string;
+  readonly role: ClerkTestRole;
 }
 
 export interface RunnerTestAccounts {
@@ -22,6 +32,58 @@ export interface RunnerTestAccounts {
   readonly codex: string;
   readonly claude: string;
 }
+
+export interface ClerkCleanupOptions {
+  readonly dryRun?: boolean;
+}
+
+export interface ClerkCleanupResult {
+  readonly scannedOrganizations: number;
+  readonly selectedOrganizations: number;
+  readonly deletedOrganizations: number;
+  readonly alreadyAbsentOrganizations: number;
+  readonly skippedOrganizations: number;
+  readonly scannedUsers: number;
+  readonly selectedUsers: number;
+  readonly deletedUsers: number;
+  readonly alreadyAbsentUsers: number;
+  readonly skippedUsers: number;
+}
+
+interface ClerkEmailAddress {
+  readonly email_address: string;
+}
+
+interface ClerkUserSummary {
+  readonly id: string;
+  readonly created_at?: number;
+  readonly email_addresses: readonly ClerkEmailAddress[];
+}
+
+interface ClerkOrganizationSummary {
+  readonly id: string;
+  readonly created_at?: number;
+  readonly private_metadata?: unknown;
+}
+
+interface ClerkOrganizationList {
+  readonly data: readonly ClerkOrganizationSummary[];
+  readonly total_count: number;
+}
+
+interface RetryableClerkRequestInit extends RequestInit {
+  readonly method: "GET" | "DELETE" | "PATCH";
+}
+
+type ClerkCleanupSelection =
+  | {
+      readonly kind: "generation";
+      readonly jobRef: string;
+      readonly generation: string;
+      readonly roles: readonly ClerkTestRole[];
+    }
+  | { readonly kind: "job-ref"; readonly jobRef: string }
+  | { readonly kind: "stale"; readonly createdBeforeMs: number };
 
 function getClerkApiBase(): string {
   const testApiBase = process.env.CLERK_API_TEST_BASE_URL;
@@ -47,19 +109,108 @@ function getClerkHeaders(): Record<string, string> {
   };
 }
 
-export function generateTestEmail(): string {
-  const jobRef = process.env.JOB_REF ?? "local";
-  const randHex = randomBytes(4).toString("hex");
-  return `${jobRef}+clerk_test@e2e-browser-${randHex}.ai`;
+export function currentClerkTestJobRef(): string {
+  const jobRef = process.env.JOB_REF ?? LOCAL_JOB_REF;
+  if (!isClerkTestJobRef(jobRef)) {
+    throw new Error(`Invalid Clerk test JOB_REF: ${jobRef}`);
+  }
+  return jobRef;
+}
+
+export function currentClerkTestGeneration(): string {
+  const runId = process.env.GITHUB_RUN_ID;
+  const runAttempt = process.env.GITHUB_RUN_ATTEMPT;
+  if (!runId && !runAttempt) {
+    return LOCAL_GENERATION;
+  }
+  if (
+    !runId ||
+    !runAttempt ||
+    !isPositiveIntegerString(runId) ||
+    !isPositiveIntegerString(runAttempt)
+  ) {
+    throw new Error(
+      "GITHUB_RUN_ID and GITHUB_RUN_ATTEMPT must both be positive integers",
+    );
+  }
+  return `${runId}-${runAttempt}`;
+}
+
+export function currentClerkTestOwner(role: ClerkTestRole): ClerkTestOwner {
+  return {
+    jobRef: currentClerkTestJobRef(),
+    generation: currentClerkTestGeneration(),
+    role,
+  };
+}
+
+export function generateTestEmail(role: ClerkTestRole): string {
+  const nonce = roleSupportsNonce(role)
+    ? randomBytes(4).toString("hex")
+    : undefined;
+  return formatClerkTestEmail(currentClerkTestOwner(role), nonce);
 }
 
 export function runnerTestAccounts(): RunnerTestAccounts {
-  const jobRef = process.env.JOB_REF ?? "local";
   return {
-    runner: `${jobRef}+clerk_test+runner@vm0-e2e.ai`,
-    codex: `${jobRef}+clerk_test+runner-real-codex@vm0-e2e.ai`,
-    claude: `${jobRef}+clerk_test+runner-real-claude@vm0-e2e.ai`,
+    runner: generateTestEmail("runner"),
+    codex: generateTestEmail("runner-real-codex"),
+    claude: generateTestEmail("runner-real-claude"),
   };
+}
+
+export function parseClerkTestRole(value: string): ClerkTestRole | null {
+  return CLERK_TEST_ROLES.find((role) => role === value) ?? null;
+}
+
+export function parseClerkTestEmail(email: string): ClerkTestOwner | null {
+  const addressParts = email.split("@");
+  if (addressParts.length !== 2 || addressParts[1] !== CLERK_TEST_DOMAIN) {
+    return null;
+  }
+
+  const localParts = addressParts[0]?.split("+");
+  if (!localParts || localParts.length !== 4) {
+    return null;
+  }
+  const [jobRef, marker, generation, rolePart] = localParts;
+  if (
+    !jobRef ||
+    !generation ||
+    !rolePart ||
+    marker !== CLERK_TEST_MARKER ||
+    !isClerkTestJobRef(jobRef) ||
+    !isClerkTestGeneration(generation)
+  ) {
+    return null;
+  }
+
+  const role = parseRolePart(rolePart);
+  return role ? { jobRef, generation, role } : null;
+}
+
+export function parseClerkTestOrganizationMetadata(
+  privateMetadata: unknown,
+): ClerkTestOwner | null {
+  if (!isRecord(privateMetadata)) {
+    return null;
+  }
+  const marker = privateMetadata.vm0CiTest;
+  if (!isRecord(marker) || Object.keys(marker).length !== 3) {
+    return null;
+  }
+  const { jobRef, generation, role } = marker;
+  if (
+    typeof jobRef !== "string" ||
+    typeof generation !== "string" ||
+    typeof role !== "string" ||
+    !isClerkTestJobRef(jobRef) ||
+    !isClerkTestGeneration(generation)
+  ) {
+    return null;
+  }
+  const parsedRole = parseClerkTestRole(role);
+  return parsedRole ? { jobRef, generation, role: parsedRole } : null;
 }
 
 export async function createUser(email: string): Promise<string> {
@@ -84,14 +235,20 @@ export async function createUser(email: string): Promise<string> {
 export async function createOrganization(
   name: string,
   createdByUserId: string,
+  role: ClerkTestRole,
 ): Promise<string> {
+  const owner = currentClerkTestOwner(role);
   const response = await requestClerk(
     "create Clerk organization",
     "/organizations",
     {
       method: "POST",
       headers: getClerkHeaders(),
-      body: JSON.stringify({ name, created_by: createdByUserId }),
+      body: JSON.stringify({
+        name,
+        created_by: createdByUserId,
+        private_metadata: { vm0CiTest: owner },
+      }),
     },
   );
   const data = await readClerkJson(response, "create Clerk organization");
@@ -100,7 +257,17 @@ export async function createOrganization(
       `create Clerk organization returned an unexpected response: ${formatClerkResponseSummary(response)}`,
     );
   }
-  await updateOrganizationMembershipRole(data.id, createdByUserId, "org:admin");
+
+  try {
+    await updateOrganizationMembershipRole(
+      data.id,
+      createdByUserId,
+      "org:admin",
+    );
+  } catch (cause) {
+    await deleteOrganizationById(data.id);
+    throw cause;
+  }
   return data.id;
 }
 
@@ -129,53 +296,216 @@ async function updateOrganizationMembershipRole(
   }
 }
 
-export async function deleteStaleTestUsers(): Promise<void> {
-  const jobRef = process.env.JOB_REF ?? "local";
-  const prefix = `${jobRef}+clerk_test@e2e-browser-`;
-  let users: readonly ClerkUserSummary[];
-  try {
-    const searchResponse = await requestClerkWithRetry(
-      "list stale Clerk test users",
-      `/users?query=${encodeURIComponent(`${jobRef}+clerk_test`)}&limit=100`,
-      { method: "GET", headers: getClerkHeaders() },
+export async function cleanupCurrentClerkTestGeneration(
+  roles: readonly ClerkTestRole[],
+  options: ClerkCleanupOptions = {},
+): Promise<ClerkCleanupResult> {
+  if (roles.length === 0) {
+    throw new Error("At least one Clerk test role is required for cleanup");
+  }
+  return await cleanupClerkTestResources(
+    {
+      kind: "generation",
+      jobRef: currentClerkTestJobRef(),
+      generation: currentClerkTestGeneration(),
+      roles,
+    },
+    options,
+  );
+}
+
+export async function cleanupClerkTestJobRef(
+  jobRef: string,
+  options: ClerkCleanupOptions = {},
+): Promise<ClerkCleanupResult> {
+  if (!isClerkTestJobRef(jobRef)) {
+    throw new Error(`Invalid Clerk test JOB_REF: ${jobRef}`);
+  }
+  return await cleanupClerkTestResources({ kind: "job-ref", jobRef }, options);
+}
+
+export async function cleanupStaleClerkTestResources(
+  createdBefore: Date,
+  options: ClerkCleanupOptions = {},
+): Promise<ClerkCleanupResult> {
+  const createdBeforeMs = createdBefore.getTime();
+  if (!Number.isFinite(createdBeforeMs)) {
+    throw new Error("Stale Clerk cleanup cutoff must be a valid date");
+  }
+  return await cleanupClerkTestResources(
+    { kind: "stale", createdBeforeMs },
+    options,
+  );
+}
+
+async function cleanupClerkTestResources(
+  selection: ClerkCleanupSelection,
+  options: ClerkCleanupOptions,
+): Promise<ClerkCleanupResult> {
+  const users = await listClerkUsers();
+  const organizations = await listClerkOrganizations();
+
+  const organizationsWithOwners = organizations.map((organization) => ({
+    organization,
+    owner: parseClerkTestOrganizationMetadata(organization.private_metadata),
+  }));
+  const selectedOrganizations = organizationsWithOwners
+    .filter(({ organization, owner }) => {
+      return (
+        owner !== null &&
+        cleanupSelectionMatches(selection, owner, organization.created_at)
+      );
+    })
+    .map(({ organization }) => organization);
+  const retainedOrganizationOwners = new Set<string>();
+  if (selection.kind === "stale") {
+    // Keep an owner user until every marked organization in its scope is old
+    // enough to delete, including resources that straddle the age cutoff.
+    for (const { organization, owner } of organizationsWithOwners) {
+      if (
+        owner !== null &&
+        !cleanupSelectionMatches(selection, owner, organization.created_at)
+      ) {
+        retainedOrganizationOwners.add(clerkTestOwnerKey(owner));
+      }
+    }
+  }
+  const selectedUsers = users.filter((user) => {
+    const emailAddress = user.email_addresses[0];
+    if (user.email_addresses.length !== 1 || !emailAddress) {
+      return false;
+    }
+    const owner = parseClerkTestEmail(emailAddress.email_address);
+    return (
+      owner !== null &&
+      cleanupSelectionMatches(selection, owner, user.created_at) &&
+      !retainedOrganizationOwners.has(clerkTestOwnerKey(owner))
     );
-    users = await readClerkUsers(searchResponse, "list stale Clerk test users");
-  } catch {
-    console.warn(
-      "Failed to list stale Clerk test users; continuing without stale cleanup",
-    );
-    return;
+  });
+
+  let deletedOrganizations = 0;
+  let alreadyAbsentOrganizations = 0;
+  let deletedUsers = 0;
+  let alreadyAbsentUsers = 0;
+  if (!options.dryRun) {
+    const deletionCount = selectedOrganizations.length + selectedUsers.length;
+    let deletionIndex = 0;
+    for (const organization of selectedOrganizations) {
+      if (await deleteOrganizationById(organization.id)) {
+        deletedOrganizations += 1;
+      } else {
+        alreadyAbsentOrganizations += 1;
+      }
+      deletionIndex += 1;
+      await paceClerkDeletion(deletionIndex, deletionCount);
+    }
+    for (const user of selectedUsers) {
+      if (await deleteUserById(user.id)) {
+        deletedUsers += 1;
+      } else {
+        alreadyAbsentUsers += 1;
+      }
+      deletionIndex += 1;
+      await paceClerkDeletion(deletionIndex, deletionCount);
+    }
   }
 
-  for (const user of users) {
-    const userEmail = user.email_addresses[0]?.email_address;
-    if (!userEmail?.startsWith(prefix)) {
-      continue;
-    }
+  return {
+    scannedOrganizations: organizations.length,
+    selectedOrganizations: selectedOrganizations.length,
+    deletedOrganizations,
+    alreadyAbsentOrganizations,
+    skippedOrganizations: organizations.length - selectedOrganizations.length,
+    scannedUsers: users.length,
+    selectedUsers: selectedUsers.length,
+    deletedUsers,
+    alreadyAbsentUsers,
+    skippedUsers: users.length - selectedUsers.length,
+  };
+}
 
-    try {
-      const deleteResponse = await requestClerk(
-        "delete stale Clerk test user",
-        `/users/${user.id}`,
-        { method: "DELETE", headers: getClerkHeaders() },
+function cleanupSelectionMatches(
+  selection: ClerkCleanupSelection,
+  owner: ClerkTestOwner,
+  createdAt: number | undefined,
+): boolean {
+  switch (selection.kind) {
+    case "generation":
+      return (
+        owner.jobRef === selection.jobRef &&
+        owner.generation === selection.generation &&
+        selection.roles.includes(owner.role)
       );
-      await deleteResponse.body?.cancel();
-      if (!deleteResponse.ok && deleteResponse.status !== 404) {
-        console.warn(
-          `Failed to delete a stale Clerk test user with ${formatClerkResponseSummary(deleteResponse)}`,
-        );
-      }
-    } catch {
-      console.warn(
-        "Failed to delete a stale Clerk test user; continuing stale cleanup",
-      );
+    case "job-ref":
+      return owner.jobRef === selection.jobRef;
+    case "stale":
+      return createdAt !== undefined && createdAt < selection.createdBeforeMs;
+  }
+}
+
+function clerkTestOwnerKey(owner: ClerkTestOwner): string {
+  return `${owner.jobRef}\0${owner.generation}\0${owner.role}`;
+}
+
+async function listClerkUsers(
+  emailAddress?: string,
+): Promise<readonly ClerkUserSummary[]> {
+  const users: ClerkUserSummary[] = [];
+  let offset = 0;
+  while (true) {
+    const parameters = new URLSearchParams({
+      limit: String(CLERK_PAGE_LIMIT),
+      offset: String(offset),
+      order_by: "+created_at",
+    });
+    if (emailAddress) {
+      parameters.append("email_address[]", emailAddress);
     }
+    const response = await requestClerkWithRetry(
+      "list Clerk test users",
+      `/users?${parameters.toString()}`,
+      { method: "GET", headers: getClerkHeaders() },
+    );
+    const page = await readClerkUsers(response, "list Clerk test users");
+    users.push(...page);
+    if (page.length < CLERK_PAGE_LIMIT) {
+      return users;
+    }
+    offset += page.length;
+  }
+}
+
+async function listClerkOrganizations(): Promise<
+  readonly ClerkOrganizationSummary[]
+> {
+  const organizations: ClerkOrganizationSummary[] = [];
+  let offset = 0;
+  while (true) {
+    const parameters = new URLSearchParams({
+      limit: String(CLERK_PAGE_LIMIT),
+      offset: String(offset),
+      order_by: "+created_at",
+    });
+    const response = await requestClerkWithRetry(
+      "list Clerk test organizations",
+      `/organizations?${parameters.toString()}`,
+      { method: "GET", headers: getClerkHeaders() },
+    );
+    const page = await readClerkOrganizations(
+      response,
+      "list Clerk test organizations",
+    );
+    organizations.push(...page.data);
+    if (page.data.length === 0 || organizations.length >= page.total_count) {
+      return organizations;
+    }
+    offset += page.data.length;
   }
 }
 
 export async function deleteOrganizationById(
   organizationId: string,
-): Promise<void> {
+): Promise<boolean> {
   const response = await requestClerkWithRetry(
     "delete Clerk test organization",
     `/organizations/${organizationId}`,
@@ -187,35 +517,59 @@ export async function deleteOrganizationById(
       `delete Clerk test organization failed with ${formatClerkResponseSummary(response)}`,
     );
   }
+  return response.status !== 404;
+}
+
+export async function deleteClerkTestOwnerResources(
+  email: string,
+  organizationId: string | undefined,
+  role: ClerkTestRole,
+): Promise<void> {
+  if (!organizationId) {
+    // Organization creation may have committed even when its response was lost.
+    // Reconcile the owner scope so the user is never deleted ahead of that org.
+    await cleanupCurrentClerkTestGeneration([role]);
+    return;
+  }
+  await deleteOrganizationById(organizationId);
+  await deleteUserByEmail(email);
 }
 
 export async function deleteUserByEmail(email: string): Promise<void> {
-  const searchResponse = await requestClerkWithRetry(
-    "find Clerk test user",
-    `/users?query=${encodeURIComponent(email)}&limit=10`,
-    { method: "GET", headers: getClerkHeaders() },
+  const users = await listClerkUsers(email);
+  const user = users.find((candidate) =>
+    candidate.email_addresses.some(
+      (emailAddress) => emailAddress.email_address === email,
+    ),
   );
-  const users = await readClerkUsers(searchResponse, "find Clerk test user");
+  if (user) {
+    await deleteUserById(user.id);
+  }
+}
 
-  for (const user of users) {
-    const userEmail = user.email_addresses[0]?.email_address;
-    if (userEmail !== email) {
-      continue;
-    }
-
-    const deleteResponse = await requestClerkWithRetry(
-      "delete Clerk test user",
-      `/users/${user.id}`,
-      { method: "DELETE", headers: getClerkHeaders() },
+async function deleteUserById(userId: string): Promise<boolean> {
+  const response = await requestClerkWithRetry(
+    "delete Clerk test user",
+    `/users/${userId}`,
+    { method: "DELETE", headers: getClerkHeaders() },
+  );
+  await response.body?.cancel();
+  if (!response.ok && response.status !== 404) {
+    throw new Error(
+      `delete Clerk test user failed with ${formatClerkResponseSummary(response)}`,
     );
-    await deleteResponse.body?.cancel();
-    if (!deleteResponse.ok && deleteResponse.status !== 404) {
-      throw new Error(
-        `delete Clerk test user failed with ${formatClerkResponseSummary(deleteResponse)}`,
-      );
-    }
+  }
+  return response.status !== 404;
+}
+
+async function paceClerkDeletion(
+  deletionIndex: number,
+  deletionCount: number,
+): Promise<void> {
+  if (deletionIndex >= deletionCount || process.env.CLERK_API_TEST_BASE_URL) {
     return;
   }
+  await wait(CLERK_DELETE_PACE_MS);
 }
 
 async function requestClerk(
@@ -237,16 +591,24 @@ async function requestClerkWithRetry(
   init: RetryableClerkRequestInit,
 ): Promise<Response> {
   const url = `${getClerkApiBase()}${path}`;
-  for (const fallbackDelayMs of CLERK_RETRY_DELAYS_MS) {
+  for (let attempt = 0; attempt <= CLERK_RETRY_DELAYS_MS.length; attempt += 1) {
     let response: Response;
     try {
       response = await fetch(url, init);
-    } catch {
+    } catch (cause) {
+      const fallbackDelayMs = CLERK_RETRY_DELAYS_MS[attempt];
+      if (fallbackDelayMs === undefined) {
+        throw new Error(`${operation} request failed`, { cause });
+      }
       await wait(fallbackDelayMs);
       continue;
     }
 
-    if (!isTransientClerkStatus(response.status)) {
+    const fallbackDelayMs = CLERK_RETRY_DELAYS_MS[attempt];
+    if (
+      !isTransientClerkStatus(response.status) ||
+      fallbackDelayMs === undefined
+    ) {
       return response;
     }
 
@@ -257,8 +619,7 @@ async function requestClerkWithRetry(
     await response.body?.cancel();
     await wait(delayMs);
   }
-
-  return await requestClerk(operation, path, init);
+  throw new Error(`${operation} exhausted its retry budget`);
 }
 
 function isTransientClerkStatus(status: number): boolean {
@@ -328,22 +689,102 @@ async function readClerkUsers(
   return data;
 }
 
+async function readClerkOrganizations(
+  response: Response,
+  operation: string,
+): Promise<ClerkOrganizationList> {
+  const data = await readClerkJson(response, operation);
+  if (!isClerkOrganizationList(data)) {
+    throw new Error(
+      `${operation} returned an unexpected response: ${formatClerkResponseSummary(response)}`,
+    );
+  }
+  return data;
+}
+
 function isClerkUserList(value: unknown): value is readonly ClerkUserSummary[] {
+  return Array.isArray(value) && value.every(isClerkUserSummary);
+}
+
+function isClerkUserSummary(value: unknown): value is ClerkUserSummary {
+  if (!isRecord(value) || typeof value.id !== "string") {
+    return false;
+  }
+  if ("created_at" in value && typeof value.created_at !== "number") {
+    return false;
+  }
+  const emailAddresses = value.email_addresses;
   return (
-    Array.isArray(value) &&
-    value.every((user: unknown) => {
-      if (!isRecord(user) || typeof user.id !== "string") {
-        return false;
-      }
-      const emailAddresses = user.email_addresses;
-      return (
-        Array.isArray(emailAddresses) &&
-        emailAddresses.every((emailAddress: unknown) =>
-          hasStringProperty(emailAddress, "email_address"),
-        )
-      );
-    })
+    Array.isArray(emailAddresses) &&
+    emailAddresses.every((emailAddress: unknown) =>
+      hasStringProperty(emailAddress, "email_address"),
+    )
   );
+}
+
+function isClerkOrganizationList(
+  value: unknown,
+): value is ClerkOrganizationList {
+  return (
+    isRecord(value) &&
+    Array.isArray(value.data) &&
+    value.data.every(isClerkOrganizationSummary) &&
+    typeof value.total_count === "number" &&
+    Number.isInteger(value.total_count) &&
+    value.total_count >= 0
+  );
+}
+
+function isClerkOrganizationSummary(
+  value: unknown,
+): value is ClerkOrganizationSummary {
+  return (
+    isRecord(value) &&
+    typeof value.id === "string" &&
+    (!("created_at" in value) || typeof value.created_at === "number")
+  );
+}
+
+function formatClerkTestEmail(owner: ClerkTestOwner, nonce?: string): string {
+  const role = nonce ? `${owner.role}-${nonce}` : owner.role;
+  return `${owner.jobRef}+${CLERK_TEST_MARKER}+${owner.generation}+${role}@${CLERK_TEST_DOMAIN}`;
+}
+
+function parseRolePart(rolePart: string): ClerkTestRole | null {
+  const exactRole = parseClerkTestRole(rolePart);
+  if (exactRole) {
+    return exactRole;
+  }
+  for (const role of CLERK_TEST_ROLES) {
+    if (!roleSupportsNonce(role)) {
+      continue;
+    }
+    const prefix = `${role}-`;
+    if (rolePart.startsWith(prefix) && isNonce(rolePart.slice(prefix.length))) {
+      return role;
+    }
+  }
+  return null;
+}
+
+function roleSupportsNonce(role: ClerkTestRole): boolean {
+  return role === "playwright" || role === "paid-onboarding";
+}
+
+function isNonce(value: string): boolean {
+  return /^[0-9a-f]{8}$/.test(value);
+}
+
+function isClerkTestJobRef(value: string): boolean {
+  return /^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/.test(value);
+}
+
+function isClerkTestGeneration(value: string): boolean {
+  return value === LOCAL_GENERATION || /^[1-9][0-9]*-[1-9][0-9]*$/.test(value);
+}
+
+function isPositiveIntegerString(value: string): boolean {
+  return /^[1-9][0-9]*$/.test(value);
 }
 
 function hasStringProperty<K extends string>(

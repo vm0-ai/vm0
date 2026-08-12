@@ -4,14 +4,17 @@ import { useTranslation } from "react-i18next";
 
 import type { MermaidDiagramSignals } from "../../signals/mermaid-diagram.ts";
 import { openImageLightbox$ } from "../../signals/zero-page/zero-attachment-chips.ts";
+import { CodeCopyButton } from "./code-copy-button.tsx";
 
 /**
  * Renders a ```mermaid fenced block as a diagram from its signals.
  *
- * A rendered diagram or its invalid state is shown inside a box whose size is
- * reserved before the render starts, so a message keeps the same height across
- * every render outcome and the thread cannot move under a reader. A valid SVG
- * is letterboxed inside that box and opens at full size in the lightbox.
+ * A fence has exactly two presentations: a diagram when the mermaid parser
+ * accepts the source, and an ordinary code block when it does not — the same
+ * markup any other fence renders as, copy button included. While the diagram
+ * is rendering, a box whose size is reserved up front holds its place, so the
+ * render cannot move the thread under a reader. The SVG is letterboxed inside
+ * that box and opens at full size in the lightbox.
  */
 export function MermaidDiagramView({
   signals,
@@ -21,49 +24,50 @@ export function MermaidDiagramView({
   const { t } = useTranslation();
   const openImageLightbox = useSet(openImageLightbox$);
   const loadable = useLoadable(signals.diagram$);
-  const expandDiagram = t(($) => {
-    return $.shared.mermaid.expand;
-  });
-  const invalidDiagram = t(($) => {
-    return $.shared.mermaid.invalidDiagram;
-  });
-  const status =
-    loadable.state === "hasData"
-      ? "rendered"
-      : loadable.state === "hasError"
-        ? "error"
-        : "rendering";
+  const image = loadable.state === "hasData" ? loadable.data : null;
+
+  if (loadable.state !== "loading" && image === null) {
+    return (
+      <pre>
+        <code className="language-mermaid">{signals.code}</code>
+        <CodeCopyButton code={signals.code} />
+      </pre>
+    );
+  }
 
   return (
-    <div className="mermaid-block" data-mermaid-status={status}>
+    <div
+      className="mermaid-block"
+      data-mermaid-status={image ? "rendered" : "rendering"}
+    >
       <button
         type="button"
         className="mermaid-diagram-expand"
-        disabled={loadable.state !== "hasData"}
-        aria-label={status === "error" ? invalidDiagram : expandDiagram}
+        disabled={image === null}
+        aria-label={t(($) => {
+          return $.shared.mermaid.expand;
+        })}
         onClick={() => {
-          if (loadable.state !== "hasData") {
+          if (image === null) {
             return;
           }
           // File metadata lets each preview surface present the diagram as
           // diagram.svg with download support.
           openImageLightbox({
-            url: loadable.data.url,
-            file: loadable.data.file,
+            url: image.url,
+            file: image.file,
             shareAvailable: false,
           });
         }}
       >
-        {loadable.state === "hasData" ? (
+        {image ? (
           <img
-            src={loadable.data.url}
+            src={image.url}
             alt={t(($) => {
               return $.shared.mermaid.diagramLabel;
             })}
             className="mermaid-diagram-image"
           />
-        ) : loadable.state === "hasError" ? (
-          <span className="mermaid-diagram-invalid">{invalidDiagram}</span>
         ) : (
           <span className="mermaid-diagram-pending" aria-hidden="true">
             <Loader2 size={18} className="animate-spin" />

@@ -317,7 +317,7 @@ const artifactCatalogApiErrorSchema: ZodLikeSchema<ApiErrorResponse> =
 const artifactCatalogRuntimeSpec = {
   list: {
     method: "GET",
-    path: "/api/zero/artifacts/catalog",
+    path: "/api/okou/artifacts/catalog",
     headers: artifactCatalogAuthHeadersSchema,
     query: artifactCatalogQuerySchema,
     responses: {
@@ -329,7 +329,7 @@ const artifactCatalogRuntimeSpec = {
   },
   get: {
     method: "GET",
-    path: "/api/zero/artifacts/catalog/:artifactId",
+    path: "/api/okou/artifacts/catalog/:artifactId",
     headers: artifactCatalogAuthHeadersSchema,
     pathParams: artifactCatalogPathParamsSchema,
     responses: {
@@ -347,7 +347,7 @@ const artifactCatalogRuntimeContract = c.router(artifactCatalogRuntimeSpec);
 export type ArtifactCatalogListRoute =
   AppRoute<ArtifactCatalogListRouteTypes> & {
     readonly method: "GET";
-    readonly path: "/api/zero/artifacts/catalog";
+    readonly path: "/api/okou/artifacts/catalog";
     readonly headers: ZodSchema<
       ArtifactCatalogAuthHeaders,
       ArtifactCatalogAuthHeaders
@@ -360,7 +360,7 @@ export type ArtifactCatalogListRoute =
 
 export type ArtifactCatalogGetRoute = AppRoute<ArtifactCatalogGetRouteTypes> & {
   readonly method: "GET";
-  readonly path: "/api/zero/artifacts/catalog/:artifactId";
+  readonly path: "/api/okou/artifacts/catalog/:artifactId";
   readonly headers: ZodSchema<
     ArtifactCatalogAuthHeaders,
     ArtifactCatalogAuthHeaders

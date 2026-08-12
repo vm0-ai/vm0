@@ -142,7 +142,7 @@ const mutationResponseSchema = z.object({
 export const zeroPresentationTemplatesContract = c.router({
   list: {
     method: "GET",
-    path: "/api/zero/presentation-templates",
+    path: "/api/okou/presentation-templates",
     headers: authHeadersSchema,
     responses: {
       200: z.array(presentationTemplateSummarySchema),
@@ -154,7 +154,7 @@ export const zeroPresentationTemplatesContract = c.router({
   },
   create: {
     method: "POST",
-    path: "/api/zero/presentation-templates",
+    path: "/api/okou/presentation-templates",
     headers: authHeadersSchema,
     body: createPresentationTemplateBodySchema,
     responses: {
@@ -173,7 +173,7 @@ export const zeroPresentationTemplatesContract = c.router({
   },
   get: {
     method: "GET",
-    path: "/api/zero/presentation-templates/:templateId",
+    path: "/api/okou/presentation-templates/:templateId",
     pathParams: presentationTemplateIdParamsSchema,
     headers: authHeadersSchema,
     responses: {
@@ -187,7 +187,7 @@ export const zeroPresentationTemplatesContract = c.router({
   },
   update: {
     method: "PATCH",
-    path: "/api/zero/presentation-templates/:templateId",
+    path: "/api/okou/presentation-templates/:templateId",
     pathParams: presentationTemplateIdParamsSchema,
     headers: authHeadersSchema,
     body: updatePresentationTemplateBodySchema,
@@ -202,7 +202,7 @@ export const zeroPresentationTemplatesContract = c.router({
   },
   delete: {
     method: "DELETE",
-    path: "/api/zero/presentation-templates/:templateId",
+    path: "/api/okou/presentation-templates/:templateId",
     pathParams: presentationTemplateIdParamsSchema,
     headers: authHeadersSchema,
     body: c.noBody(),
@@ -217,7 +217,7 @@ export const zeroPresentationTemplatesContract = c.router({
   },
   source: {
     method: "GET",
-    path: "/api/zero/presentation-templates/:templateId/source",
+    path: "/api/okou/presentation-templates/:templateId/source",
     pathParams: presentationTemplateIdParamsSchema,
     headers: authHeadersSchema,
     responses: {
@@ -231,7 +231,7 @@ export const zeroPresentationTemplatesContract = c.router({
   },
   preparePages: {
     method: "POST",
-    path: "/api/zero/presentation-templates/:templateId/pages/prepare",
+    path: "/api/okou/presentation-templates/:templateId/pages/prepare",
     pathParams: presentationTemplateIdParamsSchema,
     headers: authHeadersSchema,
     body: preparePagesBodySchema,
@@ -247,7 +247,7 @@ export const zeroPresentationTemplatesContract = c.router({
   },
   commitPages: {
     method: "POST",
-    path: "/api/zero/presentation-templates/:templateId/pages/commit",
+    path: "/api/okou/presentation-templates/:templateId/pages/commit",
     pathParams: presentationTemplateIdParamsSchema,
     headers: authHeadersSchema,
     body: commitPagesBodySchema,
@@ -264,7 +264,7 @@ export const zeroPresentationTemplatesContract = c.router({
   },
   publishPackage: {
     method: "POST",
-    path: "/api/zero/presentation-templates/:templateId/package",
+    path: "/api/okou/presentation-templates/:templateId/package",
     pathParams: presentationTemplateIdParamsSchema,
     headers: authHeadersSchema,
     body: publishPackageBodySchema,
@@ -281,7 +281,7 @@ export const zeroPresentationTemplatesContract = c.router({
   },
   fail: {
     method: "POST",
-    path: "/api/zero/presentation-templates/:templateId/fail",
+    path: "/api/okou/presentation-templates/:templateId/fail",
     pathParams: presentationTemplateIdParamsSchema,
     headers: authHeadersSchema,
     body: failImportBodySchema,

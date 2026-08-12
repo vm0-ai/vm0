@@ -35,11 +35,11 @@ import { zeroChatCommand } from "../index";
 const THREAD_ID = "00000000-0000-4000-8000-000000000001";
 const SOURCE_THREAD_ID = "00000000-0000-4000-8000-000000000002";
 const RUN_ID = "00000000-0000-4000-8000-000000000020";
-const EVENTS_URL = `http://localhost:3000/api/zero/chat-threads/${THREAD_ID}/events`;
-const SOURCE_EVENTS_URL = `http://localhost:3000/api/zero/chat-threads/${SOURCE_THREAD_ID}/events`;
-const FEATURE_SWITCHES_URL = "http://localhost:3000/api/zero/feature-switches";
-const SNAPSHOT_URL = `http://localhost:3000/api/zero/chat-threads/${THREAD_ID}/event-snapshot`;
-const ROWS_URL = `http://localhost:3000/api/zero/chat-threads/${THREAD_ID}/event-rows`;
+const EVENTS_URL = `http://localhost:3000/api/okou/chat-threads/${THREAD_ID}/events`;
+const SOURCE_EVENTS_URL = `http://localhost:3000/api/okou/chat-threads/${SOURCE_THREAD_ID}/events`;
+const FEATURE_SWITCHES_URL = "http://localhost:3000/api/okou/feature-switches";
+const SNAPSHOT_URL = `http://localhost:3000/api/okou/chat-threads/${THREAD_ID}/event-snapshot`;
+const ROWS_URL = `http://localhost:3000/api/okou/chat-threads/${THREAD_ID}/event-rows`;
 const SNAPSHOT_DOWNLOAD_URL =
   "https://r2.example.test/chat-events/snapshot.ndjson.gz";
 
@@ -827,7 +827,7 @@ describe("okou chat messages command", () => {
     }).rejects.toThrow("process.exit called");
 
     const stderr = mockConsoleError.mock.calls.flat().join("\n");
-    expect(stderr).toContain("ZERO_CHAT_THREAD_ID is not set");
+    expect(stderr).toContain("OKOU_CHAT_THREAD_ID is not set");
     expect(mockExit).toHaveBeenCalledWith(1);
   });
 });

@@ -73,7 +73,7 @@ describe("okou workflow create command", () => {
       let capturedBody: Record<string, unknown> | undefined;
       server.use(
         http.post(
-          "http://localhost:3000/api/zero/workflows",
+          "http://localhost:3000/api/okou/workflows",
           async ({ request }) => {
             capturedBody = (await request.json()) as Record<string, unknown>;
             return HttpResponse.json(mockWorkflow, { status: 201 });
@@ -124,7 +124,7 @@ describe("okou workflow create command", () => {
       let capturedBody: Record<string, unknown> | undefined;
       server.use(
         http.post(
-          "http://localhost:3000/api/zero/workflows",
+          "http://localhost:3000/api/okou/workflows",
           async ({ request }) => {
             capturedBody = (await request.json()) as Record<string, unknown>;
             return HttpResponse.json(mockWorkflow, { status: 201 });
@@ -150,7 +150,7 @@ describe("okou workflow create command", () => {
       let capturedBody: Record<string, unknown> | undefined;
       server.use(
         http.post(
-          "http://localhost:3000/api/zero/workflows",
+          "http://localhost:3000/api/okou/workflows",
           async ({ request }) => {
             capturedBody = (await request.json()) as Record<string, unknown>;
             return HttpResponse.json(mockWorkflow, { status: 201 });
@@ -212,7 +212,7 @@ describe("okou workflow create command", () => {
 
     it("should handle authentication error", async () => {
       server.use(
-        http.post("http://localhost:3000/api/zero/workflows", () => {
+        http.post("http://localhost:3000/api/okou/workflows", () => {
           return HttpResponse.json(
             { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
             { status: 401 },

@@ -159,14 +159,25 @@ report_auth_page_failure() {
 }
 
 # ---------------------------------------------------------------------------
-# generate_test_email — Generate a random test email with +clerk_test suffix
-# Format: ${JOB_REF}+clerk_test@${8_RANDOM_HEX}.ai
+# generate_test_email — Generate the generation-scoped browser test email
+# Format: ${JOB_REF}+clerk_test+${RUN_ID}-${ATTEMPT}+browser@vm0-e2e.ai
 # ---------------------------------------------------------------------------
 generate_test_email() {
   local job_ref="${JOB_REF:-local}"
-  local rand_hex
-  rand_hex=$(head -c 8 /dev/urandom | od -An -tx1 | tr -d ' \n' | head -c 8)
-  echo "${job_ref}+clerk_test@${rand_hex}.ai"
+  if [[ ! "$job_ref" =~ ^[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?$ ]]; then
+    echo "JOB_REF must use lowercase letters, numbers, and hyphens" >&2
+    return 1
+  fi
+  local generation="local-1"
+  if [[ -n "${GITHUB_RUN_ID:-}" || -n "${GITHUB_RUN_ATTEMPT:-}" ]]; then
+    if [[ ! "${GITHUB_RUN_ID:-}" =~ ^[1-9][0-9]*$ ]] ||
+      [[ ! "${GITHUB_RUN_ATTEMPT:-}" =~ ^[1-9][0-9]*$ ]]; then
+      echo "GITHUB_RUN_ID and GITHUB_RUN_ATTEMPT must both be positive integers" >&2
+      return 1
+    fi
+    generation="${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+  fi
+  echo "${job_ref}+clerk_test+${generation}+browser@vm0-e2e.ai"
 }
 
 # ---------------------------------------------------------------------------
@@ -424,27 +435,66 @@ delete_e2e_account_if_exists() {
     echo "CLERK_SECRET_KEY is required but not set" >&2
     return 1
   fi
+  if [[ ! "${E2E_ACCOUNT:-}" =~ ^[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?\+clerk_test\+([1-9][0-9]*-[1-9][0-9]*|local-1)\+browser@vm0-e2e\.ai$ ]]; then
+    echo "E2E_ACCOUNT is not a canonical browser test email" >&2
+    return 1
+  fi
 
   local clerk_api_url="https://api.clerk.com"
 
-  local users_response
-  users_response=$(curl -sS -X GET \
-    "${clerk_api_url}/v1/users?email_address[]=${E2E_ACCOUNT}" \
+  local users_payload
+  users_payload=$(curl -sS \
+    --retry 3 \
+    --retry-max-time 30 \
+    --retry-all-errors \
+    -w '\n%{http_code}' \
+    --get "${clerk_api_url}/v1/users" \
+    --data-urlencode "email_address[]=${E2E_ACCOUNT}" \
     -H "Authorization: Bearer ${CLERK_SECRET_KEY}" \
-    -H "Content-Type: application/json")
+    -H "Content-Type: application/json") || return
 
-  local user_id
-  user_id=$(echo "$users_response" | jq -r '.[0].id // empty' 2>/dev/null)
-  if [[ -z "$user_id" ]]; then
-    echo "# E2E account does not exist, nothing to delete" >&3
+  local lookup_status="${users_payload##*$'\n'}"
+  local users_response="${users_payload%$'\n'*}"
+  if [[ ! "$lookup_status" =~ ^2[0-9][0-9]$ ]]; then
+    echo "Clerk user lookup failed with HTTP ${lookup_status}" >&2
+    return 1
+  fi
+
+  if ! jq -e 'type == "array"' <<<"$users_response" >/dev/null; then
+    echo "Clerk returned an unexpected user lookup response" >&2
+    return 1
+  fi
+
+  local user_ids
+  user_ids=$(jq -r --arg email "$E2E_ACCOUNT" \
+    '.[] | select(any(.email_addresses[]?; .email_address == $email)) | .id' \
+    <<<"$users_response")
+  if [[ -z "$user_ids" ]]; then
+    echo "E2E account does not exist, nothing to delete" >&2
     return 0
   fi
 
-  echo "# Deleting existing E2E account: ${E2E_ACCOUNT} (${user_id})" >&3
-  curl -sS -X DELETE \
-    "${clerk_api_url}/v1/users/${user_id}" \
-    -H "Authorization: Bearer ${CLERK_SECRET_KEY}" \
-    -H "Content-Type: application/json" > /dev/null
+  local user_id
+  while read -r user_id; do
+    echo "Deleting E2E account: ${E2E_ACCOUNT} (${user_id})" >&2
+    local delete_status
+    if ! delete_status=$(curl -sS \
+      --retry 3 \
+      --retry-max-time 30 \
+      --retry-all-errors \
+      -o /dev/null \
+      -w '%{http_code}' \
+      -X DELETE \
+      "${clerk_api_url}/v1/users/${user_id}" \
+      -H "Authorization: Bearer ${CLERK_SECRET_KEY}" \
+      -H "Content-Type: application/json"); then
+      return 1
+    fi
+    if [[ ! "$delete_status" =~ ^2[0-9][0-9]$ && "$delete_status" != "404" ]]; then
+      echo "Clerk user deletion failed with HTTP ${delete_status}" >&2
+      return 1
+    fi
+  done <<<"$user_ids"
 }
 
 # ---------------------------------------------------------------------------

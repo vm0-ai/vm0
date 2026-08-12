@@ -45,10 +45,10 @@ describe("okou agent delete command", () => {
   describe("successful delete", () => {
     it("should delete with --yes flag without prompting", async () => {
       server.use(
-        http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
+        http.get("http://localhost:3000/api/okou/agents/my-agent", () => {
           return HttpResponse.json(mockAgent);
         }),
-        http.delete("http://localhost:3000/api/zero/agents/my-agent", () => {
+        http.delete("http://localhost:3000/api/okou/agents/my-agent", () => {
           return new HttpResponse(null, { status: 204 });
         }),
       );
@@ -64,7 +64,7 @@ describe("okou agent delete command", () => {
   describe("error handling", () => {
     it("should handle not found error", async () => {
       server.use(
-        http.get("http://localhost:3000/api/zero/agents/missing", () => {
+        http.get("http://localhost:3000/api/okou/agents/missing", () => {
           return HttpResponse.json(
             { error: { message: "Agent not found", code: "NOT_FOUND" } },
             { status: 404 },
@@ -81,7 +81,7 @@ describe("okou agent delete command", () => {
 
     it("should require --yes in non-interactive mode", async () => {
       server.use(
-        http.get("http://localhost:3000/api/zero/agents/my-agent", () => {
+        http.get("http://localhost:3000/api/okou/agents/my-agent", () => {
           return HttpResponse.json(mockAgent);
         }),
       );

@@ -375,9 +375,9 @@ function buildAgentToolsPrompt(args: {
     "- Check permission state: run `okou whoami --permissions` and skip permissions already allowed.",
     "- Diagnose failed connector requests before attributing them to Okou permission policy: run `okou connector check --url <FAILED_URL> --method <METHOD> [--connector <slug>]`. Use the `url` field from a firewall denial response when present; omit query strings or fragments when they may contain secrets. Only request access when the check reports a deny or ask outcome.",
     "- Request missing permissions: run the exact `okou connector permission-request` command printed by the immediately preceding URL check, one command per permission. Never construct a permission request from provider OAuth errors such as Slack `missing_scope` or `needed`; those values are provider scopes, not Okou permissions. The user chooses the grant duration in the confirmation UI.",
-    "- Continue after a single access action: when the current web chat turn needs exactly one permission approval, add `--callback-prompt <prompt>` to `okou connector permission-request`; keep the prompt concise and do not include secrets. `okou connector check` and `okou connector status` show a callback URL or permission-command example when the current environment has `ZERO_CHAT_THREAD_ID`. Use a callback command or URL only when this is the turn's only connector or permission action. After sharing it, end the current turn; when the user completes the action, Okou starts the next round with the callback prompt.",
+    "- Continue after a single access action: when the current web chat turn needs exactly one permission approval, add `--callback-prompt <prompt>` to `okou connector permission-request`; keep the prompt concise and do not include secrets. `okou connector check` and `okou connector status` show a callback URL or permission-command example when the current environment has `OKOU_CHAT_THREAD_ID`. Use a callback command or URL only when this is the turn's only connector or permission action. After sharing it, end the current turn; when the user completes the action, Okou starts the next round with the callback prompt.",
     "- Multiple access actions: do not use callback commands or URLs when the turn needs multiple connector or permission actions. Return all generated links in one response, one link per line, using only ordinary non-callback links, and wait for the user to finish all of them.",
-    "- Inspect yourself: `okou whoami` for identity and permissions, `okou agent view $ZERO_AGENT_ID --instructions` for your current settings.",
+    "- Inspect yourself: `okou whoami` for identity and permissions, `okou agent view $OKOU_AGENT_ID --instructions` for your current settings.",
     "- When the user asks to change your behavior, update your own configuration (instructions, tone, description): `okou agent edit --help`.",
     "- Manage workflows with `okou workflow --help`. Create or update a durable workflow with `okou workflow create|edit <name>`, passing the workflow body via `--instruction <text>` or `--instruction-file <path>`; its `SKILL.md` is synthesized from the name, description, and instruction. `--dir <path>` uploads supplementary files only and must not contain a `SKILL.md` (it is rejected). Local changes or newly-created workflow folders under `/home/user/.codex/skills` or `/home/user/.claude/skills` are runtime-only and will not persist, sync back, or affect future runs.",
     "- Report issues to the dev team: `okou developer-support --help`. Requires a two-step consent flow: (1) call without --consent-code to get a code, (2) ask the user to type it, (3) call again with --consent-code. Never submit without the user typing the consent code.",
@@ -516,15 +516,22 @@ function buildZeroRunExtraEnvironment(args: {
   readonly codexServiceTier: "fast" | undefined;
 }): Record<string, string> {
   return {
+    OKOU_APP_URL: env("APP_URL"),
     ZERO_APP_URL: env("APP_URL"),
+    OKOU_AGENT_ID: args.agentId,
     ZERO_AGENT_ID: args.agentId,
     // Keep the retired rollout marker for older guest CLIs until the CLI
     // released with this cleanup is the oldest supported guest CLI version.
     ZERO_CONNECTOR_ACTION_CALLBACK_ENABLED: "1",
     // Chat-mode automation (and web) runs carry their thread id so the
     // in-sandbox CLI can bind a newly created automation to it (the create
-    // flow reads $ZERO_CHAT_THREAD_ID when no thread is given).
-    ...(args.chatThreadId ? { ZERO_CHAT_THREAD_ID: args.chatThreadId } : {}),
+    // flow reads $OKOU_CHAT_THREAD_ID when no thread is given).
+    ...(args.chatThreadId
+      ? {
+          OKOU_CHAT_THREAD_ID: args.chatThreadId,
+          ZERO_CHAT_THREAD_ID: args.chatThreadId,
+        }
+      : {}),
     ...(args.codexServiceTier
       ? { VM0_CODEX_SERVICE_TIER: args.codexServiceTier }
       : {}),
@@ -641,7 +648,10 @@ function createRunBody(args: {
       })
       .join("\n\n"),
     disallowedTools: [...DISALLOWED_TOOLS],
-    vars: { ZERO_AGENT_ID: args.agent.id },
+    vars: {
+      OKOU_AGENT_ID: args.agent.id,
+      ZERO_AGENT_ID: args.agent.id,
+    },
   };
 }
 

@@ -80,12 +80,12 @@ export const zeroAgentDraftRequestSchema = z
   .superRefine(requireUserMessageForDraftAttachments);
 
 /**
- * Contract for GET/POST /api/zero/agents (list/create agents)
+ * Contract for GET/POST /api/okou/agents (list/create agents)
  */
 export const zeroAgentsMainContract = c.router({
   create: {
     method: "POST",
-    path: "/api/zero/agents",
+    path: "/api/okou/agents",
     headers: authHeadersSchema,
     body: zeroAgentRequestSchema,
     responses: {
@@ -100,7 +100,7 @@ export const zeroAgentsMainContract = c.router({
   },
   list: {
     method: "GET",
-    path: "/api/zero/agents",
+    path: "/api/okou/agents",
     headers: authHeadersSchema,
     responses: {
       200: z.array(zeroAgentResponseSchema),
@@ -112,12 +112,12 @@ export const zeroAgentsMainContract = c.router({
 });
 
 /**
- * Contract for GET/PUT/PATCH/DELETE /api/zero/agents/:id
+ * Contract for GET/PUT/PATCH/DELETE /api/okou/agents/:id
  */
 export const zeroAgentsByIdContract = c.router({
   get: {
     method: "GET",
-    path: "/api/zero/agents/:id",
+    path: "/api/okou/agents/:id",
     headers: authHeadersSchema,
     pathParams: z.object({ id: z.string().uuid() }),
     responses: {
@@ -131,7 +131,7 @@ export const zeroAgentsByIdContract = c.router({
   },
   update: {
     method: "PUT",
-    path: "/api/zero/agents/:id",
+    path: "/api/okou/agents/:id",
     headers: authHeadersSchema,
     pathParams: z.object({ id: z.string().uuid() }),
     body: zeroAgentRequestSchema,
@@ -148,7 +148,7 @@ export const zeroAgentsByIdContract = c.router({
   },
   updateMetadata: {
     method: "PATCH",
-    path: "/api/zero/agents/:id",
+    path: "/api/okou/agents/:id",
     headers: authHeadersSchema,
     pathParams: z.object({ id: z.string().uuid() }),
     body: zeroAgentMetadataRequestSchema,
@@ -164,7 +164,7 @@ export const zeroAgentsByIdContract = c.router({
   },
   delete: {
     method: "DELETE",
-    path: "/api/zero/agents/:id",
+    path: "/api/okou/agents/:id",
     headers: authHeadersSchema,
     pathParams: z.object({ id: z.string().uuid() }),
     body: c.noBody(),
@@ -181,12 +181,12 @@ export const zeroAgentsByIdContract = c.router({
 });
 
 /**
- * Contract for GET/PUT /api/zero/agents/:id/instructions
+ * Contract for GET/PUT /api/okou/agents/:id/instructions
  */
 export const zeroAgentInstructionsContract = c.router({
   get: {
     method: "GET",
-    path: "/api/zero/agents/:id/instructions",
+    path: "/api/okou/agents/:id/instructions",
     headers: authHeadersSchema,
     pathParams: z.object({ id: z.string().uuid() }),
     responses: {
@@ -200,7 +200,7 @@ export const zeroAgentInstructionsContract = c.router({
   },
   update: {
     method: "PUT",
-    path: "/api/zero/agents/:id/instructions",
+    path: "/api/okou/agents/:id/instructions",
     headers: authHeadersSchema,
     pathParams: z.object({ id: z.string().uuid() }),
     body: zeroAgentInstructionsRequestSchema,
@@ -219,7 +219,7 @@ export const zeroAgentInstructionsContract = c.router({
 export const zeroAgentDraftContract = c.router({
   get: {
     method: "GET",
-    path: "/api/zero/agents/:id/draft",
+    path: "/api/okou/agents/:id/draft",
     headers: authHeadersSchema,
     pathParams: z.object({ id: z.string().uuid() }),
     responses: {
@@ -233,7 +233,7 @@ export const zeroAgentDraftContract = c.router({
   },
   patch: {
     method: "PATCH",
-    path: "/api/zero/agents/:id/draft",
+    path: "/api/okou/agents/:id/draft",
     headers: authHeadersSchema,
     pathParams: z.object({ id: z.string().uuid() }),
     body: zeroAgentDraftRequestSchema,

@@ -23,7 +23,7 @@ import { server } from "../../../../mocks/server";
 import { zeroPresentationTemplateCommand } from "../index";
 
 const TEMPLATE_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
-const API_ROOT = `http://localhost:3000/api/zero/presentation-templates/${TEMPLATE_ID}`;
+const API_ROOT = `http://localhost:3000/api/okou/presentation-templates/${TEMPLATE_ID}`;
 const SOURCE_URL = "https://r2.example.test/template-source";
 const PAGE_UPLOAD_URLS = [
   "https://r2.example.test/template-page-1",

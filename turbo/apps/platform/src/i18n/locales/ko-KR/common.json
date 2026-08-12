@@ -2522,6 +2522,18 @@
       "degraded": "실시간 업데이트에 문제가 발생했습니다. 페이지를 새로고침하세요."
     }
   },
+  "invitationRedirect": {
+    "accountMismatch": {
+      "title": "다른 계정으로 초대를 수락했습니다"
+    },
+    "actions": {
+      "switchAccount": "계정 전환",
+      "switchWorkspace": "워크스페이스 전환"
+    },
+    "success": {
+      "title": "{{workspace}} 초대를 수락했습니다"
+    }
+  },
   "lifecycle": {
     "emailUnsubscribe": {
       "action": "구독 취소",
@@ -4543,7 +4555,6 @@
     "mermaid": {
       "diagramLabel": "다이어그램",
       "expand": "다이어그램 확대",
-      "invalidDiagram": "유효하지 않은 다이어그램",
       "viewSource": "다이어그램 소스"
     },
     "notFound": {

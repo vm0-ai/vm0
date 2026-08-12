@@ -39,7 +39,7 @@ use super::diagnostics::{
 };
 use super::effective_cli_framework;
 use super::env::{
-    build_env_json_for_run, build_run_payload_for_run, build_user_env_json, write_run_payload_file,
+    PreparedRunPayload, build_env_json_for_run, build_user_env_json, write_run_payload_file,
     write_user_env_file,
 };
 use super::guest_state::{restore_guest_state, sync_guest_timezone};
@@ -1155,6 +1155,20 @@ pub(super) struct RunControls {
     guest_state_prepared: bool,
 }
 
+pub(super) struct PreparedRunInputs {
+    pub(super) controls: RunControls,
+    pub(super) run_payload: PreparedRunPayload,
+}
+
+impl PreparedRunInputs {
+    pub(super) fn new(controls: RunControls, run_payload: PreparedRunPayload) -> Self {
+        Self {
+            controls,
+            run_payload,
+        }
+    }
+}
+
 pub(super) enum PreparedGuestRuntime {
     Ready(StartedCodexModelCatalogPrefetch),
     Failed(RunnerError),
@@ -1527,13 +1541,14 @@ pub(super) async fn run_in_sandbox(
     telemetry: &mut JobTelemetry,
     controls: RunControls,
 ) -> RunnerResult<AgentExecutionResult> {
+    let prepared_run_payload = super::env::prepare_run_payload_for_run(context)?;
     run_in_sandbox_with_process_cancel_timeouts(
         sandbox,
         context,
         config,
         start,
         telemetry,
-        controls,
+        PreparedRunInputs::new(controls, prepared_run_payload),
         super::PROCESS_CANCEL_TIMEOUTS,
     )
     .await
@@ -1546,8 +1561,8 @@ pub(super) async fn run_in_sandbox(
 ///
 /// - completes cancellation-aware guest runtime and storage preparation while
 ///   taking ownership of model-catalog prefetch supervision;
-/// - consumes the session-history restore plan, builds private guest inputs,
-///   and spawns guest-agent;
+/// - consumes the session-history restore plan, finalizes and writes private
+///   guest inputs, and spawns guest-agent;
 /// - starts locally owned active-input and stdout-drain work, releases deferred
 ///   cache fill, and supervises normal exit or cancellation;
 /// - stops or drains locally owned background work before classifying terminal
@@ -1565,9 +1580,13 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
     config: &ExecutorConfig,
     start: RunStart<'_>,
     telemetry: &mut JobTelemetry,
-    controls: RunControls,
+    inputs: PreparedRunInputs,
     process_cancel_timeouts: ProcessCancelTimeouts,
 ) -> RunnerResult<AgentExecutionResult> {
+    let PreparedRunInputs {
+        controls,
+        run_payload: prepared_run_payload,
+    } = inputs;
     let RunControls {
         cancel,
         cooperative_user_cancel,
@@ -1982,9 +2001,9 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         }
     }
 
-    // Build the private run payload and environment used to bootstrap
-    // guest-agent. User-provided env is passed through a private guest file and
-    // injected into the CLI child after guest-agent has started.
+    // Finalize the prepared private run payload and build the environment used
+    // to bootstrap guest-agent. User-provided env is passed through a private
+    // guest file and injected into the CLI child after guest-agent has started.
     let user_env_started = Instant::now();
     let user_env_map = build_user_env_json(context);
     let user_env_file = match write_user_env_file(sandbox, context.run_id, &user_env_map).await {
@@ -2008,7 +2027,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         }
     };
     let env_build_started = Instant::now();
-    let run_payload = match build_run_payload_for_run(context) {
+    let run_payload = match prepared_run_payload.into_run_payload(context) {
         Ok(run_payload) => run_payload,
         Err(error) => {
             telemetry.record(

@@ -93,7 +93,7 @@ function buildCurrentThreadContext(
     "",
     `- CHAT_THREAD_ID: ${threadId}`,
     "",
-    "Reading this thread, each through ZERO_TOKEN:",
+    "Reading this thread, each through OKOU_TOKEN:",
     ...historyCommands,
     "- `okou logs <run-id> --all` prints the full event stream of one run in this thread (agent-run:read)",
   ].join("\n");
@@ -128,7 +128,7 @@ function buildAgentRunSourceContext(
     "",
     "The message text is everything that run chose to carry across the thread boundary. Its own instructions, the conversation it came from, and whatever it already found stayed in the source thread and are not included above.",
     "",
-    "Reading the source, each through ZERO_TOKEN:",
+    "Reading the source, each through OKOU_TOKEN:",
     historyCommand,
     `- \`okou chat get --thread-id ${source.threadId}\` prints its title, agent, and model (chat-thread:read)`,
     `- \`okou logs ${source.runId} --all\` prints the full event stream of the run that sent this message (agent-run:read)`,

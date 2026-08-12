@@ -23,8 +23,8 @@ import { server } from "../../../../mocks/server";
 import { uploadFileCommand } from "../upload-file";
 import chalk from "chalk";
 
-const PREPARE_URL = "http://localhost:3000/api/zero/uploads/prepare";
-const COMPLETE_URL = "http://localhost:3000/api/zero/uploads/complete";
+const PREPARE_URL = "http://localhost:3000/api/okou/uploads/prepare";
+const COMPLETE_URL = "http://localhost:3000/api/okou/uploads/complete";
 const PUT_URL = "https://mock-r2.test/upload-target";
 const CLI_VERSION = "0.0.0-test";
 

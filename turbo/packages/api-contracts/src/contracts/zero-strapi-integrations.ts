@@ -30,7 +30,7 @@ const integrationIdParams = z.object({ integrationId: z.string().uuid() });
 export const zeroStrapiIntegrationsContract = c.router({
   list: {
     method: "GET",
-    path: "/api/zero/integrations/strapi",
+    path: "/api/okou/integrations/strapi",
     headers: authHeadersSchema,
     responses: {
       200: z.array(strapiIntegrationSchema),
@@ -41,7 +41,7 @@ export const zeroStrapiIntegrationsContract = c.router({
   },
   create: {
     method: "POST",
-    path: "/api/zero/integrations/strapi",
+    path: "/api/okou/integrations/strapi",
     headers: authHeadersSchema,
     body: z.object({
       name: z.string().trim().min(1).max(128),
@@ -60,7 +60,7 @@ export const zeroStrapiIntegrationsContract = c.router({
   },
   revealSecret: {
     method: "POST",
-    path: "/api/zero/integrations/strapi/:integrationId/secret",
+    path: "/api/okou/integrations/strapi/:integrationId/secret",
     headers: authHeadersSchema,
     pathParams: integrationIdParams,
     body: c.noBody(),
@@ -74,7 +74,7 @@ export const zeroStrapiIntegrationsContract = c.router({
   },
   checkTest: {
     method: "POST",
-    path: "/api/zero/integrations/strapi/:integrationId/check-test",
+    path: "/api/okou/integrations/strapi/:integrationId/check-test",
     headers: authHeadersSchema,
     pathParams: integrationIdParams,
     body: c.noBody(),
@@ -91,7 +91,7 @@ export const zeroStrapiIntegrationsContract = c.router({
   },
   remove: {
     method: "DELETE",
-    path: "/api/zero/integrations/strapi/:integrationId",
+    path: "/api/okou/integrations/strapi/:integrationId",
     headers: authHeadersSchema,
     pathParams: integrationIdParams,
     body: c.noBody(),
@@ -109,7 +109,7 @@ export const zeroStrapiIntegrationsContract = c.router({
 export const zeroStrapiEventsContract = c.router({
   post: {
     method: "POST",
-    path: "/api/zero/strapi/events/:integrationId",
+    path: "/api/okou/strapi/events/:integrationId",
     pathParams: integrationIdParams,
     headers: z.object({
       authorization: z.string().optional(),

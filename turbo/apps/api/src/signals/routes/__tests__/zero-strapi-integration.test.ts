@@ -375,7 +375,7 @@ describe("Strapi integration", () => {
     );
     expect(createdIntegration.body.baseUrl).toBe(strapiBaseUrl);
     expect(new URL(createdIntegration.body.webhookUrl).pathname).toBe(
-      `/api/zero/strapi/events/${createdIntegration.body.id}`,
+      `/api/okou/strapi/events/${createdIntegration.body.id}`,
     );
     expect(createdIntegration.body.authorizationHeader).toMatch(
       /^Bearer strapi_/,

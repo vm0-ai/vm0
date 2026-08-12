@@ -2,7 +2,7 @@ import { fireEvent, render, waitFor } from "@testing-library/react";
 import { StoreProvider } from "ccstate-react";
 import { describe, expect, it, vi } from "vitest";
 
-import { registerMermaidDiagram$ } from "../../../signals/mermaid-diagram.ts";
+import { createMermaidDiagramRegistry } from "../../../signals/mermaid-diagram.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { Markdown } from "../markdown.tsx";
 
@@ -76,22 +76,14 @@ describe("parse-in-render markdown", () => {
     expect(rendered).not.toContain("mermaid-block");
   });
 
-  // The diagram registry is content-addressed: the rendered image depends only
-  // on the source and the theme, so the same fence shares one entry wherever
-  // it appears and different sources never collide.
+  // A surface's registry is keyed by source, so the same fence shares one
+  // entry wherever it appears in that surface and different sources never
+  // collide.
   it("keys diagram registration by source", () => {
-    const first = context.store.set(
-      registerMermaidDiagram$,
-      "graph TD; A-->B;",
-    );
-    const again = context.store.set(
-      registerMermaidDiagram$,
-      "graph TD; A-->B;",
-    );
-    const other = context.store.set(
-      registerMermaidDiagram$,
-      "graph TD; B-->C;",
-    );
+    const registry = createMermaidDiagramRegistry(context.signal);
+    const first = context.store.set(registry.register$, "graph TD; A-->B;");
+    const again = context.store.set(registry.register$, "graph TD; A-->B;");
+    const other = context.store.set(registry.register$, "graph TD; B-->C;");
 
     expect(again).toBe(first);
     expect(other).not.toBe(first);

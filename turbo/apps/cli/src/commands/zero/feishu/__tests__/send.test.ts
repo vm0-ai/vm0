@@ -6,7 +6,7 @@ import { server } from "../../../../mocks/server";
 import { sendCommand } from "../message/send";
 
 const FEISHU_MESSAGE_URL =
-  "http://localhost:3000/api/zero/integrations/feishu/message";
+  "http://localhost:3000/api/okou/integrations/feishu/message";
 
 describe("okou feishu message send command", () => {
   vi.spyOn(process, "exit").mockImplementation((): never => {

@@ -10,10 +10,11 @@
 # by the Playwright suite and have been removed from this file.
 #
 # Required env vars:
-#   VM0_AUTH_URL   - Target auth URL (e.g., https://pr-123-app.omby.ai)
+#   VM0_API_BACKEND_URL - API URL and local fallback for the auth URL
+#   CLERK_SECRET_KEY    - Backend key used to clean the exact test account
 #
 # Optional env vars:
-#   VM0_API_BACKEND_URL            - API URL, used as a local fallback for auth URL
+#   VM0_AUTH_URL           - Target auth URL (e.g., https://pr-123-app.omby.ai)
 #   VM0_AUTH_DOMAIN        - API domain override for auth callbacks
 #   VM0_AUTH_REDIRECT_URL  - Post-auth app URL to verify Clerk completion
 #   E2E_ACCOUNT            - Test email (auto-generated if empty)
@@ -26,6 +27,7 @@ setup_file() {
   export BROWSER_SESSION_PREFIX
   export AGENT_BROWSER_SESSION="${BROWSER_SESSION_PREFIX}-sign-up"
   browser_setup
+  delete_e2e_account_if_exists
 
   # Generate a password for sign-up
   SIGNUP_PASSWORD="$(generate_password)"
@@ -41,7 +43,10 @@ setup_file() {
 }
 
 teardown_file() {
-  browser_teardown
+  local status=0
+  browser_teardown || status=$?
+  delete_e2e_account_if_exists || status=$?
+  return "$status"
 }
 
 auth_url() {

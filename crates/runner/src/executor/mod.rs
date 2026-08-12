@@ -59,7 +59,7 @@ pub(crate) use session_history_restore_plan::{
 
 use crate::active_input::ActiveInputSource;
 use crate::pi_standby::PiStandbySubscription;
-use agent_run::{ProcessCancelTimeouts, RunControls};
+use agent_run::{PreparedRunInputs, ProcessCancelTimeouts, RunControls};
 use env::validate_execution_context_before_sandbox;
 pub(crate) use env::validate_resume_session_id;
 use sandbox_run::{
@@ -611,13 +611,13 @@ pub(crate) async fn execute_job_with_prepared_notifier(
     record_api_latency("api_to_vm_start", &context, &mut telemetry);
 
     let sandbox_id = dispatch.id.to_string();
-    let outcome = if let Err(error) = validate_execution_context_before_sandbox(
+    let outcome = match validate_execution_context_before_sandbox(
         &context,
         &config.api_url,
         &sandbox_id,
         dispatch.reuse_result,
     ) {
-        ExecuteOutcome {
+        Err(error) => ExecuteOutcome {
             failure: Some(ExecutionFailure::from_error(error)),
             active_input_delivery_ids: Vec::new(),
             sandbox_reuse_disposition: SandboxReuseDisposition::default(),
@@ -628,9 +628,8 @@ pub(crate) async fn execute_job_with_prepared_notifier(
             workspace_reuse_result: None,
             discovered_cli_agent_session_id: None,
             restored_session_identity: None,
-        }
-    } else {
-        match execute_new_sandbox_with_prepared_notifier(
+        },
+        Ok(prepared_run_payload) => match execute_new_sandbox_with_prepared_notifier(
             factory,
             &context,
             dispatch,
@@ -642,6 +641,7 @@ pub(crate) async fn execute_job_with_prepared_notifier(
                     .with_pi_standby_source(pi_standby_source)
                     .with_spawn_timing(spawn_timing)
                     .with_session_history_restore_plan(session_history_restore_plan),
+                prepared_run_payload,
                 sandbox_prepared: sandbox_prepared.as_ref(),
             },
         )
@@ -660,7 +660,7 @@ pub(crate) async fn execute_job_with_prepared_notifier(
                 discovered_cli_agent_session_id: None,
                 restored_session_identity: None,
             },
-        }
+        },
     };
 
     (outcome, telemetry)
@@ -788,35 +788,39 @@ pub(crate) async fn execute_job_reuse_with_hooks(
     // execute_reused_sandbox never returns Err — it always returns the sandbox
     // in the outcome so the caller can stop + destroy it on failure.
     let sandbox_id_string = sandbox_id.to_string();
-    let outcome = if let Err(error) = validate_execution_context_before_sandbox(
+    let outcome = match validate_execution_context_before_sandbox(
         &context,
         &config.api_url,
         &sandbox_id_string,
         SandboxReuseResult::Reused,
     ) {
-        ExecuteOutcome::reused_sandbox_failure(
+        Err(error) => ExecuteOutcome::reused_sandbox_failure(
             ExecutionFailure::from_error(error),
             sandbox,
             source_ip,
             workspace_image,
-        )
-    } else {
-        let mut outcome = execute_reused_sandbox(
-            sandbox,
-            &source_ip,
-            &context,
-            config,
-            &prev_storage,
-            &mut telemetry,
-            RunControls::from_cancellation(cancellation, active_input_source)
-                .with_pi_standby_source(pi_standby_source)
-                .with_spawn_timing(spawn_timing)
-                .with_session_history_restore_plan(session_history_restore_plan)
-                .with_guest_state_prepared(guest_state_prepared),
-        )
-        .await;
-        outcome.workspace_image = workspace_image;
-        outcome
+        ),
+        Ok(prepared_run_payload) => {
+            let mut outcome = execute_reused_sandbox(
+                sandbox,
+                &source_ip,
+                &context,
+                config,
+                &prev_storage,
+                &mut telemetry,
+                PreparedRunInputs::new(
+                    RunControls::from_cancellation(cancellation, active_input_source)
+                        .with_pi_standby_source(pi_standby_source)
+                        .with_spawn_timing(spawn_timing)
+                        .with_session_history_restore_plan(session_history_restore_plan)
+                        .with_guest_state_prepared(guest_state_prepared),
+                    prepared_run_payload,
+                ),
+            )
+            .await;
+            outcome.workspace_image = workspace_image;
+            outcome
+        }
     };
 
     (outcome, telemetry)

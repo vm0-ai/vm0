@@ -256,7 +256,7 @@ export const messagesCommand = new Command()
   .description("Read or synchronize history for a web chat thread")
   .option(
     "--thread-id <id>",
-    "Chat thread ID (defaults to ZERO_CHAT_THREAD_ID)",
+    "Chat thread ID (defaults to OKOU_CHAT_THREAD_ID)",
   )
   .option(
     "--limit <n>",
@@ -281,7 +281,7 @@ Notes:
   - Prints user and assistant messages oldest first, the order the chat UI shows
   - When snapshot read is enabled, --output-dir is required and writes grep-friendly raw history
   - Reads a thread the current user owns, including one another agent run wrote into
-  - Authenticates via ZERO_TOKEN (requires chat-event:read capability)`,
+  - Authenticates via OKOU_TOKEN (requires chat-event:read capability)`,
   )
   .action(
     withErrorHandler(async (options: MessagesOptions) => {

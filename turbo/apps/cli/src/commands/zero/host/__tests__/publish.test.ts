@@ -12,9 +12,9 @@ import { DEFAULT_HOSTED_SITE_ROBOTS_TXT } from "../../../../lib/host/static-site
 import { server } from "../../../../mocks/server";
 import { zeroHostCommand } from "../index";
 
-const PREPARE_URL = "http://localhost:3000/api/zero/host/deployments/prepare";
+const PREPARE_URL = "http://localhost:3000/api/okou/host/deployments/prepare";
 const COMPLETE_URL =
-  "http://localhost:3000/api/zero/host/deployments/:deploymentId/complete";
+  "http://localhost:3000/api/okou/host/deployments/:deploymentId/complete";
 const INDEX_UPLOAD_URL = "https://uploads.example.com/index";
 const ROBOTS_UPLOAD_URL = "https://uploads.example.com/robots";
 const ALIAS_URL = "https://demo-site.sites.example.com";

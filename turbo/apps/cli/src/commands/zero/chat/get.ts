@@ -15,7 +15,7 @@ export const getCommand = new Command()
   .description("Show a web chat thread")
   .option(
     "--thread-id <id>",
-    "Chat thread ID (defaults to ZERO_CHAT_THREAD_ID)",
+    "Chat thread ID (defaults to OKOU_CHAT_THREAD_ID)",
   )
   .option("--json", "Print machine-readable JSON")
   .addHelpText(
@@ -27,9 +27,9 @@ Examples:
   Print JSON:        okou chat get --json
 
 Notes:
-  - Defaults --thread-id to ZERO_CHAT_THREAD_ID from the current web chat thread
+  - Defaults --thread-id to OKOU_CHAT_THREAD_ID from the current web chat thread
   - Prints thread metadata; okou chat messages prints the messages
-  - Authenticates via ZERO_TOKEN (requires chat-thread:read capability)`,
+  - Authenticates via OKOU_TOKEN (requires chat-thread:read capability)`,
   )
   .action(
     withErrorHandler(async (options: GetOptions) => {

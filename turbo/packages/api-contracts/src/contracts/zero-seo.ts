@@ -161,7 +161,7 @@ const seoResponses = {
 export const zeroSeoContract = c.router({
   serp: {
     method: "POST",
-    path: "/api/zero/seo/serp",
+    path: "/api/okou/seo/serp",
     headers: authHeadersSchema,
     body: zeroSeoSerpRequestSchema,
     responses: seoResponses,
@@ -169,7 +169,7 @@ export const zeroSeoContract = c.router({
   },
   keywordIdeas: {
     method: "POST",
-    path: "/api/zero/seo/keyword-ideas",
+    path: "/api/okou/seo/keyword-ideas",
     headers: authHeadersSchema,
     body: zeroSeoKeywordIdeasRequestSchema,
     responses: seoResponses,
@@ -177,7 +177,7 @@ export const zeroSeoContract = c.router({
   },
   rankedKeywords: {
     method: "POST",
-    path: "/api/zero/seo/ranked-keywords",
+    path: "/api/okou/seo/ranked-keywords",
     headers: authHeadersSchema,
     body: zeroSeoRankedKeywordsRequestSchema,
     responses: seoResponses,
@@ -185,7 +185,7 @@ export const zeroSeoContract = c.router({
   },
   backlinksSummary: {
     method: "POST",
-    path: "/api/zero/seo/backlinks-summary",
+    path: "/api/okou/seo/backlinks-summary",
     headers: authHeadersSchema,
     body: zeroSeoBacklinksSummaryRequestSchema,
     responses: seoResponses,

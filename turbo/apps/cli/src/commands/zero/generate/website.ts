@@ -103,7 +103,7 @@ Output:
   With no --prompt and no piped input, prints the generation choices instead.
 
 Notes:
-  - Authenticates via ZERO_TOKEN
+  - Authenticates via OKOU_TOKEN
   - The agent authors the HTML artifact and hosts it with okou host
 
 Design Systems:
