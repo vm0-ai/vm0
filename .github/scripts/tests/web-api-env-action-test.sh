@@ -86,6 +86,27 @@ assert_migrated_zero_outputs_absent() {
   done
 }
 
+assert_migrated_okou_outputs_match() {
+  local expected_env_file="$1"
+  local actual_env_file="$2"
+  local zero_key okou_key expected actual
+  for zero_key in "${MIGRATED_ZERO_OUTPUT_KEYS[@]}"; do
+    okou_key="${zero_key/ZERO_/OKOU_}"
+    if ! expected="$(awk -F= -v key="$okou_key" '$1 == key { sub(/^[^=]*=/, ""); print; found = 1 } END { if (!found) exit 1 }' "$expected_env_file")"; then
+      assert_env_key_absent "$actual_env_file" "$okou_key"
+      continue
+    fi
+    actual="$(awk -F= -v key="$okou_key" '$1 == key { sub(/^[^=]*=/, ""); print; found = 1 } END { if (!found) exit 1 }' "$actual_env_file")" ||
+      fail "expected ${okou_key} in ${actual_env_file}"
+    if [[ -z "$actual" ]]; then
+      fail "expected non-empty canonical source for ${okou_key}"
+    fi
+    if [[ "$actual" != "$expected" ]]; then
+      fail "expected canonical source for ${okou_key} to match legacy fallback"
+    fi
+  done
+}
+
 assert_no_fixture_secret_values() {
   local output="$1"
   local unexpected
@@ -191,6 +212,9 @@ run_action() {
   if [[ "$branded_config" == "both" ]]; then
     repo_vars_json="$(jq -c '. + {OKOU_HOST_DOMAIN: "okou-sites.test", OKOU_HOST_SCHEME: "http", OKOU_PRICE_PRO: "price_okou_pro", OKOU_ONE_TIME_CAMPAIGN: "okou-campaign"}' <<< "$repo_vars_json")"
     repo_secrets_json="$(jq -c '. + {OKOU_WEATHER_GOOGLE_WEATHER_TOKEN: "okou-google-weather-token", OKOU_SEO_DATAFORSEO_LOGIN: "okou-dataforseo-login", OKOU_BROWSER_USE_API_KEY: "okou-browser-use-api-key"}' <<< "$repo_secrets_json")"
+  elif [[ "$branded_config" == "canonical" ]]; then
+    repo_vars_json="$(jq -c 'with_entries(if (.key | startswith("ZERO_")) then .key |= sub("^ZERO_"; "OKOU_") else . end)' <<< "$repo_vars_json")"
+    repo_secrets_json="$(jq -c 'with_entries(if (.key | startswith("ZERO_")) then .key |= sub("^ZERO_"; "OKOU_") else . end)' <<< "$repo_secrets_json")"
   elif [[ "$branded_config" == "empty" ]]; then
     repo_vars_json="$(jq -c 'with_entries(select(.key | startswith("ZERO_") | not))' <<< "$repo_vars_json")"
     repo_secrets_json="$(jq -c 'with_entries(select(.key | startswith("ZERO_") | not))' <<< "$repo_secrets_json")"
@@ -297,6 +321,15 @@ assert_env_absent_value "$success_env_file" "github-posthog-key"
 assert_env_absent_value "$success_env_file" "github-cloudflare-browser-rendering-token"
 assert_env_absent_value "$success_env_file" "github-artifact-preview-waf-secret"
 
+canonical_dir="$(mktemp -d)"
+TEMP_DIRS+=("$canonical_dir")
+canonical_output="$(run_action "$(build_doppler_secrets_json)" "$canonical_dir" api preview "https://static.vm0.io/okou-cli/test-sha/package.tgz" canonical 2>&1)"
+canonical_env_file="$(awk -F= '$1 == "file" { sub(/^[^=]*=/, ""); print }' "${canonical_dir}/github-output")"
+assert_contains "$canonical_output" "Rendered"
+assert_no_fixture_secret_values "$canonical_output"
+assert_migrated_zero_outputs_absent "$canonical_env_file"
+assert_migrated_okou_outputs_match "$success_env_file" "$canonical_env_file"
+
 precedence_dir="$(mktemp -d)"
 TEMP_DIRS+=("$precedence_dir")
 precedence_output="$(run_action "$(build_doppler_secrets_json)" "$precedence_dir" api preview "https://static.vm0.io/okou-cli/test-sha/package.tgz" both 2>&1)"
@@ -349,6 +382,15 @@ assert_env_absent_value "$production_web_env_file" "OKOU_BROWSER_USE_API_KEY="
 assert_env_absent_value "$production_web_env_file" "github-cloudflare-browser-rendering-token"
 assert_env_absent_value "$production_web_env_file" "github-artifact-preview-waf-secret"
 
+canonical_production_web_dir="$(mktemp -d)"
+TEMP_DIRS+=("$canonical_production_web_dir")
+canonical_production_web_output="$(run_action "$(build_doppler_secrets_json)" "$canonical_production_web_dir" web production "" canonical 2>&1)"
+canonical_production_web_env_file="$(awk -F= '$1 == "file" { sub(/^[^=]*=/, ""); print }' "${canonical_production_web_dir}/github-output")"
+assert_contains "$canonical_production_web_output" "Rendered"
+assert_no_fixture_secret_values "$canonical_production_web_output"
+assert_migrated_zero_outputs_absent "$canonical_production_web_env_file"
+assert_migrated_okou_outputs_match "$production_web_env_file" "$canonical_production_web_env_file"
+
 production_api_dir="$(mktemp -d)"
 TEMP_DIRS+=("$production_api_dir")
 production_api_output="$(run_action "$(build_doppler_secrets_json)" "$production_api_dir" api production 2>&1)"
@@ -380,6 +422,15 @@ assert_env_value "$production_api_env_file" STRIPE_WEBHOOK_SECRET "github-stripe
 assert_env_value "$production_api_env_file" STRIPE_AUTOMATION_WEBHOOK_SECRET "github-stripe-automation-webhook-secret"
 assert_env_absent_value "$production_api_env_file" "doppler-stripe-billing-webhook-secret"
 assert_env_absent_value "$production_api_env_file" "doppler-stripe-automation-webhook-secret"
+
+canonical_production_api_dir="$(mktemp -d)"
+TEMP_DIRS+=("$canonical_production_api_dir")
+canonical_production_api_output="$(run_action "$(build_doppler_secrets_json)" "$canonical_production_api_dir" api production "https://static.vm0.io/okou-cli/test-sha/package.tgz" canonical 2>&1)"
+canonical_production_api_env_file="$(awk -F= '$1 == "file" { sub(/^[^=]*=/, ""); print }' "${canonical_production_api_dir}/github-output")"
+assert_contains "$canonical_production_api_output" "Rendered"
+assert_no_fixture_secret_values "$canonical_production_api_output"
+assert_migrated_zero_outputs_absent "$canonical_production_api_env_file"
+assert_migrated_okou_outputs_match "$production_api_env_file" "$canonical_production_api_env_file"
 
 missing_dir="$(mktemp -d)"
 TEMP_DIRS+=("$missing_dir")
