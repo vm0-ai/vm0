@@ -787,6 +787,32 @@ function eventPromptSummary(event: GithubWebhookAutomationEvent): string {
   }
 }
 
+function pullRequestPromptMetadata(
+  payload: GithubPullRequestEventPayload,
+): Readonly<Record<string, unknown>> {
+  const pullRequest = payload.pull_request;
+  return {
+    pullRequest: {
+      number: pullRequest.number,
+      title: pullRequest.title,
+      url: pullRequest.html_url,
+      draft: pullRequest.draft,
+      merged: pullRequest.merged ?? false,
+      mergedAt: pullRequest.merged_at,
+      mergeCommitSha: pullRequest.merge_commit_sha,
+      mergedBy: pullRequest.merged_by,
+      author: pullRequest.user,
+      baseBranch: pullRequest.base.ref,
+      headBranch: pullRequest.head.ref,
+      headSha: pullRequest.head.sha,
+      labels: pullRequest.labels.map((label) => {
+        return label.name;
+      }),
+    },
+    ...(payload.label ? { label: payload.label } : {}),
+  };
+}
+
 function eventPromptMetadata(
   event: GithubWebhookAutomationEvent,
 ): Readonly<Record<string, unknown>> {
@@ -798,27 +824,9 @@ function eventPromptMetadata(
   };
   switch (event.eventType) {
     case "github-pull-request": {
-      const pullRequest = event.payload.pull_request;
       return {
         ...common,
-        pullRequest: {
-          number: pullRequest.number,
-          title: pullRequest.title,
-          url: pullRequest.html_url,
-          draft: pullRequest.draft,
-          merged: pullRequest.merged ?? false,
-          mergedAt: pullRequest.merged_at,
-          mergeCommitSha: pullRequest.merge_commit_sha,
-          mergedBy: pullRequest.merged_by,
-          author: pullRequest.user,
-          baseBranch: pullRequest.base.ref,
-          headBranch: pullRequest.head.ref,
-          headSha: pullRequest.head.sha,
-          labels: pullRequest.labels.map((label) => {
-            return label.name;
-          }),
-        },
-        ...(event.payload.label ? { label: event.payload.label } : {}),
+        ...pullRequestPromptMetadata(event.payload),
       };
     }
     case "github-workflow-job-completed": {
