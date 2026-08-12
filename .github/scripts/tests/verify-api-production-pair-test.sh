@@ -28,6 +28,11 @@ while [ "$#" -gt 0 ]; do
     *) url=$1; shift ;;
   esac
 done
+if [ "${WORKER_UNAVAILABLE:-false}" = true ] &&
+  { [[ "$url" == *'/workers/'* ]] || [[ "$url" == 'https://api-worker-candidate.vm0.ai/api/build-info' ]]; }; then
+  echo "Worker verification is unavailable" >&2
+  exit 9
+fi
 case "$url" in
   *'/v13/deployments/api.vm0.ai?teamId=test-team')
     jq -n --arg commit "$VERCEL_COMMIT" '{
@@ -113,5 +118,28 @@ if CANDIDATE_COMMIT=cccccccccccccccccccccccccccccccccccccccc \
 fi
 grep -q 'Worker production deployment build-info does not match' \
   "${tmp_dir}/candidate-mismatch.log" || fail "candidate commit mismatch was not reported"
+
+vercel_only_output="${tmp_dir}/vercel-only.output"
+: >"$vercel_only_output"
+env -i \
+  PATH="${fake_bin}:$PATH" \
+  HOME="${HOME:-/tmp}" \
+  EXPECTED_COMMIT="$target_commit" \
+  GITHUB_OUTPUT="$vercel_only_output" \
+  VERCEL_API_ORIGIN=https://vercel.test \
+  VERCEL_COMMIT="$target_commit" \
+  VERCEL_ORG_ID=test-team \
+  VERCEL_PROJECT_ID=test-project \
+  VERCEL_TOKEN=test-vercel-token \
+  VERIFY_WORKER=false \
+  WORKER_UNAVAILABLE=true \
+  bash "$script"
+grep -qx "target_commit=${target_commit}" "$vercel_only_output" ||
+  fail "Vercel recovery did not emit the target commit"
+grep -qx 'vercel_deployment_url=https://api-deploy.vercel.app' "$vercel_only_output" ||
+  fail "Vercel recovery did not emit the deployment URL"
+if grep -q '^worker_version_id=' "$vercel_only_output"; then
+  fail "Vercel recovery emitted an unverified Worker version"
+fi
 
 echo "verify-api-production-pair tests passed"

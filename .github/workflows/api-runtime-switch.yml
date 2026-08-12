@@ -56,8 +56,8 @@ jobs:
           ref: main
           desc: Switching public API runtime to ${{ inputs.target_runtime }}
 
-      - name: Verify Vercel and Worker release pair
-        id: pair
+      - name: Verify target API runtime readiness
+        id: readiness
         env:
           CF_ACCESS_CLIENT_ID: ${{ secrets.CF_API_PRODUCTION_ACCESS_CLIENT_ID }}
           CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_API_PRODUCTION_ACCESS_CLIENT_SECRET }}
@@ -68,6 +68,7 @@ jobs:
           VERCEL_ORG_ID: ${{ vars.VERCEL_TEAM_ID }}
           VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID_API }}
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERIFY_WORKER: ${{ inputs.target_runtime == 'cloudflare' }}
         run: bash .github/scripts/verify-api-production-pair.sh
 
       - name: Reconcile public API runtime
@@ -75,7 +76,7 @@ jobs:
           CF_API_PUBLIC_HOSTNAME: api.vm0.ai
           CF_ZONE_ID: ${{ vars.CF_ZONE_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CF_API_RUNTIME_SWITCH_API_TOKEN }}
-          EXPECTED_COMMIT: ${{ steps.pair.outputs.target_commit }}
+          EXPECTED_COMMIT: ${{ steps.readiness.outputs.target_commit }}
           TARGET_RUNTIME: ${{ inputs.target_runtime }}
         run: bash .github/scripts/reconcile-api-runtime.sh
 

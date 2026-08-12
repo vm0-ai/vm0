@@ -13,17 +13,28 @@ require_env() {
   fi
 }
 
+verify_worker=${VERIFY_WORKER:-true}
+if [ "$verify_worker" != true ] && [ "$verify_worker" != false ]; then
+  fail "VERIFY_WORKER must be true or false"
+fi
+
 for name in \
-  CF_ACCESS_CLIENT_ID \
-  CF_ACCESS_CLIENT_SECRET \
-  CF_API_PRODUCTION_CANDIDATE_ORIGIN \
-  CLOUDFLARE_ACCOUNT_ID \
-  CLOUDFLARE_API_TOKEN \
   VERCEL_ORG_ID \
   VERCEL_PROJECT_ID \
   VERCEL_TOKEN; do
   require_env "$name"
 done
+
+if [ "$verify_worker" = true ]; then
+  for name in \
+    CF_ACCESS_CLIENT_ID \
+    CF_ACCESS_CLIENT_SECRET \
+    CF_API_PRODUCTION_CANDIDATE_ORIGIN \
+    CLOUDFLARE_ACCOUNT_ID \
+    CLOUDFLARE_API_TOKEN; do
+    require_env "$name"
+  done
+fi
 
 worker_name=${CF_API_WORKER_NAME:-vm0-api-production}
 api_hostname=${CF_API_PUBLIC_HOSTNAME:-api.vm0.ai}
@@ -71,26 +82,8 @@ if [ "$(jq -r '.projectId // empty' <<<"$vercel_deployment")" != "$VERCEL_PROJEC
   fail "Vercel production alias ${api_hostname} did not resolve to a READY API deployment with a full commit SHA"
 fi
 
-latest_deployment=$(cf_get \
-  "/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/scripts/${worker_name}/deployments" |
-  jq -c '.result.deployments | sort_by(.created_on) | reverse | .[0] // null')
-if [ "$latest_deployment" = "null" ]; then
-  fail "${worker_name} has no active deployment"
-fi
-if [ "$(jq -r '.versions | length' <<<"$latest_deployment")" -ne 1 ] ||
-  [ "$(jq -r '.versions[0].percentage // empty' <<<"$latest_deployment")" != "100" ]; then
-  fail "${worker_name} must have exactly one active version at 100%"
-fi
-worker_version_id=$(jq -r '.versions[0].version_id' <<<"$latest_deployment")
-worker_version=$(cf_get \
-  "/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/scripts/${worker_name}/versions/${worker_version_id}")
-worker_commit=$(jq -r '.result.annotations["workers/tag"] // empty' <<<"$worker_version")
-
-if [ "$worker_commit" != "$vercel_commit" ]; then
-  fail "API production runtimes differ: Vercel=${vercel_commit}, Worker=${worker_commit:-untagged}"
-fi
 if [ -n "${EXPECTED_COMMIT:-}" ] && [ "$vercel_commit" != "$EXPECTED_COMMIT" ]; then
-  fail "API production runtimes are at ${vercel_commit}, expected ${EXPECTED_COMMIT}"
+  fail "Vercel production runtime is at ${vercel_commit}, expected ${EXPECTED_COMMIT}"
 fi
 
 tmp_dir=$(mktemp -d)
@@ -120,6 +113,36 @@ jq -e --arg commit "$vercel_commit" '.commitSha == $commit' \
 if ! tr -d '\r' <"${tmp_dir}/vercel.headers" |
   grep -iq '^x-vm0-api-runtime: vercel$'; then
   fail "Vercel production deployment did not identify itself as the Vercel runtime"
+fi
+
+if [ "$verify_worker" = false ]; then
+  if [ -n "${GITHUB_OUTPUT:-}" ]; then
+    {
+      echo "target_commit=${vercel_commit}"
+      echo "vercel_deployment_url=https://${vercel_url}"
+    } >>"$GITHUB_OUTPUT"
+  fi
+  echo "Verified Vercel production runtime at ${vercel_commit}."
+  exit 0
+fi
+
+latest_deployment=$(cf_get \
+  "/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/scripts/${worker_name}/deployments" |
+  jq -c '.result.deployments | sort_by(.created_on) | reverse | .[0] // null')
+if [ "$latest_deployment" = "null" ]; then
+  fail "${worker_name} has no active deployment"
+fi
+if [ "$(jq -r '.versions | length' <<<"$latest_deployment")" -ne 1 ] ||
+  [ "$(jq -r '.versions[0].percentage // empty' <<<"$latest_deployment")" != "100" ]; then
+  fail "${worker_name} must have exactly one active version at 100%"
+fi
+worker_version_id=$(jq -r '.versions[0].version_id' <<<"$latest_deployment")
+worker_version=$(cf_get \
+  "/accounts/${CLOUDFLARE_ACCOUNT_ID}/workers/scripts/${worker_name}/versions/${worker_version_id}")
+worker_commit=$(jq -r '.result.annotations["workers/tag"] // empty' <<<"$worker_version")
+
+if [ "$worker_commit" != "$vercel_commit" ]; then
+  fail "API production runtimes differ: Vercel=${vercel_commit}, Worker=${worker_commit:-untagged}"
 fi
 
 curl \

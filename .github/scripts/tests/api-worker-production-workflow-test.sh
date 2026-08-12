@@ -76,9 +76,14 @@ switch_job = runtime_switch.fetch("jobs").fetch("switch-api-runtime")
 raise "runtime switching must wait in the production queue" unless switch_job.fetch("needs") == "queue-production-deploy"
 raise "runtime switching must require production approval" unless switch_job.fetch("environment") == "production"
 switch_steps = switch_job.fetch("steps")
-pair_index = step_index(switch_steps, "Verify Vercel and Worker release pair")
+pair_index = step_index(switch_steps, "Verify target API runtime readiness")
 reconcile_index = step_index(switch_steps, "Reconcile public API runtime")
-raise "runtime switching must verify the release pair before mutation" unless pair_index < reconcile_index
+raise "runtime switching must verify target readiness before mutation" unless pair_index < reconcile_index
+pair_env = switch_steps.fetch(pair_index).fetch("env")
+expected_worker_condition = "$" + "{{ inputs.target_runtime == 'cloudflare' }}"
+unless pair_env.fetch("VERIFY_WORKER") == expected_worker_condition
+  raise "Vercel recovery must not depend on Worker readiness"
+end
 reconcile_env = switch_steps.fetch(reconcile_index).fetch("env")
 expected_switch_token = "$" + "{{ secrets.CF_API_RUNTIME_SWITCH_API_TOKEN }}"
 unless reconcile_env.fetch("CLOUDFLARE_API_TOKEN") == expected_switch_token
