@@ -168,7 +168,7 @@ if [[ -f "${repo_root}/${e2e_trace_path}" ]] &&
   report_boundary_failure "${e2e_trace_path}" "legacy entry-point selection"
 fi
 
-guest_agent_path="crates/guest-agent/src/cli/pi_agent_loop.rs"
+guest_agent_path="crates/guest-agent/src/cli/mod.rs"
 if rg -q -F '"zero".to_string()' "${repo_root}/${guest_agent_path}"; then
   echo "unclassified ${guest_agent_path}: guest-agent still invokes zero" >&2
   unclassified_count=$((unclassified_count + 1))

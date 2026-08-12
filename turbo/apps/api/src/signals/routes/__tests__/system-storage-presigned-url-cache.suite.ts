@@ -1,24 +1,19 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import { cronRefreshStoragePresignedUrlsContract } from "@vm0/api-contracts/contracts/cron";
 import type {
   TestSystemStoragePresignedUrlCacheStateActionBody,
   TestSystemStoragePresignedUrlCacheStateActionResponse,
 } from "@vm0/api-contracts/contracts/test-system-storage-presigned-url-cache-state";
-import { resolveSkillRef } from "@vm0/core/github-url";
-import {
-  getSkillStorageName,
-  SYSTEM_ORG_ID,
-  VOLUME_ORG_USER_ID,
-} from "@vm0/core/storage-names";
-import { GOAL_SKILL_NAME } from "@vm0/core/zero-seed-skills";
-import { beforeEach, describe, expect, it } from "vitest";
+import { SYSTEM_ORG_ID, VOLUME_ORG_USER_ID } from "@vm0/core/storage-names";
+import { beforeEach, describe, expect, it, onTestFinished } from "vitest";
 
 import { createAppWithRoutes } from "../../../app-factory-core";
 import { setupAppWithRoutes } from "../../../__tests__/test-app";
 import { accept, testContext } from "../../../__tests__/test-context";
 import { mockEnv } from "../../../lib/env";
-import { mockNow, nowDate } from "../../../lib/time";
+import { nowDate } from "../../../lib/time";
+import { readStorageS3PrefixFixture } from "../../../test-fixtures/storage";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import {
   createRunsApi,
@@ -26,13 +21,13 @@ import {
 } from "./helpers/api-bdd-runs";
 import { storageTextFile } from "./helpers/api-bdd-storage-files";
 import { createStoragesBddApi } from "./helpers/api-bdd-storages";
-import { testSystemStoragePresignedUrlCacheStateRoutes } from "../test-system-storage-presigned-url-cache-state";
 import { cronRefreshStoragePresignedUrlsRoutes } from "../cron-refresh-storage-presigned-urls";
+import { testSystemStoragePresignedUrlCacheStateRoutes } from "../test-system-storage-presigned-url-cache-state";
 
 const context = testContext();
 const CRON_SECRET = "test-cron-secret";
 const BUCKET = "test-user-storages";
-const ISOLATED_CACHE_CRON_NOW = Date.parse("2000-01-01T00:00:00.000Z");
+const CACHE_TTL_SECONDS = 2 * 60 * 60;
 
 interface CacheRow {
   readonly cache_key: string;
@@ -47,11 +42,36 @@ interface CacheRow {
   readonly last_requested_at: string;
 }
 
+interface CacheRowSnapshot {
+  readonly cache_key: string;
+  readonly bucket: string;
+  readonly object_key: string;
+  readonly storage_version_id: string;
+  readonly public_endpoint: boolean;
+  readonly ttl_seconds: number;
+  readonly presigned_url: string;
+}
+
 interface StorageState {
   readonly s3_prefix: string;
   readonly size: number;
   readonly file_count: number;
   readonly head_version_id: string | null;
+}
+
+interface OwnedSystemStorageFixture {
+  readonly storageId: string;
+  readonly storageName: string;
+  readonly s3Prefix: string;
+  readonly mountPath: string;
+}
+
+interface ClaimedStorageMount {
+  readonly name: string;
+  readonly mountPath: string;
+  readonly versionId: string;
+  readonly archiveSize: number;
+  readonly archiveUrl: string;
 }
 
 function stateRequest(
@@ -80,157 +100,122 @@ async function stateAction(
   return (await response.json()) as TestSystemStoragePresignedUrlCacheStateActionResponse;
 }
 
-async function cleanupCacheState(args: {
-  readonly objectKeyPrefix: string;
-}): Promise<void> {
+function createOwnedSystemStorageFixture(
+  label: string,
+): OwnedSystemStorageFixture {
+  const storageId = randomUUID();
+  const suffix = storageId.replaceAll("-", "");
+  return {
+    storageId,
+    storageName: `system-cache-${label}-${suffix}`,
+    s3Prefix: `${SYSTEM_ORG_ID}/${storageId}`,
+    mountPath: `/system-cache/${label}-${suffix}`,
+  };
+}
+
+function createVersionId(label: string): string {
+  return createHash("sha256").update(`${label}:${randomUUID()}`).digest("hex");
+}
+
+function storageVersionKey(
+  fixture: OwnedSystemStorageFixture,
+  versionId: string,
+): string {
+  return `${fixture.s3Prefix}/${versionId}`;
+}
+
+function storageArchiveKey(
+  fixture: OwnedSystemStorageFixture,
+  versionId: string,
+): string {
+  return `${storageVersionKey(fixture, versionId)}/archive.tar.gz`;
+}
+
+async function claimOwnedStorage(
+  fixture: OwnedSystemStorageFixture,
+): Promise<void> {
   await stateAction({
-    action: "cleanup",
-    object_key_prefix: args.objectKeyPrefix,
+    action: "claim-owned-storages",
+    storages: [
+      {
+        storage_id: fixture.storageId,
+        org_id: SYSTEM_ORG_ID,
+        user_id: VOLUME_ORG_USER_ID,
+        storage_name: fixture.storageName,
+        s3_prefix: fixture.s3Prefix,
+      },
+    ],
   });
 }
 
-async function withCacheCleanup(
-  args: {
-    readonly objectKeyPrefix: string;
-  },
-  run: () => Promise<void>,
+async function cleanupOwnedStorage(
+  fixture: OwnedSystemStorageFixture,
 ): Promise<void> {
-  await cleanupCacheState(args);
-  await run().then(
-    async () => {
-      await cleanupCacheState(args);
-    },
-    async (error: unknown) => {
-      await cleanupCacheState(args);
-      throw error;
-    },
-  );
+  await stateAction({
+    action: "cleanup-owned-storage-cache",
+    storage_id: fixture.storageId,
+  });
+  await stateAction({
+    action: "cleanup-owned-storages",
+    storage_ids: [fixture.storageId],
+  });
 }
 
-async function readStorageState(args: {
-  readonly orgId: string;
-  readonly userId: string;
-  readonly storageName: string;
-}): Promise<StorageState | null> {
+function registerOwnedStorageCleanup(fixture: OwnedSystemStorageFixture): void {
+  onTestFinished(async () => {
+    await cleanupOwnedStorage(fixture);
+  });
+}
+
+async function readOwnedStorageState(
+  fixture: OwnedSystemStorageFixture,
+): Promise<StorageState | null> {
   const response = await stateAction({
-    action: "read-storage-state",
-    org_id: args.orgId,
-    user_id: args.userId,
-    storage_name: args.storageName,
+    action: "read-owned-storage-state",
+    storage_id: fixture.storageId,
   });
   return response.storage_state ?? null;
 }
 
-async function restoreStorageState(args: {
-  readonly orgId: string;
-  readonly userId: string;
-  readonly storageName: string;
-  readonly previous: StorageState | null;
-}): Promise<void> {
-  await stateAction({
-    action: "restore-storage-state",
-    org_id: args.orgId,
-    user_id: args.userId,
-    storage_name: args.storageName,
-    previous: args.previous,
-  });
-}
-
-async function withStorageStateRestore(
-  args: {
-    readonly orgId: string;
-    readonly userId: string;
-    readonly storageName: string;
-    readonly cleanupVersionId?: string;
-  },
-  run: () => Promise<void>,
-): Promise<void> {
-  const previous = await readStorageState(args);
-  await run().then(
-    async () => {
-      await restoreStorageState({ ...args, previous });
-      if (args.cleanupVersionId) {
-        await deleteStorageVersion({
-          ...args,
-          versionId: args.cleanupVersionId,
-        });
-      }
-    },
-    async (error: unknown) => {
-      await restoreStorageState({ ...args, previous });
-      if (args.cleanupVersionId) {
-        await deleteStorageVersion({
-          ...args,
-          versionId: args.cleanupVersionId,
-        });
-      }
-      throw error;
-    },
-  );
-}
-
-async function readCacheRowsByObjectKeyPrefix(
-  objectKeyPrefix: string,
-): Promise<readonly CacheRow[]> {
-  const response = await stateAction({
-    action: "read-cache-by-object-key-prefix",
-    object_key_prefix: objectKeyPrefix,
-  });
-  return response.rows ?? [];
-}
-
-async function seedStorageVersion(args: {
-  readonly orgId: string;
-  readonly userId: string;
-  readonly storageName: string;
+async function seedOwnedStorageVersion(args: {
+  readonly fixture: OwnedSystemStorageFixture;
   readonly versionId: string;
-  readonly s3Prefix: string;
-  readonly s3Key: string;
   readonly archiveSize: number;
 }): Promise<void> {
   await stateAction({
-    action: "seed-storage-version",
-    org_id: args.orgId,
-    user_id: args.userId,
-    storage_name: args.storageName,
+    action: "seed-owned-storage-version",
+    storage_id: args.fixture.storageId,
     version_id: args.versionId,
-    s3_prefix: args.s3Prefix,
-    s3_key: args.s3Key,
+    s3_key: storageVersionKey(args.fixture, args.versionId),
     archive_size: args.archiveSize,
   });
 }
 
-async function deleteStorageVersion(args: {
-  readonly orgId: string;
-  readonly userId: string;
-  readonly storageName: string;
-  readonly versionId: string;
-}): Promise<void> {
-  await stateAction({
-    action: "delete-storage-version",
-    org_id: args.orgId,
-    user_id: args.userId,
-    storage_name: args.storageName,
-    version_id: args.versionId,
+async function readOwnedStorageCache(
+  fixture: OwnedSystemStorageFixture,
+): Promise<readonly CacheRow[]> {
+  const response = await stateAction({
+    action: "read-owned-storage-cache",
+    storage_id: fixture.storageId,
   });
+  return response.rows ?? [];
 }
 
-async function seedCacheRow(args: {
-  readonly bucket: string;
-  readonly objectKey: string;
-  readonly storageVersionId: string;
+async function seedOwnedStorageCacheRow(args: {
+  readonly fixture: OwnedSystemStorageFixture;
+  readonly versionId: string;
   readonly presignedUrl: string;
   readonly expiresAt: Date;
   readonly refreshAfter: Date;
   readonly lastRequestedAt?: Date;
 }): Promise<void> {
   await stateAction({
-    action: "seed-cache-row",
-    bucket: args.bucket,
-    object_key: args.objectKey,
-    storage_version_id: args.storageVersionId,
+    action: "seed-owned-storage-cache-row",
+    storage_id: args.fixture.storageId,
+    storage_version_id: args.versionId,
+    bucket: BUCKET,
     public_endpoint: true,
-    ttl_seconds: 2 * 60 * 60,
+    ttl_seconds: CACHE_TTL_SECONDS,
     presigned_url: args.presignedUrl,
     expires_at: args.expiresAt.toISOString(),
     refresh_after: args.refreshAfter.toISOString(),
@@ -240,9 +225,86 @@ async function seedCacheRow(args: {
   });
 }
 
-async function entitledRunActor(): Promise<{
+async function refreshOwnedStorageCache(
+  fixture: OwnedSystemStorageFixture,
+): Promise<{
+  readonly due: number;
+  readonly refreshed: number;
+  readonly pruned: number;
+}> {
+  const response = await stateAction({
+    action: "refresh-owned-storage-cache",
+    storage_id: fixture.storageId,
+  });
+  if (!response.cache_refresh) {
+    throw new Error("Owned system storage cache refresh result is missing");
+  }
+  return response.cache_refresh;
+}
+
+function cacheKey(objectKey: string, storageVersionId: string): string {
+  return createHash("sha256")
+    .update(
+      JSON.stringify([
+        "system-storage-url-v1",
+        BUCKET,
+        objectKey,
+        storageVersionId,
+        "public",
+        CACHE_TTL_SECONDS,
+      ]),
+    )
+    .digest("hex");
+}
+
+function cacheRowSnapshot(row: CacheRow): CacheRowSnapshot {
+  return {
+    cache_key: row.cache_key,
+    bucket: row.bucket,
+    object_key: row.object_key,
+    storage_version_id: row.storage_version_id,
+    public_endpoint: row.public_endpoint,
+    ttl_seconds: row.ttl_seconds,
+    presigned_url: row.presigned_url,
+  };
+}
+
+function expectedCacheRow(args: {
+  readonly fixture: OwnedSystemStorageFixture;
+  readonly versionId: string;
+  readonly presignedUrl: string;
+}): CacheRowSnapshot {
+  const objectKey = storageArchiveKey(args.fixture, args.versionId);
+  return {
+    cache_key: cacheKey(objectKey, args.versionId),
+    bucket: BUCKET,
+    object_key: objectKey,
+    storage_version_id: args.versionId,
+    public_endpoint: true,
+    ttl_seconds: CACHE_TTL_SECONDS,
+    presigned_url: args.presignedUrl,
+  };
+}
+
+function sortedCacheSnapshots(
+  rows: readonly CacheRow[],
+): readonly CacheRowSnapshot[] {
+  return rows.map(cacheRowSnapshot).sort((left, right) => {
+    return left.object_key.localeCompare(right.object_key);
+  });
+}
+
+function sortedExpectedCacheRows(
+  rows: readonly CacheRowSnapshot[],
+): readonly CacheRowSnapshot[] {
+  return [...rows].sort((left, right) => {
+    return left.object_key.localeCompare(right.object_key);
+  });
+}
+
+async function entitledDirectRunActor(): Promise<{
   readonly actor: ApiTestUser;
-  readonly agentId: string;
+  readonly composeVersionId: string;
   readonly runnerGroup: string;
 }> {
   const bdd = createBddApi(context);
@@ -254,41 +316,92 @@ async function entitledRunActor(): Promise<{
   const runnerGroup = api.configureRunnerGroup();
   await api.grantProEntitlement(actor);
   await api.ensureOrgModelProvider(actor);
-  const agent = await bdd.createAgent(actor, {
-    displayName: "System storage cache agent",
-    visibility: "private",
+  const composeName = `system-cache-${randomUUID().slice(0, 8)}`;
+  const compose = await api.createCompose(actor, {
+    version: "1",
+    agents: {
+      [composeName]: {
+        framework: "claude-code",
+        environment: { ANTHROPIC_API_KEY: "system-cache-test-key" },
+      },
+    },
   });
-  return { actor, agentId: agent.agentId, runnerGroup };
+  return {
+    actor,
+    composeVersionId: compose.versionId,
+    runnerGroup,
+  };
 }
 
-function mockUniquePresignedUrls(): void {
-  let count = 0;
+async function createAndClaimOwnedSystemStorage(args: {
+  readonly actor: ApiTestUser;
+  readonly composeVersionId: string;
+  readonly runnerGroup: string;
+  readonly fixture: OwnedSystemStorageFixture;
+  readonly prompt: string;
+}): Promise<{
+  readonly mount: ClaimedStorageMount;
+}> {
+  const api = createRunsApi(context);
+  const run = await api.createDirectRun(args.actor, {
+    agentComposeVersionId: args.composeVersionId,
+    prompt: args.prompt,
+    ownedSystemStorageMounts: [
+      {
+        storageId: args.fixture.storageId,
+        mountPath: args.fixture.mountPath,
+      },
+    ],
+  });
+  onTestFinished(async () => {
+    await api.requestCancelRun(args.actor, run.runId, [200, 404]);
+  });
+  await api.heartbeatRunner(args.runnerGroup);
+  const claim = await api.claimRunnerJob(run.runId);
+  const mounts =
+    expectCanonicalStorageManifest(claim.storageManifest)?.storageMounts.filter(
+      (storage) => {
+        return storage.name === args.fixture.storageName;
+      },
+    ) ?? [];
+  if (mounts.length !== 1) {
+    throw new Error("Expected one owned system storage mount");
+  }
+  const mount = mounts[0];
+  if (!mount?.archiveUrl || mount.archiveSize === undefined) {
+    throw new Error("Owned system storage mount is incomplete");
+  }
+  await api.requestCancelRun(args.actor, run.runId, [200]);
+  return {
+    mount: {
+      name: mount.name,
+      mountPath: mount.mountPath,
+      versionId: mount.versionId,
+      archiveSize: mount.archiveSize,
+      archiveUrl: mount.archiveUrl,
+    },
+  };
+}
+
+function expectedPresignedUrl(objectKey: string, count: number): string {
+  return `https://r2.example.com/${encodeURIComponent(objectKey)}?sig=${count}`;
+}
+
+function mockUniquePresignedUrls(): (objectKey: string) => number {
+  const counts = new Map<string, number>();
   context.mocks.s3.getSignedUrl.mockImplementation(
     (_client: unknown, command: unknown) => {
-      count += 1;
       const input = (command as { readonly input?: { readonly Key?: string } })
         .input;
-      return Promise.resolve(
-        `https://r2.example.com/${encodeURIComponent(input?.Key ?? "unknown")}?sig=${count}`,
-      );
+      const objectKey = input?.Key ?? "unknown";
+      const count = (counts.get(objectKey) ?? 0) + 1;
+      counts.set(objectKey, count);
+      return Promise.resolve(expectedPresignedUrl(objectKey, count));
     },
   );
-}
-
-function isolatedSystemSkillStorage() {
-  // Goal is mounted on every Zero run but is not rewritten by the
-  // cron-sync-skills test fixture, so its system storage head is stable while
-  // this suite exercises the cache.
-  const skillRef = resolveSkillRef(GOAL_SKILL_NAME);
-  const fullPath = skillRef.replace("https://github.com/", "");
-  const storageName = getSkillStorageName(fullPath);
-  const versionId = randomUUID()
-    .replaceAll("-", "")
-    .padEnd(64, "a")
-    .slice(0, 64);
-  const s3Prefix = `${SYSTEM_ORG_ID}/volume/${storageName}`;
-  const s3Key = `${s3Prefix}/${versionId}`;
-  return { storageName, versionId, s3Prefix, s3Key };
+  return (objectKey: string) => {
+    return counts.get(objectKey) ?? 0;
+  };
 }
 
 function cronClient() {
@@ -305,376 +418,432 @@ function cronHeaders(secret = CRON_SECRET) {
 beforeEach(() => {
   mockEnv("R2_USER_STORAGES_BUCKET_NAME", BUCKET);
   mockEnv("CRON_SECRET", CRON_SECRET);
-  mockUniquePresignedUrls();
 });
 
 describe("system storage presigned URL cache", () => {
-  it("reuses cached system-owned storage URLs across Zero runs", async () => {
-    const api = createRunsApi(context);
-    const { actor, agentId, runnerGroup } = await entitledRunActor();
-    mockUniquePresignedUrls();
-    const skill = isolatedSystemSkillStorage();
-    await withCacheCleanup(
-      {
-        objectKeyPrefix: skill.s3Prefix,
-      },
-      async () => {
-        await withStorageStateRestore(
-          {
-            orgId: SYSTEM_ORG_ID,
-            userId: VOLUME_ORG_USER_ID,
-            storageName: skill.storageName,
-            cleanupVersionId: skill.versionId,
-          },
-          async () => {
-            await seedStorageVersion({
-              orgId: SYSTEM_ORG_ID,
-              userId: VOLUME_ORG_USER_ID,
-              storageName: skill.storageName,
-              versionId: skill.versionId,
-              s3Prefix: skill.s3Prefix,
-              s3Key: skill.s3Key,
-              archiveSize: 1024,
-            });
+  it("reuses one exact cached URL for a synthetic system storage", async () => {
+    const fixture = createOwnedSystemStorageFixture("reuse");
+    const versionId = createVersionId("reuse");
+    await claimOwnedStorage(fixture);
+    registerOwnedStorageCleanup(fixture);
+    await seedOwnedStorageVersion({
+      fixture,
+      versionId,
+      archiveSize: 1024,
+    });
+    await expect(readOwnedStorageState(fixture)).resolves.toStrictEqual({
+      s3_prefix: fixture.s3Prefix,
+      size: 1,
+      file_count: 1,
+      head_version_id: versionId,
+    });
 
-            const firstRun = await api.createRun(actor, {
-              agentId,
-              prompt: "warm the system storage URL cache",
-              modelProvider: "anthropic-api-key",
-            });
-            await api.heartbeatRunner(runnerGroup);
-            const firstClaim = await api.claimRunnerJob(firstRun.runId);
-            const firstSkillEntry = expectCanonicalStorageManifest(
-              firstClaim.storageManifest,
-            )?.storageMounts.find((storage) => {
-              return storage.name === skill.storageName;
-            });
-            expect(firstSkillEntry?.archiveSize).toBe(1024);
+    const runFixture = await entitledDirectRunActor();
+    const signedCount = mockUniquePresignedUrls();
+    const objectKey = storageArchiveKey(fixture, versionId);
+    const archiveUrl = expectedPresignedUrl(objectKey, 1);
+    const expectedMount: ClaimedStorageMount = {
+      name: fixture.storageName,
+      mountPath: fixture.mountPath,
+      versionId,
+      archiveSize: 1024,
+      archiveUrl,
+    };
 
-            const secondRun = await api.createRun(actor, {
-              agentId,
-              prompt: "reuse the system storage URL cache",
-              modelProvider: "anthropic-api-key",
-            });
-            await api.heartbeatRunner(runnerGroup);
-            const secondClaim = await api.claimRunnerJob(secondRun.runId);
-            const secondSkillEntry = expectCanonicalStorageManifest(
-              secondClaim.storageManifest,
-            )?.storageMounts.find((storage) => {
-              return storage.name === skill.storageName;
-            });
+    const first = await createAndClaimOwnedSystemStorage({
+      ...runFixture,
+      fixture,
+      prompt: "warm the owned system storage URL cache",
+    });
+    expect(first.mount).toStrictEqual(expectedMount);
+    expect(signedCount(objectKey)).toBe(1);
+    expect(
+      sortedCacheSnapshots(await readOwnedStorageCache(fixture)),
+    ).toStrictEqual([
+      expectedCacheRow({ fixture, versionId, presignedUrl: archiveUrl }),
+    ]);
 
-            expect(secondSkillEntry?.archiveUrl).toBe(
-              firstSkillEntry?.archiveUrl,
-            );
-            await api.requestCancelRun(actor, firstRun.runId, [200]);
-            await api.requestCancelRun(actor, secondRun.runId, [200]);
-          },
-        );
-      },
-    );
+    const second = await createAndClaimOwnedSystemStorage({
+      ...runFixture,
+      fixture,
+      prompt: "reuse the owned system storage URL cache",
+    });
+    expect(second.mount).toStrictEqual(expectedMount);
+    expect(signedCount(objectKey)).toBe(1);
+    expect(
+      sortedCacheSnapshots(await readOwnedStorageCache(fixture)),
+    ).toStrictEqual([
+      expectedCacheRow({ fixture, versionId, presignedUrl: archiveUrl }),
+    ]);
   });
 
-  it("prefers system storage and falls back to the primary organization", async () => {
-    const api = createRunsApi(context);
+  it("prefers owned system storage and falls back to the primary organization", async () => {
     const storages = createStoragesBddApi(context);
-    const { actor, agentId, runnerGroup } = await entitledRunActor();
+    const runFixture = await entitledDirectRunActor();
+    const fixture = createOwnedSystemStorageFixture("fallback");
+    const versionId = createVersionId("system-fallback");
+    await claimOwnedStorage(fixture);
+    registerOwnedStorageCleanup(fixture);
+    await seedOwnedStorageVersion({
+      fixture,
+      versionId,
+      archiveSize: 1024,
+    });
+
     storages.mockStorageObjectsExist(2048);
-    const skill = isolatedSystemSkillStorage();
     const primaryFile = storageTextFile(
       "primary.txt",
       `primary fallback ${randomUUID()}`,
     );
-    const primary = await storages.prepareStorage(actor, {
-      storageName: skill.storageName,
+    const primary = await storages.prepareStorage(runFixture.actor, {
+      storageName: fixture.storageName,
       storageOwner: "organization",
       files: [primaryFile],
     });
-    await storages.commitStorage(actor, {
-      storageName: skill.storageName,
+    await storages.commitStorage(runFixture.actor, {
+      storageName: fixture.storageName,
       storageOwner: "organization",
       versionId: primary.versionId,
       files: [primaryFile],
     });
+    if (!runFixture.actor.orgId) {
+      throw new Error("Expected an organization-scoped cache actor");
+    }
+    const primaryPrefix = await readStorageS3PrefixFixture({
+      orgId: runFixture.actor.orgId,
+      userId: VOLUME_ORG_USER_ID,
+      name: fixture.storageName,
+    });
+    const signedCount = mockUniquePresignedUrls();
+    const systemObjectKey = storageArchiveKey(fixture, versionId);
+    const systemArchiveUrl = expectedPresignedUrl(systemObjectKey, 1);
 
-    await withCacheCleanup({ objectKeyPrefix: skill.s3Prefix }, async () => {
-      await withStorageStateRestore(
-        {
-          orgId: SYSTEM_ORG_ID,
-          userId: VOLUME_ORG_USER_ID,
-          storageName: skill.storageName,
-          cleanupVersionId: skill.versionId,
-        },
-        async () => {
-          await seedStorageVersion({
-            orgId: SYSTEM_ORG_ID,
-            userId: VOLUME_ORG_USER_ID,
-            storageName: skill.storageName,
-            versionId: skill.versionId,
-            s3Prefix: skill.s3Prefix,
-            s3Key: skill.s3Key,
-            archiveSize: 1024,
-          });
+    const systemRun = await createAndClaimOwnedSystemStorage({
+      ...runFixture,
+      fixture,
+      prompt: "prefer the owned system storage candidate",
+    });
+    expect(systemRun.mount).toStrictEqual({
+      name: fixture.storageName,
+      mountPath: fixture.mountPath,
+      versionId,
+      archiveSize: 1024,
+      archiveUrl: systemArchiveUrl,
+    });
+    expect(signedCount(systemObjectKey)).toBe(1);
 
-          const systemRun = await api.createRun(actor, {
-            agentId,
-            prompt: "prefer the system storage candidate",
-            modelProvider: "anthropic-api-key",
-          });
-          await api.heartbeatRunner(runnerGroup);
-          const systemClaim = await api.claimRunnerJob(systemRun.runId);
-          const systemStorage = expectCanonicalStorageManifest(
-            systemClaim.storageManifest,
-          )?.storageMounts.find((storage) => {
-            return storage.name === skill.storageName;
-          });
-          expect(systemStorage).toMatchObject({
-            versionId: skill.versionId,
-            archiveSize: 1024,
-          });
+    await stateAction({
+      action: "cleanup-owned-storages",
+      storage_ids: [fixture.storageId],
+    });
+    await claimOwnedStorage(fixture);
+    await expect(readOwnedStorageState(fixture)).resolves.toStrictEqual({
+      s3_prefix: fixture.s3Prefix,
+      size: 0,
+      file_count: 0,
+      head_version_id: null,
+    });
 
-          // A system row without a HEAD is intentionally treated as missing,
-          // so the same injected volume must resolve from the primary org.
-          await restoreStorageState({
-            orgId: SYSTEM_ORG_ID,
-            userId: VOLUME_ORG_USER_ID,
-            storageName: skill.storageName,
-            previous: {
-              s3_prefix: skill.s3Prefix,
-              size: 1,
-              file_count: 1,
-              head_version_id: null,
-            },
-          });
+    const primaryObjectKey = `${primaryPrefix}/${primary.versionId}/archive.tar.gz`;
+    const fallbackRun = await createAndClaimOwnedSystemStorage({
+      ...runFixture,
+      fixture,
+      prompt: "fall back to the primary storage candidate",
+    });
+    expect(fallbackRun.mount).toStrictEqual({
+      name: fixture.storageName,
+      mountPath: fixture.mountPath,
+      versionId: primary.versionId,
+      archiveSize: 2048,
+      archiveUrl: expectedPresignedUrl(primaryObjectKey, 1),
+    });
+    expect(signedCount(primaryObjectKey)).toBe(1);
+    expect(
+      sortedCacheSnapshots(await readOwnedStorageCache(fixture)),
+    ).toStrictEqual([
+      expectedCacheRow({
+        fixture,
+        versionId,
+        presignedUrl: systemArchiveUrl,
+      }),
+    ]);
+  });
 
-          const fallbackRun = await api.createRun(actor, {
-            agentId,
-            prompt: "fall back to the primary storage candidate",
-            modelProvider: "anthropic-api-key",
-          });
-          const fallbackClaim = await api.claimRunnerJob(fallbackRun.runId);
-          expect(
-            expectCanonicalStorageManifest(
-              fallbackClaim.storageManifest,
-            )?.storageMounts.find((storage) => {
-              return storage.name === skill.storageName;
-            }),
-          ).toMatchObject({
-            versionId: primary.versionId,
-            archiveSize: 2048,
-          });
-          expect(
-            expectCanonicalStorageManifest(
-              fallbackClaim.storageManifest,
-            )?.storageMounts.some((mount) => {
-              return mount.name === "memory";
-            }),
-          ).toBeTruthy();
+  it("reuses a stale safe URL and synchronously refreshes an unsafe URL", async () => {
+    const fixture = createOwnedSystemStorageFixture("stale");
+    const versionId = createVersionId("stale");
+    await claimOwnedStorage(fixture);
+    registerOwnedStorageCleanup(fixture);
+    await seedOwnedStorageVersion({
+      fixture,
+      versionId,
+      archiveSize: 1536,
+    });
+    const runFixture = await entitledDirectRunActor();
+    const signedCount = mockUniquePresignedUrls();
+    const objectKey = storageArchiveKey(fixture, versionId);
 
-          await api.requestCancelRun(actor, systemRun.runId, [200]);
-          await api.requestCancelRun(actor, fallbackRun.runId, [200]);
-        },
-      );
+    const initial = await createAndClaimOwnedSystemStorage({
+      ...runFixture,
+      fixture,
+      prompt: "create the owned system storage cache row",
+    });
+    expect(initial.mount.archiveUrl).toBe(expectedPresignedUrl(objectKey, 1));
+    expect(signedCount(objectKey)).toBe(1);
+
+    const now = nowDate();
+    const staleUrl = "https://r2.example.com/stale-owned-system-storage";
+    await seedOwnedStorageCacheRow({
+      fixture,
+      versionId,
+      presignedUrl: staleUrl,
+      expiresAt: new Date(now.getTime() + 60 * 60 * 1000),
+      refreshAfter: new Date(now.getTime() - 60 * 1000),
+      lastRequestedAt: now,
+    });
+    const stale = await createAndClaimOwnedSystemStorage({
+      ...runFixture,
+      fixture,
+      prompt: "reuse the stale safe owned system storage URL",
+    });
+    expect(stale.mount).toStrictEqual({
+      name: fixture.storageName,
+      mountPath: fixture.mountPath,
+      versionId,
+      archiveSize: 1536,
+      archiveUrl: staleUrl,
+    });
+    expect(signedCount(objectKey)).toBe(1);
+    expect(
+      sortedCacheSnapshots(await readOwnedStorageCache(fixture)),
+    ).toStrictEqual([
+      expectedCacheRow({ fixture, versionId, presignedUrl: staleUrl }),
+    ]);
+
+    const unsafeUrl = "https://r2.example.com/unsafe-owned-system-storage";
+    await seedOwnedStorageCacheRow({
+      fixture,
+      versionId,
+      presignedUrl: unsafeUrl,
+      expiresAt: new Date(now.getTime() + 5 * 60 * 1000),
+      refreshAfter: new Date(now.getTime() - 60 * 1000),
+      lastRequestedAt: now,
+    });
+    const refreshed = await createAndClaimOwnedSystemStorage({
+      ...runFixture,
+      fixture,
+      prompt: "refresh the unsafe owned system storage URL",
+    });
+    const refreshedUrl = expectedPresignedUrl(objectKey, 2);
+    expect(refreshed.mount).toStrictEqual({
+      name: fixture.storageName,
+      mountPath: fixture.mountPath,
+      versionId,
+      archiveSize: 1536,
+      archiveUrl: refreshedUrl,
+    });
+    expect(signedCount(objectKey)).toBe(2);
+    expect(
+      sortedCacheSnapshots(await readOwnedStorageCache(fixture)),
+    ).toStrictEqual([
+      expectedCacheRow({ fixture, versionId, presignedUrl: refreshedUrl }),
+    ]);
+  });
+
+  it("refreshes exactly one bounded owned cache batch", async () => {
+    const fixture = createOwnedSystemStorageFixture("cron-batch");
+    await claimOwnedStorage(fixture);
+    registerOwnedStorageCleanup(fixture);
+    const signedCount = mockUniquePresignedUrls();
+    const now = nowDate();
+    const expiresAt = new Date(now.getTime() + 60 * 60 * 1000);
+    const refreshAfter = new Date(now.getTime() - 60 * 1000);
+    const versions: string[] = [];
+
+    for (let index = 0; index < 5; index += 1) {
+      const versionId = createVersionId(`cron-batch-${index}`);
+      versions.push(versionId);
+      await seedOwnedStorageVersion({
+        fixture,
+        versionId,
+        archiveSize: 100 + index,
+      });
+      await seedOwnedStorageCacheRow({
+        fixture,
+        versionId,
+        presignedUrl: `https://r2.example.com/old-${index}`,
+        expiresAt,
+        refreshAfter: new Date(refreshAfter.getTime() + index),
+        lastRequestedAt: now,
+      });
+    }
+
+    await accept(
+      cronClient().refresh({ headers: cronHeaders("wrong") }),
+      [401],
+    );
+    await expect(refreshOwnedStorageCache(fixture)).resolves.toStrictEqual({
+      due: 4,
+      refreshed: 3,
+      pruned: 0,
+    });
+    const expectedRows = versions.map((versionId, index) => {
+      const objectKey = storageArchiveKey(fixture, versionId);
+      const refreshed = index < 3;
+      expect(signedCount(objectKey)).toBe(refreshed ? 1 : 0);
+      return expectedCacheRow({
+        fixture,
+        versionId,
+        presignedUrl: refreshed
+          ? expectedPresignedUrl(objectKey, 1)
+          : `https://r2.example.com/old-${index}`,
+      });
+    });
+    expect(
+      sortedCacheSnapshots(await readOwnedStorageCache(fixture)),
+    ).toStrictEqual(sortedExpectedCacheRows(expectedRows));
+    await expect(readOwnedStorageState(fixture)).resolves.toStrictEqual({
+      s3_prefix: fixture.s3Prefix,
+      size: 1,
+      file_count: 1,
+      head_version_id: versions[4],
     });
   });
 
-  it("refreshes only a bounded due cache batch from cron", async () => {
-    mockNow(ISOLATED_CACHE_CRON_NOW);
-    const prefix = `${SYSTEM_ORG_ID}/volume/cache-cron-${randomUUID()}`;
-    await withCacheCleanup(
-      {
-        objectKeyPrefix: prefix,
-      },
-      async () => {
-        const now = nowDate();
-        const expiresAt = new Date(now.getTime() + 60 * 60 * 1000);
-        const refreshAfter = new Date(now.getTime() - 60 * 1000);
+  it("skips exactly the inactive owned cache row", async () => {
+    const fixture = createOwnedSystemStorageFixture("cron-inactive");
+    await claimOwnedStorage(fixture);
+    registerOwnedStorageCleanup(fixture);
+    const signedCount = mockUniquePresignedUrls();
+    const now = nowDate();
+    const expiresAt = new Date(now.getTime() + 60 * 60 * 1000);
+    const refreshAfter = new Date(now.getTime() - 60 * 1000);
+    const inactiveRequestedAt = new Date(now.getTime() - 48 * 60 * 60 * 1000);
+    const activeVersions: string[] = [];
 
-        for (let index = 0; index < 5; index += 1) {
-          const versionId = `${index}`.repeat(64).slice(0, 64);
-          await seedCacheRow({
-            bucket: BUCKET,
-            objectKey: `${prefix}/${versionId}/archive.tar.gz`,
-            storageVersionId: versionId,
-            presignedUrl: `https://r2.example.com/old-${index}`,
-            expiresAt,
-            refreshAfter: new Date(refreshAfter.getTime() + index),
-            lastRequestedAt: now,
-          });
-        }
+    for (let index = 0; index < 2; index += 1) {
+      const versionId = createVersionId(`cron-active-${index}`);
+      activeVersions.push(versionId);
+      await seedOwnedStorageVersion({
+        fixture,
+        versionId,
+        archiveSize: 200 + index,
+      });
+      await seedOwnedStorageCacheRow({
+        fixture,
+        versionId,
+        presignedUrl: `https://r2.example.com/active-old-${index}`,
+        expiresAt,
+        refreshAfter: new Date(refreshAfter.getTime() + index),
+        lastRequestedAt: now,
+      });
+    }
 
-        await accept(
-          cronClient().refresh({ headers: cronHeaders("wrong") }),
-          [401],
-        );
-        const refreshed = await accept(
-          cronClient().refresh({ headers: cronHeaders() }),
-          [200],
-        );
-        expect(refreshed.body).toStrictEqual({
-          success: true,
-          system: {
-            due: 4,
-            refreshed: 3,
-            pruned: 0,
-          },
-          workflowSkill: expect.objectContaining({
-            due: expect.any(Number),
-            refreshed: expect.any(Number),
-            pruned: expect.any(Number),
-          }),
-        });
+    const inactiveVersionId = createVersionId("cron-inactive");
+    await seedOwnedStorageVersion({
+      fixture,
+      versionId: inactiveVersionId,
+      archiveSize: 299,
+    });
+    await seedOwnedStorageCacheRow({
+      fixture,
+      versionId: inactiveVersionId,
+      presignedUrl: "https://r2.example.com/inactive-old",
+      expiresAt,
+      refreshAfter,
+      lastRequestedAt: inactiveRequestedAt,
+    });
 
-        const rows = await readCacheRowsByObjectKeyPrefix(prefix);
-        expect(rows).toHaveLength(5);
-        expect(
-          rows.filter((row) => {
-            return row.presigned_url.includes("?sig=");
-          }),
-        ).toHaveLength(3);
-        expect(
-          rows.filter((row) => {
-            return row.presigned_url.includes("/old-");
-          }),
-        ).toHaveLength(2);
-      },
+    await expect(refreshOwnedStorageCache(fixture)).resolves.toStrictEqual({
+      due: 2,
+      refreshed: 2,
+      pruned: 0,
+    });
+    const expectedRows = activeVersions.map((versionId) => {
+      const objectKey = storageArchiveKey(fixture, versionId);
+      expect(signedCount(objectKey)).toBe(1);
+      return expectedCacheRow({
+        fixture,
+        versionId,
+        presignedUrl: expectedPresignedUrl(objectKey, 1),
+      });
+    });
+    const inactiveObjectKey = storageArchiveKey(fixture, inactiveVersionId);
+    expect(signedCount(inactiveObjectKey)).toBe(0);
+    expectedRows.push(
+      expectedCacheRow({
+        fixture,
+        versionId: inactiveVersionId,
+        presignedUrl: "https://r2.example.com/inactive-old",
+      }),
     );
+    expect(
+      sortedCacheSnapshots(await readOwnedStorageCache(fixture)),
+    ).toStrictEqual(sortedExpectedCacheRows(expectedRows));
   });
 
-  it("skips inactive due cache rows in cron", async () => {
-    mockNow(ISOLATED_CACHE_CRON_NOW);
-    const prefix = `${SYSTEM_ORG_ID}/volume/cache-inactive-${randomUUID()}`;
-    await withCacheCleanup(
-      {
-        objectKeyPrefix: prefix,
-      },
-      async () => {
-        const now = nowDate();
-        const expiresAt = new Date(now.getTime() + 60 * 60 * 1000);
-        const refreshAfter = new Date(now.getTime() - 60 * 1000);
-        const inactiveRequestedAt = new Date(
-          now.getTime() - 48 * 60 * 60 * 1000,
-        );
+  it("prunes exactly the inactive expired owned cache rows", async () => {
+    const fixture = createOwnedSystemStorageFixture("cron-prune");
+    await claimOwnedStorage(fixture);
+    registerOwnedStorageCleanup(fixture);
+    mockUniquePresignedUrls();
+    const now = nowDate();
+    const expiredAt = new Date(now.getTime() - 60 * 60 * 1000);
+    const futureExpiresAt = new Date(now.getTime() + 60 * 60 * 1000);
+    const refreshAfter = new Date(now.getTime() - 60 * 1000);
+    const inactiveRequestedAt = new Date(now.getTime() - 48 * 60 * 60 * 1000);
 
-        for (let index = 0; index < 2; index += 1) {
-          const versionId = `a${index}`.repeat(32).slice(0, 64);
-          await seedCacheRow({
-            bucket: BUCKET,
-            objectKey: `${prefix}/${versionId}/archive.tar.gz`,
-            storageVersionId: versionId,
-            presignedUrl: `https://r2.example.com/active-old-${index}`,
-            expiresAt,
-            refreshAfter: new Date(refreshAfter.getTime() + index),
-            lastRequestedAt: now,
-          });
-        }
+    for (let index = 0; index < 2; index += 1) {
+      const versionId = createVersionId(`cron-prune-${index}`);
+      await seedOwnedStorageVersion({
+        fixture,
+        versionId,
+        archiveSize: 300 + index,
+      });
+      await seedOwnedStorageCacheRow({
+        fixture,
+        versionId,
+        presignedUrl: `https://r2.example.com/expired-inactive-${index}`,
+        expiresAt: expiredAt,
+        refreshAfter,
+        lastRequestedAt: inactiveRequestedAt,
+      });
+    }
 
-        const inactiveVersionId = "f".repeat(64);
-        await seedCacheRow({
-          bucket: BUCKET,
-          objectKey: `${prefix}/${inactiveVersionId}/archive.tar.gz`,
-          storageVersionId: inactiveVersionId,
-          presignedUrl: "https://r2.example.com/inactive-old",
-          expiresAt,
-          refreshAfter,
-          lastRequestedAt: inactiveRequestedAt,
-        });
+    const inactiveFreshVersionId = createVersionId("cron-prune-fresh");
+    await seedOwnedStorageVersion({
+      fixture,
+      versionId: inactiveFreshVersionId,
+      archiveSize: 399,
+    });
+    await seedOwnedStorageCacheRow({
+      fixture,
+      versionId: inactiveFreshVersionId,
+      presignedUrl: "https://r2.example.com/fresh-inactive",
+      expiresAt: futureExpiresAt,
+      refreshAfter,
+      lastRequestedAt: inactiveRequestedAt,
+    });
 
-        const refreshed = await accept(
-          cronClient().refresh({ headers: cronHeaders() }),
-          [200],
-        );
-        expect(refreshed.body).toStrictEqual({
-          success: true,
-          system: {
-            due: 2,
-            refreshed: 2,
-            pruned: 0,
-          },
-          workflowSkill: expect.objectContaining({
-            due: expect.any(Number),
-            refreshed: expect.any(Number),
-            pruned: expect.any(Number),
-          }),
-        });
-
-        const rows = await readCacheRowsByObjectKeyPrefix(prefix);
-        expect(
-          rows.filter((row) => {
-            return row.presigned_url.includes("?sig=");
-          }),
-        ).toHaveLength(2);
-        expect(
-          rows.find((row) => {
-            return row.storage_version_id === inactiveVersionId;
-          })?.presigned_url,
-        ).toBe("https://r2.example.com/inactive-old");
-      },
-    );
-  });
-
-  it("prunes inactive expired cache rows from cron", async () => {
-    mockNow(ISOLATED_CACHE_CRON_NOW);
-    const prefix = `${SYSTEM_ORG_ID}/volume/cache-prune-${randomUUID()}`;
-    await withCacheCleanup(
-      {
-        objectKeyPrefix: prefix,
-      },
-      async () => {
-        const now = nowDate();
-        const expiredAt = new Date(now.getTime() - 60 * 60 * 1000);
-        const futureExpiresAt = new Date(now.getTime() + 60 * 60 * 1000);
-        const refreshAfter = new Date(now.getTime() - 60 * 1000);
-        const inactiveRequestedAt = new Date(
-          now.getTime() - 48 * 60 * 60 * 1000,
-        );
-
-        for (let index = 0; index < 2; index += 1) {
-          const versionId = `p${index}`.repeat(32).slice(0, 64);
-          await seedCacheRow({
-            bucket: BUCKET,
-            objectKey: `${prefix}/${versionId}/archive.tar.gz`,
-            storageVersionId: versionId,
-            presignedUrl: `https://r2.example.com/expired-inactive-${index}`,
-            expiresAt: expiredAt,
-            refreshAfter,
-            lastRequestedAt: inactiveRequestedAt,
-          });
-        }
-
-        const inactiveFreshVersionId = "p9".repeat(32).slice(0, 64);
-        await seedCacheRow({
-          bucket: BUCKET,
-          objectKey: `${prefix}/${inactiveFreshVersionId}/archive.tar.gz`,
-          storageVersionId: inactiveFreshVersionId,
-          presignedUrl: "https://r2.example.com/fresh-inactive",
-          expiresAt: futureExpiresAt,
-          refreshAfter,
-          lastRequestedAt: inactiveRequestedAt,
-        });
-
-        const refreshed = await accept(
-          cronClient().refresh({ headers: cronHeaders() }),
-          [200],
-        );
-        expect(refreshed.body).toStrictEqual({
-          success: true,
-          system: {
-            due: 0,
-            refreshed: 0,
-            pruned: 2,
-          },
-          workflowSkill: expect.objectContaining({
-            due: expect.any(Number),
-            refreshed: expect.any(Number),
-            pruned: expect.any(Number),
-          }),
-        });
-
-        const rows = await readCacheRowsByObjectKeyPrefix(prefix);
-        expect(rows).toHaveLength(1);
-        expect(rows[0]?.storage_version_id).toBe(inactiveFreshVersionId);
-      },
-    );
+    await expect(refreshOwnedStorageCache(fixture)).resolves.toStrictEqual({
+      due: 0,
+      refreshed: 0,
+      pruned: 2,
+    });
+    expect(
+      sortedCacheSnapshots(await readOwnedStorageCache(fixture)),
+    ).toStrictEqual([
+      expectedCacheRow({
+        fixture,
+        versionId: inactiveFreshVersionId,
+        presignedUrl: "https://r2.example.com/fresh-inactive",
+      }),
+    ]);
+    await expect(readOwnedStorageState(fixture)).resolves.toStrictEqual({
+      s3_prefix: fixture.s3Prefix,
+      size: 1,
+      file_count: 1,
+      head_version_id: inactiveFreshVersionId,
+    });
   });
 });

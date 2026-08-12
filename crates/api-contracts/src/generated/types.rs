@@ -195,41 +195,6 @@ pub mod webhooks {
             }
         }
 
-        /// DTOs for incrementally following the persisted Pi transcript.
-        pub mod pi_transcript {
-            /// One persisted Pi message in canonical transcript order.
-            #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-            #[serde(rename_all = "camelCase")]
-            pub struct ResponseMessage {
-                /// One-based ordinal in the chat thread transcript.
-                pub ordinal: i64,
-                /// Stable idempotency key for the persisted message.
-                pub message_id: String,
-                /// Run that originally emitted the message.
-                pub run_id: String,
-                /// Event sequence assigned by the message's originating run.
-                pub run_event_sequence_number: u64,
-                /// Canonical Pi message role.
-                pub role: String,
-                /// Complete native Pi message payload.
-                pub payload: serde_json::Value,
-                /// Persisted message timestamp.
-                pub created_at: String,
-            }
-
-            /// Transcript page returned to a standby Pi agent.
-            #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
-            #[serde(rename_all = "camelCase")]
-            pub struct Response {
-                /// Highest persisted transcript ordinal.
-                pub last_ordinal: u64,
-                /// Whether another transcript page is available.
-                pub has_more: bool,
-                /// Canonical ordered Pi messages.
-                pub messages: Vec<ResponseMessage>,
-            }
-        }
-
         /// Sandbox storage upload DTOs shared by guest agents and webhook handlers.
         pub mod storages {
             /// File metadata entry used to compute and commit content-addressed storage uploads.

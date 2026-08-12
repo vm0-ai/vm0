@@ -402,10 +402,8 @@ async fn complete_claimed_without_sandbox(
     reuse_result: Option<SandboxReuseResult>,
     ctx: &SpawnContext,
 ) -> RunCancellationRegistration {
-    let (context, completion_auth, active_input_source, pi_standby_source) =
-        claimed.into_run_parts();
+    let (context, completion_auth, active_input_source) = claimed.into_parts();
     drop(active_input_source);
-    drop(pi_standby_source);
     ctx.provider
         .complete(
             CompleteRequest {

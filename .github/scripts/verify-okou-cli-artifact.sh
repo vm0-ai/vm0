@@ -70,6 +70,16 @@ if ! grep -Fxq 'package/okou.js' <<<"$package_contents"; then
   echo "CLI package is missing the canonical okou.js implementation" >&2
   exit 1
 fi
+pi_migration_path='package/migrations/001_initial.sql'
+if ! grep -Fxq "$pi_migration_path" <<<"$package_contents"; then
+  echo "CLI package is missing the Pi SQLite initial migration" >&2
+  exit 1
+fi
+pi_migration_sql="$(tar -xOf "$artifact_dir/package.tgz" "$pi_migration_path")"
+if ! grep -Fq 'CREATE TABLE IF NOT EXISTS sessions' <<<"$pi_migration_sql"; then
+  echo "CLI package contains an invalid Pi SQLite initial migration" >&2
+  exit 1
+fi
 if grep -Fxq 'package/zero.js' <<<"$package_contents"; then
   echo "CLI package contains an unexpected duplicate zero.js implementation" >&2
   exit 1

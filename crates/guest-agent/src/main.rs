@@ -288,12 +288,10 @@ async fn run(runtime: GuestRuntime) -> i32 {
             &runtime.config.prompt,
         )
     };
-    let pi_standby = guest_agent::pi_standby::PiStandbyRuntime::new();
     let control_handle = control::ControlHandle::spawn(
         shutdown.clone(),
         active_input.controller(),
         cli_cancellation.clone(),
-        pi_standby.controller(),
     );
     log_info!(
         LOG_TAG,
@@ -343,7 +341,6 @@ async fn run(runtime: GuestRuntime) -> i32 {
         &telemetry,
         ExecutionControls {
             active_input: active_input.into_writer(),
-            pi_standby: pi_standby.into_reader(),
             cli_cancellation,
         },
         &runtime,
@@ -377,7 +374,6 @@ fn framework_supports_active_input(framework: env::Framework) -> bool {
 
 struct ExecutionControls {
     active_input: guest_agent::active_input::ActiveInputWriter,
-    pi_standby: guest_agent::pi_standby::PiStandbyReader,
     cli_cancellation: CancellationToken,
 }
 
@@ -395,26 +391,24 @@ async fn execute(
 ) -> i32 {
     let ExecutionControls {
         active_input,
-        pi_standby,
         cli_cancellation,
     } = controls;
     let config = &runtime.config;
     let runtime_paths = &runtime.paths;
     let http = runtime.http.clone();
-    let uses_pi_agent_loop = !config.pi_system_prompt.is_empty()
-        || !config.pi_model_config.is_empty()
-        || !config.run_skill_snapshot.is_empty();
-
     // Pre-warm kernel DNS cache for the CLI's API endpoint.
     // Fire-and-forget: runs in background so the cache is populated by the
     // time the CLI spawns and makes its first HTTPS request.
     let dns_target = match config.framework {
-        env::Framework::ClaudeCode => "api.anthropic.com:443",
-        env::Framework::Codex => "api.openai.com:443",
+        env::Framework::ClaudeCode => Some("api.anthropic.com:443"),
+        env::Framework::Codex => Some("api.openai.com:443"),
+        env::Framework::Pi => None,
     };
-    tokio::spawn(async move {
-        let _ = tokio::net::lookup_host(dns_target).await;
-    });
+    if let Some(dns_target) = dns_target {
+        tokio::spawn(async move {
+            let _ = tokio::net::lookup_host(dns_target).await;
+        });
+    }
 
     // Working directory setup
     let wd_start = Instant::now();
@@ -434,14 +428,13 @@ async fn execute(
     }
     record_sandbox_op("working_dir_setup", wd_start.elapsed(), true, None);
 
-    let codex_startup = (!uses_pi_agent_loop && matches!(config.framework, env::Framework::Codex))
-        .then(cli::CodexStartupTiming::start);
+    let codex_startup =
+        matches!(config.framework, env::Framework::Codex).then(cli::CodexStartupTiming::start);
 
     // Codex setup must complete before the CLI starts. On reused sandboxes,
     // continuing after a setup failure can inherit stale auth or runtime state
     // from an earlier run.
-    if !uses_pi_agent_loop
-        && matches!(config.framework, env::Framework::Codex)
+    if matches!(config.framework, env::Framework::Codex)
         && let Err(e) = cli::setup_codex_for_config(masker, config).await
     {
         if let Some(codex_startup) = codex_startup.as_ref() {
@@ -477,13 +470,11 @@ async fn execute(
     let mut last_event_sequence = None;
     let mut active_input_delivery_ids = Vec::new();
     let mut event_delivery_failure = None;
-    let mut completion_disposition = cli::CliCompletionDisposition::Terminal;
     let cli_result = cli::execute_cli_with_controls_for_config_started_at(
         masker,
         heartbeat_monitor,
         http.clone(),
-        cli::CliExecutionControls::new(active_input, cli_cancellation, codex_startup.as_ref())
-            .with_pi_standby_reader(pi_standby),
+        cli::CliExecutionControls::new(active_input, cli_cancellation, codex_startup.as_ref()),
         config,
         runtime_paths,
         start,
@@ -503,7 +494,6 @@ async fn execute(
         Ok(cli_result) => {
             last_event_sequence = cli_result.last_event_sequence;
             active_input_delivery_ids = cli_result.active_input_delivery_ids.clone();
-            completion_disposition = cli_result.completion_disposition;
             if let Some(event_delivery) = cli_result.event_delivery.clone() {
                 let diagnostic = failure_diagnostics::event_delivery_failure_for_config(
                     config,
@@ -619,16 +609,6 @@ async fn execute(
         },
     );
 
-    if let cli::CliCompletionDisposition::PiStandbyReleased(reason) = completion_disposition {
-        log_info!(
-            LOG_TAG,
-            "Pi standby released without terminal run completion: {reason:?}"
-        );
-        return match reason {
-            cli::PiStandbyReleaseReason::ApiComplete => 0,
-        };
-    }
-
     if let Some((event_delivery, event_failure_diagnostic)) = event_delivery_failure {
         match failure_diagnostic.take() {
             Some(diagnostic) => {
@@ -652,10 +632,6 @@ async fn execute(
             failure_message: (exit_code != 0).then_some(error_message.as_str()),
             failure_diagnostic,
             skip_recovery_checkpoint_for_no_history,
-            skip_success_checkpoint: matches!(
-                completion_disposition,
-                cli::CliCompletionDisposition::PiCompleted
-            ),
             active_input_delivery_ids: &active_input_delivery_ids,
         },
         telemetry,
@@ -779,7 +755,6 @@ struct CompletionState<'a> {
     failure_message: Option<&'a str>,
     failure_diagnostic: Option<FailureDiagnostic>,
     skip_recovery_checkpoint_for_no_history: bool,
-    skip_success_checkpoint: bool,
     active_input_delivery_ids: &'a [String],
 }
 
@@ -818,61 +793,7 @@ async fn complete_execution(
     // pass runs from the top-level shutdown path after telemetry producers
     // stop, so it can safely catch checkpoint and `/complete` logs.
     let agent_type = config.framework.agent_type();
-    if state.skip_success_checkpoint && exit_code == 0 && http.has_api() {
-        // Pi skips the CLI session checkpoint because acknowledged transcript
-        // events already persisted its output, but the sandbox that produced
-        // them still mutated the writeback Storage mounts (memory included).
-        // The checkpoint used to be the only caller of the artifact snapshot,
-        // so skipping it wholesale dropped every one of those writes.
-        log_info!(
-            LOG_TAG,
-            "Pi completed successfully without CLI session checkpoint"
-        );
-        log_info!(LOG_TAG, "▷ Artifact snapshot");
-        let snapshot_start = Instant::now();
-        let (snapshot_result, _) = tokio::join!(
-            checkpoint::snapshot_writeback_artifacts_for_runtime(runtime),
-            telemetry.flush(UploadMode::Live),
-        );
-        match snapshot_result {
-            Ok(()) => {
-                log_info!(
-                    LOG_TAG,
-                    "✓ Artifact snapshot complete ({}s)",
-                    snapshot_start.elapsed().as_secs()
-                );
-                log_info!(LOG_TAG, "▷ Cleanup");
-                complete::report_success_for_run(
-                    http,
-                    &config.run_id,
-                    &config.sandbox_id,
-                    &config.sandbox_reuse_result,
-                    &config.workspace_reuse_result,
-                    state.last_event_sequence,
-                    state.active_input_delivery_ids,
-                )
-                .await;
-            }
-            Err(e) => {
-                record_persistence_failure(
-                    PersistenceFailure {
-                        label: "Artifact snapshot",
-                        error: &e,
-                        elapsed: snapshot_start.elapsed(),
-                        cli_exit_code,
-                        wrote_failure_diagnostic,
-                    },
-                    runtime,
-                );
-                exit_code = 1;
-
-                // Failure path: don't call /complete from guest, matching the
-                // checkpoint branch. The runner's fallback posts exitCode=1 so
-                // the run fails instead of settling with lost writeback state.
-                log_info!(LOG_TAG, "▷ Cleanup");
-            }
-        }
-    } else if should_create_success_checkpoint(exit_code) && http.has_api() {
+    if should_create_success_checkpoint(exit_code) && http.has_api() {
         log_info!(LOG_TAG, "{agent_type} completed successfully");
 
         log_info!(LOG_TAG, "▷ Checkpoint");
@@ -1124,20 +1045,12 @@ mod tests {
     }
 
     fn test_guest_config(server: &MockServer, prompt: Option<&str>) -> env::GuestConfig {
-        test_guest_config_with_artifacts(server, prompt, "")
-    }
-
-    fn test_guest_config_with_artifacts(
-        server: &MockServer,
-        prompt: Option<&str>,
-        artifacts: &str,
-    ) -> env::GuestConfig {
         env::GuestConfig::from_raw(env::GuestConfigRaw {
             run_id: "main-recovery-checkpoint".to_string(),
             api_url: server.base_url(),
             api_token: "test-token".to_string(),
             home: Some("/home/vm0".to_string()),
-            run_payload_file: write_test_run_payload_with_artifacts(prompt, artifacts)
+            run_payload_file: write_test_run_payload(prompt)
                 .to_string_lossy()
                 .into_owned(),
             guest_runtime_dir: Some(test_runtime_dir()),
@@ -1159,13 +1072,6 @@ mod tests {
     }
 
     fn write_test_run_payload(prompt: Option<&str>) -> std::path::PathBuf {
-        write_test_run_payload_with_artifacts(prompt, "")
-    }
-
-    fn write_test_run_payload_with_artifacts(
-        prompt: Option<&str>,
-        artifacts: &str,
-    ) -> std::path::PathBuf {
         let dir = test_runtime_dir().join(guest_contracts::env::RUN_PAYLOAD_PRIVATE_DIR_NAME);
         let create_result = std::fs::create_dir_all(&dir);
         assert!(
@@ -1175,7 +1081,6 @@ mod tests {
         let path = dir.join(guest_contracts::env::RUN_PAYLOAD_FILENAME);
         let payload = guest_contracts::env::RunPayload {
             prompt: prompt.unwrap_or_default().to_string(),
-            artifacts: artifacts.to_string(),
             ..guest_contracts::env::RunPayload::default()
         };
         let bytes_result = serde_json::to_vec(&payload);
@@ -1216,6 +1121,7 @@ mod tests {
     fn framework_supports_active_input_for_claude_and_codex() {
         assert!(framework_supports_active_input(env::Framework::ClaudeCode));
         assert!(framework_supports_active_input(env::Framework::Codex));
+        assert!(!framework_supports_active_input(env::Framework::Pi));
     }
 
     struct TestEnvGuard;
@@ -1331,7 +1237,6 @@ mod tests {
             failure_diagnostic: None,
             control_error: None,
             cli_termination: None,
-            completion_disposition: cli::CliCompletionDisposition::Terminal,
             active_input_delivery_ids: Vec::new(),
         };
         let one_turn = cli::CliExecutionResult {
@@ -1348,7 +1253,6 @@ mod tests {
             failure_diagnostic: None,
             control_error: None,
             cli_termination: None,
-            completion_disposition: cli::CliCompletionDisposition::Terminal,
             active_input_delivery_ids: Vec::new(),
         };
         let failed_zero_turn = cli::CliExecutionResult {
@@ -1365,7 +1269,6 @@ mod tests {
             failure_diagnostic: None,
             control_error: None,
             cli_termination: None,
-            completion_disposition: cli::CliCompletionDisposition::Terminal,
             active_input_delivery_ids: Vec::new(),
         };
         let unknown_zero_turn = cli::CliExecutionResult {
@@ -1382,7 +1285,6 @@ mod tests {
             failure_diagnostic: None,
             control_error: None,
             cli_termination: None,
-            completion_disposition: cli::CliCompletionDisposition::Terminal,
             active_input_delivery_ids: Vec::new(),
         };
 
@@ -1431,7 +1333,6 @@ mod tests {
                 failure_diagnostic: None,
                 control_error: None,
                 cli_termination: Some(termination),
-                completion_disposition: cli::CliCompletionDisposition::Terminal,
                 active_input_delivery_ids: Vec::new(),
             }
         };
@@ -1696,270 +1597,6 @@ mod tests {
             .block_on(complete_execution_writes_checkpoint_failure_diagnostic_inner());
     }
 
-    #[test]
-    fn complete_execution_reports_acknowledged_pi_without_checkpoint() {
-        let _test_state_guard = lock_test_state();
-        tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap()
-            .block_on(complete_execution_reports_acknowledged_pi_without_checkpoint_inner());
-    }
-
-    async fn complete_execution_reports_acknowledged_pi_without_checkpoint_inner() {
-        let server = &*COMPLETE_EXECUTION_MOCK_SERVER;
-        server.reset_async().await;
-        let _env_guard = unsafe { set_test_env(server, Some("Pi handoff")) };
-        let guest_paths = test_guest_paths();
-        let cleanup_paths = run_scoped_cleanup_paths(&guest_paths, false);
-        for path in &cleanup_paths {
-            let _ = std::fs::remove_file(path);
-        }
-
-        let checkpoint_mock = server.mock(|when, then| {
-            when.method(POST).path("/api/webhooks/agent/checkpoints");
-            then.status(500);
-        });
-        let complete_mock = server.mock(|when, then| {
-            when.method(POST)
-                .path("/api/webhooks/agent/complete")
-                .json_body(json!({
-                    "runId": "main-recovery-checkpoint",
-                    "exitCode": 0,
-                    "lastEventSequence": 9
-                }));
-            then.status(200)
-                .header("Content-Type", "application/json")
-                .json_body(json!({ "success": true, "status": "completed" }));
-        });
-        let _telemetry_mock = server.mock(|when, then| {
-            when.method(POST).path("/api/webhooks/agent/telemetry");
-            then.status(200)
-                .header("Content-Type", "application/json")
-                .json_body(json!({}));
-        });
-
-        let config = test_guest_config(server, Some("Pi handoff"));
-        let masker = Arc::new(masker::SecretMasker::from_config(&config));
-        let http = test_http_client(server);
-        let telemetry =
-            Telemetry::spawn_for_paths(config.run_id.clone(), &guest_paths, masker, http.clone());
-        let runtime = test_guest_runtime(config, http);
-        let exit_code = complete_execution(
-            0,
-            0,
-            Duration::ZERO,
-            CompletionState {
-                last_event_sequence: Some(9),
-                failure_message: None,
-                failure_diagnostic: None,
-                skip_recovery_checkpoint_for_no_history: false,
-                skip_success_checkpoint: true,
-                active_input_delivery_ids: &[],
-            },
-            &telemetry,
-            &runtime,
-        )
-        .await;
-        telemetry.shutdown().await;
-
-        assert_eq!(exit_code, 0);
-        checkpoint_mock.assert_calls_async(0).await;
-        complete_mock.assert_calls_async(1).await;
-        for path in cleanup_paths {
-            let _ = std::fs::remove_file(path);
-        }
-    }
-
-    #[test]
-    fn complete_execution_snapshots_pi_writeback_artifacts() {
-        let _test_state_guard = lock_test_state();
-        tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap()
-            .block_on(complete_execution_snapshots_pi_writeback_artifacts_inner());
-    }
-
-    #[test]
-    fn complete_execution_fails_pi_run_when_writeback_artifact_snapshot_fails() {
-        let _test_state_guard = lock_test_state();
-        tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap()
-            .block_on(
-                complete_execution_fails_pi_run_when_writeback_artifact_snapshot_fails_inner(),
-            );
-    }
-
-    fn test_pi_memory_artifacts(mount_path: &std::path::Path) -> String {
-        json!([{
-            "name": "memory",
-            "mountPath": mount_path.to_string_lossy(),
-            "storageId": "memory-storage",
-            "versionId": "memory-v1",
-        }])
-        .to_string()
-    }
-
-    async fn complete_execution_snapshots_pi_writeback_artifacts_inner() {
-        let server = &*COMPLETE_EXECUTION_MOCK_SERVER;
-        server.reset_async().await;
-        let _env_guard = unsafe { set_test_env(server, Some("Pi handoff")) };
-        let guest_paths = test_guest_paths();
-        let cleanup_paths = run_scoped_cleanup_paths(&guest_paths, false);
-        for path in &cleanup_paths {
-            let _ = std::fs::remove_file(path);
-        }
-
-        let memory_mount = test_runtime_dir().join("pi-memory");
-        std::fs::create_dir_all(&memory_mount).unwrap();
-        std::fs::write(memory_mount.join("MEMORY.md"), b"written by the Pi sandbox").unwrap();
-
-        let prepare_mock = server.mock(|when, then| {
-            when.method(POST)
-                .path("/api/webhooks/agent/storages/prepare");
-            then.status(200)
-                .json_body(json!({"versionId": "memory-v2", "existing": true}));
-        });
-        let commit_mock = server.mock(|when, then| {
-            when.method(POST)
-                .path("/api/webhooks/agent/storages/commit");
-            then.status(200).json_body(json!({
-                "success": true,
-                "versionId": "memory-v2",
-                "storageName": "memory",
-                "size": 24,
-                "fileCount": 1,
-            }));
-        });
-        let checkpoint_mock = server.mock(|when, then| {
-            when.method(POST).path("/api/webhooks/agent/checkpoints");
-            then.status(500);
-        });
-        let complete_mock = server.mock(|when, then| {
-            when.method(POST)
-                .path("/api/webhooks/agent/complete")
-                .json_body(json!({
-                    "runId": "main-recovery-checkpoint",
-                    "exitCode": 0,
-                    "lastEventSequence": 9
-                }));
-            then.status(200)
-                .header("Content-Type", "application/json")
-                .json_body(json!({ "success": true, "status": "completed" }));
-        });
-        let _telemetry_mock = server.mock(|when, then| {
-            when.method(POST).path("/api/webhooks/agent/telemetry");
-            then.status(200)
-                .header("Content-Type", "application/json")
-                .json_body(json!({}));
-        });
-
-        let config = test_guest_config_with_artifacts(
-            server,
-            Some("Pi handoff"),
-            &test_pi_memory_artifacts(&memory_mount),
-        );
-        let masker = Arc::new(masker::SecretMasker::from_config(&config));
-        let http = test_http_client(server);
-        let telemetry =
-            Telemetry::spawn_for_paths(config.run_id.clone(), &guest_paths, masker, http.clone());
-        let runtime = test_guest_runtime(config, http);
-        let exit_code = complete_execution(
-            0,
-            0,
-            Duration::ZERO,
-            CompletionState {
-                last_event_sequence: Some(9),
-                failure_message: None,
-                failure_diagnostic: None,
-                skip_recovery_checkpoint_for_no_history: false,
-                skip_success_checkpoint: true,
-                active_input_delivery_ids: &[],
-            },
-            &telemetry,
-            &runtime,
-        )
-        .await;
-        telemetry.shutdown().await;
-
-        assert_eq!(exit_code, 0);
-        prepare_mock.assert_calls_async(1).await;
-        commit_mock.assert_calls_async(1).await;
-        checkpoint_mock.assert_calls_async(0).await;
-        complete_mock.assert_calls_async(1).await;
-        for path in cleanup_paths {
-            let _ = std::fs::remove_file(path);
-        }
-    }
-
-    async fn complete_execution_fails_pi_run_when_writeback_artifact_snapshot_fails_inner() {
-        let server = &*COMPLETE_EXECUTION_MOCK_SERVER;
-        server.reset_async().await;
-        let _env_guard = unsafe { set_test_env(server, Some("Pi handoff")) };
-        let guest_paths = test_guest_paths();
-        let cleanup_paths = run_scoped_cleanup_paths(&guest_paths, false);
-        for path in &cleanup_paths {
-            let _ = std::fs::remove_file(path);
-        }
-
-        let complete_mock = server.mock(|when, then| {
-            when.method(POST).path("/api/webhooks/agent/complete");
-            then.status(200)
-                .header("Content-Type", "application/json")
-                .json_body(json!({ "success": true, "status": "completed" }));
-        });
-        let _telemetry_mock = server.mock(|when, then| {
-            when.method(POST).path("/api/webhooks/agent/telemetry");
-            then.status(200)
-                .header("Content-Type", "application/json")
-                .json_body(json!({}));
-        });
-
-        let missing_mount = test_runtime_dir().join("pi-memory-missing");
-        let config = test_guest_config_with_artifacts(
-            server,
-            Some("Pi handoff"),
-            &test_pi_memory_artifacts(&missing_mount),
-        );
-        let masker = Arc::new(masker::SecretMasker::from_config(&config));
-        let http = test_http_client(server);
-        let telemetry =
-            Telemetry::spawn_for_paths(config.run_id.clone(), &guest_paths, masker, http.clone());
-        let runtime = test_guest_runtime(config, http);
-        let exit_code = complete_execution(
-            0,
-            0,
-            Duration::ZERO,
-            CompletionState {
-                last_event_sequence: Some(9),
-                failure_message: None,
-                failure_diagnostic: None,
-                skip_recovery_checkpoint_for_no_history: false,
-                skip_success_checkpoint: true,
-                active_input_delivery_ids: &[],
-            },
-            &telemetry,
-            &runtime,
-        )
-        .await;
-        telemetry.shutdown().await;
-
-        assert_eq!(exit_code, 1);
-        complete_mock.assert_calls_async(0).await;
-        let error = std::fs::read_to_string(guest_paths.checkpoint_error_file()).unwrap();
-        assert!(error.contains("Artifact snapshot failed"), "got: {error}");
-        let diagnostic: FailureDiagnostic =
-            serde_json::from_slice(&std::fs::read(guest_paths.failure_diagnostic_file()).unwrap())
-                .unwrap();
-        assert_eq!(diagnostic.failure_class, FailureClass::CheckpointFailed);
-        for path in cleanup_paths {
-            let _ = std::fs::remove_file(path);
-        }
-    }
-
     async fn complete_execution_writes_checkpoint_failure_diagnostic_inner() {
         let server = &*COMPLETE_EXECUTION_MOCK_SERVER;
         server.reset_async().await;
@@ -1993,7 +1630,6 @@ mod tests {
                 failure_message: None,
                 failure_diagnostic: None,
                 skip_recovery_checkpoint_for_no_history: false,
-                skip_success_checkpoint: false,
                 active_input_delivery_ids: &[],
             },
             &telemetry,
@@ -2070,7 +1706,6 @@ mod tests {
                 failure_message: Some(failure_message),
                 failure_diagnostic: Some(failure_diagnostic.clone()),
                 skip_recovery_checkpoint_for_no_history: true,
-                skip_success_checkpoint: false,
                 active_input_delivery_ids: &[],
             },
             &telemetry,
@@ -2173,7 +1808,6 @@ mod tests {
                 failure_message: Some(failure_message),
                 failure_diagnostic: Some(failure_diagnostic.clone()),
                 skip_recovery_checkpoint_for_no_history: false,
-                skip_success_checkpoint: false,
                 active_input_delivery_ids: &[],
             },
             &telemetry,

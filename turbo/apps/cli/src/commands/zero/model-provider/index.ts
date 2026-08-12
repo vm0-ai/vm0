@@ -11,7 +11,7 @@ import {
 export const MODEL_PROVIDER_SET_GUIDANCE = [
   "Model provider routing is configured in the web app.",
   "",
-  "Organization admins: open https://app.vm0.ai, use the top-left organization menu, choose Manage, then add, delete, or adjust model providers.",
+  "Organization admins: open https://app.okou.ai, use the top-left organization menu, choose Manage, then add, delete, or adjust model providers.",
   "",
   "If an organization admin sets a model provider to subscription, members must use the bottom-left user menu, choose Preferences / Personal Models, and connect their personal subscription.",
 ].join("\n");

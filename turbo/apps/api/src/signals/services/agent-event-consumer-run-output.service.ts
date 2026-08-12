@@ -1,11 +1,7 @@
 import { command } from "ccstate";
 import { and, eq, isNotNull, isNull, lte, sql } from "drizzle-orm";
-import type { SupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
-import { modelUsageObservation } from "@vm0/db/schema/model-usage-observation";
 import { runOutputMaterializations } from "@vm0/db/schema/run-output-materialization";
-import { usageEvent } from "@vm0/db/schema/usage-event";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { v5 as uuidv5 } from "uuid";
 
 import type {
   AgentEvent,
@@ -15,8 +11,6 @@ import type { Tx } from "../../lib/db-types";
 import { nowDate } from "../../lib/time";
 import { writeDb$, type Db } from "../external/db";
 import { publishChatThreadMessageCreatedSafely } from "../external/realtime";
-import type { ModelTokenCategory } from "./model-token-categories";
-import { projectPiEventsInTransaction } from "./pi-transcript.service";
 import {
   insertAssistantEventsInTransaction,
   type InsertAssistantEventsInput,
@@ -30,26 +24,6 @@ import { chatThreadForRunFromDb } from "./zero-chat-thread.service";
 const INITIAL_PROCESSED_THROUGH_SEQUENCE = -1;
 const RUN_OUTPUT_PROJECTION_LOCK_TIMEOUT = "1s";
 const RUN_OUTPUT_PROJECTION_STATEMENT_TIMEOUT = "5s";
-const PI_EDGE_USAGE_IDEMPOTENCY_NAMESPACE =
-  "b760944c-e497-4d12-8997-7e5485a590db";
-const PI_EDGE_USAGE_OBSERVATION_IDEMPOTENCY_NAMESPACE =
-  "1b7c07b8-01bc-4ae2-ac5c-ef5ca9f72683";
-
-export interface PiEdgeModelUsageEntry {
-  readonly category: ModelTokenCategory;
-  readonly quantity: number;
-}
-
-export interface PiEdgeModelUsage {
-  readonly messageId: string;
-  readonly model: SupportedRunModel;
-  readonly inputTokens: number;
-  readonly outputTokens: number;
-  readonly cacheReadInputTokens: number;
-  readonly cacheCreationInputTokens: number;
-  readonly billingEntries: readonly PiEdgeModelUsageEntry[];
-}
-
 interface OutputCandidate {
   readonly sequenceNumber: number;
   readonly content: string;
@@ -256,67 +230,6 @@ function assistantEventItems(
   });
 }
 
-function orderedAssistantItems(
-  first: InsertAssistantEventsInput["items"],
-  second: InsertAssistantEventsInput["items"],
-): InsertAssistantEventsInput["items"] {
-  return [...first, ...second].sort((left, right) => {
-    return left.runEventSequenceNumber - right.runEventSequenceNumber;
-  });
-}
-
-async function insertPiEdgeModelUsageInTransaction(
-  tx: Tx,
-  payload: EventConsumerPayload,
-  modelUsage: PiEdgeModelUsage | undefined,
-  signal: AbortSignal,
-): Promise<void> {
-  if (modelUsage === undefined) {
-    return;
-  }
-  await tx
-    .insert(modelUsageObservation)
-    .values({
-      idempotencyKey: uuidv5(
-        `${payload.runId}:${modelUsage.messageId}`,
-        PI_EDGE_USAGE_OBSERVATION_IDEMPOTENCY_NAMESPACE,
-      ),
-      model: modelUsage.model,
-      inputTokens: modelUsage.inputTokens,
-      outputTokens: modelUsage.outputTokens,
-      cacheReadInputTokens: modelUsage.cacheReadInputTokens,
-      cacheCreationInputTokens: modelUsage.cacheCreationInputTokens,
-    })
-    .onConflictDoNothing({
-      target: [modelUsageObservation.idempotencyKey],
-    });
-  signal.throwIfAborted();
-
-  if (modelUsage.billingEntries.length > 0) {
-    await tx
-      .insert(usageEvent)
-      .values(
-        modelUsage.billingEntries.map((entry) => {
-          return {
-            runId: payload.runId,
-            idempotencyKey: uuidv5(
-              `${payload.runId}:${modelUsage.messageId}:${entry.category}`,
-              PI_EDGE_USAGE_IDEMPOTENCY_NAMESPACE,
-            ),
-            orgId: payload.context.orgId,
-            userId: payload.context.userId,
-            kind: "model",
-            provider: modelUsage.model,
-            category: entry.category,
-            quantity: entry.quantity,
-          };
-        }),
-      )
-      .onConflictDoNothing({ target: [usageEvent.idempotencyKey] });
-    signal.throwIfAborted();
-  }
-}
-
 async function lockRunOutputProjection(
   tx: Tx,
   runId: string,
@@ -339,7 +252,6 @@ async function materializeRunOutputEvents(
   writeDb: Db,
   payload: EventConsumerPayload,
   signal: AbortSignal,
-  piEdgeModelUsage?: PiEdgeModelUsage,
 ): Promise<MaterializedChatProjection | null> {
   const assistantItems = assistantEventItems(payload.events);
   const latestResult = latestCandidate(payload.events, resultText);
@@ -351,19 +263,6 @@ async function materializeRunOutputEvents(
     const thread = await chatThreadForRunFromDb(tx, payload.runId);
     signal.throwIfAborted();
 
-    const piAssistantItems = await projectPiEventsInTransaction(
-      tx,
-      { runId: payload.runId, thread, events: payload.events },
-      signal,
-    );
-
-    await insertPiEdgeModelUsageInTransaction(
-      tx,
-      payload,
-      piEdgeModelUsage,
-      signal,
-    );
-
     let insertedRowCount = 0;
     let shouldAttemptFirstAssistantEventClaim = false;
     if (thread) {
@@ -373,7 +272,7 @@ async function materializeRunOutputEvents(
           runId: payload.runId,
           threadId: thread.chatThreadId,
           userId: thread.userId,
-          items: orderedAssistantItems(assistantItems, piAssistantItems),
+          items: assistantItems,
         },
         signal,
       );
@@ -476,14 +375,8 @@ export const materializeRunOutputEvents$ = command(
     { set },
     payload: EventConsumerPayload,
     signal: AbortSignal,
-    piEdgeModelUsage?: PiEdgeModelUsage,
   ): Promise<MaterializedChatProjection | null> => {
-    return await materializeRunOutputEvents(
-      set(writeDb$),
-      payload,
-      signal,
-      piEdgeModelUsage,
-    );
+    return await materializeRunOutputEvents(set(writeDb$), payload, signal);
   },
 );
 

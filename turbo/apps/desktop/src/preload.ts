@@ -174,6 +174,9 @@ const desktopZeroMigrationApi: DesktopZeroMigrationApi = {
   resumeZero() {
     return ipcRenderer.invoke(DESKTOP_ZERO_MIGRATION_CHANNELS.resumeZero);
   },
+  quitZero() {
+    return ipcRenderer.invoke(DESKTOP_ZERO_MIGRATION_CHANNELS.quitZero);
+  },
   subscribe(callback: () => void): () => void {
     const listener = (): void => {
       callback();

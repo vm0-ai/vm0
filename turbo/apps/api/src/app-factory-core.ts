@@ -42,7 +42,6 @@ import {
   withApiNamespaceAliases,
 } from "./signals/route-entry";
 import { configureChatRunFinishedEventDispatcher } from "./signals/services/chat-run-finished-event-registration.service";
-import { configurePiEdgeTurnDispatcher } from "./signals/services/pi-edge-turn-registration.service";
 import type { UsagePricingResolution } from "./signals/context/usage-pricing-resolution";
 import {
   isAbortError,
@@ -559,7 +558,6 @@ export function createAppWithRoutes({
   usagePricingResolution,
 }: CreateAppWithRoutesOptions): Hono {
   configureChatRunFinishedEventDispatcher();
-  configurePiEdgeTurnDispatcher();
   const app = new Hono();
   app.onError(handleError);
 

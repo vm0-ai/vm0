@@ -244,7 +244,6 @@ async fn run_codex_app_server(
 ) -> Result<CliExecutionResult, AgentError> {
     let CliExecutionControls {
         mut active_input,
-        pi_standby: _,
         user_cancellation,
         codex_startup,
     } = controls;
@@ -432,7 +431,6 @@ async fn run_codex_app_server(
             failure_diagnostic: ingestor.failure_diagnostic(),
             control_error: None,
             cli_termination: None,
-            completion_disposition: super::CliCompletionDisposition::Terminal,
             active_input_delivery_ids: Vec::new(),
         })
     };
@@ -503,7 +501,6 @@ async fn run_codex_app_server(
                 cli_termination: Some(CliTerminationDiagnostic::new(
                     CliTerminationReason::ExecutionTimeout,
                 )),
-                completion_disposition: super::CliCompletionDisposition::Terminal,
                 active_input_delivery_ids,
             })
         }
@@ -528,7 +525,6 @@ async fn run_codex_app_server(
                 cli_termination: Some(CliTerminationDiagnostic::new(
                     CliTerminationReason::UserCancellation,
                 )),
-                completion_disposition: super::CliCompletionDisposition::Terminal,
                 active_input_delivery_ids,
             })
         }

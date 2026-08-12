@@ -392,6 +392,9 @@ function createZeroMigrationBridge(initialState: DesktopZeroMigrationState): {
   readonly resumeZero: ReturnType<
     typeof vi.fn<DesktopZeroMigrationApi["resumeZero"]>
   >;
+  readonly quitZero: ReturnType<
+    typeof vi.fn<DesktopZeroMigrationApi["quitZero"]>
+  >;
 } {
   let currentState = initialState;
   const subscribers = new Set<() => void>();
@@ -422,6 +425,9 @@ function createZeroMigrationBridge(initialState: DesktopZeroMigrationState): {
     };
     return currentState;
   });
+  const quitZero = vi.fn<DesktopZeroMigrationApi["quitZero"]>(async () => {
+    return currentState;
+  });
   const subscribe = vi.fn<DesktopZeroMigrationApi["subscribe"]>((callback) => {
     subscribers.add(callback);
     return () => {
@@ -435,11 +441,13 @@ function createZeroMigrationBridge(initialState: DesktopZeroMigrationState): {
       remindLater,
       beginMigration,
       resumeZero,
+      quitZero,
       subscribe,
     },
     beginMigration,
     remindLater,
     resumeZero,
+    quitZero,
   };
 }
 
@@ -553,6 +561,27 @@ describe("Desktop renderer bridge integration", () => {
 
     await waitFor(() => {
       expect(zeroMigration.resumeZero).toHaveBeenCalledOnce();
+    });
+  });
+
+  it("shows only download and quit actions after a remote hard stop", async () => {
+    const { zeroMigration } = installDesktopBridges({
+      zeroMigrationState: {
+        mode: "hard_stop",
+        nextReminderAt: null,
+        errorMessage: null,
+      },
+    });
+
+    renderDesktopApp();
+
+    expect(await screen.findByText("Zero has moved to Okou")).toBeTruthy();
+    expect(screen.queryByText("Remind Me Later")).toBeNull();
+    expect(screen.queryByText("Resume Zero")).toBeNull();
+    fireEvent.click(buttonForText("Quit Zero"));
+
+    await waitFor(() => {
+      expect(zeroMigration.quitZero).toHaveBeenCalledOnce();
     });
   });
 

@@ -47,7 +47,7 @@ describe("okou model command", () => {
   beforeEach(() => {
     chalk.level = 0;
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("ZERO_TOKEN", "test-token");
+    vi.stubEnv("OKOU_TOKEN", "test-token");
     mockConsoleLog.mockClear();
   });
 
@@ -113,9 +113,9 @@ describe("okou model command", () => {
     );
   });
 
-  it("should point other environments at app.vm0.ai", () => {
+  it("should point other environments at app.okou.ai", () => {
     expect(getModelSwitchGuidance("schedule")).toContain(
-      "Open https://app.vm0.ai",
+      "Open https://app.okou.ai",
     );
   });
 });

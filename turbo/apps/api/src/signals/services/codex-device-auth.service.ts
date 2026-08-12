@@ -30,6 +30,7 @@ import {
 import { handleCodexAuthJsonPaste } from "./codex-auth-json-paste-handler";
 import {
   upsertPersonalModelProviderAccount,
+  type PersonalProviderAccountErrorResponse,
   type PersonalProviderAccountMutation,
 } from "./model-provider-account.service";
 import { userFeatureSwitchContext } from "./feature-switches.service";
@@ -185,7 +186,7 @@ type CodexAuthJsonPasteResult = Awaited<
   ReturnType<typeof handleCodexAuthJsonPaste>
 >;
 interface CodexAuthJsonPasteErrorResponse {
-  readonly status: 400;
+  readonly status: 400 | 404;
   readonly body: {
     readonly error: {
       readonly message: string;
@@ -864,9 +865,6 @@ const importCodexAuthJson$ = command(
             },
             signal,
           );
-          if ("status" in result) {
-            throw new Error(result.body.error.message);
-          }
           return result;
         }
         const result = await set(
@@ -910,7 +908,7 @@ const importCodexAuthJson$ = command(
             common.signal,
           );
 
-    if (response.status === 400) {
+    if (response.status === 400 || response.status === 404) {
       return {
         status: "auth_error",
         response: codexAuthJsonPasteErrorResponse(response),
@@ -950,10 +948,10 @@ function extractApiErrorBody(
 }
 
 function codexAuthJsonPasteErrorResponse(
-  response: CodexAuthJsonPasteResult,
+  response: PersonalProviderAccountErrorResponse | CodexAuthJsonPasteResult,
 ): CodexAuthJsonPasteErrorResponse {
   return {
-    status: 400,
+    status: response.status === 404 ? 404 : 400,
     body: extractApiErrorBody(response.body),
   };
 }

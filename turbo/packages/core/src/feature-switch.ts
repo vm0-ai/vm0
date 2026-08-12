@@ -304,7 +304,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.PiLoop]: {
     maintainer: "ethan@vm0.ai",
     description:
-      "Run web chat runs through the in-API Pi edge loop with sandbox handoff instead of dispatching a runner job immediately.",
+      "Run web chat jobs with the sandbox-owned Pi agent loop and native SQLite session persistence.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
@@ -312,8 +312,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description:
       "Cold-start chat threads from R2 snapshot objects plus the raw-row tail endpoint instead of paging the full history from Postgres.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.UnifiedIndicatorApi]: {
     maintainer: "ethan@vm0.ai",

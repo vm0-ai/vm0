@@ -130,6 +130,11 @@ export interface ExecutionEnv {
     content: string | Uint8Array,
     abortSignal?: AbortSignal,
   ): Promise<Result<void, FileError>>;
+  renameFile(
+    sourcePath: string,
+    destinationPath: string,
+    abortSignal?: AbortSignal,
+  ): Promise<Result<void, FileError>>;
   fileInfo(
     path: string,
     abortSignal?: AbortSignal,
@@ -258,7 +263,8 @@ type PiStopReason =
   | "length"
   | "toolUse"
   | "error"
-  | "aborted";
+  | "aborted"
+  | "deferred";
 
 /** User turn in a Pi transcript. */
 export interface PiUserMessage {
@@ -281,6 +287,12 @@ export interface PiAssistantMessage {
   errorMessage?: string;
   rawStopReason?: string;
   timestamp: number;
+}
+
+/** Result of one native Pi session turn. */
+export interface PiAgentSessionResult {
+  readonly messages: readonly PiAgentMessage[];
+  readonly finalAssistantMessage: PiAssistantMessage | undefined;
 }
 
 /** Tool result turn in a Pi transcript. */

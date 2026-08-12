@@ -848,6 +848,107 @@ describe("MODEL-PROVIDER: device auth boundaries", () => {
     );
   });
 
+  it("returns bad requests after the tenth personal subscription account", async () => {
+    const member = bdd.user({ orgRole: "org:member" });
+    await support.updateFeatureSwitches(member, {
+      [FeatureSwitchKey.PersonalModelProviderAccounts]: true,
+    });
+
+    const completeCodexAccount = async (
+      index: number,
+      statuses: readonly (200 | 400)[],
+    ) => {
+      mockCodexDeviceAuthProvider({
+        tokenScope: "personal",
+        accountId: `codex-limit-account-${index}`,
+        workspaceName: `Codex Account ${index}`,
+      });
+      const started = await authDevice.requestCodexStart(
+        member,
+        "personal",
+        [200],
+        { mode: "add" },
+      );
+      if (started.status !== 200) {
+        throw new Error("Expected Codex device auth to start");
+      }
+      return await authDevice.requestCodexComplete(
+        member,
+        started.body.sessionToken,
+        statuses,
+      );
+    };
+
+    for (let index = 0; index < 10; index += 1) {
+      await completeCodexAccount(index, [200]);
+    }
+    const codexLimit = await completeCodexAccount(10, [400]);
+    if (codexLimit.status !== 400) {
+      throw new Error("Expected Codex account limit to return bad request");
+    }
+    expectApiError(codexLimit.body);
+    expect(codexLimit.body.error).toMatchObject({
+      code: "BAD_REQUEST",
+      message: "A maximum of 10 codex-oauth-token accounts can be connected",
+    });
+
+    const completeClaudeCodeAccount = async (
+      index: number,
+      statuses: readonly (200 | 400)[],
+    ) => {
+      mockClaudeCodeTokenEndpoint({
+        accountEmail: `claude-limit-${index}@example.com`,
+        organizationName: `Claude Account ${index}`,
+      });
+      const started = await authDevice.requestClaudeCodeStart(
+        member,
+        "personal",
+        [200],
+        { mode: "add" },
+      );
+      if (started.status !== 200) {
+        throw new Error("Expected Claude Code device auth to start");
+      }
+      const state = new URL(started.body.browserUrl).searchParams.get("state");
+      if (!state) {
+        throw new Error("Missing state in Claude Code browser URL");
+      }
+      return await authDevice.requestClaudeCodeComplete(
+        member,
+        started.body.sessionToken,
+        `claude_code_test#${state}`,
+        statuses,
+      );
+    };
+
+    for (let index = 0; index < 10; index += 1) {
+      await completeClaudeCodeAccount(index, [200]);
+    }
+    const claudeCodeLimit = await completeClaudeCodeAccount(10, [400]);
+    if (claudeCodeLimit.status !== 400) {
+      throw new Error(
+        "Expected Claude Code account limit to return bad request",
+      );
+    }
+    expectApiError(claudeCodeLimit.body);
+    expect(claudeCodeLimit.body.error).toMatchObject({
+      code: "BAD_REQUEST",
+      message:
+        "A maximum of 10 claude-code-oauth-token accounts can be connected",
+    });
+
+    await support.deletePersonalModelProvider(
+      member,
+      "codex-oauth-token",
+      [204],
+    );
+    await support.deletePersonalModelProvider(
+      member,
+      "claude-code-oauth-token",
+      [204],
+    );
+  });
+
   it("completes org-scope Claude Code device auth with a pasted code fragment", async () => {
     const calls = mockClaudeCodeTokenEndpoint();
     const admin = bdd.user();

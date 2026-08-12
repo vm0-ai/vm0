@@ -179,7 +179,6 @@
       "files_one": "{{formattedCount}} archivo",
       "files_many": "{{formattedCount}} archivos",
       "files_other": "{{formattedCount}} archivos",
-      "handoffApiToSandbox": "Transferencia · Servidor API → Sandbox",
       "initialize": "Inicializar",
       "inputTokens": "Entrada: {{formattedCount}}",
       "models_one": "{{formattedCount}} modelo",
@@ -1418,7 +1417,7 @@
       "partsHeading_many": "Comentarios sobre {{count}} partes de tu respuesta:",
       "partsHeading_other": "Comentarios sobre {{count}} partes de tu respuesta:",
       "placeholder": "¿Qué debería cambiar en esto?",
-      "provide": "Enviar comentarios",
+      "quote": "Citar",
       "remove": "Eliminar comentarios",
       "sentEmailDescription": "un correo enviado (ID de correo: {{id}}{{sentIdSuffix}})",
       "sentIdSuffix": ", ID enviado: {{sentId}}",
@@ -1715,7 +1714,9 @@
       "pickEmoji": "Elige un emoji",
       "scrollToBottom": "Desplázate hasta abajo",
       "searchEmoji": "Buscar emoji",
-      "steerMessageExplanation": "Enviado mientras el agente trabajaba para dirigir su comportamiento"
+      "steerAcknowledgement_one": "Recibido durante la ejecución: se conserva el trabajo anterior",
+      "steerAcknowledgement_many": "Los {{count}} mensajes recibidos durante la ejecución: se conserva el trabajo anterior",
+      "steerAcknowledgement_other": "Los {{count}} mensajes recibidos durante la ejecución: se conserva el trabajo anterior"
     },
     "threadSidebar": {
       "resize": "Cambiar el tamaño de la barra lateral"

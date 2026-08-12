@@ -5,7 +5,6 @@ import type {
 } from "@vm0/api-contracts/contracts/realtime";
 import type {
   ConnectorRuntimeTarget,
-  PiExecutionMode,
   RunnerPreference,
 } from "@vm0/api-contracts/contracts/runners";
 import type { ZeroBuiltInGenerationRealtimeSubscription } from "@vm0/api-contracts/contracts/zero-built-in-generation";
@@ -290,47 +289,11 @@ export async function publishActiveInputToRunnerGroup(
   L.debug(`Published active input ${runId} to runner-group:${group}`);
 }
 
-/** Wake the Pi standby runtime after the complete pending tool batch commits. */
-async function publishPiHandoffToRunnerGroup(
-  group: string,
-  runId: string,
-): Promise<void> {
-  const channel = ablyClient().channels.get(`runner-group:${group}`);
-  await channel.publish("pi-handoff", { runId });
-  L.debug(`Published Pi handoff ${runId} to runner-group:${group}`);
-}
-
-export async function publishPiHandoffToRunnerGroupSafely(
-  group: string,
-  runId: string,
-): Promise<void> {
-  await tapError(publishPiHandoffToRunnerGroup(group, runId), (error) => {
-    L.warn("Failed to publish Pi handoff", { group, runId, error });
-  });
-}
-
-/** Release a prewarmed Pi Sandbox after the API has settled the run. */
-export async function publishPiStandbyReleaseToRunnerGroupSafely(
-  group: string,
-  runId: string,
-): Promise<void> {
-  await tapError(
-    (async () => {
-      const channel = ablyClient().channels.get(`runner-group:${group}`);
-      await channel.publish("pi-standby-release", { runId });
-      L.debug(`Published Pi standby release ${runId} to runner-group:${group}`);
-    })(),
-    (error) => {
-      L.warn("Failed to publish Pi standby release", { group, runId, error });
-    },
-  );
-}
-
+/** Publish an available runner job to the matching runner group. */
 export async function publishRunnerJobNotification(args: {
   readonly group: string;
   readonly runId: string;
   readonly profile: string;
-  readonly piExecutionMode?: PiExecutionMode;
   readonly runnerPreference: RunnerPreference;
   readonly metadata?: {
     /** Raw key required for runner-local reuse matching; it stays on the internal runner-group channel. */
@@ -345,9 +308,6 @@ export async function publishRunnerJobNotification(args: {
       await channel.publish("job", {
         runId: args.runId,
         profile: args.profile,
-        ...(args.piExecutionMode
-          ? { piExecutionMode: args.piExecutionMode }
-          : {}),
         ...(args.metadata?.reuseKey
           ? { reuseKey: args.metadata.reuseKey }
           : {}),
