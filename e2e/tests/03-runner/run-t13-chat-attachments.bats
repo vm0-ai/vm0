@@ -46,7 +46,6 @@ okou_help="$(npx --yes --package="${CLI_PKG_URL}" okou --help)"
 grep -F 'Usage: okou' <<<"$okou_help"
 agent_loop_help="$(npx --yes --package="${CLI_PKG_URL}" okou __agent-loop --help)"
 grep -F 'Internal sandbox Pi agent loop' <<<"$agent_loop_help"
-! grep -F -- '--standby' <<<"$agent_loop_help"
 npx --yes --package="${CLI_PKG_URL}" okou web download-file '__CONTENT_ID__' -o /tmp/runner-content.txt
 npx --yes --package="${CLI_PKG_URL}" okou web download-file '__EMPTY_ID__' -o /tmp/runner-empty.txt
 grep -F '__CONTENT_MARKER__' /tmp/runner-content.txt

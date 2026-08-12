@@ -6,10 +6,12 @@ import {
   CANONICAL_PI_SESSION_DATABASE_PATH,
   piModelConfigSchema,
 } from "@vm0/api-contracts/contracts/runners";
-import type {
-  ExecutionEnv,
-  PiAgentModelConfig,
-  PiAssistantMessage,
+import {
+  createPiNodeExecutionEnv as createNodeExecutionEnv,
+  runPiAgentSession,
+  type ExecutionEnv,
+  type PiAgentModelConfig,
+  type PiAssistantMessage,
 } from "@vm0/pi-agent-runtime/node";
 import { z } from "zod";
 
@@ -41,8 +43,7 @@ export interface PiSandboxAgentConfig {
   readonly databasePath: string;
 }
 
-type PiSessionRunner =
-  typeof import("@vm0/pi-agent-runtime/node").runPiAgentSession;
+type PiSessionRunner = typeof runPiAgentSession;
 
 function requiredEnv(env: NodeJS.ProcessEnv, name: string): string {
   const value = env[name];
@@ -147,9 +148,7 @@ export async function runPiSandboxAgentLoop(
   });
 
   const startedAt = Date.now();
-  const runSession =
-    args.runSession ??
-    (await import("@vm0/pi-agent-runtime/node")).runPiAgentSession;
+  const runSession = args.runSession ?? runPiAgentSession;
   const result = await runSession(
     {
       sessionId: args.config.sessionId,
@@ -214,8 +213,6 @@ export class StdioPiAgentLoopIo implements PiAgentLoopIo {
 }
 
 export async function createPiNodeExecutionEnv(): Promise<ExecutionEnv> {
-  const { createPiNodeExecutionEnv: createNodeExecutionEnv } =
-    await import("@vm0/pi-agent-runtime/node");
   return createNodeExecutionEnv({
     cwd: process.cwd(),
     shellEnv: process.env,
