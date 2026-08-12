@@ -398,11 +398,11 @@ const postClerkWebhook$ = command(
         return new Response("OK", { status: 200 });
       }
 
-      enqueueClerkTask(
-        set(cleanupClerkDeletedUser$, userId, signal),
-        (error) => {
+      waitUntil(
+        "webhooks-clerk:user-deleted-cleanup",
+        tapError(set(cleanupClerkDeletedUser$, userId, signal), (error) => {
           L.error("user.deleted cleanup failed", { userId, error });
-        },
+        }),
       );
       return new Response("OK", { status: 200 });
     }
@@ -415,11 +415,11 @@ const postClerkWebhook$ = command(
         return new Response("OK", { status: 200 });
       }
 
-      enqueueClerkTask(
-        set(cleanupClerkBannedUser$, userId, signal),
-        (error) => {
+      waitUntil(
+        "webhooks-clerk:user-banned-cleanup",
+        tapError(set(cleanupClerkBannedUser$, userId, signal), (error) => {
           L.error("user.banned cleanup failed", { userId, error });
-        },
+        }),
       );
       return new Response("OK", { status: 200 });
     }
@@ -433,14 +433,17 @@ const postClerkWebhook$ = command(
         return new Response("OK", { status: 200 });
       }
 
-      enqueueClerkTask(
-        set(cleanupClerkDeletedOrgMembership$, identity, signal),
-        (error) => {
-          L.error("organizationMembership.deleted cleanup failed", {
-            ...identity,
-            error,
-          });
-        },
+      waitUntil(
+        "webhooks-clerk:organization-membership-deleted-cleanup",
+        tapError(
+          set(cleanupClerkDeletedOrgMembership$, identity, signal),
+          (error) => {
+            L.error("organizationMembership.deleted cleanup failed", {
+              ...identity,
+              error,
+            });
+          },
+        ),
       );
       return new Response("OK", { status: 200 });
     }
