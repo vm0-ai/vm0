@@ -180,7 +180,7 @@ const zeroWeatherRequest$ = command(
     args: WeatherRequestArgs,
     signal: AbortSignal,
   ): Promise<ZeroWeatherCommandResponse> => {
-    const apiKey = env("ZERO_WEATHER_GOOGLE_WEATHER_TOKEN");
+    const apiKey = env("OKOU_WEATHER_GOOGLE_WEATHER_TOKEN");
     if (!apiKey) {
       return serviceUnavailable(
         "Zero Weather Google Weather provider is not configured",

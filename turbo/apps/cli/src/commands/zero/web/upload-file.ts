@@ -11,8 +11,8 @@ export const uploadFileCommand = new Command()
     "after",
     `
 Examples:
-  Upload a file:           zero web upload-file -f /tmp/report.pdf
-  Override content-type:   zero web upload-file -f /tmp/data --content-type text/csv
+  Upload a file:           okou web upload-file -f /tmp/report.pdf
+  Override content-type:   okou web upload-file -f /tmp/data --content-type text/csv
 
 Output:
   Prints a JSON object to stdout on success:

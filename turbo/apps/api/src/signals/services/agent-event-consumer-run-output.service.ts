@@ -499,7 +499,6 @@ export async function publishMaterializedChatProjection(
     await publishFirstAssistantEventCreatedSignalSafely({
       userId: projection.thread.userId,
       threadId: projection.thread.chatThreadId,
-      runId: payload.runId,
     });
     recordFirstAssistantEventAcknowledgementMetric({
       runId: payload.runId,

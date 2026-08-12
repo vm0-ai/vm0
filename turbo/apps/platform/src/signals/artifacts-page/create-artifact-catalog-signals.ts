@@ -15,7 +15,6 @@ import {
 
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
-import { setAblyLoop$ } from "../realtime.ts";
 import { onRejection } from "../utils.ts";
 import {
   createImageLoadSignals,
@@ -61,7 +60,6 @@ export interface ArtifactCatalogSignals {
   readonly loadMore$: Command<Promise<void>, [AbortSignal]>;
   readonly selectArtifact$: Command<void, [string | null]>;
   readonly selectedArtifactDetail$: Computed<Promise<ArtifactDetail | null>>;
-  readonly subscribeCatalogChanged$: Command<Promise<void>, [AbortSignal]>;
 }
 
 interface CatalogPagingState {
@@ -250,23 +248,6 @@ export function createArtifactCatalogSignals(
     },
   );
 
-  /**
-   * Reload the first page whenever the catalog changes for this user.
-   */
-  const subscribeCatalogChanged$ = command(
-    async ({ set }, signal: AbortSignal) => {
-      const onChanged$ = command(({ set }) => {
-        set(reload$);
-        return false;
-      });
-      await set(
-        setAblyLoop$,
-        { topic: "artifactCatalogChanged", loopCommand$: onChanged$ },
-        signal,
-      );
-    },
-  );
-
   return {
     selectedKind$: computed((get) => {
       return get(internalKind$);
@@ -277,6 +258,5 @@ export function createArtifactCatalogSignals(
     loadMore$,
     selectArtifact$,
     selectedArtifactDetail$,
-    subscribeCatalogChanged$,
   };
 }

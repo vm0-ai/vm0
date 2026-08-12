@@ -4,9 +4,9 @@ use super::messages::{
     reasoning_item_started_notification, server_notification, server_notification_with_index,
     server_request, thread_response, thread_started_notification, turn,
     turn_completed_notification, turn_failed_notification, turn_started_notification,
-    warning_notification, write_error, write_json_line, write_split_json_line_prefix,
-    write_success, write_turn_completion_notifications, write_turn_notifications,
-    write_turn_start_notifications,
+    warning_notification, write_error, write_json_line, write_oversized_delivery_notifications,
+    write_split_json_line_prefix, write_success, write_turn_completion_notifications,
+    write_turn_notifications, write_turn_start_notifications,
 };
 use super::persistence::{InputEventContext, persist_input_events};
 use super::scenario::Scenario;
@@ -422,6 +422,11 @@ impl AppServerState {
                 )?;
                 thread::sleep(std::time::Duration::from_millis(50));
             }
+            write_json_line(output, &turn_completed_notification(&thread_id, &turn_id))?;
+        }
+        if self.scenario == Scenario::RuntimeOversizedDelivery {
+            write_json_line(output, &turn_started_notification(&thread_id, &turn_id))?;
+            write_oversized_delivery_notifications(output, &thread_id, &turn_id)?;
             write_json_line(output, &turn_completed_notification(&thread_id, &turn_id))?;
         }
         Ok(ServerAction::Continue)

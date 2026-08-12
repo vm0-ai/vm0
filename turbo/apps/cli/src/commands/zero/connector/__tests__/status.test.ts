@@ -1,5 +1,5 @@
 /**
- * Tests for zero connector status command
+ * Tests for okou connector status command
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
@@ -113,7 +113,7 @@ function stubAvailableConnectors(connectorSlugs: string[]) {
   );
 }
 
-describe("zero connector status command", () => {
+describe("okou connector status command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -168,7 +168,7 @@ describe("zero connector status command", () => {
       expect(logCalls).toContain("/connectors/github/connect");
       expect(logCalls).not.toContain("Authorized:");
       expect(logCalls).not.toContain("Diagnose it with");
-      expect(logCalls).not.toContain("zero connector check");
+      expect(logCalls).not.toContain("okou connector check");
     });
 
     it("does not print connect guidance for unavailable connectors", async () => {
@@ -200,7 +200,7 @@ describe("zero connector status command", () => {
       );
       expect(logCalls).toContain("[Reconnect github](");
       expect(logCalls).toContain("/connectors");
-      expect(logCalls).not.toContain("zero connector check");
+      expect(logCalls).not.toContain("okou connector check");
     });
   });
 
@@ -255,7 +255,7 @@ describe("zero connector status command", () => {
       );
       expect(logCalls).not.toContain("is not connected");
       expect(logCalls).not.toContain("[Connect github]");
-      expect(logCalls).not.toContain("zero connector check");
+      expect(logCalls).not.toContain("okou connector check");
       expect(logCalls).not.toContain("callbackPrompt=");
     });
 
@@ -285,6 +285,32 @@ describe("zero connector status command", () => {
         "callbackPrompt=SOMETHING_AGENT_WANT_TO_BE_CALLBACK",
       );
       expect(logCalls).toContain("automatically start the next round");
+    });
+
+    it("prefers OKOU runtime context over legacy Zero values", async () => {
+      const appOrigin = "https://okou-app.example.test";
+      vi.stubEnv("OKOU_APP_URL", appOrigin);
+      vi.stubEnv("ZERO_APP_URL", "https://zero-app.example.test");
+      vi.stubEnv("OKOU_AGENT_ID", AGENT_UUID);
+      vi.stubEnv("ZERO_AGENT_ID", ALT_AGENT_UUID);
+      vi.stubEnv("OKOU_CHAT_THREAD_ID", "okou-thread-123");
+      vi.stubEnv("ZERO_CHAT_THREAD_ID", "zero-thread-456");
+      server.use(
+        stubConnector(connectedGithub),
+        stubAgent(AGENT_UUID, "maya"),
+        stubUserConnectors(AGENT_UUID, []),
+      );
+
+      await statusCommand.parseAsync(["node", "cli", "github"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain(
+        `${appOrigin}/connectors/github/authorize?agentId=${AGENT_UUID}`,
+      );
+      expect(logCalls).toContain("threadId=okou-thread-123");
+      expect(logCalls).not.toContain(ALT_AGENT_UUID);
+      expect(logCalls).not.toContain("zero-thread-456");
+      expect(logCalls).not.toContain("zero-app.example.test");
     });
 
     it("uses the production app origin in authorization links", async () => {
@@ -369,7 +395,7 @@ describe("zero connector status command", () => {
         `/connectors/github/connect?agentId=${AGENT_UUID}`,
       );
       expect(logCalls).not.toContain("[Authorize github]");
-      expect(logCalls).not.toContain("zero connector check");
+      expect(logCalls).not.toContain("okou connector check");
     });
 
     it("shows connect guidance when connector is authorized but not connected", async () => {
@@ -400,7 +426,7 @@ describe("zero connector status command", () => {
         `/connectors/github/connect?agentId=${AGENT_UUID}`,
       );
       expect(logCalls).not.toContain("[Authorize github]");
-      expect(logCalls).not.toContain("zero connector check");
+      expect(logCalls).not.toContain("okou connector check");
     });
 
     it("shows reconnect guidance when connector needs reconnect", async () => {
@@ -429,7 +455,7 @@ describe("zero connector status command", () => {
       expect(logCalls).toContain("[Reconnect github](");
       expect(logCalls).toContain("/connectors");
       expect(logCalls).not.toContain("[Authorize github]");
-      expect(logCalls).not.toContain("zero connector check");
+      expect(logCalls).not.toContain("okou connector check");
     });
 
     it("uses $ZERO_AGENT_ID when --agent flag is not provided", async () => {

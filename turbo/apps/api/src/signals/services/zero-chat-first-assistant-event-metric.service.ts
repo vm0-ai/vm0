@@ -83,20 +83,10 @@ export function recordFirstAssistantEventAcknowledgementMetric(args: {
 export async function publishFirstAssistantEventCreatedSignalSafely(args: {
   readonly threadId: string;
   readonly userId: string;
-  readonly runId: string;
 }): Promise<void> {
-  await tapError(
-    publishUserSignal(
-      [args.userId],
-      `chatThreadMessageCreated:${args.threadId}`,
-    ),
-    (error) => {
-      L.warn("Failed to publish first assistant message created signal", {
-        runId: args.runId,
-        threadId: args.threadId,
-        error,
-      });
-    },
+  await publishUserSignal(
+    [args.userId],
+    `chatThreadMessageCreated:${args.threadId}`,
   );
 }
 
@@ -134,11 +124,5 @@ export async function publishFirstAssistantEventCreatedSafely(args: {
   readonly userId: string;
   readonly runId: string;
 }): Promise<void> {
-  await tapError(publishFirstAssistantEventCreated(args), (error) => {
-    L.warn("Failed to publish first assistant message created signal", {
-      runId: args.runId,
-      threadId: args.threadId,
-      error,
-    });
-  });
+  await publishFirstAssistantEventCreated(args);
 }

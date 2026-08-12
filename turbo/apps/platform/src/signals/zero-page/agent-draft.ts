@@ -127,7 +127,7 @@ function createAgentDraftSync(agentId: string, draft: DraftSignals) {
           id: result.info.id,
           url: result.info.url,
           filename: result.attachment.filename,
-          contentType: result.attachment.contentType,
+          contentType: result.info.contentType,
           size: result.attachment.size,
         };
       });

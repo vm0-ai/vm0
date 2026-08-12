@@ -4,9 +4,9 @@ import { zeroUploadsContract } from "@vm0/api-contracts/contracts/zero-uploads";
 import { env } from "../../lib/env";
 import { badRequestMessage } from "../../lib/error";
 import {
-  isAllowedUploadType,
   MAX_UPLOAD_SIZE_BYTES,
   MAX_UPLOAD_SIZE_LABEL,
+  normalizeWebUploadContentType,
 } from "../../lib/uploads-constants";
 import { authContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
@@ -37,16 +37,13 @@ const prepareUploadInner$ = command(
     }
 
     const { filename, size } = bodyResult.data;
-    const contentType =
-      bodyResult.data.contentType.split(";")[0]?.trim().toLowerCase() ?? "";
+    const contentType = normalizeWebUploadContentType(
+      bodyResult.data.contentType,
+    );
 
     if (size > MAX_UPLOAD_SIZE_BYTES) {
       return badRequestMessage(`File too large (max ${MAX_UPLOAD_SIZE_LABEL})`);
     }
-    if (!isAllowedUploadType(contentType)) {
-      return badRequestMessage(`Unsupported file type: ${contentType}`);
-    }
-
     if (auth.orgId) {
       const suspended = await set(rejectSuspendedOrg$, auth.orgId, signal);
       if (suspended) {

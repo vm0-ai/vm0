@@ -10,7 +10,6 @@ import {
   deleteConnectorCredentialStorageConnectionsForOwner,
   type ConnectorOwnerScope,
 } from "./connector-credential-storage-write.service";
-import { deleteCustomConnectorStoredValuesForOwner } from "./custom-connector-credential-storage.service";
 
 interface ConnectorOwnerDeleteConditions {
   readonly builtinGrant: SQL;
@@ -39,8 +38,6 @@ export async function deleteConnectorOwnerState(
   owner: ConnectorOwnerScope,
   signal: AbortSignal,
 ): Promise<void> {
-  await deleteCustomConnectorStoredValuesForOwner(db, owner, signal);
-
   if (owner.kind === "user") {
     await db
       .delete(feishuOrgConnections)

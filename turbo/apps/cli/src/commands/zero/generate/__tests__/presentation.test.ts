@@ -1,5 +1,5 @@
 /**
- * Tests for zero generate presentation command
+ * Tests for okou generate presentation command
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
@@ -12,7 +12,7 @@ import chalk from "chalk";
 import { generateCommand } from "../index";
 import { presentationCommand } from "../presentation";
 
-describe("zero generate presentation command", () => {
+describe("okou generate presentation command", () => {
   vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -43,7 +43,7 @@ describe("zero generate presentation command", () => {
     ]);
 
     const stdout = mockConsoleLog.mock.calls.flat().join("\n");
-    expect(stdout).toContain("# Zero generate presentation");
+    expect(stdout).toContain("# Okou generate presentation");
     expect(stdout).toContain("direct HTML presentation authoring packet");
     expect(stdout).not.toContain("generation source-selection packet");
     expect(stdout).not.toContain("## Stage 1: Resource Selection");
@@ -57,7 +57,7 @@ describe("zero generate presentation command", () => {
     expect(stdout).not.toContain("template:saas-landing");
     expect(stdout).not.toContain("## Output Contract");
     expect(stdout).not.toContain("```bash");
-    expect(stdout).not.toContain("zero host ./generated/mockups");
+    expect(stdout).not.toContain("okou host ./generated/mockups");
     expect(stdout).toContain("Slide count: 10");
     expect(stdout).toContain("Use a fixed 1920x1080 slide canvas");
     expect(stdout).toContain(
@@ -177,7 +177,7 @@ describe("zero generate presentation command", () => {
       "Selected presentation template: Playful Launch Presentation (template:html-ppt-playful-launch)",
     );
     expect(stdout).toContain(
-      "zero resource pull template:html-ppt-playful-launch-runbook --dir ./generated/resources",
+      "okou resource pull template:html-ppt-playful-launch-runbook --dir ./generated/resources",
     );
     expect(stdout).toContain(
       "./generated/resources/playful-launch/AGENT_RUNBOOK.md",
@@ -217,7 +217,7 @@ describe("zero generate presentation command", () => {
       expect(stderr).toContain("Available templates for presentation:");
       expect(stderr).toContain("template:html-ppt-playful-launch");
       expect(stderr).toContain(
-        'zero generate presentation --template template:html-ppt-playful-launch --prompt "..."',
+        'okou generate presentation --template template:html-ppt-playful-launch --prompt "..."',
       );
       expect(stderr).not.toContain("Available design systems");
     } finally {

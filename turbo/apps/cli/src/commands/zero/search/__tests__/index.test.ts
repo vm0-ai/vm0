@@ -1,5 +1,5 @@
 /**
- * Tests for zero search command scaffold (#10244).
+ * Tests for okou search command scaffold (#10244).
  *
  * Entry point: zeroSearchCommand.parseAsync()
  * Mock (external): none — no API calls in the scaffold
@@ -11,7 +11,7 @@ import { http, HttpResponse } from "msw";
 import { server } from "../../../../mocks/server";
 import { zeroSearchCommand, SEARCH_EXPLAINER } from "../index";
 
-describe("zero search command (scaffold)", () => {
+describe("okou search command (scaffold)", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);

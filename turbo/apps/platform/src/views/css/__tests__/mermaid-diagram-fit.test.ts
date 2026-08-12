@@ -4,7 +4,7 @@ import { readCssRule, readGlobalCss } from "./global-css.ts";
 
 const BOX_SELECTOR = ".wmde-markdown .mermaid-diagram-expand";
 const IMAGE_SELECTOR = ".wmde-markdown .mermaid-diagram-image";
-const INSET_CHILDREN_SELECTOR = `${IMAGE_SELECTOR},\n.wmde-markdown .mermaid-diagram-pending`;
+const INSET_CHILDREN_SELECTOR = `${IMAGE_SELECTOR},\n.wmde-markdown .mermaid-diagram-pending,\n.wmde-markdown .mermaid-diagram-invalid`;
 
 function readPixels(rule: string, pattern: RegExp): number {
   const match = pattern.exec(rule);

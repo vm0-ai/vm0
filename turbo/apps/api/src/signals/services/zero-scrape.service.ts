@@ -618,7 +618,7 @@ export const zeroScrape$ = command(
     args: AuthedScrapeArgs,
     signal: AbortSignal,
   ): Promise<ZeroScrapeCommandResponse> => {
-    const apiKey = env("ZERO_SCRAPE_FIRECRAWL_TOKEN");
+    const apiKey = env("OKOU_SCRAPE_FIRECRAWL_TOKEN");
     if (!apiKey) {
       return serviceUnavailable(
         "Zero Scrape Firecrawl provider is not configured",

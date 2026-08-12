@@ -99,7 +99,7 @@ export const zeroAirQualityCurrent$ = command(
     args: AuthedAirQualityArgs,
     signal: AbortSignal,
   ): Promise<ZeroAirQualityCommandResponse> => {
-    const apiKey = env("ZERO_WEATHER_GOOGLE_WEATHER_TOKEN");
+    const apiKey = env("OKOU_WEATHER_GOOGLE_WEATHER_TOKEN");
     if (!apiKey) {
       return serviceUnavailable(
         "Zero Weather Google Air Quality provider is not configured",

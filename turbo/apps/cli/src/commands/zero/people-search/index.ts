@@ -79,7 +79,7 @@ function renderProfiles(response: ZeroPeopleSearchResponse): void {
 
 export const zeroPeopleSearchCommand = new Command()
   .name("people-search")
-  .description("Find professionals through managed zero people search")
+  .description("Find professionals through managed Okou people search")
   .argument("<query>", "Professional research query")
   .addOption(
     new Option(
@@ -116,9 +116,9 @@ export const zeroPeopleSearchCommand = new Command()
     "after",
     `
 Examples:
-  Find a professional: zero people-search "Who leads platform engineering at Notion?"
-  Search by criteria: zero people-search "Fintech compliance leaders in New York" --limit 10
-  Machine-readable:   zero people-search "Kubernetes platform engineers" --json
+  Find a professional: okou people-search "Who leads platform engineering at Notion?"
+  Search by criteria: okou people-search "Fintech compliance leaders in New York" --limit 10
+  Machine-readable:   okou people-search "Kubernetes platform engineers" --json
 
 Notes:
   - Authenticates via ZERO_TOKEN (requires people-search:read capability) or a CLI token

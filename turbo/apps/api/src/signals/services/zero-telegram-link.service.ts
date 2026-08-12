@@ -8,7 +8,6 @@ import { telegramUserLinks } from "@vm0/db/schema/telegram-user-link";
 import { now, nowDate } from "../../lib/time";
 import { db$, writeDb$ } from "../external/db";
 import { publishUserSignal } from "../external/realtime";
-import { bestEffort } from "../utils";
 import { decryptPersistentSecretValue } from "./crypto.utils";
 import { userFeatureSwitchContext } from "./feature-switches.service";
 
@@ -187,7 +186,7 @@ export function verifyConnectSignature(args: {
 }
 
 async function publishTelegramUserChanged(userId: string): Promise<void> {
-  await bestEffort(publishUserSignal([userId], "telegram:changed"));
+  await publishUserSignal([userId], "telegram:changed");
 }
 
 export function telegramInstallationForLink(args: {

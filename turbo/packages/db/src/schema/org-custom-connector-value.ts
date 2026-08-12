@@ -11,12 +11,9 @@ import {
 import { orgCustomConnectors } from "./org-custom-connector";
 
 /**
- * Per-user value for one declared custom connector field.
- *
- * Both secret and variable values are stored with the stored-secret encryption
- * envelope. Orphan rows are intentionally preserved when admins remove fields
- * from the connector definition; runtime only considers values whose keys are
- * still declared by the active definition.
+ * Legacy Custom connector credential storage retained for deployment
+ * compatibility until its physical cleanup migration. Application code must
+ * use connector-owned secrets and variables instead.
  */
 export const orgCustomConnectorValues = pgTable(
   "org_custom_connector_values",

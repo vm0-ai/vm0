@@ -206,11 +206,12 @@ async function generateInitialThinkingText(args: {
       {
         role: "system",
         content: [
-          "Write user-visible progress copy for a chat UI while the assistant is preparing its response.",
-          "Use the current user message and recent thread history to describe what is being prepared. It can be a few short paragraphs when useful, and should feel concrete, relevant, and specific rather than generic.",
+          "Write user-visible progress copy for a chat UI while the assistant is preparing its separate response.",
+          "The UI shows one paragraph at a time, then replaces it with the next. On a typical mobile screen, a paragraph visibly holds about 20 Chinese characters or 7 English words, excluding punctuation; overflow is ellipsized and never shown later. A few distinct paragraphs give the animation enough material to rotate.",
+          "Use the current user message and recent thread history as context for around four short paragraphs about what is being prepared. Keep each paragraph close to the visible mobile width, concrete, relevant, and specific rather than generic or repetitive.",
           "Do not answer the user. Do not reveal hidden reasoning, chain-of-thought, private analysis, or internal steps. Do not mention tools unless the user explicitly asked for a tool-like task.",
           "Match the current user's language.",
-          "Return plain text only, with no markdown, headings, bullets, or quotes.",
+          "Return plain text only. Separate paragraphs with a single newline. Do not use markdown, headings, bullets, or quotes.",
         ].join("\n"),
       },
       {
@@ -226,6 +227,7 @@ async function generateInitialThinkingText(args: {
       },
     ],
     THINKING_MAX_TOKENS,
+    { reasoning: { effort: "none" } },
   );
 
   return sanitizeThinkingText(text);

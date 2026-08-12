@@ -60,6 +60,12 @@ _RAW_WHITESPACE_CHARS = frozenset(" \t\n\r\f\v")
 _ASCII_CONTROL_MAX = 0x1F
 _ASCII_DELETE = 0x7F
 _DEFAULT_PORTS = {"http": 80, "https": 443}
+# ALB caps the complete request line at 16 KiB; CloudFront and API Gateway
+# impose smaller URL limits. Even one-byte non-empty query pairs require
+# 2 * count - 1 bytes with separators, so this admits every request within
+# those documented front-door limits while bounding synchronous signing work.
+MAX_AWS_SIGV4_QUERY_PAIRS = 8 * 1024
+_RAW_QUERY_PAIR_RE = re.compile(r"[^&]+")
 
 AwsSigV4BodyHash = NewType("AwsSigV4BodyHash", str)
 
@@ -744,6 +750,7 @@ def _parse_query_pairs(query: str) -> list[tuple[str, str]]:
     if not query:
         return []
 
+    _validate_query_pair_count(query)
     pairs: list[tuple[str, str]] = []
     for raw_pair in query.split("&"):
         if not raw_pair:
@@ -751,6 +758,12 @@ def _parse_query_pairs(query: str) -> list[tuple[str, str]]:
         raw_key, _separator, raw_value = raw_pair.partition("=")
         pairs.append((_unquote_query_component(raw_key), _unquote_query_component(raw_value)))
     return pairs
+
+
+def _validate_query_pair_count(query: str) -> None:
+    for pair_count, _match in enumerate(_RAW_QUERY_PAIR_RE.finditer(query), start=1):
+        if pair_count > MAX_AWS_SIGV4_QUERY_PAIRS:
+            raise AwsSigV4SigningError("AWS request has too many query parameters")
 
 
 def _unquote_query_component(value: str) -> str:

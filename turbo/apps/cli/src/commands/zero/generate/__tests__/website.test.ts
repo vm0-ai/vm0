@@ -1,5 +1,5 @@
 /**
- * Tests for zero generate website command
+ * Tests for okou generate website command
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
@@ -12,7 +12,7 @@ import chalk from "chalk";
 import { generateCommand } from "../index";
 import { websiteCommand } from "../website";
 
-describe("zero generate website command", () => {
+describe("okou generate website command", () => {
   vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -46,12 +46,12 @@ describe("zero generate website command", () => {
     ]);
 
     const stdout = mockConsoleLog.mock.calls.flat().join("\n");
-    expect(stdout).toContain("# Zero generate website");
+    expect(stdout).toContain("# Okou generate website");
     expect(stdout).toContain("generation source-selection packet");
     expect(stdout).not.toContain("federated");
     expect(stdout).toContain("## Stage 1: Resource Selection");
     expect(stdout).toContain(
-      "https://static.vm0.io/html-resources/9e005c4ace807d67338dfa701877df10175a4d2a1c677dea1414aba76867493d/website.json",
+      "https://static.vm0.io/html-resources/website/v1/f0ad1af26306b7cbd9e4e1505a9991e8e9330ca507d5890245553c760878be04/website.json",
     );
     expect(stdout).not.toContain("Sources:");
     expect(stdout).not.toContain("vm0-ai/vm0-skills");
@@ -59,7 +59,7 @@ describe("zero generate website command", () => {
       "There is no fixed selection count for any resource type.",
     );
     expect(stdout).toContain(
-      "For a selected entry without `source.archive`, resolve its `source.path` from the index's pinned `source.repo@source.ref`. Do not run `zero resource pull` for it.",
+      "For a selected entry without `source.archive`, resolve its `source.path` from the index's pinned `source.repo@source.ref`. Do not run `okou resource pull` for it.",
     );
     expect(stdout).toContain(
       "run its exact `source.pull.command`, then use `source.pull.resolvedPath`.",
@@ -84,7 +84,7 @@ describe("zero generate website command", () => {
       "Write the artifact under `./generated/mockups/clearpath-demo/`.",
     );
     expect(stdout).toContain(
-      "zero host ./generated/mockups/clearpath-demo --site clearpath-demo --spa",
+      "okou host ./generated/mockups/clearpath-demo --site clearpath-demo --spa",
     );
   });
 
@@ -101,7 +101,7 @@ describe("zero generate website command", () => {
 
     const stdout = mockConsoleLog.mock.calls.flat().join("\n");
     expect(stdout).toContain(
-      "zero host ./generated/mockups/clearpath --site clearpath --spa",
+      "okou host ./generated/mockups/clearpath --site clearpath --spa",
     );
   });
 
@@ -125,7 +125,7 @@ describe("zero generate website command", () => {
       "For landing, marketing, official brand or product, and launch pages, select a vm0 built-in website template.",
     );
     expect(stdout).not.toContain(
-      "Selected template package: zero resource pull template:web-prototype",
+      "Selected template package: okou resource pull template:web-prototype",
     );
   });
 
@@ -152,7 +152,7 @@ describe("zero generate website command", () => {
       "Selected design system: design-system:stripe (Stripe)",
     );
     expect(stdout).toContain(
-      "Selected template package: zero resource pull template:dot-matrix --dir ./generated/resources",
+      "Selected template package: okou resource pull template:dot-matrix --dir ./generated/resources",
     );
   });
 

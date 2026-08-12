@@ -1,5 +1,5 @@
 /**
- * Tests for zero workflow edit command
+ * Tests for okou workflow edit command
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
@@ -59,7 +59,7 @@ function workflowSummary(overrides: Record<string, unknown> = {}) {
   };
 }
 
-describe("zero workflow edit command", () => {
+describe("okou workflow edit command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);

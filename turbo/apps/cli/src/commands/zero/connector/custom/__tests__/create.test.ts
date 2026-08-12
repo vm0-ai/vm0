@@ -108,7 +108,7 @@ function manualMcpDefinition() {
   } as const;
 }
 
-describe("zero connector custom create", () => {
+describe("okou connector custom create", () => {
   const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
   let tempDir: string;
 
@@ -155,7 +155,7 @@ describe("zero connector custom create", () => {
 
     await customConnectorCommand.parseAsync([
       "node",
-      "zero",
+      "okou",
       "create",
       "--file",
       definitionPath,
@@ -215,7 +215,7 @@ describe("zero connector custom create", () => {
 
     await customConnectorCommand.parseAsync([
       "node",
-      "zero",
+      "okou",
       "create",
       "--file",
       definitionPath,
@@ -261,7 +261,6 @@ describe("zero connector custom create", () => {
               configuredFieldKeys: [],
               createdAt: "2026-01-01T00:00:00.000Z",
               updatedAt: "2026-01-01T00:00:00.000Z",
-              hasSecret: false,
             },
             { status: 201 },
           );
@@ -271,7 +270,7 @@ describe("zero connector custom create", () => {
 
     await customConnectorCommand.parseAsync([
       "node",
-      "zero",
+      "okou",
       "create",
       "--file",
       definitionPath,
@@ -298,7 +297,7 @@ describe("zero connector custom create", () => {
     try {
       await customConnectorCommand.parseAsync([
         "node",
-        "zero",
+        "okou",
         "create",
         "--file",
         definitionPath,
@@ -366,7 +365,7 @@ describe("zero connector custom create", () => {
 
     await customConnectorCommand.parseAsync([
       "node",
-      "zero",
+      "okou",
       "create",
       "--file",
       definitionPath,
@@ -388,7 +387,7 @@ describe("zero connector custom create", () => {
     try {
       await customConnectorCommand.parseAsync([
         "node",
-        "zero",
+        "okou",
         "create",
         "--file",
         definitionPath,
@@ -434,7 +433,7 @@ describe("zero connector custom create", () => {
       },
     });
     customConnectorCommand.outputHelp();
-    expect(customHelp).toContain("zero connector custom create -h");
+    expect(customHelp).toContain("okou connector custom create -h");
     expect(
       customConnectorCommand.commands.map((command) => {
         return command.name();

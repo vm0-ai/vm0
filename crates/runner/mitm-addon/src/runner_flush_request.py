@@ -5,6 +5,10 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import NamedTuple
 
+import state_file
+
+MAX_RUNNER_FLUSH_REQUEST_BYTES = 64 * 1024
+
 
 class RunnerFlushRequest(NamedTuple):
     marker: dict[str, object]
@@ -18,7 +22,12 @@ def read_runner_flush_request(
 ) -> RunnerFlushRequest | None:
     """Read a runner flush request for the expected addon generation."""
     try:
-        marker: object = json.loads(marker_path.read_text(encoding="utf-8"))
+        with state_file.open_state_file(
+            marker_path,
+            description="runner flush request marker",
+        ) as opened_file:
+            marker_bytes = opened_file.read_bytes(MAX_RUNNER_FLUSH_REQUEST_BYTES)
+        marker: object = json.loads(marker_bytes.decode("utf-8"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         return None
 

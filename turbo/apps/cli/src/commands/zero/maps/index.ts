@@ -273,7 +273,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function resultRecord(response: ZeroMapsResponse): Record<string, unknown> {
   if (!isRecord(response.result)) {
-    throw new Error("Zero Maps response did not include an object result");
+    throw new Error("Okou Maps response did not include an object result");
   }
   return response.result;
 }
@@ -308,7 +308,7 @@ async function writeOsmGeoJson(
 ): Promise<void> {
   const result = resultRecord(response);
   if (!("geojson" in result)) {
-    throw new Error("Zero Maps OSM download response did not include geojson");
+    throw new Error("Okou Maps OSM download response did not include geojson");
   }
   await writeOutputFile(
     outputPath,
@@ -324,7 +324,7 @@ async function writeOsmPng(
   const image = result.image;
   if (!isRecord(image) || typeof image.base64 !== "string") {
     throw new Error(
-      "Zero Maps OSM render response did not include a PNG image",
+      "Okou Maps OSM render response did not include a PNG image",
     );
   }
   await writeOutputFile(outputPath, Buffer.from(image.base64, "base64"));
@@ -668,7 +668,7 @@ const placesCommand = new Command()
 
 export const zeroMapsCommand = new Command()
   .name("maps")
-  .description("Use managed zero maps services")
+  .description("Use managed Okou maps services")
   .addCommand(geocodeCommand)
   .addCommand(reverseGeocodeCommand)
   .addCommand(directionsCommand)
@@ -678,14 +678,14 @@ export const zeroMapsCommand = new Command()
     "after",
     `
 Examples:
-  Geocode address:     zero maps geocode --address "1 Infinite Loop, Cupertino" --json
-  Get route:           zero maps directions --origin "SFO" --destination "Mountain View" --mode driving --json
-  Search places:       zero maps places search --query "coffee near Union Square SF" --limit 5 --json
-  Enterprise search:   zero maps places search --query "restaurants in SoMa" --fields enterprise --json
-  Place details:       zero maps places details --place-id <id> --fields essentials --json
-  Enterprise details:  zero maps places details --place-id <id> --fields enterprise --json
-  Download OSM data:    zero maps osm download --bbox -122.43,37.76,-122.40,37.79 --output map.geojson
-  Render OSM PNG:       zero maps osm render --center 37.7749,-122.4194 --radius 1200 --output map.png
+  Geocode address:     okou maps geocode --address "1 Infinite Loop, Cupertino" --json
+  Get route:           okou maps directions --origin "SFO" --destination "Mountain View" --mode driving --json
+  Search places:       okou maps places search --query "coffee near Union Square SF" --limit 5 --json
+  Enterprise search:   okou maps places search --query "restaurants in SoMa" --fields enterprise --json
+  Place details:       okou maps places details --place-id <id> --fields essentials --json
+  Enterprise details:  okou maps places details --place-id <id> --fields enterprise --json
+  Download OSM data:    okou maps osm download --bbox -122.43,37.76,-122.40,37.79 --output map.geojson
+  Render OSM PNG:       okou maps osm render --center 37.7749,-122.4194 --radius 1200 --output map.png
 
 Notes:
   - Authenticates via ZERO_TOKEN (requires maps:read capability) or a CLI token

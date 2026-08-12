@@ -56,6 +56,18 @@ impl EventDeliverySender {
     ) -> Result<(), AgentError> {
         let serialized_event = serde_json::to_vec(&event)?;
         drop(event);
+        self.try_send_serialized(sequence, serialized_event)
+    }
+
+    pub(super) fn max_serialized_event_bytes(&self) -> usize {
+        EVENT_DELIVERY_MAX_REQUEST_BYTES.saturating_sub(self.payload_envelope.singleton_bytes(0))
+    }
+
+    pub(super) fn try_send_serialized(
+        &self,
+        sequence: u32,
+        serialized_event: Vec<u8>,
+    ) -> Result<(), AgentError> {
         let event = Bytes::from(serialized_event.into_boxed_slice());
         let conservative_bytes = self.payload_envelope.singleton_bytes(event.len());
         if conservative_bytes > EVENT_DELIVERY_MAX_REQUEST_BYTES {

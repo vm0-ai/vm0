@@ -23,7 +23,7 @@ vi.mock("node:os", async (importOriginal) => {
   };
 });
 
-describe("zero weather command", () => {
+describe("okou weather command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);

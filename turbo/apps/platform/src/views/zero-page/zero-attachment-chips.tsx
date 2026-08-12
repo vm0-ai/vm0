@@ -1,5 +1,5 @@
 import type { MouseEvent, ReactNode } from "react";
-import { Button } from "@vm0/ui";
+import { Button, Dialog, DialogContent, cn } from "@vm0/ui";
 import {
   useGet,
   useLastLoadable,
@@ -7,7 +7,6 @@ import {
   useLoadable,
   useSet,
 } from "ccstate-react";
-import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import {
   ChevronLeft,
@@ -46,7 +45,7 @@ import {
   closeLightboxWithDialogExit$,
   lightboxDialogFullscreen$,
   lightboxDialogVisible$,
-  lightboxDialogRef$,
+  lightboxDialogMountRef$,
   navigateImageLightbox$,
   openAudioLightbox$,
   openDocumentLightbox$,
@@ -209,42 +208,6 @@ export function CsvPreviewTable({ rows }: { rows: string[][] }) {
         </tbody>
       </table>
     </div>
-  );
-}
-
-function LightboxBodyScrollLock() {
-  let restore: (() => void) | null = null;
-
-  return (
-    <span
-      ref={(node) => {
-        if (node === null) {
-          restore?.();
-          restore = null;
-          return;
-        }
-
-        const bodyOverflow = document.body.style.overflow;
-        const bodyOverscrollBehavior = document.body.style.overscrollBehavior;
-        const rootOverflow = document.documentElement.style.overflow;
-        const rootOverscrollBehavior =
-          document.documentElement.style.overscrollBehavior;
-
-        document.body.style.overflow = "hidden";
-        document.body.style.overscrollBehavior = "contain";
-        document.documentElement.style.overflow = "hidden";
-        document.documentElement.style.overscrollBehavior = "contain";
-
-        restore = () => {
-          document.body.style.overflow = bodyOverflow;
-          document.body.style.overscrollBehavior = bodyOverscrollBehavior;
-          document.documentElement.style.overflow = rootOverflow;
-          document.documentElement.style.overscrollBehavior =
-            rootOverscrollBehavior;
-        };
-      }}
-      hidden
-    />
   );
 }
 
@@ -626,9 +589,9 @@ function ArtifactDialogImageNavigationKeydown({
           }
         };
 
-        document.addEventListener("keydown", onKeyDown);
+        document.addEventListener("keydown", onKeyDown, true);
         cleanup = () => {
-          document.removeEventListener("keydown", onKeyDown);
+          document.removeEventListener("keydown", onKeyDown, true);
         };
       }}
       hidden
@@ -1332,7 +1295,7 @@ function ArtifactPreviewDialogContent({
 }) {
   const { t } = useTranslation();
   const rootSignal = useGet(rootSignal$);
-  const dialogRef = useSet(lightboxDialogRef$);
+  const dialogMountRef = useSet(lightboxDialogMountRef$);
   const closeLightboxWithDialogExit = useSet(closeLightboxWithDialogExit$);
   const filename = artifact?.filename ?? artifactDialogFilename(preview);
   const subtitle = artifactDialogKindLabel(preview, artifact);
@@ -1349,62 +1312,66 @@ function ArtifactPreviewDialogContent({
     }
   };
 
-  return createPortal(
-    <div
-      ref={dialogRef}
-      tabIndex={-1}
-      className={`zero-dialog-enter-overlay zero-pwa-fixed-cover fixed inset-0 z-[9999] isolate flex items-center justify-center bg-gray-900/45 outline-none transition-opacity duration-[180ms] ease ${
-        visible
-          ? "pointer-events-auto opacity-100"
-          : "pointer-events-none opacity-0"
-      } ${fullscreen ? "p-0" : "p-6"}`}
-      onClick={handleBackdropClick}
-      role="dialog"
-      aria-modal="true"
-      aria-label={t(
-        ($) => {
-          return $.artifacts.preview.dialogLabel;
-        },
-        { filename },
-      )}
-      data-testid="attachment-lightbox"
+  return (
+    <Dialog
+      open={visible}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen && visible) {
+          closeWithAnimation();
+        }
+      }}
     >
-      <LightboxBodyScrollLock />
-      <ArtifactDialogImageNavigationKeydown
-        navigation={preview.kind === "image" ? imageNavigation : undefined}
-      />
-      <div
-        className={`zero-dialog-enter-content flex min-h-0 flex-col overflow-hidden bg-background text-foreground shadow-[0_24px_70px_rgba(0,0,0,0.30)] transition-transform duration-[180ms] ease ${
-          visible ? "translate-y-0" : "translate-y-2"
-        } ${
-          fullscreen
-            ? "zero-fixed-viewport-shell w-dvw rounded-none"
-            : "h-[min(700px,86vh)] w-[min(980px,92vw)] rounded-2xl"
-        }`}
-        data-testid="attachment-lightbox-panel"
+      <DialogContent
+        ref={dialogMountRef}
+        showCloseButton={false}
+        overlayClassName="zero-pwa-fixed-cover bg-gray-900/45 dark:bg-gray-900/45"
+        className={cn(
+          "zero-pwa-fixed-cover fixed inset-0 left-0 top-0 flex max-h-none w-auto max-w-none translate-x-0 translate-y-0 items-center justify-center gap-0 overflow-hidden rounded-none border-0 bg-transparent shadow-none",
+          fullscreen ? "p-0" : "p-6",
+        )}
+        onClick={handleBackdropClick}
+        aria-label={t(
+          ($) => {
+            return $.artifacts.preview.dialogLabel;
+          },
+          { filename },
+        )}
+        data-testid="attachment-lightbox"
       >
-        <div className="flex h-14 shrink-0 items-center gap-2 border-b border-border/70 pl-4 pr-3">
-          <div className="min-w-0 flex-1">
-            <div className="truncate text-sm font-medium">{filename}</div>
-            <div className="truncate text-xs text-muted-foreground">
-              {subtitle}
+        <ArtifactDialogImageNavigationKeydown
+          navigation={preview.kind === "image" ? imageNavigation : undefined}
+        />
+        <div
+          className={cn(
+            "flex min-h-0 flex-col overflow-hidden bg-background text-foreground shadow-[0_24px_70px_rgba(0,0,0,0.30)]",
+            fullscreen
+              ? "zero-fixed-viewport-shell w-dvw rounded-none"
+              : "h-[min(700px,86vh)] w-[min(980px,92vw)] rounded-2xl",
+          )}
+          data-testid="attachment-lightbox-panel"
+        >
+          <div className="flex h-14 shrink-0 items-center gap-2 border-b border-border/70 pl-4 pr-3">
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-sm font-medium">{filename}</div>
+              <div className="truncate text-xs text-muted-foreground">
+                {subtitle}
+              </div>
             </div>
+            <ArtifactPreviewDialogActions
+              artifact={artifact}
+              fullscreen={fullscreen}
+              preview={preview}
+            />
           </div>
-          <ArtifactPreviewDialogActions
-            artifact={artifact}
-            fullscreen={fullscreen}
-            preview={preview}
-          />
+          <div className="min-h-0 flex-1 bg-background">
+            <ArtifactDialogBody
+              imageNavigation={imageNavigation}
+              preview={preview}
+            />
+          </div>
         </div>
-        <div className="min-h-0 flex-1 bg-background">
-          <ArtifactDialogBody
-            imageNavigation={imageNavigation}
-            preview={preview}
-          />
-        </div>
-      </div>
-    </div>,
-    document.body,
+      </DialogContent>
+    </Dialog>
   );
 }
 

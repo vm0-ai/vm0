@@ -17,8 +17,8 @@ export const zeroTelegramCommand = new Command()
     "after",
     `
 Examples:
-  List bots:        zero telegram bot list
-  Send a message:   zero telegram message send --bot-id <bot-id> -c <chat-id> -t "Hello!"
-  Upload a file:    zero telegram upload-file -f /tmp/report.pdf --bot-id <bot-id> -c <chat-id>
-  Download a file:  zero telegram download-file <file-id> --bot-id <bot-id> -o /tmp/out.jpg`,
+  List bots:        okou telegram bot list
+  Send a message:   okou telegram message send --bot-id <bot-id> -c <chat-id> -t "Hello!"
+  Upload a file:    okou telegram upload-file -f /tmp/report.pdf --bot-id <bot-id> -c <chat-id>
+  Download a file:  okou telegram download-file <file-id> --bot-id <bot-id> -o /tmp/out.jpg`,
   );

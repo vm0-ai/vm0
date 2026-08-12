@@ -1,7 +1,7 @@
 import type { FormEvent } from "react";
 
 import type {
-  CustomConnectorClientResponse,
+  CustomConnectorResponse,
   CustomConnectorValueInput,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import {
@@ -45,7 +45,7 @@ function formValue(
 }
 
 function declaredValuesFromForm(
-  connector: CustomConnectorClientResponse,
+  connector: CustomConnectorResponse,
   values: Readonly<Record<string, string>>,
 ): readonly CustomConnectorValueInput[] {
   const variableKeys = new Set(
@@ -71,7 +71,7 @@ function CredentialFields({
   values,
   setField,
 }: {
-  readonly connector: CustomConnectorClientResponse;
+  readonly connector: CustomConnectorResponse;
   readonly values: Readonly<Record<string, string>>;
   readonly setField: (args: {
     readonly key: string;
@@ -232,7 +232,7 @@ function ConnectDialogFooter({
 }
 
 interface CustomConnectorConnectDialogProps {
-  readonly connector: CustomConnectorClientResponse;
+  readonly connector: CustomConnectorResponse;
   readonly agentId?: string;
   readonly onClose?: () => void;
   readonly onSuccess?: () => void | Promise<void>;

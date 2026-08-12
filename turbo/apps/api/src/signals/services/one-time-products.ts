@@ -31,7 +31,7 @@ const CAMPAIGN_POLICY = Object.freeze<Record<string, CampaignPolicy>>({
 
 export function getCampaign(key: string) {
   const policy = CAMPAIGN_POLICY[key];
-  const config = env("ZERO_ONE_TIME_CAMPAIGN")?.[key];
+  const config = env("OKOU_ONE_TIME_CAMPAIGN")?.[key];
   if (!policy || !config) {
     return undefined;
   }

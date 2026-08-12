@@ -1256,18 +1256,11 @@ describe("CHAT-02: completed chat callback", () => {
       expect.arrayContaining([queued.id, claimed.id]),
     );
     // The auto-send publishes happen in background callback processing, so
-    // poll until each expected channel has been published before asserting.
+    // poll until the message channel has been published before asserting.
     await expect
       .poll(() => {
         return context.mocks.ably.publish.mock.calls.some((call) => {
           return call[0] === `chatThreadMessageCreated:${first.threadId}`;
-        });
-      })
-      .toBe(true);
-    await expect
-      .poll(() => {
-        return context.mocks.ably.publish.mock.calls.some((call) => {
-          return call[0] === `chatThreadRunCreated:${first.threadId}`;
         });
       })
       .toBe(true);
@@ -1288,11 +1281,6 @@ describe("CHAT-02: completed chat callback", () => {
       `chatThreadMessageCreated:${first.threadId}`,
       null,
     );
-    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
-      `chatThreadRunCreated:${first.threadId}`,
-      null,
-    );
-
     const autoContext = await waitForRunContext(actor, claimed.runId);
     expect(autoContext.body.prompt).toBe(
       `[Template #1: ${template.title} (presentation)]queued next turn`,
@@ -1308,11 +1296,11 @@ describe("CHAT-02: completed chat callback", () => {
     expect(appended).not.toContain("Selected design system");
     // Runbook flow, not the retired multi-resource flow.
     expect(appended).toContain(
-      `zero resource pull ${template.templateId}-runbook --dir ./generated/resources`,
+      `okou resource pull ${template.templateId}-runbook --dir ./generated/resources`,
     );
     expect(appended).toContain("--artifact-kind presentation-html");
     expect(appended).not.toContain(
-      "zero generate presentation --design-system",
+      "okou generate presentation --design-system",
     );
     expect(Object.keys(autoContext.body.environment)).toContain(
       "ANTHROPIC_API_KEY",
@@ -3807,16 +3795,6 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
         });
       })
       .toBe(true);
-    await expect
-      .poll(() => {
-        return context.mocks.ably.publish.mock.calls.some((call) => {
-          return (
-            call[0] === `chatThreadRunCreated:${first.threadId}` &&
-            call[1] === null
-          );
-        });
-      })
-      .toBe(true);
     context.mocks.axiom.query.mockClear();
     context.mocks.ably.publish.mockClear();
     await webhooks.requestAgentHeartbeat(
@@ -4103,11 +4081,6 @@ describe("CHAT-02: drain-time admission failure", () => {
       "threadListChanged",
       null,
     );
-    expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
-      `chatThreadRunCreated:${anchor.threadId}`,
-      null,
-    );
-
     mockNow(startedAt + CANCELLATION_RECOVERY_STALE_AFTER_MS + 1);
     await accept(
       cancellationRecoveryCronClient().reconcile({
@@ -4186,22 +4159,14 @@ describe("CHAT-02: failed chat callbacks", () => {
       const sandboxHeaders = await claimChatRun(runnerGroup, run.runId);
       // Isolate failed-callback notifications from send-side background work.
       await flushWaitUntilForTest();
-      expect(context.mocks.ably.publish).toHaveBeenCalledWith(
-        `chatThreadRunCreated:${run.threadId}`,
-        null,
-      );
       context.mocks.ably.publish.mockClear();
       await failChatRun(run.runId, sandboxHeaders, round.error);
       // The complete webhook acknowledges before terminal callback work
-      // finishes. Drain its tracked waitUntil work so both realtime assertions
-      // cover the complete failed-run callback instead of a one-second window.
+      // finishes. Drain its tracked waitUntil work so the realtime assertion
+      // covers the complete failed-run callback instead of a one-second window.
       await flushWaitUntilForTest();
       expect(context.mocks.ably.publish).toHaveBeenCalledWith(
         `chatThreadMessageCreated:${run.threadId}`,
-        null,
-      );
-      expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
-        `chatThreadRunCreated:${run.threadId}`,
         null,
       );
     }
@@ -4833,14 +4798,6 @@ describe("CHAT-02: auto-send after failures", () => {
         filenameSnapshot: "queued-notes.txt",
       }),
     );
-    await expect
-      .poll(() => {
-        return context.mocks.ably.publish.mock.calls.some((call) => {
-          return call[0] === `chatThreadRunCreated:${first.threadId}`;
-        });
-      })
-      .toBe(true);
-
     const autoContext = await waitForRunContext(actor, claimed.runId);
     expect(autoContext.body.prompt).toContain("queued with files");
     expect(autoContext.body.prompt).toContain(
@@ -5273,14 +5230,6 @@ describe("CHAT-02: thread deletion while a run is active", () => {
         });
       })
       .toBe(true);
-    await expect
-      .poll(() => {
-        return context.mocks.ably.publish.mock.calls.some((call) => {
-          return call[0] === `chatThreadRunCreated:${run.threadId}`;
-        });
-      })
-      .toBe(true);
-
     context.mocks.axiom.query.mockClear();
     context.mocks.ably.publish.mockClear();
     await chat.deleteThread(actor, run.threadId);

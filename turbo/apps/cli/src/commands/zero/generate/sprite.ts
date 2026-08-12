@@ -6,7 +6,7 @@ import {
 } from "../shared/sprite-authoring";
 import { dispatchGenerate } from "./lib/dispatch";
 
-const SPRITE_USAGE_COMMAND = "zero generate sprite";
+const SPRITE_USAGE_COMMAND = "okou generate sprite";
 const DEFAULT_MODEL = "gpt-image-2";
 const AGENT_DECIDES = "agent decides";
 
@@ -152,7 +152,7 @@ export const spriteCommand = new Command()
   .option("--bundle <preset>", `Bundle preset: ${BUNDLES.join(", ")}`)
   .option(
     "--art-style <style>",
-    `Sprite art style (the sprite analog of 'zero generate image --style'): ${ART_STYLES.join(", ")}`,
+    `Sprite art style (the sprite analog of 'okou generate image --style'): ${ART_STYLES.join(", ")}`,
   )
   .option("--anchor <anchor>", `Frame anchor: ${ANCHORS.join(", ")}`)
   .option("--margin <margin>", `Safe-area margin: ${MARGINS.join(", ")}`)

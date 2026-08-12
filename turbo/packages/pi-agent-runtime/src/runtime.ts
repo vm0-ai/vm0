@@ -4,12 +4,17 @@ import {
   loadSourcedSkills,
   type ExecutionEnv,
   type Skill,
+  type SkillDiagnostic,
 } from "@earendil-works/pi-agent-core";
-import type { RunSkillSnapshot } from "@vm0/api-contracts/contracts/runners";
+import type {
+  RunSkillSnapshot,
+  RunSkillSnapshotEntry,
+} from "@vm0/api-contracts/contracts/runners";
 
 import type { PiRunSkills } from "./types";
 
 const PI_AGENT_NAME_PLACEHOLDER = "{{agent_name}}";
+const CONNECTOR_SKILL_STORAGE_PREFIX = "connector-skill@";
 
 const PI_BASE_SYSTEM_PROMPT_TEMPLATE = `You are ${PI_AGENT_NAME_PLACEHOLDER}, an AI agent. You and the user share one workspace, and your job is to collaborate with them until their goal is genuinely handled.
 
@@ -65,6 +70,40 @@ function renderPiBaseSystemPrompt(agentName: string): string {
 /** Default base prompt used when no user-facing agent identity is available. */
 export const PI_BASE_SYSTEM_PROMPT = renderPiBaseSystemPrompt("Okou");
 
+function finalPathSegment(path: string): string {
+  const normalized = path.replace(/\/+$/u, "");
+  return normalized.slice(normalized.lastIndexOf("/") + 1);
+}
+
+function isConnectorSkillNameDiagnostic(
+  diagnostic: SkillDiagnostic & { readonly source: RunSkillSnapshotEntry },
+  sourcedSkills: ReadonlyArray<{
+    readonly skill: Skill;
+    readonly source: RunSkillSnapshotEntry;
+  }>,
+): boolean {
+  const directoryName = finalPathSegment(diagnostic.source.logicalDir);
+  if (
+    diagnostic.code !== "invalid_metadata" ||
+    diagnostic.source.storageName !==
+      `${CONNECTOR_SKILL_STORAGE_PREFIX}${directoryName}` ||
+    diagnostic.path !== diagnostic.source.skillFile
+  ) {
+    return false;
+  }
+  const sourcedSkill = sourcedSkills.find(({ skill, source }) => {
+    return source === diagnostic.source && skill.filePath === diagnostic.path;
+  });
+  if (!sourcedSkill) {
+    return false;
+  }
+  return (
+    sourcedSkill.skill.name !== directoryName &&
+    diagnostic.message ===
+      `name "${sourcedSkill.skill.name}" does not match parent directory "${directoryName}"`
+  );
+}
+
 /** Load only the exact Skill directories pinned in this run's snapshot. */
 export async function loadPiRunSkills(
   env: ExecutionEnv,
@@ -81,7 +120,12 @@ export async function loadPiRunSkills(
       return skill;
     }),
     sourcedSkills: loaded.skills,
-    diagnostics: loaded.diagnostics,
+    // Connector storage is mounted at its stable catalog slug, while the
+    // framework-facing frontmatter name is intentionally independent. Pi's
+    // generic filesystem convention reports that valid split as a warning.
+    diagnostics: loaded.diagnostics.filter((diagnostic) => {
+      return !isConnectorSkillNameDiagnostic(diagnostic, loaded.skills);
+    }),
   };
 }
 

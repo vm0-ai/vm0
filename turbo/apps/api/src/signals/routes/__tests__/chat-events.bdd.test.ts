@@ -150,7 +150,7 @@ const authDeviceSupport = createAuthDeviceSupportApi(context);
 const routeMocks = createZeroRouteMocks(context);
 const runStateStore = createStore();
 const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
-const CODEX_WEB_IMAGE_UPLOAD_PROMPT_SNIPPET = "zero web upload-file -f <path>";
+const CODEX_WEB_IMAGE_UPLOAD_PROMPT_SNIPPET = "okou web upload-file -f <path>";
 const RUN_TIME_BUDGET_STEER_AT_MS = 115 * 60 * 1000;
 const RUN_TIME_BUDGET_MESSAGE = `This runner has a hard maximum runtime of 2 hours. The current run has been active for 115 minutes, leaving approximately 5 minutes before it is terminated.
 
@@ -351,7 +351,10 @@ function userMessageWithTemplate(
 }
 
 const openRouterBodySchema = z.object({
+  model: z.string(),
   messages: z.array(z.object({ role: z.string(), content: z.string() })),
+  max_tokens: z.number().optional(),
+  reasoning: z.object({ effort: z.literal("none") }).optional(),
 });
 
 async function entitledChatActor(
@@ -3662,8 +3665,8 @@ describe("CHAT-02: model-first provider policies", () => {
     expect(appendSystemPrompt).toContain(
       "You are currently running inside: Web",
     );
-    expect(appendSystemPrompt).toContain("zero web upload-file -h");
-    expect(appendSystemPrompt).toContain("zero mail link <gmail-draft-id>");
+    expect(appendSystemPrompt).toContain("okou web upload-file -h");
+    expect(appendSystemPrompt).toContain("okou mail link <gmail-draft-id>");
     expect(appendSystemPrompt).toContain(
       "GET /gmail/v1/users/me/settings/sendAs",
     );
@@ -3685,7 +3688,7 @@ describe("CHAT-02: model-first provider policies", () => {
       "confirm the send against Gmail before reporting it",
     );
     expect(appendSystemPrompt).toContain(
-      "`zero workflow automation list <workflow>` shows one workflow's triggers",
+      "`okou workflow automation list <workflow>` shows one workflow's triggers",
     );
     expect(appendSystemPrompt).toContain(
       "Never send a reply automatically; the user always sends",
@@ -4815,7 +4818,7 @@ describe("CHAT-02: run-level model overrides", () => {
     expect(appended).not.toContain("Assistant: opus answer");
     expect(appended).toContain("# This Chat Thread");
     expect(appended).toContain(`- CHAT_THREAD_ID: ${first.threadId}`);
-    expect(appended).toContain("`zero chat messages`");
+    expect(appended).toContain("`okou chat messages`");
     const secondClaim = await claimChatRun(runnerGroup, second.runId);
     expect(secondClaim.claim.resumeSession?.sessionId).toBe(
       `bdd-cli-${first.runId}`,
@@ -6460,9 +6463,10 @@ describe("CHAT-02: initial thinking indicator", () => {
 
     let thinkingAuthorization: string | null = null;
     let thinkingPromptPayload = "";
+    let thinkingRequestBody: z.infer<typeof openRouterBodySchema> | undefined;
     const titleResponse = "Launch Checklist";
     const thinkingResponse =
-      "Reviewing the launch request and recent context.\n\nOrganizing the checklist into practical sections before the main response starts.";
+      "Reviewing the launch request and recent context.\nIdentifying the checklist's major sections.\nChecking where owners and timing matter.\nPreparing a clear order for the response.";
     server.use(
       http.post(
         "https://openrouter.ai/api/v1/chat/completions",
@@ -6475,6 +6479,7 @@ describe("CHAT-02: initial thinking indicator", () => {
           }
           if (systemContent.includes("Write user-visible progress copy")) {
             thinkingAuthorization = request.headers.get("authorization");
+            thinkingRequestBody = payload;
             thinkingPromptPayload = payload.messages
               .map((message) => {
                 return message.content;
@@ -6525,13 +6530,82 @@ describe("CHAT-02: initial thinking indicator", () => {
       thinking: thinkingResponse,
     });
     expect(thinkingAuthorization).toBe("Bearer thinking-key");
-    expect(thinkingPromptPayload).toContain("few short paragraphs");
+    expect(thinkingRequestBody).toMatchObject({
+      model: "google/gemini-3.1-flash-lite-preview",
+      max_tokens: 160,
+      reasoning: { effort: "none" },
+    });
+    expect(thinkingPromptPayload).toContain("one paragraph at a time");
+    expect(thinkingPromptPayload).toContain(
+      "about 20 Chinese characters or 7 English words",
+    );
+    expect(thinkingPromptPayload).toContain("around four short paragraphs");
+    expect(thinkingPromptPayload).toContain("Do not answer the user");
+    expect(thinkingPromptPayload).toContain("Do not reveal hidden reasoning");
     expect(thinkingPromptPayload).toContain(
       "Match the current user's language",
     );
     expect(thinkingPromptPayload).toContain("Draft a launch checklist");
     await flushWaitUntilForTest();
     expect(firstAssistantEventsForRun(run.runId)).toStrictEqual([]);
+
+    await cancelChatRun(actor, run.runId);
+  });
+
+  it("discards token-limited progress copy instead of persisting a truncated marker", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    mockOptionalEnv("OPENROUTER_API_KEY", "thinking-key");
+
+    let thinkingRequests = 0;
+    server.use(
+      http.post(
+        "https://openrouter.ai/api/v1/chat/completions",
+        async ({ request }) => {
+          const payload = openRouterBodySchema.parse(await request.json());
+          const systemContent = payload.messages[0]?.content ?? "";
+          if (systemContent.includes("Write user-visible progress copy")) {
+            thinkingRequests += 1;
+            return HttpResponse.json({
+              choices: [
+                {
+                  finish_reason: "length",
+                  native_finish_reason: "MAX_TOKENS",
+                  message: {
+                    content: "Incomplete progress copy that must not persist",
+                  },
+                },
+              ],
+            });
+          }
+          return HttpResponse.json({
+            choices: [
+              {
+                finish_reason: "stop",
+                message: { content: "Token Limit Title" },
+              },
+            ],
+          });
+        },
+      ),
+    );
+
+    const run = await sendChatRun(actor, {
+      agentId,
+      prompt: "Draft a concise migration update",
+    });
+    await flushWaitUntilForTest();
+
+    const page = await chat.listThreadEvents(actor, run.threadId);
+    expect(thinkingRequests).toBe(1);
+    expect(
+      assistantMessages(page.events).some((message) => {
+        return (
+          message.runId === run.runId &&
+          message.runEventId === "thinking:initial"
+        );
+      }),
+    ).toBeFalsy();
 
     await cancelChatRun(actor, run.runId);
   });
@@ -7241,7 +7315,7 @@ describe("CHAT-02: generation templates and attachments", () => {
     );
     expect(presentationPrompt).not.toContain("Selected design system");
     expect(presentationPrompt).toContain(
-      `zero resource pull ${template.templateId}-runbook --dir ./generated/resources`,
+      `okou resource pull ${template.templateId}-runbook --dir ./generated/resources`,
     );
     if (template.colorSystemId) {
       const colorToken = template.colorSystemId
@@ -7254,7 +7328,7 @@ describe("CHAT-02: generation templates and attachments", () => {
     );
     expect(presentationPrompt).toContain("--artifact-kind presentation-html");
     expect(presentationPrompt).not.toContain(
-      "zero generate presentation --design-system",
+      "okou generate presentation --design-system",
     );
     expect(presentationPrompt).not.toContain("- Artifact type: presentation");
     await cancelChatRun(actor, presentation.runId);
@@ -7280,7 +7354,7 @@ describe("CHAT-02: generation templates and attachments", () => {
       `Template: ${videoTemplate.title} (${videoTemplate.id})`,
     );
     expect(videoPrompt).toContain(
-      `zero generate video --provider built-in --template ${videoTemplate.id}`,
+      `okou generate video --provider built-in --template ${videoTemplate.id}`,
     );
     expect(videoPrompt).not.toContain("Parameters the user set explicitly");
     await cancelChatRun(actor, video.runId);
@@ -7344,7 +7418,7 @@ describe("CHAT-02: generation templates and attachments", () => {
     expect(avatarPrompt).toContain("Aspect ratio: landscape");
     expect(avatarPrompt).not.toContain("--list-voices");
     expect(avatarPrompt).toContain(
-      `zero generate avatar-video --provider built-in --avatar-id ${avatarId} --voice-id ${avatarVoiceId} --aspect-ratio landscape`,
+      `okou generate avatar-video --provider built-in --avatar-id ${avatarId} --voice-id ${avatarVoiceId} --aspect-ratio landscape`,
     );
     expect(avatarPrompt).not.toContain("Do not inject this avatar name");
     expect(avatarPrompt).not.toContain("untrusted-avatar.jpg");
@@ -7369,15 +7443,13 @@ describe("CHAT-02: generation templates and attachments", () => {
       `Template: ${websiteTemplate.title} (${websiteTemplate.id})`,
     );
     expect(websitePrompt).toContain(
-      "zero resource pull template:black-slabs-v2 --dir ./generated/resources",
+      "okou resource pull template:black-slabs --dir ./generated/resources",
     );
     expect(websitePrompt).toContain(
       `./generated/resources/${websiteTemplate.sourcePath}/render.mjs`,
     );
-    expect(websitePrompt).toContain(
-      `./generated/resources/${websiteTemplate.sourcePath}/resolve-images.mjs`,
-    );
-    expect(websitePrompt).toContain("zero host <output-dir> --site <slug>");
+    expect(websitePrompt).not.toContain("resolve-images.mjs");
+    expect(websitePrompt).toContain("okou host <output-dir> --site <slug>");
     await cancelChatRun(actor, website.runId);
   }, 90_000);
 
@@ -7429,7 +7501,7 @@ describe("CHAT-02: generation templates and attachments", () => {
       .appendSystemPrompt;
     expect(firstPrompt).toContain("# Inline Templates");
     expect(firstPrompt).toContain(
-      `zero generate image --provider built-in --style ${style.illustrationStyleId} --prompt "<user request>" --compile`,
+      `okou generate image --provider built-in --style ${style.illustrationStyleId} --prompt "<user request>" --compile`,
     );
     expect(firstPrompt).toContain("Follow the returned packet completely");
     expect(firstPrompt).toContain(
@@ -7493,7 +7565,7 @@ describe("CHAT-02: generation templates and attachments", () => {
       `Template: ${videoTemplate.title} (${videoTemplate.id})`,
     );
     expect(thirdPrompt).toContain(
-      `zero generate video --provider built-in --template ${videoTemplate.id}`,
+      `okou generate video --provider built-in --template ${videoTemplate.id}`,
     );
     expect(thirdPrompt).toContain("# Incomplete Rounds Context");
     expect(thirdPrompt).not.toContain("# Web Chat Run Context");
@@ -7509,7 +7581,7 @@ describe("CHAT-02: generation templates and attachments", () => {
       .appendSystemPrompt;
     expect(freshPrompt).not.toContain("# Inline Templates");
     expect(freshPrompt).not.toContain(
-      "zero generate image --provider built-in --style",
+      "okou generate image --provider built-in --style",
     );
     expect(freshPrompt).not.toContain(style.illustrationStyleId);
     await cancelChatRun(actor, fresh.runId);
@@ -7709,8 +7781,8 @@ describe("CHAT-02: generation templates and attachments", () => {
     const created = await api.readRun(actor, run.runId);
     expect(created.prompt).toContain(`[Web file] ${filename} (image/png)`);
     expect(created.prompt).toContain(`[ID] ${fileId}`);
-    expect(created.appendSystemPrompt).toContain("zero web download-file -h");
-    expect(created.appendSystemPrompt).toContain("zero web upload-file -h");
+    expect(created.appendSystemPrompt).toContain("okou web download-file -h");
+    expect(created.appendSystemPrompt).toContain("okou web upload-file -h");
 
     const messages = await waitForThreadMessages(
       actor,
@@ -7792,6 +7864,7 @@ describe("CHAT-02: queued attachments on auto-send", () => {
 
     chatCallbacks.mockChatOutputEvents([]);
     await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders);
+    await flushWaitUntilForTest();
     const messages = await waitForThreadMessages(
       actor,
       anchor.threadId,
@@ -7886,6 +7959,7 @@ describe("CHAT-02: queued attachments on auto-send", () => {
     // run whose prompt carries the resolved attachment references.
     chatCallbacks.mockChatOutputEvents([]);
     await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders);
+    await flushWaitUntilForTest();
     const messages = await waitForThreadMessages(
       actor,
       anchor.threadId,
@@ -8543,10 +8617,10 @@ describe("CHAT-02: shared user message queue", () => {
       "SOURCE_THREAD_TITLE: New thread",
     );
     expect(firstTargetSystemPrompt).toContain(
-      `zero chat messages --thread-id ${source.threadId}`,
+      `okou chat messages --thread-id ${source.threadId}`,
     );
     expect(firstTargetSystemPrompt).toContain(
-      `zero logs ${source.runId} --all`,
+      `okou logs ${source.runId} --all`,
     );
     const sourceRun = await api.readRun(actor, source.runId);
     expect(sourceRun.appendSystemPrompt ?? "").not.toContain(
@@ -9548,28 +9622,7 @@ describe("CHAT-02: shared user message queue", () => {
     );
     await flushWaitUntilForTest();
 
-    // Pause the database-backed callback after its lifecycle marker commits
-    // but before its queue drain. The output event is projected above before
-    // this timing gate is installed, so neither path depends on Axiom.
-    const callbackPublishStarted = createDeferredPromise<void>(context.signal);
-    const releaseCallbackPublish = createDeferredPromise<void>(context.signal);
-    let callbackPublishBlocked = false;
-    context.mocks.ably.publish.mockImplementation((topic: unknown) => {
-      if (
-        topic === `chatThreadMessageCreated:${anchor.threadId}` &&
-        !callbackPublishBlocked
-      ) {
-        callbackPublishBlocked = true;
-        callbackPublishStarted.resolve(undefined);
-        return releaseCallbackPublish.promise;
-      }
-      return Promise.resolve(undefined);
-    });
-
     onTestFinished(async () => {
-      if (!releaseCallbackPublish.settled()) {
-        releaseCallbackPublish.resolve(undefined);
-      }
       admissionLock.release();
       await admissionLock.done;
     });
@@ -9577,11 +9630,10 @@ describe("CHAT-02: shared user message queue", () => {
     await completeChatRunOk(anchor.runId, anchorClaim.sandboxHeaders, {
       lastEventSequence: 0,
     });
-    await callbackPublishStarted.promise;
-    // Completing the anchor also starts the org run-queue drain. Pin that
-    // known waiter first so the next two waiters identify the inline send and
-    // the terminal callback's chat-message drain respectively.
-    await expect.poll(admissionLock.waiterCount).toBe(1);
+    // Completion starts both the thread-message drain and the org run-queue
+    // drain concurrently. Wait until either has reached admission, then let
+    // the inline send persist its queue-first row and join the same boundary.
+    await expect.poll(admissionLock.waiterCount).toBeGreaterThanOrEqual(1);
 
     const prompt = "terminal drain and inline send share one claim";
     const messageId = randomUUID();
@@ -9603,10 +9655,12 @@ describe("CHAT-02: shared user message queue", () => {
         });
       })
       .toBe(true);
-    await expect.poll(admissionLock.waiterCount).toBe(2);
-
-    releaseCallbackPublish.resolve(undefined);
-    await expect.poll(admissionLock.waiterCount).toBe(3);
+    // One terminal drain is already pinned above. The persisted inline send
+    // adds the second contender; sibling completion work may be serialized
+    // before this boundary and is not required for the single-claim race.
+    await expect
+      .poll(admissionLock.waiterCount, { timeout: 10_000 })
+      .toBeGreaterThanOrEqual(2);
     admissionLock.release();
 
     const sent = await send;

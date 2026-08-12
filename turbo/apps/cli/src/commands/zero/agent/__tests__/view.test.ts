@@ -1,5 +1,5 @@
 /**
- * Tests for zero agent view command
+ * Tests for okou agent view command
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
@@ -93,7 +93,7 @@ function makeConnector(overrides: Record<string, unknown> = {}) {
   };
 }
 
-describe("zero agent view command", () => {
+describe("okou agent view command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);

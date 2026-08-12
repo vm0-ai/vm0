@@ -19,7 +19,7 @@ export function ZeroUnsavedBar({
   discardLabel = "Discard",
   saveLabel = "Save",
 }: ZeroUnsavedBarProps) {
-  return createPortal(
+  const bar = (
     <div className="zero-app fixed bottom-6 left-0 right-0 z-40 flex justify-center px-4">
       <div
         data-testid="unsaved-bar"
@@ -58,7 +58,12 @@ export function ZeroUnsavedBar({
           </Button>
         </div>
       </div>
-    </div>,
-    document.body,
+    </div>
   );
+  // Keep this app-local notice inside the isolated app stack. Modal and
+  // floating Base UI portals live outside it and therefore stay above it
+  // without coordinating z-index values with this component.
+  const appRoot =
+    typeof document === "undefined" ? null : document.getElementById("root");
+  return appRoot ? createPortal(bar, appRoot) : bar;
 }

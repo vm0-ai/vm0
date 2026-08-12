@@ -20,7 +20,6 @@ from url_syntax import has_raw_whitespace, has_unsafe_url_codepoint
 MAX_BUILTIN_FIREWALL_CATALOG_BYTES = 16 * 1024 * 1024
 _CACHE_SCHEMA_VERSION = 1
 _SHA256_HEX_LENGTH = 64
-_RESERVED_PERMISSION_NAMES = frozenset(("all", "__unknown__"))
 _UNTRUSTED_WRITE_BITS = stat.S_IWGRP | stat.S_IWOTH
 # Use the shortest valid witness for each URL component so materialization does
 # not push an otherwise satisfiable DNS label past its 63-byte limit.
@@ -412,11 +411,16 @@ def _validate_api_entry(firewall_name: str, api: dict) -> None:
                 f'catalog cache firewall "{firewall_name}" permissions must be objects'
             )
         raw_name = permission.get("name")
-        if not isinstance(raw_name, str) or raw_name == "":
+        if not isinstance(raw_name, str):
             raise BuiltinFirewallCatalogCacheError(
                 f'catalog cache firewall "{firewall_name}" permission names must be non-empty'
             )
-        if raw_name in _RESERVED_PERMISSION_NAMES:
+        invalid_reason = matching.declared_firewall_permission_name_invalid_reason(raw_name)
+        if invalid_reason == "empty":
+            raise BuiltinFirewallCatalogCacheError(
+                f'catalog cache firewall "{firewall_name}" permission names must be non-empty'
+            )
+        if invalid_reason == "reserved":
             raise BuiltinFirewallCatalogCacheError(
                 f'catalog cache firewall "{firewall_name}" permission name is reserved'
             )

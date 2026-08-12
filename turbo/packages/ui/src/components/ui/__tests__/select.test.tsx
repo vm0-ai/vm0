@@ -2,7 +2,7 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
-import { Dialog, DialogContent, DialogTrigger } from "../dialog";
+import { Dialog, DialogContent, DialogTitle, DialogTrigger } from "../dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "../popover";
 import {
   Select,
@@ -83,6 +83,7 @@ describe("SelectItem", () => {
       <Dialog>
         <DialogTrigger>Open dialog</DialogTrigger>
         <DialogContent>
+          <DialogTitle>Filters dialog</DialogTitle>
           <Popover>
             <PopoverTrigger>Filters</PopoverTrigger>
             <PopoverContent>
@@ -97,9 +98,23 @@ describe("SelectItem", () => {
     await user.click(screen.getByRole("button", { name: "Filters" }));
     await user.click(screen.getByLabelText("Style: All"));
 
-    await user.click(
-      await screen.findByRole("option", { name: "Professional" }),
+    const professionalOption = await screen.findByRole("option", {
+      name: "Professional",
+    });
+    const dialogPortal = screen
+      .getByRole("dialog", { name: "Filters dialog" })
+      .closest<HTMLElement>("[data-base-ui-portal]");
+    const popoverPortal = screen
+      .getByLabelText("Style: All")
+      .closest<HTMLElement>("[data-base-ui-portal]");
+    const selectPortal = professionalOption.closest<HTMLElement>(
+      "[data-base-ui-portal]",
     );
+
+    expect(dialogPortal).toContainElement(popoverPortal);
+    expect(popoverPortal).toContainElement(selectPortal);
+
+    await user.click(professionalOption);
     expect(screen.getByLabelText("Style: All")).toHaveTextContent(
       "Professional",
     );

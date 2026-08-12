@@ -32,9 +32,6 @@ export const artifactCatalog$ = pageCatalog.catalog$;
 
 export const loadMoreArtifactCatalog$ = pageCatalog.loadMore$;
 
-export const subscribeArtifactCatalogChanged$ =
-  pageCatalog.subscribeCatalogChanged$;
-
 export function artifactDetailPreview(detail: ArtifactDetail): {
   readonly kind: BodyPreviewKind;
   readonly url: string;

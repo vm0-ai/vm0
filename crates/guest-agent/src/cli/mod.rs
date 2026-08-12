@@ -26,6 +26,7 @@ mod claude;
 pub mod codex_app_server;
 mod codex_app_server_backend;
 mod codex_app_server_events;
+mod codex_event_delivery;
 mod codex_runtime_config;
 mod codex_setup;
 mod codex_startup;
@@ -77,6 +78,7 @@ use tokio_util::sync::CancellationToken;
 const LOG_TAG: &str = "sandbox:guest-agent";
 const OPENAI_BASE_URL_ENV_KEY: &str = "OPENAI_BASE_URL";
 const ZERO_AGENT_ID_ENV_KEY: &str = "ZERO_AGENT_ID";
+const OKOU_AGENT_ID_ENV_KEY: &str = "OKOU_AGENT_ID";
 const WEB_SEARCH_TOOL_NAME: &str = "WebSearch";
 const CODEX_FIXED_STARTUP_CONFIGS: [&str; 4] = [
     "analytics.enabled=false",
@@ -382,7 +384,8 @@ impl<'a> CliRuntimeConfig<'a> {
         } else {
             None
         };
-        let disable_builtin_web_search = config.user_env.contains_key(ZERO_AGENT_ID_ENV_KEY);
+        let disable_builtin_web_search = config.user_env.contains_key(OKOU_AGENT_ID_ENV_KEY)
+            || config.user_env.contains_key(ZERO_AGENT_ID_ENV_KEY);
         let disallowed_tools = disallowed_tools_with_builtin_web_search_disabled(
             &config.disallowed_tools,
             disable_builtin_web_search,
@@ -522,6 +525,7 @@ enum ParsedEventAction {
 }
 
 struct CliEventIngestor<'a> {
+    framework: env::Framework,
     seq: u32,
     api_start_time: String,
     last_read_event_at: Option<Instant>,
@@ -533,6 +537,7 @@ struct CliEventIngestor<'a> {
 impl<'a> CliEventIngestor<'a> {
     fn new(runtime: &CliRuntimeConfig<'_>, codex_startup: Option<&'a CodexStartupTiming>) -> Self {
         Self {
+            framework: runtime.framework,
             seq: 0,
             api_start_time: runtime.api_start_time.to_string(),
             last_read_event_at: None,
@@ -628,7 +633,28 @@ impl<'a> CliEventIngestor<'a> {
         self.seq += 1;
         if should_send_events {
             let event = events::prepare_event_for_delivery(event, sequence, masker);
-            event_tx.try_send(sequence, event)?;
+            if self.framework == env::Framework::Codex {
+                let prepared = codex_event_delivery::prepare_for_delivery(
+                    event,
+                    event_tx.max_serialized_event_bytes(),
+                )?;
+                if let Some(reduction) = prepared.reduction {
+                    log_warn!(
+                        LOG_TAG,
+                        "Codex event reduced for delivery: seq={} event_type={} item_type={} original_bytes={} delivered_bytes={} fields={} fallback={}",
+                        sequence,
+                        reduction.event_type,
+                        reduction.item_type,
+                        reduction.original_bytes,
+                        reduction.delivered_bytes,
+                        reduction.fields.join(","),
+                        reduction.fallback
+                    );
+                }
+                event_tx.try_send_serialized(sequence, prepared.serialized)?;
+            } else {
+                event_tx.try_send(sequence, event)?;
+            }
         }
         Ok(())
     }
@@ -1760,7 +1786,50 @@ mod tests {
     use std::collections::HashMap;
     #[cfg(unix)]
     use std::os::unix::process::ExitStatusExt;
-    use std::time::Duration;
+    use std::time::{Duration, Instant};
+
+    fn guest_config_for_agent_context(user_env: HashMap<String, String>) -> env::GuestConfig {
+        env::GuestConfig {
+            run_id: "run-okou-env-test".to_string(),
+            api_url: "https://runner.example".to_string(),
+            api_token: "test-token".to_string(),
+            sandbox_id: String::new(),
+            sandbox_reuse_result: String::new(),
+            workspace_reuse_result: String::new(),
+            prompt: "prompt".to_string(),
+            append_system_prompt: String::new(),
+            vercel_bypass: String::new(),
+            resume_session_id: String::new(),
+            api_start_time: String::new(),
+            agent_execution_timeout: None,
+            secret_values: String::new(),
+            disallowed_tools: String::new(),
+            tools: String::new(),
+            settings: String::new(),
+            use_mock_claude: false,
+            mock_claude_path: String::new(),
+            cli_agent_type: "codex".to_string(),
+            framework: env::Framework::Codex,
+            user_env,
+            use_mock_codex: false,
+            mock_codex_path: String::new(),
+            home_dir: "/tmp/home".to_string(),
+            artifacts: Vec::new(),
+            feature_flags: HashMap::new(),
+            codex_runtime_config: String::new(),
+            pi_system_prompt: String::new(),
+            pi_model_config: String::new(),
+            run_skill_snapshot: String::new(),
+            stuck_tool_timeout_secs: constants::STUCK_TOOL_TIMEOUT_SECS,
+            post_result_sigterm_grace: Duration::from_secs(
+                constants::POST_RESULT_SIGTERM_GRACE_SECS,
+            ),
+            post_result_total_cap: Duration::from_secs(constants::POST_RESULT_TOTAL_CAP_SECS),
+            post_result_sigkill_grace: Duration::from_secs(
+                constants::POST_RESULT_SIGKILL_GRACE_SECS,
+            ),
+        }
+    }
 
     fn runtime_for_command_test<'a>(
         framework: env::Framework,
@@ -1823,6 +1892,26 @@ mod tests {
                 .codex_startup_config_overrides()
                 .contains(&super::CODEX_WEB_SEARCH_DISABLED_CONFIG.to_string())
         );
+    }
+
+    #[test]
+    fn codex_runtime_accepts_okou_and_zero_agent_contexts() {
+        for key in [super::OKOU_AGENT_ID_ENV_KEY, super::ZERO_AGENT_ID_ENV_KEY] {
+            let config = guest_config_for_agent_context(HashMap::from([(
+                key.to_string(),
+                "agent-test".to_string(),
+            )]));
+            let paths = crate::paths::GuestPaths::from_runtime_dir("/tmp/okou-env-test");
+
+            let runtime = CliRuntimeConfig::from_config(&config, &paths, Instant::now()).unwrap();
+
+            assert!(runtime.disable_builtin_web_search);
+            assert!(
+                runtime
+                    .codex_startup_config_overrides()
+                    .contains(&super::CODEX_WEB_SEARCH_DISABLED_CONFIG.to_string())
+            );
+        }
     }
 
     #[test]

@@ -19,7 +19,7 @@ function metadataUrl(threadId: string): string {
   return `http://localhost:3000/api/zero/chat-threads/${threadId}/metadata`;
 }
 
-describe("zero chat send command", () => {
+describe("okou chat send command", () => {
   const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
   const mockConsoleError = vi
     .spyOn(console, "error")

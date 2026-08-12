@@ -7,7 +7,7 @@ import {
 } from "@vm0/api-contracts/contracts/connector-identity";
 import type { PublicConnectorCatalogAuthMethodDetail } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import type {
-  CustomConnectorClientResponse,
+  CustomConnectorResponse,
   CustomConnectorSlug,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import type { PlatformConnectorCatalogStatusItem } from "../../signals/connector-domain.ts";
@@ -743,10 +743,10 @@ function DirectedConnectCard() {
 }
 
 function customConnectorForSlug(
-  connectors: readonly CustomConnectorClientResponse[],
+  connectors: readonly CustomConnectorResponse[],
   connectorSlug: CustomConnectorSlug,
   mcpEnabled: boolean,
-): CustomConnectorClientResponse | undefined {
+): CustomConnectorResponse | undefined {
   return connectors.find((connector) => {
     return (
       connector.slug === connectorSlug &&

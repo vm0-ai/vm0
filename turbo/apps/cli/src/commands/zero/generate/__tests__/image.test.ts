@@ -1,5 +1,5 @@
 /**
- * Tests for zero generate image command
+ * Tests for okou generate image command
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
@@ -33,7 +33,7 @@ const IMAGE_RESULT = {
   moderation: "auto",
 };
 
-describe("zero generate image command", () => {
+describe("okou generate image command", () => {
   vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -341,7 +341,7 @@ describe("zero generate image command", () => {
 
     const stdout = mockConsoleLog.mock.calls.flat().join("\n");
     expect(stdout).toContain(
-      "# Zero generate image prompt compile image-style:ink-storefront",
+      "# Okou generate image prompt compile image-style:ink-storefront",
     );
     expect(stdout).toContain("image prompt-compilation packet");
     expect(stdout).toContain("## Selected Image Style");
@@ -393,7 +393,7 @@ describe("zero generate image command", () => {
     const stdout = mockConsoleLog.mock.calls.flat().join("\n");
     expect(stdout).toContain("Registry resource: `image-style:ink-storefront`");
     expect(stdout).toContain(
-      "zero resource pull image-style:ink-storefront --dir ./generated/resources",
+      "okou resource pull image-style:ink-storefront --dir ./generated/resources",
     );
     expect(stdout).toContain(
       "./generated/resources/illustration-template/ink-storefront",

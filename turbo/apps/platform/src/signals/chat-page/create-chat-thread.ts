@@ -791,7 +791,7 @@ function createDraftSync(threadId: string, draft: DraftSignals) {
           id: r.info.id,
           url: r.info.url,
           filename: r.attachment.filename,
-          contentType: r.attachment.contentType,
+          contentType: r.info.contentType,
           size: r.attachment.size,
         };
       });
@@ -2151,10 +2151,7 @@ function createChatThreadMessagePipeline({
     syncVisibleEventTrees$,
   );
   const chatSkeletonVisible$ = computed((get): boolean => {
-    return (
-      !get(chatEvents.initialRemoteEventsResolved$) &&
-      get(projections.rawEvents$).length === 0
-    );
+    return !get(chatEvents.initialEventsReady$);
   });
   const setup$ = command(
     async ({ set }, signal: AbortSignal): Promise<void> => {
@@ -3046,11 +3043,11 @@ function createCancelRunWithQueuedRecall({
 // ---------------------------------------------------------------------------
 
 const THINKING_TYPEWRITER_INTERVAL_MS = IN_VITEST ? 10 : 100;
-const THINKING_TYPEWRITER_CHUNK_HOLD_MS = 700;
-const THINKING_TYPEWRITER_CHUNK_HOLD_TICKS = IN_VITEST
+const THINKING_TYPEWRITER_LINE_HOLD_MS = 700;
+const THINKING_TYPEWRITER_LINE_HOLD_TICKS = IN_VITEST
   ? 1
   : Math.ceil(
-      THINKING_TYPEWRITER_CHUNK_HOLD_MS / THINKING_TYPEWRITER_INTERVAL_MS,
+      THINKING_TYPEWRITER_LINE_HOLD_MS / THINKING_TYPEWRITER_INTERVAL_MS,
     );
 /** Keep in sync with the opacity transition on the thinking label. */
 const THINKING_TYPEWRITER_FADE_MS = 200;
@@ -3060,15 +3057,11 @@ const THINKING_TYPEWRITER_FADE_TICKS = IN_VITEST
 const THINKING_TYPEWRITER_WIDTH_GUARD_PX = 8;
 /** Fallback glyph advance used only when text measurement is unavailable. */
 const THINKING_TYPEWRITER_FALLBACK_GLYPH_PX = 14;
-/** Clause terminators that always end a chunk. */
-const THINKING_TYPEWRITER_BREAKS = "，、；：。！？…";
-/** Clause terminators that only end a chunk when followed by a space. */
-const THINKING_TYPEWRITER_SPACED_BREAKS = ",;:.!?";
+const THINKING_TYPEWRITER_ELLIPSIS = "…";
 
 interface ThinkingTypewriterLine {
   readonly startIndex: number;
   readonly endIndex: number;
-  readonly text: string;
 }
 
 interface ThinkingTypewriterFrame {
@@ -3080,6 +3073,7 @@ interface ThinkingTypewriterFrame {
   readonly pauseTicksRemaining: number;
   readonly fadeTicksRemaining: number;
   readonly fadingOut: boolean;
+  readonly lineOverflowed: boolean;
   readonly displayedText: string;
   readonly complete: boolean;
 }
@@ -3094,6 +3088,7 @@ function emptyThinkingTypewriterFrame(): ThinkingTypewriterFrame {
     pauseTicksRemaining: 0,
     fadeTicksRemaining: 0,
     fadingOut: false,
+    lineOverflowed: false,
     displayedText: "",
     complete: false,
   };
@@ -3171,243 +3166,104 @@ function thinkingLabelWidth(el: HTMLElement): number {
   );
 }
 
-function wrapThinkingTextForWidth(args: {
-  readonly graphemes: readonly string[];
-  readonly width: number;
-  readonly measureText: (value: string) => number | undefined;
-}): ThinkingTypewriterLine[] {
-  if (args.graphemes.length === 0) {
+function thinkingTypewriterLines(
+  graphemes: readonly string[],
+): ThinkingTypewriterLine[] {
+  if (graphemes.length === 0) {
     return [];
   }
 
-  const hardLines: ThinkingTypewriterLine[] = [];
+  const lines: ThinkingTypewriterLine[] = [];
   let startIndex = 0;
 
-  for (let index = 0; index <= args.graphemes.length; index++) {
-    const grapheme = args.graphemes[index]!;
+  for (let index = 0; index <= graphemes.length; index++) {
+    const grapheme = graphemes[index]!;
     const isHardBreak =
-      index === args.graphemes.length || grapheme === "\n" || grapheme === "\r";
+      index === graphemes.length || grapheme === "\n" || grapheme === "\r";
     if (!isHardBreak) {
       continue;
     }
 
-    const text = args.graphemes.slice(startIndex, index).join("");
+    const text = graphemes.slice(startIndex, index).join("");
     if (text.trim().length > 0) {
-      hardLines.push({
+      lines.push({
         startIndex,
         endIndex: index,
-        text,
       });
     }
     startIndex = index + 1;
   }
 
-  if (!Number.isFinite(args.width) || args.width <= 0) {
-    return hardLines;
-  }
-
-  const maxWidth = Math.max(1, args.width - THINKING_TYPEWRITER_WIDTH_GUARD_PX);
-  const lines: ThinkingTypewriterLine[] = [];
-
-  for (const hardLine of hardLines) {
-    lines.push(
-      ...packThinkingClauses({
-        graphemes: args.graphemes,
-        line: hardLine,
-        maxWidth,
-        measureText: args.measureText,
-      }),
-    );
-  }
-
-  return lines.length > 0 ? lines : hardLines;
+  return lines;
 }
 
-/**
- * Split a line at clause terminators. The terminator and any whitespace that
- * follows it stay with the clause they close, so the next clause never starts
- * with a stray space.
- */
-function thinkingClauseSegments(
-  graphemes: readonly string[],
-  line: ThinkingTypewriterLine,
-): ThinkingTypewriterLine[] {
-  const segments: ThinkingTypewriterLine[] = [];
-  let startIndex = line.startIndex;
-
-  for (let index = line.startIndex; index < line.endIndex; index++) {
-    const grapheme = graphemes[index]!;
-    const next = index + 1 < line.endIndex ? graphemes[index + 1] : undefined;
-    const breaksHere =
-      THINKING_TYPEWRITER_BREAKS.includes(grapheme) ||
-      (THINKING_TYPEWRITER_SPACED_BREAKS.includes(grapheme) &&
-        (next === undefined || next.trim().length === 0));
-    if (!breaksHere) {
-      continue;
-    }
-
-    let endIndex = index + 1;
-    while (
-      endIndex < line.endIndex &&
-      graphemes[endIndex]!.trim().length === 0
-    ) {
-      endIndex++;
-    }
-    segments.push({
-      startIndex,
-      endIndex,
-      text: graphemes.slice(startIndex, endIndex).join(""),
-    });
-    startIndex = endIndex;
-    index = endIndex - 1;
-  }
-
-  if (startIndex < line.endIndex) {
-    segments.push({
-      startIndex,
-      endIndex: line.endIndex,
-      text: graphemes.slice(startIndex, line.endIndex).join(""),
-    });
-  }
-
-  return segments.length > 0 ? segments : [line];
-}
-
-/** Split a segment that is too wide to show at once, one grapheme at a time. */
-function splitThinkingSegmentByWidth(args: {
-  readonly graphemes: readonly string[];
-  readonly segment: ThinkingTypewriterLine;
+function fitThinkingTypewriterLine(args: {
+  readonly text: string;
   readonly maxWidth: number;
   readonly measureText: (value: string) => number | undefined;
-}): ThinkingTypewriterLine[] {
-  const parts: ThinkingTypewriterLine[] = [];
-  let startIndex = args.segment.startIndex;
-  let current: string[] = [];
-
-  for (
-    let index = args.segment.startIndex;
-    index < args.segment.endIndex;
-    index++
-  ) {
-    const grapheme = args.graphemes[index]!;
-    const candidate = [...current, grapheme];
-    const measured = args.measureText(candidate.join(""));
-    if (measured === undefined) {
-      return [];
-    }
-    if (measured <= args.maxWidth || current.length === 0) {
-      current = candidate;
-      continue;
-    }
-    parts.push({
-      startIndex,
-      endIndex: index,
-      text: current.join(""),
-    });
-    startIndex = index;
-    current = [grapheme];
+}): { readonly displayedText: string; readonly lineOverflowed: boolean } {
+  const textWidth = (value: string): number => {
+    return (
+      args.measureText(value) ??
+      thinkingTextGraphemes(value).length *
+        THINKING_TYPEWRITER_FALLBACK_GLYPH_PX
+    );
+  };
+  if (textWidth(args.text) <= args.maxWidth) {
+    return { displayedText: args.text, lineOverflowed: false };
   }
 
-  if (current.length > 0) {
-    parts.push({
-      startIndex,
-      endIndex: args.segment.endIndex,
-      text: current.join(""),
-    });
+  const graphemes = thinkingTextGraphemes(args.text);
+  for (let endIndex = graphemes.length - 1; endIndex >= 0; endIndex--) {
+    const displayedText = `${graphemes.slice(0, endIndex).join("")}${THINKING_TYPEWRITER_ELLIPSIS}`;
+    if (textWidth(displayedText) <= args.maxWidth) {
+      return { displayedText, lineOverflowed: true };
+    }
   }
-  return parts;
+  return {
+    displayedText: THINKING_TYPEWRITER_ELLIPSIS,
+    lineOverflowed: true,
+  };
 }
 
-/** Last resort when the canvas measurer is unavailable: split by glyph count. */
-function splitThinkingSegmentByCount(
-  graphemes: readonly string[],
-  segment: ThinkingTypewriterLine,
-  maxGraphemes: number,
-): ThinkingTypewriterLine[] {
-  const parts: ThinkingTypewriterLine[] = [];
-  for (
-    let startIndex = segment.startIndex;
-    startIndex < segment.endIndex;
-    startIndex += maxGraphemes
-  ) {
-    const endIndex = Math.min(startIndex + maxGraphemes, segment.endIndex);
-    parts.push({
-      startIndex,
-      endIndex,
-      text: graphemes.slice(startIndex, endIndex).join(""),
-    });
-  }
-  return parts;
-}
-
-/**
- * Greedily merge neighbouring clauses while they still fit the label, so every
- * emitted line is short enough to display whole and never has to scroll.
- */
-function packThinkingClauses(args: {
+function revealThinkingTypewriterLine(args: {
+  readonly currentFrame: ThinkingTypewriterFrame;
   readonly graphemes: readonly string[];
   readonly line: ThinkingTypewriterLine;
+  readonly lineIndex: number;
   readonly maxWidth: number;
   readonly measureText: (value: string) => number | undefined;
-}): ThinkingTypewriterLine[] {
-  const segments = thinkingClauseSegments(args.graphemes, args.line);
-  const lines: ThinkingTypewriterLine[] = [];
-  let pending: ThinkingTypewriterLine | undefined;
+  readonly nextLineExists: boolean;
+  readonly step: number;
+}): ThinkingTypewriterFrame {
+  const charIndex = Math.min(
+    args.line.endIndex,
+    args.currentFrame.charIndex + args.step,
+  );
+  const revealedText = args.graphemes
+    .slice(args.line.startIndex, charIndex)
+    .join("");
+  const { displayedText, lineOverflowed } = fitThinkingTypewriterLine({
+    text: revealedText,
+    maxWidth: args.maxWidth,
+    measureText: args.measureText,
+  });
+  const lineFinished = charIndex >= args.line.endIndex || lineOverflowed;
 
-  for (const segment of segments) {
-    const merged: ThinkingTypewriterLine = pending
-      ? {
-          startIndex: pending.startIndex,
-          endIndex: segment.endIndex,
-          text: args.graphemes
-            .slice(pending.startIndex, segment.endIndex)
-            .join(""),
-        }
-      : segment;
-    const mergedWidth = args.measureText(merged.text);
-    if (mergedWidth !== undefined && mergedWidth <= args.maxWidth) {
-      pending = merged;
-      continue;
-    }
-
-    if (pending) {
-      lines.push(pending);
-      pending = undefined;
-    }
-
-    const segmentWidth = args.measureText(segment.text);
-    if (segmentWidth !== undefined && segmentWidth <= args.maxWidth) {
-      pending = segment;
-      continue;
-    }
-
-    const byWidth =
-      segmentWidth === undefined
-        ? []
-        : splitThinkingSegmentByWidth({
-            graphemes: args.graphemes,
-            segment,
-            maxWidth: args.maxWidth,
-            measureText: args.measureText,
-          });
-    lines.push(
-      ...(byWidth.length > 0
-        ? byWidth
-        : splitThinkingSegmentByCount(
-            args.graphemes,
-            segment,
-            Math.max(
-              1,
-              Math.floor(args.maxWidth / THINKING_TYPEWRITER_FALLBACK_GLYPH_PX),
-            ),
-          )),
-    );
-  }
-
-  if (pending) {
-    lines.push(pending);
-  }
-  return lines;
+  return {
+    ...args.currentFrame,
+    lineIndex: args.lineIndex,
+    charIndex,
+    pauseTicksRemaining:
+      lineFinished && args.nextLineExists
+        ? THINKING_TYPEWRITER_LINE_HOLD_TICKS
+        : 0,
+    fadeTicksRemaining: 0,
+    fadingOut: false,
+    lineOverflowed,
+    displayedText,
+    complete: lineFinished && !args.nextLineExists,
+  };
 }
 
 function nextThinkingTypewriterFrame(args: {
@@ -3422,14 +3278,14 @@ function nextThinkingTypewriterFrame(args: {
   if (graphemes.length === 0) {
     return emptyThinkingTypewriterFrame();
   }
-  const lines = wrapThinkingTextForWidth({
-    graphemes,
-    width,
-    measureText: args.measureText,
-  });
+  const lines = thinkingTypewriterLines(graphemes);
   if (lines.length === 0) {
     return emptyThinkingTypewriterFrame();
   }
+  const maxWidth =
+    width > 0
+      ? Math.max(1, width - THINKING_TYPEWRITER_WIDTH_GUARD_PX)
+      : Number.POSITIVE_INFINITY;
 
   const currentFrame =
     args.currentFrame.eventId === args.eventId &&
@@ -3446,7 +3302,7 @@ function nextThinkingTypewriterFrame(args: {
   const currentLine = lines[lineIndex]!;
   const nextLine = lines[lineIndex + 1];
 
-  // Fading out the finished chunk before the next one types in.
+  // Fading out the finished line before the next one types in.
   if (currentFrame.fadeTicksRemaining > 0) {
     const fadeTicksRemaining = currentFrame.fadeTicksRemaining - 1;
     if (fadeTicksRemaining > 0 || !nextLine) {
@@ -3455,30 +3311,27 @@ function nextThinkingTypewriterFrame(args: {
         lineIndex,
         fadeTicksRemaining,
         fadingOut: fadeTicksRemaining > 0,
-        displayedText: currentLine.text,
+        displayedText: currentFrame.displayedText,
         complete: false,
       };
     }
 
-    const nextCharIndex = Math.min(
-      nextLine.endIndex,
-      nextLine.startIndex + thinkingTypewriterStep(width),
-    );
-    return {
-      ...currentFrame,
+    return revealThinkingTypewriterLine({
+      currentFrame: {
+        ...currentFrame,
+        charIndex: nextLine.startIndex,
+      },
+      graphemes,
+      line: nextLine,
       lineIndex: lineIndex + 1,
-      charIndex: nextCharIndex,
-      pauseTicksRemaining: 0,
-      fadeTicksRemaining: 0,
-      fadingOut: false,
-      displayedText: graphemes
-        .slice(nextLine.startIndex, nextCharIndex)
-        .join(""),
-      complete: false,
-    };
+      maxWidth,
+      measureText: args.measureText,
+      nextLineExists: lines[lineIndex + 2] !== undefined,
+      step: thinkingTypewriterStep(width),
+    });
   }
 
-  // Holding on a fully typed chunk so it can be read before it is replaced.
+  // Holding on a finished line so it can be read before it is replaced.
   if (currentFrame.pauseTicksRemaining > 0) {
     const pauseTicksRemaining = currentFrame.pauseTicksRemaining - 1;
     const startFade = pauseTicksRemaining === 0 && nextLine !== undefined;
@@ -3488,39 +3341,34 @@ function nextThinkingTypewriterFrame(args: {
       pauseTicksRemaining,
       fadeTicksRemaining: startFade ? THINKING_TYPEWRITER_FADE_TICKS : 0,
       fadingOut: startFade,
-      displayedText: currentLine.text,
+      displayedText: currentFrame.displayedText,
       complete: false,
     };
   }
 
-  if (currentFrame.charIndex >= currentLine.endIndex) {
+  if (
+    currentFrame.charIndex >= currentLine.endIndex ||
+    currentFrame.lineOverflowed
+  ) {
     return {
       ...currentFrame,
       lineIndex,
-      pauseTicksRemaining: nextLine ? THINKING_TYPEWRITER_CHUNK_HOLD_TICKS : 0,
-      displayedText: currentLine.text,
+      pauseTicksRemaining: nextLine ? THINKING_TYPEWRITER_LINE_HOLD_TICKS : 0,
+      displayedText: currentFrame.displayedText,
       complete: !nextLine,
     };
   }
 
-  const nextCharIndex = Math.min(
-    currentLine.endIndex,
-    currentFrame.charIndex + thinkingTypewriterStep(width),
-  );
-
-  return {
-    ...currentFrame,
+  return revealThinkingTypewriterLine({
+    currentFrame,
+    graphemes,
+    line: currentLine,
     lineIndex,
-    charIndex: nextCharIndex,
-    pauseTicksRemaining:
-      nextCharIndex >= currentLine.endIndex && nextLine !== undefined
-        ? THINKING_TYPEWRITER_CHUNK_HOLD_TICKS
-        : 0,
-    displayedText: graphemes
-      .slice(currentLine.startIndex, nextCharIndex)
-      .join(""),
-    complete: nextCharIndex >= graphemes.length,
-  };
+    maxWidth,
+    measureText: args.measureText,
+    nextLineExists: nextLine !== undefined,
+    step: thinkingTypewriterStep(width),
+  });
 }
 
 function thinkingTypewriterFrameComplete(

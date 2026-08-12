@@ -58,7 +58,7 @@ function installUploadHandlers(fileId: string, filename: string, size: number) {
   );
 }
 
-describe("zero recognize command", () => {
+describe("okou recognize command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation(() => {
     return undefined as never;
   });
@@ -106,7 +106,7 @@ describe("zero recognize command", () => {
 
     await zeroRecognizeCommand.parseAsync([
       "node",
-      "zero",
+      "okou",
       "--file",
       filePath,
       "--prompt",
@@ -168,7 +168,7 @@ describe("zero recognize command", () => {
       mockConsoleError.mockClear();
       await zeroRecognizeCommand.parseAsync([
         "node",
-        "zero",
+        "okou",
         "--file",
         input.file,
         "--prompt",
@@ -203,7 +203,7 @@ describe("zero recognize command", () => {
 
     await zeroRecognizeCommand.parseAsync([
       "node",
-      "zero",
+      "okou",
       "--file",
       filePath,
       "--prompt",

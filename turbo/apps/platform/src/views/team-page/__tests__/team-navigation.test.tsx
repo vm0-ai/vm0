@@ -250,7 +250,6 @@ function createCustomConnector(): CustomConnectorHttpResponse {
     connected: true,
     missingRequiredFields: [],
     configuredFieldKeys: ["secret"],
-    hasSecret: true,
     createdAt: "2026-02-01T00:00:00Z",
     updatedAt: "2026-02-01T00:00:00Z",
   };
@@ -286,7 +285,6 @@ function createMcpCustomConnector(): CustomConnectorMcpResponse {
     connected: true,
     missingRequiredFields: [],
     configuredFieldKeys: ["secret"],
-    hasSecret: true,
     createdAt: "2026-08-11T00:00:00Z",
     updatedAt: "2026-08-11T00:00:00Z",
   };
@@ -700,7 +698,6 @@ describe("team page navigation", () => {
       connected: false,
       missingRequiredFields: ["secret"],
       configuredFieldKeys: [],
-      hasSecret: false,
       permissionBundleRef: "builtin:feishu@1" as const,
     };
     let connectorListReads = 0;
