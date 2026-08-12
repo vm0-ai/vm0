@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.735.1](https://github.com/vm0-ai/vm0/compare/app-v0.735.0...app-v0.735.1) (2026-08-12)
+
+
+### Bug Fixes
+
+* **platform:** hide composer placeholder after whitespace input ([#26688](https://github.com/vm0-ai/vm0/issues/26688)) ([1c3edc4](https://github.com/vm0-ai/vm0/commit/1c3edc42f550750aa695a4f54c48bcba919d8136))
+* refine fast model toggle interaction ([#26681](https://github.com/vm0-ai/vm0/issues/26681)) ([4693bf8](https://github.com/vm0-ai/vm0/commit/4693bf8a067640a1447f711b579ff86d8e14c0ca))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.550.0
+
 ## [0.735.0](https://github.com/vm0-ai/vm0/compare/app-v0.734.0...app-v0.735.0) (2026-08-12)
 
 
