@@ -1,12 +1,14 @@
 use std::collections::HashSet;
 use std::fs::{self, OpenOptions};
 use std::io;
-use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
+use std::os::fd::{AsFd, AsRawFd, FromRawFd, OwnedFd, RawFd};
 use std::os::unix::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::thread;
+use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 use guest_contracts::exec_terminal::{
@@ -14,9 +16,9 @@ use guest_contracts::exec_terminal::{
     EXEC_PROCESS_CONTAINMENT_TERM_GRACE,
 };
 use guest_contracts::process_containment::{
-    CONTROL_CGROUP_NAME, CONTROL_CPU_WEIGHT, EXEC_CGROUP_BASE_PATH, EXEC_CGROUP_NAME_PREFIX,
-    MATERIAL_CPU_THROTTLED_USEC, REQUIRED_CGROUP_CONTROLLERS, REQUIRED_CGROUP_SUBTREE_CONTROL,
-    WORKLOAD_CGROUP_NAME, WorkloadResourcePolicy,
+    CGROUP_V2_MOUNT_PATH, CONTROL_CGROUP_NAME, CONTROL_CPU_WEIGHT, EXEC_CGROUP_BASE_PATH,
+    EXEC_CGROUP_NAME_PREFIX, MATERIAL_CPU_THROTTLED_USEC, REQUIRED_CGROUP_CONTROLLERS,
+    REQUIRED_CGROUP_SUBTREE_CONTROL, WORKLOAD_CGROUP_NAME, WorkloadResourcePolicy,
 };
 
 use crate::log::log;
@@ -36,6 +38,9 @@ const MEMORY_OOM_GROUP_FILE: &str = "memory.oom.group";
 const PIDS_EVENTS_FILE: &str = "pids.events";
 const PIDS_MAX_FILE: &str = "pids.max";
 const POLL_INTERVAL: Duration = Duration::from_millis(10);
+const WORKLOAD_BOOTSTRAP_ACCEPT_POLL: Duration = Duration::from_millis(100);
+const WORKLOAD_BOOTSTRAP_ENDPOINT_SUFFIX: &str = "-workload-placement";
+const THREAD_WORKLOAD_BOOTSTRAP: &str = "vsock-workload-bootstrap";
 
 static NEXT_CGROUP_ID: AtomicU64 = AtomicU64::new(1);
 
@@ -72,19 +77,39 @@ struct CgroupGuard {
 
 pub(crate) struct PreparedProcessContainmentCommand {
     outer_placement: Option<OwnedFd>,
-    inherited_workload_placement: Option<OwnedFd>,
+    deny_process_inspection: bool,
 }
 
 impl PreparedProcessContainmentCommand {
-    pub(crate) fn inherited_workload_fd(&self) -> Option<RawFd> {
-        self.inherited_workload_placement
-            .as_ref()
-            .map(AsRawFd::as_raw_fd)
-    }
-
     pub(crate) fn configure_command(self, command: &mut Command) {
         if let Some(outer_placement) = self.outer_placement {
-            install_child_placement(command, outer_placement, self.inherited_workload_placement);
+            install_child_placement(command, outer_placement, self.deny_process_inspection);
+        }
+    }
+}
+
+pub(crate) struct WorkloadPlacementBootstrap {
+    endpoint: String,
+    cancel: Arc<AtomicBool>,
+    worker: Option<JoinHandle<()>>,
+}
+
+impl WorkloadPlacementBootstrap {
+    pub(crate) fn endpoint(&self) -> &str {
+        &self.endpoint
+    }
+}
+
+impl Drop for WorkloadPlacementBootstrap {
+    fn drop(&mut self) {
+        self.cancel.store(true, Ordering::Release);
+        if let Some(worker) = self.worker.take()
+            && let Err(error) = worker.join()
+        {
+            log(
+                "WARN",
+                &format!("workload placement bootstrap worker panicked: {error:?}"),
+            );
         }
     }
 }
@@ -137,13 +162,28 @@ impl ExecProcessContainment {
             ContainmentBackend::Cgroup(guard) => guard.prepare_command(),
             ContainmentBackend::TestNoop => Ok(PreparedProcessContainmentCommand {
                 outer_placement: None,
-                inherited_workload_placement: None,
+                deny_process_inspection: false,
             }),
             #[cfg(test)]
             ContainmentBackend::TestDirectory(_) => Ok(PreparedProcessContainmentCommand {
                 outer_placement: None,
-                inherited_workload_placement: None,
+                deny_process_inspection: false,
             }),
+        }
+    }
+
+    pub(crate) fn start_workload_placement_bootstrap(
+        &self,
+        control_endpoint: &str,
+        expected_uid: libc::uid_t,
+    ) -> Result<Option<WorkloadPlacementBootstrap>, ProcessContainmentError> {
+        match &self.backend {
+            ContainmentBackend::Cgroup(guard) => guard
+                .start_workload_placement_bootstrap(control_endpoint, expected_uid)
+                .map(Some),
+            ContainmentBackend::TestNoop => Ok(None),
+            #[cfg(test)]
+            ContainmentBackend::TestDirectory(_) => Ok(None),
         }
     }
 
@@ -298,15 +338,56 @@ impl CgroupGuard {
             .outer_placement
             .try_clone()
             .map_err(|error| ProcessContainmentError::new("clone outer cgroup.procs", error))?;
-        let inherited_workload_placement = self
-            .workload_placement
-            .as_ref()
-            .map(OwnedFd::try_clone)
-            .transpose()
-            .map_err(|error| ProcessContainmentError::new("clone workload cgroup.procs", error))?;
+        let trusted_control = self.workload_placement.is_some();
         Ok(PreparedProcessContainmentCommand {
             outer_placement: Some(outer_placement),
-            inherited_workload_placement,
+            deny_process_inspection: trusted_control,
+        })
+    }
+
+    fn start_workload_placement_bootstrap(
+        &self,
+        control_endpoint: &str,
+        expected_uid: libc::uid_t,
+    ) -> Result<WorkloadPlacementBootstrap, ProcessContainmentError> {
+        let placement = self
+            .workload_placement
+            .as_ref()
+            .ok_or_else(|| {
+                ProcessContainmentError::new(
+                    "prepare workload placement bootstrap",
+                    io::Error::other("trusted control cgroup has no workload placement capability"),
+                )
+            })?
+            .try_clone()
+            .map_err(|error| {
+                ProcessContainmentError::new("clone workload cgroup.procs for bootstrap", error)
+            })?;
+        let endpoint = format!("{control_endpoint}{WORKLOAD_BOOTSTRAP_ENDPOINT_SUFFIX}");
+        let listener = process_control_ipc::bind_abstract_listener(&endpoint).map_err(|error| {
+            ProcessContainmentError::new("bind workload placement bootstrap endpoint", error)
+        })?;
+        let expected_cgroup = self.group_path.join(CONTROL_CGROUP_NAME);
+        let cancel = Arc::new(AtomicBool::new(false));
+        let worker_cancel = Arc::clone(&cancel);
+        let worker = thread::Builder::new()
+            .name(THREAD_WORKLOAD_BOOTSTRAP.to_owned())
+            .spawn(move || {
+                serve_workload_placement(
+                    listener,
+                    placement,
+                    expected_uid,
+                    &expected_cgroup,
+                    &worker_cancel,
+                );
+            })
+            .map_err(|error| {
+                ProcessContainmentError::new("start workload placement bootstrap worker", error)
+            })?;
+        Ok(WorkloadPlacementBootstrap {
+            endpoint,
+            cancel,
+            worker: Some(worker),
         })
     }
 
@@ -671,7 +752,7 @@ fn cleanup_cgroup(
 fn install_child_placement(
     command: &mut Command,
     placement: OwnedFd,
-    inherited_workload_placement: Option<OwnedFd>,
+    deny_process_inspection: bool,
 ) {
     // SAFETY: the closure performs only raw writes and fcntl calls on already
     // open descriptors. These operations are async-signal-safe between fork
@@ -679,32 +760,111 @@ fn install_child_placement(
     unsafe {
         command.pre_exec(move || {
             write_self_to_cgroup(placement.as_raw_fd())?;
-            if let Some(workload_placement) = inherited_workload_placement.as_ref() {
+            if deny_process_inspection {
                 deny_unprivileged_process_inspection()?;
-                clear_close_on_exec(workload_placement.as_raw_fd())?;
             }
             Ok(())
         });
     }
 }
 
+fn serve_workload_placement(
+    listener: std::os::unix::net::UnixListener,
+    placement: OwnedFd,
+    expected_uid: libc::uid_t,
+    expected_cgroup: &Path,
+    cancel: &AtomicBool,
+) {
+    while !cancel.load(Ordering::Acquire) {
+        let stream = match process_control_ipc::accept_with_timeout(
+            &listener,
+            WORKLOAD_BOOTSTRAP_ACCEPT_POLL,
+        ) {
+            Ok(stream) => stream,
+            Err(error) if error.kind() == io::ErrorKind::TimedOut => continue,
+            Err(error) => {
+                log(
+                    "WARN",
+                    &format!("workload placement bootstrap accept failed: {error}"),
+                );
+                return;
+            }
+        };
+
+        match workload_bootstrap_peer_matches(&stream, expected_uid, expected_cgroup) {
+            Ok(true) => {
+                if let Err(error) =
+                    process_control_ipc::send_workload_placement(&stream, placement.as_fd())
+                {
+                    log(
+                        "WARN",
+                        &format!("workload placement descriptor send failed: {error}"),
+                    );
+                }
+                return;
+            }
+            Ok(false) => {
+                log(
+                    "WARN",
+                    "workload placement bootstrap rejected an unexpected peer",
+                );
+            }
+            Err(error) => {
+                log(
+                    "WARN",
+                    &format!("workload placement bootstrap peer validation failed: {error}"),
+                );
+            }
+        }
+    }
+}
+
+fn workload_bootstrap_peer_matches(
+    stream: &std::os::unix::net::UnixStream,
+    expected_uid: libc::uid_t,
+    expected_cgroup: &Path,
+) -> io::Result<bool> {
+    // SAFETY: zeroed ucred is a valid output buffer for SO_PEERCRED.
+    let mut credentials = unsafe { std::mem::zeroed::<libc::ucred>() };
+    let mut credentials_len = std::mem::size_of::<libc::ucred>() as libc::socklen_t;
+    // SAFETY: stream is a connected Unix socket and the output pointers refer
+    // to a correctly sized ucred buffer and socklen_t.
+    let result = unsafe {
+        libc::getsockopt(
+            stream.as_raw_fd(),
+            libc::SOL_SOCKET,
+            libc::SO_PEERCRED,
+            std::ptr::addr_of_mut!(credentials).cast(),
+            std::ptr::addr_of_mut!(credentials_len),
+        )
+    };
+    if result != 0 {
+        return Err(io::Error::last_os_error());
+    }
+    if credentials_len as usize != std::mem::size_of::<libc::ucred>()
+        || credentials.pid <= 0
+        || credentials.uid != expected_uid
+    {
+        return Ok(false);
+    }
+
+    let cgroup = fs::read_to_string(format!("/proc/{}/cgroup", credentials.pid));
+    let cgroup = match cgroup {
+        Ok(cgroup) => cgroup,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(false),
+        Err(error) => return Err(error),
+    };
+    let relative = cgroup.lines().find_map(|line| line.strip_prefix("0::"));
+    let Some(relative) = relative.and_then(|path| path.strip_prefix('/')) else {
+        return Ok(false);
+    };
+    Ok(Path::new(CGROUP_V2_MOUNT_PATH).join(relative) == expected_cgroup)
+}
+
 fn deny_unprivileged_process_inspection() -> io::Result<()> {
     // SAFETY: PR_SET_DUMPABLE changes only the calling child between fork and
     // exec and does not access shared userspace state.
     if unsafe { libc::prctl(libc::PR_SET_DUMPABLE, 0) } != 0 {
-        return Err(io::Error::last_os_error());
-    }
-    Ok(())
-}
-
-fn clear_close_on_exec(fd: RawFd) -> io::Result<()> {
-    // SAFETY: `fd` is an owned descriptor retained by the pre-exec closure.
-    let flags = unsafe { libc::fcntl(fd, libc::F_GETFD) };
-    if flags < 0 {
-        return Err(io::Error::last_os_error());
-    }
-    // SAFETY: clearing FD_CLOEXEC changes only this valid descriptor's flags.
-    if unsafe { libc::fcntl(fd, libc::F_SETFD, flags & !libc::FD_CLOEXEC) } < 0 {
         return Err(io::Error::last_os_error());
     }
     Ok(())
@@ -1006,7 +1166,7 @@ mod tests {
         let child_fd: OwnedFd = placement.try_clone().unwrap().into();
         let mut command = Command::new("/bin/true");
         command.stdout(Stdio::null()).stderr(Stdio::null());
-        install_child_placement(&mut command, child_fd, None);
+        install_child_placement(&mut command, child_fd, false);
 
         let status = command.status().unwrap();
 
@@ -1015,6 +1175,26 @@ mod tests {
         let mut content = String::new();
         placement.read_to_string(&mut content).unwrap();
         assert_eq!(content, "0");
+    }
+
+    #[test]
+    fn workload_bootstrap_authenticates_peer_uid_and_cgroup() {
+        let (peer, _server) = std::os::unix::net::UnixStream::pair().unwrap();
+        // SAFETY: geteuid is a simple scalar getter with no preconditions.
+        let uid = unsafe { libc::geteuid() };
+        let current_cgroup = fs::read_to_string("/proc/self/cgroup").unwrap();
+        let relative = current_cgroup
+            .lines()
+            .find_map(|line| line.strip_prefix("0::/"))
+            .unwrap();
+        let expected = Path::new(CGROUP_V2_MOUNT_PATH).join(relative);
+
+        assert!(workload_bootstrap_peer_matches(&peer, uid, &expected).unwrap());
+        assert!(!workload_bootstrap_peer_matches(&peer, uid.wrapping_add(1), &expected).unwrap());
+        assert!(
+            !workload_bootstrap_peer_matches(&peer, uid, &expected.join("not-the-peer-cgroup"))
+                .unwrap()
+        );
     }
 
     #[test]

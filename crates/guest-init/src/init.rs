@@ -101,9 +101,9 @@ pub fn init_filesystem() -> Result<(), InitError> {
     //
     // /etc/environment is baked into the rootfs by customize-rootfs.sh and
     // contains variables shared by ALL users (LANG, NODE_EXTRA_CA_CERTS, …).
-    // PAM reads it for login shells (`su - user`), but the init process
-    // (root) and its children (vsock-guest → `sh -c`) don't go through PAM,
-    // so we load it explicitly here.
+    // PAM also reads it during sandbox-user transitions, but the init process
+    // (root) and its direct children do not go through PAM, so we load it
+    // explicitly here.
     //
     // SAFETY: We are the init process, no other threads are running yet
     unsafe {
@@ -113,8 +113,8 @@ pub fn init_filesystem() -> Result<(), InitError> {
         std::env::set_var("SHELL", "/bin/bash");
     }
 
-    // 6. Change to root home directory (init runs as root;
-    // `su - user` will cd to /home/user automatically)
+    // 6. Change to root home directory. The command launcher selects the
+    // sandbox user's home explicitly when it transitions users.
     let _ = std::env::set_current_dir("/root");
 
     eprintln!("[guest-init] Filesystem initialization complete");

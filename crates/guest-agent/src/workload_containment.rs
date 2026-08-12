@@ -1,26 +1,29 @@
 //! Secure workload-cgroup placement owned by Guest Agent.
 //!
 //! The root guest supervisor places Guest Agent in an operation's `control`
-//! leaf and passes a write-only descriptor for the sibling `workload` leaf.
-//! Guest Agent adopts that descriptor before starting its async runtime, marks
-//! it close-on-exec, and uses a cloned descriptor only in each CLI child's
-//! `pre_exec` hook. The descriptor is never copied into a workload environment.
+//! leaf and transfers a write-only descriptor for the sibling `workload` leaf
+//! over a nonce-authenticated local socket with `SCM_RIGHTS`. Guest Agent adopts
+//! that descriptor before starting its async runtime and uses a cloned
+//! descriptor only in each CLI child's `pre_exec` hook. The descriptor is never
+//! inherited through the sandbox-user launch chain or copied into a workload
+//! environment.
 
 use std::fs;
 use std::io;
-use std::os::fd::{AsRawFd, FromRawFd, OwnedFd, RawFd};
+use std::os::fd::{AsRawFd, OwnedFd, RawFd};
 use std::os::unix::process::CommandExt;
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 
 use guest_contracts::process_containment::{
     CGROUP_V2_MOUNT_PATH, CONTROL_CGROUP_NAME, EXEC_CGROUP_NAME_PREFIX,
-    MATERIAL_CPU_THROTTLED_USEC, WORKLOAD_CGROUP_NAME, WORKLOAD_CGROUP_PROCS_FD_ENV,
+    MATERIAL_CPU_THROTTLED_USEC, WORKLOAD_CGROUP_NAME, WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,
 };
 
 const CGROUP_PROCS_FILE: &str = "cgroup.procs";
 const PROC_SELF_CGROUP: &str = "/proc/self/cgroup";
 const CGROUP2_SUPER_MAGIC: u64 = 0x6367_7270;
+const WORKLOAD_BOOTSTRAP_READ_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
 #[cfg(debug_assertions)]
 const TEST_ALLOW_UNMANAGED_PROCESS_CONTROL_ENV: &str = "VM0_TEST_ALLOW_UNMANAGED_PROCESS_CONTROL";
 
@@ -41,7 +44,7 @@ pub struct WorkloadResourceDiagnostics {
 }
 
 impl WorkloadContainment {
-    /// Adopt the production bootstrap descriptor from the process environment.
+    /// Receive and adopt the production bootstrap descriptor.
     ///
     /// This must run before any other thread can read or mutate process-global
     /// environment state. A process-control bootstrap requires a matching
@@ -59,31 +62,31 @@ impl WorkloadContainment {
             }
             Some(_) => true,
         };
-        let placement_value = std::env::var_os(WORKLOAD_CGROUP_PROCS_FD_ENV);
+        let placement_endpoint = std::env::var_os(WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV);
 
-        match (process_control_present, placement_value) {
+        match (process_control_present, placement_endpoint) {
             (false, None) => Ok(None),
             (true, None) if test_allows_unmanaged_process_control() => Ok(None),
             (true, None) => Err(format!(
                 "{} is required with {}",
-                WORKLOAD_CGROUP_PROCS_FD_ENV,
+                WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,
                 process_control_ipc::BOOTSTRAP_ENV
             )),
             (false, Some(_)) => Err(format!(
                 "{} requires {}",
-                WORKLOAD_CGROUP_PROCS_FD_ENV,
+                WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV,
                 process_control_ipc::BOOTSTRAP_ENV
             )),
             (true, Some(value)) => {
                 // SAFETY: production calls this before constructing the Tokio
                 // runtime, so no other thread can access the environment.
-                unsafe { std::env::remove_var(WORKLOAD_CGROUP_PROCS_FD_ENV) };
-                let value = value
-                    .into_string()
-                    .map_err(|_| format!("{WORKLOAD_CGROUP_PROCS_FD_ENV} must be valid UTF-8"))?;
-                Self::adopt(&value)
-                    .map(Some)
-                    .map_err(|error| format!("invalid {WORKLOAD_CGROUP_PROCS_FD_ENV}: {error}"))
+                unsafe { std::env::remove_var(WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV) };
+                let value = value.into_string().map_err(|_| {
+                    format!("{WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV} must be valid UTF-8")
+                })?;
+                Self::receive(&value).map(Some).map_err(|error| {
+                    format!("invalid {WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV}: {error}")
+                })
             }
         }
     }
@@ -140,25 +143,19 @@ impl WorkloadContainment {
         })
     }
 
-    fn adopt(value: &str) -> io::Result<Self> {
-        let raw_fd = value.parse::<RawFd>().map_err(|error| {
-            io::Error::new(io::ErrorKind::InvalidInput, format!("invalid fd: {error}"))
-        })?;
-        if raw_fd < 3 {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "workload placement fd must be at least 3",
-            ));
-        }
+    fn receive(endpoint: &str) -> io::Result<Self> {
+        let stream = process_control_ipc::connect_abstract(endpoint)?;
+        stream.set_read_timeout(Some(WORKLOAD_BOOTSTRAP_READ_TIMEOUT))?;
+        let placement = process_control_ipc::receive_workload_placement(&stream)?;
+        Self::adopt(placement)
+    }
 
+    fn adopt(placement: OwnedFd) -> io::Result<Self> {
         // SAFETY: F_GETFD only inspects the supplied descriptor.
-        let descriptor_flags = unsafe { libc::fcntl(raw_fd, libc::F_GETFD) };
+        let descriptor_flags = unsafe { libc::fcntl(placement.as_raw_fd(), libc::F_GETFD) };
         if descriptor_flags < 0 {
             return Err(io::Error::last_os_error());
         }
-        // SAFETY: `raw_fd` was validated above and ownership is transferred
-        // exactly once from the inherited bootstrap descriptor.
-        let placement = unsafe { OwnedFd::from_raw_fd(raw_fd) };
         deny_peer_process_inspection()?;
         let workload_path = validate_descriptor(&placement)?;
         set_close_on_exec(placement.as_raw_fd(), descriptor_flags)?;

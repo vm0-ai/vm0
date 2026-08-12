@@ -27,14 +27,14 @@ pub const REQUIRED_CGROUP_CONTROLLERS: [&str; 3] = ["cpu", "memory", "pids"];
 /// Value written to `cgroup.subtree_control` to enable required controllers.
 pub const REQUIRED_CGROUP_SUBTREE_CONTROL: &str = "+cpu +memory +pids";
 
-/// Runner-owned bootstrap variable containing an inherited workload
-/// `cgroup.procs` descriptor number.
+/// Runner-owned bootstrap variable containing the nonce-authenticated local
+/// endpoint that transfers a workload `cgroup.procs` descriptor.
 ///
-/// The root guest supervisor opens the write-only descriptor and passes it only
-/// to a process-control-enabled Guest Agent. Guest Agent consumes the variable,
-/// marks the descriptor close-on-exec, and uses cloned descriptors only from
-/// CLI-child `pre_exec` hooks.
-pub const WORKLOAD_CGROUP_PROCS_FD_ENV: &str = "VM0_WORKLOAD_CGROUP_PROCS_FD";
+/// The root guest supervisor keeps the write-only descriptor out of the user
+/// launch chain and sends it with `SCM_RIGHTS` only after Guest Agent connects
+/// from the matching operation `control` cgroup. Guest Agent consumes this
+/// variable and uses cloned descriptors only from CLI-child `pre_exec` hooks.
+pub const WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV: &str = "VM0_WORKLOAD_CGROUP_PROCS_ENDPOINT";
 
 /// Smallest Runner profile vCPU count supported by the workload policy.
 pub const MIN_PROFILE_VCPU: u32 = 2;

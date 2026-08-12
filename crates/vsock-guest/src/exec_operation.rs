@@ -51,6 +51,7 @@ use std::time::{Duration, Instant};
 
 #[cfg(test)]
 use guest_contracts::exec_terminal::EXEC_OUTPUT_DRAIN_DEADLINE;
+use guest_contracts::process_containment::WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV;
 use vsock_proto::{
     self, ExecCapturedOutput, ExecControlNonce, ExecControlPolicy, ExecLifecyclePolicy,
     ExecOutputPolicy, ExecOutputStream, ExecTermination, ExecTimeoutPolicy, MSG_ERROR,
@@ -948,16 +949,6 @@ fn run_exec_operation_worker<S>(
     let stdin_bytes = request.stdin_bytes.take();
     let pipe_stdin = stdin_bytes.is_some();
 
-    let env_refs = env_refs(&request.env);
-    let mut env_with_control;
-    let effective_env = if let Some(endpoint) = request.exec_control_bootstrap_endpoint.as_deref() {
-        env_with_control = Vec::with_capacity(env_refs.len() + 1);
-        env_with_control.extend_from_slice(&env_refs);
-        env_with_control.push((process_control_ipc::BOOTSTRAP_ENV, endpoint));
-        env_with_control.as_slice()
-    } else {
-        env_refs.as_slice()
-    };
     let process_containment = match ExecProcessContainment::create(
         request.seq,
         request.process_containment_mode,
@@ -970,6 +961,44 @@ fn run_exec_operation_worker<S>(
             ));
             return;
         }
+    };
+    let workload_bootstrap =
+        if let Some(endpoint) = request.exec_control_bootstrap_endpoint.as_deref() {
+            let expected_uid = match crate::user::shell_command_uid(request.sudo) {
+                Ok(uid) => uid,
+                Err(error) => {
+                    let _ = process_containment.cleanup(ProcessContainmentCleanupMode::Forced);
+                    completion.start_failed(&format!(
+                        "Failed to resolve workload placement bootstrap identity: {error}"
+                    ));
+                    return;
+                }
+            };
+            match process_containment.start_workload_placement_bootstrap(endpoint, expected_uid) {
+                Ok(bootstrap) => bootstrap,
+                Err(error) => {
+                    let _ = process_containment.cleanup(ProcessContainmentCleanupMode::Forced);
+                    completion.start_failed(&format!(
+                        "Failed to initialize workload placement bootstrap: {error}"
+                    ));
+                    return;
+                }
+            }
+        } else {
+            None
+        };
+    let env_refs = env_refs(&request.env);
+    let mut env_with_control;
+    let effective_env = if let Some(endpoint) = request.exec_control_bootstrap_endpoint.as_deref() {
+        env_with_control = Vec::with_capacity(env_refs.len() + 2);
+        env_with_control.extend_from_slice(&env_refs);
+        env_with_control.push((process_control_ipc::BOOTSTRAP_ENV, endpoint));
+        if let Some(bootstrap) = workload_bootstrap.as_ref() {
+            env_with_control.push((WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV, bootstrap.endpoint()));
+        }
+        env_with_control.as_slice()
+    } else {
+        env_refs.as_slice()
     };
     let spawned = match spawn_shell_command_with_pipes(
         &request.command,
@@ -988,6 +1017,7 @@ fn run_exec_operation_worker<S>(
             return;
         }
     };
+    let _workload_bootstrap = workload_bootstrap;
 
     let SpawnedShellCommand {
         child,

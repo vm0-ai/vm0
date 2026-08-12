@@ -156,7 +156,8 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
     assert!(!cli_env.contains_key(process_control_ipc::BOOTSTRAP_ENV));
     assert!(!cli_env.contains_key("VM0_TEST_ALLOW_UNMANAGED_PROCESS_CONTROL"));
     assert!(
-        !cli_env.contains_key(guest_contracts::process_containment::WORKLOAD_CGROUP_PROCS_FD_ENV)
+        !cli_env
+            .contains_key(guest_contracts::process_containment::WORKLOAD_CGROUP_PROCS_ENDPOINT_ENV)
     );
 
     Ok(())
