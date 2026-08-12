@@ -199,7 +199,7 @@ function AgentTabsView({
         : a.visibility === "private";
     }) ?? [];
 
-  const createDisabled = activeTab === "public" && atPublicLimit;
+  const createDisabled = loading || (activeTab === "public" && atPublicLimit);
 
   return (
     <div className="flex flex-col gap-4">
