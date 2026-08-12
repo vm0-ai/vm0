@@ -317,7 +317,7 @@ async fn commit_reconciliation_waits_for_entry_lock_before_validating() {
             )
             .await
     });
-    tokio::time::sleep(Duration::from_millis(50)).await;
+    tokio::task::yield_now().await;
     assert!(
         !refresh.is_finished(),
         "commit reconciliation must wait while the publisher owns the entry lock",

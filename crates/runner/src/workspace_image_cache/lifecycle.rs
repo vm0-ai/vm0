@@ -1136,6 +1136,7 @@ struct HeldWorkspaceStateScan {
     states: Vec<HeldWorkspaceState>,
     locked_commit_keys: BTreeSet<String>,
 }
+
 impl WorkspaceImageLease {
     #[cfg(test)]
     pub(crate) fn working_dir(&self) -> &str {
