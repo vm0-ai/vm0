@@ -729,13 +729,6 @@
       "when": 1786512265466,
       "tag": "0911_delete_legacy_custom_credentials_on_disconnect",
       "breakpoints": true
-    },
-    {
-      "idx": 912,
-      "version": "7",
-      "when": 1786527415337,
-      "tag": "0912_github_pull_request_automation_event_type",
-      "breakpoints": true
     }
   ]
 }
