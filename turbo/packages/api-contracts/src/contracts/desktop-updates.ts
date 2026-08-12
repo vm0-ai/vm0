@@ -1,20 +1,25 @@
 import { z } from "zod";
 import { initContract } from "./base";
-import { DESKTOP_PRODUCTS } from "./client-headers";
 import { apiErrorSchema } from "./errors";
 
 const c = initContract();
 
+const DESKTOP_UPDATE_LINES = ["zero", "okou", "ai-okou-desktop"] as const;
+export const DESKTOP_UPDATE_LINE_ZERO = DESKTOP_UPDATE_LINES[0];
+export const DESKTOP_UPDATE_LINE_LEGACY_OKOU = DESKTOP_UPDATE_LINES[1];
+export const DESKTOP_UPDATE_LINE_OKOU = DESKTOP_UPDATE_LINES[2];
+
 const desktopUpdateChannelSchema = z.enum(["stable"]);
 const desktopUpdatePlatformSchema = z.enum(["darwin"]);
 const desktopUpdateArchitectureSchema = z.enum(["arm64"]);
-const desktopUpdateProductSchema = z.enum(DESKTOP_PRODUCTS);
+const desktopUpdateLineSchema = z.enum(DESKTOP_UPDATE_LINES);
 
 export type DesktopUpdateChannel = z.infer<typeof desktopUpdateChannelSchema>;
 export type DesktopUpdatePlatform = z.infer<typeof desktopUpdatePlatformSchema>;
 export type DesktopUpdateArchitecture = z.infer<
   typeof desktopUpdateArchitectureSchema
 >;
+export type DesktopUpdateLine = z.infer<typeof desktopUpdateLineSchema>;
 
 const squirrelMacReleaseSchema = z.object({
   version: z.string(),
@@ -82,7 +87,7 @@ export const desktopUpdatesContract = c.router({
     method: "GET",
     path: "/api/desktop/updates/:product/:channel/:platform/:arch/release",
     pathParams: z.object({
-      product: desktopUpdateProductSchema,
+      product: desktopUpdateLineSchema,
       channel: desktopUpdateChannelSchema,
       platform: desktopUpdatePlatformSchema,
       arch: desktopUpdateArchitectureSchema,
@@ -91,13 +96,13 @@ export const desktopUpdatesContract = c.router({
       302: c.noBody(),
       404: apiErrorSchema,
     },
-    summary: "Redirect to a product-specific desktop release page",
+    summary: "Redirect to an identity-specific desktop release page",
   },
   productDmgDownload: {
     method: "GET",
     path: "/api/desktop/updates/:product/:channel/:platform/:arch/dmg",
     pathParams: z.object({
-      product: desktopUpdateProductSchema,
+      product: desktopUpdateLineSchema,
       channel: desktopUpdateChannelSchema,
       platform: desktopUpdatePlatformSchema,
       arch: desktopUpdateArchitectureSchema,
@@ -106,13 +111,13 @@ export const desktopUpdatesContract = c.router({
       302: c.noBody(),
       404: apiErrorSchema,
     },
-    summary: "Redirect to a product-specific desktop DMG download",
+    summary: "Redirect to an identity-specific desktop DMG download",
   },
   productFeed: {
     method: "GET",
     path: "/api/desktop/updates/:product/:channel/:platform/:arch/RELEASES.json",
     pathParams: z.object({
-      product: desktopUpdateProductSchema,
+      product: desktopUpdateLineSchema,
       channel: desktopUpdateChannelSchema,
       platform: desktopUpdatePlatformSchema,
       arch: desktopUpdateArchitectureSchema,
@@ -122,6 +127,6 @@ export const desktopUpdatesContract = c.router({
       400: apiErrorSchema,
       404: apiErrorSchema,
     },
-    summary: "Get a product-specific desktop auto-update feed",
+    summary: "Get an identity-specific desktop auto-update feed",
   },
 });

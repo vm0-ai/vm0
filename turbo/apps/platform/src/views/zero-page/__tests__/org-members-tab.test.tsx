@@ -61,7 +61,11 @@ function menuItemByText(text: string): HTMLElement {
   return item;
 }
 
-function mockMembersStory(): void {
+function mockMembersStory(): {
+  readonly addPendingInvitation: (
+    invitation: NonNullable<OrgMembersResponse["pendingInvitations"]>[number],
+  ) => void;
+} {
   let response: OrgMembersResponse = {
     name: "Test Org",
     role: "admin",
@@ -221,6 +225,17 @@ function mockMembersStory(): void {
       return respond(200, { message: "Request rejected" });
     },
   );
+  return {
+    addPendingInvitation(invitation) {
+      response = {
+        ...response,
+        pendingInvitations: [
+          ...(response.pendingInvitations ?? []),
+          invitation,
+        ],
+      };
+    },
+  };
 }
 
 function mockMemberInviteEntitlement(
@@ -379,18 +394,46 @@ describe("organization members settings", () => {
     });
   });
 
-  it("requires a package and starts paid invitation Checkout for a usage pack org", async () => {
-    mockMembersStory();
+  it("reviews and confirms a paid invitation without leaving the app", async () => {
+    const membersStory = mockMembersStory();
     mockMemberInviteEntitlement(true);
     mockUsagePackManagement();
     mockUsagePackCatalog();
-    let checkoutBody: unknown;
-    context.mocks.api(zeroOrgInviteContract.purchase, ({ body, respond }) => {
-      checkoutBody = body;
-      return respond(200, {
-        url: "https://checkout.stripe.test/member-invitation",
-      });
-    });
+    let previewBody: unknown;
+    let confirmedPurchaseId: string | null = null;
+    context.mocks.api(
+      zeroOrgInviteContract.previewPurchase,
+      ({ body, respond }) => {
+        previewBody = body;
+        return respond(200, {
+          purchaseId: "c08a5fab-a05d-43f9-a1ee-10feaf27584c",
+          usagePackUsd: 50,
+          immediateAmountCents: 2500,
+          currency: "usd",
+          purchasedCredits: 25_000,
+          bonusCredits: 1300,
+          totalCredits: 26_300,
+          currentPeriodEnd: "2026-09-01T00:00:00.000Z",
+          expiresAt: "2026-08-13T00:00:00.000Z",
+        });
+      },
+    );
+    context.mocks.api(
+      zeroOrgInviteContract.confirmPurchase,
+      ({ params, respond }) => {
+        confirmedPurchaseId = params.purchaseId;
+        membersStory.addPendingInvitation({
+          id: "inv-paid",
+          email: "paid.invitee@example.com",
+          role: "member",
+          createdAt: "2026-01-06T00:00:00Z",
+          usagePackUsd: 50,
+        });
+        return respond(200, {
+          message: "Invitation purchased and sent",
+        });
+      },
+    );
 
     detachedSetupPage({
       context,
@@ -412,6 +455,7 @@ describe("organization members settings", () => {
     expect(
       within(rowByEmail("eve@example.com")).getByText("$100/month"),
     ).toBeInTheDocument();
+    const initialHref = window.location.href;
     click(buttonByText("Add member"));
     const inviteDialog = await screen.findByRole("dialog", {
       name: "Invite member",
@@ -435,18 +479,33 @@ describe("organization members settings", () => {
     );
     click(buttonByText("Continue", inviteDialog));
 
-    await waitFor(() => {
-      expect(checkoutBody).toStrictEqual({
-        email: "paid.invitee@example.com",
-        role: "member",
-        usagePackUsd: 50,
-        successUrl: expect.stringContaining("invitation=payment-success"),
-        cancelUrl: expect.any(String),
-      });
-      expect(window.location.href).toBe(
-        "https://checkout.stripe.test/member-invitation",
-      );
+    const confirmationDialog = await screen.findByRole("dialog", {
+      name: "Review invitation",
     });
+    expect(within(confirmationDialog).getByText("$25.00")).toBeVisible();
+    expect(
+      within(confirmationDialog).getByText("paid.invitee@example.com"),
+    ).toBeVisible();
+    expect(within(confirmationDialog).getByText("$50/month")).toBeVisible();
+    expect(previewBody).toStrictEqual({
+      email: "paid.invitee@example.com",
+      role: "member",
+      usagePackUsd: 50,
+    });
+    expect(window.location.href).toBe(initialHref);
+    click(buttonByText("Confirm", confirmationDialog));
+
+    await waitFor(() => {
+      expect(confirmedPurchaseId).toBe("c08a5fab-a05d-43f9-a1ee-10feaf27584c");
+      expect(
+        screen.queryByRole("dialog", { name: "Review invitation" }),
+      ).not.toBeInTheDocument();
+    });
+    await screen.findByText("paid.invitee@example.com");
+    expect(
+      within(rowByEmail("paid.invitee@example.com")).getByText("$50/month"),
+    ).toBeInTheDocument();
+    expect(window.location.href).toBe(initialHref);
   });
 
   it("opens the current plan package configuration from member actions", async () => {
@@ -556,14 +615,18 @@ describe("organization members settings", () => {
     });
     click(buttonByText("Add member"));
     const inviteDialog = await screen.findByRole("dialog", {
-      name: "Invite member",
+      name: "Upgrade to invite members",
     });
-    const email =
-      within(inviteDialog).getByPlaceholderText("email@example.com");
-    const upgrade = await waitFor(() => {
-      return buttonByText("Upgrade Pro to use", inviteDialog);
-    });
-    expect(email).toBeDisabled();
+    expect(
+      within(inviteDialog).getByText(
+        /Member invitations are available on the Pro plan/u,
+      ),
+    ).toBeVisible();
+    expect(
+      within(inviteDialog).queryByPlaceholderText("email@example.com"),
+    ).not.toBeInTheDocument();
+    expect(within(inviteDialog).queryByText("Role")).not.toBeInTheDocument();
+    const upgrade = buttonByText("Upgrade to Pro", inviteDialog);
     expect(upgrade).toBeEnabled();
     click(upgrade);
 

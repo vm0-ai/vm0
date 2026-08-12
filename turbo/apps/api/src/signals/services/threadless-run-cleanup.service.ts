@@ -103,6 +103,7 @@ function terminalError(candidate: ThreadlessRunCandidate): string | undefined {
 
 async function loadThreadlessRunCandidates(
   db: Db,
+  runIds: readonly string[] | null,
 ): Promise<readonly ThreadlessRunCandidate[]> {
   const forwardCutoff = new Date(THREADLESS_RUN_FORWARD_CUTOFF_ISO);
   return await db
@@ -125,6 +126,7 @@ async function loadThreadlessRunCandidates(
           ...ACTIVE_RUN_STATUSES,
           ...TERMINAL_RUN_STATUSES,
         ]),
+        runIds === null ? undefined : inArray(agentRuns.id, runIds),
         or(
           gte(agentRuns.createdAt, forwardCutoff),
           exists(
@@ -309,9 +311,13 @@ async function redriveTerminalLifecycle(
 }
 
 export const cleanupThreadlessRuns$ = command(
-  async ({ set }, signal: AbortSignal): Promise<ThreadlessRunCleanupResult> => {
+  async (
+    { set },
+    runIds: readonly string[] | null,
+    signal: AbortSignal,
+  ): Promise<ThreadlessRunCleanupResult> => {
     const db = set(writeDb$);
-    const candidates = await loadThreadlessRunCandidates(db);
+    const candidates = await loadThreadlessRunCandidates(db, runIds);
     signal.throwIfAborted();
 
     let cancelled = 0;

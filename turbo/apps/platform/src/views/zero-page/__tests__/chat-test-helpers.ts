@@ -13,6 +13,7 @@ import {
   chatEventsContract,
   MODEL_FIRST_SELECTION_PROVIDER_ID,
   type ChatRunOptionsRequest,
+  type ChatThreadServiceTier,
   type CodexServiceTier,
   type UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
@@ -499,6 +500,7 @@ export function mockChatLifecycle(
       computerUseHostId?: string | null;
       cloudBrowserEnabled?: boolean;
       revokesEventId?: string;
+      sourceRunId?: string;
     }) => void;
     onSendRequest?: (body: {
       prompt: string;
@@ -509,12 +511,14 @@ export function mockChatLifecycle(
       modelSelection?: ModelSelectionRequest | null;
       computerUseHostId?: string | null;
       cloudBrowserEnabled?: boolean;
+      sourceRunId?: string;
     }) => void;
     onThreadCreate?: (body: {
       clientThreadId?: string;
       eventId?: string;
       model?: string;
       modelSelection: ModelSelectionRequest;
+      serviceTier?: ChatThreadServiceTier | null;
     }) => void;
     onModelSelectionUpdate?: (body: {
       model?: string | null;
@@ -765,6 +769,7 @@ export function mockChatLifecycle(
     computerUseHostId?: string | null;
     cloudBrowserEnabled?: boolean;
     revokesEventId?: string;
+    sourceRunId?: string;
   }) => {
     if (typeof options?.sendGate === "function") {
       await options.sendGate();
@@ -941,11 +946,13 @@ export function mockChatLifecycle(
       throw new Error("Expected chat thread create to include model");
     }
     selectedModel = modelSelection.selectedModel;
+    codexServiceTier = body.serviceTier === "priority" ? "fast" : null;
     options?.onThreadCreate?.({
       clientThreadId: body.clientThreadId,
       eventId: body.eventId,
       model: body.model,
       modelSelection,
+      serviceTier: body.serviceTier,
     });
     return respond(201, {
       id: threadId,
@@ -977,8 +984,9 @@ export function mockChatLifecycle(
       modelSelection: modelSelectionFromBody(body),
       computerUseHostId: body.computerUseHostId,
       cloudBrowserEnabled: body.cloudBrowserEnabled,
+      sourceRunId: body.sourceRunId,
     });
-    threadId = body.clientThreadId ?? threadId;
+    threadId = body.clientThreadId ?? body.threadId ?? threadId;
     const responseBody = hasActiveRun()
       ? await appendQueuedUserMessage(body)
       : await startRunFromUserMessage(body);

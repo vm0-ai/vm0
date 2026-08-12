@@ -53,7 +53,6 @@ async fn codex_app_server_backend_steers_active_input_into_active_turn()
     );
     let active_input = ActiveInputRuntime::new_with_receipts(
         &runtime.config.run_id,
-        true,
         &runtime.config.prompt,
         &journal_path,
         HttpClient::with_api_config(server.base_url(), "test-token", "", RUN_ID, Duration::ZERO)?,

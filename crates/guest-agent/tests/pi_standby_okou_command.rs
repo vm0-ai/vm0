@@ -14,7 +14,7 @@ use std::os::unix::fs::PermissionsExt;
 
 #[tokio::test]
 async fn pi_standby_launches_canonical_okou_entrypoint() -> Result<(), Box<dyn std::error::Error>> {
-    const PACKAGE_URL: &str = "https://static.vm0.io/okou-cli/dual-entry-test/package.tgz";
+    const PACKAGE_URL: &str = "https://static.vm0.io/okou-cli/okou-only-test/package.tgz";
     const SYSTEM_PROMPT: &str = "fixed Pi command-boundary prompt";
     const SKILL_DIGEST: &str = "sha256:pi-command-boundary-snapshot";
 
@@ -88,9 +88,8 @@ printf '{"type":"pi-complete","exitCode":0,"error":null,"lastEventSequence":null
 
     let runtime = GuestRuntime::from_process_env()?;
     let _run_files = common::RunFilesGuard::new_for_paths(&runtime.paths);
-    let active_input = guest_agent::active_input::ActiveInputRuntime::new_with_initial_prompt(
+    let active_input = guest_agent::active_input::ActiveInputRuntime::new_disabled(
         &runtime.config.run_id,
-        false,
         &runtime.config.prompt,
     );
     let result = guest_agent::cli::execute_cli_with_active_input_for_config(

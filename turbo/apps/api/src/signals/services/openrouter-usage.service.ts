@@ -6,6 +6,10 @@ import { v5 as uuidv5 } from "uuid";
 
 import type { OpenRouterUsage } from "../external/openrouter";
 import { writeDb$ } from "../external/db";
+import {
+  resolveUsagePricingProvider,
+  usagePricingResolution$,
+} from "../context/usage-pricing-resolution";
 import { processOrgUsageEvents$ } from "./zero-credit-usage.service";
 
 const OPENROUTER_USAGE_IDEMPOTENCY_NAMESPACE =
@@ -90,18 +94,23 @@ function usageIdempotencyKey(args: {
 
 export const checkOpenRouterUsagePricing$ = command(
   async (
-    { set },
+    { get, set },
     args: { readonly provider: string; readonly operation: string },
     signal: AbortSignal,
   ): Promise<readonly string[]> => {
     const writeDb = set(writeDb$);
+    const provider = resolveUsagePricingProvider(
+      get(usagePricingResolution$),
+      args.operation,
+      args.provider,
+    );
     const rows = await writeDb
       .select({ category: usagePricing.category })
       .from(usagePricing)
       .where(
         and(
           eq(usagePricing.kind, args.operation),
-          eq(usagePricing.provider, args.provider),
+          eq(usagePricing.provider, provider),
           inArray(usagePricing.category, [...OPENROUTER_USAGE_CATEGORIES]),
         ),
       );

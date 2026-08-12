@@ -58,7 +58,11 @@ from firewall_auth_config import auth_config_injects_credentials
 from logging_utils import log_proxy_entry
 from runtime_url_parsing import split_runtime_url
 from url_syntax import has_unsafe_runtime_url_syntax
-from url_utils import build_rewrite_url
+from url_utils import (
+    MAX_AUTH_BASE_QUERY_PAIRS,
+    AuthBaseQueryTooManyPairsError,
+    build_rewrite_url,
+)
 
 
 class FirewallAuthHandlingResult(Enum):
@@ -99,6 +103,10 @@ FIREWALL_AUTH_FETCH_SATURATED_ERROR = "firewall_auth_fetch_saturated"
 AWS_SIGV4_REQUEST_BODY_ADMISSION_SATURATED_ERROR = "aws_sigv4_request_body_admission_saturated"
 AWS_SIGV4_REQUEST_BODY_LENGTH_REQUIRED_ERROR = "aws_sigv4_request_body_length_required"
 AWS_SIGV4_REQUEST_BODY_TOO_LARGE_ERROR = "aws_sigv4_request_body_too_large"
+# Auth-base uses a separately named request-target policy because its forwarding
+# behavior can evolve independently, while the shared 64 KiB scale remains well
+# above ordinary connector request targets.
+MAX_AUTH_BASE_REQUEST_TARGET_BYTES = 64 * 1024
 # Managed SigV4 request inspection uses the pinned HTTP/2 stack's 64 KiB
 # decompressed header-list policy. HPACK accounts for 32 bytes of overhead per
 # field; using the same formula also bounds HTTP/1 header count before decoding.
@@ -844,6 +852,58 @@ def _request_body_exceeds_auth_base_limit(flow: http.HTTPFlow) -> bool:
     return body is not None and len(body) > MAX_AUTH_BASE_REQUEST_BODY_BYTES
 
 
+def _set_auth_base_request_target_too_large(
+    flow: http.HTTPFlow,
+    *,
+    allow: matching.FirewallAllow,
+    proxy_log_path: str,
+    firewall_base: str,
+) -> None:
+    request_target_size = len(flow.request.data.path)
+    log_proxy_entry(
+        proxy_log_path,
+        "warn",
+        "auth.base request target too large",
+        type="firewall",
+        firewall_base=firewall_base,
+        request_target_size_bytes=request_target_size,
+        request_target_limit_bytes=MAX_AUTH_BASE_REQUEST_TARGET_BYTES,
+    )
+    _set_matched_firewall_failure_response(
+        flow,
+        status=414,
+        action="ALLOW",
+        error_code="auth_base_request_target_too_large",
+        message="auth.base request target is too large",
+        permission=allow.name,
+    )
+
+
+def _set_auth_base_query_too_many_pairs(
+    flow: http.HTTPFlow,
+    *,
+    allow: matching.FirewallAllow,
+    proxy_log_path: str,
+    firewall_base: str,
+) -> None:
+    log_proxy_entry(
+        proxy_log_path,
+        "warn",
+        "auth.base rewritten query has too many pairs",
+        type="firewall",
+        firewall_base=firewall_base,
+        query_pair_limit=MAX_AUTH_BASE_QUERY_PAIRS,
+    )
+    _set_matched_firewall_failure_response(
+        flow,
+        status=414,
+        action="ALLOW",
+        error_code="auth_base_query_too_many_pairs",
+        message="auth.base rewritten query has too many parameters",
+        permission=allow.name,
+    )
+
+
 def _log_auth_base_request_too_large(
     flow: http.HTTPFlow,
     *,
@@ -1054,6 +1114,15 @@ def _preflight_firewall_auth(
     plan: _FirewallAuthPlan,
 ) -> FirewallAuthHandlingResult | None:
     """Handle local firewall auth failures that must happen before auth resolution."""
+    if plan.uses_auth_base and len(flow.request.data.path) > MAX_AUTH_BASE_REQUEST_TARGET_BYTES:
+        _set_auth_base_request_target_too_large(
+            flow,
+            allow=context.allow,
+            proxy_log_path=context.proxy_log_path,
+            firewall_base=context.firewall_base,
+        )
+        return FirewallAuthHandlingResult.LOCAL_RESPONSE
+
     if plan.uses_auth_base and _request_body_exceeds_auth_base_limit(flow):
         _set_auth_base_request_too_large(
             flow,
@@ -1309,6 +1378,14 @@ async def _apply_url_rewrite(
     try:
         orig_query = _request_path_query(flow)
         new_url = build_rewrite_url(resolved_base, allow.rel_path, orig_query, resolved_query)
+    except AuthBaseQueryTooManyPairsError:
+        _set_auth_base_query_too_many_pairs(
+            flow,
+            allow=allow,
+            proxy_log_path=proxy_log_path,
+            firewall_base=firewall_base,
+        )
+        return FirewallAuthHandlingResult.LOCAL_RESPONSE
     except ValueError as e:
         _set_url_rewrite_forward_failed(
             flow,

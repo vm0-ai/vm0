@@ -59,6 +59,7 @@ import {
   deleteOrgPlanEntitlementFixture,
   upsertOrgPlanEntitlementFixture,
 } from "../../../test-fixtures/org-plan-entitlement";
+import { createUniqueStaffOrgIdFixture } from "../../../test-fixtures/staff-org";
 import { createDeferredPromise, settle } from "../../utils";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { assertPublicConnectorCatalogHasNoPrivateFields } from "./helpers/connector-catalog-public-leak";
@@ -136,7 +137,6 @@ const OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions";
 const GOOGLE_OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const SLACK_OAUTH_TOKEN_URL = "https://slack.com/api/oauth.v2.access";
 const SLACK_REVOKE_URL = "https://slack.com/api/auth.revoke";
-const STAFF_ORG_ID = "org_3ANttyrbWYJk6JKRSTRLEsbsDLe";
 const STEAM_TEST_ID = "76561198000000000";
 
 type JsonRecord = Record<string, unknown>;
@@ -3935,7 +3935,8 @@ describe("connector catalog valid lifecycle", () => {
       ),
     );
 
-    const actor = bdd.user({ orgId: STAFF_ORG_ID });
+    const orgId = createUniqueStaffOrgIdFixture();
+    const actor = bdd.user({ orgId });
     const created: { agentId?: string; workflowId?: string } = {};
     const cleanupConnector = createConnectorCleanup(actor, "gmail");
     onTestFinished(async () => {
@@ -3947,10 +3948,10 @@ describe("connector catalog valid lifecycle", () => {
       if (created.agentId) {
         await bdd.deleteAgent(actor, created.agentId);
       }
-      await deleteOrgPlanEntitlementFixture(STAFF_ORG_ID);
+      await deleteOrgPlanEntitlementFixture(orgId);
     });
     await upsertOrgPlanEntitlementFixture({
-      orgId: STAFF_ORG_ID,
+      orgId,
       status: "active",
       supportByok: true,
       restrictedVm0Models: false,
@@ -4150,7 +4151,8 @@ describe("connector catalog valid lifecycle", () => {
       }),
     );
 
-    const actor = bdd.user({ orgId: STAFF_ORG_ID });
+    const orgId = createUniqueStaffOrgIdFixture();
+    const actor = bdd.user({ orgId });
     const created: { agentId?: string; workflowId?: string } = {};
     const refreshResume = deferredGate();
     const cleanupConnector = createConnectorCleanup(actor, "gmail");
@@ -4164,10 +4166,10 @@ describe("connector catalog valid lifecycle", () => {
       if (created.agentId) {
         await bdd.deleteAgent(actor, created.agentId);
       }
-      await deleteOrgPlanEntitlementFixture(STAFF_ORG_ID);
+      await deleteOrgPlanEntitlementFixture(orgId);
     });
     await upsertOrgPlanEntitlementFixture({
-      orgId: STAFF_ORG_ID,
+      orgId,
       status: "active",
       supportByok: true,
       restrictedVm0Models: false,

@@ -711,7 +711,7 @@
       "lastSeen": "Zuletzt gesehen {{date}}",
       "linkExpires": "Link läuft am {{date}} ab.",
       "macRequirement": "Erfordert einen Apple Silicon Mac mit macOS 14 oder neuer. Intel-Macs werden nicht unterstützt.",
-      "noHostsDescription": "Öffnen Sie {{desktopProductName}} Computer Use auf Ihrem Mac und aktualisieren Sie diese Seite, wenn sie online ist.",
+      "noHostsDescription": "Öffnen Sie {{desktopApplicationName}} auf Ihrem Mac und aktualisieren Sie diese Seite, wenn sie online ist.",
       "noHostsTitle": "Keine Online-Computer",
       "sources": {
         "chat": "dieser Chat-Thread",
@@ -906,8 +906,9 @@
         "tenConcurrentRuns": "10 gleichzeitige Ausführungen",
         "twoConcurrentRuns": "2 gleichzeitige Ausführungen",
         "unlimitedAgents": "Unbegrenzte Gesamtanzahl an Agenten",
-        "voiceInput": "Spracheingabe",
-        "voiceInputLifetime": "Spracheingabe (10 lebenslange Nutzungen pro Mitglied)"
+        "voiceInputFree": "Spracheingabe (insgesamt 10 Anfragen · 10 Min./Tag pro Mitglied)",
+        "voiceInputPro": "Spracheingabe (300 Anfragen/Tag · 200 Min./Tag pro Mitglied)",
+        "voiceInputTeam": "Spracheingabe (500 Anfragen/Tag · 500 Min./Tag pro Mitglied)"
       },
       "free": {
         "description": "Kostenloser Legacy-Zugriff für bestehende Arbeitsbereiche.",
@@ -1193,7 +1194,7 @@
       "events": {
         "githubDeploymentStatus": "GitHub-Bereitstellungsstatus erstellt",
         "githubIssueComment": "GitHub-Issue-Kommentar erstellt",
-        "githubLabelApplied": "GitHub-Label angewendet",
+        "githubPullRequest": "GitHub-Pull-Request",
         "githubReviewSubmitted": "GitHub-Pull-Request-Review eingereicht",
         "githubWorkflowCompleted": "GitHub-Workflow abgeschlossen",
         "githubWorkflowJobCompleted": "GitHub-Workflow-Job abgeschlossen",
@@ -1387,6 +1388,19 @@
       "sourcePartHeading": "Feedback zu diesem Teil von {{description}}:",
       "sourcePartsHeading_one": "Feedback zu {{count}} Teil von {{description}}:",
       "sourcePartsHeading_other": "Feedback zu {{count}} Teilen von {{description}}:"
+    },
+    "forward": {
+      "action": "Weiterleiten",
+      "agents": "Agenten",
+      "back": "Zurück",
+      "content": "Inhalt",
+      "description": "Ausgewählten Inhalt an einen Agenten oder Chat weiterleiten.",
+      "noResults": "Keine Agenten oder Chats gefunden",
+      "search": "Agenten und Chats suchen...",
+      "sent": "Erfolgreich weitergeleitet",
+      "threads": "Chats",
+      "title": "Weiterleiten an",
+      "to": "Weiterleiten an"
     },
     "mail": {
       "bcc": "BCC",
@@ -1665,6 +1679,10 @@
       "checkingLimit": "Überprüfung des Spracheingabelimits",
       "input": "Spracheingabe",
       "inputLimitReached": "Das Limit für die Spracheingabe wurde erreicht. Für höhere Limits upgraden Sie auf Pro oder Team.",
+      "inputLimitReachedMember": "Das Limit für die Spracheingabe wurde erreicht. Bitten Sie einen Arbeitsbereichsadministrator um ein Upgrade für höhere Limits.",
+      "inputLimitReachedPro": "Das Limit für die Spracheingabe wurde erreicht. Für höhere Limits upgraden Sie auf Team.",
+      "inputLimitReachedProMember": "Das Limit für die Spracheingabe wurde erreicht. Bitten Sie einen Arbeitsbereichsadministrator um ein Upgrade auf Team, um höhere Limits zu erhalten.",
+      "inputLimitReachedReset": "Das Limit für die Spracheingabe wurde erreicht. Bitte warten Sie, bis Ihr Limit zurückgesetzt wird.",
       "microphoneAccessDenied": "Der Zugriff auf das Mikrofon wurde verweigert. Erlauben Sie den Mikrofonzugriff und versuchen Sie es erneut.",
       "openingMicrophone": "Mikrofon öffnen...",
       "starting": "Spracheingabe starten",
@@ -2521,6 +2539,18 @@
     },
     "realtime": {
       "degraded": "Bei Live-Updates ist ein Problem aufgetreten. Bitte aktualisieren Sie die Seite."
+    }
+  },
+  "invitationRedirect": {
+    "accountMismatch": {
+      "title": "Einladung für ein anderes Konto angenommen"
+    },
+    "actions": {
+      "switchAccount": "Konto wechseln",
+      "switchWorkspace": "Arbeitsbereich wechseln"
+    },
+    "success": {
+      "title": "Einladung für {{workspace}} angenommen"
     }
   },
   "lifecycle": {
@@ -4447,9 +4477,20 @@
           "emailPlaceholder": "email@example.com",
           "invalidEmail": "Bitte geben Sie eine gültige E-Mail-Adresse ein",
           "progress": "Senden...",
+          "purchase": {
+            "description": "Prüfen Sie die unten aufgeführte anteilige Gebühr. Mit der Bestätigung wird Ihre gespeicherte Zahlungsmethode belastet und die Einladung gesendet.",
+            "error": "Dieses Mitgliederpaket konnte nicht gekauft werden. Prüfen Sie Ihre Zahlungsdaten und versuchen Sie es erneut.",
+            "invitee": "Eingeladene Person",
+            "title": "Einladung prüfen"
+          },
           "roleLabel": "Rolle",
           "send": "Einladung senden",
-          "title": "Mitglied einladen"
+          "title": "Mitglied einladen",
+          "upgrade": {
+            "action": "Auf Pro upgraden",
+            "description": "Mitgliedereinladungen sind im Pro-Tarif verfügbar. Führen Sie für diesen Arbeitsbereich ein Upgrade durch, um Personen einzuladen und ihre Rollen zu verwalten.",
+            "title": "Upgrade zum Einladen von Mitgliedern"
+          }
         },
         "joined": "Beigetreten",
         "joinRequests": "Beitrittsanfragen",
@@ -4701,16 +4742,8 @@
         "summary": "Formular {{form}}"
       },
       "github": {
-        "accountConnect": "GitHub verbinden",
-        "accountRequired": "Verbinden Sie Ihr GitHub-Konto, um „Ich“ zu verwenden.",
-        "actorAnyone": "Alle",
-        "actorMe": "Ich",
         "actors": "Akteure",
         "actorsPlaceholder": "octocat, dependabot[bot]",
-        "addLabelAction": "Label-Automatisierung hinzufügen",
-        "addLabelAria": "GitHub-Label-Automatisierung hinzufügen",
-        "addLabelDescription": "Führen Sie diesen Workflow aus, wenn ein GitHub-Label angewendet wird.",
-        "addLabelTitle": "GitHub-Label-Automatisierung hinzufügen",
         "addWebhookAction": "Automatisierung hinzufügen",
         "addWebhookAria": "{{title}}-Automatisierung hinzufügen",
         "addWebhookDescription": "Führen Sie diesen Workflow aus, wenn ein passendes GitHub-Webhook-Ereignis eintrifft.",
@@ -4772,13 +4805,6 @@
         "jobs": "Jobs",
         "jobsPlaceholder": "test, build",
         "jobsSummary": "Jobs {{values}}",
-        "labelAppliedDescription": "Wird ausgeführt, wenn ein Issue oder Pull-Request ein Label erhält.",
-        "labelAppliedRule": "Wenn das GitHub-Label {{label}} angewendet wird",
-        "labelAppliedTitle": "GitHub-Label angewendet",
-        "labelName": "Label-Name",
-        "labelOnlySummary": "Label {{label}}",
-        "labelPlaceholder": "Triage",
-        "labelSummary": "Label {{label}} · {{subject}} · Akteur {{actor}}",
         "loadError": "GitHub-Einstellungen konnten nicht geladen werden.",
         "nonProductionOnly": "Nur Nicht-Produktion",
         "option": {
@@ -4803,12 +4829,36 @@
         },
         "productionEnvironment": "Produktionsumgebung",
         "productionOnly": "Nur Produktion",
+        "pullRequestAction": "Aktion",
+        "pullRequestActionClosed": "Geschlossen",
+        "pullRequestActionConvertedToDraft": "In Entwurf umgewandelt",
+        "pullRequestActionDequeued": "Aus der Merge-Warteschlange entfernt",
+        "pullRequestActionEnqueued": "Zur Merge-Warteschlange hinzugefügt",
+        "pullRequestActionLabeled": "Label angewendet",
+        "pullRequestActionOpened": "Geöffnet",
+        "pullRequestActionReadyForReview": "Bereit zur Überprüfung",
+        "pullRequestActionReopened": "Wieder geöffnet",
+        "pullRequestActionSynchronize": "Neue Commits gepusht",
+        "pullRequestActionUnlabeled": "Label entfernt",
+        "pullRequestAuthors": "Autoren",
+        "pullRequestClosedWithoutMergeOnly": "Ohne Merge geschlossen",
+        "pullRequestDescription": "Wird ausgeführt, wenn ein Pull Request in einem Repository geöffnet, gemergt, gelabelt oder geändert wird.",
+        "pullRequestLabels": "Labels",
+        "pullRequestLabelsPlaceholder": "ready-to-merge",
+        "pullRequestMerged": "Gemergt",
+        "pullRequestMergedOnly": "Nur gemergt",
+        "pullRequestNumbers": "Pull-Request-Nummern",
+        "pullRequestNumbersPlaceholder": "42, 128",
+        "pullRequestRule": "GitHub-Pull-Request {{action}} in {{repository}}",
         "pullRequestsOnly": "Nur Pull-Requests",
+        "pullRequestTitle": "GitHub-Pull-Request",
         "refs": "Refs",
         "refsPlaceholder": "main, v1.0.0",
         "repositories": "Repositories",
         "repositoriesPlaceholder": "vm0-ai/vm0, owner/another-repo",
         "repositoriesSummary": "Repositorys {{values}}",
+        "repository": "Repository",
+        "repositoryPlaceholder": "owner/name",
         "reviewDescription": "Wird ausgeführt, wenn ein passendes Review eingereicht wird.",
         "reviewRule": "Wenn ein passendes GitHub-Pull-Request-Review eingereicht wird",
         "reviewStates": "Review-Status",
@@ -4820,10 +4870,8 @@
         "saveFilters": "Filter speichern",
         "selectNoneAny": "Wählen Sie „Keine“ aus, um jeden Wert zuzulassen.",
         "selectNoneConclusion": "Wählen Sie „Keine“ aus, um jedes abgeschlossene Ergebnis zuzulassen.",
-        "startedBy": "Gestartet von",
         "subject": "Betreff",
         "trustedAuthors": "Vertrauenswürdige Autoren",
-        "updateLabelAria": "GitHub-Label-Automatisierung aktualisieren",
         "updateWebhookAria": "{{title}}-Automatisierung aktualisieren",
         "updateWorkflowAria": "GitHub-Workflow-Automatisierung aktualisieren",
         "withConclusions": " mit {{values}}",

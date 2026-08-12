@@ -10,7 +10,6 @@ import {
   isQueueFirstRunClaimLost,
   type DispatchFailedRunCallbacks,
 } from "./agent-run-create.service";
-import type { ImmediateSuccessorIntentHandle } from "./immediate-successor-intent.service";
 import type { PersistWorkflowQueueSourceTransition } from "./workflow-chat-event-queue.service";
 import type { InternalRunCallbackKind } from "./internal-run-callback";
 import {
@@ -113,7 +112,6 @@ interface WorkflowAutomationLaunchArgs {
 
 interface LaunchQueuedWorkflowAutomationArgs extends WorkflowAutomationLaunchArgs {
   readonly queueEventId: string;
-  readonly immediateSuccessorIntent: ImmediateSuccessorIntentHandle | undefined;
 }
 
 interface WorkflowAutomationRunInput {
@@ -635,14 +633,6 @@ export const launchQueuedWorkflowAutomation$ = command(
     if (result.status !== 201) {
       signal.throwIfAborted();
       return { kind: "run_error", response: result };
-    }
-    const runnableImmediately =
-      result.body.status === "pending" || result.body.status === "running";
-    if (!runnableImmediately) {
-      // Run persistence is irreversible. Settle the observation before an
-      // abort can hide a queued or terminal creation result from the outer
-      // drain.
-      args.immediateSuccessorIntent?.revoke();
     }
     await recordWorkflowAutomationRunStart(
       {

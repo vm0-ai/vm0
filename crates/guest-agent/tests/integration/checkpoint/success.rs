@@ -204,6 +204,148 @@ async fn success_checkpoint_preserves_small_codex_history() {
 }
 
 #[tokio::test]
+async fn success_checkpoint_discards_oversized_claude_history_without_compact_boundary() {
+    let api = SharedApiMock::new().await;
+    let server = api.server();
+
+    let runtime = runtime_from_process_env().unwrap();
+    let _files_guard = SessionCheckpointFilesGuard::new();
+    let session_id = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+    let line =
+        b"{\"type\":\"assistant\",\"message\":{\"role\":\"assistant\",\"content\":\"ordinary\"}}\n";
+    let mut history = Vec::new();
+    while history.len() <= CHECKPOINT_TEST_CANDIDATE_MAX_BYTES as usize {
+        history.extend_from_slice(line);
+    }
+    let history_dir = write_literal_session_history(session_id, &history).unwrap();
+    let history_path = history_dir.path().join(format!("{session_id}.jsonl"));
+
+    let prepare_mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/checkpoints/prepare-history");
+        then.status(500);
+    });
+    let expected_session_id = session_id.to_string();
+    let checkpoint_mock = server.mock(move |when, then| {
+        when.method(POST).path("/api/webhooks/agent/checkpoints");
+        then.respond_with(move |request| {
+            let body = serde_json::from_slice::<Value>(request.body_ref()).unwrap();
+            if body["cliAgentSessionId"] == expected_session_id
+                && body["cliAgentSessionHistoryDisposition"] == "discarded_oversized"
+                && body.get("cliAgentSessionHistoryHash").is_none()
+            {
+                json_http_response(200, json!({"checkpointId": "checkpoint-discarded-claude"}))
+            } else {
+                http_status(400)
+            }
+        });
+    });
+
+    create_bounded_checkpoint(&runtime).await.unwrap();
+
+    prepare_mock.assert_calls_async(0).await;
+    checkpoint_mock.assert_calls_async(1).await;
+    assert_eq!(std::fs::read(history_path).unwrap(), history);
+    assert_session_history_prune_operation(
+        &runtime,
+        "ineligible",
+        Some("no_compact_boundary"),
+        true,
+    )
+    .unwrap();
+    assert!(!std::path::Path::new(runtime.paths.final_session_history_identity_file()).exists());
+}
+
+#[tokio::test]
+async fn success_checkpoint_discards_codex_history_that_jumps_past_hard_limit() {
+    let api = SharedApiMock::new().await;
+    let server = api.server();
+
+    let mut runtime = runtime_from_process_env().unwrap();
+    runtime.config.framework = guest_agent::env::Framework::Codex;
+    let _files_guard = SessionCheckpointFilesGuard::new();
+    let session_id = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+    let (history_dir, history_path, history) =
+        write_codex_history_without_compact(session_id, None, CHECKPOINT_TEST_MAX_BYTES as usize)
+            .unwrap();
+    runtime.config.home_dir = history_dir.path().to_string_lossy().into_owned();
+
+    let prepare_mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/checkpoints/prepare-history");
+        then.status(500);
+    });
+    let checkpoint_mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/checkpoints")
+            .json_body_includes(r#"{"cliAgentType":"codex"}"#)
+            .json_body_includes(r#"{"cliAgentSessionHistoryDisposition":"discarded_oversized"}"#);
+        then.status(200)
+            .header("Content-Type", "application/json")
+            .json_body(json!({"checkpointId": "checkpoint-discarded-codex"}));
+    });
+
+    create_bounded_checkpoint(&runtime).await.unwrap();
+
+    prepare_mock.assert_calls_async(0).await;
+    checkpoint_mock.assert_calls_async(1).await;
+    assert_eq!(std::fs::read(history_path).unwrap(), history);
+    assert_session_history_prune_operation(
+        &runtime,
+        "ineligible",
+        Some("no_compact_boundary"),
+        true,
+    )
+    .unwrap();
+    assert!(!std::path::Path::new(runtime.paths.final_session_history_identity_file()).exists());
+}
+
+#[tokio::test]
+async fn success_checkpoint_discards_codex_history_with_oversized_canonical_candidate() {
+    let api = SharedApiMock::new().await;
+    let server = api.server();
+
+    let mut runtime = runtime_from_process_env().unwrap();
+    runtime.config.framework = guest_agent::env::Framework::Codex;
+    let _files_guard = SessionCheckpointFilesGuard::new();
+    let session_id = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+    let (history_dir, history_path, history) = write_codex_history_without_compact(
+        session_id,
+        Some(CHECKPOINT_TEST_CANDIDATE_MAX_BYTES as usize),
+        CHECKPOINT_TEST_CANDIDATE_MAX_BYTES as usize,
+    )
+    .unwrap();
+    runtime.config.home_dir = history_dir.path().to_string_lossy().into_owned();
+
+    let prepare_mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/checkpoints/prepare-history");
+        then.status(500);
+    });
+    let checkpoint_mock = server.mock(|when, then| {
+        when.method(POST)
+            .path("/api/webhooks/agent/checkpoints")
+            .json_body_includes(r#"{"cliAgentSessionHistoryDisposition":"discarded_oversized"}"#);
+        then.status(200)
+            .header("Content-Type", "application/json")
+            .json_body(json!({"checkpointId": "checkpoint-discarded-candidate"}));
+    });
+
+    create_bounded_checkpoint(&runtime).await.unwrap();
+
+    prepare_mock.assert_calls_async(0).await;
+    checkpoint_mock.assert_calls_async(1).await;
+    assert_eq!(std::fs::read(history_path).unwrap(), history);
+    assert_session_history_prune_operation(
+        &runtime,
+        "ineligible",
+        Some("candidate_too_large"),
+        true,
+    )
+    .unwrap();
+}
+
+#[tokio::test]
 async fn checkpoint_records_codex_prune_resolution_error() {
     let _api = SharedApiMock::new().await;
     let mut runtime = runtime_from_process_env().unwrap();

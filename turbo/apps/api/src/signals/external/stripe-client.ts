@@ -441,12 +441,15 @@ export interface StripeInvoicesApi {
     id: string,
     params?: { limit?: number; starting_after?: string },
   ): Promise<StripeList<StripeInvoiceLine>>;
-  create(params: {
-    customer: string;
-    auto_advance?: boolean;
-    default_payment_method?: string;
-    metadata?: StripeMetadataParam;
-  }): Promise<StripeInvoice>;
+  create(
+    params: {
+      customer: string;
+      auto_advance?: boolean;
+      default_payment_method?: string;
+      metadata?: StripeMetadataParam;
+    },
+    options?: StripeRequestOptions,
+  ): Promise<StripeInvoice>;
   finalizeInvoice(id: string): Promise<StripeInvoice>;
   pay(id: string): Promise<StripeInvoice>;
   retrieve(
@@ -478,13 +481,16 @@ export interface StripeInvoiceCreatePreviewParams {
 }
 
 export interface StripeInvoiceItemsApi {
-  create(params: {
-    invoice?: string;
-    customer: string;
-    amount: number;
-    currency: string;
-    description?: string;
-  }): Promise<{ readonly id: string }>;
+  create(
+    params: {
+      invoice?: string;
+      customer: string;
+      amount: number;
+      currency: string;
+      description?: string;
+    },
+    options?: StripeRequestOptions,
+  ): Promise<{ readonly id: string }>;
 }
 
 export interface StripeCheckoutSessionCreateParams {

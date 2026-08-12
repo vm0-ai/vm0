@@ -728,7 +728,7 @@
       "lastSeen": "Visto pela última vez em {{date}}",
       "linkExpires": "O link expira em {{date}}.",
       "macRequirement": "Requer um Mac com Apple silicon e macOS 14 ou mais recente. Macs com Intel não são compatíveis.",
-      "noHostsDescription": "Abra o {{desktopProductName}} Computer Use no Mac e atualize esta página quando ele ficar online.",
+      "noHostsDescription": "Abra o {{desktopApplicationName}} no Mac e atualize esta página quando ele ficar online.",
       "noHostsTitle": "Nenhum computador online",
       "sources": {
         "chat": "nesta conversa",
@@ -927,8 +927,9 @@
         "tenConcurrentRuns": "10 execuções simultâneas",
         "twoConcurrentRuns": "2 execuções simultâneas",
         "unlimitedAgents": "Total ilimitado de agentes",
-        "voiceInput": "Entrada por voz",
-        "voiceInputLifetime": "Entrada por voz (10 usos vitalícios por membro)"
+        "voiceInputFree": "Entrada por voz (10 solicitações no total · 10 min/dia por membro)",
+        "voiceInputPro": "Entrada por voz (300 solicitações/dia · 200 min/dia por membro)",
+        "voiceInputTeam": "Entrada por voz (500 solicitações/dia · 500 min/dia por membro)"
       },
       "free": {
         "description": "Acesso gratuito legado para workspaces existentes.",
@@ -1216,7 +1217,7 @@
       "events": {
         "githubDeploymentStatus": "Status de implantação do GitHub criado",
         "githubIssueComment": "Comentário em issue do GitHub criado",
-        "githubLabelApplied": "Label do GitHub aplicada",
+        "githubPullRequest": "Pull request do GitHub",
         "githubReviewSubmitted": "Revisão de pull request do GitHub enviada",
         "githubWorkflowCompleted": "Fluxo de trabalho do GitHub concluído",
         "githubWorkflowJobCompleted": "Job de fluxo de trabalho do GitHub concluído",
@@ -1416,6 +1417,19 @@
       "sourcePartsHeading_one": "Feedback sobre {{count}} parte de {{description}}:",
       "sourcePartsHeading_many": "Feedback sobre {{count}} partes de {{description}}:",
       "sourcePartsHeading_other": "Feedback sobre {{count}} partes de {{description}}:"
+    },
+    "forward": {
+      "action": "Encaminhar",
+      "agents": "Agentes",
+      "back": "Voltar",
+      "content": "Conteúdo",
+      "description": "Encaminhe o conteúdo selecionado para um agente ou uma conversa.",
+      "noResults": "Nenhum agente ou conversa foi encontrado",
+      "search": "Buscar agentes e conversas...",
+      "sent": "Encaminhado com sucesso",
+      "threads": "Conversas",
+      "title": "Encaminhar para",
+      "to": "Encaminhar para"
     },
     "mail": {
       "bcc": "cco",
@@ -1705,6 +1719,10 @@
       "checkingLimit": "Verificando limite da entrada de voz",
       "input": "Entrada de voz",
       "inputLimitReached": "Limite de entrada de voz atingido. Faça upgrade para Pro ou Team para aumentar os limites.",
+      "inputLimitReachedMember": "Limite de entrada de voz atingido. Peça a um administrador do workspace para fazer upgrade e aumentar os limites.",
+      "inputLimitReachedPro": "Limite de entrada de voz atingido. Faça upgrade para Team para aumentar os limites.",
+      "inputLimitReachedProMember": "Limite de entrada de voz atingido. Peça a um administrador do workspace para fazer upgrade para Team e aumentar os limites.",
+      "inputLimitReachedReset": "Limite de entrada de voz atingido. Aguarde até que seu limite seja redefinido.",
       "microphoneAccessDenied": "O acesso ao microfone foi negado. Permita o acesso e tente novamente.",
       "openingMicrophone": "Abrindo microfone...",
       "starting": "Iniciando entrada de voz",
@@ -2564,6 +2582,18 @@
     },
     "realtime": {
       "degraded": "As atualizações em tempo real encontraram um problema. Atualize a página."
+    }
+  },
+  "invitationRedirect": {
+    "accountMismatch": {
+      "title": "Convite aceito para outra conta"
+    },
+    "actions": {
+      "switchAccount": "Trocar de conta",
+      "switchWorkspace": "Trocar de espaço de trabalho"
+    },
+    "success": {
+      "title": "Convite para {{workspace}} aceito"
     }
   },
   "lifecycle": {
@@ -4498,9 +4528,20 @@
           "emailPlaceholder": "email@example.com",
           "invalidEmail": "Insira um endereço de e-mail válido",
           "progress": "Enviando...",
+          "purchase": {
+            "description": "Revise a cobrança proporcional abaixo. Ao confirmar, o método de pagamento salvo será cobrado e o convite será enviado.",
+            "error": "Não foi possível comprar este pacote de membro. Revise os dados de cobrança e tente novamente.",
+            "invitee": "Pessoa convidada",
+            "title": "Revisar convite"
+          },
           "roleLabel": "Função",
           "send": "Enviar convite",
-          "title": "Convidar membro"
+          "title": "Convidar membro",
+          "upgrade": {
+            "action": "Fazer upgrade para o Pro",
+            "description": "Os convites de membros estão disponíveis no plano Pro. Faça upgrade deste espaço de trabalho para convidar pessoas e gerenciar suas funções.",
+            "title": "Faça upgrade para convidar membros"
+          }
         },
         "joined": "Data de entrada",
         "joinRequests": "Solicitações de entrada",
@@ -4757,16 +4798,8 @@
         "summary": "Formulário {{form}}"
       },
       "github": {
-        "accountConnect": "Conectar GitHub",
-        "accountRequired": "Conecte sua conta do GitHub para usar a opção Eu.",
-        "actorAnyone": "Qualquer pessoa",
-        "actorMe": "Eu",
         "actors": "Atores",
         "actorsPlaceholder": "octocat, dependabot[bot]",
-        "addLabelAction": "Adicionar automação de rótulo",
-        "addLabelAria": "Adicionar automação de rótulo do GitHub",
-        "addLabelDescription": "Execute este fluxo de trabalho quando um rótulo do GitHub for aplicado.",
-        "addLabelTitle": "Adicionar automação de rótulo do GitHub",
         "addWebhookAction": "Adicionar automação",
         "addWebhookAria": "Adicionar automação de {{title}}",
         "addWebhookDescription": "Execute este fluxo de trabalho quando chegar um evento de webhook correspondente do GitHub.",
@@ -4828,13 +4861,6 @@
         "jobs": "Jobs",
         "jobsPlaceholder": "test, build",
         "jobsSummary": "Jobs {{values}}",
-        "labelAppliedDescription": "Execute quando uma issue ou pull request receber um rótulo.",
-        "labelAppliedRule": "Quando o rótulo do GitHub {{label}} for aplicado",
-        "labelAppliedTitle": "Rótulo do GitHub aplicado",
-        "labelName": "Nome do rótulo",
-        "labelOnlySummary": "Rótulo {{label}}",
-        "labelPlaceholder": "triagem",
-        "labelSummary": "Rótulo {{label}} · {{subject}} · Ator {{actor}}",
         "loadError": "Não foi possível carregar as configurações do GitHub.",
         "nonProductionOnly": "Somente não produção",
         "option": {
@@ -4859,12 +4885,36 @@
         },
         "productionEnvironment": "Ambiente de produção",
         "productionOnly": "Somente produção",
+        "pullRequestAction": "Ação",
+        "pullRequestActionClosed": "Fechado",
+        "pullRequestActionConvertedToDraft": "Convertido em rascunho",
+        "pullRequestActionDequeued": "Removido da fila de merge",
+        "pullRequestActionEnqueued": "Adicionado à fila de merge",
+        "pullRequestActionLabeled": "Rótulo aplicado",
+        "pullRequestActionOpened": "Aberto",
+        "pullRequestActionReadyForReview": "Pronto para revisão",
+        "pullRequestActionReopened": "Reaberto",
+        "pullRequestActionSynchronize": "Novos commits",
+        "pullRequestActionUnlabeled": "Rótulo removido",
+        "pullRequestAuthors": "Autores",
+        "pullRequestClosedWithoutMergeOnly": "Fechado sem mesclar",
+        "pullRequestDescription": "Executa quando um pull request de um repositório é aberto, mesclado, rotulado ou muda de estado.",
+        "pullRequestLabels": "Rótulos",
+        "pullRequestLabelsPlaceholder": "ready-to-merge",
+        "pullRequestMerged": "Mesclado",
+        "pullRequestMergedOnly": "Somente mesclados",
+        "pullRequestNumbers": "Números de pull request",
+        "pullRequestNumbersPlaceholder": "42, 128",
+        "pullRequestRule": "Pull request do GitHub {{action}} em {{repository}}",
         "pullRequestsOnly": "Somente pull requests",
+        "pullRequestTitle": "Pull request do GitHub",
         "refs": "Refs",
         "refsPlaceholder": "main, v1.0.0",
         "repositories": "Repositórios",
         "repositoriesPlaceholder": "vm0-ai/vm0, owner/another-repo",
         "repositoriesSummary": "Repositórios {{values}}",
+        "repository": "Repositório",
+        "repositoryPlaceholder": "owner/name",
         "reviewDescription": "Execute quando uma revisão correspondente for enviada.",
         "reviewRule": "Quando uma revisão correspondente de pull request for enviada no GitHub",
         "reviewStates": "Status de revisão",
@@ -4876,10 +4926,8 @@
         "saveFilters": "Salvar filtros",
         "selectNoneAny": "Não selecione nada para corresponder a qualquer valor.",
         "selectNoneConclusion": "Não selecione nada para corresponder a qualquer conclusão.",
-        "startedBy": "Iniciado por",
         "subject": "Assunto",
         "trustedAuthors": "Autores confiáveis",
-        "updateLabelAria": "Atualizar automação de rótulo do GitHub",
         "updateWebhookAria": "Atualizar automação de {{title}}",
         "updateWorkflowAria": "Atualizar automação de fluxo de trabalho do GitHub",
         "withConclusions": " com {{values}}",

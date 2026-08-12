@@ -7,6 +7,7 @@ import {
 } from "@aws-sdk/client-s3";
 import { createStore } from "ccstate";
 import { HttpResponse, http } from "msw";
+import { onTestFinished } from "vitest";
 import type { OrgTier } from "@vm0/api-contracts/contracts/orgs";
 
 import { createAppWithRoutes } from "../../../app-factory-core";
@@ -20,17 +21,13 @@ import { zeroBillingStatusRoutes } from "../zero-billing-status";
 import { zeroBuiltInGenerationRoutes } from "../zero-built-in-generation";
 import { zeroVideoIoGenerateRoutes } from "../zero-video-io-generate";
 import {
-  deleteUsagePricingRows,
+  createUsagePricingFixture,
   seedOrgMetadata,
-  seedUsagePricingRows,
-  type UsagePricingRow,
+  type UsagePricingFixture,
 } from "../../../test-fixtures/system-config-seeds";
 import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 import { seedCompose$, seedRun$ } from "./helpers/usage-state";
-import {
-  createFixtureTracker,
-  createZeroRouteMocks,
-} from "./helpers/zero-route-test";
+import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 
 const context = testContext();
@@ -210,16 +207,21 @@ const VIDEO_PRICING_DEFAULTS = [
 
 interface VideoFixture {
   readonly orgId: string;
+  readonly pricingResolution: UsagePricingFixture["resolution"];
   readonly userId: string;
 }
 
-type PricingSnapshot = UsagePricingRow;
+const VIDEO_PRICING_ROWS = VIDEO_PRICING_DEFAULTS.map((row) => {
+  return { ...row, kind: "video" };
+});
 
 function authHeaders() {
   return { authorization: "Bearer clerk-session" };
 }
 
-function createVideoIoTestApp() {
+function createVideoIoTestApp(
+  usagePricingResolution?: UsagePricingFixture["resolution"],
+) {
   return createAppWithRoutes({
     signal: context.signal,
     routes: [
@@ -228,6 +230,7 @@ function createVideoIoTestApp() {
       ...webhooksBuiltInGenerationRoutes,
       ...zeroBillingStatusRoutes,
     ],
+    usagePricingResolution,
   });
 }
 
@@ -391,49 +394,28 @@ function zeroToken(args: {
   });
 }
 
-async function upsertDefaultVideoPricingRows(): Promise<void> {
-  await seedUsagePricingRows(
-    VIDEO_PRICING_DEFAULTS.map((row) => {
-      return {
-        kind: "video",
-        provider: row.provider,
-        category: row.category,
-        unitPrice: row.unitPrice,
-        unitSize: row.unitSize,
-      };
-    }),
+// Org/user isolation comes from random IDs. Pricing cleanup only bounds rows
+// owned by this request scope.
+async function seedVideoFixture(
+  options: {
+    readonly credits?: number;
+    readonly missingPricing?: boolean;
+    readonly tier?: OrgTier;
+  } = {},
+): Promise<VideoFixture> {
+  const pricing = await createUsagePricingFixture(
+    options.missingPricing
+      ? {
+          missing: VIDEO_PRICING_ROWS.filter((row) => {
+            return row.provider === VIDEO_IO_MODEL;
+          }),
+        }
+      : { configured: VIDEO_PRICING_ROWS },
   );
-}
-
-async function deleteDefaultModelPricingRows(): Promise<
-  readonly PricingSnapshot[]
-> {
-  const categories = VIDEO_PRICING_DEFAULTS.filter((row) => {
-    return row.provider === VIDEO_IO_MODEL;
-  }).map((row) => {
-    return row.category;
-  });
-  return await deleteUsagePricingRows({
-    kind: "video",
-    provider: VIDEO_IO_MODEL,
-    categories,
-  });
-}
-
-async function restoreVideoPricingRows(
-  rows: readonly PricingSnapshot[],
-): Promise<void> {
-  await seedUsagePricingRows(rows);
-}
-
-// Isolation comes from random org/user IDs; no teardown is needed.
-async function seedVideoFixture(options: {
-  readonly credits?: number;
-  readonly tier?: OrgTier;
-  readonly withPricing?: boolean;
-}): Promise<VideoFixture> {
+  onTestFinished(pricing.cleanup);
   const fixture = {
     orgId: `org_${randomUUID()}`,
+    pricingResolution: pricing.resolution,
     userId: `user_${randomUUID()}`,
   };
 
@@ -448,10 +430,6 @@ async function seedVideoFixture(options: {
     context.signal,
   );
 
-  if (options.withPricing) {
-    await upsertDefaultVideoPricingRows();
-  }
-
   return fixture;
 }
 
@@ -459,7 +437,7 @@ async function seedVideoFixture(options: {
 // assertions stay on externally observable state.
 async function orgCredits(fixture: VideoFixture): Promise<number> {
   mocks.clerk.session(fixture.userId, fixture.orgId);
-  const app = createVideoIoTestApp();
+  const app = createVideoIoTestApp(fixture.pricingResolution);
   const response = await app.request("/api/zero/billing/status", {
     headers: authHeaders(),
   });
@@ -477,10 +455,6 @@ async function orgCredits(fixture: VideoFixture): Promise<number> {
 }
 
 describe("POST /api/zero/video-io/generate", () => {
-  const trackPricing = createFixtureTracker<readonly PricingSnapshot[]>(
-    restoreVideoPricingRows,
-  );
-
   beforeEach(() => {
     mockEnv("VM0_API_BACKEND_URL", WEB_ORIGIN);
     mockEnv("VM0_WEB_URL", WEB_ORIGIN);
@@ -521,7 +495,7 @@ describe("POST /api/zero/video-io/generate", () => {
   });
 
   it("rejects unsupported durations before BytePlus", async () => {
-    const fixture = await seedVideoFixture({ withPricing: true });
+    const fixture = await seedVideoFixture();
     mocks.clerk.session(fixture.userId, fixture.orgId);
     let calledBytePlus = false;
     server.use(
@@ -531,7 +505,7 @@ describe("POST /api/zero/video-io/generate", () => {
       }),
     );
 
-    const app = createVideoIoTestApp();
+    const app = createVideoIoTestApp(fixture.pricingResolution);
     const response = await app.request("/api/zero/video-io/generate", {
       method: "POST",
       headers: authHeaders(),
@@ -550,7 +524,7 @@ describe("POST /api/zero/video-io/generate", () => {
   });
 
   it("rejects BytePlus 4k requests before provider submission", async () => {
-    const fixture = await seedVideoFixture({ withPricing: true });
+    const fixture = await seedVideoFixture();
     mocks.clerk.session(fixture.userId, fixture.orgId);
     let calledBytePlus = false;
     server.use(
@@ -560,7 +534,7 @@ describe("POST /api/zero/video-io/generate", () => {
       }),
     );
 
-    const app = createVideoIoTestApp();
+    const app = createVideoIoTestApp(fixture.pricingResolution);
     const response = await app.request("/api/zero/video-io/generate", {
       method: "POST",
       headers: authHeaders(),
@@ -585,7 +559,7 @@ describe("POST /api/zero/video-io/generate", () => {
     const fixture = await seedVideoFixture({ credits: 0 });
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
-    const app = createVideoIoTestApp();
+    const app = createVideoIoTestApp(fixture.pricingResolution);
     const response = await app.request("/api/zero/video-io/generate", {
       method: "POST",
       headers: authHeaders(),
@@ -607,7 +581,6 @@ describe("POST /api/zero/video-io/generate", () => {
       const fixture = await seedVideoFixture({
         credits: 10_000,
         tier,
-        withPricing: true,
       });
       mocks.clerk.session(fixture.userId, fixture.orgId);
       let calledBytePlus = false;
@@ -618,7 +591,7 @@ describe("POST /api/zero/video-io/generate", () => {
         }),
       );
 
-      const app = createVideoIoTestApp();
+      const app = createVideoIoTestApp(fixture.pricingResolution);
       const response = await app.request("/api/zero/video-io/generate", {
         method: "POST",
         headers: authHeaders(),
@@ -641,7 +614,6 @@ describe("POST /api/zero/video-io/generate", () => {
     const fixture = await seedVideoFixture({
       credits: 10_000,
       tier: "team",
-      withPricing: true,
     });
     mocks.clerk.session(fixture.userId, fixture.orgId);
     let calledBytePlus = false;
@@ -656,7 +628,7 @@ describe("POST /api/zero/video-io/generate", () => {
       }),
     );
 
-    const app = createVideoIoTestApp();
+    const app = createVideoIoTestApp(fixture.pricingResolution);
     const response = await app.request("/api/zero/video-io/generate", {
       method: "POST",
       headers: authHeaders(),
@@ -672,7 +644,6 @@ describe("POST /api/zero/video-io/generate", () => {
     const fixture = await seedVideoFixture({
       credits: 10_000,
       tier: "custom",
-      withPricing: true,
     });
     mocks.clerk.session(fixture.userId, fixture.orgId);
     let calledBytePlus = false;
@@ -687,7 +658,7 @@ describe("POST /api/zero/video-io/generate", () => {
       }),
     );
 
-    const app = createVideoIoTestApp();
+    const app = createVideoIoTestApp(fixture.pricingResolution);
     const response = await app.request("/api/zero/video-io/generate", {
       method: "POST",
       headers: authHeaders(),
@@ -700,10 +671,11 @@ describe("POST /api/zero/video-io/generate", () => {
   });
 
   it("returns 503 when video pricing is not configured", async () => {
-    const fixture = await seedVideoFixture({ credits: 1000 });
+    const fixture = await seedVideoFixture({
+      credits: 1000,
+      missingPricing: true,
+    });
     mocks.clerk.session(fixture.userId, fixture.orgId);
-    await upsertDefaultVideoPricingRows();
-    await trackPricing(deleteDefaultModelPricingRows());
     let calledBytePlus = false;
     server.use(
       http.post(BYTEPLUS_VIDEO_TASKS_URL, () => {
@@ -712,7 +684,7 @@ describe("POST /api/zero/video-io/generate", () => {
       }),
     );
 
-    const app = createVideoIoTestApp();
+    const app = createVideoIoTestApp(fixture.pricingResolution);
     const response = await app.request("/api/zero/video-io/generate", {
       method: "POST",
       headers: authHeaders(),
@@ -730,7 +702,7 @@ describe("POST /api/zero/video-io/generate", () => {
   });
 
   it("generates video files with BytePlus and charges actual callback token usage", async () => {
-    const fixture = await seedVideoFixture({ withPricing: true });
+    const fixture = await seedVideoFixture();
     const { composeId } = await store.set(
       seedCompose$,
       { orgId: fixture.orgId, userId: fixture.userId },
@@ -770,7 +742,7 @@ describe("POST /api/zero/video-io/generate", () => {
       orgId: fixture.orgId,
       runId,
     });
-    const app = createVideoIoTestApp();
+    const app = createVideoIoTestApp(fixture.pricingResolution);
     const response = await app.request("/api/zero/video-io/generate", {
       method: "POST",
       headers: { authorization: `Bearer ${token}` },
@@ -898,7 +870,7 @@ describe("POST /api/zero/video-io/generate", () => {
   });
 
   it("generates Seedance 2.0 Mini with video references and list-price gross-margin pricing", async () => {
-    const fixture = await seedVideoFixture({ withPricing: true });
+    const fixture = await seedVideoFixture();
     mocks.clerk.session(fixture.userId, fixture.orgId);
     let observedBody: unknown = null;
     server.use(
@@ -916,7 +888,7 @@ describe("POST /api/zero/video-io/generate", () => {
       }),
     );
 
-    const app = createVideoIoTestApp();
+    const app = createVideoIoTestApp(fixture.pricingResolution);
     const response = await app.request("/api/zero/video-io/generate", {
       method: "POST",
       headers: authHeaders(),
@@ -988,7 +960,7 @@ describe("POST /api/zero/video-io/generate", () => {
   });
 
   it("generates Seedance 2.5 with expanded references and 20% gross-margin pricing", async () => {
-    const fixture = await seedVideoFixture({ withPricing: true });
+    const fixture = await seedVideoFixture();
     mocks.clerk.session(fixture.userId, fixture.orgId);
     const referenceImageUrls = Array.from({ length: 30 }, (_, index) => {
       return `https://example.com/reference-${index + 1}.png`;
@@ -1015,7 +987,7 @@ describe("POST /api/zero/video-io/generate", () => {
       }),
     );
 
-    const app = createVideoIoTestApp();
+    const app = createVideoIoTestApp(fixture.pricingResolution);
     const response = await app.request("/api/zero/video-io/generate", {
       method: "POST",
       headers: authHeaders(),
@@ -1099,7 +1071,7 @@ describe("POST /api/zero/video-io/generate", () => {
   });
 
   it("allows Seedance 2.5 audio-only references", async () => {
-    const fixture = await seedVideoFixture({ withPricing: true });
+    const fixture = await seedVideoFixture();
     mocks.clerk.session(fixture.userId, fixture.orgId);
     let observedBody: unknown = null;
     server.use(
@@ -1112,7 +1084,7 @@ describe("POST /api/zero/video-io/generate", () => {
       }),
     );
 
-    const app = createVideoIoTestApp();
+    const app = createVideoIoTestApp(fixture.pricingResolution);
     const response = await app.request("/api/zero/video-io/generate", {
       method: "POST",
       headers: authHeaders(),
@@ -1141,7 +1113,7 @@ describe("POST /api/zero/video-io/generate", () => {
   });
 
   it("submits Seedance 2.5 frame generation with its required adaptive ratio", async () => {
-    const fixture = await seedVideoFixture({ withPricing: true });
+    const fixture = await seedVideoFixture();
     mocks.clerk.session(fixture.userId, fixture.orgId);
     let observedBody: unknown = null;
     server.use(
@@ -1154,7 +1126,7 @@ describe("POST /api/zero/video-io/generate", () => {
       }),
     );
 
-    const app = createVideoIoTestApp();
+    const app = createVideoIoTestApp(fixture.pricingResolution);
     const response = await app.request("/api/zero/video-io/generate", {
       method: "POST",
       headers: authHeaders(),
@@ -1182,7 +1154,7 @@ describe("POST /api/zero/video-io/generate", () => {
   });
 
   it("submits a single Dreamina first-frame image without a frame role", async () => {
-    const fixture = await seedVideoFixture({ withPricing: true });
+    const fixture = await seedVideoFixture();
     const { composeId } = await store.set(
       seedCompose$,
       { orgId: fixture.orgId, userId: fixture.userId },
@@ -1220,7 +1192,7 @@ describe("POST /api/zero/video-io/generate", () => {
       orgId: fixture.orgId,
       runId,
     });
-    const app = createVideoIoTestApp();
+    const app = createVideoIoTestApp(fixture.pricingResolution);
     const response = await app.request("/api/zero/video-io/generate", {
       method: "POST",
       headers: { authorization: `Bearer ${token}` },
@@ -1279,7 +1251,6 @@ describe("POST /api/zero/video-io/generate", () => {
 
   it("submits multimodal Dreamina references and charges with-video pricing", async () => {
     const fixture = await seedVideoFixture({ credits: 10_000 });
-    await upsertDefaultVideoPricingRows();
     const { composeId } = await store.set(
       seedCompose$,
       { orgId: fixture.orgId, userId: fixture.userId },
@@ -1317,7 +1288,7 @@ describe("POST /api/zero/video-io/generate", () => {
       orgId: fixture.orgId,
       runId,
     });
-    const app = createVideoIoTestApp();
+    const app = createVideoIoTestApp(fixture.pricingResolution);
     const response = await app.request("/api/zero/video-io/generate", {
       method: "POST",
       headers: { authorization: `Bearer ${token}` },
@@ -1419,7 +1390,7 @@ describe("POST /api/zero/video-io/generate", () => {
   });
 
   it("generates MiniMax H3 with full references and charges every billed usage component", async () => {
-    const fixture = await seedVideoFixture({ withPricing: true });
+    const fixture = await seedVideoFixture();
     const { composeId } = await store.set(
       seedCompose$,
       { orgId: fixture.orgId, userId: fixture.userId },
@@ -1465,7 +1436,7 @@ describe("POST /api/zero/video-io/generate", () => {
       orgId: fixture.orgId,
       runId,
     });
-    const app = createVideoIoTestApp();
+    const app = createVideoIoTestApp(fixture.pricingResolution);
     const response = await app.request("/api/zero/video-io/generate", {
       method: "POST",
       headers: { authorization: `Bearer ${token}` },
@@ -1582,7 +1553,7 @@ describe("POST /api/zero/video-io/generate", () => {
   });
 
   it("submits MiniMax H3 first and last frames with adaptive ratio", async () => {
-    const fixture = await seedVideoFixture({ withPricing: true });
+    const fixture = await seedVideoFixture();
     mocks.clerk.session(fixture.userId, fixture.orgId);
     let observedBody: unknown = null;
     server.use(
@@ -1592,7 +1563,7 @@ describe("POST /api/zero/video-io/generate", () => {
       }),
     );
 
-    const app = createVideoIoTestApp();
+    const app = createVideoIoTestApp(fixture.pricingResolution);
     const response = await app.request("/api/zero/video-io/generate", {
       method: "POST",
       headers: authHeaders(),
@@ -1642,7 +1613,7 @@ describe("POST /api/zero/video-io/generate", () => {
   });
 
   it("rejects silent MiniMax H3 requests before provider submission", async () => {
-    const fixture = await seedVideoFixture({ withPricing: true });
+    const fixture = await seedVideoFixture();
     mocks.clerk.session(fixture.userId, fixture.orgId);
     let calledMiniMax = false;
     server.use(
@@ -1652,7 +1623,7 @@ describe("POST /api/zero/video-io/generate", () => {
       }),
     );
 
-    const app = createVideoIoTestApp();
+    const app = createVideoIoTestApp(fixture.pricingResolution);
     const response = await app.request("/api/zero/video-io/generate", {
       method: "POST",
       headers: authHeaders(),
@@ -1674,7 +1645,7 @@ describe("POST /api/zero/video-io/generate", () => {
   });
 
   it("rejects MiniMax H3 prompts above the official 7000-character limit", async () => {
-    const fixture = await seedVideoFixture({ withPricing: true });
+    const fixture = await seedVideoFixture();
     mocks.clerk.session(fixture.userId, fixture.orgId);
     let calledMiniMax = false;
     server.use(
@@ -1684,7 +1655,7 @@ describe("POST /api/zero/video-io/generate", () => {
       }),
     );
 
-    const app = createVideoIoTestApp();
+    const app = createVideoIoTestApp(fixture.pricingResolution);
     const response = await app.request("/api/zero/video-io/generate", {
       method: "POST",
       headers: authHeaders(),
@@ -1705,7 +1676,7 @@ describe("POST /api/zero/video-io/generate", () => {
   });
 
   it("generates video files with the recommended Fal fallback model", async () => {
-    const fixture = await seedVideoFixture({ withPricing: true });
+    const fixture = await seedVideoFixture();
     const { composeId } = await store.set(
       seedCompose$,
       { orgId: fixture.orgId, userId: fixture.userId },
@@ -1748,7 +1719,7 @@ describe("POST /api/zero/video-io/generate", () => {
       orgId: fixture.orgId,
       runId,
     });
-    const app = createVideoIoTestApp();
+    const app = createVideoIoTestApp(fixture.pricingResolution);
     const response = await app.request("/api/zero/video-io/generate", {
       method: "POST",
       headers: { authorization: `Bearer ${token}` },
@@ -1820,7 +1791,7 @@ describe("POST /api/zero/video-io/generate", () => {
   });
 
   it("generates video files with the recommended Kling 4K model", async () => {
-    const fixture = await seedVideoFixture({ withPricing: true });
+    const fixture = await seedVideoFixture();
     const { composeId } = await store.set(
       seedCompose$,
       { orgId: fixture.orgId, userId: fixture.userId },
@@ -1861,7 +1832,7 @@ describe("POST /api/zero/video-io/generate", () => {
       orgId: fixture.orgId,
       runId,
     });
-    const app = createVideoIoTestApp();
+    const app = createVideoIoTestApp(fixture.pricingResolution);
     const response = await app.request("/api/zero/video-io/generate", {
       method: "POST",
       headers: { authorization: `Bearer ${token}` },
@@ -1920,7 +1891,6 @@ describe("POST /api/zero/video-io/generate", () => {
   it("records a failed job when BytePlus video generation fails", async () => {
     const fixture = await seedVideoFixture({
       credits: 1000,
-      withPricing: true,
     });
     mocks.clerk.session(fixture.userId, fixture.orgId);
     server.use(
@@ -1940,7 +1910,7 @@ describe("POST /api/zero/video-io/generate", () => {
       }),
     );
 
-    const app = createVideoIoTestApp();
+    const app = createVideoIoTestApp(fixture.pricingResolution);
     const response = await app.request("/api/zero/video-io/generate", {
       method: "POST",
       headers: authHeaders(),
@@ -1989,7 +1959,6 @@ describe("POST /api/zero/video-io/generate", () => {
   it("records specific BytePlus webhook failure details on async failure", async () => {
     const fixture = await seedVideoFixture({
       credits: 1000,
-      withPricing: true,
     });
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
@@ -2004,7 +1973,7 @@ describe("POST /api/zero/video-io/generate", () => {
       }),
     );
 
-    const app = createVideoIoTestApp();
+    const app = createVideoIoTestApp(fixture.pricingResolution);
     const response = await app.request("/api/zero/video-io/generate", {
       method: "POST",
       headers: authHeaders(),

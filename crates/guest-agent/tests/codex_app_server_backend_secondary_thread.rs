@@ -5,7 +5,7 @@
 
 mod common;
 
-use guest_agent::active_input::{ActiveInputControlOutcome, ActiveInputRuntime};
+use guest_agent::active_input::ActiveInputControlOutcome;
 use guest_agent::masker::SecretMasker;
 use serde_json::Value;
 use std::time::Duration;
@@ -36,11 +36,7 @@ async fn codex_app_server_backend_ignores_secondary_thread_notifications()
     let runtime = common::guest_runtime_from_process_env()?;
     let _run_files = common::RunFilesGuard::new_for_paths(&runtime.paths);
 
-    let active_input = ActiveInputRuntime::new_with_initial_prompt(
-        &runtime.config.run_id,
-        true,
-        &runtime.config.prompt,
-    );
+    let active_input = common::active_input_runtime(&runtime)?;
     let payload = common::active_input_payload("must wait for the top-level turn")?;
     assert_eq!(
         active_input.controller().handle_control_payload(&payload),

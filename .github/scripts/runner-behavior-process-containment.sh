@@ -89,26 +89,111 @@ rm -rf "$marker"
 mkdir -p "$marker"
 touch "$marker/vm-reuse-marker"
 
-setsid python3 -c 'import os, pathlib, signal, time; p=pathlib.Path("/tmp/vm0-process-containment/user.identity"); fields=pathlib.Path("/proc/self/stat").read_text().rsplit(")", 1)[1].split(); p.write_text(f"{os.getpid()} {fields[19]}\n"); signal.signal(signal.SIGTERM, signal.SIG_IGN); time.sleep(300)' </dev/null >/dev/null 2>&1 &
-setsid sudo -n python3 -c 'import os, pathlib, time; p=pathlib.Path("/tmp/vm0-process-containment/root.identity"); fields=pathlib.Path("/proc/self/stat").read_text().rsplit(")", 1)[1].split(); p.write_text(f"{os.getpid()} {fields[19]}\n"); time.sleep(300)' </dev/null >/dev/null 2>&1 &
+setsid python3 -c 'import os, pathlib, signal, time; p=pathlib.Path("/tmp/vm0-process-containment/user.identity"); fields=pathlib.Path("/proc/self/stat").read_text().rsplit(")", 1)[1].split(); signal.signal(signal.SIGTERM, signal.SIG_IGN); p.write_text(f"{os.getpid()} {fields[19]}\n"); time.sleep(300)' </dev/null >"$marker/user.launch.log" 2>&1 &
+user_launcher_pid=$!
+setsid sudo -n python3 -c 'import os, pathlib, time; p=pathlib.Path("/tmp/vm0-process-containment/root.identity"); fields=pathlib.Path("/proc/self/stat").read_text().rsplit(")", 1)[1].split(); p.write_text(f"{os.getpid()} {fields[19]}\n"); time.sleep(300)' </dev/null >"$marker/root.launch.log" 2>&1 &
+root_launcher_pid=$!
 
-for _ in $(seq 1 100); do
+fixture_fail() {
+  local name=$1
+  local exit_code=$2
+  shift 2
+  local log="$marker/$name.launch.log"
+  echo "$name descendant setup failed: $*" >&2
+  if [ -s "$log" ]; then
+    echo "--- $name launcher log ---" >&2
+    cat "$log" >&2
+  fi
+  exit "$exit_code"
+}
+
+launcher_is_alive() {
+  local pid=$1
+  local stat state
+  if ! IFS= read -r stat 2>/dev/null < "/proc/$pid/stat"; then
+    return 1
+  fi
+  stat=${stat##*) }
+  state=${stat%% *}
+  case "$state" in
+    Z|X|x) return 1 ;;
+    *) return 0 ;;
+  esac
+}
+
+verify_live_identity() {
+  local name=$1
+  local exit_code=$2
+  local identity="$marker/$name.identity"
+  local pid start_time current_identity current_state current_start
+
+  if ! read -r pid start_time < "$identity"; then
+    fixture_fail "$name" "$exit_code" "invalid identity file"
+  fi
+  if ! current_identity=$(awk '{sub(/^.*\) /, ""); print $1, $20}' "/proc/$pid/stat" 2>/dev/null); then
+    fixture_fail "$name" "$exit_code" "process $pid exited"
+  fi
+  current_state=${current_identity%% *}
+  current_start=${current_identity#* }
+  case "$current_state" in
+    Z|X|x) fixture_fail "$name" "$exit_code" "process $pid is in state $current_state" ;;
+  esac
+  [ "$current_start" = "$start_time" ] \
+    || fixture_fail "$name" "$exit_code" "process $pid identity changed"
+}
+
+for _ in $(seq 1 200); do
   [ -s "$marker/user.identity" ] && [ -s "$marker/root.identity" ] && break
-  sleep 0.01
+  if [ ! -s "$marker/user.identity" ] \
+    && ! launcher_is_alive "$user_launcher_pid"; then
+    if wait "$user_launcher_pid"; then
+      user_status=0
+    else
+      user_status=$?
+    fi
+    fixture_fail user 10 "launcher exited before publishing identity (status=$user_status)"
+  fi
+  if [ ! -s "$marker/root.identity" ] \
+    && ! launcher_is_alive "$root_launcher_pid"; then
+    if wait "$root_launcher_pid"; then
+      root_status=0
+    else
+      root_status=$?
+    fi
+    fixture_fail root 11 "launcher exited before publishing identity (status=$root_status)"
+  fi
+  sleep 0.05
 done
-test -s "$marker/user.identity"
-test -s "$marker/root.identity"
+[ -s "$marker/user.identity" ] \
+  || fixture_fail user 12 "readiness deadline exceeded"
+[ -s "$marker/root.identity" ] \
+  || fixture_fail root 13 "readiness deadline exceeded"
+verify_live_identity user 14
+verify_live_identity root 15
 echo containment-turn-1
 PROMPT
 )
 
 echo "--- Turn 1: leave detached user/root descendants ---"
-sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
+if TURN1_RESULT=$(sudo "$BIN_DIR/runner" local submit --group "$GROUP" \
   --chat-thread-id "$CHAT_THREAD_ID" \
   --session-id "$SESSION_ID" \
   --feature-flag sandboxReuse=true \
-  --prompt "$LEAK_PROMPT" \
-  || fail "Turn 1 failed"
+  --prompt "$LEAK_PROMPT"); then
+  printf '%s\n' "$TURN1_RESULT"
+else
+  printf '%s\n' "$TURN1_RESULT"
+  TURN1_EXIT_CODE=$(jq -r '.exit_code // empty' <<<"$TURN1_RESULT" 2>/dev/null) || true
+  case "$TURN1_EXIT_CODE" in
+    10) fail "Turn 1 user launcher exited before readiness" ;;
+    11) fail "Turn 1 root launcher exited before readiness" ;;
+    12) fail "Turn 1 user descendant readiness timed out" ;;
+    13) fail "Turn 1 root descendant readiness timed out" ;;
+    14) fail "Turn 1 user descendant published an invalid process identity" ;;
+    15) fail "Turn 1 root descendant published an invalid process identity" ;;
+    *) fail "Turn 1 failed" ;;
+  esac
+fi
 
 VERIFY_PROMPT=$(cat <<'PROMPT'
 set -eu

@@ -130,17 +130,18 @@ const gmailLabelAutomation = {
   nextRunAt: null,
 };
 
-const githubLabelAutomation = {
+const githubPullRequestAutomation = {
   ...automationBase,
   kind: "event",
-  eventType: "github-label-applied",
+  eventType: "github-pull-request",
   eventConfig: {
     provider: "github",
-    event: "label_applied",
-    labelName: "triage",
+    event: "pull_request",
+    repository: "vm0-ai/vm0",
+    action: "closed",
+    merged: true,
     filters: {
-      subject: "both",
-      actor: { type: "me" },
+      baseBranches: ["main"],
     },
   },
   schedule: null,
@@ -724,53 +725,68 @@ describe("okou workflow automation commands", () => {
       expect(logCalls).toContain("Support");
     });
 
-    it("should add a GitHub label applied automation", async () => {
-      const captured = captureCreateAutomation({
-        ...githubLabelAutomation,
-        eventConfig: {
-          provider: "github",
-          event: "label_applied",
-          labelName: "triage",
-          filters: {
-            subject: "pull_requests",
-            actor: { type: "anyone" },
-          },
-        },
-      });
+    it("should add a GitHub pull request automation for the staff workspace", async () => {
+      vi.stubEnv("ZERO_TOKEN", zeroToken(STAFF_ORG_ID));
+      const captured = captureCreateAutomation(githubPullRequestAutomation);
 
       await automationCommand.parseAsync([
         "node",
         "cli",
         "add",
         WORKFLOW_ID,
-        "github-label-applied",
-        "--label",
-        "triage",
-        "--subject",
-        "pull-requests",
-        "--actor",
-        "anyone",
+        "github-pull-request",
+        "--repository",
+        "vm0-ai/vm0",
+        "--action",
+        "closed",
+        "--merged",
+        "yes",
+        "--base-branch",
+        "main",
       ]);
 
       expect(captured.workflowId).toBe(WORKFLOW_ID);
       expect(captured.body).toEqual({
         kind: "event",
-        eventType: "github-label-applied",
+        eventType: "github-pull-request",
         eventConfig: {
           provider: "github",
-          event: "label_applied",
-          labelName: "triage",
+          event: "pull_request",
+          repository: "vm0-ai/vm0",
+          action: "closed",
+          merged: true,
           filters: {
-            subject: "pull_requests",
-            actor: { type: "anyone" },
+            baseBranches: ["main"],
           },
         },
       });
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("GitHub label applied");
-      expect(logCalls).toContain("triage");
-      expect(logCalls).toContain("pull requests");
-      expect(logCalls).toContain("anyone");
+      expect(logCalls).toContain("GitHub pull request");
+      expect(logCalls).toContain("vm0-ai/vm0");
+      expect(logCalls).toContain("closed");
+    });
+
+    it("should reject --merged for non-closed GitHub pull request actions", async () => {
+      vi.stubEnv("ZERO_TOKEN", zeroToken(STAFF_ORG_ID));
+      await expect(async () => {
+        await automationCommand.parseAsync([
+          "node",
+          "cli",
+          "add",
+          WORKFLOW_ID,
+          "github-pull-request",
+          "--repository",
+          "vm0-ai/vm0",
+          "--action",
+          "opened",
+          "--merged",
+          "yes",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("--merged only applies to the closed action"),
+      );
     });
 
     it("should add a GitHub workflow run completed automation", async () => {
@@ -2048,48 +2064,54 @@ describe("okou workflow automation commands", () => {
       expect(logCalls).toContain("Escalated");
     });
 
-    it("should update a GitHub label applied automation", async () => {
+    it("should update a GitHub pull request automation", async () => {
       const updated = {
-        ...githubLabelAutomation,
+        ...githubPullRequestAutomation,
         eventConfig: {
           provider: "github",
-          event: "label_applied",
-          labelName: "triage",
+          event: "pull_request",
+          repository: "vm0-ai/vm0",
+          action: "closed",
+          merged: false,
           filters: {
-            subject: "issues",
-            actor: { type: "anyone" },
+            authors: ["pr-author"],
           },
         },
       };
-      const captured = captureUpdateAutomation(updated, githubLabelAutomation);
+      const captured = captureUpdateAutomation(
+        updated,
+        githubPullRequestAutomation,
+      );
 
       await automationCommand.parseAsync([
         "node",
         "cli",
         "update",
         AUTOMATION_ID,
-        "--subject",
-        "issues",
-        "--actor",
-        "anyone",
+        "--merged",
+        "no",
+        "--base-branch",
+        "any",
+        "--author",
+        "pr-author",
       ]);
 
       expect(captured.id).toBe(AUTOMATION_ID);
       expect(captured.body).toEqual({
         eventConfig: {
           provider: "github",
-          event: "label_applied",
-          labelName: "triage",
+          event: "pull_request",
+          repository: "vm0-ai/vm0",
+          action: "closed",
+          merged: false,
           filters: {
-            subject: "issues",
-            actor: { type: "anyone" },
+            authors: ["pr-author"],
           },
         },
       });
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-      expect(logCalls).toContain("GitHub label applied");
-      expect(logCalls).toContain("issues");
-      expect(logCalls).toContain("anyone");
+      expect(logCalls).toContain("GitHub pull request");
+      expect(logCalls).toContain("pr-author");
     });
 
     it("should update and clear GitHub workflow run filters", async () => {
@@ -2231,7 +2253,7 @@ describe("okou workflow automation commands", () => {
               cronAutomation,
               loopAutomation,
               gmailAutomation,
-              githubLabelAutomation,
+              githubPullRequestAutomation,
               notionAutomation,
               notionDatabaseAutomation,
               notionContentUpdatedAutomation,
@@ -2250,10 +2272,10 @@ describe("okou workflow automation commands", () => {
       expect(logCalls).toContain("every 15m");
       expect(logCalls).toContain("Gmail new message");
       expect(logCalls).toContain('from contains "@acme.com"');
-      expect(logCalls).toContain("GitHub label applied");
+      expect(logCalls).toContain("GitHub pull request closed");
       expect(logCalls).toContain("Notion page content updated");
       expect(logCalls).toContain("Release plan");
-      expect(logCalls).toContain("triage");
+      expect(logCalls).toContain("vm0-ai/vm0, merged");
       expect(logCalls).toContain("New Notion child page");
       expect(logCalls).toContain("Product notes");
       expect(logCalls).toContain("New Notion database item");

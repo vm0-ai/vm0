@@ -1,38 +1,73 @@
 import { command } from "ccstate";
 import { connectorOauthStates } from "@vm0/db/schema/connector-oauth-state";
-import { asc, inArray, lte } from "drizzle-orm";
+import { and, asc, eq, inArray, lte } from "drizzle-orm";
 
 import { nowDate } from "../../lib/time";
-import { writeDb$ } from "../external/db";
+import { type Db, writeDb$ } from "../external/db";
 
 const DELETE_BATCH_SIZE = 1000;
 const MAX_BATCHES = 10;
 
+interface ConnectorOauthStateCleanupOwner {
+  readonly userId: string;
+  readonly orgId: string;
+}
+
+async function cleanupConnectorOauthStates(
+  db: Db,
+  cutoff: Date,
+  owner: ConnectorOauthStateCleanupOwner | undefined,
+  signal: AbortSignal,
+): Promise<number> {
+  const expiredWhere = owner
+    ? and(
+        lte(connectorOauthStates.expiresAt, cutoff),
+        eq(connectorOauthStates.userId, owner.userId),
+        eq(connectorOauthStates.orgId, owner.orgId),
+      )
+    : lte(connectorOauthStates.expiresAt, cutoff);
+  let totalDeleted = 0;
+
+  for (let batch = 0; batch < MAX_BATCHES; batch += 1) {
+    const expiredStates = db
+      .select({ id: connectorOauthStates.id })
+      .from(connectorOauthStates)
+      .where(expiredWhere)
+      .orderBy(asc(connectorOauthStates.expiresAt))
+      .limit(DELETE_BATCH_SIZE);
+    const { rowCount } = await db
+      .delete(connectorOauthStates)
+      .where(inArray(connectorOauthStates.id, expiredStates));
+    signal.throwIfAborted();
+
+    const batchDeleted = rowCount ?? 0;
+    totalDeleted += batchDeleted;
+    if (batchDeleted < DELETE_BATCH_SIZE) {
+      break;
+    }
+  }
+
+  return totalDeleted;
+}
+
 export const cleanupConnectorOauthStates$ = command(
   async ({ set }, signal: AbortSignal): Promise<number> => {
-    const db = set(writeDb$);
-    const cutoff = nowDate();
-    let totalDeleted = 0;
+    return await cleanupConnectorOauthStates(
+      set(writeDb$),
+      nowDate(),
+      undefined,
+      signal,
+    );
+  },
+);
 
-    for (let batch = 0; batch < MAX_BATCHES; batch += 1) {
-      const expiredStates = db
-        .select({ id: connectorOauthStates.id })
-        .from(connectorOauthStates)
-        .where(lte(connectorOauthStates.expiresAt, cutoff))
-        .orderBy(asc(connectorOauthStates.expiresAt))
-        .limit(DELETE_BATCH_SIZE);
-      const { rowCount } = await db
-        .delete(connectorOauthStates)
-        .where(inArray(connectorOauthStates.id, expiredStates));
-      signal.throwIfAborted();
-
-      const batchDeleted = rowCount ?? 0;
-      totalDeleted += batchDeleted;
-      if (batchDeleted < DELETE_BATCH_SIZE) {
-        break;
-      }
-    }
-
-    return totalDeleted;
+export const cleanupConnectorOauthStatesForTest$ = command(
+  async ({ set }, marker: string, signal: AbortSignal): Promise<number> => {
+    return await cleanupConnectorOauthStates(
+      set(writeDb$),
+      nowDate(),
+      { userId: marker, orgId: marker },
+      signal,
+    );
   },
 );

@@ -3,11 +3,15 @@ import { and, asc, eq } from "drizzle-orm";
 import {
   githubDeploymentStatusCreatedEventConfigSchema,
   githubIssueCommentCreatedEventConfigSchema,
+  githubPullRequestActionSchema,
+  githubPullRequestEventConfigSchema,
   githubPullRequestReviewSubmittedEventConfigSchema,
   githubWorkflowJobCompletedEventConfigSchema,
   type GithubDeploymentState,
   type GithubDeploymentStatusCreatedEventConfig,
   type GithubIssueCommentCreatedEventConfig,
+  type GithubPullRequestAction,
+  type GithubPullRequestEventConfig,
   type GithubPullRequestReviewState,
   type GithubPullRequestReviewSubmittedEventConfig,
   type GithubWorkflowJobCompletedEventConfig,
@@ -135,6 +139,28 @@ export interface GithubDeploymentStatusEventPayload {
   readonly sender: GithubWebhookUser;
 }
 
+export interface GithubPullRequestEventPayload {
+  readonly action: string;
+  readonly pull_request: {
+    readonly number: number;
+    readonly title: string;
+    readonly html_url: string;
+    readonly draft: boolean;
+    readonly merged: boolean | null;
+    readonly merged_at: string | null;
+    readonly merge_commit_sha: string | null;
+    readonly merged_by: GithubWebhookUser | null;
+    readonly user: GithubWebhookUser;
+    readonly base: { readonly ref: string };
+    readonly head: { readonly ref: string; readonly sha: string };
+    readonly labels: readonly { readonly name: string }[];
+  };
+  readonly label?: { readonly name: string };
+  readonly repository: GithubWebhookRepository;
+  readonly installation: GithubWebhookInstallation;
+  readonly sender: GithubWebhookUser;
+}
+
 export interface GithubIssueCommentEventPayload {
   readonly action: string;
   readonly issue: {
@@ -159,6 +185,7 @@ type GithubWebhookAutomationEventType = Extract<
   ZeroAutomationEventType,
   | "github-deployment-status-created"
   | "github-issue-comment-created"
+  | "github-pull-request"
   | "github-pull-request-review-submitted"
   | "github-workflow-job-completed"
 >;
@@ -167,6 +194,7 @@ type GithubWebhookAutomationEventConfig = Extract<
   GithubAutomationEventConfig,
   | { readonly event: "deployment_status_created" }
   | { readonly event: "issue_comment_created" }
+  | { readonly event: "pull_request" }
   | { readonly event: "pull_request_review_submitted" }
   | { readonly event: "workflow_job_completed" }
 >;
@@ -176,6 +204,11 @@ type GithubWebhookAutomationEvent =
       readonly eventType: "github-workflow-job-completed";
       readonly webhookEvent: "workflow_job";
       readonly payload: GithubWorkflowJobEventPayload;
+    }
+  | {
+      readonly eventType: "github-pull-request";
+      readonly webhookEvent: "pull_request";
+      readonly payload: GithubPullRequestEventPayload;
     }
   | {
       readonly eventType: "github-pull-request-review-submitted";
@@ -211,6 +244,10 @@ function parseConfigForEventType(
     case "github-workflow-job-completed": {
       const parsed =
         githubWorkflowJobCompletedEventConfigSchema.safeParse(eventConfig);
+      return parsed.success ? parsed.data : null;
+    }
+    case "github-pull-request": {
+      const parsed = githubPullRequestEventConfigSchema.safeParse(eventConfig);
       return parsed.success ? parsed.data : null;
     }
     case "github-pull-request-review-submitted": {
@@ -330,6 +367,43 @@ function workflowJobMatchesConfig(
   );
 }
 
+function pullRequestMatchesConfig(
+  config: GithubPullRequestEventConfig,
+  payload: GithubPullRequestEventPayload,
+): boolean {
+  if (payload.action !== config.action) {
+    return false;
+  }
+  if (
+    config.merged !== undefined &&
+    (payload.pull_request.merged ?? false) !== config.merged
+  ) {
+    return false;
+  }
+  const { filters } = config;
+  const matchedLabels =
+    config.action === "labeled" || config.action === "unlabeled"
+      ? [payload.label?.name]
+      : payload.pull_request.labels.map((label) => {
+          return label.name;
+        });
+  return (
+    matchesNormalizedFilter(
+      [config.repository],
+      [payload.repository.full_name, payload.repository.id],
+    ) &&
+    matchesExactFilter(filters.baseBranches, payload.pull_request.base.ref) &&
+    matchesNormalizedFilter(filters.authors, [
+      payload.pull_request.user.login,
+      payload.pull_request.user.id,
+    ]) &&
+    matchesNormalizedFilter(filters.pullRequestNumbers, [
+      payload.pull_request.number,
+    ]) &&
+    matchesNormalizedFilter(filters.labels, matchedLabels)
+  );
+}
+
 function pullRequestReviewMatchesConfig(
   config: GithubPullRequestReviewSubmittedEventConfig,
   payload: GithubPullRequestReviewEventPayload,
@@ -414,6 +488,10 @@ function eventCanDispatch(event: GithubWebhookAutomationEvent): boolean {
         event.payload.workflow_job.conclusion !== null
       );
     }
+    case "github-pull-request": {
+      return githubPullRequestActionSchema.safeParse(event.payload.action)
+        .success;
+    }
     case "github-pull-request-review-submitted": {
       return event.payload.action === "submitted";
     }
@@ -436,6 +514,12 @@ function eventMatchesAutomation(
         githubWorkflowJobCompletedEventConfigSchema.safeParse(config);
       return (
         parsed.success && workflowJobMatchesConfig(parsed.data, event.payload)
+      );
+    }
+    case "github-pull-request": {
+      const parsed = githubPullRequestEventConfigSchema.safeParse(config);
+      return (
+        parsed.success && pullRequestMatchesConfig(parsed.data, event.payload)
       );
     }
     case "github-pull-request-review-submitted": {
@@ -590,6 +674,7 @@ function eventSubject(event: GithubWebhookAutomationEvent): {
   readonly number: number | null;
 } {
   switch (event.eventType) {
+    case "github-pull-request":
     case "github-pull-request-review-submitted": {
       return {
         type: "pull_request",
@@ -636,11 +721,57 @@ async function recordProcessedDelivery(args: {
   return row?.id ?? null;
 }
 
+function pullRequestPromptSummary(
+  payload: GithubPullRequestEventPayload,
+): string {
+  const subject = `pull request #${payload.pull_request.number}`;
+  const action: GithubPullRequestAction = githubPullRequestActionSchema.parse(
+    payload.action,
+  );
+  switch (action) {
+    case "opened": {
+      return `GitHub user "${payload.pull_request.user.login}" opened ${subject}`;
+    }
+    case "reopened": {
+      return `GitHub user "${payload.pull_request.user.login}" reopened ${subject}`;
+    }
+    case "closed": {
+      return payload.pull_request.merged
+        ? `GitHub ${subject} was merged into "${payload.pull_request.base.ref}"`
+        : `GitHub ${subject} was closed without merging`;
+    }
+    case "ready_for_review": {
+      return `GitHub ${subject} was marked ready for review`;
+    }
+    case "converted_to_draft": {
+      return `GitHub ${subject} was converted to a draft`;
+    }
+    case "synchronize": {
+      return `GitHub ${subject} was updated with new commits`;
+    }
+    case "enqueued": {
+      return `GitHub ${subject} was added to the merge queue`;
+    }
+    case "dequeued": {
+      return `GitHub ${subject} was removed from the merge queue`;
+    }
+    case "labeled": {
+      return `GitHub label "${payload.label?.name}" was applied to ${subject}`;
+    }
+    case "unlabeled": {
+      return `GitHub label "${payload.label?.name}" was removed from ${subject}`;
+    }
+  }
+}
+
 function eventPromptSummary(event: GithubWebhookAutomationEvent): string {
   switch (event.eventType) {
     case "github-workflow-job-completed": {
       const job = event.payload.workflow_job;
       return `the GitHub Actions job "${job.name}" completed with conclusion "${job.conclusion}"`;
+    }
+    case "github-pull-request": {
+      return pullRequestPromptSummary(event.payload);
     }
     case "github-pull-request-review-submitted": {
       const review = event.payload.review;
@@ -656,6 +787,32 @@ function eventPromptSummary(event: GithubWebhookAutomationEvent): string {
   }
 }
 
+function pullRequestPromptMetadata(
+  payload: GithubPullRequestEventPayload,
+): Readonly<Record<string, unknown>> {
+  const pullRequest = payload.pull_request;
+  return {
+    pullRequest: {
+      number: pullRequest.number,
+      title: pullRequest.title,
+      url: pullRequest.html_url,
+      draft: pullRequest.draft,
+      merged: pullRequest.merged ?? false,
+      mergedAt: pullRequest.merged_at,
+      mergeCommitSha: pullRequest.merge_commit_sha,
+      mergedBy: pullRequest.merged_by,
+      author: pullRequest.user,
+      baseBranch: pullRequest.base.ref,
+      headBranch: pullRequest.head.ref,
+      headSha: pullRequest.head.sha,
+      labels: pullRequest.labels.map((label) => {
+        return label.name;
+      }),
+    },
+    ...(payload.label ? { label: payload.label } : {}),
+  };
+}
+
 function eventPromptMetadata(
   event: GithubWebhookAutomationEvent,
 ): Readonly<Record<string, unknown>> {
@@ -666,6 +823,12 @@ function eventPromptMetadata(
     repository: { id: repository.id, fullName: repository.full_name },
   };
   switch (event.eventType) {
+    case "github-pull-request": {
+      return {
+        ...common,
+        ...pullRequestPromptMetadata(event.payload),
+      };
+    }
     case "github-workflow-job-completed": {
       const job = event.payload.workflow_job;
       return {
@@ -776,9 +939,14 @@ function githubWebhookTriggerContext(args: {
     workflowName: args.automation.workflowName,
     eventType: args.event.eventType,
     trigger: `${eventPromptSummary(args.event)} (GitHub webhook delivery ${args.deliveryId}).`,
-    notes: [
-      "Not included below: user-authored review and comment bodies, logs, and artifacts. Connected GitHub tools and the GitHub API return them.",
-    ],
+    notes:
+      args.event.eventType === "github-pull-request"
+        ? [
+            "Not included below: the pull request body, comments, files, and diffs. Connected GitHub tools and the GitHub API return them.",
+          ]
+        : [
+            "Not included below: user-authored review and comment bodies, logs, and artifacts. Connected GitHub tools and the GitHub API return them.",
+          ],
     event: {
       automationId: args.automation.automation.id,
       deliveryId: args.deliveryId,

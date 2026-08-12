@@ -333,6 +333,12 @@ export {
   type TestComputerUseStatePostResponse,
 } from "./test-computer-use-state";
 export {
+  testBrowserReconcileBodySchema,
+  testBrowserReconcileContract,
+  type TestBrowserReconcileBody,
+  type TestBrowserReconcileContract,
+} from "./test-browser-reconcile";
+export {
   testRuntimeStateActionBodySchema,
   testRuntimeStateActionResponseSchema,
   testRuntimeStateContract,
@@ -353,6 +359,20 @@ export {
   testMailDraftStateContract,
   type TestMailDraftStateContract,
 } from "./test-mail-draft-state";
+export {
+  testEmailOutboxStateActionBodySchema,
+  testEmailOutboxStateActionResponseSchema,
+  testEmailOutboxStateCleanupBodySchema,
+  testEmailOutboxStateCleanupResponseSchema,
+  testEmailOutboxStateContract,
+  testEmailOutboxStateDrainBodySchema,
+  testEmailOutboxStateDrainResponseSchema,
+  testEmailOutboxStateItemSchema,
+  type TestEmailOutboxStateActionBody,
+  type TestEmailOutboxStateActionResponse,
+  type TestEmailOutboxStateContract,
+  type TestEmailOutboxStateItem,
+} from "./test-email-outbox-state";
 export {
   testUsageStateActionBodySchema,
   testUsageStateActionResponseSchema,

@@ -1,7 +1,8 @@
 import type { CSSProperties } from "react";
-import { Copy, MessageCircle } from "lucide-react";
+import { Copy, Forward, MessageCircle } from "lucide-react";
 import { useGet, useSet } from "ccstate-react";
 import { useTranslation } from "react-i18next";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
   getShortcutParts,
   Popover,
@@ -9,11 +10,14 @@ import {
   PopoverContent,
 } from "@vm0/ui";
 import { rootSignal$ } from "../../signals/root-signal.ts";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
+import { setChatListQuery$ } from "../../signals/zero-page/zero-sidebar-state.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import type {
   ChatThreadFeedbackSelection,
   ChatThreadFeedbackSignals,
 } from "../../signals/chat-page/chat-thread-feedback.ts";
+import { ChatForwardDialog } from "./zero-chat-forward-dialog.tsx";
 
 function anchorStyle(selection: ChatThreadFeedbackSelection): CSSProperties {
   return {
@@ -46,9 +50,11 @@ function ShortcutHint({ shortcut }: { readonly shortcut: string }) {
 function FeedbackToolbar({
   onCopy,
   onProvideFeedback,
+  onForward,
 }: {
   onCopy: () => void;
   onProvideFeedback: () => void;
+  onForward?: () => void;
 }) {
   const { t } = useTranslation();
   return (
@@ -78,6 +84,21 @@ function FeedbackToolbar({
           <ShortcutHint shortcut="c" />
         </button>
         <div className="h-4 w-px bg-border" />
+        {onForward ? (
+          <>
+            <button
+              type="button"
+              onClick={onForward}
+              className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors hover:bg-state-hover hover:text-accent-foreground"
+            >
+              <Forward size={14} />
+              {t(($) => {
+                return $.chat.forward.action;
+              })}
+            </button>
+            <div className="h-4 w-px bg-border" />
+          </>
+        ) : null}
         <button
           type="button"
           onClick={onProvideFeedback}
@@ -95,22 +116,34 @@ function FeedbackToolbar({
   );
 }
 
-// Mounts the selection listeners and the floating Copy / Provide feedback
+// Mounts the selection listeners and the floating Copy / Forward / Provide
 // toolbar anchored to the selected passage. Picking "Provide feedback"
 // drops the quoted passage straight into the composer (see ComposerFeedbackRows
 // in zero-chat-composer.tsx) — there is no separate feedback panel.
 export function ChatFeedbackSelection({
   feedback,
+  sourceAgentId,
+  sourceThreadTitle,
 }: {
   readonly feedback: ChatThreadFeedbackSignals;
+  readonly sourceAgentId: string;
+  readonly sourceThreadTitle: string;
 }) {
   const selection = useGet(feedback.selection$);
+  const forwardSelection = useGet(feedback.forwardSelection$);
+  const forwardComposerState = useGet(feedback.forwardComposerState$);
+  const forwardEnabled =
+    useGet(featureSwitch$)[FeatureSwitchKey.ChatForward] ?? false;
   const rootSignal = useGet(rootSignal$);
   const setFeedbackSelectionListenersRef = useSet(feedback.setListenersRef$);
   const setFeedbackSelectionToolbarRef = useSet(feedback.setToolbarRef$);
   const startFeedback = useSet(feedback.start$);
   const closeSelectionToolbar = useSet(feedback.close$);
   const copy = useSet(feedback.copy$);
+  const openForward = useSet(feedback.openForward$);
+  const setForwardComposerState = useSet(feedback.setForwardComposerState$);
+  const closeForward = useSet(feedback.closeForward$);
+  const setForwardQuery = useSet(setChatListQuery$);
 
   return (
     <>
@@ -133,8 +166,38 @@ export function ChatFeedbackSelection({
               return detach(copy(rootSignal), Reason.DomCallback);
             }}
             onProvideFeedback={startFeedback}
+            onForward={
+              forwardEnabled && selection.threadId && selection.runId
+                ? () => {
+                    const threadId = selection.threadId;
+                    const runId = selection.runId;
+                    if (!threadId || !runId) {
+                      return;
+                    }
+                    openForward({
+                      text: selection.text,
+                      threadId,
+                      runId,
+                    });
+                    setForwardQuery("");
+                  }
+                : undefined
+            }
           />
         </Popover>
+      ) : null}
+      {forwardSelection ? (
+        <ChatForwardDialog
+          selection={forwardSelection}
+          composerState={forwardComposerState}
+          sourceAgentId={sourceAgentId}
+          sourceThreadTitle={sourceThreadTitle}
+          onComposerStateChange={setForwardComposerState}
+          onDismiss={() => {
+            closeForward();
+            setForwardQuery("");
+          }}
+        />
       ) : null}
     </>
   );

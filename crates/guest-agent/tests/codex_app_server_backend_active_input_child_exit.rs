@@ -5,7 +5,7 @@
 
 mod common;
 
-use guest_agent::active_input::{ActiveInputControlOutcome, ActiveInputRuntime};
+use guest_agent::active_input::ActiveInputControlOutcome;
 use guest_agent::masker::SecretMasker;
 use std::time::Duration;
 
@@ -30,11 +30,7 @@ async fn codex_app_server_backend_fails_visible_when_child_exits_during_steer()
     let runtime = common::guest_runtime_from_process_env()?;
     let _run_files = common::RunFilesGuard::new_for_paths(&runtime.paths);
 
-    let active_input = ActiveInputRuntime::new_with_initial_prompt(
-        &runtime.config.run_id,
-        true,
-        &runtime.config.prompt,
-    );
+    let active_input = common::active_input_runtime(&runtime)?;
     let payload = common::active_input_payload("child-exit follow-up prompt")?;
     assert_eq!(
         active_input.controller().handle_control_payload(&payload),

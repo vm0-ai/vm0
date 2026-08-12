@@ -5,7 +5,7 @@
  * cancellation stops only that request from waiting; it does not interrupt the
  * shared refresh used by the rest of the app.
  */
-import { command, computed, state } from "ccstate";
+import { command, computed, state, type Command } from "ccstate";
 import type { Clerk } from "@clerk/clerk-js";
 import { isNetworkRequestError } from "../lib/network-error.ts";
 import {
@@ -22,10 +22,13 @@ export interface AuthRecovery {
   readonly refreshAuth: (signal?: AbortSignal) => Promise<string | null>;
 }
 
-const FOREGROUND_CATCH_UP_EVENT = "catch-up";
 const FOREGROUND_CATCH_UP_REQUEST_EVENT = "request-catch-up";
 
 const foregroundCatchUpTarget$ = state(new EventTarget());
+type ForegroundCatchUpCommand = Command<Promise<void> | void, [AbortSignal]>;
+const foregroundCatchUpCommands$ = state<ReadonlySet<ForegroundCatchUpCommand>>(
+  new Set(),
+);
 
 interface ForegroundReady {
   readonly pending: boolean;
@@ -47,12 +50,32 @@ export const foregroundReady$ = computed((get) => {
 });
 
 export const subscribeForegroundCatchUp$ = command(
-  ({ get }, callback: () => void, signal: AbortSignal) => {
-    get(foregroundCatchUpTarget$).addEventListener(
-      FOREGROUND_CATCH_UP_EVENT,
-      callback,
-      { signal },
+  ({ get, set }, callback$: ForegroundCatchUpCommand, signal: AbortSignal) => {
+    set(
+      foregroundCatchUpCommands$,
+      new Set([...get(foregroundCatchUpCommands$), callback$]),
     );
+    signal.addEventListener(
+      "abort",
+      () => {
+        const commands = new Set(get(foregroundCatchUpCommands$));
+        commands.delete(callback$);
+        set(foregroundCatchUpCommands$, commands);
+      },
+      { once: true },
+    );
+  },
+);
+
+const runForegroundCatchUp$ = command(
+  async ({ get, set }, signal: AbortSignal): Promise<void> => {
+    await Promise.all(
+      [...get(foregroundCatchUpCommands$)].map(async (callback$) => {
+        await set(callback$, signal);
+        signal.throwIfAborted();
+      }),
+    );
+    signal.throwIfAborted();
   },
 );
 
@@ -143,7 +166,8 @@ export const setupAuthCatchUp$ = command(
             if (!token || document.visibilityState !== "visible") {
               return;
             }
-            catchUpTarget.dispatchEvent(new Event(FOREGROUND_CATCH_UP_EVENT));
+            await set(runForegroundCatchUp$, signal);
+            signal.throwIfAborted();
           })(),
           () => {
             if (catchUpPromise === catchUp) {

@@ -133,6 +133,7 @@ interface NormalSendBody {
   readonly clientThreadId?: string;
   readonly chatThreadEventId?: string;
   readonly chatThreadSortEventId?: string;
+  readonly sourceRunId?: string;
   readonly model?: SupportedRunModel;
   readonly modelSelection?: {
     readonly modelProviderId: string;
@@ -231,6 +232,7 @@ interface PreparedNormalSend {
     | undefined;
   readonly triggerSource: "web" | "agent";
   readonly agentRunSource: ChatAgentRunSourceAnnotation | null;
+  readonly chatEventSnapshotReadEnabled: boolean;
 }
 
 function normalSendTriggerSource(
@@ -239,16 +241,14 @@ function normalSendTriggerSource(
   return auth.tokenType === "zero" ? "agent" : "web";
 }
 
-async function resolveChatAgentRunSource(
+async function resolveChatAgentRunSourceById(
   db: Db,
   auth: OrganizationAuthContext,
+  sourceRunId: string,
 ): Promise<{
   readonly annotation: ChatAgentRunSourceAnnotation | null;
   readonly autonomyBudget: number;
 } | null> {
-  if (auth.tokenType !== "zero") {
-    return null;
-  }
   const [source] = await db
     .select({
       runId: zeroRuns.id,
@@ -273,7 +273,7 @@ async function resolveChatAgentRunSource(
         eq(chatThreads.userId, auth.userId),
       ),
     )
-    .where(eq(zeroRuns.id, auth.runId))
+    .where(eq(zeroRuns.id, sourceRunId))
     .limit(1);
   if (!source) {
     return null;
@@ -293,6 +293,19 @@ async function resolveChatAgentRunSource(
   };
 }
 
+async function resolveChatAgentRunSource(
+  db: Db,
+  auth: OrganizationAuthContext,
+): Promise<{
+  readonly annotation: ChatAgentRunSourceAnnotation | null;
+  readonly autonomyBudget: number;
+} | null> {
+  if (auth.tokenType !== "zero") {
+    return null;
+  }
+  return await resolveChatAgentRunSourceById(db, auth, auth.runId);
+}
+
 function agentRunSourceTitleSnapshot(title: string | null): string {
   const normalizedTitle = title?.trim();
   if (!normalizedTitle || normalizedTitle.toLowerCase() === "now") {
@@ -305,6 +318,7 @@ async function resolveNormalSendAgentRunSource(params: {
   readonly db: Db;
   readonly auth: OrganizationAuthContext;
   readonly userMessage: UserMessageDocument;
+  readonly sourceRunId: string | undefined;
 }): Promise<
   | {
       readonly source: ChatAgentRunSourceAnnotation | null;
@@ -321,6 +335,34 @@ async function resolveNormalSendAgentRunSource(params: {
         "Agent source annotations are server-managed",
       ),
     };
+  }
+  if (params.sourceRunId !== undefined) {
+    if (
+      params.auth.tokenType === "zero" ||
+      params.auth.tokenType === "sandbox"
+    ) {
+      return {
+        response: badRequestMessage(
+          "Forward source runs are only accepted from user-authenticated sessions",
+        ),
+      };
+    }
+    const resolved = await resolveChatAgentRunSourceById(
+      params.db,
+      params.auth,
+      params.sourceRunId,
+    );
+    if (resolved === null) {
+      return { response: badRequestMessage("Forward source run not found") };
+    }
+    if (resolved.annotation === null) {
+      return {
+        response: badRequestMessage(
+          "Forward source run is not linked to a chat thread",
+        ),
+      };
+    }
+    return { source: resolved.annotation };
   }
   const resolved = await resolveChatAgentRunSource(params.db, params.auth);
   if (resolved === null) {
@@ -367,6 +409,7 @@ function shouldTouchThreadSortFromNormalSend(
 
 interface NormalSendFeatureSwitches {
   readonly codexFastModeEnabled: boolean;
+  readonly chatEventSnapshotReadEnabled: boolean;
 }
 
 interface RuntimeNormalSendBody extends Omit<
@@ -874,6 +917,10 @@ async function resolveNormalSendFeatureSwitches(
   return {
     codexFastModeEnabled: isFeatureEnabled(
       FeatureSwitchKey.CodexFastMode,
+      context,
+    ),
+    chatEventSnapshotReadEnabled: isFeatureEnabled(
+      FeatureSwitchKey.ChatEventSnapshotRead,
       context,
     ),
   };
@@ -2226,6 +2273,7 @@ const prepareNormalSend$ = command(
       db,
       auth: args.auth,
       userMessage: args.body.userMessage,
+      sourceRunId: args.body.sourceRunId,
     });
     signal.throwIfAborted();
     if ("response" in agentRunSourceResult) {
@@ -2317,6 +2365,8 @@ const prepareNormalSend$ = command(
       preflightClientEventConflict: preflightClientEventResponse,
       triggerSource: normalSendTriggerSource(args.auth),
       agentRunSource,
+      chatEventSnapshotReadEnabled:
+        featureSwitches.chatEventSnapshotReadEnabled,
     };
   },
 );
@@ -2801,6 +2851,7 @@ function buildCreateZeroRunArgs(params: {
     computerUseHostDisplayName:
       prepared.computerUseHostGrant?.displayName ?? null,
     agentRunSource: prepared.agentRunSource,
+    chatEventSnapshotReadEnabled: prepared.chatEventSnapshotReadEnabled,
   };
   return {
     auth: args.auth,

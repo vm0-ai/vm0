@@ -56,6 +56,7 @@ export enum FeatureSwitchKey {
   ZapierConnector = "zapierConnector",
   ComputerUseDesktopPlugins = "computerUseDesktopPlugins",
   ChatErrorRecovery = "chatErrorRecovery",
+  ChatForward = "chatForward",
   ChatRunContinuationPresentation = "chatRunContinuationPresentation",
   ResponsiveFollowupCards = "responsiveFollowupCards",
   ConnectorDiscovery = "connectorDiscovery",
@@ -74,6 +75,7 @@ export enum FeatureSwitchKey {
   PiLoop = "piLoop",
   VideoTemplateOptions = "videoTemplateOptions",
   ChatEventSnapshotRead = "chatEventSnapshotRead",
+  UnifiedIndicatorApi = "unifiedIndicatorApi",
   EmojiPickerCategoryRail = "emojiPickerCategoryRail",
   PresentationTemplates = "presentationTemplates",
 }

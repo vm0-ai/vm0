@@ -62,8 +62,10 @@ describe("desktop update feed", () => {
     expect(desktopUpdateFeedBaseUrl("https://api.vm0.ai", "zero")).toBe(
       "https://api.vm0.ai/api/desktop/updates/stable/darwin/arm64",
     );
-    expect(desktopUpdateFeedBaseUrl("https://api.okou.ai", "okou")).toBe(
-      "https://api.okou.ai/api/desktop/updates/okou/stable/darwin/arm64",
+    expect(
+      desktopUpdateFeedBaseUrl("https://api.okou.ai", "ai-okou-desktop"),
+    ).toBe(
+      "https://api.okou.ai/api/desktop/updates/ai-okou-desktop/stable/darwin/arm64",
     );
   });
 });

@@ -32,7 +32,7 @@ const goalInputRevoker = alias(chatEvents, "goal_input_revoker");
 
 export type GoalQueueAdmission =
   | { readonly kind: "inserted"; readonly eventId: string }
-  | { readonly kind: "coalesced"; readonly eventId: string };
+  | { readonly kind: "coalesced" };
 
 export interface PendingGoalQueueEvent {
   readonly id: string;
@@ -61,10 +61,10 @@ type FailedGoalQueueSettlement =
   | { readonly kind: "stale" }
   | { readonly kind: "rejected"; readonly goalId: string };
 
-async function pendingGoalEventId(
+async function pendingGoalEventExists(
   db: Pick<Db, "select">,
   chatThreadId: string,
-): Promise<string | null> {
+): Promise<boolean> {
   const [event] = await db
     .select({ id: chatEvents.id })
     .from(chatEvents)
@@ -82,7 +82,7 @@ async function pendingGoalEventId(
       ),
     )
     .limit(1);
-  return event?.id ?? null;
+  return event !== undefined;
 }
 
 /** Persist one coalesced goal continuation trigger without preparing its run. */
@@ -98,9 +98,8 @@ export async function admitGoalQueueEvent(
     if (!(await lockChatQueueThread(tx, args.chatThreadId))) {
       throw new Error("Goal chat thread no longer exists");
     }
-    const pendingEventId = await pendingGoalEventId(tx, args.chatThreadId);
-    if (pendingEventId) {
-      return { kind: "coalesced", eventId: pendingEventId };
+    if (await pendingGoalEventExists(tx, args.chatThreadId)) {
+      return { kind: "coalesced" };
     }
     const inserted = await insertChatEvent(tx, {
       chatThreadId: args.chatThreadId,

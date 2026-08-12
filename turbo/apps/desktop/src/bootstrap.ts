@@ -1,4 +1,5 @@
 import { app } from "electron";
+import { join } from "node:path";
 
 import { enterDegradedDesktopMode } from "./bootstrap-degraded";
 import { resolveDesktopConfig } from "./config";
@@ -16,6 +17,10 @@ const config = resolveDesktopConfig();
 const apiBaseUrl = resolveComputerUseApiBaseUrl(config.platformUrl);
 app.setName(config.identity.displayName);
 app.name = config.identity.displayName;
+app.setPath(
+  "userData",
+  join(app.getPath("appData"), config.identity.userDataDirectoryName),
+);
 
 type DesktopMainLoadResult =
   | { readonly ok: true; readonly main: DesktopMainModule }

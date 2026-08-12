@@ -7,6 +7,7 @@ The stable facade covers:
   per-response source identity for WebSocket reporting, and buffer results for
   aggregate platform webhook upload to billing and/or observation endpoints
   through a background thread pool — see :mod:`usage.providers.model_provider`.
+  Cross-provider non-streaming JSON dispatch is owned by :mod:`usage.model_json`.
 - Billable connector responses (flagged by the web layer via
   ``billableFirewalls`` → ``metadata_keys.FIREWALL_BILLABLE``): compute
   per-permission billable resource counts and buffer them for aggregate
@@ -54,6 +55,11 @@ from .counters import (
     set_pending_path,
     write_pending_snapshot,
 )
+from .model_json import (
+    ModelUsageProtocol,
+    create_model_json_usage_extractor,
+    extract_model_usage_with_error_from_json,
+)
 from .openai_chat_completions import (
     create_openai_chat_completions_json_usage_extractor,
     create_openai_chat_completions_sse_usage_extractor,
@@ -91,6 +97,7 @@ from .providers.model_provider import (
 __all__ = [
     "DEFAULT_FLUSH_INTERVAL_SECONDS",
     "BufferedReportLease",
+    "ModelUsageProtocol",
     "OpenAIResponsesClientEvent",
     "OpenAIResponsesEvent",
     "admit_buffered_report",
@@ -102,6 +109,7 @@ __all__ = [
     "create_anthropic_messages_json_usage_extractor",
     "create_anthropic_messages_sse_usage_extractor",
     "create_connector_response_parser",
+    "create_model_json_usage_extractor",
     "create_openai_chat_completions_json_usage_extractor",
     "create_openai_chat_completions_sse_usage_extractor",
     "create_openai_responses_json_usage_extractor",
@@ -110,6 +118,7 @@ __all__ = [
     "decrement_in_flight_flows",
     "drain_usage_events_after_executor_shutdown",
     "extract_anthropic_messages_usage_with_error_from_json",
+    "extract_model_usage_with_error_from_json",
     "extract_openai_chat_completions_usage_with_error_from_json",
     "extract_openai_responses_usage_from_event",
     "extract_openai_responses_usage_with_error_from_json",

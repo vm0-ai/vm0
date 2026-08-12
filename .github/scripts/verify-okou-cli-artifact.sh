@@ -58,9 +58,8 @@ jq -e '
   .name == "@vm0/okou-cli"
   and .private == true
   and (.bin | type == "object")
-  and ((.bin | keys | sort) == ["okou", "zero"])
+  and ((.bin | keys) == ["okou"])
   and .bin.okou == "okou.js"
-  and .bin.zero == "okou.js"
   and ((.dependencies // {}) | length == 0)
   and ((.optionalDependencies // {}) | length == 0)
   and ((.peerDependencies // {}) | length == 0)

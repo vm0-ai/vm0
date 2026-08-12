@@ -55,6 +55,12 @@ import {
   textToMessageDocument,
   type EditorDocumentSnapshot,
 } from "../zero-page/user-message-document-codec.ts";
+import {
+  forwardSubmissionPrompt,
+  withForwardedContent,
+  type ChatForwardContext,
+} from "./chat-forward.ts";
+import { withOptimisticAgentRunSource } from "./chat-event-signals.ts";
 
 export type NewChatThreadPane = "main" | "sidebar";
 
@@ -76,6 +82,8 @@ interface SendNewThreadMessageRequest {
   computerUseHostId?: string | null;
   cloudBrowserEnabled?: boolean;
   routeSearchParams?: URLSearchParams;
+  forward?: ChatForwardContext;
+  onOptimisticSend?: () => void;
 }
 
 interface SendNewThreadMessageResult {
@@ -107,7 +115,7 @@ function userMessageForNewThread(
         attachments: prepared.attachments,
       })
     : textToMessageDocument(
-        prepared.prompt,
+        request.forward ? request.prompt : prepared.prompt,
         generationTemplate && request.generationTemplateTitleSnapshot
           ? {
               titleSnapshot: request.generationTemplateTitleSnapshot,
@@ -116,6 +124,9 @@ function userMessageForNewThread(
           : undefined,
         prepared.attachments,
       );
+  if (request.forward) {
+    return withForwardedContent(userMessage, request.forward);
+  }
   if (!userMessage) {
     throw new Error("Failed to serialize user message");
   }
@@ -156,6 +167,7 @@ function newThreadSendBody({
   userMessage,
   computerUseHostId,
   cloudBrowserEnabled,
+  sourceRunId,
 }: {
   agentId: string;
   threadId: string;
@@ -167,6 +179,7 @@ function newThreadSendBody({
   userMessage: UserMessageDocument;
   computerUseHostId?: string | null;
   cloudBrowserEnabled?: boolean;
+  sourceRunId?: string;
 }) {
   const runOptions = runOptionsFromModelProviderSelection(
     modelSelection,
@@ -183,6 +196,7 @@ function newThreadSendBody({
     userMessage,
     ...(computerUseHostId === undefined ? {} : { computerUseHostId }),
     ...(cloudBrowserEnabled === undefined ? {} : { cloudBrowserEnabled }),
+    ...(sourceRunId === undefined ? {} : { sourceRunId }),
   };
 }
 
@@ -356,6 +370,8 @@ async function createChatThread(
         clientThreadId: args.clientThreadId,
         eventId: args.eventId,
         model: args.modelSelection.selectedModel,
+        serviceTier:
+          args.modelSelection.codexServiceTier === "fast" ? "priority" : null,
         ...(args.title ? { title: args.title } : {}),
       },
       fetchOptions: { signal },
@@ -483,10 +499,13 @@ const sendNewThreadMessage$ = command(
     if (!resolvedModelSelection) {
       return null;
     }
+    const submissionPrompt = request.forward
+      ? forwardSubmissionPrompt(request.forward, prompt)
+      : prompt;
     const prepared = await set(
       prepareUserMessageFromDraft$,
       draft,
-      prompt,
+      submissionPrompt,
       {
         excludeVisualAttachments: shouldExcludeVisualAttachmentsForModel(
           resolvedModelSelection.selectedModel,
@@ -507,6 +526,9 @@ const sendNewThreadMessage$ = command(
         ? "priority"
         : undefined,
     );
+    const optimisticUserMessage = request.forward
+      ? withOptimisticAgentRunSource(annotatedUserMessage, request.forward)
+      : annotatedUserMessage;
     const threadId = crypto.randomUUID();
     const clientEventId = crypto.randomUUID();
     const chatThreadEventId = crypto.randomUUID();
@@ -516,7 +538,7 @@ const sendNewThreadMessage$ = command(
         createNewThreadOptimisticEventEntry({
           threadId,
           clientEventId,
-          userMessage: annotatedUserMessage,
+          userMessage: optimisticUserMessage,
         }),
       ),
     );
@@ -536,8 +558,11 @@ const sendNewThreadMessage$ = command(
       },
       signal,
     );
+    request.onOptimisticSend?.();
     set(draft.clear$);
-    const clearDraftResult = set(clearAgentDraftById$, agentId, signal);
+    const clearDraftResult = request.forward
+      ? Promise.resolve()
+      : set(clearAgentDraftById$, agentId, signal);
     const createClient = get(zeroClient$);
     L.debug("sendNewThreadMessage$ POST chat-threads start", { threadId });
     const createResult = (async (): Promise<void> => {
@@ -567,6 +592,7 @@ const sendNewThreadMessage$ = command(
       userMessage: annotatedUserMessage,
       computerUseHostId,
       cloudBrowserEnabled,
+      sourceRunId: request.forward?.runId,
     });
     const sendResult = (async (): Promise<SendNewThreadMessageResult> => {
       await Promise.all([clearDraftResult, createResult]);
@@ -607,6 +633,22 @@ export const sendNewThread$ = command(
       },
       signal,
     );
+    await result.sendResult;
+    signal.throwIfAborted();
+    return true;
+  },
+);
+
+export const sendNewThreadWithoutNavigation$ = command(
+  async (
+    { set },
+    request: SendNewThreadMessageRequest,
+    signal: AbortSignal,
+  ): Promise<boolean> => {
+    const result = await set(sendNewThreadMessage$, request, signal);
+    if (!result) {
+      return false;
+    }
     await result.sendResult;
     signal.throwIfAborted();
     return true;

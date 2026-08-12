@@ -5,6 +5,8 @@
       "product": "zero",
       "brandName": "Zero",
       "displayName": "Zero Computer Use",
+      "userDataDirectoryName": "Zero Computer Use",
+      "updateLine": "zero",
       "bundleId": "ai.vm0.zero.desktop",
       "authProtocolName": "Zero Desktop Auth",
       "authScheme": "ai.vm0.zero.desktop"
@@ -13,6 +15,8 @@
       "product": "zero",
       "brandName": "Zero",
       "displayName": "Zero CU Dev",
+      "userDataDirectoryName": "Zero CU Dev",
+      "updateLine": "zero",
       "bundleId": "ai.vm0.zero.desktop.dev",
       "authProtocolName": "Zero CU Dev Desktop Auth",
       "authScheme": "ai.vm0.zero.desktop.dev"
@@ -23,18 +27,22 @@
     "production": {
       "product": "okou",
       "brandName": "Okou",
-      "displayName": "Okou Computer Use",
-      "bundleId": "ai.okou.computer-use",
-      "authProtocolName": "Okou Computer Use Auth",
-      "authScheme": "ai.okou.computer-use"
+      "displayName": "Okou",
+      "userDataDirectoryName": "Okou",
+      "updateLine": "ai-okou-desktop",
+      "bundleId": "ai.okou.desktop",
+      "authProtocolName": "Okou Auth",
+      "authScheme": "ai.okou.desktop"
     },
     "development": {
       "product": "okou",
       "brandName": "Okou",
-      "displayName": "Okou CU Dev",
-      "bundleId": "ai.okou.computer-use.dev",
-      "authProtocolName": "Okou CU Dev Auth",
-      "authScheme": "ai.okou.computer-use.dev"
+      "displayName": "Okou Dev",
+      "userDataDirectoryName": "Okou Dev",
+      "updateLine": "ai-okou-desktop",
+      "bundleId": "ai.okou.desktop.dev",
+      "authProtocolName": "Okou Dev Auth",
+      "authScheme": "ai.okou.desktop.dev"
     }
   }
 }

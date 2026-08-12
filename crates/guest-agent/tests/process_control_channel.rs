@@ -137,7 +137,7 @@ async fn process_control_channel_reaches_guest_agent() -> TestResult<()> {
     let pre_ready_ack = handle
         .control(
             PRE_READY_CONTROL_MESSAGE_ID,
-            br#"{"type":"active-input","text":"before-ready"}"#,
+            br#"{"type":"active-input","deliveryId":"1e208848-53bc-440a-85d8-adcd048e167c","text":"before-ready"}"#,
             Duration::from_secs(10),
         )
         .await?;
@@ -152,7 +152,7 @@ async fn process_control_channel_reaches_guest_agent() -> TestResult<()> {
     let ack = handle
         .control(
             READY_CONTROL_MESSAGE_ID,
-            br#"{"type":"active-input","text":"after-ready"}"#,
+            br#"{"type":"active-input","deliveryId":"e6c121e3-9a6f-4835-87c0-a31b042f3008","text":"after-ready"}"#,
             Duration::from_secs(10),
         )
         .await?;

@@ -203,9 +203,33 @@ def test_malformed_base_params_fail_closed_after_base_match(base, url):
             "https://api.example.com/us-prod-public/items",
             id="path-suffix",
         ),
+        pytest.param(
+            "https://api-{region}-{env.example.com",
+            "https://api-us-prod.example.com/items",
+            "https://evil.example.com/items",
+            id="unbalanced-open-host-prefix",
+        ),
+        pytest.param(
+            "https://{region}-env}-api.example.com",
+            "https://us-prod-api.example.com/items",
+            "https://us-prod-evil.example.com/items",
+            id="unbalanced-close-host-suffix",
+        ),
+        pytest.param(
+            "https://api.example.com/admin-{region}-{env",
+            "https://api.example.com/admin-us-prod/items",
+            "https://api.example.com/public/items",
+            id="unbalanced-open-path-prefix",
+        ),
+        pytest.param(
+            "https://api.example.com/{region}-env}-admin",
+            "https://api.example.com/us-prod-admin/items",
+            "https://api.example.com/us-prod-public/items",
+            id="unbalanced-close-path-suffix",
+        ),
     ],
 )
-def test_malformed_multi_param_base_respects_outer_literal_scope(
+def test_malformed_base_respects_outer_literal_scope(
     base,
     matched_url,
     unrelated_url,

@@ -11,7 +11,7 @@ import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { isSupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
 import { IN_VITEST } from "../../env.ts";
 import { i18n } from "../../i18n/index.ts";
-import { onRef, onRejection, resetSignal, setLoop } from "../utils.ts";
+import { onRef, onRejection, resetSignal, setLoop, settle } from "../utils.ts";
 import { createHeaderAutomationSignals } from "./header-automation-menu.ts";
 import { createThreadSidebarSignals } from "./thread-sidebar.ts";
 import {
@@ -51,6 +51,7 @@ import {
 import {
   chatThreadArtifactsContract,
   resolveChatEventRecommendedFollowups,
+  type ChatRunOptionsRequest,
   type GenerationTemplateRequest,
   type ChatEvent as PersistedChatEvent,
   type FeedbackNotePart,
@@ -144,6 +145,7 @@ import {
   createArtifactCardSignalsRegistry,
   type ArtifactCardSignalsRegistry,
 } from "./artifact-card-signals.ts";
+import { createAttachmentResourceUrlResolver } from "../attachment-resource-url.ts";
 import {
   createAgentReferenceSignalsRegistry,
   type AgentReferenceSignalsRegistry,
@@ -211,14 +213,26 @@ import type {
   ChatEventSignals,
   SendChatEventInput,
   SendChatEventResult,
+  SendInputChatEvent,
 } from "./chat-event-signals.ts";
 import { registerChatEventChangeHandler$ } from "./chat-event-change-registry.ts";
 import {
   canonicalUserMessageFileUrl,
   userMessageFileAttachments,
 } from "./user-message-files.ts";
+import {
+  forwardSubmissionPrompt,
+  withForwardedContent,
+  type ChatForwardContext,
+} from "./chat-forward.ts";
 
 const L = logger("ChatThread");
+const noOpComposerDraftSave$ = command(
+  (_context, signal: AbortSignal): Promise<void> => {
+    signal.throwIfAborted();
+    return Promise.resolve();
+  },
+);
 
 function isInputChatEvent(
   event: ChatEvent,
@@ -1838,8 +1852,10 @@ function createPagedEventResources(
     threadId,
     browserLifecycleOptimisticEvents,
   );
+  const resolveAttachmentResourceUrl = createAttachmentResourceUrlResolver();
   const artifactCardSignals = createArtifactCardSignalsRegistry(
     previewImageUrlsByUrl$,
+    resolveAttachmentResourceUrl,
   );
   const agentReferenceSignals = createAgentReferenceSignalsRegistry();
   const connectorCardSignals = createConnectorCardSignalsRegistry();
@@ -2002,6 +2018,7 @@ function createEventChangeEffects(
     projections,
     scroll,
     syncVisibleEventTrees$,
+    initialEventsReady$,
   }: {
     readonly threadId: string;
     readonly chatEvents: ChatEventSignals;
@@ -2011,6 +2028,7 @@ function createEventChangeEffects(
     >;
     readonly scroll: ChatThreadScrollSignals;
     readonly syncVisibleEventTrees$: Command<Promise<void>, [AbortSignal]>;
+    readonly initialEventsReady$: State<boolean>;
   },
   ownerSignal: AbortSignal,
 ) {
@@ -2048,6 +2066,21 @@ function createEventChangeEffects(
       set(sidebar.open$, { type: "browser" });
     },
   );
+  const updateEventPresentation$ = command(
+    async (
+      { set },
+      scrollPosition: ThreadScrollPosition | null,
+      signal: AbortSignal,
+    ): Promise<void> => {
+      await Promise.all([
+        set(syncVisibleEventTrees$, signal),
+        set(autoOpenSidebar$, signal),
+      ]);
+      signal.throwIfAborted();
+      set(initialEventsReady$, true);
+      await set(scroll.autoScroll$, scrollPosition, signal);
+    },
+  );
   const afterEventsChange$ = command(
     async ({ get, set }, signal: AbortSignal): Promise<void> => {
       const hasOptimisticUserMessage = get(
@@ -2072,15 +2105,55 @@ function createEventChangeEffects(
         ),
       });
       await Promise.all([
-        set(syncVisibleEventTrees$, signal),
-        set(autoOpenSidebar$, signal),
-        set(scroll.autoScroll$, scrollPosition, signal),
+        set(updateEventPresentation$, scrollPosition, signal),
         set(markThreadReadIfNeeded$, signal),
       ]);
       signal.throwIfAborted();
     },
   );
   return { sidebar, afterEventsChange$ };
+}
+
+function createChatEventPresentationLifecycle({
+  chatEvents,
+  afterEventsChange$,
+  syncVisibleEventTrees$,
+  enableSidebarEntryAnimations$,
+  initialEventsReady$,
+}: {
+  readonly chatEvents: ChatEventSignals;
+  readonly afterEventsChange$: Command<Promise<void>, [AbortSignal]>;
+  readonly syncVisibleEventTrees$: Command<Promise<void>, [AbortSignal]>;
+  readonly enableSidebarEntryAnimations$: Command<void, []>;
+  readonly initialEventsReady$: State<boolean>;
+}) {
+  const setup$ = command(
+    async ({ set }, signal: AbortSignal): Promise<void> => {
+      set(
+        registerChatEventChangeHandler$,
+        chatEvents.chatEvents$,
+        afterEventsChange$,
+        signal,
+      );
+      await set(syncVisibleEventTrees$, signal);
+      set(enableSidebarEntryAnimations$);
+      const result = await settle(set(chatEvents.setup$, signal), signal);
+      if (!result.ok) {
+        set(initialEventsReady$, true);
+        throw result.error;
+      }
+    },
+  );
+  const catchUp$ = command(
+    async ({ set }, signal: AbortSignal): Promise<void> => {
+      const result = await settle(set(chatEvents.catchUp$, signal), signal);
+      set(initialEventsReady$, true);
+      if (!result.ok) {
+        throw result.error;
+      }
+    },
+  );
+  return { setup$, catchUp$ };
 }
 
 function createReadyScrollAfterRenderRequest(
@@ -2170,27 +2243,28 @@ function createChatThreadMessagePipeline(
     position,
     renderWindow.ensureVisibleEventTrees$,
   );
+  const initialEventsReady$ = state(false);
   const effects = createEventChangeEffects(
-    { threadId, chatEvents, projections, scroll, syncVisibleEventTrees$ },
+    {
+      threadId,
+      chatEvents,
+      projections,
+      scroll,
+      syncVisibleEventTrees$,
+      initialEventsReady$,
+    },
     ownerSignal,
   );
   const chatSkeletonVisible$ = computed((get): boolean => {
-    return !get(chatEvents.initialEventsReady$);
+    return !get(initialEventsReady$);
   });
-  const setup$ = command(
-    async ({ set }, signal: AbortSignal): Promise<void> => {
-      set(
-        registerChatEventChangeHandler$,
-        chatEvents.chatEvents$,
-        effects.afterEventsChange$,
-        signal,
-      );
-      await set(syncVisibleEventTrees$, signal);
-      set(effects.sidebar.enableEntryAnimations$);
-      await set(chatEvents.setup$, signal);
-      signal.throwIfAborted();
-    },
-  );
+  const lifecycle = createChatEventPresentationLifecycle({
+    chatEvents,
+    afterEventsChange$: effects.afterEventsChange$,
+    syncVisibleEventTrees$,
+    enableSidebarEntryAnimations$: effects.sidebar.enableEntryAnimations$,
+    initialEventsReady$,
+  });
   const assistantErrorRecovery = createAssistantErrorRecoverySignals({
     threadId,
     chatEvents,
@@ -2219,7 +2293,7 @@ function createChatThreadMessagePipeline(
   return {
     scroll,
     sidebar: effects.sidebar,
-    setup$,
+    ...lifecycle,
     chatSkeletonVisible$,
     ...assistantErrorRecovery,
     ...projections,
@@ -2611,11 +2685,13 @@ function userMessageForSend({
   editorDocument,
   generationTemplate,
   attachments,
+  forward,
 }: {
   readonly prompt: string;
   readonly editorDocument: SendMessageOptions["editorDocument"];
   readonly generationTemplate: GenerationTemplateRequest | undefined;
   readonly attachments: ResolvedAttachFile[] | undefined;
+  readonly forward: ChatForwardContext | undefined;
 }): UserMessageInputDocument {
   const userMessage = editorDocument
     ? editorDocument.toMessageDocument({
@@ -2623,6 +2699,9 @@ function userMessageForSend({
         attachments,
       })
     : textToMessageDocument(prompt, undefined, attachments);
+  if (forward) {
+    return withForwardedContent(userMessage, forward);
+  }
   if (!userMessage) {
     throw new Error("Failed to serialize user message");
   }
@@ -2638,6 +2717,7 @@ function queueUserMessage(
     editorDocument: options.editorDocument,
     generationTemplate: options.generationTemplate,
     attachments: result.attachments,
+    forward: options.forward,
   });
 }
 
@@ -2678,6 +2758,79 @@ interface ValidatedSendMessageRequest {
   readonly modelSelection: ModelProviderSelection | null;
 }
 
+function generationTemplateForSend(
+  request: ValidatedSendMessageRequest,
+  draftGenerationTemplate: GenerationTemplateRequest | undefined,
+): GenerationTemplateRequest | undefined {
+  return request.options?.editorDocument
+    ? request.options.generationTemplate
+    : draftGenerationTemplate;
+}
+
+function submissionPromptForSend(request: ValidatedSendMessageRequest): string {
+  return request.options?.forward
+    ? forwardSubmissionPrompt(request.options.forward, request.prompt)
+    : request.prompt;
+}
+
+function prepareSendMessageResult(
+  textOnly: boolean,
+  prompt: string,
+  prepareFromDraft: () => Promise<PreparedSendMessageResult | null>,
+): Promise<PreparedSendMessageResult | null> {
+  return textOnly
+    ? Promise.resolve(prepareTextOnlyUserMessage(prompt))
+    : prepareFromDraft();
+}
+
+function userMessagePromptForSend(
+  request: ValidatedSendMessageRequest,
+  preparedPrompt: string,
+): string {
+  return request.options?.forward ? request.prompt : preparedPrompt;
+}
+
+function flushDraftForSend(
+  forward: ChatForwardContext | undefined,
+  flush: () => Promise<void>,
+): Promise<void> {
+  return forward ? Promise.resolve() : flush();
+}
+
+function sendInputForRequest(args: {
+  readonly request: ValidatedSendMessageRequest;
+  readonly result: PreparedSendMessageResult;
+  readonly userMessage: UserMessageInputDocument;
+  readonly runOptions: ChatRunOptionsRequest | undefined;
+  readonly realAgentInPreviewEnabled: boolean;
+}): SendInputChatEvent {
+  const { request, result } = args;
+  return {
+    kind: "input",
+    delivery: "run",
+    agentId: request.agentId,
+    prompt: result.prompt,
+    hasTextContent: result.hasTextContent,
+    userMessage: args.userMessage,
+    selectedModel: request.modelSelection?.selectedModel ?? null,
+    ...(args.runOptions === undefined ? {} : { runOptions: args.runOptions }),
+    ...(args.realAgentInPreviewEnabled ? { realAgentInPreview: true } : {}),
+    ...(request.options && "computerUseHostId" in request.options
+      ? { computerUseHostId: request.options.computerUseHostId ?? null }
+      : {}),
+    ...(request.options && "cloudBrowserEnabled" in request.options
+      ? { cloudBrowserEnabled: request.options.cloudBrowserEnabled ?? false }
+      : {}),
+    ...(request.options?.revokesEventId === undefined
+      ? {}
+      : { revokesEventId: request.options.revokesEventId }),
+    ...(request.options?.forward ? { source: request.options.forward } : {}),
+    ...(request.options?.onOptimisticSend
+      ? { onOptimisticSend: request.options.onOptimisticSend }
+      : {}),
+  };
+}
+
 function createPerformSendMessage(deps: SendMessageDeps) {
   const { threadId, draft, cancelDraftSync$, flushDraftClear$, sendEvent$ } =
     deps;
@@ -2687,35 +2840,41 @@ function createPerformSendMessage(deps: SendMessageDeps) {
       request: ValidatedSendMessageRequest,
       signal: AbortSignal,
     ): Promise<boolean> => {
-      const generationTemplate = request.options?.editorDocument
-        ? request.options.generationTemplate
-        : get(draft.generationTemplate$);
-      const result =
-        request.options?.includeDraftAttachments === false
-          ? prepareTextOnlyUserMessage(request.prompt)
-          : await set(
-              prepareUserMessageFromDraft$,
-              draft,
-              request.prompt,
-              {
-                excludeVisualAttachments:
-                  shouldExcludeVisualAttachmentsForModel(
-                    request.modelSelection?.selectedModel,
-                    get(imageRecognitionAvailable$),
-                  ),
-              },
-              signal,
-            );
+      const generationTemplate = generationTemplateForSend(
+        request,
+        get(draft.generationTemplate$),
+      );
+      const submissionPrompt = submissionPromptForSend(request);
+      const result = await prepareSendMessageResult(
+        request.options?.includeDraftAttachments === false,
+        submissionPrompt,
+        () => {
+          return set(
+            prepareUserMessageFromDraft$,
+            draft,
+            submissionPrompt,
+            {
+              excludeVisualAttachments: shouldExcludeVisualAttachmentsForModel(
+                request.modelSelection?.selectedModel,
+                get(imageRecognitionAvailable$),
+              ),
+            },
+            signal,
+          );
+        },
+      );
+      signal.throwIfAborted();
       if (!result) {
         L.debug("sendMessage$ prepare returned null, abort", { threadId });
         return false;
       }
       signal.throwIfAborted();
       const userMessage = userMessageForSend({
-        prompt: result.prompt,
+        prompt: userMessagePromptForSend(request, result.prompt),
         editorDocument: request.options?.editorDocument,
         generationTemplate,
         attachments: result.attachments,
+        forward: request.options?.forward,
       });
       set(cancelDraftSync$);
       set(draft.clear$);
@@ -2724,32 +2883,18 @@ function createPerformSendMessage(deps: SendMessageDeps) {
         request.modelSelection,
       );
       const [, sendResult] = await Promise.all([
-        set(flushDraftClear$, signal),
+        flushDraftForSend(request.options?.forward, () => {
+          return set(flushDraftClear$, signal);
+        }),
         set(
           sendEvent$,
-          {
-            kind: "input",
-            delivery: "run",
-            agentId: request.agentId,
-            prompt: result.prompt,
-            hasTextContent: result.hasTextContent,
+          sendInputForRequest({
+            request,
+            result,
             userMessage,
-            selectedModel: request.modelSelection?.selectedModel ?? null,
-            ...(runOptions === undefined ? {} : { runOptions }),
-            ...(realAgentInPreviewEnabled ? { realAgentInPreview: true } : {}),
-            ...(request.options && "computerUseHostId" in request.options
-              ? { computerUseHostId: request.options.computerUseHostId ?? null }
-              : {}),
-            ...(request.options && "cloudBrowserEnabled" in request.options
-              ? {
-                  cloudBrowserEnabled:
-                    request.options.cloudBrowserEnabled ?? false,
-                }
-              : {}),
-            ...(request.options?.revokesEventId === undefined
-              ? {}
-              : { revokesEventId: request.options.revokesEventId }),
-          },
+            runOptions,
+            realAgentInPreviewEnabled,
+          }),
           signal,
         ),
       ]);
@@ -2839,10 +2984,13 @@ function createQueueMessage(deps: QueueMessageDeps) {
       }
       const modelSelection = await set(modelSelectionForSend$, signal);
       signal.throwIfAborted();
+      const submissionPrompt = options.forward
+        ? forwardSubmissionPrompt(options.forward, prompt)
+        : prompt;
       const result = await set(
         prepareUserMessageFromDraft$,
         draft,
-        prompt,
+        submissionPrompt,
         {
           excludeVisualAttachments: shouldExcludeVisualAttachmentsForModel(
             modelSelection?.selectedModel,
@@ -2866,7 +3014,7 @@ function createQueueMessage(deps: QueueMessageDeps) {
         modelSelection,
       );
       await Promise.all([
-        set(flushDraftClear$, signal),
+        options.forward ? Promise.resolve() : set(flushDraftClear$, signal),
         set(
           sendEvent$,
           {
@@ -2885,6 +3033,10 @@ function createQueueMessage(deps: QueueMessageDeps) {
             ...(options.cloudBrowserEnabled === undefined
               ? {}
               : { cloudBrowserEnabled: options.cloudBrowserEnabled }),
+            ...(options.forward ? { source: options.forward } : {}),
+            ...(options.onOptimisticSend
+              ? { onOptimisticSend: options.onOptimisticSend }
+              : {}),
           },
           signal,
         ),
@@ -3515,12 +3667,16 @@ interface CreateChatThreadComposerSignalsOptions {
   >;
   readonly messageActions: ReturnType<typeof createThreadMessageActions>;
   readonly cancellationRecoveryPending$: Computed<Promise<boolean>>;
+  readonly forward?: ChatForwardContext;
+  readonly onOptimisticSend?: () => void;
 }
 
 interface ChatThreadComposerContext {
   readonly threadMeta$: Computed<ThreadMeta | null>;
   readonly agentId: string;
   readonly cancellationRecoveryPending$: Computed<Promise<boolean>>;
+  readonly forward?: ChatForwardContext;
+  readonly onOptimisticSend?: () => void;
 }
 
 function createThreadSubmitMessageSignal(
@@ -3552,6 +3708,10 @@ function createThreadSubmitMessageSignal(
                 cloudBrowserEnabled: explicit ? cloudBrowserEnabled : undefined,
                 generationTemplate: submission.generationTemplate,
                 editorDocument: submission.editorDocument,
+                ...(options.forward ? { forward: options.forward } : {}),
+                ...(options.onOptimisticSend
+                  ? { onOptimisticSend: options.onOptimisticSend }
+                  : {}),
               },
               signal,
             )
@@ -3563,6 +3723,10 @@ function createThreadSubmitMessageSignal(
                 ...(explicit ? { cloudBrowserEnabled } : {}),
                 generationTemplate: submission.generationTemplate,
                 editorDocument: submission.editorDocument,
+                ...(options.forward ? { forward: options.forward } : {}),
+                ...(options.onOptimisticSend
+                  ? { onOptimisticSend: options.onOptimisticSend }
+                  : {}),
               },
               signal,
             );
@@ -3624,11 +3788,12 @@ function createChatThreadComposerSignals(
     agentId: options.agentId,
     draft: {
       signals: options.draft,
-      save$: options.queueDraftSync$,
+      save$: options.forward ? noOpComposerDraftSave$ : options.queueDraftSync$,
     },
     chatEvents$: options.chatEvents.chatEvents$,
     threadId: options.chatEvents.threadId,
     singleLineOnMobile: true,
+    implicitContent: options.forward !== undefined,
     modelSelection$: composerModelSelection$,
     selectedModelOauthAvailable$: modelSelection.selectedModelOauthAvailable$,
     setModelSelection$: modelSelection.setModelSelection$,
@@ -3678,6 +3843,8 @@ function createThreadComposerSignalsWithContext(
     computerUseHostSelection,
     messageActions,
     cancellationRecoveryPending$: context.cancellationRecoveryPending$,
+    forward: context.forward,
+    onOptimisticSend: context.onOptimisticSend,
   });
 }
 
@@ -3690,6 +3857,10 @@ export function createThreadComposerSignals(
   threadId: string,
   agentId: string,
   chatEvents: ChatEventSignals,
+  options: {
+    readonly forward?: ChatForwardContext;
+    readonly onOptimisticSend?: () => void;
+  } = {},
 ): ComposerSignals {
   const threadMeta$ = createThreadMeta(threadId);
   const cancellationRecovery = createCancellationRecoverySignals(threadId);
@@ -3700,6 +3871,8 @@ export function createThreadComposerSignals(
       threadMeta$,
       agentId,
       cancellationRecoveryPending$: cancellationRecovery.pending$,
+      forward: options.forward,
+      onOptimisticSend: options.onOptimisticSend,
     },
     createDraftSignals(),
   );
@@ -3748,7 +3921,7 @@ function createChatPanelSignalsWithDraft(
   const runTracking = createRunTracking({
     threadId,
     setupChatEvents$: messages.setup$,
-    catchUpChatEvents$: chatEvents.catchUp$,
+    catchUpChatEvents$: messages.catchUp$,
     reloadArtifacts$: messages.reloadArtifacts$,
     subscribeBrowserSessions$: messages.subscribeBrowserSessions$,
     automationSignals: threadOwned,

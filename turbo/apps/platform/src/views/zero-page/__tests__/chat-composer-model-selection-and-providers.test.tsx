@@ -9,6 +9,7 @@ import userEvent from "@testing-library/user-event";
 import {
   chatThreadsContract,
   type ChatThreadEvent,
+  type ChatThreadServiceTier,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { zeroAgentsByIdContract } from "@vm0/api-contracts/contracts/zero-agents";
@@ -594,7 +595,7 @@ describe("chat composer models", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("selects Standard or Fast from one model row and shows the Fast impact", async () => {
+  it("keeps a new Fast thread Fast when its optimistic state reconciles", async () => {
     const user = userEvent.setup({ delay: null });
     let sentBody:
       | {
@@ -604,9 +605,13 @@ describe("chat composer models", () => {
       | undefined;
     let createdBody:
       | {
+          clientThreadId?: string;
+          eventId?: string;
           model?: string;
+          serviceTier?: ChatThreadServiceTier | null;
         }
       | undefined;
+    let modelSelectionUpdateCount = 0;
 
     context.mocks.data.orgModelPolicies([
       buildModelPolicy({
@@ -622,6 +627,9 @@ describe("chat composer models", () => {
     mockChatLifecycle(context, {
       onThreadCreate: (body) => {
         createdBody = body;
+      },
+      onModelSelectionUpdate: () => {
+        modelSelectionUpdateCount++;
       },
       onRunCreate: (body) => {
         sentBody = body;
@@ -710,11 +718,50 @@ describe("chat composer models", () => {
 
     await waitFor(() => {
       expect(createdBody?.model).toBe("gpt-5.6-sol");
+      expect(createdBody?.serviceTier).toBe("priority");
       expect(sentBody?.model).toBeUndefined();
       expect(sentBody?.runOptions).toStrictEqual({
         codexServiceTier: "fast",
       });
+      expect(modelSelectionUpdateCount).toBe(1);
     });
+
+    const reconciledThreadId = createdBody?.clientThreadId;
+    const reconciledCreateEventId = createdBody?.eventId;
+    if (
+      reconciledThreadId === undefined ||
+      reconciledCreateEventId === undefined
+    ) {
+      throw new Error("Expected the created Fast thread identifiers");
+    }
+    const reconciledTitle = "Reconciled Fast thread";
+    const reconciledSelectedModel = createdBody?.model ?? null;
+    const reconciledServiceTier = createdBody?.serviceTier ?? null;
+    context.mocks.api(chatThreadsContract.events, ({ respond }) => {
+      return respond(200, {
+        events: [
+          {
+            id: reconciledCreateEventId,
+            seqId: 1,
+            kind: "created",
+            chatThreadId: reconciledThreadId,
+            agentId: AGENT_ID,
+            title: reconciledTitle,
+            selectedModel: reconciledSelectedModel,
+            serviceTier: reconciledServiceTier,
+            computerUseHostId: null,
+            cloudBrowserEnabled: false,
+            createdAt: "2026-08-12T09:00:00Z",
+          },
+        ],
+        hasMore: false,
+      });
+    });
+    triggerAblyEvent("threadListChanged");
+    await waitFor(() => {
+      expect(document.title).toBe(`${reconciledTitle} | VM0`);
+    });
+    await expectComposerModel("GPT 5.6 Sol Fast");
   });
 
   it("localizes model routes, price guidance, and Codex speed controls in Portuguese", async () => {

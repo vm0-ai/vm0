@@ -11,6 +11,7 @@ import {
   cronProjectChatEventSearchContract,
   cronSnapshotChatEventsContract,
 } from "@vm0/api-contracts/contracts/cron";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";
@@ -39,6 +40,7 @@ import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
+import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 
 const context = testContext();
 const bdd = createBddApi(context);
@@ -349,6 +351,77 @@ describe("chat event snapshot read endpoints", () => {
         code: "CHAT_EVENTS_EXPIRED",
       },
     });
+  }, 60_000);
+
+  it("lists the authoritative queue without requiring a snapshot", async () => {
+    const orgId = `org_${randomUUID()}`;
+    const owner = bdd.user({ orgId });
+    await api.grantProEntitlement(owner);
+    await api.ensureOrgModelProvider(owner);
+    api.configureRunnerGroup();
+    const agent = await bdd.createAgent(owner, {
+      displayName: "Authoritative queue agent",
+    });
+    const active = await chat.requestSendEvent(
+      owner,
+      {
+        agentId: agent.agentId,
+        prompt: `authoritative-queue-blocker-${randomUUID()}`,
+      },
+      [201],
+    );
+    if (active.status !== 201 || active.body.runId === null) {
+      throw new Error("Expected an active blocker run");
+    }
+    const queuedEventId = randomUUID();
+    const queued = await chat.requestSendEvent(
+      owner,
+      {
+        agentId: agent.agentId,
+        threadId: active.body.threadId,
+        clientEventId: queuedEventId,
+        prompt: `authoritative-queue-pending-${randomUUID()}`,
+      },
+      [201],
+    );
+    if (queued.status !== 201) {
+      throw new Error("Expected the second message to be queued");
+    }
+    expect(queued.body.runId).toBeNull();
+    const threadId = active.body.threadId;
+
+    const disabled = await accept(
+      eventsClient().queued({
+        headers: authenticate(owner),
+        params: { threadId },
+      }),
+      [403],
+    );
+    expect(disabled.body).toStrictEqual({
+      error: {
+        message: "Chat event snapshot read is not enabled",
+        code: "FORBIDDEN",
+      },
+    });
+
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...owner, orgId },
+      {
+        [FeatureSwitchKey.ChatEventSnapshotRead]: true,
+      },
+    );
+    const response = await accept(
+      eventsClient().queued({
+        headers: authenticate(owner),
+        params: { threadId },
+      }),
+      [200],
+    );
+    expect(response.body.events).toStrictEqual([
+      { eventId: queuedEventId, seqId: expect.any(Number) },
+    ]);
+    await api.requestCancelRun(owner, active.body.runId, [200]);
   }, 60_000);
 
   it("immediately retires snapshot versions below the supported minimum", async () => {

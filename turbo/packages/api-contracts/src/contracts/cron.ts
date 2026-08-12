@@ -62,6 +62,9 @@ export const cronCleanupSandboxesContract = c.router({
 });
 
 export type CronCleanupSandboxesContract = typeof cronCleanupSandboxesContract;
+export type CronCleanupSandboxesResponse = z.infer<
+  typeof cleanupResponseSchema
+>;
 
 const cronProcessUsageEventsResponseSchema = z.object({
   success: z.literal(true),

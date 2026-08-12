@@ -75,9 +75,8 @@ impl ActiveInputForwarder {
 
 #[derive(Clone, Copy)]
 enum DeliveryMode {
-    DurableApi,
+    Api,
     Local,
-    Legacy,
 }
 
 enum ForwardDisposition {
@@ -95,7 +94,6 @@ async fn run_forwarder(
     stop: CancellationToken,
 ) {
     let mut next_local_sequence = FIRST_ACTIVE_INPUT_SEQUENCE;
-    let mut legacy_delivery_sequence = 0_u64;
     let mut suppressed_api_delivery_id: Option<String> = None;
     let mut warned_source_read_failure = false;
     let mut warned_payload_too_large = false;
@@ -106,7 +104,7 @@ async fn run_forwarder(
             () = job_cancel.cancelled() => return,
             batch = source.read(next_local_sequence) => batch,
         };
-        let (retry_after_read_error, recheck_immediately) = match batch {
+        let retry_after_read_error = match batch {
             Ok(ActiveInputBatch::Local(entries)) => {
                 for entry in entries {
                     if entry.sequence < next_local_sequence {
@@ -118,7 +116,7 @@ async fn run_forwarder(
                     let delivery_id = local_active_input_delivery_id(run_id, entry.sequence);
                     let disposition = forward_with_retry(
                         run_id,
-                        Some(&delivery_id),
+                        &delivery_id,
                         &entry.text,
                         DeliveryMode::Local,
                         &control,
@@ -135,32 +133,9 @@ async fn run_forwarder(
                         | ForwardDisposition::Stop => return,
                     }
                 }
-                (false, false)
+                false
             }
-            Ok(ActiveInputBatch::ApiLegacy { prompt, has_more }) => {
-                let forwarded = if let Some(prompt) = prompt {
-                    legacy_delivery_sequence = legacy_delivery_sequence.saturating_add(1);
-                    let correlation_id =
-                        format!("active-input:{run_id}:{legacy_delivery_sequence}");
-                    matches!(
-                        forward_once(
-                            run_id,
-                            None,
-                            &correlation_id,
-                            &prompt,
-                            DeliveryMode::Legacy,
-                            &control,
-                            true,
-                        )
-                        .await,
-                        ForwardDisposition::Accepted
-                    )
-                } else {
-                    false
-                };
-                (false, has_more && forwarded)
-            }
-            Ok(ActiveInputBatch::ApiReserve(response)) => match response {
+            Ok(ActiveInputBatch::Api(response)) => match response {
                 ActiveInputReserveResponse::Reserved {
                     delivery_id,
                     event_ids: _,
@@ -168,13 +143,13 @@ async fn run_forwarder(
                 } => {
                     warned_payload_too_large = false;
                     if suppressed_api_delivery_id.as_deref() == Some(&delivery_id) {
-                        (false, false)
+                        false
                     } else {
                         let disposition = forward_with_retry(
                             run_id,
-                            Some(&delivery_id),
+                            &delivery_id,
                             &prompt,
-                            DeliveryMode::DurableApi,
+                            DeliveryMode::Api,
                             &control,
                             &job_cancel,
                             &stop,
@@ -183,7 +158,7 @@ async fn run_forwarder(
                         match disposition {
                             ForwardDisposition::Accepted | ForwardDisposition::Suppress => {
                                 suppressed_api_delivery_id = Some(delivery_id);
-                                (false, false)
+                                false
                             }
                             ForwardDisposition::Retry | ForwardDisposition::Stop => return,
                         }
@@ -192,7 +167,7 @@ async fn run_forwarder(
                 ActiveInputReserveResponse::Empty => {
                     suppressed_api_delivery_id = None;
                     warned_payload_too_large = false;
-                    (false, false)
+                    false
                 }
                 ActiveInputReserveResponse::Terminal => return,
                 ActiveInputReserveResponse::Held {
@@ -210,7 +185,7 @@ async fn run_forwarder(
                             );
                             warned_payload_too_large = true;
                         }
-                        (false, false)
+                        false
                     }
                     ResponseRejectedReason::RunNotRunning => return,
                 },
@@ -220,7 +195,7 @@ async fn run_forwarder(
                     warn!(run_id = %run_id, error = %error, "active-input source read failed; retrying");
                     warned_source_read_failure = true;
                 }
-                (true, false)
+                true
             }
         };
         if !retry_after_read_error {
@@ -232,9 +207,6 @@ async fn run_forwarder(
             () = stop.cancelled() => return,
             () = job_cancel.cancelled() => return,
             () = async {
-                if recheck_immediately {
-                    return;
-                }
                 if retry_after_read_error {
                     tokio::time::sleep(ACTIVE_INPUT_READ_RETRY_INTERVAL).await;
                 } else {
@@ -247,22 +219,18 @@ async fn run_forwarder(
 
 async fn forward_with_retry(
     run_id: RunId,
-    delivery_id: Option<&str>,
+    delivery_id: &str,
     text: &str,
     mode: DeliveryMode,
     control: &GuestProcessControlHandle,
     job_cancel: &CancellationToken,
     stop: &CancellationToken,
 ) -> ForwardDisposition {
-    let correlation_id = delivery_id
-        .map(ToOwned::to_owned)
-        .unwrap_or_else(|| format!("active-input:{run_id}:legacy"));
     let mut warn_retryable_failure = true;
     loop {
         let disposition = forward_once(
             run_id,
             delivery_id,
-            &correlation_id,
             text,
             mode,
             control,
@@ -284,8 +252,7 @@ async fn forward_with_retry(
 
 async fn forward_once(
     run_id: RunId,
-    delivery_id: Option<&str>,
-    correlation_id: &str,
+    delivery_id: &str,
     text: &str,
     mode: DeliveryMode,
     control: &GuestProcessControlHandle,
@@ -312,11 +279,7 @@ async fn forward_once(
         }
     };
     let outcome = control
-        .control_owned_outcome(
-            correlation_id.to_owned(),
-            bytes,
-            ACTIVE_INPUT_CONTROL_TIMEOUT,
-        )
+        .control_owned_outcome(delivery_id.to_owned(), bytes, ACTIVE_INPUT_CONTROL_TIMEOUT)
         .await;
     classify_control_outcome(run_id, mode, outcome, warn_retryable_failure)
 }
@@ -339,7 +302,7 @@ fn classify_control_outcome(
                         "active-input control will retry"
                     );
                 }
-                identified_or_legacy(mode, ForwardDisposition::Retry)
+                ForwardDisposition::Retry
             }
             ProcessControlGuestStatus::SinkTimeout | ProcessControlGuestStatus::SinkError => {
                 if warn_retryable_failure {
@@ -408,7 +371,7 @@ fn classify_control_outcome(
             }
             match (kind, write_state) {
                 (ProcessControlFailureKind::Operation, ProcessControlWriteState::NotWritten) => {
-                    identified_or_legacy(mode, ForwardDisposition::Retry)
+                    ForwardDisposition::Retry
                 }
                 (
                     ProcessControlFailureKind::Operation,
@@ -417,10 +380,7 @@ fn classify_control_outcome(
                 (ProcessControlFailureKind::BackendCrashed, _) => {
                     if matches!(
                         (mode, write_state),
-                        (
-                            DeliveryMode::DurableApi,
-                            ProcessControlWriteState::PossiblyWritten
-                        )
+                        (DeliveryMode::Api, ProcessControlWriteState::PossiblyWritten)
                     ) {
                         ForwardDisposition::Suppress
                     } else {
@@ -432,19 +392,10 @@ fn classify_control_outcome(
     }
 }
 
-fn identified_or_legacy(mode: DeliveryMode, identified: ForwardDisposition) -> ForwardDisposition {
-    if matches!(mode, DeliveryMode::Legacy) {
-        ForwardDisposition::Accepted
-    } else {
-        identified
-    }
-}
-
 fn uncertain_disposition(mode: DeliveryMode) -> ForwardDisposition {
     match mode {
-        DeliveryMode::DurableApi => ForwardDisposition::Suppress,
+        DeliveryMode::Api => ForwardDisposition::Suppress,
         DeliveryMode::Local => ForwardDisposition::Retry,
-        DeliveryMode::Legacy => ForwardDisposition::Accepted,
     }
 }
 

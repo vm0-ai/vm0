@@ -4,6 +4,7 @@ import json
 from collections.abc import Callable
 from pathlib import Path
 
+import brotli
 import pytest
 from mitmproxy import http
 from mitmproxy.test import tutils
@@ -353,6 +354,35 @@ class TestOpenAIChatCompletionsUsage:
 
         assert webhook.usage_events() == []
         assert compact_observation_quantities(webhook.model_usage_observation_events()) == {
+            "tokens.input": 30,
+            "tokens.output": 5,
+        }
+
+    def test_brotli_json_uses_buffered_fallback(
+        self,
+        tmp_path,
+        real_flow,
+    ):
+        flow = _chat_completions_flow(
+            tmp_path,
+            real_flow,
+            content_type="application/json",
+        )
+        flow.response = tutils.tresp(
+            status_code=200,
+            headers=header_map({"content-type": "application/json", "content-encoding": "br"}),
+        )
+        body = _chat_payload(usage_payload={"prompt_tokens": 30, "completion_tokens": 5})
+        compressed = brotli.compress(body)
+
+        mitm_addon.responseheaders(flow)
+        assert "model_json_usage_finish" not in flow.metadata
+        assert response_stream(flow)(compressed) == compressed
+        assert flow.metadata[metadata_keys.STREAM_BUFFER] == bytearray(compressed)
+
+        webhook = _run_response(flow, self._usage_webhook_api)
+
+        assert {event["category"]: event["quantity"] for event in webhook.usage_events()} == {
             "tokens.input": 30,
             "tokens.output": 5,
         }

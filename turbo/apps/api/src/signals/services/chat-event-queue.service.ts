@@ -8,6 +8,7 @@ import {
   and,
   asc,
   eq,
+  inArray,
   isNull,
   lt,
   notExists,
@@ -29,6 +30,7 @@ interface PendingChatQueueEvent {
   readonly id: string;
   readonly chatThreadId: string;
   readonly eventType: "input.prompt" | "input.automation" | "input.goal";
+  readonly seqId: number;
   readonly createdAt: Date;
 }
 
@@ -118,6 +120,7 @@ export async function listPendingChatQueueEvents(
       id: chatEvents.id,
       chatThreadId: chatEvents.chatThreadId,
       eventType: chatEvents.eventType,
+      seqId: chatEvents.seqId,
       createdAt: chatEvents.createdAt,
     })
     .from(chatEvents)
@@ -147,6 +150,7 @@ export async function listPendingChatQueueEvents(
         id: event.id,
         chatThreadId: event.chatThreadId,
         eventType: event.eventType,
+        seqId: event.seqId,
         createdAt: event.createdAt,
       },
     ];
@@ -165,6 +169,7 @@ export async function loadPendingChatQueueEvent(
       id: chatEvents.id,
       chatThreadId: chatEvents.chatThreadId,
       eventType: chatEvents.eventType,
+      seqId: chatEvents.seqId,
       createdAt: chatEvents.createdAt,
     })
     .from(chatEvents)
@@ -224,6 +229,7 @@ export async function staleChatEventQueueThreadIds(
   args: {
     readonly staleBefore: Date;
     readonly limit: number;
+    readonly chatThreadIds?: readonly string[];
   },
 ): Promise<readonly string[]> {
   const rows = await db
@@ -233,6 +239,9 @@ export async function staleChatEventQueueThreadIds(
       and(
         pendingChatQueueEventCondition(db),
         lt(chatEvents.createdAt, args.staleBefore),
+        args.chatThreadIds === undefined
+          ? undefined
+          : inArray(chatEvents.chatThreadId, args.chatThreadIds),
       ),
     )
     .limit(args.limit);

@@ -711,7 +711,7 @@
       "lastSeen": "마지막 접속 {{date}}",
       "linkExpires": "링크는 {{date}}에 만료됩니다.",
       "macRequirement": "Apple 실리콘 Mac과 macOS 14 이상 필요합니다. Intel Mac은 지원되지 않습니다.",
-      "noHostsDescription": "Mac에서 {{desktopProductName}} 컴퓨터 사용을 열고 온라인 상태가 되면 이 페이지를 새로고침하세요.",
+      "noHostsDescription": "Mac에서 {{desktopApplicationName}}을 열고 온라인 상태가 되면 이 페이지를 새로고침하세요.",
       "noHostsTitle": "온라인 컴퓨터 없음",
       "sources": {
         "chat": "이 채팅 스레드",
@@ -906,8 +906,9 @@
         "tenConcurrentRuns": "10 동시 실행",
         "twoConcurrentRuns": "2 동시 실행",
         "unlimitedAgents": "무제한 에이전트",
-        "voiceInput": "음성 입력",
-        "voiceInputLifetime": "음성 입력 (회원당 평생 10회 사용)"
+        "voiceInputFree": "음성 입력 (회원당 총 10회 요청 · 하루 10분)",
+        "voiceInputPro": "음성 입력 (회원당 하루 300회 요청 · 200분)",
+        "voiceInputTeam": "음성 입력 (회원당 하루 500회 요청 · 500분)"
       },
       "free": {
         "description": "기존 워크스페이스용 레거시 무료 액세스.",
@@ -1193,7 +1194,7 @@
       "events": {
         "githubDeploymentStatus": "GitHub 배포 상태 생성됨",
         "githubIssueComment": "GitHub 이슈 댓글 생성됨",
-        "githubLabelApplied": "GitHub 라벨 적용됨",
+        "githubPullRequest": "GitHub 풀 리퀘스트",
         "githubReviewSubmitted": "GitHub 풀 리퀘스트 리뷰 제출됨",
         "githubWorkflowCompleted": "GitHub 워크플로 완료됨",
         "githubWorkflowJobCompleted": "GitHub 워크플로 작업 완료됨",
@@ -1387,6 +1388,19 @@
       "sourcePartHeading": "{{description}} 이 부분에 대한 피드백:",
       "sourcePartsHeading_one": "{{description}} {{count}}개 부분에 대한 피드백:",
       "sourcePartsHeading_other": "{{description}} {{count}}개 부분에 대한 피드백:"
+    },
+    "forward": {
+      "action": "전달",
+      "agents": "에이전트",
+      "back": "뒤로",
+      "content": "내용",
+      "description": "선택한 내용을 에이전트 또는 채팅으로 전달합니다.",
+      "noResults": "에이전트 또는 채팅을 찾을 수 없습니다",
+      "search": "에이전트 및 채팅 검색...",
+      "sent": "전달했습니다",
+      "threads": "채팅",
+      "title": "전달 대상",
+      "to": "전달 대상"
     },
     "mail": {
       "bcc": "숨은 참조",
@@ -1664,6 +1678,10 @@
       "checkingLimit": "음성 입력 제한 확인 중",
       "input": "음성 입력",
       "inputLimitReached": "음성 입력 한도에 도달했습니다. 더 높은 한도를 원하시면 Pro 또는 Team으로 업그레이드하세요.",
+      "inputLimitReachedMember": "음성 입력 한도에 도달했습니다. 더 높은 한도를 위해 워크스페이스 관리자에게 업그레이드를 요청하세요.",
+      "inputLimitReachedPro": "음성 입력 한도에 도달했습니다. 더 높은 한도를 원하시면 Team으로 업그레이드하세요.",
+      "inputLimitReachedProMember": "음성 입력 한도에 도달했습니다. 더 높은 한도를 위해 워크스페이스 관리자에게 Team으로 업그레이드를 요청하세요.",
+      "inputLimitReachedReset": "음성 입력 한도에 도달했습니다. 한도가 재설정될 때까지 기다려 주세요.",
       "microphoneAccessDenied": "마이크 접근이 거부되었습니다. 마이크 접근을 허용하고 다시 시도하세요.",
       "openingMicrophone": "마이크 열기 중...",
       "starting": "음성 입력 시작",
@@ -2520,6 +2538,18 @@
     },
     "realtime": {
       "degraded": "실시간 업데이트에 문제가 발생했습니다. 페이지를 새로고침하세요."
+    }
+  },
+  "invitationRedirect": {
+    "accountMismatch": {
+      "title": "다른 계정으로 초대를 수락했습니다"
+    },
+    "actions": {
+      "switchAccount": "계정 전환",
+      "switchWorkspace": "워크스페이스 전환"
+    },
+    "success": {
+      "title": "{{workspace}} 초대를 수락했습니다"
     }
   },
   "lifecycle": {
@@ -4446,9 +4476,20 @@
           "emailPlaceholder": "email@example.com",
           "invalidEmail": "유효한 이메일 주소를 입력하세요",
           "progress": "전송 중...",
+          "purchase": {
+            "description": "아래의 일할 계산 금액을 확인하세요. 확인하면 저장된 결제 수단으로 청구되고 초대가 전송됩니다.",
+            "error": "이 멤버 패키지를 구매할 수 없습니다. 결제 정보를 확인하고 다시 시도하세요.",
+            "invitee": "초대 대상",
+            "title": "초대 검토"
+          },
           "roleLabel": "역할",
           "send": "초대장 보내기",
-          "title": "멤버 초대"
+          "title": "멤버 초대",
+          "upgrade": {
+            "action": "Pro로 업그레이드",
+            "description": "멤버 초대는 Pro 플랜에서 사용할 수 있습니다. 이 워크스페이스를 업그레이드하여 멤버를 초대하고 역할을 관리하세요.",
+            "title": "멤버를 초대하려면 업그레이드하세요"
+          }
         },
         "joined": "참여함",
         "joinRequests": "참여 요청",
@@ -4700,16 +4741,8 @@
         "summary": "양식 {{form}}"
       },
       "github": {
-        "accountConnect": "GitHub 연결",
-        "accountRequired": "Me를 사용하려면 GitHub 계정을 연결하세요.",
-        "actorAnyone": "누구나",
-        "actorMe": "나",
         "actors": "행위자",
         "actorsPlaceholder": "octocat, dependabot[bot]",
-        "addLabelAction": "라벨 자동화 추가",
-        "addLabelAria": "GitHub 라벨 자동화 추가",
-        "addLabelDescription": "GitHub 라벨이 적용될 때 이 워크플로를 실행합니다.",
-        "addLabelTitle": "GitHub 라벨 자동화 추가",
         "addWebhookAction": "자동화 추가",
         "addWebhookAria": "{{title}} 자동화 추가",
         "addWebhookDescription": "일치하는 GitHub 웹훅 이벤트가 도착할 때 이 워크플로를 실행합니다.",
@@ -4771,13 +4804,6 @@
         "jobs": "작업",
         "jobsPlaceholder": "테스트, 빌드",
         "jobsSummary": "작업 {{values}}",
-        "labelAppliedDescription": "이슈 또는 풀 리퀘스트에 라벨이 적용되면 실행합니다.",
-        "labelAppliedRule": "GitHub 라벨 {{label}}이(가) 적용될 때",
-        "labelAppliedTitle": "GitHub 라벨 적용됨",
-        "labelName": "라벨 이름",
-        "labelOnlySummary": "라벨 {{label}}",
-        "labelPlaceholder": "분류",
-        "labelSummary": "라벨 {{label}} · {{subject}} · 실행자 {{actor}}",
         "loadError": "GitHub 설정을 불러올 수 없습니다.",
         "nonProductionOnly": "비프로덕션 전용",
         "option": {
@@ -4802,12 +4828,36 @@
         },
         "productionEnvironment": "프로덕션 환경",
         "productionOnly": "프로덕션 전용",
+        "pullRequestAction": "액션",
+        "pullRequestActionClosed": "닫힘",
+        "pullRequestActionConvertedToDraft": "초안으로 전환",
+        "pullRequestActionDequeued": "병합 대기열에서 제거",
+        "pullRequestActionEnqueued": "병합 대기열에 추가",
+        "pullRequestActionLabeled": "라벨 적용",
+        "pullRequestActionOpened": "열림",
+        "pullRequestActionReadyForReview": "리뷰 준비 완료",
+        "pullRequestActionReopened": "다시 열림",
+        "pullRequestActionSynchronize": "새 커밋 푸시",
+        "pullRequestActionUnlabeled": "라벨 제거",
+        "pullRequestAuthors": "작성자",
+        "pullRequestClosedWithoutMergeOnly": "병합 없이 닫힘",
+        "pullRequestDescription": "한 리포지토리의 풀 리퀘스트가 열리거나 병합되거나 라벨이 지정되거나 상태가 바뀔 때 실행합니다.",
+        "pullRequestLabels": "라벨",
+        "pullRequestLabelsPlaceholder": "ready-to-merge",
+        "pullRequestMerged": "병합됨",
+        "pullRequestMergedOnly": "병합된 경우만",
+        "pullRequestNumbers": "풀 리퀘스트 번호",
+        "pullRequestNumbersPlaceholder": "42, 128",
+        "pullRequestRule": "{{repository}}의 풀 리퀘스트 {{action}} 시",
         "pullRequestsOnly": "풀 리퀘스트 전용",
+        "pullRequestTitle": "GitHub 풀 리퀘스트",
         "refs": "참조",
         "refsPlaceholder": "main, v1.0.0",
         "repositories": "저장소",
         "repositoriesPlaceholder": "vm0-ai/vm0, owner/another-repo",
         "repositoriesSummary": "저장소 {{values}}",
+        "repository": "리포지토리",
+        "repositoryPlaceholder": "owner/name",
         "reviewDescription": "일치하는 리뷰가 제출되면 실행합니다.",
         "reviewRule": "일치하는 GitHub 풀 리퀘스트 리뷰가 제출될 때",
         "reviewStates": "리뷰 상태",
@@ -4819,10 +4869,8 @@
         "saveFilters": "필터 저장",
         "selectNoneAny": "아무 것도 선택하지 않으면 모든 값과 일치합니다.",
         "selectNoneConclusion": "아무 것도 선택하지 않으면 모든 완료된 결론과 일치합니다.",
-        "startedBy": "시작자",
         "subject": "주제",
         "trustedAuthors": "신뢰하는 작성자",
-        "updateLabelAria": "GitHub 라벨 자동화 업데이트",
         "updateWebhookAria": "{{title}} 자동화 업데이트",
         "updateWorkflowAria": "GitHub 워크플로 자동화 업데이트",
         "withConclusions": " {{values}} 포함",

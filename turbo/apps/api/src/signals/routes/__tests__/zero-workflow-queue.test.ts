@@ -41,7 +41,6 @@ import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { testWorkflowAutomationExecutionRoutes } from "../test-workflow-automation-execution";
 import {
   completeRunWithoutCallbacksFixture,
-  completeRunWithoutRunnerIdentityFixture,
   holdChatEventQueueAdmissionLockFixture,
   holdOrgAdmissionLockFixture,
   readChatEventContextFixture,
@@ -75,33 +74,6 @@ const chatCallbacks = createChatCallbacksApi(context);
 const WORKFLOW_NAME = "workflow-queue-workflow";
 const CRON_CLEANUP_SANDBOXES_ROUTE = "/api/cron/cleanup-sandboxes";
 const CRON_SECRET = "test-cron-secret";
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function immediateSuccessorValidationOutcomes(
-  runId: string,
-): readonly unknown[] {
-  return context.mocks.axiom.sdkIngest.mock.calls.flatMap((call) => {
-    const dataset = call[0];
-    const events = call[1];
-    if (dataset !== "vm0-sandbox-op-log-dev" || !Array.isArray(events)) {
-      return [];
-    }
-    return events
-      .filter((event): event is Record<string, unknown> => {
-        return (
-          isRecord(event) &&
-          event.run_id === runId &&
-          event.op_type === "immediate_successor_intent_source_validation"
-        );
-      })
-      .map((event) => {
-        return event.immediate_successor_outcome;
-      });
-  });
-}
 
 function it(name: string, test: () => Promise<void>, timeout?: number): void {
   vitestTest(
@@ -448,37 +420,6 @@ async function completeRunThroughSandbox(scenario: Scenario, runId: string) {
   );
   await flushWaitUntilForTest();
   return claim;
-}
-
-async function drainAutomationWithPredecessor(args: {
-  readonly automation: WebhookAutomation;
-  readonly predecessorRunId: string;
-  readonly triggerBrief: string;
-}): Promise<void> {
-  await admitWorkflowAutomationEventFixture({
-    automationId: args.automation.automationId,
-    chatThreadId: args.automation.threadId,
-    triggerBrief: args.triggerBrief,
-  });
-  await drainChatThreadQueueFixture({
-    threadId: args.automation.threadId,
-    immediateSuccessorPredecessorRunId: args.predecessorRunId,
-    signal: context.signal,
-  });
-  await flushWaitUntilForTest();
-}
-
-function expectRejectedImmediateSuccessorSource(
-  predecessorRunId: string,
-  outcome: string,
-): void {
-  expect(immediateSuccessorValidationOutcomes(predecessorRunId)).toContain(
-    outcome,
-  );
-  expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
-    "immediate-successor-intent",
-    expect.objectContaining({ predecessorRunId }),
-  );
 }
 
 /** Occupy the workflow with one run and leave `pendingCount` queued events. */
@@ -907,10 +848,6 @@ describe("workflow queue", () => {
     const first = await postWorkflowWebhook(automation, "first");
     const firstRunId = await expectAcceptedRunId(first, automation.threadId);
     await flushWaitUntilForTest();
-    expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
-      "immediate-successor-intent",
-      expect.anything(),
-    );
     // Workflow admission stores no encrypted launch blob. The only data key is
     // for the launched run's execution secrets.
     expect(kms.generateDataKeyCalls).toBe(1);
@@ -926,11 +863,6 @@ describe("workflow queue", () => {
     expect(kms.generateDataKeyCalls).toBe(1);
     const pendingEvents = await pendingAutomationEvents(automation.threadId);
     expect(pendingEvents).toHaveLength(2);
-    const secondEvent = pendingEvents[0];
-    const thirdEvent = pendingEvents[1];
-    if (!secondEvent || !thirdEvent) {
-      throw new Error("Expected two pending workflow queue events");
-    }
     await expect(workflowRunIds(automation.threadId)).resolves.toStrictEqual([
       firstRunId,
     ]);
@@ -938,24 +870,7 @@ describe("workflow queue", () => {
     // Completing the run drains exactly one event into the next run.
     const dequeuedAt = secondApiStartTime + 10_000;
     mockNow(dequeuedAt);
-    context.mocks.ably.publish.mockImplementation((eventName: unknown) => {
-      return eventName === "immediate-successor-intent"
-        ? Promise.reject(new Error("intent publish unavailable"))
-        : Promise.resolve(undefined);
-    });
     await completeRunThroughSandbox(scenario, firstRunId);
-    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
-      "immediate-successor-intent",
-      expect.objectContaining({
-        action: "arm",
-        predecessorRunId: firstRunId,
-        intentId: secondEvent.id,
-        runnerIdentity: expect.objectContaining({ heartbeatGeneration: 1 }),
-        eventClass: "automation",
-        decidedAt: expect.any(String),
-        expiresAt: expect.any(String),
-      }),
-    );
     const afterFirst = await workflowRunIds(automation.threadId);
     expect(afterFirst).toHaveLength(2);
     const secondClaim = await completeRunThroughSandbox(
@@ -965,98 +880,7 @@ describe("workflow queue", () => {
     expect(secondClaim.apiStartTime).toBe(dequeuedAt);
   });
 
-  it("rejects a missing immediate-successor predecessor", async () => {
-    mockNow(Date.UTC(2026, 7, 11, 12));
-    const predecessorRunId = randomUUID();
-    const scenario = await setup();
-    await drainAutomationWithPredecessor({
-      automation: await createWebhookAutomation(scenario),
-      predecessorRunId,
-      triggerBrief: "missing predecessor",
-    });
-    expectRejectedImmediateSuccessorSource(predecessorRunId, "missing_source");
-  });
-
-  it("rejects a non-terminal immediate-successor predecessor", async () => {
-    mockNow(Date.UTC(2026, 7, 11, 12));
-    const scenario = await setup();
-    const predecessorRunId = await startOrgConcurrencyBlocker(scenario);
-    await drainAutomationWithPredecessor({
-      automation: await createWebhookAutomation(scenario),
-      predecessorRunId,
-      triggerBrief: "non-terminal predecessor",
-    });
-    expectRejectedImmediateSuccessorSource(
-      predecessorRunId,
-      "source_not_completed",
-    );
-  });
-
-  it("rejects an immediate-successor predecessor from another scope", async () => {
-    mockNow(Date.UTC(2026, 7, 11, 12));
-    const sourceScenario = await setup();
-    const predecessorRunId = await startOrgConcurrencyBlocker(sourceScenario);
-    await runsApi.heartbeatRunner(sourceScenario.runnerGroup);
-    await runsApi.claimRunnerJob(predecessorRunId);
-    await completeRunWithoutCallbacksFixture({ runId: predecessorRunId });
-
-    const targetScenario = await setup();
-    await drainAutomationWithPredecessor({
-      automation: await createWebhookAutomation(targetScenario),
-      predecessorRunId,
-      triggerBrief: "mismatched predecessor scope",
-    });
-    expectRejectedImmediateSuccessorSource(
-      predecessorRunId,
-      "source_scope_mismatch",
-    );
-  });
-
-  it("rejects an immediate-successor predecessor without runner identity", async () => {
-    mockNow(Date.UTC(2026, 7, 11, 12));
-    const scenario = await setup();
-    const automation = await createWebhookAutomation(scenario);
-    const predecessorRunId = await expectAcceptedRunId(
-      await postWorkflowWebhook(automation, "identity-less predecessor"),
-      automation.threadId,
-    );
-    await completeRunWithoutRunnerIdentityFixture({
-      runId: predecessorRunId,
-    });
-    await drainAutomationWithPredecessor({
-      automation,
-      predecessorRunId,
-      triggerBrief: "successor after identity-less predecessor",
-    });
-    expectRejectedImmediateSuccessorSource(
-      predecessorRunId,
-      "source_identity_missing",
-    );
-  });
-
-  it("rejects an expired immediate-successor predecessor", async () => {
-    const completedAt = Date.UTC(2026, 7, 11, 12);
-    mockNow(completedAt);
-    const scenario = await setup();
-    const automation = await createWebhookAutomation(scenario);
-    const predecessorRunId = await expectAcceptedRunId(
-      await postWorkflowWebhook(automation, "expiring predecessor"),
-      automation.threadId,
-    );
-    await runsApi.heartbeatRunner(scenario.runnerGroup);
-    await runsApi.claimRunnerJob(predecessorRunId);
-    await completeRunWithoutCallbacksFixture({ runId: predecessorRunId });
-
-    mockNow(completedAt + 2000);
-    await drainAutomationWithPredecessor({
-      automation,
-      predecessorRunId,
-      triggerBrief: "successor after predecessor expiry",
-    });
-    expectRejectedImmediateSuccessorSource(predecessorRunId, "source_expired");
-  });
-
-  it("revokes workflow intent when org concurrency queues the successor", async () => {
+  it("creates a queued workflow successor at the org concurrency limit", async () => {
     const scenario = await setup();
     const automation = await createWebhookAutomation(scenario);
     mockEnv("CONCURRENT_RUN_LIMIT_CAP", "2");
@@ -1069,25 +893,9 @@ describe("workflow queue", () => {
     expectAcceptedWithoutRun(
       await postWorkflowWebhook(automation, "queued behind first"),
     );
-    const [queuedEvent] = await pendingAutomationEvents(automation.threadId);
-    if (!queuedEvent) {
-      throw new Error("Expected a queued automation event");
-    }
 
     mockEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
     await completeRunThroughSandbox(scenario, firstRunId);
-
-    for (const action of ["arm", "revoke"] as const) {
-      expect(context.mocks.ably.publish).toHaveBeenCalledWith(
-        "immediate-successor-intent",
-        expect.objectContaining({
-          action,
-          predecessorRunId: firstRunId,
-          intentId: queuedEvent.id,
-          eventClass: "automation",
-        }),
-      );
-    }
 
     const runIds = await workflowRunIds(automation.threadId);
     expect(runIds).toHaveLength(2);
@@ -1095,7 +903,7 @@ describe("workflow queue", () => {
     await runsApi.requestCancelRun(scenario.actor, blockerRunId, [200]);
   });
 
-  it("revokes workflow intent when cancellation races a queued run commit", async () => {
+  it("keeps a concurrency-queued workflow run when the completion request is aborted", async () => {
     const scenario = await setup();
     const automation = await createWebhookAutomation(scenario);
     mockEnv("CONCURRENT_RUN_LIMIT_CAP", "2");
@@ -1108,10 +916,6 @@ describe("workflow queue", () => {
     expectAcceptedWithoutRun(
       await postWorkflowWebhook(automation, "queued behind first"),
     );
-    const [queuedEvent] = await pendingAutomationEvents(automation.threadId);
-    if (!queuedEvent) {
-      throw new Error("Expected a queued automation event");
-    }
 
     await runsApi.heartbeatRunner(scenario.runnerGroup);
     const firstClaim = await runsApi.claimRunnerJob(firstRunId);
@@ -1155,25 +959,13 @@ describe("workflow queue", () => {
     await admissionLock.done;
     await flushWaitUntilForTest();
 
-    for (const action of ["arm", "revoke"] as const) {
-      expect(context.mocks.ably.publish).toHaveBeenCalledWith(
-        "immediate-successor-intent",
-        expect.objectContaining({
-          action,
-          predecessorRunId: firstRunId,
-          intentId: queuedEvent.id,
-          eventClass: "automation",
-        }),
-      );
-    }
-
     const runIds = await workflowRunIds(automation.threadId);
     expect(runIds).toHaveLength(2);
     await runsApi.requestCancelRun(scenario.actor, runIds[1]!, [200]);
     await runsApi.requestCancelRun(scenario.actor, blockerRunId, [200]);
   });
 
-  it("revokes goal intent when org concurrency queues the successor", async () => {
+  it("creates a queued goal successor at the org concurrency limit", async () => {
     const scenario = await setup();
     const automation = await createWebhookAutomation(scenario);
     mockEnv("CONCURRENT_RUN_LIMIT_CAP", "2");
@@ -1183,7 +975,7 @@ describe("workflow queue", () => {
       automation.threadId,
     );
     const blockerRunId = await startOrgConcurrencyBlocker(scenario);
-    const goal = await createActiveGoalQueueEventFixture({
+    await createActiveGoalQueueEventFixture({
       threadId: automation.threadId,
       orgId: scenario.orgId,
       userId: scenario.userId,
@@ -1194,18 +986,6 @@ describe("workflow queue", () => {
 
     mockEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
     await completeRunThroughSandbox(scenario, firstRunId);
-
-    for (const action of ["arm", "revoke"] as const) {
-      expect(context.mocks.ably.publish).toHaveBeenCalledWith(
-        "immediate-successor-intent",
-        expect.objectContaining({
-          action,
-          predecessorRunId: firstRunId,
-          intentId: goal.eventId,
-          eventClass: "goal",
-        }),
-      );
-    }
 
     const goalQueue = await readGoalQueueStateFixture(automation.threadId);
     expect(goalQueue.runIds).toHaveLength(1);

@@ -61,6 +61,8 @@ function organizationMembershipIdentity(data: unknown):
       readonly orgId: string;
       readonly userId: string;
       readonly role?: string;
+      readonly purchaseId?: string;
+      readonly createdAt?: Date;
     }
   | undefined {
   const organization = propertyOf(data, "organization");
@@ -74,8 +76,24 @@ function organizationMembershipIdentity(data: unknown):
     stringPropertyOf(publicUserData, "user_id") ??
     stringPropertyOf(data, "user_id");
   const role = stringPropertyOf(data, "role");
+  const privateMetadata =
+    propertyOf(data, "privateMetadata") ?? propertyOf(data, "private_metadata");
+  const purchaseId = stringPropertyOf(
+    privateMetadata,
+    "usagePackInvitationPurchaseId",
+  );
+  const createdAt =
+    numberPropertyOf(data, "createdAt") ?? numberPropertyOf(data, "created_at");
 
-  return orgId && userId ? { orgId, userId, role } : undefined;
+  return orgId && userId
+    ? {
+        orgId,
+        userId,
+        role,
+        ...(purchaseId ? { purchaseId } : {}),
+        ...(createdAt === undefined ? {} : { createdAt: new Date(createdAt) }),
+      }
+    : undefined;
 }
 
 function organizationCreatedIdentity(data: unknown):
@@ -147,10 +165,20 @@ function organizationInvitationAcceptedIdentity(data: unknown):
     : undefined;
 }
 
+interface UsagePackInvitationAcceptanceIdentity {
+  readonly orgId: string;
+  readonly invitationId?: string;
+  readonly userId: string;
+  readonly acceptedAt: Date;
+  readonly normalizedEmail?: string;
+  readonly purchaseId?: string;
+}
+
 function enqueueUsagePackInvitationAcceptance(
-  identity: NonNullable<
-    ReturnType<typeof organizationInvitationAcceptedIdentity>
-  >,
+  eventType:
+    | "organizationInvitation.accepted"
+    | "organizationMembership.created",
+  identity: UsagePackInvitationAcceptanceIdentity,
   db: Db,
   signal: AbortSignal,
 ): void {
@@ -158,14 +186,45 @@ function enqueueUsagePackInvitationAcceptance(
     tapError(
       handleUsagePackInvitationAccepted(db, identity, signal),
       (error) => {
-        L.error("organizationInvitation.accepted activation failed", {
+        L.error(`${eventType} activation failed`, {
           orgId: identity.orgId,
           invitationId: identity.invitationId,
+          purchaseId: identity.purchaseId,
           userId: identity.userId,
           error,
         });
       },
     ),
+  );
+}
+
+function enqueueUsagePackMembershipAcceptance(
+  identity: NonNullable<ReturnType<typeof organizationMembershipIdentity>>,
+  purchaseId: string,
+  db: Db,
+  signal: AbortSignal,
+): void {
+  if (!identity.createdAt) {
+    L.error(
+      "organizationMembership.created paid invitation missing creation time",
+      {
+        orgId: identity.orgId,
+        userId: identity.userId,
+        purchaseId,
+      },
+    );
+    return;
+  }
+  enqueueUsagePackInvitationAcceptance(
+    "organizationMembership.created",
+    {
+      orgId: identity.orgId,
+      userId: identity.userId,
+      acceptedAt: identity.createdAt,
+      purchaseId,
+    },
+    db,
+    signal,
   );
 }
 
@@ -179,7 +238,52 @@ function handleOrganizationInvitationAcceptedWebhook(
     L.error("organizationInvitation.accepted event missing identity", { data });
     return new Response("OK", { status: 200 });
   }
-  enqueueUsagePackInvitationAcceptance(identity, db, signal);
+  enqueueUsagePackInvitationAcceptance(
+    "organizationInvitation.accepted",
+    identity,
+    db,
+    signal,
+  );
+  return new Response("OK", { status: 200 });
+}
+
+function handleOrganizationMembershipCreatedWebhook(
+  data: unknown,
+  db: Db,
+  signal: AbortSignal,
+  bootstrap: (
+    identity: NonNullable<ReturnType<typeof organizationMembershipIdentity>>,
+  ) => void,
+): Response {
+  const identity = organizationMembershipIdentity(data);
+  if (!identity) {
+    L.error("organizationMembership.created event missing org/user ID", {
+      data,
+    });
+    return new Response("OK", { status: 200 });
+  }
+
+  if (identity.purchaseId) {
+    enqueueUsagePackMembershipAcceptance(
+      identity,
+      identity.purchaseId,
+      db,
+      signal,
+    );
+  }
+
+  if (!isAdminMembershipRole(identity.role)) {
+    if (!identity.purchaseId) {
+      L.debug("ignoring non-admin organizationMembership.created event", {
+        orgId: identity.orgId,
+        userId: identity.userId,
+        role: identity.role,
+      });
+    }
+    return new Response("OK", { status: 200 });
+  }
+
+  bootstrap(identity);
   return new Response("OK", { status: 200 });
 }
 
@@ -258,34 +362,23 @@ const postClerkWebhook$ = command(
     }
 
     if (event.type === "organizationMembership.created") {
-      const identity = organizationMembershipIdentity(event.data);
-      if (!identity) {
-        L.error("organizationMembership.created event missing org/user ID", {
-          data: event.data,
-        });
-        return new Response("OK", { status: 200 });
-      }
-
-      if (!isAdminMembershipRole(identity.role)) {
-        L.debug("ignoring non-admin organizationMembership.created event", {
-          orgId: identity.orgId,
-          userId: identity.userId,
-          role: identity.role,
-        });
-        return new Response("OK", { status: 200 });
-      }
-
-      enqueueOrgBootstrap({
-        eventType: "organizationMembership.created",
-        orgId: identity.orgId,
-        userId: identity.userId,
-        task: set(
-          ensureOrgLimitedFreeBootstrap$,
-          { orgId: identity.orgId, ownerUserId: identity.userId },
-          signal,
-        ),
-      });
-      return new Response("OK", { status: 200 });
+      return handleOrganizationMembershipCreatedWebhook(
+        event.data,
+        set(writeDb$),
+        signal,
+        (identity) => {
+          enqueueOrgBootstrap({
+            eventType: "organizationMembership.created",
+            orgId: identity.orgId,
+            userId: identity.userId,
+            task: set(
+              ensureOrgLimitedFreeBootstrap$,
+              { orgId: identity.orgId, ownerUserId: identity.userId },
+              signal,
+            ),
+          });
+        },
+      );
     }
 
     if (event.type === "organization.deleted") {

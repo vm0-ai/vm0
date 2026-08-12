@@ -126,6 +126,13 @@ const chatThreadUnreadAgentsSchema = z.object({
   agentIds: z.array(z.string()),
 });
 
+export const zeroIndicatorSchema = z.enum(["active", "unread"]);
+
+const zeroIndicatorsSchema = z.object({
+  agents: z.record(z.string().uuid(), zeroIndicatorSchema),
+  threads: z.record(z.string().uuid(), zeroIndicatorSchema),
+});
+
 const chatThreadEventIdSchema = z.string().uuid();
 const codexServiceTierSchema = z.enum(["fast"]);
 export const chatThreadServiceTierSchema = z.enum(["priority"]);
@@ -883,6 +890,11 @@ const chatNormalSendBodyShape = {
   // Lets event-sourced clients reconcile optimistic sidebar recency by id.
   chatThreadSortEventId: chatThreadEventIdSchema.optional(),
   /**
+   * Run whose selected output the user is forwarding. The server resolves the
+   * run to authoritative thread and agent provenance before persisting it.
+   */
+  sourceRunId: z.string().uuid().optional(),
+  /**
    * Selected model id. The API resolves the effective provider from org
    * policy and available credentials. Existing threads may omit it to
    * reuse the thread's persisted model.
@@ -924,6 +936,17 @@ const chatEventNormalSendBodySchema = z
  * Chat thread collection route contract.
  */
 export const chatThreadsContract = c.router({
+  indicators: {
+    method: "GET",
+    path: "/api/okou/indicators",
+    headers: authHeadersSchema,
+    responses: {
+      200: zeroIndicatorsSchema,
+      401: apiErrorSchema,
+    },
+    summary:
+      "Get active and unread indicators for the caller's agents and chat threads in the current organization.",
+  },
   snapshot: {
     method: "GET",
     path: "/api/okou/chat-threads/snapshot",
@@ -1364,6 +1387,7 @@ export const chatEventsContract = c.router({
           clientThreadId: z.undefined().optional(),
           chatThreadEventId: z.undefined().optional(),
           chatThreadSortEventId: z.undefined().optional(),
+          sourceRunId: z.undefined().optional(),
           model: z.undefined().optional(),
           runOptions: z.undefined().optional(),
           userMessage: z.undefined().optional(),
@@ -1384,6 +1408,7 @@ export const chatEventsContract = c.router({
           clientThreadId: z.undefined().optional(),
           chatThreadEventId: z.undefined().optional(),
           chatThreadSortEventId: z.undefined().optional(),
+          sourceRunId: z.undefined().optional(),
           model: z.undefined().optional(),
           runOptions: z.undefined().optional(),
           userMessage: z.undefined().optional(),
@@ -1575,6 +1600,26 @@ export const chatThreadEventsContract = c.router({
     },
     summary: "Get raw chat event rows after a seq cursor",
   },
+  queued: {
+    method: "GET",
+    path: "/api/okou/chat-threads/:threadId/queued-events",
+    headers: authHeadersSchema,
+    pathParams: chatThreadThreadIdPathParamsSchema,
+    responses: {
+      200: z.object({
+        events: z.array(
+          z.object({
+            eventId: z.string(),
+            seqId: z.number().int().positive(),
+          }),
+        ),
+      }),
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "List authoritative queued chat events for a thread",
+  },
 });
 
 export const chatThreadArtifactsContract = c.router({
@@ -1732,6 +1777,8 @@ export type ChatThreadMetadata = z.infer<typeof chatThreadMetadataSchema>;
 export type ChatThreadDraft = z.infer<typeof chatThreadDraftSchema>;
 export type ChatEvent = z.infer<typeof chatEventSchema>;
 export type ChatEventSendBody = z.infer<typeof chatEventsContract.send.body>;
+export type ZeroIndicator = z.infer<typeof zeroIndicatorSchema>;
+export type ZeroIndicators = z.infer<typeof zeroIndicatorsSchema>;
 
 export function chatEventResponse(event: ChatEvent): ChatEvent {
   return chatEventSchema.parse(event);

@@ -43,6 +43,19 @@ def _is_invalid_greedy_param(
     return pattern_index != last_pattern_index or bool(prefix) or bool(suffix)
 
 
+def _segment_outer_literal_scope(seg: str) -> tuple[str, str]:
+    """Return literals that are structurally outside a segment's brace envelope."""
+    prefix, open_brace, _ = seg.partition("{")
+    if not open_brace or "}" in prefix:
+        prefix = ""
+
+    _, close_brace, suffix = seg.rpartition("}")
+    if not close_brace or "{" in suffix:
+        suffix = ""
+
+    return prefix, suffix
+
+
 def _parse_segment(seg: str) -> ParsedSegment:
     """Parse a single host or path segment into an immutable result."""
     open_count = seg.count("{")
@@ -51,7 +64,12 @@ def _parse_segment(seg: str) -> ParsedSegment:
     if open_count == 0 and close_count == 0:
         return SegmentLiteral(seg)
     if open_count != close_count:
-        return SegmentError(f'unbalanced brace in segment "{seg}" — {_SEGMENT_ERROR_HINT}')
+        prefix, suffix = _segment_outer_literal_scope(seg)
+        return SegmentError(
+            f'unbalanced brace in segment "{seg}" — {_SEGMENT_ERROR_HINT}',
+            prefix,
+            suffix,
+        )
 
     open1 = seg.find("{")
     close1 = seg.find("}")
@@ -59,10 +77,7 @@ def _parse_segment(seg: str) -> ParsedSegment:
         return SegmentError(f'unbalanced brace in segment "{seg}" — {_SEGMENT_ERROR_HINT}')
 
     if open_count >= _MULTI_PARAM_BRACE_COUNT:
-        prefix = seg[:open1]
-        suffix = seg[seg.rfind("}") + 1 :]
-        if "{" in suffix:
-            suffix = ""
+        prefix, suffix = _segment_outer_literal_scope(seg)
         open2 = seg.find("{", close1 + 1)
         if close1 + 1 == open2:
             return SegmentError(

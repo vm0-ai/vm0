@@ -10,16 +10,16 @@ trap 'rm -rf "$tmp_dir"' EXIT
 commit_sha="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 desktop_version="1.2.3"
 app_dir="${tmp_dir}/package/Zero Computer Use.app"
-okou_app_dir="${tmp_dir}/package/Okou Computer Use.app"
+okou_app_dir="${tmp_dir}/package/Okou.app"
 artifact_dir="${tmp_dir}/artifact"
 mkdir -p \
   "$app_dir/Contents/MacOS" \
   "$app_dir/Contents/Frameworks/Example.framework/Versions/A" \
   "$okou_app_dir/Contents/MacOS"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$app_dir/Contents/MacOS/Zero Computer Use"
-printf '#!/usr/bin/env bash\nexit 0\n' > "$okou_app_dir/Contents/MacOS/Okou Computer Use"
+printf '#!/usr/bin/env bash\nexit 0\n' > "$okou_app_dir/Contents/MacOS/Okou"
 chmod +x "$app_dir/Contents/MacOS/Zero Computer Use"
-chmod +x "$okou_app_dir/Contents/MacOS/Okou Computer Use"
+chmod +x "$okou_app_dir/Contents/MacOS/Okou"
 ln -s A "$app_dir/Contents/Frameworks/Example.framework/Versions/Current"
 
 bash "$build_script" \
@@ -34,7 +34,7 @@ jq -e \
   --arg desktop_version "$desktop_version" \
   '.commitSha == $commit_sha
     and .desktopVersion == $desktop_version
-    and .okouAppName == "Okou Computer Use.app"
+    and .okouAppName == "Okou.app"
     and .okouArchive.path == "okou-app.tar.gz"' \
   "$artifact_dir/manifest.json" >/dev/null
 
@@ -43,7 +43,7 @@ mkdir -p "$extracted_dir"
 tar -xzf "$artifact_dir/app.tar.gz" -C "$extracted_dir"
 tar -xzf "$artifact_dir/okou-app.tar.gz" -C "$extracted_dir"
 test -x "$extracted_dir/Zero Computer Use.app/Contents/MacOS/Zero Computer Use"
-test -x "$extracted_dir/Okou Computer Use.app/Contents/MacOS/Okou Computer Use"
+test -x "$extracted_dir/Okou.app/Contents/MacOS/Okou"
 test -L "$extracted_dir/Zero Computer Use.app/Contents/Frameworks/Example.framework/Versions/Current"
 
 legacy_artifact_dir="${tmp_dir}/legacy-artifact"
@@ -150,28 +150,28 @@ const { packagedAppPaths } = require(path.join(
   "turbo/apps/desktop/scripts/packaged-app-paths.js",
 ));
 
-if (forgeConfig.packagerConfig.name !== "Okou Computer Use") {
+if (forgeConfig.packagerConfig.name !== "Okou") {
   throw new Error("Okou build must use the Okou display name");
 }
-if (forgeConfig.packagerConfig.appBundleId !== "ai.okou.computer-use") {
+if (forgeConfig.packagerConfig.appBundleId !== "ai.okou.desktop") {
   throw new Error("Okou build must use the Okou production bundle ID");
 }
 if (
   forgeConfig.packagerConfig.protocols[0].schemes[0] !==
-  "ai.okou.computer-use"
+  "ai.okou.desktop"
 ) {
   throw new Error("Okou build must register the Okou auth scheme");
 }
 if (
   !packagedAppPaths().appBundlePath.endsWith(
-    `Okou Computer Use-${process.platform}-${process.arch}/Okou Computer Use.app`,
+    `Okou-${process.platform}-${process.arch}/Okou.app`,
   )
 ) {
   throw new Error("Okou packaged app path must be product scoped");
 }
 if (
-  packagedAppPaths({ appBundlePath: "/tmp/Okou Computer Use.app" })
-    .appBundlePath !== "/tmp/Okou Computer Use.app"
+  packagedAppPaths({ appBundlePath: "/tmp/Okou.app" })
+    .appBundlePath !== "/tmp/Okou.app"
 ) {
   throw new Error("Desktop smoke tests must support an installed app path");
 }

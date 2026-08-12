@@ -80,11 +80,7 @@ async fn api_mode_execute_cli_captures_session_metadata_and_sends_events()
     }
 
     let masker = SecretMasker::from_raw("");
-    let active_input = guest_agent::active_input::ActiveInputRuntime::new_with_initial_prompt(
-        &runtime.config.run_id,
-        true,
-        &runtime.config.prompt,
-    );
+    let active_input = common::active_input_runtime(&runtime)?;
     let cli_result = tokio::time::timeout(
         Duration::from_secs(5),
         guest_agent::cli::execute_cli_with_active_input_for_config(

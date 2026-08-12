@@ -1,32 +1,21 @@
 import { command, computed, state } from "ccstate";
 import { setAblyLoop$ } from "./realtime.ts";
 
-const internalReloadChatUnreadState$ = state(0);
-const internalReloadChatActiveRunIds$ = state(0);
+const internalReloadChatIndicators$ = state(0);
 
-export const reloadChatUnreadStateCounter$ = computed((get) => {
-  return get(internalReloadChatUnreadState$);
+export const reloadChatIndicatorsCounter$ = computed((get) => {
+  return get(internalReloadChatIndicators$);
 });
 
-export const reloadChatActiveRunIdsCounter$ = computed((get) => {
-  return get(internalReloadChatActiveRunIds$);
-});
-
-export const reloadChatUnreadState$ = command(({ set }) => {
-  set(internalReloadChatUnreadState$, (n) => {
-    return n + 1;
-  });
-});
-
-const reloadChatActiveRunIds$ = command(({ set }) => {
-  set(internalReloadChatActiveRunIds$, (n) => {
+export const reloadChatIndicators$ = command(({ set }) => {
+  set(internalReloadChatIndicators$, (n) => {
     return n + 1;
   });
 });
 
 /**
- * Subscribe to the user-level `threadListChanged` topic and invalidate active
- * run and unread snapshots. Event-sourced thread data has its own incremental
+ * Subscribe to the user-level `threadListChanged` topic and invalidate the
+ * indicator snapshot. Event-sourced thread data has its own incremental
  * subscription.
  *
  * Loop command returns false so it keeps listening until the signal aborts.
@@ -36,8 +25,7 @@ const reloadChatActiveRunIds$ = command(({ set }) => {
 export const subscribeThreadListChanged$ = command(
   async ({ set }, signal: AbortSignal) => {
     const onChanged$ = command(({ set }) => {
-      set(reloadChatActiveRunIds$);
-      set(reloadChatUnreadState$);
+      set(reloadChatIndicators$);
       return false;
     });
     await set(
@@ -51,7 +39,7 @@ export const subscribeThreadListChanged$ = command(
 export const subscribeChatThreadReadCursorUpdated$ = command(
   async ({ set }, signal: AbortSignal) => {
     const onChanged$ = command(({ set }) => {
-      set(reloadChatUnreadState$);
+      set(reloadChatIndicators$);
       return false;
     });
     await set(

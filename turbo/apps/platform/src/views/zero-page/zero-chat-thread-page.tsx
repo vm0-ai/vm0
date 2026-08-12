@@ -755,7 +755,7 @@ function ChatThreadHeader({ thread }: { thread: ChatPanelSignals }) {
             </Tooltip>
           </TooltipProvider>
         ) : null}
-        <AutomationMenuButton key={thread.threadId} thread={thread} />
+        <AutomationMenuButton thread={thread} />
         <BrowserMenuButton thread={thread} />
         <ArtifactsButton thread={thread} />
       </div>
@@ -1933,8 +1933,7 @@ function headerWorkflowAutomationMatchSummary(
     return null;
   }
   switch (automation.eventType) {
-    case "gmail-label-applied":
-    case "github-label-applied": {
+    case "gmail-label-applied": {
       return i18n.t(
         ($) => {
           return $.chat.automations.matchSummary.label;
@@ -1943,6 +1942,9 @@ function headerWorkflowAutomationMatchSummary(
           value: quotedAutomationValue(automation.eventConfig.labelName),
         },
       );
+    }
+    case "github-pull-request": {
+      return `${automation.eventConfig.repository} · ${automation.eventConfig.action}`;
     }
     case "gmail-new-message": {
       return headerGmailMatchSummary(automation.eventConfig);
@@ -2943,7 +2945,6 @@ export function ZeroChatThreadPage() {
           activeThreadSidebar ? (
             activeThreadSidebar.target.type === "automations" ? (
               <ThreadAutomationsSidebarSlot
-                key={activeThreadSidebar.thread.threadId}
                 thread={activeThreadSidebar.thread}
               />
             ) : (
@@ -4336,16 +4337,10 @@ function ChatThreadEventsPane({ thread }: { thread: ChatPanelSignals }) {
           standalonePwa && "overscroll-contain",
         )}
       >
-        <ChatThreadEventsMain key={thread.threadId} thread={thread} />
+        <ChatThreadEventsMain thread={thread} />
       </div>
-      <ChatThreadSkeletonOverlay
-        key={`skeleton:${thread.threadId}`}
-        thread={thread}
-      />
-      <ScrollToBottomButton
-        key={`scroll-button:${thread.threadId}`}
-        thread={thread}
-      />
+      <ChatThreadSkeletonOverlay thread={thread} />
+      <ScrollToBottomButton thread={thread} />
     </div>
   );
 }
@@ -4387,6 +4382,7 @@ function ChatThreadNotFound() {
 }
 
 function ChatThreadContent({ thread }: { thread: ChatPanelSignals }) {
+  const { t } = useTranslation();
   const threadMeta = useGet(thread.threadMeta$);
   if (!threadMeta) {
     return <ChatThreadNotFound />;
@@ -4399,13 +4395,20 @@ function ChatThreadContent({ thread }: { thread: ChatPanelSignals }) {
       <div className="relative min-h-0 flex-1">
         <div className="flex h-full min-w-0 flex-col">
           <ChatThreadEventsPane thread={thread} />
-          {/* Command loadables are hook-owned, so keep their identity boundary
-              narrower than the persistent thread and event owners. */}
-          <ChatThreadBottomBar key={thread.threadId} thread={thread} />
+          <ChatThreadBottomBar thread={thread} />
         </div>
       </div>
 
-      <ChatFeedbackSelection feedback={thread.feedback} />
+      <ChatFeedbackSelection
+        feedback={thread.feedback}
+        sourceAgentId={threadMeta.agentId}
+        sourceThreadTitle={
+          threadMeta.title ??
+          t(($) => {
+            return $.chat.newChat;
+          })
+        }
+      />
     </>
   );
 }
@@ -7586,6 +7589,7 @@ function PagedAssistantGroup({
   }
 
   const groupElementId = `chat-event-group-${group.beginEventId}`;
+  const runId = firstRunIdForEvents(group.events);
   const fullContent = group.events
     .map((m) => {
       return m.content;
@@ -7613,6 +7617,7 @@ function PagedAssistantGroup({
     <div
       id={groupElementId}
       data-role="assistant"
+      data-chat-run-id={runId}
       className="flex flex-col gap-1 animate-in fade-in slide-in-from-bottom-2 duration-300"
     >
       <div className="flex flex-col gap-2 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
@@ -7671,6 +7676,7 @@ function PagedAssistantEventItem({
     return (
       <div
         data-chat-scroll-anchor-event-id={event.id}
+        data-chat-run-id={event.runId}
         className={cn(
           "zero-chat-bubble-assistant px-0 text-[0.9375rem] leading-[1.7] min-w-0 [overflow-wrap:anywhere]",
           compactTop ? "@[900px]:pt-0" : "@[900px]:pt-2.5",
@@ -7692,6 +7698,7 @@ function PagedAssistantEventItem({
     return (
       <div
         data-chat-scroll-anchor-event-id={event.id}
+        data-chat-run-id={event.runId}
         className={cn(
           "zero-chat-bubble-assistant px-0 text-[0.9375rem] leading-[1.7] min-w-0 [overflow-wrap:anywhere]",
           compactTop ? "@[900px]:pt-0" : "@[900px]:pt-2.5",

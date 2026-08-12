@@ -1,13 +1,13 @@
 # Computer Use Desktop
 
-Electron shell for the Zero and Okou Computer Use products.
+Electron shell for the Zero and Okou products.
 
 This pass is macOS-only. Windows packaging, native push, tray behavior, and
 auto-update are intentionally out of scope. Computer Use setup lives in the
 hosted Platform UI, while this app exposes the Desktop bridge and native macOS
 host runtime that page uses.
 
-Zero Computer Use and Okou Computer Use support macOS 14+ (macOS 14 or newer). Packaged app
+Zero Computer Use and Okou support macOS 14+ (macOS 14 or newer). Packaged app
 metadata, native helper builds, and release verification all use the same
 minimum for Apple silicon artifacts. Intel Macs are not supported.
 
@@ -39,7 +39,7 @@ pnpm desktop:dev
 ```
 
 This packages and runs `Zero CU Dev.app` with `VM0_DESKTOP_PLATFORM_URL` set to
-the local proxy. Set `VM0_DESKTOP_PRODUCT=okou` to package `Okou CU Dev.app`
+the local proxy. Set `VM0_DESKTOP_PRODUCT=okou` to package `Okou Dev.app`
 instead. Use packaged development apps for sign-in callback, URL scheme, and
 permission testing.
 Non-CI packaged desktop builds require the `Developer ID Application: Max &
@@ -70,9 +70,9 @@ VM0_DESKTOP_PLATFORM_URL=https://app.okou.ai \
 pnpm -F @vm0/desktop make
 ```
 
-That build creates `Okou Computer Use.app` with bundle ID and callback scheme
-`ai.okou.computer-use`. Development Okou builds use
-`ai.okou.computer-use.dev`.
+That build creates `Okou.app` with bundle ID and callback scheme
+`ai.okou.desktop`. Development Okou builds use
+`ai.okou.desktop.dev`.
 Local notarized builds use the `notarytool` Keychain profile
 `vm0-desktop-notary` by default. Set `VM0_DESKTOP_NOTARIZE_KEYCHAIN_PROFILE` to
 override the profile and `VM0_DESKTOP_NOTARIZE_KEYCHAIN` to override the
@@ -108,7 +108,7 @@ silicon artifact:
 The downloaded GitHub artifact contains `Zero-darwin-arm64.zip`. Unzip both
 layers, then open `Zero Computer Use.app`.
 The Okou artifact contains `Okou-darwin-arm64.zip` and
-`Okou Computer Use.app`.
+`Okou.app`.
 
 These artifacts are ad-hoc signed, not Developer ID signed, and not notarized.
 macOS Gatekeeper may require right-clicking the app and choosing Open, or
@@ -127,7 +127,7 @@ Desktop releases are versioned by release-please. Changes under
 
 When a release-please merge group changes the Desktop package version, the
 `deploy-desktop` job builds the unsigned production `Zero Computer Use.app` and
-`Okou Computer Use.app` for Apple silicon Macs and publishes both to R2 under
+`Okou.app` for Apple silicon Macs and publishes both to R2 under
 `okou-desktop/<commit-sha>/`. The matching release run resolves the same commit
 as `release_target`, downloads and verifies those immutable app artifacts,
 signs them with the Developer ID Application certificate, notarizes them for
@@ -150,16 +150,19 @@ replace it from the Okou update ZIP, and launch it again.
 Zero and Okou desktop releases are independent products during the rename
 rollout. Existing Zero installations keep using
 `/api/desktop/updates/stable/darwin/arm64` and the `desktop-updates` manifest.
-Okou installations use
-`/api/desktop/updates/okou/stable/darwin/arm64` and the separate
-`okou-desktop-updates` manifest. Each manifest identifies its product, and the
-API rejects ZIP assets whose product filename does not match the requested
-feed. A Zero feed must never publish an Okou artifact, or vice versa.
+Final `ai.okou.desktop` installations use
+`/api/desktop/updates/ai-okou-desktop/stable/darwin/arm64` and the separate
+`ai-okou-desktop-updates` manifest. The pre-adoption Okou feed remains frozen
+until the signed/notarized final identity passes release acceptance, then it is
+retired without receiving a final-identity artifact. Each manifest identifies
+its product, and the API rejects ZIP assets whose product filename does not
+match the requested feed. A Zero feed must never publish an Okou artifact, and
+the pre-adoption Okou feed must never publish a final-identity archive.
 
 The release systems may deploy independently. The API therefore preserves the
 legacy Zero routes and accepts both Zero callback schemes
 (`ai.vm0.zero.desktop` and `ai.vm0.zero.desktop.dev`) while also accepting the
-Okou schemes (`ai.okou.computer-use` and `ai.okou.computer-use.dev`). Desktop
+Okou schemes (`ai.okou.desktop` and `ai.okou.desktop.dev`). Desktop
 builds select exactly one product feed and one callback scheme from their
 packaged identity; they do not discover or switch products at runtime.
 
@@ -170,9 +173,10 @@ the current `api.vm0.ai` and `www.vm0.ai` services until the separate
 `api.okou.ai` readiness gate passes.
 
 Okou is a separate macOS application identity. It can be installed beside
-Zero, gets its own Electron `userData` root and installation ID, and does not
-copy Zero's Chromium profile. Users sign in again and grant Accessibility,
-Screen Recording, and browser Automation permissions again because macOS TCC
+Zero, stores Electron data under its explicit `Okou` data directory, and gets a
+new installation ID. It does not read or migrate the pre-adoption Okou profile
+or Zero's Chromium profile. Users sign in again and grant Accessibility, Screen
+Recording, and browser Automation permissions again because macOS TCC
 associates those permissions with the application identity. The current
 release promotion signs and notarizes both product lines while publishing them
 under independent release tags and update manifests.

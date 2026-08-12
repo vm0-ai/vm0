@@ -51,10 +51,6 @@ const CONTEXT_BACKED_CONTEXT_TYPES: readonly ContextBackedContextType[] = [
   "agentphone",
 ];
 
-export function activeInputPromptFitsControlPayload(prompt: string): boolean {
-  return activeInputControlPayloadFits({ type: "active-input", text: prompt });
-}
-
 export function activeInputDeliveryPromptFitsControlPayload(
   deliveryId: string,
   prompt: string,

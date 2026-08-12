@@ -897,23 +897,6 @@ export async function timeoutRunWithoutCallbacksFixture(args: {
   }
 }
 
-/** Create a terminal source that predates runner-process identity tracking. */
-export async function completeRunWithoutRunnerIdentityFixture(args: {
-  readonly runId: string;
-}): Promise<void> {
-  const completedAt = nowDate();
-  const updated = await db()
-    .update(agentRuns)
-    .set({ status: "completed", completedAt })
-    .where(and(eq(agentRuns.id, args.runId), eq(agentRuns.status, "pending")))
-    .returning({ id: agentRuns.id });
-  if (updated.length !== 1) {
-    throw new Error(
-      "Expected one pending run to complete without runner identity",
-    );
-  }
-}
-
 /**
  * Holds checkpoint reads after `/complete` has loaded its run but before its
  * terminal compare-and-set. Product APIs cannot pause at this race boundary.
@@ -1833,66 +1816,6 @@ export async function holdChatEventQueueItemFixture(args: {
     directBlockedWaiterCount: async () => {
       return await directBlockedWaiterCount(holderPid);
     },
-    blockedWaiterCount: async () => {
-      return await transitiveBlockedWaiterCount(holderPid);
-    },
-  };
-}
-
-/**
- * Holds one existing ChatEvent row so thread deletion can pause after it
- * owns the parent thread lock. This timing-only boundary does not create or
- * mutate product data and cannot block messages outside the selected thread.
- */
-export async function holdChatEventFixture(args: {
-  readonly threadId: string;
-  readonly eventId: string;
-  readonly signal: AbortSignal;
-}): Promise<{
-  readonly release: () => void;
-  readonly done: Promise<void>;
-  readonly blockedWaiterCount: () => Promise<number>;
-}> {
-  const started = createDeferredPromise<number>(args.signal);
-  const released = createDeferredPromise<void>(args.signal);
-  const done = db().transaction(async (tx) => {
-    const rows = await tx
-      .select({ id: chatEvents.id })
-      .from(chatEvents)
-      .where(
-        and(
-          eq(chatEvents.id, args.eventId),
-          eq(chatEvents.chatThreadId, args.threadId),
-        ),
-      )
-      .for("update")
-      .limit(1);
-    if (!rows[0]) {
-      throw new Error("Expected the chat message row");
-    }
-    const pidRows = await executeRawRows(
-      tx,
-      sql`
-        SELECT pg_backend_pid() AS "pid"
-      `,
-      databasePidRowSchema,
-    );
-    const holderPid = pidRows[0]?.pid;
-    if (!holderPid) {
-      throw new Error("Expected the chat-message lock holder pid");
-    }
-    started.resolve(holderPid);
-    await released.promise;
-  });
-  const holderPid = await started.promise;
-
-  return {
-    release: () => {
-      if (!released.settled()) {
-        released.resolve(undefined);
-      }
-    },
-    done,
     blockedWaiterCount: async () => {
       return await transitiveBlockedWaiterCount(holderPid);
     },

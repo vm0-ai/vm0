@@ -159,7 +159,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
       "Merged and posted to Slack",
     ],
     missingInfo:
-      "Connectors: github required; vercel, slack optional.\nSuggested trigger: Add a github-label-applied event trigger on the ready-to-merge label so it runs the moment a PR is labeled.\n\nCreate the workflow draft first. Before adding or enabling its automation, ask for the repository, whether Zero may merge or should only recommend a merge, and the merge method. Ask only one short question at a time. Do not inspect connector setup until the workflow or trigger command reports that it is required.",
+      "Connectors: github required; vercel, slack optional.\nSuggested trigger: Add a github-pull-request event trigger with the labeled action on the ready-to-merge label so it runs the moment a PR is labeled.\n\nCreate the workflow draft first. Before adding or enabling its automation, ask for the repository, whether Zero may merge or should only recommend a merge, and the merge method. Ask only one short question at a time. Do not inspect connector setup until the workflow or trigger command reports that it is required.",
   }),
   defineWorkflowTemplate({
     id: "workflow-template:file-sentry-crashes-github",
@@ -189,7 +189,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
       "Release notes saved to Notion",
     ],
     missingInfo:
-      "Connectors: github, notion required; slack optional.\nSuggested trigger: Add a github-label-applied event trigger on a release label, or a schedule trigger you run per release.\n\nCreate the workflow draft first. Before adding or enabling its automation, ask one short question for the next missing trigger or safety detail. Do not inspect connector setup until the workflow or trigger command reports that it is required.",
+      "Connectors: github, notion required; slack optional.\nSuggested trigger: Add a github-pull-request event trigger with the labeled action on a release label, or a schedule trigger you run per release.\n\nCreate the workflow draft first. Before adding or enabling its automation, ask one short question for the next missing trigger or safety detail. Do not inspect connector setup until the workflow or trigger command reports that it is required.",
   }),
   defineWorkflowTemplate({
     id: "workflow-template:feedback-router",
@@ -220,7 +220,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
       "Saved to Notion",
     ],
     missingInfo:
-      "Connectors: github, notion required; figma optional.\nSuggested trigger: Add a github-label-applied event trigger on the needs-spec label.\n\nCreate the workflow draft first. Before adding or enabling its automation, ask one short question for the next missing trigger or safety detail. Do not inspect connector setup until the workflow or trigger command reports that it is required.",
+      "Connectors: github, notion required; figma optional.\nSuggested trigger: Add a github-pull-request event trigger with the labeled action on the needs-spec label.\n\nCreate the workflow draft first. Before adding or enabling its automation, ask one short question for the next missing trigger or safety detail. Do not inspect connector setup until the workflow or trigger command reports that it is required.",
   }),
   defineWorkflowTemplate({
     id: "workflow-template:post-release-notes-slack",
@@ -235,7 +235,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
       "Posted to Slack and Notion",
     ],
     missingInfo:
-      "Connectors: github, slack required; notion optional.\nSuggested trigger: Add a github-label-applied event trigger on the release label.\n\nCreate the workflow draft first. Before adding or enabling its automation, ask one short question for the next missing trigger or safety detail. Do not inspect connector setup until the workflow or trigger command reports that it is required.",
+      "Connectors: github, slack required; notion optional.\nSuggested trigger: Add a github-pull-request event trigger with the labeled action on the release label.\n\nCreate the workflow draft first. Before adding or enabling its automation, ask one short question for the next missing trigger or safety detail. Do not inspect connector setup until the workflow or trigger command reports that it is required.",
   }),
   defineWorkflowTemplate({
     id: "workflow-template:sync-linear-roadmap-notion",
@@ -654,7 +654,7 @@ export const WORKFLOW_TEMPLATE_ITEMS: readonly WorkflowTemplateItem[] = [
       "Sent to engineering",
     ],
     missingInfo:
-      "Connectors: github, slack required; linear optional.\nSuggested trigger: Add a github-label-applied event trigger on the bug label.\n\nCreate the workflow draft first. Before adding or enabling its automation, ask one short question for the next missing trigger or safety detail. Do not inspect connector setup until the workflow or trigger command reports that it is required.",
+      "Connectors: github, slack required; linear optional.\nSuggested trigger: Add a github-pull-request event trigger with the labeled action on the bug label.\n\nCreate the workflow draft first. Before adding or enabling its automation, ask one short question for the next missing trigger or safety detail. Do not inspect connector setup until the workflow or trigger command reports that it is required.",
   }),
   defineWorkflowTemplate({
     id: "workflow-template:spot-churn-risk-stripe-zendesk",
