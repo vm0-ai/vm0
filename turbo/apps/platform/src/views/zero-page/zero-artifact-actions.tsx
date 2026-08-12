@@ -1,5 +1,5 @@
 import type { ComponentPropsWithoutRef, MouseEvent, ReactNode } from "react";
-import { Download, Loader2, Share } from "lucide-react";
+import { Download, Loader2, Share2 } from "lucide-react";
 import {
   cn,
   Popover,
@@ -328,7 +328,7 @@ export function ArtifactShareButton({
         title={publicAttachmentUrl(url)}
         className={iconButtonClassName(className)}
       >
-        <Share size={iconSize} />
+        <Share2 size={iconSize} />
       </a>
     </ArtifactActionTooltip>
   );
@@ -713,6 +713,7 @@ export function ArtifactDownloadMenu({
       <PopoverContent
         role="menu"
         align={align}
+        positionerClassName="!z-[10000]"
         sideOffset={6}
         style={{ pointerEvents: "auto" }}
         onOpenAutoFocus={(event) => {
