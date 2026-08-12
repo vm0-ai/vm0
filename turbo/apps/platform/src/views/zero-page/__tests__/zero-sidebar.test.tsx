@@ -1286,6 +1286,52 @@ describe("zero sidebar", () => {
     });
   });
 
+  it("recedes both sidebar section headers at rest and lifts them on hover", async () => {
+    prepareDefaultAgent();
+    mockChatThreadSnapshot(() => {
+      return [createThread(EXISTING_THREAD_ID, "Release plan")];
+    });
+
+    setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
+
+    const chatTitle = await waitFor(() => {
+      return within(sidebar()).getByText("Chats with Zero");
+    });
+    const pinnedTitle = within(
+      screen.getByTestId("pinned-section-header"),
+    ).getByText("Pinned");
+
+    // The chat list and pinned headers are the same control, so they must
+    // carry the same resting tone. A full-strength resting tone also makes
+    // the header's own group-hover class a no-op and drops the hover lift.
+    const restingTone = "text-sidebar-foreground/50";
+    expect(pinnedTitle).toHaveClass(restingTone);
+    expect(chatTitle).toHaveClass(
+      restingTone,
+      "group-hover:text-sidebar-foreground",
+    );
+  });
+
+  it("leaves the footer as the only owner of the gap below the thread list", async () => {
+    prepareDefaultAgent();
+    mockChatThreadSnapshot(() => {
+      return [createThread(EXISTING_THREAD_ID, "Release plan")];
+    });
+
+    setupSidebarPage({ context, path: `/agents/${AGENT_ID}/chat` });
+
+    await waitFor(() => {
+      return within(sidebar()).getByText("Chats with Zero");
+    });
+
+    // The footer below supplies the 8px boundary out of its own padding.
+    // A bottom padding here stacks a second one on top of it, which reads as
+    // a void under the last thread row.
+    expect(sidebar()).toHaveClass("px-2", "pt-1");
+    expect(sidebar()).not.toHaveClass("p-2");
+    expect(sidebar()).not.toHaveClass("pb-2");
+  });
+
   it("scrolls the current chat into the virtualized sidebar on page setup", async () => {
     prepareDefaultAgent();
     const leadingThreads = Array.from({ length: 24 }, (_, index) => {
