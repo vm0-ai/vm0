@@ -1,0 +1,1020 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "repo": "vm0-ai/Template-artifact",
+    "commit": "78dbe053b2b485d907d7e0116022ebdfe807038f",
+    "path": "Template-Website/archive"
+  },
+  "packages": [
+    {
+      "slug": "black-slabs",
+      "storageId": "81f4e53e-a086-4533-aba3-f3694348879b",
+      "versionId": "63e7780407504c15df178658ef2f694baa23d0a2a4199f38ac07fd9a302f5dac",
+      "archive": {
+        "path": "black-slabs.tar.gz",
+        "sha256": "38b2f826a86901e113b6e96b52563a839b729fc025fa793b1816d6149221bcf9",
+        "byteSize": 97760
+      },
+      "totalSize": 341849,
+      "fileCount": 15,
+      "files": [
+        {
+          "path": "black-slabs/engine/effects.css",
+          "hash": "991ff2386e6bb1a94d015af5da12106b6a876c7fbd65094189185a72b647fdbd",
+          "size": 2476
+        },
+        {
+          "path": "black-slabs/engine/foundation.css",
+          "hash": "ff0fbc2989be17ae91a321ac0165d99915e1fc1cbb864f55e035fd948ea68d80",
+          "size": 6738
+        },
+        {
+          "path": "black-slabs/engine/gen-engine.mjs",
+          "hash": "c40cc9bd2513c06678855d878c5647522aa8fb63cef663241737b89c23cd4f32",
+          "size": 6783
+        },
+        {
+          "path": "black-slabs/engine/icons.mjs",
+          "hash": "9374230c7da07df2cc788770b3ff20b29cc5b06b4cb5d5cc6c163948e46d7f08",
+          "size": 12037
+        },
+        {
+          "path": "black-slabs/engine/motion.css",
+          "hash": "90615e720da29ed19f2708fc4a204c10c94beb55eadbc6d2f36f2eaa686cd77e",
+          "size": 8529
+        },
+        {
+          "path": "black-slabs/engine/motion.mjs",
+          "hash": "89646ca9460fa957f3d39442d0c1e48c66a53f07a1c9a68bac0f096e9b3f9321",
+          "size": 12751
+        },
+        {
+          "path": "black-slabs/engine/sections.mjs",
+          "hash": "0cc6273f65e64b421ebfaf7c4bac1a8ad281eb0fba9e509616c473cc961e3f11",
+          "size": 137238
+        },
+        {
+          "path": "black-slabs/engine/site-shell.html",
+          "hash": "02ce6991d71cac2b186a258627f84169775f94ece620fb036459861bc0d9ce3d",
+          "size": 879
+        },
+        {
+          "path": "black-slabs/example.html",
+          "hash": "f79f81dbb3e62278751c4be84a9deef9b81b1928d00e8cd78c215103768d1a46",
+          "size": 108910
+        },
+        {
+          "path": "black-slabs/render.mjs",
+          "hash": "729a06078c1868db05873aeeecf3123d8721dab1010864bad2cdf0a2326d2176",
+          "size": 2621
+        },
+        {
+          "path": "black-slabs/sample-plan.json",
+          "hash": "f55312efa2f00221c20f7e1acb76441a00a0366b19add4bb32820e81244c87ec",
+          "size": 9906
+        },
+        {
+          "path": "black-slabs/SKILL.md",
+          "hash": "fdd959192bc8185bc5509050c7c12294826247263dedf067adfd282753b02271",
+          "size": 10397
+        },
+        {
+          "path": "black-slabs/skin-black-slabs.md",
+          "hash": "75ac596bb611f2728794961efd2d8c2ae2d9c7f48e80d8cdd26dba777a7884f8",
+          "size": 3622
+        },
+        {
+          "path": "black-slabs/skin-black-slabs.mjs",
+          "hash": "c13adea2ae8e5c9affe6203a28475ec19582622bae0d8a05c7f949fd0b80e96b",
+          "size": 17746
+        },
+        {
+          "path": "black-slabs/template.json",
+          "hash": "ecc7965016768aec6a391514afecd6a7375f9047a11877f791861e210686b1fe",
+          "size": 1216
+        }
+      ],
+      "renderedBytes": 150099
+    },
+    {
+      "slug": "blueprint-grid",
+      "storageId": "b571b9ef-e9ca-4f16-a4ca-9fe79549acb3",
+      "versionId": "89c5a11d4a769e880e59a277fe8af1f1c173752ceea7539680d00d5225b3b717",
+      "archive": {
+        "path": "blueprint-grid.tar.gz",
+        "sha256": "b5f058f3ec7881e642e31e44e7de1f94465bae783de7fc2d42727bbfd109fad2",
+        "byteSize": 3594880
+      },
+      "totalSize": 5007251,
+      "fileCount": 15,
+      "files": [
+        {
+          "path": "blueprint-grid/engine/effects.css",
+          "hash": "991ff2386e6bb1a94d015af5da12106b6a876c7fbd65094189185a72b647fdbd",
+          "size": 2476
+        },
+        {
+          "path": "blueprint-grid/engine/foundation.css",
+          "hash": "ff0fbc2989be17ae91a321ac0165d99915e1fc1cbb864f55e035fd948ea68d80",
+          "size": 6738
+        },
+        {
+          "path": "blueprint-grid/engine/gen-engine.mjs",
+          "hash": "c40cc9bd2513c06678855d878c5647522aa8fb63cef663241737b89c23cd4f32",
+          "size": 6783
+        },
+        {
+          "path": "blueprint-grid/engine/icons.mjs",
+          "hash": "9374230c7da07df2cc788770b3ff20b29cc5b06b4cb5d5cc6c163948e46d7f08",
+          "size": 12037
+        },
+        {
+          "path": "blueprint-grid/engine/motion.css",
+          "hash": "90615e720da29ed19f2708fc4a204c10c94beb55eadbc6d2f36f2eaa686cd77e",
+          "size": 8529
+        },
+        {
+          "path": "blueprint-grid/engine/motion.mjs",
+          "hash": "89646ca9460fa957f3d39442d0c1e48c66a53f07a1c9a68bac0f096e9b3f9321",
+          "size": 12751
+        },
+        {
+          "path": "blueprint-grid/engine/sections.mjs",
+          "hash": "0cc6273f65e64b421ebfaf7c4bac1a8ad281eb0fba9e509616c473cc961e3f11",
+          "size": 137238
+        },
+        {
+          "path": "blueprint-grid/engine/site-shell.html",
+          "hash": "02ce6991d71cac2b186a258627f84169775f94ece620fb036459861bc0d9ce3d",
+          "size": 879
+        },
+        {
+          "path": "blueprint-grid/example.html",
+          "hash": "5367af2e60fa16ce229d1babddf04bffb1419e757c11788a75b4c752dc6c034c",
+          "size": 4765098
+        },
+        {
+          "path": "blueprint-grid/render.mjs",
+          "hash": "729a06078c1868db05873aeeecf3123d8721dab1010864bad2cdf0a2326d2176",
+          "size": 2621
+        },
+        {
+          "path": "blueprint-grid/sample-plan.json",
+          "hash": "0c8482c2d6c7607022ce757411a467cf1b6516a51b1ab484dbb5d25ca2bdee49",
+          "size": 11832
+        },
+        {
+          "path": "blueprint-grid/SKILL.md",
+          "hash": "b54b6a5d52690a056d7c015a29d0099e0dfd396eca383354193e56a2caf9c331",
+          "size": 10563
+        },
+        {
+          "path": "blueprint-grid/skin-blueprint-grid.md",
+          "hash": "f1e61d8baeb3642021ea130311a10bb9a761ab312c55ec0bb4e102349f5e6eef",
+          "size": 5294
+        },
+        {
+          "path": "blueprint-grid/skin-blueprint-grid.mjs",
+          "hash": "7320240ee66a95e730a2ef2534086bb330010c6ed2ec7b9c99fa47912c796314",
+          "size": 23211
+        },
+        {
+          "path": "blueprint-grid/template.json",
+          "hash": "0d8de39cb7ad9bb115b55d1f97b4268c5c817324d6d6ccbce50f49303dbbf771",
+          "size": 1201
+        }
+      ],
+      "renderedBytes": 159227
+    },
+    {
+      "slug": "coastal-hotel",
+      "storageId": "f556014b-5224-4257-9ab8-28daab351e98",
+      "versionId": "e5ac62f1ebdf025470172c2ce8275833274de49f6300c427eef0c142523b1246",
+      "archive": {
+        "path": "coastal-hotel.tar.gz",
+        "sha256": "6bba8c10b85a248a475624767616280fa5d29b757ce230fb4115d746b8b61386",
+        "byteSize": 109189
+      },
+      "totalSize": 418804,
+      "fileCount": 16,
+      "files": [
+        {
+          "path": "coastal-hotel/engine/effects.css",
+          "hash": "991ff2386e6bb1a94d015af5da12106b6a876c7fbd65094189185a72b647fdbd",
+          "size": 2476
+        },
+        {
+          "path": "coastal-hotel/engine/foundation.css",
+          "hash": "ff0fbc2989be17ae91a321ac0165d99915e1fc1cbb864f55e035fd948ea68d80",
+          "size": 6738
+        },
+        {
+          "path": "coastal-hotel/engine/gen-engine.mjs",
+          "hash": "c40cc9bd2513c06678855d878c5647522aa8fb63cef663241737b89c23cd4f32",
+          "size": 6783
+        },
+        {
+          "path": "coastal-hotel/engine/icons.mjs",
+          "hash": "9374230c7da07df2cc788770b3ff20b29cc5b06b4cb5d5cc6c163948e46d7f08",
+          "size": 12037
+        },
+        {
+          "path": "coastal-hotel/engine/motion.css",
+          "hash": "90615e720da29ed19f2708fc4a204c10c94beb55eadbc6d2f36f2eaa686cd77e",
+          "size": 8529
+        },
+        {
+          "path": "coastal-hotel/engine/motion.mjs",
+          "hash": "89646ca9460fa957f3d39442d0c1e48c66a53f07a1c9a68bac0f096e9b3f9321",
+          "size": 12751
+        },
+        {
+          "path": "coastal-hotel/engine/palettes.mjs",
+          "hash": "adf2388061b5a0123691728c635c9dfd0728a27e603c123d0f558b6bf2d183c5",
+          "size": 6722
+        },
+        {
+          "path": "coastal-hotel/engine/sections.mjs",
+          "hash": "0cc6273f65e64b421ebfaf7c4bac1a8ad281eb0fba9e509616c473cc961e3f11",
+          "size": 137238
+        },
+        {
+          "path": "coastal-hotel/engine/site-shell.html",
+          "hash": "02ce6991d71cac2b186a258627f84169775f94ece620fb036459861bc0d9ce3d",
+          "size": 879
+        },
+        {
+          "path": "coastal-hotel/example.html",
+          "hash": "77bdb89e11953e4368258aeb2a75dd7aa18546b6be940b5e57234ab0ee38326b",
+          "size": 165135
+        },
+        {
+          "path": "coastal-hotel/render.mjs",
+          "hash": "729a06078c1868db05873aeeecf3123d8721dab1010864bad2cdf0a2326d2176",
+          "size": 2621
+        },
+        {
+          "path": "coastal-hotel/sample-plan.json",
+          "hash": "1853fa3d9653a6f4012ee940a8443cc725480ff218e19e7a5fb68099c62de2d3",
+          "size": 17920
+        },
+        {
+          "path": "coastal-hotel/SKILL.md",
+          "hash": "311837a7cfd91852efefd67ae88bc028c799f465962909fa150018e73fcef29d",
+          "size": 10453
+        },
+        {
+          "path": "coastal-hotel/skin-coastal-hotel.md",
+          "hash": "7964b40b74ad214426c5addb0f8f5fe0d86cea80025317a8842384d68b5a7a0a",
+          "size": 3753
+        },
+        {
+          "path": "coastal-hotel/skin-coastal-hotel.mjs",
+          "hash": "4f41bc58c0bf9ce262f3ce812117a3cb67ef232bef7841d8550ced8f37023c25",
+          "size": 23794
+        },
+        {
+          "path": "coastal-hotel/template.json",
+          "hash": "d0618127fcf7d75c185e8e52572a4587f1fd31ba51815054352c3c08f829fa2d",
+          "size": 975
+        }
+      ],
+      "renderedBytes": 175330
+    },
+    {
+      "slug": "dot-matrix",
+      "storageId": "fd4bacaf-e8d2-497b-a60f-c79981560882",
+      "versionId": "173d914b90d68648e9da9ee32cde12417fe55703b22f999b626b07f6053a7488",
+      "archive": {
+        "path": "dot-matrix.tar.gz",
+        "sha256": "cfb8f891fa77eca2c3a58f1d95f046f873136f85c9c4a83400cba3a2ccca4ad9",
+        "byteSize": 58090
+      },
+      "totalSize": 202246,
+      "fileCount": 14,
+      "files": [
+        {
+          "path": "dot-matrix/engine/compose.mjs",
+          "hash": "2e78f59cf2b943f586cfc534809249ab3b1744087d47794bd3f7a23713aca794",
+          "size": 3871
+        },
+        {
+          "path": "dot-matrix/engine/foundation.css",
+          "hash": "ff0fbc2989be17ae91a321ac0165d99915e1fc1cbb864f55e035fd948ea68d80",
+          "size": 6738
+        },
+        {
+          "path": "dot-matrix/engine/icons.mjs",
+          "hash": "9374230c7da07df2cc788770b3ff20b29cc5b06b4cb5d5cc6c163948e46d7f08",
+          "size": 12037
+        },
+        {
+          "path": "dot-matrix/engine/kit.mjs",
+          "hash": "9b6ce15dd3f6453ef0c27919561dae5ec0f9234d61f132f7a5fb39dddd4b744f",
+          "size": 12373
+        },
+        {
+          "path": "dot-matrix/engine/motion.css",
+          "hash": "fd3889eb44b73c851529a0842b6c6deb056bb9f3a907395acb72564398fd061a",
+          "size": 8461
+        },
+        {
+          "path": "dot-matrix/engine/motion.mjs",
+          "hash": "89646ca9460fa957f3d39442d0c1e48c66a53f07a1c9a68bac0f096e9b3f9321",
+          "size": 12751
+        },
+        {
+          "path": "dot-matrix/engine/validate-section.mjs",
+          "hash": "5bd7833c0b25c33cf374ed985460f8dd26bdbc2dae48861c83ef8891cfce1e07",
+          "size": 4807
+        },
+        {
+          "path": "dot-matrix/example.html",
+          "hash": "21f4eac9dad64bafd8f7dc2b54a43ee53908ddea8e31d2e70536d277e9453a93",
+          "size": 81718
+        },
+        {
+          "path": "dot-matrix/render.mjs",
+          "hash": "729a06078c1868db05873aeeecf3123d8721dab1010864bad2cdf0a2326d2176",
+          "size": 2621
+        },
+        {
+          "path": "dot-matrix/sample-plan.json",
+          "hash": "6e7bd40ffce6725e173d7f00d47486dbdf708677f7cca19b161d5ba67d726e01",
+          "size": 12154
+        },
+        {
+          "path": "dot-matrix/SKILL.md",
+          "hash": "01818159a0237774c575cf28cb87251d93ed292efdfe9fa83abe06df91665597",
+          "size": 6925
+        },
+        {
+          "path": "dot-matrix/template-dot-matrix.md",
+          "hash": "b5e53dd49b69456694be87eedc54fe4172c1d4461d2fa0580ca6f8ab6ec97350",
+          "size": 2395
+        },
+        {
+          "path": "dot-matrix/template-dot-matrix.mjs",
+          "hash": "bda0d16f7641650502b31dfc780e968c13cbff5230ca19e0683923c43a0741d4",
+          "size": 34470
+        },
+        {
+          "path": "dot-matrix/template.json",
+          "hash": "ea0521eee2c6ac2ab41c37077c2841db991163f059289ed15d6fb3d0e9d2873a",
+          "size": 925
+        }
+      ],
+      "renderedBytes": 81502
+    },
+    {
+      "slug": "frame-stack",
+      "storageId": "ed402508-e8cf-40f4-8908-72a315420075",
+      "versionId": "422a07c5431dc689f2a0f832ffd5085149c64de6575be2c435fef01e36ffdb83",
+      "archive": {
+        "path": "frame-stack.tar.gz",
+        "sha256": "642db1ff8e1c98e4c390245cb0fcda5ce29503721bc2a513c38448b9d4e2d01c",
+        "byteSize": 113215
+      },
+      "totalSize": 425649,
+      "fileCount": 17,
+      "files": [
+        {
+          "path": "frame-stack/engine/effects.css",
+          "hash": "991ff2386e6bb1a94d015af5da12106b6a876c7fbd65094189185a72b647fdbd",
+          "size": 2476
+        },
+        {
+          "path": "frame-stack/engine/fonts.mjs",
+          "hash": "f86ccf5154c5c95b41602d9b7c96b35e97881960db46d94a995eeead877ed755",
+          "size": 4745
+        },
+        {
+          "path": "frame-stack/engine/foundation.css",
+          "hash": "ff0fbc2989be17ae91a321ac0165d99915e1fc1cbb864f55e035fd948ea68d80",
+          "size": 6738
+        },
+        {
+          "path": "frame-stack/engine/gen-engine.mjs",
+          "hash": "c40cc9bd2513c06678855d878c5647522aa8fb63cef663241737b89c23cd4f32",
+          "size": 6783
+        },
+        {
+          "path": "frame-stack/engine/icons.mjs",
+          "hash": "9374230c7da07df2cc788770b3ff20b29cc5b06b4cb5d5cc6c163948e46d7f08",
+          "size": 12037
+        },
+        {
+          "path": "frame-stack/engine/motion.css",
+          "hash": "90615e720da29ed19f2708fc4a204c10c94beb55eadbc6d2f36f2eaa686cd77e",
+          "size": 8529
+        },
+        {
+          "path": "frame-stack/engine/motion.mjs",
+          "hash": "89646ca9460fa957f3d39442d0c1e48c66a53f07a1c9a68bac0f096e9b3f9321",
+          "size": 12751
+        },
+        {
+          "path": "frame-stack/engine/palettes.mjs",
+          "hash": "adf2388061b5a0123691728c635c9dfd0728a27e603c123d0f558b6bf2d183c5",
+          "size": 6722
+        },
+        {
+          "path": "frame-stack/engine/sections.mjs",
+          "hash": "0cc6273f65e64b421ebfaf7c4bac1a8ad281eb0fba9e509616c473cc961e3f11",
+          "size": 137238
+        },
+        {
+          "path": "frame-stack/engine/site-shell.html",
+          "hash": "02ce6991d71cac2b186a258627f84169775f94ece620fb036459861bc0d9ce3d",
+          "size": 879
+        },
+        {
+          "path": "frame-stack/example.html",
+          "hash": "a92b93dc2b6154dc771e635c83782e8febf2e55ec38636a21c08263595ea486d",
+          "size": 156289
+        },
+        {
+          "path": "frame-stack/render.mjs",
+          "hash": "729a06078c1868db05873aeeecf3123d8721dab1010864bad2cdf0a2326d2176",
+          "size": 2621
+        },
+        {
+          "path": "frame-stack/sample-plan.json",
+          "hash": "c699164a9507196226d1dbc2e8a427531d12f57403e8a934a8851fef8ff41039",
+          "size": 17286
+        },
+        {
+          "path": "frame-stack/SKILL.md",
+          "hash": "6756bc202d66151e022c952e18e7004ac5653ab6ed853361ee648f5e47d7ebba",
+          "size": 11678
+        },
+        {
+          "path": "frame-stack/skin-frame-stack.md",
+          "hash": "dcb116b347edafdd589eb34718b0053a250b28f43d1c55f683afd4fab249af3e",
+          "size": 6310
+        },
+        {
+          "path": "frame-stack/skin-frame-stack.mjs",
+          "hash": "dacf9ad3f2906bca0c0c1a2fdbfd2caa5eec409e54b90ead7d241ee9c534f016",
+          "size": 31550
+        },
+        {
+          "path": "frame-stack/template.json",
+          "hash": "867aa790bb4da89f14a2303abaedb31af80e42a494625921524c41a923880e54",
+          "size": 1017
+        }
+      ],
+      "renderedBytes": 177285
+    },
+    {
+      "slug": "frosted-scatter",
+      "storageId": "a93875fc-7370-4212-9c23-e8565977a8a9",
+      "versionId": "02855a260801c5120ee62c04f3a0b9d4f4884caea89728264cc85c1f6a2d74ad",
+      "archive": {
+        "path": "frosted-scatter.tar.gz",
+        "sha256": "548a1faf423baa1c7c11befe41a54ae398cfb5c94df7f957eff108e2afcd613a",
+        "byteSize": 123043
+      },
+      "totalSize": 479265,
+      "fileCount": 15,
+      "files": [
+        {
+          "path": "frosted-scatter/engine/effects.css",
+          "hash": "991ff2386e6bb1a94d015af5da12106b6a876c7fbd65094189185a72b647fdbd",
+          "size": 2476
+        },
+        {
+          "path": "frosted-scatter/engine/foundation.css",
+          "hash": "ff0fbc2989be17ae91a321ac0165d99915e1fc1cbb864f55e035fd948ea68d80",
+          "size": 6738
+        },
+        {
+          "path": "frosted-scatter/engine/gen-engine.mjs",
+          "hash": "c40cc9bd2513c06678855d878c5647522aa8fb63cef663241737b89c23cd4f32",
+          "size": 6783
+        },
+        {
+          "path": "frosted-scatter/engine/icons.mjs",
+          "hash": "9374230c7da07df2cc788770b3ff20b29cc5b06b4cb5d5cc6c163948e46d7f08",
+          "size": 12037
+        },
+        {
+          "path": "frosted-scatter/engine/motion.css",
+          "hash": "90615e720da29ed19f2708fc4a204c10c94beb55eadbc6d2f36f2eaa686cd77e",
+          "size": 8529
+        },
+        {
+          "path": "frosted-scatter/engine/motion.mjs",
+          "hash": "89646ca9460fa957f3d39442d0c1e48c66a53f07a1c9a68bac0f096e9b3f9321",
+          "size": 12751
+        },
+        {
+          "path": "frosted-scatter/engine/sections.mjs",
+          "hash": "0cc6273f65e64b421ebfaf7c4bac1a8ad281eb0fba9e509616c473cc961e3f11",
+          "size": 137238
+        },
+        {
+          "path": "frosted-scatter/engine/site-shell.html",
+          "hash": "02ce6991d71cac2b186a258627f84169775f94ece620fb036459861bc0d9ce3d",
+          "size": 879
+        },
+        {
+          "path": "frosted-scatter/example.html",
+          "hash": "11b5331055a1c4acd89647da22b1ae36f543cd6f1f422e1ef652bbb622ac9401",
+          "size": 215178
+        },
+        {
+          "path": "frosted-scatter/render.mjs",
+          "hash": "729a06078c1868db05873aeeecf3123d8721dab1010864bad2cdf0a2326d2176",
+          "size": 2621
+        },
+        {
+          "path": "frosted-scatter/sample-plan.json",
+          "hash": "d66cb531e449db8663f85bf033aceaddaf29a55a8c30785b26550b40667f1e24",
+          "size": 20833
+        },
+        {
+          "path": "frosted-scatter/SKILL.md",
+          "hash": "6008db44f39661d7e3858d3480e6f01e49e83ff411229cbbae61ee992740f4dd",
+          "size": 11103
+        },
+        {
+          "path": "frosted-scatter/skin-frosted-scatter.md",
+          "hash": "57282c212344004a6973b8186d6d6f5d4e4c819252b63f0de4ade1b52bde4aab",
+          "size": 6428
+        },
+        {
+          "path": "frosted-scatter/skin-frosted-scatter.mjs",
+          "hash": "94692ccc070b0d57312eaca9112aedd64cd79f5236cb41ac45e7d5230d9b968d",
+          "size": 34709
+        },
+        {
+          "path": "frosted-scatter/template.json",
+          "hash": "fcb47eb4cad5d9ff04fb51e6dfa2585ba7917a0c9f2ae2632b7b4817f3b158ba",
+          "size": 962
+        }
+      ],
+      "renderedBytes": 189925
+    },
+    {
+      "slug": "gallery-wall",
+      "storageId": "619d50a9-01fb-44dd-8a60-af3c97b557e7",
+      "versionId": "26591a92b37e255dd8d565effc542115dd94292465e179c501c0518538cd27ce",
+      "archive": {
+        "path": "gallery-wall.tar.gz",
+        "sha256": "b477b2f05c266eccbd2ab3b822744873dd8a31db03981283688549f2936bd5c6",
+        "byteSize": 95995
+      },
+      "totalSize": 351785,
+      "fileCount": 15,
+      "files": [
+        {
+          "path": "gallery-wall/engine/effects.css",
+          "hash": "991ff2386e6bb1a94d015af5da12106b6a876c7fbd65094189185a72b647fdbd",
+          "size": 2476
+        },
+        {
+          "path": "gallery-wall/engine/foundation.css",
+          "hash": "ff0fbc2989be17ae91a321ac0165d99915e1fc1cbb864f55e035fd948ea68d80",
+          "size": 6738
+        },
+        {
+          "path": "gallery-wall/engine/gen-engine.mjs",
+          "hash": "c40cc9bd2513c06678855d878c5647522aa8fb63cef663241737b89c23cd4f32",
+          "size": 6783
+        },
+        {
+          "path": "gallery-wall/engine/icons.mjs",
+          "hash": "9374230c7da07df2cc788770b3ff20b29cc5b06b4cb5d5cc6c163948e46d7f08",
+          "size": 12037
+        },
+        {
+          "path": "gallery-wall/engine/motion.css",
+          "hash": "90615e720da29ed19f2708fc4a204c10c94beb55eadbc6d2f36f2eaa686cd77e",
+          "size": 8529
+        },
+        {
+          "path": "gallery-wall/engine/motion.mjs",
+          "hash": "89646ca9460fa957f3d39442d0c1e48c66a53f07a1c9a68bac0f096e9b3f9321",
+          "size": 12751
+        },
+        {
+          "path": "gallery-wall/engine/sections.mjs",
+          "hash": "0cc6273f65e64b421ebfaf7c4bac1a8ad281eb0fba9e509616c473cc961e3f11",
+          "size": 137238
+        },
+        {
+          "path": "gallery-wall/engine/site-shell.html",
+          "hash": "02ce6991d71cac2b186a258627f84169775f94ece620fb036459861bc0d9ce3d",
+          "size": 879
+        },
+        {
+          "path": "gallery-wall/example.html",
+          "hash": "2843015371f5a1d949852ecb44173869f6108acb21b4573858a37486bf64313e",
+          "size": 112257
+        },
+        {
+          "path": "gallery-wall/render.mjs",
+          "hash": "729a06078c1868db05873aeeecf3123d8721dab1010864bad2cdf0a2326d2176",
+          "size": 2621
+        },
+        {
+          "path": "gallery-wall/sample-plan.json",
+          "hash": "235c13f75159f1c3b91d4cb4be4d4c5e202cf86134573cc73953e8b9cddb9197",
+          "size": 17126
+        },
+        {
+          "path": "gallery-wall/SKILL.md",
+          "hash": "f04bfcbaa98b73931106ec4650c1e4746ee70a9fe1640abffcf497a888084496",
+          "size": 11371
+        },
+        {
+          "path": "gallery-wall/skin-gallery-wall.md",
+          "hash": "3519ee7d8aa71d40e4fb6567768047886686cf8af2cab3ec02d2b41c0470c5f9",
+          "size": 4464
+        },
+        {
+          "path": "gallery-wall/skin-gallery-wall.mjs",
+          "hash": "b5f5fc344d47bf08869f0437320e50bd22e29265d88da77865a75e778a347f72",
+          "size": 15597
+        },
+        {
+          "path": "gallery-wall/template.json",
+          "hash": "6f9782e380a650d3051d50c7dd690a361f8241b0d11176ea7a6a2037387c4e18",
+          "size": 918
+        }
+      ],
+      "renderedBytes": 163513
+    },
+    {
+      "slug": "glass-bloom",
+      "storageId": "49a24bc7-0515-431c-81c2-6f4ea7386e9c",
+      "versionId": "297d1c1ed2639a3eead3212fcb3bf3c59ca80ee36562902cdec46ea8394b7398",
+      "archive": {
+        "path": "glass-bloom.tar.gz",
+        "sha256": "8707cce50c5477d43912fd18aa5ab6973aae4fd2287a092967fa25bf4ea38e7c",
+        "byteSize": 115808
+      },
+      "totalSize": 441976,
+      "fileCount": 15,
+      "files": [
+        {
+          "path": "glass-bloom/engine/effects.css",
+          "hash": "991ff2386e6bb1a94d015af5da12106b6a876c7fbd65094189185a72b647fdbd",
+          "size": 2476
+        },
+        {
+          "path": "glass-bloom/engine/foundation.css",
+          "hash": "ff0fbc2989be17ae91a321ac0165d99915e1fc1cbb864f55e035fd948ea68d80",
+          "size": 6738
+        },
+        {
+          "path": "glass-bloom/engine/gen-engine.mjs",
+          "hash": "c40cc9bd2513c06678855d878c5647522aa8fb63cef663241737b89c23cd4f32",
+          "size": 6783
+        },
+        {
+          "path": "glass-bloom/engine/icons.mjs",
+          "hash": "9374230c7da07df2cc788770b3ff20b29cc5b06b4cb5d5cc6c163948e46d7f08",
+          "size": 12037
+        },
+        {
+          "path": "glass-bloom/engine/motion.css",
+          "hash": "90615e720da29ed19f2708fc4a204c10c94beb55eadbc6d2f36f2eaa686cd77e",
+          "size": 8529
+        },
+        {
+          "path": "glass-bloom/engine/motion.mjs",
+          "hash": "89646ca9460fa957f3d39442d0c1e48c66a53f07a1c9a68bac0f096e9b3f9321",
+          "size": 12751
+        },
+        {
+          "path": "glass-bloom/engine/sections.mjs",
+          "hash": "0cc6273f65e64b421ebfaf7c4bac1a8ad281eb0fba9e509616c473cc961e3f11",
+          "size": 137238
+        },
+        {
+          "path": "glass-bloom/engine/site-shell.html",
+          "hash": "02ce6991d71cac2b186a258627f84169775f94ece620fb036459861bc0d9ce3d",
+          "size": 879
+        },
+        {
+          "path": "glass-bloom/example.html",
+          "hash": "97f7fb7e8d168134771419f390381d96926d6cf54a0c9c1f325c381e3a9727c8",
+          "size": 183987
+        },
+        {
+          "path": "glass-bloom/render.mjs",
+          "hash": "729a06078c1868db05873aeeecf3123d8721dab1010864bad2cdf0a2326d2176",
+          "size": 2621
+        },
+        {
+          "path": "glass-bloom/sample-plan.json",
+          "hash": "2ca518e81e0d4bdd785d2ef0c5acc6103635d8ea664f38ad44eb18be43f2698c",
+          "size": 19117
+        },
+        {
+          "path": "glass-bloom/SKILL.md",
+          "hash": "15e893f09279f3dd8c0dffe06bd83b264b88e1c427c185f6a2e609addab0ca8b",
+          "size": 10722
+        },
+        {
+          "path": "glass-bloom/skin-glass-bloom.md",
+          "hash": "98cd3970926a89ff6d2da63a6804729377053c3825ac3fcbb21e5de6ce7a6812",
+          "size": 12193
+        },
+        {
+          "path": "glass-bloom/skin-glass-bloom.mjs",
+          "hash": "02e095641532b1ece310dd5233a9126e5f2d7876a7ae9b02d9d0717d8d07e4b6",
+          "size": 24778
+        },
+        {
+          "path": "glass-bloom/template.json",
+          "hash": "6edc8d3af326a21a4af6b2f639b759396720fb9cbd3d4284a6c14276259c5373",
+          "size": 1127
+        }
+      ],
+      "renderedBytes": 178944
+    },
+    {
+      "slug": "serif-stack",
+      "storageId": "1fb5c01a-da4c-409a-8238-ed067309d670",
+      "versionId": "165c2c576e7b2fccad2f490c6813e4705d5f87408fa24a8cec79d4ddf2392831",
+      "archive": {
+        "path": "serif-stack.tar.gz",
+        "sha256": "718d617efd92033a68c476e85bb9231b1e0ff580c08a1f6bedf1b86058e97f13",
+        "byteSize": 115063
+      },
+      "totalSize": 435408,
+      "fileCount": 17,
+      "files": [
+        {
+          "path": "serif-stack/engine/effects.css",
+          "hash": "991ff2386e6bb1a94d015af5da12106b6a876c7fbd65094189185a72b647fdbd",
+          "size": 2476
+        },
+        {
+          "path": "serif-stack/engine/fonts.mjs",
+          "hash": "f86ccf5154c5c95b41602d9b7c96b35e97881960db46d94a995eeead877ed755",
+          "size": 4745
+        },
+        {
+          "path": "serif-stack/engine/foundation.css",
+          "hash": "ff0fbc2989be17ae91a321ac0165d99915e1fc1cbb864f55e035fd948ea68d80",
+          "size": 6738
+        },
+        {
+          "path": "serif-stack/engine/gen-engine.mjs",
+          "hash": "c40cc9bd2513c06678855d878c5647522aa8fb63cef663241737b89c23cd4f32",
+          "size": 6783
+        },
+        {
+          "path": "serif-stack/engine/icons.mjs",
+          "hash": "9374230c7da07df2cc788770b3ff20b29cc5b06b4cb5d5cc6c163948e46d7f08",
+          "size": 12037
+        },
+        {
+          "path": "serif-stack/engine/motion.css",
+          "hash": "90615e720da29ed19f2708fc4a204c10c94beb55eadbc6d2f36f2eaa686cd77e",
+          "size": 8529
+        },
+        {
+          "path": "serif-stack/engine/motion.mjs",
+          "hash": "89646ca9460fa957f3d39442d0c1e48c66a53f07a1c9a68bac0f096e9b3f9321",
+          "size": 12751
+        },
+        {
+          "path": "serif-stack/engine/palettes.mjs",
+          "hash": "adf2388061b5a0123691728c635c9dfd0728a27e603c123d0f558b6bf2d183c5",
+          "size": 6722
+        },
+        {
+          "path": "serif-stack/engine/sections.mjs",
+          "hash": "32aeac293a48e008135e83626ff8064c4b46996c0f92cac7d78f68ebbcb381d9",
+          "size": 136830
+        },
+        {
+          "path": "serif-stack/engine/site-shell.html",
+          "hash": "02ce6991d71cac2b186a258627f84169775f94ece620fb036459861bc0d9ce3d",
+          "size": 879
+        },
+        {
+          "path": "serif-stack/example.html",
+          "hash": "7c938c16fc9c89b7620c680c494d833b39efb7787fc68c0a7a18919c9b14af6a",
+          "size": 174420
+        },
+        {
+          "path": "serif-stack/render.mjs",
+          "hash": "729a06078c1868db05873aeeecf3123d8721dab1010864bad2cdf0a2326d2176",
+          "size": 2621
+        },
+        {
+          "path": "serif-stack/sample-plan.json",
+          "hash": "b32560bcfcdf7925152ed4119ae1d9852959dc31e4b430ce139f4db9952267d3",
+          "size": 18304
+        },
+        {
+          "path": "serif-stack/SKILL.md",
+          "hash": "acc9cd56ce54f521bc342cf39170c2f12af7c85acaee0a08eea319a1081cec20",
+          "size": 12366
+        },
+        {
+          "path": "serif-stack/skin-serif-stack.md",
+          "hash": "e5444d70c20ea961850cf6c5ee9432e9e391849b1000a67d1e7f433a9f7b477b",
+          "size": 2397
+        },
+        {
+          "path": "serif-stack/skin-serif-stack.mjs",
+          "hash": "6dcce78f8b10a330cbc9168245d14f5047c59ecb88d40d2429b079de5df09a94",
+          "size": 25681
+        },
+        {
+          "path": "serif-stack/template.json",
+          "hash": "00f6d04f818ee7a959bd19db0011ce11c23e66e8242176b0c66b7b5278311c3e",
+          "size": 1129
+        }
+      ],
+      "renderedBytes": 181702
+    },
+    {
+      "slug": "sticker-pop",
+      "storageId": "9b3511ce-a5ef-4b7a-ae3b-9d94919497ac",
+      "versionId": "c87a666429beb7d8fbaf3376c7229c701b53cdb36f4f714c6b45f0b6fdf3134a",
+      "archive": {
+        "path": "sticker-pop.tar.gz",
+        "sha256": "8145c78f932ae942108fba00c5de367958f12b4c492d61bc1310892abe51ca66",
+        "byteSize": 98703
+      },
+      "totalSize": 365435,
+      "fileCount": 15,
+      "files": [
+        {
+          "path": "sticker-pop/engine/effects.css",
+          "hash": "991ff2386e6bb1a94d015af5da12106b6a876c7fbd65094189185a72b647fdbd",
+          "size": 2476
+        },
+        {
+          "path": "sticker-pop/engine/foundation.css",
+          "hash": "ff0fbc2989be17ae91a321ac0165d99915e1fc1cbb864f55e035fd948ea68d80",
+          "size": 6738
+        },
+        {
+          "path": "sticker-pop/engine/gen-engine.mjs",
+          "hash": "c40cc9bd2513c06678855d878c5647522aa8fb63cef663241737b89c23cd4f32",
+          "size": 6783
+        },
+        {
+          "path": "sticker-pop/engine/icons.mjs",
+          "hash": "9374230c7da07df2cc788770b3ff20b29cc5b06b4cb5d5cc6c163948e46d7f08",
+          "size": 12037
+        },
+        {
+          "path": "sticker-pop/engine/motion.css",
+          "hash": "90615e720da29ed19f2708fc4a204c10c94beb55eadbc6d2f36f2eaa686cd77e",
+          "size": 8529
+        },
+        {
+          "path": "sticker-pop/engine/motion.mjs",
+          "hash": "89646ca9460fa957f3d39442d0c1e48c66a53f07a1c9a68bac0f096e9b3f9321",
+          "size": 12751
+        },
+        {
+          "path": "sticker-pop/engine/sections.mjs",
+          "hash": "0cc6273f65e64b421ebfaf7c4bac1a8ad281eb0fba9e509616c473cc961e3f11",
+          "size": 137238
+        },
+        {
+          "path": "sticker-pop/engine/site-shell.html",
+          "hash": "02ce6991d71cac2b186a258627f84169775f94ece620fb036459861bc0d9ce3d",
+          "size": 879
+        },
+        {
+          "path": "sticker-pop/example.html",
+          "hash": "d287ab975dfeaae99c9d08bdca78ad4cf22f54884fa19cf883e113f13ec4f4ae",
+          "size": 118418
+        },
+        {
+          "path": "sticker-pop/render.mjs",
+          "hash": "729a06078c1868db05873aeeecf3123d8721dab1010864bad2cdf0a2326d2176",
+          "size": 2621
+        },
+        {
+          "path": "sticker-pop/sample-plan.json",
+          "hash": "64c1941a2b78f71a2804566ff648f9a3881708874ed556ae0c330723f0082951",
+          "size": 17007
+        },
+        {
+          "path": "sticker-pop/SKILL.md",
+          "hash": "3e4fd2771776a29b2d9b1c6ea9dd9dd7efbdb2a76d0f754d4db50ebc9ba8fc5f",
+          "size": 10801
+        },
+        {
+          "path": "sticker-pop/skin-sticker-pop.md",
+          "hash": "5facf80179d4e703fffaa8719bbd91bc1e92441e2894f90c6441d5e968987f9f",
+          "size": 4958
+        },
+        {
+          "path": "sticker-pop/skin-sticker-pop.mjs",
+          "hash": "3312f0bdabd66f88212b3662c3cba85f338a5cd68c57afc7575ce1b9869a2f93",
+          "size": 23035
+        },
+        {
+          "path": "sticker-pop/template.json",
+          "hash": "b1da4cbcf5c483a49f31f741361e6a46be712a3194f9bef32fd5769c65c8cb5d",
+          "size": 1164
+        }
+      ],
+      "renderedBytes": 169693
+    },
+    {
+      "slug": "warm-cards",
+      "storageId": "ac36455c-04e5-471c-9a14-b5b765c18ec2",
+      "versionId": "47a5c7f01a7395d5be86483291c26e5f51e3fa8258c0d69705379ea9fb21849f",
+      "archive": {
+        "path": "warm-cards.tar.gz",
+        "sha256": "a795ef022e672d364c7a966eb042d38e460d4dcb996d5eecb0647aac5dd259df",
+        "byteSize": 2412867
+      },
+      "totalSize": 3446380,
+      "fileCount": 15,
+      "files": [
+        {
+          "path": "warm-cards/engine/effects.css",
+          "hash": "991ff2386e6bb1a94d015af5da12106b6a876c7fbd65094189185a72b647fdbd",
+          "size": 2476
+        },
+        {
+          "path": "warm-cards/engine/foundation.css",
+          "hash": "ff0fbc2989be17ae91a321ac0165d99915e1fc1cbb864f55e035fd948ea68d80",
+          "size": 6738
+        },
+        {
+          "path": "warm-cards/engine/gen-engine.mjs",
+          "hash": "c40cc9bd2513c06678855d878c5647522aa8fb63cef663241737b89c23cd4f32",
+          "size": 6783
+        },
+        {
+          "path": "warm-cards/engine/icons.mjs",
+          "hash": "9374230c7da07df2cc788770b3ff20b29cc5b06b4cb5d5cc6c163948e46d7f08",
+          "size": 12037
+        },
+        {
+          "path": "warm-cards/engine/motion.css",
+          "hash": "90615e720da29ed19f2708fc4a204c10c94beb55eadbc6d2f36f2eaa686cd77e",
+          "size": 8529
+        },
+        {
+          "path": "warm-cards/engine/motion.mjs",
+          "hash": "89646ca9460fa957f3d39442d0c1e48c66a53f07a1c9a68bac0f096e9b3f9321",
+          "size": 12751
+        },
+        {
+          "path": "warm-cards/engine/sections.mjs",
+          "hash": "0cc6273f65e64b421ebfaf7c4bac1a8ad281eb0fba9e509616c473cc961e3f11",
+          "size": 137238
+        },
+        {
+          "path": "warm-cards/engine/site-shell.html",
+          "hash": "02ce6991d71cac2b186a258627f84169775f94ece620fb036459861bc0d9ce3d",
+          "size": 879
+        },
+        {
+          "path": "warm-cards/example.html",
+          "hash": "1e9c061067df24461fa8ba73de90496275e0a1df22327364b17dbeee4f60f907",
+          "size": 3201259
+        },
+        {
+          "path": "warm-cards/render.mjs",
+          "hash": "729a06078c1868db05873aeeecf3123d8721dab1010864bad2cdf0a2326d2176",
+          "size": 2621
+        },
+        {
+          "path": "warm-cards/sample-plan.json",
+          "hash": "6c3c0d3cb00350e9f7e1783a5a151ad58134f7c14d4f070c62ff749e6207deab",
+          "size": 17175
+        },
+        {
+          "path": "warm-cards/SKILL.md",
+          "hash": "f89b4667b9d04432ebbf1a8c41d22af21e85dcbefc23fc564555d8c9a69f4097",
+          "size": 10500
+        },
+        {
+          "path": "warm-cards/skin-warm-cards.md",
+          "hash": "8aa1ee65662630e1cd9a07a5c926fe03397095e1598f455dc9cfa69db6b05025",
+          "size": 3102
+        },
+        {
+          "path": "warm-cards/skin-warm-cards.mjs",
+          "hash": "24fe8e124911deacca2070544687bbe5249878c88da6dff4ecac8079c7f93c87",
+          "size": 23309
+        },
+        {
+          "path": "warm-cards/template.json",
+          "hash": "61e7de83ea17d987202d72ee570894345b6249857e12a8a49f188e276a911e3a",
+          "size": 983
+        }
+      ],
+      "renderedBytes": 169587
+    }
+  ]
+}

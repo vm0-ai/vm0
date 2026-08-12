@@ -22,38 +22,24 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Create read token for Template-artifact
-        id: template-artifact-token
-        env:
-          GITHUB_APP_ID: ${{ vars.VM0_GITHUB_APP_ID }}
-          GITHUB_APP_PRIVATE_KEY: ${{ secrets.VM0_GITHUB_APP_PRIVATE_KEY }}
-        run: node .github/website-template-release/github-app-token.mjs
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: vm0-ai/Template-artifact
-          ref: 78dbe053b2b485d907d7e0116022ebdfe807038f
-          path: template-artifact
-          token: ${{ steps.template-artifact-token.outputs.token }}
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 24.19.0
-      - name: Build and verify pinned archives
+      - name: Verify pinned release bundle
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git -C template-artifact rev-parse HEAD)" = "78dbe053b2b485d907d7e0116022ebdfe807038f"
           release_dir="$RUNNER_TEMP/website-template-release"
           output_dir="$RUNNER_TEMP/website-template-output"
           mkdir -p "$release_dir" "$output_dir"
           cp .github/website-template-release/publish.mjs "$release_dir/publish.mjs"
           cp .github/website-template-release/website-template-release.json "$release_dir/website-template-release.json"
+          cp .github/website-template-release/prebuilt/* "$output_dir/"
           cd "$release_dir"
           npm init --yes >/dev/null
           npm install --ignore-scripts --no-audit --no-fund \
             @aws-sdk/client-s3@3.1106.0 postgres@3.4.9 tar@7.5.22
-          node publish.mjs build \
-            --source-dir "$GITHUB_WORKSPACE/template-artifact/Template-Website/archive" \
-            --output-dir "$output_dir"
+          node publish.mjs verify --output-dir "$output_dir"
       - name: Upload verified release bundle
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

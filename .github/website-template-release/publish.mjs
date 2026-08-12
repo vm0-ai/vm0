@@ -190,6 +190,76 @@ async function build() {
   );
 }
 
+async function verify() {
+  const outputDir = path.resolve(requiredOption("--output-dir"));
+  const publication = JSON.parse(
+    await readFile(path.join(outputDir, "publication.json"), "utf8"),
+  );
+  if (JSON.stringify(publication.source) !== JSON.stringify(metadata.source)) {
+    throw new Error("Publication source does not match the pinned release");
+  }
+  const packageSlugs = publication.packages
+    .map((entry) => entry.slug)
+    .sort((left, right) => left.localeCompare(right));
+  const expectedSlugs = metadata.templates
+    .map((entry) => entry.slug)
+    .sort((left, right) => left.localeCompare(right));
+  if (JSON.stringify(packageSlugs) !== JSON.stringify(expectedSlugs)) {
+    throw new Error(
+      "Publication template set does not match the pinned release",
+    );
+  }
+
+  for (const release of metadata.templates) {
+    const pkg = publication.packages.find(
+      (entry) => entry.slug === release.slug,
+    );
+    if (
+      !pkg ||
+      pkg.storageId !== release.storageId ||
+      pkg.versionId !== release.newVersionId ||
+      pkg.archive.path !== `${release.slug}.tar.gz` ||
+      pkg.archive.sha256 !== release.newSha256
+    ) {
+      throw new Error(`${release.slug}: publication pins do not match`);
+    }
+    const archivePath = path.join(outputDir, pkg.archive.path);
+    const archive = await readFile(archivePath);
+    if (
+      archive.byteLength !== pkg.archive.byteSize ||
+      sha256(archive) !== release.newSha256
+    ) {
+      throw new Error(`${release.slug}: archive bytes do not match`);
+    }
+
+    const inspectRoot = await mkdtemp(
+      path.join(tmpdir(), `website-${release.slug}-verify-`),
+    );
+    await tar.extract({ file: archivePath, cwd: inspectRoot, gzip: true });
+    const files = await buildFileManifest(inspectRoot, release.slug);
+    const versionId = computeVersionId(release.storageId, files);
+    const totalSize = files.reduce((sum, file) => sum + file.size, 0);
+    if (
+      versionId !== release.newVersionId ||
+      pkg.fileCount !== files.length ||
+      pkg.totalSize !== totalSize ||
+      JSON.stringify(pkg.files) !== JSON.stringify(files)
+    ) {
+      throw new Error(
+        `${release.slug}: extracted file manifest does not match`,
+      );
+    }
+    const renderedBytes = await renderArchive(
+      archivePath,
+      release.slug,
+      "verified-bundle",
+    );
+    console.log(
+      `VERIFIED bundle ${release.slug} version=${versionId} sha256=${release.newSha256} renderBytes=${renderedBytes}`,
+    );
+  }
+}
+
 async function bodyToBuffer(body) {
   if (!body) throw new Error("R2 returned an empty object body");
   return Buffer.from(await body.transformToByteArray());
@@ -511,8 +581,10 @@ async function publish() {
 const mode = process.argv[2];
 if (mode === "build") {
   await build();
+} else if (mode === "verify") {
+  await verify();
 } else if (mode === "publish") {
   await publish();
 } else {
-  throw new Error("Usage: publish.mjs <build|publish> [options]");
+  throw new Error("Usage: publish.mjs <build|verify|publish> [options]");
 }
