@@ -356,6 +356,8 @@ async function createChatThread(
         clientThreadId: args.clientThreadId,
         eventId: args.eventId,
         model: args.modelSelection.selectedModel,
+        serviceTier:
+          args.modelSelection.codexServiceTier === "fast" ? "priority" : null,
         ...(args.title ? { title: args.title } : {}),
       },
       fetchOptions: { signal },

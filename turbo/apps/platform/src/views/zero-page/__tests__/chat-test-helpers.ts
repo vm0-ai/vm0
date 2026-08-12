@@ -13,6 +13,7 @@ import {
   chatEventsContract,
   MODEL_FIRST_SELECTION_PROVIDER_ID,
   type ChatRunOptionsRequest,
+  type ChatThreadServiceTier,
   type CodexServiceTier,
   type UserMessageDocument,
 } from "@vm0/api-contracts/contracts/chat-threads";
@@ -515,6 +516,7 @@ export function mockChatLifecycle(
       eventId?: string;
       model?: string;
       modelSelection: ModelSelectionRequest;
+      serviceTier?: ChatThreadServiceTier | null;
     }) => void;
     onModelSelectionUpdate?: (body: {
       model?: string | null;
@@ -941,11 +943,13 @@ export function mockChatLifecycle(
       throw new Error("Expected chat thread create to include model");
     }
     selectedModel = modelSelection.selectedModel;
+    codexServiceTier = body.serviceTier === "priority" ? "fast" : null;
     options?.onThreadCreate?.({
       clientThreadId: body.clientThreadId,
       eventId: body.eventId,
       model: body.model,
       modelSelection,
+      serviceTier: body.serviceTier,
     });
     return respond(201, {
       id: threadId,
