@@ -20,6 +20,7 @@ import jsonl_writer
 import logging_utils
 import mitm_addon
 import runner_flush_lifecycle
+import runner_flush_request
 import usage
 from tests.pending_helpers import assert_pending
 from tests.thread_helpers import ThreadUnderTest, wait_for_event
@@ -252,13 +253,12 @@ class TestRunnerUsageFlushSignal:
 
     @pytest.mark.parametrize("consumer", ["usage", "jsonl"])
     @pytest.mark.parametrize(
-        ("marker_bytes", "marker_is_directory"),
+        "marker_bytes",
         [
-            pytest.param(None, False, id="missing"),
-            pytest.param(None, True, id="unreadable"),
-            pytest.param(b"\xff", False, id="invalid-utf8"),
-            pytest.param(b"not-json", False, id="invalid-json"),
-            pytest.param(b"[]", False, id="non-object"),
+            pytest.param(None, id="missing"),
+            pytest.param(b"\xff", id="invalid-utf8"),
+            pytest.param(b"not-json", id="invalid-json"),
+            pytest.param(b"[]", id="non-object"),
             pytest.param(
                 json.dumps(
                     {
@@ -266,12 +266,10 @@ class TestRunnerUsageFlushSignal:
                         "flushRequestId": "request-1",
                     }
                 ).encode(),
-                False,
                 id="stale-generation",
             ),
             pytest.param(
                 json.dumps({"usageStateId": _RUNNER_USAGE_STATE_ID}).encode(),
-                False,
                 id="missing-request-id",
             ),
             pytest.param(
@@ -281,7 +279,6 @@ class TestRunnerUsageFlushSignal:
                         "flushRequestId": "",
                     }
                 ).encode(),
-                False,
                 id="empty-request-id",
             ),
             pytest.param(
@@ -291,7 +288,6 @@ class TestRunnerUsageFlushSignal:
                         "flushRequestId": 123,
                     }
                 ).encode(),
-                False,
                 id="non-string-request-id",
             ),
         ],
@@ -301,16 +297,13 @@ class TestRunnerUsageFlushSignal:
         runner_usage_flush_files: RunnerUsageFlushFiles,
         consumer: str,
         marker_bytes: bytes | None,
-        marker_is_directory: bool,
     ) -> None:
         marker_path = (
             runner_usage_flush_files.usage_flush_request_path
             if consumer == "usage"
             else runner_usage_flush_files.jsonl_flush_request_path
         )
-        if marker_is_directory:
-            marker_path.mkdir()
-        elif marker_bytes is not None:
+        if marker_bytes is not None:
             marker_path.write_bytes(marker_bytes)
 
         if consumer == "usage":
@@ -325,6 +318,60 @@ class TestRunnerUsageFlushSignal:
 
         flush_log_path.assert_not_called()
         assert not runner_usage_flush_files.jsonl_flush_state_path.exists()
+
+    @pytest.mark.parametrize("consumer", ["usage", "jsonl"])
+    @pytest.mark.parametrize("file_state", ["symlink", "fifo", "directory", "oversized"])
+    def test_flush_request_consumers_reject_unsafe_state_file(
+        self,
+        runner_usage_flush_files: RunnerUsageFlushFiles,
+        consumer: str,
+        file_state: str,
+    ) -> None:
+        marker_path = (
+            runner_usage_flush_files.usage_flush_request_path
+            if consumer == "usage"
+            else runner_usage_flush_files.jsonl_flush_request_path
+        )
+
+        def write_valid_marker() -> None:
+            if consumer == "usage":
+                runner_usage_flush_files.write_usage_flush_request()
+            else:
+                runner_usage_flush_files.write_jsonl_flush_request()
+
+        if file_state == "symlink":
+            write_valid_marker()
+            target_path = marker_path.with_name(f"{marker_path.name}-target")
+            marker_path.replace(target_path)
+            marker_path.symlink_to(target_path)
+        elif file_state == "fifo":
+            os.mkfifo(marker_path)
+        elif file_state == "directory":
+            marker_path.mkdir()
+        else:
+            write_valid_marker()
+            marker = json.loads(marker_path.read_text())
+            marker["padding"] = "x" * runner_flush_request.MAX_RUNNER_FLUSH_REQUEST_BYTES
+            marker_path.write_text(json.dumps(marker))
+            assert marker_path.stat().st_size > runner_flush_request.MAX_RUNNER_FLUSH_REQUEST_BYTES
+
+        def consume_marker() -> None:
+            if consumer == "usage":
+                assert usage.read_usage_flush_request_id() is None
+                return
+
+            with patch.object(
+                runner_flush_lifecycle,
+                "__file__",
+                str(runner_usage_flush_files.lifecycle_file),
+            ):
+                runner_flush_lifecycle._flush_jsonl_for_runner_request()
+
+            assert not runner_usage_flush_files.jsonl_flush_state_path.exists()
+
+        consumer_thread = ThreadUnderTest(target=consume_marker, daemon=True)
+        consumer_thread.start()
+        consumer_thread.join_and_raise(timeout=1)
 
     def test_real_signal_during_request_consumption_drains_acknowledgement(
         self, tmp_path: Path
