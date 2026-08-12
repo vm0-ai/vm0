@@ -906,8 +906,9 @@
         "tenConcurrentRuns": "10 동시 실행",
         "twoConcurrentRuns": "2 동시 실행",
         "unlimitedAgents": "무제한 에이전트",
-        "voiceInput": "음성 입력",
-        "voiceInputLifetime": "음성 입력 (회원당 평생 10회 사용)"
+        "voiceInputFree": "음성 입력 (회원당 총 10회 요청 · 하루 10분)",
+        "voiceInputPro": "음성 입력 (회원당 하루 300회 요청 · 200분)",
+        "voiceInputTeam": "음성 입력 (회원당 하루 500회 요청 · 500분)"
       },
       "free": {
         "description": "기존 워크스페이스용 레거시 무료 액세스.",

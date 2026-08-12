@@ -184,8 +184,11 @@ function planFeatures(tier: BillingPlan["tier"]): string[] {
   const byok = i18n.t(($) => {
     return $.billing.plans.features.byok;
   });
-  const voiceInput = i18n.t(($) => {
-    return $.billing.plans.features.voiceInput;
+  const voiceInputPro = i18n.t(($) => {
+    return $.billing.plans.features.voiceInputPro;
+  });
+  const voiceInputTeam = i18n.t(($) => {
+    return $.billing.plans.features.voiceInputTeam;
   });
   if (tier === "free") {
     return [
@@ -198,7 +201,7 @@ function planFeatures(tier: BillingPlan["tier"]): string[] {
       unlimitedAgents,
       byok,
       i18n.t(($) => {
-        return $.billing.plans.features.voiceInputLifetime;
+        return $.billing.plans.features.voiceInputFree;
       }),
       i18n.t(($) => {
         return $.billing.plans.features.communitySupport;
@@ -215,7 +218,7 @@ function planFeatures(tier: BillingPlan["tier"]): string[] {
         }),
     sharedAndPrivateAgents,
     byok,
-    voiceInput,
+    tier === "pro" ? voiceInputPro : voiceInputTeam,
     tier === "pro"
       ? i18n.t(($) => {
           return $.billing.plans.features.emailSupport;

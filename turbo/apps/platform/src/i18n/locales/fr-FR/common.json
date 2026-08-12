@@ -927,8 +927,9 @@
         "tenConcurrentRuns": "10 exécutions simultanées",
         "twoConcurrentRuns": "2 exécutions simultanées",
         "unlimitedAgents": "Agents totaux illimités",
-        "voiceInput": "Entrée vocale",
-        "voiceInputLifetime": "Entrée vocale (10 utilisations à vie par membre)"
+        "voiceInputFree": "Saisie vocale (10 requêtes au total · 10 min/jour par membre)",
+        "voiceInputPro": "Saisie vocale (300 requêtes/jour · 200 min/jour par membre)",
+        "voiceInputTeam": "Saisie vocale (500 requêtes/jour · 500 min/jour par membre)"
       },
       "free": {
         "description": "Accès gratuit hérité pour les espaces de travail existants.",

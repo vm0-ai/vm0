@@ -906,8 +906,9 @@
         "tenConcurrentRuns": "10 eksekusi concurrent",
         "twoConcurrentRuns": "2 eksekusi concurrent",
         "unlimitedAgents": "Agen total tidak terbatas",
-        "voiceInput": "Input suara",
-        "voiceInputLifetime": "Input suara (10 penggunaan seumur hidup per anggota)"
+        "voiceInputFree": "Input suara (10 permintaan total · 10 mnt/hari per anggota)",
+        "voiceInputPro": "Input suara (300 permintaan/hari · 200 mnt/hari per anggota)",
+        "voiceInputTeam": "Input suara (500 permintaan/hari · 500 mnt/hari per anggota)"
       },
       "free": {
         "description": "Akses gratis lama untuk ruang kerja yang sudah ada.",
