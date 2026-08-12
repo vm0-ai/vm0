@@ -255,6 +255,32 @@ const githubWebhookAutomationCases: readonly GithubWebhookAutomationCase[] = [
     expectedPrompt: ['"merged": true', '"mergeCommitSha"'],
   },
   {
+    name: "pull request labeled",
+    body: {
+      kind: "event",
+      eventType: "github-pull-request",
+      eventConfig: {
+        provider: "github",
+        event: "pull_request",
+        repository: "vm0-ai/vm0",
+        action: "labeled",
+        filters: { labels: ["ready-to-merge"] },
+      },
+    },
+    event: "pull_request",
+    payload: (installationId) => {
+      return githubPullRequestPayload({
+        action: "labeled",
+        installationId,
+        number: 24_481,
+        label: { id: 1002, name: "ready-to-merge" },
+      });
+    },
+    expectedTrigger:
+      'GitHub label "ready-to-merge" was applied to pull request #24481',
+    expectedPrompt: ['"action": "labeled"', '"name": "ready-to-merge"'],
+  },
+  {
     name: "workflow job completed",
     body: {
       kind: "event",

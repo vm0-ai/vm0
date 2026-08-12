@@ -350,22 +350,6 @@ const cases: readonly WorkflowAutomationContextCase[] = [
 ];
 
 describe("workflow automation context lookup contracts", () => {
-  it("renders label actions of the github-pull-request trigger", () => {
-    expect(
-      workflowAutomationTrigger({
-        eventType: "github-pull-request",
-        eventPayload: {
-          deliveryId: "delivery-pr-labeled",
-          action: "labeled",
-          pullRequest: { number: 24_481 },
-          label: { name: "ready-to-merge" },
-        },
-      }),
-    ).toBe(
-      'GitHub label "ready-to-merge" was applied to pull request #24481 (GitHub webhook delivery delivery-pr-labeled).',
-    );
-  });
-
   it("covers every trigger renderer exactly once", () => {
     expect(
       cases
