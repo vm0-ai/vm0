@@ -5357,6 +5357,8 @@ describe("INT-02: Telegram integration", () => {
 
 describe("INT-03: GitHub and AgentPhone integrations", () => {
   it("keeps GitHub OAuth install and connect-start errors visible through redirects", async () => {
+    mockEnv("APP_URL", "https://app.vm0.test");
+    mockEnv("VM0_WEB_URL", "https://www.vm0.test");
     integrations.clearGithubAppProvider();
     await installApiTestConnectorCatalog();
 
@@ -5407,8 +5409,20 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
       {},
       [307],
     );
-    expect(unauthenticatedConnect.headers.get("location") ?? "").toContain(
-      "/sign-in?redirect_url=",
+    const unauthenticatedLocation =
+      unauthenticatedConnect.headers.get("location");
+    if (!unauthenticatedLocation) {
+      throw new Error("Expected app sign-in redirect");
+    }
+    const unauthenticatedUrl = new URL(unauthenticatedLocation);
+    expect(unauthenticatedUrl.origin).toBe("https://app.vm0.test");
+    expect(unauthenticatedUrl.pathname).toBe("/sign-in");
+    const redirectUrl = unauthenticatedUrl.searchParams.get("redirect_url");
+    if (!redirectUrl) {
+      throw new Error("Expected redirect_url query parameter");
+    }
+    expect(new URL(redirectUrl).pathname).toBe(
+      "/api/okou/github/oauth/connect",
     );
 
     const actor = integrations.user();
