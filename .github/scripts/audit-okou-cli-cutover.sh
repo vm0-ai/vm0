@@ -10,28 +10,37 @@ trap 'rm -f -- "${matches_file}" "${legacy_argv_file}"' EXIT
 command_pattern='(^|[^[:alnum:]_])zero[[:space:]]+(--help|--version|__agent-loop|agent|workflow|goal|connector|mcp|presentation-template|mail|credit|upgrade|doctor|model|model-provider|logs|search|chat|resource|github|slack|feishu|teams|telegram|phone|whoami|developer-support|computer-use|browser|intro|generate|web|video|host|maps|weather|scrape|people-search|web-search|recognize|translate|finance|seo|banking|local-agent|local-browser|secret|variable|schedule|automation)([^[:alnum:]_-]|$)'
 standalone_entrypoint_pattern='(^|[[:space:]])assert_clean_success[[:space:]]+zero([[:space:]]|$)|^[[:space:]]*zero[[:space:]]*\\[[:space:]]*(#.*)?$'
 
-grep_status=0
-(
-  cd "${repo_root}"
-  git ls-files -z --cached --others --exclude-standard | \
-    xargs -0 rg -n -I --with-filename --no-heading --color never \
-      -e "${command_pattern}" \
-      -e "${standalone_entrypoint_pattern}" --
-) >"${matches_file}" || grep_status=$?
+scan_repo_files() {
+  (
+    cd "${repo_root}"
+    git ls-files -z --cached --others --exclude-standard | \
+      xargs -0 bash -c "
+        status=0
+        rg \"\$@\" || status=\$?
+        if [[ \"\${status}\" -eq 1 ]]; then
+          exit 0
+        fi
+        exit \"\${status}\"
+      " bash "$@"
+  )
+}
 
-if [[ "${grep_status}" -gt 1 ]]; then
+grep_status=0
+scan_repo_files -n -I --with-filename --no-heading --color never \
+  -e "${command_pattern}" \
+  -e "${standalone_entrypoint_pattern}" -- \
+  >"${matches_file}" || grep_status=$?
+
+if [[ "${grep_status}" -ne 0 ]]; then
   echo "okou cutover audit could not scan ${repo_root}" >&2
   exit "${grep_status}"
 fi
 
 argv_status=0
-(
-  cd "${repo_root}"
-  git ls-files -z --cached --others --exclude-standard | \
-    xargs -0 rg -U -l --color never -e '"node",[[:space:]]*"zero"' --
-) >"${legacy_argv_file}" || argv_status=$?
+scan_repo_files -U -l --color never -e '"node",[[:space:]]*"zero"' -- \
+  >"${legacy_argv_file}" || argv_status=$?
 
-if [[ "${argv_status}" -gt 1 ]]; then
+if [[ "${argv_status}" -ne 0 ]]; then
   echo "okou cutover audit could not scan command-boundary argv" >&2
   exit "${argv_status}"
 fi
@@ -48,7 +57,7 @@ while IFS=: read -r file line content; do
   # The Desktop release workflow passes the Zero product identity as a
   # function argument. It is not a CLI entry point and Desktop identity is an
   # explicit non-goal of this cutover.
-  if [[ "${file}" == ".github/workflows/release-please.yml" && "${content}" == '            zero \' ]]; then
+  if [[ "${file}" == ".github/workflows/release-please.yml" && "${content}" == "            zero \\" ]]; then
     continue
   fi
 
@@ -66,7 +75,7 @@ while IFS=: read -r file line content; do
     compatibility_count=$((compatibility_count + 1))
   fi
 
-  if [[ -z "${category}" && "${file}" == ".github/scripts/smoke-okou-cli-artifact.sh" && "${content}" == '  zero \' ]]; then
+  if [[ -z "${category}" && "${file}" == ".github/scripts/smoke-okou-cli-artifact.sh" && "${content}" == "  zero \\" ]]; then
     category="compatibility-only"
     compatibility_count=$((compatibility_count + 1))
   fi

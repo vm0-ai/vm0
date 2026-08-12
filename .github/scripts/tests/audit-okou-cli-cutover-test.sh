@@ -21,12 +21,12 @@ git -C "${fixture_root}" init -q
 git -C "${fixture_root}" config user.email "okou-audit@example.com"
 git -C "${fixture_root}" config user.name "Okou audit"
 
-fixture_command='run `zero workflow list --token DO_NOT_PRINT_THIS`' # okou-cutover-audit: test-fixture
+fixture_command="run \`zero workflow list --token DO_NOT_PRINT_THIS\`" # okou-cutover-audit: test-fixture
 printf '%s\n' "${fixture_command}" >"${fixture_root}/producer.md"
 printf '%s\n' 'let args = vec!["okou".to_string()];' \
   >"${fixture_root}/crates/guest-agent/src/cli/pi_agent_loop.rs"
 mkdir -p "${fixture_root}/.github/workflows"
-printf '%s\n' '            zero \' \
+printf '%s\n' "            zero \\" \
   >"${fixture_root}/.github/workflows/release-please.yml"
 
 audit_output="${fixture_root}/audit-output.txt"
@@ -41,8 +41,18 @@ if grep -Fq 'DO_NOT_PRINT_THIS' "${audit_output}"; then
   exit 1
 fi
 
+printf '%s\n' 'tracked input that will disappear' >"${fixture_root}/missing-input.md"
+git -C "${fixture_root}" add -- missing-input.md
+rm -f -- "${fixture_root}/missing-input.md"
+if "${audit_script}" "${fixture_root}" >"${audit_output}" 2>&1; then
+  echo "audit unexpectedly ignored an rg input error" >&2
+  exit 1
+fi
+grep -Fq 'okou cutover audit could not scan' "${audit_output}"
+git -C "${fixture_root}" rm --cached -q -f -- missing-input.md
+
 printf '%s\n' \
-  'run `zero workflow list` <!-- okou-cutover-audit: test-fixture -->' \
+  "run \`zero workflow list\` <!-- okou-cutover-audit: test-fixture -->" \
   >"${fixture_root}/producer.md"
 "${audit_script}" "${fixture_root}" >/dev/null
 

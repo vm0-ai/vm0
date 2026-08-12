@@ -219,6 +219,7 @@ jobs:
           )
           bash -n "${script_files[@]}"
           shellcheck \
+            .github/scripts/audit-okou-cli-cutover.sh \
             .github/scripts/build-okou-desktop-artifact.sh \
             .github/scripts/check-release-please-component-releases.sh \
             .github/scripts/check-workflow-shell-compatibility.sh \
@@ -234,6 +235,7 @@ jobs:
             .github/scripts/smoke-okou-cli-artifact.sh \
             .github/scripts/verify-okou-desktop-artifact.sh \
             .github/scripts/tests/ansible-ssh-control-path-test.sh \
+            .github/scripts/tests/audit-okou-cli-cutover-test.sh \
             .github/scripts/tests/check-release-please-component-releases-test.sh \
             .github/scripts/tests/check-workflow-shell-compatibility-test.sh \
             .github/scripts/tests/checkout-depth-test.sh \
