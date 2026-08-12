@@ -6,6 +6,7 @@ import {
 } from "ccstate-react";
 import type { Editor } from "@tiptap/core";
 import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
+import { useEditorState } from "@tiptap/react";
 import { Popover, PopoverAnchor, type KeyboardEventLike } from "@vm0/ui";
 import { useTranslation } from "react-i18next";
 import { i18n } from "../../i18n/index.ts";
@@ -145,10 +146,16 @@ function WorkflowComposerPlaceholder({
 }) {
   useTranslation();
   const hasInput = useGet(composer.editor.hasInput$);
+  const hasEditorText = useEditorState({
+    editor: composer.editor.editor,
+    selector: ({ editor }) => {
+      return editor.state.doc.textContent.length > 0;
+    },
+  });
   const hasTemplateAttachment = useGet(
     composer.template.hasTemplateAttachment$,
   );
-  if (hasInput) {
+  if (hasInput || hasEditorText) {
     return null;
   }
   return (
