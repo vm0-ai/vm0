@@ -171,7 +171,7 @@ function ArtifactCatalogCard({
         event.preventDefault();
         onOpen(artifact.id);
       }}
-      className="group flex cursor-pointer flex-col overflow-hidden rounded-lg border border-border bg-card shadow-sm outline-none transition-colors hover:border-foreground/20 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+      className="group flex cursor-pointer flex-col overflow-hidden rounded-lg border border-border bg-card outline-none transition-colors hover:border-foreground/20 focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
     >
       <div
         data-testid="artifact-catalog-card-preview"
@@ -195,7 +195,7 @@ function ArtifactCatalogCard({
         )}
         <ArtifactKindIcon kind={artifact.kind} />
       </div>
-      <div className="flex h-16 min-w-0 shrink-0 items-center border-t border-border p-3">
+      <div className="flex min-w-0 shrink-0 items-center border-t border-border p-3">
         <h2
           title={artifact.title}
           className="min-w-0 truncate text-sm font-semibold leading-5 text-foreground"
@@ -324,8 +324,8 @@ export function ArtifactCatalogSkeleton({
             className="flex flex-col overflow-hidden rounded-lg border border-border bg-card"
           >
             <div className="aspect-[16/10] w-full shrink-0 bg-muted/30" />
-            <div className="flex h-16 shrink-0 items-center p-3">
-              <div className="h-4 w-3/4 rounded bg-muted/60" />
+            <div className="flex shrink-0 items-center border-t border-border p-3">
+              <div className="h-5 w-3/4 rounded bg-muted/60" />
             </div>
           </div>
         );
@@ -514,8 +514,10 @@ export function ArtifactCatalogPage() {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       {lightboxUrl && <AttachmentLightbox />}
-      <header className="shrink-0 bg-transparent px-4 pb-0 pt-3 sm:px-6 md:pb-3 md:pt-10">
-        <div className="mx-auto w-full max-w-[900px]">
+      {/* The header sits outside the scroll container so the kind filter stays
+          pinned to the top while the catalog scrolls under it. */}
+      <header className="shrink-0 bg-transparent px-4 pb-3 pt-3 sm:px-6 md:pt-10">
+        <div className="mx-auto flex w-full max-w-[900px] flex-col gap-3">
           <div className="hidden min-w-0 md:block">
             <h1 className="text-lg font-semibold tracking-tight text-foreground">
               {t(($) => {
@@ -528,14 +530,6 @@ export function ArtifactCatalogPage() {
               })}
             </p>
           </div>
-        </div>
-      </header>
-
-      <main
-        onScroll={handleScroll}
-        className="flex-1 overflow-auto px-4 pb-8 pt-3 sm:px-6 [scrollbar-gutter:stable]"
-      >
-        <div className="mx-auto flex w-full max-w-[900px] flex-col gap-4">
           <ArtifactCatalogKindFilter
             selectedKind={selectedKind}
             avatarEnabled={
@@ -546,6 +540,14 @@ export function ArtifactCatalogPage() {
             }
             onKindChange={setKind}
           />
+        </div>
+      </header>
+
+      <main
+        onScroll={handleScroll}
+        className="flex-1 overflow-auto px-4 pb-8 pt-1 sm:px-6 [scrollbar-gutter:stable]"
+      >
+        <div className="mx-auto flex w-full max-w-[900px] flex-col gap-4">
           {catalog.state === "loading" ? (
             <ArtifactCatalogSkeleton
               layout={sharedConversationLayout ? "list" : "grid"}
