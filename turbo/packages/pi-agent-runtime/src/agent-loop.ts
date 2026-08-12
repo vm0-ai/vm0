@@ -32,23 +32,26 @@ function abortAwareEventSink(
   onEvent: PiAgentEventSink,
   signal: AbortSignal,
 ): PiAgentEventSink {
-  const aborted = new Promise<void>((resolve) => {
-    if (signal.aborted) {
-      resolve();
-    } else {
-      signal.addEventListener(
-        "abort",
-        () => {
-          resolve();
-        },
-        { once: true },
-      );
-    }
-  });
   return async (event: AgentEvent): Promise<void> => {
     signal.throwIfAborted();
-    await Promise.race([Promise.resolve(onEvent(event)), aborted]);
-    signal.throwIfAborted();
+    let abortListener: (() => void) | undefined;
+    const aborted = new Promise<never>((_resolve, reject) => {
+      abortListener = () => {
+        reject(signal.reason);
+      };
+      signal.addEventListener("abort", abortListener, { once: true });
+    });
+    try {
+      await Promise.race([Promise.resolve(onEvent(event)), aborted]);
+      signal.throwIfAborted();
+    } catch (error) {
+      signal.throwIfAborted();
+      throw error;
+    } finally {
+      if (abortListener) {
+        signal.removeEventListener("abort", abortListener);
+      }
+    }
   };
 }
 
