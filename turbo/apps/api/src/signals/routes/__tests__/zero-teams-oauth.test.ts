@@ -84,7 +84,7 @@ function mockMicrosoftOAuth(args: {
   readonly tenantId: string;
   readonly aadObjectId: string;
   readonly displayName?: string;
-  readonly userPrincipalName?: string;
+  readonly userPrincipalName: string;
   readonly expectedRedirectUri?: string;
 }): void {
   server.use(
@@ -112,7 +112,7 @@ function mockMicrosoftOAuth(args: {
       return HttpResponse.json({
         id: args.aadObjectId,
         displayName: args.displayName ?? "Ada Lovelace",
-        userPrincipalName: args.userPrincipalName ?? "ada@example.com",
+        userPrincipalName: args.userPrincipalName,
         mail: null,
       });
     }),
@@ -215,6 +215,7 @@ describe("Teams OAuth API routes", () => {
     mockMicrosoftOAuth({
       tenantId: fixture.teamsTenantId,
       aadObjectId: fixture.teamsAadObjectId,
+      userPrincipalName: fixture.teamsUserPrincipalName,
     });
 
     const response = await appRequest(
@@ -269,6 +270,7 @@ describe("Teams OAuth API routes", () => {
     mockMicrosoftOAuth({
       tenantId: fixture.teamsTenantId,
       aadObjectId: fixture.teamsAadObjectId,
+      userPrincipalName: fixture.teamsUserPrincipalName,
     });
 
     const response = await appRequest(
@@ -322,8 +324,9 @@ describe("Teams OAuth API routes", () => {
     );
 
     mockMicrosoftOAuth({
-      tenantId: "tenant-other",
+      tenantId: `other-${fixture.teamsTenantId}`,
       aadObjectId: fixture.teamsAadObjectId,
+      userPrincipalName: fixture.teamsUserPrincipalName,
     });
 
     const response = await appRequest(

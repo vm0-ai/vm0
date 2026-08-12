@@ -11,7 +11,6 @@ import { createAppWithRoutes } from "../../../../app-factory-core";
 import { mockEnv } from "../../../../lib/env";
 import { now } from "../../../../lib/time";
 import { server } from "../../../../mocks/server";
-import { clearTeamsBotAuthCacheForTest } from "../../../../lib/teams-bot-auth";
 import { zeroTeamsBotRoutes } from "../../zero-teams-bot";
 
 const BOT_APP_ID = "00000000-0000-0000-0000-000000000001";
@@ -27,14 +26,23 @@ const keyPair = generateKeyPairSync("rsa", { modulusLength: 2048 });
 const publicJwk = keyPair.publicKey.export({ format: "jwk" });
 
 export interface TeamsConnectFixture {
+  readonly fixtureId: string;
   readonly orgId: string;
   readonly userId: string;
   readonly teamsTenantId: string;
   readonly teamsTenantName: string;
   readonly teamsTeamId: string;
+  readonly teamsTeamAadGroupId: string;
   readonly teamsTeamName: string;
+  readonly teamsChannelId: string;
+  readonly teamsConversationId: string;
+  readonly teamsThreadId: string;
+  readonly teamsActivityId: string;
+  readonly teamsAppId: string;
+  readonly teamsBotId: string;
   readonly teamsUserId: string;
   readonly teamsAadObjectId: string;
+  readonly teamsUserPrincipalName: string;
   readonly serviceUrl: string;
 }
 
@@ -42,7 +50,6 @@ export function setupTeamsConnectTestEnv(
   appUrl = "https://app.vm0.test",
   apiBackendUrl = "https://api.vm0.test",
 ): void {
-  clearTeamsBotAuthCacheForTest();
   mockEnv("MICROSOFT_TEAMS_BOT_APP_ID", BOT_APP_ID);
   mockEnv("MICROSOFT_TEAMS_APP_TENANT_ID", TEAMS_APP_TENANT_ID);
   mockEnv("APP_URL", appUrl);
@@ -53,23 +60,39 @@ export function setupTeamsConnectTestEnv(
 export function teamsConnectFixture(
   overrides: Partial<TeamsConnectFixture> = {},
 ): TeamsConnectFixture {
+  const fixtureId = overrides.fixtureId ?? randomUUID().replace(/-/g, "");
   return {
-    orgId: overrides.orgId ?? `org_${randomUUID()}`,
-    userId: overrides.userId ?? `user_${randomUUID()}`,
-    teamsTenantId:
-      overrides.teamsTenantId ??
-      `tenant_${randomUUID().replace(/-/g, "").slice(0, 10)}`,
+    fixtureId,
+    orgId: overrides.orgId ?? `org_teams_${fixtureId}`,
+    userId: overrides.userId ?? `user_teams_${fixtureId}`,
+    teamsTenantId: overrides.teamsTenantId ?? `tenant_${fixtureId}`,
     teamsTenantName: overrides.teamsTenantName ?? "Test Tenant",
-    teamsTeamId:
-      overrides.teamsTeamId ??
-      `team_${randomUUID().replace(/-/g, "").slice(0, 10)}`,
+    teamsTeamId: overrides.teamsTeamId ?? `team_${fixtureId}`,
+    teamsTeamAadGroupId:
+      overrides.teamsTeamAadGroupId ?? `team-aad-${fixtureId}`,
     teamsTeamName: overrides.teamsTeamName ?? "Test Team",
-    teamsUserId: overrides.teamsUserId ?? `29:user-${randomUUID().slice(0, 8)}`,
-    teamsAadObjectId:
-      overrides.teamsAadObjectId ??
-      `aad_${randomUUID().replace(/-/g, "").slice(0, 10)}`,
+    teamsChannelId:
+      overrides.teamsChannelId ?? `19:channel-${fixtureId}@thread.tacv2`,
+    teamsConversationId:
+      overrides.teamsConversationId ??
+      `19:conversation-${fixtureId}@thread.tacv2`,
+    teamsThreadId: overrides.teamsThreadId ?? `root-${fixtureId}`,
+    teamsActivityId: overrides.teamsActivityId ?? `activity-${fixtureId}`,
+    teamsAppId: overrides.teamsAppId ?? `teams-app-${fixtureId}`,
+    teamsBotId: overrides.teamsBotId ?? `28:bot-${fixtureId}`,
+    teamsUserId: overrides.teamsUserId ?? `29:user-${fixtureId}`,
+    teamsAadObjectId: overrides.teamsAadObjectId ?? `aad-user-${fixtureId}`,
+    teamsUserPrincipalName:
+      overrides.teamsUserPrincipalName ?? `user-${fixtureId}@example.test`,
     serviceUrl: overrides.serviceUrl ?? SERVICE_URL,
   };
+}
+
+export function teamsFixtureExternalId(
+  fixture: TeamsConnectFixture,
+  prefix: string,
+): string {
+  return `${prefix}-${fixture.fixtureId}`;
 }
 
 function botFrameworkHandlers(): void {
@@ -138,36 +161,40 @@ export function teamsMessageActivityForTest(
 ): Record<string, unknown> {
   return {
     type: "message",
-    id: "activity-1",
+    id: fixture.teamsActivityId,
     timestamp: "2026-06-30T09:10:00.000Z",
     serviceUrl: fixture.serviceUrl,
     channelId: "msteams",
     conversation: {
-      id: "19:thread@thread.tacv2",
+      id: fixture.teamsConversationId,
       conversationType: "channel",
     },
     channelData: {
       tenant: { id: fixture.teamsTenantId, name: fixture.teamsTenantName },
-      team: { id: fixture.teamsTeamId, name: fixture.teamsTeamName },
-      channel: { id: "19:channel@thread.tacv2", name: "General" },
-      teamsAppId: BOT_APP_ID,
+      team: {
+        id: fixture.teamsTeamId,
+        aadGroupId: fixture.teamsTeamAadGroupId,
+        name: fixture.teamsTeamName,
+      },
+      channel: { id: fixture.teamsChannelId, name: "General" },
+      teamsAppId: fixture.teamsAppId,
     },
     from: {
       id: fixture.teamsUserId,
       name: "Ada Lovelace",
       aadObjectId: fixture.teamsAadObjectId,
-      userPrincipalName: "ada@example.com",
+      userPrincipalName: fixture.teamsUserPrincipalName,
     },
-    recipient: { id: "28:bot-1", name: "Zero" },
+    recipient: { id: fixture.teamsBotId, name: "Zero" },
     text: "<at>Zero</at> deploy the preview",
     entities: [
       {
         type: "mention",
         text: "<at>Zero</at>",
-        mentioned: { id: "28:bot-1", name: "Zero" },
+        mentioned: { id: fixture.teamsBotId, name: "Zero" },
       },
     ],
-    replyToId: "root-activity",
+    replyToId: fixture.teamsThreadId,
     ...overrides,
   };
 }
@@ -177,22 +204,26 @@ function teamsBotRemovedActivity(
 ): Record<string, unknown> {
   return {
     type: "conversationUpdate",
-    id: "activity-remove-1",
+    id: teamsFixtureExternalId(fixture, "activity-remove"),
     timestamp: "2026-06-30T09:20:00.000Z",
     serviceUrl: fixture.serviceUrl,
     channelId: "msteams",
     conversation: {
-      id: "19:thread@thread.tacv2",
+      id: fixture.teamsConversationId,
       conversationType: "channel",
     },
     channelData: {
       tenant: { id: fixture.teamsTenantId, name: fixture.teamsTenantName },
-      team: { id: fixture.teamsTeamId, name: fixture.teamsTeamName },
-      channel: { id: "19:channel@thread.tacv2", name: "General" },
-      teamsAppId: BOT_APP_ID,
+      team: {
+        id: fixture.teamsTeamId,
+        aadGroupId: fixture.teamsTeamAadGroupId,
+        name: fixture.teamsTeamName,
+      },
+      channel: { id: fixture.teamsChannelId, name: "General" },
+      teamsAppId: fixture.teamsAppId,
     },
-    recipient: { id: "28:bot-1", name: "Zero" },
-    membersRemoved: [{ id: "28:bot-1", name: "Zero" }],
+    recipient: { id: fixture.teamsBotId, name: "Zero" },
+    membersRemoved: [{ id: fixture.teamsBotId, name: "Zero" }],
   };
 }
 
@@ -200,11 +231,11 @@ export async function postTeamsActivityForTest(args: {
   readonly signal: AbortSignal;
   readonly activity: Record<string, unknown>;
 }): Promise<Response> {
-  clearTeamsBotAuthCacheForTest();
   mockEnv("MICROSOFT_TEAMS_BOT_APP_ID", BOT_APP_ID);
   botFrameworkHandlers();
+  const appSignal = AbortSignal.any([args.signal]);
   const app = createAppWithRoutes({
-    signal: args.signal,
+    signal: appSignal,
     routes: zeroTeamsBotRoutes,
   });
   return await app.request("http://api.test/api/zero/teams/bot", {
@@ -224,7 +255,7 @@ export async function installTeamsForTest(
   const response = await postTeamsActivityForTest({
     signal,
     activity: teamsMessageActivityForTest(fixture, {
-      id: "activity-install-seed",
+      id: teamsFixtureExternalId(fixture, "activity-install-seed"),
       text: "installation seed",
       entities: [],
       replyToId: null,
