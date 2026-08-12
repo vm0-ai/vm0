@@ -1,5 +1,10 @@
 import type { Locator, Page, Response } from "@playwright/test";
-import { expect, fetchApiPreviewRouteJson, test } from "../fixtures";
+import {
+  expect,
+  fetchApiPreviewRoute,
+  fetchApiPreviewRouteJson,
+  test,
+} from "../fixtures";
 import { deriveAppUrl } from "../playwright.config";
 
 const appUrl = deriveAppUrl(process.env.VM0_API_BACKEND_URL!);
@@ -192,7 +197,7 @@ async function enableResponsiveFollowupCards(page: Page): Promise<void> {
 async function mockSelectedFastModel(page: Page): Promise<void> {
   const policyId = "00000000-0000-4000-a000-000000000736";
   await page.route("**/api/okou/feature-switches", async (route) => {
-    const response = await route.fetch();
+    const response = await fetchApiPreviewRoute(route);
     const body: unknown = await response.json();
     if (!isRecord(body) || !isRecord(body.effectiveSwitches)) {
       throw new Error("Feature switches returned an unexpected response");

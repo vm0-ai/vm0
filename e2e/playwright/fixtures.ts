@@ -1,6 +1,7 @@
 import { setupClerkTestingToken } from "@clerk/testing/playwright";
 import {
   expect,
+  type APIResponse,
   type Request,
   type Response as PlaywrightResponse,
   type Route,
@@ -54,6 +55,29 @@ export async function fetchApiPreviewRouteJson(route: Route): Promise<unknown> {
   } catch {
     throw new Error(`API preview returned invalid JSON for ${url.pathname}`);
   }
+}
+
+export async function fetchApiPreviewRoute(route: Route): Promise<APIResponse> {
+  const request = route.request();
+  const url = new URL(request.url());
+  let response: APIResponse;
+  try {
+    response = await route.fetch({
+      headers: {
+        ...request.headers(),
+        ...apiPreviewHeaders(),
+      },
+    });
+  } catch {
+    throw new Error(`API preview request failed for ${url.pathname}`);
+  }
+  if (!response.ok()) {
+    await response.dispose();
+    throw new Error(
+      `API preview request returned ${response.status()} for ${url.pathname}`,
+    );
+  }
+  return response;
 }
 
 export const test = base.extend({
