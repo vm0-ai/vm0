@@ -22,6 +22,7 @@ import {
   removeTeamsForTest,
   setupTeamsConnectTestEnv,
   teamsConnectFixture,
+  teamsFixtureExternalId,
   type TeamsConnectFixture,
 } from "./helpers/zero-teams-connect";
 import { zeroIntegrationsTeamsMessageRoutes } from "../zero-integrations-teams-message";
@@ -72,7 +73,18 @@ function teamsFixture(): TeamsConnectFixture {
   });
 }
 
-function mockOutgoingTeams(captured: CapturedTeamsActivity): void {
+function mockOutgoingTeams(
+  fixture: TeamsConnectFixture,
+  captured: CapturedTeamsActivity,
+): {
+  readonly activityId: string;
+  readonly dmConversationId: string;
+} {
+  const activityId = teamsFixtureExternalId(fixture, "teams-activity");
+  const dmConversationId = `a:${teamsFixtureExternalId(
+    fixture,
+    "teams-dm-conversation",
+  )}`;
   server.use(
     http.post(BOT_FRAMEWORK_TOKEN_URL, async ({ request }) => {
       const form = await request.formData();
@@ -87,7 +99,7 @@ function mockOutgoingTeams(captured: CapturedTeamsActivity): void {
           string,
           unknown
         >;
-        return HttpResponse.json({ id: "a:teams-dm-conversation" });
+        return HttpResponse.json({ id: dmConversationId });
       },
     ),
     http.post(
@@ -99,7 +111,7 @@ function mockOutgoingTeams(captured: CapturedTeamsActivity): void {
             ? params.conversationId
             : undefined;
         captured.body = (await request.json()) as Record<string, unknown>;
-        return HttpResponse.json({ id: "teams-activity-1" });
+        return HttpResponse.json({ id: activityId });
       },
     ),
     http.post(
@@ -111,10 +123,12 @@ function mockOutgoingTeams(captured: CapturedTeamsActivity): void {
             ? params.conversationId
             : undefined;
         captured.body = (await request.json()) as Record<string, unknown>;
-        return HttpResponse.json({ id: "teams-activity-1" });
+        return HttpResponse.json({ id: activityId });
       },
     ),
   );
+
+  return { activityId, dmConversationId };
 }
 
 async function seedConnectedTeams(fixture: TeamsConnectFixture): Promise<void> {
@@ -136,7 +150,7 @@ async function seedConnectedTeams(fixture: TeamsConnectFixture): Promise<void> {
         tenantId: fixture.teamsTenantId,
         teamsUserId: fixture.teamsUserId,
         teamsUserDisplayName: "Ada Lovelace",
-        teamsUserPrincipalName: "ada@example.com",
+        teamsUserPrincipalName: fixture.teamsUserPrincipalName,
       },
     }),
     [200],
@@ -165,7 +179,7 @@ describe("Microsoft Teams integration CLI routes", () => {
     fixtures.push(fixture);
     await seedConnectedTeams(fixture);
     const captured: CapturedTeamsActivity = {};
-    mockOutgoingTeams(captured);
+    const outgoing = mockOutgoingTeams(fixture, captured);
 
     const client = setupApp({
       context,
@@ -174,8 +188,8 @@ describe("Microsoft Teams integration CLI routes", () => {
     const response = await accept(
       client.sendMessage({
         body: {
-          conversationId: "19:thread@thread.tacv2",
-          activityId: "root-activity",
+          conversationId: fixture.teamsConversationId,
+          activityId: fixture.teamsThreadId,
           text: "Hello from Teams CLI",
         },
         headers: {
@@ -191,15 +205,15 @@ describe("Microsoft Teams integration CLI routes", () => {
 
     expect(response.body).toStrictEqual({
       ok: true,
-      activityId: "teams-activity-1",
-      conversationId: "19:thread@thread.tacv2",
+      activityId: outgoing.activityId,
+      conversationId: fixture.teamsConversationId,
     });
     expect(captured.authorization).toBe("Bearer bot-framework-token");
     expect(captured.body).toMatchObject({
       type: "message",
       text: "Hello from Teams CLI",
       textFormat: "markdown",
-      replyToId: "root-activity",
+      replyToId: fixture.teamsThreadId,
       channelData: { tenant: { id: fixture.teamsTenantId } },
     });
   });
@@ -209,7 +223,7 @@ describe("Microsoft Teams integration CLI routes", () => {
     fixtures.push(fixture);
     await seedConnectedTeams(fixture);
     const captured: CapturedTeamsActivity = {};
-    mockOutgoingTeams(captured);
+    const outgoing = mockOutgoingTeams(fixture, captured);
 
     const client = setupApp({
       context,
@@ -245,16 +259,16 @@ describe("Microsoft Teams integration CLI routes", () => {
 
     expect(response.body).toStrictEqual({
       ok: true,
-      activityId: "teams-activity-1",
-      conversationId: "a:teams-dm-conversation",
+      activityId: outgoing.activityId,
+      conversationId: outgoing.dmConversationId,
     });
     expect(captured.conversationBody).toMatchObject({
-      bot: { id: "28:bot-1", name: "Zero" },
+      bot: { id: fixture.teamsBotId, name: "Zero" },
       members: [{ id: fixture.teamsUserId, name: "Ada Lovelace" }],
       isGroup: false,
       channelData: { tenant: { id: fixture.teamsTenantId } },
     });
-    expect(captured.conversationId).toBe("a:teams-dm-conversation");
+    expect(captured.conversationId).toBe(outgoing.dmConversationId);
     expect(captured.body).toMatchObject({
       type: "message",
       summary: "Pick a workflow",
@@ -276,7 +290,7 @@ describe("Microsoft Teams integration CLI routes", () => {
     fixtures.push(fixture);
     await seedConnectedTeams(fixture);
     const captured: CapturedTeamsActivity = {};
-    mockOutgoingTeams(captured);
+    const outgoing = mockOutgoingTeams(fixture, captured);
 
     const uploadId = randomUUID();
     mocks.s3.listObjects([
@@ -295,8 +309,8 @@ describe("Microsoft Teams integration CLI routes", () => {
       client.complete({
         body: {
           uploadId,
-          conversationId: "19:thread@thread.tacv2",
-          activityId: "root-activity",
+          conversationId: fixture.teamsConversationId,
+          activityId: fixture.teamsThreadId,
           contentType: "application/pdf",
           text: "Daily report",
         },
@@ -306,8 +320,8 @@ describe("Microsoft Teams integration CLI routes", () => {
     );
 
     expect(response.body).toMatchObject({
-      activityId: "teams-activity-1",
-      conversationId: "19:thread@thread.tacv2",
+      activityId: outgoing.activityId,
+      conversationId: fixture.teamsConversationId,
       filename: "report.pdf",
       mimetype: "application/pdf",
       size: 1234,
@@ -317,7 +331,7 @@ describe("Microsoft Teams integration CLI routes", () => {
     expect(captured.body?.text).toContain("[report.pdf]");
     expect(captured.body).toMatchObject({
       type: "message",
-      replyToId: "root-activity",
+      replyToId: fixture.teamsThreadId,
       attachments: [
         {
           contentType: "application/pdf",
