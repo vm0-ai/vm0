@@ -58,9 +58,12 @@ function focusSelectedModel(): HTMLElement | null {
   );
 }
 
+/** Half of the slider thumb, in px — see `durationFillWidth`. */
+const SLIDER_THUMB_RADIUS = 7;
+
 /**
  * A value chip. Selected uses the brand tint rather than a solid fill so a row
- * of six reads as one group instead of six competing buttons.
+ * of three reads as one group instead of three competing buttons.
  */
 function OptionChip({
   label,
@@ -78,7 +81,7 @@ function OptionChip({
       aria-checked={selected}
       onClick={onSelect}
       className={cn(
-        "h-7 rounded-md px-2 text-[13px] leading-none transition-colors",
+        "h-7 w-full rounded-md px-2 text-[13px] leading-none transition-colors",
         "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/40",
         selected
           ? "bg-primary/10 font-medium text-primary ring-1 ring-inset ring-primary/30"
@@ -90,11 +93,27 @@ function OptionChip({
   );
 }
 
+/** A setting with a value the chosen model does not let the user change. */
+function FixedValueField({
+  label,
+  value,
+}: {
+  readonly label: string;
+  readonly value: string;
+}) {
+  return (
+    <div className="flex items-baseline justify-between gap-3 py-1.5">
+      <span className="text-[13px] text-muted-foreground">{label}</span>
+      <span className="text-[13px] text-foreground">{value}</span>
+    </div>
+  );
+}
+
 /**
- * One setting, fully expanded. Models disagree on how many values they take —
- * three durations for one, twenty-seven for another — so the row adapts instead
- * of forcing every setting through a dropdown: a single accepted value is read
- * only, and everything else wraps as chips the user can hit in one click.
+ * One setting, fully expanded. Models disagree on how many values they take, so
+ * the field adapts instead of forcing every setting through a dropdown: a
+ * single accepted value is read only, and everything else is a grid of
+ * equal-width chips the user can hit in one click.
  */
 function VideoOptionField({
   label,
@@ -108,18 +127,16 @@ function VideoOptionField({
   readonly onChange: (next: string) => void;
 }) {
   if (values.length <= 1) {
-    return (
-      <div className="flex items-baseline justify-between gap-3 py-1.5">
-        <span className="text-[13px] text-muted-foreground">{label}</span>
-        <span className="text-[13px] text-foreground">{value}</span>
-      </div>
-    );
+    return <FixedValueField label={label} value={value} />;
   }
   return (
     <div className="flex flex-col gap-1.5 py-1.5">
       <span className="text-[13px] text-muted-foreground">{label}</span>
+      {/* Three fixed columns, shared by every chip field, so cells are one
+          width down the whole pane however many values a model accepts.
+          Ragged rows were what made a long list read as clutter. */}
       <div
-        className="flex flex-wrap gap-1"
+        className="grid grid-cols-3 gap-1"
         role="radiogroup"
         aria-label={label}
       >
@@ -135,6 +152,127 @@ function VideoOptionField({
             />
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The thumb travels between its own two half-widths, not the full track, so the
+ * fill has to start half a thumb in and shrink by the same amount by the end or
+ * it drifts away from the handle at the extremes.
+ */
+function durationFillWidth(percent: number): string {
+  const offset =
+    SLIDER_THUMB_RADIUS - (SLIDER_THUMB_RADIUS * 2 * percent) / 100;
+  return `calc(${String(percent)}% + ${offset.toFixed(2)}px)`;
+}
+
+/**
+ * Duration is the one setting whose values are a scale rather than a set: they
+ * are consecutive seconds, and how far the scale runs is the clearest single
+ * difference between two models. So it reads as a ruler — the track length is
+ * the model's range, the ticks are the steps it accepts, and the filled portion
+ * is the answer to "how long", which no grid of chips can show at a glance.
+ *
+ * Built on a native range input so dragging, clicking anywhere on the track,
+ * arrow keys, and Home/End all come from the platform rather than from
+ * hand-rolled pointer maths.
+ */
+function VideoDurationField({
+  label,
+  value,
+  values,
+  onChange,
+}: {
+  readonly label: string;
+  readonly value: string;
+  readonly values: readonly string[];
+  readonly onChange: (next: string) => void;
+}) {
+  if (values.length <= 1) {
+    return <FixedValueField label={label} value={value} />;
+  }
+  const last = values.length - 1;
+  const index = Math.max(
+    0,
+    values.findIndex((candidate) => {
+      return candidate === value;
+    }),
+  );
+  const percent = (index / last) * 100;
+  return (
+    <div className="flex flex-col gap-2 py-1.5">
+      <div className="flex items-baseline justify-between gap-3">
+        <span className="text-[13px] text-muted-foreground">{label}</span>
+        <span className="text-[13px] font-medium tabular-nums text-primary">
+          {value}
+        </span>
+      </div>
+      <div className="flex flex-col gap-1">
+        {/* Ticks sit above the track and share its inset so each one lines up
+            with the thumb position that snaps to it. */}
+        <div
+          aria-hidden="true"
+          className="flex items-end justify-between px-[7px]"
+        >
+          {values.map((option, step) => {
+            return (
+              <span
+                key={option}
+                className={cn(
+                  "w-px rounded-full transition-all duration-150 ease-out motion-reduce:transition-none",
+                  step <= index ? "h-1.5 bg-primary/60" : "h-1 bg-gray-400",
+                )}
+              />
+            );
+          })}
+        </div>
+        <div className="group relative h-4">
+          <div className="absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-muted" />
+          <div
+            className="absolute left-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-primary transition-[width] duration-150 ease-out motion-reduce:transition-none"
+            style={{ width: durationFillWidth(percent) }}
+          />
+          <input
+            type="range"
+            min={0}
+            max={last}
+            step={1}
+            value={index}
+            aria-label={label}
+            aria-valuetext={value}
+            onChange={(event) => {
+              const next = values[Number(event.target.value)];
+              if (next !== undefined) {
+                onChange(next);
+              }
+            }}
+            className={cn(
+              "absolute inset-0 w-full cursor-pointer appearance-none bg-transparent focus:outline-none",
+              "[&::-webkit-slider-runnable-track]:h-4 [&::-webkit-slider-runnable-track]:bg-transparent",
+              "[&::-webkit-slider-thumb]:size-3.5 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full",
+              "[&::-webkit-slider-thumb]:border [&::-webkit-slider-thumb]:border-primary [&::-webkit-slider-thumb]:bg-card",
+              "[&::-webkit-slider-thumb]:shadow-sm [&::-webkit-slider-thumb]:transition-transform",
+              "[&::-webkit-slider-thumb]:duration-150 [&::-webkit-slider-thumb]:ease-out",
+              "hover:[&::-webkit-slider-thumb]:scale-110 active:[&::-webkit-slider-thumb]:scale-125",
+              "focus-visible:[&::-webkit-slider-thumb]:ring-2 focus-visible:[&::-webkit-slider-thumb]:ring-primary/30",
+              "motion-reduce:[&::-webkit-slider-thumb]:transition-none",
+              "[&::-moz-range-track]:h-4 [&::-moz-range-track]:bg-transparent",
+              "[&::-moz-range-thumb]:size-3.5 [&::-moz-range-thumb]:appearance-none [&::-moz-range-thumb]:rounded-full",
+              "[&::-moz-range-thumb]:border [&::-moz-range-thumb]:border-primary [&::-moz-range-thumb]:bg-card",
+              "[&::-moz-range-thumb]:shadow-sm [&::-moz-range-thumb]:transition-transform",
+              "hover:[&::-moz-range-thumb]:scale-110 active:[&::-moz-range-thumb]:scale-125",
+              "motion-reduce:[&::-moz-range-thumb]:transition-none",
+            )}
+          />
+        </div>
+        {/* The two ends state the model's range, which is what actually differs
+            from one model to the next. */}
+        <div className="flex justify-between text-[11px] tabular-nums text-muted-foreground">
+          <span>{values[0]}</span>
+          <span>{values[last]}</span>
+        </div>
       </div>
     </div>
   );
@@ -267,7 +405,7 @@ function VideoSettingsPane({
           }
         }}
       />
-      <VideoOptionField
+      <VideoDurationField
         label={t(($) => {
           return $.chat.templates.videoOptionsDuration;
         })}

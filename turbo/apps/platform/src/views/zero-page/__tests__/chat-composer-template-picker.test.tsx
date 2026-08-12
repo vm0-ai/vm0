@@ -447,14 +447,15 @@ describe("chat composer templates", () => {
       ).toBeInTheDocument();
     });
 
+    // Duration is a scale rather than a set, so it is a slider over the values
+    // the model accepts — index 2 of Seedance 2.0's 4s-15s range.
+    const duration = await screen.findByRole("slider", { name: "Duration" });
+    expect(duration).toHaveAttribute("aria-valuetext", "8s");
+
     // A second edit has to land in place too: setNodeMarkup drops the node
     // selection, so a selection-based update would insert another chip here.
     // The popover also stays open, so no reopening between two edits.
-    await user.click(
-      within(
-        await screen.findByRole("radiogroup", { name: "Duration" }),
-      ).getByRole("radio", { name: "6s" }),
-    );
+    fireEvent.change(duration, { target: { value: "2" } });
 
     await waitFor(() => {
       expect(
