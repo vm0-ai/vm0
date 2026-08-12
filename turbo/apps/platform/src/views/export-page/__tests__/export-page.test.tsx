@@ -10,7 +10,7 @@ const context = testContext();
 
 describe("export page", () => {
   it("shows the export contents and a localized cooldown error", async () => {
-    mockNow();
+    mockNow(context.signal);
     context.mocks.api(userExportContract.get, ({ respond }) => {
       return respond(200, {
         job: {
@@ -61,7 +61,7 @@ describe("export page", () => {
 
   it("shows export controls in Brazilian Portuguese", async () => {
     document.documentElement.lang = "pt-BR";
-    mockNow();
+    mockNow(context.signal);
     context.mocks.api(userExportContract.get, ({ respond }) => {
       return respond(200, {
         job: {

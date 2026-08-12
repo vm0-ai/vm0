@@ -281,7 +281,7 @@ describe("personal model providers settings", () => {
   it("lists subscription accounts and switches only on an explicit click", async () => {
     const user = userEvent.setup();
     mockBrowserTimeZone("America/New_York");
-    mockNow(new Date("2030-01-01T00:48:00.000Z"));
+    mockNow(context.signal, new Date("2030-01-01T00:48:00.000Z"));
     context.mocks.data.org({
       id: "org_1",
       name: "Test Org",
@@ -593,7 +593,7 @@ describe("personal model providers settings", () => {
 
   it("shows available subscription details in the connected status", async () => {
     mockBrowserTimeZone("America/New_York");
-    mockNow(new Date("2030-01-01T00:48:00.000Z"));
+    mockNow(context.signal, new Date("2030-01-01T00:48:00.000Z"));
     context.mocks.data.org({
       id: "org_1",
       name: "Test Org",
@@ -650,7 +650,7 @@ describe("personal model providers settings", () => {
   it("localizes subscription reset dates and relative times in Japanese", async () => {
     const timeZone = "Asia/Tokyo";
     mockBrowserTimeZone(timeZone);
-    mockNow(new Date("2030-01-01T00:48:00.000Z"));
+    mockNow(context.signal, new Date("2030-01-01T00:48:00.000Z"));
     context.mocks.data.org({
       id: "org_1",
       name: "Test Org",
@@ -695,7 +695,7 @@ describe("personal model providers settings", () => {
   it("localizes subscription reset dates and relative times in Spanish", async () => {
     const timeZone = "Europe/Madrid";
     mockBrowserTimeZone(timeZone);
-    mockNow(new Date("2030-01-01T00:48:00.000Z"));
+    mockNow(context.signal, new Date("2030-01-01T00:48:00.000Z"));
     context.mocks.data.org({
       id: "org_1",
       name: "Test Org",

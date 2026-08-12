@@ -31,7 +31,7 @@ type WindowWithGtag = Window & {
 };
 
 function mockSignedInUser(options: { readonly createdAt?: Date } = {}): void {
-  mockNow();
+  mockNow(context.signal);
   mockUser(
     {
       id: "test-user-123",

@@ -190,11 +190,14 @@ MSW intercepts HTTP at the network level, so your code makes real `fetch` calls 
 vi.useFakeTimers();
 vi.advanceTimersByTime(1000);
 
-// ✅ Mock only what you need
-vi.spyOn(Date, "now").mockReturnValue(fixedTimestamp);
+// ✅ Mock the application clock for the owning test lifecycle
+mockNow(context.signal, fixedTimestamp);
 ```
 
-Fake timers can mask race conditions and timing bugs. If you need deterministic time, mock `Date.now()` specifically.
+Fake timers can mask race conditions and timing bugs. Platform production code
+reads time through `lib/time.ts`'s `now()`, and its test `mockNow()` binds the
+override to `context.signal`. Do not spy on `Date.now()` directly or add a
+cleanup hook for the clock override.
 
 ### Manual Detached Cleanup
 

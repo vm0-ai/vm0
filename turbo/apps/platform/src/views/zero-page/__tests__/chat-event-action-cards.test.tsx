@@ -1884,7 +1884,7 @@ describe("chat event action cards", () => {
   });
 
   it("shares connector state across assistant events and confirms permissions", async () => {
-    mockNow();
+    mockNow(context.signal);
     const user = userEvent.setup({ delay: null });
     const connectorAuthorizeUrl = `${window.location.origin}/connectors/github/authorize?agentId=${AGENT_ID}`;
     const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?connectorSlug=slack&ref=github&permission=catalog.analytics%3Aread&action=allow&expiresIn=24h`;
@@ -2052,7 +2052,7 @@ describe("chat event action cards", () => {
   });
 
   it("renders and confirms multiple permission cards from one assistant event", async () => {
-    mockNow();
+    mockNow(context.signal);
     const user = userEvent.setup({ delay: null });
     const createPermissionUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?connectorSlug=google-sheets&permission=spreadsheets.create&action=allow&expiresIn=1h`;
     const writePermissionUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?connectorSlug=google-sheets&permission=values.write&action=allow&expiresIn=1h`;
@@ -2196,7 +2196,7 @@ describe("chat event action cards", () => {
   });
 
   it("runs a permission callback prompt after the grant is confirmed", async () => {
-    mockNow();
+    mockNow(context.signal);
     const user = userEvent.setup({ delay: null });
     const threadId = "e4000000-0000-4000-a000-000000000009";
     const callbackPrompt = "Re-check Slack access, then continue";
@@ -2593,7 +2593,7 @@ describe("chat event action cards", () => {
   });
 
   it("shows already allowed permission action cards as read-only after refresh", async () => {
-    mockNow();
+    mockNow(context.signal);
     const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?connectorSlug=youtube&permission=videos.write&action=allow&expiresIn=24h`;
     let applyRequests = 0;
     context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
@@ -2658,7 +2658,7 @@ describe("chat event action cards", () => {
   });
 
   it("lets users re-confirm expired allow permission action cards", async () => {
-    mockNow();
+    mockNow(context.signal);
     const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?connectorSlug=youtube&permission=videos.write&action=allow&expiresIn=24h`;
     let applyRequests = 0;
     context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
@@ -2797,7 +2797,7 @@ describe("chat event action cards", () => {
   });
 
   it("reloads permission cards when a connectorPermissionUpdated event arrives", async () => {
-    mockNow();
+    mockNow(context.signal);
     const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?connectorSlug=youtube&permission=videos.write&action=allow&expiresIn=24h`;
     let grantAllowed = false;
     context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
@@ -3349,7 +3349,7 @@ describe("chat event action cards", () => {
   });
 
   it("does not cancel stale permission loading when a confirmed grant reloads cards", async () => {
-    mockNow();
+    mockNow(context.signal);
     const user = userEvent.setup({ delay: null });
     const requestStarted = context.mocks.deferred<void>();
     const releaseRequest = context.mocks.deferred<void>();
@@ -3467,7 +3467,7 @@ describe("chat event action cards", () => {
   });
 
   it("automatically retries permission action loading before showing an error", async () => {
-    mockNow();
+    mockNow(context.signal);
     const user = userEvent.setup({ delay: null });
     const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?connectorSlug=gmail&permission=messages.write&action=allow&expiresIn=1h`;
     let listRequests = 0;
@@ -3749,7 +3749,7 @@ describe("chat event action cards", () => {
   });
 
   it("keeps permission success and composer connectors visible while grants reload", async () => {
-    mockNow();
+    mockNow(context.signal);
     const user = userEvent.setup({ delay: null });
     const threadId = "b0000000-0000-4000-a000-000000000991";
     const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?connectorSlug=gmail&permission=messages.write&action=allow&expiresIn=1h`;
@@ -3900,7 +3900,7 @@ describe("chat event action cards", () => {
   });
 
   it("lets users change permission duration before confirming", async () => {
-    mockNow();
+    mockNow(context.signal);
     const user = userEvent.setup({ delay: null });
     const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?connectorSlug=slack&permission=admin.analytics%3Aread&action=allow&expiresIn=24h`;
     let capturedBody: unknown = null;
@@ -3987,7 +3987,7 @@ describe("chat event action cards", () => {
   });
 
   it("lets users confirm unknown endpoint permissions from assistant events", async () => {
-    mockNow();
+    mockNow(context.signal);
     const user = userEvent.setup({ delay: null });
     const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?connectorSlug=cloudflare&permission=${UNKNOWN_PERMISSION_GRANT}&action=allow&expiresIn=1h`;
     let capturedBody: unknown = null;

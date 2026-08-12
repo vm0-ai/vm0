@@ -1,4 +1,4 @@
-import { vi } from "vitest";
+import { mockNow as mockPlatformNow } from "../lib/time.ts";
 
 const FIXED_NOW_ISO = "2026-06-11T16:00:00.000Z";
 
@@ -30,8 +30,9 @@ export function unixSecondsFromIso(value: string): number {
   return dateFromIso(value).getTime() / 1000;
 }
 
-export function mockNow(value: Date | number = now()): void {
-  vi.spyOn(Date, "now").mockReturnValue(
-    value instanceof Date ? value.getTime() : value,
-  );
+export function mockNow(
+  signal: AbortSignal,
+  value: Date | number = now(),
+): void {
+  mockPlatformNow(value, signal);
 }

@@ -343,3 +343,6 @@ detachedSetupPage({
    `context.signal` when they are created, and pass long-running promises to
    `context.track()`. Vitest configuration owns spy, mock, global stub, and
    environment stub restoration.
+9. **Use the Platform clock abstraction** - Production code reads time through
+   `lib/time.ts`'s `now()`. Tests call `mockNow(context.signal, value)` so the
+   override is released by the owning test signal; do not spy on `Date.now()`.

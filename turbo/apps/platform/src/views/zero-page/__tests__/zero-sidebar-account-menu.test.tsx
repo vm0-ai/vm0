@@ -523,7 +523,7 @@ describe("zero sidebar account menu", () => {
 
   it("shows subscription usage grouped below credits in the account menu", async () => {
     mockBrowserTimeZone("America/New_York");
-    mockNow(new Date("2030-01-01T00:48:00.000Z"));
+    mockNow(context.signal, new Date("2030-01-01T00:48:00.000Z"));
     mockAdminAccountSidebar();
     context.mocks.data.personalModelProviders([
       connectedPersonalCodexProvider(),
