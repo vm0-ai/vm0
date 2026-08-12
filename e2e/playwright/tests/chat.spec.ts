@@ -32,7 +32,7 @@ function isSuccessfulAgentDraftClear(response: Response): boolean {
   if (
     !response.ok() ||
     request.method() !== "PATCH" ||
-    !/^\/api\/zero\/agents\/[^/]+\/draft$/.test(
+    !/^\/api\/okou\/agents\/[^/]+\/draft$/.test(
       new URL(response.url()).pathname,
     )
   ) {
