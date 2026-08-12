@@ -211,19 +211,18 @@ function VideoDurationField({
       </div>
       <div className="flex flex-col gap-1">
         {/* Ticks sit above the track and share its inset so each one lines up
-            with the thumb position that snaps to it. */}
+            with the thumb position that snaps to it. They stay uniform: the
+            fill below already carries the value, and tinting them too turns
+            the two rows into one smear. */}
         <div
           aria-hidden="true"
           className="flex items-end justify-between px-[7px]"
         >
-          {values.map((option, step) => {
+          {values.map((option) => {
             return (
               <span
                 key={option}
-                className={cn(
-                  "w-px rounded-full transition-all duration-150 ease-out motion-reduce:transition-none",
-                  step <= index ? "h-1.5 bg-primary/60" : "h-1 bg-gray-400",
-                )}
+                className="h-1 w-px rounded-full bg-gray-400"
               />
             );
           })}
