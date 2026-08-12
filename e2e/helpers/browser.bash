@@ -164,6 +164,10 @@ report_auth_page_failure() {
 # ---------------------------------------------------------------------------
 generate_test_email() {
   local job_ref="${JOB_REF:-local}"
+  if [[ ! "$job_ref" =~ ^[a-z0-9]([a-z0-9-]{0,62}[a-z0-9])?$ ]]; then
+    echo "JOB_REF must use lowercase letters, numbers, and hyphens" >&2
+    return 1
+  fi
   local generation="local-1"
   if [[ -n "${GITHUB_RUN_ID:-}" || -n "${GITHUB_RUN_ATTEMPT:-}" ]]; then
     if [[ ! "${GITHUB_RUN_ID:-}" =~ ^[1-9][0-9]*$ ]] ||

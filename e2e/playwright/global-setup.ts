@@ -28,7 +28,7 @@ export default async function globalSetup(): Promise<void> {
     process.env.E2E_CLERK_ORG_ID = organizationId;
     console.log("[globalSetup] userId:", userId, "orgId:", organizationId);
   } catch (cause) {
-    await deleteClerkTestOwnerResources(email, organizationId);
+    await deleteClerkTestOwnerResources(email, organizationId, "playwright");
     throw cause;
   }
 }

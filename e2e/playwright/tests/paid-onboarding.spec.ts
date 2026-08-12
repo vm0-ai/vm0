@@ -45,6 +45,10 @@ test("paid onboarding completes through the video workflow", async ({
       /^\/(?:prompt|agents\/[^/]+\/chat|chats\/[^/]+)$/,
     );
   } finally {
-    await deleteClerkTestOwnerResources(email, organizationId);
+    await deleteClerkTestOwnerResources(
+      email,
+      organizationId,
+      "paid-onboarding",
+    );
   }
 });

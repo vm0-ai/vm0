@@ -349,24 +349,43 @@ async function cleanupClerkTestResources(
   const users = await listClerkUsers(userQuery);
   const organizations = await listClerkOrganizations();
 
-  const selectedOrganizations = organizations.filter((organization) => {
-    const owner = parseClerkTestOrganizationMetadata(
-      organization.private_metadata,
-    );
-    return (
-      owner !== null &&
-      cleanupSelectionMatches(selection, owner, organization.created_at)
-    );
-  });
-  const selectedUsers = users.filter((user) =>
-    user.email_addresses.some((emailAddress) => {
-      const owner = parseClerkTestEmail(emailAddress.email_address);
+  const organizationsWithOwners = organizations.map((organization) => ({
+    organization,
+    owner: parseClerkTestOrganizationMetadata(organization.private_metadata),
+  }));
+  const selectedOrganizations = organizationsWithOwners
+    .filter(({ organization, owner }) => {
       return (
         owner !== null &&
-        cleanupSelectionMatches(selection, owner, user.created_at)
+        cleanupSelectionMatches(selection, owner, organization.created_at)
       );
-    }),
-  );
+    })
+    .map(({ organization }) => organization);
+  const retainedOrganizationOwners = new Set<string>();
+  if (selection.kind === "stale") {
+    // Keep an owner user until every marked organization in its scope is old
+    // enough to delete, including resources that straddle the age cutoff.
+    for (const { organization, owner } of organizationsWithOwners) {
+      if (
+        owner !== null &&
+        !cleanupSelectionMatches(selection, owner, organization.created_at)
+      ) {
+        retainedOrganizationOwners.add(clerkTestOwnerKey(owner));
+      }
+    }
+  }
+  const selectedUsers = users.filter((user) => {
+    const emailAddress = user.email_addresses[0];
+    if (user.email_addresses.length !== 1 || !emailAddress) {
+      return false;
+    }
+    const owner = parseClerkTestEmail(emailAddress.email_address);
+    return (
+      owner !== null &&
+      cleanupSelectionMatches(selection, owner, user.created_at) &&
+      !retainedOrganizationOwners.has(clerkTestOwnerKey(owner))
+    );
+  });
 
   let deletedOrganizations = 0;
   let alreadyAbsentOrganizations = 0;
@@ -426,6 +445,10 @@ function cleanupSelectionMatches(
     case "stale":
       return createdAt !== undefined && createdAt < selection.createdBeforeMs;
   }
+}
+
+function clerkTestOwnerKey(owner: ClerkTestOwner): string {
+  return `${owner.jobRef}\0${owner.generation}\0${owner.role}`;
 }
 
 async function listClerkUsers(
@@ -501,11 +524,16 @@ export async function deleteOrganizationById(
 
 export async function deleteClerkTestOwnerResources(
   email: string,
-  organizationId?: string,
+  organizationId: string | undefined,
+  role: ClerkTestRole,
 ): Promise<void> {
-  if (organizationId) {
-    await deleteOrganizationById(organizationId);
+  if (!organizationId) {
+    // Organization creation may have committed even when its response was lost.
+    // Reconcile the owner scope so the user is never deleted ahead of that org.
+    await cleanupCurrentClerkTestGeneration([role]);
+    return;
   }
+  await deleteOrganizationById(organizationId);
   await deleteUserByEmail(email);
 }
 

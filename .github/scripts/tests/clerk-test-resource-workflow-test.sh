@@ -16,6 +16,11 @@ if [[ "$generated_email" != "pr-123+clerk_test+8000-2+browser@vm0-e2e.ai" ]]; th
   echo "browser helper did not generate the canonical account" >&2
   exit 1
 fi
+if JOB_REF="invalid_ref" bash -c \
+  'source "$1"; generate_test_email' _ "$browser_helper" >/dev/null 2>&1; then
+  echo "browser helper accepted a JOB_REF that its cleanup rejects" >&2
+  exit 1
+fi
 if [[ "$(grep -c '^[[:space:]]*delete_e2e_account_if_exists' "$browser_test")" -ne 2 ]]; then
   echo "browser E2E must clean its exact account before and after the test" >&2
   exit 1

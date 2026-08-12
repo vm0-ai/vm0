@@ -255,7 +255,9 @@ jobs:
             .github/scripts/tests/runner-promotion-ansible-test.sh \
             .github/scripts/tests/run-semgrep-test.sh \
             .github/scripts/tests/semgrep-results-test.sh \
-            .github/scripts/tests/runner-behavior-balloon-test.sh
+            .github/scripts/tests/runner-behavior-balloon-test.sh \
+            e2e/helpers/browser.bash \
+            e2e/tests/02-browser/brw-t01-platform-e2e.bats
           # actionlint assumes Bash when shell is omitted and does not model the
           # sh default used by container jobs.
           .github/scripts/check-workflow-shell-compatibility.sh

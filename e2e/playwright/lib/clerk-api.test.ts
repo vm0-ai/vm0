@@ -13,6 +13,7 @@ import {
   createOrganization,
   createUser,
   currentClerkTestGeneration,
+  deleteClerkTestOwnerResources,
   deleteOrganizationById,
   deleteUserByEmail,
   generateTestEmail,
@@ -226,6 +227,47 @@ test("removes a newly created organization when membership setup fails", async (
       assert.equal(
         countRequests(requests, "DELETE", "/v1/organizations/org_partial"),
         1,
+      );
+    },
+  );
+});
+
+test("reconciles owner resources when setup loses the organization ID", async () => {
+  const email = "test-job+clerk_test+4000-2+playwright-deadbeef@vm0-e2e.ai";
+  await withClerkServer(
+    (request, response) => {
+      const url = new URL(request.url, "http://clerk.test");
+      if (request.method === "GET" && url.pathname === "/v1/users") {
+        sendJson(response, 200, [clerkUser("user_partial", email)]);
+        return;
+      }
+      if (request.method === "GET" && url.pathname === "/v1/organizations") {
+        sendJson(response, 200, {
+          data: [
+            clerkOrganization(
+              "org_partial",
+              clerkOwner("test-job", "4000-2", "playwright"),
+            ),
+          ],
+          total_count: 1,
+        });
+        return;
+      }
+      if (request.method === "DELETE") {
+        response.writeHead(204);
+        response.end();
+        return;
+      }
+      sendJson(response, 404, { errors: [] });
+    },
+    async (requests) => {
+      await deleteClerkTestOwnerResources(email, undefined, "playwright");
+
+      assert.deepEqual(
+        requests
+          .filter((request) => request.method === "DELETE")
+          .map((request) => request.url),
+        ["/v1/organizations/org_partial", "/v1/users/user_partial"],
       );
     },
   );
@@ -456,6 +498,21 @@ test("stale cleanup requires strict markers and supports dry-run", async () => {
             "staging+clerk_test+3000-1+runner@vm0-e2e.ai",
             10_000,
           ),
+          clerkUser(
+            "user_before_owned_org_cutoff",
+            "staging+clerk_test+3000-1+paid-onboarding-deadbeef@vm0-e2e.ai",
+            9_000,
+          ),
+          {
+            id: "user_with_unowned_email",
+            created_at: 1_000,
+            email_addresses: [
+              {
+                email_address: "staging+clerk_test+3000-1+browser@vm0-e2e.ai",
+              },
+              { email_address: "owner@example.com" },
+            ],
+          },
         ]);
         return;
       }
@@ -478,8 +535,13 @@ test("stale cleanup requires strict markers and supports dry-run", async () => {
               clerkOwner("staging", "3000-1", "runner"),
               10_000,
             ),
+            clerkOrganization(
+              "org_after_user_cutoff",
+              clerkOwner("staging", "3000-1", "paid-onboarding"),
+              11_000,
+            ),
           ],
-          total_count: 4,
+          total_count: 5,
         });
         return;
       }
