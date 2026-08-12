@@ -18,6 +18,7 @@ import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
 import type { CodexServiceTier } from "@vm0/api-contracts/contracts/chat-threads";
 import type { RunContextResponse } from "@vm0/api-contracts/contracts/zero-runs";
 import type { AgentCustomConnectorGrant } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
+import { customConnectorSlugSchema } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import {
   connectorSlugSchema,
   type ConnectorAuthMethodId,
@@ -357,6 +358,43 @@ const CODEX_WEB_IMAGE_GENERATION_UPLOAD_PROMPT =
   "If you use the built-in image generation tool and it saves generated output image file(s) to local paths, upload each output file you intend to show with `okou web upload-file -f <path>` before telling the web chat user the image is available. Quote the path when needed. Do not provide only sandbox-local paths, because users cannot open local files.";
 const ZERO_IMAGE_RECOGNITION_PROMPT =
   '# Image Recognition Fallback\n\nThis run\'s selected model cannot inspect images directly. To inspect one local PNG, JPEG, or WebP image up to 20 MB, run `okou recognize --file <image-path> --prompt "<instruction>"`.';
+const MCP_CONNECTOR_PROMPT_INVENTORY_LIMIT = 20;
+
+function buildMcpConnectorPrompt(
+  connectorSlugs: readonly string[],
+): string | undefined {
+  if (connectorSlugs.length === 0) {
+    return undefined;
+  }
+  const sortedSlugs = [...connectorSlugs].sort();
+  const listedSlugs = sortedSlugs.slice(
+    0,
+    MCP_CONNECTOR_PROMPT_INVENTORY_LIMIT,
+  );
+  const omittedCount = sortedSlugs.length - listedSlugs.length;
+  const inventory = listedSlugs.map((slug) => {
+    return `- \`${slug}\``;
+  });
+  if (omittedCount > 0) {
+    inventory.push(
+      `- ${omittedCount} additional admitted MCP connector${omittedCount === 1 ? " was" : "s were"} omitted from this prompt`,
+    );
+  }
+
+  return [
+    "# MCP Custom Connectors",
+    "",
+    "The following MCP Custom Connectors were admitted when this Run started:",
+    ...inventory,
+    "",
+    "Use the Okou CLI to discover and invoke their tools:",
+    "1. Run `okou mcp list --json` to check current connector metadata and availability.",
+    "2. Before choosing a tool, run `okou mcp list-tools <connector-slug> --json`.",
+    "3. Invoke the exact returned tool name with `okou mcp call <connector-slug> <tool-name> --input '<json>' --json`, providing JSON that matches its input schema.",
+    "",
+    "Current connector authorization or configuration may differ from this Run-start snapshot. Runner enforcement is authoritative; if discovery or invocation reports that a connector is unavailable, do not bypass it and start a new Run after authorization is updated.",
+  ].join("\n");
+}
 
 function withZeroTokenSecret(
   body: CreateRunBody,
@@ -375,30 +413,38 @@ function withPendingZeroTokenSecret(body: CreateRunBody): CreateRunBody {
   return withZeroTokenSecret(body, "__pending_zero_token__");
 }
 
-function withFinalRunAppendSystemPrompt(
-  body: CreateRunBody,
-  framework: SupportedFramework,
-  chatThreadId: string | undefined,
-  imageRecognitionAvailable: boolean,
-): CreateRunBody {
+function withFinalRunAppendSystemPrompt(args: {
+  readonly body: CreateRunBody;
+  readonly framework: SupportedFramework;
+  readonly chatThreadId: string | undefined;
+  readonly imageRecognitionAvailable: boolean;
+  readonly mcpConnectorSlugs: readonly string[];
+  readonly zeroCliAvailable: boolean;
+}): CreateRunBody {
   const appendedParts: string[] = [];
-  if (imageRecognitionAvailable) {
+  if (args.zeroCliAvailable) {
+    const mcpConnectorPrompt = buildMcpConnectorPrompt(args.mcpConnectorSlugs);
+    if (mcpConnectorPrompt) {
+      appendedParts.push(mcpConnectorPrompt);
+    }
+  }
+  if (args.imageRecognitionAvailable) {
     appendedParts.push(ZERO_IMAGE_RECOGNITION_PROMPT);
   }
   if (
-    framework === "codex" &&
-    isWebChatTriggerSource(body.triggerSource) &&
-    chatThreadId
+    args.framework === "codex" &&
+    isWebChatTriggerSource(args.body.triggerSource) &&
+    args.chatThreadId
   ) {
     appendedParts.push(CODEX_WEB_IMAGE_GENERATION_UPLOAD_PROMPT);
   }
   if (appendedParts.length === 0) {
-    return body;
+    return args.body;
   }
 
   return {
-    ...body,
-    appendSystemPrompt: [body.appendSystemPrompt, ...appendedParts]
+    ...args.body,
+    appendSystemPrompt: [args.body.appendSystemPrompt, ...appendedParts]
       .filter((part): part is string => {
         return Boolean(part);
       })
@@ -893,6 +939,7 @@ interface CustomConnectorRuntimeContext {
   readonly permissionPolicies: FirewallPolicies | undefined;
   readonly targets: readonly ConnectorRuntimeTargetRegistration[];
   readonly customConnectorIdByFirewallName: Readonly<Record<string, string>>;
+  readonly mcpConnectorSlugs: readonly string[];
   readonly skills: readonly {
     readonly connectorId: string;
     readonly connectorSlug: string;
@@ -4349,6 +4396,7 @@ export async function buildCustomConnectorRuntimeContext(
   const permissionPolicies: FirewallPolicies = {};
   const targets: ConnectorRuntimeTargetRegistration[] = [];
   const customConnectorIdByFirewallName: Record<string, string> = {};
+  const mcpConnectorSlugs: string[] = [];
   const skills: {
     connectorId: string;
     connectorSlug: string;
@@ -4379,6 +4427,12 @@ export async function buildCustomConnectorRuntimeContext(
     }
     firewalls.push(built.firewall);
     customConnectorIdByFirewallName[built.firewall.name] = row.connector.id;
+    if (row.connector.kind === "mcp") {
+      const slug = customConnectorSlugSchema.safeParse(row.connector.slug);
+      if (slug.success) {
+        mcpConnectorSlugs.push(slug.data);
+      }
+    }
     if (built.permissionPolicy) {
       permissionPolicies[built.firewall.name] = built.permissionPolicy;
     }
@@ -4395,6 +4449,7 @@ export async function buildCustomConnectorRuntimeContext(
     permissionPolicies: compactRecord(permissionPolicies),
     targets,
     customConnectorIdByFirewallName,
+    mcpConnectorSlugs,
     skills,
   };
   stats.recordPhaseDuration("assembleFirewalls", finalAssemblyStartedAt);
@@ -4516,6 +4571,7 @@ async function loadCustomConnectorContext(
       permissionPolicies: undefined,
       targets: [],
       customConnectorIdByFirewallName: {},
+      mcpConnectorSlugs: [],
       skills: [],
     };
   }
@@ -4544,6 +4600,7 @@ async function loadCustomConnectorContext(
       permissionPolicies: undefined,
       targets: [],
       customConnectorIdByFirewallName: {},
+      mcpConnectorSlugs: [],
       skills: [],
     };
   }
@@ -8980,15 +9037,18 @@ function finalizePreparedRunContext(
 ): PreparedRunContext {
   return {
     ...prepared.context,
-    body: withFinalRunAppendSystemPrompt(
-      {
+    body: withFinalRunAppendSystemPrompt({
+      body: {
         ...prepared.context.body,
         appendSystemPrompt: finalAppendSystemPrompt,
       },
-      prepared.context.framework,
-      prepared.args.chatThreadId,
-      prepared.context.imageRecognitionAvailable,
-    ),
+      framework: prepared.context.framework,
+      chatThreadId: prepared.args.chatThreadId,
+      imageRecognitionAvailable: prepared.context.imageRecognitionAvailable,
+      mcpConnectorSlugs:
+        prepared.context.customConnectorContext.mcpConnectorSlugs,
+      zeroCliAvailable: prepared.args.includeZeroTokenSecret === true,
+    }),
   };
 }
 
