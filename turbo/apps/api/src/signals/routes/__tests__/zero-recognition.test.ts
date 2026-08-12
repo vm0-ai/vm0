@@ -8,6 +8,7 @@ import {
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 import { zeroUsageRecordContract } from "@vm0/api-contracts/contracts/zero-usage-record";
 import { HttpResponse, http } from "msw";
+import { onTestFinished } from "vitest";
 
 import { accept, testContext } from "../../../__tests__/test-context";
 import { setupApp } from "../../../__tests__/test-helpers";
@@ -15,17 +16,15 @@ import { buildArtifactKey } from "../../../lib/file-url";
 import { mockOptionalEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import {
+  createUsagePricingFixture,
   deleteUsagePricingRows,
   seedOrgMetadata,
-  seedUsagePricingRows,
+  type UsagePricingFixture,
 } from "../../../test-fixtures/system-config-seeds";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createRunsApi } from "./helpers/api-bdd-runs";
 import { readUsageStorageCounts$ } from "./helpers/usage-state";
-import {
-  createFixtureTracker,
-  createZeroRouteMocks,
-} from "./helpers/zero-route-test";
+import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { zeroRecognitionRoutes } from "../zero-recognition";
 import { zeroUsageRecordRoutes } from "../zero-usage-record";
 
@@ -136,6 +135,7 @@ function requestRecognition(args: {
   readonly fileId: string;
   readonly prompt?: string;
   readonly clientRequestId?: string;
+  readonly usagePricingResolution?: UsagePricingFixture["resolution"];
 }) {
   const headers = {
     ...(args.token ? { authorization: `Bearer ${args.token}` } : {}),
@@ -143,9 +143,11 @@ function requestRecognition(args: {
       ? { "x-vm0-client-request-id": args.clientRequestId }
       : {}),
   };
-  return setupApp({ context, routes: zeroRecognitionRoutes })(
-    zeroRecognitionContract,
-  ).recognize({
+  return setupApp({
+    context,
+    routes: zeroRecognitionRoutes,
+    usagePricingResolution: args.usagePricingResolution,
+  })(zeroRecognitionContract).recognize({
     headers,
     body: {
       fileId: args.fileId,
@@ -154,13 +156,35 @@ function requestRecognition(args: {
   });
 }
 
-async function seedBilling(actor: RecognitionActor): Promise<void> {
+async function createConfiguredRecognitionPricing(): Promise<UsagePricingFixture> {
+  const pricing = await createUsagePricingFixture({
+    configured: RECOGNITION_PRICING_ROWS,
+  });
+  onTestFinished(async () => {
+    await pricing.cleanup();
+  });
+  return pricing;
+}
+
+async function createMissingRecognitionPricing(): Promise<UsagePricingFixture> {
+  const pricing = await createUsagePricingFixture({
+    missing: RECOGNITION_PRICING_ROWS,
+  });
+  onTestFinished(async () => {
+    await pricing.cleanup();
+  });
+  return pricing;
+}
+
+async function seedBilling(
+  actor: RecognitionActor,
+): Promise<UsagePricingFixture> {
   await seedOrgMetadata({
     orgId: actor.orgId,
     tier: "pro",
     credits: STARTING_CREDITS,
   });
-  await seedUsagePricingRows(RECOGNITION_PRICING_ROWS);
+  return await createConfiguredRecognitionPricing();
 }
 
 function mockClerkUserLookup(): void {
@@ -199,20 +223,6 @@ async function expectNoUsage(actor: RecognitionActor): Promise<void> {
 }
 
 describe("POST /api/zero/recognize", () => {
-  const trackPricing = createFixtureTracker(
-    async (
-      rows: readonly {
-        readonly kind: string;
-        readonly provider: string;
-        readonly category: string;
-        readonly unitPrice: number;
-        readonly unitSize: number;
-      }[],
-    ) => {
-      await seedUsagePricingRows(rows);
-    },
-  );
-
   it("recognizes one owned image and settles each real invocation", async () => {
     mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
     const requestBodies: unknown[] = [];
@@ -235,7 +245,7 @@ describe("POST /api/zero/recognize", () => {
       }),
     );
     const actor = await seedActor();
-    await seedBilling(actor);
+    const pricing = await seedBilling(actor);
     const fileId = randomUUID();
     setStoredObjects([
       { userId: actor.userId, id: fileId, filename: "screen.png", size: 1024 },
@@ -248,6 +258,7 @@ describe("POST /api/zero/recognize", () => {
         fileId,
         prompt: "Read the warning",
         clientRequestId,
+        usagePricingResolution: pricing.resolution,
       });
       expect(response.status).toBe(200);
       expect(response.body).toStrictEqual({
@@ -366,16 +377,17 @@ describe("POST /api/zero/recognize", () => {
       }),
     );
     const actor = await seedActor();
+    const configuredPricing = await createConfiguredRecognitionPricing();
     const fileId = randomUUID();
     setStoredObjects([
       { userId: actor.userId, id: fileId, filename: "screen.jpg", size: 100 },
     ]);
     await seedOrgMetadata({ orgId: actor.orgId, tier: "pro", credits: 0 });
-    await seedUsagePricingRows(RECOGNITION_PRICING_ROWS);
 
     const noCredits = await requestRecognition({
       token: zeroToken(actor),
       fileId,
+      usagePricingResolution: configuredPricing.resolution,
     });
     expect(noCredits.status).toBe(402);
 
@@ -384,16 +396,11 @@ describe("POST /api/zero/recognize", () => {
       tier: "pro",
       credits: STARTING_CREDITS,
     });
-    await trackPricing(
-      deleteUsagePricingRows({
-        kind: "image-recognition",
-        provider: "xiaomi/mimo-v2.5",
-        categories: ["tokens.input", "tokens.cache_read", "tokens.output"],
-      }),
-    );
+    const missingPricing = await createMissingRecognitionPricing();
     const noPricing = await requestRecognition({
       token: zeroToken(actor),
       fileId,
+      usagePricingResolution: missingPricing.resolution,
     });
     expect(noPricing.status).toBe(503);
     expect(providerCalled).toBeFalsy();
@@ -423,7 +430,7 @@ describe("POST /api/zero/recognize", () => {
       }),
     );
     const actor = await seedActor();
-    await seedBilling(actor);
+    const pricing = await seedBilling(actor);
     const fileId = randomUUID();
     setStoredObjects([
       { userId: actor.userId, id: fileId, filename: "broken.png", size: 12 },
@@ -432,6 +439,7 @@ describe("POST /api/zero/recognize", () => {
     const response = await requestRecognition({
       token: zeroToken(actor),
       fileId,
+      usagePricingResolution: pricing.resolution,
     });
     expect(response.status).toBe(400);
     const responseText = JSON.stringify(response.body);
@@ -441,6 +449,7 @@ describe("POST /api/zero/recognize", () => {
     const malformedType = await requestRecognition({
       token: zeroToken(actor),
       fileId,
+      usagePricingResolution: pricing.resolution,
     });
     expect(malformedType.status).toBe(502);
     expect(JSON.stringify(malformedType.body)).not.toContain("injected");
@@ -455,7 +464,7 @@ describe("POST /api/zero/recognize", () => {
       { completion_tokens: 10 },
     ] as const;
     const actor = await seedActor();
-    await seedBilling(actor);
+    const pricing = await seedBilling(actor);
     const fileId = randomUUID();
     setStoredObjects([
       { userId: actor.userId, id: fileId, filename: "screen.webp", size: 12 },
@@ -478,6 +487,7 @@ describe("POST /api/zero/recognize", () => {
       const response = await requestRecognition({
         token: zeroToken(actor),
         fileId,
+        usagePricingResolution: pricing.resolution,
       });
       expect(response.status).toBe(502);
       expect(response.body).toMatchObject({
@@ -516,7 +526,7 @@ describe("POST /api/zero/recognize", () => {
       }),
     );
     const actor = await seedActor();
-    await seedBilling(actor);
+    const pricing = await seedBilling(actor);
     const fileId = randomUUID();
     setStoredObjects([
       { userId: actor.userId, id: fileId, filename: "screen.png", size: 12 },
@@ -526,6 +536,7 @@ describe("POST /api/zero/recognize", () => {
       const response = await requestRecognition({
         token: zeroToken(actor),
         fileId,
+        usagePricingResolution: pricing.resolution,
       });
       expect(response.status).toBe(502);
       expect(response.body).toMatchObject({
@@ -538,15 +549,24 @@ describe("POST /api/zero/recognize", () => {
 
   it("does not return text when settlement reports a billing error", async () => {
     mockOptionalEnv("OPENROUTER_API_KEY", "test-openrouter-key");
+    const actor = await seedActor();
+    const pricing = await seedBilling(actor);
+    const pricingIdentity = pricing.resolution.find((entry) => {
+      return (
+        entry.kind === "image-recognition" &&
+        entry.provider === "xiaomi/mimo-v2.5"
+      );
+    });
+    if (!pricingIdentity) {
+      throw new Error("Recognition pricing fixture requires a lookup identity");
+    }
     server.use(
       http.post(OPENROUTER_URL, async () => {
-        await trackPricing(
-          deleteUsagePricingRows({
-            kind: "image-recognition",
-            provider: "xiaomi/mimo-v2.5",
-            categories: ["tokens.output"],
-          }),
-        );
+        await deleteUsagePricingRows({
+          kind: "image-recognition",
+          provider: pricingIdentity.lookupProvider,
+          categories: ["tokens.output"],
+        });
         return HttpResponse.json({
           choices: [
             {
@@ -558,8 +578,6 @@ describe("POST /api/zero/recognize", () => {
         });
       }),
     );
-    const actor = await seedActor();
-    await seedBilling(actor);
     const fileId = randomUUID();
     setStoredObjects([
       { userId: actor.userId, id: fileId, filename: "screen.png", size: 12 },
@@ -568,6 +586,7 @@ describe("POST /api/zero/recognize", () => {
     const response = await requestRecognition({
       token: zeroToken(actor),
       fileId,
+      usagePricingResolution: pricing.resolution,
     });
     expect(response.status).toBe(500);
     expect(JSON.stringify(response.body)).not.toContain(
