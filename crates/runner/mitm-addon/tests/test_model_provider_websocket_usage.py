@@ -116,7 +116,6 @@ class TestModelProviderWebSocketPrewarmUsage:
                 output_tokens=0,
             )
             feed_websocket_server_message(flow, prewarm_usage)
-            feed_websocket_server_message(flow, prewarm_usage)
 
             feed_websocket_client_message(
                 flow,
@@ -131,6 +130,7 @@ class TestModelProviderWebSocketPrewarmUsage:
                     output_tokens=0,
                 ),
             )
+            feed_websocket_server_message(flow, prewarm_usage)
             mitm_addon.websocket_end(flow)
             usage.flush_usage_events(trigger="test")
 
