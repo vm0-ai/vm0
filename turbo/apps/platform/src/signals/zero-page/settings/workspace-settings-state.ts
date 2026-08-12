@@ -256,10 +256,6 @@ export const inviteDialogOpen$ = computed((get) => {
   return get(internalInviteDialogOpen$);
 });
 
-export const setInviteDialogOpen$ = command(({ set }, open: boolean) => {
-  set(internalInviteDialogOpen$, open);
-});
-
 const internalInviteRole$ = state<OrgRole>("member");
 
 export const inviteRole$ = computed((get) => {
@@ -281,6 +277,16 @@ export const setInviteUsagePackUsd$ = command(
     set(internalInviteUsagePackUsd$, value);
   },
 );
+
+export const setInviteDialogOpen$ = command(({ set }, open: boolean) => {
+  if (open) {
+    set(internalInviteEmail$, "");
+    set(internalInviteTouched$, false);
+    set(internalInviteRole$, "member");
+    set(internalInviteUsagePackUsd$, 20);
+  }
+  set(internalInviteDialogOpen$, open);
+});
 
 interface InvitePurchasePreview {
   readonly email: string;
@@ -604,9 +610,6 @@ export const inviteMember$ = command(
     );
     set(refreshOrgMembers$);
     set(internalInviteDialogOpen$, false);
-    set(internalInviteEmail$, "");
-    set(internalInviteRole$, "member");
-    set(internalInviteUsagePackUsd$, 20);
   },
 );
 

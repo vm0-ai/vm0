@@ -21,6 +21,7 @@ import {
 const context = testContext();
 const THREAD_ID = "1fe7f3cc-40b9-49f2-8f86-5f07d8d8dfd8";
 const MENTIONED_AGENT_ID = "a1000000-0000-4000-a000-000000000001";
+const FEEDBACK_EVENT_ID = "assistant-event-1";
 
 beforeAll(async () => {
   await initializeI18n(DEFAULT_LOCALE);
@@ -548,6 +549,9 @@ describe("user message document codec", () => {
             quote: "Second quote",
             showDivider: true,
             fill: true,
+            eventId: FEEDBACK_EVENT_ID,
+            rangeStart: 18,
+            rangeEnd: 30,
           },
           content: [
             {
@@ -583,6 +587,8 @@ describe("user message document codec", () => {
         {
           type: "feedback",
           quote: "Second quote",
+          eventId: FEEDBACK_EVENT_ID,
+          range: { start: 18, end: 30 },
           note: [
             { type: "text", text: "Second note\n" },
             {
@@ -632,6 +638,9 @@ describe("user message document codec", () => {
             quote: "Second quote",
             showDivider: true,
             fill: true,
+            eventId: FEEDBACK_EVENT_ID,
+            rangeStart: 18,
+            rangeEnd: 30,
           },
           content: [
             {

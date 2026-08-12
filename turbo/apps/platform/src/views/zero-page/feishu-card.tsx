@@ -67,6 +67,7 @@ import {
   advanceFeishuSetupStep$,
   checkFeishuAppIdAvailable$,
   closeFeishuDialog$,
+  completeFeishuDialogClose$,
   completeFeishuInstallationSetup$,
   disconnectFeishuOrg$,
   feishuDialogExisting$,
@@ -1922,6 +1923,7 @@ function FeishuSetupDialog({
   const open = useGet(feishuDialogOpen$);
   const existing = useGet(feishuDialogExisting$);
   const close = useSet(closeFeishuDialog$);
+  const completeClose = useSet(completeFeishuDialogClose$);
   const readOnly = data?.setupCompleted ?? false;
   let title = existing
     ? t(($) => {
@@ -1947,6 +1949,11 @@ function FeishuSetupDialog({
       onOpenChange={(nextOpen) => {
         if (!nextOpen) {
           close();
+        }
+      }}
+      onOpenChangeComplete={(nextOpen) => {
+        if (!nextOpen) {
+          completeClose();
         }
       }}
     >

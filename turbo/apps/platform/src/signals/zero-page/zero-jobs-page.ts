@@ -62,7 +62,7 @@ export const setJobsAvatarUrl$ = command(({ set }, url: string) => {
   set(internalAvatarUrl$, url);
 });
 
-// -- Reset dialog state on close --------------------------------------------
+// -- Create a fresh dialog draft --------------------------------------------
 
 export const resetJobsDialog$ = command(({ set }) => {
   set(internalNewName$, "");

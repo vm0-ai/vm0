@@ -13,6 +13,7 @@ import { i18n } from "../../i18n/index.ts";
 const internalReload$ = state(0);
 const internalPhoneForm$ = state("");
 const internalConnectDialogOpen$ = state(false);
+const internalConnectDialogCloseComplete$ = state(true);
 const internalVerificationPhone$ = state<string | null>(null);
 const internalShowPhoneError$ = state(false);
 const internalAgentPhoneStatus$ = state<AgentPhoneLinkStatusResponse | null>(
@@ -63,11 +64,36 @@ export const setAgentPhonePhoneForm$ = command(({ set }, value: string) => {
   set(internalPhoneForm$, value);
 });
 
+export const resetAgentPhoneConnectUi$ = command(({ set }) => {
+  set(internalPhoneForm$, "");
+  set(internalVerificationPhone$, null);
+  set(internalShowPhoneError$, false);
+});
+
 export const setAgentPhoneConnectDialogOpen$ = command(
-  ({ set }, value: boolean) => {
+  ({ get, set }, value: boolean) => {
+    const connecting =
+      get(internalVerificationPhone$) !== null &&
+      get(internalAgentPhoneStatus$)?.linked !== true;
+    if (value && !connecting) {
+      set(resetAgentPhoneConnectUi$);
+    }
+    if (value) {
+      set(internalConnectDialogCloseComplete$, false);
+    }
     set(internalConnectDialogOpen$, value);
   },
 );
+
+export const completeAgentPhoneConnectDialogClose$ = command(({ get, set }) => {
+  if (get(internalConnectDialogOpen$)) {
+    return;
+  }
+  set(internalConnectDialogCloseComplete$, true);
+  if (get(internalAgentPhoneStatus$)?.linked) {
+    set(resetAgentPhoneConnectUi$);
+  }
+});
 
 export const setAgentPhoneVerificationPhone$ = command(
   ({ set }, value: string | null) => {
@@ -80,12 +106,6 @@ export const setAgentPhoneShowPhoneError$ = command(
     set(internalShowPhoneError$, value);
   },
 );
-
-export const resetAgentPhoneConnectUi$ = command(({ set }) => {
-  set(internalPhoneForm$, "");
-  set(internalVerificationPhone$, null);
-  set(internalShowPhoneError$, false);
-});
 
 export const agentPhoneLinkStatus$ = computed(
   async (get): Promise<AgentPhoneLinkStatusResponse> => {
@@ -144,6 +164,10 @@ const refreshAgentPhoneFromChange$ = command(
       toastAgentPhoneStatusChange(previous, data);
       if (data.linked) {
         set(internalConnectDialogOpen$, false);
+        if (get(internalConnectDialogCloseComplete$)) {
+          set(resetAgentPhoneConnectUi$);
+        }
+      } else {
         set(resetAgentPhoneConnectUi$);
       }
     }
@@ -218,5 +242,6 @@ export const disconnectAgentPhone$ = command(
     );
     signal.throwIfAborted();
     set(reloadAgentPhoneLinkStatus$);
+    set(resetAgentPhoneConnectUi$);
   },
 );

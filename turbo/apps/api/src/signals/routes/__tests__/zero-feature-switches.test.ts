@@ -46,5 +46,8 @@ describe("/api/zero/feature-switches", () => {
       [FeatureSwitchKey.Dummy]: true,
     });
     expect(current.body.effectiveSwitches[FeatureSwitchKey.Dummy]).toBeTruthy();
+    expect(current.body.apiCapabilities).toStrictEqual({
+      feedbackLocationV1: true,
+    });
   });
 });

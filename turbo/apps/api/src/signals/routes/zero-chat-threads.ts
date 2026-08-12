@@ -42,6 +42,11 @@ import {
   getChatThreadEventsSince,
   getChatThreadSnapshot,
 } from "../services/zero-chat-thread-event.service";
+import {
+  legacyFeedbackLocationAppClient$,
+  projectLegacyChatEvent,
+  projectLegacyChatEventRow,
+} from "../services/chat-feedback-location-compatibility.service";
 import type { RouteEntry } from "../route-entry";
 import { zeroChatThreadsArtifactsSyncRoutes } from "./zero-chat-threads-artifacts-sync";
 import { zeroChatThreadComputerUseHostRoutes } from "./zero-chat-threads-computer-use-host";
@@ -178,6 +183,7 @@ const listChatEventsInner$ = computed(async (get) => {
   const auth = get(authContext$);
   const params = get(pathParamsOf(chatThreadEventsContract.list));
   const query = get(queryOf(chatThreadEventsContract.list));
+  const legacyFeedbackLocationClient = get(legacyFeedbackLocationAppClient$);
   const events = await get(
     zeroChatThreadEventsPage({
       threadId: params.threadId,
@@ -193,7 +199,11 @@ const listChatEventsInner$ = computed(async (get) => {
 
   return {
     status: 200 as const,
-    body: { events },
+    body: {
+      events: legacyFeedbackLocationClient
+        ? events.map(projectLegacyChatEvent)
+        : events,
+    },
   };
 });
 
@@ -235,6 +245,7 @@ const listChatEventRowsInner$ = computed(async (get) => {
   const auth = get(authContext$);
   const params = get(pathParamsOf(chatThreadEventsContract.rows));
   const query = get(queryOf(chatThreadEventsContract.rows));
+  const legacyFeedbackLocationClient = get(legacyFeedbackLocationAppClient$);
   const page = await get(
     zeroChatThreadEventRows({
       threadId: params.threadId,
@@ -260,7 +271,11 @@ const listChatEventRowsInner$ = computed(async (get) => {
 
   return {
     status: 200 as const,
-    body: { rows: [...page.rows] },
+    body: {
+      rows: legacyFeedbackLocationClient
+        ? page.rows.map(projectLegacyChatEventRow)
+        : [...page.rows],
+    },
   };
 });
 
@@ -288,6 +303,7 @@ const listQueuedChatEventsInner$ = computed(async (get) => {
 const getChatThreadEventInner$ = computed(async (get) => {
   const auth = get(authContext$);
   const params = get(pathParamsOf(chatThreadEventsContract.get));
+  const legacyFeedbackLocationClient = get(legacyFeedbackLocationAppClient$);
   const event = await get(
     zeroChatThreadEventById({
       threadId: params.threadId,
@@ -301,7 +317,7 @@ const getChatThreadEventInner$ = computed(async (get) => {
 
   return {
     status: 200 as const,
-    body: event,
+    body: legacyFeedbackLocationClient ? projectLegacyChatEvent(event) : event,
   };
 });
 

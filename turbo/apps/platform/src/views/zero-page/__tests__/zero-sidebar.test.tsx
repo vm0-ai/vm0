@@ -27,6 +27,7 @@ import {
   click,
   detachedSetupPage,
   fill,
+  holdElementAnimations,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -941,6 +942,55 @@ describe("zero sidebar", () => {
     expect(within(dialog).getByPlaceholderText("Chat title")).toHaveValue(
       "Incident notes",
     );
+  });
+
+  it("keeps the rename draft while closing and resets it on the next open", async () => {
+    prepareDefaultAgent();
+    mockSidebarThreadStory([
+      createThread(EXISTING_THREAD_ID, "Release plan"),
+      createThread(INCIDENT_THREAD_ID, "Incident notes"),
+    ]);
+
+    setupSidebarPage({
+      context,
+      path: `/chats/${EXISTING_THREAD_ID}`,
+    });
+
+    await waitFor(() => {
+      expect(within(sidebar()).getByText("Release plan")).toBeInTheDocument();
+      expect(within(sidebar()).getByText("Incident notes")).toBeInTheDocument();
+    });
+
+    openThreadMenu("Release plan");
+    click(menuItemByText("Rename chat"));
+
+    const dialog = await screen.findByRole("dialog", { name: "Rename chat" });
+    const titleInput = within(dialog).getByPlaceholderText("Chat title");
+    await fill(titleInput, "Unsaved title");
+    const finishCloseAnimation = holdElementAnimations(dialog);
+    click(buttonByText("Cancel", dialog));
+
+    expect(titleInput).toBeInTheDocument();
+    expect(titleInput).toBeVisible();
+    expect(titleInput).toHaveValue("Unsaved title");
+
+    finishCloseAnimation();
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "Rename chat" }),
+      ).not.toBeInTheDocument();
+    });
+
+    openThreadMenu("Incident notes");
+    click(menuItemByText("Rename chat"));
+
+    const reopenedDialog = await screen.findByRole("dialog", {
+      name: "Rename chat",
+    });
+    expect(
+      within(reopenedDialog).getByPlaceholderText("Chat title"),
+    ).toHaveValue("Incident notes");
   });
 
   it("renames a chat thread by double-clicking from the sidebar", async () => {
