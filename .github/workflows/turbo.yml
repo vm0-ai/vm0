@@ -3591,8 +3591,8 @@ jobs:
 
           RUNNER_START_SUCCEEDED=1
 
-  # Keep tests for the limited-free organization serial while running the paid
-  # credential lane in parallel. Both lanes run against both API runtimes.
+  # Build one balanced shard plan shared by both API runtimes. Each runtime
+  # applies its own safe concurrency limit when executing the plan.
   cli-e2e-03-runner-shards:
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -3620,25 +3620,15 @@ jobs:
           matrix="$(jq -c '
             .include as $shards |
             ($shards | length) as $total |
-            {include: [
-              $shards[] as $shard |
-              ["cloudflare", "vercel"][] as $runtime |
-              $shard + {runtime: $runtime, total: $total}
-            ]}
+            {include: [$shards[] | . + {total: $total}]}
           ' <<<"$base_matrix")"
           jq -e '
             .include | type == "array" and
-            length == 14 and
-            (map(select(.runtime == "cloudflare")) | length) == 7 and
-            (map(select(.runtime == "vercel")) | length) == 7 and
-            (map(select(.runtime == "cloudflare" and .credentialLane == "limited-free")) | length) == 4 and
-            (map(select(.runtime == "vercel" and .credentialLane == "limited-free")) | length) == 4 and
-            (map(select(.runtime == "cloudflare" and .credentialLane == "codex")) | length) == 2 and
-            (map(select(.runtime == "vercel" and .credentialLane == "codex")) | length) == 2 and
-            (map(select(.runtime == "cloudflare" and .credentialLane == "claude")) | length) == 1 and
-            (map(select(.runtime == "vercel" and .credentialLane == "claude")) | length) == 1 and
+            length == 7 and
+            (map(select(.credentialLane == "limited-free")) | length) == 4 and
+            (map(select(.credentialLane == "codex")) | length) == 2 and
+            (map(select(.credentialLane == "claude")) | length) == 1 and
             all(.[];
-              (.runtime == "cloudflare" or .runtime == "vercel") and
               (.total | type == "number" and . == 7) and
               (.credentialLane == "limited-free" or .credentialLane == "codex" or .credentialLane == "claude") and
               (.credentialIndex | type == "number" and . >= 1 and . <= 4) and
@@ -4040,11 +4030,13 @@ jobs:
           CF_ACCESS_CLIENT_SECRET: ${{ matrix.runtime == 'cloudflare' && secrets.CF_API_PREVIEW_ACCESS_CLIENT_SECRET || '' }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
 
+  # Direct PostgreSQL connections make concurrent Worker shards contend for
+  # connection setup. Keep Cloudflare serial while Vercel runs independently.
   cli-e2e-03-runner:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     concurrency:
-      group: cli-e2e-03-runner-${{ matrix.runtime }}-${{ matrix.index }}-${{ needs.prepare.outputs.job-ref }}
+      group: cli-e2e-03-runner-cloudflare-${{ matrix.index }}-${{ needs.prepare.outputs.job-ref }}
       cancel-in-progress: true
     needs:
       - prepare
@@ -4068,139 +4060,67 @@ jobs:
       needs.cli-e2e-03-runner-bootstrap.result == 'success'
     strategy:
       fail-fast: false
-      # Both preview runtimes connect directly to PostgreSQL. Keep two shards
-      # active at once so the complete dual-runtime suite does not create a
-      # connection storm while retaining parallel coverage.
-      max-parallel: 2
+      max-parallel: 1
       matrix: ${{ fromJSON(needs.cli-e2e-03-runner-shards.outputs.matrix) }}
-    env:
-      E2E_RUNNER_RUNTIME: ${{ matrix.runtime }}
-      E2E_RUNNER_CREDENTIAL_INDEX: ${{ matrix.credentialIndex }}
-      E2E_RUNNER_SHARD_INDEX: ${{ matrix.index }}
-      E2E_RUNNER_SHARD_TOTAL: ${{ matrix.total }}
-      E2E_RUNNER_TEST_FILES_JSON: ${{ toJSON(matrix.files) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           submodules: recursive
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+      - uses: ./.github/actions/runner-e2e-shard
         with:
-          node-version: 22
-      - name: Install pnpm
-        run: corepack enable pnpm
-      - name: Install E2E dependencies
-        run: cd e2e && pnpm install --frozen-lockfile
-      - name: Download runner E2E API tokens
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
-        with:
-          name: e2e-tokens-${{ matrix.runtime }}
-          path: /tmp
-      - name: Setup runner E2E API credentials
-        shell: bash
-        run: |
-          set -euo pipefail
-          for credential_file in \
-            /tmp/e2e-api-credentials-runner-1.json \
-            /tmp/e2e-api-credentials-runner-2.json \
-            /tmp/e2e-api-credentials-runner-3.json \
-            /tmp/e2e-api-credentials-runner-4.json \
-            /tmp/e2e-api-credentials-runner-real-codex.json \
-            /tmp/e2e-api-credentials-runner-real-claude.json \
-            /tmp/e2e-api-credentials-runner-mock-claude.json; do
-            jq -er '.token | select(type == "string" and length > 0)' "$credential_file" >/dev/null
-            jq -er '.apiUrl | select(type == "string" and length > 0)' "$credential_file" >/dev/null
-          done
-          : "${E2E_RUNNER_CREDENTIAL_INDEX:?runner credential index is required}"
-          credential_file="/tmp/e2e-api-credentials-runner-${E2E_RUNNER_CREDENTIAL_INDEX}.json"
-          token=$(jq -er '.token' "$credential_file")
-          api_url=$(jq -er '.apiUrl' "$credential_file")
-          organization_index=$((E2E_RUNNER_CREDENTIAL_INDEX - 1))
-          echo "::add-mask::$token"
-          {
-            echo "E2E_API_TOKEN=$token"
-            echo "E2E_API_URL=$api_url"
-            echo "E2E_CLERK_ORG_ID=$(jq -er --argjson index "$organization_index" '.runnerOrganizationIds[$index]' /tmp/e2e-runner-accounts.json)"
-            echo "E2E_RUNNER_CODEX_ORG_ID=$(jq -er '.codexOrganizationId' /tmp/e2e-runner-accounts.json)"
-            echo "E2E_RUNNER_CLAUDE_ORG_ID=$(jq -er '.claudeOrganizationId' /tmp/e2e-runner-accounts.json)"
-            echo "E2E_RUNNER_MOCK_CLAUDE_ORG_ID=$(jq -er '.mockClaudeOrganizationId' /tmp/e2e-runner-accounts.json)"
-            echo "E2E_RUNNER_EMAIL=$(jq -er --argjson index "$organization_index" '.runnerEmails[$index]' /tmp/e2e-runner-accounts.json)"
-            echo "E2E_RUNNER_CODEX_EMAIL=$(jq -er '.codexEmail' /tmp/e2e-runner-accounts.json)"
-            echo "E2E_RUNNER_CLAUDE_EMAIL=$(jq -er '.claudeEmail' /tmp/e2e-runner-accounts.json)"
-            echo "E2E_RUNNER_MOCK_CLAUDE_EMAIL=$(jq -er '.mockClaudeEmail' /tmp/e2e-runner-accounts.json)"
-          } >> "$GITHUB_ENV"
-      - name: Initialize runner E2E shard
-        shell: bash
-        run: |
-          set -euo pipefail
-          : "${E2E_CLERK_ORG_ID:?runner E2E organization is required}"
-          : "${E2E_RUNNER_CODEX_ORG_ID:?runner Codex E2E organization is required}"
-          : "${E2E_RUNNER_CLAUDE_ORG_ID:?runner Claude E2E organization is required}"
-          : "${E2E_RUNNER_MOCK_CLAUDE_ORG_ID:?runner mock Claude E2E organization is required}"
-          : "${E2E_RUNNER_EMAIL:?runner E2E account is required}"
-          : "${E2E_RUNNER_CODEX_EMAIL:?runner Codex E2E account is required}"
-          : "${E2E_RUNNER_CLAUDE_EMAIL:?runner Claude E2E account is required}"
-          : "${E2E_RUNNER_MOCK_CLAUDE_EMAIL:?runner mock Claude E2E account is required}"
-          : "${E2E_API_TOKEN:?runner E2E API token is required}"
-          : "${E2E_API_URL:?runner E2E API URL is required}"
-          : "${E2E_RUNNER_RUNTIME:?runner E2E runtime is required}"
-          : "${E2E_RUNNER_CREDENTIAL_INDEX:?runner credential index is required}"
-          jq -e '
-            type == "array" and length > 0 and
-            all(.[]; type == "string" and length > 0)
-          ' <<<"$E2E_RUNNER_TEST_FILES_JSON" >/dev/null
-          test_count="$(jq 'length' <<<"$E2E_RUNNER_TEST_FILES_JSON")"
-          echo "Runner E2E shard ${E2E_RUNNER_SHARD_INDEX}/${E2E_RUNNER_SHARD_TOTAL} has ${test_count} file(s)"
-      - name: Run runner E2E tests (shard ${{ matrix.index }})
-        shell: bash
-        run: |
-          set -euo pipefail
-          mapfile -t test_files < <(jq -er '.[]' <<<"$E2E_RUNNER_TEST_FILES_JSON")
-          if (( ${#test_files[@]} == 0 )); then
-            echo "::error::Runner E2E shard has no test files"
-            exit 1
-          fi
+          runtime: cloudflare
+          credential-index: ${{ matrix.credentialIndex }}
+          shard-index: ${{ matrix.index }}
+          shard-total: ${{ matrix.total }}
+          test-files-json: ${{ toJSON(matrix.files) }}
+          cf-access-client-id: ${{ secrets.CF_API_PREVIEW_ACCESS_CLIENT_ID }}
+          cf-access-client-secret: ${{ secrets.CF_API_PREVIEW_ACCESS_CLIENT_SECRET }}
+          vercel-automation-bypass-secret: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+          codecov-token: ${{ secrets.CODECOV_TOKEN }}
 
-          cd e2e
-          for test_file in "${test_files[@]}"; do
-            if [[ ! -f "$test_file" ]]; then
-              echo "::error::Runner E2E test file does not exist: $test_file"
-              exit 1
-            fi
-          done
-
-          result_directory="results/runner-${E2E_RUNNER_RUNTIME}-${E2E_RUNNER_SHARD_INDEX}"
-          mkdir -p "$result_directory"
-          BATS_TEST_TIMEOUT=240 ./test/libs/bats/bin/bats \
-            -T \
-            --report-formatter junit \
-            --output "$result_directory" \
-            "${test_files[@]}"
-        env:
-          CF_ACCESS_CLIENT_ID: ${{ matrix.runtime == 'cloudflare' && secrets.CF_API_PREVIEW_ACCESS_CLIENT_ID || '' }}
-          CF_ACCESS_CLIENT_SECRET: ${{ matrix.runtime == 'cloudflare' && secrets.CF_API_PREVIEW_ACCESS_CLIENT_SECRET || '' }}
-          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
-      - name: Print runner E2E trace log
-        if: always()
-        shell: bash
-        run: |
-          if [[ -f /tmp/e2e-trace.log ]]; then
-            cat /tmp/e2e-trace.log
-          fi
-      - name: Upload runner E2E test results to Codecov
-        if: ${{ !cancelled() }}
-        uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7
+  cli-e2e-03-runner-vercel:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency:
+      group: cli-e2e-03-runner-vercel-${{ matrix.index }}-${{ needs.prepare.outputs.job-ref }}
+      cancel-in-progress: true
+    needs:
+      - prepare
+      - cli-e2e-03-runner-shards
+      - deploy-api
+      - deploy-api-vercel
+      - deploy-runner-prepare
+      - deploy-runner-start
+      - cli-e2e-03-runner-prepare
+      - cli-e2e-03-runner-bootstrap
+    if: |
+      always() &&
+      needs.prepare.outputs.job-ref != '' &&
+      needs.prepare.outputs.turbo-runner-consumer-needed == 'true' &&
+      needs.cli-e2e-03-runner-shards.result == 'success' &&
+      needs.deploy-api.result == 'success' &&
+      needs.deploy-api-vercel.result == 'success' &&
+      needs.deploy-runner-prepare.result == 'success' &&
+      needs.deploy-runner-start.result == 'success' &&
+      needs.cli-e2e-03-runner-prepare.result == 'success' &&
+      needs.cli-e2e-03-runner-bootstrap.result == 'success'
+    strategy:
+      fail-fast: false
+      max-parallel: 7
+      matrix: ${{ fromJSON(needs.cli-e2e-03-runner-shards.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          token: ${{ secrets.CODECOV_TOKEN }}
-          flags: e2e-runner
-          files: e2e/results/runner-${{ matrix.runtime }}-${{ matrix.index }}/*.xml
-          report_type: test_results
-      - name: Upload runner E2E JUnit XML
-        if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+          submodules: recursive
+      - uses: ./.github/actions/runner-e2e-shard
         with:
-          name: e2e-runner-junit-${{ matrix.runtime }}-${{ matrix.index }}
-          path: e2e/results/runner-${{ matrix.runtime }}-${{ matrix.index }}/
-          retention-days: 7
+          runtime: vercel
+          credential-index: ${{ matrix.credentialIndex }}
+          shard-index: ${{ matrix.index }}
+          shard-total: ${{ matrix.total }}
+          test-files-json: ${{ toJSON(matrix.files) }}
+          vercel-automation-bypass-secret: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+          codecov-token: ${{ secrets.CODECOV_TOKEN }}
 
   cli-e2e-03-runner-cleanup:
     runs-on: ubuntu-latest
@@ -4216,6 +4136,7 @@ jobs:
       - prepare
       - cli-e2e-03-runner-prepare
       - cli-e2e-03-runner
+      - cli-e2e-03-runner-vercel
     if: |
       always() &&
       needs.prepare.outputs.job-ref != '' &&
@@ -4339,6 +4260,7 @@ jobs:
       - cli-e2e-03-runner-prepare
       - cli-e2e-03-runner-bootstrap
       - cli-e2e-03-runner
+      - cli-e2e-03-runner-vercel
       - cli-e2e-03-runner-cleanup
       - deploy-runner-prepare
       - deploy-runner-start
@@ -4470,6 +4392,7 @@ jobs:
           check_result "cli-e2e-03-runner-prepare" "${{ needs.cli-e2e-03-runner-prepare.result }}" "$RUNNER_E2E_SKIP_ALLOWED"
           check_result "cli-e2e-03-runner-bootstrap" "${{ needs.cli-e2e-03-runner-bootstrap.result }}" "$RUNNER_E2E_SKIP_ALLOWED"
           check_result "cli-e2e-03-runner" "${{ needs.cli-e2e-03-runner.result }}" "$RUNNER_E2E_SKIP_ALLOWED"
+          check_result "cli-e2e-03-runner-vercel" "${{ needs.cli-e2e-03-runner-vercel.result }}" "$RUNNER_E2E_SKIP_ALLOWED"
           check_result "cli-e2e-03-runner-cleanup" "${{ needs.cli-e2e-03-runner-cleanup.result }}" "$RUNNER_E2E_SKIP_ALLOWED"
           check_result "deploy-runner-prepare" "${{ needs.deploy-runner-prepare.result }}" "$RUNNER_DEPLOY_SKIP_ALLOWED"
           check_result "deploy-runner-start" "${{ needs.deploy-runner-start.result }}" "$RUNNER_DEPLOY_SKIP_ALLOWED"

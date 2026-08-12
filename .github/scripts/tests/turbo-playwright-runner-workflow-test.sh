@@ -12,6 +12,7 @@ RUNNER_HELPERS=(
 )
 RUNNER_TOKEN="${REPO_ROOT}/e2e/playwright/runner-token.ts"
 RUNNER_MOCK_CLAUDE_BOOTSTRAP="${REPO_ROOT}/e2e/playwright/runner-mock-claude-bootstrap.bash"
+RUNNER_SHARD_ACTION="${REPO_ROOT}/.github/actions/runner-e2e-shard/action.yml"
 
 fail() {
   echo "FAIL: $1" >&2
@@ -53,8 +54,9 @@ if [[ "$(grep -Fc 'upgradeToPro: false' "$RUNNER_TOKEN")" -ne 1 ]]; then
   fail "the default mock runner account must remain on limited-free"
 fi
 
-ruby -ryaml - "$WORKFLOW" "$RUNNER_MOCK_CLAUDE_BOOTSTRAP" <<'RUBY'
+ruby -ryaml - "$WORKFLOW" "$RUNNER_MOCK_CLAUDE_BOOTSTRAP" "$RUNNER_SHARD_ACTION" <<'RUBY'
 workflow = YAML.load_file(ARGV.fetch(0))
+runner_action = YAML.load_file(ARGV.fetch(2))
 jobs = workflow.fetch("jobs")
 prepare = jobs.fetch("prepare")
 stripe_listener = jobs.fetch("deploy-stripe-listener")
@@ -62,6 +64,7 @@ shard_plan = jobs.fetch("cli-e2e-03-runner-shards")
 account_prepare = jobs.fetch("cli-e2e-03-runner-prepare")
 bootstrap = jobs.fetch("cli-e2e-03-runner-bootstrap")
 runner = jobs.fetch("cli-e2e-03-runner")
+runner_vercel = jobs.fetch("cli-e2e-03-runner-vercel")
 account_cleanup = jobs.fetch("cli-e2e-03-runner-cleanup")
 runner_start = jobs.fetch("deploy-runner-start")
 
@@ -86,15 +89,22 @@ unless stripe_listener_lines.each_cons(2).include?(expected_stripe_listener_cons
   raise "Stripe forwarding must run for every deployed E2E consumer"
 end
 
-unless runner.dig("strategy", "fail-fast") == false
-  raise "runner E2E shards must not fail fast"
+unless [runner, runner_vercel].all? do |runtime_runner|
+    runtime_runner.dig("strategy", "fail-fast") == false
+  end
+  raise "runner E2E runtime shards must not fail fast"
 end
-unless runner.dig("strategy", "max-parallel") == 2
-  raise "runner E2E must bound direct-Postgres concurrency"
+unless runner.dig("strategy", "max-parallel") == 1
+  raise "Cloudflare runner E2E must serialize direct-Postgres load"
+end
+unless runner_vercel.dig("strategy", "max-parallel") == 7
+  raise "Vercel runner E2E must retain per-shard parallelism"
 end
 expected_matrix = "${{ fromJSON(needs.cli-e2e-03-runner-shards.outputs.matrix) }}"
-unless runner.dig("strategy", "matrix") == expected_matrix
-  raise "runner E2E must use the generated non-empty shard matrix"
+unless [runner, runner_vercel].all? do |runtime_runner|
+    runtime_runner.dig("strategy", "matrix") == expected_matrix
+  end
+  raise "both runner E2E runtimes must use the generated shard matrix"
 end
 expected_runtimes = %w[cloudflare vercel]
 unless runner_start.dig("strategy", "matrix", "runtime") == expected_runtimes
@@ -122,9 +132,13 @@ unless runner_service_script.include?("Vercel runners must not")
   raise "runner service must document why Vercel omits Access variables"
 end
 
-expected_group = "cli-e2e-03-runner-${{ matrix.runtime }}-${{ matrix.index }}-${{ needs.prepare.outputs.job-ref }}"
-unless runner.dig("concurrency", "group") == expected_group
-  raise "each runner E2E shard must keep its independent concurrency group"
+expected_cloudflare_group = "cli-e2e-03-runner-cloudflare-${{ matrix.index }}-${{ needs.prepare.outputs.job-ref }}"
+unless runner.dig("concurrency", "group") == expected_cloudflare_group
+  raise "each Cloudflare runner E2E shard must keep its independent concurrency group"
+end
+expected_vercel_group = "cli-e2e-03-runner-vercel-${{ matrix.index }}-${{ needs.prepare.outputs.job-ref }}"
+unless runner_vercel.dig("concurrency", "group") == expected_vercel_group
+  raise "each Vercel runner E2E shard must keep its independent concurrency group"
 end
 
 required_needs = %w[
@@ -137,15 +151,21 @@ required_needs = %w[
   cli-e2e-03-runner-prepare
   cli-e2e-03-runner-bootstrap
 ]
-unless required_needs.all? { |job_name| Array(runner["needs"]).include?(job_name) }
-  raise "runner E2E shards must wait for accounts, API, and runner deployment"
+unless [runner, runner_vercel].all? do |runtime_runner|
+    required_needs.all? do |job_name|
+      Array(runtime_runner["needs"]).include?(job_name)
+    end
+  end
+  raise "runner E2E runtime shards must wait for accounts, API, and runner deployment"
 end
 
 unless account_prepare.fetch("if").include?("turbo-runner-consumer-needed == 'true'")
   raise "runner E2E account preparation must use the runner E2E consumer"
 end
-unless runner.fetch("if").include?("turbo-runner-consumer-needed == 'true'")
-  raise "runner E2E shards must use the runner E2E consumer"
+unless [runner, runner_vercel].all? do |runtime_runner|
+    runtime_runner.fetch("if").include?("turbo-runner-consumer-needed == 'true'")
+  end
+  raise "runner E2E runtime shards must use the runner E2E consumer"
 end
 
 %w[deploy-runner-prepare deploy-runner-start].each do |job_name|
@@ -192,14 +212,12 @@ raise "missing runner E2E shard generation" unless shard_generation_step
 shard_generation_script = shard_generation_step.fetch("run")
 unless shard_generation_step["id"] == "shards" &&
     shard_generation_script.include?("playwright/runner-shards.ts tests/03-runner 7") &&
-    shard_generation_script.include?('$shards[] as $shard') &&
-    shard_generation_script.include?('["cloudflare", "vercel"][] as $runtime') &&
-    shard_generation_script.include?('$shard + {runtime: $runtime, total: $total}') &&
-    shard_generation_script.include?('length == 14') &&
+    shard_generation_script.include?('$shards[] | . + {total: $total}') &&
+    shard_generation_script.include?('length == 7') &&
     shard_generation_script.include?('.total | type == "number" and . == 7') &&
     shard_generation_script.include?('.credentialLane == "limited-free" or .credentialLane == "codex" or .credentialLane == "claude"') &&
     shard_generation_script.include?('echo "matrix=$matrix" >> "$GITHUB_OUTPUT"')
-  raise "runner E2E shard generation must respect both runtime concurrency limits"
+  raise "runner E2E shard generation must emit one shared seven-shard plan"
 end
 
 token_step = account_prepare.fetch("steps").find do |step|
@@ -397,17 +415,60 @@ expected_bootstrap_access_environment = {
   end
 end
 
-shard_step = runner.fetch("steps").find do |step|
+unless runner_action.dig("runs", "using") == "composite"
+  raise "runner E2E shard action must be composite"
+end
+action_steps = runner_action.dig("runs", "steps")
+raise "missing runner E2E shard action steps" unless action_steps.is_a?(Array)
+
+cloudflare_invocation = runner.fetch("steps").find do |step|
+  step["uses"] == "./.github/actions/runner-e2e-shard"
+end
+raise "missing Cloudflare runner E2E shard action" unless cloudflare_invocation
+vercel_invocation = runner_vercel.fetch("steps").find do |step|
+  step["uses"] == "./.github/actions/runner-e2e-shard"
+end
+raise "missing Vercel runner E2E shard action" unless vercel_invocation
+
+expected_shard_inputs = {
+  "credential-index" => "${{ matrix.credentialIndex }}",
+  "shard-index" => "${{ matrix.index }}",
+  "shard-total" => "${{ matrix.total }}",
+  "test-files-json" => "${{ toJSON(matrix.files) }}",
+  "vercel-automation-bypass-secret" => "${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}",
+  "codecov-token" => "${{ secrets.CODECOV_TOKEN }}",
+}
+[cloudflare_invocation, vercel_invocation].each do |invocation|
+  expected_shard_inputs.each do |name, value|
+    unless invocation.dig("with", name) == value
+      raise "runner E2E shard action must receive #{name}"
+    end
+  end
+end
+unless cloudflare_invocation.dig("with", "runtime") == "cloudflare" &&
+    cloudflare_invocation.dig("with", "cf-access-client-id") ==
+      "${{ secrets.CF_API_PREVIEW_ACCESS_CLIENT_ID }}" &&
+    cloudflare_invocation.dig("with", "cf-access-client-secret") ==
+      "${{ secrets.CF_API_PREVIEW_ACCESS_CLIENT_SECRET }}"
+  raise "Cloudflare runner E2E must receive Access credentials"
+end
+unless vercel_invocation.dig("with", "runtime") == "vercel" &&
+    !vercel_invocation.fetch("with").key?("cf-access-client-id") &&
+    !vercel_invocation.fetch("with").key?("cf-access-client-secret")
+  raise "Vercel runner E2E must omit Cloudflare Access credentials"
+end
+
+shard_step = action_steps.find do |step|
   step["name"] == "Initialize runner E2E shard"
 end
 raise "missing runner E2E shard scaffold" unless shard_step
-unless runner.dig("env", "E2E_RUNNER_RUNTIME") == "${{ matrix.runtime }}" &&
-    runner.dig("env", "E2E_RUNNER_CREDENTIAL_INDEX") == "${{ matrix.credentialIndex }}" &&
-    runner.dig("env", "E2E_RUNNER_TEST_FILES_JSON") == "${{ toJSON(matrix.files) }}" &&
-    runner.dig("env", "E2E_RUNNER_SHARD_TOTAL") == "${{ matrix.total }}"
-  raise "runner E2E shards must receive their runtime, exact files, and per-runtime total"
+unless shard_step.dig("env", "E2E_RUNNER_RUNTIME") == "${{ inputs.runtime }}" &&
+    shard_step.dig("env", "E2E_RUNNER_CREDENTIAL_INDEX") == "${{ inputs.credential-index }}" &&
+    shard_step.dig("env", "E2E_RUNNER_TEST_FILES_JSON") == "${{ inputs.test-files-json }}" &&
+    shard_step.dig("env", "E2E_RUNNER_SHARD_TOTAL") == "${{ inputs.shard-total }}"
+  raise "runner E2E shard action must receive its runtime, exact files, and total"
 end
-credential_step = runner.fetch("steps").find do |step|
+credential_step = action_steps.find do |step|
   step["name"] == "Setup runner E2E API credentials"
 end
 raise "missing runner E2E credential setup" unless credential_step
@@ -416,7 +477,7 @@ unless credential_step.fetch("run").include?(".mockClaudeOrganizationId") &&
   raise "runner E2E shards must load the mock Claude identity from the runtime artifact"
 end
 
-run_step = runner.fetch("steps").find do |step|
+run_step = action_steps.find do |step|
   step.fetch("name", "").include?("Run runner E2E tests")
 end
 raise "missing runner E2E BATS execution" unless run_step
@@ -428,28 +489,32 @@ unless run_script.include?('mapfile -t test_files') &&
   raise "runner E2E must safely execute every matrix file with JUnit reporting"
 end
 unless run_step.dig("env", "VERCEL_AUTOMATION_BYPASS_SECRET") ==
-    "${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}"
+    "${{ inputs.vercel-automation-bypass-secret }}"
   raise "runner E2E tests must receive the preview bypass secret"
 end
-expected_bootstrap_access_environment.each do |name, value|
+expected_action_access_environment = {
+  "CF_ACCESS_CLIENT_ID" => "${{ inputs.cf-access-client-id }}",
+  "CF_ACCESS_CLIENT_SECRET" => "${{ inputs.cf-access-client-secret }}",
+}
+expected_action_access_environment.each do |name, value|
   unless run_step.dig("env", name) == value
     raise "runner E2E tests must receive runtime-scoped #{name}"
   end
 end
-unless runner.fetch("steps").any? do |step|
+unless action_steps.any? do |step|
     step["name"] == "Download runner E2E API tokens" &&
-      step.dig("with", "name") == "e2e-tokens-${{ matrix.runtime }}"
+      step.dig("with", "name") == "e2e-tokens-${{ inputs.runtime }}"
   end
-  raise "every runner shard must download the token artifact"
+  raise "every runner shard must download the runtime token artifact"
 end
-unless runner.fetch("steps").any? do |step|
+unless action_steps.any? do |step|
     step["name"] == "Upload runner E2E JUnit XML" &&
-      step.dig("with", "name") == "e2e-runner-junit-${{ matrix.runtime }}-${{ matrix.index }}" &&
+      step.dig("with", "name") ==
+        "e2e-runner-junit-${{ inputs.runtime }}-${{ inputs.shard-index }}" &&
       step.dig("with", "retention-days") == 7
   end
   raise "every runner shard must upload its JUnit report"
 end
-
 cleanup_step = account_cleanup.fetch("steps").find do |step|
   step["name"] == "Cleanup runner E2E accounts"
 end
@@ -457,8 +522,10 @@ raise "missing runner E2E account cleanup" unless cleanup_step
 unless account_cleanup.fetch("if").include?("always()")
   raise "runner E2E account cleanup must run after shard failures"
 end
-unless Array(account_cleanup["needs"]).include?("cli-e2e-03-runner")
-  raise "runner E2E account cleanup must wait for every shard"
+unless %w[cli-e2e-03-runner cli-e2e-03-runner-vercel].all? do |job_name|
+    Array(account_cleanup["needs"]).include?(job_name)
+  end
+  raise "runner E2E account cleanup must wait for both runtime shard jobs"
 end
 unless cleanup_step.fetch("run").end_with?("runner-account.ts cleanup")
   raise "runner E2E account cleanup must use the shared lifecycle entry point"
@@ -486,6 +553,7 @@ gate_needs = Array(jobs.fetch("ci-gate-turbo")["needs"])
   cli-e2e-03-runner-prepare
   cli-e2e-03-runner-bootstrap
   cli-e2e-03-runner
+  cli-e2e-03-runner-vercel
   cli-e2e-03-runner-cleanup
 ].each do |job_name|
   raise "CI gate must include #{job_name}" unless gate_needs.include?(job_name)
@@ -505,6 +573,7 @@ end
   cli-e2e-03-runner-prepare
   cli-e2e-03-runner-bootstrap
   cli-e2e-03-runner
+  cli-e2e-03-runner-vercel
   cli-e2e-03-runner-cleanup
 ].each do |job_name|
   expected = "check_result \"#{job_name}\" \"${{ needs.#{job_name}.result }}\" \"$RUNNER_E2E_SKIP_ALLOWED\""
