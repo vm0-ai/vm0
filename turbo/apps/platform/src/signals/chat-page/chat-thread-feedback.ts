@@ -10,10 +10,10 @@ import { delay } from "signal-timers";
 import { isEditableTarget, matchShortcut } from "@vm0/ui";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { i18n } from "../../i18n/index.ts";
-import {
-  clearComposerFeedbackHighlights$,
-  type ComposerFeedbackSignals,
-  type FeedbackSource,
+import type {
+  ComposerFeedbackSignals,
+  FeedbackRange,
+  FeedbackSource,
 } from "../zero-page/chat-feedback.ts";
 import { writeToClipboard } from "../zero-page/clipboard.ts";
 import { onDomEventFn, onRef, resetSignal } from "../utils.ts";
@@ -21,12 +21,14 @@ import type {
   ChatForwardComposerState,
   ChatForwardSelection,
 } from "./chat-forward.ts";
+import { feedbackLocationApiSupported$ } from "../external/feature-switch.ts";
 
 // Assistant messages and other agent-produced content, such as linked email
 // drafts, opt into the shared Copy / Provide feedback interaction.
 const FEEDBACK_SOURCE_SELECTOR =
   ".zero-chat-bubble-assistant, [data-feedback-source]";
 const ASSISTANT_GROUP_SELECTOR = '[data-role="assistant"]';
+const CHAT_EVENT_SELECTOR = "[data-chat-scroll-anchor-event-id]";
 const THREAD_CONTAINER_SELECTOR = "[data-chat-thread-container-id]";
 const CHAT_COMPOSER_SELECTOR = "[data-chat-composer]";
 const RUN_GROUP_SELECTOR = "[data-chat-run-id]";
@@ -48,7 +50,8 @@ interface CapturedFeedbackSelection {
   readonly rect: ChatThreadFeedbackSelection["rect"];
   readonly threadId: string | null;
   readonly runId: string | null;
-  readonly range: Range;
+  readonly eventId?: string;
+  readonly range?: FeedbackRange;
   readonly source?: FeedbackSource;
 }
 
@@ -135,6 +138,42 @@ function resolveFeedbackSource(source: Element): FeedbackSource | undefined {
   return { type, id, status, ...(sentId ? { sentId } : {}) };
 }
 
+function closestChatEvent(node: Node): HTMLElement | null {
+  const element = node instanceof Element ? node : node.parentElement;
+  const event = element?.closest(CHAT_EVENT_SELECTOR);
+  return event instanceof HTMLElement ? event : null;
+}
+
+function resolveFeedbackLocation(
+  range: Range,
+): { readonly eventId: string; readonly range: FeedbackRange } | undefined {
+  const startEvent = closestChatEvent(range.startContainer);
+  const endEvent = closestChatEvent(range.endContainer);
+  if (!startEvent || startEvent !== endEvent) {
+    return undefined;
+  }
+  const eventId = startEvent.dataset.chatScrollAnchorEventId;
+  if (!eventId) {
+    return undefined;
+  }
+
+  const prefixRange = startEvent.ownerDocument.createRange();
+  prefixRange.selectNodeContents(startEvent);
+  prefixRange.setEnd(range.startContainer, range.startOffset);
+  const prefixLength = prefixRange.toString().length;
+  const selectedText = range.toString();
+  const leadingWhitespace =
+    selectedText.length - selectedText.trimStart().length;
+  const trailingWhitespace =
+    selectedText.length - selectedText.trimEnd().length;
+  const start = prefixLength + leadingWhitespace;
+  const end = prefixLength + selectedText.length - trailingWhitespace;
+  if (end <= start) {
+    return undefined;
+  }
+  return { eventId, range: { start, end } };
+}
+
 function hasVisibleArea(rect: DOMRectReadOnly): boolean {
   return rect.width > 0 && rect.height > 0;
 }
@@ -189,12 +228,13 @@ function readFeedbackSelection(): CapturedFeedbackSelection | null {
     return null;
   }
   const source = resolveFeedbackSource(sourceElement);
+  const location = resolveFeedbackLocation(range);
   return {
     text,
     rect: rectFromRange(range),
     threadId: resolveSelectionThreadId(sourceElement),
     runId: resolveSelectionRunId(sourceElement),
-    range: range.cloneRange(),
+    ...location,
     ...(source ? { source } : {}),
   };
 }
@@ -281,7 +321,11 @@ function createStartFeedback(
     }
     set(feedback.add$, {
       quote: selection.text,
-      sourceRange: selection.range,
+      ...(get(feedbackLocationApiSupported$) &&
+      selection.eventId !== undefined &&
+      selection.range !== undefined
+        ? { eventId: selection.eventId, range: selection.range }
+        : {}),
       ...(selection.source ? { source: selection.source } : {}),
     });
     set(close$);
@@ -377,13 +421,11 @@ function createToolbarRef({
 }
 
 function createListenersRef({
-  threadId,
   selection$,
   close$,
   capture$,
   dismissOnScroll$,
 }: {
-  threadId: string;
   selection$: State<CapturedFeedbackSelection | null>;
   close$: Command<void, []>;
   capture$: Command<void, []>;
@@ -455,13 +497,6 @@ function createListenersRef({
         },
         { capture: true, passive: true, signal },
       );
-      signal.addEventListener(
-        "abort",
-        () => {
-          set(clearComposerFeedbackHighlights$, threadId);
-        },
-        { once: true },
-      );
     }),
   );
 }
@@ -484,7 +519,6 @@ export function createChatThreadFeedbackSignals(
     start$,
   });
   const setListenersRef$ = createListenersRef({
-    threadId,
     selection$: selection.internalSelection$,
     close$: selection.close$,
     capture$: selection.capture$,

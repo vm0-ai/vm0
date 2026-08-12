@@ -5,6 +5,10 @@ import { authContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { pathParamsOf } from "../context/request";
 import { notFound } from "../../lib/error";
+import {
+  legacyFeedbackLocationAppClient$,
+  projectLegacyUserMessageInputDocument,
+} from "../services/chat-feedback-location-compatibility.service";
 import { zeroChatThreadDraft } from "../services/zero-chat-thread.service";
 import type { RouteEntry } from "../route-entry";
 
@@ -16,6 +20,21 @@ const getThreadDraftInner$ = computed(async (get) => {
   );
   if (!draft) {
     return notFound("Chat thread not found");
+  }
+
+  if (
+    get(legacyFeedbackLocationAppClient$) &&
+    draft.draftUserMessage !== null
+  ) {
+    return {
+      status: 200 as const,
+      body: {
+        ...draft,
+        draftUserMessage: projectLegacyUserMessageInputDocument(
+          draft.draftUserMessage,
+        ),
+      },
+    };
   }
 
   return { status: 200 as const, body: draft };

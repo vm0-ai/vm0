@@ -1,4 +1,4 @@
-import { command, computed } from "ccstate";
+import { command, computed, state } from "ccstate";
 import { getAllFeatureStates } from "@vm0/core/feature-switch";
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
@@ -44,6 +44,17 @@ function applySwitches(
 
 export const featureSwitch$ = computed((get) => {
   return get(featureSwitchCacheState$);
+});
+
+const feedbackLocationApiSupportedState$ = state(false);
+
+// A browser-resident new App can keep running against an old API for about two
+// days. Keep location writes disabled until bootstrap advertises support; the
+// versioned Send fallback covers a later API rollback. Remove both after the
+// accepting API is outside rollback and stale App clients have expired.
+// Follow-up: #26697.
+export const feedbackLocationApiSupported$ = computed((get): boolean => {
+  return get(feedbackLocationApiSupportedState$);
 });
 
 export const imageRecognitionAvailable$ = computed((): boolean => {
@@ -100,6 +111,10 @@ export const reloadFeatureSwitch$ = command(
       combined,
       result.body.switches,
       result.body.effectiveSwitches,
+    );
+    set(
+      feedbackLocationApiSupportedState$,
+      result.body.apiCapabilities?.feedbackLocationV1 === true,
     );
     set(setFeatureSwitchLocalStorage$, JSON.stringify(combined));
   },

@@ -2438,7 +2438,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     const expiredAt = new Date(now() - 1000);
     await expireAtomGrantFixture({ orgId, expiredAt });
 
-    await runs.reconcileBillingCron(true);
+    await runs.reconcileBillingOrganizations([orgId]);
 
     const downgraded = await billing.readBillingStatus(actor);
     expect(downgraded.tier).toBe("limited-free-1");
@@ -2971,7 +2971,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
 
     const expiredAt = new Date(now() - 1000);
     await expireAtomGrantFixture({ orgId, expiredAt });
-    await runs.reconcileBillingCron(true);
+    await runs.reconcileBillingOrganizations([orgId]);
 
     const downgraded = await billing.readBillingStatus(actor);
     expect(downgraded.tier).toBe("limited-free-1");

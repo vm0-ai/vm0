@@ -28,22 +28,19 @@ export const setPendingDeleteThreadId$ = command(
 // ---------------------------------------------------------------------------
 // Rename dialog state (RecentChatList)
 // ---------------------------------------------------------------------------
+const internalRenameDialogOpen$ = state(false);
+export const renameDialogOpen$ = computed((get) => {
+  return get(internalRenameDialogOpen$);
+});
+
 const internalRenameDialogThreadId$ = state<string | null>(null);
 export const renameDialogThreadId$ = computed((get) => {
   return get(internalRenameDialogThreadId$);
 });
-export const setRenameDialogThreadId$ = command(
-  ({ set }, id: string | null) => {
-    set(internalRenameDialogThreadId$, id);
-  },
-);
 
 const internalRenameDialogAgentId$ = state<string | null>(null);
 export const renameDialogAgentId$ = computed((get) => {
   return get(internalRenameDialogAgentId$);
-});
-export const setRenameDialogAgentId$ = command(({ set }, id: string | null) => {
-  set(internalRenameDialogAgentId$, id);
 });
 
 const internalRenameDialogInput$ = state("");
@@ -70,8 +67,13 @@ export const openRenameChatThreadDialog$ = command(
     set(internalRenameDialogInput$, title?.trim() ?? "");
     set(internalRenameDialogAgentId$, agentId?.trim() || null);
     set(internalRenameDialogThreadId$, threadId);
+    set(internalRenameDialogOpen$, true);
   },
 );
+
+export const closeRenameChatThreadDialog$ = command(({ set }) => {
+  set(internalRenameDialogOpen$, false);
+});
 
 // ---------------------------------------------------------------------------
 // Emoji picker menu state (chat header)

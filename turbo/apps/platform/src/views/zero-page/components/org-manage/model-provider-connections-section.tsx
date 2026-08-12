@@ -30,6 +30,7 @@ import {
 import {
   closeDeleteModelProviderConnection$,
   closeModelProviderConnection$,
+  completeModelProviderConnectionClose$,
   modelProviderConnectionDialogSignal$,
   modelProviderConnectionDraft$,
   openCreateModelProviderConnection$,
@@ -428,6 +429,7 @@ function ConnectionDialog() {
   const draft = useGet(modelProviderConnectionDraft$);
   const dialogSignal = useGet(modelProviderConnectionDialogSignal$);
   const close = useSet(closeModelProviderConnection$);
+  const completeClose = useSet(completeModelProviderConnectionClose$);
   const [saveLoadable, save] = useLoadableSet(saveModelProviderConnection$);
   const saving = saveLoadable.state === "loading";
   const errorKey = draft.error;
@@ -451,6 +453,11 @@ function ConnectionDialog() {
       onOpenChange={(open) => {
         if (!open && !saving) {
           close();
+        }
+      }}
+      onOpenChangeComplete={(open) => {
+        if (!open) {
+          completeClose();
         }
       }}
     >

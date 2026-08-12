@@ -66,6 +66,7 @@ import { modelProviderConnections$ } from "../../../../signals/external/model-pr
 import { orgConfiguredProviders$ } from "../../../../signals/zero-page/settings/org-model-providers.ts";
 import {
   closeModelPolicyDialog$,
+  completeModelPolicyDialogClose$,
   modelPolicyApiKey$,
   modelPolicyApiKeyError$,
   modelPolicyApiKeyTouched$,
@@ -1378,6 +1379,7 @@ function ModelPolicyRouteDialog({
   const { t } = useTranslation();
   const dialog = useGet(modelPolicyDialogState$);
   const close = useSet(closeModelPolicyDialog$);
+  const completeClose = useSet(completeModelPolicyDialogClose$);
   const setModel = useSet(updateModelPolicyDialogModel$);
   const setRoute = useSet(updateModelPolicyDialogRoute$);
   const apiKeyValue = useGet(modelPolicyApiKey$);
@@ -1550,6 +1552,11 @@ function ModelPolicyRouteDialog({
       onOpenChange={(open) => {
         if (!open && !busy) {
           close();
+        }
+      }}
+      onOpenChangeComplete={(open) => {
+        if (!open) {
+          completeClose();
         }
       }}
     >
