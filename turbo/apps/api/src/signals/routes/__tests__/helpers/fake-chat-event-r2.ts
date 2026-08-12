@@ -49,6 +49,14 @@ export function readFakeChatEventObject(key: string): Buffer | undefined {
   return readFileSync(path);
 }
 
+export function deleteFakeChatEventObject(key: string): Promise<void> {
+  const path = objectPath(key);
+  if (existsSync(path)) {
+    unlinkSync(path);
+  }
+  return Promise.resolve();
+}
+
 export function ageFakeChatEventObject(key: string, modifiedAt: Date): void {
   const path = objectPath(key);
   if (!existsSync(path)) {
