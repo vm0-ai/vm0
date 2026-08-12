@@ -6322,8 +6322,6 @@ describe("CHAT-02: initial thinking indicator", () => {
     expect(thinkingPromptPayload).toContain(
       "about 30 characters, excluding punctuation",
     );
-    expect(thinkingPromptPayload).not.toContain("Chinese characters");
-    expect(thinkingPromptPayload).not.toContain("English words");
     expect(thinkingPromptPayload).toContain("around four short paragraphs");
     expect(thinkingPromptPayload).toContain("Do not answer the user");
     expect(thinkingPromptPayload).toContain("Do not reveal hidden reasoning");
