@@ -18,7 +18,7 @@ interface ZeroCommandDefinition {
 
 /**
  * Map of command names to the capability required to see them.
- * Commands not in this map are hidden when ZERO_TOKEN is active.
+ * Commands not in this map are hidden when OKOU_TOKEN is active.
  * Use an array when a top-level command has subcommands with different
  * capability gates and any one of them should make the command visible.
  * Use `null` for commands that should always be visible in sandbox.
@@ -597,10 +597,10 @@ export function buildZeroHelpText(
 }
 
 /**
- * Register commands with visibility based on ZERO_TOKEN capabilities.
+ * Register commands with visibility based on OKOU_TOKEN capabilities.
  * Commands not granted by the token are registered as hidden via
  * Commander's public `addCommand(cmd, { hidden: true })` API.
- * Without ZERO_TOKEN, globally available commands stay visible while
+ * Without OKOU_TOKEN, globally available commands stay visible while
  * run-only commands remain hidden.
  *
  * @param commands - override default commands (used in tests)

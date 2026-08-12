@@ -1,7 +1,7 @@
 /**
  * Slack Connect API Handlers
  *
- * Mock handlers for /api/zero/integrations/slack/connect endpoint.
+ * Mock handlers for /api/okou/integrations/slack/connect endpoint.
  * Default behavior: user is not yet connected.
  */
 
@@ -26,7 +26,7 @@ export function resetMockSlackConnect(): void {
 }
 
 export const apiIntegrationsSlackConnectHandlers = [
-  // GET /api/zero/integrations/slack/connect — check connection status
+  // GET /api/okou/integrations/slack/connect — check connection status
   mockApi(zeroSlackConnectContract.getStatus, ({ respond }) => {
     return respond(200, {
       isConnected: mockData.isConnected,
@@ -34,7 +34,7 @@ export const apiIntegrationsSlackConnectHandlers = [
     });
   }),
 
-  // POST /api/zero/integrations/slack/connect — connect account
+  // POST /api/okou/integrations/slack/connect — connect account
   // body ({ workspaceId, slackUserId, channelId?, threadTs? }) is contract-typed
   // but not used for routing — the mock simulates errors via mockData.postError.
   mockApi(zeroSlackConnectContract.connect, ({ respond }) => {

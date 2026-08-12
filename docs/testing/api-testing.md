@@ -40,8 +40,8 @@ function apiClient() {
   );
 }
 
-describe("GET /api/zero/agents", () => {
-  it("returns an agent created through POST /api/zero/agents", async () => {
+describe("GET /api/okou/agents", () => {
+  it("returns an agent created through POST /api/okou/agents", async () => {
     context.mocks.clerk.session("user_api_test", "org_api_test");
     context.mocks.s3.send.mockResolvedValue({});
 

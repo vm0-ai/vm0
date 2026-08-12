@@ -12,7 +12,7 @@ import { server } from "../../../../mocks/server";
 import { downloadFileCommand } from "../download-file";
 
 const DOWNLOAD_URL =
-  "http://localhost:3000/api/zero/integrations/teams/download-file";
+  "http://localhost:3000/api/okou/integrations/teams/download-file";
 
 describe("okou teams download-file command", () => {
   vi.spyOn(process, "exit").mockImplementation((() => {

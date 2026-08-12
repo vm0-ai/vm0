@@ -16,7 +16,7 @@ import { server } from "../../../../mocks/server";
 import { downloadFileCommand } from "../download-file";
 import chalk from "chalk";
 
-const DOWNLOAD_URL = "http://localhost:3000/api/zero/web/download-file";
+const DOWNLOAD_URL = "http://localhost:3000/api/okou/web/download-file";
 
 describe("okou web download-file command", () => {
   vi.spyOn(process, "exit").mockImplementation((() => {

@@ -82,7 +82,7 @@ describe("okou model-provider command", () => {
 
   it("should list each allowed model's provider route", async () => {
     server.use(
-      http.get("http://localhost:3000/api/zero/model-policies", () => {
+      http.get("http://localhost:3000/api/okou/model-policies", () => {
         return HttpResponse.json(MODEL_POLICIES_RESPONSE);
       }),
     );

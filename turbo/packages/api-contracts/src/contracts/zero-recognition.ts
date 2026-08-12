@@ -53,7 +53,7 @@ const recognitionResponses = {
 export const zeroRecognitionContract = c.router({
   recognize: {
     method: "POST",
-    path: "/api/zero/recognize",
+    path: "/api/okou/recognize",
     headers: authHeadersSchema,
     body: zeroRecognitionRequestSchema,
     responses: recognitionResponses,

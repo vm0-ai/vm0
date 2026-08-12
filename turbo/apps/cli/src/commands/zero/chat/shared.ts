@@ -13,7 +13,7 @@ export function resolveChatThreadId(flagThreadId: string | undefined): string {
   const threadId = flagThreadId?.trim() || getOkouChatThreadId()?.trim();
   if (!threadId) {
     printChatUsageError(
-      "ZERO_CHAT_THREAD_ID is not set",
+      "OKOU_CHAT_THREAD_ID is not set",
       "Pass --thread-id <thread-id> or run inside a web chat thread.",
     );
   }

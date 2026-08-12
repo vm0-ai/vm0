@@ -62,7 +62,7 @@ describe("okou workflow view command", () => {
     it("should display workflow with instruction", async () => {
       server.use(
         http.get(
-          `http://localhost:3000/api/zero/workflows/${WORKFLOW_ID}`,
+          `http://localhost:3000/api/okou/workflows/${WORKFLOW_ID}`,
           () => {
             return HttpResponse.json({
               id: WORKFLOW_ID,
@@ -99,7 +99,7 @@ describe("okou workflow view command", () => {
     it("should resolve a workflow name under --agent using the runtime winner", async () => {
       let capturedUrl: string | undefined;
       server.use(
-        http.get("http://localhost:3000/api/zero/workflows", ({ request }) => {
+        http.get("http://localhost:3000/api/okou/workflows", ({ request }) => {
           capturedUrl = request.url;
           return HttpResponse.json([
             workflowSummary({
@@ -119,7 +119,7 @@ describe("okou workflow view command", () => {
           ]);
         }),
         http.get(
-          `http://localhost:3000/api/zero/workflows/${PRIVATE_WORKFLOW_ID}`,
+          `http://localhost:3000/api/okou/workflows/${PRIVATE_WORKFLOW_ID}`,
           () => {
             return HttpResponse.json({
               ...workflowSummary({
@@ -195,7 +195,7 @@ describe("okou workflow view command", () => {
       const missingId = "99999999-9999-9999-9999-999999999999";
       server.use(
         http.get(
-          `http://localhost:3000/api/zero/workflows/${missingId}`,
+          `http://localhost:3000/api/okou/workflows/${missingId}`,
           () => {
             return HttpResponse.json(
               { error: { message: "Workflow not found", code: "NOT_FOUND" } },

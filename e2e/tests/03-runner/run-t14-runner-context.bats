@@ -47,7 +47,7 @@ teardown() {
             ]
         }
     ')
-    run runner_api_curl "/api/zero/workflows" \
+    run runner_api_curl "/api/okou/workflows" \
         -X POST \
         -d "$workflow_payload"
     echo "$output"
@@ -61,6 +61,23 @@ set -euo pipefail
 grep -F '__INSTRUCTION_MARKER__' "$HOME/.codex/AGENTS.md"
 grep -F '__WORKFLOW_MARKER__' "$HOME/.codex/skills/__WORKFLOW_NAME__/context.txt"
 test ! -s "$HOME/.codex/skills/__WORKFLOW_NAME__/empty.txt"
+test "$OKOU_APP_URL" = "$ZERO_APP_URL"
+test "$OKOU_AGENT_ID" = "$ZERO_AGENT_ID"
+test "$OKOU_CHAT_THREAD_ID" = "$ZERO_CHAT_THREAD_ID"
+test -n "$OKOU_TOKEN"
+test -n "$ZERO_TOKEN"
+test "$OKOU_TOKEN" != "$ZERO_TOKEN"
+node -e '
+const claims = (name) => {
+  const token = process.env[name];
+  if (!token?.startsWith("vm0_sandbox_")) throw new Error(`${name} is not a sandbox token`);
+  return JSON.parse(Buffer.from(token.slice("vm0_sandbox_".length).split(".")[1], "base64url"));
+};
+const okou = claims("OKOU_TOKEN");
+const zero = claims("ZERO_TOKEN");
+if (okou.scope !== "okou" || zero.scope !== "zero") throw new Error("unexpected branded token scope");
+if (JSON.stringify({...okou, scope: "zero"}) !== JSON.stringify(zero)) throw new Error("branded token claims differ");
+'
 printf '__OUTPUT_MARKER__\n'
 EOF
 )
@@ -98,7 +115,7 @@ EOF
             ]
         }
     ')
-    run runner_api_curl "/api/zero/workflows/${WORKFLOW_ID}" \
+    run runner_api_curl "/api/okou/workflows/${WORKFLOW_ID}" \
         -X PATCH \
         -d "$update_payload"
     echo "$output"

@@ -21,7 +21,7 @@ const submitResponseSchema = z.object({
 export const zeroDeveloperSupportContract = c.router({
   submit: {
     method: "POST",
-    path: "/api/zero/developer-support",
+    path: "/api/okou/developer-support",
     headers: authHeadersSchema,
     body: developerSupportBodySchema,
     responses: {

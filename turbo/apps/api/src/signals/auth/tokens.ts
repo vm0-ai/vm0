@@ -78,6 +78,8 @@ const zeroTokenPayloadSchema = jwtBaseSchema.extend({
   cloudBrowserEnabled: z.literal(true).optional(),
 });
 
+type ZeroTokenClaims = Omit<z.infer<typeof zeroTokenPayloadSchema>, "scope">;
+
 const cliTokenPayloadSchema = jwtBaseSchema.extend({
   scope: z.literal("cli"),
   orgId: z.string().min(1),
@@ -320,6 +322,33 @@ export function generateZeroToken(
   overrides?: Partial<Record<FeatureSwitchKey, boolean>>,
   options?: ZeroTokenOptions,
 ): string {
+  return signZeroToken(
+    options?.scope ?? "zero",
+    buildZeroTokenClaims(userId, runId, orgId, overrides, options),
+  );
+}
+
+export function generateBrandedRunTokens(
+  userId: string,
+  runId: string,
+  orgId: string,
+  overrides?: Partial<Record<FeatureSwitchKey, boolean>>,
+  options?: Omit<ZeroTokenOptions, "scope">,
+): { readonly okouToken: string; readonly zeroToken: string } {
+  const claims = buildZeroTokenClaims(userId, runId, orgId, overrides, options);
+  return {
+    okouToken: signZeroToken("okou", claims),
+    zeroToken: signZeroToken("zero", claims),
+  };
+}
+
+function buildZeroTokenClaims(
+  userId: string,
+  runId: string,
+  orgId: string,
+  overrides: Partial<Record<FeatureSwitchKey, boolean>> | undefined,
+  options: Omit<ZeroTokenOptions, "scope"> | undefined,
+): ZeroTokenClaims {
   const nowSeconds = Math.floor(now() / 1000);
   const capabilities: ZeroCapability[] = [];
   for (const capability of ZERO_CAPABILITIES) {
@@ -330,8 +359,7 @@ export function generateZeroToken(
       capabilities.push(capability);
     }
   }
-  const payload: z.infer<typeof zeroTokenPayloadSchema> = {
-    scope: options?.scope ?? "zero",
+  return {
     userId,
     runId,
     orgId,
@@ -347,7 +375,13 @@ export function generateZeroToken(
     iat: nowSeconds,
     exp: nowSeconds + 2 * 60 * 60,
   };
+}
 
+function signZeroToken(
+  scope: "zero" | "okou",
+  claims: ZeroTokenClaims,
+): string {
+  const payload: z.infer<typeof zeroTokenPayloadSchema> = { scope, ...claims };
   return SANDBOX_TOKEN_PREFIX + signJwt(payload);
 }
 

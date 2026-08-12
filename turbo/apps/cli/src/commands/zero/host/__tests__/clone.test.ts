@@ -16,7 +16,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { server } from "../../../../mocks/server";
 import { zeroHostCommand } from "../index";
 
-const FILES_URL = "http://localhost:3000/api/zero/host/sites/:publicSlug/files";
+const FILES_URL = "http://localhost:3000/api/okou/host/sites/:publicSlug/files";
 const HOSTED_SITE_URL =
   "https://demo-site-a1b2c3d4-release-01.sites.example.com";
 const ARTIFACT_URL =

@@ -11,7 +11,7 @@ import { zeroQueuePositionContract } from "@vm0/api-contracts/contracts/zero-que
 import { mockApi } from "../msw-contract.ts";
 
 export const apiRunsHandlers = [
-  // GET /api/zero/runs/:id
+  // GET /api/okou/runs/:id
   mockApi(zeroRunsByIdContract.getById, ({ respond }) =>
     respond(200, {
       runId: "a0000000-0000-4000-a000-000000000001",
@@ -24,12 +24,12 @@ export const apiRunsHandlers = [
     }),
   ),
 
-  // GET /api/zero/runs/:id/telemetry/agent
+  // GET /api/okou/runs/:id/telemetry/agent
   mockApi(zeroRunAgentEventsContract.getAgentEvents, ({ respond }) =>
     respond(200, { events: [], hasMore: false, framework: "claude-code" }),
   ),
 
-  // GET /api/zero/runs/queue
+  // GET /api/okou/runs/queue
   mockApi(zeroRunsQueueContract.getQueue, ({ respond }) =>
     respond(200, {
       concurrency: {
@@ -45,7 +45,7 @@ export const apiRunsHandlers = [
     }),
   ),
 
-  // POST /api/zero/runs/:id/cancel
+  // POST /api/okou/runs/:id/cancel
   mockApi(zeroRunsCancelContract.cancel, ({ params, respond }) =>
     respond(200, {
       id: params.id,
@@ -54,7 +54,7 @@ export const apiRunsHandlers = [
     }),
   ),
 
-  // GET /api/zero/runs/:id/context
+  // GET /api/okou/runs/:id/context
   mockApi(zeroRunContextContract.getContext, ({ params, respond }) =>
     respond(200, {
       prompt: "Test prompt",
@@ -72,12 +72,12 @@ export const apiRunsHandlers = [
     }),
   ),
 
-  // GET /api/zero/runs/:id/network
+  // GET /api/okou/runs/:id/network
   mockApi(zeroRunNetworkLogsContract.getNetworkLogs, ({ respond }) =>
     respond(200, { networkLogs: [], hasMore: false }),
   ),
 
-  // POST /api/zero/chat/events
+  // POST /api/okou/chat/events
   mockApi(chatEventsContract.send, ({ respond }) =>
     respond(201, {
       runId: "a0000000-0000-4000-a000-000000000001",
@@ -87,7 +87,7 @@ export const apiRunsHandlers = [
     }),
   ),
 
-  // GET /api/zero/queue-position
+  // GET /api/okou/queue-position
   mockApi(zeroQueuePositionContract.getPosition, ({ respond }) =>
     respond(200, { position: 0, total: 0 }),
   ),

@@ -372,7 +372,7 @@ const preview = await requestSharedPage({
 assert.equal(preview.response.status, 200);
 assert.equal(
   preview.observedUrl,
-  `${previewOrigin}/api/zero/shared-threads/${sharedThreadId}/meta`,
+  `${previewOrigin}/api/okou/shared-threads/${sharedThreadId}/meta`,
 );
 assert.equal(
   preview.observedHeaders.get("x-vercel-protection-bypass"),
@@ -404,7 +404,7 @@ const production = await requestSharedPage({
 assert.equal(production.response.status, 200);
 assert.equal(
   production.observedUrl,
-  `https://api.vm0.ai/api/zero/shared-threads/${sharedThreadId}/meta`,
+  `https://api.vm0.ai/api/okou/shared-threads/${sharedThreadId}/meta`,
 );
 assert.equal(
   production.observedHeaders.get("x-vercel-protection-bypass"),

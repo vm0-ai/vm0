@@ -308,7 +308,7 @@ export const permissionRequestCommand = new Command()
   .addOption(
     new Option(
       "--agent <id>",
-      "Agent ID whose permission page should be opened (defaults to ZERO_AGENT_ID)",
+      "Agent ID whose permission page should be opened (defaults to OKOU_AGENT_ID)",
     ),
   )
   .addOption(
@@ -338,7 +338,7 @@ Notes:
   - Use the exact permission-request command printed by connector check
   - A platform URL is output only when that request maps to a denied or approval-required permission
   - Use --permission __unknown__ to request access to unknown endpoints
-  - Use --agent to request a permission for another agent; defaults to ZERO_AGENT_ID
+  - Use --agent to request a permission for another agent; defaults to OKOU_AGENT_ID
   - The user chooses the permission duration on the confirmation page
 ${callbackPromptNotes}  - Permission requests update the current user's connector grants after confirmation`,
   )

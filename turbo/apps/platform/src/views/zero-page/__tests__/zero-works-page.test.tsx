@@ -90,7 +90,7 @@ function mockTeamsAPI(overrides: Partial<TeamsConnectStatus> = {}): void {
     isAdmin: true,
     installUrl:
       "https://teams.microsoft.com/l/app/00000000-0000-0000-0000-000000000001",
-    connectUrl: "/api/zero/teams/oauth/connect?orgId=org_1&vm0UserId=user_1",
+    connectUrl: "/api/okou/teams/oauth/connect?orgId=org_1&vm0UserId=user_1",
   };
   context.mocks.api(zeroTeamsConnectContract.getStatus, ({ respond }) => {
     return respond(200, { ...defaults, ...overrides });
@@ -380,7 +380,7 @@ describe("works page", () => {
       appId: "cli_feishu",
       installationId: "00000000-0000-4000-8000-000000000001",
       callbackUrl:
-        "https://api.vm0.test/api/zero/feishu/events/00000000-0000-4000-8000-000000000001",
+        "https://api.vm0.test/api/okou/feishu/events/00000000-0000-4000-8000-000000000001",
       callbackVerified: true,
       messageReceived: true,
       tenantKey: "tenant-feishu",
@@ -396,7 +396,7 @@ describe("works page", () => {
           botName: "Okou Feishu",
           botAvatarUrl: "https://example.com/okou-feishu.png",
           callbackUrl:
-            "https://api.vm0.test/api/zero/feishu/events/00000000-0000-4000-8000-000000000001",
+            "https://api.vm0.test/api/okou/feishu/events/00000000-0000-4000-8000-000000000001",
           callbackVerified: true,
           messageReceived: true,
           tenantKey: "tenant-feishu",
@@ -467,7 +467,7 @@ describe("works page", () => {
           id: integrationId,
           name: "Marketing CMS",
           baseUrl: "https://cms.example.com",
-          webhookUrl: `https://www.vm0.test/api/zero/strapi/events/${integrationId}`,
+          webhookUrl: `https://www.vm0.test/api/okou/strapi/events/${integrationId}`,
           secretLastFour: "abcd",
           lastTestedAt: tested ? "2026-07-28T04:00:00.000Z" : null,
           lastReceivedAt: null,
@@ -513,7 +513,7 @@ describe("works page", () => {
           id: integrationId,
           name: "Marketing CMS",
           baseUrl: "https://cms.example.com",
-          webhookUrl: `https://www.vm0.test/api/zero/strapi/events/${integrationId}`,
+          webhookUrl: `https://www.vm0.test/api/okou/strapi/events/${integrationId}`,
           secretLastFour: "abcd",
           lastTestedAt: "2026-07-28T04:00:00.000Z",
           lastReceivedAt: null,
@@ -582,7 +582,7 @@ describe("works page", () => {
       isAdmin: false,
       installationId,
       appId: "cli_member",
-      callbackUrl: `https://api.vm0.test/api/zero/feishu/events/${installationId}`,
+      callbackUrl: `https://api.vm0.test/api/okou/feishu/events/${installationId}`,
       callbackVerified: true,
       messageReceived: true,
       tenantKey: "tenant-member",
@@ -594,9 +594,9 @@ describe("works page", () => {
           id: installationId,
           isConnected: false,
           appId: "cli_member",
-          callbackUrl: `https://api.vm0.test/api/zero/feishu/events/${installationId}`,
+          callbackUrl: `https://api.vm0.test/api/okou/feishu/events/${installationId}`,
           connectUrl:
-            "https://www.vm0.test/api/zero/feishu/oauth/connect?state=incomplete",
+            "https://www.vm0.test/api/okou/feishu/oauth/connect?state=incomplete",
           callbackVerified: true,
           messageReceived: true,
           tenantKey: "tenant-member",
@@ -628,7 +628,7 @@ describe("works page", () => {
       isAdmin: true,
       installationId,
       appId: "cli_completed_admin",
-      callbackUrl: `https://api.vm0.test/api/zero/feishu/events/${installationId}`,
+      callbackUrl: `https://api.vm0.test/api/okou/feishu/events/${installationId}`,
       callbackVerified: true,
       messageReceived: true,
       tenantKey: "tenant-admin",
@@ -640,7 +640,7 @@ describe("works page", () => {
           id: installationId,
           isConnected: true,
           appId: "cli_completed_admin",
-          callbackUrl: `https://api.vm0.test/api/zero/feishu/events/${installationId}`,
+          callbackUrl: `https://api.vm0.test/api/okou/feishu/events/${installationId}`,
           callbackVerified: true,
           messageReceived: true,
           tenantKey: "tenant-admin",
@@ -751,7 +751,7 @@ describe("works page", () => {
       isAdmin: false,
       installationId,
       appId: "cli_member",
-      callbackUrl: `https://api.vm0.test/api/zero/feishu/events/${installationId}`,
+      callbackUrl: `https://api.vm0.test/api/okou/feishu/events/${installationId}`,
       callbackVerified: true,
       messageReceived: true,
       tenantKey: "tenant-member",
@@ -763,7 +763,7 @@ describe("works page", () => {
           id: installationId,
           isConnected: true,
           appId: "cli_member",
-          callbackUrl: `https://api.vm0.test/api/zero/feishu/events/${installationId}`,
+          callbackUrl: `https://api.vm0.test/api/okou/feishu/events/${installationId}`,
           callbackVerified: true,
           messageReceived: true,
           tenantKey: "tenant-member",
@@ -789,7 +789,7 @@ describe("works page", () => {
     const installationId = "00000000-0000-4000-8000-000000000001";
     const agentId = "00000000-0000-4000-8000-000000000002";
     const connectUrl =
-      "https://www.vm0.test/api/zero/feishu/oauth/connect?state=member";
+      "https://www.vm0.test/api/okou/feishu/oauth/connect?state=member";
     mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: false });
     mockFeishuAPI({
       isConnected: false,
@@ -797,7 +797,7 @@ describe("works page", () => {
       isAdmin: false,
       installationId,
       appId: "cli_member_connect",
-      callbackUrl: `https://www.vm0.test/api/zero/feishu/events/${installationId}`,
+      callbackUrl: `https://www.vm0.test/api/okou/feishu/events/${installationId}`,
       callbackVerified: true,
       messageReceived: false,
       tenantKey: "tenant-member",
@@ -809,7 +809,7 @@ describe("works page", () => {
           id: installationId,
           isConnected: false,
           appId: "cli_member_connect",
-          callbackUrl: `https://www.vm0.test/api/zero/feishu/events/${installationId}`,
+          callbackUrl: `https://www.vm0.test/api/okou/feishu/events/${installationId}`,
           connectUrl,
           callbackVerified: true,
           setupCompleted: true,
@@ -849,7 +849,7 @@ describe("works page", () => {
         id: installationId,
         isConnected,
         appId: "cli_feishu",
-        callbackUrl: `https://api.vm0.test/api/zero/feishu/events/${installationId}`,
+        callbackUrl: `https://api.vm0.test/api/okou/feishu/events/${installationId}`,
         oauthRedirectUrl: "https://app.vm0.test/connectors/feishu/callback",
         callbackVerified,
         messageReceived: false,
@@ -1041,7 +1041,7 @@ describe("works page", () => {
     expect(typeof openedUrl).toBe("string");
     expect(target).toBe("_blank");
     const url = new URL(String(openedUrl), window.location.origin);
-    expect(url.pathname).toBe("/api/zero/teams/oauth/connect");
+    expect(url.pathname).toBe("/api/okou/teams/oauth/connect");
     expect(url.searchParams.get("orgId")).toBe("org_1");
     expect(url.searchParams.get("vm0UserId")).toBe("user_1");
   });

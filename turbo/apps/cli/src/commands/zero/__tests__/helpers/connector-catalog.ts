@@ -152,7 +152,7 @@ export function catalogPermissionDetail(
 export function stubConnectorCatalog(
   connectors: readonly PublicConnectorCatalogItem[],
 ) {
-  return http.get("http://localhost:3000/api/zero/connector-catalog", () => {
+  return http.get("http://localhost:3000/api/okou/connector-catalog", () => {
     return HttpResponse.json({ connectors });
   });
 }
@@ -161,7 +161,7 @@ export function stubConnectorCatalogStatus(
   connectors: readonly PublicConnectorCatalogStatusItem[],
   origin = "http://localhost:3000",
 ) {
-  return http.get(`${origin}/api/zero/connector-catalog/status`, () => {
+  return http.get(`${origin}/api/okou/connector-catalog/status`, () => {
     return HttpResponse.json({ connectors });
   });
 }
@@ -176,7 +176,7 @@ export function stubConnectorCatalogPermissions(
     }),
   );
   return http.get(
-    `${origin}/api/zero/connector-catalog/:connectorSlug/permissions`,
+    `${origin}/api/okou/connector-catalog/:connectorSlug/permissions`,
     ({ params }) => {
       const connectorSlug = String(params.connectorSlug);
       const permissions = detailsBySlug.get(connectorSlug);

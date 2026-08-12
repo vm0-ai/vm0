@@ -18,13 +18,13 @@ const teamComposeItemSchema = z.object({
 });
 
 /**
- * Zero team contract (GET /api/zero/team)
+ * Zero team contract (GET /api/okou/team)
  * Lists all agents in the user's active Clerk org.
  */
 export const zeroTeamContract = c.router({
   list: {
     method: "GET",
-    path: "/api/zero/team",
+    path: "/api/okou/team",
     headers: authHeadersSchema,
     responses: {
       200: z.array(teamComposeItemSchema),

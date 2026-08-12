@@ -13,7 +13,7 @@ import { server } from "../../../mocks/server";
 import { zeroDeveloperSupportCommand } from "../developer-support";
 import chalk from "chalk";
 
-const ENDPOINT_URL = "http://localhost:3000/api/zero/developer-support";
+const ENDPOINT_URL = "http://localhost:3000/api/okou/developer-support";
 
 describe("okou developer-support command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {

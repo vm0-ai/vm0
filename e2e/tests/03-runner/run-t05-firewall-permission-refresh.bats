@@ -91,7 +91,7 @@ EOF
     echo "$output"
     assert_success
 
-    run runner_api_curl "/api/zero/runs/${RUN_ID}"
+    run runner_api_curl "/api/okou/runs/${RUN_ID}"
     echo "$output"
     assert_success
     run jq -e '.status == "running"' <<<"$output"
@@ -111,7 +111,7 @@ EOF
                 expiresIn: "1h"
             }]
         }')
-    run runner_api_curl "/api/zero/user-permission-grants/apply" \
+    run runner_api_curl "/api/okou/user-permission-grants/apply" \
         -X PUT \
         -d "$grant_payload"
     echo "$output"

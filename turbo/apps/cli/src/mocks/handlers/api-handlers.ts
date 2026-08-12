@@ -217,8 +217,8 @@ function connectorManualGrantResponse(
 }
 
 export const apiHandlers = [
-  // GET /api/zero/connectors - listZeroConnectors
-  http.get("http://localhost:3000/api/zero/connectors", () => {
+  // GET /api/okou/connectors - listZeroConnectors
+  http.get("http://localhost:3000/api/okou/connectors", () => {
     return HttpResponse.json(
       {
         connectors: [],
@@ -227,7 +227,7 @@ export const apiHandlers = [
       { status: 200 },
     );
   }),
-  http.get("https://www.vm0.ai/api/zero/connectors", () => {
+  http.get("https://www.vm0.ai/api/okou/connectors", () => {
     return HttpResponse.json(
       {
         connectors: [],
@@ -237,47 +237,47 @@ export const apiHandlers = [
     );
   }),
 
-  // GET /api/zero/connector-catalog - list public connector catalog
-  http.get("http://localhost:3000/api/zero/connector-catalog", () => {
+  // GET /api/okou/connector-catalog - list public connector catalog
+  http.get("http://localhost:3000/api/okou/connector-catalog", () => {
     return HttpResponse.json(
       { connectors: defaultPublicCatalog() },
       { status: 200 },
     );
   }),
-  http.get("https://app.vm0.ai/api/zero/connector-catalog", () => {
+  http.get("https://app.vm0.ai/api/okou/connector-catalog", () => {
     return HttpResponse.json(
       { connectors: defaultPublicCatalog() },
       { status: 200 },
     );
   }),
-  http.get("https://www.vm0.ai/api/zero/connector-catalog", () => {
+  http.get("https://www.vm0.ai/api/okou/connector-catalog", () => {
     return HttpResponse.json(
       { connectors: defaultPublicCatalog() },
       { status: 200 },
     );
   }),
 
-  // GET /api/zero/connector-catalog/status - public catalog with connection status
-  http.get("http://localhost:3000/api/zero/connector-catalog/status", () => {
+  // GET /api/okou/connector-catalog/status - public catalog with connection status
+  http.get("http://localhost:3000/api/okou/connector-catalog/status", () => {
     return HttpResponse.json(
       { connectors: defaultPublicCatalogStatus },
       { status: 200 },
     );
   }),
-  http.get("https://app.vm0.ai/api/zero/connector-catalog/status", () => {
+  http.get("https://app.vm0.ai/api/okou/connector-catalog/status", () => {
     return HttpResponse.json(
       { connectors: defaultPublicCatalogStatus },
       { status: 200 },
     );
   }),
-  http.get("https://www.vm0.ai/api/zero/connector-catalog/status", () => {
+  http.get("https://www.vm0.ai/api/okou/connector-catalog/status", () => {
     return HttpResponse.json(
       { connectors: defaultPublicCatalogStatus },
       { status: 200 },
     );
   }),
   http.post(
-    "http://localhost:3000/api/zero/connectors/:connectorSlug/manual-grant",
+    "http://localhost:3000/api/okou/connectors/:connectorSlug/manual-grant",
     async ({ params, request }) => {
       const body: unknown = await request.json();
       return HttpResponse.json(
@@ -289,7 +289,7 @@ export const apiHandlers = [
     },
   ),
   http.post(
-    "https://app.vm0.ai/api/zero/connectors/:connectorSlug/manual-grant",
+    "https://app.vm0.ai/api/okou/connectors/:connectorSlug/manual-grant",
     async ({ params, request }) => {
       const body: unknown = await request.json();
       return HttpResponse.json(
@@ -301,7 +301,7 @@ export const apiHandlers = [
     },
   ),
   http.post(
-    "https://www.vm0.ai/api/zero/connectors/:connectorSlug/manual-grant",
+    "https://www.vm0.ai/api/okou/connectors/:connectorSlug/manual-grant",
     async ({ params, request }) => {
       const body: unknown = await request.json();
       return HttpResponse.json(
@@ -313,8 +313,8 @@ export const apiHandlers = [
     },
   ),
 
-  // GET /api/zero/org - getZeroOrg
-  http.get("http://localhost:3000/api/zero/org", () => {
+  // GET /api/okou/org - getZeroOrg
+  http.get("http://localhost:3000/api/okou/org", () => {
     return HttpResponse.json(
       {
         id: "org-default",

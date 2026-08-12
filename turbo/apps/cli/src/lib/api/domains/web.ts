@@ -139,7 +139,7 @@ interface DownloadWebFileResult {
 
 /**
  * Download a web-uploaded file to a local path, streaming the response body
- * to disk. Authenticates via ZERO_TOKEN. Response is binary, so this bypasses
+ * to disk. Authenticates via OKOU_TOKEN. Response is binary, so this bypasses
  * the typed contract client.
  */
 export async function downloadWebFile(
@@ -152,7 +152,7 @@ export async function downloadWebFile(
     throw new ApiRequestError("Not authenticated", "UNAUTHORIZED", 401);
   }
 
-  const url = new URL("/api/zero/web/download-file", baseUrl);
+  const url = new URL("/api/okou/web/download-file", baseUrl);
   url.searchParams.set("file_id", fileId);
 
   const headers: Record<string, string> = {
@@ -556,7 +556,7 @@ async function getBuiltInGenerationStatus(
   generationId: string,
 ): Promise<ZeroBuiltInGenerationResponse> {
   const response = await fetch(
-    new URL(`/api/zero/built-in-generations/${generationId}`, baseUrl),
+    new URL(`/api/okou/built-in-generations/${generationId}`, baseUrl),
     { headers: authenticatedJsonHeaders(token) },
   );
 
@@ -701,13 +701,13 @@ async function readBuiltInGenerationResponse<T>(args: {
 
 /**
  * Upload a local file and receive back metadata including a public CDN URL.
- * Authenticates via ZERO_TOKEN (`file:write` capability) or a CLI
+ * Authenticates via OKOU_TOKEN (`file:write` capability) or a CLI
  * PAT / Clerk session.
  *
  * Three-step flow:
- *   1. POST /api/zero/uploads/prepare — server signs a PUT URL for R2
+ *   1. POST /api/okou/uploads/prepare — server signs a PUT URL for R2
  *   2. PUT the file bytes directly to R2
- *   3. POST /api/zero/uploads/complete — server verifies the object and
+ *   3. POST /api/okou/uploads/complete — server verifies the object and
  *      records any run-scoped upload association
  *
  * Step 2 never touches the Next.js runtime, which lifts the cap from
@@ -741,7 +741,7 @@ export async function uploadWebFile(
     "Content-Type": "application/json",
   };
 
-  const prepareUrl = new URL("/api/zero/uploads/prepare", baseUrl);
+  const prepareUrl = new URL("/api/okou/uploads/prepare", baseUrl);
   const prepareRes = await fetch(prepareUrl, {
     method: "POST",
     headers: headersWithCliClientHeaders(prepareHeaders),
@@ -780,7 +780,7 @@ export async function uploadWebFile(
     );
   }
 
-  const completeUrl = new URL("/api/zero/uploads/complete", baseUrl);
+  const completeUrl = new URL("/api/okou/uploads/complete", baseUrl);
   const completeRes = await fetch(completeUrl, {
     method: "POST",
     headers: headersWithCliClientHeaders(prepareHeaders),
@@ -811,7 +811,7 @@ export async function uploadWebFile(
 
 /**
  * Generate billed speech audio from text and receive the public CDN URL.
- * Authenticates via ZERO_TOKEN (`file:write` capability) or a CLI PAT /
+ * Authenticates via OKOU_TOKEN (`file:write` capability) or a CLI PAT /
  * Clerk session.
  */
 export async function generateWebVoice(
@@ -828,7 +828,7 @@ export async function generateWebVoice(
     "Content-Type": "application/json",
   };
 
-  const response = await fetch(new URL("/api/zero/voice-io/speech", baseUrl), {
+  const response = await fetch(new URL("/api/okou/voice-io/speech", baseUrl), {
     method: "POST",
     headers: headersWithCliClientHeaders(headers),
     body: JSON.stringify({
@@ -851,7 +851,7 @@ export async function generateWebVoice(
 
 /**
  * Generate a billed image from a prompt and receive the public CDN URL.
- * Authenticates via ZERO_TOKEN (`file:write` capability) or a CLI PAT /
+ * Authenticates via OKOU_TOKEN (`file:write` capability) or a CLI PAT /
  * Clerk session.
  */
 export async function generateWebImage(
@@ -869,7 +869,7 @@ export async function generateWebImage(
   };
 
   const response = await fetch(
-    new URL("/api/zero/image-io/generate", baseUrl),
+    new URL("/api/okou/image-io/generate", baseUrl),
     {
       method: "POST",
       headers: headersWithCliClientHeaders(headers),
@@ -923,7 +923,7 @@ export async function generateWebImage(
 
 /**
  * Generate a billed video from a prompt and receive the public CDN URL.
- * Authenticates via ZERO_TOKEN (`file:write` capability) or a CLI PAT /
+ * Authenticates via OKOU_TOKEN (`file:write` capability) or a CLI PAT /
  * Clerk session.
  */
 export async function generateWebVideo(
@@ -941,7 +941,7 @@ export async function generateWebVideo(
   };
 
   const response = await fetch(
-    new URL("/api/zero/video-io/generate", baseUrl),
+    new URL("/api/okou/video-io/generate", baseUrl),
     {
       method: "POST",
       headers: headersWithCliClientHeaders(headers),
@@ -977,7 +977,7 @@ export async function generateWebAvatarVideo(
     throw new ApiRequestError("Not authenticated", "UNAUTHORIZED", 401);
   }
   const response = await fetch(
-    new URL("/api/zero/avatar-video/generate", baseUrl),
+    new URL("/api/okou/avatar-video/generate", baseUrl),
     {
       method: "POST",
       headers: headersWithCliClientHeaders({
@@ -1007,7 +1007,7 @@ function avatarVideoCollectionUrl(
   collection: "avatars" | "voices",
   query: Record<string, string | number | undefined>,
 ): URL {
-  const url = new URL(`/api/zero/avatar-video/${collection}`, baseUrl);
+  const url = new URL(`/api/okou/avatar-video/${collection}`, baseUrl);
   for (const [key, value] of Object.entries(query)) {
     if (value !== undefined) {
       url.searchParams.set(key, String(value));
@@ -1085,7 +1085,7 @@ export async function transcribeAudio(
     Authorization: `Bearer ${token}`,
   };
 
-  const url = new URL("/api/zero/voice-io/stt", baseUrl);
+  const url = new URL("/api/okou/voice-io/stt", baseUrl);
   if (options.verbose) {
     url.searchParams.set("verbose", "true");
   }

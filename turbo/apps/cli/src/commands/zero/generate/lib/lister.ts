@@ -588,7 +588,7 @@ function renderText(params: {
     console.log("");
   } else {
     console.log(
-      "ZERO_AGENT_ID is not set, so agent authorization could not be checked.",
+      "OKOU_AGENT_ID is not set, so agent authorization could not be checked.",
     );
     console.log("");
   }

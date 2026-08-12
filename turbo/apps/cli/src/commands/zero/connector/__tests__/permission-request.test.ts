@@ -80,7 +80,7 @@ function stubDiagnostic(
 ): void {
   server.use(
     http.post(
-      `${baseUrl}/api/zero/connectors/diagnostics/check`,
+      `${baseUrl}/api/okou/connectors/diagnostics/check`,
       async ({ request }) => {
         const body: unknown = await request.json();
         const parsed = connectorCheckRequestSchema.parse(body);
@@ -680,7 +680,7 @@ describe("okou connector permission-request command", () => {
 
     server.use(
       http.post(
-        "http://localhost:3000/api/zero/computer-use/authorization-requests",
+        "http://localhost:3000/api/okou/computer-use/authorization-requests",
         ({ request }) => {
           expect(request.headers.get("authorization")).toBe(
             "Bearer zero-run-token",
@@ -762,7 +762,7 @@ describe("okou connector permission-request command", () => {
 
     server.use(
       http.post(
-        "http://localhost:3000/api/zero/browser/authorization-requests",
+        "http://localhost:3000/api/okou/browser/authorization-requests",
         ({ request }) => {
           expect(request.headers.get("authorization")).toBe(
             "Bearer zero-run-token",

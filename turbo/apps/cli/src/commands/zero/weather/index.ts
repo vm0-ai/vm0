@@ -811,7 +811,7 @@ Examples:
   Current air quality: okou weather air-quality current --lat 39.9042 --lng 116.4074 --json
 
 Notes:
-  - Authenticates via ZERO_TOKEN (requires weather:read capability) or a CLI token
+  - Authenticates via OKOU_TOKEN (requires weather:read capability) or a CLI token
   - Each command makes one Google Weather or Air Quality API request; use page tokens for additional weather pages
   - Calls are recorded for usage analytics and currently charge 0 credits`,
   );

@@ -11,9 +11,9 @@ import { server } from "../../../../mocks/server";
 import { uploadFileCommand } from "../upload-file";
 
 const UPLOAD_INIT_URL =
-  "http://localhost:3000/api/zero/integrations/teams/upload-file/init";
+  "http://localhost:3000/api/okou/integrations/teams/upload-file/init";
 const UPLOAD_COMPLETE_URL =
-  "http://localhost:3000/api/zero/integrations/teams/upload-file/complete";
+  "http://localhost:3000/api/okou/integrations/teams/upload-file/complete";
 const R2_UPLOAD_URL = "https://mock-r2.test/teams-upload";
 
 describe("okou teams upload-file command", () => {

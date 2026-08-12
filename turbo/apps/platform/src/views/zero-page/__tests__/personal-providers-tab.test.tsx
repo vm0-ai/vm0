@@ -587,7 +587,7 @@ describe("personal model providers settings", () => {
     });
 
     context.mocks.http.post(
-      "*/api/zero/model-providers/claude-code/device-auth/sessions/complete",
+      "*/api/okou/model-providers/claude-code/device-auth/sessions/complete",
       () => {
         return HttpResponse.error();
       },

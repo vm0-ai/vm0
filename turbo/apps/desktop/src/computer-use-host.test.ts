@@ -97,7 +97,7 @@ function createRuntime(
   const hostFetch =
     options.hostFetch ??
     vi.fn<ComputerUseHostFetch>(async (url) => {
-      if (url.endsWith("/api/zero/computer-use/heartbeat")) {
+      if (url.endsWith("/api/okou/computer-use/heartbeat")) {
         return jsonResponse({ ok: true, hostId: "host-1" });
       }
       return jsonResponse({ status: "idle" });
@@ -170,7 +170,7 @@ describe("ComputerUseHostRuntime", () => {
       throw new Error("Expected Computer Use host registration request");
     }
     const [url, init] = call;
-    expect(url).toBe("https://api.vm0.ai/api/zero/computer-use/hosts/start");
+    expect(url).toBe("https://api.vm0.ai/api/okou/computer-use/hosts/start");
     expect(init?.method).toBe("POST");
     expect(JSON.parse(String(init?.body))).toMatchObject({
       installationId: INSTALLATION_ID,
@@ -197,7 +197,7 @@ describe("ComputerUseHostRuntime", () => {
       return jsonResponse({ hostId: "host-1", hostToken: "token-1" });
     });
     const hostFetch = vi.fn<ComputerUseHostFetch>(async (url) => {
-      if (url.endsWith("/api/zero/computer-use/heartbeat")) {
+      if (url.endsWith("/api/okou/computer-use/heartbeat")) {
         return jsonResponse({ ok: true, hostId: "host-1" });
       }
       return jsonResponse({ status: "idle" });
@@ -220,7 +220,7 @@ describe("ComputerUseHostRuntime", () => {
     await vi.advanceTimersByTimeAsync(2_000);
 
     const heartbeatCall = hostFetch.mock.calls.find(([url]) => {
-      return url.endsWith("/api/zero/computer-use/heartbeat");
+      return url.endsWith("/api/okou/computer-use/heartbeat");
     });
     if (!heartbeatCall) {
       throw new Error("Expected Computer Use heartbeat request");
@@ -236,7 +236,7 @@ describe("ComputerUseHostRuntime", () => {
       installationId: INSTALLATION_ID,
     });
     expect(sessionFetch.mock.calls[0]?.[0]).toBe(
-      "https://api.vm0.ai/api/zero/computer-use/hosts/start",
+      "https://api.vm0.ai/api/okou/computer-use/hosts/start",
     );
 
     await runtime.stop();
@@ -246,10 +246,10 @@ describe("ComputerUseHostRuntime", () => {
     vi.useFakeTimers();
     let nextCalls = 0;
     const hostFetch = vi.fn<ComputerUseHostFetch>(async (url) => {
-      if (url.endsWith("/api/zero/computer-use/heartbeat")) {
+      if (url.endsWith("/api/okou/computer-use/heartbeat")) {
         return jsonResponse({ ok: true, hostId: "host-1" });
       }
-      if (url.endsWith("/api/zero/computer-use/host/commands/next")) {
+      if (url.endsWith("/api/okou/computer-use/host/commands/next")) {
         nextCalls++;
         return jsonResponse({ status: "idle" });
       }
@@ -274,16 +274,16 @@ describe("ComputerUseHostRuntime", () => {
     const heartbeat = deferred<Response>();
     let nextCalls = 0;
     const hostFetch = vi.fn<ComputerUseHostFetch>(async (url) => {
-      if (url.endsWith("/api/zero/computer-use/heartbeat")) {
+      if (url.endsWith("/api/okou/computer-use/heartbeat")) {
         return heartbeat.promise;
       }
-      if (url.endsWith("/api/zero/computer-use/host/commands/next")) {
+      if (url.endsWith("/api/okou/computer-use/host/commands/next")) {
         nextCalls++;
         return nextCalls === 1
           ? new Response("{}", { status: 500 })
           : jsonResponse({ status: "idle" });
       }
-      if (url.endsWith("/api/zero/computer-use/host/stop")) {
+      if (url.endsWith("/api/okou/computer-use/host/stop")) {
         return jsonResponse({ ok: true });
       }
       throw new Error(`Unexpected host request: ${url}`);
@@ -319,10 +319,10 @@ describe("ComputerUseHostRuntime", () => {
     const heartbeat = deferred<Response>();
     const commandPoll = deferred<Response>();
     const hostFetch = vi.fn<ComputerUseHostFetch>(async (url) => {
-      if (url.endsWith("/api/zero/computer-use/heartbeat")) {
+      if (url.endsWith("/api/okou/computer-use/heartbeat")) {
         return heartbeat.promise;
       }
-      if (url.endsWith("/api/zero/computer-use/host/commands/next")) {
+      if (url.endsWith("/api/okou/computer-use/host/commands/next")) {
         return commandPoll.promise;
       }
       throw new Error(`Unexpected host request: ${url}`);
@@ -356,10 +356,10 @@ describe("ComputerUseHostRuntime", () => {
   it("deactivates for restart when command polling rejects the host token", async () => {
     vi.useFakeTimers();
     const hostFetch = vi.fn<ComputerUseHostFetch>(async (url) => {
-      if (url.endsWith("/api/zero/computer-use/heartbeat")) {
+      if (url.endsWith("/api/okou/computer-use/heartbeat")) {
         return jsonResponse({ ok: true, hostId: "host-1" });
       }
-      if (url.endsWith("/api/zero/computer-use/host/commands/next")) {
+      if (url.endsWith("/api/okou/computer-use/host/commands/next")) {
         return new Response("{}", { status: 401 });
       }
       throw new Error(`Unexpected host request: ${url}`);
@@ -393,10 +393,10 @@ describe("ComputerUseHostRuntime", () => {
   it("deactivates for restart when command completion rejects the host token", async () => {
     vi.useFakeTimers();
     const hostFetch = vi.fn<ComputerUseHostFetch>(async (url) => {
-      if (url.endsWith("/api/zero/computer-use/heartbeat")) {
+      if (url.endsWith("/api/okou/computer-use/heartbeat")) {
         return jsonResponse({ ok: true, hostId: "host-1" });
       }
-      if (url.endsWith("/api/zero/computer-use/host/commands/next")) {
+      if (url.endsWith("/api/okou/computer-use/host/commands/next")) {
         return jsonResponse({
           status: "command",
           command: {
@@ -406,7 +406,7 @@ describe("ComputerUseHostRuntime", () => {
           },
         });
       }
-      if (url.endsWith("/api/zero/computer-use/host/commands/cmd-1/complete")) {
+      if (url.endsWith("/api/okou/computer-use/host/commands/cmd-1/complete")) {
         return new Response("{}", { status: 401 });
       }
       throw new Error(`Unexpected host request: ${url}`);
@@ -438,10 +438,10 @@ describe("ComputerUseHostRuntime", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-05-25T08:00:00.000Z"));
     const hostFetch = vi.fn<ComputerUseHostFetch>(async (url) => {
-      if (url.endsWith("/api/zero/computer-use/heartbeat")) {
+      if (url.endsWith("/api/okou/computer-use/heartbeat")) {
         return jsonResponse({ ok: true, hostId: "host-1" });
       }
-      if (url.endsWith("/api/zero/computer-use/host/commands/next")) {
+      if (url.endsWith("/api/okou/computer-use/host/commands/next")) {
         return jsonResponse({
           status: "claimed",
           command: {
@@ -451,7 +451,7 @@ describe("ComputerUseHostRuntime", () => {
           },
         });
       }
-      if (url.endsWith("/api/zero/computer-use/host/commands/cmd-1/complete")) {
+      if (url.endsWith("/api/okou/computer-use/host/commands/cmd-1/complete")) {
         return jsonResponse({ ok: true });
       }
       return jsonResponse({ status: "idle" });
@@ -518,7 +518,7 @@ describe("ComputerUseHostRuntime", () => {
     );
     const completionCall = hostFetch.mock.calls.find(([url]) => {
       return url.endsWith(
-        "/api/zero/computer-use/host/commands/cmd-1/complete",
+        "/api/okou/computer-use/host/commands/cmd-1/complete",
       );
     });
     if (!completionCall) {
@@ -548,10 +548,10 @@ describe("ComputerUseHostRuntime", () => {
     vi.useFakeTimers();
     let nextCommandId = 0;
     const hostFetch = vi.fn<ComputerUseHostFetch>(async (url) => {
-      if (url.endsWith("/api/zero/computer-use/heartbeat")) {
+      if (url.endsWith("/api/okou/computer-use/heartbeat")) {
         return jsonResponse({ ok: true, hostId: "host-1" });
       }
-      if (url.endsWith("/api/zero/computer-use/host/commands/next")) {
+      if (url.endsWith("/api/okou/computer-use/host/commands/next")) {
         if (nextCommandId === 25) {
           return jsonResponse({ status: "idle" });
         }
@@ -565,7 +565,7 @@ describe("ComputerUseHostRuntime", () => {
           },
         });
       }
-      if (url.includes("/api/zero/computer-use/host/commands/cmd-")) {
+      if (url.includes("/api/okou/computer-use/host/commands/cmd-")) {
         return jsonResponse({ ok: true });
       }
       throw new Error(`Unexpected host request: ${url}`);
@@ -603,16 +603,16 @@ describe("ComputerUseHostRuntime", () => {
     };
     let nextCalls = 0;
     const hostFetch = vi.fn<ComputerUseHostFetch>(async (url) => {
-      if (url.endsWith("/api/zero/computer-use/heartbeat")) {
+      if (url.endsWith("/api/okou/computer-use/heartbeat")) {
         return jsonResponse({ ok: true, hostId: "host-1" });
       }
-      if (url.endsWith("/api/zero/computer-use/host/commands/next")) {
+      if (url.endsWith("/api/okou/computer-use/host/commands/next")) {
         nextCalls++;
         return nextCalls === 1
           ? jsonResponse({ status: "command", command })
           : jsonResponse({ status: "idle" });
       }
-      if (url.endsWith("/api/zero/computer-use/host/commands/cmd-1/complete")) {
+      if (url.endsWith("/api/okou/computer-use/host/commands/cmd-1/complete")) {
         return jsonResponse({ ok: true });
       }
       throw new Error(`Unexpected host request: ${url}`);
@@ -664,16 +664,16 @@ describe("ComputerUseHostRuntime", () => {
     let nextCalls = 0;
     let completeCalls = 0;
     const hostFetch = vi.fn<ComputerUseHostFetch>(async (url) => {
-      if (url.endsWith("/api/zero/computer-use/heartbeat")) {
+      if (url.endsWith("/api/okou/computer-use/heartbeat")) {
         return jsonResponse({ ok: true, hostId: "host-1" });
       }
-      if (url.endsWith("/api/zero/computer-use/host/commands/next")) {
+      if (url.endsWith("/api/okou/computer-use/host/commands/next")) {
         nextCalls++;
         return nextCalls === 1
           ? jsonResponse({ status: "command", command })
           : jsonResponse({ status: "idle" });
       }
-      if (url.endsWith("/api/zero/computer-use/host/commands/cmd-1/complete")) {
+      if (url.endsWith("/api/okou/computer-use/host/commands/cmd-1/complete")) {
         completeCalls++;
         return jsonResponse({ ok: true });
       }
@@ -698,7 +698,7 @@ describe("ComputerUseHostRuntime", () => {
     await vi.advanceTimersByTimeAsync(90_000);
 
     const heartbeatCalls = hostFetch.mock.calls.filter(([url]) => {
-      return url.endsWith("/api/zero/computer-use/heartbeat");
+      return url.endsWith("/api/okou/computer-use/heartbeat");
     });
     expect(heartbeatCalls.length).toBeGreaterThan(1);
     expect(completeCalls).toBe(0);
@@ -776,10 +776,10 @@ describe("ComputerUseHostRuntime", () => {
     let nextCalls = 0;
     let completeCalls = 0;
     const hostFetch = vi.fn<ComputerUseHostFetch>(async (url) => {
-      if (url.endsWith("/api/zero/computer-use/heartbeat")) {
+      if (url.endsWith("/api/okou/computer-use/heartbeat")) {
         return jsonResponse({ ok: true, hostId: "host-1" });
       }
-      if (url.endsWith("/api/zero/computer-use/host/commands/next")) {
+      if (url.endsWith("/api/okou/computer-use/host/commands/next")) {
         nextCalls++;
         return nextCalls === 1
           ? jsonResponse({
@@ -792,7 +792,7 @@ describe("ComputerUseHostRuntime", () => {
             })
           : jsonResponse({ status: "idle" });
       }
-      if (url.endsWith("/api/zero/computer-use/host/commands/cmd-1/complete")) {
+      if (url.endsWith("/api/okou/computer-use/host/commands/cmd-1/complete")) {
         completeCalls++;
         return completeCalls === 1
           ? new Response("{}", { status: 503 })
@@ -823,10 +823,10 @@ describe("ComputerUseHostRuntime", () => {
     let nextCalls = 0;
     let completeCalls = 0;
     const hostFetch = vi.fn<ComputerUseHostFetch>(async (url) => {
-      if (url.endsWith("/api/zero/computer-use/heartbeat")) {
+      if (url.endsWith("/api/okou/computer-use/heartbeat")) {
         return jsonResponse({ ok: true, hostId: "host-1" });
       }
-      if (url.endsWith("/api/zero/computer-use/host/commands/next")) {
+      if (url.endsWith("/api/okou/computer-use/host/commands/next")) {
         nextCalls++;
         return nextCalls === 1
           ? jsonResponse({
@@ -839,7 +839,7 @@ describe("ComputerUseHostRuntime", () => {
             })
           : jsonResponse({ status: "idle" });
       }
-      if (url.endsWith("/api/zero/computer-use/host/commands/cmd-1/complete")) {
+      if (url.endsWith("/api/okou/computer-use/host/commands/cmd-1/complete")) {
         completeCalls++;
         return new Response("{}", { status: 409 });
       }
@@ -876,10 +876,10 @@ describe("ComputerUseHostRuntime", () => {
     let firstCommandClaimed = false;
     let secondCommandClaimed = false;
     const hostFetch = vi.fn<ComputerUseHostFetch>(async (url) => {
-      if (url.endsWith("/api/zero/computer-use/heartbeat")) {
+      if (url.endsWith("/api/okou/computer-use/heartbeat")) {
         return jsonResponse({ ok: true, hostId: "host-1" });
       }
-      if (url.endsWith("/api/zero/computer-use/host/commands/next")) {
+      if (url.endsWith("/api/okou/computer-use/host/commands/next")) {
         const offset = Date.now() - startedAtMs;
         claimOffsets.push(offset);
         if (offset === 5_000 && !firstCommandClaimed) {
@@ -906,7 +906,7 @@ describe("ComputerUseHostRuntime", () => {
         }
         return jsonResponse({ status: "idle" });
       }
-      if (url.includes("/api/zero/computer-use/host/commands/cmd-")) {
+      if (url.includes("/api/okou/computer-use/host/commands/cmd-")) {
         return jsonResponse({ ok: true });
       }
       throw new Error(`Unexpected host request: ${url}`);
@@ -969,10 +969,10 @@ describe("ComputerUseHostRuntime", () => {
     let nextCalls = 0;
     let completeCalls = 0;
     const hostFetch = vi.fn<ComputerUseHostFetch>(async (url, init) => {
-      if (url.endsWith("/api/zero/computer-use/heartbeat")) {
+      if (url.endsWith("/api/okou/computer-use/heartbeat")) {
         return jsonResponse({ ok: true, hostId: "host-1" });
       }
-      if (url.endsWith("/api/zero/computer-use/host/commands/next")) {
+      if (url.endsWith("/api/okou/computer-use/host/commands/next")) {
         nextCalls++;
         return nextCalls === 1
           ? jsonResponse({
@@ -985,7 +985,7 @@ describe("ComputerUseHostRuntime", () => {
             })
           : jsonResponse({ status: "idle" });
       }
-      if (url.endsWith("/api/zero/computer-use/host/commands/cmd-1/complete")) {
+      if (url.endsWith("/api/okou/computer-use/host/commands/cmd-1/complete")) {
         completeCalls++;
         return completeCalls === 1
           ? await hungResponseUntilAbort(init)
@@ -1065,13 +1065,13 @@ describe("ComputerUseHostRuntime", () => {
     let heartbeatCalls = 0;
     let nextCalls = 0;
     const hostFetch = vi.fn<ComputerUseHostFetch>(async (url) => {
-      if (url.endsWith("/api/zero/computer-use/heartbeat")) {
+      if (url.endsWith("/api/okou/computer-use/heartbeat")) {
         heartbeatCalls++;
         return heartbeatCalls === 1
           ? new Response("{}", { status: 503 })
           : jsonResponse({ ok: true, hostId: "host-1" });
       }
-      if (url.endsWith("/api/zero/computer-use/host/commands/next")) {
+      if (url.endsWith("/api/okou/computer-use/host/commands/next")) {
         nextCalls++;
         return jsonResponse({ status: "idle" });
       }
@@ -1113,14 +1113,14 @@ describe("ComputerUseHostRuntime", () => {
     let heartbeatCalls = 0;
     let nextCalls = 0;
     const hostFetch = vi.fn<ComputerUseHostFetch>(async (url, init) => {
-      if (url.endsWith("/api/zero/computer-use/heartbeat")) {
+      if (url.endsWith("/api/okou/computer-use/heartbeat")) {
         heartbeatCalls++;
         if (heartbeatCalls === 1) {
           return await hungResponseUntilAbort(init);
         }
         return jsonResponse({ ok: true, hostId: "host-1" });
       }
-      if (url.endsWith("/api/zero/computer-use/host/commands/next")) {
+      if (url.endsWith("/api/okou/computer-use/host/commands/next")) {
         nextCalls++;
         return jsonResponse({ status: "idle" });
       }
@@ -1164,10 +1164,10 @@ describe("ComputerUseHostRuntime", () => {
     vi.useFakeTimers();
     let nextCalls = 0;
     const hostFetch = vi.fn<ComputerUseHostFetch>(async (url, init) => {
-      if (url.endsWith("/api/zero/computer-use/heartbeat")) {
+      if (url.endsWith("/api/okou/computer-use/heartbeat")) {
         return jsonResponse({ ok: true, hostId: "host-1" });
       }
-      if (url.endsWith("/api/zero/computer-use/host/commands/next")) {
+      if (url.endsWith("/api/okou/computer-use/host/commands/next")) {
         nextCalls++;
         return nextCalls === 1
           ? await hungResponseUntilAbort(init)
@@ -1211,10 +1211,10 @@ describe("ComputerUseHostRuntime", () => {
     vi.setSystemTime(new Date("2026-06-10T10:00:00.000Z"));
     let nextCalls = 0;
     const hostFetch = vi.fn<ComputerUseHostFetch>(async (url) => {
-      if (url.endsWith("/api/zero/computer-use/heartbeat")) {
+      if (url.endsWith("/api/okou/computer-use/heartbeat")) {
         return jsonResponse({ ok: true, hostId: "host-1" });
       }
-      if (url.endsWith("/api/zero/computer-use/host/commands/next")) {
+      if (url.endsWith("/api/okou/computer-use/host/commands/next")) {
         nextCalls++;
         if (nextCalls === 1) {
           return jsonResponse({
@@ -1230,7 +1230,7 @@ describe("ComputerUseHostRuntime", () => {
           ? new Response("{}", { status: 500 })
           : jsonResponse({ status: "idle" });
       }
-      if (url.endsWith("/api/zero/computer-use/host/commands/cmd-1/complete")) {
+      if (url.endsWith("/api/okou/computer-use/host/commands/cmd-1/complete")) {
         return jsonResponse({ ok: true });
       }
       throw new Error(`Unexpected host request: ${url}`);
@@ -1272,10 +1272,10 @@ describe("ComputerUseHostRuntime", () => {
     vi.setSystemTime(new Date("2026-06-10T10:00:00.000Z"));
     let nextCalls = 0;
     const hostFetch = vi.fn<ComputerUseHostFetch>(async (url) => {
-      if (url.endsWith("/api/zero/computer-use/heartbeat")) {
+      if (url.endsWith("/api/okou/computer-use/heartbeat")) {
         return jsonResponse({ ok: true, hostId: "host-1" });
       }
-      if (url.endsWith("/api/zero/computer-use/host/commands/next")) {
+      if (url.endsWith("/api/okou/computer-use/host/commands/next")) {
         nextCalls++;
         return nextCalls === 1
           ? new Response("{}", {
@@ -1314,17 +1314,17 @@ describe("ComputerUseHostRuntime", () => {
     vi.useFakeTimers();
     let heartbeatCalls = 0;
     const sessionFetch = vi.fn<ComputerUseHostFetch>(async (url) => {
-      if (url.includes("/api/zero/computer-use/audit-events")) {
+      if (url.includes("/api/okou/computer-use/audit-events")) {
         throw new Error("Heartbeat must not depend on audit history refresh");
       }
       return jsonResponse({ hostId: "host-1", hostToken: "token-1" });
     });
     const hostFetch = vi.fn<ComputerUseHostFetch>(async (url) => {
-      if (url.endsWith("/api/zero/computer-use/heartbeat")) {
+      if (url.endsWith("/api/okou/computer-use/heartbeat")) {
         heartbeatCalls++;
         return jsonResponse({ ok: true, hostId: "host-1" });
       }
-      if (url.endsWith("/api/zero/computer-use/host/commands/next")) {
+      if (url.endsWith("/api/okou/computer-use/host/commands/next")) {
         return jsonResponse({ status: "idle" });
       }
       throw new Error(`Unexpected host request: ${url}`);
@@ -1345,7 +1345,7 @@ describe("ComputerUseHostRuntime", () => {
     expect(heartbeatCalls).toBe(2);
     expect(
       sessionFetch.mock.calls.some(([url]) => {
-        return url.includes("/api/zero/computer-use/audit-events");
+        return url.includes("/api/okou/computer-use/audit-events");
       }),
     ).toBe(false);
 
@@ -1363,7 +1363,7 @@ describe("ComputerUseHostRuntime", () => {
     await runtime.stop();
 
     const stopCall = hostFetch.mock.calls.find(([url]) => {
-      return url.endsWith("/api/zero/computer-use/host/stop");
+      return url.endsWith("/api/okou/computer-use/host/stop");
     });
     if (!stopCall) {
       throw new Error("Expected Computer Use host stop request");
@@ -1384,7 +1384,7 @@ describe("ComputerUseHostRuntime", () => {
   it("reports heartbeat active host conflicts without retrying", async () => {
     vi.useFakeTimers();
     const hostFetch = vi.fn<ComputerUseHostFetch>(async (url) => {
-      if (url.endsWith("/api/zero/computer-use/heartbeat")) {
+      if (url.endsWith("/api/okou/computer-use/heartbeat")) {
         return jsonResponse(
           {
             error: { message: "A Desktop Computer Use host is already active" },
@@ -1401,7 +1401,7 @@ describe("ComputerUseHostRuntime", () => {
 
     expect(hostFetch).toHaveBeenCalledOnce();
     expect(hostFetch.mock.calls[0]?.[0]).toBe(
-      "https://api.vm0.ai/api/zero/computer-use/heartbeat",
+      "https://api.vm0.ai/api/okou/computer-use/heartbeat",
     );
     expect(runtime.getState()).toMatchObject({
       status: "error",
@@ -1430,7 +1430,7 @@ describe("ComputerUseHostRuntime", () => {
 
     expect(sessionFetch).toHaveBeenCalledTimes(2);
     expect(sessionFetch.mock.calls[0]?.[0]).toBe(
-      "https://api.vm0.ai/api/zero/computer-use/hosts/start",
+      "https://api.vm0.ai/api/okou/computer-use/hosts/start",
     );
     expect(sessionFetch.mock.calls[1]?.[0]).toBe(
       "https://api.vm0.ai/api/auth/me",
