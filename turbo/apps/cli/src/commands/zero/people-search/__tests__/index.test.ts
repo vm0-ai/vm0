@@ -119,7 +119,7 @@ describe("okou people-search command", () => {
     let requestBody: unknown;
     server.use(
       http.post(
-        "http://localhost:3000/api/zero/people-search",
+        "http://localhost:3000/api/okou/people-search",
         async ({ request }) => {
           requestBody = await request.json();
           return HttpResponse.json(responseBody);
@@ -143,7 +143,7 @@ describe("okou people-search command", () => {
 
   it("renders normalized profiles, sources, and billing", async () => {
     server.use(
-      http.post("http://localhost:3000/api/zero/people-search", () => {
+      http.post("http://localhost:3000/api/okou/people-search", () => {
         return HttpResponse.json({ ...responseBody, limit: 3 });
       }),
     );
@@ -168,7 +168,7 @@ describe("okou people-search command", () => {
 
   it("guides users when no profiles match", async () => {
     server.use(
-      http.post("http://localhost:3000/api/zero/people-search", () => {
+      http.post("http://localhost:3000/api/okou/people-search", () => {
         return HttpResponse.json({ ...responseBody, profiles: [] });
       }),
     );
@@ -189,7 +189,7 @@ describe("okou people-search command", () => {
   ])("rejects %s before calling the API", async (_name, args, message) => {
     let apiRequests = 0;
     server.use(
-      http.post("http://localhost:3000/api/zero/people-search", () => {
+      http.post("http://localhost:3000/api/okou/people-search", () => {
         apiRequests += 1;
         return HttpResponse.json(responseBody);
       }),
@@ -206,7 +206,7 @@ describe("okou people-search command", () => {
 
   it("prints API error messages", async () => {
     server.use(
-      http.post("http://localhost:3000/api/zero/people-search", () => {
+      http.post("http://localhost:3000/api/okou/people-search", () => {
         return HttpResponse.json(
           {
             error: {

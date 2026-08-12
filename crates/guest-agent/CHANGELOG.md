@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.71.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.71.0...guest-agent-v0.71.1) (2026-08-12)
+
+
+### Bug Fixes
+
+* **guest-agent:** bound oversized codex event delivery ([#26520](https://github.com/vm0-ai/vm0/issues/26520)) ([cf619b1](https://github.com/vm0-ai/vm0/commit/cf619b153ddae4fdb3c4b00065d737d1d9194bb0))
+
 ## [0.71.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.70.0...guest-agent-v0.71.0) (2026-08-12)
 
 

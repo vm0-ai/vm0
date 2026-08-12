@@ -21,6 +21,7 @@ import type {
   ThreadSidebarTarget,
 } from "./thread-sidebar.ts";
 import { createObjectUrlResource } from "../object-url-resource.ts";
+import { resetSignal } from "../utils.ts";
 
 // ---------------------------------------------------------------------------
 // Page-level coordinator for the thread-owned utility sidebar. Sidebar state
@@ -137,7 +138,10 @@ export function artifactRefFromUrl(url: string): ArtifactRef {
  * Markdown refs additionally carry their prepared tree. The sidebar renders
  * from the ref alone.
  */
-function withTextPreview(ref: ArtifactRef): ArtifactRef {
+function withTextPreview(
+  ref: ArtifactRef,
+  ownerSignal: AbortSignal,
+): ArtifactRef {
   if (!isTextPreviewKind(ref.kind)) {
     return ref;
   }
@@ -146,48 +150,59 @@ function withTextPreview(ref: ArtifactRef): ArtifactRef {
     ...ref,
     text$,
     ...(ref.kind === "markdown"
-      ? { markdownTree$: createMarkdownPreviewTree(text$) }
+      ? { markdownTree$: createMarkdownPreviewTree(text$, ownerSignal) }
       : {}),
   };
 }
 
-function materializeArtifactRef(
-  input: ArtifactRefInput,
-  ownerSignal: AbortSignal,
-): ArtifactRef {
-  if (typeof input === "string") {
-    return withTextPreview(artifactRefFromUrl(input));
-  }
-  if (!("file" in input)) {
-    return withTextPreview({
-      url: input.url,
-      kind: classifyChatAttachment({
-        contentType: input.contentType,
-        filename: input.filename,
-        url: input.url,
-      }),
-      filename: input.filename,
-      ...(input.text$ === undefined ? {} : { text$: input.text$ }),
-      ...(input.shareAvailable === undefined
-        ? {}
-        : { shareAvailable: input.shareAvailable }),
-    });
-  }
-  const resource = createObjectUrlResource(input.file, ownerSignal);
-  return withTextPreview({
-    url: resource.url,
-    kind: classifyChatAttachment({
-      contentType: input.file.type,
-      filename: input.file.name,
-      url: resource.url,
-    }),
-    filename: input.file.name,
-    releaseObjectUrl: resource.release,
-    ...(input.shareAvailable === undefined
-      ? {}
-      : { shareAvailable: input.shareAvailable }),
-  });
-}
+const materializeArtifactRef$ = command(
+  ({ set }, input: ArtifactRefInput, ownerSignal: AbortSignal): ArtifactRef => {
+    const resetResources$ = resetSignal();
+    const previewSignal = set(resetResources$, ownerSignal);
+    if (typeof input === "string") {
+      return withTextPreview(
+        { ...artifactRefFromUrl(input), resetResources$ },
+        previewSignal,
+      );
+    }
+    if (!("file" in input)) {
+      return withTextPreview(
+        {
+          url: input.url,
+          kind: classifyChatAttachment({
+            contentType: input.contentType,
+            filename: input.filename,
+            url: input.url,
+          }),
+          filename: input.filename,
+          resetResources$,
+          ...(input.text$ === undefined ? {} : { text$: input.text$ }),
+          ...(input.shareAvailable === undefined
+            ? {}
+            : { shareAvailable: input.shareAvailable }),
+        },
+        previewSignal,
+      );
+    }
+    const resource = createObjectUrlResource(input.file, previewSignal);
+    return withTextPreview(
+      {
+        url: resource.url,
+        kind: classifyChatAttachment({
+          contentType: input.file.type,
+          filename: input.file.name,
+          url: resource.url,
+        }),
+        filename: input.file.name,
+        resetResources$,
+        ...(input.shareAvailable === undefined
+          ? {}
+          : { shareAvailable: input.shareAvailable }),
+      },
+      previewSignal,
+    );
+  },
+);
 
 /**
  * Promote a message attachment from the lightbox into split view. The lightbox
@@ -210,7 +225,7 @@ export const openThreadArtifactSplitView$ = command(
       type: "artifact",
       source: {
         kind: "attachment",
-        ref: materializeArtifactRef(input, thread.signal),
+        ref: set(materializeArtifactRef$, input, thread.signal),
       },
     });
   },
@@ -239,7 +254,7 @@ export const openArtifactInOpenSidebar$ = command(
       type: "artifact",
       source: {
         kind: "attachment",
-        ref: materializeArtifactRef(input, active.thread.signal),
+        ref: set(materializeArtifactRef$, input, active.thread.signal),
       },
     });
     return true;

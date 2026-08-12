@@ -129,8 +129,9 @@ playwright_run = playwright_e2e.fetch("steps").find do |step|
   step["name"] == "Run Playwright E2E tests"
 end
 raise "missing Playwright E2E run step" unless playwright_run
-unless playwright_run.fetch("env").fetch("ZERO_APP_URL") == expected_downstream_preview
-  raise "Playwright E2E must use the smoke-tested app preview gateway"
+unless playwright_run.fetch("env").fetch("OKOU_APP_URL") == expected_downstream_preview &&
+    playwright_run.fetch("env").fetch("ZERO_APP_URL") == expected_downstream_preview
+  raise "Playwright E2E must emit both branded app preview URLs"
 end
 
 turbo_source = File.read(ARGV.fetch(0))

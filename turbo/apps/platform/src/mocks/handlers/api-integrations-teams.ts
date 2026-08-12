@@ -11,7 +11,7 @@ let mockTeamsData: TeamsConnectStatus = {
   installUrl:
     "https://teams.microsoft.com/l/app/00000000-0000-0000-0000-000000000001",
   connectUrl:
-    "/api/zero/teams/oauth/connect?orgId=org_mock&vm0UserId=user_mock",
+    "/api/okou/teams/oauth/connect?orgId=org_mock&vm0UserId=user_mock",
 };
 
 export function resetMockTeamsIntegration(): void {
@@ -22,7 +22,7 @@ export function resetMockTeamsIntegration(): void {
     installUrl:
       "https://teams.microsoft.com/l/app/00000000-0000-0000-0000-000000000001",
     connectUrl:
-      "/api/zero/teams/oauth/connect?orgId=org_mock&vm0UserId=user_mock",
+      "/api/okou/teams/oauth/connect?orgId=org_mock&vm0UserId=user_mock",
   };
 }
 
@@ -56,14 +56,14 @@ export const apiIntegrationsTeamsHandlers = [
         isInstalled: false,
         isConnected: false,
         connectUrl:
-          "/api/zero/teams/oauth/connect?orgId=org_mock&vm0UserId=user_mock",
+          "/api/okou/teams/oauth/connect?orgId=org_mock&vm0UserId=user_mock",
       };
     } else {
       mockTeamsData = {
         ...mockTeamsData,
         isConnected: false,
         connectUrl:
-          "/api/zero/teams/oauth/connect?orgId=org_mock&vm0UserId=user_mock",
+          "/api/okou/teams/oauth/connect?orgId=org_mock&vm0UserId=user_mock",
       };
     }
     return respond(200, { success: true });

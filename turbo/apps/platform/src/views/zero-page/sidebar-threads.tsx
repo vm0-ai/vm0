@@ -869,7 +869,6 @@ function AgentChatThreadsContent({
     <div className="flex flex-col gap-1">
       {currentMainThreadId && currentMainThreadListed ? (
         <span
-          key={currentMainThreadId}
           ref={scrollCurrentChatThreadOnRef}
           data-chat-thread-id={currentMainThreadId}
           hidden

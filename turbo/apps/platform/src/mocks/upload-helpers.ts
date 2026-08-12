@@ -2,9 +2,9 @@
  * Test helpers for the presigned upload flow.
  *
  * Production uploads run in two steps:
- *   1. POST /api/zero/uploads/prepare  → JSON { id, uploadUrl, uploadHeaders, url, ... }
+ *   1. POST /api/okou/uploads/prepare  → JSON { id, uploadUrl, uploadHeaders, url, ... }
  *   2. PUT  <uploadUrl>                → 200 (direct to R2)
- *   3. POST /api/zero/uploads/complete → JSON { id, url, ... }
+ *   3. POST /api/okou/uploads/complete → JSON { id, url, ... }
  *
  * These helpers register MSW handlers for both steps so individual tests only
  * have to describe the resulting file metadata, not the wire protocol.
@@ -36,13 +36,13 @@ function uploadUrlFor(id: string): string {
 export function mockUploadSuccess(result: MockUploadResult): HttpHandler[] {
   const uploadUrl = uploadUrlFor(result.id);
   return [
-    http.post("*/api/zero/uploads/prepare", () => {
+    http.post("*/api/okou/uploads/prepare", () => {
       return HttpResponse.json({ ...result, uploadUrl, uploadHeaders: {} });
     }),
     http.put(uploadUrl, () => {
       return new HttpResponse(null, { status: 200 });
     }),
-    http.post("*/api/zero/uploads/complete", () => {
+    http.post("*/api/okou/uploads/complete", () => {
       return HttpResponse.json(result);
     }),
   ];
@@ -59,7 +59,7 @@ export function mockUploadPending(
   const uploadUrl = uploadUrlFor(result.id);
   const mockHttp = createMockHttp(context);
   return [
-    http.post("*/api/zero/uploads/prepare", () => {
+    http.post("*/api/okou/uploads/prepare", () => {
       return HttpResponse.json({ ...result, uploadUrl, uploadHeaders: {} });
     }),
     mockHttp.put(uploadUrl, ({ signal }) => {

@@ -166,7 +166,7 @@ const mapsResponses = {
 export const zeroMapsContract = c.router({
   geocode: {
     method: "POST",
-    path: "/api/zero/maps/geocode",
+    path: "/api/okou/maps/geocode",
     headers: authHeadersSchema,
     body: zeroMapsGeocodeRequestSchema,
     responses: mapsResponses,
@@ -174,7 +174,7 @@ export const zeroMapsContract = c.router({
   },
   reverseGeocode: {
     method: "POST",
-    path: "/api/zero/maps/reverse-geocode",
+    path: "/api/okou/maps/reverse-geocode",
     headers: authHeadersSchema,
     body: zeroMapsReverseGeocodeRequestSchema,
     responses: mapsResponses,
@@ -182,7 +182,7 @@ export const zeroMapsContract = c.router({
   },
   directions: {
     method: "POST",
-    path: "/api/zero/maps/directions",
+    path: "/api/okou/maps/directions",
     headers: authHeadersSchema,
     body: zeroMapsDirectionsRequestSchema,
     responses: mapsResponses,
@@ -190,7 +190,7 @@ export const zeroMapsContract = c.router({
   },
   placesSearch: {
     method: "POST",
-    path: "/api/zero/maps/places/search",
+    path: "/api/okou/maps/places/search",
     headers: authHeadersSchema,
     body: zeroMapsPlacesSearchRequestSchema,
     responses: mapsResponses,
@@ -198,7 +198,7 @@ export const zeroMapsContract = c.router({
   },
   placesDetails: {
     method: "POST",
-    path: "/api/zero/maps/places/details",
+    path: "/api/okou/maps/places/details",
     headers: authHeadersSchema,
     body: zeroMapsPlacesDetailsRequestSchema,
     responses: mapsResponses,
@@ -206,7 +206,7 @@ export const zeroMapsContract = c.router({
   },
   osmDownload: {
     method: "POST",
-    path: "/api/zero/maps/osm/download",
+    path: "/api/okou/maps/osm/download",
     headers: authHeadersSchema,
     body: zeroMapsOsmDownloadRequestSchema,
     responses: mapsResponses,
@@ -214,7 +214,7 @@ export const zeroMapsContract = c.router({
   },
   osmRender: {
     method: "POST",
-    path: "/api/zero/maps/osm/render",
+    path: "/api/okou/maps/osm/render",
     headers: authHeadersSchema,
     body: zeroMapsOsmRenderRequestSchema,
     responses: mapsResponses,

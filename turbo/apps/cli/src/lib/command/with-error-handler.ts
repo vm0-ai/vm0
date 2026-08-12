@@ -25,10 +25,10 @@ export function withErrorHandler<T extends unknown[]>(
         if (error.code === "UNAUTHORIZED") {
           if (getOkouToken()) {
             console.error(chalk.red("✗ Authentication failed"));
-            console.error(chalk.dim("  ZERO_TOKEN is invalid or expired"));
+            console.error(chalk.dim("  OKOU_TOKEN is invalid or expired"));
           } else {
             console.error(chalk.red("✗ Not authenticated"));
-            console.error(chalk.dim("  Set ZERO_TOKEN to a valid run token"));
+            console.error(chalk.dim("  Set OKOU_TOKEN to a valid run token"));
           }
         } else {
           const guidance = RUN_ERROR_GUIDANCE[error.code];

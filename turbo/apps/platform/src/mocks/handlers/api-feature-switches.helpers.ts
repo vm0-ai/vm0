@@ -1,5 +1,5 @@
 /**
- * Test-side override helper for the /api/zero/feature-switches GET handler.
+ * Test-side override helper for the /api/okou/feature-switches GET handler.
  *
  * Kept separate from `api-feature-switches.ts` so the default handler module
  * remains stateless and test-specific overrides stay in test code.

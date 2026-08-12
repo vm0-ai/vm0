@@ -40,14 +40,14 @@ runner_e2e_connect_manual_connector() {
         --arg agentId "$agent_id" \
         --argjson values "$values" \
         '{authMethod: $authMethod, agentId: $agentId, authorizeAgent: true, values: $values}')
-    runner_api_curl "/api/zero/connectors/${connector_slug}/manual-grant" \
+    runner_api_curl "/api/okou/connectors/${connector_slug}/manual-grant" \
         -X POST \
         -d "$payload"
 }
 
 runner_e2e_delete_connector() {
     local connector_slug="$1"
-    runner_api_curl "/api/zero/connectors/${connector_slug}" -X DELETE
+    runner_api_curl "/api/okou/connectors/${connector_slug}" -X DELETE
 }
 
 runner_e2e_upload_text() {
@@ -65,7 +65,7 @@ runner_e2e_upload_text() {
         --arg contentType "$content_type" \
         --argjson size "$size" \
         '{filename: $filename, contentType: $contentType, size: $size}')
-    prepared=$(runner_api_curl "/api/zero/uploads/prepare" \
+    prepared=$(runner_api_curl "/api/okou/uploads/prepare" \
         -X POST \
         -d "$payload") || return
     upload_url=$(jq -er '.uploadUrl | select(type == "string" and length > 0)' \
@@ -99,7 +99,7 @@ runner_e2e_upload_text() {
         --arg id "$upload_id" \
         --arg contentType "$content_type" \
         '{id: $id, contentType: $contentType}')
-    completed=$(runner_api_curl "/api/zero/uploads/complete" \
+    completed=$(runner_api_curl "/api/okou/uploads/complete" \
         -X POST \
         -d "$payload") || return
     jq -ce '{id, filename, contentType, size}' <<<"$completed"
@@ -107,7 +107,7 @@ runner_e2e_upload_text() {
 
 runner_e2e_cancel_run() {
     local run_id="$1"
-    runner_api_curl "/api/zero/runs/${run_id}/cancel" -X POST
+    runner_api_curl "/api/okou/runs/${run_id}/cancel" -X POST
 }
 
 runner_e2e_wait_for_run_status() {
@@ -119,7 +119,7 @@ runner_e2e_wait_for_run_status() {
     local run_status=""
 
     while ((SECONDS - started_at < timeout_seconds)); do
-        if response=$(runner_api_curl "/api/zero/runs/${run_id}" 2>&1); then
+        if response=$(runner_api_curl "/api/okou/runs/${run_id}" 2>&1); then
             run_status=$(jq -r '.status // empty' <<<"$response")
             if [[ "$run_status" == "$expected_status" ]]; then
                 printf '%s\n' "$response"
@@ -178,12 +178,12 @@ runner_e2e_start_checkpointed_chat_run() {
 
 runner_e2e_delete_chat_thread() {
     local thread_id="$1"
-    runner_api_curl "/api/zero/chat-threads/${thread_id}" -X DELETE
+    runner_api_curl "/api/okou/chat-threads/${thread_id}" -X DELETE
 }
 
 runner_e2e_delete_workflow() {
     local workflow_id="$1"
-    runner_api_curl "/api/zero/workflows/${workflow_id}" -X DELETE
+    runner_api_curl "/api/okou/workflows/${workflow_id}" -X DELETE
 }
 
 runner_e2e_wait_for_chat_event() {
@@ -196,7 +196,7 @@ runner_e2e_wait_for_chat_event() {
 
     while ((SECONDS - started_at < timeout_seconds)); do
         if last_events=$(runner_api_curl \
-            "/api/zero/chat-threads/${thread_id}/events?limit=50" 2>&1) &&
+            "/api/okou/chat-threads/${thread_id}/events?limit=50" 2>&1) &&
             jq -e \
                 --arg runId "$run_id" \
                 --arg eventType "$event_type" \
@@ -223,7 +223,7 @@ runner_e2e_wait_for_usage_event() {
 
     while ((SECONDS - started_at < timeout_seconds)); do
         if last_events=$(runner_api_curl \
-            "/api/zero/chat-threads/${thread_id}/events?limit=50" 2>&1) &&
+            "/api/okou/chat-threads/${thread_id}/events?limit=50" 2>&1) &&
             jq -e \
                 --arg runId "$run_id" \
                 --arg provider "$provider" '
@@ -251,7 +251,7 @@ runner_e2e_wait_for_usage_event() {
 }
 
 runner_e2e_usage_record() {
-    runner_api_curl "/api/zero/usage/record?page=1&pageSize=100&scope=mine&range=24h&tz=UTC&source=chat"
+    runner_api_curl "/api/okou/usage/record?page=1&pageSize=100&scope=mine&range=24h&tz=UTC&source=chat"
 }
 
 runner_e2e_wait_for_usage_record() {
@@ -298,7 +298,7 @@ runner_e2e_assert_no_usage_for_thread() {
 
     while :; do
         events=$(runner_api_curl \
-            "/api/zero/chat-threads/${thread_id}/events?limit=50") || return
+            "/api/okou/chat-threads/${thread_id}/events?limit=50") || return
         record=$(runner_e2e_usage_record) || return
         if ! jq -e --arg runId "$run_id" '
             all(.events[]?;
@@ -326,12 +326,12 @@ runner_e2e_assert_no_usage_for_thread() {
 
 runner_e2e_agent_events() {
     local run_id="$1"
-    runner_e2e_collect_pages "/api/zero/runs/${run_id}/telemetry/agent" events
+    runner_e2e_collect_pages "/api/okou/runs/${run_id}/telemetry/agent" events
 }
 
 runner_e2e_network_logs() {
     local run_id="$1"
-    runner_e2e_collect_pages "/api/zero/runs/${run_id}/network" networkLogs
+    runner_e2e_collect_pages "/api/okou/runs/${run_id}/network" networkLogs
 }
 
 runner_e2e_collect_pages() {
@@ -423,7 +423,7 @@ runner_e2e_wait_for_active_chat_text() {
 
     while ((SECONDS - started_at < timeout_seconds)); do
         if last_events=$(runner_api_curl \
-            "/api/zero/chat-threads/${thread_id}/events?limit=50" 2>&1) &&
+            "/api/okou/chat-threads/${thread_id}/events?limit=50" 2>&1) &&
             matched_text=$(jq -er --arg runId "$run_id" --arg expected "$expected" '
                 [
                     .events[]?
@@ -437,7 +437,7 @@ runner_e2e_wait_for_active_chat_text() {
             return 0
         fi
 
-        if last_run=$(runner_api_curl "/api/zero/runs/${run_id}" 2>&1); then
+        if last_run=$(runner_api_curl "/api/okou/runs/${run_id}" 2>&1); then
             run_status=$(jq -r '.status // empty' <<<"$last_run")
             case "$run_status" in
                 completed|failed|timeout|cancelled)

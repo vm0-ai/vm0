@@ -84,7 +84,7 @@ describe("okou scrape command", () => {
     let requestBody: unknown;
     server.use(
       http.post(
-        "http://localhost:3000/api/zero/scrape",
+        "http://localhost:3000/api/okou/scrape",
         async ({ request }) => {
           requestBody = await request.json();
           return HttpResponse.json({
@@ -131,7 +131,7 @@ describe("okou scrape command", () => {
     let requestBody: unknown;
     server.use(
       http.post(
-        "http://localhost:3000/api/zero/scrape",
+        "http://localhost:3000/api/okou/scrape",
         async ({ request }) => {
           requestBody = await request.json();
           return HttpResponse.json({
@@ -175,7 +175,7 @@ describe("okou scrape command", () => {
 
   it("prints markdown in human-readable mode", async () => {
     server.use(
-      http.post("http://localhost:3000/api/zero/scrape", () => {
+      http.post("http://localhost:3000/api/okou/scrape", () => {
         return HttpResponse.json({
           requestedUrl: "https://example.com",
           format: "markdown",
@@ -200,7 +200,7 @@ describe("okou scrape command", () => {
   it("rejects invalid formats before calling the API", async () => {
     let apiRequests = 0;
     server.use(
-      http.post("http://localhost:3000/api/zero/scrape", () => {
+      http.post("http://localhost:3000/api/okou/scrape", () => {
         apiRequests += 1;
         return HttpResponse.json({});
       }),
@@ -223,7 +223,7 @@ describe("okou scrape command", () => {
 
   it("prints API error messages", async () => {
     server.use(
-      http.post("http://localhost:3000/api/zero/scrape", () => {
+      http.post("http://localhost:3000/api/okou/scrape", () => {
         return HttpResponse.json(
           {
             error: {

@@ -5,7 +5,7 @@ import { pageSignal$ } from "./page-signal.ts";
 import { resolveApiBase } from "./api-base.ts";
 import { zeroClient$ } from "./api-client.ts";
 
-const AUTHENTICATED_FILE_PATH = "/api/zero/web/download-file";
+const AUTHENTICATED_FILE_PATH = "/api/okou/web/download-file";
 
 function isAuthenticatedAttachmentUrl(url: string): boolean {
   if (!URL.canParse(url)) {

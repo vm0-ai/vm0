@@ -56,6 +56,9 @@ _HTTP_STATUS_UNAUTHORIZED = 401
 _HTTP_STATUS_FORBIDDEN = 403
 _HTTP_STATUS_FAILED_DEPENDENCY = 424
 
+MAX_CONNECTOR_DIAGNOSTIC_QUERY_CHARACTERS = 64 * 1024
+MAX_CONNECTOR_DIAGNOSTIC_QUERY_FIELDS = 8 * 1024
+
 _CONNECTOR_DIAGNOSTIC_ELIGIBLE = "_connector_diagnostic_eligible"
 _CONNECTOR_DIAGNOSTIC_ACTIVE_FIREWALL_NAMES = "_connector_diagnostic_active_firewall_names"
 _CONNECTOR_DIAGNOSTIC_CATALOG_SNAPSHOT = "_connector_diagnostic_catalog_snapshot"
@@ -166,7 +169,7 @@ def maybe_make_local_response(
     candidate = _resolve_candidate(flow, original_url=original_url)
     if candidate is None:
         return False
-    if _request_has_auth_material(flow, candidate, original_url):
+    if _request_may_have_auth_material(flow, candidate, original_url):
         return False
 
     flow_metadata.start_request_timing(flow.metadata)
@@ -237,7 +240,7 @@ def maybe_make_firewall_allow_local_response(
         return False
 
     candidate = resolution.candidate
-    if _request_has_auth_material(flow, candidate, original_url):
+    if _request_may_have_auth_material(flow, candidate, original_url):
         return False
 
     flow.metadata[_CONNECTOR_DIAGNOSTIC_CATALOG_SNAPSHOT] = diagnostic_snapshot
@@ -290,7 +293,7 @@ def install_response_stream_if_needed(flow: http.HTTPFlow) -> bool:
     candidate = _resolve_candidate(flow, original_url=original_url)
     if candidate is None:
         return False
-    if _request_has_auth_material(flow, candidate, original_url):
+    if _request_may_have_auth_material(flow, candidate, original_url):
         return False
 
     upstream_status = flow.response.status_code
@@ -367,7 +370,7 @@ def maybe_replace_response(
     if candidate is None:
         return
     upstream_status = flow.response.status_code
-    if _request_has_auth_material(flow, candidate, original_url):
+    if _request_may_have_auth_material(flow, candidate, original_url):
         return
 
     _set_failure_metadata(flow, candidate)
@@ -406,7 +409,7 @@ def maybe_make_error_response(
     candidate = _resolve_candidate(flow, original_url=original_url)
     if candidate is None:
         return
-    if _request_has_auth_material(flow, candidate, original_url):
+    if _request_may_have_auth_material(flow, candidate, original_url):
         return
     _set_failure_metadata(flow, candidate)
     flow.response = _make_local_response(
@@ -679,11 +682,12 @@ def _message(
     )
 
 
-def _request_has_auth_material(
+def _request_may_have_auth_material(
     flow: http.HTTPFlow,
     candidate: builtin_connector_diagnostics.ConnectorDiagnosticCandidate,
     original_url: str,
 ) -> bool:
+    """Return whether auth is present or bounded query inspection is inconclusive."""
     configured_headers = {name.lower() for name in candidate.auth_header_names}
     auth_headers = configured_headers | _GENERIC_AUTH_HEADER_NAMES
     for name in auth_headers:
@@ -696,15 +700,41 @@ def _request_has_auth_material(
         parsed = runtime_url_parsing.split_runtime_url(original_url)
     except ValueError:
         return False
-    for name, value in urllib.parse.parse_qsl(parsed.query, keep_blank_values=True):
-        normalized_name = name.lower()
-        is_auth_param = (
-            name in configured_query_params
-            or normalized_name in normalized_configured_query_params
-            or normalized_name in _GENERIC_AUTH_QUERY_PARAM_NAMES
-        )
-        if is_auth_param and _query_param_has_auth_material(value):
-            return True
+
+    query = parsed.query
+    if len(query) > MAX_CONNECTOR_DIAGNOSTIC_QUERY_CHARACTERS:
+        return True
+
+    field_count = 0
+    field_start = 0
+    query_end = len(query)
+    while field_start < query_end:
+        field_end = query.find("&", field_start)
+        if field_end == -1:
+            field_end = query_end
+
+        if field_start < field_end:
+            field_count += 1
+            if field_count > MAX_CONNECTOR_DIAGNOSTIC_QUERY_FIELDS:
+                return True
+
+            separator_index = query.find("=", field_start, field_end)
+            name_end = field_end if separator_index == -1 else separator_index
+            name = urllib.parse.unquote_plus(query[field_start:name_end])
+            normalized_name = name.lower()
+            is_auth_param = (
+                name in configured_query_params
+                or normalized_name in normalized_configured_query_params
+                or normalized_name in _GENERIC_AUTH_QUERY_PARAM_NAMES
+            )
+            if is_auth_param:
+                value_start = field_end if separator_index == -1 else separator_index + 1
+                value = urllib.parse.unquote_plus(query[value_start:field_end])
+                if _query_param_has_auth_material(value):
+                    return True
+
+        field_start = field_end + 1
+
     return False
 
 

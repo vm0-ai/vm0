@@ -80,7 +80,7 @@ export async function downloadFeishuFile(
     throw new ApiRequestError("Not authenticated", "UNAUTHORIZED", 401);
   }
 
-  const url = new URL("/api/zero/integrations/feishu/download-file", baseUrl);
+  const url = new URL("/api/okou/integrations/feishu/download-file", baseUrl);
   url.searchParams.set("message_id", messageId);
   url.searchParams.set("file_key", fileKey);
   url.searchParams.set("type", resourceType);

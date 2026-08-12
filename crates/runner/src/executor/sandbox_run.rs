@@ -16,8 +16,8 @@ use tokio_util::sync::CancellationToken;
 use tracing::{info, warn};
 
 use super::agent_run::{
-    AgentExecutionResult, PreparedGuestRuntime, ProcessCancelTimeouts, RunControls, RunStart,
-    run_in_sandbox_with_process_cancel_timeouts,
+    AgentExecutionResult, PreparedGuestRuntime, PreparedRunInputs, ProcessCancelTimeouts,
+    RunControls, RunStart, run_in_sandbox_with_process_cancel_timeouts,
 };
 use super::cli_framework::{
     EffectiveCliFramework, effective_cli_framework, normalized_cli_agent_type,
@@ -27,6 +27,7 @@ use super::diagnostics::{
     collect_agent_abnormal_exit_diagnostics, copy_guest_logs, explicit_enospc_evidence,
     read_guest_cli_agent_session_id,
 };
+use super::env::PreparedRunPayload;
 use super::session_id::invalid_session_id_diagnostic_preview;
 use super::telemetry::record_workspace_cache_result;
 use super::workspace_session_history_materializer::WorkspaceSessionHistoryMaterializer;
@@ -371,6 +372,7 @@ pub(super) async fn execute_new_sandbox(
     telemetry: &mut JobTelemetry,
     cancel: tokio_util::sync::CancellationToken,
 ) -> RunnerResult<ExecuteOutcome> {
+    let prepared_run_payload = super::env::prepare_run_payload_for_run(context)?;
     execute_new_sandbox_with_prepared_notifier(
         factory,
         context,
@@ -380,6 +382,7 @@ pub(super) async fn execute_new_sandbox(
         telemetry,
         NewSandboxHooks {
             controls: RunControls::new(cancel, None),
+            prepared_run_payload,
             sandbox_prepared: None,
         },
     )
@@ -447,6 +450,7 @@ pub(super) async fn execute_new_sandbox_with_prepared_notifier(
     } = dispatch;
     let NewSandboxHooks {
         mut controls,
+        prepared_run_payload,
         sandbox_prepared,
     } = hooks;
     let prepare_started = Instant::now();
@@ -679,7 +683,7 @@ pub(super) async fn execute_new_sandbox_with_prepared_notifier(
                 .and_then(WorkspaceImageLease::previous_storage),
         },
         telemetry,
-        controls,
+        PreparedRunInputs::new(controls, prepared_run_payload),
     )
     .await;
     outcome.workspace_image = workspace_image;
@@ -709,6 +713,7 @@ enum SandboxPrepareRetry {
 
 pub(super) struct NewSandboxHooks<'a> {
     pub(super) controls: RunControls,
+    pub(super) prepared_run_payload: PreparedRunPayload,
     pub(super) sandbox_prepared: Option<&'a SandboxPreparedNotifier>,
 }
 
@@ -1299,7 +1304,7 @@ pub(super) async fn execute_reused_sandbox(
     config: &ExecutorConfig,
     prev_storage: &crate::storage_fingerprints::StorageFingerprints,
     telemetry: &mut JobTelemetry,
-    controls: RunControls,
+    inputs: PreparedRunInputs,
 ) -> ExecuteOutcome {
     info!(
         run_id = %context.run_id,
@@ -1356,7 +1361,7 @@ pub(super) async fn execute_reused_sandbox(
             prev_storage: Some(prev_storage),
         },
         telemetry,
-        controls,
+        inputs,
     )
     .await
 }
@@ -1367,7 +1372,7 @@ pub(super) async fn execute_prepared_sandbox_run(
     config: &ExecutorConfig,
     start: RunStart<'_>,
     telemetry: &mut JobTelemetry,
-    controls: RunControls,
+    inputs: PreparedRunInputs,
 ) -> ExecuteOutcome {
     execute_prepared_sandbox_run_with_process_cancel_timeouts(
         run,
@@ -1375,7 +1380,7 @@ pub(super) async fn execute_prepared_sandbox_run(
         config,
         start,
         telemetry,
-        controls,
+        inputs,
         PROCESS_CANCEL_TIMEOUTS,
     )
     .await
@@ -1387,7 +1392,7 @@ pub(super) async fn execute_prepared_sandbox_run_with_process_cancel_timeouts(
     config: &ExecutorConfig,
     start: RunStart<'_>,
     telemetry: &mut JobTelemetry,
-    controls: RunControls,
+    inputs: PreparedRunInputs,
     process_cancel_timeouts: ProcessCancelTimeouts,
 ) -> ExecuteOutcome {
     let PreparedSandboxRun {
@@ -1396,19 +1401,19 @@ pub(super) async fn execute_prepared_sandbox_run_with_process_cancel_timeouts(
         network_log_session,
         prepared_guest_runtime,
     } = run;
-    let cleanup_cancel = controls.cancel.clone();
+    let cleanup_cancel = inputs.controls.cancel.clone();
     let reuse_result = start.reuse_result;
     let workspace_reuse_result = start.workspace_reuse_result;
 
-    let mut controls = controls;
-    controls.prepared_guest_runtime = prepared_guest_runtime;
+    let mut inputs = inputs;
+    inputs.controls.prepared_guest_runtime = prepared_guest_runtime;
     let result = run_in_sandbox_with_process_cancel_timeouts(
         sandbox.as_ref(),
         context,
         config,
         start,
         telemetry,
-        controls,
+        inputs,
         process_cancel_timeouts,
     )
     .await;

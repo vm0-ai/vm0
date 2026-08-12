@@ -67,9 +67,9 @@ Output:
 
 Notes:
   - Requires ffmpeg on PATH for audio extraction
-  - Authenticates via ZERO_TOKEN
+  - Authenticates via OKOU_TOKEN
   - Audio is extracted before upload to stay within the 25 MB size limit
-  - Uses the /api/zero/voice-io/stt endpoint (quota applies)`,
+  - Uses the /api/okou/voice-io/stt endpoint (quota applies)`,
   )
   .action(
     withErrorHandler(

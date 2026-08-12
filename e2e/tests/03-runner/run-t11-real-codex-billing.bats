@@ -34,7 +34,7 @@ teardown() {
     # The same dedicated Codex organization uses gpt-5.6-luna for BYOK steer
     # coverage. Its independent gpt-5.6-sol policy remains vm0-managed, so the
     # two real-agent shards can run concurrently without changing org state.
-    run runner_api_curl "/api/zero/model-policies"
+    run runner_api_curl "/api/okou/model-policies"
     echo "$output"
     assert_success
     run jq -e '

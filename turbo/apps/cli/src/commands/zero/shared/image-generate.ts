@@ -282,7 +282,7 @@ Output:
   for the current agent.
 
 Notes:
-  - Authenticates via ZERO_TOKEN (requires file:write capability)
+  - Authenticates via OKOU_TOKEN (requires file:write capability)
   - Charges org credits after successful image generation
   - Uses fal.ai for all image model execution
 

@@ -68,7 +68,7 @@ function stubConnector(
     ]);
   }
   return http.get(
-    "http://localhost:3000/api/zero/connector-catalog/status",
+    "http://localhost:3000/api/okou/connector-catalog/status",
     () => {
       return HttpResponse.json(body, { status });
     },
@@ -80,7 +80,7 @@ function stubAgent(
   displayName: string | null,
   origin = "http://localhost:3000",
 ) {
-  return http.get(`${origin}/api/zero/agents/${id}`, () => {
+  return http.get(`${origin}/api/okou/agents/${id}`, () => {
     return HttpResponse.json({
       agentId: id,
       ownerId: "owner-1",
@@ -97,7 +97,7 @@ function stubUserConnectors(
   enabledConnectorSlugs: string[],
   origin = "http://localhost:3000",
 ) {
-  return http.get(`${origin}/api/zero/agents/${id}/user-connectors`, () => {
+  return http.get(`${origin}/api/okou/agents/${id}/user-connectors`, () => {
     return HttpResponse.json({ enabledConnectorSlugs: enabledConnectorSlugs });
   });
 }
@@ -481,7 +481,7 @@ describe("okou connector status command", () => {
         stubAgent(AGENT_UUID, "maya"),
         stubUserConnectors(AGENT_UUID, ["github"]),
         http.get(
-          `http://localhost:3000/api/zero/agents/${ALT_AGENT_UUID}`,
+          `http://localhost:3000/api/okou/agents/${ALT_AGENT_UUID}`,
           () => {
             return HttpResponse.json(
               { error: { message: "should not be called", code: "ERR" } },
@@ -563,7 +563,7 @@ describe("okou connector status command", () => {
         expect.stringContaining("Authentication failed"),
       );
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("ZERO_TOKEN is invalid or expired"),
+        expect.stringContaining("OKOU_TOKEN is invalid or expired"),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
     });

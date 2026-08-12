@@ -6,7 +6,7 @@ import { server } from "../../../../mocks/server";
 import { zeroHostCommand } from "../index";
 
 const DEPLOYMENTS_URL =
-  "http://localhost:3000/api/zero/host/sites/:site/deployments";
+  "http://localhost:3000/api/okou/host/sites/:site/deployments";
 const ALIAS_URL = "https://demo-site.sites.example.com";
 
 describe("okou host versions command", () => {

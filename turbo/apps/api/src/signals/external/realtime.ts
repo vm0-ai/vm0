@@ -90,7 +90,7 @@ async function publishUserSignalNow(
 /**
  * Schedule a per-user invalidation/notification signal.
  *
- * Platform clients subscribe via the existing /api/zero/realtime/token
+ * Platform clients subscribe via the existing /api/okou/realtime/token
  * endpoint and receive events published by the API backend. Ably delivery is
  * best-effort: callers only wait for the background work to be registered, so
  * a delayed or rejected publish cannot fail the business operation.

@@ -2218,7 +2218,7 @@ ${stripeExample}  okou workflow automation add triage --agent <agent-id> webhook
   okou workflow automation add follow-up --agent <agent-id> chat-run-finished --chat-thread-id <thread-uuid> --run-status completed,failed --output-pattern "*deploy failed*"
 
 Notes:
-  - Workflow names resolve under --agent, then ZERO_AGENT_ID
+  - Workflow names resolve under --agent, then OKOU_AGENT_ID
   - Gmail automations match all inbound messages when no text match rules are provided
   - GitHub automations require the GitHub App installation in the workspace
   - GitHub workflow run filters accept comma-separated values; omit a filter to match any value

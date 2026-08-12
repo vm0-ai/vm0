@@ -103,7 +103,7 @@ Output:
   With no --prompt and no piped input, prints the generation choices instead.
 
 Notes:
-  - Authenticates via ZERO_TOKEN
+  - Authenticates via OKOU_TOKEN
   - The agent authors the HTML artifact and hosts it with okou host
 
 Design Systems:
@@ -173,6 +173,7 @@ ${formatRegistryListing(templates, "website templates")}`;
           ...templateSelectionRules,
           "If it is a marketing site, make the product or offer visible in the first viewport.",
           "For app or tool surfaces, prioritize dense, scannable, task-focused UI over decorative sections.",
+          "When generating images for a website, use `seedream4` by default unless the user specifies another image model.",
           "Use responsive HTML/CSS and verify the page works at mobile and desktop widths.",
         ],
       });

@@ -143,7 +143,7 @@ function buildTeamsOauthConnectUrl(args: {
   readonly orgId: string;
   readonly userId: string;
 }): string {
-  const url = new URL("/api/zero/teams/oauth/connect", internalApiBaseUrl());
+  const url = new URL("/api/okou/teams/oauth/connect", internalApiBaseUrl());
   url.searchParams.set("orgId", args.orgId);
   url.searchParams.set("vm0UserId", args.userId);
   return url.toString();

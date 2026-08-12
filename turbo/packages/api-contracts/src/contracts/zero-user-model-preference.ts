@@ -28,7 +28,7 @@ export type UpdateUserModelPreferenceRequest = z.infer<
 export const zeroUserModelPreferenceContract = c.router({
   get: {
     method: "GET",
-    path: "/api/zero/user-model-preference",
+    path: "/api/okou/user-model-preference",
     headers: authHeadersSchema,
     responses: {
       200: userModelPreferenceResponseSchema,
@@ -41,7 +41,7 @@ export const zeroUserModelPreferenceContract = c.router({
   },
   update: {
     method: "PUT",
-    path: "/api/zero/user-model-preference",
+    path: "/api/okou/user-model-preference",
     headers: authHeadersSchema,
     body: updateUserModelPreferenceRequestSchema,
     responses: {

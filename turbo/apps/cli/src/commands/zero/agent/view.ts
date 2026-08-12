@@ -93,7 +93,7 @@ Examples:
   View basic info:         okou agent view <agent-id>
   Include instructions:    okou agent view <agent-id> --instructions
   Show permissions:        okou agent view <agent-id> --permissions
-  View yourself:           okou agent view $ZERO_AGENT_ID --instructions`,
+  View yourself:           okou agent view $OKOU_AGENT_ID --instructions`,
   )
   .action(
     withErrorHandler(

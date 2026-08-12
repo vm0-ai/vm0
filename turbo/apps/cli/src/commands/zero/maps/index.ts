@@ -688,7 +688,7 @@ Examples:
   Render OSM PNG:       okou maps osm render --center 37.7749,-122.4194 --radius 1200 --output map.png
 
 Notes:
-  - Authenticates via ZERO_TOKEN (requires maps:read capability) or a CLI token
+  - Authenticates via OKOU_TOKEN (requires maps:read capability) or a CLI token
   - Google Maps and OpenStreetMap calls and credit billing happen on the vm0 API server
   - Use --fields essentials for place details unless paid fields are required`,
   );

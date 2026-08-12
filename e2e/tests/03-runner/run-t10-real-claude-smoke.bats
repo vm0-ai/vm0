@@ -38,7 +38,7 @@ wait_for_real_claude_events() {
 
     while (( SECONDS - start < timeout )); do
         if response="$(runner_api_curl \
-            "/api/zero/runs/$run_id/telemetry/agent?limit=100&order=asc" \
+            "/api/okou/runs/$run_id/telemetry/agent?limit=100&order=asc" \
             2>&1)"; then
             if jq -e '
                 [.events[]?.eventData |

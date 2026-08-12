@@ -17,11 +17,11 @@ import { uploadFileCommand } from "../upload-file";
 import chalk from "chalk";
 
 const UPLOAD_INIT_URL =
-  "http://localhost:3000/api/zero/integrations/slack/upload-file/init";
+  "http://localhost:3000/api/okou/integrations/slack/upload-file/init";
 const UPLOAD_COMPLETE_URL =
-  "http://localhost:3000/api/zero/integrations/slack/upload-file/complete";
+  "http://localhost:3000/api/okou/integrations/slack/upload-file/complete";
 const UPLOAD_MATERIALIZE_URL =
-  "http://localhost:3000/api/zero/integrations/slack/upload-file/materialize";
+  "http://localhost:3000/api/okou/integrations/slack/upload-file/materialize";
 const SLACK_PRESIGNED_URL = "https://files.slack.com/upload/v1/test-presigned";
 const CANONICAL_PRESIGNED_URL = "https://r2.example.com/upload/canonical-asset";
 

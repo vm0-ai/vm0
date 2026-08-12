@@ -2523,6 +2523,18 @@
       "degraded": "Bei Live-Updates ist ein Problem aufgetreten. Bitte aktualisieren Sie die Seite."
     }
   },
+  "invitationRedirect": {
+    "accountMismatch": {
+      "title": "Einladung für ein anderes Konto angenommen"
+    },
+    "actions": {
+      "switchAccount": "Konto wechseln",
+      "switchWorkspace": "Arbeitsbereich wechseln"
+    },
+    "success": {
+      "title": "Einladung für {{workspace}} angenommen"
+    }
+  },
   "lifecycle": {
     "emailUnsubscribe": {
       "action": "Abbestellen",
@@ -4555,7 +4567,6 @@
     "mermaid": {
       "diagramLabel": "Diagramm",
       "expand": "Diagramm vergrößern",
-      "invalidDiagram": "Ungültiges Diagramm",
       "viewSource": "Diagrammquelle"
     },
     "notFound": {

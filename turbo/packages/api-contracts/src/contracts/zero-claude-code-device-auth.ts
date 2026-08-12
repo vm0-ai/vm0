@@ -36,7 +36,7 @@ const claudeCodeDeviceAuthCancelResponseSchema = z.object({
 export const zeroClaudeCodeDeviceAuthContract = c.router({
   start: {
     method: "POST",
-    path: "/api/zero/model-providers/claude-code/device-auth/sessions",
+    path: "/api/okou/model-providers/claude-code/device-auth/sessions",
     headers: authHeadersSchema,
     body: z.object({
       scope: claudeCodeDeviceAuthScopeSchema,
@@ -54,7 +54,7 @@ export const zeroClaudeCodeDeviceAuthContract = c.router({
   },
   complete: {
     method: "POST",
-    path: "/api/zero/model-providers/claude-code/device-auth/sessions/complete",
+    path: "/api/okou/model-providers/claude-code/device-auth/sessions/complete",
     headers: authHeadersSchema,
     body: z.object({
       sessionToken: z.string().min(1),
@@ -72,7 +72,7 @@ export const zeroClaudeCodeDeviceAuthContract = c.router({
   },
   cancel: {
     method: "POST",
-    path: "/api/zero/model-providers/claude-code/device-auth/sessions/cancel",
+    path: "/api/okou/model-providers/claude-code/device-auth/sessions/cancel",
     headers: authHeadersSchema,
     body: z.object({ sessionToken: z.string().min(1) }),
     responses: {

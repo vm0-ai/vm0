@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.164.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.164.5...runner-rs-v0.164.6) (2026-08-12)
+
+
+### Refactoring
+
+* **python:** centralize billable model categories ([#26529](https://github.com/vm0-ai/vm0/issues/26529)) ([64b5b42](https://github.com/vm0-ai/vm0/commit/64b5b4285c7035d3d0173bf8a6aca88f3068e45e))
+
+
+### Performance Improvements
+
+* **python:** bound sigv4 query-pair cardinality ([#26534](https://github.com/vm0-ai/vm0/issues/26534)) ([1db44b9](https://github.com/vm0-ai/vm0/commit/1db44b9d4a41427fc2c635b75ed2e01bb9aab9e8))
+* **runner:** batch terminal connector fail-close ([#26538](https://github.com/vm0-ai/vm0/issues/26538)) ([8a25ecc](https://github.com/vm0-ai/vm0/commit/8a25ecc412bcaa3facbcd05d886421836d094a0a))
+
 ## [0.164.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.164.4...runner-rs-v0.164.5) (2026-08-12)
 
 

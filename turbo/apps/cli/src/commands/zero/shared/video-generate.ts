@@ -448,7 +448,7 @@ Output:
   complete result object.
 
 Notes:
-  - Authenticates via ZERO_TOKEN (requires file:write capability)
+  - Authenticates via OKOU_TOKEN (requires file:write capability)
   - Charges org credits after successful video generation
   - Uses MiniMax, BytePlus ModelArk, and fal.ai video models with configured usage pricing
 

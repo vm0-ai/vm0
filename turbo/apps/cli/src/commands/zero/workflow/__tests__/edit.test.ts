@@ -92,7 +92,7 @@ describe("okou workflow edit command", () => {
       let capturedBody: Record<string, unknown> | undefined;
       server.use(
         http.patch(
-          `http://localhost:3000/api/zero/workflows/${WORKFLOW_ID}`,
+          `http://localhost:3000/api/okou/workflows/${WORKFLOW_ID}`,
           async ({ request }) => {
             capturedBody = (await request.json()) as Record<string, unknown>;
             return HttpResponse.json(detailResponse());
@@ -118,11 +118,11 @@ describe("okou workflow edit command", () => {
       let capturedBody: Record<string, unknown> | undefined;
       let patchedWorkflowId: string | undefined;
       server.use(
-        http.get("http://localhost:3000/api/zero/workflows", () => {
+        http.get("http://localhost:3000/api/okou/workflows", () => {
           return HttpResponse.json([workflowSummary()]);
         }),
         http.patch(
-          "http://localhost:3000/api/zero/workflows/:workflowId",
+          "http://localhost:3000/api/okou/workflows/:workflowId",
           async ({ request, params }) => {
             patchedWorkflowId = params.workflowId as string;
             capturedBody = (await request.json()) as Record<string, unknown>;
@@ -157,7 +157,7 @@ describe("okou workflow edit command", () => {
       let capturedBody: Record<string, unknown> | undefined;
       server.use(
         http.patch(
-          `http://localhost:3000/api/zero/workflows/${WORKFLOW_ID}`,
+          `http://localhost:3000/api/okou/workflows/${WORKFLOW_ID}`,
           async ({ request }) => {
             capturedBody = (await request.json()) as Record<string, unknown>;
             return HttpResponse.json(detailResponse());

@@ -69,7 +69,7 @@ describe("okou model command", () => {
 
   it("should list allowed models, providers, and built-in price tiers", async () => {
     server.use(
-      http.get("http://localhost:3000/api/zero/model-policies", () => {
+      http.get("http://localhost:3000/api/okou/model-policies", () => {
         return HttpResponse.json(MODEL_POLICIES_RESPONSE);
       }),
     );

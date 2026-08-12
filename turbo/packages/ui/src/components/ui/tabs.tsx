@@ -28,7 +28,10 @@ const TabsList = React.forwardRef<HTMLDivElement, TabsPrimitive.List.Props>(
         ref={ref}
         data-slot="tabs-list"
         className={cn(
-          "inline-flex h-9 items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground",
+          // Geometry is shared with SegmentControl: the two patterns differ in
+          // semantics (navigating panels vs picking a value), not in looks, and
+          // letting them drift is what left the product with two skins.
+          "inline-flex h-9 items-center justify-center gap-0.5 rounded-lg bg-muted p-[3px] text-muted-foreground",
           className,
         )}
         {...props}
@@ -45,7 +48,7 @@ const TabsTrigger = React.forwardRef<HTMLElement, TabsPrimitive.Tab.Props>(
         ref={ref}
         data-slot="tabs-trigger"
         className={cn(
-          "inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1 text-sm font-medium text-muted-foreground ring-offset-background transition-all hover:text-foreground data-active:bg-background data-active:text-foreground data-active:shadow focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
+          "inline-flex h-full shrink-0 items-center justify-center gap-1.5 whitespace-nowrap rounded-[5px] px-3 text-sm font-medium text-muted-foreground outline-none transition-colors not-data-active:hover:bg-state-hover not-data-active:hover:text-foreground data-active:bg-segment-selected data-active:text-foreground data-active:shadow-segment-selected disabled:pointer-events-none disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-ring [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
           className,
         )}
         {...props}

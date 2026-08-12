@@ -62,6 +62,10 @@ ruleTester.run("no-raw-msw-http", rule, {
   ],
   invalid: [
     {
+      code: `server.use(http.get("*/api/okou/org", () => HttpResponse.json({})));`,
+      errors: [{ messageId: "useMockApi" }],
+    },
+    {
       code: `server.use(http.get("*/api/zero/org", () => HttpResponse.json({})));`,
       errors: [{ messageId: "useMockApi" }],
     },

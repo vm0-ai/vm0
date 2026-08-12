@@ -8,9 +8,9 @@ import { uploadFileCommand } from "../upload-file";
 import chalk from "chalk";
 
 const UPLOAD_INIT_URL =
-  "http://localhost:3000/api/zero/integrations/github/upload-file/init";
+  "http://localhost:3000/api/okou/integrations/github/upload-file/init";
 const UPLOAD_COMPLETE_URL =
-  "http://localhost:3000/api/zero/integrations/github/upload-file/complete";
+  "http://localhost:3000/api/okou/integrations/github/upload-file/complete";
 const R2_UPLOAD_URL = "https://mock-r2.test/github-upload";
 
 describe("okou github upload-file command", () => {

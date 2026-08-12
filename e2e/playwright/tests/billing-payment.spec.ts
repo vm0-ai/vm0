@@ -28,7 +28,7 @@ test("billing settings reflects limited free onboarding", async ({ page }) => {
 
 async function expectLimitedFreeBillingStatus(page: Page): Promise<void> {
   const token = await currentClerkSessionToken(page);
-  const response = await page.request.get(`${apiUrl}/api/zero/billing/status`, {
+  const response = await page.request.get(`${apiUrl}/api/okou/billing/status`, {
     headers: authHeadersForToken(token),
   });
   if (response.status() !== 200) {

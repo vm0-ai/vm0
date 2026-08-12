@@ -249,6 +249,7 @@ export class ComputerUseHostRuntime {
   private commandTimer: NodeJS.Timeout | null = null;
   private recoveryTimer: NodeJS.Timeout | null = null;
   private commandExecutionRunning = false;
+  private draining = false;
   private lastCommandActivityAtMs: number | null = null;
   private lastCommandCompletionAtMs: number | null = null;
   private hostToken: string | null = null;
@@ -290,6 +291,7 @@ export class ComputerUseHostRuntime {
       return;
     }
     this.running = true;
+    this.draining = false;
     try {
       const nextDelay = await this.startHost();
       if (nextDelay === null) {
@@ -305,6 +307,7 @@ export class ComputerUseHostRuntime {
 
   async stop(): Promise<void> {
     this.running = false;
+    this.draining = false;
     this.clearHeartbeatTimer();
     this.clearCommandTimer();
     this.clearRecoveryTimer();
@@ -326,6 +329,17 @@ export class ComputerUseHostRuntime {
     } catch (error) {
       this.setRuntimeErrorState("stop", error);
     }
+  }
+
+  async drainAndStop(): Promise<void> {
+    this.draining = true;
+    this.clearCommandTimer();
+    while (this.commandExecutionRunning) {
+      await new Promise<void>((resolve) => {
+        this.scheduleTimeout(resolve, 50);
+      });
+    }
+    await this.stop();
   }
 
   getState(): ComputerUseHostRuntimeState {
@@ -619,7 +633,7 @@ export class ComputerUseHostRuntime {
   }
 
   private scheduleCommandPoll(delayMs: number): void {
-    if (!this.running || this.commandTimer) {
+    if (!this.running || this.draining || this.commandTimer) {
       return;
     }
     this.commandTimer = this.scheduleTimeout(() => {
@@ -659,6 +673,7 @@ export class ComputerUseHostRuntime {
       if (
         scheduleNextPoll &&
         this.running &&
+        !this.draining &&
         this.hostToken &&
         this.state.recovery?.phase !== "command_poll"
       ) {
@@ -689,7 +704,7 @@ export class ComputerUseHostRuntime {
   private async startHost(): Promise<number | null> {
     this.setState({ status: "connecting", lastError: null });
     const response = await this.sessionFetch(
-      `${this.apiBaseUrl}/api/zero/computer-use/hosts/start`,
+      `${this.apiBaseUrl}/api/okou/computer-use/hosts/start`,
       {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -799,7 +814,7 @@ export class ComputerUseHostRuntime {
       label: "heartbeat",
       timeoutMs: HEARTBEAT_REQUEST_TIMEOUT_MS,
       request: async (signal) => {
-        return await this.hostFetch("/api/zero/computer-use/heartbeat", {
+        return await this.hostFetch("/api/okou/computer-use/heartbeat", {
           method: "POST",
           body: JSON.stringify(await this.runtimeBody()),
           signal,
@@ -844,7 +859,7 @@ export class ComputerUseHostRuntime {
       timeoutMs: COMMAND_POLL_REQUEST_TIMEOUT_MS,
       request: async (signal) => {
         return await this.hostFetch(
-          "/api/zero/computer-use/host/commands/next",
+          "/api/okou/computer-use/host/commands/next",
           {
             method: "POST",
             body: JSON.stringify({
@@ -935,7 +950,7 @@ export class ComputerUseHostRuntime {
           timeoutMs: COMMAND_COMPLETION_REQUEST_TIMEOUT_MS,
           request: async (signal) => {
             return await this.hostFetch(
-              `/api/zero/computer-use/host/commands/${commandId}/complete`,
+              `/api/okou/computer-use/host/commands/${commandId}/complete`,
               {
                 method: "POST",
                 body: JSON.stringify(completed),
@@ -993,7 +1008,7 @@ export class ComputerUseHostRuntime {
 
   private async stopHost(hostToken: string): Promise<void> {
     const response = await this.hostFetchRequest(
-      `${this.apiBaseUrl}/api/zero/computer-use/host/stop`,
+      `${this.apiBaseUrl}/api/okou/computer-use/host/stop`,
       {
         method: "POST",
         body: JSON.stringify({}),

@@ -14,7 +14,7 @@ import { sendCommand } from "../message/send";
 import chalk from "chalk";
 
 const SLACK_MESSAGE_URL =
-  "http://localhost:3000/api/zero/integrations/slack/message";
+  "http://localhost:3000/api/okou/integrations/slack/message";
 
 describe("okou slack message send command", () => {
   vi.spyOn(process, "exit").mockImplementation((() => {

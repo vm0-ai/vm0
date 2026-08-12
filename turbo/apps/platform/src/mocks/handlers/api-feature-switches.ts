@@ -1,7 +1,7 @@
 /**
  * Feature Switches API Handlers
  *
- * Mock handlers for /api/zero/feature-switches endpoint.
+ * Mock handlers for /api/okou/feature-switches endpoint.
  *
  * Stateless: defaults return empty switches. Tests override the GET response
  * via `setMockFeatureSwitches` from `./api-feature-switches.helpers.ts` —

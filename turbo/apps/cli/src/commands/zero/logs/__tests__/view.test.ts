@@ -59,7 +59,7 @@ describe("okou logs view command", () => {
   it("should display agent events with timestamps", async () => {
     server.use(
       http.get(
-        "http://localhost:3000/api/zero/runs/:id/telemetry/agent",
+        "http://localhost:3000/api/okou/runs/:id/telemetry/agent",
         () => {
           return HttpResponse.json({
             events: [
@@ -82,7 +82,7 @@ describe("okou logs view command", () => {
   it("should handle empty events", async () => {
     server.use(
       http.get(
-        "http://localhost:3000/api/zero/runs/:id/telemetry/agent",
+        "http://localhost:3000/api/okou/runs/:id/telemetry/agent",
         () => {
           return HttpResponse.json({
             events: [],
@@ -103,7 +103,7 @@ describe("okou logs view command", () => {
     const capturedSinceValues: (string | null)[] = [];
     server.use(
       http.get(
-        "http://localhost:3000/api/zero/runs/:id/telemetry/agent",
+        "http://localhost:3000/api/okou/runs/:id/telemetry/agent",
         ({ request }) => {
           const url = new URL(request.url);
           const cursor = url.searchParams.get("cursor");
@@ -140,7 +140,7 @@ describe("okou logs view command", () => {
   it("should preserve per-page framework when a later page omits it", async () => {
     server.use(
       http.get(
-        "http://localhost:3000/api/zero/runs/:id/telemetry/agent",
+        "http://localhost:3000/api/okou/runs/:id/telemetry/agent",
         ({ request }) => {
           const url = new URL(request.url);
           const cursor = url.searchParams.get("cursor");
@@ -196,7 +196,7 @@ describe("okou logs view command", () => {
   it("should not reuse a codex framework for a later unsupported framework page", async () => {
     server.use(
       http.get(
-        "http://localhost:3000/api/zero/runs/:id/telemetry/agent",
+        "http://localhost:3000/api/okou/runs/:id/telemetry/agent",
         ({ request }) => {
           const url = new URL(request.url);
           const cursor = url.searchParams.get("cursor");
@@ -250,7 +250,7 @@ describe("okou logs view command", () => {
     let capturedUrl: URL | undefined;
     server.use(
       http.get(
-        "http://localhost:3000/api/zero/runs/:id/telemetry/agent",
+        "http://localhost:3000/api/okou/runs/:id/telemetry/agent",
         ({ request }) => {
           capturedUrl = new URL(request.url);
           return HttpResponse.json({
@@ -272,7 +272,7 @@ describe("okou logs view command", () => {
     let capturedUrl: URL | undefined;
     server.use(
       http.get(
-        "http://localhost:3000/api/zero/runs/:id/telemetry/agent",
+        "http://localhost:3000/api/okou/runs/:id/telemetry/agent",
         ({ request }) => {
           capturedUrl = new URL(request.url);
           return HttpResponse.json({
@@ -316,7 +316,7 @@ describe("okou logs view command", () => {
     let capturedUrl: URL | undefined;
     server.use(
       http.get(
-        "http://localhost:3000/api/zero/runs/:id/telemetry/agent",
+        "http://localhost:3000/api/okou/runs/:id/telemetry/agent",
         ({ request }) => {
           capturedUrl = new URL(request.url);
           return HttpResponse.json({
@@ -344,7 +344,7 @@ describe("okou logs view command", () => {
     let capturedUrl: URL | undefined;
     server.use(
       http.get(
-        "http://localhost:3000/api/zero/runs/:id/telemetry/agent",
+        "http://localhost:3000/api/okou/runs/:id/telemetry/agent",
         ({ request }) => {
           capturedUrl = new URL(request.url);
           return HttpResponse.json({
@@ -435,7 +435,7 @@ describe("okou logs view command", () => {
   it("should render codex framework events", async () => {
     server.use(
       http.get(
-        "http://localhost:3000/api/zero/runs/:id/telemetry/agent",
+        "http://localhost:3000/api/okou/runs/:id/telemetry/agent",
         () => {
           return HttpResponse.json({
             events: [
@@ -489,7 +489,7 @@ describe("okou logs view command", () => {
   it("should collapse paired Codex error and turn.failed when default tail order is descending", async () => {
     server.use(
       http.get(
-        "http://localhost:3000/api/zero/runs/:id/telemetry/agent",
+        "http://localhost:3000/api/okou/runs/:id/telemetry/agent",
         () => {
           return HttpResponse.json({
             events: [
@@ -537,7 +537,7 @@ describe("okou logs view command", () => {
   it("should render failed Codex turn.completed with readable details", async () => {
     server.use(
       http.get(
-        "http://localhost:3000/api/zero/runs/:id/telemetry/agent",
+        "http://localhost:3000/api/okou/runs/:id/telemetry/agent",
         () => {
           return HttpResponse.json({
             events: [
@@ -586,7 +586,7 @@ describe("okou logs view command", () => {
   it("should collapse same-turn Codex error and failed turn.completed in default tail output", async () => {
     server.use(
       http.get(
-        "http://localhost:3000/api/zero/runs/:id/telemetry/agent",
+        "http://localhost:3000/api/okou/runs/:id/telemetry/agent",
         () => {
           return HttpResponse.json({
             events: [
@@ -641,7 +641,7 @@ describe("okou logs view command", () => {
   it("should flush pending Codex tool use at command end", async () => {
     server.use(
       http.get(
-        "http://localhost:3000/api/zero/runs/:id/telemetry/agent",
+        "http://localhost:3000/api/okou/runs/:id/telemetry/agent",
         () => {
           return HttpResponse.json({
             events: [
@@ -676,7 +676,7 @@ describe("okou logs view command", () => {
   it("should handle authentication error", async () => {
     server.use(
       http.get(
-        "http://localhost:3000/api/zero/runs/:id/telemetry/agent",
+        "http://localhost:3000/api/okou/runs/:id/telemetry/agent",
         () => {
           return HttpResponse.json(
             { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
@@ -694,7 +694,7 @@ describe("okou logs view command", () => {
       expect.stringContaining("Authentication failed"),
     );
     expect(mockConsoleError).toHaveBeenCalledWith(
-      expect.stringContaining("ZERO_TOKEN is invalid or expired"),
+      expect.stringContaining("OKOU_TOKEN is invalid or expired"),
     );
   });
 });

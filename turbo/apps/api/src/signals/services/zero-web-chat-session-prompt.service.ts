@@ -80,7 +80,7 @@ function buildCurrentThreadContext(threadId: string): string {
     "",
     `- CHAT_THREAD_ID: ${threadId}`,
     "",
-    "Reading this thread, each through ZERO_TOKEN:",
+    "Reading this thread, each through OKOU_TOKEN:",
     "- `okou chat messages` prints this thread's user and assistant messages, oldest first (chat-event:read)",
     "- `okou chat messages --limit <n>` prints only the most recent n messages",
     "- `okou logs <run-id> --all` prints the full event stream of one run in this thread (agent-run:read)",
@@ -97,7 +97,7 @@ function buildCurrentThreadContext(threadId: string): string {
  * to do with them. What the run needs from the source thread depends on the
  * message, so the commands are listed and the choice is left to the run.
  */
-export function buildAgentRunSourceContext(
+function buildAgentRunSourceContext(
   source: ChatAgentRunSourceAnnotation,
 ): string {
   return [
@@ -112,7 +112,7 @@ export function buildAgentRunSourceContext(
     "",
     "The message text is everything that run chose to carry across the thread boundary. Its own instructions, the conversation it came from, and whatever it already found stayed in the source thread and are not included above.",
     "",
-    "Reading the source, each through ZERO_TOKEN:",
+    "Reading the source, each through OKOU_TOKEN:",
     `- \`okou chat messages --thread-id ${source.threadId}\` prints the source thread's user and assistant messages (chat-event:read)`,
     `- \`okou chat get --thread-id ${source.threadId}\` prints its title, agent, and model (chat-thread:read)`,
     `- \`okou logs ${source.runId} --all\` prints the full event stream of the run that sent this message (agent-run:read)`,

@@ -100,7 +100,7 @@ export const rememberLastUsedAgentId$ = command(({ set }, agentId: string) => {
 
 const internalReloadAgents$ = state(0);
 
-/** All agents in the user's org (from /api/zero/team). */
+/** All agents in the user's org (from /api/okou/team). */
 export const agents$ = computed(async (get) => {
   get(internalReloadAgents$);
   const zeroClient = get(zeroClient$)(zeroTeamContract);

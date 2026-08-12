@@ -145,7 +145,7 @@ describe("okou connector custom create", () => {
     });
     server.use(
       http.post(
-        "http://localhost:3000/api/zero/custom-connectors",
+        "http://localhost:3000/api/okou/custom-connectors",
         async ({ request }) => {
           createBody = await request.json();
           return HttpResponse.json(created, { status: 201 });
@@ -196,14 +196,14 @@ describe("okou connector custom create", () => {
     });
     server.use(
       http.post(
-        "http://localhost:3000/api/zero/custom-connectors",
+        "http://localhost:3000/api/okou/custom-connectors",
         async ({ request }) => {
           createBody = await request.json();
           return HttpResponse.json(created, { status: 201 });
         },
       ),
       http.post(
-        `http://localhost:3000/api/zero/custom-connectors/${CONNECTOR_ID}/oauth2/start`,
+        `http://localhost:3000/api/okou/custom-connectors/${CONNECTOR_ID}/oauth2/start`,
         () => {
           oauthStartRequests += 1;
           return HttpResponse.json({
@@ -238,7 +238,7 @@ describe("okou connector custom create", () => {
     let createBody: unknown;
     server.use(
       http.post(
-        "http://localhost:3000/api/zero/custom-connectors",
+        "http://localhost:3000/api/okou/custom-connectors",
         async ({ request }) => {
           createBody = await request.json();
           return HttpResponse.json(
@@ -346,7 +346,7 @@ describe("okou connector custom create", () => {
     let createBody: unknown;
     server.use(
       http.post(
-        "http://localhost:3000/api/zero/custom-connectors",
+        "http://localhost:3000/api/okou/custom-connectors",
         async ({ request }) => {
           createBody = await request.json();
           return HttpResponse.json(

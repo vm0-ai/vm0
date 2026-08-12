@@ -49,7 +49,7 @@ const c = initContract();
 const slackDownloadFileContract = c.router({
   download: {
     method: "GET",
-    path: "/api/zero/integrations/slack/download-file",
+    path: "/api/okou/integrations/slack/download-file",
     headers: authHeadersSchema,
     query: z.object({
       file_id: z.string().optional(),
