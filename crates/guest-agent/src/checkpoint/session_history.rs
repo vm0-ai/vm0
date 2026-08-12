@@ -550,7 +550,7 @@ fn prepare_session_history(
                     None,
                 );
                 let mut prepared =
-                    prepare_raw_session_history(mode, history_read_start, candidate)?;
+                    prepare_raw_session_history(mode, history_read_start, candidate, true)?;
                 prepared.live_history = PreparedLiveHistory::NativeCandidate {
                     kind: NativeHistoryKind::ClaudeCode,
                     replacement,
@@ -617,8 +617,12 @@ fn prepare_session_history(
                                 SessionHistoryPruneOutcome::Selected,
                                 None,
                             );
-                            let mut prepared =
-                                prepare_raw_session_history(mode, history_read_start, candidate)?;
+                            let mut prepared = prepare_raw_session_history(
+                                mode,
+                                history_read_start,
+                                candidate,
+                                true,
+                            )?;
                             prepared.live_history = PreparedLiveHistory::NativeCandidate {
                                 kind: NativeHistoryKind::Codex,
                                 replacement,
@@ -708,8 +712,13 @@ fn prepare_session_history(
     };
     match source {
         history::SessionHistoryCheckpointSource::Decoded(history_bytes) => {
-            prepare_raw_session_history(mode, history_read_start, history_bytes)
-                .map(PreparedSessionHistoryOutcome::Upload)
+            prepare_raw_session_history(
+                mode,
+                history_read_start,
+                history_bytes,
+                framework != env::Framework::Pi,
+            )
+            .map(PreparedSessionHistoryOutcome::Upload)
         }
         history::SessionHistoryCheckpointSource::CodexZstd { encoded } => {
             prepare_reused_zstd_session_history(
@@ -727,6 +736,7 @@ fn prepare_raw_session_history(
     mode: CheckpointMode,
     history_read_start: std::time::Instant,
     history_bytes: Vec<u8>,
+    validate_recovery: bool,
 ) -> Result<PreparedSessionHistory, AgentError> {
     let history_size = history_bytes.len() as u64;
 
@@ -734,7 +744,7 @@ fn prepare_raw_session_history(
         Ok(s) => Some(s),
         Err(e) => {
             let msg = format!("Session history is not valid UTF-8: {e}");
-            if mode.validate_history() {
+            if mode.validate_history() && validate_recovery {
                 return Err(fail(mode, "session_history_read", history_read_start, msg));
             }
             log_warn!(LOG_TAG, "{msg}; preserving raw bytes for checkpoint");
@@ -756,7 +766,7 @@ fn prepare_raw_session_history(
     }
 
     if let Some(session_history) = session_history_text {
-        if mode.validate_history() {
+        if mode.validate_history() && validate_recovery {
             validate_recoverable_session_history(session_history)
                 .map_err(|msg| fail(mode, "session_history_validate", history_read_start, msg))?;
         }
@@ -1290,5 +1300,32 @@ mod tests {
         let err = validate_recoverable_session_history(&history).unwrap_err();
 
         assert!(err.contains("line 2"));
+    }
+
+    #[test]
+    fn pi_recovery_checkpoint_preserves_raw_sqlite_bytes() {
+        let dir = tempfile::tempdir().unwrap();
+        let database_path = dir.path().join("sessions.sqlite");
+        let database = b"SQLite format 3\0\xff\x00native-pi-session";
+        std::fs::write(&database_path, database).unwrap();
+
+        let prepared = prepare_session_history(
+            CheckpointMode::Recovery,
+            env::Framework::Pi,
+            CheckpointSessionHistoryLimits::Production,
+            "00000000-0000-4000-8000-000000000001",
+            database_path.to_str().unwrap(),
+            std::time::Instant::now(),
+        )
+        .expect("Pi SQLite bytes should not be validated as JSONL");
+
+        assert_eq!(prepared.raw_size, database.len() as u64);
+        assert_eq!(prepared.hash, hex::encode(Sha256::digest(database)));
+        match prepared.upload_source {
+            PreparedSessionHistoryUploadSource::Raw(bytes) => assert_eq!(bytes, database),
+            PreparedSessionHistoryUploadSource::ReusedCodexZstd(_) => {
+                panic!("Pi history must remain raw SQLite bytes")
+            }
+        }
     }
 }

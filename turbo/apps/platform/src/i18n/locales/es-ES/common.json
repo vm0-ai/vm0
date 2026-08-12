@@ -179,7 +179,6 @@
       "files_one": "{{formattedCount}} archivo",
       "files_many": "{{formattedCount}} archivos",
       "files_other": "{{formattedCount}} archivos",
-      "handoffApiToSandbox": "Transferencia · Servidor API → Sandbox",
       "initialize": "Inicializar",
       "inputTokens": "Entrada: {{formattedCount}}",
       "models_one": "{{formattedCount}} modelo",

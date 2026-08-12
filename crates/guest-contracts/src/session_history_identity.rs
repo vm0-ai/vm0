@@ -46,6 +46,8 @@ pub enum FinalSessionHistoryFramework {
     ClaudeCode,
     /// Codex session history.
     Codex,
+    /// Pi native SQLite session history.
+    Pi,
 }
 
 /// Storage ref kind for final session-history bytes.
@@ -205,6 +207,7 @@ impl FinalSessionHistoryFramework {
         match self {
             Self::ClaudeCode => "claude-code",
             Self::Codex => "codex",
+            Self::Pi => "pi",
         }
     }
 
@@ -213,6 +216,7 @@ impl FinalSessionHistoryFramework {
         match value {
             "claude-code" => Ok(Self::ClaudeCode),
             "codex" => Ok(Self::Codex),
+            "pi" => Ok(Self::Pi),
             _ => Err(FinalSessionHistoryIdentityError::InvalidFramework),
         }
     }

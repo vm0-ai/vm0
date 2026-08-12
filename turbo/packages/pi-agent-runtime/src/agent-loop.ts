@@ -1,6 +1,5 @@
 import {
   runAgentLoop,
-  runAgentLoopContinue,
   type AgentEvent,
   type AgentMessage,
   type ExecutionEnv,
@@ -22,7 +21,6 @@ import {
   isPiToolTimeoutResult,
   type PiAgentTool,
 } from "./tools";
-import { executePiToolBatch } from "./tool-batch";
 import type { PiAgentModelConfig, PiOpenAICompatibleProvider } from "./types";
 
 type PiCatalogProvider = Exclude<PiOpenAICompatibleProvider, "codex">;
@@ -86,21 +84,6 @@ function sourceModel(
 
 function executionTools(env: ExecutionEnv): PiAgentTool[] {
   return [...createPiExecutionTools(env)];
-}
-
-function edgeHandoffTools(env: ExecutionEnv): PiAgentTool[] {
-  return executionTools(env).map((tool): PiAgentTool => {
-    return {
-      ...tool,
-      execute() {
-        return Promise.resolve({
-          content: [],
-          details: {},
-          terminate: true,
-        });
-      },
-    };
-  });
 }
 
 function isPiLlmMessage(message: AgentMessage): message is Message {
@@ -234,8 +217,7 @@ export function isPiAgentModelSupported(config: PiAgentModelConfig): boolean {
 }
 
 /**
- * Run the native Pi agent loop with the same model, prompt, messages, and
- * ExecutionEnv-driven tools used on both sides of a handoff.
+ * Run the native Pi agent loop with Sandbox-backed execution tools.
  */
 export async function runPiAgentPrompt(
   args: {
@@ -259,65 +241,12 @@ export async function runPiAgentPrompt(
     content: [{ type: "text", text: args.prompt }],
     timestamp: Date.now(),
   };
+  const onEvent = abortAwareEventSink(args.onEvent, signal);
   return await runAgentLoop(
     [userMessage],
     {
       systemPrompt: args.systemPrompt,
       messages: [...(args.messages ?? [])],
-      tools: edgeHandoffTools(args.executionEnv),
-    },
-    {
-      model,
-      apiKey: args.model.apiKey,
-      timeoutMs: 120_000,
-      convertToLlm(messages) {
-        return messages.filter(isPiLlmMessage);
-      },
-    },
-    args.onEvent,
-    signal,
-    piAgentStream,
-  );
-}
-
-/**
- * Resume a handed-off Pi turn by executing the latest assistant tool batch in
- * the Sandbox, then continuing the native model loop.
- */
-export async function runPiAgentResume(
-  args: {
-    readonly model: PiAgentModelConfig;
-    readonly systemPrompt: string;
-    readonly messages: readonly AgentMessage[];
-    readonly executionEnv: ExecutionEnv;
-    readonly onEvent: (event: AgentEvent) => Promise<void> | void;
-  },
-  signal: AbortSignal,
-): Promise<readonly AgentMessage[]> {
-  const model = resolvePiAgentModel(args.model);
-  if (!model) {
-    throw new Error(
-      `Pi provider ${args.model.provider} does not catalog model ${args.model.model}`,
-    );
-  }
-  const onEvent = abortAwareEventSink(args.onEvent, signal);
-  const messages = [...args.messages];
-  const toolResults = await executePiToolBatch(
-    {
-      messages,
-      executionEnv: args.executionEnv,
-      onEvent,
-    },
-    signal,
-  );
-  if (toolResults.length === 0) {
-    throw new Error("Pi transcript does not end with an assistant tool batch");
-  }
-  messages.push(...toolResults);
-  const continued = await runAgentLoopContinue(
-    {
-      systemPrompt: args.systemPrompt,
-      messages,
       tools: executionTools(args.executionEnv),
     },
     {
@@ -330,13 +259,12 @@ export async function runPiAgentResume(
           isPiToolTimeoutResult(result) ? { isError: true } : undefined,
         );
       },
-      convertToLlm(currentMessages) {
-        return currentMessages.filter(isPiLlmMessage);
+      convertToLlm(messages) {
+        return messages.filter(isPiLlmMessage);
       },
     },
     onEvent,
     signal,
     piAgentStream,
   );
-  return [...toolResults, ...continued];
 }

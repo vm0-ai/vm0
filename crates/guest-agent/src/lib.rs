@@ -31,7 +31,6 @@ pub mod masker;
 pub mod metrics;
 mod nofollow_fs;
 pub mod paths;
-pub mod pi_standby;
 pub mod reuse_preparation;
 pub mod run_context;
 pub mod session_history;

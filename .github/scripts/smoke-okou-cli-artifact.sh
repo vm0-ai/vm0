@@ -88,7 +88,11 @@ assert_clean_success okou okou-version --version
 grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+' "$tmp_dir/okou-version.stdout"
 
 assert_clean_success okou okou-agent-loop-help __agent-loop --help
-grep -Fq -- "--standby" "$tmp_dir/okou-agent-loop-help.stdout"
+grep -Fq "Internal sandbox Pi agent loop" "$tmp_dir/okou-agent-loop-help.stdout"
+if grep -Fq -- "--standby" "$tmp_dir/okou-agent-loop-help.stdout"; then
+  echo "Sandbox-only Pi agent loop unexpectedly exposes --standby" >&2
+  exit 1
+fi
 
 okou_error_status=0
 run_cli \

@@ -173,7 +173,6 @@
       "emptyOutput": "(출력 없음)",
       "files_one": "{{formattedCount}} 파일",
       "files_other": "{{formattedCount}} 파일",
-      "handoffApiToSandbox": "핸드오프 · API 서버 → 샌드박스",
       "initialize": "초기화",
       "inputTokens": "입력: {{formattedCount}}",
       "models_one": "{{formattedCount}} 모델",

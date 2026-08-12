@@ -9,7 +9,6 @@ import {
   PI_MEMORY_ROOT,
   PI_SKILLS_ROOT,
   type SecretConnectorMetadata,
-  type RunSkillSnapshot,
   type StorageMountEntry,
   type StoredConnectorPermissionBaseline,
   type StoredExecutionContext,
@@ -131,15 +130,14 @@ import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import type { PersistedStorageMount } from "@vm0/db/types";
 import {
-  createPiNoopExecutionEnv,
   formatPiUserPrompt,
   loadPiRunSkills,
   renderPiSystemPrompt,
-  type ExecutionEnv,
 } from "@vm0/pi-agent-runtime";
 import {
   and,
   count,
+  desc,
   eq,
   inArray,
   isNotNull,
@@ -216,16 +214,9 @@ import {
 } from "./agent-run-queue-payload.service";
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import {
-  isPiEdgeCompatibleProviderType,
-  piSandboxModelConfig,
-  resolvePiEdgeModelConfig,
-  type PiEdgeModelConfig,
-  type PiEdgeUsageConfig,
-} from "./pi-edge-config";
+import { resolvePiSandboxModelConfig } from "./pi-sandbox-config";
 import { buildRunSkillSnapshot } from "./pi-run-skill-snapshot.service";
 import { loadPiLaunchStorageResources } from "./pi-storage-execution-env.service";
-import { resolveLiveCodexModelProviderAccessToken } from "./agent-webhook-firewall-auth.service";
 import {
   activePersonalModelProviderAccount,
   ensurePersonalModelProviderAccount,
@@ -553,7 +544,7 @@ interface ExplicitConnectorScope {
 // Session naming in this service:
 // - agentSessionId is the vm0 application session (`agent_sessions.id`) used
 //   for product-level continuation and future correctness checks.
-// - cliAgentSessionId is the Claude/Codex CLI agent session stored on
+// - cliAgentSessionId is the Claude/Codex/Pi agent session stored on
 //   `conversations.cli_agent_session_id`.
 // Existing API/runner wire fields named `sessionId` are preserved for
 // compatibility and normalized to these semantic names at the boundary.
@@ -603,17 +594,7 @@ type PersistedAtomicLaunchRows =
     };
 
 type RunnerJobPayload = ReturnType<typeof queuedRunnerJobPayload>;
-interface PreparedPiEdgeLaunch {
-  readonly model: PiEdgeModelConfig;
-  readonly usage?: PiEdgeUsageConfig;
-  readonly executionEnv: ExecutionEnv;
-  readonly prompt: string;
-  readonly systemPrompt: string;
-  readonly skillSnapshot: RunSkillSnapshot;
-}
-
 interface PreparedRunnerLaunch {
-  readonly piEdge?: PreparedPiEdgeLaunch;
   readonly runnerJobPayload: RunnerJobPayload;
   readonly runContextSnapshot: RunContextAxiomSnapshot;
   readonly runStorageMounts: readonly PersistedStorageMount[];
@@ -768,9 +749,6 @@ interface ResolvedModelProviderEnvironment {
   readonly concreteType?: ModelProviderType;
   readonly environment: Record<string, string>;
   readonly secrets: Record<string, string>;
-  // Server-only credential for the in-API Pi turn. Never persisted into the
-  // runner payload; firewall providers keep their sandbox secret placeholders.
-  readonly piEdgeApiKey?: string;
   readonly selectedModel: string | null;
   readonly firewall?: ExpandedFirewallConfig;
   readonly inlineFirewall?: boolean;
@@ -1833,7 +1811,6 @@ function modelProviderEnvironment(args: {
   readonly type: ModelProviderType;
   readonly config: SingleSecretModelProviderConfig;
   readonly secretValue: string | undefined;
-  readonly piEdgeApiKey?: string;
   readonly sourceUserId: string;
   readonly sourceId?: string;
   readonly selectedModel: string | null;
@@ -1874,7 +1851,6 @@ function modelProviderEnvironment(args: {
     type: args.type,
     environment,
     secrets,
-    ...(args.piEdgeApiKey ? { piEdgeApiKey: args.piEdgeApiKey } : {}),
     selectedModel: model,
     ...(codexRuntimeConfig ? { codexRuntimeConfig } : {}),
     ...modelProviderFirewallAuthMaps(
@@ -2003,7 +1979,6 @@ async function multiAuthModelProviderEnvironment(
     readonly authMethod: string | null;
     readonly selectedModel: string | null;
     readonly featureSwitchContext: FeatureSwitchContext;
-    readonly resolvePiEdgeCredentials: boolean;
     readonly accountId?: string;
   },
 ): Promise<ResolvedModelProviderEnvironment | null> {
@@ -2078,8 +2053,6 @@ async function multiAuthModelProviderEnvironment(
     }
   }
 
-  const piEdgeApiKey = await resolveMultiAuthPiEdgeApiKey(db, args);
-
   const selectedModelEnvBindings = getModelProviderEnvBindings(args.type);
   const selectedModel = resolveModelProviderModel({
     type: args.type,
@@ -2106,40 +2079,9 @@ async function multiAuthModelProviderEnvironment(
     ),
     secrets: hasFirewallAuth ? {} : forwardableSecrets,
     selectedModel,
-    ...(piEdgeApiKey === undefined ? {} : { piEdgeApiKey }),
     secretConnectorMap: authMaps?.secretConnectorMap,
     secretConnectorMetadataMap: authMaps?.secretConnectorMetadataMap,
   };
-}
-
-/**
- * Pi edge turns run inside the API with the real credential, but firewall
- * providers above only expose lazy placeholders. Resolve and refresh the Codex
- * access token (a JWT the Pi runtime must be able to parse) when the run is Pi
- * eligible; it is carried only on the API-side edge config, never into the
- * Sandbox environment.
- */
-async function resolveMultiAuthPiEdgeApiKey(
-  db: Db,
-  args: {
-    readonly orgId: string;
-    readonly userId: string;
-    readonly type: ModelProviderType;
-    readonly featureSwitchContext: FeatureSwitchContext;
-    readonly resolvePiEdgeCredentials: boolean;
-    readonly accountId?: string;
-  },
-): Promise<string | undefined> {
-  if (!args.resolvePiEdgeCredentials || args.type !== "codex-oauth-token") {
-    return undefined;
-  }
-  return await resolveLiveCodexModelProviderAccessToken({
-    db,
-    orgId: args.orgId,
-    sourceUserId: args.userId,
-    sourceId: args.accountId,
-    featureSwitchContext: args.featureSwitchContext,
-  });
 }
 
 async function vm0ModelProviderEnvironment(
@@ -2186,7 +2128,6 @@ interface ResolveModelProviderEnvironmentArgs {
   readonly modelProviderType?: string;
   readonly selectedModelOverride?: string;
   readonly featureSwitchContext: FeatureSwitchContext;
-  readonly resolvePiEdgeCredentials: boolean;
 }
 
 async function customGatewayModelProviderEnvironment(
@@ -2312,21 +2253,6 @@ function isCandidateModelProviderRow(
   return isModelProviderType(row.type);
 }
 
-async function resolveCandidatePiEdgeApiKey(
-  args: ResolveModelProviderEnvironmentArgs,
-  type: ModelProviderType,
-  encryptedValue: string,
-  decryptedValue?: string,
-): Promise<string | undefined> {
-  if (!args.resolvePiEdgeCredentials || !isPiEdgeCompatibleProviderType(type)) {
-    return undefined;
-  }
-  const apiKey =
-    decryptedValue ??
-    (await decryptStoredSecretValue(encryptedValue, args.featureSwitchContext));
-  return hasUsableModelProviderSecretValue(apiKey) ? apiKey : undefined;
-}
-
 async function resolvePersonalModelProviderAccountEnvironment(
   db: Db,
   args: ResolveModelProviderEnvironmentArgs,
@@ -2351,7 +2277,6 @@ async function resolvePersonalModelProviderAccountEnvironment(
       authMethod: account.authMethod,
       selectedModel: args.selectedModelOverride ?? selectedModel,
       featureSwitchContext: args.featureSwitchContext,
-      resolvePiEdgeCredentials: args.resolvePiEdgeCredentials,
       accountId: account.id,
     });
   }
@@ -2523,7 +2448,6 @@ async function resolveCandidateModelProviderEnvironment(
       authMethod: row.authMethod,
       selectedModel: args.selectedModelOverride ?? row.selectedModel,
       featureSwitchContext: args.featureSwitchContext,
-      resolvePiEdgeCredentials: args.resolvePiEdgeCredentials,
     });
   }
 
@@ -2532,17 +2456,11 @@ async function resolveCandidateModelProviderEnvironment(
     return null;
   }
   if (getModelProviderFirewall(row.type) !== undefined) {
-    const piEdgeApiKey = await resolveCandidatePiEdgeApiKey(
-      args,
-      row.type,
-      row.encryptedValue,
-    );
     return modelProviderEnvironment({
       id: row.id,
       type: row.type,
       config,
       secretValue: undefined,
-      ...(piEdgeApiKey ? { piEdgeApiKey } : {}),
       sourceUserId: row.userId,
       selectedModel: args.selectedModelOverride ?? row.selectedModel,
     });
@@ -2554,18 +2472,11 @@ async function resolveCandidateModelProviderEnvironment(
   if (!hasUsableModelProviderSecretValue(secretValue)) {
     return null;
   }
-  const piEdgeApiKey = await resolveCandidatePiEdgeApiKey(
-    args,
-    row.type,
-    row.encryptedValue,
-    secretValue,
-  );
   return modelProviderEnvironment({
     id: row.id,
     type: row.type,
     config,
     secretValue,
-    ...(piEdgeApiKey ? { piEdgeApiKey } : {}),
     sourceUserId: row.userId,
     selectedModel: args.selectedModelOverride ?? row.selectedModel,
   });
@@ -5351,6 +5262,37 @@ function resumeSessionFromSnapshot(
   return undefined;
 }
 
+async function resolveLatestPiResumeSession(
+  db: Db,
+  chatThreadId: string,
+): Promise<StoredExecutionContext["resumeSession"] | undefined> {
+  const [snapshot] = await db
+    .select({
+      runId: conversations.runId,
+      cliAgentSessionId: conversations.cliAgentSessionId,
+      cliAgentSessionHistory: conversations.cliAgentSessionHistory,
+      cliAgentSessionHistoryHash: conversations.cliAgentSessionHistoryHash,
+      sessionHistoryBlobEncoding: blobs.encoding,
+    })
+    .from(conversations)
+    .innerJoin(zeroRuns, eq(conversations.runId, zeroRuns.id))
+    .leftJoin(blobs, eq(conversations.cliAgentSessionHistoryHash, blobs.hash))
+    .where(
+      and(
+        eq(zeroRuns.chatThreadId, chatThreadId),
+        eq(conversations.cliAgentType, "pi"),
+        eq(conversations.cliAgentSessionId, chatThreadId),
+        or(
+          isNotNull(conversations.cliAgentSessionHistoryHash),
+          isNotNull(conversations.cliAgentSessionHistory),
+        ),
+      ),
+    )
+    .orderBy(desc(conversations.createdAt))
+    .limit(1);
+  return snapshot ? resumeSessionFromSnapshot(snapshot) : undefined;
+}
+
 function resolvedSessionStorage(session: {
   readonly id: string;
   readonly storageMounts: readonly PersistedStorageMount[] | null;
@@ -6012,7 +5954,8 @@ function buildRunContextSnapshot(args: {
     storedContext.environment,
     args.builtContext.secretValues,
   );
-  const cliAgentSessionId = storedContext.resumeSession?.sessionId ?? null;
+  const cliAgentSessionId =
+    storedContext.piSessionId ?? storedContext.resumeSession?.sessionId ?? null;
   const snapshot: RunContextAxiomSnapshot = {
     _time: nowDate().toISOString(),
     runId: args.runId,
@@ -6327,7 +6270,7 @@ interface BuildRunnerJobPayloadInput {
   readonly body: CreateRunBody;
   readonly artifacts: readonly ContextArtifact[];
   readonly framework: SupportedFramework;
-  readonly piEdge: PiEdgeModelConfig | undefined;
+  readonly piSandbox: PiModelConfig | undefined;
   readonly modelProvider: ResolvedModelProviderEnvironment | null;
   readonly connectorContext: ConnectorRuntimeContext;
   readonly customConnectorContext: CustomConnectorRuntimeContext;
@@ -6349,24 +6292,29 @@ interface BuildRunnerJobPayloadInput {
 }
 
 interface PreparedPiLaunchResources {
-  readonly executionEnv: ExecutionEnv;
   readonly modelConfig: PiModelConfig;
   readonly prompt: string;
   readonly systemPrompt: string;
-  readonly snapshot: RunSkillSnapshot;
+  readonly resumeSession: StoredExecutionContext["resumeSession"] | undefined;
 }
 
 function storedExecutionContextWithPiResources(
   context: StoredExecutionContext,
   resources: PreparedPiLaunchResources | undefined,
+  chatThreadId: string | undefined,
 ): StoredExecutionContext {
   if (resources === undefined) {
     return context;
   }
+  if (chatThreadId === undefined) {
+    throw new Error("Pi sandbox execution requires a chat thread");
+  }
   return {
     ...context,
-    piExecutionMode: "standby",
-    runSkillSnapshot: resources.snapshot,
+    resumeSession: resources.resumeSession ?? null,
+    cliAgentType: "pi",
+    piSessionId: chatThreadId,
+    piPrompt: resources.prompt,
     piSystemPrompt: resources.systemPrompt,
     piModelConfig: resources.modelConfig,
   };
@@ -6397,25 +6345,30 @@ async function preparePiLaunchResources(args: {
   readonly runId: string;
   readonly body: CreateRunBody;
   readonly composeId: string;
-  readonly piEdge: PiEdgeModelConfig | undefined;
+  readonly piSandbox: PiModelConfig | undefined;
+  readonly chatThreadId: string | undefined;
   readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
   readonly additionalVolumeSources: AdditionalVolumeSources;
   readonly persistedStorageMounts: readonly PersistedStorageMount[];
 }): Promise<PreparedPiLaunchResources | undefined> {
-  if (args.piEdge === undefined) {
+  if (args.piSandbox === undefined) {
     return undefined;
+  }
+  if (args.chatThreadId === undefined) {
+    throw new Error("Pi sandbox execution requires a chat thread");
   }
   const snapshot = buildRunSkillSnapshot({
     additionalVolumes: args.additionalVolumes,
     additionalVolumeSources: args.additionalVolumeSources,
     persistedStorageMounts: args.persistedStorageMounts,
   });
-  const [resources, agentName] = await Promise.all([
+  const [resources, agentName, resumeSession] = await Promise.all([
     loadPiLaunchStorageResources(args.get, args.db, {
       snapshot,
       persistedStorageMounts: args.persistedStorageMounts,
     }),
     resolvePiAgentName(args.db, args.composeId),
+    resolveLatestPiResumeSession(args.db, args.chatThreadId),
   ]);
   const skills = await loadPiRunSkills(resources.env, snapshot);
   if (skills.diagnostics.length > 0) {
@@ -6425,8 +6378,7 @@ async function preparePiLaunchResources(args: {
     });
   }
   return {
-    executionEnv: createPiNoopExecutionEnv(),
-    modelConfig: piSandboxModelConfig(args.piEdge),
+    modelConfig: args.piSandbox,
     prompt: formatPiUserPrompt(args.body.prompt, skills.skills),
     systemPrompt: renderPiSystemPrompt({
       agentName,
@@ -6435,7 +6387,7 @@ async function preparePiLaunchResources(args: {
       memory: resources.memory,
       skills: skills.skills,
     }),
-    snapshot,
+    resumeSession,
   };
 }
 
@@ -6479,24 +6431,6 @@ function zeroTokenEnvironment(body: CreateRunBody): Record<string, string> {
     throw new Error("Branded run tokens are missing from the run context");
   }
   return { OKOU_TOKEN: okouToken, ZERO_TOKEN: zeroToken };
-}
-
-function piEdgeUsageConfig(
-  args: BuildRunnerJobPayloadInput,
-): PiEdgeUsageConfig | undefined {
-  if (args.piEdge === undefined) {
-    return undefined;
-  }
-  if (args.modelUsageProvider === undefined) {
-    if (args.modelProvider?.type === "vm0") {
-      throw new Error("Pi edge usage requires a canonical managed model");
-    }
-    return undefined;
-  }
-  return {
-    model: args.modelUsageProvider,
-    billable: args.modelProvider?.type === "vm0",
-  };
 }
 
 function buildRunnerJobPayload(
@@ -6563,7 +6497,8 @@ function buildRunnerJobPayload(
       runId: args.run.id,
       body,
       composeId: args.resolved.composeId,
-      piEdge: args.piEdge,
+      piSandbox: args.piSandbox,
+      chatThreadId: args.chatThreadId,
       additionalVolumes: args.additionalVolumes,
       additionalVolumeSources: args.additionalVolumeSources,
       persistedStorageMounts: builtContext.persistedStorageMounts,
@@ -6571,43 +6506,25 @@ function buildRunnerJobPayload(
     const storedContext = storedExecutionContextWithPiResources(
       builtContext.context,
       piResources,
+      args.chatThreadId,
     );
-    const piEdgeUsage = piEdgeUsageConfig(args);
-    const piEdge =
-      args.piEdge === undefined || piResources === undefined
-        ? undefined
-        : {
-            model: args.piEdge,
-            ...(piEdgeUsage === undefined ? {} : { usage: piEdgeUsage }),
-            executionEnv: piResources.executionEnv,
-            prompt: piResources.prompt,
-            systemPrompt: piResources.systemPrompt,
-            skillSnapshot: piResources.snapshot,
-          };
     const runContextSnapshot = buildRunContextSnapshot({
       runId: args.run.id,
       userId: args.userId,
       body,
       builtContext: { ...builtContext, context: storedContext },
     });
-    const cliAgentSessionId = storedContext.resumeSession?.sessionId ?? null;
+    const cliAgentSessionId =
+      storedContext.piSessionId ??
+      storedContext.resumeSession?.sessionId ??
+      null;
     return {
-      ...(piEdge === undefined ? {} : { piEdge }),
       runnerJobPayload: queuedRunnerJobPayload({
         runnerGroup: group,
         profile: runnerProfile(args.resolved.content),
         cliAgentSessionId,
         reuseKey: runnerReuseKey(args.chatThreadId),
         executionContext: storedContext,
-        ...(piEdge === undefined
-          ? {}
-          : {
-              piEdge: {
-                model: piEdge.model,
-                prompt: piEdge.prompt,
-                ...(piEdge.usage === undefined ? {} : { usage: piEdge.usage }),
-              },
-            }),
       }),
       runContextSnapshot,
       runStorageMounts: builtContext.persistedStorageMounts,
@@ -7563,7 +7480,7 @@ function buildAtomicLaunchPayload(
     body: args.context.body,
     artifacts: args.context.artifacts,
     framework: args.context.framework,
-    piEdge: args.context.piEdge,
+    piSandbox: args.context.piSandbox,
     modelProvider: args.context.modelProvider,
     connectorContext: args.context.connectorContext,
     customConnectorContext: args.context.customConnectorContext,
@@ -7625,7 +7542,7 @@ interface PreparedRunContext {
   readonly body: CreateRunBody;
   readonly resolved: ResolvedCompose;
   readonly framework: SupportedFramework;
-  readonly piEdge: PiEdgeModelConfig | undefined;
+  readonly piSandbox: PiModelConfig | undefined;
   readonly modelProvider: ResolvedModelProviderEnvironment | null;
   readonly connectorContext: ConnectorRuntimeContext;
   readonly customConnectorContext: CustomConnectorRuntimeContext;
@@ -7640,7 +7557,7 @@ interface PreparedRunContext {
   readonly imageRecognitionAvailable: boolean;
 }
 
-function isPiEdgeEnabledForRun(
+function isPiSandboxEnabledForRun(
   createArgs: CreateAgentRunArgs,
   featureSwitchContext: FeatureSwitchContext,
 ): boolean {
@@ -7652,15 +7569,15 @@ function isPiEdgeEnabledForRun(
   );
 }
 
-function resolvePreparedPiEdgeModelConfig(args: {
+function resolvePreparedPiModelConfig(args: {
   readonly createArgs: CreateAgentRunArgs;
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly modelProvider: ResolvedModelProviderEnvironment | null;
-}): PiEdgeModelConfig | undefined {
-  if (!isPiEdgeEnabledForRun(args.createArgs, args.featureSwitchContext)) {
+}): PiModelConfig | undefined {
+  if (!isPiSandboxEnabledForRun(args.createArgs, args.featureSwitchContext)) {
     return undefined;
   }
-  return resolvePiEdgeModelConfig(args.modelProvider) ?? undefined;
+  return resolvePiSandboxModelConfig(args.modelProvider) ?? undefined;
 }
 
 async function resolveRunModelProvider(
@@ -7692,10 +7609,6 @@ async function resolveRunModelProvider(
         modelProviderType: args.modelProviderType,
         selectedModelOverride: args.selectedModelOverride,
         featureSwitchContext: options.featureSwitchContext,
-        resolvePiEdgeCredentials: isPiEdgeEnabledForRun(
-          args,
-          options.featureSwitchContext,
-        ),
       })
     : null;
   signal.throwIfAborted();
@@ -8443,7 +8356,7 @@ function prepareRunOutputMetadata(args: {
   readonly connectorCatalogSnapshot: ConnectorRuntimeSnapshot;
   readonly customConnectorContext: CustomConnectorRuntimeContext;
   readonly framework: SupportedFramework;
-  readonly piEdge: PiEdgeModelConfig | undefined;
+  readonly piSandbox: PiModelConfig | undefined;
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly body: CreateRunBody;
   readonly resolved: ResolvedCompose;
@@ -8458,7 +8371,7 @@ function prepareRunOutputMetadata(args: {
     connectorCatalogSnapshot: args.connectorCatalogSnapshot,
     customConnectorContext: args.customConnectorContext,
     skillsRoot:
-      args.piEdge === undefined
+      args.piSandbox === undefined
         ? frameworkSkillsMountPath(args.framework)
         : PI_SKILLS_ROOT,
     featureSwitchContext: args.featureSwitchContext,
@@ -8468,7 +8381,7 @@ function prepareRunOutputMetadata(args: {
   const artifacts = artifactsForRun({
     resolved: args.resolved,
     framework: args.framework,
-    usePiMemoryPath: args.piEdge !== undefined,
+    usePiMemoryPath: args.piSandbox !== undefined,
     bodyArtifacts: args.body.artifacts,
   }).artifacts;
   return {
@@ -8572,7 +8485,7 @@ function prepareRunContext(
       }
       const { bodyContext, runtimeContext } = contexts;
       const { body, resolved } = bodyContext;
-      const piEdge = resolvePreparedPiEdgeModelConfig({
+      const piSandbox = resolvePreparedPiModelConfig({
         createArgs: args,
         featureSwitchContext: bodyContext.featureSwitchContext,
         modelProvider: runtimeContext.modelProvider,
@@ -8613,7 +8526,7 @@ function prepareRunContext(
               connectorCatalogSnapshot: runtimeContext.connectorCatalogSnapshot,
               customConnectorContext: runtimeContext.customConnectorContext,
               framework: runtimeContext.framework,
-              piEdge,
+              piSandbox,
               featureSwitchContext: bodyContext.featureSwitchContext,
               body,
               resolved,
@@ -8626,7 +8539,7 @@ function prepareRunContext(
         body,
         resolved,
         framework: runtimeContext.framework,
-        piEdge,
+        piSandbox,
         modelProvider: runtimeContext.modelProvider,
         connectorContext: runtimeContext.connectorContext,
         customConnectorContext: runtimeContext.customConnectorContext,
@@ -8693,24 +8606,6 @@ function committedAtomicLaunchResponse(args: {
   const pendingActivation: PendingRunActivation = {
     apiStartTime: args.createArgs.apiStartTime,
     chatThreadId: args.createArgs.chatThreadId,
-    piEdgeTurn:
-      args.launch.piEdge === undefined
-        ? undefined
-        : {
-            runId: args.committed.run.id,
-            userId: args.createArgs.userId,
-            orgId: args.createArgs.orgId,
-            prompt: args.launch.piEdge.prompt,
-            systemPrompt: args.launch.piEdge.systemPrompt,
-            model: args.launch.piEdge.model,
-            ...(args.launch.piEdge.usage === undefined
-              ? {}
-              : { usage: args.launch.piEdge.usage }),
-            executionEnv: args.launch.piEdge.executionEnv,
-            skillSnapshot: args.launch.piEdge.skillSnapshot,
-            runnerGroup: args.committed.runnerJobPayload.runnerGroup,
-            apiStartTime: args.createArgs.apiStartTime,
-          },
     runnerNotification: {
       runnerGroup: args.committed.runnerJobPayload.runnerGroup,
       runId: args.committed.run.id,
@@ -8719,8 +8614,6 @@ function committedAtomicLaunchResponse(args: {
       cliAgentSessionId: args.committed.runnerJobPayload.cliAgentSessionId,
       historyGenerationRunId:
         args.committed.runnerJobPayload.historyGenerationRunId,
-      piExecutionMode:
-        args.committed.runnerJobPayload.executionContext.piExecutionMode,
       createdAt: args.committed.runnerJobCreatedAt,
     },
   };

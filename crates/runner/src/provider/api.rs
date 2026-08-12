@@ -44,14 +44,13 @@ use crate::error::{ApiStatusError, RunnerError, RunnerResult};
 use crate::http::{ApiRequestBuilder, HttpClient};
 use crate::ids::RunId;
 use crate::immediate_successor_intent::ImmediateSuccessorIntents;
-use crate::pi_standby::PiStandbyNotifications;
 use crate::run_cancellation::RunCancellationRegistry;
 use crate::types::{
     CompleteRequest, ConnectorRuntimeSyncBatchResponse, ConnectorRuntimeTargetRegistration,
     ExecutionContext, HeartbeatState, Job, PollResponse,
 };
 #[cfg(test)]
-use crate::types::{PiExecutionMode, SandboxReuseResult, WorkspaceReuseResult};
+use crate::types::{SandboxReuseResult, WorkspaceReuseResult};
 
 fn supports_thread_active_input(reuse_key: Option<&str>) -> bool {
     reuse_key.is_some_and(|key| key.starts_with("thread:"))
@@ -258,7 +257,6 @@ pub struct ApiProvider {
     connector_runtime_sync: ConnectorRuntimeSyncHandle,
     builtin_firewall_catalog_refresh: BuiltinFirewallCatalogRefreshController,
     active_input_notifications: ActiveInputNotifications,
-    pi_standby_notifications: PiStandbyNotifications,
     immediate_successor_intents: ImmediateSuccessorIntents,
     /// Shutdown signal.
     cancel: CancellationToken,
@@ -308,8 +306,6 @@ impl ApiProvider {
             DIRECT_CANDIDATE_STALE_AFTER,
         );
         let active_input_notifications = ActiveInputNotifications::new();
-        let pi_standby_notifications = PiStandbyNotifications::new();
-
         Arc::new(Self {
             api,
             runner_id,
@@ -324,7 +320,6 @@ impl ApiProvider {
             connector_runtime_sync,
             builtin_firewall_catalog_refresh,
             active_input_notifications,
-            pi_standby_notifications,
             immediate_successor_intents,
             cancel,
         })
@@ -486,7 +481,6 @@ impl ApiProvider {
             cancel_tokens: self.cancel_tokens.clone(),
             connector_runtime_sync: self.connector_runtime_sync.clone(),
             active_input_notifications: self.active_input_notifications.clone(),
-            pi_standby_notifications: self.pi_standby_notifications.clone(),
             immediate_successor_intents: self.immediate_successor_intents.clone(),
             runner_id: self.runner_id.clone(),
             heartbeat_generation: self.heartbeat_generation,
@@ -598,7 +592,6 @@ impl JobProvider for ApiProvider {
                     let run_id = job.run_id;
                     let reuse_key = job.reuse_key().map(str::to_owned);
                     let history_generation_run_id = job.history_generation_run_id;
-                    let pi_execution_mode = job.pi_execution_mode;
                     let runner_preference_context =
                         match parse_runner_preference(job.runner_preference) {
                             Ok(context) => context,
@@ -616,7 +609,6 @@ impl JobProvider for ApiProvider {
                     let mut candidate = JobCandidate::new(run_id, profile)
                         .with_reuse_key(reuse_key)
                         .with_history_generation_run_id(history_generation_run_id)
-                        .with_pi_execution_mode(pi_execution_mode)
                         .with_parsed_runner_preference_context(runner_preference_context)
                         .with_discovery_source(JobDiscoverySource::Poll)
                         .with_poll_reason(poll_reason_value(reason))
@@ -657,7 +649,6 @@ impl JobProvider for ApiProvider {
 
     async fn claim(&self, candidate: JobCandidate) -> Option<ClaimedJob> {
         let run_id = candidate.run_id();
-        let discovery_pi_execution_mode = candidate.pi_execution_mode();
         let history_generation_run_id = candidate.history_generation_run_id();
         match self
             .api
@@ -665,34 +656,7 @@ impl JobProvider for ApiProvider {
             .await
         {
             Ok(Some(ctx)) => {
-                let pi_execution_mode = ctx.pi_execution_mode;
-                let pi_resource_presence = [
-                    ctx.pi_system_prompt.is_some(),
-                    ctx.pi_model_config.is_some(),
-                    ctx.run_skill_snapshot.is_some(),
-                ];
-                let pi_execution_context_valid = if pi_execution_mode.is_some() {
-                    pi_resource_presence.iter().all(|present| *present)
-                } else {
-                    pi_resource_presence.iter().all(|present| !present)
-                };
-                if !pi_execution_context_valid {
-                    self.record_claim_failure(
-                        run_id,
-                        ClaimFailureDecision {
-                            class: ClaimFailureClass::ResponseInvariant,
-                            cooldown: CLAIM_DETERMINISTIC_COOLDOWN,
-                            status: None,
-                            transport_kind: None,
-                            response_run_id: Some(ctx.run_id),
-                        },
-                    )
-                    .await;
-                    return None;
-                }
-                let pi_standby_source =
-                    pi_execution_mode.map(|_| self.pi_standby_notifications.subscribe(run_id));
-                let active_input_source = (pi_execution_mode.is_none()
+                let active_input_source = (ctx.cli_agent_type != "pi"
                     && supports_thread_active_input(ctx.reuse_key.as_deref()))
                 .then(|| {
                     ActiveInputSource::api(
@@ -702,9 +666,7 @@ impl JobProvider for ApiProvider {
                         self.active_input_notifications.subscribe(run_id),
                     )
                 });
-                let claimed = match if let Some(pi_standby_source) = pi_standby_source {
-                    ClaimedJob::api_with_pi_standby_source(run_id, ctx, pi_standby_source)
-                } else if let Some(active_input_source) = active_input_source {
+                let claimed = match if let Some(active_input_source) = active_input_source {
                     ClaimedJob::api_with_active_input_source(run_id, ctx, active_input_source)
                 } else {
                     ClaimedJob::api(run_id, ctx)
@@ -730,8 +692,6 @@ impl JobProvider for ApiProvider {
                     run_id = %run_id,
                     runner_id = %self.runner_id,
                     heartbeat_generation = self.heartbeat_generation,
-                    discovery_pi_execution_mode = ?discovery_pi_execution_mode,
-                    claim_pi_execution_mode = ?pi_execution_mode,
                     "job claimed"
                 );
                 Some(claimed.with_history_generation_run_id(history_generation_run_id))
@@ -1621,10 +1581,7 @@ fn sanitized_json_error_detail(error: &serde_json::Error) -> String {
 
 #[cfg(test)]
 mod tests {
-    use std::task::Poll;
-
     use super::*;
-    use futures_util::poll;
     use httpmock::Method::POST;
     use httpmock::MockServer;
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -1648,37 +1605,6 @@ mod tests {
     const RUNNER_CLAIM_RESPONSE_FIXTURE_RUN_ID: &str = "00000000-0000-4000-8000-000000020985";
     const TEST_RUNNER_ID: &str = "550e8400-e29b-41d4-a716-446655440000";
 
-    fn pi_claim_response(run_id: RunId, mode: Option<&str>) -> serde_json::Value {
-        let mut response = serde_json::json!({
-            "runId": run_id,
-            "prompt": "resume Pi",
-            "sandboxToken": "pi-sandbox-token",
-            "cliAgentType": "codex",
-            "billableFirewalls": [],
-            "connectorRuntimeTargets": [],
-            "piSystemPrompt": "fixed Pi system prompt",
-            "piModelConfig": {
-                "provider": "deepseek",
-                "baseUrl": "https://api.deepseek.com/",
-                "model": "deepseek-chat",
-                "apiKeyEnv": "OPENAI_API_KEY"
-            },
-            "runSkillSnapshot": {
-                "schemaVersion": 1,
-                "policyVersion": 1,
-                "root": "/home/user/.pi/agent/skills",
-                "digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
-                "entries": []
-            }
-        });
-        if let Some(mode) = mode {
-            response
-                .as_object_mut()
-                .expect("Pi claim response should be an object")
-                .insert("piExecutionMode".to_string(), serde_json::json!(mode));
-        }
-        response
-    }
     const TEST_HEARTBEAT_GENERATION: u64 = 7;
 
     fn claim_request_body_for_test(candidate: &JobCandidate) -> ClaimRequestBody<'_> {
@@ -1899,7 +1825,6 @@ mod tests {
             claim_cooldowns: ClaimCooldowns::new(claim_cooldown_capacity),
             ably_supervisor: Mutex::new(Some(AblySupervisor::disabled())),
             active_input_notifications: ActiveInputNotifications::new(),
-            pi_standby_notifications: PiStandbyNotifications::new(),
             immediate_successor_intents: ImmediateSuccessorIntents::default(),
             cancel_tokens: RunCancellationRegistry::new(),
             cancel,
@@ -2547,7 +2472,6 @@ mod tests {
                         "experimentalProfile": "vm0/large",
                         "cliAgentSessionId": "sess-poll",
                         "historyGenerationRunId": history_generation_run_id,
-                        "piExecutionMode": "standby",
                         "runnerPreference": {
                             "kind": "preference",
                             "runnerIdentity": {
@@ -2575,10 +2499,6 @@ mod tests {
 
         assert_eq!(discovered.run_id(), run_id);
         assert_eq!(discovered.profile_name(), "vm0/large");
-        assert_eq!(
-            discovered.pi_execution_mode(),
-            Some(PiExecutionMode::Standby)
-        );
         assert_eq!(
             discovered.history_generation_run_id(),
             Some(history_generation_run_id)
@@ -4257,152 +4177,6 @@ mod tests {
 
         claim_mock.assert_calls_async(1).await;
         complete_mock.assert_calls_async(1).await;
-    }
-
-    #[tokio::test]
-    async fn standby_claim_waits_for_its_run_notification() {
-        let server = MockServer::start_async().await;
-        let run_id = RunId::nil();
-        let claim_path = format!("/api/runners/jobs/{run_id}/claim");
-        let claim_mock = server
-            .mock_async(|when, then| {
-                when.method(POST).path(claim_path.as_str());
-                then.status(200)
-                    .json_body(pi_claim_response(run_id, Some("standby")));
-            })
-            .await;
-        let provider = api_provider_for_test(
-            server.base_url(),
-            CancellationToken::new(),
-            Arc::new(PollWakeups::new(false)),
-        );
-
-        let claimed = provider
-            .claim(JobCandidate::new(
-                run_id,
-                crate::profile::DEFAULT_PROFILE.to_string(),
-            ))
-            .await
-            .expect("standby claim should succeed");
-        let (_, _, _, pi_standby_source) = claimed.into_run_parts();
-        let wait = pi_standby_source
-            .expect("standby claim should install control")
-            .wait();
-        tokio::pin!(wait);
-        assert!(matches!(poll!(&mut wait), Poll::Pending));
-
-        provider
-            .pi_standby_notifications
-            .notify(run_id, crate::pi_standby::PiStandbySignal::Handoff);
-
-        assert_eq!(
-            wait.await,
-            Some(crate::pi_standby::PiStandbySignal::Handoff)
-        );
-        claim_mock.assert_calls_async(1).await;
-    }
-
-    #[tokio::test]
-    async fn claim_rejects_pi_resources_without_execution_mode() {
-        let server = MockServer::start_async().await;
-        let run_id = RunId::nil();
-        let claim_path = format!("/api/runners/jobs/{run_id}/claim");
-        let mut response = pi_claim_response(run_id, None);
-        response
-            .as_object_mut()
-            .expect("Pi claim response should be an object")
-            .insert(
-                "reuseKey".to_string(),
-                serde_json::json!("thread:legacy-pi"),
-            );
-        let claim_mock = server
-            .mock_async(|when, then| {
-                when.method(POST).path(claim_path.as_str());
-                then.status(200).json_body(response);
-            })
-            .await;
-        let provider = api_provider_for_test(
-            server.base_url(),
-            CancellationToken::new(),
-            Arc::new(PollWakeups::new(false)),
-        );
-
-        let (claimed, events) = capture_api_provider_events(provider.claim(JobCandidate::new(
-            run_id,
-            crate::profile::DEFAULT_PROFILE.to_string(),
-        )))
-        .await;
-
-        assert!(claimed.is_none());
-        let event = captured_event(&events, "claim failed, candidate cooling down");
-        assert_eq!(event_field(event, "failure_class"), "response_invariant");
-        assert_eq!(event_field(event, "response_run_id"), run_id.to_string());
-        claim_mock.assert_calls_async(1).await;
-    }
-
-    #[tokio::test]
-    async fn claim_rejects_incomplete_pi_execution_context() {
-        let server = MockServer::start_async().await;
-        let run_id = RunId::nil();
-        let claim_path = format!("/api/runners/jobs/{run_id}/claim");
-        let mut response = pi_claim_response(run_id, Some("standby"));
-        response
-            .as_object_mut()
-            .expect("Pi claim response should be an object")
-            .remove("runSkillSnapshot");
-        let claim_mock = server
-            .mock_async(|when, then| {
-                when.method(POST).path(claim_path.as_str());
-                then.status(200).json_body(response);
-            })
-            .await;
-        let provider = api_provider_for_test(
-            server.base_url(),
-            CancellationToken::new(),
-            Arc::new(PollWakeups::new(false)),
-        );
-
-        let (claimed, events) = capture_api_provider_events(provider.claim(JobCandidate::new(
-            run_id,
-            crate::profile::DEFAULT_PROFILE.to_string(),
-        )))
-        .await;
-
-        assert!(claimed.is_none());
-        let event = captured_event(&events, "claim failed, candidate cooling down");
-        assert_eq!(event_field(event, "failure_class"), "response_invariant");
-        assert_eq!(event_field(event, "response_run_id"), run_id.to_string());
-        claim_mock.assert_calls_async(1).await;
-    }
-
-    #[tokio::test]
-    async fn claim_rejects_unknown_pi_execution_mode() {
-        let server = MockServer::start_async().await;
-        let run_id = RunId::nil();
-        let claim_path = format!("/api/runners/jobs/{run_id}/claim");
-        let claim_mock = server
-            .mock_async(|when, then| {
-                when.method(POST).path(claim_path.as_str());
-                then.status(200)
-                    .json_body(pi_claim_response(run_id, Some("future-mode")));
-            })
-            .await;
-        let provider = api_provider_for_test(
-            server.base_url(),
-            CancellationToken::new(),
-            Arc::new(PollWakeups::new(false)),
-        );
-
-        let (claimed, events) = capture_api_provider_events(provider.claim(JobCandidate::new(
-            run_id,
-            crate::profile::DEFAULT_PROFILE.to_string(),
-        )))
-        .await;
-
-        assert!(claimed.is_none());
-        let event = captured_event(&events, "claim failed, candidate cooling down");
-        assert_eq!(event_field(event, "failure_class"), "response_decode");
-        claim_mock.assert_calls_async(1).await;
     }
 
     #[tokio::test]

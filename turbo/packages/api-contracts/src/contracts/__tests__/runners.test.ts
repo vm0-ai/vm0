@@ -143,7 +143,7 @@ describe("runner claim response contract", () => {
   });
 });
 
-describe("Pi execution mode contract", () => {
+describe("Pi sandbox execution contract", () => {
   const storedContext = {
     storageMounts: [],
     connectorRuntimeTargets: [],
@@ -151,9 +151,11 @@ describe("Pi execution mode contract", () => {
     secretValueEnvironmentKeys: null,
     resumeSession: null,
     encryptedSecrets: null,
-    cliAgentType: "claude-code",
+    cliAgentType: "pi",
   };
-  const piRuntimeContext = {
+  const piStoredContext = {
+    piSessionId: "22222222-2222-4222-8222-222222222222",
+    piPrompt: "Pinned Pi user prompt",
     piSystemPrompt: "Pinned Pi system prompt",
     piModelConfig: {
       provider: "deepseek",
@@ -161,13 +163,11 @@ describe("Pi execution mode contract", () => {
       model: "deepseek-v4-flash",
       apiKeyEnv: "OPENAI_API_KEY",
     },
-    runSkillSnapshot: {
-      schemaVersion: 1,
-      policyVersion: 1,
-      root: "/home/user/.pi/agent/skills",
-      digest: `sha256:${"a".repeat(64)}`,
-      entries: [],
-    },
+  };
+  const piRunnerContext = {
+    piSessionId: piStoredContext.piSessionId,
+    piSystemPrompt: piStoredContext.piSystemPrompt,
+    piModelConfig: piStoredContext.piModelConfig,
   };
   const pollJob = {
     runId: "22222222-2222-4222-8222-222222222222",
@@ -182,91 +182,49 @@ describe("Pi execution mode contract", () => {
     },
   };
 
-  it("preserves complete standby state across stored and Runner-facing contexts", () => {
-    const piExecutionMode = "standby";
-    expect(
-      storedExecutionContextSchema.parse({
-        ...storedContext,
-        ...piRuntimeContext,
-        piExecutionMode,
-      }).piExecutionMode,
-    ).toBe(piExecutionMode);
-    expect(
-      compatibleStoredExecutionContextSchema.parse({
-        ...storedContext,
-        ...piRuntimeContext,
-        piExecutionMode,
-      }).piExecutionMode,
-    ).toBe(piExecutionMode);
-    expect(
-      executionContextSchema.parse({
-        ...executionContextSchema.parse(loadRunnerClaimResponseFixture()),
-        ...piRuntimeContext,
-        piExecutionMode,
-      }).piExecutionMode,
-    ).toBe(piExecutionMode);
-    expect(
-      jobSchema.parse({ ...pollJob, piExecutionMode }).piExecutionMode,
-    ).toBe(piExecutionMode);
+  it("preserves the Chat Thread session across stored and Runner-facing contexts", () => {
+    const stored = storedExecutionContextSchema.parse({
+      ...storedContext,
+      ...piStoredContext,
+    });
+    const compatible = compatibleStoredExecutionContextSchema.parse({
+      ...storedContext,
+      ...piStoredContext,
+    });
+    const claimed = executionContextSchema.parse({
+      ...executionContextSchema.parse(loadRunnerClaimResponseFixture()),
+      cliAgentType: "pi",
+      ...piRunnerContext,
+    });
+
+    expect(stored.piSessionId).toBe(piStoredContext.piSessionId);
+    expect(compatible.piSessionId).toBe(piStoredContext.piSessionId);
+    expect(claimed.piSessionId).toBe(piStoredContext.piSessionId);
+    expect(jobSchema.parse(pollJob)).not.toHaveProperty("piExecutionMode");
   });
 
-  it("rejects unknown modes on persisted and Runner-facing boundaries", () => {
-    const invalidModeContext = {
-      ...piRuntimeContext,
-      piExecutionMode: "future-mode",
-    };
-
-    expect(
-      storedExecutionContextSchema.safeParse({
-        ...storedContext,
-        ...invalidModeContext,
-      }).success,
-    ).toBe(false);
-    expect(
-      executionContextSchema.safeParse({
-        ...executionContextSchema.parse(loadRunnerClaimResponseFixture()),
-        ...invalidModeContext,
-      }).success,
-    ).toBe(false);
-    expect(
-      jobSchema.safeParse({ ...pollJob, piExecutionMode: "future-mode" })
-        .success,
-    ).toBe(false);
-  });
-
-  it.each(["piSystemPrompt", "piModelConfig", "runSkillSnapshot"])(
-    "rejects a Pi mode without %s",
+  it.each(["piSessionId", "piPrompt", "piSystemPrompt", "piModelConfig"])(
+    "rejects a stored Pi context without %s",
     (missingField) => {
-      const incompleteContext = { ...piRuntimeContext };
+      const incompleteContext: Record<string, unknown> = { ...piStoredContext };
       Reflect.deleteProperty(incompleteContext, missingField);
 
       expect(
         storedExecutionContextSchema.safeParse({
           ...storedContext,
           ...incompleteContext,
-          piExecutionMode: "standby",
-        }).success,
-      ).toBe(false);
-      expect(
-        executionContextSchema.safeParse({
-          ...executionContextSchema.parse(loadRunnerClaimResponseFixture()),
-          ...incompleteContext,
-          piExecutionMode: "standby",
         }).success,
       ).toBe(false);
     },
   );
 
-  it.each(["piSystemPrompt", "piModelConfig", "runSkillSnapshot"] as const)(
-    "rejects %s without Pi execution mode",
+  it.each(["piPrompt", "piSystemPrompt", "piModelConfig"] as const)(
+    "rejects stored %s without piSessionId",
     (field) => {
       const invalidStoredContext = {
         ...storedContext,
-        [field]: piRuntimeContext[field],
-      };
-      const invalidRunnerContext = {
-        ...executionContextSchema.parse(loadRunnerClaimResponseFixture()),
-        [field]: piRuntimeContext[field],
+        cliAgentType: "claude-code",
+        [field]: piStoredContext[field],
       };
 
       expect(
@@ -276,11 +234,36 @@ describe("Pi execution mode contract", () => {
         compatibleStoredExecutionContextSchema.safeParse(invalidStoredContext)
           .success,
       ).toBe(false);
-      expect(
-        executionContextSchema.safeParse(invalidRunnerContext).success,
-      ).toBe(false);
     },
   );
+
+  it("requires all Pi fields on a claimed Pi context", () => {
+    const fixture = executionContextSchema.parse(
+      loadRunnerClaimResponseFixture(),
+    );
+    for (const field of [
+      "piSessionId",
+      "piSystemPrompt",
+      "piModelConfig",
+    ] as const) {
+      const incomplete: Record<string, unknown> = {
+        ...fixture,
+        cliAgentType: "pi",
+        ...piRunnerContext,
+      };
+      Reflect.deleteProperty(incomplete, field);
+      expect(executionContextSchema.safeParse(incomplete).success).toBe(false);
+    }
+  });
+
+  it("rejects Pi fields for non-Pi claimed frameworks", () => {
+    expect(
+      executionContextSchema.safeParse({
+        ...executionContextSchema.parse(loadRunnerClaimResponseFixture()),
+        ...piRunnerContext,
+      }).success,
+    ).toBe(false);
+  });
 });
 
 describe("connector runtime synchronization contract", () => {

@@ -11,8 +11,6 @@ import type {
   FileInfo,
   Result,
 } from "@earendil-works/pi-agent-core";
-import type { AssistantMessage } from "@earendil-works/pi-ai";
-
 import { NodeExecutionEnv } from "@earendil-works/pi-agent-core/node";
 
 import {
@@ -20,18 +18,9 @@ import {
   loadPiRunSkills,
   renderPiSystemPrompt,
 } from "./runtime";
-import { createPiReadTool, piMessageRequiresSandbox } from "./tools";
+import { createPiReadTool } from "./tools";
 
 const SHA256_ZERO = `sha256:${"0".repeat(64)}`;
-
-const ZERO_USAGE = {
-  input: 0,
-  output: 0,
-  cacheRead: 0,
-  cacheWrite: 0,
-  totalTokens: 0,
-  cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-};
 
 class GuestSkillsExecutionEnv extends NodeExecutionEnv {
   constructor(private readonly hostSkillsRoot: string) {
@@ -99,26 +88,6 @@ class GuestSkillsExecutionEnv extends NodeExecutionEnv {
   }
 }
 
-function assistantToolCall(name: string): AssistantMessage {
-  return {
-    role: "assistant",
-    content: [
-      {
-        type: "toolCall",
-        id: `${name}_1`,
-        name,
-        arguments: {},
-      },
-    ],
-    api: "openai-completions",
-    provider: "deepseek",
-    model: "deepseek-chat",
-    usage: ZERO_USAGE,
-    stopReason: "toolUse",
-    timestamp: 1,
-  };
-}
-
 async function writeSkill(
   directory: string,
   name: string,
@@ -133,11 +102,6 @@ async function writeSkill(
 }
 
 describe("Pi run Skill runtime", () => {
-  it("routes every tool batch out of the API edge loop to the sandbox", () => {
-    expect(piMessageRequiresSandbox(assistantToolCall("read"))).toBe(true);
-    expect(piMessageRequiresSandbox(assistantToolCall("bash"))).toBe(true);
-  });
-
   it("falls back to Okou when the agent name is blank", () => {
     const systemPrompt = renderPiSystemPrompt({
       agentName: " \n ",

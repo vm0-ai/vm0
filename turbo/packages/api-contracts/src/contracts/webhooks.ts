@@ -633,49 +633,6 @@ export const webhookEventsContract = c.router({
   },
 });
 
-const piTranscriptMessageSchema = z.object({
-  ordinal: z.number().int().positive(),
-  messageId: z.string(),
-  runId: z.string(),
-  runEventSequenceNumber: z.number().int().nonnegative(),
-  role: z.string(),
-  payload: z.unknown(),
-  createdAt: z.string(),
-});
-
-export const piTranscriptResponseSchema = z.object({
-  lastOrdinal: z.number().int().nonnegative(),
-  hasMore: z.boolean().describe("Whether another transcript page is available"),
-  messages: z.array(piTranscriptMessageSchema),
-});
-
-/**
- * Pi transcript read contract for /api/webhooks/agent/pi-transcript.
- * Returns messages after the caller's cursor so a standby Sandbox can follow
- * the chat thread before handoff without repeatedly loading the full history.
- */
-export const webhookPiTranscriptContract = c.router({
-  read: {
-    method: "GET",
-    path: "/api/webhooks/agent/pi-transcript",
-    headers: authHeadersSchema,
-    query: z.object({
-      runId: z.string().min(1, "runId is required"),
-      afterOrdinal: z.coerce
-        .number()
-        .int()
-        .nonnegative()
-        .describe("Last transcript ordinal already received"),
-    }),
-    responses: {
-      200: piTranscriptResponseSchema,
-      401: apiErrorSchema,
-      404: apiErrorSchema,
-    },
-    summary: "Read the Pi transcript for the run's chat thread",
-  },
-});
-
 /**
  * Webhook complete contract for /api/webhooks/agent/complete
  */

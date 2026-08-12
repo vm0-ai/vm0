@@ -18,6 +18,7 @@ export default defineConfig({
   sourcemap: true,
   clean: true,
   shims: true,
+  removeNodeProtocol: false,
   banner: {
     js: [
       "#!/usr/bin/env node",

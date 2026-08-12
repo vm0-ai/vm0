@@ -30,8 +30,7 @@ use uuid::Uuid;
 use crate::active_input::ActiveInputSource;
 use crate::error::RunnerResult;
 use crate::ids::RunId;
-use crate::pi_standby::PiStandbySubscription;
-use crate::types::{CompleteRequest, ExecutionContext, HeartbeatState, PiExecutionMode};
+use crate::types::{CompleteRequest, ExecutionContext, HeartbeatState};
 
 const JAVASCRIPT_MAX_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
 
@@ -299,7 +298,6 @@ pub struct JobCandidate {
     poll_http_request_elapsed: Option<Duration>,
     reuse_key: Option<String>,
     history_generation_run_id: Option<RunId>,
-    pi_execution_mode: Option<PiExecutionMode>,
     runner_preference_context: Option<RunnerPreferenceContext>,
 }
 
@@ -331,7 +329,6 @@ impl JobCandidate {
             poll_http_request_elapsed: None,
             reuse_key: None,
             history_generation_run_id: None,
-            pi_execution_mode: None,
             runner_preference_context: None,
         }
     }
@@ -426,10 +423,6 @@ impl JobCandidate {
         self.history_generation_run_id
     }
 
-    pub(crate) fn pi_execution_mode(&self) -> Option<PiExecutionMode> {
-        self.pi_execution_mode
-    }
-
     pub(crate) fn runner_preference(&self) -> Option<&ActiveRunnerPreference> {
         self.runner_preference_context
             .as_ref()
@@ -511,14 +504,6 @@ impl JobCandidate {
         self
     }
 
-    pub(crate) fn with_pi_execution_mode(
-        mut self,
-        pi_execution_mode: Option<PiExecutionMode>,
-    ) -> Self {
-        self.pi_execution_mode = pi_execution_mode;
-        self
-    }
-
     pub(crate) fn with_discovery_source(mut self, source: JobDiscoverySource) -> Self {
         self.discovery_source = Some(source);
         self
@@ -569,7 +554,6 @@ pub struct ClaimedJob {
     history_generation_run_id: Option<RunId>,
     completion_auth: CompletionAuth,
     active_input_source: Option<ActiveInputSource>,
-    pi_standby_source: Option<PiStandbySubscription>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -597,7 +581,7 @@ impl ClaimedJob {
         expected_run_id: RunId,
         context: ExecutionContext,
     ) -> Result<Self, ClaimedJobRunIdMismatch> {
-        Self::api_with_optional_sources(expected_run_id, context, None, None)
+        Self::api_with_optional_source(expected_run_id, context, None)
     }
 
     pub(crate) fn api_with_active_input_source(
@@ -605,22 +589,13 @@ impl ClaimedJob {
         context: ExecutionContext,
         active_input_source: ActiveInputSource,
     ) -> Result<Self, ClaimedJobRunIdMismatch> {
-        Self::api_with_optional_sources(expected_run_id, context, Some(active_input_source), None)
+        Self::api_with_optional_source(expected_run_id, context, Some(active_input_source))
     }
 
-    pub(crate) fn api_with_pi_standby_source(
-        expected_run_id: RunId,
-        context: ExecutionContext,
-        pi_standby_source: PiStandbySubscription,
-    ) -> Result<Self, ClaimedJobRunIdMismatch> {
-        Self::api_with_optional_sources(expected_run_id, context, None, Some(pi_standby_source))
-    }
-
-    fn api_with_optional_sources(
+    fn api_with_optional_source(
         expected_run_id: RunId,
         context: ExecutionContext,
         active_input_source: Option<ActiveInputSource>,
-        pi_standby_source: Option<PiStandbySubscription>,
     ) -> Result<Self, ClaimedJobRunIdMismatch> {
         Self::validate_run_id(expected_run_id, &context)?;
         let completion_auth =
@@ -630,7 +605,6 @@ impl ClaimedJob {
             history_generation_run_id: None,
             completion_auth,
             active_input_source,
-            pi_standby_source,
         })
     }
 
@@ -653,7 +627,6 @@ impl ClaimedJob {
             history_generation_run_id: None,
             completion_auth: CompletionAuth::local(),
             active_input_source,
-            pi_standby_source: None,
         })
     }
 
@@ -661,22 +634,6 @@ impl ClaimedJob {
         self,
     ) -> (ExecutionContext, CompletionAuth, Option<ActiveInputSource>) {
         (self.context, self.completion_auth, self.active_input_source)
-    }
-
-    pub(crate) fn into_run_parts(
-        self,
-    ) -> (
-        ExecutionContext,
-        CompletionAuth,
-        Option<ActiveInputSource>,
-        Option<PiStandbySubscription>,
-    ) {
-        (
-            self.context,
-            self.completion_auth,
-            self.active_input_source,
-            self.pi_standby_source,
-        )
     }
 
     pub(crate) fn context(&self) -> &ExecutionContext {
