@@ -1357,6 +1357,10 @@ function renderStructField(
 
   if (rustType.startsWith("Option<") && rustType.endsWith(">")) {
     const innerType = rustType.slice("Option<".length, -1);
+    const compactOption = `${indent}    Option<${innerType}>,`;
+    if (context.moduleIndentWidth + compactOption.length <= 100) {
+      return [`${indent}${visibility}${rustName}:`, compactOption];
+    }
     return [
       `${indent}${visibility}${rustName}: Option<`,
       `${indent}    ${innerType},`,
