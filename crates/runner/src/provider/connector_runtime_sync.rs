@@ -15,7 +15,9 @@
 //! last-known-good state and retry. Transport, validation, queue, and registry
 //! publication failures also retain last-known-good state and install a capped,
 //! jittered retry. Older queued or in-flight work cannot clear a newer realtime
-//! trigger.
+//! trigger. Every state transition is also scoped to the registration's
+//! cancellation token so work from a replaced registration cannot affect its
+//! successor when generations reset.
 //!
 //! A typed terminal-run response removes the entire run from tracking, cancels
 //! scheduled work, and fail-closes every still-matching target. Registry writes
@@ -303,13 +305,14 @@ impl ConnectorRuntimeSyncCore {
             .map(ConnectorRuntimeTargetRegistration::target)
             .filter(|target| matches!(target, ConnectorRuntimeTarget::Custom { .. }))
         {
-            self.replace_sync_deadline_if_current(
+            self.replace_sync_deadline_for_registration(
                 registration.run_id,
                 &ConnectorSyncTarget {
                     target,
                     generation: 0,
                 },
                 Some(tokio::time::Instant::now()),
+                &run_cancel,
             )
             .await;
         }
@@ -325,19 +328,21 @@ impl ConnectorRuntimeSyncCore {
                 };
                 match parse_sync_deadline(&refresh.next_refresh_at) {
                     Ok(deadline) => {
-                        self.replace_sync_deadline_if_current(
+                        self.replace_sync_deadline_for_registration(
                             registration.run_id,
                             &target,
                             Some(deadline),
+                            &run_cancel,
                         )
                         .await;
                     }
                     Err(()) => invalid_targets.push(target),
                 }
             }
-            self.schedule_sync_retries(
+            self.schedule_sync_retries_for_registration(
                 registration.run_id,
                 &invalid_targets,
+                &run_cancel,
                 "invalid_initial_deadline",
             )
             .await;
@@ -351,6 +356,31 @@ impl ConnectorRuntimeSyncCore {
     async fn take_active_run(&self, run_id: RunId) -> Option<ActiveRunConnectorRuntimeState> {
         let mut old = self.inner.active_runs.lock().await.remove(&run_id)?;
         old.cancel.cancel();
+        abort_tasks(
+            std::mem::take(&mut old.sync_tasks)
+                .into_values()
+                .map(|task| task.handle),
+        );
+        Some(old)
+    }
+
+    async fn take_active_run_if_registration_matches(
+        &self,
+        run_id: RunId,
+        registration_cancel: &CancellationToken,
+    ) -> Option<ActiveRunConnectorRuntimeState> {
+        // The caller controls cancellation because terminal reconciliation must
+        // keep its own request alive until fail-close publication finishes.
+        let mut old = {
+            let mut active_runs = self.inner.active_runs.lock().await;
+            if active_runs
+                .get(&run_id)
+                .is_none_or(|active| &active.cancel != registration_cancel)
+            {
+                return None;
+            }
+            active_runs.remove(&run_id)?
+        };
         abort_tasks(
             std::mem::take(&mut old.sync_tasks)
                 .into_values()
@@ -424,8 +454,13 @@ impl ConnectorRuntimeSyncCore {
                     targets = ?targets,
                     "connector runtime sync queue full; retaining last-known-good state"
                 );
-                self.schedule_sync_retries(request.run_id, &request.targets, "queue_full")
-                    .await;
+                self.schedule_sync_retries_for_registration(
+                    request.run_id,
+                    &request.targets,
+                    &request.cancel,
+                    "queue_full",
+                )
+                .await;
             }
             Closed(error) => {
                 let targets = target_identities(&error.targets);
@@ -445,8 +480,11 @@ impl ConnectorRuntimeSyncCore {
         run_id: RunId,
         connector_slugs: Vec<String>,
     ) {
+        let Some(registration_cancel) = self.current_registration_cancel(run_id).await else {
+            return;
+        };
         let targets = self.current_sync_targets(run_id, connector_slugs).await;
-        self.sync_connector_runtime_targets_now(run_id, targets)
+        self.sync_connector_runtime_targets_now(run_id, targets, &registration_cancel)
             .await;
     }
 
@@ -454,19 +492,28 @@ impl ConnectorRuntimeSyncCore {
         &self,
         run_id: RunId,
         targets: Vec<ConnectorSyncTarget>,
+        registration_cancel: &CancellationToken,
     ) {
-        let active_targets = self.active_sync_targets(run_id, targets).await;
+        let active_targets = self
+            .active_sync_targets(run_id, targets, registration_cancel)
+            .await;
         if active_targets.is_empty() {
             return;
         }
 
         for targets in active_targets.chunks(CONNECTOR_RUNTIME_SYNC_BATCH_MAX) {
-            let current_targets = self.active_sync_targets(run_id, targets.to_vec()).await;
+            let current_targets = self
+                .active_sync_targets(run_id, targets.to_vec(), registration_cancel)
+                .await;
             if current_targets.is_empty() {
                 continue;
             }
             if !self
-                .sync_connector_runtime_batch_now(run_id, &current_targets)
+                .sync_connector_runtime_batch_for_registration(
+                    run_id,
+                    &current_targets,
+                    registration_cancel,
+                )
                 .await
             {
                 return;
@@ -474,13 +521,31 @@ impl ConnectorRuntimeSyncCore {
         }
     }
 
+    #[cfg(test)]
     async fn sync_connector_runtime_batch_now(
         &self,
         run_id: RunId,
         active_targets: &[ConnectorSyncTarget],
     ) -> bool {
+        let Some(registration_cancel) = self.current_registration_cancel(run_id).await else {
+            return false;
+        };
+        self.sync_connector_runtime_batch_for_registration(
+            run_id,
+            active_targets,
+            &registration_cancel,
+        )
+        .await
+    }
+
+    async fn sync_connector_runtime_batch_for_registration(
+        &self,
+        run_id: RunId,
+        active_targets: &[ConnectorSyncTarget],
+        registration_cancel: &CancellationToken,
+    ) -> bool {
         let current_targets = self
-            .current_connector_runtime_sync_targets(run_id, active_targets)
+            .current_connector_runtime_sync_targets(run_id, active_targets, registration_cancel)
             .await;
         if current_targets.is_empty() {
             return true;
@@ -495,6 +560,12 @@ impl ConnectorRuntimeSyncCore {
                 .sync_connector_runtime(run_id, &requested_targets)
                 .await;
             if !transport_retry_attempted && let Err(RunnerError::ApiTransport(error)) = &response {
+                if !self
+                    .registration_is_current(run_id, registration_cancel)
+                    .await
+                {
+                    return false;
+                }
                 transport_retry_attempted = true;
                 warn!(
                     run_id = %run_id,
@@ -513,7 +584,8 @@ impl ConnectorRuntimeSyncCore {
         let response = match response {
             Ok(ConnectorRuntimeSyncOutcome::Synced(response)) => response,
             Ok(ConnectorRuntimeSyncOutcome::RunTerminal) => {
-                self.reconcile_terminal_run(run_id).await;
+                self.reconcile_terminal_run(run_id, registration_cancel)
+                    .await;
                 return false;
             }
             Err(error) => {
@@ -524,14 +596,24 @@ impl ConnectorRuntimeSyncCore {
                     transport_retry_attempted,
                     "connector runtime sync failed; retaining last-known-good state"
                 );
-                self.schedule_sync_retries(run_id, &active_targets, "api_error")
-                    .await;
+                self.schedule_sync_retries_for_registration(
+                    run_id,
+                    &active_targets,
+                    registration_cancel,
+                    "api_error",
+                )
+                .await;
                 return true;
             }
         };
 
-        self.publish_connector_runtime_response(run_id, &active_targets, response)
-            .await
+        self.publish_connector_runtime_response(
+            run_id,
+            &active_targets,
+            response,
+            registration_cancel,
+        )
+        .await
     }
 
     async fn publish_connector_runtime_response(
@@ -539,6 +621,7 @@ impl ConnectorRuntimeSyncCore {
         run_id: RunId,
         active_targets: &[ConnectorSyncTarget],
         response: ConnectorRuntimeSyncBatchResponse,
+        registration_cancel: &CancellationToken,
     ) -> bool {
         let requested_targets = active_targets
             .iter()
@@ -636,12 +719,15 @@ impl ConnectorRuntimeSyncCore {
                     continue;
                 }
             };
-            if !self.target_generation_is_current(run_id, target).await {
+            if !self
+                .target_generation_is_current(run_id, target, registration_cancel)
+                .await
+            {
                 continue;
             }
             if let Some(candidate) = &candidate_base_url_vars {
                 let Some(matches_pinned_values) = self
-                    .custom_base_url_vars_match(run_id, target, candidate)
+                    .custom_base_url_vars_match(run_id, target, candidate, registration_cancel)
                     .await
                 else {
                     continue;
@@ -690,6 +776,7 @@ impl ConnectorRuntimeSyncCore {
                                     run_id,
                                     target,
                                     candidate_base_url_vars.as_ref(),
+                                    registration_cancel,
                                 )
                                 .await
                             else {
@@ -756,7 +843,11 @@ impl ConnectorRuntimeSyncCore {
         }
 
         let Some((snapshot, prepared_publications)) = self
-            .current_connector_runtime_publications(run_id, prepared_publications)
+            .current_connector_runtime_publications(
+                run_id,
+                prepared_publications,
+                registration_cancel,
+            )
             .await
         else {
             return false;
@@ -787,6 +878,7 @@ impl ConnectorRuntimeSyncCore {
                                 &prepared.target,
                                 prepared.deadline,
                                 prepared.candidate_base_url_vars.as_ref(),
+                                registration_cancel,
                             )
                             .await
                         {
@@ -800,7 +892,12 @@ impl ConnectorRuntimeSyncCore {
                     }
                 }
                 Ok(None) => {
-                    self.unregister_run(run_id).await;
+                    if let Some(active) = self
+                        .take_active_run_if_registration_matches(run_id, registration_cancel)
+                        .await
+                    {
+                        active.cancel.cancel();
+                    }
                     return false;
                 }
                 Err(error) => {
@@ -818,15 +915,24 @@ impl ConnectorRuntimeSyncCore {
                 }
             }
         }
-        self.schedule_sync_retries(run_id, &retry_targets, "invalid_or_unpublished_response")
-            .await;
+        self.schedule_sync_retries_for_registration(
+            run_id,
+            &retry_targets,
+            registration_cancel,
+            "invalid_or_unpublished_response",
+        )
+        .await;
         true
     }
 
-    async fn reconcile_terminal_run(&self, run_id: RunId) {
-        let Some(active) = self.take_active_run(run_id).await else {
+    async fn reconcile_terminal_run(&self, run_id: RunId, registration_cancel: &CancellationToken) {
+        let Some(active) = self
+            .take_active_run_if_registration_matches(run_id, registration_cancel)
+            .await
+        else {
             return;
         };
+        let cancel = active.cancel.clone();
         let connector_count = active.connectors.len();
         let snapshot = ActiveRunConnectorRuntimeSnapshot {
             source_ip: active.source_ip,
@@ -866,11 +972,35 @@ impl ConnectorRuntimeSyncCore {
                 );
             }
         }
+        cancel.cancel();
         info!(
             run_id = %run_id,
             connector_count,
             "reconciled terminal run network policies"
         );
+    }
+
+    #[cfg(test)]
+    async fn current_registration_cancel(&self, run_id: RunId) -> Option<CancellationToken> {
+        self.inner
+            .active_runs
+            .lock()
+            .await
+            .get(&run_id)
+            .map(|active| active.cancel.clone())
+    }
+
+    async fn registration_is_current(
+        &self,
+        run_id: RunId,
+        registration_cancel: &CancellationToken,
+    ) -> bool {
+        self.inner
+            .active_runs
+            .lock()
+            .await
+            .get(&run_id)
+            .is_some_and(|active| &active.cancel == registration_cancel)
     }
 
     #[cfg(test)]
@@ -922,11 +1052,15 @@ impl ConnectorRuntimeSyncCore {
         &self,
         run_id: RunId,
         targets: Vec<ConnectorSyncTarget>,
+        registration_cancel: &CancellationToken,
     ) -> Vec<ConnectorSyncTarget> {
         let active_runs = self.inner.active_runs.lock().await;
         let Some(active) = active_runs.get(&run_id) else {
             return Vec::new();
         };
+        if &active.cancel != registration_cancel {
+            return Vec::new();
+        }
         let mut seen = HashSet::new();
         targets
             .into_iter()
@@ -944,11 +1078,15 @@ impl ConnectorRuntimeSyncCore {
         &self,
         run_id: RunId,
         targets: &[ConnectorSyncTarget],
+        registration_cancel: &CancellationToken,
     ) -> Vec<(ConnectorSyncTarget, ConnectorRuntimeTargetRegistration)> {
         let active_runs = self.inner.active_runs.lock().await;
         let Some(active) = active_runs.get(&run_id) else {
             return Vec::new();
         };
+        if &active.cancel != registration_cancel {
+            return Vec::new();
+        }
         targets
             .iter()
             .filter_map(|target| {
@@ -979,13 +1117,15 @@ impl ConnectorRuntimeSyncCore {
         &self,
         run_id: RunId,
         target: &ConnectorSyncTarget,
+        registration_cancel: &CancellationToken,
     ) -> bool {
         let active_runs = self.inner.active_runs.lock().await;
         active_runs.get(&run_id).is_some_and(|active| {
-            active
-                .connectors
-                .get(&target.target)
-                .is_some_and(|connector| connector.generation == target.generation)
+            &active.cancel == registration_cancel
+                && active
+                    .connectors
+                    .get(&target.target)
+                    .is_some_and(|connector| connector.generation == target.generation)
         })
     }
 
@@ -993,12 +1133,16 @@ impl ConnectorRuntimeSyncCore {
         &self,
         run_id: RunId,
         publications: Vec<PreparedConnectorRuntimePublication>,
+        registration_cancel: &CancellationToken,
     ) -> Option<(
         ActiveRunConnectorRuntimeSnapshot,
         Vec<PreparedConnectorRuntimePublication>,
     )> {
         let active_runs = self.inner.active_runs.lock().await;
         let active = active_runs.get(&run_id)?;
+        if &active.cancel != registration_cancel {
+            return None;
+        }
         let current = publications
             .into_iter()
             .filter(|publication| {
@@ -1022,9 +1166,13 @@ impl ConnectorRuntimeSyncCore {
         run_id: RunId,
         target: &ConnectorSyncTarget,
         candidate: &HashMap<String, String>,
+        registration_cancel: &CancellationToken,
     ) -> Option<bool> {
         let active_runs = self.inner.active_runs.lock().await;
         let active = active_runs.get(&run_id)?;
+        if &active.cancel != registration_cancel {
+            return None;
+        }
         let connector = active.connectors.get(&target.target)?;
         Some(
             connector
@@ -1039,9 +1187,13 @@ impl ConnectorRuntimeSyncCore {
         run_id: RunId,
         target: &ConnectorSyncTarget,
         candidate: Option<&HashMap<String, String>>,
+        registration_cancel: &CancellationToken,
     ) -> Option<Option<HashMap<String, String>>> {
         let active_runs = self.inner.active_runs.lock().await;
         let active = active_runs.get(&run_id)?;
+        if &active.cancel != registration_cancel {
+            return None;
+        }
         let connector = active.connectors.get(&target.target)?;
         if connector.generation != target.generation {
             return None;
@@ -1060,11 +1212,15 @@ impl ConnectorRuntimeSyncCore {
         target: &ConnectorSyncTarget,
         deadline: Option<tokio::time::Instant>,
         candidate_base_url_vars: Option<&HashMap<String, String>>,
+        registration_cancel: &CancellationToken,
     ) -> bool {
         let mut active_runs = self.inner.active_runs.lock().await;
         let Some(active) = active_runs.get_mut(&run_id) else {
             return false;
         };
+        if &active.cancel != registration_cancel {
+            return false;
+        }
         let Some(connector) = active.connectors.get_mut(&target.target) else {
             return false;
         };
@@ -1082,10 +1238,11 @@ impl ConnectorRuntimeSyncCore {
         self.replace_schedule_locked(active, run_id, target, deadline)
     }
 
-    async fn schedule_sync_retries(
+    async fn schedule_sync_retries_for_registration(
         &self,
         run_id: RunId,
         targets: &[ConnectorSyncTarget],
+        registration_cancel: &CancellationToken,
         reason: &'static str,
     ) {
         if targets.is_empty() {
@@ -1098,6 +1255,9 @@ impl ConnectorRuntimeSyncCore {
         let Some(active) = active_runs.get_mut(&run_id) else {
             return;
         };
+        if &active.cancel != registration_cancel {
+            return;
+        }
 
         let mut seen = HashSet::new();
         for target in targets {
@@ -1134,16 +1294,34 @@ impl ConnectorRuntimeSyncCore {
         }
     }
 
+    #[cfg(test)]
     async fn replace_sync_deadline_if_current(
         &self,
         run_id: RunId,
         target: &ConnectorSyncTarget,
         deadline: Option<tokio::time::Instant>,
     ) -> bool {
+        let Some(registration_cancel) = self.current_registration_cancel(run_id).await else {
+            return false;
+        };
+        self.replace_sync_deadline_for_registration(run_id, target, deadline, &registration_cancel)
+            .await
+    }
+
+    async fn replace_sync_deadline_for_registration(
+        &self,
+        run_id: RunId,
+        target: &ConnectorSyncTarget,
+        deadline: Option<tokio::time::Instant>,
+        registration_cancel: &CancellationToken,
+    ) -> bool {
         let mut active_runs = self.inner.active_runs.lock().await;
         let Some(active) = active_runs.get_mut(&run_id) else {
             return false;
         };
+        if &active.cancel != registration_cancel {
+            return false;
+        }
         self.replace_schedule_locked(active, run_id, target, deadline)
     }
 
@@ -1183,7 +1361,12 @@ impl ConnectorRuntimeSyncCore {
                 () = cancel.cancelled() => {}
                 () = tokio::time::sleep_until(deadline) => {
                     if let Some((targets, enqueue_cancel)) = handle
-                        .take_due_scheduled_syncs(run_id, &task_target, task_id)
+                        .take_due_scheduled_syncs(
+                            run_id,
+                            &task_target,
+                            task_id,
+                            &cancel,
+                        )
                         .await
                     {
                         handle
@@ -1217,11 +1400,15 @@ impl ConnectorRuntimeSyncCore {
         run_id: RunId,
         target: &ConnectorRuntimeTarget,
         task_id: u64,
+        registration_cancel: &CancellationToken,
     ) -> Option<(Vec<ConnectorSyncTarget>, CancellationToken)> {
         let mut handles_to_abort = Vec::new();
         let (targets, cancel) = {
             let mut active_runs = self.inner.active_runs.lock().await;
             let active = active_runs.get_mut(&run_id)?;
+            if &active.cancel != registration_cancel {
+                return None;
+            }
             if active
                 .sync_tasks
                 .get(target)
@@ -1315,10 +1502,17 @@ impl SyncDispatcher {
             );
             let handle = handle.clone();
             self.in_flight.push(Box::pin(async move {
+                let SyncRequest {
+                    targets, cancel, ..
+                } = request;
                 tokio::select! {
                     biased;
-                    () = request.cancel.cancelled() => {}
-                    () = handle.sync_connector_runtime_targets_now(run_id, request.targets) => {}
+                    () = cancel.cancelled() => {}
+                    () = handle.sync_connector_runtime_targets_now(
+                        run_id,
+                        targets,
+                        &cancel,
+                    ) => {}
                 }
                 run_id
             }));
@@ -2254,6 +2448,25 @@ mod tests {
             .expect("connector runtime sync response should be written");
     }
 
+    async fn write_terminal_connector_runtime_sync_response(socket: &mut tokio::net::TcpStream) {
+        let body = json!({
+            "error": {
+                "code": "RUN_TERMINAL",
+                "message": "Run is terminal",
+            },
+        })
+        .to_string();
+        let response = format!(
+            "HTTP/1.1 409 Conflict\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+            body.len(),
+            body
+        );
+        socket
+            .write_all(response.as_bytes())
+            .await
+            .expect("terminal connector runtime response should be written");
+    }
+
     #[tokio::test]
     async fn shutdown_awaits_runtime_sync_worker_task() {
         let server = MockServer::start();
@@ -2589,6 +2802,190 @@ mod tests {
         })
         .await;
         assert_eq!(policy["unknownPolicy"], json!("allow"));
+
+        handle.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn terminal_response_finishes_fail_close_before_cancelling_registration() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let api_url = format!("http://{}", listener.local_addr().unwrap());
+        let handle = ConnectorRuntimeSyncHandle::new(api_client_for_url(api_url));
+        let run_id = RunId::nil();
+        let (_dir, registry, registry_path, lock_path) = registered_slack_registry(run_id).await;
+        let targets = [runtime_target_registration(&builtin_target("slack"))];
+        handle
+            .register_run(ConnectorRuntimeSyncRegistration {
+                run_id,
+                source_ip: "10.200.0.2",
+                registry,
+                targets: &targets,
+                refreshes: None,
+            })
+            .await;
+        let registry_guard = crate::lock::acquire(lock_path)
+            .await
+            .expect("registry lock should be acquired");
+
+        handle
+            .notify_connector_runtime_sync(run_id, builtin_target("slack"))
+            .await;
+        let (mut socket, request) =
+            tokio::time::timeout(Duration::from_secs(1), accept_http_request(&listener))
+                .await
+                .expect("terminal sync should reach the API");
+        assert_connector_runtime_sync_request(&request, &run_id);
+        write_terminal_connector_runtime_sync_response(&mut socket).await;
+        drop(socket);
+
+        tokio::time::timeout(Duration::from_secs(1), async {
+            while handle
+                .core
+                .inner
+                .active_runs
+                .lock()
+                .await
+                .contains_key(&run_id)
+            {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("terminal response should remove active state before fail-close");
+        drop(registry_guard);
+
+        let policy = wait_until_slack_policy(&registry_path, |policy| {
+            policy["unknownPolicy"] == json!("deny")
+        })
+        .await;
+        assert_fail_closed_policy(&policy);
+
+        handle.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn stale_registration_response_does_not_publish_into_replacement() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let api_url = format!("http://{}", listener.local_addr().unwrap());
+        let handle = ConnectorRuntimeSyncHandle::new(api_client_for_url(api_url));
+        let run_id = RunId::nil();
+        let (_old_dir, _old_registry) = register_slack_run(&handle, run_id).await;
+        let old_cancel = handle
+            .core
+            .current_registration_cancel(run_id)
+            .await
+            .expect("old registration should remain active");
+        let old_targets = handle
+            .core
+            .current_sync_targets(run_id, vec!["slack".to_string()])
+            .await;
+        let old_sync = {
+            let core = handle.core.clone();
+            let registration_cancel = old_cancel.clone();
+            tokio::spawn(async move {
+                core.sync_connector_runtime_batch_for_registration(
+                    run_id,
+                    &old_targets,
+                    &registration_cancel,
+                )
+                .await
+            })
+        };
+        let (mut old_socket, old_request) =
+            tokio::time::timeout(Duration::from_secs(1), accept_http_request(&listener))
+                .await
+                .expect("old registration should reach the API");
+        assert_connector_runtime_sync_request(&old_request, &run_id);
+
+        let (_new_dir, new_registry) = register_slack_run(&handle, run_id).await;
+        write_connector_runtime_sync_response(&mut old_socket, &["stale:read"]).await;
+        drop(old_socket);
+
+        assert!(
+            !old_sync.await.expect("old sync task should not panic"),
+            "old registration response should stop without publishing"
+        );
+        let registry_json: serde_json::Value = serde_json::from_str(
+            &tokio::fs::read_to_string(new_registry)
+                .await
+                .expect("replacement registry should be readable"),
+        )
+        .expect("replacement registry should contain valid JSON");
+        assert_last_known_good_policy(
+            &registry_json["vms"]["10.200.0.2"]["networkPolicies"]["slack"],
+        );
+        let active_runs = handle.core.inner.active_runs.lock().await;
+        let replacement = active_runs
+            .get(&run_id)
+            .expect("replacement registration should remain active");
+        assert_ne!(replacement.cancel, old_cancel);
+        assert_eq!(
+            replacement.connectors[&builtin_target("slack")].consecutive_failures,
+            0
+        );
+        assert!(replacement.sync_tasks.is_empty());
+        drop(active_runs);
+
+        handle.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn stale_registration_terminal_response_does_not_remove_replacement() {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let api_url = format!("http://{}", listener.local_addr().unwrap());
+        let handle = ConnectorRuntimeSyncHandle::new(api_client_for_url(api_url));
+        let run_id = RunId::nil();
+        let (_old_dir, _old_registry) = register_slack_run(&handle, run_id).await;
+        let old_cancel = handle
+            .core
+            .current_registration_cancel(run_id)
+            .await
+            .expect("old registration should remain active");
+        let old_targets = handle
+            .core
+            .current_sync_targets(run_id, vec!["slack".to_string()])
+            .await;
+        let old_sync = {
+            let core = handle.core.clone();
+            let registration_cancel = old_cancel.clone();
+            tokio::spawn(async move {
+                core.sync_connector_runtime_batch_for_registration(
+                    run_id,
+                    &old_targets,
+                    &registration_cancel,
+                )
+                .await
+            })
+        };
+        let (mut old_socket, old_request) =
+            tokio::time::timeout(Duration::from_secs(1), accept_http_request(&listener))
+                .await
+                .expect("old registration should reach the API");
+        assert_connector_runtime_sync_request(&old_request, &run_id);
+
+        let (_new_dir, new_registry) = register_slack_run(&handle, run_id).await;
+        write_terminal_connector_runtime_sync_response(&mut old_socket).await;
+        drop(old_socket);
+
+        assert!(
+            !old_sync.await.expect("old sync task should not panic"),
+            "old terminal response should stop without removing the replacement"
+        );
+        let active_runs = handle.core.inner.active_runs.lock().await;
+        let replacement = active_runs
+            .get(&run_id)
+            .expect("replacement registration should remain active");
+        assert_ne!(replacement.cancel, old_cancel);
+        drop(active_runs);
+        let registry_json: serde_json::Value = serde_json::from_str(
+            &tokio::fs::read_to_string(new_registry)
+                .await
+                .expect("replacement registry should be readable"),
+        )
+        .expect("replacement registry should contain valid JSON");
+        assert_last_known_good_policy(
+            &registry_json["vms"]["10.200.0.2"]["networkPolicies"]["slack"],
+        );
 
         handle.shutdown().await;
     }
@@ -3904,10 +4301,19 @@ mod tests {
         let targets = core
             .current_sync_targets(run_id, vec!["slack".to_string(), "github".to_string()])
             .await;
+        let registration_cancel = core
+            .current_registration_cancel(run_id)
+            .await
+            .expect("test registration should remain active");
 
         let first_base = tokio::time::Instant::now();
-        core.schedule_sync_retries(run_id, &targets, "test_failure")
-            .await;
+        core.schedule_sync_retries_for_registration(
+            run_id,
+            &targets,
+            &registration_cancel,
+            "test_failure",
+        )
+        .await;
         {
             let active_runs = core.inner.active_runs.lock().await;
             let active = &active_runs[&run_id];
@@ -3928,8 +4334,13 @@ mod tests {
             .clone();
         for expected_attempt in 2..=7 {
             let scheduling_base = tokio::time::Instant::now();
-            core.schedule_sync_retries(run_id, std::slice::from_ref(&slack_target), "test_failure")
-                .await;
+            core.schedule_sync_retries_for_registration(
+                run_id,
+                std::slice::from_ref(&slack_target),
+                &registration_cancel,
+                "test_failure",
+            )
+            .await;
             let active_runs = core.inner.active_runs.lock().await;
             let active = &active_runs[&run_id];
             assert_eq!(
