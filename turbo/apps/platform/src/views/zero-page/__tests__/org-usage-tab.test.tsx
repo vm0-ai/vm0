@@ -1,5 +1,8 @@
 import type { OrgMembersResponse } from "@vm0/api-contracts/contracts/org-members";
-import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-billing";
+import {
+  zeroBillingStatusContract,
+  type BillingStatusResponse,
+} from "@vm0/api-contracts/contracts/zero-billing";
 import { zeroOrgMembersContract } from "@vm0/api-contracts/contracts/zero-org-members";
 import { zeroUsageMembersContract } from "@vm0/api-contracts/contracts/zero-usage";
 import { screen, waitFor } from "@testing-library/react";
@@ -32,39 +35,9 @@ function expectedAllowanceResetText(value: string): string {
   return `Resets ${formatted}`;
 }
 
-function mockUsageStory(): void {
-  const orgMembers: OrgMembersResponse = {
-    name: "Test Org",
-    role: "admin",
-    createdAt: "2026-01-01T00:00:00Z",
-    members: [
-      {
-        userId: "test-user-123",
-        email: "alice@example.com",
-        firstName: "Alice",
-        lastName: "Admin",
-        imageUrl: "",
-        role: "admin",
-        joinedAt: "2026-01-01T00:00:00Z",
-      },
-      {
-        userId: "user-bob",
-        email: "bob@example.com",
-        firstName: "Bob",
-        lastName: "Member",
-        imageUrl: "",
-        role: "member",
-        joinedAt: "2026-01-02T00:00:00Z",
-      },
-    ],
-    pendingInvitations: [],
-    membershipRequests: [],
-  };
-  context.mocks.data.org({
-    id: "org_1",
-    name: "Test Org",
-    role: "admin",
-  });
+function mockBillingStatus(
+  overrides: Partial<BillingStatusResponse> = {},
+): void {
   context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
     return respond(200, {
       tier: "pro",
@@ -128,8 +101,45 @@ function mockUsageStory(): void {
       },
       concurrencyLimit: 0,
       concurrencySubscriptions: [],
+      ...overrides,
     });
   });
+}
+
+function mockUsageStory(): void {
+  const orgMembers: OrgMembersResponse = {
+    name: "Test Org",
+    role: "admin",
+    createdAt: "2026-01-01T00:00:00Z",
+    members: [
+      {
+        userId: "test-user-123",
+        email: "alice@example.com",
+        firstName: "Alice",
+        lastName: "Admin",
+        imageUrl: "",
+        role: "admin",
+        joinedAt: "2026-01-01T00:00:00Z",
+      },
+      {
+        userId: "user-bob",
+        email: "bob@example.com",
+        firstName: "Bob",
+        lastName: "Member",
+        imageUrl: "",
+        role: "member",
+        joinedAt: "2026-01-02T00:00:00Z",
+      },
+    ],
+    pendingInvitations: [],
+    membershipRequests: [],
+  };
+  context.mocks.data.org({
+    id: "org_1",
+    name: "Test Org",
+    role: "admin",
+  });
+  mockBillingStatus();
   context.mocks.api(zeroOrgMembersContract.members, ({ respond }) => {
     return respond(200, orgMembers);
   });
@@ -219,6 +229,60 @@ describe("organization usage settings", () => {
 
     // Usage records moved to their own section.
     expect(screen.queryByText("Team usage")).toBeNull();
+  });
+
+  it("moves between the balance and the usage records through the section links", async () => {
+    mockUsageStory();
+    await openCreditBalance();
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("credit-balance-see-usage"),
+      ).toBeInTheDocument();
+    });
+    click(screen.getByTestId("credit-balance-see-usage"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Credit usage" }),
+      ).toBeInTheDocument();
+    });
+    click(screen.getByTestId("usage-records-see-balance"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Credit balance" }),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("sends the buy credits action to the billing section", async () => {
+    mockUsageStory();
+    await openCreditBalance();
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("credit-balance-buy-credits"),
+      ).toBeInTheDocument();
+    });
+    click(screen.getByTestId("credit-balance-buy-credits"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Billing" }),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("hides the buy credits action when the plan cannot buy credits", async () => {
+    mockUsageStory();
+    mockBillingStatus({ canBuyCredits: false });
+    await openCreditBalance();
+
+    await waitFor(() => {
+      expect(screen.getByTestId("credit-grants-section")).toBeInTheDocument();
+    });
+    expect(screen.queryByTestId("credit-balance-buy-credits")).toBeNull();
   });
 
   it("shows workspace member usage in the credit usage section", async () => {
