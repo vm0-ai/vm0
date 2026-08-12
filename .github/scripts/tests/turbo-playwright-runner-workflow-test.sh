@@ -256,7 +256,7 @@ unless mock_claude_step.dig("env", "VERCEL_AUTOMATION_BYPASS_SECRET") ==
 end
 mock_claude_script = File.read(ARGV.fetch(1))
 %w[
-  /api/zero/model-providers
+  /api/zero/me/model-providers
   /api/zero/model-policies
   /api/zero/feature-switches
   claude-code-oauth-token

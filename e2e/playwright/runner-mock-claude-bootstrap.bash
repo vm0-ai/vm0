@@ -14,7 +14,7 @@ fi
 provider_response=$(curl -fsS "${headers[@]}" \
     -X POST \
     -d '{"type":"claude-code-oauth-token","secret":"mock-oauth-token-for-e2e"}' \
-    "${api_url}/api/zero/model-providers")
+    "${api_url}/api/zero/me/model-providers")
 jq -e '.provider.type == "claude-code-oauth-token"' \
     <<<"$provider_response" \
     >/dev/null
