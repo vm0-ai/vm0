@@ -2,10 +2,10 @@ import type { ComponentPropsWithoutRef, MouseEvent, ReactNode } from "react";
 import { Download, Loader2, Share2 } from "lucide-react";
 import {
   cn,
-  Popover,
-  PopoverContent,
-  PopoverOverlay,
-  PopoverTrigger,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -58,8 +58,8 @@ import {
 } from "./zero-attachment-url.ts";
 
 const GOOGLE_DRIVE_CONNECTOR_SLUG = "google-drive";
-const ARTIFACT_FLOATING_LAYER_CLASS =
-  "!z-[10000] transition-[opacity,transform] duration-[180ms] ease data-open:!animate-none data-closed:!animate-none data-open:translate-y-0 data-open:opacity-100 data-closed:translate-y-2 data-closed:opacity-0";
+const ARTIFACT_FLOATING_TRANSITION_CLASS =
+  "transition-[opacity,transform] duration-[180ms] ease data-open:!animate-none data-closed:!animate-none data-open:translate-y-0 data-open:opacity-100 data-closed:translate-y-2 data-closed:opacity-0";
 
 function siteSlugFromUrl(value: string): string | null {
   if (!URL.canParse(value)) {
@@ -288,7 +288,10 @@ export function ArtifactActionTooltip({
     <TooltipProvider delayDuration={200}>
       <Tooltip>
         <TooltipTrigger asChild>{children}</TooltipTrigger>
-        <TooltipContent side={side} className={ARTIFACT_FLOATING_LAYER_CLASS}>
+        <TooltipContent
+          side={side}
+          className={ARTIFACT_FLOATING_TRANSITION_CLASS}
+        >
           <p className="text-xs">{label}</p>
         </TooltipContent>
       </Tooltip>
@@ -331,37 +334,6 @@ export function ArtifactShareButton({
         <Share2 size={iconSize} />
       </a>
     </ArtifactActionTooltip>
-  );
-}
-
-type ArtifactDownloadMenuItemProps = Omit<
-  ComponentPropsWithoutRef<"button">,
-  "type"
-> & {
-  children: ReactNode;
-};
-
-function ArtifactDownloadMenuItem({
-  children,
-  className,
-  disabled = false,
-  ...props
-}: ArtifactDownloadMenuItemProps) {
-  return (
-    <button
-      {...props}
-      type="button"
-      role="menuitem"
-      aria-disabled={disabled ? "true" : undefined}
-      disabled={disabled}
-      className={cn(
-        "relative flex w-full select-none items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm outline-none transition-colors hover:bg-state-hover focus:bg-state-hover disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
-        disabled ? "cursor-default" : "cursor-pointer",
-        className,
-      )}
-    >
-      {children}
-    </button>
   );
 }
 
@@ -430,21 +402,16 @@ function GoogleDriveDisabledMenuItem({
             return $.artifacts.googleDrive.upload;
           });
   return (
-    <ArtifactDownloadMenuItem
-      className={muted ? "text-muted-foreground" : ""}
-      disabled
-    >
+    <DropdownMenuItem className={muted ? "text-muted-foreground" : ""} disabled>
       <BrandGoogleDrive size={14} />
       {text}
-    </ArtifactDownloadMenuItem>
+    </DropdownMenuItem>
   );
 }
 
 function GoogleDriveMenuItem({
-  closeMenu,
   syncTarget,
 }: {
-  closeMenu: () => void;
   syncTarget?: ArtifactDownloadSyncTarget;
 }) {
   const { t } = useTranslation();
@@ -479,7 +446,6 @@ function GoogleDriveMenuItem({
   }
 
   const syncOrConnect = () => {
-    closeMenu();
     const run = async () => {
       const success = await syncArtifactFileToGoogleDrive(
         {
@@ -530,12 +496,12 @@ function GoogleDriveMenuItem({
 
   if (googleDriveReady) {
     return (
-      <ArtifactDownloadMenuItem onClick={syncOrConnect}>
+      <DropdownMenuItem onClick={syncOrConnect}>
         <BrandGoogleDrive size={14} />
         {t(($) => {
           return $.artifacts.googleDrive.upload;
         })}
-      </ArtifactDownloadMenuItem>
+      </DropdownMenuItem>
     );
   }
 
@@ -543,7 +509,7 @@ function GoogleDriveMenuItem({
     <TooltipProvider delayDuration={200}>
       <Tooltip>
         <TooltipTrigger asChild>
-          <ArtifactDownloadMenuItem
+          <DropdownMenuItem
             disabled={
               !googleDriveConnected &&
               (!googleDriveConnector || !googleDriveAuthMethod)
@@ -554,9 +520,12 @@ function GoogleDriveMenuItem({
             {t(($) => {
               return $.artifacts.googleDrive.connect;
             })}
-          </ArtifactDownloadMenuItem>
+          </DropdownMenuItem>
         </TooltipTrigger>
-        <TooltipContent side="left" className={ARTIFACT_FLOATING_LAYER_CLASS}>
+        <TooltipContent
+          side="left"
+          className={ARTIFACT_FLOATING_TRANSITION_CLASS}
+        >
           {t(($) => {
             return $.artifacts.googleDrive.connectTooltip;
           })}
@@ -630,14 +599,12 @@ function setArtifactDownloadMenuOpen(params: {
 }
 
 function startArtifactDownloadWithCleanup(params: {
-  readonly closeMenu: () => void;
   readonly operation: string;
   readonly download: Promise<void>;
   readonly downloadKey: string;
   readonly finish: (key: string) => void;
   readonly start: (key: string) => void;
 }): void {
-  params.closeMenu();
   params.start(params.downloadKey);
   detach(
     withCleanup(params.download, () => {
@@ -678,8 +645,7 @@ export function ArtifactDownloadMenu({
   const downloadPending = pendingKey === artifactDownloadKey;
   const downloadName = artifactDownloadFilename(artifactKind, filename, url);
   return (
-    <Popover
-      modal={false}
+    <DropdownMenu
       open={open}
       onOpenChange={(nextOpen) => {
         setArtifactDownloadMenuOpen({
@@ -691,7 +657,7 @@ export function ArtifactDownloadMenu({
       }}
     >
       <ArtifactActionTooltip label={label}>
-        <PopoverTrigger asChild>
+        <DropdownMenuTrigger asChild>
           <ArtifactDownloadTrigger
             ariaLabel={label}
             className={className}
@@ -699,38 +665,19 @@ export function ArtifactDownloadMenu({
             iconSize={iconSize}
             open={open}
           />
-        </PopoverTrigger>
+        </DropdownMenuTrigger>
       </ArtifactActionTooltip>
-      {open && (
-        <PopoverOverlay
-          data-testid="artifact-download-menu-dismiss-layer"
-          aria-label={t(($) => {
-            return $.artifacts.actions.closeDownloadMenu;
-          })}
-          className="z-[9999]"
-        />
-      )}
-      <PopoverContent
-        role="menu"
+      <DropdownMenuContent
         align={align}
-        positionerClassName="!z-[10000]"
         sideOffset={6}
-        style={{ pointerEvents: "auto" }}
-        onOpenAutoFocus={(event) => {
-          event.preventDefault();
-        }}
         onCloseAutoFocus={(event) => {
           event.preventDefault();
         }}
-        className={cn(
-          "pointer-events-auto w-56 p-1",
-          ARTIFACT_FLOATING_LAYER_CLASS,
-        )}
+        className={cn("w-56", ARTIFACT_FLOATING_TRANSITION_CLASS)}
       >
-        <ArtifactDownloadMenuItem
+        <DropdownMenuItem
           onClick={() => {
             startArtifactDownloadWithCleanup({
-              closeMenu,
               operation: "artifact download",
               download: downloadAttachment(
                 { filename: downloadName, url },
@@ -746,9 +693,9 @@ export function ArtifactDownloadMenu({
           {t(($) => {
             return $.artifacts.actions.download;
           })}
-        </ArtifactDownloadMenuItem>
-        <GoogleDriveMenuItem closeMenu={closeMenu} syncTarget={syncTarget} />
-      </PopoverContent>
-    </Popover>
+        </DropdownMenuItem>
+        <GoogleDriveMenuItem syncTarget={syncTarget} />
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

@@ -172,7 +172,7 @@ const DropdownMenuContent = React.forwardRef<
           align={align}
           alignOffset={alignOffset}
           className={cn(
-            "isolate z-50 outline-none",
+            "outline-none",
             hideWhenDetached && "data-anchor-hidden:invisible",
           )}
           collisionAvoidance={resolvedCollisionAvoidance}
@@ -190,7 +190,7 @@ const DropdownMenuContent = React.forwardRef<
             ref={ref}
             data-slot="dropdown-menu-content"
             className={cn(
-              "z-50 max-h-[var(--available-height)] min-w-[8rem] origin-[var(--transform-origin)] overflow-x-hidden overflow-y-auto rounded-[12px] border-[0.7px] border-[hsl(var(--gray-400))] bg-card p-1 text-foreground shadow-lg outline-none data-open:animate-in data-closed:animate-out data-closed:fade-out-0 data-open:fade-in-0 data-closed:zoom-out-95 data-open:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 dark:shadow-[0_8px_40px_-8px_rgba(0,0,0,0.6)]",
+              "max-h-[var(--available-height)] min-w-[8rem] origin-[var(--transform-origin)] overflow-x-hidden overflow-y-auto rounded-[12px] border-[0.7px] border-[hsl(var(--gray-400))] bg-card p-1 text-foreground shadow-lg outline-none data-open:animate-in data-closed:animate-out data-closed:fade-out-0 data-open:fade-in-0 data-closed:zoom-out-95 data-open:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 dark:shadow-[0_8px_40px_-8px_rgba(0,0,0,0.6)]",
               className,
             )}
             finalFocus={withLegacyAutoFocus(
