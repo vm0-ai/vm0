@@ -18,6 +18,7 @@ import {
 import { Panel, ZeroFace } from "./components";
 import { ReadyExperience } from "./hero";
 import { currentDesktopIdentity } from "./desktop-identity";
+import { ZeroMigrationNotice } from "./zero-migration-notice";
 import {
   AuthStepCard,
   PermissionAutoRefresh,
@@ -175,6 +176,7 @@ export function App() {
       <BridgeSubscription />
       <Header />
       <main className="content">
+        <ZeroMigrationNotice />
         <ComputerUsePage />
       </main>
     </div>
