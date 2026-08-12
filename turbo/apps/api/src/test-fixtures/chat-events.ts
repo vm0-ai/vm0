@@ -1,10 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import type { ChatFeishuMessageFiles } from "@vm0/db/jsonb-contracts/chat-feishu-context";
-import type {
-  ChatEventPayload,
-  ChatEventUserMessage,
-} from "@vm0/db/jsonb-contracts/chat-event";
+import type { ChatEventPayload } from "@vm0/db/jsonb-contracts/chat-event";
 import type {
   ChatSlackMentionDisplayNames,
   ChatSlackMessageAssets,
@@ -2031,14 +2028,7 @@ interface CanonicalChatEventStorageRow {
   readonly id: string;
   readonly eventType: string;
   readonly payload: ChatEventPayload | null;
-  readonly content: string | null;
-  readonly userMessage: typeof chatEvents.$inferSelect.userMessage;
-  readonly thinking: string | null;
-  readonly error: string | null;
-  readonly usagePayload: typeof chatEvents.$inferSelect.usagePayload;
   readonly runId: string | null;
-  readonly interruptsRunId: string | null;
-  readonly runGroupId: string | null;
   readonly contextType: string | null;
   readonly contextId: string | null;
   readonly revokesEventId: string | null;
@@ -2073,10 +2063,9 @@ async function insertCanonicalSingleWrites(
   threadId: string,
   single: CanonicalChatEventWriteFixture["single"],
 ): Promise<void> {
-  const inputUserMessage = {
-    ...createUserMessageDocument({ text: "rejected canonical input" }),
-    nestedProbe: { value: null },
-  } as unknown as ChatEventUserMessage;
+  const inputUserMessage = createUserMessageDocument({
+    text: "rejected canonical input",
+  });
   await insertChatEvent(tx, {
     id: single.inputRejectedId,
     chatThreadId: threadId,
@@ -2280,14 +2269,7 @@ export async function readCanonicalChatEventStorageFixture(
       id: chatEvents.id,
       eventType: chatEvents.eventType,
       payload: chatEvents.payload,
-      content: chatEvents.content,
-      userMessage: chatEvents.userMessage,
-      thinking: chatEvents.thinking,
-      error: chatEvents.error,
-      usagePayload: chatEvents.usagePayload,
       runId: chatEvents.runId,
-      interruptsRunId: chatEvents.interruptsRunId,
-      runGroupId: chatEvents.runGroupId,
       contextType: chatEvents.contextType,
       contextId: chatEvents.contextId,
       revokesEventId: chatEvents.revokesEventId,

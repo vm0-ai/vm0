@@ -1,14 +1,23 @@
+import { userMessageDocumentSchema } from "@vm0/api-contracts/contracts/chat-threads";
 import { chatEvents } from "@vm0/db/schema/chat-event";
 import { sql, type SQLWrapper } from "drizzle-orm";
 
-import { nullableDriverValueDecoder } from "../../lib/db-structured-result";
+import {
+  nullableDriverValueDecoder,
+  pgTextDecoder,
+  zodDriverValueDecoder,
+} from "../../lib/db-structured-result";
+
+const chatEventUserMessageDecoder = zodDriverValueDecoder(
+  userMessageDocumentSchema,
+);
 
 /** Canonical payload leaves projected from chat_events.payload. */
 export function canonicalChatEventContent(
   payload: SQLWrapper = chatEvents.payload,
 ) {
   return sql`${payload}->>'content'`.mapWith(
-    nullableDriverValueDecoder(chatEvents.content),
+    nullableDriverValueDecoder(pgTextDecoder),
   );
 }
 
@@ -16,7 +25,7 @@ export function canonicalChatEventUserMessage(
   payload: SQLWrapper = chatEvents.payload,
 ) {
   return sql`${payload}->'userMessage'`.mapWith(
-    nullableDriverValueDecoder(chatEvents.userMessage),
+    nullableDriverValueDecoder(chatEventUserMessageDecoder),
   );
 }
 
@@ -24,7 +33,7 @@ export function canonicalChatEventError(
   payload: SQLWrapper = chatEvents.payload,
 ) {
   return sql`${payload}->>'error'`.mapWith(
-    nullableDriverValueDecoder(chatEvents.error),
+    nullableDriverValueDecoder(pgTextDecoder),
   );
 }
 

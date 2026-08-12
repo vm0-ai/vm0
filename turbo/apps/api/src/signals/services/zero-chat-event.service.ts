@@ -1,9 +1,6 @@
 /** Typed append-only commands for the canonical ChatEvent stream. */
 import { randomUUID } from "node:crypto";
-import {
-  isValidChatEventRevocation,
-  type ChatEventType,
-} from "@vm0/api-contracts/contracts/chat-events";
+import { isValidChatEventRevocation } from "@vm0/api-contracts/contracts/chat-events";
 import type { ChatFeishuMessageFiles } from "@vm0/db/jsonb-contracts/chat-feishu-context";
 import type {
   ChatSlackMentionDisplayNames,
@@ -11,6 +8,7 @@ import type {
   ChatSlackMessageFiles,
 } from "@vm0/db/jsonb-contracts/chat-slack-context";
 import type { ChatTeamsMessageFiles } from "@vm0/db/jsonb-contracts/chat-teams-context";
+import type { ChatEventPayload } from "@vm0/db/jsonb-contracts/chat-event";
 import { chatAgentRunContext } from "@vm0/db/schema/chat-agent-run-context";
 import { chatAgentphoneContext } from "@vm0/db/schema/chat-agentphone-context";
 import { chatAutomationContext } from "@vm0/db/schema/chat-automation-context";
@@ -18,7 +16,6 @@ import {
   chatEventTerminalPredicate,
   chatEvents,
 } from "@vm0/db/schema/chat-event";
-import type { ChatEventPayload } from "@vm0/db/jsonb-contracts/chat-event";
 import { chatFeishuContext } from "@vm0/db/schema/chat-feishu-context";
 import { chatGithubContext } from "@vm0/db/schema/chat-github-context";
 import { chatMorningBriefContext } from "@vm0/db/schema/chat-morning-brief-context";
@@ -27,15 +24,6 @@ import { chatTeamsContext } from "@vm0/db/schema/chat-teams-context";
 import { chatTelegramContext } from "@vm0/db/schema/chat-telegram-context";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { eq, sql } from "drizzle-orm";
-import {
-  bigint,
-  integer,
-  jsonb,
-  pgTable,
-  text,
-  timestamp,
-  uuid,
-} from "drizzle-orm/pg-core";
 import { nowDate } from "../../lib/time";
 import type {
   WorkflowAutomationEventPayload,
@@ -43,40 +31,7 @@ import type {
 } from "./workflow-automation-context.service";
 import type { Tx } from "../../lib/db-types";
 
-/**
- * Drizzle names every column declared by an insert table, including omitted
- * values. This runtime insert shape contains only canonical storage columns so
- * a later migration can physically contract the legacy columns after this
- * writer has drained without changing the insert statement again.
- */
-const canonicalChatEvents = pgTable("chat_events", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  chatThreadId: uuid("chat_thread_id").notNull(),
-  runId: uuid("run_id"),
-  revokesEventId: uuid("revokes_event_id"),
-  eventType: text("event_type").$type<ChatEventType>().notNull(),
-  payload: jsonb("payload").$type<ChatEventPayload>(),
-  contextType: text("context_type").$type<
-    | "web"
-    | "slack"
-    | "feishu"
-    | "teams"
-    | "telegram"
-    | "github"
-    | "agentphone"
-    | "automation"
-    | "goal"
-    | "morning_brief"
-    | "agent_run"
-  >(),
-  contextId: uuid("context_id"),
-  runEventSequenceNumber: integer("run_event_sequence_number"),
-  runEventId: text("run_event_id"),
-  seqId: bigint("seq_id", { mode: "number" }).notNull(),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-});
-
-type CanonicalChatEventInsert = typeof canonicalChatEvents.$inferInsert;
+type CanonicalChatEventInsert = typeof chatEvents.$inferInsert;
 type ChatEventWriteTransaction = Tx;
 
 type ChatEventIdentity = {
@@ -1136,39 +1091,35 @@ export async function insertChatEvent(
     throw new Error("chat event seq_id was not assigned");
   }
 
-  const query = tx.insert(canonicalChatEvents).values(valueWithSeqId);
+  const query = tx.insert(chatEvents).values(valueWithSeqId);
   const rows =
     conflict === "any"
       ? await query.onConflictDoNothing().returning({
-          id: canonicalChatEvents.id,
-          createdAt: canonicalChatEvents.createdAt,
-          seqId: canonicalChatEvents.seqId,
+          id: chatEvents.id,
+          createdAt: chatEvents.createdAt,
+          seqId: chatEvents.seqId,
         })
       : conflict === "id"
-        ? await query
-            .onConflictDoNothing({ target: canonicalChatEvents.id })
-            .returning({
-              id: canonicalChatEvents.id,
-              createdAt: canonicalChatEvents.createdAt,
-              seqId: canonicalChatEvents.seqId,
-            })
+        ? await query.onConflictDoNothing({ target: chatEvents.id }).returning({
+            id: chatEvents.id,
+            createdAt: chatEvents.createdAt,
+            seqId: chatEvents.seqId,
+          })
         : conflict === "run-lifecycle"
           ? await query
               .onConflictDoNothing({
-                target: canonicalChatEvents.runId,
-                where: chatEventTerminalPredicate(
-                  canonicalChatEvents.eventType,
-                ),
+                target: chatEvents.runId,
+                where: chatEventTerminalPredicate(chatEvents.eventType),
               })
               .returning({
-                id: canonicalChatEvents.id,
-                createdAt: canonicalChatEvents.createdAt,
-                seqId: canonicalChatEvents.seqId,
+                id: chatEvents.id,
+                createdAt: chatEvents.createdAt,
+                seqId: chatEvents.seqId,
               })
           : await query.returning({
-              id: canonicalChatEvents.id,
-              createdAt: canonicalChatEvents.createdAt,
-              seqId: canonicalChatEvents.seqId,
+              id: chatEvents.id,
+              createdAt: chatEvents.createdAt,
+              seqId: chatEvents.seqId,
             });
 
   if (rows.length === 0) {
@@ -1207,15 +1158,15 @@ export async function insertChatEvents(
     }),
   );
   const rows = await tx
-    .insert(canonicalChatEvents)
+    .insert(chatEvents)
     .values([...valuesWithSeqIds])
     .onConflictDoNothing()
     .returning({
-      id: canonicalChatEvents.id,
-      chatThreadId: canonicalChatEvents.chatThreadId,
-      createdAt: canonicalChatEvents.createdAt,
-      seqId: canonicalChatEvents.seqId,
-      sequenceNumber: canonicalChatEvents.runEventSequenceNumber,
+      id: chatEvents.id,
+      chatThreadId: chatEvents.chatThreadId,
+      createdAt: chatEvents.createdAt,
+      seqId: chatEvents.seqId,
+      sequenceNumber: chatEvents.runEventSequenceNumber,
     });
 
   if (rows.length < valuesWithSeqIds.length) {
@@ -1323,7 +1274,7 @@ export async function replaceLoadedChatEvent(
   );
   const seqId = await reserveChatEventSeqIds(tx, replacement.chatThreadId, 1);
   const rows = await tx
-    .insert(canonicalChatEvents)
+    .insert(chatEvents)
     .values({
       ...canonicalChatEventValues(
         { ...replacement, createdAt },
@@ -1337,9 +1288,9 @@ export async function replaceLoadedChatEvent(
     })
     .onConflictDoNothing()
     .returning({
-      id: canonicalChatEvents.id,
-      createdAt: canonicalChatEvents.createdAt,
-      seqId: canonicalChatEvents.seqId,
+      id: chatEvents.id,
+      createdAt: chatEvents.createdAt,
+      seqId: chatEvents.seqId,
     });
   const inserted = rows[0];
   if (!inserted) {

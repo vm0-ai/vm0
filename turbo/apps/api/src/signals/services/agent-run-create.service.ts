@@ -5768,7 +5768,6 @@ function launchZeroRunValues(
     triggerSource: args.body.triggerSource,
     workflowAutomationId: metadata.workflowAutomationId ?? null,
     triggerBrief: metadata.triggerBrief ?? null,
-    runGroupId: metadata.goalId ?? null,
     goalId: metadata.goalId ?? null,
     ...(metadata.autonomyBudget === undefined
       ? {}
