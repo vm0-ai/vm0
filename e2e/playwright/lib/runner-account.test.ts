@@ -75,6 +75,11 @@ test("prepares and cleans one generation of runner accounts", async () => {
         "e2e-runner-real-claude-pr-123",
         "runner-real-claude",
       ),
+      organizationRequest(
+        "user_4",
+        "e2e-runner-mock-claude-pr-123",
+        "runner-mock-claude",
+      ),
     ]);
     assert.equal(
       await readFile(githubOutput, "utf8"),
@@ -82,9 +87,11 @@ test("prepares and cleans one generation of runner accounts", async () => {
         "runner-organization-id=org_1",
         "codex-organization-id=org_2",
         "claude-organization-id=org_3",
+        "mock-claude-organization-id=org_4",
         "runner-email=pr-123+clerk_test+9001-3+runner@vm0-e2e.ai",
         "codex-email=pr-123+clerk_test+9001-3+runner-real-codex@vm0-e2e.ai",
         "claude-email=pr-123+clerk_test+9001-3+runner-real-claude@vm0-e2e.ai",
+        "mock-claude-email=pr-123+clerk_test+9001-3+runner-mock-claude@vm0-e2e.ai",
         "",
       ].join("\n"),
     );
@@ -114,9 +121,11 @@ test("prepares and cleans one generation of runner accounts", async () => {
       "organization:org_1",
       "organization:org_2",
       "organization:org_3",
+      "organization:org_4",
       "user:user_1",
       "user:user_2",
       "user:user_3",
+      "user:user_4",
     ]);
     assert.deepEqual(fixture.state.users, [
       {
