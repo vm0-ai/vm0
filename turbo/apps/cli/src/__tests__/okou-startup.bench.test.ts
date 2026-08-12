@@ -22,7 +22,7 @@ function benchmarkEnv(): NodeJS.ProcessEnv {
     CI: "1",
     NO_COLOR: "1",
     SENTRY_DSN: "",
-    ZERO_TOKEN: "",
+    OKOU_TOKEN: "",
   };
 
   for (const key of [

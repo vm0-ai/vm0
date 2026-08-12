@@ -26,6 +26,8 @@ const CANONICAL_CLAUDE_PROJECT_NAME = CANONICAL_WORKING_DIR.replace(
 ).replace(/\//g, "-");
 export const CANONICAL_CLAUDE_MEMORY_MOUNT_PATH = `${CANONICAL_GUEST_HOME_DIR}/.claude/projects/-${CANONICAL_CLAUDE_PROJECT_NAME}/memory`;
 export const CANONICAL_CODEX_MEMORY_MOUNT_PATH = `${CANONICAL_GUEST_HOME_DIR}/.codex/memories`;
+export const PI_SESSION_VERSION = 1;
+export const CANONICAL_PI_SESSION_DATABASE_PATH = `${CANONICAL_GUEST_HOME_DIR}/.pi/agent/sessions/v${PI_SESSION_VERSION}/sessions.sqlite`;
 // Shared resume history size contract. Rust consumers import the generated
 // binding from `api_contracts::generated::constants`.
 export const RESUME_SESSION_HISTORY_MAX_BYTES = 128 * 1024 * 1024;
@@ -422,9 +424,6 @@ const runnerBuiltinFirewallsResolveResponseSchema = z.object({
  */
 export const DEFAULT_PROFILE = "vm0/default";
 
-export const piExecutionModeSchema = z.literal("standby");
-export type PiExecutionMode = z.infer<typeof piExecutionModeSchema>;
-
 /**
  * Runner group format: vm0/<name> (e.g., "vm0/production")
  */
@@ -459,7 +458,6 @@ export const jobSchema = z.object({
   cliAgentSessionId: z.string().nullable().optional(),
   reuseKey: z.string().nullable().optional(),
   historyGenerationRunId: z.uuid().optional(),
-  piExecutionMode: piExecutionModeSchema.optional(),
   runnerPreference: runnerPreferenceSchema,
 });
 
@@ -757,32 +755,34 @@ export const piModelConfigSchema = z
   })
   .readonly();
 
-function requireValidPiExecutionContext(
+function requireCompletePiFields(
   context: {
-    readonly piExecutionMode?: PiExecutionMode;
+    readonly piSessionId?: unknown;
+    readonly piPrompt?: unknown;
     readonly piSystemPrompt?: unknown;
     readonly piModelConfig?: unknown;
-    readonly runSkillSnapshot?: unknown;
   },
   refinement: z.RefinementCtx,
 ): void {
+  const piEnabled = context.piSessionId !== undefined;
   for (const field of [
+    "piSessionId",
+    "piPrompt",
     "piSystemPrompt",
     "piModelConfig",
-    "runSkillSnapshot",
   ] as const) {
     const fieldPresent = context[field] !== undefined;
-    if (context.piExecutionMode === undefined && fieldPresent) {
+    if (!piEnabled && fieldPresent) {
       refinement.addIssue({
         code: "custom",
         path: [field],
-        message: `${field} requires Pi execution mode`,
+        message: `${field} requires piSessionId`,
       });
-    } else if (context.piExecutionMode !== undefined && !fieldPresent) {
+    } else if (piEnabled && !fieldPresent) {
       refinement.addIssue({
         code: "custom",
         path: [field],
-        message: `${field} is required for Pi execution mode`,
+        message: `${field} is required for a Pi session`,
       });
     }
   }
@@ -861,18 +861,16 @@ const storedExecutionContextObjectSchema = z.object({
   codexRuntimeConfig: modelProviderCodexRuntimeConfigSchema
     .nullable()
     .optional(),
-  // Complete Pi prompt rendered once before the first model call and reused
-  // byte-for-byte by the API loop and the standby Sandbox.
-  piExecutionMode: piExecutionModeSchema.optional(),
+  // Pi runs execute only in the Sandbox. The API stores the rendered prompt
+  // until claim, where it becomes the ordinary runner prompt.
+  piSessionId: z.uuid().optional(),
+  piPrompt: z.string().min(1).optional(),
   piSystemPrompt: z.string().min(1).optional(),
   piModelConfig: piModelConfigSchema.optional(),
-  runSkillSnapshot: runSkillSnapshotSchema.optional(),
 });
 
 export const storedExecutionContextSchema =
-  storedExecutionContextObjectSchema.superRefine(
-    requireValidPiExecutionContext,
-  );
+  storedExecutionContextObjectSchema.superRefine(requireCompletePiFields);
 
 /**
  * Tolerant reader for execution contexts already persisted in a database or
@@ -885,7 +883,7 @@ export const compatibleStoredExecutionContextSchema =
     .extend({
       connectorPermissionBaseline: z.unknown().optional(),
     })
-    .superRefine(requireValidPiExecutionContext);
+    .superRefine(requireCompletePiFields);
 
 /**
  * Execution context returned when claiming a job.
@@ -960,14 +958,40 @@ const executionContextObjectSchema = z.object({
   codexRuntimeConfig: modelProviderCodexRuntimeConfigSchema
     .nullable()
     .optional(),
-  piExecutionMode: piExecutionModeSchema.optional(),
+  piSessionId: z.uuid().optional(),
   piSystemPrompt: z.string().min(1).optional(),
   piModelConfig: piModelConfigSchema.optional(),
-  runSkillSnapshot: runSkillSnapshotSchema.optional(),
 });
 
 export const executionContextSchema = executionContextObjectSchema.superRefine(
-  requireValidPiExecutionContext,
+  (context, refinement) => {
+    const piFields = [
+      context.piSessionId,
+      context.piSystemPrompt,
+      context.piModelConfig,
+    ];
+    const expectsPi = context.cliAgentType === "pi";
+    const hasMissingPiField = piFields.some((field) => {
+      return field === undefined;
+    });
+    const hasPiField = piFields.some((field) => {
+      return field !== undefined;
+    });
+    if (expectsPi && hasMissingPiField) {
+      refinement.addIssue({
+        code: "custom",
+        path: ["piSessionId"],
+        message:
+          "Pi execution requires session, system prompt, and model config",
+      });
+    } else if (!expectsPi && hasPiField) {
+      refinement.addIssue({
+        code: "custom",
+        path: ["piSessionId"],
+        message: "Pi execution fields require cliAgentType pi",
+      });
+    }
+  },
 );
 
 /**

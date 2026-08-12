@@ -877,7 +877,7 @@ describe("openai-api-key codex provider", () => {
     });
   });
 
-  it("also covers the Pi standby chat-completions path, still scoped", () => {
+  it("also covers the Pi sandbox chat-completions path, still scoped", () => {
     const config = MODEL_PROVIDER_FIREWALL_CONFIGS["openai-api-key"];
     expect(
       config.apis.map((api) => {
@@ -911,7 +911,7 @@ describe("firewall base URL scoped to /v1/messages (#9560)", () => {
     (type, expectedBase) => {
       const config = MODEL_PROVIDER_FIREWALL_CONFIGS[type];
       // Pi-capable providers carry a second, equally scoped entry for the
-      // standby loop's chat-completions call; the Anthropic base stays first.
+      // sandbox loop's chat-completions call; the Anthropic base stays first.
       expect(config.apis[0]!.base).toBe(expectedBase);
       for (const api of config.apis) {
         expect(api.base).toMatch(/\/(v1\/messages|chat\/completions)$/);

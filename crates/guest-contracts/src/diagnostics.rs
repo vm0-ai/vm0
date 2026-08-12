@@ -668,6 +668,8 @@ pub enum AgentFramework {
     ClaudeCode,
     /// OpenAI Codex CLI.
     Codex,
+    /// Pi native agent loop.
+    Pi,
 }
 
 impl AgentFramework {
@@ -677,6 +679,7 @@ impl AgentFramework {
         match self {
             Self::ClaudeCode => "claude_code",
             Self::Codex => "codex",
+            Self::Pi => "pi",
         }
     }
 }

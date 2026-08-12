@@ -1,6 +1,6 @@
 import { command } from "ccstate";
 import type { z } from "zod";
-import { and, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import {
   runStatusSchema,
   type RunResult,
@@ -10,8 +10,6 @@ import { webhookCompleteContract } from "@vm0/api-contracts/contracts/webhooks";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { checkpoints } from "@vm0/db/schema/checkpoint";
-import { piThreadMessages } from "@vm0/db/schema/pi-thread-message";
-import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 
 import { notFound } from "../../lib/error";
@@ -225,10 +223,7 @@ async function prepareCompletion(
     .limit(1);
   signal.throwIfAborted();
   if (!checkpoint) {
-    const allowCheckpointlessSuccess =
-      input.allowCheckpointlessSuccess ||
-      (await hasAcknowledgedTerminalPiMessage(db, input, signal));
-    if (allowCheckpointlessSuccess) {
+    if (input.allowCheckpointlessSuccess) {
       return { status: "completed" };
     }
     return {
@@ -345,18 +340,6 @@ async function applyTerminalCompletion(
   if (!updated) {
     throw new Error("Locked agent run lost its terminal transition");
   }
-  // Pi jobs can stay in the queue after a standby claim. Nothing consumes them
-  // once the run settles. Ordinary rows are already removed by the normal
-  // claim/expiry lifecycle, and deleting them here would change stale-claim
-  // errors.
-  await tx
-    .delete(runnerJobQueue)
-    .where(
-      and(
-        eq(runnerJobQueue.runId, input.body.runId),
-        sql`${runnerJobQueue.executionContext}->>'piExecutionMode' = 'standby'`,
-      ),
-    );
 }
 
 function noActiveInputFinalization(): FinalizeActiveInputDeliveryResult {
@@ -493,40 +476,6 @@ function deletedRunCompletionResponse(run: RunRecord): CompletionResponse {
       status: run.status === "completed" ? "completed" : "failed",
     },
   };
-}
-
-async function hasAcknowledgedTerminalPiMessage(
-  db: Db,
-  input: CompleteAgentRunInput,
-  signal: AbortSignal,
-): Promise<boolean> {
-  const lastEventSequence = input.body.lastEventSequence;
-  if (lastEventSequence === undefined) {
-    return false;
-  }
-  const [message] = await db
-    .select({
-      messageId: piThreadMessages.messageId,
-      role: piThreadMessages.role,
-      payload: piThreadMessages.payload,
-      runEventSequenceNumber: piThreadMessages.runEventSequenceNumber,
-    })
-    .from(piThreadMessages)
-    .where(eq(piThreadMessages.runId, input.body.runId))
-    .orderBy(desc(piThreadMessages.runEventSequenceNumber))
-    .limit(1);
-  signal.throwIfAborted();
-
-  const payload = message?.payload;
-  return (
-    message?.runEventSequenceNumber === lastEventSequence &&
-    message.messageId === `${input.body.runId}/${lastEventSequence}` &&
-    message.role === "assistant" &&
-    payload !== undefined &&
-    payload.role === "assistant" &&
-    typeof payload.stopReason === "string" &&
-    payload.stopReason !== "toolUse"
-  );
 }
 
 const dispatchTerminalCompleteSideEffects$ = command(

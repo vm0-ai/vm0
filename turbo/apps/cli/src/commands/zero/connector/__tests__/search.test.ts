@@ -150,7 +150,7 @@ describe("okou connector search command", () => {
   beforeEach(() => {
     chalk.level = 0;
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("ZERO_TOKEN", "test-token");
+    vi.stubEnv("OKOU_TOKEN", "test-token");
     server.use(stubCustomConnectors([]), stubAgentCustomConnectors([]));
   });
 
@@ -350,8 +350,8 @@ describe("okou connector search command", () => {
       expect(githubRow).toMatch(/✓/);
     });
 
-    it("adds AUTHORIZED FOR column when ZERO_AGENT_ID is set", async () => {
-      vi.stubEnv("ZERO_AGENT_ID", AGENT_UUID);
+    it("adds AUTHORIZED FOR column when OKOU_AGENT_ID is set", async () => {
+      vi.stubEnv("OKOU_AGENT_ID", AGENT_UUID);
       server.use(
         stubAgent(AGENT_UUID, "maya"),
         stubUserConnectors(AGENT_UUID, []),
@@ -386,8 +386,8 @@ describe("okou connector search command", () => {
       expect(output).toContain(`AUTHORIZED FOR ${AGENT_UUID}`);
     });
 
-    it("--agent overrides ZERO_AGENT_ID", async () => {
-      vi.stubEnv("ZERO_AGENT_ID", ALT_AGENT_UUID);
+    it("--agent overrides OKOU_AGENT_ID", async () => {
+      vi.stubEnv("OKOU_AGENT_ID", ALT_AGENT_UUID);
       server.use(
         stubAgent(AGENT_UUID, "from-flag"),
         stubUserConnectors(AGENT_UUID, ["github"]),

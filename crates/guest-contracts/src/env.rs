@@ -164,8 +164,8 @@ pub const PI_SYSTEM_PROMPT_ENV: &str = "VM0_PI_SYSTEM_PROMPT";
 /// Logical run-payload field name for non-secret Pi model metadata.
 pub const PI_MODEL_CONFIG_ENV: &str = "VM0_PI_MODEL_CONFIG";
 
-/// Logical run-payload field name for the exact-version Pi Skill snapshot.
-pub const RUN_SKILL_SNAPSHOT_ENV: &str = "VM0_RUN_SKILL_SNAPSHOT";
+/// Logical run-payload field name for the Chat Thread-owned Pi session id.
+pub const PI_SESSION_ID_ENV: &str = "VM0_PI_SESSION_ID";
 
 /// Runner-owned variable-length run payload sent through
 /// [`RUN_PAYLOAD_FILE_ENV`].
@@ -206,9 +206,9 @@ pub struct RunPayload {
     /// JSON object describing non-secret Pi model metadata.
     #[serde(default)]
     pub pi_model_config: String,
-    /// JSON object describing the exact-version Pi Skill resource view.
+    /// Chat Thread id used as Pi's native session id.
     #[serde(default)]
-    pub run_skill_snapshot: String,
+    pub pi_session_id: String,
 }
 
 /// Borrowed logical string field from [`RunPayload`].
@@ -235,7 +235,7 @@ impl RunPayload {
             codex_runtime_config,
             pi_system_prompt,
             pi_model_config,
-            run_skill_snapshot,
+            pi_session_id,
         } = self;
 
         [
@@ -284,8 +284,8 @@ impl RunPayload {
                 value: pi_model_config,
             },
             RunPayloadField {
-                name: RUN_SKILL_SNAPSHOT_ENV,
-                value: run_skill_snapshot,
+                name: PI_SESSION_ID_ENV,
+                value: pi_session_id,
             },
         ]
     }
@@ -472,7 +472,7 @@ mod tests {
             codex_runtime_config: r#"{"providerId":"deepseek"}"#.to_string(),
             pi_system_prompt: "fixed Pi prompt".to_string(),
             pi_model_config: r#"{"provider":"deepseek"}"#.to_string(),
-            run_skill_snapshot: r#"{"digest":"sha256:test"}"#.to_string(),
+            pi_session_id: "22222222-2222-4222-8222-222222222222".to_string(),
         };
 
         let json = serde_json::to_value(&payload).unwrap();
@@ -485,7 +485,7 @@ mod tests {
         assert_eq!(json["codexRuntimeConfig"], r#"{"providerId":"deepseek"}"#);
         assert_eq!(json["piSystemPrompt"], "fixed Pi prompt");
         assert_eq!(json["piModelConfig"], r#"{"provider":"deepseek"}"#);
-        assert_eq!(json["runSkillSnapshot"], r#"{"digest":"sha256:test"}"#);
+        assert_eq!(json["piSessionId"], "22222222-2222-4222-8222-222222222222");
     }
 
     #[test]
@@ -502,7 +502,7 @@ mod tests {
             codex_runtime_config: r#"{"providerId":"deepseek"}"#.to_string(),
             pi_system_prompt: "fixed Pi prompt".to_string(),
             pi_model_config: r#"{"provider":"deepseek"}"#.to_string(),
-            run_skill_snapshot: r#"{"digest":"sha256:test"}"#.to_string(),
+            pi_session_id: "22222222-2222-4222-8222-222222222222".to_string(),
         };
 
         let fields = payload.fields();
@@ -555,8 +555,8 @@ mod tests {
                     value: r#"{"provider":"deepseek"}"#
                 },
                 RunPayloadField {
-                    name: RUN_SKILL_SNAPSHOT_ENV,
-                    value: r#"{"digest":"sha256:test"}"#
+                    name: PI_SESSION_ID_ENV,
+                    value: "22222222-2222-4222-8222-222222222222"
                 },
             ]
         );

@@ -10,7 +10,6 @@ use tracing::warn;
 use super::ActiveRunnerPreference;
 use super::{JobCandidate, JobDiscoverySource, RunnerPreferenceContext};
 use crate::ids::RunId;
-use crate::types::PiExecutionMode;
 
 pub(super) const DIRECT_CANDIDATE_STALE_AFTER: Duration = Duration::from_secs(60);
 
@@ -22,7 +21,6 @@ pub(super) struct DirectJobCandidate {
     enqueued_at: Option<StdInstant>,
     reuse_key: Option<String>,
     history_generation_run_id: Option<RunId>,
-    pi_execution_mode: Option<PiExecutionMode>,
     runner_preference_context: Option<RunnerPreferenceContext>,
 }
 
@@ -68,7 +66,6 @@ impl DirectJobCandidate {
             enqueued_at: None,
             reuse_key,
             history_generation_run_id: None,
-            pi_execution_mode: None,
             runner_preference_context,
         }
     }
@@ -105,14 +102,6 @@ impl DirectJobCandidate {
         self
     }
 
-    pub(super) fn with_pi_execution_mode(
-        mut self,
-        pi_execution_mode: Option<PiExecutionMode>,
-    ) -> Self {
-        self.pi_execution_mode = pi_execution_mode;
-        self
-    }
-
     pub(super) fn into_job_candidate(self) -> JobCandidate {
         let dequeued_at = StdInstant::now();
         let notification_to_enqueue_elapsed = self
@@ -124,7 +113,6 @@ impl DirectJobCandidate {
         JobCandidate::new_with_discovered_at(self.run_id, self.profile_name, self.discovered_at)
             .with_reuse_key(self.reuse_key)
             .with_history_generation_run_id(self.history_generation_run_id)
-            .with_pi_execution_mode(self.pi_execution_mode)
             .with_parsed_runner_preference_context(self.runner_preference_context)
             .with_discovery_source(JobDiscoverySource::Ably)
             .with_direct_candidate_timing(notification_to_enqueue_elapsed, inbox_wait_elapsed)
@@ -140,7 +128,6 @@ impl DirectJobCandidate {
             );
             return;
         }
-        self.pi_execution_mode = candidate.pi_execution_mode;
         if self.runner_preference_context.is_some() {
             return;
         }
@@ -550,8 +537,7 @@ mod tests {
                         first_deadline,
                     )),
                 )
-                .with_history_generation_run_id(Some(first_history_generation))
-                .with_pi_execution_mode(Some(PiExecutionMode::Standby)),
+                .with_history_generation_run_id(Some(first_history_generation)),
             )
             .await;
 
@@ -568,24 +554,20 @@ mod tests {
                         StdInstant::now() + Duration::from_secs(30),
                     )),
                 )
-                .with_history_generation_run_id(Some(run_id(7)))
-                .with_pi_execution_mode(None),
+                .with_history_generation_run_id(Some(run_id(7))),
             )
             .await;
 
         inbox
-            .push(
-                DirectJobCandidate::new_with_routing_metadata(
-                    candidate_run_id,
-                    "vm0/default".to_string(),
-                    StdInstant::now(),
-                    None,
-                    Some(RunnerPreferenceContext::no_preference_for_test(
-                        RunnerNoPreferenceReason::NoViableHolder,
-                    )),
-                )
-                .with_pi_execution_mode(None),
-            )
+            .push(DirectJobCandidate::new_with_routing_metadata(
+                candidate_run_id,
+                "vm0/default".to_string(),
+                StdInstant::now(),
+                None,
+                Some(RunnerPreferenceContext::no_preference_for_test(
+                    RunnerNoPreferenceReason::NoViableHolder,
+                )),
+            ))
             .await;
 
         let candidate = inbox
@@ -594,7 +576,6 @@ mod tests {
             .expect("retained direct candidate")
             .into_job_candidate();
         assert_eq!(candidate.reuse_key(), Some("session:first-decision"));
-        assert_eq!(candidate.pi_execution_mode(), None);
         assert_eq!(
             candidate.history_generation_run_id(),
             Some(first_history_generation)

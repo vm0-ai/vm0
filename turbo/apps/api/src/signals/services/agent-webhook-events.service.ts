@@ -5,7 +5,7 @@ import type {
   AgentEvent,
   EventConsumerPayload,
 } from "../../lib/event-consumer/verify";
-import { badRequestMessage, eventDeliveryUnavailable } from "../../lib/error";
+import { eventDeliveryUnavailable } from "../../lib/error";
 import { logger } from "../../lib/log";
 import { isForeignKeyViolation } from "../../lib/pg-errors";
 import { now } from "../../lib/time";
@@ -17,10 +17,6 @@ import {
   publishMaterializedChatProjection,
   type MaterializedChatProjection,
 } from "./agent-event-consumer-run-output.service";
-import {
-  PI_MESSAGE_COMPLETED_EVENT_TYPE,
-  PiTranscriptRejectedError,
-} from "./pi-transcript.service";
 import { refreshTelegramTypingEvents$ } from "./agent-event-consumer-telegram-typing.service";
 import { settle, tapError } from "../utils";
 
@@ -78,17 +74,9 @@ function immutableEventPayload(
   auth: SandboxAuth,
   body: AgentEventsBody,
 ): EventConsumerPayload {
-  const events = body.events.map((event): AgentEvent => {
-    if (event.type !== PI_MESSAGE_COMPLETED_EVENT_TYPE) {
-      return event;
-    }
-    // Trust the authenticated transport boundary rather than guest-provided
-    // metadata, including runners deployed before the source field existed.
-    return { ...event, source: "sandbox" };
-  });
   return Object.freeze({
     runId: body.runId,
-    events: Object.freeze(events),
+    events: Object.freeze([...body.events]),
     context: Object.freeze({
       userId: auth.userId,
       orgId: auth.orgId,
@@ -190,11 +178,6 @@ export const receiveAgentEvents$ = command(
     );
     signal.throwIfAborted();
     if (!projectionResult.ok) {
-      if (projectionResult.error instanceof PiTranscriptRejectedError) {
-        return {
-          response: badRequestMessage(projectionResult.error.message),
-        };
-      }
       if (isForeignKeyViolation(projectionResult.error)) {
         L.debug("Ignored events for deleted run", {
           runId: payload.runId,

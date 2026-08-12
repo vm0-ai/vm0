@@ -1262,6 +1262,11 @@ mod tests {
                 FinalSessionHistoryFramework::Codex,
                 format!("CODEX_SEARCH:26:/home/user/.codex/sessions:{session_id}"),
             ),
+            RestoredSessionFramework::Pi => (
+                FinalSessionHistoryFramework::Pi,
+                api_contracts::generated::constants::runners::paths::CANONICAL_PI_SESSION_DATABASE_PATH
+                    .to_string(),
+            ),
         };
         let metadata = FinalSessionHistoryIdentity::new(
             final_framework,
