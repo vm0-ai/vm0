@@ -13,10 +13,14 @@ import {
   detachedSetupPage,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
-import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import {
+  testContext,
+  warmMermaidParser,
+} from "../../../signals/__tests__/test-helpers.ts";
 import { Markdown } from "../markdown.tsx";
 
 const context = testContext();
+warmMermaidParser();
 const THREAD_ID = "eb000000-0000-4000-a000-000000000001";
 
 function threadSnapshot(id: string, title: string) {
