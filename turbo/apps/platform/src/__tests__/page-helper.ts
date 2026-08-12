@@ -127,11 +127,12 @@ export async function setupPage(options: {
   const activeOrgId = options.org ? options.org.activeOrg?.id : defaultOrgId;
   options.context.store.set(clearFeatureSwitchCacheForTest$);
   const featureSwitchOverrides = {
+    // Shared page fixtures still model the projected-event rollback path.
+    // Snapshot cold starts have dedicated tests that override this to true.
+    [FeatureSwitchKey.ChatEventSnapshotRead]: false,
     ...options.featureSwitches,
   };
-  if (options.featureSwitches) {
-    setMockFeatureSwitches(featureSwitchOverrides);
-  }
+  setMockFeatureSwitches(featureSwitchOverrides);
   options.context.store.set(
     setFeatureSwitchCacheForTest$,
     getAllFeatureStates({

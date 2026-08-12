@@ -312,8 +312,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description:
       "Cold-start chat threads from R2 snapshot objects plus the raw-row tail endpoint instead of paging the full history from Postgres.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.UnifiedIndicatorApi]: {
     maintainer: "ethan@vm0.ai",
