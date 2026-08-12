@@ -313,6 +313,7 @@ def _admit_platform_api_request(flow: http.HTTPFlow) -> bool:
     ):
         return False
     platform_api.add_vercel_bypass_header(flow.request.headers)
+    platform_api.add_cloudflare_access_headers(flow.request.headers)
     return True
 
 

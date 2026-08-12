@@ -94,6 +94,19 @@ expected_runtimes = %w[cloudflare vercel]
 unless runner_start.dig("strategy", "matrix", "runtime") == expected_runtimes
   raise "runner deployment must start isolated services for both runtimes"
 end
+runner_service_step = runner_start.fetch("steps").find do |step|
+  step["name"] == "Rebuild config and start runner service on all hosts"
+end
+raise "missing runner service start step" unless runner_service_step
+expected_runner_access_environment = {
+  "CF_ACCESS_CLIENT_ID" => "${{ matrix.runtime == 'cloudflare' && secrets.CF_API_PREVIEW_ACCESS_CLIENT_ID || '' }}",
+  "CF_ACCESS_CLIENT_SECRET" => "${{ matrix.runtime == 'cloudflare' && secrets.CF_API_PREVIEW_ACCESS_CLIENT_SECRET || '' }}",
+}
+expected_runner_access_environment.each do |name, value|
+  unless runner_service_step.dig("env", name) == value
+    raise "runner service must receive runtime-scoped #{name}"
+  end
+end
 
 expected_group = "cli-e2e-03-runner-${{ matrix.runtime }}-${{ matrix.index }}-${{ needs.prepare.outputs.job-ref }}"
 unless runner.dig("concurrency", "group") == expected_group
@@ -308,6 +321,7 @@ codex_script = codex_step.fetch("run")
   /api/okou/model-policies
   /api/okou/feature-switches
   gpt-5.6-luna
+  gpt-5.6-sol
   realAgentInPreview
 ].each do |required_fragment|
   unless codex_script.include?(required_fragment)

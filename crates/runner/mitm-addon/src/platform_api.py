@@ -7,9 +7,13 @@ import uuid
 
 from mitmproxy import ctx, http
 
-# Vercel bypass secret (still from environment as it's a secret)
+# Preview ingress credentials remain runner-owned and are injected only after a
+# request has been admitted as platform API traffic.
 VERCEL_BYPASS = os.environ.get("VERCEL_AUTOMATION_BYPASS_SECRET", "")
 _VERCEL_BYPASS_HEADER = "x-vercel-protection-bypass"
+CLOUDFLARE_ACCESS_CLIENT_ID = os.environ.get("CF_ACCESS_CLIENT_ID", "")
+CLOUDFLARE_ACCESS_CLIENT_SECRET = os.environ.get("CF_ACCESS_CLIENT_SECRET", "")
+_CLOUDFLARE_ACCESS_HEADERS = ("cf-access-client-id", "cf-access-client-secret")
 CLIENT_VERSION_HEADER = "X-Client-Version"
 CLIENT_TYPE_HEADER = "X-Client-Type"
 CLIENT_SESSION_ID_HEADER = "X-Client-Session-Id"
@@ -50,6 +54,13 @@ def add_vercel_bypass_header(headers: http.Headers) -> None:
         headers[_VERCEL_BYPASS_HEADER] = VERCEL_BYPASS
 
 
+def add_cloudflare_access_headers(headers: http.Headers) -> None:
+    """Add runner-owned Access credentials to admitted platform API traffic."""
+    if CLOUDFLARE_ACCESS_CLIENT_ID and CLOUDFLARE_ACCESS_CLIENT_SECRET:
+        headers[_CLOUDFLARE_ACCESS_HEADERS[0]] = CLOUDFLARE_ACCESS_CLIENT_ID
+        headers[_CLOUDFLARE_ACCESS_HEADERS[1]] = CLOUDFLARE_ACCESS_CLIENT_SECRET
+
+
 def get_api_url() -> str:
     """Get API URL from mitmproxy options."""
     return ctx.options.vm0_api_url
@@ -59,7 +70,7 @@ def make_api_request(url: str, data: bytes, sandbox_token: str) -> urllib.reques
     """Build a Request with standard platform API headers.
 
     Centralises User-Agent, Authorization, Content-Type, and the optional
-    Vercel bypass header so that callers cannot accidentally omit them. The
+    preview ingress headers so that callers cannot accidentally omit them. The
     credentials are unredirected as defense in depth; callers must still reject
     redirects, using :func:`build_api_opener` or an equivalent transport policy,
     before contacting another URL.
@@ -87,4 +98,13 @@ def make_api_request(url: str, data: bytes, sandbox_token: str) -> urllib.reques
     req.add_unredirected_header("Authorization", f"Bearer {sandbox_token}")
     if VERCEL_BYPASS:
         req.add_unredirected_header(_VERCEL_BYPASS_HEADER, VERCEL_BYPASS)
+    if CLOUDFLARE_ACCESS_CLIENT_ID and CLOUDFLARE_ACCESS_CLIENT_SECRET:
+        req.add_unredirected_header(
+            _CLOUDFLARE_ACCESS_HEADERS[0],
+            CLOUDFLARE_ACCESS_CLIENT_ID,
+        )
+        req.add_unredirected_header(
+            _CLOUDFLARE_ACCESS_HEADERS[1],
+            CLOUDFLARE_ACCESS_CLIENT_SECRET,
+        )
     return req

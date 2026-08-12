@@ -28,7 +28,9 @@ teardown() {
     local prompt
     prompt=$(cat <<'EOF'
 printf 'SERPAPI_TOKEN=%s\n' "$SERPAPI_TOKEN"
-curl --silent --show-error --max-time 5 --output /dev/null 'https://serpapi.com/search?q=vm0-e2e&engine=google' || true
+# Protected preview APIs add an auth-resolution round trip before this request
+# can leave the sandbox. Keep the client alive long enough for that real path.
+curl --silent --show-error --max-time 30 --output /dev/null 'https://serpapi.com/search?q=vm0-e2e&engine=google' || true
 printf 'SERPAPI_REQUEST_SENT\n'
 EOF
 )

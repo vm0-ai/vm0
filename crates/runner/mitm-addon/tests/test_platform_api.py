@@ -39,6 +39,16 @@ class TestMakeApiRequest:
         with (
             mitm_ctx(),
             patch.object(platform_api, "VERCEL_BYPASS", "secret-bypass-value"),
+            patch.object(
+                platform_api,
+                "CLOUDFLARE_ACCESS_CLIENT_ID",
+                "access-client-id",
+            ),
+            patch.object(
+                platform_api,
+                "CLOUDFLARE_ACCESS_CLIENT_SECRET",
+                "access-client-secret",
+            ),
         ):
             req = platform_api.make_api_request(
                 "https://api.vm0.ai/api/webhooks/agent/firewall/auth",
@@ -52,8 +62,12 @@ class TestMakeApiRequest:
         }
         assert "authorization" not in redirected_headers
         assert "x-vercel-protection-bypass" not in redirected_headers
+        assert "cf-access-client-id" not in redirected_headers
+        assert "cf-access-client-secret" not in redirected_headers
         assert unredirected_headers["authorization"] == "Bearer tok-xyz"
         assert unredirected_headers["x-vercel-protection-bypass"] == "secret-bypass-value"
+        assert unredirected_headers["cf-access-client-id"] == "access-client-id"
+        assert unredirected_headers["cf-access-client-secret"] == "access-client-secret"
 
     @pytest.mark.parametrize(
         "url",

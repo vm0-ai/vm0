@@ -116,6 +116,36 @@ async def test_vm0_api_auto_allow_injects_runner_preview_bypass(
     assert flow.request.headers["x-vercel-protection-bypass"] == "preview-secret"
 
 
+async def test_vm0_api_auto_allow_injects_runner_cloudflare_access(
+    registry_file, real_flow, mitm_ctx, monkeypatch
+):
+    flow = real_flow(
+        with_response=False,
+        host="preview-api.vm6.ai",
+        path="/api/zero/chat-threads/thread-id/metadata",
+    )
+    monkeypatch.setattr(
+        platform_api,
+        "CLOUDFLARE_ACCESS_CLIENT_ID",
+        "access-client-id",
+    )
+    monkeypatch.setattr(
+        platform_api,
+        "CLOUDFLARE_ACCESS_CLIENT_SECRET",
+        "access-client-secret",
+    )
+
+    with mitm_ctx(
+        registry_path=str(registry_file),
+        api_url="https://preview-api.vm6.ai",
+    ):
+        await mitm_addon.request(flow)
+
+    assert flow.response is None
+    assert flow.request.headers["cf-access-client-id"] == "access-client-id"
+    assert flow.request.headers["cf-access-client-secret"] == "access-client-secret"
+
+
 async def test_non_api_request_does_not_receive_runner_preview_bypass(
     registry_file, real_flow, mitm_ctx, monkeypatch
 ):
@@ -129,6 +159,31 @@ async def test_non_api_request_does_not_receive_runner_preview_bypass(
         await mitm_addon.request(flow)
 
     assert "x-vercel-protection-bypass" not in flow.request.headers
+
+
+async def test_non_api_request_does_not_receive_runner_cloudflare_access(
+    registry_file, real_flow, mitm_ctx, monkeypatch
+):
+    flow = real_flow(with_response=False, host="example.com", path="/resource")
+    monkeypatch.setattr(
+        platform_api,
+        "CLOUDFLARE_ACCESS_CLIENT_ID",
+        "access-client-id",
+    )
+    monkeypatch.setattr(
+        platform_api,
+        "CLOUDFLARE_ACCESS_CLIENT_SECRET",
+        "access-client-secret",
+    )
+
+    with mitm_ctx(
+        registry_path=str(registry_file),
+        api_url="https://preview-api.vm6.ai",
+    ):
+        await mitm_addon.request(flow)
+
+    assert "cf-access-client-id" not in flow.request.headers
+    assert "cf-access-client-secret" not in flow.request.headers
 
 
 async def test_matching_sni_and_host_allows_bound_vm0_api_auto_allow(

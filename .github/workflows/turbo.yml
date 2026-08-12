@@ -3333,8 +3333,8 @@ jobs:
           ROOTFS_HASH_MAP: ${{ needs.deploy-runner-prepare.outputs.rootfs-hash-map }}
           SNAPSHOT_HASH_MAP: ${{ needs.deploy-runner-prepare.outputs.snapshot-hash-map }}
           RUNNER_API_URL: ${{ matrix.runtime == 'vercel' && needs.deploy-api-vercel.outputs.preview-url || needs.deploy-api.outputs.preview-url }}
-          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_API_PREVIEW_ACCESS_CLIENT_ID }}
-          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_API_PREVIEW_ACCESS_CLIENT_SECRET }}
+          CF_ACCESS_CLIENT_ID: ${{ matrix.runtime == 'cloudflare' && secrets.CF_API_PREVIEW_ACCESS_CLIENT_ID || '' }}
+          CF_ACCESS_CLIENT_SECRET: ${{ matrix.runtime == 'cloudflare' && secrets.CF_API_PREVIEW_ACCESS_CLIENT_SECRET || '' }}
           VERCEL_BYPASS: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
         run: |
           set -euo pipefail
@@ -3887,7 +3887,10 @@ jobs:
             {
               policies: (
                 [.policies[] |
-                  select(.model != "gpt-5.6-luna") |
+                  select(
+                    .model != "gpt-5.6-luna" and
+                    .model != "gpt-5.6-sol"
+                  ) |
                   {
                     model,
                     isDefault,
@@ -3902,6 +3905,13 @@ jobs:
                     defaultProviderType: "openai-api-key",
                     credentialScope: "org",
                     modelProviderId: $providerId
+                  },
+                  {
+                    model: "gpt-5.6-sol",
+                    isDefault: false,
+                    defaultProviderType: "vm0",
+                    credentialScope: "org",
+                    modelProviderId: null
                   }
                 ]
               )
