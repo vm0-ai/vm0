@@ -101,6 +101,24 @@ end
   end
 end
 
+playwright = jobs.fetch("cli-e2e-02-playwright")
+unless playwright.dig("strategy", "matrix", "shard") == [1, 2]
+  raise "Playwright E2E must shard both preview runtimes"
+end
+playwright_run = find_step.call(playwright, "Run Playwright E2E tests")
+unless playwright_run.fetch("run").include?('--fully-parallel') &&
+    playwright_run.fetch("run").include?('--shard="${PLAYWRIGHT_SHARD}/2"') &&
+    playwright_run.fetch("run").include?('--workers=1')
+  raise "Playwright E2E must balance shards while serializing each test identity"
+end
+unless playwright.dig("concurrency", "group").include?("matrix.shard")
+  raise "Playwright E2E shard concurrency groups must remain independent"
+end
+playwright_upload = find_step.call(playwright, "Upload Playwright report")
+unless playwright_upload.dig("with", "name").include?("matrix.shard")
+  raise "Playwright E2E artifacts must remain unique per shard"
+end
+
 %w[cli-e2e-02-browser cli-e2e-02-playwright].each do |job_name|
   run_step = jobs.fetch(job_name).fetch("steps").find do |step|
     step.fetch("name", "").start_with?("Run ") &&

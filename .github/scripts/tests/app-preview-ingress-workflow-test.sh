@@ -157,6 +157,9 @@ playwright_e2e = jobs.fetch("cli-e2e-02-playwright")
     raise "deployed E2E must wait for deploy-app success"
   end
 end
+unless playwright_e2e.dig("strategy", "matrix", "shard") == [1, 2]
+  raise "Playwright E2E must shard each preview runtime"
+end
 
 browser_run = browser_e2e.fetch("steps").find do |step|
   step["name"] == "Run browser E2E tests"
@@ -180,6 +183,12 @@ expected_runtime_app_url = "${{ matrix.runtime == 'vercel' && needs.deploy-app.o
 unless playwright_run.fetch("env").fetch("OKOU_APP_URL") == expected_runtime_app_url &&
     playwright_run.fetch("env").fetch("ZERO_APP_URL") == expected_runtime_app_url
   raise "Playwright E2E must emit both branded URLs for the selected runtime gateway"
+end
+unless playwright_run.fetch("env").fetch("PLAYWRIGHT_SHARD") == "${{ matrix.shard }}" &&
+    playwright_run.fetch("run").include?('--fully-parallel') &&
+    playwright_run.fetch("run").include?('--shard="${PLAYWRIGHT_SHARD}/2"') &&
+    playwright_run.fetch("run").include?('--workers=1')
+  raise "Playwright E2E shards must balance individual tests without intra-org concurrency"
 end
 
 turbo_source = File.read(ARGV.fetch(0))

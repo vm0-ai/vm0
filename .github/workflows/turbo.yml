@@ -2702,8 +2702,9 @@ jobs:
       fail-fast: false
       matrix:
         runtime: [cloudflare, vercel]
+        shard: [1, 2]
     concurrency:
-      group: cli-e2e-02-playwright-${{ matrix.runtime }}-${{ needs.prepare.outputs.job-ref }}
+      group: cli-e2e-02-playwright-${{ matrix.runtime }}-${{ matrix.shard }}-${{ needs.prepare.outputs.job-ref }}
       cancel-in-progress: true
     needs:
       - prepare
@@ -2790,8 +2791,15 @@ jobs:
           API_PREVIEW_URL: ${{ matrix.runtime == 'vercel' && needs.deploy-api-vercel.outputs.preview-url || needs.deploy-api.outputs.preview-url }}
           STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
       - name: Run Playwright E2E tests
-        run: cd e2e && npx playwright test --config playwright/playwright.config.ts
+        run: |
+          cd e2e
+          npx playwright test \
+            --config playwright/playwright.config.ts \
+            --fully-parallel \
+            --shard="${PLAYWRIGHT_SHARD}/2" \
+            --workers=1
         env:
+          PLAYWRIGHT_SHARD: ${{ matrix.shard }}
           VM0_API_BACKEND_URL: ${{ matrix.runtime == 'vercel' && needs.deploy-api-vercel.outputs.preview-url || needs.deploy-api.outputs.preview-url }}
           OKOU_APP_URL: ${{ matrix.runtime == 'vercel' && needs.deploy-app.outputs.vercel-preview-url || needs.deploy-app.outputs.preview-url }}
           ZERO_APP_URL: ${{ matrix.runtime == 'vercel' && needs.deploy-app.outputs.vercel-preview-url || needs.deploy-app.outputs.preview-url }}
@@ -2923,7 +2931,7 @@ jobs:
         if: always() && steps.playwright-artifact-safety.outputs.safe == 'true'
         uses: actions/upload-artifact@v7
         with:
-          name: playwright-report-${{ matrix.runtime }}
+          name: playwright-report-${{ matrix.runtime }}-${{ matrix.shard }}
           path: |
             e2e/playwright-report/
             e2e/test-results/
