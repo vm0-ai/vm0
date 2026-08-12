@@ -71,7 +71,7 @@ export async function callZeroMaps(
   }
 
   const response = await fetch(
-    new URL(`/api/zero/maps/${operation}`, baseUrl),
+    new URL(`/api/okou/maps/${operation}`, baseUrl),
     {
       method: "POST",
       headers: headersWithCliClientHeaders(authenticatedJsonHeaders(token)),

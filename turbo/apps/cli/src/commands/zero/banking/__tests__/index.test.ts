@@ -48,7 +48,7 @@ describe("okou banking command", () => {
     let requestBody: unknown;
     server.use(
       http.post(
-        "http://localhost:3000/api/zero/banking/transactions",
+        "http://localhost:3000/api/okou/banking/transactions",
         async ({ request }) => {
           requestBody = await request.json();
           return HttpResponse.json({
@@ -106,7 +106,7 @@ describe("okou banking command", () => {
 
   it("renders provider and account data in human output", async () => {
     server.use(
-      http.post("http://localhost:3000/api/zero/banking/accounts", () => {
+      http.post("http://localhost:3000/api/okou/banking/accounts", () => {
         return HttpResponse.json({
           operation: "accounts",
           provider: "finicity",
@@ -141,6 +141,6 @@ describe("okou banking command", () => {
 
     const errors = mockConsoleError.mock.calls.flat().join("\n");
     expect(errors).toContain("Not authenticated");
-    expect(errors).toContain("Set ZERO_TOKEN to a valid run token");
+    expect(errors).toContain("Set OKOU_TOKEN to a valid run token");
   });
 });

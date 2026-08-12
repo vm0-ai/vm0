@@ -10,12 +10,12 @@ import { messageCommand } from "../message";
 import { uploadFileCommand } from "../upload-file";
 
 const DOWNLOAD_URL =
-  "http://localhost:3000/api/zero/integrations/phone/download-file";
-const MESSAGE_URL = "http://localhost:3000/api/zero/integrations/phone/message";
+  "http://localhost:3000/api/okou/integrations/phone/download-file";
+const MESSAGE_URL = "http://localhost:3000/api/okou/integrations/phone/message";
 const UPLOAD_INIT_URL =
-  "http://localhost:3000/api/zero/integrations/phone/upload-file/init";
+  "http://localhost:3000/api/okou/integrations/phone/upload-file/init";
 const UPLOAD_COMPLETE_URL =
-  "http://localhost:3000/api/zero/integrations/phone/upload-file/complete";
+  "http://localhost:3000/api/okou/integrations/phone/upload-file/complete";
 const R2_UPLOAD_URL = "https://mock-r2.test/phone-upload";
 
 describe("okou phone commands", () => {

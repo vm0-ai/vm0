@@ -86,7 +86,7 @@ export async function downloadPhoneFile(
     throw new ApiRequestError("Not authenticated", "UNAUTHORIZED", 401);
   }
 
-  const url = new URL("/api/zero/integrations/phone/download-file", baseUrl);
+  const url = new URL("/api/okou/integrations/phone/download-file", baseUrl);
   url.searchParams.set("file_id", fileId);
 
   const headers: Record<string, string> = {

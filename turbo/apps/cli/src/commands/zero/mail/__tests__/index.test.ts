@@ -16,7 +16,7 @@ const MAIL_DRAFT_ID = "550e8400-e29b-41d4-a716-446655440002";
 
 function stubAgentContext(enabledConnectorSlugs: readonly string[]) {
   return [
-    http.get(`http://localhost:3000/api/zero/agents/${AGENT_ID}`, () => {
+    http.get(`http://localhost:3000/api/okou/agents/${AGENT_ID}`, () => {
       return HttpResponse.json({
         agentId: AGENT_ID,
         ownerId: "owner-1",
@@ -27,7 +27,7 @@ function stubAgentContext(enabledConnectorSlugs: readonly string[]) {
       });
     }),
     http.get(
-      `http://localhost:3000/api/zero/agents/${AGENT_ID}/user-connectors`,
+      `http://localhost:3000/api/okou/agents/${AGENT_ID}/user-connectors`,
       () => {
         return HttpResponse.json({
           enabledConnectorSlugs: [...enabledConnectorSlugs],
@@ -109,7 +109,7 @@ describe("okou mail", () => {
   it("links an existing Gmail draft and prints only the review URL", async () => {
     server.use(
       http.post(
-        "http://localhost:3000/api/zero/mail/drafts/link",
+        "http://localhost:3000/api/okou/mail/drafts/link",
         async ({ request }) => {
           expect(request.headers.get("authorization")).toBe(
             "Bearer test-zero-token",
@@ -140,7 +140,7 @@ describe("okou mail", () => {
 
   it("adds a callback prompt to the review URL for a single draft", async () => {
     server.use(
-      http.post("http://localhost:3000/api/zero/mail/drafts/link", () => {
+      http.post("http://localhost:3000/api/okou/mail/drafts/link", () => {
         return HttpResponse.json(
           {
             mailDraftId: MAIL_DRAFT_ID,

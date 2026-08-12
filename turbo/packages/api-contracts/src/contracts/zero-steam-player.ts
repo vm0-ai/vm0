@@ -82,7 +82,7 @@ export type ZeroSteamPlayerResponse = z.infer<
 export const zeroSteamPlayerContract = c.router({
   getPlayer: {
     method: "GET",
-    path: "/api/zero/connectors/steam/player",
+    path: "/api/okou/connectors/steam/player",
     headers: authHeadersSchema,
     responses: {
       200: zeroSteamPlayerResponseSchema,

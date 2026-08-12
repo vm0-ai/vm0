@@ -12,12 +12,12 @@ export const zeroOrgLogoResponseSchema = z.object({
 export type ZeroOrgLogoResponse = z.infer<typeof zeroOrgLogoResponseSchema>;
 
 /**
- * Zero contract for /api/zero/org/logo
+ * Zero contract for /api/okou/org/logo
  */
 export const zeroOrgLogoContract = c.router({
   get: {
     method: "GET",
-    path: "/api/zero/org/logo",
+    path: "/api/okou/org/logo",
     headers: authHeadersSchema,
     responses: {
       200: zeroOrgLogoResponseSchema,
@@ -29,7 +29,7 @@ export const zeroOrgLogoContract = c.router({
   },
   post: {
     method: "POST",
-    path: "/api/zero/org/logo",
+    path: "/api/okou/org/logo",
     headers: authHeadersSchema,
     contentType: "multipart/form-data",
     body: c.type<FormData>(),

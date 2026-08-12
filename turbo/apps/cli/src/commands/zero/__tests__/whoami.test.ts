@@ -29,7 +29,7 @@ function mockUserPermissionGrantsHandler(
   grants: Record<string, unknown>[] = [],
 ) {
   return http.get(
-    "http://localhost:3000/api/zero/user-permission-grants",
+    "http://localhost:3000/api/okou/user-permission-grants",
     () => {
       return HttpResponse.json(grants);
     },
@@ -205,7 +205,7 @@ describe("okou whoami command", () => {
       );
       vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
       server.use(
-        http.get("http://localhost:3000/api/zero/org", () => {
+        http.get("http://localhost:3000/api/okou/org", () => {
           return HttpResponse.json(
             { error: { message: "Organization not found", code: "NOT_FOUND" } },
             { status: 404 },
@@ -300,7 +300,7 @@ describe("okou whoami command", () => {
       vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
 
       server.use(
-        http.get("http://localhost:3000/api/zero/connectors", () => {
+        http.get("http://localhost:3000/api/okou/connectors", () => {
           return HttpResponse.json({
             connectors: [
               {
@@ -373,7 +373,7 @@ describe("okou whoami command", () => {
       vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
 
       server.use(
-        http.get("http://localhost:3000/api/zero/connectors", () => {
+        http.get("http://localhost:3000/api/okou/connectors", () => {
           return HttpResponse.json({
             connectors: [
               {
@@ -421,7 +421,7 @@ describe("okou whoami command", () => {
       vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
 
       server.use(
-        http.get("http://localhost:3000/api/zero/connectors", () => {
+        http.get("http://localhost:3000/api/okou/connectors", () => {
           return HttpResponse.json(
             { error: { message: "Forbidden", code: "FORBIDDEN" } },
             { status: 403 },
@@ -464,7 +464,7 @@ describe("okou whoami command", () => {
       vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
 
       server.use(
-        http.get("http://localhost:3000/api/zero/connectors", () => {
+        http.get("http://localhost:3000/api/okou/connectors", () => {
           return HttpResponse.json({
             connectors: [],
             connectorProvidedBindings: [],
@@ -502,7 +502,7 @@ describe("okou whoami command", () => {
       vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
 
       server.use(
-        http.get("http://localhost:3000/api/zero/connectors", () => {
+        http.get("http://localhost:3000/api/okou/connectors", () => {
           return HttpResponse.json({
             connectors: [
               {
@@ -566,7 +566,7 @@ describe("okou whoami command", () => {
       vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
 
       server.use(
-        http.get("http://localhost:3000/api/zero/connectors", () => {
+        http.get("http://localhost:3000/api/okou/connectors", () => {
           return HttpResponse.json({
             connectors: [
               {
@@ -601,7 +601,7 @@ describe("okou whoami command", () => {
           }),
         ]),
         http.get(
-          "http://localhost:3000/api/zero/agents/agent-123/user-connectors",
+          "http://localhost:3000/api/okou/agents/agent-123/user-connectors",
           () => {
             return HttpResponse.json({ enabledConnectorSlugs: ["slack"] });
           },
@@ -660,7 +660,7 @@ describe("okou whoami command", () => {
           ...defaultPermissionDetails,
           serverOnlyDetail,
         ]),
-        http.get("http://localhost:3000/api/zero/connectors", () => {
+        http.get("http://localhost:3000/api/okou/connectors", () => {
           return HttpResponse.json({
             connectors: [
               {
@@ -687,7 +687,7 @@ describe("okou whoami command", () => {
           }),
         ]),
         http.get(
-          "http://localhost:3000/api/zero/agents/agent-123/user-connectors",
+          "http://localhost:3000/api/okou/agents/agent-123/user-connectors",
           () => {
             return HttpResponse.json({
               enabledConnectorSlugs: ["server-only"],
@@ -726,7 +726,7 @@ describe("okou whoami command", () => {
       vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
 
       server.use(
-        http.get("http://localhost:3000/api/zero/connectors", () => {
+        http.get("http://localhost:3000/api/okou/connectors", () => {
           return HttpResponse.json({
             connectors: [
               {
@@ -747,7 +747,7 @@ describe("okou whoami command", () => {
         }),
         mockUserPermissionGrantsHandler(),
         http.get(
-          "http://localhost:3000/api/zero/agents/agent-123/user-connectors",
+          "http://localhost:3000/api/okou/agents/agent-123/user-connectors",
           () => {
             return HttpResponse.json({ enabledConnectorSlugs: ["github"] });
           },
@@ -784,7 +784,7 @@ describe("okou whoami command", () => {
       vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
 
       server.use(
-        http.get("http://localhost:3000/api/zero/connectors", () => {
+        http.get("http://localhost:3000/api/okou/connectors", () => {
           return HttpResponse.json({
             connectors: [
               {
@@ -804,7 +804,7 @@ describe("okou whoami command", () => {
           });
         }),
         http.get(
-          "http://localhost:3000/api/zero/user-permission-grants",
+          "http://localhost:3000/api/okou/user-permission-grants",
           () => {
             return HttpResponse.json(
               { error: { message: "Internal Server Error", code: "INTERNAL" } },
@@ -813,7 +813,7 @@ describe("okou whoami command", () => {
           },
         ),
         http.get(
-          "http://localhost:3000/api/zero/agents/agent-123/user-connectors",
+          "http://localhost:3000/api/okou/agents/agent-123/user-connectors",
           () => {
             return HttpResponse.json({ enabledConnectorSlugs: ["github"] });
           },
@@ -861,7 +861,7 @@ describe("okou whoami command", () => {
       vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
 
       server.use(
-        http.get("http://localhost:3000/api/zero/connectors", () => {
+        http.get("http://localhost:3000/api/okou/connectors", () => {
           return HttpResponse.json({
             connectors: [
               {
@@ -882,13 +882,13 @@ describe("okou whoami command", () => {
         }),
         mockUserPermissionGrantsHandler(),
         http.get(
-          "http://localhost:3000/api/zero/agents/agent-123/user-connectors",
+          "http://localhost:3000/api/okou/agents/agent-123/user-connectors",
           () => {
             return HttpResponse.json({ enabledConnectorSlugs: ["github"] });
           },
         ),
         http.get(
-          "http://localhost:3000/api/zero/connector-catalog/github/permissions",
+          "http://localhost:3000/api/okou/connector-catalog/github/permissions",
           () => {
             return HttpResponse.json(
               {
@@ -933,7 +933,7 @@ describe("okou whoami command", () => {
       vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
 
       server.use(
-        http.get("http://localhost:3000/api/zero/connectors", () => {
+        http.get("http://localhost:3000/api/okou/connectors", () => {
           return HttpResponse.json({
             connectors: [
               {
@@ -961,7 +961,7 @@ describe("okou whoami command", () => {
         ]),
         // user-connectors API fails
         http.get(
-          "http://localhost:3000/api/zero/agents/agent-123/user-connectors",
+          "http://localhost:3000/api/okou/agents/agent-123/user-connectors",
           () => {
             return HttpResponse.json(
               { error: { message: "Forbidden", code: "FORBIDDEN" } },
@@ -1007,7 +1007,7 @@ describe("okou whoami command", () => {
       vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
 
       server.use(
-        http.get("http://localhost:3000/api/zero/connectors", () => {
+        http.get("http://localhost:3000/api/okou/connectors", () => {
           return HttpResponse.json({
             connectors: [
               {
@@ -1089,7 +1089,7 @@ describe("okou whoami command", () => {
       ).toBe(true);
       expect(
         output.some((line) => {
-          return line.includes("ZERO_TOKEN env var");
+          return line.includes("OKOU_TOKEN env var");
         }),
       ).toBe(true);
     });
@@ -1110,7 +1110,7 @@ describe("okou whoami command", () => {
 
       await runWhoami();
 
-      expect(getAllOutput()).toContain("  Status:     Invalid ZERO_TOKEN");
+      expect(getAllOutput()).toContain("  Status:     Invalid OKOU_TOKEN");
     });
 
     it("should identify an expired ZERO_TOKEN", async () => {
@@ -1128,7 +1128,7 @@ describe("okou whoami command", () => {
 
       await runWhoami();
 
-      expect(getAllOutput()).toContain("  Status:     Expired ZERO_TOKEN");
+      expect(getAllOutput()).toContain("  Status:     Expired OKOU_TOKEN");
     });
 
     it("should display active org from ZERO_TOKEN", async () => {

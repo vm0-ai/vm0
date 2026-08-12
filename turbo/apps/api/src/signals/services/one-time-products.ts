@@ -4,7 +4,7 @@ import { env } from "../../lib/env";
  * Server-side registry of one-time redemption campaigns.
  *
  * A campaign is the unit a user redeems via the platform `/redeem/:campaign`
- * page (which calls `POST /api/zero/billing/redeem/:campaign`). It bundles:
+ * page (which calls `POST /api/okou/billing/redeem/:campaign`). It bundles:
  *   - business policy (credits, expiry, source) — hardcoded here so ops can't
  *     inflate credits by flipping an env var;
  *   - Stripe identifiers (priceId, couponId) — sourced from env so test and

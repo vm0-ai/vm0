@@ -34,12 +34,12 @@ export function resetMockSlackOrgIntegration(): void {
 }
 
 export const apiIntegrationsSlackOrgHandlers = [
-  // GET /api/zero/integrations/slack
+  // GET /api/okou/integrations/slack
   mockApi(zeroIntegrationsSlackContract.getStatus, ({ respond }) => {
     return respond(200, mockSlackOrgData);
   }),
 
-  // DELETE /api/zero/integrations/slack
+  // DELETE /api/okou/integrations/slack
   mockApi(zeroIntegrationsSlackContract.disconnect, ({ query, respond }) => {
     if (query.action === "uninstall") {
       mockSlackOrgData = {
@@ -53,7 +53,7 @@ export const apiIntegrationsSlackOrgHandlers = [
     return respond(200, { ok: true });
   }),
 
-  // GET /api/zero/slack/channels
+  // GET /api/okou/slack/channels
   mockApi(zeroSlackChannelsContract.list, ({ respond }) => {
     if (!mockSlackOrgData.isInstalled) {
       return respond(404, {

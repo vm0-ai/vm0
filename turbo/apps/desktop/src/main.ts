@@ -132,7 +132,7 @@ const desktopAuthSelectOrgUrl = buildDesktopAuthSelectOrgUrl(
 );
 const desktopAuthTokenUrl = buildDesktopAuthTokenUrl(config.webUrl);
 const localRendererUrl = desktopRendererUrl();
-const ZERO_FEATURE_SWITCHES_PATH = "/api/zero/feature-switches";
+const ZERO_FEATURE_SWITCHES_PATH = "/api/okou/feature-switches";
 const noAllowedAppOrigins: ReadonlySet<string> = new Set();
 const ELECTRON_ERR_ABORTED = -3;
 const DESKTOP_SIGN_OUT_STORAGES = [

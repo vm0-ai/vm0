@@ -120,14 +120,14 @@ describe("api client headers", () => {
   it("adds type, version, session, and per-request ids to fetch$ requests", async () => {
     mockSignedInUser();
     const observedHeaders: ObservedClientHeaders[] = [];
-    context.mocks.http.get("*/api/zero/client-header-test", ({ request }) => {
+    context.mocks.http.get("*/api/okou/client-header-test", ({ request }) => {
       observedHeaders.push(observedClientHeaders(request));
       return new Response(null, { status: 204 });
     });
 
     const fetcher = getFetchForTest();
 
-    await fetcher("/api/zero/client-header-test", {
+    await fetcher("/api/okou/client-header-test", {
       headers: {
         "X-Client-Request-Id": "caller-request-id",
         "X-Client-Session-Id": "caller-session-id",
@@ -135,7 +135,7 @@ describe("api client headers", () => {
         "X-Client-Version": "caller-version",
       },
     });
-    await fetcher("/api/zero/client-header-test");
+    await fetcher("/api/okou/client-header-test");
 
     expect(observedHeaders).toHaveLength(2);
     const [first, second] = observedHeaders;
@@ -156,7 +156,7 @@ describe("api client headers", () => {
     mockSignedInUser();
     let requests = 0;
     let forcedTokenRefreshes = 0;
-    context.mocks.http.get("*/api/zero/auth-recovery-test", () => {
+    context.mocks.http.get("*/api/okou/auth-recovery-test", () => {
       requests += 1;
       if (requests === 1) {
         return HttpResponse.json(
@@ -189,7 +189,7 @@ describe("api client headers", () => {
       return Promise.resolve("test-token");
     });
 
-    const response = await getFetchForTest()("/api/zero/auth-recovery-test");
+    const response = await getFetchForTest()("/api/okou/auth-recovery-test");
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toStrictEqual({ recovered: true });
@@ -217,7 +217,7 @@ describe("api client headers", () => {
 
     const authorizationHeaders: (string | null)[] = [];
     context.mocks.http.get(
-      "*/api/zero/auth-session-transition-test",
+      "*/api/okou/auth-session-transition-test",
       ({ request }) => {
         authorizationHeaders.push(request.headers.get("authorization"));
         if (authorizationHeaders.length === 1) {
@@ -239,7 +239,7 @@ describe("api client headers", () => {
     });
 
     const responsePromise = getFetchForTest()(
-      "/api/zero/auth-session-transition-test",
+      "/api/okou/auth-session-transition-test",
     );
     await listenerRegistered.promise;
     mockClerkSessionTransitioning(false);
@@ -270,7 +270,7 @@ describe("api client headers", () => {
     );
 
     let requests = 0;
-    context.mocks.http.get("*/api/zero/aborted-auth-recovery-test", () => {
+    context.mocks.http.get("*/api/okou/aborted-auth-recovery-test", () => {
       requests += 1;
       return HttpResponse.json(
         {
@@ -288,7 +288,7 @@ describe("api client headers", () => {
       context.signal,
     );
     const responsePromise = getFetchForTest()(
-      "/api/zero/aborted-auth-recovery-test",
+      "/api/okou/aborted-auth-recovery-test",
       { signal: requestSignal },
     );
     await listenerRegistered.promise;
@@ -304,7 +304,7 @@ describe("api client headers", () => {
   it("does not redirect an active session when the replay remains unauthorized", async () => {
     mockSignedInUser();
     let requests = 0;
-    context.mocks.http.get("*/api/zero/auth-recovery-test", () => {
+    context.mocks.http.get("*/api/okou/auth-recovery-test", () => {
       requests += 1;
       return HttpResponse.json(
         {
@@ -320,7 +320,7 @@ describe("api client headers", () => {
       return Promise.resolve(options?.skipCache ? "fresh-token" : "test-token");
     });
 
-    const response = await getFetchForTest()("/api/zero/auth-recovery-test");
+    const response = await getFetchForTest()("/api/okou/auth-recovery-test");
 
     expect(response.status).toBe(401);
     expect(requests).toBe(2);
@@ -331,7 +331,7 @@ describe("api client headers", () => {
     mockSignedInUser();
     mockClerkSessionSignedOut(true);
     let requests = 0;
-    context.mocks.http.get("*/api/zero/signed-out-auth-recovery-test", () => {
+    context.mocks.http.get("*/api/okou/signed-out-auth-recovery-test", () => {
       requests += 1;
       return HttpResponse.json(
         {
@@ -345,7 +345,7 @@ describe("api client headers", () => {
     });
 
     const response = await getFetchForTest()(
-      "/api/zero/signed-out-auth-recovery-test",
+      "/api/okou/signed-out-auth-recovery-test",
     );
 
     expect(response.status).toBe(401);
@@ -369,7 +369,7 @@ describe("api client headers", () => {
         return respond(200, { enabledConnectorSlugs: [] });
       },
     );
-    context.mocks.http.get("*/api/zero/preview-bypass-test", ({ request }) => {
+    context.mocks.http.get("*/api/okou/preview-bypass-test", ({ request }) => {
       observedBypassHeaders.push(
         request.headers.get("x-vercel-protection-bypass"),
       );
@@ -378,7 +378,7 @@ describe("api client headers", () => {
 
     const client = context.store.get(zeroClient$)(zeroUserConnectorsContract);
     await accept(client.get({ params: { id: agentId } }), [200]);
-    await getFetchForTest()("/api/zero/preview-bypass-test");
+    await getFetchForTest()("/api/okou/preview-bypass-test");
 
     expect(observedBypassHeaders).toStrictEqual([
       "preview-secret",
@@ -392,12 +392,12 @@ describe("api client headers", () => {
     );
     mockSignedInUser();
     let observedBypassHeader: string | null = "not-called";
-    context.mocks.http.get("*/api/zero/preview-bypass-test", ({ request }) => {
+    context.mocks.http.get("*/api/okou/preview-bypass-test", ({ request }) => {
       observedBypassHeader = request.headers.get("x-vercel-protection-bypass");
       return new Response(null, { status: 204 });
     });
 
-    await getFetchForTest()("/api/zero/preview-bypass-test");
+    await getFetchForTest()("/api/okou/preview-bypass-test");
 
     expect(observedBypassHeader).toBeNull();
   });
@@ -423,7 +423,7 @@ describe("api client headers", () => {
   it("opens the force upgrade dialog for contract client responses", async () => {
     context.store.set(listenForceUpgradeDialog$, context.signal);
     const agentId = "c0000000-0000-4000-a000-000000000001";
-    context.mocks.http.get("*/api/zero/agents/:id/user-connectors", () => {
+    context.mocks.http.get("*/api/okou/agents/:id/user-connectors", () => {
       return Response.json(
         { error: "Client update required" },
         { status: CLIENT_FORCE_UPGRADE_STATUS },
@@ -440,7 +440,7 @@ describe("api client headers", () => {
   it("opens the force upgrade dialog for fetch$ responses", async () => {
     mockSignedInUser();
     context.store.set(listenForceUpgradeDialog$, context.signal);
-    context.mocks.http.get("*/api/zero/force-upgrade-test", () => {
+    context.mocks.http.get("*/api/okou/force-upgrade-test", () => {
       return Response.json(
         { error: "Client update required" },
         { status: CLIENT_FORCE_UPGRADE_STATUS },
@@ -448,7 +448,7 @@ describe("api client headers", () => {
     });
 
     const fetcher = getFetchForTest();
-    const response = await fetcher("/api/zero/force-upgrade-test");
+    const response = await fetcher("/api/okou/force-upgrade-test");
 
     expect(response.status).toBe(CLIENT_FORCE_UPGRADE_STATUS);
     expect(context.store.get(forceUpgradeDialogOpen$)).toBeTruthy();

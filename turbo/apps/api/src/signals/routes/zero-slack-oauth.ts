@@ -128,7 +128,7 @@ function parseOAuthState(state: string | undefined): OAuthState {
 }
 
 function callbackRedirectUri(origin: string): string {
-  return `${origin}/api/zero/slack/oauth/callback`;
+  return `${origin}/api/okou/slack/oauth/callback`;
 }
 
 function slackCredentials(): {

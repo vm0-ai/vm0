@@ -57,7 +57,7 @@ describe("okou logs list command", () => {
 
   it("should display runs in table format", async () => {
     server.use(
-      http.get("http://localhost:3000/api/zero/logs", () => {
+      http.get("http://localhost:3000/api/okou/logs", () => {
         return HttpResponse.json({
           data: [mockLogEntry],
           pagination: { hasMore: false, nextCursor: null, totalPages: 1 },
@@ -77,7 +77,7 @@ describe("okou logs list command", () => {
 
   it("should tolerate invalid run creation timestamps", async () => {
     server.use(
-      http.get("http://localhost:3000/api/zero/logs", () => {
+      http.get("http://localhost:3000/api/okou/logs", () => {
         return HttpResponse.json({
           data: [{ ...mockLogEntry, createdAt: "not-a-timestamp" }],
           pagination: { hasMore: false, nextCursor: null, totalPages: 1 },
@@ -95,7 +95,7 @@ describe("okou logs list command", () => {
 
   it("should handle empty run list", async () => {
     server.use(
-      http.get("http://localhost:3000/api/zero/logs", () => {
+      http.get("http://localhost:3000/api/okou/logs", () => {
         return HttpResponse.json({
           data: [],
           pagination: { hasMore: false, nextCursor: null, totalPages: 0 },
@@ -113,7 +113,7 @@ describe("okou logs list command", () => {
   it("should pass agentId filter to API", async () => {
     let capturedUrl: URL | undefined;
     server.use(
-      http.get("http://localhost:3000/api/zero/logs", ({ request }) => {
+      http.get("http://localhost:3000/api/okou/logs", ({ request }) => {
         capturedUrl = new URL(request.url);
         return HttpResponse.json({
           data: [],
@@ -149,7 +149,7 @@ describe("okou logs list command", () => {
   it("should pass status filter to API", async () => {
     let capturedUrl: URL | undefined;
     server.use(
-      http.get("http://localhost:3000/api/zero/logs", ({ request }) => {
+      http.get("http://localhost:3000/api/okou/logs", ({ request }) => {
         capturedUrl = new URL(request.url);
         return HttpResponse.json({
           data: [],
@@ -166,7 +166,7 @@ describe("okou logs list command", () => {
 
   it("should show pagination hint when more results exist", async () => {
     server.use(
-      http.get("http://localhost:3000/api/zero/logs", () => {
+      http.get("http://localhost:3000/api/okou/logs", () => {
         return HttpResponse.json({
           data: [mockLogEntry],
           pagination: { hasMore: true, nextCursor: "cursor-1", totalPages: 3 },
@@ -183,7 +183,7 @@ describe("okou logs list command", () => {
 
   it("should handle authentication error", async () => {
     server.use(
-      http.get("http://localhost:3000/api/zero/logs", () => {
+      http.get("http://localhost:3000/api/okou/logs", () => {
         return HttpResponse.json(
           { error: { message: "Not authenticated", code: "UNAUTHORIZED" } },
           { status: 401 },
@@ -204,7 +204,7 @@ describe("okou logs list command", () => {
   it("should pass since filter to API", async () => {
     let capturedUrl: URL | undefined;
     server.use(
-      http.get("http://localhost:3000/api/zero/logs", ({ request }) => {
+      http.get("http://localhost:3000/api/okou/logs", ({ request }) => {
         capturedUrl = new URL(request.url);
         return HttpResponse.json({
           data: [],
@@ -225,7 +225,7 @@ describe("okou logs list command", () => {
   it("should pass epoch since filter to API", async () => {
     let capturedUrl: URL | undefined;
     server.use(
-      http.get("http://localhost:3000/api/zero/logs", ({ request }) => {
+      http.get("http://localhost:3000/api/okou/logs", ({ request }) => {
         capturedUrl = new URL(request.url);
         return HttpResponse.json({
           data: [],
@@ -274,7 +274,7 @@ describe("okou logs list command", () => {
 
   it("should fall back to agentId when displayName is null", async () => {
     server.use(
-      http.get("http://localhost:3000/api/zero/logs", () => {
+      http.get("http://localhost:3000/api/okou/logs", () => {
         return HttpResponse.json({
           data: [{ ...mockLogEntry, displayName: null }],
           pagination: { hasMore: false, nextCursor: null, totalPages: 1 },

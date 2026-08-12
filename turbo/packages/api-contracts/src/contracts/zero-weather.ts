@@ -133,7 +133,7 @@ const airQualityResponses = {
 export const zeroWeatherContract = c.router({
   current: {
     method: "POST",
-    path: "/api/zero/weather/current",
+    path: "/api/okou/weather/current",
     headers: authHeadersSchema,
     body: zeroWeatherCurrentRequestSchema,
     responses: weatherResponses,
@@ -141,7 +141,7 @@ export const zeroWeatherContract = c.router({
   },
   forecastHourly: {
     method: "POST",
-    path: "/api/zero/weather/forecast/hourly",
+    path: "/api/okou/weather/forecast/hourly",
     headers: authHeadersSchema,
     body: zeroWeatherForecastHourlyRequestSchema,
     responses: weatherResponses,
@@ -149,7 +149,7 @@ export const zeroWeatherContract = c.router({
   },
   forecastDaily: {
     method: "POST",
-    path: "/api/zero/weather/forecast/daily",
+    path: "/api/okou/weather/forecast/daily",
     headers: authHeadersSchema,
     body: zeroWeatherForecastDailyRequestSchema,
     responses: weatherResponses,
@@ -157,7 +157,7 @@ export const zeroWeatherContract = c.router({
   },
   historyHourly: {
     method: "POST",
-    path: "/api/zero/weather/history/hourly",
+    path: "/api/okou/weather/history/hourly",
     headers: authHeadersSchema,
     body: zeroWeatherHistoryHourlyRequestSchema,
     responses: weatherResponses,
@@ -165,7 +165,7 @@ export const zeroWeatherContract = c.router({
   },
   airQualityCurrent: {
     method: "POST",
-    path: "/api/zero/weather/air-quality/current",
+    path: "/api/okou/weather/air-quality/current",
     headers: authHeadersSchema,
     body: zeroAirQualityCurrentRequestSchema,
     responses: airQualityResponses,

@@ -25,7 +25,7 @@ export const renameCommand = new Command()
   .name("rename")
   .description("Rename a web chat thread")
   .argument("<title...>", "New chat title")
-  .option("--thread <id>", "Chat thread ID (defaults to ZERO_CHAT_THREAD_ID)")
+  .option("--thread <id>", "Chat thread ID (defaults to OKOU_CHAT_THREAD_ID)")
   .option("--json", "Print machine-readable JSON")
   .addHelpText(
     "after",
@@ -35,8 +35,8 @@ Examples:
   Rename another:    okou chat rename --thread <thread-id> "Launch plan"
 
 Notes:
-  - Defaults --thread to ZERO_CHAT_THREAD_ID
-  - Authenticates via ZERO_TOKEN (requires chat-thread:write capability)`,
+  - Defaults --thread to OKOU_CHAT_THREAD_ID
+  - Authenticates via OKOU_TOKEN (requires chat-thread:write capability)`,
   )
   .action(
     withErrorHandler(async (titleParts: string[], options: RenameOptions) => {
@@ -51,7 +51,7 @@ Notes:
       const threadId = options.thread?.trim() || getCurrentChatThreadId();
       if (!threadId) {
         printUsageError(
-          "ZERO_CHAT_THREAD_ID is not set",
+          "OKOU_CHAT_THREAD_ID is not set",
           "Pass --thread <thread-id> or run inside a web chat thread.",
         );
       }

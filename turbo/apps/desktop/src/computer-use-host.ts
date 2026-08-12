@@ -689,7 +689,7 @@ export class ComputerUseHostRuntime {
   private async startHost(): Promise<number | null> {
     this.setState({ status: "connecting", lastError: null });
     const response = await this.sessionFetch(
-      `${this.apiBaseUrl}/api/zero/computer-use/hosts/start`,
+      `${this.apiBaseUrl}/api/okou/computer-use/hosts/start`,
       {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -799,7 +799,7 @@ export class ComputerUseHostRuntime {
       label: "heartbeat",
       timeoutMs: HEARTBEAT_REQUEST_TIMEOUT_MS,
       request: async (signal) => {
-        return await this.hostFetch("/api/zero/computer-use/heartbeat", {
+        return await this.hostFetch("/api/okou/computer-use/heartbeat", {
           method: "POST",
           body: JSON.stringify(await this.runtimeBody()),
           signal,
@@ -844,7 +844,7 @@ export class ComputerUseHostRuntime {
       timeoutMs: COMMAND_POLL_REQUEST_TIMEOUT_MS,
       request: async (signal) => {
         return await this.hostFetch(
-          "/api/zero/computer-use/host/commands/next",
+          "/api/okou/computer-use/host/commands/next",
           {
             method: "POST",
             body: JSON.stringify({
@@ -935,7 +935,7 @@ export class ComputerUseHostRuntime {
           timeoutMs: COMMAND_COMPLETION_REQUEST_TIMEOUT_MS,
           request: async (signal) => {
             return await this.hostFetch(
-              `/api/zero/computer-use/host/commands/${commandId}/complete`,
+              `/api/okou/computer-use/host/commands/${commandId}/complete`,
               {
                 method: "POST",
                 body: JSON.stringify(completed),
@@ -993,7 +993,7 @@ export class ComputerUseHostRuntime {
 
   private async stopHost(hostToken: string): Promise<void> {
     const response = await this.hostFetchRequest(
-      `${this.apiBaseUrl}/api/zero/computer-use/host/stop`,
+      `${this.apiBaseUrl}/api/okou/computer-use/host/stop`,
       {
         method: "POST",
         body: JSON.stringify({}),

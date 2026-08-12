@@ -13,10 +13,10 @@ const THREAD_ID = "00000000-0000-4000-8000-000000000001";
 const OTHER_THREAD_ID = "00000000-0000-4000-8000-000000000002";
 const AGENT_ID = "00000000-0000-4000-8000-000000000010";
 const RUN_ID = "00000000-0000-4000-8000-000000000020";
-const SEND_URL = "http://localhost:3000/api/zero/chat/events";
+const SEND_URL = "http://localhost:3000/api/okou/chat/events";
 
 function metadataUrl(threadId: string): string {
-  return `http://localhost:3000/api/zero/chat-threads/${threadId}/metadata`;
+  return `http://localhost:3000/api/okou/chat-threads/${threadId}/metadata`;
 }
 
 describe("okou chat send command", () => {

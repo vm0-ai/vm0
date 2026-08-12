@@ -106,7 +106,7 @@ const financeResponses = {
 export const zeroFinanceContract = c.router({
   search: {
     method: "POST",
-    path: "/api/zero/finance/search",
+    path: "/api/okou/finance/search",
     headers: authHeadersSchema,
     body: zeroFinanceSearchRequestSchema,
     responses: financeResponses,
@@ -114,7 +114,7 @@ export const zeroFinanceContract = c.router({
   },
   profile: {
     method: "POST",
-    path: "/api/zero/finance/profile",
+    path: "/api/okou/finance/profile",
     headers: authHeadersSchema,
     body: zeroFinanceProfileRequestSchema,
     responses: financeResponses,
@@ -122,7 +122,7 @@ export const zeroFinanceContract = c.router({
   },
   quote: {
     method: "POST",
-    path: "/api/zero/finance/quote",
+    path: "/api/okou/finance/quote",
     headers: authHeadersSchema,
     body: zeroFinanceQuoteRequestSchema,
     responses: financeResponses,
@@ -130,7 +130,7 @@ export const zeroFinanceContract = c.router({
   },
   chart: {
     method: "POST",
-    path: "/api/zero/finance/chart",
+    path: "/api/okou/finance/chart",
     headers: authHeadersSchema,
     body: zeroFinanceChartRequestSchema,
     responses: financeResponses,

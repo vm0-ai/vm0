@@ -242,7 +242,7 @@ export type ConnectorCheckDiagnosticResult = z.infer<
 export const zeroConnectorCheckContract = c.router({
   check: {
     method: "POST",
-    path: "/api/zero/connectors/diagnostics/check",
+    path: "/api/okou/connectors/diagnostics/check",
     headers: authHeadersSchema,
     body: connectorCheckRequestSchema,
     responses: {

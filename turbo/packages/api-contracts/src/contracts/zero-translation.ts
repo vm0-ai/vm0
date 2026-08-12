@@ -49,7 +49,7 @@ const translationResponses = {
 export const zeroTranslationContract = c.router({
   translate: {
     method: "POST",
-    path: "/api/zero/translate",
+    path: "/api/okou/translate",
     headers: authHeadersSchema,
     body: zeroTranslationRequestSchema,
     responses: translationResponses,

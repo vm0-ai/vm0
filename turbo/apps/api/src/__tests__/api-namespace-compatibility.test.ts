@@ -13,7 +13,7 @@ function routeKey(entry: RouteEntry): string {
 
 function requireBrandedRoute(): RouteEntry {
   const entry = ROUTES.find(({ route }) => {
-    return route.path.startsWith("/api/zero/");
+    return route.path.startsWith("/api/okou/");
   });
   if (!entry) {
     throw new Error("Expected at least one branded API route");
@@ -75,21 +75,21 @@ describe("API namespace compatibility", () => {
     }
   });
 
-  it("remains symmetric when the source contract is canonical Okou", () => {
+  it("remains symmetric when the source contract uses the legacy Zero path", () => {
     const source = requireBrandedRoute();
-    const okouSource: RouteEntry = {
+    const zeroSource: RouteEntry = {
       route: {
         ...source.route,
-        path: source.route.path.replace("/api/zero/", "/api/okou/"),
+        path: source.route.path.replace("/api/okou/", "/api/zero/"),
       },
       handler: source.handler,
     };
 
     expect(
-      withApiNamespaceAliases([okouSource]).map(({ route }) => {
+      withApiNamespaceAliases([zeroSource]).map(({ route }) => {
         return route.path;
       }),
-    ).toStrictEqual([source.route.path, okouSource.route.path]);
+    ).toStrictEqual([source.route.path, zeroSource.route.path]);
   });
 
   it("rejects duplicate method and path registrations", () => {

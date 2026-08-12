@@ -109,7 +109,7 @@ describe("okou finance command", () => {
     const response = financeResponse(example.operation, example.result);
     server.use(
       http.post(
-        `http://localhost:3000/api/zero/finance/${example.operation}`,
+        `http://localhost:3000/api/okou/finance/${example.operation}`,
         async ({ request }) => {
           requestBody = await request.json();
           return HttpResponse.json(response);
@@ -136,7 +136,7 @@ describe("okou finance command", () => {
     };
     server.use(
       http.post(
-        "http://localhost:3000/api/zero/finance/chart",
+        "http://localhost:3000/api/okou/finance/chart",
         async ({ request }) => {
           requestBody = await request.json();
           return HttpResponse.json(financeResponse("chart", result));
@@ -170,7 +170,7 @@ describe("okou finance command", () => {
   it("rejects invalid chart intervals before calling the API", async () => {
     let apiRequests = 0;
     server.use(
-      http.post("http://localhost:3000/api/zero/finance/chart", () => {
+      http.post("http://localhost:3000/api/okou/finance/chart", () => {
         apiRequests += 1;
         return HttpResponse.json(financeResponse("chart", {}));
       }),

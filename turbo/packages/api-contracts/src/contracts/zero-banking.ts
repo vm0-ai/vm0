@@ -104,7 +104,7 @@ const zeroBankingTransactionsResponses = {
 export const zeroBankingContract = c.router({
   accounts: {
     method: "POST",
-    path: "/api/zero/banking/accounts",
+    path: "/api/okou/banking/accounts",
     headers: authHeadersSchema,
     body: z.object({}),
     responses: zeroBankingAccountsResponses,
@@ -112,7 +112,7 @@ export const zeroBankingContract = c.router({
   },
   balances: {
     method: "POST",
-    path: "/api/zero/banking/balances",
+    path: "/api/okou/banking/balances",
     headers: authHeadersSchema,
     body: zeroBankingBalancesRequestSchema,
     responses: zeroBankingBalancesResponses,
@@ -120,7 +120,7 @@ export const zeroBankingContract = c.router({
   },
   transactions: {
     method: "POST",
-    path: "/api/zero/banking/transactions",
+    path: "/api/okou/banking/transactions",
     headers: authHeadersSchema,
     body: zeroBankingTransactionsRequestSchema,
     responses: zeroBankingTransactionsResponses,

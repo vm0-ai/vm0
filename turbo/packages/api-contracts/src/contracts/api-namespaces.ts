@@ -1,4 +1,4 @@
-export const BRANDED_API_NAMESPACE_PATHS = ["/api/zero", "/api/okou"] as const;
+export const BRANDED_API_NAMESPACE_PATHS = ["/api/okou", "/api/zero"] as const;
 
 export type BrandedApiNamespacePath =
   (typeof BRANDED_API_NAMESPACE_PATHS)[number];

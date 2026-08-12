@@ -135,7 +135,7 @@ describe("okou connector custom update", () => {
     let updateBody: unknown;
     server.use(
       http.put(
-        `http://localhost:3000/api/zero/custom-connectors/${CONNECTOR_ID}`,
+        `http://localhost:3000/api/okou/custom-connectors/${CONNECTOR_ID}`,
         async ({ request }) => {
           updateBody = await request.json();
           return HttpResponse.json(mcpResponse(definition));
@@ -164,7 +164,7 @@ describe("okou connector custom update", () => {
     let updateBody: unknown;
     server.use(
       http.put(
-        `http://localhost:3000/api/zero/custom-connectors/${CONNECTOR_ID}`,
+        `http://localhost:3000/api/okou/custom-connectors/${CONNECTOR_ID}`,
         async ({ request }) => {
           updateBody = await request.json();
           return HttpResponse.json({
@@ -203,7 +203,7 @@ describe("okou connector custom update", () => {
     let requests = 0;
     server.use(
       http.put(
-        `http://localhost:3000/api/zero/custom-connectors/${CONNECTOR_ID}`,
+        `http://localhost:3000/api/okou/custom-connectors/${CONNECTOR_ID}`,
         () => {
           requests += 1;
           return HttpResponse.json({}, { status: 500 });

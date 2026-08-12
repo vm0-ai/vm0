@@ -54,7 +54,7 @@ Examples:
   Machine readable:     okou host ./dist --site my-product-demo --spa --json
 
 Notes:
-  - Authenticates via ZERO_TOKEN (publish requires host:write; clone requires host:read)
+  - Authenticates via OKOU_TOKEN (publish requires host:write; clone requires host:read)
   - With hosted artifact versions enabled, reusing --site publishes behind the same alias
   - Otherwise, reuse both --site and --slug-suffix to keep a legacy URL
   - The directory must include index.html

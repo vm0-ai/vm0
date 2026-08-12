@@ -325,7 +325,7 @@ describe("chat drafts", () => {
       url: "https://cdn.vm7.io/artifacts/test/drafts/second.txt",
     };
     mockAgentChatPage(agentId);
-    context.mocks.http.get("*/api/zero/agents/:id/draft", () => {
+    context.mocks.http.get("*/api/okou/agents/:id/draft", () => {
       return HttpResponse.json({
         draftUserMessage: {
           version: 1,
@@ -404,7 +404,7 @@ describe("chat drafts", () => {
       });
     });
     context.mocks.http.patch(
-      "*/api/zero/agents/:id/draft",
+      "*/api/okou/agents/:id/draft",
       async ({ request }) => {
         draftPatches.push((await request.json()) as Record<string, unknown>);
         return new Response(null, { status: 200 });
@@ -659,7 +659,7 @@ describe("chat drafts", () => {
       threadId,
       selectedModel: "claude-sonnet-4-6",
     });
-    context.mocks.http.get("*/api/zero/chat-threads/:id/draft", () => {
+    context.mocks.http.get("*/api/okou/chat-threads/:id/draft", () => {
       return HttpResponse.json({
         draftUserMessage: {
           version: 1,
@@ -937,7 +937,7 @@ describe("chat drafts", () => {
     });
     mockThreadDetails();
     context.mocks.http.post(
-      "*/api/zero/uploads/prepare",
+      "*/api/okou/uploads/prepare",
       async ({ request }) => {
         await expect(request.json()).resolves.toMatchObject({
           filename: "photo.png",
@@ -1017,7 +1017,7 @@ describe("chat drafts", () => {
       },
     });
     context.mocks.http.post(
-      "*/api/zero/uploads/prepare",
+      "*/api/okou/uploads/prepare",
       async ({ request }) => {
         await expect(request.json()).resolves.toMatchObject({
           filename: "pending.txt",
@@ -1096,7 +1096,7 @@ describe("chat drafts", () => {
     });
     mockThreadDetails();
     context.mocks.http.post(
-      "*/api/zero/uploads/prepare",
+      "*/api/okou/uploads/prepare",
       async ({ request }) => {
         const body = (await request.json()) as { filename: string };
         if (body.filename === "ok.txt") {
@@ -1165,7 +1165,7 @@ describe("chat drafts", () => {
     });
     mockThreadDetails();
     context.mocks.http.post(
-      "*/api/zero/uploads/prepare",
+      "*/api/okou/uploads/prepare",
       async ({ request }) => {
         preparedBodies.push(await request.json());
         return HttpResponse.json({
@@ -1210,7 +1210,7 @@ describe("chat drafts", () => {
       },
     );
     context.mocks.http.post(
-      "*/api/zero/uploads/multipart/complete",
+      "*/api/okou/uploads/multipart/complete",
       async ({ request }) => {
         completeBody = await request.json();
         return HttpResponse.json({
@@ -1267,7 +1267,7 @@ describe("chat drafts", () => {
       updatedAt: "2026-03-10T00:00:00Z",
     });
     mockThreadDetails();
-    context.mocks.http.post("*/api/zero/uploads/prepare", () => {
+    context.mocks.http.post("*/api/okou/uploads/prepare", () => {
       return HttpResponse.json({
         id: "8d70fdfa-2eb4-4a32-a2e2-635799804ad6",
         filename: "failed-recording.mp4",
@@ -1300,7 +1300,7 @@ describe("chat drafts", () => {
       },
     );
     context.mocks.http.post(
-      "*/api/zero/uploads/multipart/abort",
+      "*/api/okou/uploads/multipart/abort",
       async ({ request }) => {
         abortBody = await request.json();
         return HttpResponse.json({
@@ -1359,7 +1359,7 @@ describe("chat drafts", () => {
       updatedAt: "2026-03-10T00:00:00Z",
     });
     mockThreadDetails();
-    context.mocks.http.post("*/api/zero/uploads/prepare", () => {
+    context.mocks.http.post("*/api/okou/uploads/prepare", () => {
       return HttpResponse.json({
         id: "6eb9fa2a-c5ec-4a6a-afbf-a28939735454",
         filename: "cancelled-recording.mp4",
@@ -1392,7 +1392,7 @@ describe("chat drafts", () => {
       },
     );
     context.mocks.http.post(
-      "*/api/zero/uploads/multipart/abort",
+      "*/api/okou/uploads/multipart/abort",
       async ({ request }) => {
         abortRequestWasCancelled = request.signal.aborted;
         abortBody = await request.json();
@@ -1460,7 +1460,7 @@ describe("chat drafts", () => {
       });
       mockThreadDetails();
       context.mocks.http.post(
-        "*/api/zero/uploads/prepare",
+        "*/api/okou/uploads/prepare",
         async ({ request }) => {
           capturedPrepareBody = await request.json();
           return HttpResponse.json({

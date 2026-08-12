@@ -881,6 +881,10 @@ async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_
     ctx.environment = Some(HashMap::from([
         ("CUSTOM_USER_ENV".into(), "visible-to-cli".into()),
         (
+            "OKOU_APP_URL".into(),
+            "https://app.runner-env.example.test/path".into(),
+        ),
+        (
             "ZERO_APP_URL".into(),
             "https://app.runner-env.example.test/path".into(),
         ),
@@ -936,6 +940,7 @@ async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_
     }
     for key in [
         "CUSTOM_USER_ENV",
+        "OKOU_APP_URL",
         "ZERO_APP_URL",
         "VM0_APP_URL",
         "BASH_ENV",
@@ -969,6 +974,10 @@ async fn execute_inner_writes_user_env_file_and_starts_agent_with_bootstrap_env_
     let user_env: HashMap<String, String> =
         serde_json::from_slice(&user_env_write.content).unwrap();
     assert_eq!(user_env.get("CUSTOM_USER_ENV").unwrap(), "visible-to-cli");
+    assert_eq!(
+        user_env.get("OKOU_APP_URL").unwrap(),
+        "https://app.runner-env.example.test/path"
+    );
     assert_eq!(
         user_env.get("ZERO_APP_URL").unwrap(),
         "https://app.runner-env.example.test/path"

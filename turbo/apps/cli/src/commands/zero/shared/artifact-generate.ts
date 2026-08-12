@@ -103,7 +103,7 @@ Output:
   --prompt and no piped input, prints the generation choices instead.
 
 Notes:
-  - Authenticates via ZERO_TOKEN
+  - Authenticates via OKOU_TOKEN
 
 Design Systems:
 ${formatRegistryListing(designSystems, "design systems")}

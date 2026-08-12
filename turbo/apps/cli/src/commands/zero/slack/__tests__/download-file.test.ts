@@ -17,7 +17,7 @@ import { downloadFileCommand } from "../download-file";
 import chalk from "chalk";
 
 const DOWNLOAD_URL =
-  "http://localhost:3000/api/zero/integrations/slack/download-file";
+  "http://localhost:3000/api/okou/integrations/slack/download-file";
 
 describe("okou slack download-file command", () => {
   vi.spyOn(process, "exit").mockImplementation((() => {

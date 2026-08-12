@@ -660,7 +660,7 @@ const transcribeAudioBlob$ = command(
     });
 
     const response = await tapError(
-      fetchFn("/api/zero/voice-io/stt", {
+      fetchFn("/api/okou/voice-io/stt", {
         method: "POST",
         body: formData,
         signal,

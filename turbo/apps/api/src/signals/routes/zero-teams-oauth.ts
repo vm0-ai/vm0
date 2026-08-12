@@ -139,7 +139,7 @@ function parseOAuthState(state: string | undefined): OAuthState {
 }
 
 function callbackRedirectUri(origin: string): string {
-  return `${origin}/api/zero/teams/oauth/callback`;
+  return `${origin}/api/okou/teams/oauth/callback`;
 }
 
 function microsoftCredentials(): {

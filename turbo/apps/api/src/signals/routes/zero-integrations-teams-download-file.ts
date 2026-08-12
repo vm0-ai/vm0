@@ -31,7 +31,7 @@ const teamsChatCallbackPayloadSchema = z.object({
 const teamsDownloadFileContract = c.router({
   download: {
     method: "GET",
-    path: "/api/zero/integrations/teams/download-file",
+    path: "/api/okou/integrations/teams/download-file",
     headers: authHeadersSchema,
     query: z.object({
       file_id: z.string().optional(),

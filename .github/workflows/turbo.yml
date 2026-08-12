@@ -1898,6 +1898,7 @@ jobs:
         run: cd e2e && npx playwright test --config playwright/playwright.config.ts
         env:
           VM0_API_BACKEND_URL: ${{ needs.deploy-api.outputs.preview-url }}
+          OKOU_APP_URL: ${{ needs.deploy-app.outputs.preview-url }}
           ZERO_APP_URL: ${{ needs.deploy-app.outputs.preview-url }}
           CLERK_PUBLISHABLE_KEY: ${{ vars.CLERK_PUBLISHABLE_KEY }}
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
@@ -2604,6 +2605,7 @@ jobs:
         run: cd e2e && pnpm exec tsx playwright/runner-token.ts /tmp
         env:
           VM0_API_BACKEND_URL: ${{ needs.deploy-api.outputs.preview-url }}
+          OKOU_APP_URL: ${{ needs.deploy-app.outputs.preview-url }}
           ZERO_APP_URL: ${{ needs.deploy-app.outputs.preview-url }}
           CLERK_PUBLISHABLE_KEY: ${{ vars.CLERK_PUBLISHABLE_KEY }}
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
@@ -2671,8 +2673,8 @@ jobs:
             ]
           }')"
 
-          curl -fsS "${headers[@]}" -X PUT -d "$payload" "${E2E_API_URL}/api/zero/model-policies" >/dev/null
-          curl -fsS "${headers[@]}" -X PUT -d '{"selectedModel":null,"serviceTier":null}' "${E2E_API_URL}/api/zero/user-model-preference" >/dev/null
+          curl -fsS "${headers[@]}" -X PUT -d "$payload" "${E2E_API_URL}/api/okou/model-policies" >/dev/null
+          curl -fsS "${headers[@]}" -X PUT -d '{"selectedModel":null,"serviceTier":null}' "${E2E_API_URL}/api/okou/user-model-preference" >/dev/null
         env:
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
       - name: Bootstrap runner mock model provider
@@ -2686,7 +2688,7 @@ jobs:
           curl -fsS "${headers[@]}" \
             -X POST \
             -d '{"type":"claude-code-oauth-token","secret":"mock-oauth-token-for-e2e"}' \
-            "${E2E_API_URL}/api/zero/model-providers" >/dev/null
+            "${E2E_API_URL}/api/okou/model-providers" >/dev/null
         env:
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
       - name: Bootstrap real Codex account
@@ -2708,11 +2710,11 @@ jobs:
           provider_response=$(curl -fsS "${headers[@]}" \
             -X POST \
             -d "$provider_payload" \
-            "${api_url}/api/zero/model-providers")
+            "${api_url}/api/okou/model-providers")
           provider_id=$(jq -er '.provider.id | select(type == "string" and length > 0)' \
             <<< "$provider_response")
 
-          policies=$(curl -fsS "${headers[@]}" "${api_url}/api/zero/model-policies")
+          policies=$(curl -fsS "${headers[@]}" "${api_url}/api/okou/model-policies")
           policy_payload=$(jq -c --arg providerId "$provider_id" '
             {
               policies: (
@@ -2740,13 +2742,13 @@ jobs:
           curl -fsS "${headers[@]}" \
             -X PUT \
             -d "$policy_payload" \
-            "${api_url}/api/zero/model-policies" \
+            "${api_url}/api/okou/model-policies" \
             >/dev/null
 
           curl -fsS "${headers[@]}" \
             -X POST \
             -d '{"switches":{"realAgentInPreview":true}}' \
-            "${api_url}/api/zero/feature-switches" \
+            "${api_url}/api/okou/feature-switches" \
             | jq -e '.effectiveSwitches.realAgentInPreview == true' \
             >/dev/null
         env:
@@ -2771,11 +2773,11 @@ jobs:
           provider_response=$(curl -fsS "${headers[@]}" \
             -X POST \
             -d "$provider_payload" \
-            "${api_url}/api/zero/model-providers")
+            "${api_url}/api/okou/model-providers")
           provider_id=$(jq -er '.provider.id | select(type == "string" and length > 0)' \
             <<< "$provider_response")
 
-          policies=$(curl -fsS "${headers[@]}" "${api_url}/api/zero/model-policies")
+          policies=$(curl -fsS "${headers[@]}" "${api_url}/api/okou/model-policies")
           policy_payload=$(jq -c --arg providerId "$provider_id" '
             {
               policies: (
@@ -2803,13 +2805,13 @@ jobs:
           curl -fsS "${headers[@]}" \
             -X PUT \
             -d "$policy_payload" \
-            "${api_url}/api/zero/model-policies" \
+            "${api_url}/api/okou/model-policies" \
             >/dev/null
 
           curl -fsS "${headers[@]}" \
             -X POST \
             -d '{"switches":{"realAgentInPreview":true}}' \
-            "${api_url}/api/zero/feature-switches" \
+            "${api_url}/api/okou/feature-switches" \
             | jq -e '.effectiveSwitches.realAgentInPreview == true' \
             >/dev/null
         env:

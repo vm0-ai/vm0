@@ -710,12 +710,45 @@ function unsignedJwt(payload: Record<string, unknown>): string {
   return `${header}.${base64UrlEncode(JSON.stringify(payload))}.bdd-signature`;
 }
 
-function sandboxTokenPayload(token: string): unknown {
+function sandboxTokenPayload(token: string): Record<string, unknown> {
   const payload = token.slice("vm0_sandbox_".length).split(".")[1];
   if (!payload) {
     throw new Error("Expected the sandbox token to contain a JWT payload");
   }
-  return JSON.parse(Buffer.from(payload, "base64url").toString());
+  const parsed: unknown = JSON.parse(
+    Buffer.from(payload, "base64url").toString(),
+  );
+  if (!isRecord(parsed)) {
+    throw new Error("Expected the sandbox token to contain an object payload");
+  }
+  return parsed;
+}
+
+function expectBrandedRunEnvironment(args: {
+  readonly environment: Readonly<Record<string, string>> | null | undefined;
+  readonly secretValues: readonly string[] | null | undefined;
+  readonly appUrl: string;
+  readonly agentId: string;
+}): void {
+  expect(args.environment?.OKOU_APP_URL).toBe(args.appUrl);
+  expect(args.environment?.ZERO_APP_URL).toBe(args.appUrl);
+  expect(args.environment?.OKOU_AGENT_ID).toBe(args.agentId);
+  expect(args.environment?.ZERO_AGENT_ID).toBe(args.agentId);
+  const okouToken = args.environment?.OKOU_TOKEN;
+  const zeroToken = args.environment?.ZERO_TOKEN;
+  if (!okouToken || !zeroToken) {
+    throw new Error("Expected the claim to expose both branded run tokens");
+  }
+  expect(okouToken.startsWith("vm0_sandbox_")).toBeTruthy();
+  expect(zeroToken.startsWith("vm0_sandbox_")).toBeTruthy();
+  expect(okouToken.localeCompare(zeroToken)).not.toBe(0);
+  expect(args.secretValues?.includes(okouToken) ?? false).toBeTruthy();
+  expect(args.secretValues?.includes(zeroToken) ?? false).toBeTruthy();
+  const okouClaims = sandboxTokenPayload(okouToken);
+  const zeroClaims = sandboxTokenPayload(zeroToken);
+  expect(okouClaims).toMatchObject({ scope: "okou" });
+  expect(zeroClaims).toMatchObject({ scope: "zero" });
+  expect({ ...okouClaims, scope: "zero" }).toStrictEqual(zeroClaims);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -12167,24 +12200,18 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       EXPECTED_ZERO_RUN_DISALLOWED_TOOLS,
     );
     expect(claim.disallowedTools).not.toContain("WebFetch");
-    expect(claim.environment?.ZERO_APP_URL).toBe(appUrl);
-    expect(claim.environment).not.toHaveProperty("OKOU_APP_URL");
+    expectBrandedRunEnvironment({
+      environment: claim.environment,
+      secretValues: claim.secretValues,
+      appUrl,
+      agentId: agent.agentId,
+    });
     expect(claim.environment?.CLI_PKG_URL).toBe(
       "https://static.vm0.io/okou-cli/test-commit/package.tgz",
     );
     expect(claim.environment?.VM0_APP_URL).toBeUndefined();
     expect(claim.environment?.APP_URL).toBeUndefined();
-    expect(claim.environment?.ZERO_AGENT_ID).toBe(agent.agentId);
-    expect(claim.environment).not.toHaveProperty("OKOU_AGENT_ID");
     expect(claim.environment?.ZERO_CONNECTOR_ACTION_CALLBACK_ENABLED).toBe("1");
-    const zeroToken = claim.environment?.ZERO_TOKEN;
-    expect(zeroToken).toMatch(/^vm0_sandbox_/);
-    if (!zeroToken) {
-      throw new Error("Expected the claim to expose the zero token");
-    }
-    expect(claim.secretValues).toContain(zeroToken);
-    expect(sandboxTokenPayload(zeroToken)).toMatchObject({ scope: "zero" });
-    expect(claim.environment).not.toHaveProperty("OKOU_TOKEN");
     expect(findFirewallEntry(claim.firewalls, "slack")).toStrictEqual({
       kind: "builtin",
       name: "slack",

@@ -17,8 +17,8 @@ export function expandMountPath(mountPath: string | undefined): string {
 export const AGENT_NAME_REGEX = /^[a-zA-Z0-9][a-zA-Z0-9-]{1,62}[a-zA-Z0-9]$/;
 
 /**
- * Capabilities for the zero-layer capability system (ZERO_TOKEN).
- * These protect /api/zero/* routes only.
+ * Capabilities for the zero-layer capability system (OKOU_TOKEN).
+ * These protect /api/okou/* routes only.
  */
 export const ZERO_CAPABILITIES = [
   "agent:read",
