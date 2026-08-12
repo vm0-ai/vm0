@@ -17,6 +17,12 @@ const HTML_RESOURCE_TARGETS = [
 
 type HtmlResourceTarget = (typeof HTML_RESOURCE_TARGETS)[number];
 
+function isHtmlResourceTarget(value: string): value is HtmlResourceTarget {
+  return HTML_RESOURCE_TARGETS.some((target) => {
+    return target === value;
+  });
+}
+
 interface HtmlResourceIndexEntry {
   readonly id: string;
   readonly name: string;
@@ -210,12 +216,20 @@ async function main(): Promise<void> {
     throw new Error("--output-dir is required");
   }
 
+  const targetOption = readOption("--target");
+  if (targetOption && !isHtmlResourceTarget(targetOption)) {
+    throw new Error(
+      `--target must be one of: ${HTML_RESOURCE_TARGETS.join(", ")}`,
+    );
+  }
+
   const outputDir = path.resolve(outputDirOption);
   await mkdir(outputDir, { recursive: true });
 
   const files: HtmlResourceIndexManifest["files"][number][] = [];
+  const targets = targetOption ? [targetOption] : HTML_RESOURCE_TARGETS;
 
-  for (const target of HTML_RESOURCE_TARGETS) {
+  for (const target of targets) {
     const index = buildTargetIndex(target);
 
     const fileName = `${target}.json`;
