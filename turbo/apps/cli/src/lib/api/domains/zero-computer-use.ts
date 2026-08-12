@@ -37,7 +37,9 @@ function resolveComputerUseApiBaseUrl(baseUrl: string): string {
   }
 
   const url = new URL(baseUrl);
-  if (url.hostname === "www.vm0.ai" || url.hostname === "app.vm0.ai") {
+  if (url.hostname === "www.okou.ai" || url.hostname === "app.okou.ai") {
+    url.hostname = "api.okou.ai";
+  } else if (url.hostname === "www.vm0.ai" || url.hostname === "app.vm0.ai") {
     url.hostname = "api.vm0.ai";
   }
   return url.toString().replace(/\/$/, "");

@@ -1,97 +1,54 @@
-import { createHash } from "node:crypto";
 import { once } from "node:events";
 import { createInterface, type Interface } from "node:readline";
 import type { Readable, Writable } from "node:stream";
 
 import {
+  CANONICAL_PI_SESSION_DATABASE_PATH,
   piModelConfigSchema,
-  runSkillSnapshotSchema,
-  type RunSkillSnapshot,
 } from "@vm0/api-contracts/contracts/runners";
-import { piTranscriptResponseSchema } from "@vm0/api-contracts/contracts/webhooks";
 import {
   createPiNodeExecutionEnv as createNodeExecutionEnv,
-  parsePiAgentMessages,
-  piMessageRequiresSandbox,
-  runPiAgentResume,
+  runPiAgentSession,
   type ExecutionEnv,
-  type PiAgentMessage,
   type PiAgentModelConfig,
+  type PiAssistantMessage,
 } from "@vm0/pi-agent-runtime/node";
 import { z } from "zod";
 
 const RUN_ID_ENV = "VM0_RUN_ID";
+const PI_SESSION_ID_ENV = "VM0_PI_SESSION_ID";
 const PI_SYSTEM_PROMPT_ENV = "VM0_PI_SYSTEM_PROMPT";
 const PI_MODEL_CONFIG_ENV = "VM0_PI_MODEL_CONFIG";
-const RUN_SKILL_SNAPSHOT_ENV = "VM0_RUN_SKILL_SNAPSHOT";
 
-export const DEFAULT_PI_STANDBY_TTL_SECONDS = 300;
-const DEFAULT_PI_TRANSCRIPT_POLL_INTERVAL_MS = 10_000;
-
-type PiTranscriptPage = z.infer<typeof piTranscriptResponseSchema>;
-type PiTranscriptMessage = PiTranscriptPage["messages"][number];
-
-const standbyControlSchema = z
-  .object({ type: z.literal("pi-handoff") })
-  .strict();
-const releaseControlSchema = z
+const userFrameSchema = z
   .object({
-    type: z.literal("pi-standby-release"),
-    reason: z.string().optional(),
+    type: z.literal("user"),
+    message: z.object({
+      role: z.literal("user"),
+      content: z.string().min(1),
+    }),
   })
-  .strict();
-const transcriptFrameSchema = z
-  .object({
-    type: z.literal("pi-transcript"),
-    requestId: z.string().min(1),
-    transcript: piTranscriptResponseSchema,
-  })
-  .strict();
-const messageAckFrameSchema = z
-  .object({
-    type: z.literal("pi-message-ack"),
-    messageId: z.string().min(1),
-    status: z.number().int(),
-    error: z.string().optional(),
-  })
-  .strict();
-const inboundFrameSchema = z.discriminatedUnion("type", [
-  standbyControlSchema,
-  releaseControlSchema,
-  transcriptFrameSchema,
-  messageAckFrameSchema,
-]);
-
-type InboundFrame = z.infer<typeof inboundFrameSchema>;
+  .passthrough();
 
 export interface PiAgentLoopIo {
   read(): Promise<unknown | null>;
   write(frame: Readonly<Record<string, unknown>>): Promise<void>;
 }
 
-export interface PiStandbyAgentConfig {
+export interface PiSandboxAgentConfig {
   readonly runId: string;
+  readonly sessionId: string;
   readonly systemPrompt: string;
   readonly model: PiAgentModelConfig;
-  readonly skillSnapshot: RunSkillSnapshot;
+  readonly databasePath: string;
 }
 
-export type PiAgentResume = typeof runPiAgentResume;
-
-interface TranscriptTail {
-  nextSequence: number;
-  lastAcknowledgedSequence: number | undefined;
-}
-
-interface FollowedTranscript {
-  lastOrdinal: number;
-  readonly messages: PiTranscriptMessage[];
-}
+type PiSessionRunner = typeof runPiAgentSession;
 
 function requiredEnv(env: NodeJS.ProcessEnv, name: string): string {
   const value = env[name];
   if (!value) {
-    throw new Error(`${name} is required for Pi standby`);
+    throw new Error(`${name} is required for Pi execution`);
   }
   return value;
 }
@@ -105,10 +62,10 @@ function parseJsonEnv(env: NodeJS.ProcessEnv, name: string): unknown {
   }
 }
 
-/** Resolve the immutable Pi runtime inputs injected by guest-agent. */
-export function piStandbyAgentConfigFromEnv(
+/** Resolve immutable Pi runtime inputs injected by guest-agent. */
+export function piSandboxAgentConfigFromEnv(
   env: NodeJS.ProcessEnv = process.env,
-): PiStandbyAgentConfig {
+): PiSandboxAgentConfig {
   const parsedModel = piModelConfigSchema.parse(
     parseJsonEnv(env, PI_MODEL_CONFIG_ENV),
   );
@@ -116,351 +73,113 @@ export function piStandbyAgentConfigFromEnv(
   const apiKey = requiredEnv(env, apiKeyEnv);
   return {
     runId: requiredEnv(env, RUN_ID_ENV),
+    sessionId: requiredEnv(env, PI_SESSION_ID_ENV),
     systemPrompt: requiredEnv(env, PI_SYSTEM_PROMPT_ENV),
     model: { ...model, apiKey },
-    skillSnapshot: runSkillSnapshotSchema.parse(
-      parseJsonEnv(env, RUN_SKILL_SNAPSHOT_ENV),
-    ),
+    databasePath: CANONICAL_PI_SESSION_DATABASE_PATH,
   };
 }
 
-function systemPromptDigest(systemPrompt: string): string {
-  return `sha256:${createHash("sha256").update(systemPrompt).digest("hex")}`;
+function assistantText(message: PiAssistantMessage): string {
+  return message.content
+    .flatMap((block) => {
+      return block.type === "text" && block.text.trim().length > 0
+        ? [block.text]
+        : [];
+    })
+    .join("\n\n");
 }
 
-function transcriptTail(
-  transcript: FollowedTranscript,
-  runId: string,
-): TranscriptTail {
-  let lastRunSequence: number | undefined;
-  for (const message of transcript.messages) {
-    if (message.runId === runId) {
-      lastRunSequence = Math.max(
-        lastRunSequence ?? -1,
-        message.runEventSequenceNumber,
-      );
-    }
-  }
-  return {
-    nextSequence: (lastRunSequence ?? -1) + 1,
-    lastAcknowledgedSequence: undefined,
-  };
+function assistantMessageId(
+  config: PiSandboxAgentConfig,
+  message: PiAssistantMessage,
+): string {
+  return (
+    message.responseId ??
+    `${config.runId}:${message.timestamp}:${message.model}`
+  );
 }
 
-async function readFrame(io: PiAgentLoopIo): Promise<InboundFrame> {
-  const frame = await io.read();
-  if (frame === null) {
-    throw new Error("Pi agent loop control input closed");
-  }
-  return inboundFrameSchema.parse(frame);
-}
-
-class InboundFrames {
-  readonly #io: PiAgentLoopIo;
-  #pending: Promise<InboundFrame> | undefined;
-
-  constructor(io: PiAgentLoopIo) {
-    this.#io = io;
-  }
-
-  #next(): Promise<InboundFrame> {
-    this.#pending ??= readFrame(this.#io);
-    return this.#pending;
-  }
-
-  async read(): Promise<InboundFrame> {
-    const pending = this.#next();
-    const frame = await pending;
-    if (this.#pending === pending) {
-      this.#pending = undefined;
-    }
-    return frame;
-  }
-
-  async readWithin(timeoutMs: number): Promise<InboundFrame | null> {
-    const pending = this.#next();
-    let timeout: NodeJS.Timeout | undefined;
-    const timedOut = new Promise<null>((resolve) => {
-      timeout = setTimeout(() => {
-        resolve(null);
-      }, timeoutMs);
-    });
-    try {
-      const frame = await Promise.race([pending, timedOut]);
-      if (frame !== null && this.#pending === pending) {
-        this.#pending = undefined;
-      }
-      return frame;
-    } finally {
-      if (timeout !== undefined) {
-        clearTimeout(timeout);
-      }
-    }
-  }
-}
-
-function standbyTimeout(): Error {
-  return new Error("Pi standby timed out waiting for a persisted tool call");
-}
-
-async function readBeforeDeadline(
-  frames: InboundFrames,
-  deadline: number,
-): Promise<InboundFrame> {
-  const remainingMs = deadline - Date.now();
-  if (remainingMs <= 0) {
-    throw standbyTimeout();
-  }
-  const frame = await frames.readWithin(remainingMs);
-  if (frame === null) {
-    throw standbyTimeout();
-  }
-  return frame;
-}
-
-type TranscriptRequestResult =
-  | { readonly kind: "page"; readonly page: PiTranscriptPage }
-  | { readonly kind: "release"; readonly reason: string | undefined };
-
-async function requestTranscript(
+async function emitAssistantMessage(
   io: PiAgentLoopIo,
-  frames: InboundFrames,
-  requestNumber: number,
-  afterOrdinal: number,
-  deadline: number,
-): Promise<TranscriptRequestResult> {
-  const requestId = `transcript-${requestNumber}`;
-  await io.write({
-    type: "pi-transcript-read",
-    requestId,
-    afterOrdinal,
-  });
-  while (true) {
-    const frame = await readBeforeDeadline(frames, deadline);
-    if (frame.type === "pi-standby-release") {
-      return { kind: "release", reason: frame.reason };
-    }
-    if (frame.type === "pi-handoff") {
-      continue;
-    }
-    if (frame.type !== "pi-transcript" || frame.requestId !== requestId) {
-      throw new Error(`Expected Pi transcript response for ${requestId}`);
-    }
-    return { kind: "page", page: frame.transcript };
-  }
-}
-
-function messageFailure(message: PiAgentMessage): string | undefined {
-  if (
-    message.role !== "assistant" ||
-    (message.stopReason !== "error" && message.stopReason !== "aborted")
-  ) {
-    return undefined;
-  }
-  return message.errorMessage ?? `Pi model turn ${message.stopReason}`;
-}
-
-async function acknowledgeMessage(
-  io: PiAgentLoopIo,
-  frames: InboundFrames,
-  config: PiStandbyAgentConfig,
-  tail: TranscriptTail,
-  message: PiAgentMessage,
+  config: PiSandboxAgentConfig,
+  message: PiAssistantMessage,
 ): Promise<void> {
-  const sequenceNumber = tail.nextSequence;
-  const messageId = `${config.runId}/${sequenceNumber}`;
+  const text = assistantText(message);
+  if (text.length === 0) {
+    return;
+  }
   await io.write({
-    type: "pi-message",
-    event: {
-      type: "pi.message.completed",
-      sequenceNumber,
-      messageId,
-      message,
+    type: "assistant",
+    message: {
+      id: assistantMessageId(config, message),
+      role: "assistant",
+      content: [{ type: "text", text }],
+      model: message.model,
+      usage: {
+        input_tokens: message.usage.input,
+        output_tokens: message.usage.output,
+        cache_read_input_tokens: message.usage.cacheRead,
+        cache_creation_input_tokens: message.usage.cacheWrite,
+      },
     },
   });
-  while (true) {
-    const frame = await frames.read();
-    if (frame.type === "pi-handoff" || frame.type === "pi-standby-release") {
-      continue;
-    }
-    if (frame.type !== "pi-message-ack" || frame.messageId !== messageId) {
-      throw new Error(`Expected acknowledgement for Pi message ${messageId}`);
-    }
-    if (frame.status !== 200) {
-      throw new Error(
-        frame.error ?? `Pi message ${messageId} failed with ${frame.status}`,
-      );
-    }
-    break;
-  }
-  tail.nextSequence += 1;
-  tail.lastAcknowledgedSequence = sequenceNumber;
 }
 
-async function resumeFromTranscript(
+/** Run one sandbox-owned Pi turn and persist every native message to SQLite. */
+export async function runPiSandboxAgentLoop(
   args: {
     readonly io: PiAgentLoopIo;
-    readonly frames: InboundFrames;
-    readonly config: PiStandbyAgentConfig;
-    readonly transcript: FollowedTranscript;
+    readonly config: PiSandboxAgentConfig;
     readonly executionEnv: ExecutionEnv;
-    readonly resume: PiAgentResume;
+    readonly runSession?: PiSessionRunner;
   },
   signal: AbortSignal,
-): Promise<{
-  readonly failure: string | undefined;
-  readonly lastAcknowledgedSequence: number | undefined;
-}> {
-  const messages = parsePiAgentMessages(
-    args.transcript.messages.map((message) => {
-      return message.payload;
-    }),
-  );
-  const tail = transcriptTail(args.transcript, args.config.runId);
-  let failure: string | undefined;
-  await args.resume(
+): Promise<number> {
+  const input = await args.io.read();
+  if (input === null) {
+    throw new Error("Pi agent loop input closed before the user prompt");
+  }
+  const frame = userFrameSchema.parse(input);
+  await args.io.write({
+    type: "system",
+    subtype: "init",
+    session_id: args.config.sessionId,
+  });
+
+  const startedAt = Date.now();
+  const runSession = args.runSession ?? runPiAgentSession;
+  const result = await runSession(
     {
+      sessionId: args.config.sessionId,
+      databasePath: args.config.databasePath,
       model: args.config.model,
       systemPrompt: args.config.systemPrompt,
-      messages,
+      prompt: frame.message.content,
       executionEnv: args.executionEnv,
-      async onMessage(message: PiAgentMessage) {
-        await acknowledgeMessage(
-          args.io,
-          args.frames,
-          args.config,
-          tail,
-          message,
-        );
-        failure ??= messageFailure(message);
+      async onAssistantMessage(message) {
+        await emitAssistantMessage(args.io, args.config, message);
       },
     },
     signal,
   );
-  return {
-    failure,
-    lastAcknowledgedSequence: tail.lastAcknowledgedSequence,
-  };
-}
-
-function appendTranscriptPage(
-  transcript: FollowedTranscript,
-  page: PiTranscriptPage,
-): void {
-  transcript.messages.push(...page.messages);
-  transcript.lastOrdinal = page.lastOrdinal;
-}
-
-function latestMessageRequiresSandbox(
-  transcript: FollowedTranscript,
-  runId: string,
-): boolean {
-  const latest = transcript.messages.at(-1);
-  if (latest === undefined || latest.runId !== runId) {
-    return false;
-  }
-  const [message] = parsePiAgentMessages([latest.payload]);
-  return message !== undefined && piMessageRequiresSandbox(message);
-}
-
-/** Run the internal one-shot Pi standby protocol used by guest-agent. */
-export async function runPiStandbyAgentLoop(
-  args: {
-    readonly io: PiAgentLoopIo;
-    readonly config: PiStandbyAgentConfig;
-    readonly executionEnv: ExecutionEnv;
-    readonly standbyTtlSeconds?: number;
-    readonly pollIntervalMs?: number;
-    readonly resume?: PiAgentResume;
-  },
-  signal: AbortSignal,
-): Promise<void> {
-  const promptDigest = systemPromptDigest(args.config.systemPrompt);
+  const finalMessage = result.finalAssistantMessage;
+  const failed =
+    finalMessage?.stopReason === "error" ||
+    finalMessage?.stopReason === "aborted";
+  const text = finalMessage ? assistantText(finalMessage) : "";
+  const error = failed
+    ? (finalMessage.errorMessage ?? `Pi model turn ${finalMessage.stopReason}`)
+    : undefined;
   await args.io.write({
-    type: "pi-ready",
-    runId: args.config.runId,
-    systemPromptDigest: promptDigest,
-    skillSnapshotDigest: args.config.skillSnapshot.digest,
+    type: "result",
+    subtype: failed ? "error_during_execution" : "success",
+    is_error: failed,
+    result: error ?? text,
+    session_id: args.config.sessionId,
+    duration_ms: Math.max(0, Date.now() - startedAt),
   });
-  const frames = new InboundFrames(args.io);
-  const deadline =
-    Date.now() +
-    (args.standbyTtlSeconds ?? DEFAULT_PI_STANDBY_TTL_SECONDS) * 1_000;
-  const pollIntervalMs =
-    args.pollIntervalMs ?? DEFAULT_PI_TRANSCRIPT_POLL_INTERVAL_MS;
-  const transcript: FollowedTranscript = { lastOrdinal: 0, messages: [] };
-  let requestNumber = 0;
-  while (!signal.aborted) {
-    requestNumber += 1;
-    const result = await requestTranscript(
-      args.io,
-      frames,
-      requestNumber,
-      transcript.lastOrdinal,
-      deadline,
-    );
-    if (result.kind === "release") {
-      await args.io.write({
-        type: "pi-released",
-        reason: result.reason ?? "api-complete",
-      });
-      return;
-    }
-    appendTranscriptPage(transcript, result.page);
-    if (result.page.hasMore) {
-      continue;
-    }
-    if (latestMessageRequiresSandbox(transcript, args.config.runId)) {
-      const result = await resumeFromTranscript(
-        {
-          io: args.io,
-          frames,
-          config: args.config,
-          transcript,
-          executionEnv: args.executionEnv,
-          resume: args.resume ?? runPiAgentResume,
-        },
-        signal,
-      );
-      await args.io.write({
-        type: "pi-complete",
-        exitCode: result.failure === undefined ? 0 : 1,
-        ...(result.failure === undefined ? {} : { error: result.failure }),
-        ...(result.lastAcknowledgedSequence === undefined
-          ? {}
-          : { lastEventSequence: result.lastAcknowledgedSequence }),
-        systemPromptDigest: promptDigest,
-        skillSnapshotDigest: args.config.skillSnapshot.digest,
-      });
-      return;
-    }
-
-    const remainingMs = deadline - Date.now();
-    if (remainingMs <= 0) {
-      throw standbyTimeout();
-    }
-    const control = await frames.readWithin(
-      Math.min(pollIntervalMs, remainingMs),
-    );
-    if (control === null) {
-      if (Date.now() >= deadline) {
-        throw standbyTimeout();
-      }
-      continue;
-    }
-    if (control.type === "pi-handoff") {
-      continue;
-    }
-    if (control.type === "pi-standby-release") {
-      await args.io.write({
-        type: "pi-released",
-        reason: control.reason ?? "api-complete",
-      });
-      return;
-    }
-    throw new Error("Pi standby expected a handoff or release control");
-  }
-  signal.throwIfAborted();
+  return failed ? 1 : 0;
 }
 
 export class StdioPiAgentLoopIo implements PiAgentLoopIo {
@@ -493,7 +212,7 @@ export class StdioPiAgentLoopIo implements PiAgentLoopIo {
   }
 }
 
-export function createPiNodeExecutionEnv(): ExecutionEnv {
+export async function createPiNodeExecutionEnv(): Promise<ExecutionEnv> {
   return createNodeExecutionEnv({
     cwd: process.cwd(),
     shellEnv: process.env,

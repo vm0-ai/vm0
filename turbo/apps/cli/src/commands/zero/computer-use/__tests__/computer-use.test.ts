@@ -89,7 +89,7 @@ describe("computer-use command visibility", () => {
     mockExit.mockClear();
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
-    vi.stubEnv("ZERO_TOKEN", "");
+    vi.stubEnv("OKOU_TOKEN", "");
   });
 
   afterEach(async () => {
@@ -97,7 +97,7 @@ describe("computer-use command visibility", () => {
     await rm(testOutputDir, { recursive: true, force: true });
   });
 
-  it("should be visible when no ZERO_TOKEN is set", () => {
+  it("should be visible when no OKOU_TOKEN is set", () => {
     const prog = new Command();
     registerZeroCommands(prog);
 
@@ -107,17 +107,17 @@ describe("computer-use command visibility", () => {
     expect(cmd).toBeDefined();
   });
 
-  it("should be visible when ZERO_TOKEN includes computer-use:write", () => {
+  it("should be visible when OKOU_TOKEN includes computer-use:write", () => {
     const token = buildZeroToken({
       userId: "u1",
       runId: "r1",
       orgId: "o1",
-      scope: "zero",
+      scope: "okou",
       capabilities: ["computer-use:write"],
       iat: 1000,
       exp: 2000,
     });
-    vi.stubEnv("ZERO_TOKEN", token);
+    vi.stubEnv("OKOU_TOKEN", token);
 
     const prog = new Command();
     registerZeroCommands(prog);
@@ -125,17 +125,17 @@ describe("computer-use command visibility", () => {
     expect(visibleCommandNames(prog)).toContain("computer-use");
   });
 
-  it("should be hidden when ZERO_TOKEN lacks computer-use:write", () => {
+  it("should be hidden when OKOU_TOKEN lacks computer-use:write", () => {
     const token = buildZeroToken({
       userId: "u1",
       runId: "r1",
       orgId: "o1",
-      scope: "zero",
+      scope: "okou",
       capabilities: ["agent:read"],
       iat: 1000,
       exp: 2000,
     });
-    vi.stubEnv("ZERO_TOKEN", token);
+    vi.stubEnv("OKOU_TOKEN", token);
 
     const prog = new Command();
     registerZeroCommands(prog);
@@ -212,7 +212,7 @@ describe("computer-use command visibility", () => {
 
   it("should guide missing computer-use capability errors to delegated authorization", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("ZERO_TOKEN", "zero-run-token-without-computer-use");
+    vi.stubEnv("OKOU_TOKEN", "zero-run-token-without-computer-use");
 
     server.use(
       http.post("http://localhost:3000/api/okou/computer-use/commands", () => {
@@ -248,7 +248,7 @@ describe("computer-use command visibility", () => {
 
   it("should poll pending command results every 500ms", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("ZERO_TOKEN", "test-token");
+    vi.stubEnv("OKOU_TOKEN", "test-token");
 
     let pollCount = 0;
     server.use(
@@ -309,6 +309,39 @@ describe("computer-use command visibility", () => {
     } finally {
       setTimeoutSpy.mockRestore();
     }
+  });
+
+  it("should route production commands through api.okou.ai", async () => {
+    vi.stubEnv("OKOU_TOKEN", "test-token");
+
+    server.use(
+      http.post("https://api.okou.ai/api/okou/computer-use/commands", () => {
+        return HttpResponse.json({
+          commandId: "cmd_okou_origin",
+          status: "queued",
+        });
+      }),
+      http.get(
+        "https://api.okou.ai/api/okou/computer-use/commands/cmd_okou_origin",
+        () => {
+          return HttpResponse.json({
+            id: "cmd_okou_origin",
+            kind: "apps.list",
+            status: "succeeded",
+            hostId: "host_1",
+            hostName: "Desktop",
+            payload: {},
+            result: { apps: [] },
+            timeoutMs: 15_000,
+            createdAt: "2026-08-12T14:00:00.000Z",
+            claimedAt: "2026-08-12T14:00:00.100Z",
+            completedAt: "2026-08-12T14:00:00.200Z",
+          });
+        },
+      ),
+    );
+
+    await zeroComputerUseCommand.parseAsync(["node", "cli", "list-apps"]);
   });
 
   it("should write screenshot and app state data to local files in command result console output", async () => {
@@ -381,7 +414,7 @@ describe("computer-use command visibility", () => {
 
   it("should print screenshot and app state file paths for get-app-state", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("ZERO_TOKEN", "test-token");
+    vi.stubEnv("OKOU_TOKEN", "test-token");
 
     const screenshotBytes = Buffer.from("test-png-data");
     const screenshotBase64 = screenshotBytes.toString("base64");
@@ -455,7 +488,7 @@ describe("computer-use command visibility", () => {
 
   it("should send click snapshot coordinates and mouse options", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("ZERO_TOKEN", "test-token");
+    vi.stubEnv("OKOU_TOKEN", "test-token");
 
     server.use(
       http.post(
@@ -532,7 +565,7 @@ describe("computer-use command visibility", () => {
 
   it("should send click element indexes", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("ZERO_TOKEN", "test-token");
+    vi.stubEnv("OKOU_TOKEN", "test-token");
 
     const screenshotBytes = Buffer.from("test-png-data");
     const screenshotBase64 = screenshotBytes.toString("base64");
@@ -616,7 +649,7 @@ describe("computer-use command visibility", () => {
 
   it("should send press-key snapshot id and key", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("ZERO_TOKEN", "test-token");
+    vi.stubEnv("OKOU_TOKEN", "test-token");
 
     server.use(
       http.post(
@@ -678,7 +711,7 @@ describe("computer-use command visibility", () => {
 
   it("should send type-text snapshot id and text", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("ZERO_TOKEN", "test-token");
+    vi.stubEnv("OKOU_TOKEN", "test-token");
 
     server.use(
       http.post(
@@ -737,7 +770,7 @@ describe("computer-use command visibility", () => {
 
   it("should call an mcp plugin tool with json arguments", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("ZERO_TOKEN", "test-token");
+    vi.stubEnv("OKOU_TOKEN", "test-token");
 
     let createBody: unknown;
     server.use(
@@ -802,7 +835,7 @@ describe("computer-use command visibility", () => {
 
   it("should list a server's mcp tools via the reserved tools/list call", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("ZERO_TOKEN", "test-token");
+    vi.stubEnv("OKOU_TOKEN", "test-token");
 
     let createBody: unknown;
     server.use(
@@ -863,7 +896,7 @@ describe("computer-use command visibility", () => {
 
   it("should list mcp servers reported by linked hosts", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("ZERO_TOKEN", "test-token");
+    vi.stubEnv("OKOU_TOKEN", "test-token");
 
     server.use(
       http.get("http://localhost:3000/api/okou/computer-use/hosts", () => {
@@ -904,7 +937,7 @@ describe("computer-use command visibility", () => {
 
   it("should download pointer-backed screenshots through the API proxy", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("ZERO_TOKEN", "test-token");
+    vi.stubEnv("OKOU_TOKEN", "test-token");
 
     const screenshotBytes = Buffer.from("proxy-png-bytes");
     server.use(
@@ -970,7 +1003,7 @@ describe("computer-use command visibility", () => {
 
   it("should mark expired pointer screenshots in command output", async () => {
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("ZERO_TOKEN", "test-token");
+    vi.stubEnv("OKOU_TOKEN", "test-token");
 
     server.use(
       http.post("http://localhost:3000/api/okou/computer-use/commands", () => {

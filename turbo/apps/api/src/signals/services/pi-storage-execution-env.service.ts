@@ -213,6 +213,14 @@ class StorageExecutionEnv implements ExecutionEnv {
     return this.writeFile(path, _content, abortSignal);
   }
 
+  renameFile(
+    sourcePath: string,
+    _destinationPath: string,
+    abortSignal?: AbortSignal,
+  ): Promise<Result<void, FileError>> {
+    return this.writeFile(sourcePath, new Uint8Array(), abortSignal);
+  }
+
   fileInfo(
     path: string,
     abortSignal?: AbortSignal,
@@ -390,7 +398,7 @@ class StorageExecutionEnv implements ExecutionEnv {
         ? executionFailure("aborted", "Operation aborted")
         : executionFailure(
             "shell_unavailable",
-            "Shell execution requires Sandbox handoff",
+            "Shell execution is unavailable while preparing the sandbox prompt",
           ),
     );
   }

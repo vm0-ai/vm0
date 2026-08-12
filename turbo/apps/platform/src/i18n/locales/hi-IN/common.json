@@ -173,7 +173,6 @@
       "emptyOutput": "(खाली आउटपुट)",
       "files_one": "{{formattedCount}} फ़ाइल",
       "files_other": "{{formattedCount}} फ़ाइलें",
-      "handoffApiToSandbox": "हैंडऑफ़ · API सर्वर → सैंडबॉक्स",
       "initialize": "प्रारंभ",
       "inputTokens": "में: {{formattedCount}}",
       "models_one": "{{formattedCount}} मॉडल",

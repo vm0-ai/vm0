@@ -201,16 +201,6 @@ export function EventGroupCard({
     );
   }
 
-  if (group.type === "handoff") {
-    return (
-      <HandoffEventGroupCard
-        group={group}
-        showConnector={showConnector}
-        startedAt={startedAt}
-      />
-    );
-  }
-
   // Todo card (standalone)
   if (group.type === "todo") {
     return (
@@ -233,43 +223,6 @@ export function EventGroupCard({
       showConnector={showConnector}
       startedAt={startedAt}
     />
-  );
-}
-
-function HandoffEventGroupCard({
-  group,
-  showConnector,
-  startedAt,
-}: {
-  group: EventGroup;
-  showConnector: boolean;
-  startedAt?: string | null;
-}) {
-  const { t } = useTranslation();
-  const timestamp = formatEventTime(group.createdAt, startedAt);
-
-  return (
-    <div
-      className={`${GROUP_SPACING} relative`}
-      data-pi-handoff-marker="api-to-sandbox"
-    >
-      {showConnector && <Connector isDashed />}
-      <div className="flex items-center gap-2">
-        <StatusDot variant="neutral" />
-        <span className="text-sm font-medium text-muted-foreground">
-          {t(($) => {
-            return $.activity.events.handoffApiToSandbox;
-          })}
-        </span>
-        <span className="flex-1" />
-        <span className="text-xs text-muted-foreground shrink-0 ml-4 whitespace-nowrap hidden sm:inline">
-          {timestamp}
-        </span>
-      </div>
-      <div className="text-xs text-muted-foreground pl-5 mt-1 sm:hidden">
-        {timestamp}
-      </div>
-    </div>
   );
 }
 

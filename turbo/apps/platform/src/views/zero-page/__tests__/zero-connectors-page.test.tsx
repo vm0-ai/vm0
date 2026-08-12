@@ -348,13 +348,6 @@ function mcpCustomConnector(
   };
 }
 
-function previousApiCustomConnector(
-  connector: CustomConnectorHttpResponse,
-): Omit<CustomConnectorHttpResponse, "kind"> {
-  const { kind: _kind, ...previousApiConnector } = connector;
-  return previousApiConnector;
-}
-
 function publicCustomConnectorOAuthConfig(
   config: NonNullable<CreateCustomConnectorBody["oauthConfig"]>,
 ) {
@@ -4109,28 +4102,6 @@ describe("connectors page", () => {
       expect(dialog).toBeInTheDocument();
     },
   );
-
-  it("connects a kind-less HTTP definition returned by a previous API", async () => {
-    const connector = previousApiCustomConnector(
-      customConnector({ displayName: "Previous API HTTP" }),
-    );
-    context.mocks.data.org({
-      id: "org_1",
-      name: "Test Org",
-      role: "admin",
-    });
-    context.mocks.data.team([]);
-    context.mocks.http.get("*/api/okou/custom-connectors", () => {
-      return HttpResponse.json({ connectors: [connector] });
-    });
-
-    detachedSetupPage({ context, path: "/connectors?tab=custom" });
-
-    click(await screen.findByLabelText("Connect Previous API HTTP"));
-    await expect(
-      screen.findByRole("dialog", { name: "Connect Previous API HTTP" }),
-    ).resolves.toBeInTheDocument();
-  });
 
   it("manages a manual MCP custom connector through the settings lifecycle", async () => {
     const researchAgentId = "c0000000-0000-4000-a000-000000000061";

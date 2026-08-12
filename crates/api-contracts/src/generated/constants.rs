@@ -158,6 +158,11 @@ pub mod runners {
         /// Rust and TypeScript components use this shared contract value when building runner guest paths.
         pub const CANONICAL_GUEST_HOME_DIR: &str = "/home/user";
 
+        /// Versioned path to Pi's native SQLite session database inside runner guests.
+        /// Guest checkpointing and runner restore treat this file as Pi's complete session history.
+        pub const CANONICAL_PI_SESSION_DATABASE_PATH: &str =
+            "/home/user/.pi/agent/sessions/v1/sessions.sqlite";
+
         /// Canonical working directory path expected inside runner guests.
         /// Rust and TypeScript components use this shared contract value when building runner commands and paths.
         pub const CANONICAL_WORKING_DIR: &str = "/home/user/workspace";

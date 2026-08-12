@@ -222,6 +222,32 @@ class TestModelProviderSseUsage:
             "tokens.cache_creation": 15,
         }
 
+    def test_full_pipeline_pi_responses_path_reports_usage(self, tmp_path, real_flow):
+        flow = _model_provider_sse_flow(
+            tmp_path,
+            real_flow,
+            host="api.deepseek.com",
+            original_url="https://api.deepseek.com/responses",
+            firewall_name="model-provider:deepseek",
+            cli_agent_type="pi",
+            model_usage_provider="deepseek-v4-flash",
+        )
+        mitm_addon.responseheaders(flow)
+        response_stream(flow)(
+            b"event: response.completed\n"
+            b'data: {"type":"response.completed","response":{"model":"deepseek-chat",'
+            b'"usage":{"input_tokens":7131,"output_tokens":49,'
+            b'"input_tokens_details":{"cached_tokens":5504}}}}\n\n'
+        )
+
+        webhook = self._run_response(flow)
+
+        assert {event["category"]: event["quantity"] for event in webhook.usage_events()} == {
+            "tokens.input": 1627,
+            "tokens.output": 49,
+            "tokens.cache_read": 5504,
+        }
+
     def test_full_pipeline_openai_sse_reports_long_context_items(self, tmp_path, real_flow):
         flow = _openai_responses_sse_flow(
             tmp_path,

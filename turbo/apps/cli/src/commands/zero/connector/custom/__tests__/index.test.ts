@@ -20,7 +20,7 @@ describe("okou connector custom readers", () => {
   beforeEach(() => {
     chalk.level = 0;
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
-    vi.stubEnv("ZERO_TOKEN", "test-token");
+    vi.stubEnv("OKOU_TOKEN", "test-token");
   });
 
   afterEach(() => {
@@ -28,12 +28,12 @@ describe("okou connector custom readers", () => {
     vi.unstubAllEnvs();
   });
 
-  it("normalizes an older kind-less HTTP list response", async () => {
+  it("renders tagged HTTP connectors in list output", async () => {
     const connector = customConnector();
     server.use(
       http.get("http://localhost:3000/api/okou/custom-connectors", () => {
         return HttpResponse.json({
-          connectors: [{ ...connector, kind: undefined }],
+          connectors: [connector],
         });
       }),
     );
@@ -86,13 +86,13 @@ describe("okou connector custom readers", () => {
     expect(connectorRow).toMatch(/✓$/u);
   });
 
-  it("keeps HTTP routing details in status for an older kind-less response", async () => {
+  it("shows tagged HTTP routing details in status", async () => {
     const connector = customConnector();
     server.use(
       http.get(
         `http://localhost:3000/api/okou/custom-connectors/${CONNECTOR_ID}`,
         () => {
-          return HttpResponse.json({ ...connector, kind: undefined });
+          return HttpResponse.json(connector);
         },
       ),
     );

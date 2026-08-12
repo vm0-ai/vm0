@@ -34,7 +34,7 @@ legacy_entrypoint="$(printf '%s%s' ze ro)"
 fixture_command="run \`${legacy_entrypoint} workflow list --token DO_NOT_PRINT_THIS\`"
 printf '%s\n' "${fixture_command}" >"${fixture_root}/producer.md"
 printf '%s\n' 'let args = vec!["okou".to_string()];' \
-  >"${fixture_root}/crates/guest-agent/src/cli/pi_agent_loop.rs"
+  >"${fixture_root}/crates/guest-agent/src/cli/mod.rs"
 mkdir -p "${fixture_root}/.github/workflows"
 printf '%s\n' "            zero \\" \
   >"${fixture_root}/.github/workflows/release-please.yml"
