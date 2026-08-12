@@ -58,7 +58,7 @@ describe("update desktop release manifest", () => {
     {
       product: "okou" as const,
       artifactName: "Okou-darwin-arm64-1.2.3.zip",
-      releaseName: "Okou Computer Use 1.2.3",
+      releaseName: "Okou 1.2.3",
     },
   ])("publishes an isolated $product manifest", (testCase) => {
     const manifestPath = temporaryManifestPath();

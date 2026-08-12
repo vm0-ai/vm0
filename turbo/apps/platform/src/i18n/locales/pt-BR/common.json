@@ -728,7 +728,7 @@
       "lastSeen": "Visto pela última vez em {{date}}",
       "linkExpires": "O link expira em {{date}}.",
       "macRequirement": "Requer um Mac com Apple silicon e macOS 14 ou mais recente. Macs com Intel não são compatíveis.",
-      "noHostsDescription": "Abra o {{desktopProductName}} Computer Use no Mac e atualize esta página quando ele ficar online.",
+      "noHostsDescription": "Abra o {{desktopApplicationName}} no Mac e atualize esta página quando ele ficar online.",
       "noHostsTitle": "Nenhum computador online",
       "sources": {
         "chat": "nesta conversa",

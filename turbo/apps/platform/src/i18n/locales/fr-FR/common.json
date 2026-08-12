@@ -728,7 +728,7 @@
       "lastSeen": "Vu pour la dernière fois le {{date}}",
       "linkExpires": "Le lien expire le {{date}}.",
       "macRequirement": "Nécessite un Mac avec puce Apple et macOS 14 ou version ultérieure. Les Mac Intel ne sont pas pris en charge.",
-      "noHostsDescription": "Ouvrez Open {{desktopProductName}} Computer Use sur votre Mac et actualisez cette page lorsqu'il sera en ligne.",
+      "noHostsDescription": "Ouvrez {{desktopApplicationName}} sur votre Mac et actualisez cette page lorsqu'il sera en ligne.",
       "noHostsTitle": "Aucun ordinateur en ligne",
       "sources": {
         "chat": "ce fil de discussion chat",

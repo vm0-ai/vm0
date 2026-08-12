@@ -1,8 +1,12 @@
-import type {
-  DesktopUpdateArchitecture,
-  DesktopUpdateChannel,
-  DesktopUpdatePlatform,
-  SquirrelMacReleases,
+import {
+  DESKTOP_UPDATE_LINE_LEGACY_OKOU,
+  DESKTOP_UPDATE_LINE_OKOU,
+  DESKTOP_UPDATE_LINE_ZERO,
+  type DesktopUpdateArchitecture,
+  type DesktopUpdateChannel,
+  type DesktopUpdateLine,
+  type DesktopUpdatePlatform,
+  type SquirrelMacReleases,
 } from "@vm0/api-contracts/contracts/desktop-updates";
 import {
   DESKTOP_PRODUCTS,
@@ -23,10 +27,23 @@ const MIN_DESKTOP_DMG_VERSION = "0.12.0";
 
 const DESKTOP_UPDATE_MANIFEST_CACHE_TTL_MS = 60_000;
 
-function desktopUpdateManifestUrl(product: DesktopProduct): string {
-  return product === DESKTOP_PRODUCT_OKOU
-    ? "https://github.com/vm0-ai/vm0/releases/download/okou-desktop-updates/okou-desktop-update-manifest.json"
-    : "https://github.com/vm0-ai/vm0/releases/download/desktop-updates/desktop-update-manifest.json";
+function desktopUpdateManifestUrl(line: DesktopUpdateLine): string {
+  if (line === DESKTOP_UPDATE_LINE_ZERO) {
+    return "https://github.com/vm0-ai/vm0/releases/download/desktop-updates/desktop-update-manifest.json";
+  }
+  if (line === DESKTOP_UPDATE_LINE_LEGACY_OKOU) {
+    return "https://github.com/vm0-ai/vm0/releases/download/okou-desktop-updates/okou-desktop-update-manifest.json";
+  }
+  if (line === DESKTOP_UPDATE_LINE_OKOU) {
+    return "https://github.com/vm0-ai/vm0/releases/download/ai-okou-desktop-updates/ai-okou-desktop-update-manifest.json";
+  }
+  return line satisfies never;
+}
+
+function desktopProductForUpdateLine(line: DesktopUpdateLine): DesktopProduct {
+  return line === DESKTOP_UPDATE_LINE_ZERO
+    ? DESKTOP_PRODUCT_ZERO
+    : DESKTOP_PRODUCT_OKOU;
 }
 
 function desktopProductArtifactName(product: DesktopProduct): string {
@@ -67,7 +84,7 @@ const desktopUpdateManifestSchema = z.object({
 type DesktopUpdateManifest = z.infer<typeof desktopUpdateManifestSchema>;
 
 interface DesktopUpdateFeedRequest {
-  readonly product: DesktopProduct;
+  readonly line: DesktopUpdateLine;
   readonly channel: DesktopUpdateChannel;
   readonly platform: DesktopUpdatePlatform;
   readonly arch: DesktopUpdateArchitecture;
@@ -79,13 +96,13 @@ interface DesktopUpdateManifestCacheEntry {
 }
 
 const desktopUpdateManifestCache = testOverride<
-  Partial<Record<DesktopProduct, DesktopUpdateManifestCacheEntry>>
+  Partial<Record<DesktopUpdateLine, DesktopUpdateManifestCacheEntry>>
 >(() => {
   return {};
 });
 
 const desktopUpdateManifestOverride = testOverride<
-  Partial<Record<DesktopProduct, DesktopUpdateManifest>>
+  Partial<Record<DesktopUpdateLine, DesktopUpdateManifest>>
 >(() => {
   return {};
 });
@@ -122,7 +139,8 @@ function assetForRelease(
     return null;
   }
 
-  const expectedAssetName = `${desktopProductArtifactName(request.product)}-${request.platform}-${request.arch}-${release.version}.zip`;
+  const product = desktopProductForUpdateLine(request.line);
+  const expectedAssetName = `${desktopProductArtifactName(product)}-${request.platform}-${request.arch}-${release.version}.zip`;
   const actualAssetName = decodeURIComponent(
     new URL(asset.url).pathname.split("/").at(-1) ?? "",
   );
@@ -160,8 +178,9 @@ function desktopDmgDownloadUrl(
   release: DesktopUpdateManifest["releases"][string],
   request: DesktopUpdateFeedRequest,
 ): string {
-  const tagName = `${desktopProductReleaseTagPrefix(request.product)}${release.version}`;
-  const assetName = `${desktopProductArtifactName(request.product)}-${request.platform}-${request.arch}-${release.version}.dmg`;
+  const product = desktopProductForUpdateLine(request.line);
+  const tagName = `${desktopProductReleaseTagPrefix(product)}${release.version}`;
+  const assetName = `${desktopProductArtifactName(product)}-${request.platform}-${request.arch}-${release.version}.dmg`;
   return `${DESKTOP_RELEASE_DOWNLOAD_URL_PREFIX}/${encodeURIComponent(
     tagName,
   )}/${encodeURIComponent(assetName)}`;
@@ -220,21 +239,25 @@ function buildDesktopUpdateFeed(
   return {
     currentRelease: selected.release.version,
     releases: [
-      squirrelRelease(selected.release, selected.asset, request.product),
+      squirrelRelease(
+        selected.release,
+        selected.asset,
+        desktopProductForUpdateLine(request.line),
+      ),
     ],
   };
 }
 
 async function fetchDesktopUpdateManifest(
-  product: DesktopProduct,
+  line: DesktopUpdateLine,
   signal: AbortSignal,
 ): Promise<DesktopUpdateManifest> {
-  const override = desktopUpdateManifestOverride.get()[product];
+  const override = desktopUpdateManifestOverride.get()[line];
   if (override) {
     return override;
   }
 
-  const response = await fetch(desktopUpdateManifestUrl(product), {
+  const response = await fetch(desktopUpdateManifestUrl(line), {
     headers: { accept: "application/json" },
     signal,
   });
@@ -246,29 +269,30 @@ async function fetchDesktopUpdateManifest(
 
   const manifest = desktopUpdateManifestSchema.parse(await response.json());
   const manifestProduct = manifest.product ?? DESKTOP_PRODUCT_ZERO;
-  if (manifestProduct !== product) {
+  const expectedProduct = desktopProductForUpdateLine(line);
+  if (manifestProduct !== expectedProduct) {
     throw new Error(
-      `Desktop update manifest product mismatch: expected ${product}, received ${manifestProduct}`,
+      `Desktop update manifest product mismatch: expected ${expectedProduct}, received ${manifestProduct}`,
     );
   }
   return manifest;
 }
 
 async function loadDesktopUpdateManifest(
-  product: DesktopProduct,
+  line: DesktopUpdateLine,
   signal: AbortSignal,
 ): Promise<DesktopUpdateManifest> {
   const cache = desktopUpdateManifestCache.get();
-  const cacheEntry = cache[product];
+  const cacheEntry = cache[line];
   const nowMs = now();
   if (cacheEntry && cacheEntry.expiresAt > nowMs) {
     return cacheEntry.manifest;
   }
 
-  const manifest = await fetchDesktopUpdateManifest(product, signal);
+  const manifest = await fetchDesktopUpdateManifest(line, signal);
   desktopUpdateManifestCache.set({
     ...cache,
-    [product]: {
+    [line]: {
       expiresAt: nowMs + DESKTOP_UPDATE_MANIFEST_CACHE_TTL_MS,
       manifest,
     },
@@ -280,7 +304,7 @@ export async function loadDesktopUpdateFeed(
   request: DesktopUpdateFeedRequest,
   signal: AbortSignal,
 ): Promise<SquirrelMacReleases | null> {
-  const manifest = await loadDesktopUpdateManifest(request.product, signal);
+  const manifest = await loadDesktopUpdateManifest(request.line, signal);
   return buildDesktopUpdateFeed(manifest, request);
 }
 
@@ -288,10 +312,13 @@ export async function loadDesktopReleasePageUrl(
   request: DesktopUpdateFeedRequest,
   signal: AbortSignal,
 ): Promise<string | null> {
-  const manifest = await loadDesktopUpdateManifest(request.product, signal);
+  const manifest = await loadDesktopUpdateManifest(request.line, signal);
   const selected = selectDesktopRelease(manifest, request);
   return selected
-    ? desktopReleasePageUrl(selected.release, request.product)
+    ? desktopReleasePageUrl(
+        selected.release,
+        desktopProductForUpdateLine(request.line),
+      )
     : null;
 }
 
@@ -299,7 +326,7 @@ export async function loadDesktopDmgDownloadUrl(
   request: DesktopUpdateFeedRequest,
   signal: AbortSignal,
 ): Promise<string | null> {
-  const manifest = await loadDesktopUpdateManifest(request.product, signal);
+  const manifest = await loadDesktopUpdateManifest(request.line, signal);
   const selected = selectDesktopRelease(manifest, request);
   if (
     !selected ||

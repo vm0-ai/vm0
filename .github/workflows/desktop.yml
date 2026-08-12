@@ -285,7 +285,7 @@ jobs:
 
           desktop_dir="$PWD/apps/desktop"
           version=$(node -p "require('./apps/desktop/package.json').version")
-          forge_zip="$desktop_dir/out/make/zip/darwin/arm64/Okou Computer Use-darwin-arm64-$version.zip"
+          forge_zip="$desktop_dir/out/make/zip/darwin/arm64/Okou-darwin-arm64-$version.zip"
           artifact_path="apps/desktop/out/Okou-darwin-arm64.zip"
 
           if [ ! -f "$forge_zip" ]; then
@@ -300,7 +300,7 @@ jobs:
       - name: Verify Okou production artifact
         run: |
           artifact_path="apps/desktop/out/Okou-darwin-arm64.zip"
-          app_dir="apps/desktop/out/Okou Computer Use-darwin-arm64/Okou Computer Use.app"
+          app_dir="apps/desktop/out/Okou-darwin-arm64/Okou.app"
           zero_app_dir="apps/desktop/out/Zero Computer Use-darwin-arm64/Zero Computer Use.app"
           plist="$app_dir/Contents/Info.plist"
           runtime_config="$app_dir/Contents/Resources/app/desktop-runtime-config.json"
@@ -343,14 +343,14 @@ jobs:
             echo "::error::Expected LSMinimumSystemVersion 14.0, found ${minimum_system_version:-missing}"
             exit 1
           fi
-          /usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$plist" | grep -qx "Okou Computer Use"
-          /usr/libexec/PlistBuddy -c "Print :CFBundleName" "$plist" | grep -qx "Okou Computer Use"
-          /usr/libexec/PlistBuddy -c "Print :CFBundleDisplayName" "$plist" | grep -qx "Okou Computer Use"
-          /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$plist" | grep -qx "ai.okou.computer-use"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleExecutable" "$plist" | grep -qx "Okou"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleName" "$plist" | grep -qx "Okou"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleDisplayName" "$plist" | grep -qx "Okou"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$plist" | grep -qx "ai.okou.desktop"
           /usr/libexec/PlistBuddy -c "Print :CFBundleIconFile" "$plist" | grep -qx "icon.icns"
-          /usr/libexec/PlistBuddy -c "Print :CFBundleURLTypes:0:CFBundleURLName" "$plist" | grep -qx "Okou Computer Use Auth"
-          /usr/libexec/PlistBuddy -c "Print :CFBundleURLTypes:0:CFBundleURLSchemes:0" "$plist" | grep -qx "ai.okou.computer-use"
-          file "$app_dir/Contents/MacOS/Okou Computer Use" | grep -q "arm64"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleURLTypes:0:CFBundleURLName" "$plist" | grep -qx "Okou Auth"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleURLTypes:0:CFBundleURLSchemes:0" "$plist" | grep -qx "ai.okou.desktop"
+          file "$app_dir/Contents/MacOS/Okou" | grep -q "arm64"
           file "$app_dir/Contents/Resources/native/computer-use-helper" | grep -q "arm64"
           cmp -s apps/desktop/assets/icon.icns "$app_dir/Contents/Resources/icon.icns"
           cmp -s apps/desktop/assets/icon.png "$app_dir/Contents/Resources/app/assets/icon.png"
@@ -362,13 +362,13 @@ jobs:
             exit 1
           fi
 
-          unzip -l "$artifact_path" | grep -q "Okou Computer Use.app/Contents/MacOS/Okou Computer Use"
-          unzip -l "$artifact_path" | grep -q "Okou Computer Use.app/Contents/Resources/icon.icns"
-          unzip -l "$artifact_path" | grep -q "Okou Computer Use.app/Contents/Resources/native/computer-use-helper"
-          unzip -l "$artifact_path" | grep -q "Okou Computer Use.app/Contents/Resources/app/dist/main.js"
-          unzip -l "$artifact_path" | grep -q "Okou Computer Use.app/Contents/Resources/app/dist/bootstrap.js"
-          unzip -l "$artifact_path" | grep -q "Okou Computer Use.app/Contents/Resources/app/assets/icon.png"
-          unzip -l "$artifact_path" | grep -q "Okou Computer Use.app/Contents/Resources/app/desktop-runtime-config.json"
+          unzip -l "$artifact_path" | grep -q "Okou.app/Contents/MacOS/Okou"
+          unzip -l "$artifact_path" | grep -q "Okou.app/Contents/Resources/icon.icns"
+          unzip -l "$artifact_path" | grep -q "Okou.app/Contents/Resources/native/computer-use-helper"
+          unzip -l "$artifact_path" | grep -q "Okou.app/Contents/Resources/app/dist/main.js"
+          unzip -l "$artifact_path" | grep -q "Okou.app/Contents/Resources/app/dist/bootstrap.js"
+          unzip -l "$artifact_path" | grep -q "Okou.app/Contents/Resources/app/assets/icon.png"
+          unzip -l "$artifact_path" | grep -q "Okou.app/Contents/Resources/app/desktop-runtime-config.json"
 
       - name: Smoke test Okou production artifact launch
         env:
@@ -706,7 +706,7 @@ jobs:
             --platform darwin \
             --arch arm64
 
-          okou_app_dir="$PWD/apps/desktop/out/Okou Computer Use-darwin-arm64/Okou Computer Use.app"
+          okou_app_dir="$PWD/apps/desktop/out/Okou-darwin-arm64/Okou.app"
           if [ ! -d "$okou_app_dir" ]; then
             echo "No packaged Okou app found: $okou_app_dir"
             find apps/desktop/out -maxdepth 4 -type d -print || true
@@ -734,7 +734,7 @@ jobs:
             "$DESKTOP_VERSION" \
             "turbo/apps/desktop/out/Zero Computer Use-darwin-arm64/Zero Computer Use.app" \
             /tmp/okou-desktop-artifact \
-            "turbo/apps/desktop/out/Okou Computer Use-darwin-arm64/Okou Computer Use.app"
+            "turbo/apps/desktop/out/Okou-darwin-arm64/Okou.app"
 
       - name: Upload canonical Desktop artifact
         if: steps.existing.outputs.exists != 'true'

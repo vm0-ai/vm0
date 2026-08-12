@@ -711,7 +711,7 @@
       "lastSeen": "Zuletzt gesehen {{date}}",
       "linkExpires": "Link läuft am {{date}} ab.",
       "macRequirement": "Erfordert einen Apple Silicon Mac mit macOS 14 oder neuer. Intel-Macs werden nicht unterstützt.",
-      "noHostsDescription": "Öffnen Sie {{desktopProductName}} Computer Use auf Ihrem Mac und aktualisieren Sie diese Seite, wenn sie online ist.",
+      "noHostsDescription": "Öffnen Sie {{desktopApplicationName}} auf Ihrem Mac und aktualisieren Sie diese Seite, wenn sie online ist.",
       "noHostsTitle": "Keine Online-Computer",
       "sources": {
         "chat": "dieser Chat-Thread",

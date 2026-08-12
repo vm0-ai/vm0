@@ -711,7 +711,7 @@
       "lastSeen": "Last seen {{date}}",
       "linkExpires": "Link expires {{date}}.",
       "macRequirement": "Requires an Apple silicon Mac with macOS 14 or newer. Intel Macs aren't supported.",
-      "noHostsDescription": "Open {{desktopProductName}} Computer Use on your Mac and refresh this page when it comes online.",
+      "noHostsDescription": "Open {{desktopApplicationName}} on your Mac and refresh this page when it comes online.",
       "noHostsTitle": "No online computers",
       "sources": {
         "chat": "this chat thread",

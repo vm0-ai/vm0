@@ -711,7 +711,7 @@
       "lastSeen": "最後に表示されたのは {{date}}",
       "linkExpires": "リンクの有効期限が切れます {{date}}。",
       "macRequirement": "macOS 14 以降を搭載した Apple Silicon Mac が必要です。 Intel Mac はサポートされていません。",
-      "noHostsDescription": "Mac で {{desktopProductName}} Computer Use を開き、オンラインになったらこのページを更新します。",
+      "noHostsDescription": "Mac で {{desktopApplicationName}} を開き、オンラインになったらこのページを更新します。",
       "noHostsTitle": "オンラインコンピュータはありません",
       "sources": {
         "chat": "このチャットスレッド",

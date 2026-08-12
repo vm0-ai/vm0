@@ -728,7 +728,7 @@
       "lastSeen": "Visto l'ultima volta {{date}}",
       "linkExpires": "Il collegamento scade {{date}}.",
       "macRequirement": "Richiede un Mac Apple Silicon con macOS 14 o successivo. I Mac Intel non sono supportati.",
-      "noHostsDescription": "Apri {{desktopProductName}} Computer Use sul tuo Mac e aggiorna questa pagina quando è online.",
+      "noHostsDescription": "Apri {{desktopApplicationName}} sul tuo Mac e aggiorna questa pagina quando è online.",
       "noHostsTitle": "Nessun computer online",
       "sources": {
         "chat": "questo thread di chat",

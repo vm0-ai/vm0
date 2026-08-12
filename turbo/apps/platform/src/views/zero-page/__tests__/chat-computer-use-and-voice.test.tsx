@@ -500,7 +500,7 @@ describe("chat lifecycle", () => {
     );
   });
 
-  it("uses Okou Computer Use copy on an Okou host", async () => {
+  it("uses Okou copy on an Okou host", async () => {
     const previousUrl = window.location.href;
     window.location.href = "https://app.okou.ai/";
     context.signal.addEventListener(

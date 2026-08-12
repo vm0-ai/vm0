@@ -194,6 +194,8 @@ describe("resolveDesktopConfig", () => {
       product: "zero",
       brandName: "Zero",
       displayName: "Zero Computer Use",
+      userDataDirectoryName: "Zero Computer Use",
+      updateLine: "zero",
       bundleId: "ai.vm0.zero.desktop",
       authScheme: "ai.vm0.zero.desktop",
     });
@@ -214,6 +216,8 @@ describe("resolveDesktopConfig", () => {
       product: "zero",
       brandName: "Zero",
       displayName: "Zero CU Dev",
+      userDataDirectoryName: "Zero CU Dev",
+      updateLine: "zero",
       bundleId: "ai.vm0.zero.desktop.dev",
       authScheme: "ai.vm0.zero.desktop.dev",
     });
@@ -238,6 +242,8 @@ describe("resolveDesktopConfig", () => {
       product: "zero",
       brandName: "Zero",
       displayName: "Zero CU Dev",
+      userDataDirectoryName: "Zero CU Dev",
+      updateLine: "zero",
       bundleId: "ai.vm0.zero.desktop.dev",
       authScheme: "ai.vm0.zero.desktop.dev",
     });
@@ -256,6 +262,8 @@ describe("resolveDesktopConfig", () => {
       product: "zero",
       brandName: "Zero",
       displayName: "Zero CU Dev",
+      userDataDirectoryName: "Zero CU Dev",
+      updateLine: "zero",
       bundleId: "ai.vm0.zero.desktop.dev",
       authScheme: "ai.vm0.zero.desktop.dev",
     });
@@ -275,9 +283,11 @@ describe("resolveDesktopConfig", () => {
     expect(config.identity).toMatchObject({
       product: "okou",
       brandName: "Okou",
-      displayName: "Okou Computer Use",
-      bundleId: "ai.okou.computer-use",
-      authScheme: "ai.okou.computer-use",
+      displayName: "Okou",
+      userDataDirectoryName: "Okou",
+      updateLine: "ai-okou-desktop",
+      bundleId: "ai.okou.desktop",
+      authScheme: "ai.okou.desktop",
     });
     expect(config.sessionPartition).toBe("persist:vm0-desktop-production");
     expect([...config.allowedAppOrigins].sort()).toStrictEqual([
@@ -293,9 +303,11 @@ describe("resolveDesktopConfig", () => {
     expect(config.identity).toMatchObject({
       product: "okou",
       brandName: "Okou",
-      displayName: "Okou CU Dev",
-      bundleId: "ai.okou.computer-use.dev",
-      authScheme: "ai.okou.computer-use.dev",
+      displayName: "Okou Dev",
+      userDataDirectoryName: "Okou Dev",
+      updateLine: "ai-okou-desktop",
+      bundleId: "ai.okou.desktop.dev",
+      authScheme: "ai.okou.desktop.dev",
     });
   });
 
@@ -435,10 +447,10 @@ describe("desktop auth", () => {
     expect(
       buildDesktopAuthStartUrl(
         new URL("https://www.okou.ai"),
-        "ai.okou.computer-use",
+        "ai.okou.desktop",
       ),
     ).toBe(
-      "https://www.okou.ai/desktop-auth/start?callbackScheme=ai.okou.computer-use",
+      "https://www.okou.ai/desktop-auth/start?callbackScheme=ai.okou.desktop",
     );
   });
 
@@ -503,14 +515,14 @@ describe("desktop auth", () => {
     ).toStrictEqual({ code, handoffId: null });
     expect(
       parseDesktopAuthCallback(
-        `ai.okou.computer-use://auth/callback?code=${code}`,
-        "ai.okou.computer-use",
+        `ai.okou.desktop://auth/callback?code=${code}`,
+        "ai.okou.desktop",
       ),
     ).toStrictEqual({ code, handoffId: null });
     expect(
       parseDesktopAuthCallback(
-        `ai.okou.computer-use.dev://auth/callback?code=${code}`,
-        "ai.okou.computer-use.dev",
+        `ai.okou.desktop.dev://auth/callback?code=${code}`,
+        "ai.okou.desktop.dev",
       ),
     ).toStrictEqual({ code, handoffId: null });
     expect(

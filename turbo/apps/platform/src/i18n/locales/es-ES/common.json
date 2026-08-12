@@ -728,7 +728,7 @@
       "lastSeen": "Última vez que se vio {{date}}",
       "linkExpires": "El enlace caduca {{date}}.",
       "macRequirement": "Requiere un Mac Apple Silicon con macOS 14 o más reciente. No se soportan Macs Intel.",
-      "noHostsDescription": "Abre {{desktopProductName}} Uso del ordenador en tu Mac y actualiza esta página cuando esté en línea.",
+      "noHostsDescription": "Abre {{desktopApplicationName}} en tu Mac y actualiza esta página cuando esté en línea.",
       "noHostsTitle": "No hay ordenadores en línea",
       "sources": {
         "chat": "Este hilo de chat",
