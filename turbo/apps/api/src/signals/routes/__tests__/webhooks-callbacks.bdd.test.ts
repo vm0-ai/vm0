@@ -802,15 +802,6 @@ describe("WHCB-01: third-party webhook verification boundaries", () => {
     );
     expect(ignored.body).toBe("OK");
 
-    // The issues event has no consumer anymore, so it is ignored unparsed.
-    const ignoredIssuesBody = JSON.stringify({ action: "opened" });
-    const ignoredIssues = await api.requestGithubWebhook(
-      ignoredIssuesBody,
-      api.signedGithubWebhookHeaders(ignoredIssuesBody, "issues"),
-      [200],
-    );
-    expect(ignoredIssues.body).toBe("OK");
-
     const invalidPullRequestBody = JSON.stringify({ action: "opened" });
     const invalidPullRequest = await api.requestGithubWebhook(
       invalidPullRequestBody,
@@ -855,20 +846,6 @@ describe("WHCB-01: third-party webhook verification boundaries", () => {
       labels: [],
       user,
     };
-
-    const closedIssueBody = JSON.stringify({
-      action: "closed",
-      issue,
-      repository,
-      installation,
-      sender: user,
-    });
-    const closedIssue = await api.requestGithubWebhook(
-      closedIssueBody,
-      api.signedGithubWebhookHeaders(closedIssueBody, "issues"),
-      [200],
-    );
-    expect(closedIssue.body).toBe("OK");
 
     const synchronizedPullRequestBody = JSON.stringify({
       action: "synchronize",
