@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.32.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.31.0...desktop-v0.32.0) (2026-08-12)
+
+
+### Features
+
+* **desktop:** add okou package identity ([#26437](https://github.com/vm0-ai/vm0/issues/26437)) ([a9da541](https://github.com/vm0-ai/vm0/commit/a9da541ed84a4b362258546d0159978e426f14e4))
+
 ## [0.31.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.30.6...desktop-v0.31.0) (2026-08-12)
 
 
