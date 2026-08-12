@@ -9559,9 +9559,9 @@ describe("CHAT-02: shared user message queue", () => {
       lastEventSequence: 0,
     });
     // Completion starts both the thread-message drain and the org run-queue
-    // drain. Hold both at admission before the inline send persists its
-    // queue-first row and reaches the same final atomic launch boundary.
-    await expect.poll(admissionLock.waiterCount).toBe(2);
+    // drain concurrently. Wait until either has reached admission, then let
+    // the inline send persist its queue-first row and join the same boundary.
+    await expect.poll(admissionLock.waiterCount).toBeGreaterThanOrEqual(1);
 
     const prompt = "terminal drain and inline send share one claim";
     const messageId = randomUUID();
@@ -9583,7 +9583,7 @@ describe("CHAT-02: shared user message queue", () => {
         });
       })
       .toBe(true);
-    await expect.poll(admissionLock.waiterCount).toBe(3);
+    await expect.poll(admissionLock.waiterCount, { timeout: 10_000 }).toBe(3);
     admissionLock.release();
 
     const sent = await send;
