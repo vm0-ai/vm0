@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
-import { gzipSync } from "node:zlib";
+import { promisify } from "node:util";
+import { gzip } from "node:zlib";
 
 import {
   chatEventRowV4Schema,
@@ -90,11 +91,25 @@ const MIN_SUPPORTED_ARCHIVE_SCHEMA_VERSION = 4;
 const ARCHIVE_CONTENT_TYPE = "application/x-ndjson";
 const ARCHIVE_CONTENT_ENCODING = "gzip";
 /**
+ * Compression runs off the event loop so a multi-megabyte thread body does not
+ * block the other archives in flight.
+ */
+const gzipAsync = promisify(gzip);
+/**
  * At the 10-minute cron cadence this cap permits 144k changed threads per day.
  * Normal traffic re-archives roughly 700 active threads per day, so the cap
  * leaves ample room for bursts while keeping each invocation bounded.
  */
 const DEFAULT_THREAD_BATCH_SIZE = 1000;
+/**
+ * Threads archived in parallel within one pass. Rebuild cost is dominated by a
+ * thread's event count, and that count is heavily skewed: p50 is under a
+ * hundred events while the tail reaches five figures. A serial pass lets one
+ * long thread stall every thread queued behind it, so a small pool keeps that
+ * head-of-line delay off the short threads without pressuring the connection
+ * pool or R2.
+ */
+const ARCHIVE_CONCURRENCY = 3;
 const EVENT_PAGE_SIZE = 1000;
 const DEFAULT_R2_GC_GRACE_HOURS = 24 * 7;
 const R2_GC_SHARDS_PER_RUN = 16;
@@ -330,7 +345,7 @@ async function archiveThread(
   signal.throwIfAborted();
   // Every generation is rebuilt from canonical Postgres rows. Existing R2
   // objects are never read or transformed in place.
-  const compressed = gzipSync(Buffer.concat(archive.lines));
+  const compressed = await gzipAsync(Buffer.concat(archive.lines));
   const objectKey = chatEventSnapshotObjectKey(
     candidate.chatThreadId,
     archive.lastSeqId,
@@ -360,6 +375,56 @@ async function archiveThread(
     return null;
   }
   return published.value ? archive.count : null;
+}
+
+interface ArchiveBatchStats {
+  readonly snapshots: number;
+  readonly archivedEvents: number;
+}
+
+/**
+ * Archives a pass's candidates through a fixed-size worker pool. Workers pull
+ * from a shared cursor rather than a fixed stride so a long thread only holds
+ * up its own worker; the remaining workers keep draining the queue. Candidate
+ * order is still oldest-first because workers take the next unclaimed index.
+ */
+async function archiveCandidates(
+  get: ComputedGetter,
+  db: Db,
+  bucket: string,
+  candidates: readonly SnapshotCandidate[],
+  signal: AbortSignal,
+): Promise<ArchiveBatchStats> {
+  let cursor = 0;
+  let snapshots = 0;
+  let archivedEvents = 0;
+  const workerCount = Math.min(ARCHIVE_CONCURRENCY, candidates.length);
+
+  await Promise.all(
+    Array.from({ length: workerCount }, async () => {
+      for (;;) {
+        const candidate = candidates[cursor];
+        cursor += 1;
+        if (candidate === undefined) {
+          return;
+        }
+        const archived = await archiveThread(
+          get,
+          db,
+          bucket,
+          candidate,
+          signal,
+        );
+        signal.throwIfAborted();
+        if (archived !== null) {
+          snapshots += 1;
+          archivedEvents += archived;
+        }
+      }
+    }),
+  );
+
+  return { snapshots, archivedEvents };
 }
 
 async function chatEventSnapshotConvergence(
@@ -697,16 +762,13 @@ export const snapshotChatEvents$ = command(
       .limit(chatEventSnapshotThreadBatchSize());
     signal.throwIfAborted();
 
-    let snapshots = 0;
-    let archivedEvents = 0;
-    for (const candidate of candidates) {
-      const archived = await archiveThread(get, db, bucket, candidate, signal);
-      signal.throwIfAborted();
-      if (archived !== null) {
-        snapshots += 1;
-        archivedEvents += archived;
-      }
-    }
+    const { snapshots, archivedEvents } = await archiveCandidates(
+      get,
+      db,
+      bucket,
+      candidates,
+      signal,
+    );
     const retiredSnapshots = await set(
       deleteRetiredSnapshotVersions$,
       db,
