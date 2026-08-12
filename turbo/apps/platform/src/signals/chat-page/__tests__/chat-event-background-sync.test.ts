@@ -5,6 +5,7 @@ import {
   chatThreadsContract,
   type ChatEvent,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -109,6 +110,7 @@ async function setupAuthenticatedBackgroundSync(): Promise<void> {
       activeOrg: { id: ORG_ID, name: "Background Sync Org" },
       memberships: [{ id: ORG_ID }],
     },
+    featureSwitches: { [FeatureSwitchKey.UnifiedIndicatorApi]: true },
   });
 }
 
@@ -120,14 +122,19 @@ describe("chat event background sync", () => {
   it("subscribes while prefetching unread and active threads once", async () => {
     const initialThreadIdsReady = context.mocks.deferred<void>();
     const requestedThreadIds: string[] = [];
+    let indicatorRequests = 0;
 
-    context.mocks.api(chatThreadsContract.unreadIds, async ({ respond }) => {
+    context.mocks.api(chatThreadsContract.indicators, async ({ respond }) => {
+      indicatorRequests += 1;
       await initialThreadIdsReady.promise;
-      return respond(200, { threadIds: [THREAD_ID, OTHER_THREAD_ID] });
-    });
-    context.mocks.api(chatThreadsContract.activeIds, async ({ respond }) => {
-      await initialThreadIdsReady.promise;
-      return respond(200, { threadIds: [OTHER_THREAD_ID, THIRD_THREAD_ID] });
+      return respond(200, {
+        agents: {},
+        threads: {
+          [THREAD_ID]: "unread",
+          [OTHER_THREAD_ID]: "active",
+          [THIRD_THREAD_ID]: "active",
+        },
+      });
     });
     context.mocks.api(chatThreadEventsContract.list, ({ params, respond }) => {
       requestedThreadIds.push(params.threadId);
@@ -146,6 +153,7 @@ describe("chat event background sync", () => {
     await waitFor(() => {
       expect(requestedThreadIds).toHaveLength(3);
     });
+    expect(indicatorRequests).toBe(1);
     expect(new Set(requestedThreadIds)).toStrictEqual(
       new Set([THREAD_ID, OTHER_THREAD_ID, THIRD_THREAD_ID]),
     );
@@ -154,14 +162,19 @@ describe("chat event background sync", () => {
   it("catches up only unread threads after reconnect", async () => {
     const requestedThreadIds: string[] = [];
     let unreadThreadIds = [THREAD_ID];
-    let unreadIdsRequests = 0;
+    let indicatorRequests = 0;
 
-    context.mocks.api(chatThreadsContract.unreadIds, ({ respond }) => {
-      unreadIdsRequests += 1;
-      return respond(200, { threadIds: unreadThreadIds });
-    });
-    context.mocks.api(chatThreadsContract.activeIds, ({ respond }) => {
-      return respond(200, { threadIds: [OTHER_THREAD_ID] });
+    context.mocks.api(chatThreadsContract.indicators, ({ respond }) => {
+      indicatorRequests += 1;
+      return respond(200, {
+        agents: {},
+        threads: Object.fromEntries([
+          ...unreadThreadIds.map((threadId) => {
+            return [threadId, "unread" as const];
+          }),
+          [OTHER_THREAD_ID, "active" as const],
+        ]),
+      });
     });
     context.mocks.api(chatThreadEventsContract.list, ({ params, respond }) => {
       requestedThreadIds.push(params.threadId);
@@ -182,7 +195,7 @@ describe("chat event background sync", () => {
     context.mocks.ably.triggerReconnect();
 
     await waitFor(() => {
-      expect(unreadIdsRequests).toBe(2);
+      expect(indicatorRequests).toBe(2);
       expect(requestedThreadIds).toStrictEqual([THIRD_THREAD_ID]);
     });
   });

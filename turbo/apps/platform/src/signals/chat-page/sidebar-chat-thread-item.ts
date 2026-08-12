@@ -2,10 +2,8 @@ import { command, computed, type Command, type Computed } from "ccstate";
 import { pathParams$, searchParams$ } from "../route.ts";
 import { setSidebarExpanded$ } from "../zero-page/zero-nav.ts";
 import { setPendingDeleteThreadId$ } from "../zero-page/zero-sidebar-state.ts";
-import {
-  sidebarActiveThreadIds$,
-  threadMeta,
-} from "./chat-thread-event-sourcing.ts";
+import { threadMeta } from "./chat-thread-event-sourcing.ts";
+import { sidebarActiveThreadIds$ } from "./chat-thread-indicators.ts";
 import { pinChatThread$, unpinChatThread$ } from "./chat-event.ts";
 import {
   currentLeftThread$,
