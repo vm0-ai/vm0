@@ -174,7 +174,46 @@ EOF
 
     if [[ "$telemetry_found" != "true" ]]; then
         echo "Missing required network telemetry for run ${RUN_ID}" >&2
-        echo "Last network telemetry: ${network_logs}" >&2
+        local telemetry_summary
+        if telemetry_summary=$(jq -c '
+            {
+                tcp: [.[] |
+                    select(.type == "tcp" and .port == 443) |
+                    {host, port, request_size, response_size, error}],
+                udp: [.[] |
+                    select(.type == "udp" and .port == 9999) |
+                    {host, port, size}],
+                dns: [.[] |
+                    select(
+                        .type == "dns" and
+                        (.host == "udp-dns.invalid" or .host == "tcp-dns.invalid")) |
+                    {host, port, dns_event}],
+                replicate: [.[] |
+                    select(.type == "http" and .host == "api.replicate.com") |
+                    {
+                        status,
+                        error,
+                        connector_diagnostic_slug,
+                        connector_diagnostic_reason,
+                        connector_diagnostic_env_names,
+                        connector_diagnostic_base
+                    }],
+                google: [.[] |
+                    select(.type == "http" and .host == "www.google.com") |
+                    {
+                        method,
+                        status,
+                        error,
+                        browser_user_agent,
+                        request_body_matches: (.request_body == "vm0-captured-request-body"),
+                        response_body_length: ((.response_body // "") | length)
+                    }]
+            }
+        ' <<<"$network_logs" 2>/dev/null); then
+            echo "Relevant network telemetry: ${telemetry_summary}" >&2
+        else
+            echo "Network telemetry response could not be decoded" >&2
+        fi
         return 1
     fi
 }
