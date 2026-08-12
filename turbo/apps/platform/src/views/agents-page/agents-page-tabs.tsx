@@ -13,14 +13,13 @@ import {
   DialogTitle,
   Button,
   Input,
+  SegmentControl,
+  SegmentControlItem,
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-  Tabs,
-  TabsList,
-  TabsTrigger,
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -205,33 +204,24 @@ function AgentTabsView({
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between gap-3">
-        <Tabs
+        <SegmentControl
+          aria-label={t(($) => {
+            return $.list.title;
+          })}
           value={activeTab}
-          onValueChange={(value) => {
-            if (value === "public" || value === "private") {
-              onTabChange(value);
-            }
-          }}
+          onValueChange={onTabChange}
         >
-          <TabsList className="zero-tabs h-9 gap-1 px-1 py-1">
-            <TabsTrigger
-              value="public"
-              className="gap-1.5 px-3 text-sm data-active:bg-background"
-            >
-              {t(($) => {
-                return $.list.tabs.public;
-              })}
-            </TabsTrigger>
-            <TabsTrigger
-              value="private"
-              className="gap-1.5 px-3 text-sm data-active:bg-background"
-            >
-              {t(($) => {
-                return $.list.tabs.private;
-              })}
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
+          <SegmentControlItem value="public">
+            {t(($) => {
+              return $.list.tabs.public;
+            })}
+          </SegmentControlItem>
+          <SegmentControlItem value="private">
+            {t(($) => {
+              return $.list.tabs.private;
+            })}
+          </SegmentControlItem>
+        </SegmentControl>
         <Button
           variant="outline"
           size="sm"
