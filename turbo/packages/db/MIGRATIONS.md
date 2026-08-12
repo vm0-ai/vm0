@@ -4,6 +4,12 @@ Generate migrations with `pnpm -F @vm0/db db:generate` and verify them with
 `pnpm -F @vm0/db test:migration-consistency`. Do not edit an existing migration
 or snapshot after it has shipped.
 
+Transactional migrations start with a `1s` `lock_timeout` and a `10s`
+`statement_timeout`. A migration that needs more time may override either
+default with a later `SET LOCAL` statement in that migration. Non-transactional
+migrations do not receive these defaults and must manage their own timeout
+requirements.
+
 ## Transition validators
 
 A transition validator protects an expand → contract rollout while old and new
