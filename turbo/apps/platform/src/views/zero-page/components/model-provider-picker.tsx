@@ -541,8 +541,8 @@ function ModelFirstPolicyRow({
           value={policy.model}
           aria-label={modelLabel}
           className={cn(
-            "min-w-0 flex-1 rounded-lg hover:bg-transparent data-highlighted:bg-transparent",
-            selected ? "pr-16" : "pr-8",
+            "min-w-0 flex-1 rounded-lg pr-8 hover:bg-transparent data-highlighted:bg-transparent",
+            selected && "mr-8",
           )}
         >
           <ModelFirstPolicyRowContent
@@ -560,7 +560,6 @@ function ModelFirstPolicyRow({
                 aria-label={`${modelLabel} ${fastLabel}`}
                 className={cn(
                   "group/fast-option absolute inset-y-0 right-0 w-8 justify-center rounded-lg px-0 text-muted-foreground hover:bg-transparent data-highlighted:bg-transparent",
-                  selected && "right-8",
                   fastSelected &&
                     "text-amber-600 hover:text-amber-700 dark:text-amber-300 dark:hover:text-amber-200",
                 )}
