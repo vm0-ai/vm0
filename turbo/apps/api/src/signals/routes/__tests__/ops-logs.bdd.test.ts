@@ -1464,6 +1464,77 @@ describe("OPS-01: user data export", () => {
     ).toBeFalsy();
   });
 
+  it("exports successfully when a session intentionally has no history", async () => {
+    const api = createOpsLogsApi(context);
+    const bdd = createBddApi(context);
+    createMiscRoutesApi(context);
+    const runs = createRunsApi(context);
+    const webhooks = createWebhookCallbackApi(context);
+    const actor = bdd.user();
+    const exportStartAt = Date.UTC(2026, 4, 12, 5, 45);
+    const downloadUrl =
+      "https://r2.example.com/bdd-export-historyless.zip?sig=test";
+
+    runs.acceptStorageDownloads();
+    runs.acceptTelemetryIngest();
+    runs.configureRunnerGroup();
+    await runs.grantProEntitlement(actor);
+    await runs.ensureOrgModelProvider(actor);
+    const agent = await bdd.createAgent(actor, {
+      displayName: "BDD Export Historyless Agent",
+      visibility: "private",
+    });
+    const run = await runs.createRun(actor, {
+      agentId: agent.agentId,
+      prompt: "checkpoint without resumable history",
+      modelProvider: "anthropic-api-key",
+    });
+    const claim = await runs.claimRunnerJob(run.runId);
+    const headers = { authorization: `Bearer ${claim.sandboxToken}` };
+
+    await webhooks.requestAgentCheckpoint(
+      {
+        runId: run.runId,
+        cliAgentType: "claude-code",
+        cliAgentSessionId: `bdd-export-historyless-${run.runId}`,
+        cliAgentSessionHistoryDisposition: "discarded_oversized",
+      },
+      headers,
+      [200],
+    );
+    await webhooks.requestAgentComplete(
+      { runId: run.runId, exitCode: 0 },
+      headers,
+      [200],
+    );
+
+    mockNow(exportStartAt);
+    context.mocks.s3.getSignedUrl.mockResolvedValue(downloadUrl);
+    const started = await api.requestPostUserExport(actor, [202]);
+    const exportKey = `exports/${actor.userId}/${started.body.jobId}.zip`;
+
+    await waitForUserExportJobStatus(
+      api,
+      actor,
+      started.body.jobId,
+      "completed",
+    );
+    const zip = exportZip(exportKey);
+    const names = zipEntryNames(zip);
+    expect(
+      names.some((name) => {
+        return name.endsWith("-history.jsonl");
+      }),
+    ).toBeFalsy();
+
+    const manifest = JSON.parse(zipText(zip, "export-manifest.json")) as {
+      readonly counts: {
+        readonly sessionHistories: number;
+      };
+    };
+    expect(manifest.counts.sessionHistories).toBe(0);
+  });
+
   it("exports gzip-backed session history bytes as a jsonl conversation file", async () => {
     const api = createOpsLogsApi(context);
     const bdd = createBddApi(context);

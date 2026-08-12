@@ -612,27 +612,30 @@ export function createWebhookCallbackApi(context: TestContext) {
       headers: SandboxWebhookHeaders,
       statuses: readonly (200 | 400 | 401 | 404 | 500)[],
     ) {
-      const sessionHistoryBlob = registerKnownSessionHistoryBlob(
-        context,
-        body.runId,
-        body.cliAgentSessionHistoryHash,
-      );
-      if (sessionHistoryBlob && statuses.includes(200)) {
-        await accept(
-          setupApp({ context, routes: webhooksAgentCheckpointsRoutes })(
-            webhookCheckpointsPrepareHistoryContract,
-          ).prepare({
-            headers,
-            body: {
-              runId: body.runId,
-              hash: body.cliAgentSessionHistoryHash,
-              rawSize: sessionHistoryBlob.byteLength,
-              encodedSize: sessionHistoryBlob.byteLength,
-              encoding: "identity",
-            },
-          }),
-          [200],
+      const historyHash = body.cliAgentSessionHistoryHash;
+      if (historyHash !== undefined) {
+        const sessionHistoryBlob = registerKnownSessionHistoryBlob(
+          context,
+          body.runId,
+          historyHash,
         );
+        if (sessionHistoryBlob && statuses.includes(200)) {
+          await accept(
+            setupApp({ context, routes: webhooksAgentCheckpointsRoutes })(
+              webhookCheckpointsPrepareHistoryContract,
+            ).prepare({
+              headers,
+              body: {
+                runId: body.runId,
+                hash: historyHash,
+                rawSize: sessionHistoryBlob.byteLength,
+                encodedSize: sessionHistoryBlob.byteLength,
+                encoding: "identity",
+              },
+            }),
+            [200],
+          );
+        }
       }
       return await accept(
         setupApp({ context, routes: webhooksAgentCheckpointsRoutes })(

@@ -15,6 +15,7 @@ import {
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 
+import { pgBooleanDecoder } from "../../lib/db-structured-result";
 import type { Db, ReadonlyDb } from "../external/db";
 
 export interface ChatThreadSessionRoute {
@@ -47,6 +48,7 @@ export interface ChatThreadSessionResolution {
 interface HistoricalThreadSession {
   readonly sessionId: string;
   readonly conversationId: string | null;
+  readonly historylessConversation: boolean;
   readonly route: ChatThreadSessionRoute;
   readonly routeRunCreatedAt: Date;
 }
@@ -56,6 +58,14 @@ interface SessionRunRoute {
   readonly modelProvider: string | null;
   readonly modelProviderId: string | null;
   readonly createdAt: Date;
+}
+
+function historylessConversationSql() {
+  return sql`(
+    ${conversations.id} IS NOT NULL
+    AND ${conversations.cliAgentSessionHistory} IS NULL
+    AND ${conversations.cliAgentSessionHistoryHash} IS NULL
+  )`.mapWith(pgBooleanDecoder);
 }
 
 function isKnownModelProvider(
@@ -135,6 +145,7 @@ async function latestHistoricalThreadSession(args: {
       modelProvider: zeroRuns.modelProvider,
       modelProviderId: zeroRuns.modelProviderId,
       cliAgentType: conversations.cliAgentType,
+      historylessConversation: historylessConversationSql(),
       routeRunCreatedAt: agentRuns.createdAt,
     })
     .from(zeroRuns)
@@ -162,6 +173,7 @@ async function latestHistoricalThreadSession(args: {
   return {
     sessionId: row.sessionId,
     conversationId: row.conversationId,
+    historylessConversation: row.historylessConversation,
     route: {
       selectedModel: row.selectedModel,
       modelProvider: row.modelProvider,
@@ -266,10 +278,14 @@ function shouldRotateCanonicalSession(args: {
 async function shouldRotateResolvedSession(args: {
   readonly db: Db | ReadonlyDb;
   readonly orgId: string;
+  readonly historylessConversation: boolean;
   readonly previousRoute: ChatThreadSessionRoute;
   readonly nextRoute: ChatThreadSessionRoute;
   readonly previousRunCreatedAt: Date | null;
 }): Promise<boolean> {
+  if (args.historylessConversation) {
+    return true;
+  }
   const routeConfigurationChanged = await customSurfaceRouteChanged({
     db: args.db,
     orgId: args.orgId,
@@ -305,6 +321,7 @@ export async function resolveChatThreadSession(args: {
       routeRunId: zeroRuns.id,
       routeRunCreatedAt: agentRuns.createdAt,
       cliAgentType: conversations.cliAgentType,
+      historylessConversation: historylessConversationSql(),
       cloudBrowserEnabled: chatThreads.cloudBrowserEnabled,
     })
     .from(chatThreads)
@@ -355,6 +372,7 @@ export async function resolveChatThreadSession(args: {
     const rotate = await shouldRotateResolvedSession({
       db: args.db,
       orgId: args.orgId,
+      historylessConversation: thread.historylessConversation,
       previousRoute,
       nextRoute: args.route,
       previousRunCreatedAt:
@@ -386,6 +404,7 @@ export async function resolveChatThreadSession(args: {
   const rotate = await shouldRotateResolvedSession({
     db: args.db,
     orgId: args.orgId,
+    historylessConversation: historical.historylessConversation,
     previousRoute: historical.route,
     nextRoute: args.route,
     previousRunCreatedAt: historical.routeRunCreatedAt,

@@ -5593,6 +5593,68 @@ describe("CHAT-02: run-level model overrides", () => {
     await cancelChatRun(actor, second.runId);
   }, 90_000);
 
+  it("rotates a canonical thread after an oversized history is discarded", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const firstPrompt = "finish work before native history becomes oversized";
+    const first = await sendChatRun(actor, {
+      agentId,
+      prompt: firstPrompt,
+    });
+    const firstClaim = await claimChatRun(runnerGroup, first.runId);
+    const firstAnswer = "completed work preserved outside native history";
+    chatCallbacks.mockChatOutputEvents([assistantEvent(0, firstAnswer)]);
+    const outputEvents = chatCallbacks.consumeMockChatOutputEvents();
+    await webhooks.requestAgentEvents(
+      { runId: first.runId, events: outputEvents },
+      firstClaim.sandboxHeaders,
+      [200],
+    );
+    await webhooks.requestAgentCheckpoint(
+      {
+        runId: first.runId,
+        cliAgentType: "claude-code",
+        cliAgentSessionId: `discarded-cli-${first.runId}`,
+        cliAgentSessionHistoryDisposition: "discarded_oversized",
+      },
+      firstClaim.sandboxHeaders,
+      [200],
+    );
+    await webhooks.requestAgentComplete(
+      {
+        runId: first.runId,
+        exitCode: 0,
+        lastEventSequence: 0,
+      },
+      firstClaim.sandboxHeaders,
+      [200],
+    );
+    await flushWaitUntilForTest();
+    await waitForRunStatus(actor, first.runId, "completed");
+
+    const second = await sendChatRun(actor, {
+      agentId,
+      threadId: first.threadId,
+      prompt: "continue in a fresh native session",
+    });
+    expect(sandboxOperationEventsForRun(second.runId)).toContainEqual(
+      expect.objectContaining({
+        op_type: "chat_thread_session_binding_persisted",
+        binding_action: "rotated",
+      }),
+    );
+    const secondRun = await api.readRun(actor, second.runId);
+    const appended = secondRun.appendSystemPrompt ?? "";
+    expect(appended).toContain("# Web Chat Run Context");
+    expect(appended).toContain(firstPrompt);
+    expect(appended).toContain(firstAnswer);
+
+    const secondClaim = await claimChatRun(runnerGroup, second.runId);
+    expect(secondClaim.claim.resumeSession).toBeNull();
+    await cancelChatRun(actor, second.runId, secondClaim.sandboxHeaders);
+  }, 90_000);
+
   it("retries preparation when the canonical conversation snapshot changes", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();

@@ -720,13 +720,29 @@ export const webhookCheckpointsContract = c.router({
         runId: z.string().min(1, "runId is required"),
         cliAgentType: z.string().min(1, "cliAgentType is required"),
         cliAgentSessionId: z.string().min(1, "cliAgentSessionId is required"),
-        cliAgentSessionHistoryHash: sha256HexSchema,
+        cliAgentSessionHistoryHash: sha256HexSchema.optional(),
+        cliAgentSessionHistoryDisposition: z
+          .enum(["discarded_oversized"])
+          .optional(),
         // Multi-artifact snapshots are folded into canonical checkpoint mounts
         // and projected back into the legacy response shape.
         artifactSnapshots: artifactSnapshotsSchema.optional(),
         volumeVersionsSnapshot: volumeVersionsSnapshotSchema.optional(),
       })
-      .strict(),
+      .strict()
+      .superRefine((body, ctx) => {
+        const hasHash = body.cliAgentSessionHistoryHash !== undefined;
+        const hasDisposition =
+          body.cliAgentSessionHistoryDisposition !== undefined;
+        if (hasHash === hasDisposition) {
+          ctx.addIssue({
+            code: "custom",
+            path: ["cliAgentSessionHistoryHash"],
+            message:
+              "Exactly one session history hash or disposition is required",
+          });
+        }
+      }),
     responses: {
       200: z.object({
         checkpointId: z.string(),
