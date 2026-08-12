@@ -1674,7 +1674,8 @@
       "pickEmoji": "एक इमोजी चुनें",
       "scrollToBottom": "नीचे स्क्रॉल करें",
       "searchEmoji": "इमोजी खोजें",
-      "steerMessageExplanation": "एजेंट के काम करते समय उसके व्यवहार को निर्देशित करने के लिए भेजा गया"
+      "steerAcknowledgement_one": "रन के दौरान लिया गया — पिछला काम सुरक्षित है",
+      "steerAcknowledgement_other": "सभी {{count}} संदेश रन के दौरान लिए गए — पिछला काम सुरक्षित है"
     },
     "threadSidebar": {
       "resize": "साइडबार का आकार बदलें"
