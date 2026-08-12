@@ -548,7 +548,7 @@ describe("assistant markdown", () => {
     );
   });
 
-  it("keeps the source visible when a mermaid diagram cannot be parsed", async () => {
+  it("keeps the diagram card and source when mermaid cannot parse it", async () => {
     mockThread("```mermaid\nthis is not a diagram\n```");
 
     detachedSetupPage({
@@ -556,15 +556,28 @@ describe("assistant markdown", () => {
       path: `/chats/${THREAD_ID}`,
     });
 
-    await waitFor(() => {
-      expect(
-        screen.getByTestId("mermaid-diagram-fallback"),
-      ).toBeInTheDocument();
+    const diagram = await waitFor(() => {
+      const found = queryAllByRoleFast("button").find((element) => {
+        return element.getAttribute("aria-label") === "Invalid diagram";
+      });
+      if (!found) {
+        throw new Error("Expected invalid diagram card");
+      }
+      return found;
     });
-    expect(screen.getByTestId("mermaid-diagram-fallback").textContent).toBe(
-      "this is not a diagram",
-    );
+    expect(diagram).toBeDisabled();
+    expect(diagram).toHaveClass("mermaid-diagram-expand");
+    expect(within(diagram).getByText("Invalid diagram")).toBeVisible();
     expect(screen.queryByAltText("Diagram")).toBeNull();
+
+    const sourceSummary = screen.getByText("Diagram source");
+    const source = sourceSummary.closest("details");
+    if (!(source instanceof HTMLDetailsElement)) {
+      throw new Error("Expected diagram source disclosure");
+    }
+    click(sourceSummary);
+    expect(source.open).toBeTruthy();
+    expect(within(source).getByText("this is not a diagram")).toBeVisible();
   });
 
   it("keeps external links safe", async () => {
