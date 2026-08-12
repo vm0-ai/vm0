@@ -487,6 +487,8 @@ fn user_env_value<'a>(user_env: &'a HashMap<String, String>, key: &str) -> &'a s
     user_env.get(key).map(String::as_str).unwrap_or("")
 }
 
+const PI_NODE_OPTIONS: &str = "--disable-warning=ExperimentalWarning";
+
 fn build_pi_command_for_runtime(runtime: &CliRuntimeConfig<'_>) -> Result<Vec<String>, AgentError> {
     for (name, value) in [
         ("Pi session id", runtime.pi_session_id.as_ref()),
@@ -515,6 +517,31 @@ fn build_pi_command_for_runtime(runtime: &CliRuntimeConfig<'_>) -> Result<Vec<St
         "okou".to_string(),
         "__agent-loop".to_string(),
     ])
+}
+
+fn pi_child_env_values(runtime: &CliRuntimeConfig<'_>) -> [(String, String); 5] {
+    [
+        (
+            guest_contracts::env::RUN_ID_ENV.to_string(),
+            runtime.run_id.to_string(),
+        ),
+        (
+            guest_contracts::env::PI_SESSION_ID_ENV.to_string(),
+            runtime.pi_session_id.to_string(),
+        ),
+        (
+            guest_contracts::env::PI_SYSTEM_PROMPT_ENV.to_string(),
+            runtime.pi_system_prompt.to_string(),
+        ),
+        (
+            guest_contracts::env::PI_MODEL_CONFIG_ENV.to_string(),
+            runtime.pi_model_config.to_string(),
+        ),
+        // Pi 0.84.1 uses node:sqlite, which emits an experimental warning on
+        // the sandbox's Node 22 runtime. Keep stderr available for actionable
+        // diagnostics while suppressing only that warning category.
+        ("NODE_OPTIONS".to_string(), PI_NODE_OPTIONS.to_string()),
+    ]
 }
 
 fn disallowed_tools_with_builtin_web_search_disabled(
@@ -821,24 +848,7 @@ async fn execute_cli_inner(
 
     let mut child_env_values = child_env::values_for_runtime(runtime);
     if matches!(runtime.framework, env::Framework::Pi) {
-        child_env_values.extend([
-            (
-                guest_contracts::env::RUN_ID_ENV.to_string(),
-                runtime.run_id.to_string(),
-            ),
-            (
-                guest_contracts::env::PI_SESSION_ID_ENV.to_string(),
-                runtime.pi_session_id.to_string(),
-            ),
-            (
-                guest_contracts::env::PI_SYSTEM_PROMPT_ENV.to_string(),
-                runtime.pi_system_prompt.to_string(),
-            ),
-            (
-                guest_contracts::env::PI_MODEL_CONFIG_ENV.to_string(),
-                runtime.pi_model_config.to_string(),
-            ),
-        ]);
+        child_env_values.extend(pi_child_env_values(runtime));
     }
     // Suppress Claude CLI features that are unnecessary or harmful in a
     // sandbox: startup network calls (statsig, Datadog, Segment, GCS update
@@ -1793,10 +1803,10 @@ fn with_carried_failure_reason(
 mod tests {
     use super::termination::{CliTerminationRuntime, PostResultCleanupPolicy};
     use super::{
-        CliExitObservation, CliFailureDiagnostic, CliRuntimeConfig, child_env,
+        CliExitObservation, CliFailureDiagnostic, CliRuntimeConfig, PI_NODE_OPTIONS, child_env,
         claude_initial_prompt_frame, cli_exit_summary_from_status, codex_home_for_home_dir,
-        codex_runtime_config, command, exec_boundary, record_cli_exit, select_failure_diagnostic,
-        set_cli_current_dir, with_carried_failure_reason,
+        codex_runtime_config, command, exec_boundary, pi_child_env_values, record_cli_exit,
+        select_failure_diagnostic, set_cli_current_dir, with_carried_failure_reason,
     };
     use crate::active_input::ActiveInputRuntime;
     use crate::{constants, env};
@@ -1913,6 +1923,33 @@ mod tests {
             runtime
                 .codex_startup_config_overrides()
                 .contains(&super::CODEX_WEB_SEARCH_DISABLED_CONFIG.to_string())
+        );
+    }
+
+    #[test]
+    fn pi_child_env_uses_controlled_node_warning_filter() {
+        let user_env = HashMap::from([(
+            "NODE_OPTIONS".to_string(),
+            "--require /tmp/user-script.js".to_string(),
+        )]);
+        let runtime = runtime_for_command_test(env::Framework::Pi, "prompt", "", &user_env);
+        let mut values = child_env::values_for_runtime(&runtime);
+        values.extend(pi_child_env_values(&runtime));
+        let values = child_env::normalize_values(values);
+
+        assert_eq!(
+            values
+                .iter()
+                .find(|(key, _)| key == "NODE_OPTIONS")
+                .map(|(_, value)| value.as_str()),
+            Some(PI_NODE_OPTIONS)
+        );
+        assert_eq!(
+            values
+                .iter()
+                .filter(|(key, _)| key == "NODE_OPTIONS")
+                .count(),
+            1
         );
     }
 
