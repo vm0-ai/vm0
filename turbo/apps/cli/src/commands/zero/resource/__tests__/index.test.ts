@@ -67,7 +67,7 @@ describe("zero resource pull registry resolver", () => {
           archive: expect.objectContaining({
             type: "tar.gz",
             sha256:
-              "f489a51fb99d8fadff8712d0406df06ac1a530116ebe612ab3f8605daa2bcce2",
+              "cfb8f891fa77eca2c3a58f1d95f046f873136f85c9c4a83400cba3a2ccca4ad9",
           }),
         }),
       }),

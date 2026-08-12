@@ -108,21 +108,214 @@ describe("registry resource download", () => {
     });
   });
 
-  it("resolves every refreshed additive website v2 archive", () => {
-    const currentSha256 =
-      "8f30984e444283bf0322106a1099623346e153bc11d26e3044fbf61ef43514c3";
+  it("resolves current and previous website template archives", () => {
+    const currentStableArchives = [
+      {
+        id: "template:black-slabs",
+        versionId:
+          "63e7780407504c15df178658ef2f694baa23d0a2a4199f38ac07fd9a302f5dac",
+        sha256:
+          "38b2f826a86901e113b6e96b52563a839b729fc025fa793b1816d6149221bcf9",
+      },
+      {
+        id: "template:blueprint-grid",
+        versionId:
+          "89c5a11d4a769e880e59a277fe8af1f1c173752ceea7539680d00d5225b3b717",
+        sha256:
+          "b5f058f3ec7881e642e31e44e7de1f94465bae783de7fc2d42727bbfd109fad2",
+      },
+      {
+        id: "template:coastal-hotel",
+        versionId:
+          "e5ac62f1ebdf025470172c2ce8275833274de49f6300c427eef0c142523b1246",
+        sha256:
+          "6bba8c10b85a248a475624767616280fa5d29b757ce230fb4115d746b8b61386",
+      },
+      {
+        id: "template:dot-matrix",
+        versionId:
+          "173d914b90d68648e9da9ee32cde12417fe55703b22f999b626b07f6053a7488",
+        sha256:
+          "cfb8f891fa77eca2c3a58f1d95f046f873136f85c9c4a83400cba3a2ccca4ad9",
+      },
+      {
+        id: "template:frame-stack",
+        versionId:
+          "422a07c5431dc689f2a0f832ffd5085149c64de6575be2c435fef01e36ffdb83",
+        sha256:
+          "642db1ff8e1c98e4c390245cb0fcda5ce29503721bc2a513c38448b9d4e2d01c",
+      },
+      {
+        id: "template:frosted-scatter",
+        versionId:
+          "02855a260801c5120ee62c04f3a0b9d4f4884caea89728264cc85c1f6a2d74ad",
+        sha256:
+          "548a1faf423baa1c7c11befe41a54ae398cfb5c94df7f957eff108e2afcd613a",
+      },
+      {
+        id: "template:gallery-wall",
+        versionId:
+          "26591a92b37e255dd8d565effc542115dd94292465e179c501c0518538cd27ce",
+        sha256:
+          "b477b2f05c266eccbd2ab3b822744873dd8a31db03981283688549f2936bd5c6",
+      },
+      {
+        id: "template:glass-bloom",
+        versionId:
+          "297d1c1ed2639a3eead3212fcb3bf3c59ca80ee36562902cdec46ea8394b7398",
+        sha256:
+          "8707cce50c5477d43912fd18aa5ab6973aae4fd2287a092967fa25bf4ea38e7c",
+      },
+      {
+        id: "template:serif-stack",
+        versionId:
+          "165c2c576e7b2fccad2f490c6813e4705d5f87408fa24a8cec79d4ddf2392831",
+        sha256:
+          "718d617efd92033a68c476e85bb9231b1e0ff580c08a1f6bedf1b86058e97f13",
+      },
+      {
+        id: "template:sticker-pop",
+        versionId:
+          "c87a666429beb7d8fbaf3376c7229c701b53cdb36f4f714c6b45f0b6fdf3134a",
+        sha256:
+          "8145c78f932ae942108fba00c5de367958f12b4c492d61bc1310892abe51ca66",
+      },
+      {
+        id: "template:warm-cards",
+        versionId:
+          "47a5c7f01a7395d5be86483291c26e5f51e3fa8258c0d69705379ea9fb21849f",
+        sha256:
+          "a795ef022e672d364c7a966eb042d38e460d4dcb996d5eecb0647aac5dd259df",
+      },
+    ] as const;
 
-    expect(
-      resolvePrivateRegistryResourceArchive(
-        "template:black-slabs",
-        currentSha256,
-        currentSha256,
-      ),
-    ).toMatchObject({
-      versionId:
-        "eaca342df50857477c64a1ca73faffb4a1819879948fc8610ff095fae9fe3f22",
-      sha256: currentSha256,
-    });
+    for (const archive of currentStableArchives) {
+      expect(
+        resolvePrivateRegistryResourceArchive(
+          archive.id,
+          archive.sha256,
+          archive.sha256,
+        ),
+      ).toMatchObject({
+        versionId: archive.versionId,
+        sha256: archive.sha256,
+      });
+    }
+
+    const previousStableArchives = [
+      {
+        id: "template:black-slabs",
+        versionId:
+          "eaca342df50857477c64a1ca73faffb4a1819879948fc8610ff095fae9fe3f22",
+        sha256:
+          "8f30984e444283bf0322106a1099623346e153bc11d26e3044fbf61ef43514c3",
+        currentSha256:
+          "38b2f826a86901e113b6e96b52563a839b729fc025fa793b1816d6149221bcf9",
+      },
+      {
+        id: "template:blueprint-grid",
+        versionId:
+          "78988a658604a25feb259d54e4543bfe6d57f85efe7ad67737e02c794d25e491",
+        sha256:
+          "97c2edd94467bc414f0d9fc27cafa048cb2a7aaba3df5159df519a2bb2b97a4e",
+        currentSha256:
+          "b5f058f3ec7881e642e31e44e7de1f94465bae783de7fc2d42727bbfd109fad2",
+      },
+      {
+        id: "template:coastal-hotel",
+        versionId:
+          "3907cdbed6078702a058ed9c66c1cdeb76f83f1062efcf3b046cce0bd5c8ed06",
+        sha256:
+          "9633475124da5728cbf99a7333b494f74842232faaf675bc7878a3ebcdf59bcb",
+        currentSha256:
+          "6bba8c10b85a248a475624767616280fa5d29b757ce230fb4115d746b8b61386",
+      },
+      {
+        id: "template:dot-matrix",
+        versionId:
+          "293a2bc33150ca1f39132a8235c5cf355944e8d3e213b5f7703237314a2ac449",
+        sha256:
+          "f489a51fb99d8fadff8712d0406df06ac1a530116ebe612ab3f8605daa2bcce2",
+        currentSha256:
+          "cfb8f891fa77eca2c3a58f1d95f046f873136f85c9c4a83400cba3a2ccca4ad9",
+      },
+      {
+        id: "template:frame-stack",
+        versionId:
+          "efbf1788c8b084aa12b7cd48f7a3bf5fc9964d1e6115edbd9124f8cacfbfb3ca",
+        sha256:
+          "4587e93da51652c0c16c2d0706e8437001305214e4e6b8b1c18a6538b3daa127",
+        currentSha256:
+          "642db1ff8e1c98e4c390245cb0fcda5ce29503721bc2a513c38448b9d4e2d01c",
+      },
+      {
+        id: "template:frosted-scatter",
+        versionId:
+          "c4507fd54d252dc905df36d99f23ab65a4d41185b78e62515ff3eb3d87a381a4",
+        sha256:
+          "00e343ace0673ece5903a2b6abbad6bb960c17796e0cfa5cce0bcab7e6bcdd7b",
+        currentSha256:
+          "548a1faf423baa1c7c11befe41a54ae398cfb5c94df7f957eff108e2afcd613a",
+      },
+      {
+        id: "template:gallery-wall",
+        versionId:
+          "9e81cd8b35f9f6374440cd3a4a8fc214db4a137962797df69bde46248c4e75f3",
+        sha256:
+          "c90332053b24572feadecb3994925ed317957e1cb17b0080cfebc6f4d9e93bd1",
+        currentSha256:
+          "b477b2f05c266eccbd2ab3b822744873dd8a31db03981283688549f2936bd5c6",
+      },
+      {
+        id: "template:glass-bloom",
+        versionId:
+          "52d38ebc1e62b974f7ab2f6dba8823b0a2f7c43d5c11d8079f32e3ff85df1e50",
+        sha256:
+          "0c61488baa294fb13c58aa129e3ae99f0cd4ff9125459761a1b2c1390b860f93",
+        currentSha256:
+          "8707cce50c5477d43912fd18aa5ab6973aae4fd2287a092967fa25bf4ea38e7c",
+      },
+      {
+        id: "template:serif-stack",
+        versionId:
+          "adee3b87f670c52a3cc4971e5dd8795f8ca05690087caff4b0d8b32b9029bead",
+        sha256:
+          "cf5137a7b6788f4d7cb24bda358a8e1971c0e7ed026d50e6cf292f6bf0cd0c14",
+        currentSha256:
+          "718d617efd92033a68c476e85bb9231b1e0ff580c08a1f6bedf1b86058e97f13",
+      },
+      {
+        id: "template:sticker-pop",
+        versionId:
+          "ddae2ff9236b0a4663dc19ad23b374488c0d4d9eddf9b5a4e8cad36011b0b420",
+        sha256:
+          "2086113018279f28e23489cf7a0f3663c37a23210fb106c4ed48d8c19923f78f",
+        currentSha256:
+          "8145c78f932ae942108fba00c5de367958f12b4c492d61bc1310892abe51ca66",
+      },
+      {
+        id: "template:warm-cards",
+        versionId:
+          "0a87c99afe9cf24424aa1a1740a57cc3698e43f3c571b8ef1fd4560192f38746",
+        sha256:
+          "2721c013f76e1b2eea09282269b33d7f143b7e83ee3e701e83a0fcf7773852dd",
+        currentSha256:
+          "a795ef022e672d364c7a966eb042d38e460d4dcb996d5eecb0647aac5dd259df",
+      },
+    ] as const;
+
+    for (const archive of previousStableArchives) {
+      expect(
+        resolvePrivateRegistryResourceArchive(
+          archive.id,
+          archive.sha256,
+          archive.currentSha256,
+        ),
+      ).toMatchObject({
+        versionId: archive.versionId,
+        sha256: archive.sha256,
+      });
+    }
 
     const v2Archives = [
       {

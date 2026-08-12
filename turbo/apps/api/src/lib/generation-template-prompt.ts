@@ -249,8 +249,7 @@ function buildWebsiteGenerationTemplatePrompt(
     return { status: "invalid", message: "Unknown website template" };
   }
 
-  const packageId = `${item.templateId}-v2`;
-  const pkg = findWebsiteTemplatePackage(packageId);
+  const pkg = findWebsiteTemplatePackage(item.templateId);
   if (!pkg) {
     return { status: "invalid", message: "Unknown website template" };
   }
@@ -278,7 +277,6 @@ function buildWebsiteTemplatePackagePrompt(
       "When you produce a website from the user's request:",
       `- Pull the package: zero resource pull ${pkg.resourceId} --dir ./generated/resources`,
       `- Work from ${packageDir}. Inspect the bundled package metadata and instructions before editing.`,
-      `- Use ${packageDir}/resolve-images.mjs for image slots when the template asks for image resolution; it uses /api/presentation/images/resolve.`,
       `- Render with ${packageDir}/render.mjs after preparing the template content plan.`,
       "- Use this built-in R2-backed package; do not substitute generic Open Design website templates for the selected template.",
       "- Host the finished static website: zero host <output-dir> --site <slug>",
