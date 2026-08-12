@@ -19,7 +19,6 @@ export interface FeedbackInput {
   readonly eventId?: string;
   readonly range?: FeedbackRange;
   readonly source?: FeedbackSource;
-  readonly sourceRange?: Range;
 }
 
 // A quoted passage together with the note the user is writing about it. Every
@@ -56,66 +55,9 @@ export interface ComposerFeedbackModel {
   connectEditor(editor: FeedbackEditorAdapter): void;
 }
 
-const FEEDBACK_HIGHLIGHT_NAME = "zero-feedback";
-const feedbackRangesByScope$ = state<
-  ReadonlyMap<string, ReadonlyMap<number, Range>>
->(new Map());
-
-function highlightRegistry(): HighlightRegistry | null {
-  if (
-    typeof CSS === "undefined" ||
-    typeof Highlight === "undefined" ||
-    !CSS.highlights
-  ) {
-    return null;
-  }
-  return CSS.highlights;
-}
-
-function applyFeedbackHighlight(
-  feedbackRangesByScope: ReadonlyMap<string, ReadonlyMap<number, Range>>,
-): void {
-  const registry = highlightRegistry();
-  if (!registry) {
-    return;
-  }
-  const activeRanges = Array.from(feedbackRangesByScope.values()).flatMap(
-    (ranges) => {
-      return Array.from(ranges.values());
-    },
-  );
-  if (activeRanges.length === 0) {
-    registry.delete(FEEDBACK_HIGHLIGHT_NAME);
-    return;
-  }
-  registry.set(FEEDBACK_HIGHLIGHT_NAME, new Highlight(...activeRanges));
-}
-
-const setFeedbackHighlights$ = command(
-  ({ get, set }, scope: string, ranges: ReadonlyMap<number, Range>) => {
-    const rangesByScope = new Map(get(feedbackRangesByScope$));
-    if (ranges.size === 0) {
-      rangesByScope.delete(scope);
-    } else {
-      rangesByScope.set(scope, ranges);
-    }
-    set(feedbackRangesByScope$, rangesByScope);
-    applyFeedbackHighlight(rangesByScope);
-  },
-);
-
-export const clearComposerFeedbackHighlights$ = command(
-  ({ set }, scope: string): void => {
-    set(setFeedbackHighlights$, scope, new Map());
-  },
-);
-
-export function createComposerFeedbackModel(
-  highlightScope?: string,
-): ComposerFeedbackModel {
+export function createComposerFeedbackModel(): ComposerFeedbackModel {
   const itemsState$ = state<readonly FeedbackItem[]>([]);
   const nextIdState$ = state(1);
-  const sourceRanges$ = state<ReadonlyMap<number, Range>>(new Map());
   let editor: FeedbackEditorAdapter = {
     insertItem() {},
     removeItem() {},
@@ -126,32 +68,8 @@ export function createComposerFeedbackModel(
   const active$ = computed((get) => {
     return get(itemsState$).length > 0;
   });
-  const updateSourceRanges$ = command(
-    (
-      { get, set },
-      update: (current: ReadonlyMap<number, Range>) => Map<number, Range>,
-    ): void => {
-      const next = update(get(sourceRanges$));
-      set(sourceRanges$, next);
-      if (highlightScope !== undefined) {
-        set(setFeedbackHighlights$, highlightScope, next);
-      }
-    },
-  );
   const replaceFromEditor$ = command(
     ({ get, set }, items: readonly FeedbackItem[]) => {
-      const retainedIds = new Set(
-        items.map((item) => {
-          return item.id;
-        }),
-      );
-      set(updateSourceRanges$, (ranges) => {
-        return new Map(
-          Array.from(ranges).filter(([id]) => {
-            return retainedIds.has(id);
-          }),
-        );
-      });
       set(itemsState$, items);
       set(
         nextIdState$,
@@ -176,23 +94,10 @@ export function createComposerFeedbackModel(
     set(itemsState$, (items) => {
       return [...items, item];
     });
-    const sourceRange = input.sourceRange;
-    if (sourceRange !== undefined) {
-      set(updateSourceRanges$, (ranges) => {
-        const next = new Map(ranges);
-        next.set(id, sourceRange);
-        return next;
-      });
-    }
     editor.insertItem(item);
     return id;
   });
   const remove$ = command(({ get, set }, id: number) => {
-    set(updateSourceRanges$, (ranges) => {
-      const next = new Map(ranges);
-      next.delete(id);
-      return next;
-    });
     set(
       itemsState$,
       get(itemsState$).filter((item) => {

@@ -10,11 +10,10 @@ import { delay } from "signal-timers";
 import { isEditableTarget, matchShortcut } from "@vm0/ui";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { i18n } from "../../i18n/index.ts";
-import {
-  clearComposerFeedbackHighlights$,
-  type ComposerFeedbackSignals,
-  type FeedbackRange,
-  type FeedbackSource,
+import type {
+  ComposerFeedbackSignals,
+  FeedbackRange,
+  FeedbackSource,
 } from "../zero-page/chat-feedback.ts";
 import { writeToClipboard } from "../zero-page/clipboard.ts";
 import { onDomEventFn, onRef, resetSignal } from "../utils.ts";
@@ -41,7 +40,6 @@ interface CapturedFeedbackSelection {
   readonly text: string;
   readonly rect: ChatThreadFeedbackSelection["rect"];
   readonly threadId: string | null;
-  readonly sourceRange: Range;
   readonly eventId?: string;
   readonly range?: FeedbackRange;
   readonly source?: FeedbackSource;
@@ -209,7 +207,6 @@ function readFeedbackSelection(): CapturedFeedbackSelection | null {
     text,
     rect: rectFromRange(range),
     threadId: resolveSelectionThreadId(sourceElement),
-    sourceRange: range.cloneRange(),
     ...location,
     ...(source ? { source } : {}),
   };
@@ -289,7 +286,6 @@ function createStartFeedback(
     }
     set(feedback.add$, {
       quote: selection.text,
-      sourceRange: selection.sourceRange,
       ...(selection.eventId !== undefined && selection.range !== undefined
         ? { eventId: selection.eventId, range: selection.range }
         : {}),
@@ -352,13 +348,11 @@ function createToolbarRef({
 }
 
 function createListenersRef({
-  threadId,
   selection$,
   close$,
   capture$,
   dismissOnScroll$,
 }: {
-  threadId: string;
   selection$: State<CapturedFeedbackSelection | null>;
   close$: Command<void, []>;
   capture$: Command<void, []>;
@@ -430,13 +424,6 @@ function createListenersRef({
         },
         { capture: true, passive: true, signal },
       );
-      signal.addEventListener(
-        "abort",
-        () => {
-          set(clearComposerFeedbackHighlights$, threadId);
-        },
-        { once: true },
-      );
     }),
   );
 }
@@ -458,7 +445,6 @@ export function createChatThreadFeedbackSignals(
     start$,
   });
   const setListenersRef$ = createListenersRef({
-    threadId,
     selection$: selection.internalSelection$,
     close$: selection.close$,
     capture$: selection.capture$,

@@ -96,7 +96,7 @@ function FeedbackToolbar({
 }
 
 // Mounts the selection listeners and the floating Copy / Provide feedback
-// toolbar anchored to the highlighted passage. Picking "Provide feedback"
+// toolbar anchored to the selected passage. Picking "Provide feedback"
 // drops the quoted passage straight into the composer (see ComposerFeedbackRows
 // in zero-chat-composer.tsx) — there is no separate feedback panel.
 export function ChatFeedbackSelection({
