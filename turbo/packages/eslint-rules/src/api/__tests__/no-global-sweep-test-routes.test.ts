@@ -90,6 +90,19 @@ ruleTester.run("no-global-sweep-test-routes", noGlobalSweepTestRoutes, {
   ],
   invalid: [
     {
+      name: "aggregate production routes cannot become a ts-rest behavior client",
+      filename: behaviorTest,
+      code: `
+        import { ROUTES } from "../../route";
+        import { setupApp } from "../../../__tests__/test-helpers";
+        const client = setupApp({ context, routes: ROUTES })(contract);
+        await client.execute({
+          headers: { authorization: "Bearer test-cron-secret" },
+        });
+      `,
+      errors: [{ messageId: "globalSweep" }],
+    },
+    {
       name: "aggregate production routes cannot become a behavior-test sweep",
       filename: behaviorTest,
       code: `

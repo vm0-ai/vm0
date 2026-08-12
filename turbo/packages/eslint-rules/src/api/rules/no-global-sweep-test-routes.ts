@@ -209,6 +209,14 @@ export const noGlobalSweepTestRoutes = createRule({
       });
     }
 
+    function reportAggregateRoutes(node: TSESTree.Node): void {
+      context.report({
+        node,
+        messageId: "globalSweep",
+        data: { routeName: "ROUTES" },
+      });
+    }
+
     function isAggregateRoutes(
       expression: TSESTree.Expression,
       seen: ReadonlySet<TSESTree.Node> = new Set(),
@@ -354,6 +362,15 @@ export const noGlobalSweepTestRoutes = createRule({
       );
     }
 
+    function isAggregateContractClientMount(
+      call: TSESTree.CallExpression,
+    ): boolean {
+      return (
+        call.callee.type === AST_NODE_TYPES.CallExpression &&
+        mountedAggregateRoutes(call.callee)
+      );
+    }
+
     return {
       ImportDeclaration(node: TSESTree.ImportDeclaration) {
         if (typeof node.source.value !== "string") {
@@ -434,6 +451,10 @@ export const noGlobalSweepTestRoutes = createRule({
       },
       "Program:exit"() {
         for (const call of calls) {
+          if (isAggregateContractClientMount(call)) {
+            reportAggregateRoutes(call);
+            continue;
+          }
           const boundary = aggregateSweepBoundary(call);
           if (boundary) {
             report(call, boundary);

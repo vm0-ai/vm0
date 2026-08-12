@@ -3,6 +3,7 @@ import { AST_NODE_TYPES, type TSESTree } from "@typescript-eslint/utils";
 import {
   importReference,
   memberName,
+  propertyName,
   unwrapExpression,
   variableInScope,
 } from "../syntax.ts";
@@ -339,6 +340,30 @@ export const noCrossTestTimeStaggering = createRule({
         }
         const definition = variableInScope(context.sourceCode, expression)
           ?.defs[0];
+        if (
+          definition?.node.type === AST_NODE_TYPES.VariableDeclarator &&
+          definition.node.init &&
+          definition.node.id.type === AST_NODE_TYPES.ObjectPattern
+        ) {
+          const destructured = definition.node.id.properties.find((entry) => {
+            return (
+              entry.type === AST_NODE_TYPES.Property &&
+              entry.value.type === AST_NODE_TYPES.Identifier &&
+              entry.value.name === expression.name
+            );
+          });
+          const name =
+            destructured?.type === AST_NODE_TYPES.Property
+              ? propertyName(destructured)
+              : null;
+          if (
+            name &&
+            TIME_FUNCTIONS.has(name) &&
+            isTimeNamespace(definition.node.init)
+          ) {
+            return true;
+          }
+        }
         return Boolean(
           definition?.node.type === AST_NODE_TYPES.VariableDeclarator &&
           definition.node.init &&

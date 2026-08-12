@@ -57,6 +57,16 @@ ruleTester.run(
     ],
     invalid: [
       {
+        name: "destructured namespace fixture mutation is rejected",
+        code: `
+          import * as entitlement from "${fixtureModule}";
+          const STAFF_ORG_ID = "${staffOrgId}";
+          const { upsertOrgPlanEntitlementFixture: writeEntitlement } = entitlement;
+          await writeEntitlement({ orgId: STAFF_ORG_ID });
+        `,
+        errors: [{ messageId: "productionStaffMutation" }],
+      },
+      {
         name: "namespace fixture mutation of fixed staff is rejected",
         code: `
           import * as entitlement from "${fixtureModule}";

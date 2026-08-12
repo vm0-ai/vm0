@@ -102,6 +102,25 @@ ruleTester.run("no-unowned-usage-pricing", noUnownedUsagePricing, {
   ],
   invalid: [
     {
+      name: "seed-run ownership must match the actual scoped request action",
+      code: `
+        import { createAppWithRoutes } from "../../../app-factory-core";
+        import { seedUsagePricingRows } from "${fixtureModule}";
+        import { testCronCleanupSandboxesStateRoutes } from "../../routes/test-cron-cleanup-sandboxes-state";
+        async function requestState(body) {
+          return await createAppWithRoutes({ routes: testCronCleanupSandboxesStateRoutes })
+            .request("/state", { body: JSON.stringify({ action: "read-state" }) });
+        }
+        async function insertRunFixture() {
+          const response = await requestState({ action: "seed-run" });
+          return { runId: stringField(response, "run_id") };
+        }
+        const run = await insertRunFixture();
+        await seedUsagePricingRows([{ kind: "generation", provider: run.runId, category: "maps", unitPrice: 1, unitSize: 1 }]);
+      `,
+      errors: [{ messageId: "unownedPricing" }],
+    },
+    {
       name: "discarded scoped response cannot bless a fixed returned run id",
       code: `
         import { createAppWithRoutes } from "../../../app-factory-core";

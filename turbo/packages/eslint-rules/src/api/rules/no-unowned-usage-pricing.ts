@@ -20,6 +20,11 @@ interface CallFrame {
   readonly parent: CallFrame | null;
 }
 
+interface FramedExpression {
+  readonly expression: TSESTree.Expression;
+  readonly frame: CallFrame | null;
+}
+
 type MutationName =
   | "deleteUsagePricingRows"
   | "seedUsagePricingRows"
@@ -267,20 +272,6 @@ export const noUnownedUsagePricing = createRule({
       );
     }
 
-    function callHasSeedRunAction(call: TSESTree.CallExpression): boolean {
-      return call.arguments.some((argument) => {
-        if (argument.type === AST_NODE_TYPES.SpreadElement) {
-          return false;
-        }
-        const action = objectPropertyExpression(argument, "action", new Set());
-        const current = action ? unwrapExpression(action) : null;
-        return (
-          current?.type === AST_NODE_TYPES.Literal &&
-          current.value === "seed-run"
-        );
-      });
-    }
-
     function argumentForParameter(
       identifier: TSESTree.Identifier,
       frame: CallFrame | null,
@@ -305,6 +296,174 @@ export const noUnownedUsagePricing = createRule({
         return null;
       }
       return { expression: argument, frame: ownerFrame.parent };
+    }
+
+    function propertyExpressionInFrame(
+      expression: TSESTree.Expression,
+      name: string,
+      frame: CallFrame | null,
+      seen: ReadonlySet<TSESTree.Node> = new Set(),
+    ): FramedExpression | null {
+      const current = unwrapExpression(expression);
+      if (seen.has(current)) {
+        return null;
+      }
+      const nextSeen = new Set(seen).add(current);
+      if (current.type === AST_NODE_TYPES.ObjectExpression) {
+        if (
+          current.properties.some((property) => {
+            return property.type === AST_NODE_TYPES.SpreadElement;
+          })
+        ) {
+          return null;
+        }
+        const matches = current.properties.filter((property) => {
+          return (
+            property.type === AST_NODE_TYPES.Property &&
+            propertyName(property) === name &&
+            property.value.type !== AST_NODE_TYPES.AssignmentPattern
+          );
+        });
+        const match = matches.length === 1 ? matches[0] : null;
+        return match?.type === AST_NODE_TYPES.Property
+          ? {
+              expression: match.value as TSESTree.Expression,
+              frame,
+            }
+          : null;
+      }
+      if (current.type !== AST_NODE_TYPES.Identifier) {
+        return null;
+      }
+      const definition = variableInScope(context.sourceCode, current)?.defs[0];
+      if (
+        definition?.node.type === AST_NODE_TYPES.VariableDeclarator &&
+        definition.node.init
+      ) {
+        return propertyExpressionInFrame(
+          definition.node.init,
+          name,
+          frame,
+          nextSeen,
+        );
+      }
+      if (definition?.type !== "Parameter") {
+        return null;
+      }
+      const argument = argumentForParameter(current, frame);
+      return argument
+        ? propertyExpressionInFrame(
+            argument.expression,
+            name,
+            argument.frame,
+            nextSeen,
+          )
+        : null;
+    }
+
+    function isSeedRunAction(
+      expression: TSESTree.Expression,
+      frame: CallFrame | null,
+      seen: ReadonlySet<TSESTree.Node> = new Set(),
+    ): boolean {
+      const current = unwrapExpression(expression);
+      if (seen.has(current)) {
+        return false;
+      }
+      const nextSeen = new Set(seen).add(current);
+      if (
+        current.type === AST_NODE_TYPES.Literal &&
+        current.value === "seed-run"
+      ) {
+        return true;
+      }
+      if (current.type !== AST_NODE_TYPES.Identifier) {
+        return false;
+      }
+      const definition = variableInScope(context.sourceCode, current)?.defs[0];
+      if (
+        definition?.node.type === AST_NODE_TYPES.VariableDeclarator &&
+        definition.node.init
+      ) {
+        return isSeedRunAction(definition.node.init, frame, nextSeen);
+      }
+      if (definition?.type !== "Parameter") {
+        return false;
+      }
+      const argument = argumentForParameter(current, frame);
+      return Boolean(
+        argument &&
+        isSeedRunAction(argument.expression, argument.frame, nextSeen),
+      );
+    }
+
+    function isSeedRunPayload(
+      expression: TSESTree.Expression,
+      frame: CallFrame | null,
+      seen: ReadonlySet<TSESTree.Node> = new Set(),
+    ): boolean {
+      const action = propertyExpressionInFrame(
+        expression,
+        "action",
+        frame,
+        seen,
+      );
+      return Boolean(
+        action && isSeedRunAction(action.expression, action.frame, seen),
+      );
+    }
+
+    function isSerializedSeedRunPayload(
+      expression: TSESTree.Expression,
+      frame: CallFrame | null,
+      seen: ReadonlySet<TSESTree.Node> = new Set(),
+    ): boolean {
+      const current = unwrapExpression(expression);
+      if (seen.has(current)) {
+        return false;
+      }
+      const nextSeen = new Set(seen).add(current);
+      if (current.type === AST_NODE_TYPES.Identifier) {
+        const definition = variableInScope(context.sourceCode, current)
+          ?.defs[0];
+        if (
+          definition?.node.type === AST_NODE_TYPES.VariableDeclarator &&
+          definition.node.init
+        ) {
+          return isSerializedSeedRunPayload(
+            definition.node.init,
+            frame,
+            nextSeen,
+          );
+        }
+        if (definition?.type === "Parameter") {
+          const argument = argumentForParameter(current, frame);
+          return Boolean(
+            argument &&
+            isSerializedSeedRunPayload(
+              argument.expression,
+              argument.frame,
+              nextSeen,
+            ),
+          );
+        }
+        return false;
+      }
+      if (
+        current.type !== AST_NODE_TYPES.CallExpression ||
+        current.callee.type !== AST_NODE_TYPES.MemberExpression ||
+        memberName(current.callee) !== "stringify" ||
+        current.callee.object.type !== AST_NODE_TYPES.Identifier ||
+        current.callee.object.name !== "JSON"
+      ) {
+        return false;
+      }
+      const payload = current.arguments[0];
+      return Boolean(
+        payload &&
+        payload.type !== AST_NODE_TYPES.SpreadElement &&
+        isSeedRunPayload(payload, frame, nextSeen),
+      );
     }
 
     function isScopedRunStateRoutes(
@@ -457,7 +616,23 @@ export const noUnownedUsagePricing = createRule({
       ) {
         const name = memberName(current.callee);
         if (name === "request") {
-          return isScopedRunStateApp(current.callee.object, frame);
+          if (!isScopedRunStateApp(current.callee.object, frame)) {
+            return false;
+          }
+          const options = current.arguments[1];
+          if (!options || options.type === AST_NODE_TYPES.SpreadElement) {
+            return false;
+          }
+          const body = propertyExpressionInFrame(
+            options,
+            "body",
+            frame,
+            nextSeen,
+          );
+          return Boolean(
+            body &&
+            isSerializedSeedRunPayload(body.expression, body.frame, nextSeen),
+          );
         }
         if (name === "json") {
           return isScopedRunStateResponse(
@@ -518,7 +693,7 @@ export const noUnownedUsagePricing = createRule({
         return false;
       }
       const called = localFunctionCalledBy(current);
-      if (!called || !callHasSeedRunAction(current)) {
+      if (!called) {
         return false;
       }
       const returns = functionReturns.get(called) ?? [];

@@ -412,6 +412,27 @@ export const noProductionStaffEntitlementMutation = createRule({
         definition?.node.type === AST_NODE_TYPES.VariableDeclarator &&
         definition.node.init
       ) {
+        if (definition.node.id.type === AST_NODE_TYPES.ObjectPattern) {
+          const destructured = definition.node.id.properties.find((entry) => {
+            return (
+              entry.type === AST_NODE_TYPES.Property &&
+              entry.value.type === AST_NODE_TYPES.Identifier &&
+              entry.value.name === callee.name
+            );
+          });
+          const name =
+            destructured?.type === AST_NODE_TYPES.Property
+              ? propertyName(destructured)
+              : null;
+          if (isEntitlementNamespace(definition.node.init)) {
+            if (name === "upsertOrgPlanEntitlementFixture") {
+              return "upsert";
+            }
+            if (name === "deleteOrgPlanEntitlementFixture") {
+              return "delete";
+            }
+          }
+        }
         return mutationKind(definition.node.init, nextSeen);
       }
       return null;

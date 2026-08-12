@@ -45,6 +45,16 @@ ruleTester.run("no-cross-test-time-staggering", noCrossTestTimeStaggering, {
   ],
   invalid: [
     {
+      name: "destructured canonical namespace mockNow remains rejected",
+      code: `
+        import * as time from "../../../lib/time";
+        const { mockNow: setClock } = time;
+        let index = 0;
+        beforeEach(() => setClock(1_000 + index++ * 60_000));
+      `,
+      errors: [{ messageId: "sharedTime" }],
+    },
+    {
       name: "canonical namespace mockNow remains rejected",
       code: `
         import * as time from "../../../lib/time";
