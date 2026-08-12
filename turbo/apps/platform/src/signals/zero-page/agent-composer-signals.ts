@@ -167,7 +167,6 @@ function createAgentComposerSignalsWithDraft(
     },
     chatEvents$,
     singleLineOnMobile: false,
-    implicitContent: options.forward !== undefined,
     modelSelection$: chatPageModelSelection$,
     selectedModelOauthAvailable$: chatPageSelectedModelOauthAvailable$,
     setModelSelection$,
