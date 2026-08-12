@@ -2,6 +2,7 @@ import { Command, Option } from "commander";
 
 import { linkZeroMailDraft } from "../../../lib/api/domains/zero-mail";
 import { withErrorHandler } from "../../../lib/command/with-error-handler";
+import { getOkouChatThreadId } from "../../../lib/okou-env";
 import {
   addRequestedCallbackSearchParams,
   connectorActionCallbackAvailable,
@@ -10,7 +11,7 @@ import {
 import { currentAgentId } from "./shared";
 
 function currentChatThreadId(): string {
-  const threadId = process.env.ZERO_CHAT_THREAD_ID?.trim();
+  const threadId = getOkouChatThreadId()?.trim();
   if (!threadId) {
     throw new Error("ZERO_CHAT_THREAD_ID is not set", {
       cause: new Error("Run this command from a web chat thread"),

@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { createWorkflow } from "../../../lib/api/domains/zero-workflows";
 import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import { readSupplementaryFiles } from "../../../lib/skill-directory";
+import { getOkouAgentId, getOkouChatThreadId } from "../../../lib/okou-env";
 import { formatWorkflowAgentName } from "./format";
 
 export const createCommand = new Command()
@@ -56,7 +57,7 @@ Notes:
           public?: boolean;
         },
       ) => {
-        const agentId = options.agent ?? process.env.ZERO_AGENT_ID;
+        const agentId = options.agent ?? getOkouAgentId();
         if (!agentId) {
           console.error(chalk.red("✗ --agent is required"));
           console.error(
@@ -85,7 +86,7 @@ Notes:
 
         const workflow = await createWorkflow({
           agentId,
-          chatThreadId: process.env.ZERO_CHAT_THREAD_ID || undefined,
+          chatThreadId: getOkouChatThreadId(),
           name,
           instruction,
           files,

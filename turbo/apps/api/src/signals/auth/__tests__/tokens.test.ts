@@ -47,7 +47,7 @@ describe("auth tokens", () => {
     });
   });
 
-  it("verifies sandbox and zero tokens behind the sandbox prefix", () => {
+  it("verifies sandbox, zero, and okou tokens behind the sandbox prefix", () => {
     const nowSeconds = currentSecond();
     const sandboxToken = signSandboxJwtForTests({
       scope: "sandbox",
@@ -67,6 +67,15 @@ describe("auth tokens", () => {
       iat: nowSeconds,
       exp: nowSeconds + 60,
     });
+    const okouToken = signSandboxJwtForTests({
+      scope: "okou",
+      userId: "user_okou",
+      orgId: "org_okou",
+      runId: "run_okou",
+      capabilities: ["file:write"],
+      iat: nowSeconds,
+      exp: nowSeconds + 60,
+    });
 
     expect(isSandboxToken(sandboxToken)).toBeTruthy();
     expect(verifySandboxToken(sandboxToken)).toStrictEqual({
@@ -79,6 +88,37 @@ describe("auth tokens", () => {
       orgId: "org_zero",
       runId: "run_zero",
       capabilities: ["file:read"],
+    });
+    expect(verifyZeroToken(okouToken)).toStrictEqual({
+      userId: "user_okou",
+      orgId: "org_okou",
+      runId: "run_okou",
+      capabilities: ["file:write"],
+    });
+  });
+
+  it("generates either run token scope without changing the prefix", () => {
+    const zeroToken = generateZeroToken("user_zero", "run_zero", "org_zero");
+    const okouToken = generateZeroToken(
+      "user_okou",
+      "run_okou",
+      "org_okou",
+      undefined,
+      { scope: "okou" },
+    );
+
+    expect(zeroToken).toMatch(/^vm0_sandbox_/u);
+    expect(okouToken).toMatch(/^vm0_sandbox_/u);
+    expect(decodeZeroTokenPayloadForTest(zeroToken)).toMatchObject({
+      scope: "zero",
+    });
+    expect(decodeZeroTokenPayloadForTest(okouToken)).toMatchObject({
+      scope: "okou",
+    });
+    expect(verifyZeroToken(okouToken)).toMatchObject({
+      userId: "user_okou",
+      runId: "run_okou",
+      orgId: "org_okou",
     });
   });
 

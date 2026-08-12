@@ -207,7 +207,7 @@ function hostedR2Config(): HostedR2ConfigResult {
 }
 
 function publicUrl(publicSlug: string): string {
-  return `${env("ZERO_HOST_SCHEME")}://${publicSlug}.${env("ZERO_HOST_DOMAIN")}`;
+  return `${env("OKOU_HOST_SCHEME")}://${publicSlug}.${env("OKOU_HOST_DOMAIN")}`;
 }
 
 function deploymentUrl(deploymentId: string): string {

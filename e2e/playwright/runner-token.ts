@@ -26,7 +26,8 @@ interface RunnerCredentialTarget {
 async function main(): Promise<void> {
   requiredEnvironmentVariable("JOB_REF");
   const apiUrl = requiredEnvironmentVariable("VM0_API_BACKEND_URL");
-  const appUrl = requiredEnvironmentVariable("ZERO_APP_URL");
+  const appUrl =
+    process.env.OKOU_APP_URL || requiredEnvironmentVariable("ZERO_APP_URL");
   const outputDirectory = process.argv[2];
   if (!outputDirectory) {
     throw new Error("Usage: runner-token.ts <output-directory>");

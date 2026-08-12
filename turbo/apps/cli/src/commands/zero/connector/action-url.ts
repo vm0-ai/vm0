@@ -1,13 +1,15 @@
+import { getOkouAgentId, getOkouChatThreadId } from "../../../lib/okou-env";
+
 export const CALLBACK_PROMPT_PLACEHOLDER =
   "SOMETHING_AGENT_WANT_TO_BE_CALLBACK";
 
 export function connectorActionCallbackAvailable(): boolean {
-  return Boolean(process.env.ZERO_CHAT_THREAD_ID?.trim());
+  return Boolean(getOkouChatThreadId()?.trim());
 }
 
 function currentChatThreadId(agentId: string | undefined): string | null {
-  const threadId = process.env.ZERO_CHAT_THREAD_ID?.trim();
-  const currentAgentId = process.env.ZERO_AGENT_ID?.trim();
+  const threadId = getOkouChatThreadId()?.trim();
+  const currentAgentId = getOkouAgentId()?.trim();
   if (!threadId || !currentAgentId || agentId !== currentAgentId) {
     return null;
   }

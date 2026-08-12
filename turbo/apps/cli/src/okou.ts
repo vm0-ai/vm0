@@ -8,6 +8,7 @@ import {
   decodeZeroTokenPayload,
   type ZeroTokenPayload,
 } from "./lib/api/zero-token.js";
+import { getOkouToken } from "./lib/okou-env.js";
 
 interface ZeroCommandDefinition {
   name: string;
@@ -608,7 +609,7 @@ export function registerZeroCommands(
   prog: Command,
   commands?: Command[],
 ): void {
-  const token = process.env.ZERO_TOKEN;
+  const token = getOkouToken();
   const payload = token ? decodeZeroTokenPayload(token) : undefined;
 
   for (const cmd of commands ?? buildDefaultCommands()) {

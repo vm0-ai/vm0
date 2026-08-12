@@ -4,6 +4,7 @@ import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
 import { testContext } from "../../../__tests__/test-context";
+import { mockEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import { seedOrgMetadata } from "../../../test-fixtures/system-config-seeds";
 import { upsertOrgPlanEntitlementFixture } from "../../../test-fixtures/org-plan-entitlement";
@@ -59,6 +60,10 @@ function geocodeOkHandler(requests: URL[]) {
 
 describe("FILE-01: hosted-site deployments through host APIs", () => {
   it("creates immutable versions behind a simple alias and promotes only the newest completed version [HOST-A]", async () => {
+    mockEnv("OKOU_HOST_DOMAIN", "okou-sites.test");
+    mockEnv("ZERO_HOST_DOMAIN", "zero-sites.test");
+    mockEnv("OKOU_HOST_SCHEME", "http");
+    mockEnv("ZERO_HOST_SCHEME", "https");
     const bdd = createBddApi(context);
     const api = createHostMapsBddApi(context);
     const actor = bdd.user();
@@ -83,6 +88,7 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
     expect(first.publicSlug).toBe(site);
     expect(second.publicSlug).toBe(site);
     expect(first.url).toBe(second.url);
+    expect(first.url).toBe(`http://${site}.okou-sites.test`);
     expect(first.aliasUrl).toBe(first.url);
     expect(second.aliasUrl).toBe(second.url);
     expect(first.deploymentVersion).toBe(1);

@@ -287,6 +287,32 @@ describe("okou connector status command", () => {
       expect(logCalls).toContain("automatically start the next round");
     });
 
+    it("prefers OKOU runtime context over legacy Zero values", async () => {
+      const appOrigin = "https://okou-app.example.test";
+      vi.stubEnv("OKOU_APP_URL", appOrigin);
+      vi.stubEnv("ZERO_APP_URL", "https://zero-app.example.test");
+      vi.stubEnv("OKOU_AGENT_ID", AGENT_UUID);
+      vi.stubEnv("ZERO_AGENT_ID", ALT_AGENT_UUID);
+      vi.stubEnv("OKOU_CHAT_THREAD_ID", "okou-thread-123");
+      vi.stubEnv("ZERO_CHAT_THREAD_ID", "zero-thread-456");
+      server.use(
+        stubConnector(connectedGithub),
+        stubAgent(AGENT_UUID, "maya"),
+        stubUserConnectors(AGENT_UUID, []),
+      );
+
+      await statusCommand.parseAsync(["node", "cli", "github"]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain(
+        `${appOrigin}/connectors/github/authorize?agentId=${AGENT_UUID}`,
+      );
+      expect(logCalls).toContain("threadId=okou-thread-123");
+      expect(logCalls).not.toContain(ALT_AGENT_UUID);
+      expect(logCalls).not.toContain("zero-thread-456");
+      expect(logCalls).not.toContain("zero-app.example.test");
+    });
+
     it("uses the production app origin in authorization links", async () => {
       const apiOrigin = "https://api.vm0.ai";
       vi.stubEnv("APP_URL", "https://unrelated.example.test");

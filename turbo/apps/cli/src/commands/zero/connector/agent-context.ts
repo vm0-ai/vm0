@@ -3,6 +3,7 @@ import {
   getZeroAgentCustomConnectorGrants,
   getZeroAgentUserConnectors,
 } from "../../../lib/api/domains/zero-agents";
+import { getOkouAgentId } from "../../../lib/okou-env";
 
 interface AgentContext {
   agentId: string;
@@ -17,7 +18,7 @@ export interface ConnectorDiscoveryAgentContext extends AgentContext {
 export async function resolveAgentContext(
   flagAgentId: string | undefined,
 ): Promise<AgentContext | null> {
-  const agentId = flagAgentId ?? process.env.ZERO_AGENT_ID;
+  const agentId = flagAgentId ?? getOkouAgentId();
   if (!agentId) return null;
 
   const [agent, enabledConnectorSlugs] = await Promise.all([
@@ -35,7 +36,7 @@ export async function resolveAgentContext(
 export async function resolveConnectorDiscoveryAgentContext(
   flagAgentId: string | undefined,
 ): Promise<ConnectorDiscoveryAgentContext | null> {
-  const agentId = flagAgentId ?? process.env.ZERO_AGENT_ID;
+  const agentId = flagAgentId ?? getOkouAgentId();
   if (!agentId) return null;
 
   const [agent, enabledConnectorSlugs, customConnectorGrants] =

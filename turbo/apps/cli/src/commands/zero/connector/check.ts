@@ -13,6 +13,7 @@ import {
 } from "../../../lib/api/domains/zero-connectors";
 import { getZeroAgentUserConnectors } from "../../../lib/api/domains/zero-agents";
 import { withErrorHandler } from "../../../lib/command/with-error-handler";
+import { getOkouAgentId } from "../../../lib/okou-env";
 import { toPlatformUrl } from "../doctor/platform-url";
 import {
   isComputerUsePermissionTarget,
@@ -964,7 +965,7 @@ How connectors work:
         credentialResolution: result.connector.credentialResolution,
         run: result.run,
         platformOrigin: platformUrl.origin,
-        agentId: process.env.ZERO_AGENT_ID || undefined,
+        agentId: getOkouAgentId(),
       };
 
       checkEnvironmentNames(ctx);

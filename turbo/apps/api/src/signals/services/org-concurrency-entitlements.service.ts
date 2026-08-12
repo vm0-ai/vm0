@@ -43,11 +43,11 @@ function dbTimestamp(value: Date | string | null | undefined): Date | null {
 }
 
 export function activeConcurrencyPriceId(): string | undefined {
-  return env("ZERO_PRICE_CONCURRENCY")?.[0];
+  return env("OKOU_PRICE_CONCURRENCY")?.[0];
 }
 
 export function isConcurrencyPriceId(priceId: string): boolean {
-  return env("ZERO_PRICE_CONCURRENCY")?.includes(priceId) ?? false;
+  return env("OKOU_PRICE_CONCURRENCY")?.includes(priceId) ?? false;
 }
 
 export function cappedBaseConcurrencyLimit(tierLimit: number): number {

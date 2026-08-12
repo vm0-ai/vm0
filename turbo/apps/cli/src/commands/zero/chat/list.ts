@@ -5,6 +5,7 @@ import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import { formatIsoTimestamp } from "../../../lib/utils/time-format";
 import { parseBoundedLogCount } from "../../../lib/utils/log-pagination";
 import { isUuid } from "../../../lib/utils/uuid";
+import { getOkouAgentId } from "../../../lib/okou-env";
 import { syncCachedChatThreads } from "./chat-thread-cache";
 
 const DEFAULT_LIMIT = 20;
@@ -23,7 +24,7 @@ function printUsageError(message: string, hint: string): never {
 }
 
 function resolveAgentId(flagAgentId: string | undefined): string {
-  const agentId = flagAgentId?.trim() || process.env.ZERO_AGENT_ID?.trim();
+  const agentId = flagAgentId?.trim() || getOkouAgentId()?.trim();
   if (!agentId) {
     printUsageError(
       "ZERO_AGENT_ID is not set",

@@ -15,6 +15,7 @@ import { ApiRequestError } from "../../../lib/api/core/client-factory";
 import { createBrowserAuthorizationRequest } from "../../../lib/api/domains/zero-browser";
 import { createComputerUseAuthorizationRequest } from "../../../lib/api/domains/zero-computer-use";
 import { diagnoseZeroConnectorCheck } from "../../../lib/api/domains/zero-connectors";
+import { getOkouAgentId, getOkouToken } from "../../../lib/okou-env";
 import {
   addRequestedCallbackSearchParams,
   connectorActionCallbackAvailable,
@@ -186,7 +187,7 @@ function printComputerUseAuthorizationLink(args: {
 }
 
 async function printComputerUsePermissionRequestMessage(): Promise<void> {
-  if (!process.env.ZERO_TOKEN) {
+  if (!getOkouToken()) {
     printComputerUsePermissionGuidance();
     return;
   }
@@ -228,7 +229,7 @@ function printBrowserAuthorizationLink(args: {
 }
 
 async function printBrowserPermissionRequestMessage(): Promise<void> {
-  if (!process.env.ZERO_TOKEN) {
+  if (!getOkouToken()) {
     printBrowserPermissionGuidance();
     return;
   }
@@ -382,7 +383,7 @@ ${callbackPromptNotes}  - Permission requests update the current user's connecto
           return;
         }
 
-        const agentId = opts.agent ?? process.env.ZERO_AGENT_ID;
+        const agentId = opts.agent ?? getOkouAgentId();
         if (opts.url === undefined) {
           throw new Error(
             "--url is required for connector permission requests. Run okou connector check --url <FAILED_URL> --method <METHOD> and use the permission-request command it prints.",

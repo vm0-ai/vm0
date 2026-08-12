@@ -1,12 +1,13 @@
 import { decodeZeroTokenPayload } from "./zero-token.js";
+import { getOkouToken } from "../okou-env.js";
 
 export async function getToken(): Promise<string | undefined> {
-  return process.env.ZERO_TOKEN || undefined;
+  return getOkouToken();
 }
 
 /**
  * Get the active token for API requests.
- * Okou is agent-only, so ZERO_TOKEN is the sole authentication source.
+ * Agent runs use OKOU_TOKEN with ZERO_TOKEN as a compatibility fallback.
  */
 export async function getActiveToken(): Promise<string | undefined> {
   return getToken();
@@ -25,7 +26,7 @@ export { decodeZeroTokenPayload };
 
 /**
  * Get the active organization for API requests.
- * The organization is carried by the run-scoped ZERO_TOKEN.
+ * The organization is carried by the run-scoped agent token.
  */
 export async function getActiveOrg(): Promise<string | undefined> {
   return decodeZeroTokenPayload()?.orgId;
