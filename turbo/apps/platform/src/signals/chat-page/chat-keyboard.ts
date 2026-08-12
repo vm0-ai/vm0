@@ -21,12 +21,10 @@ import {
   currentChatThreadId$,
   currentChatThreadListIds$,
 } from "../agent-chat.ts";
-import { rootSignal$ } from "../root-signal.ts";
 import {
   setupGlobalShortcut,
   type GlobalShortcutBindings,
 } from "../../lib/setup-global-shortcut.ts";
-import { scrollToThread$ } from "./sidebar-chat-thread-scroll.ts";
 
 type ChatThreadPane = "main" | "side";
 
@@ -486,14 +484,6 @@ export const setChatKeyboardScrollRoot$ = onRef(
       } else {
         set(loadRightThread$, targetId);
       }
-      await set(
-        scrollToThread$,
-        {
-          threadId: targetId,
-          align: direction === "next" ? "bottom" : "top",
-        },
-        get(rootSignal$),
-      );
     };
     const navigateFocusedThread = (direction: "prev" | "next") => {
       const pane = paneForThread(

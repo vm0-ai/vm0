@@ -600,7 +600,6 @@ function ChatThreadCommandSection({
       {threads.map((thread) => {
         return (
           <ChatThreadCommandItem
-            key={thread.id}
             thread={thread}
             indicator={chatThreadCommandIndicator(
               thread.id,
@@ -1002,7 +1001,6 @@ function AgentListDialogUnifiedSearch({
         if (item.kind === "thread") {
           return (
             <ChatThreadCommandItem
-              key={`thread-${item.thread.id}`}
               thread={item.thread}
               indicator={chatThreadCommandIndicator(
                 item.thread.id,
