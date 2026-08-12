@@ -446,6 +446,11 @@ describe("organization billing settings", () => {
     expect(
       within(proPlan).getByText("7 shared agents, unlimited private"),
     ).toBeInTheDocument();
+    expect(
+      within(proPlan).getByText(
+        "Voice input (300 requests/day · 200 min/day per member)",
+      ),
+    ).toBeInTheDocument();
     expect(within(proPlan).queryByText("Pay as you go after that")).toBeNull();
     expect(
       within(teamPlan).getByText(
@@ -453,6 +458,11 @@ describe("organization billing settings", () => {
       ),
     ).toBeInTheDocument();
     expect(within(teamPlan).queryByText("120,000 credits / month")).toBeNull();
+    expect(
+      within(teamPlan).getByText(
+        "Voice input (500 requests/day · 500 min/day per member)",
+      ),
+    ).toBeInTheDocument();
 
     click(buttonByText("Start with Team", teamPlan));
 

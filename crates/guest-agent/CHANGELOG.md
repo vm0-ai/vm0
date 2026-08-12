@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.71.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.71.1...guest-agent-v0.71.2) (2026-08-12)
+
+
+### Bug Fixes
+
+* discard oversized session history at checkpoint ([#26635](https://github.com/vm0-ai/vm0/issues/26635)) ([b449da7](https://github.com/vm0-ai/vm0/commit/b449da711810bebde8cf12f9a1b6c7acceefe2c9))
+
+
+### Refactoring
+
+* **chat:** remove active input rollout compatibility ([#26625](https://github.com/vm0-ai/vm0/issues/26625)) ([8d1be07](https://github.com/vm0-ai/vm0/commit/8d1be07f2d1665a02d86cb2ef550fa9a1f1e212a))
+* **cli:** remove zero migration compatibility ([#26640](https://github.com/vm0-ai/vm0/issues/26640)) ([fd1fa43](https://github.com/vm0-ai/vm0/commit/fd1fa43ac7b94af08ee21a85dfaf8c06dcdc2a98))
+* **rust:** centralize guest stdout framing limits ([#26648](https://github.com/vm0-ai/vm0/issues/26648)) ([962e753](https://github.com/vm0-ai/vm0/commit/962e7532f4e8d319fb05b096bdbfca85431731ed))
+
 ## [0.71.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.71.0...guest-agent-v0.71.1) (2026-08-12)
 
 

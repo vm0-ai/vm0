@@ -906,8 +906,9 @@
         "tenConcurrentRuns": "10 gleichzeitige Ausführungen",
         "twoConcurrentRuns": "2 gleichzeitige Ausführungen",
         "unlimitedAgents": "Unbegrenzte Gesamtanzahl an Agenten",
-        "voiceInput": "Spracheingabe",
-        "voiceInputLifetime": "Spracheingabe (10 lebenslange Nutzungen pro Mitglied)"
+        "voiceInputFree": "Spracheingabe (insgesamt 10 Anfragen · 10 Min./Tag pro Mitglied)",
+        "voiceInputPro": "Spracheingabe (300 Anfragen/Tag · 200 Min./Tag pro Mitglied)",
+        "voiceInputTeam": "Spracheingabe (500 Anfragen/Tag · 500 Min./Tag pro Mitglied)"
       },
       "free": {
         "description": "Kostenloser Legacy-Zugriff für bestehende Arbeitsbereiche.",
@@ -1387,6 +1388,19 @@
       "sourcePartHeading": "Feedback zu diesem Teil von {{description}}:",
       "sourcePartsHeading_one": "Feedback zu {{count}} Teil von {{description}}:",
       "sourcePartsHeading_other": "Feedback zu {{count}} Teilen von {{description}}:"
+    },
+    "forward": {
+      "action": "Weiterleiten",
+      "agents": "Agenten",
+      "back": "Zurück",
+      "content": "Inhalt",
+      "description": "Ausgewählten Inhalt an einen Agenten oder Chat weiterleiten.",
+      "noResults": "Keine Agenten oder Chats gefunden",
+      "search": "Agenten und Chats suchen...",
+      "sent": "Erfolgreich weitergeleitet",
+      "threads": "Chats",
+      "title": "Weiterleiten an",
+      "to": "Weiterleiten an"
     },
     "mail": {
       "bcc": "BCC",

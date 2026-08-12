@@ -906,8 +906,9 @@
         "tenConcurrentRuns": "10 समवर्ती रन",
         "twoConcurrentRuns": "2 समवर्ती रन",
         "unlimitedAgents": "असीमित कुल एजेंट",
-        "voiceInput": "ध्वनि इनपुट",
-        "voiceInputLifetime": "वॉयस इनपुट (प्रति सदस्य 10 लाइफटाइम उपयोग)"
+        "voiceInputFree": "वॉइस इनपुट (कुल 10 अनुरोध · प्रति सदस्य 10 मिनट/दिन)",
+        "voiceInputPro": "वॉइस इनपुट (प्रति सदस्य 300 अनुरोध/दिन · 200 मिनट/दिन)",
+        "voiceInputTeam": "वॉइस इनपुट (प्रति सदस्य 500 अनुरोध/दिन · 500 मिनट/दिन)"
       },
       "free": {
         "description": "मौजूदा वर्कस्पेस के लिए विरासती निःशुल्क पहुंच।",
@@ -1387,6 +1388,19 @@
       "sourcePartHeading": "{{description}} के इस भाग पर प्रतिक्रिया:",
       "sourcePartsHeading_one": "{{description}} के {{count}} भाग पर प्रतिक्रिया:",
       "sourcePartsHeading_other": "{{description}} के {{count}} भागों पर प्रतिक्रिया:"
+    },
+    "forward": {
+      "action": "फ़ॉरवर्ड करें",
+      "agents": "एजेंट",
+      "back": "वापस",
+      "content": "सामग्री",
+      "description": "चुनी गई सामग्री को किसी एजेंट या चैट में फ़ॉरवर्ड करें।",
+      "noResults": "कोई एजेंट या चैट नहीं मिली",
+      "search": "एजेंट और चैट खोजें...",
+      "sent": "सफलतापूर्वक फ़ॉरवर्ड किया गया",
+      "threads": "चैट",
+      "title": "फ़ॉरवर्ड करें",
+      "to": "फ़ॉरवर्ड करें"
     },
     "mail": {
       "bcc": "गुप्त प्रतिलिपि",

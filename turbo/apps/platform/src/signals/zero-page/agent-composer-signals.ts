@@ -3,7 +3,11 @@ import { isSupportedRunModel } from "@vm0/api-contracts/contracts/model-provider
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import type { ModelProviderSelection } from "../../views/zero-page/components/model-provider-picker.tsx";
 import { currentAgentId$ } from "../agent.ts";
-import { sendNewThread$ } from "../chat-page/optimistic-chat-thread-page.ts";
+import {
+  sendNewThread$,
+  sendNewThreadWithoutNavigation$,
+} from "../chat-page/optimistic-chat-thread-page.ts";
+import type { ChatForwardContext } from "../chat-page/chat-forward.ts";
 import { featureSwitch$ } from "../external/feature-switch.ts";
 import { updateUserModelPreference$ } from "../external/user-model-preference.ts";
 import {
@@ -101,6 +105,10 @@ const noOp$ = command((): void => {});
 function createAgentComposerSignalsWithDraft(
   agentId: string,
   agentDraft: EnsuredAgentDraft,
+  options: {
+    readonly forward?: ChatForwardContext;
+    readonly onOptimisticSend?: () => void;
+  } = {},
 ) {
   const submitMessage$ = command(
     async (
@@ -119,8 +127,11 @@ function createAgentComposerSignalsWithDraft(
         access.kind === "computerUse"
           ? selectedComputerUseHostId(hosts, access.hostId)
           : null;
+      const send = options.forward
+        ? sendNewThreadWithoutNavigation$
+        : sendNewThread$;
       const sent = await set(
-        sendNewThread$,
+        send,
         {
           agentId,
           draft: agentDraft.draft,
@@ -132,6 +143,10 @@ function createAgentComposerSignalsWithDraft(
             : {}),
           ...(access.kind === "cloudBrowser"
             ? { cloudBrowserEnabled: true }
+            : {}),
+          ...(options.forward ? { forward: options.forward } : {}),
+          ...(options.onOptimisticSend
+            ? { onOptimisticSend: options.onOptimisticSend }
             : {}),
         },
         signal,
@@ -148,10 +163,11 @@ function createAgentComposerSignalsWithDraft(
     agentId,
     draft: {
       signals: agentDraft.draft,
-      save$: agentDraft.queueDraftSync$,
+      save$: options.forward ? noOpAction$ : agentDraft.queueDraftSync$,
     },
     chatEvents$,
     singleLineOnMobile: false,
+    implicitContent: options.forward !== undefined,
     modelSelection$: chatPageModelSelection$,
     selectedModelOauthAvailable$: chatPageSelectedModelOauthAvailable$,
     setModelSelection$,
@@ -179,6 +195,18 @@ export function createAgentComposerSignals(agentId: string) {
   return createAgentComposerSignalsWithDraft(
     agentId,
     createAgentDraftSignals(agentId),
+  );
+}
+
+export function createForwardAgentComposerSignals(
+  agentId: string,
+  forward: ChatForwardContext,
+  onOptimisticSend: () => void,
+) {
+  return createAgentComposerSignalsWithDraft(
+    agentId,
+    createAgentDraftSignals(agentId),
+    { forward, onOptimisticSend },
   );
 }
 

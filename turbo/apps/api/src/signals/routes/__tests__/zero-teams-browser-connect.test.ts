@@ -176,13 +176,16 @@ describe("GET /api/zero/teams/connect", () => {
     setupTeamsConnectTestEnv(APP_ORIGIN);
   });
 
-  it("redirects unauthenticated users to sign-in with redirect_url", async () => {
+  it("redirects unauthenticated users to app sign-in with redirect_url", async () => {
     const response = await requestConnect(CONNECT_PATH, {});
 
     expect(response.status).toBe(307);
     const location = response.headers.get("location");
-    expect(location).not.toBeNull();
-    const url = new URL(location!);
+    if (!location) {
+      throw new Error("Expected app sign-in redirect");
+    }
+    const url = new URL(location);
+    expect(url.origin).toBe(APP_ORIGIN);
     expect(url.pathname).toBe("/sign-in");
     expect(url.searchParams.get("redirect_url")).toBe(CONNECT_PATH);
   });

@@ -906,8 +906,9 @@
         "tenConcurrentRuns": "10 concurrent runs",
         "twoConcurrentRuns": "2 concurrent runs",
         "unlimitedAgents": "Unlimited total agents",
-        "voiceInput": "Voice input",
-        "voiceInputLifetime": "Voice input (10 lifetime uses per member)"
+        "voiceInputFree": "Voice input (10 lifetime requests · 10 min/day per member)",
+        "voiceInputPro": "Voice input (300 requests/day · 200 min/day per member)",
+        "voiceInputTeam": "Voice input (500 requests/day · 500 min/day per member)"
       },
       "free": {
         "description": "Legacy free access for existing workspaces.",
@@ -1387,6 +1388,19 @@
       "sourcePartHeading": "Feedback on this part of {{description}}:",
       "sourcePartsHeading_one": "Feedback on {{count}} part of {{description}}:",
       "sourcePartsHeading_other": "Feedback on {{count}} parts of {{description}}:"
+    },
+    "forward": {
+      "action": "Forward",
+      "agents": "Agents",
+      "back": "Back",
+      "content": "Content",
+      "description": "Forward selected content to an agent or chat.",
+      "noResults": "No agents or chats found",
+      "search": "Search agents and chats...",
+      "sent": "Forwarded successfully",
+      "threads": "Chats",
+      "title": "Forward to",
+      "to": "Forward to"
     },
     "mail": {
       "bcc": "bcc",

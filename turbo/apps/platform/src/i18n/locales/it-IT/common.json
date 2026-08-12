@@ -927,8 +927,9 @@
         "tenConcurrentRuns": "10 esecuzioni simultanee",
         "twoConcurrentRuns": "2 esecuzioni simultanee",
         "unlimitedAgents": "Agenti totali illimitati",
-        "voiceInput": "Ingresso vocale",
-        "voiceInputLifetime": "Input vocale (10 utilizzi a vita per membro)"
+        "voiceInputFree": "Input vocale (10 richieste totali · 10 min/giorno per membro)",
+        "voiceInputPro": "Input vocale (300 richieste/giorno · 200 min/giorno per membro)",
+        "voiceInputTeam": "Input vocale (500 richieste/giorno · 500 min/giorno per membro)"
       },
       "free": {
         "description": "Accesso gratuito precedente per le aree di lavoro esistenti.",
@@ -1416,6 +1417,19 @@
       "sourcePartsHeading_one": "Feedback su {{count}} parte di {{description}}:",
       "sourcePartsHeading_many": "Feedback su {{count}} parti di {{description}}:",
       "sourcePartsHeading_other": "Feedback su {{count}} parti di {{description}}:"
+    },
+    "forward": {
+      "action": "Inoltra",
+      "agents": "Agenti",
+      "back": "Indietro",
+      "content": "Contenuto",
+      "description": "Inoltra il contenuto selezionato a un agente o a una chat.",
+      "noResults": "Nessun agente o chat trovato",
+      "search": "Cerca agenti e chat...",
+      "sent": "Inoltrato correttamente",
+      "threads": "Chat",
+      "title": "Inoltra a",
+      "to": "Inoltra a"
     },
     "mail": {
       "bcc": "bcc",

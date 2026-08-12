@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.21.52](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.51...guest-mock-claude-v0.21.52) (2026-08-12)
+
+
+### Refactoring
+
+* **rust:** centralize guest stdout framing limits ([#26648](https://github.com/vm0-ai/vm0/issues/26648)) ([962e753](https://github.com/vm0-ai/vm0/commit/962e7532f4e8d319fb05b096bdbfca85431731ed))
+
 ## [0.21.51](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.50...guest-mock-claude-v0.21.51) (2026-08-11)
 
 ## [0.21.50](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.49...guest-mock-claude-v0.21.50) (2026-08-11)

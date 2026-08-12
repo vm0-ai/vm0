@@ -906,8 +906,9 @@
         "tenConcurrentRuns": "10 eksekusi concurrent",
         "twoConcurrentRuns": "2 eksekusi concurrent",
         "unlimitedAgents": "Agen total tidak terbatas",
-        "voiceInput": "Input suara",
-        "voiceInputLifetime": "Input suara (10 penggunaan seumur hidup per anggota)"
+        "voiceInputFree": "Input suara (10 permintaan total · 10 mnt/hari per anggota)",
+        "voiceInputPro": "Input suara (300 permintaan/hari · 200 mnt/hari per anggota)",
+        "voiceInputTeam": "Input suara (500 permintaan/hari · 500 mnt/hari per anggota)"
       },
       "free": {
         "description": "Akses gratis lama untuk ruang kerja yang sudah ada.",
@@ -1387,6 +1388,19 @@
       "sourcePartHeading": "Masukan untuk bagian {{description}} ini:",
       "sourcePartsHeading_one": "Masukan untuk {{count}} bagian {{description}}:",
       "sourcePartsHeading_other": "Masukan untuk {{count}} bagian {{description}}:"
+    },
+    "forward": {
+      "action": "Teruskan",
+      "agents": "Agen",
+      "back": "Kembali",
+      "content": "Konten",
+      "description": "Teruskan konten yang dipilih ke agen atau chat.",
+      "noResults": "Agen atau chat tidak ditemukan",
+      "search": "Cari agen dan chat...",
+      "sent": "Berhasil diteruskan",
+      "threads": "Chat",
+      "title": "Teruskan ke",
+      "to": "Teruskan ke"
     },
     "mail": {
       "bcc": "bcc",

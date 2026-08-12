@@ -135,7 +135,7 @@ function connectSuccess(
 }
 
 function signInRedirect(requestUrl: string): Response {
-  const signInUrl = new URL("/sign-in", requestUrl);
+  const signInUrl = new URL("/sign-in", env("APP_URL"));
   signInUrl.searchParams.set("redirect_url", requestUrl);
   return redirectResponse(signInUrl.toString());
 }

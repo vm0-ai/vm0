@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.2](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.7.1...guest-mock-codex-v0.7.2) (2026-08-12)
+
+
+### Refactoring
+
+* **rust:** centralize guest stdout framing limits ([#26648](https://github.com/vm0-ai/vm0/issues/26648)) ([962e753](https://github.com/vm0-ai/vm0/commit/962e7532f4e8d319fb05b096bdbfca85431731ed))
+
 ## [0.7.1](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.7.0...guest-mock-codex-v0.7.1) (2026-08-12)
 
 

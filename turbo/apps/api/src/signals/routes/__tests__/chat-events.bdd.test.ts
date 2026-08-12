@@ -6412,7 +6412,7 @@ describe("CHAT-02: initial thinking indicator", () => {
     });
     expect(thinkingPromptPayload).toContain("one paragraph at a time");
     expect(thinkingPromptPayload).toContain(
-      "about 20 Chinese characters or 7 English words",
+      "about 30 characters, excluding punctuation",
     );
     expect(thinkingPromptPayload).toContain("around four short paragraphs");
     expect(thinkingPromptPayload).toContain("Do not answer the user");
@@ -8473,6 +8473,97 @@ describe("CHAT-02: shared user message queue", () => {
     }
 
     await cancelChatRun(actor, runId);
+  }, 90_000);
+
+  it("persists user-forwarded run provenance across chat threads", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const source = await sendChatRun(actor, {
+      agentId,
+      prompt: "source content selected for forwarding",
+    });
+    const targetThread = await chat.createThread(actor, { agentId });
+    const forwardedEventId = randomUUID();
+    const forwarded = await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: targetThread.id,
+        clientEventId: forwardedEventId,
+        prompt: "Forwarded content:\n\n> deployment window is fifteen minutes",
+        sourceRunId: source.runId,
+      },
+      [201],
+    );
+    if (forwarded.status !== 201 || !forwarded.body.runId) {
+      throw new Error("Expected the forwarded prompt to launch a run");
+    }
+    const forwardedRunId = forwarded.body.runId;
+
+    const targetMessages = await waitForThreadMessages(
+      actor,
+      targetThread.id,
+      (events) => {
+        return userMessages(events).some((event) => {
+          return event.id === forwardedEventId;
+        });
+      },
+    );
+    const forwardedInput = userMessages(targetMessages.events).find(
+      (event): event is PromptMessage => {
+        return (
+          event.eventType === "input.prompt" && event.id === forwardedEventId
+        );
+      },
+    );
+    expect(forwardedInput?.userMessage.parts).toContainEqual({
+      type: "source",
+      kind: "agent",
+      runId: source.runId,
+      threadId: source.threadId,
+      agentId,
+      titleSnapshot: "New thread",
+      href: `/chats/${source.threadId}#run-${source.runId}`,
+    });
+
+    const forwardedRun = await api.readRun(actor, forwardedRunId);
+    const forwardedSystemPrompt = forwardedRun.appendSystemPrompt ?? "";
+    expect(forwardedSystemPrompt).toContain("# This Run's Trigger");
+    expect(forwardedSystemPrompt).toContain(`SOURCE_RUN_ID: ${source.runId}`);
+    expect(forwardedSystemPrompt).toContain(
+      `SOURCE_THREAD_ID: ${source.threadId}`,
+    );
+    await expect(
+      readRunAutonomyBudgetFixture(context, source.runId),
+    ).resolves.toBe(10);
+    await expect(
+      readRunAutonomyBudgetFixture(context, forwardedRunId),
+    ).resolves.toBe(9);
+
+    const unknownSource = await chat.requestSendEvent(
+      actor,
+      {
+        agentId,
+        threadId: targetThread.id,
+        clientEventId: randomUUID(),
+        prompt: "forwarded with unknown provenance",
+        sourceRunId: randomUUID(),
+      },
+      [400],
+    );
+    expect(unknownSource).toMatchObject({
+      status: 400,
+      body: {
+        error: {
+          code: "BAD_REQUEST",
+          message: "Forward source run not found",
+        },
+      },
+    });
+
+    await cancelChatRun(actor, forwardedRunId);
+    await cancelChatRun(actor, source.runId);
   }, 90_000);
 
   it("persists agent-run provenance for messages sent across chat threads", async () => {
