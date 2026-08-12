@@ -636,4 +636,55 @@ describe("Pi DeepSeek provider", () => {
       await rm(root, { recursive: true, force: true });
     }
   });
+
+  it("propagates parent cancellation while result persistence is pending", async () => {
+    const root = await mkdtemp(join(tmpdir(), "pi-persistence-cancel-"));
+    const initialPath = join(root, "initial.txt");
+    await writeFile(initialPath, "initial tool result\n");
+    const env = new NodeExecutionEnv({ cwd: root });
+    const controller = new AbortController();
+    const persistenceStarted = new AbortController();
+
+    try {
+      const messagesPromise = runPiAgentResume(
+        {
+          model: {
+            provider: "deepseek",
+            baseUrl: DEEPSEEK_BASE_URL,
+            apiKey: "sk-deepseek-pi-responses",
+            model: "deepseek-v4-flash",
+          },
+          systemPrompt: "You are a test Pi agent.",
+          messages: [
+            assistantToolMessage({
+              id: "initial-read|fc_initial-read",
+              name: "read",
+              arguments: { path: initialPath },
+            }),
+          ],
+          executionEnv: env,
+          onEvent(event) {
+            if (
+              event.type === "message_end" &&
+              event.message.role === "toolResult"
+            ) {
+              persistenceStarted.abort();
+              return new Promise<never>(() => {});
+            }
+          },
+        },
+        controller.signal,
+      );
+
+      await waitForAbort(persistenceStarted);
+      const reason = new Error("parent cancelled pending persistence");
+      reason.name = "AbortError";
+      controller.abort(reason);
+
+      await expect(messagesPromise).rejects.toBe(reason);
+    } finally {
+      await env.cleanup();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
 });

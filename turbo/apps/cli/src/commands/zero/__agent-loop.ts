@@ -34,6 +34,7 @@ export const zeroAgentLoopCommand = new Command()
       const error = new Error("Pi agent loop received SIGTERM");
       error.name = "AbortError";
       abortController.abort(error);
+      io.close();
     };
     process.once("SIGTERM", abortOnSigterm);
     try {
