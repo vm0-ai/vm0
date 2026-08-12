@@ -133,7 +133,7 @@ runner_e2e_wait_for_run_status() {
                     ;;
             esac
         fi
-        sleep 2
+        sleep "${RUNNER_RUN_POLL_INTERVAL_SECONDS:-2}"
     done
 
     echo "Timed out waiting for run ${run_id} to reach ${expected_status@Q}" >&2
@@ -205,7 +205,7 @@ runner_e2e_wait_for_chat_event() {
             printf '%s\n' "$last_events"
             return 0
         fi
-        sleep 2
+        sleep "${RUNNER_RUN_POLL_INTERVAL_SECONDS:-2}"
     done
 
     echo "Timed out waiting for ${event_type@Q} for run ${run_id}" >&2
@@ -242,7 +242,7 @@ runner_e2e_wait_for_usage_event() {
             printf '%s\n' "$last_events"
             return 0
         fi
-        sleep 2
+        sleep "${RUNNER_RUN_POLL_INTERVAL_SECONDS:-2}"
     done
 
     echo "Timed out waiting for vm0 usage from ${provider@Q} for run ${run_id}" >&2
@@ -281,7 +281,7 @@ runner_e2e_wait_for_usage_record() {
             printf '%s\n' "$last_record"
             return 0
         fi
-        sleep 2
+        sleep "${RUNNER_RUN_POLL_INTERVAL_SECONDS:-2}"
     done
 
     echo "Timed out waiting for the usage record for thread ${thread_id}" >&2
@@ -317,7 +317,7 @@ runner_e2e_assert_no_usage_for_thread() {
         if ((SECONDS - started_at >= observation_seconds)); then
             break
         fi
-        sleep 2
+        sleep "${RUNNER_RUN_POLL_INTERVAL_SECONDS:-2}"
     done
 
     jq -cn --arg runId "$run_id" --arg threadId "$thread_id" \
@@ -397,7 +397,7 @@ runner_e2e_wait_for_chat_text() {
             printf '%s\n' "$matched_text"
             return 0
         fi
-        sleep 2
+        sleep "${RUNNER_RUN_POLL_INTERVAL_SECONDS:-2}"
     done
 
     echo "Timed out waiting for ${expected@Q} in chat output for run ${run_id}" >&2
@@ -443,7 +443,7 @@ runner_e2e_wait_for_active_chat_text() {
                     ;;
             esac
         fi
-        sleep 2
+        sleep "${RUNNER_RUN_POLL_INTERVAL_SECONDS:-2}"
     done
 
     echo "Timed out waiting for active-run ${expected@Q} in chat events for run ${run_id}" >&2
@@ -480,7 +480,7 @@ runner_e2e_wait_for_firewall_log() {
             printf '%s\n' "$last_logs"
             return 0
         fi
-        sleep 2
+        sleep "${RUNNER_RUN_POLL_INTERVAL_SECONDS:-2}"
     done
 
     echo "Timed out waiting for firewall ${firewall_name@Q} on ${host@Q} for run ${run_id}" >&2
@@ -529,7 +529,7 @@ runner_e2e_wait_for_firewall_transition() {
             printf '%s\n' "$last_logs"
             return 0
         fi
-        sleep 2
+        sleep "${RUNNER_RUN_POLL_INTERVAL_SECONDS:-2}"
     done
 
     echo "Timed out waiting for firewall transition ${firewall_name@Q} on ${url@Q} for run ${run_id}" >&2

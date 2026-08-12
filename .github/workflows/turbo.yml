@@ -3591,8 +3591,9 @@ jobs:
 
           RUNNER_START_SUCCEEDED=1
 
-  # Build one balanced shard plan shared by both API runtimes. Each runtime
-  # applies its own safe concurrency limit when executing the plan.
+  # Keep Vercel's balanced parallel plan while splitting the serialized Worker
+  # plan to one file per job. A Worker file must still pass the existing BATS
+  # timeout, and no Worker job can exceed the existing aggregate job timeout.
   cli-e2e-03-runner-shards:
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -3602,6 +3603,7 @@ jobs:
       needs.prepare.outputs.turbo-runner-consumer-needed == 'true'
     outputs:
       matrix: ${{ steps.shards.outputs.matrix }}
+      cloudflare-matrix: ${{ steps.shards.outputs.cloudflare-matrix }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
@@ -3635,7 +3637,38 @@ jobs:
               (.files | type == "array" and length > 0)
             )
           ' <<<"$matrix" >/dev/null
+
+          cloudflare_matrix="$(jq -c '
+            [
+              .include[] as $shard |
+              $shard.files[] |
+              {
+                credentialLane: $shard.credentialLane,
+                credentialIndex: $shard.credentialIndex,
+                files: [.],
+                weight: $shard.weight
+              }
+            ] as $files |
+            ($files | length) as $total |
+            {
+              include: [
+                $files | to_entries[] |
+                .value + {index: (.key + 1), total: $total}
+              ]
+            }
+          ' <<<"$matrix")"
+          jq -e '
+            (.include | length) > 7 and
+            (.include | length) == (.include[0].total) and
+            all(.include[];
+              (.index | type == "number" and . >= 1) and
+              (.total | type == "number") and
+              (.credentialIndex | type == "number" and . >= 1 and . <= 4) and
+              (.files | type == "array" and length == 1)
+            )
+          ' <<<"$cloudflare_matrix" >/dev/null
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+          echo "cloudflare-matrix=$cloudflare_matrix" >> "$GITHUB_OUTPUT"
 
   # Prepare isolated identities and API credentials for each runtime after the
   # browser-level Playwright load has drained. Both API runtimes still run in
@@ -4061,7 +4094,7 @@ jobs:
     strategy:
       fail-fast: false
       max-parallel: 1
-      matrix: ${{ fromJSON(needs.cli-e2e-03-runner-shards.outputs.matrix) }}
+      matrix: ${{ fromJSON(needs.cli-e2e-03-runner-shards.outputs.cloudflare-matrix) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -4073,6 +4106,7 @@ jobs:
           shard-index: ${{ matrix.index }}
           shard-total: ${{ matrix.total }}
           test-files-json: ${{ toJSON(matrix.files) }}
+          poll-interval-seconds: "8"
           cf-access-client-id: ${{ secrets.CF_API_PREVIEW_ACCESS_CLIENT_ID }}
           cf-access-client-secret: ${{ secrets.CF_API_PREVIEW_ACCESS_CLIENT_SECRET }}
           vercel-automation-bypass-secret: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}

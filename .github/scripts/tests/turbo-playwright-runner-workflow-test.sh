@@ -6,8 +6,9 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 WORKFLOW="${REPO_ROOT}/.github/workflows/turbo.yml"
 RUNNER_TESTS="${REPO_ROOT}/e2e/tests/03-runner"
 RUNNER_CHAT_HELPER="${REPO_ROOT}/e2e/helpers/runner-chat.bash"
+RUNNER_API_HELPER="${REPO_ROOT}/e2e/helpers/runner-api.bash"
 RUNNER_HELPERS=(
-  "${REPO_ROOT}/e2e/helpers/runner-api.bash"
+  "$RUNNER_API_HELPER"
   "$RUNNER_CHAT_HELPER"
 )
 RUNNER_TOKEN="${REPO_ROOT}/e2e/playwright/runner-token.ts"
@@ -101,10 +102,12 @@ unless runner_vercel.dig("strategy", "max-parallel") == 7
   raise "Vercel runner E2E must retain per-shard parallelism"
 end
 expected_matrix = "${{ fromJSON(needs.cli-e2e-03-runner-shards.outputs.matrix) }}"
-unless [runner, runner_vercel].all? do |runtime_runner|
-    runtime_runner.dig("strategy", "matrix") == expected_matrix
-  end
-  raise "both runner E2E runtimes must use the generated shard matrix"
+expected_cloudflare_matrix = "${{ fromJSON(needs.cli-e2e-03-runner-shards.outputs.cloudflare-matrix) }}"
+unless runner.dig("strategy", "matrix") == expected_cloudflare_matrix
+  raise "Cloudflare runner E2E must use the one-file Worker matrix"
+end
+unless runner_vercel.dig("strategy", "matrix") == expected_matrix
+  raise "Vercel runner E2E must use the balanced seven-shard matrix"
 end
 expected_runtimes = %w[cloudflare vercel]
 unless runner_start.dig("strategy", "matrix", "runtime") == expected_runtimes
@@ -204,6 +207,10 @@ end
 unless shard_plan.dig("outputs", "matrix") == "${{ steps.shards.outputs.matrix }}"
   raise "runner E2E shard planning must expose the generated matrix"
 end
+unless shard_plan.dig("outputs", "cloudflare-matrix") ==
+    "${{ steps.shards.outputs.cloudflare-matrix }}"
+  raise "runner E2E shard planning must expose the one-file Worker matrix"
+end
 
 shard_generation_step = shard_plan.fetch("steps").find do |step|
   step["name"] == "Generate runner E2E shard matrix"
@@ -216,8 +223,10 @@ unless shard_generation_step["id"] == "shards" &&
     shard_generation_script.include?('length == 7') &&
     shard_generation_script.include?('.total | type == "number" and . == 7') &&
     shard_generation_script.include?('.credentialLane == "limited-free" or .credentialLane == "codex" or .credentialLane == "claude"') &&
-    shard_generation_script.include?('echo "matrix=$matrix" >> "$GITHUB_OUTPUT"')
-  raise "runner E2E shard generation must emit one shared seven-shard plan"
+    shard_generation_script.include?('(.files | type == "array" and length == 1)') &&
+    shard_generation_script.include?('echo "matrix=$matrix" >> "$GITHUB_OUTPUT"') &&
+    shard_generation_script.include?('echo "cloudflare-matrix=$cloudflare_matrix" >> "$GITHUB_OUTPUT"')
+  raise "runner E2E shard generation must emit balanced Vercel and one-file Worker plans"
 end
 
 token_step = account_prepare.fetch("steps").find do |step|
@@ -446,6 +455,7 @@ expected_shard_inputs = {
   end
 end
 unless cloudflare_invocation.dig("with", "runtime") == "cloudflare" &&
+    cloudflare_invocation.dig("with", "poll-interval-seconds") == "8" &&
     cloudflare_invocation.dig("with", "cf-access-client-id") ==
       "${{ secrets.CF_API_PREVIEW_ACCESS_CLIENT_ID }}" &&
     cloudflare_invocation.dig("with", "cf-access-client-secret") ==
@@ -453,6 +463,7 @@ unless cloudflare_invocation.dig("with", "runtime") == "cloudflare" &&
   raise "Cloudflare runner E2E must receive Access credentials"
 end
 unless vercel_invocation.dig("with", "runtime") == "vercel" &&
+    !vercel_invocation.fetch("with").key?("poll-interval-seconds") &&
     !vercel_invocation.fetch("with").key?("cf-access-client-id") &&
     !vercel_invocation.fetch("with").key?("cf-access-client-secret")
   raise "Vercel runner E2E must omit Cloudflare Access credentials"
@@ -491,6 +502,10 @@ end
 unless run_step.dig("env", "VERCEL_AUTOMATION_BYPASS_SECRET") ==
     "${{ inputs.vercel-automation-bypass-secret }}"
   raise "runner E2E tests must receive the preview bypass secret"
+end
+unless run_step.dig("env", "RUNNER_RUN_POLL_INTERVAL_SECONDS") ==
+    "${{ inputs.poll-interval-seconds }}"
+  raise "runner E2E tests must receive the runtime polling interval"
 end
 expected_action_access_environment = {
   "CF_ACCESS_CLIENT_ID" => "${{ inputs.cf-access-client-id }}",
@@ -587,5 +602,11 @@ grep -Fq 'CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET' "$RUNNER_CHAT_HELPE
   fail "runner API helper must send the Cloudflare Access client secret"
 grep -Fq 'Cloudflare Access credentials must be configured together' "$RUNNER_CHAT_HELPER" ||
   fail "runner API helper must reject partial Cloudflare Access credentials"
+if grep -Fq 'sleep 2' "$RUNNER_API_HELPER"; then
+  fail "runner API polling must honor the runtime interval"
+fi
+if [[ "$(grep -Fc 'sleep "${RUNNER_RUN_POLL_INTERVAL_SECONDS:-2}"' "$RUNNER_API_HELPER")" -ne 9 ]]; then
+  fail "every runner API polling loop must honor the runtime interval"
+fi
 
 echo "turbo-playwright-runner-workflow-test: ok"

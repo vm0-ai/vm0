@@ -17,6 +17,10 @@ inputs:
   test-files-json:
     description: "JSON array of BATS test files assigned to the shard"
     required: true
+  poll-interval-seconds:
+    description: "Seconds between API polling attempts"
+    required: false
+    default: "2"
   cf-access-client-id:
     description: "Cloudflare Access service token client ID"
     required: false
@@ -122,6 +126,7 @@ runs:
         E2E_RUNNER_RUNTIME: ${{ inputs.runtime }}
         E2E_RUNNER_SHARD_INDEX: ${{ inputs.shard-index }}
         E2E_RUNNER_TEST_FILES_JSON: ${{ inputs.test-files-json }}
+        RUNNER_RUN_POLL_INTERVAL_SECONDS: ${{ inputs.poll-interval-seconds }}
         CF_ACCESS_CLIENT_ID: ${{ inputs.cf-access-client-id }}
         CF_ACCESS_CLIENT_SECRET: ${{ inputs.cf-access-client-secret }}
         VERCEL_AUTOMATION_BYPASS_SECRET: ${{ inputs.vercel-automation-bypass-secret }}
