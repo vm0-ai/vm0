@@ -11,6 +11,10 @@ import { usagePricing } from "@vm0/db/schema/usage-pricing";
 import { and, eq } from "drizzle-orm";
 
 import { logger } from "../../lib/log";
+import {
+  resolveUsagePricingProvider,
+  usagePricingResolution$,
+} from "../context/usage-pricing-resolution";
 import { db$, writeDb$ } from "../external/db";
 import { safeJsonParse } from "../utils";
 import { checkBillableOperationCredits$ } from "./billable-operation-admission.service";
@@ -251,6 +255,11 @@ export const avatarVideoPricing$: Computed<
   Promise<AvatarVideoPricingRow | null>
 > = computed(async (get): Promise<AvatarVideoPricingRow | null> => {
   const db = get(db$);
+  const provider = resolveUsagePricingProvider(
+    get(usagePricingResolution$),
+    "video",
+    JOGGAI_AVATAR_VIDEO_MODEL,
+  );
   const [row] = await db
     .select({
       provider: usagePricing.provider,
@@ -262,7 +271,7 @@ export const avatarVideoPricing$: Computed<
     .where(
       and(
         eq(usagePricing.kind, "video"),
-        eq(usagePricing.provider, JOGGAI_AVATAR_VIDEO_MODEL),
+        eq(usagePricing.provider, provider),
         eq(usagePricing.category, JOGGAI_AVATAR_VIDEO_PRICING_CATEGORY),
       ),
     )

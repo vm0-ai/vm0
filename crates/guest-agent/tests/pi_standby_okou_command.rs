@@ -14,7 +14,7 @@ use std::os::unix::fs::PermissionsExt;
 
 #[tokio::test]
 async fn pi_standby_launches_canonical_okou_entrypoint() -> Result<(), Box<dyn std::error::Error>> {
-    const PACKAGE_URL: &str = "https://static.vm0.io/okou-cli/dual-entry-test/package.tgz";
+    const PACKAGE_URL: &str = "https://static.vm0.io/okou-cli/okou-only-test/package.tgz";
     const SYSTEM_PROMPT: &str = "fixed Pi command-boundary prompt";
     const SKILL_DIGEST: &str = "sha256:pi-command-boundary-snapshot";
 

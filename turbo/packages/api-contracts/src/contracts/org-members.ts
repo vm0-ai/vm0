@@ -29,6 +29,7 @@ export const orgPendingInvitationSchema = z.object({
   email: z.string(),
   role: orgRoleSchema,
   createdAt: z.string(),
+  usagePackUsd: usagePackUsdSchema.optional(),
 });
 export type OrgPendingInvitation = z.infer<typeof orgPendingInvitationSchema>;
 
@@ -90,19 +91,25 @@ export type InviteOrgMemberRequest = z.infer<
   typeof inviteOrgMemberRequestSchema
 >;
 
-export const purchaseOrgInvitationRequestSchema =
+export const previewOrgInvitationPurchaseRequestSchema =
   inviteOrgMemberRequestSchema.extend({
     usagePackUsd: usagePackUsdSchema,
-    successUrl: z.string().url().max(5000),
-    cancelUrl: z.string().url().max(5000),
   });
-export type PurchaseOrgInvitationRequest = z.infer<
-  typeof purchaseOrgInvitationRequestSchema
->;
 
-export const orgInvitationCheckoutResponseSchema = z.object({
-  url: z.string().url(),
+export const orgInvitationPurchasePreviewResponseSchema = z.object({
+  purchaseId: z.uuid(),
+  usagePackUsd: usagePackUsdSchema,
+  immediateAmountCents: z.number().int().positive(),
+  currency: z.string().length(3),
+  purchasedCredits: z.number().int().nonnegative(),
+  bonusCredits: z.number().int().nonnegative(),
+  totalCredits: z.number().int().positive(),
+  currentPeriodEnd: z.iso.datetime(),
+  expiresAt: z.iso.datetime(),
 });
+export type OrgInvitationPurchasePreviewResponse = z.infer<
+  typeof orgInvitationPurchasePreviewResponseSchema
+>;
 
 /**
  * Remove member request schema

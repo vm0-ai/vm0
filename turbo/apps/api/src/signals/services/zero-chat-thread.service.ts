@@ -14,7 +14,10 @@ import {
   type PersistedAttachment,
   type UserMessageDocument,
   type UserMessageInputDocument,
+  type ZeroIndicator,
+  type ZeroIndicators,
   persistedAttachmentSchema,
+  zeroIndicatorSchema,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { chatEventFromRow } from "@vm0/api-contracts/contracts/chat-event-row-projection";
 import type { ChatEventRowV4 } from "@vm0/api-contracts/contracts/chat-event-rows";
@@ -40,7 +43,7 @@ import {
 } from "@vm0/db/schema/run-uploaded-file";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { alias } from "drizzle-orm/pg-core";
+import { alias, unionAll } from "drizzle-orm/pg-core";
 import {
   and,
   asc,
@@ -67,6 +70,7 @@ import {
   nullableDriverValueDecoder,
   pgBooleanDecoder,
   pgIntegerDecoder,
+  zodEnumDriverValueDecoder,
 } from "../../lib/db-structured-result";
 import { type Db, db$, type ReadonlyDb, writeDb$ } from "../external/db";
 import {
@@ -345,6 +349,7 @@ function toChatEvent(row: ChatEventRow): ChatEvent {
 }
 
 const ACTIVE_RUN_STATUSES = ["queued", "pending", "running"] as const;
+const zeroIndicatorDecoder = zodEnumDriverValueDecoder(zeroIndicatorSchema);
 
 function noActiveRunsForCurrentThreadCondition(db: Pick<Db, "select">): SQL {
   return notExists(
@@ -518,6 +523,98 @@ export function zeroChatThreadUnreadThreadIds(args: {
     return rows.map((row) => {
       return row.threadId;
     });
+  });
+}
+
+/**
+ * Active and unread indicators for the user's agents and threads in the
+ * current organization. Active threads are computed once and reused to keep
+ * unread classification and indicator precedence within one database snapshot.
+ */
+export function zeroChatIndicators(args: {
+  readonly userId: string;
+  readonly orgId: string;
+}): Computed<Promise<ZeroIndicators>> {
+  return computed(async (get): Promise<ZeroIndicators> => {
+    const db = get(db$);
+    const activeThreads = db.$with("active_threads").as(
+      db
+        .selectDistinct({
+          threadId: chatThreads.id,
+          agentId: chatThreads.agentComposeId,
+        })
+        .from(zeroRuns)
+        .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
+        .innerJoin(chatThreads, eq(chatThreads.id, zeroRuns.chatThreadId))
+        .innerJoin(zeroAgents, eq(zeroAgents.id, chatThreads.agentComposeId))
+        .where(
+          and(
+            eq(chatThreads.userId, args.userId),
+            eq(zeroAgents.orgId, args.orgId),
+            inArray(agentRuns.status, [...ACTIVE_RUN_STATUSES]),
+          ),
+        ),
+    );
+    const lastRunFinish = latestRunFinishEventSubquery(db, chatThreads.id);
+    const unreadThreads = db.$with("unread_threads").as(
+      db
+        .select({
+          threadId: chatThreads.id,
+          agentId: chatThreads.agentComposeId,
+        })
+        .from(chatThreads)
+        .innerJoin(zeroAgents, eq(zeroAgents.id, chatThreads.agentComposeId))
+        .leftJoin(activeThreads, eq(activeThreads.threadId, chatThreads.id))
+        .crossJoinLateral(lastRunFinish)
+        .where(
+          and(
+            eq(chatThreads.userId, args.userId),
+            eq(zeroAgents.orgId, args.orgId),
+            isNull(activeThreads.threadId),
+            or(
+              isNull(chatThreads.lastReadAt),
+              gt(lastRunFinish.createdAt, chatThreads.lastReadAt),
+            ),
+            noActiveGoalsForCurrentThreadCondition(db),
+          ),
+        ),
+    );
+    const indicatorRows = db.$with("indicator_rows").as(
+      unionAll(
+        db
+          .select({
+            threadId: activeThreads.threadId,
+            agentId: activeThreads.agentId,
+            indicator: sql`'active'`
+              .mapWith(zeroIndicatorDecoder)
+              .as("indicator"),
+          })
+          .from(activeThreads),
+        db
+          .select({
+            threadId: unreadThreads.threadId,
+            agentId: unreadThreads.agentId,
+            indicator: sql`'unread'`
+              .mapWith(zeroIndicatorDecoder)
+              .as("indicator"),
+          })
+          .from(unreadThreads),
+      ),
+    );
+    const rows = await db
+      .with(activeThreads, unreadThreads, indicatorRows)
+      .select()
+      .from(indicatorRows);
+
+    const agents: Record<string, ZeroIndicator> = {};
+    const threads: Record<string, ZeroIndicator> = {};
+    for (const row of rows) {
+      threads[row.threadId] = row.indicator;
+      if (row.indicator === "active" || agents[row.agentId] === undefined) {
+        agents[row.agentId] = row.indicator;
+      }
+    }
+    return { agents, threads };
   });
 }
 

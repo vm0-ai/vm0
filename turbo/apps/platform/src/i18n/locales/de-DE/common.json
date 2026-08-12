@@ -1665,6 +1665,10 @@
       "checkingLimit": "Überprüfung des Spracheingabelimits",
       "input": "Spracheingabe",
       "inputLimitReached": "Das Limit für die Spracheingabe wurde erreicht. Für höhere Limits upgraden Sie auf Pro oder Team.",
+      "inputLimitReachedMember": "Das Limit für die Spracheingabe wurde erreicht. Bitten Sie einen Arbeitsbereichsadministrator um ein Upgrade für höhere Limits.",
+      "inputLimitReachedPro": "Das Limit für die Spracheingabe wurde erreicht. Für höhere Limits upgraden Sie auf Team.",
+      "inputLimitReachedProMember": "Das Limit für die Spracheingabe wurde erreicht. Bitten Sie einen Arbeitsbereichsadministrator um ein Upgrade auf Team, um höhere Limits zu erhalten.",
+      "inputLimitReachedReset": "Das Limit für die Spracheingabe wurde erreicht. Bitte warten Sie, bis Ihr Limit zurückgesetzt wird.",
       "microphoneAccessDenied": "Der Zugriff auf das Mikrofon wurde verweigert. Erlauben Sie den Mikrofonzugriff und versuchen Sie es erneut.",
       "openingMicrophone": "Mikrofon öffnen...",
       "starting": "Spracheingabe starten",
@@ -4459,9 +4463,20 @@
           "emailPlaceholder": "email@example.com",
           "invalidEmail": "Bitte geben Sie eine gültige E-Mail-Adresse ein",
           "progress": "Senden...",
+          "purchase": {
+            "description": "Prüfen Sie die unten aufgeführte anteilige Gebühr. Mit der Bestätigung wird Ihre gespeicherte Zahlungsmethode belastet und die Einladung gesendet.",
+            "error": "Dieses Mitgliederpaket konnte nicht gekauft werden. Prüfen Sie Ihre Zahlungsdaten und versuchen Sie es erneut.",
+            "invitee": "Eingeladene Person",
+            "title": "Einladung prüfen"
+          },
           "roleLabel": "Rolle",
           "send": "Einladung senden",
-          "title": "Mitglied einladen"
+          "title": "Mitglied einladen",
+          "upgrade": {
+            "action": "Auf Pro upgraden",
+            "description": "Mitgliedereinladungen sind im Pro-Tarif verfügbar. Führen Sie für diesen Arbeitsbereich ein Upgrade durch, um Personen einzuladen und ihre Rollen zu verwalten.",
+            "title": "Upgrade zum Einladen von Mitgliedern"
+          }
         },
         "joined": "Beigetreten",
         "joinRequests": "Beitrittsanfragen",

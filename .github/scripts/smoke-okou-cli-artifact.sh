@@ -16,12 +16,25 @@ package_path="$(cd "$(dirname "$package_path")" && pwd -P)/$(basename "$package_
 tmp_dir="$(mktemp -d)"
 trap 'rm -rf "$tmp_dir"' EXIT
 
+node_path="$(command -v node)"
+npx_path="$(command -v npx)"
+clean_bin="${tmp_dir}/bin"
+mkdir -p "$clean_bin"
+ln -s "$node_path" "$clean_bin/node"
+clean_path="${clean_bin}:/usr/bin:/bin"
+
+if PATH="$clean_path" command -v zero >/dev/null 2>&1; then
+  echo "Clean CLI smoke environment unexpectedly contains zero" >&2
+  exit 1
+fi
+
 run_cli() {
   local entrypoint="$1"
   local stdout_file="$2"
   local stderr_file="$3"
   shift 3
-  npx --yes --package="$package_path" "$entrypoint" "$@" \
+  PATH="$clean_path" "$node_path" "$npx_path" \
+    --yes --package="$package_path" "$entrypoint" "$@" \
     >"$stdout_file" 2>"$stderr_file"
 }
 
@@ -45,19 +58,37 @@ assert_clean_success() {
   fi
 }
 
+assert_unsupported_entrypoint() {
+  local entrypoint="$1"
+  local output_name="$2"
+  shift 2
+  local status=0
+  run_cli \
+    "$entrypoint" \
+    "$tmp_dir/${output_name}.stdout" \
+    "$tmp_dir/${output_name}.stderr" \
+    "$@" || status=$?
+  if ((status == 0)); then
+    echo "Unsupported CLI entry point unexpectedly succeeded: $entrypoint $*" >&2
+    exit 1
+  fi
+  if grep -Fq "Usage: okou" \
+    "$tmp_dir/${output_name}.stdout" \
+    "$tmp_dir/${output_name}.stderr"; then
+    echo "Unsupported CLI entry point reached the Okou implementation: $entrypoint $*" >&2
+    exit 1
+  fi
+}
+
 assert_clean_success okou okou-help --help
-assert_clean_success zero zero-help --help # okou-cutover-audit: compatibility-only
-cmp "$tmp_dir/okou-help.stdout" "$tmp_dir/zero-help.stdout"
 grep -Fq "Usage: okou" "$tmp_dir/okou-help.stdout"
 grep -Fq "Okou CLI" "$tmp_dir/okou-help.stdout"
 
 assert_clean_success okou okou-version --version
-assert_clean_success zero zero-version --version # okou-cutover-audit: compatibility-only
-cmp "$tmp_dir/okou-version.stdout" "$tmp_dir/zero-version.stdout"
 grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+' "$tmp_dir/okou-version.stdout"
 
-assert_clean_success zero zero-agent-loop-help __agent-loop --help # okou-cutover-audit: compatibility-only
-grep -Fq -- "--standby" "$tmp_dir/zero-agent-loop-help.stdout"
+assert_clean_success okou okou-agent-loop-help __agent-loop --help
+grep -Fq -- "--standby" "$tmp_dir/okou-agent-loop-help.stdout"
 
 okou_error_status=0
 run_cli \
@@ -65,21 +96,11 @@ run_cli \
   "$tmp_dir/okou-error.stdout" \
   "$tmp_dir/okou-error.stderr" \
   __unsupported-command || okou_error_status=$?
-zero_error_status=0
-run_cli \
-  zero \
-  "$tmp_dir/zero-error.stdout" \
-  "$tmp_dir/zero-error.stderr" \
-  __unsupported-command || zero_error_status=$?
-if ((okou_error_status == 0 || zero_error_status == 0)); then
+if ((okou_error_status == 0)); then
   echo "Unsupported CLI command unexpectedly succeeded" >&2
   exit 1
 fi
-if ((okou_error_status != zero_error_status)); then
-  echo "Okou and Zero alias exit codes differ" >&2
-  exit 1
-fi
-cmp "$tmp_dir/okou-error.stdout" "$tmp_dir/zero-error.stdout"
-cmp "$tmp_dir/okou-error.stderr" "$tmp_dir/zero-error.stderr"
 
-echo "Smoke-tested canonical okou and temporary zero CLI entry points"
+assert_unsupported_entrypoint zero zero-help --help
+
+echo "Smoke-tested the canonical okou CLI and unsupported zero boundary"

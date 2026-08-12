@@ -12,7 +12,10 @@ import {
   zeroOrgMembersContract,
   zeroOrgMembershipRequestsContract,
 } from "@vm0/api-contracts/contracts/zero-org-members";
-import type { OrgRole } from "@vm0/api-contracts/contracts/org-members";
+import type {
+  OrgInvitationPurchasePreviewResponse,
+  OrgRole,
+} from "@vm0/api-contracts/contracts/org-members";
 import type { UsagePackUsd } from "@vm0/api-contracts/contracts/zero-billing";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { toast } from "@vm0/ui/components/ui/sonner";
@@ -278,6 +281,24 @@ export const setInviteUsagePackUsd$ = command(
     set(internalInviteUsagePackUsd$, value);
   },
 );
+
+interface InvitePurchasePreview {
+  readonly email: string;
+  readonly role: OrgRole;
+  readonly payment: OrgInvitationPurchasePreviewResponse;
+}
+
+const internalInvitePurchasePreview$ = state<InvitePurchasePreview | null>(
+  null,
+);
+
+export const invitePurchasePreview$ = computed((get) => {
+  return get(internalInvitePurchasePreview$);
+});
+
+export const closeInvitePurchasePreview$ = command(({ set }) => {
+  set(internalInvitePurchasePreview$, null);
+});
 
 export const memberUsagePackManagement$ = computed((get) => {
   if (!get(featureSwitch$)[FeatureSwitchKey.UsagePackPlans]) {
@@ -545,24 +566,24 @@ export const inviteMember$ = command(
     const createClient = get(zeroClient$);
     const client = createClient(zeroOrgInviteContract);
     if (usagePackUsd !== null) {
-      const successUrl = new URL(window.location.href);
-      successUrl.searchParams.set("invitation", "payment-success");
-      const cancelUrl = new URL(window.location.href);
       const result = await accept(
-        client.purchase({
+        client.previewPurchase({
           body: {
             email,
             role,
             usagePackUsd,
-            successUrl: successUrl.toString(),
-            cancelUrl: cancelUrl.toString(),
           },
           fetchOptions: { signal },
         }),
         [200],
       );
       signal.throwIfAborted();
-      window.location.href = result.body.url;
+      set(internalInvitePurchasePreview$, {
+        email,
+        role,
+        payment: result.body,
+      });
+      set(internalInviteDialogOpen$, false);
       return;
     }
     await accept(
@@ -586,6 +607,41 @@ export const inviteMember$ = command(
     set(internalInviteEmail$, "");
     set(internalInviteRole$, "member");
     set(internalInviteUsagePackUsd$, 20);
+  },
+);
+
+export const confirmInvitePurchase$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const preview = get(internalInvitePurchasePreview$);
+    if (!preview) {
+      throw new Error("Invitation purchase preview is not open");
+    }
+    const createClient = get(zeroClient$);
+    const client = createClient(zeroOrgInviteContract);
+    await accept(
+      client.confirmPurchase({
+        params: { purchaseId: preview.payment.purchaseId },
+        body: {},
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    toast.success(
+      i18n.t(
+        ($) => {
+          return $.settings.workspace.toasts.invitationSent;
+        },
+        { email: preview.email },
+      ),
+    );
+    set(internalInvitePurchasePreview$, null);
+    set(internalInviteEmail$, "");
+    set(internalInviteRole$, "member");
+    set(internalInviteUsagePackUsd$, 20);
+    set(refreshOrgMembers$);
+    set(reloadUsagePackManagement$);
+    set(reloadBillingStatus$);
   },
 );
 

@@ -37,6 +37,7 @@ import {
   encryptQueuedRunnerJobPayload,
   queuedRunnerJobPayload,
 } from "../services/agent-run-queue-payload.service";
+import { cleanupSandboxes$ } from "../services/cron-cleanup-sandboxes.service";
 import { insertChatEvent } from "../services/zero-chat-event.service";
 import {
   isTestEndpointAllowed,
@@ -44,6 +45,9 @@ import {
 } from "./test-endpoint-helpers";
 
 const actionBody$ = bodyResultOf(testCronCleanupSandboxesStateContract.action);
+const cleanupBody$ = bodyResultOf(
+  testCronCleanupSandboxesStateContract.cleanup,
+);
 
 function actionOk(extra: Record<string, unknown> = {}) {
   return {
@@ -190,7 +194,7 @@ async function seedRunForAction(
         "cancellation_recovery_completed",
       ),
     })
-    .returning({ id: agentRuns.id });
+    .returning({ id: agentRuns.id, sandboxId: agentRuns.sandboxId });
   signal.throwIfAborted();
   if (!run) {
     return actionBadRequest("failed to seed run");
@@ -205,6 +209,7 @@ async function seedRunForAction(
 
   return actionOk({
     run_id: run.id,
+    sandbox_id: run.sandboxId,
     session_id: session.id,
     compose_id: compose.id,
     version_id: agentComposeVersionId,
@@ -971,9 +976,32 @@ const mutateTestCronCleanupSandboxesState$ = command(
   },
 );
 
+const cleanupTestCronCleanupSandboxesState$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    if (!isTestEndpointAllowed(get(request$))) {
+      return testEndpointNotFoundResponse();
+    }
+    const bodyResult = await get(cleanupBody$);
+    signal.throwIfAborted();
+    if (!bodyResult.ok) {
+      return bodyResult.response;
+    }
+    const body = await set(
+      cleanupSandboxes$,
+      { kind: "fixtures", ...bodyResult.data },
+      signal,
+    );
+    return { status: 200 as const, body };
+  },
+);
+
 export const testCronCleanupSandboxesStateRoutes: readonly RouteEntry[] = [
   {
     route: testCronCleanupSandboxesStateContract.action,
     handler: mutateTestCronCleanupSandboxesState$,
+  },
+  {
+    route: testCronCleanupSandboxesStateContract.cleanup,
+    handler: cleanupTestCronCleanupSandboxesState$,
   },
 ];

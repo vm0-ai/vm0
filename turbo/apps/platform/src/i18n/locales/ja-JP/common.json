@@ -1664,6 +1664,10 @@
       "checkingLimit": "音声入力制限を確認する",
       "input": "音声入力",
       "inputLimitReached": "音声入力の制限に達しました。より高い制限を得るには、Pro または Team にアップグレードしてください。",
+      "inputLimitReachedMember": "音声入力の制限に達しました。より高い制限を得るには、ワークスペース管理者にアップグレードを依頼してください。",
+      "inputLimitReachedPro": "音声入力の制限に達しました。より高い制限を得るには、Team にアップグレードしてください。",
+      "inputLimitReachedProMember": "音声入力の制限に達しました。より高い制限を得るには、ワークスペース管理者に Team へのアップグレードを依頼してください。",
+      "inputLimitReachedReset": "音声入力の制限に達しました。制限がリセットされるまでお待ちください。",
       "microphoneAccessDenied": "マイクへのアクセスが拒否されました。マイクへのアクセスを許可して、再試行してください。",
       "openingMicrophone": "マイクを開いて...",
       "starting": "音声入力を開始する",
@@ -4458,9 +4462,20 @@
           "emailPlaceholder": "email@example.com",
           "invalidEmail": "有効なメールアドレスを入力してください",
           "progress": "送信中...",
+          "purchase": {
+            "description": "以下の日割り料金をご確認ください。確定すると、保存済みのお支払い方法に請求され、招待が送信されます。",
+            "error": "このメンバーパッケージを購入できませんでした。請求情報を確認して、もう一度お試しください。",
+            "invitee": "招待するユーザー",
+            "title": "招待内容を確認"
+          },
           "roleLabel": "役割",
           "send": "招待状を送信する",
-          "title": "メンバーを招待する"
+          "title": "メンバーを招待する",
+          "upgrade": {
+            "action": "Proにアップグレード",
+            "description": "メンバーの招待はProプランでご利用いただけます。このワークスペースをアップグレードすると、メンバーを招待してロールを管理できます。",
+            "title": "メンバーを招待するにはアップグレード"
+          }
         },
         "joined": "参加しました",
         "joinRequests": "参加リクエスト",

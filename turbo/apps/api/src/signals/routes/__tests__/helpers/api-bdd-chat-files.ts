@@ -25,6 +25,7 @@ import {
   type PersistedAttachment,
   type UserMessageDocument,
   type UserMessageInputDocument,
+  type ZeroIndicators,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   artifactCatalogContract,
@@ -511,6 +512,16 @@ export function createChatFilesBddApi(context: TestContext) {
         [200],
       );
       return response.body.threadIds;
+    },
+
+    async listIndicators(actor: ApiTestUser): Promise<ZeroIndicators> {
+      const response = await accept(
+        threadsClient().indicators({
+          headers: authenticate(context, actor),
+        }),
+        [200],
+      );
+      return response.body;
     },
 
     async listUnreadChatThreadIds(

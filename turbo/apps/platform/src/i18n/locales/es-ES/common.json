@@ -1705,6 +1705,10 @@
       "checkingLimit": "Comprobando el límite de entrada de voz",
       "input": "Entrada de voz",
       "inputLimitReached": "Límite de entrada de voz alcanzado. Actualiza a Pro o Team para límites más altos.",
+      "inputLimitReachedMember": "Límite de entrada de voz alcanzado. Pide a un administrador del espacio de trabajo que actualice el plan para obtener límites más altos.",
+      "inputLimitReachedPro": "Límite de entrada de voz alcanzado. Actualiza a Team para obtener límites más altos.",
+      "inputLimitReachedProMember": "Límite de entrada de voz alcanzado. Pide a un administrador del espacio de trabajo que actualice a Team para obtener límites más altos.",
+      "inputLimitReachedReset": "Límite de entrada de voz alcanzado. Espera a que se restablezca tu límite.",
       "microphoneAccessDenied": "Se ha denegado el acceso al micrófono. Permite el acceso al micrófono e inténtalo de nuevo.",
       "openingMicrophone": "Abriendo el micrófono...",
       "starting": "Iniciando entrada de voz",
@@ -4510,9 +4514,20 @@
           "emailPlaceholder": "email@example.com",
           "invalidEmail": "Introduce una dirección de correo electrónico válida",
           "progress": "Enviando...",
+          "purchase": {
+            "description": "Revisa el cargo prorrateado a continuación. Al confirmar, se cobrará el método de pago guardado y se enviará la invitación.",
+            "error": "No se pudo comprar este paquete de miembro. Revisa los datos de facturación e inténtalo de nuevo.",
+            "invitee": "Persona invitada",
+            "title": "Revisar invitación"
+          },
           "roleLabel": "Rol",
           "send": "Enviar invitación",
-          "title": "Invitar a un miembro"
+          "title": "Invitar a un miembro",
+          "upgrade": {
+            "action": "Mejorar a Pro",
+            "description": "Las invitaciones a miembros están disponibles en el plan Pro. Mejora este espacio de trabajo para invitar a personas y administrar sus roles.",
+            "title": "Mejora para invitar a miembros"
+          }
         },
         "joined": "Se unió",
         "joinRequests": "Solicitudes de acceso",

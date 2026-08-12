@@ -3,6 +3,7 @@
 
 mod common;
 
+use guest_contracts::stdout_framing::ORDINARY_CLI_STDOUT_MAX_LINE_BYTES;
 use std::io::{Read, Seek, SeekFrom};
 use std::time::Duration;
 
@@ -35,7 +36,7 @@ async fn accepted_stdout_record_boundaries_preserve_raw_logging()
 
     let expected_large_line_start = CRLF_RECORD.len() as u64;
     let expected_eof_record_start =
-        expected_large_line_start + common::CLI_STDOUT_MAX_LINE_BYTES as u64 + 1;
+        expected_large_line_start + ORDINARY_CLI_STDOUT_MAX_LINE_BYTES as u64 + 1;
     let expected_log_bytes = expected_eof_record_start + EOF_RECORD.len() as u64;
     let mut log = std::fs::File::open(runtime.paths.agent_log_file())?;
     assert_eq!(log.metadata()?.len(), expected_log_bytes);

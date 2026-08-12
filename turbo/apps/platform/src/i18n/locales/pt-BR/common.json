@@ -1705,6 +1705,10 @@
       "checkingLimit": "Verificando limite da entrada de voz",
       "input": "Entrada de voz",
       "inputLimitReached": "Limite de entrada de voz atingido. Faça upgrade para Pro ou Team para aumentar os limites.",
+      "inputLimitReachedMember": "Limite de entrada de voz atingido. Peça a um administrador do workspace para fazer upgrade e aumentar os limites.",
+      "inputLimitReachedPro": "Limite de entrada de voz atingido. Faça upgrade para Team para aumentar os limites.",
+      "inputLimitReachedProMember": "Limite de entrada de voz atingido. Peça a um administrador do workspace para fazer upgrade para Team e aumentar os limites.",
+      "inputLimitReachedReset": "Limite de entrada de voz atingido. Aguarde até que seu limite seja redefinido.",
       "microphoneAccessDenied": "O acesso ao microfone foi negado. Permita o acesso e tente novamente.",
       "openingMicrophone": "Abrindo microfone...",
       "starting": "Iniciando entrada de voz",
@@ -4510,9 +4514,20 @@
           "emailPlaceholder": "email@example.com",
           "invalidEmail": "Insira um endereço de e-mail válido",
           "progress": "Enviando...",
+          "purchase": {
+            "description": "Revise a cobrança proporcional abaixo. Ao confirmar, o método de pagamento salvo será cobrado e o convite será enviado.",
+            "error": "Não foi possível comprar este pacote de membro. Revise os dados de cobrança e tente novamente.",
+            "invitee": "Pessoa convidada",
+            "title": "Revisar convite"
+          },
           "roleLabel": "Função",
           "send": "Enviar convite",
-          "title": "Convidar membro"
+          "title": "Convidar membro",
+          "upgrade": {
+            "action": "Fazer upgrade para o Pro",
+            "description": "Os convites de membros estão disponíveis no plano Pro. Faça upgrade deste espaço de trabalho para convidar pessoas e gerenciar suas funções.",
+            "title": "Faça upgrade para convidar membros"
+          }
         },
         "joined": "Data de entrada",
         "joinRequests": "Solicitações de entrada",

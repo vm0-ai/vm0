@@ -39,7 +39,7 @@ cat >"${test_root}/turbo/apps/cli/dist/package.json" <<'EOF'
   "name": "@vm0/okou-cli",
   "version": "1.0.0",
   "private": true,
-  "bin": { "okou": "okou.js", "zero": "okou.js" },
+  "bin": { "okou": "okou.js" },
   "files": ["*.js"]
 }
 EOF
@@ -117,9 +117,8 @@ package_json="$(tar -xOf "${tmp_dir}/package.tgz" package/package.json)"
 jq -e '
   .name == "@vm0/okou-cli"
   and .private == true
-  and ((.bin | keys | sort) == ["okou", "zero"])
+  and ((.bin | keys) == ["okou"])
   and .bin.okou == "okou.js"
-  and .bin.zero == "okou.js"
 ' <<<"$package_json" >/dev/null
 
 echo "deploy-cli-local tests passed"

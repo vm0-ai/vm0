@@ -1,137 +1,111 @@
-# Okou first-party producer cutover
+# Okou CLI current identity
 
-This document is the authoritative source audit and deployment-compatibility
-record for issue #26432. It covers the first-party producer cutover only. The
-temporary `zero` executable remains available until the production drain gate
-for child C is proven.
+This document is the authoritative source, residual, and rollback record for
+the completed Okou CLI identity cutover tracked by issues #26429 and #26431.
 
-## Foundation
+## Supported command boundary
 
-The cutover starts from release commit
-`916a75a6910fb873b17b3c07e7dbb9bdf61ad15e`, which contains Task A merge
-`c41cbe9f9ce38ee1bc9266f3fd1cfa5ac95e26c7`. Production selected the immutable
-dual-entry artifact at
-`https://static.vm0.io/okou-cli/916a75a6910fb873b17b3c07e7dbb9bdf61ad15e/package.tgz`.
-Its manifest SHA-256 is
-`afb3206d491ba9686512af3eb132c2797f8e2cf57ef509967a6885d86dc116c9`.
-Production and independent CDN checks executed `okou`, the temporary `zero`
-alias, and the old `zero __agent-loop` boundary from that artifact. <!-- okou-cutover-audit: compatibility-only -->
+The private commit-addressed package exports only `okou`, mapped to
+`okou.js`. Current artifacts contain no duplicate `zero.js` payload, and the
+retired executable name is unsupported. The artifact smoke test exercises the
+real `okou --help` and `okou __agent-loop` boundaries and separately proves
+that the retired name cannot resolve in a clean command environment.
 
-## Deployment compatibility
+Commander parsing, validation, output, HTTP construction, and exit behavior
+remain covered through the canonical entry point. MSW stays at the production
+HTTP boundary. The guest-agent process-boundary integration test asserts the
+exact `npx`, package URL, `okou`, internal loop, and standby argv.
 
-| API / release artifact                             | Runner or guest-agent | Expected entry point | Evidence                                                                                                                                                                                                               |
-| -------------------------------------------------- | --------------------- | -------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| New API with dual-entry artifact                   | New Runner            | `okou __agent-loop`  | The guest-agent process-boundary integration test puts a fake `npx` on `PATH` and asserts the exact Pi standby launch argv. The Runner E2E separately exercises the canonical user command and real CLI HTTP boundary. |
-| New API with dual-entry artifact                   | Old Runner            | `zero __agent-loop`  | The artifact smoke test and Runner E2E execute the legacy internal boundary. <!-- okou-cutover-audit: compatibility-only -->                                                                                           |
-| Old API selecting the recorded dual-entry artifact | New Runner            | `okou __agent-loop`  | Safe because both entry points are present in the immutable artifact.                                                                                                                                                  |
-| Old API selecting a pre-Okou artifact              | New Runner            | unsupported          | Never deploy this pairing. Roll API and Runner back together to an old/old pairing instead.                                                                                                                            |
+## Final removal gate
 
-Old queued and active execution contexts keep their immutable historical
-artifact URL. They are not rewritten and continue with the Runner and artifact
-pairing admitted for that execution.
+The final removal gate passed in the
+[#26431 authorization record](https://github.com/vm0-ai/vm0/issues/26431#issuecomment-5264650228).
+The owner explicitly superseded only the remaining elapsed-time wait; the live
+production, source, durable-content, artifact, health, and rollback checks all
+passed before implementation was authorized.
 
-The command-boundary suites execute Commander parsing, validation, output,
-request construction, and exit behavior. MSW stays at the production HTTP
-boundary. No command arguments are added to Runner E2E trace output.
+The recorded delivery and production evidence is:
 
-## Supported producer audit
+- child A PR #26436 and release #26446 completed;
+- child B PR #26491 and initial release #26506 completed;
+- the latest fully released dual-entry rollback baseline is release #26540 at
+  commit `a08e28cc84dc44a8f28db7571282aad2fd3c8d26`;
+- production contained no Runner version that invoked the retired executable,
+  and pre-cutoff pending, queued, running, finalizing, agent-run queue, and
+  Runner-job queue state was zero;
+- the complete finalization audit matched 184 starts to 184 successful terminal
+  outcomes with no failed or cancelled finalization;
+- the bounded production health audit exceeded the agreed success threshold
+  for both agent and CLI execution and found no systemic Okou failure; and
+- the supported durable source audit was clean at vm0-skills commit
+  `68f64b677e935de2c5195e1df4683edbd2bdd18b`.
 
-The following repository-controlled sources now emit `okou`:
+## Supported caller decision
 
-- guest-agent and Pi standby bootstrap;
-- API-authored system prompts, templates, run guidance, callback examples,
-  recovery hints, and plan-upgrade guidance;
-- CLI help, examples, generated commands, authoring instructions, recovery
-  guidance, service identity, and MCP client identity;
-- in-repository seed metadata, resource indexes, fixtures, platform mocks,
-  E2E operations, development tooling, and current operational documentation.
+All repository-controlled prompts, errors, skills, templates, workflows,
+instructions, tests, operational commands, and Runner bootstrap paths use
+Okou. The supported vm0-skills command tree also uses Okou; retired unsupported
+command trees were removed in their owning repository.
 
-The executable audit is
-`.github/scripts/audit-okou-cli-cutover.sh`. It scans the current command tree
-and retired command spellings across tracked and
-untracked non-ignored files, checks the guest-agent
-bootstrap directly, prints only category plus file and line number, and fails
-on an unclassified reference. It never prints command arguments, secrets,
-identifiers, or content. Its shell test proves both the failure boundary and
-the output-redaction property. Security CI runs the audit explicitly after
-installing `ripgrep`; the hot Turbo toolchain job does not install network
-dependencies for it.
+Arbitrary user-owned persisted workflows, instructions, and templates are not
+rewritten. A legacy executable string in that content is explicitly
+unsupported until its owner deliberately migrates it. Historical execution
+contexts retain their immutable commit-addressed artifact and are not rewritten.
 
-The external first-party durable source `vm0-ai/vm0-skills` was audited at
-commit `8efee9aaeedbcd5a372401679beac740daad9101`. Sixteen files contained 149
-executable legacy references:
+## Preserved protocol identities
 
-- current command-tree references: `agentphone/SKILL.md`,
-  `computer-use/SKILL.md`, `finicity/SKILL.md`, `gen/SKILL.md`,
-  `github-copilot/SKILL.md`, `goal/SKILL.md`, `google-slides/SKILL.md`,
-  `illustration-template/cozy-parlor/SPEC.md`, `lovart/SKILL.md`,
-  `nano-banana/SKILL.md`, `seedance/SKILL.md`, `workflow-setup/SKILL.md`, and
-  `workflow-setup/references/trigger-setup.md`;
-- unsupported retired npm command trees: `local-agent/SKILL.md` and
-  `local-browser/SKILL.md`, plus the `local-agent` marketplace registration.
-
-The 13 current command-tree files contained 115 references. The companion
-owning-repository change
-[`vm0-ai/vm0-skills#323`](https://github.com/vm0-ai/vm0-skills/pull/323)
-migrates every one to `okou`. The two retired npm
-command trees and marketplace registration contained the other 34 references.
-Because neither command is registered by the current CLI and npm publication
-remains retired, the companion change removes both obsolete skills and the
-registration rather than presenting them as Okou commands. No supported
-first-party executable legacy reference remains in that audited source.
-
-Repository-controlled seed metadata has been updated. Arbitrary user-owned
-workflow bodies, instructions, and templates are not rewritten: their meaning
-cannot be established from an embedded string alone. A user-owned legacy
-command is unsupported content until its owner deliberately migrates it. Old
-execution contexts are historical immutable content, not migration targets.
+The executable cleanup does not rename internal protocol or product identities.
+Keep the `OKOU_TOKEN` preference with `ZERO_TOKEN` fallback, both token scopes,
+`OKOU_AGENT_ID` and `ZERO_AGENT_ID`, paired deployment environment injection,
+canonical `OKOU_*` names and `/api/okou/**`, `commands/zero`,
+`decodeZeroTokenPayload`, other `ZERO_*` names and `/api/zero/**`, database and
+backend identifiers, the Slack `/zero model` interaction, and the separate
+Desktop identity. These are not executable CLI producers.
 
 ## Exact residual classification
 
-- **Compatibility-only:** the packed `zero` alias, artifact/workflow smoke
-  checks, serial CLI alias tests, old-Runner `zero __agent-loop` coverage, and <!-- okou-cutover-audit: compatibility-only -->
-  compatibility documentation.
-- **Approved internal protocol:** canonical `OKOU_*` environment variables,
-  Okou token scope, and `/api/okou/**`; compatibility-only `ZERO_*`, Zero token
-  scope, and `/api/zero/**`; plus `commands/zero`, database and backend domain
-  identifiers, and the Slack `/zero model` interaction. The separate Zero
-  Computer Use Desktop product identity is also outside this CLI cutover.
-  These are not executable CLI producers.
-- **Historical:** changelogs, migration notes, retired `zero secret`, <!-- okou-cutover-audit: historical -->
-  `zero variable`, `zero schedule`, and `zero automation` documentation, plus <!-- okou-cutover-audit: historical -->
-  immutable old execution contexts.
-- **Unsupported user-owned content:** arbitrary persisted text that still names
-  the legacy entry point. It is not rewritten automatically.
-- **External first-party durable content:** the 13 supported `vm0-skills`
-  sources listed above are migrated by the companion change; the two retired
-  npm command-tree skills are removed. They are not treated as user-owned text
-  and leave no external first-party executable residual.
+`.github/scripts/audit-okou-cli-cutover.sh` scans tracked and untracked
+non-ignored current source, checks the guest-agent argv, and rejects indirect
+binary exports, executable-path selection, artifact-verifier drift, legacy
+success smoke coverage, workflow symlinks, and E2E wrapper selection. It prints
+only category, file, and line or boundary name; it never prints arguments,
+secrets, identifiers, or user content.
 
-The in-repository audit must report zero unclassified references before merge.
+The final current-source result is:
 
-## Production evidence required before child C
+`approved-internal-protocol=33 historical=241 unsupported-user-owned=0 unclassified=0`
 
-After this child merges and releases, record all of the following on the issue:
+The only allowed residual classes are:
 
-1. The child B merge commit, release commit, exact Turbo run, and exact
-   release-please run with terminal conclusions.
-2. The production API deployment and exact immutable CLI artifact URL and
-   manifest digest it selects.
-3. Deployed Runner versions and a command-boundary production proof that newly
-   admitted work uses an Okou-invoking guest-agent. The evidence may record the
-   entry-point category and bounded counts, but must not record arguments,
-   secrets, identifiers, or user content.
-4. API and Runner cutover timestamps, queue state, active execution state, and
-   finalization state. Derive and cite the conservative maximum lifetime from
-   the then-current queue, execution, and finalization source; elapsed time by
-   itself is not drain proof.
-5. A rerun of both repository audits, confirmation that the companion
-   `vm0-skills` migration is deployed to the durable-content source, and the
-   remaining production legacy-entry evidence.
-6. Proof that no old Runner can claim new work and that all work admitted under
-   an old pairing is terminal before removing the alias.
+- **Approved internal protocol:** the preserved identities listed above. They
+  are not executable command producers.
+- **Historical evidence:** changelogs, archived implementation notes, and
+  immutable historical records and artifacts.
+- **Explicitly unsupported user-owned content:** persisted user-authored text
+  outside the tracked current source. It is not migrated automatically.
 
-Rollback to the last known-good dual-entry release
-`916a75a6910fb873b17b3c07e7dbb9bdf61ad15e`. Never pair an Okou-invoking new
-Runner with a pre-Okou artifact. A rollback past the dual-entry foundation must
-roll both API and Runner back to a compatible old/old pair.
+There is no compatibility-only or tracked executable test-fixture residual
+class. Synthetic legacy commands are assembled only at audit-test runtime so
+detection and redaction remain covered without storing an executable legacy
+command in current source.
+
+## Artifacts and rollback
+
+Historical R2 artifacts are immutable and must not be changed or deleted. The
+last known-good dual-entry rollback artifact is:
+
+`https://static.vm0.io/okou-cli/a08e28cc84dc44a8f28db7571282aad2fd3c8d26/package.tgz`
+
+Its package SHA-256 is
+`2e822e4eda86a34f3794d79318369f2f0e43aa33d1b64fa07f2d72c866b7f67b`,
+and its manifest SHA-256 is
+`a43201ed1d9d86cb656ef5be9444af60dc4cbe9e4501123610f1d0ff7d515a9f`.
+
+Rollback after an Okou-only release must restore that artifact selection
+together with compatible post-B API, Runner, and guest-agent versions. Never
+pair an Okou-invoking Runner with a pre-Okou artifact. Do not mutate or delete
+Run, queue, workflow, audit, or historical artifact state during recovery.
+
+The release owner must attach the final Okou-only production release, artifact,
+and Runner-path evidence to #26431 and #26429 after this cleanup merges. Source
+readiness does not itself claim that the final production release has happened.

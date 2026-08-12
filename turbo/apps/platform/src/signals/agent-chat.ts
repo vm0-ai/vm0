@@ -6,7 +6,7 @@ import { zeroClient$ } from "./api-client.ts";
 import { accept } from "../lib/accept.ts";
 import { pathParams$ } from "./route.ts";
 import { activeRoute$ } from "./active-route.ts";
-import { reloadChatUnreadStateCounter$ } from "./chat-thread-list-reload.ts";
+import { reloadChatIndicatorsCounter$ } from "./chat-thread-list-reload.ts";
 import { chatThreadOnlyUnread$ } from "./chat-page/chat-thread-only-unread.ts";
 import {
   chatThreadMetaMap$,
@@ -92,7 +92,7 @@ const filteredThreadIds$ = computed(
     if (!get(chatThreadOnlyUnread$)) {
       return null;
     }
-    get(reloadChatUnreadStateCounter$);
+    get(reloadChatIndicatorsCounter$);
 
     const agentId = await get(currentChatAgentId$);
     if (!agentId) {

@@ -1793,23 +1793,11 @@ def _finish_response_handling(
         and response_streaming.uses_model_json_fallback(flow)
     ):
         model_protocol = response_streaming.model_usage_protocol(flow)
-        if model_protocol == "openai_responses":
-            json_usage, json_error = usage.extract_openai_responses_usage_with_error_from_json(
-                bytes(stream_buf),
-                flow.response.headers if flow.response else None,
-            )
-        elif model_protocol == "openai_chat_completions":
-            json_usage, json_error = (
-                usage.extract_openai_chat_completions_usage_with_error_from_json(
-                    bytes(stream_buf),
-                    flow.response.headers if flow.response else None,
-                )
-            )
-        else:
-            json_usage, json_error = usage.extract_anthropic_messages_usage_with_error_from_json(
-                bytes(stream_buf),
-                flow.response.headers if flow.response else None,
-            )
+        json_usage, json_error = usage.extract_model_usage_with_error_from_json(
+            model_protocol,
+            bytes(stream_buf),
+            flow.response.headers if flow.response else None,
+        )
         if json_usage:
             flow.metadata[metadata_keys.MODEL_PROVIDER_USAGE] = json_usage
         elif json_error is not None:

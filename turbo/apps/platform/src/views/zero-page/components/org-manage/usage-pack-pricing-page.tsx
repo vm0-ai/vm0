@@ -92,6 +92,7 @@ interface MemberDisplay {
   readonly isCurrent: boolean;
   readonly isPending: boolean;
   readonly name: string;
+  readonly usagePackUsd?: UsagePackUsd;
 }
 
 interface MemberUsageDowngrade {
@@ -401,12 +402,14 @@ function MemberIdentity({ member }: { readonly member: MemberDisplay }) {
 
 function MemberUsageRow({
   catalog,
+  disabled = false,
   downgrade,
   member,
   onSelect,
   selection,
 }: {
   readonly catalog: readonly UsagePackCatalogItem[];
+  readonly disabled?: boolean;
   readonly downgrade: MemberUsageDowngrade | null;
   readonly member: MemberDisplay;
   readonly onSelect: (selection: MemberUsageSelection) => void;
@@ -437,6 +440,7 @@ function MemberUsageRow({
       <MemberIdentity member={member} />
       <div className="min-w-0">
         <Select
+          disabled={disabled}
           value={String(selection)}
           onValueChange={(value) => {
             onSelect(parseUsagePackOption(value, catalog));
@@ -508,16 +512,28 @@ function MemberUsageFooter() {
   );
 }
 
+function pendingMemberUsagePack(
+  management: UsagePackManagementResponse | null,
+  member: MemberDisplay,
+): UsagePackUsd | null {
+  if (management === null || !member.isPending) {
+    return null;
+  }
+  return member.usagePackUsd ?? null;
+}
+
 function MemberUsageConfiguration({
   catalog,
   management,
   members,
   onSelectionChange,
+  pendingMembers = [],
 }: {
   readonly catalog: readonly UsagePackCatalogItem[];
   readonly management: UsagePackManagementResponse | null;
   readonly members: readonly MemberDisplay[] | undefined;
   readonly onSelectionChange?: () => void;
+  readonly pendingMembers?: readonly MemberDisplay[];
 }) {
   const selections = useGet(memberUsageSelections$);
   const setSelection = useSet(setMemberUsageSelection$);
@@ -528,6 +544,7 @@ function MemberUsageConfiguration({
   const memberUsageLabel = i18n.t(($) => {
     return $.billing.plans.usagePacks.memberUsage;
   });
+  const displayedMembers = [...members, ...pendingMembers];
 
   return (
     <section
@@ -537,8 +554,10 @@ function MemberUsageConfiguration({
     >
       <MemberUsageHeader />
 
-      {members.map((member, index) => {
-        const selection = memberUsageSelection(selections, member.id);
+      {displayedMembers.map((member, index) => {
+        const pendingUsagePack = pendingMemberUsagePack(management, member);
+        const selection =
+          pendingUsagePack ?? memberUsageSelection(selections, member.id);
         const allocation = management?.allocations.find((candidate) => {
           return candidate.memberId === member.id;
         });
@@ -574,6 +593,7 @@ function MemberUsageConfiguration({
           >
             <MemberUsageRow
               catalog={catalog}
+              disabled={pendingUsagePack !== null}
               downgrade={downgrade}
               member={member}
               selection={selection}
@@ -1162,6 +1182,9 @@ function useUsagePackMembers(): readonly MemberDisplay[] | undefined {
         isCurrent: false,
         isPending: true,
         name: invitation.email,
+        ...(invitation.usagePackUsd === undefined
+          ? {}
+          : { usagePackUsd: invitation.usagePackUsd }),
       };
     }),
   ];
@@ -1442,10 +1465,20 @@ function SubscriptionChangeNotice({
   );
 }
 
-function UsagePackChangePaymentSummary({
+interface UsagePackPaymentPreview {
+  readonly immediateAmountCents: number;
+  readonly immediateCreditGrant?: {
+    readonly purchasedCredits: number;
+    readonly bonusCredits: number;
+    readonly totalCredits: number;
+    readonly expiresAt?: string;
+  };
+}
+
+export function UsagePackPaymentSummary({
   preview,
 }: {
-  readonly preview: UsagePackSubscriptionChangePreviewResponse;
+  readonly preview: UsagePackPaymentPreview;
 }) {
   const immediateCreditGrant =
     preview.immediateCreditGrant &&
@@ -1565,7 +1598,7 @@ function UsagePackSubscriptionChangeDialog({
             })}
           </DialogDescription>
         </DialogHeader>
-        {preview && <UsagePackChangePaymentSummary preview={preview} />}
+        {preview && <UsagePackPaymentSummary preview={preview} />}
         <SubscriptionOrderSummary plan={plan} totals={totals} />
         {error && <p className="text-xs text-destructive">{error}</p>}
         <DialogFooter>
@@ -1967,6 +2000,11 @@ function PackageConfigurationStep({
   const activeMembers = allMembers?.filter((member) => {
     return !member.isPending;
   });
+  const paidPendingMembers = management
+    ? allMembers?.filter((member) => {
+        return member.isPending && member.usagePackUsd !== undefined;
+      })
+    : undefined;
   const members = management
     ? management.supportsMemberAdditions
       ? activeMembers
@@ -1992,6 +2030,7 @@ function PackageConfigurationStep({
         catalog={catalog}
         management={management}
         members={members}
+        pendingMembers={paidPendingMembers}
       />
       {management ? (
         <ManagedSubscriptionOrderSummary
