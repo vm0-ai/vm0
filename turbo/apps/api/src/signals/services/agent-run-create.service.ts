@@ -218,6 +218,7 @@ import {
 } from "./agent-run-queue-payload.service";
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import { WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV } from "@vm0/core/resource-registry";
 import {
   isPiEdgeCompatibleProviderType,
   piSandboxModelConfig,
@@ -5905,6 +5906,12 @@ async function buildStoredExecutionContextDraft(args: {
     }),
     ...args.extraEnvironment,
     CLI_PKG_URL: env("CLI_PKG_URL"),
+    [WEBSITE_TEMPLATE_ARCHIVE_VERSION_ENV]: isFeatureEnabled(
+      FeatureSwitchKey.LatestWebsiteTemplates,
+      args.featureSwitchContext,
+    )
+      ? "latest"
+      : "previous",
   };
   const environmentKeyByValue = new Map<string, string>();
   for (const [key, value] of Object.entries(environment)) {

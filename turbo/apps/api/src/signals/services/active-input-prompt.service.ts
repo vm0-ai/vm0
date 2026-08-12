@@ -3,6 +3,8 @@ import {
   chatEvents,
   type ChatEventUserMessage,
 } from "@vm0/db/schema/chat-event";
+import { isFeatureEnabled } from "@vm0/core/feature-switch";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { and, asc, eq, inArray } from "drizzle-orm";
 
 import type { Db } from "../external/db";
@@ -18,6 +20,7 @@ import {
 } from "./zero-chat-user-message.service";
 import { pendingActiveInputCondition } from "./chat-event-queue.service";
 import { canonicalChatEventUserMessage } from "./canonical-chat-event-read.service";
+import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 
 type ChatEventContextType = NonNullable<
   (typeof chatEvents.$inferSelect)["contextType"]
@@ -167,6 +170,12 @@ export async function materializePendingActiveInputPrompts(
   signal: AbortSignal,
 ): Promise<Map<string, string> | null> {
   const prompts = new Map<string, string>();
+  const featureSwitchContext = await loadUserFeatureSwitchContext(
+    db,
+    auth.orgId,
+    auth.userId,
+  );
+  signal.throwIfAborted();
   for (const event of candidates) {
     if (
       !event.userMessage ||
@@ -189,6 +198,10 @@ export async function materializePendingActiveInputPrompts(
         },
         orgId: auth.orgId,
         userId: auth.userId,
+        latestWebsiteTemplatesEnabled: isFeatureEnabled(
+          FeatureSwitchKey.LatestWebsiteTemplates,
+          featureSwitchContext,
+        ),
       }),
     );
     signal.throwIfAborted();
@@ -256,6 +269,7 @@ async function materializeActiveInputPrompt(
     readonly event: ActiveInputPromptEvent;
     readonly orgId: string;
     readonly userId: string;
+    readonly latestWebsiteTemplatesEnabled: boolean;
   },
 ): Promise<string> {
   const userMessage = requiredUserMessageForEvent(
@@ -275,6 +289,7 @@ async function materializeActiveInputPrompt(
   const generationTemplatePrompt = resolveThreadGenerationTemplatePrompt({
     explicit: projection.primaryTemplate,
     explicitTemplates: projection.templates,
+    latestWebsiteTemplatesEnabled: args.latestWebsiteTemplatesEnabled,
   });
   const prompt = integration?.prompt ?? projection.agentPrompt;
   const parts = [

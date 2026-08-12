@@ -369,6 +369,7 @@ function shouldTouchThreadSortFromNormalSend(
 interface NormalSendFeatureSwitches {
   readonly codexFastModeEnabled: boolean;
   readonly chatEventSnapshotReadEnabled: boolean;
+  readonly latestWebsiteTemplatesEnabled: boolean;
 }
 
 interface RuntimeNormalSendBody extends Omit<
@@ -882,17 +883,24 @@ async function resolveNormalSendFeatureSwitches(
       FeatureSwitchKey.ChatEventSnapshotRead,
       context,
     ),
+    latestWebsiteTemplatesEnabled: isFeatureEnabled(
+      FeatureSwitchKey.LatestWebsiteTemplates,
+      context,
+    ),
   };
 }
 
 function validateGenerationTemplatePrompt(
   generationTemplates: readonly GenerationTemplateRequest[],
+  latestWebsiteTemplatesEnabled: boolean,
 ): NormalSendFailure | undefined {
   if (generationTemplates.length === 0) {
     return undefined;
   }
   for (const template of generationTemplates) {
-    const validation = buildGenerationTemplatePrompt(template);
+    const validation = buildGenerationTemplatePrompt(template, {
+      latestWebsiteTemplatesEnabled,
+    });
     if (validation.status === "invalid") {
       return badRequestMessage(validation.message);
     }
@@ -2244,6 +2252,7 @@ const prepareNormalSend$ = command(
     );
     const generationTemplateError = validateGenerationTemplatePrompt(
       runtimeBody.templates,
+      featureSwitches.latestWebsiteTemplatesEnabled,
     );
     if (generationTemplateError) {
       return generationTemplateError;
@@ -2284,6 +2293,8 @@ const prepareNormalSend$ = command(
     const generationTemplatePrompt = resolveThreadGenerationTemplatePrompt({
       explicit: runtimeBody.primaryTemplate,
       explicitTemplates: runtimeBody.templates,
+      latestWebsiteTemplatesEnabled:
+        featureSwitches.latestWebsiteTemplatesEnabled,
     });
     const persistedExplicitSelection =
       await maybePersistTimedExplicitModelFirstSelection(

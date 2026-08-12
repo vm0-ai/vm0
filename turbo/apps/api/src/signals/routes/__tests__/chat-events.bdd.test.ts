@@ -7324,16 +7324,42 @@ describe("CHAT-02: generation templates and attachments", () => {
       `Template: ${websiteTemplate.title} (${websiteTemplate.id})`,
     );
     expect(websitePrompt).toContain(
-      "okou resource pull template:black-slabs --dir ./generated/resources",
+      "okou resource pull template:black-slabs-v2 --dir ./generated/resources",
     );
     expect(websitePrompt).toContain(
       `./generated/resources/${websiteTemplate.sourcePath}/render.mjs`,
     );
-    expect(websitePrompt).toContain(
-      "use `seedream4` by default unless the user specifies another image model",
-    );
+    expect(websitePrompt).toContain("resolve-images.mjs");
+    expect(websitePrompt).not.toContain("use `seedream4` by default");
     expect(websitePrompt).toContain("okou host <output-dir> --site <slug>");
     await cancelChatRun(actor, website.runId);
+
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped actor");
+    }
+    await updateFeatureSwitchesForUser(
+      context,
+      { ...actor, orgId: actor.orgId },
+      { [FeatureSwitchKey.LatestWebsiteTemplates]: true },
+    );
+    const latestWebsite = await sendChatRun(actor, {
+      agentId,
+      prompt: "make a campaign landing page with the latest template",
+      template: {
+        type: "website",
+        selection: { websiteTemplateId: websiteTemplate.id },
+      },
+    });
+    const latestWebsiteRun = await api.readRun(actor, latestWebsite.runId);
+    const latestWebsitePrompt = latestWebsiteRun.appendSystemPrompt ?? "";
+    expect(latestWebsitePrompt).toContain(
+      "okou resource pull template:black-slabs --dir ./generated/resources",
+    );
+    expect(latestWebsitePrompt).toContain(
+      "use `seedream4` by default unless the user specifies another image model",
+    );
+    expect(latestWebsitePrompt).not.toContain("resolve-images.mjs");
+    await cancelChatRun(actor, latestWebsite.runId);
   }, 90_000);
 
   it("uses R2 for archive-backed styles", async () => {

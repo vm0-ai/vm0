@@ -77,4 +77,5 @@ export enum FeatureSwitchKey {
   UnifiedIndicatorApi = "unifiedIndicatorApi",
   EmojiPickerCategoryRail = "emojiPickerCategoryRail",
   PresentationTemplates = "presentationTemplates",
+  LatestWebsiteTemplates = "latestWebsiteTemplates",
 }
