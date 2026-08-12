@@ -120,6 +120,19 @@ ruleTester.run("no-global-sweep-test-routes", noGlobalSweepTestRoutes, {
         });
       `,
     },
+    {
+      name: "an explicit scoped factory property overrides a canonical default",
+      filename: behaviorTest,
+      code: `
+        import { ROUTES } from "../../route";
+        import * as appFactory from "../../../app-factory";
+        const buildScopedApp = (options) => options;
+        function mount({ createApp: build = appFactory.createApp }) {
+          return build({ routes: ROUTES });
+        }
+        mount({ createApp: buildScopedApp });
+      `,
+    },
   ],
   invalid: [
     {

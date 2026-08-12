@@ -267,6 +267,9 @@ export const noGlobalSweepTestRoutes = createRule({
       const definitions =
         variableInScope(context.sourceCode, expression)?.defs ?? [];
       for (const definition of definitions) {
+        if (definition.type === "Parameter") {
+          continue;
+        }
         const node = definition.node;
         if (
           node.type === AST_NODE_TYPES.ArrowFunctionExpression ||
