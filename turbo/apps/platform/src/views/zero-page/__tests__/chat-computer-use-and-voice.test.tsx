@@ -1592,6 +1592,7 @@ describe("chat lifecycle", () => {
     const user = userEvent.setup({ delay: null });
     const toastError = vi.spyOn(toast, "error");
     const threadId = "e2000000-0000-4000-a000-000000000018";
+    context.mocks.browser.voiceInput({ rms: 0.1 });
     context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
       return respond(200, billingStatus("pro"));
     });
@@ -1624,6 +1625,7 @@ describe("chat lifecycle", () => {
     const user = userEvent.setup({ delay: null });
     const toastError = vi.spyOn(toast, "error");
     const threadId = "e2000000-0000-4000-a000-000000000019";
+    context.mocks.browser.voiceInput({ rms: 0.1 });
     context.mocks.data.org({
       id: "org_1",
       name: "Test Org",
@@ -1663,6 +1665,7 @@ describe("chat lifecycle", () => {
         tier === "team"
           ? "e2000000-0000-4000-a000-000000000020"
           : "e2000000-0000-4000-a000-000000000021";
+      context.mocks.browser.voiceInput({ rms: 0.1 });
       context.mocks.api(zeroBillingStatusContract.get, ({ respond }) => {
         return respond(200, billingStatus(tier));
       });
