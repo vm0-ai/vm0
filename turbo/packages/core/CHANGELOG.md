@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.548.1](https://github.com/vm0-ai/vm0/compare/core-v8.548.0...core-v8.548.1) (2026-08-12)
+
+
+### Refactoring
+
+* **connectors:** remove legacy credential compatibility ([#26523](https://github.com/vm0-ai/vm0/issues/26523)) ([acf5b6a](https://github.com/vm0-ai/vm0/commit/acf5b6ab1d7be0b0a27e27eba17652006e5f6224))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.321.1
+
 ## [8.548.0](https://github.com/vm0-ai/vm0/compare/core-v8.547.0...core-v8.548.0) (2026-08-12)
 
 
