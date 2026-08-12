@@ -13,10 +13,13 @@ import { hideAppSkeleton$ } from "../app-skeleton.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import {
+  createMermaidDiagramRegistry,
   embedMermaidSignals,
-  registerMermaidDiagram$,
 } from "../mermaid-diagram.ts";
-import { embedImageLoadSignals, registerImageLoad$ } from "../image-load.ts";
+import {
+  createImageLoadRegistry,
+  embedImageLoadSignals,
+} from "../image-load.ts";
 import { pathParams$ } from "../route.ts";
 import { updatePage$ } from "../react-router.ts";
 import { setPageSignal$ } from "../page-signal.ts";
@@ -32,6 +35,10 @@ export const setupSharedThreadPage$ = command(
       [200, 404],
       signal,
     );
+    // Page-scoped registries: repeated fences share one entry, and leaving
+    // the page releases the diagrams it rendered.
+    const mermaidDiagrams = createMermaidDiagramRegistry(signal);
+    const imageLoads = createImageLoadRegistry();
     const sharedThread: SharedDisplayThread | null =
       result.status === 200
         ? {
@@ -48,10 +55,10 @@ export const setupSharedThreadPage$ = command(
                 mermaid: true,
               });
               embedMermaidSignals(tree, (code) => {
-                return set(registerMermaidDiagram$, code);
+                return set(mermaidDiagrams.register$, code);
               });
               embedImageLoadSignals(tree, (url) => {
-                return set(registerImageLoad$, url);
+                return set(imageLoads.register$, url);
               });
               return { ...message, tree };
             }),

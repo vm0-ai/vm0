@@ -1,31 +1,27 @@
-import { command, computed, state, type Computed } from "ccstate";
+import { command, computed, state, type Command, type Computed } from "ccstate";
 import type { Element, Root } from "hast";
 
 import { createObjectUrlResource } from "./object-url-resource.ts";
-import { rootSignal$ } from "./root-signal.ts";
 import { theme$ } from "./theme.ts";
 import { settle } from "./utils.ts";
 
 /**
- * Mermaid diagrams render through a pull model. Each unique diagram source
- * owns one `MermaidDiagramSignals` in a module-scope registry; its `diagram$`
- * computed loads mermaid, lays the diagram out and resolves to an image the
- * view shows in an `<img>` — or to `null` when the parser rejects the source,
- * in which case the fence simply stays a code block. Reading the theme inside
- * the computed makes a theme switch re-render every diagram without any
- * remounting.
+ * Mermaid diagrams render through a pull model. Each diagram source owns one
+ * `MermaidDiagramSignals` in the registry of the surface showing it; its
+ * `diagram$` computed loads mermaid, lays the diagram out and resolves to an
+ * image the view shows in an `<img>` — or to `null` when the parser rejects
+ * the source, in which case the fence simply stays a code block. Reading the
+ * theme inside the computed makes a theme switch re-render every diagram
+ * without any remounting.
  *
  * The command that parses a tree registers each diagram and embeds the
  * returned signals on the marker node, so rendering receives the signals
- * object directly. The registry is content-addressed: the rendered image
- * depends only on the source and the theme, so the same fence in two threads
- * shares one entry.
+ * object directly and never resolves diagrams by key.
  *
- * Each resolved theme has one blob URL owned by the lifetime supplied to its
- * signal factory. The chat registry supplies the application root; disposable
- * preview trees supply their own surface lifetime. The light/dark cache is a
- * hard two-entry bound, so switching themes reuses the prior rendering instead
- * of stranding another blob.
+ * Each resolved theme has one blob URL owned by the surface lifetime the
+ * registry (or a preview tree) supplies. The light/dark cache is a hard
+ * two-entry bound, so switching themes reuses the prior rendering instead of
+ * stranding another blob.
  */
 export interface MermaidDiagramImage {
   readonly url: string;
@@ -71,10 +67,6 @@ export function embedMermaidSignals(
   };
   visitNode(tree);
 }
-
-const internalMermaidDiagramsByCode$ = state<
-  ReadonlyMap<string, MermaidDiagramSignals>
->(new Map());
 
 // mermaid costs ~170 KB gzipped for the first diagram, so it is only fetched
 // once a diagram actually needs rendering; the computed memoizes the promise.
@@ -174,9 +166,10 @@ function svgFile(markup: string): File {
 
 /**
  * Pure factory for a diagram's signals. `ownerSignal` must match the consumer
- * surface: preview trees create signals per disposable tree, while the chat
- * pipeline goes through `registerMermaidDiagram$` so a streaming message keeps
- * stable signal identities for fences its growing body re-parses.
+ * surface: preview trees create signals per disposable tree, while surfaces
+ * that re-parse — the chat transcript, the shared thread page — go through a
+ * `MermaidDiagramRegistry` so a streaming message keeps stable signal
+ * identities for fences its growing body re-parses.
  */
 export function createMermaidDiagramSignals(
   code: string,
@@ -261,17 +254,36 @@ export function createMermaidDiagramSignals(
   return { code, diagram$ };
 }
 
-export const registerMermaidDiagram$ = command(
-  ({ get, set }, code: string): MermaidDiagramSignals => {
-    const current = get(internalMermaidDiagramsByCode$);
-    const existing = current.get(code);
-    if (existing !== undefined) {
-      return existing;
-    }
-    const signals = createMermaidDiagramSignals(code, get(rootSignal$));
-    const next = new Map(current);
-    next.set(code, signals);
-    set(internalMermaidDiagramsByCode$, next);
-    return signals;
-  },
-);
+export interface MermaidDiagramRegistry {
+  /** Get-or-create by diagram source; idempotent per source. */
+  readonly register$: Command<MermaidDiagramSignals, [string]>;
+}
+
+/**
+ * A per-surface registry keyed by diagram source. The map is a `state` written
+ * only by `register$` and never leaves the registry: the command that parses a
+ * tree embeds each entry on its marker node. `ownerSignal` owns every entry's
+ * blob URLs, so tearing the surface down releases its diagrams.
+ */
+export function createMermaidDiagramRegistry(
+  ownerSignal: AbortSignal,
+): MermaidDiagramRegistry {
+  const internalByCode$ = state<ReadonlyMap<string, MermaidDiagramSignals>>(
+    new Map(),
+  );
+  const register$ = command(
+    ({ get, set }, code: string): MermaidDiagramSignals => {
+      const current = get(internalByCode$);
+      const existing = current.get(code);
+      if (existing !== undefined) {
+        return existing;
+      }
+      const signals = createMermaidDiagramSignals(code, ownerSignal);
+      const next = new Map(current);
+      next.set(code, signals);
+      set(internalByCode$, next);
+      return signals;
+    },
+  );
+  return { register$ };
+}
