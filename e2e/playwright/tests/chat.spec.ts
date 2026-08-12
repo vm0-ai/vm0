@@ -214,7 +214,7 @@ async function mockSelectedFastModel(page: Page): Promise<void> {
     });
   });
   await page.route("**/api/okou/billing/status", async (route) => {
-    const response = await route.fetch();
+    const response = await fetchApiPreviewRoute(route);
     const body: unknown = await response.json();
     if (!isRecord(body)) {
       throw new Error("Billing status returned an unexpected response");
