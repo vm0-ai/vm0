@@ -15,11 +15,12 @@ provider_response=$(curl -fsS "${headers[@]}" \
     -X POST \
     -d '{"type":"claude-code-oauth-token","secret":"mock-oauth-token-for-e2e"}' \
     "${api_url}/api/zero/model-providers")
-provider_id=$(jq -er '.provider.id | select(type == "string" and length > 0)' \
-    <<<"$provider_response")
+jq -e '.provider.type == "claude-code-oauth-token"' \
+    <<<"$provider_response" \
+    >/dev/null
 
 policies=$(curl -fsS "${headers[@]}" "${api_url}/api/zero/model-policies")
-policy_payload=$(jq -c --arg providerId "$provider_id" '
+policy_payload=$(jq -c '
     {
       policies: (
         [.policies[] |
@@ -36,8 +37,8 @@ policy_payload=$(jq -c --arg providerId "$provider_id" '
             model: "claude-sonnet-4-6",
             isDefault: false,
             defaultProviderType: "claude-code-oauth-token",
-            credentialScope: "org",
-            modelProviderId: $providerId
+            credentialScope: "member",
+            modelProviderId: null
           }
         ]
       )

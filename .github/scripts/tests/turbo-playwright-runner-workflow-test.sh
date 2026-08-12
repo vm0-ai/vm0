@@ -272,6 +272,10 @@ unless mock_claude_script.include?(
   )
   raise "mock Claude bootstrap must keep the real runtime disabled"
 end
+unless mock_claude_script.include?('credentialScope: "member"') &&
+    mock_claude_script.include?("modelProviderId: null")
+  raise "mock Claude OAuth policy must use member credentials"
+end
 codex_step = bootstrap_steps.find do |step|
   step["name"] == "Bootstrap real Codex account"
 end
