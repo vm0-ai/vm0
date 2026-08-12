@@ -6412,7 +6412,7 @@ describe("CHAT-02: initial thinking indicator", () => {
     });
     expect(thinkingPromptPayload).toContain("one paragraph at a time");
     expect(thinkingPromptPayload).toContain(
-      "about 20 Chinese characters or 7 English words",
+      "about 30 characters, excluding punctuation",
     );
     expect(thinkingPromptPayload).toContain("around four short paragraphs");
     expect(thinkingPromptPayload).toContain("Do not answer the user");
