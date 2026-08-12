@@ -20,10 +20,11 @@ import { theme$ } from "./theme.ts";
  * depends only on the source and the theme, so the same fence in two threads
  * shares one entry.
  *
- * Each resolved theme has one blob URL owned by the application root. The
- * light/dark cache is a hard two-entry bound, so switching themes reuses the
- * prior rendering instead of stranding another blob. Root teardown revokes
- * both URLs.
+ * Each resolved theme has one blob URL owned by the lifetime supplied to its
+ * signal factory. The chat registry supplies the application root; disposable
+ * preview trees supply their own surface lifetime. The light/dark cache is a
+ * hard two-entry bound, so switching themes reuses the prior rendering instead
+ * of stranding another blob.
  */
 export interface MermaidDiagramImage {
   readonly url: string;
@@ -160,13 +161,14 @@ function svgFile(markup: string): File {
 }
 
 /**
- * Pure factory for a diagram's signals. Preview trees whose content arrives
- * with the surface create signals per tree; the chat pipeline goes through
- * `registerMermaidDiagram$` instead so a streaming message keeps stable
- * signal identities for fences its growing body re-parses.
+ * Pure factory for a diagram's signals. `ownerSignal` must match the consumer
+ * surface: preview trees create signals per disposable tree, while the chat
+ * pipeline goes through `registerMermaidDiagram$` so a streaming message keeps
+ * stable signal identities for fences its growing body re-parses.
  */
 export function createMermaidDiagramSignals(
   code: string,
+  ownerSignal: AbortSignal,
 ): MermaidDiagramSignals {
   const imagesByTheme = new Map<
     "light" | "dark",
@@ -179,7 +181,6 @@ export function createMermaidDiagramSignals(
       return existing;
     }
     const mermaidModule = get(mermaidModule$);
-    const ownerSignal = get(rootSignal$);
     const image = (async (): Promise<MermaidDiagramImage | null> => {
       const { default: mermaid } = await mermaidModule;
       mermaid.initialize({
@@ -246,7 +247,7 @@ export const registerMermaidDiagram$ = command(
     if (existing !== undefined) {
       return existing;
     }
-    const signals = createMermaidDiagramSignals(code);
+    const signals = createMermaidDiagramSignals(code, get(rootSignal$));
     const next = new Map(current);
     next.set(code, signals);
     set(internalMermaidDiagramsByCode$, next);

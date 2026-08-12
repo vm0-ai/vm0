@@ -482,7 +482,7 @@ describe("thread-owned utility sidebar", () => {
     });
   });
 
-  it("keeps a mermaid file URL alive when a markdown artifact replaces itself", async () => {
+  it("releases a markdown diagram URL when its sidebar preview is replaced", async () => {
     const objectUrls = context.mocks.browser.blobDownload();
     const markdownUrl =
       "https://cdn.vm7.io/artifacts/test/run-sidebar/diagram-notes.md";
@@ -527,7 +527,9 @@ describe("thread-owned utility sidebar", () => {
     expect(sidebarUrl).toContain("blob:mock-download-");
     expect(sidebarUrl).not.toBe(url);
     expect(sidebarImage).toHaveAttribute("alt", "diagram.svg");
+    expect(objectUrls.revokedUrls).toContain(url);
     expect(objectUrls.revokedUrls).not.toContain(sidebarUrl);
+    expect(context.signal.aborted).toBeFalsy();
   });
 
   it("connects the agent and syncs a catalog artifact to Google Drive", async () => {

@@ -48,7 +48,8 @@ export type ArtifactRef = {
   readonly kind: ArtifactPreviewKind;
   readonly filename: string;
   readonly shareAvailable?: boolean;
-  readonly releaseObjectUrl?: () => void;
+  /** Reset resources owned by this particular sidebar preview. */
+  readonly resetResources$?: Command<AbortSignal, AbortSignal[]>;
   /**
    * Text preview content for text-kind refs, resolved by the opening command
    * from the owning thread's artifact signals. The sidebar renders from the
@@ -127,16 +128,17 @@ export interface ThreadSidebarSignals {
   readonly setupArtifactsSession$: Command<Promise<void>, [AbortSignal]>;
 }
 
-function attachmentObjectUrlRelease(
+function attachmentResourceReset(
   target: ThreadSidebarTarget | null,
-): (() => void) | undefined {
+): Command<AbortSignal, AbortSignal[]> | undefined {
   return target?.type === "artifact" && target.source.kind === "attachment"
-    ? target.source.ref.releaseObjectUrl
+    ? target.source.ref.resetResources$
     : undefined;
 }
 
 export function createThreadSidebarSignals(
   threadId: string,
+  ownerSignal: AbortSignal,
 ): ThreadSidebarSignals {
   const internalTarget$ = state<ThreadSidebarTarget | null>(null);
   const internalEntryAnimationsEnabled$ = state(false);
@@ -145,6 +147,8 @@ export function createThreadSidebarSignals(
   const internalEditingAutomationId$ = state<string | null>(null);
   const internalClaimedAutoOpenCandidateKey$ = state<string | null>(null);
   const resetSession$ = resetSignal();
+  const resetArtifactPreviewSignal$ = resetSignal();
+  const internalArtifactPreviewSignal$ = state(ownerSignal);
 
   const artifactCatalog = createArtifactCatalogSignals({
     chatThreadId: threadId,
@@ -162,27 +166,29 @@ export function createThreadSidebarSignals(
   });
   const selectedArtifactMarkdownTree$ = createMarkdownPreviewTree(
     selectedArtifactText$,
+    internalArtifactPreviewSignal$,
   );
 
   const open$ = command(({ get, set }, target: ThreadSidebarTarget) => {
     const current = get(internalTarget$);
-    const currentObjectUrlRelease = attachmentObjectUrlRelease(current);
-    const nextObjectUrlRelease = attachmentObjectUrlRelease(target);
+    const currentResourceReset$ = attachmentResourceReset(current);
+    const nextResourceReset$ = attachmentResourceReset(target);
     if (current === null) {
       set(internalAnimateEntry$, get(internalEntryAnimationsEnabled$));
     }
     if (current?.type !== target.type) {
       set(internalFullscreen$, false);
     }
+    set(
+      internalArtifactPreviewSignal$,
+      set(resetArtifactPreviewSignal$, ownerSignal),
+    );
     if (target.type === "artifact" && target.source.kind === "catalog") {
       set(artifactCatalog.selectArtifact$, target.source.artifactId);
     }
     set(internalTarget$, target);
-    if (
-      currentObjectUrlRelease &&
-      currentObjectUrlRelease !== nextObjectUrlRelease
-    ) {
-      currentObjectUrlRelease();
+    if (currentResourceReset$ && currentResourceReset$ !== nextResourceReset$) {
+      set(currentResourceReset$);
     }
   });
 
@@ -190,12 +196,18 @@ export function createThreadSidebarSignals(
     // Abort session resources (realtime subscription, background refresh)
     // while keeping the cached catalog pages for the next open.
     set(resetSession$);
-    const objectUrlRelease = attachmentObjectUrlRelease(get(internalTarget$));
+    set(
+      internalArtifactPreviewSignal$,
+      set(resetArtifactPreviewSignal$, ownerSignal),
+    );
+    const resourceReset$ = attachmentResourceReset(get(internalTarget$));
     set(internalTarget$, null);
     set(internalAnimateEntry$, false);
     set(internalFullscreen$, false);
     set(internalEditingAutomationId$, null);
-    objectUrlRelease?.();
+    if (resourceReset$) {
+      set(resourceReset$);
+    }
   });
 
   const claimAutoOpenCandidate$ = command(

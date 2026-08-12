@@ -116,6 +116,7 @@ const internalLightboxDialogFullscreen$ = state(false);
 const internalLightboxDialogCloseToken$ = state(0);
 const internalLightboxDialogMountToken$ = state(0);
 const resetLightboxDialogCloseSignal$ = resetSignal();
+const resetLightboxPreviewSignal$ = resetSignal();
 const internalLightboxObjectUrlResources$ = state<readonly ObjectUrlResource[]>(
   [],
 );
@@ -134,6 +135,7 @@ const disposeLightboxSession$ = command(({ set }) => {
   set(internalLightboxDialogVisible$, false);
   set(internalLightboxDialogFullscreen$, false);
   set(internalLightboxState$, null);
+  set(resetLightboxPreviewSignal$);
   set(releaseLightboxObjectUrlResources$);
 });
 
@@ -173,6 +175,7 @@ const closeLightboxForDialogExitToken$ = command(
     set(internalLightboxDialogVisible$, false);
     set(internalLightboxDialogFullscreen$, false);
     set(internalLightboxState$, null);
+    set(resetLightboxPreviewSignal$);
     set(releaseLightboxObjectUrlResources$);
   },
 );
@@ -269,8 +272,9 @@ export const openImageLightbox$ = command(
     if (set(routeToOpenArtifactSidebar$, input)) {
       return;
     }
+    const previewSignal = set(resetLightboxPreviewSignal$, get(rootSignal$));
     const resource = input.file
-      ? createObjectUrlResource(input.file, get(rootSignal$))
+      ? createObjectUrlResource(input.file, previewSignal)
       : undefined;
     if (resource) {
       set(internalLightboxObjectUrlResources$, (current) => {
@@ -297,7 +301,7 @@ export const openImageLightbox$ = command(
  */
 export const navigateImageLightbox$ = command(
   (
-    { set },
+    { get, set },
     value: {
       url: string;
       filename?: string;
@@ -308,15 +312,17 @@ export const navigateImageLightbox$ = command(
       splitViewAvailable?: boolean;
     },
   ) => {
+    set(resetLightboxPreviewSignal$, get(rootSignal$));
     set(internalLightboxState$, { kind: "image", ...value });
   },
 );
 
 export const openDocumentLightbox$ = command(
-  ({ set }, value: AttachmentDocumentLightboxInput) => {
+  ({ get, set }, value: AttachmentDocumentLightboxInput) => {
     if (set(routeToOpenArtifactSidebar$, value)) {
       return;
     }
+    const previewSignal = set(resetLightboxPreviewSignal$, get(rootSignal$));
     set(internalLightboxDialogCloseToken$, (value) => {
       return value + 1;
     });
@@ -329,7 +335,7 @@ export const openDocumentLightbox$ = command(
           ...value,
           kind: "markdown",
           text$,
-          markdownTree$: createMarkdownPreviewTree(text$),
+          markdownTree$: createMarkdownPreviewTree(text$, previewSignal),
         });
         return;
       }
@@ -342,7 +348,7 @@ export const openDocumentLightbox$ = command(
 
 export const openVideoLightbox$ = command(
   (
-    { set },
+    { get, set },
     value: {
       url: string;
       filename: string;
@@ -355,6 +361,7 @@ export const openVideoLightbox$ = command(
     if (set(routeToOpenArtifactSidebar$, value)) {
       return;
     }
+    set(resetLightboxPreviewSignal$, get(rootSignal$));
     set(internalLightboxDialogCloseToken$, (value) => {
       return value + 1;
     });
@@ -366,7 +373,7 @@ export const openVideoLightbox$ = command(
 
 export const openAudioLightbox$ = command(
   (
-    { set },
+    { get, set },
     value: {
       url: string;
       filename: string;
@@ -379,6 +386,7 @@ export const openAudioLightbox$ = command(
     if (set(routeToOpenArtifactSidebar$, value)) {
       return;
     }
+    set(resetLightboxPreviewSignal$, get(rootSignal$));
     set(internalLightboxDialogCloseToken$, (value) => {
       return value + 1;
     });

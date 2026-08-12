@@ -1982,16 +1982,25 @@ function createMarkThreadReadIfNeeded({
 }
 
 function createEventChangeEffects(
-  threadId: string,
-  chatEvents: ChatEventSignals,
-  projections: Pick<
-    ReturnType<typeof createPagedEventProjections>,
-    "rawEvents$" | "latestRunFinishCreatedAt$"
-  >,
-  scroll: ChatThreadScrollSignals,
-  syncVisibleEventTrees$: Command<Promise<void>, [AbortSignal]>,
+  {
+    threadId,
+    chatEvents,
+    projections,
+    scroll,
+    syncVisibleEventTrees$,
+  }: {
+    readonly threadId: string;
+    readonly chatEvents: ChatEventSignals;
+    readonly projections: Pick<
+      ReturnType<typeof createPagedEventProjections>,
+      "rawEvents$" | "latestRunFinishCreatedAt$"
+    >;
+    readonly scroll: ChatThreadScrollSignals;
+    readonly syncVisibleEventTrees$: Command<Promise<void>, [AbortSignal]>;
+  },
+  ownerSignal: AbortSignal,
 ) {
-  const sidebar = createThreadSidebarSignals(threadId);
+  const sidebar = createThreadSidebarSignals(threadId, ownerSignal);
   const locallyMarkedReadAt$ = state<string | undefined>(undefined);
   const markThreadReadIfNeeded$ = createMarkThreadReadIfNeeded({
     threadId,
@@ -2085,15 +2094,18 @@ function createReadyScrollAfterRenderRequest(
   });
 }
 
-function createChatThreadMessagePipeline({
-  threadId,
-  chatEvents,
-  previewImageUrlsByUrl$,
-}: {
-  threadId: string;
-  chatEvents: ChatEventSignals;
-  previewImageUrlsByUrl$: Computed<Promise<ReadonlyMap<string, string>>>;
-}) {
+function createChatThreadMessagePipeline(
+  {
+    threadId,
+    chatEvents,
+    previewImageUrlsByUrl$,
+  }: {
+    threadId: string;
+    chatEvents: ChatEventSignals;
+    previewImageUrlsByUrl$: Computed<Promise<ReadonlyMap<string, string>>>;
+  },
+  ownerSignal: AbortSignal,
+) {
   const browserLifecycleOptimisticEvents: BrowserLifecycleOptimisticEvents = {
     append$: command(
       async (
@@ -2144,11 +2156,8 @@ function createChatThreadMessagePipeline({
     renderWindow.ensureVisibleEventTrees$,
   );
   const effects = createEventChangeEffects(
-    threadId,
-    chatEvents,
-    projections,
-    scroll,
-    syncVisibleEventTrees$,
+    { threadId, chatEvents, projections, scroll, syncVisibleEventTrees$ },
+    ownerSignal,
   );
   const chatSkeletonVisible$ = computed((get): boolean => {
     return (
@@ -3860,13 +3869,16 @@ function createChatPanelSignalsWithDraft(
   );
   const feedback = createChatThreadFeedbackSignals(threadId, composer.feedback);
   const messages: MessageListSignals = {
-    ...createChatThreadMessagePipeline({
-      threadId,
-      chatEvents,
-      previewImageUrlsByUrl$: createArtifactPreviewImageUrls(
-        artifact.artifacts$,
-      ),
-    }),
+    ...createChatThreadMessagePipeline(
+      {
+        threadId,
+        chatEvents,
+        previewImageUrlsByUrl$: createArtifactPreviewImageUrls(
+          artifact.artifacts$,
+        ),
+      },
+      signal,
+    ),
     ...artifact,
   };
   const sharing = createChatThreadSharingSignals(threadId, messages.scroll);
