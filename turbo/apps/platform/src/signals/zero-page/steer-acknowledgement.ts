@@ -19,8 +19,12 @@ const sweepSteerAcknowledgementOnRef$ = command(
   (_, el: HTMLElement, signal: AbortSignal) => {
     const row = el.parentElement;
     const outgoing = el.querySelector("[data-steer-acknowledgement-outgoing]");
-    const label = el.dataset.steerAcknowledgementLabel ?? "";
-    if (row === null || !(outgoing instanceof HTMLElement)) {
+    const label = el.dataset.steerAcknowledgementLabel;
+    if (
+      row === null ||
+      !(outgoing instanceof HTMLElement) ||
+      label === undefined
+    ) {
       return;
     }
 

@@ -931,14 +931,14 @@ describe("chat run queue", () => {
     ).toBeUndefined();
     expect(screen.getByText(NEXT_RUN_SONNET_MODEL_COPY)).toBeInTheDocument();
     expect(screen.queryByText(MODEL_CHANGED_COPY)).not.toBeInTheDocument();
-    // A rule marks something that stays in the transcript. This notice vanishes
-    // when the run ends, so it stays a plain caption.
+    // Dropping the rule from this notice belongs to the steer feature, which is
+    // off here, so the divider must be untouched for everyone else.
     expect(
       screen
         .getByText(NEXT_RUN_SONNET_MODEL_COPY)
         .closest("div")
         ?.querySelector('[role="separator"]'),
-    ).toBeNull();
+    ).not.toBeNull();
 
     lifecycle.completeRun("Model A finished.");
     await waitFor(() => {

@@ -3211,6 +3211,8 @@ function ChatThreadNextRunModelNotice({
   thread: ChatPanelSignals;
 }) {
   const { t } = useTranslation();
+  const continuationPresentationEnabled =
+    useGet(featureSwitch$)[FeatureSwitchKey.ChatRunContinuationPresentation];
   const selectedSelection = useLastResolved(
     thread.composer.model.modelSelection$,
   );
@@ -3253,9 +3255,13 @@ function ChatThreadNextRunModelNotice({
   } else {
     return null;
   }
-  // A live status, not a transcript landmark. The rule and the serif italic are
-  // reserved for marks that stay in the transcript; this line disappears the
-  // moment the run ends, so it reads as a plain caption instead.
+  // Only inside the steer feature does this notice collide with anything: there
+  // it sits two rows under the acknowledgement wearing the same serif-italic
+  // rule while meaning the opposite thing, so it drops the rule and reads as
+  // the live status it is. Everywhere else the divider is unchanged.
+  if (!continuationPresentationEnabled) {
+    return <RunSectionDividerRow label={label} announce />;
+  }
   return (
     <div role="status" aria-live="polite" className={RUN_SECTION_ROW_CLASS}>
       <div className="hidden @[900px]:block" />
@@ -4005,9 +4011,19 @@ function RunSectionDivider({
   );
 }
 
-function RunSectionDividerRow({ label }: { label: ReactNode }) {
+function RunSectionDividerRow({
+  label,
+  announce = false,
+}: {
+  label: ReactNode;
+  announce?: boolean;
+}) {
   return (
-    <div className={RUN_SECTION_ROW_CLASS}>
+    <div
+      role={announce ? "status" : undefined}
+      aria-live={announce ? "polite" : undefined}
+      className={RUN_SECTION_ROW_CLASS}
+    >
       <div className="hidden @[900px]:block" />
       <div className="min-w-0">
         <RunSectionDivider label={label} labelPosition="right" />

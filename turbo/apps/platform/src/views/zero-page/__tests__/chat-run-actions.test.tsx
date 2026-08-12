@@ -1,11 +1,12 @@
 import { screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it } from "vitest";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { i18n } from "../../../i18n/index.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import type { MockChatEventInput } from "./chat-event-test-helpers.ts";
-import { mockChatLifecycle } from "./chat-test-helpers.ts";
+import { mockChatLifecycle, sendQueuedMessage } from "./chat-test-helpers.ts";
 
 const context = testContext();
 
@@ -235,6 +236,41 @@ describe("chat run actions", () => {
         }),
       ).toStrictEqual([STEER_TWO_COPY, STEER_ONE_COPY]);
     });
+  });
+
+  it("counts up the acknowledgement in place as more steers arrive", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      activeRunIds: [RUN_ID],
+      chatEvents: [transcriptEvent("U1", 0, []), transcriptEvent("A1", 1, [])],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: CONTINUATION_PRESENTATION_ENABLED,
+    });
+
+    await expect(screen.findByText("A1")).resolves.toBeInTheDocument();
+
+    await sendQueuedMessage(user, "First steer");
+    await expect(screen.findByText(STEER_ONE_COPY)).resolves.toBeVisible();
+
+    await sendQueuedMessage(user, "Second steer");
+    await expect(screen.findByText(STEER_TWO_COPY)).resolves.toBeVisible();
+
+    // Still one acknowledgement for the burst, and the wording it replaced is
+    // on screen being erased rather than having disappeared outright.
+    const acknowledgements = screen.getAllByTestId(
+      "chat-steer-acknowledgement",
+    );
+    expect(acknowledgements).toHaveLength(1);
+    expect(
+      acknowledgements[0]?.querySelector(
+        "[data-steer-acknowledgement-outgoing]",
+      )?.textContent,
+    ).toBe(STEER_ONE_COPY);
   });
 
   it("keeps legacy actions and hides the acknowledgement when the feature switch is disabled", async () => {
