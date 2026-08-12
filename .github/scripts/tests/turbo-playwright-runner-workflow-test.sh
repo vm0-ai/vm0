@@ -64,10 +64,35 @@ stripe_listener = jobs.fetch("deploy-stripe-listener")
 shard_plan = jobs.fetch("cli-e2e-03-runner-shards")
 account_prepare = jobs.fetch("cli-e2e-03-runner-prepare")
 bootstrap = jobs.fetch("cli-e2e-03-runner-bootstrap")
+playwright = jobs.fetch("cli-e2e-02-playwright")
 runner = jobs.fetch("cli-e2e-03-runner")
 runner_vercel = jobs.fetch("cli-e2e-03-runner-vercel")
 account_cleanup = jobs.fetch("cli-e2e-03-runner-cleanup")
 runner_start = jobs.fetch("deploy-runner-start")
+
+playwright_steps = playwright.fetch("steps")
+diagnostics_ssh = playwright_steps.find do |step|
+  step["name"] == "Setup SSH for preview diagnostics"
+end
+raise "missing Playwright preview diagnostics SSH setup" unless diagnostics_ssh
+unless diagnostics_ssh["id"] == "setup_preview_diagnostics_ssh" &&
+    diagnostics_ssh["continue-on-error"] == true
+  raise "Playwright preview diagnostics SSH setup must expose a non-blocking outcome"
+end
+preview_diagnostics = playwright_steps.select do |step|
+  [
+    "Print preview Stripe webhook forwarding log",
+    "Print preview runner diagnostics",
+  ].include?(step["name"])
+end
+unless preview_diagnostics.length == 2 && preview_diagnostics.all? do |step|
+    step["continue-on-error"] == true &&
+      step.fetch("if").include?(
+        "steps.setup_preview_diagnostics_ssh.outcome == 'success'"
+      )
+  end
+  raise "Playwright preview diagnostics must not gate successful E2E tests"
+end
 
 unless prepare.dig("outputs", "turbo-runner-consumer-needed") ==
     "${{ steps.runner-e2e.outputs.turbo-runner-consumer-needed }}"
