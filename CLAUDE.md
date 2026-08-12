@@ -172,7 +172,7 @@ The root `lefthook.yml` selects formatting and static checks from staged file pa
    ```
    pnpm -F @vm0/app exec vitest
    ```
-   Replace `@vm0/app` with the workspace name relevant to your changes (e.g. `@vm0/zero-cli`, `api`).
+   Replace `@vm0/app` with the workspace name relevant to your changes (e.g. `@vm0/okou-cli`, `api`).
 3. **Limit full-suite worker concurrency** - When an all-workspace run is necessary, cap file workers to avoid resource-contention timeouts:
    ```
    pnpm vitest run --maxWorkers=4 --silent=passed-only

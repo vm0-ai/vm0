@@ -34,7 +34,7 @@ inputs:
     required: false
     default: ""
   cli-pkg-url:
-    description: "Commit-addressed Zero CLI npm package URL"
+    description: "Commit-addressed Okou CLI npm-format package URL"
     required: false
     default: ""
 

@@ -953,6 +953,8 @@ jobs:
           bash .github/scripts/verify-okou-cli-artifact.sh \
             "$artifact_dir" \
             "$ARTIFACT_SHA"
+          bash .github/scripts/smoke-okou-cli-artifact.sh \
+            "$artifact_dir/package.tgz"
           echo "package-url=${artifact_base_url}/package.tgz" >> "$GITHUB_OUTPUT"
 
       - name: Resolve API production environment

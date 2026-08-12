@@ -24,7 +24,7 @@ import {
   formatComputerUseResultForConsole,
   zeroComputerUseCommand,
 } from "../index";
-import { registerZeroCommands } from "../../../../zero";
+import { registerZeroCommands } from "../../../../okou";
 
 let testOutputDir = "";
 
