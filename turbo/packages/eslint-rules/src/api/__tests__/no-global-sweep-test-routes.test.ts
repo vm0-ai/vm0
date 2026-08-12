@@ -90,6 +90,34 @@ ruleTester.run("no-global-sweep-test-routes", noGlobalSweepTestRoutes, {
   ],
   invalid: [
     {
+      name: "aggregate contract binder aliases remain rejected",
+      filename: behaviorTest,
+      code: `
+        import { ROUTES } from "../../route";
+        import { setupApp } from "../../../__tests__/test-helpers";
+        const bindContract = setupApp({ context, routes: ROUTES });
+        const client = bindContract(contract);
+        await client.execute({
+          headers: { authorization: "Bearer test-cron-secret" },
+        });
+      `,
+      errors: [{ messageId: "globalSweep" }],
+    },
+    {
+      name: "aggregate app options aliases remain rejected",
+      filename: behaviorTest,
+      code: `
+        import { ROUTES } from "../../route";
+        import { createApp } from "../../../app-factory";
+        const options = { signal, routes: ROUTES };
+        const app = createApp(options);
+        await app.request("/api/cron/execute-workflow-automations", {
+          headers: { authorization: "Bearer test-cron-secret" },
+        });
+      `,
+      errors: [{ messageId: "globalSweep" }],
+    },
+    {
       name: "aggregate production routes cannot become a ts-rest behavior client",
       filename: behaviorTest,
       code: `

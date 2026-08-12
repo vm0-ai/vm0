@@ -9,6 +9,11 @@ import {
 } from "../syntax.ts";
 import { createRule } from "../utils.ts";
 
+type FunctionNode =
+  | TSESTree.ArrowFunctionExpression
+  | TSESTree.FunctionDeclaration
+  | TSESTree.FunctionExpression;
+
 interface GlobalSweepBoundary {
   readonly exportName: string;
   readonly moduleName: string;
@@ -217,6 +222,101 @@ export const noGlobalSweepTestRoutes = createRule({
       });
     }
 
+    function localFunctionForCallee(
+      expression: TSESTree.CallExpression["callee"],
+      seen: ReadonlySet<TSESTree.Node> = new Set(),
+    ): FunctionNode | null {
+      if (
+        seen.has(expression) ||
+        expression.type !== AST_NODE_TYPES.Identifier
+      ) {
+        return null;
+      }
+      const nextSeen = new Set(seen).add(expression);
+      const definitions =
+        variableInScope(context.sourceCode, expression)?.defs ?? [];
+      for (const definition of definitions) {
+        const node = definition.node;
+        if (
+          node.type === AST_NODE_TYPES.ArrowFunctionExpression ||
+          node.type === AST_NODE_TYPES.FunctionDeclaration ||
+          node.type === AST_NODE_TYPES.FunctionExpression
+        ) {
+          return node;
+        }
+        if (node.type === AST_NODE_TYPES.VariableDeclarator && node.init) {
+          if (
+            node.init.type === AST_NODE_TYPES.ArrowFunctionExpression ||
+            node.init.type === AST_NODE_TYPES.FunctionExpression
+          ) {
+            return node.init;
+          }
+          if (node.init.type === AST_NODE_TYPES.Identifier) {
+            const localFunction = localFunctionForCallee(node.init, nextSeen);
+            if (localFunction) {
+              return localFunction;
+            }
+          }
+        }
+      }
+      return null;
+    }
+
+    function parameterOwner(
+      identifier: TSESTree.Identifier,
+    ): FunctionNode | null {
+      const definition = variableInScope(
+        context.sourceCode,
+        identifier,
+      )?.defs.find((candidate) => {
+        return candidate.type === "Parameter";
+      });
+      const node = definition?.node;
+      if (
+        node?.type === AST_NODE_TYPES.ArrowFunctionExpression ||
+        node?.type === AST_NODE_TYPES.FunctionDeclaration ||
+        node?.type === AST_NODE_TYPES.FunctionExpression
+      ) {
+        return node;
+      }
+      return null;
+    }
+
+    function parameterIndex(node: FunctionNode, name: string): number {
+      return node.params.findIndex((rawParameter) => {
+        const parameter =
+          rawParameter.type === AST_NODE_TYPES.AssignmentPattern
+            ? rawParameter.left
+            : rawParameter;
+        return (
+          parameter.type === AST_NODE_TYPES.Identifier &&
+          parameter.name === name
+        );
+      });
+    }
+
+    function argumentsForParameter(
+      identifier: TSESTree.Identifier,
+    ): readonly TSESTree.Expression[] {
+      const owner = parameterOwner(identifier);
+      if (!owner) {
+        return [];
+      }
+      const index = parameterIndex(owner, identifier.name);
+      if (index < 0) {
+        return [];
+      }
+      return calls.flatMap((call) => {
+        if (localFunctionForCallee(call.callee) !== owner) {
+          return [];
+        }
+        const argument = call.arguments[index];
+        return argument && argument.type !== AST_NODE_TYPES.SpreadElement
+          ? [argument]
+          : [];
+      });
+    }
+
     function isAggregateRoutes(
       expression: TSESTree.Expression,
       seen: ReadonlySet<TSESTree.Node> = new Set(),
@@ -236,6 +336,11 @@ export const noGlobalSweepTestRoutes = createRule({
         }
         const definition = variableInScope(context.sourceCode, current)
           ?.defs[0];
+        if (definition?.type === "Parameter") {
+          return argumentsForParameter(current).some((argument) => {
+            return isAggregateRoutes(argument, nextSeen);
+          });
+        }
         return Boolean(
           definition?.node.type === AST_NODE_TYPES.VariableDeclarator &&
           definition.node.init &&
@@ -269,6 +374,62 @@ export const noGlobalSweepTestRoutes = createRule({
       return false;
     }
 
+    function aggregateRoutesOption(
+      expression: TSESTree.Expression,
+      seen: ReadonlySet<TSESTree.Node> = new Set(),
+    ): boolean | null {
+      const current = unwrapExpression(expression);
+      if (seen.has(current)) {
+        return null;
+      }
+      const nextSeen = new Set(seen).add(current);
+      if (current.type === AST_NODE_TYPES.Identifier) {
+        const definition = variableInScope(context.sourceCode, current)
+          ?.defs[0];
+        if (
+          definition?.node.type === AST_NODE_TYPES.VariableDeclarator &&
+          definition.node.init
+        ) {
+          return aggregateRoutesOption(definition.node.init, nextSeen);
+        }
+        if (definition?.type === "Parameter") {
+          const resolutions = argumentsForParameter(current).map((argument) => {
+            return aggregateRoutesOption(argument, nextSeen);
+          });
+          if (resolutions.some((resolution) => resolution === true)) {
+            return true;
+          }
+          return resolutions.length > 0 &&
+            resolutions.every((resolution) => resolution === false)
+            ? false
+            : null;
+        }
+        return null;
+      }
+      if (current.type !== AST_NODE_TYPES.ObjectExpression) {
+        return null;
+      }
+      for (const property of [...current.properties].reverse()) {
+        if (property.type === AST_NODE_TYPES.SpreadElement) {
+          const spread = aggregateRoutesOption(property.argument, nextSeen);
+          if (spread !== null) {
+            return spread;
+          }
+          continue;
+        }
+        if (
+          propertyName(property) === "routes" &&
+          property.value.type !== AST_NODE_TYPES.AssignmentPattern
+        ) {
+          return isAggregateRoutes(
+            property.value as TSESTree.Expression,
+            nextSeen,
+          );
+        }
+      }
+      return null;
+    }
+
     function isAppFactory(
       expression: TSESTree.CallExpression["callee"],
       seen: ReadonlySet<TSESTree.Node> = new Set(),
@@ -296,78 +457,17 @@ export const noGlobalSweepTestRoutes = createRule({
       );
     }
 
-    function mountedAggregateRoutes(
-      expression: TSESTree.Expression,
-      seen: ReadonlySet<TSESTree.Node> = new Set(),
-    ): boolean {
-      const current = unwrapExpression(expression);
-      if (seen.has(current)) {
-        return false;
-      }
-      const nextSeen = new Set(seen).add(current);
-      if (current.type === AST_NODE_TYPES.Identifier) {
-        const definition = variableInScope(context.sourceCode, current)
-          ?.defs[0];
-        return Boolean(
-          definition?.node.type === AST_NODE_TYPES.VariableDeclarator &&
-          definition.node.init &&
-          mountedAggregateRoutes(definition.node.init, nextSeen),
-        );
-      }
-      if (current.type !== AST_NODE_TYPES.CallExpression) {
-        return false;
-      }
-      if (isAppFactory(current.callee)) {
-        const options = current.arguments[0];
-        if (!options || options.type !== AST_NODE_TYPES.ObjectExpression) {
-          return false;
-        }
-        return options.properties.some((property) => {
-          return (
-            property.type === AST_NODE_TYPES.Property &&
-            propertyName(property) === "routes" &&
-            property.value.type !== AST_NODE_TYPES.AssignmentPattern &&
-            isAggregateRoutes(property.value as TSESTree.Expression)
-          );
-        });
-      }
-      return (
-        current.callee.type === AST_NODE_TYPES.CallExpression &&
-        mountedAggregateRoutes(current.callee, nextSeen)
-      );
-    }
-
-    function aggregateSweepBoundary(
-      call: TSESTree.CallExpression,
-    ): GlobalSweepBoundary | null {
-      if (
-        call.callee.type !== AST_NODE_TYPES.MemberExpression ||
-        memberName(call.callee) !== "request" ||
-        call.callee.object.type === AST_NODE_TYPES.Super ||
-        !mountedAggregateRoutes(call.callee.object)
-      ) {
-        return null;
-      }
-      const pathArgument = call.arguments[0];
-      if (!pathArgument || pathArgument.type === AST_NODE_TYPES.SpreadElement) {
-        return null;
-      }
-      const path = staticString(pathArgument);
-      return (
-        GLOBAL_SWEEP_BOUNDARIES.find((boundary) => {
-          return (
-            path === boundary.path || path?.startsWith(`${boundary.path}?`)
-          );
-        }) ?? null
-      );
-    }
-
-    function isAggregateContractClientMount(
+    function isAggregateAppFactoryMount(
       call: TSESTree.CallExpression,
     ): boolean {
-      return (
-        call.callee.type === AST_NODE_TYPES.CallExpression &&
-        mountedAggregateRoutes(call.callee)
+      if (!isAppFactory(call.callee)) {
+        return false;
+      }
+      const options = call.arguments[0];
+      return Boolean(
+        options &&
+        options.type !== AST_NODE_TYPES.SpreadElement &&
+        aggregateRoutesOption(options) === true,
       );
     }
 
@@ -451,13 +551,8 @@ export const noGlobalSweepTestRoutes = createRule({
       },
       "Program:exit"() {
         for (const call of calls) {
-          if (isAggregateContractClientMount(call)) {
+          if (isAggregateAppFactoryMount(call)) {
             reportAggregateRoutes(call);
-            continue;
-          }
-          const boundary = aggregateSweepBoundary(call);
-          if (boundary) {
-            report(call, boundary);
           }
         }
         for (const { boundary, specifier } of harnessBindings) {
