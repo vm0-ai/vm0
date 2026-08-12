@@ -4,18 +4,21 @@
  * Keep this module lightweight so public UI surfaces can read price tier data
  * without importing the full model provider contract schema.
  */
+// Ordered by model family (claude → gpt → deepseek), and within each family
+// from newest/highest capability to oldest/lowest. This order is load-bearing:
+// it drives the model dropdown and all model-related UI via sortRowsByCatalog.
 export const SUPPORTED_RUN_MODELS = [
   "claude-fable-5",
   "claude-opus-5",
+  "claude-opus-4-8",
+  "claude-sonnet-5",
+  "claude-sonnet-4-6",
   "gpt-5.6-sol",
   "gpt-5.6-terra",
   "gpt-5.6-luna",
   "gpt-5.5",
-  "claude-opus-4-8",
-  "claude-sonnet-5",
-  "claude-sonnet-4-6",
-  "deepseek-v4-flash",
   "deepseek-v4-pro",
+  "deepseek-v4-flash",
 ] as const;
 
 export type SupportedRunModel = (typeof SUPPORTED_RUN_MODELS)[number];
