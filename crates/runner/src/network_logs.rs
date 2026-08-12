@@ -36,6 +36,7 @@ const NETWORK_LOG_UPLOAD_PAYLOAD_OVERHEAD_BYTES: usize = 64;
 const NETWORK_LOG_UPLOAD_ENTRY_OVERHEAD_BYTES: usize = 1;
 const NETWORK_LOG_UPLOAD_ERROR_BODY_MAX_BYTES: usize = 2048;
 const NETWORK_LOG_UPLOAD_ERROR_FIELD_MAX_CHARS: usize = 512;
+const PREVIEW_ERROR_SUMMARY_HEADER: &str = "x-vm0-preview-error-summary";
 // Complement the per-request limits with finite per-run local, remote, and elapsed work.
 const NETWORK_LOG_UPLOAD_MAX_SOURCE_BYTES: u64 = 32 * 1024 * 1024;
 const NETWORK_LOG_UPLOAD_MAX_BATCHES: usize = 32;
@@ -45,6 +46,7 @@ const NETWORK_LOG_UPLOAD_MAX_DURATION: Duration = Duration::from_secs(10);
 struct UploadRejectionDetails {
     error_code: Option<String>,
     error_message: Option<String>,
+    preview_error_summary: Option<String>,
     body_truncated: bool,
     body_read_error: Option<String>,
 }
@@ -608,6 +610,7 @@ impl<'a> NetworkLogBatchUploader<'a> {
                     request_state = BatchRequestState::ConfirmedRejection.as_str(),
                     response_error_code = rejection.error_code.as_deref().unwrap_or(""),
                     response_error_message = rejection.error_message.as_deref().unwrap_or(""),
+                    preview_error_summary = rejection.preview_error_summary.as_deref().unwrap_or(""),
                     response_body_truncated = rejection.body_truncated,
                     response_body_read_error = rejection.body_read_error.as_deref().unwrap_or(""),
                     "network logs upload rejected"
@@ -643,6 +646,11 @@ fn estimated_entry_bytes(line: &str) -> usize {
 }
 
 async fn upload_rejection_details(mut resp: reqwest::Response) -> UploadRejectionDetails {
+    let preview_error_summary = resp
+        .headers()
+        .get(PREVIEW_ERROR_SUMMARY_HEADER)
+        .and_then(|value| value.to_str().ok())
+        .map(|value| truncate_log_field(value.to_string()));
     let mut body = Vec::new();
     let mut body_truncated = false;
 
@@ -662,6 +670,7 @@ async fn upload_rejection_details(mut resp: reqwest::Response) -> UploadRejectio
             Ok(None) => break,
             Err(e) => {
                 return UploadRejectionDetails {
+                    preview_error_summary,
                     body_read_error: Some(truncate_log_field(e.to_string())),
                     ..Default::default()
                 };
@@ -669,7 +678,9 @@ async fn upload_rejection_details(mut resp: reqwest::Response) -> UploadRejectio
         }
     }
 
-    parse_upload_rejection_body(&body, body_truncated)
+    let mut details = parse_upload_rejection_body(&body, body_truncated);
+    details.preview_error_summary = preview_error_summary;
+    details
 }
 
 fn parse_upload_rejection_body(body: &[u8], body_truncated: bool) -> UploadRejectionDetails {
@@ -1608,6 +1619,10 @@ mod tests {
                 when.method(POST).path("/api/webhooks/agent/telemetry");
                 then.status(400)
                     .header("content-type", "application/json")
+                    .header(
+                        PREVIEW_ERROR_SUMMARY_HEADER,
+                        "DirectAxiomIngestError: Axiom ingest failed with status 403",
+                    )
                     .json_body(json!({
                         "error": {
                             "code": "BAD_REQUEST",
@@ -1637,6 +1652,11 @@ mod tests {
             event,
             "response_error_message",
             "networkLogs.0.action: Invalid option: expected one of \"ALLOW\"|\"DENY\"|\"BLOCK\"",
+        );
+        assert_event_field(
+            event,
+            "preview_error_summary",
+            "DirectAxiomIngestError: Axiom ingest failed with status 403",
         );
         assert_event_field(event, "response_body_truncated", "false");
         assert!(path.exists());
