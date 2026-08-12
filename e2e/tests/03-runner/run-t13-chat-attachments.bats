@@ -99,7 +99,10 @@ EOF
     echo "$output"
     assert_success
     local first_run_response="$output"
-    run runner_e2e_wait_for_agent_text "$first_run_id" "$first_marker"
+    run runner_e2e_wait_for_chat_text \
+        "$THREAD_ID" \
+        "$first_run_id" \
+        "$first_marker"
     echo "$output"
     assert_success
     assert_output --partial "$content_marker"
@@ -127,7 +130,10 @@ EOF
     echo "$output"
     assert_success
     local continuation_run_response="$output"
-    run runner_e2e_wait_for_agent_text "$RUN_ID" "$continuation_marker"
+    run runner_e2e_wait_for_chat_text \
+        "$THREAD_ID" \
+        "$RUN_ID" \
+        "$continuation_marker"
     echo "$output"
     assert_success
     assert_output --partial "$content_marker"

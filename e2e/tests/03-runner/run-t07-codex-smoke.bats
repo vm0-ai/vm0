@@ -22,14 +22,13 @@ teardown_file() {
     fi
 }
 
-@test "basic codex chat run returns structured events" {
+@test "basic codex chat run returns a completed response" {
     run runner_chat_start "$RUNNER_AGENT_ID" "echo from codex"
 
     assert_success
-    assert_output --partial '"framework":"codex"'
-    assert_output --partial '"type":"thread.started"'
+    assert_output --partial '"status":"completed"'
     assert_output --partial "echo from codex"
-    assert_output --partial '"type":"turn.completed"'
     [[ -n "$(runner_chat_field "$output" '.runId')" ]]
+    [[ -n "$(runner_chat_field "$output" '.threadId')" ]]
     [[ -n "$(runner_chat_field "$output" '.sessionId')" ]]
 }
