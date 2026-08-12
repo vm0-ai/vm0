@@ -147,6 +147,17 @@ export default [
     },
   },
   {
+    files: [
+      "src/**/*.test.{ts,tsx}",
+      "src/**/*.spec.{ts,tsx}",
+      "src/**/__tests__/**/*.{ts,tsx}",
+    ],
+    ignores: ["src/signals/__tests__/test-helpers.ts"],
+    rules: {
+      "ccstate/no-test-after-each": "error",
+    },
+  },
+  {
     files: ["src/mocks/**/*.{ts,tsx}", "src/test/**/*.{ts,tsx}"],
     rules: {
       "no-restricted-syntax": [

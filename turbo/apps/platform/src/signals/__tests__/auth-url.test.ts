@@ -24,7 +24,7 @@ import { testContext } from "./test-helpers.ts";
 const context = testContext();
 
 function setBrowserUrl(url: string): void {
-  window.location.href = url;
+  context.mocks.browser.url(url);
 }
 
 describe("platform auth URLs", () => {

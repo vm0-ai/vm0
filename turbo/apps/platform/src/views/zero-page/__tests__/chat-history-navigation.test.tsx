@@ -185,37 +185,28 @@ describe("chat lifecycle", () => {
       return respond(200, { lastReadAt: null, unreads: [] });
     });
 
-    try {
-      detachedSetupPage({ context, path: `/chats/${threadId}` });
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
 
-      await waitFor(() => {
-        expect(initialPageRequested).toBeTruthy();
-      });
-      expect(beforeSeqIds).toStrictEqual([]);
-      expect(document.querySelector("[data-chat-skeleton]")).not.toBeNull();
+    await waitFor(() => {
+      expect(initialPageRequested).toBeTruthy();
+    });
+    expect(beforeSeqIds).toStrictEqual([]);
+    expect(document.querySelector("[data-chat-skeleton]")).not.toBeNull();
 
-      initialPageGate.resolve();
-      await waitFor(() => {
-        expect(beforeSeqIds).toStrictEqual([
-          messages[20]!.seqId,
-          messages[10]!.seqId,
-        ]);
-      });
-      expect(screen.getByText("Delayed history reply 70")).toBeInTheDocument();
-      expect(
-        screen.queryByText("Delayed history reply 11"),
-      ).not.toBeInTheDocument();
-      expect(document.querySelector("[data-chat-skeleton]")).toBeNull();
+    initialPageGate.resolve();
+    await waitFor(() => {
+      expect(beforeSeqIds).toStrictEqual([
+        messages[20]!.seqId,
+        messages[10]!.seqId,
+      ]);
+    });
+    expect(screen.getByText("Delayed history reply 70")).toBeInTheDocument();
+    expect(
+      screen.queryByText("Delayed history reply 11"),
+    ).not.toBeInTheDocument();
+    expect(document.querySelector("[data-chat-skeleton]")).toBeNull();
 
-      beforePageGate.resolve();
-    } finally {
-      if (!initialPageGate.settled()) {
-        initialPageGate.resolve();
-      }
-      if (!beforePageGate.settled()) {
-        beforePageGate.resolve();
-      }
-    }
+    beforePageGate.resolve();
 
     await waitFor(() => {
       expect(screen.getByText("Delayed history reply 1")).toBeInTheDocument();
@@ -764,22 +755,16 @@ describe("chat lifecycle", () => {
 
     detachedSetupPage({ context, path: `/chats/${HISTORY_THREAD_ID}` });
 
-    try {
-      await waitFor(() => {
-        expect(initialPageReturned).toBeTruthy();
-      });
-      expect(
-        screen.getByText("Current launch risks are ready."),
-      ).toBeInTheDocument();
-      expect(queryButtonByText("Load history")).toBeNull();
-      expect(screen.queryByText(olderReply)).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(initialPageReturned).toBeTruthy();
+    });
+    expect(
+      screen.getByText("Current launch risks are ready."),
+    ).toBeInTheDocument();
+    expect(queryButtonByText("Load history")).toBeNull();
+    expect(screen.queryByText(olderReply)).not.toBeInTheDocument();
 
-      beforeHistoryGate.resolve();
-    } finally {
-      if (!beforeHistoryGate.settled()) {
-        beforeHistoryGate.resolve();
-      }
-    }
+    beforeHistoryGate.resolve();
 
     await waitFor(() => {
       expect(screen.getByText(olderReply)).toBeInTheDocument();

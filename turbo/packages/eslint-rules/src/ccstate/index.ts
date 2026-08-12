@@ -26,6 +26,7 @@
  * - no-empty-promise-catch: Disallow .catch(() => {}) — use detach() for proper promise tracking
  * - no-test-delay: Disallow manual delays/timers in tests — use createDeferredPromise + waitFor
  * - no-manual-mock-cleanup: Disallow manual vi.*AllMocks()/unstub cleanup — Vitest config owns it
+ * - no-test-after-each: Disallow file-level afterEach cleanup in platform tests
  * - require-accept: Enforce that zeroClient$ calls are wrapped in accept()
  * - no-get-by-role-name: Avoid *ByRole(role, { name }) for text-content roles — causes ~300ms/call slowdown in happy-dom
  * - no-raw-msw-http: Disallow raw http.* MSW handlers for internal /api/zero/* paths — use mockApi(contract.route, ...)
@@ -61,6 +62,7 @@ import noVoidStatement from "./rules/no-void-statement.ts";
 import noAbortSwallower from "./rules/no-abort-swallower.ts";
 import noTestDelay from "./rules/no-test-delay.ts";
 import noManualMockCleanup from "./rules/no-manual-mock-cleanup.ts";
+import noTestAfterEach from "./rules/no-test-after-each.ts";
 import requireAccept from "./rules/require-accept.ts";
 import requireClientSignal from "./rules/require-client-signal.ts";
 import noGetByRoleName from "./rules/no-get-by-role-name.ts";
@@ -105,6 +107,7 @@ const plugin = {
     "no-abort-swallower": noAbortSwallower,
     "no-test-delay": noTestDelay,
     "no-manual-mock-cleanup": noManualMockCleanup,
+    "no-test-after-each": noTestAfterEach,
     "require-accept": requireAccept,
     "require-client-signal": requireClientSignal,
     "no-get-by-role-name": noGetByRoleName,

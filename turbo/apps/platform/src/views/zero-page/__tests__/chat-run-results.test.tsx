@@ -1,5 +1,5 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
   chatEventResponse,
   chatThreadByIdContract,
@@ -11,7 +11,6 @@ import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-bil
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { click, queryAllByRoleFast } from "../../../__tests__/page-helper.ts";
 import { initializeI18n } from "../../../i18n/index.ts";
-import { DEFAULT_LOCALE } from "../../../i18n/resources.ts";
 import { mockChatLifecycle, mockSubagentThread } from "./chat-test-helpers.ts";
 import type { MockChatEventInput } from "./chat-event-test-helpers.ts";
 import {
@@ -29,11 +28,6 @@ import {
   buttonByText,
   buttonByLabel,
 } from "./chat-lifecycle-test-helpers.ts";
-
-afterEach(async () => {
-  document.documentElement.lang = DEFAULT_LOCALE;
-  await initializeI18n(DEFAULT_LOCALE);
-});
 
 describe("chat lifecycle", () => {
   it("keeps budget inputs out of the visible transcript", async () => {
@@ -1841,36 +1835,30 @@ describe("chat lifecycle", () => {
       });
     });
 
-    try {
-      detachedSetupPage({ context, path: `/chats/${threadId}` });
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
 
-      await waitFor(() => {
-        expect(screen.getByText("Baseline 0")).toBeInTheDocument();
-        expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
-      });
-      expect(
-        context.mocks.ably.hasSubscription(
-          `chatThreadMessageCreated:${threadId}`,
-        ),
-      ).toBeFalsy();
-      sinceSeqIds.length = 0;
-      burstEnabled = true;
-      context.mocks.ably.triggerReconnect();
+    await waitFor(() => {
+      expect(screen.getByText("Baseline 0")).toBeInTheDocument();
+      expect(context.mocks.ably.hasChannelSubscription()).toBeTruthy();
+    });
+    expect(
+      context.mocks.ably.hasSubscription(
+        `chatThreadMessageCreated:${threadId}`,
+      ),
+    ).toBeFalsy();
+    sinceSeqIds.length = 0;
+    burstEnabled = true;
+    context.mocks.ably.triggerReconnect();
 
-      await waitFor(() => {
-        expect(finalForwardPageRequested).toBeTruthy();
-      });
-      expect(screen.queryByText("Burst 119")).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(finalForwardPageRequested).toBeTruthy();
+    });
+    expect(screen.queryByText("Burst 119")).not.toBeInTheDocument();
 
-      finalPageGate.resolve();
-      await waitFor(() => {
-        expect(screen.getByText("Burst 119")).toBeInTheDocument();
-      });
-    } finally {
-      if (!finalPageGate.settled()) {
-        finalPageGate.resolve();
-      }
-    }
+    finalPageGate.resolve();
+    await waitFor(() => {
+      expect(screen.getByText("Burst 119")).toBeInTheDocument();
+    });
     expect(sinceSeqIds).toStrictEqual([
       baselineMessages.at(-1)!.seqId,
       burstMessages[49]!.seqId,

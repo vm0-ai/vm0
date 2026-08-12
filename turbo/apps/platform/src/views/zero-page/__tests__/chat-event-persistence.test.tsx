@@ -30,6 +30,23 @@ const FIRST_EVENT_CONTENT = "Persist this remote response for thread re-entry";
 const STRUCTURED_EVENT_ID = "00000000-0000-4000-8000-000000000733";
 const GOAL_QUEUE_EVENT_ID = "00000000-0000-4000-8000-000000000734";
 const STRUCTURED_REFERENCE_TITLE = "Archived IndexedDB source";
+
+function testIdentity(prefix: string): string {
+  return `${prefix}-${context.resourceId}`;
+}
+
+async function openRuntimeChatDb() {
+  const db = await context.store.get(chatIdb$);
+  context.signal.addEventListener(
+    "abort",
+    () => {
+      db.close();
+    },
+    { once: true },
+  );
+  return db;
+}
+
 function userMessageFixture(): UserMessageDocument {
   return {
     version: 1,
@@ -55,15 +72,17 @@ async function findThreadLink(title: string): Promise<HTMLAnchorElement> {
 
 describe("chat event persistence", () => {
   it("round-trips canonical user and assistant events through IndexedDB on thread re-entry", async () => {
+    const userId = testIdentity("idb-reentry-user");
+    const orgId = testIdentity("idb-reentry-org");
     mockUser(
-      { id: "idb-reentry-user", fullName: "IndexedDB Test User" },
+      { id: userId, fullName: "IndexedDB Test User" },
       { token: "test-token" },
     );
     mockOrganization({
-      activeOrg: { id: "idb-reentry-org", name: "IndexedDB Test Org" },
-      memberships: [{ id: "idb-reentry-org" }],
+      activeOrg: { id: orgId, name: "IndexedDB Test Org" },
+      memberships: [{ id: orgId }],
     });
-    const appDb = await context.store.get(chatIdb$);
+    const appDb = await openRuntimeChatDb();
     const userMessage = userMessageFixture();
     const user = userEvent.setup({ delay: null });
     const blockedRemote = context.mocks.deferred<void>();
@@ -161,98 +180,88 @@ describe("chat event persistence", () => {
       },
     );
 
-    try {
-      detachedSetupPage({
-        context,
-        path: `/chats/${FIRST_THREAD_ID}`,
-        user: { id: "idb-reentry-user", fullName: "IndexedDB Test User" },
-        org: {
-          activeOrg: { id: "idb-reentry-org", name: "IndexedDB Test Org" },
-          memberships: [{ id: "idb-reentry-org" }],
-        },
-      });
+    detachedSetupPage({
+      context,
+      path: `/chats/${FIRST_THREAD_ID}`,
+      user: { id: "idb-reentry-user", fullName: "IndexedDB Test User" },
+      org: {
+        activeOrg: { id: "idb-reentry-org", name: "IndexedDB Test Org" },
+        memberships: [{ id: "idb-reentry-org" }],
+      },
+    });
 
-      await firstThreadCaughtUp.promise;
-      await expect(
-        screen.findByText(FIRST_EVENT_CONTENT),
-      ).resolves.toBeInTheDocument();
-      await waitFor(() => {
-        const reference = document.querySelector(
-          `a[aria-label="Open chat ${STRUCTURED_REFERENCE_TITLE}"]`,
-        );
-        expect(reference).toHaveAttribute("href", `/chats/${FIRST_THREAD_ID}`);
-        expect(document.querySelectorAll('[data-role="user"]')).toHaveLength(1);
-      });
-      await waitFor(async () => {
-        const testDb = await openChatIdb("idb-reentry-user", "idb-reentry-org");
-        try {
-          const goalQueueEvent: unknown = await testDb.get(
-            CHAT_MESSAGES_STORE,
-            GOAL_QUEUE_EVENT_ID,
-          );
-          expect(goalQueueEvent).toMatchObject({
-            eventType: "input.goal",
-            userMessage: {
-              version: 1,
-              parts: [
-                {
-                  type: "goal",
-                  goalBrief: "Persist this goal queue marker",
-                },
-              ],
+    await firstThreadCaughtUp.promise;
+    await expect(
+      screen.findByText(FIRST_EVENT_CONTENT),
+    ).resolves.toBeInTheDocument();
+    await waitFor(() => {
+      const reference = document.querySelector(
+        `a[aria-label="Open chat ${STRUCTURED_REFERENCE_TITLE}"]`,
+      );
+      expect(reference).toHaveAttribute("href", `/chats/${FIRST_THREAD_ID}`);
+      expect(document.querySelectorAll('[data-role="user"]')).toHaveLength(1);
+    });
+    await waitFor(async () => {
+      const goalQueueEvent: unknown = await appDb.get(
+        CHAT_MESSAGES_STORE,
+        GOAL_QUEUE_EVENT_ID,
+      );
+      expect(goalQueueEvent).toMatchObject({
+        eventType: "input.goal",
+        userMessage: {
+          version: 1,
+          parts: [
+            {
+              type: "goal",
+              goalBrief: "Persist this goal queue marker",
             },
-            seqId: 1,
-            threadId: FIRST_THREAD_ID,
-          });
-          const userMessageElement: unknown = await testDb.get(
-            CHAT_MESSAGES_STORE,
-            STRUCTURED_EVENT_ID,
-          );
-          expect(userMessageElement).toMatchObject({
-            content: null,
-            userMessage,
-            threadId: FIRST_THREAD_ID,
-          });
-          const persistedEvent: unknown = await testDb.get(
-            CHAT_MESSAGES_STORE,
-            FIRST_EVENT_ID,
-          );
-          expect(persistedEvent).toMatchObject({
-            content: FIRST_EVENT_CONTENT,
-            threadId: FIRST_THREAD_ID,
-          });
-          expect(persistedEvent).not.toHaveProperty("userMessage");
-        } finally {
-          testDb.close();
-        }
+          ],
+        },
+        seqId: 1,
+        threadId: FIRST_THREAD_ID,
       });
-
-      await user.click(await findThreadLink("IndexedDB other thread"));
-      await waitFor(() => {
-        expect(document.title).toBe("IndexedDB other thread | VM0");
-        expect(screen.getByText("Other thread response")).toBeInTheDocument();
+      const userMessageElement: unknown = await appDb.get(
+        CHAT_MESSAGES_STORE,
+        STRUCTURED_EVENT_ID,
+      );
+      expect(userMessageElement).toMatchObject({
+        content: null,
+        userMessage,
+        threadId: FIRST_THREAD_ID,
       });
-
-      blockFirstThreadRemote = true;
-      await user.click(await findThreadLink("IndexedDB source thread"));
-
-      await waitFor(() => {
-        expect(document.title).toBe("IndexedDB source thread | VM0");
-        expect(screen.getByText(FIRST_EVENT_CONTENT)).toBeInTheDocument();
-        const reference = document.querySelector(
-          `a[aria-label="Open chat ${STRUCTURED_REFERENCE_TITLE}"]`,
-        );
-        expect(reference).toHaveAttribute("href", `/chats/${FIRST_THREAD_ID}`);
+      const persistedEvent: unknown = await appDb.get(
+        CHAT_MESSAGES_STORE,
+        FIRST_EVENT_ID,
+      );
+      expect(persistedEvent).toMatchObject({
+        content: FIRST_EVENT_CONTENT,
+        threadId: FIRST_THREAD_ID,
       });
-    } finally {
-      blockedRemote.resolve();
-      appDb.close();
-    }
+      expect(persistedEvent).not.toHaveProperty("userMessage");
+    });
+
+    await user.click(await findThreadLink("IndexedDB other thread"));
+    await waitFor(() => {
+      expect(document.title).toBe("IndexedDB other thread | VM0");
+      expect(screen.getByText("Other thread response")).toBeInTheDocument();
+    });
+
+    blockFirstThreadRemote = true;
+    await user.click(await findThreadLink("IndexedDB source thread"));
+
+    await waitFor(() => {
+      expect(document.title).toBe("IndexedDB source thread | VM0");
+      expect(screen.getByText(FIRST_EVENT_CONTENT)).toBeInTheDocument();
+      const reference = document.querySelector(
+        `a[aria-label="Open chat ${STRUCTURED_REFERENCE_TITLE}"]`,
+      );
+      expect(reference).toHaveAttribute("href", `/chats/${FIRST_THREAD_ID}`);
+    });
   });
 
   it("falls back to the remote event list when cached structured data is invalid", async () => {
-    const userId = "idb-invalid-user";
-    const orgId = "idb-invalid-org";
+    const userId = testIdentity("idb-invalid-user");
+    const orgId = testIdentity("idb-invalid-org");
     const threadId = "b0000000-0000-4000-a000-000000000734";
     const remoteEventContent = "Reloaded after invalid structured cache";
     const cachedEventContent = "Invalid cached structured message";
@@ -279,7 +288,7 @@ describe("chat event persistence", () => {
       activeOrg: { id: orgId, name: "Invalid IndexedDB Test Org" },
       memberships: [{ id: orgId }],
     });
-    const appDb = await context.store.get(chatIdb$);
+    await openRuntimeChatDb();
 
     mockChatLifecycle(context, {
       threadId,
@@ -310,24 +319,20 @@ describe("chat event persistence", () => {
       });
     });
 
-    try {
-      detachedSetupPage({
-        context,
-        path: `/chats/${threadId}`,
-        user: { id: userId, fullName: "Invalid IndexedDB Test User" },
-        org: {
-          activeOrg: { id: orgId, name: "Invalid IndexedDB Test Org" },
-          memberships: [{ id: orgId }],
-        },
-      });
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      user: { id: userId, fullName: "Invalid IndexedDB Test User" },
+      org: {
+        activeOrg: { id: orgId, name: "Invalid IndexedDB Test Org" },
+        memberships: [{ id: orgId }],
+      },
+    });
 
-      await remoteEventsCaughtUp.promise;
-      await expect(
-        screen.findByText(remoteEventContent),
-      ).resolves.toBeInTheDocument();
-      expect(screen.queryByText(cachedEventContent)).not.toBeInTheDocument();
-    } finally {
-      appDb.close();
-    }
+    await remoteEventsCaughtUp.promise;
+    await expect(
+      screen.findByText(remoteEventContent),
+    ).resolves.toBeInTheDocument();
+    expect(screen.queryByText(cachedEventContent)).not.toBeInTheDocument();
   });
 });

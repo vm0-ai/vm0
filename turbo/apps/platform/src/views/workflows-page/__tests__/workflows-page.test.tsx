@@ -21,8 +21,7 @@ import { integrationsGithubContract } from "@vm0/api-contracts/contracts/integra
 import { zeroStrapiIntegrationsContract } from "@vm0/api-contracts/contracts/zero-strapi-integrations";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { toast } from "@vm0/ui/components/ui/sonner";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import {
   click,
@@ -42,7 +41,6 @@ import {
   createDefaultMockGithubIntegration,
   setMockGithubIntegration,
 } from "../../../mocks/handlers/api-integrations-github.ts";
-import { i18n } from "../../../i18n/index.ts";
 
 const context = testContext();
 const CURRENT_USER_ID = "test-user-123";
@@ -64,10 +62,6 @@ const WORKFLOW_CHAT_THREAD_ID = "00000000-0000-4000-a000-000000000300";
 const AUTOMATION_RUN_THREAD_ID = "00000000-0000-4000-a000-000000000301";
 
 type WorkflowDetailTestTab = "automations" | "instructions" | "info";
-
-afterEach(() => {
-  toast.dismiss();
-});
 
 function workflowDetailPath(tab: WorkflowDetailTestTab): string {
   return `/workflows/${SALES_WORKFLOW_ID}/${tab}`;
@@ -1593,11 +1587,6 @@ describe("workflows routes", () => {
 });
 
 describe("workflow localization", () => {
-  afterEach(async () => {
-    await i18n.changeLanguage("en-US");
-    document.documentElement.lang = "en-US";
-  });
-
   const localeCases = [
     {
       locale: "en-US",

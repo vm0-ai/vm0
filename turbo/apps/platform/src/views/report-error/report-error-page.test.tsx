@@ -1,8 +1,7 @@
 import { screen, waitFor } from "@testing-library/react";
 import { zeroReportErrorContract } from "@vm0/api-contracts/contracts/zero-report-error";
 import { zeroRunsByIdContract } from "@vm0/api-contracts/contracts/zero-runs";
-import { toast } from "@vm0/ui/components/ui/sonner";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import {
   click,
@@ -15,10 +14,6 @@ import { testContext } from "../../signals/__tests__/test-helpers.ts";
 const context = testContext();
 
 const failedRunId = "33333333-3333-4333-8333-333333333333";
-
-afterEach(() => {
-  toast.dismiss();
-});
 
 function buttonByText(text: string): HTMLElement {
   const button = queryAllByRoleFast("button").find((candidate) => {

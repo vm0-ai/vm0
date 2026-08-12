@@ -1,6 +1,6 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it, onTestFinished } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
   chatThreadByIdContract,
   chatThreadsContract,
@@ -13,7 +13,6 @@ import type {
   OrgModelPolicy,
 } from "@vm0/api-contracts/contracts/model-providers";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { i18n } from "../../../i18n/index.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { triggerAblyEvent, triggerAblyReconnect } from "../../../mocks/ably.ts";
 import {
@@ -43,11 +42,6 @@ const MODEL_CHANGED_COPY = "Model changed to Claude Sonnet 4.6";
 const FAST_MODEL_CHANGED_COPY = "Model changed to GPT 5.6 Sol Fast";
 const NEXT_RUN_FAST_MODEL_COPY = "Next run will use GPT 5.6 Sol Fast";
 const RECONCILED_THREAD_TITLE = "Reconciled thread";
-
-afterEach(async () => {
-  await i18n.changeLanguage("en-US");
-  document.documentElement.lang = "en-US";
-});
 
 interface ModelSelectionRequest {
   readonly modelProviderId: string;
@@ -639,11 +633,6 @@ describe("chat run queue", () => {
     let clientThreadId: string | undefined;
     let threadCreateEventId: string | undefined;
     let secondUserMessage: UserMessageDocument | undefined;
-    onTestFinished(() => {
-      if (!secondSendGate.settled()) {
-        secondSendGate.resolve();
-      }
-    });
     context.mocks.data.userModelPreference({
       selectedModel: "gpt-5.5",
       serviceTier: null,
@@ -769,11 +758,6 @@ describe("chat run queue", () => {
     const user = userEvent.setup({ delay: null });
     const sendGate = context.mocks.deferred<void>();
     let requestUserMessage: UserMessageDocument | undefined;
-    onTestFinished(() => {
-      if (!sendGate.settled()) {
-        sendGate.resolve();
-      }
-    });
     context.mocks.data.orgModelPolicies([
       buildModelPolicy({
         model: "gpt-5.6-sol",
@@ -852,11 +836,6 @@ describe("chat run queue", () => {
     const steerMessages: QueuedMessageCapture[] = [];
     let runCreateCount = 0;
     let nextRunUserMessage: UserMessageDocument | undefined;
-    onTestFinished(() => {
-      if (!nextRunSendGate.settled()) {
-        nextRunSendGate.resolve();
-      }
-    });
     context.mocks.data.userModelPreference({
       selectedModel: "gpt-5.5",
       serviceTier: null,

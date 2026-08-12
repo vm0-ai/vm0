@@ -39,12 +39,15 @@ interface ParsedShortcut {
 }
 
 // ---------------------------------------------------------------------------
-// Platform detection (once at module load)
+// Platform detection
 // ---------------------------------------------------------------------------
 
-const isMac =
-  typeof navigator !== "undefined" &&
-  /Mac|iPhone|iPad|iPod/.test(navigator.userAgent);
+function isMacKeyboard(): boolean {
+  return (
+    typeof navigator !== "undefined" &&
+    /Mac|iPhone|iPad|iPod/.test(navigator.userAgent)
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Parsing
@@ -148,6 +151,7 @@ function matchesShortcutKey(parsed: ParsedShortcut, e: KeyboardEventLike) {
 
 export function matchShortcut(shortcut: string, e: KeyboardEventLike): boolean {
   const parsed = parseShortcut(shortcut);
+  const isMac = isMacKeyboard();
   const expectedMetaKey = parsed.mod && isMac;
   const expectedCtrlKey = parsed.ctrl || (parsed.mod && !isMac);
 
@@ -229,6 +233,7 @@ function formatKey(key: string): string {
 
 export function getShortcutLabel(shortcut: string): string {
   const parsed = parseShortcut(shortcut);
+  const isMac = isMacKeyboard();
 
   if (isMac) {
     const parts: string[] = [];
@@ -272,6 +277,7 @@ export function getShortcutLabel(shortcut: string): string {
  */
 export function getShortcutParts(shortcut: string): string[] {
   const segments = shortcut.toLowerCase().split("+");
+  const isMac = isMacKeyboard();
   const result: string[] = [];
   let key = "";
 

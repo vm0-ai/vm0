@@ -20,7 +20,6 @@ import {
 } from "@vm0/api-contracts/contracts/zero-avatar-video";
 import { avatarTemplateStylePresetId } from "@vm0/core/avatar-template";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createDeferredPromise } from "../../../signals/utils.ts";
 import {
   click,
   detachedSetupPage,
@@ -41,6 +40,7 @@ import {
   mockActiveTemplateThread,
   trackTemplatePreviewImagePreloads,
   mockImmediateIdleCallback,
+  mockUrlObjectMethods,
   selectTemplate,
   selectIllustrationTemplate,
   composerElementFrom,
@@ -537,36 +537,31 @@ describe("chat composer templates", () => {
 
   it("prewarms template previews only after the template button is used", async () => {
     const imagePreloads = trackTemplatePreviewImagePreloads();
-    const restoreIdleCallback = mockImmediateIdleCallback();
+    mockImmediateIdleCallback();
     const templatePreviewSrcs = () => {
       return imagePreloads.srcs.filter((src) => {
         return src.includes("/cdn-cgi/image/width=480,height=270");
       });
     };
 
-    try {
-      mockChatLifecycle(context, { threadId: THREAD_ID });
+    mockChatLifecycle(context, { threadId: THREAD_ID });
 
-      detachedSetupPage({
-        context,
-        path: `/chats/${THREAD_ID}`,
-      });
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+    });
 
-      const templateButton = await waitFor(() => {
-        return screen.getByLabelText("Template");
-      });
+    const templateButton = await waitFor(() => {
+      return screen.getByLabelText("Template");
+    });
 
-      expect(templatePreviewSrcs()).toStrictEqual([]);
+    expect(templatePreviewSrcs()).toStrictEqual([]);
 
-      click(templateButton);
+    click(templateButton);
 
-      await waitFor(() => {
-        expect(templatePreviewSrcs().length).toBeGreaterThan(0);
-      });
-    } finally {
-      restoreIdleCallback();
-      imagePreloads.restore();
-    }
+    await waitFor(() => {
+      expect(templatePreviewSrcs().length).toBeGreaterThan(0);
+    });
   });
 
   it("loads the presentation preview at low resolution before replacing it with the high-resolution image", async () => {
@@ -1262,12 +1257,12 @@ describe("chat composer templates", () => {
       throw new Error("Prism presentation template not found");
     }
     const blobHtml: Promise<string>[] = [];
-    const originalCreateObjectURL = URL.createObjectURL;
-    const originalRevokeObjectURL = URL.revokeObjectURL;
-    const createObjectURL = vi.fn((blob: Blob) => {
-      blobHtml.push(blob.text());
-      return `blob:template-preview-${String(blobHtml.length)}`;
-    });
+    const { createObjectURL, revokeObjectURL } = mockUrlObjectMethods(
+      (blob) => {
+        blobHtml.push(blob.text());
+        return `blob:template-preview-${String(blobHtml.length)}`;
+      },
+    );
     const htmlForFrame = (frame: HTMLElement): Promise<string> => {
       const src = frame.getAttribute("src");
       if (src === null) {
@@ -1283,15 +1278,6 @@ describe("chat composer templates", () => {
       }
       return html;
     };
-    const revokeObjectURL = vi.fn();
-    Object.defineProperty(URL, "createObjectURL", {
-      configurable: true,
-      value: createObjectURL,
-    });
-    Object.defineProperty(URL, "revokeObjectURL", {
-      configurable: true,
-      value: revokeObjectURL,
-    });
     context.mocks.http.get("*/__vm0-dev-artifact-fetch", () => {
       return new Response(
         `
@@ -1312,141 +1298,119 @@ describe("chat composer templates", () => {
     });
     mockChatLifecycle(context, { threadId: THREAD_ID });
 
-    try {
-      detachedSetupPage({
-        context,
-        path: `/chats/${THREAD_ID}`,
-      });
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+    });
 
-      click(
-        await waitFor(() => {
-          return screen.getByLabelText("Template");
-        }),
-      );
-      expect(
-        screen.queryByLabelText(`View template ${template.title}`),
-      ).not.toBeInTheDocument();
-      const currentPreviewFrame = () => {
-        return screen.getByTestId(`${template.title} card HTML preview`);
-      };
+    click(
+      await waitFor(() => {
+        return screen.getByLabelText("Template");
+      }),
+    );
+    expect(
+      screen.queryByLabelText(`View template ${template.title}`),
+    ).not.toBeInTheDocument();
+    const currentPreviewFrame = () => {
+      return screen.getByTestId(`${template.title} card HTML preview`);
+    };
+    expect(
+      screen.queryByTestId(`${template.title} card HTML preview`),
+    ).not.toBeInTheDocument();
+    const preview = screen.getByLabelText(
+      `Preview ${template.title} at current slide`,
+    ).parentElement;
+    if (!preview) {
+      throw new Error("Template preview not found");
+    }
+    Object.defineProperty(preview, "getBoundingClientRect", {
+      configurable: true,
+      value: () => {
+        return new DOMRect(0, 0, 300, 160);
+      },
+    });
+
+    fireEvent.mouseEnter(preview);
+    await waitFor(() => {
       expect(
         screen.queryByTestId(`${template.title} card HTML preview`),
       ).not.toBeInTheDocument();
-      const preview = screen.getByLabelText(
-        `Preview ${template.title} at current slide`,
-      ).parentElement;
-      if (!preview) {
-        throw new Error("Template preview not found");
-      }
-      Object.defineProperty(preview, "getBoundingClientRect", {
-        configurable: true,
-        value: () => {
-          return new DOMRect(0, 0, 300, 160);
-        },
-      });
+    });
 
-      fireEvent.mouseEnter(preview);
-      await waitFor(() => {
-        expect(
-          screen.queryByTestId(`${template.title} card HTML preview`),
-        ).not.toBeInTheDocument();
-      });
+    fireEvent.mouseEnter(preview);
+    fireEvent.mouseMove(preview, { clientX: 300, clientY: 80 });
 
-      fireEvent.mouseEnter(preview);
-      fireEvent.mouseMove(preview, { clientX: 300, clientY: 80 });
-
-      await waitFor(async () => {
-        await expect(htmlForFrame(currentPreviewFrame())).resolves.toContain(
-          "Slide two",
-        );
-      });
-      expect(currentPreviewFrame()).toHaveAttribute("tabindex", "-1");
-      const secondPreviewHtml = await htmlForFrame(currentPreviewFrame());
-      expect(secondPreviewHtml).toContain("--accent:#FF7A1A");
-      expect(secondPreviewHtml).toContain("--s2:#F5B73E");
-      expect(secondPreviewHtml).not.toContain("--fd:");
-      expect(secondPreviewHtml).not.toContain("--fb:");
-      const createObjectUrlCountBeforeLeave = createObjectURL.mock.calls.length;
-      fireEvent.mouseLeave(preview);
-      await waitFor(() => {
-        expect(
-          screen.queryByTestId(`${template.title} card HTML preview`),
-        ).not.toBeInTheDocument();
-      });
-      expect(createObjectURL).toHaveBeenCalledTimes(
-        createObjectUrlCountBeforeLeave,
+    await waitFor(async () => {
+      await expect(htmlForFrame(currentPreviewFrame())).resolves.toContain(
+        "Slide two",
       );
+    });
+    expect(currentPreviewFrame()).toHaveAttribute("tabindex", "-1");
+    const secondPreviewHtml = await htmlForFrame(currentPreviewFrame());
+    expect(secondPreviewHtml).toContain("--accent:#FF7A1A");
+    expect(secondPreviewHtml).toContain("--s2:#F5B73E");
+    expect(secondPreviewHtml).not.toContain("--fd:");
+    expect(secondPreviewHtml).not.toContain("--fb:");
+    const createObjectUrlCountBeforeLeave = createObjectURL.mock.calls.length;
+    fireEvent.mouseLeave(preview);
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId(`${template.title} card HTML preview`),
+      ).not.toBeInTheDocument();
+    });
+    expect(createObjectURL).toHaveBeenCalledTimes(
+      createObjectUrlCountBeforeLeave,
+    );
 
-      const currentPrismPreviewFrame = () => {
-        return screen.getByTestId(`${prismTemplate.title} card HTML preview`);
-      };
+    const currentPrismPreviewFrame = () => {
+      return screen.getByTestId(`${prismTemplate.title} card HTML preview`);
+    };
+    expect(
+      screen.queryByTestId(`${prismTemplate.title} card HTML preview`),
+    ).not.toBeInTheDocument();
+    const prismPreview = screen.getByLabelText(
+      `Preview ${prismTemplate.title} at current slide`,
+    ).parentElement;
+    if (!prismPreview) {
+      throw new Error("Prism template preview not found");
+    }
+    Object.defineProperty(prismPreview, "getBoundingClientRect", {
+      configurable: true,
+      value: () => {
+        return new DOMRect(0, 0, 300, 160);
+      },
+    });
+
+    fireEvent.mouseEnter(prismPreview);
+    await waitFor(() => {
       expect(
         screen.queryByTestId(`${prismTemplate.title} card HTML preview`),
       ).not.toBeInTheDocument();
-      const prismPreview = screen.getByLabelText(
-        `Preview ${prismTemplate.title} at current slide`,
-      ).parentElement;
-      if (!prismPreview) {
-        throw new Error("Prism template preview not found");
-      }
-      Object.defineProperty(prismPreview, "getBoundingClientRect", {
-        configurable: true,
-        value: () => {
-          return new DOMRect(0, 0, 300, 160);
-        },
-      });
-
-      fireEvent.mouseEnter(prismPreview);
-      await waitFor(() => {
-        expect(
-          screen.queryByTestId(`${prismTemplate.title} card HTML preview`),
-        ).not.toBeInTheDocument();
-      });
-      fireEvent.mouseMove(prismPreview, { clientX: 300, clientY: 80 });
-      await waitFor(() => {
-        expect(
-          screen.getByTestId(`${prismTemplate.title} card HTML preview`),
-        ).toHaveAttribute("src", expect.stringMatching(/^blob:/));
-      });
-      const prismFrame = currentPrismPreviewFrame();
-      const prismFrameUrl = prismFrame.getAttribute("src");
-      if (prismFrameUrl === null) {
-        throw new Error("Prism preview frame URL not found");
-      }
-      const prismPreviewHtml = await htmlForFrame(prismFrame);
-      expect(prismPreviewHtml).toContain("--accent:#7257E6");
-      expect(prismPreviewHtml).toContain("--s1:#FF6B4A");
-      expect(prismPreviewHtml).toContain("--s2:#AEE63E");
-      fireEvent.load(prismFrame);
-      await waitFor(() => {
-        expect(currentPrismPreviewFrame()).toHaveAttribute(
-          "data-loaded",
-          "true",
-        );
-      });
-      click(screen.getByLabelText("Close"));
-      await waitFor(() => {
-        expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-      });
-      expect(revokeObjectURL).toHaveBeenCalledWith(prismFrameUrl);
-    } finally {
-      if (originalCreateObjectURL) {
-        Object.defineProperty(URL, "createObjectURL", {
-          configurable: true,
-          value: originalCreateObjectURL,
-        });
-      } else {
-        delete (URL as { createObjectURL?: unknown }).createObjectURL;
-      }
-      if (originalRevokeObjectURL) {
-        Object.defineProperty(URL, "revokeObjectURL", {
-          configurable: true,
-          value: originalRevokeObjectURL,
-        });
-      } else {
-        delete (URL as { revokeObjectURL?: unknown }).revokeObjectURL;
-      }
+    });
+    fireEvent.mouseMove(prismPreview, { clientX: 300, clientY: 80 });
+    await waitFor(() => {
+      expect(
+        screen.getByTestId(`${prismTemplate.title} card HTML preview`),
+      ).toHaveAttribute("src", expect.stringMatching(/^blob:/));
+    });
+    const prismFrame = currentPrismPreviewFrame();
+    const prismFrameUrl = prismFrame.getAttribute("src");
+    if (prismFrameUrl === null) {
+      throw new Error("Prism preview frame URL not found");
     }
+    const prismPreviewHtml = await htmlForFrame(prismFrame);
+    expect(prismPreviewHtml).toContain("--accent:#7257E6");
+    expect(prismPreviewHtml).toContain("--s1:#FF6B4A");
+    expect(prismPreviewHtml).toContain("--s2:#AEE63E");
+    fireEvent.load(prismFrame);
+    await waitFor(() => {
+      expect(currentPrismPreviewFrame()).toHaveAttribute("data-loaded", "true");
+    });
+    click(screen.getByLabelText("Close"));
+    await waitFor(() => {
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    });
+    expect(revokeObjectURL).toHaveBeenCalledWith(prismFrameUrl);
   });
 
   it("scrubs presentation card slides by slide count after the hover preview loads", async () => {
@@ -1462,11 +1426,9 @@ describe("chat composer templates", () => {
     }
     expect(template.previewImages).toHaveLength(1);
     expect(slideCount).toBe(15);
-    const previewFetch = createDeferredPromise<Response>(AbortSignal.any([]));
+    const previewFetch = context.mocks.deferred<Response>();
     const blobHtml: Promise<string>[] = [];
-    const originalCreateObjectURL = URL.createObjectURL;
-    const originalRevokeObjectURL = URL.revokeObjectURL;
-    const createObjectURL = vi.fn((blob: Blob) => {
+    mockUrlObjectMethods((blob) => {
       blobHtml.push(blob.text());
       return `blob:template-preview-late-${String(blobHtml.length)}`;
     });
@@ -1485,14 +1447,6 @@ describe("chat composer templates", () => {
       }
       return html;
     };
-    Object.defineProperty(URL, "createObjectURL", {
-      configurable: true,
-      value: createObjectURL,
-    });
-    Object.defineProperty(URL, "revokeObjectURL", {
-      configurable: true,
-      value: vi.fn(),
-    });
     let previewFetchCount = 0;
     context.mocks.http.get("*/__vm0-dev-artifact-fetch", () => {
       previewFetchCount += 1;
@@ -1523,53 +1477,29 @@ describe("chat composer templates", () => {
       },
     });
 
-    try {
-      previewFetch.resolve(
-        new Response(
-          `<!doctype html><html><body>${Array.from(
-            { length: slideCount },
-            (_, index) => {
-              const slideNumber = index + 1;
-              return `<section data-vm0-slide data-slide-id="slide-${slideNumber}"><h1>Slide ${slideNumber}</h1></section>`;
-            },
-          ).join("")}</body></html>`,
-          { headers: { "Content-Type": "text/html" } },
-        ),
-      );
-      fireEvent.mouseEnter(preview);
-      await waitFor(() => {
-        expect(previewFetchCount).toBe(1);
-      });
+    previewFetch.resolve(
+      new Response(
+        `<!doctype html><html><body>${Array.from(
+          { length: slideCount },
+          (_, index) => {
+            const slideNumber = index + 1;
+            return `<section data-vm0-slide data-slide-id="slide-${slideNumber}"><h1>Slide ${slideNumber}</h1></section>`;
+          },
+        ).join("")}</body></html>`,
+        { headers: { "Content-Type": "text/html" } },
+      ),
+    );
+    fireEvent.mouseEnter(preview);
+    await waitFor(() => {
+      expect(previewFetchCount).toBe(1);
+    });
 
-      await waitFor(async () => {
-        fireEvent.mouseMove(preview, { clientX: 300, clientY: 80 });
-        await expect(
-          htmlForFrame(
-            screen.getByTestId(`${template.title} card HTML preview`),
-          ),
-        ).resolves.toContain("Slide 15");
-      });
-    } finally {
-      if (!previewFetch.settled()) {
-        previewFetch.reject(new Error("Preview fetch intentionally cancelled"));
-      }
-      if (originalCreateObjectURL) {
-        Object.defineProperty(URL, "createObjectURL", {
-          configurable: true,
-          value: originalCreateObjectURL,
-        });
-      } else {
-        delete (URL as { createObjectURL?: unknown }).createObjectURL;
-      }
-      if (originalRevokeObjectURL) {
-        Object.defineProperty(URL, "revokeObjectURL", {
-          configurable: true,
-          value: originalRevokeObjectURL,
-        });
-      } else {
-        delete (URL as { revokeObjectURL?: unknown }).revokeObjectURL;
-      }
-    }
+    await waitFor(async () => {
+      fireEvent.mouseMove(preview, { clientX: 300, clientY: 80 });
+      await expect(
+        htmlForFrame(screen.getByTestId(`${template.title} card HTML preview`)),
+      ).resolves.toContain("Slide 15");
+    });
   });
 
   it("uses the presentation detail theme for template selection", async () => {
@@ -1813,7 +1743,7 @@ describe("chat composer templates", () => {
     if (template === undefined) {
       throw new Error("Botane organic presentation template not found");
     }
-    const previewFetch = createDeferredPromise<Response>(AbortSignal.any([]));
+    const previewFetch = context.mocks.deferred<Response>();
     context.mocks.http.get("*/__vm0-dev-artifact-fetch", () => {
       return previewFetch.promise;
     });
@@ -1868,162 +1798,126 @@ describe("chat composer templates", () => {
       throw new Error("Editorial magazine presentation template not found");
     }
 
-    const originalCreateObjectURL = URL.createObjectURL;
-    const originalRevokeObjectURL = URL.revokeObjectURL;
     const blobHtml: Promise<string>[] = [];
-    const createObjectURL = vi.fn((blob: Blob) => {
+    const { revokeObjectURL } = mockUrlObjectMethods((blob) => {
       blobHtml.push(blob.text());
       return `blob:detail-theme-preview-${String(blobHtml.length)}`;
     });
-    const revokeObjectURL = vi.fn();
-    Object.defineProperty(URL, "createObjectURL", {
-      configurable: true,
-      value: createObjectURL,
-    });
-    Object.defineProperty(URL, "revokeObjectURL", {
-      configurable: true,
-      value: revokeObjectURL,
+
+    mockChatLifecycle(context, { threadId: THREAD_ID });
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
     });
 
-    try {
-      mockChatLifecycle(context, { threadId: THREAD_ID });
-      detachedSetupPage({
-        context,
-        path: `/chats/${THREAD_ID}`,
-      });
-
-      click(
-        await waitFor(() => {
-          return screen.getByLabelText("Template");
-        }),
-      );
-      await user.click(
-        screen.getByLabelText(`Preview ${template.title} at current slide`),
-      );
-      const templateDialog = screen.getByRole("dialog");
-      const frame = () => {
-        return within(templateDialog).getByTestId(
-          `${template.title} detail HTML preview`,
-        );
-      };
+    click(
       await waitFor(() => {
-        expect(frame()).toHaveAttribute(
-          "src",
-          expect.stringMatching(/^blob:detail-theme-preview-/),
-        );
-      });
-      expect(frame()).not.toHaveAttribute("data-loaded");
-      expect(
-        within(templateDialog).getByTestId(
-          `${template.title} detail image preview`,
-        ),
-      ).toBeInTheDocument();
-      fireEvent.load(frame());
-      await waitFor(() => {
-        expect(frame()).toHaveAttribute("data-loaded", "true");
-      });
-      const initialFrameSrc = frame().getAttribute("src");
-      if (initialFrameSrc === null) {
-        throw new Error("Initial detail preview frame URL not found");
-      }
-      const firstThumbnail = () => {
-        return within(templateDialog).getByLabelText(
-          `${template.title} slide 1 preview`,
-        );
-      };
-      const secondThumbnail = () => {
-        return within(templateDialog).getByLabelText(
-          `${template.title} slide 2 preview`,
-        );
-      };
-      const initialThumbnailAccent = firstThumbnail().getAttribute("style");
-      const initialSecondThumbnailAccent =
-        secondThumbnail().getAttribute("style");
-      expect(
-        firstThumbnail().parentElement?.querySelector("img"),
-      ).not.toBeNull();
-      expect(
-        secondThumbnail().parentElement?.querySelector("img"),
-      ).not.toBeNull();
-
-      await user.click(
-        within(templateDialog).getByLabelText("Select style Candy party"),
+        return screen.getByLabelText("Template");
+      }),
+    );
+    await user.click(
+      screen.getByLabelText(`Preview ${template.title} at current slide`),
+    );
+    const templateDialog = screen.getByRole("dialog");
+    const frame = () => {
+      return within(templateDialog).getByTestId(
+        `${template.title} detail HTML preview`,
       );
-      await waitFor(() => {
-        expect(frame()).toHaveAttribute(
-          "src",
-          expect.stringMatching(/^blob:detail-theme-preview-/),
-        );
-        expect(frame().getAttribute("src")).not.toBe(initialFrameSrc);
-      });
-      expect(frame()).not.toHaveAttribute("data-loaded");
-      const previousFrame = templateDialog.querySelector(
-        '[data-template-detail-frame="previous"]',
+    };
+    await waitFor(() => {
+      expect(frame()).toHaveAttribute(
+        "src",
+        expect.stringMatching(/^blob:detail-theme-preview-/),
       );
-      expect(previousFrame).toHaveAttribute("src", initialFrameSrc);
-      expect(previousFrame).toHaveAttribute("data-loaded", "true");
-      fireEvent.load(frame());
-      await waitFor(() => {
-        expect(frame()).toHaveAttribute("data-loaded", "true");
-        expect(
-          templateDialog.querySelector(
-            '[data-template-detail-frame="previous"]',
-          ),
-        ).not.toBeInTheDocument();
-      });
-      expect(revokeObjectURL).toHaveBeenCalledWith(initialFrameSrc);
-
-      const themedFrameSrc = frame().getAttribute("src");
-      if (themedFrameSrc === null) {
-        throw new Error("Themed detail preview frame URL not found");
-      }
-      const match = /^blob:detail-theme-preview-(\d+)$/.exec(themedFrameSrc);
-      if (match === null) {
-        throw new Error(
-          `Unexpected detail preview frame URL: ${themedFrameSrc}`,
-        );
-      }
-      const themedHtml = await blobHtml[Number(match[1]) - 1];
-      expect(themedHtml).toContain("--accent:#7257E6");
-      await waitFor(() => {
-        const themedThumbnailAccent = firstThumbnail().getAttribute("style");
-        expect(themedThumbnailAccent).toContain("--accent: #7257E6");
-        expect(themedThumbnailAccent).not.toBe(initialThumbnailAccent);
-        const themedSecondThumbnailAccent =
-          secondThumbnail().getAttribute("style");
-        expect(themedSecondThumbnailAccent).toContain("--accent: #7257E6");
-        expect(themedSecondThumbnailAccent).not.toBe(
-          initialSecondThumbnailAccent,
-        );
-      });
-      const closeButton = queryAllByRoleFast("button", templateDialog).find(
-        (candidate) => {
-          return candidate.getAttribute("aria-label") === "Close";
-        },
-      );
-      if (!closeButton) {
-        throw new Error("Close button not found");
-      }
-      await user.click(closeButton);
-      expect(revokeObjectURL).toHaveBeenCalledWith(themedFrameSrc);
-    } finally {
-      if (originalCreateObjectURL) {
-        Object.defineProperty(URL, "createObjectURL", {
-          configurable: true,
-          value: originalCreateObjectURL,
-        });
-      } else {
-        delete (URL as { createObjectURL?: unknown }).createObjectURL;
-      }
-      if (originalRevokeObjectURL) {
-        Object.defineProperty(URL, "revokeObjectURL", {
-          configurable: true,
-          value: originalRevokeObjectURL,
-        });
-      } else {
-        delete (URL as { revokeObjectURL?: unknown }).revokeObjectURL;
-      }
+    });
+    expect(frame()).not.toHaveAttribute("data-loaded");
+    expect(
+      within(templateDialog).getByTestId(
+        `${template.title} detail image preview`,
+      ),
+    ).toBeInTheDocument();
+    fireEvent.load(frame());
+    await waitFor(() => {
+      expect(frame()).toHaveAttribute("data-loaded", "true");
+    });
+    const initialFrameSrc = frame().getAttribute("src");
+    if (initialFrameSrc === null) {
+      throw new Error("Initial detail preview frame URL not found");
     }
+    const firstThumbnail = () => {
+      return within(templateDialog).getByLabelText(
+        `${template.title} slide 1 preview`,
+      );
+    };
+    const secondThumbnail = () => {
+      return within(templateDialog).getByLabelText(
+        `${template.title} slide 2 preview`,
+      );
+    };
+    const initialThumbnailAccent = firstThumbnail().getAttribute("style");
+    const initialSecondThumbnailAccent =
+      secondThumbnail().getAttribute("style");
+    expect(firstThumbnail().parentElement?.querySelector("img")).not.toBeNull();
+    expect(
+      secondThumbnail().parentElement?.querySelector("img"),
+    ).not.toBeNull();
+
+    await user.click(
+      within(templateDialog).getByLabelText("Select style Candy party"),
+    );
+    await waitFor(() => {
+      expect(frame()).toHaveAttribute(
+        "src",
+        expect.stringMatching(/^blob:detail-theme-preview-/),
+      );
+      expect(frame().getAttribute("src")).not.toBe(initialFrameSrc);
+    });
+    expect(frame()).not.toHaveAttribute("data-loaded");
+    const previousFrame = templateDialog.querySelector(
+      '[data-template-detail-frame="previous"]',
+    );
+    expect(previousFrame).toHaveAttribute("src", initialFrameSrc);
+    expect(previousFrame).toHaveAttribute("data-loaded", "true");
+    fireEvent.load(frame());
+    await waitFor(() => {
+      expect(frame()).toHaveAttribute("data-loaded", "true");
+      expect(
+        templateDialog.querySelector('[data-template-detail-frame="previous"]'),
+      ).not.toBeInTheDocument();
+    });
+    expect(revokeObjectURL).toHaveBeenCalledWith(initialFrameSrc);
+
+    const themedFrameSrc = frame().getAttribute("src");
+    if (themedFrameSrc === null) {
+      throw new Error("Themed detail preview frame URL not found");
+    }
+    const match = /^blob:detail-theme-preview-(\d+)$/.exec(themedFrameSrc);
+    if (match === null) {
+      throw new Error(`Unexpected detail preview frame URL: ${themedFrameSrc}`);
+    }
+    const themedHtml = await blobHtml[Number(match[1]) - 1];
+    expect(themedHtml).toContain("--accent:#7257E6");
+    await waitFor(() => {
+      const themedThumbnailAccent = firstThumbnail().getAttribute("style");
+      expect(themedThumbnailAccent).toContain("--accent: #7257E6");
+      expect(themedThumbnailAccent).not.toBe(initialThumbnailAccent);
+      const themedSecondThumbnailAccent =
+        secondThumbnail().getAttribute("style");
+      expect(themedSecondThumbnailAccent).toContain("--accent: #7257E6");
+      expect(themedSecondThumbnailAccent).not.toBe(
+        initialSecondThumbnailAccent,
+      );
+    });
+    const closeButton = queryAllByRoleFast("button", templateDialog).find(
+      (candidate) => {
+        return candidate.getAttribute("aria-label") === "Close";
+      },
+    );
+    if (!closeButton) {
+      throw new Error("Close button not found");
+    }
+    await user.click(closeButton);
+    expect(revokeObjectURL).toHaveBeenCalledWith(themedFrameSrc);
   });
 
   it("selects presentation templates with the default card theme", async () => {
@@ -2141,17 +2035,11 @@ describe("chat composer templates", () => {
       ).not.toBeInTheDocument();
     });
     fireEvent.mouseMove(preview, { clientX: 300, clientY: 80 });
-    const animationFrame = createDeferredPromise<void>(AbortSignal.any([]));
+    const animationFrame = context.mocks.deferred<void>();
     window.requestAnimationFrame(() => {
       animationFrame.resolve();
     });
-    try {
-      await animationFrame.promise;
-    } finally {
-      if (!animationFrame.settled()) {
-        animationFrame.reject(new Error("Animation frame cancelled"));
-      }
-    }
+    await animationFrame.promise;
     click(screen.getByLabelText(`Preview ${template.title} at current slide`));
 
     await waitFor(() => {
@@ -2229,17 +2117,12 @@ describe("chat composer templates", () => {
 
   it("starts presentation detail loading from preview and resumes it after reopening", async () => {
     const template = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
-    const previewFetch = createDeferredPromise<Response>(AbortSignal.any([]));
+    const previewFetch = context.mocks.deferred<Response>();
     let previewFetchCount = 0;
     const blobHtml: Promise<string>[] = [];
-    const originalCreateObjectURL = URL.createObjectURL;
-    const originalRevokeObjectURL = URL.revokeObjectURL;
-    Object.defineProperty(URL, "createObjectURL", {
-      configurable: true,
-      value: vi.fn((blob: Blob) => {
-        blobHtml.push(blob.text());
-        return `blob:template-detail-${String(blobHtml.length)}`;
-      }),
+    mockUrlObjectMethods((blob) => {
+      blobHtml.push(blob.text());
+      return `blob:template-detail-${String(blobHtml.length)}`;
     });
     const htmlForDetailFrame = (frame: HTMLElement): Promise<string> => {
       const src = frame.getAttribute("src");
@@ -2256,10 +2139,6 @@ describe("chat composer templates", () => {
       }
       return html;
     };
-    Object.defineProperty(URL, "revokeObjectURL", {
-      configurable: true,
-      value: vi.fn(),
-    });
     context.mocks.http.get("*/__vm0-dev-artifact-fetch", ({ request }) => {
       const requestedUrl = new URL(request.url).searchParams.get("url");
       if (requestedUrl === template.embedUrl) {
@@ -2272,44 +2151,37 @@ describe("chat composer templates", () => {
     });
     mockChatLifecycle(context, { threadId: THREAD_ID });
 
-    try {
-      detachedSetupPage({
-        context,
-        path: `/chats/${THREAD_ID}`,
-      });
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+    });
 
-      click(
-        await waitFor(() => {
-          return screen.getByLabelText("Template");
-        }),
-      );
-      click(
-        screen.getByLabelText(`Preview ${template.title} at current slide`),
-      );
-
+    click(
       await waitFor(() => {
-        expect(previewFetchCount).toBe(1);
-        expect(
-          screen.queryByTestId(`${template.title} detail HTML preview`),
-        ).not.toBeInTheDocument();
-      });
+        return screen.getByLabelText("Template");
+      }),
+    );
+    click(screen.getByLabelText(`Preview ${template.title} at current slide`));
 
-      const templateButton = queryAllByRoleFast("button").find((candidate) => {
-        return (
-          candidate.textContent?.replace(/\s+/g, " ").trim() === "Template"
-        );
-      });
-      if (!templateButton) {
-        throw new Error("Template button not found");
-      }
-      click(templateButton);
-      click(
-        screen.getByLabelText(`Preview ${template.title} at current slide`),
-      );
+    await waitFor(() => {
+      expect(previewFetchCount).toBe(1);
+      expect(
+        screen.queryByTestId(`${template.title} detail HTML preview`),
+      ).not.toBeInTheDocument();
+    });
 
-      previewFetch.resolve(
-        new Response(
-          `
+    const templateButton = queryAllByRoleFast("button").find((candidate) => {
+      return candidate.textContent?.replace(/\s+/g, " ").trim() === "Template";
+    });
+    if (!templateButton) {
+      throw new Error("Template button not found");
+    }
+    click(templateButton);
+    click(screen.getByLabelText(`Preview ${template.title} at current slide`));
+
+    previewFetch.resolve(
+      new Response(
+        `
             <!doctype html>
             <html>
               <body>
@@ -2319,53 +2191,33 @@ describe("chat composer templates", () => {
               </body>
             </html>
           `,
-          { headers: { "Content-Type": "text/html" } },
-        ),
-      );
+        { headers: { "Content-Type": "text/html" } },
+      ),
+    );
 
-      await waitFor(() => {
-        expect(
-          screen.getByTestId(`${template.title} detail HTML preview`),
-        ).toHaveAttribute("src", expect.stringMatching(/^blob:/));
-      });
-      await expect(
-        htmlForDetailFrame(
-          screen.getByTestId(`${template.title} detail HTML preview`),
-        ),
-      ).resolves.toContain("Slide one");
-      expect(previewFetchCount).toBe(1);
-      const reopenedTemplateButton = queryAllByRoleFast("button").find(
-        (candidate) => {
-          return (
-            candidate.textContent?.replace(/\s+/g, " ").trim() === "Template"
-          );
-        },
-      );
-      if (!reopenedTemplateButton) {
-        throw new Error("Template button not found");
-      }
-      click(reopenedTemplateButton);
-      expect(URL.revokeObjectURL).toHaveBeenCalledWith(
-        "blob:template-detail-1",
-      );
-    } finally {
-      if (originalCreateObjectURL) {
-        Object.defineProperty(URL, "createObjectURL", {
-          configurable: true,
-          value: originalCreateObjectURL,
-        });
-      } else {
-        delete (URL as { createObjectURL?: unknown }).createObjectURL;
-      }
-      if (originalRevokeObjectURL) {
-        Object.defineProperty(URL, "revokeObjectURL", {
-          configurable: true,
-          value: originalRevokeObjectURL,
-        });
-      } else {
-        delete (URL as { revokeObjectURL?: unknown }).revokeObjectURL;
-      }
+    await waitFor(() => {
+      expect(
+        screen.getByTestId(`${template.title} detail HTML preview`),
+      ).toHaveAttribute("src", expect.stringMatching(/^blob:/));
+    });
+    await expect(
+      htmlForDetailFrame(
+        screen.getByTestId(`${template.title} detail HTML preview`),
+      ),
+    ).resolves.toContain("Slide one");
+    expect(previewFetchCount).toBe(1);
+    const reopenedTemplateButton = queryAllByRoleFast("button").find(
+      (candidate) => {
+        return (
+          candidate.textContent?.replace(/\s+/g, " ").trim() === "Template"
+        );
+      },
+    );
+    if (!reopenedTemplateButton) {
+      throw new Error("Template button not found");
     }
+    click(reopenedTemplateButton);
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:template-detail-1");
   });
 
   it("navigates presentation template detail previews from the main preview", async () => {
@@ -2946,63 +2798,35 @@ describe("chat composer templates", () => {
       .mockImplementation(() => {});
     mockChatLifecycle(context, { threadId: THREAD_ID });
 
-    try {
-      detachedSetupPage({
-        context,
-        path: `/chats/${THREAD_ID}`,
-      });
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+    });
 
-      click(
-        await waitFor(() => {
-          return screen.getByLabelText("Template");
-        }),
+    click(
+      await waitFor(() => {
+        return screen.getByLabelText("Template");
+      }),
+    );
+
+    await waitFor(() => {
+      expect(tabByText("Presentation")).toBeInTheDocument();
+      expect(tabByText("Illustration")).toBeInTheDocument();
+      expect(tabByText("Video")).toBeInTheDocument();
+    });
+    click(tabByText("Video"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText(`Select video template ${videoStyle.title}`),
+      ).toBeInTheDocument();
+      const posterUrl = r2ImageTransformUrl(
+        videoStyle.cardPreviewImage ?? videoStyle.previewImage,
+        {
+          width: 480,
+          height: 270,
+        },
       );
-
-      await waitFor(() => {
-        expect(tabByText("Presentation")).toBeInTheDocument();
-        expect(tabByText("Illustration")).toBeInTheDocument();
-        expect(tabByText("Video")).toBeInTheDocument();
-      });
-      click(tabByText("Video"));
-
-      await waitFor(() => {
-        expect(
-          screen.getByLabelText(`Select video template ${videoStyle.title}`),
-        ).toBeInTheDocument();
-        const posterUrl = r2ImageTransformUrl(
-          videoStyle.cardPreviewImage ?? videoStyle.previewImage,
-          {
-            width: 480,
-            height: 270,
-          },
-        );
-        const previewVideo = document
-          .querySelector(`source[src="${videoStyle.previewVideo}"]`)
-          ?.closest("video");
-        if (!(previewVideo instanceof HTMLVideoElement)) {
-          throw new Error("Video template preview video not found");
-        }
-        const previewRoot = previewVideo.closest(
-          "[data-video-template-preview]",
-        );
-        if (!previewRoot) {
-          throw new Error("Video template preview root not found");
-        }
-        expect(
-          previewRoot.querySelector("[data-video-template-poster]"),
-        ).toHaveAttribute("src", posterUrl);
-        expect(
-          previewVideo.querySelector('source[type="video/webm; codecs=vp9"]'),
-        ).toHaveAttribute("src", videoStyle.previewWebm);
-        expect(previewVideo).toHaveAttribute("poster", posterUrl);
-        expect(previewVideo).toHaveAttribute("preload", "none");
-        expect(
-          screen.getByLabelText(
-            `Play video template preview ${videoStyle.title}`,
-          ),
-        ).toBeInTheDocument();
-      });
-
       const previewVideo = document
         .querySelector(`source[src="${videoStyle.previewVideo}"]`)
         ?.closest("video");
@@ -3013,38 +2837,59 @@ describe("chat composer templates", () => {
       if (!previewRoot) {
         throw new Error("Video template preview root not found");
       }
-      const previewPlayButton = screen.getByLabelText(
-        `Play video template preview ${videoStyle.title}`,
-      );
-      fireEvent.click(previewPlayButton);
-      expect(playSpy).toHaveBeenCalledTimes(1);
-      expect(previewVideo.defaultMuted).toBeTruthy();
-      expect(previewVideo.muted).toBeTruthy();
-      expect(previewVideo.preload).toBe("metadata");
-      fireEvent.playing(previewVideo);
-      expect(previewVideo.dataset.previewPlaying).toBe("true");
+      expect(
+        previewRoot.querySelector("[data-video-template-poster]"),
+      ).toHaveAttribute("src", posterUrl);
+      expect(
+        previewVideo.querySelector('source[type="video/webm; codecs=vp9"]'),
+      ).toHaveAttribute("src", videoStyle.previewWebm);
+      expect(previewVideo).toHaveAttribute("poster", posterUrl);
+      expect(previewVideo).toHaveAttribute("preload", "none");
+      expect(
+        screen.getByLabelText(
+          `Play video template preview ${videoStyle.title}`,
+        ),
+      ).toBeInTheDocument();
+    });
 
-      previewVideo.currentTime = 3;
-      fireEvent.mouseLeave(previewRoot);
-      expect(pauseSpy).toHaveBeenCalledTimes(1);
-      expect(previewVideo.currentTime).toBe(0);
-      expect(previewVideo.dataset.previewPlaying).toBe("false");
-
-      fireEvent.mouseEnter(previewRoot);
-      expect(playSpy).toHaveBeenCalledTimes(2);
-      previewVideo.currentTime = 4;
-      Object.defineProperty(previewVideo, "paused", {
-        configurable: true,
-        value: false,
-      });
-      fireEvent.click(previewPlayButton);
-      expect(playSpy).toHaveBeenCalledTimes(2);
-      expect(pauseSpy).toHaveBeenCalledTimes(1);
-      expect(previewVideo.currentTime).toBe(4);
-    } finally {
-      playSpy.mockRestore();
-      pauseSpy.mockRestore();
+    const previewVideo = document
+      .querySelector(`source[src="${videoStyle.previewVideo}"]`)
+      ?.closest("video");
+    if (!(previewVideo instanceof HTMLVideoElement)) {
+      throw new Error("Video template preview video not found");
     }
+    const previewRoot = previewVideo.closest("[data-video-template-preview]");
+    if (!previewRoot) {
+      throw new Error("Video template preview root not found");
+    }
+    const previewPlayButton = screen.getByLabelText(
+      `Play video template preview ${videoStyle.title}`,
+    );
+    fireEvent.click(previewPlayButton);
+    expect(playSpy).toHaveBeenCalledTimes(1);
+    expect(previewVideo.defaultMuted).toBeTruthy();
+    expect(previewVideo.muted).toBeTruthy();
+    expect(previewVideo.preload).toBe("metadata");
+    fireEvent.playing(previewVideo);
+    expect(previewVideo.dataset.previewPlaying).toBe("true");
+
+    previewVideo.currentTime = 3;
+    fireEvent.mouseLeave(previewRoot);
+    expect(pauseSpy).toHaveBeenCalledTimes(1);
+    expect(previewVideo.currentTime).toBe(0);
+    expect(previewVideo.dataset.previewPlaying).toBe("false");
+
+    fireEvent.mouseEnter(previewRoot);
+    expect(playSpy).toHaveBeenCalledTimes(2);
+    previewVideo.currentTime = 4;
+    Object.defineProperty(previewVideo, "paused", {
+      configurable: true,
+      value: false,
+    });
+    fireEvent.click(previewPlayButton);
+    expect(playSpy).toHaveBeenCalledTimes(2);
+    expect(pauseSpy).toHaveBeenCalledTimes(1);
+    expect(previewVideo.currentTime).toBe(4);
   });
 
   it("renders a selected template inline during an active run and clears the picker state", async () => {

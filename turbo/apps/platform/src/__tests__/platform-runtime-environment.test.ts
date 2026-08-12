@@ -1,13 +1,6 @@
-import {
-  afterAll,
-  afterEach,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  vi,
-} from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { isOkouProductionHostname } from "../lib/platform-host.ts";
+import { testContext } from "../signals/__tests__/test-helpers.ts";
 
 const PREVIEW_PLAUSIBLE_URL = "https://preview.plausible.example/js/script.js";
 const PRODUCTION_PLAUSIBLE_URL =
@@ -18,7 +11,6 @@ const PREVIEW_CLERK_KEY = "pk_test_preview";
 const PRODUCTION_CLERK_KEY = "pk_live_production";
 const PREVIEW_VAPID_KEY = "preview_vapid_key";
 const PRODUCTION_VAPID_KEY = "production_vapid_key";
-const PREVIEW_API_ORIGIN_SELECTOR = 'meta[name="vm0-api-origin"]';
 
 const { posthogInit, sentryInit } = vi.hoisted(() => {
   return {
@@ -45,15 +37,12 @@ vi.mock("@sentry/react", () => {
   };
 });
 
-const originalRequestIdleCallback = Object.getOwnPropertyDescriptor(
-  window,
-  "requestIdleCallback",
-);
 const originalHeadAppendChild = document.head.appendChild.bind(document.head);
 const appendedPlausibleScripts: HTMLScriptElement[] = [];
+const context = testContext();
 
 function setBrowserUrl(url: string): void {
-  window.location.href = url;
+  context.mocks.browser.url(url);
 }
 
 function setPreviewApiOrigin(origin: string): void {
@@ -61,19 +50,22 @@ function setPreviewApiOrigin(origin: string): void {
   element.name = "vm0-api-origin";
   element.content = origin;
   document.head.append(element);
+  context.signal.addEventListener("abort", () => element.remove(), {
+    once: true,
+  });
 }
 
 function installImmediateIdleCallback(): void {
-  Object.defineProperty(window, "requestIdleCallback", {
-    configurable: true,
-    value: (callback: IdleRequestCallback): number => {
+  vi.stubGlobal(
+    "requestIdleCallback",
+    (callback: IdleRequestCallback): number => {
       callback({
         didTimeout: false,
         timeRemaining: () => 50,
       });
       return 1;
     },
-  });
+  );
 }
 
 function stubPortableBuildInputs(): void {
@@ -96,6 +88,8 @@ function appendWithoutLoadingExternalScripts<T extends Node>(node: T): T {
 }
 
 async function loadRuntimeSurfaces() {
+  vi.stubGlobal("plausible", undefined);
+  vi.stubGlobal("__vm0PlausibleLoadScheduled", undefined);
   const [
     apiBase,
     auth,
@@ -133,33 +127,13 @@ function plausibleScriptSources(): string[] {
 }
 
 beforeEach(() => {
-  vi.clearAllMocks();
   vi.resetModules();
-  document.querySelector(PREVIEW_API_ORIGIN_SELECTOR)?.remove();
   appendedPlausibleScripts.length = 0;
   stubPortableBuildInputs();
   installImmediateIdleCallback();
   vi.spyOn(document.head, "appendChild").mockImplementation(
     appendWithoutLoadingExternalScripts,
   );
-});
-
-afterEach(() => {
-  document.querySelector(PREVIEW_API_ORIGIN_SELECTOR)?.remove();
-  Reflect.deleteProperty(window, "plausible");
-  Reflect.deleteProperty(window, "__vm0PlausibleLoadScheduled");
-});
-
-afterAll(() => {
-  if (originalRequestIdleCallback) {
-    Object.defineProperty(
-      window,
-      "requestIdleCallback",
-      originalRequestIdleCallback,
-    );
-  } else {
-    Reflect.deleteProperty(window, "requestIdleCallback");
-  }
 });
 
 describe("portable platform runtime environment", () => {

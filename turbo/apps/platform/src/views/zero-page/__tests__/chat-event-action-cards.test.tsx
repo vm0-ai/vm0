@@ -3438,34 +3438,31 @@ describe("chat event action cards", () => {
     });
 
     await requestStarted.promise;
-    try {
-      const permissionCards = await screen.findAllByTestId(
-        "permission-action-card",
-      );
-      expect(permissionCards).toHaveLength(2);
-      const [gmailCard, youtubeCard] = permissionCards;
-      if (!gmailCard || !youtubeCard) {
-        throw new Error("Expected two permission cards");
-      }
-      await waitForButtonByText("Confirm", gmailCard);
-
-      await confirmPermissionAction(user, gmailCard);
-
-      await waitFor(() => {
-        expect(
-          within(gmailCard).getByText("Permissions updated"),
-        ).toBeInTheDocument();
-        expect(
-          within(youtubeCard).getByText("Allow videos.write"),
-        ).toBeInTheDocument();
-        expect(buttonByText("Confirm", youtubeCard)).toBeEnabled();
-      });
-      expect(staleRequestSignal).toBeDefined();
-      expect(staleRequestSignal?.aborted).toBeFalsy();
-    } finally {
-      releaseRequest.resolve();
-      await requestFinished.promise;
+    const permissionCards = await screen.findAllByTestId(
+      "permission-action-card",
+    );
+    expect(permissionCards).toHaveLength(2);
+    const [gmailCard, youtubeCard] = permissionCards;
+    if (!gmailCard || !youtubeCard) {
+      throw new Error("Expected two permission cards");
     }
+    await waitForButtonByText("Confirm", gmailCard);
+
+    await confirmPermissionAction(user, gmailCard);
+
+    await waitFor(() => {
+      expect(
+        within(gmailCard).getByText("Permissions updated"),
+      ).toBeInTheDocument();
+      expect(
+        within(youtubeCard).getByText("Allow videos.write"),
+      ).toBeInTheDocument();
+      expect(buttonByText("Confirm", youtubeCard)).toBeEnabled();
+    });
+    expect(staleRequestSignal).toBeDefined();
+    expect(staleRequestSignal?.aborted).toBeFalsy();
+    releaseRequest.resolve();
+    await requestFinished.promise;
     expect(staleRequestSignal?.aborted).toBeFalsy();
   });
 

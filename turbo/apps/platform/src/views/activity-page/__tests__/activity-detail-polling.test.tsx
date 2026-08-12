@@ -2348,18 +2348,14 @@ describe("activity detail polling", () => {
       },
     );
 
-    try {
-      const extra = await context.store.set(
-        fetchDownloadExtra$,
-        runId,
-        context.signal,
-      );
+    const extra = await context.store.set(
+      fetchDownloadExtra$,
+      runId,
+      context.signal,
+    );
 
-      expect(extra).toStrictEqual({});
-      expect(toastError).toHaveBeenCalledWith("Network logs unavailable");
-    } finally {
-      toastError.mockRestore();
-    }
+    expect(extra).toStrictEqual({});
+    expect(toastError).toHaveBeenCalledWith("Network logs unavailable");
   });
 
   it("propagates abort while fetching raw download extras", async () => {
@@ -3041,16 +3037,13 @@ describe("activity detail polling", () => {
     });
     await secondContextRequested.promise;
 
-    try {
-      await waitFor(() => {
-        expect(
-          screen.getByRole("heading", { name: "Second Activity" }),
-        ).toBeInTheDocument();
-      });
-      expect(screen.queryByText("FIRST_ONLY_SECRET")).not.toBeInTheDocument();
-    } finally {
-      secondContextResponse.resolve();
-    }
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Second Activity" }),
+      ).toBeInTheDocument();
+    });
+    expect(screen.queryByText("FIRST_ONLY_SECRET")).not.toBeInTheDocument();
+    secondContextResponse.resolve();
 
     await waitFor(() => {
       expect(screen.getByText("SECOND_ONLY_SECRET")).toBeInTheDocument();
@@ -3134,15 +3127,12 @@ describe("activity detail polling", () => {
     });
     await secondEventsRequested.promise;
 
-    try {
-      await waitFor(() => {
-        expect(
-          screen.queryByText("old run step should not remain"),
-        ).not.toBeInTheDocument();
-      });
-    } finally {
-      secondEventsResponse.resolve();
-    }
+    await waitFor(() => {
+      expect(
+        screen.queryByText("old run step should not remain"),
+      ).not.toBeInTheDocument();
+    });
+    secondEventsResponse.resolve();
 
     await waitFor(() => {
       expect(

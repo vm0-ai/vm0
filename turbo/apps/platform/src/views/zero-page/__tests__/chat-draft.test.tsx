@@ -411,43 +411,39 @@ describe("chat drafts", () => {
       },
     );
 
-    try {
-      detachedSetupPage({
-        context,
-        path: `/agents/${agentId}/chat`,
-      });
+    detachedSetupPage({
+      context,
+      path: `/agents/${agentId}/chat`,
+    });
 
-      await waitFor(() => {
-        expect(textarea()).toBeInTheDocument();
-      });
-      await fill(textarea(), "agent-level draft");
+    await waitFor(() => {
+      expect(textarea()).toBeInTheDocument();
+    });
+    await fill(textarea(), "agent-level draft");
 
-      await waitFor(() => {
-        expect(draftPatches).toContainEqual({
-          draftUserMessage: {
-            version: 1,
-            parts: [{ type: "text", text: "agent-level draft" }],
-          },
-          draftAttachments: null,
-        });
+    await waitFor(() => {
+      expect(draftPatches).toContainEqual({
+        draftUserMessage: {
+          version: 1,
+          parts: [{ type: "text", text: "agent-level draft" }],
+        },
+        draftAttachments: null,
       });
+    });
 
-      await user.click(textarea());
-      await user.keyboard("{Control>}a{/Control}{Backspace}");
+    await user.click(textarea());
+    await user.keyboard("{Control>}a{/Control}{Backspace}");
 
-      await waitFor(() => {
-        expect(draftPatches).toContainEqual({
-          draftUserMessage: null,
-          draftAttachments: null,
-        });
+    await waitFor(() => {
+      expect(draftPatches).toContainEqual({
+        draftUserMessage: null,
+        draftAttachments: null,
       });
-      expect(textarea().textContent ?? "").toBe("");
-      await Promise.resolve();
-      await Promise.resolve();
-      expect(toastError).not.toHaveBeenCalledWith("HTTP 200");
-    } finally {
-      toastError.mockRestore();
-    }
+    });
+    expect(textarea().textContent ?? "").toBe("");
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(toastError).not.toHaveBeenCalledWith("HTTP 200");
   });
 
   it("persists and clears typed thread drafts as userMessage documents", async () => {
@@ -1346,8 +1342,10 @@ describe("chat drafts", () => {
     );
     const ownerContext = {
       mocks: context.mocks,
+      resourceId: context.resourceId,
       signal: ownerSignal,
       store: context.store,
+      track: context.track,
     };
     const partStarted = context.mocks.deferred<void>();
     let abortBody: unknown = null;

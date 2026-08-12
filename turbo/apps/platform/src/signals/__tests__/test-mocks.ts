@@ -115,6 +115,7 @@ type OmitFirst<T extends readonly unknown[]> = T extends readonly [
   : never;
 
 export function createTestMocks(getSignal: () => AbortSignal) {
+  let originalBrowserUrl: string | null = null;
   const signalContext: SignalContextLike = {
     get signal() {
       return getSignal();
@@ -224,42 +225,54 @@ export function createTestMocks(getSignal: () => AbortSignal) {
       },
     },
     browser: {
+      url: (url: string): void => {
+        if (originalBrowserUrl === null) {
+          originalBrowserUrl = window.location.href;
+          restoreOnAbort(getSignal(), () => {
+            if (originalBrowserUrl !== null) {
+              window.location.href = originalBrowserUrl;
+              originalBrowserUrl = null;
+            }
+          });
+        }
+        window.location.href = url;
+      },
       open: (openedWindow: Window | null = null): BrowserOpenMock => {
-        return mockWindowOpen(getSignal(), openedWindow);
+        return mockWindowOpen(openedWindow);
       },
       locationAssign: (): LocationAssignMock => {
-        return mockLocationAssign(getSignal());
+        return mockLocationAssign();
       },
       authWindow: (): MockWindow => {
         return createMockWindow();
       },
       matchMedia: (matches: boolean | ((query: string) => boolean)): void => {
-        mockMatchMedia(getSignal(), matches);
+        mockMatchMedia(matches);
       },
       standaloneDisplayMode: (enabled: boolean): void => {
-        mockMatchMedia(getSignal(), (query) => {
+        mockMatchMedia((query) => {
           return query === "(display-mode: standalone)" ? enabled : false;
         });
       },
       userAgent: (ua: string): void => {
-        const spy = vi.spyOn(navigator, "userAgent", "get").mockReturnValue(ua);
-        restoreOnAbort(getSignal(), () => {
-          spy.mockRestore();
-        });
+        vi.spyOn(navigator, "userAgent", "get").mockReturnValue(ua);
+      },
+      platform: (platform: string): void => {
+        vi.spyOn(navigator, "platform", "get").mockReturnValue(platform);
+      },
+      maxTouchPoints: (maxTouchPoints: number): void => {
+        vi.spyOn(navigator, "maxTouchPoints", "get").mockReturnValue(
+          maxTouchPoints,
+        );
       },
       language: (language: string): void => {
-        const spy = vi
-          .spyOn(navigator, "language", "get")
-          .mockReturnValue(language);
-        restoreOnAbort(getSignal(), () => {
-          spy.mockRestore();
-        });
+        vi.spyOn(navigator, "language", "get").mockReturnValue(language);
       },
       clipboardWriteText: (): ClipboardWriteMock => {
-        return mockClipboardWriteText(getSignal());
+        return mockClipboardWriteText();
       },
       clipboardWrite: (): ClipboardRichWriteMock => {
-        return mockClipboardWrite(getSignal());
+        return mockClipboardWrite();
       },
       clipboardExecCommand: (): ClipboardExecCommandMock => {
         return mockClipboardExecCommand(getSignal());
@@ -321,34 +334,23 @@ export function createTestMocks(getSignal: () => AbortSignal) {
 
 export type TestMocks = ReturnType<typeof createTestMocks>;
 
-function mockWindowOpen(
-  signal: AbortSignal,
-  openedWindow: Window | null,
-): BrowserOpenMock {
+function mockWindowOpen(openedWindow: Window | null): BrowserOpenMock {
   const calls: WindowOpenCall[] = [];
-  const spy = vi
-    .spyOn(window, "open")
-    .mockImplementation((url, target, features) => {
-      calls.push({
-        url: url === undefined ? null : String(url),
-        target: target === undefined ? null : target,
-        features: features === undefined ? null : features,
-      });
-      return openedWindow;
+  vi.spyOn(window, "open").mockImplementation((url, target, features) => {
+    calls.push({
+      url: url === undefined ? null : String(url),
+      target: target === undefined ? null : target,
+      features: features === undefined ? null : features,
     });
-  restoreOnAbort(signal, () => {
-    spy.mockRestore();
+    return openedWindow;
   });
   return { calls, openedWindow };
 }
 
-function mockLocationAssign(signal: AbortSignal): LocationAssignMock {
+function mockLocationAssign(): LocationAssignMock {
   const calls: string[] = [];
-  const spy = vi.spyOn(window.location, "assign").mockImplementation((url) => {
+  vi.spyOn(window.location, "assign").mockImplementation((url) => {
     calls.push(String(url));
-  });
-  restoreOnAbort(signal, () => {
-    spy.mockRestore();
   });
   return { calls };
 }
@@ -363,11 +365,8 @@ function createMockWindow(): MockWindow {
   return mockWindow;
 }
 
-function mockMatchMedia(
-  signal: AbortSignal,
-  matches: boolean | ((query: string) => boolean),
-): void {
-  const spy = vi.spyOn(window, "matchMedia").mockImplementation((query) => {
+function mockMatchMedia(matches: boolean | ((query: string) => boolean)): void {
+  vi.spyOn(window, "matchMedia").mockImplementation((query) => {
     const mediaQueryList: MediaQueryList = {
       matches: typeof matches === "function" ? matches(query) : matches,
       media: query,
@@ -380,41 +379,26 @@ function mockMatchMedia(
     };
     return mediaQueryList;
   });
-  restoreOnAbort(signal, () => {
-    spy.mockRestore();
-  });
 }
 
-function mockClipboardWriteText(signal: AbortSignal): ClipboardWriteMock {
+function mockClipboardWriteText(): ClipboardWriteMock {
   const writes: string[] = [];
-  const spy = vi
-    .spyOn(navigator.clipboard, "writeText")
-    .mockImplementation((text) => {
-      writes.push(text);
-      return Promise.resolve();
-    });
-  restoreOnAbort(signal, () => {
-    spy.mockRestore();
+  vi.spyOn(navigator.clipboard, "writeText").mockImplementation((text) => {
+    writes.push(text);
+    return Promise.resolve();
   });
   return { writes };
 }
 
-function mockClipboardWrite(signal: AbortSignal): ClipboardRichWriteMock {
+function mockClipboardWrite(): ClipboardRichWriteMock {
   const writes: ClipboardItem[][] = [];
   let rejection: Error | null = null;
-  const spy = vi
-    .spyOn(navigator.clipboard, "write")
-    .mockImplementation((items) => {
-      writes.push(items);
-      if (rejection !== null) {
-        return Promise.reject(
-          new Error(rejection.message, { cause: rejection }),
-        );
-      }
-      return Promise.resolve();
-    });
-  restoreOnAbort(signal, () => {
-    spy.mockRestore();
+  vi.spyOn(navigator.clipboard, "write").mockImplementation((items) => {
+    writes.push(items);
+    if (rejection !== null) {
+      return Promise.reject(new Error(rejection.message, { cause: rejection }));
+    }
+    return Promise.resolve();
   });
   return {
     writes,
@@ -492,20 +476,19 @@ function mockBlobDownload(signal: AbortSignal): BrowserDownloadMock {
       revokedUrls.push(url);
     },
   );
-  const clickSpy = vi
-    .spyOn(HTMLAnchorElement.prototype, "click")
-    .mockImplementation(function (this: HTMLAnchorElement) {
-      downloads.push({
-        url: this.href,
-        filename: this.download,
-        blob: blobs.get(this.href) ?? null,
-      });
+  vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (
+    this: HTMLAnchorElement,
+  ) {
+    downloads.push({
+      url: this.href,
+      filename: this.download,
+      blob: blobs.get(this.href) ?? null,
     });
+  });
 
   restoreOnAbort(signal, () => {
     restoreWindowProperty(URL, "createObjectURL", createObjectUrlDescriptor);
     restoreWindowProperty(URL, "revokeObjectURL", revokeObjectUrlDescriptor);
-    clickSpy.mockRestore();
   });
 
   return {

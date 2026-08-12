@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { zeroAttributionContract } from "@vm0/api-contracts/contracts/zero-attribution";
 
 import {
-  clearMockedAuth,
+  clearMockedAuthOnAbort,
   mockOrganization,
   mockUser,
 } from "../../__tests__/mock-auth.ts";
@@ -44,9 +44,7 @@ function mockSignedInUser(options: { readonly createdAt?: Date } = {}): void {
     activeOrg: { id: "org_default", name: "Default Org" },
     memberships: [{ id: "org_default" }],
   });
-  context.signal.addEventListener("abort", () => {
-    clearMockedAuth();
-  });
+  clearMockedAuthOnAbort(context.signal);
 }
 
 function installGtagMock() {

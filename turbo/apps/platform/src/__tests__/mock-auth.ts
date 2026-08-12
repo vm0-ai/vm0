@@ -229,6 +229,10 @@ export function clearMockedAuth() {
   mockedClerk.initialize.mockReset();
 }
 
+export function clearMockedAuthOnAbort(signal: AbortSignal): void {
+  signal.addEventListener("abort", clearMockedAuth, { once: true });
+}
+
 const clerkListeners: MockedClerkListener[] = [];
 function defaultClerkStatusOn(): void {}
 

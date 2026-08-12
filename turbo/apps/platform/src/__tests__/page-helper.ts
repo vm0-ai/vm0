@@ -1,10 +1,11 @@
 import { fireEvent, render } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { toast } from "@vm0/ui/components/ui/sonner";
 import { command } from "ccstate";
 
 import type { TestContext } from "../signals/__tests__/test-helpers";
 import {
-  clearMockedAuth,
+  clearMockedAuthOnAbort,
   type MockedClientSession,
   type MockedInvitation,
   type MockedMembership,
@@ -163,9 +164,14 @@ export async function setupPage(options: {
       memberships: [{ id: defaultOrgId }],
     });
   }
-  options.context.signal.addEventListener("abort", () => {
-    clearMockedAuth();
-  });
+  clearMockedAuthOnAbort(options.context.signal);
+  options.context.signal.addEventListener(
+    "abort",
+    () => {
+      toast.dismiss();
+    },
+    { once: true },
+  );
 
   // Not wrapped in act() — background polling loops would cause act() to
   // hang indefinitely waiting for them to settle. React "not wrapped in
@@ -247,7 +253,7 @@ function createPushStateMock(signal: AbortSignal) {
   );
   mockReplaceState(replaceFn, signal);
 
-  const backMock = vi.spyOn(window.history, "back").mockImplementation(() => {
+  vi.spyOn(window.history, "back").mockImplementation(() => {
     if (currentEntryIndex <= 0) {
       return;
     }
@@ -259,14 +265,6 @@ function createPushStateMock(signal: AbortSignal) {
     updateLocation(entry);
     window.dispatchEvent(new PopStateEvent("popstate", { state: entry.data }));
   });
-  signal.addEventListener(
-    "abort",
-    () => {
-      backMock.mockRestore();
-    },
-    { once: true },
-  );
-
   return fn;
 }
 
