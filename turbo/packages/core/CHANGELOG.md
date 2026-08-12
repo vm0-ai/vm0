@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.548.0](https://github.com/vm0-ai/vm0/compare/core-v8.547.0...core-v8.548.0) (2026-08-12)
+
+
+### Features
+
+* enable chat event snapshot reads for staff org ([#26503](https://github.com/vm0-ai/vm0/issues/26503)) ([6f92dfd](https://github.com/vm0-ai/vm0/commit/6f92dfdaaf5513c72e13fc960f15d4b22e44bb8c))
+
 ## [8.547.0](https://github.com/vm0-ai/vm0/compare/core-v8.546.4...core-v8.547.0) (2026-08-12)
 
 

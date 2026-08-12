@@ -1,5 +1,27 @@
 # Changelog
 
+## [1.432.0](https://github.com/vm0-ai/vm0/compare/api-v1.431.0...api-v1.432.0) (2026-08-12)
+
+
+### Features
+
+* **protocol:** accept okou environment names and token scope ([#26505](https://github.com/vm0-ai/vm0/issues/26505)) ([6d4b0c7](https://github.com/vm0-ai/vm0/commit/6d4b0c7b08179e5d816af6d53208248bf79d3cd4))
+
+
+### Bug Fixes
+
+* **chat:** bound initial thinking generation ([#26484](https://github.com/vm0-ai/vm0/issues/26484)) ([6944010](https://github.com/vm0-ai/vm0/commit/6944010dfadff1b652324e06f863ffef1c8e9a46))
+* **realtime:** make user signals best effort ([#26495](https://github.com/vm0-ai/vm0/issues/26495)) ([6a6eb89](https://github.com/vm0-ai/vm0/commit/6a6eb89bf3a3e70bbf800de3d6944a06e276fc8c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/core bumped to 8.548.0
+    * @vm0/db bumped to 1.195.1
+    * @vm0/pi-agent-runtime bumped to 1.3.52
+
 ## [1.431.0](https://github.com/vm0-ai/vm0/compare/api-v1.430.2...api-v1.431.0) (2026-08-12)
 
 
