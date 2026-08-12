@@ -36,14 +36,14 @@ chmod +x "${test_root}/scripts/cn.sh"
 
 cat >"${test_root}/turbo/apps/cli/dist/package.json" <<'EOF'
 {
-  "name": "@vm0/zero-cli",
+  "name": "@vm0/okou-cli",
   "version": "1.0.0",
   "private": true,
-  "bin": { "zero": "zero.js" },
+  "bin": { "okou": "okou.js", "zero": "okou.js" },
   "files": ["*.js"]
 }
 EOF
-printf '#!/usr/bin/env node\n' >"${test_root}/turbo/apps/cli/dist/zero.js"
+printf '#!/usr/bin/env node\n' >"${test_root}/turbo/apps/cli/dist/okou.js"
 
 cat >"${test_root}/bin/git" <<'EOF'
 #!/usr/bin/env bash
@@ -102,7 +102,7 @@ output="$({
     bash "${test_root}/scripts/deploy-cli-local.sh"
 })"
 
-grep -Fxq -- '--filter @vm0/zero-cli build' "${tmp_dir}/pnpm.log"
+grep -Fxq -- '--filter @vm0/okou-cli build' "${tmp_dir}/pnpm.log"
 grep -Fxq 'endpoint=https://test-account.r2.cloudflarestorage.com' "${tmp_dir}/aws.log"
 grep -Fxq 'bucket=vm0-static-dev' "${tmp_dir}/aws.log"
 grep -Fxq 'key=okou-cli/local/test.identity/package.tgz' "${tmp_dir}/aws.log"
@@ -114,6 +114,12 @@ grep -Fxq 'region=auto' "${tmp_dir}/aws.log"
 grep -Fxq 'CLI_PKG_URL=https://static.vm7.io/okou-cli/local/test.identity/package.tgz' <<<"$output"
 
 package_json="$(tar -xOf "${tmp_dir}/package.tgz" package/package.json)"
-jq -e '.name == "@vm0/zero-cli" and .private == true and .bin.zero == "zero.js"' <<<"$package_json" >/dev/null
+jq -e '
+  .name == "@vm0/okou-cli"
+  and .private == true
+  and ((.bin | keys | sort) == ["okou", "zero"])
+  and .bin.okou == "okou.js"
+  and .bin.zero == "okou.js"
+' <<<"$package_json" >/dev/null
 
 echo "deploy-cli-local tests passed"

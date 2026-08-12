@@ -23,9 +23,9 @@ if [[ ! -f "$BATS_BIN" ]]; then
     fi
 fi
 
-# Build the supported Zero CLI before testing
-echo -e "${YELLOW}Building Zero CLI...${NC}"
-(cd "$SCRIPT_DIR/../turbo" && pnpm build --filter @vm0/zero-cli)
+# Build the supported Okou CLI before testing
+echo -e "${YELLOW}Building Okou CLI...${NC}"
+(cd "$SCRIPT_DIR/../turbo" && pnpm build --filter @vm0/okou-cli)
 
 # Ensure CLI is available globally
 echo -e "${YELLOW}Linking CLI globally...${NC}"

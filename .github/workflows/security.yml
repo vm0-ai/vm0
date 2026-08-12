@@ -231,6 +231,7 @@ jobs:
             .github/scripts/resolve-desktop-version-change.sh \
             .github/scripts/run-semgrep.sh \
             .github/scripts/runner-behavior-*.sh \
+            .github/scripts/smoke-okou-cli-artifact.sh \
             .github/scripts/verify-okou-desktop-artifact.sh \
             .github/scripts/tests/ansible-ssh-control-path-test.sh \
             .github/scripts/tests/check-release-please-component-releases-test.sh \

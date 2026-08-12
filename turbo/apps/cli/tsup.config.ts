@@ -10,7 +10,7 @@ const pkg = JSON.parse(readFileSync("./package.json", "utf-8")) as {
 const isWatchMode = process.argv.includes("--watch");
 
 export default defineConfig({
-  entry: ["src/zero.ts"],
+  entry: ["src/okou.ts"],
   format: ["esm"],
   // Skip DTS generation in watch mode to avoid memory issues
   // DTS files are still generated during production builds
@@ -41,14 +41,14 @@ export default defineConfig({
   },
   onSuccess: isWatchMode
     ? async () => {
-        console.log("Uploading Zero CLI for local runners...");
+        console.log("Uploading Okou CLI for local runners...");
         execSync("pnpm --workspace-root deploy-cli:local", {
           stdio: "inherit",
         });
-        console.log("Zero CLI uploaded for local runners");
-        console.log("Installing Zero CLI globally...");
+        console.log("Okou CLI uploaded for local runners");
+        console.log("Installing Okou CLI globally...");
         execSync("sudo npm link --local", { cwd: "dist", stdio: "inherit" });
-        console.log("Zero CLI installed globally");
+        console.log("Okou CLI installed globally");
       }
     : undefined,
 });

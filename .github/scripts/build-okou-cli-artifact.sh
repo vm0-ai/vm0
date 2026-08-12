@@ -28,7 +28,7 @@ package_filename="$({
 mv "$output_dir/$package_filename" "$output_dir/package.tgz"
 
 package_sha256="$(sha256sum "$output_dir/package.tgz" | cut -d ' ' -f 1)"
-package_size="$(stat -c '%s' "$output_dir/package.tgz")"
+package_size="$(wc -c < "$output_dir/package.tgz" | tr -d '[:space:]')"
 jq -n \
   --arg commit_sha "$commit_sha" \
   --arg package_sha256 "$package_sha256" \

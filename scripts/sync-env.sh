@@ -81,7 +81,7 @@ append_cli_pkg_url() {
   [[ -f "$env_file" ]] || return 0
 
   if grep -q "^CLI_PKG_URL=" "$env_file" 2>/dev/null; then
-    sed -i '/^# Local Zero CLI package$/d; /^CLI_PKG_URL=/d' "$env_file"
+    sed -i '/^# Local Okou CLI package$/d; /^# Local Zero CLI package$/d; /^CLI_PKG_URL=/d' "$env_file"
   fi
 
   while [[ -s "$env_file" && -z "$(tail -c 1 "$env_file")" ]] && tail -1 "$env_file" | grep -q '^$'; do
@@ -89,7 +89,7 @@ append_cli_pkg_url() {
   done
 
   echo "" >> "$env_file"
-  echo "# Local Zero CLI package" >> "$env_file"
+  echo "# Local Okou CLI package" >> "$env_file"
   echo "CLI_PKG_URL=${package_url}" >> "$env_file"
 }
 
