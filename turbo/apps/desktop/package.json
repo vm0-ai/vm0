@@ -1,9 +1,9 @@
 {
   "name": "@vm0/desktop",
-  "version": "0.31.0",
+  "version": "0.33.2",
   "private": true,
   "productName": "Zero Computer Use",
-  "description": "Zero desktop shell",
+  "description": "Computer Use desktop shell",
   "main": "dist/bootstrap.js",
   "scripts": {
     "build": "pnpm build:native && pnpm build:electron && pnpm build:mcp-filesystem && pnpm build:renderer",

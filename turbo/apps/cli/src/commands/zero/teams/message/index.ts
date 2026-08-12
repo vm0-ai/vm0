@@ -9,6 +9,6 @@ export const zeroTeamsMessageCommand = new Command()
     "after",
     `
 Examples:
-  zero teams message send -c <conversation-id> -t "Hello!"
-  zero teams message send -u me -t "Hello!"`,
+  okou teams message send -c <conversation-id> -t "Hello!"
+  okou teams message send -u me -t "Hello!"`,
   );

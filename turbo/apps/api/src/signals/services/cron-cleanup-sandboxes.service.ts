@@ -14,7 +14,7 @@ import {
   publishUserSignal,
 } from "../external/realtime";
 import { deleteS3Objects } from "../external/s3";
-import { bestEffort, settle, tapError } from "../utils";
+import { settle, tapError } from "../utils";
 import { dispatchCompleteSideEffects$ } from "./agent-webhook-complete.service";
 import {
   cleanupExpiredQueueEntries$,
@@ -97,16 +97,12 @@ function isExpiredRun(run: StaleRun, cutoffs: CleanupCutoffs): boolean {
 
 async function publishQueueMarkerNotificationSafely(
   notification: QueueMarkerRevokeNotification,
-  signal: AbortSignal,
 ): Promise<void> {
-  await bestEffort(
-    publishUserSignal(
-      [notification.userId],
-      `chatThreadMessageCreated:${notification.chatThreadId}`,
-    ),
-    signal,
+  await publishUserSignal(
+    [notification.userId],
+    `chatThreadMessageCreated:${notification.chatThreadId}`,
   );
-  await bestEffort(publishThreadListChanged(notification.userId), signal);
+  await publishThreadListChanged(notification.userId);
 }
 
 const cleanupExportJobs$ = command(
@@ -206,10 +202,7 @@ const dispatchMaintenanceTerminalSideEffects$ = command(
     signal: AbortSignal,
   ): Promise<void> => {
     if (input.queueMarkerNotification) {
-      await publishQueueMarkerNotificationSafely(
-        input.queueMarkerNotification,
-        signal,
-      );
+      await publishQueueMarkerNotificationSafely(input.queueMarkerNotification);
     }
 
     await set(

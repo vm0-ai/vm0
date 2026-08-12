@@ -1,8 +1,8 @@
 /**
- * Tests for zero connector permission-request command.
+ * Tests for okou connector permission-request command.
  *
  * The command only points users at the grant page after a URL diagnostic
- * confirms that the requested Zero permission is denied or requires approval.
+ * confirms that the requested Okou permission is denied or requires approval.
  */
 
 import {
@@ -91,7 +91,7 @@ function stubDiagnostic(
   );
 }
 
-describe("zero connector permission-request command", () => {
+describe("okou connector permission-request command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -236,7 +236,7 @@ describe("zero connector permission-request command", () => {
 
     expect(mockConsoleError).toHaveBeenCalledWith(
       expect.stringContaining(
-        "--callback-prompt can only target the current Zero web chat thread and agent",
+        "--callback-prompt can only target the current web chat thread and agent",
       ),
     );
   });
@@ -263,7 +263,7 @@ describe("zero connector permission-request command", () => {
 
     expect(mockConsoleError).toHaveBeenCalledWith(
       expect.stringContaining(
-        "--callback-prompt can only target the current Zero web chat thread and agent",
+        "--callback-prompt can only target the current web chat thread and agent",
       ),
     );
   });
@@ -422,7 +422,7 @@ describe("zero connector permission-request command", () => {
 
     const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
     expect(logCalls).toContain("AS THE USER's identity");
-    expect(logCalls).toContain("zero slack message send");
+    expect(logCalls).toContain("okou slack message send");
     expect(logCalls).toContain("Only allow this permission below");
   });
 
@@ -608,12 +608,12 @@ describe("zero connector permission-request command", () => {
     {
       name: "already allowed",
       policy: { outcome: "allow", basis: "allow-list" },
-      expected: "is already allowed by Zero",
+      expected: "is already allowed by Okou",
     },
     {
       name: "unavailable",
       policy: { outcome: "unavailable", basis: "not-run-scoped" },
-      expected: "Retry zero connector check from an active run",
+      expected: "Retry okou connector check from an active run",
     },
   ] satisfies readonly NonRequestablePolicyCase[])(
     "does not create a grant when policy is $name",
@@ -669,7 +669,7 @@ describe("zero connector permission-request command", () => {
     );
     expect(logCalls).toContain("selected for the chat or thread");
     expect(logCalls).toContain("Existing run tokens cannot be upgraded");
-    expect(logCalls).toContain("zero whoami");
+    expect(logCalls).toContain("okou whoami");
     expect(logCalls).not.toContain("[Manage");
     expect(mockConsoleError).not.toHaveBeenCalled();
   });

@@ -42,21 +42,15 @@ const THREAD_SIDEBAR_FULLSCREEN_CLASSNAME =
   "fixed inset-0 z-[100] flex min-h-0 flex-col bg-background pt-[var(--sat)] pb-[var(--sab)]";
 
 /**
- * Open the thread's artifacts list and start its sidebar session (background
- * first-page refresh plus realtime catalog updates). Entry buttons and the
- * detail's Back action share this hook so the session always starts.
+ * Open the thread's artifacts list and refresh its first page. Entry buttons
+ * and the detail's Back action share this hook so the list is current on open.
  */
 export function useOpenThreadArtifacts(thread: ChatPanelSignals): () => void {
   const open = useSet(openThreadArtifacts$);
-  const setupSession = useSet(thread.sidebar.setupArtifactsSession$);
-  const pageSignal = useGet(pageSignal$);
+  const reloadArtifacts = useSet(thread.sidebar.artifactCatalog.reload$);
   return () => {
     open(thread);
-    detach(
-      setupSession(pageSignal),
-      Reason.DomCallback,
-      "thread artifacts sidebar session",
-    );
+    reloadArtifacts();
   };
 }
 

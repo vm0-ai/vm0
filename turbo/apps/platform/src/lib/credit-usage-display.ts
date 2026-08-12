@@ -2,6 +2,11 @@ import { getModelDisplayName } from "@vm0/core/model-display-name";
 import { i18n } from "../i18n/index.ts";
 
 const USAGE_DISPLAY_NAMES = {
+  avatar(): string {
+    return i18n.t(($) => {
+      return $.usage.displayNames.avatar;
+    });
+  },
   finance(): string {
     return i18n.t(($) => {
       return $.usage.displayNames.finance;
@@ -57,6 +62,7 @@ const MANAGED_USAGE_KIND_DISPLAY_NAMES: Readonly<Record<string, () => string>> =
   };
 
 const MODEL_DISPLAY_NAMES: Readonly<Record<string, () => string>> = {
+  "joggai-talking-avatar": USAGE_DISPLAY_NAMES.avatar,
   // Rows recorded before image tasks moved to task-scoped kinds carry
   // kind "model" with this provider; nothing else runs it as a chat model.
   "google/gemini-3.5-flash": USAGE_DISPLAY_NAMES.imageRecognize,

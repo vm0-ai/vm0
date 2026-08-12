@@ -121,7 +121,7 @@ function expectFreeAirQualityResponse(body: ZeroAirQualityResponse): void {
   });
 }
 
-describe("zero weather route", () => {
+describe("okou weather route", () => {
   it("returns not configured before calling Google Weather", async () => {
     const actor = createBddApi(context).user();
     let providerRequests = 0;
@@ -148,7 +148,11 @@ describe("zero weather route", () => {
   it("records current conditions at zero credits for an empty balance", async () => {
     const actor = createBddApi(context).user();
     await prepareFreeWeatherActor(actor);
-    configureProvider();
+    mockEnv(
+      "OKOU_WEATHER_GOOGLE_WEATHER_TOKEN",
+      "test-okou-google-weather-key",
+    );
+    mockEnv("ZERO_WEATHER_GOOGLE_WEATHER_TOKEN", "ignored-zero-key");
     let providerUrl: URL | undefined;
     server.use(
       http.get(GOOGLE_WEATHER_CURRENT_URL, ({ request }) => {
@@ -178,7 +182,7 @@ describe("zero weather route", () => {
       weatherCondition: { description: { text: "晴" } },
     });
     expect(providerUrl?.searchParams.get("key")).toBe(
-      "test-google-weather-key",
+      "test-okou-google-weather-key",
     );
     expect(providerUrl?.searchParams.get("location.latitude")).toBe("39.9042");
     expect(providerUrl?.searchParams.get("location.longitude")).toBe(

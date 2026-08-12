@@ -15,12 +15,27 @@ describe("Zero configuration", () => {
     vi.unstubAllEnvs();
   });
 
-  it("uses ZERO_TOKEN as the sole authentication source", async () => {
+  it("falls back to ZERO_TOKEN as the run authentication source", async () => {
     vi.stubEnv("ZERO_TOKEN", "zero-token-value");
     vi.stubEnv("VM0_TOKEN", "legacy-token-value");
 
     await expect(getToken()).resolves.toBe("zero-token-value");
     await expect(getActiveToken()).resolves.toBe("zero-token-value");
+  });
+
+  it("prefers a non-empty OKOU_TOKEN", async () => {
+    vi.stubEnv("OKOU_TOKEN", "okou-token-value");
+    vi.stubEnv("ZERO_TOKEN", "zero-token-value");
+
+    await expect(getToken()).resolves.toBe("okou-token-value");
+    await expect(getActiveToken()).resolves.toBe("okou-token-value");
+  });
+
+  it("falls back to ZERO_TOKEN when OKOU_TOKEN is empty", async () => {
+    vi.stubEnv("OKOU_TOKEN", "");
+    vi.stubEnv("ZERO_TOKEN", "zero-token-value");
+
+    await expect(getToken()).resolves.toBe("zero-token-value");
   });
 
   it("does not fall back to VM0_TOKEN", async () => {
@@ -41,6 +56,19 @@ describe("Zero configuration", () => {
     );
 
     await expect(getActiveOrg()).resolves.toBe("org-from-zero-token");
+  });
+
+  it("reads the active organization from an okou-scoped OKOU_TOKEN", async () => {
+    vi.stubEnv(
+      "OKOU_TOKEN",
+      buildFakeZeroJwt({
+        scope: "okou",
+        orgId: "org-from-okou-token",
+        capabilities: [],
+      }),
+    );
+
+    await expect(getActiveOrg()).resolves.toBe("org-from-okou-token");
   });
 
   it("does not derive an organization from a CLI PAT", async () => {

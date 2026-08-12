@@ -71,7 +71,7 @@ export const connectCommand = new Command()
         );
         console.log(
           chalk.dim(
-            "  After creating a Gmail draft: zero mail link <draft-id>",
+            "  After creating a Gmail draft: okou mail link <draft-id>",
           ),
         );
         return;

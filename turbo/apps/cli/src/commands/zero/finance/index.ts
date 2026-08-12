@@ -79,7 +79,7 @@ const searchCommand = new Command()
   .name("search")
   .description("Search for a financial instrument")
   .argument("<query>", "Company name, symbol, or instrument")
-  .option("--json", "Print the raw Zero Finance response as JSON")
+  .option("--json", "Print the raw Okou Finance response as JSON")
   .action(
     withErrorHandler(async (query: string, options: JsonOption) => {
       const request = zeroFinanceSearchRequestSchema.safeParse({ query });
@@ -94,7 +94,7 @@ const profileCommand = new Command()
   .name("profile")
   .description("Fetch a company profile")
   .argument("<symbol>", "Yahoo Finance symbol, such as AAPL or 0700.HK")
-  .option("--json", "Print the raw Zero Finance response as JSON")
+  .option("--json", "Print the raw Okou Finance response as JSON")
   .action(
     withErrorHandler(async (symbol: string, options: JsonOption) => {
       const request = zeroFinanceProfileRequestSchema.safeParse({ symbol });
@@ -109,7 +109,7 @@ const quoteCommand = new Command()
   .name("quote")
   .description("Fetch the latest available market quote")
   .argument("<symbol>", "Yahoo Finance symbol, such as AAPL or 0700.HK")
-  .option("--json", "Print the raw Zero Finance response as JSON")
+  .option("--json", "Print the raw Okou Finance response as JSON")
   .action(
     withErrorHandler(async (symbol: string, options: JsonOption) => {
       const request = zeroFinanceQuoteRequestSchema.safeParse({ symbol });
@@ -134,7 +134,7 @@ const chartCommand = new Command()
       .default(ZERO_FINANCE_DEFAULT_INTERVAL)
       .argParser(parseInterval),
   )
-  .option("--json", "Print the raw Zero Finance response as JSON")
+  .option("--json", "Print the raw Okou Finance response as JSON")
   .action(
     withErrorHandler(async (symbol: string, options: ChartOptions) => {
       const request = zeroFinanceChartRequestSchema.safeParse({
@@ -151,7 +151,7 @@ const chartCommand = new Command()
 
 export const zeroFinanceCommand = new Command()
   .name("finance")
-  .description("Query financial instruments through managed Zero Finance")
+  .description("Query financial instruments through managed Okou Finance")
   .addCommand(searchCommand)
   .addCommand(profileCommand)
   .addCommand(quoteCommand)
@@ -160,13 +160,13 @@ export const zeroFinanceCommand = new Command()
     "after",
     `
 Examples:
-  Search instruments:  zero finance search "Tencent"
-  Company profile:     zero finance profile AAPL
-  Latest quote:        zero finance quote 0700.HK --json
-  Historical chart:   zero finance chart AAPL --range 1y --interval 1d
+  Search instruments:  okou finance search "Tencent"
+  Company profile:     okou finance profile AAPL
+  Latest quote:        okou finance quote 0700.HK --json
+  Historical chart:   okou finance chart AAPL --range 1y --interval 1d
 
 Notes:
   - Authenticates via ZERO_TOKEN (requires finance:read capability) or a CLI token
   - Each successful command consumes 1 credit
-  - Data is returned from APIDojo's Yahoo Finance API on RapidAPI without Zero-side caching`,
+  - Data is returned from APIDojo's Yahoo Finance API on RapidAPI without Okou-side caching`,
   );

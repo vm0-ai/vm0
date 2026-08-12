@@ -157,7 +157,7 @@ run_real_claude_steer() {
     ' <<< "$successor_events_response"
 }
 
-@test "t27-1: real claude returns a successful answer" {
+@test "real claude returns a successful answer" {
     run run_real_claude_chat \
         "123+456. Reply only RESULT=<answer>." \
         "RESULT=579"
@@ -179,7 +179,7 @@ run_real_claude_steer() {
     assert_output --partial '"vm0UsageCredits":0'
 }
 
-@test "t27-2: real claude steers an active run then starts a successor" {
+@test "real claude steers an active run then starts a successor" {
     local steer_nonce steer_prompt after_complete_nonce after_complete_prompt
     steer_nonce="$(_runner_uuid)"
     steer_prompt="claude-steer-${steer_nonce%%-*}"

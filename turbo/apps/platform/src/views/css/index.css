@@ -352,6 +352,7 @@ body {
   display: block;
   width: 166.666667%;
   overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
   background-color: hsl(var(--foreground));
   -webkit-background-clip: text;

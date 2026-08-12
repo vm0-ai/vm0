@@ -41,11 +41,11 @@ export const cloneHostedSiteCommand = new Command()
     "after",
     `
 Examples:
-  Clone by public slug:  zero host clone my-site
-  Clone by hosted URL:   zero host clone https://my-site.sites.example.com ./site
-  Clone an artifact URL: zero host clone https://dpl-<deployment-id>.sites.example.com ./site
-  Clone version 2:       zero host clone my-site --version 2
-  Machine readable:      zero host clone my-site --json
+  Clone by public slug:  okou host clone my-site
+  Clone by hosted URL:   okou host clone https://my-site.sites.example.com ./site
+  Clone an artifact URL: okou host clone https://dpl-<deployment-id>.sites.example.com ./site
+  Clone version 2:       okou host clone my-site --version 2
+  Machine readable:      okou host clone my-site --json
 
 Notes:
   - Authenticates via ZERO_TOKEN (requires host:read capability)

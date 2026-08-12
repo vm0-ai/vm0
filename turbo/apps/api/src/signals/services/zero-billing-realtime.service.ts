@@ -1,12 +1,8 @@
 import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { and, eq } from "drizzle-orm";
 
-import { logger } from "../../lib/log";
 import type { Db } from "../external/db";
 import { publishUserSignal } from "../external/realtime";
-import { tapError } from "../utils";
-
-const L = logger("BillingRealtime");
 
 export async function publishBillingChangedForOrg(
   db: Db,
@@ -30,7 +26,5 @@ export async function publishBillingChangedForOrg(
     return;
   }
 
-  await tapError(publishUserSignal(userIds, "billing:changed"), (error) => {
-    L.warn("Failed to publish billing changed signal", { orgId, error });
-  });
+  await publishUserSignal(userIds, "billing:changed");
 }

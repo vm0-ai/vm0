@@ -5,6 +5,7 @@ import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import { formatIsoTimestamp } from "../../../lib/utils/time-format";
 import { parseBoundedLogCount } from "../../../lib/utils/log-pagination";
 import { isUuid } from "../../../lib/utils/uuid";
+import { getOkouAgentId } from "../../../lib/okou-env";
 import { syncCachedChatThreads } from "./chat-thread-cache";
 
 const DEFAULT_LIMIT = 20;
@@ -23,7 +24,7 @@ function printUsageError(message: string, hint: string): never {
 }
 
 function resolveAgentId(flagAgentId: string | undefined): string {
-  const agentId = flagAgentId?.trim() || process.env.ZERO_AGENT_ID?.trim();
+  const agentId = flagAgentId?.trim() || getOkouAgentId()?.trim();
   if (!agentId) {
     printUsageError(
       "ZERO_AGENT_ID is not set",
@@ -47,7 +48,7 @@ export const listCommand = new Command()
   .name("list")
   .alias("ls")
   .description("List web chat threads for an agent")
-  .option("--agent <id>", "Filter by Zero agent ID (defaults to ZERO_AGENT_ID)")
+  .option("--agent <id>", "Filter by agent ID (defaults to ZERO_AGENT_ID)")
   .option(
     "--limit <n>",
     `Maximum number of threads to print (default: ${DEFAULT_LIMIT}, max: ${MAX_LIMIT})`,
@@ -57,10 +58,10 @@ export const listCommand = new Command()
     "after",
     `
 Examples:
-  List this agent's chats:  zero chat list
-  List another agent:       zero chat list --agent <agent-id>
-  Limit the output:         zero chat list --limit 10
-  Print JSON:               zero chat list --json
+  List this agent's chats:  okou chat list
+  List another agent:       okou chat list --agent <agent-id>
+  Limit the output:         okou chat list --limit 10
+  Print JSON:               okou chat list --json
 
 Notes:
   - Defaults --agent to ZERO_AGENT_ID

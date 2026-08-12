@@ -1,4 +1,5 @@
 import { getApiUrl } from "../../../lib/api/config";
+import { getOkouAppUrl } from "../../../lib/okou-env";
 
 /**
  * Transform the API host to the platform (app) host.
@@ -46,7 +47,7 @@ export function toPlatformUrl(apiUrl: string): URL {
 }
 
 export async function getPlatformOrigin(): Promise<string> {
-  const appUrl = process.env.ZERO_APP_URL;
+  const appUrl = getOkouAppUrl();
   if (appUrl) {
     return new URL(appUrl).origin;
   }

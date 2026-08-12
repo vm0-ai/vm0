@@ -50,7 +50,7 @@ function formatStyleSource(
   if (sourceMode === "r2" && source.archive) {
     return [
       `- Registry resource: \`${style.id}\``,
-      `- Pull command: \`zero resource pull ${style.id} --dir ./generated/resources\``,
+      `- Pull command: \`okou resource pull ${style.id} --dir ./generated/resources\``,
       `- Path after pull: \`./generated/resources/${source.path}\``,
     ];
   }
@@ -88,13 +88,13 @@ export function createStyledImageCompilationPacket(
   } as const;
   const sourceResolutionRule =
     options.sourceMode === "r2"
-      ? "Run the listed `zero resource pull` command once, then read the extracted style package before compiling."
+      ? "Run the listed `okou resource pull` command once, then read the extracted style package before compiling."
       : "Read the selected GitHub style source before compiling.";
   const instructions = [
-    `# Zero generate image prompt compile ${options.style.id}`,
+    `# Okou generate image prompt compile ${options.style.id}`,
     "",
     "This is an image prompt-compilation packet for the current agent.",
-    "Zero is not generating this image yet. The image style has already been selected — resolve its source, compile the user prompt into a final image prompt, then generate with `--compiled-prompt`.",
+    "Okou is not generating this image yet. The image style has already been selected — resolve its source, compile the user prompt into a final image prompt, then generate with `--compiled-prompt`.",
     "",
     "## User Prompt",
     options.prompt,
@@ -131,7 +131,7 @@ export function createStyledImageCompilationPacket(
     "",
     "## Next Command Template",
     "```bash",
-    'zero generate image --compiled-prompt "<compiled prompt>"',
+    'okou generate image --compiled-prompt "<compiled prompt>"',
     "```",
     "",
     "## Verification",

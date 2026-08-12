@@ -5,6 +5,7 @@ import {
   RUN_ERROR_GUIDANCE,
 } from "@vm0/api-contracts/contracts/errors";
 import { ApiRequestError } from "../api/core/client-factory";
+import { getOkouToken } from "../okou-env";
 
 /**
  * Wraps a Commander.js action handler with centralized error handling.
@@ -22,7 +23,7 @@ export function withErrorHandler<T extends unknown[]>(
     } catch (error) {
       if (error instanceof ApiRequestError) {
         if (error.code === "UNAUTHORIZED") {
-          if (process.env.ZERO_TOKEN) {
+          if (getOkouToken()) {
             console.error(chalk.red("✗ Authentication failed"));
             console.error(chalk.dim("  ZERO_TOKEN is invalid or expired"));
           } else {

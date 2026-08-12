@@ -15,7 +15,7 @@ describe("Okou CLI program", () => {
     expect(program.description()).toContain("Okou CLI");
   });
 
-  it("should register all expected zero commands", () => {
+  it("should register all expected Okou commands", () => {
     const expectedCommands = [
       "model",
       "model-provider",

@@ -120,12 +120,6 @@ export interface ThreadSidebarSignals {
   readonly artifactCatalog: ArtifactCatalogSignals;
   readonly selectedArtifactText$: Computed<Promise<string>>;
   readonly selectedArtifactMarkdownTree$: MarkdownPreviewTreeComputed;
-  /**
-   * Session resources for an open artifacts list: refresh the first page in
-   * the background and follow realtime catalog changes. `close$` aborts the
-   * session without touching the cached list.
-   */
-  readonly setupArtifactsSession$: Command<Promise<void>, [AbortSignal]>;
 }
 
 function attachmentResourceReset(
@@ -146,7 +140,6 @@ export function createThreadSidebarSignals(
   const internalFullscreen$ = state(false);
   const internalEditingAutomationId$ = state<string | null>(null);
   const internalClaimedAutoOpenCandidateKey$ = state<string | null>(null);
-  const resetSession$ = resetSignal();
   const resetArtifactPreviewSignal$ = resetSignal();
   const internalArtifactPreviewSignal$ = state(ownerSignal);
 
@@ -193,9 +186,6 @@ export function createThreadSidebarSignals(
   });
 
   const close$ = command(({ get, set }) => {
-    // Abort session resources (realtime subscription, background refresh)
-    // while keeping the cached catalog pages for the next open.
-    set(resetSession$);
     set(
       internalArtifactPreviewSignal$,
       set(resetArtifactPreviewSignal$, ownerSignal),
@@ -217,14 +207,6 @@ export function createThreadSidebarSignals(
       }
       set(internalClaimedAutoOpenCandidateKey$, candidateKey);
       return true;
-    },
-  );
-
-  const setupArtifactsSession$ = command(
-    async ({ set }, parentSignal: AbortSignal): Promise<void> => {
-      const signal = set(resetSession$, parentSignal);
-      set(artifactCatalog.reload$);
-      await set(artifactCatalog.subscribeCatalogChanged$, signal);
     },
   );
 
@@ -258,6 +240,5 @@ export function createThreadSidebarSignals(
     artifactCatalog,
     selectedArtifactText$,
     selectedArtifactMarkdownTree$,
-    setupArtifactsSession$,
   };
 }

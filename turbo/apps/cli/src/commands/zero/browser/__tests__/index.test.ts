@@ -58,7 +58,7 @@ function browser(status: "active" | "suspended" = "active") {
   } as const;
 }
 
-describe("zero browser command", () => {
+describe("okou browser command", () => {
   const consoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
   const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
   const processExit = vi.spyOn(process, "exit").mockImplementation((() => {

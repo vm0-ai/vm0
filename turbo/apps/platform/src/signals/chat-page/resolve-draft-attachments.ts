@@ -172,7 +172,7 @@ export const prepareUserMessageFromDraft$ = command(
 
     // User prompt is clean text only — file description blocks are appended
     // server-side via buildFullPrompt so the agent gets the [Web file] [ID]
-    // format it knows how to download with `zero web download-file`.
+    // format it knows how to download with `okou web download-file`.
     const finalPrompt =
       trimmedPrompt || (ready.length > 0 ? ATTACH_ONLY_PLACEHOLDER : "");
 

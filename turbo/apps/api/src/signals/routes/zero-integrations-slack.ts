@@ -392,19 +392,16 @@ const uninstallSlackIntegration$ = command(
     );
     signal.throwIfAborted();
 
-    await bestEffort(
-      publishUserSignal(
-        Array.from(
-          new Set([
-            args.userId,
-            ...connections.map((connection) => {
-              return connection.vm0UserId;
-            }),
-          ]),
-        ),
-        "slack:changed",
+    await publishUserSignal(
+      Array.from(
+        new Set([
+          args.userId,
+          ...connections.map((connection) => {
+            return connection.vm0UserId;
+          }),
+        ]),
       ),
-      signal,
+      "slack:changed",
     );
     signal.throwIfAborted();
 
@@ -488,7 +485,7 @@ const disconnectSlackIntegration$ = command(
     );
     signal.throwIfAborted();
 
-    await bestEffort(publishUserSignal([args.userId], "slack:changed"), signal);
+    await publishUserSignal([args.userId], "slack:changed");
     signal.throwIfAborted();
 
     return { status: 200 as const, body: { ok: true } };

@@ -723,7 +723,7 @@ export class ComputerUseHostRuntime {
     if (response.status === 409) {
       this.setRuntimeErrorState(
         "start",
-        "Computer Use is already active in another Zero Desktop session.",
+        "Computer Use is already active in another Desktop session.",
         { hostId: null },
       );
       return null;
@@ -814,7 +814,7 @@ export class ComputerUseHostRuntime {
       this.hostToken = null;
       this.setRuntimeErrorState(
         "heartbeat",
-        "Computer Use is already active in another Zero Desktop session.",
+        "Computer Use is already active in another Desktop session.",
         { hostId: null },
       );
       return false;

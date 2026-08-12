@@ -1,6 +1,12 @@
 import { readFile } from "node:fs/promises";
 import { z } from "zod";
 import packageJson from "../../package.json" with { type: "json" };
+import {
+  apiNamespaceAliasPaths,
+  brandedApiNamespace,
+  BRANDED_API_NAMESPACE_PATHS,
+  type BrandedApiNamespacePath,
+} from "../contracts/api-namespaces";
 import { type RuntimeApiRouteBinding, runtimeApiRouteBindings } from "./routes";
 
 export const runtimeApiSchemaFormatVersion = 1;
@@ -16,6 +22,7 @@ export interface RuntimeApiSchemaDocument {
   readonly packageName: string;
   readonly packageVersion: string;
   readonly generatedAt: string;
+  readonly supportedBrandedApiNamespacePaths?: readonly BrandedApiNamespacePath[];
   readonly routes: readonly RuntimeApiRouteSnapshot[];
 }
 
@@ -47,18 +54,21 @@ export type RuntimeSchemaSnapshot =
 
 export function buildRuntimeApiSchemaDocument(
   generatedAt = new Date().toISOString(),
+  bindings: readonly RuntimeApiRouteBinding[] = runtimeApiRouteBindings,
 ): RuntimeApiSchemaDocument {
-  const routes = runtimeApiRouteBindings
-    .map(normalizeRuntimeApiRoute)
+  const routes = bindings
+    .flatMap(normalizeRuntimeApiRouteAliases)
     .sort((left, right) => {
       return left.id.localeCompare(right.id);
     });
+  assertUniqueRuntimeApiRoutes(routes);
 
   return {
     schemaFormatVersion: runtimeApiSchemaFormatVersion,
     packageName: packageJson.name,
     packageVersion: packageJson.version,
     generatedAt,
+    supportedBrandedApiNamespacePaths: BRANDED_API_NAMESPACE_PATHS,
     routes,
   };
 }
@@ -125,6 +135,41 @@ function normalizeRuntimeApiRoute(
     },
     responses: normalizeResponses(route.responses, binding.id),
   };
+}
+
+function normalizeRuntimeApiRouteAliases(
+  binding: RuntimeApiRouteBinding,
+): readonly RuntimeApiRouteSnapshot[] {
+  const sourcePath = validateString(binding.route.path, `${binding.id}.path`);
+  return apiNamespaceAliasPaths(sourcePath).map((path) => {
+    const namespace = brandedApiNamespace(path);
+    return normalizeRuntimeApiRoute({
+      ...binding,
+      id: namespace ? `${binding.id}.${namespace}` : binding.id,
+      route: { ...binding.route, path },
+    });
+  });
+}
+
+function assertUniqueRuntimeApiRoutes(
+  routes: readonly RuntimeApiRouteSnapshot[],
+): void {
+  const ids = new Set<string>();
+  const registrations = new Set<string>();
+  for (const route of routes) {
+    if (ids.has(route.id)) {
+      throw new Error(`Duplicate runtime API route id: ${route.id}`);
+    }
+    ids.add(route.id);
+
+    const registration = `${route.method} ${route.path}`;
+    if (registrations.has(registration)) {
+      throw new Error(
+        `Duplicate runtime API route registration: ${registration}`,
+      );
+    }
+    registrations.add(registration);
+  }
 }
 
 function normalizeResponses(
@@ -278,5 +323,8 @@ const runtimeApiSchemaDocumentSchema: z.ZodType<RuntimeApiSchemaDocument> =
     packageName: z.string(),
     packageVersion: z.string(),
     generatedAt: z.string(),
+    supportedBrandedApiNamespacePaths: z
+      .array(z.enum(BRANDED_API_NAMESPACE_PATHS))
+      .optional(),
     routes: z.array(runtimeApiRouteSnapshotSchema),
   });

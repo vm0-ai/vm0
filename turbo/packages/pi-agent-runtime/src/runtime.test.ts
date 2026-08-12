@@ -247,4 +247,82 @@ describe("Pi run Skill runtime", () => {
       await rm(hostSkillsRoot, { recursive: true, force: true });
     }
   });
+
+  it("accepts connector slug and Skill name separation without hiding other diagnostics", async () => {
+    const hostSkillsRoot = await mkdtemp(join(tmpdir(), "vm0-runtime-test-"));
+    const githubDirectory = join(PI_SKILLS_ROOT, "github");
+    const invalidDirectory = join(PI_SKILLS_ROOT, "data247");
+    const env = new GuestSkillsExecutionEnv(hostSkillsRoot);
+
+    try {
+      await writeSkill(
+        join(hostSkillsRoot, "github"),
+        "github-automation",
+        "Use for GitHub operations.",
+        "GitHub instructions.",
+      );
+      await writeSkill(
+        join(hostSkillsRoot, "data247"),
+        "Data247",
+        "Use for Data247 operations.",
+        "Data247 instructions.",
+      );
+
+      const snapshot: RunSkillSnapshot = {
+        schemaVersion: 1,
+        policyVersion: 1,
+        root: PI_SKILLS_ROOT,
+        digest: SHA256_ZERO,
+        entries: [
+          {
+            logicalDir: githubDirectory,
+            skillFile: join(githubDirectory, "SKILL.md"),
+            orgId: "__system__",
+            userId: "__org__",
+            storageName: "connector-skill@github",
+            storageId: "storage_github",
+            versionId: "version_github",
+          },
+          {
+            logicalDir: invalidDirectory,
+            skillFile: join(invalidDirectory, "SKILL.md"),
+            orgId: "__system__",
+            userId: "__org__",
+            storageName: "connector-skill@data247",
+            storageId: "storage_data247",
+            versionId: "version_data247",
+          },
+        ],
+      };
+      const resources = await loadPiRunSkills(env, snapshot);
+
+      expect(
+        resources.skills.map(({ name }) => {
+          return name;
+        }),
+      ).toEqual(["github-automation", "Data247"]);
+      expect(resources.diagnostics).toEqual([
+        expect.objectContaining({
+          code: "invalid_metadata",
+          message:
+            "name contains invalid characters (must be lowercase a-z, 0-9, hyphens only)",
+          path: join(invalidDirectory, "SKILL.md"),
+          source: expect.objectContaining({
+            storageName: "connector-skill@data247",
+          }),
+        }),
+      ]);
+      expect(
+        formatPiUserPrompt(
+          "/skill:github-automation inspect the repository",
+          resources.skills,
+        ),
+      ).toContain(
+        `<skill name="github-automation" location="${githubDirectory}/SKILL.md">`,
+      );
+    } finally {
+      await env.cleanup();
+      await rm(hostSkillsRoot, { recursive: true, force: true });
+    }
+  });
 });

@@ -1,11 +1,12 @@
 /**
  * ESLint rule: no-non-zero-api
  *
- * Enforces that the platform app only calls /api/zero/ endpoints.
+ * Enforces that the platform app only calls branded API endpoints.
  * Catches string literals and template literals containing /api/ paths
- * that do not start with /api/zero/.
+ * that do not start with /api/zero/ or /api/okou/.
  *
  * Good: "/api/zero/billing/status"
+ * Good: "/api/okou/billing/status"
  * Bad: "/api/billing/status"
  */
 
@@ -19,8 +20,8 @@ const createRule = ESLintUtils.RuleCreator(
 type MessageIds = "nonZeroApi";
 
 /**
- * Check if a string contains a non-zero API path.
- * Matches /api/ followed by anything that is NOT zero/.
+ * Check if a string contains a non-branded API path.
+ * Matches /api/ followed by anything that is not zero/ or okou/.
  * Ignores external URLs (e.g. https://slack.com/api/...).
  */
 function containsNonZeroApiPath(value: string): boolean {
@@ -29,8 +30,8 @@ function containsNonZeroApiPath(value: string): boolean {
   if (/https?:\/\/[^/]+\/api\//.test(value)) {
     return false;
   }
-  // Match /api/ that is NOT followed by zero/
-  return /\/api\/(?!zero\/)/.test(value);
+  // Match /api/ that is not followed by an approved branded namespace.
+  return /\/api\/(?!(?:zero|okou)\/)/.test(value);
 }
 
 export default createRule<[], MessageIds>({
@@ -38,12 +39,13 @@ export default createRule<[], MessageIds>({
   meta: {
     type: "problem",
     docs: {
-      description: "Enforce that platform app only calls /api/zero/ endpoints",
+      description:
+        "Enforce that platform app only calls /api/zero/ or /api/okou/ endpoints",
     },
     schema: [],
     messages: {
       nonZeroApi:
-        "Platform app must only call /api/zero/ endpoints. Found non-zero API path: '{{path}}'. Use a zero contract + route instead.",
+        "Platform app must only call /api/zero/ or /api/okou/ endpoints. Found unapproved API path: '{{path}}'. Use a branded contract + route instead.",
     },
   },
   defaultOptions: [],

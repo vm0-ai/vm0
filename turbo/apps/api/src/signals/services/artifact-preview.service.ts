@@ -123,7 +123,7 @@ async function renderArtifactSnapshot(
   signal: AbortSignal,
 ): Promise<Buffer> {
   const previewUrl = new URL(url);
-  const hostDomain = env("ZERO_HOST_DOMAIN");
+  const hostDomain = env("OKOU_HOST_DOMAIN");
   if (
     previewUrl.protocol !== "https:" ||
     !previewUrl.hostname.endsWith(`.${hostDomain}`)

@@ -6,6 +6,7 @@ import {
   app,
   BrowserWindow,
   dialog,
+  ipcMain,
   Menu,
   net,
   powerSaveBlocker,
@@ -64,6 +65,8 @@ import { readOrCreateComputerUseInstallationId } from "./desktop-computer-use-in
 import { DesktopFilesystemPluginManager } from "./desktop-filesystem-plugin";
 import { DesktopMcpPluginManager } from "./desktop-mcp-plugin";
 import { DesktopKeepAwakeController } from "./desktop-keep-awake";
+import type { DesktopIdentityInfo } from "./desktop-bridge";
+import { DESKTOP_IDENTITY_CHANNEL } from "./desktop-identity-ipc-channels";
 import { startDesktopLaunchComputerUse } from "./desktop-launch-computer-use";
 import {
   DesktopQuitConfirmationController,
@@ -148,6 +151,16 @@ let appIsQuitting = false;
 let computerUseNativeBackendDisposed = false;
 let desktopTray: DesktopTrayController | null = null;
 let keepAwakeController: DesktopKeepAwakeController | null = null;
+
+const desktopIdentity: DesktopIdentityInfo = {
+  product: config.identity.product,
+  brandName: config.identity.brandName,
+  displayName: config.identity.displayName,
+};
+
+ipcMain.on(DESKTOP_IDENTITY_CHANNEL, (event) => {
+  event.returnValue = desktopIdentity;
+});
 let filesystemPluginManager: DesktopFilesystemPluginManager | null = null;
 let mcpPluginManager: DesktopMcpPluginManager | null = null;
 let desktopAutoUpdatesInstalled = false;
@@ -704,6 +717,7 @@ function installDesktopAuth(): void {
 
 function installTray(): void {
   desktopTray = installDesktopTray({
+    brandName: config.identity.brandName,
     displayName: config.identity.displayName,
     iconPath: trayIconPath(),
     disabledIconPath: trayIconDisabledPath(),
@@ -1007,6 +1021,77 @@ async function createMainWindow(): Promise<BrowserWindow> {
   return window;
 }
 
+interface DesktopSmokeBridgeState {
+  readonly auth: boolean;
+  readonly computerUse: boolean;
+  readonly developerTools: boolean;
+  readonly identity: DesktopIdentityInfo | null;
+}
+
+function isDesktopIdentityInfo(value: unknown): value is DesktopIdentityInfo {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "product" in value &&
+    (value.product === "zero" || value.product === "okou") &&
+    "brandName" in value &&
+    (value.brandName === "Zero" || value.brandName === "Okou") &&
+    "displayName" in value &&
+    typeof value.displayName === "string"
+  );
+}
+
+function isDesktopSmokeBridgeState(
+  value: unknown,
+): value is DesktopSmokeBridgeState {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "auth" in value &&
+    typeof value.auth === "boolean" &&
+    "computerUse" in value &&
+    typeof value.computerUse === "boolean" &&
+    "developerTools" in value &&
+    typeof value.developerTools === "boolean" &&
+    "identity" in value &&
+    (value.identity === null || isDesktopIdentityInfo(value.identity))
+  );
+}
+
+async function verifyDesktopSmokeBridge(): Promise<void> {
+  const window = await createMainWindow();
+  const rawState: unknown = await window.webContents.executeJavaScript(
+    `({
+      auth: typeof window.vm0DesktopAuth === "object",
+      computerUse: typeof window.vm0DesktopComputerUse === "object",
+      developerTools: typeof window.vm0DesktopDeveloperTools === "object",
+      identity: window.vm0DesktopIdentity ?? null,
+    })`,
+    true,
+  );
+
+  if (!isDesktopSmokeBridgeState(rawState)) {
+    throw new Error(
+      `Desktop renderer bridge returned an invalid result: ${JSON.stringify(rawState)}`,
+    );
+  }
+
+  const state = rawState;
+  if (
+    !state.auth ||
+    !state.computerUse ||
+    !state.developerTools ||
+    !state.identity ||
+    state.identity.product !== desktopIdentity.product ||
+    state.identity.brandName !== desktopIdentity.brandName ||
+    state.identity.displayName !== desktopIdentity.displayName
+  ) {
+    throw new Error(
+      `Desktop renderer bridge failed acceptance: ${JSON.stringify(state)}`,
+    );
+  }
+}
+
 function installAuthConsumeWindowPolicy(window: BrowserWindow): void {
   window.webContents.on("will-navigate", (event, url) => {
     if (isAllowedAppNavigation(url, config.allowedAppOrigins)) {
@@ -1195,7 +1280,9 @@ function registerDesktopAuthProtocol(): void {
 }
 
 if (process.platform !== "darwin") {
-  console.warn("Zero Desktop POC is macOS-first and only packages for darwin.");
+  console.warn(
+    "Computer Use Desktop is macOS-first and only packages for darwin.",
+  );
 }
 
 applyAppName();
@@ -1274,6 +1361,13 @@ if (!hasSingleInstanceLock) {
     });
 
     if (isDesktopSmokeTestEnabled(process.env)) {
+      try {
+        await verifyDesktopSmokeBridge();
+      } catch (error) {
+        console.error("[smoke-test] desktop renderer bridge failed", error);
+        app.exit(1);
+        return;
+      }
       console.log(DESKTOP_SMOKE_TEST_READY_MARKER);
       quitConfirmation.allowQuitWithoutConfirmation();
       app.quit();

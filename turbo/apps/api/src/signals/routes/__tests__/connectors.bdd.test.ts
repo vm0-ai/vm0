@@ -2856,14 +2856,20 @@ describe("CONN-03: custom connectors and connector-owned secrets", () => {
     await bdd.deleteAgent(admin, agent.agentId);
   });
 
-  it("lets an admin agent create a manual definition that Connect can configure", async () => {
+  it("lets an admin agent with an okou-scoped token create a manual definition that Connect can configure", async () => {
     const admin = createBddApi(context).user({ orgRole: "org:admin" });
     if (!admin.orgId) {
       throw new Error("Expected an org-scoped admin");
     }
     mockClerkMembership(context, admin, "org:admin");
     const runId = randomUUID();
-    const writeToken = generateZeroToken(admin.userId, runId, admin.orgId);
+    const writeToken = generateZeroToken(
+      admin.userId,
+      runId,
+      admin.orgId,
+      undefined,
+      { scope: "okou" },
+    );
     const connectorsClient = setupApp({
       context,
       routes: zeroCustomConnectorsRoutes,

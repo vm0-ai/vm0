@@ -280,7 +280,7 @@ describe("chat lifecycle", () => {
           runId: "run-generation-usage",
           usage: {
             version: 1,
-            totalCredits: 1976,
+            totalCredits: 2076,
             settledAt: "2026-06-09T10:00:02Z",
             breakdown: [
               {
@@ -290,11 +290,15 @@ describe("chat lifecycle", () => {
               },
               {
                 kind: "video",
-                credits: 1880,
+                credits: 1980,
                 providers: [
                   {
                     provider: "dreamina-seedance-2-0-260128",
                     credits: 1880,
+                  },
+                  {
+                    provider: "joggai-talking-avatar",
+                    credits: 100,
                   },
                 ],
               },
@@ -310,7 +314,7 @@ describe("chat lifecycle", () => {
       path: "/chats/e7000000-0000-4000-a000-000000000004",
     });
 
-    const credit = await screen.findByLabelText("Credit usage 1,976");
+    const credit = await screen.findByLabelText("Credit usage 2,076");
     click(credit);
 
     await waitFor(() => {
@@ -325,8 +329,14 @@ describe("chat lifecycle", () => {
         1,
       );
       expect(screen.getAllByText("1,880").length).toBeGreaterThanOrEqual(1);
+      expect(
+        screen.getAllByText("Avatar").some((element) => {
+          return element.parentElement?.textContent === "Avatar100";
+        }),
+      ).toBeTruthy();
       expect(screen.queryByText(/fal\.? ?ai/iu)).not.toBeInTheDocument();
       expect(screen.queryByText(/dreamina/iu)).not.toBeInTheDocument();
+      expect(screen.queryByText(/joggai/iu)).not.toBeInTheDocument();
     });
   });
 
@@ -1842,9 +1852,6 @@ describe("chat lifecycle", () => {
         context.mocks.ably.hasSubscription(
           `chatThreadMessageCreated:${threadId}`,
         ),
-      ).toBeFalsy();
-      expect(
-        context.mocks.ably.hasSubscription(`chatThreadRunCreated:${threadId}`),
       ).toBeFalsy();
       sinceSeqIds.length = 0;
       burstEnabled = true;

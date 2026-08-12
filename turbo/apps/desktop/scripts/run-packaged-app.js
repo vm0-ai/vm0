@@ -7,9 +7,10 @@ if (process.platform !== "darwin") {
   throw new Error("Packaged desktop dev runs are only supported on macOS.");
 }
 
-const { executablePath } = packagedAppPaths(
-  process.env.VM0_DESKTOP_PLATFORM_URL,
-);
+const { executablePath } = packagedAppPaths({
+  platformUrl: process.env.VM0_DESKTOP_PLATFORM_URL,
+  product: process.env.VM0_DESKTOP_PRODUCT,
+});
 
 if (!fs.existsSync(executablePath)) {
   throw new Error(`Packaged app executable was not found at ${executablePath}`);

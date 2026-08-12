@@ -22,8 +22,8 @@ export const copyCommand = new Command()
     "after",
     `
 Examples:
-  zero workflow copy tell-a-joke --agent <source-agent-id> --to-agent <target-agent-id>
-  zero workflow copy <workflow-id> --to-agent <target-agent-id>`,
+  okou workflow copy tell-a-joke --agent <source-agent-id> --to-agent <target-agent-id>
+  okou workflow copy <workflow-id> --to-agent <target-agent-id>`,
   )
   .action(
     withErrorHandler(
@@ -58,7 +58,7 @@ Examples:
           printWorkflowAutomationsTable(automations);
         }
         console.log();
-        console.log(`View it: zero workflow view ${workflow.id}`);
+        console.log(`View it: okou workflow view ${workflow.id}`);
       },
     ),
   );

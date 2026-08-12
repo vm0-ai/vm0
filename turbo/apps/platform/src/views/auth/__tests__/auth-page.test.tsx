@@ -480,7 +480,10 @@ describe("app auth pages", () => {
     expect(layout.className).not.toContain("var(--sat)");
     expect(layout.className).not.toContain("var(--sab)");
 
-    const logo = screen.getByAltText("VM0").closest("a");
+    const logoImage = screen.getByAltText("VM0");
+    expect(logoImage).toHaveAttribute("crossorigin", "anonymous");
+
+    const logo = logoImage.closest("a");
     expect(logo).toHaveClass("left-6");
     expect(logo).toHaveClass("top-6");
     expect(logo?.className).not.toContain("var(--sat)");

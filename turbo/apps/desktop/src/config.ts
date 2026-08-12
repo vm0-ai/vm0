@@ -4,37 +4,24 @@ import type { DesktopProduct } from "@vm0/api-contracts/contracts/client-headers
 import desktopIdentities from "./desktop-identities.json";
 import { rewriteDesktopServiceHostname } from "./desktop-api-base-url";
 
-const PRODUCTION_PLATFORM_URL = "https://app.vm0.ai";
 const DESKTOP_RUNTIME_CONFIG_FILE = "desktop-runtime-config.json";
 
 export type DesktopEnvironment = "production" | "staging" | "development";
 type DesktopIdentityKind = "production" | "development";
 
-interface DesktopIdentity {
+export interface DesktopIdentity {
   readonly product: DesktopProduct;
+  readonly brandName: "Zero" | "Okou";
   readonly displayName: string;
   readonly bundleId: string;
   readonly authProtocolName: string;
   readonly authScheme: string;
 }
 
-function desktopProduct(value: string): DesktopProduct {
-  if (value === "zero" || value === "okou") {
-    return value;
-  }
-  throw new Error(`Unsupported desktop product: ${value}`);
+interface DesktopRuntimeConfig {
+  readonly platformUrl: string;
+  readonly product?: DesktopProduct;
 }
-
-const DESKTOP_IDENTITIES = {
-  production: {
-    ...desktopIdentities.production,
-    product: desktopProduct(desktopIdentities.production.product),
-  },
-  development: {
-    ...desktopIdentities.development,
-    product: desktopProduct(desktopIdentities.development.product),
-  },
-} satisfies Record<DesktopIdentityKind, DesktopIdentity>;
 
 export interface DesktopConfig {
   readonly platformUrl: URL;
@@ -45,11 +32,37 @@ export interface DesktopConfig {
   readonly allowedAppOrigins: ReadonlySet<string>;
 }
 
+function desktopProduct(value: string): DesktopProduct {
+  if (value === "zero" || value === "okou") {
+    return value;
+  }
+  throw new Error(`Unsupported desktop product: ${value}`);
+}
+
+function desktopBrandName(value: string): "Zero" | "Okou" {
+  if (value === "Zero" || value === "Okou") {
+    return value;
+  }
+  throw new Error(`Unsupported desktop brand: ${value}`);
+}
+
+function desktopIdentity(
+  product: DesktopProduct,
+  kind: DesktopIdentityKind,
+): DesktopIdentity {
+  const identity = desktopIdentities[product][kind];
+  return {
+    ...identity,
+    product: desktopProduct(identity.product),
+    brandName: desktopBrandName(identity.brandName),
+  };
+}
+
 function desktopRuntimeConfigPath(): string {
   return join(__dirname, "..", DESKTOP_RUNTIME_CONFIG_FILE);
 }
 
-function runtimeConfigPlatformUrl(value: unknown): string {
+function parseRuntimeConfig(value: unknown): DesktopRuntimeConfig {
   if (
     typeof value !== "object" ||
     value === null ||
@@ -60,42 +73,69 @@ function runtimeConfigPlatformUrl(value: unknown): string {
     );
   }
 
-  const config = value as { readonly platformUrl?: unknown };
+  const config = value as {
+    readonly platformUrl?: unknown;
+    readonly product?: unknown;
+  };
   if (typeof config.platformUrl !== "string") {
     throw new Error(
       `${DESKTOP_RUNTIME_CONFIG_FILE} must contain a platformUrl string`,
     );
   }
+  if (config.product !== undefined && typeof config.product !== "string") {
+    throw new Error(
+      `${DESKTOP_RUNTIME_CONFIG_FILE} product must be zero or okou`,
+    );
+  }
 
-  return config.platformUrl;
+  return {
+    platformUrl: config.platformUrl,
+    ...(config.product === undefined
+      ? {}
+      : { product: desktopProduct(config.product) }),
+  };
 }
 
-function readDesktopRuntimeConfigPlatformUrl(): string | undefined {
+function readDesktopRuntimeConfig(): DesktopRuntimeConfig | undefined {
   const configPath = desktopRuntimeConfigPath();
   if (!existsSync(configPath)) {
     return undefined;
   }
 
   const configValue: unknown = JSON.parse(readFileSync(configPath, "utf8"));
-  return runtimeConfigPlatformUrl(configValue);
+  return parseRuntimeConfig(configValue);
+}
+
+function configuredProduct(
+  rawProduct: string | undefined,
+  fileConfig: DesktopRuntimeConfig | undefined,
+): DesktopProduct {
+  return desktopProduct(
+    rawProduct?.trim() ||
+      process.env.VM0_DESKTOP_PRODUCT?.trim() ||
+      fileConfig?.product ||
+      "zero",
+  );
 }
 
 function configuredPlatformUrl(
   rawPlatformUrl: string | undefined,
+  fileConfig: DesktopRuntimeConfig | undefined,
 ): string | undefined {
   if (rawPlatformUrl !== undefined) {
     return rawPlatformUrl;
   }
-
   if (process.env.VM0_DESKTOP_PLATFORM_URL?.trim()) {
     return process.env.VM0_DESKTOP_PLATFORM_URL;
   }
-
-  return readDesktopRuntimeConfigPlatformUrl();
+  return fileConfig?.platformUrl;
 }
 
-function parsePlatformUrl(rawUrl: string | undefined): URL {
-  const value = rawUrl?.trim() || PRODUCTION_PLATFORM_URL;
+function parsePlatformUrl(
+  rawUrl: string | undefined,
+  product: DesktopProduct,
+): URL {
+  const value = rawUrl?.trim() || desktopIdentities[product].defaultPlatformUrl;
   const url = new URL(value);
 
   if (url.protocol !== "https:" && url.protocol !== "http:") {
@@ -111,7 +151,11 @@ function environmentForPlatformUrl(
   platformUrl: URL,
   hasExplicitUrl: boolean,
 ): DesktopEnvironment {
-  if (!hasExplicitUrl || platformUrl.hostname === "app.vm0.ai") {
+  if (
+    !hasExplicitUrl ||
+    platformUrl.hostname === "app.vm0.ai" ||
+    platformUrl.hostname === "app.okou.ai"
+  ) {
     return "production";
   }
   if (platformUrl.hostname === "staging-app.omby.ai") {
@@ -121,12 +165,13 @@ function environmentForPlatformUrl(
 }
 
 function identityForEnvironment(
+  product: DesktopProduct,
   environment: DesktopEnvironment,
 ): DesktopIdentity {
-  if (environment === "production") {
-    return DESKTOP_IDENTITIES.production;
-  }
-  return DESKTOP_IDENTITIES.development;
+  return desktopIdentity(
+    product,
+    environment === "production" ? "production" : "development",
+  );
 }
 
 function isLocalHost(hostname: string): boolean {
@@ -163,17 +208,22 @@ function deriveCompanionUrl(platformUrl: URL, target: "api" | "www"): URL {
   return url;
 }
 
-export function resolveDesktopConfig(rawPlatformUrl?: string): DesktopConfig {
-  const platformUrlSource = configuredPlatformUrl(rawPlatformUrl);
+export function resolveDesktopConfig(
+  rawPlatformUrl?: string,
+  rawProduct?: string,
+): DesktopConfig {
+  const fileConfig = readDesktopRuntimeConfig();
+  const product = configuredProduct(rawProduct, fileConfig);
+  const platformUrlSource = configuredPlatformUrl(rawPlatformUrl, fileConfig);
   const hasExplicitUrl = Boolean(platformUrlSource?.trim());
-  const platformUrl = parsePlatformUrl(platformUrlSource);
+  const platformUrl = parsePlatformUrl(platformUrlSource, product);
   const environment = environmentForPlatformUrl(platformUrl, hasExplicitUrl);
 
   return {
     platformUrl,
     webUrl: deriveCompanionUrl(platformUrl, "www"),
     environment,
-    identity: identityForEnvironment(environment),
+    identity: identityForEnvironment(product, environment),
     sessionPartition: `persist:vm0-desktop-${environment}`,
     allowedAppOrigins: allowedOriginsForPlatformUrl(platformUrl),
   };

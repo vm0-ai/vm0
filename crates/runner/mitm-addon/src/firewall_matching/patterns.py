@@ -23,6 +23,8 @@ class SegmentParam(NamedTuple):
 
 class SegmentError(NamedTuple):
     reason: str
+    prefix: str = ""
+    suffix: str = ""
 
 
 ParsedSegment = SegmentLiteral | SegmentParam | SegmentError
@@ -57,15 +59,23 @@ def _parse_segment(seg: str) -> ParsedSegment:
         return SegmentError(f'unbalanced brace in segment "{seg}" — {_SEGMENT_ERROR_HINT}')
 
     if open_count >= _MULTI_PARAM_BRACE_COUNT:
+        prefix = seg[:open1]
+        suffix = seg[seg.rfind("}") + 1 :]
+        if "{" in suffix:
+            suffix = ""
         open2 = seg.find("{", close1 + 1)
         if close1 + 1 == open2:
             return SegmentError(
                 f'adjacent parameters in segment "{seg}" — only one parameter '
-                f"per segment is allowed; {_SEGMENT_ERROR_HINT}"
+                f"per segment is allowed; {_SEGMENT_ERROR_HINT}",
+                prefix,
+                suffix,
             )
         return SegmentError(
             f'literal-separated parameters in segment "{seg}" — only one parameter '
-            f"per segment is allowed; {_SEGMENT_ERROR_HINT}"
+            f"per segment is allowed; {_SEGMENT_ERROR_HINT}",
+            prefix,
+            suffix,
         )
 
     prefix = seg[:open1]

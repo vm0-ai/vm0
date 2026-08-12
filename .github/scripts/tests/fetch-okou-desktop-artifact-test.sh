@@ -9,7 +9,8 @@ trap 'rm -rf "$tmp_dir"' EXIT
 source_dir="${tmp_dir}/source"
 mkdir -p "$source_dir" "${tmp_dir}/bin"
 printf 'archive\n' > "$source_dir/app.tar.gz"
-printf '{"version":1}\n' > "$source_dir/manifest.json"
+printf 'okou archive\n' > "$source_dir/okou-app.tar.gz"
+printf '{"version":1,"okouArchive":{"path":"okou-app.tar.gz"}}\n' > "$source_dir/manifest.json"
 printf '{"version":1}\n' > "$source_dir/ready.json"
 
 cat > "${tmp_dir}/bin/aws" <<'EOF'
@@ -52,10 +53,11 @@ mkdir -p "$destination"
 MOCK_AWS_LOG="${tmp_dir}/fetch.log" \
   bash "$script" "$r2_endpoint" "$artifact_uri" "$destination"
 cmp "$source_dir/app.tar.gz" "$destination/app.tar.gz"
+cmp "$source_dir/okou-app.tar.gz" "$destination/okou-app.tar.gz"
 cmp "$source_dir/manifest.json" "$destination/manifest.json"
 cmp "$source_dir/ready.json" "$destination/ready.json"
-if (( "$(grep -c 's3 cp' "${tmp_dir}/fetch.log")" != 3 )); then
-  echo "Expected exactly three Desktop artifact object copies" >&2
+if (( "$(grep -c 's3 cp' "${tmp_dir}/fetch.log")" != 4 )); then
+  echo "Expected exactly four Desktop artifact object copies" >&2
   exit 1
 fi
 if grep -q -- '--recursive' "${tmp_dir}/fetch.log"; then
@@ -86,10 +88,24 @@ MOCK_AWS_TRANSIENT_FAILURES=2 \
   bash "$script" "$r2_endpoint" "$artifact_uri" "$retry_destination" \
     >/dev/null 2>&1
 test -f "$retry_destination/app.tar.gz"
-if (( "$(grep -c 's3 cp' "${tmp_dir}/retry.log")" != 5 )); then
-  echo "Expected two retries followed by all three object copies" >&2
+if (( "$(grep -c 's3 cp' "${tmp_dir}/retry.log")" != 6 )); then
+  echo "Expected two retries followed by all four object copies" >&2
   exit 1
 fi
+
+legacy_source_dir="${tmp_dir}/legacy-source"
+legacy_destination="${tmp_dir}/legacy-destination"
+mkdir -p "$legacy_source_dir" "$legacy_destination"
+cp "$source_dir/app.tar.gz" "$source_dir/ready.json" "$legacy_source_dir/"
+printf '{"version":1}\n' > "$legacy_source_dir/manifest.json"
+MOCK_SOURCE_DIR="$legacy_source_dir" \
+  MOCK_AWS_LOG="${tmp_dir}/legacy.log" \
+  bash "$script" "$r2_endpoint" "$artifact_uri" "$legacy_destination"
+if (( "$(grep -c 's3 cp' "${tmp_dir}/legacy.log")" != 3 )); then
+  echo "Expected a legacy Zero-only artifact to use three object copies" >&2
+  exit 1
+fi
+test ! -e "$legacy_destination/okou-app.tar.gz"
 
 if MOCK_AWS_LOG="${tmp_dir}/absent.log" \
   bash "$script" "$r2_endpoint" "$artifact_uri" "${tmp_dir}/absent" \

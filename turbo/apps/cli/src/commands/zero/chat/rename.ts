@@ -4,6 +4,7 @@ import { Command } from "commander";
 import { renameZeroChatThread } from "../../../lib/api/domains/zero-chat";
 import { withErrorHandler } from "../../../lib/command/with-error-handler";
 import { isUuid } from "../../../lib/utils/uuid";
+import { getOkouChatThreadId } from "../../../lib/okou-env";
 
 interface RenameOptions {
   readonly json?: boolean;
@@ -11,7 +12,7 @@ interface RenameOptions {
 }
 
 function getCurrentChatThreadId(): string | undefined {
-  return process.env.ZERO_CHAT_THREAD_ID?.trim() || undefined;
+  return getOkouChatThreadId()?.trim() || undefined;
 }
 
 function printUsageError(message: string, hint: string): never {
@@ -30,8 +31,8 @@ export const renameCommand = new Command()
     "after",
     `
 Examples:
-  Rename this chat:  zero chat rename "Launch plan"
-  Rename another:    zero chat rename --thread <thread-id> "Launch plan"
+  Rename this chat:  okou chat rename "Launch plan"
+  Rename another:    okou chat rename --thread <thread-id> "Launch plan"
 
 Notes:
   - Defaults --thread to ZERO_CHAT_THREAD_ID
@@ -43,7 +44,7 @@ Notes:
       if (!title) {
         printUsageError(
           "Title is required",
-          'Run: zero chat rename "New title"',
+          'Run: okou chat rename "New title"',
         );
       }
 
@@ -51,7 +52,7 @@ Notes:
       if (!threadId) {
         printUsageError(
           "ZERO_CHAT_THREAD_ID is not set",
-          "Pass --thread <thread-id> or run inside a Zero web chat thread.",
+          "Pass --thread <thread-id> or run inside a web chat thread.",
         );
       }
       if (!isUuid(threadId)) {

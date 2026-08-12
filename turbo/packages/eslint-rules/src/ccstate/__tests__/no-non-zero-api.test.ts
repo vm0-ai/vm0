@@ -17,6 +17,13 @@ ruleTester.run("no-non-zero-api", rule, {
     {
       code: 'fetchFn("/api/zero/agents")',
     },
+    // Okou API paths are also allowed without allowing arbitrary /api/ paths
+    {
+      code: 'const url = "/api/okou/billing/status"',
+    },
+    {
+      code: "fetchFn(`/api/okou/agents/${agentId}`)",
+    },
     // Non-API strings are fine
     {
       code: 'const msg = "hello world"',
@@ -51,6 +58,10 @@ ruleTester.run("no-non-zero-api", rule, {
     },
     {
       code: 'const path = "/api/agent/composes/123/instructions"',
+      errors: [{ messageId: "nonZeroApi" }],
+    },
+    {
+      code: 'const path = "/api/okou-internal/agents"',
       errors: [{ messageId: "nonZeroApi" }],
     },
   ],

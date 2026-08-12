@@ -1,11 +1,7 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { expect } from "vitest";
-import {
-  createChatEvent,
-  createChatRun,
-  updateChatRun,
-} from "../../../mocks/mock-helpers.ts";
+import { createChatEvent } from "../../../mocks/mock-helpers.ts";
 import type { AgentEvent } from "../../../signals/zero-page/log-types.ts";
 import {
   chatThreadsContract,
@@ -570,7 +566,6 @@ export function mockChatLifecycle(
     runStatus = "cancelled";
     runError = "Run cancelled";
     assistantVersion++;
-    updateChatRun(threadId);
     createChatEvent(threadId);
   };
 
@@ -793,7 +788,6 @@ export function mockChatLifecycle(
     selectedModel = modelSelection?.selectedModel ?? selectedModel;
     codexServiceTier = body.runOptions?.codexServiceTier ?? null;
     runAssociated = true;
-    createChatRun(threadId);
     createChatEvent(threadId);
     return {
       runId: MOCK_RUN_ID,
@@ -1086,14 +1080,12 @@ export function mockChatLifecycle(
           },
         ];
       }
-      updateChatRun(threadId);
       createChatEvent(threadId);
     },
     failRun: (error: string) => {
       runStatus = "failed";
       runError = error;
       assistantVersion++;
-      updateChatRun(threadId);
       createChatEvent(threadId);
     },
     cancelRun: () => {

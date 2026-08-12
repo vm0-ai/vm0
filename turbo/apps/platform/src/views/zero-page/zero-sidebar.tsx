@@ -406,7 +406,7 @@ function ExpandedMainNav() {
       aria-label={t(($) => {
         return $.appShell.sidebar.ariaLabel;
       })}
-      className="flex-1 flex flex-col min-h-0 overflow-hidden p-2 pt-1"
+      className="flex-1 flex flex-col min-h-0 overflow-hidden px-2 pt-1"
     >
       <ExpandedManageSection />
       <ExpandedSidebarSections />
@@ -488,8 +488,10 @@ function ExpandedSidebarSections() {
 }
 
 function ExpandedUpgradeSection() {
+  // The nav above has no bottom padding, so the card carries its own top gap.
+  // Collapses to nothing when SidebarUpgradeCard renders null.
   return (
-    <div className="px-2">
+    <div className="px-2 pt-2 empty:hidden">
       <SidebarUpgradeCard />
     </div>
   );

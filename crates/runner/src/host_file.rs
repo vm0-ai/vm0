@@ -26,6 +26,8 @@ pub(crate) enum DirMode {
     TrustedParent,
     /// Create missing directories as shared/trusted, but only validate existing ones.
     SharedTrustedParent,
+    /// Create missing directories as shared/trusted and normalize the owned final directory.
+    SharedTrusted,
 }
 
 struct DirWalk<'a> {
@@ -379,7 +381,7 @@ fn create_and_open_dir_component(
 fn create_dir_mode(mode: DirMode) -> u32 {
     match mode {
         DirMode::Private | DirMode::TrustedParent => PRIVATE_DIR_MODE,
-        DirMode::SharedTrustedParent => SHARED_TRUSTED_DIR_MODE,
+        DirMode::SharedTrustedParent | DirMode::SharedTrusted => SHARED_TRUSTED_DIR_MODE,
     }
 }
 
@@ -508,16 +510,13 @@ fn secure_dir_component(
                 )));
             }
         }
-        DirMode::SharedTrustedParent => {
+        DirMode::SharedTrustedParent | DirMode::SharedTrusted => {
             validate_trusted_component_owner(
                 stat.st_uid,
                 walk.expected_uid,
                 walk.context,
                 component_path,
             )?;
-            if created && stat.st_uid == walk.expected_uid {
-                chmod_dir_fd(fd, component_path, SHARED_TRUSTED_DIR_MODE, walk.context)?;
-            }
             let component_mode = (stat.st_mode as u32) & 0o7777;
             if is_final {
                 if component_mode & GROUP_OR_OTHER_WRITE_BITS != 0 {
@@ -535,6 +534,13 @@ fn secure_dir_component(
                     walk.context,
                     component_path.display()
                 )));
+            }
+            let normalize_final = matches!(walk.mode, DirMode::SharedTrusted) && is_final;
+            if (created || normalize_final)
+                && stat.st_uid == walk.expected_uid
+                && component_mode != SHARED_TRUSTED_DIR_MODE
+            {
+                chmod_dir_fd(fd, component_path, SHARED_TRUSTED_DIR_MODE, walk.context)?;
             }
         }
         _ => {
@@ -759,13 +765,19 @@ mod tests {
         }
 
         let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("base").join("child");
         let _umask = UmaskGuard::set(Mode::from_bits_truncate(0o777));
-        let result = ensure_dir(&path, DirMode::SharedTrustedParent, "test directory");
+        for (name, dir_mode) in [
+            ("shared-parent", DirMode::SharedTrustedParent),
+            ("shared", DirMode::SharedTrusted),
+        ] {
+            let base = dir.path().join(name);
+            let path = base.join("child");
 
-        result.unwrap();
-        assert_eq!(mode(&dir.path().join("base")), SHARED_TRUSTED_DIR_MODE);
-        assert_eq!(mode(&path), SHARED_TRUSTED_DIR_MODE);
+            ensure_dir(&path, dir_mode, "test directory").unwrap();
+
+            assert_eq!(mode(&base), SHARED_TRUSTED_DIR_MODE);
+            assert_eq!(mode(&path), SHARED_TRUSTED_DIR_MODE);
+        }
     }
 
     struct UmaskGuard {
@@ -878,6 +890,64 @@ mod tests {
         ensure_dir(&path, DirMode::SharedTrustedParent, "test directory").unwrap();
 
         assert_eq!(mode(&path), PRIVATE_DIR_MODE);
+    }
+
+    #[test]
+    fn ensure_dir_normalizes_existing_shared_trusted_mode() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("shared");
+        std::fs::create_dir(&path).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(PRIVATE_DIR_MODE)).unwrap();
+
+        ensure_dir(&path, DirMode::SharedTrusted, "test directory").unwrap();
+
+        assert_eq!(mode(&path), SHARED_TRUSTED_DIR_MODE);
+    }
+
+    #[test]
+    fn ensure_dir_rejects_writable_shared_trusted_final_before_normalizing() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("shared");
+        std::fs::create_dir(&path).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o777)).unwrap();
+
+        let error = ensure_dir(&path, DirMode::SharedTrusted, "test directory").unwrap_err();
+
+        assert_eq!(error.kind(), io::ErrorKind::PermissionDenied);
+        assert_eq!(mode(&path), 0o777);
+    }
+
+    #[test]
+    fn create_dir_component_keeps_eexist_intermediate_mode() {
+        let dir = tempfile::tempdir().unwrap();
+        let component = dir.path().join("existing");
+        std::fs::create_dir(&component).unwrap();
+        std::fs::set_permissions(
+            &component,
+            std::fs::Permissions::from_mode(PRIVATE_DIR_MODE),
+        )
+        .unwrap();
+        let parent = open(dir.path(), dir_open_flags(), Mode::empty()).unwrap();
+        let full_path = component.join("child");
+        let walk = DirWalk {
+            full_path: &full_path,
+            mode: DirMode::SharedTrusted,
+            context: "test directory",
+            expected_uid: nix::unistd::geteuid().as_raw(),
+            create_missing: true,
+        };
+
+        let component_fd = create_and_open_dir_component(
+            &parent,
+            Path::new("existing").as_os_str(),
+            dir.path(),
+            &walk,
+            false,
+        )
+        .unwrap();
+
+        drop(component_fd);
+        assert_eq!(mode(&component), PRIVATE_DIR_MODE);
     }
 
     #[test]

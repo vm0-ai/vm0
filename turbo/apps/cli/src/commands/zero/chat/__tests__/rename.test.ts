@@ -1,5 +1,5 @@
 /**
- * Tests for zero chat rename command
+ * Tests for okou chat rename command
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
@@ -19,7 +19,7 @@ const OTHER_THREAD_ID = "00000000-0000-4000-8000-000000000002";
 const RENAME_URL = `http://localhost:3000/api/zero/chat-threads/${THREAD_ID}/rename`;
 const OTHER_RENAME_URL = `http://localhost:3000/api/zero/chat-threads/${OTHER_THREAD_ID}/rename`;
 
-describe("zero chat rename command", () => {
+describe("okou chat rename command", () => {
   const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
   const mockConsoleError = vi
     .spyOn(console, "error")
@@ -133,7 +133,7 @@ describe("zero chat rename command", () => {
 
     const stderr = mockConsoleError.mock.calls.flat().join("\n");
     expect(stderr).toContain("Title is required");
-    expect(stderr).toContain('Run: zero chat rename "New title"');
+    expect(stderr).toContain('Run: okou chat rename "New title"');
     expect(mockExit).toHaveBeenCalledWith(1);
   });
 

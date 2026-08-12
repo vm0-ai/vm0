@@ -49,7 +49,7 @@ Notes:
           );
           console.log("");
           console.log(
-            `Run "zero generate ${config.generationType}" to see every connector-backed provider.`,
+            `Run "okou generate ${config.generationType}" to see every connector-backed provider.`,
           );
           return;
         }

@@ -25,7 +25,7 @@ function parseConnectorValues(rawValues: readonly string[] | undefined) {
   if (!rawValues || rawValues.length === 0) {
     throw new Error("At least one --value NAME=VALUE is required", {
       cause: new Error(
-        "Example: zero connector connect zendesk --value apiToken=token",
+        "Example: okou connector connect zendesk --value apiToken=token",
       ),
     });
   }
@@ -98,6 +98,6 @@ export const connectCommand = new Command()
       console.log(chalk.green(`✓ ${connectorMetadata.label} connected`));
       console.log(chalk.dim(`  Slug: ${connector.slug}`));
       console.log(chalk.dim(`  Auth Method: ${connector.authMethod}`));
-      console.log(chalk.dim(`  Run: zero connector status ${connector.slug}`));
+      console.log(chalk.dim(`  Run: okou connector status ${connector.slug}`));
     }),
   );

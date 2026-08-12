@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.33.2](https://github.com/vm0-ai/vm0/compare/desktop-v0.33.1...desktop-v0.33.2) (2026-08-12)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.321.0
+
+## [0.33.1](https://github.com/vm0-ai/vm0/compare/desktop-v0.33.0...desktop-v0.33.1) (2026-08-12)
+
+
+### Bug Fixes
+
+* **desktop:** restore packaged preload bridge ([#26478](https://github.com/vm0-ai/vm0/issues/26478)) ([d584312](https://github.com/vm0-ai/vm0/commit/d58431243e6ab41a55a6200e493773d60152d8a5))
+
+## [0.33.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.32.0...desktop-v0.33.0) (2026-08-12)
+
+
+### Features
+
+* **desktop:** publish signed okou releases ([#26450](https://github.com/vm0-ai/vm0/issues/26450)) ([5990968](https://github.com/vm0-ai/vm0/commit/5990968a3834a2377abb42e48eef49e9a42bb66c))
+
+## [0.32.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.31.0...desktop-v0.32.0) (2026-08-12)
+
+
+### Features
+
+* **desktop:** add okou package identity ([#26437](https://github.com/vm0-ai/vm0/issues/26437)) ([a9da541](https://github.com/vm0-ai/vm0/commit/a9da541ed84a4b362258546d0159978e426f14e4))
+
 ## [0.31.0](https://github.com/vm0-ai/vm0/compare/desktop-v0.30.6...desktop-v0.31.0) (2026-08-12)
 
 

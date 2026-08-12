@@ -1,5 +1,5 @@
 /**
- * Tests for zero slack download-file command
+ * Tests for okou slack download-file command
  *
  * Tests command-level behavior via parseAsync() following CLI testing principles:
  * - Entry point: command.parseAsync()
@@ -19,7 +19,7 @@ import chalk from "chalk";
 const DOWNLOAD_URL =
   "http://localhost:3000/api/zero/integrations/slack/download-file";
 
-describe("zero slack download-file command", () => {
+describe("okou slack download-file command", () => {
   vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);

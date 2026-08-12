@@ -40,7 +40,6 @@ import {
   notFound,
 } from "../../lib/error";
 import { env } from "../../lib/env";
-import { logger } from "../../lib/log";
 import type { AuthContext } from "../../types/auth";
 import {
   createQueueFirstZeroRun$,
@@ -119,13 +118,11 @@ import {
   buildWebChatAppendSystemPrompt,
   type WebChatSessionPromptContext,
 } from "./zero-web-chat-session-prompt.service";
-import { bestEffort, tapError } from "../utils";
+import { bestEffort } from "../utils";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { buildGenerationTemplatePrompt } from "../../lib/generation-template-prompt";
 import { resolveThreadGenerationTemplatePrompt } from "../../lib/thread-generation-template";
-
-const L = logger("ZeroChatEvents");
 
 type SendBody = z.infer<typeof chatEventsContract.send.body>;
 
@@ -150,6 +147,7 @@ interface NormalSendBody {
   readonly cloudBrowserEnabled?: boolean;
   readonly clientEventId?: string;
   readonly realAgentInPreview?: boolean;
+  readonly captureNetworkBodies?: boolean;
   readonly revokesEventId?: string;
 }
 
@@ -2352,15 +2350,7 @@ async function queueUnassociatedNormalEvent(params: {
     agentRunSource: params.prepared.agentRunSource,
   });
   if (resolution.kind === "queued" && resolution.inserted) {
-    waitUntil(
-      tapError(publishThreadListChanged(params.userId), (error) => {
-        L.warn("Failed to publish queue-first thread list changed signal", {
-          userId: params.userId,
-          chatThreadId: params.prepared.thread.threadId,
-          error,
-        });
-      }),
-    );
+    await publishThreadListChanged(params.userId);
   }
   const response = clientEventIdResolutionResponse(
     resolution,
@@ -2439,10 +2429,6 @@ function scheduleAssociatedUserMessage(params: {
         );
         await publishThreadListChanged(params.userId);
       }
-      await publishUserSignal(
-        [params.userId],
-        `chatThreadRunCreated:${params.threadId}`,
-      );
       if (params.appendInitialThinking) {
         await bestEffort(
           generateAndPersistInitialThinkingMessage({
@@ -2545,10 +2531,6 @@ function scheduleClaimedQueueFirstEventSideEffects(params: {
         });
       }
       await publishChatEventCreated(params.userId, params.threadId);
-      await publishUserSignal(
-        [params.userId],
-        `chatThreadRunCreated:${params.threadId}`,
-      );
       if (params.appendInitialThinking) {
         await bestEffort(
           generateAndPersistInitialThinkingMessage({
@@ -2859,6 +2841,7 @@ function buildCreateZeroRunArgs(params: {
         ? { modelProvider: providerAdmission.effectiveModelProvider }
         : {}),
       ...(params.realAgentInPreviewEnabled ? { realAgentInPreview: true } : {}),
+      ...(args.body.captureNetworkBodies ? { captureNetworkBodies: true } : {}),
     },
     triggerSource: prepared.triggerSource,
     dispatchFailedCallbacks: dispatchFailedRunCallbacks,

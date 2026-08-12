@@ -36,11 +36,11 @@ export const zeroTranslateCommand = new Command()
     "after",
     `
 Examples:
-  Auto-detect source:  zero translate "Hello, world" --to "Simplified Chinese"
-  Specify both:        zero translate "Bonjour" --from French --to English
+  Auto-detect source:  okou translate "Hello, world" --to "Simplified Chinese"
+  Specify both:        okou translate "Bonjour" --from French --to English
 
 Notes:
-  - Available only inside Zero runs with the translation:write capability
+  - Available only inside agent runs with the translation:write capability
   - Uses a fixed vm0-managed Qwen 7B translation model
   - Prints only the translated text`,
   );

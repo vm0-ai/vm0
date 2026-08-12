@@ -9,10 +9,10 @@ export const zeroDoctorCommand = new Command()
     "after",
     `
 Examples:
-  Check credits? zero doctor credit
+  Check credits? okou doctor credit
 
 Notes:
-  - Use zero doctor credit when a run or generation fails because the org has insufficient credits, when a user asks how to recharge, or before trying to buy credits
-  - Use zero generate <type> (no --prompt) to see every provider available for a given generation type
-  - Use zero connector check for connector and permission diagnostics`,
+  - Use okou doctor credit when a run or generation fails because the org has insufficient credits, when a user asks how to recharge, or before trying to buy credits
+  - Use okou generate <type> (no --prompt) to see every provider available for a given generation type
+  - Use okou connector check for connector and permission diagnostics`,
   );

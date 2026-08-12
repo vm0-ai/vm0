@@ -171,7 +171,7 @@ function stubBillingStatus(
   });
 }
 
-describe("zero generate lister", () => {
+describe("okou generate lister", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);
@@ -227,9 +227,9 @@ describe("zero generate lister", () => {
     expect(text).toContain(
       "Models: fal.ai: gpt-image-1 (default), gpt-image-2, gpt-image-1.5, gpt-image-1-mini, flux-pro-1.1, flux-pro-1.1-ultra, qwen-image, seedream4, nano-banana-2",
     );
-    expect(text).toContain("Use: zero generate image --provider built-in -h");
+    expect(text).toContain("Use: okou generate image --provider built-in -h");
     expect(text).not.toContain(
-      "Use: zero generate image --provider built-in --model",
+      "Use: okou generate image --provider built-in --model",
     );
     expect(text).not.toContain("Model: gpt-image-1.5");
     expect(text).not.toContain("Model: fal-ai/flux-pro/v1.1");
@@ -309,10 +309,10 @@ describe("zero generate lister", () => {
 
     const text = output();
     expect(text).toContain(
-      'Replicate (replicate) handles image generation through its own connector skill, not through "zero generate".',
+      'Replicate (replicate) handles image generation through its own connector skill, not through "okou generate".',
     );
     expect(text).toContain('Use the "replicate" skill in this session.');
-    expect(text).toContain("zero connector status replicate");
+    expect(text).toContain("okou connector status replicate");
     expect(text).not.toContain("Built-in command:");
   });
 
@@ -341,7 +341,7 @@ describe("zero generate lister", () => {
       "ElevenLabs (elevenlabs) does not advertise image generation.",
     );
     expect(text).toContain(
-      'Run "zero generate image" to see every provider that supports this generation type.',
+      'Run "okou generate image" to see every provider that supports this generation type.',
     );
   });
 
@@ -362,12 +362,12 @@ describe("zero generate lister", () => {
     expect(text).toContain(
       "Models: dreamina-seedance-2.0-fast (default), dreamina-seedance-2.5, dreamina-seedance-2.0, dreamina-seedance-2.0-mini, seedance-1.5-pro, minimax-h3, veo3.1-fast, kling-v3-4k",
     );
-    expect(text).toContain("Use: zero generate video --provider built-in -h");
+    expect(text).toContain("Use: okou generate video --provider built-in -h");
     expect(text).toContain(
       "Availability: Available on the current plan without connector setup.",
     );
     expect(text).not.toContain(
-      "Use: zero generate video --provider built-in --model",
+      "Use: okou generate video --provider built-in --model",
     );
     expect(text).not.toContain("Model: dreamina-seedance-2-0-260128");
     expect(text).not.toContain("Model: seedance-1-5-pro-251215");
@@ -402,7 +402,7 @@ describe("zero generate lister", () => {
     expect(text).toContain("Built-in JoggAI talking-avatar video generation");
     expect(text).toContain("Models: joggai-talking-avatar");
     expect(text).toContain(
-      "Use: zero generate avatar-video --provider built-in -h",
+      "Use: okou generate avatar-video --provider built-in -h",
     );
     expect(text).toContain(
       "Availability: Available on the current plan without connector setup.",
@@ -441,7 +441,7 @@ describe("zero generate lister", () => {
     expect(text).toContain("Built-in command:");
     expect(text).toContain("Built-in presentation generation");
     expect(text).toContain("Models: gpt-5.5");
-    expect(text).toContain("Use: zero generate presentation -h");
+    expect(text).toContain("Use: okou generate presentation -h");
     expect(text).not.toContain("Model: gpt-5.5");
     expect(text).not.toContain("Fallback option:");
     expect(text).not.toContain("Official provider:");
@@ -459,13 +459,13 @@ describe("zero generate lister", () => {
     expect(text).toContain("Built-in command:");
     expect(text).toContain("Built-in website generation");
     expect(text).toContain("Models: gpt-5.5");
-    expect(text).toContain("Use: zero generate website -h");
+    expect(text).toContain("Use: okou generate website -h");
     expect(text).toContain("Context:");
     expect(text).toContain(
-      "Standalone static website artifacts can be authored locally and published with zero host for a public URL.",
+      "Standalone static website artifacts can be authored locally and published with okou host for a public URL.",
     );
     expect(text).toContain(
-      "zero host is for static directories with index.html; it is not a general deploy system for apps that need a backend, database, worker, or long-running process.",
+      "okou host is for static directories with index.html; it is not a general deploy system for apps that need a backend, database, worker, or long-running process.",
     );
     expect(text).toContain(
       "Existing web app changes should usually follow the project's own build, test, and deploy workflow.",
@@ -500,7 +500,7 @@ describe("zero generate lister", () => {
     expect(text).toContain("Built-in command:");
     expect(text).toContain(commandLabel);
     expect(text).toContain("Models: gpt-5.5");
-    expect(text).toContain(`Use: zero generate ${type} -h`);
+    expect(text).toContain(`Use: okou generate ${type} -h`);
   });
 
   it("suggests the built-in voice command when no voice connector is ready", async () => {
@@ -521,13 +521,13 @@ describe("zero generate lister", () => {
     expect(text).toContain("Built-in command:");
     expect(text).toContain("Built-in voice generation");
     expect(text).toContain("Models: gpt-4o-mini-tts");
-    expect(text).toContain("Use: zero generate voice --provider built-in -h");
+    expect(text).toContain("Use: okou generate voice --provider built-in -h");
     expect(text).not.toContain("Model: gpt-4o-mini-tts");
     expect(text).not.toContain("Fallback option:");
     expect(text).not.toContain("Official provider:");
     expect(text).not.toContain("Next actions:");
     expect(text).not.toContain(
-      'zero generate voice --provider built-in --text "Hello"',
+      'okou generate voice --provider built-in --text "Hello"',
     );
   });
 
@@ -550,7 +550,7 @@ describe("zero generate lister", () => {
     expect(text).toContain("Built-in command:");
     expect(text).toContain("Built-in voice generation");
     expect(text).toContain("Models: gpt-4o-mini-tts");
-    expect(text).toContain("Use: zero generate voice --provider built-in -h");
+    expect(text).toContain("Use: okou generate voice --provider built-in -h");
     expect(text).not.toContain("Model: gpt-4o-mini-tts");
   });
 

@@ -22,7 +22,7 @@ teardown_file() {
     fi
 }
 
-@test "t-codex-smoke-1: basic codex chat run returns structured events" {
+@test "basic codex chat run returns structured events" {
     run runner_chat_start "$RUNNER_AGENT_ID" "echo from codex"
 
     assert_success

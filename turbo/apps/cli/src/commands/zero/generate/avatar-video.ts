@@ -471,18 +471,18 @@ export const avatarVideoCommand = new Command()
     "after",
     `
 Examples:
-  List provider choices: zero generate avatar-video
-  Generate from audio:   zero generate avatar-video --provider built-in --avatar-id 81 --voice-id en-US-ChristopherNeural --audio-url https://example.com/voice.mp3
-  Pipe a script:         cat script.txt | zero generate avatar-video --provider built-in --avatar-id 81 --voice-id en-US-ChristopherNeural
+  List provider choices: okou generate avatar-video
+  Generate from audio:   okou generate avatar-video --provider built-in --avatar-id 81 --voice-id en-US-ChristopherNeural --audio-url https://example.com/voice.mp3
+  Pipe a script:         cat script.txt | okou generate avatar-video --provider built-in --avatar-id 81 --voice-id en-US-ChristopherNeural
 
 Built-in workflow (vm0 credits):
-  1. zero generate avatar-video --provider built-in --list-avatars
-  2. zero generate avatar-video --provider built-in --list-voices --voice-language english
-  3. zero generate avatar-video --provider built-in --avatar-id 81 --voice-id en-US-ChristopherNeural --script "Welcome to vm0"
+  1. okou generate avatar-video --provider built-in --list-avatars
+  2. okou generate avatar-video --provider built-in --list-voices --voice-language english
+  3. okou generate avatar-video --provider built-in --avatar-id 81 --voice-id en-US-ChristopherNeural --script "Welcome to vm0"
 
 JoggAI connector workflow (BYOK):
-  1. zero connector status joggai
-  2. zero generate avatar-video --provider joggai
+  1. okou connector status joggai
+  2. okou generate avatar-video --provider joggai
      Follow the printed JoggAI skill guidance for direct provider operations.
 
 Output:

@@ -20,7 +20,7 @@ load '../../helpers/setup'
     refute_output --partial "artifact"
 }
 
-@test "zero --help is identical to canonical okou help" {
+@test "temporary alias help is identical to canonical okou help" {
     run $OKOU_CLI --help
     assert_success
     local okou_output="$output"

@@ -4611,6 +4611,7 @@
   },
   "usage": {
     "displayNames": {
+      "avatar": "Avatar",
       "finance": "Finanças",
       "imageRecognize": "Reconhecimento de imagem",
       "maps": "Mapas",

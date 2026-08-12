@@ -22,7 +22,7 @@ export const zeroUpgradeCommand = new Command()
     "after",
     `
 Examples:
-  Upgrade to Pro:  zero upgrade pro
+  Upgrade to Pro:  okou upgrade pro
 
 Output:
   Prints a platform link that chat can render as an upgrade card`,

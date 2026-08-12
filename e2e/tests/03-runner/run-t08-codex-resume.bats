@@ -22,7 +22,7 @@ teardown_file() {
     fi
 }
 
-@test "t-codex-resume-1: second chat turn resumes the codex session" {
+@test "second chat turn resumes the codex session" {
     run runner_chat_start "$RUNNER_AGENT_ID" "first turn"
 
     assert_success

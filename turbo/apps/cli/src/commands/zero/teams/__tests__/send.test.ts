@@ -1,5 +1,5 @@
 /**
- * Tests for zero teams message send command.
+ * Tests for okou teams message send command.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -11,7 +11,7 @@ import { sendCommand } from "../message/send";
 const TEAMS_MESSAGE_URL =
   "http://localhost:3000/api/zero/integrations/teams/message";
 
-describe("zero teams message send command", () => {
+describe("okou teams message send command", () => {
   vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
   }) as never);

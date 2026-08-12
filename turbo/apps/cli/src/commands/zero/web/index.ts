@@ -11,6 +11,6 @@ export const zeroWebCommand = new Command()
     "after",
     `
 Examples:
-  Upload a file:    zero web upload-file -f /tmp/report.pdf
-  Download a file:  zero web download-file <file-id> -o /tmp/out.pdf`,
+  Upload a file:    okou web upload-file -f /tmp/report.pdf
+  Download a file:  okou web download-file <file-id> -o /tmp/out.pdf`,
   );

@@ -1,5 +1,5 @@
 /**
- * Tests for zero video frames command.
+ * Tests for okou video frames command.
  *
  * Mocks only external boundaries: the curl/ffmpeg binaries (via child_process,
  * not available in CI) and HTTP (via MSW). The fake binaries write real bytes
@@ -51,7 +51,7 @@ function readStdout(): string {
     .join("");
 }
 
-describe("zero video frames command", () => {
+describe("okou video frames command", () => {
   beforeEach(() => {
     vi.stubEnv("VM0_API_BACKEND_URL", "http://localhost:3000");
     vi.stubEnv("ZERO_TOKEN", "test-token");

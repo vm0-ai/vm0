@@ -40,7 +40,7 @@ function financeResponse(operation: string, result: unknown) {
   };
 }
 
-describe("zero finance command", () => {
+describe("okou finance command", () => {
   const mockConsoleLog = vi.spyOn(console, "log").mockImplementation(() => {});
   const mockConsoleError = vi
     .spyOn(console, "error")

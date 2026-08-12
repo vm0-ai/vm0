@@ -56,3 +56,17 @@ for filename in app.tar.gz manifest.json ready.json; do
     exit 1
   fi
 done
+
+okou_archive_path="$(jq -r '.okouArchive.path // ""' "$destination/manifest.json")"
+if [[ -n "$okou_archive_path" ]]; then
+  if [[ "$okou_archive_path" != "okou-app.tar.gz" ]]; then
+    echo "Desktop artifact manifest contains an unexpected Okou archive path: $okou_archive_path" >&2
+    exit 1
+  fi
+  if ! copy_with_retry \
+    "$artifact_uri/$okou_archive_path" \
+    "$destination/$okou_archive_path"; then
+    echo "Desktop artifact download failed: $artifact_uri/$okou_archive_path" >&2
+    exit 1
+  fi
+fi

@@ -65,6 +65,7 @@ def test_duplicate_permission_name_does_not_expand_allowed_scope():
         [None],
         [{"name": "", "rules": [REPO_RULE]}],
         [{"name": "all", "rules": [REPO_RULE]}],
+        [{"name": "__unknown__", "rules": [REPO_RULE]}],
         [{"rules": [REPO_RULE]}],
         [{"name": 123, "rules": [REPO_RULE]}],
         [{"name": "repo-read", "rules": []}],

@@ -63,7 +63,7 @@ function renderScrapeResult(response: ZeroScrapeResponse): void {
 
 export const zeroScrapeCommand = new Command()
   .name("scrape")
-  .description("Scrape a public web page through managed zero scrape")
+  .description("Scrape a public web page through managed Okou scrape")
   .argument("<url>", "Public http or https URL to scrape")
   .addOption(
     new Option("--format <format>", "Output format")
@@ -98,9 +98,9 @@ export const zeroScrapeCommand = new Command()
     "after",
     `
 Examples:
-  Scrape markdown:  zero scrape https://example.com --format markdown
-  Scrape links:     zero scrape https://example.com --format links
-  Enhanced scrape:  zero scrape https://example.com --mode enhanced --json
+  Scrape markdown:  okou scrape https://example.com --format markdown
+  Scrape links:     okou scrape https://example.com --format links
+  Enhanced scrape:  okou scrape https://example.com --mode enhanced --json
 
 Notes:
   - Authenticates via ZERO_TOKEN (requires scrape:read capability) or a CLI token
