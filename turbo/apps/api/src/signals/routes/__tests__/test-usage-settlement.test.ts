@@ -107,9 +107,10 @@ async function createGrant(args: {
   );
 }
 
-async function insertCharge(args: {
+async function insertModelCharge(args: {
   readonly fixture: UsageStateFixture;
   readonly provider: string;
+  readonly category: UsagePricingKey["category"];
   readonly amount: number;
   readonly userId?: string;
   readonly idempotencyKey?: string;
@@ -122,13 +123,23 @@ async function insertCharge(args: {
       userId: args.userId ?? args.fixture.userId,
       kind: "model",
       provider: args.provider,
-      category: "tokens.input",
+      category: args.category,
       quantity: args.amount,
       idempotencyKey,
     },
     context.signal,
   );
   return idempotencyKey;
+}
+
+async function insertCharge(args: {
+  readonly fixture: UsageStateFixture;
+  readonly provider: string;
+  readonly amount: number;
+  readonly userId?: string;
+  readonly idempotencyKey?: string;
+}): Promise<string> {
+  return await insertModelCharge({ ...args, category: "tokens.input" });
 }
 
 async function processSettlement(
@@ -260,21 +271,45 @@ describe("POST /api/test/usage-settlement/process", () => {
     });
   });
 
-  it("isolates configured, custom, and missing pricing by fixture scope", async () => {
-    const pricingKey: UsagePricingKey = {
+  it("prices every fixed model token category without leaking fixture scopes", async () => {
+    const modelProvider = "deepseek-v4-flash";
+    const inputPricingKey: UsagePricingKey = {
       kind: "model",
-      provider: "deepseek-v4-flash",
+      provider: modelProvider,
       category: "tokens.input",
     };
     const [configuredPricing, customPricing, missingPricing] =
       await Promise.all([
         createUsagePricingFixture({
-          configured: [{ ...pricingKey, unitPrice: 19, unitSize: 100 }],
+          configured: [
+            { ...inputPricingKey, unitPrice: 2, unitSize: 1 },
+            {
+              kind: "model",
+              provider: modelProvider,
+              category: "tokens.output",
+              unitPrice: 3,
+              unitSize: 1,
+            },
+            {
+              kind: "model",
+              provider: modelProvider,
+              category: "tokens.cache_read",
+              unitPrice: 5,
+              unitSize: 1,
+            },
+            {
+              kind: "model",
+              provider: modelProvider,
+              category: "tokens.cache_creation",
+              unitPrice: 7,
+              unitSize: 1,
+            },
+          ],
         }),
         createUsagePricingFixture({
-          configured: [{ ...pricingKey, unitPrice: 7, unitSize: 1 }],
+          configured: [{ ...inputPricingKey, unitPrice: 13, unitSize: 1 }],
         }),
-        createUsagePricingFixture({ missing: [pricingKey] }),
+        createUsagePricingFixture({ missing: [inputPricingKey] }),
       ]);
     onTestFinished(async () => {
       await Promise.all([
@@ -289,21 +324,49 @@ describe("POST /api/test/usage-settlement/process", () => {
       setupSettlementFixture(10_000),
       setupSettlementFixture(10_000),
     ]);
-    const [configuredEvent, customEvent, missingEvent] = await Promise.all([
-      insertCharge({
+    const [
+      inputEvent,
+      outputEvent,
+      cacheReadEvent,
+      cacheCreationEvent,
+      customEvent,
+      missingEvent,
+    ] = await Promise.all([
+      insertModelCharge({
         fixture: configuredState,
-        provider: pricingKey.provider,
-        amount: 100,
+        provider: modelProvider,
+        category: "tokens.input",
+        amount: 11,
       }),
-      insertCharge({
+      insertModelCharge({
+        fixture: configuredState,
+        provider: modelProvider,
+        category: "tokens.output",
+        amount: 7,
+      }),
+      insertModelCharge({
+        fixture: configuredState,
+        provider: modelProvider,
+        category: "tokens.cache_read",
+        amount: 5,
+      }),
+      insertModelCharge({
+        fixture: configuredState,
+        provider: modelProvider,
+        category: "tokens.cache_creation",
+        amount: 4,
+      }),
+      insertModelCharge({
         fixture: customState,
-        provider: pricingKey.provider,
-        amount: 100,
+        provider: modelProvider,
+        category: "tokens.input",
+        amount: 11,
       }),
-      insertCharge({
+      insertModelCharge({
         fixture: missingState,
-        provider: pricingKey.provider,
-        amount: 100,
+        provider: modelProvider,
+        category: "tokens.input",
+        amount: 11,
       }),
     ]);
 
@@ -314,22 +377,49 @@ describe("POST /api/test/usage-settlement/process", () => {
     ]);
 
     await expect(
-      store.set(readUsageEventState$, configuredEvent, context.signal),
-    ).resolves.toMatchObject({
+      store.set(readUsageEventState$, inputEvent, context.signal),
+    ).resolves.toStrictEqual({
+      id: expect.any(String),
       status: "processed",
-      creditsCharged: 19,
+      creditsCharged: 22,
+      billingError: null,
+    });
+    await expect(
+      store.set(readUsageEventState$, outputEvent, context.signal),
+    ).resolves.toStrictEqual({
+      id: expect.any(String),
+      status: "processed",
+      creditsCharged: 21,
+      billingError: null,
+    });
+    await expect(
+      store.set(readUsageEventState$, cacheReadEvent, context.signal),
+    ).resolves.toStrictEqual({
+      id: expect.any(String),
+      status: "processed",
+      creditsCharged: 25,
+      billingError: null,
+    });
+    await expect(
+      store.set(readUsageEventState$, cacheCreationEvent, context.signal),
+    ).resolves.toStrictEqual({
+      id: expect.any(String),
+      status: "processed",
+      creditsCharged: 28,
       billingError: null,
     });
     await expect(
       store.set(readUsageEventState$, customEvent, context.signal),
-    ).resolves.toMatchObject({
+    ).resolves.toStrictEqual({
+      id: expect.any(String),
       status: "processed",
-      creditsCharged: 700,
+      creditsCharged: 143,
       billingError: null,
     });
     await expect(
       store.set(readUsageEventState$, missingEvent, context.signal),
-    ).resolves.toMatchObject({
+    ).resolves.toStrictEqual({
+      id: expect.any(String),
       status: "processed",
       creditsCharged: 0,
       billingError: "missing_pricing",
