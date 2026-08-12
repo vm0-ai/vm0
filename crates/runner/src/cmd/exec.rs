@@ -225,21 +225,31 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn success_propagates_exit_code() {
+    async fn success_forwards_output_and_propagates_exit_code() {
         let control = MockSandboxControl::new("/tmp");
         control.push_exec_remote_result(Ok(RemoteExecResult {
             termination: ExecTermination::Exited { exit_code: 42 },
-            stdout: Vec::new(),
-            stderr: Vec::new(),
+            stdout: b"command output\n".to_vec(),
+            stderr: b"command warning\n".to_vec(),
             diagnostic: String::new(),
             stdout_truncated: false,
             stderr_truncated: false,
         }));
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
 
-        let result = run_exec(make_args("test-id", "echo hello"), &control)
-            .await
-            .unwrap();
+        let result = run_exec_with_writers(
+            make_args("test-id", "echo hello"),
+            &control,
+            &mut stdout,
+            &mut stderr,
+        )
+        .await
+        .unwrap();
+
         assert_eq!(result, ExitCode::from(42));
+        assert_eq!(stdout, b"command output\n");
+        assert_eq!(stderr, b"command warning\n");
     }
 
     #[tokio::test]
