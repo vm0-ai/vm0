@@ -59,6 +59,17 @@ function isApprovedRunClientFactory(
   );
 }
 
+function isApprovedScopedRunStateRoute(
+  source: string,
+  exportName: string,
+): boolean {
+  return (
+    exportName === "testCronCleanupSandboxesStateRoutes" &&
+    (source.endsWith("/test-cron-cleanup-sandboxes-state") ||
+      source.endsWith("/test-cron-cleanup-sandboxes-state.ts"))
+  );
+}
+
 function enclosingFunction(node: TSESTree.Node): FunctionNode | null {
   let current = node.parent;
   while (current) {
@@ -139,6 +150,7 @@ export const noUnownedUsagePricing = createRule({
     const fixtureNamespaces = new Set<string>();
     const calls: TSESTree.CallExpression[] = [];
     const functionReturns = new Map<FunctionNode, TSESTree.Expression[]>();
+    const scopedRunStateRouteFunctions = new Set<FunctionNode>();
 
     function addReturn(
       node: FunctionNode,
@@ -205,6 +217,152 @@ export const noUnownedUsagePricing = createRule({
           callee.type === AST_NODE_TYPES.Identifier && callee.name === name
         );
       });
+    }
+
+    function localFunctionCalledBy(
+      call: TSESTree.CallExpression,
+    ): FunctionNode | null {
+      if (call.callee.type !== AST_NODE_TYPES.Identifier) {
+        return null;
+      }
+      const definitions =
+        variableInScope(context.sourceCode, call.callee)?.defs ?? [];
+      return (
+        [...functionReturns.keys()].find((candidate) => {
+          return definitions.some((definition) => {
+            return (
+              definition.node === candidate ||
+              (definition.node.type === AST_NODE_TYPES.VariableDeclarator &&
+                definition.node.init === candidate)
+            );
+          });
+        }) ?? null
+      );
+    }
+
+    function callHasSeedRunAction(call: TSESTree.CallExpression): boolean {
+      return call.arguments.some((argument) => {
+        if (argument.type === AST_NODE_TYPES.SpreadElement) {
+          return false;
+        }
+        const action = objectPropertyExpression(argument, "action", new Set());
+        const current = action ? unwrapExpression(action) : null;
+        return (
+          current?.type === AST_NODE_TYPES.Literal &&
+          current.value === "seed-run"
+        );
+      });
+    }
+
+    function reachesScopedRunStateRoute(
+      node: FunctionNode,
+      seen: ReadonlySet<FunctionNode> = new Set(),
+    ): boolean {
+      if (seen.has(node)) {
+        return false;
+      }
+      if (scopedRunStateRouteFunctions.has(node)) {
+        return true;
+      }
+      const nextSeen = new Set(seen).add(node);
+      return calls.some((call) => {
+        return (
+          enclosingFunction(call) === node &&
+          (() => {
+            const called = localFunctionCalledBy(call);
+            return Boolean(
+              called && reachesScopedRunStateRoute(called, nextSeen),
+            );
+          })()
+        );
+      });
+    }
+
+    function isScopedSeedRunResult(
+      expression: TSESTree.Expression,
+      seen: ReadonlySet<TSESTree.Node> = new Set(),
+    ): boolean {
+      const current = unwrapExpression(expression);
+      if (seen.has(current)) {
+        return false;
+      }
+      const nextSeen = new Set(seen).add(current);
+      if (current.type === AST_NODE_TYPES.Identifier) {
+        const definition = variableInScope(context.sourceCode, current)
+          ?.defs[0];
+        return Boolean(
+          definition?.node.type === AST_NODE_TYPES.VariableDeclarator &&
+          definition.node.init &&
+          isScopedSeedRunResult(definition.node.init, nextSeen),
+        );
+      }
+      if (current.type === AST_NODE_TYPES.AwaitExpression) {
+        return isScopedSeedRunResult(current.argument, nextSeen);
+      }
+      if (current.type !== AST_NODE_TYPES.CallExpression) {
+        return false;
+      }
+      const called = localFunctionCalledBy(current);
+      return Boolean(
+        called &&
+        callHasSeedRunAction(current) &&
+        reachesScopedRunStateRoute(called),
+      );
+    }
+
+    function isScopedSeedRunId(
+      expression: TSESTree.Expression,
+      seen: ReadonlySet<TSESTree.Node> = new Set(),
+    ): boolean {
+      const current = unwrapExpression(expression);
+      if (seen.has(current)) {
+        return false;
+      }
+      const nextSeen = new Set(seen).add(current);
+      if (current.type === AST_NODE_TYPES.Identifier) {
+        const definition = variableInScope(context.sourceCode, current)
+          ?.defs[0];
+        return Boolean(
+          definition?.node.type === AST_NODE_TYPES.VariableDeclarator &&
+          definition.node.init &&
+          isScopedSeedRunId(definition.node.init, nextSeen),
+        );
+      }
+      if (current.type === AST_NODE_TYPES.MemberExpression) {
+        return (
+          memberName(current) === "run_id" &&
+          current.object.type !== AST_NODE_TYPES.Super &&
+          isScopedSeedRunResult(current.object, nextSeen)
+        );
+      }
+      if (
+        current.type !== AST_NODE_TYPES.CallExpression ||
+        current.arguments.length < 2
+      ) {
+        return false;
+      }
+      const response = current.arguments[0];
+      const field = current.arguments[1];
+      if (
+        !response ||
+        response.type === AST_NODE_TYPES.SpreadElement ||
+        field?.type !== AST_NODE_TYPES.Literal ||
+        field.value !== "run_id"
+      ) {
+        return false;
+      }
+      return isScopedSeedRunResult(response, nextSeen);
+    }
+
+    function isScopedRunFixtureFactory(node: FunctionNode): boolean {
+      const returns = functionReturns.get(node) ?? [];
+      return (
+        returns.length > 0 &&
+        returns.every((returned) => {
+          const runId = objectPropertyExpression(returned, "runId", new Set());
+          return Boolean(runId && isScopedSeedRunId(runId));
+        })
+      );
     }
 
     function ownedParameterValue(
@@ -392,11 +550,11 @@ export const noUnownedUsagePricing = createRule({
         });
       }
       if (current.callee.type === AST_NODE_TYPES.Identifier) {
-        const calleeName = current.callee.name;
-        const localFunction = [...functionReturns.keys()].find((candidate) => {
-          return functionName(candidate) === calleeName;
-        });
+        const localFunction = localFunctionCalledBy(current);
         if (localFunction) {
+          if (isScopedRunFixtureFactory(localFunction)) {
+            return true;
+          }
           const returns = functionReturns.get(localFunction) ?? [];
           return (
             returns.length > 0 &&
@@ -747,6 +905,17 @@ export const noUnownedUsagePricing = createRule({
       },
       CallExpression(node: TSESTree.CallExpression) {
         calls.push(node);
+      },
+      Identifier(node: TSESTree.Identifier) {
+        const imported = importReference(context.sourceCode, node);
+        const owner = enclosingFunction(node);
+        if (
+          owner &&
+          imported &&
+          isApprovedScopedRunStateRoute(imported.source, imported.importedName)
+        ) {
+          scopedRunStateRouteFunctions.add(owner);
+        }
       },
       "Program:exit"() {
         for (const call of calls) {

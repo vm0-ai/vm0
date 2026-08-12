@@ -735,7 +735,7 @@ describe("sandbox cleanup", () => {
         threadless: true,
       }),
     );
-    const usageProvider = `cleanup-test-${randomUUID()}`;
+    const usageProvider = `cleanup-test-${fixture.runId}`;
     await seedUsagePricingRows([
       {
         kind: "model",

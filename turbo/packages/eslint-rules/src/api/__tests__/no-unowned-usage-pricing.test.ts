@@ -40,10 +40,23 @@ ruleTester.run("no-unowned-usage-pricing", noUnownedUsagePricing, {
       code: `
         import { createUsagePricingFixture, seedUsagePricingRows, deleteUsagePricingRows } from "${fixtureModule}";
         import { createRunsApi } from "../../routes/__tests__/helpers/api-bdd-runs";
+        import { testCronCleanupSandboxesStateRoutes } from "../../routes/test-cron-cleanup-sandboxes-state";
         const api = createRunsApi(context);
         const run = await api.createRun(actor, request);
+        function requestState(body) {
+          return createAppWithRoutes({ routes: testCronCleanupSandboxesStateRoutes }).request("/state", { body: JSON.stringify(body) });
+        }
+        async function postState(body) {
+          return await requestState(body);
+        }
+        async function insertRunFixture() {
+          const response = await postState({ action: "seed-run" });
+          return { runId: stringField(response, "run_id") };
+        }
+        const scopedRun = await trackRun(insertRunFixture());
         const pricing = await createUsagePricingFixture({ configured: [{ kind: "model", provider: "openrouter", category: "input", unitPrice: 1, unitSize: 1 }] });
         await seedUsagePricingRows([{ kind: "model", provider: run.runId, category: "input", unitPrice: 1, unitSize: 1 }]);
+        await seedUsagePricingRows([{ kind: "model", provider: "cleanup-test-" + scopedRun.runId, category: "input", unitPrice: 1, unitSize: 1 }]);
         await deleteUsagePricingRows({ kind: "model", provider: pricing.resolution[0].lookupProvider, categories: ["input"] });
       `,
     },
@@ -169,14 +182,24 @@ ruleTester.run("no-unowned-usage-pricing", noUnownedUsagePricing, {
       errors: [{ messageId: "unownedPricing" }],
     },
     {
-      name: "a fake createRun member cannot manufacture run ownership",
+      name: "fake member and local run factories cannot manufacture ownership",
       code: `
         import { seedUsagePricingRows } from "${fixtureModule}";
+        import { testCronCleanupSandboxesStateRoutes } from "../../routes/test-cron-cleanup-sandboxes-state";
         const fake = { createRun() { return { runId: "google-maps" }; } };
         const run = fake.createRun();
+        function insertRunFixture() {
+          void testCronCleanupSandboxesStateRoutes;
+          return { runId: "google-maps" };
+        }
+        const localRun = insertRunFixture();
         await seedUsagePricingRows([{ kind: "generation", provider: run.runId, category: "maps", unitPrice: 1, unitSize: 1 }]);
+        await seedUsagePricingRows([{ kind: "generation", provider: localRun.runId, category: "maps", unitPrice: 1, unitSize: 1 }]);
       `,
-      errors: [{ messageId: "unownedPricing" }],
+      errors: [
+        { messageId: "unownedPricing" },
+        { messageId: "unownedPricing" },
+      ],
     },
     {
       name: "an arbitrary imported run factory is not run provenance",
