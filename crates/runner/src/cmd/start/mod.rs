@@ -678,9 +678,6 @@ async fn run_start_with_home(
 
     // Create provider — handles discovery + claim + complete
     let (usage_flush_tx, usage_flush_rx) = mpsc::channel(1);
-    let immediate_successor_intents =
-        crate::immediate_successor_intent::ImmediateSuccessorIntents::default();
-
     let (provider, group_name, connector_runtime_sync): (
         Arc<dyn JobProvider>,
         String,
@@ -701,7 +698,6 @@ async fn run_start_with_home(
                 heartbeat_generation,
                 group,
                 supported_profiles: profiles,
-                immediate_successor_intents: immediate_successor_intents.clone(),
             },
             BuiltinFirewallCatalogCachePaths {
                 cache_path: paths.builtin_firewall_catalog_cache(),
@@ -788,7 +784,6 @@ async fn run_start_with_home(
             status,
             active_runs,
             reuse_state_notify,
-            immediate_successor_intents,
         },
         provider: ProviderState {
             provider,
@@ -877,7 +872,6 @@ struct RunnerSharedState {
     status: Arc<StatusTracker>,
     active_runs: ActiveRuns,
     reuse_state_notify: Arc<tokio::sync::Notify>,
-    immediate_successor_intents: crate::immediate_successor_intent::ImmediateSuccessorIntents,
 }
 
 struct ProviderState {
@@ -1550,7 +1544,6 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         budget: Arc::clone(&capacity.budget),
         workspace_cache_snapshot,
         device_rate_limits: capacity.device_rate_limits.clone(),
-        immediate_successor_intents: shared.immediate_successor_intents.clone(),
         #[cfg(test)]
         outer_job_panic: test_hooks.outer_job_panic,
         #[cfg(test)]
