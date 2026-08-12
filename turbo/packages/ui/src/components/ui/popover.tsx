@@ -200,6 +200,7 @@ type PopoverContentProps = PopoverPrimitive.Popup.Props &
     onCloseAutoFocus?: LegacyAutoFocusHandler;
     onOpenAutoFocus?: LegacyAutoFocusHandler;
     portalContainer?: HTMLElement | null;
+    positionerClassName?: string;
     updatePositionStrategy?: "always" | "optimized";
   };
 
@@ -223,6 +224,7 @@ const PopoverContent = React.forwardRef<HTMLDivElement, PopoverContentProps>(
       onOpenAutoFocus,
       portalContainer,
       positionMethod = "fixed",
+      positionerClassName,
       side = "bottom",
       sideOffset = 4,
       sticky,
@@ -258,6 +260,7 @@ const PopoverContent = React.forwardRef<HTMLDivElement, PopoverContentProps>(
           anchor={resolvedAnchor}
           className={cn(
             "isolate z-50",
+            positionerClassName,
             hideWhenDetached && "data-anchor-hidden:invisible",
           )}
           collisionAvoidance={resolvedCollisionAvoidance}
