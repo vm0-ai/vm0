@@ -22,6 +22,7 @@ const mockAgent = {
   description: null,
   sound: null,
   avatarUrl: null,
+  visibility: "private",
 };
 
 describe("okou agent edit command", () => {
@@ -66,6 +67,7 @@ describe("okou agent edit command", () => {
       ]);
 
       expect(capturedBody?.displayName).toBe("Updated");
+      expect(capturedBody).not.toHaveProperty("visibility");
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("updated");
     });
@@ -96,6 +98,32 @@ describe("okou agent edit command", () => {
       expect(capturedBody?.description).toBe("Updated role");
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("updated");
+    });
+
+    it("should update visibility", async () => {
+      let capturedBody: Record<string, unknown> | undefined;
+      server.use(
+        http.get("http://localhost:3000/api/okou/agents/my-agent", () => {
+          return HttpResponse.json(mockAgent);
+        }),
+        http.put(
+          "http://localhost:3000/api/okou/agents/my-agent",
+          async ({ request }) => {
+            capturedBody = (await request.json()) as Record<string, unknown>;
+            return HttpResponse.json({ ...mockAgent, visibility: "public" });
+          },
+        ),
+      );
+
+      await editCommand.parseAsync([
+        "node",
+        "cli",
+        "my-agent",
+        "--visibility",
+        "public",
+      ]);
+
+      expect(capturedBody?.visibility).toBe("public");
     });
 
     it("should update avatar with preset and include it in request body", async () => {
@@ -229,6 +257,20 @@ describe("okou agent edit command", () => {
   });
 
   describe("validation", () => {
+    it("should reject invalid visibility", async () => {
+      await expect(async () => {
+        await editCommand.parseAsync([
+          "node",
+          "cli",
+          "my-agent",
+          "--visibility",
+          "unlisted",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
     it("should fail when no options provided", async () => {
       await expect(async () => {
         await editCommand.parseAsync(["node", "cli", "my-agent"]);

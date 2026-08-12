@@ -119,6 +119,7 @@ Examples:
         if (agent.displayName) console.log(chalk.dim(agent.displayName));
         console.log();
         console.log(`Agent ID:     ${agent.agentId}`);
+        if (agent.visibility) console.log(`Visibility:   ${agent.visibility}`);
 
         const storedPolicies = options.permissions
           ? connectorPermissionGrantsToFirewallPolicies(

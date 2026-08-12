@@ -22,6 +22,7 @@ const mockAgent = {
   description: null,
   sound: null,
   avatarUrl: null,
+  visibility: "private",
 };
 
 describe("okou agent create command", () => {
@@ -70,7 +71,7 @@ describe("okou agent create command", () => {
       );
     });
 
-    it("should create agent without workflow attachments in request body", async () => {
+    it("should create a private agent by default", async () => {
       let capturedBody: Record<string, unknown> | undefined;
       server.use(
         http.post(
@@ -90,6 +91,38 @@ describe("okou agent create command", () => {
       ]);
 
       expect(capturedBody?.displayName).toBe("New Agent");
+      expect(capturedBody?.visibility).toBe("private");
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Visibility:   private");
+    });
+
+    it("should create a public agent when requested", async () => {
+      let capturedBody: Record<string, unknown> | undefined;
+      server.use(
+        http.post(
+          "http://localhost:3000/api/okou/agents",
+          async ({ request }) => {
+            capturedBody = (await request.json()) as Record<string, unknown>;
+            return HttpResponse.json(
+              { ...mockAgent, visibility: "public" },
+              { status: 201 },
+            );
+          },
+        ),
+      );
+
+      await createCommand.parseAsync([
+        "node",
+        "cli",
+        "--display-name",
+        "New Agent",
+        "--visibility",
+        "public",
+      ]);
+
+      expect(capturedBody?.visibility).toBe("public");
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Visibility:   public");
     });
 
     it("should send preset avatar in request body", async () => {
@@ -190,6 +223,19 @@ describe("okou agent create command", () => {
   });
 
   describe("error handling", () => {
+    it("should reject invalid visibility", async () => {
+      await expect(async () => {
+        await createCommand.parseAsync([
+          "node",
+          "cli",
+          "--visibility",
+          "unlisted",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
     it("should reject invalid avatar preset", async () => {
       await expect(async () => {
         await createCommand.parseAsync([

@@ -22,6 +22,7 @@ const mockAgent = {
   displayName: "My Agent",
   description: "A test agent",
   sound: "professional",
+  visibility: "private",
 };
 
 const defaultPermissionDetails = [
@@ -137,6 +138,7 @@ describe("okou agent view command", () => {
       expect(logCalls).toContain("comp_abc123");
       expect(logCalls).toContain("A test agent");
       expect(logCalls).toContain("professional");
+      expect(logCalls).toContain("Visibility:   private");
       expect(logCalls).toContain("github (full access)");
     });
 

@@ -18,6 +18,7 @@ const mockAgent = {
   displayName: "My Agent",
   description: null,
   sound: null,
+  visibility: "private",
 };
 
 describe("okou agent list command", () => {
@@ -54,6 +55,8 @@ describe("okou agent list command", () => {
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("my-agent");
       expect(logCalls).toContain("My Agent");
+      expect(logCalls).toContain("VISIBILITY");
+      expect(logCalls).toContain("private");
     });
 
     it("should display empty state message when no agents", async () => {
