@@ -86,10 +86,9 @@ export const zeroLogsRoutes: readonly RouteEntry[] = [
   },
   // Register the literal `/search` path before `/:id` so Hono matches the
   // search endpoint instead of treating `search` as a log id.
-  // Temporary deployment compatibility: the current CLI no longer exposes
-  // log search, but immutable CLI_PKG_URL values captured before this release
-  // can still call this route. Remove it after every pre-deployment queued or
-  // active CLI context has completed and the rollback window has closed.
+  // Commit-addressed CLI compatibility for pre-deployment CLI_PKG_URL values.
+  // Maximum drain: 15m queue TTL + 2h runner execution + 90s finalization +
+  // 10s terminal grace (~2h17m). Remove under #26735 after drain and rollback.
   {
     route: zeroLogsSearchContract.searchLogs,
     handler: authRoute(runReadAuth, searchLogsInner$),

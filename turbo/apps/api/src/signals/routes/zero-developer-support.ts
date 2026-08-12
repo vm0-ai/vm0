@@ -79,10 +79,9 @@ const submitInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   return { status: 200 as const, body: { reference: result.reference } };
 });
 
-// Temporary deployment compatibility for immutable CLI_PKG_URL values that
-// were captured before `okou developer-support` was retired. Remove this route
-// after all pre-deployment queued and active CLI contexts have completed and
-// the rollback window has closed.
+// Commit-addressed CLI compatibility for pre-deployment CLI_PKG_URL values.
+// Maximum drain: 15m queue TTL + 2h runner execution + 90s finalization + 10s
+// terminal grace (~2h17m). Remove under #26735 after that drain and rollback.
 export const zeroDeveloperSupportRoutes: readonly RouteEntry[] = [
   {
     route: zeroDeveloperSupportContract.submit,

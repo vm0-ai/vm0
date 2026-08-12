@@ -10,7 +10,6 @@ import {
 
 import { click, detachedSetupPage } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { fetchDownloadExtra$ } from "../../../signals/activity-page/activity-download.ts";
 import type { LogDetail } from "../../../signals/zero-page/log-types.ts";
 
 const context = testContext();
@@ -137,6 +136,11 @@ describe("activity retained diagnostic data", () => {
   });
 
   it("keeps downloads available when context is unavailable", async () => {
+    const downloads = context.mocks.browser.blobDownload();
+    context.mocks.data.composesList([]);
+    context.mocks.api(logsByIdContract.getById, ({ respond }) => {
+      return respond(200, logDetail());
+    });
     context.mocks.api(zeroRunContextContract.getContext, ({ respond }) => {
       return respond(404, {
         error: { code: "NOT_FOUND", message: "Run context not available" },
@@ -149,13 +153,29 @@ describe("activity retained diagnostic data", () => {
       },
     );
 
-    const extra = await context.store.set(
-      fetchDownloadExtra$,
-      RUN_ID,
-      context.signal,
-    );
+    detachedSetupPage({ context, path: `/activities/${RUN_ID}` });
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Checkout Export" }),
+      ).toBeInTheDocument();
+    });
 
-    expect(extra.context).toBeUndefined();
-    expect(extra.networkLogs).toStrictEqual([]);
+    click(screen.getByLabelText("Download raw data"));
+    await waitFor(() => {
+      expect(downloads.downloads).toHaveLength(1);
+    });
+
+    const download = downloads.downloads[0];
+    if (!download?.blob) {
+      throw new Error("Downloaded activity blob was not captured");
+    }
+    const downloaded = JSON.parse(await download.blob.text()) as Record<
+      string,
+      unknown
+    >;
+
+    expect(download.filename).toBe(`${RUN_ID}-activity.json`);
+    expect(downloaded).not.toHaveProperty("context");
+    expect(downloaded.networkLogs).toStrictEqual([]);
   });
 });

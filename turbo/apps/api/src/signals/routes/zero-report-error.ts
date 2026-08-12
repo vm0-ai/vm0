@@ -93,9 +93,9 @@ const submitInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   return { status: 200 as const, body: { reference: result.reference } };
 });
 
-// Temporary deployment compatibility for already-open App builds that still
-// render the retired Error Report surface. Remove this route after that build
-// is below the enforced web-client compatibility floor and rollback is closed.
+// App compatibility for already-open builds that still render Error Report.
+// Old clients can remain for ~2 days. Remove under #26735 after that window,
+// once the compatibility floor has advanced and the rollback window is closed.
 export const zeroReportErrorRoutes: readonly RouteEntry[] = [
   {
     route: zeroReportErrorContract.submit,
